@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+# Installed by gates_of_heck. Runs the FULL gate before anything leaves this
+# machine. There is no CI behind this; if it is skipped, it is not run.
+set -euo pipefail
+root="$(git rev-parse --show-toplevel)"
+exec "$root/tools/gate.sh" --full

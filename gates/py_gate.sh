@@ -1,0 +1,50 @@
+#!/usr/bin/env bash
+# py_gate.sh — the Python gates every house Python project must pass.
+#
+#   1. ruff check          (the project's own rule set, from pyproject.toml)
+#   2. ruff format --check
+#   3. pytest with a coverage floor
+#
+#   py_gate.sh                      # run from the repo root
+#   py_gate.sh <repo>               # run from anywhere
+#   py_gate.sh <repo> <pkg_dir>     # sources live in a subdir
+#
+# Config, from the target repo's .gatesrc:
+#   GOH_PY_COV_MIN=95      # coverage floor; unset skips the coverage gate
+#   GOH_PY_RUNNER="uv run" # prefix for the toolchain (uv, poetry, hatch...)
+set -euo pipefail
+
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+. "$HERE/_common.sh"
+
+repo="${1:-$PWD}"
+cd "$repo"
+pkg_dir="${2:-$repo}"
+
+[ -f .gatesrc ] && . ./.gatesrc
+RUN="${GOH_PY_RUNNER:-}"
+
+# Prefer a project venv over whatever is on PATH — a gate that silently used a
+# different interpreter than the project is a gate measuring the wrong thing.
+if [ -z "$RUN" ] && [ -x .venv/bin/python ]; then
+    RUN=".venv/bin/python -m"
+elif [ -z "$RUN" ]; then
+    RUN="python3 -m"
+fi
+
+goh_init "python"
+
+command -v python3 >/dev/null 2>&1 || die "python3 not on PATH"
+
+goh_step "ruff check"        env sh -c "cd '$pkg_dir' && $RUN ruff check ."
+goh_step "ruff format check" env sh -c "cd '$pkg_dir' && $RUN ruff format --check ."
+
+if [ -n "${GOH_PY_COV_MIN:-}" ]; then
+    goh_step "pytest (coverage >= ${GOH_PY_COV_MIN}%)" \
+        env sh -c "cd '$pkg_dir' && $RUN pytest -q --cov --cov-report=term-missing --cov-fail-under=${GOH_PY_COV_MIN}"
+else
+    goh_step "pytest" env sh -c "cd '$pkg_dir' && $RUN pytest -q"
+    warn "no coverage floor — set GOH_PY_COV_MIN in .gatesrc"
+fi
+
+goh_done
