@@ -93,4 +93,18 @@ goh_optional_step() {
     goh_step "$label" "$@"
 }
 
+# goh_step_in <dir> <label> <command...>
+# Run a command inside <dir> without shell-string interpolation: argv stays
+# argv, so paths with spaces or quotes cannot become code. The replaced
+# pattern was `env sh -c "cd '$dir' && ... $RUN ..."` — a quoting bug waiting
+# on the first path that contains a single quote.
+goh_step_in() {
+    local dir="$1" label="$2"; shift 2
+    if [ "$dir" != "$PWD" ]; then
+        goh_step "$label" /usr/bin/env bash -c 'cd "$1" && exec "${@:2}"' _ "$dir" "$@"
+    else
+        goh_step "$label" "$@"
+    fi
+}
+
 goh_done() { printf '\n'; ok "all $GOH_NAME gates passed"; }
