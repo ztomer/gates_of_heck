@@ -16,7 +16,7 @@ EMOJI_SMILE = chr(0x1F600)      # pictograph
 CHECK_MARK_BUTTON = chr(0x2705)  # dingbat check-mark-button (NOT the allowed U+2713)
 VS16 = chr(0xFE0F)              # emoji variation selector
 KEYCAP_COMBINE = chr(0x20E3)    # combining enclosing keycap
-DOUBLE_ARROW = chr(0x21D2)      # ⇒ rejected (only cardinal arrows allowed)
+DOUBLE_ARROW = chr(0x21D2)      # rejected by number, never written literally
 STAR = chr(0x2B50)
 
 # Allowed glyphs may appear literally.
