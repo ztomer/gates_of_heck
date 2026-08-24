@@ -23,12 +23,28 @@ export ICON_START ICON_STEP ICON_OK ICON_ERR ICON_WARN
 export C_RESET C_DIM C_BOLD C_GREEN C_RED C_YELLOW C_GRAY
 
 # ── Log functions ──────────────────────────────────────────────────────
-info()  { echo -e "${C_GRAY}${ICON_START}${C_RESET} ${C_DIM}$1${C_RESET}"; }
-ok()    { echo -e "${C_GREEN}${ICON_OK}${C_RESET} $1"; }
-err()   { echo -e "${C_RED}${ICON_ERR}${C_RESET} $1" >&2; }
-warn()  { echo -e "${C_YELLOW}${ICON_WARN}${C_RESET} $1"; }
+# Private implementations first; EVERY public name (and the _lib_* alias set)
+# delegates here. Call cycles are structurally impossible: nothing ever calls
+# a name that could itself be re-overlaid by a consumer.
+_tui_info() { echo -e "${C_GRAY}${ICON_START}${C_RESET} ${C_DIM}$1${C_RESET}"; }
+_tui_ok()   { echo -e "${C_GREEN}${ICON_OK}${C_RESET} $1"; }
+_tui_err()  { echo -e "${C_RED}${ICON_ERR}${C_RESET} $1" >&2; }
+_tui_warn() { echo -e "${C_YELLOW}${ICON_WARN}${C_RESET} $1"; }
+
+info()  { _tui_info "$1"; }
+ok()    { _tui_ok "$1"; }
+err()   { _tui_err "$1"; }
+warn()  { _tui_warn "$1"; }
 die()   { err "$1"; exit "${2:-1}"; }
 bold()  { echo -e "${C_BOLD}$1${C_RESET}"; }
+
+# Private aliases: gates/_common.sh overlays its fallbacks onto the public
+# names unconditionally, then re-overlays from these _lib_* names when present.
+# Without them the styled lib could never engage (the overlay always won).
+_lib_info() { _tui_info "$1"; }
+_lib_ok()   { _tui_ok "$1"; }
+_lib_warn() { _tui_warn "$1"; }
+_lib_err()  { _tui_err "$1"; }
 
 # ── Dividers ───────────────────────────────────────────────────────────
 # Build the rule by concatenation — `tr ' ' '─'` mangles the multibyte ─ (byte-oriented).
