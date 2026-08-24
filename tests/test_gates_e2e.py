@@ -6,7 +6,7 @@ output uses only Kare glyphs (the suite's own style gate, applied to gates).
 
 import re
 
-from conftest import EMOJI_SMILE, run_gate, stage, write
+from conftest import EMOJI_SMILE, REPO_ROOT, run_gate, stage, write
 
 STRUCTURAL = "gates/structural.sh"
 
@@ -66,6 +66,14 @@ def test_output_uses_kare_glyphs_only(repo):
         assert ord(ch) < 0x1F000 or ch in "→·✓✗⚠↔↑↓←⌘⌥⌨", (
             f"gate emitted a non-Kare pictograph: U+{ord(ch):04X} {ch!r}"
         )
+
+
+def test_swift_cold_build_default_is_on():
+    # Stated-vs-implemented pin: the header says cold builds are the default.
+    # (HEAD shipped :-0 with a header claiming "default in --full".)
+    text = (REPO_ROOT / "gates" / "swift_gate.sh").read_text()
+    assert '${GOH_SWIFT_COLD:-1}' in text
+    assert 'xcode-dd' in text  # cold wipe covers the pinned xcode DD too
 
 
 def test_full_scope_runs_disk_check(repo):

@@ -26,10 +26,14 @@ import os, subprocess, sys
 #   2. Functional (non-emoji) symbols that carry meaning, not decoration: Mac modifier-key glyphs
 #      shown in native menus / shortcut docs, and the left-arrow companion to the cardinal set.
 # To go Kare-strict, delete bucket 2 (and the three arrows from bucket 1).
-ALLOWED = {
+# ORDERED matters: this tuple is also the failure message's permit list, so
+# the policy and what users are told cannot drift apart. Membership tests use
+# the set built from it.
+ALLOWED_ORDERED = (
     "→", "✓", "✗", "⚠", "↔", "↑", "↓",   # 1. Kare icons + arrows
     "←", "⌘", "⌥", "⌨",                    # 2. functional: cardinal arrow + Mac keys (⌘ cmd / ⌥ opt)
-}
+)
+ALLOWED = frozenset(ALLOWED_ORDERED)
 
 # Codepoint ranges that hold emoji / decorative pictographs. A char in any of these that is NOT in
 # ALLOWED is a failure. (inclusive lo, inclusive hi)
@@ -90,7 +94,8 @@ def main() -> int:
     if bad:
         scope = "staged" if staged else "tracked"
         print(f"✗ DISALLOWED EMOJI in {len(bad)} location(s) ({scope}) — "
-              f"only the Kare icon set is permitted (→ ✓ ✗ ⚠ ↔ ↑ ↓):")
+              f"only the Kare icon set is permitted "
+              f"({' '.join(ALLOWED_ORDERED)}):")
         for b in bad[:200]:
             print("  " + b)
         if len(bad) > 200:

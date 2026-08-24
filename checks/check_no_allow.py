@@ -58,11 +58,15 @@ def _tracked_files(root: Path):
 
 
 def _is_generated(path: Path) -> bool:
+    """The documented policy: `@generated` among the FIRST 40 LINES exempts
+    the file. (An earlier implementation read the first 2000 characters
+    instead — same intent, different window; the docstring wins.)"""
     try:
-        head = path.read_text(errors="replace")[:2000]
+        with path.open("r", encoding="utf-8", errors="replace") as fh:
+            head_lines = [next(fh, "") for _ in range(40)]
     except OSError:
         return False
-    return _GENERATED_MARKER in head
+    return _GENERATED_MARKER in "".join(head_lines)
 
 
 def _scan(paths):

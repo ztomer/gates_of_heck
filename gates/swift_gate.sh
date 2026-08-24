@@ -8,8 +8,12 @@
 # WARNINGS ARE ERRORS, AND THE BUILD MUST BE COLD. An incremental build reports
 # only what it recompiled: a ZoneTilerWM migration looked clean at 0 warnings
 # incrementally and produced 413 on a clean rebuild, because the untouched
-# targets were never re-examined. GOH_SWIFT_COLD=1 (the default in --full)
-# wipes .build first. This is slow ON PURPOSE.
+# targets were never re-examined.
+#
+# GOH_SWIFT_COLD defaults to 1 — cold ON PURPOSE. These language gates are
+# invoked from the --full branch of tools/gate.sh; opt back out per-repo with
+# GOH_SWIFT_COLD=0 in .gatesrc if a run genuinely cannot afford it. SPM mode
+# wipes .build; xcode mode wipes the pinned derived-data tree (.build/xcode-dd).
 #
 #   swift_gate.sh [repo]
 #
@@ -18,7 +22,7 @@
 #   GOH_SWIFT_SCHEME=Foo       required for xcode mode
 #   GOH_SWIFT_PROJECT=Foo.xcodeproj
 #   GOH_SWIFT_COV_MIN=95
-#   GOH_SWIFT_COLD=1
+#   GOH_SWIFT_COLD=1     # default: 1 — set to 0 to allow incremental builds
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -43,9 +47,9 @@ else
     warn "swiftlint not installed — lint gate skipped (brew install swiftlint)"
 fi
 
-if [ "${GOH_SWIFT_COLD:-0}" = "1" ]; then
+if [ "${GOH_SWIFT_COLD:-1}" = "1" ]; then
     step "cold build requested — clearing derived products"
-    rm -rf .build
+    rm -rf .build .build/xcode-dd
 fi
 
 case "$MODE" in

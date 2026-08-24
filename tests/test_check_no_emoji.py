@@ -123,6 +123,17 @@ def test_tracked_scope_uses_worktree_state(repo):
     assert run_check(repo, SCRIPT).returncode == 0
 
 
+def test_failure_message_permits_exactly_the_allow_list(repo):
+    # Message-policy parity: the permit list a user is shown must be the
+    # policy's full allow-list, generated FROM it so they cannot drift.
+    (repo / "a.md").write_text(EMOJI_SMILE + "\n", encoding="utf-8")
+    commit_all(repo)
+    r = run_check(repo, SCRIPT)
+    assert r.returncode == 1
+    for glyph in "→ ✓ ✗ ⚠ ↔ ↑ ↓ ← ⌘ ⌥ ⌨".split():
+        assert glyph in r.stdout, f"failure message omits allowed glyph {glyph!r}"
+
+
 def test_staged_new_file_reported_relative_to_root(repo):
     nested = repo / "src"
     nested.mkdir()
