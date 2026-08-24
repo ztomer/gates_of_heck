@@ -66,7 +66,8 @@ if [ ! -f "$target/.gatesrc" ]; then
     cat >"$target/.gatesrc" <<'SRC'
 # gates_of_heck configuration. All keys optional; delete what you don't use.
 GOH_MAX_LINES=500                 # file-length cap; unset disables the check
-# GOH_LINE_EXCLUDE='third_party/|\.generated\.'
+# GOH_EXCLUDE='vendor/|\.generated\.'   # shared vendor/generated exemption
+# GOH_LINE_EXCLUDE='third_party/'       # length-only alias
 # GOH_PY_COV_MIN=95
 # GOH_SWIFT_MODE=xcode            # or spm
 # GOH_SWIFT_SCHEME=MyAppTests

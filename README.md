@@ -26,7 +26,7 @@ graduates to layer 1.
 
 ## The contract every runner keeps
 
-`gates/_common.sh` gives each runner the same four properties. They are not
+`gates/_common.sh` gives each runner the same five properties. They are not
 stylistic:
 
 1. **Exit non-zero on the first failure.** Continuing past a failure buries the
@@ -35,8 +35,14 @@ stylistic:
    The pattern it replaces piped every step to `/dev/null` and printed
    `✗ clippy` — a gate that tells you something is wrong and withholds what is
    a gate you cannot act on.
-3. **Kare icons only** (`→ · ✓ ✗ ⚠`). Enforced by `checks/check_no_emoji.py`.
+3. **Kare icons only** (`→ · ✓ ✗ ⚠`). Enforced by `checks/check_no_emoji.py`,
+   whose failure message is generated from its own allow-list constant so
+   message and policy cannot drift.
 4. **`NO_COLOR` and non-tty aware**, via `tui/lib.sh`.
+5. **Staged checks measure the index, not the worktree** (`checks/_gitutil.py`
+   is the one implementation). A file staged clean then dirtied in an editor
+   buffer must not block a commit; a file staged dirty then cleaned must not
+   slip through.
 
 Every helper has a fallback definition. A runner whose `die` is undefined does
 not abort — under a `while` loop without `set -e` it *continues*, which is how
@@ -44,14 +50,26 @@ a lock in one of these repos span forever instead of timing out.
 
 ## Use
 
-Each repo gets one `tools/gate.sh`. It declares which toolchains the repo
-contains and delegates; it holds no gate logic of its own.
+```bash
+# from inside any git repo:
+~/Projects/gates_of_heck/install.sh
+```
+
+That copies the hooks into `.githooks/`, sets `core.hooksPath`, and writes
+starter `tools/gate.sh` + `.gatesrc` if absent (never overwrites). Hooks
+delegate to this checkout at runtime (`GOH_DIR` overrides the location), so a
+fix here reaches every installed repo with zero re-install steps. There is
+exactly ONE copy of every checker.
+
+Each repo's `tools/gate.sh` declares which toolchains the repo contains and
+delegates; it holds no gate logic of its own:
 
 ```bash
 #!/usr/bin/env bash
 # --staged : pre-commit, fast, staged files only
 # --full   : pre-push, everything
-GOH="$HOME/Projects/gates_of_heck"
+set -euo pipefail
+GOH="${GOH_DIR:-${GOH:-$HOME/Projects/gates_of_heck}}"
 
 "$GOH/gates/structural.sh" "$@"
 
@@ -73,11 +91,14 @@ Per-repo, in `.gatesrc` at the repo root:
 
 ```bash
 GOH_MAX_LINES=500              # file-length cap; unset disables it
-GOH_LINE_EXCLUDE='third_party/|\.generated\.'
+GOH_EXCLUDE='vendor/|\.generated\.'  # shared vendor/generated exemption (regex)
+GOH_LINE_EXCLUDE='third_party/'      # length-only alias for existing repos
 GOH_PY_COV_MIN=95
+GOH_PY_RUNNER="uv run"         # toolchain prefix (uv, poetry, hatch...)
 GOH_SWIFT_MODE=xcode           # or spm
 GOH_SWIFT_SCHEME=MyAppTests
 GOH_SWIFT_COV_MIN=95
+GOH_SWIFT_COLD=0               # default 1: wipe build products before testing
 GOH_MAX_SCRATCH_GB=25          # disk-hygiene ceiling
 ```
 
@@ -85,14 +106,16 @@ GOH_MAX_SCRATCH_GB=25          # disk-hygiene ceiling
 
 | Component | State |
 |---|---|
-| `gates/_common.sh` | shared contract |
+| `gates/_common.sh` | shared contract (+ `goh_step_in`, argv-safe in-dir steps) |
 | `gates/structural.sh` | layer 1 runner |
 | `gates/rust_gate.sh` | fmt, clippy `-D warnings`, no `#[allow]` |
 | `gates/py_gate.sh` | ruff, pytest, coverage floor |
-| `gates/swift_gate.sh` | swiftlint, warnings-as-errors, coverage |
+| `gates/swift_gate.sh` | swiftlint, cold warnings-as-errors build, coverage (`checks/check_swift_coverage.py`) |
+| `checks/_gitutil.py` | file listing + index/worktree content truth for all checkers |
+| `hooks/` + `install.sh` | delegation hooks; one-command install into any repo |
+| `tests/` | pytest harness incl. wiring meta-gate and real-`git commit` hook tests |
 | `gates/cpp_gate.sh` | not yet written |
 | `gates/kotlin_gate.sh` | not yet written |
-| `install.sh` | not yet written |
 
 ## A note on the disk check
 

@@ -1,0 +1,7 @@
+{"time":"2026-08-24T23:31:35.820Z","line":"add","sessionID":"ses_fc9e90475ffesN13ZmFhsRA6qF","job":"goal","label":"goal: every idle [goal] -> impelement everythng, max no-progress 3"}
+{"time":"2026-08-24T23:31:51.125Z","line":"goal-user-interrupt","sessionID":"ses_fc9e90475ffesN13ZmFhsRA6qF","count":1}
+{"time":"2026-08-24T23:32:21.473Z","line":"replace","sessionID":"ses_fc9e90475ffesN13ZmFhsRA6qF","job":"goal","label":"goal: every idle [goal] -> impelement everythng, max no-progress 3"}
+{"time":"2026-08-24T23:32:21.727Z","line":"run","sessionID":"ses_fc9e90475ffesN13ZmFhsRA6qF","job":"goal","runCount":1}
+{"time":"2026-08-24T23:35:32.608Z","line":"active-stale-recovery","sessionID":"ses_fc9e90475ffesN13ZmFhsRA6qF","job":"goal","startedAt":1787614341728}
+{"time":"2026-08-24T23:35:32.610Z","line":"goal-no-progress","sessionID":"ses_fc9e90475ffesN13ZmFhsRA6qF","job":"goal","count":1,"limit":3}
+{"time":"2026-08-24T23:42:41.672Z","line":"goal-user-interrupt","sessionID":"ses_fc9e90475ffesN13ZmFhsRA6qF","count":1}
