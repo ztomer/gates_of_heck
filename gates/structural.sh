@@ -19,15 +19,20 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CHECKS="$(cd "$HERE/../checks" && pwd)"
 SCOPE="${1:-}"
 
-[ -f .gatesrc ] && . ./.gatesrc
+# Config comes from the TARGET repo root, wherever the gate was invoked from.
+GOH_REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
+[ -f "$GOH_REPO_ROOT/.gatesrc" ] && . "$GOH_REPO_ROOT/.gatesrc"
 
 goh_init "structural"
 
 # Emoji are a failure state — only the Kare icon set is permitted.
+# GOH_EXCLUDE (regex) exempts vendored/generated trees, same as the cap.
 if [ "$SCOPE" = "--staged" ]; then
-    goh_step "no disallowed emoji (staged)" python3 "$CHECKS/check_no_emoji.py" --staged
+    goh_step "no disallowed emoji (staged)" python3 "$CHECKS/check_no_emoji.py" --staged \
+        ${GOH_EXCLUDE:+--exclude "$GOH_EXCLUDE"}
 else
-    goh_step "no disallowed emoji" python3 "$CHECKS/check_no_emoji.py"
+    goh_step "no disallowed emoji" python3 "$CHECKS/check_no_emoji.py" \
+        ${GOH_EXCLUDE:+--exclude "$GOH_EXCLUDE"}
 fi
 
 # A conflict marker that reaches a commit is a merge someone walked away from.
@@ -35,10 +40,14 @@ goh_step "no conflict markers" python3 "$CHECKS/check_no_conflict_markers.py" ${
 
 # One cap, one name. Repos previously called this check_file_length,
 # check_loc and check_file_size, with three different limits.
+# GOH_EXCLUDE is the shared vendor/generated exemption (regex), honored by
+# both the emoji and length checks; GOH_LINE_EXCLUDE stays as a length-only
+# alias for existing repos.
+GOH_EX="${GOH_LINE_EXCLUDE:-${GOH_EXCLUDE:-}}"
 if [ -n "${GOH_MAX_LINES:-}" ]; then
     goh_step "file length <= ${GOH_MAX_LINES}" \
         python3 "$CHECKS/check_file_length.py" --max "$GOH_MAX_LINES" \
-        ${GOH_LINE_EXCLUDE:+--exclude "$GOH_LINE_EXCLUDE"} ${SCOPE:+"$SCOPE"}
+        ${GOH_EX:+--exclude "$GOH_EX"} ${SCOPE:+"$SCOPE"}
 else
     warn "file-length cap not set — add GOH_MAX_LINES to .gatesrc to enable it"
 fi

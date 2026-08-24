@@ -1,0 +1,83 @@
+"""CWD-independence and py_gate smoke tests.
+
+Phase 4 contract: gates resolve .gatesrc / tui/lib.sh from the GIT ROOT, so
+they behave identically when invoked from a subdirectory. py_gate is exercised
+end-to-end on a real mini package (ruff + pytest must be installed).
+"""
+
+import shutil
+import subprocess
+from pathlib import Path
+
+import pytest
+
+from conftest import REPO_ROOT, commit_all, run_gate, write
+
+STRUCTURAL = "gates/structural.sh"
+
+pytestmark_py = pytest.mark.skipif(
+    shutil.which("ruff") is None or shutil.which("pytest") is None,
+    reason="ruff/pytest not on PATH",
+)
+
+
+def test_structural_from_subdirectory_uses_root_gatesrc(repo):
+    # Cap lives in the ROOT .gatesrc; a 200-line file staged from inside src/
+    # must still trip it — proving .gatesrc resolved from git root, not CWD.
+    (repo / ".gatesrc").write_text("GOH_MAX_LINES=5\n")
+    sub = repo / "src" / "deep"
+    sub.mkdir(parents=True)
+    (sub / "big.py").write_text("\n" * 20)
+    subprocess.run(["git", "-C", str(repo), "add", "-A"], check=True)
+    r = subprocess.run(
+        ["/bin/bash", str(REPO_ROOT / STRUCTURAL), "--staged"],
+        cwd=sub, capture_output=True, text=True,
+    )
+    assert r.returncode == 1
+    assert "big.py" in r.stderr
+
+
+@pytestmark_py
+def test_py_gate_clean_package_passes(tmp_path):
+    pkg = tmp_path / "proj"
+    (pkg / "app").mkdir(parents=True)
+    (pkg / "pyproject.toml").write_text(
+        '[project]\nname = "x"\nversion = "0"\n'
+        "[tool.ruff]\nline-length = 100\n"
+        "[tool.pytest.ini_options]\naddopts = \"\"\n"
+    )
+    (pkg / "app" / "__init__.py").write_text("")
+    (pkg / "app" / "core.py").write_text(
+        'def add(a: int, b: int) -> int:\n    """Add."""\n    return a + b\n'
+    )
+    (pkg / "tests").mkdir()
+    (pkg / "tests" / "test_core.py").write_text(
+        "from app.core import add\n\n\ndef test_add():\n    assert add(1, 2) == 3\n"
+    )
+    subprocess.run(["git", "-C", str(pkg), "init", "-q", "-b", "main"], check=True)
+
+    r = subprocess.run(
+        ["/bin/bash", str(REPO_ROOT / "gates" / "py_gate.sh"), str(pkg)],
+        cwd=pkg, capture_output=True, text=True,
+    )
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert "all python gates passed" in r.stdout
+    assert "no coverage floor" in r.stdout  # honest placeholder says WHY
+
+
+@pytestmark_py
+def test_py_gate_failing_test_blocks_with_output(tmp_path):
+    pkg = tmp_path / "proj2"
+    (pkg / "app").mkdir(parents=True)
+    (pkg / "pyproject.toml").write_text('[project]\nname = "y"\nversion = "0"\n')
+    (pkg / "app" / "__init__.py").write_text("")
+    (pkg / "tests").mkdir()
+    (pkg / "tests" / "t.py").write_text("def test_x():\n    assert 1 == 2\n")
+    subprocess.run(["git", "-C", str(pkg), "init", "-q", "-b", "main"], check=True)
+
+    r = subprocess.run(
+        ["/bin/bash", str(REPO_ROOT / "gates" / "py_gate.sh"), str(pkg)],
+        cwd=pkg, capture_output=True, text=True,
+    )
+    assert r.returncode != 0
+    assert "assert 1 == 2" in r.stderr  # failing output printed, not buried

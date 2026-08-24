@@ -19,10 +19,12 @@ The checker greps for the literal tokens `#[allow(` and `#![allow(` — never a
 looser regex — so `#[expect(...)]` (which ERRORS if its lint never fires, the
 "allow that cannot rot") stays permitted.
 """
+import os
 import re
-import subprocess
 import sys
-from pathlib import Path
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from _gitutil import content_bytes, listed_files, repo_root  # noqa: E402
 
 _GENERATED_MARKER = "@generated"
 _ALLOW_PATTERN = re.compile(r"#!?\[allow\(")
@@ -37,58 +39,43 @@ def _is_compiled_src(rel: str) -> bool:
     return "/src/" in rel or rel.startswith("src/") or "/benches/" in rel or rel.startswith("benches/")
 
 
-def _staged_files(root: Path):
-    out = subprocess.run(
-        ["git", "-C", str(root), "diff", "--cached", "--name-only", "--diff-filter=ACM"],
-        capture_output=True,
-        text=True,
-        check=True,
-    )
-    return [Path(root) / f for f in out.stdout.splitlines() if f.endswith(".rs") and _is_compiled_src(f)]
+def _files(root: str, staged: bool):
+    return [
+        f
+        for f in listed_files(root, staged=staged)
+        if f.endswith(".rs") and _is_compiled_src(f)
+    ]
 
 
-def _tracked_files(root: Path):
-    out = subprocess.run(
-        ["git", "-C", str(root), "ls-files", "*.rs"],
-        capture_output=True,
-        text=True,
-        check=True,
-    )
-    return [Path(root) / f for f in out.stdout.splitlines() if _is_compiled_src(f)]
-
-
-def _is_generated(path: Path) -> bool:
+def _is_generated(root: str, rel: str, staged: bool) -> bool:
     """The documented policy: `@generated` among the FIRST 40 LINES exempts
     the file. (An earlier implementation read the first 2000 characters
     instead — same intent, different window; the docstring wins.)"""
-    try:
-        with path.open("r", encoding="utf-8", errors="replace") as fh:
-            head_lines = [next(fh, "") for _ in range(40)]
-    except OSError:
+    blob = content_bytes(root, rel, staged=staged)
+    if blob is None:
         return False
-    return _GENERATED_MARKER in "".join(head_lines)
+    head_lines = blob.decode("utf-8", errors="replace").splitlines()[:40]
+    return _GENERATED_MARKER in "\n".join(head_lines)
 
 
-def _scan(paths):
+def _scan(root: str, paths, staged: bool):
     hits = []
-    for p in paths:
-        if not p.exists() or _is_generated(p):
+    for rel in paths:
+        blob = content_bytes(root, rel, staged=staged)
+        if blob is None or _is_generated(root, rel, staged):
             continue
-        try:
-            lines = p.read_text(errors="replace").splitlines()
-        except OSError:
-            continue
-        for i, line in enumerate(lines, 1):
+        text = blob.decode("utf-8", errors="replace")
+        for i, line in enumerate(text.splitlines(), 1):
             if _ALLOW_PATTERN.search(line):
-                hits.append(f"{p}:{i}: {line.strip()}")
+                hits.append(f"{rel}:{i}: {line.strip()}")
     return hits
 
 
 def main():
     staged = "--staged" in sys.argv
-    root = Path.cwd()
-    files = _staged_files(root) if staged else _tracked_files(root)
-    hits = _scan(files)
+    root = repo_root()
+    files = _files(root, staged)
+    hits = _scan(root, files, staged)
     if hits:
         scope = "staged" if staged else "tracked"
         print(f"✗ [{'no_allow'}] {len(hits)} #[allow] in {scope} Rust source:")

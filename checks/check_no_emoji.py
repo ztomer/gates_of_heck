@@ -14,12 +14,24 @@ with an emoji variation-selector, decorative section emoji, double-arrow / star,
 flags, ...) is rejected. This is a deterministic, app-free style gate, run by `ci_local.sh` and the
 pre-commit hook so the policy can't silently regress.
 
-    python3 tools/check_no_emoji.py            # all tracked text files (ci_local.sh gate)
-    python3 tools/check_no_emoji.py --staged   # only staged files (pre-commit hook)
+    python3 tools/check_no_emoji.py                        # all tracked text files
+    python3 tools/check_no_emoji.py --staged               # staged files only (pre-commit hook)
+    python3 tools/check_no_emoji.py --exclude '^vendor/'   # skip vendored trees
 
-This file lists disallowed codepoints by NUMBER, never as literal glyphs, so it never trips itself.
+Exclusions come from --exclude (a regex on repo-relative paths), wired from
+GOH_EXCLUDE in .gatesrc by gates/structural.sh — per-repo policy never lives
+in this shared source file.
+
+In --staged mode this polices THE INDEX (what will be committed), via
+checks/_gitutil.py — not the working tree.
 """
-import os, subprocess, sys
+import argparse
+import os
+import sys
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from _gitutil import content_bytes, listed_files, repo_root  # noqa: E402
+
 
 # The complete allow-list, in two buckets so the policy is auditable:
 #   1. Kare icon set + approved typographic arrows — the canonical vocabulary.
@@ -56,43 +68,42 @@ def _is_disallowed(ch: str) -> bool:
     return any(lo <= o <= hi for lo, hi in RANGES)
 
 
-def _root() -> str:
-    return subprocess.run(["git", "rev-parse", "--show-toplevel"],
-                          capture_output=True, text=True).stdout.strip()
-
-
-# Vendored / third-party trees we don't author and therefore don't police.
-# Add per-repo prefixes here (e.g. "references/", "vendor/", "third_party/").
-EXCLUDE_PREFIXES = ()
-
-
-def _files(root: str, staged: bool):
-    if staged:
-        out = subprocess.run(["git", "diff", "--cached", "--name-only", "--diff-filter=ACM"],
-                             cwd=root, capture_output=True, text=True).stdout
-    else:
-        out = subprocess.run(["git", "ls-files"], cwd=root, capture_output=True, text=True).stdout
-    return [f for f in out.split("\n") if f and not f.startswith(EXCLUDE_PREFIXES)]
-
-
 def main() -> int:
-    staged = "--staged" in sys.argv
-    root = _root()
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--staged", action="store_true")
+    ap.add_argument("--exclude", default="",
+                    help="regex; matching repo-relative paths are skipped")
+    args = ap.parse_args()
+
+    import re
+    skip = re.compile(args.exclude) if args.exclude else None
+
+    root = repo_root()
     if not root:
-        print("[no_emoji] not a git repo — skipping"); return 0
-    files = _files(root, staged)
+        print("[no_emoji] not a git repo — skipping")
+        return 0
+
+    files = listed_files(root, staged=args.staged)
     bad = []
+    checked = 0
     for f in files:
+        if skip and skip.search(f):
+            continue
+        blob = content_bytes(root, f, staged=args.staged)
+        if blob is None:
+            continue  # deleted / unreadable — nothing to police
         try:
-            with open(os.path.join(root, f), encoding="utf-8") as fh:
-                for lineno, line in enumerate(fh, 1):
-                    for col, ch in enumerate(line, 1):
-                        if _is_disallowed(ch):
-                            bad.append(f"{f}:{lineno}:{col}: U+{ord(ch):04X} {ch!r}")
-        except (UnicodeDecodeError, FileNotFoundError, IsADirectoryError, PermissionError):
-            continue   # binary / gone / dir — no text to police
+            text = blob.decode("utf-8")
+        except UnicodeDecodeError:
+            continue  # binary — no text to police
+        checked += 1
+        for lineno, line in enumerate(text.splitlines(), 1):
+            for col, ch in enumerate(line, 1):
+                if _is_disallowed(ch):
+                    bad.append(f"{f}:{lineno}:{col}: U+{ord(ch):04X} {ch!r}")
+
     if bad:
-        scope = "staged" if staged else "tracked"
+        scope = "staged" if args.staged else "tracked"
         print(f"✗ DISALLOWED EMOJI in {len(bad)} location(s) ({scope}) — "
               f"only the Kare icon set is permitted "
               f"({' '.join(ALLOWED_ORDERED)}):")
@@ -101,7 +112,8 @@ def main() -> int:
         if len(bad) > 200:
             print(f"  … and {len(bad) - 200} more")
         return 1
-    print(f"✓ [no_emoji] OK — {len(files)} {'staged' if staged else 'tracked'} files clean")
+    scope = "staged" if args.staged else "tracked"
+    print(f"✓ [no_emoji] OK — {checked} {scope} files clean")
     return 0
 
 

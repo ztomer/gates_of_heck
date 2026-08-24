@@ -12,6 +12,9 @@
 # Config, from the target repo's .gatesrc:
 #   GOH_PY_COV_MIN=95      # coverage floor; unset skips the coverage gate
 #   GOH_PY_RUNNER="uv run" # prefix for the toolchain (uv, poetry, hatch...)
+#
+# Steps run as plain argv inside <pkg_dir> (goh_step_in): no shell-string
+# interpolation, so paths and runners containing spaces or quotes stay data.
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -19,7 +22,8 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 repo="${1:-$PWD}"
 cd "$repo"
-pkg_dir="${2:-$repo}"
+pkg_dir="${2:-$PWD}"
+pkg_dir="$(cd "$pkg_dir" && pwd)" || die "pkg_dir not found: $pkg_dir"
 
 [ -f .gatesrc ] && . ./.gatesrc
 RUN="${GOH_PY_RUNNER:-}"
@@ -31,19 +35,21 @@ if [ -z "$RUN" ] && [ -x .venv/bin/python ]; then
 elif [ -z "$RUN" ]; then
     RUN="python3 -m"
 fi
+read -r -a RUN_ARR <<<"$RUN"
 
 goh_init "python"
 
 command -v python3 >/dev/null 2>&1 || die "python3 not on PATH"
 
-goh_step "ruff check"        env sh -c "cd '$pkg_dir' && $RUN ruff check ."
-goh_step "ruff format check" env sh -c "cd '$pkg_dir' && $RUN ruff format --check ."
+goh_step_in "$pkg_dir" "ruff check"        "${RUN_ARR[@]}" ruff check .
+goh_step_in "$pkg_dir" "ruff format check" "${RUN_ARR[@]}" ruff format --check .
 
 if [ -n "${GOH_PY_COV_MIN:-}" ]; then
-    goh_step "pytest (coverage >= ${GOH_PY_COV_MIN}%)" \
-        env sh -c "cd '$pkg_dir' && $RUN pytest -q --cov --cov-report=term-missing --cov-fail-under=${GOH_PY_COV_MIN}"
+    goh_step_in "$pkg_dir" "pytest (coverage >= ${GOH_PY_COV_MIN}%)" \
+        "${RUN_ARR[@]}" pytest -q --cov --cov-report=term-missing \
+        --cov-fail-under="${GOH_PY_COV_MIN}"
 else
-    goh_step "pytest" env sh -c "cd '$pkg_dir' && $RUN pytest -q"
+    goh_step_in "$pkg_dir" "pytest" "${RUN_ARR[@]}" pytest -q
     warn "no coverage floor — set GOH_PY_COV_MIN in .gatesrc"
 fi
 

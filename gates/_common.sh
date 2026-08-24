@@ -22,13 +22,20 @@
 set -euo pipefail
 
 # ---- style -----------------------------------------------------------------
-# Prefer a vendored tui/lib.sh in the target repo, else the one shipped here.
+# Prefer a vendored tui/lib.sh in the target repo (resolved from the GIT ROOT,
+# not the CWD — gates may run from a subdirectory), else the one shipped here.
 GOH_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-if [ -f tui/lib.sh ]; then
-    . tui/lib.sh
-elif [ -f "$GOH_ROOT/tui/lib.sh" ]; then
-    . "$GOH_ROOT/tui/lib.sh"
-fi
+GOH_GIT_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || true)"
+for _goh_tui in "${GOH_GIT_ROOT:+$GOH_GIT_ROOT/tui/lib.sh}" \
+                "tui/lib.sh" \
+                "$GOH_ROOT/tui/lib.sh"; do
+    if [ -n "$_goh_tui" ] && [ -f "$_goh_tui" ]; then
+        # shellcheck disable=SC1090
+        . "$_goh_tui"
+        break
+    fi
+done
+unset _goh_tui
 
 # Fallbacks for every helper we use. Defined unconditionally, then overridden
 # by the real lib below — a previous version of this logic defined info/ok/err

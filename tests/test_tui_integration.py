@@ -7,6 +7,8 @@ lib.sh published no _lib_* names, so _common.sh silently used its hardcoded
 plain fallbacks.
 """
 
+from typing import Optional
+
 import subprocess
 import textwrap
 from pathlib import Path
@@ -16,7 +18,7 @@ from conftest import REPO_ROOT
 BASH = "/bin/bash"
 
 
-def _bash(script: str, cwd: Path | None = None) -> subprocess.CompletedProcess:
+def _bash(script: str, cwd: Optional[Path] = None) -> subprocess.CompletedProcess:
     return subprocess.run(
         [BASH, "-c", script], cwd=cwd, capture_output=True, text=True
     )

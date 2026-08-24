@@ -12,28 +12,23 @@ code and lockfiles are not yours to split, so exclude them via --exclude.
     check_file_length.py --max 500
     check_file_length.py --max 500 --exclude 'third_party/|\\.generated\\.'
     check_file_length.py --max 500 --staged
+
+In --staged mode this polices THE INDEX via checks/_gitutil.py.
 """
 
 import argparse
 import re
-import subprocess
+import os
 import sys
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from _gitutil import content_bytes, listed_files, repo_root  # noqa: E402
 
 # Files the cap is about. Data, docs and lockfiles are legitimately long.
 SOURCE_SUFFIXES = (
     ".rs", ".py", ".swift", ".c", ".h", ".cpp", ".hpp", ".cc", ".m", ".mm",
     ".kt", ".java", ".go", ".ts", ".tsx", ".js", ".jsx", ".sh", ".bash", ".rb",
 )
-
-
-def _files(staged: bool) -> list[str]:
-    cmd = (
-        ["git", "diff", "--cached", "--name-only", "--diff-filter=ACM"]
-        if staged
-        else ["git", "ls-files"]
-    )
-    out = subprocess.run(cmd, capture_output=True, text=True, check=True).stdout
-    return [p for p in out.splitlines() if p.endswith(SOURCE_SUFFIXES)]
 
 
 def main() -> int:
@@ -44,18 +39,20 @@ def main() -> int:
     args = ap.parse_args()
 
     skip = re.compile(args.exclude) if args.exclude else None
+    root = repo_root()
     over: list[tuple[str, int]] = []
     checked = 0
 
-    for path in _files(args.staged):
+    for path in listed_files(root, staged=args.staged):
+        if not path.endswith(SOURCE_SUFFIXES):
+            continue
         if skip and skip.search(path):
             continue
-        try:
-            with open(path, "rb") as fh:
-                n = sum(1 for _ in fh)
-        except OSError:
+        blob = content_bytes(root, path, staged=args.staged)
+        if blob is None:
             continue
         checked += 1
+        n = blob.count(b"\n") + (0 if blob.endswith(b"\n") or not blob else 1)
         if n > args.max:
             over.append((path, n))
 

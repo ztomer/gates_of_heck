@@ -11,11 +11,16 @@ name after the marker.
 
     check_no_conflict_markers.py            # every tracked file
     check_no_conflict_markers.py --staged   # staged files only
+
+In --staged mode this polices THE INDEX via checks/_gitutil.py.
 """
 
+import os
 import re
-import subprocess
 import sys
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from _gitutil import content_bytes, listed_files, repo_root  # noqa: E402
 
 # `<<<<<<< ours` and `>>>>>>> theirs`, and the `|||||||` base marker that diff3
 # adds. Anchored to line start; the trailing space/EOL keeps `>>>>>>>` in a doc
@@ -23,27 +28,14 @@ import sys
 MARKER = re.compile(rb"^(<{7}|>{7}|\|{7})(\s|$)", re.MULTILINE)
 
 
-def _files(staged: bool) -> list[str]:
-    cmd = (
-        ["git", "diff", "--cached", "--name-only", "--diff-filter=ACM"]
-        if staged
-        else ["git", "ls-files"]
-    )
-    out = subprocess.run(cmd, capture_output=True, text=True, check=True).stdout
-    return [p for p in out.splitlines() if p]
-
-
 def main() -> int:
     staged = "--staged" in sys.argv
+    root = repo_root()
     bad: list[tuple[str, int, str]] = []
 
-    for path in _files(staged):
-        try:
-            with open(path, "rb") as fh:
-                blob = fh.read()
-        except (OSError, IsADirectoryError):
-            continue
-        if b"\0" in blob[:8000]:  # binary
+    for path in listed_files(root, staged=staged):
+        blob = content_bytes(root, path, staged=staged)
+        if blob is None or b"\0" in blob[:8000]:  # gone / binary
             continue
         for m in MARKER.finditer(blob):
             line_no = blob.count(b"\n", 0, m.start()) + 1
