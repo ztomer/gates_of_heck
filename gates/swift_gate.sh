@@ -65,11 +65,15 @@ case "$MODE" in
     [ -n "${GOH_SWIFT_SCHEME:-}" ] || die "xcode mode needs GOH_SWIFT_SCHEME in .gatesrc"
     proj="${GOH_SWIFT_PROJECT:-$(ls -d ./*.xcodeproj 2>/dev/null | head -1)}"
     [ -n "$proj" ] || die "no .xcodeproj found and GOH_SWIFT_PROJECT is unset"
+    # Pinned derived data: cold builds know what to wipe, and
+    # check_swift_coverage.py knows where the xcresult lands.
+    dd=".build/xcode-dd"
     goh_step "xcodebuild test (-scheme $GOH_SWIFT_SCHEME)" \
-        xcodebuild test -project "$proj" -scheme "$GOH_SWIFT_SCHEME" -enableCodeCoverage YES
+        xcodebuild test -project "$proj" -scheme "$GOH_SWIFT_SCHEME" \
+        -derivedDataPath "$dd" -enableCodeCoverage YES
     if [ -n "${GOH_SWIFT_COV_MIN:-}" ]; then
         goh_step "coverage >= ${GOH_SWIFT_COV_MIN}%" \
-            python3 "$HERE/../checks/check_swift_coverage.py" --min "$GOH_SWIFT_COV_MIN" --xcode
+            python3 "$HERE/../checks/check_swift_coverage.py" --min "$GOH_SWIFT_COV_MIN" --xcode --dd "$dd"
     fi
     ;;
   *) die "unknown GOH_SWIFT_MODE: $MODE (want spm or xcode)" ;;

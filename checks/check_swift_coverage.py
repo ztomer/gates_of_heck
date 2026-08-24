@@ -1,0 +1,181 @@
+#!/usr/bin/env python3
+"""Fail when Swift test coverage is under a floor.
+
+Companion to gates/swift_gate.sh, which runs tests and then calls this:
+
+    check_swift_coverage.py --min 95                 # SPM
+    check_swift_coverage.py --min 95 --xcode         # xcodebuild runs
+
+Modes
+-----
+SPM   globs `.build/<arch>/debug/codecov/*.json` (written by
+      `swift test --enable-code-coverage`) and aggregates
+      covered_lines / total_lines across every non-zero source file.
+
+xcode reads the newest `*.xcresult` under the pinned derived-data tree
+      (.build/xcode-dd, which swift_gate.sh passes via -derivedDataPath),
+      asks `xcrun xcresulttool get --format json`, and walks the tree for
+      every object carrying numeric coveredLines/lineCount pairs — the
+      per-target coverage records.
+
+Honesty rules (house rule #9): a MISSING payload is exit 2 with a named
+reason — it must never masquerade as "0% coverage" or as success. Only an
+actual measurement below the floor is exit 1.
+"""
+import argparse
+import glob
+import json
+import os
+import subprocess
+import sys
+
+DEFAULT_SPM_GLOB = ".build/*/debug/codecov/*.json"
+DEFAULT_DD = ".build/xcode-dd"
+
+
+# ---- payload walking --------------------------------------------------------
+
+
+def _spm_files(payload: dict):
+    """Yield (filename, covered, total) from one SPM codecov JSON dict."""
+    for dataset in payload.get("data", []):
+        for f in dataset.get("files", []):
+            total = f.get("total_lines", 0) or 0
+            covered = f.get("covered_lines", 0) or 0
+            name = f.get("filename") or f.get("name") or "?"
+            if total > 0:
+                yield name, covered, total
+
+
+def _xcresult_records(node):
+    """Depth-first walk collecting (target-ish name, covered, total).
+
+    xcresulttool JSON shape varies across Xcode releases; rather than pin one
+    schema we take any object whose coveredLines/lineCount pair is numeric.
+    """
+    found = []
+    if isinstance(node, dict):
+        covered, total = node.get("coveredLines"), node.get("lineCount")
+        if (
+            isinstance(covered, int)
+            and isinstance(total, int)
+            and not isinstance(covered, bool)
+            and not isinstance(total, bool)
+        ):
+            label = (
+                node.get("name")
+                or node.get("target")
+                or node.get("identifier")
+                or "?"
+            )
+            found.append((str(label), covered, total))
+        for v in node.values():
+            found.extend(_xcresult_records(v))
+    elif isinstance(node, list):
+        for v in node:
+            found.extend(_xcresult_records(v))
+    return found
+
+
+def aggregate(records):
+    """(percent, worst-first [(name, pct, covered, total)]) from raw triples."""
+    tot_cov = sum(c for _, c, _ in records)
+    tot_all = sum(t for _, _, t in records)
+    per_file = [
+        (n, (100.0 * c / t) if t else 100.0, c, t)
+        for n, c, t in records
+        if t > 0
+    ]
+    per_file.sort(key=lambda r: r[1])
+    pct = (100.0 * tot_cov / tot_all) if tot_all else 100.0
+    return pct, per_file
+
+
+# ---- payload loading --------------------------------------------------------
+
+
+def load_spm(pattern: str):
+    """[(name, cov, tot)] across every matching codecov JSON; [] if none."""
+    records: list[tuple[str, int, int]] = []
+    paths = sorted(glob.glob(pattern))
+    for p in paths:
+        try:
+            with open(p, encoding="utf-8") as fh:
+                records.extend(_spm_files(json.load(fh)))
+        except (OSError, ValueError) as exc:
+            print(f"⚠ [swift_cov] unreadable codecov payload {p}: {exc}",
+                  file=sys.stderr)
+    return records, paths
+
+
+def newest_xcresult(dd_root: str):
+    candidates = glob.glob(os.path.join(dd_root, "Logs", "Test", "*.xcresult"))
+    return max(candidates, key=os.path.getmtime) if candidates else None
+
+
+def load_xcode(dd_root: str):
+    """[(name, cov, tot)] from the newest xcresult; ([], reason) on trouble."""
+    xc = newest_xcresult(dd_root)
+    if xc is None:
+        return [], f"no *.xcresult under {dd_root}/Logs/Test"
+    try:
+        out = subprocess.run(
+            ["xcrun", "xcresulttool", "get", "--path", xc, "--format", "json"],
+            capture_output=True,
+            text=True,
+            timeout=120,
+        )
+    except (OSError, subprocess.SubprocessError) as exc:
+        return [], f"xcresulttool failed on {xc}: {exc}"
+    if out.returncode != 0:
+        return [], f"xcresulttool exited {out.returncode} on {xc}: {out.stderr.strip()[:200]}"
+    try:
+        payload = json.loads(out.stdout)
+    except ValueError as exc:
+        return [], f"xcresulttool output was not JSON ({exc})"
+    records = [r for r in _xcresult_records(payload) if r[2] > 0]
+    if not records:
+        return [], f"no coveredLines/lineCount records recognized in {xc} (unsupported Xcode format?)"
+    return records, None
+
+
+# ---- main -------------------------------------------------------------------
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--min", type=float, required=True)
+    ap.add_argument("--xcode", action="store_true")
+    ap.add_argument("--spm-glob", default=DEFAULT_SPM_GLOB)
+    ap.add_argument("--dd", default=DEFAULT_DD, help="derived-data root (xcode)")
+    args = ap.parse_args()
+
+    if args.xcode:
+        records, why = load_xcode(args.dd)
+    else:
+        records, paths = load_spm(args.spm_glob)
+        why = None if paths else f"no codecov payloads match {args.spm_glob} — was 'swift test --enable-code-coverage' run?"
+
+    if why:
+        print(f"✗ [swift_cov] cannot measure coverage: {why}", file=sys.stderr)
+        return 2
+
+    pct, per_file = aggregate(records)
+    floor = args.min
+    if pct + 1e-9 >= floor:
+        print(f"→ [swift_cov] OK — {pct:.1f}% >= {floor:g}% "
+              f"({len(per_file)} file(s))")
+        return 0
+
+    print(f"✗ [swift_cov] {pct:.1f}% is under the {floor:g}% floor:", file=sys.stderr)
+    for n, p_, c, t in per_file[:20]:
+        print(f"    {p_:6.1f}%  {c:>6}/{t:<6}  {n}", file=sys.stderr)
+    if len(per_file) > 20:
+        print(f"    … and {len(per_file) - 20} more", file=sys.stderr)
+    print("\n  Write tests for what is uncovered; do not lower the floor.",
+          file=sys.stderr)
+    return 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())
