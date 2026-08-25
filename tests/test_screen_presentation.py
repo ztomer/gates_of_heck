@@ -55,6 +55,40 @@ VIOLATION_FIXTURES = [
 
 CLEAN_SWIFTUI_FIXTURE = "CleanSwiftUITests.swift"
 
+# Swift TYPE positions (annotations, generics, casts, return/param types) name
+# NSScreen without touching the display; USE positions read it live. The
+# checker must separate the two.
+TYPE_POSITION_FIXTURE = "type_positions_clean.swift"
+USE_POSITION_FIXTURE = "bad_nsscreen_use.swift"
+
+
+def test_swift_type_positions_are_not_flagged(repo):
+    src = seed(repo)
+    r = run_check(
+        repo, "checks/check_no_screen_presentation.py",
+        str(src / TYPE_POSITION_FIXTURE),
+    )
+    assert r.returncode == 0, (
+        f"type-position occurrences flagged:\n{r.stderr}"
+    )
+
+
+def test_swift_use_positions_still_flagged(repo):
+    src = seed(repo)
+    r = run_check(
+        repo, "checks/check_no_screen_presentation.py",
+        str(src / USE_POSITION_FIXTURE),
+    )
+    assert r.returncode == 1, "use-position NSScreen reads were NOT flagged"
+    assert "reads the real display's geometry" in r.stderr
+
+
+def test_type_position_fixture_not_named_when_scanning_tree(repo):
+    src = seed(repo)
+    r = run_check(repo, "checks/check_no_screen_presentation.py", str(src))
+    assert r.returncode == 1  # real violations remain in the tree
+    assert TYPE_POSITION_FIXTURE not in r.stderr
+
 
 def test_differential_all_violation_fixtures_caught(repo):
     src = seed(repo)
