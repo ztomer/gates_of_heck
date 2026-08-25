@@ -190,6 +190,34 @@ def test_staged_scope_uses_index_content(repo):
     assert "tests/Clean.swift:1" in r.stderr
 
 
+def test_multi_line_string_does_not_desync_mask(repo):
+    # Regression (2026-08-25, necrohand): a triple-quoted docstring spanning
+    # lines used to be collapsed by the string mask, shrinking the masked
+    # line list vs the source and crashing with IndexError. The mask is
+    # LINE-PRESERVING, so prose inside multi-line strings stays green.
+    src = "\n".join([
+        "import XCTest",
+        "",
+        "final class DocstringTests: XCTestCase {",
+        "    /// A docstring that mentions NSScreen and",
+        "    /// CGDisplayBounds across several lines of prose.",
+        "    func testNothingTouchesTheScreen() {",
+        '        let doc = """',
+        "        Prose mentioning orderFrontRegardless and NSCursor",
+        "        inside a multi-line string literal.",
+        '        """',
+        "        XCTAssertEqual(doc.isEmpty, false)",
+        "    }",
+        "}",
+    ])
+    write(repo, "tests/DocstringTests.swift", src)
+    commit_all(repo)
+    r = run_check(
+        repo, "checks/check_no_screen_presentation.py", "tests/DocstringTests.swift"
+    )
+    assert r.returncode == 0, (r.stdout, r.stderr)
+
+
 def test_no_targets_is_usage_error(repo):
     r = run_check(repo, "checks/check_no_screen_presentation.py")
     assert r.returncode == 2

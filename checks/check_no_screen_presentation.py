@@ -65,7 +65,8 @@ SWIFT_PATTERNS = [
     (r"\.setActivationPolicy\s*\(", "changes how the process presents to the window server"),
     (r"\.runModal\s*\(", "runs a modal loop needing a live WindowServer"),
     (r"\bNSScreen\b", "reads the real display's geometry"),
-    (r"\bCGDisplay\w*\s*\(", "talks to a real display"),
+    (r"\bCGDisplay\w*\s*\(|\bCGMainDisplayID\b", "talks to a real display"),
+    (r"\bscreencapture\b", "shells out to the screen capture tool"),
     (r"\bAXIsProcessTrustedWithOptions\s*\(|\bCGRequestScreenCaptureAccess\s*\(",
      "triggers a system permission prompt that takes the user's keyboard"),
     # ── absorbed from necrohand tools/check_headless_tests.py (2026-08-25) ──
@@ -134,12 +135,33 @@ SWIFT_LINE_COMMENT = re.compile(r"//[^\n]*")
 SWIFT_STRING = re.compile(r'"(?:\\.|[^"\\])*"')
 
 
+def _mask_string(match):
+    """Empty a matched string literal WITHOUT changing the line count.
+
+    A mask that deletes newlines (e.g. collapsing a triple-quoted docstring
+    to '""') desynchronizes the masked line list from the original lines,
+    and every marker lookup / reported line number after it indexes the
+    WRONG line — or crashes outright (found 2026-08-25 on necrohand, whose
+    tests carry multi-line docstrings). First line becomes '""'; every
+    further line of the literal becomes an empty line.
+    """
+    s = match.group(0)
+    if "\n" not in s:
+        return '""'
+    parts = s.split("\n")
+    return "\n".join(['""'] + [""] * (len(parts) - 1))
+
+
 def swift_code_only(text):
-    """Swift source with comments blanked and strings emptied, per line."""
+    """Swift source with comments blanked and strings emptied, per line.
+
+    EVERY substitution here must be LINE-PRESERVING: callers index the
+    result positionally against text.splitlines().
+    """
     text = SWIFT_BLOCK_COMMENT.sub(
         lambda m: re.sub(r"[^\n]", " ", m.group(0)), text)
     text = SWIFT_LINE_COMMENT.sub(lambda m: " " * len(m.group(0)), text)
-    return SWIFT_STRING.sub('""', text)
+    return SWIFT_STRING.sub(_mask_string, text)
 
 
 def _has_marker(lines, idx):
