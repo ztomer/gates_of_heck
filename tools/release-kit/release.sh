@@ -20,6 +20,10 @@
 #                 gh exists AND origin is a github.com remote; skipped with a
 #                 stated reason otherwise; --skip-release to skip always.
 #                 An existing GitHub release is left alone (idempotent).
+#                 --no-push implies this step is skipped too: the tag was
+#                 never pushed, so a GitHub release of it cannot be created
+#                 (pass --skip-release as well if you want that stated
+#                 explicitly instead of implied).
 #   6. tap        bump a Homebrew formula/cask:
 #                 --tap ztomer/homebrew-tap --formula NAME | --cask NAME
 #                 computes sha256 of --artifact (a path or URL; default: the
@@ -99,6 +103,12 @@ STEP=""
 plan() { info "[dry-run] $*"; }
 begin() { STEP="$1"; info "$1: $2"; }
 fail() { err "step '${STEP}' failed: $1"; exit 1; }
+SKIPPED=""
+note_skip() {
+  # Every skipped step is announced inline AND repeated in the run summary.
+  SKIPPED="${SKIPPED:+${SKIPPED}; }$1"
+  warn "skipped ($2)"
+}
 
 # Regex-safe version for stanza matching (dots escaped).
 VER_RE="$(printf '%s' "$VERSION" | sed 's/[.*/\[\\]/\\&/g')"
@@ -169,7 +179,7 @@ fi
 # ── 4. push branch + tag ─────────────────────────────────────────────────────
 begin "push" "branch ${BRANCH} + ${TAG} to origin"
 if [ "$DO_PUSH" = 0 ]; then
-  warn "skipped (--no-push)"
+  note_skip "push (--no-push)" "--no-push"
 elif [ "$DRY_RUN" = 1 ]; then
   plan "git push origin ${BRANCH} ${TAG}"
 else
@@ -181,7 +191,13 @@ fi
 # ── 5. GitHub release ────────────────────────────────────────────────────────
 begin "release" "gh release create ${TAG}"
 if [ "$DO_RELEASE" = 0 ]; then
-  warn "skipped (--skip-release)"
+  note_skip "release (--skip-release)" "--skip-release"
+elif [ "$DO_PUSH" = 0 ]; then
+  # Implied skip: gh release create needs the tag on github.com, and --no-push
+  # just declined to put it there. Announce the implication rather than
+  # failing (or worse, "succeeding" against an unpushed tag).
+  note_skip "release (implied by --no-push: ${TAG} was never pushed)" \
+    "--no-push implies no GitHub release of unpushed ${TAG}"
 elif ! command -v gh >/dev/null; then
   warn "skipped: gh CLI not installed"
 elif [ -z "$GH_REPO_SLUG" ]; then
@@ -258,6 +274,9 @@ else
 fi
 
 hr
+if [ -n "$SKIPPED" ]; then
+  info "skipped steps → ${SKIPPED}"
+fi
 if [ "$DRY_RUN" = 1 ]; then
   ok "release ${TAG} planned (dry-run — nothing was executed)"
 else
