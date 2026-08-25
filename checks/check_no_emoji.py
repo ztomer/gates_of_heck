@@ -34,11 +34,15 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from _gitutil import content_bytes, listed_files, repo_root  # noqa: E402
 
 
-# The complete allow-list, in two buckets so the policy is auditable:
+# The complete allow-list, in buckets so the policy is auditable:
 #   1. Kare icon set + approved typographic arrows — the canonical vocabulary.
 #   2. Functional (non-emoji) symbols that carry meaning, not decoration: Mac
-#      key-cap glyphs (the family macOS itself renders in menu shortcuts) and
-#      typographic operators (implication, bidirectional exchange).
+#      key-cap glyphs (the family macOS itself renders in menu shortcuts),
+#      typographic operators (implication, bidirectional exchange), and the
+#      typographic SIGNS with legal meaning (2d): they annotate copyright,
+#      registration and trademark claims — text, never decoration. Their
+#      VS16 (U+FE0F) forms still fail: that selector requests EMOJI
+#      presentation, which is exactly the failure state.
 # To go Kare-strict, delete bucket 2 (and the three arrows from bucket 1).
 # ORDERED matters: this tuple is also the failure message's permit list, so
 # the policy and what users are told cannot drift apart. Membership tests use
@@ -48,6 +52,7 @@ ALLOWED_ORDERED = (
     "←", "⌘", "⌥", "⌨",                    # 2a. cardinal arrow + Mac keys (⌘ cmd / ⌥ opt)
     "⇧", "⌃", "⏎", "⎋", "↵",              # 2b. Mac keys: shift / ctrl / return / escape / enter
     "⇒", "⇄",                               # 2c. operators: implication / exchange (cf. ↔)
+    "©", "®", "™",                          # 2d. typographic signs, legal meaning
 )
 ALLOWED = frozenset(ALLOWED_ORDERED)
 
@@ -62,6 +67,14 @@ RANGES = (
     (0x2190,  0x21FF),    # arrows (cardinal + bidi allowed via ALLOWED; double-arrow, mapsto rejected)
     (0xFE00,  0xFE0F),    # variation selectors (emoji-presentation VS16, etc.)
     (0x20E3,  0x20E3),    # combining enclosing keycap
+    # Singleton/small-range additions (2026-08-25 policy ruling): emoji-
+    # presentation symbols living outside the big blocks above.
+    (0x2934,  0x2935),    # arrows curving up/down-left as emoji (⤴/⤵ presentation forms)
+    (0x3030,  0x3030),    # wavy dash
+    (0x3297,  0x3297),    # circled ideograph congratulations
+    (0x3299,  0x3299),    # circled ideograph secret
+    (0x2139,  0x2139),    # information source
+    (0x24C2,  0x24C2),    # circled M (Mens/Metro emoji base)
 )
 
 
@@ -116,7 +129,9 @@ def main() -> int:
         scope = "staged" if args.staged else "tracked"
         permit = " ".join(ALLOWED_ORDERED) + (f" + {args.allow}" if args.allow else "")
         print(f"✗ DISALLOWED EMOJI in {len(bad)} location(s) ({scope}) — "
-              f"only the Kare icon set is permitted ({permit}):")
+              f"only the Kare icon set and functional typographic glyphs are "
+              f"permitted ({permit}); © ® ™ are typographic signs with legal "
+              f"meaning, but their emoji-presentation VS16 forms fail:")
         for b in bad[:200]:
             print("  " + b)
         if len(bad) > 200:
