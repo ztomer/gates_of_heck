@@ -68,6 +68,25 @@ SWIFT_PATTERNS = [
     (r"\bCGDisplay\w*\s*\(", "talks to a real display"),
     (r"\bAXIsProcessTrustedWithOptions\s*\(|\bCGRequestScreenCaptureAccess\s*\(",
      "triggers a system permission prompt that takes the user's keyboard"),
+    # ── absorbed from necrohand tools/check_headless_tests.py (2026-08-25) ──
+    # A capitalized identifier ENDING in Window/OverlayView being CONSTRUCTED:
+    # custom window/presentation-view classes present for real, exactly like
+    # NSWindow( does. The capital anchor keeps lowercase helpers (makeWindow-,
+    # updateWindow-style) out of the blast radius.
+    (r"\b[A-Z]\w*(?:Window|OverlayView)\s*\(",
+     "constructs a window-server window or presentation view directly"),
+    (r"render:\s*\.presenting\b",
+     "asks for the live presentation path instead of an offscreen render"),
+    (r"\bSCStream\b|\bSCShareableContent\b|\bSCScreenshotManager\b|\bSCContentSharing\b",
+     "captures the real screen via ScreenCaptureKit (needs a TCC grant)"),
+    (r"\bCGWindowList\w*\b", "reads the real window list"),
+    (r"\bCAMetalLayer\s*\(|\bnextDrawable\s*\(",
+     "creates/acquires a window-server drawable surface"),
+    (r"\bCGEvent\w*\s*\(|\bCGWarpMouseCursorPosition\b",
+     "posts real input to the whole machine"),
+    (r"\bNSCursor\b", "moves or hides the user's real cursor"),
+    (r"\bNSApplication\.shared\b|\bNSApp\b",
+     "starts or queries the shared application object"),
 ]
 
 OBJC_PATTERNS = [
@@ -104,6 +123,25 @@ LANGUAGES = {
 }
 
 
+# Comments and string literals are PROSE. The absorbed API names all appear
+# in test comments explaining why the screen is off limits, and a gate that
+# fails on its own documentation gets turned off within the week (necrohand
+# learned this the same week it shipped its checker). Masking replaces
+# matched spans with same-length whitespace / empty strings so LINE NUMBERS
+# are preserved for marker lookup on the original text.
+SWIFT_BLOCK_COMMENT = re.compile(r"/\*.*?\*/", re.S)
+SWIFT_LINE_COMMENT = re.compile(r"//[^\n]*")
+SWIFT_STRING = re.compile(r'"(?:\\.|[^"\\])*"')
+
+
+def swift_code_only(text):
+    """Swift source with comments blanked and strings emptied, per line."""
+    text = SWIFT_BLOCK_COMMENT.sub(
+        lambda m: re.sub(r"[^\n]", " ", m.group(0)), text)
+    text = SWIFT_LINE_COMMENT.sub(lambda m: " " * len(m.group(0)), text)
+    return SWIFT_STRING.sub('""', text)
+
+
 def _has_marker(lines, idx):
     """`screen-ok:` on this line or the one above it."""
     for probe in (lines[idx], lines[idx - 1] if idx > 0 else ""):
@@ -120,6 +158,12 @@ def check_text(rel, text):
     comment_prefixes, patterns = LANGUAGES[suffix]
     if suffix == ".py" and PY_GUARD.search(text):
         return []  # declared its headless contract for child launches
+    if suffix == ".swift":
+        # Patterns match MASKED lines (comments/strings are prose); markers
+        # are looked up on the ORIGINAL lines, which masking preserves 1:1.
+        scan_lines = swift_code_only(text).splitlines()
+    else:
+        scan_lines = None
     lines = text.splitlines()
     found = []
     for i, line in enumerate(lines):
@@ -128,8 +172,9 @@ def check_text(rel, text):
             continue  # a comment explaining the rule is not a violation
         if _has_marker(lines, i):
             continue
+        probe = scan_lines[i] if scan_lines is not None else line
         for pattern, why, needs_exec in patterns:
-            if not pattern.search(line):
+            if not pattern.search(probe):
                 continue
             if needs_exec and not PY_EXECUTES.search(line):
                 continue  # names a live command but executes nothing
