@@ -1,5 +1,21 @@
 # CHANGELOG
 
+## Unreleased
+
+- `gates/coverage_gate.sh`: ONE parameterized coverage gate
+  (`--lang rust|swift|cpp|py --floor N [--ignore RE] [path]`) replacing six
+  per-repo copies that drifted. Rust mode ports the app_updates implementation
+  (per-test-target lcov exports + CGU-hash normalization, exact uncovered-line
+  reporting); swift/cpp/py adapt necrohand+ZeroThunder, CadGoose2 and
+  sys_updater respectively. Floors resolve `--floor` → `GOH_COV_FLOOR_<LANG>`
+  → named exit-2 failure; exclusion regexes pass through verbatim, never
+  invented. Real cargo llvm-cov e2e test (skipped when the toolchain is absent).
+- `gates/local_ci.sh`: ONE declarative step runner for the ~10 copy-pasted
+  local-CI orchestrators — steps from `.gatesrc` `GOH_CI_STEPS` (colon-
+  separated) and/or `--step` args, tui-styled steps, logs captured to a temp
+  dir and dumped on failure, fail accumulator (a failing step never stops the
+  run), `--dry-run`, nonzero exit iff any step failed.
+
 ## v0.1.1 _(2026-08-25)_
 
 - License: MIT.
