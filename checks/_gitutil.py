@@ -22,15 +22,22 @@ def repo_root() -> str:
 
 def listed_files(root: str, staged: bool, pathspec: str = "*") -> list[str]:
     """Repo-root-relative file list. Staged mode lists Added/Copied/Modified
-    index entries; full mode lists everything tracked."""
+    index entries; full mode lists everything tracked.
+
+    `-z` + NUL splitting is load-bearing: without it git QUOTES paths holding
+    non-ASCII or control characters ("caf\\303\\251.md", "we\\nird.md"), names
+    no consumer could resolve — those files were silently unpoliced. decode
+    with 'replace' keeps a hostile byte sequence from killing the gate."""
     cmd = (
-        ["git", "-C", root, "diff", "--cached", "--name-only",
+        ["git", "-C", root, "diff", "--cached", "--name-only", "-z",
          "--diff-filter=ACM"]
         if staged
-        else ["git", "-C", root, "ls-files"]
+        else ["git", "-C", root, "ls-files", "-z"]
     )
-    out = subprocess.run(cmd, capture_output=True, text=True)
-    return [f for f in out.stdout.split("\n") if f]
+    out = subprocess.run(cmd, capture_output=True)
+    return [
+        n.decode("utf-8", "replace") for n in out.stdout.split(b"\0") if n
+    ]
 
 
 def content_bytes(root: str, rel: str, staged: bool):
