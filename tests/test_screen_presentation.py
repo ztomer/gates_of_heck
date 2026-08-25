@@ -26,6 +26,68 @@ def seed(repo, monkeypatch_dir=None):
 # ---- static half: violations -------------------------------------------------
 
 
+# ---- necrohand differential: 13 synthetic screen violations ------------------
+#
+# Reconstructed from ~/Projects/necrohand tools/check_headless_tests.py
+# (their static checker caught 13/13; this one caught 3/13 pre-absorption).
+# Each file below is ONE violation; BEFORE the pattern absorption only the
+# orderFront / NSScreen / CGDisplay files were flagged.
+
+VIOLATION_FIXTURES = [
+    "Bad.swift",                    # orderFrontRegardless        (caught before)
+    "bad_nsscreen.swift",           # NSScreen.main               (caught before)
+    "bad_cgdisplay.swift",          # CGDisplayBounds             (caught before)
+    "bad_custom_window.swift",      # NecrohandWindow(
+    "bad_overlay_view.swift",       # NecrohandOverlayView(
+    "bad_presenting_binding.swift", # render: .presenting
+    "bad_screencapturekit.swift",   # SCShareableContent
+    "bad_cgwindowlist.swift",       # CGWindowListCreateImage
+    "bad_cgwindowlistcopyinfo.swift",
+    "bad_cametallayer.swift",       # CAMetalLayer(
+    "bad_nextdrawable.swift",       # nextDrawable(
+    "bad_cgwarp_mouse.swift",       # CGWarpMouseCursorPosition
+    "bad_nscursor.swift",           # NSCursor
+    "bad_nsapplication_shared.swift",  # NSApplication.shared
+]
+# (14 entries: CGWindowListCopyWindowInfo is its own fixture so a regression
+# in either CGWindowList* spelling is visible; the necrohand count of 13
+# categories maps onto these plus NSApp, which shares a file with .shared.)
+
+CLEAN_SWIFTUI_FIXTURE = "CleanSwiftUITests.swift"
+
+
+def test_differential_all_violation_fixtures_caught(repo):
+    src = seed(repo)
+    missed = []
+    for name in VIOLATION_FIXTURES:
+        r = run_check(repo, "checks/check_no_screen_presentation.py",
+                      str(src / name))
+        if r.returncode != 1:
+            missed.append(name)
+    assert missed == [], (
+        f"{len(missed)}/{len(VIOLATION_FIXTURES)} violation fixtures NOT "
+        f"caught: {missed}"
+    )
+
+
+def test_clean_swiftui_test_code_stays_green(repo):
+    src = seed(repo)
+    r = run_check(repo, "checks/check_no_screen_presentation.py",
+                  str(src / CLEAN_SWIFTUI_FIXTURE))
+    assert r.returncode == 0, r.stderr
+
+
+def test_prose_and_strings_are_masked_not_flagged(repo):
+    src = seed(repo)
+    r = run_check(
+        repo, "checks/check_no_screen_presentation.py", str(src),
+    )
+    assert r.returncode == 1  # the tree still holds real violations
+    assert CLEAN_SWIFTUI_FIXTURE not in r.stderr, (
+        "clean SwiftUI fixture with prose/string mentions was flagged"
+    )
+
+
 def test_swift_orderfront_fails(repo):
     src = seed(repo)
     r = run_check(repo, "checks/check_no_screen_presentation.py", str(src))
