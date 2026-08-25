@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+- `tools/release-kit/`: ONE parameterized releaser (`release.sh` — gate →
+  changelog stanza → idempotent annotated tag → push → gh release → Homebrew
+  tap bump; every step skippable, every failure names its step, `--dry-run`
+  prints without executing), one Apple icon pipeline (`gen_app_icons.py` —
+  sips normalize → fixed ten-member ladder → iconutil .icns + optional modern/
+  legacy appiconset), and a templated dev installer (`update_dev.sh` — the
+  union of the koffee/necrohand/routines copies: quit-before-replace, ditto,
+  absolute-path xattr with post-clear verification). Covered by
+  `tests/test_release_kit.py` against real git + local bare remotes and a
+  stateful fake gh.
 - `gates/coverage_gate.sh`: ONE parameterized coverage gate
   (`--lang rust|swift|cpp|py --floor N [--ignore RE] [path]`) replacing six
   per-repo copies that drifted. Rust mode ports the app_updates implementation
