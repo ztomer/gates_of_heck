@@ -25,9 +25,15 @@
 #   APP_NAME    required   e.g. "Necrohand.app"
 #   BUILD_CMD   required   shell string, run from repo root, e.g. "./build.sh"
 #   APP_PATH    required   built bundle relative to repo root, e.g. "build/Necrohand.app"
-#   DEST_DIR    optional   install target, default /Applications
-#                          (UPDATE_DEV_DEST also works; tests point it at tmp)
-#   LAUNCH      optional   UPDATE_DEV_LAUNCH=1 same as --launch
+#   DEST_DIR      optional   install target, default /Applications
+#                            (UPDATE_DEV_DEST also works; tests point it at tmp)
+#   PROCESS_NAME  optional   process name the running copy is detected by,
+#                            default APP_NAME minus .app. Set when the binary's
+#                            name differs from the bundle (e.g. routines ships
+#                            Routines.app whose executable is routines-menubar;
+#                            pgrep -x on the bundle name never matched, so the
+#                            quit-before-replace step silently no-oped).
+#   LAUNCH        optional   UPDATE_DEV_LAUNCH=1 same as --launch
 #
 # Usage:
 #   APP_NAME=Demo.app BUILD_CMD="make build" APP_PATH=build/Demo.app \
@@ -57,6 +63,7 @@ done
 [ -n "$APP_PATH" ] || die "APP_PATH is required (built bundle, relative to repo root)"
 
 APP_BASE="${APP_NAME%.app}"
+PROCESS_NAME="${PROCESS_NAME:-$APP_BASE}"
 DEST="$DEST_DIR/$APP_NAME"
 
 section "update_dev → $DEST"
@@ -67,14 +74,14 @@ bash -c "$BUILD_CMD" || die "build failed (${BUILD_CMD})"
 [ -d "$APP_PATH" ] || die "build did not produce $APP_PATH"
 
 # ── 2. quit any running copy first ───────────────────────────────────────────
-if pgrep -x "$APP_BASE" >/dev/null 2>&1; then
-  info "quitting the running ${APP_BASE}"
+if pgrep -x "$PROCESS_NAME" >/dev/null 2>&1; then
+  info "quitting the running ${PROCESS_NAME}"
   osascript -e "tell application \"${APP_BASE}\" to quit" >/dev/null 2>&1 || true
   for _ in 1 2 3 4 5 6 7 8 9 10; do
-    pgrep -x "$APP_BASE" >/dev/null 2>&1 || break
+    pgrep -x "$PROCESS_NAME" >/dev/null 2>&1 || break
     sleep 0.3
   done
-  pgrep -x "$APP_BASE" >/dev/null 2>&1 && pkill -x "$APP_BASE" || true
+  pgrep -x "$PROCESS_NAME" >/dev/null 2>&1 && pkill -x "$PROCESS_NAME" || true
 fi
 
 # ── 3. replace the installed copy ────────────────────────────────────────────
@@ -98,11 +105,19 @@ else
   ok "quarantine clear"
 fi
 
-# ── 5. ad-hoc sign (best effort) ─────────────────────────────────────────────
+# ── 5. sign ──────────────────────────────────────────────────────────────────
+# A bundle that arrived already validly signed KEEPS its signature: an
+# unconditional ad-hoc re-sign would clobber a real identity the build chose
+# deliberately (routines' Makefile picks the first valid codesigning identity).
+# Unsigned/invalid bundles still get the ad-hoc fallback.
 if command -v codesign >/dev/null 2>&1; then
-  step "ad-hoc signing"
-  codesign --force --deep --sign - "$DEST" >/dev/null 2>&1 \
-    && ok "signed" || warn "ad-hoc signing failed; the app should still launch"
+  if codesign -v "$DEST" >/dev/null 2>&1; then
+    step "existing signature is valid — keeping it"
+  else
+    step "ad-hoc signing"
+    codesign --force --deep --sign - "$DEST" >/dev/null 2>&1 \
+      && ok "signed" || warn "ad-hoc signing failed; the app should still launch"
+  fi
 fi
 
 ok "installed $DEST"
