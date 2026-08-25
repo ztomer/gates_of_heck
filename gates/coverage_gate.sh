@@ -340,9 +340,15 @@ run_cpp() {
         || { err "coverage build failed"; exit 1; }
 
     info "ctest (instrumented)"
+    # GOH_CTEST_ARGS: extra ctest selection, verbatim. Repos label their
+    # display-taking tests (house convention: LABELS "requires_display") and
+    # their own automation runs `ctest -LE requires_display` — a coverage
+    # measurement must drive the SAME suite, or it seizes the desktop and
+    # measures flaky partial data instead. Empty by default: plain ctest.
+    # shellcheck disable=SC2086
     (cd "$PROJ/$build_dir" && \
         LLVM_PROFILE_FILE="$PROJ/$build_dir/default-%p.profraw" \
-        ctest --output-on-failure >/dev/null 2>&1) \
+        ctest --output-on-failure ${GOH_CTEST_ARGS:-} >/dev/null 2>&1) \
         || warn "ctest reported failures — coverage data may be partial"
 
     local raws profdata
