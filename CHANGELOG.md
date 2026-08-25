@@ -1,6 +1,6 @@
 # CHANGELOG
 
-## Unreleased
+## v0.3.0 — post-unification hardening _(2026-08-25)_
 
 - `checks/check_no_screen_presentation.py`: bare-identifier matches in Swift
   TYPE position (annotations, params, returns, casts, generics) no longer
