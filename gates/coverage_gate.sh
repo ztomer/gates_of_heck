@@ -155,34 +155,49 @@ run_rust() {
     PARTS="$CARGO_TARGET_DIR/lcov-parts"
     rm -rf "$PARTS"; mkdir -p "$PARTS"
 
-    # Package discovery: a crates/ workspace enumerates members; a single-root
-    # package is itself. Packages without src/lib.rs skip the lib export
-    # (pure-bin crates have no lib target).
-    if [ -d crates ]; then
-        PKG_DIRS=$(find crates -maxdepth 1 -mindepth 1 -type d | sort)
-    else
-        PKG_DIRS="."
-    fi
+    # Package + target discovery: ASK CARGO, never the filesystem. A
+    # `find tests -name '*.rs'` walk reports FILE names; cargo metadata
+    # reports TARGETS — and they diverge exactly when a suite uses
+    # directory-style test targets (`tests/foo/main.rs`, target `foo`) or a
+    # non-autodiscovered file. Every divergence is an export naming a target
+    # that does not exist, i.e. silently lost coverage. (Found 2026-08-25:
+    # app_updates had split golden suites into directory targets; the walk
+    # produced `--test main` for every one of them.)
+    info "enumerating workspace packages/targets via cargo metadata"
+    METAF="$CARGO_TARGET_DIR/targets.tsv"
+    python3 - >"$METAF" <<'PYEOF'
+import json
+import subprocess
 
-    for PKG_DIR in $PKG_DIRS; do
-        PKG=$(sed -n 's/^name = "\(.*\)"$/\1/p' "$PKG_DIR/Cargo.toml" 2>/dev/null | head -1)
-        [ -z "$PKG" ] && continue
-        if [ -f "$PKG_DIR/src/lib.rs" ]; then
+meta = json.loads(subprocess.run(
+    ["cargo", "metadata", "--no-deps", "--format-version", "1"],
+    check=True, capture_output=True, text=True).stdout)
+for p in meta["packages"]:
+    for t in p["targets"]:
+        if "lib" in t["kind"]:
+            print(f"{p['name']}\tlib\t")
+        elif "test" in t["kind"]:
+            print(f"{p['name']}\ttest\t{t['name']}")
+PYEOF
+
+    while IFS="	" read -r PKG KIND TNAME; do
+        [ -n "$PKG" ] || continue
+        if [ "$KIND" = "lib" ]; then
             info "exporting $PKG (lib unittests)"
             cargo llvm-cov -p "$PKG" --lib --all-features \
                 ${IGNORE:+--ignore-filename-regex "$IGNORE"} \
                 --lcov --output-path "$PARTS/part-$PKG-lib.info" \
                 >/dev/null 2>&1 || warn "$PKG lib export failed"
-        fi
-        while IFS= read -r t; do
-            TBASE=$(basename "$t" .rs)
-            info "exporting $PKG (test $TBASE)"
-            cargo llvm-cov -p "$PKG" --test "$TBASE" --all-features \
+        else
+            # Part name carries the package: two crates with same-named test
+            # targets must not overwrite each other's lcov part.
+            info "exporting $PKG (test $TNAME)"
+            cargo llvm-cov -p "$PKG" --test "$TNAME" --all-features \
                 ${IGNORE:+--ignore-filename-regex "$IGNORE"} \
-                --lcov --output-path "$PARTS/part-$TBASE.info" \
-                >/dev/null 2>&1 || warn "$PKG/$TBASE export failed"
-        done < <(find "$PKG_DIR/tests" -name '*.rs' 2>/dev/null)
-    done
+                --lcov --output-path "$PARTS/part-$PKG-$TNAME.info" \
+                >/dev/null 2>&1 || warn "$PKG/$TNAME export failed"
+        fi
+    done <"$METAF"
 
     n_parts=$(find "$PARTS" -name 'part-*.info' | wc -l | tr -d ' ')
     [ "$n_parts" -gt 0 ] || {
@@ -325,9 +340,15 @@ run_cpp() {
         || { err "coverage build failed"; exit 1; }
 
     info "ctest (instrumented)"
+    # GOH_CTEST_ARGS: extra ctest selection, verbatim. Repos label their
+    # display-taking tests (house convention: LABELS "requires_display") and
+    # their own automation runs `ctest -LE requires_display` — a coverage
+    # measurement must drive the SAME suite, or it seizes the desktop and
+    # measures flaky partial data instead. Empty by default: plain ctest.
+    # shellcheck disable=SC2086
     (cd "$PROJ/$build_dir" && \
         LLVM_PROFILE_FILE="$PROJ/$build_dir/default-%p.profraw" \
-        ctest --output-on-failure >/dev/null 2>&1) \
+        ctest --output-on-failure ${GOH_CTEST_ARGS:-} >/dev/null 2>&1) \
         || warn "ctest reported failures — coverage data may be partial"
 
     local raws profdata
