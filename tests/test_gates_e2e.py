@@ -76,6 +76,15 @@ def test_swift_cold_build_default_is_on():
     assert 'xcode-dd' in text  # cold wipe covers the pinned xcode DD too
 
 
+def test_explicit_full_flag_reaches_no_checker(repo):
+    # Caught by the first real pre-push run: --full was forwarded verbatim to
+    # checkers whose argparse rejects it. Only --staged is a checker scope.
+    _mk_gatesrc(repo)
+    r = run_gate(repo, STRUCTURAL, "--full")
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert "unrecognized arguments" not in r.stderr
+
+
 def test_full_scope_runs_disk_check(repo):
     _mk_gatesrc(repo)
     r = run_gate(repo, STRUCTURAL)  # no --staged → full tree + disk hygiene

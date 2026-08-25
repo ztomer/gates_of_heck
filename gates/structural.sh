@@ -18,6 +18,11 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 CHECKS="$(cd "$HERE/../checks" && pwd)"
 SCOPE="${1:-}"
+# Only --staged is a checker-level scope; --full (and no argument) mean
+# unrestricted. The scope flag is forwarded to checkers ONLY when it is
+# --staged — forwarding --full verbatim made every full run die on argparse.
+FWD=""
+[ "$SCOPE" = "--staged" ] && FWD="--staged"
 
 # Config comes from the TARGET repo root, wherever the gate was invoked from.
 GOH_REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
@@ -36,7 +41,7 @@ else
 fi
 
 # A conflict marker that reaches a commit is a merge someone walked away from.
-goh_step "no conflict markers" python3 "$CHECKS/check_no_conflict_markers.py" ${SCOPE:+"$SCOPE"}
+goh_step "no conflict markers" python3 "$CHECKS/check_no_conflict_markers.py" ${FWD:+"$FWD"}
 
 # One cap, one name. Repos previously called this check_file_length,
 # check_loc and check_file_size, with three different limits.
@@ -47,7 +52,7 @@ GOH_EX="${GOH_LINE_EXCLUDE:-${GOH_EXCLUDE:-}}"
 if [ -n "${GOH_MAX_LINES:-}" ]; then
     goh_step "file length <= ${GOH_MAX_LINES}" \
         python3 "$CHECKS/check_file_length.py" --max "$GOH_MAX_LINES" \
-        ${GOH_EX:+--exclude "$GOH_EX"} ${SCOPE:+"$SCOPE"}
+        ${GOH_EX:+--exclude "$GOH_EX"} ${FWD:+"$FWD"}
 else
     warn "file-length cap not set — add GOH_MAX_LINES to .gatesrc to enable it"
 fi
