@@ -58,6 +58,27 @@ def test_spm_missing_payload_is_named_refusal_not_zero(repo):
     assert "enable-code-coverage" in r.stderr
 
 
+def test_spm_corrupt_payload_is_named_refusal(repo):
+    # Regression (2026-08-25): a payload present but unreadable used to fall
+    # through the `why` check (paths non-empty) and aggregate to 100% —
+    # corrupt coverage data masqueraded as a PASSING gate.
+    p = repo / ".build" / "a" / "debug" / "codecov" / "bad.json"
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_text("{not json at all", encoding="utf-8")
+    r = run_check(repo, SCRIPT, "--min", "50")
+    assert r.returncode == 2
+    assert "cannot measure" in r.stderr
+    assert "none contained measurable files" in r.stderr
+
+
+def test_spm_parseable_payload_with_no_measurable_files_refuses(repo):
+    _write_spm(repo, ".build/a/debug/codecov/empty.json",
+               [("Empty.swift", 0, 0)])
+    r = run_check(repo, SCRIPT, "--min", "50")
+    assert r.returncode == 2
+    assert "1 payload(s) matched" in r.stderr
+
+
 def test_spm_zero_line_entries_do_not_dilute(repo, monkeypatch):
     _write_spm(repo, ".build/a/debug/codecov/a.json",
                [("A.swift", 95, 100), ("Empty.swift", 0, 0)])
