@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+- `checks/check_no_screen_presentation.py`: bare-identifier matches in Swift
+  TYPE position (annotations, params, returns, casts, generics) no longer
+  flag; use positions (`NSScreen.main`, `.screens`) still do. Erases the
+  fake-protocol-surface markers ZoneTilerWM reported.
+- `tools/release-kit/release.sh` hardening: `--no-push` implies skipping the
+  GitHub-release step; the script self-buffers at startup so a concurrent
+  edit can no longer corrupt a running invocation (field-reported as a silent
+  exit 0 — worse than a crash); stanza extraction keeps `###` subsections and
+  tags carry them via `--cleanup=verbatim`; X.Y versions and the
+  missing-CHANGELOG guard are pinned by regression tests.
 - `gates/swift_gate.sh` + `gates/swift_lint_baseline.py`: `GOH_SWIFT_LINT_BASELINE`
   turns the lint stage into a shrink-only ratchet — baselined violations tolerated,
   NEW ones fail named, vanished ones are a re-record nudge. Match key (file, rule,
@@ -50,9 +60,6 @@ roof. 74 → 262 tests, every new checker red-proven.
   GOH_CTEST_ARGS); release-kit stanza extraction truncated at ### headings;
   update_dev quit-detection no-op and signature clobbering (PROCESS_NAME,
   verify-then-adhoc).
-
-## Unreleased
-
 - `tools/release-kit/`: ONE parameterized releaser (`release.sh` — gate →
   changelog stanza → idempotent annotated tag → push → gh release → Homebrew
   tap bump; every step skippable, every failure names its step, `--dry-run`
@@ -76,6 +83,14 @@ roof. 74 → 262 tests, every new checker red-proven.
   separated) and/or `--step` args, tui-styled steps, logs captured to a temp
   dir and dumped on failure, fail accumulator (a failing step never stops the
   run), `--dry-run`, nonzero exit iff any step failed.
+- Post-unification adoptions: necrohand/koffee_big/ZeroThunder MCP servers
+  ported onto `lib/mcp_scaffold.py` under characterization-pinned wire parity
+  (Taxes keeps the official SDK — it provides validation and surface the
+  scaffold does not); ZeroThunder's golden suite delegates its pixel math to
+  `lib/golden_core.py` (bit-exact parity proven over the baseline corpus);
+  ZoneTilerWM's ui sweep likewise (exactly equal changed-pixel counts on all
+  70 surfaces) and enabled the swift gate over its lint baseline, fixing a
+  pre-existing actor-isolation error for real.
 
 ## v0.1.1 _(2026-08-25)_
 
