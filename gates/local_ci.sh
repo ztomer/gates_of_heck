@@ -77,7 +77,8 @@ done
 
 [ -n "$ROOT" ] || ROOT="$PWD"
 [ -d "$ROOT" ] || die "repo root is not a directory: $ROOT"
-ROOT="$(cd "$ROOT" && pwd)"
+cd "$ROOT"
+ROOT="$(pwd)"
 
 # Per-repo declaration. Sourced like every other gate reads .gatesrc — it may
 # carry other GOH_* settings; only GOH_CI_STEPS concerns this script.
@@ -158,7 +159,10 @@ while IFS="	" read -r src cmd; do
     # Command strings from the repo's own .gatesrc / CLI — shell semantics are
     # the feature (pipelines, env prefixes); the source is repo-local config,
     # the same trust level as every ancestor orchestrator.
-    if bash -c "$cmd" >"$logf" 2>&1; then
+    # </dev/null: without it every child inherits the while loop's heredoc
+    # stdin — one step that reads stdin (cat, an interactive prompt) swallows
+    # the REMAINING step list silently.
+    if bash -c "$cmd" >"$logf" 2>&1 </dev/null; then
         ok "[$i/$_n] $cmd"
     else
         err "[$i/$_n] FAILED: $cmd"

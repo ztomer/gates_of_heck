@@ -105,6 +105,37 @@ def test_summary_counts_failures(repo):
     assert "2" in (r.stdout + r.stderr)
 
 
+def test_stdin_reading_step_cannot_eat_the_step_list(repo):
+    """Red-proof regression: child steps inherited the runner's heredoc stdin,
+    so a step that reads stdin (cat) consumed the REMAINING step list and the
+    run ended early, silently, exit 0. Every child gets </dev/null now."""
+    a, b = repo / "a.done", repo / "b.done"
+    gatesrc(repo, f"touch {a}:cat:touch {b}")
+    r = run_ci(repo)
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert a.exists(), "first step never ran"
+    assert b.exists(), "cat ate the remaining step list from the loop's stdin"
+
+
+# ── working directory ──
+
+
+def test_relative_path_steps_resolve_from_repo_root(repo):
+    """Red-proof regression: invoked from OUTSIDE the repo, a relative-path
+    step resolved against the caller's cwd and failed. The runner cd's to
+    $ROOT right after resolving it."""
+    tools = repo / "tools"
+    tools.mkdir()
+    step = tools / "step.sh"
+    step.write_text("#!/bin/bash\ntouch marker.done\n")
+    step.chmod(0o755)
+    gatesrc(repo, "./tools/step.sh")
+    # Invoke from OUTSIDE the repo, passing the root positionally.
+    r = run_ci(repo.parent, str(repo))
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert (repo / "marker.done").exists()
+
+
 # ── step sourcing ──
 
 
