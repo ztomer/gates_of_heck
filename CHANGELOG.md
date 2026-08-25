@@ -1,5 +1,47 @@
 # CHANGELOG
 
+## v0.2.0 — the harness unification _(2026-08-25)_
+
+Maximalist centralization: sixteen per-repo harness families moved under one
+roof. 74 → 262 tests, every new checker red-proven.
+
+- `lib/desktop_lock/`: canonical machine-wide desktop mutex relocated from
+  `~/Projects/scripts/lib` (PID+start-time record contract preserved verbatim).
+- `checks/check_baseline_ratchet.py`: shrink-only ceilings (JSON or line
+  baselines) replacing monitor/necrohand/ZeroThunder ad-hoc ratchets.
+- `checks/check_generated_fresh.py`: artifact-freshness gate (regenerate to a
+  temp sandbox, hash-compare, timeouts mandatory) — the Taxes pattern,
+  generalized.
+- `checks/check_no_screen_presentation.py` + `lib/headless_env.sh` +
+  `checks/check_no_screen_linkage.sh`: the two-halves screen invariant —
+  static grep (absorbed necrohand's full pattern set, differential 3/13 →
+  14/14), runtime env contract, and an nm -u link-table audit.
+- `checks/check_tests_registered.py`: every test source on disk must be
+  registered inside an add_executable/add_test block (stronger than the
+  CadGoose/CadGoose2 verbatim twins it replaces).
+- `lib/golden_core.py` + `golden_diff.py`: shared pixel-diff core (mean abs
+  diff, changed fraction, SSIM; Pillow-or-pure-Python); blessing stays repo
+  policy by design. Offscreen-render cookbook recorded in `docs/harnesses.md`.
+- `lib/eval_transport.py` + `lib/mcp_scaffold.py`: grader/model-agnostic eval
+  transport (parse-rate guardrail, atomically resumable sweeps) and stdio
+  MCP JSON-RPC scaffold matching the newline-delimited framing all four
+  ancestor servers speak.
+- `tools/profiling/`: the CadGoose soak/profile harness canonized (the two
+  repos carried byte-identical copies); target-root seam so neither repo
+  profiles the wrong checkout.
+- Migrations shipped across eleven consumer repos (app_updates, monitor,
+  divoom-control, CadGoose, CadGoose2, sys_updater, routines, necrohand,
+  koffee_big, ZeroThunder, ZoneTilerWM): forked length checks deleted,
+  coverage/local-CI delegating with step lists diffed old-vs-new, locks and
+  ratchets on the shared implementations. Honest keeps documented where a
+  local contract was strictly stronger.
+- Class fixes found BY the unification: cargo target enumeration via
+  find(1) silently lost directory-style test suites (now cargo metadata);
+  cpp coverage drove display-taking tests on the user's desktop (now honors
+  GOH_CTEST_ARGS); release-kit stanza extraction truncated at ### headings;
+  update_dev quit-detection no-op and signature clobbering (PROCESS_NAME,
+  verify-then-adhoc).
+
 ## Unreleased
 
 - `tools/release-kit/`: ONE parameterized releaser (`release.sh` — gate →
