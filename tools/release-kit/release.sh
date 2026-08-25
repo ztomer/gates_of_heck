@@ -140,10 +140,23 @@ stanza_body() {
   # awk below must not run against a missing file: under set -e its failure
   # aborted the TAG step after the changelog step had already been skipped.
   [ -f CHANGELOG.md ] || return 0
+  # Body bounds: everything after the matching stanza's heading, up to the
+  # NEXT heading AT OR ABOVE the stanza's own level. Keep-a-changelog bodies
+  # carry ### subsections, so "###" must NOT end the body — only a heading
+  # of the stanza's level (the next version) does. The old `/^##+ /` reset
+  # collapsed every subsectioned body to nothing.
   awk -v pat="^(##+) v${VER_RE}( |\$)|^(##+) \\[${VER_RE}\\]( |\$)" '
-    $0 ~ pat { flag = 1; next }
-    /^##+ /  { flag = 0 }
-    flag     { print }
+    $0 ~ pat {
+      head = $0; sub(/[ \t].*$/, "", head); level = length(head)
+      flag = 1; next
+    }
+    /^#/ {
+      if (flag) {
+        h = $0; sub(/[^#].*$/, "", h)
+        if (length(h) <= level) { flag = 0; next }
+      }
+    }
+    flag { print }
   ' CHANGELOG.md
 }
 
@@ -192,7 +205,10 @@ else
   BODY="$(mktemp)"
   stanza_body > "$BODY"
   [ -s "$BODY" ] || printf '%s\n' "${TAG}" > "$BODY"
-  git tag -a "$TAG" -F "$BODY" || fail "git tag -a ${TAG} exited nonzero"
+  # --cleanup=verbatim: without it git strips '#' lines from -F messages as
+  # commentary, silently deleting every ### subsection of a Keep-a-changelog
+  # stanza from the tag message.
+  git tag -a "$TAG" --cleanup=verbatim -F "$BODY" || fail "git tag -a ${TAG} exited nonzero"
   ok "tagged $(git rev-parse --short HEAD)"
 fi
 

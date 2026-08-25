@@ -95,11 +95,16 @@ def release_env(kit: dict) -> dict:
     return env
 
 
-def run_release(kit: dict, *args: str) -> subprocess.CompletedProcess:
+def run_release(kit: dict, *args: str, version: str = VERSION) -> subprocess.CompletedProcess:
     return subprocess.run(
-        ["/bin/bash", str(RELEASE), "--version", VERSION, "--gate", "true", *args],
+        ["/bin/bash", str(RELEASE), "--version", version, "--gate", "true", *args],
         cwd=kit["proj"], capture_output=True, text=True, env=release_env(kit),
     )
+
+
+def tag_message(repo: Path, tag: str) -> str:
+    """The annotated tag's message (%(contents)), stripped."""
+    return sh(repo, "tag", "-l", tag, "--format=%(contents)").strip()
 
 
 @pytest.fixture
@@ -213,3 +218,74 @@ class TestSelfBuffering:
         assert f"gh release create {TAG}" in calls, calls
         notes = (kit["gh_state"] / f"notes-{TAG}").read_text()
         assert STANZA_BODY.splitlines()[0] in notes
+
+
+class TestRegressionPins:
+    """Pins for bugs already fixed on main that had no dedicated test.
+
+    Red proofs: the X.Y pin went red with the validator reverted to
+    three-components-only; the missing-CHANGELOG pin went red with the
+    `[ -f CHANGELOG.md ] || return 0` guard dropped (awk under set -e
+    aborted the tag step). The subheading pin was red against the shipped
+    awk itself: `/^##+ /` treats `###` subheadings as stanza ends, so a
+    Keep-a-changelog body collapsed to the tag-name fallback.
+    """
+
+    def test_two_component_version_end_to_end(self, kit):
+        """X.Y versions are valid — CadGoose's tag scheme is v1.71..v1.79."""
+        (kit["proj"] / "CHANGELOG.md").write_text(
+            "# CHANGELOG\n\n## v1.79\n\n- cadgoose-style two-component cut\n",
+            encoding="utf-8",
+        )
+        commit_all(kit["proj"])
+        r = run_release(kit, "--no-push", version="1.79")
+        assert r.returncode == 0, r.stdout + r.stderr
+        assert sh(kit["proj"], "cat-file", "-t", "v1.79").strip() == "tag"
+        assert "cadgoose-style two-component cut" in tag_message(kit["proj"], "v1.79")
+
+    def test_missing_changelog_file_still_tags_with_name_fallback(self, kit):
+        """--no-changelog-check + no CHANGELOG.md: tag step must survive.
+
+        The stanza body is empty, so the message falls back to the tag name.
+        """
+        (kit["proj"] / "CHANGELOG.md").unlink()
+        commit_all(kit["proj"])
+        r = run_release(kit, "--no-changelog-check", "--no-push")
+        assert r.returncode == 0, r.stdout + r.stderr
+        assert sh(kit["proj"], "cat-file", "-t", TAG).strip() == "tag"
+        assert tag_message(kit["proj"], TAG) == TAG
+
+    def test_stanza_body_keeps_subheadings_and_stops_at_next_stanza(self, kit):
+        """FULL Keep-a-changelog body lands in the tag message; no bleed."""
+        (kit["proj"] / "CHANGELOG.md").write_text(
+            "# CHANGELOG\n"
+            "\n"
+            f"## {TAG}\n"
+            "\n"
+            "### Added\n"
+            "\n"
+            "- the release kit\n"
+            "\n"
+            "### Fixed\n"
+            "\n"
+            "- seven drifting releasers\n"
+            "\n"
+            "## v1.1.0\n"
+            "\n"
+            "- older\n",
+            encoding="utf-8",
+        )
+        commit_all(kit["proj"])
+        r = run_release(kit)
+        assert r.returncode == 0, r.stdout + r.stderr
+
+        msg = tag_message(kit["proj"], TAG)
+        for want in ("### Added", "- the release kit", "### Fixed",
+                     "- seven drifting releasers"):
+            assert want in msg, f"missing {want!r} in tag message:\n{msg}"
+        assert "older" not in msg, "body bled into the next (older) stanza"
+
+        # The gh release notes carry the same full body.
+        assert f"gh release create {TAG}" in gh_calls(kit)
+        notes = (kit["gh_state"] / f"notes-{TAG}").read_text()
+        assert "### Added" in notes and "older" not in notes
