@@ -289,3 +289,117 @@ class TestRegressionPins:
         assert f"gh release create {TAG}" in gh_calls(kit)
         notes = (kit["gh_state"] / f"notes-{TAG}").read_text()
         assert "### Added" in notes and "older" not in notes
+
+
+# ── stanza matching: the version regex must reach awk VERBATIM ───────────────
+
+
+def _bare_tap(tmp_path: Path) -> Path:
+    """A bare tap repo seeded with a cask pinned at v0.0.0."""
+    seed = tmp_path / "tap-seed"
+    seed.mkdir()
+    sh(seed, "init", "-q", "-b", "main")
+    casks = seed / "Casks"
+    casks.mkdir()
+    (casks / "foo.rb").write_text(
+        'cask "foo" do\n'
+        '  url "https://example.com/foo/archive/refs/tags/v0.0.0.tar.gz"\n'
+        '  sha256 "0000000000000000000000000000000000000000000000000000000000000000"\n'
+        "end\n",
+        encoding="utf-8",
+    )
+    commit_all(seed)
+    bare = tmp_path / "tap.git"
+    subprocess.run(["git", "clone", "-q", "--bare", str(seed), str(bare)], check=True)
+    return bare
+
+
+class TestStanzaMatchIsVerbatim:
+    """awk -v processed backslash escapes, so v1\\.2\\.3 arrived as bare
+    wildcards and bogus headings matched the stanza (## v1x2y3, ## v19283).
+    Red proof: both decoys below matched pre-fix, leaking their bodies into
+    the tag message."""
+
+    DECOYS = (
+        "# CHANGELOG\n\n"
+        "## v1x2y3\n\n- wildcard decoy body\n\n"
+        "## v19283\n\n- numeric decoy body\n\n"
+        f"## {TAG}\n\n{STANZA_BODY}\n\n"
+        "## v1.1.0\n\n- older\n"
+    )
+
+    def test_bogus_headings_do_not_match_the_stanza(self, kit):
+        (kit["proj"] / "CHANGELOG.md").write_text(self.DECOYS, encoding="utf-8")
+        commit_all(kit["proj"])
+        r = run_release(kit, "--no-push")
+        assert r.returncode == 0, r.stdout + r.stderr
+        msg = tag_message(kit["proj"], TAG)
+        assert STANZA_BODY in msg, msg
+        assert "decoy" not in msg, "a bogus heading's body leaked into the tag"
+
+    def test_real_stanza_still_matches_with_bracketed_form(self, kit):
+        (kit["proj"] / "CHANGELOG.md").write_text(
+            "# CHANGELOG\n\n" f"## [{VERSION}]\n\n{STANZA_BODY}\n",
+            encoding="utf-8",
+        )
+        commit_all(kit["proj"])
+        r = run_release(kit, "--no-push")
+        assert r.returncode == 0, r.stdout + r.stderr
+        assert tag_message(kit["proj"], TAG) == STANZA_BODY
+
+
+# ── stale tag guard ──────────────────────────────────────────────────────────
+
+
+class TestStaleTagGuard:
+    def test_tag_at_older_commit_hard_fails_naming_both_shas(self, kit):
+        assert run_release(kit, "--no-push").returncode == 0
+        # Annotated tag: dereference to the commit it pins (what the guard
+        # compares).
+        tagged = sh(kit["proj"], "rev-parse", f"{TAG}^{{commit}}").strip()
+
+        # Work moved on AFTER the tag was cut.
+        (kit["proj"] / "later.txt").write_text("later work\n", encoding="utf-8")
+        commit_all(kit["proj"])
+        head = sh(kit["proj"], "rev-parse", "HEAD").strip()
+        assert head != tagged
+
+        r = run_release(kit, "--no-push")
+        assert r.returncode != 0, "stale tag released the WRONG tree silently"
+        combined = r.stdout + r.stderr
+        assert tagged in combined, "the tag's pinned SHA must be named"
+        assert head in combined, "HEAD's SHA must be named"
+        assert "git tag -f" in combined, "remediation must be stated"
+
+    def test_same_tree_rerun_is_still_idempotent(self, kit):
+        assert run_release(kit, "--no-push").returncode == 0
+        first = sh(kit["proj"], "rev-parse", f"{TAG}^{{commit}}").strip()
+        r = run_release(kit, "--no-push")
+        assert r.returncode == 0, r.stdout + r.stderr
+        assert "already exists" in r.stdout
+        assert sh(kit["proj"], "rev-parse", f"{TAG}^{{commit}}").strip() == first
+
+
+# ── artifact download failures are named, not laundered ──────────────────────
+
+
+class TestArtifactDownloadFailure:
+    def test_unreachable_url_is_a_named_failure_not_an_empty_hash(self, kit, tmp_path):
+        """Red proof: `curl | shasum` under set -e let shasum hash EMPTY input
+        and the tap got the digest of nothing, reported as success."""
+        bare = _bare_tap(tmp_path)
+        bad_url = "http://127.0.0.1:9/nope.tar.gz"  # nothing listens; instant refuse
+        r = run_release(kit, "--no-push", "--tap", str(bare), "--cask", "foo",
+                        "--artifact", bad_url)
+        assert r.returncode == 1, r.stdout + r.stderr
+        combined = r.stdout + r.stderr
+        assert "could not download artifact" in combined
+        assert bad_url in combined
+        # The tap must be untouched — no empty-input digest committed.
+        import hashlib
+        content = subprocess.run(
+            ["git", "-C", str(bare), "show", "main:Casks/foo.rb"],
+            capture_output=True, text=True, check=True,
+        ).stdout
+        assert hashlib.sha256(b"").hexdigest() not in content
+        assert 'sha256 "0000' in content
