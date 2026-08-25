@@ -169,3 +169,51 @@ def test_non_numeric_json_value_is_precondition(repo):
     write(repo, "now.json", '{"a": 1}\n')
     r = run(repo, "--baseline", "base.json", "--current", "now.json")
     assert r.returncode == 2
+
+
+# ---- non-finite values (2026-08-25) ------------------------------------------
+#
+# Policy choice, pinned here: a non-finite value is a PRECONDITION failure
+# (exit 2) wherever it appears — baseline or current, JSON or line format.
+# It is never compared. Rationale: inf-as-current vs a finite ceiling would
+# "fail as a violation" by accident of comparison, but nan-vs-anything is
+# always False (a NaN current would silently PASS), and a ratchet gate must
+# not derive verdicts from values that cannot be reasoned about. Clean data
+# or no verdict.
+
+NONFINITE_JSON = '{"k": Infinity}\n'
+NONFINITE_LINE = "inf\tk\n"
+
+
+def test_nonfinite_baseline_json_is_precondition(repo):
+    write(repo, "base.json", NONFINITE_JSON)
+    write(repo, "now.json", '{"k": 1}\n')
+    r = run(repo, "--baseline", "base.json", "--current", "now.json")
+    assert r.returncode == 2
+    assert "non-finite" in r.stderr
+
+
+def test_nonfinite_current_json_is_precondition(repo):
+    write(repo, "base.json", '{"k": 1}\n')
+    write(repo, "now.json", NONFINITE_JSON)
+    r = run(repo, "--baseline", "base.json", "--current", "now.json")
+    assert r.returncode == 2
+    assert "non-finite" in r.stderr
+
+
+def test_nonfinite_baseline_line_is_precondition(repo):
+    write(repo, "base.txt", NONFINITE_LINE)
+    write(repo, "now.txt", "1\tk\n")
+    r = run(repo, "--baseline", "base.txt", "--current", "now.txt")
+    assert r.returncode == 2
+    assert "non-finite" in r.stderr
+
+
+def test_nonfinite_current_line_is_precondition(repo):
+    # Even against a finite ceiling: non-finite current is rejected, not
+    # reported as an ordinary ceiling violation.
+    write(repo, "base.txt", "10\tk\n")
+    write(repo, "now.txt", "-inf\tk\n")
+    r = run(repo, "--baseline", "base.txt", "--current", "now.txt")
+    assert r.returncode == 2
+    assert "non-finite" in r.stderr

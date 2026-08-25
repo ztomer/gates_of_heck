@@ -62,6 +62,7 @@ IDENTICAL FAST PATH: byte-equal images short-circuit to an exact verdict
 """
 
 import json
+import math
 import struct
 import sys
 import zlib
@@ -309,13 +310,21 @@ TOLERANCE_DEFAULTS = {
 
 
 def resolve_tolerances(overrides=None):
-    """Defaults overridden by `overrides`; unknown keys are a precondition error."""
+    """Defaults overridden by `overrides`; unknown keys are a precondition error.
+
+    Non-finite numbers (NaN, ±Inf) are rejected too: every comparison against
+    NaN is False, so a NaN tolerance would silently read as "within
+    tolerance" — the one verdict it must never be able to forge."""
     out = dict(TOLERANCE_DEFAULTS)
     for key, val in (overrides or {}).items():
         if key not in out:
             raise PreconditionError(f"unknown tolerance key: {key} (known: {sorted(out)})")
         if not isinstance(val, (int, float)) or isinstance(val, bool):
             raise PreconditionError(f"tolerance {key} must be a number, got {val!r}")
+        if isinstance(val, float) and not math.isfinite(val):
+            raise PreconditionError(
+                f"tolerance {key} must be finite, got {val!r} "
+                f"(NaN/Infinity cannot be compared against)")
         out[key] = float(val)
     return out
 

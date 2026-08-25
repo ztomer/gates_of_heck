@@ -342,6 +342,29 @@ def test_cli_bad_tolerances_exits_2(tmp_path, plain, bad):
     assert run_cli(plain, plain, "--tolerances", bad).returncode == 2
 
 
+def test_resolve_tolerances_rejects_nonfinite_naming_key_and_value():
+    # NaN/Infinity pass the isinstance-number check and poison the verdict:
+    # every comparison against NaN is False, so a NaN tolerance reads as
+    # "within tolerance". Non-finite is a precondition failure instead.
+    for bad in (float("nan"), float("inf"), float("-inf")):
+        with pytest.raises(golden_core.PreconditionError) as ei:
+            golden_core.resolve_tolerances({"mean_abs_diff_max": bad})
+        msg = str(ei.value)
+        assert "mean_abs_diff_max" in msg and "finite" in msg
+        assert repr(bad) in msg or "nan" in msg.lower() or "inf" in msg.lower()
+
+
+@pytest.mark.parametrize(
+    "bad", ['{"mean_abs_diff_max": NaN}', '{"ssim_min": Infinity}']
+)
+def test_cli_nonfinite_tolerances_exits_2(tmp_path, plain, bad):
+    # json.loads accepts bare NaN/Infinity literals; via CLI they must be
+    # precondition-rejected (exit 2), never silently accepted.
+    r = run_cli(plain, plain, "--tolerances", bad)
+    assert r.returncode == 2
+    assert "precondition" in r.stderr
+
+
 def test_cli_json_output_embeds_metrics_and_tier(tmp_path, plain):
     r = run_cli(plain, plain, "--json")
     assert r.returncode == 0
