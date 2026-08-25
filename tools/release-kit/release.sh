@@ -105,7 +105,11 @@ VER_RE="$(printf '%s' "$VERSION" | sed 's/[.*/\[\\]/\\&/g')"
 STANZA_RE="^##+ v${VER_RE}[[:space:]]|^##+ v${VER_RE}\$|^##+ \\[${VER_RE}\\][[:space:]]|^##+ \\[${VER_RE}\\]\$"
 
 stanza_body() {
-  # Print the body of the version's stanza (everything until the next ## head).
+  # No CHANGELOG.md (or --no-changelog-check on a repo without one) means an
+  # empty body — the caller falls back to the tag name as the message. The
+  # awk below must not run against a missing file: under set -e its failure
+  # aborted the TAG step after the changelog step had already been skipped.
+  [ -f CHANGELOG.md ] || return 0
   awk -v pat="^(##+) v${VER_RE}( |\$)|^(##+) \\[${VER_RE}\\]( |\$)" '
     $0 ~ pat { flag = 1; next }
     /^##+ /  { flag = 0 }
