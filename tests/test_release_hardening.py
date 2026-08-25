@@ -15,6 +15,7 @@ printed). They went green only after the fix landed in the same commit.
 
 import os
 import subprocess
+import time
 from pathlib import Path
 
 import pytest
@@ -84,16 +85,20 @@ def gh_calls(kit: dict) -> str:
     return log.read_text() if log.exists() else ""
 
 
-def run_release(kit: dict, *args: str) -> subprocess.CompletedProcess:
+def release_env(kit: dict) -> dict:
     env = dict(os.environ)
     env["GOH_DIR"] = str(REPO_ROOT)
     env["PATH"] = f"{kit['bin']}:{env['PATH']}"
     env["GH_STATE"] = str(kit["gh_state"])
     env["GH_LOG"] = str(kit["gh_log"])
     env.pop("GOH_RELEASE_GATE", None)
+    return env
+
+
+def run_release(kit: dict, *args: str) -> subprocess.CompletedProcess:
     return subprocess.run(
         ["/bin/bash", str(RELEASE), "--version", VERSION, "--gate", "true", *args],
-        cwd=kit["proj"], capture_output=True, text=True, env=env,
+        cwd=kit["proj"], capture_output=True, text=True, env=release_env(kit),
     )
 
 
@@ -164,3 +169,47 @@ class TestNoPushImpliesNoRelease:
         r = run_release(kit)
         assert r.returncode == 0, r.stdout + r.stderr
         assert f"gh release create {TAG}" in gh_calls(kit)
+
+
+class TestSelfBuffering:
+    def test_mid_run_edit_completes_with_original_semantics(self, kit, tmp_path):
+        """Editing release.sh while it runs must not corrupt a running release.
+
+        bash parses scripts lazily by byte offset; before the self-buffering
+        exec, rewriting the file mid-run (the field incident) shifted every
+        unread offset and crashed or garbled the rest of the run. The gate is
+        the slow point: it touches a marker (proving release.sh is mid-run),
+        then sleeps while the test swaps the script for different-length
+        content. The invocation must still complete with the ORIGINAL
+        content's semantics: full push + GitHub release of the stanza body.
+        """
+        marker = tmp_path / "gate-started"
+        proc = subprocess.Popen(
+            ["/bin/bash", str(RELEASE), "--version", VERSION,
+             "--gate", f"touch {marker} && sleep 5"],
+            cwd=kit["proj"], stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+            text=True, env=release_env(kit),
+        )
+        original = RELEASE.read_bytes()
+        try:
+            deadline = time.monotonic() + 30
+            while not marker.exists():
+                assert time.monotonic() < deadline, "gate never started"
+                assert proc.poll() is None, "release.sh exited before the edit"
+                time.sleep(0.05)
+
+            RELEASE.write_bytes(
+                b"#!/usr/bin/env bash\necho corrupted mid-run ((\n")
+            out, err = proc.communicate(timeout=120)
+        finally:
+            RELEASE.write_bytes(original)
+
+        assert proc.returncode == 0, out + err
+        assert "corrupted" not in out + err
+        # Original semantics completed end to end:
+        refs = sh(kit["origin"], "for-each-ref")
+        assert TAG in refs, "tag was never pushed"
+        calls = gh_calls(kit)
+        assert f"gh release create {TAG}" in calls, calls
+        notes = (kit["gh_state"] / f"notes-{TAG}").read_text()
+        assert STANZA_BODY.splitlines()[0] in notes

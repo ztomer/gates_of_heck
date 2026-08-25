@@ -41,6 +41,25 @@
 #       --tap ztomer/homebrew-tap --cask myapp --artifact dist/MyApp-1.2.3.dmg
 set -euo pipefail
 
+# ── self-buffering (must run before ANY logic) ───────────────────────────────
+# bash parses a script lazily, byte-offset by byte-offset as it executes.
+# Editing this file WHILE an invocation runs shifts every unread offset —
+# the field-reported mid-release parse errors and silent truncations. Guard:
+# snapshot self to a temp copy BEFORE any logic, then exec that copy; the
+# running release is pinned to an immutable byte image of startup time.
+# Why a temp copy rather than `exec bash <(cat "$0")`: process substitution
+# feeds the parser a live pipe/fd — $0 becomes /dev/fd/N (breaking --help's
+# `sed ... "$0"` and every diagnostic naming the script) and parsing stays
+# coupled to a concurrent writer instead of a finished snapshot. A temp copy
+# needs nothing newer than macOS's stock bash 3.2 (no mapfile/readarray).
+if [ -z "${GOH_RELEASE_BUFFERED:-}" ]; then
+  _SELF_COPY="$(mktemp "${TMPDIR:-/tmp}/release-buffered.XXXXXX")"
+  cat "$0" > "${_SELF_COPY}"
+  export GOH_RELEASE_BUFFERED="${_SELF_COPY}"
+  exec /bin/bash "${_SELF_COPY}" "$@"
+fi
+_SELF_COPY="${GOH_RELEASE_BUFFERED}"
+
 GOH="${GOH_DIR:-$HOME/Projects/gates_of_heck}"
 # shellcheck disable=SC1091
 source "$GOH/tui/lib.sh"
@@ -96,6 +115,7 @@ cleanup() {
   [ -z "$BODY" ] || rm -f "$BODY"
   [ -z "$NOTES" ] || rm -f "$NOTES"
   [ -z "$TAP_DIR" ] || rm -rf "$TAP_DIR"
+  [ -z "${_SELF_COPY:-}" ] || rm -f "${_SELF_COPY}"
   true
 }
 trap cleanup EXIT
