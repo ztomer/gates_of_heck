@@ -1,0 +1,5 @@
+# Minimal deterministic config for the swift lint baseline gate tests.
+only_rules:
+  - line_length
+excluded:
+  - .build

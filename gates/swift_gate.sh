@@ -23,6 +23,14 @@
 #   GOH_SWIFT_PROJECT=Foo.xcodeproj
 #   GOH_SWIFT_COV_MIN=95
 #   GOH_SWIFT_COLD=1     # default: 1 — set to 0 to allow incremental builds
+#   GOH_SWIFT_LINT_BASELINE=path/to/.swiftlint-baseline.json
+#       when set, the lint stage runs against this SwiftLint baseline as a
+#       SHRINK-ONLY ratchet: listed violations are tolerated, NEW ones fail
+#       naming them, and entries whose violations vanished are a printed
+#       nudge to re-record — never a failure. Unset keeps bare strict
+#       linting. Semantics match swiftlint's own --baseline (probed 0.65.1):
+#       a violation is "the same one" by file + rule + reason, NOT line or
+#       severity.
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -41,8 +49,34 @@ goh_init "swift"
 
 command -v swift >/dev/null 2>&1 || die "swift not on PATH"
 
+# swift_lint_with_baseline — the GOH_SWIFT_LINT_BASELINE branch. swiftlint's
+# own exit status is deliberately NOT trusted here: in --reporter json mode it
+# reports violations FOUND, which is the ratchet's input, not its verdict —
+# the reconciler decides. A crashed swiftlint still bites: unparseable output
+# fails the gate naming swiftlint's exit code.
+swift_lint_with_baseline() {
+    [ -f "$GOH_SWIFT_LINT_BASELINE" ] \
+        || die "GOH_SWIFT_LINT_BASELINE points at nothing: $GOH_SWIFT_LINT_BASELINE"
+    local report rc=0
+    report="$(mktemp -t goh-swiftlint-report)"
+    step "swiftlint --strict (baseline: $(basename "$GOH_SWIFT_LINT_BASELINE"))"
+    swiftlint lint --strict --quiet --reporter json >"$report" || rc=$?
+    if ! python3 "$HERE/swift_lint_baseline.py" \
+            --baseline "$GOH_SWIFT_LINT_BASELINE" \
+            --report "$report" --root "$PWD" \
+            --swiftlint-rc "$rc"; then
+        rm -f "$report"
+        die "swift gate: lint baseline ratchet failed — fix the new violations or re-record (shrink-only)"
+    fi
+    rm -f "$report"
+}
+
 if command -v swiftlint >/dev/null 2>&1; then
-    goh_step "swiftlint --strict" swiftlint --strict
+    if [ -n "${GOH_SWIFT_LINT_BASELINE:-}" ]; then
+        swift_lint_with_baseline
+    else
+        goh_step "swiftlint --strict" swiftlint --strict
+    fi
 else
     warn "swiftlint not installed — lint gate skipped (brew install swiftlint)"
 fi
