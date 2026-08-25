@@ -1,0 +1,5 @@
+cmake_minimum_required(VERSION 3.20)
+project(Proj)
+# tests/test_delta.cpp was dropped from the build on purpose (see ticket)
+set(EXTRA_SRCS tests/test_delta.cpp)
+add_executable(app app.cpp)
