@@ -1,0 +1,3 @@
+func show() {
+    window.orderFrontRegardless()
+}
