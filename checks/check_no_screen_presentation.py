@@ -29,6 +29,11 @@ Scans TEST TARGETS — paths given as arguments, or tracked files matched by
 Escape hatch: `# screen-ok: <reason>` or `// screen-ok: <reason>` on the
 offending line or the one above it. Reviewed like code — say WHY.
 
+Swift TYPE positions (`[NSScreen]`, `NSScreen?`, `-> NSScreen`, `is/as?
+NSScreen`, `Foo<NSScreen>`, `x: [NSScreen]`) on opted-in bare-type patterns
+are exempt: a fake's protocol surface NAMES these types without reading the
+live display; member-access uses still flag.
+
     check_no_screen_presentation.py tests/ tools/render_check.sh
     check_no_screen_presentation.py --scope 'tests/**/*.swift'
     check_no_screen_presentation.py --staged --scope 'tests/*'
@@ -56,7 +61,12 @@ ALLOW_MARKER = "screen-ok:"
 PY_GUARD = re.compile(r"GOH_HEADLESS[^\n=]*=")
 
 # Each entry carries WHY it reaches the screen, so the finding says what is
-# wrong rather than just what matched.
+# wrong rather than just what matched. A third element `True` marks a pattern
+# whose occurrences may sit in a Swift TYPE position (see
+# _in_swift_type_position): a fake's protocol surface TYPES `[NSScreen]` /
+# `-> NSScreen` / `is NSScreen` without ever reading the live display, so an
+# occurrence in a type shape is exempted while any member-access USE still
+# flags.
 SWIFT_PATTERNS = [
     (r"\.(orderFront|orderFrontRegardless|makeKeyAndOrderFront|showWindow)\s*\(",
      "puts a window on the user's display"),
@@ -64,7 +74,7 @@ SWIFT_PATTERNS = [
      "steals the user's focus"),
     (r"\.setActivationPolicy\s*\(", "changes how the process presents to the window server"),
     (r"\.runModal\s*\(", "runs a modal loop needing a live WindowServer"),
-    (r"\bNSScreen\b", "reads the real display's geometry"),
+    (r"\bNSScreen\b", "reads the real display's geometry", True),
     (r"\bCGDisplay\w*\s*\(|\bCGMainDisplayID\b", "talks to a real display"),
     (r"\bscreencapture\b", "shells out to the screen capture tool"),
     (r"\bAXIsProcessTrustedWithOptions\s*\(|\bCGRequestScreenCaptureAccess\s*\(",
@@ -79,13 +89,14 @@ SWIFT_PATTERNS = [
     (r"render:\s*\.presenting\b",
      "asks for the live presentation path instead of an offscreen render"),
     (r"\bSCStream\b|\bSCShareableContent\b|\bSCScreenshotManager\b|\bSCContentSharing\b",
-     "captures the real screen via ScreenCaptureKit (needs a TCC grant)"),
-    (r"\bCGWindowList\w*\b", "reads the real window list"),
+     "captures the real screen via ScreenCaptureKit (needs a TCC grant)", True),
+    (r"\bCGWindowList\w*\b", "reads the real window list", True),
+    (r"\bCAMetalLayer\b", "creates/acquires a window-server drawable surface", True),
     (r"\bCAMetalLayer\s*\(|\bnextDrawable\s*\(",
      "creates/acquires a window-server drawable surface"),
     (r"\bCGEvent\w*\s*\(|\bCGWarpMouseCursorPosition\b",
      "posts real input to the whole machine"),
-    (r"\bNSCursor\b", "moves or hides the user's real cursor"),
+    (r"\bNSCursor\b", "moves or hides the user's real cursor", True),
     (r"\bNSApplication\.shared\b|\bNSApp\b",
      "starts or queries the shared application object"),
 ]
@@ -115,12 +126,59 @@ PYTHON_RULES = [
     (PY_LIVE_CMDS, "launches a live-screen command", True),
 ]
 
+# ── Swift TYPE-POSITION exemption (class-level fix, 2026-08-25) ────────────
+# ZoneTilerWM test-support files carry ~20 NSScreen markers that are all
+# TYPE annotations on fakes' protocol surfaces (`[NSScreen]`, `NSScreen?`,
+# `-> NSScreen`, `is/as? NSScreen`, `Foo<NSScreen>`) — none reads the live
+# display. An OCCURRENCE sitting in a type shape annotates; only member
+# access reaches the runtime object, so the guard below never exempts an
+# occurrence followed by `.` (NSScreen.main, NSScreen.screens). The
+# predicate is attached per-pattern (`True` third element in SWIFT_PATTERNS),
+# so any other bare-identifier pattern can opt in without new special cases.
+
+_SWIFT_CAST_BEFORE = re.compile(r"\b(?:is|as)[?!]?\s*(?:\[\s*)?$")
+_SWIFT_RETURN_BEFORE = re.compile(r"->\s*(?:\[\s*)?$")
+# `: T` · `: [T]` · `: [K: T]` — annotations, parameter types, dict types
+_SWIFT_ANNOT_BEFORE = re.compile(r":\s*(?:\[\s*(?:\w+\s*:\s*)?\s*)?$")
+
+
+def _generic_context(prefix):
+    """True when `prefix` ends inside an unclosed `<...>` argument list."""
+    depth = 0
+    for ch in reversed(prefix):
+        if ch == ">":
+            depth += 1
+        elif ch == "<":
+            if depth == 0:
+                return True
+            depth -= 1
+        elif ch in "([":
+            return False  # entered a call/literal region first — not generic
+    return False
+
+
+def _in_swift_type_position(probe, match):
+    """Is THIS occurrence of an identifier a Swift type, not a live use?"""
+    if re.match(r"\s*\.", probe[match.end():]):
+        return False  # member access — the identifier IS being used here
+    prefix = probe[:match.start()]
+    return bool(
+        _SWIFT_CAST_BEFORE.search(prefix)
+        or _SWIFT_RETURN_BEFORE.search(prefix)
+        or _SWIFT_ANNOT_BEFORE.search(prefix)
+        or _generic_context(prefix)
+    )
+
+
 LANGUAGES = {
     ".swift": (("#", "//", "///"),
-               [(re.compile(p), w, False) for p, w in SWIFT_PATTERNS]),
-    ".m": (("//",), [(re.compile(p), w, False) for p, w in OBJC_PATTERNS]),
-    ".mm": (("//",), [(re.compile(p), w, False) for p, w in OBJC_PATTERNS]),
-    ".py": (("#",), [(p, w, needs_exec) for p, w, needs_exec in PYTHON_RULES]),
+               [(re.compile(p), w, False,
+                 _in_swift_type_position if t else None)
+                for p, w, *t in SWIFT_PATTERNS]),
+    ".m": (("//",), [(re.compile(p), w, False, None) for p, w in OBJC_PATTERNS]),
+    ".mm": (("//",), [(re.compile(p), w, False, None) for p, w in OBJC_PATTERNS]),
+    ".py": (("#",), [(p, w, needs_exec, None)
+                     for p, w, needs_exec in PYTHON_RULES]),
 }
 
 
@@ -195,8 +253,13 @@ def check_text(rel, text):
         if _has_marker(lines, i):
             continue
         probe = scan_lines[i] if scan_lines is not None else line
-        for pattern, why, needs_exec in patterns:
-            if not pattern.search(probe):
+        for pattern, why, needs_exec, exempt in patterns:
+            hits = list(pattern.finditer(probe))
+            if exempt is not None:
+                # Occurrence-level: a line flags only when at least one of
+                # its matches sits OUTSIDE the exempted shape (type position).
+                hits = [m for m in hits if not exempt(probe, m)]
+            if not hits:
                 continue
             if needs_exec and not PY_EXECUTES.search(line):
                 continue  # names a live command but executes nothing
