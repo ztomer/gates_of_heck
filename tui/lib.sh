@@ -27,11 +27,13 @@ export C_RESET C_DIM C_BOLD C_GREEN C_RED C_YELLOW C_GRAY
 # delegates here. Call cycles are structurally impossible: nothing ever calls
 # a name that could itself be re-overlaid by a consumer.
 _tui_info() { echo -e "${C_GRAY}${ICON_START}${C_RESET} ${C_DIM}$1${C_RESET}"; }
+_tui_step() { echo -e "${C_DIM}${ICON_STEP} $1${C_RESET}"; }
 _tui_ok()   { echo -e "${C_GREEN}${ICON_OK}${C_RESET} $1"; }
 _tui_err()  { echo -e "${C_RED}${ICON_ERR}${C_RESET} $1" >&2; }
 _tui_warn() { echo -e "${C_YELLOW}${ICON_WARN}${C_RESET} $1"; }
 
 info()  { _tui_info "$1"; }
+step()  { _tui_step "$1"; }   # a sub-item under an info line
 ok()    { _tui_ok "$1"; }
 err()   { _tui_err "$1"; }
 warn()  { _tui_warn "$1"; }
