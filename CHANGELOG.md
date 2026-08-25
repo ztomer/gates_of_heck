@@ -1,5 +1,14 @@
 # CHANGELOG
 
+## Unreleased
+
+- `gates/swift_gate.sh` + `gates/swift_lint_baseline.py`: `GOH_SWIFT_LINT_BASELINE`
+  turns the lint stage into a shrink-only ratchet — baselined violations tolerated,
+  NEW ones fail named, vanished ones are a re-record nudge. Match key (file, rule,
+  reason) probed against swiftlint 0.65.1: code motion and severity flips stay
+  tolerated, reason drift and other-file twins do not. Unset keeps bare strict
+  linting. Red-proven both directions.
+
 ## v0.2.0 — the harness unification _(2026-08-25)_
 
 Maximalist centralization: sixteen per-repo harness families moved under one
