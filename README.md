@@ -133,3 +133,7 @@ Nothing was watching where the bytes actually went.
 It reports a ceiling and never deletes anything. Clearing someone's scratch
 mid-session is worse than telling them about it, and the writer matters more
 than the bytes: scratch you delete without finding the writer is back tomorrow.
+
+## License
+
+MIT — see [LICENSE](LICENSE).
