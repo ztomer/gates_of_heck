@@ -69,7 +69,7 @@ RANGES = (
     (0x20E3,  0x20E3),    # combining enclosing keycap
     # Singleton/small-range additions (2026-08-25 policy ruling): emoji-
     # presentation symbols living outside the big blocks above.
-    (0x2934,  0x2935),    # arrows curving up/down-left as emoji (⤴/⤵ presentation forms)
+    (0x2934,  0x2935),    # arrows curving up/down-left, emoji presentation
     (0x3030,  0x3030),    # wavy dash
     (0x3297,  0x3297),    # circled ideograph congratulations
     (0x3299,  0x3299),    # circled ideograph secret
