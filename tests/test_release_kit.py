@@ -181,7 +181,7 @@ def run_release(kit: dict, *args: str, gate: str = "true") -> subprocess.Complet
 
 class TestSequencing:
     def test_happy_path_runs_every_step_in_order(self, kit):
-        r = run_release(kit, "--no-push")  # push covered separately below
+        r = run_release(kit)  # push asserted in its own test below
         assert r.returncode == 0, r.stdout + r.stderr
 
         # changelog step passed → tag exists as an ANNOTATED tag

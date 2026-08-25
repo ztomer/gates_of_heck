@@ -20,6 +20,10 @@
 #                 gh exists AND origin is a github.com remote; skipped with a
 #                 stated reason otherwise; --skip-release to skip always.
 #                 An existing GitHub release is left alone (idempotent).
+#                 --no-push implies this step is skipped too: the tag was
+#                 never pushed, so a GitHub release of it cannot be created
+#                 (pass --skip-release as well if you want that stated
+#                 explicitly instead of implied).
 #   6. tap        bump a Homebrew formula/cask:
 #                 --tap ztomer/homebrew-tap --formula NAME | --cask NAME
 #                 computes sha256 of --artifact (a path or URL; default: the
@@ -36,6 +40,25 @@
 #   tools/release-kit/release.sh --version 1.2.3 --gate "$GOH/tools/gate.sh" \
 #       --tap ztomer/homebrew-tap --cask myapp --artifact dist/MyApp-1.2.3.dmg
 set -euo pipefail
+
+# ── self-buffering (must run before ANY logic) ───────────────────────────────
+# bash parses a script lazily, byte-offset by byte-offset as it executes.
+# Editing this file WHILE an invocation runs shifts every unread offset —
+# the field-reported mid-release parse errors and silent truncations. Guard:
+# snapshot self to a temp copy BEFORE any logic, then exec that copy; the
+# running release is pinned to an immutable byte image of startup time.
+# Why a temp copy rather than `exec bash <(cat "$0")`: process substitution
+# feeds the parser a live pipe/fd — $0 becomes /dev/fd/N (breaking --help's
+# `sed ... "$0"` and every diagnostic naming the script) and parsing stays
+# coupled to a concurrent writer instead of a finished snapshot. A temp copy
+# needs nothing newer than macOS's stock bash 3.2 (no mapfile/readarray).
+if [ -z "${GOH_RELEASE_BUFFERED:-}" ]; then
+  _SELF_COPY="$(mktemp "${TMPDIR:-/tmp}/release-buffered.XXXXXX")"
+  cat "$0" > "${_SELF_COPY}"
+  export GOH_RELEASE_BUFFERED="${_SELF_COPY}"
+  exec /bin/bash "${_SELF_COPY}" "$@"
+fi
+_SELF_COPY="${GOH_RELEASE_BUFFERED}"
 
 GOH="${GOH_DIR:-$HOME/Projects/gates_of_heck}"
 # shellcheck disable=SC1091
@@ -92,6 +115,7 @@ cleanup() {
   [ -z "$BODY" ] || rm -f "$BODY"
   [ -z "$NOTES" ] || rm -f "$NOTES"
   [ -z "$TAP_DIR" ] || rm -rf "$TAP_DIR"
+  [ -z "${_SELF_COPY:-}" ] || rm -f "${_SELF_COPY}"
   true
 }
 trap cleanup EXIT
@@ -99,6 +123,12 @@ STEP=""
 plan() { info "[dry-run] $*"; }
 begin() { STEP="$1"; info "$1: $2"; }
 fail() { err "step '${STEP}' failed: $1"; exit 1; }
+SKIPPED=""
+note_skip() {
+  # Every skipped step is announced inline AND repeated in the run summary.
+  SKIPPED="${SKIPPED:+${SKIPPED}; }$1"
+  warn "skipped ($2)"
+}
 
 # Regex-safe version for stanza matching (dots escaped).
 VER_RE="$(printf '%s' "$VERSION" | sed 's/[.*/\[\\]/\\&/g')"
@@ -110,10 +140,23 @@ stanza_body() {
   # awk below must not run against a missing file: under set -e its failure
   # aborted the TAG step after the changelog step had already been skipped.
   [ -f CHANGELOG.md ] || return 0
+  # Body bounds: everything after the matching stanza's heading, up to the
+  # NEXT heading AT OR ABOVE the stanza's own level. Keep-a-changelog bodies
+  # carry ### subsections, so "###" must NOT end the body — only a heading
+  # of the stanza's level (the next version) does. The old `/^##+ /` reset
+  # collapsed every subsectioned body to nothing.
   awk -v pat="^(##+) v${VER_RE}( |\$)|^(##+) \\[${VER_RE}\\]( |\$)" '
-    $0 ~ pat { flag = 1; next }
-    /^##+ /  { flag = 0 }
-    flag     { print }
+    $0 ~ pat {
+      head = $0; sub(/[ \t].*$/, "", head); level = length(head)
+      flag = 1; next
+    }
+    /^#/ {
+      if (flag) {
+        h = $0; sub(/[^#].*$/, "", h)
+        if (length(h) <= level) { flag = 0; next }
+      }
+    }
+    flag { print }
   ' CHANGELOG.md
 }
 
@@ -162,14 +205,17 @@ else
   BODY="$(mktemp)"
   stanza_body > "$BODY"
   [ -s "$BODY" ] || printf '%s\n' "${TAG}" > "$BODY"
-  git tag -a "$TAG" -F "$BODY" || fail "git tag -a ${TAG} exited nonzero"
+  # --cleanup=verbatim: without it git strips '#' lines from -F messages as
+  # commentary, silently deleting every ### subsection of a Keep-a-changelog
+  # stanza from the tag message.
+  git tag -a "$TAG" --cleanup=verbatim -F "$BODY" || fail "git tag -a ${TAG} exited nonzero"
   ok "tagged $(git rev-parse --short HEAD)"
 fi
 
 # ── 4. push branch + tag ─────────────────────────────────────────────────────
 begin "push" "branch ${BRANCH} + ${TAG} to origin"
 if [ "$DO_PUSH" = 0 ]; then
-  warn "skipped (--no-push)"
+  note_skip "push (--no-push)" "--no-push"
 elif [ "$DRY_RUN" = 1 ]; then
   plan "git push origin ${BRANCH} ${TAG}"
 else
@@ -181,7 +227,13 @@ fi
 # ── 5. GitHub release ────────────────────────────────────────────────────────
 begin "release" "gh release create ${TAG}"
 if [ "$DO_RELEASE" = 0 ]; then
-  warn "skipped (--skip-release)"
+  note_skip "release (--skip-release)" "--skip-release"
+elif [ "$DO_PUSH" = 0 ]; then
+  # Implied skip: gh release create needs the tag on github.com, and --no-push
+  # just declined to put it there. Announce the implication rather than
+  # failing (or worse, "succeeding" against an unpushed tag).
+  note_skip "release (implied by --no-push: ${TAG} was never pushed)" \
+    "--no-push implies no GitHub release of unpushed ${TAG}"
 elif ! command -v gh >/dev/null; then
   warn "skipped: gh CLI not installed"
 elif [ -z "$GH_REPO_SLUG" ]; then
@@ -258,6 +310,9 @@ else
 fi
 
 hr
+if [ -n "$SKIPPED" ]; then
+  info "skipped steps → ${SKIPPED}"
+fi
 if [ "$DRY_RUN" = 1 ]; then
   ok "release ${TAG} planned (dry-run — nothing was executed)"
 else
