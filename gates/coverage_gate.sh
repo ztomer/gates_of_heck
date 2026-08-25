@@ -2,7 +2,25 @@
 # coverage_gate.sh — ONE parameterized coverage gate replacing six drifting
 # per-repo copies.
 #
-#   coverage_gate.sh --lang rust|swift|cpp|py [--floor N] [--ignore RE] [path]
+#   coverage_gate.sh --lang rust|swift|cpp|py [--floor N] [--ignore RE]
+#                    [--engine spm|xcodebuild] [path]
+#
+# Swift mode (implemented in gates/coverage_swift.py):
+#   --engine spm          swift test + llvm-cov (default; GOH_COV_SWIFT_ENGINE)
+#   --engine xcodebuild   xcodebuild test -enableCodeCoverage YES -scheme S
+#                         (GOH_COV_SCHEME), llvm-cov on the profdata xcodebuild
+#                         emits under GOH_COV_DD (default .build/xcode-dd).
+#                         Missing xcodebuild is exit 2 naming it.
+#   GOH_COV_XCRESULT      skip the run: totals from an existing xcresult via
+#                         xccov. xccov has NO line-level data, so cov:ignore
+#                         markers cannot be honored there and their presence
+#                         is a named exit 2 — never silent forgiveness.
+#
+# Region forgiveness (swift mode): source lines marked
+#   // cov:ignore: <reason>
+#   // cov:ignore-start: <reason> ... // cov:ignore-end
+# drop only UNCOVERED marked lines from the denominator. A marker without a
+# reason, or a start without an end, is a gate error (exit 2).
 #
 # Floor resolution (first wins):
 #   1. --floor N
@@ -68,11 +86,15 @@ die() { err "coverage_gate: $*"; exit 2; }
 
 usage() {
     cat <<'EOF'
-usage: coverage_gate.sh --lang rust|swift|cpp|py [--floor N] [--ignore RE] [path]
+usage: coverage_gate.sh --lang rust|swift|cpp|py [--floor N] [--ignore RE]
+                        [--engine spm|xcodebuild] [path]
 
   --lang L     one of: rust swift cpp py (required)
   --floor N    minimum LINE coverage percent (else $GOH_COV_FLOOR_<LANG>)
   --ignore RE  exclusion regex, passed verbatim to the toolchain
+  --engine E   swift only: spm (default) | xcodebuild
+               ($GOH_COV_SWIFT_ENGINE; scheme via GOH_COV_SCHEME,
+                existing xcresult via GOH_COV_XCRESULT)
   path         project root (default: $PWD)
 
 exit: 0 pass | 1 below floor | 2 usage/config error
@@ -82,6 +104,8 @@ EOF
 LANG_=""
 FLOOR=""
 IGNORE=""
+ENGINE=""
+ENGINE_EXPLICIT=""
 PROJ=""
 
 while [ $# -gt 0 ]; do
@@ -89,6 +113,7 @@ while [ $# -gt 0 ]; do
         --lang)   [ $# -ge 2 ] || die "--lang needs a value"; LANG_="$2"; shift 2 ;;
         --floor)  [ $# -ge 2 ] || die "--floor needs a value"; FLOOR="$2"; shift 2 ;;
         --ignore) [ $# -ge 2 ] || die "--ignore needs a value"; IGNORE="$2"; shift 2 ;;
+        --engine) [ $# -ge 2 ] || die "--engine needs a value"; ENGINE="$2"; ENGINE_EXPLICIT=1; shift 2 ;;
         -h|--help) usage; exit 0 ;;
         --*)      die "unknown option: $1 (see --help)" ;;
         *)        PROJ="$1"; shift ;;
@@ -100,6 +125,20 @@ case "$LANG_" in
     rust|swift|cpp|py) ;;
     *) die "unknown --lang '$LANG_' (valid: rust swift cpp py)" ;;
 esac
+
+# Swift engine seam: flag beats GOH_COV_SWIFT_ENGINE, default spm. An engine
+# is meaningless outside the swift mode — reject it there too rather than
+# silently ignoring what a user explicitly asked for.
+if [ -z "$ENGINE" ]; then
+    ENGINE="${GOH_COV_SWIFT_ENGINE:-spm}"
+fi
+case "$ENGINE" in
+    spm|xcodebuild) ;;
+    *) die "unknown engine '$ENGINE' (valid: spm xcodebuild; flag or GOH_COV_SWIFT_ENGINE)" ;;
+esac
+if [ -n "$ENGINE_EXPLICIT" ] && [ "$LANG_" != "swift" ]; then
+    die "--engine applies to --lang swift only (got $LANG_)"
+fi
 
 ENV_VAR=""
 if [ -z "$FLOOR" ]; then
@@ -296,32 +335,14 @@ PYEOF
 }
 
 # ── swift ───────────────────────────────────────────────────────────────────
+# Implementation lives in gates/coverage_swift.py (both engines, one report
+# processor); this wrapper keeps the shared arg/floor handling in bash.
 run_swift() {
     cd "$PROJ"
-    need swift "swift test --enable-code-coverage"
-    need xcrun "xcrun llvm-cov reads the profdata"
-    need python3 "JSON totals parse"
-
-    info "swift test --enable-code-coverage"
-    swift test --enable-code-coverage >/dev/null 2>&1 || {
-        err "tests failed while collecting coverage"
-        exit 1
-    }
-    local bin_path xctest profdata
-    bin_path=$(swift build --show-bin-path)
-    xctest=$(find "$bin_path" -maxdepth 4 -path '*.xctest/Contents/MacOS/*' -type f | head -1)
-    [ -n "$xctest" ] || die "no .xctest binary under $bin_path — coverage build produced none"
-    profdata="$bin_path/codecov/default.profdata"
-    [ -f "$profdata" ] || die "no profdata at $profdata — swift test did not emit coverage"
-
-    local pct
-    pct=$(xcrun llvm-cov export -summary-only "$xctest" \
-        -instr-profile="$profdata" \
-        ${IGNORE:+-ignore-filename-regex="$IGNORE"} \
-        | python3 -c 'import json,sys; print(round(json.load(sys.stdin)["data"][0]["totals"]["lines"]["percent"], 2))') \
-        || { err "could not parse llvm-cov JSON summary"; exit 1; }
-
-    floor_cmp "$pct"
+    python3 "$GOH_ROOT/gates/coverage_swift.py" \
+        --floor "$FLOOR" --proj "$PROJ" --engine "$ENGINE" \
+        ${IGNORE:+--ignore "$IGNORE"} \
+        || exit $?
 }
 
 # ── cpp ─────────────────────────────────────────────────────────────────────

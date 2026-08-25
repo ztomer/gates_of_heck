@@ -207,3 +207,251 @@ def test_rust_end_to_end_green_then_red(tmp_path):
     combined = r2.stdout + r2.stderr
     assert "/src/lib.rs:" in combined
     assert "5" in combined and "6" in combined and "7" in combined
+
+
+# ── swift mode: engine flag + cov:ignore region forgiveness ──────────────────
+#
+# The pipeline is proven against a FAKE toolchain on PATH: `swift` and
+# `xcrun` shims that emit canned llvm-cov payloads. That keeps the unit suite
+# fast while still exercising the real bash gate → python helper → report
+# processing chain end to end (calibration: the canned payloads are modeled
+# on REAL output captured from xcodebuild/llvm-cov on this machine).
+
+import importlib.util
+import json
+import stat
+import sys
+
+SWIFT_HELPER = REPO_ROOT / "gates" / "coverage_swift.py"
+
+
+def _load_swift_helper():
+    spec = importlib.util.spec_from_file_location("coverage_swift", SWIFT_HELPER)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+def test_engine_flag_rejects_unknown_value(proj):
+    r = run_gate(proj, "--lang", "swift", "--floor", "80",
+                 "--engine", "bazel", env_extra={"GOH_COV_FLOOR_SWIFT": "80"})
+    assert r.returncode == 2
+    assert "engine" in (r.stdout + r.stderr)
+
+
+def test_engine_env_var_rejected_when_bogus(proj):
+    r = run_gate(proj, "--lang", "swift", "--floor", "80",
+                 env_extra={"GOH_COV_FLOOR_SWIFT": "80",
+                            "GOH_COV_SWIFT_ENGINE": "xcpretty"})
+    assert r.returncode == 2
+    assert "GOH_COV_SWIFT_ENGINE" in (r.stdout + r.stderr)
+
+
+def test_parse_markers_requires_reason():
+    cov = _load_swift_helper()
+    excluded, errors = cov.parse_markers([
+        "let a = 1",
+        "// cov:ignore: display geometry is not testable headlessly",
+        "let b = NSScreen.main",
+        "// cov:ignore-start",
+        "let c = 3",
+        "// cov:ignore-end",
+    ])
+    assert excluded == {2, 4, 5, 6}
+    assert len(errors) == 1 and errors[0].startswith("4:") and "reason" in errors[0]
+
+
+def test_parse_markers_unclosed_block_is_an_error():
+    cov = _load_swift_helper()
+    excluded, errors = cov.parse_markers([
+        "// cov:ignore-start: why",
+        "let a = 1",
+    ])
+    assert excluded == {1, 2}
+    assert any("unclosed" in e for e in errors)
+
+
+def test_adjust_coverage_forgives_only_uncovered_marker_lines():
+    cov = _load_swift_helper()
+    counts = {1: 1, 2: 0, 3: 1, 4: 1}
+    pct, forgiven = cov.adjust_coverage(
+        raw_total=4, raw_covered=3, counts=counts, excluded={2})
+    # line 2 is uncovered AND marked → removed from the denominator only.
+    assert forgiven == 1
+    assert abs(pct - 100.0) < 1e-9
+
+
+def test_adjust_coverage_ignores_marked_but_covered_lines():
+    cov = _load_swift_helper()
+    counts = {1: 5}
+    pct, forgiven = cov.adjust_coverage(1, 1, counts, excluded={1})
+    assert forgiven == 0 and abs(pct - 100.0) < 1e-9
+
+
+def test_xccov_report_parse_matches_live_format():
+    # Modeled byte-for-byte on `xcrun xccov view --report` captured from a
+    # live xcresult on this machine (probe 2026-08-25).
+    cov = _load_swift_helper()
+    report = (
+        "Name                                    Coverage      \n"
+        "---------------------------------- ------------- \n"
+        "PkgTests                               50.00% (4/8)  \n"
+        "    /tmp/p/Sources/cov/lib.swift      20.00% (1/5)  \n"
+        "        covered()                    100.00% (1/1) \n"
+        "    /tmp/p/Tests/T.swift            100.00% (3/3)  \n"
+    )
+    files = cov.parse_xccov_report(report)
+    assert files == {
+        "/tmp/p/Sources/cov/lib.swift": (1, 5),
+        "/tmp/p/Tests/T.swift": (3, 3),
+    }
+    scoped = cov.parse_xccov_report(report, ignore_re=r"/Tests/")
+    assert list(scoped) == ["/tmp/p/Sources/cov/lib.swift"]
+
+
+# ---- fake-toolchain end-to-end through the real bash gate --------------------
+
+FAKE_EXPORT = {
+    "data": [{"files": [
+        {"filename": "PROJ/Sources/pkg/lib.swift",
+         "summary": {"lines": {"count": 10, "covered": 5}}},
+    ]}],
+}
+
+# llvm-cov show format: "LINE|COUNT|source". Lines 6-10 are the uncovered half.
+FAKE_SHOW = "".join(
+    f"{n:>5}|{'  0' if n > 5 else '  7'}|line {n}\n" for n in range(1, 11))
+
+
+def _mk_fake_toolchain(root: Path) -> Path:
+    """A PATH dir whose swift/xcrun/xcodebuild emit canned coverage data."""
+    bin_ = root / "fakebin"
+    bin_.mkdir()
+    pkg = root / "proj"
+    src = pkg / "Sources" / "pkg"
+    src.mkdir(parents=True)
+    (src / "lib.swift").write_text(
+        "\n".join(f"line {n}" for n in range(1, 11)) + "\n")
+
+    xctest_bin = bin_ / "store" / "PkgTests.xctest" / "Contents" / "MacOS" / "PkgTests"
+    xctest_bin.parent.mkdir(parents=True)
+    xctest_bin.write_text("#!/bin/sh\n")
+    xctest_bin.chmod(xctest_bin.stat().st_mode | stat.S_IEXEC)
+    (bin_ / "store" / "codecov").mkdir()
+    (bin_ / "store" / "codecov" / "default.profdata").write_text("")
+
+    dd = root / "dd"
+    prof = dd / "Build" / "ProfileData" / "FE-DEADBEEF"
+    prof.mkdir(parents=True)
+    (prof / "Coverage.profdata").write_text("")
+    xb = dd / "Build" / "Products" / "Debug" / "AppTests.xctest" / "Contents" / "MacOS" / "AppTests"
+    xb.parent.mkdir(parents=True)
+    xb.write_text("#!/bin/sh\n")
+    xb.chmod(xb.stat().st_mode | stat.S_IEXEC)
+    (dd / "Logs" / "Test").mkdir(parents=True)
+    (dd / "Logs" / "Test" / "Test-App.xcresult").mkdir()
+
+    export_file = root / "export.json"
+    export_json = json.dumps(FAKE_EXPORT).replace("PROJ", str(src.parent.parent))
+    export_file.write_text(export_json)
+
+    show_file = root / "show.txt"
+    show_file.write_text(FAKE_SHOW.replace("PROJ", "") or FAKE_SHOW)
+
+    swift = bin_ / "swift"
+    swift.write_text(f"""#!/bin/bash
+case "$1 $2" in
+  "build --show-bin-path") echo "{bin_}/store" ;;
+  "test "*) exit 0 ;;
+  *) exit 0 ;;
+esac
+""")
+    xcrun = bin_ / "xcrun"
+    xcrun.write_text(f"""#!/bin/bash
+sub="$1"; shift || true
+case "$sub" in
+  llvm-cov)
+    case "$1" in
+      export) cat "{export_file}" ;;
+      show) cat "{show_file}" ;;
+      *) exit 1 ;;
+    esac ;;
+  xccov) exit 1 ;;
+  *) exit 1 ;;
+esac
+""")
+    xcodebuild = bin_ / "xcodebuild"
+    xcodebuild.write_text("""#!/bin/bash
+exit 0
+""")
+    for f in (swift, xcrun, xcodebuild):
+        f.chmod(f.stat().st_mode | stat.S_IEXEC)
+    return bin_
+
+
+PROJ_DIR = lambda root: root / "proj"
+
+
+def _run_with_path(bin_dir: Path, *args: str, env_extra: dict | None = None):
+    env = dict(os.environ)
+    env["PATH"] = f"{bin_dir}:/usr/bin:/bin"
+    for k in ("GOH_COV_FLOOR_SWIFT", "GOH_COV_SWIFT_ENGINE", "GOH_COV_XCRESULT"):
+        env.pop(k, None)
+    if env_extra:
+        env.update(env_extra)
+    return subprocess.run(
+        ["/bin/bash", str(COV_GATE), *args],
+        cwd=str(bin_dir), capture_output=True, text=True, env=env,
+    )
+
+
+def test_spm_engine_below_floor_reports_raw_pct(tmp_path):
+    bin_ = _mk_fake_toolchain(tmp_path)
+    r = _run_with_path(bin_, str(tmp_path / "proj"), "--lang", "swift", "--floor", "90")
+    assert r.returncode == 1
+    assert "50.0%" in r.stdout + r.stderr or "50.00%" in r.stdout + r.stderr
+
+
+def test_cov_ignore_markers_lift_coverage_over_the_floor(tmp_path):
+    bin_ = _mk_fake_toolchain(tmp_path)
+    lib = tmp_path / "proj" / "Sources" / "pkg" / "lib.swift"
+    lines = lib.read_text().splitlines()
+    lines[5] = "line 6 // cov:ignore-start: hardware path, untestable headlessly"
+    lines[9] = "line 10 // cov:ignore-end"
+    lib.write_text("\n".join(lines) + "\n")
+    r = _run_with_path(bin_, str(tmp_path / "proj"), "--lang", "swift", "--floor", "90")
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert "forgave" in (r.stdout + r.stderr).lower()
+
+
+def test_marker_without_reason_is_a_gate_error_not_silent_pass(tmp_path):
+    bin_ = _mk_fake_toolchain(tmp_path)
+    lib = tmp_path / "proj" / "Sources" / "pkg" / "lib.swift"
+    lib.write_text(lib.read_text() + "// cov:ignore\n")
+    r = _run_with_path(bin_, str(tmp_path / "proj"), "--lang", "swift", "--floor", "10")
+    assert r.returncode == 2
+    assert "reason" in r.stderr
+
+
+def test_xcodebuild_engine_runs_and_applies_floor(tmp_path):
+    bin_ = _mk_fake_toolchain(tmp_path)
+    env_extra = {"GOH_COV_FLOOR_SWIFT": "40", "GOH_COV_SCHEME": "App"}
+    r = _run_with_path(bin_, str(tmp_path / "proj"), "--lang", "swift", "--floor", "40",
+                       env_extra=env_extra)
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert "50.0%" in r.stdout + r.stderr or "50.00%" in r.stdout + r.stderr
+
+
+def test_xcodebuild_missing_is_a_named_precondition(tmp_path):
+    bare = tmp_path / "nobin"
+    bare.mkdir()
+    # A PATH with NO xcodebuild anywhere: the helper must name it, exit 2.
+    env = dict(os.environ)
+    env["PATH"] = "/no/such/bin"
+    r = subprocess.run(
+        [sys.executable, str(SWIFT_HELPER), "--engine", "xcodebuild",
+         "--floor", "80", "--proj", str(tmp_path)],
+        capture_output=True, text=True, env=env,
+    )
+    assert r.returncode == 2
+    assert "xcodebuild" in r.stderr
