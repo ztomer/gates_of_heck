@@ -238,11 +238,38 @@ PYEOF
         fi
     done <"$METAF"
 
+    # Every DECLARED target must have produced an export part. A warn-and-
+    # continue on a failed export silently loses that target's coverage from
+    # the merge — the number stays green and nobody knows a suite stopped
+    # counting. Shortfall is a hard fail naming the expected-but-missing
+    # targets. The ONLY warn-only case is an export that produced a valid-but-
+    # empty part (a target with nothing coverable in it): the part exists, it
+    # simply measures zero lines, and the merger handles that honestly.
     n_parts=$(find "$PARTS" -name 'part-*.info' | wc -l | tr -d ' ')
-    [ "$n_parts" -gt 0 ] || {
-        err "no lcov parts were exported — nothing was measured (is there a lib.rs or tests/? )"
+    n_declared=0
+    MISSING=""
+    while IFS="	" read -r PKG KIND TNAME; do
+        [ -n "$PKG" ] || continue
+        n_declared=$((n_declared + 1))
+        if [ "$KIND" = "lib" ]; then
+            part="$PARTS/part-$PKG-lib.info"
+            label="$PKG (lib unittests)"
+        else
+            part="$PARTS/part-$PKG-$TNAME.info"
+            label="$PKG (test $TNAME)"
+        fi
+        if [ ! -f "$part" ]; then
+            MISSING="${MISSING}${MISSING:+ }$label"
+        elif [ ! -s "$part" ]; then
+            warn "$label exported a valid-but-EMPTY lcov part — nothing coverable was measured for it"
+        fi
+    done <"$METAF"
+    if [ -n "$MISSING" ] || [ "$n_parts" -lt "$n_declared" ]; then
+        err "coverage exports incomplete: $n_parts of $n_declared declared targets produced parts"
+        err "  expected but missing:${MISSING:- (count mismatch without a named gap)}"
+        err "  each failed export above is lost coverage — fix it, do not trust this run"
         exit 1
-    }
+    fi
 
     # The merge + floor decision lives in python: it strips CGU hashes,
     # groups instantiations, counts a line covered iff ANY instantiation ran,
@@ -266,6 +293,7 @@ def normalize(mangled: str) -> str:
 line_best = defaultdict(int)   # (file, line) -> max count across exports
 fn_best = defaultdict(int)     # (file, norm_name) -> max FNDA
 fn_start = {}                  # (file, norm_name) -> first start line
+fn_end = {}                    # (file, norm_name) -> declared end line, when the record carries one
 
 for pf in parts:
     cur = None
@@ -277,9 +305,17 @@ for pf in parts:
         elif cur is None:
             continue
         elif line.startswith("FN:") and "," in line[3:]:
-            head, name = line[3:].split(",", 1)
-            start = int(head.split(",")[0])
-            key = (cur, normalize(name))
+            # TWO formats, both live: cargo-llvm-cov emits two-field
+            # FN:start,name; geninfo emits three-field FN:start,end,name.
+            # A name may itself contain commas (mangled symbols), so the
+            # name is everything after start (and end, when present) —
+            # re-joined, never truncated. Two-field input parses exactly as
+            # before: fields[1:] joined == the old split(",", 1) tail.
+            fields = line[3:].split(",")
+            start = int(fields[0])
+            key = (cur, normalize(",".join(fields[2:]) if len(fields) >= 3 else fields[1]))
+            if len(fields) >= 3:
+                fn_end.setdefault(key, int(fields[1]))
             fn_start.setdefault(key, start)
         elif line.startswith("FNDA:"):
             cnt, name = line[5:].split(",", 1)
@@ -298,11 +334,23 @@ spans = defaultdict(list)      # file -> [(start, end, executed)]
 by_file_fn = defaultdict(dict)
 for (f, name), st in fn_start.items():
     by_file_fn[f][name] = st
+max_da = defaultdict(int)
+for (f, ln) in line_best:
+    max_da[f] = max(max_da[f], ln)
 for f, names in by_file_fn.items():
     ordered = sorted(set(names.values()))
     for name, st in names.items():
         nxt = min([s for s in ordered if s > st], default=None)
         end = (nxt - 1) if nxt is not None else 10**9
+        if (f, name) in fn_end:
+            # Three-field record carries a real span end: bound forgiveness by
+            # min(declared end, last measured line). Without this, an executed
+            # fn forgives every uncovered module-tail line after it — the
+            # phantom-clone span ran to the next fn or to infinity.
+            end = min(end, fn_end[(f, name)], max_da.get(f, 10**9))
+        # Two-field records KEEP the open-ended span unchanged: bounding those
+        # differently would move live cargo-llvm-cov consumers' coverage
+        # numbers, which is explicitly out of scope for this fix.
         spans[f].append((st, end, fn_best.get((f, name), 0) > 0))
 
 missed = defaultdict(list)
@@ -366,11 +414,14 @@ run_cpp() {
     # their own automation runs `ctest -LE requires_display` — a coverage
     # measurement must drive the SAME suite, or it seizes the desktop and
     # measures flaky partial data instead. Empty by default: plain ctest.
+    # Hard fail, not warn: coverage measured over a failing suite is partial
+    # data wearing a green number. A release gate must not launder test
+    # failures into a percentage.
     # shellcheck disable=SC2086
     (cd "$PROJ/$build_dir" && \
         LLVM_PROFILE_FILE="$PROJ/$build_dir/default-%p.profraw" \
         ctest --output-on-failure ${GOH_CTEST_ARGS:-} >/dev/null 2>&1) \
-        || warn "ctest reported failures — coverage data may be partial"
+        || { err "ctest reported failures — refusing to measure partial coverage"; exit 1; }
 
     local raws profdata
     raws=$(find "$PROJ/$build_dir" -maxdepth 1 -name 'default-*.profraw')
