@@ -73,10 +73,11 @@ while [ $# -gt 0 ]; do
   esac
 done
 [ -n "$VERSION" ] || die_usage
-case "$VERSION" in
-  [0-9]*.[0-9]*.[0-9]*) ;;
-  *) die "step 'args': --version must look like 1.2.3 (got '$VERSION')" ;;
-esac
+# X.Y.Z (semver) or X.Y — some repos' tag scheme is two-component (CadGoose:
+# v1.71 … v1.79); the old three-glob check rejected their entire history.
+if printf '%s' "$VERSION" | grep -Eq '^[0-9]+\.[0-9]+(\.[0-9]+)?$'; then :; else
+  die "step 'args': --version must look like 1.2.3 or 1.79 (got '$VERSION')"
+fi
 if [ -n "$TAP" ] && [ -z "$TAP_NAME" ]; then
   die "step 'args': --tap needs --formula NAME or --cask NAME"
 fi
