@@ -32,12 +32,14 @@ goh_init "structural"
 
 # Emoji are a failure state — only the Kare icon set is permitted.
 # GOH_EXCLUDE (regex) exempts vendored/generated trees, same as the cap.
+# GOH_ALLOW permits extra characters repo-wide (e.g. historical mentions of
+# removed glyphs); keep it empty unless the repo genuinely needs it.
 if [ "$SCOPE" = "--staged" ]; then
     goh_step "no disallowed emoji (staged)" python3 "$CHECKS/check_no_emoji.py" --staged \
-        ${GOH_EXCLUDE:+--exclude "$GOH_EXCLUDE"}
+        ${GOH_EXCLUDE:+--exclude "$GOH_EXCLUDE"} ${GOH_ALLOW:+--allow "$GOH_ALLOW"}
 else
     goh_step "no disallowed emoji" python3 "$CHECKS/check_no_emoji.py" \
-        ${GOH_EXCLUDE:+--exclude "$GOH_EXCLUDE"}
+        ${GOH_EXCLUDE:+--exclude "$GOH_EXCLUDE"} ${GOH_ALLOW:+--allow "$GOH_ALLOW"}
 fi
 
 # A conflict marker that reaches a commit is a merge someone walked away from.

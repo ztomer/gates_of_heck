@@ -16,11 +16,15 @@ EMOJI_SMILE = chr(0x1F600)      # pictograph
 CHECK_MARK_BUTTON = chr(0x2705)  # dingbat check-mark-button (NOT the allowed U+2713)
 VS16 = chr(0xFE0F)              # emoji variation selector
 KEYCAP_COMBINE = chr(0x20E3)    # combining enclosing keycap
-DOUBLE_ARROW = chr(0x21D2)      # rejected by number, never written literally
 STAR = chr(0x2B50)
 
+# 2026-08-24: U+21D2 (⇒ implication) and U+21C4 (⇄ exchange) moved to the
+# allow-list — they are functional text operators like ↔, not decoration.
+# DOUBLE_ARROW now points at U+27A1 (black rightwards arrow dingbat), still rejected.
+DOUBLE_ARROW = chr(0x27A1)
+
 # Allowed glyphs may appear literally.
-ALLOWED = "→ ✓ ✗ ⚠ ↔ ↑ ↓ ← ⌘ ⌥ ⌨"
+ALLOWED = "→ ✓ ✗ ⚠ ↔ ↑ ↓ ← ⌘ ⌥ ⌨ ⇧ ⌃ ⏎ ⎋ ↵ ⇒ ⇄"
 
 
 def git(repo: Path, *args: str) -> str:

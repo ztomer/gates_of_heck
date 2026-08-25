@@ -93,6 +93,7 @@ Per-repo, in `.gatesrc` at the repo root:
 GOH_MAX_LINES=500              # file-length cap; unset disables it
 GOH_EXCLUDE='vendor/|\.generated\.'  # shared vendor/generated exemption (regex)
 GOH_LINE_EXCLUDE='third_party/'      # length-only alias for existing repos
+GOH_ALLOW='<glyph>'                        # extra permitted glyphs (keep minimal)
 GOH_PY_COV_MIN=95
 GOH_PY_RUNNER="uv run"         # toolchain prefix (uv, poetry, hatch...)
 GOH_SWIFT_MODE=xcode           # or spm
