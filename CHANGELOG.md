@@ -1,5 +1,12 @@
 # CHANGELOG
 
+## v0.1.1 _(2026-08-25)_
+
+- License: MIT.
+- Policy: permit functional Mac key glyphs (`← ⌘ ⌥ ⌨ ⇧ ⌃ ⏎ ⎋ ↵`) and the text
+  operators `⇒ ⇄`; per-repo extras via `GOH_ALLOW` in `.gatesrc`.
+- Hygiene: untrack `.opencode` session state; ignore it.
+
 ## Gate wiring, harness, and class fixes _(2026-08-24)_
 
 First full audit of the factored-out gate suite found three broken wirings,
