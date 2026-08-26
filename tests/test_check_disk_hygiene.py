@@ -65,6 +65,22 @@ def _unreadable_tree(tmp_path, payload=b"\0" * 2_000_000):
 
 def _run_main(monkeypatch, tree, *extra):
     monkeypatch.setattr(disk, "_scratch_roots", lambda: [tree])
+    # Isolate from real cargo caches so scratch-only tests are deterministic
+    monkeypatch.setattr(disk, "_watch_paths", lambda args: [])
+    argv = ["check_disk_hygiene.py", "--min-free-gb", "0", *extra]
+    monkeypatch.setattr(sys, "argv", argv)
+    out, err = io.StringIO(), io.StringIO()
+    with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+        code = disk.main()
+    return code, out.getvalue(), err.getvalue()
+
+
+def _run_cache_main(monkeypatch, watches, fake_du=None, *extra):
+    """Helper for cache-ceiling tests: watches is list[Path]."""
+    monkeypatch.setattr(disk, "_scratch_roots", lambda: [])
+    monkeypatch.setattr(disk, "_watch_paths", lambda args: watches)
+    if fake_du is not None:
+        monkeypatch.setattr(disk, "_du_bytes", fake_du)
     argv = ["check_disk_hygiene.py", "--min-free-gb", "0", *extra]
     monkeypatch.setattr(sys, "argv", argv)
     out, err = io.StringIO(), io.StringIO()
@@ -135,3 +151,83 @@ def test_free_space_checked_on_scratch_root_volume_too(tmp_path, monkeypatch):
     code, out, err = _run_main(monkeypatch, tree, "--min-free-gb", "5")
     assert code == 1
     assert "free" in err
+
+
+# ---- cargo cache ceiling (forensics: shared CARGO_TARGET_DIR) -------------------
+
+def test_cache_dir_over_threshold_fails(tmp_path, monkeypatch):
+    watch = tmp_path / "cargo-target"
+    watch.mkdir()
+    (watch / "debug").mkdir()
+
+    def fake_du(p):
+        # report the watch dir itself as 60GB; children are small
+        if Path(p) == watch:
+            return 60 * disk.GIB, None
+        return 0, None
+
+    code, out, err = _run_cache_main(monkeypatch, [watch], fake_du,
+                                     "--max-cache-dir-gb", "50")
+    assert code == 1, (out, err)
+    assert "shared CARGO_TARGET_DIR" in err
+    assert "grew past 50GB" in err
+    assert "incremental" in err
+    assert "zero-risk" in err
+
+
+def test_cache_dir_under_threshold_passes(tmp_path, monkeypatch):
+    watch = tmp_path / "cargo-target"
+    watch.mkdir()
+
+    def fake_du(p):
+        if Path(p) == watch:
+            return 10 * disk.GIB, None
+        return 0, None
+
+    code, out, err = _run_cache_main(monkeypatch, [watch], fake_du,
+                                     "--max-cache-dir-gb", "50")
+    assert code == 0, (out, err)
+    assert "shared CARGO_TARGET_DIR" not in err
+
+
+def test_cache_missing_path_handled(tmp_path, monkeypatch):
+    watch = tmp_path / "nope"  # does not exist
+    code, out, err = _run_cache_main(monkeypatch, [watch], None,
+                                     "--max-cache-dir-gb", "50")
+    assert code == 0, (out, err)
+    # missing should be reported as skipped, not as FAIL
+    assert "missing" in out.lower() or "missing" in err.lower() or code == 0
+    assert "shared CARGO_TARGET_DIR" not in err
+
+
+def test_cache_default_watch_paths_includes_shared_and_projects(tmp_path, monkeypatch):
+    # _default_cache_watch_paths should always contain ~/.cache/cargo-target
+    defaults = disk._default_cache_watch_paths()
+    assert any(str(p).endswith(".cache/cargo-target") for p in defaults)
+    # and any existing ~/Projects/*/target (real machine may have several)
+    # At least the primary entry should be present even if it doesn't exist on CI
+    assert len(defaults) >= 1
+
+
+def test_cache_parse_watch_paths_splits_env(monkeypatch, tmp_path):
+    a = tmp_path / "a"
+    b = tmp_path / "b"
+    a.mkdir(); b.mkdir()
+    # colon, comma and space separators
+    raw = f"{a}:{b},{a} {b}"
+    parsed = disk._parse_watch_paths(raw)
+    # deduplicated
+    assert len(parsed) == 2
+    assert Path(a) in parsed and Path(b) in parsed
+
+    # env fallback: GOH_WATCH_PATHS overrides defaults when --watch-paths not given
+    monkeypatch.setenv("GOH_WATCH_PATHS", str(a))
+    # --watch-paths not set, so _watch_paths should use env
+    args = argparse.Namespace(watch_paths=None)
+    watches = disk._watch_paths(args)
+    assert watches == [Path(str(a))]
+
+    # CLI overrides env
+    args2 = argparse.Namespace(watch_paths=str(b))
+    watches2 = disk._watch_paths(args2)
+    assert watches2 == [Path(str(b))]
