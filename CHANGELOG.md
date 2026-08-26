@@ -1,5 +1,42 @@
 # CHANGELOG
 
+## v0.5.0 — second adversarial pass _(2026-08-25)_
+
+Re-review of v0.4.0 by three fresh hunters (fixes-as-hostile-code, oracle
+fuzzing, untouched surfaces) plus refute-first verification. 399 tests.
+
+Fail-open closed:
+- `goh_init`'s EXIT trap erased crash exit codes — a gate with a syntax error
+  exited 0 and a real consumer commit shipped silently green. Exit 0 is now
+  honored only after the completion sentinel; any other path re-raises.
+- `coverage_gate` laundering hole: a failing export that left its output file
+  behind passed completeness ("100%" over garbage). Success now requires
+  per-target `.ok` markers; the redundant count check is gone.
+- `py_gate`'s bare `--cov` floored only modules the tests happened to import —
+  a never-imported module at 0% passed `GOH_PY_COV_MIN=100`. Coverage is now
+  scoped to the package.
+
+Fuzz-proven hardening (oracle oracles, thousands of seeded cases):
+- PNG fallback decoder: all corrupt-input escapes are named preconditions
+  (were raw tracebacks); **zero wrong-pixel decodes across 12k corruptions** —
+  the load-bearing property, now pinned.
+- lcov merger extracted to `gates/lcov_merge.py`: BOM'd part files no longer
+  silently drop their first record (a real 75% showed as green 100%); FN
+  format detected by content; malformed records exit 2 naming file:line.
+- Baseline ratchet rejects huge-int JSON (OverflowError traceback) and
+  liberal numeric literals in line baselines.
+- `local_ci` steps run from the repo root; stdin isolation regression-pinned.
+
+Also: screen-check line lists derive from `\n` (control characters crashed
+the probe); `check_no_allow` depth-counter scan fixes an FP and a found FN;
+coverage_swift pairs profdata with mtime-nearest binary and refuses ambiguity;
+wiring meta-gate parses guarded lines (typo'd refs can't ship blind);
+NO_COLOR honors the spec; styled TUI output routes warnings to stderr with
+data-safe printf; multiple xcodeproj candidates die instead of locale-picking;
+emoji ranges extended (geometric shapes, astral forward-compat) with zero
+blast radius across consumers. Consumer forks (divoom ×2, monitor,
+koffee_big) got the round-one `-z` fix too.
+
 ## v0.4.0 — adversarial review: every finding fixed _(2026-08-25)_
 
 Three independent hunters + refute-first verifiers over checks, shell gates and
