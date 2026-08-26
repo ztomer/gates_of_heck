@@ -10,12 +10,11 @@ GOH="${GOH_DIR:-${GOH:-$HOME/Projects/gates_of_heck}}"
 
 case "${1:-}" in
   --full)
-    # Add per-language layers for what this repo actually contains:
-    #   "$GOH/gates/rust_gate.sh"  .
-    #   "$GOH/gates/py_gate.sh"    .
-    #   "$GOH/gates/swift_gate.sh" .
     # Layer 3 (genuinely local checks): create ./tools/repo_gates.sh and
     # uncomment:
     #   ./tools/repo_gates.sh
+    # This repo IS the gates; its suite is the only thing standing between a
+    # gate bug and eleven consumers.
+    ( cd "$GOH" && python3 -m pytest tests/ -q )
     ;;
 esac
