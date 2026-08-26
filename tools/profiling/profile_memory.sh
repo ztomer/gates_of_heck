@@ -1,7 +1,7 @@
+#!/usr/bin/env bash
 # Target repo: explicit GOH_PROFILE_TARGET wins, else the invocation CWD
 # (the per-repo shims exec us from the repo root). Location no longer encodes
 # the target now that this harness is canonized in gates_of_heck.
-#!/bin/bash
 # profile_memory.sh - Memory profiling with Allocations instrument
 
 DURATION=${2:-30}
