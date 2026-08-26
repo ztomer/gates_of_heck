@@ -47,10 +47,16 @@ goh_step "no conflict markers" python3 "$CHECKS/check_no_conflict_markers.py" ${
 
 # One cap, one name. Repos previously called this check_file_length,
 # check_loc and check_file_size, with three different limits.
-# GOH_EXCLUDE is the shared vendor/generated exemption (regex), honored by
-# both the emoji and length checks; GOH_LINE_EXCLUDE stays as a length-only
-# alias for existing repos.
-GOH_EX="${GOH_LINE_EXCLUDE:-${GOH_EXCLUDE:-}}"
+# Exemption semantics: GOH_EXCLUDE exempts vendored/generated paths from BOTH
+# the emoji scan and the cap. GOH_LINE_EXCLUDE is ADDITIVE to the length check
+# only — the length exemption is GOH_EXCLUDE ∪ GOH_LINE_EXCLUDE. Paths named
+# only by LINE_EXCLUDE stay exempt from the cap but ARE scanned for emoji
+# unless GOH_EXCLUDE separately covers them (no consumer ever relied on
+# replacement; surveyed 2026-08-25).
+GOH_EX="${GOH_EXCLUDE:-}"
+if [ -n "${GOH_LINE_EXCLUDE:-}" ]; then
+    GOH_EX="${GOH_EX:+${GOH_EX}|}${GOH_LINE_EXCLUDE}"
+fi
 if [ -n "${GOH_MAX_LINES:-}" ]; then
     goh_step "file length <= ${GOH_MAX_LINES}" \
         python3 "$CHECKS/check_file_length.py" --max "$GOH_MAX_LINES" \

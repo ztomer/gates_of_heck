@@ -1,8 +1,8 @@
+#!/usr/bin/env bash
 # Target repo: explicit GOH_PROFILE_TARGET wins, else the invocation CWD
 # (the per-repo shims exec us from the repo root). Location no longer encodes
 # the target now that this harness is canonized in gates_of_heck.
 . "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/_target_root.sh"
-#!/bin/bash
 # soak_profile.sh - Long duration soak test with profiling
 
 DURATION_MINUTES=${1:-30}

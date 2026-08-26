@@ -140,12 +140,17 @@ stanza_body() {
   # awk below must not run against a missing file: under set -e its failure
   # aborted the TAG step after the changelog step had already been skipped.
   [ -f CHANGELOG.md ] || return 0
+  # VER_RE reaches awk through ENVIRON, NOT -v: -v processes backslash
+  # escapes, so the escaped dots of v1\.2\.3 arrived as bare wildcards and
+  # bogus headings (## v1x2y3, ## v19283) matched the stanza. ENVIRON is
+  # POSIX and hands the regex over verbatim.
   # Body bounds: everything after the matching stanza's heading, up to the
   # NEXT heading AT OR ABOVE the stanza's own level. Keep-a-changelog bodies
   # carry ### subsections, so "###" must NOT end the body — only a heading
   # of the stanza's level (the next version) does. The old `/^##+ /` reset
   # collapsed every subsectioned body to nothing.
-  awk -v pat="^(##+) v${VER_RE}( |\$)|^(##+) \\[${VER_RE}\\]( |\$)" '
+  GOH_AWK_VER_RE="$VER_RE" awk '
+    BEGIN { pat = "^(##+) v" ENVIRON["GOH_AWK_VER_RE"] "( |$)|^(##+) \\[" ENVIRON["GOH_AWK_VER_RE"] "\\]( |$)" }
     $0 ~ pat {
       head = $0; sub(/[ \t].*$/, "", head); level = length(head)
       flag = 1; next
@@ -195,9 +200,18 @@ else
   fail "CHANGELOG.md has no stanza for ${VERSION} (add '## ${TAG}' first)"
 fi
 
-# ── 3. annotated tag (idempotent) ────────────────────────────────────────────
+# ── 3. annotated tag (idempotent, but NEVER stale) ───────────────────────────
 begin "tag" "annotated tag ${TAG}"
 if git rev-parse -q --verify "refs/tags/${TAG}" >/dev/null; then
+  # An existing tag is left alone ONLY if it names HEAD. A tag pinned to an
+  # older commit while work moved on is not idempotency — it would release
+  # (and push, and tap-bump) the WRONG tree while reporting success.
+  tagged_commit="$(git rev-parse "refs/tags/${TAG}^{commit}")"
+  head_commit="$(git rev-parse HEAD)"
+  if [ "$tagged_commit" != "$head_commit" ]; then
+    fail "${TAG} exists at ${tagged_commit} but HEAD is ${head_commit} — \
+bump --version, or move the tag deliberately: git tag -f ${TAG} && git push -f origin ${TAG}"
+  fi
   ok "${TAG} already exists — leaving it (idempotent)"
 elif [ "$DRY_RUN" = 1 ]; then
   plan "git tag -a ${TAG} at $(git rev-parse --short HEAD)"
@@ -274,13 +288,23 @@ else
     FORMULA_FILE="$TAP_DIR/tap/${TAP_SUBDIR}/${TAP_NAME}.rb"
     [ -f "$FORMULA_FILE" ] || fail "not found: ${TAP_SUBDIR}/${TAP_NAME}.rb in ${TAP}"
 
-    # Artifact digest: a local file is hashed directly; a URL is streamed.
+    # Artifact digest: a local file is hashed directly; a URL is downloaded
+    # to a temp file first, with curl's failure routed through fail() — under
+    # set -e a bare `curl | shasum` pipeline let shasum hash EMPTY INPUT and
+    # hand the tap the digest of nothing.
     if [ -z "$ARTIFACT" ]; then
       ARTIFACT="https://github.com/${GH_REPO_SLUG}/archive/refs/tags/${TAG}.tar.gz"
       [ -n "$GH_REPO_SLUG" ] || fail "no --artifact given and origin is not github.com — cannot derive tarball URL"
     fi
     case "$ARTIFACT" in
-      http://|https://*) SHA="$(curl -fsSL "$ARTIFACT" | shasum -a 256 | cut -d' ' -f1)" ;;
+      http://*|https://*)
+        artifact_dl="$(mktemp "${TMPDIR:-/tmp}/release-artifact.XXXXXX")"
+        if ! curl -fsSL "$ARTIFACT" -o "$artifact_dl"; then
+          rm -f "$artifact_dl"
+          fail "could not download artifact: ${ARTIFACT}"
+        fi
+        SHA="$(shasum -a 256 "$artifact_dl" | cut -d' ' -f1)"
+        rm -f "$artifact_dl" ;;
       *)                 [ -f "$ARTIFACT" ] || fail "artifact not found: ${ARTIFACT}"
                          SHA="$(shasum -a 256 "$ARTIFACT" | cut -d' ' -f1)" ;;
     esac

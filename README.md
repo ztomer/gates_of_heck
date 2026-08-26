@@ -83,7 +83,8 @@ esac
 ```
 
 Then `pre-commit` runs `--staged` and `pre-push` runs `--full`. The hooks are
-the enforcement; there is no server backing them up.
+the enforcement; there is no server backing them up. The documented escape
+hatch for a commit that must skip them is `git commit --no-verify`.
 
 ## Configuration
 
