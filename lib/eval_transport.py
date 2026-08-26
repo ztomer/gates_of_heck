@@ -73,17 +73,27 @@ class SweepStateCorrupt(RuntimeError):
 
 
 def resolve_base_url(base_url: str | None = None) -> str:
-    """Explicit argument wins, then EVAL_BASE_URL, then OPENAI_BASE_URL."""
-    url = base_url or os.environ.get("EVAL_BASE_URL") or os.environ.get("OPENAI_BASE_URL")
+    """Explicit argument wins, then EVAL_BASE_URL, OPENAI_BASE_URL, OLLAMA_BASE_URL."""
+    url = (
+        base_url
+        or os.environ.get("EVAL_BASE_URL")
+        or os.environ.get("OPENAI_BASE_URL")
+        or os.environ.get("OLLAMA_BASE_URL")
+    )
     if not url:
         raise TransportError(
-            "no endpoint: pass base_url or set EVAL_BASE_URL / OPENAI_BASE_URL"
+            "no endpoint: pass base_url or set EVAL_BASE_URL / OPENAI_BASE_URL / OLLAMA_BASE_URL"
         )
     return url.rstrip("/")
 
 
 def resolve_api_key(api_key: str | None = None) -> str | None:
-    return api_key or os.environ.get("EVAL_API_KEY") or os.environ.get("OPENAI_API_KEY")
+    return (
+        api_key
+        or os.environ.get("EVAL_API_KEY")
+        or os.environ.get("OPENAI_API_KEY")
+        or os.environ.get("OLLAMA_API_KEY")
+    )
 
 
 def extract_text(response_payload: dict) -> str:
