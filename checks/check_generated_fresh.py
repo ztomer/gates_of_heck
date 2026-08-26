@@ -34,12 +34,17 @@ should contain nothing else, because it is unreadable by design.
 
 import argparse
 import hashlib
+import os
 import shlex
 import shutil
-import subprocess
+import subprocess  # noqa: F401 — TimeoutExpired contract of killtree.run_captured
 import sys
 import tempfile
 from pathlib import Path
+
+sys.path.insert(0, os.path.join(
+    os.path.dirname(os.path.abspath(__file__)), "..", "lib"))
+from killtree import run_captured  # noqa: E402
 
 
 def _sha256(path: Path) -> str:
@@ -51,11 +56,13 @@ def _sha256(path: Path) -> str:
 
 
 def generate(generator: str, sandbox: Path, timeout: int):
-    """Run the generator with the sandbox as its out-dir argument."""
+    """Run the generator with the sandbox as its out-dir argument.
+
+    run_captured (lib/killtree.py) puts the generator in its own session and
+    kills the WHOLE group on timeout — a background child of a timed-out
+    generator must not outlive this check."""
     cmd = f"{generator} {shlex.quote(str(sandbox))}"
-    proc = subprocess.run(
-        cmd, shell=True, capture_output=True, text=True, timeout=timeout)
-    return proc
+    return run_captured(cmd, shell=True, timeout=timeout)
 
 
 def main() -> int:

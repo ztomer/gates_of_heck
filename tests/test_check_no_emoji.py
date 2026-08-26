@@ -144,6 +144,51 @@ def test_staged_new_file_reported_relative_to_root(repo):
     assert "src/n.md" in r.stdout
 
 
+# ---- 2026-08-25 policy ruling: singleton/small-range additions ----------------
+
+# Emoji-presentation codepoints outside the big blocks, each flagged on its own.
+SINGLETON_CODEPOINTS = (0x2934, 0x2935, 0x3030, 0x3297, 0x3299, 0x2139, 0x24C2)
+
+
+def test_singleton_ranges_are_flagged(repo):
+    for cp in SINGLETON_CODEPOINTS:
+        (repo / "a.md").write_text(f"x {chr(cp)}\n", encoding="utf-8")
+        commit_all(repo)
+        r = run_check(repo, SCRIPT)
+        assert r.returncode == 1, f"U+{cp:04X} was not flagged"
+
+
+# Typographic signs with legal meaning are POLICY-PERMITTED bare (bucket 2d),
+# but their VS16 forms request emoji presentation and stay rejected.
+SIGN_CODEPOINTS = (0x00A9, 0x00AE, 0x2122)  # copyright / registered / trademark
+
+
+def test_typographic_signs_pass_bare_but_vs16_forms_fail(repo):
+    for cp in SIGN_CODEPOINTS:
+        g = chr(cp)
+        (repo / "a.md").write_text(f"legal {g} notice\n", encoding="utf-8")
+        commit_all(repo)
+        assert run_check(repo, SCRIPT).returncode == 0, (
+            f"bare U+{cp:04X} must pass"
+        )
+        (repo / "a.md").write_text(f"legal {g}{VS16}\n", encoding="utf-8")
+        commit_all(repo)
+        assert run_check(repo, SCRIPT).returncode == 1, (
+            f"VS16 form of U+{cp:04X} must fail"
+        )
+
+
+def test_failure_message_permit_list_includes_typographic_signs(repo):
+    # Message-policy parity: the signs are policy, so the permit list a user
+    # is shown must name them.
+    (repo / "a.md").write_text(EMOJI_SMILE + "\n", encoding="utf-8")
+    commit_all(repo)
+    r = run_check(repo, SCRIPT)
+    assert r.returncode == 1
+    for cp in SIGN_CODEPOINTS:
+        assert chr(cp) in r.stdout, f"U+{cp:04X} missing from permit list"
+
+
 def test_runs_from_subdirectory_of_target_repo(repo):
     # Gates may be invoked from anywhere inside the target repo (Phase 4 made
     # this contract explicit); the checker resolves paths against the root.

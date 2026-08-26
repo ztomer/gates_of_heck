@@ -154,7 +154,16 @@ def main() -> int:
         records, why = load_xcode(args.dd)
     else:
         records, paths = load_spm(args.spm_glob)
-        why = None if paths else f"no codecov payloads match {args.spm_glob} — was 'swift test --enable-code-coverage' run?"
+        if paths and not records:
+            # Payloads exist but none yielded measurable files (unreadable
+            # JSON, or every entry has total_lines 0). Refuse with the count
+            # rather than aggregating an empty record set into a fake 100%.
+            why = (f"{len(paths)} payload(s) matched {args.spm_glob} but "
+                   f"none contained measurable files — corrupt codecov JSON?")
+        else:
+            why = None if paths else (
+                f"no codecov payloads match {args.spm_glob} — was 'swift "
+                f"test --enable-code-coverage' run?")
 
     if why:
         print(f"✗ [swift_cov] cannot measure coverage: {why}", file=sys.stderr)

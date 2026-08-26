@@ -185,41 +185,94 @@ LANGUAGES = {
 # Comments and string literals are PROSE. The absorbed API names all appear
 # in test comments explaining why the screen is off limits, and a gate that
 # fails on its own documentation gets turned off within the week (necrohand
-# learned this the same week it shipped its checker). Masking replaces
-# matched spans with same-length whitespace / empty strings so LINE NUMBERS
-# are preserved for marker lookup on the original text.
-SWIFT_BLOCK_COMMENT = re.compile(r"/\*.*?\*/", re.S)
-SWIFT_LINE_COMMENT = re.compile(r"//[^\n]*")
-SWIFT_STRING = re.compile(r'"(?:\\.|[^"\\])*"')
+# learned this the same week it shipped its checker). Masking preserves the
+# line count 1:1 so callers can index the result against text.splitlines()
+# for marker lookup on the ORIGINAL text.
+#
+# ONE left-to-right state scanner, not sequential regex passes. The old
+# block-then-line-then-string substitution order let a comment OPENER inside
+# a string literal hijack the scan: `//x` inside a URL blanked the rest of
+# its line; `/*` inside a literal opened a fake block span reaching the next
+# real */, masking every violation in between. A single pass with explicit
+# code / line-comment / block-comment / string states has no such ordering.
 
-
-def _mask_string(match):
-    """Empty a matched string literal WITHOUT changing the line count.
-
-    A mask that deletes newlines (e.g. collapsing a triple-quoted docstring
-    to '""') desynchronizes the masked line list from the original lines,
-    and every marker lookup / reported line number after it indexes the
-    WRONG line — or crashes outright (found 2026-08-25 on necrohand, whose
-    tests carry multi-line docstrings). First line becomes '""'; every
-    further line of the literal becomes an empty line.
-    """
-    s = match.group(0)
-    if "\n" not in s:
-        return '""'
-    parts = s.split("\n")
-    return "\n".join(['""'] + [""] * (len(parts) - 1))
+_CODE, _LINE_COMMENT, _BLOCK_COMMENT, _STRING = range(4)
 
 
 def swift_code_only(text):
-    """Swift source with comments blanked and strings emptied, per line.
+    """Swift source with comments and string literals masked to spaces.
 
-    EVERY substitution here must be LINE-PRESERVING: callers index the
-    result positionally against text.splitlines().
+    LINE-PRESERVING contract: newlines always survive untouched (callers
+    index the result positionally against text.splitlines()); everything
+    else inside a comment or literal becomes a space. Handles \\" escapes
+    (the escaped quote stays in-string) and triple-quoted multi-line
+    literals. Block comments nest, per Swift's own grammar.
     """
-    text = SWIFT_BLOCK_COMMENT.sub(
-        lambda m: re.sub(r"[^\n]", " ", m.group(0)), text)
-    text = SWIFT_LINE_COMMENT.sub(lambda m: " " * len(m.group(0)), text)
-    return SWIFT_STRING.sub(_mask_string, text)
+    out = list(text)
+    n = len(text)
+    i = 0
+    state = _CODE
+    while i < n:
+        ch = text[i]
+        if state == _CODE:
+            if ch == "/" and text.startswith("//", i):
+                out[i] = out[i + 1] = " "
+                state = _LINE_COMMENT
+                i += 2
+            elif ch == "/" and text.startswith("/*", i):
+                out[i] = out[i + 1] = " "
+                state = _BLOCK_COMMENT
+                i += 2
+            elif ch == '"':
+                if text.startswith('"""', i):
+                    end = text.find('"""', i + 3)
+                    stop = n if end == -1 else end + 3
+                    for k in range(i, stop):
+                        if text[k] != "\n":
+                            out[k] = " "
+                    i = stop
+                else:
+                    j = i + 1
+                    while j < n:
+                        cj = text[j]
+                        if cj in ('"', "\n"):
+                            break
+                        if cj == "\\":
+                            j += 1
+                            # an escaped newline does not continue a
+                            # single-line literal — let the loop see it
+                            if j < n and text[j] != "\n":
+                                j += 1
+                            continue
+                        j += 1
+                    stop = j + 1 if j < n and text[j] == '"' else j
+                    for k in range(i, stop):
+                        if text[k] != "\n":
+                            out[k] = " "
+                    i = stop
+            else:
+                i += 1
+        elif state == _LINE_COMMENT:
+            if ch == "\n":
+                state = _CODE
+            else:
+                out[i] = " "
+            i += 1
+        elif state == _BLOCK_COMMENT:
+            if text.startswith("/*", i):  # Swift nests block comments
+                out[i] = out[i + 1] = " "
+                i += 2
+            elif text.startswith("*/", i):
+                out[i] = out[i + 1] = " "
+                state = _CODE
+                i += 2
+            else:
+                if ch != "\n":
+                    out[i] = " "
+                i += 1
+        else:  # unreachable by construction; keep the shape total
+            i += 1
+    return "".join(out)
 
 
 def _has_marker(lines, idx):

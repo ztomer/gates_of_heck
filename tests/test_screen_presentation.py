@@ -252,6 +252,82 @@ def test_multi_line_string_does_not_desync_mask(repo):
     assert r.returncode == 0, (r.stdout, r.stderr)
 
 
+# ---- single-pass state scanner (2026-08-25) ----------------------------------
+#
+# The sequential mask (block comments, then line comments, then strings) let a
+# comment OPENER inside a string literal hijack the scan: "//x" inside a URL
+# blanked the rest of its line, "/*" inside a literal opened a fake block span
+# that hid real violations on later lines.
+
+
+def test_line_comment_marker_inside_string_does_not_blank_line_tail(repo):
+    # The // inside the URL used to start a fake line comment that blanked
+    # everything after it ON THE SAME LINE — hiding the live NSScreen read.
+    src = "\n".join([
+        "import XCTest",
+        'let url = "https://example.com"; _ = NSScreen.main',
+    ])
+    write(repo, "tests/UrlInString.swift", src)
+    commit_all(repo)
+    r = run_check(
+        repo, "checks/check_no_screen_presentation.py", "tests/UrlInString.swift"
+    )
+    assert r.returncode == 1, "violation after an in-string // was NOT flagged"
+    assert "reads the real display's geometry" in r.stderr
+
+
+def test_block_comment_opener_inside_string_does_not_fake_span(repo):
+    # "/* inside the literal used to open a fake block span reaching the next
+    # real */, masking every line between them — including violations.
+    src = "\n".join([
+        "import XCTest",
+        'let s = "value /* not a comment"',
+        "_ = NSScreen.main",
+        "/* real tail comment */",
+    ])
+    write(repo, "tests/FakeSpanTests.swift", src)
+    commit_all(repo)
+    r = run_check(
+        repo, "checks/check_no_screen_presentation.py", "tests/FakeSpanTests.swift"
+    )
+    assert r.returncode == 1, "violation under a fake block span was NOT flagged"
+    assert "reads the real display's geometry" in r.stderr
+
+
+def test_escaped_quote_stays_in_string(repo):
+    # \" must not terminate the literal: the code after it is still masked.
+    src = "\n".join([
+        'let s = "she said \\"orderFrontRegardless\\" aloud"',
+        "let x = 1",
+    ])
+    write(repo, "tests/EscapedQuoteTests.swift", src)
+    commit_all(repo)
+    r = run_check(
+        repo,
+        "checks/check_no_screen_presentation.py",
+        "tests/EscapedQuoteTests.swift",
+    )
+    assert r.returncode == 0, r.stderr
+
+
+def test_quotes_inside_block_comment_are_not_code(repo):
+    # Control case, verified working today and pinned here: a double quote
+    # inside a block comment must NOT open a string state that leaks.
+    src = "\n".join([
+        "import XCTest",
+        '/* a block comment quoting "NSScreen.main" in prose */',
+        "func ok() { XCTAssertTrue(true) }",
+    ])
+    write(repo, "tests/QuotedCommentTests.swift", src)
+    commit_all(repo)
+    r = run_check(
+        repo,
+        "checks/check_no_screen_presentation.py",
+        "tests/QuotedCommentTests.swift",
+    )
+    assert r.returncode == 0, r.stderr
+
+
 def test_no_targets_is_usage_error(repo):
     r = run_check(repo, "checks/check_no_screen_presentation.py")
     assert r.returncode == 2

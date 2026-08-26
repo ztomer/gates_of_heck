@@ -31,13 +31,32 @@ shrink is landing; running it to absorb growth is how a ratchet dies.
 
 import argparse
 import json
+import math
+import os
 import subprocess
 import sys
 from pathlib import Path
 
+sys.path.insert(0, os.path.join(
+    os.path.dirname(os.path.abspath(__file__)), "..", "lib"))
+from killtree import run_captured  # noqa: E402
+
 
 class PreconditionError(Exception):
     """The gate cannot run at all (missing file, unparseable input...)."""
+
+
+def _reject_nonfinite(values: dict) -> None:
+    """A non-finite value is a precondition failure wherever it appears —
+    never compared. nan-vs-anything is always False (a NaN current would
+    silently PASS), and inf-as-current vs a finite ceiling would 'fail as a
+    violation' by accident of comparison rather than by policy."""
+    bad = sorted(k for k, v in values.items()
+                 if isinstance(v, float) and not math.isfinite(v))
+    if bad:
+        raise PreconditionError(
+            f"non-finite values (NaN/Infinity) are not measurable — "
+            f"keys {bad[:5]}")
 
 
 def parse(text: str, origin: str) -> dict[str, float]:
@@ -59,6 +78,7 @@ def parse(text: str, origin: str) -> dict[str, float]:
         if bad:
             raise PreconditionError(
                 f"{origin}: non-numeric values for keys {sorted(bad)[:5]}")
+        _reject_nonfinite(data)
         return {str(k): float(v) for k, v in data.items()}
 
     entries: dict[str, float] = {}
@@ -81,14 +101,16 @@ def parse(text: str, origin: str) -> dict[str, float]:
                 raise PreconditionError(
                     f"{origin}:{lineno}: value is not a number: "
                     f"{value_s!r}") from None
+    _reject_nonfinite(entries)
     return entries
 
 
 def load_current(args) -> dict[str, float]:
     if args.current_from_command is not None:
-        proc = subprocess.run(
-            args.current_from_command, shell=True,
-            capture_output=True, text=True, timeout=args.timeout)
+        # run_captured: own session + whole-group kill on timeout — a
+        # background child of a timed-out command must not outlive the gate.
+        proc = run_captured(
+            args.current_from_command, shell=True, timeout=args.timeout)
         if proc.returncode != 0:
             raise PreconditionError(
                 f"current-from-command exited {proc.returncode}: "
