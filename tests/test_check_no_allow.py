@@ -81,3 +81,70 @@ def test_staged_scope(repo):
     p.write_text(ALLOW, encoding="utf-8")
     stage(repo, "src/new.rs")
     assert run_check(repo, SCRIPT, "--staged").returncode == 1
+
+
+# ---- conservative comment-awareness (2026-08-25) ------------------------------
+#
+# A doc-comment MENTIONING #[allow] is prose about the policy, not a
+# suppression. Whole-line // comments (incl. /// and //!), and /* */ spans
+# tracked across lines, are skipped. Code lines are searched WHOLE — a real
+# attribute behind a trailing comment still flags; that errs safe.
+
+
+def test_doc_comment_mention_passes(repo):
+    (_mkcrate(repo) / "lib.rs").write_text(
+        "/// Never write #[allow(dead_code)] in this crate.\n"
+        "fn f() {}\n"
+        "// TODO: audit the #[allow(unused)] in legacy modules\n"
+        "//! Crate docs may discuss #![allow(clippy::all)] freely.\n",
+        encoding="utf-8",
+    )
+    commit_all(repo)
+    r = run_check(repo, SCRIPT)
+    assert r.returncode == 0, r.stdout
+
+
+def test_multiline_block_comment_mention_passes(repo):
+    (_mkcrate(repo) / "lib.rs").write_text(
+        "/* This module deliberately contains no\n"
+        "   #[allow(dead_code)] anywhere;\n"
+        "   see the lint policy. */\n"
+        "fn g() {}\n"
+        "/* a block comment opening that keeps going\n"
+        "   with #[allow(unused_mut)] inside */\n"
+        "fn h() {}\n",
+        encoding="utf-8",
+    )
+    commit_all(repo)
+    assert run_check(repo, SCRIPT).returncode == 0
+
+
+def test_real_allow_after_block_comment_still_fails(repo):
+    (_mkcrate(repo) / "lib.rs").write_text(
+        "/* prose about #[allow(dead_code)] */\n" + ALLOW,
+        encoding="utf-8",
+    )
+    commit_all(repo)
+    assert run_check(repo, SCRIPT).returncode == 1
+
+
+def test_allow_on_code_line_with_trailing_comment_still_fails(repo):
+    # Accepted conservatism: code lines are searched whole, so a mention in a
+    # trailing comment on a CODE line flags too — errs safe.
+    (_mkcrate(repo) / "lib.rs").write_text(
+        "fn f() {} // mirrors the removed #[allow(dead_code)]\n"
+        "#[allow(dead_code)] fn real() {}\n",
+        encoding="utf-8",
+    )
+    commit_all(repo)
+    assert run_check(repo, SCRIPT).returncode == 1
+
+
+def test_string_containing_url_is_untouched(repo):
+    (_mkcrate(repo) / "lib.rs").write_text(
+        'const DOC: &str = "see http://example.com/allow-guide";\n'
+        'const URLS: [&str; 2] = ["https://a.dev", "http://b.test"];\n',
+        encoding="utf-8",
+    )
+    commit_all(repo)
+    assert run_check(repo, SCRIPT).returncode == 0

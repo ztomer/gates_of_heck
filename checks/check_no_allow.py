@@ -18,6 +18,14 @@ auditable, the same way check_no_emoji.py's codepoint ranges are.
 The checker greps for the literal tokens `#[allow(` and `#![allow(` — never a
 looser regex — so `#[expect(...)]` (which ERRORS if its lint never fires, the
 "allow that cannot rot") stays permitted.
+
+Conservative comment-awareness (2026-08-25): a doc-comment MENTIONING
+#[allow] is prose about the policy, not a suppression, and a gate that flags
+its own documentation trains people to ignore it. Lines whose lstrip starts
+with `//` (covers /// doc comments and //! inner docs) are skipped, and `/* */
+` state is tracked across lines. Code lines are searched WHOLE — an attribute
+behind a trailing comment still flags; the conservatism errs safe (false
+positives on weird comment shapes, never a missed real #[allow]).
 """
 import os
 import re
@@ -65,7 +73,18 @@ def _scan(root: str, paths, staged: bool):
         if blob is None or _is_generated(root, rel, staged):
             continue
         text = blob.decode("utf-8", errors="replace")
+        in_block_comment = False
         for i, line in enumerate(text.splitlines(), 1):
+            if in_block_comment:
+                if "*/" in line:
+                    in_block_comment = False
+                continue
+            if line.lstrip().startswith("//"):
+                continue  # /// docs and //! inner docs are prose about policy
+            if "/*" in line and "*/" not in line.split("/*", 1)[1]:
+                # block comment opens here and runs past this line; the line
+                # itself is still searched whole below (errs safe)
+                in_block_comment = True
             if _ALLOW_PATTERN.search(line):
                 hits.append(f"{rel}:{i}: {line.strip()}")
     return hits
