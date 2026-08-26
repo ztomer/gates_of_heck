@@ -81,13 +81,19 @@ else
     warn "file-length cap not set — add GOH_MAX_LINES to .gatesrc to enable it"
 fi
 
-# Scratch ceiling. Not about this repo's code at all -- it is about the machine
-# staying able to build it. A full disk fails gates for reasons that look like
-# code defects, so it is worth one cheap check per full run.
+# Scratch + cargo-cache ceiling. Not about this repo's code at all -- it is
+# about the machine staying able to build it. A full disk fails gates for
+# reasons that look like code defects, so it is worth one cheap check per
+# full run.
 if [ "$SCOPE" != "--staged" ]; then
+    _CACHE_ARGS=( --max-cache-dir-gb "${GOH_MAX_CACHE_GB:-50}" )
+    if [ -n "${GOH_WATCH_PATHS:-}" ]; then
+        _CACHE_ARGS+=( --watch-paths "$GOH_WATCH_PATHS" )
+    fi
     goh_step "disk hygiene" python3 "$CHECKS/check_disk_hygiene.py" \
         --max-scratch-gb "${GOH_MAX_SCRATCH_GB:-25}" \
-        --min-free-gb "${GOH_MIN_FREE_GB:-20}"
+        --min-free-gb "${GOH_MIN_FREE_GB:-20}" \
+        "${_CACHE_ARGS[@]}"
 fi
 
 goh_done
