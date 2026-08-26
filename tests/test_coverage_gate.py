@@ -310,83 +310,12 @@ def test_xccov_report_parse_matches_live_format():
 
 
 # ---- fake-toolchain end-to-end through the real bash gate --------------------
+#
+# The toolchain builder (swift/xcrun/xcodebuild shims + canned payloads) lives
+# in conftest.py, shared with tests/test_coverage_swift_selection.py.
 
-FAKE_EXPORT = {
-    "data": [{"files": [
-        {"filename": "PROJ/Sources/pkg/lib.swift",
-         "summary": {"lines": {"count": 10, "covered": 5}}},
-    ]}],
-}
+from conftest import mk_fake_swift_toolchain
 
-# llvm-cov show format: "LINE|COUNT|source". Lines 6-10 are the uncovered half.
-FAKE_SHOW = "".join(
-    f"{n:>5}|{'  0' if n > 5 else '  7'}|line {n}\n" for n in range(1, 11))
-
-
-def _mk_fake_toolchain(root: Path) -> Path:
-    """A PATH dir whose swift/xcrun/xcodebuild emit canned coverage data."""
-    bin_ = root / "fakebin"
-    bin_.mkdir()
-    pkg = root / "proj"
-    src = pkg / "Sources" / "pkg"
-    src.mkdir(parents=True)
-    (src / "lib.swift").write_text(
-        "\n".join(f"line {n}" for n in range(1, 11)) + "\n")
-
-    xctest_bin = bin_ / "store" / "PkgTests.xctest" / "Contents" / "MacOS" / "PkgTests"
-    xctest_bin.parent.mkdir(parents=True)
-    xctest_bin.write_text("#!/bin/sh\n")
-    xctest_bin.chmod(xctest_bin.stat().st_mode | stat.S_IEXEC)
-    (bin_ / "store" / "codecov").mkdir()
-    (bin_ / "store" / "codecov" / "default.profdata").write_text("")
-
-    dd = root / "dd"
-    prof = dd / "Build" / "ProfileData" / "FE-DEADBEEF"
-    prof.mkdir(parents=True)
-    (prof / "Coverage.profdata").write_text("")
-    xb = dd / "Build" / "Products" / "Debug" / "AppTests.xctest" / "Contents" / "MacOS" / "AppTests"
-    xb.parent.mkdir(parents=True)
-    xb.write_text("#!/bin/sh\n")
-    xb.chmod(xb.stat().st_mode | stat.S_IEXEC)
-    (dd / "Logs" / "Test").mkdir(parents=True)
-    (dd / "Logs" / "Test" / "Test-App.xcresult").mkdir()
-
-    export_file = root / "export.json"
-    export_json = json.dumps(FAKE_EXPORT).replace("PROJ", str(src.parent.parent))
-    export_file.write_text(export_json)
-
-    show_file = root / "show.txt"
-    show_file.write_text(FAKE_SHOW.replace("PROJ", "") or FAKE_SHOW)
-
-    swift = bin_ / "swift"
-    swift.write_text(f"""#!/bin/bash
-case "$1 $2" in
-  "build --show-bin-path") echo "{bin_}/store" ;;
-  "test "*) exit 0 ;;
-  *) exit 0 ;;
-esac
-""")
-    xcrun = bin_ / "xcrun"
-    xcrun.write_text(f"""#!/bin/bash
-sub="$1"; shift || true
-case "$sub" in
-  llvm-cov)
-    case "$1" in
-      export) cat "{export_file}" ;;
-      show) cat "{show_file}" ;;
-      *) exit 1 ;;
-    esac ;;
-  xccov) exit 1 ;;
-  *) exit 1 ;;
-esac
-""")
-    xcodebuild = bin_ / "xcodebuild"
-    xcodebuild.write_text("""#!/bin/bash
-exit 0
-""")
-    for f in (swift, xcrun, xcodebuild):
-        f.chmod(f.stat().st_mode | stat.S_IEXEC)
-    return bin_
 
 
 PROJ_DIR = lambda root: root / "proj"
@@ -406,14 +335,14 @@ def _run_with_path(bin_dir: Path, *args: str, env_extra: dict | None = None):
 
 
 def test_spm_engine_below_floor_reports_raw_pct(tmp_path):
-    bin_ = _mk_fake_toolchain(tmp_path)
+    bin_ = mk_fake_swift_toolchain(tmp_path)
     r = _run_with_path(bin_, str(tmp_path / "proj"), "--lang", "swift", "--floor", "90")
     assert r.returncode == 1
     assert "50.0%" in r.stdout + r.stderr or "50.00%" in r.stdout + r.stderr
 
 
 def test_cov_ignore_markers_lift_coverage_over_the_floor(tmp_path):
-    bin_ = _mk_fake_toolchain(tmp_path)
+    bin_ = mk_fake_swift_toolchain(tmp_path)
     lib = tmp_path / "proj" / "Sources" / "pkg" / "lib.swift"
     lines = lib.read_text().splitlines()
     lines[5] = "line 6 // cov:ignore-start: hardware path, untestable headlessly"
@@ -425,7 +354,7 @@ def test_cov_ignore_markers_lift_coverage_over_the_floor(tmp_path):
 
 
 def test_marker_without_reason_is_a_gate_error_not_silent_pass(tmp_path):
-    bin_ = _mk_fake_toolchain(tmp_path)
+    bin_ = mk_fake_swift_toolchain(tmp_path)
     lib = tmp_path / "proj" / "Sources" / "pkg" / "lib.swift"
     lib.write_text(lib.read_text() + "// cov:ignore\n")
     r = _run_with_path(bin_, str(tmp_path / "proj"), "--lang", "swift", "--floor", "10")
@@ -434,7 +363,7 @@ def test_marker_without_reason_is_a_gate_error_not_silent_pass(tmp_path):
 
 
 def test_xcodebuild_engine_runs_and_applies_floor(tmp_path):
-    bin_ = _mk_fake_toolchain(tmp_path)
+    bin_ = mk_fake_swift_toolchain(tmp_path)
     env_extra = {"GOH_COV_FLOOR_SWIFT": "40", "GOH_COV_SCHEME": "App"}
     r = _run_with_path(bin_, str(tmp_path / "proj"), "--lang", "swift", "--floor", "40",
                        env_extra=env_extra)

@@ -12,8 +12,10 @@
 #
 # GOH_SWIFT_COLD defaults to 1 — cold ON PURPOSE. These language gates are
 # invoked from the --full branch of tools/gate.sh; opt back out per-repo with
-# GOH_SWIFT_COLD=0 in .gatesrc if a run genuinely cannot afford it. SPM mode
-# wipes .build; xcode mode wipes the pinned derived-data tree (.build/xcode-dd).
+# GOH_SWIFT_COLD=0 in .gatesrc if a run genuinely cannot afford it.
+# BOTH modes wipe ALL of .build when cold (not just their own subtree): a
+# stale sibling tree is exactly the kind of leftover a cold build exists to
+# kill, and half-wiping invites "clean" runs over stale products.
 #
 #   swift_gate.sh [repo]
 #
@@ -101,8 +103,20 @@ case "$MODE" in
     ;;
   xcode)
     [ -n "${GOH_SWIFT_SCHEME:-}" ] || die "xcode mode needs GOH_SWIFT_SCHEME in .gatesrc"
-    proj="${GOH_SWIFT_PROJECT:-$(ls -d ./*.xcodeproj 2>/dev/null | head -1)}"
-    [ -n "$proj" ] || die "no .xcodeproj found and GOH_SWIFT_PROJECT is unset"
+    # Never guess which project: `ls | head -1` picks a locale-dependent,
+    # arbitrary candidate when several .xcodeproj exist. Ambiguity is a named
+    # refusal listing the candidates (cpp-mode precedent).
+    if [ -n "${GOH_SWIFT_PROJECT:-}" ]; then
+        proj="$GOH_SWIFT_PROJECT"
+    else
+        found="$(ls -d ./*.xcodeproj 2>/dev/null || true)"
+        case "$(printf '%s\n' "$found" | grep -c .)" in
+            0) die "no .xcodeproj found and GOH_SWIFT_PROJECT is unset" ;;
+            1) proj="$found" ;;
+            *) { err "multiple .xcodeproj — set GOH_SWIFT_PROJECT to pick one:"; \
+                 printf '    %s\n' $found >&2; exit 1; } ;;
+        esac
+    fi
     # Pinned derived data: cold builds know what to wipe, and
     # check_swift_coverage.py knows where the xcresult lands.
     dd=".build/xcode-dd"

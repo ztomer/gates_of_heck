@@ -38,7 +38,9 @@ ICON_OK = _CFG.get("ICON_OK", _DEFAULTS["ICON_OK"])
 ICON_ERR = _CFG.get("ICON_ERR", _DEFAULTS["ICON_ERR"])
 ICON_WARN = _CFG.get("ICON_WARN", _DEFAULTS["ICON_WARN"])
 
-if sys.stdout.isatty() and os.environ.get("NO_COLOR") != "1":
+# no-color.org spec: ANY non-empty NO_COLOR value disables color (matches
+# tui/lib.sh; NO_COLOR=0 is still a set variable).
+if sys.stdout.isatty() and not os.environ.get("NO_COLOR"):
     _C_RESET = _CFG.get("C_RESET", "\033[0m")
     _C_DIM = _CFG.get("C_DIM", "\033[2m")
     _C_BOLD = _CFG.get("C_BOLD", "\033[1m")

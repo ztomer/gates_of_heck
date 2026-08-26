@@ -65,13 +65,37 @@ die() { err "$*"; exit 1; }
 # ---- gate scaffolding ------------------------------------------------------
 GOH_NAME=""
 GOH_LOG=""
+GOH_LOGS=""
+GOH_COMPLETED=""
 
 # goh_init <gate-name>
 goh_init() {
     GOH_NAME="$1"
     GOH_LOG="$(mktemp -t goh-"$GOH_NAME")"
-    # shellcheck disable=SC2064  # expand GOH_LOG now, not at trap time
-    trap "rm -f '$GOH_LOG'" EXIT
+    # Accumulate: a second goh_init must not orphan the first log.
+    GOH_LOGS="${GOH_LOGS:+$GOH_LOGS }$GOH_LOG"
+    GOH_COMPLETED=""
+    # rc-PRESERVING cleanup trap. The old form, `trap "rm -f '$GOH_LOG'" EXIT`,
+    # failed open twice over: (a) double-quoted, so $GOH_LOG expanded at SET
+    # time — re-init orphaned the earlier log; (b) the trap's exit status was
+    # `rm`'s (0), so abnormal termination (e.g. a syntax error mid-file)
+    # exited 0 — a broken gate committed green.
+    #
+    # Preserving $? alone is NOT enough on bash 3.2: when the script dies of a
+    # PARSE error while `set -e` is active (this file sets it), bash delivers
+    # $?=0 to the trap. So zero is only honored if goh_done ran; a 0 that
+    # arrives without completion is re-raised as a failure. Probed on
+    # 3.2.57: parse-error trap sees rc=2 with set +e, rc=0 with set -e.
+    # Note: goh_init owns the EXIT trap. A consumer needing its own must
+    # install it AFTER goh_init and preserve $? the same way.
+    trap '
+        _goh_rc=$?
+        for _l in $GOH_LOGS; do rm -f "$_l"; done
+        if [ "$_goh_rc" -eq 0 ] && [ "$GOH_COMPLETED" != "1" ]; then
+            err "$GOH_NAME: exited 0 without completing — abnormal termination is never a pass"
+            _goh_rc=1
+        fi
+        exit "$_goh_rc"' EXIT
     printf '\n== %s gate ==\n' "$GOH_NAME"
 }
 
@@ -114,4 +138,9 @@ goh_step_in() {
     fi
 }
 
-goh_done() { printf '\n'; ok "all $GOH_NAME gates passed"; }
+# goh_done — the ONLY way a gate earns exit 0 (see the trap in goh_init).
+goh_done() {
+    GOH_COMPLETED=1
+    printf '\n'
+    ok "all $GOH_NAME gates passed"
+}

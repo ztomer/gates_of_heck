@@ -4,6 +4,13 @@ This is the test class that catches "gate references a checker that was never
 shipped" (review findings #1 and #2) forever. Proven red against HEAD:
 swift_gate.sh -> checks/check_swift_coverage.py (missing),
 hooks/pre-commit -> tools/check_no_emoji.py (missing pre-self-host).
+
+BLIND SPAT FIX (2026-08-26): lines carrying an existence guard ([ -f ... ])
+or goh_optional_step used to be SKIPPED entirely — so a typo'd checker
+reference inside a guarded line shipped forever, invisible to this suite.
+Guarded refs are now parsed like any other: only target-repo-local tools/
+references may be absent (the consumer repo's contract); anything pointing at
+THIS repo's checks/, gates/ or hooks/ must resolve here.
 """
 
 import re
@@ -18,27 +25,29 @@ REF = re.compile(
     r"\$(?:CHECKS|\{CHECKS\})/[A-Za-z0-9_.-]+\.(?:py|sh))"
 )
 VAR_MAP = {"$CHECKS": "checks", "${CHECKS}": "checks"}
-GUARD = re.compile(r"\[\s+-[def]\s+")          # [ -f x ] existence guard lines
-OPTIONAL_STEP = "goh_optional_step"
 
 
-def _referenced_scripts() -> list[tuple[str, int, str]]:
-    """(file, lineno, normalized ref) for every guarded-or-not script ref."""
+def _referenced_scripts(files=None) -> list[tuple[str, int, str]]:
+    """(file, lineno, normalized ref) for every script ref — GUARDED OR NOT."""
+    if files is None:
+        sources = [(str(f.relative_to(REPO_ROOT)), f)
+                   for pattern in ("gates/*.sh", "hooks/pre-commit", "hooks/pre-push")
+                   for f in sorted(REPO_ROOT.glob(pattern))]
+    else:
+        sources = files
     refs = []
-    for pattern in ("gates/*.sh", "hooks/pre-commit", "hooks/pre-push"):
-        for f in sorted(REPO_ROOT.glob(pattern)):
-            for i, line in enumerate(f.read_text().splitlines(), 1):
-                if line.lstrip().startswith("#"):
-                    continue  # comments document, they do not invoke
-                if GUARD.search(line) or OPTIONAL_STEP in line:
-                    continue  # existence-guarded: legal even if target-repo-local
-                for m in REF.finditer(line):
-                    ref = m.group(1)
-                    for var, name in VAR_MAP.items():
-                        if ref.startswith(var):
-                            ref = f"{name}/{ref.split('/', 1)[1]}"
-                            break
-                    refs.append((str(f.relative_to(REPO_ROOT)), i, ref))
+    for fname, f in sources:
+        text = f.read_text() if isinstance(f, Path) else f
+        for i, line in enumerate(text.splitlines(), 1):
+            if line.lstrip().startswith("#"):
+                continue  # comments document, they do not invoke
+            for m in REF.finditer(line):
+                ref = m.group(1)
+                for var, name in VAR_MAP.items():
+                    if ref.startswith(var):
+                        ref = f"{name}/{ref.split('/', 1)[1]}"
+                        break
+                refs.append((fname, i, ref))
     return refs
 
 
@@ -57,17 +66,47 @@ def test_known_core_refs_present():
         assert (f, r) in got, f"parser missed {r} in {f}"
 
 
-def test_every_referenced_script_exists():
-    missing = [
+def _missing(refs):
+    return [
         (f, line, ref)
-        for f, line, ref in _referenced_scripts()
+        for f, line, ref in refs
         if not (REPO_ROOT / ref).exists()
         and not ref.startswith("tools/")  # target-repo contract, see below
     ]
+
+
+def test_every_referenced_script_exists():
+    missing = _missing(_referenced_scripts())
     assert missing == [], (
         "gates/hooks reference scripts that do not exist in this repo:\n"
         + "\n".join(f"  {f}:{line} -> {ref}" for f, line, ref in missing)
     )
+
+
+def test_guarded_refs_must_still_resolve_when_they_name_this_repo():
+    """THE regression: a typo'd reference inside a [ -f ] guard or an
+    optional step used to be skipped by the wiring scan entirely. Red-proof:
+    the synthetic gate below names checks/does_not_exist.py behind a guard —
+    pre-fix wiring tests passed it; now it is red."""
+    synthetic = (
+        "synthetic-gate.sh",
+        "\n".join([
+            "#!/usr/bin/env bash",
+            # Same-line forms ONLY: the old scanner skipped any line carrying
+            # goh_optional_step / an existence guard, so these were invisible.
+            'goh_optional_step "opt" "$CHECKS/does_not_exist.py" python3 "$CHECKS/does_not_exist.py"',
+            '[ -f "$CHECKS/guarded_missing.py" ] && python3 "$CHECKS/guarded_missing.py"',
+            "# tools/ stays exempt: target-repo-local",
+            'goh_optional_step "local" tools/local_check.py true',
+        ]) + "\n",
+    )
+    missing = _missing(_referenced_scripts(files=[synthetic]))
+    named = {ref for _, _, ref in missing}
+    assert "checks/does_not_exist.py" in named, (
+        f"a typo'd OPTIONAL-step reference shipped invisibly; got {named}")
+    assert "checks/guarded_missing.py" in named, (
+        f"a typo'd GUARDED reference shipped invisibly; got {named}")
+    assert not any(r.startswith("tools/") for r in named)
 
 
 def test_hook_checker_resolution_is_self_hostable():

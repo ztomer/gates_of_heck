@@ -11,13 +11,26 @@ ICON_START="→"; ICON_STEP="·"; ICON_OK="✓"; ICON_ERR="✗"; ICON_WARN="⚠"
 # shellcheck disable=SC1091
 [ -f "$_TUI_DIR/stylerc" ] && source "$_TUI_DIR/stylerc"
 
-if [[ -t 1 ]] && [[ "${NO_COLOR:-}" != "1" ]]; then
+# no-color.org spec: ANY non-empty NO_COLOR value disables color (NO_COLOR=0
+# is still a set variable — "0" used to re-enable color here).
+if [[ -t 1 ]] && [[ -z "${NO_COLOR:-}" ]]; then
   : "${C_RESET:=\033[0m}"; : "${C_DIM:=\033[2m}"; : "${C_BOLD:=\033[1m}"
   : "${C_GREEN:=\033[0;32m}"; : "${C_RED:=\033[0;31m}"
   : "${C_YELLOW:=\033[0;33m}"; : "${C_GRAY:=\033[0;90m}"
 else
   C_RESET=''; C_DIM=''; C_BOLD=''; C_GREEN=''; C_RED=''; C_YELLOW=''; C_GRAY=''
 fi
+
+# Decode the stylerc's literal \033 sequences into real ESC characters ONCE,
+# here — output functions use printf '%s', which (unlike echo -e) never
+# interprets escapes at print time. That is deliberate: a config-derived
+# label containing backslash-n must stay data. lib.py does the same decode
+# in its stylerc parser.
+_TUI_ESC="$(printf '\033')"
+for _c in C_RESET C_DIM C_BOLD C_GREEN C_RED C_YELLOW C_GRAY; do
+    printf -v "$_c" '%s' "${!_c//\\033/$_TUI_ESC}"
+done
+unset _c _TUI_ESC
 
 export ICON_START ICON_STEP ICON_OK ICON_ERR ICON_WARN
 export C_RESET C_DIM C_BOLD C_GREEN C_RED C_YELLOW C_GRAY
@@ -26,11 +39,14 @@ export C_RESET C_DIM C_BOLD C_GREEN C_RED C_YELLOW C_GRAY
 # Private implementations first; EVERY public name (and the _lib_* alias set)
 # delegates here. Call cycles are structurally impossible: nothing ever calls
 # a name that could itself be re-overlaid by a consumer.
-_tui_info() { echo -e "${C_GRAY}${ICON_START}${C_RESET} ${C_DIM}$1${C_RESET}"; }
-_tui_step() { echo -e "${C_DIM}${ICON_STEP} $1${C_RESET}"; }
-_tui_ok()   { echo -e "${C_GREEN}${ICON_OK}${C_RESET} $1"; }
-_tui_err()  { echo -e "${C_RED}${ICON_ERR}${C_RESET} $1" >&2; }
-_tui_warn() { echo -e "${C_YELLOW}${ICON_WARN}${C_RESET} $1"; }
+# printf '%s\n', never `echo -e` with interpolated data: a config-derived
+# label containing \n, %s or backslash escapes stays DATA, never format.
+# warn goes to STDERR like err — it is a diagnostic, not program output.
+_tui_info() { printf '%s\n' "${C_GRAY}${ICON_START}${C_RESET} ${C_DIM}$1${C_RESET}"; }
+_tui_step() { printf '%s\n' "${C_DIM}${ICON_STEP} $1${C_RESET}"; }
+_tui_ok()   { printf '%s\n' "${C_GREEN}${ICON_OK}${C_RESET} $1"; }
+_tui_err()  { printf '%s\n' "${C_RED}${ICON_ERR}${C_RESET} $1" >&2; }
+_tui_warn() { printf '%s\n' "${C_YELLOW}${ICON_WARN}${C_RESET} $1" >&2; }
 
 info()  { _tui_info "$1"; }
 step()  { _tui_step "$1"; }   # a sub-item under an info line
@@ -38,7 +54,7 @@ ok()    { _tui_ok "$1"; }
 err()   { _tui_err "$1"; }
 warn()  { _tui_warn "$1"; }
 die()   { err "$1"; exit "${2:-1}"; }
-bold()  { echo -e "${C_BOLD}$1${C_RESET}"; }
+bold()  { printf '%s\n' "${C_BOLD}$1${C_RESET}"; }
 
 # Private aliases: gates/_common.sh overlays its fallbacks onto the public
 # names unconditionally, then re-overlays from these _lib_* names when present.
@@ -53,10 +69,10 @@ _lib_err()  { _tui_err "$1"; }
 hr() {
   local cols="${1:-72}" line="" i
   for ((i = 0; i < cols; i++)); do line+="─"; done
-  echo -e "${C_GRAY}${line}${C_RESET}"
+  printf '%s\n' "${C_GRAY}${line}${C_RESET}"
 }
 
-section() { echo ""; hr; bold "  $1"; hr; }
+section() { printf '\n'; hr; bold "  $1"; hr; }
 
 # ── Utilities ──────────────────────────────────────────────────────────
 require_commands() {

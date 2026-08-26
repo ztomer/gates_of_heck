@@ -223,34 +223,46 @@ PYEOF
         [ -n "$PKG" ] || continue
         if [ "$KIND" = "lib" ]; then
             info "exporting $PKG (lib unittests)"
-            cargo llvm-cov -p "$PKG" --lib --all-features \
-                ${IGNORE:+--ignore-filename-regex "$IGNORE"} \
-                --lcov --output-path "$PARTS/part-$PKG-lib.info" \
-                >/dev/null 2>&1 || warn "$PKG lib export failed"
+            part="$PARTS/part-$PKG-lib.info"
+            label="$PKG (lib unittests)"
+            # Completeness marker: written ONLY on cargo-llvm-cov exit 0. A
+            # failing export that leaves a stale/partial file behind must not
+            # pass as measured data — the marker is the proof of success.
+            if cargo llvm-cov -p "$PKG" --lib --all-features \
+                    ${IGNORE:+--ignore-filename-regex "$IGNORE"} \
+                    --lcov --output-path "$part" \
+                    >/dev/null 2>&1; then
+                : >"$part.ok"
+            else
+                warn "$label export failed"
+            fi
         else
             # Part name carries the package: two crates with same-named test
             # targets must not overwrite each other's lcov part.
             info "exporting $PKG (test $TNAME)"
-            cargo llvm-cov -p "$PKG" --test "$TNAME" --all-features \
-                ${IGNORE:+--ignore-filename-regex "$IGNORE"} \
-                --lcov --output-path "$PARTS/part-$PKG-$TNAME.info" \
-                >/dev/null 2>&1 || warn "$PKG/$TNAME export failed"
+            part="$PARTS/part-$PKG-$TNAME.info"
+            label="$PKG (test $TNAME)"
+            if cargo llvm-cov -p "$PKG" --test "$TNAME" --all-features \
+                    ${IGNORE:+--ignore-filename-regex "$IGNORE"} \
+                    --lcov --output-path "$part" \
+                    >/dev/null 2>&1; then
+                : >"$part.ok"
+            else
+                warn "$label export failed"
+            fi
         fi
     done <"$METAF"
 
-    # Every DECLARED target must have produced an export part. A warn-and-
-    # continue on a failed export silently loses that target's coverage from
-    # the merge — the number stays green and nobody knows a suite stopped
-    # counting. Shortfall is a hard fail naming the expected-but-missing
-    # targets. The ONLY warn-only case is an export that produced a valid-but-
-    # empty part (a target with nothing coverable in it): the part exists, it
-    # simply measures zero lines, and the merger handles that honestly.
-    n_parts=$(find "$PARTS" -name 'part-*.info' | wc -l | tr -d ' ')
-    n_declared=0
+    # Every DECLARED target must have produced an EXPORT THAT EXITED 0,
+    # proven by its .ok marker. Keying completeness on part-file existence or
+    # size was a LAUNDERING HOLE: cargo-llvm-cov can fail AFTER creating the
+    # output file, leaving garbage or a partial export that then counted as
+    # coverage ("100%" over nothing). The ONLY warn-only case is a marker'd
+    # valid-but-empty part (a target with nothing coverable in it): the
+    # export succeeded, it simply measures zero lines.
     MISSING=""
     while IFS="	" read -r PKG KIND TNAME; do
         [ -n "$PKG" ] || continue
-        n_declared=$((n_declared + 1))
         if [ "$KIND" = "lib" ]; then
             part="$PARTS/part-$PKG-lib.info"
             label="$PKG (lib unittests)"
@@ -258,128 +270,22 @@ PYEOF
             part="$PARTS/part-$PKG-$TNAME.info"
             label="$PKG (test $TNAME)"
         fi
-        if [ ! -f "$part" ]; then
+        if [ ! -f "$part.ok" ]; then
             MISSING="${MISSING}${MISSING:+ }$label"
         elif [ ! -s "$part" ]; then
             warn "$label exported a valid-but-EMPTY lcov part — nothing coverable was measured for it"
         fi
     done <"$METAF"
-    if [ -n "$MISSING" ] || [ "$n_parts" -lt "$n_declared" ]; then
-        err "coverage exports incomplete: $n_parts of $n_declared declared targets produced parts"
-        err "  expected but missing:${MISSING:- (count mismatch without a named gap)}"
+    if [ -n "$MISSING" ]; then
+        err "coverage exports incomplete — expected but missing (failed or never written):${MISSING}"
         err "  each failed export above is lost coverage — fix it, do not trust this run"
         exit 1
     fi
 
-    # The merge + floor decision lives in python: it strips CGU hashes,
-    # groups instantiations, counts a line covered iff ANY instantiation ran,
-    # and prints exact uncovered lines on failure.
-    GOH_FLOOR="$FLOOR" python3 - <<'PYEOF'
-import glob
-import os
-import re
-import sys
-from collections import defaultdict
-
-parts = sorted(glob.glob(os.path.join(os.environ["CARGO_TARGET_DIR"], "lcov-parts", "part-*.info")))
-floor = float(os.environ["GOH_FLOOR"])
-
-
-def normalize(mangled: str) -> str:
-    """Strip the CGU hash so duplicate instantiations group together."""
-    return re.sub(r"Cs[0-9A-Za-z]+_", "Cs_", mangled)
-
-
-line_best = defaultdict(int)   # (file, line) -> max count across exports
-fn_best = defaultdict(int)     # (file, norm_name) -> max FNDA
-fn_start = {}                  # (file, norm_name) -> first start line
-fn_end = {}                    # (file, norm_name) -> declared end line, when the record carries one
-
-for pf in parts:
-    cur = None
-    das = []
-    for raw in open(pf):
-        line = raw.strip()
-        if line.startswith("SF:"):
-            cur = line[3:]
-        elif cur is None:
-            continue
-        elif line.startswith("FN:") and "," in line[3:]:
-            # TWO formats, both live: cargo-llvm-cov emits two-field
-            # FN:start,name; geninfo emits three-field FN:start,end,name.
-            # A name may itself contain commas (mangled symbols), so the
-            # name is everything after start (and end, when present) —
-            # re-joined, never truncated. Two-field input parses exactly as
-            # before: fields[1:] joined == the old split(",", 1) tail.
-            fields = line[3:].split(",")
-            start = int(fields[0])
-            key = (cur, normalize(",".join(fields[2:]) if len(fields) >= 3 else fields[1]))
-            if len(fields) >= 3:
-                fn_end.setdefault(key, int(fields[1]))
-            fn_start.setdefault(key, start)
-        elif line.startswith("FNDA:"):
-            cnt, name = line[5:].split(",", 1)
-            key = (cur, normalize(name))
-            fn_best[key] = max(fn_best[key], int(cnt))
-        elif line.startswith("DA:") and cur:
-            p = line[3:].split(",")
-            das.append((cur, int(p[0]), int(p[1])))
-    for f, ln, cnt in das:
-        line_best[(f, ln)] = max(line_best[(f, ln)], cnt)
-
-# Executed spans per file: a function spans from its start line to the line
-# before the next function's start; a line inside a span whose FNDA>0 anywhere
-# is covered even if its own DA row shows 0 (duplicate zero-count clone).
-spans = defaultdict(list)      # file -> [(start, end, executed)]
-by_file_fn = defaultdict(dict)
-for (f, name), st in fn_start.items():
-    by_file_fn[f][name] = st
-max_da = defaultdict(int)
-for (f, ln) in line_best:
-    max_da[f] = max(max_da[f], ln)
-for f, names in by_file_fn.items():
-    ordered = sorted(set(names.values()))
-    for name, st in names.items():
-        nxt = min([s for s in ordered if s > st], default=None)
-        end = (nxt - 1) if nxt is not None else 10**9
-        if (f, name) in fn_end:
-            # Three-field record carries a real span end: bound forgiveness by
-            # min(declared end, last measured line). Without this, an executed
-            # fn forgives every uncovered module-tail line after it — the
-            # phantom-clone span ran to the next fn or to infinity.
-            end = min(end, fn_end[(f, name)], max_da.get(f, 10**9))
-        # Two-field records KEEP the open-ended span unchanged: bounding those
-        # differently would move live cargo-llvm-cov consumers' coverage
-        # numbers, which is explicitly out of scope for this fix.
-        spans[f].append((st, end, fn_best.get((f, name), 0) > 0))
-
-missed = defaultdict(list)
-total = len(line_best)
-covered = 0
-for (f, ln), cnt in line_best.items():
-    if cnt > 0:
-        covered += 1
-        continue
-    for st, end, executed in spans.get(f, []):
-        if st <= ln <= end and executed:
-            covered += 1
-            break
-    else:
-        missed[f].append(ln)
-
-if total == 0:
-    print("✗ [coverage] no coverable lines found in any lcov part")
-    sys.exit(1)
-
-pct = round(100.0 * covered / total, 2)
-below = pct < floor
-print(("✗" if below else "✓") + f" [coverage] {pct}% of coverable lines (floor {floor:g}%, {covered}/{total} lines)")
-if below:
-    print("✗ [coverage] uncovered lines:")
-    for f, lines in sorted(missed.items()):
-        print(f"  {f}: {', '.join(map(str, lines))}")
-sys.exit(1 if below else 0)
-PYEOF
+    # The merge + floor decision lives in gates/lcov_merge.py: it strips CGU
+    # hashes, groups instantiations, counts a line covered iff ANY
+    # instantiation ran, and prints exact uncovered lines on failure.
+    python3 "$GOH_ROOT/gates/lcov_merge.py" --floor "$FLOOR" "$PARTS"
 }
 
 # ── swift ───────────────────────────────────────────────────────────────────
