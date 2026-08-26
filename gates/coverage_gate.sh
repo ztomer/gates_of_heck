@@ -445,14 +445,19 @@ run_cpp() {
         esac
     fi
     [ -x "$bin" ] || die "test binary not executable: $bin"
-
-    local report pct
-    report=$(xcrun llvm-cov report "$bin" -instr-profile="$profdata" \
-        ${IGNORE:+-ignore-filename-regex "$IGNORE"} 2>/dev/null) \
-        || { err "llvm-cov report failed"; exit 1; }
-    pct=$(printf '%s\n' "$report" | tail -1 | awk '{print $NF}' | tr -d '%')
+    need python3 "parsing llvm-cov's JSON summary"
+    # LINE coverage, BY NAME from llvm-cov's JSON summary. Never positional:
+    # this took the TOTAL row's LAST column, which is BRANCH coverage on a
+    # branch-instrumented build (60.80% where lines were 71.21%), and the
+    # column count is not fixed. See CHANGELOG.
+    local pct
+    pct=$(xcrun llvm-cov export "$bin" -instr-profile="$profdata" \
+        ${IGNORE:+-ignore-filename-regex "$IGNORE"} -summary-only 2>/dev/null \
+        | python3 -c 'import json,sys
+try: print("%.2f" % json.load(sys.stdin)["data"][0]["totals"]["lines"]["percent"])
+except Exception: pass' ) || true
     case "$pct" in
-        ''|*[!0-9.]*) err "could not parse total line % from llvm-cov report"; exit 1 ;;
+        ''|*[!0-9.]*) err "could not parse total line % from llvm-cov export"; exit 1 ;;
     esac
 
     floor_cmp "$pct"
