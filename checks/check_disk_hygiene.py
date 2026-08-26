@@ -41,23 +41,42 @@ from pathlib import Path
 GIB = 1024**3
 
 
-def _du_bytes(path: Path) -> int:
-    """Disk usage in bytes, counting ALLOCATED blocks, not apparent size.
+def _du_bytes(path: Path) -> tuple[int, "str | None"]:
+    """(bytes, warning). Disk usage counting ALLOCATED blocks, not apparent
+    size — `du` rather than summing st_size: a sparse file reports a huge
+    size while occupying nothing.
 
-    `du` is the right tool rather than summing st_size: a sparse file reports a
-    huge size while occupying nothing, and counting apparent size would flag
-    exactly the fix that resolved the incident above.
+    Partial-failure honesty (2026-08-25): du exiting nonzero while still
+    printing a total (e.g. an unreadable subdirectory) used to be treated as
+    NO data and returned 0, so a multi-GB tree with one locked subtree
+    reported empty and silently passed its ceiling. Now the PARTIAL total is
+    used and a warning names the failure; only EMPTY stdout yields zero.
     """
     try:
         out = subprocess.run(
             ["/usr/bin/du", "-sk", str(path)],
             capture_output=True, text=True, timeout=120,
         )
-        if out.returncode != 0 or not out.stdout.strip():
-            return 0
-        return int(out.stdout.split()[0]) * 1024
-    except (OSError, ValueError, subprocess.SubprocessError):
-        return 0
+    except (OSError, subprocess.SubprocessError) as exc:
+        return 0, f"du could not run on {path}: {exc}"
+    tail = out.stderr.strip()[-200:]
+    if out.returncode != 0:
+        lines = out.stdout.strip().splitlines()
+        if lines:
+            try:
+                return int(lines[-1].split()[0]) * 1024, (
+                    f"du exited {out.returncode} reading {path} — partial "
+                    f"measure used ({tail})")
+            except (ValueError, IndexError):
+                pass
+        return 0, (f"du exited {out.returncode} with no usable output for "
+                   f"{path}: {tail}")
+    if not out.stdout.strip():
+        return 0, f"du produced no output for {path}"
+    try:
+        return int(out.stdout.split()[0]) * 1024, None
+    except ValueError:
+        return 0, f"du output unparseable for {path}"
 
 
 def _scratch_roots() -> list[Path]:
@@ -84,7 +103,7 @@ def _largest_children(root: Path, limit: int = 5) -> list[tuple[str, int]]:
     # Bound the work: a scratch root with 15,000 entries is itself a symptom,
     # but walking all of them to report the top 5 is not worth the minutes.
     for child in children[:400]:
-        size = _du_bytes(child)
+        size, _warn = _du_bytes(child)
         if size > GIB // 2:
             sized.append((child.name, size))
     sized.sort(key=lambda pair: -pair[1])
@@ -108,16 +127,29 @@ def main() -> int:
         )
 
     for root in _scratch_roots():
-        used = _du_bytes(root) / GIB
-        if used <= args.max_scratch_gb:
-            print(f"→ [disk] {root}: {used:.1f}GB (ceiling {args.max_scratch_gb:.0f}GB)")
+        used, du_warn = _du_bytes(root)
+        if du_warn:
+            print(f"⚠ [disk] {du_warn}", file=sys.stderr)
+        used_gb = used / GIB
+        # Free space on the scratch root's OWN volume, alongside the
+        # cwd-volume check above: a scratch root can live on a different,
+        # fuller volume than the repo.
+        free_here = shutil.disk_usage(root).free / GIB
+        if free_here < args.min_free_gb:
+            problems.append(
+                f"only {free_here:.1f}GB free on {root}'s volume "
+                f"(floor {args.min_free_gb:.0f}GB). "
+                "Builds start failing for reasons that look like code defects."
+            )
+        if used_gb <= args.max_scratch_gb:
+            print(f"→ [disk] {root}: {used_gb:.1f}GB (ceiling {args.max_scratch_gb:.0f}GB)")
             continue
         detail = "\n".join(
             f"      {size / GIB:>7.1f}GB  {name}"
             for name, size in _largest_children(root)
         )
         problems.append(
-            f"{root} holds {used:.1f}GB of scratch (ceiling "
+            f"{root} holds {used_gb:.1f}GB of scratch (ceiling "
             f"{args.max_scratch_gb:.0f}GB). Largest:\n{detail}"
         )
 
