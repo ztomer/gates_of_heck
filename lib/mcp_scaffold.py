@@ -25,18 +25,21 @@ NaN token ever goes back over the wire.
 """
 from __future__ import annotations
 
+import inspect
 import json
 import math
 import subprocess  # noqa: F401 — TimeoutExpired contract of killtree.run_captured
 import sys
-from typing import Callable
+from typing import Callable, get_type_hints
 
 try:
     from .killtree import run_captured
 except ImportError:  # run as a script: script dir is on sys.path
     from killtree import run_captured
 
-PROTOCOL_VERSION = "2025-06-18"
+HANDSHAKE_VERSIONS = ("2024-11-05", "2025-03-26", "2025-06-18", "2025-11-25")
+LATEST = "2025-11-25"
+PROTOCOL_VERSION = LATEST
 
 # JSON-RPC 2.0 / MCP error codes
 PARSE_ERROR = -32700
@@ -67,13 +70,118 @@ def _sanitize_id(msg_id):
     return msg_id
 
 
+# ── validation helper (lightweight + jsonschema when available) ─────────────
+
+def _check_type(value, type_str: str) -> bool:
+    if type_str == "string":
+        return isinstance(value, str)
+    if type_str == "integer":
+        return isinstance(value, int) and not isinstance(value, bool)
+    if type_str == "number":
+        return isinstance(value, (int, float)) and not isinstance(value, bool)
+    if type_str == "boolean":
+        return isinstance(value, bool)
+    if type_str == "object":
+        return isinstance(value, dict)
+    if type_str == "array":
+        return isinstance(value, list)
+    if type_str == "null":
+        return value is None
+    return True
+
+
+def _validate_args(schema: dict, args: dict) -> str | None:
+    """Validate *args* against JSON Schema *schema*.
+
+    Returns None on success, or an error message string on failure.
+    Prefers jsonschema when installed; falls back to a lightweight check
+    covering required / type / additionalProperties (the cases the task
+    requires). No coercion: year="2024" where integer is required fails.
+    """
+    if not isinstance(schema, dict):
+        return None
+    # Try jsonschema first (strict, no coercion)
+    try:
+        import jsonschema  # type: ignore
+        import jsonschema.exceptions  # type: ignore
+
+        jsonschema.validate(instance=args, schema=schema)
+        return None
+    except ImportError:
+        pass
+    except Exception as exc:  # noqa: BLE001
+        try:
+            import jsonschema.exceptions as _exc  # type: ignore
+
+            if isinstance(exc, _exc.ValidationError):
+                return exc.message
+        except ImportError:
+            pass
+        return str(exc)
+
+    # Lightweight fallback: required / additionalProperties / type
+    required = schema.get("required", [])
+    if isinstance(required, list):
+        for req in required:
+            if req not in args:
+                return f"missing required property: '{req}'"
+
+    properties = schema.get("properties", {}) or {}
+    additional = schema.get("additionalProperties", True)
+    if additional is False:
+        for key in args:
+            if key not in properties:
+                return f"additional property not allowed: '{key}'"
+
+    for key, value in args.items():
+        prop_schema = properties.get(key)
+        if not isinstance(prop_schema, dict):
+            continue
+        expected = prop_schema.get("type")
+        if expected is None:
+            continue
+        if isinstance(expected, list):
+            if not any(_check_type(value, t) for t in expected):
+                return f"property '{key}' is not of type {expected}"
+            continue
+        if not _check_type(value, expected):
+            return f"property '{key}' expected {expected}, got {type(value).__name__}"
+
+    return None
+
+
+_PY_TYPE_TO_JSON: dict[type, str] = {
+    str: "string",
+    int: "integer",
+    float: "number",
+    bool: "boolean",
+    list: "array",
+    dict: "object",
+}
+
+
+def _python_type_to_json_schema(py_type) -> dict:
+    origin = getattr(py_type, "__origin__", None)
+    if origin is not None:
+        args = getattr(py_type, "__args__", ())
+        non_none = [a for a in args if a is not type(None)]  # noqa: E721
+        if non_none:
+            py_type = non_none[0]
+    json_type = _PY_TYPE_TO_JSON.get(py_type)
+    if json_type:
+        return {"type": json_type}
+    return {"type": "string"}
+
+
 class McpServer:
     """One MCP session: tool registry + JSON-RPC dispatch. Testable without
     any process — feed handle_message() dicts directly."""
 
-    def __init__(self, name: str = "mcp-server", version: str = "0.1.0"):
+    def __init__(self, name: str = "mcp-server", version: str = "0.1.0",
+                 instructions: str | None = None):
         self.name = name
         self.version = version
+        self.instructions = instructions
         self._tools: dict[str, dict] = {}
 
     # -- registration -------------------------------------------------------
@@ -98,6 +206,75 @@ class McpServer:
             return fn
 
         return register
+
+    def tool_from_function(self, fn: Callable | None = None, *,
+                           description: str | None = None,
+                           schema: dict | None = None) -> Callable:
+        """Register a tool from a plain function, inferring inputSchema.
+
+        Mirrors mcp.server.mcpserver.Tool.from_function at a trivial level:
+        when *schema* is None the inputSchema is derived from the function's
+        type hints and defaults (required = params without defaults).
+        When *schema* is supplied it is used verbatim. Keeps the existing
+        manual @tool(description, schema) path intact — this is an optional
+        helper.
+
+        Usage:
+
+            @server.tool_from_function
+            def add(a: int, b: int) -> int: ...
+
+            @server.tool_from_function(description="custom", schema={...})
+            def echo(message: str): ...
+        """
+        def _register(func: Callable) -> Callable:
+            name = getattr(func, "__name__", None)
+            if not name:
+                raise ValueError("@tool_from_function needs a named function")
+            if name in self._tools:
+                raise ValueError(f"duplicate tool: {name}")
+            desc = description if description is not None else (inspect.getdoc(func) or "")
+            if schema is not None:
+                input_schema = schema
+            else:
+                try:
+                    hints = get_type_hints(func)
+                except Exception:
+                    hints = {}
+                sig = inspect.signature(func)
+                properties: dict = {}
+                required: list[str] = []
+                for pname, param in sig.parameters.items():
+                    if param.kind in (inspect.Parameter.VAR_POSITIONAL,
+                                      inspect.Parameter.VAR_KEYWORD):
+                        continue
+                    ann = hints.get(pname, param.annotation)
+                    if ann is inspect.Signature.empty:
+                        prop: dict = {"type": "string"}
+                    else:
+                        try:
+                            prop = _python_type_to_json_schema(ann)
+                        except Exception:
+                            prop = {"type": "string"}
+                    properties[pname] = prop
+                    if param.default is inspect.Parameter.empty:
+                        required.append(pname)
+                input_schema = {
+                    "type": "object",
+                    "properties": properties,
+                    "required": required,
+                    "additionalProperties": False,
+                }
+            self._tools[name] = {
+                "description": desc,
+                "inputSchema": input_schema,
+                "handler": func,
+            }
+            return func
+
+        if fn is not None:
+            return _register(fn)
+        return _register
 
     def tools_list(self) -> list[dict]:
         return [
@@ -140,12 +317,21 @@ class McpServer:
         msg_id = _sanitize_id(message["id"])
 
         if method == "initialize":
-            version = params.get("protocolVersion") or PROTOCOL_VERSION
-            return _rpc(msg_id, {
-                "protocolVersion": version,
+            requested = params.get("protocolVersion")
+            if requested is None:
+                negotiated = PROTOCOL_VERSION
+            elif requested in HANDSHAKE_VERSIONS:
+                negotiated = requested
+            else:
+                negotiated = LATEST
+            result: dict = {
+                "protocolVersion": negotiated,
                 "capabilities": {"tools": {"listChanged": False}},
                 "serverInfo": {"name": self.name, "version": self.version},
-            })
+            }
+            if self.instructions is not None:
+                result["instructions"] = self.instructions
+            return _rpc(msg_id, result)
         if method == "ping":
             return _rpc(msg_id, {})
         if method == "tools/list":
@@ -171,6 +357,10 @@ class McpServer:
         spec = self._tools.get(name)
         if spec is None:
             return _error(msg_id, INVALID_PARAMS, f"unknown tool: {name}")
+        # Validation hook: schema check before handler (INVALID_PARAMS, not isError)
+        validation_msg = _validate_args(spec["inputSchema"], args)
+        if validation_msg is not None:
+            return _error(msg_id, INVALID_PARAMS, validation_msg)
         try:
             value = spec["handler"](**args)
         except Exception as exc:  # noqa: BLE001 — tool failure is a result,
