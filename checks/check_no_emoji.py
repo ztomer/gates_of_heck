@@ -59,11 +59,20 @@ ALLOWED = frozenset(ALLOWED_ORDERED)
 # Codepoint ranges that hold emoji / decorative pictographs. A char in any of these that is NOT in
 # ALLOWED is a failure. (inclusive lo, inclusive hi)
 RANGES = (
-    (0x1F000, 0x1FAFF),   # all emoji blocks: pictographs, symbols, supplemental, regional flags
+    (0x1F000, 0x1FFFF),   # all emoji blocks: pictographs, symbols, supplemental,
+                          # regional flags — capped at the TOP of the plane so
+                          # future Unicode emoji additions (0x1FA70-0x1FFFF is
+                          # already allocated) are flagged on arrival, not
+                          # after someone ships them
     (0x2600,  0x26FF),    # misc symbols (sun, gear, no-entry, ... and the allowed warn sign U+26A0)
     (0x2700,  0x27BF),    # dingbats (check-mark-button, scissors, ... and the allowed check/x)
     (0x2300,  0x23FF),    # misc technical (pause, stopwatch, ... and the allowed keyboard glyph)
     (0x2B00,  0x2BFF),    # stars, big block arrows
+    (0x25A0,  0x25FF),    # geometric shapes: the decorative triangle/square set
+                          # (U+25B6 play, U+25FC/U+25FD squares, ...) — bullet
+                          # points and UI filler, decoration not vocabulary.
+                          # Verified ZERO occurrences across the wired repos on
+                          # adoption (2026-08-26), so no verdict flips today.
     (0x2190,  0x21FF),    # arrows (cardinal + bidi allowed via ALLOWED; double-arrow, mapsto rejected)
     (0xFE00,  0xFE0F),    # variation selectors (emoji-presentation VS16, etc.)
     (0x20E3,  0x20E3),    # combining enclosing keycap
