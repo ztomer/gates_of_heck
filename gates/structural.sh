@@ -18,6 +18,22 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 CHECKS="$(cd "$HERE/../checks" && pwd)"
 SCOPE="${1:-}"
+# Strict scope argument: "" |--full|--staged are the ONLY accepted forms.
+# Anything else previously FELL THROUGH to a silent full-tree run — a typo
+# (`--stgaed`, `--staged --dry-run`) meant "check everything" without ever
+# saying so. Unknown arguments are a usage error naming the accepted forms,
+# never a scope guess.
+case "$SCOPE" in
+    ""|--full|--staged) ;;
+    *)
+        err "structural.sh: unknown argument '$SCOPE' (accepted: no argument | --full | --staged)"
+        exit 2
+        ;;
+esac
+[ $# -le 1 ] || {
+    err "structural.sh: unexpected extra arguments: $* (accepted: no argument | --full | --staged)"
+    exit 2
+}
 # Only --staged is a checker-level scope; --full (and no argument) mean
 # unrestricted. The scope flag is forwarded to checkers ONLY when it is
 # --staged — forwarding --full verbatim made every full run die on argparse.

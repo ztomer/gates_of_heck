@@ -50,8 +50,8 @@ in two independent tiers, and says which tier ran:
     compute: numpy if importable, else pure-Python equivalents with identical
              semantics (slower on large frames; same numbers).
 
-CLI
-    golden_diff.py A B [--tolerances '{"mean_abs_diff_max": 5}'] [--json]
+CLI (this module IS the CLI — `python3 lib/golden_core.py`):
+    golden_core.py A B [--tolerances '{"mean_abs_diff_max": 5}'] [--json]
 
 Exit codes: 0 within tolerance - 1 exceeded - 2 precondition (unreadable
 image, size mismatch, malformed tolerances). --json prints one object with

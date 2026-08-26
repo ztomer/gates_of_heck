@@ -92,6 +92,45 @@ def test_full_scope_runs_disk_check(repo):
     assert "disk hygiene" in r.stdout
 
 
+# ── strict scope argument ────────────────────────────────────────────────────
+# Anything ≠ ""|--full|--staged used to fall through to a SILENT full-tree
+# run; a typo meant "check everything" without saying so.
+
+
+def test_typo_argument_is_a_named_usage_error_not_a_silent_full_run(repo):
+    write(repo, "a.py", "\n")
+    stage(repo, "a.py")
+    for typo in ("--stgaed", "--STAGED", "--dry-run", "-s"):
+        r = run_gate(repo, STRUCTURAL, typo)
+        assert r.returncode == 2, f"{typo}: exit {r.returncode} ({r.stdout}{r.stderr})"
+        combined = r.stdout + r.stderr
+        assert typo in combined  # names WHAT was rejected
+        assert "--full" in combined and "--staged" in combined  # and the usage
+
+
+def test_extra_arguments_are_rejected(repo):
+    r = run_gate(repo, STRUCTURAL, "--staged", "--full")
+    assert r.returncode == 2
+    assert "extra arguments" in (r.stdout + r.stderr)
+
+
+def test_valid_scope_forms_unchanged(repo):
+    # The three accepted forms keep their exact prior behavior.
+    _mk_gatesrc(repo)
+    write(repo, "a.py", "\n" * 3)
+    stage(repo, "a.py")
+    r_staged = run_gate(repo, STRUCTURAL, "--staged")
+    assert r_staged.returncode == 0, r_staged.stdout + r_staged.stderr
+    assert "all structural gates passed" in r_staged.stdout
+
+    r_bare = run_gate(repo, STRUCTURAL)
+    assert r_bare.returncode == 0, r_bare.stdout + r_bare.stderr
+    assert "disk hygiene" in r_bare.stdout  # bare form = full tree
+
+    r_full = run_gate(repo, STRUCTURAL, "--full")
+    assert r_full.returncode == 0, r_full.stdout + r_full.stderr
+
+
 # ── exemption union semantics ────────────────────────────────────────────────
 # GOH_EXCLUDE exempts from BOTH the emoji scan and the length cap;
 # GOH_LINE_EXCLUDE is additive to the LENGTH check only. Red proof: under the

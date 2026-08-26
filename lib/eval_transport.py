@@ -15,6 +15,7 @@ No provider SDK: urllib from the standard library only.
 """
 from __future__ import annotations
 
+import fcntl
 import json
 import os
 import tempfile
@@ -60,6 +61,12 @@ class ParseRateError(RuntimeError):
             f"parse rate {parsed}/{samples} ({rate:.2f}) fell below floor "
             f"{floor:.2f} — BROKEN transport/parse, not a result"
         )
+
+
+class SweepStateCorrupt(RuntimeError):
+    """The sweep state file exists but is not readable state (truncated,
+    torn by a pre-atomicity writer, hand-edited). Named so recovery is a
+    decision, never a raw traceback."""
 
 
 # ─── endpoint resolution ──────────────────────────────────────────────────────
@@ -121,9 +128,46 @@ class EvalTransport:
             headers["Authorization"] = f"Bearer {self.api_key}"
         data = json.dumps(body).encode() if body is not None else None
         req = urllib.request.Request(url, data=data, headers=headers, method=method)
+        # WHOLE-CALL deadline: a socket timeout is PER-OPERATION — connect,
+        # each send, each recv chunk each get their own window, so a slow-drip
+        # server that never stalls one read for `timeout` can stretch a call
+        # indefinitely. The deadline is absolute across all of them.
+        deadline = time.monotonic() + self.timeout
         try:
             with urllib.request.urlopen(req, timeout=self.timeout) as resp:
-                return json.loads(resp.read().decode())
+                chunks = []
+                while True:
+                    remaining = deadline - time.monotonic()
+                    if remaining <= 0:
+                        raise TransportError(
+                            f"whole-call deadline of {self.timeout}s exceeded "
+                            f"while reading {url} (socket timeouts are per-op; "
+                            "slow-drip bodies are bounded only by this)")
+                    # Shrink the per-op socket window to what's left of the
+                    # deadline so even ONE stalled read cannot overrun it.
+                    sock = getattr(getattr(resp.fp, "raw", None), "_sock", None)
+                    if sock is not None:
+                        sock.settimeout(max(remaining, 0.05))
+                    # read1, not read: BufferedReader.read(8192) blocks until
+                    # the FULL window arrives (a slow drip would stretch one
+                    # read past any deadline); read1 returns what ONE recv
+                    # delivered.
+                    read_some = getattr(resp, "read1", None)
+                    try:
+                        chunk = (read_some(8192) if read_some
+                                 else resp.read(8192))
+                    except TimeoutError as exc:
+                        # Inside the read loop the socket window IS the
+                        # remaining whole-call budget — a timeout here is the
+                        # deadline expiring, not an unreachable server.
+                        raise TransportError(
+                            f"whole-call deadline of {self.timeout}s exceeded "
+                            f"while reading {url} (socket timeouts are per-op; "
+                            "slow-drip bodies are bounded only by this)") from exc
+                    if not chunk:
+                        break
+                    chunks.append(chunk)
+            return json.loads(b"".join(chunks).decode())
         except urllib.error.HTTPError as exc:
             detail = exc.read().decode(errors="replace")[:200]
             raise TransportError(f"HTTP {exc.code} from {url}: {detail}") from exc
@@ -201,6 +245,25 @@ class EvalTransport:
 # ─── resumable sweep state ───────────────────────────────────────────────────
 
 
+class _Flock:
+    """Exclusive fcntl.flock held for the life of the context — released on
+    success, exception, or process death (kernel-managed)."""
+
+    def __init__(self, fh):
+        self.fh = fh
+
+    def __enter__(self):
+        fcntl.flock(self.fh.fileno(), fcntl.LOCK_EX)
+        return self.fh
+
+    def __exit__(self, *exc):
+        try:
+            fcntl.flock(self.fh.fileno(), fcntl.LOCK_UN)
+        finally:
+            self.fh.close()
+        return False
+
+
 class SweepState:
     """Per-(model, task) DONE-marker file for resumable sweeps.
 
@@ -209,20 +272,70 @@ class SweepState:
     process after a crash) see either the complete previous state or the
     complete new state, never a torn file.
 
+    Concurrency contract (2026-08-26): read-modify-write cycles are serialized
+    by an fcntl.flock on a SEPARATE `path + '.lock'` file (separate because
+    os.replace() swaps the state file's inode — a lock held on it would guard
+    a stale object while writers race past on the new one). Two processes
+    marking units concurrently can no longer lose updates. macOS + Linux
+    (fcntl.flock is POSIX-wide); there is deliberately no Windows fallback.
+
     Truncation contract: `start()` records the full planned unit list once;
     summary() reports done/planned so a sweep killed mid-run reads as
     TRUNCATED, never silently complete.
+
+    Corruption contract: a state file that will not parse raises
+    SweepStateCorrupt naming the path and the recovery seam — pass
+    `on_corrupt="discard"` to explicitly trade the old run's markers for a
+    fresh start, never to silently reset.
+
+    Key encoding: model|task joins are escaped (`%` → `%25`, `|` → `%7C`) so
+    ("a|b", "c") and ("a", "b|c") cannot collide into the same marker key.
+    Keys for models/tasks without % or | are byte-identical to the pre-escape
+    format, so existing v1 state files stay resumable.
     """
 
-    def __init__(self, path: str | os.PathLike):
+    def __init__(self, path: str | os.PathLike, on_corrupt: str = "raise"):
+        if on_corrupt not in ("raise", "discard"):
+            raise ValueError(
+                f"on_corrupt must be 'raise' or 'discard', got {on_corrupt!r}")
         self.path = os.fspath(path)
+        self.on_corrupt = on_corrupt
+
+    # -- locking -------------------------------------------------------------
+
+    def _locked(self):
+        """Context manager: exclusive flock on the companion .lock file for
+        the whole read-modify-write cycle."""
+        lock_path = self.path + ".lock"
+        directory = os.path.dirname(lock_path)
+        if directory:
+            os.makedirs(directory, exist_ok=True)
+        fh = open(lock_path, "a+")
+        return _Flock(fh)
 
     def _read(self) -> dict:
         try:
             with open(self.path, encoding="utf-8") as fh:
-                return json.load(fh)
+                state = json.load(fh)
         except FileNotFoundError:
             return {"version": STATE_VERSION, "planned": [], "done": {}, "errors": {}}
+        except (json.JSONDecodeError, UnicodeDecodeError) as exc:
+            if self.on_corrupt == "discard":
+                return {"version": STATE_VERSION, "planned": [],
+                        "done": {}, "errors": {}}
+            raise SweepStateCorrupt(
+                f"sweep state file is corrupt: {self.path} ({exc}); "
+                "recovery is explicit — reopen with "
+                "SweepState(path, on_corrupt='discard') to discard-and-restart"
+            ) from exc
+        if not isinstance(state, dict) or not isinstance(
+                state.get("done", {}), dict):
+            raise SweepStateCorrupt(
+                f"sweep state file has the wrong shape: {self.path}; "
+                "recovery is explicit — reopen with "
+                "SweepState(path, on_corrupt='discard') to discard-and-restart"
+            )
+        return state
 
     def _write(self, state: dict) -> None:
         directory = os.path.dirname(self.path) or "."
@@ -242,20 +355,24 @@ class SweepState:
 
     @staticmethod
     def _key(model: str, task: str) -> str:
-        return f"{model}|{task}"
+        def esc(s: str) -> str:
+            return s.replace("%", "%25").replace("|", "%7C")
+        return f"{esc(model)}|{esc(task)}"
 
     def start(self, models: list[str], tasks: list[str]) -> None:
         """Record the planned unit grid once (first call wins — later starts
         on an existing plan must not shrink what 'complete' means)."""
-        state = self._read()
-        if state.get("planned"):
-            return
-        state["planned"] = [self._key(m, t) for m in models for t in tasks]
-        self._write(state)
+        with self._locked():
+            state = self._read()
+            if state.get("planned"):
+                return
+            state["planned"] = [self._key(m, t) for m in models for t in tasks]
+            self._write(state)
 
     def resume(self, models: list[str], tasks: list[str]) -> list[tuple[str, str]]:
         """Units from the (model x tasks) grid that have no DONE marker yet."""
-        state = self._read()
+        with self._locked():
+            state = self._read()
         done = state.get("done", {})
         return [
             (m, t)
@@ -265,25 +382,28 @@ class SweepState:
         ]
 
     def mark_done(self, model: str, task: str, note: str = "") -> None:
-        state = self._read()
-        state.setdefault("done", {})[self._key(model, task)] = {
-            "status": "done",
-            "note": note,
-            "at": time.strftime("%Y-%m-%dT%H:%M:%S"),
-        }
-        state.get("errors", {}).pop(self._key(model, task), None)
-        self._write(state)
+        with self._locked():
+            state = self._read()
+            state.setdefault("done", {})[self._key(model, task)] = {
+                "status": "done",
+                "note": note,
+                "at": time.strftime("%Y-%m-%dT%H:%M:%S"),
+            }
+            state.get("errors", {}).pop(self._key(model, task), None)
+            self._write(state)
 
     def record_error(self, model: str, task: str, error: str) -> None:
-        state = self._read()
-        state.setdefault("errors", {})[self._key(model, task)] = {
-            "error": str(error)[:500],
-            "at": time.strftime("%Y-%m-%dT%H:%M:%S"),
-        }
-        self._write(state)
+        with self._locked():
+            state = self._read()
+            state.setdefault("errors", {})[self._key(model, task)] = {
+                "error": str(error)[:500],
+                "at": time.strftime("%Y-%m-%dT%H:%M:%S"),
+            }
+            self._write(state)
 
     def summary(self) -> dict:
-        state = self._read()
+        with self._locked():
+            state = self._read()
         planned = len(state.get("planned", []))
         done = len(state.get("done", {}))
         return {

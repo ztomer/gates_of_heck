@@ -121,7 +121,7 @@ roof. 74 → 262 tests, every new checker red-proven.
 - `checks/check_tests_registered.py`: every test source on disk must be
   registered inside an add_executable/add_test block (stronger than the
   CadGoose/CadGoose2 verbatim twins it replaces).
-- `lib/golden_core.py` + `golden_diff.py`: shared pixel-diff core (mean abs
+- `lib/golden_core.py`: shared pixel-diff core (mean abs
   diff, changed fraction, SSIM; Pillow-or-pure-Python); blessing stays repo
   policy by design. Offscreen-render cookbook recorded in `docs/harnesses.md`.
 - `lib/eval_transport.py` + `lib/mcp_scaffold.py`: grader/model-agnostic eval
