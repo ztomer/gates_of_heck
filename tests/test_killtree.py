@@ -15,6 +15,7 @@ that NOTHING survives the timeout.
 
 import argparse
 import importlib.util
+import os
 import subprocess
 import sys
 import time
@@ -88,6 +89,26 @@ def test_run_captured_kills_whole_group_on_timeout():
             _orphan_step(marker), shell=True, timeout=1
         )
     _assert_nothing_survives(marker)
+
+
+def test_missing_getpgid_falls_back_to_direct_kill(monkeypatch):
+    # os.getpgid is POSIX-only; on a platform without it the fallback path
+    # must degrade to proc.kill(), not escape the timeout handler as an
+    # AttributeError. HEAD guarded OSError only — half-guard.
+    proc = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(60)"])
+    monkeypatch.setattr(
+        os, "getpgid",
+        lambda pid: (_ for _ in ()).throw(AttributeError("no getpgid")),
+    )
+    try:
+        killtree._kill_process_group(proc)  # must not raise
+        deadline = time.time() + 5
+        while proc.poll() is None and time.time() < deadline:
+            time.sleep(0.05)
+        assert proc.poll() is not None, "fallback p.kill() did not stop the child"
+    finally:
+        if proc.poll() is None:
+            proc.kill()
 
 
 def test_run_captured_feeds_stdin_and_captures_both_pipes():

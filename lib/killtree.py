@@ -23,8 +23,13 @@ def _kill_process_group(proc: subprocess.Popen) -> None:
     pgid = None
     try:
         pgid = os.getpgid(proc.pid)
-    except OSError:
-        pass  # already reaped — nothing to kill
+    except (OSError, AttributeError):
+        # OSError: already reaped — nothing to kill.
+        # AttributeError: os.getpgid is absent on this platform (it is
+        # POSIX-only); fall through to the direct-child kill like any other
+        # unsupported-killpg environment. Half-guarding this left a missing
+        # getpgid able to escape the timeout handler as a raw traceback.
+        pass
     if pgid is not None and hasattr(os, "killpg"):
         try:
             os.killpg(pgid, signal.SIGKILL)
