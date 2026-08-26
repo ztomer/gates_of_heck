@@ -252,6 +252,29 @@ def test_multi_line_string_does_not_desync_mask(repo):
     assert r.returncode == 0, (r.stdout, r.stderr)
 
 
+def test_control_char_in_string_does_not_desync_line_lists(repo):
+    # Regression (2026-08-26): splitlines() also breaks on \v \f \x1c-\x1e
+    # \x85 U+2028 U+2029, and masking a control char inside a string literal
+    # erased it from the masked text only — desyncing masked vs original line
+    # lists and crashing with IndexError instead of flagging. Both lists now
+    # come from split("\n"), which matches the mask's 1:1 contract.
+    src = "\n".join([
+        "import XCTest",
+        'let s = "a\x0cb"',
+        "_ = NSScreen.main",
+    ])
+    write(repo, "tests/FormFeedTests.swift", src)
+    commit_all(repo)
+    r = run_check(
+        repo,
+        "checks/check_no_screen_presentation.py",
+        "tests/FormFeedTests.swift",
+    )
+    assert r.returncode == 1, (r.stdout, r.stderr)
+    assert "FormFeedTests.swift:3" in r.stderr
+    assert "Traceback" not in r.stderr
+
+
 # ---- single-pass state scanner (2026-08-25) ----------------------------------
 #
 # The sequential mask (block comments, then line comments, then strings) let a

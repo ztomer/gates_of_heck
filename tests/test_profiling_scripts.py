@@ -38,8 +38,14 @@ def test_direct_execv_starts_the_interpreter(rel, tmp_path):
     # Empty target repo: no CadGoose present, every script takes its named
     # early-exit path instead of recording traces anywhere real.
     env["GOH_PROFILE_TARGET"] = str(tmp_path)
+    # soak_profile.sh's "is CadGoose running" probe is pgrep -f, which matches
+    # ANY stray machine process carrying the name in its argv — under one, the
+    # script enters its sampling loop for DURATION_MINUTES (default 30) and
+    # blows this test's timeout. Duration 0 keeps the execv proof while making
+    # the run independent of unrelated machine state.
+    args = ["0"] if rel.endswith("soak_profile.sh") else []
     r = subprocess.run(
-        [str(REPO_ROOT / rel)],
+        [str(REPO_ROOT / rel), *args],
         capture_output=True, text=True, env=env, timeout=120,
     )
     assert r.returncode != 126, "found but not executable"

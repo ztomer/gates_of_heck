@@ -148,3 +148,69 @@ def test_string_containing_url_is_untouched(repo):
     )
     commit_all(repo)
     assert run_check(repo, SCRIPT).returncode == 0
+
+
+# ---- depth-counter block-comment scan (2026-08-26) -----------------------------
+#
+# The split-based detector ignored a SECOND /* opener on one line (flagging
+# comment-only mentions) and skipped a whole line containing a same-line */
+# close (missing a REAL #[allow] after it). A per-line depth counter fixes
+# both; these are its red-proven regressions.
+
+
+def test_second_opener_on_one_line_reenters_comment(repo):
+    # /* closed */ code /* reopened, runs on — the OLD detector judged
+    # block state from the first opener only, so lines under the SECOND,
+    # unterminated span were searched and a comment-only mention flagged.
+    (_mkcrate(repo) / "lib.rs").write_text(
+        "/* closed */ fn ok() {} /* reopened, keeps going\n"
+        "#[allow(dead_code)] inside prose\n"
+        "*/\n"
+        "fn f() {}\n",
+        encoding="utf-8",
+    )
+    commit_all(repo)
+    r = run_check(repo, SCRIPT)
+    assert r.returncode == 0, r.stdout
+
+
+def test_real_allow_after_same_line_close_flags(repo):
+    # A line carrying the close of an open block AND a real attribute was
+    # skipped wholesale (was a false negative).
+    (_mkcrate(repo) / "lib.rs").write_text(
+        "/* policy prose opens\n"
+        "*/ #[allow(dead_code)]\n"
+        "fn f() {}\n",
+        encoding="utf-8",
+    )
+    commit_all(repo)
+    r = run_check(repo, SCRIPT)
+    assert r.returncode == 1
+    assert "lib.rs:2" in r.stdout
+
+
+def test_unterminated_block_to_eof_is_safe(repo):
+    # No closer anywhere: everything after the opener stays comment; no
+    # crash, no flag.
+    (_mkcrate(repo) / "lib.rs").write_text(
+        "fn ok() {}\n"
+        "/* never closed\n"
+        "#[allow(dead_code)]\n",
+        encoding="utf-8",
+    )
+    commit_all(repo)
+    r = run_check(repo, SCRIPT)
+    assert r.returncode == 0, r.stdout
+
+
+def test_nested_block_comments_track_depth(repo):
+    # Swift-style nesting is not Rust, but a depth counter handles it for
+    # free and must not resync early on the first inner */.
+    (_mkcrate(repo) / "lib.rs").write_text(
+        "/* outer /* inner */ still outer with #[allow(dead_code)] */\n"
+        "fn f() {}\n",
+        encoding="utf-8",
+    )
+    commit_all(repo)
+    r = run_check(repo, SCRIPT)
+    assert r.returncode == 0, r.stdout

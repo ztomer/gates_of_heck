@@ -186,7 +186,7 @@ LANGUAGES = {
 # in test comments explaining why the screen is off limits, and a gate that
 # fails on its own documentation gets turned off within the week (necrohand
 # learned this the same week it shipped its checker). Masking preserves the
-# line count 1:1 so callers can index the result against text.splitlines()
+# line count 1:1 so callers can index the result against text.split("\n")
 # for marker lookup on the ORIGINAL text.
 #
 # ONE left-to-right state scanner, not sequential regex passes. The old
@@ -203,7 +203,9 @@ def swift_code_only(text):
     """Swift source with comments and string literals masked to spaces.
 
     LINE-PRESERVING contract: newlines always survive untouched (callers
-    index the result positionally against text.splitlines()); everything
+    index the result positionally against text.split("\n") — never
+    splitlines(), which also breaks on \v \f \x1c-\x1e \x85 U+2028 U+2029
+    and can desync when masking erases one inside a literal); everything
     else inside a comment or literal becomes a space. Handles \\" escapes
     (the escaped quote stays in-string) and triple-quoted multi-line
     literals. Block comments nest, per Swift's own grammar.
@@ -294,10 +296,14 @@ def check_text(rel, text):
     if suffix == ".swift":
         # Patterns match MASKED lines (comments/strings are prose); markers
         # are looked up on the ORIGINAL lines, which masking preserves 1:1.
-        scan_lines = swift_code_only(text).splitlines()
+        scan_lines = swift_code_only(text).split("\n")
     else:
         scan_lines = None
-    lines = text.splitlines()
+    # split("\n") on BOTH sides, never splitlines(): splitlines() also breaks
+    # on \v \f \x1c-\x1e \x85 U+2028 U+2029, and masking can erase one of
+    # those inside a string literal, desyncing the two line lists (IndexError).
+    # split("\n") is the 1:1 contract the mask actually preserves.
+    lines = text.split("\n")
     found = []
     for i, line in enumerate(lines):
         stripped = line.strip()

@@ -177,20 +177,35 @@ def _decode_png_minimal(data, path):
     Alpha is dropped (not composited), matching Pillow's convert("RGB"). Palette
     and 16-bit PNGs are refused loudly — a silent wrong decode would poison every
     downstream number.
+
+    Corrupt-input contract (2026-08-26): every structural fault — truncated
+    chunk walk, short IHDR, pixel stream shorter than the header promises —
+    surfaces as a PreconditionError NAMING THE STAGE, never a raw IndexError /
+    struct.error / zlib.error traceback out of the decoder.
     """
     if not data.startswith(_PNG_SIG):
         raise PreconditionError(f"{path}: not a PNG (and Pillow is unavailable)")
     pos, idat, header = 8, [], None
-    while pos + 8 <= len(data):
-        ctype, body, pos = _chunk(data, pos)
-        if ctype == b"IHDR":
-            header = struct.unpack(">IIBBBBB", body)
-        elif ctype == b"IDAT":
-            idat.append(body)
-        elif ctype == b"IEND":
-            break
-    if header is None or not idat:
-        raise PreconditionError(f"{path}: PNG missing IHDR or IDAT")
+    try:
+        while pos + 8 <= len(data):
+            ctype, body, pos = _chunk(data, pos)
+            if ctype == b"IHDR":
+                if len(body) != 13:
+                    raise PreconditionError(
+                        f"{path}: corrupt PNG IHDR ({len(body)} bytes, "
+                        f"expected 13)")
+                header = struct.unpack(">IIBBBBB", body)
+            elif ctype == b"IDAT":
+                idat.append(body)
+            elif ctype == b"IEND":
+                break
+        if header is None or not idat:
+            raise PreconditionError(f"{path}: PNG missing IHDR or IDAT")
+    except PreconditionError:
+        raise
+    except (IndexError, struct.error) as exc:
+        raise PreconditionError(
+            f"{path}: corrupt PNG chunk structure: {exc}") from exc
     width, height, depth, color, comp, filt, interlace = header
     if depth != 8 or color not in _CHANNELS or comp != 0 or filt != 0 or interlace != 0:
         raise PreconditionError(
@@ -203,7 +218,18 @@ def _decode_png_minimal(data, path):
     except zlib.error as exc:
         raise PreconditionError(f"{path}: corrupt PNG stream: {exc}") from exc
     ch = _CHANNELS[color]
-    flat = _unfilter(raw, width, height, ch)
+    stride = width * ch
+    # Length precheck BEFORE unfiltering: a stream shorter than one filter
+    # byte + stride per row would otherwise run off its end mid-unfilter.
+    if len(raw) < height * (stride + 1):
+        raise PreconditionError(
+            f"{path}: corrupt PNG pixel stream: {len(raw)} bytes for "
+            f"{width}x{height}x{ch} (need {height * (stride + 1)})")
+    try:
+        flat = _unfilter(raw, width, height, ch)
+    except (IndexError, struct.error) as exc:
+        raise PreconditionError(
+            f"{path}: corrupt PNG during defiltering: {exc}") from exc
     n = width * height
     rgb = bytearray(n * 3)
     if color == 2:

@@ -19,13 +19,16 @@ The checker greps for the literal tokens `#[allow(` and `#![allow(` — never a
 looser regex — so `#[expect(...)]` (which ERRORS if its lint never fires, the
 "allow that cannot rot") stays permitted.
 
-Conservative comment-awareness (2026-08-25): a doc-comment MENTIONING
-#[allow] is prose about the policy, not a suppression, and a gate that flags
-its own documentation trains people to ignore it. Lines whose lstrip starts
-with `//` (covers /// doc comments and //! inner docs) are skipped, and `/* */
-` state is tracked across lines. Code lines are searched WHOLE — an attribute
-behind a trailing comment still flags; the conservatism errs safe (false
-positives on weird comment shapes, never a missed real #[allow]).
+Conservative comment-awareness (2026-08-25, depth-counter rewrite 2026-08-26):
+a doc-comment MENTIONING #[allow] is prose about the policy, not a
+suppression, and a gate that flags its own documentation trains people to
+ignore it. Whole-line // comments (covering /// doc comments and //! inner
+docs), // tails, and /* */ spans are stripped by a left-to-right depth
+counter that tracks OPENERS and CLOSERS per line and carries nesting state
+across lines — so a second `/*` on one line re-enters comment state (no false
+positive on comment-only mentions) and a real attribute after a same-line
+`*/` close is still searched (no blind spot). Unterminated blocks run safe to
+EOF: everything after stays comment.
 """
 import os
 import re
@@ -36,6 +39,30 @@ from _gitutil import content_bytes, listed_files, repo_root  # noqa: E402
 
 _GENERATED_MARKER = "@generated"
 _ALLOW_PATTERN = re.compile(r"#!?\[allow\(")
+
+
+def _code_portions(text: str):
+    """Yield (lineno, code-only line): /* */ spans (nestable, left-to-right,
+    state carried across lines) and // tails removed."""
+    depth = 0
+    for lineno, line in enumerate(text.split("\n"), 1):
+        kept = []
+        i = 0
+        while i < len(line):
+            if depth == 0 and line.startswith("//", i):
+                break  # line comment: rest of the line is prose
+            if line.startswith("/*", i):
+                depth += 1
+                i += 2
+                continue
+            if depth > 0 and line.startswith("*/", i):
+                depth -= 1
+                i += 2
+                continue
+            if depth == 0:
+                kept.append(line[i])
+            i += 1
+        yield lineno, "".join(kept)
 
 
 def _is_compiled_src(rel: str) -> bool:
@@ -73,20 +100,9 @@ def _scan(root: str, paths, staged: bool):
         if blob is None or _is_generated(root, rel, staged):
             continue
         text = blob.decode("utf-8", errors="replace")
-        in_block_comment = False
-        for i, line in enumerate(text.splitlines(), 1):
-            if in_block_comment:
-                if "*/" in line:
-                    in_block_comment = False
-                continue
-            if line.lstrip().startswith("//"):
-                continue  # /// docs and //! inner docs are prose about policy
-            if "/*" in line and "*/" not in line.split("/*", 1)[1]:
-                # block comment opens here and runs past this line; the line
-                # itself is still searched whole below (errs safe)
-                in_block_comment = True
-            if _ALLOW_PATTERN.search(line):
-                hits.append(f"{rel}:{i}: {line.strip()}")
+        for lineno, code in _code_portions(text):
+            if _ALLOW_PATTERN.search(code):
+                hits.append(f"{rel}:{lineno}: {code.strip()}")
     return hits
 
 

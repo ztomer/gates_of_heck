@@ -189,6 +189,45 @@ def test_failure_message_permit_list_includes_typographic_signs(repo):
         assert chr(cp) in r.stdout, f"U+{cp:04X} missing from permit list"
 
 
+# ---- 2026-08-26 policy ruling: geometric shapes + full astral cap -------------
+
+# Geometric Shapes block (0x25A0-0x25FF): decorative bullets/play-triangles/
+# squares — decoration, not vocabulary. Zero occurrences across the wired
+# repos on adoption, so nothing flips today.
+GEOMETRIC = (0x25B6, 0x25FC, 0x25FD)  # play triangle, black/white-medium squares
+
+
+def test_geometric_shape_glyphs_are_flagged(repo):
+    for cp in GEOMETRIC:
+        (repo / "a.md").write_text(f"x {chr(cp)}\n", encoding="utf-8")
+        commit_all(repo)
+        r = run_check(repo, SCRIPT)
+        assert r.returncode == 1, f"U+{cp:04X} was not flagged"
+        assert f"U+{cp:04X}" in r.stdout
+
+
+def test_astral_cap_extends_to_plane_end(repo):
+    # The emoji cap now reaches 0x1FFFF: Symbols for Legacy Computing
+    # (sextants, 0x1FB00+) and future Unicode emoji additions are flagged on
+    # arrival instead of after someone ships them.
+    for cp in (0x1FB00, 0x1FAF7):  # sextant-8, hand-with-index-finger-and-thumb-crossed
+        (repo / "a.md").write_text(f"x {chr(cp)}\n", encoding="utf-8")
+        commit_all(repo)
+        r = run_check(repo, SCRIPT)
+        assert r.returncode == 1, f"U+{cp:04X} was not flagged"
+
+
+def test_self_host_committed_tree_stays_clean():
+    # The gate's own repo is its first consumer: widening RANGES must never
+    # flag this tree (the suite builds all disallowed glyphs with chr()
+    # precisely so this scan stays green).
+    r = subprocess.run(
+        ["python3", str(REPO_ROOT / SCRIPT)],
+        cwd=REPO_ROOT, capture_output=True, text=True,
+    )
+    assert r.returncode == 0, r.stdout
+
+
 def test_runs_from_subdirectory_of_target_repo(repo):
     # Gates may be invoked from anywhere inside the target repo (Phase 4 made
     # this contract explicit); the checker resolves paths against the root.
