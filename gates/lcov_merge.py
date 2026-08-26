@@ -89,8 +89,32 @@ def parse_part(pf, line_best, fn_best, fn_start, fn_end):
         line_best[(f, ln)] = max(line_best[(f, ln)], cnt)
 
 
-def merge(parts, floor):
+def _load_floors(path):
+    import json
+    try:
+        raw = json.load(open(path, encoding="utf-8"))
+    except Exception as exc:
+        print(f"✗ [coverage] cannot read floors file {path}: {exc}", file=sys.stderr)
+        return None
+    if not isinstance(raw, dict):
+        return None
+    if any(k in raw for k in ("targets", "file_floor", "tolerance", "exempt")):
+        return {"file_floor": float(raw["file_floor"]) if "file_floor" in raw else None,
+                "tolerance": float(raw.get("tolerance", 0.0)),
+                "exempt": dict(raw.get("exempt", {}))}
+    return {"file_floor": None, "tolerance": 0.0, "exempt": {},
+            "targets": {k: float(v) for k, v in raw.items() if isinstance(v, (int, float))}}
+
+
+def merge(parts, floor, include_re="", floors_json=None, marker_ceiling=None):
     """The union + floor decision. Returns process exit code."""
+    inc_pat = None
+    if include_re:
+        try:
+            inc_pat = re.compile(include_re)
+        except re.error as exc:
+            print(f"✗ [coverage] bad --include regex: {exc}", file=sys.stderr)
+            return 2
     line_best = defaultdict(int)   # (file, line) -> max count across exports
     fn_best = defaultdict(int)     # (file, norm_name) -> max FNDA
     fn_start = {}                  # (file, norm_name) -> first start line
@@ -102,6 +126,11 @@ def merge(parts, floor):
     except LcovError as exc:
         print(f"✗ [coverage] {exc}", file=sys.stderr)
         return 2
+    if inc_pat is not None:
+        line_best = {k: v for k, v in line_best.items() if inc_pat.search(k[0])}
+        fn_best = {k: v for k, v in fn_best.items() if inc_pat.search(k[0])}
+        fn_start = {k: v for k, v in fn_start.items() if inc_pat.search(k[0])}
+        fn_end = {k: v for k, v in fn_end.items() if inc_pat.search(k[0])}
 
     # Executed spans per file: a function spans from its start line to the line
     # before the next function's start; a line inside a span whose FNDA>0 anywhere
@@ -148,23 +177,83 @@ def merge(parts, floor):
         return 1
 
     pct = round(100.0 * covered / total, 2)
+    floors = _load_floors(floors_json) if floors_json else None
+    per_file_fail = False
+    if floors and floors.get("file_floor") is not None:
+        ff = floors["file_floor"]
+        exempt = floors.get("exempt", {})
+        per_tot = defaultdict(int)
+        per_cov = defaultdict(int)
+        for (f, ln), cnt in line_best.items():
+            per_tot[f] += 1
+            cov = 1 if cnt > 0 else 0
+            if not cov:
+                for st, end, executed in spans.get(f, []):
+                    if st <= ln <= end and executed:
+                        cov = 1
+                        break
+            per_cov[f] += cov
+        below = []
+        for f, tot in per_tot.items():
+            if f in exempt:
+                continue
+            cur = 100.0 * per_cov[f] / tot if tot else 100.0
+            if cur + 1e-9 < ff - floors.get("tolerance", 0.0):
+                below.append((f, per_cov[f], tot, cur))
+        if below:
+            print(f"✗ [coverage] {len(below)} file(s) below per-file floor {ff:g}%", file=sys.stderr)
+            for f, cov, tot, cur in sorted(below, key=lambda r: r[3]):
+                print(f"    {cur:5.1f}%  {tot-cov:4d} uncovered  {f}", file=sys.stderr)
+            per_file_fail = True
+        stale = sorted(set(exempt) - set(per_tot))
+        if stale:
+            print(f"✗ {len(stale)} exemption(s) stale (file gone).", file=sys.stderr)
+            for s in stale:
+                print(f"    {s}", file=sys.stderr)
+            return 1
+    if marker_ceiling and os.path.exists(marker_ceiling):
+        try:
+            import json as _jm
+            max_forgiven = int(_jm.load(open(marker_ceiling, encoding="utf-8"))["max_forgiven_lines"])
+            if 0 < max_forgiven:
+                print(f"→ [coverage] forgiveness 0 < ceiling {max_forgiven} — lower it.")
+        except Exception as exc:
+            print(f"✗ [coverage] cannot read ceiling {marker_ceiling}: {exc}", file=sys.stderr)
+            return 2
+    if floor is None and floors is not None:
+        return 1 if per_file_fail else 0
+    if floor is None:
+        print("✗ [coverage] no floor supplied", file=sys.stderr)
+        return 2
     below = pct < floor
     print(("✗" if below else "✓") + f" [coverage] {pct}% of coverable lines (floor {floor:g}%, {covered}/{total} lines)")
     if below:
         print("✗ [coverage] uncovered lines:")
         for f, lines in sorted(missed.items()):
             print(f"  {f}: {', '.join(map(str, lines))}")
+    if per_file_fail:
+        return 1
     return 1 if below else 0
 
 
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("parts_dir", help="directory holding part-*.info exports")
-    ap.add_argument("--floor", type=float, required=True,
-                    help="minimum LINE coverage percent")
+    ap.add_argument("--floor", type=float, required=False, default=None, help="minimum LINE coverage percent")
+    ap.add_argument("--include", default="", help="positive filter regex")
+    ap.add_argument("--floors-json", dest="floors_json", default="", help="per-file floors JSON")
+    ap.add_argument("--marker-ceiling", dest="marker_ceiling", default="", help="forgiveness ceiling JSON")
     args = ap.parse_args(argv)
+    if not args.include and os.environ.get("GOH_COV_INCLUDE_RE"):
+        args.include = os.environ["GOH_COV_INCLUDE_RE"]
+    if not args.floors_json and os.environ.get("GOH_COV_FLOORS_JSON"):
+        args.floors_json = os.environ["GOH_COV_FLOORS_JSON"]
+    if not args.marker_ceiling and os.environ.get("GOH_COV_MARKER_CEILING"):
+        args.marker_ceiling = os.environ["GOH_COV_MARKER_CEILING"]
+    if args.floor is None and not args.floors_json:
+        ap.error("need --floor N or --floors-json PATH")
     parts = sorted(glob.glob(os.path.join(args.parts_dir, "part-*.info")))
-    return merge(parts, args.floor)
+    return merge(parts, args.floor, args.include, args.floors_json or None, args.marker_ceiling or None)
 
 
 if __name__ == "__main__":
