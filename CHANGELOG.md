@@ -1,5 +1,37 @@
 # CHANGELOG
 
+## v0.6.0 — coverage strictest convergence, disk cargo-cache watch, MCP Tax parity _(2026-08-26)_
+
+Convergence to the strictest coverage standard across toolchains, third-class
+disk leak monitoring, and MCP Tax parity. 399 → 439 tests.
+
+Coverage convergence to strictest standard:
+- `coverage_gate.sh`: positive inclusion filtering before ignore (`--include` /
+  `GOH_COV_INCLUDE_RE`), per-target and per-file floors with tolerance/exempt
+  rules (`--floors-json` / `GOH_COV_FLOORS_JSON`), and shrink-only forgiven-lines
+  ceiling (`--marker-ceiling` / `GOH_COV_MARKER_CEILING`). Backward-compatible
+  with single `--floor`.
+- `coverage_swift.py` & `lcov_merge.py`: include filtering for llvm-cov export /
+  parse_xccov, multi-shape floor config loading, per-file floor enforcement with
+  stale-exempt detection, and shrink-only marker ceilings.
+
+Disk hygiene, local CI & release kit:
+- `check_disk_hygiene.py`: watches shared `CARGO_TARGET_DIR` (`~/.cache/cargo-target`)
+  and per-project targets for unbounded cache growth (`--max-cache-dir-gb` /
+  `GOH_MAX_CACHE_GB`, default 50 GB) with largest-child diagnostics.
+- `local_ci.sh`: preserves failing step log directories on exit so
+  reproducibility seeds printed at top of output are retained.
+- `release.sh`: unsets `GOH_RELEASE_BUFFERED` after startup snapshot so nested
+  invocations and gate test runs remain hermetic and self-buffering.
+
+MCP scaffold & eval transport:
+- `lib/mcp_scaffold.py`: Tax SDK parity with server instructions support, input
+  schema validation before tool handlers (`-32602 INVALID_PARAMS`), protocol
+  version negotiation (`HANDSHAKE_VERSIONS` / `LATEST`), and `tool_from_function`
+  helper. Server-death crash class closed and JSON-RPC conformance pinned.
+- `lib/eval_transport.py`: Ollama environment variable aliasing (`OLLAMA_API_BASE` /
+  `OLLAMA_HOST`, `OLLAMA_MODEL`) as fallbacks behind EVAL / OPENAI keys.
+
 ## v0.5.0 — second adversarial pass _(2026-08-25)_
 
 Re-review of v0.4.0 by three fresh hunters (fixes-as-hostile-code, oracle

@@ -59,6 +59,7 @@ if [ -z "${GOH_RELEASE_BUFFERED:-}" ]; then
   exec /bin/bash "${_SELF_COPY}" "$@"
 fi
 _SELF_COPY="${GOH_RELEASE_BUFFERED}"
+unset GOH_RELEASE_BUFFERED
 
 GOH="${GOH_DIR:-$HOME/Projects/gates_of_heck}"
 # shellcheck disable=SC1091

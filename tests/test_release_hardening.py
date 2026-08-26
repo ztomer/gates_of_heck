@@ -92,6 +92,7 @@ def release_env(kit: dict) -> dict:
     env["GH_STATE"] = str(kit["gh_state"])
     env["GH_LOG"] = str(kit["gh_log"])
     env.pop("GOH_RELEASE_GATE", None)
+    env.pop("GOH_RELEASE_BUFFERED", None)
     return env
 
 

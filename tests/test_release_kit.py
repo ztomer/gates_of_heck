@@ -164,12 +164,8 @@ def run_release(kit: dict, *args: str, gate: str = "true") -> subprocess.Complet
     env["GH_STATE"] = str(kit["gh_state"])
     env["GH_LOG"] = str(kit["gh_log"])
     env["GOHKIT_GIT_LOG"] = str(kit["git_log"])
-    # Identity for the tap-commit step without touching global git config.
-    env.setdefault("GIT_AUTHOR_NAME", "t")
-    env.setdefault("GIT_AUTHOR_EMAIL", "t@t")
-    env.setdefault("GIT_COMMITTER_NAME", "t")
-    env.setdefault("GIT_COMMITTER_EMAIL", "t@t")
-    env.pop("GOH_RELEASE_GATE", None)
+    env.update({"GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@t", "GIT_COMMITTER_NAME": "t", "GIT_COMMITTER_EMAIL": "t@t"})
+    for k in ("GOH_RELEASE_GATE", "GOH_RELEASE_BUFFERED"): env.pop(k, None)
     return subprocess.run(
         ["/bin/bash", str(RELEASE), "--version", VERSION, "--gate", gate, *args],
         cwd=kit["proj"], capture_output=True, text=True, env=env,
