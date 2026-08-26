@@ -1,5 +1,51 @@
 # CHANGELOG
 
+## v0.4.0 — adversarial review: every finding fixed _(2026-08-25)_
+
+Three independent hunters + refute-first verifiers over checks, shell gates and
+consumer seams; 19 confirmed findings, all fixed with regression tests built
+from their repros. 289 → 355 tests.
+
+Gate-bypasses closed:
+- `_gitutil` now lists paths NUL-delimited — quoted non-ASCII filenames were
+  silently skipped by EVERY checker in staged AND full mode.
+- `local_ci` steps no longer inherit the loop's stdin — a stdin-reading step
+  swallowed all remaining steps and reported "all passed" exit 0.
+- `coverage_gate`: a per-target lcov export that fails is a hard failure naming
+  the target (rust + cpp) instead of a warn over partial measurement.
+- `check_swift_coverage` SPM mode refuses payloads that parse to zero
+  measurable files (was: "100% OK", exit 0).
+- golden tolerances and ratchet values reject NaN/Infinity (NaN defeated both
+  in every direction); non-finite is a named precondition, never a verdict.
+- `check_no_emoji` adds the singleton emoji codepoints outside scanned ranges;
+  ©®™ documented as permitted typography — bare forms pass, VS16 presentation
+  still fails.
+
+False positives removed:
+- `check_no_screen_presentation`: single left-to-right state scanner — `//`
+  inside a string no longer blanks real code later on the line, and `/*` in a
+  string can't open a fake block span.
+- `check_no_allow` ignores comment mentions of `#[allow]` (the prose a cleanup
+  PR writes), still catches real attributes.
+- `coverage_gate` merger parses both lcov FN formats; three-field spans bound
+  by parsed end (two-field legacy behavior pinned byte-identically — moving it
+  would shift consumer coverage numbers).
+
+Half-states / hardening:
+- `release.sh`: stale-tag at an older commit hard-fails naming both SHAs;
+  awk stanza matching no longer eats regex backslashes via `-v`; artifact
+  fetch failures name the step.
+- `install.sh` records installed-hook hashes — re-running bootstrap no longer
+  clobbers hand-extended hooks; `--force` overrides.
+- `mcp_scaffold` returns isError for unserializable tool results instead of
+  dying mid-session; subprocess timeouts kill whole process groups
+  (`lib/killtree.py`); disk hygiene measures through partial du failures and
+  checks free space per scratch root; local_ci runs steps from the repo root;
+  profiling scripts carry line-1 shebangs.
+- Self-host: GOH's own `--full` now runs its test suite — a gate bug can no
+  longer reach eleven consumers without failing here first. README documents
+  `git commit --no-verify` as the escape hatch.
+
 ## v0.3.0 — post-unification hardening _(2026-08-25)_
 
 - `checks/check_no_screen_presentation.py`: bare-identifier matches in Swift
