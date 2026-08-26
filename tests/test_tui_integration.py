@@ -109,12 +109,11 @@ def test_goh_optional_step_skips_cleanly_when_guard_absent(tmp_path):
     script = (
         f"cd '{s}' && . '{REPO_ROOT}/gates/_common.sh' && "
         'goh_init demo && goh_optional_step "opt" nope-missing.marker true '
-        "&& echo SKIPPED-OK"
+        "&& goh_done"
     )
     r = _bash(script)
     assert r.returncode == 0, r.stderr
-    assert "SKIPPED-OK" in r.stdout
-    assert "skipped" in r.stdout.lower()
+    assert "skipped" in (r.stdout + r.stderr).lower()
 
 
 def test_no_color_disables_color_everywhere():
