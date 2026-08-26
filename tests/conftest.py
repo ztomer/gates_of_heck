@@ -93,3 +93,106 @@ def run_gate(repo: Path, gate: str, *args: str) -> subprocess.CompletedProcess:
         capture_output=True,
         text=True,
     )
+
+
+# ── fake swift coverage toolchain ────────────────────────────────────────────
+# Shared by the coverage-gate swift tests and the coverage_swift selection
+# tests. `swift`, `xcrun` and `xcodebuild` shims emit canned llvm-cov payloads
+# modeled on REAL output captured from xcodebuild/llvm-cov on this machine
+# (probe 2026-08-25), so the real bash gate → python helper chain is exercised
+# without any Apple toolchain. Set swift_xcrun_log=... to record every xcrun
+# invocation's argv (proves WHICH binary was paired with the profdata).
+
+import json as _json
+import stat as _stat
+
+FAKE_EXPORT = {
+    "data": [{"files": [
+        {"filename": "PROJ/Sources/pkg/lib.swift",
+         "summary": {"lines": {"count": 10, "covered": 5}}},
+    ]}],
+}
+
+# llvm-cov show format: "LINE|COUNT|source". Lines 6-10 are the uncovered half.
+FAKE_SHOW = "".join(
+    f"{n:>5}|{'  0' if n > 5 else '  7'}|line {n}\n" for n in range(1, 11))
+
+
+def mk_fake_swift_toolchain(root: Path, second_config: bool = False,
+                            xcrun_log: Path | None = None) -> Path:
+    bin_ = root / "fakebin"
+    bin_.mkdir()
+    pkg = root / "proj"
+    src = pkg / "Sources" / "pkg"
+    src.mkdir(parents=True)
+    (src / "lib.swift").write_text(
+        "\n".join(f"line {n}" for n in range(1, 11)) + "\n")
+
+    xctest_bin = bin_ / "store" / "PkgTests.xctest" / "Contents" / "MacOS" / "PkgTests"
+    xctest_bin.parent.mkdir(parents=True)
+    xctest_bin.write_text("#!/bin/sh\n")
+    xctest_bin.chmod(xctest_bin.stat().st_mode | _stat.S_IEXEC)
+    (bin_ / "store" / "codecov").mkdir()
+    (bin_ / "store" / "codecov" / "default.profdata").write_text("")
+
+    dd = root / "dd"
+    prof = dd / "Build" / "ProfileData" / "FE-DEADBEEF"
+    prof.mkdir(parents=True)
+    profdata = prof / "Coverage.profdata"
+    profdata.write_text("")
+    cfgs = ["Debug"] + (["Release"] if second_config else [])
+    for cfg in cfgs:
+        xb = dd / "Build" / "Products" / cfg / "AppTests.xctest" / \
+            "Contents" / "MacOS" / "AppTests"
+        xb.parent.mkdir(parents=True)
+        xb.write_text("#!/bin/sh\n")
+        xb.chmod(xb.stat().st_mode | _stat.S_IEXEC)
+    # Stale-binary pairing scenario: Debug was built LONG before the run that
+    # wrote the profdata; Release (when present) is its mtime twin.
+    import os as _os
+    old = profdata.stat().st_mtime - 10_000
+    _os.utime(dd / "Build/Products/Debug/AppTests.xctest/Contents/MacOS/AppTests",
+              (old, old))
+    if second_config:
+        _os.utime(dd / "Build/Products/Release/AppTests.xctest/Contents/MacOS/AppTests",
+                  (profdata.stat().st_mtime, profdata.stat().st_mtime))
+    (dd / "Logs" / "Test").mkdir(parents=True)
+    (dd / "Logs" / "Test" / "Test-App.xcresult").mkdir()
+
+    export_file = root / "export.json"
+    export_json = _json.dumps(FAKE_EXPORT).replace("PROJ", str(src.parent.parent))
+    export_file.write_text(export_json)
+
+    show_file = root / "show.txt"
+    show_file.write_text(FAKE_SHOW)
+
+    swift = bin_ / "swift"
+    swift.write_text(f"""#!/bin/bash
+case "$1 $2" in
+  "build --show-bin-path") echo "{bin_}/store" ;;
+  *) exit 0 ;;
+esac
+""")
+    log_line = ""
+    if xcrun_log is not None:
+        log_line = f'printf \'%s\\n\' "$@" >> "{xcrun_log}"'
+    xcrun = bin_ / "xcrun"
+    xcrun.write_text(f"""#!/bin/bash
+{log_line}
+sub="$1"; shift || true
+case "$sub" in
+  llvm-cov)
+    case "$1" in
+      export) cat "{export_file}" ;;
+      show) cat "{show_file}" ;;
+      *) exit 1 ;;
+    esac ;;
+  xccov) exit 1 ;;
+  *) exit 1 ;;
+esac
+""")
+    xcodebuild = bin_ / "xcodebuild"
+    xcodebuild.write_text("#!/bin/bash\nexit 0\n")
+    for f in (swift, xcrun, xcodebuild):
+        f.chmod(f.stat().st_mode | _stat.S_IEXEC)
+    return bin_

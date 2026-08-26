@@ -200,6 +200,29 @@ def run_spm(ignore_re):
     return xctest, profdata
 
 
+def pick_binary(profdata, binaries):
+    """The .xctest binary whose mtime is NEAREST the chosen profdata's.
+
+    The old selection took the profdata by newest mtime but the binary by a
+    Debug-first glob: whenever more than one configuration's binary existed,
+    a fresh profdata was paired with a STALE binary and llvm-cov reported
+    against mismatched code. Mtime-nearest is the only pairing signal
+    xcodebuild leaves; genuine ambiguity is a named exit 2, never a guess
+    (cpp-mode precedent).
+    """
+    pt = os.path.getmtime(profdata)
+    ranked = sorted((abs(os.path.getmtime(b) - pt), b) for b in binaries)
+    best_delta, best = ranked[0]
+    tied = [b for delta, b in ranked if delta == best_delta]
+    if len(tied) > 1:
+        print("✗ [coverage] ambiguous test binaries — several are equally "
+              f"near the profdata ({profdata}):", file=sys.stderr)
+        for b in tied:
+            print(f"    {b}", file=sys.stderr)
+        sys.exit(2)
+    return best
+
+
 def run_xcodebuild(args, floor, ignore_re):
     xcresult = args.xcresult or os.environ.get("GOH_COV_XCRESULT") or ""
     if xcresult:
@@ -228,7 +251,10 @@ def run_xcodebuild(args, floor, ignore_re):
             for e in errors[:10]:
                 print(f"    {e}", file=sys.stderr)
             sys.exit(2)
-        return floor_cmp(pct, floor)
+        # This branch has its own verdict (no line-level processing follows):
+        # decide and exit HERE, so run_xcodebuild's contract is uniform —
+        # every return is a (binary, profdata) pair.
+        sys.exit(floor_cmp(pct, floor))
 
     # Run mode: full llvm-cov pipeline on what xcodebuild emits.
     precondition("xcodebuild", "xcodebuild test -enableCodeCoverage YES")
@@ -265,7 +291,7 @@ def run_xcodebuild(args, floor, ignore_re):
         print(f"✗ [coverage] no .xctest binary under {dd}/Build/Products",
               file=sys.stderr)
         sys.exit(2)
-    return profs[-1], binaries[0]
+    return pick_binary(profs[-1], binaries), profs[-1]
 
 
 def process(binary, profdata, proj, floor, ignore_re):
@@ -327,10 +353,21 @@ def main() -> int:
     if args.engine == "spm":
         binary, profdata = run_spm(args.ignore)
     else:
-        rc = run_xcodebuild(args, args.floor, args.ignore)
-        return rc
+        # run-mode: (binary, profdata), same order as run_spm — the old code
+        # returned run_xcodebuild's pair straight out of main, so sys.exit
+        # received a TUPLE and the xcodebuild engine never reached process().
+        binary, profdata = run_xcodebuild(args, args.floor, args.ignore)
     return process(binary, profdata, args.proj, args.floor, args.ignore)
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    try:
+        sys.exit(main())
+    except SystemExit:
+        raise
+    except Exception as exc:  # noqa: BLE001  # the discipline IS the point:
+        # a crash must exit 2 naming the error — an uncaught traceback exits 1,
+        # which consumers read as "below floor", a coverage number that never was.
+        print(f"✗ [coverage] coverage_swift.py failed: "
+              f"{type(exc).__name__}: {exc}", file=sys.stderr)
+        sys.exit(2)
