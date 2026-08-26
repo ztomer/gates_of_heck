@@ -113,7 +113,8 @@ def test_goh_optional_step_skips_cleanly_when_guard_absent(tmp_path):
     )
     r = _bash(script)
     assert r.returncode == 0, r.stderr
-    assert "skipped" in (r.stdout + r.stderr).lower()
+    assert "skipped" in r.stderr.lower(), (
+        f"skip reason must be stated: {r.stdout!r} {r.stderr!r}")
 
 
 def test_no_color_disables_color_everywhere():
@@ -121,3 +122,46 @@ def test_no_color_disables_color_everywhere():
         r = _bash(f"NO_COLOR=1 source '{REPO_ROOT}/{lib}' && info x")
         assert r.returncode == 0
         assert "\x1b[" not in r.stdout, f"{lib} emitted ANSI under NO_COLOR"
+
+
+def _under_pty(script: str) -> str:
+    """Run with a real tty on stdout (macOS BSD script), return raw output."""
+    r = subprocess.run(
+        ["script", "-q", "/dev/null", "/bin/bash", "-c", script],
+        capture_output=True, text=True,
+    )
+    return r.stdout
+
+
+def test_no_color_zero_disables_color_no_color_org_spec():
+    """ANY non-empty NO_COLOR value disables color — NO_COLOR=0 used to
+    RE-enable it. Needs a pty: without a tty the lib degrades anyway and the
+    assertion would be vacuous (calibration: the control below proves the
+    instrument sees color under a tty)."""
+    colored = _under_pty(
+        f"source '{REPO_ROOT}/tui/lib.sh' && info x")
+    assert "\x1b[" in colored, (
+        "control failed: no ANSI even on a tty — this test cannot see color")
+    zero = _under_pty(f"NO_COLOR=0 source '{REPO_ROOT}/tui/lib.sh' && info x")
+    assert "\x1b[" not in zero, "NO_COLOR=0 must disable color (no-color.org)"
+
+
+def test_warn_goes_to_stderr_not_stdout():
+    r = _bash(f"source '{REPO_ROOT}/tui/lib.sh' && warn careful")
+    assert r.returncode == 0
+    assert "careful" in r.stderr
+    assert "careful" not in r.stdout, "_tui_warn wrote stdout; warnings are diagnostics"
+
+
+def test_labels_stay_data_printf_never_format():
+    """echo -e interpolated labels: a \\n in config-derived data became a real
+    newline (escape injection); %s could corrupt printf-style consumers."""
+    r = _bash(
+        f"source '{REPO_ROOT}/tui/lib.sh' && "
+        r"warn 'line1\nline2-LITERAL' && ok '100%s sure'"
+    )
+    assert r.returncode == 0
+    err_lines = r.stderr.splitlines()
+    assert len(err_lines) == 1, f"label newline was INTERPRETED: {r.stderr!r}"
+    assert r"\nline2-LITERAL" in err_lines[0], r.stderr
+    assert any("100%s sure" in ln for ln in r.stdout.splitlines()), r.stdout

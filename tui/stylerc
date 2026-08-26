@@ -10,7 +10,8 @@ ICON_ERR="✗"
 ICON_WARN="⚠"
 
 # ANSI color codes (Dieter Rams / Braun: restrained, functional)
-# \033 is the ESC character — bash's echo -e and Python (after \033 substitution) interpret it.
+# \033 is the ESC character — tui/lib.sh decodes it once at source time and
+# tui/lib.py in its stylerc parser; output goes through printf '%s' (data-safe).
 C_RESET="\033[0m"
 C_DIM="\033[2m"
 C_BOLD="\033[1m"

@@ -62,7 +62,9 @@ def test_py_gate_clean_package_passes(tmp_path):
     )
     assert r.returncode == 0, r.stdout + r.stderr
     assert "all python gates passed" in r.stdout
-    assert "no coverage floor" in r.stdout  # honest placeholder says WHY
+    # honest placeholder says WHY - and warns to STDERR (diagnostic stream),
+    # never stdout (the pre-fix _tui_warn leaked it into program output)
+    assert "no coverage floor" in r.stderr
 
 
 @pytestmark_py
