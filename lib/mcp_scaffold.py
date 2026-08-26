@@ -11,10 +11,22 @@ Error conventions follow koffee_mcp.py: spec JSON-RPC error codes for
 protocol-level failures (-32700/-32600/-32601/-32602), while tool-handler
 failures come back as a normal result with isError: true (necrohand/koffee
 convention) so clients can show the message instead of a protocol abort.
+
+INPUT-SURVIVAL CONTRACT (2026-08-26): NO wire input may kill the serve loop.
+Every malformed shape gets a spec-shaped error and the session continues:
+malformed BYTES (invalid UTF-8) → -32700, exactly like malformed syntax;
+non-object / non-string-method / non-object params → -32600/-32602; a
+tools/call with a non-string name or non-object arguments → -32602. Batches
+(a JSON array) are explicitly REFUSED with -32600 naming JSON-RPC 2.0 batch
+support as absent — one documented refusal, never a silent misread. An "id"
+member that is PRESENT is honored even when null (spec note: respond with
+id null); ids that decode to NaN/Infinity are sanitized to null so no bare
+NaN token ever goes back over the wire.
 """
 from __future__ import annotations
 
 import json
+import math
 import subprocess  # noqa: F401 — TimeoutExpired contract of killtree.run_captured
 import sys
 from typing import Callable
@@ -45,6 +57,14 @@ def _rpc(msg_id, result):
 def _error(msg_id, code, message):
     return {"jsonrpc": "2.0", "id": msg_id,
             "error": {"code": code, "message": message}}
+
+
+def _sanitize_id(msg_id):
+    """Echo-safe id: NaN/Infinity decode from bare JSON tokens and must never
+    be echoed (json.dumps would emit a non-conformant NaN token)."""
+    if isinstance(msg_id, float) and not math.isfinite(msg_id):
+        return None
+    return msg_id
 
 
 class McpServer:
@@ -90,16 +110,34 @@ class McpServer:
 
     def handle_message(self, message) -> dict | None:
         """Dispatch one decoded JSON-RPC message. Returns the response dict,
-        or None for notifications (messages without an id)."""
+        or None for notifications (messages without an "id" member). Never
+        raises on malformed input: every bad shape gets a spec-shaped error
+        (see module docstring) — the serve loop's life must not depend on
+        what a client sends."""
+        # Batch refusal — ONE documented choice: JSON-RPC 2.0 batch support
+        # is absent; an array is refused as a whole, never silently misread.
+        if isinstance(message, list):
+            return _error(None, INVALID_REQUEST,
+                          "batch requests not supported "
+                          "(JSON-RPC 2.0 batch arrays are not implemented)")
         if not isinstance(message, dict) or message.get("jsonrpc") != "2.0":
             bad_id = message.get("id") if isinstance(message, dict) else None
-            return _error(bad_id, INVALID_REQUEST,
+            return _error(_sanitize_id(bad_id), INVALID_REQUEST,
                           "not a valid JSON-RPC 2.0 message")
         method = message.get("method")
-        msg_id = message.get("id")
-        params = message.get("params") or {}
-        if msg_id is None:
+        if not isinstance(method, str):
+            return _error(_sanitize_id(message.get("id")), INVALID_REQUEST,
+                          "'method' must be a string")
+        params = message.get("params")
+        if params is not None and not isinstance(params, dict):
+            return _error(_sanitize_id(message.get("id")), INVALID_PARAMS,
+                          "'params' must be an object")
+        params = params or {}
+        # Spec note honored: id null PRESENT is still a request → respond
+        # with id null. Absent "id" is the only notification shape.
+        if "id" not in message:
             return None  # notification: never answered
+        msg_id = _sanitize_id(message["id"])
 
         if method == "initialize":
             version = params.get("protocolVersion") or PROTOCOL_VERSION
@@ -117,8 +155,19 @@ class McpServer:
         return _error(msg_id, METHOD_NOT_FOUND, f"method not found: {method}")
 
     def _call_tool(self, msg_id, params):
+        # Defensive boundary: a hostile/buggy client controls every byte of
+        # params. Unhashable name (a list) used to raise TypeError out of
+        # _tools.get() and kill the serve loop; non-dict arguments raised
+        # AttributeError at the ** unpack. Both are INVALID_PARAMS, never
+        # crashes.
         name = params.get("name")
+        if not isinstance(name, str):
+            return _error(msg_id, INVALID_PARAMS,
+                          f"tool 'name' must be a string, got {type(name).__name__}")
         args = params.get("arguments") or {}
+        if not isinstance(args, dict):
+            return _error(msg_id, INVALID_PARAMS,
+                          "'arguments' must be an object")
         spec = self._tools.get(name)
         if spec is None:
             return _error(msg_id, INVALID_PARAMS, f"unknown tool: {name}")
@@ -148,22 +197,45 @@ class McpServer:
         })
 
 
+def _iter_lines(stream):
+    """Yield lines from a binary stream, or from `.buffer` beneath a text
+    stream. Bytes are the honest unit here: a strict TextIOWrapper is
+    PERMANENTLY poisoned by one invalid byte (every later readline returns
+    ''), so decoding must happen per line in serve(), never inside the
+    stream."""
+    buf = getattr(stream, "buffer", None)
+    src = buf if buf is not None else stream
+    while True:
+        line = src.readline()
+        if not line:
+            return
+        yield line
+
+
 def serve(server: McpServer, in_stream=None, out_stream=None) -> int:
     """Newline-delimited loop: one JSON request per line in, one response line
-    out. A line that fails to parse gets a PARSE_ERROR object (id null) — the
-    loop keeps running so the session survives malformed input."""
+    out. A line that fails to parse — as SYNTAX or as BYTES (invalid UTF-8)
+    — gets a PARSE_ERROR object (id null); the loop keeps running so the
+    session survives malformed input of either kind."""
     in_stream = in_stream if in_stream is not None else sys.stdin
     out_stream = out_stream if out_stream is not None else sys.stdout
-    for line in in_stream:
-        line = line.strip()
-        if not line:
-            continue
+    for raw in _iter_lines(in_stream):
         try:
-            message = json.loads(line)
-        except json.JSONDecodeError:
-            response = _error(None, PARSE_ERROR, "parse error")
+            # JSON-RPC over stdio is UTF-8 by spec — decode explicitly per
+            # line rather than inheriting the ambient text stream's encoding.
+            line = (raw.decode("utf-8") if isinstance(raw, bytes) else raw).strip()
+        except UnicodeDecodeError as exc:
+            response = _error(None, PARSE_ERROR,
+                              f"invalid UTF-8 input: {exc}")
         else:
-            response = server.handle_message(message)
+            if not line:
+                continue
+            try:
+                message = json.loads(line)
+            except json.JSONDecodeError:
+                response = _error(None, PARSE_ERROR, "parse error")
+            else:
+                response = server.handle_message(message)
         if response is not None:
             out_stream.write(json.dumps(response, separators=(",", ":")) + "\n")
             out_stream.flush()

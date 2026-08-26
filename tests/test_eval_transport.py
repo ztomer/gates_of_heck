@@ -7,6 +7,7 @@ import json
 import os
 import sys
 import threading
+import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
@@ -327,7 +328,7 @@ def test_run_loop_records_unit_failure_without_aborting(tmp_path, fake_api):
 
 
 def test_run_loop_resumes_after_crash(tmp_path):
-    st = _mk_state(tmp_path)
+    st = et.SweepState(tmp_path / "sweep_state.json")
     st.start(["m1"], ["t1", "t2"])
 
     class Crash(BaseException):
@@ -350,3 +351,150 @@ def test_run_loop_resumes_after_crash(tmp_path):
         state=reopened,
     )
     assert ran == ["t2"]
+
+
+# ── round-3 hardening: concurrent writers, corrupt files, key collisions ─────
+
+
+def test_two_process_writers_lose_no_markers(tmp_path):
+    """Regression (2026-08-26): concurrent processes doing read-modify-write
+    lost 385 of 400 markers (each writer's stale read clobbered the other's).
+    With the flock-serialized update cycle every marker must survive."""
+    import subprocess as sp
+
+    path = tmp_path / "sweep_state.json"
+    workers, per_worker = 4, 40
+    st = et.SweepState(path)
+    st.start([f"w{i}" for i in range(workers)],
+             [f"t{j:03d}" for j in range(per_worker)])
+
+    script = "\n".join([
+        "import sys",
+        f"sys.path.insert(0, {str(REPO_ROOT)!r})",
+        "from lib.eval_transport import SweepState",
+        f"st = SweepState({str(path)!r})",
+        "wid = sys.argv[1]",
+        f"for j in range({per_worker}):",
+        "    st.mark_done(f'w{wid}', f't{j:03d}')",
+    ])
+    procs = [
+        sp.Popen([sys.executable, "-c", script, str(i)],
+                 cwd=str(tmp_path),
+                 stdout=sp.PIPE, stderr=sp.PIPE, text=True)
+        for i in range(workers)
+    ]
+    for p in procs:
+        out, errout = p.communicate(timeout=120)
+        assert p.returncode == 0, f"worker died: {errout}"
+
+    fresh = et.SweepState(path)  # a NEW process reads what landed on disk
+    s = fresh.summary()
+    assert s["done"] == workers * per_worker, (
+        f"lost updates: {s['done']}/{workers * per_worker} markers survived")
+    assert fresh.resume([f"w{i}" for i in range(workers)],
+                        [f"t{j:03d}" for j in range(per_worker)]) == []
+
+
+def test_corrupt_state_file_raises_named_error_not_raw_exception(tmp_path):
+    path = tmp_path / "sweep_state.json"
+    path.write_text('{"version": 1, "planned": ["m1|t1"), ')  # truncated JSON
+    st = et.SweepState(path)
+    with pytest.raises(et.SweepStateCorrupt, match="corrupt.*sweep_state"):
+        st.resume(["m1"], ["t1"])
+    with pytest.raises(et.SweepStateCorrupt):
+        st.mark_done("m1", "t1")
+
+    # Non-JSON garbage (e.g. an HTML error page written over it) too:
+    path.write_text("<html>gateway timeout</html>")
+    with pytest.raises(et.SweepStateCorrupt):
+        st.summary()
+
+
+def test_corrupt_state_discard_is_explicit_and_starts_fresh(tmp_path):
+    path = tmp_path / "sweep_state.json"
+    path.write_text("{not json at all")
+    st = et.SweepState(path, on_corrupt="discard")
+    assert st.resume(["m1"], ["t1"]) == [("m1", "t1")]  # nothing carried over
+    st.mark_done("m1", "t1")  # ...and the file is writable again
+    assert st.summary()["done"] == 1
+    assert json.loads(path.read_text())["done"]["m1|t1"]["status"] == "done"
+
+
+def test_on_corrupt_rejects_unknown_policy(tmp_path):
+    with pytest.raises(ValueError, match="on_corrupt"):
+        et.SweepState(tmp_path / "x.json", on_corrupt="yolo")
+
+
+def test_separator_collision_pairs_stay_distinct(tmp_path):
+    # Regression (2026-08-26): naive model|task join made ("a|b", "c") and
+    # ("a", "b|c") the same marker key.
+    k1 = et.SweepState._key("a|b", "c")
+    k2 = et.SweepState._key("a", "b|c")
+    assert k1 != k2
+    # End-to-end: marking one pair must not complete its collision twin.
+    st = _mk_state(tmp_path)
+    st.start(["a|b", "a"], ["c", "b|c"])
+    st.mark_done("a|b", "c")
+    pending = st.resume(["a|b", "a"], ["c", "b|c"])
+    assert ("a", "b|c") in pending
+    assert ("a|b", "c") not in pending
+
+
+def test_plain_keys_are_byte_identical_to_v1_format():
+    # Old state files must stay resumable: no % or | in names → same key.
+    assert et.SweepState._key("m-alpha", "task1") == "m-alpha|task1"
+
+
+# ── whole-call deadline: slow-drip bodies cannot stretch a call ──────────────
+
+
+class _DripHandler(BaseHTTPRequestHandler):
+    """Sends headers fast, then drips the body forever in tiny pieces with
+    sleeps SHORTER than any sane per-op socket timeout — the shape that used
+    to stretch one chat() call from a 1s timeout to 15.6s."""
+
+    interval = 0.25
+
+    def log_message(self, *a):  # silence the test runner
+        pass
+
+    def do_POST(self):
+        length = int(self.headers.get("Content-Length", 0))
+        self.rfile.read(length)
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(10 ** 8))
+        self.end_headers()
+        try:
+            while True:
+                self.wfile.write(b"x" * 32)
+                time.sleep(_DripHandler.interval)
+        except OSError:
+            pass  # client gave up — expected under the deadline
+
+
+def test_whole_call_deadline_bounds_a_slow_drip_body(fake_api=None):
+    server = ThreadingHTTPServer(("127.0.0.1", 0), _DripHandler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    base = f"http://127.0.0.1:{server.server_address[1]}/v1"
+    try:
+        t = et.EvalTransport(base_url=base, timeout=2.0)
+        start = time.monotonic()
+        with pytest.raises(et.TransportError, match="deadline"):
+            t.chat("m", [{"role": "user", "content": "hello"}])
+        elapsed = time.monotonic() - start
+        # Bounded by the whole-call deadline (+ small tolerance), NOT by the
+        # never-ending drip: pre-fix behavior was unbounded growth.
+        assert elapsed < 6.0, f"call stretched {elapsed:.1f}s past a 2s timeout"
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+def test_normal_response_still_parses_after_chunked_reads(fake_api):
+    # Calibration control: the chunked-deadline read path must not break the
+    # ordinary small-body case.
+    t = et.EvalTransport(base_url=fake_api, api_key="k")
+    out = t.chat("m-alpha", [{"role": "user", "content": "hi"}])
+    assert out["text"] == json.dumps({"echo": "m-alpha"})

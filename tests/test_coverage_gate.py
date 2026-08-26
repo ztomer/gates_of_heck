@@ -209,6 +209,85 @@ def test_rust_end_to_end_green_then_red(tmp_path):
     assert "5" in combined and "6" in combined and "7" in combined
 
 
+# ── rust completeness: .ok markers gate, never file existence ────────────────
+#
+# Regression proof for the laundering hole: cargo-llvm-cov can FAIL AFTER
+# creating its --output-path file. Completeness keyed on part-file existence
+# counted that garbage as measured coverage; completeness keys on the .ok
+# marker (written ONLY on exit 0), so a failed export that leaves a file
+# behind must fail the gate BY NAME.
+
+FAKE_CARGO = """\
+#!/bin/bash
+# Fake cargo: metadata declares one package with a lib target; every lcov
+# export WRITES its output file then exits 1 (the fail-after-create shape).
+case "$1 $2" in
+  "llvm-cov --version") exit 0 ;;
+  "llvm-cov clean")     exit 0 ;;
+  "metadata -")         ;;
+  *) ;;
+esac
+case "$1" in
+  metadata)
+    cat <<'JSON'
+{"packages":[{"name":"covfix","targets":[{"name":"covfix","kind":["lib"]}]}]}
+JSON
+    exit 0 ;;
+  llvm-cov)
+    out=""
+    prev=""
+    for a in "$@"; do
+      [ "$prev" = "--output-path" ] && out="$a"
+      prev="$a"
+    done
+    printf 'garbage partial lcov\\n' > "$out"
+    exit 1 ;;
+esac
+exit 0
+"""
+
+
+def _run_with_fake_cargo(tmp_path: Path, *args: str):
+    bin_ = tmp_path / "fakebin"
+    bin_.mkdir(exist_ok=True)
+    shim = bin_ / "cargo"
+    shim.write_text(FAKE_CARGO)
+    shim.chmod(shim.stat().st_mode | stat.S_IEXEC)
+    env = dict(os.environ)
+    env["PATH"] = f"{bin_}:/usr/bin:/bin"
+    env.pop("GOH_COV_FLOOR_RUST", None)
+    return subprocess.run(
+        ["/bin/bash", str(COV_GATE), *args],
+        cwd=str(bin_), capture_output=True, text=True, env=env,
+    )
+
+
+def test_failed_export_leaving_file_behind_fails_the_gate_by_name(tmp_path):
+    proj = tmp_path / "proj"
+    proj.mkdir()
+    r = _run_with_fake_cargo(tmp_path, str(proj), "--lang", "rust",
+                             "--floor", "50")
+    assert r.returncode == 1, f"{r.returncode}: {r.stdout}{r.stderr}"
+    combined = r.stdout + r.stderr
+    # Named failure: WHICH export is missing, and why it matters.
+    assert "incomplete" in combined.lower()
+    assert "covfix" in combined
+    assert "Traceback" not in r.stderr  # a named refusal, not a crash
+
+
+def test_ok_marker_absent_even_though_part_file_exists(tmp_path):
+    # The precise mechanism: the part file exists on disk, the marker does
+    # not — the gate must treat that as MISSING, not as measured data.
+    proj = tmp_path / "proj"
+    proj.mkdir()
+    _run_with_fake_cargo(tmp_path, str(proj), "--lang", "rust",
+                         "--floor", "50")
+    parts = proj / "target" / "llvm-cov" / "lcov-parts"
+    part = parts / "part-covfix-lib.info"
+    assert part.exists()          # the export DID leave a file behind...
+    assert not (parts / "part-covfix-lib.info.ok").exists()  # ...never marked ok
+
+
 # ── swift mode: engine flag + cov:ignore region forgiveness ──────────────────
 #
 # The pipeline is proven against a FAKE toolchain on PATH: `swift` and

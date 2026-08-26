@@ -458,3 +458,29 @@ def test_cli_json_output_embeds_metrics_and_tier(tmp_path, plain):
     assert payload["tier"]["compute"] in ("numpy", "pure-python")
     assert payload["tier"]["decoder"] in ("pillow", "png-minimal")
     assert set(payload["metrics"]) == {"mean_abs_diff", "changed_fraction", "ssim"}
+
+
+# ── docs consistency ──────────────────────────────────────────────────────────
+
+
+def test_no_phantom_diff_cli_references():
+    # Regression (2026-08-26): the CHANGELOG and this module's docstring
+    # referenced a phantom `golden_…diff.py` CLI that never existed as a
+    # file — the CLI is golden_core.py's own __main__. No reference may come
+    # back. (Needle is assembled so this scan does not flag its own source.)
+    needle = "golden_" + "diff"
+    offenders = []
+    for p in REPO_ROOT.rglob("*"):
+        if not p.is_file() or ".git" in p.parts or "__pycache__" in p.parts:
+            continue
+        if p.suffix not in {".py", ".md", ".sh"}:
+            continue
+        if needle in p.read_text(encoding="utf-8", errors="replace"):
+            offenders.append(str(p.relative_to(REPO_ROOT)))
+            offenders.append(str(p.relative_to(REPO_ROOT)))
+    assert offenders == [], f"phantom golden-diff references: {offenders}"
+
+
+def test_golden_core_docstring_names_the_real_cli():
+    text = (REPO_ROOT / "lib" / "golden_core.py").read_text()
+    assert "golden_core.py A B" in text  # the CLI that actually exists
