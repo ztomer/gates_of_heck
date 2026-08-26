@@ -32,9 +32,14 @@ shrink is landing; running it to absorb growth is how a ratchet dies.
 import argparse
 import json
 import math
+import os
 import subprocess
 import sys
 from pathlib import Path
+
+sys.path.insert(0, os.path.join(
+    os.path.dirname(os.path.abspath(__file__)), "..", "lib"))
+from killtree import run_captured  # noqa: E402
 
 
 class PreconditionError(Exception):
@@ -102,9 +107,10 @@ def parse(text: str, origin: str) -> dict[str, float]:
 
 def load_current(args) -> dict[str, float]:
     if args.current_from_command is not None:
-        proc = subprocess.run(
-            args.current_from_command, shell=True,
-            capture_output=True, text=True, timeout=args.timeout)
+        # run_captured: own session + whole-group kill on timeout — a
+        # background child of a timed-out command must not outlive the gate.
+        proc = run_captured(
+            args.current_from_command, shell=True, timeout=args.timeout)
         if proc.returncode != 0:
             raise PreconditionError(
                 f"current-from-command exited {proc.returncode}: "

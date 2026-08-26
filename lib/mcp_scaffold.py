@@ -15,9 +15,14 @@ convention) so clients can show the message instead of a protocol abort.
 from __future__ import annotations
 
 import json
-import subprocess
+import subprocess  # noqa: F401 — TimeoutExpired contract of killtree.run_captured
 import sys
 from typing import Callable
+
+try:
+    from .killtree import run_captured
+except ImportError:  # run as a script: script dir is on sys.path
+    from killtree import run_captured
 
 PROTOCOL_VERSION = "2025-06-18"
 
@@ -178,16 +183,15 @@ def run_subprocess(argv, *, timeout: float = 30.0, input_text: str | None = None
     """
     if isinstance(argv, str) or not all(isinstance(a, str) for a in argv):
         raise TypeError("run_subprocess takes a list of str argv — never a shell string")
+    # run_captured: own session + whole-group kill on timeout, so a timed-out
+    # tool's background children cannot outlive the call (see lib/killtree.py).
     try:
-        return subprocess.run(
+        return run_captured(
             argv,
-            input=input_text,
-            capture_output=True,
-            text=True,
             timeout=timeout,
-            shell=False,
             cwd=cwd,
             env=env,
+            input_text=input_text,
         )
     except subprocess.TimeoutExpired as exc:
         raise SubprocessTimeout(
