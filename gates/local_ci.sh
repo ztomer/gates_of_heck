@@ -98,7 +98,15 @@ fi
 
 LOGDIR=""
 # shellcheck disable=SC2329  # invoked via the EXIT trap below
-cleanup() { [ -n "$LOGDIR" ] && rm -rf "$LOGDIR" || true; }
+# A PASSING run's logs are noise; a FAILING run's are the only record of why.
+# Deleting them on failure takes with them the one thing needed to reproduce a
+# shuffled test failure -- its seed -- which the tail below is too short to
+# have shown. Kept on failure, and the path is printed with the result.
+cleanup() {
+    if [ -n "$LOGDIR" ] && [ "${FAILED:-0}" -eq 0 ]; then
+        rm -rf "$LOGDIR" || true
+    fi
+}
 trap cleanup EXIT
 
 ALL_STEPS=""      # newline-joined "source<TAB>cmd" records
@@ -166,7 +174,7 @@ while IFS="	" read -r src cmd; do
         ok "[$i/$_n] $cmd"
     else
         err "[$i/$_n] FAILED: $cmd"
-        warn "--- output (tail ${GOH_TAIL:-30}) ---"
+        warn "--- output (tail ${GOH_TAIL:-30}; full log kept, path below) ---"
         tail -n "${GOH_TAIL:-30}" "$logf" >&2
         FAILED=$((FAILED + 1))
         FAILED_NAMES="$FAILED_NAMES
@@ -183,4 +191,8 @@ if [ "$FAILED" -eq 0 ]; then
 fi
 err "$FAILED of $_n step(s) failed:"
 err "$FAILED_NAMES"
+# The tail above is 30 lines. A shuffled test suite prints its seed at the
+# TOP, so the line that says how to reproduce the failure is never in it.
+err ""
+err "  full output: $LOGDIR"
 exit 1
