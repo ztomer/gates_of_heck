@@ -33,6 +33,7 @@ import argparse
 import json
 import math
 import os
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -59,8 +60,43 @@ def _reject_nonfinite(values: dict) -> None:
             f"keys {bad[:5]}")
 
 
+# Strict ASCII numeric grammar for the line format. Python's int()/float()
+# silently accept '1_0' (== 10) and Arabic-Indic digits ('١٢' == 12) — a
+# baseline file is machine-compared truth, so anything outside this grammar
+# must be a named precondition failure, never a quietly-different number.
+_ASCII_NUMBER = re.compile(
+    r"[+-]?(?:[0-9]+(?:\.[0-9]*)?|\.[0-9]+)(?:[eE][+-]?[0-9]+)?\Z"
+)
+
+
+def _line_value(value_s: str, origin: str, lineno: int) -> float:
+    """Parse one line-format value: strict ASCII grammar first, then a real
+    float conversion (huge literals exceed float range and are named).
+    Non-finite spellings ('inf', 'nan') fall through to _reject_nonfinite,
+    which names them with its own message."""
+    if _ASCII_NUMBER.fullmatch(value_s):
+        try:
+            return float(value_s)
+        except OverflowError:
+            raise PreconditionError(
+                f"{origin}:{lineno}: value exceeds float range: "
+                f"{value_s[:40]!r}") from None
+    try:
+        probe = float(value_s)
+    except ValueError:
+        probe = None
+    if probe is not None and not math.isfinite(probe):
+        return probe
+    raise PreconditionError(
+        f"{origin}:{lineno}: value is not a plain ASCII number: {value_s!r}")
+
+
 def parse(text: str, origin: str) -> dict[str, float]:
-    """Parse either supported format into {key: number}."""
+    """Parse either supported format into {key: number}.
+
+    Values are NORMALIZED to finite floats here, so every downstream
+    formatting ({v:g} in main/_record) works on the same representable
+    domain the comparisons do."""
     stripped = text.strip()
     if not stripped:
         raise PreconditionError(f"{origin}: empty — nothing to verify")
@@ -78,10 +114,21 @@ def parse(text: str, origin: str) -> dict[str, float]:
         if bad:
             raise PreconditionError(
                 f"{origin}: non-numeric values for keys {sorted(bad)[:5]}")
-        _reject_nonfinite(data)
-        return {str(k): float(v) for k, v in data.items()}
+        entries: dict[str, float] = {}
+        huge = []
+        for k, v in data.items():
+            try:
+                entries[str(k)] = float(v)
+            except OverflowError:
+                huge.append(k)  # JSON ints are unbounded; floats are not
+        if huge:
+            raise PreconditionError(
+                f"{origin}: value(s) too large to measure (float range "
+                f"exceeded) for keys {sorted(huge)[:5]}")
+        _reject_nonfinite(entries)
+        return entries
 
-    entries: dict[str, float] = {}
+    out: dict[str, float] = {}
     for lineno, line in enumerate(stripped.splitlines(), 1):
         line = line.strip()
         if not line or line.startswith("#"):
@@ -91,18 +138,9 @@ def parse(text: str, origin: str) -> dict[str, float]:
             raise PreconditionError(
                 f"{origin}:{lineno}: expected '<value><TAB><key>' or "
                 f"'<value> <key>', got: {line!r}")
-        value_s, key = raw[0].strip(), raw[1].strip()
-        try:
-            entries[key] = int(value_s)
-        except ValueError:
-            try:
-                entries[key] = float(value_s)
-            except ValueError:
-                raise PreconditionError(
-                    f"{origin}:{lineno}: value is not a number: "
-                    f"{value_s!r}") from None
-    _reject_nonfinite(entries)
-    return entries
+        out[raw[1].strip()] = _line_value(raw[0].strip(), origin, lineno)
+    _reject_nonfinite(out)
+    return out
 
 
 def load_current(args) -> dict[str, float]:

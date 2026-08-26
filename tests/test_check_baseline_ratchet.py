@@ -217,3 +217,48 @@ def test_nonfinite_current_line_is_precondition(repo):
     r = run(repo, "--baseline", "base.txt", "--current", "now.txt")
     assert r.returncode == 2
     assert "non-finite" in r.stderr
+
+
+# ---- determinism + overflow (2026-08-26) ---------------------------------------
+#
+# Python's int()/float() silently accept '1_0' (== 10) and Arabic-Indic
+# digits ('١٢' == 12), and JSON ints are unbounded — float(10**3600) raises
+# OverflowError outside any handler. A ratchet baseline is machine-compared
+# truth: anything outside plain ASCII numeric grammar is a NAMED
+# precondition failure, never a quietly-different number or a traceback.
+
+
+def test_huge_json_int_baseline_is_named_precondition(repo):
+    write(repo, "base.json", json.dumps({"k": int("9" * 3600)}) + "\n")
+    write(repo, "now.json", '{"k": 1}\n')
+    r = run(repo, "--baseline", "base.json", "--current", "now.json")
+    assert r.returncode == 2, (r.stdout, r.stderr)
+    assert "too large" in r.stderr and "k" in r.stderr
+
+
+def test_huge_line_value_is_named_precondition(repo):
+    # A 3600-digit literal overflows to inf during string->float conversion
+    # and is rejected by the shared non-finite precondition (never compared).
+    write(repo, "base.txt", "1\tk\n")
+    write(repo, "now.txt", "9" * 3600 + "\tk\n")
+    r = run(repo, "--baseline", "base.txt", "--current", "now.txt")
+    assert r.returncode == 2, (r.stdout, r.stderr)
+    assert "non-finite" in r.stderr
+
+
+def test_underscore_digit_separator_rejected(repo):
+    # '1_0' must not silently become 10.
+    write(repo, "base.txt", "1\tk\n")
+    write(repo, "now.txt", "1_0\tk\n")
+    r = run(repo, "--baseline", "base.txt", "--current", "now.txt")
+    assert r.returncode == 2, (r.stdout, r.stderr)
+    assert "plain ASCII number" in r.stderr
+
+
+def test_non_ascii_digits_rejected(repo):
+    # Arabic-Indic ١٢ must not silently become 12.
+    write(repo, "base.txt", "1\tk\n")
+    write(repo, "now.txt", "\u0661\u0662\tk\n")
+    r = run(repo, "--baseline", "base.txt", "--current", "now.txt")
+    assert r.returncode == 2, (r.stdout, r.stderr)
+    assert "plain ASCII number" in r.stderr
