@@ -41,11 +41,18 @@ for a in "$@"; do
   prev="$a"
 done
 [ -n "$out" ] || exit 2
-if [ -n "${CARGO_STUB_DROP:-}" ] && [ "$tname" = "${CARGO_STUB_DROP:-}" ]; then
-  exit 1   # export fails WITHOUT producing an output file
-fi
 parts="${CARGO_STUB_PARTS:?}"
 if [ -n "$tname" ]; then src="$parts/$tname.info"; else src="$parts/lib.info"; fi
+if [ -n "${CARGO_STUB_DROP:-}" ] && { [ "$tname" = "${CARGO_STUB_DROP:-}" ] || \
+     [ -z "$tname" -a "${CARGO_STUB_DROP:-}" = "lib" ]; }; then
+  exit 1   # export fails WITHOUT producing an output file
+fi
+if [ -n "${CARGO_STUB_FAIL_LEAVE:-}" ] && { [ "$tname" = "${CARGO_STUB_FAIL_LEAVE:-}" ] || \
+     [ -z "$tname" -a "${CARGO_STUB_FAIL_LEAVE:-}" = "lib" ]; }; then
+  # The LAUNDERING shape: the export FAILS but leaves its output file behind.
+  if [ -f "$src" ]; then cp "$src" "$out"; else : > "$out"; fi
+  exit 1
+fi
 if [ -f "$src" ]; then cp "$src" "$out"; else : > "$out"; fi
 exit 0
 """
@@ -96,7 +103,8 @@ def setup_fixture(tmp_path: Path, parts: dict[str, str], meta=META) -> Path:
 
 
 def run_rust_gate(proj: Path, bin_dir: Path, meta_file: Path, parts_dir: Path,
-                  floor: str = "100", drop: str | None = None):
+                  floor: str = "100", drop: str | None = None,
+                  fail_leave: str | None = None):
     env = dict(os.environ)
     env["PATH"] = f"{bin_dir}:{env['PATH']}"
     env.pop("GOH_COV_FLOOR_RUST", None)
@@ -106,6 +114,10 @@ def run_rust_gate(proj: Path, bin_dir: Path, meta_file: Path, parts_dir: Path,
         env["CARGO_STUB_DROP"] = drop
     else:
         env.pop("CARGO_STUB_DROP", None)
+    if fail_leave:
+        env["CARGO_STUB_FAIL_LEAVE"] = fail_leave
+    else:
+        env.pop("CARGO_STUB_FAIL_LEAVE", None)
     return subprocess.run(
         ["/bin/bash", str(COV_GATE), "--lang", "rust", "--floor", floor,
          str(proj)],
@@ -154,6 +166,39 @@ def test_valid_but_empty_part_stays_warn_only_with_reason(tmp_path):
     combined = r.stdout + r.stderr
     assert "EMPTY" in combined
     assert "lib unittests" in combined, "the empty part must be named"
+
+
+# ── B2: the LAUNDERING hole — a failing export that leaves its file behind ──
+# Completeness keyed on part-file existence/size used to pass these: the file
+# was there, so "100%" was reported over garbage. Red-proofed against pre-fix
+# coverage_gate.sh (both variants exited 0).
+
+
+def test_failed_export_leaving_EMPTY_part_hard_fails(tmp_path):
+    parts = {"lib.info": "", "all.info": build_part(1, "_Za", 5, FULL_COVER)}
+    proj = setup_fixture(tmp_path, parts)
+    r = run_rust_gate(proj, tmp_path / "bin", tmp_path / "meta.json",
+                      tmp_path / "canned-parts", fail_leave="lib")
+    assert r.returncode == 1, r.stdout + r.stderr
+    combined = r.stdout + r.stderr
+    assert "expected but missing" in combined
+    assert "lib unittests" in combined, "the failed export must be NAMED"
+
+
+def test_failed_export_leaving_GARBAGE_part_hard_fails(tmp_path):
+    # A partial/garbage export left behind by a FAILED run: without the
+    # exit-0 marker this must never count as measured coverage.
+    parts = {
+        "lib.info": "SF:src/lib.rs\nDA:1,1\nDA:2,1\ngarbage-truncated-rec",
+        "all.info": build_part(1, "_Za", 5, FULL_COVER),
+    }
+    proj = setup_fixture(tmp_path, parts)
+    r = run_rust_gate(proj, tmp_path / "bin", tmp_path / "meta.json",
+                      tmp_path / "canned-parts", fail_leave="lib")
+    assert r.returncode == 1, r.stdout + r.stderr
+    combined = r.stdout + r.stderr
+    assert "expected but missing" in combined
+    assert "lib unittests" in combined
 
 
 def test_every_declared_target_exported_is_green(tmp_path):
