@@ -14,7 +14,14 @@
 #   GOH_PY_RUNNER="uv run" # prefix for the toolchain (uv, poetry, hatch...)
 #
 # Steps run as plain argv inside <pkg_dir> (goh_step_in): no shell-string
-# interpolation, so paths and runners containing spaces or quotes stay data.
+# interpolation, so paths and runners containing quotes stay data. KNOWN
+# LIMITATION, stated honestly: GOH_PY_RUNNER is whitespace-split into argv
+# (`uv run` works; a runner whose own PATH contains a space cannot be
+# expressed). Use .venv/bin/python (auto-detected) for such setups.
+#
+# The coverage step scopes --cov to <pkg_dir> explicitly. Bare `--cov` is a
+# vacuous floor: it only measures what pytest imported, so a never-imported
+# 0%-covered module is invisible to even GOH_PY_COV_MIN=100.
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -46,7 +53,7 @@ goh_step_in "$pkg_dir" "ruff format check" "${RUN_ARR[@]}" ruff format --check .
 
 if [ -n "${GOH_PY_COV_MIN:-}" ]; then
     goh_step_in "$pkg_dir" "pytest (coverage >= ${GOH_PY_COV_MIN}%)" \
-        "${RUN_ARR[@]}" pytest -q --cov --cov-report=term-missing \
+        "${RUN_ARR[@]}" pytest -q --cov="$pkg_dir" --cov-report=term-missing \
         --cov-fail-under="${GOH_PY_COV_MIN}"
 else
     goh_step_in "$pkg_dir" "pytest" "${RUN_ARR[@]}" pytest -q
