@@ -87,15 +87,23 @@ die() { err "coverage_gate: $*"; exit 2; }
 usage() {
     cat <<'EOF'
 usage: coverage_gate.sh --lang rust|swift|cpp|py [--floor N] [--ignore RE]
-                        [--engine spm|xcodebuild] [path]
+                        [--include RE] [--floors-json PATH]
+                        [--marker-ceiling PATH] [--engine spm|xcodebuild] [path]
 
-  --lang L     one of: rust swift cpp py (required)
-  --floor N    minimum LINE coverage percent (else $GOH_COV_FLOOR_<LANG>)
-  --ignore RE  exclusion regex, passed verbatim to the toolchain
-  --engine E   swift only: spm (default) | xcodebuild
-               ($GOH_COV_SWIFT_ENGINE; scheme via GOH_COV_SCHEME,
-                existing xcresult via GOH_COV_XCRESULT)
-  path         project root (default: $PWD)
+  --lang L            one of: rust swift cpp py (required)
+  --floor N           minimum LINE coverage percent (else $GOH_COV_FLOOR_<LANG>
+                      or $GOH_COV_FLOORS_JSON; a floors file covers per-target floors)
+  --ignore RE         exclusion regex, passed verbatim to the toolchain
+  --include RE        positive filter: only files matching RE are measured
+                      ($GOH_COV_INCLUDE_RE); applied BEFORE --ignore
+  --floors-json PATH  JSON file with per-target + per-file floors (see below)
+                      ($GOH_COV_FLOORS_JSON)
+  --marker-ceiling P  JSON file capping cov:ignore forgiven lines, shrink-only
+                      ($GOH_COV_MARKER_CEILING; default .coverage-forgiveness-ceiling.json if present)
+  --engine E          swift only: spm (default) | xcodebuild
+                      ($GOH_COV_SWIFT_ENGINE; scheme via GOH_COV_SCHEME,
+                       existing xcresult via GOH_COV_XCRESULT)
+  path                project root (default: $PWD)
 
 exit: 0 pass | 1 below floor | 2 usage/config error
 EOF
@@ -104,21 +112,32 @@ EOF
 LANG_=""
 FLOOR=""
 IGNORE=""
+INCLUDE=""
+FLOORS_JSON=""
+MARKER_CEILING=""
 ENGINE=""
 ENGINE_EXPLICIT=""
 PROJ=""
 
 while [ $# -gt 0 ]; do
     case "$1" in
-        --lang)   [ $# -ge 2 ] || die "--lang needs a value"; LANG_="$2"; shift 2 ;;
-        --floor)  [ $# -ge 2 ] || die "--floor needs a value"; FLOOR="$2"; shift 2 ;;
-        --ignore) [ $# -ge 2 ] || die "--ignore needs a value"; IGNORE="$2"; shift 2 ;;
-        --engine) [ $# -ge 2 ] || die "--engine needs a value"; ENGINE="$2"; ENGINE_EXPLICIT=1; shift 2 ;;
+        --lang)           [ $# -ge 2 ] || die "--lang needs a value"; LANG_="$2"; shift 2 ;;
+        --floor)          [ $# -ge 2 ] || die "--floor needs a value"; FLOOR="$2"; shift 2 ;;
+        --ignore)         [ $# -ge 2 ] || die "--ignore needs a value"; IGNORE="$2"; shift 2 ;;
+        --include)        [ $# -ge 2 ] || die "--include needs a value"; INCLUDE="$2"; shift 2 ;;
+        --floors-json)    [ $# -ge 2 ] || die "--floors-json needs a value"; FLOORS_JSON="$2"; shift 2 ;;
+        --marker-ceiling) [ $# -ge 2 ] || die "--marker-ceiling needs a value"; MARKER_CEILING="$2"; shift 2 ;;
+        --engine)         [ $# -ge 2 ] || die "--engine needs a value"; ENGINE="$2"; ENGINE_EXPLICIT=1; shift 2 ;;
         -h|--help) usage; exit 0 ;;
         --*)      die "unknown option: $1 (see --help)" ;;
         *)        PROJ="$1"; shift ;;
     esac
 done
+
+# Env fallbacks for the new seams (flag beats env, same as GOH_COV_SWIFT_ENGINE).
+[ -n "$INCLUDE" ]        || INCLUDE="${GOH_COV_INCLUDE_RE:-}"
+[ -n "$FLOORS_JSON" ]     || FLOORS_JSON="${GOH_COV_FLOORS_JSON:-}"
+[ -n "$MARKER_CEILING" ] || MARKER_CEILING="${GOH_COV_MARKER_CEILING:-}"
 
 [ -n "$LANG_" ] || { usage >&2; die "--lang is required (rust|swift|cpp|py)"; }
 case "$LANG_" in
@@ -141,16 +160,21 @@ if [ -n "$ENGINE_EXPLICIT" ] && [ "$LANG_" != "swift" ]; then
 fi
 
 ENV_VAR=""
-if [ -z "$FLOOR" ]; then
+if [ -z "$FLOOR" ] && [ -z "$FLOORS_JSON" ]; then
     ENV_VAR="GOH_COV_FLOOR_$(printf '%s' "$LANG_" | tr '[:lower:]' '[:upper:]')"
     FLOOR="${!ENV_VAR:-}"
 fi
-if [ -z "$FLOOR" ]; then
-    die "no coverage floor for '$LANG_': pass --floor N or set ${ENV_VAR:-GOH_COV_FLOOR_<LANG>}"
+if [ -z "$FLOOR" ] && [ -z "$FLOORS_JSON" ]; then
+    die "no coverage floor for '$LANG_': pass --floor N or set ${ENV_VAR:-GOH_COV_FLOOR_<LANG>} or GOH_COV_FLOORS_JSON"
 fi
-case "$FLOOR" in
-    ''|*[!0-9.]*) die "floor must be numeric, got '$FLOOR'${ENV_VAR:+ (from $ENV_VAR)}" ;;
-esac
+if [ -n "$FLOORS_JSON" ] && [ ! -f "$FLOORS_JSON" ]; then
+    die "floors file not found: $FLOORS_JSON (from --floors-json / GOH_COV_FLOORS_JSON)"
+fi
+if [ -n "$FLOOR" ]; then
+    case "$FLOOR" in
+        ''|*[!0-9.]*) die "floor must be numeric, got '$FLOOR'${ENV_VAR:+ (from $ENV_VAR)}" ;;
+    esac
+fi
 
 [ -n "$PROJ" ] || PROJ="$PWD"
 [ -d "$PROJ" ] || die "project path is not a directory: $PROJ"
@@ -282,10 +306,12 @@ PYEOF
         exit 1
     fi
 
-    # The merge + floor decision lives in gates/lcov_merge.py: it strips CGU
-    # hashes, groups instantiations, counts a line covered iff ANY
-    # instantiation ran, and prints exact uncovered lines on failure.
-    python3 "$GOH_ROOT/gates/lcov_merge.py" --floor "$FLOOR" "$PARTS"
+    _MERGE_ARGS=()
+    if [ -n "$FLOOR" ]; then _MERGE_ARGS+=(--floor "$FLOOR"); fi
+    if [ -n "$FLOORS_JSON" ]; then _MERGE_ARGS+=(--floors-json "$FLOORS_JSON"); fi
+    if [ -n "$INCLUDE" ]; then _MERGE_ARGS+=(--include "$INCLUDE"); fi
+    if [ -n "$MARKER_CEILING" ]; then _MERGE_ARGS+=(--marker-ceiling "$MARKER_CEILING"); fi
+    python3 "$GOH_ROOT/gates/lcov_merge.py" "${_MERGE_ARGS[@]}" "$PARTS"
 }
 
 # ── swift ───────────────────────────────────────────────────────────────────
@@ -293,9 +319,14 @@ PYEOF
 # processor); this wrapper keeps the shared arg/floor handling in bash.
 run_swift() {
     cd "$PROJ"
-    python3 "$GOH_ROOT/gates/coverage_swift.py" \
-        --floor "$FLOOR" --proj "$PROJ" --engine "$ENGINE" \
-        ${IGNORE:+--ignore "$IGNORE"} \
+    _SWIFT_ARGS=()
+    if [ -n "$FLOOR" ]; then _SWIFT_ARGS+=(--floor "$FLOOR"); fi
+    if [ -n "$FLOORS_JSON" ]; then _SWIFT_ARGS+=(--floors-json "$FLOORS_JSON"); fi
+    _SWIFT_ARGS+=(--proj "$PROJ" --engine "$ENGINE")
+    if [ -n "$IGNORE" ]; then _SWIFT_ARGS+=(--ignore "$IGNORE"); fi
+    if [ -n "$INCLUDE" ]; then _SWIFT_ARGS+=(--include "$INCLUDE"); fi
+    if [ -n "$MARKER_CEILING" ]; then _SWIFT_ARGS+=(--marker-ceiling "$MARKER_CEILING"); fi
+    python3 "$GOH_ROOT/gates/coverage_swift.py" "${_SWIFT_ARGS[@]}" \
         || exit $?
 }
 
@@ -352,20 +383,40 @@ run_cpp() {
     fi
     [ -x "$bin" ] || die "test binary not executable: $bin"
     need python3 "parsing llvm-cov's JSON summary"
-    # LINE coverage, BY NAME from llvm-cov's JSON summary. Never positional:
-    # this took the TOTAL row's LAST column, which is BRANCH coverage on a
-    # branch-instrumented build (60.80% where lines were 71.21%), and the
-    # column count is not fixed. See CHANGELOG.
     local pct
-    pct=$(xcrun llvm-cov export "$bin" -instr-profile="$profdata" \
-        ${IGNORE:+-ignore-filename-regex "$IGNORE"} -summary-only 2>/dev/null \
-        | python3 -c 'import json,sys
-try: print("%.2f" % json.load(sys.stdin)["data"][0]["totals"]["lines"]["percent"])
-except Exception: pass' ) || true
+    if [ -n "$INCLUDE" ]; then
+        pct=$(xcrun llvm-cov export "$bin" -instr-profile="$profdata" \
+            ${IGNORE:+-ignore-filename-regex "$IGNORE"} 2>/dev/null \
+            | python3 -c '
+import json,os,re,sys
+inc=os.environ.get("GOH_COV_INCLUDE_RE","") or (sys.argv[1] if len(sys.argv)>1 else "")
+pat=re.compile(inc) if inc else None
+try:
+ d=json.load(sys.stdin)["data"][0]
+except Exception: sys.exit(0)
+files=d.get("files",[])
+if not files:
+ try: print("%.2f"%d["totals"]["lines"]["percent"])
+ except Exception: pass
+ sys.exit(0)
+tot=cov=0
+for f in files:
+ n=f.get("filename","")
+ if pat and not pat.search(n): continue
+ s=f.get("summary",{}).get("lines",{})
+ tot+=s.get("count",0); cov+=s.get("covered",0)
+if tot: print("%.2f"%(100.0*cov/tot))
+' "${INCLUDE:-}") || true
+    else
+        pct=$(xcrun llvm-cov export "$bin" -instr-profile="$profdata" \
+            ${IGNORE:+-ignore-filename-regex "$IGNORE"} -summary-only 2>/dev/null \
+            | python3 -c 'import json,sys
+try: print("%.2f"%json.load(sys.stdin)["data"][0]["totals"]["lines"]["percent"])
+except Exception: pass') || true
+    fi
     case "$pct" in
         ''|*[!0-9.]*) err "could not parse total line % from llvm-cov export"; exit 1 ;;
     esac
-
     floor_cmp "$pct"
 }
 
@@ -381,6 +432,7 @@ run_py() {
     info "coverage run -m pytest"
     # shellcheck disable=SC2086
     python3 -m coverage run --source="$PROJ" \
+        ${INCLUDE:+--include "$INCLUDE"} \
         ${IGNORE:+--omit "$IGNORE"} \
         -m pytest -q >/dev/null 2>&1 \
         || { err "tests failed while collecting coverage"; exit 1; }
