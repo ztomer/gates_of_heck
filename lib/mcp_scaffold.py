@@ -126,7 +126,17 @@ class McpServer:
                 "content": [{"type": "text", "text": text}],
                 "isError": True,
             })
-        text = value if isinstance(value, str) else json.dumps(value)
+        try:
+            text = value if isinstance(value, str) else json.dumps(value)
+        except (TypeError, ValueError) as exc:
+            # Same isError convention as handler failures: an unserializable
+            # RESULT is the tool's failure, never a protocol abort — raising
+            # here used to kill the serve loop mid-session.
+            return _rpc(msg_id, {
+                "content": [{"type": "text",
+                             "text": f"tool returned an unserializable value: {exc}"}],
+                "isError": True,
+            })
         return _rpc(msg_id, {
             "content": [{"type": "text", "text": text}],
             "isError": False,

@@ -78,6 +78,62 @@ def test_unknown_tool_is_invalid_params_error():
     assert resp["error"]["code"] == mc.INVALID_PARAMS
 
 
+def test_tool_returning_unserializable_value_is_isError_not_crash():
+    # Regression (2026-08-25): json.dumps(object()) raised TypeError OUT of
+    # handle_message, killing the serve loop mid-session.
+    s = mc.McpServer()
+
+    @s.tool(description="junk", schema={"type": "object", "properties": {}})
+    def junk():
+        return object()
+
+    resp = s.handle_message({
+        "jsonrpc": "2.0", "id": 9, "method": "tools/call",
+        "params": {"name": "junk", "arguments": {}},
+    })
+    assert resp["result"]["isError"] is True
+    assert "unserializable" in resp["result"]["content"][0]["text"]
+    json.dumps(resp)  # the reply itself must go over the wire
+    # ...and the session lives on:
+    assert s.handle_message(
+        {"jsonrpc": "2.0", "id": 10, "method": "ping"})["result"] == {}
+
+
+def test_wire_unserializable_tool_result_then_session_survives(tmp_path):
+    script = "\n".join([
+        "import sys",
+        f"sys.path.insert(0, {str(REPO_ROOT)!r})",
+        "from lib.mcp_scaffold import McpServer, serve",
+        "s = McpServer()",
+        '@s.tool(description="junk", schema={"type": "object", "properties": {}})',
+        "def junk():",
+        "    return object()",
+        "serve(s)",
+    ])
+    proc = subprocess.Popen(
+        [sys.executable, "-c", script],
+        stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+        stderr=subprocess.DEVNULL, text=True, bufsize=1,
+    )
+    try:
+        proc.stdin.write(json.dumps({
+            "jsonrpc": "2.0", "id": 1, "method": "tools/call",
+            "params": {"name": "junk", "arguments": {}},
+        }) + "\n")
+        proc.stdin.flush()
+        resp = json.loads(proc.stdout.readline())
+        assert resp["id"] == 1
+        assert resp["result"]["isError"] is True
+        assert "unserializable" in resp["result"]["content"][0]["text"]
+        proc.stdin.write(json.dumps(
+            {"jsonrpc": "2.0", "id": 2, "method": "ping"}) + "\n")
+        proc.stdin.flush()
+        assert json.loads(proc.stdout.readline())["id"] == 2
+    finally:
+        proc.terminate()
+        proc.wait(timeout=10)
+
+
 def test_unknown_method_is_method_not_found():
     resp = _server().handle_message({"jsonrpc": "2.0", "id": 6, "method": "no/such"})
     assert resp["error"]["code"] == mc.METHOD_NOT_FOUND
