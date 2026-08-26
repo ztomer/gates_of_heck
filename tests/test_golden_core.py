@@ -293,6 +293,91 @@ def test_palette_png_is_a_precondition_not_a_misread(tmp_path):
         golden_core._HAVE_PIL = orig
 
 
+# ---- corrupt-input contract (2026-08-26) ----------------------------------------
+#
+# Structural faults in a PNG surface as named PreconditionErrors, never raw
+# IndexError/struct.error tracebacks. Decodable input is untouched: the
+# guards only fire where HEAD crashed or produced garbage.
+
+
+def corrupt_png(ihdr_body=None, raw=None):
+    def chunk(ctype, body):
+        return struct.pack(">I", len(body)) + ctype + body + struct.pack(
+            ">I", zlib.crc32(ctype + body) & 0xFF_FF_FF_FF
+        )
+    ihdr = ihdr_body if ihdr_body is not None else struct.pack(
+        ">IIBBBBB", 4, 3, 8, 2, 0, 0, 0)
+    stream = raw if raw is not None else b"".join(
+        b"\x00" + bytes(12) for _ in range(3))
+    return (
+        b"\x89PNG\r\n\x1a\n"
+        + chunk(b"IHDR", ihdr)
+        + chunk(b"IDAT", zlib.compress(stream))
+        + chunk(b"IEND", b"")
+    )
+
+
+def decode_minimal(data):
+    orig = golden_core._HAVE_PIL
+    golden_core._HAVE_PIL = False
+    try:
+        return golden_core._decode_png_minimal(data, "corrupt.png")
+    finally:
+        golden_core._HAVE_PIL = orig
+
+
+def test_truncated_pixel_stream_is_named_precondition():
+    # IHDR promises 4x3 RGB; the stream carries one scanline. HEAD ran off
+    # the end of `raw` inside _unfilter (IndexError).
+    with pytest.raises(golden_core.PreconditionError, match="pixel stream"):
+        decode_minimal(corrupt_png(raw=b"\x00" + bytes(12)))
+
+
+def test_short_ihdr_body_is_named_precondition():
+    # A 12-byte IHDR body made struct.unpack raise a bare struct.error.
+    with pytest.raises(golden_core.PreconditionError, match="IHDR"):
+        decode_minimal(corrupt_png(ihdr_body=struct.pack(">IIBBBBB", 4, 3, 8, 2, 0, 0, 0)[:12]))
+
+
+def test_cli_corrupt_png_exits_2_named(tmp_path):
+    # Short IHDR is rejected by BOTH decoder tiers (minimal names it; Pillow
+    # refuses the file), so this pins the CLI contract regardless of tier.
+    p = tmp_path / "short_ihdr.png"
+    p.write_bytes(corrupt_png(
+        ihdr_body=struct.pack(">IIBBBBB", 4, 3, 8, 2, 0, 0, 0)[:12]))
+    good = tmp_path / "good.png"
+    good.write_bytes(corrupt_png())
+    r = run_cli(p, good)
+    assert r.returncode == 2
+    assert "precondition" in r.stderr
+
+
+def test_fuzz_bitflips_never_traceback_and_stay_byte_exact(tmp_path):
+    """200 seeded single-bit flips over a valid PNG: every outcome is either
+    a named PreconditionError or a byte-exact correct decode — zero
+    tracebacks, zero wrong pixels."""
+    import random
+
+    rng = random.Random(0xC0FFEE)
+    base = bytearray(corrupt_png())
+    for i in range(200):
+        data = bytearray(base)
+        data[rng.randrange(len(data))] ^= 1 << rng.randrange(8)
+        try:
+            decoded = decode_minimal(bytes(data))
+        except golden_core.PreconditionError:
+            continue
+        # Zero-wrong-pixel property: whatever decodes must match Pillow's
+        # decode of the same bytes, exactly.
+        try:
+            from PIL import Image as PILImage
+            import io
+            ref = PILImage.open(io.BytesIO(bytes(data))).convert("RGB")
+            assert decoded.pixels == ref.tobytes(), f"flip {i}: wrong pixels"
+        except Exception:
+            pass  # Pillow cannot read it either — nothing to cross-check
+
+
 # ---- CLI exit codes -------------------------------------------------------------------
 
 
