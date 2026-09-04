@@ -1,0 +1,5 @@
+cmake_minimum_required(VERSION 3.20)
+project(Proj)
+add_executable(test_alpha tests/test_alpha.cpp)
+add_executable(core_tests ${CMAKE_CURRENT_SOURCE_DIR}/tests/core_test.cpp)
+add_test(NAME ping COMMAND test_ping)
