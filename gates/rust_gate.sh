@@ -3,6 +3,9 @@
 #
 #   1. cargo fmt --all -- --check
 #   2. cargo clippy --workspace --all-targets --all-features -- -D warnings
+#   2b. gates/rust_manifest_gate.sh — CARGO's own lints, which step 2 cannot
+#      see: `-D warnings` sets rustc lint levels, cargo's namespace is
+#      separate, so cargo warns and exits 0. Reads output, not exit code.
 #   3. tools/check_no_allow.py — no #[allow]; fix findings, never silence.
 #      (Repo-local tool; skipped with a warning when not installed.)
 #   4. coverage floor, when stated (GOH_COV_FLOOR_RUST or GOH_COV_FLOORS_JSON
@@ -40,6 +43,11 @@ goh_step_in "$cargo_dir" "fmt" cargo fmt --all -- --check
 
 goh_step_in "$cargo_dir" "clippy (-D warnings, all targets, all features)" \
     cargo clippy --workspace --all-targets --all-features -- -D warnings
+
+# Cargo's own lint namespace. Separate from clippy because clippy CANNOT fail
+# on these -- see the header of the script for the measurement that proved it.
+goh_step_in "$cargo_dir" "cargo lints (manifest)" \
+    bash "$HERE/rust_manifest_gate.sh" "$cargo_dir"
 
 goh_optional_step "no #[allow]" tools/check_no_allow.py \
     python3 tools/check_no_allow.py
