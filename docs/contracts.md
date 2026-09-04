@@ -78,7 +78,6 @@ without documenting it fails the suite.
 Pin: `tests/test_config_schema.py`.
 
 ## 10. Parallel suite shares nothing mutable (`tools/gate.sh --full`)
-
 `--full` runs `pytest -n 8 --dist loadgroup`. Files sharing an
 `xdist_group` marker stay on ONE worker: `test_release_hardening.py`
 corrupts `tools/release-kit/release.sh` MID-RUN on purpose, and
@@ -89,3 +88,14 @@ has its own group: its tests take the REAL machine-wide mutex, so
 splitting them across workers means contending with themselves.
 Pin: the full suite green under `-n 8 --dist loadgroup`; serial green
 proves nothing about the grouping.
+
+## 11. `.gatesrc` runs as shell — trusted repos only
+
+`structural.sh`, `rust_gate.sh`, `swift_gate.sh`, `py_gate.sh` and
+`local_ci.sh` all source the target repo's `.gatesrc` into the gate
+shell, so a malicious `.gatesrc` in a cloned repo executes on gate run.
+Blast radius today is ~zero (every consumer is the operator's own repo —
+the same trust already extended to hooks and `tools/gate.sh`), which is
+why this is a documented posture, not a ticket. If gates ever run
+against untrusted checkouts, replace sourcing with a KV parser first.
+Pin: this paragraph (no test can prove a negative trust boundary).

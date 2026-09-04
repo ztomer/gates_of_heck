@@ -194,3 +194,14 @@ def test_recorded_hash_allows_update_after_a_stock_bump(tmp_path):
     assert r.returncode == 0, (
         f"record-matched reinstall refused: {r.stdout + r.stderr}")
     assert (repo / ".githooks" / "pre-push").read_text() == bumped
+
+
+def test_help_exits_zero_without_side_effects(tmp_path):
+    # --help must not require a repo, create directories, or touch git.
+    target = tmp_path / "untouched"
+    r = subprocess.run(["/bin/bash", str(REPO_ROOT / "install.sh"), "--help"],
+                       capture_output=True, text=True, cwd=tmp_path)
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert "--force" in (r.stdout + r.stderr)
+    assert not target.exists()
+    assert not (tmp_path / ".githooks").exists()

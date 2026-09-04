@@ -1,5 +1,58 @@
 # CHANGELOG
 
+## v0.9.0 — eval findings 1-10 _(2026-09-04)_
+
+Every item from EVAL-2026-09-04.md, fixed test-first, measured throughout.
+
+**What shipped**:
+- Layer 1 shell lint: `checks/check_shell_lint.sh` (`bash -n` always;
+  `shellcheck --severity=error`, missing binary degrades to a named
+  warning). Wired into `structural.sh` both scopes. Found two live bugs
+  on adoption (a prose `# shellcheck ...` comment parsed as a directive;
+  a sourced lib missing its shell directive) — both pinned by tests.
+  shfmt deliberately excluded (tree uses aligned continuations).
+- Rust coverage floor: `rust_gate.sh` runs `coverage_gate.sh --lang rust`
+  when `GOH_COV_FLOOR_RUST`/`GOH_COV_FLOORS_JSON` is set (explicit argv —
+  `.gatesrc` values are not exported, found by the red test), warn nudges
+  otherwise like py/swift gates.
+- Secrets gate: `checks/check_no_secrets.py` (known prefixes + key
+  headers, staged + full, `secret-ok: <reason>` markers; bare markers
+  suppress nothing). No entropy heuristics by design. Tree scans clean.
+- Swift parity, not merge: `tests/test_swift_coverage_parity.py` runs the
+  legacy helper and the llvm-cov engine against one 50% fixture and pins
+  identical verdicts (red-proven). A merge needs a real-swift oracle that
+  does not exist here.
+- `docs/contracts.md` #11: `.gatesrc`-as-shell trust posture recorded.
+- UX: `GOH_LCI_TIMEOUT` per-step ceiling for `local_ci.sh` (TERM/KILL +
+  subtree sweep, exit 124, non-numeric is exit 2); `--help` for
+  `install.sh`, `tools/gate.sh`, `structural.sh`; `gates/doctor.sh`
+  (wiring diagnosis: GOH resolution, hooksPath, unknown `.gatesrc` keys
+  derived from `docs/config.md`, toolchain presence) + `--doctor` in
+  both gate entries.
+- `GOH_TIME=1`: per-step elapsed seconds on ok lines (`_common.sh`).
+- `docs/BACKLOG.md`: the rule-#13 file, seeded with deferred items.
+- `slow` marker: the 28s real-swiftlint test opts out of the fast loop
+  (`-m "not slow"`); the gate still runs everything.
+- `lib/mcp_schema.py` split out of `mcp_scaffold.py` (496 → 422/113
+  lines); block moved byte-identically, re-exported so downstream
+  imports keep working; ruff hits fewer than HEAD (5 → 4).
+- Trim: fake-gh stub deduped to `conftest.py`; dup import pruned; stale
+  `ci_local`/`loadfile`/count references fixed across docs.
+
+**Bugs the work itself caught**:
+- `X | Y` annotations crash OS python3 3.9 at def time (the documented
+  class, reintroduced in two new files) — caught by the self-host
+  dogfood test; fixed with `from __future__ import annotations` plus a
+  one-line class fix in `check_disk_hygiene.py`.
+- Parallel-suite race, take two: release-hardening's mid-run edit vs
+  release runs (fixed by xdist grouping, contract #10); my own
+  mutate/restore red-proof raced `__pycache__` (sleep-separated rerun).
+
+**What deliberately didn't ship**:
+- Entropy-based secret detection, shfmt enforcement, swift merge,
+  launchd schedule for the disk watch (all in `docs/BACKLOG.md` with
+  unblock conditions).
+
 ## v0.8.0 — disk watch out of CI, pooled du, parallel suite _(2026-09-04)_
 
 Measured first: full `structural.sh` was 17.7s, of which `check_disk_hygiene`

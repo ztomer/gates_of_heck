@@ -5,6 +5,11 @@
 #   2. cargo clippy --workspace --all-targets --all-features -- -D warnings
 #   3. tools/check_no_allow.py — no #[allow]; fix findings, never silence.
 #      (Repo-local tool; skipped with a warning when not installed.)
+#   4. coverage floor, when stated (GOH_COV_FLOOR_RUST or GOH_COV_FLOORS_JSON
+#      in .gatesrc) — via gates/coverage_gate.sh, with the floor passed as
+#      explicit argv (.gatesrc values are shell variables, NOT exported, so
+#      the callee cannot see them through the environment). Unset keeps
+#      fmt+clippy only, with a printed nudge (the py/swift-gate precedent).
 #
 #   rust_gate.sh                       # run from repo root (uses $PWD)
 #   rust_gate.sh <repo>                # run from anywhere
@@ -38,5 +43,17 @@ goh_step_in "$cargo_dir" "clippy (-D warnings, all targets, all features)" \
 
 goh_optional_step "no #[allow]" tools/check_no_allow.py \
     python3 tools/check_no_allow.py
+
+if [ -n "${GOH_COV_FLOOR_RUST:-}" ]; then
+    goh_step "coverage (floor ${GOH_COV_FLOOR_RUST}%)" \
+        bash "$HERE/coverage_gate.sh" --lang rust \
+        --floor "$GOH_COV_FLOOR_RUST" "$cargo_dir"
+elif [ -n "${GOH_COV_FLOORS_JSON:-}" ]; then
+    goh_step "coverage (per-target floors)" \
+        bash "$HERE/coverage_gate.sh" --lang rust \
+        --floors-json "$GOH_COV_FLOORS_JSON" "$cargo_dir"
+else
+    warn "no coverage floor — set GOH_COV_FLOOR_RUST in .gatesrc"
+fi
 
 goh_done

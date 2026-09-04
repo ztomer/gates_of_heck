@@ -42,6 +42,7 @@ either — same class, new writer.
     GOH_MAX_CACHE_GB=50 GOH_WATCH_PATHS=~/.cache/cargo-target:~/Projects/foo/target check_disk_hygiene.py
     GOH_SCRATCH_ROOTS=/tmp/qa-scratch  # override scratch roots (tests + scoping)
 """
+from __future__ import annotations  # OS python3 may be 3.9: `X | Y` must not evaluate at def time
 
 import argparse
 import os

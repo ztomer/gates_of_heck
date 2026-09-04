@@ -321,6 +321,7 @@ def swiftlint_available() -> bool:
 
 
 @pytest.mark.skipif(not swiftlint_available(), reason="swiftlint not installed")
+@pytest.mark.slow  # ~28s of real swiftlint runs; fast loop uses -m "not slow"
 def test_real_swiftlint_ratchet_green_then_red(tmp_path):
     proj = tmp_path / "proj"
     shutil.copytree(FIXTURE_PROJECT, proj)

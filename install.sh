@@ -23,6 +23,11 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 . "$HERE/tui/lib.sh"
 
 FORCE=0
+if [ "${1:-}" = "-h" ] || [ "${1:-}" = "--help" ]; then
+    sed -n '2,20p' "$HERE/install.sh"
+    echo "--force overwrites even locally modified hooks."
+    exit 0
+fi
 if [ "${1:-}" = "--force" ]; then
     FORCE=1
     shift
@@ -88,6 +93,14 @@ if [ ! -f "$target/tools/gate.sh" ]; then
 #   --full   : pre-push scope — every layer
 set -euo pipefail
 GOH="${GOH_DIR:-${GOH:-$HOME/Projects/gates_of_heck}}"
+
+# Informational flags never reach the gates below.
+case "${1:-}" in
+  -h|--help)
+    echo "usage: gate.sh [--staged | --full | --doctor [repo] | --help]"
+    exit 0 ;;
+  --doctor)  exec bash "$GOH/gates/doctor.sh" "${2:-$PWD}" ;;
+esac
 
 "$GOH/gates/structural.sh" "$@"
 

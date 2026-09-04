@@ -17,6 +17,15 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 . "$HERE/_common.sh"
 
 CHECKS="$(cd "$HERE/../checks" && pwd)"
+if [ "${1:-}" = "-h" ] || [ "${1:-}" = "--help" ]; then
+    cat <<'EOF'
+usage: structural.sh [--staged | --full]
+  no argument : full-tree checks (same as --full)
+  --staged    : staged files only (pre-commit scope, fast)
+  --full      : every check (pre-push scope)
+EOF
+    exit 0
+fi
 SCOPE="${1:-}"
 # Strict scope argument: "" |--full|--staged are the ONLY accepted forms.
 # Anything else previously FELL THROUGH to a silent full-tree run — a typo
@@ -79,6 +88,28 @@ if [ -n "${GOH_MAX_LINES:-}" ]; then
         ${GOH_EX:+--exclude "$GOH_EX"} ${FWD:+"$FWD"}
 else
     warn "file-length cap not set — add GOH_MAX_LINES to .gatesrc to enable it"
+fi
+
+# Bash is the most-edited language under these gates. bash -n always runs;
+# the lint stage degrades to a named warning when shellcheck is not
+# installed (swiftlint precedent), never a silent skip. Same GOH_EXCLUDE
+# as the emoji scan.
+if [ "$SCOPE" = "--staged" ]; then
+    goh_step "shell lint (staged)" bash "$CHECKS/check_shell_lint.sh" --staged \
+        ${GOH_EXCLUDE:+--exclude "$GOH_EXCLUDE"}
+else
+    goh_step "shell lint" bash "$CHECKS/check_shell_lint.sh" \
+        ${GOH_EXCLUDE:+--exclude "$GOH_EXCLUDE"}
+fi
+
+# Committed secrets outrank every other defect class. Same GOH_EXCLUDE;
+# revoked vectors suppress per-line with `secret-ok: <reason>`.
+if [ "$SCOPE" = "--staged" ]; then
+    goh_step "no committed secrets (staged)" python3 "$CHECKS/check_no_secrets.py" --staged \
+        ${GOH_EXCLUDE:+--exclude "$GOH_EXCLUDE"}
+else
+    goh_step "no committed secrets" python3 "$CHECKS/check_no_secrets.py" \
+        ${GOH_EXCLUDE:+--exclude "$GOH_EXCLUDE"}
 fi
 
 # Disk hygiene used to run here on full scope. It no longer does: a 15s du

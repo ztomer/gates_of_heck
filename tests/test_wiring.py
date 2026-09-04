@@ -55,6 +55,8 @@ EXPECTED_REFS = [
     ("gates/structural.sh", "checks/check_no_emoji.py"),
     ("gates/structural.sh", "checks/check_no_conflict_markers.py"),
     ("gates/structural.sh", "checks/check_file_length.py"),
+    ("gates/structural.sh", "checks/check_shell_lint.sh"),
+    ("gates/structural.sh", "checks/check_no_secrets.py"),
     # NOTE: checks/check_disk_hygiene.py is deliberately NOT referenced by
     # any gate (2026-09-04: disk watch moved out of CI to
     # ~/Projects/scripts/bin/disk_hygiene.sh). If a gate references it

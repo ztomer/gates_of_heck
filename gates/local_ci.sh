@@ -57,6 +57,8 @@ The separator is a bare colon split: keep colons OUT of step strings —
 parameter expansions like ${VAR:+flag} contain one and will be cut. Put such
 logic in a small repo script and invoke that as the step.
 .gatesrc steps run first, then --step ones.
+GOH_LCI_TIMEOUT=N caps each step at N seconds (exit 124, named); unset
+means no limit.
 EOF
 }
 
@@ -88,6 +90,18 @@ if [ -f "$ROOT/.gatesrc" ]; then
 fi
 
 SRC_GATESRC="${GOH_CI_STEPS:-}"
+
+# GOH_LCI_TIMEOUT: per-step wall-clock ceiling in seconds. Unset/0 = none
+# (previous behavior). A hung step used to hang the whole run silently; on
+# expiry the step is TERM-then-KILLed with its subtree swept best-effort,
+# and fails NAMED with exit 124 (the GNU timeout convention). A non-numeric
+# value is a usage error naming the value, never silently ignored.
+case "${GOH_LCI_TIMEOUT:-0}" in
+    ""|0) LCI_LIMIT=0 ;;
+    *[!0-9]*)
+        die "GOH_LCI_TIMEOUT must be a non-negative integer of seconds (got '${GOH_LCI_TIMEOUT}')" ;;
+    *) LCI_LIMIT="$GOH_LCI_TIMEOUT" ;;
+esac
 
 if [ -z "$SRC_GATESRC" ] && [ -z "$CLI_STEPS" ]; then
     err "local_ci: no steps declared"
@@ -159,6 +173,43 @@ FAILED=0
 FAILED_NAMES=""
 i=0
 
+# run_step <logf> <cmd-string> — exit code of the step, 124 on timeout.
+# Subtree discipline (the killtree class): TERM the child, sweep its subtree
+# best-effort via pkill -P, escalate to KILL. pkill may be absent on minimal
+# systems; then only the direct child dies and the log says so.
+run_step() {
+    local logf="$1" cmd="$2"
+    if [ "$LCI_LIMIT" -le 0 ]; then
+        bash -c "$cmd" >"$logf" 2>&1 </dev/null
+        return $?
+    fi
+    bash -c "$cmd" >"$logf" 2>&1 </dev/null &
+    local pid=$!
+    local deadline=$(( $(date +%s) + LCI_LIMIT ))
+    while kill -0 "$pid" 2>/dev/null; do
+        if [ "$(date +%s)" -ge "$deadline" ]; then
+            kill -TERM "$pid" 2>/dev/null || true
+            if command -v pkill >/dev/null 2>&1; then
+                pkill -TERM -P "$pid" 2>/dev/null || true
+            fi
+            sleep 2
+            if kill -0 "$pid" 2>/dev/null; then
+                kill -KILL "$pid" 2>/dev/null || true
+                if command -v pkill >/dev/null 2>&1; then
+                    pkill -KILL -P "$pid" 2>/dev/null || true
+                fi
+            fi
+            wait "$pid" 2>/dev/null || true
+            printf 'local_ci: step timed out after %ss (GOH_LCI_TIMEOUT)\n' \
+                "$LCI_LIMIT" >>"$logf"
+            return 124
+        fi
+        sleep 1
+    done
+    wait "$pid" 2>/dev/null
+    return $?
+}
+
 while IFS="	" read -r src cmd; do
     [ -n "$cmd" ] || continue
     i=$((i + 1))
@@ -170,8 +221,17 @@ while IFS="	" read -r src cmd; do
     # </dev/null: without it every child inherits the while loop's heredoc
     # stdin — one step that reads stdin (cat, an interactive prompt) swallows
     # the REMAINING step list silently.
-    if bash -c "$cmd" >"$logf" 2>&1 </dev/null; then
+    run_step "$logf" "$cmd"
+    rc=$?
+    if [ "$rc" -eq 0 ]; then
         ok "[$i/$_n] $cmd"
+    elif [ "$rc" -eq 124 ]; then
+        err "[$i/$_n] TIMED OUT after ${LCI_LIMIT}s: $cmd"
+        warn "--- output (tail ${GOH_TAIL:-30}; full log kept, path below) ---"
+        tail -n "${GOH_TAIL:-30}" "$logf" >&2
+        FAILED=$((FAILED + 1))
+        FAILED_NAMES="$FAILED_NAMES
+  $cmd (timeout)"
     else
         err "[$i/$_n] FAILED: $cmd"
         warn "--- output (tail ${GOH_TAIL:-30}; full log kept, path below) ---"

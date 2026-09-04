@@ -10,6 +10,7 @@ Contract pinned here:
 
 import os
 import subprocess
+import time
 from pathlib import Path
 
 import pytest
@@ -179,6 +180,31 @@ def test_help_works(repo):
 def test_unknown_flag_rejected(repo):
     r = run_ci(repo, "--fast")
     assert r.returncode == 2
+
+
+# ── per-step timeout ──
+
+
+def test_step_timeout_kills_hung_step(repo, monkeypatch):
+    # Without the feature this test costs 30s and PASSES (sleep exits 0) —
+    # red-proofed that way against the pre-timeout local_ci.sh.
+    monkeypatch.setenv("GOH_LCI_TIMEOUT", "2")
+    gatesrc(repo, "sleep 30")
+    t0 = time.time()
+    r = run_ci(repo)
+    dt = time.time() - t0
+    assert r.returncode == 1, r.stdout + r.stderr  # accumulator exit, not 124
+    combined = r.stdout + r.stderr
+    assert "TIMED OUT" in combined and "GOH_LCI_TIMEOUT" in combined
+    assert dt < 15, f"timeout did not fire (took {dt:.1f}s)"
+
+
+def test_invalid_timeout_is_usage_error(repo, monkeypatch):
+    monkeypatch.setenv("GOH_LCI_TIMEOUT", "soon")
+    gatesrc(repo, "true")
+    r = run_ci(repo)
+    assert r.returncode == 2
+    assert "GOH_LCI_TIMEOUT" in (r.stdout + r.stderr)
 
 
 # ── output discipline ──

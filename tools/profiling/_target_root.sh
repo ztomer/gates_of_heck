@@ -1,4 +1,6 @@
 # _target_root.sh — resolve WHICH repo a centralized profiling harness acts on.
+# (sourced, never executed: no shebang by design; dialect declared below).
+# shellcheck shell=bash
 #
 # These scripts used to live at <repo>/tools/profiling/ and derived the target
 # project two levels up from their own location. Canonized here, the location

@@ -15,6 +15,22 @@ else
     warn() { printf '⚠ %s\n' "$*" >&2; }
 fi
 
+# Early informational flags never reach the gates below.
+case "${1:-}" in
+  -h|--help)
+    cat <<'EOF'
+usage: gate.sh [--staged | --full | --doctor [repo] | --help]
+  --staged      pre-commit scope: layer 1 only (fast)
+  --full        pre-push scope: every layer (runs the test suite)
+  --doctor      diagnose gate wiring (GOH resolution, hooks, .gatesrc keys)
+EOF
+    exit 0
+    ;;
+  --doctor)
+    exec bash "$GOH/gates/doctor.sh" "${2:-$PWD}"
+    ;;
+esac
+
 "$GOH/gates/structural.sh" "$@"
 
 case "${1:-}" in

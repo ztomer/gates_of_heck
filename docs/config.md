@@ -54,7 +54,7 @@ No `GOH_*` knobs. `sccache` comes from `RUSTC_WRAPPER`, not from here.
 
 | Key | Default | Meaning |
 |---|---|---|
-| `GOH_COV_FLOOR_RUST` / `_SWIFT` / `_CPP` / `_PY` | unset | Per-language floor. Resolution: `--floor` flag, then this key, else exit 2 naming both seams. |
+| `GOH_COV_FLOOR_RUST` / `_SWIFT` / `_CPP` / `_PY` | unset | Per-language floor. Resolution: `--floor` flag, then this key, else exit 2 naming both seams. `rust_gate.sh` passes its floor as explicit argv when set (`.gatesrc` values are not exported); `coverage_gate.sh` also honors them from the environment on direct invocation. |
 | `GOH_COV_FLOORS_JSON` | unset | JSON file with per-target + per-file floors (`--floors-json`). |
 | `GOH_COV_INCLUDE_RE` | unset | Positive filter: only matching files are measured, applied BEFORE `--ignore` (`--include`). |
 | `GOH_COV_MARKER_CEILING` | `.coverage-forgiveness-ceiling.json` if present | JSON cap on `cov:ignore` forgiven lines, shrink-only (`--marker-ceiling`). |
@@ -71,7 +71,7 @@ No `GOH_*` knobs. `sccache` comes from `RUSTC_WRAPPER`, not from here.
 | Key | Default | Meaning |
 |---|---|---|
 | `GOH_CI_STEPS` | unset (required unless `--step` given) | Colon-separated shell-command list. `.gatesrc` steps run first, then `--step` ones. Keep colons OUT of step strings — put `${VAR:+flag}` logic in a repo script and invoke that. |
-
+| `GOH_LCI_TIMEOUT` | unset (no limit) | Per-step wall-clock ceiling in seconds. Expired steps are TERM-then-KILLed (subtree swept best-effort) and fail named with exit 124. Non-numeric values are exit-2 usage errors. |
 ## Release kit (`tools/release-kit/release.sh`)
 
 | Key | Default | Meaning |
@@ -93,6 +93,7 @@ No `GOH_*` knobs. `sccache` comes from `RUSTC_WRAPPER`, not from here.
 | `GOH_HEADLESS` | unset (policy off) | `1` (or truthy) enforces offscreen policy; `"" 0 false no off` mean off. Forward with `env $(headless_env)`. Unset with `env -u GOH_HEADLESS` for deliberate live runs. See `docs/harnesses.md`. |
 | `GOH_HEADLESS_REFUSAL_EXIT` | `3` | Exit code of `headless_require_live` refusals (distinct from 1 = ran and failed). |
 | `GOH_TAIL` | `60` (gates) / `30` (local_ci) | Lines of captured log printed on step failure. |
+| `GOH_TIME` | unset | When set (any value), `goh_step` appends per-step elapsed whole seconds to its ok line. Off by default. |
 | `GOH_AWK_VER_RE` | internal | Version regex passed into the release stanza matcher. Not user config. |
 
 Internal-only (not `.gatesrc` policy): `GOH_ROOT`, `GOH_GIT_ROOT`,

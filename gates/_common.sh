@@ -101,8 +101,13 @@ goh_init() {
 
 # goh_step <label> <command...>
 # Runs the command with output captured. On failure: dump the tail, then exit.
+# GOH_TIME=1 appends per-step elapsed whole seconds to the ok line — the
+# ornament that would have caught the 15s disk-hygiene cost without hand
+# timing. Off by default; zero overhead otherwise.
 goh_step() {
     local label="$1"; shift
+    local _goh_t0
+    _goh_t0=$(date +%s)
     step "$label"
     if ! "$@" >"$GOH_LOG" 2>&1; then
         printf '\n'
@@ -110,7 +115,11 @@ goh_step() {
         printf '\n'
         die "$GOH_NAME: $label failed (command: $*)"
     fi
-    ok "$label"
+    if [ -n "${GOH_TIME:-}" ]; then
+        ok "$label ($(( $(date +%s) - _goh_t0 ))s)"
+    else
+        ok "$label"
+    fi
 }
 
 # goh_optional_step <label> <file-that-must-exist> <command...>

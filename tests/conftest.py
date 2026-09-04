@@ -27,6 +27,13 @@ DOUBLE_ARROW = chr(0x27A1)
 ALLOWED = "→ ✓ ✗ ⚠ ↔ ↑ ↓ ← ⌘ ⌥ ⌨ ⇧ ⌃ ⏎ ⎋ ↵ ⇒ ⇄"
 
 
+def pytest_configure(config):
+    config.addinivalue_line(
+        "markers",
+        "slow: needs a real toolchain (swiftlint); skip with -m 'not slow'",
+    )
+
+
 def git(repo: Path, *args: str) -> str:
     """Run a git command in `repo`, return stdout; raise on failure."""
     out = subprocess.run(

@@ -28,6 +28,20 @@ LIB_CLEAN = "pub fn add(a: u64, b: u64) -> u64 {\n    a + b\n}\n"
 LIB_DIRTY = "pub fn add(a: u64,b: u64) -> u64 {\n    a + b  }\n"
 LIB_WARN = "pub fn f() -> u64 { let x = 1u64; x }\n"          # unused-var-ish lint bait
 LIB_ALLOW = "#[allow(dead_code)]\npub fn dead() {}\n"
+LIB_TESTED = (
+    'pub fn add(a: u64, b: u64) -> u64 {\n    a + b\n}\n'
+    '\n'
+    '#[cfg(test)]\n'
+    'mod tests {\n'
+    '    use super::*;\n'
+    '\n'
+    '    #[test]\n'
+    '    fn adds() {\n'
+    '        assert_eq!(add(1, 2), 3);\n'
+    '    }\n'
+    '}\n'
+)
+LIB_UNTESTED = "pub fn untested() -> u64 {\n    42\n}\n"  # pub: no dead-code lint, 0% coverage
 
 
 def mkcrate(tmp: Path) -> Path:
@@ -125,3 +139,36 @@ def test_cargo_subdir_argument_supported_by_both(tmp_path, warm_crate):
             cwd=repo, capture_output=True, text=True,
         )
         assert (r.returncode == 0) is expect_ok, r.stderr
+
+
+# ── coverage floor (current gate only; the legacy fork predates it) ──────────
+
+
+def test_no_floor_warns_and_skips_coverage(tmp_path, warm_crate):
+    c = clone(warm_crate, tmp_path / "nocovfloor")
+    r = run_script(CURRENT, c)
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert "no coverage floor" in (r.stdout + r.stderr).lower()
+
+
+def test_floor_set_runs_coverage_green(tmp_path, warm_crate):
+    c = clone(warm_crate, tmp_path / "covgreen")
+    write_lib(c, LIB_TESTED)
+    (c / ".gatesrc").write_text("GOH_COV_FLOOR_RUST=50\n")
+    r = run_script(CURRENT, c)
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert "coverage" in (r.stdout + r.stderr).lower()
+
+
+def test_floor_set_fails_when_uncovered(tmp_path, warm_crate):
+    c = clone(warm_crate, tmp_path / "covred")
+    write_lib(c, LIB_UNTESTED)
+    (c / ".gatesrc").write_text("GOH_COV_FLOOR_RUST=80\n")
+    r = run_script(CURRENT, c)
+    assert r.returncode != 0, r.stdout + r.stderr
+    combined = (r.stdout + r.stderr).lower()
+    assert "coverage" in combined
+    # The reason must be the floor, not a usage/config error: exit 2 is
+    # argparse/exit-2 territory, and a miswired gate must not hide there.
+    # (Rust mode reports "0.0% of coverable lines (floor 80%, 0/3 lines)".)
+    assert "uncovered lines" in combined, r.stdout + r.stderr

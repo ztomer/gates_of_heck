@@ -4,7 +4,9 @@ Pins the whole layer-1 contract: exit codes, first-failure behavior, and that
 output uses only Kare glyphs (the suite's own style gate, applied to gates).
 """
 
+import os
 import re
+import subprocess
 
 from conftest import EMOJI_SMILE, REPO_ROOT, run_gate, stage, write
 
@@ -115,6 +117,43 @@ def test_extra_arguments_are_rejected(repo):
     r = run_gate(repo, STRUCTURAL, "--staged", "--full")
     assert r.returncode == 2
     assert "extra arguments" in (r.stdout + r.stderr)
+
+
+def test_help_prints_usage(repo):
+    r = run_gate(repo, STRUCTURAL, "--help")
+    assert r.returncode == 0, r.stdout + r.stderr
+    combined = r.stdout + r.stderr
+    assert "--staged" in combined and "--full" in combined
+
+
+# ── per-step timing ──
+
+
+def _run_gate_env(repo, env_extra, *args):
+    env = dict(os.environ)
+    env.update(env_extra)
+    return subprocess.run(
+        ["/bin/bash", str(REPO_ROOT / STRUCTURAL), *args],
+        cwd=repo, capture_output=True, text=True, env=env,
+    )
+
+
+def test_goh_time_appends_elapsed_seconds(repo):
+    _mk_gatesrc(repo)
+    write(repo, "a.py", "\n" * 3)
+    stage(repo, "a.py")
+    r = _run_gate_env(repo, {"GOH_TIME": "1"}, "--staged")
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert re.search(r"\(\d+s\)", r.stdout), r.stdout
+
+
+def test_no_goh_time_leaves_ok_lines_bare(repo):
+    _mk_gatesrc(repo)
+    write(repo, "a.py", "\n" * 3)
+    stage(repo, "a.py")
+    r = run_gate(repo, STRUCTURAL, "--staged")
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert not re.search(r"\(\d+s\)", r.stdout), r.stdout
 
 
 def test_valid_scope_forms_unchanged(repo):

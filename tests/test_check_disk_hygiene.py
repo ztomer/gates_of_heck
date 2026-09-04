@@ -231,3 +231,25 @@ def test_cache_parse_watch_paths_splits_env(monkeypatch, tmp_path):
     args2 = argparse.Namespace(watch_paths=str(b))
     watches2 = disk._watch_paths(args2)
     assert watches2 == [Path(str(b))]
+
+
+# ---- GOH_SCRATCH_ROOTS seam -------------------------------------------------
+
+
+def test_scratch_roots_env_seam_scopes_scan(monkeypatch, tmp_path):
+    tiny = tmp_path / "tiny"
+    tiny.mkdir()
+    monkeypatch.setenv("GOH_SCRATCH_ROOTS", str(tiny))
+    monkeypatch.setattr(disk, "_watch_paths", lambda args: [])
+    argv = ["check_disk_hygiene.py", "--min-free-gb", "0"]
+    monkeypatch.setattr(sys, "argv", argv)
+    out, err = io.StringIO(), io.StringIO()
+    with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+        code = disk.main()
+    assert code == 0, out.getvalue() + err.getvalue()
+    assert str(tiny) in out.getvalue()
+
+
+def test_empty_scratch_roots_means_no_scratch_scan(monkeypatch):
+    monkeypatch.setenv("GOH_SCRATCH_ROOTS", "")
+    assert disk._scratch_roots() == []

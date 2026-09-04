@@ -10,6 +10,7 @@ repo with zero re-installs. Never vendor copies of checkers or TUI libs.
 tools/gate.sh --staged     # layer 1 only (pre-commit scope, fast)
 tools/gate.sh --full       # every layer (pre-push scope; runs pytest suite)
 python3 -m pytest tests/ -q -n 8 --dist loadgroup  # parallel; needs pytest-xdist
+python3 -m pytest tests/ -q -n 8 --dist loadgroup -m "not slow"  # fast loop (~18s; skips the real-swiftlint test)
 python3 -m pytest tests/test_X.py -q   # one area
 gates/structural.sh --staged | --full  # direct structural run
 ```
@@ -29,7 +30,7 @@ Pre-push runs `tools/gate.sh --full`. Escape hatch: `git commit --no-verify`.
 * `hooks/` — stock `pre-commit` / `pre-push` installed by `install.sh`.
 * `docs/` — `map.md` (script inventory), `config.md` (every `GOH_*` key),
   `contracts.md` (load-bearing invariants), `new-checker.md` (add a check),
-  `harnesses.md` (screen + golden cookbook).
+  `harnesses.md` (screen + golden cookbook), `BACKLOG.md` (open work).
 * `tests/` — pytest suite; `conftest.py` has fixture-repo builders.
   `test_wiring.py` is the meta-gate (referenced scripts must exist;
   config keys must be documented).

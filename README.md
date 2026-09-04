@@ -43,7 +43,7 @@ Checks run in three layers:
 
 | Layer | Scope | Checks |
 |---|---|---|
-| **1. Structural** | All repos, any language | Emoji policy, 500-line cap, conflict markers |
+| **1. Structural** | All repos, any language | Emoji policy, 500-line cap, conflict markers, shell lint, no committed secrets |
 | **2. Language** | Per toolchain | Formatter, linter, tests, coverage floors |
 | **3. Repo** | Single project | Magic-literal ratchets, golden/pixel diffs, local rules |
 
@@ -109,6 +109,7 @@ GOH_SWIFT_COLD=1                     # Wipe build artifacts before testing
 - `tools/release-kit/release.sh`: Checks gate and changelog, creates an annotated tag, pushes, and creates a GitHub release.
 - `gates/local_ci.sh`: Runs a list of steps locally and preserves log files on failure.
 - `gates/coverage_gate.sh`: Multi-language coverage gate with per-target/per-file floors and marker ceilings.
+- `gates/doctor.sh`: Diagnoses gate wiring for a repo (also via `tools/gate.sh --doctor`).
 
 ## Escape Hatch
 
