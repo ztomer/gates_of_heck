@@ -81,19 +81,11 @@ else
     warn "file-length cap not set — add GOH_MAX_LINES to .gatesrc to enable it"
 fi
 
-# Scratch + cargo-cache ceiling. Not about this repo's code at all -- it is
-# about the machine staying able to build it. A full disk fails gates for
-# reasons that look like code defects, so it is worth one cheap check per
-# full run.
-if [ "$SCOPE" != "--staged" ]; then
-    _CACHE_ARGS=( --max-cache-dir-gb "${GOH_MAX_CACHE_GB:-50}" )
-    if [ -n "${GOH_WATCH_PATHS:-}" ]; then
-        _CACHE_ARGS+=( --watch-paths "$GOH_WATCH_PATHS" )
-    fi
-    goh_step "disk hygiene" python3 "$CHECKS/check_disk_hygiene.py" \
-        --max-scratch-gb "${GOH_MAX_SCRATCH_GB:-25}" \
-        --min-free-gb "${GOH_MIN_FREE_GB:-20}" \
-        "${_CACHE_ARGS[@]}"
-fi
+# Disk hygiene used to run here on full scope. It no longer does: a 15s du
+# stat-storm over host cache/scratch trees does not belong in a commit gate
+# (2026-09-04: removed; the watch lives on as scripts/bin/disk_hygiene.sh in
+# ~/Projects/scripts, unified with reclaim_build_space.sh which is the fix
+# the watch names). Machine-full failures stay diagnosable; they just no
+# longer block pushes.
 
 goh_done

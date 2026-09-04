@@ -12,10 +12,21 @@ Single schema. CLI flags beat env/.gatesrc where both exist. Unset means
 | `GOH_EXCLUDE` | unset | Regex on repo-relative paths, exempt from BOTH emoji scan and length cap (vendored/generated trees). |
 | `GOH_LINE_EXCLUDE` | unset | ADDITIVE to the length check only. Effective length exemption = `GOH_EXCLUDE` ∪ `GOH_LINE_EXCLUDE`. Paths named only here are still emoji-scanned. |
 | `GOH_ALLOW` | unset | Extra permitted characters (regex chars, spaces stripped). Keep empty unless the repo genuinely needs it. |
-| `GOH_MAX_SCRATCH_GB` | `25` | Scratch-dir ceiling, full runs only (`checks/check_disk_hygiene.py`). |
+
+## Disk watch (standalone: `~/Projects/scripts/bin/disk_hygiene.sh`)
+
+NOT a gate since v0.8.0 — a du stat-storm over host trees does not belong
+in a commit gate. These keys configure the standalone watch (env or the
+checker's flags, forwarded verbatim by the wrapper). When it fails, the
+fix is `reclaim_build_space.sh` next to it.
+
+| Key | Default | Meaning |
+|---|---|---|
+| `GOH_MAX_SCRATCH_GB` | `25` | Scratch-dir ceiling. |
 | `GOH_MAX_CACHE_GB` | `50` | Cargo-cache ceiling (`~/.cache/cargo-target` + per-project targets). |
 | `GOH_MIN_FREE_GB` | `20` | Free-space floor per scratch root. |
-| `GOH_WATCH_PATHS` | `~/.cache/cargo-target` + `~/Projects/*/target` | Colon-separated extra cache dirs to watch. `--watch-paths` flag overrides it. |
+| `GOH_WATCH_PATHS` | `~/.cache/cargo-target` + `~/Projects/*/target` | Colon/comma/space-separated cache dirs to watch. `--watch-paths` flag overrides it. |
+| `GOH_SCRATCH_ROOTS` | `$TMPDIR` + `/tmp` (auto) | Override scratch roots (same separators). Scope production runs; point tests at fixtures. |
 
 ## Python (`gates/py_gate.sh`)
 

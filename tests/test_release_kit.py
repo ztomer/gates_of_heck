@@ -1,31 +1,30 @@
 """tools/release-kit — release.sh, gen_app_icons.py, update_dev.sh.
 
-Contract pinned here:
-  release.sh runs its steps in order (gate → changelog → tag → push →
-  release → tap), every failure names its step, tagging and gh-release are
-  idempotent (an existing tag/release is left alone), --dry-run performs
-  NOTHING, a missing CHANGELOG stanza fails the changelog step.
-  gen_app_icons.py emits exactly the ten Apple ladder members plus an .icns;
-  sizes are verified from the PNG IHDR bytes.
-  update_dev.sh builds, replaces the installed copy, strips quarantine (and
-  proves it), signs, launches only on request.
+release.sh runs its steps in order (gate → changelog → tag → push →
+release → tap); every failure names its step; tagging and gh-release are
+idempotent; --dry-run performs NOTHING; a missing stanza fails the changelog
+step. gen_app_icons.py emits exactly the ten Apple ladder members plus an
+.icns (sizes verified from PNG IHDR bytes). update_dev.sh replaces the
+installed copy, strips quarantine (proven), signs, launches only on request.
 
-git is REAL throughout — fixtures use local bare remotes so push semantics
-are genuine. Only gh is faked (a stateful stub: `release view` succeeds iff
-that release was previously created).
+git is REAL throughout (local bare remotes, so push semantics are genuine).
+Only gh is faked (stateful stub: `release view` succeeds iff previously
+created).
 """
 
 import json
 import os
 import struct
+import pytest
+
+# Same xdist group as test_release_hardening.py: its mid-run-edit test corrupts release.sh on purpose.
+pytestmark = pytest.mark.xdist_group("release")
 import subprocess
 import sys
 import zlib
 from pathlib import Path
 
-import pytest
-
-from conftest import REPO_ROOT
+from conftest import FAKE_GH, REPO_ROOT
 
 RELEASE = REPO_ROOT / "tools" / "release-kit" / "release.sh"
 GEN_ICONS = REPO_ROOT / "tools" / "release-kit" / "gen_app_icons.py"
@@ -73,45 +72,6 @@ def commit_all(repo: Path, msg: str = "fixture") -> None:
     sh(repo, "add", "-A")
     sh(repo, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-m", msg)
 
-
-FAKE_GH = """\
-#!/usr/bin/env bash
-STATE="${GH_STATE:?}"; LOG="${GH_LOG:?}"
-printf 'gh %s\\n' "$*" >> "$LOG"
-cmd="$1"; shift
-case "$cmd" in
-  auth) exit 0 ;;
-  api) exit 0 ;;
-  release)
-    sub="$1"; shift
-    case "$sub" in
-      view)
-        tag=""
-        while [ $# -gt 0 ]; do
-          case "$1" in
-            --repo) shift 2 ;;
-            --*) shift ;;
-            *) [ -z "$tag" ] && tag="$1"; shift ;;
-          esac
-        done
-        [ -n "$tag" ] && [ -f "$STATE/rel-$tag" ] ;;
-      create)
-        tag=""; notes=""
-        while [ $# -gt 0 ]; do
-          case "$1" in
-            --notes-file) notes="$2"; shift 2 ;;
-            --title|--repo) shift 2 ;;
-            *) [ -z "$tag" ] && tag="$1"; shift ;;
-          esac
-        done
-        : > "$STATE/rel-$tag"
-        [ -n "$notes" ] && cp "$notes" "$STATE/notes-$tag"
-        exit 0 ;;
-      *) exit 0 ;;
-    esac ;;
-  *) exit 0 ;;
-esac
-"""
 
 GIT_WRAPPER = """\
 #!/usr/bin/env bash

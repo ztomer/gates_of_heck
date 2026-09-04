@@ -9,7 +9,7 @@ repo with zero re-installs. Never vendor copies of checkers or TUI libs.
 ```
 tools/gate.sh --staged     # layer 1 only (pre-commit scope, fast)
 tools/gate.sh --full       # every layer (pre-push scope; runs pytest suite)
-python3 -m pytest tests/ -q            # full suite, ~3 min (439 tests)
+python3 -m pytest tests/ -q -n 8 --dist loadgroup  # parallel; needs pytest-xdist
 python3 -m pytest tests/test_X.py -q   # one area
 gates/structural.sh --staged | --full  # direct structural run
 ```

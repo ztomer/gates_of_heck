@@ -120,7 +120,8 @@ GOH_MAX_LINES=500                 # file-length cap; unset disables the check
 # GOH_SWIFT_MODE=xcode            # or spm
 # GOH_SWIFT_SCHEME=MyAppTests
 # GOH_SWIFT_COV_MIN=95
-# GOH_MAX_SCRATCH_GB=25           # disk-hygiene ceiling (full runs only)
+# GOH_MAX_SCRATCH_GB=25 etc. live OUTSIDE the gates since v0.8.0 — set them
+# in the environment for ~/Projects/scripts/bin/disk_hygiene.sh, not here.
 SRC
     info "wrote .gatesrc"
 fi

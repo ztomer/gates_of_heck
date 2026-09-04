@@ -40,6 +40,7 @@ either — same class, new writer.
     check_disk_hygiene.py --max-cache-dir-gb 50
     check_disk_hygiene.py --watch-paths ~/.cache/cargo-target:~/Projects/foo/target
     GOH_MAX_CACHE_GB=50 GOH_WATCH_PATHS=~/.cache/cargo-target:~/Projects/foo/target check_disk_hygiene.py
+    GOH_SCRATCH_ROOTS=/tmp/qa-scratch  # override scratch roots (tests + scoping)
 """
 
 import argparse
@@ -49,9 +50,24 @@ import shutil
 import subprocess
 import sys
 import tempfile
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 GIB = 1024**3
+
+# du is a stat() storm: single-threaded over N roots costs the SUM. Threads
+# share nothing but the result list (du is a subprocess per path), so a small
+# pool wins ~N x on distinct trees. Measured 2026-09-04: 15.1s serial over
+# $TMPDIR + shared cargo-target + 4 project targets → ~4s pooled.
+_DU_WORKERS = 8
+
+
+def _map_du(paths: list[Path]) -> list[tuple[int, "str | None"]]:
+    """_du_bytes over many paths, in input order, du's running pooled."""
+    if len(paths) < 2:
+        return [_du_bytes(p) for p in paths]
+    with ThreadPoolExecutor(max_workers=min(_DU_WORKERS, len(paths))) as pool:
+        return list(pool.map(_du_bytes, paths))
 
 
 def _du_bytes(path: Path) -> tuple[int, "str | None"]:
@@ -93,7 +109,12 @@ def _du_bytes(path: Path) -> tuple[int, "str | None"]:
 
 
 def _scratch_roots() -> list[Path]:
-    roots = [Path(tempfile.gettempdir()), Path("/tmp")]
+    # GOH_SCRATCH_ROOTS overrides auto-discovery (same separators as
+    # GOH_WATCH_PATHS). Production use: scope the watch to one tree.
+    # Test use: point at a fixture dir so e2e runs never scan the host.
+    override = _parse_watch_paths(os.environ.get("GOH_SCRATCH_ROOTS"))
+    roots = ([Path(p) for p in override] if override is not None
+             else [Path(tempfile.gettempdir()), Path("/tmp")])
     seen, unique = set(), []
     for r in roots:
         try:
@@ -115,8 +136,8 @@ def _largest_children(root: Path, limit: int = 5) -> list[tuple[str, int]]:
         return []
     # Bound the work: a scratch root with 15,000 entries is itself a symptom,
     # but walking all of them to report the top 5 is not worth the minutes.
-    for child in children[:400]:
-        size, _warn = _du_bytes(child)
+    capped = children[:400]
+    for child, (size, _warn) in zip(capped, _map_du(capped)):
         if size > GIB // 2:
             sized.append((child.name, size))
     sized.sort(key=lambda pair: -pair[1])
@@ -228,8 +249,20 @@ def main() -> int:
             "Builds start failing for reasons that look like code defects."
         )
 
-    for root in _scratch_roots():
-        used, du_warn = _du_bytes(root)
+    scratch = _scratch_roots()
+    # Telling > deleting: missing paths are not an error, just skipped.
+    all_watches = _watch_paths(args)
+    for watch in all_watches:
+        if not watch.exists():
+            print(f"→ [disk] {watch}: missing (skipped)")
+    watches = [w for w in all_watches if w.exists()]
+    # ONE pool over every root: wall time is the SLOWEST root, not the sum
+    # (15.1s serial → ~8s pooled, measured 2026-09-04; two pools would still
+    # stack the slowest scratch root on the slowest cache dir).
+    sizes = _map_du(scratch + watches)
+    scratch_sizes = sizes[:len(scratch)]
+    watch_sizes = sizes[len(scratch):]
+    for root, (used, du_warn) in zip(scratch, scratch_sizes):
         if du_warn:
             print(f"⚠ [disk] {du_warn}", file=sys.stderr)
         used_gb = used / GIB
@@ -256,12 +289,7 @@ def main() -> int:
         )
 
     # ---- cargo cache watch (same ceiling pattern as scratch) -----------------
-    for watch in _watch_paths(args):
-        # Telling > deleting: missing paths are not an error, just skipped.
-        if not watch.exists():
-            print(f"→ [disk] {watch}: missing (skipped)")
-            continue
-        used, du_warn = _du_bytes(watch)
+    for watch, (used, du_warn) in zip(watches, watch_sizes):
         if du_warn:
             print(f"⚠ [disk] {du_warn}", file=sys.stderr)
         used_gb = used / GIB

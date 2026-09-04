@@ -4,10 +4,10 @@ GOH_MAX_LINES=500                 # file-length cap; unset disables the check
 # GOH_EXCLUDE='vendor/|\.generated\.'   # shared vendor/generated exemption
 # GOH_LINE_EXCLUDE='third_party/'       # length-only exemption (additive)
 # GOH_ALLOW=''                          # extra permitted characters (keep minimal)
-# GOH_MAX_SCRATCH_GB=25           # disk-hygiene ceiling (full runs only)
-# GOH_MAX_CACHE_GB=50             # cargo-cache ceiling (full runs only)
-# GOH_MIN_FREE_GB=20              # free-space floor per scratch root
-# GOH_WATCH_PATHS=''              # colon-separated extra cache dirs to watch
+# Disk ceilings live OUTSIDE the gates since v0.8.0 — set them in the
+# environment for ~/Projects/scripts/bin/disk_hygiene.sh, not here:
+# GOH_MAX_SCRATCH_GB=25 GOH_MAX_CACHE_GB=50 GOH_MIN_FREE_GB=20
+# GOH_WATCH_PATHS='' GOH_SCRATCH_ROOTS=''
 # GOH_PY_COV_MIN=95
 # GOH_PY_RUNNER="uv run"          # toolchain prefix (whitespace-split)
 # GOH_SWIFT_MODE=xcode            # or spm (default: spm if Package.swift exists)

@@ -43,7 +43,7 @@ Checks run in three layers:
 
 | Layer | Scope | Checks |
 |---|---|---|
-| **1. Structural** | All repos, any language | Emoji policy, 500-line cap, conflict markers, disk hygiene |
+| **1. Structural** | All repos, any language | Emoji policy, 500-line cap, conflict markers |
 | **2. Language** | Per toolchain | Formatter, linter, tests, coverage floors |
 | **3. Repo** | Single project | Magic-literal ratchets, golden/pixel diffs, local rules |
 
@@ -86,8 +86,12 @@ commented starter with every key: `.gatesrc.example`.
 GOH_MAX_LINES=500                    # File length cap (unset disables)
 GOH_EXCLUDE='vendor/|\.generated\.'  # Regex of paths to ignore
 GOH_ALLOW=''                         # Extra allowed glyphs if needed
-GOH_MAX_SCRATCH_GB=25                # Scratch directory size ceiling
-GOH_MAX_CACHE_GB=50                  # Cargo cache size ceiling
+
+Machine disk watch lives outside the gates since v0.8.0:
+`~/Projects/scripts/bin/disk_hygiene.sh` (watch) +
+`reclaim_build_space.sh` (fix). Its ceilings (`GOH_MAX_SCRATCH_GB`,
+`GOH_MAX_CACHE_GB`, `GOH_MIN_FREE_GB`, `GOH_WATCH_PATHS`,
+`GOH_SCRATCH_ROOTS`) are documented in `docs/config.md`.
 
 # Python
 GOH_PY_COV_MIN=95                    # Coverage minimum (%)

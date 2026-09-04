@@ -76,3 +76,16 @@ Every `GOH_*` key read in `gates/ checks/ lib/ tools/ hooks/` appears
 in `docs/config.md`; `.gatesrc.example` invents none. Adding a key
 without documenting it fails the suite.
 Pin: `tests/test_config_schema.py`.
+
+## 10. Parallel suite shares nothing mutable (`tools/gate.sh --full`)
+
+`--full` runs `pytest -n 8 --dist loadgroup`. Files sharing an
+`xdist_group` marker stay on ONE worker: `test_release_hardening.py`
+corrupts `tools/release-kit/release.sh` MID-RUN on purpose, and
+`test_release_kit.py` runs real releases — split across workers, the
+latter reads corrupted bytes and dies with a syntax error (found
+2026-09-04 the first time the suite ever ran parallel). `test_desktop_lock`
+has its own group: its tests take the REAL machine-wide mutex, so
+splitting them across workers means contending with themselves.
+Pin: the full suite green under `-n 8 --dist loadgroup`; serial green
+proves nothing about the grouping.

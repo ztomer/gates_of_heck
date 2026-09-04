@@ -55,6 +55,5 @@ Helpers live in `tests/conftest.py`: `repo` fixture (throwaway git repo),
 python3 -m pytest tests/test_<name>.py tests/test_wiring.py tests/test_config_schema.py -q
 tools/gate.sh --staged
 ```
-
-Then the full suite (`python3 -m pytest tests/ -q`, ~3 min) before push —
-pre-push runs it anyway.
+Then the full suite (`python3 -m pytest tests/ -q -n 8 --dist loadgroup`,
+~1 min parallel) before push — pre-push runs it anyway.

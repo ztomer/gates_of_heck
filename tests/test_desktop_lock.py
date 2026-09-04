@@ -14,6 +14,12 @@ from pathlib import Path
 
 import pytest
 
+# Pinned to one xdist worker: these tests take the REAL machine-wide desktop
+# mutex (with timeouts), so splitting them across workers would make them
+# contend with themselves and flake. Own group, so they still parallelize
+# against everything else.
+pytestmark = pytest.mark.xdist_group("desk")
+
 REPO_ROOT = Path(__file__).resolve().parent.parent
 MODULE = REPO_ROOT / "lib" / "desktop_lock" / "desktop_lock.py"
 

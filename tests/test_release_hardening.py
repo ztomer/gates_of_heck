@@ -20,52 +20,18 @@ from pathlib import Path
 
 import pytest
 
-from conftest import REPO_ROOT
+# Same xdist group as test_release_kit.py (see its comment): the
+# mid-run-edit test below corrupts release.sh on purpose; anything running a
+# real release at the same moment must be on this worker, after it.
+pytestmark = pytest.mark.xdist_group("release")
+
+from conftest import FAKE_GH, REPO_ROOT
 
 RELEASE = REPO_ROOT / "tools" / "release-kit" / "release.sh"
 
 VERSION = "1.2.3"
 TAG = f"v{VERSION}"
 STANZA_BODY = "- Added the release kit\n- Fixed seven drifting releasers"
-
-FAKE_GH = """\
-#!/usr/bin/env bash
-STATE="${GH_STATE:?}"; LOG="${GH_LOG:?}"
-printf 'gh %s\\n' "$*" >> "$LOG"
-cmd="$1"; shift
-case "$cmd" in
-  auth) exit 0 ;;
-  api) exit 0 ;;
-  release)
-    sub="$1"; shift
-    case "$sub" in
-      view)
-        tag=""
-        while [ $# -gt 0 ]; do
-          case "$1" in
-            --repo) shift 2 ;;
-            --*) shift ;;
-            *) [ -z "$tag" ] && tag="$1"; shift ;;
-          esac
-        done
-        [ -n "$tag" ] && [ -f "$STATE/rel-$tag" ] ;;
-      create)
-        tag=""; notes=""
-        while [ $# -gt 0 ]; do
-          case "$1" in
-            --notes-file) notes="$2"; shift 2 ;;
-            --title|--repo) shift 2 ;;
-            *) [ -z "$tag" ] && tag="$1"; shift ;;
-          esac
-        done
-        : > "$STATE/rel-$tag"
-        [ -n "$notes" ] && cp "$notes" "$STATE/notes-$tag"
-        exit 0 ;;
-      *) exit 0 ;;
-    esac ;;
-  *) exit 0 ;;
-esac
-"""
 
 
 def sh(repo: Path, *args: str) -> str:

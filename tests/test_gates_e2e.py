@@ -85,11 +85,14 @@ def test_explicit_full_flag_reaches_no_checker(repo):
     assert "unrecognized arguments" not in r.stderr
 
 
-def test_full_scope_runs_disk_check(repo):
+def test_full_scope_omits_disk_check(repo):
+    # 2026-09-04: the disk watch moved OUT of the gate (a 15s du stat-storm
+    # over host trees does not belong in a commit gate). Full scope must
+    # NOT run it; the watch lives on as scripts/bin/disk_hygiene.sh.
     _mk_gatesrc(repo)
-    r = run_gate(repo, STRUCTURAL)  # no --staged → full tree + disk hygiene
+    r = run_gate(repo, STRUCTURAL)  # no --staged → full tree, no disk step
     assert r.returncode == 0, r.stdout + r.stderr
-    assert "disk hygiene" in r.stdout
+    assert "disk hygiene" not in r.stdout
 
 
 # ── strict scope argument ────────────────────────────────────────────────────
@@ -125,7 +128,7 @@ def test_valid_scope_forms_unchanged(repo):
 
     r_bare = run_gate(repo, STRUCTURAL)
     assert r_bare.returncode == 0, r_bare.stdout + r_bare.stderr
-    assert "disk hygiene" in r_bare.stdout  # bare form = full tree
+    assert "disk hygiene" not in r_bare.stdout  # bare form = full tree, no disk step
 
     r_full = run_gate(repo, STRUCTURAL, "--full")
     assert r_full.returncode == 0, r_full.stdout + r_full.stderr

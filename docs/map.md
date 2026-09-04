@@ -7,7 +7,7 @@ Every entry: what it does, when it runs, which test pins it.
 | Script | Purpose | Invoked | Test |
 |---|---|---|---|
 | `_common.sh` | Shared contract: fail-fast, print output, TUI, EXIT-trap sentinel. Sourced, never run. | every gate | `test_goh_init_trap.py` |
-| `structural.sh` | Layer 1, every repo: emoji, conflict markers, file-length cap, disk hygiene. `--staged` = pre-commit. | `tools/gate.sh`, hooks | `test_gates_e2e.py`, `test_file_length_and_markers.py` |
+| `structural.sh` | Layer 1, every repo: emoji, conflict markers, file-length cap. `--staged` = pre-commit. (Disk hygiene was removed from this gate in v0.8.0 — see `check_disk_hygiene.py` below.) | `tools/gate.sh`, hooks | `test_gates_e2e.py`, `test_file_length_and_markers.py` |
 | `py_gate.sh` | `ruff check` + `ruff format --check` + pytest with coverage floor. Args: `[repo] [pkg_dir]`. | `--full`, opt-in | `test_cwd_and_py_gate.py` |
 | `rust_gate.sh` | `cargo fmt --check` + `clippy -D warnings` + optional `check_no_allow`. Args: `[repo] [cargo_dir]`. | `--full`, opt-in | `test_rust_gate.py` |
 | `swift_gate.sh` | swiftlint (+ optional baseline ratchet) + cold build + test + coverage floor. `spm` or `xcode` mode. | `--full`, opt-in | `test_swift_gate_baseline.py`, `test_swift_gate_project_selection.py` |
@@ -31,7 +31,7 @@ semantics go in `coverage_gate.sh`.
 | `check_no_emoji.py` | Emoji policy gate (allow-list in `ALLOWED_ORDERED`). `--staged` polices the index. | `test_check_no_emoji.py` |
 | `check_no_conflict_markers.py` | Fails on merge markers. | `test_file_length_and_markers.py` |
 | `check_file_length.py` | `--max N` file-length cap. | `test_file_length_and_markers.py` |
-| `check_disk_hygiene.py` | Scratch + cargo-cache ceilings, free-space floor. Full runs only. | `test_check_disk_hygiene.py` |
+| `check_disk_hygiene.py` | Machine disk watch (scratch + cargo-cache ceilings). Standalone since v0.8.0 — invoked via `~/Projects/scripts/bin/disk_hygiene.sh`, NOT by any gate (pinned by `test_no_gate_runs_disk_hygiene`). | `test_check_disk_hygiene.py` |
 | `check_no_allow.py` | No `#[allow]` in Rust (repo-local twin; structural twin lives in consumer `tools/`). | `test_check_no_allow.py` |
 | `check_no_screen_presentation.py` | Static half: test sources must not ask for screen APIs. | `test_screen_presentation.py` |
 | `check_no_screen_linkage.sh` | Dynamic half: `nm -u` on built test binary must not import screen symbols. | `test_screen_linkage.py` |
@@ -54,7 +54,8 @@ semantics go in `coverage_gate.sh`.
 
 ## Tools
 
-* `tools/gate.sh` — this repo's own gate entry (layer 1 + pytest on `--full`).
+* `tools/gate.sh` — this repo's own gate entry (layer 1 + parallel pytest
+  on `--full`: `-n 8 --dist loadgroup`, serial fallback without xdist).
 * `tools/release-kit/` — `release.sh` (gate → stanza → tag → push → release),
   `gen_app_icons.py`, `update_dev.sh`. Pinned by `test_release_kit.py` (+
   `test_release_hardening.py`, `test_profiling_scripts.py` for profiling).

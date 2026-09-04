@@ -11,7 +11,7 @@ arrows used as text operators:
 
 Everything else in the emoji/symbol ranges below (check-mark-button, colour squares, the warn sign
 with an emoji variation-selector, decorative section emoji, double-arrow / star, keycaps, regional
-flags, ...) is rejected. This is a deterministic, app-free style gate, run by `ci_local.sh` and the
+flags, ...) is rejected. This is a deterministic, app-free style gate, run by `gates/local_ci.sh` and the
 pre-commit hook so the policy can't silently regress.
 
     python3 tools/check_no_emoji.py                        # all tracked text files

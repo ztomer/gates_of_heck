@@ -55,7 +55,11 @@ EXPECTED_REFS = [
     ("gates/structural.sh", "checks/check_no_emoji.py"),
     ("gates/structural.sh", "checks/check_no_conflict_markers.py"),
     ("gates/structural.sh", "checks/check_file_length.py"),
-    ("gates/structural.sh", "checks/check_disk_hygiene.py"),
+    # NOTE: checks/check_disk_hygiene.py is deliberately NOT referenced by
+    # any gate (2026-09-04: disk watch moved out of CI to
+    # ~/Projects/scripts/bin/disk_hygiene.sh). If a gate references it
+    # again, add the ref here AND justify why a du stat-storm belongs in
+    # a commit gate.
 ]
 
 
@@ -80,6 +84,18 @@ def test_every_referenced_script_exists():
     assert missing == [], (
         "gates/hooks reference scripts that do not exist in this repo:\n"
         + "\n".join(f"  {f}:{line} -> {ref}" for f, line, ref in missing)
+    )
+
+
+def test_no_gate_runs_disk_hygiene():
+    """The disk watch stays OUT of CI. Red-proof: re-adding a
+    check_disk_hygiene reference to any gate fails here naming the line —
+    move the watch, don't re-wire it (see scripts/bin/disk_hygiene.sh)."""
+    refs = _referenced_scripts()
+    disk = [(f, line, ref) for f, line, ref in refs if "disk_hygiene" in ref]
+    assert disk == [], (
+        "a gate references the disk watch again:\n"
+        + "\n".join(f"  {f}:{line} -> {ref}" for f, line, ref in disk)
     )
 
 

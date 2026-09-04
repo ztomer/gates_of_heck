@@ -1,5 +1,40 @@
 # CHANGELOG
 
+## v0.8.0 — disk watch out of CI, pooled du, parallel suite _(2026-09-04)_
+
+Measured first: full `structural.sh` was 17.7s, of which `check_disk_hygiene`
+was 15.1s (a du stat-storm: $TMPDIR 7.4s + 37GB shared cargo-target 4.1s +
+project targets 1.5s). The checkers themselves total 0.45s — a Rust rewrite
+would speed up the wrong 3%.
+
+**What shipped**:
+- Disk hygiene OUT of the gate: `structural.sh` no longer runs it on any
+  scope (full tree now ~0.5s, was ~17.7s). Pinned by
+  `test_no_gate_runs_disk_hygiene` — re-adding a gate reference fails red.
+- The watch lives on as `~/Projects/scripts/bin/disk_hygiene.sh` (thin
+  wrapper, same delegation via `GOH_DIR`), unified with
+  `reclaim_build_space.sh`: a failure names the reclaimer as the fix.
+  Covered by `scripts/tests/test_disk_hygiene.sh` (both directions).
+- `check_disk_hygiene.py`: one ThreadPoolExecutor over ALL roots (two pools
+  still stacked the slowest scratch root on the slowest cache dir — 12.4s;
+  one pool: 15.1s → ~8s) + `GOH_SCRATCH_ROOTS` seam for scoping/tests.
+- Parallel suite: `tools/gate.sh --full` uses `pytest -n 8 --dist loadgroup`
+  when xdist is installed (loadgroup keeps xdist-grouped files on one
+  worker; ungrouped files spread by load), serial + warn otherwise.
+- Trim: the 36-line fake-gh stub duplicated in both release suites now lives
+  once in `tests/conftest.py` (`test_release_kit.py` 497 → 456 lines);
+  pruned a duplicate `import pytest`; fixed stale `ci_local.sh` name and
+  `loadfile` references across docs.
+
+**What deliberately didn't ship**:
+- No Rust rewrite (evidence says it buys nothing here).
+- No launchd schedule for the watch (manual/periodic by hand for now).
+
+**Tests**: 3 new (wiring removal-pin + config-schema seam coverage via
+existing tests + scripts wrapper suite); 442 pass in ~40s parallel
+(`-n 8 --dist loadgroup`), was 441 in ~168s serial. Baseline gate: full
+`structural.sh` 17.7s → 0.5s; standalone watch ~8s (was 15.1s in-gate).
+
 ## v0.7.0 — LLM-navigability pass _(2026-09-04)_
 
 Everything from the review of what slows an LLM down here, fixed
