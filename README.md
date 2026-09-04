@@ -22,6 +22,11 @@
 
 Shared quality gates for Rust, Python, Swift, C++, and Kotlin projects. Runs locally via git hooks (`pre-commit` and `pre-push`) so you don't need a CI server.
 
+> Working here as an agent? Start at `AGENTS.md` (commands, layout, rules).
+> Script inventory: `docs/map.md`. Every `GOH_*` key: `docs/config.md`.
+> Load-bearing invariants: `docs/contracts.md`. Adding a check:
+> `docs/new-checker.md`.
+
 ## Install
 
 Run from inside any git repository:
@@ -73,7 +78,8 @@ esac
 
 ## Configuration (`.gatesrc`)
 
-Put repo settings in `.gatesrc`:
+Put repo settings in `.gatesrc`. Full schema: `docs/config.md`;
+commented starter with every key: `.gatesrc.example`.
 
 ```bash
 # Structural

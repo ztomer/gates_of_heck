@@ -1,5 +1,32 @@
 # CHANGELOG
 
+## v0.7.0 — LLM-navigability pass _(2026-09-04)_
+
+Everything from the review of what slows an LLM down here, fixed
+additively — no gate behavior changed, no key renamed.
+
+**What shipped**:
+- `AGENTS.md`: agent entry point (commands, layout, rules, config pointer).
+- `docs/map.md`: every gate/checker/lib/tool with purpose + pinning test;
+  coverage-file overlap (`coverage_gate.sh` vs `coverage_swift.py` vs
+  `check_swift_coverage.py` vs `lcov_merge.py`) resolved in prose.
+- `docs/config.md` + `.gatesrc.example`: single schema for all ~30 `GOH_*`
+  keys (README documented ~10); defaults, readers, and the
+  `GOH_EXCLUDE` ∪ `GOH_LINE_EXCLUDE` union rule.
+- `tests/test_config_schema.py`: drift gate — a new `GOH_*` key without a
+  `docs/config.md` row goes red (red-proven with a synthetic key).
+- `docs/contracts.md`: nine load-bearing invariants, each naming its test.
+- `docs/new-checker.md`: test-first contributor cookbook (fixture helpers,
+  `chr(0x...)` rule, staged/index testing, wiring + schema obligations).
+- Cutover: `README.md` points at the new docs; `install.sh` starter
+  `.gatesrc` points at `docs/config.md` / `.gatesrc.example`.
+
+**What deliberately didn't ship**:
+- No `GOH_*` renames, no coverage-file merges, no hook behavior changes.
+
+**Tests**: 2 new in `tests/test_config_schema.py`; 441 total pass.
+Baseline before the pass: 439 pass.
+
 ## v0.6.0 — coverage strictest convergence, disk cargo-cache watch, MCP Tax parity _(2026-08-26)_
 
 Convergence to the strictest coverage standard across toolchains, third-class
