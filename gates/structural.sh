@@ -112,6 +112,17 @@ else
         ${GOH_EXCLUDE:+--exclude "$GOH_EXCLUDE"}
 fi
 
+# The companion question to the one below, and a different one: a self-proof shows a gate can
+# fail on a VIOLATION; this shows it does not report compliance when its subject is ABSENT. Three
+# factory gates had probes and still passed over an empty tree. Nobody edits a gate to break it --
+# they rename the directory it reads, and a ratchet then reads a population that dropped to zero
+# as every ceiling being met. Full scope only; it is a few seconds per repo because a blind gate
+# bails fast.
+if [ "$SCOPE" != "--staged" ]; then
+    goh_step "gates refuse to pass over an empty tree" \
+        python3 "$CHECKS/check_empty_scope.py"
+fi
+
 # A gate's self-proof is the only evidence it can fail, and until 2026-09-05 nothing ran one:
 # twenty-four probes existed across the estate, all green, none executed by any gate or CI. A
 # probe that is never run rots silently while the calibration ratchet goes on counting its gate
