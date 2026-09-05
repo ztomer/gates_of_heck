@@ -112,6 +112,16 @@ else
         ${GOH_EXCLUDE:+--exclude "$GOH_EXCLUDE"}
 fi
 
+# A gate's self-proof is the only evidence it can fail, and until 2026-09-05 nothing ran one:
+# twenty-four probes existed across the estate, all green, none executed by any gate or CI. A
+# probe that is never run rots silently while the calibration ratchet goes on counting its gate
+# as proven -- an unproven gate under a green light, which is worse than an honestly-missing one.
+# Full scope only: it launches one subprocess per probe, which is a push-time cost, not a
+# per-commit one.
+if [ "$SCOPE" != "--staged" ]; then
+    goh_step "gate self-proofs still pass" python3 "$CHECKS/check_probes_pass.py"
+fi
+
 # Disk hygiene used to run here on full scope. It no longer does: a 15s du
 # stat-storm over host cache/scratch trees does not belong in a commit gate
 # (2026-09-04: removed; the watch lives on as scripts/bin/disk_hygiene.sh in
