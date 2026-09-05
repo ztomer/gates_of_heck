@@ -231,6 +231,22 @@ def main() -> int:
               "  growth is reviewed rather than absorbed.", file=sys.stderr)
         return 1
 
+    # EVERY entry gone is not every ceiling met. A shrink-only ratchet reads a population that
+    # collapsed to nothing as total success -- it has no ceiling left to exceed -- so a renamed
+    # directory or a measurement that stopped running reports as the best possible result.
+    # Measured 2026-09-05: necrohand's palette gate printed "24 entries within ceilings" while
+    # NAMING all 24 as vanished in the same line, and exited 0. An empty baseline is exempt: a
+    # repo that has recorded having nothing has nothing to go blind to.
+    if baseline and not current:
+        print(f"✗ [ratchet] the baseline names {len(baseline)} entr"
+              f"{'y' if len(baseline) == 1 else 'ies'} and the current measurement found NONE. "
+              f"That is a blind gate, not a clean one -- every ceiling is trivially met when "
+              f"there is nothing left to measure.", file=sys.stderr)
+        print("  Find what stopped producing the measurement. If the entries are genuinely "
+              "gone,\n  re-record the baseline in the same commit so the deletion is reviewed.",
+              file=sys.stderr)
+        return 1
+
     detail = ""
     if shrank or vanished:
         parts = []
@@ -240,7 +256,9 @@ def main() -> int:
         if vanished:
             parts.append("vanished: " + ", ".join(vanished))
         detail = f" ({'; '.join(parts)})"
-    print(f"→ [ratchet] OK — {len(baseline)} entr{'y' if len(baseline) == 1 else 'ies'}"
+    # The count reported is what was MEASURED, not what the baseline remembers. Printing the
+    # baseline size let "24 entries within ceilings" stand over zero measured entries.
+    print(f"→ [ratchet] OK — {len(current)} entr{'y' if len(current) == 1 else 'ies'}"
           f" within ceilings{detail}")
     return 0
 

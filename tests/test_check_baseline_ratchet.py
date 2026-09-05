@@ -2,7 +2,7 @@
 
 import json
 
-from conftest import run_check, write
+from conftest import REPO_ROOT, run_check, write
 
 RATCHET = "checks/check_baseline_ratchet.py"
 
@@ -262,3 +262,43 @@ def test_non_ascii_digits_rejected(repo):
     r = run(repo, "--baseline", "base.txt", "--current", "now.txt")
     assert r.returncode == 2, (r.stdout, r.stderr)
     assert "plain ASCII number" in r.stderr
+
+def test_a_collapsed_measurement_is_not_every_ceiling_met(tmp_path):
+    """A shrink-only ratchet has no ceiling left to exceed when the population reaches zero, so a
+    total collapse read as the best possible result. Measured 2026-09-05: necrohand's palette gate
+    printed "24 entries within ceilings" while NAMING all 24 as vanished in the same line, exit 0.
+    """
+    base = tmp_path / "base.json"
+    cur = tmp_path / "cur.json"
+    base.write_text('{"a": 3, "b": 5}', encoding="utf-8")
+    cur.write_text("{}", encoding="utf-8")
+    assert _run(base, cur) == 1
+
+
+def test_an_empty_baseline_with_an_empty_measurement_is_exempt(tmp_path):
+    """A repo that has recorded having nothing has nothing to go blind to; failing here would
+    make the ratchet unadoptable by any project starting from zero."""
+    base = tmp_path / "base.json"
+    cur = tmp_path / "cur.json"
+    base.write_text("{}", encoding="utf-8")
+    cur.write_text("{}", encoding="utf-8")
+    assert _run(base, cur) == 0
+
+
+def test_a_genuine_shrink_still_passes(tmp_path):
+    base = tmp_path / "base.json"
+    cur = tmp_path / "cur.json"
+    base.write_text('{"a": 3, "b": 5}', encoding="utf-8")
+    cur.write_text('{"a": 1, "b": 5}', encoding="utf-8")
+    assert _run(base, cur) == 0
+
+
+def _run(base, cur) -> int:
+    import subprocess
+    import sys
+
+    return subprocess.run(
+        [sys.executable, str(REPO_ROOT / "checks" / "check_baseline_ratchet.py"),
+         "--baseline", str(base), "--current", str(cur)],
+        capture_output=True, text=True,
+    ).returncode
