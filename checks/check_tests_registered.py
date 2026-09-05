@@ -73,6 +73,12 @@ def main() -> int:
     ap.add_argument("--buildsystem", required=True, choices=sorted(UNSUPPORTED) + ["cmake"])
     ap.add_argument("--tests-dir", default="tests")
     ap.add_argument("--makefile", default="CMakeLists.txt")
+    # A FLOOR on the test files found. "all 0 test file(s) are registered" is true and worthless:
+    # it is what this gate printed over a tree with no tests, and what it would print forever if
+    # the tests directory were renamed. The default of 1 catches only total blindness; a repo that
+    # knows its own population should pass a real number, well below today's count.
+    ap.add_argument("--min-tests", type=int, default=1, metavar="N",
+                    help="fail if fewer than N test files are found (default 1)")
     args = ap.parse_args()
 
     if args.buildsystem != "cmake":
@@ -137,6 +143,12 @@ def main() -> int:
         )
         return 1
 
+    if total < args.min_tests:
+        print(f"✗ [test_registration] found {total} test file(s) under "
+              f"{args.tests_dir}/, expected at least {args.min_tests} -- this gate has "
+              f"stopped looking at its subject, and 'all of them are registered' over "
+              f"what it did not find is not a clean run.", file=sys.stderr)
+        return 1
     print(
         f"→ [test_registration] OK — all {total} test file(s) under "
         f"{args.tests_dir}/ are registered in {args.makefile}"
