@@ -1,0 +1,18 @@
+{
+  "_doc": [
+    "check_empty_scope.py: which gates may report success over a repo with no content.",
+    "legitimate = it SHOULD pass on nothing, and the reason says why.",
+    "known_blind = a real defect awaiting a guard. SHRINK-ONLY: never add to this list;",
+    "a gate that gains a guard is deleted from it, and the sweep fails if a listed gate",
+    "starts failing (a stale excuse is permission nobody needs)."
+  ],
+  "legitimate": {
+    "check_disk_hygiene.py": "it measures the HOST's scratch directories, not the repo, so an empty repo is irrelevant to it -- its subject is present whatever the tree looks like",
+    "check_no_conflict_markers.py": "a repo with no tracked files genuinely has no conflict markers, and there is no baseline to contradict: this gate has no population to lose"
+  },
+  "known_blind": {
+    "check_no_allow.py": "reported '0 files clean' -- it scans src/, benches/ and build.rs, so a Rust crate that moved its sources retires the gate in silence",
+    "check_no_emoji.py": "reported '1 tracked files clean' over a tree with one file; it should say what it expected to scan, or a repo whose sources stop being tracked passes clean",
+    "check_no_secrets.py": "same shape as check_no_emoji -- a tracked-file scan with no floor, so an untracked tree reads as a clean one"
+  }
+}
