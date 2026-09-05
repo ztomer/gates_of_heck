@@ -1,0 +1,36 @@
+{
+ "_doc": [
+  "Which shared gates have PROVEN they can fail, and how.",
+  "",
+  "These gates run in four repos, so their proof belongs HERE rather than inside any one",
+  "consumer -- two of them were canaried from inside ZeroThunder, which meant the other three",
+  "inherited the gate without the evidence.",
+  "",
+  "proven_by: the canary runs each check against a git repo containing a real violation and",
+  "asserts it goes RED, then against a clean tree and asserts GREEN. Red-on-violation is the",
+  "load-bearing half: a gate that scans nothing exits 0 and is indistinguishable from a gate",
+  "that scanned everything, and two fixtures in this very table were silently out of scope",
+  "before that assertion caught them.",
+  "",
+  "Regenerate with the canary, never by hand -- a registry a human types is a registry that",
+  "outlives the thing it describes."
+ ],
+ "proven_by": {
+  "no_emoji": "game_asset_factory/tools/check_gate_canary.py -- run against a throwaway git repo that violates it (no disallowed emoji); asserted RED on the violation and GREEN on a clean tree, so a fixture the gate cannot see is caught as well as a gate that does not bite.",
+  "no_conflict_markers": "game_asset_factory/tools/check_gate_canary.py -- run against a throwaway git repo that violates it (no conflict markers); asserted RED on the violation and GREEN on a clean tree, so a fixture the gate cannot see is caught as well as a gate that does not bite.",
+  "file_length": "game_asset_factory/tools/check_gate_canary.py -- run against a throwaway git repo that violates it (file length cap); asserted RED on the violation and GREEN on a clean tree, so a fixture the gate cannot see is caught as well as a gate that does not bite.",
+  "no_secrets": "game_asset_factory/tools/check_gate_canary.py -- run against a throwaway git repo that violates it (no committed secrets); asserted RED on the violation and GREEN on a clean tree, so a fixture the gate cannot see is caught as well as a gate that does not bite.",
+  "no_allow": "game_asset_factory/tools/check_gate_canary.py -- run against a throwaway git repo that violates it (no Rust #[allow]); asserted RED on the violation and GREEN on a clean tree, so a fixture the gate cannot see is caught as well as a gate that does not bite.",
+  "tests_registered": "game_asset_factory/tools/check_gate_canary.py -- run against a throwaway git repo that violates it (every test is registered); asserted RED on the violation and GREEN on a clean tree, so a fixture the gate cannot see is caught as well as a gate that does not bite.",
+  "no_screen_presentation": "game_asset_factory/tools/check_gate_canary.py -- run against a throwaway git repo that violates it (tests never take the screen); asserted RED on the violation and GREEN on a clean tree, so a fixture the gate cannot see is caught as well as a gate that does not bite.",
+  "baseline_ratchet": "game_asset_factory/tools/check_gate_canary.py -- run against a throwaway git repo that violates it (a ratchet may not grow); asserted RED on the violation and GREEN on a clean tree, so a fixture the gate cannot see is caught as well as a gate that does not bite.",
+  "generated_fresh": "game_asset_factory/tools/check_gate_canary.py -- run against a throwaway git repo that violates it (generated artifacts are fresh); asserted RED on the violation and GREEN on a clean tree, so a fixture the gate cannot see is caught as well as a gate that does not bite.",
+  "disk_hygiene": "game_asset_factory/tools/check_gate_canary.py -- run against a throwaway git repo that violates it (scratch disk ceiling); asserted RED on the violation and GREEN on a clean tree, so a fixture the gate cannot see is caught as well as a gate that does not bite."
+ },
+ "known_unproven": [
+  "check_swift_coverage"
+ ],
+ "unproven_why": {
+  "check_swift_coverage": "needs a built Swift package with real coverage data; a fixture would be a Swift toolchain invocation, not a file"
+ }
+}
