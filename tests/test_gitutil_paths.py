@@ -6,7 +6,7 @@ QUOTED names like "caf\303\251.md" that content_bytes() could never resolve
 — those files were silently skipped by every consumer, in both scopes.
 """
 
-from conftest import EMOJI_SMILE, commit_all, run_check, stage, write
+from conftest import EMOJI_SMILE, REPO_ROOT, commit_all, run_check, stage, write
 
 
 def _stage_nonascii_emoji_file(repo):
@@ -60,3 +60,23 @@ def test_newline_in_filename_is_one_record_not_two(repo):
     r = run_check(repo, "checks/check_no_emoji.py", "--staged")
     assert r.returncode == 1
     assert "we\nird.md" in r.stdout
+
+def test_a_failing_git_raises_instead_of_reporting_an_empty_repo(tmp_path):
+    """A silent [] is the worst possible answer here. Measured 2026-09-05: with a corrupt index,
+    check_no_emoji printed "OK - 0 tracked files clean" and exited 0 -- a green light over a repo
+    git could not read. Every gate built on listed_files inherited it."""
+    import subprocess
+    import sys
+
+    import pytest
+
+    sys.path.insert(0, str(REPO_ROOT / "checks"))
+    from _gitutil import listed_files
+
+    subprocess.run(["git", "init", "-q", str(tmp_path)], check=True, capture_output=True)
+    (tmp_path / "a.txt").write_text("hi", encoding="utf-8")
+    subprocess.run(["git", "-C", str(tmp_path), "add", "a.txt"], check=True, capture_output=True)
+    (tmp_path / ".git" / "index").write_bytes(b"garbage")
+
+    with pytest.raises(RuntimeError, match="ls-files failed"):
+        listed_files(str(tmp_path), staged=False)

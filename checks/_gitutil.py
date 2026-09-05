@@ -35,6 +35,15 @@ def listed_files(root: str, staged: bool, pathspec: str = "*") -> list[str]:
         else ["git", "-C", root, "ls-files", "-z"]
     )
     out = subprocess.run(cmd, capture_output=True)
+    if out.returncode != 0:
+        # A silent [] here is the worst possible answer: every consumer reports "0 files clean"
+        # and exits 0, so a corrupt index or an unreadable object database reads exactly like a
+        # spotless repo. Callers guard the "not a git repo" case themselves via repo_root(); this
+        # is git ANSWERING and failing, which nothing was distinguishing from an empty tree.
+        raise RuntimeError(
+            "git %s failed (exit %d): %s"
+            % (cmd[3], out.returncode, out.stderr.decode("utf-8", "replace").strip()[:200])
+        )
     return [
         n.decode("utf-8", "replace") for n in out.stdout.split(b"\0") if n
     ]

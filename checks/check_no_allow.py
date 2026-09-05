@@ -106,6 +106,14 @@ def _scan(root: str, paths, staged: bool):
     return hits
 
 
+def _has_rust(root: str, staged: bool) -> bool:
+    """Does this repo contain Rust at all? A tracked Cargo.toml is the manifest that says so."""
+    return any(
+        f == "Cargo.toml" or f.endswith("/Cargo.toml")
+        for f in listed_files(root, staged=staged)
+    )
+
+
 def main():
     staged = "--staged" in sys.argv
     root = repo_root()
@@ -117,6 +125,16 @@ def main():
         for h in hits[:40]:
             print(f"    {h}")
         print("fix the finding properly; do not add #[allow]. Generated files must carry @generated.")
+        sys.exit(1)
+    # A repo with no Rust at all genuinely has nothing to police, and failing there would make
+    # this gate unadoptable by every non-Rust repo that runs the shared layer. But a repo that
+    # HAS Rust and whose scan found none of it is blind: the crate moved, or the src/ + benches/
+    # + build.rs scope stopped matching its layout, and "0 files clean" reads identically to a
+    # spotless crate. Conditioned on the manifest, so the two cases stay distinguishable.
+    if not files and _has_rust(root, staged):
+        print("✗ [no_allow] this repo has Rust (a Cargo.toml is tracked) and the scan matched "
+              "NO compiled source. That is not a clean run -- the crate layout moved out from "
+              "under src/, benches/ and build.rs.", file=sys.stderr)
         sys.exit(1)
     print(f"✓ [no_allow] OK — {len(files)} files clean")
 
