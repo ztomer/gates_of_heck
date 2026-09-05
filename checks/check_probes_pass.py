@@ -56,7 +56,10 @@ def probe_flag(source):
     for flag in FLAGS:
         # Anchored to an argv test so a flag merely NAMED in prose does not count. The docstrings
         # in this estate discuss `--probe` constantly; only a gate that dispatches on it has one.
-        if re.search(rf"{re.escape(flag)}\"?'?\s*(in sys\.argv|,|\))", source):
+        # `in argv` as well as `in sys.argv`: a gate whose `main(argv)` takes the list as a
+        # parameter dispatches just as really, and requiring the module path marked
+        # ZeroThunder's check_mesh_integrity --break-probe as no probe at all.
+        if re.search(rf"{re.escape(flag)}\"?'?\s*(in (?:sys\.)?argv|,|\))", source):
             return flag
     return None
 
@@ -184,12 +187,26 @@ def probe():
             sys.exit(0)
         ''')
 
+        # main(argv) taking the list as a PARAMETER is as real a dispatch as reading sys.argv.
+        # Requiring the module path marked ZeroThunder's check_mesh_integrity, which ships a
+        # genuine --break-probe, as carrying no self-proof at all.
+        gate("check_param.py", """
+            import sys
+            def main(argv):
+                if "--break-probe" in argv:
+                    return 0
+                return 0
+            sys.exit(main(sys.argv[1:]))
+        """)
+
         probes, total = discover(td)
         names = {os.path.basename(p) for p, _ in probes}
 
         for label, want, got in (
-            ("all three gates are counted", 3, total),
-            ("the two with a real self-proof are found", {"check_good.py", "check_broken.py"}, names),
+            ("all four gates are counted", 4, total),
+            ("every real self-proof is found",
+             {"check_good.py", "check_broken.py", "check_param.py"}, names),
+            ("a main(argv) dispatch counts as a self-proof", True, "check_param.py" in names),
             ("a gate that only MENTIONS --probe is not counted", False, "check_bare.py" in names),
             ("a passing proof passes", (True, ""),
              run_one(os.path.join(tools, "check_good.py"), "--probe", td)),
