@@ -89,8 +89,9 @@ def test_explicit_full_flag_reaches_no_checker(repo):
 
 def test_full_scope_omits_disk_check(repo):
     # 2026-09-04: the disk watch moved OUT of the gate (a 15s du stat-storm
-    # over host trees does not belong in a commit gate). Full scope must
-    # NOT run it; the watch lives on as scripts/bin/disk_hygiene.sh.
+    # over host trees does not belong in a commit gate), and 2026-09-07 out
+    # of this repo entirely. Full scope must NOT run it; the watch lives in
+    # ~/Projects/scripts (lib/disk_hygiene.py behind bin/disk_hygiene.sh).
     _mk_gatesrc(repo)
     r = run_gate(repo, STRUCTURAL)  # no --staged → full tree, no disk step
     assert r.returncode == 0, r.stdout + r.stderr

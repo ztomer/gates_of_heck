@@ -7,7 +7,6 @@
     "starts failing (a stale excuse is permission nobody needs)."
   ],
   "legitimate": {
-    "check_disk_hygiene.py": "it measures the HOST's scratch directories, not the repo, so an empty repo is irrelevant to it -- its subject is present whatever the tree looks like",
     "check_no_conflict_markers.py": "a repo with no tracked files genuinely has no conflict markers, and there is no baseline to contradict: this gate has no population to lose",
     "check_no_emoji.py": "it scans every tracked file and its scan set IS its subject, so it cannot be partially blind; a git failure now RAISES rather than returning an empty list (_gitutil.listed_files, 2026-09-05), which was the real hole",
     "check_no_secrets.py": "same shape as check_no_emoji -- scan set is the subject, and the silent-empty-on-git-failure hole is closed in _gitutil.listed_files",

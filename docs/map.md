@@ -7,7 +7,7 @@ Every entry: what it does, when it runs, which test pins it.
 | Script | Purpose | Invoked | Test |
 |---|---|---|---|
 | `_common.sh` | Shared contract: fail-fast, print output, TUI, EXIT-trap sentinel. Sourced, never run. | every gate | `test_goh_init_trap.py` |
-| `structural.sh` | Layer 1, every repo: emoji, conflict markers, file-length cap. `--staged` = pre-commit. (Disk hygiene was removed from this gate in v0.8.0 — see `check_disk_hygiene.py` below.) | `tools/gate.sh`, hooks | `test_gates_e2e.py`, `test_file_length_and_markers.py` |
+| `structural.sh` | Layer 1, every repo: emoji, conflict markers, file-length cap. `--staged` = pre-commit. (Disk hygiene was removed from this gate in v0.8.0 and from this repo in v0.8.1 — it lives in `~/Projects/scripts`.) | `tools/gate.sh`, hooks | `test_gates_e2e.py`, `test_file_length_and_markers.py` |
 | `py_gate.sh` | `ruff check` + `ruff format --check` + pytest with coverage floor. Args: `[repo] [pkg_dir]`. | `--full`, opt-in | `test_cwd_and_py_gate.py` |
 | `rust_gate.sh` | `cargo fmt --check` + `clippy -D warnings` + optional `check_no_allow` + coverage floor when `GOH_COV_FLOOR_RUST`/`GOH_COV_FLOORS_JSON` is set (via `coverage_gate.sh --lang rust`, explicit argv). Args: `[repo] [cargo_dir]`. | `--full`, opt-in | `test_rust_gate.py` |
 | `swift_gate.sh` | swiftlint (+ optional baseline ratchet) + cold build + test + coverage floor. `spm` or `xcode` mode. | `--full`, opt-in | `test_swift_gate_baseline.py`, `test_swift_gate_project_selection.py` |
@@ -34,7 +34,6 @@ logic goes in the engine; new floor/CLI semantics go in `coverage_gate.sh`.
 | `check_no_emoji.py` | Emoji policy gate (allow-list in `ALLOWED_ORDERED`). `--staged` polices the index. | `test_check_no_emoji.py` |
 | `check_no_conflict_markers.py` | Fails on merge markers. | `test_file_length_and_markers.py` |
 | `check_file_length.py` | `--max N` file-length cap. | `test_file_length_and_markers.py` |
-| `check_disk_hygiene.py` | Machine disk watch (scratch + cargo-cache ceilings). Standalone since v0.8.0 — invoked via `~/Projects/scripts/bin/disk_hygiene.sh`, NOT by any gate (pinned by `test_no_gate_runs_disk_hygiene`). | `test_check_disk_hygiene.py` |
 | `check_shell_lint.sh` | `bash -n` + `shellcheck --severity=error` over tracked `*.sh` + `hooks/*`. Missing shellcheck degrades to syntax-only with a named warning. | `test_check_shell_lint.py` |
 | `check_no_secrets.py` | Narrow secrets gate: known key prefixes + private-key headers, staged + full. No entropy heuristics by design. Revoked vectors suppress with `secret-ok: <reason>`. | `test_check_no_secrets.py` |
 | `check_no_allow.py` | No `#[allow]` in Rust (repo-local twin; structural twin lives in consumer `tools/`). | `test_check_no_allow.py` |

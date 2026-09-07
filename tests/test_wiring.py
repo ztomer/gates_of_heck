@@ -57,11 +57,10 @@ EXPECTED_REFS = [
     ("gates/structural.sh", "checks/check_file_length.py"),
     ("gates/structural.sh", "checks/check_shell_lint.sh"),
     ("gates/structural.sh", "checks/check_no_secrets.py"),
-    # NOTE: checks/check_disk_hygiene.py is deliberately NOT referenced by
-    # any gate (2026-09-04: disk watch moved out of CI to
-    # ~/Projects/scripts/bin/disk_hygiene.sh). If a gate references it
-    # again, add the ref here AND justify why a du stat-storm belongs in
-    # a commit gate.
+    # NOTE: the disk watch is not here at all any more. It moved out of CI in
+    # v0.8.0 and out of this REPO on 2026-09-07, to
+    # ~/Projects/scripts/{lib/disk_hygiene.py,bin/disk_hygiene.sh}. See
+    # test_disk_hygiene_lives_elsewhere below.
 ]
 
 
@@ -89,10 +88,22 @@ def test_every_referenced_script_exists():
     )
 
 
-def test_no_gate_runs_disk_hygiene():
-    """The disk watch stays OUT of CI. Red-proof: re-adding a
-    check_disk_hygiene reference to any gate fails here naming the line —
-    move the watch, don't re-wire it (see scripts/bin/disk_hygiene.sh)."""
+def test_disk_hygiene_lives_elsewhere():
+    """The disk watch is not a gate and does not live in this repo.
+
+    Leaving the checker here while no gate ran it was half a move, and it
+    cost a real failure: check_empty_scope.py sweeps every checks/check_*.py
+    as though it were a gate, so when the host's shared cargo target dir went
+    over its ceiling the checker's CORRECT failure was reported as a stale
+    allowlist entry and took the whole suite red at clean HEAD (2026-09-07).
+    A tool whose subject is the machine belongs with the machine's tools.
+
+    Red-proof: restoring the file, or referencing it from a gate, fails here.
+    """
+    assert not (REPO_ROOT / "checks" / "check_disk_hygiene.py").exists(), (
+        "the disk watch is back in this repo; it belongs in "
+        "~/Projects/scripts/lib/disk_hygiene.py"
+    )
     refs = _referenced_scripts()
     disk = [(f, line, ref) for f, line, ref in refs if "disk_hygiene" in ref]
     assert disk == [], (
