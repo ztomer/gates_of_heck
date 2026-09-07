@@ -115,9 +115,21 @@ fi
 # that merely SHIPS example skills. Runs at both scopes because a duplicate
 # lesson title is only visible across the whole corpus, and 40 skills is fast.
 if [ -n "${GOH_SKILLS_CORPUS:-}" ]; then
-    goh_step "skills corpus" python3 "$CHECKS/check_skills_corpus.py" \
-        --root "${GOH_SKILLS_ROOT:-$GOH_REPO_ROOT}" \
-        ${GOH_SKILLS_MAX_WORDS:+--max-words "$GOH_SKILLS_MAX_WORDS"}
+    # The corpus can live OUTSIDE the repo (a machine-level asset such as
+    # ~/.claude/skills), so its absence is a fact about the machine, not a
+    # defect in the tree. A NAMED skip, never a silent one -- the swiftlint and
+    # cargo-machete precedent. Absent this branch the gate hard-failed anywhere
+    # HOME is not the developer's, which is exactly what goh's own self-host
+    # test does: it commits a copy of this repo with HOME set to a temp dir, and
+    # it exists to prove .gatesrc stays hermetic.
+    goh_skills_root="${GOH_SKILLS_ROOT:-$GOH_REPO_ROOT}"
+    if [ -d "$goh_skills_root" ]; then
+        goh_step "skills corpus" python3 "$CHECKS/check_skills_corpus.py" \
+            --root "$goh_skills_root" \
+            ${GOH_SKILLS_MAX_WORDS:+--max-words "$GOH_SKILLS_MAX_WORDS"}
+    else
+        warn "skills corpus not present at $goh_skills_root — NOT checked"
+    fi
 fi
 
 # Bash is the most-edited language under these gates. bash -n always runs;
