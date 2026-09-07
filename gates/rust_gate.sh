@@ -14,6 +14,10 @@
 #   2d. checks/check_lints_optin.py — a workspace's [workspace.lints] is a
 #      DECLARATION; a member applies it with `[lints] workspace = true`. A crate
 #      that never says so inherits nothing and looks clean.
+#   2e. cargo machete — unused dependencies. `[lints.cargo]
+#      unused_dependencies = "deny"` looks like this and is not: the key needs
+#      -Zcargo-lints on nightly, so on stable cargo prints "unused manifest key"
+#      and exits 0. Named skip when the tool is absent.
 #   3. tools/check_no_allow.py — no #[allow]; fix findings, never silence.
 #      (Repo-local tool; skipped with a warning when not installed.)
 #   4. coverage floor, when stated (GOH_COV_FLOOR_RUST or GOH_COV_FLOORS_JSON
@@ -97,6 +101,29 @@ fi
 
 goh_step "lint policy is inherited" \
     python3 "$HERE/../checks/check_lints_optin.py"
+
+# UNUSED DEPENDENCIES. `[lints.cargo] unused_dependencies = "deny"` looks like
+# this gate and is not one: the key needs `-Zcargo-lints` on nightly, so on
+# stable cargo emits "unused manifest key `lints.cargo`" and exits 0. It had
+# never been enforced on any toolchain in the repo that declared it (routines,
+# removed in 12edbc2). cargo-machete does the job on stable.
+#
+# It is a hard failure, not a warning, because it exits 1 on findings and a
+# finding is either real debt or a false positive worth recording with its
+# reason -- both are actions, neither is "look at this every commit".
+#
+# Absent, it is a NAMED skip: a missing tool must never count toward a pass.
+# Its own blind spot is ident-based scanning, so a crate whose lib name differs
+# from its package name (md-5 -> md5) or that is reached only through a string
+# (`#[serde(with = "serde_bytes")]`) reads as unused. Those go in the crate's
+# own `[package.metadata.cargo-machete] ignored = [...]` WITH the reason --
+# policy central, exemptions local.
+if command -v cargo-machete >/dev/null 2>&1; then
+    goh_step_in "$cargo_dir" "no unused dependencies" cargo machete
+else
+    warn "cargo-machete not installed — unused dependencies were NOT checked"
+    warn "  cargo install cargo-machete"
+fi
 
 # Cargo's own lint namespace. Separate from clippy because clippy CANNOT fail
 # on these -- see the header of the script for the measurement that proved it.
