@@ -1,5 +1,54 @@
 # CHANGELOG
 
+## v0.10.0 — the two ways a clippy gate lies _(2026-09-07)_
+
+From a lint-adoption campaign across four Rust repos (monitor, routines,
+ztools, divoom-control), all four taken from "no policy at all" to zero at
+`-D warnings`. Two of the findings were structural rather than per-repo, which
+is what made them belong here.
+
+**`checks/check_lints_optin.py`** — a workspace's `[workspace.lints]` is a
+DECLARATION; a member crate applies it with `[lints] workspace = true`, and one
+that never says so inherits nothing. There is no warning anywhere: cargo does
+not mention the omission and `clippy -- -D warnings` passes, because the crate
+genuinely has no findings AT THE LEVELS IT IS SUBJECT TO. Measured on `monitor`:
+the workspace had declared `pedantic` and `nursery` from the start, two of three
+crates opted in, and the third — the biggest, the one uploaded to every
+monitored host — had accumulated 254 findings that every green gate had agreed
+were absent. Calibrated by removing that crate's opt-in and watching the check
+go red. Six tests, including the empty-population case: a workspace with no
+policy is NAMED as such rather than reported as a pass.
+
+**`GOH_RUST_LINT_CONFIGS` in `gates/rust_gate.sh`** — the gate's clippy step
+lints ONE cfg: this machine's target, all features on. A crate that is part
+`cfg(target_os = ...)` or part `cfg(feature = ...)` has halves that command
+never compiles and therefore cannot report on. On `monitor` that meant a Mac
+checked one half and the ubuntu runner checked the other, neither failing on the
+other's code and nothing comparing them: 26 findings on the host, 48 for
+linux-musl, ten of them in src the host cannot see — plus two `#[expect]`s that
+were UNFULFILLED there, which under `-D warnings` is an ERROR. The agent's build
+was broken for the platform it ships to while every gate was green.
+
+Each entry is extra cargo argv, `:`-separated. A `--target` whose std is not
+installed is a HARD FAILURE naming the `rustup target add`, never a skip — a
+step that inspects nothing must not read as a pass, which is this estate's
+oldest gate defect. Calibrated both ways: with a Linux-only `#[must_use]`
+removed, the existing clippy step stays GREEN and the new one goes RED.
+
+**`gates/rust_manifest_gate.sh` remedy advice corrected.** It told the reader to
+silence a finding with
+
+    [lints.cargo]
+    unused_dependencies = "allow"
+
+which cargo does not support on stable — it is an "unused manifest key", so
+cargo emits `(manifest) generated 1 warning`, which is precisely the string this
+gate greps for and fails on. Following the gate's own advice made the gate fail.
+Measured on cargo 1.98.1 with both `allow` and `deny`; the advice had never been
+run. It now says to remove the dependency, explains why `[lints.cargo]` is a
+trap, and points at `cargo-machete`, whose ignore list lives under a metadata
+key cargo does read.
+
 ## v0.9.0 — eval findings 1-10 _(2026-09-04)_
 
 Every item from EVAL-2026-09-04.md, fixed test-first, measured throughout.

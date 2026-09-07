@@ -72,10 +72,18 @@ if grep -qE '^warning: .*\(manifest\) generated' "$log"; then
     err "[cargo_manifest] cargo's own lints fired — see the findings above."
     err "  These never fail clippy: \`-D warnings\` sets RUSTC lint levels and"
     err "  cargo's lint namespace is separate, so cargo warns and exits 0."
-    err "  Fix the manifest. If a dependency is a false positive (used only"
-    err "  behind a cfg or a macro), state that in the crate's Cargo.toml:"
-    err "      [lints.cargo]"
-    err "      unused_dependencies = \"allow\"   # why, in a comment"
+    err "  Fix the manifest: remove the dependency, or make the use real."
+    err ""
+    err "  DO NOT reach for [lints.cargo] to silence it. That table is an"
+    err "  UNUSED MANIFEST KEY on stable cargo -- it needs -Zcargo-lints on"
+    err "  nightly, which nothing here passes -- so cargo warns about the"
+    err "  table itself and THIS GATE then fails on that warning instead."
+    err "  Measured on cargo 1.98.1 with both \"allow\" and \"deny\"; the"
+    err "  advice that used to be printed here had never been run."
+    err ""
+    err "  For a dependency that really is used only behind a cfg or a macro,"
+    err "  the stable tool is cargo-machete, whose ignore list lives under"
+    err "  [package.metadata.cargo-machete] -- a key cargo does read."
     exit 1
 fi
 
