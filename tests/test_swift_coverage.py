@@ -202,3 +202,16 @@ def test_both_payload_shapes_agree(repo):
     new = run_check(repo, SCRIPT, "--min", "0")
     assert "30.0%" in old.stdout + old.stderr
     assert "30.0%" in new.stdout + new.stderr
+
+
+def test_test_sources_do_not_count(repo):
+    """A test file is ~100% covered by definition; counting it lets a floor be
+    met by adding tests that assert nothing."""
+    _write_spm_summary(repo, ".build/arm64-apple-macosx/debug/codecov/a.json",
+                       [("/w/Sources/A.swift", 10, 100),
+                        ("/w/Tests/ATests.swift", 100, 100)])
+    r = run_check(repo, SCRIPT, "--min", "50")
+    # Counting the test file reads 110/200 = 55% and passes; excluding it
+    # reads the real 10/100 = 10% and fails.
+    assert r.returncode == 1, "a test source was counted toward coverage"
+    assert "10.0%" in r.stderr

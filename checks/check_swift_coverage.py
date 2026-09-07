@@ -36,13 +36,21 @@ DEFAULT_DD = ".build/xcode-dd"
 # ---- payload walking --------------------------------------------------------
 
 
-# Generated sources llvm-cov reports but nobody writes: SwiftPM synthesises a
-# test runner under .build, and counting it moves the number without moving
-# the code under test.
-_GENERATED_MARKERS = (
+# Sources llvm-cov reports that are not the code under test.
+#
+# Generated: SwiftPM synthesises a test runner under .build.
+#
+# Test sources: a test file is ~100% covered by definition -- it is the thing
+# doing the running -- so counting it means every test you add raises coverage
+# twice, once for the code it exercises and once for itself. Measured on a real
+# package (antiknob, 2026-09-07): 6.7% counting Tests/, 3.4% without. A floor
+# set on the first number can be met by writing tests that assert nothing.
+_EXCLUDED_MARKERS = (
     "/.build/",
     ".derived/",
     "/DerivedSources/",
+    "/Tests/",
+    "/tests/",
 )
 
 
@@ -65,7 +73,7 @@ def _spm_files(payload: dict):
     for dataset in payload.get("data", []):
         for f in dataset.get("files", []):
             name = f.get("filename") or f.get("name") or "?"
-            if any(marker in name for marker in _GENERATED_MARKERS):
+            if any(marker in name for marker in _EXCLUDED_MARKERS):
                 continue
             covered, total = _spm_file_lines(f)
             if total > 0:
