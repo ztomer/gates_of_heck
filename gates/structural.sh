@@ -108,6 +108,18 @@ elif [ -n "${GOH_LINE_EXCLUDE:-}" ]; then
     warn "  is bounded by nothing. Point GOH_LINE_BASELINE at the ratchet baseline."
 fi
 
+# An agent SKILLS corpus (~/.claude/skills and friends) is authored prose that
+# nothing compiles, so its defects are silent: a SKILL.md with no frontmatter
+# can never be triggered and looks exactly like one that works. Opt in per repo
+# with GOH_SKILLS_CORPUS=1 in .gatesrc; auto-detecting would surprise any repo
+# that merely SHIPS example skills. Runs at both scopes because a duplicate
+# lesson title is only visible across the whole corpus, and 40 skills is fast.
+if [ -n "${GOH_SKILLS_CORPUS:-}" ]; then
+    goh_step "skills corpus" python3 "$CHECKS/check_skills_corpus.py" \
+        --root "${GOH_SKILLS_ROOT:-$GOH_REPO_ROOT}" \
+        ${GOH_SKILLS_MAX_WORDS:+--max-words "$GOH_SKILLS_MAX_WORDS"}
+fi
+
 # Bash is the most-edited language under these gates. bash -n always runs;
 # the lint stage degrades to a named warning when shellcheck is not
 # installed (swiftlint precedent), never a silent skip. Same GOH_EXCLUDE
