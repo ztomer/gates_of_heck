@@ -127,3 +127,78 @@ def test_xcode_mode_missing_dd_is_named_refusal(repo):
     r = run_check(repo, SCRIPT, "--min", "50", "--xcode")
     assert r.returncode == 2
     assert "no *.xcresult" in r.stderr
+
+
+# --- llvm.coverage.json.export 3.x (Swift 6.3) --------------------------------
+#
+# The per-file counts moved under "summary"; a checker reading only the old
+# total_lines/covered_lines saw zero measurable files and refused a perfectly
+# healthy tree as "corrupt codecov JSON". Both shapes must work, because a
+# repo's toolchain is not ours to pick.
+
+
+def _write_spm_summary(repo, rel, files):
+    """Write a payload in the modern export shape."""
+    p = repo / rel
+    p.parent.mkdir(parents=True, exist_ok=True)
+    payload = {
+        "version": "3.0.1",
+        "type": "llvm.coverage.json.export",
+        "data": [
+            {"files": [
+                {
+                    "filename": n,
+                    "summary": {
+                        "lines": {"count": t, "covered": c,
+                                  "percent": (100.0 * c / t) if t else 0},
+                        "functions": {"count": 1, "covered": 1, "percent": 100},
+                    },
+                }
+                for n, c, t in files
+            ]}
+        ],
+    }
+    p.write_text(json.dumps(payload), encoding="utf-8")
+
+
+def test_spm_reads_summary_shaped_payloads(repo):
+    _write_spm_summary(repo, ".build/arm64-apple-macosx/debug/codecov/a.json",
+                       [("/w/Sources/A.swift", 40, 100), ("/w/Sources/B.swift", 10, 100)])
+    r = run_check(repo, SCRIPT, "--min", "20")
+    # 50/200 = 25% >= 20
+    assert r.returncode == 0, r.stderr
+    assert "25.0%" in r.stdout + r.stderr
+
+
+def test_summary_shape_still_fails_below_the_floor(repo):
+    """The new reader must be able to REFUSE, not just parse."""
+    _write_spm_summary(repo, ".build/arm64-apple-macosx/debug/codecov/a.json",
+                       [("/w/Sources/A.swift", 1, 100)])
+    r = run_check(repo, SCRIPT, "--min", "50")
+    assert r.returncode == 1
+    assert "A.swift" in r.stderr
+
+
+def test_generated_sources_do_not_count(repo):
+    """SwiftPM synthesises a test runner under .build. Counting it moves the
+    number without moving the code under test, so it must be excluded."""
+    _write_spm_summary(repo, ".build/arm64-apple-macosx/debug/codecov/a.json",
+                       [("/w/Sources/A.swift", 10, 100),
+                        ("/w/.build/arm64-apple-macosx/debug/Pkg.derived/runner.swift",
+                         100, 100)])
+    r = run_check(repo, SCRIPT, "--min", "50")
+    # Counting the runner would read 110/200 = 55% and pass; excluding it
+    # reads the real 10/100 = 10% and fails.
+    assert r.returncode == 1, "generated runner was counted toward coverage"
+    assert "10.0%" in r.stderr
+
+
+def test_both_payload_shapes_agree(repo):
+    """Same numbers, two shapes, one answer."""
+    _write_spm(repo, ".build/a/debug/codecov/old.json", [("/w/A.swift", 30, 100)])
+    old = run_check(repo, SCRIPT, "--min", "0")
+    (repo / ".build/a/debug/codecov/old.json").unlink()
+    _write_spm_summary(repo, ".build/a/debug/codecov/new.json", [("/w/A.swift", 30, 100)])
+    new = run_check(repo, SCRIPT, "--min", "0")
+    assert "30.0%" in old.stdout + old.stderr
+    assert "30.0%" in new.stdout + new.stderr

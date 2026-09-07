@@ -36,13 +36,38 @@ DEFAULT_DD = ".build/xcode-dd"
 # ---- payload walking --------------------------------------------------------
 
 
+# Generated sources llvm-cov reports but nobody writes: SwiftPM synthesises a
+# test runner under .build, and counting it moves the number without moving
+# the code under test.
+_GENERATED_MARKERS = (
+    "/.build/",
+    ".derived/",
+    "/DerivedSources/",
+)
+
+
+def _spm_file_lines(f: dict):
+    """(covered, total) for one file entry, across llvm-cov export shapes.
+
+    llvm.coverage.json.export moved the per-file counts under "summary" (seen
+    in 3.0.1, Swift 6.3); older payloads carried total_lines/covered_lines at
+    the file level. Read the modern shape first and fall back, so one checker
+    serves both rather than reporting a healthy tree as corrupt JSON.
+    """
+    lines = (f.get("summary") or {}).get("lines")
+    if isinstance(lines, dict):
+        return int(lines.get("covered", 0) or 0), int(lines.get("count", 0) or 0)
+    return int(f.get("covered_lines", 0) or 0), int(f.get("total_lines", 0) or 0)
+
+
 def _spm_files(payload: dict):
     """Yield (filename, covered, total) from one SPM codecov JSON dict."""
     for dataset in payload.get("data", []):
         for f in dataset.get("files", []):
-            total = f.get("total_lines", 0) or 0
-            covered = f.get("covered_lines", 0) or 0
             name = f.get("filename") or f.get("name") or "?"
+            if any(marker in name for marker in _GENERATED_MARKERS):
+                continue
+            covered, total = _spm_file_lines(f)
             if total > 0:
                 yield name, covered, total
 
