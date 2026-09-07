@@ -6,3 +6,17 @@ GOH_MAX_LINES=500                 # file-length cap; unset disables the check
 # GOH_SWIFT_SCHEME=MyAppTests
 # GOH_SWIFT_COV_MIN=95
 # GOH_MAX_SCRATCH_GB=25           # disk-hygiene ceiling (full runs only)
+
+# The skills-corpus gate, run from HERE because nothing else can. The corpus at
+# ~/.claude/skills is a global asset with no repo of its own, and this is the
+# repo that owns the checker -- so if it is not wired here it is wired nowhere,
+# and a gate nobody runs is indistinguishable from a gate that passes. That is
+# the exact class check_skills_corpus.py was written to catch, and it was true
+# of the checker itself until this line existed.
+#
+# NOTE the coupling this creates: a commit HERE can now fail because a file
+# under ~/.claude/skills is mid-edit. That is deliberate -- the alternative is a
+# corpus nothing ever checks -- but it is the reason a commit may go red for a
+# reason that has nothing to do with the diff.
+GOH_SKILLS_CORPUS=1
+GOH_SKILLS_ROOT=$HOME/.claude/skills
