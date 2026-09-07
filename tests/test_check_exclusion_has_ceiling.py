@@ -85,3 +85,40 @@ def test_a_missing_baseline_is_a_precondition_failure_not_a_pass(repo):
     r = run_check(repo, SCRIPT, "--max", "500", "--baseline", "nope.txt",
                   "--line-exclude", r"src/big\.rs")
     assert r.returncode == 2
+
+
+def test_an_unbounded_waiver_excuses_a_file_that_is_not_ours_to_split(repo):
+    """GOH_LINE_EXCLUDE is documented as "additive to the LENGTH check only", so
+    a repo may use it for captured vendor data that must stay emoji- and
+    secret-scanned. divoom-control does exactly that. Such an exemption needs no
+    ceiling, and saying so is a local decision with a local reason."""
+    _repo(repo, lines=899, in_baseline=False, path="docs/vendor/light.md")
+    r = run_check(repo, SCRIPT, "--max", "500", "--baseline", BASE,
+                  "--line-exclude", "docs/vendor/", "--unbounded", "docs/vendor/")
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert "waived" in r.stdout + r.stderr
+
+
+def test_a_waiver_does_not_cover_a_file_outside_it(repo):
+    """The waiver is a pattern, not a blanket: our own over-long code sitting
+    beside the vendored material still needs a ceiling."""
+    write(repo, "docs/vendor/light.md", "x\n" * 899)
+    write(repo, "src/big.rs", "// x\n" * 619)
+    write(repo, BASE, "# lines path\n0 __sentinel__\n")
+    commit_all(repo)
+    r = run_check(repo, SCRIPT, "--max", "500", "--baseline", BASE,
+                  "--line-exclude", r"docs/vendor/|src/big\.rs",
+                  "--unbounded", "docs/vendor/")
+    assert r.returncode == 1
+    assert "src/big.rs" in r.stdout + r.stderr
+    assert "light.md" not in r.stdout + r.stderr
+
+
+def test_a_waiver_that_matches_nothing_fails(repo):
+    """Same ratchet property as every other list here: a waiver for material
+    that is gone reads exactly like one that is doing its job."""
+    _repo(repo, lines=100, in_baseline=False)
+    r = run_check(repo, SCRIPT, "--max", "500", "--baseline", BASE,
+                  "--line-exclude", r"src/big\.rs", "--unbounded", "docs/gone/")
+    assert r.returncode == 1
+    assert "waives" in r.stdout + r.stderr

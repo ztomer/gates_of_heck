@@ -15,10 +15,19 @@ limit and no gate would ever say a word. The repo's own baseline header
 asserted the opposite in prose -- "tests are held to the same 500-line cap" --
 so the document read as though the hole did not exist.
 
-THE DISTINCTION THIS CHECK RESTS ON, and it is the one `structural.sh` already
-draws: `GOH_EXCLUDE` covers vendored and generated files, which are not ours to
-split and correctly have no ceiling. `GOH_LINE_EXCLUDE` covers OUR files that
-are too long. Only the latter is checked here.
+THE DISTINCTION THIS CHECK RESTS ON: `GOH_EXCLUDE` covers vendored and
+generated files, which are not ours to split and correctly have no ceiling;
+`GOH_LINE_EXCLUDE` covers OUR files that are too long. Only the latter is
+checked here.
+
+But `GOH_LINE_EXCLUDE` is documented as "additive to the length check ONLY", so
+a repo may legitimately use it for material that must stay emoji- and
+secret-scanned while being exempt from the cap -- divoom-control names captured
+vendor API docs there, which are not ours to split and whose size is not ours to
+ratchet either. That is what `GOH_LINE_UNBOUNDED` is for: a second regex naming
+the exemptions that need no ceiling, with the reason stated beside it in the
+repo's own `.gatesrc`. Policy central, exemptions local. It is checked for
+staleness like every other list -- a pattern matching nothing FAILS.
 
 Enable it by pointing `GOH_LINE_BASELINE` at the repo's ratchet baseline. The
 policy is central; the exemptions and the baseline stay local -- an
@@ -63,6 +72,11 @@ def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--max", type=int, required=True)
     ap.add_argument("--line-exclude", default="")
+    ap.add_argument(
+        "--unbounded",
+        default="",
+        help="exemptions that legitimately need no ceiling (captured/vendored data)",
+    )
     ap.add_argument("--baseline", required=True)
     args = ap.parse_args()
 
@@ -76,10 +90,14 @@ def main() -> int:
         return 0
 
     rx = re.compile(args.line_exclude)
+    unbounded = re.compile(args.unbounded) if args.unbounded else None
     have = baseline_keys(base)
-    offenders, inspected = [], 0
+    offenders, inspected, waived = [], 0, 0
     for rel in listed_files(root, False):
         if not rx.search(rel):
+            continue
+        if unbounded is not None and unbounded.search(rel):
+            waived += 1
             continue
         inspected += 1
         # A file exempted from the cap but under it anyway needs no ceiling:
@@ -101,12 +119,21 @@ def main() -> int:
             )
         info(f"Fix: split it, or add '{offenders[0][1]} {offenders[0][0]}' to {args.baseline}.")
         return 1
-    if inspected == 0:
+    if unbounded is not None and waived == 0:
+        err("[ceiling] GOH_LINE_UNBOUNDED matched 0 tracked files — it waives")
+        info("    nothing. Prune it, or fix the pattern; a waiver for material")
+        info("    that is gone reads exactly like one that is doing its job.")
+        return 1
+    if inspected == 0 and waived == 0:
         err("[ceiling] GOH_LINE_EXCLUDE matched 0 tracked files — the exemption")
         info("    list names paths that no longer exist. Prune it; an exemption for")
         info("    a file that is gone is indistinguishable from one that is working.")
         return 1
-    ok(f"[ceiling] OK — {inspected} exempt file(s), each under the cap or carrying a ceiling")
+    tail = f", {waived} waived as unbounded by nature" if waived else ""
+    ok(
+        f"[ceiling] OK — {inspected} exempt file(s), each under the cap or "
+        f"carrying a ceiling{tail}"
+    )
     return 0
 
 

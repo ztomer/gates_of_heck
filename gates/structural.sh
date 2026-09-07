@@ -101,7 +101,8 @@ if [ -n "${GOH_MAX_LINES:-}" ] && [ -n "${GOH_LINE_BASELINE:-}" ]; then
     goh_step "line-cap exemptions carry a ceiling" \
         python3 "$CHECKS/check_exclusion_has_ceiling.py" --max "$GOH_MAX_LINES" \
         --baseline "$GOH_LINE_BASELINE" \
-        ${GOH_LINE_EXCLUDE:+--line-exclude "$GOH_LINE_EXCLUDE"}
+        ${GOH_LINE_EXCLUDE:+--line-exclude "$GOH_LINE_EXCLUDE"} \
+        ${GOH_LINE_UNBOUNDED:+--unbounded "$GOH_LINE_UNBOUNDED"}
 elif [ -n "${GOH_LINE_EXCLUDE:-}" ]; then
     warn "GOH_LINE_EXCLUDE is set but GOH_LINE_BASELINE is not — an exempted file"
     warn "  is bounded by nothing. Point GOH_LINE_BASELINE at the ratchet baseline."

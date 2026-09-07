@@ -12,7 +12,11 @@ Single schema. CLI flags beat env/.gatesrc where both exist. Unset means
 | `GOH_EXCLUDE` | unset | Regex on repo-relative paths, exempt from BOTH emoji scan and length cap (vendored/generated trees). |
 | `GOH_LINE_EXCLUDE` | unset | ADDITIVE to the length check only. Effective length exemption = `GOH_EXCLUDE` ∪ `GOH_LINE_EXCLUDE`. Paths named only here are still emoji-scanned. |
 | `GOH_LINE_BASELINE` | unset (check skipped + warn when `GOH_LINE_EXCLUDE` is set) | Path to the repo's shrink-only ratchet baseline. Enables the check that every `GOH_LINE_EXCLUDE` entry over the cap carries a ceiling there — an exemption from the cap is not an exemption from every bound. |
+| `GOH_LINE_UNBOUNDED` | unset | Regex naming the `GOH_LINE_EXCLUDE` entries that legitimately need no ceiling — captured or vendored material that must stay emoji- and secret-scanned but is not ours to split. State the reason beside it in `.gatesrc`. A pattern matching no tracked file FAILS. |
 | `GOH_ALLOW` | unset | Extra permitted characters (regex chars, spaces stripped). Keep empty unless the repo genuinely needs it. |
+| `GOH_SKILLS_CORPUS` | unset (check skipped) | Set to `1` in a repo that IS an agent skills corpus (`~/.claude/skills`, `~/.agents/skills`) to run `check_skills_corpus.py`. Opt-in rather than auto-detected, so a repo that merely SHIPS example skills is unaffected. |
+| `GOH_SKILLS_ROOT` | the repo root | Corpus root, when the skills tree is a subdirectory rather than the repo itself. |
+| `GOH_SKILLS_MAX_WORDS` | `5000` | Word ceiling on each `SKILL.md` — the file that loads on invoke. Oversized skills are ratcheted in `skills_size_baseline.json` beside the corpus: shrink-only, and a stale entry FAILS. |
 
 ## Disk watch (standalone: `~/Projects/scripts/bin/disk_hygiene.sh`)
 
