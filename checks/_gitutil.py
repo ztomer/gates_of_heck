@@ -71,3 +71,19 @@ def content_bytes(root: str, rel: str, staged: bool):
             return fh.read()
     except OSError:
         return None
+
+
+def line_count(blob) -> int:
+    """Lines in a blob, by the ONE definition the gates share.
+
+    A trailing newline TERMINATES the last line, it does not begin another, so
+    "a\nb\n" is 2 lines and "a\nb" is also 2. Empty is 0.
+
+    This lives here because it was written twice: `check_file_length` had it
+    right and `check_exclusion_has_ceiling` used a plain `count + 1`, which
+    reads every newline-terminated file as one line longer. At the boundary the
+    two gates would then disagree about the same file -- one calling a 500-line
+    file compliant while the other demanded a ceiling for it -- and a
+    disagreement between gates is read as a bug in the file, not in the gates.
+    """
+    return blob.count(b"\n") + (0 if blob.endswith(b"\n") or not blob else 1)

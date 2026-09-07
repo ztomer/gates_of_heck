@@ -90,6 +90,23 @@ else
     warn "file-length cap not set — add GOH_MAX_LINES to .gatesrc to enable it"
 fi
 
+# An exemption from the CAP is not an exemption from having any bound at all.
+# GOH_LINE_EXCLUDE and the shrink-only ratchet are separate mechanisms with
+# separate lists, and nothing compared them: monitor had a 619-line test file
+# named in LINE_EXCLUDE and absent from its baseline, so it was bounded by
+# nothing and no gate said a word. Only runs when the repo points
+# GOH_LINE_BASELINE at its ratchet baseline; a repo without one is told the
+# check is off rather than passed over in silence.
+if [ -n "${GOH_MAX_LINES:-}" ] && [ -n "${GOH_LINE_BASELINE:-}" ]; then
+    goh_step "line-cap exemptions carry a ceiling" \
+        python3 "$CHECKS/check_exclusion_has_ceiling.py" --max "$GOH_MAX_LINES" \
+        --baseline "$GOH_LINE_BASELINE" \
+        ${GOH_LINE_EXCLUDE:+--line-exclude "$GOH_LINE_EXCLUDE"}
+elif [ -n "${GOH_LINE_EXCLUDE:-}" ]; then
+    warn "GOH_LINE_EXCLUDE is set but GOH_LINE_BASELINE is not — an exempted file"
+    warn "  is bounded by nothing. Point GOH_LINE_BASELINE at the ratchet baseline."
+fi
+
 # Bash is the most-edited language under these gates. bash -n always runs;
 # the lint stage degrades to a named warning when shellcheck is not
 # installed (swiftlint precedent), never a silent skip. Same GOH_EXCLUDE

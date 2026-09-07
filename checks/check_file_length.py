@@ -22,7 +22,7 @@ import os
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from _gitutil import content_bytes, listed_files, repo_root  # noqa: E402
+from _gitutil import content_bytes, line_count, listed_files, repo_root  # noqa: E402
 
 # Files the cap is about. Data, docs and lockfiles are legitimately long.
 SOURCE_SUFFIXES = (
@@ -52,7 +52,7 @@ def main() -> int:
         if blob is None:
             continue
         checked += 1
-        n = blob.count(b"\n") + (0 if blob.endswith(b"\n") or not blob else 1)
+        n = line_count(blob)
         if n > args.max:
             over.append((path, n))
 

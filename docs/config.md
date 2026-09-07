@@ -11,6 +11,7 @@ Single schema. CLI flags beat env/.gatesrc where both exist. Unset means
 | `GOH_MAX_LINES` | unset (check skipped + warn) | File-length cap. Set `500` in every repo. |
 | `GOH_EXCLUDE` | unset | Regex on repo-relative paths, exempt from BOTH emoji scan and length cap (vendored/generated trees). |
 | `GOH_LINE_EXCLUDE` | unset | ADDITIVE to the length check only. Effective length exemption = `GOH_EXCLUDE` ∪ `GOH_LINE_EXCLUDE`. Paths named only here are still emoji-scanned. |
+| `GOH_LINE_BASELINE` | unset (check skipped + warn when `GOH_LINE_EXCLUDE` is set) | Path to the repo's shrink-only ratchet baseline. Enables the check that every `GOH_LINE_EXCLUDE` entry over the cap carries a ceiling there — an exemption from the cap is not an exemption from every bound. |
 | `GOH_ALLOW` | unset | Extra permitted characters (regex chars, spaces stripped). Keep empty unless the repo genuinely needs it. |
 
 ## Disk watch (standalone: `~/Projects/scripts/bin/disk_hygiene.sh`)
