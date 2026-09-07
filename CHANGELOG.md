@@ -1,6 +1,59 @@
 # CHANGELOG
 
-## v0.10.0 — the two ways a clippy gate lies _(2026-09-07)_
+## v0.10.0 — gates that reported clean about things they never looked at _(2026-09-07)_
+
+Nineteen commits, one theme. Every gate below was GREEN over a subject it had
+not read, and in each case success and vacuity printed the same word.
+
+### The empty-scope campaign
+
+**A gate that inspected nothing has not passed, it has abstained.**
+`checks/check_empty_scope.py` runs every gate against a SKELETON TREE — the real
+gate directory, the whole directory layout, no files — and fails any that reports
+compliance over an empty population. Grepping for the guard was tried first and
+was wrong in both directions: of 22 gates it accused three that were fine and
+missed all three that were really blind, because the absence of a guard is not
+visible in source. The scan is right, the comparison is right, and the
+collection it iterates is simply empty.
+
+Two harness details decide whether the sweep means anything: the gate directory
+is COPIED so its baselines and allowlists come with it, and the copy is NOT
+tracked — tracked, every whole-repo scanner finds the copied gates, does real
+work on them and passes honestly, which reports as blindness.
+
+Related fixes from the same sweep, each its own commit:
+
+- **`_gitutil`: a failing git was reporting an empty repo, and every gate
+  believed it.** One helper ran git without checking its exit code, so a corrupt
+  index returned `[]` and every consumer printed "OK — 0 tracked files clean".
+  Three "blind gates" were ONE defect.
+- **`check_baseline_ratchet`: every entry vanishing is not every ceiling met.** A
+  shrink-only ratchet has no ceiling left to exceed once its population reaches
+  zero, so a total collapse read as the best possible result — one printed "24
+  entries within ceilings" while NAMING all 24 as vanished, and exited 0. A
+  populated baseline with an empty measurement now FAILS, and the success line
+  reports what was MEASURED rather than what the baseline remembers. An empty
+  baseline stays exempt, or the ratchet is unadoptable by a project starting
+  from zero.
+- **`check_tests_registered`: "all 0 test file(s) are registered" is not a pass.**
+- **The self-proofs now RUN, because nothing ever did**, and a calibration
+  registry records which shared gates have been PROVEN able to fail. Blindness
+  and unprovenness are different defects: three gates in the best-scoring repo
+  were 8/8 proven and still blind, because a probe shows a gate can fail on a
+  VIOLATION and says nothing about an ABSENT subject.
+- **`probes`: a `main(argv)` dispatch is a self-proof, and it was being missed.**
+
+### Swift coverage counted the wrong sources
+
+`fix(swift-cov)` twice: it reads `llvm-cov export` 3.x, and it stopped counting
+TEST sources and GENERATED sources toward the coverage number. A floor computed
+over the tests that are supposed to satisfy it measures nothing about the code.
+
+### The disk watch left the repo, not just the gate
+
+It had been moved out of CI while still living here; now it lives where it runs.
+
+### The two ways a clippy gate lies
 
 From a lint-adoption campaign across four Rust repos (monitor, routines,
 ztools, divoom-control), all four taken from "no policy at all" to zero at
@@ -48,6 +101,69 @@ Measured on cargo 1.98.1 with both `allow` and `deny`; the advice had never been
 run. It now says to remove the dependency, explains why `[lints.cargo]` is a
 trap, and points at `cargo-machete`, whose ignore list lives under a metadata
 key cargo does read.
+
+### An exemption from the CAP is not an exemption from every bound
+
+**`checks/check_exclusion_has_ceiling.py`** — `GOH_LINE_EXCLUDE` and the
+shrink-only ratchet are separate mechanisms with separate lists, and nothing
+compared them. Found in `monitor`: a 619-line test file named in LINE_EXCLUDE
+(so the cap did not apply) and absent from `loc_baseline.txt` (so no ceiling
+applied either). Bounded by nothing — and the repo's baseline header asserted the
+opposite in prose, which is why nobody looked. **A document that describes a
+property nothing enforces is worse than silence, because it answers the question
+that would otherwise get asked.**
+
+Enabled per repo with `GOH_LINE_BASELINE`; a repo that sets LINE_EXCLUDE without
+it is WARNED rather than passed silently. `GOH_LINE_UNBOUNDED` names the
+exemptions that legitimately need no ceiling — captured vendor material that must
+stay emoji- and secret-scanned but is not ours to split — because the first
+version fired on a repo using the key correctly, and a warning on every commit
+that the reader is meant to ignore is how a gate stops being read. Both lists are
+checked for staleness: a waiver matching no tracked file FAILS.
+
+Calibrated against the real hole: with the file reconstructed and exempted, the
+cap says "OK — 302 files within 500 lines", the ratchet says "OK — 7 entries
+within ceilings", and only this check exits 1.
+
+Also extracts **`_gitutil.line_count`**. `check_file_length` had the convention
+right (a trailing newline TERMINATES the last line) and the new check was written
+with a plain `count + 1`, so at exactly 500 lines the two gates would have
+disagreed about the same file — and a disagreement between gates reads as a
+defect in the file.
+
+### `cargo machete` — the unused-dependency gate that actually runs
+
+`[lints.cargo] unused_dependencies = "deny"` reads like a gate and enforces
+nothing: the namespace needs `-Zcargo-lints` on nightly, so on stable cargo
+prints an "unused manifest key" line and exits 0. It had never been enforced on
+any toolchain in the repo that declared it. `cargo-machete` does the job on
+stable and exits 1 on findings, so `gates/rust_gate.sh` treats it as a hard
+failure, with a NAMED skip when the tool is absent.
+
+Calibrated on `routines`: clean, then an unused `heck` added and the step goes
+red naming it, then clean again. Across the estate it found four real unused
+dependencies (monitor, app_updates). Its blind spot is ident-based scanning, so
+exemptions are local, in the crate's own `[package.metadata.cargo-machete]`,
+with the reason.
+
+### `check_skills_corpus.py` — and then a caller for it
+
+A skills corpus is authored prose that nothing compiles, so its defects are
+silent. Six checks: frontmatter, name/directory agreement, `[[wikilink]]`
+resolution, reference-link resolution, a word ceiling, and duplicate
+lesson-shaped titles. Each found a real defect on its first run.
+
+It then had **no caller** — no repo set `GOH_SKILLS_CORPUS`, so the gate written
+to catch silent defects was itself running nowhere, which is the class it exists
+for. Wired into this repo's own `.gatesrc`, because `~/.claude/skills` is a
+global asset with no repo of its own.
+
+**An external corpus that is ABSENT is a named skip, not a hard failure.** The
+first wiring hard-failed wherever `HOME` is not the developer's — which is exactly
+what this repo's own self-host test does, committing a copy with `HOME` set to a
+temp dir to prove `.gatesrc` stays hermetic. The test was right. Calibrated all
+three branches: present and broken exits 1, present and clean exits 0, absent
+warns and exits 0.
 
 ## v0.9.0 — eval findings 1-10 _(2026-09-04)_
 
