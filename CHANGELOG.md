@@ -1,5 +1,48 @@
 # CHANGELOG
 
+## Unreleased
+
+### The Swift coverage gate measured the wrong tree, with the wrong binary
+
+Two defects in `gates/coverage_swift.py`, found while trying to route
+`swift_gate.sh` through `coverage_gate.sh` so per-target floors would work.
+The reroute is NOT done, because measuring the target first showed it would
+have made every repo's Swift floor easier to pass.
+
+**It could not measure an SPM package at all.** An `.xctest` bundle built
+with debug symbols -- which is how `swift test` builds by default -- holds a
+`.dSYM` DIRECTORY beside the executable in `Contents/MacOS`. The binary
+selection took the first glob hit, handed llvm-cov the `.dSYM`, and llvm-cov
+died with "Is a directory". The xcodebuild path had the same defect through
+`pick_binary`. Both now select regular executable files only.
+
+The existing selection tests missed it because their fixtures put the
+executable in `Contents/MacOS` and nothing else. A harness that builds its
+own inputs only ever tests the shapes it thought to build.
+
+**And the failure named the wrong thing.** llvm-cov exiting non-zero was
+reported as "could not parse llvm-cov JSON summary", with llvm-cov's own
+stderr discarded -- so the one line that said `Is a directory` never reached
+anyone. It now reports the exit code, the binary, and what llvm-cov said.
+
+**Tests/ counted toward the floor.** `coverage_swift.py` applied no scope
+filter, while `checks/check_swift_coverage.py` excludes test sources,
+generated runners and DerivedSources. On the same tree (antiknob) the two
+read 10.54% and 4.78%. A test file is ~100% covered by definition -- it is
+the thing doing the running -- so a floor set on the first number can be met
+by writing tests that assert nothing, which is the exact hole the checker
+was fixed for on 2026-09-07.
+
+One copy of a rule and one ABSENCE is worse than two copies: the second path
+looked like it agreed and did not. The definition now lives in
+`lib/swift_coverage_scope.py` and both import it, with a test that fails if
+either re-grows a local copy -- and a behavioural test that the filter is
+actually applied, because an earlier version of that guard asserted only
+that the import was present and stayed green when the filter was deleted.
+
+`gates/coverage_swift.py` passed the 500-line cap on the way; the
+`cov:ignore` marker machinery moved to `gates/coverage_markers.py`.
+
 ## v0.10.0 — gates that reported clean about things they never looked at _(2026-09-07)_
 
 Nineteen commits, one theme. Every gate below was GREEN over a subject it had

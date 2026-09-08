@@ -36,22 +36,14 @@ DEFAULT_DD = ".build/xcode-dd"
 # ---- payload walking --------------------------------------------------------
 
 
-# Sources llvm-cov reports that are not the code under test.
-#
-# Generated: SwiftPM synthesises a test runner under .build.
-#
-# Test sources: a test file is ~100% covered by definition -- it is the thing
-# doing the running -- so counting it means every test you add raises coverage
-# twice, once for the code it exercises and once for itself. Measured on a real
-# package (antiknob, 2026-09-07): 6.7% counting Tests/, 3.4% without. A floor
-# set on the first number can be met by writing tests that assert nothing.
-_EXCLUDED_MARKERS = (
-    "/.build/",
-    ".derived/",
-    "/DerivedSources/",
-    "/Tests/",
-    "/tests/",
-)
+# Sources llvm-cov reports that are not the code under test. The definition
+# and its reasoning live in lib/swift_coverage_scope.py, shared with
+# gates/coverage_swift.py -- which measured the same packages with NO
+# exclusion at all until 2026-09-07 and so reported more than double the
+# coverage on the same tree.
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                "..", "lib"))
+from swift_coverage_scope import EXCLUDED_MARKERS as _EXCLUDED_MARKERS  # noqa: E402
 
 
 def _spm_file_lines(f: dict):

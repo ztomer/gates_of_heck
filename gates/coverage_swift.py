@@ -38,74 +38,6 @@ import shutil
 import subprocess
 import sys
 
-SINGLE = re.compile(r"//\s*cov:ignore\b(?!-)")
-START = re.compile(r"//\s*cov:ignore-start\b")
-END = re.compile(r"//\s*cov:ignore-end\b")
-
-TEST_DIR = re.compile(r"(^|/)(Tests|.*Tests)/")
-
-def parse_markers(lines):
-    """(excluded {1-indexed line}, errors [str]) from one source file."""
-    excluded = set()
-    errors = []
-    open_at = None
-    in_block = False
-    for i, line in enumerate(lines, start=1):
-        if START.search(line):
-            reason = re.search(r"cov:ignore-start\s*:\s*(.+?)\s*$", line)
-            if not reason or not reason.group(1).strip():
-                errors.append(f"{i}: cov:ignore-start without a reason")
-            open_at = i
-            in_block = True
-            excluded.add(i)
-        elif END.search(line):
-            excluded.add(i)
-            in_block = False
-            open_at = None
-        elif SINGLE.search(line):
-            reason = re.search(r"cov:ignore\s*:\s*(.+?)\s*$", line)
-            if not reason or not reason.group(1).strip():
-                errors.append(f"{i}: cov:ignore without a reason")
-            else:
-                excluded.add(i)
-        elif in_block:
-            excluded.add(i)
-    if open_at is not None:
-        errors.append(f"{open_at}: unclosed cov:ignore-start block")
-    return excluded, errors
-
-def find_exclusions(proj, ignore_re, include_re=""):
-    """({abspath: excluded lines}, [errors]) over non-test Swift sources."""
-    out = {}
-    errors = []
-    for path in sorted(glob.glob(os.path.join(proj, "**", "*.swift"),
-                                 recursive=True)):
-        rel = os.path.relpath(path, proj)
-        if TEST_DIR.search("/" + rel):
-            continue
-        if include_re and not re.search(include_re, path):
-            continue
-        if ignore_re and re.search(ignore_re, path):
-            continue
-        try:
-            with open(path, encoding="utf-8") as fh:
-                lines = fh.read().splitlines()
-        except OSError:
-            continue
-        excluded, errs = parse_markers(lines)
-        for e in errs:
-            errors.append(f"{rel}:{e}")
-        if excluded:
-            out[path] = excluded
-    return out, errors
-
-def adjust_coverage(raw_total, raw_covered, counts, excluded):
-    """(pct, forgiven): drop only UNCOVERED marker lines from the total."""
-    forgiven = sum(1 for ln in excluded if counts.get(ln) == 0)
-    adj_total = raw_total - forgiven
-    pct = (100.0 * raw_covered / adj_total) if adj_total else 0.0
-    return pct, forgiven
-
 def llvm_cov_line_counts(binary, profdata, path):
     """line -> covered(1)/uncovered(0) via llvm-cov show (gated_coverage port)."""
     res = subprocess.run(
@@ -178,21 +110,52 @@ def load_floors_config(path):
     return {"targets": {k: float(v) for k, v in raw.items() if isinstance(v, (int, float))},
             "file_floor": None, "tolerance": 0.5, "slack": 2.0, "exempt": {}}
 
-def check_marker_ceiling(forgiven, ceiling_path):
-    """Shrink-only ceiling (ZeroThunder). forgiven > max => fail."""
-    if not ceiling_path or not os.path.exists(ceiling_path):
-        return 0
-    try:
-        max_forgiven = int(json.load(open(ceiling_path, encoding="utf-8"))["max_forgiven_lines"])
-    except Exception as exc:
-        print(f"✗ [coverage] cannot read ceiling {ceiling_path}: {exc}", file=sys.stderr)
-        sys.exit(2)
-    if forgiven > max_forgiven:
-        print(f"✗ [coverage] FORGIVENESS GREW: {forgiven} > ceiling {max_forgiven}.", file=sys.stderr)
-        sys.exit(1)
-    if forgiven < max_forgiven:
-        print(f"→ [coverage] forgiveness fell to {forgiven} (ceiling {max_forgiven}) — lower it.")
-    return 0
+_HERE = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, os.path.join(_HERE, "..", "lib"))
+sys.path.insert(0, _HERE)
+from swift_coverage_scope import is_code_under_test  # noqa: E402
+from coverage_markers import (  # noqa: E402
+    TEST_DIR, adjust_coverage, check_marker_ceiling, find_exclusions, parse_markers,
+)
+
+def bundle_executables(macos_dir):
+    """The runnable binaries inside an .xctest bundle's Contents/MacOS.
+
+    A bundle built with debug symbols -- which is how `swift test` builds by
+    default -- holds a `.dSYM` DIRECTORY beside the executable. Both matched
+    the plain `*` glob this used to take the first entry of, so on any such
+    package llvm-cov was handed the .dSYM and failed with "Is a directory".
+    Coverage could not be measured at all, and the caller reported it as a
+    JSON parse error, which named the wrong thing entirely.
+
+    The existing selection tests did not catch it because their fixtures put
+    the executable in Contents/MacOS and nothing else: a harness that builds
+    its own inputs only ever tests the shapes it thought to build.
+
+    A directory is never the executable, and neither is a regular file
+    without the execute bit. Sorted so selection is deterministic rather
+    than dependent on the order the filesystem hands back.
+    """
+    return sorted(
+        c for c in glob.glob(os.path.join(macos_dir, "*"))
+        if os.path.isfile(c) and os.access(c, os.X_OK)
+    )
+
+def measured_files(files):
+    """The llvm-cov file records that belong in the denominator.
+
+    A named function rather than an inline comprehension so a test can call
+    it. This filter was absent entirely, so Tests/ -- ~100% covered by
+    definition, because it is the thing doing the running -- counted toward
+    the floor, and so did SwiftPM's synthesised runner under .build. On
+    antiknob that read 10.54% where the same tree measured 4.78% of its
+    actual sources, and a floor set on the first number can be met by
+    writing tests that assert nothing.
+
+    The scope rule is shared with checks/check_swift_coverage.py so the two
+    measurement paths cannot drift apart again.
+    """
+    return [f for f in files if is_code_under_test(f.get("filename", ""))]
 
 def precondition(name, why):
     if shutil.which(name) is None:
@@ -214,8 +177,7 @@ def run_spm(ignore_re):
     xctest = None
     for p in glob.glob(os.path.join(bin_path, "**", "*.xctest"),
                        recursive=True):
-        macos = os.path.join(p, "Contents", "MacOS")
-        inner = glob.glob(os.path.join(macos, "*"))
+        inner = bundle_executables(os.path.join(p, "Contents", "MacOS"))
         if inner:
             xctest = inner[0]
             break
@@ -328,9 +290,10 @@ def run_xcodebuild(args, floor, ignore_re, include_re="", floors_json=None, mark
         sys.exit(2)
     binaries = []
     for cfg in ("Debug", "Release"):
-        binaries += glob.glob(os.path.join(
-            dd, "Build", "Products", cfg, "*.xctest",
-            "Contents", "MacOS", "*"))
+        for bundle in glob.glob(os.path.join(
+                dd, "Build", "Products", cfg, "*.xctest")):
+            binaries += bundle_executables(
+                os.path.join(bundle, "Contents", "MacOS"))
     if not binaries:
         print(f"✗ [coverage] no .xctest binary under {dd}/Build/Products",
               file=sys.stderr)
@@ -357,11 +320,17 @@ def process(binary, profdata, proj, floor, ignore_re, include_re="", floors_json
         cmd.append(f"-ignore-filename-regex={ignore_re}")
     res = subprocess.run(cmd, capture_output=True, text=True)
     if res.returncode != 0:
-        print("✗ [coverage] could not parse llvm-cov JSON summary",
-              file=sys.stderr)
+        # Say what actually happened. This used to claim the JSON could not
+        # be parsed, when llvm-cov had not produced any -- so a wrong binary
+        # or a stale profdata was reported as a parser problem, and the one
+        # line that named the real cause was thrown away.
+        print(f"✗ [coverage] llvm-cov failed (exit {res.returncode}) reading "
+              f"{binary}", file=sys.stderr)
+        for line in (res.stderr or res.stdout).strip().splitlines()[:5]:
+            print(f"    {line}", file=sys.stderr)
         sys.exit(1)
     data = json.loads(res.stdout)["data"][0]
-    files = data.get("files", [])
+    files = measured_files(data.get("files", []))
     if include_re:
         try:
             pat = re.compile(include_re)
