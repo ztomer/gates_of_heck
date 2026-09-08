@@ -116,3 +116,53 @@ def test_a_floors_file_that_enforces_nothing_is_refused(tmp_path):
     with pytest.raises(SystemExit) as exc:
         m.load_floors(str(missing))
     assert exc.value.code == 2
+
+
+# ---- path-prefix floors ------------------------------------------------------
+#
+# A floors key is a path prefix relative to Sources/, not only a target name.
+# The alternative -- splitting a package into logic and view TARGETS purely so
+# a floor can be aimed -- forces `public` onto every type crossing the new
+# module boundary. A directory is enough to aim a floor at.
+
+NESTED = [
+    ("/p/Sources/App/Core/Parse.swift", 90, 100),
+    ("/p/Sources/App/Core/Model.swift", 60, 100),
+    ("/p/Sources/App/Views/Big.swift", 5, 800),
+    ("/p/Sources/App/CoreUI/Trap.swift", 0, 500),
+]
+
+
+def test_a_deeper_key_floors_part_of_one_target():
+    m = _mod()
+    # The whole target is 15.5%; its Core directory is 75%.
+    code, lines = m.check_target_floors(NESTED, {"App/Core": 70.0}, 0.0)
+    assert code == 0, lines
+    code, _ = m.check_target_floors(NESTED, {"App/Core": 80.0}, 0.0)
+    assert code == 1
+
+
+def test_a_single_segment_key_still_means_the_whole_target():
+    """Backwards compatibility: existing floors files must not change meaning."""
+    m = _mod()
+    cov, tot = m.totals_under(NESTED, "App")
+    assert (cov, tot) == (155, 1500)
+
+
+def test_prefix_matching_is_segment_wise():
+    """`App/Core` must not swallow `App/CoreUI`.
+
+    A substring match would fold a 0%-covered sibling directory into the
+    floored one and quietly drag the measurement down -- or, with the
+    coverage the other way round, prop it up.
+    """
+    m = _mod()
+    assert m.totals_under(NESTED, "App/Core") == (150, 200)
+    assert m.totals_under(NESTED, "App/CoreUI") == (0, 500)
+
+
+def test_a_prefix_matching_nothing_is_still_an_error():
+    m = _mod()
+    code, lines = m.check_target_floors(NESTED, {"App/Nope": 70.0}, 0.0)
+    assert code == 2
+    assert any("matched no measured source" in ln for ln in lines)

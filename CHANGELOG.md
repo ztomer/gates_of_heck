@@ -11,6 +11,15 @@ lines -- on a SwiftUI app that is the views, which no unit test executes --
 so the package number can sit above its floor while the target holding all
 the logic rots.
 
+A floors key is a path PREFIX relative to `Sources/`, matched segment-wise,
+not only a target name. A single segment behaves exactly as a target name did,
+so existing floors files are unaffected; a deeper key (`App/Core`) floors part
+of one target. That is what makes it unnecessary to split a package into logic
+and view TARGETS purely so a floor can be aimed -- a split that forces `public`
+onto every type crossing the new module boundary. A directory is enough to aim
+a floor at, and letting the coverage tool dictate module structure is the wrong
+way round.
+
 **A target named in a floors file that matches no measured source is now a
 hard error in every implementation.** Both call sites in
 `gates/coverage_swift.py` scored an unmatched target 100% and passed it, so

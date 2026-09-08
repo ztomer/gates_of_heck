@@ -167,6 +167,11 @@ def load_xcode(dd_root: str):
 # ---- main -------------------------------------------------------------------
 
 
+def sources_relative(path: str) -> str:
+    """A source file's path relative to `Sources/`, or the path itself."""
+    return path.split("/Sources/", 1)[1] if "/Sources/" in path else path
+
+
 def spm_target_of(path: str) -> str:
     """The SPM target a source file belongs to.
 
@@ -175,7 +180,7 @@ def spm_target_of(path: str) -> str:
     gates/coverage_swift.py already uses, so one floors file describes a
     package to either measurement path.
     """
-    rel = path.split("/Sources/", 1)[1] if "/Sources/" in path else path
+    rel = sources_relative(path)
     return rel.split("/", 1)[0] if "/" in rel else rel
 
 
@@ -187,6 +192,33 @@ def per_target(records):
         bucket[0] += cov
         bucket[1] += tot
     return {k: (v[0], v[1]) for k, v in out.items()}
+
+
+def totals_under(records, prefix: str):
+    """(covered, total) for every record under a `Sources/`-relative prefix.
+
+    A floors key is a PATH PREFIX, not only a target name. A single segment
+    ("AntiknobUI") behaves exactly as a target name did, so existing floors
+    files are unaffected; a deeper key ("AntiknobUI/Core") puts a floor on
+    part of a target.
+
+    That matters because the alternative -- splitting a package into logic
+    and view TARGETS purely so a floor can be aimed -- forces `public` onto
+    every type crossing the new module boundary. Letting the coverage tool
+    dictate a package's module structure is the wrong way round; a directory
+    is enough to aim a floor at.
+
+    Prefix matching is segment-wise, so "App/Core" never matches
+    "App/CoreUI".
+    """
+    prefix = prefix.strip("/")
+    covered = total = 0
+    for name, cov, tot in records:
+        rel = sources_relative(name)
+        if rel == prefix or rel.startswith(prefix + "/"):
+            covered += cov
+            total += tot
+    return covered, total
 
 
 def load_floors(path: str):
@@ -235,13 +267,13 @@ def check_target_floors(records, floors, tolerance):
     lines, worst = [], 0
     for target in sorted(floors):
         floor = floors[target]
-        if target not in measured or measured[target][1] == 0:
-            lines.append(f"✗ [swift_cov] floors name target '{target}', which "
+        cov, tot = totals_under(records, target)
+        if tot == 0:
+            lines.append(f"✗ [swift_cov] floors name '{target}', which "
                          f"matched no measured source. Known targets: "
                          f"{', '.join(sorted(measured)) or '(none)'}")
             worst = max(worst, 2)
             continue
-        cov, tot = measured[target]
         pct = 100.0 * cov / tot
         if pct + 1e-9 < floor - tolerance:
             lines.append(f"✗ [swift_cov] target {target}: {pct:.2f}% "
