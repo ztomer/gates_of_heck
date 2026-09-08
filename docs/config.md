@@ -56,6 +56,7 @@ fix is `reclaim_build_space.sh` next to it.
 | `GOH_SWIFT_SCHEME` | unset (required in xcode mode) | Xcode scheme for `xcodebuild test`. |
 | `GOH_SWIFT_PROJECT` | auto (single `*.xcodeproj`) | Pick the project. Multiple candidates without this key is a named refusal (never locale-picks). |
 | `GOH_SWIFT_COV_MIN` | unset (no coverage step) | Coverage floor %. |
+| `GOH_SWIFT_COV_FLOORS` | unset | Path to a per-target floors JSON (same schema as `coverage_gate.sh --floors-json`), checked BEFORE the package floor. Keys are path prefixes relative to `Sources/`, matched segment-wise, so `App/Core` floors a directory without splitting the package into targets. A key matching no measured source is exit 2, never a silent pass. Pointing at a missing file is a named refusal. |
 | `GOH_SWIFT_COLD` | `1` | `1` wipes ALL of `.build` before build+test (cold on purpose). `0` allows incremental. |
 | `GOH_SWIFT_LINT_BASELINE` | unset (bare `swiftlint --strict`) | Path to baseline JSON. When set, lint becomes a shrink-only ratchet: baselined violations tolerated, new ones fail named, vanished ones print a re-record nudge. |
 
