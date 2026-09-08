@@ -141,6 +141,18 @@ def bundle_executables(macos_dir):
         if os.path.isfile(c) and os.access(c, os.X_OK)
     )
 
+def unmatched_target(tgt, per):
+    """True when a floors entry names a target nothing measured.
+
+    Scoring such a target 100% -- which both call sites used to do via
+    `100.0 * cov / tot if tot else 100.0` -- turns a renamed or misspelled
+    target into a floor that CANNOT fail. That is the "inspected nothing,
+    reported clean" shape, and it is worse here than elsewhere because the
+    floors file is the thing a reader trusts to say what is enforced.
+    """
+    tot, _cov = per.get(tgt, [0, 0])
+    return tot == 0
+
 def measured_files(files):
     """The llvm-cov file records that belong in the denominator.
 
@@ -251,8 +263,13 @@ def run_xcodebuild(args, floor, ignore_re, include_re="", floors_json=None, mark
                 per[tgt][0] += t
                 per[tgt][1] += c
             for tgt, fval in cfg["targets"].items():
-                tot, cov = per.get(tgt, [0, 0])
-                cur = 100.0 * cov / tot if tot else 100.0
+                if unmatched_target(tgt, per):
+                    print(f"✗ [coverage] floors name target '{tgt}', which "
+                          f"matched no measured source. Known: "
+                          f"{', '.join(sorted(per)) or '(none)'}", file=sys.stderr)
+                    sys.exit(2)
+                tot, cov = per[tgt]
+                cur = 100.0 * cov / tot
                 if cur + 1e-9 < fval - cfg.get("tolerance", 0.5):
                     print(f"✗ [coverage] target {tgt}: {cur:.2f}% below {fval:g}%", file=sys.stderr)
                     sys.exit(1)
@@ -383,8 +400,13 @@ def process(binary, profdata, proj, floor, ignore_re, include_re="", floors_json
             per_files[tgt].append((rel, f["summary"]["lines"]["count"], f["summary"]["lines"]["covered"]))
         failures = []
         for tgt, fval in cfg["targets"].items():
-            tot, cov = per.get(tgt, [0, 0])
-            cur = 100.0 * cov / tot if tot else 100.0
+            if unmatched_target(tgt, per):
+                print(f"✗ [coverage] floors name target '{tgt}', which matched "
+                      f"no measured source. Known: "
+                      f"{', '.join(sorted(per)) or '(none)'}", file=sys.stderr)
+                sys.exit(2)
+            tot, cov = per[tgt]
+            cur = 100.0 * cov / tot
             tol = cfg.get("tolerance", 0.5)
             if cur + 1e-9 < fval - tol:
                 failures.append(f"{tgt} fell to {cur:.1f}%, below its floor {fval:.1f}%")

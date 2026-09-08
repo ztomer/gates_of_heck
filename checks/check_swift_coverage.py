@@ -167,12 +167,100 @@ def load_xcode(dd_root: str):
 # ---- main -------------------------------------------------------------------
 
 
+def spm_target_of(path: str) -> str:
+    """The SPM target a source file belongs to.
+
+    SPM lays targets out as `Sources/<Target>/...`, so the first segment
+    after `Sources/` is the target name. Matches the convention
+    gates/coverage_swift.py already uses, so one floors file describes a
+    package to either measurement path.
+    """
+    rel = path.split("/Sources/", 1)[1] if "/Sources/" in path else path
+    return rel.split("/", 1)[0] if "/" in rel else rel
+
+
+def per_target(records):
+    """{target: (covered, total)} over the measured records."""
+    out: dict[str, list[int]] = {}
+    for name, cov, tot in records:
+        bucket = out.setdefault(spm_target_of(name), [0, 0])
+        bucket[0] += cov
+        bucket[1] += tot
+    return {k: (v[0], v[1]) for k, v in out.items()}
+
+
+def load_floors(path: str):
+    """Per-target floors, in the schema gates/coverage_gate.sh documents.
+
+    Accepts the wrapper form {"targets": {...}, "tolerance": N} and the flat
+    form {target: floor}. Anything else is a config error rather than an
+    empty floor set: a floors file that parsed to nothing would enforce
+    nothing while looking like it enforced something.
+    """
+    try:
+        with open(path, encoding="utf-8") as fh:
+            raw = json.load(fh)
+    except Exception as exc:
+        print(f"✗ [swift_cov] cannot read floors file {path}: {exc}",
+              file=sys.stderr)
+        raise SystemExit(2)
+    if not isinstance(raw, dict):
+        print(f"✗ [swift_cov] floors file {path} must be a JSON object",
+              file=sys.stderr)
+        raise SystemExit(2)
+    wrapper = any(k in raw for k in ("targets", "tolerance", "file_floor",
+                                     "exempt", "slack"))
+    targets = raw.get("targets", {}) if wrapper else raw
+    floors = {k: float(v) for k, v in targets.items()
+              if isinstance(v, (int, float))}
+    if not floors:
+        print(f"✗ [swift_cov] floors file {path} names no target floors — "
+              "a floors file that enforces nothing is worse than none",
+              file=sys.stderr)
+        raise SystemExit(2)
+    return floors, float(raw.get("tolerance", 0.0)) if wrapper else 0.0
+
+
+def check_target_floors(records, floors, tolerance):
+    """(exit_code, [lines]) for the per-target floors.
+
+    A target named in the floors file that matches NO measured source is a
+    hard error, never a pass. The sibling implementation in
+    gates/coverage_swift.py scores an unmatched target 100% and lets it
+    through, so a renamed or misspelled target there becomes a floor that
+    cannot fail -- the same "inspected nothing, reported clean" shape this
+    repo has a whole campaign about.
+    """
+    measured = per_target(records)
+    lines, worst = [], 0
+    for target in sorted(floors):
+        floor = floors[target]
+        if target not in measured or measured[target][1] == 0:
+            lines.append(f"✗ [swift_cov] floors name target '{target}', which "
+                         f"matched no measured source. Known targets: "
+                         f"{', '.join(sorted(measured)) or '(none)'}")
+            worst = max(worst, 2)
+            continue
+        cov, tot = measured[target]
+        pct = 100.0 * cov / tot
+        if pct + 1e-9 < floor - tolerance:
+            lines.append(f"✗ [swift_cov] target {target}: {pct:.2f}% "
+                         f"({cov}/{tot}) is under its {floor:g}% floor")
+            worst = max(worst, 1)
+        else:
+            lines.append(f"→ [swift_cov] target {target}: {pct:.2f}% "
+                         f">= {floor:g}%")
+    return worst, lines
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--min", type=float, required=True)
     ap.add_argument("--xcode", action="store_true")
     ap.add_argument("--spm-glob", default=DEFAULT_SPM_GLOB)
     ap.add_argument("--dd", default=DEFAULT_DD, help="derived-data root (xcode)")
+    ap.add_argument("--floors-json", default=os.environ.get("GOH_COV_FLOORS_JSON", ""),
+                    help="per-target floors, same schema as coverage_gate.sh")
     args = ap.parse_args()
 
     if args.xcode:
@@ -195,6 +283,20 @@ def main() -> int:
         return 2
 
     pct, per_file = aggregate(records)
+
+    # Per-target floors run BEFORE the package floor. The package number is
+    # dominated by whichever target has the most lines -- on a SwiftUI app
+    # that is the views -- so it can sit comfortably above its floor while
+    # the logic target rots. Reporting the package as OK first would bury
+    # that.
+    if args.floors_json:
+        floors, tolerance = load_floors(args.floors_json)
+        code, lines = check_target_floors(records, floors, tolerance)
+        for line in lines:
+            print(line, file=sys.stderr if line.startswith("✗") else sys.stdout)
+        if code:
+            return code
+
     floor = args.min
     if pct + 1e-9 >= floor:
         print(f"→ [swift_cov] OK — {pct:.1f}% >= {floor:g}% "

@@ -25,6 +25,13 @@
 #   GOH_SWIFT_PROJECT=Foo.xcodeproj
 #   GOH_SWIFT_COV_MIN=95
 #   GOH_SWIFT_COLD=1     # default: 1 — set to 0 to allow incremental builds
+#   GOH_SWIFT_COV_FLOORS=path/to/coverage-floors.json
+#       per-TARGET floors, checked before the package floor. Same schema as
+#       coverage_gate.sh's --floors-json. The package number is dominated by
+#       whichever target has the most lines -- on a SwiftUI app that is the
+#       views -- so it can sit above its floor while the logic target rots.
+#       A target named here that matches no source is a hard error, never a
+#       silent pass.
 #   GOH_SWIFT_LINT_BASELINE=path/to/.swiftlint-baseline.json
 #       when set, the lint stage runs against this SwiftLint baseline as a
 #       SHRINK-ONLY ratchet: listed violations are tolerated, NEW ones fail
@@ -94,8 +101,14 @@ case "$MODE" in
         swift build -Xswiftc -warnings-as-errors
     if [ -n "${GOH_SWIFT_COV_MIN:-}" ]; then
         goh_step "test + coverage" swift test --enable-code-coverage
-        goh_step "coverage >= ${GOH_SWIFT_COV_MIN}%" \
-            python3 "$HERE/../checks/check_swift_coverage.py" --min "$GOH_SWIFT_COV_MIN"
+        _cov_args=(--min "$GOH_SWIFT_COV_MIN")
+        if [ -n "${GOH_SWIFT_COV_FLOORS:-}" ]; then
+            [ -f "$GOH_SWIFT_COV_FLOORS" ] \
+                || die "GOH_SWIFT_COV_FLOORS points at nothing: $GOH_SWIFT_COV_FLOORS"
+            _cov_args+=(--floors-json "$GOH_SWIFT_COV_FLOORS")
+        fi
+        goh_step "coverage >= ${GOH_SWIFT_COV_MIN}%${GOH_SWIFT_COV_FLOORS:+ + per-target floors}" \
+            python3 "$HERE/../checks/check_swift_coverage.py" "${_cov_args[@]}"
     else
         goh_step "test" swift test
         warn "no coverage floor — set GOH_SWIFT_COV_MIN in .gatesrc"
@@ -124,8 +137,14 @@ case "$MODE" in
         xcodebuild test -project "$proj" -scheme "$GOH_SWIFT_SCHEME" \
         -derivedDataPath "$dd" -enableCodeCoverage YES
     if [ -n "${GOH_SWIFT_COV_MIN:-}" ]; then
-        goh_step "coverage >= ${GOH_SWIFT_COV_MIN}%" \
-            python3 "$HERE/../checks/check_swift_coverage.py" --min "$GOH_SWIFT_COV_MIN" --xcode --dd "$dd"
+        _cov_args=(--min "$GOH_SWIFT_COV_MIN" --xcode --dd "$dd")
+        if [ -n "${GOH_SWIFT_COV_FLOORS:-}" ]; then
+            [ -f "$GOH_SWIFT_COV_FLOORS" ] \
+                || die "GOH_SWIFT_COV_FLOORS points at nothing: $GOH_SWIFT_COV_FLOORS"
+            _cov_args+=(--floors-json "$GOH_SWIFT_COV_FLOORS")
+        fi
+        goh_step "coverage >= ${GOH_SWIFT_COV_MIN}%${GOH_SWIFT_COV_FLOORS:+ + per-target floors}" \
+            python3 "$HERE/../checks/check_swift_coverage.py" "${_cov_args[@]}"
     fi
     ;;
   *) die "unknown GOH_SWIFT_MODE: $MODE (want spm or xcode)" ;;

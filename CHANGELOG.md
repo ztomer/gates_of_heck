@@ -2,6 +2,23 @@
 
 ## Unreleased
 
+### Per-target Swift coverage floors, without the reroute
+
+`check_swift_coverage.py` gains `--floors-json` (schema shared with
+`coverage_gate.sh`), wired into `swift_gate.sh` as `GOH_SWIFT_COV_FLOORS`.
+A package's overall percentage is dominated by whichever target has the most
+lines -- on a SwiftUI app that is the views, which no unit test executes --
+so the package number can sit above its floor while the target holding all
+the logic rots.
+
+**A target named in a floors file that matches no measured source is now a
+hard error in every implementation.** Both call sites in
+`gates/coverage_swift.py` scored an unmatched target 100% and passed it, so
+renaming or misspelling a target turned its floor into one that could never
+fail. A floors file is the thing a reader trusts to say what is enforced; an
+entry that enforces nothing has to be loud. A floors file that parses to no
+floors at all is likewise a config error rather than an empty ratchet.
+
 ### The Swift coverage gate measured the wrong tree, with the wrong binary
 
 Two defects in `gates/coverage_swift.py`, found while trying to route
