@@ -10,7 +10,9 @@
     "check_no_conflict_markers.py": "a repo with no tracked files genuinely has no conflict markers, and there is no baseline to contradict: this gate has no population to lose",
     "check_no_emoji.py": "it scans every tracked file and its scan set IS its subject, so it cannot be partially blind; a git failure now RAISES rather than returning an empty list (_gitutil.listed_files, 2026-09-05), which was the real hole",
     "check_no_secrets.py": "same shape as check_no_emoji -- scan set is the subject, and the silent-empty-on-git-failure hole is closed in _gitutil.listed_files",
-    "check_no_allow.py": "0 files is correct for a repo with no Rust, which is most of them; a repo that HAS a tracked Cargo.toml and matches no compiled source now FAILS"
+    "check_no_allow.py": "0 files is correct for a repo with no Rust, which is most of them; a repo that HAS a tracked Cargo.toml and matches no compiled source now FAILS",
+    "check_lints_optin.py": "0 workspaces is correct for a repo with no Cargo workspace, which this one has never had; the gate looks for [workspace.lints] declarations to inherit and there are none. A changed file convention cannot retire it because it scans for workspace tables, not file names",
+    "check_probes_pass.py": "it measures the gate suite itself (which gates carry inline self-proofs), not the repo's contents; the empty-tree skeleton carries the real gate directory, so the population it reports on is present and identical in both runs. Tree-independent by construction"
   },
   "known_blind": {}
 }
