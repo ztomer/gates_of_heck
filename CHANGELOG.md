@@ -1,5 +1,27 @@
 # CHANGELOG
 
+## v0.12.0 — the emoji gate reads escapes; the binary is measured end to end _(2026-09-14)_
+
+Minor: a behaviour every consumer inherits on its next run.
+
+- **Escaped codepoints are emoji too.** A Rust brace escape, a Python
+  eight-digit escape or a JS four-digit escape that names a forbidden
+  codepoint renders as one, and both checkers -- Python and native -- were
+  blind to it (monitor's retired repo-local checker was not; that is where
+  the class came from: two padlocks in a config panel). Both report the
+  escape at the column of its backslash, marked "(written as an escape)",
+  in the same order per line; parity and unit cases pin it. The first run
+  over the fleet found 22 in CadGoose's UI strings (now the Kare set), and
+  test fixtures in four repos that had been writing emoji as escapes to
+  dodge the gate -- they are built from codepoint numbers now, which is
+  neither a glyph nor an escape. Where an escape is legitimately the
+  product (CadGoose's goose icon), `GOH_ALLOW` says so by name.
+- **`crates/goh` is measured at 97.9% (floor 95, the house number).**
+  `crates/goh/tests/cli.rs` drives the binary over fixture repos -- every
+  subcommand, both scopes, every `.gatesrc` knob -- where `cargo llvm-cov`
+  can see it; the Python parity suites had been giving it that exercise
+  from pytest, where it could not.
+
 ## v0.11.1 — the Linux path, exercised _(2026-09-14)_
 
 Patch: fixes to what v0.11.0 shipped, each found by a consumer's CI or by
