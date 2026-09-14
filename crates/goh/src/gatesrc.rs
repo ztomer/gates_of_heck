@@ -62,6 +62,12 @@ pub fn parse_pairs(text: &str) -> BTreeMap<String, String> {
         if line.is_empty() || line.starts_with('#') {
             continue;
         }
+        // `.gatesrc` is sourced by bash, where `export KEY=v` is the idiom
+        // for a key that must reach child processes (three consumer repos
+        // write it). Bash reads it as KEY=v; so must this parser — the
+        // native side silently ignored the whole line and, with it, the
+        // repo's GOH_EXCLUDE (ztools, 2026-09-14).
+        let line = line.strip_prefix("export ").map_or(line, str::trim_start);
         let Some(eq) = line.find('=') else { continue };
         let key = line[..eq].trim().to_owned();
         if key.is_empty() {
@@ -191,6 +197,14 @@ mod tests {
         assert_eq!(pairs["GOH_MAX_LINES"], "500");
         assert_eq!(pairs["GOH_EXCLUDE"], r"vendor/|\.generated\.");
         assert_eq!(pairs["EMPTY"], "");
+    }
+
+    #[test]
+    fn export_prefix_is_the_bash_idiom_not_a_different_key() {
+        let pairs = parse_pairs("export GOH_EXCLUDE='vendor/'\nexport  GOH_ALLOW=x # c\n");
+        assert_eq!(pairs["GOH_EXCLUDE"], "vendor/");
+        assert_eq!(pairs["GOH_ALLOW"], "x");
+        assert!(!pairs.contains_key("export GOH_EXCLUDE"));
     }
 
     #[test]

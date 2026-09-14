@@ -6,7 +6,6 @@ side's marker definition drifts, this goes red.
 """
 from __future__ import annotations
 
-import json
 import subprocess
 from pathlib import Path
 
@@ -18,29 +17,6 @@ CHECKER = ROOT / "checks" / "check_no_conflict_markers.py"
 
 def _git(repo: Path, *args: str) -> None:
     subprocess.run(["git", *args], cwd=repo, capture_output=True, check=True)
-
-
-@pytest.fixture(scope="module")
-def goh() -> Path:
-    # Shared CARGO_TARGET_DIR: resolve the binary from cargo's JSON stream.
-    r = subprocess.run(
-        ["cargo", "build", "--message-format=json",
-         "--manifest-path", str(ROOT / "Cargo.toml")],
-        capture_output=True,
-        text=True,
-    )
-    assert r.returncode == 0, f"cargo build failed:\n{r.stderr}"
-    for line in r.stdout.splitlines():
-        try:
-            event = json.loads(line)
-        except json.JSONDecodeError:
-            continue
-        target = event.get("target", {})
-        if event.get("reason") == "compiler-artifact" and target.get("name") == "goh":
-            path = event.get("executable")
-            if path:
-                return Path(path)
-    raise AssertionError("goh artifact missing from cargo build output")
 
 
 def make_repo(tmp_path: Path, files: dict[str, bytes]) -> Path:

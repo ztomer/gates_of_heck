@@ -4,6 +4,8 @@ Every disallowed glyph in this suite is built with chr(0x...) — never as a
 literal — so the suite cannot trip gates_of_heck's own emoji gate.
 """
 
+import json
+import shutil
 import subprocess
 from pathlib import Path
 
@@ -247,3 +249,41 @@ case "$cmd" in
   *) exit 0 ;;
 esac
 """
+
+
+def _build_goh() -> Path:
+    r = subprocess.run(
+        ["cargo", "build", "--message-format=json", "-p", "goh",
+         "--manifest-path", str(REPO_ROOT / "Cargo.toml")],
+        capture_output=True,
+        text=True,
+    )
+    assert r.returncode == 0, f"cargo build failed:\n{r.stderr}"
+    for line in r.stdout.splitlines():
+        try:
+            event = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        target = event.get("target", {})
+        if event.get("reason") == "compiler-artifact" and target.get("name") == "goh":
+            path = event.get("executable")
+            if path:
+                return Path(path)
+    raise AssertionError("goh artifact missing from cargo build output")
+
+
+@pytest.fixture(scope="session")
+def goh(tmp_path_factory) -> Path:
+    """The native goh binary, as a PRIVATE copy.
+
+    Not the uplifted target/debug/goh: the target dir is shared machine-wide
+    (~/.cargo/config.toml target-dir) and cargo re-links an uplifted binary
+    by remove + hardlink, so any concurrent cargo build — another xdist
+    worker's fixture, another repo's build — opens a window in which the
+    path does not exist. A parity test once died there with
+    FileNotFoundError mid-suite. A copy is an inode nobody else touches.
+    """
+    built = _build_goh()
+    private = tmp_path_factory.mktemp("goh") / "goh"
+    shutil.copy2(built, private)
+    return private
