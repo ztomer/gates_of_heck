@@ -71,7 +71,9 @@ GOH_COMPLETED=""
 # goh_init <gate-name>
 goh_init() {
     GOH_NAME="$1"
-    GOH_LOG="$(mktemp -t goh-"$GOH_NAME")"
+    # Portable form: BSD mktemp accepts `-t name`, GNU mktemp needs XXXXXX --
+    # the BSD form failed every Linux CI run of the structural gate (2026-09-14).
+    GOH_LOG="$(mktemp "${TMPDIR:-/tmp}/goh-$GOH_NAME.XXXXXX")"
     # Accumulate: a second goh_init must not orphan the first log.
     GOH_LOGS="${GOH_LOGS:+$GOH_LOGS }$GOH_LOG"
     GOH_COMPLETED=""
