@@ -158,6 +158,36 @@ class TestSequencing:
         assert not (kit["proj"] / ".git" / "refs" / "tags" / TAG).exists()
         assert not kit["gh_log"].exists() or "create" not in kit["gh_log"].read_text()
 
+    def test_archive_build_sees_tracked_files_only(self, kit):
+        """The tarball a consumer builds from has no gitignored files. A build
+        that needs one passes locally and must fail HERE, before the tag."""
+        proj = kit["proj"]
+        (proj / ".gitignore").write_text("vendor/\n")
+        (proj / "vendor").mkdir()
+        (proj / "vendor" / "dep.txt").write_text("needed at build time\n")
+        commit_all(proj)  # .gitignore tracked; vendor/dep.txt is not
+        r = run_release(kit, "--no-push", "--archive-build", "test -f vendor/dep.txt")
+        assert r.returncode != 0
+        assert "'archive'" in r.stdout + r.stderr
+        assert not (proj / ".git" / "refs" / "tags" / TAG).exists()
+        # Track it and the same build passes; the gate ran in the WORKTREE and
+        # the archive step in a fresh extraction, so both cannot be the same dir.
+        sh(proj, "add", "-f", "vendor/dep.txt")
+        commit_all(proj)
+        r = run_release(kit, "--no-push", "--archive-build",
+                        "test -f vendor/dep.txt && test \"$PWD\" != \"$OLDPWD\"")
+        assert r.returncode == 0, r.stdout + r.stderr
+
+    def test_verify_runs_with_the_version_and_blocks_the_tag(self, kit):
+        proj = kit["proj"]
+        r = run_release(kit, "--no-push", "--verify", "test \"$GOH_RELEASE_VERSION\" = 9.9.9")
+        assert r.returncode != 0
+        assert "'verify'" in r.stdout + r.stderr
+        assert not (proj / ".git" / "refs" / "tags" / TAG).exists()
+        r = run_release(kit, "--no-push", "--verify", f"test \"$GOH_RELEASE_VERSION\" = {VERSION}")
+        assert r.returncode == 0, r.stdout + r.stderr
+        assert sh(proj, "cat-file", "-t", TAG).strip() == "tag"
+
     def test_missing_changelog_stanza_fails_naming_the_step(self, kit):
         (kit["proj"] / "CHANGELOG.md").write_text("## v9.9.9\n\n- other\n")
         commit_all(kit["proj"])

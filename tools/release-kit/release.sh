@@ -9,6 +9,17 @@
 #   1. gate       verify the local gate-of-record is green
 #                 (--gate CMD or GOH_RELEASE_GATE; a release is only cut on a
 #                 green gate of record)
+#   1b. archive   --archive-build CMD: extract `git archive HEAD` into a temp
+#                 dir and run CMD there. That tree is what a tarball consumer
+#                 (a Homebrew formula, a source download) gets -- TRACKED files
+#                 only. A path dependency or data file that is gitignored builds
+#                 green locally and fails here, before it fails on someone
+#                 else's machine (ztools shipped three tags that way).
+#   1c. verify    --verify CMD: run CMD after the gate (install, then check the
+#                 installed binary answers with GOH_RELEASE_VERSION, exercise a
+#                 command added this cycle). A tag is a claim that this exact
+#                 surface was run, not that it compiled; the claim is made here
+#                 or the tag is not cut.
 #   2. changelog  verify CHANGELOG.md has a stanza headed by --version
 #                 (## vX.Y.Z or ## [X.Y.Z]); --no-changelog-check to skip.
 #                 The stanza body becomes the tag message and release notes,
@@ -76,6 +87,8 @@ TAP=""
 TAP_KIND=""          # formula | cask
 TAP_NAME=""
 ARTIFACT=""
+ARCHIVE_BUILD=""
+VERIFY_CMD=""
 
 die_usage() { err "usage: $0 --version X.Y.Z [--gate CMD] [--dry-run] ...  (see header)"; exit 2; }
 
@@ -92,6 +105,8 @@ while [ $# -gt 0 ]; do
     --formula)            TAP_KIND="formula"; TAP_NAME="${2:?}"; shift 2 ;;
     --cask)               TAP_KIND="cask"; TAP_NAME="${2:?}"; shift 2 ;;
     --artifact)           ARTIFACT="${2:?}"; shift 2 ;;
+    --archive-build)      ARCHIVE_BUILD="${2:?}"; shift 2 ;;
+    --verify)             VERIFY_CMD="${2:?}"; shift 2 ;;
     -h|--help)            sed -n '2,45p' "$0"; exit 0 ;;
     *) die_usage ;;
   esac
@@ -189,6 +204,35 @@ if [ "$DRY_RUN" = 1 ]; then
 else
   bash -c "$GATE_CMD" || fail "gate command exited nonzero (${GATE_CMD})"
   ok "gate green"
+fi
+
+# ── 1b. the archived tree builds ─────────────────────────────────────────────
+if [ -n "$ARCHIVE_BUILD" ]; then
+  begin "archive" "build from git archive HEAD (tracked files only)"
+  if [ "$DRY_RUN" = 1 ]; then
+    plan "git archive HEAD | tar -x into a temp dir; run: ${ARCHIVE_BUILD}"
+  else
+    ARCHIVE_DIR="$(mktemp -d "${TMPDIR:-/tmp}/release-archive.XXXXXX")"
+    git archive --format=tar HEAD | tar -x -C "$ARCHIVE_DIR" \
+      || fail "git archive HEAD could not be extracted"
+    ( cd "$ARCHIVE_DIR" && GOH_RELEASE_VERSION="$VERSION" bash -c "$ARCHIVE_BUILD" ) \
+      || fail "the archived tree does not build (${ARCHIVE_BUILD}) -- a tracked-files-only \
+checkout is what the tarball ships; look for a gitignored path dependency or data file"
+    rm -rf "$ARCHIVE_DIR"
+    ok "archive builds"
+  fi
+fi
+
+# ── 1c. install + exercise what is about to be tagged ────────────────────────
+if [ -n "$VERIFY_CMD" ]; then
+  begin "verify" "install and exercise the release surface"
+  if [ "$DRY_RUN" = 1 ]; then
+    plan "run verify (GOH_RELEASE_VERSION=${VERSION}): ${VERIFY_CMD}"
+  else
+    GOH_RELEASE_VERSION="$VERSION" bash -c "$VERIFY_CMD" \
+      || fail "verify command exited nonzero (${VERIFY_CMD}) -- nothing tagged"
+    ok "verified"
+  fi
 fi
 
 # ── 2. changelog stanza ──────────────────────────────────────────────────────

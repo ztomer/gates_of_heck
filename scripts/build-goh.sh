@@ -57,4 +57,14 @@ fi
 mkdir -p "${PROJECT_ROOT}/bin"
 cp "${BIN}" "${PROJECT_ROOT}/bin/.goh.$$"
 mv "${PROJECT_ROOT}/bin/.goh.$$" "${PROJECT_ROOT}/bin/goh"
-echo "✓ bin/goh ready"
+
+# The binary that landed is the one the manifest describes: a stale bin/goh
+# (an interrupted build, a copy from another checkout) reports the wrong
+# version and would otherwise pass as "ready".
+WANT="$(grep -m1 '^version = ' "${PROJECT_ROOT}/Cargo.toml" | cut -d'"' -f2)"
+GOT="$("${PROJECT_ROOT}/bin/goh" --version | awk '{print $NF}')"
+if [[ "${GOT}" != "${WANT}" ]]; then
+  echo "✗ bin/goh reports ${GOT}, Cargo.toml says ${WANT}" >&2
+  exit 1
+fi
+echo "✓ bin/goh ready (${GOT})"

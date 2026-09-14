@@ -24,7 +24,7 @@ use std::path::PathBuf;
 use clap::{Parser, Subcommand};
 
 #[derive(Debug, Parser)]
-#[command(name = "goh", about = "Static structural gates")]
+#[command(name = "goh", about = "Static structural gates", version)]
 struct Cli {
     #[command(subcommand)]
     command: Commands,
