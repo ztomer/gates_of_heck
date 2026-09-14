@@ -214,3 +214,23 @@ def test_nested_block_comments_track_depth(repo):
     commit_all(repo)
     r = run_check(repo, SCRIPT)
     assert r.returncode == 0, r.stdout
+
+
+def test_exclude_exempts_a_vendored_tree_and_nothing_else(repo):
+    # A third-party crate carried in-tree (ztools vendors camoufox-rs, which
+    # has three #[allow]s) is exempt through the same GOH_EXCLUDE the
+    # structural checks honour -- and the exemption is that path alone.
+    (_mkcrate(repo) / "lib.rs").write_text("fn f() {}\n", encoding="utf-8")
+    vendored = repo / "vendor" / "dep" / "src"
+    vendored.mkdir(parents=True)
+    (vendored / "lib.rs").write_text(ALLOW, encoding="utf-8")
+    (vendored.parent / "Cargo.toml").write_text('[package]\nname = "dep"\n', encoding="utf-8")
+    commit_all(repo)
+    assert run_check(repo, SCRIPT).returncode == 1
+    assert run_check(repo, SCRIPT, "--exclude", "^vendor/").returncode == 0
+    # The exclusion does not reach the repo's own source.
+    (_mkcrate(repo) / "lib.rs").write_text(ALLOW, encoding="utf-8")
+    commit_all(repo)
+    r = run_check(repo, SCRIPT, "--exclude", "^vendor/")
+    assert r.returncode == 1
+    assert "src/lib.rs" in r.stdout and "vendor/" not in r.stdout

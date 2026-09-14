@@ -132,8 +132,10 @@ fi
 goh_step_in "$cargo_dir" "cargo lints (manifest)" \
     bash "$HERE/rust_manifest_gate.sh" "$cargo_dir"
 
+# GOH_EXCLUDE (regex, from .gatesrc) exempts a vendored tree here as it does
+# in the structural checks: third-party code is not ours to re-lint.
 goh_step "no #[allow]" \
-    python3 "$HERE/../checks/check_no_allow.py"
+    python3 "$HERE/../checks/check_no_allow.py" ${GOH_EXCLUDE:+--exclude "$GOH_EXCLUDE"}
 
 if [ -n "${GOH_COV_FLOOR_RUST:-}" ]; then
     goh_step "coverage (floor ${GOH_COV_FLOOR_RUST}%)" \

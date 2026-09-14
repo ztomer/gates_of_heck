@@ -7,8 +7,14 @@ fires, which defeats the gate — so any `#[allow]`/`#![allow]` in source is a
 failure. A file is exempt only if it is machine-generated and carries the
 standard `@generated` marker (see below); hand-written code never is.
 
-    python3 tools/check_no_allow.py            # all tracked Rust files (CI gate)
-    python3 tools/check_no_allow.py --staged   # only staged files (pre-commit)
+    python3 checks/check_no_allow.py                    # all tracked Rust files (CI gate)
+    python3 checks/check_no_allow.py --staged           # only staged files (pre-commit)
+    python3 checks/check_no_allow.py --exclude '^vendor/' # skip a vendored tree
+
+Exclusions come from --exclude (a regex on repo-relative paths), wired from
+GOH_EXCLUDE in .gatesrc by gates/rust_gate.sh -- the same exemption the
+structural checks honour, so a third-party crate carried in-tree is exempt
+from every house check with one line, not policed by this one alone.
 
 Exemption: a Rust file is treated as generated iff it contains `@generated`
 within its first 40 lines of comments (the de-facto marker used by prost/tonic,
@@ -74,11 +80,12 @@ def _is_compiled_src(rel: str) -> bool:
     return "/src/" in rel or rel.startswith("src/") or "/benches/" in rel or rel.startswith("benches/")
 
 
-def _files(root: str, staged: bool):
+def _files(root: str, staged: bool, exclude):
     return [
         f
         for f in listed_files(root, staged=staged)
         if f.endswith(".rs") and _is_compiled_src(f)
+        and not (exclude and exclude.search(f))
     ]
 
 
@@ -115,9 +122,16 @@ def _has_rust(root: str, staged: bool) -> bool:
 
 
 def main():
-    staged = "--staged" in sys.argv
+    import argparse
+    ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    ap.add_argument("--staged", action="store_true")
+    ap.add_argument("--exclude", default="",
+                    help="regex on repo-relative paths to skip (GOH_EXCLUDE)")
+    args = ap.parse_args()
+    staged = args.staged
+    exclude = re.compile(args.exclude) if args.exclude else None
     root = repo_root()
-    files = _files(root, staged)
+    files = _files(root, staged, exclude)
     hits = _scan(root, files, staged)
     if hits:
         scope = "staged" if staged else "tracked"
