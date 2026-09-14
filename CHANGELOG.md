@@ -1,6 +1,9 @@
 # CHANGELOG
 
-## Unreleased
+## v0.11.1 — the Linux path, exercised _(2026-09-14)_
+
+Patch: fixes to what v0.11.0 shipped, each found by a consumer's CI or by
+running the release rules against this repo itself.
 
 - **Portable `mktemp`.** `mktemp -t name` is BSD syntax; GNU mktemp needs an
   `XXXXXX` template, so the structural, manifest and swift gates died on the
