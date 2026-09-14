@@ -145,8 +145,18 @@ def build_skeleton(root, gates, workdir):
     return workdir
 
 
+# A gate that exits 0 having SAID it did not run is not claiming compliance.
+# The house convention for an absent tool or a foreign host is a named skip;
+# this is the phrase the sweep recognises, so a macOS-only gate on a Linux
+# runner (monitor's codesign check, 2026-09-14) reads as "did not apply"
+# rather than "passed over nothing" -- without an excuse whose truth would
+# depend on which host ran the sweep.
+NOT_APPLICABLE = "not applicable"
+
+
 def sweep(skeleton, gate_name, names, timeout=TIMEOUT):
-    """{gate: first line of output} for every gate that EXITED 0 over the empty tree."""
+    """{gate: last line of output} for every gate that EXITED 0 over the empty
+    tree WITHOUT declaring itself not applicable."""
     blind = {}
     for name in names:
         try:
@@ -157,7 +167,10 @@ def sweep(skeleton, gate_name, names, timeout=TIMEOUT):
         except (OSError, subprocess.SubprocessError):
             continue  # could not run it at all: not a claim of compliance
         if result.returncode == 0:
-            lines = [ln for ln in (result.stdout + result.stderr).splitlines() if ln.strip()]
+            text = result.stdout + result.stderr
+            if NOT_APPLICABLE in text:
+                continue  # a named non-run, not a pass
+            lines = [ln for ln in text.splitlines() if ln.strip()]
             blind[name] = lines[-1].strip()[:100] if lines else "(no output)"
     return blind
 
@@ -254,15 +267,24 @@ def probe():
              "    sys.exit(1)\n"
              "sys.exit(0)\n")
 
+        # A gate that does not apply on this host and SAYS so, exiting 0: a
+        # named non-run, not a pass (a macOS-only check on a Linux runner).
+        gate("check_foreign_host.py",
+             "import sys\n"
+             "print('foreign-host: not applicable on this OS (nothing to sign here)')\n"
+             "sys.exit(0)\n")
+
         names = gate_names(tools)
         with tempfile.TemporaryDirectory() as work:
             skeleton = build_skeleton(root, tools, os.path.join(work, "s"))
             blind = sweep(skeleton, "tools", names)
 
         cases = [
-            ("both gates are discovered", ["check_blind.py", "check_guarded.py"], names),
+            ("all gates are discovered",
+             ["check_blind.py", "check_foreign_host.py", "check_guarded.py"], names),
             ("the unguarded gate is caught passing over nothing", True, "check_blind.py" in blind),
             ("the guarded gate is not", False, "check_guarded.py" in blind),
+            ("a named not-applicable skip is not a pass", False, "check_foreign_host.py" in blind),
             ("the sweep goes red", 1, main(["--root", root])),
         ]
         for label, want, got in cases:
