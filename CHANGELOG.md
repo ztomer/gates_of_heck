@@ -1,5 +1,14 @@
 # CHANGELOG
 
+## v0.12.1 — a named "not applicable" skip is not a pass _(2026-09-14)_
+
+Patch. `check_empty_scope.py` counts a gate that exits 0 having printed
+"not applicable" as a non-run, not as compliance over an empty tree. A
+macOS-only gate on a Linux runner (monitor's codesign check) had no honest
+place before: an excuse would be true on one host and false on the other,
+and the stale-excuse ratchet fires either way. Probe case added; verified
+on Linux in a container.
+
 ## v0.12.0 — the emoji gate reads escapes; the binary is measured end to end _(2026-09-14)_
 
 Minor: a behaviour every consumer inherits on its next run.
