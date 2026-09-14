@@ -63,7 +63,7 @@ GATESRC = b"GOH_MAX_LINES=10\n"
 
 FULL_CASES: dict[str, dict[str, bytes]] = {
     "clean": {".gatesrc": GATESRC, "a.py": b"x = 1\n"},
-    "emoji": {".gatesrc": GATESRC, "a.py": "x = 1  # \U0001F389\n".encode()},
+    "emoji": {".gatesrc": GATESRC, "a.py": f"x = 1  # {chr(0x1F389)}\n".encode()},
     "marker": {".gatesrc": GATESRC, "a.py": b"x = 1\n<<<<<<< ours\n"},
     "over_cap": {".gatesrc": GATESRC, "a.py": b"x = 1\n" * 20},
     "no_gatesrc": {"a.py": b"x = 1\n"},

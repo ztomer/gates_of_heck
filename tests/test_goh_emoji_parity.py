@@ -85,6 +85,14 @@ FULL_CASES: dict[str, bytes] = {
     "curved": f"turn {CURVED}\n".encode(),
     "wavy": f"sep {WAVY} end\n".encode(),
     "binary": b"\xff\xfe\x00\x01\x02more bytes",
+    # Escapes that RENDER as a forbidden character: Rust brace, Python eight
+    # digit, JS four digit -- plus one naming a permitted glyph and one that is
+    # not a scalar value, neither of which may be reported. Assembled at
+    # runtime so this file carries no escape itself.
+    "escapes": (
+        f'let a = "{chr(92)}u{{1F512}}";\nb = "{chr(92)}U0001F600"\nc = "{chr(92)}u2705"\n'
+        f'ok = "{chr(92)}u2713"\nbad = "{chr(92)}u{{110000}}"\n'
+    ).encode(),
     # 250 violations exercises the 200-hit display cap on both sides.
     "many": "".join(f"line {i} {PARTY}\n" for i in range(250)).encode(),
 }

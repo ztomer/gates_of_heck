@@ -28,6 +28,7 @@ checks/_gitutil.py — not the working tree.
 """
 import argparse
 import os
+import re
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -87,6 +88,35 @@ RANGES = (
 )
 
 
+# Escaped forms render as a character without containing it literally: the
+# Rust brace form, the JS/Java/JSON four-digit form, the Python eight-digit
+# form, each spelling a forbidden codepoint in plain ASCII. Scanning
+# characters alone reports a clean tree while the UI draws an emoji -- two
+# padlocks hid in monitor's config panel exactly this way, and its repo-local
+# checker caught them while this one did not (found 2026-09-14 when that copy
+# was retired in favour of this file). Described rather than shown: this file
+# is scanned too.
+_ESCAPE_RE = re.compile(
+    r"\\u\{([0-9a-fA-F]{1,6})\}"      # Rust / Swift / Ruby brace form
+    r"|\\U([0-9a-fA-F]{8})"            # Python 32-bit form
+    r"|\\u([0-9a-fA-F]{4})"            # JS / Java / JSON / C 16-bit form
+)
+
+
+def _escaped_violations(line: str, extra: frozenset = frozenset()):
+    """(col, char) for every escape on the line that names a forbidden codepoint."""
+    out = []
+    for m in _ESCAPE_RE.finditer(line):
+        digits = m.group(1) or m.group(2) or m.group(3)
+        try:
+            ch = chr(int(digits, 16))
+        except (ValueError, OverflowError):
+            continue
+        if _is_disallowed(ch, extra):
+            out.append((m.start() + 1, ch))
+    return out
+
+
 def _is_disallowed(ch: str, extra: frozenset = frozenset()) -> bool:
     if ch in ALLOWED or ch in extra:
         return False
@@ -106,7 +136,6 @@ def main() -> int:
                          "genuinely needs it — every entry weakens the gate.")
     args = ap.parse_args()
 
-    import re
     skip = re.compile(args.exclude) if args.exclude else None
     extra = frozenset(args.allow.replace(" ", ""))
 
@@ -133,6 +162,8 @@ def main() -> int:
             for col, ch in enumerate(line, 1):
                 if _is_disallowed(ch, extra):
                     bad.append(f"{f}:{lineno}:{col}: U+{ord(ch):04X} {ch!r}")
+            for col, ch in _escaped_violations(line, extra):
+                bad.append(f"{f}:{lineno}:{col}: U+{ord(ch):04X} {ch!r} (written as an escape)")
 
     if bad:
         scope = "staged" if args.staged else "tracked"

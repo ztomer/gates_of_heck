@@ -71,9 +71,16 @@ pub struct Hit {
     pub col: usize,
     /// The offending character.
     pub ch: char,
+    /// Written as an escape sequence rather than the character itself.
+    pub escaped: bool,
 }
 
 /// Scan decoded text, returning every disallowed sighting.
+///
+/// Written out, or written as an escape (the Rust brace form, the Python
+/// eight-digit form, the JS four-digit form) that renders as one. Same rule
+/// as the Python checker, same order per line: literal sightings first, then
+/// escapes.
 #[must_use]
 pub fn scan_text(path: &str, text: &str, extra: &BTreeSet<char>) -> Vec<Hit> {
     let mut hits = Vec::new();
@@ -85,11 +92,86 @@ pub fn scan_text(path: &str, text: &str, extra: &BTreeSet<char>) -> Vec<Hit> {
                     lineno: lineno + 1,
                     col: col + 1,
                     ch,
+                    escaped: false,
                 });
             }
         }
+        for (col, ch) in escaped_violations(line, extra) {
+            hits.push(Hit {
+                path: path.to_owned(),
+                lineno: lineno + 1,
+                col,
+                ch,
+                escaped: true,
+            });
+        }
     }
     hits
+}
+
+/// `(1-based char column, decoded char)` for every escape on `line` naming a
+/// disallowed codepoint.
+///
+/// The brace form takes 1..=6 hex digits, the uppercase-U form eight, the
+/// lowercase-u form four; anything that is not a scalar value is skipped, as
+/// is any escape whose character is permitted.
+#[must_use]
+pub fn escaped_violations(line: &str, extra: &BTreeSet<char>) -> Vec<(usize, char)> {
+    let bytes = line.as_bytes();
+    let mut out = Vec::new();
+    let mut i = 0;
+    while i + 1 < bytes.len() {
+        if bytes[i] != b'\\' {
+            i += 1;
+            continue;
+        }
+        let (digits, consumed) = match bytes[i + 1] {
+            b'u' if bytes.get(i + 2) == Some(&b'{') => {
+                let start = i + 3;
+                let end = start
+                    + bytes[start..]
+                        .iter()
+                        .take_while(|b| b.is_ascii_hexdigit())
+                        .count();
+                if bytes.get(end) == Some(&b'}') && (1..=6).contains(&(end - start)) {
+                    (&line[start..end], end + 1 - i)
+                } else {
+                    i += 1;
+                    continue;
+                }
+            }
+            b'U' | b'u' => {
+                let n = if bytes[i + 1] == b'U' { 8 } else { 4 };
+                let Some(end) = hex_run(bytes, i + 2, n) else {
+                    i += 1;
+                    continue;
+                };
+                (&line[i + 2..end], end - i)
+            }
+            _ => {
+                i += 1;
+                continue;
+            }
+        };
+        if let Some(ch) = u32::from_str_radix(digits, 16)
+            .ok()
+            .and_then(char::from_u32)
+        {
+            if is_disallowed(ch, extra) {
+                // 1-based CHARACTER column of the backslash, as the Python
+                // checker reports (`m.start() + 1` over a str).
+                out.push((line[..i].chars().count() + 1, ch));
+            }
+        }
+        i += consumed;
+    }
+    out
+}
+
+/// `Some(end)` when exactly `n` hex digits start at `start`.
+fn hex_run(bytes: &[u8], start: usize, n: usize) -> Option<usize> {
+    let end = start + n;
+    (end <= bytes.len() && bytes[start..end].iter().all(u8::is_ascii_hexdigit)).then_some(end)
 }
 
 /// Scan every in-scope file under `root`.
@@ -149,8 +231,13 @@ pub fn format_report(hits: &[Hit], staged: bool, allow: &str) -> String {
     let scope = if staged { "staged" } else { "tracked" };
     let mut shown = String::new();
     for hit in hits.iter().take(200) {
+        let suffix = if hit.escaped {
+            " (written as an escape)"
+        } else {
+            ""
+        };
         let line = format!(
-            "  {}:{}:{}: U+{:04X} '{}'\n",
+            "  {}:{}:{}: U+{:04X} '{}'{suffix}\n",
             hit.path, hit.lineno, hit.col, hit.ch as u32, hit.ch
         );
         shown.push_str(&line);
@@ -171,6 +258,12 @@ pub fn format_report(hits: &[Hit], staged: bool, allow: &str) -> String {
 mod tests {
     use super::*;
 
+    /// Forbidden glyphs are built from their NUMBERS, never written as
+    /// literals or escapes: either would trip this very gate on this file.
+    fn c(code: u32) -> char {
+        char::from_u32(code).expect("scalar value")
+    }
+
     fn extra() -> BTreeSet<char> {
         BTreeSet::new()
     }
@@ -188,15 +281,15 @@ mod tests {
         // warn-sign VS16, keycap combiner, wavy dash, circled ideographs.
         // Escapes, never literals: a literal here would trip this very gate.
         for ch in [
-            '\u{1F389}',
-            '\u{2705}',
-            '\u{FE0F}',
-            '\u{20E3}',
-            '\u{26D4}',
-            '\u{2934}',
-            '\u{3030}',
-            '\u{3297}',
-            '\u{24C2}',
+            c(0x1F389),
+            c(0x2705),
+            c(0xFE0F),
+            c(0x20E3),
+            c(0x26D4),
+            c(0x2934),
+            c(0x3030),
+            c(0x3297),
+            c(0x24C2),
         ] {
             assert!(is_disallowed(ch, &extra()), "{ch}");
         }
@@ -205,20 +298,20 @@ mod tests {
     #[test]
     fn vs16_of_allowed_glyph_fails() {
         assert!(!is_disallowed('⚠', &extra()));
-        assert!(is_disallowed('\u{FE0F}', &extra()));
+        assert!(is_disallowed(c(0xFE0F), &extra()));
     }
 
     #[test]
     fn allow_list_permits_extra_chars() {
-        let extra = parse_allow("\u{1F389} \u{2705}");
-        assert!(!is_disallowed('\u{1F389}', &extra));
-        assert!(!is_disallowed('\u{2705}', &extra));
-        assert!(is_disallowed('\u{26D4}', &extra));
+        let extra = parse_allow(&format!("{} {}", c(0x1F389), c(0x2705)));
+        assert!(!is_disallowed(c(0x1F389), &extra));
+        assert!(!is_disallowed(c(0x2705), &extra));
+        assert!(is_disallowed(c(0x26D4), &extra));
     }
 
     #[test]
     fn columns_count_characters() {
-        let hits = scan_text("f", "ab\u{1F389}cd", &extra());
+        let hits = scan_text("f", &format!("ab{}cd", c(0x1F389)), &extra());
         assert_eq!(hits.len(), 1);
         assert_eq!((hits[0].lineno, hits[0].col), (1, 3));
     }

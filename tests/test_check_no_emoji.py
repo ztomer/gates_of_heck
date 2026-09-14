@@ -242,3 +242,23 @@ def test_runs_from_subdirectory_of_target_repo(repo):
         text=True,
     )
     assert r.returncode == 0
+
+
+def test_escaped_codepoints_are_reported_with_their_column(repo):
+    """An emoji written as a Rust brace escape, a Python eight-digit escape or a
+    JS four-digit escape renders as one. monitor's repo-local checker caught a
+    padlock hidden this way; this one did not until 2026-09-14. Permitted glyphs
+    and non-scalar values stay quiet. The escape TEXT is assembled at runtime so
+    this file does not itself carry one."""
+    bs = chr(92)
+    write(repo, "a.rs", f'let a = "{bs}u{{1F512}}";\n')
+    write(repo, "b.py", f'B = "{bs}U0001F600"\n')
+    write(repo, "c.js", f'const c = "{bs}u2705";\n')
+    write(repo, "ok.rs", f'let ok = "{bs}u2713"; let bad = "{bs}u{{110000}}";\n')
+    commit_all(repo)
+    r = run_check(repo, SCRIPT)
+    assert r.returncode == 1
+    assert "a.rs:1:10: U+1F512" in r.stdout and "(written as an escape)" in r.stdout, r.stdout
+    assert "b.py:1:6: U+1F600" in r.stdout, r.stdout
+    assert "c.js:1:12: U+2705" in r.stdout, r.stdout
+    assert "ok.rs" not in r.stdout, r.stdout
