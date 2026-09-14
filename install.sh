@@ -139,5 +139,22 @@ SRC
     info "wrote .gatesrc"
 fi
 
+# The native structural binary. gates/structural.sh execs bin/goh when it is
+# here and runs the Python checkers (saying so) when it is not, so this step
+# is an accelerator, never a prerequisite: a machine without cargo still gets
+# every gate. Built once per checkout, idempotent, shared across every repo
+# the hooks point at (they all delegate to this directory).
+if [ ! -f "$HERE/scripts/build-goh.sh" ]; then
+    warn "scripts/build-goh.sh not present beside install.sh — bin/goh not built; structural.sh runs the Python checkers"
+elif command -v cargo >/dev/null 2>&1; then
+    if [ -n "${GOH_SKIP_BUILD:-}" ]; then
+        info "GOH_SKIP_BUILD set — not building bin/goh"
+    else
+        "$HERE/scripts/build-goh.sh" || die "goh build failed — fix it or set GOH_SKIP_BUILD=1 to install hooks only"
+    fi
+else
+    warn "cargo not found — bin/goh not built; structural.sh runs the Python checkers until it is"
+fi
+
 ok "installed into $target (core.hooksPath → .githooks)"
 info "pre-commit runs structural --staged; pre-push runs tools/gate.sh --full"

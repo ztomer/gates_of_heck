@@ -42,4 +42,19 @@ if [[ -n "${GOH_BUILD_GATE_ONLY:-}" ]]; then
 fi
 
 echo "Building goh for ${OS}/${ARCH}…"
-cargo build --release --manifest-path "${PROJECT_ROOT}/Cargo.toml"
+cargo build --release --quiet --manifest-path "${PROJECT_ROOT}/Cargo.toml" -p goh
+
+# Place the binary where gates/structural.sh looks first (bin/goh, gitignored).
+# Stage + mv: a hook executing the old binary right now keeps its inode; the
+# new one lands atomically.
+TARGET_DIR="$(cargo metadata --format-version 1 --no-deps --manifest-path "${PROJECT_ROOT}/Cargo.toml" \
+    | python3 -c 'import json,sys; print(json.load(sys.stdin)["target_directory"])')"
+BIN="${TARGET_DIR}/release/goh"
+if [[ ! -x "${BIN}" ]]; then
+  echo "✗ release binary not found at ${BIN}" >&2
+  exit 1
+fi
+mkdir -p "${PROJECT_ROOT}/bin"
+cp "${BIN}" "${PROJECT_ROOT}/bin/.goh.$$"
+mv "${PROJECT_ROOT}/bin/.goh.$$" "${PROJECT_ROOT}/bin/goh"
+echo "✓ bin/goh ready"

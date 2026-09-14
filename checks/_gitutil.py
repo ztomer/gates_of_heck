@@ -1,6 +1,7 @@
 """Shared git plumbing for the checkers. Two contracts live here:
 
-1. File listing: tracked files (full runs) vs staged files (pre-commit scope).
+1. File listing: the worktree — tracked plus untracked-but-not-ignored files —
+   for full runs, staged files for pre-commit scope.
 2. Content truth: a STAGED check measures THE INDEX — what will actually be
    committed — never the worktree, which may hold unrelated scratch edits.
    Full-tree runs measure the worktree, because that is what exists now.
@@ -22,7 +23,14 @@ def repo_root() -> str:
 
 def listed_files(root: str, staged: bool, pathspec: str = "*") -> list[str]:
     """Repo-root-relative file list. Staged mode lists Added/Copied/Modified
-    index entries; full mode lists everything tracked.
+    index entries; full mode lists the WORKTREE: everything tracked plus every
+    untracked file git does not ignore (`--cached --others --exclude-standard`).
+
+    Full mode used to be `ls-files` alone — tracked only — so a brand-new
+    oversized or emoji-bearing file was invisible to `ci.sh` / `--full` right up
+    until it was staged, when pre-commit finally saw it (2026-09-13: two repos,
+    twice in one day). "Full" answers "is my tree green"; an untracked file IS
+    the tree. Ignored files (build output, caches) stay out, as before.
 
     `-z` + NUL splitting is load-bearing: without it git QUOTES paths holding
     non-ASCII or control characters ("caf\\303\\251.md", "we\\nird.md"), names
@@ -32,7 +40,8 @@ def listed_files(root: str, staged: bool, pathspec: str = "*") -> list[str]:
         ["git", "-C", root, "diff", "--cached", "--name-only", "-z",
          "--diff-filter=ACM"]
         if staged
-        else ["git", "-C", root, "ls-files", "-z"]
+        else ["git", "-C", root, "ls-files", "-z", "--cached", "--others",
+              "--exclude-standard"]
     )
     out = subprocess.run(cmd, capture_output=True)
     if out.returncode != 0:

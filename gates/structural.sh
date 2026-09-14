@@ -27,6 +27,7 @@ EOF
     exit 0
 fi
 SCOPE="${1:-}"
+
 # Strict scope argument: "" |--full|--staged are the ONLY accepted forms.
 # Anything else previously FELL THROUGH to a silent full-tree run — a typo
 # (`--stgaed`, `--staged --dry-run`) meant "check everything" without ever
@@ -43,6 +44,39 @@ esac
     err "structural.sh: unexpected extra arguments: $* (accepted: no argument | --full | --staged)"
     exit 2
 }
+# ── Native first. ───────────────────────────────────────────────────────────
+# The `goh` binary carries this whole pipeline (native emoji / markers /
+# length / secrets scanners; the remaining checkers delegated to the same
+# Python files below), proven step-for-step identical by
+# tests/test_goh_structural_parity.py. Resolution: $GOH_BIN, then the copy
+# install.sh drops at bin/goh, then `goh` on PATH. Without one, the Python
+# pipeline below runs and SAYS so once — a fallback that looks like the real
+# thing is how interpreter drift stays invisible. GOH_NO_NATIVE=1 forces the
+# Python path (the parity test uses it to drive this side).
+if [ -z "${GOH_NO_NATIVE:-}" ]; then
+    GOH_NATIVE_BIN=""
+    if [ -n "${GOH_BIN:-}" ]; then
+        # An explicit pointer is trusted or reported — never silently
+        # replaced by a different binary than the one named.
+        [ -x "${GOH_BIN}" ] && GOH_NATIVE_BIN="$GOH_BIN"
+    elif [ -x "$HERE/../bin/goh" ]; then
+        GOH_NATIVE_BIN="$HERE/../bin/goh"
+    elif command -v goh >/dev/null 2>&1; then
+        GOH_NATIVE_BIN="$(command -v goh)"
+    fi
+    if [ -n "$GOH_NATIVE_BIN" ]; then
+        # Arguments were validated above; only the two accepted scopes reach here.
+        if [ "$SCOPE" = "--staged" ]; then
+            exec "$GOH_NATIVE_BIN" structural --staged
+        fi
+        exec "$GOH_NATIVE_BIN" structural --full
+    elif [ -n "${GOH_BIN:-}" ]; then
+        echo "· GOH_BIN=$GOH_BIN is not an executable — running the Python checkers" >&2
+    else
+        echo "· goh binary not built — running the Python checkers (cd $HERE/.. && ./install.sh builds it)" >&2
+    fi
+fi
+
 # Only --staged is a checker-level scope; --full (and no argument) mean
 # unrestricted. The scope flag is forwarded to checkers ONLY when it is
 # --staged — forwarding --full verbatim made every full run die on argparse.

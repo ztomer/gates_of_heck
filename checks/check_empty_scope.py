@@ -126,11 +126,18 @@ def build_skeleton(root, gates, workdir):
         subprocess.run(["git", "-C", workdir, "config", key, value], check=True,
                        capture_output=True)
     # The gate directory is on DISK (the gates must be runnable, and their baselines readable)
-    # but deliberately NOT TRACKED. Otherwise every whole-repo scanner finds the copied gates,
-    # does real work on them, and passes honestly -- which reports as blindness. Measured: leaving
-    # it tracked made check_no_emoji say "18 tracked files clean" and check_pyflakes "99 file(s)
-    # clean" on a tree with no content. Untracked, a git-ls-files scanner sees what it would
-    # really see, and answers the question actually being asked.
+    # but deliberately NOT TRACKED and IGNORED. Otherwise every whole-repo scanner finds the
+    # copied gates, does real work on them, and passes honestly -- which reports as blindness.
+    # Measured: leaving it tracked made check_no_emoji say "18 tracked files clean" and
+    # check_pyflakes "99 file(s) clean" on a tree with no content. Untracked alone stopped being
+    # enough on 2026-09-14, when full-scope listing became the WORKTREE (tracked + untracked,
+    # minus ignored) so a brand-new file is policed before it is staged; the skeleton now also
+    # ignores the gate dir via .git/info/exclude -- repo-local, never a tracked file, so it adds
+    # no content of its own. A scanner then sees what it would really see over an empty tree.
+    info_dir = os.path.join(workdir, ".git", "info")
+    os.makedirs(info_dir, exist_ok=True)
+    with open(os.path.join(info_dir, "exclude"), "a", encoding="utf-8") as fh:
+        fh.write("/%s/\n" % os.path.basename(gates))
     subprocess.run(["git", "-C", workdir, "add", "-A", "--", ":!%s" % os.path.basename(gates)],
                    capture_output=True)
     subprocess.run(["git", "-C", workdir, "commit", "-qm", "skeleton", "--allow-empty"],

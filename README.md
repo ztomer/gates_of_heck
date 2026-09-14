@@ -47,6 +47,27 @@ Checks run in three layers:
 | **2. Language** | Per toolchain | Formatter, linter, tests, coverage floors |
 | **3. Repo** | Single project | Magic-literal ratchets, golden/pixel diffs, local rules |
 
+## The native binary (`goh`)
+
+Layer 1 is a static Rust binary, `crates/goh`, with the emoji, conflict-marker,
+file-length and secrets scanners native and the remaining checkers delegated
+to the same Python files. `install.sh` builds it to `bin/goh` (gitignored) when
+`cargo` is present; `gates/structural.sh` execs it when it is there and runs
+the Python checkers — saying so once — when it is not, so a machine without a
+toolchain still gets every gate. `tests/test_goh_*_parity.py` pin the two
+paths to identical verdicts, step for step. Resolution: `GOH_BIN` (an explicit
+pointer at nothing is reported, never silently replaced), then `bin/goh`, then
+`goh` on `PATH`; `GOH_NO_NATIVE=1` forces the Python path.
+
+Platform gate (`scripts/build-goh.sh`, also inside the binary): 64-bit only,
+macOS is Apple silicon only, Linux keeps x86_64 and aarch64. Unsupported
+combinations are a hard failure with the reason, never a warn-and-build.
+
+Scope, both paths: `--staged` polices the index; full scope polices the
+**worktree** — tracked plus untracked-but-not-ignored files — so a brand-new
+oversized or emoji-bearing file fails `--full` before it is staged, not only
+at pre-commit.
+
 ## Rules
 
 - **Fail fast**: Stops on the first failure.

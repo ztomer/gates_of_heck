@@ -4,10 +4,13 @@ Single schema. CLI flags beat env/.gatesrc where both exist. Unset means
 "gate default or skip" per row — never a silent pass on a missing floor
 (coverage gates exit 2 when no floor is stated anywhere).
 
-## Structural (`gates/structural.sh` + `checks/`)
+## Structural (`gates/structural.sh` + `checks/`, native: `bin/goh`)
 
 | Key | Default | Meaning |
 |---|---|---|
+| `GOH_BIN` | unset | Explicit path to the native `goh` binary. Set-but-missing is reported once and the Python checkers run; unset resolves `bin/goh` then `goh` on `PATH`. |
+| `GOH_NO_NATIVE` | unset | Set to `1` to force the Python checkers even when a binary is available (the parity tests use it to drive the Python side). |
+| `GOH_SKIP_BUILD` | unset | For `install.sh`: install hooks without building `bin/goh`. |
 | `GOH_MAX_LINES` | unset (check skipped + warn) | File-length cap. Set `500` in every repo. |
 | `GOH_EXCLUDE` | unset | Regex on repo-relative paths, exempt from BOTH emoji scan and length cap (vendored/generated trees). |
 | `GOH_LINE_EXCLUDE` | unset | ADDITIVE to the length check only. Effective length exemption = `GOH_EXCLUDE` ∪ `GOH_LINE_EXCLUDE`. Paths named only here are still emoji-scanned. |
@@ -107,4 +110,4 @@ fix is `reclaim_build_space.sh` next to it.
 | `GOH_AWK_VER_RE` | internal | Version regex passed into the release stanza matcher. Not user config. |
 
 Internal-only (not `.gatesrc` policy): `GOH_ROOT`, `GOH_GIT_ROOT`,
-`GOH_REPO_ROOT`, `GOH_NAME`, `GOH_LOG`, `GOH_LOGS`, `GOH_COMPLETED`, `GOH_EX`.
+`GOH_REPO_ROOT`, `GOH_NAME`, `GOH_LOG`, `GOH_LOGS`, `GOH_COMPLETED`, `GOH_EX`, `GOH_NATIVE_BIN` (the resolved native binary inside `structural.sh`).

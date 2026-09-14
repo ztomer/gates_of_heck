@@ -27,9 +27,12 @@ pub fn repo_root() -> Option<String> {
 
 /// Repo-root-relative file list.
 ///
-/// Full mode lists everything tracked (`git ls-files`); staged mode lists
-/// added/copied/modified index entries (`--diff-filter=ACM`, mirroring
-/// `listed_files` — other checkers may pass `R` for renames).
+/// Full mode lists the WORKTREE — everything tracked plus every untracked
+/// file git does not ignore (`ls-files --cached --others --exclude-standard`);
+/// staged mode lists added/copied/modified index entries (`--diff-filter=ACM`,
+/// mirroring `listed_files`). Full used to be tracked-only, so a brand-new
+/// oversized file was invisible to `--full` until it was staged; "full"
+/// answers "is my tree green", and an untracked file is the tree.
 ///
 /// # Errors
 ///
@@ -41,7 +44,13 @@ pub fn listed_files(root: &Path, staged: bool) -> Result<Vec<String>, String> {
     if staged {
         cmd.args(["diff", "--cached", "--name-only", "-z", "--diff-filter=ACM"]);
     } else {
-        cmd.args(["ls-files", "-z"]);
+        cmd.args([
+            "ls-files",
+            "-z",
+            "--cached",
+            "--others",
+            "--exclude-standard",
+        ]);
     }
     let out = cmd.output().map_err(|e| format!("git list failed: {e}"))?;
     if !out.status.success() {
@@ -99,5 +108,57 @@ mod tests {
         assert_eq!(line_count(b"a\nb\n"), 2);
         assert_eq!(line_count(b"a\nb"), 2);
         assert_eq!(line_count(b"a"), 1);
+    }
+
+    fn git(root: &Path, args: &[&str]) {
+        let ok = Command::new("git")
+            .arg("-C")
+            .arg(root)
+            .args(args)
+            .output()
+            .is_ok_and(|o| o.status.success());
+        assert!(ok, "git {args:?} failed");
+    }
+
+    fn write(path: &Path, body: &str) {
+        assert!(
+            std::fs::write(path, body).is_ok(),
+            "write {}",
+            path.display()
+        );
+    }
+
+    #[test]
+    fn full_scope_lists_the_worktree_but_not_ignored_files() {
+        let td = std::env::temp_dir().join(format!("goh-gitutil-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&td);
+        assert!(std::fs::create_dir_all(td.join("build")).is_ok());
+        git(&td, &["init", "-q"]);
+        write(&td.join(".gitignore"), "build/\n");
+        write(&td.join("tracked.md"), "t\n");
+        git(&td, &["add", "-A"]);
+        git(
+            &td,
+            &[
+                "-c",
+                "user.name=t",
+                "-c",
+                "user.email=t@t",
+                "commit",
+                "-q",
+                "-m",
+                "x",
+            ],
+        );
+        // A brand-new file nobody staged, and an ignored one.
+        write(&td.join("fresh.md"), "f\n");
+        write(&td.join("build/out.md"), "o\n");
+
+        let mut full = listed_files(&td, false).unwrap_or_default();
+        full.sort();
+        assert_eq!(full, [".gitignore", "fresh.md", "tracked.md"]);
+        // Staged scope is still the index: nothing is staged.
+        assert!(listed_files(&td, true).unwrap_or_default().is_empty());
+        let _ = std::fs::remove_dir_all(&td);
     }
 }

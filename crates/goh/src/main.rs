@@ -1,9 +1,12 @@
 //! `goh` — static structural-gate binary.
 //!
-//! Native scanners land crate-by-crate (markers, length, emoji), keeping
-//! language gates as plugin callees. `structural` still delegates to
-//! `gates/structural.sh` until every scanner is native. `GOH_DIR` fallback
-//! stays during migration.
+//! `structural` is the whole layer-1 pipeline: native emoji / markers /
+//! length / secrets scanners, the remaining checkers delegated to the Python
+//! files under `$GOH_DIR/checks` (the exclusion ceiling, the skills corpus,
+//! shell lint, the empty-scope and probes sweeps). `gates/structural.sh`
+//! execs this binary when `install.sh` has built it to `bin/goh`, and runs
+//! the Python checkers itself otherwise; `tests/test_goh_structural_parity.py`
+//! pins the two to identical verdicts. `GOH_DIR` locates the checkers.
 
 pub mod commands;
 pub mod emoji;

@@ -62,8 +62,14 @@ def _failing(out: str, err: str) -> str | None:
 
 
 def run_bash(repo: Path, staged: bool) -> tuple[int, str | None]:
+    """The PYTHON pipeline. structural.sh execs the native binary when one is
+    around, so this side is pinned to the checkers with GOH_NO_NATIVE — the
+    comparison is native vs Python, never native vs itself."""
+    import os
+
+    env = dict(os.environ, GOH_NO_NATIVE="1")
     cmd = ["bash", str(STRUCTURAL), "--staged"] if staged else ["bash", str(STRUCTURAL)]
-    r = subprocess.run(cmd, cwd=repo, capture_output=True, text=True)
+    r = subprocess.run(cmd, cwd=repo, capture_output=True, text=True, env=env)
     return r.returncode, _failing(r.stdout, r.stderr)
 
 
@@ -106,3 +112,23 @@ def test_staged_ignores_unstaged_dirt(goh: Path, tmp_path: Path) -> None:
     repo = make_repo(tmp_path, {".gatesrc": GATESRC, "a.py": b"x = 1\n"})
     (repo / "a.py").write_bytes(b"x = 1\n<<<<<<< ours\n")
     assert run_goh(goh, repo, staged=True) == run_bash(repo, staged=True) == (0, None)
+
+
+def test_structural_sh_execs_the_native_binary_when_told_where_it_is(goh, tmp_path):
+    """The hooks call structural.sh; with a binary the Python never runs. A
+    bad emoji proves which side answered: the native step label is the same,
+    but the Python fallback notice must be absent."""
+    repo = make_repo(tmp_path, {"a.md": "ok\n".encode(), ".gatesrc": GATESRC})
+    import os
+
+    env = dict(os.environ, GOH_BIN=str(goh), GOH_DIR=str(ROOT))
+    r = subprocess.run(["bash", str(STRUCTURAL)], cwd=repo, capture_output=True, text=True, env=env)
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert "goh binary not built" not in r.stderr
+    # An explicit pointer at nothing is reported, once, and the Python runs.
+    env = dict(os.environ, GOH_BIN="/nonexistent/goh", GOH_DIR=str(ROOT))
+    env.pop("GOH_NO_NATIVE", None)
+    r = subprocess.run(["bash", str(STRUCTURAL)], cwd=repo, capture_output=True, text=True, env=env)
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert r.stderr.count("GOH_BIN=/nonexistent/goh is not an executable") == 1, r.stderr
+

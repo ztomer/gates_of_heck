@@ -2,6 +2,31 @@
 
 ## Unreleased
 
+### The native `goh` binary carries layer 1
+
+`gates/structural.sh` now execs `bin/goh` when `install.sh` has built it
+(cargo present; `GOH_SKIP_BUILD=1` to skip) and runs the Python checkers,
+saying so once, when it has not. `GOH_BIN` names a binary explicitly — a
+pointer at nothing is reported, never silently replaced; `GOH_NO_NATIVE=1`
+forces the Python path (the parity suites use it, so native is always
+compared against Python, never against itself). `scripts/build-goh.sh` gates
+the platform first (64-bit only, macOS Apple silicon only, Linux x86_64 and
+aarch64 kept) and lands the binary atomically. Measured on ztools: 1.0 s
+native against 1.5 s Python for the full structural gate.
+
+### Full scope is the worktree
+
+`listed_files` (both `checks/_gitutil.py` and `crates/goh/src/gitutil.rs`)
+lists `git ls-files --cached --others --exclude-standard` for full runs:
+tracked plus untracked-but-not-ignored. It was tracked-only, so a brand-new
+oversized file was invisible to `ci.sh` / `--full` until it was staged —
+twice in one day across two repos. Staged scope is unchanged (the index).
+The empty-scope skeleton ignores its copied gate dir through
+`.git/info/exclude` so the sweep stays blind to it; two excuses whose reasons
+had stopped being true (`check_lints_optin.py` — this repo has had a Cargo
+workspace since the `goh` crate landed — and `check_probes_pass.py`) are
+deleted, as the ratchet demanded.
+
 ### Per-target Swift coverage floors, without the reroute
 
 `check_swift_coverage.py` gains `--floors-json` (schema shared with

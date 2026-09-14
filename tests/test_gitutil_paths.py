@@ -80,3 +80,18 @@ def test_a_failing_git_raises_instead_of_reporting_an_empty_repo(tmp_path):
 
     with pytest.raises(RuntimeError, match="ls-files failed"):
         listed_files(str(tmp_path), staged=False)
+
+
+def test_full_scope_sees_an_untracked_file_but_not_an_ignored_one(repo):
+    """Full scope is the WORKTREE. A brand-new file nobody has staged yet is
+    part of it (this is the file `ci.sh` used to wave through until the
+    pre-commit hook caught it); a gitignored one is not."""
+    (repo / ".gitignore").write_text("build/\n", encoding="utf-8")
+    commit_all(repo)
+    (repo / "fresh.md").write_text(f"bad {EMOJI_SMILE}\n", encoding="utf-8")
+    (repo / "build").mkdir()
+    (repo / "build" / "out.md").write_text(f"bad {EMOJI_SMILE}\n", encoding="utf-8")
+    r = run_check(repo, "checks/check_no_emoji.py")
+    assert r.returncode == 1
+    assert "fresh.md" in r.stdout
+    assert "build/out.md" not in r.stdout

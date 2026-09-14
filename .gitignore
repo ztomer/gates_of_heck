@@ -6,3 +6,6 @@ __pycache__/
 # Rust build output (builds normally use the shared CARGO_TARGET_DIR;
 # a repo-local target/ must never be committed)
 /target/
+
+# The native binary install.sh builds here; never committed.
+/bin/goh
