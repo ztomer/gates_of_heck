@@ -16,3 +16,4 @@ workspace = true
 [dependencies]
 bytecount = "0.6"
 clap = { version = "4", features = ["derive"] }
+regex = "1"
