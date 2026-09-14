@@ -90,7 +90,6 @@ pub fn line_count(blob: &[u8]) -> usize {
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 mod tests {
     use super::*;
 

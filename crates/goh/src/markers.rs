@@ -75,8 +75,19 @@ pub fn scan_root(root: &std::path::Path, staged: bool) -> Result<Vec<Violation>,
     Ok(bad)
 }
 
+/// Full violation block: header plus one line per hit. Shared by the
+/// `markers` subcommand and the structural pipeline so both print one text.
+#[must_use]
+pub fn format_report(bad: &[Violation]) -> String {
+    let mut shown = String::new();
+    for hit in bad {
+        let line = format!("    {}:{}: {}\n", hit.path, hit.line_no, hit.text);
+        shown.push_str(&line);
+    }
+    format!("✗ [no_conflict_markers] merge conflict markers found:\n{shown}")
+}
+
 #[cfg(test)]
-#[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 mod tests {
     use super::*;
 

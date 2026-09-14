@@ -126,8 +126,48 @@ pub fn scan_root(
     Ok((hits, checked))
 }
 
+/// The permit-list text: the allow-list joined by spaces, plus raw `--allow`.
+/// Shared so the message and the policy cannot drift apart.
+#[must_use]
+pub fn permit_text(allow: &str) -> String {
+    let mut permit = ALLOWED_ORDERED
+        .iter()
+        .map(char::to_string)
+        .collect::<Vec<_>>()
+        .join(" ");
+    if !allow.is_empty() {
+        permit.push_str(" + ");
+        permit.push_str(allow);
+    }
+    permit
+}
+
+/// Full violation block. Shared by the `emoji` subcommand and the structural
+/// pipeline so both print one text.
+#[must_use]
+pub fn format_report(hits: &[Hit], staged: bool, allow: &str) -> String {
+    let scope = if staged { "staged" } else { "tracked" };
+    let mut shown = String::new();
+    for hit in hits.iter().take(200) {
+        let line = format!(
+            "  {}:{}:{}: U+{:04X} '{}'\n",
+            hit.path, hit.lineno, hit.col, hit.ch as u32, hit.ch
+        );
+        shown.push_str(&line);
+    }
+    let overflow = if hits.len() > 200 {
+        format!("  … and {} more\n", hits.len() - 200)
+    } else {
+        String::new()
+    };
+    format!(
+        "✗ DISALLOWED EMOJI in {} location(s) ({scope}) — only the Kare icon set and functional typographic glyphs are permitted ({}); © ® ™ are typographic signs with legal meaning, but their emoji-presentation VS16 forms fail:\n{shown}{overflow}",
+        hits.len(),
+        permit_text(allow)
+    )
+}
+
 #[cfg(test)]
-#[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 mod tests {
     use super::*;
 

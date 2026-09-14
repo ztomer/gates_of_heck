@@ -60,8 +60,28 @@ pub fn scan_root(
     Ok((over, checked))
 }
 
+/// Full violation block. Shared by the `length` subcommand and the
+/// structural pipeline so both print one text.
+#[must_use]
+pub fn format_report(over: &[OverCap], max: usize) -> String {
+    let mut shown = String::new();
+    for hit in over {
+        let line = format!(
+            "    {:>6} lines  {}  (+{})\n",
+            hit.lines,
+            hit.path,
+            hit.lines - max
+        );
+        shown.push_str(&line);
+    }
+    format!(
+        "✗ [file_length] {} file(s) over the {max}-line cap:\n{shown}\n  Split them. If a file genuinely cannot be split (vendored or\n  generated), add it to GOH_LINE_EXCLUDE in .gatesrc — with a reason.\n",
+        over.len()
+    )
+}
+
 #[cfg(test)]
-#[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
+#[expect(clippy::unwrap_used)]
 mod tests {
     use super::*;
 

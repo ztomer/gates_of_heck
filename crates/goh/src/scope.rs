@@ -34,7 +34,7 @@ pub fn resolve(staged: bool, full: bool) -> Result<Scope, String> {
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
+#[expect(clippy::unwrap_used)]
 mod tests {
     use super::*;
 

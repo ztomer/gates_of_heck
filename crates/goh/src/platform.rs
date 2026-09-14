@@ -80,7 +80,7 @@ pub fn current() -> (String, String) {
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
+#[expect(clippy::expect_used)]
 mod tests {
     use super::*;
 

@@ -130,8 +130,29 @@ pub fn scan_root(
     Ok((bad, checked))
 }
 
+/// Full violation block. Shared by the `secrets` subcommand and the
+/// structural pipeline so both print one text.
+#[must_use]
+pub fn format_report(bad: &[Finding], staged: bool) -> String {
+    let scope = if staged { "staged" } else { "tracked" };
+    let mut shown = String::new();
+    for hit in bad.iter().take(200) {
+        let line = format!("  {}:{}:{}: {}\n", hit.path, hit.lineno, hit.col, hit.kind);
+        shown.push_str(&line);
+    }
+    let overflow = if bad.len() > 200 {
+        format!("  … and {} more\n", bad.len() - 200)
+    } else {
+        String::new()
+    };
+    format!(
+        "✗ DISALLOWED SECRET in {} location(s) ({scope}) — rotate the credential; revoked vectors use `secret-ok: <reason>` on the line or above:\n{shown}{overflow}",
+        bad.len()
+    )
+}
+
 #[cfg(test)]
-#[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
+#[expect(clippy::unwrap_used)]
 mod tests {
     use super::*;
 
