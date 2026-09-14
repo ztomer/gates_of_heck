@@ -4,8 +4,11 @@
 The current-values side of the length ratchet (check_baseline_ratchet.py
 --current-from-command): the baseline lists ceilings for cap-exempt files;
 this measures those same files today so the ratchet can compare. A listed
-path that no longer exists prints 0 -- a vanished file is under any ceiling,
-and check_exclusion_has_ceiling.py is the check that notices a stale entry.
+path that is not a file prints 0: a vanished file is under any ceiling
+(check_exclusion_has_ceiling.py is the check that notices a stale entry), and
+a sentinel row such as `0 __under_cap_sentinel__` -- the shape a repo with no
+real exemptions keeps so the pairing check still runs -- measures 0 against
+its 0, which is how an empty ratchet passes instead of aborting on no input.
 
     python3 checks/loc_of_baseline_files.py .gates_loc_baseline.txt
 """
@@ -26,8 +29,6 @@ def main() -> int:
             if len(raw) != 2:
                 continue
             path = raw[1].strip()
-            if path.startswith("__"):
-                continue  # sentinel rows, never files
             count = 0
             if os.path.isfile(path):
                 with open(path, "rb") as f:

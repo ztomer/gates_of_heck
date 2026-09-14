@@ -162,3 +162,20 @@ def test_structural_enforces_the_ceilings_it_requires(repo):
     commit_all(repo)
     code, text = both()
     assert code == 0, text
+
+
+def test_a_sentinel_only_baseline_ratchets_to_a_pass(repo):
+    """A repo with no real exemptions keeps a sentinel row so the pairing
+    check runs (divoom-control's shape). The ratchet must pass over it, not
+    abort on empty input."""
+    import subprocess
+    from conftest import REPO_ROOT
+    write(repo, "src/small.rs", "// ok\n")
+    write(repo, BASE, "# lines path\n0 __under_cap_sentinel__\n")
+    write(repo, ".gatesrc", f"GOH_MAX_LINES=500\nGOH_LINE_BASELINE={BASE}\n")
+    commit_all(repo)
+    structural = REPO_ROOT / "gates" / "structural.sh"
+    r = subprocess.run(["/bin/bash", str(structural), "--full"], cwd=repo,
+                       capture_output=True, text=True)
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert "within their ceilings" in r.stdout + r.stderr
