@@ -1,6 +1,62 @@
 # CHANGELOG
 
-## Unreleased
+## v0.11.0 — the native gate is the gate; the house checks reach every repo _(2026-09-14)_
+
+Minor: new behaviour every consumer inherits on its next run. What was WRONG
+before, in the order a consumer would meet it:
+
+### `.gatesrc` written as `export KEY=value` was invisible to the native binary
+
+Three repos write their keys with the bash `export` idiom. The Python side
+sources the file and saw them; the native parser keyed on the literal
+`export GOH_EXCLUDE` and silently dropped the value -- ztools' vendored
+crate passed under Python and failed under `goh`. The prefix is stripped;
+proven red against the old parser.
+
+### The no-`#[allow]` check ran only where a repo had copied it
+
+`rust_gate.sh` looked for a repo-local `tools/check_no_allow.py` and warned
+and skipped when absent. Four repos carried copies (one already behind);
+every other Rust repo was never checked. The step now runs
+`checks/check_no_allow.py` from here, unconditionally, and honours
+`GOH_EXCLUDE` like every other house check (a vendored crate is exempt with
+one line). The copies in antiknob, divoom-control, routines and ztools are
+deleted.
+
+### Length ceilings were required but never enforced here
+
+`GOH_LINE_BASELINE` made the structural gate verify that every cap-exempt
+file CARRIES a ceiling, and left the shrink-only ratchet to each repo's own
+gate script -- a repo that listed ceilings and never wired the ratchet was
+bounded by nothing. Both pipelines now run `check_baseline_ratchet.py` over
+the baseline's files (`checks/loc_of_baseline_files.py` measures them; a
+sentinel-only baseline ratchets to a pass). Proven red on one line of
+growth, native and Python agreeing.
+
+### Bin-only crates read as "no coverable lines"
+
+`coverage_gate.sh` exported lib and test targets only, so a crate whose
+unit tests live in its bin (`crates/goh` is one) could not be measured. Bin
+targets are exported too; part files carry the target kind.
+
+### The parity suites ran a binary that could vanish under them
+
+Five module fixtures each built `goh` and executed it at its uplift path in
+the machine-wide cargo target dir, where a concurrent relink (another xdist
+worker, another repo) opens a window in which the path does not exist. One
+session fixture builds once and hands out a private copy.
+
+### This repo gates itself the way it gates everyone
+
+`GOH_CI_STEPS` in `.gatesrc`: the house Rust gate over `crates/goh` with a
+stated coverage floor (55%, the unit tests alone -- the parity suites drive
+the binary where llvm-cov cannot see it), a biting `cargo audit`, the
+structural gate, `cargo test`, and the pytest suite via `tools/pytest.sh`;
+`tools/gate.sh --full` delegates to `local_ci.sh`. `clippy.toml` exempts
+test code from the restriction lints, retiring five per-test `#[expect]`s;
+the duplicate `tools/rust_gate.sh` is gone.
+
+The rest of this release, from earlier in the cycle:
 
 ### The native `goh` binary carries layer 1
 
