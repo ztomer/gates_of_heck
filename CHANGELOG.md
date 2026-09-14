@@ -1,5 +1,20 @@
 # CHANGELOG
 
+## Unreleased
+
+- **Portable `mktemp`.** `mktemp -t name` is BSD syntax; GNU mktemp needs an
+  `XXXXXX` template, so the structural, manifest and swift gates died on the
+  first Linux CI runs that called them by name. Fixed in one place; the
+  claim of Linux support is now exercised by two consumers' CI.
+- **`goh --version`**, checked by `scripts/build-goh.sh` against `Cargo.toml`
+  and pinned by an integration test: an installed binary that cannot say
+  what it is cannot be verified as the one just built.
+- **Release kit: `--archive-build CMD` and `--verify CMD`.** Build from
+  `git archive HEAD` (tracked files only -- what a tarball consumer gets)
+  and install-and-exercise before the tag. ztools and sys_updater delegate
+  to the kit again instead of carrying their own sequencing.
+- `loc_of_baseline_files.py`: a sentinel-only baseline ratchets to a pass.
+
 ## v0.11.0 — the native gate is the gate; the house checks reach every repo _(2026-09-14)_
 
 Minor: new behaviour every consumer inherits on its next run. What was WRONG
