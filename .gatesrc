@@ -21,14 +21,14 @@ GOH_MAX_LINES=500                 # file-length cap; unset disables the check
 GOH_SKILLS_CORPUS=1
 GOH_SKILLS_ROOT=$HOME/.claude/skills
 
-# COVERAGE FLOOR for crates/goh: 42, measured 42.59% on 2026-09-14 and stated
+# COVERAGE FLOOR for crates/goh: 55, measured 55.14% on 2026-09-14 and stated
 # rather than quietly left unset. The binary's real exercise is the Python
 # parity suites (tests/test_goh_*_parity.py drive the built binary against
 # the Python checkers on fixture repos), and cargo-llvm-cov does not see a
 # process pytest spawns -- so this number is the Rust UNIT tests alone. It is
 # a ratchet: up only. Raising it honestly means either unit tests over the
 # per-check modules or an instrumented binary under the parity suites.
-GOH_COV_FLOOR_RUST=42
+GOH_COV_FLOOR_RUST=55
 
 # The gate of record. `tools/gate.sh --full` (the pre-push hook) delegates to
 # gates/local_ci.sh, which reads this -- ONE list. This repo IS the gates, so
