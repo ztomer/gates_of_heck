@@ -81,7 +81,6 @@ pub fn format_report(over: &[OverCap], max: usize) -> String {
 }
 
 #[cfg(test)]
-#[expect(clippy::unwrap_used)]
 mod tests {
     use super::*;
 

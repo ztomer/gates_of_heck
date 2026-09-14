@@ -142,6 +142,18 @@ elif [ -n "${GOH_LINE_EXCLUDE:-}" ]; then
     warn "  is bounded by nothing. Point GOH_LINE_BASELINE at the ratchet baseline."
 fi
 
+# ...and the ceilings are ENFORCED here, not left to each repo's own gate
+# script. Until 2026-09-14 only the "carries a ceiling" check above ran in
+# the shared layer; the shrink-only ratchet over `wc -l` was wired per repo,
+# so a repo that listed ceilings and never ran the ratchet was, again,
+# bounded by nothing. Files named in the baseline may come down and may not
+# grow past their number.
+if [ -n "${GOH_LINE_BASELINE:-}" ] && [ -f "$GOH_LINE_BASELINE" ]; then
+    goh_step "cap-exempt files within their ceilings" \
+        python3 "$CHECKS/check_baseline_ratchet.py" --baseline "$GOH_LINE_BASELINE" \
+        --current-from-command "python3 '$CHECKS/loc_of_baseline_files.py' '$GOH_LINE_BASELINE'"
+fi
+
 # An agent SKILLS corpus (~/.claude/skills and friends) is authored prose that
 # nothing compiles, so its defects are silent: a SKILL.md with no frontmatter
 # can never be triggered and looks exactly like one that works. Opt in per repo

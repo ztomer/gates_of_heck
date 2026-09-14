@@ -140,6 +140,33 @@ pub fn step_ceiling(
         eprintln!("⚠ GOH_LINE_EXCLUDE is set but GOH_LINE_BASELINE is not — an exempted file");
         eprintln!("⚠   is bounded by nothing. Point GOH_LINE_BASELINE at the ratchet baseline.");
     }
+    // 4b. ...and the ceilings are enforced here, not left to each repo's own
+    // gate script: a baseline nobody ratchets is a list, not a bound.
+    if let Some(baseline) = cfg.line_baseline.as_deref() {
+        if repo.join(baseline).is_file() {
+            let measure = format!(
+                "python3 '{}' '{baseline}'",
+                checks.join("loc_of_baseline_files.py").display()
+            );
+            let args = vec![
+                "check_baseline_ratchet.py".to_owned(),
+                "--baseline".to_owned(),
+                baseline.to_owned(),
+                "--current-from-command".to_owned(),
+                measure,
+            ];
+            let code = delegated(
+                checks,
+                repo,
+                "cap-exempt files within their ceilings",
+                "python3",
+                &args,
+            );
+            if code != 0 {
+                return Some(code);
+            }
+        }
+    }
     None
 }
 
@@ -367,5 +394,66 @@ fn run_child(
             }
             (code, text)
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn checks_dir() -> std::path::PathBuf {
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../checks")
+    }
+
+    fn git(repo: &std::path::Path, args: &[&str]) {
+        let status = Command::new("git")
+            .args(args)
+            .current_dir(repo)
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .status();
+        assert!(status.is_ok_and(|s| s.success()), "git {args:?}");
+    }
+
+    fn lines(n: usize) -> String {
+        use std::fmt::Write as _;
+        (0..n).fold(String::new(), |mut out, i| {
+            let _ = writeln!(out, "// {i}");
+            out
+        })
+    }
+
+    #[test]
+    fn ceiling_step_enforces_the_baseline_both_ways() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let repo = dir.path();
+        git(repo, &["init", "-q"]);
+        std::fs::create_dir_all(repo.join("src")).expect("mkdir");
+        std::fs::write(repo.join("src/big.rs"), lines(600)).expect("write");
+        std::fs::write(repo.join("base.txt"), "# ceilings\n600\tsrc/big.rs\n").expect("write");
+        git(repo, &["add", "-A"]);
+        let cfg = gatesrc::Gatesrc {
+            max_lines: Some(500),
+            line_exclude: "src/big\\.rs".to_owned(),
+            line_baseline: Some("base.txt".to_owned()),
+            ..gatesrc::Gatesrc::default()
+        };
+        // At the ceiling: both the "carries a ceiling" and the ratchet pass.
+        assert_eq!(step_ceiling(repo, &cfg, &checks_dir()), None);
+        // One line over: the ratchet fails the step.
+        std::fs::write(repo.join("src/big.rs"), lines(601)).expect("write");
+        git(repo, &["add", "-A"]);
+        assert!(step_ceiling(repo, &cfg, &checks_dir()).is_some_and(|c| c != 0));
+        // Shrinking is always allowed.
+        std::fs::write(repo.join("src/big.rs"), lines(550)).expect("write");
+        git(repo, &["add", "-A"]);
+        assert_eq!(step_ceiling(repo, &cfg, &checks_dir()), None);
+        // A baseline path that does not exist: the exempt file has no bound at
+        // all, which the ceiling check reports -- the ratchet never runs.
+        let unbaselined = gatesrc::Gatesrc {
+            line_baseline: Some("missing.txt".to_owned()),
+            ..cfg
+        };
+        assert!(step_ceiling(repo, &unbaselined, &checks_dir()).is_some_and(|c| c != 0));
     }
 }

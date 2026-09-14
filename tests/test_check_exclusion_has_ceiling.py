@@ -122,3 +122,43 @@ def test_a_waiver_that_matches_nothing_fails(repo):
                   "--line-exclude", r"src/big\.rs", "--unbounded", "docs/gone/")
     assert r.returncode == 1
     assert "waives" in r.stdout + r.stderr
+
+
+def test_structural_enforces_the_ceilings_it_requires(repo):
+    """A file exempt from the cap with a recorded ceiling: growing past the
+    ceiling fails the STRUCTURAL gate itself, without any per-repo wiring."""
+    import subprocess
+    from conftest import REPO_ROOT
+    path = _repo(repo, lines=600, in_baseline=True)
+    write(repo, ".gatesrc",
+          "GOH_MAX_LINES=500\nGOH_LINE_EXCLUDE='src/big\\.rs'\n"
+          f"GOH_LINE_BASELINE={BASE}\n")
+    commit_all(repo)
+    structural = REPO_ROOT / "gates" / "structural.sh"
+    import os
+
+    def both():
+        # The native binary and the Python pipeline must agree.
+        out = []
+        for env in ({}, {"GOH_NO_NATIVE": "1"}):
+            r = subprocess.run(["/bin/bash", str(structural), "--full"], cwd=repo,
+                               capture_output=True, text=True,
+                               env={**os.environ, **env})
+            out.append((r.returncode, r.stdout + r.stderr))
+        assert out[0][0] == out[1][0], out
+        return out[0]
+
+    code, text = both()
+    assert code == 0, text
+    assert "within their ceilings" in text
+    # Grow it by one line: the ratchet bites.
+    write(repo, path, "\n".join(f"// {i}" for i in range(601)) + "\n")
+    commit_all(repo)
+    code, text = both()
+    assert code != 0
+    assert "src/big.rs" in text
+    # And shrinking is always allowed.
+    write(repo, path, "\n".join(f"// {i}" for i in range(550)) + "\n")
+    commit_all(repo)
+    code, text = both()
+    assert code == 0, text
