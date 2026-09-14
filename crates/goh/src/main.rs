@@ -11,6 +11,7 @@ pub mod length;
 pub mod markers;
 pub mod platform;
 pub mod scope;
+pub mod secrets;
 
 use std::path::PathBuf;
 use std::process::Command;
@@ -65,6 +66,15 @@ enum Commands {
         #[arg(long)]
         staged: bool,
     },
+    /// Fail on committed secrets (native port of `check_no_secrets`).
+    Secrets {
+        /// Regex exempting paths (search, like the Python checker).
+        #[arg(long, default_value = "")]
+        exclude: String,
+        /// Staged files only (polices the index, like the Python checker).
+        #[arg(long)]
+        staged: bool,
+    },
 }
 
 /// Compile an `--exclude` regex.
@@ -115,6 +125,7 @@ fn main() {
             allow,
             staged,
         } => run_emoji(&exclude, &allow, staged),
+        Commands::Secrets { exclude, staged } => run_secrets(&exclude, staged),
     };
     std::process::exit(code);
 }
@@ -264,6 +275,47 @@ fn run_emoji(exclude: &str, allow: &str, staged: bool) -> i32 {
         Ok((_, checked)) => {
             let scope = if staged { "staged" } else { "tracked" };
             println!("✓ [no_emoji] OK — {checked} {scope} files clean");
+            0
+        }
+    }
+}
+
+/// Fail on committed secrets. Returns 0 clean, 1 violations, 2 on error.
+fn run_secrets(exclude: &str, staged: bool) -> i32 {
+    let filter = match compile_exclude(exclude) {
+        Ok(filter) => filter,
+        Err(message) => {
+            eprintln!("✗ [no_secrets] {message}");
+            return 2;
+        }
+    };
+    let Some(root) = gitutil::repo_root().map(PathBuf::from) else {
+        println!("[no_secrets] not a git repo — skipping");
+        return 0;
+    };
+    match secrets::scan_root(&root, filter.as_ref(), staged) {
+        Err(message) => {
+            eprintln!("✗ [no_secrets] {message}");
+            2
+        }
+        // NOTE: violations go to stdout, matching the reference checker.
+        Ok((bad, _checked)) if !bad.is_empty() => {
+            let scope = if staged { "staged" } else { "tracked" };
+            println!(
+                "✗ DISALLOWED SECRET in {} location(s) ({scope}) — rotate the credential; revoked vectors use `secret-ok: <reason>` on the line or above:",
+                bad.len()
+            );
+            for hit in bad.iter().take(200) {
+                println!("  {}:{}:{}: {}", hit.path, hit.lineno, hit.col, hit.kind);
+            }
+            if bad.len() > 200 {
+                println!("  … and {} more", bad.len() - 200);
+            }
+            1
+        }
+        Ok((_, checked)) => {
+            let scope = if staged { "staged" } else { "tracked" };
+            println!("✓ [no_secrets] OK — {checked} {scope} files clean");
             0
         }
     }
