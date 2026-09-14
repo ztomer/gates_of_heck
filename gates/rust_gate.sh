@@ -18,8 +18,10 @@
 #      unused_dependencies = "deny"` looks like this and is not: the key needs
 #      -Zcargo-lints on nightly, so on stable cargo prints "unused manifest key"
 #      and exits 0. Named skip when the tool is absent.
-#   3. tools/check_no_allow.py — no #[allow]; fix findings, never silence.
-#      (Repo-local tool; skipped with a warning when not installed.)
+#   3. checks/check_no_allow.py — no #[allow]; fix findings, never silence.
+#      The HOUSE checker, always. Until 2026-09-14 this step looked for a
+#      repo-local tools/check_no_allow.py and skipped when absent, so four
+#      repos carried vendored copies and the rest were not checked at all.
 #   4. coverage floor, when stated (GOH_COV_FLOOR_RUST or GOH_COV_FLOORS_JSON
 #      in .gatesrc) — via gates/coverage_gate.sh, with the floor passed as
 #      explicit argv (.gatesrc values are shell variables, NOT exported, so
@@ -130,8 +132,8 @@ fi
 goh_step_in "$cargo_dir" "cargo lints (manifest)" \
     bash "$HERE/rust_manifest_gate.sh" "$cargo_dir"
 
-goh_optional_step "no #[allow]" tools/check_no_allow.py \
-    python3 tools/check_no_allow.py
+goh_step "no #[allow]" \
+    python3 "$HERE/../checks/check_no_allow.py"
 
 if [ -n "${GOH_COV_FLOOR_RUST:-}" ]; then
     goh_step "coverage (floor ${GOH_COV_FLOOR_RUST}%)" \

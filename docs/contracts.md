@@ -78,7 +78,7 @@ without documenting it fails the suite.
 Pin: `tests/test_config_schema.py`.
 
 ## 10. Parallel suite shares nothing mutable (`tools/gate.sh --full`)
-`--full` runs `pytest -n 8 --dist loadgroup`. Files sharing an
+`--full` runs `tools/pytest.sh` (`pytest -n 8 --dist loadgroup`). Files sharing an
 `xdist_group` marker stay on ONE worker: `test_release_hardening.py`
 corrupts `tools/release-kit/release.sh` MID-RUN on purpose, and
 `test_release_kit.py` runs real releases — split across workers, the

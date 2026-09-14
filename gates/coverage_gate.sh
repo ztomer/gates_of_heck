@@ -235,10 +235,15 @@ import subprocess
 meta = json.loads(subprocess.run(
     ["cargo", "metadata", "--no-deps", "--format-version", "1"],
     check=True, capture_output=True, text=True).stdout)
+# A bin target's unit tests are a coverage source too: a bin-only crate
+# (no lib) has ALL its unit tests there, and until 2026-09-14 this loop
+# never exported them, so such a crate read as "no coverable lines".
 for p in meta["packages"]:
     for t in p["targets"]:
         if "lib" in t["kind"]:
             print(f"{p['name']}\tlib\t")
+        elif "bin" in t["kind"]:
+            print(f"{p['name']}\tbin\t{t['name']}")
         elif "test" in t["kind"]:
             print(f"{p['name']}\ttest\t{t['name']}")
 PYEOF
@@ -261,12 +266,13 @@ PYEOF
                 warn "$label export failed"
             fi
         else
-            # Part name carries the package: two crates with same-named test
-            # targets must not overwrite each other's lcov part.
-            info "exporting $PKG (test $TNAME)"
-            part="$PARTS/part-$PKG-$TNAME.info"
-            label="$PKG (test $TNAME)"
-            if cargo llvm-cov -p "$PKG" --test "$TNAME" --all-features \
+            # Part name carries the package AND kind: two crates with
+            # same-named targets, or a bin and a test target sharing a name,
+            # must not overwrite each other's lcov part.
+            info "exporting $PKG ($KIND $TNAME)"
+            part="$PARTS/part-$PKG-$KIND-$TNAME.info"
+            label="$PKG ($KIND $TNAME)"
+            if cargo llvm-cov -p "$PKG" "--$KIND" "$TNAME" --all-features \
                     ${IGNORE:+--ignore-filename-regex "$IGNORE"} \
                     --lcov --output-path "$part" \
                     >/dev/null 2>&1; then
@@ -291,8 +297,8 @@ PYEOF
             part="$PARTS/part-$PKG-lib.info"
             label="$PKG (lib unittests)"
         else
-            part="$PARTS/part-$PKG-$TNAME.info"
-            label="$PKG (test $TNAME)"
+            part="$PARTS/part-$PKG-$KIND-$TNAME.info"
+            label="$PKG ($KIND $TNAME)"
         fi
         if [ ! -f "$part.ok" ]; then
             MISSING="${MISSING}${MISSING:+ }$label"

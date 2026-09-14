@@ -44,14 +44,24 @@ LIB_TESTED = (
 LIB_UNTESTED = "pub fn untested() -> u64 {\n    42\n}\n"  # pub: no dead-code lint, 0% coverage
 
 
+def _git(crate: Path, *args: str) -> None:
+    subprocess.run(["git", *args], cwd=crate, capture_output=True, check=True)
+
+
 def mkcrate(tmp: Path) -> Path:
+    # A git repo, like every repo the gate runs on: the house no-#[allow]
+    # checker scans TRACKED Rust files, so a bare directory is not a subject.
     (tmp / "src").mkdir(parents=True)
     (tmp / "Cargo.toml").write_text(CARGO_TOML)
+    _git(tmp, "init", "-q")
+    _git(tmp, "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-q",
+         "--allow-empty", "-m", "init")
     return tmp
 
 
 def write_lib(c: Path, body: str) -> None:
     (c / "src" / "lib.rs").write_text(body)
+    _git(c, "add", "-A")
 
 
 def run_script(script: Path, crate: Path) -> subprocess.CompletedProcess:
@@ -75,6 +85,7 @@ def clone(warm: Path, dest: Path) -> Path:
     c = mkcrate(dest)
     shutil.rmtree(c / "src")
     shutil.copytree(warm / "src", c / "src")
+    _git(c, "add", "-A")
     return c
 
 
@@ -106,33 +117,44 @@ def test_clippy_warning_both_fail(tmp_path, warm_crate):
 
 
 def test_allow_attr_fails_when_checker_installed(tmp_path, warm_crate):
-    for name in ("allow-old", "allow-new"):
-        c = clone(warm_crate, tmp_path / name)
-        write_lib(c, LIB_ALLOW)
-        tools = c / "tools"
-        tools.mkdir()
-        shutil.copy(CHECKER, tools / "check_no_allow.py")
-        if name.endswith("-old"):
-            assert run_script(LEGACY, c).returncode != 0
-        else:
-            assert run_script(CURRENT, c).returncode != 0
+    # LEGACY needed a repo-local copy of the checker; CURRENT runs the house
+    # one regardless.
+    c = clone(warm_crate, tmp_path / "allow-old")
+    write_lib(c, LIB_ALLOW)
+    (c / "tools").mkdir()
+    shutil.copy(CHECKER, c / "tools" / "check_no_allow.py")
+    assert run_script(LEGACY, c).returncode != 0
+    c = clone(warm_crate, tmp_path / "allow-new")
+    write_lib(c, LIB_ALLOW)
+    r = run_script(CURRENT, c)
+    assert r.returncode != 0
+    assert "no #[allow]" in r.stdout + r.stderr
 
 
-def test_missing_checker_warns_and_passes_in_both(tmp_path, warm_crate):
-    # No tools/check_no_allow.py → both warn+skip; neither hard-fails.
+def test_no_allow_is_never_skipped_for_want_of_a_local_copy(tmp_path, warm_crate):
+    # LEGACY warned and skipped without tools/check_no_allow.py — which is how
+    # every repo without a vendored copy went unchecked. CURRENT never skips.
     c = clone(warm_crate, tmp_path / "nochecker")
     old = run_script(LEGACY, c)
     new = run_script(CURRENT, c)
     assert old.returncode == 0 and new.returncode == 0
     assert "missing" in (old.stdout + old.stderr).lower()
-    assert "skipped" in (new.stdout + new.stderr).lower()
+    assert "skipped" not in (new.stdout + new.stderr).lower()
+    assert "no #[allow]" in new.stdout + new.stderr
 
 
 def test_cargo_subdir_argument_supported_by_both(tmp_path, warm_crate):
     # <repo> <cargo_dir> form: fmt/clippy run in the subdir, checker at root.
+    # The git repo is the OUTER dir here (the real shape: one repo, a crate in
+    # a subdir); the checker runs from the repo root and finds the crate.
     repo = tmp_path / "subdir-repo"
     repo.mkdir()
-    inner = clone(warm_crate, repo / "crates" / "parity")
+    inner = repo / "crates" / "parity"
+    inner.mkdir(parents=True)
+    (inner / "Cargo.toml").write_text(CARGO_TOML)
+    shutil.copytree(warm_crate / "src", inner / "src")
+    _git(repo, "init", "-q")
+    _git(repo, "add", "-A")
     for script, expect_ok in ((LEGACY, True), (CURRENT, True)):
         r = subprocess.run(
             ["/bin/bash", str(script), str(repo), str(inner)],
