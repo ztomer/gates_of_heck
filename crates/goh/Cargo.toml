@@ -1,0 +1,18 @@
+[package]
+name = "goh"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Static goh binary — structural gates without interpreter drift"
+
+[[bin]]
+name = "goh"
+path = "src/main.rs"
+
+[lints]
+workspace = true
+
+[dependencies]
+bytecount = "0.6"
+clap = { version = "4", features = ["derive"] }

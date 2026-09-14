@@ -1,0 +1,21 @@
+[workspace]
+resolver = "2"
+members = ["crates/goh"]
+
+[workspace.lints.clippy]
+all = { level = "warn", priority = -1 }
+pedantic = { level = "warn", priority = -1 }
+nursery = { level = "warn", priority = -1 }
+unwrap_used = "warn"
+expect_used = "warn"
+panic = "warn"
+exit = "warn"
+
+[workspace.lints.rust]
+unsafe_code = "deny"
+
+[workspace.package]
+version = "0.8.0"
+edition = "2021"
+rust-version = "1.85"
+license = "MIT"
