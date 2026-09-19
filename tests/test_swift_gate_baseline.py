@@ -25,7 +25,7 @@ from pathlib import Path
 
 import pytest
 
-from conftest import REPO_ROOT
+from conftest import REPO_ROOT, mk_xcrun_find_shim
 
 GATE = REPO_ROOT / "gates" / "swift_gate.sh"
 HELPER = REPO_ROOT / "gates" / "swift_lint_baseline.py"
@@ -229,6 +229,8 @@ def _mk_fake_swift(bin_dir: Path) -> None:
     shim = bin_dir / "swift"
     shim.write_text("#!/bin/bash\nexit 0\n")  # build/test stages pass
     shim.chmod(0o755)
+    mk_xcrun_find_shim(bin_dir, bin_dir / "swift")
+
 
 
 def _run_gate(proj: Path, env_extra: dict | None = None):

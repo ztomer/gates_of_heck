@@ -10,7 +10,7 @@ import os
 import subprocess
 from pathlib import Path
 
-from conftest import REPO_ROOT, write
+from conftest import REPO_ROOT, mk_xcrun_find_shim, write
 
 SWIFT_GATE = REPO_ROOT / "gates" / "swift_gate.sh"
 
@@ -28,6 +28,7 @@ def _mk_repo(tmp_path: Path, projects: list[str]) -> Path:
         f = bin_ / name
         f.write_text("#!/bin/bash\nexit 0\n")
         f.chmod(0o755)
+    mk_xcrun_find_shim(bin_, bin_ / "swift")
     return r, bin_
 
 

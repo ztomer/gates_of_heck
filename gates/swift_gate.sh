@@ -56,7 +56,12 @@ fi
 
 goh_init "swift"
 
-command -v swift >/dev/null 2>&1 || die "swift not on PATH"
+# The toolchain is RESOLVED, not whatever PATH says first — see
+# swift_toolchain.sh for the swiftly-shadows-Xcode incident that made
+# this gate fail for three days as "environmental".
+. "$HERE/swift_toolchain.sh"
+goh_swift_resolve
+step "swift: $SWIFT ($SWIFT_ORIGIN)"
 
 # swift_lint_with_baseline — the GOH_SWIFT_LINT_BASELINE branch. swiftlint's
 # own exit status is deliberately NOT trusted here: in --reporter json mode it
@@ -98,9 +103,9 @@ fi
 case "$MODE" in
   spm)
     goh_step "build (warnings as errors)" \
-        swift build -Xswiftc -warnings-as-errors
+        "$SWIFT" build -Xswiftc -warnings-as-errors
     if [ -n "${GOH_SWIFT_COV_MIN:-}" ]; then
-        goh_step "test + coverage" swift test --enable-code-coverage
+        goh_step "test + coverage" "$SWIFT" test --enable-code-coverage
         _cov_args=(--min "$GOH_SWIFT_COV_MIN")
         if [ -n "${GOH_SWIFT_COV_FLOORS:-}" ]; then
             [ -f "$GOH_SWIFT_COV_FLOORS" ] \
@@ -110,7 +115,7 @@ case "$MODE" in
         goh_step "coverage >= ${GOH_SWIFT_COV_MIN}%${GOH_SWIFT_COV_FLOORS:+ + per-target floors}" \
             python3 "$HERE/../checks/check_swift_coverage.py" "${_cov_args[@]}"
     else
-        goh_step "test" swift test
+        goh_step "test" "$SWIFT" test
         warn "no coverage floor — set GOH_SWIFT_COV_MIN in .gatesrc"
     fi
     ;;

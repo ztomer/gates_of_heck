@@ -207,6 +207,19 @@ esac
     return bin_
 
 
+# ── xcrun --find shim ────────────────────────────────────────────────────────
+# swift_gate.sh resolves the toolchain through `xcrun --find swift` BEFORE
+# PATH (gates/swift_toolchain.sh). A test that shims `swift` on PATH must
+# also shim xcrun to point at it, or the gate finds the real Xcode driver
+# and builds the fixture repo for real.
+def mk_xcrun_find_shim(bin_dir: Path, swift_path: Path) -> Path:
+    xcrun = bin_dir / "xcrun"
+    xcrun.write_text(
+        f'#!/bin/bash\n[ "$1 $2" = "--find swift" ] && {{ echo "{swift_path}"; exit 0; }}\nexit 1\n')
+    xcrun.chmod(xcrun.stat().st_mode | _stat.S_IEXEC)
+    return xcrun
+
+
 # ── shared fake gh ───────────────────────────────────────────────────────────
 # Stateful stub: `release view` succeeds iff that release was previously
 # created. Shared by test_release_kit.py and test_release_hardening.py
