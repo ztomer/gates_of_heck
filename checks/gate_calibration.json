@@ -1,41 +1,42 @@
 {
-  "_doc": [
-    "Which shared gates have PROVEN they can fail, and how.",
-    "",
-    "These gates run in four repos, so their proof belongs HERE rather than inside any one",
-    "consumer -- two of them were canaried from inside ZeroThunder, which meant the other three",
-    "inherited the gate without the evidence.",
-    "",
-    "proven_by: the canary runs each check against a git repo containing a real violation and",
-    "asserts it goes RED, then against a clean tree and asserts GREEN. Red-on-violation is the",
-    "load-bearing half: a gate that scans nothing exits 0 and is indistinguishable from a gate",
-    "that scanned everything, and two fixtures in this very table were silently out of scope",
-    "before that assertion caught them.",
-    "",
-    "Regenerate with the canary, never by hand -- a registry a human types is a registry that",
-    "outlives the thing it describes."
-  ],
-  "proven_by": {
-    "lints_optin": "game_asset_factory/tools/check_gate_canary.py -- workspace members inherit lints: red on a violation, green on a clean tree",
-    "exclusion_has_ceiling": "game_asset_factory/tools/check_gate_canary.py -- line exclusions retain a ceiling: red on a violation, green on a clean tree",
-    "skills_corpus": "game_asset_factory/tools/check_gate_canary.py -- skill corpus has valid frontmatter: red on a violation, green on a clean tree",
-    "no_emoji": "game_asset_factory/tools/check_gate_canary.py -- no disallowed emoji: red on a violation, green on a clean tree",
-    "no_conflict_markers": "game_asset_factory/tools/check_gate_canary.py -- no conflict markers: red on a violation, green on a clean tree",
-    "file_length": "game_asset_factory/tools/check_gate_canary.py -- file length cap: red on a violation, green on a clean tree",
-    "no_secrets": "game_asset_factory/tools/check_gate_canary.py -- no committed secrets: red on a violation, green on a clean tree",
-    "no_allow": "game_asset_factory/tools/check_gate_canary.py -- no Rust #[allow]: red on a violation, green on a clean tree",
-    "tests_registered": "game_asset_factory/tools/check_gate_canary.py -- every test is registered: red on a violation, green on a clean tree",
-    "no_screen_presentation": "game_asset_factory/tools/check_gate_canary.py -- tests never take the screen: red on a violation, green on a clean tree",
-    "baseline_ratchet": "game_asset_factory/tools/check_gate_canary.py -- a ratchet may not grow: red on a violation, green on a clean tree",
-    "generated_fresh": "game_asset_factory/tools/check_gate_canary.py -- generated artifacts are fresh: red on a violation, green on a clean tree",
-    "shell_lint": "game_asset_factory/tools/check_gate_canary.py -- shell lint: red on a violation, green on a clean tree",
-    "probes_pass": "game_asset_factory/tools/check_gate_canary.py -- gate self-proofs still pass: red on a violation, green on a clean tree",
-    "empty_scope": "game_asset_factory/tools/check_gate_canary.py -- every gate refuses to pass over an empty tree: red on a violation, green on a clean tree"
-  },
-  "known_unproven": [
-    "check_swift_coverage"
-  ],
-  "unproven_why": {
-    "check_swift_coverage": "needs a built Swift package with real coverage data; a fixture would be a Swift toolchain invocation, not a file"
-  }
+ "_doc": [
+  "Which shared gates have PROVEN they can fail, and how.",
+  "",
+  "These gates run in four repos, so their proof belongs HERE rather than inside any one",
+  "consumer -- two of them were canaried from inside ZeroThunder, which meant the other three",
+  "inherited the gate without the evidence.",
+  "",
+  "proven_by: the canary runs each check against a git repo containing a real violation and",
+  "asserts it goes RED, then against a clean tree and asserts GREEN. Red-on-violation is the",
+  "load-bearing half: a gate that scans nothing exits 0 and is indistinguishable from a gate",
+  "that scanned everything, and two fixtures in this very table were silently out of scope",
+  "before that assertion caught them.",
+  "",
+  "Regenerate with the canary, never by hand -- a registry a human types is a registry that",
+  "outlives the thing it describes."
+ ],
+ "proven_by": {
+  "lints_optin": "game_asset_factory/tools/check_gate_canary.py -- workspace members inherit lints: red on a violation, green on a clean tree",
+  "exclusion_has_ceiling": "game_asset_factory/tools/check_gate_canary.py -- line exclusions retain a ceiling: red on a violation, green on a clean tree",
+  "skills_corpus": "game_asset_factory/tools/check_gate_canary.py -- skill corpus has valid frontmatter: red on a violation, green on a clean tree",
+  "no_emoji": "game_asset_factory/tools/check_gate_canary.py -- no disallowed emoji: red on a violation, green on a clean tree",
+  "no_conflict_markers": "game_asset_factory/tools/check_gate_canary.py -- no conflict markers: red on a violation, green on a clean tree",
+  "file_length": "game_asset_factory/tools/check_gate_canary.py -- file length cap: red on a violation, green on a clean tree",
+  "no_secrets": "game_asset_factory/tools/check_gate_canary.py -- no committed secrets: red on a violation, green on a clean tree",
+  "no_allow": "game_asset_factory/tools/check_gate_canary.py -- no Rust #[allow]: red on a violation, green on a clean tree",
+  "tests_registered": "game_asset_factory/tools/check_gate_canary.py -- every test is registered: red on a violation, green on a clean tree",
+  "no_screen_presentation": "game_asset_factory/tools/check_gate_canary.py -- tests never take the screen: red on a violation, green on a clean tree",
+  "baseline_ratchet": "game_asset_factory/tools/check_gate_canary.py -- a ratchet may not grow: red on a violation, green on a clean tree",
+  "generated_fresh": "game_asset_factory/tools/check_gate_canary.py -- generated artifacts are fresh: red on a violation, green on a clean tree",
+  "shell_lint": "game_asset_factory/tools/check_gate_canary.py -- shell lint: red on a violation, green on a clean tree",
+  "probes_pass": "game_asset_factory/tools/check_gate_canary.py -- gate self-proofs still pass: red on a violation, green on a clean tree",
+  "empty_scope": "game_asset_factory/tools/check_gate_canary.py -- every gate refuses to pass over an empty tree: red on a violation, green on a clean tree",
+  "no_home_paths": "game_asset_factory/tools/check_gate_canary.py -- no hard-coded home paths: red on `cd /Users/someone/Projects/thing`, green on `${THING_DIR:-$(dirname \"$0\")}` (2026-09-19, the day the gate landed)"
+ },
+ "known_unproven": [
+  "check_swift_coverage"
+ ],
+ "unproven_why": {
+  "check_swift_coverage": "needs a built Swift package with real coverage data; a fixture would be a Swift toolchain invocation, not a file"
+ }
 }
