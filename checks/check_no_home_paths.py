@@ -48,13 +48,22 @@ PATTERNS = (
 
 MARKER = re.compile(r"path-ok:\s*\S")
 
+# `${VAR:-<default>}`: the location is an ENV VAR with a fallback, which is
+# the derived form this gate asks for (the house `GOH_DIR` delegation in
+# every .githooks/* is exactly this). A match that sits inside such an
+# expansion is not a finding.
+ENV_DEFAULT = re.compile(r"\$\{[A-Za-z_][A-Za-z0-9_]*:-[^}]*\}")
+
 
 def _suppressed(prev_line: str | None, line: str) -> bool:
     return bool(MARKER.search(line) or (prev_line and MARKER.search(prev_line)))
 
 
 def _findings(line: str) -> list[tuple[int, str]]:
-    return [(m.start() + 1, kind) for kind, pat in PATTERNS for m in pat.finditer(line)]
+    spans = [m.span() for m in ENV_DEFAULT.finditer(line)]
+    inside = lambda i: any(a <= i < b for a, b in spans)  # noqa: E731 — one-use predicate
+    return [(m.start() + 1, kind) for kind, pat in PATTERNS
+            for m in pat.finditer(line) if not inside(m.start())]
 
 
 def main() -> int:

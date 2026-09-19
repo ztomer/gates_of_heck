@@ -83,3 +83,13 @@ def test_zero_files_is_a_refusal_not_a_pass(repo):
     r = run_check(repo, "--staged")
     assert r.returncode != 0
     assert "refusing to report clean over zero files" in r.stdout
+
+
+def test_an_env_var_with_a_default_is_derived_not_hard_coded(repo):
+    write(repo, ".githooks/pre-push",
+          'GOH="${GOH_DIR:-${GOH:-$HOME/Projects/gates_of_heck}}"\n'
+          'BAD="$HOME/Projects/other"\n')
+    stage(repo, ".githooks/pre-push")
+    r = run_check(repo, "--staged")
+    assert r.returncode != 0
+    assert ".githooks/pre-push:2:" in r.stdout and ":1:" not in r.stdout, r.stdout
