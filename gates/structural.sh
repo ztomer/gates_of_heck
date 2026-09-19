@@ -200,6 +200,22 @@ else
         ${GOH_EXCLUDE:+--exclude "$GOH_EXCLUDE"}
 fi
 
+# A hard-coded home path (/Users/<x>/…, ~/Projects/…, $HOME/Projects/…) in a
+# shipped binary, script or doc works on one machine at one moment; the
+# salary CLI failed for two weeks after its repos moved (2026-09). Opt in per
+# repo with GOH_NO_HOME_PATHS=1 in .gatesrc once the tree is clean or its
+# survivors carry `path-ok: <reason>`; landing it red everywhere at once is
+# how a gate gets switched off. Same GOH_EXCLUDE as its siblings.
+if [ -n "${GOH_NO_HOME_PATHS:-}" ]; then
+    if [ "$SCOPE" = "--staged" ]; then
+        goh_step "no hard-coded home paths (staged)" python3 "$CHECKS/check_no_home_paths.py" --staged \
+            ${GOH_EXCLUDE:+--exclude "$GOH_EXCLUDE"}
+    else
+        goh_step "no hard-coded home paths" python3 "$CHECKS/check_no_home_paths.py" \
+            ${GOH_EXCLUDE:+--exclude "$GOH_EXCLUDE"}
+    fi
+fi
+
 # The companion question to the one below, and a different one: a self-proof shows a gate can
 # fail on a VIOLATION; this shows it does not report compliance when its subject is ABSENT. Three
 # factory gates had probes and still passed over an empty tree. Nobody edits a gate to break it --
