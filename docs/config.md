@@ -19,6 +19,7 @@ Single schema. CLI flags beat env/.gatesrc where both exist. Unset means
 | `GOH_ALLOW` | unset | Extra permitted characters (regex chars, spaces stripped). Keep empty unless the repo genuinely needs it. |
 | `GOH_SKILLS_CORPUS` | unset (check skipped) | Set to `1` in a repo that IS an agent skills corpus (`~/.claude/skills`, `~/.agents/skills`) to run `check_skills_corpus.py`. Opt-in rather than auto-detected, so a repo that merely SHIPS example skills is unaffected. |
 | `GOH_SKILLS_ROOT` | the repo root | Corpus root, when the skills tree is a subdirectory rather than the repo itself. |
+| `GOH_NO_HOME_PATHS` | unset (check skipped) | Set to `1` to run `check_no_home_paths.py`: no `/Users/<x>/…`, `/home/<x>/…`, `~/Projects/…` or `$HOME/Projects/…` in any tracked text file (a `${VAR:-default}` expansion is derived, not hard-coded, and passes). A path that must stand carries `path-ok: <reason>` on the line or above. Opt-in per repo — turn it on once the tree is clean, never red in twenty places at once. Same `GOH_EXCLUDE`. |
 | `GOH_SKILLS_MAX_WORDS` | `5000` | Word ceiling on each `SKILL.md` — the file that loads on invoke. Oversized skills are ratcheted in `skills_size_baseline.json` beside the corpus: shrink-only, and a stale entry FAILS. |
 
 ## Disk watch (standalone: `~/Projects/scripts/bin/disk_hygiene.sh`)
@@ -108,6 +109,8 @@ fix is `reclaim_build_space.sh` next to it.
 | `GOH_TAIL` | `60` (gates) / `30` (local_ci) | Lines of captured log printed on step failure. |
 | `GOH_TIME` | unset | When set (any value), `goh_step` appends per-step elapsed whole seconds to its ok line. Off by default. |
 | `GOH_AWK_VER_RE` | internal | Version regex passed into the release stanza matcher. Not user config. |
+| `GOH_RELEASE_VERSION` | set by `tools/release-kit/release.sh` | The version being cut, exported into the `--verify CMD` run (and the archive build) so the command can assert the INSTALLED binary answers with exactly it. Read it, never set it by hand. |
+| `GOH_SWIFT` | unset (`xcrun --find swift`, then PATH) | Explicit swift driver for `swift_gate.sh` and any script sourcing `gates/swift_toolchain.sh`. Refused when not executable. Exists because a swiftly toolchain on PATH shadowed Xcode's and the gate failed for three days as "environmental". |
 
 Internal-only (not `.gatesrc` policy): `GOH_ROOT`, `GOH_GIT_ROOT`,
 `GOH_REPO_ROOT`, `GOH_NAME`, `GOH_LOG`, `GOH_LOGS`, `GOH_COMPLETED`, `GOH_EX`, `GOH_NATIVE_BIN` (the resolved native binary inside `structural.sh`).

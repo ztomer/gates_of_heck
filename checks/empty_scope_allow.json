@@ -9,7 +9,8 @@
   "legitimate": {
     "check_no_conflict_markers.py": "a repo with no tracked files genuinely has no conflict markers, and there is no baseline to contradict: this gate has no population to lose",
     "check_no_emoji.py": "it scans every tracked file and its scan set IS its subject, so it cannot be partially blind; a git failure now RAISES rather than returning an empty list (_gitutil.listed_files, 2026-09-05), which was the real hole",
-    "check_no_secrets.py": "same shape as check_no_emoji -- scan set is the subject, and the silent-empty-on-git-failure hole is closed in _gitutil.listed_files"
+    "check_no_secrets.py": "same shape as check_no_emoji -- scan set is the subject, and the silent-empty-on-git-failure hole is closed in _gitutil.listed_files",
+    "check_no_home_paths.py": "same shape as check_no_emoji and check_no_secrets -- the scan set IS the subject (every tracked text file), so it cannot be partially blind; over ZERO files it refuses outright, and a two-file tree with no home path is genuinely clean"
   },
   "known_blind": {}
 }
