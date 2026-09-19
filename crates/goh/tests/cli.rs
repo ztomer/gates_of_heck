@@ -352,6 +352,44 @@ fn the_skills_corpus_gate_runs_when_declared_and_a_rooted_corpus_exists() {
 }
 
 #[test]
+fn the_home_paths_gate_runs_only_when_declared_and_goes_red_on_a_checkout_path() {
+    // Undeclared: the step does not run, a home path passes untouched.
+    let r = repo_with(&[
+        ("README.md", "x\n"),
+        ("NOTES.md", "run it from ~/Projects/salary\n"),
+        (".gatesrc", "GOH_MAX_LINES=500\n"),
+    ]);
+    r.git(&["add", "-A"]);
+    let out = goh(Some(&r), &["structural", "--full"], &[]);
+    assert!(
+        !out.stdout.contains("hard-coded home paths"),
+        "{}",
+        out.text()
+    );
+    // Declared: it runs, names the file, and stops the pipeline red.
+    r.write(".gatesrc", "GOH_MAX_LINES=500\nGOH_NO_HOME_PATHS=1\n");
+    r.git(&["add", "-A"]);
+    let out = goh(Some(&r), &["structural", "--full"], &[]);
+    assert!(!out.status.success(), "{}", out.text());
+    assert!(
+        out.text().contains("no hard-coded home paths"),
+        "{}",
+        out.text()
+    );
+    assert!(out.text().contains("NOTES.md:1:"), "{}", out.text());
+    // Fixed: green, and the step is listed.
+    r.write("NOTES.md", "run it from the repo root\n");
+    r.git(&["add", "-A"]);
+    let out = goh(Some(&r), &["structural", "--full"], &[]);
+    assert!(out.status.success(), "{}", out.text());
+    assert!(
+        out.stdout.contains("no hard-coded home paths"),
+        "{}",
+        out.text()
+    );
+}
+
+#[test]
 fn outside_a_git_repo_every_command_says_so_by_name() {
     // The same contract as the Python checkers: nothing to police, and the
     // skip is NAMED -- a bare exit 0 would be indistinguishable from clean.

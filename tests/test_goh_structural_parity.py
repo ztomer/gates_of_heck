@@ -69,6 +69,12 @@ FULL_CASES: dict[str, dict[str, bytes]] = {
     "no_gatesrc": {"a.py": b"x = 1\n"},
     "exclude_warn": {".gatesrc": b"GOH_MAX_LINES=10\nGOH_LINE_EXCLUDE='a.py'\n", "a.py": b"x = 1\n"},
     "shell_fail": {".gatesrc": GATESRC, "bad.sh": b"if then\n"},
+    # The opt-in home-paths step, both outcomes -- an opt-in step the table
+    # never turns on is one the parity proof never sees.
+    "home_path_red": {".gatesrc": b"GOH_MAX_LINES=10\nGOH_NO_HOME_PATHS=1\n",
+                      "NOTES.md": b"run from ~/Projects/x\n"},
+    "home_path_green": {".gatesrc": b"GOH_MAX_LINES=10\nGOH_NO_HOME_PATHS=1\n",
+                        "NOTES.md": b"run from the repo root\n"},
 }
 
 

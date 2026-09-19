@@ -264,6 +264,40 @@ pub fn step_secrets(repo: &std::path::Path, cfg: &gatesrc::Gatesrc, staged: bool
 }
 
 #[must_use]
+pub fn step_home_paths(
+    repo: &std::path::Path,
+    cfg: &gatesrc::Gatesrc,
+    checks: &std::path::Path,
+    staged: bool,
+) -> Option<i32> {
+    // 7b. Hard-coded home paths (opt-in per repo; delegated to the Python
+    // checker, the same file the shell pipeline runs). A location under
+    // someone's HOME in a shipped script or binary works on one machine at
+    // one moment — the salary CLI outage of 2026-09.
+    if !cfg.no_home_paths {
+        return None;
+    }
+    let label = if staged {
+        "no hard-coded home paths (staged)"
+    } else {
+        "no hard-coded home paths"
+    };
+    let mut args = vec!["check_no_home_paths.py".to_owned()];
+    if staged {
+        args.push("--staged".to_owned());
+    }
+    if !cfg.exclude.is_empty() {
+        args.push("--exclude".to_owned());
+        args.push(cfg.exclude.clone());
+    }
+    let code = delegated(checks, repo, label, "python3", &args);
+    if code != 0 {
+        return Some(code);
+    }
+    None
+}
+
+#[must_use]
 pub fn step_full_only(
     repo: &std::path::Path,
     checks: &std::path::Path,

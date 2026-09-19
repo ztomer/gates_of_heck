@@ -164,6 +164,9 @@ fn run_structural(staged: bool, full: bool) -> i32 {
     if let Some(code) = steps::step_secrets(&repo, &cfg, staged) {
         return code;
     }
+    if let Some(code) = steps::step_home_paths(&repo, &cfg, &checks, staged) {
+        return code;
+    }
     if let Some(code) = steps::step_full_only(&repo, &checks, staged) {
         return code;
     }

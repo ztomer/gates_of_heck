@@ -27,6 +27,8 @@ pub struct Gatesrc {
     pub line_unbounded: String,
     /// Skills-corpus gate enabled.
     pub skills_corpus: bool,
+    /// Hard-coded-home-path gate enabled (`GOH_NO_HOME_PATHS`).
+    pub no_home_paths: bool,
     /// Corpus root override (default: repo root).
     pub skills_root: Option<String>,
     /// Skills-corpus word cap.
@@ -144,6 +146,9 @@ pub fn from_pairs(pairs: &BTreeMap<String, String>) -> Result<Gatesrc, String> {
         line_unbounded: get("GOH_LINE_UNBOUNDED"),
         skills_corpus: pairs
             .get("GOH_SKILLS_CORPUS")
+            .is_some_and(|v| !v.is_empty()),
+        no_home_paths: pairs
+            .get("GOH_NO_HOME_PATHS")
             .is_some_and(|v| !v.is_empty()),
         skills_root: pairs.get("GOH_SKILLS_ROOT").cloned(),
         skills_max_words: pairs.get("GOH_SKILLS_MAX_WORDS").cloned(),
