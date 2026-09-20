@@ -110,8 +110,16 @@ def main() -> int:
             print(f"  … and {len(bad) - 200} more")
         return 1
     if checked == 0:
-        # A checker that reports compliance over nothing is the empty-scope
-        # failure the structural gate already polices elsewhere; say so.
+        if args.staged:
+            # An empty INDEX is a real state — a pre-push hook stage, a
+            # commit that only deletes — and "nothing staged" is the honest
+            # answer there. (Taxes' first push after wiring this refused
+            # on exactly that, 2026-09-19.)
+            print("✓ [no_home_paths] nothing staged — 0 files to check")
+            return 0
+        # Over the TRACKED tree, zero files is the empty-scope failure the
+        # structural gate polices elsewhere: a renamed root or a broken git
+        # call must not read as clean.
         print(f"✗ [no_home_paths] nothing to check ({scope}) — refusing to report clean over zero files")
         return 1
     print(f"✓ [no_home_paths] OK — {checked} {scope} files clean")

@@ -79,8 +79,19 @@ def test_exclude_skips_matching_paths_only(repo):
     assert "src/x.sh:1:" in r.stdout and "docs/history.md" not in r.stdout
 
 
-def test_zero_files_is_a_refusal_not_a_pass(repo):
+def test_an_empty_index_is_nothing_staged_not_a_refusal(repo):
+    """A pre-push hook stage and a delete-only commit both stage nothing."""
     r = run_check(repo, "--staged")
+    assert r.returncode == 0, r.stdout
+    assert "nothing staged" in r.stdout
+
+
+def test_zero_tracked_files_is_a_refusal_not_a_pass(tmp_path):
+    """Over the tracked tree, an empty population must not read as clean."""
+    bare = tmp_path / "bare"
+    bare.mkdir()
+    subprocess.run(["git", "init", "-q", "-b", "main"], cwd=bare, check=True)
+    r = run_check(bare)
     assert r.returncode != 0
     assert "refusing to report clean over zero files" in r.stdout
 
