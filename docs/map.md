@@ -35,7 +35,7 @@ logic goes in the engine; new floor/CLI semantics go in `coverage_gate.sh`.
 | `check_no_conflict_markers.py` | Fails on merge markers. | `test_file_length_and_markers.py` |
 | `check_file_length.py` | `--max N` file-length cap. | `test_file_length_and_markers.py` |
 | `check_shell_lint.sh` | `bash -n` + `shellcheck --severity=error` over tracked `*.sh` + `hooks/*`. Missing shellcheck degrades to syntax-only with a named warning. | `test_check_shell_lint.py` |
-| `check_no_secrets.py` | Narrow secrets gate: known key prefixes + private-key headers, staged + full. No entropy heuristics by design. Revoked vectors suppress with `secret-ok: <reason>`. | `test_check_no_secrets.py` |
+| `check_no_secrets.py` | Narrow secrets gate: known key prefixes + private-key headers + a credential-named key (`api_key`, `password`, …) with a 32+ char quoted value, staged + full. No entropy heuristics by design. Revoked vectors suppress with `secret-ok: <reason>`. | `test_check_no_secrets.py` |
 | `check_no_allow.py` | No `#[allow]` in Rust (repo-local twin; structural twin lives in consumer `tools/`). | `test_check_no_allow.py` |
 | `check_no_screen_presentation.py` | Static half: test sources must not ask for screen APIs. | `test_screen_presentation.py` |
 | `check_no_screen_linkage.sh` | Dynamic half: `nm -u` on built test binary must not import screen symbols. | `test_screen_linkage.py` |

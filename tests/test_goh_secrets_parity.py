@@ -30,6 +30,7 @@ SK = "sk-" + "f" * 20
 XOXB = "xoxb-" + "g" * 10
 AKIA = "AKIA" + "H" * 16
 SHORT = "ghp_" + "A" * 10
+CRED_NAME = "api_" + "key"  # concatenated: a literal credential line here would trip the gate
 
 
 def _git(repo: Path, *args: str) -> None:
@@ -93,6 +94,10 @@ FULL_CASES: dict[str, bytes] = {
     "suppressed_above": f"# secret-ok: rotated 2026-01-01\nK = \"{GHP}\"\n".encode(),
     "bare_marker": f'K = "{GHP}"  # secret-ok:\n'.encode(),
     "unicode_col": f"\u2192 {GHP}\n".encode(),
+    "cred_long_json": f'{{"{CRED_NAME}": "osk-v1.{"a" * 40}"}}\n'.encode(),
+    "cred_long_toml": f"{CRED_NAME} = '{'b' * 32}'\n".encode(),
+    "cred_short": f'{{"{CRED_NAME}": "{"c" * 31}"}}\n'.encode(),
+    "cred_placeholder": f'{CRED_NAME} = "LIDARR_API_KEY"\n'.encode(),
     "binary": b"\xff\xfe\x00\x01\x02more bytes",
 }
 

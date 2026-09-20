@@ -106,3 +106,24 @@ def test_full_mode_scans_tracked_files(repo):
     r = run_secrets(repo)
     assert r.returncode == 1, r.stdout + r.stderr
     assert "leak.py" in (r.stdout + r.stderr)
+
+
+def test_credential_named_key_with_long_value_fails(repo):
+    # Built by concatenation and repetition: a literal would trip this gate.
+    name = "api_" + "key"
+    write(repo, "state/llm_config.json", '{\n  "host": "h",\n  "%s": "osk-v1.%s"\n}\n' % (name, "a" * 40))
+    stage(repo, "state/llm_config.json")
+    r = run_secrets(repo, "--staged")
+    assert r.returncode == 1, r.stdout + r.stderr
+    assert "llm_config.json:3" in r.stdout
+    assert "credential-named key" in r.stdout
+
+
+def test_credential_named_key_with_a_placeholder_passes(repo):
+    name = "api_" + "key"
+    write(repo, "examples/app.toml", '%s = "LIDARR_API_KEY"\n' % name)
+    write(repo, "tests/fixture.py", 'wire(%s="sk-stale")\npw = {"pass" + "word": "app-password"}\n' % name)
+    write(repo, "cfg.json", '{"%s": "%s"}\n' % (name, "b" * 31))
+    stage(repo, "examples/app.toml", "tests/fixture.py", "cfg.json")
+    r = run_secrets(repo, "--staged")
+    assert r.returncode == 0, r.stdout + r.stderr

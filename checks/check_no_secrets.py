@@ -3,7 +3,9 @@
 
 One committed token dwarfs every other defect class these gates cover, so
 this gate exists — but its scope is DELIBERATELY narrow: known
-high-confidence prefixes plus private-key headers. No entropy heuristics:
+high-confidence prefixes, private-key headers, and a credential-NAMED key
+(`api_key`, `password`, …) holding a quoted value of 32+ characters — the
+shape of a runtime config file that got tracked. No entropy heuristics:
 an unproven heuristic cries wolf, gets switched off, and is worse than a
 narrow gate that never does. Entropy detection is recorded followup work,
 not a TODO in this file.
@@ -46,6 +48,15 @@ PATTERNS = (
     ("slack token", re.compile(r"\bxox[bpas]-[A-Za-z0-9\-]{10,}")),
     ("aws access key id", re.compile(r"\bAKIA[0-9A-Z]{16}")),
     ("private key", re.compile(r"-----BEGIN (?:RSA |OPENSSH |EC |DSA )?PRIVATE KEY-----")),
+    # A credential-NAMED key holding a long opaque value, in any structured
+    # or source line: `"api_key": "<32+ chars>"`, `password = '<32+>'`.
+    # The name is the confidence; the 32-char floor is what keeps
+    # placeholders (`"LIDARR_API_KEY"`, `"app-password"`, `"sk-stale"`)
+    # out — measured 2026-09-19 over every local repo: 33 hits at 8 chars,
+    # one of them real; exactly that one at 32. A JSON file cannot carry a
+    # marker, so a legitimate long fixture value is excluded by path.
+    ("credential-named key with a long value",
+     re.compile(r"""(?i)\b(?:api_key|apikey|api_token|access_token|auth_token|client_secret|secret_key|password)\b["']?\s*[:=]\s*["'][^"'\s]{32,}["']""")),
 )
 
 # Suppression marker with a MANDATORY reason (non-whitespace after the colon).

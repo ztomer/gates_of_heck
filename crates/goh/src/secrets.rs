@@ -1,7 +1,8 @@
 //! Committed-secret scan — Rust port of `checks/check_no_secrets.py`.
 //!
-//! Deliberately narrow: known high-confidence prefixes plus private-key
-//! headers. No entropy heuristics — an unproven heuristic cries wolf, gets
+//! Deliberately narrow: known high-confidence prefixes, private-key
+//! headers, and a credential-named key with a 32+ character quoted value
+//! (a tracked runtime config's shape). No entropy heuristics — an unproven heuristic cries wolf, gets
 //! switched off, and is worse than a narrow gate that never does. Tails are
 //! length-gated so prose cannot trip them.
 //!
@@ -22,6 +23,14 @@ pub const PATTERNS: &[(&str, &str)] = &[
     (
         "private key",
         r"-----BEGIN (?:RSA |OPENSSH |EC |DSA )?PRIVATE KEY-----",
+    ),
+    // A credential-NAMED key holding a long opaque value — the shape of a
+    // tracked runtime config. The 32-char floor keeps placeholders out
+    // (measured 2026-09-19: 33 hits at 8 chars across every local repo,
+    // one real; exactly that one at 32).
+    (
+        "credential-named key with a long value",
+        r#"(?i)\b(?:api_key|apikey|api_token|access_token|auth_token|client_secret|secret_key|password)\b["']?\s*[:=]\s*["'][^"'\s]{32,}["']"#,
     ),
 ];
 
@@ -195,6 +204,27 @@ mod tests {
         let hits = findings(&line, &patterns);
         assert_eq!(hits.len(), 1);
         assert_eq!(hits[0].0, 5);
+    }
+
+    #[test]
+    fn a_credential_named_key_fires_only_on_a_long_value() {
+        let (patterns, _) = compiled();
+        // Built by repetition: a matchable value in source would trip this gate.
+        let name = concat!("api_", "key");
+        let long = format!(r#"  "{name}": "osk-v1.{}""#, "a".repeat(40));
+        assert_eq!(findings(&long, &patterns).len(), 1);
+        assert_eq!(
+            findings(&long, &patterns)[0].1,
+            "credential-named key with a long value"
+        );
+        let toml = format!("{} = '{}'", concat!("pass", "word"), "x".repeat(32));
+        assert!(!findings(&toml, &patterns).is_empty());
+        // Placeholders and short fixtures are not findings.
+        let short = format!(r#""{name}": "{}""#, "a".repeat(31));
+        assert!(findings(&short, &patterns).is_empty());
+        assert!(findings(&format!("{name} = \"LIDARR_API_KEY\""), &patterns).is_empty());
+        // An unquoted or env-sourced value is not one either.
+        assert!(findings(&format!("{name} = os.environ[\"K\"]"), &patterns).is_empty());
     }
 
     #[test]
