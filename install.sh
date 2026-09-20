@@ -104,6 +104,11 @@ esac
 
 "$GOH/gates/structural.sh" "$@"
 
+# The cheap half of a language gate runs at COMMIT time on the staged files
+# (rule 14: a commit gate weaker than the push gate lets you commit red and
+# find out at push). Uncomment for the languages this repo contains:
+#   "$GOH/gates/py_staged.sh"  .
+
 case "${1:-}" in
   --full)
     # Add per-language layers for what this repo actually contains:

@@ -87,6 +87,7 @@ set -euo pipefail
 GOH="${GOH_DIR:-${GOH:-$HOME/Projects/gates_of_heck}}"
 
 "$GOH/gates/structural.sh" "$@"
+"$GOH/gates/py_staged.sh" .      # ruff on the staged .py at every commit
 
 case "${1:-}" in
   --full)
