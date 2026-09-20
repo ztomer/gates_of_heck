@@ -1,5 +1,17 @@
 # CHANGELOG
 
+## v0.12.2 — `#[expect]` is a suppression too _(2026-09-20)_
+
+`checks/check_no_allow.py` now refuses `#[expect(...)]` and `#![expect(...)]`
+beside `#[allow]`, and its scope covers `tests/` and `examples/` as well as
+`src/`, `benches/` and `build.rs`. `#[expect]` cannot rot (it errors when the
+lint stops firing) but it still ships the finding - a cast that "fits today",
+a function that is "only 104 lines", a `#![allow(dead_code)]` on a shared
+test fixture that should be a dev-dependency crate. Policy from the servers
+Rust campaign (operator, 2026-09-20): fix the finding properly. Tests:
+`test_expect_is_refused_too`, `test_tests_dir_in_scope` (the two inverted
+cases from v0.12.1's suite).
+
 ## v0.12.1 — a named "not applicable" skip is not a pass _(2026-09-14)_
 
 Patch. `check_empty_scope.py` counts a gate that exits 0 having printed

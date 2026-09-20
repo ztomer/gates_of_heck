@@ -29,22 +29,28 @@ def test_inner_attribute_also_fails(repo):
     assert run_check(repo, SCRIPT).returncode == 1
 
 
-def test_expect_is_permitted(repo):
-    # #[expect] errors if its lint never fires — the allow that cannot rot.
+def test_expect_is_refused_too(repo):
+    # #[expect] cannot rot, but it still ships the finding (2026-09-20).
     (_mkcrate(repo) / "lib.rs").write_text(
         '#[expect(dead_code, reason = "pending")]\nfn f() {}\n',
         encoding="utf-8",
     )
-    assert run_check(repo, SCRIPT).returncode == 0
+    commit_all(repo)
+    r = run_check(repo, SCRIPT)
+    assert r.returncode == 1
+    assert "expect" in r.stdout
+    (_mkcrate(repo) / "lib.rs").write_text('#![expect(clippy::all)]\n', encoding="utf-8")
+    commit_all(repo)
+    assert run_check(repo, SCRIPT).returncode == 1
 
 
-def test_tests_dir_out_of_scope(repo):
-    # tests/ may unwrap; clippy --all-targets still polices warnings there.
+def test_tests_dir_in_scope(repo):
+    # A #![allow(dead_code)] on a shared fixture is the same suppression.
     t = repo / "tests"
     t.mkdir(exist_ok=True)
     (t / "it.rs").write_text(ALLOW, encoding="utf-8")
     commit_all(repo)
-    assert run_check(repo, SCRIPT).returncode == 0
+    assert run_check(repo, SCRIPT).returncode == 1
 
 
 def test_build_rs_in_scope(repo):

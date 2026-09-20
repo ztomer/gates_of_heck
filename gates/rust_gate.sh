@@ -18,7 +18,7 @@
 #      unused_dependencies = "deny"` looks like this and is not: the key needs
 #      -Zcargo-lints on nightly, so on stable cargo prints "unused manifest key"
 #      and exits 0. Named skip when the tool is absent.
-#   3. checks/check_no_allow.py — no #[allow]; fix findings, never silence.
+#   3. checks/check_no_allow.py — no #[allow] and no #[expect]; fix findings, never silence.
 #      The HOUSE checker, always. Until 2026-09-14 this step looked for a
 #      repo-local tools/check_no_allow.py and skipped when absent, so four
 #      repos carried vendored copies and the rest were not checked at all.
@@ -134,7 +134,7 @@ goh_step_in "$cargo_dir" "cargo lints (manifest)" \
 
 # GOH_EXCLUDE (regex, from .gatesrc) exempts a vendored tree here as it does
 # in the structural checks: third-party code is not ours to re-lint.
-goh_step "no #[allow]" \
+goh_step "no #[allow] / #[expect]" \
     python3 "$HERE/../checks/check_no_allow.py" ${GOH_EXCLUDE:+--exclude "$GOH_EXCLUDE"}
 
 if [ -n "${GOH_COV_FLOOR_RUST:-}" ]; then

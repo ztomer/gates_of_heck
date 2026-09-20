@@ -1,11 +1,18 @@
 #!/usr/bin/env python3
-"""Fail if any git-tracked Rust source contains an `#[allow(...)]` attribute.
+"""Fail if any git-tracked Rust source contains an `#[allow(...)]` or
+`#[expect(...)]` attribute.
 
-Policy (user, 2026-08-02): clippy runs at `-D warnings` everywhere, and warnings
-are FIXED, not silenced. An `#[allow(...)]` suppresses the lint so it never
-fires, which defeats the gate — so any `#[allow]`/`#![allow]` in source is a
-failure. A file is exempt only if it is machine-generated and carries the
-standard `@generated` marker (see below); hand-written code never is.
+Policy (user, 2026-08-02; `#[expect]` added 2026-09-20): clippy runs at
+`-D warnings` everywhere, and warnings are FIXED, not silenced. An
+`#[allow(...)]` suppresses the lint so it never fires, which defeats the
+gate; an `#[expect(...)]` errors when the lint stops firing, which keeps it
+from rotting, but it still ships the finding instead of fixing it - a cast
+that "fits" today, a function that is "only 104 lines". So both attributes,
+outer or inner, are failures. A file is exempt only if it is machine-generated
+and carries the standard `@generated` marker (see below); hand-written code
+never is. Scope is every compiled Rust file INCLUDING tests: a
+`#![allow(dead_code)]` on a shared test fixture is the same suppression with
+a different excuse (make the fixture a dev-dependency crate instead).
 
     python3 checks/check_no_allow.py                    # all tracked Rust files (CI gate)
     python3 checks/check_no_allow.py --staged           # only staged files (pre-commit)
@@ -21,9 +28,8 @@ within its first 40 lines of comments (the de-facto marker used by prost/tonic,
 bindgen and friends). Nothing else exempts a file. This is deterministic and
 auditable, the same way check_no_emoji.py's codepoint ranges are.
 
-The checker greps for the literal tokens `#[allow(` and `#![allow(` — never a
-looser regex — so `#[expect(...)]` (which ERRORS if its lint never fires, the
-"allow that cannot rot") stays permitted.
+The checker greps for the literal tokens `#[allow(`, `#![allow(`, `#[expect(`
+and `#![expect(` — never a looser regex.
 
 Conservative comment-awareness (2026-08-25, depth-counter rewrite 2026-08-26):
 a doc-comment MENTIONING #[allow] is prose about the policy, not a
@@ -44,7 +50,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from _gitutil import content_bytes, listed_files, repo_root  # noqa: E402
 
 _GENERATED_MARKER = "@generated"
-_ALLOW_PATTERN = re.compile(r"#!?\[allow\(")
+_ALLOW_PATTERN = re.compile(r"#!?\[(?:allow|expect)\(")
 
 
 def _code_portions(text: str):
@@ -72,12 +78,12 @@ def _code_portions(text: str):
 
 
 def _is_compiled_src(rel: str) -> bool:
-    # Gate is scoped to compiled non-test code: any crate's src/, benches/,
-    # and build.rs. Tests may legitimately unwrap and are excluded here
-    # (clippy -D warnings still runs over them via --all-targets).
+    # Every compiled Rust file: src/, benches/, tests/, examples/ and build.rs.
+    # Tests are in scope since 2026-09-20 - clippy -D warnings runs over them
+    # via --all-targets, so a suppression there defeats the gate just the same.
     if rel == "build.rs" or rel.endswith("/build.rs"):
         return True
-    return "/src/" in rel or rel.startswith("src/") or "/benches/" in rel or rel.startswith("benches/")
+    return any(f"/{d}/" in rel or rel.startswith(f"{d}/") for d in ("src", "benches", "tests", "examples"))
 
 
 def _files(root: str, staged: bool, exclude):
@@ -135,10 +141,10 @@ def main():
     hits = _scan(root, files, staged)
     if hits:
         scope = "staged" if staged else "tracked"
-        print(f"✗ [{'no_allow'}] {len(hits)} #[allow] in {scope} Rust source:")
+        print(f"✗ [{'no_allow'}] {len(hits)} #[allow]/#[expect] in {scope} Rust source:")
         for h in hits[:40]:
             print(f"    {h}")
-        print("fix the finding properly; do not add #[allow]. Generated files must carry @generated.")
+        print("fix the finding properly; do not add #[allow] or #[expect]. Generated files must carry @generated.")
         sys.exit(1)
     # A repo with no Rust at all genuinely has nothing to police, and failing there would make
     # this gate unadoptable by every non-Rust repo that runs the shared layer. But a repo that
