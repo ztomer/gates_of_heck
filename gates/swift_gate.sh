@@ -107,6 +107,12 @@ case "$MODE" in
     if [ -n "${GOH_SWIFT_COV_MIN:-}" ]; then
         goh_step "test + coverage" "$SWIFT" test --enable-code-coverage
         _cov_args=(--min "$GOH_SWIFT_COV_MIN")
+        # Where THIS toolchain wrote the payload: the layout moved with
+        # Swift 6.3 (.build/<triple>/debug -> .build/out/Products/Debug),
+        # so ask rather than glob. Empty on an older swift; the checker
+        # then falls back to trying both layouts.
+        _codecov="$("$SWIFT" test --show-codecov-path 2>/dev/null || true)"
+        [ -n "$_codecov" ] && _cov_args+=(--spm-glob "$_codecov")
         if [ -n "${GOH_SWIFT_COV_FLOORS:-}" ]; then
             [ -f "$GOH_SWIFT_COV_FLOORS" ] \
                 || die "GOH_SWIFT_COV_FLOORS points at nothing: $GOH_SWIFT_COV_FLOORS"

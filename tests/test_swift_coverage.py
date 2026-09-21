@@ -50,6 +50,28 @@ def test_spm_passes_above_floor(repo):
     assert "96.0%" in r.stdout
 
 
+def test_spm_finds_the_swift_6_3_products_layout(repo):
+    # Swift 6.3's build system writes .build/out/Products/<config>/codecov/;
+    # the gate saw a green test step and then "no payload" until this layout
+    # was in the default set.
+    _write_spm(repo, ".build/out/Products/Debug/codecov/App.json",
+               [("A.swift", 96, 100)])
+    r = run_check(repo, SCRIPT, "--min", "95")
+    assert r.returncode == 0, r.stderr
+    assert "96.0%" in r.stdout
+
+
+def test_spm_glob_names_the_exact_payload(repo):
+    # swift_gate.sh passes `swift test --show-codecov-path`'s answer; a path
+    # outside both default layouts is still found, and the refusal names it.
+    _write_spm(repo, "elsewhere/codecov/App.json", [("A.swift", 96, 100)])
+    r = run_check(repo, SCRIPT, "--min", "95", "--spm-glob", "elsewhere/codecov/App.json")
+    assert r.returncode == 0, r.stderr
+    r = run_check(repo, SCRIPT, "--min", "95", "--spm-glob", "nowhere/App.json")
+    assert r.returncode == 2
+    assert "nowhere/App.json" in r.stderr
+
+
 def test_spm_missing_payload_is_named_refusal_not_zero(repo):
     # Honesty rule: no data must never masquerade as 0% (or as success).
     r = run_check(repo, SCRIPT, "--min", "50")
@@ -83,7 +105,7 @@ def test_spm_zero_line_entries_do_not_dilute(repo, monkeypatch):
     _write_spm(repo, ".build/a/debug/codecov/a.json",
                [("A.swift", 95, 100), ("Empty.swift", 0, 0)])
     monkeypatch.chdir(repo)
-    records, paths = cov.load_spm(".build/a/debug/codecov/*.json")
+    records, paths = cov.load_spm([".build/a/debug/codecov/*.json"])
     assert len(paths) == 1
     pct, files = cov.aggregate(records)
     assert len(files) == 1 and abs(pct - 95.0) < 1e-9

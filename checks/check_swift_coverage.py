@@ -8,9 +8,14 @@ Companion to gates/swift_gate.sh, which runs tests and then calls this:
 
 Modes
 -----
-SPM   globs `.build/<arch>/debug/codecov/*.json` (written by
-      `swift test --enable-code-coverage`) and aggregates
-      covered_lines / total_lines across every non-zero source file.
+SPM   reads the codecov JSON written by `swift test --enable-code-coverage`
+      and aggregates covered_lines / total_lines across every non-zero
+      source file. swift_gate.sh passes the exact path it gets from
+      `swift test --show-codecov-path` (`--spm-glob`); without one, both
+      layouts SwiftPM has used are tried: `.build/<triple>/debug/codecov/`
+      and, since Swift 6.3's build system, `.build/out/Products/<config>/
+      codecov/` (found 2026-09-21: a green test step followed by "no
+      payload" on antiknob).
 
 xcode reads the newest `*.xcresult` under the pinned derived-data tree
       (.build/xcode-dd, which swift_gate.sh passes via -derivedDataPath),
@@ -29,7 +34,10 @@ import os
 import subprocess
 import sys
 
-DEFAULT_SPM_GLOB = ".build/*/debug/codecov/*.json"
+DEFAULT_SPM_GLOBS = (
+    ".build/*/debug/codecov/*.json",
+    ".build/out/Products/*/codecov/*.json",
+)
 DEFAULT_DD = ".build/xcode-dd"
 
 
@@ -119,10 +127,10 @@ def aggregate(records):
 # ---- payload loading --------------------------------------------------------
 
 
-def load_spm(pattern: str):
-    """[(name, cov, tot)] across every matching codecov JSON; [] if none."""
+def load_spm(patterns):
+    """[(name, cov, tot)] across every codecov JSON matching any pattern."""
     records: list[tuple[str, int, int]] = []
-    paths = sorted(glob.glob(pattern))
+    paths = sorted({p for pat in patterns for p in glob.glob(pat)})
     for p in paths:
         try:
             with open(p, encoding="utf-8") as fh:
@@ -289,7 +297,9 @@ def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--min", type=float, required=True)
     ap.add_argument("--xcode", action="store_true")
-    ap.add_argument("--spm-glob", default=DEFAULT_SPM_GLOB)
+    ap.add_argument("--spm-glob", action="append", dest="spm_globs",
+                    help="codecov JSON path or glob (repeatable); default: "
+                         "both SwiftPM layouts")
     ap.add_argument("--dd", default=DEFAULT_DD, help="derived-data root (xcode)")
     ap.add_argument("--floors-json", default=os.environ.get("GOH_COV_FLOORS_JSON", ""),
                     help="per-target floors, same schema as coverage_gate.sh")
@@ -298,16 +308,17 @@ def main() -> int:
     if args.xcode:
         records, why = load_xcode(args.dd)
     else:
-        records, paths = load_spm(args.spm_glob)
+        spm_globs = args.spm_globs or list(DEFAULT_SPM_GLOBS)
+        records, paths = load_spm(spm_globs)
         if paths and not records:
             # Payloads exist but none yielded measurable files (unreadable
             # JSON, or every entry has total_lines 0). Refuse with the count
             # rather than aggregating an empty record set into a fake 100%.
-            why = (f"{len(paths)} payload(s) matched {args.spm_glob} but "
+            why = (f"{len(paths)} payload(s) matched {' | '.join(spm_globs)} but "
                    f"none contained measurable files — corrupt codecov JSON?")
         else:
             why = None if paths else (
-                f"no codecov payloads match {args.spm_glob} — was 'swift "
+                f"no codecov payloads match {' | '.join(spm_globs)} — was 'swift "
                 f"test --enable-code-coverage' run?")
 
     if why:

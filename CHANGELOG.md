@@ -14,6 +14,16 @@ uncovered - and read a 97.5% tree as 93.5% (routines). The gate now exports
 records the environment of every build-driving call and refuses any call
 that sees a different build dir. Proven red on the old gate.
 
+Also: **the Swift gate asks where the codecov payload is instead of
+guessing.** Swift 6.3's build system writes it to
+`.build/out/Products/<config>/codecov/`, not `.build/<triple>/debug/codecov/`,
+so `swift_gate.sh` reported a green `test + coverage` step followed by "no
+codecov payloads match" (antiknob, blocking its push). The gate now passes
+`swift test --show-codecov-path`'s answer to `check_swift_coverage.py`
+(`--spm-glob`, repeatable), and the checker's default tries both layouts.
+Tests: `test_spm_finds_the_swift_6_3_products_layout`,
+`test_spm_glob_names_the_exact_payload`.
+
 ## v0.12.3 — the commit hook goes through `tools/gate.sh --staged` _(2026-09-21)_
 
 `hooks/pre-commit` exec'd `structural.sh --staged` directly, so a staged
