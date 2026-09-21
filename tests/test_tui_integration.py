@@ -103,6 +103,32 @@ def test_goh_step_dumps_failing_output_and_exits(tmp_path):
     assert "STEP-UNREACHABLE" not in r.stdout
 
 
+def test_goh_step_names_the_failures_buried_above_the_tail(tmp_path):
+    """Contract property 2, sharpened (zinc E.1c, 2026-09-21): a failing case
+    that scrolled 200 lines above the tail is still NAMED, in a failure block
+    printed before the tail — nine `swift test` failures out of 173 had left a
+    red gate with no test name in it, and the log is deleted at exit."""
+    s = tmp_path / "sb2b"
+    s.mkdir()
+    script = textwrap.dedent(f"""
+        cd '{s}'
+        . '{REPO_ROOT}/gates/_common.sh'
+        goh_init demo
+        goh_step "suite" /bin/bash -c '
+            echo "Test Case testDeepOne failed (0.1 seconds)";
+            echo "Foo.swift:12: error: XCTAssertEqual failed: (1) is not equal to (2)";
+            for i in $(seq 1 200); do echo "Test Case testFine$i passed (0.0 seconds)"; done;
+            echo "Executed 201 tests, with 1 failure (1 unexpected)";
+            exit 1'
+    """)
+    r = _bash(script)
+    assert r.returncode != 0
+    assert "failure lines" in r.stderr
+    assert "testDeepOne failed" in r.stderr, "the failing case above the tail was not named"
+    assert "Foo.swift:12: error: XCTAssertEqual" in r.stderr
+    assert "testFine200 passed" in r.stderr, "the tail still follows"
+
+
 def test_goh_optional_step_skips_cleanly_when_guard_absent(tmp_path):
     s = tmp_path / "sb3"
     s.mkdir()

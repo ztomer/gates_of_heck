@@ -113,6 +113,19 @@ goh_step() {
     step "$label"
     if ! "$@" >"$GOH_LOG" 2>&1; then
         printf '\n'
+        # The FAILURES first, then the tail: a 173-test `swift test` puts its
+        # nine failing cases far above the last 60 lines, and the log is
+        # deleted at exit — a red gate that names no test is a red gate
+        # nobody can act on (zinc E.1c, 2026-09-21). GOH_FAIL_PATTERN is
+        # the grep; GOH_FAIL_LINES caps how many hits are shown.
+        if grep -nE "${GOH_FAIL_PATTERN:-error:|FAILED|failed|panicked at|Assertion|✗}" "$GOH_LOG" \
+                | grep -vE "0 failures|passed|failures \(0" | head -n "${GOH_FAIL_LINES:-40}" > "$GOH_LOG.fails" 2>/dev/null \
+            && [ -s "$GOH_LOG.fails" ]; then
+            printf '%s\n' "── failure lines (grep ${GOH_FAIL_PATTERN:-error:|FAILED|failed|panicked at|Assertion|✗}) ──" >&2
+            cat "$GOH_LOG.fails" >&2
+            printf '%s\n\n' "── tail ──" >&2
+        fi
+        rm -f "$GOH_LOG.fails"
         tail -n "${GOH_TAIL:-60}" "$GOH_LOG" >&2
         printf '\n'
         die "$GOH_NAME: $label failed (command: $*)"

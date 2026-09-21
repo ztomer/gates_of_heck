@@ -107,6 +107,8 @@ fix is `reclaim_build_space.sh` next to it.
 | `GOH_HEADLESS` | unset (policy off) | `1` (or truthy) enforces offscreen policy; `"" 0 false no off` mean off. Forward with `env $(headless_env)`. Unset with `env -u GOH_HEADLESS` for deliberate live runs. See `docs/harnesses.md`. |
 | `GOH_HEADLESS_REFUSAL_EXIT` | `3` | Exit code of `headless_require_live` refusals (distinct from 1 = ran and failed). |
 | `GOH_TAIL` | `60` (gates) / `30` (local_ci) | Lines of captured log printed on step failure. |
+| `GOH_FAIL_PATTERN` | `error:\|FAILED\|failed\|panicked at\|Assertion\|✗` | On step failure, the grep whose hits are printed BEFORE the tail — the failing cases a long suite buried above it. |
+| `GOH_FAIL_LINES` | `40` | How many of those hits are printed. |
 | `GOH_TIME` | unset | When set (any value), `goh_step` appends per-step elapsed whole seconds to its ok line. Off by default. |
 | `GOH_AWK_VER_RE` | internal | Version regex passed into the release stanza matcher. Not user config. |
 | `GOH_RELEASE_VERSION` | set by `tools/release-kit/release.sh` | The version being cut, exported into the `--verify CMD` run (and the archive build) so the command can assert the INSTALLED binary answers with exactly it. Read it, never set it by hand. |
