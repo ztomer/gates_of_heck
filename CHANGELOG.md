@@ -1,5 +1,19 @@
 # CHANGELOG
 
+## v0.12.3 — the commit hook goes through `tools/gate.sh --staged` _(2026-09-21)_
+
+`hooks/pre-commit` exec'd `structural.sh --staged` directly, so a staged
+language layer wired into a repo's `tools/gate.sh` (which the starter invites:
+"the cheap half of a language gate runs at COMMIT time") never ran on commit -
+a commit gate weaker than the push gate, the hole rule 14 names. Found in
+media_server when a Rust gate under `--staged` was added and a crate's red
+gate still committed. The hook now execs `tools/gate.sh --staged` when the
+file exists (structural alone otherwise), symmetric with pre-push. Test:
+`test_pre_commit_runs_the_repo_gate_staged_layer` (a layer's marker must
+appear on commit; a red layer must block it) - red before the fix. Existing
+repos pick the new hook up on their next `install.sh` (stock hooks are
+replaced; locally modified ones are refused as before).
+
 ## v0.12.2 — `#[expect]` is a suppression too _(2026-09-20)_
 
 `checks/check_no_allow.py` now refuses `#[expect(...)]` and `#![expect(...)]`

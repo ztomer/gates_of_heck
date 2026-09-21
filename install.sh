@@ -162,4 +162,4 @@ else
 fi
 
 ok "installed into $target (core.hooksPath → .githooks)"
-info "pre-commit runs structural --staged; pre-push runs tools/gate.sh --full"
+info "pre-commit runs tools/gate.sh --staged; pre-push runs tools/gate.sh --full"

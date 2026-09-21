@@ -76,6 +76,37 @@ def test_hook_blocks_violating_commit(repo):
     assert "bad.py" in git(repo, "diff", "--cached", "--name-only")
 
 
+def test_pre_commit_runs_the_repo_gate_staged_layer(repo):
+    """The commit hook must go THROUGH tools/gate.sh --staged, not straight to
+    structural.sh: the starter gate.sh invites per-language staged layers, and
+    a hook that bypasses it makes every such layer decorative (media_server
+    2026-09-21: a Rust gate wired under --staged never ran on commit)."""
+    subprocess.run(["/bin/bash", str(REPO_ROOT / "install.sh"), str(repo)],
+                   capture_output=True, text=True)
+    gate = repo / "tools" / "gate.sh"
+    text = gate.read_text().replace(
+        '"$GOH/gates/structural.sh" "$@"\n',
+        '"$GOH/gates/structural.sh" "$@"\n'
+        'case "${1:-}" in --staged) echo "STAGED-LAYER-RAN"; '
+        '[ -z "${GOH_TEST_FAIL_STAGED:-}" ] || exit 7 ;; esac\n',
+    )
+    assert "STAGED-LAYER-RAN" in text, "the starter's delegation line moved"
+    gate.write_text(text)
+    write(repo, "ok.py", "x = 1\n")
+    git(repo, "add", "ok.py")
+    r = _commit(repo, "-m", "layer runs")
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert "STAGED-LAYER-RAN" in (r.stdout + r.stderr), "the staged layer did not run on commit"
+    # ...and a red staged layer blocks the commit.
+    write(repo, "more.py", "y = 2\n")
+    git(repo, "add", "more.py")
+    r = subprocess.run(["git", "-C", str(repo), "commit", "-q", "-m", "layer red"],
+                       capture_output=True, text=True,
+                       env={**os.environ, "GOH_TEST_FAIL_STAGED": "1"})
+    assert r.returncode != 0, "a red staged layer let the commit through"
+    assert "more.py" in git(repo, "diff", "--cached", "--name-only")
+
+
 def test_hook_passes_clean_commit(repo):
     subprocess.run(["/bin/bash", str(REPO_ROOT / "install.sh"), str(repo)],
                    capture_output=True, text=True)
