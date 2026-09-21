@@ -1,5 +1,19 @@
 # CHANGELOG
 
+## v0.12.4 — the coverage build pins the BUILD dir, not only the target dir _(2026-09-21)_
+
+`coverage_gate.sh --lang rust` isolated the instrumented build with
+`CARGO_TARGET_DIR` alone. Since cargo's `build.build-dir` (the house layout
+since 2026-09-20 puts every crate's intermediates under `~/.cargo/build/`),
+the target dir holds only final artifacts; the test binaries cargo-llvm-cov
+exports from live in the build dir, shared with every ordinary build of the
+crate. The gate therefore merged the instrumented binaries of the PREVIOUS
+source into the report - lines past the end of the current file, all
+uncovered - and read a 97.5% tree as 93.5% (routines). The gate now exports
+`CARGO_BUILD_BUILD_DIR` equal to its own target dir; the stub-cargo test
+records the environment of every build-driving call and refuses any call
+that sees a different build dir. Proven red on the old gate.
+
 ## v0.12.3 — the commit hook goes through `tools/gate.sh --staged` _(2026-09-21)_
 
 `hooks/pre-commit` exec'd `structural.sh --staged` directly, so a staged

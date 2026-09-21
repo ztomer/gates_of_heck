@@ -31,6 +31,9 @@ COV_GATE = REPO_ROOT / "gates" / "coverage_gate.sh"
 CARGO_STUB = """#!/bin/bash
 # Stubbed cargo: canned `metadata` JSON + canned per-target lcov exports.
 if [ "$1" = "metadata" ]; then cat "${CARGO_STUB_META:?}"; exit 0; fi
+# Every build-driving call records where cargo was told to build.
+echo "target=${CARGO_TARGET_DIR:-} build=${CARGO_BUILD_BUILD_DIR:-}" \
+  >> "${CARGO_STUB_ENVLOG:-/dev/null}"
 if [ "$1 $2" = "llvm-cov clean" ]; then exit 0; fi
 tname=""; out=""; prev=""
 for a in "$@"; do
@@ -104,8 +107,10 @@ def setup_fixture(tmp_path: Path, parts: dict[str, str], meta=META) -> Path:
 
 def run_rust_gate(proj: Path, bin_dir: Path, meta_file: Path, parts_dir: Path,
                   floor: str = "100", drop: str | None = None,
-                  fail_leave: str | None = None):
+                  fail_leave: str | None = None,
+                  extra_env: dict[str, str] | None = None):
     env = dict(os.environ)
+    env.update(extra_env or {})
     env["PATH"] = f"{bin_dir}:{env['PATH']}"
     env.pop("GOH_COV_FLOOR_RUST", None)
     env["CARGO_STUB_META"] = str(meta_file)
@@ -297,3 +302,31 @@ def test_cpp_ctest_failure_is_a_hard_fail_naming_itself(tmp_path):
     # The NEW contract wording: a hard refusal, not a "may be partial" warn.
     assert "ctest reported failures" in combined
     assert "refusing to measure partial coverage" in combined
+
+
+# ── C: build isolation ──────────────────────────────────────────────────────
+def test_coverage_build_never_shares_the_build_dir(tmp_path):
+    """The instrumented build must be fully isolated. `CARGO_TARGET_DIR`
+    alone stopped isolating it the day cargo grew `build.build-dir`: with a
+    machine-wide build-dir (the house layout since 2026-09-20), every
+    crate's intermediate artifacts -- the test binaries cargo-llvm-cov
+    exports from -- live in ONE directory shared with ordinary builds. The
+    gate then merged stale instrumented binaries from the previous source
+    into the report: lines past the end of the current file, all "uncovered",
+    and a 96% tree read 93.5% (routines, 2026-09-21). Every build-driving
+    cargo call must see the build-dir pinned to the gate's own target dir."""
+    proj = setup_fixture(tmp_path, {
+        "lib.info": build_part(1, "f", 1, FULL_COVER),
+        "all.info": build_part(1, "f", 1, FULL_COVER),
+    })
+    envlog = tmp_path / "envlog"
+    r = run_rust_gate(proj, tmp_path / "bin", tmp_path / "meta.json",
+                      tmp_path / "canned-parts",
+                      extra_env={"CARGO_STUB_ENVLOG": str(envlog),
+                                 "CARGO_BUILD_BUILD_DIR": "/shared/build"})
+    assert r.returncode == 0, r.stdout + r.stderr
+    calls = envlog.read_text().splitlines()
+    assert calls, "the stub saw no cargo calls"
+    isolated = str(proj / "target" / "llvm-cov")
+    for call in calls:
+        assert call == f"target={isolated} build={isolated}", call

@@ -210,7 +210,17 @@ run_rust() {
     # non-instrumented artifacts silently zero out whole modules. sccache /
     # incremental caches can serve objects with mismatched instrumentation,
     # which manifests as duplicate zero-count function records.
+    #
+    # The BUILD dir too: since cargo's `build.build-dir`, the target dir holds
+    # only final artifacts while every intermediate -- including the test
+    # binaries cargo-llvm-cov exports from -- lives in the build dir, which a
+    # machine-wide setting (`~/.cargo/config.toml`) shares across all builds
+    # of this crate. Pinning only CARGO_TARGET_DIR left the instrumented
+    # binaries of the PREVIOUS source in that shared dir, and the export
+    # merged them in: lines past the end of the current file, all uncovered,
+    # a 96% tree reading 93.5% (routines, 2026-09-21).
     export CARGO_TARGET_DIR="$PROJ/target/llvm-cov"
+    export CARGO_BUILD_BUILD_DIR="$CARGO_TARGET_DIR"
     export RUSTC_WRAPPER=""
     export CARGO_INCREMENTAL=0
     cargo llvm-cov clean --workspace >/dev/null 2>&1 || rm -rf "$CARGO_TARGET_DIR"

@@ -154,7 +154,7 @@ dependencies = [
 
 [[package]]
 name = "goh"
-version = "0.12.3"
+version = "0.12.4"
 dependencies = [
  "bytecount",
  "clap",
@@ -165,7 +165,7 @@ dependencies = [
 
 [[package]]
 name = "goh-testkit"
-version = "0.12.3"
+version = "0.12.4"
 dependencies = [
  "tempfile",
 ]
