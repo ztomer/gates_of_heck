@@ -16,9 +16,10 @@
 # marker, a local toolchain pin); they are copied in so the gate tests the tree AS CONFIGURED.
 # Cold-build cost is unchanged (the swift gate wiped .build anyway); the checkout is ~1 s.
 #
-# The worktree lives under $TMPDIR, never inside the repo (a nested worktree is a tracked-file
-# scan's worst day). It is removed on every exit path; a worktree left behind by a SIGKILL is
-# pruned by the next run (`git worktree prune`), so nothing accumulates.
+# The worktree lives under ~/.cache/goh/push (GOH_PUSH_WORKTREES overrides), never inside the
+# repo (a nested worktree is a tracked-file scan's worst day) and never under the temp directory
+# (see the SwiftLint note below). It is removed on every exit path; a worktree left behind by a
+# SIGKILL is pruned by the next run (`git worktree prune`), so nothing accumulates.
 #
 # Protocol: git feeds `<local ref> <local sha> <remote ref> <remote sha>` lines on stdin. A
 # delete (local sha all zeros) has nothing to test. Several refs are gated one after another;
@@ -52,11 +53,18 @@ while read -r local_ref local_sha _remote_ref _remote_sha; do
     [ -n "${local_sha:-}" ] || continue
     [ "$local_sha" = "$zero" ] && continue          # a delete: nothing to test
     short="$(git -C "$root" rev-parse --short "$local_sha")"
-    # PHYSICAL path, never the logical one. macOS's $TMPDIR is /var/folders/..., a symlink into
-    # /private/var; tools that report real paths (swiftlint does) then disagree with a cwd spelled
-    # through the symlink, and a path-keyed baseline matches nothing — every recorded violation
-    # fired as new on the first worktree-gated push (ZoneWM, 2026-09-21, 169 of them).
-    worktree="$(mktemp -d "${TMPDIR:-/tmp}/goh-push-XXXXXX")"
+    # UNDER $HOME, physical path, never under the temp directory. SwiftLint 0.65.1's baseline
+    # (repo-relative paths, verified path-independent by ZoneWM's relativize_lint_baseline.py)
+    # matches NOTHING when the tree sits under /private/tmp or /private/var/folders -- every
+    # recorded violation fires as new -- and matches everything under /Users/... (measured
+    # 2026-09-21 with worktrees of one commit at ~/wt, /Users/Shared/wt, <repo>/.build/wt: 0
+    # violations; /private/tmp/wt: 12 -- even against a baseline swiftlint had just written
+    # THERE). The cause is inside SwiftLint's path relativisation; the fix that holds without
+    # theory is to gate where the tools were calibrated: a directory beside the user's checkouts.
+    # `pwd -P` besides, so a symlinked component can never be the difference.
+    export_root="${GOH_PUSH_WORKTREES:-$HOME/.cache/goh/push}"
+    mkdir -p "$export_root"
+    worktree="$(mktemp -d "$export_root/XXXXXX")"
     worktree="$(cd "$worktree" && pwd -P)"
     rmdir "$worktree"                                # git wants to create it
     section "pre-push: gating $local_ref @ $short in a clean worktree"
