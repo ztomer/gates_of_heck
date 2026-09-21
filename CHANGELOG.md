@@ -14,6 +14,14 @@ appear on commit; a red layer must block it) - red before the fix. Existing
 repos pick the new hook up on their next `install.sh` (stock hooks are
 replaced; locally modified ones are refused as before).
 
+Also: the repo's own `crates/goh/tests/common/mod.rs` carried six
+`#[expect(clippy::expect_used)]` - exactly what v0.12.2 started refusing, and
+the push gate said so. The fixtures are now `crates/goh-testkit`, a
+dev-dependency crate whose manifest states the test policy `clippy.toml`
+already declares for test code (`allow-*-in-tests`) but cannot reach helper
+functions in an integration-test crate; one `must()` helper stops a test with
+the reason. No suppression attribute anywhere in the tree.
+
 ## v0.12.2 — `#[expect]` is a suppression too _(2026-09-20)_
 
 `checks/check_no_allow.py` now refuses `#[expect(...)]` and `#![expect(...)]`

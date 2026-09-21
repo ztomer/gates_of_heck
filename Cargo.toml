@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["crates/goh"]
+members = ["crates/goh", "crates/goh-testkit"]
 
 [workspace.lints.clippy]
 all = { level = "warn", priority = -1 }

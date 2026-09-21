@@ -1,0 +1,17 @@
+[package]
+name = "goh-testkit"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Test fixtures for the goh binary's integration tests: fixture git repos and a runner"
+publish = false
+
+[dependencies]
+tempfile = "3"
+
+[dev-dependencies]
+tempfile = "3"
+
+[lints]
+workspace = true

@@ -19,4 +19,5 @@ clap = { version = "4", features = ["derive"] }
 regex = "1"
 
 [dev-dependencies]
+goh-testkit = { path = "../goh-testkit" }
 tempfile = "3"

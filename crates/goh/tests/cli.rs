@@ -5,9 +5,17 @@
 //! SEE that exercise -- a process pytest spawns is invisible to it, a
 //! process this test spawns is not.
 
-mod common;
+use goh_testkit::{esc, g, goh_at, repo_with, Out, Repo};
 
-use common::{esc, g, goh, repo_with, Repo};
+/// The binary this test run built; the `#[test]` caller unwraps.
+fn goh(repo: Option<&Repo>, args: &[&str], envs: &[(&str, &str)]) -> std::io::Result<Out> {
+    goh_at(
+        std::path::Path::new(env!("CARGO_BIN_EXE_goh")),
+        repo,
+        args,
+        envs,
+    )
+}
 
 #[test]
 fn every_subcommand_answers_help_and_version() {
@@ -19,10 +27,10 @@ fn every_subcommand_answers_help_and_version() {
         vec!["markers", "--help"],
         vec!["secrets", "--help"],
     ] {
-        let out = goh(None, &args, &[]);
+        let out = goh(None, &args, &[]).expect("goh runs");
         assert!(out.status.success(), "{args:?}: {}", out.text());
     }
-    let out = goh(None, &["--version"], &[]);
+    let out = goh(None, &["--version"], &[]).expect("goh runs");
     assert_eq!(
         out.stdout.trim(),
         format!("goh {}", env!("CARGO_PKG_VERSION"))
@@ -34,19 +42,23 @@ fn a_clean_repo_passes_every_gate_in_both_scopes() {
     let r = repo_with(&[
         ("README.md", "# fixture\n"),
         ("src/lib.rs", "pub fn f() {}\n"),
-    ]);
-    let out = goh(Some(&r), &["structural", "--full"], &[]);
+    ])
+    .expect("fixture");
+    let out = goh(Some(&r), &["structural", "--full"], &[]).expect("goh runs");
     assert!(out.status.success(), "{}{}", out.stdout, out.stderr);
     assert!(
         out.stdout.contains("all structural gates passed"),
         "{}",
         out.stdout
     );
-    let out = goh(Some(&r), &["structural", "--staged"], &[]);
+    let out = goh(Some(&r), &["structural", "--staged"], &[]).expect("goh runs");
     assert!(out.status.success(), "{}{}", out.stdout, out.stderr);
     // No flag means full scope; both flags is a usage error.
-    assert!(goh(Some(&r), &["structural"], &[]).status.success());
-    let both = goh(Some(&r), &["structural", "--staged", "--full"], &[]);
+    assert!(goh(Some(&r), &["structural"], &[])
+        .expect("goh runs")
+        .status
+        .success());
+    let both = goh(Some(&r), &["structural", "--staged", "--full"], &[]).expect("goh runs");
     assert_eq!(both.status.code(), Some(2), "{}", both.text());
 }
 
@@ -56,8 +68,9 @@ fn emoji_gate_finds_reports_excludes_and_allows() {
         ("docs/a.md", &format!("done {}\n", g(0x2705))), // check-mark button: disallowed
         ("docs/ok.md", &format!("done {} {}\n", g(0x2713), g(0x2192))), // Kare set: allowed
         ("vendor/v.md", &format!("{}\n", g(0x1F600))),   // pictograph, vendored
-    ]);
-    let out = goh(Some(&r), &["emoji"], &[]);
+    ])
+    .expect("fixture");
+    let out = goh(Some(&r), &["emoji"], &[]).expect("goh runs");
     assert_eq!(out.status.code(), Some(1));
     assert!(
         out.text().contains("docs/a.md") && out.text().contains("vendor/v.md"),
@@ -67,32 +80,36 @@ fn emoji_gate_finds_reports_excludes_and_allows() {
     assert!(!out.text().contains("docs/ok.md"), "{}", out.text());
     // The Kare glyph names appear in the verdict so a reader knows the policy.
     assert!(out.text().contains("U+2705"), "{}", out.text());
-    let out = goh(Some(&r), &["emoji", "--exclude", "^vendor/"], &[]);
+    let out = goh(Some(&r), &["emoji", "--exclude", "^vendor/"], &[]).expect("goh runs");
     assert_eq!(out.status.code(), Some(1));
     assert!(!out.text().contains("vendor/v.md"), "{}", out.text());
     let out = goh(
         Some(&r),
         &["emoji", "--exclude", "^vendor/", "--allow", &g(0x2705)],
         &[],
-    );
+    )
+    .expect("goh runs");
     assert!(out.status.success(), "{}{}", out.stdout, out.stderr);
     // A bad regex is a usage error, not a pass.
-    let out = goh(Some(&r), &["emoji", "--exclude", "("], &[]);
+    let out = goh(Some(&r), &["emoji", "--exclude", "("], &[]).expect("goh runs");
     assert_eq!(out.status.code(), Some(2), "{}", out.text());
     // Staged scope polices the index: an unstaged emoji is not seen.
-    r.write("docs/dirty.md", &format!("{}\n", g(0x1F389)));
+    r.write("docs/dirty.md", &format!("{}\n", g(0x1F389)))
+        .expect("write");
     let out = goh(
         Some(&r),
         &["emoji", "--staged", "--exclude", "^vendor/|^docs/a"],
         &[],
-    );
+    )
+    .expect("goh runs");
     assert!(out.status.success(), "{}{}", out.stdout, out.stderr);
-    r.git(&["add", "docs/dirty.md"]);
+    r.git(&["add", "docs/dirty.md"]).expect("git");
     let out = goh(
         Some(&r),
         &["emoji", "--staged", "--exclude", "^vendor/|^docs/a"],
         &[],
-    );
+    )
+    .expect("goh runs");
     assert_eq!(out.status.code(), Some(1));
     assert!(out.text().contains("docs/dirty.md"), "{}", out.text());
 }
@@ -105,8 +122,9 @@ fn emoji_gate_reports_escaped_codepoints_and_vs16_forms() {
         ("a.py", &format!("ICON = \"{}\"\n", esc("U0001F600"))),
         ("b.md", &format!("copyright {}{}\n", g(0x00A9), g(0xFE0F))),
         ("c.md", &format!("copyright {}\n", g(0x00A9))),
-    ]);
-    let out = goh(Some(&r), &["emoji"], &[]);
+    ])
+    .expect("fixture");
+    let out = goh(Some(&r), &["emoji"], &[]).expect("goh runs");
     assert_eq!(out.status.code(), Some(1));
     assert!(out.text().contains("a.py"), "{}", out.text());
     assert!(out.text().contains("b.md"), "{}", out.text());
@@ -120,8 +138,9 @@ fn length_gate_caps_excludes_and_counts_the_worktree() {
         ("src/big.rs", &long),
         ("src/ok.rs", "fn f() {}\n"),
         ("third_party/t.rs", &long),
-    ]);
-    let out = goh(Some(&r), &["length", "--max", "10"], &[]);
+    ])
+    .expect("fixture");
+    let out = goh(Some(&r), &["length", "--max", "10"], &[]).expect("goh runs");
     assert_eq!(out.status.code(), Some(1));
     assert!(
         out.text().contains("src/big.rs") && out.text().contains("30 lines"),
@@ -132,33 +151,37 @@ fn length_gate_caps_excludes_and_counts_the_worktree() {
         Some(&r),
         &["length", "--max", "10", "--exclude", "^third_party/"],
         &[],
-    );
+    )
+    .expect("goh runs");
     assert_eq!(out.status.code(), Some(1));
     assert!(!out.text().contains("third_party"), "{}", out.text());
     assert!(goh(Some(&r), &["length", "--max", "100"], &[])
+        .expect("goh runs")
         .status
         .success());
     // Full scope is the WORKTREE: a brand-new untracked file is counted.
-    r.write("src/new.rs", &long);
+    r.write("src/new.rs", &long).expect("write");
     let out = goh(
         Some(&r),
         &["length", "--max", "10", "--exclude", "big|third"],
         &[],
-    );
+    )
+    .expect("goh runs");
     assert_eq!(out.status.code(), Some(1));
     assert!(out.text().contains("src/new.rs"), "{}", out.text());
     // ...but an ignored one is not.
-    r.write(".gitignore", "src/new.rs\n");
+    r.write(".gitignore", "src/new.rs\n").expect("write");
     let out = goh(
         Some(&r),
         &["length", "--max", "10", "--exclude", "big|third"],
         &[],
-    );
+    )
+    .expect("goh runs");
     assert!(out.status.success(), "{}{}", out.stdout, out.stderr);
     // Staged scope: the file in the index, not the one on disk.
-    r.git(&["add", "-f", "src/new.rs"]);
-    r.write("src/new.rs", "short\n");
-    let out = goh(Some(&r), &["length", "--max", "10", "--staged"], &[]);
+    r.git(&["add", "-f", "src/new.rs"]).expect("git");
+    r.write("src/new.rs", "short\n").expect("write");
+    let out = goh(Some(&r), &["length", "--max", "10", "--staged"], &[]).expect("goh runs");
     assert_eq!(out.status.code(), Some(1), "{}", out.stdout);
     assert!(out.text().contains("src/new.rs"), "{}", out.text());
 }
@@ -171,17 +194,22 @@ fn markers_gate_sees_conflict_markers_but_not_headings_or_rulers() {
             "# Title\n\n=======\n\ntext >>>>>>> not at column zero\n",
         ),
         ("ok.rs", "// <<<<<<< in a comment is still a marker\n"),
-    ]);
-    assert!(goh(Some(&r), &["markers"], &[]).status.success());
+    ])
+    .expect("fixture");
+    assert!(goh(Some(&r), &["markers"], &[])
+        .expect("goh runs")
+        .status
+        .success());
     r.write(
         "conflict.rs",
         "<<<<<<< HEAD\nfn a() {}\n=======\nfn b() {}\n>>>>>>> branch\n",
-    );
-    r.git(&["add", "conflict.rs"]);
-    let out = goh(Some(&r), &["markers"], &[]);
+    )
+    .expect("write");
+    r.git(&["add", "conflict.rs"]).expect("git");
+    let out = goh(Some(&r), &["markers"], &[]).expect("goh runs");
     assert_eq!(out.status.code(), Some(1));
     assert!(out.text().contains("conflict.rs"), "{}", out.text());
-    let out = goh(Some(&r), &["markers", "--staged"], &[]);
+    let out = goh(Some(&r), &["markers", "--staged"], &[]).expect("goh runs");
     assert_eq!(out.status.code(), Some(1));
 }
 
@@ -204,8 +232,9 @@ fn secrets_gate_finds_credentials_honours_secret_ok_and_excludes() {
             &format!("PLANTED = \"{aws}\"  # secret-ok: documentation example key\n"),
         ),
         ("vendor/x.py", &format!("AWS = \"{aws}\"\n")),
-    ]);
-    let out = goh(Some(&r), &["secrets"], &[]);
+    ])
+    .expect("fixture");
+    let out = goh(Some(&r), &["secrets"], &[]).expect("goh runs");
     assert_eq!(out.status.code(), Some(1));
     assert!(
         out.text().contains("deploy/id_rsa") && out.text().contains("src/token.py"),
@@ -217,9 +246,9 @@ fn secrets_gate_finds_credentials_honours_secret_ok_and_excludes() {
         "secret-ok must exempt: {}",
         out.stderr
     );
-    let out = goh(Some(&r), &["secrets", "--exclude", "^vendor/"], &[]);
+    let out = goh(Some(&r), &["secrets", "--exclude", "^vendor/"], &[]).expect("goh runs");
     assert!(!out.text().contains("vendor/x.py"), "{}", out.text());
-    let out = goh(Some(&r), &["secrets", "--staged"], &[]);
+    let out = goh(Some(&r), &["secrets", "--staged"], &[]).expect("goh runs");
     assert_eq!(out.status.code(), Some(1));
 }
 
@@ -234,16 +263,17 @@ fn structural_reads_every_gatesrc_knob() {
             &format!("type {} to continue\n", g(0x276F)),
         ), // heavy angle quote: allowed via GOH_ALLOW
         ("base.txt", "# ceilings\n20\tsrc/big.rs\n"),
-    ]);
+    ])
+    .expect("fixture");
     r.write(
         ".gatesrc",
         &format!(
             "# comments and blank lines are fine\n\nGOH_MAX_LINES=10\nexport GOH_EXCLUDE='^vendor/'\nGOH_LINE_EXCLUDE=\"src/big\\.rs\"\nGOH_LINE_BASELINE=base.txt\nGOH_ALLOW='{}'\n",
             g(0x276F)
         ),
-    );
-    r.git(&["add", "-A"]);
-    let out = goh(Some(&r), &["structural", "--full"], &[]);
+    ).expect("write");
+    r.git(&["add", "-A"]).expect("git");
+    let out = goh(Some(&r), &["structural", "--full"], &[]).expect("goh runs");
     assert!(out.status.success(), "{}{}", out.stdout, out.stderr);
     for step in [
         "no disallowed emoji",
@@ -261,17 +291,17 @@ fn structural_reads_every_gatesrc_knob() {
         );
     }
     // Grow the exempt file past its ceiling: the ratchet bites through the pipeline.
-    r.write("src/big.rs", &"l\n".repeat(21));
-    r.git(&["add", "-A"]);
-    let out = goh(Some(&r), &["structural", "--full"], &[]);
+    r.write("src/big.rs", &"l\n".repeat(21)).expect("write");
+    r.git(&["add", "-A"]).expect("git");
+    let out = goh(Some(&r), &["structural", "--full"], &[]).expect("goh runs");
     assert_eq!(out.status.code(), Some(1), "{}{}", out.stdout, out.stderr);
     assert!((out.stdout + &out.stderr).contains("src/big.rs"));
 }
 
 #[test]
 fn structural_stops_at_the_first_red_gate_and_names_it() {
-    let r = repo_with(&[("a.md", &format!("{}\n", g(0x1F600)))]);
-    let out = goh(Some(&r), &["structural", "--full"], &[]);
+    let r = repo_with(&[("a.md", &format!("{}\n", g(0x1F600)))]).expect("fixture");
+    let out = goh(Some(&r), &["structural", "--full"], &[]).expect("goh runs");
     assert_eq!(out.status.code(), Some(1));
     assert!(
         out.text().contains("no disallowed emoji failed"),
@@ -287,18 +317,18 @@ fn structural_stops_at_the_first_red_gate_and_names_it() {
 
 #[test]
 fn a_bad_gatesrc_is_a_usage_error_not_a_pass() {
-    let r = repo_with(&[("a.md", "x\n")]);
-    r.write(".gatesrc", "GOH_MAX_LINES=ten\n");
-    r.git(&["add", "-A"]);
-    let out = goh(Some(&r), &["structural", "--full"], &[]);
+    let r = repo_with(&[("a.md", "x\n")]).expect("fixture");
+    r.write(".gatesrc", "GOH_MAX_LINES=ten\n").expect("write");
+    r.git(&["add", "-A"]).expect("git");
+    let out = goh(Some(&r), &["structural", "--full"], &[]).expect("goh runs");
     assert_eq!(out.status.code(), Some(2), "{}{}", out.stdout, out.stderr);
     assert!(out.text().contains("GOH_MAX_LINES"), "{}", out.text());
 }
 
 #[test]
 fn no_cap_set_warns_and_skips_the_length_gate() {
-    let r = repo_with(&[("src/a.rs", &"x\n".repeat(600))]);
-    let out = goh(Some(&r), &["structural", "--full"], &[]);
+    let r = repo_with(&[("src/a.rs", &"x\n".repeat(600))]).expect("fixture");
+    let out = goh(Some(&r), &["structural", "--full"], &[]).expect("goh runs");
     assert!(out.status.success(), "{}{}", out.stdout, out.stderr);
     assert!(
         (out.stdout.clone() + &out.stderr).contains("file-length cap not set"),
@@ -310,20 +340,21 @@ fn no_cap_set_warns_and_skips_the_length_gate() {
 
 #[test]
 fn a_line_exclude_without_a_baseline_warns_that_nothing_bounds_it() {
-    let r = repo_with(&[("src/a.rs", "x\n")]);
+    let r = repo_with(&[("src/a.rs", "x\n")]).expect("fixture");
     r.write(
         ".gatesrc",
         "GOH_MAX_LINES=500\nGOH_LINE_EXCLUDE='src/a\\.rs'\n",
-    );
-    r.git(&["add", "-A"]);
-    let out = goh(Some(&r), &["structural", "--full"], &[]);
+    )
+    .expect("write");
+    r.git(&["add", "-A"]).expect("git");
+    let out = goh(Some(&r), &["structural", "--full"], &[]).expect("goh runs");
     assert!(out.status.success(), "{}{}", out.stdout, out.stderr);
     assert!(out.text().contains("bounded by nothing"), "{}", out.text());
 }
 
 #[test]
 fn the_skills_corpus_gate_runs_when_declared_and_a_rooted_corpus_exists() {
-    let r = repo_with(&[("README.md", "x\n")]);
+    let r = repo_with(&[("README.md", "x\n")]).expect("fixture");
     let corpus = r.path().join("corpus");
     for i in 0..6 {
         let d = corpus.join(format!("skill-{i}"));
@@ -340,9 +371,10 @@ fn the_skills_corpus_gate_runs_when_declared_and_a_rooted_corpus_exists() {
             "GOH_MAX_LINES=500\nGOH_SKILLS_CORPUS=1\nGOH_SKILLS_ROOT={}\n",
             corpus.display()
         ),
-    );
-    r.git(&["add", "-A"]);
-    let out = goh(Some(&r), &["structural", "--full"], &[]);
+    )
+    .expect("write");
+    r.git(&["add", "-A"]).expect("git");
+    let out = goh(Some(&r), &["structural", "--full"], &[]).expect("goh runs");
     assert!(
         out.stdout.contains("skills corpus"),
         "{}{}",
@@ -358,18 +390,20 @@ fn the_home_paths_gate_runs_only_when_declared_and_goes_red_on_a_checkout_path()
         ("README.md", "x\n"),
         ("NOTES.md", "run it from ~/Projects/salary\n"),
         (".gatesrc", "GOH_MAX_LINES=500\n"),
-    ]);
-    r.git(&["add", "-A"]);
-    let out = goh(Some(&r), &["structural", "--full"], &[]);
+    ])
+    .expect("fixture");
+    r.git(&["add", "-A"]).expect("git");
+    let out = goh(Some(&r), &["structural", "--full"], &[]).expect("goh runs");
     assert!(
         !out.stdout.contains("hard-coded home paths"),
         "{}",
         out.text()
     );
     // Declared: it runs, names the file, and stops the pipeline red.
-    r.write(".gatesrc", "GOH_MAX_LINES=500\nGOH_NO_HOME_PATHS=1\n");
-    r.git(&["add", "-A"]);
-    let out = goh(Some(&r), &["structural", "--full"], &[]);
+    r.write(".gatesrc", "GOH_MAX_LINES=500\nGOH_NO_HOME_PATHS=1\n")
+        .expect("write");
+    r.git(&["add", "-A"]).expect("git");
+    let out = goh(Some(&r), &["structural", "--full"], &[]).expect("goh runs");
     assert!(!out.status.success(), "{}", out.text());
     assert!(
         out.text().contains("no hard-coded home paths"),
@@ -378,9 +412,10 @@ fn the_home_paths_gate_runs_only_when_declared_and_goes_red_on_a_checkout_path()
     );
     assert!(out.text().contains("NOTES.md:1:"), "{}", out.text());
     // Fixed: green, and the step is listed.
-    r.write("NOTES.md", "run it from the repo root\n");
-    r.git(&["add", "-A"]);
-    let out = goh(Some(&r), &["structural", "--full"], &[]);
+    r.write("NOTES.md", "run it from the repo root\n")
+        .expect("write");
+    r.git(&["add", "-A"]).expect("git");
+    let out = goh(Some(&r), &["structural", "--full"], &[]).expect("goh runs");
     assert!(out.status.success(), "{}", out.text());
     assert!(
         out.stdout.contains("no hard-coded home paths"),
@@ -401,7 +436,7 @@ fn outside_a_git_repo_every_command_says_so_by_name() {
         vec!["markers"],
         vec!["secrets"],
     ] {
-        let out = goh(Some(&r), &args, &[]);
+        let out = goh(Some(&r), &args, &[]).expect("goh runs");
         assert!(out.status.success(), "{args:?}: {}", out.text());
         assert!(
             out.text().contains("not a git repo"),
@@ -413,12 +448,13 @@ fn outside_a_git_repo_every_command_says_so_by_name() {
 
 #[test]
 fn the_platform_gate_refuses_macos_intel() {
-    let r = repo_with(&[("a.md", "x\n")]);
+    let r = repo_with(&[("a.md", "x\n")]).expect("fixture");
     let out = goh(
         Some(&r),
         &["markers"],
         &[("GOH_BUILD_OS", "Darwin"), ("GOH_BUILD_ARCH", "x86_64")],
-    );
+    )
+    .expect("goh runs");
     assert_eq!(out.status.code(), Some(1));
     assert!(out.text().contains("Intel"), "{}", out.text());
 }

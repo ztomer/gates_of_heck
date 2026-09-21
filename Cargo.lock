@@ -158,7 +158,15 @@ version = "0.12.3"
 dependencies = [
  "bytecount",
  "clap",
+ "goh-testkit",
  "regex",
+ "tempfile",
+]
+
+[[package]]
+name = "goh-testkit"
+version = "0.12.3"
+dependencies = [
  "tempfile",
 ]
 
