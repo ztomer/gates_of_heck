@@ -65,6 +65,21 @@ def test_cfg_attr_wrapped_suppression_is_refused(repo):
     assert run_check(repo, SCRIPT).returncode == 1
 
 
+def test_cfg_attr_state_closes_and_a_later_method_call_is_not_a_hit(repo):
+    # The attribute's own brackets close it; an `.expect(` method call on a
+    # later line is a call, not an attribute (the first version left the
+    # state open and flagged every `.expect(` in divoom's art.rs).
+    (_mkcrate(repo) / "lib.rs").write_text(
+        '#[cfg_attr(test, derive(Debug))]\nstruct S;\n'
+        'fn f() -> usize {\n    let x: Option<usize> = Some(1);\n'
+        '    x.expect("one")\n}\n',
+        encoding="utf-8",
+    )
+    commit_all(repo)
+    r = run_check(repo, SCRIPT)
+    assert r.returncode == 0, r.stdout
+
+
 def test_cfg_attr_without_a_suppression_passes(repo):
     # cfg_attr carrying any OTHER attribute (derive, doc, test) is not a hit,
     # and a `#[allow` mentioned in a string literal on the same line is not

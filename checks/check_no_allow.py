@@ -132,18 +132,15 @@ def _scan(root: str, paths, staged: bool):
             if _ALLOW_PATTERN.search(code):
                 hits.append(f"{rel}:{lineno}: {code.strip()}")
                 continue
-            if in_cfg_attr == 0 and _CFG_ATTR_OPEN.search(code):
-                in_cfg_attr = 1
-                code_after = code[_CFG_ATTR_OPEN.search(code).start():]
-            else:
-                code_after = code
-            if in_cfg_attr:
-                if _WRAPPED_SUPPRESSION.search(_STRING_LITERAL.sub('""', code_after)):
+            opened = in_cfg_attr == 0 and _CFG_ATTR_OPEN.search(code)
+            code_after = code[opened.start():] if opened else code
+            if opened or in_cfg_attr:
+                literal_free = _STRING_LITERAL.sub('""', code_after)
+                if _WRAPPED_SUPPRESSION.search(literal_free):
                     hits.append(f"{rel}:{lineno}: {code.strip()}")
-                # the attribute ends when its brackets balance
-                in_cfg_attr += code_after.count("[") - code_after.count("]")
-                if in_cfg_attr <= 0:
-                    in_cfg_attr = 0
+                # the attribute ends when its brackets balance: the opening
+                # `#[` counts here, so the depth returns to 0 on its `)]`.
+                in_cfg_attr = max(0, in_cfg_attr + literal_free.count("[") - literal_free.count("]"))
     return hits
 
 
