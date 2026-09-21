@@ -29,7 +29,15 @@ bindgen and friends). Nothing else exempts a file. This is deterministic and
 auditable, the same way check_no_emoji.py's codepoint ranges are.
 
 The checker greps for the literal tokens `#[allow(`, `#![allow(`, `#[expect(`
-and `#![expect(` — never a looser regex.
+and `#![expect(` — never a looser regex — and, since 2026-09-21, for the
+same suppressions wrapped in `cfg_attr`: `#[cfg_attr(<cfg>, allow(...))]`
+and `#![cfg_attr(<cfg>, expect(...))]`. A `cfg_attr` is the attribute with
+a condition on it; monitor carried nine `unsafe_code` and cast suppressions
+that way, invisible to the literal grep. The wrapped form is matched by the
+`allow(`/`expect(` token appearing on a line whose code contains
+`cfg_attr(`, which is only ever true of a wrapped suppression (a `cfg_attr`
+does nothing else with those tokens) and holds across the multi-line
+formatting rustfmt gives it.
 
 Conservative comment-awareness (2026-08-25, depth-counter rewrite 2026-08-26):
 a doc-comment MENTIONING #[allow] is prose about the policy, not a
@@ -51,6 +59,12 @@ from _gitutil import content_bytes, listed_files, repo_root  # noqa: E402
 
 _GENERATED_MARKER = "@generated"
 _ALLOW_PATTERN = re.compile(r"#!?\[(?:allow|expect)\(")
+# `#[cfg_attr(<cfg>, allow(...))]`: rustfmt puts the wrapped attribute on its
+# own line, so the two tokens are matched across the open attribute rather
+# than on one line (see the module doc).
+_CFG_ATTR_OPEN = re.compile(r"#!?\[cfg_attr\(")
+_WRAPPED_SUPPRESSION = re.compile(r"(?<![\w:])(?:allow|expect)\(")
+_STRING_LITERAL = re.compile(r'"(?:[^"\\]|\\.)*"')
 
 
 def _code_portions(text: str):
@@ -113,9 +127,23 @@ def _scan(root: str, paths, staged: bool):
         if blob is None or _is_generated(root, rel, staged):
             continue
         text = blob.decode("utf-8", errors="replace")
+        in_cfg_attr = 0  # bracket depth of an open `#[cfg_attr(` attribute
         for lineno, code in _code_portions(text):
             if _ALLOW_PATTERN.search(code):
                 hits.append(f"{rel}:{lineno}: {code.strip()}")
+                continue
+            if in_cfg_attr == 0 and _CFG_ATTR_OPEN.search(code):
+                in_cfg_attr = 1
+                code_after = code[_CFG_ATTR_OPEN.search(code).start():]
+            else:
+                code_after = code
+            if in_cfg_attr:
+                if _WRAPPED_SUPPRESSION.search(_STRING_LITERAL.sub('""', code_after)):
+                    hits.append(f"{rel}:{lineno}: {code.strip()}")
+                # the attribute ends when its brackets balance
+                in_cfg_attr += code_after.count("[") - code_after.count("]")
+                if in_cfg_attr <= 0:
+                    in_cfg_attr = 0
     return hits
 
 

@@ -24,6 +24,15 @@ codecov payloads match" (antiknob, blocking its push). The gate now passes
 Tests: `test_spm_finds_the_swift_6_3_products_layout`,
 `test_spm_glob_names_the_exact_payload`.
 
+Also: **`no_allow` sees a suppression wrapped in `cfg_attr`.**
+`#![cfg_attr(target_os = "macos", expect(unsafe_code, ...))]` is the
+attribute with a condition on it, and the literal grep for `#[expect(` never
+saw one; monitor carried eleven that way. The wrapped form is matched by the
+`allow(`/`expect(` token inside an open `cfg_attr(` attribute, across
+rustfmt's multi-line layout, with string literals ignored. Tests:
+`test_cfg_attr_wrapped_suppression_is_refused`,
+`test_cfg_attr_without_a_suppression_passes`.
+
 ## v0.12.3 — the commit hook goes through `tools/gate.sh --staged` _(2026-09-21)_
 
 `hooks/pre-commit` exec'd `structural.sh --staged` directly, so a staged

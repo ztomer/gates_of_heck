@@ -44,6 +44,41 @@ def test_expect_is_refused_too(repo):
     assert run_check(repo, SCRIPT).returncode == 1
 
 
+def test_cfg_attr_wrapped_suppression_is_refused(repo):
+    # A suppression under a cfg condition is still a suppression: monitor
+    # carried nine this way, invisible to the literal grep (2026-09-21).
+    src = _mkcrate(repo) / "lib.rs"
+    src.write_text(
+        '#![cfg_attr(\n    target_os = "macos",\n    expect(\n        unsafe_code,\n'
+        '        reason = "FFI"\n    )\n)]\nfn f() {}\n',
+        encoding="utf-8",
+    )
+    commit_all(repo)
+    r = run_check(repo, SCRIPT)
+    assert r.returncode == 1, r.stdout
+    assert "expect(" in r.stdout
+    src.write_text(
+        '#[cfg_attr(not(target_os = "macos"), allow(unused_mut))]\nfn f() {}\n',
+        encoding="utf-8",
+    )
+    commit_all(repo)
+    assert run_check(repo, SCRIPT).returncode == 1
+
+
+def test_cfg_attr_without_a_suppression_passes(repo):
+    # cfg_attr carrying any OTHER attribute (derive, doc, test) is not a hit,
+    # and a `#[allow` mentioned in a string literal on the same line is not
+    # a hit either.
+    (_mkcrate(repo) / "lib.rs").write_text(
+        '#[cfg_attr(test, derive(Debug))]\nstruct S;\n'
+        '#[cfg_attr(feature = "x", doc = "with expect(ation)")]\nfn f() {}\n',
+        encoding="utf-8",
+    )
+    commit_all(repo)
+    r = run_check(repo, SCRIPT)
+    assert r.returncode == 0, r.stdout
+
+
 def test_tests_dir_in_scope(repo):
     # A #![allow(dead_code)] on a shared fixture is the same suppression.
     t = repo / "tests"
