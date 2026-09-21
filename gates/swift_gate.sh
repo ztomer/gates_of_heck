@@ -95,6 +95,13 @@ else
     warn "swiftlint not installed — lint gate skipped (brew install swiftlint)"
 fi
 
+# ONE GATE PER TREE AT A TIME, cold or warm: a cold peer's wipe under this run's
+# tests is a red push that names the tests (lib/tree_lock.sh has the incident).
+# Taken before the lint stage would be earlier, but lint reads only sources; the
+# tree is what the wipe and the build contend for, so the lock starts here.
+. "$HERE/../lib/tree_lock.sh"
+tree_lock_acquire "$PWD" "swift gate"
+
 if [ "${GOH_SWIFT_COLD:-1}" = "1" ]; then
     step "cold build requested — clearing derived products"
     rm -rf .build .build/xcode-dd
