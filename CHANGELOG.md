@@ -1,5 +1,16 @@
 # CHANGELOG
 
+## v0.12.5 — a failed coverage export shows its own output _(unreleased)_
+
+`coverage_gate.sh --lang rust` sent every `cargo llvm-cov` export to
+`/dev/null`. When one failed -- monitor's `local_agent_test`, once, at
+push time, and green on every rerun -- the gate said "export failed" and
+nothing else, so the defect reached the push with no evidence and had to
+be reproduced by hand before it could be looked at. The export's output is
+kept beside its part (`part-<pkg>-<kind>-<name>.info.log`) and its tail is
+printed on failure. `test_failed_export_shows_its_own_output` pins it
+(proven red on the old gate).
+
 ## v0.12.4 — the coverage build pins the BUILD dir, not only the target dir _(2026-09-21)_
 
 `coverage_gate.sh --lang rust` isolated the instrumented build with

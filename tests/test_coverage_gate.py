@@ -241,6 +241,7 @@ JSON
       prev="$a"
     done
     printf 'garbage partial lcov\\n' > "$out"
+    echo "thread main panicked at the-real-reason" >&2
     exit 1 ;;
 esac
 exit 0
@@ -273,6 +274,21 @@ def test_failed_export_leaving_file_behind_fails_the_gate_by_name(tmp_path):
     assert "incomplete" in combined.lower()
     assert "covfix" in combined
     assert "Traceback" not in r.stderr  # a named refusal, not a crash
+
+
+def test_failed_export_shows_its_own_output(tmp_path):
+    # The export's stdout/stderr went to /dev/null until 2026-09-21, so a
+    # failing test under coverage was reported as "export failed" and nothing
+    # else -- a defect that reached the push with no evidence. The gate keeps
+    # the log beside the part and prints its tail on failure.
+    proj = tmp_path / "proj"
+    proj.mkdir()
+    r = _run_with_fake_cargo(tmp_path, str(proj), "--lang", "rust",
+                             "--floor", "50")
+    assert r.returncode == 1
+    assert "the-real-reason" in r.stderr, r.stderr
+    log = proj / "target" / "llvm-cov" / "lcov-parts" / "part-covfix-lib.info.log"
+    assert log.exists() and "the-real-reason" in log.read_text()
 
 
 def test_ok_marker_absent_even_though_part_file_exists(tmp_path):

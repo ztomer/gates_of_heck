@@ -84,6 +84,16 @@ command -v _lib_info >/dev/null 2>&1 && {
 }
 die() { err "coverage_gate: $*"; exit 2; }
 
+# An export that fails says WHY, here, from its own log: the failing test's
+# panic, the linker, a missing binary. Until 2026-09-21 the output went to
+# /dev/null and a one-off failure (monitor, local_agent_test) left nothing to
+# diagnose but "export failed" -- a gate hole, since a defect that reaches the
+# push with no evidence has to be reproduced by hand before it can be fixed.
+export_failed() {
+    warn "$1 export failed — tail of $2:"
+    tail -n 25 "$2" | sed 's/^/    /' >&2
+}
+
 usage() {
     cat <<'EOF'
 usage: coverage_gate.sh --lang rust|swift|cpp|py [--floor N] [--ignore RE]
@@ -270,10 +280,10 @@ PYEOF
             if cargo llvm-cov -p "$PKG" --lib --all-features \
                     ${IGNORE:+--ignore-filename-regex "$IGNORE"} \
                     --lcov --output-path "$part" \
-                    >/dev/null 2>&1; then
+                    >"$part.log" 2>&1; then
                 : >"$part.ok"
             else
-                warn "$label export failed"
+                export_failed "$label" "$part.log"
             fi
         else
             # Part name carries the package AND kind: two crates with
@@ -285,10 +295,10 @@ PYEOF
             if cargo llvm-cov -p "$PKG" "--$KIND" "$TNAME" --all-features \
                     ${IGNORE:+--ignore-filename-regex "$IGNORE"} \
                     --lcov --output-path "$part" \
-                    >/dev/null 2>&1; then
+                    >"$part.log" 2>&1; then
                 : >"$part.ok"
             else
-                warn "$label export failed"
+                export_failed "$label" "$part.log"
             fi
         fi
     done <"$METAF"
