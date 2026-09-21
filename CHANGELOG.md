@@ -1,5 +1,16 @@
 # CHANGELOG
 
+## v0.12.6 — a hook from an older stock is pristine, not "locally modified" _(unreleased)_
+
+`install.sh` refused to update three repos whose hooks had never been
+touched: they were on the previous stock hook, installed before the
+install record existed, so the hook matched neither the current stock
+nor a record. `retired_hooks.sha256` lists the digest of every stock
+hook ever shipped (append-only); a hook matching one is overwritten
+without `--force`. Found the day v0.12.3's pre-commit change (route
+through `tools/gate.sh --staged`) needed to reach every repo -- until it
+did, every staged language layer was decorative at commit time there.
+
 ## v0.12.5 — a failed coverage export shows its own output _(unreleased)_
 
 `coverage_gate.sh --lang rust` sent every `cargo llvm-cov` export to

@@ -65,11 +65,17 @@ for h in pre-commit pre-push; do
         cur_hash="$(hash_hex "$dst")" || die "no sha256 tool found for hashing $dst"
         recorded_hash="$(cat "$rec_dir/$h.sha256" 2>/dev/null || true)"
         # Overwrite ONLY when the target is pristine: identical to the stock
-        # hook, or identical to what WE last installed (stock bumped since).
-        # Anything else was edited locally (repos append stages to pre-push,
-        # replace pre-commit outright) and is not ours to clobber silently.
+        # hook, to what WE last installed (stock bumped since), or to ANY stock
+        # hook ever shipped (retired_hooks.sha256 -- installs that predate the
+        # record). Anything else was edited locally (repos append stages to
+        # pre-push, replace pre-commit outright) and is not ours to clobber
+        # silently.
+        retired=0
+        if grep -q "^$cur_hash  $h" "$HERE/retired_hooks.sha256" 2>/dev/null; then
+            retired=1
+        fi
         if [ "$cur_hash" != "$stock_hash" ] && [ "$cur_hash" != "$recorded_hash" ] \
-           && [ "$FORCE" -ne 1 ]; then
+           && [ "$retired" -ne 1 ] && [ "$FORCE" -ne 1 ]; then
             err "install: $dst differs from both the stock hook and our install record"
             err "  it looks locally modified — refusing to overwrite it"
             err "  pass --force to replace it with the stock hook anyway"

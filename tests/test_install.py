@@ -185,6 +185,21 @@ def test_replaced_hook_is_preserved_on_reinstall(repo):
     assert commit_hook.read_text() == custom
 
 
+def test_a_hook_from_an_older_stock_is_pristine_not_modified(repo):
+    """A repo on a previous stock hook, installed before the record existed, is updated
+    without --force: its hash is in retired_hooks.sha256, so it was never edited."""
+    assert _install(repo).returncode == 0
+    hook = repo / ".githooks" / "pre-commit"
+    old_stock = subprocess.run(
+        ["git", "-C", str(REPO_ROOT), "show", "73391f0:hooks/pre-commit"],
+        capture_output=True, text=True, check=True).stdout
+    hook.write_text(old_stock)
+    shutil.rmtree(repo / ".githooks" / ".goh-installed")   # no record: pre-record install
+    r = _install(repo)
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert hook.read_text() == _stock("pre-commit")
+
+
 def test_force_overwrites_locally_modified_hooks(repo):
     assert _install(repo).returncode == 0
     hook = repo / ".githooks" / "pre-commit"

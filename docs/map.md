@@ -68,6 +68,7 @@ logic goes in the engine; new floor/CLI semantics go in `coverage_gate.sh`.
 * `tools/profiling/` — soak/profile harness. See its `README.md`.
 * `install.sh` — wires `.githooks/` + starter `tools/gate.sh` / `.gatesrc`
   into a consumer repo. Pinned by `test_install.py`.
+* `retired_hooks.sha256` — digest of every stock hook ever shipped; a repo hook matching one is pristine to `install.sh`
 * `hooks/` — stock `pre-commit` (structural `--staged`) and `pre-push`
   (`tools/gate.sh --full`).
 * `tui/` — style source of truth. Pinned by `test_tui_integration.py`.

@@ -1,0 +1,8 @@
+# sha256 of every stock hook this installer has EVER shipped. A repo whose hook is one of these
+# has never been edited locally -- it is simply on an older stock -- and install.sh overwrites
+# it without --force. Before this list existed, three repos that had never touched their hooks
+# were refused as "locally modified" the day the stock hook changed (2026-09-21), because the
+# install record did not exist yet on hooks installed before the record did. Append, never
+# remove: a hash removed from here turns a pristine old install back into a refusal.
+d5603f176139d3ddca9b21bc94f87fa2e7663a94d5980c5346c26ba5a46682bf  pre-commit  (73391f0, before v0.12.3)
+87c60cd19cb13dc32c581cddca2cb305f91f972aba343ada2750bc2bfc2e761a  pre-push    (73391f0, before v0.12.3)
