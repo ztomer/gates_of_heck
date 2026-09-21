@@ -109,8 +109,13 @@ fi
 
 case "$MODE" in
   spm)
-    goh_step "build (warnings as errors)" \
-        "$SWIFT" build -Xswiftc -warnings-as-errors
+    # --build-tests: the TEST targets are compiled under warnings-as-errors too. Without it a
+    # warning in Tests/ was invisible to the gate (`swift test` compiles them, but not as errors):
+    # four actor-isolation warnings sat in ZoneWM's test targets through every green push until
+    # 2026-09-21, found only because an unrelated public-API change recompiled the files. Rule 14:
+    # a warning is the migration's due date, and a gate that reads only half the tree is half a gate.
+    goh_step "build + tests (warnings as errors)" \
+        "$SWIFT" build --build-tests -Xswiftc -warnings-as-errors
     if [ -n "${GOH_SWIFT_COV_MIN:-}" ]; then
         goh_step "test + coverage" "$SWIFT" test --enable-code-coverage
         _cov_args=(--min "$GOH_SWIFT_COV_MIN")
