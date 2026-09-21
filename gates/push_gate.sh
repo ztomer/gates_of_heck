@@ -52,7 +52,12 @@ while read -r local_ref local_sha _remote_ref _remote_sha; do
     [ -n "${local_sha:-}" ] || continue
     [ "$local_sha" = "$zero" ] && continue          # a delete: nothing to test
     short="$(git -C "$root" rev-parse --short "$local_sha")"
+    # PHYSICAL path, never the logical one. macOS's $TMPDIR is /var/folders/..., a symlink into
+    # /private/var; tools that report real paths (swiftlint does) then disagree with a cwd spelled
+    # through the symlink, and a path-keyed baseline matches nothing — every recorded violation
+    # fired as new on the first worktree-gated push (ZoneWM, 2026-09-21, 169 of them).
     worktree="$(mktemp -d "${TMPDIR:-/tmp}/goh-push-XXXXXX")"
+    worktree="$(cd "$worktree" && pwd -P)"
     rmdir "$worktree"                                # git wants to create it
     section "pre-push: gating $local_ref @ $short in a clean worktree"
     git -C "$root" worktree add --detach --quiet "$worktree" "$local_sha"

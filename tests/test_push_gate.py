@@ -65,6 +65,17 @@ def test_the_gate_sees_the_commit_not_the_working_tree(tmp_path):
     assert str(repo) not in report.split("cwd=")[1], "the gate ran inside the checkout"
 
 
+def test_the_worktree_path_is_physical(tmp_path):
+    """macOS $TMPDIR is a symlink (/var -> /private/var); a cwd spelled through it makes every
+    path-keyed baseline (swiftlint's) miss. The gate must run in the resolved path."""
+    repo = _repo(tmp_path)
+    sha = _git(repo, "rev-parse", "HEAD")
+    code, report, _ = _push(repo, sha, tmp_path)
+    assert code == 0, report
+    cwd = report.split("cwd=")[1].strip()
+    assert cwd == os.path.realpath(cwd), f"the gate ran in a logical path: {cwd}"
+
+
 def test_ignored_files_are_absent_unless_kept(tmp_path):
     repo = _repo(tmp_path)
     (repo / "local.cfg").write_text("LOCAL")
