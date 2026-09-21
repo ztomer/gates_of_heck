@@ -45,6 +45,32 @@ def test_initialize_returns_protocol_and_server_info():
     assert resp["result"]["serverInfo"]["name"] == "test-srv"
 
 
+def test_initialize_echoes_each_supported_version():
+    # Echo-if-supported: every version in HANDSHAKE_VERSIONS is answered back.
+    for version in mc.HANDSHAKE_VERSIONS:
+        resp = _server().handle_message({"jsonrpc": "2.0", "id": 1,
+                                         "method": "initialize",
+                                         "params": {"protocolVersion": version}})
+        assert resp["result"]["protocolVersion"] == version, version
+
+
+def test_initialize_echoes_new_latest_2026_07_28():
+    # SEP-2575: 2026-07-28 asked → 2026-07-28 answered (it is the LATEST).
+    assert mc.LATEST == "2026-07-28"
+    resp = _server().handle_message({"jsonrpc": "2.0", "id": 1, "method": "initialize",
+                                     "params": {"protocolVersion": "2026-07-28"}})
+    assert resp["result"]["protocolVersion"] == "2026-07-28"
+
+
+def test_initialize_unknown_future_version_falls_back_to_latest():
+    # Unknown version (and a missing one) → latest, never an echo of garbage.
+    for params in ({"protocolVersion": "2099-01-01"}, {}):
+        resp = _server().handle_message({"jsonrpc": "2.0", "id": 1,
+                                         "method": "initialize",
+                                         "params": params})
+        assert resp["result"]["protocolVersion"] == mc.LATEST == "2026-07-28"
+
+
 def test_tools_list_exposes_name_description_schema():
     resp = _server().handle_message({"jsonrpc": "2.0", "id": 2, "method": "tools/list"})
     tools = {t["name"]: t for t in resp["result"]["tools"]}

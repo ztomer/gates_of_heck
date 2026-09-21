@@ -5,12 +5,23 @@
 `checks/check_no_allow.py` now refuses `#[expect(...)]` and `#![expect(...)]`
 beside `#[allow]`, and its scope covers `tests/` and `examples/` as well as
 `src/`, `benches/` and `build.rs`. `#[expect]` cannot rot (it errors when the
-lint stops firing) but it still ships the finding - a cast that "fits today",
-a function that is "only 104 lines", a `#![allow(dead_code)]` on a shared
-test fixture that should be a dev-dependency crate. Policy from the servers
-Rust campaign (operator, 2026-09-20): fix the finding properly. Tests:
-`test_expect_is_refused_too`, `test_tests_dir_in_scope` (the two inverted
-cases from v0.12.1's suite).
+ lint stops firing) but it still ships the finding - a cast that "fits today",
+ a function that is "only 104 lines", a `#![allow(dead_code)]` on a shared
+ test fixture that should be a dev-dependency crate. Policy from the servers
+ Rust campaign (operator, 2026-09-20): fix the finding properly. Tests:
+ `test_expect_is_refused_too`, `test_tests_dir_in_scope` (the two inverted
+ cases from v0.12.1's suite).
+- **MCP handshake LATEST is 2026-07-28 (SEP-2575).** `lib/mcp_scaffold.py`
+  answers `initialize` with 2026-07-28 when asked, echoes every version in
+  `HANDSHAKE_VERSIONS`, and falls back to LATEST on an unknown or missing
+  version (three new cases in `tests/test_mcp_scaffold.py` pin each arm).
+  Consumers inherit it at runtime via `GOH_DIR` with no reinstall:
+  koffee_big, necrohand and ZeroThunder speak the new version on their next
+  run. 2025-11-25 stays supported (still echoed), just no longer latest;
+  nothing in docs/ or lib/ pinned it as latest, so nothing else rotted.
+- **Commit-time ruff over staged Python** (`gates/py_staged.sh`, wired by
+  `install.sh`): the cheap half of `py_gate` runs at commit time, so a
+  lint finding surfaces one commit earlier instead of one push later.
 
 ## v0.12.1 — a named "not applicable" skip is not a pass _(2026-09-14)_
 

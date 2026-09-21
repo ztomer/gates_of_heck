@@ -37,8 +37,9 @@ try:
 except ImportError:  # run as a script: script dir is on sys.path
     from killtree import run_captured
 
-HANDSHAKE_VERSIONS = ("2024-11-05", "2025-03-26", "2025-06-18", "2025-11-25")
-LATEST = "2025-11-25"
+HANDSHAKE_VERSIONS = ("2024-11-05", "2025-03-26", "2025-06-18", "2025-11-25",
+                        "2026-07-28")
+LATEST = "2026-07-28"
 PROTOCOL_VERSION = LATEST
 
 # JSON-RPC 2.0 / MCP error codes
