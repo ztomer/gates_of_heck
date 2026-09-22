@@ -27,6 +27,8 @@
 #      explicit argv (.gatesrc values are shell variables, NOT exported, so
 #      the callee cannot see them through the environment). Unset keeps
 #      fmt+clippy only, with a printed nudge (the py/swift-gate precedent).
+#      GOH_RUST_COVERAGE=defer (env) skips it BY NAME for a commit gate whose
+#      push gate runs it; any other value fails.
 #
 #   rust_gate.sh                       # run from repo root (uses $PWD)
 #   rust_gate.sh <repo>                # run from anywhere
@@ -137,7 +139,17 @@ goh_step_in "$cargo_dir" "cargo lints (manifest)" \
 goh_step "no #[allow] / #[expect]" \
     python3 "$HERE/../checks/check_no_allow.py" ${GOH_EXCLUDE:+--exclude "$GOH_EXCLUDE"}
 
-if [ -n "${GOH_COV_FLOOR_RUST:-}" ]; then
+# GOH_RUST_COVERAGE=defer: the caller's PUSH gate checks the floor, so a
+# commit gate need not rebuild every touched crate instrumented (a release
+# touches them all). Named, never silent; any other value is a miswiring.
+case "${GOH_RUST_COVERAGE:-}" in
+    ""|defer) ;;
+    *) die "GOH_RUST_COVERAGE='${GOH_RUST_COVERAGE}' - the only value is 'defer'" ;;
+esac
+
+if [ "${GOH_RUST_COVERAGE:-}" = defer ]; then
+    info "coverage deferred to the push gate (GOH_RUST_COVERAGE=defer)"
+elif [ -n "${GOH_COV_FLOOR_RUST:-}" ]; then
     goh_step "coverage (floor ${GOH_COV_FLOOR_RUST}%)" \
         bash "$HERE/coverage_gate.sh" --lang rust \
         --floor "$GOH_COV_FLOOR_RUST" "$cargo_dir"

@@ -7,6 +7,7 @@ present, and checker-absent. Output wording may differ (the new gate uses
 the shared _common.sh contract); behavior may not.
 """
 
+import os
 import shutil
 import subprocess
 from pathlib import Path
@@ -64,10 +65,11 @@ def write_lib(c: Path, body: str) -> None:
     _git(c, "add", "-A")
 
 
-def run_script(script: Path, crate: Path) -> subprocess.CompletedProcess:
+def run_script(script: Path, crate: Path, env: dict | None = None) -> subprocess.CompletedProcess:
     return subprocess.run(
         ["/bin/bash", str(script), str(crate)],
         cwd=crate, capture_output=True, text=True,
+        env={**os.environ, **(env or {})},
     )
 
 
@@ -194,3 +196,29 @@ def test_floor_set_fails_when_uncovered(tmp_path, warm_crate):
     # argparse/exit-2 territory, and a miswired gate must not hide there.
     # (Rust mode reports "0.0% of coverable lines (floor 80%, 0/3 lines)".)
     assert "uncovered lines" in combined, r.stdout + r.stderr
+
+
+# ── coverage deferred (GOH_RUST_COVERAGE=defer) ──────────────────────────────
+# A commit hook gating every crate a release touches ran one cold instrumented
+# build per crate (media_server, 2026-09-22: 27 crates, most of a 13-minute
+# release) and the push gate ran them again. A repo whose push gate checks
+# the floor defers it at commit time - by NAME, never by silence.
+
+
+def test_deferred_coverage_is_named_and_not_run(tmp_path, warm_crate):
+    c = clone(warm_crate, tmp_path / "covdefer")
+    write_lib(c, LIB_UNTESTED)
+    (c / ".gatesrc").write_text("GOH_COV_FLOOR_RUST=80\n")
+    r = run_script(CURRENT, c, {"GOH_RUST_COVERAGE": "defer"})
+    combined = r.stdout + r.stderr
+    assert r.returncode == 0, "an uncovered crate passes only if coverage did not run: " + combined
+    assert "coverage deferred" in combined.lower(), combined
+
+
+def test_an_unknown_coverage_mode_fails(tmp_path, warm_crate):
+    c = clone(warm_crate, tmp_path / "covmode")
+    write_lib(c, LIB_TESTED)
+    (c / ".gatesrc").write_text("GOH_COV_FLOOR_RUST=50\n")
+    r = run_script(CURRENT, c, {"GOH_RUST_COVERAGE": "skip"})
+    assert r.returncode != 0, r.stdout + r.stderr
+    assert "GOH_RUST_COVERAGE" in r.stdout + r.stderr
