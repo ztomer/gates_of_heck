@@ -71,6 +71,7 @@ fix is `reclaim_build_space.sh` next to it.
 | Key | Default | Meaning |
 |---|---|---|
 | `GOH_COV_FLOOR_RUST` / `_SWIFT` / `_CPP` / `_PY` | unset | Per-language floor. Resolution: `--floor` flag, then this key, else exit 2 naming both seams. `rust_gate.sh` passes its floor as explicit argv when set (`.gatesrc` values are not exported); `coverage_gate.sh` also honors them from the environment on direct invocation. |
+| `GOH_RUST_COVERAGE` | unset | Environment, set by a repo's `tools/gate.sh` for its COMMIT gate: `defer` makes `rust_gate.sh` skip the coverage step by name ("coverage deferred to the push gate") because the push gate checks the floor; any other value fails. A release touches every crate, and one cold instrumented build per crate per commit was most of a 13-minute release. |
 | `GOH_COV_FLOORS_JSON` | unset | JSON file with per-target + per-file floors (`--floors-json`). |
 | `GOH_COV_INCLUDE_RE` | unset | Positive filter: only matching files are measured, applied BEFORE `--ignore` (`--include`). |
 | `GOH_COV_MARKER_CEILING` | `.coverage-forgiveness-ceiling.json` if present | JSON cap on `cov:ignore` forgiven lines, shrink-only (`--marker-ceiling`). |
