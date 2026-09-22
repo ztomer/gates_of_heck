@@ -21,9 +21,19 @@
 # (see the SwiftLint note below). It is removed on every exit path; a worktree left behind by a
 # SIGKILL is pruned by the next run (`git worktree prune`), so nothing accumulates.
 #
-# Protocol: git feeds `<local ref> <local sha> <remote ref> <remote sha>` lines on stdin. A
-# delete (local sha all zeros) has nothing to test. Several refs are gated one after another;
-# a failure stops the push.
+# Protocol: git feeds `<local ref> <local sha> <remote ref> <remote sha>` lines on stdin, and passes
+# the remote's name as $1. A delete (local sha all zeros) has nothing to test. Several refs are
+# gated one after another; a failure stops the push.
+#
+# WHAT IS NOT GATED, and why that is not a pass over nothing. The gate certifies code the remote is
+# about to GAIN. Two kinds of ref gain it none, and each is skipped with a line saying so:
+#   - a ref whose commit the remote already has (reachable from one of its tracking refs). ZoneWM,
+#     2026-09-22: `git push --follow-tags` carried six release tags that had never been pushed, all
+#     on commits the remote had held for days. The gate rebuilt the oldest with today's toolchain,
+#     failed on a switch a later SDK made non-exhaustive, and refused a push whose only new code was
+#     elsewhere. Six tags would also have cost six cold gates.
+#   - a ref whose commit was already gated earlier in this same push. A release pushes `main` and
+#     `vX.Y.Z` on one commit; one gate certifies both.
 set -euo pipefail
 
 GOH="${GOH_DIR:-${GOH:-$HOME/Projects/gates_of_heck}}"
@@ -38,6 +48,8 @@ GOH_EXPORT_KEEP=""
 [ -f "$root/.gatesrc" ] && . "$root/.gatesrc"
 
 zero="0000000000000000000000000000000000000000"
+remote_name="${1:-}"
+gated_commits=" "
 worktree=""
 cleanup() {
     if [ -n "$worktree" ] && [ -d "$worktree" ]; then
@@ -52,7 +64,17 @@ gated=0
 while read -r local_ref local_sha _remote_ref _remote_sha; do
     [ -n "${local_sha:-}" ] || continue
     [ "$local_sha" = "$zero" ] && continue          # a delete: nothing to test
-    short="$(git -C "$root" rev-parse --short "$local_sha")"
+    # A tag's sha is the tag OBJECT; the code under test is the commit it points at.
+    commit="$(git -C "$root" rev-parse --verify --quiet "${local_sha}^{commit}" || echo "$local_sha")"
+    short="$(git -C "$root" rev-parse --short "$commit")"
+    case "$gated_commits" in
+        *" $commit "*) info "pre-push: $local_ref @ $short — gated earlier in this push"; continue ;;
+    esac
+    if [ -n "$remote_name" ] && [ -n "$(git -C "$root" for-each-ref --contains "$commit" \
+            --format='%(refname)' "refs/remotes/$remote_name/")" ]; then
+        info "pre-push: $local_ref @ $short — $remote_name already has this commit; nothing new to gate"
+        continue
+    fi
     # UNDER $HOME, physical path, never under the temp directory. SwiftLint 0.65.1's baseline
     # (repo-relative paths, verified path-independent by ZoneWM's relativize_lint_baseline.py)
     # matches NOTHING when the tree sits under /private/tmp or /private/var/folders -- every
@@ -68,7 +90,7 @@ while read -r local_ref local_sha _remote_ref _remote_sha; do
     worktree="$(cd "$worktree" && pwd -P)"
     rmdir "$worktree"                                # git wants to create it
     section "pre-push: gating $local_ref @ $short in a clean worktree"
-    git -C "$root" worktree add --detach --quiet "$worktree" "$local_sha"
+    git -C "$root" worktree add --detach --quiet "$worktree" "$commit"
     for f in $GOH_EXPORT_KEEP; do
         if [ -e "$root/$f" ]; then
             mkdir -p "$worktree/$(dirname "$f")"
@@ -82,6 +104,7 @@ while read -r local_ref local_sha _remote_ref _remote_sha; do
     fi
     cleanup; worktree=""
     gated=$((gated + 1))
+    gated_commits="$gated_commits$commit "
 done
 
-[ "$gated" -gt 0 ] || info "pre-push: nothing to gate (deletes only)"
+[ "$gated" -gt 0 ] || info "pre-push: nothing to gate (deletes, or commits the remote already has)"

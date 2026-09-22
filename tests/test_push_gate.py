@@ -131,3 +131,57 @@ def test_the_stock_hook_delegates_to_push_gate():
     hook = (REPO_ROOT / "hooks" / "pre-push").read_text()
     assert "push_gate.sh" in hook and "gate.sh --full" not in hook, \
         "the hook must run the pushed commit through push_gate.sh, not the working tree through gate.sh"
+
+
+def _push_lines(repo: Path, lines: str, tmp_path: Path, remote: str = "origin") -> tuple[int, str, str]:
+    report = tmp_path / "report.txt"
+    env = dict(os.environ, GATE_REPORT=str(report), GOH_DIR=str(REPO_ROOT))
+    proc = subprocess.run(["bash", str(PUSH_GATE), remote, "unused-url"], cwd=repo, env=env,
+                          text=True, input=lines, capture_output=True)
+    return proc.returncode, report.read_text() if report.exists() else "", proc.stdout + proc.stderr
+
+
+def test_a_tag_on_a_commit_the_remote_already_has_is_not_gated(tmp_path):
+    """ZoneWM 2026-09-22: --follow-tags carried six never-pushed release tags on commits the remote
+    had held for days; the gate rebuilt the oldest with today's toolchain and refused the push."""
+    repo = _repo(tmp_path)
+    old = _git(repo, "rev-parse", "HEAD")
+    _git(repo, "tag", "-a", "v1.0.0", "-m", "old release")
+    _git(repo, "update-ref", "refs/remotes/origin/main", old)      # the remote already has it
+    (repo / "fail.flag").write_text("x")                            # gating it would fail...
+    _git(repo, "add", "fail.flag")
+    _git(repo, "commit", "-q", "-m", "breaks the gate")
+    _git(repo, "tag", "-d", "v1.0.0")
+    _git(repo, "tag", "-a", "v1.0.0", "-m", "old release", old)
+    tag_obj = _git(repo, "rev-parse", "v1.0.0")
+    code, report, out = _push_lines(repo, f"refs/tags/v1.0.0 {tag_obj} refs/tags/v1.0.0 {'0' * 40}\n",
+                                    tmp_path)
+    assert code == 0, out
+    assert report == "", f"the gate ran on a commit the remote already has: {report}"
+    assert "already has this commit" in out, out
+
+
+def test_a_branch_and_its_release_tag_on_one_commit_are_gated_once(tmp_path):
+    repo = _repo(tmp_path)
+    sha = _git(repo, "rev-parse", "HEAD")
+    _git(repo, "tag", "-a", "v2.0.0", "-m", "release")
+    tag_obj = _git(repo, "rev-parse", "v2.0.0")
+    lines = (f"refs/heads/main {sha} refs/heads/main {'0' * 40}\n"
+             f"refs/tags/v2.0.0 {tag_obj} refs/tags/v2.0.0 {'0' * 40}\n")
+    code, report, out = _push_lines(repo, lines, tmp_path)
+    assert code == 0, out
+    assert report.count("tracked=") == 1, f"one commit, gated {report.count('tracked=')} times"
+    assert "gated earlier in this push" in out, out
+
+
+def test_a_new_commit_is_still_gated_when_the_remote_has_its_parent(tmp_path):
+    """The skip must not swallow new work: only commits the remote already HAS are exempt."""
+    repo = _repo(tmp_path)
+    _git(repo, "update-ref", "refs/remotes/origin/main", _git(repo, "rev-parse", "HEAD"))
+    (repo / "fail.flag").write_text("x")
+    _git(repo, "add", "fail.flag")
+    _git(repo, "commit", "-q", "-m", "new and broken")
+    sha = _git(repo, "rev-parse", "HEAD")
+    code, report, out = _push_lines(repo, f"refs/heads/main {sha} refs/heads/main {'0' * 40}\n", tmp_path)
+    assert code != 0, "a new broken commit passed the gate"
+    assert "tracked=" in report, "the new commit was never gated"
