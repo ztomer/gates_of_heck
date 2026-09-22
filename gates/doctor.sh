@@ -68,9 +68,24 @@ if [ -z "$hooks_path" ]; then
 elif [ "$hooks_path" != ".githooks" ]; then
     warn "core.hooksPath is '$hooks_path', not .githooks (custom setup — yours to maintain)"
 else
+    # shellcheck source=gates/_hash.sh
+    . "$HERE/_hash.sh"
     for h in pre-commit pre-push; do
-        if [ ! -x "$repo/.githooks/$h" ]; then
+        dst="$repo/.githooks/$h"
+        if [ ! -x "$dst" ]; then
             fail ".githooks/$h missing or not executable (fix: '$GOH_ROOT/install.sh $repo')"
+            continue
+        fi
+        # An installed hook is a COPY of ours. One install.sh itself wrote
+        # (its record, or any stock hook ever shipped) that no longer matches
+        # the stock hook is an older install: the repo runs yesterday's gate.
+        cmp -s "$dst" "$GOH_ROOT/hooks/$h" && continue
+        cur="$(hash_hex "$dst")" || { warn "no sha256 tool: cannot tell whether .githooks/$h is current"; continue; }
+        recorded="$(cat "$repo/.githooks/.goh-installed/$h.sha256" 2>/dev/null || true)"
+        if [ "$cur" = "$recorded" ] || grep -q "^$cur  $h" "$GOH_ROOT/retired_hooks.sha256" 2>/dev/null; then
+            fail ".githooks/$h is from an older install (fix: '$GOH_ROOT/install.sh $repo')"
+        else
+            warn ".githooks/$h differs from gates_of_heck's and was edited by hand - yours to keep current"
         fi
     done
     [ "$PROBLEMS" -eq 0 ] && ok "hooks wired (core.hooksPath → .githooks)"

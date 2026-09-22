@@ -134,3 +134,32 @@ def test_gate_doctor_flag_delegates(repo):
     )
     assert r.returncode == 0, r.stdout + r.stderr
     assert "healthy" in (r.stdout + r.stderr).lower()
+
+
+def _sha(p: Path) -> str:
+    import hashlib
+
+    return hashlib.sha256(p.read_bytes()).hexdigest()
+
+
+def test_a_hook_from_an_older_install_fails_named(repo):
+    """An installed hook is a COPY: when gates_of_heck's hook moves on (the
+    pre-push that gates the pushed commit in a clean worktree, 2026-09-21),
+    a repo installed before keeps the old one - four repos gated their
+    working tree for a day while doctor said healthy."""
+    _wire(repo)
+    hook = repo / ".githooks" / "pre-push"
+    hook.write_text('#!/bin/bash\nexec bash "$(git rev-parse --show-toplevel)/tools/gate.sh" --full\n')
+    (repo / ".githooks" / ".goh-installed" / "pre-push.sha256").write_text(_sha(hook) + "\n")
+    r = run_doctor(repo)
+    assert r.returncode == 1, r.stdout + r.stderr
+    assert "pre-push is from an older install" in r.stdout + r.stderr
+
+
+def test_a_hand_edited_hook_warns_but_passes(repo):
+    _wire(repo)
+    hook = repo / ".githooks" / "pre-push"
+    hook.write_text(hook.read_text() + "# local tweak\n")
+    r = run_doctor(repo)
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert "pre-push differs from gates_of_heck's and was edited by hand" in r.stdout + r.stderr

@@ -40,19 +40,8 @@ target="$(cd "$target" && pwd)"
 git -C "$target" rev-parse --show-toplevel >/dev/null 2>&1 \
     || die "$target is not inside a git repo"
 
-# sha256 digest of a file's contents, via whichever tool exists. All three
-# produce the same SHA-256 digest, so records stay comparable across the chain.
-hash_hex() {
-    if command -v shasum >/dev/null 2>&1; then
-        shasum -a 256 "$1" | cut -d' ' -f1
-    elif command -v sha256sum >/dev/null 2>&1; then
-        sha256sum "$1" | cut -d' ' -f1
-    elif cksum -a sha256 /dev/null >/dev/null 2>&1; then
-        cksum -a sha256 "$1" | cut -d' ' -f1
-    else
-        return 1
-    fi
-}
+# shellcheck source=gates/_hash.sh
+. "$HERE/gates/_hash.sh"
 
 hooks_dir="$target/.githooks"
 rec_dir="$hooks_dir/.goh-installed"
