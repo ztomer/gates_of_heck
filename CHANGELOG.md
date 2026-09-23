@@ -1,5 +1,20 @@
 # CHANGELOG
 
+## v0.13.1 — a gate over the working tree says when the tree moved under it _(unreleased)_
+
+A gate that builds and tests the WORKING tree certified whatever bytes sat
+there while it ran: an edit mid-run killed ZoneWM's `make verify` with
+`error: fatalError` in a target nobody touched and no cause named, and a
+green run over a moving tree certified bytes no commit holds.
+`lib/tree_stamp.py` stamps (mtime, size) of every file git would show at the
+start and compares at the end; `goh_tree_stamp` (swift, rust and python
+gates) refuses a pass over a moved tree and names the move on a red one.
+The staged gates do not stamp: they judge the index, so another session's
+edit elsewhere is not theirs to refuse. Tool caches (`__pycache__`,
+`.pytest_cache`, `.build`, `target`, lockfiles a build writes) are gate
+output, never a move -- found by this repo's own py and rust gate tests.
+Consumers with their own runner call the CLI (ZoneWM's `make verify`).
+
 ## v0.13.0 — the Rust port: native layer 1, bit-exact golden, one resolver _(unreleased)_
 
 Every checker a shared gate runs is now native (`goh`) with the Python

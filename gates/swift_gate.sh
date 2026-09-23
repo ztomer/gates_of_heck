@@ -55,6 +55,7 @@ if [ -z "$MODE" ]; then
 fi
 
 goh_init "swift"
+goh_tree_stamp
 
 # The toolchain is RESOLVED, not whatever PATH says first — see
 # swift_toolchain.sh for the swiftly-shadows-Xcode incident that made

@@ -52,6 +52,7 @@ cargo_dir="$(cd "$cargo_dir" && pwd)"
 [ -f .gatesrc ] && . ./.gatesrc
 
 goh_init "rust"
+goh_tree_stamp
 
 command -v cargo >/dev/null 2>&1 || die "cargo not on PATH"
 

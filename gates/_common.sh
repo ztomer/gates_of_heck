@@ -68,6 +68,33 @@ GOH_LOG=""
 GOH_LOGS=""
 GOH_COMPLETED=""
 GOH_TMPDIRS=""
+# The working tree's stamp (lib/tree_stamp.py), taken by goh_tree_stamp. A
+# gate that BUILDS AND TESTS the working tree certifies the bytes that were
+# there while it ran; an edit mid-run made one die in an untouched target with
+# no cause named (ZoneWM 2c.9, 2026-09-21). So a green run over a tree that
+# moved is refused in goh_done, and a red one names the move in the trap.
+GOH_TREE_STAMP_FILE=""
+GOH_TREE_CHECKED=""
+
+# goh_tree_stamp — call right after goh_init in a gate that builds and tests
+# the working tree (swift, rust, python). NOT in the staged gates: they judge
+# the INDEX, so an edit elsewhere in the tree does not touch their verdict,
+# and refusing a commit because another session edited an unrelated file
+# would be the gate being wrong. A no-op outside a git repo, and once per run.
+goh_tree_stamp() {
+    [ -z "$GOH_TREE_STAMP_FILE" ] && [ -n "$GOH_GIT_ROOT" ] || return 0
+    GOH_TREE_STAMP_FILE="$(mktemp "${TMPDIR:-/tmp}/goh-stamp.XXXXXX")"
+    python3 "$GOH_ROOT/lib/tree_stamp.py" take "$GOH_GIT_ROOT" "$GOH_TREE_STAMP_FILE" \
+        || die "$GOH_NAME: cannot stamp the tree at $GOH_GIT_ROOT"
+}
+
+# goh_tree_check — 0 if the tree is where goh_tree_stamp found it (or none was
+# taken); else prints the moved paths and returns 1.
+goh_tree_check() {
+    [ -n "$GOH_TREE_STAMP_FILE" ] || return 0
+    GOH_TREE_CHECKED=1
+    python3 "$GOH_ROOT/lib/tree_stamp.py" check "$GOH_GIT_ROOT" "$GOH_TREE_STAMP_FILE" --name "$GOH_NAME"
+}
 
 # goh_init <gate-name>
 goh_init() {
@@ -93,6 +120,9 @@ goh_init() {
     # install it AFTER goh_init and preserve $? the same way.
     trap '
         _goh_rc=$?
+        # A red run names the move, if there was one: that is its likeliest cause.
+        if [ "$_goh_rc" -ne 0 ] && [ -z "$GOH_TREE_CHECKED" ]; then goh_tree_check || true; fi
+        [ -n "$GOH_TREE_STAMP_FILE" ] && rm -f "$GOH_TREE_STAMP_FILE"
         for _l in $GOH_LOGS; do rm -f "$_l"; done
         for _d in $GOH_TMPDIRS; do rm -rf "$_d"; done
         if [ "$_goh_rc" -eq 0 ] && [ "$GOH_COMPLETED" != "1" ]; then
@@ -223,6 +253,7 @@ goh_index_view() {
 
 # goh_done — the ONLY way a gate earns exit 0 (see the trap in goh_init).
 goh_done() {
+    goh_tree_check || die "$GOH_NAME: refusing a pass over a tree that moved"
     GOH_COMPLETED=1
     printf '\n'
     ok "all $GOH_NAME gates passed"

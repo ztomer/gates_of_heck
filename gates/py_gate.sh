@@ -45,6 +45,7 @@ fi
 read -r -a RUN_ARR <<<"$RUN"
 
 goh_init "python"
+goh_tree_stamp
 
 command -v python3 >/dev/null 2>&1 || die "python3 not on PATH"
 

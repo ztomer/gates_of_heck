@@ -116,6 +116,8 @@ fix is `reclaim_build_space.sh` next to it.
 | `GOH_FAIL_LINES` | `40` | How many of those hits are printed. |
 | `GOH_TIME` | unset | When set (any value), `goh_step` appends per-step elapsed whole seconds to its ok line. Off by default. |
 | `GOH_AWK_VER_RE` | internal | Version regex passed into the release stanza matcher. Not user config. |
+| `GOH_TREE_STAMP_FILE` | internal | The working tree's stamp taken at the first `goh_init` (`lib/tree_stamp.py`); compared in `goh_done` and on a red exit. Not user config. |
+| `GOH_TREE_CHECKED` | internal | Set once the stamp has been compared, so the EXIT trap does not report the move twice. Not user config. |
 | `GOH_RELEASE_VERSION` | set by `tools/release-kit/release.sh` | The version being cut, exported into the `--verify CMD` run (and the archive build) so the command can assert the INSTALLED binary answers with exactly it. Read it, never set it by hand. |
 | `GOH_SWIFT` | unset (`xcrun --find swift`, then PATH) | Explicit swift driver for `swift_gate.sh` and any script sourcing `gates/swift_toolchain.sh`. Refused when not executable. Exists because a swiftly toolchain on PATH shadowed Xcode's and the gate failed for three days as "environmental". |
 
