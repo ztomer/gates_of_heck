@@ -8,6 +8,17 @@
 //! edits refused a commit of three clean skills). The export is scoped to
 //! the subtree asked for and removed on drop. A directory OUTSIDE the repo
 //! is no part of the commit at all, so `--staged` skips it by name.
+//!
+//! The export's root carries a `.git` FILE pointing at the repo's git dir,
+//! so git run INSIDE the view answers from the same index: `rev-parse
+//! --show-toplevel` is the view, `ls-files` lists index entries and nothing
+//! untracked, `show :path` agrees with the bytes on disk. Code that finds its
+//! repo from a path (the ceiling and ratchet checks) is correct in the view
+//! unchanged. Two hook-environment facts make that hold: a plain `git
+//! commit` hands its hook `GIT_INDEX_FILE=.git/index`, RELATIVE, which inside
+//! the view names a path under a file (it and `GIT_DIR` are made absolute
+//! for the whole process, a no-op everywhere else); and `GIT_WORK_TREE`
+//! outranks the `.git` file, so it is refused with the reason, never obeyed.
 
 use std::io::Write as _;
 use std::path::{Path, PathBuf};
@@ -61,6 +72,14 @@ impl IndexView {
         }
     }
 
+    /// The whole repo as a checker must read it at this scope (see
+    /// [`Self::at_scope`]). `None` means the export was refused and
+    /// reported; the caller fails the step.
+    #[must_use]
+    pub fn repo(repo: &Path, staged: bool) -> Option<Self> {
+        Self::at_scope(repo, &repo.to_string_lossy(), staged).ok()
+    }
+
     /// Export the index's copy of `dir`. `None` when `dir` lies outside
     /// `repo`: a commit there records nothing of it, so there is no index
     /// copy to read.
@@ -70,6 +89,7 @@ impl IndexView {
     /// index. The caller must refuse rather than fall back to the working
     /// tree, which is the defect this type exists to remove.
     pub fn of(repo: &Path, dir: &Path) -> Result<Option<Self>, String> {
+        pin_git_env()?;
         let top = repo
             .canonicalize()
             .map_err(|e| format!("cannot resolve {}: {e}", repo.display()))?;
@@ -85,6 +105,9 @@ impl IndexView {
             snapshot: Some(snapshot.clone()),
         };
         export(&top, rel, &snapshot)?;
+        let gitdir = git_dir(&top)?;
+        std::fs::write(snapshot.join(".git"), format!("gitdir: {gitdir}\n"))
+            .map_err(|e| format!("cannot write {}/.git: {e}", snapshot.display()))?;
         // A subtree with nothing staged is an EMPTY corpus, not a missing
         // one: the checker's own floor then says so instead of a path error.
         std::fs::create_dir_all(&view.root)
@@ -99,6 +122,46 @@ impl Drop for IndexView {
             // Best effort: a leftover temp dir is litter, not a wrong verdict.
             let _ = std::fs::remove_dir_all(dir);
         }
+    }
+}
+
+/// Refuse `GIT_WORK_TREE`, and make a relative `GIT_INDEX_FILE` or
+/// `GIT_DIR` absolute against the cwd git set it from (the hook's).
+fn pin_git_env() -> Result<(), String> {
+    if let Some(tree) = std::env::var_os("GIT_WORK_TREE").filter(|v| !v.is_empty()) {
+        return Err(format!(
+            "GIT_WORK_TREE is set ({}) — it would override the index view, so --staged cannot judge the index. Unset it for the commit",
+            Path::new(&tree).display()
+        ));
+    }
+    let cwd = std::env::current_dir().map_err(|e| format!("cannot read the cwd: {e}"))?;
+    for key in ["GIT_INDEX_FILE", "GIT_DIR"] {
+        if let Some(value) = std::env::var_os(key).filter(|v| !v.is_empty()) {
+            if Path::new(&value).is_relative() {
+                std::env::set_var(key, cwd.join(value));
+            }
+        }
+    }
+    Ok(())
+}
+
+/// The repo's absolute git dir, for the view's `.git` file.
+fn git_dir(top: &Path) -> Result<String, String> {
+    let out = Command::new("git")
+        .arg("-C")
+        .arg(top)
+        .args(["rev-parse", "--absolute-git-dir"])
+        .output()
+        .map_err(|e| format!("git rev-parse failed to start: {e}"))?;
+    let dir = String::from_utf8_lossy(&out.stdout).trim().to_owned();
+    if out.status.success() && !dir.is_empty() {
+        Ok(dir)
+    } else {
+        Err(format!(
+            "cannot resolve the git dir of {}: {}",
+            top.display(),
+            String::from_utf8_lossy(&out.stderr).trim()
+        ))
     }
 }
 

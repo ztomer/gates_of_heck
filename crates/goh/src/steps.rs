@@ -4,7 +4,7 @@
 use std::process::Command;
 use std::time::Instant;
 
-use crate::{emoji, gatesrc, length, markers, secrets};
+use crate::{emoji, gatesrc, index_view::IndexView, length, markers, secrets};
 
 pub(crate) fn compile_exclude(exclude: &str) -> Result<Option<regex::Regex>, String> {
     if exclude.is_empty() {
@@ -108,7 +108,12 @@ pub fn step_ceiling(
     repo: &std::path::Path,
     cfg: &gatesrc::Gatesrc,
     checks: &std::path::Path,
+    staged: bool,
 ) -> Option<i32> {
+    // Both bounds read a baseline and measure files: at --staged, the index.
+    let Some(view) = IndexView::repo(repo, staged && cfg.line_baseline.is_some()) else {
+        return Some(2);
+    };
     // 4. An exemption from the cap is not an exemption from any bound at all.
     if cfg.max_lines.is_some() && cfg.line_baseline.is_some() {
         let mut args = vec![
@@ -128,7 +133,7 @@ pub fn step_ceiling(
         }
         let code = delegated(
             checks,
-            repo,
+            view.root(),
             "line-cap exemptions carry a ceiling",
             "python3",
             &args,
@@ -143,7 +148,7 @@ pub fn step_ceiling(
     // 4b. ...and the ceilings are enforced here, not left to each repo's own
     // gate script: a baseline nobody ratchets is a list, not a bound.
     if let Some(baseline) = cfg.line_baseline.as_deref() {
-        if repo.join(baseline).is_file() {
+        if view.root().join(baseline).is_file() {
             let measure = format!(
                 "python3 '{}' '{baseline}'",
                 checks.join("loc_of_baseline_files.py").display()
@@ -157,7 +162,7 @@ pub fn step_ceiling(
             ];
             let code = delegated(
                 checks,
-                repo,
+                view.root(),
                 "cap-exempt files within their ceilings",
                 "python3",
                 &args,
@@ -475,21 +480,21 @@ mod tests {
             ..gatesrc::Gatesrc::default()
         };
         // At the ceiling: both the "carries a ceiling" and the ratchet pass.
-        assert_eq!(step_ceiling(repo, &cfg, &checks_dir()), None);
+        assert_eq!(step_ceiling(repo, &cfg, &checks_dir(), false), None);
         // One line over: the ratchet fails the step.
         std::fs::write(repo.join("src/big.rs"), lines(601)).expect("write");
         git(repo, &["add", "-A"]);
-        assert!(step_ceiling(repo, &cfg, &checks_dir()).is_some_and(|c| c != 0));
+        assert!(step_ceiling(repo, &cfg, &checks_dir(), false).is_some_and(|c| c != 0));
         // Shrinking is always allowed.
         std::fs::write(repo.join("src/big.rs"), lines(550)).expect("write");
         git(repo, &["add", "-A"]);
-        assert_eq!(step_ceiling(repo, &cfg, &checks_dir()), None);
+        assert_eq!(step_ceiling(repo, &cfg, &checks_dir(), false), None);
         // A baseline path that does not exist: the exempt file has no bound at
         // all, which the ceiling check reports -- the ratchet never runs.
         let unbaselined = gatesrc::Gatesrc {
             line_baseline: Some("missing.txt".to_owned()),
             ..cfg
         };
-        assert!(step_ceiling(repo, &unbaselined, &checks_dir()).is_some_and(|c| c != 0));
+        assert!(step_ceiling(repo, &unbaselined, &checks_dir(), false).is_some_and(|c| c != 0));
     }
 }

@@ -153,7 +153,7 @@ fn run_structural(staged: bool, full: bool) -> i32 {
     if let Some(code) = steps::step_length(&repo, &cfg, staged) {
         return code;
     }
-    if let Some(code) = steps::step_ceiling(&repo, &cfg, &checks) {
+    if let Some(code) = steps::step_ceiling(&repo, &cfg, &checks, staged) {
         return code;
     }
     if let Some(code) = steps::step_corpus(&repo, &cfg, &checks, staged) {

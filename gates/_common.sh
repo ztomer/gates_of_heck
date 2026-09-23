@@ -173,9 +173,28 @@ goh_step_in() {
 # (~/.claude/skills, 2026-09-23: concurrent sessions' unstaged edits refused
 # a commit of three clean skills). Returns 1 when <dir> lies outside this
 # repo: the commit records nothing of it, so there is no index copy to read.
+#
+# The export's root carries a `.git` FILE pointing at this repo's git dir, so
+# git run INSIDE the view answers from the same index: `rev-parse
+# --show-toplevel` is the view, `ls-files` lists index entries and nothing
+# untracked, `show :path` agrees with the bytes on disk. A checker that finds
+# its repo from its cwd (the ceiling and ratchet checkers do) is correct in
+# the view unchanged. Two hook-environment facts make that hold:
+#   - a plain `git commit` hands its hook GIT_INDEX_FILE=.git/index, RELATIVE,
+#     which inside the view names a path under a FILE; it and GIT_DIR are
+#     made absolute here (the hook's cwd is the one git meant them from);
+#   - GIT_WORK_TREE outranks the `.git` file, so git in the view would read
+#     the working tree again. That is refused with the reason, never obeyed.
 goh_index_view() {
-    local dir="$1" top phys rel snap
+    local dir="$1" top phys rel snap gitdir
     GOH_INDEX_VIEW=""
+    if [ -n "${GIT_WORK_TREE:-}" ]; then
+        err "$GOH_NAME: GIT_WORK_TREE is set ($GIT_WORK_TREE) — it would override the index view,"
+        err "  so --staged cannot judge the index. Unset it for the commit."
+        exit 2
+    fi
+    case "${GIT_INDEX_FILE:-/}" in /*) ;; *) export GIT_INDEX_FILE="$PWD/$GIT_INDEX_FILE" ;; esac
+    case "${GIT_DIR:-/}" in /*) ;; *) export GIT_DIR="$PWD/$GIT_DIR" ;; esac
     top="$(cd "$GOH_REPO_ROOT" && pwd -P)" || die "$GOH_NAME: cannot resolve $GOH_REPO_ROOT"
     phys="$(cd "$dir" && pwd -P)" || die "$GOH_NAME: cannot resolve $dir"
     case "$phys/" in
@@ -184,6 +203,8 @@ goh_index_view() {
     esac
     rel="${phys#"$top"}"
     rel="${rel#/}"
+    gitdir="$(git -C "$top" rev-parse --absolute-git-dir)" && [ -n "$gitdir" ] \
+        || die "$GOH_NAME: cannot resolve the git dir of $top"
     # Every step is checked by hand: callers use this in an `if`, where
     # `set -e` is off, and an empty $snap would make the prefix `/`.
     snap="$(mktemp -d "${TMPDIR:-/tmp}/goh-index.XXXXXX")" && [ -n "$snap" ] \
@@ -193,6 +214,7 @@ goh_index_view() {
             | git -C "$top" checkout-index -z --stdin --prefix="$snap/"; then
         die "$GOH_NAME: could not export the index under ${rel:-.} — refusing to check the working tree in its place"
     fi
+    printf 'gitdir: %s\n' "$gitdir" > "$snap/.git" || die "$GOH_NAME: cannot write $snap/.git"
     GOH_INDEX_VIEW="$snap${rel:+/$rel}"
     # A subtree with nothing staged is an EMPTY corpus, not a missing one:
     # the checker's own floor then says so instead of a path error.

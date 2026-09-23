@@ -124,6 +124,22 @@ else
     warn "file-length cap not set — add GOH_MAX_LINES to .gatesrc to enable it"
 fi
 
+# The two line-cap bounds below read a baseline and measure files, so at
+# --staged they run INSIDE the index view (goh_index_view): the commit is what
+# is judged, not the tree around it. Both run from the repo root (the view's
+# root at --staged), never the caller's cwd: the ratchet's `[ -f ]` and the
+# checkers' relative paths once resolved against a subdirectory and skipped
+# the ratchet without a word.
+goh_line_root="$GOH_REPO_ROOT"
+if [ "$SCOPE" = "--staged" ] && [ -n "${GOH_LINE_BASELINE:-}" ]; then
+    goh_index_view "$GOH_REPO_ROOT" || die "structural: the repo root is outside the repo?"
+    goh_line_root="$GOH_INDEX_VIEW"
+fi
+case "${GOH_LINE_BASELINE:-}" in
+    /*) goh_line_baseline_path="$GOH_LINE_BASELINE" ;;
+    *)  goh_line_baseline_path="$goh_line_root/${GOH_LINE_BASELINE:-}" ;;
+esac
+
 # An exemption from the CAP is not an exemption from having any bound at all.
 # GOH_LINE_EXCLUDE and the shrink-only ratchet are separate mechanisms with
 # separate lists, and nothing compared them: monitor had a 619-line test file
@@ -132,7 +148,7 @@ fi
 # GOH_LINE_BASELINE at its ratchet baseline; a repo without one is told the
 # check is off rather than passed over in silence.
 if [ -n "${GOH_MAX_LINES:-}" ] && [ -n "${GOH_LINE_BASELINE:-}" ]; then
-    goh_step "line-cap exemptions carry a ceiling" \
+    goh_step_in "$goh_line_root" "line-cap exemptions carry a ceiling" \
         python3 "$CHECKS/check_exclusion_has_ceiling.py" --max "$GOH_MAX_LINES" \
         --baseline "$GOH_LINE_BASELINE" \
         ${GOH_LINE_EXCLUDE:+--line-exclude "$GOH_LINE_EXCLUDE"} \
@@ -148,8 +164,8 @@ fi
 # so a repo that listed ceilings and never ran the ratchet was, again,
 # bounded by nothing. Files named in the baseline may come down and may not
 # grow past their number.
-if [ -n "${GOH_LINE_BASELINE:-}" ] && [ -f "$GOH_LINE_BASELINE" ]; then
-    goh_step "cap-exempt files within their ceilings" \
+if [ -n "${GOH_LINE_BASELINE:-}" ] && [ -f "$goh_line_baseline_path" ]; then
+    goh_step_in "$goh_line_root" "cap-exempt files within their ceilings" \
         python3 "$CHECKS/check_baseline_ratchet.py" --baseline "$GOH_LINE_BASELINE" \
         --current-from-command "python3 '$CHECKS/loc_of_baseline_files.py' '$GOH_LINE_BASELINE'"
 fi
