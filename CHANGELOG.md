@@ -1,5 +1,19 @@
 # CHANGELOG
 
+## v0.13.0 — the Rust port: native layer 1, bit-exact golden, one resolver _(unreleased)_
+
+Every checker a shared gate runs is now native (`goh`) with the Python
+checker as its parity-pinned fallback: home-paths, ceiling + ratchet,
+no-allow, screen presentation, lints opt-in and the skills corpus joined
+emoji / markers / length / secrets (1.6x-15.6x per step). A staged run reads
+each index blob once and exports shell files once: 197 git spawns on a
+50-file commit became 6 (~2.3 s -> 0.24 s). `goh golden` is bit-identical
+to the numpy tier and decodes as Pillow does. `gates/goh.sh <check>` is the
+one way a consumer runs a house checker; `gates/_goh_bin.sh` the one binary
+resolution. `scripts/build-goh.sh` never publishes `bin/goh` from
+uncommitted goh sources (`GOH_BUILD_DIRTY=1` to override), and no test run
+can publish it. Plan retired: `git show 15004a5:docs/rust-port-plan.md`.
+
 ## v0.12.6 — a hook from an older stock is pristine, not "locally modified" _(unreleased)_
 
 `install.sh` refused to update three repos whose hooks had never been
