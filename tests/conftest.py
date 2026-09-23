@@ -4,7 +4,9 @@ Every disallowed glyph in this suite is built with chr(0x...) — never as a
 literal — so the suite cannot trip gates_of_heck's own emoji gate.
 """
 
+import fcntl
 import json
+import os
 import shutil
 import subprocess
 from pathlib import Path
@@ -285,18 +287,50 @@ def _build_goh() -> Path:
     raise AssertionError("goh artifact missing from cargo build output")
 
 
+# Every `cargo build` the goh fixture runs this session, one line each. Read by
+# test_goh_is_built_once_per_session: the count is the regression, not a timing.
+GOH_BUILD_RECORD = "goh-builds.log"
+
+
+def _shared_tmp(tmp_path_factory) -> Path:
+    """The temp root every xdist worker shares (each worker's basetemp is a child of it).
+    Without xdist, basetemp itself."""
+    base = tmp_path_factory.getbasetemp()
+    return base.parent if os.environ.get("PYTEST_XDIST_WORKER") else base
+
+
 @pytest.fixture(scope="session")
 def goh(tmp_path_factory) -> Path:
-    """The native goh binary, as a PRIVATE copy.
+    """The native goh binary, built ONCE per test session and read from a private copy.
 
-    Not the uplifted target/debug/goh: the target dir is shared machine-wide
-    (~/.cargo/config.toml target-dir) and cargo re-links an uplifted binary
-    by remove + hardlink, so any concurrent cargo build — another xdist
-    worker's fixture, another repo's build — opens a window in which the
-    path does not exist. A parity test once died there with
-    FileNotFoundError mid-suite. A copy is an inode nobody else touches.
+    "session" is per WORKER under xdist, so this fixture used to run `cargo build` once per worker:
+    measured 2026-09-22, seven builds of one workspace in one session, four overlapping inside
+    0.3s. Cargo re-links the uplifted target/debug/goh by remove + hardlink, so a worker copying it
+    while another worker's build re-linked it hit FileNotFoundError. The pre-push gate's cold
+    worktree (builds long enough to overlap widely) failed 23 parity tests at once, and a push was
+    refused on a race. A per-worker copy only narrowed the window; the copy itself read the racing
+    path.
+
+    Now the first worker builds under a lock and publishes one copy atomically into the shared temp
+    root; every other worker waits on the lock and reads that copy. No test reads cargo's target
+    path while a build of it can be running.
     """
-    built = _build_goh()
-    private = tmp_path_factory.mktemp("goh") / "goh"
-    shutil.copy2(built, private)
-    return private
+    shared = _shared_tmp(tmp_path_factory)
+    published = shared / "goh-bin" / "goh"
+    with open(shared / "goh-bin.lock", "w") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)          # released when the file closes
+        if not published.exists():
+            built = _build_goh()
+            with open(shared / GOH_BUILD_RECORD, "a") as record:
+                record.write(f"{os.environ.get('PYTEST_XDIST_WORKER', 'master')}\n")
+            published.parent.mkdir(exist_ok=True)
+            staging = published.with_suffix(".staging")
+            shutil.copy2(built, staging)
+            staging.rename(published)              # atomic: readers see all of it or none
+    return published
+
+
+@pytest.fixture(scope="session")
+def goh_build_count(tmp_path_factory, goh) -> int:
+    """How many times this session built goh (after this worker's own fixture resolved)."""
+    return len((_shared_tmp(tmp_path_factory) / GOH_BUILD_RECORD).read_text().splitlines())

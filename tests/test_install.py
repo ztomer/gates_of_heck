@@ -122,7 +122,18 @@ def test_self_hosted_repo_satisfies_its_own_hook(tmp_path):
     installing into a fresh copy of THIS repo's tree and committing."""
     import shutil
     copy = tmp_path / "goh-copy"
-    shutil.copytree(REPO_ROOT, copy, ignore=shutil.ignore_patterns(".git"))
+    # TRACKED files only — what a clone holds. `copytree(REPO_ROOT)` also walked target/ (178 MB),
+    # which the session's `cargo build` re-links (remove + hardlink) on another xdist worker: the
+    # same FileNotFoundError window the goh fixture had, and untracked files from anything else
+    # working in the checkout came along too.
+    tracked = subprocess.run(["git", "-C", str(REPO_ROOT), "ls-files", "-z"],
+                             capture_output=True, check=True).stdout.split(b"\0")
+    for rel in filter(None, (t.decode() for t in tracked)):
+        src = REPO_ROOT / rel
+        if not src.exists() and not src.is_symlink():
+            continue                       # deleted in the working tree, not yet committed
+        (copy / rel).parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(src, copy / rel, follow_symlinks=False)
     subprocess.run(["git", "-C", str(copy), "init", "-q", "-b", "main"],
                    check=True)
     subprocess.run(["/bin/bash", str(copy / "install.sh"), str(copy)],
