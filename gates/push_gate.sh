@@ -34,6 +34,13 @@
 #     elsewhere. Six tags would also have cost six cold gates.
 #   - a ref whose commit was already gated earlier in this same push. A release pushes `main` and
 #     `vX.Y.Z` on one commit; one gate certifies both.
+#
+# A RED RUN KEEPS ITS EVIDENCE. ZoneWM, 2026-09-22: a push was refused, the caller had kept only the
+# last lines of the output, and the re-run of the same commit passed. The failure was a flake, and
+# nobody could say which test, because the only copy of the gate's output was a scrollback that no
+# longer existed. Every run is now teed to a log under ~/.cache/goh/push-logs (GOH_PUSH_LOGS
+# overrides). A green run deletes its log; a red one keeps it, prints its path, and the newest
+# `keep_failed_logs` are kept. The cost: the gate writes to a pipe, so its colours are off.
 set -euo pipefail
 
 GOH="${GOH_DIR:-${GOH:-$HOME/Projects/gates_of_heck}}"
@@ -50,6 +57,8 @@ GOH_EXPORT_KEEP=""
 zero="0000000000000000000000000000000000000000"
 remote_name="${1:-}"
 gated_commits=" "
+log_root="${GOH_PUSH_LOGS:-$HOME/.cache/goh/push-logs}"
+keep_failed_logs=20
 worktree=""
 cleanup() {
     if [ -n "$worktree" ] && [ -d "$worktree" ]; then
@@ -98,10 +107,21 @@ while read -r local_ref local_sha _remote_ref _remote_sha; do
             info "carried ignored file into the export: $f"
         fi
     done
-    if ! (cd "$worktree" && bash "$worktree/tools/gate.sh" --full); then
+    mkdir -p "$log_root"
+    log="$log_root/$(basename "$root")-$short-$(date +%Y%m%dT%H%M%S).log"
+    set +e
+    (cd "$worktree" && bash "$worktree/tools/gate.sh" --full) 2>&1 | tee "$log"
+    status="${PIPESTATUS[0]}"
+    set -e
+    if [ "$status" -ne 0 ]; then
         err "pre-push: the gate failed on $short — nothing pushed"
+        err "pre-push: the full gate output is kept at $log"
+        # Bounded: the newest failures are evidence, the rest is clutter.
+        find "$log_root" -name '*.log' -type f -print0 | xargs -0 ls -t | tail -n "+$((keep_failed_logs + 1))" \
+            | while IFS= read -r old; do rm -f "$old"; done
         exit 1
     fi
+    rm -f "$log"
     cleanup; worktree=""
     gated=$((gated + 1))
     gated_commits="$gated_commits$commit "

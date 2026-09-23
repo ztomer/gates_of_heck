@@ -48,7 +48,8 @@ def _repo(tmp_path: Path, gatesrc: str = "") -> Path:
 
 def _push(repo: Path, sha: str, tmp_path: Path) -> tuple[int, str, str]:
     report = tmp_path / "report.txt"
-    env = dict(os.environ, GATE_REPORT=str(report), GOH_DIR=str(REPO_ROOT))
+    env = dict(os.environ, GATE_REPORT=str(report), GOH_DIR=str(REPO_ROOT),
+               GOH_PUSH_LOGS=str(tmp_path / "push-logs"))
     proc = subprocess.run(["bash", str(PUSH_GATE)], cwd=repo, env=env, text=True,
                           input=f"refs/heads/main {sha} refs/heads/main {'0' * 40}\n",
                           capture_output=True)
@@ -119,6 +120,29 @@ def test_a_red_gate_stops_the_push_and_leaves_no_worktree(tmp_path):
     assert code == 1, out
     assert "nothing pushed" in out
     assert _git(repo, "worktree", "list").count("\n") == 0, "the throwaway worktree was left behind"
+
+
+def test_a_red_gate_keeps_its_full_output_and_says_where(tmp_path):
+    repo = _repo(tmp_path)
+    (repo / "fail.flag").write_text("")
+    _git(repo, "add", "fail.flag")
+    (repo / "tools" / "gate.sh").write_text(GATE.replace("exit 1", "echo 'THE-FAILING-TEST'; exit 1"))
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "-q", "-m", "red, loudly")
+    sha = _git(repo, "rev-parse", "HEAD")
+    code, _report, out = _push(repo, sha, tmp_path)
+    assert code == 1, out
+    logs = list((tmp_path / "push-logs").glob("*.log"))
+    assert len(logs) == 1, f"a red run must keep exactly its log: {logs}"
+    assert str(logs[0]) in out, "the refusal must say where the evidence is"
+    assert "THE-FAILING-TEST" in logs[0].read_text(), "the log must hold the gate's own output"
+
+
+def test_a_green_gate_leaves_no_log(tmp_path):
+    repo = _repo(tmp_path)
+    code, _report, out = _push(repo, _git(repo, "rev-parse", "HEAD"), tmp_path)
+    assert code == 0, out
+    assert not list((tmp_path / "push-logs").glob("*.log")), "a green run's log is noise"
 
 
 def test_a_delete_is_not_gated(tmp_path):
