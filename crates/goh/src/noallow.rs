@@ -37,8 +37,13 @@ const WRAPPED_SUPPRESSION: &str = r"(?:allow|expect)\(";
 const STRING_LITERAL: &str = r#""(?:[^"\\]|\\.)*""#;
 
 /// Generation marker: exempts the file when found within its first 40
-/// lines, mirroring `_GENERATED_MARKER`.
+/// lines, mirroring `_GENERATED_MARKER`. A mention inside a code span
+/// (between backticks) is documentation, not the marker: counting it
+/// exempted this very file from its own check (2026-09-23).
 const GENERATED_MARKER: &str = "@generated";
+
+/// The code-span delimiter a documented mention of the marker sits in.
+const CODE_SPAN: char = '`';
 
 /// Head-line window for the generation marker: the reference reads the
 /// first 40 LINES (the docstring wins over character windows).
@@ -121,6 +126,13 @@ impl Scanner {
         !(prev.is_ascii_alphanumeric() || prev == '_' || prev == ':')
     }
 
+    /// Whether `text` holds a wrapped `allow(`/`expect(` (not a path segment).
+    fn has_wrapped(&self, text: &str) -> bool {
+        self.wrapped
+            .find_iter(text)
+            .any(|m| Self::wrapped_at(text, m.start()))
+    }
+
     /// Scan comment-stripped code lines, returning
     /// `(lineno, stripped_line)` hits. The bracket depth of an open
     /// `#[cfg_attr(` attribute carries across lines; the attribute ends
@@ -138,31 +150,28 @@ impl Scanner {
                 hits.push((lineno, code.trim().to_owned()));
                 continue;
             }
+            // The opener is looked for OUTSIDE string literals: one spelled
+            // inside a string (a fixture writing a file) opened the attribute
+            // mid-literal, its `]` stayed inside the quotes, and every later
+            // `allow(`/`expect(` line — `.expect("x")` included — was flagged
+            // (2026-09-23). A quoted one is still judged on its own line, as a
+            // quoted `#[allow(` is above; it just never carries state.
+            let literal_free_line = self.string_literal.replace_all(&code, "\"\"").into_owned();
             let opened = (in_cfg_attr == 0)
-                .then(|| self.cfg_attr_open.find(&code))
+                .then(|| self.cfg_attr_open.find(&literal_free_line))
                 .flatten();
-            let code_after = opened.map_or_else(
-                || {
-                    if in_cfg_attr > 0 {
-                        Some(code.as_str())
-                    } else {
-                        None
+            if opened.is_none() && in_cfg_attr == 0 {
+                if let Some(quoted) = self.cfg_attr_open.find(&code) {
+                    if self.has_wrapped(&code[quoted.start()..]) {
+                        hits.push((lineno, code.trim().to_owned()));
                     }
-                },
-                |m| Some(&code[m.start()..]),
-            );
-            let Some(code_after) = code_after else {
+                }
                 continue;
-            };
-            let literal_free = self
-                .string_literal
-                .replace_all(code_after, "\"\"")
-                .into_owned();
-            if self
-                .wrapped
-                .find_iter(&literal_free)
-                .any(|m| Self::wrapped_at(&literal_free, m.start()))
-            {
+            }
+            let literal_free = opened.map_or(literal_free_line.as_str(), |m| {
+                &literal_free_line[m.start()..]
+            });
+            if self.has_wrapped(literal_free) {
                 hits.push((lineno, code.trim().to_owned()));
             }
             let opens = literal_free.chars().filter(|c| *c == '[').count();
@@ -208,11 +217,16 @@ pub fn is_compiled_src(rel: &str) -> bool {
 /// lines — the only exemption. Mirrors `_is_generated` (the docstring
 /// wins over character windows: lines, not bytes).
 fn is_generated(text: &str) -> bool {
-    text.lines()
+    let head = text
+        .lines()
         .take(GENERATED_HEAD_LINES)
         .collect::<Vec<_>>()
-        .join("\n")
-        .contains(GENERATED_MARKER)
+        .join("\n");
+    head.match_indices(GENERATED_MARKER).any(|(at, marker)| {
+        let before = head[..at].chars().next_back();
+        let after = head[at + marker.len()..].chars().next();
+        before != Some(CODE_SPAN) && after != Some(CODE_SPAN)
+    })
 }
 
 /// Scan one decoded blob, returning every suppression sighting.
@@ -350,115 +364,5 @@ pub fn format_ok(file_count: usize) -> String {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn scanner() -> Scanner {
-        Scanner::compile().expect("built-in patterns compile")
-    }
-
-    #[test]
-    fn literal_suppressions_fire() {
-        let sc = scanner();
-        for line in [
-            "#[allow(dead_code)]",
-            "#![allow(clippy::all)]",
-            "#[expect(dead_code)]",
-            "    #![expect(unused)]",
-        ] {
-            assert_eq!(sc.scan_code(line).len(), 1, "{line}");
-        }
-    }
-
-    #[test]
-    fn doc_comments_are_prose_not_suppressions() {
-        let sc = scanner();
-        let text = "/// Mentioning #[allow(dead_code)] is prose.\nfn f() {}\n/* #[expect(x)] */\n";
-        assert!(sc.scan_code(text).is_empty());
-        // A real attribute after a same-line block close still fires.
-        assert_eq!(sc.scan_code("/* note */ #[allow(x)]").len(), 1);
-    }
-
-    #[test]
-    fn nested_block_comments_carry_state() {
-        let sc = scanner();
-        let text = "/* outer /* inner */ #[allow(x)]\nmore\n*/\n#[allow(y)]\n";
-        let hits = sc.scan_code(text);
-        assert_eq!(hits.len(), 1);
-        assert_eq!(hits[0].0, 4);
-    }
-
-    #[test]
-    fn cfg_attr_wrapped_suppressions_fire() {
-        let sc = scanner();
-        assert_eq!(
-            sc.scan_code("#[cfg_attr(target_os = \"macos\", expect(unsafe_code))]")
-                .len(),
-            1
-        );
-        // Multi-line rustfmt layout: the token on the continuation line.
-        let text = "#[cfg_attr(\n    target_os = \"macos\",\n    allow(dead_code),\n)]\n";
-        assert_eq!(sc.scan_code(text).len(), 1);
-        // cfg_attr without a suppression passes.
-        assert!(sc
-            .scan_code("#[cfg_attr(target_os = \"macos\", must_use)]")
-            .is_empty());
-        // A path or a longer identifier is not a suppression.
-        assert!(sc.scan_code("#[cfg_attr(x, cfg::allow(y))]").is_empty());
-        assert!(sc.scan_code("let allow_x = 1;").is_empty());
-    }
-
-    #[test]
-    fn string_mentions_do_not_fire_for_wrapped_form() {
-        let sc = scanner();
-        // The reference blanks string literals ONLY for the wrapped
-        // (`cfg_attr`) search — a literal `#[allow(` inside a string still
-        // fires there, and so does here (verified against the checker).
-        assert_eq!(sc.scan_code("let s = \"#[allow(x)]\";").len(), 1);
-        assert!(sc.scan_code("#[cfg_attr(x, \"allow(y)\")]").is_empty());
-    }
-
-    #[test]
-    fn scope_and_verdicts() {
-        assert!(is_compiled_src("src/a.rs"));
-        assert!(is_compiled_src("crates/x/tests/f.rs"));
-        assert!(is_compiled_src("build.rs"));
-        assert!(is_compiled_src("a/build.rs"));
-        assert!(!is_compiled_src("tools/a.rs"));
-        // Path scope only — the `.rs` suffix filter lives in `scan_root`,
-        // mirroring the reference split between `_files` and
-        // `_is_compiled_src`.
-        assert!(is_compiled_src("src/a.py"));
-        assert_eq!(classify(2, 3, true), ScopeVerdict::Violations);
-        assert_eq!(classify(0, 0, true), ScopeVerdict::BlindLayout);
-        assert_eq!(classify(0, 0, false), ScopeVerdict::Clean);
-        assert_eq!(classify(0, 5, true), ScopeVerdict::Clean);
-    }
-
-    #[test]
-    fn generated_marker_exempts_within_forty_lines() {
-        let head = (0..39)
-            .map(|i| format!("// {i}"))
-            .collect::<Vec<_>>()
-            .join("\n");
-        assert!(scan_text(
-            &scanner(),
-            "f.rs",
-            &format!("{head}\n// @generated\n#[allow(x)]")
-        )
-        .is_empty());
-        let head = (0..40)
-            .map(|i| format!("// {i}"))
-            .collect::<Vec<_>>()
-            .join("\n");
-        assert_eq!(
-            scan_text(
-                &scanner(),
-                "f.rs",
-                &format!("{head}\n// @generated\n#[allow(x)]")
-            )
-            .len(),
-            1
-        );
-    }
-}
+#[path = "noallow_tests.rs"]
+mod tests;

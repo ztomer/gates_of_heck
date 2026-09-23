@@ -103,6 +103,19 @@ CASES: dict[str, dict[str, bytes]] = {
         "Cargo.toml": CARGO,
         "src/a.rs": rs('fn f() {\n    let s = "#[allow(x)]";\n}\n'),
     },
+    # A cfg_attr spelled INSIDE a string is judged on its own line and never carried: its `]`
+    # inside the literal used to leave the attribute "open", flagging every later `.expect(`.
+    "quoted_cfg_attr": {
+        "Cargo.toml": CARGO,
+        "src/a.rs": rs('fn f() {\n    let s = "#[cfg_attr(test, allow(x))]";\n}\n'
+                       'fn g(w: Option<u8>) -> u8 {\n    w.expect("fixture")\n}\n'),
+    },
+    # DOCUMENTING the marker (in a code span) is not carrying it: this exempted the checker's
+    # own source from itself.
+    "doc_mentions_marker": {
+        "Cargo.toml": CARGO,
+        "src/a.rs": rs("//! Files carrying `@generated` are exempt.\n#[allow(x)]\nfn f() {}\n"),
+    },
     "generated": {
         "Cargo.toml": CARGO,
         "src/a.rs": rs("// @generated\n#[allow(x)]\nfn f() {}\n"),
@@ -152,3 +165,30 @@ def test_staged_indexes_the_violation(goh: Path, tmp_path: Path) -> None:
     assert got == run_py(repo, "--staged"), got
     assert got[0] == 1
     assert "src/a.rs:1" in got[1]
+
+
+def test_the_found_bugs_have_the_right_verdict(goh: Path, tmp_path: Path) -> None:
+    """Parity alone cannot see a defect both sides share: these pin the VERDICT (2026-09-23)."""
+    quoted = make_repo(tmp_path / "q", CASES["quoted_cfg_attr"])
+    for code, out, err in (run_py(quoted), run_goh(goh, quoted)):
+        assert code == 1, out + err
+        assert "src/a.rs:2:" in out + err, "the quoted suppression is still reported on its line"
+        assert "src/a.rs:5:" not in out + err, "a later .expect( is not inside any attribute"
+    documented = make_repo(tmp_path / "d", CASES["doc_mentions_marker"])
+    for code, out, err in (run_py(documented), run_goh(goh, documented)):
+        assert code == 1, "a backticked mention of the marker exempted the file"
+
+
+def test_no_rust_source_of_ours_is_exempt_as_generated() -> None:
+    """The exemption is for GENERATED files. A hand-written file of ours that reads as generated is
+    one the gate silently skips — which is what noallow.rs itself was until 2026-09-23."""
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location("check_no_allow", CHECK)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    exempt = [
+        str(p.relative_to(ROOT)) for p in (ROOT / "crates").rglob("*.rs")
+        if module._is_generated(str(ROOT), str(p.relative_to(ROOT)), False)
+    ]
+    assert exempt == [], f"hand-written sources exempt from the no-allow gate: {exempt}"

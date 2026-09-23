@@ -69,6 +69,7 @@ def test_corpus_explicit_dir_agrees(goh: Path, tmp_path: Path) -> None:
         "Marked.swift",
         "prose_only.py",
         "type_positions_clean.swift",
+        "nested_comment_clean.swift",
     ],
 )
 def test_corpus_single_files_agree(goh: Path, tmp_path: Path, name: str) -> None:
@@ -101,3 +102,11 @@ def test_no_targets_is_usage_error_on_both(goh: Path, tmp_path: Path) -> None:
     ref = run_py(repo)
     assert got[0] == ref[0] == 2
     assert "no targets" in got[2] and "no targets" in ref[2]
+
+
+def test_a_call_nested_in_a_block_comment_is_prose(goh: Path, tmp_path: Path) -> None:
+    """Swift nests block comments; the first `*/` does not end the outer one (2026-09-23)."""
+    repo = make_repo(tmp_path)
+    target = "tests/nested_comment_clean.swift"
+    for code, out, err in (run_py(repo, target), run_goh(goh, repo, target)):
+        assert code == 0, out + err

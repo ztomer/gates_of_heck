@@ -32,8 +32,15 @@ pub fn mask_swift(text: &str) -> String {
     let n = chars.len();
     let mut i = 0;
     let mut state = MaskState::Code;
+    // Swift nests block comments: the comment ends at the `*/` closing the
+    // OUTERMOST `/*`. The first `*/` used to end it, and the rest of the outer
+    // comment was policed as code (2026-09-23).
+    let mut comment_depth: usize = 0;
+    // Compares in place: this rebuilt the rest of the text as a String on
+    // every character, which made masking quadratic in the file's length.
     let starts = |i: usize, token: &str| -> bool {
-        token.chars().count() <= n - i && chars[i..].iter().collect::<String>().starts_with(token)
+        let mut rest = chars[i..].iter();
+        token.chars().all(|t| rest.next() == Some(&t))
     };
     while i < n {
         let ch = chars[i];
@@ -47,6 +54,7 @@ pub fn mask_swift(text: &str) -> String {
                 out[i] = ' ';
                 out[i + 1] = ' ';
                 state = MaskState::BlockComment;
+                comment_depth = 1;
                 i += 2;
             } else if ch == '"' {
                 if starts(i, "\"\"\"") {
@@ -106,20 +114,22 @@ pub fn mask_swift(text: &str) -> String {
             }
             i += 1;
         } else if ch == '\n' {
-            // Newlines survive every state — the 1:1 contract.
-            if state == MaskState::LineComment {
-                state = MaskState::Code;
-            }
+            // Newlines survive every state — the 1:1 contract. (A line
+            // comment is ended in its own branch above.)
             i += 1;
         } else if state == MaskState::BlockComment {
             if starts(i, "/*") {
                 out[i] = ' ';
                 out[i + 1] = ' ';
+                comment_depth += 1;
                 i += 2;
             } else if starts(i, "*/") {
                 out[i] = ' ';
                 out[i + 1] = ' ';
-                state = MaskState::Code;
+                comment_depth = comment_depth.saturating_sub(1);
+                if comment_depth == 0 {
+                    state = MaskState::Code;
+                }
                 i += 2;
             } else {
                 out[i] = ' ';

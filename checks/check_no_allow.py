@@ -57,7 +57,10 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from _gitutil import content_bytes, listed_files, repo_root  # noqa: E402
 
-_GENERATED_MARKER = "@generated"
+# The marker a generator writes. A mention in a code span (`@generated`, as this
+# module's own doc and every doc about the policy writes it) is documentation, not
+# the marker: counting it exempted the native port's source from itself (2026-09-23).
+_GENERATED_MARKER = re.compile(r"(?<!`)@generated(?!`)")
 _ALLOW_PATTERN = re.compile(r"#!?\[(?:allow|expect)\(")
 # `#[cfg_attr(<cfg>, allow(...))]`: rustfmt puts the wrapped attribute on its
 # own line, so the two tokens are matched across the open attribute rather
@@ -117,7 +120,7 @@ def _is_generated(root: str, rel: str, staged: bool) -> bool:
     if blob is None:
         return False
     head_lines = blob.decode("utf-8", errors="replace").splitlines()[:40]
-    return _GENERATED_MARKER in "\n".join(head_lines)
+    return _GENERATED_MARKER.search("\n".join(head_lines)) is not None
 
 
 def _scan(root: str, paths, staged: bool):
@@ -132,15 +135,25 @@ def _scan(root: str, paths, staged: bool):
             if _ALLOW_PATTERN.search(code):
                 hits.append(f"{rel}:{lineno}: {code.strip()}")
                 continue
-            opened = in_cfg_attr == 0 and _CFG_ATTR_OPEN.search(code)
-            code_after = code[opened.start():] if opened else code
-            if opened or in_cfg_attr:
-                literal_free = _STRING_LITERAL.sub('""', code_after)
-                if _WRAPPED_SUPPRESSION.search(literal_free):
+            # The opener is looked for OUTSIDE string literals: one spelled inside
+            # a string (a test fixture writing a file) used to open the attribute
+            # mid-literal, its `]` stayed inside the quotes, and every later line
+            # with `allow(`/`expect(` — `.expect("x")` included — was flagged
+            # (2026-09-23). A quoted one is still judged on its own line, as a
+            # quoted `#[allow(` is above; it just never carries state.
+            literal_free_line = _STRING_LITERAL.sub('""', code)
+            opened = in_cfg_attr == 0 and _CFG_ATTR_OPEN.search(literal_free_line)
+            if not (opened or in_cfg_attr):
+                quoted = _CFG_ATTR_OPEN.search(code)
+                if quoted and _WRAPPED_SUPPRESSION.search(code[quoted.start():]):
                     hits.append(f"{rel}:{lineno}: {code.strip()}")
-                # the attribute ends when its brackets balance: the opening
-                # `#[` counts here, so the depth returns to 0 on its `)]`.
-                in_cfg_attr = max(0, in_cfg_attr + literal_free.count("[") - literal_free.count("]"))
+                continue
+            literal_free = literal_free_line[opened.start():] if opened else literal_free_line
+            if _WRAPPED_SUPPRESSION.search(literal_free):
+                hits.append(f"{rel}:{lineno}: {code.strip()}")
+            # the attribute ends when its brackets balance: the opening
+            # `#[` counts here, so the depth returns to 0 on its `)]`.
+            in_cfg_attr = max(0, in_cfg_attr + literal_free.count("[") - literal_free.count("]"))
     return hits
 
 

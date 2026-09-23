@@ -214,6 +214,7 @@ def swift_code_only(text):
     n = len(text)
     i = 0
     state = _CODE
+    comment_depth = 0
     while i < n:
         ch = text[i]
         if state == _CODE:
@@ -224,6 +225,7 @@ def swift_code_only(text):
             elif ch == "/" and text.startswith("/*", i):
                 out[i] = out[i + 1] = " "
                 state = _BLOCK_COMMENT
+                comment_depth = 1
                 i += 2
             elif ch == '"':
                 if text.startswith('"""', i):
@@ -261,12 +263,18 @@ def swift_code_only(text):
                 out[i] = " "
             i += 1
         elif state == _BLOCK_COMMENT:
-            if text.startswith("/*", i):  # Swift nests block comments
+            # Swift nests block comments, so the comment ends at the `*/` that
+            # closes the OUTERMOST `/*` — the first `*/` used to end it and the
+            # rest of the outer comment was policed as code (2026-09-23).
+            if text.startswith("/*", i):
                 out[i] = out[i + 1] = " "
+                comment_depth += 1
                 i += 2
             elif text.startswith("*/", i):
                 out[i] = out[i + 1] = " "
-                state = _CODE
+                comment_depth -= 1
+                if comment_depth == 0:
+                    state = _CODE
                 i += 2
             else:
                 if ch != "\n":
