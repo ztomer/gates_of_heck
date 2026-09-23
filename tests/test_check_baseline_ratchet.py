@@ -129,6 +129,19 @@ def test_current_from_command_failure_is_precondition(repo):
     assert "exited 3" in r.stderr
 
 
+def test_loc_measures_json_baseline_keys(repo):
+    # loc_of_baseline_files.py is the current-values side of the loc
+    # ratchet: with a JSON baseline it must measure the KEYS, not parse
+    # the JSON as line format (which measured a phantom file named after
+    # the value fragment and failed every JSON baseline as growth).
+    write(repo, "src/a.py", "x = 1\n" * 15)
+    write(repo, "base.json", json.dumps({"src/a.py": 15}) + "\n")
+    r = run(repo, "--baseline", "base.json", "--current-from-command",
+            f"python3 '{REPO_ROOT}/checks/loc_of_baseline_files.py' 'base.json'")
+    assert r.returncode == 0, r.stderr
+    assert "1 entry within ceilings" in r.stdout
+
+
 # ---- preconditions (exit 2) ---------------------------------------------------
 
 

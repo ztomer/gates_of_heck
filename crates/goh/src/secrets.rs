@@ -105,16 +105,32 @@ pub fn scan_root(
     exclude: Option<&regex::Regex>,
     staged: bool,
 ) -> Result<(Vec<Finding>, usize), String> {
+    let files = crate::gitutil::listed_files(root, staged)?;
+    scan_files(root, &files, exclude, staged)
+}
+
+/// Scan a pre-enumerated file list: the structural pipeline lists the tree
+/// once and shares it across scanners instead of each one spawning git.
+///
+/// # Errors
+///
+/// Returns a message when the secret patterns fail to compile.
+pub fn scan_files(
+    root: &std::path::Path,
+    files: &[String],
+    exclude: Option<&regex::Regex>,
+    staged: bool,
+) -> Result<(Vec<Finding>, usize), String> {
     let (patterns, marker) = compile_all()?;
     let mut bad = Vec::new();
     let mut checked = 0;
-    for path in crate::gitutil::listed_files(root, staged)? {
+    for path in files {
         if let Some(rx) = exclude {
-            if rx.is_match(&path) {
+            if rx.is_match(path) {
                 continue;
             }
         }
-        let Some(blob) = crate::gitutil::content_bytes(root, &path, staged) else {
+        let Some(blob) = crate::gitutil::content_bytes(root, path, staged) else {
             continue;
         };
         let Ok(text) = std::str::from_utf8(&blob) else {
@@ -145,12 +161,15 @@ pub fn scan_root(
 pub fn format_report(bad: &[Finding], staged: bool) -> String {
     let scope = if staged { "staged" } else { "tracked" };
     let mut shown = String::new();
-    for hit in bad.iter().take(200) {
+    for hit in bad.iter().take(crate::gitutil::MAX_REPORT_HITS) {
         let line = format!("  {}:{}:{}: {}\n", hit.path, hit.lineno, hit.col, hit.kind);
         shown.push_str(&line);
     }
-    let overflow = if bad.len() > 200 {
-        format!("  … and {} more\n", bad.len() - 200)
+    let overflow = if bad.len() > crate::gitutil::MAX_REPORT_HITS {
+        format!(
+            "  … and {} more\n",
+            bad.len() - crate::gitutil::MAX_REPORT_HITS
+        )
     } else {
         String::new()
     };

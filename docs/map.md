@@ -7,6 +7,8 @@ Every entry: what it does, when it runs, which test pins it.
 | Script | Purpose | Invoked | Test |
 |---|---|---|---|
 | `_common.sh` | Shared contract: fail-fast, print output, TUI, EXIT-trap sentinel. Sourced, never run. | every gate | `test_goh_init_trap.py` |
+| `_goh_bin.sh` | The ONE resolution of the native `goh` binary (`GOH_NO_NATIVE`, then `GOH_BIN` trusted or reported, then `bin/goh`, then `PATH`). Sourced, never run. | `structural.sh`, `goh.sh` | `test_goh_entry.py` |
+| `goh.sh` | `goh.sh <check> [args]`: the one way a consumer runs a house checker — native when a binary resolves, else the Python checker it ports, same arguments, fallback stated once. Consumers call this, never `checks/*.py` or `bin/goh` directly. | `rust_gate.sh`, consumer repos | `test_goh_entry.py` |
 | `structural.sh` | Layer 1, every repo: emoji, conflict markers, file-length cap, shell lint, secrets. Execs the native `bin/goh` when built (`scripts/build-goh.sh`), else the Python checkers. `--staged` = pre-commit. (Disk hygiene was removed from this gate in v0.8.0 and from this repo in v0.8.1 — it lives in `~/Projects/scripts`.) | `tools/gate.sh`, hooks | `test_gates_e2e.py`, `test_file_length_and_markers.py` |
 | `py_gate.sh` | `ruff check` + `ruff format --check` + pytest with coverage floor. Args: `[repo] [pkg_dir]`. | `--full`, opt-in | `test_cwd_and_py_gate.py` |
 | `py_staged.sh` | `ruff check` + `ruff format --check` on the STAGED `*.py` only; the cheap half of `py_gate.sh` at commit time. Args: `[repo]`. | every commit, opt-in | `test_py_staged.py` |

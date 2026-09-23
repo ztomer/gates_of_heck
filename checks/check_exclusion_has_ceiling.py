@@ -52,19 +52,29 @@ from tui.lib import err, info, ok  # noqa: E402
 
 def baseline_keys(path: Path) -> set[str]:
     """Paths carrying a ceiling. Same two formats check_baseline_ratchet reads."""
+    return set(baseline_keys_ordered(path))
+
+
+def baseline_keys_ordered(path: Path) -> list[str]:
+    """Paths carrying a ceiling, in baseline order (first-seen wins on
+    repeats). The order matters to `loc_of_baseline_files.py`, which
+    measures each key in turn; membership callers use `baseline_keys`."""
     text = path.read_text(errors="replace")
-    keys: set[str] = set()
     if text.lstrip().startswith("{"):
         import json
 
-        return set(json.loads(text))
+        data = json.loads(text)
+        if isinstance(data, dict):
+            return list(data)
+        return []
+    keys: list[str] = []
     for line in text.splitlines():
         line = line.split("#", 1)[0].strip()
         if not line:
             continue
         parts = line.split("\t") if "\t" in line else line.split(None, 1)
-        if len(parts) == 2:
-            keys.add(parts[1].strip())
+        if len(parts) == 2 and parts[1].strip() not in keys:
+            keys.append(parts[1].strip())
     return keys
 
 

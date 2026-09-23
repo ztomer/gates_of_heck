@@ -1,0 +1,15 @@
+[package]
+name = "goh-golden"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Pixel-comparison core for golden-image harnesses — metrics vs explicit tolerances, no rendering, no blessing"
+
+[lints]
+workspace = true
+
+[dependencies]
+png = "0.18"
+serde_json = "1"
+num-traits = "0.2"

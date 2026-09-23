@@ -16,7 +16,10 @@ workspace = true
 [dependencies]
 bytecount = "0.6"
 clap = { version = "4", features = ["derive"] }
+goh-golden = { path = "../goh-golden" }
+num-traits = "0.2"
 regex = "1"
+serde_json = "1"
 
 [dev-dependencies]
 goh-testkit = { path = "../goh-testkit" }

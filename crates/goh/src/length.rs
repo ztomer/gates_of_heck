@@ -42,22 +42,39 @@ pub fn scan_root(
     exclude: Option<&regex::Regex>,
     staged: bool,
 ) -> Result<(Vec<OverCap>, usize), String> {
+    let files = crate::gitutil::listed_files(root, staged)?;
+    Ok(scan_files(root, &files, max, exclude, staged))
+}
+
+/// Scan a pre-enumerated file list: the structural pipeline lists the tree
+/// once and shares it across scanners instead of each one spawning git.
+#[must_use]
+pub fn scan_files(
+    root: &std::path::Path,
+    files: &[String],
+    max: usize,
+    exclude: Option<&regex::Regex>,
+    staged: bool,
+) -> (Vec<OverCap>, usize) {
     let mut over = Vec::new();
     let mut checked = 0;
-    for path in crate::gitutil::listed_files(root, staged)? {
-        if !is_measured(&path, exclude) {
+    for path in files {
+        if !is_measured(path, exclude) {
             continue;
         }
-        if let Some(blob) = crate::gitutil::content_bytes(root, &path, staged) {
+        if let Some(blob) = crate::gitutil::content_bytes(root, path, staged) {
             checked += 1;
             let n = crate::gitutil::line_count(&blob);
             if n > max {
-                over.push(OverCap { path, lines: n });
+                over.push(OverCap {
+                    path: path.clone(),
+                    lines: n,
+                });
             }
         }
     }
     over.sort_by_key(|hit| std::cmp::Reverse(hit.lines));
-    Ok((over, checked))
+    (over, checked)
 }
 
 /// Full violation block. Shared by the `length` subcommand and the

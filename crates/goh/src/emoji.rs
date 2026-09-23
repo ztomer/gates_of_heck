@@ -188,24 +188,38 @@ pub fn scan_root(
     extra: &BTreeSet<char>,
     staged: bool,
 ) -> Result<(Vec<Hit>, usize), String> {
+    let files = crate::gitutil::listed_files(root, staged)?;
+    Ok(scan_files(root, &files, exclude, extra, staged))
+}
+
+/// Scan a pre-enumerated file list: the structural pipeline lists the tree
+/// once and shares it across scanners instead of each one spawning git.
+#[must_use]
+pub fn scan_files(
+    root: &std::path::Path,
+    files: &[String],
+    exclude: Option<&regex::Regex>,
+    extra: &BTreeSet<char>,
+    staged: bool,
+) -> (Vec<Hit>, usize) {
     let mut hits = Vec::new();
     let mut checked = 0;
-    for path in crate::gitutil::listed_files(root, staged)? {
+    for path in files {
         if let Some(rx) = exclude {
-            if rx.is_match(&path) {
+            if rx.is_match(path) {
                 continue;
             }
         }
-        let Some(blob) = crate::gitutil::content_bytes(root, &path, staged) else {
+        let Some(blob) = crate::gitutil::content_bytes(root, path, staged) else {
             continue;
         };
         let Ok(text) = std::str::from_utf8(&blob) else {
             continue;
         };
         checked += 1;
-        hits.extend(scan_text(&path, text, extra));
+        hits.extend(scan_text(path, text, extra));
     }
-    Ok((hits, checked))
+    (hits, checked)
 }
 
 /// The permit-list text: the allow-list joined by spaces, plus raw `--allow`.
@@ -230,7 +244,7 @@ pub fn permit_text(allow: &str) -> String {
 pub fn format_report(hits: &[Hit], staged: bool, allow: &str) -> String {
     let scope = if staged { "staged" } else { "tracked" };
     let mut shown = String::new();
-    for hit in hits.iter().take(200) {
+    for hit in hits.iter().take(crate::gitutil::MAX_REPORT_HITS) {
         let suffix = if hit.escaped {
             " (written as an escape)"
         } else {
@@ -242,8 +256,11 @@ pub fn format_report(hits: &[Hit], staged: bool, allow: &str) -> String {
         );
         shown.push_str(&line);
     }
-    let overflow = if hits.len() > 200 {
-        format!("  … and {} more\n", hits.len() - 200)
+    let overflow = if hits.len() > crate::gitutil::MAX_REPORT_HITS {
+        format!(
+            "  … and {} more\n",
+            hits.len() - crate::gitutil::MAX_REPORT_HITS
+        )
     } else {
         String::new()
     };

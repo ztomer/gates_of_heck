@@ -103,8 +103,10 @@ else
     warn "  for every target and feature set the crate actually ships to"
 fi
 
-goh_step "lint policy is inherited" \
-    python3 "$HERE/../checks/check_lints_optin.py"
+# Native first: `goh lints` carries this step (parity-pinned by
+# tests/test_goh_lints_parity.py), through gates/goh.sh — the one resolver
+# every caller shares, with the Python checker as its stated fallback.
+goh_step "lint policy is inherited" bash "$HERE/goh.sh" lints
 
 # UNUSED DEPENDENCIES. `[lints.cargo] unused_dependencies = "deny"` looks like
 # this gate and is not one: the key needs `-Zcargo-lints` on nightly, so on
@@ -136,8 +138,9 @@ goh_step_in "$cargo_dir" "cargo lints (manifest)" \
 
 # GOH_EXCLUDE (regex, from .gatesrc) exempts a vendored tree here as it does
 # in the structural checks: third-party code is not ours to re-lint.
-goh_step "no #[allow] / #[expect]" \
-    python3 "$HERE/../checks/check_no_allow.py" ${GOH_EXCLUDE:+--exclude "$GOH_EXCLUDE"}
+# Native first: `goh no-allow` carries this step (parity-pinned by
+# tests/test_goh_noallow_parity.py), through gates/goh.sh like the lints step.
+goh_step "no #[allow] / #[expect]" bash "$HERE/goh.sh" no-allow ${GOH_EXCLUDE:+--exclude "$GOH_EXCLUDE"}
 
 # GOH_RUST_COVERAGE=defer: the caller's PUSH gate checks the floor, so a
 # commit gate need not rebuild every touched crate instrumented (a release

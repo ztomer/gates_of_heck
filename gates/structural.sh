@@ -53,28 +53,17 @@ esac
 # pipeline below runs and SAYS so once — a fallback that looks like the real
 # thing is how interpreter drift stays invisible. GOH_NO_NATIVE=1 forces the
 # Python path (the parity test uses it to drive this side).
-if [ -z "${GOH_NO_NATIVE:-}" ]; then
-    GOH_NATIVE_BIN=""
-    if [ -n "${GOH_BIN:-}" ]; then
-        # An explicit pointer is trusted or reported — never silently
-        # replaced by a different binary than the one named.
-        [ -x "${GOH_BIN}" ] && GOH_NATIVE_BIN="$GOH_BIN"
-    elif [ -x "$HERE/../bin/goh" ]; then
-        GOH_NATIVE_BIN="$HERE/../bin/goh"
-    elif command -v goh >/dev/null 2>&1; then
-        GOH_NATIVE_BIN="$(command -v goh)"
+# shellcheck source=gates/_goh_bin.sh
+. "$HERE/_goh_bin.sh"
+goh_resolve_native
+if [ -n "$goh_native" ]; then
+    # Arguments were validated above; only the two accepted scopes reach here.
+    if [ "$SCOPE" = "--staged" ]; then
+        exec "$goh_native" structural --staged
     fi
-    if [ -n "$GOH_NATIVE_BIN" ]; then
-        # Arguments were validated above; only the two accepted scopes reach here.
-        if [ "$SCOPE" = "--staged" ]; then
-            exec "$GOH_NATIVE_BIN" structural --staged
-        fi
-        exec "$GOH_NATIVE_BIN" structural --full
-    elif [ -n "${GOH_BIN:-}" ]; then
-        echo "· GOH_BIN=$GOH_BIN is not an executable — running the Python checkers" >&2
-    else
-        echo "· goh binary not built — running the Python checkers (cd $HERE/.. && ./install.sh builds it)" >&2
-    fi
+    exec "$goh_native" structural --full
+elif [ -n "$goh_native_why" ]; then
+    echo "· $goh_native_why — running the Python checkers" >&2
 fi
 
 # Only --staged is a checker-level scope; --full (and no argument) mean

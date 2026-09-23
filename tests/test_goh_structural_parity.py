@@ -75,6 +75,16 @@ FULL_CASES: dict[str, dict[str, bytes]] = {
                       "NOTES.md": b"run from ~/Projects/x\n"},
     "home_path_green": {".gatesrc": b"GOH_MAX_LINES=10\nGOH_NO_HOME_PATHS=1\n",
                         "NOTES.md": b"run from the repo root\n"},
+    # The ceiling steps, every branch -- an exempt-over-cap file with and
+    # without its ceiling, growth past the ceiling, and a dangling baseline.
+    "ceiling_green": {".gatesrc": b"GOH_MAX_LINES=10\nGOH_LINE_EXCLUDE='a.py'\nGOH_LINE_BASELINE='base.txt'\n",
+                      "a.py": b"x = 1\n" * 15, "base.txt": b"15\ta.py\n"},
+    "ceiling_no_ceiling": {".gatesrc": b"GOH_MAX_LINES=10\nGOH_LINE_EXCLUDE='a.py'\nGOH_LINE_BASELINE='base.txt'\n",
+                           "a.py": b"x = 1\n" * 15, "base.txt": b"15\tother.py\n"},
+    "ceiling_over": {".gatesrc": b"GOH_MAX_LINES=10\nGOH_LINE_EXCLUDE='a.py'\nGOH_LINE_BASELINE='base.txt'\n",
+                     "a.py": b"x = 1\n" * 16, "base.txt": b"15\ta.py\n"},
+    "ceiling_missing": {".gatesrc": b"GOH_MAX_LINES=10\nGOH_LINE_EXCLUDE='a.py'\nGOH_LINE_BASELINE='missing.txt'\n",
+                        "a.py": b"x = 1\n" * 15},
 }
 
 

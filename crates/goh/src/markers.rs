@@ -3,7 +3,7 @@
 //! Only a marker at the start of a line counts: `<<<<<<< ` / `>>>>>>> ` /
 //! `||||||| ` (the diff3 base marker), each followed by whitespace or
 //! end-of-line. `=======` alone is ordinary Markdown underlining, not a
-//! marker. Binary blobs (NUL in the first 8000 bytes) are skipped.
+//! marker. Binary blobs (NUL in the shared scan window) are skipped.
 
 /// One marker sighting.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -42,7 +42,7 @@ fn truncate80(text: &str) -> String {
 /// Scan one blob, returning every marker sighting with 1-based line numbers.
 #[must_use]
 pub fn scan_blob(path: &str, blob: &[u8]) -> Vec<Violation> {
-    if blob[..blob.len().min(8000)].contains(&0) {
+    if blob[..blob.len().min(crate::gitutil::BINARY_SCAN_WINDOW)].contains(&0) {
         return Vec::new();
     }
     blob.split(|b| *b == b'\n')
@@ -66,13 +66,21 @@ pub fn scan_blob(path: &str, blob: &[u8]) -> Vec<Violation> {
 ///
 /// Returns a message when git lists files and fails.
 pub fn scan_root(root: &std::path::Path, staged: bool) -> Result<Vec<Violation>, String> {
+    let files = crate::gitutil::listed_files(root, staged)?;
+    Ok(scan_files(root, &files, staged))
+}
+
+/// Scan a pre-enumerated file list: the structural pipeline lists the tree
+/// once and shares it across scanners instead of each one spawning git.
+#[must_use]
+pub fn scan_files(root: &std::path::Path, files: &[String], staged: bool) -> Vec<Violation> {
     let mut bad = Vec::new();
-    for path in crate::gitutil::listed_files(root, staged)? {
-        if let Some(blob) = crate::gitutil::content_bytes(root, &path, staged) {
-            bad.extend(scan_blob(&path, &blob));
+    for path in files {
+        if let Some(blob) = crate::gitutil::content_bytes(root, path, staged) {
+            bad.extend(scan_blob(path, &blob));
         }
     }
-    Ok(bad)
+    bad
 }
 
 /// Full violation block: header plus one line per hit. Shared by the

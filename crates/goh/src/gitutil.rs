@@ -76,6 +76,11 @@ pub fn listed_files(root: &Path, staged: bool) -> Result<Vec<String>, String> {
 #[must_use]
 pub fn content_bytes(root: &Path, rel: &str, staged: bool) -> Option<Vec<u8>> {
     if staged {
+        // Read once per run for every scanner when the pipeline prefetched
+        // it (crate::blobs); the same index blob `git show` would return.
+        if let Some(blob) = crate::blobs::cached(root, rel) {
+            return Some(blob);
+        }
         let spec = format!(":{rel}");
         if let Ok(out) = Command::new("git")
             .arg("-C")
@@ -97,6 +102,16 @@ pub fn content_bytes(root: &Path, rel: &str, staged: bool) -> Option<Vec<u8>> {
 pub fn line_count(blob: &[u8]) -> usize {
     bytecount::count(blob, b'\n') + usize::from(!blob.is_empty() && !blob.ends_with(b"\n"))
 }
+
+/// Binary-scan window: only the first this many bytes are inspected for a
+/// NUL byte. Mirrors the reference checkers' `blob[:8000]` — one shared
+/// definition so the window cannot drift per scanner.
+pub const BINARY_SCAN_WINDOW: usize = 8000;
+
+/// Report cap: violation blocks show the first this many hits, then an
+/// "… and N more" line. Mirrors the references' `[:200]` — one shared
+/// definition so every report truncates identically.
+pub const MAX_REPORT_HITS: usize = 200;
 
 #[cfg(test)]
 mod tests {
