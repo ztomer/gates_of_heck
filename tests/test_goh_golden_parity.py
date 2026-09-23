@@ -81,7 +81,7 @@ def make_pair(tmp_path: Path, name: str, w: int, h: int, mode: str, seed: int, *
     return pa, pb
 
 
-def write_png16(path: Path, w: int, h: int, color_type: int, samples: list[int]) -> None:
+def write_png16(path: Path, w: int, h: int, color_type: int, samples: list[int], trns: int | None = None) -> None:
     """A 16-bit PNG written by hand: Pillow cannot write every 16-bit layout."""
     channels = {0: 1, 2: 3}[color_type]
     row_len = w * channels
@@ -93,17 +93,19 @@ def write_png16(path: Path, w: int, h: int, color_type: int, samples: list[int])
         return struct.pack(">I", len(data)) + tag + data + struct.pack(">I", zlib.crc32(tag + data) & 0xFFFFFFFF)
 
     ihdr = struct.pack(">IIBBBBB", w, h, 16, color_type, 0, 0, 0)
-    path.write_bytes(b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", ihdr) + chunk(b"IDAT", zlib.compress(raw)) + chunk(b"IEND", b""))
+    # A gray tRNS names one transparent sample value; the decoder then expands to gray+alpha.
+    extra = chunk(b"tRNS", struct.pack(">H", trns)) if trns is not None else b""
+    path.write_bytes(b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", ihdr) + extra + chunk(b"IDAT", zlib.compress(raw)) + chunk(b"IEND", b""))
 
 
-def make_pair16(tmp_path: Path, name: str, w: int, h: int, color_type: int, seed: int):
+def make_pair16(tmp_path: Path, name: str, w: int, h: int, color_type: int, seed: int, trns: int | None = None):
     rng = random.Random(seed)
     channels = {0: 1, 2: 3}[color_type]
     a = [rng.randrange(65536) if rng.random() < 0.5 else rng.randrange(512) for _ in range(w * h * channels)]
     b = [v if rng.random() > WOBBLE_FRACTION else rng.randrange(65536) for v in a]
     pa, pb = tmp_path / f"{name}_a.png", tmp_path / f"{name}_b.png"
-    write_png16(pa, w, h, color_type, a)
-    write_png16(pb, w, h, color_type, b)
+    write_png16(pa, w, h, color_type, a, trns)
+    write_png16(pb, w, h, color_type, b, trns)
     return pa, pb
 
 
@@ -168,10 +170,14 @@ def test_metrics_agree(goh: Path, tmp_path: Path, name: str, w: int, h: int, mod
     assert_same_verdict(py, rs)
 
 
-@pytest.mark.parametrize("name,color_type,seed", [("gray16", 0, 21), ("rgb16", 2, 22)])
+# gray16_trns: a tRNS chunk makes the decoder hand 16-bit gray back as gray+alpha, and Pillow
+# still clamps it — found by the goh-golden unit tests, pinned here against Pillow itself.
+@pytest.mark.parametrize("name,color_type,seed,trns", [("gray16", 0, 21, None), ("rgb16", 2, 22, None),
+                                                       ("gray16_trns", 0, 23, 128)])
 @needs_reference
-def test_sixteen_bit_decodes_as_pillow_does(goh: Path, tmp_path: Path, name: str, color_type: int, seed: int):
-    pa, pb = make_pair16(tmp_path, name, 50, 40, color_type, seed)
+def test_sixteen_bit_decodes_as_pillow_does(goh: Path, tmp_path: Path, name: str, color_type: int, seed: int,
+                                            trns: int | None):
+    pa, pb = make_pair16(tmp_path, name, 50, 40, color_type, seed, trns)
     code_py, py, _ = run_py(pa, pb)
     code_goh, rs, _ = run_goh(goh, pa, pb)
     assert code_py == code_goh

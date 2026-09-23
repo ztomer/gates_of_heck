@@ -7,7 +7,8 @@
 //!   crate's `EXPAND` does exactly this);
 //! - 16-bit RGB, RGBA and gray+alpha keep the HIGH byte of each sample;
 //! - 16-bit grayscale alone opens as `I;16` and CLAMPS to 255 — 0x0100 is
-//!   255, not 1;
+//!   255, not 1 — with or without a tRNS chunk (which EXPAND turns into an
+//!   alpha channel, so the decision is taken from the file's header);
 //! - alpha is dropped, never composited; gray triplicates.
 //!
 //! The first port refused palette PNGs (which Pillow opens) and took the
@@ -36,19 +37,27 @@ pub fn load_rgb(path: &std::path::Path) -> Result<Image, PreconditionError> {
     let mut decoder = png::Decoder::new(std::io::BufReader::new(file));
     decoder.set_transformations(png::Transformations::EXPAND);
     let mut reader = decoder.read_info().map_err(|e| undecodable(&e))?;
+    // Pillow's one clamping layout is decided by the FILE: a tRNS chunk makes
+    // EXPAND hand 16-bit gray back as gray+alpha, and Pillow still clamps it.
+    let header = reader.info();
+    let clamp_gray = header.color_type == png::ColorType::Grayscale
+        && header.bit_depth == png::BitDepth::Sixteen;
     let mut buf = vec![0; reader.output_buffer_size().unwrap_or(0)];
     let info = reader.next_frame(&mut buf).map_err(|e| undecodable(&e))?;
-    let pixels =
-        to_rgb(info.color_type, info.bit_depth, &buf[..info.buffer_size()]).ok_or_else(|| {
-            PreconditionError {
-                message: format!(
-                    "{}: {:?} at {:?} has no RGB meaning after expansion",
-                    path.display(),
-                    info.color_type,
-                    info.bit_depth
-                ),
-            }
-        })?;
+    let pixels = to_rgb(
+        info.color_type,
+        info.bit_depth,
+        clamp_gray,
+        &buf[..info.buffer_size()],
+    )
+    .ok_or_else(|| PreconditionError {
+        message: format!(
+            "{}: {:?} at {:?} has no RGB meaning after expansion",
+            path.display(),
+            info.color_type,
+            info.bit_depth
+        ),
+    })?;
     Ok(Image {
         width: info.width,
         height: info.height,
@@ -58,8 +67,15 @@ pub fn load_rgb(path: &std::path::Path) -> Result<Image, PreconditionError> {
 
 /// One expanded frame as RGB8. After `EXPAND` only 8- and 16-bit gray,
 /// gray+alpha, RGB and RGBA remain; anything else is `None` so a new
-/// layout fails loudly instead of being misread.
-fn to_rgb(color: png::ColorType, depth: png::BitDepth, buf: &[u8]) -> Option<Vec<u8>> {
+/// layout fails loudly instead of being misread. `clamp_gray` says the FILE
+/// was 16-bit gray (see `load_rgb`): its first channel clamps to 255 where
+/// every other wide layout keeps its high byte.
+fn to_rgb(
+    color: png::ColorType,
+    depth: png::BitDepth,
+    clamp_gray: bool,
+    buf: &[u8],
+) -> Option<Vec<u8>> {
     use png::{BitDepth, ColorType};
     let wide = depth == BitDepth::Sixteen;
     if !wide && depth != BitDepth::Eight {
@@ -68,8 +84,7 @@ fn to_rgb(color: png::ColorType, depth: png::BitDepth, buf: &[u8]) -> Option<Vec
     let sample = if wide { WIDE } else { 1 };
     let channels = color.samples();
     let pixels = buf.chunks_exact(channels * sample);
-    // The one layout Pillow clamps rather than truncates (see module doc).
-    let clamp_gray = wide && color == ColorType::Grayscale;
+    let clamp_gray = wide && clamp_gray;
     let first = |px: &[u8], channel: usize| -> u8 {
         let at = channel * sample;
         if clamp_gray {
@@ -102,17 +117,22 @@ mod tests {
     fn sixteen_bit_gray_clamps_and_every_other_wide_layout_keeps_the_high_byte() {
         let gray = [0x01, 0x00, 0x00, 0xFF];
         assert_eq!(
-            to_rgb(ColorType::Grayscale, BitDepth::Sixteen, &gray),
+            to_rgb(ColorType::Grayscale, BitDepth::Sixteen, true, &gray),
             Some(vec![255, 255, 255, 255, 255, 255])
         );
         let rgb = [0x01, 0x00, 0x02, 0x00, 0x03, 0x00];
         assert_eq!(
-            to_rgb(ColorType::Rgb, BitDepth::Sixteen, &rgb),
+            to_rgb(ColorType::Rgb, BitDepth::Sixteen, false, &rgb),
             Some(vec![1, 2, 3])
         );
         let gray_alpha = [0x01, 0x2C, 0xFF, 0xFF];
         assert_eq!(
-            to_rgb(ColorType::GrayscaleAlpha, BitDepth::Sixteen, &gray_alpha),
+            to_rgb(
+                ColorType::GrayscaleAlpha,
+                BitDepth::Sixteen,
+                false,
+                &gray_alpha
+            ),
             Some(vec![1, 1, 1])
         );
     }
@@ -120,18 +140,24 @@ mod tests {
     #[test]
     fn alpha_is_dropped_and_gray_triplicates() {
         assert_eq!(
-            to_rgb(ColorType::Rgba, BitDepth::Eight, &[9, 8, 7, 0]),
+            to_rgb(ColorType::Rgba, BitDepth::Eight, false, &[9, 8, 7, 0]),
             Some(vec![9, 8, 7])
         );
         assert_eq!(
-            to_rgb(ColorType::Grayscale, BitDepth::Eight, &[42]),
+            to_rgb(ColorType::Grayscale, BitDepth::Eight, false, &[42]),
             Some(vec![42, 42, 42])
         );
     }
 
     #[test]
     fn an_unexpanded_layout_is_refused() {
-        assert_eq!(to_rgb(ColorType::Indexed, BitDepth::Eight, &[0]), None);
-        assert_eq!(to_rgb(ColorType::Grayscale, BitDepth::Four, &[0]), None);
+        assert_eq!(
+            to_rgb(ColorType::Indexed, BitDepth::Eight, false, &[0]),
+            None
+        );
+        assert_eq!(
+            to_rgb(ColorType::Grayscale, BitDepth::Four, false, &[0]),
+            None
+        );
     }
 }

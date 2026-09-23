@@ -23,4 +23,5 @@ serde_json = "1"
 
 [dev-dependencies]
 goh-testkit = { path = "../goh-testkit" }
+png = "0.18"
 tempfile = "3"
