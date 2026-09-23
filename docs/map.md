@@ -18,7 +18,9 @@ Every entry: what it does, when it runs, which test pins it.
 | `coverage_gate.sh` | ONE parameterized coverage gate: `--lang rust\|swift\|cpp\|py --floor N [--ignore RE] [--include RE] [--floors-json P] [--marker-ceiling P] [--engine E] [path]`. Floor: flag, then `GOH_COV_FLOOR_<LANG>`, else exit 2. | opt-in | `test_coverage_gate.py`, `test_coverage_strictest.py`, `test_coverage_rust_exports.py`, `test_coverage_gate_cpp_parse.py` |
 | `coverage_swift.py` | Helper: swift coverage engine behind `coverage_gate.sh --lang swift` (llvm-cov export / xccov). | via coverage gate | `test_coverage_swift_selection.py` |
 | `lcov_merge.py` | Helper: merges per-target lcov exports, strips CGU hashes. Called by coverage gate rust path. | via coverage gate | `test_lcov_merge.py` |
-| `local_ci.sh` | Declarative step runner: steps from `GOH_CI_STEPS` + `--step`. Fail accumulator, logs on failure, optional per-step timeout (`GOH_LCI_TIMEOUT`). | opt-in | `test_local_ci.py` |
+| `local_ci.sh` | Declarative step runner: steps from `GOH_CI_STEPS` + `--step`. Fail accumulator, logs on failure, optional per-step timeout (`GOH_LCI_TIMEOUT`). Every step goes through the proven-step cache. | opt-in | `test_local_ci.py`, `test_proven.py` |
+| `proven.sh` | `proven.sh [--label L] [--log F] -- '<step>'`: run one step unless that exact step string already passed on this exact clean tree (same gates, toolchains, keyed env) within `GOH_PROVEN_TTL_S`. For a repo hook whose step also appears in `GOH_CI_STEPS`, so the push-time run is a hit. | repo hooks | `test_proven.py` |
+| `_proven.sh` | The proven-step cache itself (key, lookup, record, prune), sourced by `proven.sh` and `local_ci.sh` so the key a hook records and the key local CI looks up cannot drift. Sourced, never run. | via the two above | `test_proven.py` |
 | `doctor.sh` | Wiring diagnosis for one repo: GOH resolution, hooksPath, unknown `.gatesrc` keys (derived from `config.md`), toolchains. Exit 0 healthy / 1 problems named. | `gate.sh --doctor` | `test_doctor.py` |
 Which coverage file to touch: `coverage_gate.sh` = CLI/floor plumbing for
 all languages; `coverage_swift.py` = swift engine only;

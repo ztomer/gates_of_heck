@@ -129,7 +129,27 @@ GOH_SWIFT_COLD=1                     # Wipe build artifacts before testing
 ## Extra Tools
 
 - `tools/release-kit/release.sh`: Checks gate and changelog, creates an annotated tag, pushes, and creates a GitHub release.
-- `gates/local_ci.sh`: Runs a list of steps locally and preserves log files on failure.
+- `gates/local_ci.sh`: Runs a list of steps locally and preserves log files on failure. A step already proven on the same clean tree is skipped (see below).
+- `gates/proven.sh`: Runs one step unless it already passed on this exact tree.
+
+## Proven steps
+
+A commit used to pay for its expensive steps twice before CI saw it: once in the repo's
+pre-commit hook and again at push, over the same tree. `local_ci.sh` now records every step
+that passes on a clean tree (working tree == index) and skips it on a later run over the same
+tree, printing who proved it and how long ago. A repo hook opts its own copy of a step in by
+running it through `proven.sh` with the step string spelled exactly as in `GOH_CI_STEPS`:
+
+```bash
+"$GOH/gates/proven.sh" --label pre-commit --log "$log" -- 'bash tools/coverage_check.sh'
+```
+
+The key is the tree, the step string, the gates checkout (HEAD, diff, untracked files), the
+toolchain versions and a few environment variables; a dirty tree has no key, so nothing is
+recorded or skipped. Records live in the repo's common git dir, so `push_gate.sh`'s clean
+worktree sees them. CI never does -- it stays the independent check. `GOH_PROVEN=0` disables
+the cache; `GOH_PROVEN_TTL_S` (default 24 h) bounds a record's life. The full rationale is the
+header of `gates/proven.sh`.
 - `gates/coverage_gate.sh`: Multi-language coverage gate with per-target/per-file floors and marker ceilings.
 - `gates/doctor.sh`: Diagnoses gate wiring for a repo (also via `tools/gate.sh --doctor`).
 

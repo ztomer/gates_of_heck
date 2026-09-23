@@ -91,6 +91,20 @@ fix is `reclaim_build_space.sh` next to it.
 |---|---|---|
 | `GOH_CI_STEPS` | unset (required unless `--step` given) | Colon-separated shell-command list. `.gatesrc` steps run first, then `--step` ones. Keep colons OUT of step strings — put `${VAR:+flag}` logic in a repo script and invoke that. |
 | `GOH_LCI_TIMEOUT` | unset (no limit) | Per-step wall-clock ceiling in seconds. Expired steps are TERM-then-KILLed (subtree swept best-effort) and fail named with exit 124. Non-numeric values are exit-2 usage errors. |
+
+## Proven steps (`gates/proven.sh` + `gates/_proven.sh`, used by `gates/local_ci.sh`)
+
+A step that exited 0 on a clean tree (working tree == index) is recorded under
+`<git-common-dir>/goh-proven/`; the same step string on the same tree, with the
+same gates checkout, toolchains and keyed environment, is skipped within the
+TTL. Rationale and the full key: the header of `gates/proven.sh`.
+
+| Key | Default | Meaning |
+|---|---|---|
+| `GOH_PROVEN` | unset (on) | `0` disables the cache: every step runs, nothing is recorded. |
+| `GOH_PROVEN_TTL_S` | `86400` | Record lifetime in seconds; older records are ignored and pruned. Non-numeric values are exit-2 usage errors. |
+| `GOH_PROVEN_ENV` | unset | Space-separated environment variable NAMES (in `.gatesrc`) whose values join the key, beside the built-in `CI RUSTFLAGS RUSTDOCFLAGS CARGO_BUILD_TARGET PYTHONPATH`. Name a variable here when a step's verdict depends on it. |
+| `GOH_PROVEN_NOW` | internal | Clock seam for the tests (epoch seconds). Not user config. |
 ## Release kit (`tools/release-kit/release.sh`)
 
 | Key | Default | Meaning |

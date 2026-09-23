@@ -19,6 +19,13 @@
 # Deliberately thin: labels are the commands themselves, there is no step
 # metadata to drift. The value is that the skeleton exists exactly once.
 #
+# PROVEN STEPS. Every step goes through the proven-step cache (gates/_proven.sh,
+# the rationale in gates/proven.sh): a step that already passed on this exact
+# committed tree -- in the pre-commit hook, or an earlier run -- is skipped with
+# a line saying who proved it and when, and a green step on a clean tree leaves
+# a record. A dirty working tree has no key, so everything runs as before.
+# GOH_PROVEN=0 turns the cache off.
+#
 # Exit codes: 0 all green · 1 any step failed · 2 usage/config error.
 set -uo pipefail
 
@@ -39,6 +46,8 @@ command -v _lib_info >/dev/null 2>&1 && {
     warn() { _lib_warn "$*"; }; err() { _lib_err "$*"; };
 }
 die() { err "local_ci: $*"; exit "${2:-2}"; }
+# shellcheck source=gates/_proven.sh
+. "$HERE/_proven.sh"
 
 usage() {
     cat <<'EOF'
@@ -90,6 +99,8 @@ if [ -f "$ROOT/.gatesrc" ]; then
 fi
 
 SRC_GATESRC="${GOH_CI_STEPS:-}"
+_proven_err="$(proven_settings 2>&1)" || die "$_proven_err"
+proven_settings
 
 # GOH_LCI_TIMEOUT: per-step wall-clock ceiling in seconds. Unset/0 = none
 # (previous behavior). A hung step used to hang the whole run silently; on
@@ -171,6 +182,7 @@ fi
 LOGDIR=$(mktemp -d "${TMPDIR:-/tmp}/goh-local-ci.XXXXXX")
 FAILED=0
 FAILED_NAMES=""
+PROVEN_SKIPPED=0
 i=0
 
 # run_step <logf> <cmd-string> — exit code of the step, 124 on timeout.
@@ -215,6 +227,18 @@ while IFS="	" read -r src cmd; do
     i=$((i + 1))
     logf="$LOGDIR/step-$i.log"
     info "[$i/$_n] ($src) $cmd"
+    # The proven-step cache. </dev/null: the loop's stdin is the step list.
+    pkey="" ptree=""
+    if pair="$(proven_key "$cmd" </dev/null)"; then
+        read -r pkey ptree <<<"$pair"
+        if hit="$(proven_lookup "$pkey" "$cmd")"; then
+            read -r age by <<<"$hit"
+            step "proven on this tree $age ago by $by — skipped"
+            ok "[$i/$_n] $cmd"
+            PROVEN_SKIPPED=$((PROVEN_SKIPPED + 1))
+            continue
+        fi
+    fi
     # Command strings from the repo's own .gatesrc / CLI — shell semantics are
     # the feature (pipelines, env prefixes); the source is repo-local config,
     # the same trust level as every ancestor orchestrator.
@@ -223,6 +247,15 @@ while IFS="	" read -r src cmd; do
     # the REMAINING step list silently.
     run_step "$logf" "$cmd"
     rc=$?
+    if [ "$rc" -eq 0 ] && [ -n "$pkey" ]; then
+        # Recorded only if the tree (and the gates) did not move while it ran.
+        if [ "$(proven_key "$cmd" </dev/null)" = "$pkey $ptree" ]; then
+            proven_record "$pkey" "$ptree" "$cmd" "local_ci" </dev/null \
+                || warn "[$i/$_n] could not write the proven record"
+        else
+            step "the tree or the gates moved while the step ran — not recorded as proven"
+        fi
+    fi
     if [ "$rc" -eq 0 ]; then
         ok "[$i/$_n] $cmd"
     elif [ "$rc" -eq 124 ]; then
@@ -246,7 +279,11 @@ EOF
 
 section "result"
 if [ "$FAILED" -eq 0 ]; then
-    ok "all $_n step(s) passed"
+    if [ "$PROVEN_SKIPPED" -gt 0 ]; then
+        ok "all $_n step(s) passed ($PROVEN_SKIPPED proven earlier on this tree, not re-run)"
+    else
+        ok "all $_n step(s) passed"
+    fi
     exit 0
 fi
 err "$FAILED of $_n step(s) failed:"
