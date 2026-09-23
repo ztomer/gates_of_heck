@@ -160,6 +160,10 @@ fi
 # with GOH_SKILLS_CORPUS=1 in .gatesrc; auto-detecting would surprise any repo
 # that merely SHIPS example skills. Runs at both scopes because a duplicate
 # lesson title is only visible across the whole corpus, and 40 skills is fast.
+# At --staged the whole corpus is still checked, but AS THE INDEX HOLDS IT
+# (goh_index_view): the working tree is not what the commit records. A corpus
+# OUTSIDE the repo is no part of the commit at all, so --staged skips it by
+# name and --full reads it where it lies.
 if [ -n "${GOH_SKILLS_CORPUS:-}" ]; then
     # The corpus can live OUTSIDE the repo (a machine-level asset such as
     # ~/.claude/skills), so its absence is a fact about the machine, not a
@@ -170,9 +174,19 @@ if [ -n "${GOH_SKILLS_CORPUS:-}" ]; then
     # it exists to prove .gatesrc stays hermetic.
     goh_skills_root="${GOH_SKILLS_ROOT:-$GOH_REPO_ROOT}"
     if [ -d "$goh_skills_root" ]; then
-        goh_step "skills corpus" python3 "$CHECKS/check_skills_corpus.py" \
-            --root "$goh_skills_root" \
-            ${GOH_SKILLS_MAX_WORDS:+--max-words "$GOH_SKILLS_MAX_WORDS"}
+        if [ "$SCOPE" != "--staged" ]; then
+            goh_skills_view="$goh_skills_root"
+        elif goh_index_view "$goh_skills_root"; then
+            goh_skills_view="$GOH_INDEX_VIEW"
+        else
+            goh_skills_view=""
+            warn "$goh_skills_root is outside this repo, so no part of this commit — NOT checked at --staged (--full reads it)"
+        fi
+        if [ -n "$goh_skills_view" ]; then
+            goh_step "skills corpus" python3 "$CHECKS/check_skills_corpus.py" \
+                --root "$goh_skills_view" \
+                ${GOH_SKILLS_MAX_WORDS:+--max-words "$GOH_SKILLS_MAX_WORDS"}
+        fi
     else
         warn "skills corpus not present at $goh_skills_root — NOT checked"
     fi

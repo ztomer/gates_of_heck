@@ -119,4 +119,4 @@ fix is `reclaim_build_space.sh` next to it.
 | `GOH_SWIFT` | unset (`xcrun --find swift`, then PATH) | Explicit swift driver for `swift_gate.sh` and any script sourcing `gates/swift_toolchain.sh`. Refused when not executable. Exists because a swiftly toolchain on PATH shadowed Xcode's and the gate failed for three days as "environmental". |
 
 Internal-only (not `.gatesrc` policy): `GOH_ROOT`, `GOH_GIT_ROOT`,
-`GOH_REPO_ROOT`, `GOH_NAME`, `GOH_LOG`, `GOH_LOGS`, `GOH_COMPLETED`, `GOH_EX`, `GOH_NATIVE_BIN` (the resolved native binary inside `structural.sh`).
+`GOH_REPO_ROOT`, `GOH_NAME`, `GOH_LOG`, `GOH_LOGS`, `GOH_COMPLETED`, `GOH_EX`, `GOH_NATIVE_BIN` (the resolved native binary inside `structural.sh`), `GOH_TMPDIRS` (temp dirs the EXIT trap removes), `GOH_INDEX_VIEW` (the index export `goh_index_view` hands a whole-tree checker at `--staged`).

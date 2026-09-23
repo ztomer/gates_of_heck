@@ -7,17 +7,16 @@ GOH_MAX_LINES=500                 # file-length cap; unset disables the check
 # GOH_SWIFT_COV_MIN=95
 # GOH_MAX_SCRATCH_GB=25           # disk-hygiene ceiling (full runs only)
 
-# The skills-corpus gate, run from HERE because nothing else can. The corpus at
-# ~/.claude/skills is a global asset with no repo of its own, and this is the
-# repo that owns the checker -- so if it is not wired here it is wired nowhere,
-# and a gate nobody runs is indistinguishable from a gate that passes. That is
-# the exact class check_skills_corpus.py was written to catch, and it was true
-# of the checker itself until this line existed.
+# The skills-corpus gate over ~/.claude/skills, the corpus this repo's checker
+# exists for. It was wired here when that corpus had no repo of its own ("if it
+# is not wired here it is wired nowhere"). It now has one, gated by its own
+# pre-commit hook -- which, since 2026-09-23, checks the INDEX at --staged.
 #
-# NOTE the coupling this creates: a commit HERE can now fail because a file
-# under ~/.claude/skills is mid-edit. That is deliberate -- the alternative is a
-# corpus nothing ever checks -- but it is the reason a commit may go red for a
-# reason that has nothing to do with the diff.
+# The corpus is no part of any commit HERE, so pre-commit skips it by name
+# ("outside this repo ... NOT checked at --staged"): a violation there could
+# only ever be a false red on a gates_of_heck diff, and it was one -- other
+# sessions' unstaged skill edits blocked commits here. --full still reads it,
+# so a push here says when the machine's corpus is broken.
 GOH_SKILLS_CORPUS=1
 GOH_SKILLS_ROOT=$HOME/.claude/skills
 

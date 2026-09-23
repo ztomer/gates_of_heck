@@ -67,6 +67,7 @@ GOH_NAME=""
 GOH_LOG=""
 GOH_LOGS=""
 GOH_COMPLETED=""
+GOH_TMPDIRS=""
 
 # goh_init <gate-name>
 goh_init() {
@@ -93,6 +94,7 @@ goh_init() {
     trap '
         _goh_rc=$?
         for _l in $GOH_LOGS; do rm -f "$_l"; done
+        for _d in $GOH_TMPDIRS; do rm -rf "$_d"; done
         if [ "$_goh_rc" -eq 0 ] && [ "$GOH_COMPLETED" != "1" ]; then
             err "$GOH_NAME: exited 0 without completing — abnormal termination is never a pass"
             _goh_rc=1
@@ -160,6 +162,41 @@ goh_step_in() {
     else
         goh_step "$label" "$@"
     fi
+}
+
+# goh_index_view <dir>
+# Sets GOH_INDEX_VIEW to the version of <dir> a commit would record: the
+# INDEX, exported to a temp dir the EXIT trap removes. A whole-tree checker
+# handed the working tree at pre-commit scope judges files the commit does
+# not contain, and fails both ways: an unstaged edit elsewhere blocks a clean
+# commit, and a staged violation passes because its fix is merely unstaged
+# (~/.claude/skills, 2026-09-23: concurrent sessions' unstaged edits refused
+# a commit of three clean skills). Returns 1 when <dir> lies outside this
+# repo: the commit records nothing of it, so there is no index copy to read.
+goh_index_view() {
+    local dir="$1" top phys rel snap
+    GOH_INDEX_VIEW=""
+    top="$(cd "$GOH_REPO_ROOT" && pwd -P)" || die "$GOH_NAME: cannot resolve $GOH_REPO_ROOT"
+    phys="$(cd "$dir" && pwd -P)" || die "$GOH_NAME: cannot resolve $dir"
+    case "$phys/" in
+        "$top"/*) ;;
+        *) return 1 ;;
+    esac
+    rel="${phys#"$top"}"
+    rel="${rel#/}"
+    # Every step is checked by hand: callers use this in an `if`, where
+    # `set -e` is off, and an empty $snap would make the prefix `/`.
+    snap="$(mktemp -d "${TMPDIR:-/tmp}/goh-index.XXXXXX")" && [ -n "$snap" ] \
+        || die "$GOH_NAME: cannot create a temp dir for the index export"
+    GOH_TMPDIRS="${GOH_TMPDIRS:+$GOH_TMPDIRS }$snap"
+    if ! git -C "$top" ls-files -z -- "${rel:-.}" \
+            | git -C "$top" checkout-index -z --stdin --prefix="$snap/"; then
+        die "$GOH_NAME: could not export the index under ${rel:-.} — refusing to check the working tree in its place"
+    fi
+    GOH_INDEX_VIEW="$snap${rel:+/$rel}"
+    # A subtree with nothing staged is an EMPTY corpus, not a missing one:
+    # the checker's own floor then says so instead of a path error.
+    mkdir -p "$GOH_INDEX_VIEW" || die "$GOH_NAME: cannot create $GOH_INDEX_VIEW"
 }
 
 # goh_done — the ONLY way a gate earns exit 0 (see the trap in goh_init).

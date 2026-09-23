@@ -12,6 +12,7 @@ pub mod commands;
 pub mod emoji;
 pub mod gatesrc;
 pub mod gitutil;
+pub mod index_view;
 pub mod length;
 pub mod markers;
 pub mod platform;
@@ -155,7 +156,7 @@ fn run_structural(staged: bool, full: bool) -> i32 {
     if let Some(code) = steps::step_ceiling(&repo, &cfg, &checks) {
         return code;
     }
-    if let Some(code) = steps::step_corpus(&repo, &cfg, &checks) {
+    if let Some(code) = steps::step_corpus(&repo, &cfg, &checks, staged) {
         return code;
     }
     if let Some(code) = steps::step_shell(&repo, &cfg, &checks, staged) {

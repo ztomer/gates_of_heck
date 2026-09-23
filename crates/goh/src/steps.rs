@@ -175,6 +175,7 @@ pub fn step_corpus(
     repo: &std::path::Path,
     cfg: &gatesrc::Gatesrc,
     checks: &std::path::Path,
+    staged: bool,
 ) -> Option<i32> {
     // 5. Skills corpus (opt-in; the corpus may live outside the repo).
     if !cfg.skills_corpus {
@@ -188,20 +189,21 @@ pub fn step_corpus(
         eprintln!("⚠ skills corpus not present at {root} — NOT checked");
         return None;
     }
+    let view = match crate::index_view::IndexView::at_scope(repo, &root, staged) {
+        Ok(view) => view,
+        Err(outcome) => return outcome,
+    };
     let mut args = vec![
         "check_skills_corpus.py".to_owned(),
         "--root".to_owned(),
-        root,
+        view.root_arg(),
     ];
     if let Some(words) = &cfg.skills_max_words {
         args.push("--max-words".to_owned());
         args.push(words.clone());
     }
     let code = delegated(checks, repo, "skills corpus", "python3", &args);
-    if code != 0 {
-        return Some(code);
-    }
-    None
+    (code != 0).then_some(code)
 }
 
 #[must_use]
