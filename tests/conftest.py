@@ -334,3 +334,22 @@ def goh(tmp_path_factory) -> Path:
 def goh_build_count(tmp_path_factory, goh) -> int:
     """How many times this session built goh (after this worker's own fixture resolved)."""
     return len((_shared_tmp(tmp_path_factory) / GOH_BUILD_RECORD).read_text().splitlines())
+
+
+@pytest.fixture(autouse=True, scope="session")
+def _never_publish_the_live_goh():
+    """No test run may replace bin/goh.
+
+    bin/goh is every consumer repo's live structural gate. The install tests ran the real
+    install.sh, which built and published it from whatever the checkout held, so a test run
+    during goh development swapped every repo's gate for the work in progress (2026-09-23; the
+    publish guard in scripts/build-goh.sh made that visible by refusing). Subprocesses inherit
+    this; a test that passes its own `env=` builds into its own copy or sets it itself.
+    """
+    previous = os.environ.get("GOH_SKIP_BUILD")
+    os.environ["GOH_SKIP_BUILD"] = "1"
+    yield
+    if previous is None:
+        os.environ.pop("GOH_SKIP_BUILD", None)
+    else:
+        os.environ["GOH_SKIP_BUILD"] = previous

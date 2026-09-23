@@ -41,6 +41,27 @@ if [[ -n "${GOH_BUILD_GATE_ONLY:-}" ]]; then
   exit 0
 fi
 
+# PUBLISH GATE. bin/goh is not a dev artefact: it is the LIVE structural gate
+# of every repo whose hooks delegate here, the moment it lands. On 2026-09-23 a
+# port in progress was built into bin/goh from uncommitted sources, its staged
+# ceiling step was mid-edit, and ZoneWM's commits were refused for an hour by a
+# check that said a pattern matching 71 files matched none. Uncommitted goh
+# sources therefore build nowhere live: commit them, or try the dev build in ONE
+# repo through GOH_BIN. GOH_BUILD_DIRTY=1 publishes anyway, on purpose.
+# A tree that is not a git checkout (a tarball install) has nothing to compare.
+dirty="$(git -C "${PROJECT_ROOT}" status --porcelain -- crates Cargo.toml Cargo.lock 2>/dev/null || true)"
+if [[ -n "${dirty}" && -z "${GOH_BUILD_DIRTY:-}" ]]; then
+  echo "✗ refusing to publish bin/goh from uncommitted goh sources — every repo's hooks run it:" >&2
+  echo "${dirty}" | sed 's/^/    /' >&2
+  echo "  commit them, or build for one repo: cargo build --release -p goh, then GOH_BIN=<that binary>" >&2
+  echo "  (GOH_BUILD_DIRTY=1 publishes anyway)" >&2
+  exit 1
+fi
+if [[ -n "${GOH_BUILD_PUBLISH_CHECK_ONLY:-}" ]]; then
+  echo "publish ok"
+  exit 0
+fi
+
 echo "Building goh for ${OS}/${ARCH}…"
 cargo build --release --quiet --manifest-path "${PROJECT_ROOT}/Cargo.toml" -p goh
 
