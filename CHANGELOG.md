@@ -1,5 +1,29 @@
 # CHANGELOG
 
+## v0.13.2 — no process kill by name _(unreleased)_
+
+`checks/check_no_kill_by_name.py`, opt-in per repo with
+`GOH_NO_KILL_BY_NAME=1`, fails on a `pkill` or `killall` that matches by
+name, and on a `pgrep` or `pidof` that feeds a `kill`. A name matches
+processes the caller does not own. On 2026-09-23 zinc's T6 cleanup ran
+`pkill -9 -f camoufox` and SIGKILLed another session's Gemini browser in the
+middle of a reply, which stopped the necrohand campaign. Owner-scoped forms
+pass: `pkill -P`, `-g` and `-s`, and `killpg`. Comments, docstrings and prose
+are not kills.
+
+Survivors go in `kill_by_name_allow.json`: one exact line in one file each,
+with a reason and a status. `legitimate` is a decision. `unreviewed` is debt,
+and every run counts it. A stale entry fails.
+
+Seeded the same day in the seven repos without an active session: 52 entries
+covering 58 lines, in this repo, CadGoose2, ZeroThunder, necrohand, divoom-control,
+homebrew-tap and sys_updater. Surveyed but left to their owners: ZoneWM (8
+hits) and koffee_big (4 hits, a tree dirty with someone's work).
+
+The native pipeline delegates this step to the Python checker, as it does
+shell lint. Parity is pinned both ways, and GAF's canary proves the check
+bites.
+
 ## v0.13.1 — a gate over the working tree says when the tree moved under it _(unreleased)_
 
 A gate that builds and tests the WORKING tree certified whatever bytes sat

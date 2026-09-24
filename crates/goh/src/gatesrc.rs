@@ -29,6 +29,8 @@ pub struct Gatesrc {
     pub skills_corpus: bool,
     /// Hard-coded-home-path gate enabled (`GOH_NO_HOME_PATHS`).
     pub no_home_paths: bool,
+    /// Kill-by-name gate enabled (`GOH_NO_KILL_BY_NAME`).
+    pub no_kill_by_name: bool,
     /// Corpus root override (default: repo root).
     pub skills_root: Option<String>,
     /// Skills-corpus word cap.
@@ -149,6 +151,9 @@ pub fn from_pairs(pairs: &BTreeMap<String, String>) -> Result<Gatesrc, String> {
             .is_some_and(|v| !v.is_empty()),
         no_home_paths: pairs
             .get("GOH_NO_HOME_PATHS")
+            .is_some_and(|v| !v.is_empty()),
+        no_kill_by_name: pairs
+            .get("GOH_NO_KILL_BY_NAME")
             .is_some_and(|v| !v.is_empty()),
         skills_root: pairs.get("GOH_SKILLS_ROOT").cloned(),
         skills_max_words: pairs.get("GOH_SKILLS_MAX_WORDS").cloned(),

@@ -31,7 +31,8 @@
   "shell_lint": "game_asset_factory/tools/check_gate_canary.py -- shell lint: red on a violation, green on a clean tree",
   "probes_pass": "game_asset_factory/tools/check_gate_canary.py -- gate self-proofs still pass: red on a violation, green on a clean tree",
   "empty_scope": "game_asset_factory/tools/check_gate_canary.py -- every gate refuses to pass over an empty tree: red on a violation, green on a clean tree",
-  "no_home_paths": "game_asset_factory/tools/check_gate_canary.py -- no hard-coded home paths: red on `cd /Users/someone/Projects/thing`, green on `${THING_DIR:-$(dirname \"$0\")}` (2026-09-19, the day the gate landed)"
+  "no_home_paths": "game_asset_factory/tools/check_gate_canary.py -- no hard-coded home paths: red on `cd /Users/someone/Projects/thing`, green on `${THING_DIR:-$(dirname \"$0\")}` (2026-09-19, the day the gate landed)",
+  "no_kill_by_name": "game_asset_factory/tools/check_gate_canary.py -- no process kill by name: red on a violation, green on a clean tree"
  },
  "known_unproven": [
   "check_swift_coverage"

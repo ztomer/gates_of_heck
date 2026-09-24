@@ -235,6 +235,22 @@ if [ -n "${GOH_NO_HOME_PATHS:-}" ]; then
     fi
 fi
 
+# A process killed by NAME (pkill -f, killall, a pgrep feeding a kill) is
+# every process with that name, whoever owns it: zinc's test cleanup ran
+# `pkill -9 -f camoufox` and SIGKILLed another session's Gemini browser
+# (2026-09-23). Kill by pid, process group, or the tree below your own pid.
+# Opt in per repo with GOH_NO_KILL_BY_NAME=1 once kill_by_name_allow.json
+# holds today's survivors with reasons, the same rollout as home paths.
+if [ -n "${GOH_NO_KILL_BY_NAME:-}" ]; then
+    if [ "$SCOPE" = "--staged" ]; then
+        goh_step "no process kill by name (staged)" python3 "$CHECKS/check_no_kill_by_name.py" --staged \
+            ${GOH_EXCLUDE:+--exclude "$GOH_EXCLUDE"}
+    else
+        goh_step "no process kill by name" python3 "$CHECKS/check_no_kill_by_name.py" \
+            ${GOH_EXCLUDE:+--exclude "$GOH_EXCLUDE"}
+    fi
+fi
+
 # The companion question to the one below, and a different one: a self-proof shows a gate can
 # fail on a VIOLATION; this shows it does not report compliance when its subject is ABSENT. Three
 # factory gates had probes and still passed over an empty tree. Nobody edits a gate to break it --

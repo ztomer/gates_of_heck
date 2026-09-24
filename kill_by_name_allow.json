@@ -1,0 +1,58 @@
+{
+ "entries": [
+  {
+   "path": "checks/check_no_kill_by_name.py",
+   "line": "KILL_BY_NAME = re.compile(_WORD.format(\"(?:pkill|killall)\"))",
+   "status": "legitimate",
+   "reason": "the gate's own pattern; it matches kills and runs none"
+  },
+  {
+   "path": "checks/check_no_kill_by_name.py",
+   "line": "if m.group(0) == \"pkill\" and SCOPED.search(code[m.end():]):",
+   "status": "legitimate",
+   "reason": "the gate's own pattern; it matches kills and runs none"
+  },
+  {
+   "path": "tools/profiling/hotspot_profile.sh",
+   "line": "pkill -x \"CadGoose\" 2>/dev/null || true",
+   "status": "unreviewed",
+   "reason": "seeded 2026-09-23 when the gate landed (pkill matches by name); not yet reviewed"
+  },
+  {
+   "path": "tools/profiling/multi_goose_profile.sh",
+   "line": "pkill -x \"CadGoose\" 2>/dev/null || true",
+   "status": "unreviewed",
+   "reason": "seeded 2026-09-23 when the gate landed (pkill matches by name); not yet reviewed"
+  },
+  {
+   "path": "tools/profiling/run_multi_goose_test.sh",
+   "line": "pkill -9 CadGoose 2>/dev/null || true",
+   "status": "unreviewed",
+   "reason": "seeded 2026-09-23 when the gate landed (pkill matches by name); not yet reviewed"
+  },
+  {
+   "path": "tools/profiling/run_soak_test.sh",
+   "line": "pkill -9 CadGoose 2>/dev/null || true",
+   "status": "unreviewed",
+   "reason": "seeded 2026-09-23 when the gate landed (pkill matches by name); not yet reviewed"
+  },
+  {
+   "path": "tools/profiling/run_soak_test.sh",
+   "line": "pkill -9 -x CadGoose 2>/dev/null || true",
+   "status": "unreviewed",
+   "reason": "seeded 2026-09-23 when the gate landed (pkill matches by name); not yet reviewed"
+  },
+  {
+   "path": "tools/profiling/run_trail_test.sh",
+   "line": "pkill -x \"CadGoose\" 2>/dev/null || true",
+   "status": "unreviewed",
+   "reason": "seeded 2026-09-23 when the gate landed (pkill matches by name); not yet reviewed"
+  },
+  {
+   "path": "tools/release-kit/update_dev.sh",
+   "line": "pgrep -x \"$PROCESS_NAME\" >/dev/null 2>&1 && pkill -x \"$PROCESS_NAME\" || true",
+   "status": "unreviewed",
+   "reason": "seeded 2026-09-23 when the gate landed (pkill matches by name); not yet reviewed"
+  }
+ ]
+}

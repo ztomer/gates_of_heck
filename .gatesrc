@@ -18,6 +18,12 @@ GOH_MAX_LINES=500                 # file-length cap; unset disables the check
 # sessions' unstaged skill edits blocked commits here. --full still reads it,
 # so a push here says when the machine's corpus is broken.
 GOH_SKILLS_CORPUS=1
+
+# No process kill by name (check_no_kill_by_name.py). The CadGoose profiling
+# scripts and the release kit's update_dev.sh still kill by name; they are in
+# kill_by_name_allow.json as `unreviewed`, with the gate's own pattern as the
+# one `legitimate` entry.
+GOH_NO_KILL_BY_NAME=1
 GOH_SKILLS_ROOT=$HOME/.claude/skills
 
 # COVERAGE FLOOR for crates/goh: 95, the house floor. Measured 97.91% on

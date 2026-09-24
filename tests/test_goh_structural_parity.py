@@ -75,6 +75,12 @@ FULL_CASES: dict[str, dict[str, bytes]] = {
                       "NOTES.md": b"run from ~/Projects/x\n"},
     "home_path_green": {".gatesrc": b"GOH_MAX_LINES=10\nGOH_NO_HOME_PATHS=1\n",
                         "NOTES.md": b"run from the repo root\n"},
+    # The opt-in kill-by-name step, both outcomes. The command name is built
+    # from parts because that gate reads this file too.
+    "kill_by_name_red": {".gatesrc": b"GOH_MAX_LINES=10\nGOH_NO_KILL_BY_NAME=1\n",
+                         "run.py": b'import subprocess\nsubprocess.run(["p' b'kill", "-f", "helper"])\n'},
+    "kill_by_name_green": {".gatesrc": b"GOH_MAX_LINES=10\nGOH_NO_KILL_BY_NAME=1\n",
+                           "run.py": b"import os\nos.killpg(os.getpgid(0), 15)\n"},
     # The ceiling steps, every branch -- an exempt-over-cap file with and
     # without its ceiling, growth past the ceiling, and a dangling baseline.
     "ceiling_green": {".gatesrc": b"GOH_MAX_LINES=10\nGOH_LINE_EXCLUDE='a.py'\nGOH_LINE_BASELINE='base.txt'\n",
@@ -86,6 +92,13 @@ FULL_CASES: dict[str, dict[str, bytes]] = {
     "ceiling_missing": {".gatesrc": b"GOH_MAX_LINES=10\nGOH_LINE_EXCLUDE='a.py'\nGOH_LINE_BASELINE='missing.txt'\n",
                         "a.py": b"x = 1\n" * 15},
 }
+
+
+def test_the_kill_by_name_red_case_is_red_in_both_tiers(goh: Path, tmp_path: Path) -> None:
+    # Two tiers that both skip the step also "agree"; the red case must fail it.
+    repo = make_repo(tmp_path, FULL_CASES["kill_by_name_red"])
+    for rc, step in (run_goh(goh, repo, staged=False), run_bash(repo, staged=False)):
+        assert rc != 0 and step and "kill by name" in step, (rc, step)
 
 
 @pytest.mark.parametrize("name", sorted(FULL_CASES))

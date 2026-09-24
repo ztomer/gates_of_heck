@@ -310,6 +310,9 @@ fn run_structural(staged: bool, full: bool) -> i32 {
     if let Some(code) = steps::step_home_paths(&repo, &files, &cfg, staged) {
         return code;
     }
+    if let Some(code) = steps::step_kill_by_name(&repo, &cfg, &checks, staged) {
+        return code;
+    }
     if let Some(code) = steps::step_full_only(&repo, &checks, staged) {
         return code;
     }
