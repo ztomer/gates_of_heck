@@ -143,3 +143,18 @@ def test_gate_dirs_present_but_nothing_scannable_refuses(tmp_path):
     (root / "README.md").write_text("# no gates\n", encoding="utf-8")
     subprocess.run(["git", "-C", str(root), "add", "-A"], check=True, capture_output=True)
     assert gate.main(["--root", str(root)]) == 1
+
+
+def test_a_tools_dir_holding_only_other_scripts_is_nothing_to_prove(tmp_path):
+    """The installer writes `tools/gate.sh` into every repo. A `tools/` whose
+    tracked files are all something else is a repo with no gates of its
+    own, never a blind discovery -- refusing it blocked every such push."""
+    root = _git_repo(tmp_path)
+    (root / "tools").mkdir()
+    (root / "tools" / "gate.sh").write_text("#!/bin/sh\n", encoding="utf-8")
+    subprocess.run(["git", "-C", str(root), "add", "-A"], check=True, capture_output=True)
+    assert gate.main(["--root", str(root)]) == 0
+    # ...while an ignored check_*.py beside it is the harness's shape, and refuses.
+    (root / "tools" / "check_copy.py").write_text("x = 1\n", encoding="utf-8")
+    (root / ".gitignore").write_text("tools/check_copy.py\n", encoding="utf-8")
+    assert gate.main(["--root", str(root)]) == 1

@@ -117,6 +117,31 @@ def run_one(path, flag, cwd, timeout=TIMEOUT):
     return False, f"exit {result.returncode}\n" + "\n".join(f"    {line}" for line in detail)
 
 
+def blind(root, dirs=GATE_DIRS):
+    """True when discovery cannot see what a gate directory holds.
+
+    Two shapes: `check_*.py` on disk that git scope does not list (the
+    empty-tree harness's ignored copies), or a gate directory with nothing
+    in scope at all. A directory whose scoped files are all something else
+    -- `tools/gate.sh`, which the installer writes into every repo -- is a
+    repo with no gates of its own, not a blind discovery.
+    """
+    try:
+        scoped = set(listed_files(root, staged=False))
+    except Exception:
+        return any(os.path.isdir(os.path.join(root, name)) for name in dirs)
+    for name in dirs:
+        directory = os.path.join(root, name)
+        if not os.path.isdir(directory):
+            continue
+        if not any(path.startswith(name + "/") for path in scoped):
+            return True
+        on_disk = [e for e in os.listdir(directory) if e.startswith("check_") and e.endswith(".py")]
+        if any(os.path.join(name, e) not in scoped for e in on_disk):
+            return True
+    return False
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--list", action="store_true", help="name the probes, run nothing")
@@ -130,10 +155,11 @@ def main(argv=None):
     probes, total = discover(root)
 
     if total == 0:
-        if any(os.path.isdir(os.path.join(root, name)) for name in GATE_DIRS):
-            # Gate directories exist but nothing in them is scannable: the
-            # discovery convention has moved, or the files moved. Passing
-            # here would report the move as compliance.
+        if blind(root):
+            # A gate directory whose check_*.py are on disk but out of git
+            # scope, or which holds nothing in scope at all: the discovery
+            # convention has moved, or the files moved. Passing here would
+            # report the move as compliance.
             err("gate directories exist but no check_*.py is in git scope — "
                 "discovery is blind, refusing")
             return 1
