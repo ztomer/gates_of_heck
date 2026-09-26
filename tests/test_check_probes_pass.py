@@ -110,3 +110,36 @@ def test_the_gates_own_self_proof_passes():
         capture_output=True, text=True,
     )
     assert result.returncode == 0, result.stdout + result.stderr
+
+
+def _git_repo(path):
+    subprocess.run(["git", "init", "-q", str(path)], check=True, capture_output=True)
+    subprocess.run(["git", "-C", str(path), "config", "user.email", "t@t"], check=True,
+                   capture_output=True)
+    subprocess.run(["git", "-C", str(path), "config", "user.name", "t"], check=True,
+                   capture_output=True)
+    return path
+
+
+def test_ignored_copies_are_not_discovered(tmp_path):
+    """The empty-tree harness copies the gate directory to disk ignored for
+    baselines. listdir would do real work on those copies and report an
+    empty tree as proven; git scope must not see them."""
+    root = _git_repo(tmp_path)
+    checks = root / "checks"
+    checks.mkdir()
+    (checks / "check_copy.py").write_text(textwrap.dedent(PASSING).lstrip(), encoding="utf-8")
+    (root / ".gitignore").write_text("checks/\n", encoding="utf-8")
+    probes, total = gate.discover(str(root))
+    assert (probes, total) == ([], 0)
+
+
+def test_gate_dirs_present_but_nothing_scannable_refuses(tmp_path):
+    """checks/ exists yet yields zero scannable gates: the discovery
+    convention has moved, or the files moved. Passing would report the
+    move as compliance. A repo with no gate dirs at all still passes."""
+    root = _git_repo(tmp_path)
+    (root / "checks").mkdir()
+    (root / "README.md").write_text("# no gates\n", encoding="utf-8")
+    subprocess.run(["git", "-C", str(root), "add", "-A"], check=True, capture_output=True)
+    assert gate.main(["--root", str(root)]) == 1

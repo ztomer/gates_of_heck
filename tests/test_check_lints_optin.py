@@ -59,6 +59,28 @@ def test_a_workspace_with_no_policy_says_so_rather_than_passing_quietly(repo):
     assert "nothing to inherit" in r.stdout + r.stderr
 
 
+def test_no_manifests_at_all_refuses_rather_than_passing(repo):
+    """Zero Cargo.toml files is blindness, not a clean tree: the manifests
+    may have moved, and 'nothing to inherit' would report the move as
+    compliance. Manifests present but policy-less still passes (above)."""
+    write(repo, "README.md", "# no rust here\n")
+    commit_all(repo)
+    r = run_check(repo, SCRIPT)
+    assert r.returncode == 1, r.stdout
+    assert "no Cargo.toml found" in r.stdout + r.stderr
+
+
+def test_policy_with_no_member_manifests_refuses(repo):
+    """A workspace that declares a policy but whose members are all absent
+    is a hollow shape (the empty-tree harness copies the root manifest for
+    structure): zero inspected crates would read as full compliance."""
+    write(repo, "Cargo.toml", WS)
+    commit_all(repo)
+    r = run_check(repo, SCRIPT)
+    assert r.returncode == 1, r.stdout
+    assert "no member manifests exist" in r.stdout + r.stderr
+
+
 def test_excluded_members_are_not_policed(repo):
     write(repo, "Cargo.toml",
           '[workspace]\nmembers = ["a", "b"]\nexclude = ["b"]\n\n'

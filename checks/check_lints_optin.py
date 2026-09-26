@@ -54,16 +54,30 @@ def _entries(match) -> list[str]:
     return re.findall(r'"([^"]+)"', match.group(1))
 
 
-def audit(root: Path) -> tuple[list[str], int]:
-    """(findings, crates inspected) for every workspace under `root`."""
+def audit(root: Path) -> tuple[list[str], int, int, bool, int]:
+    """(findings, crates inspected, manifests seen, policy seen) for every
+    workspace under `root`.
+
+    The counts are the blindness guards: zero manifests means the scan found
+    no Rust at all, and policy-with-zero-members means the workspace is a
+    hollow shape (its members are absent) — both refuse, because both read
+    exactly like compliance. Manifests present but no policy is the
+    legitimate "nothing to inherit" state the test pins, as is a lone
+    package with no workspace at all.
+    """
     findings: list[str] = []
     inspected = 0
+    manifests = 0
+    members = 0
+    policy = False
     for manifest in sorted(root.rglob("Cargo.toml")):
         if "target" in manifest.parts or "references" in manifest.parts:
             continue
+        manifests += 1
         text = manifest.read_text(errors="replace")
         if not WORKSPACE_LINTS.search(text):
             continue
+        policy = True
         base = manifest.parent
         excluded = set(_entries(EXCLUDE.search(text)))
         for member in _entries(MEMBERS.search(text)):
@@ -72,6 +86,7 @@ def audit(root: Path) -> tuple[list[str], int]:
             member_manifest = base / member / "Cargo.toml"
             if not member_manifest.exists():
                 continue
+            members += 1
             inspected += 1
             body = member_manifest.read_text(errors="replace")
             if LINTS_WORKSPACE.search(body):
@@ -87,7 +102,7 @@ def audit(root: Path) -> tuple[list[str], int]:
                     f"{rel}: no [lints] table — this crate inherits NONE of the "
                     f"workspace's declared lints"
                 )
-    return findings, inspected
+    return findings, inspected, manifests, policy, members
 
 
 def main() -> int:
@@ -100,8 +115,22 @@ def main() -> int:
         return self_test()
 
     root = Path(repo_root())
-    findings, inspected = audit(root)
+    findings, inspected, manifests, policy, members = audit(root)
 
+    if manifests == 0:
+        # No Cargo.toml anywhere: the scan found no Rust, which reads
+        # exactly like the manifests having moved. Refuse — a pass here
+        # would retire this gate the day the workspace is renamed.
+        err("[lints_optin] no Cargo.toml found under the repo — nothing scanned, refusing")
+        return 1
+    if policy and members == 0:
+        # A workspace declares a lint policy but none of its members exist
+        # as files: the workspace is a hollow shape (the empty-tree harness
+        # copies the root manifest for structure), and zero inspected
+        # crates would read as full compliance. Refuse.
+        err("[lints_optin] workspace declares [workspace.lints] but no member "
+            "manifests exist — nothing inspected, refusing")
+        return 1
     if inspected == 0:
         # No workspace declares a lint policy. That is a real state, not a
         # silent pass: say which it is.
@@ -135,19 +164,19 @@ def self_test() -> int:
         (root / "b").mkdir()
         (root / "b" / "Cargo.toml").write_text('[package]\nname = "b"\n')
 
-        findings, inspected = audit(root)
+        findings, inspected, _manifests, _policy, _members = audit(root)
         assert inspected == 2, f"expected 2 members, saw {inspected}"
         assert len(findings) == 1, f"expected 1 finding, saw {findings}"
         assert "b/Cargo.toml" in findings[0], findings[0]
 
         # and clean once b opts in
         (root / "b" / "Cargo.toml").write_text('[package]\nname = "b"\n\n[lints]\nworkspace = true\n')
-        findings, inspected = audit(root)
+        findings, inspected, _manifests, _policy, _members = audit(root)
         assert not findings, findings
 
         # a workspace with no policy is reported as such, not as a pass
         (root / "Cargo.toml").write_text('[workspace]\nmembers = ["a", "b"]\n')
-        findings, inspected = audit(root)
+        findings, inspected, _manifests, _policy, _members = audit(root)
         assert inspected == 0 and not findings
 
     ok("[lints_optin] self-test passed")

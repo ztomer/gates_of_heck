@@ -157,10 +157,7 @@ pub(crate) fn audit_skill(ctx: &SkillCtx<'_>, name: &str, text: &str) -> SkillFi
 /// Reflinks are Markdown links by construction, so they still read the
 /// raw body, exactly like the reference.
 pub(crate) fn prose(scanner: &Scanner, body: &str) -> String {
-    let no_fences = scanner
-        .fenced
-        .replace_all(body, "")
-        .into_owned();
+    let no_fences = scanner.fenced.replace_all(body, "").into_owned();
     scanner.inline_code.replace_all(&no_fences, "").into_owned()
 }
 

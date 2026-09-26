@@ -396,8 +396,9 @@ mod tests {
         assert!(!outcome.out.contains("[[rules]]"), "{}", outcome.out);
     }
 
-        #[test]
-    fn duplicate_lessons_fire_structural_headings_do_not() {        let dir = tempfile::tempdir().expect("tempdir");
+    #[test]
+    fn duplicate_lessons_fire_structural_headings_do_not() {
+        let dir = tempfile::tempdir().expect("tempdir");
         let root = dir.path();
         let lesson = "## A pipeline swallows the exit code you are checking\n";
         skill(

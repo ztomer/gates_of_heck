@@ -86,15 +86,20 @@ pub struct Finding {
 
 /// Audit every workspace under `root`.
 ///
-/// Returns findings plus the inspected-member count. Mirrors `audit()`:
-/// manifests sorted, `target` and `references` trees skipped, members
-/// without a manifest skipped.
+/// Returns findings, the inspected-member count, the manifests seen,
+/// whether any policy was declared, and the member manifests seen.
+/// Mirrors `audit()`: the last three are the blindness guards — zero
+/// manifests, or policy with zero members, both refuse; manifests
+/// present but policy-less passes — exactly like the reference.
 ///
 /// Unreadable member manifests are skipped: the reference would raise an
 /// uncaught traceback there, which is a crash, not a verdict — no parity
 /// surface exists for corrupt trees.
 #[must_use]
-pub fn audit(scanner: &Scanner, root: &std::path::Path) -> (Vec<Finding>, usize) {
+pub fn audit(
+    scanner: &Scanner,
+    root: &std::path::Path,
+) -> (Vec<Finding>, usize, usize, bool, usize) {
     let mut manifests = Vec::new();
     let mut stack = vec![root.to_path_buf()];
     while let Some(dir) = stack.pop() {
@@ -113,6 +118,9 @@ pub fn audit(scanner: &Scanner, root: &std::path::Path) -> (Vec<Finding>, usize)
     manifests.sort();
     let mut findings = Vec::new();
     let mut inspected = 0;
+    let mut seen = 0;
+    let mut members = 0;
+    let mut policy = false;
     for manifest in manifests {
         if manifest
             .components()
@@ -120,10 +128,12 @@ pub fn audit(scanner: &Scanner, root: &std::path::Path) -> (Vec<Finding>, usize)
         {
             continue;
         }
+        seen += 1;
         let text = std::fs::read_to_string(&manifest).unwrap_or_default();
         if !scanner.workspace_lints.is_match(&text) {
             continue;
         }
+        policy = true;
         let base = manifest.parent().unwrap_or(root);
         let excluded: std::collections::BTreeSet<String> = scanner
             .entries(&text, &scanner.exclude)
@@ -137,6 +147,7 @@ pub fn audit(scanner: &Scanner, root: &std::path::Path) -> (Vec<Finding>, usize)
             if !member_manifest.is_file() {
                 continue;
             }
+            members += 1;
             inspected += 1;
             let body = std::fs::read_to_string(&member_manifest).unwrap_or_default();
             if scanner.lints_workspace.is_match(&body) {
@@ -152,13 +163,35 @@ pub fn audit(scanner: &Scanner, root: &std::path::Path) -> (Vec<Finding>, usize)
             });
         }
     }
-    (findings, inspected)
+    (findings, inspected, seen, policy, members)
 }
 
 /// Full violation block. Streams mirror the reference (`err` → stderr
 /// with ✗, `info` → stdout with →): `(ok, stdout_text, stderr_text)`.
 #[must_use]
-pub fn format_report(findings: &[Finding], inspected: usize) -> (bool, String, String) {
+pub fn format_report(
+    findings: &[Finding],
+    inspected: usize,
+    manifests: usize,
+    policy: bool,
+    members: usize,
+) -> (bool, String, String) {
+    if manifests == 0 {
+        return (
+            false,
+            String::new(),
+            "✗ [lints_optin] no Cargo.toml found under the repo — nothing scanned, refusing\n"
+                .to_owned(),
+        );
+    }
+    if policy && members == 0 {
+        return (
+            false,
+            String::new(),
+            "✗ [lints_optin] workspace declares [workspace.lints] but no member ".to_owned()
+                + "manifests exist — nothing inspected, refusing\n",
+        );
+    }
     if inspected == 0 {
         return (
             true,
@@ -231,7 +264,7 @@ mod tests {
             "[package]\nname = \"a\"\n\n[lints]\nworkspace = true\n",
         );
         write(root, "b/Cargo.toml", "[package]\nname = \"b\"\n");
-        let (findings, inspected) = audit(&scanner(), root);
+        let (findings, inspected, _manifests, _policy, _members) = audit(&scanner(), root);
         assert_eq!(inspected, 2);
         assert_eq!(findings.len(), 1);
         assert_eq!(findings[0].manifest, "b/Cargo.toml");
@@ -257,7 +290,7 @@ mod tests {
             "target/debug/Cargo.toml",
             "[workspace.lints.clippy]\nall = \"warn\"\n",
         );
-        let (findings, inspected) = audit(&scanner(), root);
+        let (findings, inspected, _manifests, _policy, _members) = audit(&scanner(), root);
         assert_eq!((findings.len(), inspected), (0, 1));
     }
 
@@ -267,9 +300,36 @@ mod tests {
         let root = dir.path();
         write(root, "Cargo.toml", "[workspace]\nmembers = [\"a\"]\n");
         write(root, "a/Cargo.toml", "[package]\nname = \"a\"\n");
-        let (findings, inspected) = audit(&scanner(), root);
+        let (findings, inspected, manifests, policy, members) = audit(&scanner(), root);
         assert_eq!((findings.len(), inspected), (0, 0));
-        let (ok, out, err) = format_report(&findings, inspected);
+        let (ok, out, err) = format_report(&findings, inspected, manifests, policy, members);
         assert!(ok && err.is_empty() && out.contains("nothing to inherit"));
+    }
+
+    #[test]
+    fn no_manifests_at_all_refuses() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let root = dir.path();
+        write(root, "README.md", "# no rust here\n");
+        let (findings, inspected, manifests, policy, members) = audit(&scanner(), root);
+        assert_eq!((findings.len(), inspected, manifests), (0, 0, 0));
+        let (ok, _out, err) = format_report(&findings, inspected, manifests, policy, members);
+        assert!(!ok && err.contains("no Cargo.toml found"));
+    }
+
+    #[test]
+    fn policy_with_no_member_manifests_refuses() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let root = dir.path();
+        write(
+            root,
+            "Cargo.toml",
+            "[workspace]\nmembers = [\"a\"]\n\n[workspace.lints.clippy]\nall = \"warn\"\n",
+        );
+        let (findings, inspected, manifests, policy, members) = audit(&scanner(), root);
+        assert_eq!((findings.len(), inspected, manifests), (0, 0, 1));
+        assert!(policy && members == 0);
+        let (ok, _out, err) = format_report(&findings, inspected, manifests, policy, members);
+        assert!(!ok && err.contains("no member manifests exist"));
     }
 }

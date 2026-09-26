@@ -362,8 +362,8 @@ pub fn run_lints() -> i32 {
             return 2;
         }
     };
-    let (findings, inspected) = lints::audit(&scanner, &root);
-    let (ok, out, err) = lints::format_report(&findings, inspected);
+    let (findings, inspected, manifests, policy, members) = lints::audit(&scanner, &root);
+    let (ok, out, err) = lints::format_report(&findings, inspected, manifests, policy, members);
     print!("{out}");
     eprint!("{err}");
     i32::from(!ok)

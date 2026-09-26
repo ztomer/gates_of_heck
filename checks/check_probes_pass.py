@@ -32,7 +32,7 @@ import subprocess
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from _gitutil import repo_root  # noqa: E402
+from _gitutil import listed_files, repo_root  # noqa: E402
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from tui.lib import err, info, ok, warn  # noqa: E402
@@ -70,7 +70,16 @@ def discover(root, dirs=GATE_DIRS):
     Returns the total too, because "no probes" and "no gates" are different facts and the caller
     must be able to tell them apart -- the first is a repo with work to do, the second is a
     discovery convention that has moved out from under this check.
+
+    Discovery reads the git scope (tracked plus untracked-unignored), never
+    the bare directory: the empty-tree harness copies the gate directory to
+    disk ignored for baselines, and `os.listdir` would do real work on those
+    copies and report an empty tree as proven.
     """
+    try:
+        scoped = set(listed_files(root, staged=False))
+    except Exception:
+        scoped = None
     found, total = [], 0
     for name in dirs:
         directory = os.path.join(root, name)
@@ -78,6 +87,8 @@ def discover(root, dirs=GATE_DIRS):
             continue
         for entry in sorted(os.listdir(directory)):
             if not (entry.startswith("check_") and entry.endswith(".py")):
+                continue
+            if scoped is not None and os.path.join(name, entry) not in scoped:
                 continue
             path = os.path.join(directory, entry)
             total += 1
@@ -119,6 +130,13 @@ def main(argv=None):
     probes, total = discover(root)
 
     if total == 0:
+        if any(os.path.isdir(os.path.join(root, name)) for name in GATE_DIRS):
+            # Gate directories exist but nothing in them is scannable: the
+            # discovery convention has moved, or the files moved. Passing
+            # here would report the move as compliance.
+            err("gate directories exist but no check_*.py is in git scope — "
+                "discovery is blind, refusing")
+            return 1
         # Not a failure: plenty of repos carry no gates of their own. Saying so is the point --
         # a silent pass here is indistinguishable from a pass over a directory that moved.
         info("no check_*.py gates in this repo; nothing to prove")
