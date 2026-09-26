@@ -33,6 +33,11 @@ const FM_NAME: &str = r"(?m)^name:\s*(\S+)\s*$";
 const FM_DESC: &str = r"(?m)^description:\s*\S";
 /// Cross-skill links. Mirrors `WIKILINK`.
 const WIKILINK: &str = r"\[\[([A-Za-z0-9_\-]+)\]\]";
+/// Fenced code blocks, stripped before wikilink matching. Mirrors `FENCED`.
+const FENCED: &str = r"```(?s:.*?)```";
+/// Inline code spans, stripped before wikilink matching. Mirrors
+/// `INLINE_CODE`. Single-line by construction, like the reference.
+const INLINE_CODE: &str = r"`[^`\n]*`";
 /// Reference-file links. Mirrors `REFLINK`.
 const REFLINK: &str = r"\]\((references/[^)]+\.md)\)";
 /// Section headings. Mirrors `SECTION`.
@@ -55,6 +60,10 @@ pub struct Scanner {
     pub(crate) fm_desc: regex::Regex,
     /// Cross-skill links.
     pub(crate) wikilink: regex::Regex,
+    /// Fenced code blocks (removed before wikilink matching).
+    pub(crate) fenced: regex::Regex,
+    /// Inline code spans (removed before wikilink matching).
+    pub(crate) inline_code: regex::Regex,
     /// Reference-file links.
     pub(crate) reflink: regex::Regex,
     /// Section headings.
@@ -76,6 +85,8 @@ impl Scanner {
             fm_name: one(FM_NAME)?,
             fm_desc: one(FM_DESC)?,
             wikilink: one(WIKILINK)?,
+            fenced: one(FENCED)?,
+            inline_code: one(INLINE_CODE)?,
             reflink: one(REFLINK)?,
             section: one(SECTION)?,
         })
@@ -340,8 +351,53 @@ mod tests {
     }
 
     #[test]
-    fn duplicate_lessons_fire_structural_headings_do_not() {
+    fn bracketed_literal_in_code_is_not_a_wikilink() {
+        // TOML writes array-of-tables as [[rules]]; in backticks that is a
+        // literal config name, not a cross-skill pointer. Mirrors the
+        // Python `test_a_bracketed_literal_in_code_is_not_a_wikilink`.
         let dir = tempfile::tempdir().expect("tempdir");
+        let root = dir.path();
+        skill(
+            root,
+            "one",
+            &format!(
+                "{}\nthe `[[rules]]` table promised every param\n",
+                minimal("one")
+            ),
+        );
+        skill(root, "two", &minimal("two"));
+        let outcome = audit(&scanner(), root, &inputs(root));
+        assert_eq!(outcome.code, 0, "{}", outcome.out);
+    }
+
+    #[test]
+    fn dead_wikilink_in_prose_still_fails_beside_a_literal() {
+        // The exemption is narrow: backticks only. A real dead pointer in
+        // the same file must still bite. Mirrors the Python
+        // `test_a_dead_wikilink_in_prose_still_fails_beside_a_literal`.
+        let dir = tempfile::tempdir().expect("tempdir");
+        let root = dir.path();
+        skill(
+            root,
+            "one",
+            &format!(
+                "{}\nthe `[[rules]]` table, see also [[ghost-skill]]\n",
+                minimal("one")
+            ),
+        );
+        skill(root, "two", &minimal("two"));
+        let outcome = audit(&scanner(), root, &inputs(root));
+        assert_eq!(outcome.code, 1, "{}", outcome.out);
+        assert!(
+            outcome.out.contains("[[ghost-skill]] matches no skill"),
+            "{}",
+            outcome.out
+        );
+        assert!(!outcome.out.contains("[[rules]]"), "{}", outcome.out);
+    }
+
+        #[test]
+    fn duplicate_lessons_fire_structural_headings_do_not() {        let dir = tempfile::tempdir().expect("tempdir");
         let root = dir.path();
         let lesson = "## A pipeline swallows the exit code you are checking\n";
         skill(

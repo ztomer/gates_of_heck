@@ -86,6 +86,25 @@ def test_a_wikilink_to_a_real_skill_passes(corpus):
     assert _run(corpus).returncode == 0
 
 
+def test_a_bracketed_literal_in_code_is_not_a_wikilink(corpus):
+    # TOML writes array-of-tables as [[rules]]; in backticks that is a literal
+    # config name, not a cross-skill pointer, and must not fail.
+    write(corpus, "skill-1/SKILL.md", GOOD.format(name="skill-1") +
+          "\nthe `[[rules]]` table promised every param\n")
+    assert _run(corpus).returncode == 0
+
+
+def test_a_dead_wikilink_in_prose_still_fails_beside_a_literal(corpus):
+    # The exemption is narrow: backticks only. A real dead pointer in the same
+    # file must still bite, or the exemption is a hole.
+    write(corpus, "skill-1/SKILL.md", GOOD.format(name="skill-1") +
+          "\nthe `[[rules]]` table, see also [[ghost-skill]]\n")
+    r = _run(corpus)
+    assert r.returncode == 1
+    assert "[[ghost-skill]] matches no skill" in r.stdout
+    assert "[[rules]]" not in r.stdout
+
+
 def test_a_dead_reference_link_fails(corpus):
     write(corpus, "skill-1/SKILL.md", GOOD.format(name="skill-1") + "\n[x](references/gone.md)\n")
     r = _run(corpus)

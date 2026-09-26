@@ -48,6 +48,21 @@ FM_DESC = re.compile(r"^description:\s*\S", re.M)
 WIKILINK = re.compile(r"\[\[([A-Za-z0-9_\-]+)\]\]")
 REFLINK = re.compile(r"\]\((references/[^)]+\.md)\)")
 SECTION = re.compile(r"^##\s+(.+?)\s*$", re.M)
+FENCED = re.compile(r"```.*?```", re.S)
+INLINE_CODE = re.compile(r"`[^`\n]*`")
+
+
+def _prose(body: str) -> str:
+    """Wikilinks live in prose, not in literals.
+
+    A `[[table]]` in backticks is a literal — TOML writes array-of-tables
+    exactly that way — and a fenced block is a quotation. Matching either as a
+    cross-skill pointer turned a case study's config names into two dead-link
+    failures that no edit to the skills could honestly fix (the notation was
+    correct). Strip both before matching; a real [[pointer]] in prose still
+    fails, which the corpus test proves.
+    """
+    return INLINE_CODE.sub("", FENCED.sub("", body))
 
 # Structural headings (Related, Checklist, The move, Anti-patterns...) recur by
 # design — they are the corpus's shared skeleton, and flagging them is how a
@@ -144,7 +159,7 @@ def check_corpus(root, max_words, min_skills, baseline_path, update=False):
             if md != f:
                 files_read += 1
             here = f"{d.name}/{md.relative_to(d)}"
-            for target in set(WIKILINK.findall(body)):
+            for target in set(WIKILINK.findall(_prose(body))):
                 if target not in names:
                     _fail(f"{here}: [[{target}]] matches no skill")
                     violations += 1

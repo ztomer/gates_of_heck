@@ -148,6 +148,22 @@ pub(crate) fn audit_skill(ctx: &SkillCtx<'_>, name: &str, text: &str) -> SkillFi
     skill
 }
 
+/// Wikilinks live in prose, not in literals. Mirrors `_prose`.
+///
+/// A `[[table]]` in backticks is a literal — TOML writes array-of-tables
+/// exactly that way — and a fenced block is a quotation. Matching either
+/// as a cross-skill pointer turned a case study's config names into two
+/// dead-link failures that no edit to the skills could honestly fix.
+/// Reflinks are Markdown links by construction, so they still read the
+/// raw body, exactly like the reference.
+pub(crate) fn prose(scanner: &Scanner, body: &str) -> String {
+    let no_fences = scanner
+        .fenced
+        .replace_all(body, "")
+        .into_owned();
+    scanner.inline_code.replace_all(&no_fences, "").into_owned()
+}
+
 /// Cross-skill and reference-file links for one document, wikilinks
 /// deduped per file like the reference's `set(findall)`.
 pub(crate) fn audit_links(
@@ -159,9 +175,10 @@ pub(crate) fn audit_links(
     body: &str,
     lines: &mut Vec<String>,
 ) {
+    let text = prose(scanner, body);
     let targets: BTreeSet<&str> = scanner
         .wikilink
-        .captures_iter(body)
+        .captures_iter(&text)
         .map(|c| c.get(1).map_or("", |m| m.as_str()))
         .collect();
     for target in targets {
