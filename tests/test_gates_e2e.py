@@ -78,6 +78,16 @@ def test_swift_cold_build_default_is_on():
     assert 'xcode-dd' in text  # cold wipe covers the pinned xcode DD too
 
 
+def test_swift_xcode_mode_judges_warnings():
+    # Stated-vs-implemented pin: the header promises no compiler warnings in
+    # BOTH modes. Xcode mode shipped a bare `xcodebuild test` that enforced
+    # none, and koffee_oss carried twelve warnings through it (2026-09-26).
+    text = (REPO_ROOT / "gates" / "swift_gate.sh").read_text()
+    xcode = text[text.index("  xcode)"):text.index("  *) die")]
+    assert "check_swift_warnings.py" in xcode
+    assert "-warnings-as-errors" in text[text.index("  spm)"):text.index("  xcode)")]
+
+
 def test_explicit_full_flag_reaches_no_checker(repo):
     # Caught by the first real pre-push run: --full was forwarded verbatim to
     # checkers whose argparse rejects it. Only --staged is a checker scope.

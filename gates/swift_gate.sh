@@ -2,7 +2,8 @@
 # swift_gate.sh — the Swift gates every house Swift project must pass.
 #
 #   1. swiftlint --strict      (warnings are errors)
-#   2. build with warnings-as-errors
+#   2. no compiler warnings: spm builds with -warnings-as-errors; xcode mode
+#      judges the xcodebuild log with checks/check_swift_warnings.py
 #   3. test, with a coverage floor
 #
 # WARNINGS ARE ERRORS, AND THE BUILD MUST BE COLD. An incremental build reports
@@ -24,6 +25,9 @@
 #   GOH_SWIFT_SCHEME=Foo       required for xcode mode
 #   GOH_SWIFT_PROJECT=Foo.xcodeproj
 #   GOH_SWIFT_COV_MIN=95
+#   GOH_SWIFT_WARN_DIRS=App,AppTests   xcode mode: the first-party dirs whose
+#       warnings fail the gate. Default: the top-level dirs of git-tracked
+#       *.swift files (so an untracked DerivedData checkout never counts).
 #   GOH_SWIFT_COLD=1     # default: 1 — set to 0 to allow incremental builds
 #   GOH_SWIFT_COV_FLOORS=path/to/coverage-floors.json
 #       per-TARGET floors, checked before the package floor. Same schema as
@@ -160,6 +164,21 @@ case "$MODE" in
     goh_step "xcodebuild test (-scheme $GOH_SWIFT_SCHEME)" \
         xcodebuild test -project "$proj" -scheme "$GOH_SWIFT_SCHEME" \
         -derivedDataPath "$dd" -enableCodeCoverage YES
+    # NO WARNINGS, judged from what the compiler said. This mode used to run the
+    # bare `xcodebuild test` above and enforce nothing, under a header promising
+    # warnings-as-errors: koffee_oss carried twelve, four of them Swift 6
+    # actor-isolation warnings, through every green gate (2026-09-26). The
+    # project's SWIFT_TREAT_WARNINGS_AS_ERRORS is not enough either: koffee_big
+    # met a warning class that setting does not promote (2026-09-25). The log is
+    # the test step's, so this reads the build that was just run (cold unless
+    # GOH_SWIFT_COLD=0, and then only what it recompiled).
+    xcode_log="$dd/xcodebuild-test.log"
+    mkdir -p "$dd"   # xcodebuild makes it, but the log must land even when it did not
+    cp "$GOH_LOG" "$xcode_log"
+    warn_dirs="${GOH_SWIFT_WARN_DIRS:-$(git ls-files '*.swift' | awk -F/ 'NF > 1 { print $1 }' | sort -u | paste -sd, -)}"
+    [ -n "$warn_dirs" ] || die "no first-party Swift dirs to judge for warnings; set GOH_SWIFT_WARN_DIRS"
+    goh_step "no compiler warnings in $warn_dirs" \
+        python3 "$HERE/../checks/check_swift_warnings.py" --log "$xcode_log" --dirs "$warn_dirs"
     if [ -n "${GOH_SWIFT_COV_MIN:-}" ]; then
         _cov_args=(--min "$GOH_SWIFT_COV_MIN" --xcode --dd "$dd")
         if [ -n "${GOH_SWIFT_COV_FLOORS:-}" ]; then
