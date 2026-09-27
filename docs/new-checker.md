@@ -16,13 +16,18 @@ Helpers live in `tests/conftest.py`: `repo` fixture (throwaway git repo),
 `run_gate` (gate script, `cwd=repo`).
 
 * Build disallowed content with `chr(0x...)`, never as a literal — else
-  this repo's own emoji gate trips on your test (see `conftest.py:1-28`).
+  this repo's own emoji gate trips on your test (see the glyph constants
+  at the top of `conftest.py`).
 * Prove the test red BOTH directions: (a) violating fixture fails with
   the violation named as `file:line:`; (b) clean fixture passes. Break
   the code once and watch it go red before trusting green.
 * If the checker has a `--staged` mode, test staged-vs-worktree: stage
   the violation, dirty the worktree differently, assert the checker
   reports the INDEX via `checks/_gitutil.py` (`git show :path`).
+* A checker (or its `--probe`) that builds its OWN repo — a skeleton, a
+  fixture — runs every git call on it, and every process inside it, with
+  `_gitutil.foreign_repo_env()`. Inheriting a linked worktree hook's
+  `GIT_DIR` re-initialises the real repo (contract #12).
 
 ## 3. Implement the checker
 

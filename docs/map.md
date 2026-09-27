@@ -49,7 +49,7 @@ logic goes in the engine; new floor/CLI semantics go in `coverage_gate.sh`.
 | `check_baseline_ratchet.py` | Shrink-only ceilings (JSON or line baselines). | `test_check_baseline_ratchet.py` |
 | `check_generated_fresh.py` | Artifact freshness: regenerate to sandbox, hash-compare. | `test_check_generated_fresh.py` |
 | `check_tests_registered.py` | Every test source must be registered in a build block. | `test_test_registration.py` |
-| `_gitutil.py` | Lib: repo root, NUL-delimited file lists, index bytes via `git show :path`. | `test_gitutil_paths.py` |
+| `_gitutil.py` | Lib: repo root, NUL-delimited file lists, index bytes via `git show :path`, `foreign_repo_env()` for git on any repo but the gated one. | `test_gitutil_paths.py`, `test_hook_git_env.py` |
 
 ## Lib (`lib/`)
 

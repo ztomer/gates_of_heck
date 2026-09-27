@@ -49,6 +49,9 @@ Details: `docs/map.md`.
   Unsupported OS/arch is a hard failure, never a warn-and-build fallback.
 * Staged checks read the git index (`git show :path` via `checks/_gitutil.py`),
   not the worktree.
+* Git on any OTHER repo (fixture, skeleton, export) drops the hook's `GIT_*`
+  variables: `_gitutil.foreign_repo_env()` / `goh_testkit::git_command()`.
+  Contract #12 in `docs/contracts.md`.
 * Fail fast, print the failing output (that is what `_common.sh` exists for).
 * Config: all `GOH_*` keys documented in `docs/config.md` + `.gatesrc.example`.
   Adding a key without documenting it fails `test_config_schema_covers_keys`.
