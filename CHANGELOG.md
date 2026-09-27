@@ -1,6 +1,48 @@
 # CHANGELOG
 
-## v0.13.2 — no process kill by name _(unreleased)_
+## v0.13.3 — a hook's GIT_DIR never reaches git run on another repository _(2026-09-27)_
+
+Git hands a hook `GIT_DIR` (pre-commit also `GIT_INDEX_FILE`). Under a
+LINKED worktree `GIT_DIR` is absolute, so a checker that ran `git init` on a
+scratch repo inherited it and re-initialised THE REAL REPOSITORY instead —
+and with `extensions.worktreeConfig` on, wrote `core.bare = true` into the
+shared config. Every checkout of that repo then died with `fatal: this
+operation must be run in a work tree` (zinc, 2026-09-27). These gates run
+inside every consumer's hooks, so one miss flips any repo, in every worktree at
+once, from a command that looked like it was building a fixture.
+
+Git on the repo BEING gated keeps the variables — `GIT_INDEX_FILE` names the
+index being committed, which is exactly the tree to police. Git on any OTHER
+repo, and every process run inside one, now drops git's own list from `git
+rev-parse --local-env-vars`, never a hand-kept copy (the one in `_proven.sh`
+had drifted to 7 of git's 15): `checks/_gitutil.py`'s `foreign_repo_env()`,
+used by `check_empty_scope` for the skeleton's init/config/add/commit AND for
+the sweep whose gates otherwise measured the real tree, and by
+`check_probes_pass` for every `--probe`; `gates/push_gate.sh`, whose export ran
+with the pushing worktree's `GIT_DIR`; `gates/_proven.sh`; `goh-testkit`'s
+`git_command()`/`git_in()`, which replace four hand-rolled unscrubbed test
+helpers; and `tests/conftest.py`, at import, before any fixture.
+
+Pinned by `tests/test_hook_git_env.py` and
+`crates/goh-testkit/tests/hook_git_env.rs`: a scratch main, a linked worktree
+and worktreeConfig on, with `test_the_fixture_reproduces_the_class` asserting
+the raw inheritance really does flip `core.bare` — so a passing test cannot be
+the harness being vacuous. Each route was red-proven by removing its own scrub.
+Two proofs were blind at first (`--show-toplevel` answers the cwd under a
+leaked `GIT_DIR`; the sweep's 100-char echo cut both paths before they
+differed), and a census test pins every `Command::new("git")` in `crates/` so a
+new unscrubbed fixture helper fails. Contract #12 in `docs/contracts.md`.
+
+**If a repo of yours ever printed `must be run in a work tree`, check it:**
+`git config --file "$(git rev-parse --git-common-dir)/config" --get core.bare`
+answers `true` for the residue, and the same command with `--unset core.bare`
+repairs every linked worktree at once (reproduced and repaired on a scratch
+repo for these notes; `git status` fails before, succeeds after).
+
+This release also ships the four stanzas below, which were written but never
+tagged: v0.12.6, v0.13.0 (the Rust port), v0.13.1 and v0.13.2.
+
+## v0.13.2 — no process kill by name _(2026-09-27)_
 
 `checks/check_no_kill_by_name.py`, opt-in per repo with
 `GOH_NO_KILL_BY_NAME=1`, fails on a `pkill` or `killall` that matches by
@@ -24,7 +66,7 @@ The native pipeline delegates this step to the Python checker, as it does
 shell lint. Parity is pinned both ways, and GAF's canary proves the check
 bites.
 
-## v0.13.1 — a gate over the working tree says when the tree moved under it _(unreleased)_
+## v0.13.1 — a gate over the working tree says when the tree moved under it _(2026-09-27)_
 
 A gate that builds and tests the WORKING tree certified whatever bytes sat
 there while it ran: an edit mid-run killed ZoneWM's `make verify` with
@@ -39,7 +81,7 @@ edit elsewhere is not theirs to refuse. Tool caches (`__pycache__`,
 output, never a move -- found by this repo's own py and rust gate tests.
 Consumers with their own runner call the CLI (ZoneWM's `make verify`).
 
-## v0.13.0 — the Rust port: native layer 1, bit-exact golden, one resolver _(unreleased)_
+## v0.13.0 — the Rust port: native layer 1, bit-exact golden, one resolver _(2026-09-27)_
 
 Every checker a shared gate runs is now native (`goh`) with the Python
 checker as its parity-pinned fallback: home-paths, ceiling + ratchet,
@@ -53,7 +95,7 @@ resolution. `scripts/build-goh.sh` never publishes `bin/goh` from
 uncommitted goh sources (`GOH_BUILD_DIRTY=1` to override), and no test run
 can publish it. Plan retired: `git show 15004a5:docs/rust-port-plan.md`.
 
-## v0.12.6 — a hook from an older stock is pristine, not "locally modified" _(unreleased)_
+## v0.12.6 — a hook from an older stock is pristine, not "locally modified" _(2026-09-27)_
 
 `install.sh` refused to update three repos whose hooks had never been
 touched: they were on the previous stock hook, installed before the
@@ -64,7 +106,7 @@ without `--force`. Found the day v0.12.3's pre-commit change (route
 through `tools/gate.sh --staged`) needed to reach every repo -- until it
 did, every staged language layer was decorative at commit time there.
 
-## v0.12.5 — a failed coverage export shows its own output _(unreleased)_
+## v0.12.5 — a failed coverage export shows its own output _(2026-09-21)_
 
 `coverage_gate.sh --lang rust` sent every `cargo llvm-cov` export to
 `/dev/null`. When one failed -- monitor's `local_agent_test`, once, at
