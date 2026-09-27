@@ -45,6 +45,7 @@ logic goes in the engine; new floor/CLI semantics go in `coverage_gate.sh`.
 | `check_no_screen_presentation.py` | Static half: test sources must not ask for screen APIs. | `test_screen_presentation.py` |
 | `check_no_screen_linkage.sh` | Dynamic half: `nm -u` on built test binary must not import screen symbols. | `test_screen_linkage.py` |
 | `check_swift_coverage.py` | Legacy helper for `swift_gate.sh` (SPM codecov JSON + xcresult walk). | `test_swift_coverage.py` |
+| `check_swift_warnings.py` | One `swift build --build-tests`; any warning in the repo's own dirs fails, colours and OSC 8 hyperlinks stripped first (for repos that judge build output instead of `-warnings-as-errors`). | `test_check_swift_warnings.py` |
 | `check_baseline_ratchet.py` | Shrink-only ceilings (JSON or line baselines). | `test_check_baseline_ratchet.py` |
 | `check_generated_fresh.py` | Artifact freshness: regenerate to sandbox, hash-compare. | `test_check_generated_fresh.py` |
 | `check_tests_registered.py` | Every test source must be registered in a build block. | `test_test_registration.py` |
