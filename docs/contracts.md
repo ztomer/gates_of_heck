@@ -99,3 +99,19 @@ the same trust already extended to hooks and `tools/gate.sh`), which is
 why this is a documented posture, not a ticket. If gates ever run
 against untrusted checkouts, replace sourcing with a KV parser first.
 Pin: this paragraph (no test can prove a negative trust boundary).
+
+## 12. A hook's repository variables never reach a FOREIGN repo's git
+
+A hook exports `GIT_DIR`/`GIT_INDEX_FILE`; under a linked worktree
+`GIT_DIR` is absolute, so an inheriting `git init <tmp>` re-initialises
+the REAL repo and writes `core.bare = true` into its shared config
+(zinc, 2026-09-27). Every git call on a skeleton, fixture or export —
+and every process run inside one — drops git's own list
+(`git rev-parse --local-env-vars`): `_gitutil.foreign_repo_env` in
+Python (`check_empty_scope`, `check_probes_pass`), `unset $(git
+rev-parse --local-env-vars)` in shell (`push_gate.sh`, `_proven.sh`),
+`goh_testkit::git_command`/`git_in`/`goh_at` in Rust, and
+`tests/conftest.py` at import. Never used for the repo being gated:
+there `GIT_INDEX_FILE` names the index being committed.
+Pin: `tests/test_hook_git_env.py`,
+`crates/goh-testkit/tests/hook_git_env.rs`.

@@ -60,10 +60,12 @@ EOF
 }
 
 # _proven_goh_git <dir> <git args...> — git on a gates_of_heck checkout, hook variables stripped.
+# The list is git's own (`--local-env-vars`, what it clears entering a submodule), never a copy:
+# the hand-kept one this replaced had drifted to 7 of git's 15.
 _proven_goh_git() {
     (
-        unset GIT_DIR GIT_INDEX_FILE GIT_WORK_TREE GIT_OBJECT_DIRECTORY GIT_COMMON_DIR \
-            GIT_ALTERNATE_OBJECT_DIRECTORIES GIT_PREFIX
+        # shellcheck disable=SC2046  # word-splitting the name list is the point
+        unset $(git rev-parse --local-env-vars)
         git -C "$@"
     )
 }

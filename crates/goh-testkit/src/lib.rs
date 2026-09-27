@@ -9,6 +9,74 @@
 //! attribute anywhere (the house refuses `#[allow]` and `#[expect]`).
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::sync::OnceLock;
+
+/// The variables that bind a git process to ONE repository.
+///
+/// As git itself lists them (`git rev-parse --local-env-vars`: what git
+/// clears entering a submodule). Asked of git, never copied, so a variable a
+/// future git adds is covered the day it ships. Empty only if git cannot run
+/// at all - and then every fixture's git fails loudly anyway.
+#[must_use]
+pub fn local_env_vars() -> &'static [String] {
+    static VARS: OnceLock<Vec<String>> = OnceLock::new();
+    VARS.get_or_init(|| {
+        Command::new("git")
+            .args(["rev-parse", "--local-env-vars"])
+            .output()
+            .map(|o| {
+                String::from_utf8_lossy(&o.stdout)
+                    .split_whitespace()
+                    .map(str::to_owned)
+                    .collect()
+            })
+            .unwrap_or_default()
+    })
+}
+
+/// Drop the repository-binding variables from `cmd`'s environment, whether
+/// inherited or set on it earlier.
+///
+/// A git hook exports `GIT_DIR` (and `GIT_INDEX_FILE`); under a LINKED
+/// worktree `GIT_DIR` is `<main>/.git/worktrees/<name>`, absolute, so a
+/// fixture's `git init <tmp>` inheriting it RE-INITIALISES THE REAL
+/// REPOSITORY and writes `core.bare = true` into its shared config (zinc,
+/// 2026-09-27); a fixture's `config`/`add`/`commit` land there too.
+pub fn scrub_repo_env(cmd: &mut Command) -> &mut Command {
+    for name in local_env_vars() {
+        cmd.env_remove(name);
+    }
+    cmd
+}
+
+/// `git` for a FIXTURE repo: the one way test code spawns git. Not for the
+/// goh binary's own git calls, which honour the hook's variables on purpose
+/// (staged mode reads the index being committed).
+#[must_use]
+pub fn git_command() -> Command {
+    let mut cmd = Command::new("git");
+    scrub_repo_env(&mut cmd);
+    cmd
+}
+
+/// `git ARGS` in `dir` via [`git_command`], output discarded.
+///
+/// # Errors
+/// git could not run, or exited non-zero.
+pub fn git_in(dir: &Path, args: &[&str]) -> Result<(), String> {
+    let st = git_command()
+        .args(args)
+        .current_dir(dir)
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status()
+        .map_err(|e| format!("git {args:?}: {e}"))?;
+    if st.success() {
+        Ok(())
+    } else {
+        Err(format!("git {args:?} failed: {st}"))
+    }
+}
 
 /// The character with this codepoint, as a `String` ready to concatenate.
 #[must_use]
@@ -72,18 +140,7 @@ impl Repo {
     /// # Errors
     /// git could not run, or exited non-zero.
     pub fn git(&self, args: &[&str]) -> Result<(), String> {
-        let st = Command::new("git")
-            .args(args)
-            .current_dir(self.dir.path())
-            .stdout(std::process::Stdio::null())
-            .stderr(std::process::Stdio::null())
-            .status()
-            .map_err(|e| format!("git {args:?}: {e}"))?;
-        if st.success() {
-            Ok(())
-        } else {
-            Err(format!("git {args:?} failed: {st}"))
-        }
+        git_in(self.dir.path(), args)
     }
 }
 
@@ -128,6 +185,10 @@ pub fn goh_at(
     envs: &[(&str, &str)],
 ) -> std::io::Result<Out> {
     let mut cmd = Command::new(bin);
+    // The binary runs git in the FIXTURE: the hook's repository variables
+    // would point it at the real repo. A test that wants a hook's variable
+    // passes it in `envs`, applied after the scrub.
+    scrub_repo_env(&mut cmd);
     cmd.args(args)
         .env("GOH_DIR", goh_root()?)
         .env_remove("GOH_BIN")

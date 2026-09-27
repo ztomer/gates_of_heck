@@ -125,14 +125,10 @@ mod tests {
         assert_eq!(line_count(b"a"), 1);
     }
 
+    /// Fixture git, via the testkit's one scrubbed helper (never the hook's repo).
     fn git(root: &Path, args: &[&str]) {
-        let ok = Command::new("git")
-            .arg("-C")
-            .arg(root)
-            .args(args)
-            .output()
-            .is_ok_and(|o| o.status.success());
-        assert!(ok, "git {args:?} failed");
+        let res = goh_testkit::git_in(root, args);
+        assert!(res.is_ok(), "{res:?}");
     }
 
     fn write(path: &Path, body: &str) {

@@ -32,7 +32,7 @@ import subprocess
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from _gitutil import listed_files, repo_root  # noqa: E402
+from _gitutil import foreign_repo_env, listed_files, repo_root  # noqa: E402
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from tui.lib import err, info, ok, warn  # noqa: E402
@@ -105,6 +105,10 @@ def run_one(path, flag, cwd, timeout=TIMEOUT):
         result = subprocess.run(
             [sys.executable, path, flag],
             cwd=cwd, capture_output=True, text=True, timeout=timeout,
+            # A probe builds its OWN fixture repos. Handed the hook's GIT_DIR, a probe's
+            # `git init <tmp>` under a linked worktree re-initialises the real repository and
+            # flips its core.bare -- so no probe, in any consumer repo, ever sees those variables.
+            env=foreign_repo_env(),
         )
     except subprocess.TimeoutExpired:
         return False, f"timed out after {timeout}s"

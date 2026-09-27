@@ -110,7 +110,14 @@ while read -r local_ref local_sha _remote_ref _remote_sha; do
     mkdir -p "$log_root"
     log="$log_root/$(basename "$root")-$short-$(date +%Y%m%dT%H%M%S).log"
     set +e
-    (cd "$worktree" && bash "$worktree/tools/gate.sh" --full) 2>&1 | tee "$log"
+    # The hook's repository variables are dropped for the export. Pushed from a LINKED worktree,
+    # git hands this hook GIT_DIR=<main>/.git/worktrees/<name>: inherited, it points every git
+    # call in the export at the PUSHING checkout, and any test that runs `git init <tmp>` then
+    # re-initialises the real repository and writes core.bare=true into its shared config
+    # (zinc, 2026-09-27). The export is its own worktree; git finds it from its `.git` file.
+    # shellcheck disable=SC2046  # word-splitting git's variable list is the point
+    (unset $(git rev-parse --local-env-vars) && cd "$worktree" \
+        && bash "$worktree/tools/gate.sh" --full) 2>&1 | tee "$log"
     status="${PIPESTATUS[0]}"
     set -e
     if [ "$status" -ne 0 ]; then

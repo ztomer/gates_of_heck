@@ -40,7 +40,7 @@ import sys
 import tempfile
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from _gitutil import repo_root  # noqa: E402
+from _gitutil import foreign_repo_env, repo_root  # noqa: E402
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from tui.lib import err, info, ok, warn  # noqa: E402
@@ -64,6 +64,15 @@ TIMEOUT = 90
 # Directories never worth copying into a skeleton -- large, generated, and irrelevant to the
 # question. Their absence is part of the point.
 SKIP_DIRS = {".git", ".build", "build", "node_modules", ".venv", "venv", "__pycache__", ".mypy_cache"}
+
+
+def scratch_git(*args, check=False):
+    """git on the skeleton or a probe fixture -- never the repo being gated. The hook's GIT_DIR
+    and GIT_INDEX_FILE are dropped, or `git init <skeleton>` from a linked worktree's hook
+    re-initialises the REAL repository (and flips its core.bare), and the skeleton's config,
+    add and commit land there too. See `_gitutil.foreign_repo_env`."""
+    return subprocess.run(["git", *args], check=check, capture_output=True,
+                          env=foreign_repo_env())
 
 
 def gate_dir(root):
@@ -110,7 +119,7 @@ def build_skeleton(root, gates, workdir):
     along, because "the baseline names 49 files and the scan found none" is precisely the state
     being tested for. A skeleton without them tests nothing.
     """
-    subprocess.run(["git", "init", "-q", workdir], check=True, capture_output=True)
+    scratch_git("init", "-q", workdir, check=True)
     shutil.copytree(gates, os.path.join(workdir, os.path.basename(gates)),
                     ignore=shutil.ignore_patterns(*SKIP_DIRS))
     for name in SHAPE_FILES:
@@ -123,8 +132,7 @@ def build_skeleton(root, gates, workdir):
             rel = os.path.relpath(os.path.join(current, name), root)
             os.makedirs(os.path.join(workdir, rel), exist_ok=True)
     for key, value in (("user.email", "scope@example.invalid"), ("user.name", "scope")):
-        subprocess.run(["git", "-C", workdir, "config", key, value], check=True,
-                       capture_output=True)
+        scratch_git("-C", workdir, "config", key, value, check=True)
     # The gate directory is on DISK (the gates must be runnable, and their baselines readable)
     # but deliberately NOT TRACKED and IGNORED. Otherwise every whole-repo scanner finds the
     # copied gates, does real work on them, and passes honestly -- which reports as blindness.
@@ -138,10 +146,8 @@ def build_skeleton(root, gates, workdir):
     os.makedirs(info_dir, exist_ok=True)
     with open(os.path.join(info_dir, "exclude"), "a", encoding="utf-8") as fh:
         fh.write("/%s/\n" % os.path.basename(gates))
-    subprocess.run(["git", "-C", workdir, "add", "-A", "--", ":!%s" % os.path.basename(gates)],
-                   capture_output=True)
-    subprocess.run(["git", "-C", workdir, "commit", "-qm", "skeleton", "--allow-empty"],
-                   capture_output=True)
+    scratch_git("-C", workdir, "add", "-A", "--", ":!%s" % os.path.basename(gates))
+    scratch_git("-C", workdir, "commit", "-qm", "skeleton", "--allow-empty")
     return workdir
 
 
@@ -163,6 +169,9 @@ def sweep(skeleton, gate_name, names, timeout=TIMEOUT):
             result = subprocess.run(
                 [sys.executable, os.path.join(skeleton, gate_name, name)],
                 cwd=skeleton, capture_output=True, text=True, timeout=timeout, check=False,
+                # Inside the skeleton, not the hook's repo: with the hook's GIT_DIR a gate's git
+                # calls would read the REAL tree, and the sweep would measure the wrong thing.
+                env=foreign_repo_env(),
             )
         except (OSError, subprocess.SubprocessError):
             continue  # could not run it at all: not a claim of compliance
@@ -246,7 +255,7 @@ def probe():
         tools = os.path.join(root, "tools")
         os.makedirs(os.path.join(root, "Sources", "Deep"))
         os.makedirs(tools)
-        subprocess.run(["git", "init", "-q", root], check=True, capture_output=True)
+        scratch_git("init", "-q", root, check=True)
 
         def gate(name, body):
             with open(os.path.join(tools, name), "w", encoding="utf-8") as handle:

@@ -11,7 +11,39 @@ The class this fixes: every checker used to open() working-tree paths even in
 an innocent commit, and a file staged dirty then cleaned in the editor could
 slip one through. One implementation, all checkers.
 """
+import functools
+import os
 import subprocess
+
+
+@functools.lru_cache(maxsize=1)
+def local_env_vars() -> tuple:
+    """The variables that bind a git process to ONE repository, as git itself lists them.
+
+    `git rev-parse --local-env-vars` is the list git clears when it crosses into a submodule;
+    asking git (rather than keeping a copy) means a variable a future git adds is covered the day
+    it ships. Works outside any repo and with a GIT_DIR that names nothing."""
+    out = subprocess.run(
+        ["git", "rev-parse", "--local-env-vars"], capture_output=True, text=True, check=True
+    )
+    return tuple(out.stdout.split())
+
+
+def foreign_repo_env(base=None) -> dict:
+    """An environment for git on a repository that is NOT the one a hook is running for.
+
+    A hook exports GIT_DIR and GIT_INDEX_FILE. Under a LINKED worktree GIT_DIR is absolute
+    (`<main>/.git/worktrees/<name>`), so a child `git init <tmpdir>` that inherits it
+    RE-INITIALISES THE REAL REPOSITORY instead -- and with extensions.worktreeConfig on, writes
+    `core.bare = true` into the shared config, after which no checkout of that repo works
+    (zinc, 2026-09-27). `git -C tmp config` / `add` / `commit` land in the real repo too. Every
+    git call on a scratch, fixture or skeleton repo -- and every process run INSIDE one -- takes
+    this env. Never used for the repo being gated: there GIT_INDEX_FILE names the index being
+    committed, which is exactly the tree to police."""
+    env = dict(os.environ if base is None else base)
+    for name in local_env_vars():
+        env.pop(name, None)
+    return env
 
 
 def repo_root() -> str:

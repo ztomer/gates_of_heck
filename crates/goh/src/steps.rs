@@ -406,16 +406,11 @@ pub fn step_full_only(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::process::Command;
 
+    /// Fixture git, via the testkit's one scrubbed helper (never the hook's repo).
     fn git(repo: &std::path::Path, args: &[&str]) {
-        let status = Command::new("git")
-            .args(args)
-            .current_dir(repo)
-            .stdout(std::process::Stdio::null())
-            .stderr(std::process::Stdio::null())
-            .status();
-        assert!(status.is_ok_and(|s| s.success()), "git {args:?}");
+        let res = goh_testkit::git_in(repo, args);
+        assert!(res.is_ok(), "{res:?}");
     }
 
     fn lines(n: usize) -> String {

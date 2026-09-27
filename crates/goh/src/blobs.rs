@@ -126,14 +126,10 @@ fn read_batch(root: &Path, wanted: &[&String], mut out: impl std::io::BufRead) -
 mod tests {
     use super::*;
 
+    /// Fixture git, via the testkit's one scrubbed helper (never the hook's repo).
     fn git(repo: &Path, args: &[&str]) {
-        let status = Command::new("git")
-            .args(args)
-            .current_dir(repo)
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .status();
-        assert!(status.is_ok_and(|s| s.success()), "git {args:?}");
+        let res = goh_testkit::git_in(repo, args);
+        assert!(res.is_ok(), "{res:?}");
     }
 
     /// The prefetched bytes are the INDEX's, not the worktree's — the
