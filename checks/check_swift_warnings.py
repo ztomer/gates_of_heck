@@ -18,12 +18,20 @@ THE RULE. One `swift build --build-tests`; its whole output is read once, with e
 OSC hyperlink stripped first. Any `warning:` whose file is under this repo's Sources/ or Tests/ fails
 (dependency warnings are exempt). Warnings in the groups that are runtime traps under Swift 6
 dynamic isolation are named as such. A build that fails fails the gate: files it never compiled
-printed no warnings. On a warm tree only what was recompiled is seen; run it cold where it counts.
+printed no warnings.
+
+A WARM TREE (ZoneWM, 2026-09-27). A warm build prints warnings only for the files it recompiles,
+so a file compiled earlier by a filtered `swift test` never showed its warnings to this gate, which
+passed locally and failed the cold pre-push build. So before building, every Swift file under our
+dirs that differs from the upstream branch (committed since the last push, modified, or untracked;
+HEAD when there is no upstream) has its modification time touched and is compiled again. The
+upstream is what the cold pre-push gate last judged, so everything else was already clean there.
 
   check_swift_warnings.py                      # build (in the git repo at cwd) and judge
   check_swift_warnings.py --dirs Sources,Tests # which top-level dirs are "ours" (the default)
   check_swift_warnings.py --log FILE           # judge a saved build log
   check_swift_warnings.py --selftest           # prove the parser catches the real byte formats
+  check_swift_warnings.py --list-changed       # the files a warm build is made to recompile
 """
 
 import argparse
@@ -72,6 +80,27 @@ def findings(output, repo, dirs=tuple(DEFAULT_DIRS.split(","))):
     return sorted(seen.values())
 
 
+def git_lines(repo, *args):
+    done = subprocess.run(["git", *args], cwd=repo, capture_output=True, text=True, check=False)
+    return done.stdout.split("\0") if done.returncode == 0 else []
+
+
+def changed_swift_files(repo, dirs):
+    """Swift files under `dirs` that differ from the upstream branch (or HEAD without one), and
+    untracked ones, that exist now: the files whose warnings a warm build might not print."""
+    has_upstream = subprocess.run(["git", "rev-parse", "--verify", "--quiet", "@{upstream}"], cwd=repo,
+                                  capture_output=True, text=True, check=False).returncode == 0
+    base = "@{upstream}" if has_upstream else "HEAD"
+    names = git_lines(repo, "diff", "--name-only", "-z", base) + \
+        git_lines(repo, "ls-files", "--others", "--exclude-standard", "-z")
+    out = set()
+    for name in names:
+        path = os.path.join(repo, name)
+        if name.endswith(".swift") and ours(path, repo, dirs) and os.path.isfile(path):
+            out.add(name)
+    return sorted(out)
+
+
 def selftest():
     repo = "/r"
     esc = "\x1b"
@@ -105,16 +134,22 @@ def main():
     parser.add_argument("--log", help="judge a saved build log instead of building")
     parser.add_argument("--dirs", default=DEFAULT_DIRS, help="comma-separated top-level dirs that are ours")
     parser.add_argument("--selftest", action="store_true")
+    parser.add_argument("--list-changed", action="store_true", help="print the files a warm build recompiles")
     opts = parser.parse_args()
     if opts.selftest:
         return selftest()
     repo = repo_root()
     dirs = tuple(d for d in opts.dirs.split(",") if d)
+    if opts.list_changed:
+        print("\n".join(changed_swift_files(repo, dirs)))
+        return 0
     log = opts.log or os.path.join(tempfile.gettempdir(), f"{os.path.basename(repo)}-{LOG_NAME}")
     if opts.log:
         with open(opts.log, encoding="utf-8", errors="replace") as f:
             output, status = f.read(), 0
     else:
+        for name in changed_swift_files(repo, dirs):
+            os.utime(os.path.join(repo, name))   # compiled again, so its warnings are printed
         done = subprocess.run(["swift", "build", "--build-tests"], cwd=repo, capture_output=True,
                               text=True, errors="replace", check=False)
         output, status = done.stdout + done.stderr, done.returncode

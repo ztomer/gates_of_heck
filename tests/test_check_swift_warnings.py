@@ -67,3 +67,41 @@ def test_dirs_decides_what_is_ours(repo):
     log = log_with(repo, hyperlinked(repo, "App/T.swift"))
     assert run_check(repo, "--log", str(log)).returncode == 0
     assert run_check(repo, "--log", str(log), "--dirs", "App").returncode == 1
+
+
+def test_changed_files_are_the_ones_a_warm_build_must_recompile(repo):
+    """A file compiled earlier (by a filtered test run) prints no warning in a warm build. Every
+    Swift file that differs from HEAD, or is untracked, is touched so it compiles again; files
+    outside our dirs, non-Swift files and deleted files are not (touching a deleted path would
+    recreate it empty)."""
+    for rel in ["Sources/A.swift", "Sources/Gone.swift", "Sources/Same.swift", "Vendor/V.swift"]:
+        (repo / rel).parent.mkdir(parents=True, exist_ok=True)
+        (repo / rel).write_text("let x = 1\n", encoding="utf-8")
+    subprocess.run(["git", "add", "-A"], cwd=repo, check=True)
+    subprocess.run(["git", "commit", "-qm", "base"], cwd=repo, check=True)
+    (repo / "Sources/A.swift").write_text("let x = 2\n", encoding="utf-8")
+    (repo / "Tests").mkdir()
+    (repo / "Tests/New.swift").write_text("let y = 1\n", encoding="utf-8")
+    (repo / "Tests/notes.md").write_text("x\n", encoding="utf-8")
+    (repo / "Vendor/V.swift").write_text("let v = 2\n", encoding="utf-8")
+    (repo / "Sources/Gone.swift").unlink()
+    r = run_check(repo, "--list-changed")
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert r.stdout.split() == ["Sources/A.swift", "Tests/New.swift"]
+
+
+def test_commits_since_the_upstream_count_as_changed(repo):
+    """The cold pre-push gate judged the upstream; a commit made since is unjudged cold."""
+    (repo / "Sources").mkdir()
+    (repo / "Sources/A.swift").write_text("let x = 1\n", encoding="utf-8")
+    subprocess.run(["git", "add", "-A"], cwd=repo, check=True)
+    subprocess.run(["git", "commit", "-qm", "pushed"], cwd=repo, check=True)
+    remote = repo.parent / "remote.git"
+    subprocess.run(["git", "init", "-q", "--bare", str(remote)], check=True)
+    subprocess.run(["git", "remote", "add", "origin", str(remote)], cwd=repo, check=True)
+    subprocess.run(["git", "push", "-q", "-u", "origin", "main"], cwd=repo, check=True, capture_output=True)
+    (repo / "Sources/B.swift").write_text("let y = 1\n", encoding="utf-8")
+    subprocess.run(["git", "add", "-A"], cwd=repo, check=True)
+    subprocess.run(["git", "commit", "-qm", "not pushed"], cwd=repo, check=True)
+    r = run_check(repo, "--list-changed")
+    assert r.stdout.split() == ["Sources/B.swift"], r.stdout + r.stderr
