@@ -93,6 +93,20 @@ fi
 # A conflict marker that reaches a commit is a merge someone walked away from.
 goh_step "no conflict markers" python3 "$CHECKS/check_no_conflict_markers.py" ${FWD:+"$FWD"}
 
+# Version provenance: a `--version` flag carrying no commit. A number answers "is
+# this current?"; only a commit answers "what am I actually running?". STATIC by
+# design -- a gate that must run every repo's binary is a gate that gets skipped
+# on exactly the repos it would catch. Opt-in by convention, never by an
+# inherited env var, because that does not survive the hook chain.
+#
+# MIRRORED in crates/goh/src/steps.rs, which is what actually runs when the
+# native binary is present (this script execs it). Keep the two in step --
+# tests/test_goh_structural_parity.py compares them.
+if [ -f "$GOH_REPO_ROOT/.gates-version-baseline.json" ]; then
+    goh_step "version provenance" python3 "$CHECKS/check_version_provenance.py" . \
+        --baseline "$GOH_REPO_ROOT/.gates-version-baseline.json"
+fi
+
 # One cap, one name. Repos previously called this check_file_length,
 # check_loc and check_file_size, with three different limits.
 # Exemption semantics: GOH_EXCLUDE exempts vendored/generated paths from BOTH
