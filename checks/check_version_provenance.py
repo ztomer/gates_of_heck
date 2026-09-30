@@ -36,9 +36,13 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
 import sys
 from pathlib import Path
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from _gitutil import listed_files  # noqa: E402
 
 # Anything that reads as a commit-ish provenance source in a version string.
 HASH_ENV = re.compile(
@@ -116,7 +120,7 @@ def sets_provenance(pkg: Path) -> tuple[bool, bool]:
     return False, False
 
 
-def check(root: Path, allowlist: set[str]) -> tuple[list[str], int]:
+def check(root: Path, allowlist: set[str], staged: bool = False) -> tuple[list[str], int]:
     """(problems, examined) -- `examined` counts files that DECLARE a version.
 
     Not the files read. A file read but declaring nothing is correctly ignored
@@ -125,7 +129,21 @@ def check(root: Path, allowlist: set[str]) -> tuple[list[str], int]:
     """
     problems: list[str] = []
     examined = 0
+    # In staged scope, narrow to what the INDEX holds. The walk finds every
+    # version-declaring file in the tree, and a pre-commit hook must judge the
+    # commit being made -- otherwise an unstaged edit to an unrelated file
+    # blocks a commit that does not contain it.
+    scope: set[str] | None = None
+    if staged:
+        scope = {
+            f
+            for f in listed_files(str(root), staged=True)
+            if f.endswith((".rs",))
+        }
+
     for path in rust_binary_roots(root):
+        if scope is not None and str(path.relative_to(root)) not in scope:
+            continue
         rel = str(path.relative_to(root))
         text = path.read_text(encoding="utf-8", errors="replace")
         declares_version = any(
@@ -177,6 +195,11 @@ def main() -> int:
         default=None,
         help="JSON file of paths known not to comply; entries are skipped and may shrink",
     )
+    ap.add_argument(
+        "--staged",
+        action="store_true",
+        help="examine only Added/Copied/Modified index entries (pre-commit scope)",
+    )
     ap.add_argument("--json", action="store_true", help="machine-readable output")
     args = ap.parse_args()
 
@@ -193,7 +216,7 @@ def main() -> int:
             print(f"✗ cannot read baseline {args.baseline}: {e}", file=sys.stderr)
             return 2
 
-    problems, examined = check(root, allowlist)
+    problems, examined = check(root, allowlist, args.staged)
     if args.json:
         print(json.dumps({"findings": problems, "examined": examined}, indent=2))
         return 1 if problems else 0
