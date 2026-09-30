@@ -116,18 +116,31 @@ def sets_provenance(pkg: Path) -> tuple[bool, bool]:
     return False, False
 
 
-def check(root: Path, allowlist: set[str]) -> list[str]:
+def check(root: Path, allowlist: set[str]) -> tuple[list[str], int]:
+    """(problems, examined) -- `examined` counts files that DECLARE a version.
+
+    Not the files read. A file read but declaring nothing is correctly ignored
+    and still leaves this gate with no population, which is the case main()
+    must not report as a pass.
+    """
     problems: list[str] = []
+    examined = 0
     for path in rust_binary_roots(root):
         rel = str(path.relative_to(root))
-        if rel in allowlist or str(path) in allowlist:
-            continue
         text = path.read_text(encoding="utf-8", errors="replace")
         declares_version = any(
             BARE_VERSION.search(b) or LONG_VERSION.search(b) for b in COMMAND_ATTR.findall(text)
         )
         if not declares_version:
             continue  # this binary does not declare a version; not our business
+        # Counted BEFORE the baseline is consulted. The baseline suppresses
+        # FINDINGS, not population: a repo that has ratcheted its last offender
+        # still has a declaring file, and counting it as "nothing examined" made
+        # a fully-wound-down repo report itself not applicable -- which is the
+        # opposite of the state it is in.
+        examined += 1
+        if rel in allowlist or str(path) in allowlist:
+            continue
         pkg = root
         for cand in rust_package_roots(root):
             if path.is_relative_to(cand):
@@ -153,7 +166,7 @@ def check(root: Path, allowlist: set[str]) -> list[str]:
                 f"script sets {' and '.join(missing)} (expected a build.rs "
                 f"emitting cargo:rustc-env)"
             )
-    return problems
+    return problems, examined
 
 
 def main() -> int:
@@ -180,16 +193,30 @@ def main() -> int:
             print(f"✗ cannot read baseline {args.baseline}: {e}", file=sys.stderr)
             return 2
 
-    problems = check(root, allowlist)
+    problems, examined = check(root, allowlist)
     if args.json:
-        print(json.dumps({"findings": problems}, indent=2))
+        print(json.dumps({"findings": problems, "examined": examined}, indent=2))
         return 1 if problems else 0
     for p in problems:
         print(f"✗ [version_provenance] {p}")
     if problems:
         print(f"--- {len(problems)} finding(s) ---")
         return 1
-    print("✓ [version_provenance] every declared version carries a commit and a build date")
+    # Over ZERO examined files the sentence above is a lie: it claims every
+    # declared version complies, having declared none. This gate's population is
+    # the files that DECLARE a version, unlike check_no_emoji and friends whose
+    # scan set IS the subject -- so an empty tree does not make it clean, it
+    # makes it blind, and the empty-scope sweep would otherwise record it as a
+    # gate that reports success over nothing.
+    #
+    # Not a failure: a repo with no Rust (or none reached by the baseline) has
+    # nothing to police. A named non-run, stated as one.
+    if examined == 0:
+        print("⚠ [version_provenance] no version-declaring source files in scope "
+              "— nothing examined (not applicable)")
+        return 0
+    print(f"✓ [version_provenance] all {examined} version-declaring source file(s) "
+          "carry a commit and a build date")
     return 0
 
 
