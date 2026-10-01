@@ -1,5 +1,63 @@
 # CHANGELOG
 
+## v0.13.5 — a tag is a claim, and it is checked against its own commit _(2026-10-01)_
+
+`check_tag_version.py` refuses to push any `refs/tags/v<semver>` whose target
+commit declares a different version. It exists because of media_server, today:
+a version was bumped, `git commit --amend --no-edit` was REJECTED by pre-commit
+twice, and `2>/dev/null` swallowed both refusals so the amend looked like it
+had worked. `git tag -f v1.79.3` then named commit `a266067`, whose VERSION file
+and all 31 crate manifests still said 1.79.1, and `git push --follow-tags`
+published it. Anyone checking out `v1.79.3` got a build that reported itself as
+1.79.1 — a name that cannot tell two different binaries apart, except the name
+outlives the mistake. The repo's own `test_native_version_flag` DID catch the
+mismatch; it ran in the pre-push gate, but nothing tied it to the TAG.
+
+Three properties, each a place the obvious implementation is wrong:
+
+- **The refs being PUSHED**, from the hook's stdin, not every tag in the repo.
+  Scanning all tags lets one stale tag veto every unrelated push until somebody
+  deletes it — a gate that cries wolf gets `--no-verify`'d.
+- **The version at the COMMIT** (`git show <commit>:<path>`, `^{commit}` to peel
+  an annotated tag), never the working tree. The tree is not the thing being
+  published; in the incident it held the fix the amend was about to lose.
+- **An absent version source is a FINDING.** `v2.0.0` on a tree that declares no
+  version is unverifiable, and unverifiable read as fine is how the next one
+  ships.
+
+Version sources are a table, not a repo. Both live layouts ship by default — a
+`VERSION` file (media_server) and `[workspace.package] version` (app_updates) —
+and `GOH_TAG_VERSION_SOURCES` in `.gatesrc` points it anywhere else, with
+opt-in globs expanded against the tree at the commit. Globbing is scoped on
+purpose: a bare `**/Cargo.toml` sweeps `vendor/`, and app_updates' camoufox-rs
+declares 0.1.0, which is not that repo's release number. A glob matching nothing
+is reported, so a typo cannot retire a strategy in silence.
+
+It runs in `gates/push_gate.sh` FIRST, over the refs as given, because both
+skips below it are about CODE: a commit the remote already holds, or one already
+gated in this push, would otherwise let a lying tag through unexamined — and
+re-tagging an old commit to a new version is exactly how a lie gets published.
+`push_gate.sh` also now captures stdin to a file first, since a stream read
+twice is a stream read once.
+
+Calibrated red on the real input (`refs/tags/v1.79.3` → `a266067`), green on a
+matching pair, red on a dirty working tree that claims the right version, and
+red on a tag with no version source. The probe is discovered by
+`check_probes_pass.py` like the others, and the case is pinned in
+`tests/test_check_tag_version.py`.
+
+It also surfaced a class defect on the way. Every gate that runs a Python
+checker out of this checkout writes `__pycache__/` into it, and the proven-step
+cache keys on that checkout's untracked contents — so a checkout WITHOUT this
+repo's `.gitignore` (an installed copy, a CI export) changed identity part-way
+through a push, and every step the pre-commit hook had proved re-ran in the
+pre-push export. `_proven.sh`'s gates identity now excludes `__pycache__/` by
+path segment (a substring filter would silently drop real work, and a file
+genuinely named `__pycache__.py` is not a cache). Bytecode is not work in
+progress on the gates; a real edit to a checker still invalidates the cache,
+and both directions are pinned in `tests/test_proven.py`. Found by adding one
+call to `push_gate.sh` and having an unrelated test go red.
+
 ## v0.13.4 — two new shared gates, both canaried rather than exempted _(2026-09-30)_
 
 `check_version_provenance.py` asserts that a version string references a git

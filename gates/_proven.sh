@@ -80,7 +80,22 @@ _proven_goh_identity() {
     fi
     head="$(_proven_goh_git "$top" rev-parse HEAD 2>/dev/null || echo none)"
     diff="$(_proven_goh_git "$top" diff HEAD --binary 2>/dev/null | hash_hex /dev/stdin)"
+    # Bytecode caches are NOT work in progress. Every gate that runs a Python
+    # checker out of this checkout writes __pycache__/ into it, and a checkout
+    # that does not gitignore bytecode (an installed copy, a CI export — anything
+    # without THIS repo's .gitignore) then sees its identity change PART-WAY
+    # THROUGH A PUSH: the pre-commit hook proves a step, the pre-push worktree
+    # gate creates the cache, and every subsequent lookup misses. Measured
+    # 2026-10-01 on tests/test_proven.py's gates copy, where a push_gate.sh that
+    # ran one extra checker re-ran a step the checkout had already proved.
+    #
+    # Excluded by PATH SEGMENT, not by substring: `vendor/…/__pycache__` and a
+    # file genuinely named `__pycache__.py` are not the same thing, and a
+    # substring filter silently drops real work. `:(exclude)` pathspecs need
+    # magic pathspec off, which `ls-files --others` has not always accepted, so
+    # filter the list here.
     untracked="$(_proven_goh_git "$top" ls-files --others --exclude-standard 2>/dev/null \
+        | grep -vE '(^|/)__pycache__/' \
         | _proven_goh_git "$top" hash-object --stdin-paths 2>/dev/null | hash_hex /dev/stdin)"
     printf 'goh %s %s %s\n' "$head" "$diff" "$untracked"
 }

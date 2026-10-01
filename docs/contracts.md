@@ -115,3 +115,21 @@ rev-parse --local-env-vars)` in shell (`push_gate.sh`, `_proven.sh`),
 there `GIT_INDEX_FILE` names the index being committed.
 Pin: `tests/test_hook_git_env.py`,
 `crates/goh-testkit/tests/hook_git_env.rs`.
+
+## 13. A name is checked against the object it names, never the working tree
+
+`check_tag_version.py` reads a pushed `refs/tags/v<semver>`'s version with
+`git show <commit>:<path>` at the commit the tag resolves to (`^{commit}`, so an
+annotated tag peels), never from the checkout. It reads the refs git hands the
+hook on stdin, never every tag in the repo, and it runs in `push_gate.sh`
+BEFORE the two skips that would otherwise exempt a retag of a commit the remote
+already holds.
+
+The class: a name that makes a claim, checked against something other than the
+object it names. media_server, 2026-10-01 — two `--amend --no-edit` runs
+rejected by pre-commit under `2>/dev/null`, then `git tag -f v1.79.3` on a
+commit still declaring 1.79.1, published by `--follow-tags`. The commit gate
+proves the commit builds and passes; it can never prove the name is true.
+Pin: `tests/test_check_tag_version.py` (red on the real shape, green on a
+matching pair, a dirty working tree does not rescue it, an unrelated stale tag
+does not block an unrelated push) and `tests/test_push_gate.py`.

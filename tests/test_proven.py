@@ -37,6 +37,12 @@ def goh(tmp_path: Path) -> Path:
     (d / "gates").mkdir(parents=True)
     for name in ("_proven.sh", "_hash.sh", "proven.sh", "local_ci.sh", "push_gate.sh"):
         shutil.copy2(REPO_ROOT / "gates" / name, d / "gates" / name)
+    # push_gate.sh runs the tag check before anything else, so this copy has to
+    # carry it or the gate refuses with "… missing from the gates checkout" —
+    # a correct refusal about a checkout this fixture assembled incomplete.
+    (d / "checks").mkdir()
+    for name in ("check_tag_version.py", "_gitutil.py"):
+        shutil.copy2(REPO_ROOT / "checks" / name, d / "checks" / name)
     shutil.copytree(REPO_ROOT / "tui", d / "tui", ignore=shutil.ignore_patterns("__pycache__"))
     _git(d, "init", "-q", "-b", "main")
     _git(d, "add", "-A")
@@ -95,6 +101,35 @@ def test_records_on_a_clean_tree_and_skips_the_second_run(goh, repo, env):
     assert second.returncode == 0, second.stdout + second.stderr
     assert runs(env) == 1, "a proven step ran again"
     assert "proven on this tree" in second.stdout and "by pre-commit" in second.stdout
+
+
+def test_bytecode_a_gate_wrote_is_not_work_in_progress_on_the_gates(goh, repo, env):
+    """THE regression (2026-10-01). Every gate that runs a Python checker out of
+    this checkout writes __pycache__/ into it. A checkout WITHOUT this repo's
+    .gitignore -- an installed copy, a CI export, and the fixture above -- then
+    sees its identity change part-way through a push, so the pre-commit hook's
+    proof misses in the pre-push worktree and every step re-runs.
+
+    Found by adding one checker call to push_gate.sh: the tag check wrote the
+    cache, and test_the_push_gate_worktree_sees_what_the_checkout_proved went
+    red. Both halves are load-bearing: the cache must not invalidate the identity
+    (this test), and REAL work in progress still must (the next one).
+    """
+    assert runs(env) == 0
+    first = proven(goh, repo, env, STEP, "--label", "pre-commit")
+    assert first.returncode == 0, first.stdout + first.stderr
+
+    (goh / "checks" / "__pycache__").mkdir(exist_ok=True)
+    (goh / "checks" / "__pycache__" / "check_tag_version.cpython-314.pyc").write_bytes(
+        b"\x00\x0f\r\n")
+    after_cache = proven(goh, repo, env)
+    assert runs(env) == 1, "a bytecode cache invalidated the gates identity"
+    assert "proven on this tree" in after_cache.stdout, after_cache.stdout
+
+    # ...and a genuine edit to a checker is still genuine work in progress.
+    (goh / "checks" / "check_tag_version.py").write_text("# edited\n", encoding="utf-8")
+    assert proven(goh, repo, env).returncode == 0
+    assert runs(env) == 2, "a real change to the gates did NOT invalidate the cache"
 
 
 def test_a_staged_only_change_still_has_a_key(goh, repo, env):

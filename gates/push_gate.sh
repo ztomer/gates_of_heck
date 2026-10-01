@@ -49,6 +49,13 @@ GOH="${GOH_DIR:-${GOH:-$HOME/Projects/gates_of_heck}}"
 root="$(git rev-parse --show-toplevel)"
 gate="$root/tools/gate.sh"
 [ -f "$gate" ] || die "pre-push: $root/tools/gate.sh missing — run '$GOH/install.sh $root'"
+tag_check="$GOH/checks/check_tag_version.py"
+# Named, not a Python traceback: without this the refusal below reads
+# "can't open file …/check_tag_version.py", which names a path the reader has no
+# way to act on. It is fail-closed either way — an absent gate is not a pass —
+# and a broken shared checkout is the one case where refusing to push cannot be
+# the answer.
+[ -f "$tag_check" ] || die "pre-push: $tag_check missing from the gates checkout at $GOH — nothing pushed"
 
 # Ignored files the export must carry, from the repo's .gatesrc (space-separated, relative).
 GOH_EXPORT_KEEP=""
@@ -60,16 +67,54 @@ gated_commits=" "
 log_root="${GOH_PUSH_LOGS:-$HOME/.cache/goh/push-logs}"
 keep_failed_logs=20
 worktree=""
+refs_file=""
 cleanup() {
     if [ -n "$worktree" ] && [ -d "$worktree" ]; then
         git -C "$root" worktree remove --force "$worktree" >/dev/null 2>&1 || rm -rf "$worktree"
     fi
+    [ -n "$refs_file" ] && rm -f "$refs_file"
 }
 trap cleanup EXIT INT TERM
 
 git -C "$root" worktree prune >/dev/null 2>&1 || true
 
+# THE REFS ARE READ ONCE, HERE. git hands a pre-push hook its refs on stdin, and
+# stdin is a stream: the tag check below needs them and so does the loop after
+# it, and a stream read twice is a stream read once. Captured to a file (a
+# variable would be fine too — ref lines carry no NUL — but a file also survives
+# `set -u` on a push with no refs at all).
+refs_file="$(mktemp "${TMPDIR:-/tmp}/goh-push-refs.XXXXXX")"
+cat >"$refs_file"
+
+# A TAG IS A CLAIM ABOUT A VERSION, and it is the one claim the code gate cannot
+# make: `tools/gate.sh --full` proves the commit BUILDS AND PASSES, never that
+# the name someone published for it is true. media_server, 2026-10-01: two
+# `--amend --no-edit` runs were rejected by pre-commit with `2>/dev/null`
+# swallowing the refusal, so `git tag -f v1.79.3` named a commit still declaring
+# 1.79.1 and `--follow-tags` shipped it. Anyone checking out v1.79.3 got a build
+# that called itself 1.79.1 — the same class as a version string that cannot
+# tell two binaries apart, except the name outlives the mistake.
+#
+# It runs FIRST, over the refs as given, because everything below it can `continue`:
+# a commit already on the remote, or already gated earlier in this push, would
+# otherwise let a lying tag through unexamined -- and a tag whose commit the remote
+# has held for days is EXACTLY the retag case. Refusing the push also skips minutes
+# of cold gate work that a refused push would only throw away.
+# -B: no bytecode. Running a Python checker from the gates checkout writes
+# __pycache__/ INTO it, and the proven-step cache keys on that checkout's
+# untracked contents (_proven.sh: _proven_goh_identity). A checkout that does not
+# gitignore bytecode therefore changes identity part-way through a push, and
+# every step the pre-commit hook proved is re-run in the export — measured by
+# tests/test_proven.py, whose gates copy is exactly such a checkout. Reading a
+# shared directory must never modify it.
+if ! python3 -B "$tag_check" --root "$root" --refs-file "$refs_file"; then
+    err "pre-push: a tag being pushed does not match the version its own commit declares — nothing pushed"
+    exit 1
+fi
+
 gated=0
+# <"$refs_file", NOT stdin: `cat` above drained it, and a while-read on a spent
+# stream is a loop that never runs — a gate that silently gates nothing.
 while read -r local_ref local_sha _remote_ref _remote_sha; do
     [ -n "${local_sha:-}" ] || continue
     [ "$local_sha" = "$zero" ] && continue          # a delete: nothing to test
@@ -79,6 +124,8 @@ while read -r local_ref local_sha _remote_ref _remote_sha; do
     case "$gated_commits" in
         *" $commit "*) info "pre-push: $local_ref @ $short — gated earlier in this push"; continue ;;
     esac
+    # NB: both skips below are about CODE, and neither may excuse a TAG's version
+    # claim — which is why check_tag_version runs above, over the refs as given.
     if [ -n "$remote_name" ] && [ -n "$(git -C "$root" for-each-ref --contains "$commit" \
             --format='%(refname)' "refs/remotes/$remote_name/")" ]; then
         info "pre-push: $local_ref @ $short — $remote_name already has this commit; nothing new to gate"
@@ -132,6 +179,6 @@ while read -r local_ref local_sha _remote_ref _remote_sha; do
     cleanup; worktree=""
     gated=$((gated + 1))
     gated_commits="$gated_commits$commit "
-done
+done <"$refs_file"
 
 [ "$gated" -gt 0 ] || info "pre-push: nothing to gate (deletes, or commits the remote already has)"

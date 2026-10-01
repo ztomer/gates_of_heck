@@ -34,7 +34,8 @@
     "no_home_paths": "game_asset_factory/tools/check_gate_canary.py -- no hard-coded home paths: red on `cd /Users/someone/Projects/thing`, green on `${THING_DIR:-$(dirname \"$0\")}` (2026-09-19, the day the gate landed)",
     "no_kill_by_name": "game_asset_factory/tools/check_gate_canary.py -- no process kill by name: red on a violation, green on a clean tree",
     "swift_warnings": "game_asset_factory/tools/check_gate_canary.py -- a warning in our sources fails, a dependency's does not: red on a violation, green on a clean tree",
-    "version_provenance": "game_asset_factory/tools/check_gate_canary.py -- a binary's version string carries its build: red on a violation, green on a clean tree"
+    "version_provenance": "game_asset_factory/tools/check_gate_canary.py -- a binary's version string carries its build: red on a violation, green on a clean tree",
+    "tag_version": "checks/check_tag_version.py --probe (also pinned by tests/test_check_tag_version.py): a pushed v<semver> tag whose commit declares another version is red; red on media_server's real 2026-10-01 shape (tag v1.79.3, commit declaring 1.79.1), green on a matching pair, and a tag with no version source is a finding"
   },
   "known_unproven": [
     "check_swift_coverage"

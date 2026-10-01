@@ -48,6 +48,7 @@ logic goes in the engine; new floor/CLI semantics go in `coverage_gate.sh`.
 | `check_swift_warnings.py` | One `swift build --build-tests`; any warning in the repo's own dirs fails, colours and OSC 8 hyperlinks stripped first (for repos that judge build output instead of `-warnings-as-errors`). | `test_check_swift_warnings.py` |
 | `check_baseline_ratchet.py` | Shrink-only ceilings (JSON or line baselines). | `test_check_baseline_ratchet.py` |
 | `check_generated_fresh.py` | Artifact freshness: regenerate to sandbox, hash-compare. | `test_check_generated_fresh.py` |
+| `check_tag_version.py` | A pushed `refs/tags/v<semver>` must name the version its OWN COMMIT declares (never the working tree). Runs first in `push_gate.sh`, over the refs git hands the hook, so a retag of a commit the remote already has is still judged. `GOH_TAG_VERSION_SOURCES` picks the layouts; a glob matching nothing is reported, and a tag with no version source at all is a finding. `--probe` proves it red. | `test_check_tag_version.py` |
 | `check_tests_registered.py` | Every test source must be registered in a build block. | `test_test_registration.py` |
 | `_gitutil.py` | Lib: repo root, NUL-delimited file lists, index bytes via `git show :path`, `foreign_repo_env()` for git on any repo but the gated one. | `test_gitutil_paths.py`, `test_hook_git_env.py` |
 

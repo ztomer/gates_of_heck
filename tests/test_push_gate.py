@@ -30,7 +30,7 @@ def _git(repo: Path, *args: str) -> str:
                           text=True).stdout.strip()
 
 
-def _repo(tmp_path: Path, gatesrc: str = "") -> Path:
+def _repo(tmp_path: Path, gatesrc: str = "", version: str | None = "1.0.0") -> Path:
     repo = tmp_path / "repo"
     repo.mkdir()
     _git(repo, "init", "-q", "-b", "main")
@@ -41,6 +41,11 @@ def _repo(tmp_path: Path, gatesrc: str = "") -> Path:
     (repo / "marker.txt").write_text("COMMITTED")
     (repo / ".gitignore").write_text("local.cfg\n")
     (repo / ".gatesrc").write_text(gatesrc)
+    # A version, because these fixtures push `refs/tags/v*` and a tag naming a
+    # version nothing declares is a FINDING (check_tag_version.py). The repo
+    # without one has its own test below — "no version source is not a pass".
+    if version is not None:
+        (repo / "VERSION").write_text(f"{version}\n")
     _git(repo, "add", "-A")
     _git(repo, "commit", "-q", "-m", "one")
     return repo
@@ -186,7 +191,7 @@ def test_a_tag_on_a_commit_the_remote_already_has_is_not_gated(tmp_path):
 
 
 def test_a_branch_and_its_release_tag_on_one_commit_are_gated_once(tmp_path):
-    repo = _repo(tmp_path)
+    repo = _repo(tmp_path, version="2.0.0")
     sha = _git(repo, "rev-parse", "HEAD")
     _git(repo, "tag", "-a", "v2.0.0", "-m", "release")
     tag_obj = _git(repo, "rev-parse", "v2.0.0")
@@ -209,3 +214,16 @@ def test_a_new_commit_is_still_gated_when_the_remote_has_its_parent(tmp_path):
     code, report, out = _push_lines(repo, f"refs/heads/main {sha} refs/heads/main {'0' * 40}\n", tmp_path)
     assert code != 0, "a new broken commit passed the gate"
     assert "tracked=" in report, "the new commit was never gated"
+
+
+def test_a_tag_naming_a_version_nothing_declares_stops_the_push(tmp_path):
+    """The `version=None` fixture: a `v*` tag on a repo with no version source
+    is unverifiable, and unverifiable read as fine is how the next one ships."""
+    repo = _repo(tmp_path, version=None)
+    _git(repo, "tag", "-a", "v1.0.0", "-m", "release")
+    tag_obj = _git(repo, "rev-parse", "v1.0.0")
+    code, report, out = _push_lines(
+        repo, f"refs/tags/v1.0.0 {tag_obj} refs/tags/v1.0.0 {'0' * 40}\n", tmp_path)
+    assert code != 0, out
+    assert "NO version source" in out, out
+    assert report == "", "the cold code gate ran for a push that was already refused"
