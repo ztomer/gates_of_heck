@@ -1,5 +1,34 @@
 # CHANGELOG
 
+## v0.13.4 — two new shared gates, both canaried rather than exempted _(2026-09-30)_
+
+`check_version_provenance.py` asserts that a version string references a git
+hash and a build date, and that something sets them. It is STATIC on purpose:
+gating on `binary --version` actually printing a hash cannot run on every
+repository — wrong architecture, missing toolchain, a build that costs minutes,
+a crate with no binary at all — and a check that gets skipped everywhere is
+worse than no check. So it asserts the DECLARATION, which is cheap, portable,
+and still fails for the reason anyone wanted it: a version written without
+provenance. Exit 2 means "cannot tell", which is not the same as pass.
+
+`check_swift_warnings.py` judges one `swift build --build-tests` whose whole
+output is read once with every ANSI colour and OSC hyperlink stripped first.
+Two earlier gates split the job and neither could do it: the concurrency grep
+matched diagnostic group names that `swift build` wraps in terminal hyperlinks,
+so the name never appeared whole; and check-deprecated ran its own second build,
+which on the cold pre-push tree had nothing left to compile and printed no
+warnings at all. "Every warning fatal" was therefore never true at push — found
+in ZoneWM 2026-09-26, where a `self` captured in a `@Sendable` closure in a
+test, and an unneeded `nonisolated(unsafe)`, both passed it. A build that fails
+fails the gate, because files it never compiled printed no warnings.
+
+Both landed UNPROVEN and the calibration ceiling was already spent, which turned
+every consumer's push red rather than one. Both are static, so both are
+fixtureable, so both are now canaried — red on a violation, green on a clean
+tree — which puts the ceiling back where it was instead of raising it to two and
+teaching every repo that the number means nothing. `--staged` was added to the
+provenance checker because the hook already passed it.
+
 ## v0.13.3 — a hook's GIT_DIR never reaches git run on another repository _(2026-09-27)_
 
 Git hands a hook `GIT_DIR` (pre-commit also `GIT_INDEX_FILE`). Under a
