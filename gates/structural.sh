@@ -107,6 +107,34 @@ if [ -f "$GOH_REPO_ROOT/.gates-version-baseline.json" ]; then
         --baseline "$GOH_REPO_ROOT/.gates-version-baseline.json"
 fi
 
+# Cross-file markdown links: a relative link must resolve to a file AND to an
+# anchor that file actually has. Both halves fail silently — a link to a heading
+# that does not exist renders fine and 404s only on click, and the anchor is not
+# the heading (GitHub lowercases, drops punctuation, hyphenates spaces), so it
+# must be derived rather than typed. app_updates, 2026-10-01: an audit had to
+# hand-compute `#48-what-90-can-actually-do-measured` into another file in the
+# same repo, and had already written a wrong one. Same GOH_EXCLUDE as the emoji
+# scan, for vendored docs (ztools' camoufox-rs PROTOCOL.md carries upstream's own
+# broken anchor, which is upstream's to fix).
+#
+# MIRRORED in crates/goh/src/steps.rs, which is what actually runs when the
+# native binary is present (this script execs it).
+goh_step "markdown links resolve" python3 "$CHECKS/check_md_links.py" \
+    ${GOH_EXCLUDE:+--exclude "$GOH_EXCLUDE"} ${FWD:+"$FWD"}
+
+# A committed Cargo.lock must agree with the manifest it was generated from.
+# app_updates, 2026-10-01: a release commit bumped `[workspace.package] version`
+# to 1.36.0 and shipped Cargo.lock still saying 1.35.0 for all four crates.
+# Nothing noticed because any `cargo build` silently rewrites the lockfile — the
+# working tree heals on the next compile while the COMMIT, which is what gets
+# published, stays wrong. `check_tag_version.py` reads Cargo.toml and never
+# opens the lockfile: the same class as the tag incident, one file over. NOT
+# gated on being a Rust repo — absence is a named non-run, never a silent pass,
+# which is what check_empty_scope.py requires of it.
+#
+# MIRRORED in crates/goh/src/steps.rs.
+goh_step "Cargo.lock matches its manifests" python3 "$CHECKS/check_lock_version.py"
+
 # One cap, one name. Repos previously called this check_file_length,
 # check_loc and check_file_size, with three different limits.
 # Exemption semantics: GOH_EXCLUDE exempts vendored/generated paths from BOTH

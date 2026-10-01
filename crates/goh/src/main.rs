@@ -31,6 +31,7 @@ pub mod skills;
 pub mod skills_audit;
 pub mod step_report;
 pub mod steps;
+pub mod steps_delegated;
 
 use std::path::PathBuf;
 
@@ -301,7 +302,7 @@ fn run_structural(staged: bool, full: bool) -> i32 {
     if let Some(code) = steps::step_corpus(&repo, &cfg, staged) {
         return code;
     }
-    if let Some(code) = steps::step_shell(&repo, &cfg, &checks, staged) {
+    if let Some(code) = steps_delegated::step_shell(&repo, &cfg, &checks, staged) {
         return code;
     }
     if let Some(code) = steps::step_secrets(&repo, &files, &cfg, staged) {
@@ -310,13 +311,19 @@ fn run_structural(staged: bool, full: bool) -> i32 {
     if let Some(code) = steps::step_home_paths(&repo, &files, &cfg, staged) {
         return code;
     }
-    if let Some(code) = steps::step_version_provenance(&repo, &checks, staged) {
+    if let Some(code) = steps_delegated::step_version_provenance(&repo, &checks, staged) {
         return code;
     }
-    if let Some(code) = steps::step_kill_by_name(&repo, &cfg, &checks, staged) {
+    if let Some(code) = steps_delegated::step_md_links(&repo, &checks, &cfg, staged) {
         return code;
     }
-    if let Some(code) = steps::step_full_only(&repo, &checks, staged) {
+    if let Some(code) = steps_delegated::step_lock_version(&repo, &checks) {
+        return code;
+    }
+    if let Some(code) = steps_delegated::step_kill_by_name(&repo, &cfg, &checks, staged) {
+        return code;
+    }
+    if let Some(code) = steps_delegated::step_full_only(&repo, &checks, staged) {
         return code;
     }
 

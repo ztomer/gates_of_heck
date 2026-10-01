@@ -89,8 +89,21 @@ FULL_CASES: dict[str, dict[str, bytes]] = {
                            "a.py": b"x = 1\n" * 15, "base.txt": b"15\tother.py\n"},
     "ceiling_over": {".gatesrc": b"GOH_MAX_LINES=10\nGOH_LINE_EXCLUDE='a.py'\nGOH_LINE_BASELINE='base.txt'\n",
                      "a.py": b"x = 1\n" * 16, "base.txt": b"15\ta.py\n"},
-    "ceiling_missing": {".gatesrc": b"GOH_MAX_LINES=10\nGOH_LINE_EXCLUDE='a.py'\nGOH_LINE_BASELINE='missing.txt'\n",
-                        "a.py": b"x = 1\n" * 15},
+"ceiling_missing": {".gatesrc": b"GOH_MAX_LINES=10\nGOH_LINE_EXCLUDE='a.py'\nGOH_LINE_BASELINE='missing.txt'\n",
+                         "a.py": b"x = 1\n" * 15},
+    # The two steps added with the 2026-10-01 audit, BOTH outcomes each.
+    # structural.sh EXECs the native binary, so a step present in one pipeline
+    # and not the other runs in exactly one of them -- and a case the parity
+    # table never exercises is the only place that drift is visible.
+    "md_link_red": {".gatesrc": GATESRC, "README.md": b"[x](gone.md)\n"},
+    "md_link_green": {".gatesrc": GATESRC,
+                      "README.md": b"[x](there.md)\n", "there.md": b"# here\n"},
+    "lock_red": {".gatesrc": GATESRC,
+                 "Cargo.toml": b'[package]\nname = "app"\nversion = "1.2.3"\n',
+                 "Cargo.lock": b'[[package]]\nname = "app"\nversion = "1.2.2"\n'},
+    "lock_green": {".gatesrc": GATESRC,
+                   "Cargo.toml": b'[package]\nname = "app"\nversion = "1.2.3"\n',
+                   "Cargo.lock": b'[[package]]\nname = "app"\nversion = "1.2.3"\n'},
 }
 
 

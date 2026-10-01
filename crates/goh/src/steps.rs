@@ -1,7 +1,7 @@
 //! Structural pipeline steps — one function per gate step.
 //! Extracted from `main.rs`: past the cap, the split is the fix.
 
-use crate::step_report::{begin, delegated, fail, ok};
+use crate::step_report::{begin, fail, ok};
 use crate::{emoji, gatesrc, index_view::IndexView, length, markers, secrets};
 
 pub(crate) fn compile_exclude(exclude: &str) -> Result<Option<regex::Regex>, String> {
@@ -216,34 +216,6 @@ pub fn step_corpus(repo: &std::path::Path, cfg: &gatesrc::Gatesrc, staged: bool)
 }
 
 #[must_use]
-pub fn step_shell(
-    repo: &std::path::Path,
-    cfg: &gatesrc::Gatesrc,
-    checks: &std::path::Path,
-    staged: bool,
-) -> Option<i32> {
-    // 6. Bash is the most-edited language under these gates.
-    let label = if staged {
-        "shell lint (staged)"
-    } else {
-        "shell lint"
-    };
-    let mut args = vec!["check_shell_lint.sh".to_owned()];
-    if staged {
-        args.push("--staged".to_owned());
-    }
-    if !cfg.exclude.is_empty() {
-        args.push("--exclude".to_owned());
-        args.push(cfg.exclude.clone());
-    }
-    let code = delegated(checks, repo, label, "bash", &args);
-    if code != 0 {
-        return Some(code);
-    }
-    None
-}
-
-#[must_use]
 pub fn step_secrets(
     repo: &std::path::Path,
     files: &[String],
@@ -336,113 +308,6 @@ pub fn step_home_paths(
         },
     }
 }
-
-/// Version provenance: a `--version` flag that carries no commit.
-///
-/// A number answers "is this current?"; only a commit answers "what am I
-/// actually running?" -- the question that matters when behaviour disagrees
-/// with the tree you are reading, which a shared target directory nobody
-/// refreshes makes possible with no other outward sign.
-///
-/// STATIC by design, and that is load-bearing rather than incidental: a gate
-/// that must run every repo's binary is a gate that gets skipped on exactly the
-/// repos it would catch (wrong architecture, missing toolchain, a library with
-/// no binary). This asserts the DECLARATION instead.
-///
-/// Opt-in by convention, not by environment variable: a repo ships
-/// `.gates-version-baseline.json` and entries may only shrink. The shell is
-/// discarded by `structural.sh`, which execs this binary, so the step has to
-/// live here or not at all -- which is also why the same block is mirrored into
-/// the Python pipeline below for `GOH_NO_NATIVE=1` parity.
-#[must_use]
-pub fn step_version_provenance(
-    repo: &std::path::Path,
-    checks: &std::path::Path,
-    staged: bool,
-) -> Option<i32> {
-    let baseline = ".gates-version-baseline.json";
-    if !repo.join(baseline).is_file() {
-        return None;
-    }
-    let mut args = vec!["check_version_provenance.py".to_owned()];
-    if staged {
-        args.push("--staged".to_owned());
-    }
-    args.push("--baseline".to_owned());
-    args.push(baseline.to_owned());
-    let code = delegated(checks, repo, "version provenance", "python3", &args);
-    if code != 0 {
-        return Some(code);
-    }
-    None
-}
-
-#[must_use]
-pub fn step_kill_by_name(
-    repo: &std::path::Path,
-    cfg: &gatesrc::Gatesrc,
-    checks: &std::path::Path,
-    staged: bool,
-) -> Option<i32> {
-    // 7c. Process kills by name (opt-in per repo): a name matches processes
-    // the caller does not own. Delegated to the Python checker, which owns
-    // the comment stripping and the allowlist ratchet.
-    if !cfg.no_kill_by_name {
-        return None;
-    }
-    let label = if staged {
-        "no process kill by name (staged)"
-    } else {
-        "no process kill by name"
-    };
-    let mut args = vec!["check_no_kill_by_name.py".to_owned()];
-    if staged {
-        args.push("--staged".to_owned());
-    }
-    if !cfg.exclude.is_empty() {
-        args.push("--exclude".to_owned());
-        args.push(cfg.exclude.clone());
-    }
-    let code = delegated(checks, repo, label, "python3", &args);
-    if code != 0 {
-        return Some(code);
-    }
-    None
-}
-
-#[must_use]
-pub fn step_full_only(
-    repo: &std::path::Path,
-    checks: &std::path::Path,
-    staged: bool,
-) -> Option<i32> {
-    // 8-9. Full scope only: empty-tree refusal and gate self-proofs.
-    if staged {
-        return None;
-    }
-    let empty_code = delegated(
-        checks,
-        repo,
-        "gates refuse to pass over an empty tree",
-        "python3",
-        &["check_empty_scope.py".to_owned()],
-    );
-    if empty_code != 0 {
-        return Some(empty_code);
-    }
-    let probes_code = delegated(
-        checks,
-        repo,
-        "gate self-proofs still pass",
-        "python3",
-        &["check_probes_pass.py".to_owned()],
-    );
-    if probes_code != 0 {
-        return Some(probes_code);
-    }
-    None
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;

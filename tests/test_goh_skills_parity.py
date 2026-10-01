@@ -76,7 +76,14 @@ def messy_corpus() -> dict[str, str]:
             [
                 skill(
                     "messy",
-                    f"See [[ghost]] and [doc](references/gone.md).\n{big}\n",
+                    # The link RESOLVES. This fixture is about skills metadata,
+                    # not links, and its prose used to name a file that does not
+                    # exist -- which `check_md_links.py` (added 2026-10-01) then
+                    # reported as a broken link, failing the pipeline at a step
+                    # before the one under test and hiding whether the two tiers
+                    # agree. A link inside a skills corpus is policed like any
+                    # other: a broken one is a broken one.
+                    f"See [[ghost]] and [doc](../bare/SKILL.md).\n{big}\n",
                 )
             ]
         ),
