@@ -38,6 +38,11 @@ SWIFT_VERSION = re.compile(
 # the gate on a correct tag. A value that is not `x.y.z` is not a release number,
 # and this file's job is release numbers.
 SEMVER_VALUE = re.compile(r"^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.]+)?$")
+# A plist is not line-oriented in the way the other layouts are, but it is regular enough: `<key>`
+# and `<string>` each occupy a line in every plist Xcode or PlistBuddy writes, and matching the
+# whole element (rather than scraping a value after it) is what keeps a `<string>` that is not a
+# version -- a bundle name, a copyright line -- from being read as one.
+PLIST_ELEMENT = re.compile(r"<(?P<kind>key|string)>\s*(?P<value>[^<]*)</\s*(?P=kind)\s*>")
 
 
 def _norm(value: str) -> str:
@@ -144,6 +149,47 @@ def from_xcconfig(text: str) -> list[tuple[str, str]]:
     return out
 
 
+def from_plist(text: str) -> list[tuple[str, str]]:
+    """[(key, version)] for an Apple bundle Info.plist.
+
+    The layout every shipping Mac app uses, and the one this table was missing: an
+    `Info.plist` carries the version as a `<string>` VALUE under a `<key>`, which is neither a
+    `VERSION` line, a Cargo `version =`, a Swift `let`, nor an xcconfig setting. Measured on
+    ZeroThunder, whose `v2.10.0` tag the gate could not check at all:
+
+      `file:`     -> `('(file)', '<?xml version="1.0" encoding="UTF-8"?>')` — the XML DECLARATION,
+                     read as a version, because `from_version_file` takes the first line it does
+                     not read as a `#` comment and `<?xml` is not one. It then compares the tag
+                     against "1.0" and reports a correct release as a mismatch.
+      `swift:`    -> nothing, correctly: there is no `let` in a plist.
+      `xcconfig:` -> nothing, correctly: there is no `SETTING =` in a plist.
+
+    So a repo declaring its version the way Apple ships it was UNVERIFIABLE, and the gate's own
+    rule is that an unverifiable version source is a finding rather than a pass. That is correct
+    behaviour pointed at a layout nobody had written down, which is the same class as a gate that
+    cannot see a member of its own population.
+
+    Both `CFBundleShortVersionString` and `CFBundleVersion` are returned when they are `x.y.z`.
+    A bundle that also carries a build NUMBER (`CFBundleVersion` is a monotonic integer, not a
+    release number) is not a disagreement, and matching by VALUE SHAPE is what keeps that from
+    reading as one -- the same rule as `swift:` and `xcconfig:`. Two `x.y.z` values that disagree
+    still fail the gate rather than being resolved by taking the first.
+    """
+    out: list[tuple[str, str]] = []
+    key = None
+    for raw in text.splitlines():
+        tag = PLIST_ELEMENT.match(raw.strip())
+        if not tag:
+            continue
+        if tag.group(1) == "key":
+            key = tag.group(2)
+            continue
+        if key and SEMVER_VALUE.match(tag.group(2)):
+            out.append((f"(plist:{key})", tag.group(2)))
+        key = None
+    return out
+
+
 # The registry. Adding a layout is one entry here, or one `kind:path` in
 # GOH_TAG_VERSION_SOURCES — no new code path, no new branch to forget.
 STRATEGIES = {
@@ -151,6 +197,7 @@ STRATEGIES = {
     "cargo": from_cargo,
     "swift": from_swift,
     "xcconfig": from_xcconfig,
+    "plist": from_plist,
 }
 
 # What a repo gets with no configuration: the two layouts that were live when this was written.
