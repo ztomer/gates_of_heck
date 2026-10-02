@@ -32,6 +32,8 @@ all three that were really blind. Running the gates is the only thing that answe
 from __future__ import annotations
 
 import argparse
+import contextlib
+import io
 import json
 import os
 import shutil
@@ -160,10 +162,25 @@ def build_skeleton(root, gates, workdir):
 NOT_APPLICABLE = "not applicable"
 
 
-def sweep(skeleton, gate_name, names, timeout=TIMEOUT):
-    """{gate: last line of output} for every gate that EXITED 0 over the empty
-    tree WITHOUT declaring itself not applicable."""
+def sweep(skeleton, gate_name, names, timeout=None):
+    """(blind, unrunnable) over the empty tree.
+
+    blind is {gate: last line of output} for every gate that EXITED 0 WITHOUT declaring itself not
+    applicable. unrunnable is {gate: why} for every gate that could not be run at all.
+
+    The second return value exists because "could not run" and "ran and refused" used to look
+    identical downstream. A gate that TIMED OUT was skipped, and skipping is indistinguishable from
+    passing, so a gate that never reported anything fell out of `blind` and was then read as
+    "excused here but now FAILS on an empty tree -- delete its excuse". That verdict is a claim
+    about what the gate said, and a gate that said nothing cannot support it: the excuse was
+    correct all along and deleting it would have silenced a real guard over a slow machine.
+
+    `timeout` defaults to the module's TIMEOUT at CALL time, not at def time, so the probe can
+    shrink it and exercise this path in a second instead of a minute and a half.
+    """
+    timeout = TIMEOUT if timeout is None else timeout
     blind = {}
+    unrunnable = {}
     for name in names:
         try:
             result = subprocess.run(
@@ -173,15 +190,19 @@ def sweep(skeleton, gate_name, names, timeout=TIMEOUT):
                 # calls would read the REAL tree, and the sweep would measure the wrong thing.
                 env=foreign_repo_env(),
             )
-        except (OSError, subprocess.SubprocessError):
-            continue  # could not run it at all: not a claim of compliance
+        except subprocess.TimeoutExpired:
+            unrunnable[name] = f"no verdict within {timeout}s"
+            continue
+        except (OSError, subprocess.SubprocessError) as exc:
+            unrunnable[name] = f"could not run: {exc}"
+            continue
         if result.returncode == 0:
             text = result.stdout + result.stderr
             if NOT_APPLICABLE in text:
                 continue  # a named non-run, not a pass
             lines = [ln for ln in text.splitlines() if ln.strip()]
             blind[name] = lines[-1].strip()[:100] if lines else "(no output)"
-    return blind
+    return blind, unrunnable
 
 
 def gate_names(gates):
@@ -219,13 +240,19 @@ def main(argv=None):
     excused = {**legitimate, **known_blind}
     with tempfile.TemporaryDirectory() as workdir:
         skeleton = build_skeleton(root, gates, os.path.join(workdir, "skeleton"))
-        blind = sweep(skeleton, os.path.basename(gates), names)
+        blind, unrunnable = sweep(skeleton, os.path.basename(gates), names)
 
     unexcused = {k: v for k, v in blind.items() if k not in excused}
     # The other direction, and it is the one an allowlist loses: a gate excused here that now
     # FAILS on an empty tree has been fixed, and its excuse is permission nobody needs any more.
-    stale = sorted(k for k in excused if k not in blind and k in names)
+    # A gate that never reported is not such a gate, so it cannot retire an excuse.
+    stale = sorted(k for k in excused if k not in blind and k in names and k not in unrunnable)
 
+    for name, why in sorted(unrunnable.items()):
+        warn(f"{name} gave NO verdict ({why}) -- its scope is unchecked, not clean")
+    if unrunnable:
+        info("A gate that could not run is not a gate that passed. Raise TIMEOUT if the machine is")
+        info("merely loaded, or fix the gate; either way do not read its silence as compliance.")
     for name, line in sorted(unexcused.items()):
         err(f"{name} PASSED over an empty tree: {line!r}")
     if unexcused:
@@ -237,7 +264,7 @@ def main(argv=None):
     for name in stale:
         err(f"{name} is excused here but now FAILS on an empty tree -- delete its excuse")
 
-    if unexcused or stale:
+    if unexcused or stale or unrunnable:
         return 1
     ok(f"empty scope: {len(names)} gate(s) swept over an empty tree, "
        f"{len(names) - len(blind)} refused to report compliance")
@@ -286,7 +313,7 @@ def probe():
         names = gate_names(tools)
         with tempfile.TemporaryDirectory() as work:
             skeleton = build_skeleton(root, tools, os.path.join(work, "s"))
-            blind = sweep(skeleton, "tools", names)
+            blind, _unrunnable = sweep(skeleton, "tools", names)
 
         cases = [
             ("all gates are discovered",
@@ -322,6 +349,39 @@ def probe():
             bad += 1
         else:
             ok("probe: an excuse for a gate that now fails is reported")
+
+        # A gate that TIMES OUT is UNRUNNABLE, and its silence must never read as a verdict. This
+        # is the false report that started it: an excused gate that outran the budget was told it
+        # "now FAILS on an empty tree -- delete its excuse", which is a claim about what it said,
+        # from a gate that said nothing. Deleting that excuse silences a real guard over a slow
+        # machine, so the two must be told apart.
+        with open(os.path.join(tools, "check_hang.py"), "w", encoding="utf-8") as handle:
+            handle.write("import time\ntime.sleep(30)\n")
+        with open(os.path.join(tools, ALLOW_FILE), "w", encoding="utf-8") as handle:
+            json.dump({"legitimate": {"check_hang.py": "slow but correct on a loaded machine"}},
+                      handle)
+        globals()["TIMEOUT"] = 1
+        try:
+            buf = io.StringIO()
+            # err() writes to stderr and warn() to stdout, and this case reads both.
+            with contextlib.redirect_stderr(buf), contextlib.redirect_stdout(buf):
+                hang_rc = main(["--root", root])
+            hang_err = buf.getvalue()
+        finally:
+            globals()["TIMEOUT"] = TIMEOUT
+        for label, want, got in [
+            ("a gate that never reports does not pass the sweep", 1, hang_rc),
+            ("its silence is reported as no verdict, not as a pass",
+             True, "gave NO verdict" in hang_err + str(hang_rc)),
+            ("and it is NOT told to delete a correct excuse",
+             False, "delete its excuse" in hang_err),
+        ]:
+            if want != got:
+                err(f"probe: {label} (wanted {want!r}, got {got!r})")
+                bad += 1
+            else:
+                ok(f"probe: {label}")
+        os.remove(os.path.join(tools, "check_hang.py"))
 
         # A flat file predates the split; it must read as DEFECTS, never as legitimate.
         with open(os.path.join(tools, ALLOW_FILE), "w", encoding="utf-8") as handle:
