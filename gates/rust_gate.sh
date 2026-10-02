@@ -143,6 +143,29 @@ goh_step_in "$cargo_dir" "cargo lints (manifest)" \
 # tests/test_goh_noallow_parity.py), through gates/goh.sh like the lints step.
 goh_step "no #[allow] / #[expect]" bash "$HERE/goh.sh" no-allow ${GOH_EXCLUDE:+--exclude "$GOH_EXCLUDE"}
 
+# Dependency currency. Split severity on purpose:
+#   * FATAL: a direct dependency pinned BELOW what the graph already resolves.
+#     Offline, deterministic, and a bug by house rule -- our pin is why two
+#     majors of one crate are in the tree, and the compiler reports that as a
+#     type error naming the TYPE, never the pin.
+#   * REPORTED, not failed: anything behind crates.io. A major moves in its own
+#     commit and a patch is routine, so a gate that failed on drift would be red
+#     on every honest commit -- and a permanently-red gate is one nobody reads.
+#     GOH_DEPS_STRICT=1 opts a repo into failing on majors; GOH_DEPS_RATCHET
+#     freezes the majors it has already triaged so they cannot grow back.
+# GOH_DEPS_OFFLINE=1 skips the network arm AND says so, rather than printing a
+# clean bill it did not earn.
+# A STRING, not an array: macOS ships bash 3.2, where an EMPTY array expands
+# to an unbound variable under `set -u`, and this gate runs with `set -euo
+# pipefail`. The estate's own tests caught it on the first run, which is what
+# they are for.
+_deps_args=""
+[ "${GOH_DEPS_STRICT:-}" = "1" ] && _deps_args="--strict"
+[ -n "${GOH_DEPS_RATCHET:-}" ] && _deps_args="$_deps_args --ratchet $GOH_DEPS_RATCHET"
+[ "${GOH_DEPS_OFFLINE:-}" = "1" ] && _deps_args="$_deps_args --offline"
+# shellcheck disable=SC2086 # deliberate word-splitting: this IS the argv list
+goh_step "dependency currency" bash "$HERE/goh.sh" deps ${_deps_args:+"$_deps_args"}
+
 # GOH_RUST_COVERAGE=defer: the caller's PUSH gate checks the floor, so a
 # commit gate need not rebuild every touched crate instrumented (a release
 # touches them all). Named, never silent; any other value is a miswiring.

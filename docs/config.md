@@ -58,6 +58,22 @@ fix is `reclaim_build_space.sh` next to it.
 
 `sccache` comes from `RUSTC_WRAPPER`, not from here.
 
+### Dependency currency (`checks/check_dep_currency.py`, run as `goh.sh deps`)
+
+A step in `rust_gate.sh`. Two severities on purpose, because conflating them is
+how a currency check becomes a gate nobody reads.
+
+| Key | Default | Meaning |
+|---|---|---|
+| `GOH_DEPS_STRICT` | unset | `1` also fails on a MAJOR behind. Off by default: a major moves in its own commit by house rule, and a patch is routine, so failing on drift would be red on every honest commit. |
+| `GOH_DEPS_RATCHET` | unset | Path to a file of crate names this repo has already TRIAGED as behind. Any major-behind NOT listed fails, so the set can shrink but not grow back. |
+| `GOH_DEPS_OFFLINE` | unset | `1` skips the crates.io arm and PRINTS that it did. Absence of evidence is not a clean bill, and a check that prints "clean" because the index was unreachable converts a missing measurement into evidence. |
+
+FATAL with no key set at all, and needing no network: a direct dependency
+pinned BELOW a version the graph already resolves. Our pin is then why two
+majors of one crate are in the tree — and that makes the same type not the same
+type, which the compiler reports by NAME and never by pointing at the pin.
+
 ## Swift (`gates/swift_gate.sh`)
 
 | Key | Default | Meaning |

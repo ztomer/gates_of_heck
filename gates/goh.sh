@@ -32,6 +32,7 @@ case "$check" in
     lints)      python_file="checks/check_lints_optin.py" ;;
     skills)     python_file="checks/check_skills_corpus.py" ;;
     golden)     python_file="lib/golden_core.py" ;;
+    deps)       python_file="checks/check_dep_currency.py" ;;
     *) echo "✗ goh.sh: unknown check '$check'" >&2; exit 2 ;;
 esac
 
@@ -40,6 +41,15 @@ case "$check" in
     lints) native_lacks="--staged --self-test" ;;
     *)     native_lacks="" ;;
 esac
+# `deps` has NO native port: it reads the crates.io index over the network and
+# interprets semver, which is Python's job here. Without this the native binary
+# claimed the subcommand and exited 2 on "unrecognized subcommand" -- a check
+# that exists and cannot be run, which is worse than one that is absent,
+# because it looks available.
+python_only=""
+if [ "$check" = deps ]; then
+    python_only="dependency currency needs the crates.io index; no native port"
+fi
 needs_python=""
 for arg in "$@"; do
     for lacked in $native_lacks; do
@@ -48,6 +58,10 @@ for arg in "$@"; do
 done
 
 goh_resolve_native
+if [ -n "$python_only" ]; then
+    echo "· goh.sh: $check is Python-only — $python_only" >&2
+    exec python3 "$ROOT/$python_file" "$@"
+fi
 if [ -n "$goh_native" ] && [ -z "$needs_python" ]; then
     exec "$goh_native" "$check" "$@"
 fi
