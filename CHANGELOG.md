@@ -1,5 +1,32 @@
 # CHANGELOG
 
+## v0.15.1 — two version layouts a release could not be checked against _(2026-10-02)_
+
+`v0.15.0` shipped with the emptiness-assert gate and the declared Python rule
+set. These two are the same class of defect found afterwards, and both of them
+arrived from an agent working nearby rather than being commissioned — read
+before keeping, and named here so the record is honest about it.
+
+**`plist`** — an Apple bundle declares its version as a `<string>` under a
+`<key>` in `Info.plist`, which was none of the layouts this gate shipped with.
+Measured on ZeroThunder, whose `v2.10.0` tag no strategy could check:
+`file:` reads the XML **declaration** as the version
+(`('(file)', '<?xml version="1.0"…?>')`) because it takes the first line it does
+not read as a `#` comment, compares the tag against "1.0", and reports a correct
+release as a mismatch; `swift:` and `xcconfig:` correctly find nothing, because
+there is no `let` and no `SETTING =`. So a repo that declares its version the way
+Apple ships it was UNVERIFIABLE, while this gate's own rule is that an absent
+version source is a finding rather than a pass.
+
+**`pyproject`** — the `[project] version` a Python distribution declares. Same
+shape of blindness: without a strategy for it, a packaging-only repo has no
+readable source at all and `file:` reads whatever the first meaningful line
+happens to be.
+
+One entry in `STRATEGIES` each, no new code path. What I added to both:
+`docs/config.md` enumerates the kinds, and a kind nothing documents is
+half-wired.
+
 ## v0.15.0 — the emptiness assert clippy cannot see, and a declared rule set for Python _(2026-10-02)_
 
 `check_no_empty_assert.py`, wired into every Rust repo's gate ahead of clippy.
