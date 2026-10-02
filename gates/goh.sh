@@ -28,6 +28,7 @@ case "$check" in
     secrets)    python_file="checks/check_no_secrets.py" ;;
     home-paths) python_file="checks/check_no_home_paths.py" ;;
     no-allow)   python_file="checks/check_no_allow.py" ;;
+    empty-assert) python_file="checks/check_no_empty_assert.py" ;;
     screen)     python_file="checks/check_no_screen_presentation.py" ;;
     lints)      python_file="checks/check_lints_optin.py" ;;
     skills)     python_file="checks/check_skills_corpus.py" ;;
@@ -47,9 +48,19 @@ esac
 # that exists and cannot be run, which is worse than one that is absent,
 # because it looks available.
 python_only=""
-if [ "$check" = deps ]; then
-    python_only="dependency currency needs the crates.io index; no native port"
-fi
+case "$check" in
+    deps)
+        python_only="dependency currency needs the crates.io index; no native port"
+        ;;
+    empty-assert)
+        # Deliberately not ported, not merely unported. This checker's SPEC is
+        # the measured clippy table in its docstring, and the table is what the
+        # tests and the --probe assert. A second implementation in Rust would be
+        # a second reading of that spec, and the two would agree until the table
+        # moved -- which is the drift this gate exists to stop.
+        python_only="the match table IS the spec (measured against clippy 1.99.0); one implementation, not two"
+        ;;
+esac
 needs_python=""
 for arg in "$@"; do
     for lacked in $native_lacks; do

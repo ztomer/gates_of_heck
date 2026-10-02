@@ -57,10 +57,7 @@ fn a_different_image_exceeds_the_default_tolerances() {
     assert_eq!(out.status.code(), Some(1), "{}", out.text());
     let doc: serde_json::Value = serde_json::from_str(&out.stdout).expect("--json is JSON");
     assert_eq!(doc["ok"], false, "{doc}");
-    assert!(
-        doc["failures"].as_array().is_some_and(|f| !f.is_empty()),
-        "{doc}"
-    );
+    assert_ne!(doc["failures"].as_array().map(Vec::len), Some(0), "{doc}");
 }
 
 #[test]

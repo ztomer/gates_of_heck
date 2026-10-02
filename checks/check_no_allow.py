@@ -39,7 +39,9 @@ that way, invisible to the literal grep. The wrapped form is matched by the
 does nothing else with those tokens) and holds across the multi-line
 formatting rustfmt gives it.
 
-Conservative comment-awareness (2026-08-25, depth-counter rewrite 2026-08-26):
+Conservative comment-awareness (2026-08-25, depth-counter rewrite 2026-08-26,
+the depth counter itself now shared with `check_no_empty_assert.py` as
+`checks/_rust_text.py`):
 a doc-comment MENTIONING #[allow] is prose about the policy, not a
 suppression, and a gate that flags its own documentation trains people to
 ignore it. Whole-line // comments (covering /// doc comments and //! inner
@@ -56,71 +58,33 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from _gitutil import content_bytes, listed_files, repo_root  # noqa: E402
+from _rust_text import (  # noqa: E402
+    STRING_LITERAL,
+    code_portions,
+    is_compiled_src,
+    is_generated_blob,
+)
 
-# The marker a generator writes. A mention in a code span (`@generated`, as this
-# module's own doc and every doc about the policy writes it) is documentation, not
-# the marker: counting it exempted the native port's source from itself (2026-09-23).
-_GENERATED_MARKER = re.compile(r"(?<!`)@generated(?!`)")
 _ALLOW_PATTERN = re.compile(r"#!?\[(?:allow|expect)\(")
 # `#[cfg_attr(<cfg>, allow(...))]`: rustfmt puts the wrapped attribute on its
 # own line, so the two tokens are matched across the open attribute rather
 # than on one line (see the module doc).
 _CFG_ATTR_OPEN = re.compile(r"#!?\[cfg_attr\(")
 _WRAPPED_SUPPRESSION = re.compile(r"(?<![\w:])(?:allow|expect)\(")
-_STRING_LITERAL = re.compile(r'"(?:[^"\\]|\\.)*"')
-
-
-def _code_portions(text: str):
-    """Yield (lineno, code-only line): /* */ spans (nestable, left-to-right,
-    state carried across lines) and // tails removed."""
-    depth = 0
-    for lineno, line in enumerate(text.split("\n"), 1):
-        kept = []
-        i = 0
-        while i < len(line):
-            if depth == 0 and line.startswith("//", i):
-                break  # line comment: rest of the line is prose
-            if line.startswith("/*", i):
-                depth += 1
-                i += 2
-                continue
-            if depth > 0 and line.startswith("*/", i):
-                depth -= 1
-                i += 2
-                continue
-            if depth == 0:
-                kept.append(line[i])
-            i += 1
-        yield lineno, "".join(kept)
-
-
-def _is_compiled_src(rel: str) -> bool:
-    # Every compiled Rust file: src/, benches/, tests/, examples/ and build.rs.
-    # Tests are in scope since 2026-09-20 - clippy -D warnings runs over them
-    # via --all-targets, so a suppression there defeats the gate just the same.
-    if rel == "build.rs" or rel.endswith("/build.rs"):
-        return True
-    return any(f"/{d}/" in rel or rel.startswith(f"{d}/") for d in ("src", "benches", "tests", "examples"))
 
 
 def _files(root: str, staged: bool, exclude):
     return [
         f
         for f in listed_files(root, staged=staged)
-        if f.endswith(".rs") and _is_compiled_src(f)
+        if f.endswith(".rs") and is_compiled_src(f)
         and not (exclude and exclude.search(f))
     ]
 
 
 def _is_generated(root: str, rel: str, staged: bool) -> bool:
-    """The documented policy: `@generated` among the FIRST 40 LINES exempts
-    the file. (An earlier implementation read the first 2000 characters
-    instead — same intent, different window; the docstring wins.)"""
     blob = content_bytes(root, rel, staged=staged)
-    if blob is None:
-        return False
-    head_lines = blob.decode("utf-8", errors="replace").splitlines()[:40]
-    return _GENERATED_MARKER.search("\n".join(head_lines)) is not None
+    return blob is not None and is_generated_blob(blob)
 
 
 def _scan(root: str, paths, staged: bool):
@@ -131,7 +95,7 @@ def _scan(root: str, paths, staged: bool):
             continue
         text = blob.decode("utf-8", errors="replace")
         in_cfg_attr = 0  # bracket depth of an open `#[cfg_attr(` attribute
-        for lineno, code in _code_portions(text):
+        for lineno, code in code_portions(text):
             if _ALLOW_PATTERN.search(code):
                 hits.append(f"{rel}:{lineno}: {code.strip()}")
                 continue
@@ -141,7 +105,7 @@ def _scan(root: str, paths, staged: bool):
             # with `allow(`/`expect(` — `.expect("x")` included — was flagged
             # (2026-09-23). A quoted one is still judged on its own line, as a
             # quoted `#[allow(` is above; it just never carries state.
-            literal_free_line = _STRING_LITERAL.sub('""', code)
+            literal_free_line = STRING_LITERAL.sub('""', code)
             opened = in_cfg_attr == 0 and _CFG_ATTR_OPEN.search(literal_free_line)
             if not (opened or in_cfg_attr):
                 quoted = _CFG_ATTR_OPEN.search(code)

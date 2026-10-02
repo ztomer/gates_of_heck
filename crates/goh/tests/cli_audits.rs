@@ -327,7 +327,7 @@ fn ceiling_passes_bound_exemptions_and_waivers() {
     // Nothing configured: nothing to check, nothing printed.
     let out = goh(Some(&r), &["ceiling"]);
     assert!(out.status.success(), "{}", out.text());
-    assert!(out.text().is_empty(), "{}", out.text());
+    assert_eq!(out.text(), "", "nothing to check must print nothing");
     let out = goh(
         Some(&r),
         &[

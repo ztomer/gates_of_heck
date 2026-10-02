@@ -1,5 +1,76 @@
 # CHANGELOG
 
+## v0.15.0 — the emptiness assert clippy cannot see _(2026-10-02)_
+
+`check_no_empty_assert.py`, wired into every Rust repo's gate ahead of clippy.
+
+The class it closes was not hypothetical and not one repository. Four repos in
+two days: media_server 77 files, routines 50 assertions, app_updates 17,
+gates_of_heck 24 — and every single one of them was a release blocker rather
+than a broken build. media_server's `bump.sh` refused to cut for exactly this
+reason, so a stylistic lint held a release.
+
+What makes this a gate and not another sweep is that **clippy is blind to half
+the shape**. Measured against clippy 1.99.0, one shape per line:
+
+    assert!(v.is_empty());                        assert_is_empty
+    assert!(!v.is_empty());                       assert_is_empty
+    assert!(v.len() == 0);   /  assert!(0 == v.len());   len_zero
+    assert!(v.len() > 0);                         len_zero
+    debug_assert!(v.is_empty());                  assert_is_empty
+    assert!(v.is_empty(), "with a message");      NOTHING
+    assert!(!v.is_empty(), "msg");                NOTHING
+    assert_eq!(v.len(), 0);                       nothing (clippy's own suggestion)
+
+The two silent rows are why the class kept recurring: an assert carrying a
+message is the form people write on purpose, and it passes. That is not a
+theory here — clippy was green on this repository while **5 instances sat in the
+tree**, two commits after a sweep for the very same lint. Those five are fixed in
+this change, which is the first evidence the gap was real and the second that
+the sweep was incomplete.
+
+The rows that stay clean matter as much: `assert_eq!(x.len(), 0)` is not a
+violation, it is what clippy asks you to write, and a checker that flagged it
+would be flagging the fix. Both directions are cases in `--probe`, which is
+registered in `gate_calibration.json`, so a future narrowing of the match list
+turns a gate green again by going blind — and the calibration test breaks the
+pattern on purpose to prove the probe notices.
+
+Also in this change, both from the same session's findings rather than from
+preference:
+
+* `checks/_rust_text.py` — the comment-stripping depth counter, the string-literal
+  regex, the compiled-source scope rule and the `@generated` marker, shared by
+  `check_no_allow.py` and the new checker. Two checkers needing the same three
+  things is how a third copy appears; the second one to need it did not write one.
+* `qbittorrent.rs` and `screen.rs` move their tests to submodules. Both sat at
+  the 500-line cap with tests inline, and twice in one session a test edit pushed
+  a file over it. The cost of that class is paid by the next change, at commit
+  time, in the gate.
+
+
+## v0.14.0 — four gate gaps an independent audit found, closed structurally _(2026-10-01)_
+
+This stanza did not exist when the tag was cut. The release bumped the workspace
+to 0.14.0 and shipped without one, so the changelog's newest entry was v0.13.5 —
+a released version with no record of what it contained. Written from the tagged
+commit rather than from memory, and deliberately short: the four fixes are
+described where they live.
+
+* A Python tree with no formatter has its shape decided by whichever hand last
+  edited it. `check_python_formatted.py` now runs ruff over a tree that declares
+  no configuration, and says which rule set it applied instead of letting the
+  default decide silently.
+* The lockfile said 1.35.0 while the manifest said 1.36.0. `check_lock_version.py`
+  reads both and fails on the disagreement, because that is the shape of a
+  release cut from a stale lock.
+* `check_tag_version.py` refuses to push a `v<semver>` tag whose target commit
+  declares a different version — the defect that made a published tag able to
+  name a commit whose own build reported itself as another version.
+* A gate that scanned nothing read exactly like a gate that found nothing.
+  `check_probes_pass.py` runs every gate's own self-proof, after 24 of them were
+  found to be green by luck rather than by working.
+
 ## v0.13.5 — a tag is a claim, and it is checked against its own commit _(2026-10-01)_
 
 `check_tag_version.py` refuses to push any `refs/tags/v<semver>` whose target

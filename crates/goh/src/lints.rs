@@ -303,7 +303,8 @@ mod tests {
         let (findings, inspected, manifests, policy, members) = audit(&scanner(), root);
         assert_eq!((findings.len(), inspected), (0, 0));
         let (ok, out, err) = format_report(&findings, inspected, manifests, policy, members);
-        assert!(ok && err.is_empty() && out.contains("nothing to inherit"));
+        assert_eq!(err, "", "a successful report writes nothing to stderr");
+        assert!(ok && out.contains("nothing to inherit"));
     }
 
     #[test]

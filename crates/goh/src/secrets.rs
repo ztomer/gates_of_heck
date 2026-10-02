@@ -263,7 +263,7 @@ mod tests {
             concat!("-----BEGIN EC ", "PRIVATE KEY-----"),
             concat!("-----BEGIN DSA ", "PRIVATE KEY-----"),
         ] {
-            assert!(!findings(header, &patterns).is_empty(), "{header}");
+            assert_ne!(findings(header, &patterns).len(), 0, "{header}");
         }
         assert_eq!(
             findings(concat!("-----BEGIN ", "PUBLIC KEY-----"), &patterns).len(),

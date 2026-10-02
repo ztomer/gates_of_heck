@@ -22,6 +22,15 @@
 #      The HOUSE checker, always. Until 2026-09-14 this step looked for a
 #      repo-local tools/check_no_allow.py and skipped when absent, so four
 #      repos carried vendored copies and the rest were not checked at all.
+#   3a. checks/check_no_empty_assert.py — no `assert!(x.is_empty())` and no
+#      `x.len() == 0` inside assert!. Ahead of clippy on purpose, and it is not
+#      a duplicate of the lint: clippy reports NOTHING for an assert that
+#      carries a message, which is the shape most people write on purpose. That
+#      gap was measured, not assumed (2026-10-02): clippy was green on this very
+#      repo while 5 instances sat in the tree, two commits after a sweep for the
+#      same lint. Runs first because it reads a few dozen files and reports the
+#      offending lines, where clippy needs the crate to compile and reports at
+#      the end -- so the price of a violation is the violation, not the repo.
 #   4. coverage floor, when stated (GOH_COV_FLOOR_RUST or GOH_COV_FLOORS_JSON
 #      in .gatesrc) — via gates/coverage_gate.sh, with the floor passed as
 #      explicit argv (.gatesrc values are shell variables, NOT exported, so
@@ -142,6 +151,9 @@ goh_step_in "$cargo_dir" "cargo lints (manifest)" \
 # Native first: `goh no-allow` carries this step (parity-pinned by
 # tests/test_goh_noallow_parity.py), through gates/goh.sh like the lints step.
 goh_step "no #[allow] / #[expect]" bash "$HERE/goh.sh" no-allow ${GOH_EXCLUDE:+--exclude "$GOH_EXCLUDE"}
+
+# Same GOH_EXCLUDE exemption: a vendored tree is not ours to re-lint.
+goh_step "no emptiness asserts" bash "$HERE/goh.sh" empty-assert ${GOH_EXCLUDE:+--exclude "$GOH_EXCLUDE"}
 
 # Dependency currency. Split severity on purpose:
 #   * FATAL: a direct dependency pinned BELOW what the graph already resolves.
