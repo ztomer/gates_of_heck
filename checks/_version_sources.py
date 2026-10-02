@@ -103,12 +103,52 @@ def from_swift(text: str) -> list[tuple[str, str]]:
             out.append((f"(swift:{m.group(1)})", m.group(2)))
     return out
 
+# An Xcode build-settings assignment: `KEY = value`, optionally conditioned
+# (`KEY[sdk=macosx*] = value`). The condition is tolerated and not captured, because a repo
+# that conditions its version on an SDK still declares exactly one version, and refusing it
+# would be the gate being clever at the repo's expense.
+XCCONFIG_SETTING = re.compile(
+    r"""^\s*([A-Za-z_][A-Za-z0-9_]*)\s*(?:\[[^\]]*\])?\s*=\s*(.*?)\s*(?://.*)?$""",
+    re.VERBOSE,
+)
+
+
+def from_xcconfig(text: str) -> list[tuple[str, str]]:
+    """[(table, version)] for an Xcode build-settings file that declares the version.
+
+    The layout a project uses when ONE file has to be readable by Xcode AND by a shell: the
+    settings file is the declaration, and the Swift the app links is generated from it. Pointing
+    the tag gate at the generated Swift instead would police a projection — it would agree with
+    the canonical file for as long as the generator ran, and say nothing at all about a hand edit
+    to the file that is actually the source.
+
+    The `file:` strategy cannot read this layout, and reading it that way fails in the most
+    misleading way available. `from_version_file` returns the first line it does not read as a
+    `#` comment — and Xcode comments start with `//`, so a commented settings file hands the gate
+    a sentence as its version. Strip the comment and it returns `MARKETING_VERSION = 2.73.0`
+    whole, still compared against the bare tag `v2.73.0`. Both are a correct release reported as a
+    mismatch. Hence a real strategy rather than a pointer at the same file.
+
+    Selection is by VALUE SHAPE for the same reason as `swift`: these files carry a marketing
+    version AND a build number (`CURRENT_PROJECT_VERSION = 131`), and the build number is not a
+    release number. Every `x.y.z`-shaped setting is returned, so a file disagreeing with itself
+    still fails the gate instead of being resolved by taking the first.
+    """
+    out: list[tuple[str, str]] = []
+    for raw in text.splitlines():
+        m = XCCONFIG_SETTING.match(raw)
+        if m and SEMVER_VALUE.match(m.group(2)):
+            out.append((f"(xcconfig:{m.group(1)})", m.group(2)))
+    return out
+
+
 # The registry. Adding a layout is one entry here, or one `kind:path` in
 # GOH_TAG_VERSION_SOURCES — no new code path, no new branch to forget.
 STRATEGIES = {
     "file": from_version_file,
     "cargo": from_cargo,
     "swift": from_swift,
+    "xcconfig": from_xcconfig,
 }
 
 # What a repo gets with no configuration: the two layouts that were live when this was written.
