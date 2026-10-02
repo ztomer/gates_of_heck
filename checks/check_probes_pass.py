@@ -51,15 +51,39 @@ FLAGS = ("--probe", "--break-probe", "--selftest", "--self-test")
 TIMEOUT = 180
 
 
+# A PYTHON self-proof dispatches on argv: `"--probe" in sys.argv`, a `--probe` item in a list, or
+# a `)` that closes such a call. Anchored, because this estate discusses `--probe` constantly in
+# docstrings and only a gate that DISPATCHES on it has one. `in argv` as well as `in sys.argv`:
+# a gate whose `main(argv)` takes the list as a parameter dispatches just as really, and
+# requiring the module path marked ZeroThunder's check_mesh_integrity --break-probe as no probe.
+def _python_dispatches(flag, source):
+    return re.search(rf"{re.escape(flag)}" + r"\"?'?\s*(?:in (?:sys\.)?argv|,|\))", source)
+
+
+# ...AND SHELL, WHICH IS NOT A DIFFERENT LANGUAGE BUT A DIFFERENT DISPATCH. A bash gate reads a
+# POSITIONAL PARAMETER -- `[[ "${1:-}" == "--break-probe" ]]`, or `[ "$1" = "--selftest" ]`, or
+# `case "$1" in --break-probe)` -- and matched none of the forms above, so every bash gate in this
+# estate scored as carrying no self-proof however good its probe was.
+#
+# It cost a real miscount. ZeroThunder's check_gate_calibration.py reported `P4 fresh_install` as
+# uncalibrated for a session because of this, and the correct-looking remedy -- delete the working
+# probe, or record a person who proved it -- would have destroyed the evidence and fixed nothing.
+# Fixed locally in ZeroThunder first (6719fc4); this is the shared copy, so the other repos get it
+# too rather than each carrying a private patch.
+#
+# Anchored to a COMPARISON for the same reason the python form is anchored to an argv test: prose
+# that merely names the flag must not certify itself. Every shell dispatch is an equality test
+# against a positional parameter, so `==`/`=` beside the flag is the tightest honest anchor.
+def _shell_dispatches(flag, source):
+    return re.search(rf"(?:==|=)\s*\"?\'?{re.escape(flag)}", source) or re.search(
+        rf"case\s+\"?\$\{{?1[^\n]*\)\s*\n\s*{re.escape(flag)}", source
+    )
+
+
 def probe_flag(source):
     """The flag this gate's source says it accepts, or None if it declares no self-proof."""
     for flag in FLAGS:
-        # Anchored to an argv test so a flag merely NAMED in prose does not count. The docstrings
-        # in this estate discuss `--probe` constantly; only a gate that dispatches on it has one.
-        # `in argv` as well as `in sys.argv`: a gate whose `main(argv)` takes the list as a
-        # parameter dispatches just as really, and requiring the module path marked
-        # ZeroThunder's check_mesh_integrity --break-probe as no probe at all.
-        if re.search(rf"{re.escape(flag)}\"?'?\s*(in (?:sys\.)?argv|,|\))", source):
+        if _python_dispatches(flag, source) or _shell_dispatches(flag, source):
             return flag
     return None
 
@@ -86,7 +110,7 @@ def discover(root, dirs=GATE_DIRS):
         if not os.path.isdir(directory):
             continue
         for entry in sorted(os.listdir(directory)):
-            if not (entry.startswith("check_") and entry.endswith(".py")):
+            if not (entry.startswith("check_") and entry.endswith((".py", ".sh"))):
                 continue
             if scoped is not None and os.path.join(name, entry) not in scoped:
                 continue
@@ -99,11 +123,33 @@ def discover(root, dirs=GATE_DIRS):
     return found, total
 
 
+def _interpreter(path):
+    """How to invoke this gate. Python runs under the running interpreter; anything else under the
+    interpreter its SHEBANG names, falling back to bash.
+
+    The shebang rather than the extension, because a `check_*.sh` with a python shebang is a real
+    thing in this estate and running it under bash produces a syntax error that reads like a
+    broken probe. A missing shebang on a .sh is bash by convention and by what the file is named.
+    """
+    if path.endswith(".py"):
+        return [sys.executable]
+    try:
+        with open(path, "rb") as handle:
+            first = handle.readline().decode("utf-8", "replace").strip()
+    except OSError:
+        return ["bash"]
+    if first.startswith("#!") and "python" in first:
+        return [sys.executable]
+    if first.startswith("#!") and "zsh" in first:
+        return ["zsh"]
+    return ["bash"]
+
+
 def run_one(path, flag, cwd, timeout=TIMEOUT):
     """(ok, detail). A probe must exit 0; anything else is the probe telling us it is broken."""
     try:
         result = subprocess.run(
-            [sys.executable, path, flag],
+            [*_interpreter(path), path, flag],
             cwd=cwd, capture_output=True, text=True, timeout=timeout,
             # A probe builds its OWN fixture repos. Handed the hook's GIT_DIR, a probe's
             # `git init <tmp>` under a linked worktree re-initialises the real repository and

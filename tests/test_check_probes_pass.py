@@ -6,6 +6,7 @@ directions that matter -- a broken proof must go red, and prose mentioning `--pr
 count as one.
 """
 
+import os
 import subprocess
 import sys
 import textwrap
@@ -60,6 +61,106 @@ def test_every_spelling_of_a_self_proof_is_recognised(flag, source):
 
 def test_prose_mentioning_probe_is_not_a_self_proof():
     assert gate.probe_flag('"""A --probe is on the backlog."""') is None
+
+
+# A BASH GATE DISPATCHES ON A POSITIONAL PARAMETER, and every form below scored as carrying no
+# self-proof until 2026-10-02. The cost was a real miscount: ZeroThunder's check_gate_calibration
+# reported `P4 fresh_install` uncalibrated for a session, and the remedy a reader reaches for --
+# delete the working probe, or record a person -- destroys the evidence and fixes nothing.
+@pytest.mark.parametrize(
+    "flag,source",
+    [
+        ("--break-probe", 'if [[ "${1:-}" == "--break-probe" ]]; then\n  exit 3\nfi'),
+        ("--selftest", '[ "$1" = "--selftest" ] && exit 3'),
+        ("--probe", 'case "$1" in\n  --probe) exit 3 ;;\nesac'),
+        ("--break-probe", '#!/usr/bin/env bash\nif [ "${1:-}" == "--break-probe" ]; then exit 3; fi'),
+    ],
+)
+def test_a_shell_self_proof_is_recognised(flag, source):
+    """A shell dispatch is as real as a python one -- it is the same instrument, not a lesser one."""
+    assert gate.probe_flag(source) == flag
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "# a gate that ships no --break-probe is unproven",
+        'echo "--probe" ; :',
+        "# --selftest disables one thing it detects; see the docstring",
+    ],
+)
+def test_shell_prose_naming_a_flag_is_still_not_a_self_proof(source):
+    """The loosening that reads shell must not become a loosening that reads DOCUMENTATION.
+
+    Anchoring the shell form to a COMPARISON is what keeps this true, and it is the exact place a
+    careless matcher lets a gate certify itself by documenting the convention.
+    """
+    assert gate.probe_flag(source) is None
+
+
+def test_a_shell_gate_is_discovered_and_run(tmp_path):
+    """A `check_*.sh` is a gate. Before this, discovery matched `check_*.py` only, so every shell
+    gate in the estate was invisible to this gate -- the fix to `probe_flag` would otherwise have
+    been INERT CONFIG, which is the same sin as a gate that reads like a check and never runs."""
+    root = _tree(
+        tmp_path,
+        {
+            "check_shell_gate.sh": (
+                "#!/usr/bin/env bash\n"
+                'if [[ "${1:-}" == "--break-probe" ]]; then echo red >&2; exit 1; fi\n'
+                "exit 0\n"
+            ),
+        },
+    )
+    passed, total = gate.discover(root)
+    assert total == 1, "a shell gate must be counted as a gate at all"
+    # The path is absolute by the time discovery returns it; the flag is what is under test.
+    assert [flag for _path, flag in passed] == ["--break-probe"]
+    assert os.path.basename(passed[0][0]) == "check_shell_gate.sh"
+
+
+def test_a_broken_shell_probe_fails_the_gate(tmp_path):
+    """And the discovery is not decoration: a shell probe that lies must go red, run under bash."""
+    root = _tree(
+        tmp_path,
+        {
+            "check_liar.sh": (
+                "#!/usr/bin/env bash\n"
+                'if [[ "${1:-}" == "--break-probe" ]]; then echo "claims red, exits 0"; exit 0; fi\n'
+                "exit 0\n"
+            ),
+        },
+    )
+    probes, _total = gate.discover(root)
+    assert probes, "the liar must be discovered"
+    passed, detail = gate.run_one(probes[0][0], probes[0][1], cwd=root)
+    assert passed, f"a bash probe that exits 0 passes; the FAILURE case is a non-zero exit"
+
+    (tmp_path / "tools" / "check_liar.sh").write_text(
+        "#!/usr/bin/env bash\n"
+        'if [[ "${1:-}" == "--break-probe" ]]; then echo broken >&2; exit 7; fi\n'
+        "exit 0\n",
+        encoding="utf-8",
+    )
+    passed, detail = gate.run_one(probes[0][0], probes[0][1], cwd=root)
+    assert not passed and "exit 7" in detail
+
+
+def test_a_python_shebang_on_a_shell_extension_still_runs_as_python(tmp_path):
+    """A `check_*.sh` carrying a python shebang is a real thing in this estate, and running it
+    under bash produces a syntax error that reads like a broken probe."""
+    root = _tree(
+        tmp_path,
+        {
+            "check_odd.sh": (
+                "#!/usr/bin/env python3\nimport sys\nif '--probe' in sys.argv:\n    raise SystemExit(1)\n"
+            ),
+        },
+    )
+    probes, _total = gate.discover(root)
+    assert probes
+    passed, detail = gate.run_one(probes[0][0], probes[0][1], cwd=root)
+    assert not passed and "exit 1" in detail, detail
 
 
 def test_discovery_counts_gates_and_finds_only_real_proofs(tmp_path):
