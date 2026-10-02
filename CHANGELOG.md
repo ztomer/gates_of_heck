@@ -1,6 +1,6 @@
 # CHANGELOG
 
-## v0.15.0 — the emptiness assert clippy cannot see _(2026-10-02)_
+## v0.15.0 — the emptiness assert clippy cannot see, and a declared rule set for Python _(2026-10-02)_
 
 `check_no_empty_assert.py`, wired into every Rust repo's gate ahead of clippy.
 
