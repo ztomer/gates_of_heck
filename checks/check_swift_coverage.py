@@ -27,6 +27,7 @@ Honesty rules (house rule #9): a MISSING payload is exit 2 with a named
 reason — it must never masquerade as "0% coverage" or as success. Only an
 actual measurement below the floor is exit 1.
 """
+
 import argparse
 import glob
 import json
@@ -49,8 +50,7 @@ DEFAULT_DD = ".build/xcode-dd"
 # gates/coverage_swift.py -- which measured the same packages with NO
 # exclusion at all until 2026-09-07 and so reported more than double the
 # coverage on the same tree.
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                                "..", "lib"))
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "lib"))
 from swift_coverage_scope import EXCLUDED_MARKERS as _EXCLUDED_MARKERS  # noqa: E402
 
 
@@ -95,12 +95,7 @@ def _xcresult_records(node):
             and not isinstance(covered, bool)
             and not isinstance(total, bool)
         ):
-            label = (
-                node.get("name")
-                or node.get("target")
-                or node.get("identifier")
-                or "?"
-            )
+            label = node.get("name") or node.get("target") or node.get("identifier") or "?"
             found.append((str(label), covered, total))
         for v in node.values():
             found.extend(_xcresult_records(v))
@@ -114,11 +109,7 @@ def aggregate(records):
     """(percent, worst-first [(name, pct, covered, total)]) from raw triples."""
     tot_cov = sum(c for _, c, _ in records)
     tot_all = sum(t for _, _, t in records)
-    per_file = [
-        (n, (100.0 * c / t) if t else 100.0, c, t)
-        for n, c, t in records
-        if t > 0
-    ]
+    per_file = [(n, (100.0 * c / t) if t else 100.0, c, t) for n, c, t in records if t > 0]
     per_file.sort(key=lambda r: r[1])
     pct = (100.0 * tot_cov / tot_all) if tot_all else 100.0
     return pct, per_file
@@ -136,8 +127,7 @@ def load_spm(patterns):
             with open(p, encoding="utf-8") as fh:
                 records.extend(_spm_files(json.load(fh)))
         except (OSError, ValueError) as exc:
-            print(f"⚠ [swift_cov] unreadable codecov payload {p}: {exc}",
-                  file=sys.stderr)
+            print(f"⚠ [swift_cov] unreadable codecov payload {p}: {exc}", file=sys.stderr)
     return records, paths
 
 
@@ -168,7 +158,10 @@ def load_xcode(dd_root: str):
         return [], f"xcresulttool output was not JSON ({exc})"
     records = [r for r in _xcresult_records(payload) if r[2] > 0]
     if not records:
-        return [], f"no coveredLines/lineCount records recognized in {xc} (unsupported Xcode format?)"
+        return (
+            [],
+            f"no coveredLines/lineCount records recognized in {xc} (unsupported Xcode format?)",
+        )
     return records, None
 
 
@@ -241,22 +234,20 @@ def load_floors(path: str):
         with open(path, encoding="utf-8") as fh:
             raw = json.load(fh)
     except Exception as exc:
-        print(f"✗ [swift_cov] cannot read floors file {path}: {exc}",
-              file=sys.stderr)
+        print(f"✗ [swift_cov] cannot read floors file {path}: {exc}", file=sys.stderr)
         raise SystemExit(2)
     if not isinstance(raw, dict):
-        print(f"✗ [swift_cov] floors file {path} must be a JSON object",
-              file=sys.stderr)
+        print(f"✗ [swift_cov] floors file {path} must be a JSON object", file=sys.stderr)
         raise SystemExit(2)
-    wrapper = any(k in raw for k in ("targets", "tolerance", "file_floor",
-                                     "exempt", "slack"))
+    wrapper = any(k in raw for k in ("targets", "tolerance", "file_floor", "exempt", "slack"))
     targets = raw.get("targets", {}) if wrapper else raw
-    floors = {k: float(v) for k, v in targets.items()
-              if isinstance(v, (int, float))}
+    floors = {k: float(v) for k, v in targets.items() if isinstance(v, (int, float))}
     if not floors:
-        print(f"✗ [swift_cov] floors file {path} names no target floors — "
-              "a floors file that enforces nothing is worse than none",
-              file=sys.stderr)
+        print(
+            f"✗ [swift_cov] floors file {path} names no target floors — "
+            "a floors file that enforces nothing is worse than none",
+            file=sys.stderr,
+        )
         raise SystemExit(2)
     return floors, float(raw.get("tolerance", 0.0)) if wrapper else 0.0
 
@@ -277,19 +268,22 @@ def check_target_floors(records, floors, tolerance):
         floor = floors[target]
         cov, tot = totals_under(records, target)
         if tot == 0:
-            lines.append(f"✗ [swift_cov] floors name '{target}', which "
-                         f"matched no measured source. Known targets: "
-                         f"{', '.join(sorted(measured)) or '(none)'}")
+            lines.append(
+                f"✗ [swift_cov] floors name '{target}', which "
+                f"matched no measured source. Known targets: "
+                f"{', '.join(sorted(measured)) or '(none)'}"
+            )
             worst = max(worst, 2)
             continue
         pct = 100.0 * cov / tot
         if pct + 1e-9 < floor - tolerance:
-            lines.append(f"✗ [swift_cov] target {target}: {pct:.2f}% "
-                         f"({cov}/{tot}) is under its {floor:g}% floor")
+            lines.append(
+                f"✗ [swift_cov] target {target}: {pct:.2f}% "
+                f"({cov}/{tot}) is under its {floor:g}% floor"
+            )
             worst = max(worst, 1)
         else:
-            lines.append(f"→ [swift_cov] target {target}: {pct:.2f}% "
-                         f">= {floor:g}%")
+            lines.append(f"→ [swift_cov] target {target}: {pct:.2f}% >= {floor:g}%")
     return worst, lines
 
 
@@ -297,12 +291,18 @@ def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--min", type=float, required=True)
     ap.add_argument("--xcode", action="store_true")
-    ap.add_argument("--spm-glob", action="append", dest="spm_globs",
-                    help="codecov JSON path or glob (repeatable); default: "
-                         "both SwiftPM layouts")
+    ap.add_argument(
+        "--spm-glob",
+        action="append",
+        dest="spm_globs",
+        help="codecov JSON path or glob (repeatable); default: both SwiftPM layouts",
+    )
     ap.add_argument("--dd", default=DEFAULT_DD, help="derived-data root (xcode)")
-    ap.add_argument("--floors-json", default=os.environ.get("GOH_COV_FLOORS_JSON", ""),
-                    help="per-target floors, same schema as coverage_gate.sh")
+    ap.add_argument(
+        "--floors-json",
+        default=os.environ.get("GOH_COV_FLOORS_JSON", ""),
+        help="per-target floors, same schema as coverage_gate.sh",
+    )
     args = ap.parse_args()
 
     if args.xcode:
@@ -314,12 +314,19 @@ def main() -> int:
             # Payloads exist but none yielded measurable files (unreadable
             # JSON, or every entry has total_lines 0). Refuse with the count
             # rather than aggregating an empty record set into a fake 100%.
-            why = (f"{len(paths)} payload(s) matched {' | '.join(spm_globs)} but "
-                   f"none contained measurable files — corrupt codecov JSON?")
+            why = (
+                f"{len(paths)} payload(s) matched {' | '.join(spm_globs)} but "
+                f"none contained measurable files — corrupt codecov JSON?"
+            )
         else:
-            why = None if paths else (
-                f"no codecov payloads match {' | '.join(spm_globs)} — was 'swift "
-                f"test --enable-code-coverage' run?")
+            why = (
+                None
+                if paths
+                else (
+                    f"no codecov payloads match {' | '.join(spm_globs)} — was 'swift "
+                    f"test --enable-code-coverage' run?"
+                )
+            )
 
     if why:
         print(f"✗ [swift_cov] cannot measure coverage: {why}", file=sys.stderr)
@@ -342,8 +349,7 @@ def main() -> int:
 
     floor = args.min
     if pct + 1e-9 >= floor:
-        print(f"→ [swift_cov] OK — {pct:.1f}% >= {floor:g}% "
-              f"({len(per_file)} file(s))")
+        print(f"→ [swift_cov] OK — {pct:.1f}% >= {floor:g}% ({len(per_file)} file(s))")
         return 0
 
     print(f"✗ [swift_cov] {pct:.1f}% is under the {floor:g}% floor:", file=sys.stderr)
@@ -351,8 +357,7 @@ def main() -> int:
         print(f"    {p_:6.1f}%  {c:>6}/{t:<6}  {n}", file=sys.stderr)
     if len(per_file) > 20:
         print(f"    … and {len(per_file) - 20} more", file=sys.stderr)
-    print("\n  Write tests for what is uncovered; do not lower the floor.",
-          file=sys.stderr)
+    print("\n  Write tests for what is uncovered; do not lower the floor.", file=sys.stderr)
     return 1
 
 

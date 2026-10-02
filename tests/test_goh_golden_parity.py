@@ -13,6 +13,7 @@ The fixtures cover every decode path Pillow takes differently: palette and
 16-bit grayscale alone CLAMPS to 255. The sizes include the plan's three
 (40 kpx, 1 Mpx, 6 Mpx).
 """
+
 from __future__ import annotations
 
 import json
@@ -44,7 +45,9 @@ except ImportError:
 
 # The reference's numbers ARE the numpy tier's: without numpy it computes in
 # pure Python, a different summation order, and parity is not bit-exact.
-needs_reference = pytest.mark.skipif(not (HAVE_PIL and HAVE_NUMPY), reason="the reference tier needs Pillow + numpy")
+needs_reference = pytest.mark.skipif(
+    not (HAVE_PIL and HAVE_NUMPY), reason="the reference tier needs Pillow + numpy"
+)
 
 # Fraction of pixels a fixture perturbs, and by how much.
 WOBBLE_FRACTION = 0.05
@@ -55,7 +58,9 @@ def wobble(rng: random.Random, value: int, depth_max: int) -> int:
     return (value + rng.randrange(-WOBBLE, WOBBLE + 1)) % (depth_max + 1)
 
 
-def make_pair(tmp_path: Path, name: str, w: int, h: int, mode: str, seed: int, *, every: bool = False):
+def make_pair(
+    tmp_path: Path, name: str, w: int, h: int, mode: str, seed: int, *, every: bool = False
+):
     """Two Pillow images in `mode`, the second perturbed in a few (or every) pixel."""
     rng = random.Random(seed)
     a, b = PILImage.new(mode, (w, h)), PILImage.new(mode, (w, h))
@@ -81,27 +86,46 @@ def make_pair(tmp_path: Path, name: str, w: int, h: int, mode: str, seed: int, *
     return pa, pb
 
 
-def write_png16(path: Path, w: int, h: int, color_type: int, samples: list[int], trns: int | None = None) -> None:
+def write_png16(
+    path: Path, w: int, h: int, color_type: int, samples: list[int], trns: int | None = None
+) -> None:
     """A 16-bit PNG written by hand: Pillow cannot write every 16-bit layout."""
     channels = {0: 1, 2: 3}[color_type]
     row_len = w * channels
     raw = b"".join(
-        b"\x00" + b"".join(struct.pack(">H", v) for v in samples[r * row_len:(r + 1) * row_len]) for r in range(h)
+        b"\x00" + b"".join(struct.pack(">H", v) for v in samples[r * row_len : (r + 1) * row_len])
+        for r in range(h)
     )
 
     def chunk(tag: bytes, data: bytes) -> bytes:
-        return struct.pack(">I", len(data)) + tag + data + struct.pack(">I", zlib.crc32(tag + data) & 0xFFFFFFFF)
+        return (
+            struct.pack(">I", len(data))
+            + tag
+            + data
+            + struct.pack(">I", zlib.crc32(tag + data) & 0xFFFFFFFF)
+        )
 
     ihdr = struct.pack(">IIBBBBB", w, h, 16, color_type, 0, 0, 0)
     # A gray tRNS names one transparent sample value; the decoder then expands to gray+alpha.
     extra = chunk(b"tRNS", struct.pack(">H", trns)) if trns is not None else b""
-    path.write_bytes(b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", ihdr) + extra + chunk(b"IDAT", zlib.compress(raw)) + chunk(b"IEND", b""))
+    path.write_bytes(
+        b"\x89PNG\r\n\x1a\n"
+        + chunk(b"IHDR", ihdr)
+        + extra
+        + chunk(b"IDAT", zlib.compress(raw))
+        + chunk(b"IEND", b"")
+    )
 
 
-def make_pair16(tmp_path: Path, name: str, w: int, h: int, color_type: int, seed: int, trns: int | None = None):
+def make_pair16(
+    tmp_path: Path, name: str, w: int, h: int, color_type: int, seed: int, trns: int | None = None
+):
     rng = random.Random(seed)
     channels = {0: 1, 2: 3}[color_type]
-    a = [rng.randrange(65536) if rng.random() < 0.5 else rng.randrange(512) for _ in range(w * h * channels)]
+    a = [
+        rng.randrange(65536) if rng.random() < 0.5 else rng.randrange(512)
+        for _ in range(w * h * channels)
+    ]
     b = [v if rng.random() > WOBBLE_FRACTION else rng.randrange(65536) for v in a]
     pa, pb = tmp_path / f"{name}_a.png", tmp_path / f"{name}_b.png"
     write_png16(pa, w, h, color_type, a, trns)
@@ -115,7 +139,9 @@ def make_pair_numpy(tmp_path: Path, name: str, w: int, h: int, seed: int):
     a = rng.integers(0, 256, size=(h, w, 3), dtype=np.uint8)
     b = a.copy()
     mask = rng.random((h, w)) < WOBBLE_FRACTION
-    b[mask] = (a[mask].astype(np.int16) + rng.integers(-WOBBLE, WOBBLE + 1, size=(mask.sum(), 3))) % 256
+    b[mask] = (
+        a[mask].astype(np.int16) + rng.integers(-WOBBLE, WOBBLE + 1, size=(mask.sum(), 3))
+    ) % 256
     pa, pb = tmp_path / f"{name}_a.png", tmp_path / f"{name}_b.png"
     PILImage.fromarray(a).save(pa)
     PILImage.fromarray(b).save(pb)
@@ -140,7 +166,9 @@ def assert_same_verdict(py: dict, rs: dict) -> None:
     # Tiers differ by design (pillow/numpy vs png-crate/native); every number,
     # every failure string and the verdict must not.
     for key, value in py["metrics"].items():
-        assert value == rs["metrics"][key], f"{key}: reference {value!r} vs native {rs['metrics'][key]!r}"
+        assert value == rs["metrics"][key], (
+            f"{key}: reference {value!r} vs native {rs['metrics'][key]!r}"
+        )
     assert py["metrics"].keys() == rs["metrics"].keys()
     assert py["tolerances"] == rs["tolerances"]
     assert py["failures"] == rs["failures"]
@@ -172,11 +200,14 @@ def test_metrics_agree(goh: Path, tmp_path: Path, name: str, w: int, h: int, mod
 
 # gray16_trns: a tRNS chunk makes the decoder hand 16-bit gray back as gray+alpha, and Pillow
 # still clamps it — found by the goh-golden unit tests, pinned here against Pillow itself.
-@pytest.mark.parametrize("name,color_type,seed,trns", [("gray16", 0, 21, None), ("rgb16", 2, 22, None),
-                                                       ("gray16_trns", 0, 23, 128)])
+@pytest.mark.parametrize(
+    "name,color_type,seed,trns",
+    [("gray16", 0, 21, None), ("rgb16", 2, 22, None), ("gray16_trns", 0, 23, 128)],
+)
 @needs_reference
-def test_sixteen_bit_decodes_as_pillow_does(goh: Path, tmp_path: Path, name: str, color_type: int, seed: int,
-                                            trns: int | None):
+def test_sixteen_bit_decodes_as_pillow_does(
+    goh: Path, tmp_path: Path, name: str, color_type: int, seed: int, trns: int | None
+):
     pa, pb = make_pair16(tmp_path, name, 50, 40, color_type, seed, trns)
     code_py, py, _ = run_py(pa, pb)
     code_goh, rs, _ = run_goh(goh, pa, pb)
@@ -190,7 +221,9 @@ def test_a_failing_mean_prints_its_tolerance_as_python_does(goh: Path, tmp_path:
     code_py, py, _ = run_py(pa, pb)
     code_goh, rs, _ = run_goh(goh, pa, pb)
     assert code_py == code_goh == 1
-    assert any(f.startswith("mean_abs_diff") and f.endswith("> 8.0") for f in py["failures"]), py["failures"]
+    assert any(f.startswith("mean_abs_diff") and f.endswith("> 8.0") for f in py["failures"]), py[
+        "failures"
+    ]
     assert_same_verdict(py, rs)
 
 
@@ -220,7 +253,14 @@ def test_tolerances_and_preconditions_agree(goh: Path, tmp_path: Path) -> None:
     assert run_py(pa, pb, loose)[0] == run_goh(goh, pa, pb, loose)[0] == 0
     # Unknown key, non-number, boolean, NaN, not an object, not JSON: a
     # precondition on both, reported on stderr with nothing on stdout.
-    for bad in ['{"nope": 1}', '{"ssim_min": "high"}', '{"ssim_min": true}', '{"ssim_min": NaN}', "[1]", "{"]:
+    for bad in [
+        '{"nope": 1}',
+        '{"ssim_min": "high"}',
+        '{"ssim_min": true}',
+        '{"ssim_min": NaN}',
+        "[1]",
+        "{",
+    ]:
         code_py, out_py, _ = run_py(pa, pb, bad)
         code_goh, out_goh, _ = run_goh(goh, pa, pb, bad)
         assert (code_py, code_goh) == (2, 2), bad

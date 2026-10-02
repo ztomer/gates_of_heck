@@ -57,8 +57,11 @@ def _tagged_repo(tmp_path, name, rel, text):
 def _run(repo, refs, source):
     return subprocess.run(
         ["python3", str(REPO_ROOT / CHECKER), "--refs-file", str(refs)],
-        cwd=repo, capture_output=True, text=True,
-        env=dict(os.environ, GOH_TAG_VERSION_SOURCES=source))
+        cwd=repo,
+        capture_output=True,
+        text=True,
+        env=dict(os.environ, GOH_TAG_VERSION_SOURCES=source),
+    )
 
 
 def test_a_swift_constant_is_a_version_source(tmp_path):
@@ -68,11 +71,14 @@ def test_a_swift_constant_is_a_version_source(tmp_path):
     repo = tmp_path / "swiftpkg"
     repo.mkdir()
     git(repo, "init", "-q", "-b", "main")
-    write(repo, "Sources/ZTCore/Version.swift",
-          'public enum ZTVersion {\n'
-          '    public static let marketing = "2.73.0"\n'
-          '    public static let build = "131"\n'
-          '}\n')
+    write(
+        repo,
+        "Sources/ZTCore/Version.swift",
+        "public enum ZTVersion {\n"
+        '    public static let marketing = "2.73.0"\n'
+        '    public static let build = "131"\n'
+        "}\n",
+    )
     git(repo, "add", "-A")
     git(repo, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "c")
     git(repo, "tag", "v2.73.0")
@@ -87,19 +93,23 @@ def test_a_swift_constant_is_a_version_source(tmp_path):
 
     configured = subprocess.run(
         ["python3", str(REPO_ROOT / CHECKER), "--refs-file", str(refs)],
-        cwd=repo, capture_output=True, text=True,
-        env=dict(os.environ,
-                 GOH_TAG_VERSION_SOURCES="swift:Sources/ZTCore/Version.swift"))
+        cwd=repo,
+        capture_output=True,
+        text=True,
+        env=dict(os.environ, GOH_TAG_VERSION_SOURCES="swift:Sources/ZTCore/Version.swift"),
+    )
     assert configured.returncode == 0, configured.stdout + configured.stderr
 
 
 def test_the_swift_strategy_reads_the_release_number_not_the_build_number():
     """The build number is `131`, which is not `x.y.z`. Reading the first string constant
     instead of the first RELEASE number would refuse a correct tag."""
-    source = ('public enum ZTVersion {\n'
-              '    public static let marketing = "2.73.0"\n'
-              '    public static let build = "131"\n'
-              '}\n')
+    source = (
+        "public enum ZTVersion {\n"
+        '    public static let marketing = "2.73.0"\n'
+        '    public static let build = "131"\n'
+        "}\n"
+    )
     assert sources.from_swift(source) == [("(swift:marketing)", "2.73.0")]
 
 
@@ -120,8 +130,11 @@ def test_a_swift_file_that_declares_nothing_is_a_named_non_run_not_a_pass(tmp_pa
 
     out = subprocess.run(
         ["python3", str(REPO_ROOT / CHECKER), "--refs-file", str(refs)],
-        cwd=repo, capture_output=True, text=True,
-        env=dict(os.environ, GOH_TAG_VERSION_SOURCES="swift:Version.swift"))
+        cwd=repo,
+        capture_output=True,
+        text=True,
+        env=dict(os.environ, GOH_TAG_VERSION_SOURCES="swift:Version.swift"),
+    )
     assert out.returncode == 1, out.stdout + out.stderr
 
 
@@ -131,9 +144,11 @@ def test_two_release_numbers_in_one_swift_file_still_fail_the_gate(tmp_path):
     repo = tmp_path / "twonums"
     repo.mkdir()
     git(repo, "init", "-q", "-b", "main")
-    write(repo, "Version.swift",
-          'public static let marketing = "2.73.0"\n'
-          'public static let other = "9.9.9"\n')
+    write(
+        repo,
+        "Version.swift",
+        'public static let marketing = "2.73.0"\npublic static let other = "9.9.9"\n',
+    )
     git(repo, "add", "-A")
     git(repo, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "c")
     git(repo, "tag", "v2.73.0")
@@ -144,6 +159,9 @@ def test_two_release_numbers_in_one_swift_file_still_fail_the_gate(tmp_path):
 
     out = subprocess.run(
         ["python3", str(REPO_ROOT / CHECKER), "--refs-file", str(refs)],
-        cwd=repo, capture_output=True, text=True,
-        env=dict(os.environ, GOH_TAG_VERSION_SOURCES="swift:Version.swift"))
+        cwd=repo,
+        capture_output=True,
+        text=True,
+        env=dict(os.environ, GOH_TAG_VERSION_SOURCES="swift:Version.swift"),
+    )
     assert out.returncode == 1, out.stdout + out.stderr

@@ -101,7 +101,8 @@ def png_dimensions(path: Path) -> tuple[int, int]:
 def sips_scale(base: Path, px: int, dest: Path) -> None:
     r = subprocess.run(
         ["sips", "-z", str(px), str(px), str(base), "--out", str(dest)],
-        capture_output=True, text=True,
+        capture_output=True,
+        text=True,
     )
     if r.returncode != 0:
         die(f"sips → {dest.name} failed: {r.stderr.strip()}")
@@ -117,7 +118,8 @@ def normalize_source(src: Path, work: Path) -> Path:
     base = work / "base.png"
     r = subprocess.run(
         ["sips", "-s", "format", "png", str(src), "--out", str(base)],
-        capture_output=True, text=True,
+        capture_output=True,
+        text=True,
     )
     if r.returncode != 0:
         die(f"sips could not read {src}: {r.stderr.strip()}")
@@ -128,8 +130,12 @@ def modern_contents_json() -> dict:
     """Current single-size format: one universal 1024 asset."""
     return {
         "images": [
-            {"filename": "icon_1024x1024.png", "idiom": "universal",
-             "platform": "ios", "size": "1024x1024"}
+            {
+                "filename": "icon_1024x1024.png",
+                "idiom": "universal",
+                "platform": "ios",
+                "size": "1024x1024",
+            }
         ],
         "info": {"author": "xcode", "version": 1},
     }
@@ -138,8 +144,7 @@ def modern_contents_json() -> dict:
 def legacy_contents_json() -> dict:
     return {
         "images": [
-            {"filename": fname, "idiom": idiom, "scale": f"{scale}x",
-             "size": f"{size}x{size}"}
+            {"filename": fname, "idiom": idiom, "scale": f"{scale}x", "size": f"{size}x{size}"}
             for fname, size, scale, idiom in LEGACY_SET
         ],
         "info": {"author": "xcode", "version": 1},
@@ -148,8 +153,7 @@ def legacy_contents_json() -> dict:
 
 def write_json(path: Path, spec: dict) -> None:
     # Deterministic field order, trailing newline — regenerating is a no-op diff.
-    path.write_text(json.dumps(spec, indent=2, sort_keys=True) + "\n",
-                    encoding="utf-8")
+    path.write_text(json.dumps(spec, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -157,10 +161,16 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("source", type=Path, help="1024x1024 source image (PNG preferred)")
     ap.add_argument("out_dir", type=Path)
     ap.add_argument("--name", default="AppIcon")
-    ap.add_argument("--appiconset", action="store_true",
-                    help="also write <name>.appiconset/ (modern single-size)")
-    ap.add_argument("--legacy-ladder", action="store_true",
-                    help="with --appiconset: full multi-size iOS set instead")
+    ap.add_argument(
+        "--appiconset",
+        action="store_true",
+        help="also write <name>.appiconset/ (modern single-size)",
+    )
+    ap.add_argument(
+        "--legacy-ladder",
+        action="store_true",
+        help="with --appiconset: full multi-size iOS set instead",
+    )
     args = ap.parse_args(argv)
 
     src = args.source.resolve()
@@ -175,8 +185,10 @@ def main(argv: list[str] | None = None) -> int:
         w, h = png_dimensions(base)
         largest = max(px for _, px in LADDER)
         if max(w, h) < largest:
-            print(f"⚠ source is {w}x{h}, smaller than {largest}px — top ladder "
-                  f"members will be upscaled (blurry); prefer a 1024px source")
+            print(
+                f"⚠ source is {w}x{h}, smaller than {largest}px — top ladder "
+                f"members will be upscaled (blurry); prefer a 1024px source"
+            )
 
         # The ladder, in fixed order, into an auditable (kept) iconset dir.
         iconset = out_dir / f"{args.name}.iconset"
@@ -192,7 +204,8 @@ def main(argv: list[str] | None = None) -> int:
         else:
             r = subprocess.run(
                 ["iconutil", "-c", "icns", str(iconset), "-o", str(icns)],
-                capture_output=True, text=True,
+                capture_output=True,
+                text=True,
             )
             if r.returncode != 0:
                 die(f"iconutil failed: {r.stderr.strip()}")
@@ -208,8 +221,7 @@ def main(argv: list[str] | None = None) -> int:
                         sips_scale(base, px, group / fname)
                 write_json(group / "Contents.json", legacy_contents_json())
             else:
-                shutil.copy2(iconset / "icon_512x512@2x.png",
-                             group / "icon_1024x1024.png")
+                shutil.copy2(iconset / "icon_512x512@2x.png", group / "icon_1024x1024.png")
                 write_json(group / "Contents.json", modern_contents_json())
             print(f"✓ {group / 'Contents.json'}")
         return 0

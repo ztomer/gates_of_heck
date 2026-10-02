@@ -36,8 +36,7 @@ def test_file_length_flags_nonascii_filename_staged(repo):
     p = repo / "données.py"
     p.write_text("x = 1\n" * 501, encoding="utf-8")
     stage(repo, p.name)
-    r = run_check(repo, "checks/check_file_length.py", "--max", "500",
-                  "--staged")
+    r = run_check(repo, "checks/check_file_length.py", "--max", "500", "--staged")
     assert r.returncode == 1
     assert "données.py" in r.stderr
 
@@ -60,6 +59,7 @@ def test_newline_in_filename_is_one_record_not_two(repo):
     r = run_check(repo, "checks/check_no_emoji.py", "--staged")
     assert r.returncode == 1
     assert "we\nird.md" in r.stdout
+
 
 def test_a_failing_git_raises_instead_of_reporting_an_empty_repo(tmp_path):
     """A silent [] is the worst possible answer here. Measured 2026-09-05: with a corrupt index,

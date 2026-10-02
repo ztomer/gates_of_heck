@@ -35,9 +35,7 @@ STANZA_BODY = "- Added the release kit\n- Fixed seven drifting releasers"
 
 
 def sh(repo: Path, *args: str) -> str:
-    r = subprocess.run(
-        ["git", "-C", str(repo), *args], capture_output=True, text=True, check=True
-    )
+    r = subprocess.run(["git", "-C", str(repo), *args], capture_output=True, text=True, check=True)
     return r.stdout
 
 
@@ -65,7 +63,10 @@ def release_env(kit: dict) -> dict:
 def run_release(kit: dict, *args: str, version: str = VERSION) -> subprocess.CompletedProcess:
     return subprocess.run(
         ["/bin/bash", str(RELEASE), "--version", version, "--gate", "true", *args],
-        cwd=kit["proj"], capture_output=True, text=True, env=release_env(kit),
+        cwd=kit["proj"],
+        capture_output=True,
+        text=True,
+        env=release_env(kit),
     )
 
 
@@ -81,9 +82,7 @@ def kit(tmp_path: Path) -> dict:
     proj.mkdir()
     sh(proj, "init", "-q", "-b", "main")
     (proj / "CHANGELOG.md").write_text(
-        "# CHANGELOG\n\n"
-        f"## {TAG}\n\n{STANZA_BODY}\n\n"
-        "## v1.1.0\n\n- older\n",
+        f"# CHANGELOG\n\n## {TAG}\n\n{STANZA_BODY}\n\n## v1.1.0\n\n- older\n",
         encoding="utf-8",
     )
     commit_all(proj)
@@ -157,10 +156,19 @@ class TestSelfBuffering:
         """
         marker = tmp_path / "gate-started"
         proc = subprocess.Popen(
-            ["/bin/bash", str(RELEASE), "--version", VERSION,
-             "--gate", f"touch {marker} && sleep 5"],
-            cwd=kit["proj"], stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-            text=True, env=release_env(kit),
+            [
+                "/bin/bash",
+                str(RELEASE),
+                "--version",
+                VERSION,
+                "--gate",
+                f"touch {marker} && sleep 5",
+            ],
+            cwd=kit["proj"],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            env=release_env(kit),
         )
         original = RELEASE.read_bytes()
         try:
@@ -170,8 +178,7 @@ class TestSelfBuffering:
                 assert proc.poll() is None, "release.sh exited before the edit"
                 time.sleep(0.05)
 
-            RELEASE.write_bytes(
-                b"#!/usr/bin/env bash\necho corrupted mid-run ((\n")
+            RELEASE.write_bytes(b"#!/usr/bin/env bash\necho corrupted mid-run ((\n")
             out, err = proc.communicate(timeout=120)
         finally:
             RELEASE.write_bytes(original)
@@ -247,8 +254,7 @@ class TestRegressionPins:
         assert r.returncode == 0, r.stdout + r.stderr
 
         msg = tag_message(kit["proj"], TAG)
-        for want in ("### Added", "- the release kit", "### Fixed",
-                     "- seven drifting releasers"):
+        for want in ("### Added", "- the release kit", "### Fixed", "- seven drifting releasers"):
             assert want in msg, f"missing {want!r} in tag message:\n{msg}"
         assert "older" not in msg, "body bled into the next (older) stanza"
 
@@ -306,7 +312,7 @@ class TestStanzaMatchIsVerbatim:
 
     def test_real_stanza_still_matches_with_bracketed_form(self, kit):
         (kit["proj"] / "CHANGELOG.md").write_text(
-            "# CHANGELOG\n\n" f"## [{VERSION}]\n\n{STANZA_BODY}\n",
+            f"# CHANGELOG\n\n## [{VERSION}]\n\n{STANZA_BODY}\n",
             encoding="utf-8",
         )
         commit_all(kit["proj"])
@@ -356,17 +362,21 @@ class TestArtifactDownloadFailure:
         and the tap got the digest of nothing, reported as success."""
         bare = _bare_tap(tmp_path)
         bad_url = "http://127.0.0.1:9/nope.tar.gz"  # nothing listens; instant refuse
-        r = run_release(kit, "--no-push", "--tap", str(bare), "--cask", "foo",
-                        "--artifact", bad_url)
+        r = run_release(
+            kit, "--no-push", "--tap", str(bare), "--cask", "foo", "--artifact", bad_url
+        )
         assert r.returncode == 1, r.stdout + r.stderr
         combined = r.stdout + r.stderr
         assert "could not download artifact" in combined
         assert bad_url in combined
         # The tap must be untouched — no empty-input digest committed.
         import hashlib
+
         content = subprocess.run(
             ["git", "-C", str(bare), "show", "main:Casks/foo.rb"],
-            capture_output=True, text=True, check=True,
+            capture_output=True,
+            text=True,
+            check=True,
         ).stdout
         assert hashlib.sha256(b"").hexdigest() not in content
         assert 'sha256 "0000' in content

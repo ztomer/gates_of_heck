@@ -20,14 +20,25 @@ import pytest
 
 from conftest import REPO_ROOT
 
-GIT_VARS = ("GIT_DIR", "GIT_INDEX_FILE", "GIT_WORK_TREE", "GIT_OBJECT_DIRECTORY",
-            "GIT_COMMON_DIR", "GIT_PREFIX")
+GIT_VARS = (
+    "GIT_DIR",
+    "GIT_INDEX_FILE",
+    "GIT_WORK_TREE",
+    "GIT_OBJECT_DIRECTORY",
+    "GIT_COMMON_DIR",
+    "GIT_PREFIX",
+)
 
 
 def _git(repo: Path, *args: str) -> str:
     env = {k: v for k, v in os.environ.items() if k not in GIT_VARS}
-    return subprocess.run(["git", "-C", str(repo), "-c", "user.name=t", "-c", "user.email=t@t",
-                           *args], check=True, capture_output=True, text=True, env=env).stdout.strip()
+    return subprocess.run(
+        ["git", "-C", str(repo), "-c", "user.name=t", "-c", "user.email=t@t", *args],
+        check=True,
+        capture_output=True,
+        text=True,
+        env=env,
+    ).stdout.strip()
 
 
 @pytest.fixture
@@ -41,7 +52,11 @@ def goh(tmp_path: Path) -> Path:
     # carry it or the gate refuses with "… missing from the gates checkout" —
     # a correct refusal about a checkout this fixture assembled incomplete.
     (d / "checks").mkdir()
-    for name in ("check_tag_version.py", "_gitutil.py"):
+    # `_version_sources.py` too: check_tag_version.py imports it, and a fixture
+    # that assembles an incomplete checkout gets a correct "No module named"
+    # refusal about a tree this test built wrong. That is what it did on
+    # clean HEAD, where this test failed for exactly that reason.
+    for name in ("check_tag_version.py", "_gitutil.py", "_version_sources.py"):
         shutil.copy2(REPO_ROOT / "checks" / name, d / "checks" / name)
     shutil.copytree(REPO_ROOT / "tui", d / "tui", ignore=shutil.ignore_patterns("__pycache__"))
     _git(d, "init", "-q", "-b", "main")
@@ -64,10 +79,11 @@ def repo(tmp_path: Path) -> Path:
 
 @pytest.fixture
 def env(tmp_path: Path, goh: Path) -> dict:
-    e = {k: v for k, v in os.environ.items()
-         if k not in GIT_VARS and not k.startswith("GOH_PROVEN")}
+    e = {
+        k: v for k, v in os.environ.items() if k not in GIT_VARS and not k.startswith("GOH_PROVEN")
+    }
     e["GOH_DIR"] = str(goh)
-    e["COUNT"] = str(tmp_path / "count")   # each real run of a step appends a line here
+    e["COUNT"] = str(tmp_path / "count")  # each real run of a step appends a line here
     e["NO_COLOR"] = "1"
     return e
 
@@ -76,8 +92,13 @@ STEP = 'echo ran >> "$COUNT"'
 
 
 def proven(goh: Path, repo: Path, env: dict, step: str = STEP, *opts: str):
-    return subprocess.run(["bash", str(goh / "gates" / "proven.sh"), *opts, "--", step],
-                          cwd=repo, env=env, capture_output=True, text=True)
+    return subprocess.run(
+        ["bash", str(goh / "gates" / "proven.sh"), *opts, "--", step],
+        cwd=repo,
+        env=env,
+        capture_output=True,
+        text=True,
+    )
 
 
 def runs(env: dict) -> int:
@@ -121,7 +142,8 @@ def test_bytecode_a_gate_wrote_is_not_work_in_progress_on_the_gates(goh, repo, e
 
     (goh / "checks" / "__pycache__").mkdir(exist_ok=True)
     (goh / "checks" / "__pycache__" / "check_tag_version.cpython-314.pyc").write_bytes(
-        b"\x00\x0f\r\n")
+        b"\x00\x0f\r\n"
+    )
     after_cache = proven(goh, repo, env)
     assert runs(env) == 1, "a bytecode cache invalidated the gates identity"
     assert "proven on this tree" in after_cache.stdout, after_cache.stdout
@@ -288,13 +310,24 @@ def hooked(repo: Path, env: dict) -> Path:
 
 
 def commit(repo: Path, env: dict, *args: str) -> None:
-    subprocess.run(["git", "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", *args],
-                   cwd=repo, env=env, check=True, capture_output=True, text=True)
+    subprocess.run(
+        ["git", "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", *args],
+        cwd=repo,
+        env=env,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
 
 
 def local_ci(goh: Path, repo: Path, env: dict):
-    return subprocess.run(["bash", str(goh / "gates" / "local_ci.sh"), str(repo)],
-                          cwd=repo, env=env, capture_output=True, text=True)
+    return subprocess.run(
+        ["bash", str(goh / "gates" / "local_ci.sh"), str(repo)],
+        cwd=repo,
+        env=env,
+        capture_output=True,
+        text=True,
+    )
 
 
 def test_local_ci_records_and_then_skips(goh, hooked, env):
@@ -336,11 +369,17 @@ def test_the_push_gate_worktree_sees_what_the_checkout_proved(goh, hooked, env, 
     (hooked / "src.txt").write_text("two\n")
     commit(hooked, env, "-a", "-m", "two")
     sha = _git(hooked, "rev-parse", "HEAD")
-    penv = dict(env, GOH_PUSH_WORKTREES=str(tmp_path / "push"),
-                GOH_PUSH_LOGS=str(tmp_path / "push-logs"))
-    r = subprocess.run(["bash", str(goh / "gates" / "push_gate.sh")], cwd=hooked, env=penv,
-                       input=f"refs/heads/main {sha} refs/heads/main {'0' * 40}\n",
-                       capture_output=True, text=True)
+    penv = dict(
+        env, GOH_PUSH_WORKTREES=str(tmp_path / "push"), GOH_PUSH_LOGS=str(tmp_path / "push-logs")
+    )
+    r = subprocess.run(
+        ["bash", str(goh / "gates" / "push_gate.sh")],
+        cwd=hooked,
+        env=penv,
+        input=f"refs/heads/main {sha} refs/heads/main {'0' * 40}\n",
+        capture_output=True,
+        text=True,
+    )
     assert r.returncode == 0, r.stdout + r.stderr
     assert runs(env) == 1, "the push gate's clean worktree re-ran a proven step"
     assert "by pre-commit" in r.stdout

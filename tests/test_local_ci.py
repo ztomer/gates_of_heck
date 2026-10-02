@@ -25,7 +25,10 @@ def run_ci(cwd: Path, *args: str):
     env.pop("GOH_CI_STEPS", None)
     return subprocess.run(
         ["/bin/bash", str(LOCAL_CI), *args],
-        cwd=cwd, capture_output=True, text=True, env=env,
+        cwd=cwd,
+        capture_output=True,
+        text=True,
+        env=env,
     )
 
 

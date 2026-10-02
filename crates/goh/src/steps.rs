@@ -167,7 +167,7 @@ pub fn step_ceiling(
 #[must_use]
 pub fn step_corpus(repo: &std::path::Path, cfg: &gatesrc::Gatesrc, staged: bool) -> Option<i32> {
     // 5. Skills corpus (opt-in; the corpus may live outside the repo).
-    if !cfg.skills_corpus {
+    if !gatesrc::opt_in(cfg, "GOH_SKILLS_CORPUS") {
         return None;
     }
     let label = "skills corpus";
@@ -262,7 +262,7 @@ pub fn step_home_paths(
     // 7b. Hard-coded home paths (opt-in per repo). A location under
     // someone's HOME in a shipped script or binary works on one machine at
     // one moment — the salary CLI outage of 2026-09.
-    if !cfg.no_home_paths {
+    if !gatesrc::opt_in(cfg, "GOH_NO_HOME_PATHS") {
         return None;
     }
     let label = if staged {

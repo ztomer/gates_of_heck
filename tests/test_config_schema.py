@@ -44,9 +44,8 @@ def test_config_schema_covers_keys():
     internal-only row)."""
     doc = (REPO_ROOT / "docs" / "config.md").read_text(encoding="utf-8")
     missing = sorted(k for k in _keys_in_source() if k not in doc)
-    assert missing == [], (
-        "undocumented GOH_* keys (add them to docs/config.md):\n"
-        + "\n".join(f"  {k}" for k in missing)
+    assert missing == [], "undocumented GOH_* keys (add them to docs/config.md):\n" + "\n".join(
+        f"  {k}" for k in missing
     )
 
 

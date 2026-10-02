@@ -23,6 +23,7 @@ member that is PRESENT is honored even when null (spec note: respond with
 id null); ids that decode to NaN/Infinity are sanitized to null so no bare
 NaN token ever goes back over the wire.
 """
+
 from __future__ import annotations
 
 import inspect
@@ -37,8 +38,7 @@ try:
 except ImportError:  # run as a script: script dir is on sys.path
     from killtree import run_captured
 
-HANDSHAKE_VERSIONS = ("2024-11-05", "2025-03-26", "2025-06-18", "2025-11-25",
-                        "2026-07-28")
+HANDSHAKE_VERSIONS = ("2024-11-05", "2025-03-26", "2025-06-18", "2025-11-25", "2026-07-28")
 LATEST = "2026-07-28"
 PROTOCOL_VERSION = LATEST
 
@@ -59,8 +59,7 @@ def _rpc(msg_id, result):
 
 
 def _error(msg_id, code, message):
-    return {"jsonrpc": "2.0", "id": msg_id,
-            "error": {"code": code, "message": message}}
+    return {"jsonrpc": "2.0", "id": msg_id, "error": {"code": code, "message": message}}
 
 
 def _sanitize_id(msg_id):
@@ -69,7 +68,6 @@ def _sanitize_id(msg_id):
     if isinstance(msg_id, float) and not math.isfinite(msg_id):
         return None
     return msg_id
-
 
 
 # Schema validation lives in lib/mcp_schema.py (split at 496 lines);
@@ -104,8 +102,9 @@ class McpServer:
     """One MCP session: tool registry + JSON-RPC dispatch. Testable without
     any process — feed handle_message() dicts directly."""
 
-    def __init__(self, name: str = "mcp-server", version: str = "0.1.0",
-                 instructions: str | None = None):
+    def __init__(
+        self, name: str = "mcp-server", version: str = "0.1.0", instructions: str | None = None
+    ):
         self.name = name
         self.version = version
         self.instructions = instructions
@@ -119,6 +118,7 @@ class McpServer:
         @server.tool(description="...", schema={...inputSchema...})
         def echo(message): ...
         """
+
         def register(fn: Callable) -> Callable:
             name = getattr(fn, "__name__", None)
             if not name:
@@ -134,9 +134,13 @@ class McpServer:
 
         return register
 
-    def tool_from_function(self, fn: Callable | None = None, *,
-                           description: str | None = None,
-                           schema: dict | None = None) -> Callable:
+    def tool_from_function(
+        self,
+        fn: Callable | None = None,
+        *,
+        description: str | None = None,
+        schema: dict | None = None,
+    ) -> Callable:
         """Register a tool from a plain function, inferring inputSchema.
 
         Mirrors mcp.server.mcpserver.Tool.from_function at a trivial level:
@@ -154,6 +158,7 @@ class McpServer:
             @server.tool_from_function(description="custom", schema={...})
             def echo(message: str): ...
         """
+
         def _register(func: Callable) -> Callable:
             name = getattr(func, "__name__", None)
             if not name:
@@ -172,8 +177,10 @@ class McpServer:
                 properties: dict = {}
                 required: list[str] = []
                 for pname, param in sig.parameters.items():
-                    if param.kind in (inspect.Parameter.VAR_POSITIONAL,
-                                      inspect.Parameter.VAR_KEYWORD):
+                    if param.kind in (
+                        inspect.Parameter.VAR_POSITIONAL,
+                        inspect.Parameter.VAR_KEYWORD,
+                    ):
                         continue
                     ann = hints.get(pname, param.annotation)
                     if ann is inspect.Signature.empty:
@@ -205,8 +212,7 @@ class McpServer:
 
     def tools_list(self) -> list[dict]:
         return [
-            {"name": name, "description": spec["description"],
-             "inputSchema": spec["inputSchema"]}
+            {"name": name, "description": spec["description"], "inputSchema": spec["inputSchema"]}
             for name, spec in self._tools.items()
         ]
 
@@ -221,21 +227,24 @@ class McpServer:
         # Batch refusal — ONE documented choice: JSON-RPC 2.0 batch support
         # is absent; an array is refused as a whole, never silently misread.
         if isinstance(message, list):
-            return _error(None, INVALID_REQUEST,
-                          "batch requests not supported "
-                          "(JSON-RPC 2.0 batch arrays are not implemented)")
+            return _error(
+                None,
+                INVALID_REQUEST,
+                "batch requests not supported (JSON-RPC 2.0 batch arrays are not implemented)",
+            )
         if not isinstance(message, dict) or message.get("jsonrpc") != "2.0":
             bad_id = message.get("id") if isinstance(message, dict) else None
-            return _error(_sanitize_id(bad_id), INVALID_REQUEST,
-                          "not a valid JSON-RPC 2.0 message")
+            return _error(_sanitize_id(bad_id), INVALID_REQUEST, "not a valid JSON-RPC 2.0 message")
         method = message.get("method")
         if not isinstance(method, str):
-            return _error(_sanitize_id(message.get("id")), INVALID_REQUEST,
-                          "'method' must be a string")
+            return _error(
+                _sanitize_id(message.get("id")), INVALID_REQUEST, "'method' must be a string"
+            )
         params = message.get("params")
         if params is not None and not isinstance(params, dict):
-            return _error(_sanitize_id(message.get("id")), INVALID_PARAMS,
-                          "'params' must be an object")
+            return _error(
+                _sanitize_id(message.get("id")), INVALID_PARAMS, "'params' must be an object"
+            )
         params = params or {}
         # Spec note honored: id null PRESENT is still a request → respond
         # with id null. Absent "id" is the only notification shape.
@@ -275,12 +284,12 @@ class McpServer:
         # crashes.
         name = params.get("name")
         if not isinstance(name, str):
-            return _error(msg_id, INVALID_PARAMS,
-                          f"tool 'name' must be a string, got {type(name).__name__}")
+            return _error(
+                msg_id, INVALID_PARAMS, f"tool 'name' must be a string, got {type(name).__name__}"
+            )
         args = params.get("arguments") or {}
         if not isinstance(args, dict):
-            return _error(msg_id, INVALID_PARAMS,
-                          "'arguments' must be an object")
+            return _error(msg_id, INVALID_PARAMS, "'arguments' must be an object")
         spec = self._tools.get(name)
         if spec is None:
             return _error(msg_id, INVALID_PARAMS, f"unknown tool: {name}")
@@ -293,25 +302,35 @@ class McpServer:
         except Exception as exc:  # noqa: BLE001 — tool failure is a result,
             # not a protocol abort (necrohand/koffee isError convention)
             text = f"{type(exc).__name__}: {exc}"
-            return _rpc(msg_id, {
-                "content": [{"type": "text", "text": text}],
-                "isError": True,
-            })
+            return _rpc(
+                msg_id,
+                {
+                    "content": [{"type": "text", "text": text}],
+                    "isError": True,
+                },
+            )
         try:
             text = value if isinstance(value, str) else json.dumps(value)
         except (TypeError, ValueError) as exc:
             # Same isError convention as handler failures: an unserializable
             # RESULT is the tool's failure, never a protocol abort — raising
             # here used to kill the serve loop mid-session.
-            return _rpc(msg_id, {
-                "content": [{"type": "text",
-                             "text": f"tool returned an unserializable value: {exc}"}],
-                "isError": True,
-            })
-        return _rpc(msg_id, {
-            "content": [{"type": "text", "text": text}],
-            "isError": False,
-        })
+            return _rpc(
+                msg_id,
+                {
+                    "content": [
+                        {"type": "text", "text": f"tool returned an unserializable value: {exc}"}
+                    ],
+                    "isError": True,
+                },
+            )
+        return _rpc(
+            msg_id,
+            {
+                "content": [{"type": "text", "text": text}],
+                "isError": False,
+            },
+        )
 
 
 def _iter_lines(stream):
@@ -342,8 +361,7 @@ def serve(server: McpServer, in_stream=None, out_stream=None) -> int:
             # line rather than inheriting the ambient text stream's encoding.
             line = (raw.decode("utf-8") if isinstance(raw, bytes) else raw).strip()
         except UnicodeDecodeError as exc:
-            response = _error(None, PARSE_ERROR,
-                              f"invalid UTF-8 input: {exc}")
+            response = _error(None, PARSE_ERROR, f"invalid UTF-8 input: {exc}")
         else:
             if not line:
                 continue
@@ -362,8 +380,14 @@ def serve(server: McpServer, in_stream=None, out_stream=None) -> int:
 # ─── safe subprocess helper ───────────────────────────────────────────────
 
 
-def run_subprocess(argv, *, timeout: float = 30.0, input_text: str | None = None,
-                   cwd: str | None = None, env: dict | None = None):
+def run_subprocess(
+    argv,
+    *,
+    timeout: float = 30.0,
+    input_text: str | None = None,
+    cwd: str | None = None,
+    env: dict | None = None,
+):
     """Run an EXPLICIT argv with NO shell, hard timeout, captured output.
 
     argv must be a list of strings (a bare string is rejected outright — that
@@ -383,9 +407,7 @@ def run_subprocess(argv, *, timeout: float = 30.0, input_text: str | None = None
             input_text=input_text,
         )
     except subprocess.TimeoutExpired as exc:
-        raise SubprocessTimeout(
-            f"timed out after {timeout}s: {argv[0]} …"
-        ) from exc
+        raise SubprocessTimeout(f"timed out after {timeout}s: {argv[0]} …") from exc
 
 
 # ─── demo server ──────────────────────────────────────────────────────────
@@ -401,8 +423,7 @@ def demo_server() -> McpServer:
             "type": "object",
             "properties": {
                 "message": {"type": "string", "description": "text to echo"},
-                "shout": {"type": "boolean",
-                          "description": "uppercase the echo"},
+                "shout": {"type": "boolean", "description": "uppercase the echo"},
             },
             "required": ["message"],
             "additionalProperties": False,

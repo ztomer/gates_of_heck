@@ -4,6 +4,7 @@ Fixture repos per case; asserts identical exit codes and identical failing
 step labels in full and staged modes. Either side's step order, labels,
 config handling, or scope gating drifting goes red.
 """
+
 from __future__ import annotations
 
 import re
@@ -65,45 +66,94 @@ FULL_CASES: dict[str, dict[str, bytes]] = {
     "clean": {".gatesrc": GATESRC, "a.py": b"x = 1\n"},
     "emoji": {".gatesrc": GATESRC, "a.py": f"x = 1  # {chr(0x1F389)}\n".encode()},
     "marker": {".gatesrc": GATESRC, "a.py": b"x = 1\n<<<<<<< ours\n"},
+    # The python-format step, red and green. Without a red case this step could
+    # be absent from ONE tier and the parity test would still pass, because two
+    # tiers that both skip a step also agree. That is exactly how the shell side
+    # ran it in staged mode while the native side skipped it, and the only thing
+    # that noticed was this suite.
+    "pyfmt_green": {".gatesrc": GATESRC, "a.py": b"import os\n\nos.environ.get('X')\n"},
+    "pyfmt_red": {".gatesrc": GATESRC, "a.py": b"import os\nos.environ.get('X')\n"},
     "over_cap": {".gatesrc": GATESRC, "a.py": b"x = 1\n" * 20},
     "no_gatesrc": {"a.py": b"x = 1\n"},
-    "exclude_warn": {".gatesrc": b"GOH_MAX_LINES=10\nGOH_LINE_EXCLUDE='a.py'\n", "a.py": b"x = 1\n"},
+    "exclude_warn": {
+        ".gatesrc": b"GOH_MAX_LINES=10\nGOH_LINE_EXCLUDE='a.py'\n",
+        "a.py": b"x = 1\n",
+    },
     "shell_fail": {".gatesrc": GATESRC, "bad.sh": b"if then\n"},
     # The opt-in home-paths step, both outcomes -- an opt-in step the table
     # never turns on is one the parity proof never sees.
-    "home_path_red": {".gatesrc": b"GOH_MAX_LINES=10\nGOH_NO_HOME_PATHS=1\n",
-                      "NOTES.md": b"run from ~/Projects/x\n"},
-    "home_path_green": {".gatesrc": b"GOH_MAX_LINES=10\nGOH_NO_HOME_PATHS=1\n",
-                        "NOTES.md": b"run from the repo root\n"},
-    # The opt-in kill-by-name step, both outcomes. The command name is built
-    # from parts because that gate reads this file too.
-    "kill_by_name_red": {".gatesrc": b"GOH_MAX_LINES=10\nGOH_NO_KILL_BY_NAME=1\n",
-                         "run.py": b'import subprocess\nsubprocess.run(["p' b'kill", "-f", "helper"])\n'},
-    "kill_by_name_green": {".gatesrc": b"GOH_MAX_LINES=10\nGOH_NO_KILL_BY_NAME=1\n",
-                           "run.py": b"import os\nos.killpg(os.getpgid(0), 15)\n"},
+    "home_path_red": {
+        ".gatesrc": b"GOH_MAX_LINES=10\nGOH_NO_HOME_PATHS=1\n",
+        "NOTES.md": b"run from ~/Projects/x\n",
+    },
+    "home_path_green": {
+        ".gatesrc": b"GOH_MAX_LINES=10\nGOH_NO_HOME_PATHS=1\n",
+        "NOTES.md": b"run from the repo root\n",
+    },
+    # The opt-in kill-by-name step, both outcomes. The command name is built from
+    # parts because that gate reads this file too.
+    #
+    # CONCATENATED WITH `+`, NOT with adjacent literals, and that is the whole
+    # point of this note. The original was two adjacent bytes literals
+    # (`b'...["p' b'kill"...]'`), which the first `ruff format` run in this repo
+    # MERGED into one -- putting the literal text `pkill` back into this file and
+    # turning the gate red on a fixture that kills nothing. An evasion that
+    # depends on the formatter leaving your source alone is not an evasion, and
+    # the formatter is not going to be told to leave it alone.
+    "kill_by_name_red": {
+        ".gatesrc": b"GOH_MAX_LINES=10\nGOH_NO_KILL_BY_NAME=1\n",
+        # The payload is written to a fixture repo and must itself be
+        # ruff-formatted, or the python-format step -- which runs BEFORE this
+        # one -- fails first and this case stops testing what it is for. The
+        # blank line after the import is what `ruff format` wants, and the
+        # command name is still built with `+` so this file never spells it.
+        "run.py": b'import subprocess\n\nsubprocess.run(["p' + b'kill", "-f", "helper"])\n',
+    },
+    "kill_by_name_green": {
+        ".gatesrc": b"GOH_MAX_LINES=10\nGOH_NO_KILL_BY_NAME=1\n",
+        "run.py": b"import os\nos.killpg(os.getpgid(0), 15)\n",
+    },
     # The ceiling steps, every branch -- an exempt-over-cap file with and
     # without its ceiling, growth past the ceiling, and a dangling baseline.
-    "ceiling_green": {".gatesrc": b"GOH_MAX_LINES=10\nGOH_LINE_EXCLUDE='a.py'\nGOH_LINE_BASELINE='base.txt'\n",
-                      "a.py": b"x = 1\n" * 15, "base.txt": b"15\ta.py\n"},
-    "ceiling_no_ceiling": {".gatesrc": b"GOH_MAX_LINES=10\nGOH_LINE_EXCLUDE='a.py'\nGOH_LINE_BASELINE='base.txt'\n",
-                           "a.py": b"x = 1\n" * 15, "base.txt": b"15\tother.py\n"},
-    "ceiling_over": {".gatesrc": b"GOH_MAX_LINES=10\nGOH_LINE_EXCLUDE='a.py'\nGOH_LINE_BASELINE='base.txt'\n",
-                     "a.py": b"x = 1\n" * 16, "base.txt": b"15\ta.py\n"},
-"ceiling_missing": {".gatesrc": b"GOH_MAX_LINES=10\nGOH_LINE_EXCLUDE='a.py'\nGOH_LINE_BASELINE='missing.txt'\n",
-                         "a.py": b"x = 1\n" * 15},
+    "ceiling_green": {
+        ".gatesrc": b"GOH_MAX_LINES=10\nGOH_LINE_EXCLUDE='a.py'\nGOH_LINE_BASELINE='base.txt'\n",
+        "a.py": b"x = 1\n" * 15,
+        "base.txt": b"15\ta.py\n",
+    },
+    "ceiling_no_ceiling": {
+        ".gatesrc": b"GOH_MAX_LINES=10\nGOH_LINE_EXCLUDE='a.py'\nGOH_LINE_BASELINE='base.txt'\n",
+        "a.py": b"x = 1\n" * 15,
+        "base.txt": b"15\tother.py\n",
+    },
+    "ceiling_over": {
+        ".gatesrc": b"GOH_MAX_LINES=10\nGOH_LINE_EXCLUDE='a.py'\nGOH_LINE_BASELINE='base.txt'\n",
+        "a.py": b"x = 1\n" * 16,
+        "base.txt": b"15\ta.py\n",
+    },
+    "ceiling_missing": {
+        ".gatesrc": b"GOH_MAX_LINES=10\nGOH_LINE_EXCLUDE='a.py'\nGOH_LINE_BASELINE='missing.txt'\n",
+        "a.py": b"x = 1\n" * 15,
+    },
     # The two steps added with the 2026-10-01 audit, BOTH outcomes each.
     # structural.sh EXECs the native binary, so a step present in one pipeline
     # and not the other runs in exactly one of them -- and a case the parity
     # table never exercises is the only place that drift is visible.
     "md_link_red": {".gatesrc": GATESRC, "README.md": b"[x](gone.md)\n"},
-    "md_link_green": {".gatesrc": GATESRC,
-                      "README.md": b"[x](there.md)\n", "there.md": b"# here\n"},
-    "lock_red": {".gatesrc": GATESRC,
-                 "Cargo.toml": b'[package]\nname = "app"\nversion = "1.2.3"\n',
-                 "Cargo.lock": b'[[package]]\nname = "app"\nversion = "1.2.2"\n'},
-    "lock_green": {".gatesrc": GATESRC,
-                   "Cargo.toml": b'[package]\nname = "app"\nversion = "1.2.3"\n',
-                   "Cargo.lock": b'[[package]]\nname = "app"\nversion = "1.2.3"\n'},
+    "md_link_green": {
+        ".gatesrc": GATESRC,
+        "README.md": b"[x](there.md)\n",
+        "there.md": b"# here\n",
+    },
+    "lock_red": {
+        ".gatesrc": GATESRC,
+        "Cargo.toml": b'[package]\nname = "app"\nversion = "1.2.3"\n',
+        "Cargo.lock": b'[[package]]\nname = "app"\nversion = "1.2.2"\n',
+    },
+    "lock_green": {
+        ".gatesrc": GATESRC,
+        "Cargo.toml": b'[package]\nname = "app"\nversion = "1.2.3"\n',
+        "Cargo.lock": b'[[package]]\nname = "app"\nversion = "1.2.3"\n',
+    },
 }
 
 
@@ -150,7 +200,6 @@ def test_structural_sh_execs_the_native_binary_when_told_where_it_is(goh, tmp_pa
     r = subprocess.run(["bash", str(STRUCTURAL)], cwd=repo, capture_output=True, text=True, env=env)
     assert r.returncode == 0, r.stdout + r.stderr
     assert r.stderr.count("GOH_BIN=/nonexistent/goh is not an executable") == 1, r.stderr
-
 
 
 def test_goh_is_built_once_per_session(goh: Path, goh_build_count: int) -> None:

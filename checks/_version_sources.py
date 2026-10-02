@@ -14,6 +14,7 @@ number, a workspace table AND a member table — so "the first match" is a coin 
 truth. Every declaration a strategy returns is a declaration the gate will compare, so returning
 too few hides a mismatch and returning junk fails a correct tag.
 """
+
 from __future__ import annotations
 
 import re
@@ -102,6 +103,7 @@ def from_swift(text: str) -> list[tuple[str, str]]:
         if m and SEMVER_VALUE.match(m.group(2)):
             out.append((f"(swift:{m.group(1)})", m.group(2)))
     return out
+
 
 # An Xcode build-settings assignment: `KEY = value`, optionally conditioned
 # (`KEY[sdk=macosx*] = value`). The condition is tolerated and not captured, because a repo

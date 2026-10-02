@@ -13,68 +13,27 @@ the things the SSIM sanity tests pin down.
 The Pillow-absent fallback path is exercised deterministically by monkeypatching
 golden_core._HAVE_PIL / _HAVE_NUMPY to False — no environment juggling, and the
 pure-Python math is asserted numerically equal to the numpy path.
+
+This file is the module's MATH — metrics, tolerance gating, the minimal PNG decoder, and what a
+corrupt file must say about itself. The process boundary around it (exit codes, --tolerances,
+--json, and the docs that name the CLI) is in `test_golden_core_cli.py`.
 """
 
-import json
 import struct
-import subprocess
-import sys
 import zlib
 
 import pytest
-from conftest import REPO_ROOT
 
-sys.path.insert(0, str(REPO_ROOT / "lib"))
-import golden_core  # noqa: E402
-
-LIB = REPO_ROOT / "lib" / "golden_core.py"
-
-try:
-    from PIL import Image as PILImage
-
-    HAVE_PIL = True
-except ImportError:
-    HAVE_PIL = False
-
-
-# ---- fixture builders --------------------------------------------------------
-
-
-def make_png(path, w, h, pixel_fn):
-    """Write an RGB PNG whose (x, y) pixels come from pixel_fn."""
-    img = PILImage.new("RGB", (w, h))
-    img.putdata([pixel_fn(x, y) for y in range(h) for x in range(w)])
-    img.save(path)
-    return path
-
-
-def flat_png(path, w, h, rgb):
-    """Hand-built filter-0 RGB PNG — exercises the minimal decoder with zero PIL involvement."""
-    def chunk(ctype, body):
-        return struct.pack(">I", len(body)) + ctype + body + struct.pack(
-            ">I", zlib.crc32(ctype + body) & 0xFF_FF_FF_FF
-        )
-
-    ihdr = struct.pack(">IIBBBBB", w, h, 8, 2, 0, 0, 0)
-    raw = b"".join(b"\x00" + bytes(rgb) * w for _ in range(h))
-    data = (
-        b"\x89PNG\r\n\x1a\n"
-        + chunk(b"IHDR", ihdr)
-        + chunk(b"IDAT", zlib.compress(raw))
-        + chunk(b"IEND", b"")
-    )
-    path.write_bytes(data)
-    return path
-
-
-def load(path):
-    return golden_core.load_rgb(str(path))
-
-
-@pytest.fixture
-def plain(tmp_path):
-    return make_png(tmp_path / "plain.png", 64, 64, lambda x, y: (100, 100, 100))
-
+from _golden_core_kit import (
+    HAVE_PIL,
+    corrupt_png,
+    decode_minimal,
+    flat_png,
+    golden_core,
+    load,
+    make_png,
+    plain,  # noqa: F401
+)
 
 # ---- identical images ---------------------------------------------------------
 
@@ -120,20 +79,24 @@ def test_changed_fraction_trips_alone(tmp_path):
     a = make_png(tmp_path / "a.png", 100, 100, lambda x, y: (0, 0, 0))
     # 10x10 bright square: 1% of pixels blow past the channel threshold...
     b = make_png(
-        tmp_path / "b.png", 100, 100, lambda x, y: (255, 255, 255) if x < 10 and y < 10 else (0, 0, 0)
+        tmp_path / "b.png",
+        100,
+        100,
+        lambda x, y: (255, 255, 255) if x < 10 and y < 10 else (0, 0, 0),
     )
     tol = {"changed_frac_max": 0.005, "mean_abs_diff_max": 100, "ssim_min": 0}
     r = golden_core.compare(load(a), load(b), tol)
     assert r["metrics"]["changed_fraction"] == pytest.approx(0.01)
-    assert r["failures"] == [
-        f"changed_fraction {r['metrics']['changed_fraction']:.6f} > 0.005"
-    ]
+    assert r["failures"] == [f"changed_fraction {r['metrics']['changed_fraction']:.6f} > 0.005"]
 
 
 def test_loosening_changed_frac_flips_verdict(tmp_path):
     a = make_png(tmp_path / "a.png", 100, 100, lambda x, y: (0, 0, 0))
     b = make_png(
-        tmp_path / "b.png", 100, 100, lambda x, y: (255, 255, 255) if x < 10 and y < 10 else (0, 0, 0)
+        tmp_path / "b.png",
+        100,
+        100,
+        lambda x, y: (255, 255, 255) if x < 10 and y < 10 else (0, 0, 0),
     )
     tol = {"changed_frac_max": 0.005, "mean_abs_diff_max": 100, "ssim_min": 0}
     assert not golden_core.compare(load(a), load(b), tol)["ok"]
@@ -163,6 +126,7 @@ def test_ssim_near_equal_uniforms_above_floor(tmp_path):
 
 # ---- verdict: one tolerance at a time ----------------------------------------------
 
+
 def test_tolerance_defaults_are_the_documented_ancestor_values():
     """The defaults ARE the provenance record (see module docstring). A silent
     change here silently retunes every harness that embeds this module."""
@@ -178,8 +142,12 @@ def test_tolerance_defaults_are_the_documented_ancestor_values():
 def triple_failure(tmp_path):
     """Left half black, right half white vs its inverse: trips all three tolerances."""
     half = 40
-    a = make_png(tmp_path / "a.png", half * 2, 20, lambda x, y: (0, 0, 0) if x < half else (255,) * 3)
-    b = make_png(tmp_path / "b.png", half * 2, 20, lambda x, y: (255,) * 3 if x < half else (0, 0, 0))
+    a = make_png(
+        tmp_path / "a.png", half * 2, 20, lambda x, y: (0, 0, 0) if x < half else (255,) * 3
+    )
+    b = make_png(
+        tmp_path / "b.png", half * 2, 20, lambda x, y: (255,) * 3 if x < half else (0, 0, 0)
+    )
     r = golden_core.compare(load(a), load(b))
     assert len(r["failures"]) == 3, r["failures"]
     return load(a), load(b)
@@ -268,8 +236,11 @@ def test_decoder_reads_handbuilt_filter_zero_png(tmp_path):
 
 def test_palette_png_is_a_precondition_not_a_misread(tmp_path):
     def chunk(ctype, body):
-        return struct.pack(">I", len(body)) + ctype + body + struct.pack(
-            ">I", zlib.crc32(ctype + body) & 0xFF_FF_FF_FF
+        return (
+            struct.pack(">I", len(body))
+            + ctype
+            + body
+            + struct.pack(">I", zlib.crc32(ctype + body) & 0xFF_FF_FF_FF)
         )
 
     ihdr = struct.pack(">IIBBBBB", 2, 1, 8, 3, 0, 0, 0)
@@ -300,32 +271,6 @@ def test_palette_png_is_a_precondition_not_a_misread(tmp_path):
 # guards only fire where HEAD crashed or produced garbage.
 
 
-def corrupt_png(ihdr_body=None, raw=None):
-    def chunk(ctype, body):
-        return struct.pack(">I", len(body)) + ctype + body + struct.pack(
-            ">I", zlib.crc32(ctype + body) & 0xFF_FF_FF_FF
-        )
-    ihdr = ihdr_body if ihdr_body is not None else struct.pack(
-        ">IIBBBBB", 4, 3, 8, 2, 0, 0, 0)
-    stream = raw if raw is not None else b"".join(
-        b"\x00" + bytes(12) for _ in range(3))
-    return (
-        b"\x89PNG\r\n\x1a\n"
-        + chunk(b"IHDR", ihdr)
-        + chunk(b"IDAT", zlib.compress(stream))
-        + chunk(b"IEND", b"")
-    )
-
-
-def decode_minimal(data):
-    orig = golden_core._HAVE_PIL
-    golden_core._HAVE_PIL = False
-    try:
-        return golden_core._decode_png_minimal(data, "corrupt.png")
-    finally:
-        golden_core._HAVE_PIL = orig
-
-
 def test_truncated_pixel_stream_is_named_precondition():
     # IHDR promises 4x3 RGB; the stream carries one scanline. HEAD ran off
     # the end of `raw` inside _unfilter (IndexError).
@@ -337,19 +282,6 @@ def test_short_ihdr_body_is_named_precondition():
     # A 12-byte IHDR body made struct.unpack raise a bare struct.error.
     with pytest.raises(golden_core.PreconditionError, match="IHDR"):
         decode_minimal(corrupt_png(ihdr_body=struct.pack(">IIBBBBB", 4, 3, 8, 2, 0, 0, 0)[:12]))
-
-
-def test_cli_corrupt_png_exits_2_named(tmp_path):
-    # Short IHDR is rejected by BOTH decoder tiers (minimal names it; Pillow
-    # refuses the file), so this pins the CLI contract regardless of tier.
-    p = tmp_path / "short_ihdr.png"
-    p.write_bytes(corrupt_png(
-        ihdr_body=struct.pack(">IIBBBBB", 4, 3, 8, 2, 0, 0, 0)[:12]))
-    good = tmp_path / "good.png"
-    good.write_bytes(corrupt_png())
-    r = run_cli(p, good)
-    assert r.returncode == 2
-    assert "precondition" in r.stderr
 
 
 def test_fuzz_bitflips_never_traceback_and_stay_byte_exact(tmp_path):
@@ -372,59 +304,11 @@ def test_fuzz_bitflips_never_traceback_and_stay_byte_exact(tmp_path):
         try:
             from PIL import Image as PILImage
             import io
+
             ref = PILImage.open(io.BytesIO(bytes(data))).convert("RGB")
             assert decoded.pixels == ref.tobytes(), f"flip {i}: wrong pixels"
         except Exception:
             pass  # Pillow cannot read it either — nothing to cross-check
-
-
-# ---- CLI exit codes -------------------------------------------------------------------
-
-
-def run_cli(*args):
-    return subprocess.run(
-        [sys.executable, str(LIB), *[str(a) for a in args]],
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-
-
-def test_cli_within_tolerance_exits_0(tmp_path, plain):
-    assert run_cli(plain, plain).returncode == 0
-
-
-def test_cli_exceeded_exits_1(tmp_path):
-    a = make_png(tmp_path / "a.png", 20, 20, lambda x, y: (0, 0, 0))
-    b = make_png(tmp_path / "b.png", 20, 20, lambda x, y: (255, 255, 255))
-    assert run_cli(a, b).returncode == 1
-
-
-def test_cli_loosened_tolerances_flip_exit_to_0(tmp_path):
-    a = make_png(tmp_path / "a.png", 20, 20, lambda x, y: (0, 0, 0))
-    b = make_png(tmp_path / "b.png", 20, 20, lambda x, y: (255, 255, 255))
-    tol = json.dumps({"mean_abs_diff_max": 300, "changed_frac_max": 1.0, "ssim_min": -1})
-    assert run_cli(a, b, "--tolerances", tol).returncode == 0
-
-
-def test_cli_precondition_missing_file_exits_2(tmp_path):
-    assert run_cli(tmp_path / "nope.png", tmp_path / "nope.png").returncode == 2
-
-
-def test_cli_size_mismatch_exits_2(tmp_path):
-    a = make_png(tmp_path / "a.png", 20, 20, lambda x, y: (0, 0, 0))
-    b = make_png(tmp_path / "b.png", 30, 20, lambda x, y: (0, 0, 0))
-    r = run_cli(a, b)
-    assert r.returncode == 2
-    assert "size mismatch" in r.stderr
-
-
-@pytest.mark.parametrize(
-    "bad",
-    ["{not json", "[1, 2]", '{"no_such_key": 1}', '{"ssim_min": "high"}'],
-)
-def test_cli_bad_tolerances_exits_2(tmp_path, plain, bad):
-    assert run_cli(plain, plain, "--tolerances", bad).returncode == 2
 
 
 def test_resolve_tolerances_rejects_nonfinite_naming_key_and_value():
@@ -437,50 +321,3 @@ def test_resolve_tolerances_rejects_nonfinite_naming_key_and_value():
         msg = str(ei.value)
         assert "mean_abs_diff_max" in msg and "finite" in msg
         assert repr(bad) in msg or "nan" in msg.lower() or "inf" in msg.lower()
-
-
-@pytest.mark.parametrize(
-    "bad", ['{"mean_abs_diff_max": NaN}', '{"ssim_min": Infinity}']
-)
-def test_cli_nonfinite_tolerances_exits_2(tmp_path, plain, bad):
-    # json.loads accepts bare NaN/Infinity literals; via CLI they must be
-    # precondition-rejected (exit 2), never silently accepted.
-    r = run_cli(plain, plain, "--tolerances", bad)
-    assert r.returncode == 2
-    assert "precondition" in r.stderr
-
-
-def test_cli_json_output_embeds_metrics_and_tier(tmp_path, plain):
-    r = run_cli(plain, plain, "--json")
-    assert r.returncode == 0
-    payload = json.loads(r.stdout)
-    assert payload["ok"] and payload["identical"]
-    assert payload["tier"]["compute"] in ("numpy", "pure-python")
-    assert payload["tier"]["decoder"] in ("pillow", "png-minimal")
-    assert set(payload["metrics"]) == {"mean_abs_diff", "changed_fraction", "ssim"}
-
-
-# ── docs consistency ──────────────────────────────────────────────────────────
-
-
-def test_no_phantom_diff_cli_references():
-    # Regression (2026-08-26): the CHANGELOG and this module's docstring
-    # referenced a phantom `golden_…diff.py` CLI that never existed as a
-    # file — the CLI is golden_core.py's own __main__. No reference may come
-    # back. (Needle is assembled so this scan does not flag its own source.)
-    needle = "golden_" + "diff"
-    offenders = []
-    for p in REPO_ROOT.rglob("*"):
-        if not p.is_file() or ".git" in p.parts or "__pycache__" in p.parts:
-            continue
-        if p.suffix not in {".py", ".md", ".sh"}:
-            continue
-        if needle in p.read_text(encoding="utf-8", errors="replace"):
-            offenders.append(str(p.relative_to(REPO_ROOT)))
-            offenders.append(str(p.relative_to(REPO_ROOT)))
-    assert offenders == [], f"phantom golden-diff references: {offenders}"
-
-
-def test_golden_core_docstring_names_the_real_cli():
-    text = (REPO_ROOT / "lib" / "golden_core.py").read_text()
-    assert "golden_core.py A B" in text  # the CLI that actually exists

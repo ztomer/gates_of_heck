@@ -82,9 +82,12 @@ def test_policy_with_no_member_manifests_refuses(repo):
 
 
 def test_excluded_members_are_not_policed(repo):
-    write(repo, "Cargo.toml",
-          '[workspace]\nmembers = ["a", "b"]\nexclude = ["b"]\n\n'
-          '[workspace.lints.clippy]\npedantic = "warn"\n')
+    write(
+        repo,
+        "Cargo.toml",
+        '[workspace]\nmembers = ["a", "b"]\nexclude = ["b"]\n\n'
+        '[workspace.lints.clippy]\npedantic = "warn"\n',
+    )
     write(repo, "a/Cargo.toml", OPTED_IN.format(name="a"))
     write(repo, "b/Cargo.toml", NO_LINTS.format(name="b"))
     commit_all(repo)

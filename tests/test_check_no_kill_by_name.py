@@ -23,8 +23,9 @@ PK, KA, PG = "p" + "kill", "kill" + "all", "p" + "grep"
 
 
 def run(repo: Path, *args: str) -> subprocess.CompletedProcess:
-    return subprocess.run(["python3", str(REPO_ROOT / CHECK), *args],
-                          cwd=repo, capture_output=True, text=True)
+    return subprocess.run(
+        ["python3", str(REPO_ROOT / CHECK), *args], cwd=repo, capture_output=True, text=True
+    )
 
 
 def allow(repo: Path, *entries: dict) -> None:
@@ -56,13 +57,16 @@ def test_every_claimed_shape_is_red_and_named(repo):
 
 
 def test_owner_scoped_forms_pass(repo):
-    write(repo, "ok.sh",
-          f'{PK} -TERM -P "$pid" 2>/dev/null || true\n'
-          f'{PK} -g "$pgid"\n'
-          f"{PK} --parent $$ -f worker\n"
-          f"kill $({PG} -P $$ worker)\n"
-          f"if command -v {PK} >/dev/null 2>&1; then :; fi\n"
-          'kill -TERM "$pid"\n')
+    write(
+        repo,
+        "ok.sh",
+        f'{PK} -TERM -P "$pid" 2>/dev/null || true\n'
+        f'{PK} -g "$pgid"\n'
+        f"{PK} --parent $$ -f worker\n"
+        f"kill $({PG} -P $$ worker)\n"
+        f"if command -v {PK} >/dev/null 2>&1; then :; fi\n"
+        'kill -TERM "$pid"\n',
+    )
     write(repo, "ok.py", f'subprocess.run(["{PK}", "-P", str(os.getpid())])\nos.killpg(pgid, 9)\n')
     stage(repo, "ok.sh", "ok.py")
     r = run(repo, "--staged")
@@ -71,11 +75,14 @@ def test_owner_scoped_forms_pass(repo):
 
 
 def test_comments_docstrings_and_prose_are_not_kills(repo):
-    write(repo, "doc.py",
-          f'"""Never {PK} -f by name here."""\n'
-          f"x = 1  # the old code ran {PK} -9 -f camoufox\n"
-          "def f():\n"
-          f'    """{KA} Firefox would kill the owner\'s browser."""\n')
+    write(
+        repo,
+        "doc.py",
+        f'"""Never {PK} -f by name here."""\n'
+        f"x = 1  # the old code ran {PK} -9 -f camoufox\n"
+        "def f():\n"
+        f'    """{KA} Firefox would kill the owner\'s browser."""\n',
+    )
     write(repo, "doc.sh", f"# {PK} -f x was the bug\necho ok  # not {KA}\n")
     write(repo, "doc.rs", f"// {KA} is forbidden\nfn main() {{}} // no {PK}\n")
     write(repo, "NOTES.md", f"Run `{PK} -f camoufox` and you kill everyone's browser.\n")
@@ -94,8 +101,15 @@ def test_a_word_inside_a_longer_name_is_not_the_command(repo):
 
 def test_an_entry_excuses_exactly_its_line_and_no_other(repo):
     write(repo, "run.sh", f"{PK} -x MyApp\n{PK} -f helper\n")
-    allow(repo, {"path": "run.sh", "line": f"{PK} -x MyApp", "reason": "dev relaunch",
-                 "status": "legitimate"})
+    allow(
+        repo,
+        {
+            "path": "run.sh",
+            "line": f"{PK} -x MyApp",
+            "reason": "dev relaunch",
+            "status": "legitimate",
+        },
+    )
     commit_all(repo)
     r = run(repo)
     assert r.returncode == 1, r.stdout
@@ -119,7 +133,7 @@ def test_a_stale_entry_fails_and_a_duplicate_is_stale(repo):
     r = run(repo)
     assert r.returncode == 1 and "1 stale entr" in r.stdout, r.stdout
     allow(repo, entry)
-    write(repo, "run.sh", "kill -TERM \"$pid\"\n")
+    write(repo, "run.sh", 'kill -TERM "$pid"\n')
     commit_all(repo)
     r = run(repo)
     assert r.returncode == 1 and "1 stale entr" in r.stdout, r.stdout
@@ -127,10 +141,16 @@ def test_a_stale_entry_fails_and_a_duplicate_is_stale(repo):
 
 def test_an_allowlisted_tree_passes_and_counts_its_debt(repo):
     write(repo, "run.sh", f"{PK} -x MyApp\n{KA} Dock\n")
-    allow(repo,
-          {"path": "run.sh", "line": f"{PK} -x MyApp", "reason": "seeded", "status": "unreviewed"},
-          {"path": "run.sh", "line": f"{KA} Dock", "reason": "the Dock is one per user",
-           "status": "legitimate"})
+    allow(
+        repo,
+        {"path": "run.sh", "line": f"{PK} -x MyApp", "reason": "seeded", "status": "unreviewed"},
+        {
+            "path": "run.sh",
+            "line": f"{KA} Dock",
+            "reason": "the Dock is one per user",
+            "status": "legitimate",
+        },
+    )
     commit_all(repo)
     r = run(repo)
     assert r.returncode == 0, r.stdout
@@ -178,7 +198,9 @@ def test_exclude_skips_a_vendored_tree(repo):
 
 def test_an_empty_scope_refuses_to_report_clean_but_an_empty_commit_passes(repo):
     r = run(repo)
-    assert r.returncode == 1 and "refusing to report clean over zero code files" in r.stdout, r.stdout
+    assert r.returncode == 1 and "refusing to report clean over zero code files" in r.stdout, (
+        r.stdout
+    )
     write(repo, "NOTES.md", "prose only\n")
     stage(repo, "NOTES.md")
     r = run(repo, "--staged")

@@ -4,6 +4,7 @@ Builds small fixture git repos per case and asserts identical exit codes and
 identical `(path, line)` violation sets in full and staged modes. If either
 side's marker definition drifts, this goes red.
 """
+
 from __future__ import annotations
 
 import subprocess

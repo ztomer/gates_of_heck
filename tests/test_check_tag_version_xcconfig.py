@@ -57,8 +57,11 @@ def _tagged_repo(tmp_path, name, rel, text):
 def _run(repo, refs, source):
     return subprocess.run(
         ["python3", str(REPO_ROOT / CHECKER), "--refs-file", str(refs)],
-        cwd=repo, capture_output=True, text=True,
-        env=dict(os.environ, GOH_TAG_VERSION_SOURCES=source))
+        cwd=repo,
+        capture_output=True,
+        text=True,
+        env=dict(os.environ, GOH_TAG_VERSION_SOURCES=source),
+    )
 
 
 def test_the_xcconfig_strategy_reads_the_release_number_not_the_build_number():
@@ -75,9 +78,11 @@ def test_the_file_strategy_would_have_read_this_layout_wrong():
     whole. Either way a correct release reads as a mismatch against its own tag — the one
     failure mode nobody investigates."""
     assert sources.from_version_file(VERSION_XCCONFIG) == [
-        ("(file)", "// The one place the version is written. See D-0195.")]
+        ("(file)", "// The one place the version is written. See D-0195.")
+    ]
     assert sources.from_version_file("MARKETING_VERSION = 2.73.0\n") == [
-        ("(file)", "MARKETING_VERSION = 2.73.0")]
+        ("(file)", "MARKETING_VERSION = 2.73.0")
+    ]
 
 
 def test_a_trailing_comment_and_an_sdk_condition_are_not_part_of_the_value():
@@ -93,8 +98,9 @@ def test_a_trailing_comment_and_an_sdk_condition_are_not_part_of_the_value():
 def test_a_settings_file_that_declares_no_release_number_is_a_named_non_run(tmp_path):
     """A file carrying only a build number declares no version. Silence must not read as
     compliance on a repo that says nothing."""
-    repo, refs = _tagged_repo(tmp_path, "buildonly", "Config/Version.xcconfig",
-                              "CURRENT_PROJECT_VERSION = 131\n")
+    repo, refs = _tagged_repo(
+        tmp_path, "buildonly", "Config/Version.xcconfig", "CURRENT_PROJECT_VERSION = 131\n"
+    )
     result = _run(repo, refs, "xcconfig:Config/Version.xcconfig")
     assert result.returncode == 1, result.stdout + result.stderr
     assert "NO version source declares" in (result.stdout + result.stderr)
@@ -115,8 +121,9 @@ def test_a_build_settings_file_is_a_version_source(tmp_path):
 def test_a_tag_that_disagrees_with_the_settings_file_is_still_refused(tmp_path):
     """The strategy has to be able to say no. A gate that accepts whatever the file says is
     not a gate."""
-    repo, refs = _tagged_repo(tmp_path, "wrong", "Config/Version.xcconfig",
-                              "MARKETING_VERSION = 2.73.0\n")
+    repo, refs = _tagged_repo(
+        tmp_path, "wrong", "Config/Version.xcconfig", "MARKETING_VERSION = 2.73.0\n"
+    )
     git(repo, "tag", "v9.9.9")
     refs.write_text(_refs(("refs/tags/v9.9.9", _sha(repo, "v9.9.9"))))
     result = _run(repo, refs, "xcconfig:Config/Version.xcconfig")
@@ -126,8 +133,7 @@ def test_a_tag_that_disagrees_with_the_settings_file_is_still_refused(tmp_path):
 def test_a_settings_file_disagreeing_with_itself_fails_rather_than_picking_one(tmp_path):
     """Two `x.y.z` settings cannot both be the release. Returning both means the gate sees the
     disagreement; returning the first would resolve it silently and read as truth."""
-    source = ("MARKETING_VERSION = 2.73.0\n"
-              "MARKETING_VERSION_OVERRIDE = 9.9.9\n")
+    source = "MARKETING_VERSION = 2.73.0\nMARKETING_VERSION_OVERRIDE = 9.9.9\n"
     assert len(sources.from_xcconfig(source)) == 2
     repo, refs = _tagged_repo(tmp_path, "selfdisagree", "Config/Version.xcconfig", source)
     result = _run(repo, refs, "xcconfig:Config/Version.xcconfig")

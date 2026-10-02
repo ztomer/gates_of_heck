@@ -39,7 +39,7 @@ def test_expect_is_refused_too(repo):
     r = run_check(repo, SCRIPT)
     assert r.returncode == 1
     assert "expect" in r.stdout
-    (_mkcrate(repo) / "lib.rs").write_text('#![expect(clippy::all)]\n', encoding="utf-8")
+    (_mkcrate(repo) / "lib.rs").write_text("#![expect(clippy::all)]\n", encoding="utf-8")
     commit_all(repo)
     assert run_check(repo, SCRIPT).returncode == 1
 
@@ -70,8 +70,8 @@ def test_cfg_attr_state_closes_and_a_later_method_call_is_not_a_hit(repo):
     # later line is a call, not an attribute (the first version left the
     # state open and flagged every `.expect(` in divoom's art.rs).
     (_mkcrate(repo) / "lib.rs").write_text(
-        '#[cfg_attr(test, derive(Debug))]\nstruct S;\n'
-        'fn f() -> usize {\n    let x: Option<usize> = Some(1);\n'
+        "#[cfg_attr(test, derive(Debug))]\nstruct S;\n"
+        "fn f() -> usize {\n    let x: Option<usize> = Some(1);\n"
         '    x.expect("one")\n}\n',
         encoding="utf-8",
     )
@@ -85,7 +85,7 @@ def test_cfg_attr_without_a_suppression_passes(repo):
     # and a `#[allow` mentioned in a string literal on the same line is not
     # a hit either.
     (_mkcrate(repo) / "lib.rs").write_text(
-        '#[cfg_attr(test, derive(Debug))]\nstruct S;\n'
+        "#[cfg_attr(test, derive(Debug))]\nstruct S;\n"
         '#[cfg_attr(feature = "x", doc = "with expect(ation)")]\nfn f() {}\n',
         encoding="utf-8",
     )
@@ -188,8 +188,7 @@ def test_allow_on_code_line_with_trailing_comment_still_fails(repo):
     # Accepted conservatism: code lines are searched whole, so a mention in a
     # trailing comment on a CODE line flags too — errs safe.
     (_mkcrate(repo) / "lib.rs").write_text(
-        "fn f() {} // mirrors the removed #[allow(dead_code)]\n"
-        "#[allow(dead_code)] fn real() {}\n",
+        "fn f() {} // mirrors the removed #[allow(dead_code)]\n#[allow(dead_code)] fn real() {}\n",
         encoding="utf-8",
     )
     commit_all(repo)
@@ -234,9 +233,7 @@ def test_real_allow_after_same_line_close_flags(repo):
     # A line carrying the close of an open block AND a real attribute was
     # skipped wholesale (was a false negative).
     (_mkcrate(repo) / "lib.rs").write_text(
-        "/* policy prose opens\n"
-        "*/ #[allow(dead_code)]\n"
-        "fn f() {}\n",
+        "/* policy prose opens\n*/ #[allow(dead_code)]\nfn f() {}\n",
         encoding="utf-8",
     )
     commit_all(repo)
@@ -249,9 +246,7 @@ def test_unterminated_block_to_eof_is_safe(repo):
     # No closer anywhere: everything after the opener stays comment; no
     # crash, no flag.
     (_mkcrate(repo) / "lib.rs").write_text(
-        "fn ok() {}\n"
-        "/* never closed\n"
-        "#[allow(dead_code)]\n",
+        "fn ok() {}\n/* never closed\n#[allow(dead_code)]\n",
         encoding="utf-8",
     )
     commit_all(repo)
@@ -263,8 +258,7 @@ def test_nested_block_comments_track_depth(repo):
     # Swift-style nesting is not Rust, but a depth counter handles it for
     # free and must not resync early on the first inner */.
     (_mkcrate(repo) / "lib.rs").write_text(
-        "/* outer /* inner */ still outer with #[allow(dead_code)] */\n"
-        "fn f() {}\n",
+        "/* outer /* inner */ still outer with #[allow(dead_code)] */\nfn f() {}\n",
         encoding="utf-8",
     )
     commit_all(repo)

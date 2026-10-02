@@ -22,6 +22,7 @@ END = re.compile(r"//\s*cov:ignore-end\b")
 
 TEST_DIR = re.compile(r"(^|/)(Tests|.*Tests)/")
 
+
 def parse_markers(lines):
     """(excluded {1-indexed line}, errors [str]) from one source file."""
     excluded = set()
@@ -52,12 +53,12 @@ def parse_markers(lines):
         errors.append(f"{open_at}: unclosed cov:ignore-start block")
     return excluded, errors
 
+
 def find_exclusions(proj, ignore_re, include_re=""):
     """({abspath: excluded lines}, [errors]) over non-test Swift sources."""
     out = {}
     errors = []
-    for path in sorted(glob.glob(os.path.join(proj, "**", "*.swift"),
-                                 recursive=True)):
+    for path in sorted(glob.glob(os.path.join(proj, "**", "*.swift"), recursive=True)):
         rel = os.path.relpath(path, proj)
         if TEST_DIR.search("/" + rel):
             continue
@@ -77,12 +78,14 @@ def find_exclusions(proj, ignore_re, include_re=""):
             out[path] = excluded
     return out, errors
 
+
 def adjust_coverage(raw_total, raw_covered, counts, excluded):
     """(pct, forgiven): drop only UNCOVERED marker lines from the total."""
     forgiven = sum(1 for ln in excluded if counts.get(ln) == 0)
     adj_total = raw_total - forgiven
     pct = (100.0 * raw_covered / adj_total) if adj_total else 0.0
     return pct, forgiven
+
 
 def check_marker_ceiling(forgiven, ceiling_path):
     """Shrink-only ceiling (ZeroThunder). forgiven > max => fail."""
@@ -94,7 +97,9 @@ def check_marker_ceiling(forgiven, ceiling_path):
         print(f"✗ [coverage] cannot read ceiling {ceiling_path}: {exc}", file=sys.stderr)
         sys.exit(2)
     if forgiven > max_forgiven:
-        print(f"✗ [coverage] FORGIVENESS GREW: {forgiven} > ceiling {max_forgiven}.", file=sys.stderr)
+        print(
+            f"✗ [coverage] FORGIVENESS GREW: {forgiven} > ceiling {max_forgiven}.", file=sys.stderr
+        )
         sys.exit(1)
     if forgiven < max_forgiven:
         print(f"→ [coverage] forgiveness fell to {forgiven} (ceiling {max_forgiven}) — lower it.")

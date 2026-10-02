@@ -4,6 +4,7 @@ Fixture repos per case; asserts identical exit codes plus identical
 stdout/stderr. A guard, message, scope branch, or column drifting on
 either side goes red.
 """
+
 from __future__ import annotations
 
 import subprocess
@@ -32,9 +33,7 @@ def make_repo(tmp_path: Path, files: dict[str, bytes]) -> Path:
 
 
 def run_py(repo: Path, *args: str) -> tuple[int, str, str]:
-    r = subprocess.run(
-        ["python3", str(CHECK), *args], cwd=repo, capture_output=True, text=True
-    )
+    r = subprocess.run(["python3", str(CHECK), *args], cwd=repo, capture_output=True, text=True)
     return r.returncode, r.stdout, r.stderr
 
 
@@ -64,7 +63,7 @@ CASES: dict[str, dict[str, bytes]] = {
     "tilde_dot": {"a.py": b"x.~/Projects/x\n"},
     "env_default": {"a.py": b'GOH="${GOH_DIR:-$HOME/Projects/gates_of_heck}"\n'},
     "marker_same_line": {"a.py": b'x = "/Users/m/x";  // path-ok: dev fallback\n'},
-    "marker_above": {"a.py": b"// path-ok: recorded incident\nx = \"/Users/m/x\"\n"},
+    "marker_above": {"a.py": b'// path-ok: recorded incident\nx = "/Users/m/x"\n'},
     "marker_bare": {"a.py": b'x = "/Users/m/x";  // path-ok:\n'},
     "unicode_col": {"a.py": "→ /Users/me/x/\n".encode()},
 }

@@ -99,8 +99,18 @@ def test_full_mode_scans_tracked_files(repo):
     write(repo, "leak.py", f"k = {GHP!r}\n")
     subprocess.run(["git", "-C", str(repo), "add", "-A"], check=True)
     subprocess.run(
-        ["git", "-C", str(repo), "-c", "user.name=t", "-c", "user.email=t@t",
-         "commit", "-qm", "fixture"],
+        [
+            "git",
+            "-C",
+            str(repo),
+            "-c",
+            "user.name=t",
+            "-c",
+            "user.email=t@t",
+            "commit",
+            "-qm",
+            "fixture",
+        ],
         check=True,
     )
     r = run_secrets(repo)
@@ -111,7 +121,11 @@ def test_full_mode_scans_tracked_files(repo):
 def test_credential_named_key_with_long_value_fails(repo):
     # Built by concatenation and repetition: a literal would trip this gate.
     name = "api_" + "key"
-    write(repo, "state/llm_config.json", '{\n  "host": "h",\n  "%s": "osk-v1.%s"\n}\n' % (name, "a" * 40))
+    write(
+        repo,
+        "state/llm_config.json",
+        '{\n  "host": "h",\n  "%s": "osk-v1.%s"\n}\n' % (name, "a" * 40),
+    )
     stage(repo, "state/llm_config.json")
     r = run_secrets(repo, "--staged")
     assert r.returncode == 1, r.stdout + r.stderr
@@ -122,7 +136,11 @@ def test_credential_named_key_with_long_value_fails(repo):
 def test_credential_named_key_with_a_placeholder_passes(repo):
     name = "api_" + "key"
     write(repo, "examples/app.toml", '%s = "LIDARR_API_KEY"\n' % name)
-    write(repo, "tests/fixture.py", 'wire(%s="sk-stale")\npw = {"pass" + "word": "app-password"}\n' % name)
+    write(
+        repo,
+        "tests/fixture.py",
+        'wire(%s="sk-stale")\npw = {"pass" + "word": "app-password"}\n' % name,
+    )
     write(repo, "cfg.json", '{"%s": "%s"}\n' % (name, "b" * 31))
     stage(repo, "examples/app.toml", "tests/fixture.py", "cfg.json")
     r = run_secrets(repo, "--staged")

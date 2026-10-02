@@ -27,9 +27,7 @@ CHECK = "checks/check_python_formatted.py"
 BAD = "x = {  'a':1,'b':2 }\n"
 GOOD = 'x = {"a": 1, "b": 2}\n'
 
-needs_ruff = pytest.mark.skipif(
-    shutil.which("ruff") is None, reason="ruff is not installed"
-)
+needs_ruff = pytest.mark.skipif(shutil.which("ruff") is None, reason="ruff is not installed")
 
 
 @needs_ruff

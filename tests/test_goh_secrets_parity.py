@@ -8,6 +8,7 @@ drifting goes red.
 NOTE: tails are built with repetition, never written as literals — a
 matchable tail in this source would trip the very gate under test.
 """
+
 from __future__ import annotations
 
 import re
@@ -91,7 +92,7 @@ FULL_CASES: dict[str, bytes] = {
     "key_rsa": b"-----BEGIN RSA " + b"PRIVATE KEY-----\n",
     "key_pub": b"-----BEGIN " + b"PUBLIC KEY-----\n",
     "suppressed_same": f'K = "{GHP}"  # secret-ok: revoked vector\n'.encode(),
-    "suppressed_above": f"# secret-ok: rotated 2026-01-01\nK = \"{GHP}\"\n".encode(),
+    "suppressed_above": f'# secret-ok: rotated 2026-01-01\nK = "{GHP}"\n'.encode(),
     "bare_marker": f'K = "{GHP}"  # secret-ok:\n'.encode(),
     "unicode_col": f"\u2192 {GHP}\n".encode(),
     "cred_long_json": f'{{"{CRED_NAME}": "osk-v1.{"a" * 40}"}}\n'.encode(),
@@ -110,7 +111,11 @@ def test_full_mode_agrees(goh: Path, tmp_path: Path, name: str) -> None:
 
 def test_exclude_agrees(goh: Path, tmp_path: Path) -> None:
     repo = make_repo(tmp_path, {"vendor/e.py": f"tok = {GHP}\n".encode(), "src/ok.py": b"ok\n"})
-    assert run_goh(goh, repo, ["--exclude", "vendor/"]) == run_python(repo, ["--exclude", "vendor/"]) == (0, [], 1)
+    assert (
+        run_goh(goh, repo, ["--exclude", "vendor/"])
+        == run_python(repo, ["--exclude", "vendor/"])
+        == (0, [], 1)
+    )
     assert run_goh(goh, repo, []) == run_python(repo, [])
 
 

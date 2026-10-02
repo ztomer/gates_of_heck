@@ -3,6 +3,7 @@
 The resolution was written three times and had drifted (the lints copy replaced a named-but-broken
 GOH_BIN with bin/goh). These pin the entry point's four outcomes and forbid a fourth copy.
 """
+
 from __future__ import annotations
 
 import os
@@ -16,7 +17,9 @@ ENTRY = ROOT / "gates" / "goh.sh"
 
 def run(*args: str, **env: str) -> subprocess.CompletedProcess[str]:
     base = {k: v for k, v in os.environ.items() if k not in ("GOH_BIN", "GOH_NO_NATIVE")}
-    return subprocess.run(["bash", str(ENTRY), *args], capture_output=True, text=True, cwd=ROOT, env={**base, **env})
+    return subprocess.run(
+        ["bash", str(ENTRY), *args], capture_output=True, text=True, cwd=ROOT, env={**base, **env}
+    )
 
 
 def fake_native(tmp_path: Path) -> Path:
@@ -58,7 +61,9 @@ def test_no_gate_script_resolves_the_binary_itself() -> None:
     """THE GATE: one resolution. A script that finds bin/goh or `goh` on PATH on its own is a copy."""
     pattern = re.compile(r'bin/goh"|command -v goh\b')
     offenders = [
-        p.name for p in (ROOT / "gates").glob("*.sh")
-        if p.name != "_goh_bin.sh" and any(pattern.search(line.split("#", 1)[0]) for line in p.read_text().splitlines())
+        p.name
+        for p in (ROOT / "gates").glob("*.sh")
+        if p.name != "_goh_bin.sh"
+        and any(pattern.search(line.split("#", 1)[0]) for line in p.read_text().splitlines())
     ]
     assert offenders == [], f"resolve through gates/_goh_bin.sh: {offenders}"

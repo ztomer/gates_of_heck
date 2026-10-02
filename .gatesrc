@@ -39,4 +39,10 @@ GOH_COV_FLOOR_RUST=95
 # what stands between a gate bug and every consumer; parallel under xdist
 # with --dist loadgroup, see docs/contracts.md).
 export GOH_DIR="${GOH_DIR:-$HOME/Projects/gates_of_heck}"
+# Python shape, decided by a DECLARED rule set: pyproject.toml pins ruff's
+# line-length to 100 (matching rustfmt.toml). Opt-in for every repo; this
+# one has chosen its rule set, so it opts in. Without a configuration ruff
+# applied defaults and the shape of each file was decided by whichever hand
+# last edited it -- and no gate here ever ran the check over this tree.
+GOH_PYTHON_FORMATTED=1
 GOH_CI_STEPS='"$GOH_DIR/gates/rust_gate.sh":cargo audit --deny warnings --deny unmaintained --deny unsound --deny yanked:"$GOH_DIR/gates/structural.sh" --full:cargo test --workspace:"$GOH_DIR/tools/pytest.sh"'

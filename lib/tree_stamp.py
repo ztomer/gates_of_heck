@@ -57,9 +57,17 @@ GATE_OWN_FILES = frozenset({".goh-tree.lock", ".coverage", "Cargo.lock", "Packag
 # never has source in them, so a file under one is gate output, not a move.
 # (Found by this repo's py_gate test: pytest's __pycache__ in an un-ignored
 # package read as "3 files changed" on a still tree.)
-GATE_OUTPUT_DIRS = frozenset({
-    "__pycache__", ".pytest_cache", ".ruff_cache", ".mypy_cache", ".hypothesis", ".build", "target",
-})
+GATE_OUTPUT_DIRS = frozenset(
+    {
+        "__pycache__",
+        ".pytest_cache",
+        ".ruff_cache",
+        ".mypy_cache",
+        ".hypothesis",
+        ".build",
+        "target",
+    }
+)
 
 EXIT_MOVED = 1
 EXIT_CANNOT_ANSWER = 2
@@ -69,16 +77,24 @@ def listed_files(repo: Path) -> list[str]:
     """Every path git would show: tracked, plus untracked-and-not-ignored."""
     out = subprocess.run(
         ["git", "-C", str(repo), "ls-files", "-z", "--cached", "--others", "--exclude-standard"],
-        check=True, capture_output=True,
+        check=True,
+        capture_output=True,
     ).stdout
-    return sorted(p for p in set(out.decode("utf-8", "surrogateescape").split("\0")) if p and not is_gate_output(p))
+    return sorted(
+        p
+        for p in set(out.decode("utf-8", "surrogateescape").split("\0"))
+        if p and not is_gate_output(p)
+    )
 
 
 def is_gate_output(rel: str) -> bool:
     """A file the gate's own tools write while it runs; see GATE_OUTPUT_DIRS."""
     parts = rel.split("/")
-    return parts[-1] in GATE_OWN_FILES or parts[-1].startswith(".coverage.") \
+    return (
+        parts[-1] in GATE_OWN_FILES
+        or parts[-1].startswith(".coverage.")
         or any(part in GATE_OUTPUT_DIRS for part in parts[:-1])
+    )
 
 
 def fingerprint(repo: Path) -> dict[str, list[int] | None]:
@@ -109,7 +125,9 @@ def check(repo: Path, stamp_file: Path, name: str) -> int:
     try:
         before = json.loads(stamp_file.read_text())
     except (OSError, ValueError) as exc:
-        err(f"{name}: no readable tree stamp at {stamp_file} ({exc}) -- cannot say whether the tree moved")
+        err(
+            f"{name}: no readable tree stamp at {stamp_file} ({exc}) -- cannot say whether the tree moved"
+        )
         return EXIT_CANNOT_ANSWER
     changed = moved(before, fingerprint(repo))
     if not changed:
@@ -135,7 +153,9 @@ def main(argv: list[str] | None = None) -> int:
             return take(args.repo, args.stamp)
         return check(args.repo, args.stamp, args.name)
     except subprocess.CalledProcessError as exc:
-        err(f"{args.name}: cannot list the tree at {args.repo} (git: {exc.stderr.decode().strip()})")
+        err(
+            f"{args.name}: cannot list the tree at {args.repo} (git: {exc.stderr.decode().strip()})"
+        )
         return EXIT_CANNOT_ANSWER
 
 

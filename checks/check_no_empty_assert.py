@@ -26,6 +26,10 @@ itself rather than read from its docs:
 | `assert_eq!(v.len(), 0);`                            | nothing (correct)  |
 | `assert_ne!(v.len(), 0);`                            | nothing (correct)  |
 | `let x = v.is_empty(); assert!(x);`                  | nothing (indirect) |
+| `assert!(v.is_empty() && ok);`                       | nothing (compound) |
+| `assert!(ok && v.is_empty());`                       | nothing (compound) |
+| `assert!(!v.is_empty() || ok);`                      | nothing (compound) |
+| `assert!(v.first().is_some_and(|x| !x.is_empty()));` | nothing (nested)   |
 
 The two bold rows are the reason this checker is not a duplicate of a lint. An
 assert carrying a message is the form most people write on purpose — a failure
@@ -69,6 +73,7 @@ A Rust file is treated as machine-generated iff it carries `@generated` within
 its first 40 lines, the same marker and the same window `check_no_allow.py`
 uses; see that module for why a mention in a code span does not count.
 """
+
 import os
 import re
 import sys
@@ -77,11 +82,14 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 try:
     from tui.lib import err, ok
 except ImportError:  # outside the house PYTHONPATH: plain marks, same wording
+
     def ok(msg):
         print(f"✓ {msg}")
 
     def err(msg):
         print(f"✗ {msg}", file=sys.stderr)
+
+
 from _gitutil import content_bytes, listed_files, repo_root  # noqa: E402
 from _rust_text import (  # noqa: E402
     STRING_LITERAL,
@@ -94,32 +102,79 @@ from _rust_text import (  # noqa: E402
 # which are the forms clippy tells you to write. The boundary lookbehind keeps a
 # crate's own `my_assert!(...)` out of the sweep.
 _ASSERT_MACRO = re.compile(r"(?<![\w:])(?:debug_)?assert!\s*\(")
-# The emptiness call. The leading `!` is OPTIONAL and load-bearing: clippy
-# reports the negated form too, and a first version of this pattern made the `!`
-# mandatory, so it found every `assert!(x.len() == 0)` and missed every
-# `assert!(x.is_empty())` -- the shape the class is actually made of. The
-# measured table below is what caught it.
-_IS_EMPTY = re.compile(r"(?:!\s*)?\.\s*is_empty\s*\(\s*\)")
-# The other lint's shape. Kept as two pieces rather than one ordered regex
-# because the comparison can be written either way round (`x.len() == 0` and
-# `0 == x.len()` are both reported) and `<`/`>` carry the negated case.
-_LEN_CALL = re.compile(r"\.len\s*\(\s*\)")
-_ZERO_COMPARE = re.compile(r"(?:==|!=|<|>)\s*0\b|\b0\s*(?:==|!=|<|>)")
+# A receiver: the thing `.is_empty()` / `.len()` hangs off. Deliberately WIDE —
+# calls, indexing, borrows and closures are all fine — because the question is
+# not what the receiver looks like, it is whether it is the WHOLE condition.
+# The receiver is "whatever came before the emptiness call", and enumerating
+# what a receiver may contain is how this missed real sites: a character class
+# that omitted `"` silently skipped every receiver containing a string literal,
+# e.g. `Style::load_zstyle(&dir.join("missing")).is_empty()`. String literals
+# arrive already blanked to `""`, and the one structural rule that matters is
+# enforced explicitly in `_is_violation`: the condition must not contain `&&` or
+# `||`, which is what stops `ok && v` matching as a receiver and turning
+# `assert!(ok && v.is_empty())` into a finding. A condition with anything else
+# after the call (`x.is_empty() == true`, `matches!(x.len(), 0)`) fails the
+# fullmatch on its own, because it does not END in the emptiness call.
+_RECEIVER = r".+"
+
+# The asserted CONDITION, in every form clippy reports. Each alternative is a
+# full match, not a search: see `_is_violation` for why that distinction is the
+# whole rule.
+_CONDITION_IS_EMPTY = re.compile(rf"!?\s*{_RECEIVER}\.is_empty\s*\(\s*\)")
+_CONDITION_LEN_ZERO = re.compile(
+    rf"!?\s*{_RECEIVER}\.len\s*\(\s*\)\s*(?:==|!=|<|>)\s*0\b"
+    rf"|!?\s*0\s*(?:==|!=|<|>)\s*{_RECEIVER}\.len\s*\(\s*\)"
+)
+
+
+def _condition_of(invocation: str) -> str:
+    """The macro's first argument: everything up to the first top-level comma,
+    with the macro head removed.
+
+    `invocation` arrives with string literals already blanked, so a comma inside
+    a message is `""`-quoted and cannot be mistaken for the argument separator,
+    and a `")"` inside one cannot close the search early.
+    """
+    depth = 0
+    for i, ch in enumerate(invocation):
+        if ch == "(":
+            depth += 1
+        elif ch == ")":
+            depth -= 1
+        elif ch == "," and depth == 1:
+            return invocation[invocation.index("(") + 1 : i].strip()
+    body = invocation[invocation.index("(") + 1 :].strip()
+    # Exactly ONE closing paren — the macro's. `rstrip(")")` would also take the
+    # method call's own, turning `v.is_empty()` into `v.is_empty` and matching
+    # nothing.
+    return body[:-1].strip() if body.endswith(")") else body
 
 
 def _is_violation(invocation: str) -> bool:
     """Is one whole macro invocation an emptiness assertion in a bad shape?
 
-    `invocation` is the invocation's text with string literals already blanked,
-    so a message can never contain the evidence and a `")"` in a message cannot
-    end the search early.
+    The condition must be the ENTIRE condition, and that is the whole rule.
+    Measured against clippy 1.99.0, it reports none of these, and an earlier
+    version of this function flagged every one:
+
+        assert!(v.is_empty() && ok);
+        assert!(ok && v.is_empty());
+        assert!(!v.is_empty() || ok);
+        assert!(v.is_empty() == true);
+        assert!(v.first().is_some_and(|x| !x.is_empty()));
+        assert!(v.is_empty() && w.is_empty());
+
+    Two of those cost something real. `is_some_and(|x| !x.is_empty())` has NO
+    spelling both lints accept -- clippy asks for `!x.is_empty()` and this gate
+    asked for `x.len() > 0` -- so a routine correctly written the idiomatic way
+    was made to fail one gate or the other. And a nested emptiness test is not
+    the pattern this gate is about: the assertion is about the compound, and
+    splitting it into an emptiness assert would change what is being claimed.
     """
-    if _IS_EMPTY.search(invocation):
-        return True
-    # A length compared against zero, in either order. Spelled as two searches
-    # so neither ordering has to be enumerated in a regex, and so `x.len() > 0`
-    # is caught -- clippy reports that one too.
-    return bool(_LEN_CALL.search(invocation) and _ZERO_COMPARE.search(invocation))
+    cond = _condition_of(invocation)
+    if "&&" in cond or "||" in cond:
+        return False
+    return bool(_CONDITION_IS_EMPTY.fullmatch(cond) or _CONDITION_LEN_ZERO.fullmatch(cond))
 
 
 def _findings(text: str):
@@ -200,16 +255,13 @@ def _files(root: str, staged: bool, exclude):
     return [
         f
         for f in listed_files(root, staged=staged)
-        if f.endswith(".rs")
-        and is_compiled_src(f)
-        and not (exclude and exclude.search(f))
+        if f.endswith(".rs") and is_compiled_src(f) and not (exclude and exclude.search(f))
     ]
 
 
 def _has_rust(root: str, staged: bool) -> bool:
     return any(
-        f == "Cargo.toml" or f.endswith("/Cargo.toml")
-        for f in listed_files(root, staged=staged)
+        f == "Cargo.toml" or f.endswith("/Cargo.toml") for f in listed_files(root, staged=staged)
     )
 
 
@@ -240,11 +292,31 @@ def probe() -> int:
         ('assert!(!v.is_empty(), "msg");', True),
         ("assert!(s\n    .as_bytes()\n    .is_empty());", True),
         ('assert!(s.as_bytes().is_empty(),\n    "split message");', True),
+        # A receiver carrying a string literal, a `?`, or a macro call. The
+        # receiver pattern was a character class without `"`, so every one of
+        # these passed -- which is how storage-server kept a
+        # `assert!(Style::load_zstyle(&dir.join("x")).is_empty())` past a gate
+        # whose entire job is catching that shape.
+        ('assert!(Style::load_zstyle(&dir.join("missing")).is_empty());', True),
+        ('assert!(load("a").is_empty(), "no rows");', True),
+        ("assert!(v.ok()?.is_empty());", True),
+        ("assert!(take!(&d).is_empty());", True),
         ("assert_eq!(v.len(), 0);", False),
         ("assert_eq!(v.to_vec(), Vec::<u8>::new());", False),
         ("assert_ne!(v.len(), 0);", False),
         ("let x = v.is_empty(); assert!(x);", False),
         ("assert!(v.iter().next().is_none());", False),
+        # The compound and nested forms clippy reports NONE of. The gate not
+        # flagging them is a measured decision, not an oversight: an emptiness
+        # test inside a conjunction is an assertion about the conjunction, and
+        # `is_some_and(|x| !x.is_empty())` has no spelling both lints accept.
+        ("assert!(v.is_empty() && ok);", False),
+        ("assert!(ok && v.is_empty());", False),
+        ("assert!(!v.is_empty() || ok);", False),
+        ("assert!(v.is_empty() == true);", False),
+        ("assert!(v.first().is_some_and(|x| !x.is_empty()));", False),
+        ("assert!(v.is_empty() && w.is_empty());", False),
+        ("assert!(matches!(v.len(), 0));", False),
         ("my_assert!(v.is_empty());", False),
         ("a::assert!(v.is_empty());", False),
         ("assert_eq!(v.len(), 0usize);", False),
@@ -264,8 +336,10 @@ def probe() -> int:
     if bad:
         err(f"check_no_empty_assert --probe: {bad} case(s) wrong")
         return 1
-    ok(f"check_no_empty_assert --probe: {len(cases)} measured shapes agree with clippy "
-       "1.99.0, and the forms clippy tells you to write stay clean")
+    ok(
+        f"check_no_empty_assert --probe: {len(cases)} measured shapes agree with clippy "
+        "1.99.0, and the forms clippy tells you to write stay clean"
+    )
     return 0
 
 

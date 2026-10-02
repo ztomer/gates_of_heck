@@ -8,9 +8,11 @@ coercion), _python_type_to_json_schema (tool_from_function annotations).
 mcp_scaffold re-exports every name, so both `lib.mcp_schema` and
 `lib.mcp_scaffold` import paths keep working.
 """
+
 from __future__ import annotations
 
 # ── validation helper (lightweight + jsonschema when available) ─────────────
+
 
 def _check_type(value, type_str: str) -> bool:
     if type_str == "string":

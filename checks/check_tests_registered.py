@@ -77,8 +77,13 @@ def main() -> int:
     # it is what this gate printed over a tree with no tests, and what it would print forever if
     # the tests directory were renamed. The default of 1 catches only total blindness; a repo that
     # knows its own population should pass a real number, well below today's count.
-    ap.add_argument("--min-tests", type=int, default=1, metavar="N",
-                    help="fail if fewer than N test files are found (default 1)")
+    ap.add_argument(
+        "--min-tests",
+        type=int,
+        default=1,
+        metavar="N",
+        help="fail if fewer than N test files are found (default 1)",
+    )
     args = ap.parse_args()
 
     if args.buildsystem != "cmake":
@@ -120,8 +125,7 @@ def main() -> int:
             rel = os.path.relpath(os.path.join(dirpath, name), root)
             if name in registered or rel in registered:
                 continue
-            with open(os.path.join(dirpath, name), encoding="utf-8",
-                      errors="replace") as fh:
+            with open(os.path.join(dirpath, name), encoding="utf-8", errors="replace") as fh:
                 if OPT_OUT_RE.search(fh.read(2000)):
                     continue  # deliberate, with a reason on file
             orphans.append(rel)
@@ -144,10 +148,13 @@ def main() -> int:
         return 1
 
     if total < args.min_tests:
-        print(f"✗ [test_registration] found {total} test file(s) under "
-              f"{args.tests_dir}/, expected at least {args.min_tests} -- this gate has "
-              f"stopped looking at its subject, and 'all of them are registered' over "
-              f"what it did not find is not a clean run.", file=sys.stderr)
+        print(
+            f"✗ [test_registration] found {total} test file(s) under "
+            f"{args.tests_dir}/, expected at least {args.min_tests} -- this gate has "
+            f"stopped looking at its subject, and 'all of them are registered' over "
+            f"what it did not find is not a clean run.",
+            file=sys.stderr,
+        )
         return 1
     print(
         f"→ [test_registration] OK — all {total} test file(s) under "

@@ -33,7 +33,10 @@ def run_gate(cwd: Path, *args: str, env_extra: dict | None = None):
         env.update(env_extra)
     return subprocess.run(
         ["/bin/bash", str(COV_GATE), *args],
-        cwd=cwd, capture_output=True, text=True, env=env,
+        cwd=cwd,
+        capture_output=True,
+        text=True,
+        env=env,
     )
 
 
@@ -49,9 +52,7 @@ def proj(tmp_path: Path) -> Path:
 
 def test_new_gate_scripts_pass_bash_n():
     for script in (COV_GATE, LOCAL_CI):
-        r = subprocess.run(
-            ["/bin/bash", "-n", str(script)], capture_output=True, text=True
-        )
+        r = subprocess.run(["/bin/bash", "-n", str(script)], capture_output=True, text=True)
         assert r.returncode == 0, f"{script}: {r.stderr}"
 
 
@@ -150,18 +151,8 @@ def test_ignore_requires_value(proj):
 # ── real end-to-end rust run (the pipeline must actually bite) ──
 
 CARGO_TOML = '[package]\nname = "covfix"\nversion = "0.1.0"\nedition = "2021"\n'
-LIB_FULLY_COVERED = (
-    "pub fn add(a: u64, b: u64) -> u64 {\n"
-    "    a + b\n"
-    "}\n"
-)
-LIB_WITH_GAP = (
-    LIB_FULLY_COVERED
-    + "\n"
-    + "pub fn unused(a: u64) -> u64 {\n"
-    + "    a * 3\n"
-    + "}\n"
-)
+LIB_FULLY_COVERED = "pub fn add(a: u64, b: u64) -> u64 {\n    a + b\n}\n"
+LIB_WITH_GAP = LIB_FULLY_COVERED + "\n" + "pub fn unused(a: u64) -> u64 {\n" + "    a * 3\n" + "}\n"
 TEST_ALL = (
     "#[cfg(test)]\n"
     "mod tests {\n"
@@ -185,12 +176,7 @@ def _mk_crate(root: Path, lib: str) -> Path:
 def _llvm_cov_available() -> bool:
     if shutil.which("cargo") is None:
         return False
-    return (
-        subprocess.run(
-            ["cargo", "llvm-cov", "--version"], capture_output=True
-        ).returncode
-        == 0
-    )
+    return subprocess.run(["cargo", "llvm-cov", "--version"], capture_output=True).returncode == 0
 
 
 @pytest.mark.skipif(not _llvm_cov_available(), reason="cargo llvm-cov not available")
@@ -259,15 +245,17 @@ def _run_with_fake_cargo(tmp_path: Path, *args: str):
     env.pop("GOH_COV_FLOOR_RUST", None)
     return subprocess.run(
         ["/bin/bash", str(COV_GATE), *args],
-        cwd=str(bin_), capture_output=True, text=True, env=env,
+        cwd=str(bin_),
+        capture_output=True,
+        text=True,
+        env=env,
     )
 
 
 def test_failed_export_leaving_file_behind_fails_the_gate_by_name(tmp_path):
     proj = tmp_path / "proj"
     proj.mkdir()
-    r = _run_with_fake_cargo(tmp_path, str(proj), "--lang", "rust",
-                             "--floor", "50")
+    r = _run_with_fake_cargo(tmp_path, str(proj), "--lang", "rust", "--floor", "50")
     assert r.returncode == 1, f"{r.returncode}: {r.stdout}{r.stderr}"
     combined = r.stdout + r.stderr
     # Named failure: WHICH export is missing, and why it matters.
@@ -283,8 +271,7 @@ def test_failed_export_shows_its_own_output(tmp_path):
     # the log beside the part and prints its tail on failure.
     proj = tmp_path / "proj"
     proj.mkdir()
-    r = _run_with_fake_cargo(tmp_path, str(proj), "--lang", "rust",
-                             "--floor", "50")
+    r = _run_with_fake_cargo(tmp_path, str(proj), "--lang", "rust", "--floor", "50")
     assert r.returncode == 1
     assert "the-real-reason" in r.stderr, r.stderr
     log = proj / "target" / "llvm-cov" / "lcov-parts" / "part-covfix-lib.info.log"
@@ -296,11 +283,10 @@ def test_ok_marker_absent_even_though_part_file_exists(tmp_path):
     # not — the gate must treat that as MISSING, not as measured data.
     proj = tmp_path / "proj"
     proj.mkdir()
-    _run_with_fake_cargo(tmp_path, str(proj), "--lang", "rust",
-                         "--floor", "50")
+    _run_with_fake_cargo(tmp_path, str(proj), "--lang", "rust", "--floor", "50")
     parts = proj / "target" / "llvm-cov" / "lcov-parts"
     part = parts / "part-covfix-lib.info"
-    assert part.exists()          # the export DID leave a file behind...
+    assert part.exists()  # the export DID leave a file behind...
     assert not (parts / "part-covfix-lib.info.ok").exists()  # ...never marked ok
 
 
@@ -328,40 +314,57 @@ def _load_swift_helper():
 
 
 def test_engine_flag_rejects_unknown_value(proj):
-    r = run_gate(proj, "--lang", "swift", "--floor", "80",
-                 "--engine", "bazel", env_extra={"GOH_COV_FLOOR_SWIFT": "80"})
+    r = run_gate(
+        proj,
+        "--lang",
+        "swift",
+        "--floor",
+        "80",
+        "--engine",
+        "bazel",
+        env_extra={"GOH_COV_FLOOR_SWIFT": "80"},
+    )
     assert r.returncode == 2
     assert "engine" in (r.stdout + r.stderr)
 
 
 def test_engine_env_var_rejected_when_bogus(proj):
-    r = run_gate(proj, "--lang", "swift", "--floor", "80",
-                 env_extra={"GOH_COV_FLOOR_SWIFT": "80",
-                            "GOH_COV_SWIFT_ENGINE": "xcpretty"})
+    r = run_gate(
+        proj,
+        "--lang",
+        "swift",
+        "--floor",
+        "80",
+        env_extra={"GOH_COV_FLOOR_SWIFT": "80", "GOH_COV_SWIFT_ENGINE": "xcpretty"},
+    )
     assert r.returncode == 2
     assert "GOH_COV_SWIFT_ENGINE" in (r.stdout + r.stderr)
 
 
 def test_parse_markers_requires_reason():
     cov = _load_swift_helper()
-    excluded, errors = cov.parse_markers([
-        "let a = 1",
-        "// cov:ignore: display geometry is not testable headlessly",
-        "let b = NSScreen.main",
-        "// cov:ignore-start",
-        "let c = 3",
-        "// cov:ignore-end",
-    ])
+    excluded, errors = cov.parse_markers(
+        [
+            "let a = 1",
+            "// cov:ignore: display geometry is not testable headlessly",
+            "let b = NSScreen.main",
+            "// cov:ignore-start",
+            "let c = 3",
+            "// cov:ignore-end",
+        ]
+    )
     assert excluded == {2, 4, 5, 6}
     assert len(errors) == 1 and errors[0].startswith("4:") and "reason" in errors[0]
 
 
 def test_parse_markers_unclosed_block_is_an_error():
     cov = _load_swift_helper()
-    excluded, errors = cov.parse_markers([
-        "// cov:ignore-start: why",
-        "let a = 1",
-    ])
+    excluded, errors = cov.parse_markers(
+        [
+            "// cov:ignore-start: why",
+            "let a = 1",
+        ]
+    )
     assert excluded == {1, 2}
     assert any("unclosed" in e for e in errors)
 
@@ -369,8 +372,7 @@ def test_parse_markers_unclosed_block_is_an_error():
 def test_adjust_coverage_forgives_only_uncovered_marker_lines():
     cov = _load_swift_helper()
     counts = {1: 1, 2: 0, 3: 1, 4: 1}
-    pct, forgiven = cov.adjust_coverage(
-        raw_total=4, raw_covered=3, counts=counts, excluded={2})
+    pct, forgiven = cov.adjust_coverage(raw_total=4, raw_covered=3, counts=counts, excluded={2})
     # line 2 is uncovered AND marked → removed from the denominator only.
     assert forgiven == 1
     assert abs(pct - 100.0) < 1e-9
@@ -412,7 +414,6 @@ def test_xccov_report_parse_matches_live_format():
 from conftest import mk_fake_swift_toolchain
 
 
-
 PROJ_DIR = lambda root: root / "proj"
 
 
@@ -425,7 +426,10 @@ def _run_with_path(bin_dir: Path, *args: str, env_extra: dict | None = None):
         env.update(env_extra)
     return subprocess.run(
         ["/bin/bash", str(COV_GATE), *args],
-        cwd=str(bin_dir), capture_output=True, text=True, env=env,
+        cwd=str(bin_dir),
+        capture_output=True,
+        text=True,
+        env=env,
     )
 
 
@@ -460,8 +464,9 @@ def test_marker_without_reason_is_a_gate_error_not_silent_pass(tmp_path):
 def test_xcodebuild_engine_runs_and_applies_floor(tmp_path):
     bin_ = mk_fake_swift_toolchain(tmp_path)
     env_extra = {"GOH_COV_FLOOR_SWIFT": "40", "GOH_COV_SCHEME": "App"}
-    r = _run_with_path(bin_, str(tmp_path / "proj"), "--lang", "swift", "--floor", "40",
-                       env_extra=env_extra)
+    r = _run_with_path(
+        bin_, str(tmp_path / "proj"), "--lang", "swift", "--floor", "40", env_extra=env_extra
+    )
     assert r.returncode == 0, r.stdout + r.stderr
     assert "50.0%" in r.stdout + r.stderr or "50.00%" in r.stdout + r.stderr
 
@@ -473,9 +478,19 @@ def test_xcodebuild_missing_is_a_named_precondition(tmp_path):
     env = dict(os.environ)
     env["PATH"] = "/no/such/bin"
     r = subprocess.run(
-        [sys.executable, str(SWIFT_HELPER), "--engine", "xcodebuild",
-         "--floor", "80", "--proj", str(tmp_path)],
-        capture_output=True, text=True, env=env,
+        [
+            sys.executable,
+            str(SWIFT_HELPER),
+            "--engine",
+            "xcodebuild",
+            "--floor",
+            "80",
+            "--proj",
+            str(tmp_path),
+        ],
+        capture_output=True,
+        text=True,
+        env=env,
     )
     assert r.returncode == 2
     assert "xcodebuild" in r.stderr

@@ -20,6 +20,7 @@ What the tests pin, in the order the failures actually happened:
 * a bare three-part requirement is a CARET requirement, not an exact one. Two
   of the probe's own expectations were wrong about this before the code was.
 """
+
 from __future__ import annotations
 
 import importlib.util
@@ -91,13 +92,19 @@ def test_one_version_in_the_graph_is_never_a_finding(tmp_path):
 
 
 def test_an_inherited_requirement_is_resolved_against_the_workspace_root(tmp_path):
-    write(tmp_path / "Cargo.toml",
-          "[workspace]\nmembers = ['m']\n\n[workspace.dependencies]\ntoml = \"0.8\"\n")
-    write(tmp_path / "m" / "Cargo.toml",
-          '[package]\nname = "m"\nversion = "0.1.0"\n\n[dependencies]\ntoml = { workspace = true }\n')
-    write(tmp_path / "Cargo.lock",
-          LOCK_HEADER + '[[package]]\nname = "toml"\nversion = "0.8.23"\n\n'
-          '[[package]]\nname = "toml"\nversion = "1.1.6"\n')
+    write(
+        tmp_path / "Cargo.toml",
+        "[workspace]\nmembers = ['m']\n\n[workspace.dependencies]\ntoml = \"0.8\"\n",
+    )
+    write(
+        tmp_path / "m" / "Cargo.toml",
+        '[package]\nname = "m"\nversion = "0.1.0"\n\n[dependencies]\ntoml = { workspace = true }\n',
+    )
+    write(
+        tmp_path / "Cargo.lock",
+        LOCK_HEADER + '[[package]]\nname = "toml"\nversion = "0.8.23"\n\n'
+        '[[package]]\nname = "toml"\nversion = "1.1.6"\n',
+    )
     rep = mod.run(tmp_path, offline=True, ratchet=None)
     assert any(f.name == "toml" for f in rep.findings if f.severity == "pinned-below-graph")
 
@@ -142,15 +149,21 @@ def test_target_specific_dependencies_are_examined(tmp_path):
 @pytest.mark.parametrize(
     "req,version,expected",
     [
-        ("1", "1.9.9", True), ("1", "2.0.0", False),
-        ("0.19", "0.19.2", True), ("0.19", "0.20.0", False),
+        ("1", "1.9.9", True),
+        ("1", "2.0.0", False),
+        ("0.19", "0.19.2", True),
+        ("0.19", "0.20.0", False),
         ("0", "0.0.5", True),
-        ("^0.14", "0.19.2", False), ("^1.0.5", "2.0.0", False),
+        ("^0.14", "0.19.2", False),
+        ("^1.0.5", "2.0.0", False),
         # A bare three-part req is a CARET req, not an exact one. Two of the
         # probe's own expectations were wrong about this before the code was.
-        ("1.0.5", "1.0.6", True), ("1.0.5", "1.0.4", False),
-        (">=1.2, <2", "1.7.0", True), (">=1.2, <2", "2.0.0", False),
-        ("~1.2.3", "1.2.9", True), ("~1.2.3", "1.3.0", False),
+        ("1.0.5", "1.0.6", True),
+        ("1.0.5", "1.0.4", False),
+        (">=1.2, <2", "1.7.0", True),
+        (">=1.2, <2", "2.0.0", False),
+        ("~1.2.3", "1.2.9", True),
+        ("~1.2.3", "1.3.0", False),
         ("*", "9.9.9", True),
     ],
 )

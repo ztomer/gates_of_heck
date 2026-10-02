@@ -192,8 +192,8 @@ def _decode_png_minimal(data, path):
             if ctype == b"IHDR":
                 if len(body) != 13:
                     raise PreconditionError(
-                        f"{path}: corrupt PNG IHDR ({len(body)} bytes, "
-                        f"expected 13)")
+                        f"{path}: corrupt PNG IHDR ({len(body)} bytes, expected 13)"
+                    )
                 header = struct.unpack(">IIBBBBB", body)
             elif ctype == b"IDAT":
                 idat.append(body)
@@ -204,8 +204,7 @@ def _decode_png_minimal(data, path):
     except PreconditionError:
         raise
     except (IndexError, struct.error) as exc:
-        raise PreconditionError(
-            f"{path}: corrupt PNG chunk structure: {exc}") from exc
+        raise PreconditionError(f"{path}: corrupt PNG chunk structure: {exc}") from exc
     width, height, depth, color, comp, filt, interlace = header
     if depth != 8 or color not in _CHANNELS or comp != 0 or filt != 0 or interlace != 0:
         raise PreconditionError(
@@ -224,12 +223,12 @@ def _decode_png_minimal(data, path):
     if len(raw) < height * (stride + 1):
         raise PreconditionError(
             f"{path}: corrupt PNG pixel stream: {len(raw)} bytes for "
-            f"{width}x{height}x{ch} (need {height * (stride + 1)})")
+            f"{width}x{height}x{ch} (need {height * (stride + 1)})"
+        )
     try:
         flat = _unfilter(raw, width, height, ch)
     except (IndexError, struct.error) as exc:
-        raise PreconditionError(
-            f"{path}: corrupt PNG during defiltering: {exc}") from exc
+        raise PreconditionError(f"{path}: corrupt PNG during defiltering: {exc}") from exc
     n = width * height
     rgb = bytearray(n * 3)
     if color == 2:
@@ -320,8 +319,7 @@ def ssim(a, b):
         cov = sum((lx[i] - mx) * (ly[i] - my) for i in range(n)) / n
     c1, c2 = (0.01 * 255) ** 2, (0.03 * 255) ** 2
     return float(
-        ((2 * mx * my + c1) * (2 * cov + c2))
-        / ((mx * mx + my * my + c1) * (vx + vy + c2))
+        ((2 * mx * my + c1) * (2 * cov + c2)) / ((mx * mx + my * my + c1) * (vx + vy + c2))
     )
 
 
@@ -350,7 +348,8 @@ def resolve_tolerances(overrides=None):
         if isinstance(val, float) and not math.isfinite(val):
             raise PreconditionError(
                 f"tolerance {key} must be finite, got {val!r} "
-                f"(NaN/Infinity cannot be compared against)")
+                f"(NaN/Infinity cannot be compared against)"
+            )
         out[key] = float(val)
     return out
 
@@ -359,13 +358,13 @@ def compare(a, b, tolerances=None):
     """Full verdict dict: metrics, per-tolerance failures, ok."""
     tol = resolve_tolerances(tolerances)
     if (a.width, a.height) != (b.width, b.height):
-        raise PreconditionError(
-            f"size mismatch: {a.width}x{a.height} vs {b.width}x{b.height}"
-        )
+        raise PreconditionError(f"size mismatch: {a.width}x{a.height} vs {b.width}x{b.height}")
     identical = a.pixels == b.pixels
     metrics = {
         "mean_abs_diff": 0.0 if identical else mean_abs_diff(a, b),
-        "changed_fraction": 0.0 if identical else changed_fraction(a, b, tol["changed_px_threshold"]),
+        "changed_fraction": 0.0
+        if identical
+        else changed_fraction(a, b, tol["changed_px_threshold"]),
         "ssim": 1.0 if identical else ssim(a, b),
     }
     failures = []
@@ -386,8 +385,10 @@ def compare(a, b, tolerances=None):
         "tolerances": tol,
         "failures": failures,
         "ok": not failures,
-        "tier": {"decoder": "pillow" if _HAVE_PIL else "png-minimal",
-                 "compute": "numpy" if _HAVE_NUMPY else "pure-python"},
+        "tier": {
+            "decoder": "pillow" if _HAVE_PIL else "png-minimal",
+            "compute": "numpy" if _HAVE_NUMPY else "pure-python",
+        },
     }
 
 
@@ -397,7 +398,9 @@ def compare(a, b, tolerances=None):
 def main(argv=None):
     import argparse
 
-    ap = argparse.ArgumentParser(description="Golden-image diff: exit 0 within tolerance, 1 exceeded, 2 precondition.")
+    ap = argparse.ArgumentParser(
+        description="Golden-image diff: exit 0 within tolerance, 1 exceeded, 2 precondition."
+    )
     ap.add_argument("a", help="candidate image")
     ap.add_argument("b", help="baseline image")
     ap.add_argument("--tolerances", default="{}", help="JSON overrides of the defaults")
@@ -425,7 +428,11 @@ def main(argv=None):
         print(json.dumps(result, indent=2))
     else:
         m = result["metrics"]
-        state = "identical" if result["identical"] else ", ".join(result["failures"]) or "within tolerance"
+        state = (
+            "identical"
+            if result["identical"]
+            else ", ".join(result["failures"]) or "within tolerance"
+        )
         print(
             f"{'→' if result['ok'] else '✗'} mean_abs_diff={m['mean_abs_diff']:.4f} "
             f"changed_frac={m['changed_fraction']:.6f} ssim={m['ssim']:.4f} "

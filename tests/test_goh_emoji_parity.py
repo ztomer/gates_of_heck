@@ -5,6 +5,7 @@ Fixture git repos per case; asserts identical exit codes, identical
 counts in full and staged modes. Either side's allow-list, ranges, or
 column counting drifting goes red.
 """
+
 from __future__ import annotations
 
 import re
@@ -109,12 +110,20 @@ def test_allow_agrees(goh: Path, tmp_path: Path) -> None:
     assert run_goh(goh, repo, []) == run_python(repo, [])
     assert run_goh(goh, repo, [])[0] == 1
     for allow in (f"{PARTY} {CHECK_BUTTON}", f"{PARTY} {CHECK_BUTTON} "):
-        assert run_goh(goh, repo, ["--allow", allow]) == run_python(repo, ["--allow", allow]) == (0, set(), 1)
+        assert (
+            run_goh(goh, repo, ["--allow", allow])
+            == run_python(repo, ["--allow", allow])
+            == (0, set(), 1)
+        )
 
 
 def test_exclude_agrees(goh: Path, tmp_path: Path) -> None:
     repo = make_repo(tmp_path, {"vendor/e.py": f"{PARTY}\n".encode(), "src/ok.py": "ok\n".encode()})
-    assert run_goh(goh, repo, ["--exclude", "vendor/"]) == run_python(repo, ["--exclude", "vendor/"]) == (0, set(), 1)
+    assert (
+        run_goh(goh, repo, ["--exclude", "vendor/"])
+        == run_python(repo, ["--exclude", "vendor/"])
+        == (0, set(), 1)
+    )
     assert run_goh(goh, repo, []) == run_python(repo, [])
 
 

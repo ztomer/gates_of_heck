@@ -15,12 +15,17 @@ CHECK = "checks/check_no_home_paths.py"
 
 
 def run_check(repo: Path, *args: str) -> subprocess.CompletedProcess:
-    return subprocess.run(["python3", str(REPO_ROOT / CHECK), *args],
-                          cwd=repo, capture_output=True, text=True)
+    return subprocess.run(
+        ["python3", str(REPO_ROOT / CHECK), *args], cwd=repo, capture_output=True, text=True
+    )
 
 
 def test_clean_tree_passes(repo):
-    write(repo, "tool.sh", 'ROOT="$(cd "$(dirname "$0")/.." && pwd)"\nRULES="$ROOT/rules/canada.yaml"\n')
+    write(
+        repo,
+        "tool.sh",
+        'ROOT="$(cd "$(dirname "$0")/.." && pwd)"\nRULES="$ROOT/rules/canada.yaml"\n',
+    )
     stage(repo, "tool.sh")
     r = run_check(repo, "--staged")
     assert r.returncode == 0, r.stdout + r.stderr
@@ -54,10 +59,13 @@ def test_a_url_or_module_path_is_not_a_home_path(repo):
 
 
 def test_marker_with_reason_suppresses_same_line_and_next_line(repo):
-    write(repo, "dev.rs",
-          '// path-ok: dev fallback, never consulted inside a bundle\n'
-          'const DEV: &str = "/Users/me/src/x";\n'
-          'const TWO: &str = "/Users/me/src/y"; // path-ok: same dev fallback\n')
+    write(
+        repo,
+        "dev.rs",
+        "// path-ok: dev fallback, never consulted inside a bundle\n"
+        'const DEV: &str = "/Users/me/src/x";\n'
+        'const TWO: &str = "/Users/me/src/y"; // path-ok: same dev fallback\n',
+    )
     stage(repo, "dev.rs")
     r = run_check(repo, "--staged")
     assert r.returncode == 0, r.stdout
@@ -97,9 +105,11 @@ def test_zero_tracked_files_is_a_refusal_not_a_pass(tmp_path):
 
 
 def test_an_env_var_with_a_default_is_derived_not_hard_coded(repo):
-    write(repo, ".githooks/pre-push",
-          'GOH="${GOH_DIR:-${GOH:-$HOME/Projects/gates_of_heck}}"\n'
-          'BAD="$HOME/Projects/other"\n')
+    write(
+        repo,
+        ".githooks/pre-push",
+        'GOH="${GOH_DIR:-${GOH:-$HOME/Projects/gates_of_heck}}"\nBAD="$HOME/Projects/other"\n',
+    )
     stage(repo, ".githooks/pre-push")
     r = run_check(repo, "--staged")
     assert r.returncode != 0

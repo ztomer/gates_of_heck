@@ -5,6 +5,7 @@ explicit-path, `--scope`, and `--staged` modes. Asserts identical exit
 codes plus identical stdout/stderr — a pattern, mask, exemption,
 message, or stream drifting on either side goes red.
 """
+
 from __future__ import annotations
 
 import shutil
@@ -32,9 +33,7 @@ def make_repo(tmp_path: Path, sub: str = "case") -> Path:
 
 
 def run_py(repo: Path, *args: str) -> tuple[int, str, str]:
-    r = subprocess.run(
-        ["python3", str(CHECK), *args], cwd=repo, capture_output=True, text=True
-    )
+    r = subprocess.run(["python3", str(CHECK), *args], cwd=repo, capture_output=True, text=True)
     return r.returncode, r.stdout, r.stderr
 
 

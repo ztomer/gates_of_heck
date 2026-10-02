@@ -1,4 +1,5 @@
 """Launches the app for a capture, under the headless contract."""
+
 import os
 import subprocess
 

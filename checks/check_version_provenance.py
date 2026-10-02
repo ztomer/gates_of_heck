@@ -153,9 +153,7 @@ def check(root: Path, allowlist: set[str], staged: bool = False):
     # blocks a commit that does not contain it.
     scope: set[str] | None = None
     if staged:
-        scope = {
-            f for f in listed_files(str(root), staged=True) if f.endswith(".rs")
-        }
+        scope = {f for f in listed_files(str(root), staged=True) if f.endswith(".rs")}
 
     for path in rust_binary_roots(root, MAIN_FILES):
         if scope is not None and str(path.relative_to(root)) not in scope:
@@ -259,20 +257,19 @@ CLAUSE_BUILD = (
     '    git(&["rev-parse", "HEAD"]),\n'
     '    git(&["write-tree"]),\n'
     '    git(&["status", "--porcelain"]),\n'
-    '    SystemTime::now(),\n'
-    '));\n'
+    "    SystemTime::now(),\n"
+    "));\n"
 )
 # The half that was silently optional: a commit and a date, and no question
 # asked of the working tree.
-NO_TREE_BUILD = (
-    'println!("cargo:rustc-env=APP_PROVENANCE={}", SystemTime::now());\n'
-)
+NO_TREE_BUILD = 'println!("cargo:rustc-env=APP_PROVENANCE={}", SystemTime::now());\n'
 
 
 def _scratch(root: Path, *args: str) -> None:
     """git on the probe's OWN fixture -- never the repo being gated (contract 12)."""
-    subprocess.run(["git", "-C", str(root), *args], check=True, capture_output=True,
-                   env=foreign_repo_env())
+    subprocess.run(
+        ["git", "-C", str(root), *args], check=True, capture_output=True, env=foreign_repo_env()
+    )
 
 
 def _fixture(root: Path, decl: str, build: str | None, lib: bool = False) -> None:
@@ -328,15 +325,15 @@ def probe() -> int:
         stale, _, _ = check(green, {"src/bin/gone.rs"}, False)
 
         for label, want, got in (
-            ("a version with no commit and no date is RED",
-             (2, 1), (len(red), examined)),
-            ("a version declared in src/lib.rs is REACHED and is clean",
-             (0, 1), (len(in_lib), lib_examined)),
-            ("a clause that never asks about the working tree is RED",
-             (1, 1), (len(opaque), 1)),
+            ("a version with no commit and no date is RED", (2, 1), (len(red), examined)),
+            (
+                "a version declared in src/lib.rs is REACHED and is clean",
+                (0, 1),
+                (len(in_lib), lib_examined),
+            ),
+            ("a clause that never asks about the working tree is RED", (1, 1), (len(opaque), 1)),
             ("a truthful version is GREEN", 0, len(findings)),
-            ("a baseline entry naming an unread file is a FINDING",
-             1, len(stale)),
+            ("a baseline entry naming an unread file is a FINDING", 1, len(stale)),
         ):
             if want != got:
                 print(f"✗ probe: {label} (wanted {want!r}, got {got!r})")
@@ -347,8 +344,10 @@ def probe() -> int:
     if bad:
         print(f"✗ check_version_provenance --probe: {bad} case(s) wrong")
         return 1
-    print("✓ check_version_provenance --probe: a bare version goes red, a truthful "
-          "one green, lib.rs included")
+    print(
+        "✓ check_version_provenance --probe: a bare version goes red, a truthful "
+        "one green, lib.rs included"
+    )
     return 0
 
 
@@ -408,11 +407,15 @@ def main() -> int:
     # Not a failure: a repo with no Rust (or none reached by the baseline) has
     # nothing to police. A named non-run, stated as one.
     if examined == 0:
-        print("⚠ [version_provenance] no version-declaring source files in scope "
-              "— nothing examined (not applicable)")
+        print(
+            "⚠ [version_provenance] no version-declaring source files in scope "
+            "— nothing examined (not applicable)"
+        )
         return 0
-    print(f"✓ [version_provenance] all {examined} version-declaring source file(s) "
-          "carry a commit and a build date")
+    print(
+        f"✓ [version_provenance] all {examined} version-declaring source file(s) "
+        "carry a commit and a build date"
+    )
     return 0
 
 

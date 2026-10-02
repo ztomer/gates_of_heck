@@ -28,10 +28,10 @@ for _name in local_env_vars():
     os.environ.pop(_name, None)
 
 # Disallowed-by-policy glyphs, by number (see checks/check_no_emoji.py).
-EMOJI_SMILE = chr(0x1F600)      # pictograph
+EMOJI_SMILE = chr(0x1F600)  # pictograph
 CHECK_MARK_BUTTON = chr(0x2705)  # dingbat check-mark-button (NOT the allowed U+2713)
-VS16 = chr(0xFE0F)              # emoji variation selector
-KEYCAP_COMBINE = chr(0x20E3)    # combining enclosing keycap
+VS16 = chr(0xFE0F)  # emoji variation selector
+KEYCAP_COMBINE = chr(0x20E3)  # combining enclosing keycap
 STAR = chr(0x2B50)
 
 # 2026-08-24: U+21D2 (⇒ implication) and U+21C4 (⇄ exchange) moved to the
@@ -64,9 +64,7 @@ def git(repo: Path, *args: str) -> str:
 def git_ok(repo: Path, *args: str) -> bool:
     """Run a git command in `repo`; True iff it exited 0."""
     return (
-        subprocess.run(
-            ["git", "-C", str(repo), *args], capture_output=True, text=True
-        ).returncode
+        subprocess.run(["git", "-C", str(repo), *args], capture_output=True, text=True).returncode
         == 0
     )
 
@@ -130,26 +128,31 @@ import json as _json
 import stat as _stat
 
 FAKE_EXPORT = {
-    "data": [{"files": [
-        {"filename": "PROJ/Sources/pkg/lib.swift",
-         "summary": {"lines": {"count": 10, "covered": 5}}},
-    ]}],
+    "data": [
+        {
+            "files": [
+                {
+                    "filename": "PROJ/Sources/pkg/lib.swift",
+                    "summary": {"lines": {"count": 10, "covered": 5}},
+                },
+            ]
+        }
+    ],
 }
 
 # llvm-cov show format: "LINE|COUNT|source". Lines 6-10 are the uncovered half.
-FAKE_SHOW = "".join(
-    f"{n:>5}|{'  0' if n > 5 else '  7'}|line {n}\n" for n in range(1, 11))
+FAKE_SHOW = "".join(f"{n:>5}|{'  0' if n > 5 else '  7'}|line {n}\n" for n in range(1, 11))
 
 
-def mk_fake_swift_toolchain(root: Path, second_config: bool = False,
-                            xcrun_log: Path | None = None) -> Path:
+def mk_fake_swift_toolchain(
+    root: Path, second_config: bool = False, xcrun_log: Path | None = None
+) -> Path:
     bin_ = root / "fakebin"
     bin_.mkdir()
     pkg = root / "proj"
     src = pkg / "Sources" / "pkg"
     src.mkdir(parents=True)
-    (src / "lib.swift").write_text(
-        "\n".join(f"line {n}" for n in range(1, 11)) + "\n")
+    (src / "lib.swift").write_text("\n".join(f"line {n}" for n in range(1, 11)) + "\n")
 
     xctest_bin = bin_ / "store" / "PkgTests.xctest" / "Contents" / "MacOS" / "PkgTests"
     xctest_bin.parent.mkdir(parents=True)
@@ -165,20 +168,21 @@ def mk_fake_swift_toolchain(root: Path, second_config: bool = False,
     profdata.write_text("")
     cfgs = ["Debug"] + (["Release"] if second_config else [])
     for cfg in cfgs:
-        xb = dd / "Build" / "Products" / cfg / "AppTests.xctest" / \
-            "Contents" / "MacOS" / "AppTests"
+        xb = dd / "Build" / "Products" / cfg / "AppTests.xctest" / "Contents" / "MacOS" / "AppTests"
         xb.parent.mkdir(parents=True)
         xb.write_text("#!/bin/sh\n")
         xb.chmod(xb.stat().st_mode | _stat.S_IEXEC)
     # Stale-binary pairing scenario: Debug was built LONG before the run that
     # wrote the profdata; Release (when present) is its mtime twin.
     import os as _os
+
     old = profdata.stat().st_mtime - 10_000
-    _os.utime(dd / "Build/Products/Debug/AppTests.xctest/Contents/MacOS/AppTests",
-              (old, old))
+    _os.utime(dd / "Build/Products/Debug/AppTests.xctest/Contents/MacOS/AppTests", (old, old))
     if second_config:
-        _os.utime(dd / "Build/Products/Release/AppTests.xctest/Contents/MacOS/AppTests",
-                  (profdata.stat().st_mtime, profdata.stat().st_mtime))
+        _os.utime(
+            dd / "Build/Products/Release/AppTests.xctest/Contents/MacOS/AppTests",
+            (profdata.stat().st_mtime, profdata.stat().st_mtime),
+        )
     (dd / "Logs" / "Test").mkdir(parents=True)
     (dd / "Logs" / "Test" / "Test-App.xcresult").mkdir()
 
@@ -229,7 +233,8 @@ esac
 def mk_xcrun_find_shim(bin_dir: Path, swift_path: Path) -> Path:
     xcrun = bin_dir / "xcrun"
     xcrun.write_text(
-        f'#!/bin/bash\n[ "$1 $2" = "--find swift" ] && {{ echo "{swift_path}"; exit 0; }}\nexit 1\n')
+        f'#!/bin/bash\n[ "$1 $2" = "--find swift" ] && {{ echo "{swift_path}"; exit 0; }}\nexit 1\n'
+    )
     xcrun.chmod(xcrun.stat().st_mode | _stat.S_IEXEC)
     return xcrun
 
@@ -280,8 +285,15 @@ esac
 
 def _build_goh() -> Path:
     r = subprocess.run(
-        ["cargo", "build", "--message-format=json", "-p", "goh",
-         "--manifest-path", str(REPO_ROOT / "Cargo.toml")],
+        [
+            "cargo",
+            "build",
+            "--message-format=json",
+            "-p",
+            "goh",
+            "--manifest-path",
+            str(REPO_ROOT / "Cargo.toml"),
+        ],
         capture_output=True,
         text=True,
     )
@@ -330,7 +342,7 @@ def goh(tmp_path_factory) -> Path:
     shared = _shared_tmp(tmp_path_factory)
     published = shared / "goh-bin" / "goh"
     with open(shared / "goh-bin.lock", "w") as lock:
-        fcntl.flock(lock, fcntl.LOCK_EX)          # released when the file closes
+        fcntl.flock(lock, fcntl.LOCK_EX)  # released when the file closes
         if not published.exists():
             built = _build_goh()
             with open(shared / GOH_BUILD_RECORD, "a") as record:
@@ -338,7 +350,7 @@ def goh(tmp_path_factory) -> Path:
             published.parent.mkdir(exist_ok=True)
             staging = published.with_suffix(".staging")
             shutil.copy2(built, staging)
-            staging.rename(published)              # atomic: readers see all of it or none
+            staging.rename(published)  # atomic: readers see all of it or none
     return published
 
 

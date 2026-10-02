@@ -38,8 +38,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-sys.path.insert(0, os.path.join(
-    os.path.dirname(os.path.abspath(__file__)), "..", "lib"))
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "lib"))
 from killtree import run_captured  # noqa: E402
 
 
@@ -52,21 +51,18 @@ def _reject_nonfinite(values: dict) -> None:
     never compared. nan-vs-anything is always False (a NaN current would
     silently PASS), and inf-as-current vs a finite ceiling would 'fail as a
     violation' by accident of comparison rather than by policy."""
-    bad = sorted(k for k, v in values.items()
-                 if isinstance(v, float) and not math.isfinite(v))
+    bad = sorted(k for k, v in values.items() if isinstance(v, float) and not math.isfinite(v))
     if bad:
         raise PreconditionError(
-            f"non-finite values (NaN/Infinity) are not measurable — "
-            f"keys {bad[:5]}")
+            f"non-finite values (NaN/Infinity) are not measurable — keys {bad[:5]}"
+        )
 
 
 # Strict ASCII numeric grammar for the line format. Python's int()/float()
 # silently accept '1_0' (== 10) and Arabic-Indic digits ('١٢' == 12) — a
 # baseline file is machine-compared truth, so anything outside this grammar
 # must be a named precondition failure, never a quietly-different number.
-_ASCII_NUMBER = re.compile(
-    r"[+-]?(?:[0-9]+(?:\.[0-9]*)?|\.[0-9]+)(?:[eE][+-]?[0-9]+)?\Z"
-)
+_ASCII_NUMBER = re.compile(r"[+-]?(?:[0-9]+(?:\.[0-9]*)?|\.[0-9]+)(?:[eE][+-]?[0-9]+)?\Z")
 
 
 def _line_value(value_s: str, origin: str, lineno: int) -> float:
@@ -79,16 +75,15 @@ def _line_value(value_s: str, origin: str, lineno: int) -> float:
             return float(value_s)
         except OverflowError:
             raise PreconditionError(
-                f"{origin}:{lineno}: value exceeds float range: "
-                f"{value_s[:40]!r}") from None
+                f"{origin}:{lineno}: value exceeds float range: {value_s[:40]!r}"
+            ) from None
     try:
         probe = float(value_s)
     except ValueError:
         probe = None
     if probe is not None and not math.isfinite(probe):
         return probe
-    raise PreconditionError(
-        f"{origin}:{lineno}: value is not a plain ASCII number: {value_s!r}")
+    raise PreconditionError(f"{origin}:{lineno}: value is not a plain ASCII number: {value_s!r}")
 
 
 def parse(text: str, origin: str) -> dict[str, float]:
@@ -104,16 +99,14 @@ def parse(text: str, origin: str) -> dict[str, float]:
         try:
             data = json.loads(stripped)
         except json.JSONDecodeError as exc:
-            raise PreconditionError(f"{origin}: looks like JSON but does not "
-                                    f"parse ({exc})") from exc
-        if not isinstance(data, dict):
-            raise PreconditionError(f"{origin}: JSON must be an object "
-                                    f"mapping key to number")
-        bad = [k for k, v in data.items() if isinstance(v, bool)
-               or not isinstance(v, (int, float))]
-        if bad:
             raise PreconditionError(
-                f"{origin}: non-numeric values for keys {sorted(bad)[:5]}")
+                f"{origin}: looks like JSON but does not parse ({exc})"
+            ) from exc
+        if not isinstance(data, dict):
+            raise PreconditionError(f"{origin}: JSON must be an object mapping key to number")
+        bad = [k for k, v in data.items() if isinstance(v, bool) or not isinstance(v, (int, float))]
+        if bad:
+            raise PreconditionError(f"{origin}: non-numeric values for keys {sorted(bad)[:5]}")
         entries: dict[str, float] = {}
         huge = []
         for k, v in data.items():
@@ -124,7 +117,8 @@ def parse(text: str, origin: str) -> dict[str, float]:
         if huge:
             raise PreconditionError(
                 f"{origin}: value(s) too large to measure (float range "
-                f"exceeded) for keys {sorted(huge)[:5]}")
+                f"exceeded) for keys {sorted(huge)[:5]}"
+            )
         _reject_nonfinite(entries)
         return entries
 
@@ -136,8 +130,8 @@ def parse(text: str, origin: str) -> dict[str, float]:
         raw = line.split("\t", 1) if "\t" in line else line.split(None, 1)
         if len(raw) != 2:
             raise PreconditionError(
-                f"{origin}:{lineno}: expected '<value><TAB><key>' or "
-                f"'<value> <key>', got: {line!r}")
+                f"{origin}:{lineno}: expected '<value><TAB><key>' or '<value> <key>', got: {line!r}"
+            )
         out[raw[1].strip()] = _line_value(raw[0].strip(), origin, lineno)
     _reject_nonfinite(out)
     return out
@@ -147,12 +141,11 @@ def load_current(args) -> dict[str, float]:
     if args.current_from_command is not None:
         # run_captured: own session + whole-group kill on timeout — a
         # background child of a timed-out command must not outlive the gate.
-        proc = run_captured(
-            args.current_from_command, shell=True, timeout=args.timeout)
+        proc = run_captured(args.current_from_command, shell=True, timeout=args.timeout)
         if proc.returncode != 0:
             raise PreconditionError(
-                f"current-from-command exited {proc.returncode}: "
-                f"{proc.stderr.strip()[:400]}")
+                f"current-from-command exited {proc.returncode}: {proc.stderr.strip()[:400]}"
+            )
         return parse(proc.stdout, "--current-from-command output")
     path = Path(args.current)
     if not path.is_file():
@@ -161,55 +154,58 @@ def load_current(args) -> dict[str, float]:
 
 
 def main() -> int:
-    ap = argparse.ArgumentParser(
-        description="Shrink-only ratchet: baselines are ceilings.")
+    ap = argparse.ArgumentParser(description="Shrink-only ratchet: baselines are ceilings.")
     ap.add_argument("--baseline", required=True)
     ap.add_argument("--current", help="path to current values (same format)")
-    ap.add_argument("--current-from-command",
-                    help="shell command printing current values (same format)")
-    ap.add_argument("--allow-new-keys", action="store_true",
-                    help="keys absent from the baseline do not fail the gate")
-    ap.add_argument("--record", action="store_true",
-                    help="rewrite the baseline from current values")
-    ap.add_argument("--timeout", type=int, default=120,
-                    help="seconds allowed for --current-from-command")
+    ap.add_argument(
+        "--current-from-command", help="shell command printing current values (same format)"
+    )
+    ap.add_argument(
+        "--allow-new-keys",
+        action="store_true",
+        help="keys absent from the baseline do not fail the gate",
+    )
+    ap.add_argument(
+        "--record", action="store_true", help="rewrite the baseline from current values"
+    )
+    ap.add_argument(
+        "--timeout", type=int, default=120, help="seconds allowed for --current-from-command"
+    )
     args = ap.parse_args()
 
     if (args.current is None) == (args.current_from_command is None):
-        print("✗ [ratchet] pass exactly one of --current / "
-              "--current-from-command", file=sys.stderr)
+        print("✗ [ratchet] pass exactly one of --current / --current-from-command", file=sys.stderr)
         return 2
 
     base_path = Path(args.baseline)
     if not base_path.is_file():
-        print(f"✗ [ratchet] precondition missing: baseline "
-              f"{base_path} does not exist\n"
-              f"\n  Create it from today's truth (e.g. with --record), then\n"
-              f"  commit it — the committed ceiling is what the gate enforces.",
-              file=sys.stderr)
+        print(
+            f"✗ [ratchet] precondition missing: baseline "
+            f"{base_path} does not exist\n"
+            f"\n  Create it from today's truth (e.g. with --record), then\n"
+            f"  commit it — the committed ceiling is what the gate enforces.",
+            file=sys.stderr,
+        )
         return 2
 
     try:
-        baseline = parse(base_path.read_text(encoding="utf-8"),
-                         str(base_path))
+        baseline = parse(base_path.read_text(encoding="utf-8"), str(base_path))
         current = load_current(args)
     except PreconditionError as exc:
         print(f"✗ [ratchet] precondition missing: {exc}", file=sys.stderr)
         return 2
     except subprocess.TimeoutExpired:
-        print(f"✗ [ratchet] precondition missing: current-from-command timed "
-              f"out after {args.timeout}s", file=sys.stderr)
+        print(
+            f"✗ [ratchet] precondition missing: current-from-command timed "
+            f"out after {args.timeout}s",
+            file=sys.stderr,
+        )
         return 2
 
-    grew = sorted(
-        (k for k in current
-         if k not in baseline and not args.allow_new_keys))
-    rose = sorted(
-        (k for k in baseline
-         if k in current and current[k] > baseline[k]))
+    grew = sorted((k for k in current if k not in baseline and not args.allow_new_keys))
+    rose = sorted((k for k in baseline if k in current and current[k] > baseline[k]))
     shrank = {
-        k: (baseline[k], current[k])
-        for k in baseline & current.keys() if current[k] < baseline[k]
+        k: (baseline[k], current[k]) for k in baseline & current.keys() if current[k] < baseline[k]
     }
     vanished = sorted(k for k in baseline if k not in current)
 
@@ -218,17 +214,25 @@ def main() -> int:
         return 0
 
     if rose or grew:
-        print(f"✗ [ratchet] {len(rose)} ceiling(s) exceeded, "
-              f"{len(grew)} new key(s) — shrink-only:", file=sys.stderr)
+        print(
+            f"✗ [ratchet] {len(rose)} ceiling(s) exceeded, {len(grew)} new key(s) — shrink-only:",
+            file=sys.stderr,
+        )
         for k in rose:
-            print(f"    {k}: {baseline[k]:g} -> {current[k]:g}  "
-                  f"(+{current[k] - baseline[k]:g})", file=sys.stderr)
+            print(
+                f"    {k}: {baseline[k]:g} -> {current[k]:g}  (+{current[k] - baseline[k]:g})",
+                file=sys.stderr,
+            )
         for k in grew:
-            print(f"    {k}: NEW at {current[k]:g} "
-                  f"(use --allow-new-keys to permit)", file=sys.stderr)
-        print("\n  Fix the regression, or — only if the new size is genuinely\n"
-              "  intended — re-record the ceiling in the same commit, so the\n"
-              "  growth is reviewed rather than absorbed.", file=sys.stderr)
+            print(
+                f"    {k}: NEW at {current[k]:g} (use --allow-new-keys to permit)", file=sys.stderr
+            )
+        print(
+            "\n  Fix the regression, or — only if the new size is genuinely\n"
+            "  intended — re-record the ceiling in the same commit, so the\n"
+            "  growth is reviewed rather than absorbed.",
+            file=sys.stderr,
+        )
         return 1
 
     # EVERY entry gone is not every ceiling met. A shrink-only ratchet reads a population that
@@ -238,28 +242,34 @@ def main() -> int:
     # NAMING all 24 as vanished in the same line, and exited 0. An empty baseline is exempt: a
     # repo that has recorded having nothing has nothing to go blind to.
     if baseline and not current:
-        print(f"✗ [ratchet] the baseline names {len(baseline)} entr"
-              f"{'y' if len(baseline) == 1 else 'ies'} and the current measurement found NONE. "
-              f"That is a blind gate, not a clean one -- every ceiling is trivially met when "
-              f"there is nothing left to measure.", file=sys.stderr)
-        print("  Find what stopped producing the measurement. If the entries are genuinely "
-              "gone,\n  re-record the baseline in the same commit so the deletion is reviewed.",
-              file=sys.stderr)
+        print(
+            f"✗ [ratchet] the baseline names {len(baseline)} entr"
+            f"{'y' if len(baseline) == 1 else 'ies'} and the current measurement found NONE. "
+            f"That is a blind gate, not a clean one -- every ceiling is trivially met when "
+            f"there is nothing left to measure.",
+            file=sys.stderr,
+        )
+        print(
+            "  Find what stopped producing the measurement. If the entries are genuinely "
+            "gone,\n  re-record the baseline in the same commit so the deletion is reviewed.",
+            file=sys.stderr,
+        )
         return 1
 
     detail = ""
     if shrank or vanished:
         parts = []
         if shrank:
-            parts.append(", ".join(
-                f"{k} {b:g}-> {c:g}" for k, (b, c) in sorted(shrank.items())))
+            parts.append(", ".join(f"{k} {b:g}-> {c:g}" for k, (b, c) in sorted(shrank.items())))
         if vanished:
             parts.append("vanished: " + ", ".join(vanished))
         detail = f" ({'; '.join(parts)})"
     # The count reported is what was MEASURED, not what the baseline remembers. Printing the
     # baseline size let "24 entries within ceilings" stand over zero measured entries.
-    print(f"→ [ratchet] OK — {len(current)} entr{'y' if len(current) == 1 else 'ies'}"
-          f" within ceilings{detail}")
+    print(
+        f"→ [ratchet] OK — {len(current)} entr{'y' if len(current) == 1 else 'ies'}"
+        f" within ceilings{detail}"
+    )
     return 0
 
 
@@ -276,9 +286,12 @@ def _serialize(baseline_path: Path, current: dict[str, float]) -> str:
 
 
 def _record(base_path: Path, baseline, current, rose, grew, vanished) -> None:
-    changed = len(rose) + len(grew) + len(vanished) + sum(
-        1 for k in baseline.keys() & current.keys()
-        if baseline[k] != current[k])
+    changed = (
+        len(rose)
+        + len(grew)
+        + len(vanished)
+        + sum(1 for k in baseline.keys() & current.keys() if baseline[k] != current[k])
+    )
     print(f"→ [ratchet] recording {changed} change(s) to {base_path}:")
     for k in rose:
         print(f"    {k}: {baseline[k]:g} -> {current[k]:g}")

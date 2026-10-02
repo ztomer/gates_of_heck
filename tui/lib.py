@@ -6,6 +6,7 @@ Import from a repo script (add the repo root or tui/ to sys.path first):
 Self-contained: reads tui/stylerc (repo source of truth), no machine dependency.
 Icons: → · ✓ ✗ ⚠   Colors: restrained, NO_COLOR + non-tty aware (degrades to plain text).
 """
+
 import os
 import sys
 

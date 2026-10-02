@@ -26,8 +26,9 @@ exit 0
 
 
 def _git(repo: Path, *args: str) -> str:
-    return subprocess.run(["git", "-C", str(repo), *args], check=True, capture_output=True,
-                          text=True).stdout.strip()
+    return subprocess.run(
+        ["git", "-C", str(repo), *args], check=True, capture_output=True, text=True
+    ).stdout.strip()
 
 
 def _repo(tmp_path: Path, gatesrc: str = "", version: str | None = "1.0.0") -> Path:
@@ -53,18 +54,27 @@ def _repo(tmp_path: Path, gatesrc: str = "", version: str | None = "1.0.0") -> P
 
 def _push(repo: Path, sha: str, tmp_path: Path) -> tuple[int, str, str]:
     report = tmp_path / "report.txt"
-    env = dict(os.environ, GATE_REPORT=str(report), GOH_DIR=str(REPO_ROOT),
-               GOH_PUSH_LOGS=str(tmp_path / "push-logs"))
-    proc = subprocess.run(["bash", str(PUSH_GATE)], cwd=repo, env=env, text=True,
-                          input=f"refs/heads/main {sha} refs/heads/main {'0' * 40}\n",
-                          capture_output=True)
+    env = dict(
+        os.environ,
+        GATE_REPORT=str(report),
+        GOH_DIR=str(REPO_ROOT),
+        GOH_PUSH_LOGS=str(tmp_path / "push-logs"),
+    )
+    proc = subprocess.run(
+        ["bash", str(PUSH_GATE)],
+        cwd=repo,
+        env=env,
+        text=True,
+        input=f"refs/heads/main {sha} refs/heads/main {'0' * 40}\n",
+        capture_output=True,
+    )
     return proc.returncode, report.read_text() if report.exists() else "", proc.stdout + proc.stderr
 
 
 def test_the_gate_sees_the_commit_not_the_working_tree(tmp_path):
     repo = _repo(tmp_path)
     sha = _git(repo, "rev-parse", "HEAD")
-    (repo / "marker.txt").write_text("DIRTY")          # uncommitted edit, the incident's shape
+    (repo / "marker.txt").write_text("DIRTY")  # uncommitted edit, the incident's shape
     code, report, _ = _push(repo, sha, tmp_path)
     assert code == 0, report
     assert "tracked=COMMITTED" in report, report
@@ -89,10 +99,20 @@ def test_the_worktree_root_is_overridable(tmp_path):
     repo = _repo(tmp_path)
     sha = _git(repo, "rev-parse", "HEAD")
     root = tmp_path / "elsewhere"
-    env = dict(os.environ, GATE_REPORT=str(tmp_path / "r.txt"), GOH_DIR=str(REPO_ROOT),
-               GOH_PUSH_WORKTREES=str(root))
-    proc = subprocess.run(["bash", str(PUSH_GATE)], cwd=repo, env=env, text=True,
-                          input=f"refs/heads/main {sha} refs/heads/main {'0' * 40}\n", capture_output=True)
+    env = dict(
+        os.environ,
+        GATE_REPORT=str(tmp_path / "r.txt"),
+        GOH_DIR=str(REPO_ROOT),
+        GOH_PUSH_WORKTREES=str(root),
+    )
+    proc = subprocess.run(
+        ["bash", str(PUSH_GATE)],
+        cwd=repo,
+        env=env,
+        text=True,
+        input=f"refs/heads/main {sha} refs/heads/main {'0' * 40}\n",
+        capture_output=True,
+    )
     assert proc.returncode == 0, proc.stdout + proc.stderr
     cwd = (tmp_path / "r.txt").read_text().split("cwd=")[1].strip()
     assert cwd.startswith(os.path.realpath(root)), cwd
@@ -131,7 +151,9 @@ def test_a_red_gate_keeps_its_full_output_and_says_where(tmp_path):
     repo = _repo(tmp_path)
     (repo / "fail.flag").write_text("")
     _git(repo, "add", "fail.flag")
-    (repo / "tools" / "gate.sh").write_text(GATE.replace("exit 1", "echo 'THE-FAILING-TEST'; exit 1"))
+    (repo / "tools" / "gate.sh").write_text(
+        GATE.replace("exit 1", "echo 'THE-FAILING-TEST'; exit 1")
+    )
     _git(repo, "add", "-A")
     _git(repo, "commit", "-q", "-m", "red, loudly")
     sha = _git(repo, "rev-parse", "HEAD")
@@ -158,15 +180,24 @@ def test_a_delete_is_not_gated(tmp_path):
 
 def test_the_stock_hook_delegates_to_push_gate():
     hook = (REPO_ROOT / "hooks" / "pre-push").read_text()
-    assert "push_gate.sh" in hook and "gate.sh --full" not in hook, \
+    assert "push_gate.sh" in hook and "gate.sh --full" not in hook, (
         "the hook must run the pushed commit through push_gate.sh, not the working tree through gate.sh"
+    )
 
 
-def _push_lines(repo: Path, lines: str, tmp_path: Path, remote: str = "origin") -> tuple[int, str, str]:
+def _push_lines(
+    repo: Path, lines: str, tmp_path: Path, remote: str = "origin"
+) -> tuple[int, str, str]:
     report = tmp_path / "report.txt"
     env = dict(os.environ, GATE_REPORT=str(report), GOH_DIR=str(REPO_ROOT))
-    proc = subprocess.run(["bash", str(PUSH_GATE), remote, "unused-url"], cwd=repo, env=env,
-                          text=True, input=lines, capture_output=True)
+    proc = subprocess.run(
+        ["bash", str(PUSH_GATE), remote, "unused-url"],
+        cwd=repo,
+        env=env,
+        text=True,
+        input=lines,
+        capture_output=True,
+    )
     return proc.returncode, report.read_text() if report.exists() else "", proc.stdout + proc.stderr
 
 
@@ -176,15 +207,16 @@ def test_a_tag_on_a_commit_the_remote_already_has_is_not_gated(tmp_path):
     repo = _repo(tmp_path)
     old = _git(repo, "rev-parse", "HEAD")
     _git(repo, "tag", "-a", "v1.0.0", "-m", "old release")
-    _git(repo, "update-ref", "refs/remotes/origin/main", old)      # the remote already has it
-    (repo / "fail.flag").write_text("x")                            # gating it would fail...
+    _git(repo, "update-ref", "refs/remotes/origin/main", old)  # the remote already has it
+    (repo / "fail.flag").write_text("x")  # gating it would fail...
     _git(repo, "add", "fail.flag")
     _git(repo, "commit", "-q", "-m", "breaks the gate")
     _git(repo, "tag", "-d", "v1.0.0")
     _git(repo, "tag", "-a", "v1.0.0", "-m", "old release", old)
     tag_obj = _git(repo, "rev-parse", "v1.0.0")
-    code, report, out = _push_lines(repo, f"refs/tags/v1.0.0 {tag_obj} refs/tags/v1.0.0 {'0' * 40}\n",
-                                    tmp_path)
+    code, report, out = _push_lines(
+        repo, f"refs/tags/v1.0.0 {tag_obj} refs/tags/v1.0.0 {'0' * 40}\n", tmp_path
+    )
     assert code == 0, out
     assert report == "", f"the gate ran on a commit the remote already has: {report}"
     assert "already has this commit" in out, out
@@ -195,8 +227,10 @@ def test_a_branch_and_its_release_tag_on_one_commit_are_gated_once(tmp_path):
     sha = _git(repo, "rev-parse", "HEAD")
     _git(repo, "tag", "-a", "v2.0.0", "-m", "release")
     tag_obj = _git(repo, "rev-parse", "v2.0.0")
-    lines = (f"refs/heads/main {sha} refs/heads/main {'0' * 40}\n"
-             f"refs/tags/v2.0.0 {tag_obj} refs/tags/v2.0.0 {'0' * 40}\n")
+    lines = (
+        f"refs/heads/main {sha} refs/heads/main {'0' * 40}\n"
+        f"refs/tags/v2.0.0 {tag_obj} refs/tags/v2.0.0 {'0' * 40}\n"
+    )
     code, report, out = _push_lines(repo, lines, tmp_path)
     assert code == 0, out
     assert report.count("tracked=") == 1, f"one commit, gated {report.count('tracked=')} times"
@@ -211,7 +245,9 @@ def test_a_new_commit_is_still_gated_when_the_remote_has_its_parent(tmp_path):
     _git(repo, "add", "fail.flag")
     _git(repo, "commit", "-q", "-m", "new and broken")
     sha = _git(repo, "rev-parse", "HEAD")
-    code, report, out = _push_lines(repo, f"refs/heads/main {sha} refs/heads/main {'0' * 40}\n", tmp_path)
+    code, report, out = _push_lines(
+        repo, f"refs/heads/main {sha} refs/heads/main {'0' * 40}\n", tmp_path
+    )
     assert code != 0, "a new broken commit passed the gate"
     assert "tracked=" in report, "the new commit was never gated"
 
@@ -223,7 +259,8 @@ def test_a_tag_naming_a_version_nothing_declares_stops_the_push(tmp_path):
     _git(repo, "tag", "-a", "v1.0.0", "-m", "release")
     tag_obj = _git(repo, "rev-parse", "v1.0.0")
     code, report, out = _push_lines(
-        repo, f"refs/tags/v1.0.0 {tag_obj} refs/tags/v1.0.0 {'0' * 40}\n", tmp_path)
+        repo, f"refs/tags/v1.0.0 {tag_obj} refs/tags/v1.0.0 {'0' * 40}\n", tmp_path
+    )
     assert code != 0, out
     assert "NO version source" in out, out
     assert report == "", "the cold code gate ran for a push that was already refused"
@@ -239,8 +276,7 @@ def test_a_gatesrc_key_reaches_a_python_checker(tmp_path):
 
     So: a repo whose version is a Swift constant, configured exactly as documented, must push.
     """
-    repo = _repo(tmp_path, gatesrc="GOH_TAG_VERSION_SOURCES='swift:Version.swift'\n",
-                 version=None)
+    repo = _repo(tmp_path, gatesrc="GOH_TAG_VERSION_SOURCES='swift:Version.swift'\n", version=None)
     (repo / "Version.swift").write_text('public static let marketing = "1.4.0"\n')
     _git(repo, "add", "-A")
     _git(repo, "commit", "-q", "-m", "declare in swift")

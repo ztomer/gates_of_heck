@@ -23,6 +23,7 @@ gate is honestly unproven, while this one lies.
 Process rule 3 is the reason it lives HERE rather than in each repo: gates are structural, not
 disciplinary. A probe that has to be remembered is a probe that stops being run.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -150,7 +151,10 @@ def run_one(path, flag, cwd, timeout=TIMEOUT):
     try:
         result = subprocess.run(
             [*_interpreter(path), path, flag],
-            cwd=cwd, capture_output=True, text=True, timeout=timeout,
+            cwd=cwd,
+            capture_output=True,
+            text=True,
+            timeout=timeout,
             # A probe builds its OWN fixture repos. Handed the hook's GIT_DIR, a probe's
             # `git init <tmp>` under a linked worktree re-initialises the real repository and
             # flips its core.bare -- so no probe, in any consumer repo, ever sees those variables.
@@ -210,16 +214,20 @@ def main(argv=None):
             # scope, or which holds nothing in scope at all: the discovery
             # convention has moved, or the files moved. Passing here would
             # report the move as compliance.
-            err("gate directories exist but no check_*.py is in git scope — "
-                "discovery is blind, refusing")
+            err(
+                "gate directories exist but no check_*.py is in git scope — "
+                "discovery is blind, refusing"
+            )
             return 1
         # Not a failure: plenty of repos carry no gates of their own. Saying so is the point --
         # a silent pass here is indistinguishable from a pass over a directory that moved.
         info("no check_*.py gates in this repo; nothing to prove")
         return 0
     if not probes:
-        warn(f"{total} gate(s) here and not one declares an INLINE self-proof -- any proof they\n"
-         f"      have lives elsewhere, and this gate does not check that it still runs")
+        warn(
+            f"{total} gate(s) here and not one declares an INLINE self-proof -- any proof they\n"
+            f"      have lives elsewhere, and this gate does not check that it still runs"
+        )
         return 0
 
     if args.list:
@@ -260,52 +268,73 @@ def probe():
             with open(os.path.join(tools, name), "w", encoding="utf-8") as handle:
                 handle.write(textwrap.dedent(body).lstrip())
 
-        gate("check_good.py", """
+        gate(
+            "check_good.py",
+            """
             import sys
             if "--probe" in sys.argv:
                 print("ok")
                 sys.exit(0)
             sys.exit(0)
-        """)
-        gate("check_broken.py", """
+        """,
+        )
+        gate(
+            "check_broken.py",
+            """
             import sys
             if "--probe" in sys.argv:
                 raise SystemExit("the fixture this probe drove was renamed")
             sys.exit(0)
-        """)
+        """,
+        )
         # Declares no self-proof, and MENTIONS --probe in prose -- the false positive the
         # anchored detector exists to refuse.
-        gate("check_bare.py", '''
+        gate(
+            "check_bare.py",
+            '''
             """This gate has no --probe yet; see the backlog."""
             import sys
             sys.exit(0)
-        ''')
+        ''',
+        )
 
         # main(argv) taking the list as a PARAMETER is as real a dispatch as reading sys.argv.
         # Requiring the module path marked ZeroThunder's check_mesh_integrity, which ships a
         # genuine --break-probe, as carrying no self-proof at all.
-        gate("check_param.py", """
+        gate(
+            "check_param.py",
+            """
             import sys
             def main(argv):
                 if "--break-probe" in argv:
                     return 0
                 return 0
             sys.exit(main(sys.argv[1:]))
-        """)
+        """,
+        )
 
         probes, total = discover(td)
         names = {os.path.basename(p) for p, _ in probes}
 
         for label, want, got in (
             ("all four gates are counted", 4, total),
-            ("every real self-proof is found",
-             {"check_good.py", "check_broken.py", "check_param.py"}, names),
+            (
+                "every real self-proof is found",
+                {"check_good.py", "check_broken.py", "check_param.py"},
+                names,
+            ),
             ("a main(argv) dispatch counts as a self-proof", True, "check_param.py" in names),
             ("a gate that only MENTIONS --probe is not counted", False, "check_bare.py" in names),
-            ("a passing proof passes", (True, ""),
-             run_one(os.path.join(tools, "check_good.py"), "--probe", td)),
-            ("a BROKEN proof is caught", False,
-             run_one(os.path.join(tools, "check_broken.py"), "--probe", td)[0]),
+            (
+                "a passing proof passes",
+                (True, ""),
+                run_one(os.path.join(tools, "check_good.py"), "--probe", td),
+            ),
+            (
+                "a BROKEN proof is caught",
+                False,
+                run_one(os.path.join(tools, "check_broken.py"), "--probe", td)[0],
+            ),
             ("the whole run goes red on it", 1, main(["--root", td])),
         ):
             if want != got:

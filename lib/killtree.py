@@ -39,8 +39,9 @@ def _kill_process_group(proc: subprocess.Popen) -> None:
     proc.kill()
 
 
-def run_captured(cmd, *, shell: bool = False, timeout=None, cwd=None,
-                 env=None, input_text=None) -> subprocess.CompletedProcess:
+def run_captured(
+    cmd, *, shell: bool = False, timeout=None, cwd=None, env=None, input_text=None
+) -> subprocess.CompletedProcess:
     """Run `cmd` captured, own session; on timeout kill the whole group,
     drain, and re-raise TimeoutExpired."""
     popen_kwargs = {}
@@ -67,5 +68,4 @@ def run_captured(cmd, *, shell: bool = False, timeout=None, cwd=None,
         except (subprocess.SubprocessError, OSError):
             pass
         raise
-    return subprocess.CompletedProcess(
-        proc.args, proc.returncode, stdout=out, stderr=err)
+    return subprocess.CompletedProcess(proc.args, proc.returncode, stdout=out, stderr=err)

@@ -10,9 +10,42 @@
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
+/// Which OPTIONAL gates this repository has opted into, as the SET of `.gatesrc`
+/// keys that are present.
+///
+/// A set, not four `bool` fields, and that is the second time this shape was
+/// tried: `clippy::struct_excessive_bools` refuses more than three bools in a
+/// struct, and moving them into a sub-struct does not satisfy it -- correctly,
+/// because the lint's complaint is the struct-of-bools, not where it sits. These
+/// are not four independent facts; they are one fact ("which of the optional
+/// gates did this repo choose"), and a set is how that fact is shaped.
+///
+/// It also stops the next opt-in from being a code change: `GOH_*` keys arrive
+/// as strings, so a fifth gate is one more key rather than one more field. The
+/// cost is that a typo would silently not enable anything, which is what
+/// `tests/test_gatesrc.rs::the_optional_gate_keys_are_the_ones_the_code_reads`
+/// is for.
+pub type OptIns = std::collections::BTreeSet<String>;
+
+/// Every `.gatesrc` key that turns on an optional gate, spelled once.
+///
+/// Read by the test that pins the key set, so a gate cannot read a key nobody
+/// documented and a doc cannot name a gate that reads nothing.
+pub const OPT_IN_KEYS: [&str; 4] = [
+    "GOH_SKILLS_CORPUS",
+    "GOH_NO_HOME_PATHS",
+    "GOH_NO_KILL_BY_NAME",
+    // Declares a rule set rather than enforcing a house one, so it is opt-in
+    // like the rest: a repo that has never chosen a rule set should not learn
+    // one by going red.
+    "GOH_PYTHON_FORMATTED",
+];
+
 /// Structural knobs read from `.gatesrc`.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Gatesrc {
+    /// The optional gates this repo opted into.
+    pub opt_ins: OptIns,
     /// File-length cap; unset disables the check.
     pub max_lines: Option<usize>,
     /// Shared vendor/generated exemption (emoji, length, shell-lint, secrets).
@@ -25,12 +58,6 @@ pub struct Gatesrc {
     pub line_baseline: Option<String>,
     /// Permanently unbounded exemptions.
     pub line_unbounded: String,
-    /// Skills-corpus gate enabled.
-    pub skills_corpus: bool,
-    /// Hard-coded-home-path gate enabled (`GOH_NO_HOME_PATHS`).
-    pub no_home_paths: bool,
-    /// Kill-by-name gate enabled (`GOH_NO_KILL_BY_NAME`).
-    pub no_kill_by_name: bool,
     /// Corpus root override (default: repo root).
     pub skills_root: Option<String>,
     /// Skills-corpus word cap.
@@ -146,15 +173,11 @@ pub fn from_pairs(pairs: &BTreeMap<String, String>) -> Result<Gatesrc, String> {
         allow: get("GOH_ALLOW"),
         line_baseline: pairs.get("GOH_LINE_BASELINE").cloned(),
         line_unbounded: get("GOH_LINE_UNBOUNDED"),
-        skills_corpus: pairs
-            .get("GOH_SKILLS_CORPUS")
-            .is_some_and(|v| !v.is_empty()),
-        no_home_paths: pairs
-            .get("GOH_NO_HOME_PATHS")
-            .is_some_and(|v| !v.is_empty()),
-        no_kill_by_name: pairs
-            .get("GOH_NO_KILL_BY_NAME")
-            .is_some_and(|v| !v.is_empty()),
+        opt_ins: OPT_IN_KEYS
+            .iter()
+            .filter(|k| pairs.get(**k).is_some_and(|v| !v.is_empty()))
+            .map(|k| (*k).to_owned())
+            .collect(),
         skills_root: pairs.get("GOH_SKILLS_ROOT").cloned(),
         skills_max_words: pairs.get("GOH_SKILLS_MAX_WORDS").cloned(),
     })
@@ -194,8 +217,70 @@ pub fn length_exclude(cfg: &Gatesrc) -> String {
     }
 }
 
+/// Has this repo opted into the optional gate named by `key`?
+///
+/// Takes the key rather than exposing the set to membership tests, so a caller
+/// cannot read the set and skip the question of whether the key is one this
+/// build knows about. An unknown key answers `false`: a gate nothing reads
+/// enables nothing, which is the safe direction, and the key set is pinned by a
+/// test.
+#[must_use]
+pub fn opt_in(cfg: &Gatesrc, key: &str) -> bool {
+    cfg.opt_ins.contains(key)
+}
+
 #[cfg(test)]
 mod tests {
+    /// The opt-in set is strings, so a mistyped key enables nothing and reads as
+    /// "this repo did not choose that gate". This pins the two lists against
+    /// each other: every key the code asks about must be one `OPT_IN_KEYS`
+    /// declares, and nothing else may be.
+    #[test]
+    fn the_optional_gate_keys_are_the_ones_the_code_reads() {
+        let src = String::from(include_str!("steps.rs"))
+            + include_str!("steps_delegated.rs")
+            + include_str!("main.rs");
+        let asked: Vec<&str> = [
+            "GOH_SKILLS_CORPUS",
+            "GOH_NO_HOME_PATHS",
+            "GOH_NO_KILL_BY_NAME",
+            "GOH_PYTHON_FORMATTED",
+        ]
+        .into_iter()
+        .collect();
+        for key in &asked {
+            assert!(
+                src.contains(&format!("opt_in(cfg, \"{key}\")")),
+                "{key} is read by the code but must also be declared, or a repo \
+                 setting it gets nothing"
+            );
+            assert!(
+                OPT_IN_KEYS.contains(key),
+                "{key} is read by the code but is not in OPT_IN_KEYS: the parse \
+                 would ignore it and the gate would never run"
+            );
+        }
+        assert_eq!(
+            OPT_IN_KEYS.len(),
+            asked.len(),
+            "OPT_IN_KEYS declares {} but the code reads {asked:?}",
+            OPT_IN_KEYS.len()
+        );
+    }
+
+    #[test]
+    fn an_opt_in_is_present_and_non_empty_and_nothing_else_is() {
+        let on = from_pairs(&parse_pairs("GOH_NO_KILL_BY_NAME=1\n")).expect("parse");
+        assert!(opt_in(&on, "GOH_NO_KILL_BY_NAME"));
+        // Present but EMPTY is not a choice: the shell side tests
+        // `[ -n "${VAR:-}" ]` and the two must agree, or the pipeline and the
+        // binary disagree about which gates this repo runs.
+        let empty = from_pairs(&parse_pairs("GOH_NO_KILL_BY_NAME=\n")).expect("parse");
+        assert!(!opt_in(&empty, "GOH_NO_KILL_BY_NAME"));
+        let other = from_pairs(&parse_pairs("GOH_MAX_LINES=500\n")).expect("parse");
+        assert!(!opt_in(&other, "GOH_NO_KILL_BY_NAME"));
+    }
+
     use super::*;
 
     #[test]

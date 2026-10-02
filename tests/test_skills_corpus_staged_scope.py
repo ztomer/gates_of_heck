@@ -17,6 +17,7 @@ Both the Python pipeline (GOH_NO_NATIVE=1) and the native binary are driven,
 and each case also runs --full to prove the violation is real to the checker:
 --full must keep reading the tree, since "is my tree green" is its question.
 """
+
 import os
 import subprocess
 from pathlib import Path
@@ -25,7 +26,9 @@ import pytest
 
 from conftest import REPO_ROOT, commit_all, git, stage, write
 
-GOOD = "---\nname: {name}\ndescription: does a thing worth triggering on.\n---\n\n# {name}\n\nbody\n"
+GOOD = (
+    "---\nname: {name}\ndescription: does a thing worth triggering on.\n---\n\n# {name}\n\nbody\n"
+)
 DANGLING = GOOD + "\nSee [[no-such-skill]].\n"
 
 
@@ -42,7 +45,9 @@ def _corpus_repo(repo: Path, sub: str) -> Path:
     return root
 
 
-def _run(runner: str, goh: Path, repo: Path, scope: str, **extra: str) -> subprocess.CompletedProcess:
+def _run(
+    runner: str, goh: Path, repo: Path, scope: str, **extra: str
+) -> subprocess.CompletedProcess:
     env = dict(os.environ, GOH_DIR=str(REPO_ROOT), **extra)
     env.pop("GOH_BIN", None)
     if runner == "python":

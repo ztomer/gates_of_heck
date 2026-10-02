@@ -1,0 +1,26 @@
+# Python tooling configuration for the gate estate.
+#
+# This file exists because `check_python_formatted.py` resolves ruff's settings
+# from the tree it runs in. With no configuration, ruff applied its defaults, so
+# the shape of every Python file here was decided by whichever hand last edited
+# it -- and the check reported 129 of 148 files unformatted while no gate ran it
+# over this repository. A checker that is right about the answer and nobody asks
+# it is not a gate.
+#
+# `[tool.ruff]` below is therefore a DECLARATION, not a preference: it is what
+# "formatted" means here, so the answer stops depending on ruff's version and on
+# the directory the command was launched from.
+[tool.ruff]
+# 100 matches the Rust side's `max_width` (see rustfmt.toml), so a line that is
+# readable in one language is readable in the other. ruff's default is 88, which
+# wraps the existing code for no gain: these files are mostly long string
+# literals in failure messages, and breaking them hurts the one thing they are
+# for.
+line-length = 100
+
+# The formatter only. Linting is a separate decision with a separate gate, and
+# this file does not pretend otherwise: enabling a ruleset nobody has run would
+# produce a red tree on day one and an ignored check after that.
+[tool.ruff.format]
+# Preserve the blank-line conventions the existing files already use.
+docstring-code-format = false

@@ -18,6 +18,7 @@ Every rule below was written by being wrong first, and the comment on each says
 what getting it wrong costs. All of them are the same defect wearing different
 clothes: a package this walk never reaches is a package nothing is checked in.
 """
+
 from __future__ import annotations
 
 import re

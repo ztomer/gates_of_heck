@@ -57,7 +57,7 @@ def test_stale_artifact_fails_naming_the_file(repo):
 
 def test_missing_output_is_a_violation_naming_the_file(repo):
     seed(repo)
-    noop = 'true'
+    noop = "true"
     r = run(repo, "--generator", noop, "gen/out.txt")
     assert r.returncode == 1
     assert "NOT PRODUCED" in r.stderr and "gen/out.txt" in r.stderr
@@ -70,13 +70,11 @@ def test_write_blesses_stale_artifact(repo):
     seed(repo)
     write(repo, "gen/out.txt", "stale\n")
     commit_all(repo)
-    r = run(repo, "--generator", "VER=v1 sh tools/gen.sh", "gen/out.txt",
-            "--write")
+    r = run(repo, "--generator", "VER=v1 sh tools/gen.sh", "gen/out.txt", "--write")
     assert r.returncode == 0, r.stderr
     assert (repo / "gen/out.txt").read_text() == "generated v1\n"
     # And after blessing, plain verification passes.
-    assert run(repo, "--generator", "VER=v1 sh tools/gen.sh",
-               "gen/out.txt").returncode == 0
+    assert run(repo, "--generator", "VER=v1 sh tools/gen.sh", "gen/out.txt").returncode == 0
 
 
 def test_write_does_not_invent_missing_outputs(repo):
@@ -92,8 +90,7 @@ def test_write_does_not_invent_missing_outputs(repo):
 def test_timeout_kills_hung_generator(repo):
     seed(repo)
     start = time.monotonic()
-    r = run(repo, "--generator", "sh -c 'sleep 60'", "gen/out.txt",
-            "--timeout", "1")
+    r = run(repo, "--generator", "sh -c 'sleep 60'", "gen/out.txt", "--timeout", "1")
     elapsed = time.monotonic() - start
     assert r.returncode == 2
     assert "timed out" in r.stderr
@@ -104,10 +101,11 @@ def test_default_timeout_exists():
     import subprocess
     import sys
     from pathlib import Path
+
     here = Path(__file__).resolve().parent.parent
     help_text = subprocess.run(
-        [sys.executable, str(here / FRESH), "--help"],
-        capture_output=True, text=True).stdout
+        [sys.executable, str(here / FRESH), "--help"], capture_output=True, text=True
+    ).stdout
     assert "120" in help_text, "--timeout default of 120s is not documented"
 
 

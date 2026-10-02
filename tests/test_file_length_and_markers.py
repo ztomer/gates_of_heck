@@ -76,7 +76,7 @@ def test_lone_equals_line_is_not_a_marker(repo):
 
 def test_redirection_doc_does_not_trip(repo):
     # `>>>>>>>` NOT followed by space/EOL is shell redirection talk, not a marker.
-    write(repo, "d.sh", "cat <<< \"$x\" >> out.log\n")
+    write(repo, "d.sh", 'cat <<< "$x" >> out.log\n')
     commit_all(repo)
     assert run_check(repo, MARKERS).returncode == 0
 

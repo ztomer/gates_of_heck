@@ -7,6 +7,7 @@ Also pins the structural step: a repo opting in with `GOH_SKILLS_ROOT`
 pointed at a fixture corpus gets the same verdict natively and via
 the Python pipeline.
 """
+
 from __future__ import annotations
 
 import json

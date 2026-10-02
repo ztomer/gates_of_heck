@@ -68,47 +68,57 @@ PY_GUARD = re.compile(r"GOH_HEADLESS[^\n=]*=")
 # occurrence in a type shape is exempted while any member-access USE still
 # flags.
 SWIFT_PATTERNS = [
-    (r"\.(orderFront|orderFrontRegardless|makeKeyAndOrderFront|showWindow)\s*\(",
-     "puts a window on the user's display"),
-    (r"\bNSApp\.activate\s*\(|\bNSApplication\.shared\.activate",
-     "steals the user's focus"),
+    (
+        r"\.(orderFront|orderFrontRegardless|makeKeyAndOrderFront|showWindow)\s*\(",
+        "puts a window on the user's display",
+    ),
+    (r"\bNSApp\.activate\s*\(|\bNSApplication\.shared\.activate", "steals the user's focus"),
     (r"\.setActivationPolicy\s*\(", "changes how the process presents to the window server"),
     (r"\.runModal\s*\(", "runs a modal loop needing a live WindowServer"),
     (r"\bNSScreen\b", "reads the real display's geometry", True),
     (r"\bCGDisplay\w*\s*\(|\bCGMainDisplayID\b", "talks to a real display"),
     (r"\bscreencapture\b", "shells out to the screen capture tool"),
-    (r"\bAXIsProcessTrustedWithOptions\s*\(|\bCGRequestScreenCaptureAccess\s*\(",
-     "triggers a system permission prompt that takes the user's keyboard"),
+    (
+        r"\bAXIsProcessTrustedWithOptions\s*\(|\bCGRequestScreenCaptureAccess\s*\(",
+        "triggers a system permission prompt that takes the user's keyboard",
+    ),
     # ── absorbed from necrohand tools/check_headless_tests.py (2026-08-25) ──
     # A capitalized identifier ENDING in Window/OverlayView being CONSTRUCTED:
     # custom window/presentation-view classes present for real, exactly like
     # NSWindow( does. The capital anchor keeps lowercase helpers (makeWindow-,
     # updateWindow-style) out of the blast radius.
-    (r"\b[A-Z]\w*(?:Window|OverlayView)\s*\(",
-     "constructs a window-server window or presentation view directly"),
-    (r"render:\s*\.presenting\b",
-     "asks for the live presentation path instead of an offscreen render"),
-    (r"\bSCStream\b|\bSCShareableContent\b|\bSCScreenshotManager\b|\bSCContentSharing\b",
-     "captures the real screen via ScreenCaptureKit (needs a TCC grant)", True),
+    (
+        r"\b[A-Z]\w*(?:Window|OverlayView)\s*\(",
+        "constructs a window-server window or presentation view directly",
+    ),
+    (
+        r"render:\s*\.presenting\b",
+        "asks for the live presentation path instead of an offscreen render",
+    ),
+    (
+        r"\bSCStream\b|\bSCShareableContent\b|\bSCScreenshotManager\b|\bSCContentSharing\b",
+        "captures the real screen via ScreenCaptureKit (needs a TCC grant)",
+        True,
+    ),
     (r"\bCGWindowList\w*\b", "reads the real window list", True),
     (r"\bCAMetalLayer\b", "creates/acquires a window-server drawable surface", True),
-    (r"\bCAMetalLayer\s*\(|\bnextDrawable\s*\(",
-     "creates/acquires a window-server drawable surface"),
-    (r"\bCGEvent\w*\s*\(|\bCGWarpMouseCursorPosition\b",
-     "posts real input to the whole machine"),
+    (
+        r"\bCAMetalLayer\s*\(|\bnextDrawable\s*\(",
+        "creates/acquires a window-server drawable surface",
+    ),
+    (r"\bCGEvent\w*\s*\(|\bCGWarpMouseCursorPosition\b", "posts real input to the whole machine"),
     (r"\bNSCursor\b", "moves or hides the user's real cursor", True),
-    (r"\bNSApplication\.shared\b|\bNSApp\b",
-     "starts or queries the shared application object"),
+    (r"\bNSApplication\.shared\b|\bNSApp\b", "starts or queries the shared application object"),
 ]
 
 OBJC_PATTERNS = [
-    (r"\borderFront:|\bmakeKeyAndOrderFront:|\borderFrontRegardless\b",
-     "puts a window on the user's display"),
-    (r"\bactivateIgnoringOtherApps\b|\bNSApp\s+activate\b",
-     "steals the user's focus"),
+    (
+        r"\borderFront:|\bmakeKeyAndOrderFront:|\borderFrontRegardless\b",
+        "puts a window on the user's display",
+    ),
+    (r"\bactivateIgnoringOtherApps\b|\bNSApp\s+activate\b", "steals the user's focus"),
     (r"\brunModal\b", "runs a modal loop needing a live WindowServer"),
-    (r"\bCGEventPost\b|\bCGWarpMouseCursorPosition\b",
-     "drives the user's real mouse/keyboard"),
+    (r"\bCGEventPost\b|\bCGWarpMouseCursorPosition\b", "drives the user's real mouse/keyboard"),
     (r"\bscreencapture\b", "grabs the real display"),
 ]
 
@@ -159,9 +169,9 @@ def _generic_context(prefix):
 
 def _in_swift_type_position(probe, match):
     """Is THIS occurrence of an identifier a Swift type, not a live use?"""
-    if re.match(r"\s*\.", probe[match.end():]):
+    if re.match(r"\s*\.", probe[match.end() :]):
         return False  # member access — the identifier IS being used here
-    prefix = probe[:match.start()]
+    prefix = probe[: match.start()]
     return bool(
         _SWIFT_CAST_BEFORE.search(prefix)
         or _SWIFT_RETURN_BEFORE.search(prefix)
@@ -171,14 +181,16 @@ def _in_swift_type_position(probe, match):
 
 
 LANGUAGES = {
-    ".swift": (("#", "//", "///"),
-               [(re.compile(p), w, False,
-                 _in_swift_type_position if t else None)
-                for p, w, *t in SWIFT_PATTERNS]),
+    ".swift": (
+        ("#", "//", "///"),
+        [
+            (re.compile(p), w, False, _in_swift_type_position if t else None)
+            for p, w, *t in SWIFT_PATTERNS
+        ],
+    ),
     ".m": (("//",), [(re.compile(p), w, False, None) for p, w in OBJC_PATTERNS]),
     ".mm": (("//",), [(re.compile(p), w, False, None) for p, w in OBJC_PATTERNS]),
-    ".py": (("#",), [(p, w, needs_exec, None)
-                     for p, w, needs_exec in PYTHON_RULES]),
+    ".py": (("#",), [(p, w, needs_exec, None) for p, w, needs_exec in PYTHON_RULES]),
 }
 
 
@@ -350,16 +362,14 @@ def collect_targets(root, staged, paths, scope):
                 out.append(p)
         return sorted(set(out)), None
     if scope:
-        return None, [f for f in listed_files(root, staged=staged)
-                      if fnmatch.fnmatch(f, scope)]
+        return None, [f for f in listed_files(root, staged=staged) if fnmatch.fnmatch(f, scope)]
     return None, None
 
 
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("paths", nargs="*", help="files/dirs to scan (test targets)")
-    ap.add_argument("--scope", default=None,
-                    help="glob over repo-root-relative tracked files")
+    ap.add_argument("--scope", default=None, help="glob over repo-root-relative tracked files")
     ap.add_argument("--staged", action="store_true")
     args = ap.parse_args()
 

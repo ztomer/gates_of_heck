@@ -31,6 +31,7 @@ fails — so the burn-down cannot be quietly abandoned half-done.
 
 Exit 0 clean, 1 on any violation, 2 on a scope that cannot be measured.
 """
+
 import argparse
 import json
 import re
@@ -63,6 +64,7 @@ def _prose(body: str) -> str:
     fails, which the corpus test proves.
     """
     return INLINE_CODE.sub("", FENCED.sub("", body))
+
 
 # Structural headings (Related, Checklist, The move, Anti-patterns...) recur by
 # design — they are the corpus's shared skeleton, and flagging them is how a
@@ -97,7 +99,8 @@ def _frontmatter(text):
 
 def _skill_dirs(root):
     return sorted(
-        d for d in root.iterdir()
+        d
+        for d in root.iterdir()
         if d.is_dir() and not d.name.startswith(".") and (d / "SKILL.md").exists()
     )
 
@@ -119,8 +122,10 @@ def _load_baseline(path):
 def check_corpus(root, max_words, min_skills, baseline_path, update=False):
     skills = _skill_dirs(root)
     if len(skills) < min_skills:
-        print(f"  ✗ only {len(skills)} skill(s) under {root} "
-              f"(floor {min_skills}) — the scope is wrong, not the corpus clean")
+        print(
+            f"  ✗ only {len(skills)} skill(s) under {root} "
+            f"(floor {min_skills}) — the scope is wrong, not the corpus clean"
+        )
         return 2, {}
 
     names = {d.name for d in skills}
@@ -173,18 +178,24 @@ def check_corpus(root, max_words, min_skills, baseline_path, update=False):
         allowed = baseline.get(d.name, {}).get("words")
         if words > max_words:
             if allowed is None:
-                _fail(f"{rel}: {words} words > ceiling {max_words}. Split the case "
-                      f"studies into references/ (progressive disclosure), or seed a "
-                      f"baseline entry with a reason if it genuinely must be large.")
+                _fail(
+                    f"{rel}: {words} words > ceiling {max_words}. Split the case "
+                    f"studies into references/ (progressive disclosure), or seed a "
+                    f"baseline entry with a reason if it genuinely must be large."
+                )
                 violations += 1
             elif words > allowed:
-                _fail(f"{rel}: {words} words, up from a baselined {allowed}. "
-                      f"The ratchet only shrinks.")
+                _fail(
+                    f"{rel}: {words} words, up from a baselined {allowed}. "
+                    f"The ratchet only shrinks."
+                )
                 violations += 1
         elif allowed is not None:
-            _fail(f"{rel}: {words} words is under the ceiling but still baselined "
-                  f"as oversized — delete the stale entry; a fixed violation must "
-                  f"take its exemption with it.")
+            _fail(
+                f"{rel}: {words} words is under the ceiling but still baselined "
+                f"as oversized — delete the stale entry; a fixed violation must "
+                f"take its exemption with it."
+            )
             violations += 1
 
         for title in SECTION.findall(text):
@@ -192,24 +203,33 @@ def check_corpus(root, max_words, min_skills, baseline_path, update=False):
 
     for title, owners in sorted(sections.items()):
         if len(owners) > 1 and len(title) >= LESSON_TITLE_CHARS:
-            _fail(f"section \"{title[:60]}\" appears in {len(owners)} skills "
-                  f"({', '.join(sorted(owners))}) — one lesson, one home")
+            _fail(
+                f'section "{title[:60]}" appears in {len(owners)} skills '
+                f"({', '.join(sorted(owners))}) — one lesson, one home"
+            )
             violations += 1
 
     if update:
-        over = {n: {"words": w, "reason": baseline.get(n, {}).get("reason", "unreviewed")}
-                for n, w in measured.items() if w > max_words}
+        over = {
+            n: {"words": w, "reason": baseline.get(n, {}).get("reason", "unreviewed")}
+            for n, w in measured.items()
+            if w > max_words
+        }
         baseline_path.write_text(json.dumps({"oversized": over}, indent=2, sort_keys=True) + "\n")
         print(f"  → baseline re-recorded: {len(over)} oversized skill(s)")
         return 0, measured
 
     if violations:
-        print(f"  ✗ [skills_corpus] {violations} violation(s) across "
-              f"{len(skills)} skills, {files_read} files")
+        print(
+            f"  ✗ [skills_corpus] {violations} violation(s) across "
+            f"{len(skills)} skills, {files_read} files"
+        )
         return 1, measured
 
-    print(f"  ✓ [skills_corpus] OK — {len(skills)} skills, {files_read} files, "
-          f"largest SKILL.md {max(measured.values())} words (ceiling {max_words})")
+    print(
+        f"  ✓ [skills_corpus] OK — {len(skills)} skills, {files_read} files, "
+        f"largest SKILL.md {max(measured.values())} words (ceiling {max_words})"
+    )
     return 0, measured
 
 
@@ -221,14 +241,17 @@ def main():
     # OK" while running inside an empty fixture, and the estate's own
     # skeleton-tree canary caught it on the first sweep. A checker measures
     # where it is pointed, or it is not measuring anything.
-    ap.add_argument("--root", default=".",
-                    help="corpus root (default: the current directory)")
+    ap.add_argument("--root", default=".", help="corpus root (default: the current directory)")
     ap.add_argument("--max-words", type=int, default=DEFAULT_MAX_WORDS)
     ap.add_argument("--min-skills", type=int, default=DEFAULT_MIN_SKILLS)
-    ap.add_argument("--baseline", default=None,
-                    help=f"path to {BASELINE_NAME} (default: alongside --root)")
-    ap.add_argument("--update-baseline", action="store_true",
-                    help="re-record today's oversized set; deliberate, never automatic")
+    ap.add_argument(
+        "--baseline", default=None, help=f"path to {BASELINE_NAME} (default: alongside --root)"
+    )
+    ap.add_argument(
+        "--update-baseline",
+        action="store_true",
+        help="re-record today's oversized set; deliberate, never automatic",
+    )
     args = ap.parse_args()
 
     root = Path(args.root).expanduser()
@@ -237,8 +260,9 @@ def main():
         return 2
     baseline = Path(args.baseline).expanduser() if args.baseline else root / BASELINE_NAME
 
-    code, _ = check_corpus(root, args.max_words, args.min_skills, baseline,
-                           update=args.update_baseline)
+    code, _ = check_corpus(
+        root, args.max_words, args.min_skills, baseline, update=args.update_baseline
+    )
     return code
 
 

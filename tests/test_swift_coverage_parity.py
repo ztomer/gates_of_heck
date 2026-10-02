@@ -36,10 +36,15 @@ def _load_engine():
 def _write_codecov_json(repo, filename, covered, total):
     p = repo / ".build" / "x" / "debug" / "codecov" / "a.json"
     p.parent.mkdir(parents=True, exist_ok=True)
-    payload = {"data": [{"files": [
-        {"filename": filename, "covered_lines": covered,
-         "total_lines": total},
-    ]}]}
+    payload = {
+        "data": [
+            {
+                "files": [
+                    {"filename": filename, "covered_lines": covered, "total_lines": total},
+                ]
+            }
+        ]
+    }
     p.write_text(json.dumps(payload), encoding="utf-8")
 
 
@@ -66,11 +71,10 @@ def test_both_report_fifty_percent_and_agree(repo, tmp_path, monkeypatch, capsys
 
     monkeypatch.setenv("PATH", f"{bin_}{os.pathsep}{os.environ['PATH']}")
     engine = _load_engine()
-    binary = (bin_ / "store" / "PkgTests.xctest" / "Contents" / "MacOS" / "PkgTests")
+    binary = bin_ / "store" / "PkgTests.xctest" / "Contents" / "MacOS" / "PkgTests"
     profdata = bin_ / "store" / "codecov" / "default.profdata"
     for floor, expect_ok in ((40.0, True), (60.0, False)):
-        rc = engine.process(str(binary), str(profdata), str(proj),
-                            floor, "")
+        rc = engine.process(str(binary), str(profdata), str(proj), floor, "")
         out = capsys.readouterr().out
         assert (rc == 0) is expect_ok, out
         assert "50.00%" in out, out

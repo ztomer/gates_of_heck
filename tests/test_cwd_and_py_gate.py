@@ -31,7 +31,9 @@ def test_structural_from_subdirectory_uses_root_gatesrc(repo):
     subprocess.run(["git", "-C", str(repo), "add", "-A"], check=True)
     r = subprocess.run(
         ["/bin/bash", str(REPO_ROOT / STRUCTURAL), "--staged"],
-        cwd=sub, capture_output=True, text=True,
+        cwd=sub,
+        capture_output=True,
+        text=True,
     )
     assert r.returncode == 1
     assert "big.py" in r.stderr
@@ -44,7 +46,7 @@ def test_py_gate_clean_package_passes(tmp_path):
     (pkg / "pyproject.toml").write_text(
         '[project]\nname = "x"\nversion = "0"\n'
         "[tool.ruff]\nline-length = 100\n"
-        "[tool.pytest.ini_options]\naddopts = \"\"\n"
+        '[tool.pytest.ini_options]\naddopts = ""\n'
     )
     (pkg / "app" / "__init__.py").write_text("")
     (pkg / "app" / "core.py").write_text(
@@ -58,7 +60,9 @@ def test_py_gate_clean_package_passes(tmp_path):
 
     r = subprocess.run(
         ["/bin/bash", str(REPO_ROOT / "gates" / "py_gate.sh"), str(pkg)],
-        cwd=pkg, capture_output=True, text=True,
+        cwd=pkg,
+        capture_output=True,
+        text=True,
     )
     assert r.returncode == 0, r.stdout + r.stderr
     assert "all python gates passed" in r.stdout
@@ -79,7 +83,9 @@ def test_py_gate_failing_test_blocks_with_output(tmp_path):
 
     r = subprocess.run(
         ["/bin/bash", str(REPO_ROOT / "gates" / "py_gate.sh"), str(pkg)],
-        cwd=pkg, capture_output=True, text=True,
+        cwd=pkg,
+        capture_output=True,
+        text=True,
     )
     assert r.returncode != 0
     assert "assert 1 == 2" in r.stderr  # failing output printed, not buried
@@ -88,6 +94,7 @@ def test_py_gate_failing_test_blocks_with_output(tmp_path):
 def pytest_cov_available() -> bool:
     try:
         import pytest_cov  # noqa: F401
+
         return True
     except ImportError:
         return False
@@ -104,7 +111,7 @@ def test_py_gate_cov_floor_names_never_imported_modules(tmp_path):
     (pkg / "pyproject.toml").write_text(
         '[project]\nname = "z"\nversion = "0"\n'
         "[tool.ruff]\nline-length = 100\n"
-        "[tool.pytest.ini_options]\naddopts = \"\"\n"
+        '[tool.pytest.ini_options]\naddopts = ""\n'
     )
     (pkg / "app" / "__init__.py").write_text("")
     (pkg / "app" / "core.py").write_text(
@@ -122,12 +129,12 @@ def test_py_gate_cov_floor_names_never_imported_modules(tmp_path):
 
     r = subprocess.run(
         ["/bin/bash", str(REPO_ROOT / "gates" / "py_gate.sh"), str(pkg)],
-        cwd=pkg, capture_output=True, text=True,
+        cwd=pkg,
+        capture_output=True,
+        text=True,
         env={**dict(__import__("os").environ), "GOH_PY_COV_MIN": "100"},
     )
-    assert r.returncode != 0, (
-        f"a 100% floor passed a never-imported module: {r.stdout!r}"
-    )
+    assert r.returncode != 0, f"a 100% floor passed a never-imported module: {r.stdout!r}"
     assert "untested.py" in r.stdout + r.stderr, (
         "the gate must NAME the unmeasured module, not just miss the floor"
     )

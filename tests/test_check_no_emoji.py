@@ -93,9 +93,7 @@ def _stage_then_mutate_worktree(repo, rel: str, staged_text: str, worktree_text:
 def test_staged_scope_clean_index_passes_even_if_worktree_dirty(repo):
     # The gate must measure THE INDEX, not the worktree: what is being
     # committed is clean, later scratch edits must not block the commit.
-    _stage_then_mutate_worktree(
-        repo, "a.md", "clean → staged\n", f"dirty {EMOJI_SMILE}\n"
-    )
+    _stage_then_mutate_worktree(repo, "a.md", "clean → staged\n", f"dirty {EMOJI_SMILE}\n")
     r = run_check(repo, SCRIPT, "--staged")
     assert r.returncode == 0, r.stdout
 
@@ -103,9 +101,7 @@ def test_staged_scope_clean_index_passes_even_if_worktree_dirty(repo):
 def test_staged_scope_dirty_index_fails_even_if_worktree_fixed(repo):
     # And the inverse: emoji in the INDEX fail even if the worktree was since
     # cleaned — otherwise `git add` then fix in worktree would slip through.
-    _stage_then_mutate_worktree(
-        repo, "a.md", f"bad {EMOJI_SMILE}\n", "fixed, no glyph\n"
-    )
+    _stage_then_mutate_worktree(repo, "a.md", f"bad {EMOJI_SMILE}\n", "fixed, no glyph\n")
     r = run_check(repo, SCRIPT, "--staged")
     assert r.returncode == 1
     assert "a.md" in r.stdout
@@ -168,14 +164,10 @@ def test_typographic_signs_pass_bare_but_vs16_forms_fail(repo):
         g = chr(cp)
         (repo / "a.md").write_text(f"legal {g} notice\n", encoding="utf-8")
         commit_all(repo)
-        assert run_check(repo, SCRIPT).returncode == 0, (
-            f"bare U+{cp:04X} must pass"
-        )
+        assert run_check(repo, SCRIPT).returncode == 0, f"bare U+{cp:04X} must pass"
         (repo / "a.md").write_text(f"legal {g}{VS16}\n", encoding="utf-8")
         commit_all(repo)
-        assert run_check(repo, SCRIPT).returncode == 1, (
-            f"VS16 form of U+{cp:04X} must fail"
-        )
+        assert run_check(repo, SCRIPT).returncode == 1, f"VS16 form of U+{cp:04X} must fail"
 
 
 def test_failure_message_permit_list_includes_typographic_signs(repo):
@@ -223,7 +215,9 @@ def test_self_host_committed_tree_stays_clean():
     # precisely so this scan stays green).
     r = subprocess.run(
         ["python3", str(REPO_ROOT / SCRIPT)],
-        cwd=REPO_ROOT, capture_output=True, text=True,
+        cwd=REPO_ROOT,
+        capture_output=True,
+        text=True,
     )
     assert r.returncode == 0, r.stdout
 

@@ -48,6 +48,7 @@ other file's contents.
 
 Exit codes: 0 clean (or a named non-run), 1 findings, 2 usage/environment.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -67,6 +68,7 @@ from _md_text import anchors, classify, links_in, split_target  # noqa: E402
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from tui.lib import err, info, ok  # noqa: E402
+
 
 def check(root: Path, exclude: str | None, staged: bool):
     """(findings, notes, examined_files, skipped_links).
@@ -132,7 +134,8 @@ def check(root: Path, exclude: str | None, staged: bool):
                 if resolved.startswith(".."):
                     findings.append(
                         f"{rel}:{number}: {target} points outside this repository — "
-                        f"not resolvable from the tree")
+                        f"not resolvable from the tree"
+                    )
                     continue
                 # A DIRECTORY link resolves too: `[docs/decisions/](docs/decisions/)`
                 # is the ordinary way to point at a folder of records, and GitHub
@@ -144,8 +147,7 @@ def check(root: Path, exclude: str | None, staged: bool):
                     # disk yet; anchors_of is the honest existence question.
                     exists = anchors_of(resolved) is not None
                 if not exists:
-                    findings.append(
-                        f"{rel}:{number}: {target} — no such file in this repo")
+                    findings.append(f"{rel}:{number}: {target} — no such file in this repo")
                     continue
                 if not fragment:
                     continue
@@ -155,18 +157,22 @@ def check(root: Path, exclude: str | None, staged: bool):
                 target_file = resolved
             if fragment and fragment not in target_anchors:
                 findings.append(
-                    f"{rel}:{number}: {target} — {target_file} has no anchor "
-                    f"#{fragment}")
+                    f"{rel}:{number}: {target} — {target_file} has no anchor #{fragment}"
+                )
     return findings, notes, len(files), skipped
 
 
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--root", default=None, help="repository to read (default: cwd's repo)")
-    parser.add_argument("--staged", action="store_true",
-                        help="judge the INDEX, not the working tree (pre-commit scope)")
-    parser.add_argument("--exclude", default=None,
-                        help="regex on repo-relative paths to exempt (vendored docs)")
+    parser.add_argument(
+        "--staged",
+        action="store_true",
+        help="judge the INDEX, not the working tree (pre-commit scope)",
+    )
+    parser.add_argument(
+        "--exclude", default=None, help="regex on repo-relative paths to exempt (vendored docs)"
+    )
     parser.add_argument("--json", action="store_true", help="machine-readable output")
     parser.add_argument("--probe", action="store_true", help="prove this gate can go red")
     args = parser.parse_args(argv)
@@ -187,8 +193,12 @@ def main(argv=None) -> int:
     if args.json:
         import json
 
-        print(json.dumps({"findings": findings, "notes": notes, "examined": examined,
-                          "skipped": skipped}, indent=2))
+        print(
+            json.dumps(
+                {"findings": findings, "notes": notes, "examined": examined, "skipped": skipped},
+                indent=2,
+            )
+        )
         return 1 if findings else 0
     for note in notes:
         info(f"[md_links] {note}")
@@ -201,8 +211,10 @@ def main(argv=None) -> int:
         info("[md_links] no markdown examined — not applicable")
         return 0
     tail = f", {skipped} out-of-scope link(s) skipped" if skipped else ""
-    ok(f"[md_links] OK — {examined} markdown file(s), every relative link resolves "
-       f"to a file and an anchor{tail}")
+    ok(
+        f"[md_links] OK — {examined} markdown file(s), every relative link resolves "
+        f"to a file and an anchor{tail}"
+    )
     return 0
 
 
@@ -233,7 +245,7 @@ PROBE_DOCS = {
         "# Guide\n\n"
         "## 4.8. What `.90` can actually do, measured\n\n"
         "## Notes\n\n## Notes\n\n"
-        "<a id=\"manual-anchor\"></a>\n\n"
+        '<a id="manual-anchor"></a>\n\n'
         "## Custom {#my-own-id}\n"
     ),
 }
@@ -254,15 +266,15 @@ def _probe_tree(base: Path) -> Path:
 
 def _scratch(root: Path, *args: str) -> None:
     """git on a PROBE's OWN fixture -- never the repo being gated (contract 12)."""
-    subprocess.run(["git", "-C", str(root), *args], check=True, capture_output=True,
-                   env=foreign_repo_env())
+    subprocess.run(
+        ["git", "-C", str(root), *args], check=True, capture_output=True, env=foreign_repo_env()
+    )
 
 
 def probe() -> int:
     """A wrong anchor and a missing file must both be RED, and the honest
     fixtures around them must stay quiet."""
     import tempfile
-
 
     bad = 0
     with tempfile.TemporaryDirectory() as td:
@@ -274,12 +286,13 @@ def probe() -> int:
         # fence or INDENTED-block handling is a red line of its own rather than a
         # finding buried in the count.
         for label, needle, example in (
-            ("a link inside an inline code span is an example",
-             "inline code span", "Inline `[x](x.md)` is an example."),
-            ("a link inside a fenced block is an example",
-             "fenced block", "```\n[x](x.md)\n```"),
-            ("a link inside an indented block is an example",
-             "indented block", "    [x](x.md)"),
+            (
+                "a link inside an inline code span is an example",
+                "inline code span",
+                "Inline `[x](x.md)` is an example.",
+            ),
+            ("a link inside a fenced block is an example", "fenced block", "```\n[x](x.md)\n```"),
+            ("a link inside an indented block is an example", "indented block", "    [x](x.md)"),
         ):
             only = _probe_tree(base / f"only-{needle.split()[0]}")
             (only / "README.md").write_text(example + "\n", encoding="utf-8")
@@ -297,14 +310,17 @@ def probe() -> int:
         wrong = _probe_tree(base / "wrong")
         (wrong / "README.md").write_text(
             PROBE_DOCS["README.md"].replace(
-                "#48-what-90-can-actually-do-measured", "#what-90-can-actually-do-measured"),
-            encoding="utf-8")
+                "#48-what-90-can-actually-do-measured", "#what-90-can-actually-do-measured"
+            ),
+            encoding="utf-8",
+        )
         _scratch(wrong, "add", "-A")
         wrong_findings, _, _, _ = check(wrong, None, False)
 
         missing = _probe_tree(base / "missing")
         (missing / "README.md").write_text(
-            PROBE_DOCS["README.md"] + "\n[gone](docs/deleted.md)\n", encoding="utf-8")
+            PROBE_DOCS["README.md"] + "\n[gone](docs/deleted.md)\n", encoding="utf-8"
+        )
         _scratch(missing, "add", "-A")
         missing_findings, _, _, _ = check(missing, None, False)
 
@@ -318,16 +334,32 @@ def probe() -> int:
         for label, want, got in (
             ("a fixture of real links is GREEN", 0, len(green_findings)),
             ("...and every markdown file was examined", 2, green_examined),
-            ("http, mailto and site-absolute links are SKIPPED, not judged",
-             True, green_skipped >= 3),
-            ("a hand-mis-derived anchor is RED",
-             (True, True), (len(wrong_findings) == 1,
-                            bool(wrong_findings) and "no anchor" in wrong_findings[0])),
-            ("a missing file is RED",
-             (True, True), (len(missing_findings) == 1,
-                            bool(missing_findings) and "no such file" in missing_findings[0])),
-            ("a markdown file with no links is GREEN, and says what it skipped",
-             (0, 1), (len(empty_findings), empty_examined)),
+            (
+                "http, mailto and site-absolute links are SKIPPED, not judged",
+                True,
+                green_skipped >= 3,
+            ),
+            (
+                "a hand-mis-derived anchor is RED",
+                (True, True),
+                (
+                    len(wrong_findings) == 1,
+                    bool(wrong_findings) and "no anchor" in wrong_findings[0],
+                ),
+            ),
+            (
+                "a missing file is RED",
+                (True, True),
+                (
+                    len(missing_findings) == 1,
+                    bool(missing_findings) and "no such file" in missing_findings[0],
+                ),
+            ),
+            (
+                "a markdown file with no links is GREEN, and says what it skipped",
+                (0, 1),
+                (len(empty_findings), empty_examined),
+            ),
         ):
             if want != got:
                 err(f"probe: {label} (wanted {want!r}, got {got!r})")
@@ -338,8 +370,10 @@ def probe() -> int:
     if bad:
         err(f"check_md_links --probe: {bad} case(s) wrong")
         return 1
-    ok("check_md_links --probe: a wrong anchor and a missing file both go red, "
-       "real links stay green")
+    ok(
+        "check_md_links --probe: a wrong anchor and a missing file both go red, "
+        "real links stay green"
+    )
     return 0
 
 

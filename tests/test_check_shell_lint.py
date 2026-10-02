@@ -62,8 +62,7 @@ def test_prose_starting_with_shellcheck_word_is_a_directive(repo):
     # Found 2026-09-04 by the gate itself: `# shellcheck degrades ...` in a
     # comment is parsed AS a directive (SC1072), so prose must never lead
     # with that word. Otherwise-valid script proves the stage sees it.
-    write(repo, "prose.sh",
-          "#!/usr/bin/env bash\n# shellcheck degrades gracefully\necho hi\n")
+    write(repo, "prose.sh", "#!/usr/bin/env bash\n# shellcheck degrades gracefully\necho hi\n")
     stage(repo, "prose.sh")
     r = run_lint(repo, "--staged")
     assert r.returncode == 1, r.stdout + r.stderr
@@ -108,8 +107,18 @@ def test_full_mode_scans_tracked_files(repo):
     write(repo, "tool.sh", "#!/usr/bin/env bash\necho hi\n")
     subprocess.run(["git", "-C", str(repo), "add", "-A"], check=True)
     subprocess.run(
-        ["git", "-C", str(repo), "-c", "user.name=t", "-c", "user.email=t@t",
-         "commit", "-qm", "fixture"],
+        [
+            "git",
+            "-C",
+            str(repo),
+            "-c",
+            "user.name=t",
+            "-c",
+            "user.email=t@t",
+            "commit",
+            "-qm",
+            "fixture",
+        ],
         check=True,
     )
     r = run_lint(repo)

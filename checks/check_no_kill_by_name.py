@@ -53,6 +53,7 @@ found when the gate was seeded and not examined yet. An entry with no status
 is unreviewed, and every run prints the unreviewed count as a warning, so a
 list of debt never reads as clean.
 """
+
 from __future__ import annotations  # OS python3 may be 3.9
 
 import argparse
@@ -73,8 +74,26 @@ TAG = "[no_kill_by_name]"
 STATUSES = ("legitimate", "unreviewed")
 
 HASH_COMMENT = {".sh", ".bash", ".zsh", ".py", ".rb", ".yml", ".yaml", ".mk", ".pl"}
-SLASH_COMMENT = {".rs", ".swift", ".js", ".mjs", ".cjs", ".ts", ".tsx", ".jsx", ".go",
-                 ".c", ".cc", ".cpp", ".h", ".hpp", ".m", ".mm", ".java", ".kt"}
+SLASH_COMMENT = {
+    ".rs",
+    ".swift",
+    ".js",
+    ".mjs",
+    ".cjs",
+    ".ts",
+    ".tsx",
+    ".jsx",
+    ".go",
+    ".c",
+    ".cc",
+    ".cpp",
+    ".h",
+    ".hpp",
+    ".m",
+    ".mm",
+    ".java",
+    ".kt",
+}
 NAMED = {"Makefile", "makefile", "GNUmakefile", "justfile", "Justfile"}
 
 # A word, not a substring: `pkill` inside `skill_pkill_x` or `pkill.py` is not the command.
@@ -100,15 +119,18 @@ def in_scope(rel: str, blob: bytes) -> bool:
 def _python_code_lines(text: str) -> dict[int, str] | None:
     """{lineno: code} with comments and docstrings removed, or None if it does not parse."""
     try:
-        with warnings.catch_warnings():   # a file's own invalid escapes are not this gate's report
+        with warnings.catch_warnings():  # a file's own invalid escapes are not this gate's report
             warnings.simplefilter("ignore")
             tree = ast.parse(text)
     except (SyntaxError, ValueError):
         return None
     prose = set()
     for node in ast.walk(tree):
-        if (isinstance(node, ast.Expr) and isinstance(node.value, ast.Constant)
-                and isinstance(node.value.value, str)):
+        if (
+            isinstance(node, ast.Expr)
+            and isinstance(node.value, ast.Constant)
+            and isinstance(node.value.value, str)
+        ):
             prose.update(range(node.lineno, (node.end_lineno or node.lineno) + 1))
     lines = text.split("\n")
     try:
@@ -129,7 +151,7 @@ def _plain_code_lines(text: str, ext: str) -> dict[int, str]:
         if stripped.startswith(("#", "//", "/*", "*", "--")) and not stripped.startswith("#!"):
             continue
         cut = re.search(r"\s#" if hash_style else r"\s//", line)
-        out[i] = line[:cut.start()] if cut else line
+        out[i] = line[: cut.start()] if cut else line
     return out
 
 
@@ -145,13 +167,13 @@ def code_lines(rel: str, text: str) -> dict[int, str]:
 def finding(code: str) -> str | None:
     """Why this line kills by name, or None."""
     for m in KILL_BY_NAME.finditer(code):
-        if PROBE.search(code[:m.start()]):
+        if PROBE.search(code[: m.start()]):
             continue
-        if m.group(0) == "pkill" and SCOPED.search(code[m.end():]):
+        if m.group(0) == "pkill" and SCOPED.search(code[m.end() :]):
             continue
         return f"{m.group(0)} matches by name"
     m = LOOKUP.search(code)
-    if m and KILL.search(code) and not SCOPED.search(code[m.end():]):
+    if m and KILL.search(code) and not SCOPED.search(code[m.end() :]):
         return f"a {m.group(0)} lookup feeds a kill"
     return None
 
@@ -187,12 +209,32 @@ def load_allow(root: str, staged: bool) -> tuple[list[dict], list[str]]:
         return [], [f'{ALLOW_FILE} must be {{"entries": [...]}}']
     problems = []
     for i, e in enumerate(entries):
-        if not isinstance(e, dict) or not all(isinstance(e.get(k), str) and e[k].strip()
-                                              for k in ("path", "line", "reason")):
+        if not isinstance(e, dict) or not all(
+            isinstance(e.get(k), str) and e[k].strip() for k in ("path", "line", "reason")
+        ):
             problems.append(f"{ALLOW_FILE} entry {i} needs a non-empty path, line and reason")
         elif e.get("status", "unreviewed") not in STATUSES:
             problems.append(f"{ALLOW_FILE} entry {i}: status must be one of {', '.join(STATUSES)}")
     return entries, problems
+
+
+def _key(line: str) -> str:
+    """The comparison key for an allowlist entry: the line with ALL whitespace
+    removed.
+
+    An entry used to be matched against the rendered line verbatim, which made
+    the exemption a hostage to the formatter: `ruff format` rewrote
+    `code[m.end():]` as `code[m.end() :]` and the entry became "stale" -- the
+    gate reporting that a kill it had been told about was gone, on a line that
+    had not moved and a kill that had not changed. An exemption that a routine
+    `ruff format` can revoke is not an exemption.
+
+    Collapsing all whitespace is blunt on purpose. Two lines that differ only in
+    spacing are the same line for this purpose, and the cost of the bluntness --
+    an entry that could in principle excuse a differently-spaced twin -- is far
+    below the cost of the sharp version, which is a gate that cries wolf.
+    """
+    return "".join(line.split())
 
 
 def judge(hits, entries, scanned: set[str]):
@@ -202,8 +244,14 @@ def judge(hits, entries, scanned: set[str]):
     used = set()
     left = []
     for rel, lineno, code, why in hits:
-        match = next((i for i, e in enumerate(entries)
-                      if e.get("path") == rel and e.get("line", "").strip() == code), None)
+        match = next(
+            (
+                i
+                for i, e in enumerate(entries)
+                if e.get("path") == rel and _key(e.get("line", "")) == _key(code)
+            ),
+            None,
+        )
         if match is None:
             left.append((rel, lineno, code, why))
         else:
@@ -236,7 +284,9 @@ def main() -> int:
         print("    tree below your own pid (pkill -P). A name matches processes you do not own.")
         print(f"    A kill that must stand goes in {ALLOW_FILE} with a reason.")
     if stale:
-        print(f"✗ {TAG} {len(stale)} stale entr(ies) in {ALLOW_FILE}: the kill is gone, the exemption stayed:")
+        print(
+            f"✗ {TAG} {len(stale)} stale entr(ies) in {ALLOW_FILE}: the kill is gone, the exemption stayed:"
+        )
         for e in stale:
             print(f"    {e.get('path')}: {e.get('line')}")
     if left or stale:
@@ -253,7 +303,9 @@ def main() -> int:
     print(f"✓ {TAG} OK — {checked} {scope} code files, no kill by name{note}")
     debt = sum(1 for i in used if entries[i].get("status", "unreviewed") == "unreviewed")
     if debt:
-        print(f"⚠ {TAG}   {debt} of them 'unreviewed': found when the gate was seeded, not yet decided")
+        print(
+            f"⚠ {TAG}   {debt} of them 'unreviewed': found when the gate was seeded, not yet decided"
+        )
     return 0
 
 

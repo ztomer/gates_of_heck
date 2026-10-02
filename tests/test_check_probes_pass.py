@@ -73,7 +73,10 @@ def test_prose_mentioning_probe_is_not_a_self_proof():
         ("--break-probe", 'if [[ "${1:-}" == "--break-probe" ]]; then\n  exit 3\nfi'),
         ("--selftest", '[ "$1" = "--selftest" ] && exit 3'),
         ("--probe", 'case "$1" in\n  --probe) exit 3 ;;\nesac'),
-        ("--break-probe", '#!/usr/bin/env bash\nif [ "${1:-}" == "--break-probe" ]; then exit 3; fi'),
+        (
+            "--break-probe",
+            '#!/usr/bin/env bash\nif [ "${1:-}" == "--break-probe" ]; then exit 3; fi',
+        ),
     ],
 )
 def test_a_shell_self_proof_is_recognised(flag, source):
@@ -164,9 +167,14 @@ def test_a_python_shebang_on_a_shell_extension_still_runs_as_python(tmp_path):
 
 
 def test_discovery_counts_gates_and_finds_only_real_proofs(tmp_path):
-    root = _tree(tmp_path, {
-        "check_good.py": PASSING, "check_bare.py": PROSE_ONLY, "notagate.py": PASSING,
-    })
+    root = _tree(
+        tmp_path,
+        {
+            "check_good.py": PASSING,
+            "check_bare.py": PROSE_ONLY,
+            "notagate.py": PASSING,
+        },
+    )
     probes, total = gate.discover(str(root))
     assert total == 2, "check_*.py only -- notagate.py is not a gate"
     assert [p.endswith("check_good.py") for p, _ in probes] == [True]
@@ -194,31 +202,40 @@ def test_gates_without_any_proof_warn_rather_than_fail(tmp_path):
 
 
 def test_a_probe_that_hangs_is_a_failure_not_a_wait(tmp_path):
-    root = _tree(tmp_path, {"check_hang.py": """
+    root = _tree(
+        tmp_path,
+        {
+            "check_hang.py": """
         import sys, time
         if "--probe" in sys.argv:
             time.sleep(30)
         sys.exit(0)
-    """})
-    okay, detail = gate.run_one(str(root / "tools" / "check_hang.py"), "--probe", str(root),
-                                timeout=1)
+    """
+        },
+    )
+    okay, detail = gate.run_one(
+        str(root / "tools" / "check_hang.py"), "--probe", str(root), timeout=1
+    )
     assert not okay and "timed out" in detail
 
 
 def test_the_gates_own_self_proof_passes():
     result = subprocess.run(
         [sys.executable, str(ROOT / "checks" / "check_probes_pass.py"), "--probe"],
-        capture_output=True, text=True,
+        capture_output=True,
+        text=True,
     )
     assert result.returncode == 0, result.stdout + result.stderr
 
 
 def _git_repo(path):
     subprocess.run(["git", "init", "-q", str(path)], check=True, capture_output=True)
-    subprocess.run(["git", "-C", str(path), "config", "user.email", "t@t"], check=True,
-                   capture_output=True)
-    subprocess.run(["git", "-C", str(path), "config", "user.name", "t"], check=True,
-                   capture_output=True)
+    subprocess.run(
+        ["git", "-C", str(path), "config", "user.email", "t@t"], check=True, capture_output=True
+    )
+    subprocess.run(
+        ["git", "-C", str(path), "config", "user.name", "t"], check=True, capture_output=True
+    )
     return path
 
 

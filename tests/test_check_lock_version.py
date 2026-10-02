@@ -52,24 +52,32 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 def _workspace(repo, manifest_version, lock_version, members=("crates/core", "crates/cli")):
     """app_updates' exact shape: a workspace whose members all INHERIT."""
     lines = ", ".join(f'"{m}"' for m in members)
-    write(repo, "Cargo.toml",
-          f'[workspace]\nmembers = [{lines}]\n\n[workspace.package]\n'
-          f'version = "{manifest_version}"\n')
+    write(
+        repo,
+        "Cargo.toml",
+        f"[workspace]\nmembers = [{lines}]\n\n[workspace.package]\n"
+        f'version = "{manifest_version}"\n',
+    )
     write(repo, "Cargo.lock", LOCK.format(version=lock_version))
     for member in members:
         name = member.rsplit("/", 1)[-1]
-        write(repo, f"{member}/Cargo.toml",
-              f'[package]\nname = "app-{name}"\nversion.workspace = true\n')
+        write(
+            repo,
+            f"{member}/Cargo.toml",
+            f'[package]\nname = "app-{name}"\nversion.workspace = true\n',
+        )
 
 
 def _run(repo, *args):
     import subprocess
 
-    return subprocess.run([sys.executable, str(REPO_ROOT / CHECKER), *args],
-                          cwd=repo, capture_output=True, text=True)
+    return subprocess.run(
+        [sys.executable, str(REPO_ROOT / CHECKER), *args], cwd=repo, capture_output=True, text=True
+    )
 
 
 # ── the incident, reproduced ──────────────────────────────────────────────────
+
 
 def test_the_incident_is_red(tmp_path):
     """Manifest 1.36.0, lockfile 1.35.0. The whole defect."""
@@ -131,6 +139,7 @@ def test_a_third_party_version_is_never_this_repos_claim(tmp_path):
 
 # ── the layouts that must NOT produce findings ───────────────────────────────
 
+
 def test_per_crate_versions_are_a_layout_not_a_defect(tmp_path):
     """Five crates at five numbers, no [workspace.package]. Real, and five
     findings for it is how a gate gets `--no-verify`'d."""
@@ -138,11 +147,17 @@ def test_per_crate_versions_are_a_layout_not_a_defect(tmp_path):
     repo.mkdir()
     write(repo, "Cargo.toml", '[workspace]\nmembers = ["crates/a", "crates/b"]\n')
     for name, version in (("a", "1.2.3"), ("b", "4.5.6")):
-        write(repo, f"crates/{name}/Cargo.toml",
-              f'[package]\nname = "{name}"\nversion = "{version}"\n')
-    write(repo, "Cargo.lock",
-          '[[package]]\nname = "a"\nversion = "1.2.3"\n\n'
-          '[[package]]\nname = "b"\nversion = "4.5.6"\n')
+        write(
+            repo,
+            f"crates/{name}/Cargo.toml",
+            f'[package]\nname = "{name}"\nversion = "{version}"\n',
+        )
+    write(
+        repo,
+        "Cargo.lock",
+        '[[package]]\nname = "a"\nversion = "1.2.3"\n\n'
+        '[[package]]\nname = "b"\nversion = "4.5.6"\n',
+    )
     findings, examined, _ = gate.audit(repo, " ".join(gate.DEFAULT_SOURCES))
     assert findings == [], findings
     assert examined == 2, examined
@@ -156,10 +171,14 @@ def test_a_member_at_its_own_version_under_a_workspace_version_is_a_layout(tmp_p
     before the arm learned to read only a source outside the manifests."""
     repo = tmp_path / "mon"
     repo.mkdir()
-    write(repo, "Cargo.toml",
-          '[workspace]\nmembers = ["crates/vault"]\n\n[workspace.package]\nversion = "0.51.0"\n')
-    write(repo, "crates/vault/Cargo.toml",
-          '[package]\nname = "multitop-vault"\nversion = "0.21.0"\n')
+    write(
+        repo,
+        "Cargo.toml",
+        '[workspace]\nmembers = ["crates/vault"]\n\n[workspace.package]\nversion = "0.51.0"\n',
+    )
+    write(
+        repo, "crates/vault/Cargo.toml", '[package]\nname = "multitop-vault"\nversion = "0.21.0"\n'
+    )
     write(repo, "Cargo.lock", '[[package]]\nname = "multitop-vault"\nversion = "0.21.0"\n')
     findings, _, _ = gate.audit(repo, " ".join(gate.DEFAULT_SOURCES))
     assert findings == [], findings
@@ -178,6 +197,7 @@ def test_inheritance_is_resolved_not_compared_literally(tmp_path):
 
 # ── arm 2: the release number declared OUTSIDE the manifests ─────────────────
 
+
 def _forgotten_member(repo):
     """The release bumped in every place EXCEPT one member manifest.
 
@@ -187,10 +207,12 @@ def _forgotten_member(repo):
     release claim has no gate standing in front of it.
     """
     write(repo, "VERSION", "1.79.3\n")
-    write(repo, "Cargo.toml",
-          '[workspace]\nmembers = ["crates/hc"]\n\n[workspace.package]\nversion = "1.79.3"\n')
-    write(repo, "crates/hc/Cargo.toml",
-          '[package]\nname = "healthcheck"\nversion = "1.79.1"\n')
+    write(
+        repo,
+        "Cargo.toml",
+        '[workspace]\nmembers = ["crates/hc"]\n\n[workspace.package]\nversion = "1.79.3"\n',
+    )
+    write(repo, "crates/hc/Cargo.toml", '[package]\nname = "healthcheck"\nversion = "1.79.1"\n')
     write(repo, "Cargo.lock", '[[package]]\nname = "healthcheck"\nversion = "1.79.1"\n')
 
 
@@ -215,10 +237,12 @@ def test_a_consistent_release_declaration_is_green(tmp_path):
     repo = tmp_path / "media"
     repo.mkdir()
     write(repo, "VERSION", "1.79.3\n")
-    write(repo, "Cargo.toml",
-          '[workspace]\nmembers = ["crates/hc"]\n\n[workspace.package]\nversion = "1.79.3"\n')
-    write(repo, "crates/hc/Cargo.toml",
-          '[package]\nname = "healthcheck"\nversion = "1.79.3"\n')
+    write(
+        repo,
+        "Cargo.toml",
+        '[workspace]\nmembers = ["crates/hc"]\n\n[workspace.package]\nversion = "1.79.3"\n',
+    )
+    write(repo, "crates/hc/Cargo.toml", '[package]\nname = "healthcheck"\nversion = "1.79.3"\n')
     write(repo, "Cargo.lock", '[[package]]\nname = "healthcheck"\nversion = "1.79.3"\n')
     assert _run(repo).returncode == 0, _run(repo).stderr
 
@@ -229,10 +253,12 @@ def test_two_release_numbers_at_once_is_red(tmp_path):
     repo = tmp_path / "media"
     repo.mkdir()
     write(repo, "VERSION", "1.79.3\n")
-    write(repo, "Cargo.toml",
-          '[workspace]\nmembers = ["crates/hc"]\n\n[workspace.package]\nversion = "1.79.1"\n')
-    write(repo, "crates/hc/Cargo.toml",
-          '[package]\nname = "healthcheck"\nversion = "1.79.1"\n')
+    write(
+        repo,
+        "Cargo.toml",
+        '[workspace]\nmembers = ["crates/hc"]\n\n[workspace.package]\nversion = "1.79.1"\n',
+    )
+    write(repo, "crates/hc/Cargo.toml", '[package]\nname = "healthcheck"\nversion = "1.79.1"\n')
     write(repo, "Cargo.lock", '[[package]]\nname = "healthcheck"\nversion = "1.79.1"\n')
     findings, _, _ = gate.audit(repo, " ".join(gate.DEFAULT_SOURCES))
     assert any("no single answer" in f for f in findings), findings
@@ -252,10 +278,11 @@ def test_a_stale_lockfile_is_reported_once_not_twice(tmp_path):
 
 # ── named non-runs ───────────────────────────────────────────────────────────
 
+
 def test_no_lockfile_is_a_named_non_run(tmp_path):
     repo = tmp_path / "plain"
     repo.mkdir()
-    write(repo, "Cargo.toml", '[workspace]\nmembers = []\n')
+    write(repo, "Cargo.toml", "[workspace]\nmembers = []\n")
     r = _run(repo)
     assert r.returncode == 0, r.stdout + r.stderr
     assert "no Cargo.lock" in r.stdout and "not applicable" in r.stdout, r.stdout
@@ -276,7 +303,7 @@ def test_zero_compared_is_never_reported_as_agreement(tmp_path):
     same sentence as one that examined everything and agreed."""
     repo = tmp_path / "plain"
     repo.mkdir()
-    write(repo, "Cargo.toml", '[workspace]\nmembers = []\n')
+    write(repo, "Cargo.toml", "[workspace]\nmembers = []\n")
     write(repo, "Cargo.lock", "version = 4\n")
     findings, examined, notes = gate.audit(repo, " ".join(gate.DEFAULT_SOURCES))
     assert examined == 0 and not findings and notes
@@ -291,15 +318,18 @@ def test_a_missing_directory_is_a_usage_error(tmp_path):
 
 # ── parsing: the shapes that read as nothing ────────────────────────────────
 
+
 def test_a_multiline_member_list_is_read(tmp_path):
     """`divoom-control` writes `members = [` across four lines. A per-line regex
     finds the opening bracket and never its partner, the member list comes back
     empty, and a three-crate workspace reports nothing to compare."""
     repo = tmp_path / "divoom"
     repo.mkdir()
-    write(repo, "Cargo.toml",
-          '[workspace]\nresolver = "2"\nmembers = [\n    "divoomd",\n'
-          '    "nowplaying",\n]\n')
+    write(
+        repo,
+        "Cargo.toml",
+        '[workspace]\nresolver = "2"\nmembers = [\n    "divoomd",\n    "nowplaying",\n]\n',
+    )
     version, members = gate.parse_workspace((repo / "Cargo.toml").read_text())
     assert members == ["divoomd", "nowplaying"], members
 
@@ -311,8 +341,7 @@ def test_an_exclude_is_not_mistaken_for_a_member(tmp_path):
     against monitor, inventing a finding about a crate the workspace excludes."""
     repo = tmp_path / "mon"
     repo.mkdir()
-    write(repo, "Cargo.toml",
-          '[workspace]\nmembers = ["crates/agent"]\nexclude = ["fuzz"]\n')
+    write(repo, "Cargo.toml", '[workspace]\nmembers = ["crates/agent"]\nexclude = ["fuzz"]\n')
     _, members = gate.parse_workspace((repo / "Cargo.toml").read_text())
     assert members == ["crates/agent"], members
 
@@ -322,14 +351,15 @@ def test_a_dependency_version_is_not_a_declaration(tmp_path):
     as the package's own version is how a repo's release number becomes a
     transitive dependency's."""
     name, version = gate.parse_package(
-        '[package]\nname = "app"\nversion = "1.0.0"\n\n[dependencies]\nserde = "1.0.219"\n')
+        '[package]\nname = "app"\nversion = "1.0.0"\n\n[dependencies]\nserde = "1.0.219"\n'
+    )
     assert (name, version) == ("app", "1.0.0"), (name, version)
 
 
 def test_a_metadata_version_is_not_a_declaration(tmp_path):
     name, version = gate.parse_package(
-        '[package]\nname = "app"\nversion = "1.0.0"\n\n[package.metadata.docs]\n'
-        'version = "9.9.9"\n')
+        '[package]\nname = "app"\nversion = "1.0.0"\n\n[package.metadata.docs]\nversion = "9.9.9"\n'
+    )
     assert version == "1.0.0", version
 
 
@@ -337,7 +367,8 @@ def test_a_version_after_the_package_table_ends_the_package(tmp_path):
     """The `[lib]` table follows `[package]`; a `version` key after it belongs
     to nothing this checker should read."""
     name, version = gate.parse_package(
-        '[package]\nname = "app"\nversion = "1.0.0"\n\n[lib]\nversion = "7.7.7"\n')
+        '[package]\nname = "app"\nversion = "1.0.0"\n\n[lib]\nversion = "7.7.7"\n'
+    )
     assert (name, version) == ("app", "1.0.0"), (name, version)
 
 
@@ -348,14 +379,17 @@ def test_a_lockfile_with_a_patch_table_does_not_confuse_the_parser(tmp_path):
     repo = tmp_path / "app"
     repo.mkdir()
     _workspace(repo, "1.0.0", "1.0.0")
-    write(repo, "Cargo.lock",
-          LOCK.format(version="1.0.0") +
-          '\n[[patch.unused]]\nname = "serde"\nversion = "9.9.9"\n')
+    write(
+        repo,
+        "Cargo.lock",
+        LOCK.format(version="1.0.0") + '\n[[patch.unused]]\nname = "serde"\nversion = "9.9.9"\n',
+    )
     entries = gate.parse_lock((repo / "Cargo.lock").read_text())
     assert entries["serde"]["version"] == "1.0.219", entries["serde"]
 
 
 # ── wiring and output ────────────────────────────────────────────────────────
+
 
 def test_json_output_carries_findings_and_population(tmp_path):
     repo = tmp_path / "app"
@@ -372,13 +406,15 @@ def test_the_probe_runs_and_is_green():
     """check_probes_pass discovers this by source, then RUNS it."""
     import subprocess
 
-    r = subprocess.run([sys.executable, str(REPO_ROOT / CHECKER), "--probe"],
-                       capture_output=True, text=True)
+    r = subprocess.run(
+        [sys.executable, str(REPO_ROOT / CHECKER), "--probe"], capture_output=True, text=True
+    )
     assert r.returncode == 0, r.stdout + r.stderr
     assert "a stale lockfile goes red" in r.stdout, r.stdout
 
 
 # ── calibration: these cases can go RED ─────────────────────────────────────
+
 
 def test_calibration_the_suite_is_red_without_arm_two(tmp_path):
     """Proof arm 2 is load-bearing. Dropping it must turn the
@@ -396,8 +432,13 @@ def test_calibration_the_suite_is_red_without_arm_two(tmp_path):
     repo.mkdir()
     _forgotten_member(repo)
 
-    r = subprocess.run([sys.executable, str(blind)], cwd=repo, capture_output=True,
-                       text=True, env=dict(os.environ, PYTHONPATH=str(REPO_ROOT / "checks")))
+    r = subprocess.run(
+        [sys.executable, str(blind)],
+        cwd=repo,
+        capture_output=True,
+        text=True,
+        env=dict(os.environ, PYTHONPATH=str(REPO_ROOT / "checks")),
+    )
     assert r.returncode == 0, r.stdout + r.stderr
     assert "1.79.3" not in r.stdout, "arm 2 still fired -- this calibration proves nothing"
     # ...and the real checker, on the same tree, is red.
@@ -414,8 +455,12 @@ def test_calibration_the_probe_goes_red_when_arm_two_stops(tmp_path):
     source = (REPO_ROOT / CHECKER).read_text(encoding="utf-8")
     blind = tmp_path / "blind.py"
     blind.write_text(source.replace("elif numbers:", "elif False:"), encoding="utf-8")
-    r = subprocess.run([sys.executable, str(blind), "--probe"], capture_output=True,
-                       text=True, cwd=tmp_path,
-                       env=dict(os.environ, PYTHONPATH=str(REPO_ROOT / "checks")))
+    r = subprocess.run(
+        [sys.executable, str(blind), "--probe"],
+        capture_output=True,
+        text=True,
+        cwd=tmp_path,
+        env=dict(os.environ, PYTHONPATH=str(REPO_ROOT / "checks")),
+    )
     assert r.returncode == 1, r.stdout + r.stderr
     assert "per-crate versions" not in r.stdout.split("probe: ")[-1], r.stdout

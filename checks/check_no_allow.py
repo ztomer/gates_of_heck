@@ -52,6 +52,7 @@ positive on comment-only mentions) and a real attribute after a same-line
 `*/` close is still searched (no blind spot). Unterminated blocks run safe to
 EOF: everything after stays comment.
 """
+
 import os
 import re
 import sys
@@ -77,8 +78,7 @@ def _files(root: str, staged: bool, exclude):
     return [
         f
         for f in listed_files(root, staged=staged)
-        if f.endswith(".rs") and is_compiled_src(f)
-        and not (exclude and exclude.search(f))
+        if f.endswith(".rs") and is_compiled_src(f) and not (exclude and exclude.search(f))
     ]
 
 
@@ -109,10 +109,10 @@ def _scan(root: str, paths, staged: bool):
             opened = in_cfg_attr == 0 and _CFG_ATTR_OPEN.search(literal_free_line)
             if not (opened or in_cfg_attr):
                 quoted = _CFG_ATTR_OPEN.search(code)
-                if quoted and _WRAPPED_SUPPRESSION.search(code[quoted.start():]):
+                if quoted and _WRAPPED_SUPPRESSION.search(code[quoted.start() :]):
                     hits.append(f"{rel}:{lineno}: {code.strip()}")
                 continue
-            literal_free = literal_free_line[opened.start():] if opened else literal_free_line
+            literal_free = literal_free_line[opened.start() :] if opened else literal_free_line
             if _WRAPPED_SUPPRESSION.search(literal_free):
                 hits.append(f"{rel}:{lineno}: {code.strip()}")
             # the attribute ends when its brackets balance: the opening
@@ -124,17 +124,18 @@ def _scan(root: str, paths, staged: bool):
 def _has_rust(root: str, staged: bool) -> bool:
     """Does this repo contain Rust at all? A tracked Cargo.toml is the manifest that says so."""
     return any(
-        f == "Cargo.toml" or f.endswith("/Cargo.toml")
-        for f in listed_files(root, staged=staged)
+        f == "Cargo.toml" or f.endswith("/Cargo.toml") for f in listed_files(root, staged=staged)
     )
 
 
 def main():
     import argparse
+
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--staged", action="store_true")
-    ap.add_argument("--exclude", default="",
-                    help="regex on repo-relative paths to skip (GOH_EXCLUDE)")
+    ap.add_argument(
+        "--exclude", default="", help="regex on repo-relative paths to skip (GOH_EXCLUDE)"
+    )
     args = ap.parse_args()
     staged = args.staged
     exclude = re.compile(args.exclude) if args.exclude else None
@@ -146,7 +147,9 @@ def main():
         print(f"✗ [{'no_allow'}] {len(hits)} #[allow]/#[expect] in {scope} Rust source:")
         for h in hits[:40]:
             print(f"    {h}")
-        print("fix the finding properly; do not add #[allow] or #[expect]. Generated files must carry @generated.")
+        print(
+            "fix the finding properly; do not add #[allow] or #[expect]. Generated files must carry @generated."
+        )
         sys.exit(1)
     # A repo with no Rust at all genuinely has nothing to police, and failing there would make
     # this gate unadoptable by every non-Rust repo that runs the shared layer. But a repo that
@@ -154,9 +157,12 @@ def main():
     # + build.rs scope stopped matching its layout, and "0 files clean" reads identically to a
     # spotless crate. Conditioned on the manifest, so the two cases stay distinguishable.
     if not files and _has_rust(root, staged):
-        print("✗ [no_allow] this repo has Rust (a Cargo.toml is tracked) and the scan matched "
-              "NO compiled source. That is not a clean run -- the crate layout moved out from "
-              "under src/, benches/ and build.rs.", file=sys.stderr)
+        print(
+            "✗ [no_allow] this repo has Rust (a Cargo.toml is tracked) and the scan matched "
+            "NO compiled source. That is not a clean run -- the crate layout moved out from "
+            "under src/, benches/ and build.rs.",
+            file=sys.stderr,
+        )
         sys.exit(1)
     print(f"✓ [no_allow] OK — {len(files)} files clean")
 

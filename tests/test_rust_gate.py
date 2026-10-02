@@ -20,27 +20,25 @@ LEGACY = REPO_ROOT / "tests" / "fixtures" / "rust_gate_legacy.sh"
 CURRENT = REPO_ROOT / "gates" / "rust_gate.sh"
 CHECKER = REPO_ROOT / "checks" / "check_no_allow.py"
 
-pytestmark = pytest.mark.skipif(
-    shutil.which("cargo") is None, reason="cargo not installed"
-)
+pytestmark = pytest.mark.skipif(shutil.which("cargo") is None, reason="cargo not installed")
 
 CARGO_TOML = '[package]\nname = "parity"\nversion = "0.1.0"\nedition = "2021"\n'
 LIB_CLEAN = "pub fn add(a: u64, b: u64) -> u64 {\n    a + b\n}\n"
 LIB_DIRTY = "pub fn add(a: u64,b: u64) -> u64 {\n    a + b  }\n"
-LIB_WARN = "pub fn f() -> u64 { let x = 1u64; x }\n"          # unused-var-ish lint bait
+LIB_WARN = "pub fn f() -> u64 { let x = 1u64; x }\n"  # unused-var-ish lint bait
 LIB_ALLOW = "#[allow(dead_code)]\npub fn dead() {}\n"
 LIB_TESTED = (
-    'pub fn add(a: u64, b: u64) -> u64 {\n    a + b\n}\n'
-    '\n'
-    '#[cfg(test)]\n'
-    'mod tests {\n'
-    '    use super::*;\n'
-    '\n'
-    '    #[test]\n'
-    '    fn adds() {\n'
-    '        assert_eq!(add(1, 2), 3);\n'
-    '    }\n'
-    '}\n'
+    "pub fn add(a: u64, b: u64) -> u64 {\n    a + b\n}\n"
+    "\n"
+    "#[cfg(test)]\n"
+    "mod tests {\n"
+    "    use super::*;\n"
+    "\n"
+    "    #[test]\n"
+    "    fn adds() {\n"
+    "        assert_eq!(add(1, 2), 3);\n"
+    "    }\n"
+    "}\n"
 )
 LIB_UNTESTED = "pub fn untested() -> u64 {\n    42\n}\n"  # pub: no dead-code lint, 0% coverage
 
@@ -55,8 +53,18 @@ def mkcrate(tmp: Path) -> Path:
     (tmp / "src").mkdir(parents=True)
     (tmp / "Cargo.toml").write_text(CARGO_TOML)
     _git(tmp, "init", "-q")
-    _git(tmp, "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-q",
-         "--allow-empty", "-m", "init")
+    _git(
+        tmp,
+        "-c",
+        "user.email=t@t",
+        "-c",
+        "user.name=t",
+        "commit",
+        "-q",
+        "--allow-empty",
+        "-m",
+        "init",
+    )
     return tmp
 
 
@@ -68,7 +76,9 @@ def write_lib(c: Path, body: str) -> None:
 def run_script(script: Path, crate: Path, env: dict | None = None) -> subprocess.CompletedProcess:
     return subprocess.run(
         ["/bin/bash", str(script), str(crate)],
-        cwd=crate, capture_output=True, text=True,
+        cwd=crate,
+        capture_output=True,
+        text=True,
         env={**os.environ, **(env or {})},
     )
 
@@ -160,7 +170,9 @@ def test_cargo_subdir_argument_supported_by_both(tmp_path, warm_crate):
     for script, expect_ok in ((LEGACY, True), (CURRENT, True)):
         r = subprocess.run(
             ["/bin/bash", str(script), str(repo), str(inner)],
-            cwd=repo, capture_output=True, text=True,
+            cwd=repo,
+            capture_output=True,
+            text=True,
         )
         assert (r.returncode == 0) is expect_ok, r.stderr
 

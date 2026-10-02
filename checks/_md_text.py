@@ -20,6 +20,7 @@ stating once, here, rather than in a caller:
 * **Duplicates are numbered.** A link to the second `## Notes` resolves to
   `#notes-1`, so a set, not a list.
 """
+
 from __future__ import annotations
 
 import re
@@ -42,8 +43,7 @@ INDENTED = re.compile(r"^(?: {4}|\t)")
 CODE_SPAN = re.compile(r"(`+)(?:(?!\1).)*?\1", re.DOTALL)
 # An explicit anchor: `{#id}` at the end of a heading, or a raw HTML anchor.
 EXPLICIT_ID = re.compile(r"\{#([^}\s]+)\}")
-HTML_ANCHOR = re.compile(
-    r"<a\s+(?:id|name)\s*=\s*[\"']([^\"']+)[\"']", re.IGNORECASE)
+HTML_ANCHOR = re.compile(r"<a\s+(?:id|name)\s*=\s*[\"']([^\"']+)[\"']", re.IGNORECASE)
 # A URL with a scheme. Out of scope by definition: nothing here can know whether
 # a remote document still exists.
 SCHEME = re.compile(r"^[A-Za-z][A-Za-z0-9+.-]*:")
@@ -112,8 +112,8 @@ def slugify(heading: str) -> str:
     non-English heading in the estate — the precise failure this checker exists
     to end, manufactured by the checker.
     """
-    text = re.sub(r"<[^>]+>", "", heading)          # inline HTML in the heading
-    text = re.sub(r"[`*_~]", "", text)               # its own emphasis markers
+    text = re.sub(r"<[^>]+>", "", heading)  # inline HTML in the heading
+    text = re.sub(r"[`*_~]", "", text)  # its own emphasis markers
     text = text.replace("\t", " ")
     text = unicodedata.normalize("NFC", text)
     kept = "".join(ch for ch in text.lower() if ch.isalnum() or ch in " -_")
@@ -135,7 +135,7 @@ def anchors(text: str) -> set[str]:
         if atx:
             body = atx.group(2)
         elif i + 1 < len(lines) and raw.strip() and SETEXT.match(lines[i + 1]):
-            body = raw.strip()                      # setext: text on the line above
+            body = raw.strip()  # setext: text on the line above
         if body is None:
             for hit in HTML_ANCHOR.finditer(raw):
                 out.add(hit.group(1))

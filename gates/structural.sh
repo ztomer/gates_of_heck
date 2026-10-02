@@ -135,6 +135,30 @@ goh_step "markdown links resolve" python3 "$CHECKS/check_md_links.py" \
 # MIRRORED in crates/goh/src/steps.rs.
 goh_step "Cargo.lock matches its manifests" python3 "$CHECKS/check_lock_version.py"
 
+# Python shape, decided by a DECLARED rule set rather than by whoever edited
+# last. This repo had no ruff configuration at all, so `ruff format` applied its
+# defaults and the checker's answer depended on ruff's version and on the
+# directory it was launched from -- while no gate here ever ran it over this
+# repository, so it reported 129 of 148 files unformatted and nobody saw it.
+# pyproject.toml now declares line-length 100 (matching rustfmt.toml) and the
+# tree is formatted once; this step is what keeps it that way.
+#
+# NOT gated on ruff's absence being a pass: check_python_formatted.py refuses to
+# skip when ruff is missing, because a formatter that is not installed is a
+# missing gate.
+# Full scope ONLY, and the guard is explicit rather than inherited: a
+# formatter's verdict is a property of the whole tree, so a pre-commit hook
+# that reformatted the repository to satisfy one commit would be worse than one
+# that waits. crates/goh/src/steps_delegated.rs::step_python_formatted carries the
+# same rule, and tests/test_goh_structural_parity.py is what caught the two
+# disagreeing when the shell side ran it in staged mode and the native side did
+# not.
+# OPT-IN via GOH_PYTHON_FORMATTED in .gatesrc, and full scope only -- a repo
+# that has never declared a rule set should not learn one by going red.
+if [ "$SCOPE" != "--staged" ] && [ -n "${GOH_PYTHON_FORMATTED:-}" ]; then
+    goh_step "python is ruff-formatted" python3 "$CHECKS/check_python_formatted.py"
+fi
+
 # One cap, one name. Repos previously called this check_file_length,
 # check_loc and check_file_size, with three different limits.
 # Exemption semantics: GOH_EXCLUDE exempts vendored/generated paths from BOTH

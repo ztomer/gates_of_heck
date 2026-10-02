@@ -17,8 +17,9 @@ ESC = "\x1b"
 
 
 def run_check(repo: Path, *args: str) -> subprocess.CompletedProcess:
-    return subprocess.run(["python3", str(REPO_ROOT / CHECK), *args],
-                          cwd=repo, capture_output=True, text=True)
+    return subprocess.run(
+        ["python3", str(REPO_ROOT / CHECK), *args], cwd=repo, capture_output=True, text=True
+    )
 
 
 def log_with(repo: Path, *lines: str) -> Path:
@@ -28,8 +29,10 @@ def log_with(repo: Path, *lines: str) -> Path:
 
 
 def hyperlinked(repo: Path, rel: str) -> str:
-    return (f"{repo}/{rel}:19:26: {ESC}[1;33mwarning: {ESC}[1;39mcapture of 'self' in a '@Sendable' "
-            f"closure [#{ESC}]8;;https://docs.swift.org/x{ESC}\\SendableClosureCaptures{ESC}]8;;{ESC}\\]{ESC}[0;0m")
+    return (
+        f"{repo}/{rel}:19:26: {ESC}[1;33mwarning: {ESC}[1;39mcapture of 'self' in a '@Sendable' "
+        f"closure [#{ESC}]8;;https://docs.swift.org/x{ESC}\\SendableClosureCaptures{ESC}]8;;{ESC}\\]{ESC}[0;0m"
+    )
 
 
 def test_selftest_passes():
@@ -99,7 +102,9 @@ def test_commits_since_the_upstream_count_as_changed(repo):
     remote = repo.parent / "remote.git"
     subprocess.run(["git", "init", "-q", "--bare", str(remote)], check=True)
     subprocess.run(["git", "remote", "add", "origin", str(remote)], cwd=repo, check=True)
-    subprocess.run(["git", "push", "-q", "-u", "origin", "main"], cwd=repo, check=True, capture_output=True)
+    subprocess.run(
+        ["git", "push", "-q", "-u", "origin", "main"], cwd=repo, check=True, capture_output=True
+    )
     (repo / "Sources/B.swift").write_text("let y = 1\n", encoding="utf-8")
     subprocess.run(["git", "add", "-A"], cwd=repo, check=True)
     subprocess.run(["git", "commit", "-qm", "not pushed"], cwd=repo, check=True)

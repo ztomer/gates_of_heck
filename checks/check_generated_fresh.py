@@ -42,8 +42,7 @@ import sys
 import tempfile
 from pathlib import Path
 
-sys.path.insert(0, os.path.join(
-    os.path.dirname(os.path.abspath(__file__)), "..", "lib"))
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "lib"))
 from killtree import run_captured  # noqa: E402
 
 
@@ -68,22 +67,23 @@ def generate(generator: str, sandbox: Path, timeout: int):
 def main() -> int:
     ap = argparse.ArgumentParser(
         description="Artifact-freshness gate: regenerate into a sandbox "
-                    "and hash-compare against the committed artifacts.")
-    ap.add_argument("--generator", required=True,
-                    help="shell command; receives the OUT-DIR as $1")
-    ap.add_argument("artifacts", nargs="+",
-                    help="committed generated paths, relative to cwd")
-    ap.add_argument("--write", action="store_true",
-                    help="bless: copy the generated outputs over the "
-                         "committed artifacts")
-    ap.add_argument("--timeout", type=int, default=120,
-                    help="seconds allowed for the generator (default 120)")
+        "and hash-compare against the committed artifacts."
+    )
+    ap.add_argument("--generator", required=True, help="shell command; receives the OUT-DIR as $1")
+    ap.add_argument("artifacts", nargs="+", help="committed generated paths, relative to cwd")
+    ap.add_argument(
+        "--write",
+        action="store_true",
+        help="bless: copy the generated outputs over the committed artifacts",
+    )
+    ap.add_argument(
+        "--timeout", type=int, default=120, help="seconds allowed for the generator (default 120)"
+    )
     args = ap.parse_args()
 
     missing = [a for a in args.artifacts if not Path(a).is_file()]
     if missing:
-        print("✗ [fresh] precondition missing: committed artifact(s) not "
-              "found:", file=sys.stderr)
+        print("✗ [fresh] precondition missing: committed artifact(s) not found:", file=sys.stderr)
         for m in missing:
             print(f"    {m}", file=sys.stderr)
         return 2
@@ -98,14 +98,19 @@ def main() -> int:
         try:
             proc = generate(args.generator, sandbox, args.timeout)
         except subprocess.TimeoutExpired:
-            print(f"✗ [fresh] precondition missing: generator timed out "
-                  f"after {args.timeout}s and was killed:\n"
-                  f"    {args.generator}", file=sys.stderr)
+            print(
+                f"✗ [fresh] precondition missing: generator timed out "
+                f"after {args.timeout}s and was killed:\n"
+                f"    {args.generator}",
+                file=sys.stderr,
+            )
             return 2
         if proc.returncode != 0:
             tail = (proc.stderr or proc.stdout or "").strip()[-600:]
-            print(f"✗ [fresh] precondition missing: generator exited "
-                  f"{proc.returncode}:\n{tail}", file=sys.stderr)
+            print(
+                f"✗ [fresh] precondition missing: generator exited {proc.returncode}:\n{tail}",
+                file=sys.stderr,
+            )
             return 2
 
         stale: list[tuple[str, str]] = []
@@ -117,14 +122,19 @@ def main() -> int:
                 continue
             if _sha256(committed) == _sha256(produced):
                 continue
-            stale.append((
-                art,
-                f"stale — committed {_sha256(committed)[:12]} vs generated "
-                f"{_sha256(produced)[:12]}"))
+            stale.append(
+                (
+                    art,
+                    f"stale — committed {_sha256(committed)[:12]} vs generated "
+                    f"{_sha256(produced)[:12]}",
+                )
+            )
 
         if not stale:
-            print(f"→ [fresh] OK — {len(args.artifacts)} artifact(s) match "
-                  f"a fresh run of the generator")
+            print(
+                f"→ [fresh] OK — {len(args.artifacts)} artifact(s) match "
+                f"a fresh run of the generator"
+            )
             return 0
 
         if args.write:
@@ -137,13 +147,15 @@ def main() -> int:
                     print(f"    {art}: {why} — nothing to write")
             return 0
 
-        print(f"✗ [fresh] {len(stale)} artifact(s) disagree with the "
-              f"generator:", file=sys.stderr)
+        print(f"✗ [fresh] {len(stale)} artifact(s) disagree with the generator:", file=sys.stderr)
         for art, why in stale:
             print(f"    {art}: {why}", file=sys.stderr)
-        print("\n  Re-run the generator and commit its output — or, if this\n"
-              "  IS the generating commit, pass --write and commit the\n"
-              "  blessing on its own.", file=sys.stderr)
+        print(
+            "\n  Re-run the generator and commit its output — or, if this\n"
+            "  IS the generating commit, pass --write and commit the\n"
+            "  blessing on its own.",
+            file=sys.stderr,
+        )
         return 1
     finally:
         shutil.rmtree(sandbox, ignore_errors=True)

@@ -4,6 +4,7 @@ Fixture repos per case; asserts identical exit codes plus identical
 stdout/stderr. A suppression shape, scope rule, message, or stream
 drifting on either side goes red.
 """
+
 from __future__ import annotations
 
 import subprocess
@@ -34,9 +35,7 @@ def make_repo(tmp_path: Path, files: dict[str, bytes]) -> Path:
 
 
 def run_py(repo: Path, *args: str) -> tuple[int, str, str]:
-    r = subprocess.run(
-        ["python3", str(CHECK), *args], cwd=repo, capture_output=True, text=True
-    )
+    r = subprocess.run(["python3", str(CHECK), *args], cwd=repo, capture_output=True, text=True)
     return r.returncode, r.stdout, r.stderr
 
 
@@ -85,7 +84,9 @@ CASES: dict[str, dict[str, bytes]] = {
     },
     "cfg_attr_multiline": {
         "Cargo.toml": CARGO,
-        "src/a.rs": rs('#[cfg_attr(\n    target_os = "macos",\n    allow(dead_code),\n)]\nfn f() {}\n'),
+        "src/a.rs": rs(
+            '#[cfg_attr(\n    target_os = "macos",\n    allow(dead_code),\n)]\nfn f() {}\n'
+        ),
     },
     "cfg_attr_clean": {
         "Cargo.toml": CARGO,
@@ -107,8 +108,10 @@ CASES: dict[str, dict[str, bytes]] = {
     # inside the literal used to leave the attribute "open", flagging every later `.expect(`.
     "quoted_cfg_attr": {
         "Cargo.toml": CARGO,
-        "src/a.rs": rs('fn f() {\n    let s = "#[cfg_attr(test, allow(x))]";\n}\n'
-                       'fn g(w: Option<u8>) -> u8 {\n    w.expect("fixture")\n}\n'),
+        "src/a.rs": rs(
+            'fn f() {\n    let s = "#[cfg_attr(test, allow(x))]";\n}\n'
+            'fn g(w: Option<u8>) -> u8 {\n    w.expect("fixture")\n}\n'
+        ),
     },
     # DOCUMENTING the marker (in a code span) is not carrying it: this exempted the checker's
     # own source from itself.
@@ -188,7 +191,8 @@ def test_no_rust_source_of_ours_is_exempt_as_generated() -> None:
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     exempt = [
-        str(p.relative_to(ROOT)) for p in (ROOT / "crates").rglob("*.rs")
+        str(p.relative_to(ROOT))
+        for p in (ROOT / "crates").rglob("*.rs")
         if module._is_generated(str(ROOT), str(p.relative_to(ROOT)), False)
     ]
     assert exempt == [], f"hand-written sources exempt from the no-allow gate: {exempt}"

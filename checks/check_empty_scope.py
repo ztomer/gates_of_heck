@@ -29,6 +29,7 @@ gates and was wrong in both directions. It accused three that were fine -- one o
 `check_mcp_server`, which carries a test-count FLOOR written for exactly this class -- and missed
 all three that were really blind. Running the gates is the only thing that answers the question.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -54,8 +55,13 @@ ALLOW_FILE = "empty_scope_allow.json"
 # package" -- a legitimate refusal, but it answers a different question than the one being asked,
 # and it would hide a blind gate behind a shape complaint.
 SHAPE_FILES = (
-    "Package.swift", "Makefile", "pyproject.toml", "Cargo.toml", "CMakeLists.txt",
-    ".gatesrc", "package.json",
+    "Package.swift",
+    "Makefile",
+    "pyproject.toml",
+    "Cargo.toml",
+    "CMakeLists.txt",
+    ".gatesrc",
+    "package.json",
 )
 
 # Skipped by name, always: running this gate inside its own skeleton builds another skeleton.
@@ -65,7 +71,16 @@ TIMEOUT = 90
 
 # Directories never worth copying into a skeleton -- large, generated, and irrelevant to the
 # question. Their absence is part of the point.
-SKIP_DIRS = {".git", ".build", "build", "node_modules", ".venv", "venv", "__pycache__", ".mypy_cache"}
+SKIP_DIRS = {
+    ".git",
+    ".build",
+    "build",
+    "node_modules",
+    ".venv",
+    "venv",
+    "__pycache__",
+    ".mypy_cache",
+}
 
 
 def scratch_git(*args, check=False):
@@ -73,8 +88,7 @@ def scratch_git(*args, check=False):
     and GIT_INDEX_FILE are dropped, or `git init <skeleton>` from a linked worktree's hook
     re-initialises the REAL repository (and flips its core.bare), and the skeleton's config,
     add and commit land there too. See `_gitutil.foreign_repo_env`."""
-    return subprocess.run(["git", *args], check=check, capture_output=True,
-                          env=foreign_repo_env())
+    return subprocess.run(["git", *args], check=check, capture_output=True, env=foreign_repo_env())
 
 
 def gate_dir(root):
@@ -122,8 +136,11 @@ def build_skeleton(root, gates, workdir):
     being tested for. A skeleton without them tests nothing.
     """
     scratch_git("init", "-q", workdir, check=True)
-    shutil.copytree(gates, os.path.join(workdir, os.path.basename(gates)),
-                    ignore=shutil.ignore_patterns(*SKIP_DIRS))
+    shutil.copytree(
+        gates,
+        os.path.join(workdir, os.path.basename(gates)),
+        ignore=shutil.ignore_patterns(*SKIP_DIRS),
+    )
     for name in SHAPE_FILES:
         source = os.path.join(root, name)
         if os.path.isfile(source):
@@ -185,7 +202,11 @@ def sweep(skeleton, gate_name, names, timeout=None):
         try:
             result = subprocess.run(
                 [sys.executable, os.path.join(skeleton, gate_name, name)],
-                cwd=skeleton, capture_output=True, text=True, timeout=timeout, check=False,
+                cwd=skeleton,
+                capture_output=True,
+                text=True,
+                timeout=timeout,
+                check=False,
                 # Inside the skeleton, not the hook's repo: with the hook's GIT_DIR a gate's git
                 # calls would read the REAL tree, and the sweep would measure the wrong thing.
                 env=foreign_repo_env(),
@@ -207,8 +228,7 @@ def sweep(skeleton, gate_name, names, timeout=None):
 
 def gate_names(gates):
     return sorted(
-        e for e in os.listdir(gates)
-        if e.startswith("check_") and e.endswith(".py") and e != SELF
+        e for e in os.listdir(gates) if e.startswith("check_") and e.endswith(".py") and e != SELF
     )
 
 
@@ -266,11 +286,15 @@ def main(argv=None):
 
     if unexcused or stale or unrunnable:
         return 1
-    ok(f"empty scope: {len(names)} gate(s) swept over an empty tree, "
-       f"{len(names) - len(blind)} refused to report compliance")
+    ok(
+        f"empty scope: {len(names)} gate(s) swept over an empty tree, "
+        f"{len(names) - len(blind)} refused to report compliance"
+    )
     if known_blind:
-        warn(f"{len(known_blind)} gate(s) are KNOWN blind and still unguarded -- "
-             f"this list may only shrink, see {os.path.basename(gates)}/{ALLOW_FILE}")
+        warn(
+            f"{len(known_blind)} gate(s) are KNOWN blind and still unguarded -- "
+            f"this list may only shrink, see {os.path.basename(gates)}/{ALLOW_FILE}"
+        )
     return 0
 
 
@@ -289,26 +313,32 @@ def probe():
                 handle.write(body)
 
         # Counts files under Sources and reports success regardless -- the class, exactly.
-        gate("check_blind.py",
-             "import os, sys\n"
-             "n = sum(len(f) for _, _, f in os.walk('Sources'))\n"
-             "print(f'ok {n} files clean')\n"
-             "sys.exit(0)\n")
+        gate(
+            "check_blind.py",
+            "import os, sys\n"
+            "n = sum(len(f) for _, _, f in os.walk('Sources'))\n"
+            "print(f'ok {n} files clean')\n"
+            "sys.exit(0)\n",
+        )
         # Same scan, with the guard.
-        gate("check_guarded.py",
-             "import os, sys\n"
-             "n = sum(len(f) for _, _, f in os.walk('Sources'))\n"
-             "if not n:\n"
-             "    print('x scanned nothing')\n"
-             "    sys.exit(1)\n"
-             "sys.exit(0)\n")
+        gate(
+            "check_guarded.py",
+            "import os, sys\n"
+            "n = sum(len(f) for _, _, f in os.walk('Sources'))\n"
+            "if not n:\n"
+            "    print('x scanned nothing')\n"
+            "    sys.exit(1)\n"
+            "sys.exit(0)\n",
+        )
 
         # A gate that does not apply on this host and SAYS so, exiting 0: a
         # named non-run, not a pass (a macOS-only check on a Linux runner).
-        gate("check_foreign_host.py",
-             "import sys\n"
-             "print('foreign-host: not applicable on this OS (nothing to sign here)')\n"
-             "sys.exit(0)\n")
+        gate(
+            "check_foreign_host.py",
+            "import sys\n"
+            "print('foreign-host: not applicable on this OS (nothing to sign here)')\n"
+            "sys.exit(0)\n",
+        )
 
         names = gate_names(tools)
         with tempfile.TemporaryDirectory() as work:
@@ -316,8 +346,11 @@ def probe():
             blind, _unrunnable = sweep(skeleton, "tools", names)
 
         cases = [
-            ("all gates are discovered",
-             ["check_blind.py", "check_foreign_host.py", "check_guarded.py"], names),
+            (
+                "all gates are discovered",
+                ["check_blind.py", "check_foreign_host.py", "check_guarded.py"],
+                names,
+            ),
             ("the unguarded gate is caught passing over nothing", True, "check_blind.py" in blind),
             ("the guarded gate is not", False, "check_guarded.py" in blind),
             ("a named not-applicable skip is not a pass", False, "check_foreign_host.py" in blind),
@@ -332,8 +365,10 @@ def probe():
 
         # Excused: the sweep must go quiet.
         with open(os.path.join(tools, ALLOW_FILE), "w", encoding="utf-8") as handle:
-            json.dump({"known_blind":
-                       {"check_blind.py": "a fixture, excused to prove the list works"}}, handle)
+            json.dump(
+                {"known_blind": {"check_blind.py": "a fixture, excused to prove the list works"}},
+                handle,
+            )
         if main(["--root", root]) != 0:
             err("probe: an EXCUSED blind gate still failed the sweep")
             bad += 1
@@ -342,8 +377,13 @@ def probe():
 
         # Stale: excuse the GUARDED one, which does not pass on nothing.
         with open(os.path.join(tools, ALLOW_FILE), "w", encoding="utf-8") as handle:
-            json.dump({"known_blind": {"check_blind.py": "still blind"},
-                       "legitimate": {"check_guarded.py": "excused, but it was fixed"}}, handle)
+            json.dump(
+                {
+                    "known_blind": {"check_blind.py": "still blind"},
+                    "legitimate": {"check_guarded.py": "excused, but it was fixed"},
+                },
+                handle,
+            )
         if main(["--root", root]) == 0:
             err("probe: a STALE excuse passed -- the allowlist is a rug, not a ratchet")
             bad += 1
@@ -358,8 +398,9 @@ def probe():
         with open(os.path.join(tools, "check_hang.py"), "w", encoding="utf-8") as handle:
             handle.write("import time\ntime.sleep(30)\n")
         with open(os.path.join(tools, ALLOW_FILE), "w", encoding="utf-8") as handle:
-            json.dump({"legitimate": {"check_hang.py": "slow but correct on a loaded machine"}},
-                      handle)
+            json.dump(
+                {"legitimate": {"check_hang.py": "slow but correct on a loaded machine"}}, handle
+            )
         globals()["TIMEOUT"] = 1
         try:
             buf = io.StringIO()
@@ -371,10 +412,16 @@ def probe():
             globals()["TIMEOUT"] = TIMEOUT
         for label, want, got in [
             ("a gate that never reports does not pass the sweep", 1, hang_rc),
-            ("its silence is reported as no verdict, not as a pass",
-             True, "gave NO verdict" in hang_err + str(hang_rc)),
-            ("and it is NOT told to delete a correct excuse",
-             False, "delete its excuse" in hang_err),
+            (
+                "its silence is reported as no verdict, not as a pass",
+                True,
+                "gave NO verdict" in hang_err + str(hang_rc),
+            ),
+            (
+                "and it is NOT told to delete a correct excuse",
+                False,
+                "delete its excuse" in hang_err,
+            ),
         ]:
             if want != got:
                 err(f"probe: {label} (wanted {want!r}, got {got!r})")

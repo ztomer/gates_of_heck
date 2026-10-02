@@ -32,6 +32,7 @@ PROFDATA = "dd/Build/ProfileData/FE-DEADBEEF/Coverage.profdata"
 
 def _load_helper():
     import importlib.util
+
     spec = importlib.util.spec_from_file_location("coverage_swift_sel", SWIFT_HELPER)
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
@@ -71,13 +72,15 @@ def test_pick_binary_ambiguity_is_named_exit_2(tmp_path):
 def _run_gate(bin_dir: Path, *args: str):
     env = dict(os.environ)
     env["PATH"] = f"{bin_dir}:/usr/bin:/bin"
-    for k in ("GOH_COV_FLOOR_SWIFT", "GOH_COV_SWIFT_ENGINE",
-              "GOH_COV_SCHEME", "GOH_COV_XCRESULT"):
+    for k in ("GOH_COV_FLOOR_SWIFT", "GOH_COV_SWIFT_ENGINE", "GOH_COV_SCHEME", "GOH_COV_XCRESULT"):
         env.pop(k, None)
     env["GOH_COV_SCHEME"] = "App"
     return subprocess.run(
         ["/bin/bash", str(REPO_ROOT / "gates" / "coverage_gate.sh"), *args],
-        cwd=str(bin_dir), capture_output=True, text=True, env=env,
+        cwd=str(bin_dir),
+        capture_output=True,
+        text=True,
+        env=env,
     )
 
 
@@ -87,24 +90,37 @@ def test_xcodebuild_engine_pairs_fresh_release_binary(tmp_path):
     and the run must reach a real verdict (50% vs the floor)."""
     log = tmp_path / "xcrun-args.log"
     root = _root(tmp_path / "c")
-    bin_ = mk_fake_swift_toolchain(root, second_config=True,
-                                   xcrun_log=log)
+    bin_ = mk_fake_swift_toolchain(root, second_config=True, xcrun_log=log)
     env_dd = str(root / "dd")
     r = subprocess.run(
-        ["/bin/bash", str(REPO_ROOT / "gates" / "coverage_gate.sh"),
-         "--lang", "swift", "--engine", "xcodebuild",
-         "--floor", "40", str(root / "proj")],
-        cwd=str(root), capture_output=True, text=True,
-        env={**dict(os.environ),
-             "PATH": f"{bin_}:/usr/bin:/bin",
-             "GOH_COV_SCHEME": "App", "GOH_COV_DD": env_dd},
+        [
+            "/bin/bash",
+            str(REPO_ROOT / "gates" / "coverage_gate.sh"),
+            "--lang",
+            "swift",
+            "--engine",
+            "xcodebuild",
+            "--floor",
+            "40",
+            str(root / "proj"),
+        ],
+        cwd=str(root),
+        capture_output=True,
+        text=True,
+        env={
+            **dict(os.environ),
+            "PATH": f"{bin_}:/usr/bin:/bin",
+            "GOH_COV_SCHEME": "App",
+            "GOH_COV_DD": env_dd,
+        },
     )
     assert r.returncode == 0, r.stdout + r.stderr
     assert "50." in r.stdout + r.stderr
     invoked = log.read_text()
     assert DD_BINARIES["Release"].split("/")[-2] == "MacOS"
     assert str(root / DD_BINARIES["Release"]) in invoked, (
-        f"xcrun was not given the fresh binary; argv log:\n{invoked}")
+        f"xcrun was not given the fresh binary; argv log:\n{invoked}"
+    )
     assert str(root / DD_BINARIES["Debug"]) not in invoked
 
 
@@ -116,9 +132,16 @@ def test_uncaught_exception_exits_2_naming_error_not_below_floor(tmp_path):
     src = tmp_path / "d" / "proj" / "Sources" / "pkg" / "lib.swift"
     src.write_bytes(b'let bad = "\xe9"\n' + b"\n" * 9)
     r = subprocess.run(
-        [sys.executable, str(SWIFT_HELPER), "--floor", "40",
-         "--proj", str(tmp_path / "d" / "proj")],
-        capture_output=True, text=True,
+        [
+            sys.executable,
+            str(SWIFT_HELPER),
+            "--floor",
+            "40",
+            "--proj",
+            str(tmp_path / "d" / "proj"),
+        ],
+        capture_output=True,
+        text=True,
         env={**dict(os.environ), "PATH": f"{bin_}:/usr/bin:/bin"},
     )
     assert r.returncode == 2, (r.returncode, r.stdout, r.stderr)

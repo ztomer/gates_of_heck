@@ -30,18 +30,22 @@ CHECKER = "checks/check_md_links.py"
 
 
 def _run(repo, *args):
-    return subprocess.run([sys.executable, str(REPO_ROOT / CHECKER), *args],
-                          cwd=repo, capture_output=True, text=True)
+    return subprocess.run(
+        [sys.executable, str(REPO_ROOT / CHECKER), *args], cwd=repo, capture_output=True, text=True
+    )
 
 
 # ── the slug, which is the whole difficulty ──────────────────────────────────
+
 
 def test_a_numbered_heading_slugs_like_github():
     """app_updates' real heading. The section number becomes part of the slug,
     the backticked `.90` keeps its digits and loses its punctuation, the trailing
     comma goes, and every space becomes a hyphen."""
-    assert md.slugify("4.8. What `.90` can actually do, measured") == \
-        "48-what-90-can-actually-do-measured"
+    assert (
+        md.slugify("4.8. What `.90` can actually do, measured")
+        == "48-what-90-can-actually-do-measured"
+    )
 
 
 def test_a_backticked_heading_keeps_its_inner_text():
@@ -69,7 +73,9 @@ def test_a_setext_heading_is_a_heading():
 def test_an_explicit_id_is_an_anchor():
     """`{#my-own-id}` names the heading directly, so the literal wins and the
     derived slug is not what a link has to use."""
-    assert "my-own-id" in md.anchors("## Custom {#my-own-id}\n"), md.anchors("## Custom {#my-own-id}\n")
+    assert "my-own-id" in md.anchors("## Custom {#my-own-id}\n"), md.anchors(
+        "## Custom {#my-own-id}\n"
+    )
 
 
 def test_a_raw_html_anchor_is_an_anchor():
@@ -92,6 +98,7 @@ def test_a_hash_inside_a_fenced_block_is_not_a_heading():
 
 
 # ── the defect, both ways ────────────────────────────────────────────────────
+
 
 def test_a_wrong_anchor_is_red(tmp_path):
     """The audit's own error: the anchor derived without the section number."""
@@ -127,11 +134,13 @@ def test_the_right_anchor_is_green(tmp_path):
     repo = tmp_path / "app"
     repo.mkdir()
     git(repo, "init", "-q", "-b", "main")
-    write(repo, "README.md",
-          "[what .90 can actually do](ROADMAP-waf-and-fleet.md"
-          "#48-what-90-can-actually-do-measured)\n")
-    write(repo, "ROADMAP-waf-and-fleet.md",
-          "## 4.8. What `.90` can actually do, measured\n")
+    write(
+        repo,
+        "README.md",
+        "[what .90 can actually do](ROADMAP-waf-and-fleet.md"
+        "#48-what-90-can-actually-do-measured)\n",
+    )
+    write(repo, "ROADMAP-waf-and-fleet.md", "## 4.8. What `.90` can actually do, measured\n")
     commit_all(repo)
     assert _run(repo).returncode == 0, _run(repo).stderr
 
@@ -145,7 +154,11 @@ def test_a_directory_link_resolves(tmp_path):
     git(repo, "init", "-q", "-b", "main")
     (repo / "docs" / "decisions").mkdir(parents=True)
     write(repo, "docs/decisions/0001-x.md", "# x\n")
-    write(repo, "README.md", "every settled question is a record in [docs/decisions/](docs/decisions/)\n")
+    write(
+        repo,
+        "README.md",
+        "every settled question is a record in [docs/decisions/](docs/decisions/)\n",
+    )
     commit_all(repo)
     assert _run(repo).returncode == 0, _run(repo).stderr
 
@@ -164,6 +177,7 @@ def test_a_relative_link_resolves_against_the_linking_file(tmp_path):
 
 # ── what is deliberately out of scope, and says so ───────────────────────────
 
+
 def test_http_and_mailto_links_are_skipped_and_counted(tmp_path):
     """Nothing here can know whether a remote document still exists, and a gate
     that pretends to cries wolf. But the COUNT is reported, so a file of nothing
@@ -171,8 +185,7 @@ def test_http_and_mailto_links_are_skipped_and_counted(tmp_path):
     repo = tmp_path / "app"
     repo.mkdir()
     git(repo, "init", "-q", "-b", "main")
-    write(repo, "README.md",
-          "[a](https://example.invalid/p) and [b](mailto:x@example.invalid)\n")
+    write(repo, "README.md", "[a](https://example.invalid/p) and [b](mailto:x@example.invalid)\n")
     commit_all(repo)
     r = _run(repo)
     assert r.returncode == 0, r.stdout + r.stderr
@@ -208,10 +221,13 @@ def test_a_link_in_a_code_span_is_an_example_not_a_finding(tmp_path):
     repo = tmp_path / "app"
     repo.mkdir()
     git(repo, "init", "-q", "-b", "main")
-    write(repo, "README.md",
-          "Inline `[x](nope.md)` is an example.\n\n"
-          "```\n[x](also-nope.md)\n```\n\n"
-          "    [x](indented-nope.md)\n")
+    write(
+        repo,
+        "README.md",
+        "Inline `[x](nope.md)` is an example.\n\n"
+        "```\n[x](also-nope.md)\n```\n\n"
+        "    [x](indented-nope.md)\n",
+    )
     commit_all(repo)
     assert _run(repo).returncode == 0, _run(repo).stderr
 
@@ -251,6 +267,7 @@ def test_a_link_title_does_not_become_part_of_the_target(tmp_path):
 
 # ── named non-runs, and the empty-scope contract ─────────────────────────────
 
+
 def test_a_repo_with_no_markdown_is_a_named_non_run(tmp_path):
     repo = tmp_path / "code"
     repo.mkdir()
@@ -280,13 +297,14 @@ def test_a_vendored_doc_tree_can_be_excluded(tmp_path):
     repo = tmp_path / "z"
     repo.mkdir()
     git(repo, "init", "-q", "-b", "main")
-    write(repo, "vendor/camoufox-rs/docs/PROTOCOL.md",
-          "See [CookieOptions](#cookieoptions).\n")
+    write(repo, "vendor/camoufox-rs/docs/PROTOCOL.md", "See [CookieOptions](#cookieoptions).\n")
     write(repo, "README.md", "# z\n")
     commit_all(repo)
 
     assert _run(repo).returncode == 1, "the vendored anchor was not policed"
-    assert _run(repo, "--exclude", "vendor/").returncode == 0, _run(repo, "--exclude", "vendor/").stderr
+    assert _run(repo, "--exclude", "vendor/").returncode == 0, _run(
+        repo, "--exclude", "vendor/"
+    ).stderr
 
 
 def test_a_bad_exclude_regex_is_exit_2_not_a_silent_exemption(tmp_path):
@@ -321,6 +339,7 @@ def test_json_output(tmp_path):
 
 # ── staged scope is INDEX scope (contract #3) ───────────────────────────────
 
+
 def test_staged_judges_the_commit_not_the_worktree(tmp_path):
     """A broken link fixed in the commit must pass; one introduced only in the
     editor must not block the commit."""
@@ -334,15 +353,16 @@ def test_staged_judges_the_commit_not_the_worktree(tmp_path):
     write(repo, "docs.md", "# there\n")
     git(repo, "add", "-A")
     assert _run(repo, "--staged").returncode == 0, (
-        "a fix staged over a broken link still failed: the worktree was read")
+        "a fix staged over a broken link still failed: the worktree was read"
+    )
 
     write(repo, "README.md", "[x](other.md)\n")
     r = _run(repo, "--staged")
-    assert r.returncode == 0, (
-        f"an unstaged edit blocked a clean commit: {r.stdout}{r.stderr}")
+    assert r.returncode == 0, f"an unstaged edit blocked a clean commit: {r.stdout}{r.stderr}"
 
 
 # ── calibration: these cases can go RED ─────────────────────────────────────
+
 
 def test_calibration_a_checker_that_never_reads_anchors_is_green(tmp_path):
     """The blind shape: resolve the FILE, ignore the fragment. This is what the
@@ -368,20 +388,28 @@ def test_calibration_the_probe_goes_red_when_the_anchor_check_is_dropped(tmp_pat
     for, and only breaking the checker demonstrates it."""
     source = (REPO_ROOT / CHECKER).read_text(encoding="utf-8")
     blind = tmp_path / "blind.py"
-    blind.write_text(source.replace("if fragment and fragment not in target_anchors:",
-                                    "if False:"), encoding="utf-8")
+    blind.write_text(
+        source.replace("if fragment and fragment not in target_anchors:", "if False:"),
+        encoding="utf-8",
+    )
     import os
 
-    r = subprocess.run([sys.executable, str(blind), "--probe"], cwd=tmp_path,
-                       capture_output=True, text=True,
-                       env=dict(os.environ, PYTHONPATH=os.pathsep.join(
-            [str(REPO_ROOT / "checks"), str(REPO_ROOT)])))
+    r = subprocess.run(
+        [sys.executable, str(blind), "--probe"],
+        cwd=tmp_path,
+        capture_output=True,
+        text=True,
+        env=dict(
+            os.environ, PYTHONPATH=os.pathsep.join([str(REPO_ROOT / "checks"), str(REPO_ROOT)])
+        ),
+    )
     assert r.returncode == 1, r.stdout + r.stderr
     assert "hand-mis-derived anchor is RED" in r.stderr, r.stderr
 
 
 def test_the_probe_runs_and_is_green():
-    r = subprocess.run([sys.executable, str(REPO_ROOT / CHECKER), "--probe"],
-                       capture_output=True, text=True)
+    r = subprocess.run(
+        [sys.executable, str(REPO_ROOT / CHECKER), "--probe"], capture_output=True, text=True
+    )
     assert r.returncode == 0, r.stdout + r.stderr
     assert "both go red" in r.stdout, r.stdout

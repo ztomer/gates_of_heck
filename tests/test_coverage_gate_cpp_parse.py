@@ -34,9 +34,7 @@ def test_cpp_reads_the_named_lines_total_not_the_last_column():
     # CODE only. The comment above the parse names the old bug on purpose, and
     # a test that cannot tell prose from an expression would forbid explaining
     # it.
-    cpp = "\n".join(
-        ln for ln in body[start:end].splitlines() if not ln.lstrip().startswith("#")
-    )
+    cpp = "\n".join(ln for ln in body[start:end].splitlines() if not ln.lstrip().startswith("#"))
 
     assert "$NF" not in cpp, (
         "the cpp coverage percent is parsed positionally again -- the TOTAL "
@@ -76,7 +74,9 @@ def test_cpp_line_percent_extraction_picks_lines_out_of_a_real_summary():
     }
     r = subprocess.run(
         ["python3", "-c", snippet],
-        input=json.dumps(summary), capture_output=True, text=True,
+        input=json.dumps(summary),
+        capture_output=True,
+        text=True,
     )
     assert r.returncode == 0, r.stderr
     assert r.stdout.strip() == "71.21", (
@@ -96,6 +96,8 @@ def test_cpp_line_percent_extraction_stays_quiet_on_junk():
     for junk in ("", "not json", '{"data": []}', '{"data": [{"totals": {}}]}'):
         r = subprocess.run(
             ["python3", "-c", snippet],
-            input=junk, capture_output=True, text=True,
+            input=junk,
+            capture_output=True,
+            text=True,
         )
         assert r.stdout.strip() == "", f"{junk!r} produced {r.stdout!r}"

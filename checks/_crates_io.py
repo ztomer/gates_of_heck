@@ -10,6 +10,7 @@ whole reason this is a function rather than an inline expression: a currency
 check that treats an unreachable index as a current version converts an
 absence of evidence into a clean bill.
 """
+
 from __future__ import annotations
 
 import json
@@ -29,5 +30,3 @@ def latest_stable(name: str) -> str | None:
     except (urllib.error.URLError, OSError, ValueError, json.JSONDecodeError):
         return None
     return (doc.get("crate") or {}).get("max_stable_version")
-
-

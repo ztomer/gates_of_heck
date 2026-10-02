@@ -82,8 +82,8 @@ def _start_time(pid):
     """
     try:
         out = subprocess.run(
-            ["ps", "-o", "lstart=", "-p", str(pid)],
-            capture_output=True, text=True, timeout=10).stdout
+            ["ps", "-o", "lstart=", "-p", str(pid)], capture_output=True, text=True, timeout=10
+        ).stdout
     except (OSError, subprocess.SubprocessError):
         return ""
     return " ".join(out.split())
@@ -130,8 +130,7 @@ def _expired(max_hold):
     return (time.time() - created) >= max_hold
 
 
-def acquire(label="desktop run", timeout=DEFAULT_TIMEOUT,
-            max_hold=DEFAULT_MAX_HOLD, log=print):
+def acquire(label="desktop run", timeout=DEFAULT_TIMEOUT, max_hold=DEFAULT_MAX_HOLD, log=print):
     """Take the lock, waiting out a live peer. Raises rather than proceeding
     unlocked -- proceeding is the corrupting case this module exists to stop."""
     waited = 0
@@ -143,26 +142,33 @@ def acquire(label="desktop run", timeout=DEFAULT_TIMEOUT,
         except FileExistsError:
             if not _owner_alive():
                 owner = _owner()
-                log(f"→ stale desktop lock from "
-                    f"{owner[2] if owner else 'an unknown run'} -- reclaiming")
+                log(
+                    f"→ stale desktop lock from "
+                    f"{owner[2] if owner else 'an unknown run'} -- reclaiming"
+                )
                 _force_remove()
                 continue
             if _expired(max_hold):
                 owner = _owner()
-                log(f"→ desktop held past {max_hold}s by "
-                    f"{owner[2] if owner else 'an unknown run'} -- wedged, reclaiming")
+                log(
+                    f"→ desktop held past {max_hold}s by "
+                    f"{owner[2] if owner else 'an unknown run'} -- wedged, reclaiming"
+                )
                 _force_remove()
                 continue
             if not announced:
                 owner = _owner()
-                log(f"→ the desktop is held by "
-                    f"{owner[2] if owner else 'an unknown run'}; waiting up to {timeout}s")
+                log(
+                    f"→ the desktop is held by "
+                    f"{owner[2] if owner else 'an unknown run'}; waiting up to {timeout}s"
+                )
                 announced = True
             if waited >= timeout:
                 owner = _owner()
                 raise DesktopBusy(
                     f"desktop still held by "
-                    f"{owner[2] if owner else 'an unknown run'} after {timeout}s")
+                    f"{owner[2] if owner else 'an unknown run'} after {timeout}s"
+                )
             time.sleep(1)
             waited += 1
     pid = os.getpid()
@@ -191,8 +197,9 @@ def release():
 
 
 @contextlib.contextmanager
-def desktop_lock(label="desktop run", timeout=DEFAULT_TIMEOUT,
-                 max_hold=DEFAULT_MAX_HOLD, log=print):
+def desktop_lock(
+    label="desktop run", timeout=DEFAULT_TIMEOUT, max_hold=DEFAULT_MAX_HOLD, log=print
+):
     acquire(label, timeout=timeout, max_hold=max_hold, log=log)
     try:
         yield

@@ -5,6 +5,7 @@ On 2026-09-23 a port in progress was built into it from uncommitted sources and
 refused another repo's commits with a false ceiling verdict for an hour. The
 script runs against a throwaway clone so both directions can be driven.
 """
+
 from __future__ import annotations
 
 import os
@@ -23,16 +24,24 @@ def check(tree: Path, **env: str) -> subprocess.CompletedProcess[str]:
         ["bash", str(tree / "scripts" / "build-goh.sh")],
         capture_output=True,
         text=True,
-        env={"PATH": os.environ["PATH"], "HOME": os.environ.get("HOME", ""),
-             "GOH_BUILD_PUBLISH_CHECK_ONLY": "1", **env},
+        env={
+            "PATH": os.environ["PATH"],
+            "HOME": os.environ.get("HOME", ""),
+            "GOH_BUILD_PUBLISH_CHECK_ONLY": "1",
+            **env,
+        },
     )
 
 
 @pytest.fixture
 def clone(tmp_path: Path) -> Path:
     tree = tmp_path / "goh"
-    subprocess.run(["git", "clone", "--quiet", "--depth", "1", f"file://{ROOT}", str(tree)], check=True)
-    shutil.copy2(SCRIPT, tree / "scripts" / "build-goh.sh")  # the script under test, committed or not
+    subprocess.run(
+        ["git", "clone", "--quiet", "--depth", "1", f"file://{ROOT}", str(tree)], check=True
+    )
+    shutil.copy2(
+        SCRIPT, tree / "scripts" / "build-goh.sh"
+    )  # the script under test, committed or not
     return tree
 
 

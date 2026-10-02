@@ -25,6 +25,7 @@ that works empty is not an escape hatch, it is an off switch.
 In --staged mode this polices THE INDEX (what will be committed), via
 checks/_gitutil.py — not the working tree.
 """
+
 from __future__ import annotations  # OS python3 may be 3.9: `X | Y` must not evaluate at def time
 
 import argparse
@@ -55,8 +56,12 @@ PATTERNS = (
     # out — measured 2026-09-19 over every local repo: 33 hits at 8 chars,
     # one of them real; exactly that one at 32. A JSON file cannot carry a
     # marker, so a legitimate long fixture value is excluded by path.
-    ("credential-named key with a long value",
-     re.compile(r"""(?i)\b(?:api_key|apikey|api_token|access_token|auth_token|client_secret|secret_key|password)\b["']?\s*[:=]\s*["'][^"'\s]{32,}["']""")),
+    (
+        "credential-named key with a long value",
+        re.compile(
+            r"""(?i)\b(?:api_key|apikey|api_token|access_token|auth_token|client_secret|secret_key|password)\b["']?\s*[:=]\s*["'][^"'\s]{32,}["']"""
+        ),
+    ),
 )
 
 # Suppression marker with a MANDATORY reason (non-whitespace after the colon).
@@ -70,8 +75,7 @@ def _suppressed(prev_line: str | None, line: str) -> bool:
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--staged", action="store_true")
-    ap.add_argument("--exclude", default="",
-                    help="regex; matching repo-relative paths are skipped")
+    ap.add_argument("--exclude", default="", help="regex; matching repo-relative paths are skipped")
     args = ap.parse_args()
 
     skip = re.compile(args.exclude) if args.exclude else None
@@ -104,9 +108,11 @@ def main() -> int:
 
     if bad:
         scope = "staged" if args.staged else "tracked"
-        print(f"✗ DISALLOWED SECRET in {len(bad)} location(s) ({scope}) — "
-              f"rotate the credential; revoked vectors use "
-              f"`secret-ok: <reason>` on the line or above:")
+        print(
+            f"✗ DISALLOWED SECRET in {len(bad)} location(s) ({scope}) — "
+            f"rotate the credential; revoked vectors use "
+            f"`secret-ok: <reason>` on the line or above:"
+        )
         for b in bad[:200]:
             print("  " + b)
         if len(bad) > 200:

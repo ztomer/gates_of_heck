@@ -13,6 +13,7 @@ Posture inherited from the ancestors:
 
 No provider SDK: urllib from the standard library only.
 """
+
 from __future__ import annotations
 
 import fcntl
@@ -99,9 +100,12 @@ def resolve_api_key(api_key: str | None = None) -> str | None:
 def extract_text(response_payload: dict) -> str:
     """Pull choices[0].message.content out of a chat-completion response."""
     try:
-        return (response_payload.get("choices") or [{}])[0].get("message", {}).get(
-            "content", ""
-        ).strip()
+        return (
+            (response_payload.get("choices") or [{}])[0]
+            .get("message", {})
+            .get("content", "")
+            .strip()
+        )
     except (AttributeError, IndexError, TypeError):
         return ""
 
@@ -152,7 +156,8 @@ class EvalTransport:
                         raise TransportError(
                             f"whole-call deadline of {self.timeout}s exceeded "
                             f"while reading {url} (socket timeouts are per-op; "
-                            "slow-drip bodies are bounded only by this)")
+                            "slow-drip bodies are bounded only by this)"
+                        )
                     # Shrink the per-op socket window to what's left of the
                     # deadline so even ONE stalled read cannot overrun it.
                     sock = getattr(getattr(resp.fp, "raw", None), "_sock", None)
@@ -164,8 +169,7 @@ class EvalTransport:
                     # delivered.
                     read_some = getattr(resp, "read1", None)
                     try:
-                        chunk = (read_some(8192) if read_some
-                                 else resp.read(8192))
+                        chunk = read_some(8192) if read_some else resp.read(8192)
                     except TimeoutError as exc:
                         # Inside the read loop the socket window IS the
                         # remaining whole-call budget — a timeout here is the
@@ -173,7 +177,8 @@ class EvalTransport:
                         raise TransportError(
                             f"whole-call deadline of {self.timeout}s exceeded "
                             f"while reading {url} (socket timeouts are per-op; "
-                            "slow-drip bodies are bounded only by this)") from exc
+                            "slow-drip bodies are bounded only by this)"
+                        ) from exc
                     if not chunk:
                         break
                     chunks.append(chunk)
@@ -245,10 +250,7 @@ class EvalTransport:
         return self._parsed, self._samples
 
     def _check_floor(self) -> None:
-        if (
-            self._samples >= self.min_samples
-            and self._parsed / self._samples < self.parse_floor
-        ):
+        if self._samples >= self.min_samples and self._parsed / self._samples < self.parse_floor:
             raise ParseRateError(self._parsed, self._samples, self.parse_floor)
 
 
@@ -306,8 +308,7 @@ class SweepState:
 
     def __init__(self, path: str | os.PathLike, on_corrupt: str = "raise"):
         if on_corrupt not in ("raise", "discard"):
-            raise ValueError(
-                f"on_corrupt must be 'raise' or 'discard', got {on_corrupt!r}")
+            raise ValueError(f"on_corrupt must be 'raise' or 'discard', got {on_corrupt!r}")
         self.path = os.fspath(path)
         self.on_corrupt = on_corrupt
 
@@ -331,15 +332,13 @@ class SweepState:
             return {"version": STATE_VERSION, "planned": [], "done": {}, "errors": {}}
         except (json.JSONDecodeError, UnicodeDecodeError) as exc:
             if self.on_corrupt == "discard":
-                return {"version": STATE_VERSION, "planned": [],
-                        "done": {}, "errors": {}}
+                return {"version": STATE_VERSION, "planned": [], "done": {}, "errors": {}}
             raise SweepStateCorrupt(
                 f"sweep state file is corrupt: {self.path} ({exc}); "
                 "recovery is explicit — reopen with "
                 "SweepState(path, on_corrupt='discard') to discard-and-restart"
             ) from exc
-        if not isinstance(state, dict) or not isinstance(
-                state.get("done", {}), dict):
+        if not isinstance(state, dict) or not isinstance(state.get("done", {}), dict):
             raise SweepStateCorrupt(
                 f"sweep state file has the wrong shape: {self.path}; "
                 "recovery is explicit — reopen with "
@@ -367,6 +366,7 @@ class SweepState:
     def _key(model: str, task: str) -> str:
         def esc(s: str) -> str:
             return s.replace("%", "%25").replace("|", "%7C")
+
         return f"{esc(model)}|{esc(task)}"
 
     def start(self, models: list[str], tasks: list[str]) -> None:
@@ -384,12 +384,7 @@ class SweepState:
         with self._locked():
             state = self._read()
         done = state.get("done", {})
-        return [
-            (m, t)
-            for m in models
-            for t in tasks
-            if self._key(m, t) not in done
-        ]
+        return [(m, t) for m in models for t in tasks if self._key(m, t) not in done]
 
     def mark_done(self, model: str, task: str, note: str = "") -> None:
         with self._locked():

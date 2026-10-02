@@ -41,8 +41,9 @@ def _load_helper():
 
 # Canned swiftlint JSON report — field names, capitalization ("Error") and
 # absolute paths exactly as `swiftlint lint --reporter json` emits them.
-def _report_entry(file: str, line: int, rule: str, reason: str,
-                  severity: str = "Error", char: int = 1) -> dict:
+def _report_entry(
+    file: str, line: int, rule: str, reason: str, severity: str = "Error", char: int = 1
+) -> dict:
     return {
         "character": char,
         "file": file,
@@ -57,6 +58,8 @@ def _report_entry(file: str, line: int, rule: str, reason: str,
 def live_path(root: Path, name: str = "Sample.swift") -> str:
     """A violation path as the real reporter emits it: absolute, under root."""
     return str(root / "Sources" / name)
+
+
 REASON_160 = "Line should be 120 characters or less; currently it has 160 characters"
 
 BASELINE_ENTRY = {
@@ -75,7 +78,8 @@ BASELINE_ENTRY = {
 def run_cli(*args: str) -> subprocess.CompletedProcess:
     return subprocess.run(
         [sys.executable, str(HELPER), *args],
-        capture_output=True, text=True,
+        capture_output=True,
+        text=True,
     )
 
 
@@ -105,8 +109,7 @@ def test_normalize_path_strips_file_url_scheme(root):
     m = _load_helper()
     target = root / "Sources" / "S.swift"
     # A file:// URL and its bare absolute form must land on one string.
-    assert m.normalize_path(f"file://{target}", root) == \
-        m.normalize_path(str(target), root)
+    assert m.normalize_path(f"file://{target}", root) == m.normalize_path(str(target), root)
 
 
 def test_normalize_path_makes_baseline_and_report_forms_agree(root):
@@ -115,16 +118,21 @@ def test_normalize_path_makes_baseline_and_report_forms_agree(root):
     m = _load_helper()
     abs_form = m.normalize_path(str(root / "Sources" / "S.swift"), root)
     rel_form = m.normalize_path("Sources/S.swift", root)
-    stripped_form = m.normalize_path(
-        str(root / "Sources" / "S.swift").lstrip("/"), root)
+    stripped_form = m.normalize_path(str(root / "Sources" / "S.swift").lstrip("/"), root)
     assert abs_form == rel_form
     assert abs_form == stripped_form
 
 
 def test_match_key_ignores_line_column_and_severity_but_not_reason(root):
     m = _load_helper()
-    base = {"file": "Sources/S.swift", "ruleIdentifier": "r",
-            "reason": "has 160", "line": 3, "character": 1, "severity": "warning"}
+    base = {
+        "file": "Sources/S.swift",
+        "ruleIdentifier": "r",
+        "reason": "has 160",
+        "line": 3,
+        "character": 1,
+        "severity": "warning",
+    }
     moved = dict(base, line=99, character=40)
     errored = dict(base, severity="error")
     drifted = dict(base, reason="has 150")
@@ -147,10 +155,13 @@ def test_listed_violation_tolerated_exit_zero(root):
 def test_new_violation_fails_naming_file_rule_reason(root):
     b = write_baseline(root, [BASELINE_ENTRY])
     new_reason = "Line should be 120 characters or less; currently it has 200 characters"
-    r = write_report(root, [
-        _report_entry(live_path(root), 3, "line_length", REASON_160),
-        _report_entry(live_path(root, "Extra.swift"), 1, "line_length", new_reason),
-    ])
+    r = write_report(
+        root,
+        [
+            _report_entry(live_path(root), 3, "line_length", REASON_160),
+            _report_entry(live_path(root, "Extra.swift"), 1, "line_length", new_reason),
+        ],
+    )
     got = run_cli("--baseline", str(b), "--report", str(r), "--root", str(root))
     assert got.returncode == 1
     out = got.stdout + got.stderr
@@ -196,16 +207,16 @@ def test_unparseable_report_is_gate_error_naming_swiftlint_rc(root):
     b = write_baseline(root, [])
     r = root / "report.json"
     r.write_text("{not json")
-    got = run_cli("--baseline", str(b), "--report", str(r),
-                  "--root", str(root), "--swiftlint-rc", "70")
+    got = run_cli(
+        "--baseline", str(b), "--report", str(r), "--root", str(root), "--swiftlint-rc", "70"
+    )
     assert got.returncode == 2
     assert "70" in (got.stdout + got.stderr)
 
 
 def test_missing_baseline_is_gate_error(root):
     r = write_report(root, [])
-    got = run_cli("--baseline", str(root / "nope.json"),
-                  "--report", str(r), "--root", str(root))
+    got = run_cli("--baseline", str(root / "nope.json"), "--report", str(r), "--root", str(root))
     assert got.returncode == 2
     assert "nope.json" in (got.stdout + got.stderr)
 
@@ -232,7 +243,6 @@ def _mk_fake_swift(bin_dir: Path) -> None:
     mk_xcrun_find_shim(bin_dir, bin_dir / "swift")
 
 
-
 def _run_gate(proj: Path, env_extra: dict | None = None):
     env = dict(os.environ)
     env.pop("GOH_SWIFT_LINT_BASELINE", None)
@@ -242,7 +252,10 @@ def _run_gate(proj: Path, env_extra: dict | None = None):
         env.update(env_extra)
     return subprocess.run(
         ["/bin/bash", str(GATE), str(proj)],
-        cwd=proj, capture_output=True, text=True, env=env,
+        cwd=proj,
+        capture_output=True,
+        text=True,
+        env=env,
     )
 
 
@@ -251,8 +264,9 @@ def spm_proj(tmp_path: Path) -> Path:
     p = tmp_path / "proj"
     p.mkdir()
     (p / "Package.swift").write_text(
-        '// swift-tools-version:5.9\nimport PackageDescription\n'
-        'let package = Package(name: "x", targets: [])\n')
+        "// swift-tools-version:5.9\nimport PackageDescription\n"
+        'let package = Package(name: "x", targets: [])\n'
+    )
     return p
 
 
@@ -263,8 +277,7 @@ def _wired_env(spm_proj: Path, tmp_path: Path, **kw) -> dict:
     log.touch()
     _mk_fake_swiftlint(bin_dir, kw.pop("canned", None))
     _mk_fake_swift(bin_dir)
-    env = {"PATH": f"{bin_dir}:{os.environ['PATH']}",
-           "GOH_SHIM_LOG": str(log)}
+    env = {"PATH": f"{bin_dir}:{os.environ['PATH']}", "GOH_SHIM_LOG": str(log)}
     env.update(kw)
     return env
 
@@ -275,17 +288,18 @@ def test_gate_unset_env_keeps_plain_strict_invocation(spm_proj, tmp_path):
     assert r.returncode == 0, r.stdout + r.stderr
     argv = Path(env["GOH_SHIM_LOG"]).read_text()
     assert "--strict" in argv and "--reporter" not in argv, (
-        f"unset baseline must keep bare strict linting, saw: {argv}")
+        f"unset baseline must keep bare strict linting, saw: {argv}"
+    )
 
 
 def test_gate_set_env_runs_reporter_and_reconciles_green(spm_proj, tmp_path):
     canned = tmp_path / "canned.json"
-    canned.write_text(json.dumps(
-        [_report_entry(live_path(spm_proj), 3, "line_length", REASON_160)]))
+    canned.write_text(
+        json.dumps([_report_entry(live_path(spm_proj), 3, "line_length", REASON_160)])
+    )
     baseline = tmp_path / "b.json"
     baseline.write_text(json.dumps([BASELINE_ENTRY]))
-    env = _wired_env(spm_proj, tmp_path, canned=canned,
-                     GOH_SWIFT_LINT_BASELINE=str(baseline))
+    env = _wired_env(spm_proj, tmp_path, canned=canned, GOH_SWIFT_LINT_BASELINE=str(baseline))
     r = _run_gate(spm_proj, env)
     assert r.returncode == 0, r.stdout + r.stderr
     argv = Path(env["GOH_SHIM_LOG"]).read_text()
@@ -294,13 +308,12 @@ def test_gate_set_env_runs_reporter_and_reconciles_green(spm_proj, tmp_path):
 
 def test_gate_new_violation_fails_the_whole_gate(spm_proj, tmp_path):
     canned = tmp_path / "canned.json"
-    canned.write_text(json.dumps([
-        _report_entry(live_path(spm_proj, "New.swift"), 9, "line_length",
-         REASON_160)]))
+    canned.write_text(
+        json.dumps([_report_entry(live_path(spm_proj, "New.swift"), 9, "line_length", REASON_160)])
+    )
     baseline = tmp_path / "b.json"
     baseline.write_text(json.dumps([]))
-    env = _wired_env(spm_proj, tmp_path, canned=canned,
-                     GOH_SWIFT_LINT_BASELINE=str(baseline))
+    env = _wired_env(spm_proj, tmp_path, canned=canned, GOH_SWIFT_LINT_BASELINE=str(baseline))
     r = _run_gate(spm_proj, env)
     assert r.returncode != 0
     combined = r.stdout + r.stderr
@@ -308,8 +321,7 @@ def test_gate_new_violation_fails_the_whole_gate(spm_proj, tmp_path):
 
 
 def test_gate_baseline_path_pointing_nowhere_dies_naming_var(spm_proj, tmp_path):
-    env = _wired_env(spm_proj, tmp_path,
-                     GOH_SWIFT_LINT_BASELINE=str(tmp_path / "absent.json"))
+    env = _wired_env(spm_proj, tmp_path, GOH_SWIFT_LINT_BASELINE=str(tmp_path / "absent.json"))
     r = _run_gate(spm_proj, env)
     assert r.returncode != 0
     assert "GOH_SWIFT_LINT_BASELINE" in (r.stdout + r.stderr)
@@ -330,9 +342,9 @@ def test_real_swiftlint_ratchet_green_then_red(tmp_path):
 
     def record_baseline() -> None:
         subprocess.run(
-            ["swiftlint", "lint", "--write-baseline", ".swiftlint-baseline.json",
-             "--quiet"],
-            cwd=proj, capture_output=True,
+            ["swiftlint", "lint", "--write-baseline", ".swiftlint-baseline.json", "--quiet"],
+            cwd=proj,
+            capture_output=True,
         )
 
     record_baseline()
@@ -341,8 +353,9 @@ def test_real_swiftlint_ratchet_green_then_red(tmp_path):
     env["GOH_SWIFT_LINT_BASELINE"] = str(proj / ".swiftlint-baseline.json")
     env.pop("GOH_SWIFT_COV_MIN", None)
 
-    green = subprocess.run(["/bin/bash", str(GATE), str(proj)],
-                           cwd=proj, capture_output=True, text=True, env=env)
+    green = subprocess.run(
+        ["/bin/bash", str(GATE), str(proj)], cwd=proj, capture_output=True, text=True, env=env
+    )
     assert green.returncode == 0, green.stdout + green.stderr
 
     src = proj / "Sources" / "Sample.swift"
@@ -350,13 +363,13 @@ def test_real_swiftlint_ratchet_green_then_red(tmp_path):
     lines.append('let ccc = "' + "c" * 150 + '"')  # a brand-new violation
     src.write_text("\n".join(lines) + "\n")
 
-    red = subprocess.run(["/bin/bash", str(GATE), str(proj)],
-                         cwd=proj, capture_output=True, text=True, env=env)
+    red = subprocess.run(
+        ["/bin/bash", str(GATE), str(proj)], cwd=proj, capture_output=True, text=True, env=env
+    )
     assert red.returncode != 0
     combined = red.stdout + red.stderr
     # The new violation sits on the appended last line (1-based).
-    assert f"Sample.swift:{len(lines)}" in combined, \
-        "new violation must be named by file:line"
+    assert f"Sample.swift:{len(lines)}" in combined, "new violation must be named by file:line"
 
     # And shrinking the source below the baseline stays GREEN with a nudge.
     # The function stays (the test target compiles against it); only its long
@@ -366,9 +379,11 @@ def test_real_swiftlint_ratchet_green_then_red(tmp_path):
         '    let aaa = "short"\n'
         '    let bbb = "short"\n'
         "    return (aaa, bbb)\n"
-        "}\n")
-    nudged = subprocess.run(["/bin/bash", str(GATE), str(proj)],
-                            cwd=proj, capture_output=True, text=True, env=env)
+        "}\n"
+    )
+    nudged = subprocess.run(
+        ["/bin/bash", str(GATE), str(proj)], cwd=proj, capture_output=True, text=True, env=env
+    )
     assert nudged.returncode == 0, nudged.stdout + nudged.stderr
     assert "re-record" in (nudged.stdout + nudged.stderr).lower()
 

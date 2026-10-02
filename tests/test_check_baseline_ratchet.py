@@ -33,8 +33,7 @@ def test_shrink_passes_and_is_reported(repo):
 def test_equal_passes(repo):
     write(repo, "base.txt", "10\talpha\n")
     write(repo, "now.txt", "10\talpha\n")
-    assert run(repo, "--baseline", "base.txt", "--current",
-               "now.txt").returncode == 0
+    assert run(repo, "--baseline", "base.txt", "--current", "now.txt").returncode == 0
 
 
 def test_space_separated_lines(repo):
@@ -59,8 +58,7 @@ def test_json_baseline_and_current(repo):
 def test_json_shrink_passes(repo):
     write(repo, "base.json", '{"a": 5}\n')
     write(repo, "now.json", '{"a": 4}\n')
-    assert run(repo, "--baseline", "base.json", "--current",
-               "now.json").returncode == 0
+    assert run(repo, "--baseline", "base.json", "--current", "now.json").returncode == 0
 
 
 # ---- new keys -----------------------------------------------------------------
@@ -77,16 +75,14 @@ def test_new_key_fails_as_growth(repo):
 def test_allow_new_keys_passes_new_key(repo):
     write(repo, "base.txt", "10\talpha\n")
     write(repo, "now.txt", "10\talpha\n3\tgamma\n")
-    r = run(repo, "--baseline", "base.txt", "--current", "now.txt",
-            "--allow-new-keys")
+    r = run(repo, "--baseline", "base.txt", "--current", "now.txt", "--allow-new-keys")
     assert r.returncode == 0, r.stderr
 
 
 def test_allow_new_keys_still_fails_ceilings(repo):
     write(repo, "base.txt", "10\talpha\n")
     write(repo, "now.txt", "99\talpha\n3\tgamma\n")
-    r = run(repo, "--baseline", "base.txt", "--current", "now.txt",
-            "--allow-new-keys")
+    r = run(repo, "--baseline", "base.txt", "--current", "now.txt", "--allow-new-keys")
     assert r.returncode == 1
     assert "alpha" in r.stderr
 
@@ -115,16 +111,14 @@ def test_without_record_the_baseline_is_untouched(repo):
 
 def test_current_from_command_growth_fails(repo):
     write(repo, "base.txt", "10\talpha\n")
-    r = run(repo, "--baseline", "base.txt", "--current-from-command",
-            "printf '12\\talpha\\n'")
+    r = run(repo, "--baseline", "base.txt", "--current-from-command", "printf '12\\talpha\\n'")
     assert r.returncode == 1
     assert "12 ->" in r.stderr or "alpha" in r.stderr
 
 
 def test_current_from_command_failure_is_precondition(repo):
     write(repo, "base.txt", "10\talpha\n")
-    r = run(repo, "--baseline", "base.txt", "--current-from-command",
-            "exit 3")
+    r = run(repo, "--baseline", "base.txt", "--current-from-command", "exit 3")
     assert r.returncode == 2
     assert "exited 3" in r.stderr
 
@@ -136,8 +130,13 @@ def test_loc_measures_json_baseline_keys(repo):
     # the value fragment and failed every JSON baseline as growth).
     write(repo, "src/a.py", "x = 1\n" * 15)
     write(repo, "base.json", json.dumps({"src/a.py": 15}) + "\n")
-    r = run(repo, "--baseline", "base.json", "--current-from-command",
-            f"python3 '{REPO_ROOT}/checks/loc_of_baseline_files.py' 'base.json'")
+    r = run(
+        repo,
+        "--baseline",
+        "base.json",
+        "--current-from-command",
+        f"python3 '{REPO_ROOT}/checks/loc_of_baseline_files.py' 'base.json'",
+    )
     assert r.returncode == 0, r.stderr
     assert "1 entry within ceilings" in r.stdout
 
@@ -160,8 +159,9 @@ def test_missing_current_file_is_precondition(repo):
 def test_both_current_sources_rejected(repo):
     write(repo, "base.txt", "1\tk\n")
     write(repo, "now.txt", "1\tk\n")
-    r = run(repo, "--baseline", "base.txt", "--current", "now.txt",
-            "--current-from-command", "true")
+    r = run(
+        repo, "--baseline", "base.txt", "--current", "now.txt", "--current-from-command", "true"
+    )
     assert r.returncode == 2
 
 
@@ -276,6 +276,7 @@ def test_non_ascii_digits_rejected(repo):
     assert r.returncode == 2, (r.stdout, r.stderr)
     assert "plain ASCII number" in r.stderr
 
+
 def test_a_collapsed_measurement_is_not_every_ceiling_met(tmp_path):
     """A shrink-only ratchet has no ceiling left to exceed when the population reaches zero, so a
     total collapse read as the best possible result. Measured 2026-09-05: necrohand's palette gate
@@ -311,7 +312,14 @@ def _run(base, cur) -> int:
     import sys
 
     return subprocess.run(
-        [sys.executable, str(REPO_ROOT / "checks" / "check_baseline_ratchet.py"),
-         "--baseline", str(base), "--current", str(cur)],
-        capture_output=True, text=True,
+        [
+            sys.executable,
+            str(REPO_ROOT / "checks" / "check_baseline_ratchet.py"),
+            "--baseline",
+            str(base),
+            "--current",
+            str(cur),
+        ],
+        capture_output=True,
+        text=True,
     ).returncode

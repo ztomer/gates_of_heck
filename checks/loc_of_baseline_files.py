@@ -16,6 +16,7 @@ is how an empty ratchet passes instead of aborting on no input.
 
     python3 checks/loc_of_baseline_files.py .gates_loc_baseline.txt
 """
+
 import os
 import sys
 from pathlib import Path

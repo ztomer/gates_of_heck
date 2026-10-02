@@ -30,9 +30,11 @@ VAR_MAP = {"$CHECKS": "checks", "${CHECKS}": "checks"}
 def _referenced_scripts(files=None) -> list[tuple[str, int, str]]:
     """(file, lineno, normalized ref) for every script ref — GUARDED OR NOT."""
     if files is None:
-        sources = [(str(f.relative_to(REPO_ROOT)), f)
-                   for pattern in ("gates/*.sh", "hooks/pre-commit", "hooks/pre-push")
-                   for f in sorted(REPO_ROOT.glob(pattern))]
+        sources = [
+            (str(f.relative_to(REPO_ROOT)), f)
+            for pattern in ("gates/*.sh", "hooks/pre-commit", "hooks/pre-push")
+            for f in sorted(REPO_ROOT.glob(pattern))
+        ]
     else:
         sources = files
     refs = []
@@ -101,14 +103,12 @@ def test_disk_hygiene_lives_elsewhere():
     Red-proof: restoring the file, or referencing it from a gate, fails here.
     """
     assert not (REPO_ROOT / "checks" / "check_disk_hygiene.py").exists(), (
-        "the disk watch is back in this repo; it belongs in "
-        "~/Projects/scripts/lib/disk_hygiene.py"
+        "the disk watch is back in this repo; it belongs in ~/Projects/scripts/lib/disk_hygiene.py"
     )
     refs = _referenced_scripts()
     disk = [(f, line, ref) for f, line, ref in refs if "disk_hygiene" in ref]
-    assert disk == [], (
-        "a gate references the disk watch again:\n"
-        + "\n".join(f"  {f}:{line} -> {ref}" for f, line, ref in disk)
+    assert disk == [], "a gate references the disk watch again:\n" + "\n".join(
+        f"  {f}:{line} -> {ref}" for f, line, ref in disk
     )
 
 
@@ -119,22 +119,27 @@ def test_guarded_refs_must_still_resolve_when_they_name_this_repo():
     pre-fix wiring tests passed it; now it is red."""
     synthetic = (
         "synthetic-gate.sh",
-        "\n".join([
-            "#!/usr/bin/env bash",
-            # Same-line forms ONLY: the old scanner skipped any line carrying
-            # goh_optional_step / an existence guard, so these were invisible.
-            'goh_optional_step "opt" "$CHECKS/does_not_exist.py" python3 "$CHECKS/does_not_exist.py"',
-            '[ -f "$CHECKS/guarded_missing.py" ] && python3 "$CHECKS/guarded_missing.py"',
-            "# tools/ stays exempt: target-repo-local",
-            'goh_optional_step "local" tools/local_check.py true',
-        ]) + "\n",
+        "\n".join(
+            [
+                "#!/usr/bin/env bash",
+                # Same-line forms ONLY: the old scanner skipped any line carrying
+                # goh_optional_step / an existence guard, so these were invisible.
+                'goh_optional_step "opt" "$CHECKS/does_not_exist.py" python3 "$CHECKS/does_not_exist.py"',
+                '[ -f "$CHECKS/guarded_missing.py" ] && python3 "$CHECKS/guarded_missing.py"',
+                "# tools/ stays exempt: target-repo-local",
+                'goh_optional_step "local" tools/local_check.py true',
+            ]
+        )
+        + "\n",
     )
     missing = _missing(_referenced_scripts(files=[synthetic]))
     named = {ref for _, _, ref in missing}
     assert "checks/does_not_exist.py" in named, (
-        f"a typo'd OPTIONAL-step reference shipped invisibly; got {named}")
+        f"a typo'd OPTIONAL-step reference shipped invisibly; got {named}"
+    )
     assert "checks/guarded_missing.py" in named, (
-        f"a typo'd GUARDED reference shipped invisibly; got {named}")
+        f"a typo'd GUARDED reference shipped invisibly; got {named}"
+    )
     assert not any(r.startswith("tools/") for r in named)
 
 
@@ -151,9 +156,7 @@ def test_hook_checker_resolution_is_self_hostable():
     if kind == "tools":
         # Legal only if the hook falls back to the shared checkout when the
         # repo-local copy is absent AND this repo can satisfy one branch.
-        assert "GOH" in text, (
-            "hook references tools/ with no fallback to the shared checkout"
-        )
+        assert "GOH" in text, "hook references tools/ with no fallback to the shared checkout"
     assert (REPO_ROOT / "checks" / name).exists()
 
 

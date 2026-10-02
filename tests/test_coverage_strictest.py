@@ -62,12 +62,16 @@ def test_load_floors_config_supports_both_shapes(tmp_path):
     assert cfg["targets"]["ZTCore"] == 98.9
     assert cfg["file_floor"] is None
     wrapper = tmp_path / "wrap.json"
-    wrapper.write_text(json.dumps({
-        "targets": {"ZTCore": 98.9},
-        "file_floor": 90.0,
-        "tolerance": 0.5,
-        "exempt": {"ZTCore/Foo.swift": "defensive branch"}
-    }))
+    wrapper.write_text(
+        json.dumps(
+            {
+                "targets": {"ZTCore": 98.9},
+                "file_floor": 90.0,
+                "tolerance": 0.5,
+                "exempt": {"ZTCore/Foo.swift": "defensive branch"},
+            }
+        )
+    )
     cfg2 = cov.load_floors_config(str(wrapper))
     assert cfg2["file_floor"] == 90.0
     assert cfg2["tolerance"] == 0.5
@@ -83,7 +87,13 @@ def test_lcov_merge_include_filters_before_floor(tmp_path):
 
     def write_part(name, sf, covered):
         cnt = 1 if covered else 0
-        rows = [f"SF:{sf}", "FN:1,_Za", "FNDA:1,_Za" if covered else "FNDA:0,_Za", f"DA:1,{cnt}", "end_of_record"]
+        rows = [
+            f"SF:{sf}",
+            "FN:1,_Za",
+            "FNDA:1,_Za" if covered else "FNDA:0,_Za",
+            f"DA:1,{cnt}",
+            "end_of_record",
+        ]
         (pd / name).write_text("\n".join(rows) + "\n")
 
     write_part("part-a.info", "src/a.rs", True)
@@ -109,7 +119,9 @@ def test_lcov_merge_per_file_floor_with_tolerance_and_exempt(tmp_path):
     rc = mod.merge(parts, floor=0, floors_json=str(floors))
     assert rc == 1
     floors2 = tmp_path / "floors2.json"
-    floors2.write_text(json.dumps({"file_floor": 95.0, "tolerance": 0.0, "exempt": {"src/a.rs": "defensive"}}))
+    floors2.write_text(
+        json.dumps({"file_floor": 95.0, "tolerance": 0.0, "exempt": {"src/a.rs": "defensive"}})
+    )
     rc2 = mod.merge(parts, floor=0, floors_json=str(floors2))
     assert rc2 == 0
 
@@ -129,22 +141,49 @@ def test_marker_ceiling_shrink_only(tmp_path):
 
 def test_gates_bash_include_and_floors_json_flags_accepted(tmp_path):
     import subprocess
+
     gate = REPO_ROOT / "gates" / "coverage_gate.sh"
     proj = tmp_path / "proj"
     proj.mkdir()
-    r = subprocess.run(["/bin/bash", str(gate), "--lang", "py", "--floor", "90", "--include", r"/Domain/", str(proj)],
-                       capture_output=True, text=True)
+    r = subprocess.run(
+        [
+            "/bin/bash",
+            str(gate),
+            "--lang",
+            "py",
+            "--floor",
+            "90",
+            "--include",
+            r"/Domain/",
+            str(proj),
+        ],
+        capture_output=True,
+        text=True,
+    )
     assert "unknown option" not in (r.stdout + r.stderr)
-    r2 = subprocess.run(["/bin/bash", str(gate), "--lang", "py", "--floors-json", "/no/such/floors.json", str(proj)],
-                        capture_output=True, text=True)
+    r2 = subprocess.run(
+        [
+            "/bin/bash",
+            str(gate),
+            "--lang",
+            "py",
+            "--floors-json",
+            "/no/such/floors.json",
+            str(proj),
+        ],
+        capture_output=True,
+        text=True,
+    )
     assert r2.returncode == 2
     assert "floors file not found" in (r2.stdout + r2.stderr)
 
 
 def test_coverage_swift_requires_one_floor_declaration(tmp_path):
     import subprocess
+
     helper = REPO_ROOT / "gates" / "coverage_swift.py"
-    r = subprocess.run([sys.executable, str(helper), "--proj", str(tmp_path)],
-                       capture_output=True, text=True)
+    r = subprocess.run(
+        [sys.executable, str(helper), "--proj", str(tmp_path)], capture_output=True, text=True
+    )
     assert r.returncode == 2
     assert "no coverage floor" in (r.stderr + r.stdout).lower()

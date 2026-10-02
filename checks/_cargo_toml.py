@@ -15,6 +15,7 @@ what it costs to get it wrong. That is the reason the module exists at all: the
 naive version of each of these reads as nothing, and a member list that reads
 as empty is a workspace reporting nothing to compare.
 """
+
 from __future__ import annotations
 
 import re

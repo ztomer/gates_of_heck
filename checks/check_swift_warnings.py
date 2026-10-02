@@ -44,11 +44,16 @@ import tempfile
 DEFAULT_DIRS = "Sources,Tests"
 LOG_NAME = "swift-build-warnings.log"
 # The diagnostic groups that are runtime traps under Swift 6 dynamic actor isolation (D-0016).
-TRAP_GROUPS = {"ActorIsolatedCall", "SendableClosureCaptures", "SendableFunctionConversion",
-               "ConformanceIsolation", "SendingRisksDataRace"}
+TRAP_GROUPS = {
+    "ActorIsolatedCall",
+    "SendableClosureCaptures",
+    "SendableFunctionConversion",
+    "ConformanceIsolation",
+    "SendingRisksDataRace",
+}
 
-OSC = re.compile(r"\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)")   # hyperlinks: ESC ] ... (BEL | ESC \)
-CSI = re.compile(r"\x1b\[[0-9;?]*[A-Za-z]")                # colours: ESC [ ... m
+OSC = re.compile(r"\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)")  # hyperlinks: ESC ] ... (BEL | ESC \)
+CSI = re.compile(r"\x1b\[[0-9;?]*[A-Za-z]")  # colours: ESC [ ... m
 WARNING = re.compile(r"^(?P<path>/[^:]+):(?P<line>\d+):(?P<col>\d+): warning: (?P<msg>.*)$")
 GROUP = re.compile(r"\[#(?P<group>\w+)\]\s*$")
 
@@ -58,7 +63,9 @@ def plain(text):
 
 
 def repo_root():
-    top = subprocess.run(["git", "rev-parse", "--show-toplevel"], capture_output=True, text=True, check=False)
+    top = subprocess.run(
+        ["git", "rev-parse", "--show-toplevel"], capture_output=True, text=True, check=False
+    )
     return os.path.realpath(top.stdout.strip() if top.returncode == 0 else os.getcwd())
 
 
@@ -88,11 +95,20 @@ def git_lines(repo, *args):
 def changed_swift_files(repo, dirs):
     """Swift files under `dirs` that differ from the upstream branch (or HEAD without one), and
     untracked ones, that exist now: the files whose warnings a warm build might not print."""
-    has_upstream = subprocess.run(["git", "rev-parse", "--verify", "--quiet", "@{upstream}"], cwd=repo,
-                                  capture_output=True, text=True, check=False).returncode == 0
+    has_upstream = (
+        subprocess.run(
+            ["git", "rev-parse", "--verify", "--quiet", "@{upstream}"],
+            cwd=repo,
+            capture_output=True,
+            text=True,
+            check=False,
+        ).returncode
+        == 0
+    )
     base = "@{upstream}" if has_upstream else "HEAD"
-    names = git_lines(repo, "diff", "--name-only", "-z", base) + \
-        git_lines(repo, "ls-files", "--others", "--exclude-standard", "-z")
+    names = git_lines(repo, "diff", "--name-only", "-z", base) + git_lines(
+        repo, "ls-files", "--others", "--exclude-standard", "-z"
+    )
     out = set()
     for name in names:
         path = os.path.join(repo, name)
@@ -104,20 +120,37 @@ def changed_swift_files(repo, dirs):
 def selftest():
     repo = "/r"
     esc = "\x1b"
-    hyperlinked = (f"/r/Tests/T.swift:19:26: {esc}[1;33mwarning: {esc}[1;39mcapture of 'self' in a "
-                   f"'@Sendable' closure [#{esc}]8;;https://docs.swift.org/x{esc}\\SendableClosureCaptures"
-                   f"{esc}]8;;{esc}\\]{esc}[0;0m")
-    coloured = (f"/r/Sources/A.swift:60:13: {esc}[1;33mwarning: {esc}[1;39m'nonisolated(unsafe)' is "
-                f"unnecessary{esc}[0;0m")
+    hyperlinked = (
+        f"/r/Tests/T.swift:19:26: {esc}[1;33mwarning: {esc}[1;39mcapture of 'self' in a "
+        f"'@Sendable' closure [#{esc}]8;;https://docs.swift.org/x{esc}\\SendableClosureCaptures"
+        f"{esc}]8;;{esc}\\]{esc}[0;0m"
+    )
+    coloured = (
+        f"/r/Sources/A.swift:60:13: {esc}[1;33mwarning: {esc}[1;39m'nonisolated(unsafe)' is "
+        f"unnecessary{esc}[0;0m"
+    )
     plain_dep = "/r/Sources/B.swift:4:12: warning: 'old()' is deprecated [#DeprecatedDeclaration]"
     dependency = "/r/.build/checkouts/Dep/X.swift:1:1: warning: something in a dependency"
     elsewhere = "/elsewhere/Sources/C.swift:1:1: warning: not this repo"
     note = f"   {esc}[0;36m|{esc}[0;0m  `- {esc}[1;33mwarning: {esc}[1;39mrepeated in the snippet{esc}[0;0m"
-    got = findings("\n".join([hyperlinked, coloured, plain_dep, dependency, elsewhere, note]), repo, ("Sources", "Tests"))
-    expected = [("Sources/A.swift:60:13", "'nonisolated(unsafe)' is unnecessary", None),
-                ("Sources/B.swift:4:12", "'old()' is deprecated [#DeprecatedDeclaration]", "DeprecatedDeclaration"),
-                ("Tests/T.swift:19:26", "capture of 'self' in a '@Sendable' closure [#SendableClosureCaptures]",
-                 "SendableClosureCaptures")]
+    got = findings(
+        "\n".join([hyperlinked, coloured, plain_dep, dependency, elsewhere, note]),
+        repo,
+        ("Sources", "Tests"),
+    )
+    expected = [
+        ("Sources/A.swift:60:13", "'nonisolated(unsafe)' is unnecessary", None),
+        (
+            "Sources/B.swift:4:12",
+            "'old()' is deprecated [#DeprecatedDeclaration]",
+            "DeprecatedDeclaration",
+        ),
+        (
+            "Tests/T.swift:19:26",
+            "capture of 'self' in a '@Sendable' closure [#SendableClosureCaptures]",
+            "SendableClosureCaptures",
+        ),
+    ]
     if got != expected:
         print("✗ check_swift_warnings selftest: the parser misread the build's byte formats")
         for row in got:
@@ -125,16 +158,22 @@ def selftest():
         for row in expected:
             print(f"  expected {row}")
         return 1
-    print("✓ check_swift_warnings selftest: hyperlinked, coloured and plain warnings are caught; dependencies are not")
+    print(
+        "✓ check_swift_warnings selftest: hyperlinked, coloured and plain warnings are caught; dependencies are not"
+    )
     return 0
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     parser.add_argument("--log", help="judge a saved build log instead of building")
-    parser.add_argument("--dirs", default=DEFAULT_DIRS, help="comma-separated top-level dirs that are ours")
+    parser.add_argument(
+        "--dirs", default=DEFAULT_DIRS, help="comma-separated top-level dirs that are ours"
+    )
     parser.add_argument("--selftest", action="store_true")
-    parser.add_argument("--list-changed", action="store_true", help="print the files a warm build recompiles")
+    parser.add_argument(
+        "--list-changed", action="store_true", help="print the files a warm build recompiles"
+    )
     opts = parser.parse_args()
     if opts.selftest:
         return selftest()
@@ -149,20 +188,30 @@ def main():
             output, status = f.read(), 0
     else:
         for name in changed_swift_files(repo, dirs):
-            os.utime(os.path.join(repo, name))   # compiled again, so its warnings are printed
-        done = subprocess.run(["swift", "build", "--build-tests"], cwd=repo, capture_output=True,
-                              text=True, errors="replace", check=False)
+            os.utime(os.path.join(repo, name))  # compiled again, so its warnings are printed
+        done = subprocess.run(
+            ["swift", "build", "--build-tests"],
+            cwd=repo,
+            capture_output=True,
+            text=True,
+            errors="replace",
+            check=False,
+        )
         output, status = done.stdout + done.stderr, done.returncode
         with open(log, "w", encoding="utf-8") as f:
             f.write(output)
     if status != 0:
-        print(f"✗ the build failed (exit {status}); files it never compiled printed no warnings. Log: {log}")
+        print(
+            f"✗ the build failed (exit {status}); files it never compiled printed no warnings. Log: {log}"
+        )
         return 1
     found = findings(output, repo, dirs)
     traps = [f for f in found if f[2] in TRAP_GROUPS]
     rest = [f for f in found if f[2] not in TRAP_GROUPS]
     if traps:
-        print("✗ concurrency warnings (each is a potential runtime trap under Swift 6 dynamic isolation):")
+        print(
+            "✗ concurrency warnings (each is a potential runtime trap under Swift 6 dynamic isolation):"
+        )
         for where, msg, _ in traps:
             print(f"  {where}: {msg}")
         print("  fix the isolation (D-0016) — never silence.")

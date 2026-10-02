@@ -17,15 +17,14 @@ Two rules that are easy to get backwards, and were:
 An unreadable requirement returns `None`, never a verdict: a check that
 guesses `">=1.2, <2"` means invents findings nobody can act on.
 """
+
 from __future__ import annotations
 
 import re
 
 # A comparator we can interpret. Anchored at BOTH ends on purpose: trailing
 # junk is not a version, and reading `^1.2.3.4.5` as `^1.2.3` is a guess.
-_COMPARATOR = re.compile(
-    r"^(>=|<=|>|<|=|~|\^)?\s*(\d+)(?:\.(\d+))?(?:\.(\d+))?$"
-)
+_COMPARATOR = re.compile(r"^(>=|<=|>|<|=|~|\^)?\s*(\d+)(?:\.(\d+))?(?:\.(\d+))?$")
 
 # A version as a key that ORDERS CORRECTLY UNDER `<` and `max()`.
 #
@@ -71,7 +70,6 @@ def parse_version(text: str) -> VersionKey | None:
 
 def _cmp(a: VersionKey, b: VersionKey) -> int:
     return -1 if a < b else (0 if a == b else 1)
-
 
 
 def req_allows(req: str, version: str) -> bool | None:
@@ -127,7 +125,11 @@ def req_allows(req: str, version: str) -> bool | None:
                 # the tilde pins the MINOR when a minor is named, and the
                 # MAJOR when only a major is. Pinning the patch here refused
                 # 1.2.9 to `~1.2.3`, which is not what tilde means.
-                hi = (maj + 1, 0, 0, (1, "")) if (pat is None and mn == 0) else (maj, mn + 1, 0, (1, ""))
+                hi = (
+                    (maj + 1, 0, 0, (1, ""))
+                    if (pat is None and mn == 0)
+                    else (maj, mn + 1, 0, (1, ""))
+                )
                 if _cmp(v, base) < 0 or _cmp(v, hi) >= 0:
                     return False
             else:  # exact
@@ -141,5 +143,3 @@ def req_allows(req: str, version: str) -> bool | None:
 def major_of(version: str) -> int | None:
     v = parse_version(version)
     return v[0] if v else None
-
-

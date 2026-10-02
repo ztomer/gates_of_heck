@@ -74,8 +74,8 @@ def test_swift_cold_build_default_is_on():
     # Stated-vs-implemented pin: the header says cold builds are the default.
     # (HEAD shipped :-0 with a header claiming "default in --full".)
     text = (REPO_ROOT / "gates" / "swift_gate.sh").read_text()
-    assert '${GOH_SWIFT_COLD:-1}' in text
-    assert 'xcode-dd' in text  # cold wipe covers the pinned xcode DD too
+    assert "${GOH_SWIFT_COLD:-1}" in text
+    assert "xcode-dd" in text  # cold wipe covers the pinned xcode DD too
 
 
 def test_swift_xcode_mode_judges_warnings():
@@ -83,9 +83,9 @@ def test_swift_xcode_mode_judges_warnings():
     # BOTH modes. Xcode mode shipped a bare `xcodebuild test` that enforced
     # none, and koffee_oss carried twelve warnings through it (2026-09-26).
     text = (REPO_ROOT / "gates" / "swift_gate.sh").read_text()
-    xcode = text[text.index("  xcode)"):text.index("  *) die")]
+    xcode = text[text.index("  xcode)") : text.index("  *) die")]
     assert "check_swift_warnings.py" in xcode
-    assert "-warnings-as-errors" in text[text.index("  spm)"):text.index("  xcode)")]
+    assert "-warnings-as-errors" in text[text.index("  spm)") : text.index("  xcode)")]
 
 
 def test_explicit_full_flag_reaches_no_checker(repo):
@@ -145,7 +145,10 @@ def _run_gate_env(repo, env_extra, *args):
     env.update(env_extra)
     return subprocess.run(
         ["/bin/bash", str(REPO_ROOT / STRUCTURAL), *args],
-        cwd=repo, capture_output=True, text=True, env=env,
+        cwd=repo,
+        capture_output=True,
+        text=True,
+        env=env,
     )
 
 
@@ -193,8 +196,7 @@ def test_valid_scope_forms_unchanged(repo):
 
 def test_line_exclude_is_additive_not_replacement(repo):
     write(repo, "vendor/big.py", EMOJI_SMILE + "\n" * 30)
-    _mk_gatesrc(repo,
-                extra="GOH_EXCLUDE='vendor/'\nGOH_LINE_EXCLUDE='legacy\\.py'\n")
+    _mk_gatesrc(repo, extra="GOH_EXCLUDE='vendor/'\nGOH_LINE_EXCLUDE='legacy\\.py'\n")
     stage(repo, "vendor/big.py")
     r = run_gate(repo, STRUCTURAL, "--staged")
     assert r.returncode == 0, (
@@ -207,8 +209,7 @@ def test_line_exclude_path_is_length_exempt_but_emoji_scanned(repo):
     # legacy.py is far over the cap AND carries a disallowed glyph: the cap
     # must forgive it (LINE_EXCLUDE), the emoji scan must NOT.
     write(repo, "legacy.py", EMOJI_SMILE + "\n" * 30)
-    _mk_gatesrc(repo,
-                extra="GOH_EXCLUDE='vendor/'\nGOH_LINE_EXCLUDE='legacy\\.py'\n")
+    _mk_gatesrc(repo, extra="GOH_EXCLUDE='vendor/'\nGOH_LINE_EXCLUDE='legacy\\.py'\n")
     stage(repo, "legacy.py")
     r = run_gate(repo, STRUCTURAL, "--staged")
     assert r.returncode == 1

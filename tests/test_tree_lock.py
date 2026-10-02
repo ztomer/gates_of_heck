@@ -32,9 +32,13 @@ def _spawn(repo: Path, secs: float) -> subprocess.Popen:
     # Its own process group, so a test can kill the gate AND its children the
     # way an operator would (`kill -9 -<pgid>`); see the orphan test for why
     # killing the shell alone is not a release.
-    return subprocess.Popen(["bash", "-c", script], stdout=subprocess.PIPE,
-                            stderr=subprocess.STDOUT, text=True,
-                            start_new_session=True)
+    return subprocess.Popen(
+        ["bash", "-c", script],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        start_new_session=True,
+    )
 
 
 def _wait_line(proc: subprocess.Popen, needle: str, timeout: float) -> str:
@@ -57,8 +61,8 @@ def test_second_gate_waits_for_the_first(tmp_path):
     second = _spawn(tmp_path, 0)
     out = _wait_line(second, "LOCKED", 15)
     assert time.time() - t0 >= 1.5, "the second gate did not wait for the first"
-    assert "waiting" in out, out            # it announced the wait, naming a peer
-    assert "holder (pid" in out, out        # ... by the identity the holder wrote
+    assert "waiting" in out, out  # it announced the wait, naming a peer
+    assert "holder (pid" in out, out  # ... by the identity the holder wrote
     first.wait(10)
     second.wait(10)
     assert (first.returncode, second.returncode) == (0, 0)
@@ -69,9 +73,9 @@ def test_a_killed_holder_releases_at_once(tmp_path):
     first = _spawn(tmp_path, 60)
     _wait_line(first, "LOCKED", 10)
     second = _spawn(tmp_path, 0)
-    time.sleep(1.0)                          # long enough to be blocked, not done
+    time.sleep(1.0)  # long enough to be blocked, not done
     assert second.poll() is None, "the second gate did not block behind a live holder"
-    os.killpg(first.pid, signal.SIGKILL)     # the gate and its `sleep`
+    os.killpg(first.pid, signal.SIGKILL)  # the gate and its `sleep`
     t0 = time.time()
     _wait_line(second, "LOCKED", 10)
     assert time.time() - t0 < 5, "a SIGKILLed holder did not release the lock"
@@ -96,7 +100,7 @@ def test_an_orphaned_child_still_using_the_tree_keeps_it(tmp_path):
         time.sleep(0.1)
     else:
         raise AssertionError("the holder never forked its child")
-    os.kill(first.pid, signal.SIGKILL)       # the shell only; `sleep 3` lives on
+    os.kill(first.pid, signal.SIGKILL)  # the shell only; `sleep 3` lives on
     t0 = time.time()
     second = _spawn(tmp_path, 0)
     _wait_line(second, "LOCKED", 15)
@@ -115,5 +119,7 @@ def test_the_lock_file_is_never_removed(tmp_path):
 def test_the_swift_gate_takes_it():
     """The gate that wipes the tree is the one that must hold the lock."""
     gate = (REPO_ROOT / "gates" / "swift_gate.sh").read_text()
-    wipe = gate.index('rm -rf .build')
-    assert 'tree_lock_acquire "$PWD"' in gate[:wipe], "the swift gate wipes .build before locking it"
+    wipe = gate.index("rm -rf .build")
+    assert 'tree_lock_acquire "$PWD"' in gate[:wipe], (
+        "the swift gate wipes .build before locking it"
+    )

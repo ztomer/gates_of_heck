@@ -27,6 +27,7 @@ WHAT THIS DOES NOT CHECK. Whether the policy is any good, or whether a crate
 outside a workspace has one. Those are judgement; this is the mechanical half:
 if a workspace states a policy, every member is subject to it.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -128,8 +129,10 @@ def main() -> int:
         # as files: the workspace is a hollow shape (the empty-tree harness
         # copies the root manifest for structure), and zero inspected
         # crates would read as full compliance. Refuse.
-        err("[lints_optin] workspace declares [workspace.lints] but no member "
-            "manifests exist — nothing inspected, refusing")
+        err(
+            "[lints_optin] workspace declares [workspace.lints] but no member "
+            "manifests exist — nothing inspected, refusing"
+        )
         return 1
     if inspected == 0:
         # No workspace declares a lint policy. That is a real state, not a
@@ -160,7 +163,9 @@ def self_test() -> int:
             '[workspace]\nmembers = ["a", "b"]\n\n[workspace.lints.clippy]\npedantic = "warn"\n'
         )
         (root / "a").mkdir()
-        (root / "a" / "Cargo.toml").write_text('[package]\nname = "a"\n\n[lints]\nworkspace = true\n')
+        (root / "a" / "Cargo.toml").write_text(
+            '[package]\nname = "a"\n\n[lints]\nworkspace = true\n'
+        )
         (root / "b").mkdir()
         (root / "b" / "Cargo.toml").write_text('[package]\nname = "b"\n')
 
@@ -170,7 +175,9 @@ def self_test() -> int:
         assert "b/Cargo.toml" in findings[0], findings[0]
 
         # and clean once b opts in
-        (root / "b" / "Cargo.toml").write_text('[package]\nname = "b"\n\n[lints]\nworkspace = true\n')
+        (root / "b" / "Cargo.toml").write_text(
+            '[package]\nname = "b"\n\n[lints]\nworkspace = true\n'
+        )
         findings, inspected, _manifests, _policy, _members = audit(root)
         assert not findings, findings
 

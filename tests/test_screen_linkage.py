@@ -24,9 +24,7 @@ def compile_obj(tmp_path, name, body):
 
 
 def run(*args):
-    return subprocess.run(
-        ["/bin/bash", str(SCRIPT), *args], capture_output=True, text=True
-    )
+    return subprocess.run(["/bin/bash", str(SCRIPT), *args], capture_output=True, text=True)
 
 
 def test_clean_object_passes(tmp_path):
@@ -40,7 +38,8 @@ def test_input_grabbing_symbol_fails(tmp_path):
     # nm -u lists UNDEFINED symbols: referencing CGEventPost is enough to put
     # it in the link table without linking a runnable binary.
     obj = compile_obj(
-        tmp_path, "grabber",
+        tmp_path,
+        "grabber",
         "extern void CGEventPost(unsigned long, void *);\n"
         "int go(void) { CGEventPost(0, 0); return 0; }\n",
     )
@@ -63,7 +62,8 @@ def test_no_arguments_is_usage_error():
 def test_one_bad_binary_among_clean_ones_fails_the_batch(tmp_path):
     clean = compile_obj(tmp_path, "clean2", "int f(void) { return 7; }\n")
     bad = compile_obj(
-        tmp_path, "bad2",
+        tmp_path,
+        "bad2",
         "extern void CGDisplayHideCursor(void *);\n"
         "int g(void *d) { CGDisplayHideCursor(d); return 0; }\n",
     )

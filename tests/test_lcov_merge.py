@@ -25,7 +25,8 @@ LCOV_MERGE = REPO_ROOT / "gates" / "lcov_merge.py"
 def run_merge(parts_dir: Path, floor: str = "100"):
     return subprocess.run(
         [sys.executable, str(LCOV_MERGE), "--floor", floor, str(parts_dir)],
-        capture_output=True, text=True,
+        capture_output=True,
+        text=True,
     )
 
 
@@ -36,8 +37,7 @@ def write_part(parts_dir: Path, name: str, text: str, bom: bool = False):
 
 
 def part(fn_line=1, fn_name="_Za", fnda=5, das=((1, 1), (2, 1))):
-    rows = [f"SF:src/lib.rs", f"FN:{fn_line},{fn_name}",
-            f"FNDA:{fnda},{fn_name}"]
+    rows = [f"SF:src/lib.rs", f"FN:{fn_line},{fn_name}", f"FNDA:{fnda},{fn_name}"]
     rows += [f"DA:{ln},{cnt}" for ln, cnt in das]
     rows.append("end_of_record")
     return "\n".join(rows) + "\n"
@@ -52,7 +52,10 @@ def test_bom_part_keeps_first_record_in_the_denominator(tmp_path):
         "SF:src/lib.rs",
         "FN:1,2,_Za",
         "FNDA:5,_Za",
-        "DA:1,1", "DA:2,1", "DA:3,0", "DA:4,0",
+        "DA:1,1",
+        "DA:2,1",
+        "DA:3,0",
+        "DA:4,0",
         "end_of_record",
     ]
     write_part(pd, "part-a.info", "\n".join(body), bom=True)
@@ -84,7 +87,10 @@ def test_three_field_fn_still_bounded_by_declared_end(tmp_path):
         "SF:src/lib.rs",
         "FN:1,4,_Za",
         "FNDA:5,_Za",
-        "DA:1,1", "DA:2,0", "DA:3,1", "DA:4,1",
+        "DA:1,1",
+        "DA:2,0",
+        "DA:3,1",
+        "DA:4,1",
         "DA:8,0",  # beyond declared end: NOT forgiven
         "end_of_record",
     ]
@@ -98,8 +104,7 @@ def test_three_field_fn_still_bounded_by_declared_end(tmp_path):
 
 def test_malformed_da_exits_2_naming_file_and_line(tmp_path):
     pd = tmp_path / "parts"
-    body = ["SF:src/lib.rs", "FN:1,_Za", "FNDA:1,_Za", "DA:1,oops",
-            "end_of_record"]
+    body = ["SF:src/lib.rs", "FN:1,_Za", "FNDA:1,_Za", "DA:1,oops", "end_of_record"]
     write_part(pd, "part-a.info", "\n".join(body) + "\n")
     r = run_merge(pd, floor="100")
     assert r.returncode == 2, (r.stdout, r.stderr)
@@ -109,8 +114,7 @@ def test_malformed_da_exits_2_naming_file_and_line(tmp_path):
 
 def test_malformed_fnda_exits_2_naming_file_and_line(tmp_path):
     pd = tmp_path / "parts"
-    body = ["SF:src/lib.rs", "FN:1,_Za", "FNDA:notanum,_Za", "DA:1,1",
-            "end_of_record"]
+    body = ["SF:src/lib.rs", "FN:1,_Za", "FNDA:notanum,_Za", "DA:1,1", "end_of_record"]
     write_part(pd, "part-a.info", "\n".join(body) + "\n")
     r = run_merge(pd, floor="100")
     assert r.returncode == 2

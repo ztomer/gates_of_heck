@@ -26,6 +26,7 @@ the same way; keep it empty unless a repo genuinely needs it.
 In --staged mode this polices THE INDEX (what will be committed), via
 checks/_gitutil.py — not the working tree.
 """
+
 import argparse
 import os
 import re
@@ -49,42 +50,58 @@ from _gitutil import content_bytes, listed_files, repo_root  # noqa: E402
 # the policy and what users are told cannot drift apart. Membership tests use
 # the set built from it.
 ALLOWED_ORDERED = (
-    "→", "✓", "✗", "⚠", "↔", "↑", "↓",   # 1. Kare icons + arrows
-    "←", "⌘", "⌥", "⌨",                    # 2a. cardinal arrow + Mac keys (⌘ cmd / ⌥ opt)
-    "⇧", "⌃", "⏎", "⎋", "↵",              # 2b. Mac keys: shift / ctrl / return / escape / enter
-    "⇒", "⇄",                               # 2c. operators: implication / exchange (cf. ↔)
-    "©", "®", "™",                          # 2d. typographic signs, legal meaning
+    "→",
+    "✓",
+    "✗",
+    "⚠",
+    "↔",
+    "↑",
+    "↓",  # 1. Kare icons + arrows
+    "←",
+    "⌘",
+    "⌥",
+    "⌨",  # 2a. cardinal arrow + Mac keys (⌘ cmd / ⌥ opt)
+    "⇧",
+    "⌃",
+    "⏎",
+    "⎋",
+    "↵",  # 2b. Mac keys: shift / ctrl / return / escape / enter
+    "⇒",
+    "⇄",  # 2c. operators: implication / exchange (cf. ↔)
+    "©",
+    "®",
+    "™",  # 2d. typographic signs, legal meaning
 )
 ALLOWED = frozenset(ALLOWED_ORDERED)
 
 # Codepoint ranges that hold emoji / decorative pictographs. A char in any of these that is NOT in
 # ALLOWED is a failure. (inclusive lo, inclusive hi)
 RANGES = (
-    (0x1F000, 0x1FFFF),   # all emoji blocks: pictographs, symbols, supplemental,
-                          # regional flags — capped at the TOP of the plane so
-                          # future Unicode emoji additions (0x1FA70-0x1FFFF is
-                          # already allocated) are flagged on arrival, not
-                          # after someone ships them
-    (0x2600,  0x26FF),    # misc symbols (sun, gear, no-entry, ... and the allowed warn sign U+26A0)
-    (0x2700,  0x27BF),    # dingbats (check-mark-button, scissors, ... and the allowed check/x)
-    (0x2300,  0x23FF),    # misc technical (pause, stopwatch, ... and the allowed keyboard glyph)
-    (0x2B00,  0x2BFF),    # stars, big block arrows
-    (0x25A0,  0x25FF),    # geometric shapes: the decorative triangle/square set
-                          # (U+25B6 play, U+25FC/U+25FD squares, ...) — bullet
-                          # points and UI filler, decoration not vocabulary.
-                          # Verified ZERO occurrences across the wired repos on
-                          # adoption (2026-08-26), so no verdict flips today.
-    (0x2190,  0x21FF),    # arrows (cardinal + bidi allowed via ALLOWED; double-arrow, mapsto rejected)
-    (0xFE00,  0xFE0F),    # variation selectors (emoji-presentation VS16, etc.)
-    (0x20E3,  0x20E3),    # combining enclosing keycap
+    (0x1F000, 0x1FFFF),  # all emoji blocks: pictographs, symbols, supplemental,
+    # regional flags — capped at the TOP of the plane so
+    # future Unicode emoji additions (0x1FA70-0x1FFFF is
+    # already allocated) are flagged on arrival, not
+    # after someone ships them
+    (0x2600, 0x26FF),  # misc symbols (sun, gear, no-entry, ... and the allowed warn sign U+26A0)
+    (0x2700, 0x27BF),  # dingbats (check-mark-button, scissors, ... and the allowed check/x)
+    (0x2300, 0x23FF),  # misc technical (pause, stopwatch, ... and the allowed keyboard glyph)
+    (0x2B00, 0x2BFF),  # stars, big block arrows
+    (0x25A0, 0x25FF),  # geometric shapes: the decorative triangle/square set
+    # (U+25B6 play, U+25FC/U+25FD squares, ...) — bullet
+    # points and UI filler, decoration not vocabulary.
+    # Verified ZERO occurrences across the wired repos on
+    # adoption (2026-08-26), so no verdict flips today.
+    (0x2190, 0x21FF),  # arrows (cardinal + bidi allowed via ALLOWED; double-arrow, mapsto rejected)
+    (0xFE00, 0xFE0F),  # variation selectors (emoji-presentation VS16, etc.)
+    (0x20E3, 0x20E3),  # combining enclosing keycap
     # Singleton/small-range additions (2026-08-25 policy ruling): emoji-
     # presentation symbols living outside the big blocks above.
-    (0x2934,  0x2935),    # arrows curving up/down-left, emoji presentation
-    (0x3030,  0x3030),    # wavy dash
-    (0x3297,  0x3297),    # circled ideograph congratulations
-    (0x3299,  0x3299),    # circled ideograph secret
-    (0x2139,  0x2139),    # information source
-    (0x24C2,  0x24C2),    # circled M (Mens/Metro emoji base)
+    (0x2934, 0x2935),  # arrows curving up/down-left, emoji presentation
+    (0x3030, 0x3030),  # wavy dash
+    (0x3297, 0x3297),  # circled ideograph congratulations
+    (0x3299, 0x3299),  # circled ideograph secret
+    (0x2139, 0x2139),  # information source
+    (0x24C2, 0x24C2),  # circled M (Mens/Metro emoji base)
 )
 
 
@@ -97,9 +114,9 @@ RANGES = (
 # was retired in favour of this file). Described rather than shown: this file
 # is scanned too.
 _ESCAPE_RE = re.compile(
-    r"\\u\{([0-9a-fA-F]{1,6})\}"      # Rust / Swift / Ruby brace form
-    r"|\\U([0-9a-fA-F]{8})"            # Python 32-bit form
-    r"|\\u([0-9a-fA-F]{4})"            # JS / Java / JSON / C 16-bit form
+    r"\\u\{([0-9a-fA-F]{1,6})\}"  # Rust / Swift / Ruby brace form
+    r"|\\U([0-9a-fA-F]{8})"  # Python 32-bit form
+    r"|\\u([0-9a-fA-F]{4})"  # JS / Java / JSON / C 16-bit form
 )
 
 
@@ -127,13 +144,15 @@ def _is_disallowed(ch: str, extra: frozenset = frozenset()) -> bool:
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--staged", action="store_true")
-    ap.add_argument("--exclude", default="",
-                    help="regex; matching repo-relative paths are skipped")
-    ap.add_argument("--allow", default="",
-                    help="extra characters to permit, per-repo policy via "
-                         "GOH_ALLOW in .gatesrc (e.g. historical mentions of "
-                         "removed glyphs). Keep this EMPTY unless the repo "
-                         "genuinely needs it — every entry weakens the gate.")
+    ap.add_argument("--exclude", default="", help="regex; matching repo-relative paths are skipped")
+    ap.add_argument(
+        "--allow",
+        default="",
+        help="extra characters to permit, per-repo policy via "
+        "GOH_ALLOW in .gatesrc (e.g. historical mentions of "
+        "removed glyphs). Keep this EMPTY unless the repo "
+        "genuinely needs it — every entry weakens the gate.",
+    )
     args = ap.parse_args()
 
     skip = re.compile(args.exclude) if args.exclude else None
@@ -168,10 +187,12 @@ def main() -> int:
     if bad:
         scope = "staged" if args.staged else "tracked"
         permit = " ".join(ALLOWED_ORDERED) + (f" + {args.allow}" if args.allow else "")
-        print(f"✗ DISALLOWED EMOJI in {len(bad)} location(s) ({scope}) — "
-              f"only the Kare icon set and functional typographic glyphs are "
-              f"permitted ({permit}); © ® ™ are typographic signs with legal "
-              f"meaning, but their emoji-presentation VS16 forms fail:")
+        print(
+            f"✗ DISALLOWED EMOJI in {len(bad)} location(s) ({scope}) — "
+            f"only the Kare icon set and functional typographic glyphs are "
+            f"permitted ({permit}); © ® ™ are typographic signs with legal "
+            f"meaning, but their emoji-presentation VS16 forms fail:"
+        )
         for b in bad[:200]:
             print("  " + b)
         if len(bad) > 200:

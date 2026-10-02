@@ -35,8 +35,11 @@ def repo(tmp_path):
 
 
 def stamp(repo, tmp_path, action):
-    return subprocess.run([sys.executable, str(STAMP), action, str(repo), str(tmp_path / "s.json"),
-                           "--name", "demo"], capture_output=True, text=True)
+    return subprocess.run(
+        [sys.executable, str(STAMP), action, str(repo), str(tmp_path / "s.json"), "--name", "demo"],
+        capture_output=True,
+        text=True,
+    )
 
 
 def bump(path, text):
@@ -87,7 +90,18 @@ def test_ignored_output_and_the_gate_lock_are_not_the_tree(repo, tmp_path):
 def test_a_commit_during_the_run_is_not_a_move(repo, tmp_path):
     """The bytes the gate judged are still the bytes on disk."""
     stamp(repo, tmp_path, "take")
-    git(repo, "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-q", "--allow-empty", "-m", "x")
+    git(
+        repo,
+        "-c",
+        "user.email=t@t",
+        "-c",
+        "user.name=t",
+        "commit",
+        "-q",
+        "--allow-empty",
+        "-m",
+        "x",
+    )
     assert stamp(repo, tmp_path, "check").returncode == 0
 
 

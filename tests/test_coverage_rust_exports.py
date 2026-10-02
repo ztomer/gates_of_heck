@@ -74,8 +74,9 @@ META = {
 }
 
 
-def build_part(fn_start: int, fn_name: str, fnda: int, das: list[tuple[int, int]],
-               fn_end: int | None = None) -> str:
+def build_part(
+    fn_start: int, fn_name: str, fnda: int, das: list[tuple[int, int]], fn_end: int | None = None
+) -> str:
     lines = ["SF:src/lib.rs"]
     if fn_end is None:
         lines.append(f"FN:{fn_start},{fn_name}")
@@ -105,10 +106,16 @@ def setup_fixture(tmp_path: Path, parts: dict[str, str], meta=META) -> Path:
     return proj
 
 
-def run_rust_gate(proj: Path, bin_dir: Path, meta_file: Path, parts_dir: Path,
-                  floor: str = "100", drop: str | None = None,
-                  fail_leave: str | None = None,
-                  extra_env: dict[str, str] | None = None):
+def run_rust_gate(
+    proj: Path,
+    bin_dir: Path,
+    meta_file: Path,
+    parts_dir: Path,
+    floor: str = "100",
+    drop: str | None = None,
+    fail_leave: str | None = None,
+    extra_env: dict[str, str] | None = None,
+):
     env = dict(os.environ)
     env.update(extra_env or {})
     env["PATH"] = f"{bin_dir}:{env['PATH']}"
@@ -124,9 +131,11 @@ def run_rust_gate(proj: Path, bin_dir: Path, meta_file: Path, parts_dir: Path,
     else:
         env.pop("CARGO_STUB_FAIL_LEAVE", None)
     return subprocess.run(
-        ["/bin/bash", str(COV_GATE), "--lang", "rust", "--floor", floor,
-         str(proj)],
-        cwd=proj, capture_output=True, text=True, env=env,
+        ["/bin/bash", str(COV_GATE), "--lang", "rust", "--floor", floor, str(proj)],
+        cwd=proj,
+        capture_output=True,
+        text=True,
+        env=env,
     )
 
 
@@ -151,8 +160,9 @@ FULL_COVER = [(n, 1) for n in range(1, 5)] + [(n, 1) for n in range(6, 13)]
 def test_export_shortfall_hard_fails_naming_the_missing_target(tmp_path):
     parts = {"lib.info": build_part(1, "_Za", 5, FULL_COVER)}
     proj = setup_fixture(tmp_path, parts)
-    r = run_rust_gate(proj, tmp_path / "bin", tmp_path / "meta.json",
-                      tmp_path / "canned-parts", drop="all")
+    r = run_rust_gate(
+        proj, tmp_path / "bin", tmp_path / "meta.json", tmp_path / "canned-parts", drop="all"
+    )
     assert r.returncode == 1, r.stdout + r.stderr
     combined = r.stdout + r.stderr
     assert "expected but missing" in combined
@@ -165,8 +175,7 @@ def test_valid_but_empty_part_stays_warn_only_with_reason(tmp_path):
         "all.info": build_part(1, "_Za", 5, FULL_COVER),
     }
     proj = setup_fixture(tmp_path, parts)
-    r = run_rust_gate(proj, tmp_path / "bin", tmp_path / "meta.json",
-                      tmp_path / "canned-parts")
+    r = run_rust_gate(proj, tmp_path / "bin", tmp_path / "meta.json", tmp_path / "canned-parts")
     assert r.returncode == 0, r.stdout + r.stderr
     combined = r.stdout + r.stderr
     assert "EMPTY" in combined
@@ -182,8 +191,9 @@ def test_valid_but_empty_part_stays_warn_only_with_reason(tmp_path):
 def test_failed_export_leaving_EMPTY_part_hard_fails(tmp_path):
     parts = {"lib.info": "", "all.info": build_part(1, "_Za", 5, FULL_COVER)}
     proj = setup_fixture(tmp_path, parts)
-    r = run_rust_gate(proj, tmp_path / "bin", tmp_path / "meta.json",
-                      tmp_path / "canned-parts", fail_leave="lib")
+    r = run_rust_gate(
+        proj, tmp_path / "bin", tmp_path / "meta.json", tmp_path / "canned-parts", fail_leave="lib"
+    )
     assert r.returncode == 1, r.stdout + r.stderr
     combined = r.stdout + r.stderr
     assert "expected but missing" in combined
@@ -198,8 +208,9 @@ def test_failed_export_leaving_GARBAGE_part_hard_fails(tmp_path):
         "all.info": build_part(1, "_Za", 5, FULL_COVER),
     }
     proj = setup_fixture(tmp_path, parts)
-    r = run_rust_gate(proj, tmp_path / "bin", tmp_path / "meta.json",
-                      tmp_path / "canned-parts", fail_leave="lib")
+    r = run_rust_gate(
+        proj, tmp_path / "bin", tmp_path / "meta.json", tmp_path / "canned-parts", fail_leave="lib"
+    )
     assert r.returncode == 1, r.stdout + r.stderr
     combined = r.stdout + r.stderr
     assert "expected but missing" in combined
@@ -212,8 +223,7 @@ def test_every_declared_target_exported_is_green(tmp_path):
         "all.info": build_part(1, "_Za", 5, FULL_COVER),
     }
     proj = setup_fixture(tmp_path, parts)
-    r = run_rust_gate(proj, tmp_path / "bin", tmp_path / "meta.json",
-                      tmp_path / "canned-parts")
+    r = run_rust_gate(proj, tmp_path / "bin", tmp_path / "meta.json", tmp_path / "canned-parts")
     assert r.returncode == 0, r.stdout + r.stderr
 
 
@@ -224,7 +234,9 @@ def test_every_declared_target_exported_is_green(tmp_path):
 
 
 THREE_FIELD_LIB = build_part(
-    1, "_Za", 5,
+    1,
+    "_Za",
+    5,
     [(1, 1), (2, 0), (3, 1), (4, 1), (8, 0), (9, 0), (10, 0)],
     fn_end=4,
 )
@@ -233,8 +245,7 @@ THREE_FIELD = {"lib.info": THREE_FIELD_LIB, "all.info": THREE_FIELD_LIB}
 
 def test_uncovered_line_inside_three_field_span_is_forgiven(tmp_path):
     proj = setup_fixture(tmp_path, THREE_FIELD)
-    r = run_rust_gate(proj, tmp_path / "bin", tmp_path / "meta.json",
-                      tmp_path / "canned-parts")
+    r = run_rust_gate(proj, tmp_path / "bin", tmp_path / "meta.json", tmp_path / "canned-parts")
     assert r.returncode == 1, r.stdout + r.stderr
     missed = missed_lines(r.stdout)
     assert missed == [8, 9, 10], (
@@ -244,20 +255,19 @@ def test_uncovered_line_inside_three_field_span_is_forgiven(tmp_path):
 
 def test_module_tail_beyond_three_field_end_is_NOT_forgiven(tmp_path):
     proj = setup_fixture(tmp_path, THREE_FIELD)
-    r = run_rust_gate(proj, tmp_path / "bin", tmp_path / "meta.json",
-                      tmp_path / "canned-parts")
+    r = run_rust_gate(proj, tmp_path / "bin", tmp_path / "meta.json", tmp_path / "canned-parts")
     assert r.returncode == 1, r.stdout + r.stderr
     missed = missed_lines(r.stdout)
-    assert set(missed) == {8, 9, 10}, (
-        "tail lines past the declared end must stay uncovered"
-    )
+    assert set(missed) == {8, 9, 10}, "tail lines past the declared end must stay uncovered"
     # The denominator stays honest: 4 of 7 coverable lines ran.
     pct_line = next(l for l in r.stdout.splitlines() if "[coverage]" in l)
     assert "57.14%" in pct_line, pct_line
 
 
 TWO_FIELD_LIB = build_part(
-    1, "_Za", 5,
+    1,
+    "_Za",
+    5,
     [(1, 1), (2, 0), (3, 1), (4, 1), (8, 0), (9, 0)],
     fn_end=None,
 )
@@ -269,8 +279,7 @@ def test_two_field_corpus_keeps_open_ended_spans_exactly_as_before(tmp_path):
     fn's open-ended span forgives EVERYTHING after it (lines 2, 8, 9 here).
     Changing this moves live cargo-llvm-cov consumers' numbers — pinned."""
     proj = setup_fixture(tmp_path, TWO_FIELD)
-    r = run_rust_gate(proj, tmp_path / "bin", tmp_path / "meta.json",
-                      tmp_path / "canned-parts")
+    r = run_rust_gate(proj, tmp_path / "bin", tmp_path / "meta.json", tmp_path / "canned-parts")
     assert r.returncode == 0, r.stdout + r.stderr
     assert "100%" in r.stdout
 
@@ -295,7 +304,10 @@ def test_cpp_ctest_failure_is_a_hard_fail_naming_itself(tmp_path):
     env.pop("GOH_COV_FLOOR_CPP", None)
     r = subprocess.run(
         ["/bin/bash", str(COV_GATE), "--lang", "cpp", "--floor", "80", str(proj)],
-        cwd=proj, capture_output=True, text=True, env=env,
+        cwd=proj,
+        capture_output=True,
+        text=True,
+        env=env,
     )
     assert r.returncode == 1, r.stdout + r.stderr
     combined = r.stdout + r.stderr
@@ -315,15 +327,21 @@ def test_coverage_build_never_shares_the_build_dir(tmp_path):
     into the report: lines past the end of the current file, all "uncovered",
     and a 96% tree read 93.5% (routines, 2026-09-21). Every build-driving
     cargo call must see the build-dir pinned to the gate's own target dir."""
-    proj = setup_fixture(tmp_path, {
-        "lib.info": build_part(1, "f", 1, FULL_COVER),
-        "all.info": build_part(1, "f", 1, FULL_COVER),
-    })
+    proj = setup_fixture(
+        tmp_path,
+        {
+            "lib.info": build_part(1, "f", 1, FULL_COVER),
+            "all.info": build_part(1, "f", 1, FULL_COVER),
+        },
+    )
     envlog = tmp_path / "envlog"
-    r = run_rust_gate(proj, tmp_path / "bin", tmp_path / "meta.json",
-                      tmp_path / "canned-parts",
-                      extra_env={"CARGO_STUB_ENVLOG": str(envlog),
-                                 "CARGO_BUILD_BUILD_DIR": "/shared/build"})
+    r = run_rust_gate(
+        proj,
+        tmp_path / "bin",
+        tmp_path / "meta.json",
+        tmp_path / "canned-parts",
+        extra_env={"CARGO_STUB_ENVLOG": str(envlog), "CARGO_BUILD_BUILD_DIR": "/shared/build"},
+    )
     assert r.returncode == 0, r.stdout + r.stderr
     calls = envlog.read_text().splitlines()
     assert calls, "the stub saw no cargo calls"

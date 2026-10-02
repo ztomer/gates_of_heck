@@ -26,6 +26,7 @@ worth judging on its own line while a quoted `#[cfg_attr(` must not open state
 that leaks to later lines. `literal_free` gives callers that second view; see
 `STRING_LITERAL` and its use in `check_no_allow.py`.
 """
+
 import re
 
 # A double-quoted literal, honouring backslash escapes. Enough for Rust: a
@@ -57,6 +58,7 @@ def code_portions(text: str):
             i += 1
         yield lineno, "".join(kept)
 
+
 # Where a Rust file counts as compiled source. Every compiled Rust file: src/,
 # benches/, tests/, examples/ and build.rs. Tests are in scope because clippy
 # `-D warnings` runs over them via `--all-targets`, so a defect there is as real
@@ -65,8 +67,7 @@ def is_compiled_src(rel: str) -> bool:
     if rel == "build.rs" or rel.endswith("/build.rs"):
         return True
     return any(
-        f"/{d}/" in rel or rel.startswith(f"{d}/")
-        for d in ("src", "benches", "tests", "examples")
+        f"/{d}/" in rel or rel.startswith(f"{d}/") for d in ("src", "benches", "tests", "examples")
     )
 
 

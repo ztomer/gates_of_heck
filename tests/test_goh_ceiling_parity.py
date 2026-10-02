@@ -7,6 +7,7 @@ and runs the native subcommand against the same two checker invocations
 exit codes plus identical stdout/stderr — a message, stream, or population
 drifting on either side goes red.
 """
+
 from __future__ import annotations
 
 import subprocess
@@ -44,44 +45,82 @@ def lines(n: int) -> bytes:
 # (files, max, line_exclude, unbounded, baseline): the subcommand's args.
 CASES: dict[str, tuple[dict[str, bytes], list[str]]] = {
     # Exempt file under the cap: no ceiling needed, both pass.
-    "under_cap": ({"src/a.py": lines(8), "base.txt": b"30\tsrc/a.py\n"},
-                  ["--max", "10", "--line-exclude", "src/", "--baseline", "base.txt"]),
+    "under_cap": (
+        {"src/a.py": lines(8), "base.txt": b"30\tsrc/a.py\n"},
+        ["--max", "10", "--line-exclude", "src/", "--baseline", "base.txt"],
+    ),
     # Exempt and over, ceiling carried: both pass, ratchet at ceiling.
-    "at_ceiling": ({"src/a.py": lines(15), "base.txt": b"15\tsrc/a.py\n"},
-                   ["--max", "10", "--line-exclude", "src/", "--baseline", "base.txt"]),
+    "at_ceiling": (
+        {"src/a.py": lines(15), "base.txt": b"15\tsrc/a.py\n"},
+        ["--max", "10", "--line-exclude", "src/", "--baseline", "base.txt"],
+    ),
     # Exempt and over with headroom: both pass with shrink detail.
-    "below_ceiling": ({"src/a.py": lines(12), "base.txt": b"15\tsrc/a.py\n"},
-                      ["--max", "10", "--line-exclude", "src/", "--baseline", "base.txt"]),
+    "below_ceiling": (
+        {"src/a.py": lines(12), "base.txt": b"15\tsrc/a.py\n"},
+        ["--max", "10", "--line-exclude", "src/", "--baseline", "base.txt"],
+    ),
     # Exempt and over, no ceiling: the hole the check exists for.
-    "no_ceiling": ({"src/a.py": lines(15), "base.txt": b"15\tsrc/other.py\n"},
-                   ["--max", "10", "--line-exclude", "src/", "--baseline", "base.txt"]),
+    "no_ceiling": (
+        {"src/a.py": lines(15), "base.txt": b"15\tsrc/other.py\n"},
+        ["--max", "10", "--line-exclude", "src/", "--baseline", "base.txt"],
+    ),
     # Over the ceiling: the ratchet fails.
-    "over_ceiling": ({"src/a.py": lines(16), "base.txt": b"15\tsrc/a.py\n"},
-                     ["--max", "10", "--line-exclude", "src/", "--baseline", "base.txt"]),
+    "over_ceiling": (
+        {"src/a.py": lines(16), "base.txt": b"15\tsrc/a.py\n"},
+        ["--max", "10", "--line-exclude", "src/", "--baseline", "base.txt"],
+    ),
     # JSON baseline, both formats read identically.
-    "json_baseline": ({"src/a.py": lines(15), "base.json": b'{"src/a.py": 15}\n'},
-                      ["--max", "10", "--line-exclude", "src/", "--baseline", "base.json"]),
-    "json_over": ({"src/a.py": lines(16), "base.json": b'{"src/a.py": 15}\n'},
-                  ["--max", "10", "--line-exclude", "src/", "--baseline", "base.json"]),
+    "json_baseline": (
+        {"src/a.py": lines(15), "base.json": b'{"src/a.py": 15}\n'},
+        ["--max", "10", "--line-exclude", "src/", "--baseline", "base.json"],
+    ),
+    "json_over": (
+        {"src/a.py": lines(16), "base.json": b'{"src/a.py": 15}\n'},
+        ["--max", "10", "--line-exclude", "src/", "--baseline", "base.json"],
+    ),
     # Stale exemption list: matches nothing, both fail.
-    "stale_exclude": ({"src/a.py": lines(5), "base.txt": b"15\tsrc/a.py\n"},
-                      ["--max", "10", "--line-exclude", "gone/", "--baseline", "base.txt"]),
+    "stale_exclude": (
+        {"src/a.py": lines(5), "base.txt": b"15\tsrc/a.py\n"},
+        ["--max", "10", "--line-exclude", "gone/", "--baseline", "base.txt"],
+    ),
     # Working unbounded waiver.
-    "waived": ({"vendor/dump.py": lines(50), "base.txt": b"15\tsrc/a.py\n",
-                "src/a.py": lines(5)},
-               ["--max", "10", "--line-exclude", "vendor/|src/",
-                "--unbounded", "vendor/", "--baseline", "base.txt"]),
+    "waived": (
+        {"vendor/dump.py": lines(50), "base.txt": b"15\tsrc/a.py\n", "src/a.py": lines(5)},
+        [
+            "--max",
+            "10",
+            "--line-exclude",
+            "vendor/|src/",
+            "--unbounded",
+            "vendor/",
+            "--baseline",
+            "base.txt",
+        ],
+    ),
     # Waiver matching nothing: stale, both fail.
-    "stale_waiver": ({"src/a.py": lines(5), "base.txt": b"15\tsrc/a.py\n"},
-                     ["--max", "10", "--line-exclude", "src/",
-                      "--unbounded", "vendor/", "--baseline", "base.txt"]),
+    "stale_waiver": (
+        {"src/a.py": lines(5), "base.txt": b"15\tsrc/a.py\n"},
+        [
+            "--max",
+            "10",
+            "--line-exclude",
+            "src/",
+            "--unbounded",
+            "vendor/",
+            "--baseline",
+            "base.txt",
+        ],
+    ),
     # Baseline path missing: named precondition, exit 2.
-    "missing_baseline": ({"src/a.py": lines(15)},
-                         ["--max", "10", "--line-exclude", "src/",
-                          "--baseline", "missing.txt"]),
+    "missing_baseline": (
+        {"src/a.py": lines(15)},
+        ["--max", "10", "--line-exclude", "src/", "--baseline", "missing.txt"],
+    ),
     # No exemptions at all: the check is vacuous, both pass.
-    "no_exemptions": ({"src/a.py": lines(15), "base.txt": b"15\tsrc/a.py\n"},
-                      ["--max", "10", "--baseline", "base.txt"]),
+    "no_exemptions": (
+        {"src/a.py": lines(15), "base.txt": b"15\tsrc/a.py\n"},
+        ["--max", "10", "--baseline", "base.txt"],
+    ),
 }
 
 
@@ -98,8 +137,7 @@ def run_py(repo: Path, args: list[str]) -> tuple[int, str, str]:
     if code == 0 and (repo / baseline).is_file():
         measure = f"python3 '{LOC}' '{baseline}'"
         second = subprocess.run(
-            ["python3", str(RATCHET), "--baseline", baseline,
-             "--current-from-command", measure],
+            ["python3", str(RATCHET), "--baseline", baseline, "--current-from-command", measure],
             cwd=repo,
             capture_output=True,
             text=True,

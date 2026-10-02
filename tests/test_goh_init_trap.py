@@ -22,9 +22,7 @@ BASH = "/bin/bash"
 
 
 def _run(script_body: str) -> subprocess.CompletedProcess:
-    return subprocess.run(
-        [BASH, "-c", script_body], capture_output=True, text=True
-    )
+    return subprocess.run([BASH, "-c", script_body], capture_output=True, text=True)
 
 
 def test_syntax_error_after_goh_init_exits_nonzero(tmp_path):
@@ -53,7 +51,7 @@ def test_double_goh_init_cleans_every_log(tmp_path):
     r = _run(
         f". '{REPO_ROOT}/gates/_common.sh'\n"
         "goh_init one\n"
-        "log1=\"$GOH_LOG\"\n"
+        'log1="$GOH_LOG"\n'
         "goh_init two\n"
         f"printf '%s\\n%s\\n' \"$log1\" \"$GOH_LOG\" > '{out}'\n"
         "exit 7\n"
@@ -68,10 +66,7 @@ def test_double_goh_init_cleans_every_log(tmp_path):
 def test_normal_failure_rc_survives_the_trap(tmp_path):
     """die()'s exit status must reach the caller through the trap."""
     r = _run(
-        f"export TMPDIR='{tmp_path}'\n"
-        f". '{REPO_ROOT}/gates/_common.sh'\n"
-        "goh_init demo\n"
-        "die boom\n"
+        f"export TMPDIR='{tmp_path}'\n. '{REPO_ROOT}/gates/_common.sh'\ngoh_init demo\ndie boom\n"
     )
     assert r.returncode == 1, r.stderr
 
@@ -91,10 +86,5 @@ def test_exit_zero_without_goh_done_is_a_failure(tmp_path):
     assert "without completing" in r.stderr
 
     # And a gate that DID run goh_done keeps its honest 0.
-    ok_case = _run(
-        f". '{REPO_ROOT}/gates/_common.sh'\n"
-        "goh_init demo\n"
-        "true\n"
-        "goh_done\n"
-    )
+    ok_case = _run(f". '{REPO_ROOT}/gates/_common.sh'\ngoh_init demo\ntrue\ngoh_done\n")
     assert ok_case.returncode == 0, ok_case.stderr

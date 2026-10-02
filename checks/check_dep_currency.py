@@ -47,6 +47,13 @@ because the index was unreachable is worse than no check: it converts an
 absence of evidence into a clean bill, and the whole reason this file exists
 is that absence of evidence kept looking like health.
 
+## WHERE THE WORK IS SPLIT
+
+Reading a tree -- manifests, workspace inheritance, lockfiles, what each declares
+-- is `_dep_tree.py`; the semver rules are `_semver.py`; the one network call is
+`_crates_io.py`. What stays here is everything that DECIDES: what a finding is,
+which arm is fatal, and what the run says.
+
     --root DIR      repository to read (default: cwd)
     --json          machine-readable output
     --offline       arm 2 only, and say that is what happened
@@ -54,6 +61,7 @@ is that absence of evidence kept looking like health.
     --ratchet FILE  fail on any major NOT listed in FILE (shrink-only)
     --probe         prove this gate can go red
 """
+
 from __future__ import annotations
 
 import argparse
@@ -61,23 +69,8 @@ import json
 import os
 import re
 import sys
-import tomllib
 from dataclasses import dataclass, field
 from pathlib import Path
-
-# Dependency tables that ship. `[target.'cfg(...)'.dependencies]` is handled
-# separately because it nests one more level.
-DEP_TABLES = ("dependencies", "build-dependencies", "dev-dependencies")
-
-@dataclass
-class Dep:
-    """One declared dependency, with where it was declared and what it asked for."""
-
-    name: str
-    req: str
-    manifest: Path
-    section: str
-    inherited: bool = False
 
 
 @dataclass
@@ -98,119 +91,8 @@ class Report:
 
 
 from _crates_io import latest_stable
+from _dep_tree import Dep, declared_deps, lock_versions, manifests, nearest_lock, read_manifest
 from _semver import _cmp, parse_version, req_allows  # noqa: F401  (re-exported for the probe)
-
-# ── reading a tree ────────────────────────────────────────────────────────────
-
-
-def manifests(root: Path) -> list[Path]:
-    """Every Cargo.toml in the tree, skipping vendored and target trees."""
-    skip = {"target", "vendor", ".git", "node_modules", "build", ".build"}
-    return sorted(
-        p
-        for p in root.rglob("Cargo.toml")
-        if not any(part in skip for part in p.relative_to(root).parts)
-    )
-
-
-def read_manifest(path: Path) -> dict | None:
-    try:
-        with path.open("rb") as fh:
-            return tomllib.load(fh)
-    except (OSError, tomllib.TOMLDecodeError):
-        return None
-
-
-def workspace_dependencies(manifest: Path, doc: dict) -> dict:
-    """`[workspace.dependencies]`, from the WORKSPACE ROOT.
-
-    A member saying `toml = { workspace = true }` inherits from the ROOT's
-    table, and a member manifest has no `[workspace]` section of its own, so
-    reading it from the member yields nothing -- which reads as "no version
-    declared" and silently exempts every inherited dependency from the check.
-    """
-    if isinstance(doc.get("workspace"), dict) and isinstance(
-        doc["workspace"].get("dependencies"), dict
-    ):
-        return doc["workspace"]["dependencies"]
-    for parent in manifest.parents:
-        cand = parent / "Cargo.toml"
-        if not cand.is_file():
-            continue
-        other = read_manifest(cand)
-        if other and isinstance(other.get("workspace"), dict):
-            deps = other["workspace"].get("dependencies")
-            if isinstance(deps, dict):
-                return deps
-    return {}
-
-
-def declared_deps(doc: dict, path: Path) -> list[Dep]:
-    """Direct dependencies, with workspace inheritance resolved."""
-    ws_deps = workspace_dependencies(path, doc)
-    out: list[Dep] = []
-
-    def take(table: dict, section: str) -> None:
-        for name, spec in table.items():
-            # Bound before the branches, not in one of them: a dict-valued
-            # requirement reached first crashed the whole run on media_server,
-            # and two repos had never exercised that path.
-            inherited = False
-            if isinstance(spec, str):
-                req = spec
-            elif isinstance(spec, dict):
-                if "path" in spec or "git" in spec:
-                    continue  # no crates.io version to be behind
-                if spec.get("workspace") is True:
-                    ws_spec = ws_deps.get(name)
-                    if not isinstance(ws_spec, (str, dict)):
-                        continue  # cannot resolve; abstain quietly
-                    req = ws_spec if isinstance(ws_spec, str) else ws_spec.get("version", "")
-                    inherited = True
-                else:
-                    req = spec.get("version", "")
-                    if not req:
-                        continue
-            else:
-                continue
-            out.append(Dep(name, req, path, section, inherited))
-
-    for table in DEP_TABLES:
-        if isinstance(doc.get(table), dict):
-            take(doc[table], table)
-    tgt = doc.get("target")
-    if isinstance(tgt, dict):
-        for plat, block in tgt.items():
-            if isinstance(block, dict):
-                for table in DEP_TABLES:
-                    if isinstance(block.get(table), dict):
-                        take(block[table], f"target.{plat}.{table}")
-    return out
-
-
-def lock_versions(lock: Path) -> dict[str, list[str]]:
-    """Crate name -> every version the lockfile pins for it."""
-    try:
-        with lock.open("rb") as fh:
-            doc = tomllib.load(fh)
-    except (OSError, tomllib.TOMLDecodeError):
-        return {}
-    out: dict[str, list[str]] = {}
-    for pkg in doc.get("package", []) or []:
-        name, version = pkg.get("name"), pkg.get("version")
-        if isinstance(name, str) and isinstance(version, str):
-            out.setdefault(name, []).append(version)
-    return out
-
-
-def nearest_lock(manifest: Path) -> Path | None:
-    """The lockfile that governs this manifest: its own, else the nearest above."""
-    for parent in [manifest.parent, *manifest.parents]:
-        cand = parent / "Cargo.lock"
-        if cand.is_file():
-            return cand
-    return None
-
 
 # ── arm 1: pinned below what the graph already resolves (offline, fatal) ──────
 
@@ -251,7 +133,9 @@ def check_pinned_below_graph(deps: list[Dep], lock: Path, rel: str) -> list[Find
 # ── arm 2: currency against crates.io (network, reported) ────────────────────
 
 
-def check_currency(deps: list[Dep], unique: dict[str, str], rel: str) -> tuple[list[Finding], list[str]]:
+def check_currency(
+    deps: list[Dep], unique: dict[str, str], rel: str
+) -> tuple[list[Finding], list[str]]:
     findings: list[Finding] = []
     notes: list[str] = []
     for dep in deps:
@@ -393,12 +277,17 @@ def _probe() -> int:
 
     # The semver rules themselves, where a wrong one invents findings.
     cases = [
-        ("1", "1.9.9", True), ("1", "2.0.0", False),
-        ("0.19", "0.19.2", True), ("0.19", "0.20.0", False),
-        ("0", "0.0.5", True), ("^0.14", "0.19.2", False),
+        ("1", "1.9.9", True),
+        ("1", "2.0.0", False),
+        ("0.19", "0.19.2", True),
+        ("0.19", "0.20.0", False),
+        ("0", "0.0.5", True),
+        ("^0.14", "0.19.2", False),
         # a bare 3-part req is a CARET req, not an exact one: `1.0.5` admits 1.0.6
-        ("1.0.5", "1.0.6", True), ("^1.0.5", "2.0.0", False),
-        (">=1.2, <2", "1.7.0", True), (">=1.2, <2", "2.0.0", False),
+        ("1.0.5", "1.0.6", True),
+        ("^1.0.5", "2.0.0", False),
+        (">=1.2, <2", "1.7.0", True),
+        (">=1.2, <2", "2.0.0", False),
         ("1.0.5", "1.0.5", True),
         ("*", "9.9.9", True),
     ]
@@ -411,8 +300,7 @@ def _probe() -> int:
     if bad:
         print(f"check_dep_currency --probe: {bad} case(s) wrong")
         return 1
-    print("check_dep_currency --probe: a stale pin goes red, a moved pin green, "
-          "semver rules hold")
+    print("check_dep_currency --probe: a stale pin goes red, a moved pin green, semver rules hold")
     return 0
 
 
@@ -447,8 +335,11 @@ def main(argv: list[str] | None = None) -> int:
     # `tests/test_rust_gate.py` builds and requires to pass. Failing breaks one
     # estate rule; passing silently breaks the other.
     if rep.examined == 0:
-        why = ("no manifest found" if rep.manifests_seen == 0
-               else f"{rep.manifests_seen} manifest(s), none declaring a dependency")
+        why = (
+            "no manifest found"
+            if rep.manifests_seen == 0
+            else f"{rep.manifests_seen} manifest(s), none declaring a dependency"
+        )
         msg = f"not applicable: {why} under {root} -- nothing to check"
         if args.json:
             print(json.dumps({"examined": 0, "not_applicable": msg, "fatal": []}, indent=2))
@@ -463,17 +354,24 @@ def main(argv: list[str] | None = None) -> int:
         fatal = fatal + majors
 
     if args.json:
-        print(json.dumps({
-            "examined": rep.examined,
-            "currency_checked": rep.checked_currency,
-            "fatal": [f.__dict__ for f in fatal],
-            "major_behind": [f.__dict__ for f in majors],
-            "minor_behind": [f.__dict__ for f in minors],
-            "notes": rep.notes,
-        }, indent=2))
+        print(
+            json.dumps(
+                {
+                    "examined": rep.examined,
+                    "currency_checked": rep.checked_currency,
+                    "fatal": [f.__dict__ for f in fatal],
+                    "major_behind": [f.__dict__ for f in majors],
+                    "minor_behind": [f.__dict__ for f in minors],
+                    "notes": rep.notes,
+                },
+                indent=2,
+            )
+        )
     else:
-        print(f"· {rep.manifests_seen} manifest(s), "
-              f"{rep.examined} direct dependency declaration(s) examined")
+        print(
+            f"· {rep.manifests_seen} manifest(s), "
+            f"{rep.examined} direct dependency declaration(s) examined"
+        )
         for f in fatal:
             print(f"✗ [{f.severity}] {f.name}: {f.detail}  ({f.where})")
         for f in majors:
@@ -489,8 +387,10 @@ def main(argv: list[str] | None = None) -> int:
         else:
             print("\n✓ no dependency pinned below the graph")
             if majors:
-                print(f"  ({len(majors)} major(s) behind, reported not failed — "
-                      f"--strict to make them fatal)")
+                print(
+                    f"  ({len(majors)} major(s) behind, reported not failed — "
+                    f"--strict to make them fatal)"
+                )
 
     return 1 if fatal else 0
 

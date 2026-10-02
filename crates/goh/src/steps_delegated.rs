@@ -155,6 +155,42 @@ pub fn step_lock_version(repo: &std::path::Path, checks: &std::path::Path) -> Op
     None
 }
 
+/// Python shape, decided by the repo's own declared rule set.
+///
+/// Only run on a FULL structural pass, not on a staged one: a formatter's
+/// answer is a property of the whole tree, and a pre-commit hook that reformats
+/// half the repository to satisfy a commit is worse than one that waits. The
+/// checker itself resolves ruff's settings from the tree it runs in, which is
+/// why it takes the repo root.
+///
+/// Paired with the `goh_step` of the same name in gates/structural.sh; the two
+/// are kept in step by `tests/test_goh_structural_parity.py`.
+#[must_use]
+pub fn step_python_formatted(
+    repo: &std::path::Path,
+    cfg: &gatesrc::Gatesrc,
+    checks: &std::path::Path,
+    staged: bool,
+) -> Option<i32> {
+    // Opt-in AND full scope, both stated at the call site rather than assumed
+    // by the caller: a formatter's verdict is a property of the whole tree, and
+    // a repo that has not declared a rule set should not learn one by going red.
+    if staged || !gatesrc::opt_in(cfg, "GOH_PYTHON_FORMATTED") {
+        return None;
+    }
+    let code = delegated(
+        checks,
+        repo,
+        "python is ruff-formatted",
+        "python3",
+        &["check_python_formatted.py".to_owned()],
+    );
+    if code != 0 {
+        return Some(code);
+    }
+    None
+}
+
 #[must_use]
 pub fn step_kill_by_name(
     repo: &std::path::Path,
@@ -165,7 +201,7 @@ pub fn step_kill_by_name(
     // 7c. Process kills by name (opt-in per repo): a name matches processes
     // the caller does not own. Delegated to the Python checker, which owns
     // the comment stripping and the allowlist ratchet.
-    if !cfg.no_kill_by_name {
+    if !gatesrc::opt_in(cfg, "GOH_NO_KILL_BY_NAME") {
         return None;
     }
     let label = if staged {

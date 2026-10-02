@@ -24,7 +24,9 @@ from conftest import run_check, write
 
 SCRIPT = "checks/check_skills_corpus.py"
 
-GOOD = "---\nname: {name}\ndescription: does a thing worth triggering on.\n---\n\n# {name}\n\nbody\n"
+GOOD = (
+    "---\nname: {name}\ndescription: does a thing worth triggering on.\n---\n\n# {name}\n\nbody\n"
+)
 
 
 def _corpus(root, n=6, **overrides):
@@ -89,16 +91,22 @@ def test_a_wikilink_to_a_real_skill_passes(corpus):
 def test_a_bracketed_literal_in_code_is_not_a_wikilink(corpus):
     # TOML writes array-of-tables as [[rules]]; in backticks that is a literal
     # config name, not a cross-skill pointer, and must not fail.
-    write(corpus, "skill-1/SKILL.md", GOOD.format(name="skill-1") +
-          "\nthe `[[rules]]` table promised every param\n")
+    write(
+        corpus,
+        "skill-1/SKILL.md",
+        GOOD.format(name="skill-1") + "\nthe `[[rules]]` table promised every param\n",
+    )
     assert _run(corpus).returncode == 0
 
 
 def test_a_dead_wikilink_in_prose_still_fails_beside_a_literal(corpus):
     # The exemption is narrow: backticks only. A real dead pointer in the same
     # file must still bite, or the exemption is a hole.
-    write(corpus, "skill-1/SKILL.md", GOOD.format(name="skill-1") +
-          "\nthe `[[rules]]` table, see also [[ghost-skill]]\n")
+    write(
+        corpus,
+        "skill-1/SKILL.md",
+        GOOD.format(name="skill-1") + "\nthe `[[rules]]` table, see also [[ghost-skill]]\n",
+    )
     r = _run(corpus)
     assert r.returncode == 1
     assert "[[ghost-skill]] matches no skill" in r.stdout
@@ -177,8 +185,11 @@ def test_structural_headings_may_repeat_freely(corpus):
     findings were the corpus's shared skeleton. A gate that cries wolf on
     correct structure is a gate that gets switched off."""
     for n in ("skill-1", "skill-2", "skill-3"):
-        write(corpus, f"{n}/SKILL.md",
-              GOOD.format(name=n) + "\n## Related\n\nx\n\n## The move\n\ny\n\n## Checklist\n\nz\n")
+        write(
+            corpus,
+            f"{n}/SKILL.md",
+            GOOD.format(name=n) + "\n## Related\n\nx\n\n## The move\n\ny\n\n## Checklist\n\nz\n",
+        )
     assert _run(corpus).returncode == 0
 
 
@@ -197,7 +208,7 @@ def test_the_default_root_is_the_cwd_not_a_path_elsewhere(tmp_path):
     A checker measures where it is pointed, or it measures nothing."""
     empty = tmp_path / "empty"
     empty.mkdir()
-    r = run_check(empty, SCRIPT)          # no --root
+    r = run_check(empty, SCRIPT)  # no --root
     assert r.returncode == 2
     assert "the scope is wrong" in r.stdout
 

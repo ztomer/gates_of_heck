@@ -17,7 +17,8 @@ DOCTOR = REPO_ROOT / "gates" / "doctor.sh"
 def run_doctor(target: Path) -> subprocess.CompletedProcess:
     return subprocess.run(
         ["/bin/bash", str(DOCTOR), str(target)],
-        capture_output=True, text=True,
+        capture_output=True,
+        text=True,
     )
 
 
@@ -25,7 +26,8 @@ def _wire(repo: Path) -> None:
     (repo / ".gatesrc").write_text("GOH_MAX_LINES=500\n")
     r = subprocess.run(
         ["/bin/bash", str(REPO_ROOT / "install.sh"), str(repo)],
-        capture_output=True, text=True,
+        capture_output=True,
+        text=True,
     )
     assert r.returncode == 0, r.stdout + r.stderr
 
@@ -66,8 +68,7 @@ def test_unknown_gatesrc_key_warns_but_passes(repo):
 
 def test_all_known_keys_pass_silently_on_that_point(repo):
     _wire(repo)
-    (repo / ".gatesrc").write_text(
-        "GOH_MAX_LINES=500\nGOH_EXCLUDE='x'\nGOH_CI_STEPS='true'\n")
+    (repo / ".gatesrc").write_text("GOH_MAX_LINES=500\nGOH_EXCLUDE='x'\nGOH_CI_STEPS='true'\n")
     r = run_doctor(repo)
     assert r.returncode == 0, r.stdout + r.stderr
     assert "BOGUS" not in (r.stdout + r.stderr)
@@ -87,6 +88,7 @@ def test_missing_python_is_named(tmp_path):
     # check without touching the machine.
     import shutil as _shutil
     import os as _os
+
     target = tmp_path / "proj"
     target.mkdir()
     git(target, "init", "-q", "-b", "main")
@@ -96,7 +98,8 @@ def test_missing_python_is_named(tmp_path):
     _os.symlink(_shutil.which("git"), bindir / "git")
     r = subprocess.run(
         ["/bin/bash", str(DOCTOR), str(target)],
-        capture_output=True, text=True,
+        capture_output=True,
+        text=True,
         env={"PATH": str(bindir), "HOME": str(tmp_path)},
     )
     assert r.returncode == 1, r.stdout + r.stderr
@@ -110,7 +113,10 @@ def test_gate_help_flag_prints_usage(tmp_path):
     env["GOH_DIR"] = str(REPO_ROOT)
     r = subprocess.run(
         ["/bin/bash", str(REPO_ROOT / "tools" / "gate.sh"), "--help"],
-        capture_output=True, text=True, cwd=tmp_path, env=env,
+        capture_output=True,
+        text=True,
+        cwd=tmp_path,
+        env=env,
     )
     assert r.returncode == 0, r.stdout + r.stderr
     combined = r.stdout + r.stderr
@@ -123,14 +129,17 @@ def test_gate_doctor_flag_delegates(repo):
     (repo / ".gatesrc").write_text("GOH_MAX_LINES=500\n")
     subprocess.run(
         ["/bin/bash", str(REPO_ROOT / "install.sh"), str(repo)],
-        capture_output=True, text=True, check=True,
+        capture_output=True,
+        text=True,
+        check=True,
     )
     env = dict(_os.environ)
     env["GOH_DIR"] = str(REPO_ROOT)
     r = subprocess.run(
-        ["/bin/bash", str(REPO_ROOT / "tools" / "gate.sh"),
-         "--doctor", str(repo)],
-        capture_output=True, text=True, env=env,
+        ["/bin/bash", str(REPO_ROOT / "tools" / "gate.sh"), "--doctor", str(repo)],
+        capture_output=True,
+        text=True,
+        env=env,
     )
     assert r.returncode == 0, r.stdout + r.stderr
     assert "healthy" in (r.stdout + r.stderr).lower()
@@ -149,7 +158,9 @@ def test_a_hook_from_an_older_install_fails_named(repo):
     working tree for a day while doctor said healthy."""
     _wire(repo)
     hook = repo / ".githooks" / "pre-push"
-    hook.write_text('#!/bin/bash\nexec bash "$(git rev-parse --show-toplevel)/tools/gate.sh" --full\n')
+    hook.write_text(
+        '#!/bin/bash\nexec bash "$(git rev-parse --show-toplevel)/tools/gate.sh" --full\n'
+    )
     (repo / ".githooks" / ".goh-installed" / "pre-push.sha256").write_text(_sha(hook) + "\n")
     r = run_doctor(repo)
     assert r.returncode == 1, r.stdout + r.stderr

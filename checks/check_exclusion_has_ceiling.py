@@ -36,6 +36,7 @@ unconfigured repo is told the check is off rather than being passed silently.
     check_exclusion_has_ceiling.py --max 500 --line-exclude 're1|re2' \
         --baseline tools/loc_baseline.txt
 """
+
 import argparse
 import os
 import re
@@ -140,10 +141,7 @@ def main() -> int:
         info("    a file that is gone is indistinguishable from one that is working.")
         return 1
     tail = f", {waived} waived as unbounded by nature" if waived else ""
-    ok(
-        f"[ceiling] OK — {inspected} exempt file(s), each under the cap or "
-        f"carrying a ceiling{tail}"
-    )
+    ok(f"[ceiling] OK — {inspected} exempt file(s), each under the cap or carrying a ceiling{tail}")
     return 0
 
 

@@ -73,7 +73,7 @@ def normalize_path(raw: str, root: Path) -> str:
     are resolved through symlinks first — swiftlint writes paths under /var
     where the checkout may sit at /private/var (probed 2026-08-25).
     """
-    s = raw[len(FILE_URL_SCHEME):] if raw.startswith(FILE_URL_SCHEME) else raw
+    s = raw[len(FILE_URL_SCHEME) :] if raw.startswith(FILE_URL_SCHEME) else raw
     p = Path(s)
     rr = Path(root).resolve()
     if not p.is_absolute():
@@ -97,9 +97,7 @@ def reconcile(
     baseline_entries: list, live_violations: list, root: Path
 ) -> tuple[list[dict], list[dict]]:
     """Return (new, stale). `new` must be empty for the gate to pass."""
-    tolerated = Counter(
-        match_key(violation_of(e), root) for e in baseline_entries
-    )
+    tolerated = Counter(match_key(violation_of(e), root) for e in baseline_entries)
     fresh: list[dict] = []
     for v in live_violations:
         k = match_key(v, root)
@@ -116,8 +114,7 @@ def load_json_list(path: Path, what: str, swiftlint_rc: int = 0) -> list:
     except FileNotFoundError:
         die(f"{what} not found: {path}")
     except json.JSONDecodeError as exc:
-        die(f"{what} is not valid JSON (swiftlint rc={swiftlint_rc}): "
-            f"{path} ({exc})")
+        die(f"{what} is not valid JSON (swiftlint rc={swiftlint_rc}): {path} ({exc})")
     if not isinstance(data, list):
         die(f"{what} must be a JSON array: {path}")
     return data
@@ -136,25 +133,25 @@ def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--baseline", required=True, type=Path)
     ap.add_argument("--report", required=True, type=Path)
-    ap.add_argument("--root", default=".", type=Path,
-                    help="repo root for path normalization (default: cwd)")
-    ap.add_argument("--swiftlint-rc", type=int, default=0,
-                    help="swiftlint's own exit status (diagnostics only)")
+    ap.add_argument(
+        "--root", default=".", type=Path, help="repo root for path normalization (default: cwd)"
+    )
+    ap.add_argument(
+        "--swiftlint-rc", type=int, default=0, help="swiftlint's own exit status (diagnostics only)"
+    )
     args = ap.parse_args()
 
     if not args.baseline.exists():
         die(f"baseline not found: {args.baseline}")
 
-    baseline = [
-        violation_of(e)
-        for e in load_json_list(args.baseline, "baseline")
-    ]
-    report = load_json_list(args.report, "swiftlint report",
-                            swiftlint_rc=args.swiftlint_rc)
+    baseline = [violation_of(e) for e in load_json_list(args.baseline, "baseline")]
+    report = load_json_list(args.report, "swiftlint report", swiftlint_rc=args.swiftlint_rc)
     bad = [e for e in report if not isinstance(e, dict)]
     if bad:
-        die("swiftlint report entries are not objects "
-            f"({len(bad)} bad, swiftlint rc={args.swiftlint_rc})")
+        die(
+            "swiftlint report entries are not objects "
+            f"({len(bad)} bad, swiftlint rc={args.swiftlint_rc})"
+        )
 
     root = args.root.resolve()
     fresh, stale = reconcile(baseline, report, root)
@@ -163,13 +160,14 @@ def main() -> int:
         print("\u2717 swift gate: NEW lint violation(s) not in the baseline:")
         for v in sorted(describe_new(v) for v in fresh):
             print(f"  {v}")
-        print(f"  {len(fresh)} new (baseline tolerates "
-              f"{sum(1 for _ in baseline)} listed)")
+        print(f"  {len(fresh)} new (baseline tolerates {sum(1 for _ in baseline)} listed)")
         return 1
 
     if stale:
-        print(f"\u26a0 {len(stale)} baselined violation(s) no longer occur —",
-              "re-record the baseline to shrink it (never grow it)")
+        print(
+            f"\u26a0 {len(stale)} baselined violation(s) no longer occur —",
+            "re-record the baseline to shrink it (never grow it)",
+        )
         return 0
 
     if baseline or report:

@@ -4,6 +4,7 @@ Fixture workspaces per case; asserts identical exit codes plus
 identical stdout/stderr. A scope rule, message, or stream drifting on
 either side goes red.
 """
+
 from __future__ import annotations
 
 import subprocess
@@ -14,10 +15,7 @@ import pytest
 ROOT = Path(__file__).resolve().parents[1]
 CHECK = ROOT / "checks" / "check_lints_optin.py"
 
-POLICY = (
-    "[workspace]\nmembers = [{members}]\n\n"
-    "[workspace.lints.clippy]\nall = \"warn\"\n"
-)
+POLICY = '[workspace]\nmembers = [{members}]\n\n[workspace.lints.clippy]\nall = "warn"\n'
 INHERIT = '[package]\nname = "{name}"\n\n[lints]\nworkspace = true\n'
 BARE = '[package]\nname = "{name}"\n'
 OWN_TABLE = '[package]\nname = "{name}"\n\n[lints.clippy]\nall = "warn"\n'
@@ -69,8 +67,8 @@ CASES: dict[str, dict[str, str]] = {
     },
     "excluded": {
         "Cargo.toml": (
-            "[workspace]\nmembers = [\"a\", \"v\"]\nexclude = [\"v\"]\n\n"
-            "[workspace.lints.clippy]\nall = \"warn\"\n"
+            '[workspace]\nmembers = ["a", "v"]\nexclude = ["v"]\n\n'
+            '[workspace.lints.clippy]\nall = "warn"\n'
         ),
         "a/Cargo.toml": INHERIT.format(name="a"),
         "v/Cargo.toml": BARE.format(name="v"),

@@ -62,9 +62,7 @@ def _assert_nothing_survives(marker: str):
     deadline = time.time() + 5
     survivors = None
     while time.time() < deadline:
-        r = subprocess.run(
-            ["pgrep", "-f", marker], capture_output=True, text=True
-        )
+        r = subprocess.run(["pgrep", "-f", marker], capture_output=True, text=True)
         if r.returncode != 0:  # no match: nothing left
             return
         survivors = r.stdout
@@ -76,18 +74,14 @@ def _assert_nothing_survives(marker: str):
 
 
 def test_run_captured_returns_completed_process():
-    out = killtree.run_captured(
-        [sys.executable, "-c", "print('captured-ok')"], timeout=30
-    )
+    out = killtree.run_captured([sys.executable, "-c", "print('captured-ok')"], timeout=30)
     assert out.returncode == 0 and out.stdout.strip() == "captured-ok"
 
 
 def test_run_captured_kills_whole_group_on_timeout():
     marker = _unique_marker("HELPER")
     with pytest.raises(subprocess.TimeoutExpired):
-        killtree.run_captured(
-            _orphan_step(marker), shell=True, timeout=1
-        )
+        killtree.run_captured(_orphan_step(marker), shell=True, timeout=1)
     _assert_nothing_survives(marker)
 
 
@@ -97,7 +91,8 @@ def test_missing_getpgid_falls_back_to_direct_kill(monkeypatch):
     # AttributeError. HEAD guarded OSError only — half-guard.
     proc = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(60)"])
     monkeypatch.setattr(
-        os, "getpgid",
+        os,
+        "getpgid",
         lambda pid: (_ for _ in ()).throw(AttributeError("no getpgid")),
     )
     try:
@@ -113,9 +108,13 @@ def test_missing_getpgid_falls_back_to_direct_kill(monkeypatch):
 
 def test_run_captured_feeds_stdin_and_captures_both_pipes():
     out = killtree.run_captured(
-        [sys.executable, "-c", "import sys; d=sys.stdin.read(); "
-         "sys.stderr.write('E'); print(d.upper())"],
-        timeout=30, input_text="payload",
+        [
+            sys.executable,
+            "-c",
+            "import sys; d=sys.stdin.read(); sys.stderr.write('E'); print(d.upper())",
+        ],
+        timeout=30,
+        input_text="payload",
     )
     assert out.returncode == 0
     assert out.stdout.strip() == "PAYLOAD" and out.stderr == "E"

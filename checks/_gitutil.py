@@ -11,6 +11,7 @@ The class this fixes: every checker used to open() working-tree paths even in
 an innocent commit, and a file staged dirty then cleaned in the editor could
 slip one through. One implementation, all checkers.
 """
+
 import functools
 import os
 import subprocess
@@ -47,9 +48,7 @@ def foreign_repo_env(base=None) -> dict:
 
 
 def repo_root() -> str:
-    out = subprocess.run(
-        ["git", "rev-parse", "--show-toplevel"], capture_output=True, text=True
-    )
+    out = subprocess.run(["git", "rev-parse", "--show-toplevel"], capture_output=True, text=True)
     return out.stdout.strip()
 
 
@@ -69,11 +68,9 @@ def listed_files(root: str, staged: bool, pathspec: str = "*") -> list[str]:
     no consumer could resolve — those files were silently unpoliced. decode
     with 'replace' keeps a hostile byte sequence from killing the gate."""
     cmd = (
-        ["git", "-C", root, "diff", "--cached", "--name-only", "-z",
-         "--diff-filter=ACM"]
+        ["git", "-C", root, "diff", "--cached", "--name-only", "-z", "--diff-filter=ACM"]
         if staged
-        else ["git", "-C", root, "ls-files", "-z", "--cached", "--others",
-              "--exclude-standard"]
+        else ["git", "-C", root, "ls-files", "-z", "--cached", "--others", "--exclude-standard"]
     )
     out = subprocess.run(cmd, capture_output=True)
     if out.returncode != 0:
@@ -85,9 +82,7 @@ def listed_files(root: str, staged: bool, pathspec: str = "*") -> list[str]:
             "git %s failed (exit %d): %s"
             % (cmd[3], out.returncode, out.stderr.decode("utf-8", "replace").strip()[:200])
         )
-    return [
-        n.decode("utf-8", "replace") for n in out.stdout.split(b"\0") if n
-    ]
+    return [n.decode("utf-8", "replace") for n in out.stdout.split(b"\0") if n]
 
 
 def content_bytes(root: str, rel: str, staged: bool):

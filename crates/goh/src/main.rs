@@ -320,6 +320,9 @@ fn run_structural(staged: bool, full: bool) -> i32 {
     if let Some(code) = steps_delegated::step_lock_version(&repo, &checks) {
         return code;
     }
+    if let Some(code) = steps_delegated::step_python_formatted(&repo, &cfg, &checks, staged) {
+        return code;
+    }
     if let Some(code) = steps_delegated::step_kill_by_name(&repo, &cfg, &checks, staged) {
         return code;
     }

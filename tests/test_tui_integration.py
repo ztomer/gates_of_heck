@@ -19,9 +19,7 @@ BASH = "/bin/bash"
 
 
 def _bash(script: str, cwd: Optional[Path] = None) -> subprocess.CompletedProcess:
-    return subprocess.run(
-        [BASH, "-c", script], cwd=cwd, capture_output=True, text=True
-    )
+    return subprocess.run([BASH, "-c", script], cwd=cwd, capture_output=True, text=True)
 
 
 def _sandbox(tmp_path: Path) -> Path:
@@ -51,15 +49,11 @@ def test_lib_sh_defines_private_aliases():
 
 def test_common_sh_routes_through_styled_lib(tmp_path):
     s = _sandbox(tmp_path)
-    script = (
-        f"cd '{s}' && "
-        f". '{REPO_ROOT}/gates/_common.sh' && info hello"
-    )
+    script = f"cd '{s}' && . '{REPO_ROOT}/gates/_common.sh' && info hello"
     r = _bash(script)
     assert r.returncode == 0, r.stderr
     assert "SENTINEL-A" in r.stdout, (
-        "_common.sh info() did not route through the styled lib — "
-        f"got: {r.stdout!r}"
+        f"_common.sh info() did not route through the styled lib — got: {r.stdout!r}"
     )
 
 
@@ -76,9 +70,7 @@ def test_common_sh_fallbacks_when_no_lib(tmp_path):
 
 def test_die_exits_nonzero():
     """failure-path-no-op guard: die() must actually stop the script."""
-    r = _bash(
-        f". '{REPO_ROOT}/gates/_common.sh' && die boom; echo UNREACHABLE"
-    )
+    r = _bash(f". '{REPO_ROOT}/gates/_common.sh' && die boom; echo UNREACHABLE")
     assert r.returncode != 0
     assert "UNREACHABLE" not in r.stdout
     assert "boom" in r.stderr
@@ -139,8 +131,7 @@ def test_goh_optional_step_skips_cleanly_when_guard_absent(tmp_path):
     )
     r = _bash(script)
     assert r.returncode == 0, r.stderr
-    assert "skipped" in r.stderr.lower(), (
-        f"skip reason must be stated: {r.stdout!r} {r.stderr!r}")
+    assert "skipped" in r.stderr.lower(), f"skip reason must be stated: {r.stdout!r} {r.stderr!r}"
 
 
 def test_no_color_disables_color_everywhere():
@@ -154,7 +145,8 @@ def _under_pty(script: str) -> str:
     """Run with a real tty on stdout (macOS BSD script), return raw output."""
     r = subprocess.run(
         ["script", "-q", "/dev/null", "/bin/bash", "-c", script],
-        capture_output=True, text=True,
+        capture_output=True,
+        text=True,
     )
     return r.stdout
 
@@ -164,10 +156,8 @@ def test_no_color_zero_disables_color_no_color_org_spec():
     RE-enable it. Needs a pty: without a tty the lib degrades anyway and the
     assertion would be vacuous (calibration: the control below proves the
     instrument sees color under a tty)."""
-    colored = _under_pty(
-        f"source '{REPO_ROOT}/tui/lib.sh' && info x")
-    assert "\x1b[" in colored, (
-        "control failed: no ANSI even on a tty — this test cannot see color")
+    colored = _under_pty(f"source '{REPO_ROOT}/tui/lib.sh' && info x")
+    assert "\x1b[" in colored, "control failed: no ANSI even on a tty — this test cannot see color"
     zero = _under_pty(f"NO_COLOR=0 source '{REPO_ROOT}/tui/lib.sh' && info x")
     assert "\x1b[" not in zero, "NO_COLOR=0 must disable color (no-color.org)"
 

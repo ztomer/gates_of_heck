@@ -23,20 +23,19 @@ def _write_spm(repo, rel, files):
     p.parent.mkdir(parents=True, exist_ok=True)
     payload = {
         "data": [
-            {"files": [
-                {"filename": n, "covered_lines": c, "total_lines": t}
-                for n, c, t in files
-            ]}
+            {"files": [{"filename": n, "covered_lines": c, "total_lines": t} for n, c, t in files]}
         ]
     }
     p.write_text(json.dumps(payload), encoding="utf-8")
 
 
 def test_spm_aggregates_across_payloads(repo):
-    _write_spm(repo, ".build/arm64-apple-macosx/debug/codecov/a.json",
-               [("A.swift", 90, 100), ("B.swift", 10, 10)])
-    _write_spm(repo, ".build/x86_64-unknown-linux/debug/codecov/b.json",
-               [("C.swift", 5, 100)])
+    _write_spm(
+        repo,
+        ".build/arm64-apple-macosx/debug/codecov/a.json",
+        [("A.swift", 90, 100), ("B.swift", 10, 10)],
+    )
+    _write_spm(repo, ".build/x86_64-unknown-linux/debug/codecov/b.json", [("C.swift", 5, 100)])
     r = run_check(repo, SCRIPT, "--min", "80")
     # (90+10+5)/(100+10+100) = 105/210 = 50% → fails with per-file list
     assert r.returncode == 1
@@ -54,8 +53,7 @@ def test_spm_finds_the_swift_6_3_products_layout(repo):
     # Swift 6.3's build system writes .build/out/Products/<config>/codecov/;
     # the gate saw a green test step and then "no payload" until this layout
     # was in the default set.
-    _write_spm(repo, ".build/out/Products/Debug/codecov/App.json",
-               [("A.swift", 96, 100)])
+    _write_spm(repo, ".build/out/Products/Debug/codecov/App.json", [("A.swift", 96, 100)])
     r = run_check(repo, SCRIPT, "--min", "95")
     assert r.returncode == 0, r.stderr
     assert "96.0%" in r.stdout
@@ -94,16 +92,14 @@ def test_spm_corrupt_payload_is_named_refusal(repo):
 
 
 def test_spm_parseable_payload_with_no_measurable_files_refuses(repo):
-    _write_spm(repo, ".build/a/debug/codecov/empty.json",
-               [("Empty.swift", 0, 0)])
+    _write_spm(repo, ".build/a/debug/codecov/empty.json", [("Empty.swift", 0, 0)])
     r = run_check(repo, SCRIPT, "--min", "50")
     assert r.returncode == 2
     assert "1 payload(s) matched" in r.stderr
 
 
 def test_spm_zero_line_entries_do_not_dilute(repo, monkeypatch):
-    _write_spm(repo, ".build/a/debug/codecov/a.json",
-               [("A.swift", 95, 100), ("Empty.swift", 0, 0)])
+    _write_spm(repo, ".build/a/debug/codecov/a.json", [("A.swift", 95, 100), ("Empty.swift", 0, 0)])
     monkeypatch.chdir(repo)
     records, paths = cov.load_spm([".build/a/debug/codecov/*.json"])
     assert len(paths) == 1
@@ -116,12 +112,18 @@ def test_spm_zero_line_entries_do_not_dilute(repo, monkeypatch):
 
 XCRESULT_JSON = {
     "actions": [
-        {"actionResult": {"coverage": {"codeCoverage": {
-            "targets": [
-                {"name": "CoreTests", "coveredLines": 190, "lineCount": 200},
-                {"name": "App", "coveredLines": 3, "lineCount": 10},
-            ]
-        }}}}
+        {
+            "actionResult": {
+                "coverage": {
+                    "codeCoverage": {
+                        "targets": [
+                            {"name": "CoreTests", "coveredLines": 190, "lineCount": 200},
+                            {"name": "App", "coveredLines": 3, "lineCount": 10},
+                        ]
+                    }
+                }
+            }
+        }
     ]
 }
 
@@ -139,8 +141,9 @@ def test_xcresult_bools_are_not_ints():
 
 
 def test_aggregate_worst_first_ordering():
-    pct, files = cov.aggregate([
-        ("Good.swift", 99, 100), ("Bad.swift", 40, 100), ("Mid.swift", 80, 100)])
+    pct, files = cov.aggregate(
+        [("Good.swift", 99, 100), ("Bad.swift", 40, 100), ("Mid.swift", 80, 100)]
+    )
     assert [f[0] for f in files] == ["Bad.swift", "Mid.swift", "Good.swift"]
     assert abs(pct - (219 / 300 * 100)) < 1e-9
 
@@ -167,25 +170,33 @@ def _write_spm_summary(repo, rel, files):
         "version": "3.0.1",
         "type": "llvm.coverage.json.export",
         "data": [
-            {"files": [
-                {
-                    "filename": n,
-                    "summary": {
-                        "lines": {"count": t, "covered": c,
-                                  "percent": (100.0 * c / t) if t else 0},
-                        "functions": {"count": 1, "covered": 1, "percent": 100},
-                    },
-                }
-                for n, c, t in files
-            ]}
+            {
+                "files": [
+                    {
+                        "filename": n,
+                        "summary": {
+                            "lines": {
+                                "count": t,
+                                "covered": c,
+                                "percent": (100.0 * c / t) if t else 0,
+                            },
+                            "functions": {"count": 1, "covered": 1, "percent": 100},
+                        },
+                    }
+                    for n, c, t in files
+                ]
+            }
         ],
     }
     p.write_text(json.dumps(payload), encoding="utf-8")
 
 
 def test_spm_reads_summary_shaped_payloads(repo):
-    _write_spm_summary(repo, ".build/arm64-apple-macosx/debug/codecov/a.json",
-                       [("/w/Sources/A.swift", 40, 100), ("/w/Sources/B.swift", 10, 100)])
+    _write_spm_summary(
+        repo,
+        ".build/arm64-apple-macosx/debug/codecov/a.json",
+        [("/w/Sources/A.swift", 40, 100), ("/w/Sources/B.swift", 10, 100)],
+    )
     r = run_check(repo, SCRIPT, "--min", "20")
     # 50/200 = 25% >= 20
     assert r.returncode == 0, r.stderr
@@ -194,8 +205,9 @@ def test_spm_reads_summary_shaped_payloads(repo):
 
 def test_summary_shape_still_fails_below_the_floor(repo):
     """The new reader must be able to REFUSE, not just parse."""
-    _write_spm_summary(repo, ".build/arm64-apple-macosx/debug/codecov/a.json",
-                       [("/w/Sources/A.swift", 1, 100)])
+    _write_spm_summary(
+        repo, ".build/arm64-apple-macosx/debug/codecov/a.json", [("/w/Sources/A.swift", 1, 100)]
+    )
     r = run_check(repo, SCRIPT, "--min", "50")
     assert r.returncode == 1
     assert "A.swift" in r.stderr
@@ -204,10 +216,14 @@ def test_summary_shape_still_fails_below_the_floor(repo):
 def test_generated_sources_do_not_count(repo):
     """SwiftPM synthesises a test runner under .build. Counting it moves the
     number without moving the code under test, so it must be excluded."""
-    _write_spm_summary(repo, ".build/arm64-apple-macosx/debug/codecov/a.json",
-                       [("/w/Sources/A.swift", 10, 100),
-                        ("/w/.build/arm64-apple-macosx/debug/Pkg.derived/runner.swift",
-                         100, 100)])
+    _write_spm_summary(
+        repo,
+        ".build/arm64-apple-macosx/debug/codecov/a.json",
+        [
+            ("/w/Sources/A.swift", 10, 100),
+            ("/w/.build/arm64-apple-macosx/debug/Pkg.derived/runner.swift", 100, 100),
+        ],
+    )
     r = run_check(repo, SCRIPT, "--min", "50")
     # Counting the runner would read 110/200 = 55% and pass; excluding it
     # reads the real 10/100 = 10% and fails.
@@ -229,9 +245,11 @@ def test_both_payload_shapes_agree(repo):
 def test_test_sources_do_not_count(repo):
     """A test file is ~100% covered by definition; counting it lets a floor be
     met by adding tests that assert nothing."""
-    _write_spm_summary(repo, ".build/arm64-apple-macosx/debug/codecov/a.json",
-                       [("/w/Sources/A.swift", 10, 100),
-                        ("/w/Tests/ATests.swift", 100, 100)])
+    _write_spm_summary(
+        repo,
+        ".build/arm64-apple-macosx/debug/codecov/a.json",
+        [("/w/Sources/A.swift", 10, 100), ("/w/Tests/ATests.swift", 100, 100)],
+    )
     r = run_check(repo, SCRIPT, "--min", "50")
     # Counting the test file reads 110/200 = 55% and passes; excluding it
     # reads the real 10/100 = 10% and fails.

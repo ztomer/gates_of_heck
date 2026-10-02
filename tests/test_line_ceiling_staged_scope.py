@@ -17,6 +17,7 @@ not a test's: a plain commit hands the hook GIT_INDEX_FILE=.git/index,
 RELATIVE, which resolves to nothing inside the index view; `git commit <path>`
 hands it a temporary index the gate must judge instead of .git/index.
 """
+
 import os
 import subprocess
 from pathlib import Path
@@ -26,11 +27,7 @@ import pytest
 from conftest import REPO_ROOT, commit_all, git, stage, write
 
 BASELINE = ".gates_loc_baseline.txt"
-GATESRC = (
-    "GOH_MAX_LINES=5\n"
-    "GOH_LINE_EXCLUDE='big\\.txt'\n"
-    f"GOH_LINE_BASELINE={BASELINE}\n"
-)
+GATESRC = f"GOH_MAX_LINES=5\nGOH_LINE_EXCLUDE='big\\.txt'\nGOH_LINE_BASELINE={BASELINE}\n"
 
 
 def _lines(n: int) -> str:
@@ -57,10 +54,13 @@ def _env(runner: str, goh: Path, **extra: str) -> dict:
     return env
 
 
-def _run(runner: str, goh: Path, repo: Path, scope: str, **extra: str) -> subprocess.CompletedProcess:
+def _run(
+    runner: str, goh: Path, repo: Path, scope: str, **extra: str
+) -> subprocess.CompletedProcess:
     cmd = ["bash", str(REPO_ROOT / "gates" / "structural.sh"), scope]
-    return subprocess.run(cmd, cwd=repo, capture_output=True, text=True,
-                          env=_env(runner, goh, **extra))
+    return subprocess.run(
+        cmd, cwd=repo, capture_output=True, text=True, env=_env(runner, goh, **extra)
+    )
 
 
 RUNNERS = pytest.mark.parametrize("runner", ["python", "native"])
@@ -143,9 +143,13 @@ def test_both_steps_run_at_the_repo_root_from_a_subdirectory(runner, repo, goh):
     stage(repo, "big.txt")
     (repo / "sub").mkdir()
     for scope in ("--staged", "--full"):
-        r = subprocess.run(["bash", str(REPO_ROOT / "gates" / "structural.sh"), scope],
-                           cwd=repo / "sub", capture_output=True, text=True,
-                           env=_env(runner, goh))
+        r = subprocess.run(
+            ["bash", str(REPO_ROOT / "gates" / "structural.sh"), scope],
+            cwd=repo / "sub",
+            capture_output=True,
+            text=True,
+            env=_env(runner, goh),
+        )
         assert r.returncode == 1 and GREW in _out(r), (scope, _out(r))
 
 
@@ -166,9 +170,24 @@ def _hooked_commit(runner: str, goh: Path, repo: Path, *args: str) -> subprocess
     hook.write_text(f'#!/bin/bash\nexec bash "{REPO_ROOT}/gates/structural.sh" --staged\n')
     hook.chmod(0o755)
     return subprocess.run(
-        ["git", "-c", "core.hooksPath=.hooks", "-c", "user.name=t", "-c", "user.email=t@t",
-         "commit", "-m", "c", *args],
-        cwd=repo, capture_output=True, text=True, env=_env(runner, goh))
+        [
+            "git",
+            "-c",
+            "core.hooksPath=.hooks",
+            "-c",
+            "user.name=t",
+            "-c",
+            "user.email=t@t",
+            "commit",
+            "-m",
+            "c",
+            *args,
+        ],
+        cwd=repo,
+        capture_output=True,
+        text=True,
+        env=_env(runner, goh),
+    )
 
 
 @RUNNERS

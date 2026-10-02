@@ -5,6 +5,7 @@ Fixture git repos per case; asserts identical exit codes, identical ordered
 and staged modes. Either side's suffix set, exclusion, or line definition
 drifting goes red.
 """
+
 from __future__ import annotations
 
 import re
@@ -36,8 +37,12 @@ def make_repo(tmp_path: Path, files: dict[str, bytes]) -> Path:
 
 
 def _parse(out: str, err: str) -> tuple[list[tuple[str, int]], int | None]:
-    over = [(m.group(2), int(m.group(1))) for m in (OVER_RE.match(l) for l in err.splitlines()) if m]
-    checked = next((int(m.group(1)) for m in (OK_RE.search(l) for l in out.splitlines()) if m), None)
+    over = [
+        (m.group(2), int(m.group(1))) for m in (OVER_RE.match(l) for l in err.splitlines()) if m
+    ]
+    checked = next(
+        (int(m.group(1)) for m in (OK_RE.search(l) for l in out.splitlines()) if m), None
+    )
     return over, checked
 
 
@@ -47,7 +52,9 @@ def run_python(repo: Path, args: list[str]) -> tuple[int, list[tuple[str, int]],
     return r.returncode, over, checked
 
 
-def run_goh(goh: Path, repo: Path, args: list[str]) -> tuple[int, list[tuple[str, int]], int | None]:
+def run_goh(
+    goh: Path, repo: Path, args: list[str]
+) -> tuple[int, list[tuple[str, int]], int | None]:
     r = subprocess.run([str(goh), "length", *args], cwd=repo, capture_output=True, text=True)
     over, checked = _parse(r.stdout, r.stderr)
     return r.returncode, over, checked
@@ -88,11 +95,17 @@ def test_staged_sees_the_index(goh: Path, tmp_path: Path) -> None:
     repo = make_repo(tmp_path, {"a.py": lines(10)})
     (repo / "a.py").write_bytes(lines(150))
     _git(repo, "add", "a.py")
-    assert run_python(repo, ["--max", "100", "--staged"]) == run_goh(goh, repo, ["--max", "100", "--staged"])
+    assert run_python(repo, ["--max", "100", "--staged"]) == run_goh(
+        goh, repo, ["--max", "100", "--staged"]
+    )
     assert run_goh(goh, repo, ["--max", "100", "--staged"])[0] == 1
 
 
 def test_staged_ignores_unstaged_dirt(goh: Path, tmp_path: Path) -> None:
     repo = make_repo(tmp_path, {"a.py": lines(10)})
     (repo / "a.py").write_bytes(lines(150))
-    assert run_python(repo, ["--max", "100", "--staged"]) == run_goh(goh, repo, ["--max", "100", "--staged"]) == (0, [], 1)
+    assert (
+        run_python(repo, ["--max", "100", "--staged"])
+        == run_goh(goh, repo, ["--max", "100", "--staged"])
+        == (0, [], 1)
+    )

@@ -10,61 +10,35 @@ installed copy, strips quarantine (proven), signs, launches only on request.
 git is REAL throughout (local bare remotes, so push semantics are genuine).
 Only gh is faked (stateful stub: `release view` succeeds iff previously
 created).
+
+This file is the release FLOW alone; the other two tools have their own files, by concern rather
+than for length alone: `test_release_kit_gen_app_icons.py` (the icon ladder, verified from PNG
+bytes) and `test_release_kit_update_dev.py` (the dev-machine install). Neither shares a fixture
+with a real-release run, so neither carries the xdist group below.
 """
 
-import json
 import os
-import struct
+import subprocess
+from pathlib import Path
+
 import pytest
 
 # Same xdist group as test_release_hardening.py: its mid-run-edit test corrupts release.sh on purpose.
 pytestmark = pytest.mark.xdist_group("release")
-import subprocess
-import sys
-import zlib
-from pathlib import Path
 
 from conftest import FAKE_GH, REPO_ROOT
 
 RELEASE = REPO_ROOT / "tools" / "release-kit" / "release.sh"
-GEN_ICONS = REPO_ROOT / "tools" / "release-kit" / "gen_app_icons.py"
-UPDATE_DEV = REPO_ROOT / "tools" / "release-kit" / "update_dev.sh"
 
 VERSION = "1.2.3"
 TAG = f"v{VERSION}"
 STANZA_BODY = "- Added the release kit\n- Fixed seven drifting releasers"
 
-
 # ── helpers ──────────────────────────────────────────────────────────────────
 
 
-def png_bytes(w: int, h: int) -> bytes:
-    """A minimal valid RGBA PNG built by hand (no image library dependency)."""
-    raw = b"".join(b"\x00" + b"\x40\x80\xc0\xff" * w for _ in range(h))
-
-    def chunk(kind: bytes, data: bytes) -> bytes:
-        c = kind + data
-        return struct.pack(">I", len(data)) + c + struct.pack(">I", zlib.crc32(c))
-
-    ihdr = struct.pack(">IIBBBBB", w, h, 8, 6, 0, 0, 0)
-    return (
-        b"\x89PNG\r\n\x1a\n"
-        + chunk(b"IHDR", ihdr)
-        + chunk(b"IDAT", zlib.compress(raw))
-        + chunk(b"IEND", b"")
-    )
-
-
-def png_dims(path: Path) -> tuple[int, int]:
-    data = path.read_bytes()
-    assert data[:8] == b"\x89PNG\r\n\x1a\n"
-    return struct.unpack(">II", data[16:24])
-
-
 def sh(repo: Path, *args: str) -> str:
-    r = subprocess.run(
-        ["git", "-C", str(repo), *args], capture_output=True, text=True, check=True
-    )
+    r = subprocess.run(["git", "-C", str(repo), *args], capture_output=True, text=True, check=True)
     return r.stdout
 
 
@@ -87,9 +61,7 @@ def kit(tmp_path: Path) -> dict:
     proj.mkdir()
     sh(proj, "init", "-q", "-b", "main")
     (proj / "CHANGELOG.md").write_text(
-        "# CHANGELOG\n\n"
-        f"## {TAG}\n\n{STANZA_BODY}\n\n"
-        "## v1.1.0\n\n- older\n",
+        f"# CHANGELOG\n\n## {TAG}\n\n{STANZA_BODY}\n\n## v1.1.0\n\n- older\n",
         encoding="utf-8",
     )
     commit_all(proj)
@@ -124,11 +96,22 @@ def run_release(kit: dict, *args: str, gate: str = "true") -> subprocess.Complet
     env["GH_STATE"] = str(kit["gh_state"])
     env["GH_LOG"] = str(kit["gh_log"])
     env["GOHKIT_GIT_LOG"] = str(kit["git_log"])
-    env.update({"GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@t", "GIT_COMMITTER_NAME": "t", "GIT_COMMITTER_EMAIL": "t@t"})
-    for k in ("GOH_RELEASE_GATE", "GOH_RELEASE_BUFFERED"): env.pop(k, None)
+    env.update(
+        {
+            "GIT_AUTHOR_NAME": "t",
+            "GIT_AUTHOR_EMAIL": "t@t",
+            "GIT_COMMITTER_NAME": "t",
+            "GIT_COMMITTER_EMAIL": "t@t",
+        }
+    )
+    for k in ("GOH_RELEASE_GATE", "GOH_RELEASE_BUFFERED"):
+        env.pop(k, None)
     return subprocess.run(
         ["/bin/bash", str(RELEASE), "--version", VERSION, "--gate", gate, *args],
-        cwd=kit["proj"], capture_output=True, text=True, env=env,
+        cwd=kit["proj"],
+        capture_output=True,
+        text=True,
+        env=env,
     )
 
 
@@ -174,17 +157,21 @@ class TestSequencing:
         # the archive step in a fresh extraction, so both cannot be the same dir.
         sh(proj, "add", "-f", "vendor/dep.txt")
         commit_all(proj)
-        r = run_release(kit, "--no-push", "--archive-build",
-                        "test -f vendor/dep.txt && test \"$PWD\" != \"$OLDPWD\"")
+        r = run_release(
+            kit,
+            "--no-push",
+            "--archive-build",
+            'test -f vendor/dep.txt && test "$PWD" != "$OLDPWD"',
+        )
         assert r.returncode == 0, r.stdout + r.stderr
 
     def test_verify_runs_with_the_version_and_blocks_the_tag(self, kit):
         proj = kit["proj"]
-        r = run_release(kit, "--no-push", "--verify", "test \"$GOH_RELEASE_VERSION\" = 9.9.9")
+        r = run_release(kit, "--no-push", "--verify", 'test "$GOH_RELEASE_VERSION" = 9.9.9')
         assert r.returncode != 0
         assert "'verify'" in r.stdout + r.stderr
         assert not (proj / ".git" / "refs" / "tags" / TAG).exists()
-        r = run_release(kit, "--no-push", "--verify", f"test \"$GOH_RELEASE_VERSION\" = {VERSION}")
+        r = run_release(kit, "--no-push", "--verify", f'test "$GOH_RELEASE_VERSION" = {VERSION}')
         assert r.returncode == 0, r.stdout + r.stderr
         assert sh(proj, "cat-file", "-t", TAG).strip() == "tag"
 
@@ -252,8 +239,16 @@ class TestDryRun:
     def test_dry_run_has_zero_side_effects(self, kit):
         marker = kit["proj"] / "gate-marker"
         r = run_release(
-            kit, "--dry-run", "--gate", f"touch {marker}", "--tap", "/nonexistent-tap",
-            "--cask", "foo", "--artifact", "/nonexistent.tar.gz",
+            kit,
+            "--dry-run",
+            "--gate",
+            f"touch {marker}",
+            "--tap",
+            "/nonexistent-tap",
+            "--cask",
+            "foo",
+            "--artifact",
+            "/nonexistent.tar.gz",
         )
         assert r.returncode == 0, r.stdout + r.stderr
 
@@ -298,7 +293,9 @@ def bare_show(bare: Path, ref: str, rel: str) -> str:
     """Read a file straight out of the bare tap repo (authoritative, no clone)."""
     return subprocess.run(
         ["git", "-C", str(bare), "show", f"{ref}:{rel}"],
-        capture_output=True, text=True, check=True,
+        capture_output=True,
+        text=True,
+        check=True,
     ).stdout
 
 
@@ -312,9 +309,7 @@ class TestTap:
         artifact = kit["proj"] / "artifact.tar.gz"
         artifact.write_bytes(b"payload-bytes")
 
-        r = run_release(
-            kit, "--tap", str(bare), "--cask", "foo", "--artifact", str(artifact)
-        )
+        r = run_release(kit, "--tap", str(bare), "--cask", "foo", "--artifact", str(artifact))
         assert r.returncode == 0, r.stdout + r.stderr
 
         import hashlib
@@ -337,150 +332,3 @@ class TestTap:
         assert r.returncode == 0, r.stdout + r.stderr
         assert "nothing to commit" in r.stdout
         assert bare_head(bare) == head_before
-
-
-# ── gen_app_icons.py ─────────────────────────────────────────────────────────
-
-
-EXPECTED_LADDER = [
-    ("icon_16x16.png", 16),
-    ("icon_16x16@2x.png", 32),
-    ("icon_32x32.png", 32),
-    ("icon_32x32@2x.png", 64),
-    ("icon_128x128.png", 128),
-    ("icon_128x128@2x.png", 256),
-    ("icon_256x256.png", 256),
-    ("icon_256x256@2x.png", 512),
-    ("icon_512x512.png", 512),
-    ("icon_512x512@2x.png", 1024),
-]
-
-
-def run_gen(*args: str) -> subprocess.CompletedProcess:
-    return subprocess.run(
-        ["python3", str(GEN_ICONS), *args], capture_output=True, text=True
-    )
-
-
-@pytest.mark.skipif(sys.platform != "darwin", reason="sips/iconutil are macOS tools")
-class TestGenIcons:
-    @pytest.fixture
-    def generated(self, tmp_path: Path) -> Path:
-        src = tmp_path / "src.png"
-        src.write_bytes(png_bytes(64, 64))
-        out = tmp_path / "out"
-        r = run_gen(str(src), str(out), "--appiconset", "--name", "Demo")
-        assert r.returncode == 0, r.stdout + r.stderr
-        return out
-
-    def test_iconset_contains_exactly_the_apple_ladder(self, generated):
-        iconset = generated / "Demo.iconset"
-        names = sorted(p.name for p in iconset.iterdir())
-        assert names == sorted(n for n, _ in EXPECTED_LADDER)
-
-    def test_each_member_has_the_right_pixel_size(self, generated):
-        iconset = generated / "Demo.iconset"
-        for fname, px in EXPECTED_LADDER:
-            assert png_dims(iconset / fname) == (px, px), fname
-
-    def test_icns_is_produced(self, generated):
-        icns = generated / "Demo.icns"
-        assert icns.is_file() and icns.stat().st_size > 0
-
-    def test_modern_appiconset_contents_json(self, generated):
-        spec = json.loads((generated / "Demo.appiconset" / "Contents.json").read_text())
-        images = spec["images"]
-        assert images == [
-            {"filename": "icon_1024x1024.png", "idiom": "universal",
-             "platform": "ios", "size": "1024x1024"}
-        ]
-        assert (generated / "Demo.appiconset" / "icon_1024x1024.png").is_file()
-
-    def test_legacy_ladder_contents_json_matches_rendered_pngs(self, tmp_path):
-        src = tmp_path / "src.png"
-        src.write_bytes(png_bytes(32, 32))
-        out = tmp_path / "out"
-        r = run_gen(str(src), str(out), "--appiconset", "--legacy-ladder", "--name", "L")
-        assert r.returncode == 0, r.stdout + r.stderr
-        group = out / "L.appiconset"
-        spec = json.loads((group / "Contents.json").read_text())
-        entries = spec["images"]
-        assert {e["idiom"] for e in entries} == {"iphone", "ipad", "ios-marketing"}
-        for e in entries:
-            assert (group / e["filename"]).is_file(), e["filename"]
-            scale = int(e["scale"].rstrip("x"))
-            pt = float(e["size"].split("x")[0])
-            assert png_dims(group / e["filename"]) == (round(pt * scale),) * 2
-
-    def test_deterministic_output_is_a_no_op_diff(self, tmp_path):
-        src = tmp_path / "src.png"
-        src.write_bytes(png_bytes(64, 64))
-        out1, out2 = tmp_path / "one", tmp_path / "two"
-        assert run_gen(str(src), str(out1)).returncode == 0
-        assert run_gen(str(src), str(out2)).returncode == 0
-        names1 = sorted(p.relative_to(out1) for p in out1.rglob("*") if p.is_file())
-        names2 = sorted(p.relative_to(out2) for p in out2.rglob("*") if p.is_file())
-        assert names1 == names2
-        for rel in names1:
-            assert (out1 / rel).read_bytes() == (out2 / rel).read_bytes(), rel
-
-
-# ── update_dev.sh ────────────────────────────────────────────────────────────
-
-BUILD_CMD = (
-    "mkdir -p stage/Demo.app/Contents/MacOS && "
-    "printf '#!/bin/sh\\necho demo\\n' > stage/Demo.app/Contents/MacOS/Demo && "
-    "chmod +x stage/Demo.app/Contents/MacOS/Demo && "
-    "/usr/bin/xattr -w com.apple.quarantine '0081;test;test;' stage/Demo.app"
-)
-
-
-def run_update_dev(workdir: Path, bin_dir: Path | None, *args: str) -> subprocess.CompletedProcess:
-    dest = workdir / "dest"
-    env = dict(os.environ)
-    env["GOH_DIR"] = str(REPO_ROOT)
-    env["UPDATE_DEV_DEST"] = str(dest)
-    env["APP_NAME"] = "Demo.app"
-    env["BUILD_CMD"] = BUILD_CMD
-    env["APP_PATH"] = "stage/Demo.app"
-    if bin_dir:
-        env["PATH"] = f"{bin_dir}:{env['PATH']}"
-    return subprocess.run(
-        ["/bin/bash", str(UPDATE_DEV), *args],
-        cwd=workdir, capture_output=True, text=True, env=env,
-    )
-
-
-class TestUpdateDev:
-    def test_installs_and_clears_quarantine(self, tmp_path):
-        r = run_update_dev(tmp_path, None)
-        assert r.returncode == 0, r.stdout + r.stderr
-        installed = tmp_path / "dest" / "Demo.app"
-        binary = installed / "Contents" / "MacOS" / "Demo"
-        assert binary.is_file()
-        probe = subprocess.run(
-            ["/usr/bin/xattr", "-p", "com.apple.quarantine", str(installed)],
-            capture_output=True, text=True,
-        )
-        assert probe.returncode != 0, "quarantine survived the install"
-        assert "quarantine clear" in r.stdout
-
-    def test_launch_flag_opens_installed_copy(self, tmp_path):
-        bin_dir = tmp_path / "fakeopen"
-        bin_dir.mkdir()
-        (bin_dir / "open").write_text(
-            '#!/usr/bin/env bash\nprintf "%s\\n" "$*" >> "$OPEN_LOG"\n'
-        )
-        (bin_dir / "open").chmod(0o755)
-        os.environ["OPEN_LOG"] = str(tmp_path / "open.log")
-        r = run_update_dev(tmp_path, bin_dir, "--launch")
-        assert r.returncode == 0, r.stdout + r.stderr
-        assert (tmp_path / "open.log").read_text().startswith(str(tmp_path / "dest"))
-
-    def test_default_does_not_launch(self, tmp_path):
-        bin_dir = tmp_path / "fakeopen"
-        bin_dir.mkdir()
-        (bin_dir / "open").write_text('#!/usr/bin/env bash\nexit 97\n')
-        (bin_dir / "open").chmod(0o755)
-        r = run_update_dev(tmp_path, bin_dir)
-        assert r.returncode == 0, r.stdout + r.stderr

@@ -3,6 +3,7 @@
 gates_of_heck MUST remain Linux compatible — Linux x86_64/aarch64 pass.
 Teeth: delete any `exit 1` in scripts/build-goh.sh and the matching test goes red.
 """
+
 from __future__ import annotations
 
 import subprocess

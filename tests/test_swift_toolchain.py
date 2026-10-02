@@ -33,22 +33,25 @@ def _resolve(bin_dir: Path, **extra_env) -> subprocess.CompletedProcess:
 
 
 def _xcrun_shim(bin_dir: Path, answers: Path | None) -> None:
-    body = ("#!/bin/bash\n"
-            + (f'[ "$1 $2" = "--find swift" ] && {{ echo "{answers}"; exit 0; }}\n' if answers else "")
-            + "exit 1\n")
+    body = (
+        "#!/bin/bash\n"
+        + (f'[ "$1 $2" = "--find swift" ] && {{ echo "{answers}"; exit 0; }}\n' if answers else "")
+        + "exit 1\n"
+    )
     _exe(bin_dir / "xcrun", body)
 
 
 def test_xcrun_beats_the_swift_first_on_path(tmp_path):
     """The class: swiftly on PATH must not shadow Xcode's toolchain."""
     bin_ = tmp_path / "bin"
-    shadow = _exe(bin_ / "swift")                       # first on PATH — the swiftly stand-in
+    shadow = _exe(bin_ / "swift")  # first on PATH — the swiftly stand-in
     xcode = _exe(tmp_path / "xcode" / "usr" / "bin" / "swift")
     _xcrun_shim(bin_, xcode)
     r = _resolve(bin_)
     assert r.returncode == 0, r.stderr
     assert r.stdout.strip() == f"{xcode}|xcrun", (
-        f"PATH's swift ({shadow}) won over xcrun's: {r.stdout!r}")
+        f"PATH's swift ({shadow}) won over xcrun's: {r.stdout!r}"
+    )
 
 
 def test_goh_swift_override_wins_over_xcrun(tmp_path):

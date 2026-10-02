@@ -46,6 +46,9 @@ def test_direct_execv_starts_the_interpreter(rel, tmp_path):
     args = ["0"] if rel.endswith("soak_profile.sh") else []
     r = subprocess.run(
         [str(REPO_ROOT / rel), *args],
-        capture_output=True, text=True, env=env, timeout=120,
+        capture_output=True,
+        text=True,
+        env=env,
+        timeout=120,
     )
     assert r.returncode != 126, "found but not executable"

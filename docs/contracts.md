@@ -50,7 +50,7 @@ exit 0 within / 1 exceeded / 2 precondition). There is deliberately NO
 `--update`: blessing stays repo policy (ZeroThunder `golden.py --update`,
 ZoneTilerWM `ui_regression_sweep.py --record`). Defaults are starting
 points calibrated per repo on its measured noise floor.
-Pin: `tests/test_golden_core.py`.
+Pin: `tests/test_golden_core.py` and `tests/test_golden_core_cli.py`.
 
 ## 7. Coverage floors are stated or refused (`gates/coverage_gate.sh:25-29`)
 

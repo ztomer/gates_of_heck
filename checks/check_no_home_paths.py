@@ -29,6 +29,7 @@ tilde into a README, and a gate that lands red in twenty places is a gate
 that gets disabled. Each repo turns it on when its tree is clean or its
 violations carry reasons.
 """
+
 from __future__ import annotations  # OS python3 may be 3.9
 
 import argparse
@@ -62,15 +63,18 @@ def _suppressed(prev_line: str | None, line: str) -> bool:
 def _findings(line: str) -> list[tuple[int, str]]:
     spans = [m.span() for m in ENV_DEFAULT.finditer(line)]
     inside = lambda i: any(a <= i < b for a, b in spans)  # noqa: E731 — one-use predicate
-    return [(m.start() + 1, kind) for kind, pat in PATTERNS
-            for m in pat.finditer(line) if not inside(m.start())]
+    return [
+        (m.start() + 1, kind)
+        for kind, pat in PATTERNS
+        for m in pat.finditer(line)
+        if not inside(m.start())
+    ]
 
 
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--staged", action="store_true")
-    ap.add_argument("--exclude", default="",
-                    help="regex; matching repo-relative paths are skipped")
+    ap.add_argument("--exclude", default="", help="regex; matching repo-relative paths are skipped")
     args = ap.parse_args()
     skip = re.compile(args.exclude) if args.exclude else None
 
@@ -101,9 +105,11 @@ def main() -> int:
 
     scope = "staged" if args.staged else "tracked"
     if bad:
-        print(f"✗ HARD-CODED HOME PATH in {len(bad)} location(s) ({scope}) — derive it from "
-              f"the executable, the repo root, an env var or the bundle; a path that must "
-              f"stand carries `path-ok: <reason>` on the line or above:")
+        print(
+            f"✗ HARD-CODED HOME PATH in {len(bad)} location(s) ({scope}) — derive it from "
+            f"the executable, the repo root, an env var or the bundle; a path that must "
+            f"stand carries `path-ok: <reason>` on the line or above:"
+        )
         for b in bad[:200]:
             print("  " + b)
         if len(bad) > 200:
@@ -120,7 +126,9 @@ def main() -> int:
         # Over the TRACKED tree, zero files is the empty-scope failure the
         # structural gate polices elsewhere: a renamed root or a broken git
         # call must not read as clean.
-        print(f"✗ [no_home_paths] nothing to check ({scope}) — refusing to report clean over zero files")
+        print(
+            f"✗ [no_home_paths] nothing to check ({scope}) — refusing to report clean over zero files"
+        )
         return 1
     print(f"✓ [no_home_paths] OK — {checked} {scope} files clean")
     return 0

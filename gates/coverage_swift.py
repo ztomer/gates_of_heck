@@ -27,68 +27,35 @@ only; a marker on a covered line is a no-op. A marker WITHOUT a reason, or a
 start without an end, is a gate error (exit 2) — not forgiveness.
 
 Exit codes: 0 pass | 1 below floor | 2 usage/config/precondition error.
+
+## WHERE THE WORK IS SPLIT
+
+Producing a report is `coverage_engines.py` (launch the tests with coverage,
+pair the binary to the profdata, read the xccov rows); interpreting one is this
+file (what counts toward the denominator, which marked lines are forgiven,
+which floors apply, and what is printed). The engines module imports nothing
+from here, so the dependency runs one way.
+
+`bundle_executables` and `pick_binary` are imported here, unused by this file's
+own body, because the tests load this file directly and drive those two by name
+(they are engine selection, and their reasoning belongs beside the rest of it).
 """
 
 import argparse
-import glob
 import json
 import os
 import re
-import shutil
 import subprocess
 import sys
 
-def llvm_cov_line_counts(binary, profdata, path):
-    """line -> covered(1)/uncovered(0) via llvm-cov show (gated_coverage port)."""
-    res = subprocess.run(
-        ["xcrun", "llvm-cov", "show", binary,
-         f"-instr-profile={profdata}", path],
-        capture_output=True, text=True, check=False)
-    counts = {}
-    for raw in res.stdout.splitlines():
-        parts = raw.split("|", 2)
-        if len(parts) < 2:
-            continue
-        ln, cnt = parts[0].strip(), parts[1].strip()
-        if not ln.isdigit() or cnt == "":
-            continue
-        counts[int(ln)] = 0 if cnt == "0" else 1
-    return counts
-
-# koffee_big check_coverage.py LINE_RE, verified against live xccov output.
-XCCOV_ROW = re.compile(
-    r"^\s*(.+\.swift)\s+([0-9.]+)%\s+\(([0-9]+)/([0-9]+)\)\s*$")
-
-def parse_xccov_report(report, ignore_re=None, include_re=None):
-    """{path: (covered, total)} for top-level file rows, include+ignore applied."""
-    files = {}
-    indent = None
-    for line in report.splitlines():
-        m = XCCOV_ROW.match(line)
-        if not m:
-            continue
-        path, _pct, covered, total = m.groups()
-        lead = len(line) - len(line.lstrip())
-        # File rows are indented once under a target row; function rows nest
-        # deeper. Track the shallowest indent seen as the file level.
-        if indent is None or lead < indent:
-            indent = lead
-        if lead != indent:
-            continue
-        if include_re and not re.search(include_re, path):
-            continue
-        if ignore_re and re.search(ignore_re, path):
-            continue
-        files[path] = (int(covered), int(total))
-    return files
 
 def floor_cmp(pct, floor):
     if pct + 1e-9 < floor:
-        print(f"✗ [coverage] line coverage {pct:.2f}% is below the "
-              f"{floor:g}% floor")
+        print(f"✗ [coverage] line coverage {pct:.2f}% is below the {floor:g}% floor")
         return 1
     print(f"✓ [coverage] line coverage {pct:.2f}% (floor {floor:g}%)")
     return 0
+
 
 def load_floors_config(path):
     """Load floors JSON. Supports wrapper {"targets":{}} or flat {tgt:floor}."""
@@ -102,44 +69,62 @@ def load_floors_config(path):
         sys.exit(2)
     if any(k in raw for k in ("targets", "file_floor", "tolerance", "exempt", "slack")):
         targets = raw.get("targets", {})
-        return {"targets": {k: float(v) for k, v in targets.items()},
-                "file_floor": float(raw["file_floor"]) if "file_floor" in raw else None,
-                "tolerance": float(raw.get("tolerance", 0.5)),
-                "slack": float(raw.get("slack", 2.0)),
-                "exempt": dict(raw.get("exempt", {}))}
-    return {"targets": {k: float(v) for k, v in raw.items() if isinstance(v, (int, float))},
-            "file_floor": None, "tolerance": 0.5, "slack": 2.0, "exempt": {}}
+        return {
+            "targets": {k: float(v) for k, v in targets.items()},
+            "file_floor": float(raw["file_floor"]) if "file_floor" in raw else None,
+            "tolerance": float(raw.get("tolerance", 0.5)),
+            "slack": float(raw.get("slack", 2.0)),
+            "exempt": dict(raw.get("exempt", {})),
+        }
+    return {
+        "targets": {k: float(v) for k, v in raw.items() if isinstance(v, (int, float))},
+        "file_floor": None,
+        "tolerance": 0.5,
+        "slack": 2.0,
+        "exempt": {},
+    }
+
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(_HERE, "..", "lib"))
 sys.path.insert(0, _HERE)
 from swift_coverage_scope import is_code_under_test  # noqa: E402
 from coverage_markers import (  # noqa: E402
-    TEST_DIR, adjust_coverage, check_marker_ceiling, find_exclusions, parse_markers,
+    TEST_DIR,
+    adjust_coverage,
+    check_marker_ceiling,
+    find_exclusions,
+    parse_markers,
+)
+from coverage_engines import (  # noqa: E402
+    bundle_executables,
+    parse_xccov_report,
+    pick_binary,
+    run_spm,
+    run_xcodebuild,
+    xccov_report,
 )
 
-def bundle_executables(macos_dir):
-    """The runnable binaries inside an .xctest bundle's Contents/MacOS.
 
-    A bundle built with debug symbols -- which is how `swift test` builds by
-    default -- holds a `.dSYM` DIRECTORY beside the executable. Both matched
-    the plain `*` glob this used to take the first entry of, so on any such
-    package llvm-cov was handed the .dSYM and failed with "Is a directory".
-    Coverage could not be measured at all, and the caller reported it as a
-    JSON parse error, which named the wrong thing entirely.
-
-    The existing selection tests did not catch it because their fixtures put
-    the executable in Contents/MacOS and nothing else: a harness that builds
-    its own inputs only ever tests the shapes it thought to build.
-
-    A directory is never the executable, and neither is a regular file
-    without the execute bit. Sorted so selection is deterministic rather
-    than dependent on the order the filesystem hands back.
-    """
-    return sorted(
-        c for c in glob.glob(os.path.join(macos_dir, "*"))
-        if os.path.isfile(c) and os.access(c, os.X_OK)
+def llvm_cov_line_counts(binary, profdata, path):
+    """line -> covered(1)/uncovered(0) via llvm-cov show (gated_coverage port)."""
+    res = subprocess.run(
+        ["xcrun", "llvm-cov", "show", binary, f"-instr-profile={profdata}", path],
+        capture_output=True,
+        text=True,
+        check=False,
     )
+    counts = {}
+    for raw in res.stdout.splitlines():
+        parts = raw.split("|", 2)
+        if len(parts) < 2:
+            continue
+        ln, cnt = parts[0].strip(), parts[1].strip()
+        if not ln.isdigit() or cnt == "":
+            continue
+        counts[int(ln)] = 0 if cnt == "0" else 1
+    return counts
+
 
 def unmatched_target(tgt, per):
     """True when a floors entry names a target nothing measured.
@@ -152,6 +137,7 @@ def unmatched_target(tgt, per):
     """
     tot, _cov = per.get(tgt, [0, 0])
     return tot == 0
+
 
 def measured_files(files):
     """The llvm-cov file records that belong in the denominator.
@@ -169,155 +155,89 @@ def measured_files(files):
     """
     return [f for f in files if is_code_under_test(f.get("filename", ""))]
 
-def precondition(name, why):
-    if shutil.which(name) is None:
-        print(f"✗ [coverage] '{name}' not found on PATH — required for the "
-              f"swift mode ({why})", file=sys.stderr)
-        sys.exit(2)
 
-def run_spm(ignore_re):
-    precondition("swift", "swift test --enable-code-coverage")
-    precondition("xcrun", "xcrun llvm-cov reads the profdata")
-    if subprocess.run(["swift", "test", "--enable-code-coverage"],
-                      capture_output=True).returncode != 0:
-        print("✗ [coverage] tests failed while collecting coverage",
-              file=sys.stderr)
-        sys.exit(1)
-    bin_path = subprocess.run(["swift", "build", "--show-bin-path"],
-                              capture_output=True, text=True,
-                              check=True).stdout.strip()
-    xctest = None
-    for p in glob.glob(os.path.join(bin_path, "**", "*.xctest"),
-                       recursive=True):
-        inner = bundle_executables(os.path.join(p, "Contents", "MacOS"))
-        if inner:
-            xctest = inner[0]
-            break
-    if not xctest:
-        print(f"✗ [coverage] no .xctest binary under {bin_path}",
-              file=sys.stderr)
-        sys.exit(2)
-    profdata = os.path.join(bin_path, "codecov", "default.profdata")
-    if not os.path.exists(profdata):
-        print(f"✗ [coverage] no profdata at {profdata} — swift test did not "
-              "emit coverage", file=sys.stderr)
-        sys.exit(2)
-    return xctest, profdata
+def xcresult_verdict(
+    xcresult, floor, ignore_re, include_re="", floors_json=None, marker_ceiling=None
+):
+    """The xcresult mode: no test run, totals from an EXISTING xcresult.
 
-def pick_binary(profdata, binaries):
-    """The .xctest binary whose mtime is NEAREST the chosen profdata's.
-
-    The old selection took the profdata by newest mtime but the binary by a
-    Debug-first glob: whenever more than one configuration's binary existed,
-    a fresh profdata was paired with a STALE binary and llvm-cov reported
-    against mismatched code. Mtime-nearest is the only pairing signal
-    xcodebuild leaves; genuine ambiguity is a named exit 2, never a guess
-    (cpp-mode precedent).
+    xccov has NO line-level data (its --file view is a silent no-op on current
+    Xcode, probed 2026-08-25), so cov:ignore markers cannot be honored here: if
+    markers exist in sources this mode is a named exit-2 refusal, never silent
+    forgiveness.
     """
-    pt = os.path.getmtime(profdata)
-    ranked = sorted((abs(os.path.getmtime(b) - pt), b) for b in binaries)
-    best_delta, best = ranked[0]
-    tied = [b for delta, b in ranked if delta == best_delta]
-    if len(tied) > 1:
-        print("✗ [coverage] ambiguous test binaries — several are equally "
-              f"near the profdata ({profdata}):", file=sys.stderr)
-        for b in tied:
-            print(f"    {b}", file=sys.stderr)
+    report = xccov_report(xcresult)
+    files = parse_xccov_report(report, ignore_re=ignore_re, include_re=include_re)
+    if not files:
+        print(
+            f"✗ [coverage] no .swift file rows recognized in "
+            f"{xcresult} — wrong bundle or empty report?",
+            file=sys.stderr,
+        )
         sys.exit(2)
-    return best
+    covered = sum(c for c, _ in files.values())
+    total = sum(t for _, t in files.values())
+    pct = (100.0 * covered / total) if total else 0.0
+    _, errors = find_exclusions(os.getcwd(), ignore_re, include_re)
+    if errors:
+        print(
+            "✗ [coverage] cov:ignore markers exist but the xcresult "
+            "mode has no line-level data to honor them with:",
+            file=sys.stderr,
+        )
+        for e in errors[:10]:
+            print(f"    {e}", file=sys.stderr)
+        sys.exit(2)
+    if floors_json:
+        cfg = load_floors_config(floors_json)
+        import collections
 
-def run_xcodebuild(args, floor, ignore_re, include_re="", floors_json=None, marker_ceiling=None):
+        per = collections.defaultdict(lambda: [0, 0])
+        for path, (c, t) in files.items():
+            rel = path.split("/Sources/", 1)[1] if "/Sources/" in path else path
+            tgt = rel.split("/", 1)[0] if "/" in rel else rel
+            per[tgt][0] += t
+            per[tgt][1] += c
+        for tgt, fval in cfg["targets"].items():
+            if unmatched_target(tgt, per):
+                print(
+                    f"✗ [coverage] floors name target '{tgt}', which "
+                    f"matched no measured source. Known: "
+                    f"{', '.join(sorted(per)) or '(none)'}",
+                    file=sys.stderr,
+                )
+                sys.exit(2)
+            tot, cov = per[tgt]
+            cur = 100.0 * cov / tot
+            if cur + 1e-9 < fval - cfg.get("tolerance", 0.5):
+                print(f"✗ [coverage] target {tgt}: {cur:.2f}% below {fval:g}%", file=sys.stderr)
+                sys.exit(1)
+    if marker_ceiling:
+        check_marker_ceiling(0, marker_ceiling)
+    if floor is None and floors_json:
+        sys.exit(0)
+    sys.exit(floor_cmp(pct, floor))
+
+
+def run_engine(args, floor, ignore_re, include_re="", floors_json=None, marker_ceiling=None):
+    """The engine dispatch: which report producer runs.
+
+    The xcresult mode belongs to the xcodebuild engine and was always reached
+    only there, so `--engine spm --xcresult` runs the SPM tests and ignores the
+    flag: `--engine` says which toolchain runs, and xcresult is a shortcut
+    inside one of them, not a third engine.
+    """
+    if args.engine == "spm":
+        return run_spm(ignore_re)
     xcresult = args.xcresult or os.environ.get("GOH_COV_XCRESULT") or ""
     if xcresult:
-        precondition("xcrun", "xcrun xccov reads the xcresult")
-        res = subprocess.run(
-            ["xcrun", "xccov", "view", "--report", xcresult],
-            capture_output=True, text=True)
-        if res.returncode != 0:
-            print(f"✗ [coverage] xccov failed on {xcresult}: "
-                  f"{res.stderr.strip()[:200]}", file=sys.stderr)
-            sys.exit(2)
-        files = parse_xccov_report(res.stdout, ignore_re=ignore_re, include_re=include_re)
-        if not files:
-            print(f"✗ [coverage] no .swift file rows recognized in "
-                  f"{xcresult} — wrong bundle or empty report?",
-                  file=sys.stderr)
-            sys.exit(2)
-        covered = sum(c for c, _ in files.values())
-        total = sum(t for _, t in files.values())
-        pct = (100.0 * covered / total) if total else 0.0
-        _, errors = find_exclusions(os.getcwd(), ignore_re, include_re)
-        if errors:
-            print("✗ [coverage] cov:ignore markers exist but the xcresult "
-                  "mode has no line-level data to honor them with:", file=sys.stderr)
-            for e in errors[:10]:
-                print(f"    {e}", file=sys.stderr)
-            sys.exit(2)
-        if floors_json:
-            cfg = load_floors_config(floors_json)
-            import collections
-            per = collections.defaultdict(lambda: [0, 0])
-            for path, (c, t) in files.items():
-                rel = path.split("/Sources/", 1)[1] if "/Sources/" in path else path
-                tgt = rel.split("/", 1)[0] if "/" in rel else rel
-                per[tgt][0] += t
-                per[tgt][1] += c
-            for tgt, fval in cfg["targets"].items():
-                if unmatched_target(tgt, per):
-                    print(f"✗ [coverage] floors name target '{tgt}', which "
-                          f"matched no measured source. Known: "
-                          f"{', '.join(sorted(per)) or '(none)'}", file=sys.stderr)
-                    sys.exit(2)
-                tot, cov = per[tgt]
-                cur = 100.0 * cov / tot
-                if cur + 1e-9 < fval - cfg.get("tolerance", 0.5):
-                    print(f"✗ [coverage] target {tgt}: {cur:.2f}% below {fval:g}%", file=sys.stderr)
-                    sys.exit(1)
-        if marker_ceiling:
-            check_marker_ceiling(0, marker_ceiling)
-        if floor is None and floors_json:
-            sys.exit(0)
-        sys.exit(floor_cmp(pct, floor))
+        return xcresult_verdict(xcresult, floor, ignore_re, include_re, floors_json, marker_ceiling)
+    return run_xcodebuild(args)
 
-    # Run mode: full llvm-cov pipeline on what xcodebuild emits.
-    precondition("xcodebuild", "xcodebuild test -enableCodeCoverage YES")
-    precondition("xcrun", "xcrun llvm-cov reads the profdata")
-    scheme = args.scheme or os.environ.get("GOH_COV_SCHEME") or ""
-    if not scheme:
-        print("✗ [coverage] engine xcodebuild needs a scheme: pass --scheme "
-              "or set GOH_COV_SCHEME", file=sys.stderr)
-        sys.exit(2)
-    dd = args.dd or os.environ.get("GOH_COV_DD") or ".build/xcode-dd"
-    run = subprocess.run(
-        ["xcodebuild", "test", "-scheme", scheme,
-         "-destination", args.destination, "-derivedDataPath", dd,
-         "-enableCodeCoverage", "YES", "-quiet"],
-        capture_output=True, text=True)
-    if run.returncode != 0:
-        tail = (run.stderr or run.stdout).strip().splitlines()[-3:]
-        print("✗ [coverage] xcodebuild test failed:", file=sys.stderr)
-        for ln in tail:
-            print(f"    {ln}", file=sys.stderr)
-        sys.exit(1)
-    profs = sorted(glob.glob(os.path.join(
-        dd, "Build", "ProfileData", "*", "Coverage*.profdata")), key=os.path.getmtime)
-    if not profs:
-        print(f"✗ [coverage] no Coverage*.profdata under {dd}/Build/"
-              "ProfileData — did the test run emit coverage?", file=sys.stderr)
-        sys.exit(2)
-    binaries = []
-    for cfg in ("Debug", "Release"):
-        for bundle in glob.glob(os.path.join(
-                dd, "Build", "Products", cfg, "*.xctest")):
-            binaries += bundle_executables(
-                os.path.join(bundle, "Contents", "MacOS"))
-    if not binaries:
-        print(f"✗ [coverage] no .xctest binary under {dd}/Build/Products",
-              file=sys.stderr)
-        sys.exit(2)
-    return pick_binary(profs[-1], binaries), profs[-1]
 
-def process(binary, profdata, proj, floor, ignore_re, include_re="", floors_json=None, marker_ceiling=None):
+def process(
+    binary, profdata, proj, floor, ignore_re, include_re="", floors_json=None, marker_ceiling=None
+):
     """Shared llvm-cov report processing: totals + cov:ignore forgiveness."""
     if not include_re:
         include_re = os.environ.get("GOH_COV_INCLUDE_RE", "")
@@ -326,13 +246,14 @@ def process(binary, profdata, proj, floor, ignore_re, include_re="", floors_json
     if not marker_ceiling:
         marker_ceiling = os.environ.get("GOH_COV_MARKER_CEILING", "") or None
         if not marker_ceiling:
-            for cand in (os.path.join(proj, ".coverage-forgiveness-ceiling.json"),
-                         ".coverage-forgiveness-ceiling.json"):
+            for cand in (
+                os.path.join(proj, ".coverage-forgiveness-ceiling.json"),
+                ".coverage-forgiveness-ceiling.json",
+            ):
                 if os.path.exists(cand):
                     marker_ceiling = cand
                     break
-    cmd = ["xcrun", "llvm-cov", "export", "-summary-only", binary,
-           f"-instr-profile={profdata}"]
+    cmd = ["xcrun", "llvm-cov", "export", "-summary-only", binary, f"-instr-profile={profdata}"]
     if ignore_re:
         cmd.append(f"-ignore-filename-regex={ignore_re}")
     res = subprocess.run(cmd, capture_output=True, text=True)
@@ -341,8 +262,10 @@ def process(binary, profdata, proj, floor, ignore_re, include_re="", floors_json
         # be parsed, when llvm-cov had not produced any -- so a wrong binary
         # or a stale profdata was reported as a parser problem, and the one
         # line that named the real cause was thrown away.
-        print(f"✗ [coverage] llvm-cov failed (exit {res.returncode}) reading "
-              f"{binary}", file=sys.stderr)
+        print(
+            f"✗ [coverage] llvm-cov failed (exit {res.returncode}) reading {binary}",
+            file=sys.stderr,
+        )
         for line in (res.stderr or res.stdout).strip().splitlines()[:5]:
             print(f"    {line}", file=sys.stderr)
         sys.exit(1)
@@ -363,8 +286,11 @@ def process(binary, profdata, proj, floor, ignore_re, include_re="", floors_json
 
     exclusions, errors = find_exclusions(proj, ignore_re, include_re)
     if errors:
-        print(f"✗ [coverage] {len(errors)} invalid cov:ignore marker(s) — "
-              "forgiveness requires a stated reason:", file=sys.stderr)
+        print(
+            f"✗ [coverage] {len(errors)} invalid cov:ignore marker(s) — "
+            "forgiveness requires a stated reason:",
+            file=sys.stderr,
+        )
         for e in errors[:10]:
             print(f"    {e}", file=sys.stderr)
         sys.exit(2)
@@ -380,8 +306,9 @@ def process(binary, profdata, proj, floor, ignore_re, include_re="", floors_json
 
     pct = (100.0 * raw_covered / (raw_total - forgiven)) if raw_total else 0.0
     if rows:
-        print(f"→ [coverage] forgave {forgiven} uncovered marked line(s), "
-              f"across {len(rows)} file(s)")
+        print(
+            f"→ [coverage] forgave {forgiven} uncovered marked line(s), across {len(rows)} file(s)"
+        )
         for name, n in sorted(rows, key=lambda r: -r[1]):
             print(f"    {n:>4} lines  {name}")
     if marker_ceiling:
@@ -389,21 +316,33 @@ def process(binary, profdata, proj, floor, ignore_re, include_re="", floors_json
     if floors_json:
         cfg = load_floors_config(floors_json)
         import collections
+
         per = collections.defaultdict(lambda: [0, 0])
         per_files = collections.defaultdict(list)
         for f in files:
             fname = f.get("filename", "")
-            rel = fname.split("/Sources/", 1)[1] if "/Sources/" in fname else os.path.relpath(fname, proj) if fname.startswith(proj) else fname
+            rel = (
+                fname.split("/Sources/", 1)[1]
+                if "/Sources/" in fname
+                else os.path.relpath(fname, proj)
+                if fname.startswith(proj)
+                else fname
+            )
             tgt = rel.split("/", 1)[0] if "/" in rel else rel
             per[tgt][0] += f["summary"]["lines"]["count"]
             per[tgt][1] += f["summary"]["lines"]["covered"]
-            per_files[tgt].append((rel, f["summary"]["lines"]["count"], f["summary"]["lines"]["covered"]))
+            per_files[tgt].append(
+                (rel, f["summary"]["lines"]["count"], f["summary"]["lines"]["covered"])
+            )
         failures = []
         for tgt, fval in cfg["targets"].items():
             if unmatched_target(tgt, per):
-                print(f"✗ [coverage] floors name target '{tgt}', which matched "
-                      f"no measured source. Known: "
-                      f"{', '.join(sorted(per)) or '(none)'}", file=sys.stderr)
+                print(
+                    f"✗ [coverage] floors name target '{tgt}', which matched "
+                    f"no measured source. Known: "
+                    f"{', '.join(sorted(per)) or '(none)'}",
+                    file=sys.stderr,
+                )
                 sys.exit(2)
             tot, cov = per[tgt]
             cur = 100.0 * cov / tot
@@ -441,6 +380,7 @@ def process(binary, profdata, proj, floor, ignore_re, include_re="", floors_json
         return 0
     return floor_cmp(pct, floor)
 
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--floor", type=float, required=False, default=None)
@@ -462,16 +402,29 @@ def main() -> int:
     if not args.marker_ceiling:
         args.marker_ceiling = os.environ.get("GOH_COV_MARKER_CEILING", "")
     if args.floor is None and not args.floors_json:
-        print("✗ [coverage] no coverage floor: pass --floor N or --floors-json PATH ", file=sys.stderr)
+        print(
+            "✗ [coverage] no coverage floor: pass --floor N or --floors-json PATH ", file=sys.stderr
+        )
         sys.exit(2)
-    if args.engine == "spm":
-        binary, profdata = run_spm(args.ignore)
-    else:
-        binary, profdata = run_xcodebuild(args, args.floor, args.ignore,
-                                          args.include, args.floors_json or None,
-                                          args.marker_ceiling or None)
-    return process(binary, profdata, args.proj, args.floor, args.ignore,
-                   args.include, args.floors_json or None, args.marker_ceiling or None)
+    binary, profdata = run_engine(
+        args,
+        args.floor,
+        args.ignore,
+        args.include,
+        args.floors_json or None,
+        args.marker_ceiling or None,
+    )
+    return process(
+        binary,
+        profdata,
+        args.proj,
+        args.floor,
+        args.ignore,
+        args.include,
+        args.floors_json or None,
+        args.marker_ceiling or None,
+    )
+
 
 if __name__ == "__main__":
     try:
@@ -481,6 +434,7 @@ if __name__ == "__main__":
     except Exception as exc:  # noqa: BLE001  # the discipline IS the point:
         # a crash must exit 2 naming the error — an uncaught traceback exits 1,
         # which consumers read as "below floor", a coverage number that never was.
-        print(f"✗ [coverage] coverage_swift.py failed: "
-              f"{type(exc).__name__}: {exc}", file=sys.stderr)
+        print(
+            f"✗ [coverage] coverage_swift.py failed: {type(exc).__name__}: {exc}", file=sys.stderr
+        )
         sys.exit(2)

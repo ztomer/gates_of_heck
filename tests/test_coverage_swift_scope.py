@@ -42,8 +42,9 @@ def _bundle_executables():
     """coverage_swift.bundle_executables, loaded without running main()."""
     sys.path.insert(0, str(REPO_ROOT / "lib"))
     sys.path.insert(0, str(REPO_ROOT / "gates"))
-    return _load(REPO_ROOT / "gates" / "coverage_swift.py",
-                 "coverage_swift_under_test").bundle_executables
+    return _load(
+        REPO_ROOT / "gates" / "coverage_swift.py", "coverage_swift_under_test"
+    ).bundle_executables
 
 
 def _make_bundle(tmp_path, *, with_dsym=True):
@@ -101,8 +102,9 @@ def test_generated_and_build_products_are_outside_the_measured_scope():
 def _measured_files():
     sys.path.insert(0, str(REPO_ROOT / "lib"))
     sys.path.insert(0, str(REPO_ROOT / "gates"))
-    return _load(REPO_ROOT / "gates" / "coverage_swift.py",
-                 "coverage_swift_under_test").measured_files
+    return _load(
+        REPO_ROOT / "gates" / "coverage_swift.py", "coverage_swift_under_test"
+    ).measured_files
 
 
 def test_the_gate_actually_drops_tests_from_the_denominator():
@@ -135,8 +137,7 @@ def test_both_measurement_paths_share_one_scope_definition():
     assert "from swift_coverage_scope import" in checker
     assert "from swift_coverage_scope import" in gate
     # And neither may carry its own private copy of the marker list.
-    for name, src in (("check_swift_coverage.py", checker),
-                      ("coverage_swift.py", gate)):
+    for name, src in (("check_swift_coverage.py", checker), ("coverage_swift.py", gate)):
         assert '"/Tests/",' not in src, (
             f"{name} has re-grown a local copy of the exclusion list; "
             "that is how the two drifted apart in the first place"

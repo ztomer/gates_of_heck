@@ -59,6 +59,7 @@ lockfile is a fact about upstream, not a claim this repo makes.
 
 Exit codes: 0 clean (or a named non-run), 1 findings, 2 usage/environment.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -81,6 +82,7 @@ from _cargo_toml import parse_lock, parse_package, parse_workspace  # noqa: E402
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from tui.lib import err, info, ok  # noqa: E402
+
 
 def member_manifests(root: Path, members: list[str]) -> list[Path]:
     """Manifest paths for the workspace members, globs expanded, skips in place.
@@ -118,15 +120,19 @@ def release_version(root: Path, spec: str) -> tuple[list[str], list[str]]:
                 if not path.is_file():
                     continue
                 present.append(str(path.relative_to(root)))
-                found += [(str(path.relative_to(root)), v)
-                          for _, v in src.extract(path.read_text(encoding="utf-8", errors="replace"))]
+                found += [
+                    (str(path.relative_to(root)), v)
+                    for _, v in src.extract(path.read_text(encoding="utf-8", errors="replace"))
+                ]
             continue
         path = root / src.path
         if not path.is_file():
             continue
         present.append(src.path)
-        found += [(src.path, v)
-                  for _, v in src.extract(path.read_text(encoding="utf-8", errors="replace"))]
+        found += [
+            (src.path, v)
+            for _, v in src.extract(path.read_text(encoding="utf-8", errors="replace"))
+        ]
     return found, present
 
 
@@ -156,8 +162,9 @@ def audit(root: Path, spec: str):
     if root_name and (root_version or workspace_version):
         manifests = [root_manifest] + manifests
     if not manifests:
-        notes.append("this manifest declares no package and no workspace members — "
-                     "nothing to compare")
+        notes.append(
+            "this manifest declares no package and no workspace members — nothing to compare"
+        )
         return findings, 0, notes
 
     # {name: the version its manifest declares, inheritance resolved} and the
@@ -178,8 +185,10 @@ def audit(root: Path, spec: str):
             # literal text here is `true`, and comparing that to `1.36.0`
             # invents a finding on every member of a modern workspace.
             if workspace_version is None:
-                notes.append(f"{rel}: inherits a version and no [workspace.package] "
-                             "declares one — not compared")
+                notes.append(
+                    f"{rel}: inherits a version and no [workspace.package] "
+                    "declares one — not compared"
+                )
                 continue
             version = workspace_version
         resolved[name] = version
@@ -239,7 +248,9 @@ def audit(root: Path, spec: str):
         else:
             release = outside[0][1]
             for manifest in manifests:
-                name, version = parse_package(manifest.read_text(encoding="utf-8", errors="replace"))
+                name, version = parse_package(
+                    manifest.read_text(encoding="utf-8", errors="replace")
+                )
                 if not name or name not in locked or name not in resolved:
                     continue
                 # Arm 1 already named it: one stale lockfile is one defect, and a
@@ -284,8 +295,7 @@ def main(argv=None) -> int:
     if examined == 0:
         info("[lock_version] no workspace crate compared — not applicable")
         return 0
-    ok(f"[lock_version] OK — {examined} workspace crate(s) agree between Cargo.toml "
-       "and Cargo.lock")
+    ok(f"[lock_version] OK — {examined} workspace crate(s) agree between Cargo.toml and Cargo.lock")
     return 0
 
 
@@ -326,12 +336,14 @@ def _workspace(root: Path, manifest_version: str, lock_version: str) -> None:
     """
     (root / "crates" / "core").mkdir(parents=True, exist_ok=True)
     (root / "crates" / "cli").mkdir(parents=True, exist_ok=True)
-    (root / "Cargo.toml").write_text(FIXTURE_WORKSPACE.format(version=manifest_version),
-                                     encoding="utf-8")
+    (root / "Cargo.toml").write_text(
+        FIXTURE_WORKSPACE.format(version=manifest_version), encoding="utf-8"
+    )
     (root / "Cargo.lock").write_text(FIXTURE_LOCK.format(version=lock_version), encoding="utf-8")
     for name in ("core", "cli"):
         (root / "crates" / name / "Cargo.toml").write_text(
-            f'[package]\nname = "app-{name}"\nversion.workspace = true\n', encoding="utf-8")
+            f'[package]\nname = "app-{name}"\nversion.workspace = true\n', encoding="utf-8"
+        )
 
 
 def probe() -> int:
@@ -353,17 +365,20 @@ def probe() -> int:
         (mixed / "crates" / "a").mkdir(parents=True, exist_ok=True)
         (mixed / "Cargo.toml").write_text(
             '[workspace]\nmembers = ["crates/a"]\n\n[workspace.package]\nversion = "2.0.0"\n',
-            encoding="utf-8")
+            encoding="utf-8",
+        )
         (mixed / "crates" / "a" / "Cargo.toml").write_text(
-            '[package]\nname = "a"\nversion = "2.1.0"\n', encoding="utf-8")
+            '[package]\nname = "a"\nversion = "2.1.0"\n', encoding="utf-8"
+        )
         (mixed / "Cargo.lock").write_text(
-            '[[package]]\nname = "a"\nversion = "2.1.0"\n', encoding="utf-8")
+            '[[package]]\nname = "a"\nversion = "2.1.0"\n', encoding="utf-8"
+        )
         mixed_findings, mixed_examined, mixed_notes = audit(mixed, " ".join(DEFAULT_SOURCES))
 
         # A repo with no lockfile is a named non-run, not a pass over nothing.
         bare = Path(td) / "bare"
         bare.mkdir()
-        (bare / "Cargo.toml").write_text('[workspace]\nmembers = []\n', encoding="utf-8")
+        (bare / "Cargo.toml").write_text("[workspace]\nmembers = []\n", encoding="utf-8")
         none_findings, none_examined, none_notes = audit(bare, " ".join(DEFAULT_SOURCES))
 
         # The two parsing shapes that read as nothing, proven here rather than
@@ -376,34 +391,53 @@ def probe() -> int:
         multiline = Path(td) / "multiline"
         (multiline / "crates" / "a").mkdir(parents=True, exist_ok=True)
         (multiline / "Cargo.toml").write_text(
-            '[workspace]\nmembers = [\n    "crates/a",\n]\nexclude = ["fuzz"]\n',
-            encoding="utf-8")
+            '[workspace]\nmembers = [\n    "crates/a",\n]\nexclude = ["fuzz"]\n', encoding="utf-8"
+        )
         (multiline / "crates" / "a" / "Cargo.toml").write_text(
-            '[package]\nname = "a"\nversion = "1.0.0"\n', encoding="utf-8")
+            '[package]\nname = "a"\nversion = "1.0.0"\n', encoding="utf-8"
+        )
         (multiline / "Cargo.lock").write_text(
-            '[[package]]\nname = "a"\nversion = "1.0.0"\n', encoding="utf-8")
+            '[[package]]\nname = "a"\nversion = "1.0.0"\n', encoding="utf-8"
+        )
         _shape_version, shape_members = parse_workspace(
-            (multiline / "Cargo.toml").read_text(encoding="utf-8"))
+            (multiline / "Cargo.toml").read_text(encoding="utf-8")
+        )
         shape_findings, shape_examined, _ = audit(multiline, " ".join(DEFAULT_SOURCES))
 
         for label, want, got in (
-            ("a lockfile older than its manifest is RED, once per crate",
-             (True, 2), (bool(red), len(red))),
-            ("the finding names BOTH versions",
-             True, bool(red) and "1.36.0" in red[0] and "1.35.0" in red[0]),
-            ("both members are compared, inherited version resolved",
-             2, examined),
+            (
+                "a lockfile older than its manifest is RED, once per crate",
+                (True, 2),
+                (bool(red), len(red)),
+            ),
+            (
+                "the finding names BOTH versions",
+                True,
+                bool(red) and "1.36.0" in red[0] and "1.35.0" in red[0],
+            ),
+            ("both members are compared, inherited version resolved", 2, examined),
             ("regenerating the lockfile is GREEN", 0, len(green)),
-            ("per-crate versions are a layout, not a defect",
-             (0, 1), (len(mixed_findings), mixed_examined)),
-            ("...and the abstention is stated, not silent", True,
-             any("nothing outside" in n for n in mixed_notes)),
-            ("no Cargo.lock is a named non-run", (0, 0, True),
-             (len(none_findings), none_examined, bool(none_notes))),
-            ("a member list spread over lines is read whole",
-             ["crates/a"], shape_members),
-            ("an exclude below the member list is not a member",
-             (0, 1), (len(shape_findings), shape_examined)),
+            (
+                "per-crate versions are a layout, not a defect",
+                (0, 1),
+                (len(mixed_findings), mixed_examined),
+            ),
+            (
+                "...and the abstention is stated, not silent",
+                True,
+                any("nothing outside" in n for n in mixed_notes),
+            ),
+            (
+                "no Cargo.lock is a named non-run",
+                (0, 0, True),
+                (len(none_findings), none_examined, bool(none_notes)),
+            ),
+            ("a member list spread over lines is read whole", ["crates/a"], shape_members),
+            (
+                "an exclude below the member list is not a member",
+                (0, 1),
+                (len(shape_findings), shape_examined),
+            ),
         ):
             if want != got:
                 err(f"probe: {label} (wanted {want!r}, got {got!r})")
@@ -414,8 +448,10 @@ def probe() -> int:
     if bad:
         err(f"check_lock_version --probe: {bad} case(s) wrong")
         return 1
-    ok("check_lock_version --probe: a stale lockfile goes red, a regenerated one green, "
-       "per-crate versions untouched")
+    ok(
+        "check_lock_version --probe: a stale lockfile goes red, a regenerated one green, "
+        "per-crate versions untouched"
+    )
     return 0
 
 

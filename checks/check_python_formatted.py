@@ -46,9 +46,7 @@ from pathlib import Path
 
 sys.path.insert(
     0,
-    os.environ.get(
-        "GOH_DIR", os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    ),
+    os.environ.get("GOH_DIR", os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
 )
 from tui.lib import err, info, ok  # noqa: E402
 
@@ -122,9 +120,7 @@ def selftest(root):
         red, _ = check(d, [str(bad)])
         green, _ = check(d, [str(good)])
     if red == 0:
-        err(
-            "selftest: a mis-formatted file PASSED — this gate cannot see the defect it exists for"
-        )
+        err("selftest: a mis-formatted file PASSED — this gate cannot see the defect it exists for")
         return 1
     if green != 0:
         err(
@@ -132,9 +128,7 @@ def selftest(root):
             f"output was: {green}"
         )
         return 1
-    ok(
-        "check_python_formatted selftest: a mis-formatted file is caught and a formatted one passes"
-    )
+    ok("check_python_formatted selftest: a mis-formatted file is caught and a formatted one passes")
     return 0
 
 

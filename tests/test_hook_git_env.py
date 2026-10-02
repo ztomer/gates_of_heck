@@ -50,8 +50,9 @@ printf 'GIT_DIR=%s\\n' "${GIT_DIR:-unset}" >> "$GATE_REPORT"
 
 
 def _git(repo, *args):
-    return subprocess.run(["git", "-C", str(repo), *args], check=True, capture_output=True,
-                          text=True).stdout.strip()
+    return subprocess.run(
+        ["git", "-C", str(repo), *args], check=True, capture_output=True, text=True
+    ).stdout.strip()
 
 
 def _scratch(tmp_path, files=None):
@@ -78,15 +79,22 @@ def _scratch(tmp_path, files=None):
 
 def _bare(main):
     """core.bare as the SHARED config holds it ('' when unset)."""
-    return subprocess.run(["git", "config", "--file", str(main / ".git" / "config"), "core.bare"],
-                          capture_output=True, text=True).stdout.strip()
+    return subprocess.run(
+        ["git", "config", "--file", str(main / ".git" / "config"), "core.bare"],
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
 
 
 def test_the_fixture_reproduces_the_class(tmp_path):
     main, _, hook_env = _scratch(tmp_path)
     assert _bare(main) in ("", "false")
-    subprocess.run(["git", "init", "-q", str(tmp_path / "other")], env=hook_env, check=True,
-                   capture_output=True)
+    subprocess.run(
+        ["git", "init", "-q", str(tmp_path / "other")],
+        env=hook_env,
+        check=True,
+        capture_output=True,
+    )
     assert _bare(main) == "true", "the hazard did not reproduce: every test below is vacuous"
     assert not (tmp_path / "other" / ".git").exists()
 
@@ -95,8 +103,13 @@ def test_empty_scope_sweep_never_touches_the_hooks_repo(tmp_path):
     main, wt, hook_env = _scratch(tmp_path, {"tools/check_where.py": GATE})
     hook_env["HOOK_GITDIR"] = hook_env["GIT_DIR"]
     head = _git(wt, "rev-parse", "HEAD")
-    out = subprocess.run([sys.executable, str(REPO_ROOT / "checks" / "check_empty_scope.py")],
-                         cwd=wt, env=hook_env, capture_output=True, text=True)
+    out = subprocess.run(
+        [sys.executable, str(REPO_ROOT / "checks" / "check_empty_scope.py")],
+        cwd=wt,
+        env=hook_env,
+        capture_output=True,
+        text=True,
+    )
     text = out.stdout + out.stderr
     assert _bare(main) in ("", "false"), text
     assert _git(wt, "rev-parse", "HEAD") == head, "the skeleton's commit landed in the real repo"
@@ -107,8 +120,13 @@ def test_empty_scope_sweep_never_touches_the_hooks_repo(tmp_path):
 
 def test_empty_scope_probe_never_touches_the_hooks_repo(tmp_path):
     main, wt, hook_env = _scratch(tmp_path)
-    out = subprocess.run([sys.executable, str(REPO_ROOT / "checks" / "check_empty_scope.py"),
-                          "--probe"], cwd=wt, env=hook_env, capture_output=True, text=True)
+    out = subprocess.run(
+        [sys.executable, str(REPO_ROOT / "checks" / "check_empty_scope.py"), "--probe"],
+        cwd=wt,
+        env=hook_env,
+        capture_output=True,
+        text=True,
+    )
     assert out.returncode == 0, out.stdout + out.stderr
     assert _bare(main) in ("", "false"), out.stdout + out.stderr
 
@@ -116,8 +134,13 @@ def test_empty_scope_probe_never_touches_the_hooks_repo(tmp_path):
 def test_probes_run_without_the_hooks_variables(tmp_path):
     main, wt, hook_env = _scratch(tmp_path, {"tools/check_where.py": GATE})
     hook_env["HOOK_GITDIR"] = hook_env["GIT_DIR"]
-    out = subprocess.run([sys.executable, str(REPO_ROOT / "checks" / "check_probes_pass.py")],
-                         cwd=wt, env=hook_env, capture_output=True, text=True)
+    out = subprocess.run(
+        [sys.executable, str(REPO_ROOT / "checks" / "check_probes_pass.py")],
+        cwd=wt,
+        env=hook_env,
+        capture_output=True,
+        text=True,
+    )
     assert out.returncode == 0, out.stdout + out.stderr
     assert _bare(main) in ("", "false"), out.stdout + out.stderr
 
@@ -128,12 +151,18 @@ def test_push_gate_runs_the_export_without_the_pushers_git_dir(tmp_path):
     main, wt, hook_env = _scratch(tmp_path, {"tools/gate.sh": PUSH_GATE_SCRIPT})
     hook_env.pop("GIT_INDEX_FILE")  # pre-push carries GIT_DIR only
     report = tmp_path / "report.txt"
-    hook_env.update(GATE_REPORT=str(report), GOH_DIR=str(REPO_ROOT),
-                    GOH_PUSH_LOGS=str(tmp_path / "push-logs"))
+    hook_env.update(
+        GATE_REPORT=str(report), GOH_DIR=str(REPO_ROOT), GOH_PUSH_LOGS=str(tmp_path / "push-logs")
+    )
     sha = _git(wt, "rev-parse", "HEAD")
-    out = subprocess.run(["bash", str(REPO_ROOT / "gates" / "push_gate.sh")], cwd=wt,
-                         env=hook_env, text=True, capture_output=True,
-                         input=f"refs/heads/wt {sha} refs/heads/wt {'0' * 40}\n")
+    out = subprocess.run(
+        ["bash", str(REPO_ROOT / "gates" / "push_gate.sh")],
+        cwd=wt,
+        env=hook_env,
+        text=True,
+        capture_output=True,
+        input=f"refs/heads/wt {sha} refs/heads/wt {'0' * 40}\n",
+    )
     seen = report.read_text() if report.exists() else ""
     assert out.returncode == 0, out.stdout + out.stderr
     assert _bare(main) in ("", "false"), seen
@@ -146,8 +175,9 @@ def test_the_suite_never_sees_hook_variables(tmp_path):
     dropped the variables at import, so a fixture `git init` builds its own repo."""
     leaked = [v for v in local_env_vars() if v in os.environ]
     assert not leaked, f"conftest did not scrub {leaked}"
-    subprocess.run(["git", "init", "-q", str(tmp_path / "fixture")], check=True,
-                   capture_output=True)
+    subprocess.run(
+        ["git", "init", "-q", str(tmp_path / "fixture")], check=True, capture_output=True
+    )
     assert (tmp_path / "fixture" / ".git").is_dir()
 
 
@@ -155,9 +185,22 @@ def test_conftest_scrubs_before_any_fixture_runs(tmp_path):
     main, _, hook_env = _scratch(tmp_path)
     hook_env[CHILD_FLAG] = "1"
     out = subprocess.run(
-        [sys.executable, "-m", "pytest", "-q", "-p", "no:cacheprovider", "-p", "no:xdist",
-         f"{Path(__file__).relative_to(REPO_ROOT)}::test_the_suite_never_sees_hook_variables"],
-        cwd=REPO_ROOT, env=hook_env, capture_output=True, text=True)
+        [
+            sys.executable,
+            "-m",
+            "pytest",
+            "-q",
+            "-p",
+            "no:cacheprovider",
+            "-p",
+            "no:xdist",
+            f"{Path(__file__).relative_to(REPO_ROOT)}::test_the_suite_never_sees_hook_variables",
+        ],
+        cwd=REPO_ROOT,
+        env=hook_env,
+        capture_output=True,
+        text=True,
+    )
     assert out.returncode == 0, out.stdout + out.stderr
     assert _bare(main) in ("", "false"), out.stdout + out.stderr
 
@@ -167,10 +210,10 @@ def test_rust_test_code_spawns_git_only_through_the_testkit():
     variables on purpose) or the testkit's one scrubbed helper. A new hand-rolled fixture
     `fn git` -- four existed, none scrubbed -- lands here first: use goh_testkit::git_in."""
     allowed = {
-        "crates/goh-testkit/src/lib.rs": 2,   # local_env_vars() probe + git_command()
-        "crates/goh/src/gitutil.rs": 3,       # repo_root / listed_files / content_bytes
-        "crates/goh/src/blobs.rs": 1,         # prefetch_staged's cat-file
-        "crates/goh/src/index_view.rs": 3,    # staged view: GIT_DIR/GIT_INDEX_FILE deliberate
+        "crates/goh-testkit/src/lib.rs": 2,  # local_env_vars() probe + git_command()
+        "crates/goh/src/gitutil.rs": 3,  # repo_root / listed_files / content_bytes
+        "crates/goh/src/blobs.rs": 1,  # prefetch_staged's cat-file
+        "crates/goh/src/index_view.rs": 3,  # staged view: GIT_DIR/GIT_INDEX_FILE deliberate
     }
     found = {}
     for path in sorted((REPO_ROOT / "crates").rglob("*.rs")):
@@ -178,5 +221,6 @@ def test_rust_test_code_spawns_git_only_through_the_testkit():
         if n:
             found[str(path.relative_to(REPO_ROOT))] = n
     assert found == allowed, (
-        "Command::new(\"git\") census changed. Fixture git in tests goes through "
-        f"goh_testkit::git_in / git_command; production additions update this pin.\n{found}")
+        'Command::new("git") census changed. Fixture git in tests goes through '
+        f"goh_testkit::git_in / git_command; production additions update this pin.\n{found}"
+    )

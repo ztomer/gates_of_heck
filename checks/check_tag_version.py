@@ -46,6 +46,7 @@ somewhere else joins without a change here.
 
 Exit codes: 0 clean (or a named non-run), 1 findings, 2 usage/environment.
 """
+
 from __future__ import annotations  # OS python3 may be 3.9
 
 import argparse
@@ -74,7 +75,6 @@ ZERO_SHA = "0" * 40
 # `v1.2` are not release names and carry no version claim to check; a
 # two-component tag is cut from a branch whose own declaration governs.
 TAG_RE = re.compile(r"^refs/tags/v(?P<ver>\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.]+)?)$")
-
 
 
 class Source:
@@ -174,7 +174,7 @@ def audit(root: str, refs, sources: list[Source]):
     for ref, sha in refs:
         m = TAG_RE.match(ref)
         if not m or sha == ZERO_SHA:
-            continue          # not a release name, or a delete: nothing to claim
+            continue  # not a release name, or a delete: nothing to claim
         expected = m.group("ver")
         examined += 1
         # A tag's sha is the TAG OBJECT; the claim is about the commit it
@@ -227,8 +227,9 @@ def read_ref_stream(stream) -> list[str]:
 
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("--refs-file", default=None,
-                    help="file of pre-push ref lines ('-' for stdin, the default)")
+    ap.add_argument(
+        "--refs-file", default=None, help="file of pre-push ref lines ('-' for stdin, the default)"
+    )
     ap.add_argument("--root", default=None, help="repository to read (default: cwd's repo)")
     ap.add_argument("--json", action="store_true", help="machine-readable output")
     ap.add_argument("--probe", action="store_true", help="prove this gate can go red")
@@ -273,8 +274,10 @@ def main(argv=None) -> int:
     for f in findings:
         err(f"[tag_version] {f}")
     if findings:
-        err(f"--- {len(findings)} finding(s): a tag you are pushing does not match "
-            "what its own commit declares ---")
+        err(
+            f"--- {len(findings)} finding(s): a tag you are pushing does not match "
+            "what its own commit declares ---"
+        )
         return 1
     if examined == 0:
         # Zero release tags in this push is a REAL state — a branch push, a
@@ -283,8 +286,10 @@ def main(argv=None) -> int:
         # found it clean.
         info("[tag_version] no refs/tags/v<semver> in this push — not applicable")
         return 0
-    ok(f"[tag_version] OK — {examined} pushed release tag(s) match the version "
-       "declared at their own commit")
+    ok(
+        f"[tag_version] OK — {examined} pushed release tag(s) match the version "
+        "declared at their own commit"
+    )
     return 0
 
 
@@ -295,9 +300,13 @@ def _scratch(root: Path, *args: str, text: bool = False) -> str:
     `git init`/`commit` under a linked worktree then re-initialises the REAL
     repository. Returns stdout when `text`.
     """
-    out = subprocess.run(["git", "-C", str(root), *args], check=True,
-                         capture_output=True, env=foreign_repo_env(),
-                         **({"text": True} if text else {}))
+    out = subprocess.run(
+        ["git", "-C", str(root), *args],
+        check=True,
+        capture_output=True,
+        env=foreign_repo_env(),
+        **({"text": True} if text else {}),
+    )
     return out.stdout.strip() if text else ""
 
 
@@ -352,18 +361,16 @@ def probe() -> int:
         absent, _ = audit(str(repo), [("refs/tags/v9.9.9", ZERO_SHA)], sources)
 
         for label, want, got in (
-            ("a v-tag whose commit declares another version is RED",
-             True, len(red) == 1),
-            ("the finding names BOTH versions",
-             True, bool(red) and "1.79.3" in red[0] and "1.79.1" in red[0]),
-            ("the finding names the source it read",
-             True, bool(red) and "VERSION" in red[0]),
-            ("the working tree is NOT the thing read",
-             True, len(still_red) == 1),
-            ("the same repo with no pushed tag is clean",
-             (True, 0), (not green, len(green))),
-            ("a ref this gate does not police never counts as examined",
-             0, examined - 1),
+            ("a v-tag whose commit declares another version is RED", True, len(red) == 1),
+            (
+                "the finding names BOTH versions",
+                True,
+                bool(red) and "1.79.3" in red[0] and "1.79.1" in red[0],
+            ),
+            ("the finding names the source it read", True, bool(red) and "VERSION" in red[0]),
+            ("the working tree is NOT the thing read", True, len(still_red) == 1),
+            ("the same repo with no pushed tag is clean", (True, 0), (not green, len(green))),
+            ("a ref this gate does not police never counts as examined", 0, examined - 1),
         ):
             if want != got:
                 err(f"probe: {label} (wanted {want!r}, got {got!r})")
@@ -373,11 +380,18 @@ def probe() -> int:
 
         # And green once the commit itself is bumped — the whole point.
         _scratch(repo, "tag", "-d", "v1.79.3")
-        for rel, text in (("VERSION", "1.79.3\n"),
-                          ("Cargo.toml", '[workspace]\nmembers = ["crates/healthcheck-rs"]\n\n'
-                                        '[workspace.package]\nversion = "1.79.3"\n'),
-                          ("crates/healthcheck-rs/Cargo.toml",
-                           '[package]\nname = "healthcheck"\nversion = "1.79.3"\n')):
+        for rel, text in (
+            ("VERSION", "1.79.3\n"),
+            (
+                "Cargo.toml",
+                '[workspace]\nmembers = ["crates/healthcheck-rs"]\n\n'
+                '[workspace.package]\nversion = "1.79.3"\n',
+            ),
+            (
+                "crates/healthcheck-rs/Cargo.toml",
+                '[package]\nname = "healthcheck"\nversion = "1.79.3"\n',
+            ),
+        ):
             (repo / rel).write_text(text, encoding="utf-8")
         _scratch(repo, "add", "-A")
         _scratch(repo, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "bump")
@@ -386,8 +400,10 @@ def probe() -> int:
         fixed_refs = [f"refs/tags/v1.79.3 {fixed} refs/tags/v1.79.3 {ZERO_SHA}"]
         findings, examined = audit(str(repo), parse_refs(fixed_refs), sources)
         if findings or examined != 1:
-            err(f"probe: a matching tag/commit pair is GREEN (got {findings!r}, "
-                f"examined={examined})")
+            err(
+                f"probe: a matching tag/commit pair is GREEN (got {findings!r}, "
+                f"examined={examined})"
+            )
             bad += 1
         else:
             ok("probe: a matching tag/commit pair is GREEN")
@@ -400,8 +416,9 @@ def probe() -> int:
         # `git commit` refusing an empty tree is not the case under test.
         _scratch(bare, "init", "-q", "-b", "main")
         _scratch(bare, "add", "-A")
-        _scratch(bare, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "c",
-                 "--allow-empty")
+        _scratch(
+            bare, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "c", "--allow-empty"
+        )
         _scratch(bare, "tag", "v1.0.0")
         bare_sha = _scratch(bare, "rev-parse", "v1.0.0", text=True)
         bare_refs = parse_refs([f"refs/tags/v1.0.0 {bare_sha} refs/tags/v1.0.0 {ZERO_SHA}"])
@@ -428,8 +445,10 @@ def probe() -> int:
         typo = parse_sources("cargo:crate/*/Cargo.toml")
         found_typo, present_typo = declared_at(str(repo), fixed, typo)
         if found_typo or not any("matched no path" in p for p in present_typo):
-            err(f"probe: a glob matching nothing is reported "
-                f"(found={found_typo!r}, present={present_typo!r})")
+            err(
+                f"probe: a glob matching nothing is reported "
+                f"(found={found_typo!r}, present={present_typo!r})"
+            )
             bad += 1
         else:
             ok("probe: a glob matching nothing is reported, not skipped")
@@ -437,8 +456,10 @@ def probe() -> int:
     if bad:
         err(f"check_tag_version --probe: {bad} case(s) wrong")
         return 1
-    ok("check_tag_version --probe: a lying tag goes red, a truthful one green, "
-       "an unverifiable one is a finding")
+    ok(
+        "check_tag_version --probe: a lying tag goes red, a truthful one green, "
+        "an unverifiable one is a finding"
+    )
     return 0
 
 

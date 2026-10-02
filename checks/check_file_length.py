@@ -26,8 +26,26 @@ from _gitutil import content_bytes, line_count, listed_files, repo_root  # noqa:
 
 # Files the cap is about. Data, docs and lockfiles are legitimately long.
 SOURCE_SUFFIXES = (
-    ".rs", ".py", ".swift", ".c", ".h", ".cpp", ".hpp", ".cc", ".m", ".mm",
-    ".kt", ".java", ".go", ".ts", ".tsx", ".js", ".jsx", ".sh", ".bash", ".rb",
+    ".rs",
+    ".py",
+    ".swift",
+    ".c",
+    ".h",
+    ".cpp",
+    ".hpp",
+    ".cc",
+    ".m",
+    ".mm",
+    ".kt",
+    ".java",
+    ".go",
+    ".ts",
+    ".tsx",
+    ".js",
+    ".jsx",
+    ".sh",
+    ".bash",
+    ".rb",
 )
 
 
