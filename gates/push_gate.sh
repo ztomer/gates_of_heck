@@ -58,8 +58,21 @@ tag_check="$GOH/checks/check_tag_version.py"
 [ -f "$tag_check" ] || die "pre-push: $tag_check missing from the gates checkout at $GOH — nothing pushed"
 
 # Ignored files the export must carry, from the repo's .gatesrc (space-separated, relative).
+#
+# `set -a` AROUND the source, so every key .gatesrc sets is EXPORTED. Sourcing alone sets shell
+# variables, which is enough for the keys a BASH gate reads (structural.sh re-sources .gatesrc in
+# the export and reads them itself) — but `check_tag_version.py` reads
+# `GOH_TAG_VERSION_SOURCES` from the ENVIRONMENT, and a key documented as "set this in .gatesrc"
+# that the checker can never see is worse than an undocumented one: ZoneWM set it exactly as
+# documented, the checker silently fell back to its defaults, and the pre-push refused a correct
+# release with "NO version source declares a version at this commit" — the config was read and
+# ignored. `set +a` restores the shell's own scope straight after.
 GOH_EXPORT_KEEP=""
-[ -f "$root/.gatesrc" ] && . "$root/.gatesrc"
+if [ -f "$root/.gatesrc" ]; then
+    set -a
+    . "$root/.gatesrc"
+    set +a
+fi
 
 zero="0000000000000000000000000000000000000000"
 remote_name="${1:-}"

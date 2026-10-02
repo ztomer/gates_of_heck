@@ -227,3 +227,50 @@ def test_a_tag_naming_a_version_nothing_declares_stops_the_push(tmp_path):
     assert code != 0, out
     assert "NO version source" in out, out
     assert report == "", "the cold code gate ran for a push that was already refused"
+
+
+def test_a_gatesrc_key_reaches_a_python_checker(tmp_path):
+    """`.gatesrc` is documented as where a repo sets `GOH_TAG_VERSION_SOURCES`, and
+    `check_tag_version.py` reads it from the ENVIRONMENT. Sourcing `.gatesrc` into the shell sets
+    a shell variable and nothing more, so the checker silently fell back to its defaults — and a
+    repo that configured a non-default version layout was refused a correct release with "NO
+    version source declares a version at this commit", the one message that reads like the repo
+    forgot to declare a version rather than like the config never arrived.
+
+    So: a repo whose version is a Swift constant, configured exactly as documented, must push.
+    """
+    repo = _repo(tmp_path, gatesrc="GOH_TAG_VERSION_SOURCES='swift:Version.swift'\n",
+                 version=None)
+    (repo / "Version.swift").write_text('public static let marketing = "1.4.0"\n')
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "-q", "-m", "declare in swift")
+    sha = _git(repo, "rev-parse", "HEAD").strip()
+    _git(repo, "tag", "v1.4.0")
+
+    code, out, err = _push_lines(
+        repo,
+        f"refs/tags/v1.4.0 {sha} refs/tags/v1.4.0 {'0' * 40}\n",
+        tmp_path,
+    )
+    assert "NO version source" not in err, out + err
+    assert "does not match what its own commit declares" not in err, out + err
+    assert "nothing pushed" not in err, out + err
+
+
+def test_the_same_push_is_refused_without_the_config(tmp_path):
+    """The control for the case above: with no `.gatesrc` key, the same repo has no version the
+    gate can find, and an unverifiable tag IS a finding. Without this the test above would pass
+    for the wrong reason — a push gate that refuses nothing."""
+    repo = _repo(tmp_path, gatesrc="", version=None)
+    (repo / "Version.swift").write_text('public static let marketing = "1.4.0"\n')
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "-q", "-m", "declare in swift")
+    sha = _git(repo, "rev-parse", "HEAD").strip()
+    _git(repo, "tag", "v1.4.0")
+
+    _, _, err = _push_lines(
+        repo,
+        f"refs/tags/v1.4.0 {sha} refs/tags/v1.4.0 {'0' * 40}\n",
+        tmp_path,
+    )
+    assert "NO version source" in err, err
