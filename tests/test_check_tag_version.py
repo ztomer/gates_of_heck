@@ -21,6 +21,7 @@ from conftest import REPO_ROOT, git, run_check, write
 
 sys.path.insert(0, str(REPO_ROOT / "checks"))
 import check_tag_version as gate  # noqa: E402
+import _version_sources as sources  # noqa: E402
 
 CHECKER = "checks/check_tag_version.py"
 ZERO = "0" * 40
@@ -300,12 +301,12 @@ def test_a_leading_v_in_the_version_file_is_presentation_not_identity():
 def test_version_workspace_true_is_an_inheritance_not_a_declaration():
     """app_updates' members all say this. Reading it as a version would invent
     a finding about a number nobody wrote."""
-    found = gate.from_cargo('[package]\nname = "app-updates-cli"\nversion.workspace = true\n')
+    found = sources.from_cargo('[package]\nname = "app-updates-cli"\nversion.workspace = true\n')
     assert found == []
 
 
 def test_a_dependency_version_is_not_this_repos_release_number():
-    found = gate.from_cargo(
+    found = sources.from_cargo(
         '[package]\nname = "x"\n\n[dependencies]\nserde = { version = "1.0.219" }\n')
     assert found == []
 

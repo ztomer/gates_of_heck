@@ -58,6 +58,12 @@ from pathlib import Path
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from _gitutil import foreign_repo_env, repo_root  # noqa: E402
+from _version_sources import (  # noqa: E402
+    DEFAULT_SOURCES,
+    KINDS,
+    STRATEGIES,
+    _norm,
+)
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from tui.lib import err, info, ok  # noqa: E402
@@ -69,61 +75,6 @@ ZERO_SHA = "0" * 40
 # two-component tag is cut from a branch whose own declaration governs.
 TAG_RE = re.compile(r"^refs/tags/v(?P<ver>\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.]+)?)$")
 
-CARGO_VERSION = re.compile(r"""^\s*version\s*=\s*["']([^"']+)["']""")
-TABLE_RE = re.compile(r"^\s*\[\[?\s*([A-Za-z0-9_.\-]+)\s*\]?\]")
-
-
-def _norm(value: str) -> str:
-    """A declared version and a tag name compare as bare `x.y.z`.
-
-    A `VERSION` file may carry `v1.79.3`; a tag is `v1.79.3`. Leading `v` and
-    surrounding whitespace are presentation, not identity — everything else
-    (`1.79.3-rc.1` vs `1.79.3`) is a real difference and must NOT be smoothed.
-    """
-    return value.strip().lstrip("v").strip()
-
-
-def from_version_file(text: str) -> list[tuple[str, str]]:
-    """[(table, version)] for a `VERSION`-style file: its first meaningful line."""
-    for raw in text.splitlines():
-        line = raw.strip()
-        if line and not line.startswith("#"):
-            return [("(file)", line)]
-    return []
-
-
-def from_cargo(text: str) -> list[tuple[str, str]]:
-    """[(table, version)] for the tables that DECLARE a release number.
-
-    Section-aware on purpose. `version.workspace = true` in a member is an
-    inheritance, and a `version` key under `[dependencies]`/`[package.metadata]`
-    belongs to something else; only `workspace.package` and `package` are
-    declarations of this repo's own number. Hand-rolled rather than `tomllib`
-    because a hook resolves whatever `python3` is on PATH (see _gitutil).
-    """
-    out: list[tuple[str, str]] = []
-    table = ""
-    for raw in text.splitlines():
-        header = TABLE_RE.match(raw)
-        if header:
-            table = header.group(1)
-            continue
-        if table not in ("workspace.package", "package"):
-            continue
-        m = CARGO_VERSION.match(raw)
-        if m:
-            out.append((table, m.group(1)))
-    return out
-
-
-# The registry. Adding a layout is one entry here, or one `kind:path` in
-# GOH_TAG_VERSION_SOURCES — no new code path, no new branch to forget.
-STRATEGIES = {
-    "file": from_version_file,
-    "cargo": from_cargo,
-}
-DEFAULT_SOURCES = ("file:VERSION", "cargo:Cargo.toml")
-KINDS = tuple(STRATEGIES)
 
 
 class Source:
