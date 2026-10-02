@@ -190,6 +190,36 @@ def from_plist(text: str) -> list[tuple[str, str]]:
     return out
 
 
+def from_pyproject(text: str) -> list[tuple[str, str]]:
+    """[(table, version)] for a PEP 621 `pyproject.toml`.
+
+    The layout every Python distribution uses, and the one that makes this gate useless for Python
+    repos without it: `cargo:` correctly reads nothing from a `pyproject.toml` -- it matches
+    `[package] version =`, which is Cargo's table and not `[project]` -- so a tag on a Python
+    project was UNVERIFIABLE for the same reason a Mac bundle's was. Measured on
+    `game_asset_factory`: `refs/tags/v0.4.0` with the default sources reported "NO version source
+    declares a version at this commit", while `pyproject.toml` plainly said `version = "0.4.0"`.
+
+    `tool.poetry` is read as well as `[project]`, because that is the other live spelling and the
+    two disagreeing is exactly the case this gate exists to catch.
+
+    Anchored to the SECTION as well as the key, for the reason `from_cargo` is: a `version =` line
+    elsewhere in the file -- under `[tool.something]`, or in a `[dependency-groups]` table -- is not
+    the distribution's version, and reading it would either miss the real one or invent a second.
+    """
+    out: list[tuple[str, str]] = []
+    section = None
+    for raw in text.splitlines():
+        table = TABLE_RE.match(raw)
+        if table:
+            section = table.group(1)
+            continue
+        m = CARGO_VERSION.match(raw)
+        if m and section in ("project", "tool.poetry") and SEMVER_VALUE.match(m.group(1)):
+            out.append((f"({section})", m.group(1)))
+    return out
+
+
 # The registry. Adding a layout is one entry here, or one `kind:path` in
 # GOH_TAG_VERSION_SOURCES — no new code path, no new branch to forget.
 STRATEGIES = {
@@ -198,6 +228,7 @@ STRATEGIES = {
     "swift": from_swift,
     "xcconfig": from_xcconfig,
     "plist": from_plist,
+    "pyproject": from_pyproject,
 }
 
 # What a repo gets with no configuration: the two layouts that were live when this was written.
