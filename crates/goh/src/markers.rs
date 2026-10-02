@@ -137,6 +137,6 @@ mod tests {
         let mut blob = vec![b'a'; 100];
         blob[50] = 0;
         blob.extend_from_slice(b"\n<<<<<<< ours\n");
-        assert!(scan_blob("f.bin", &blob).is_empty());
+        assert_eq!(scan_blob("f.bin", &blob).len(), 0);
     }
 }

@@ -322,10 +322,10 @@ mod tests {
     fn guards_reject_word_and_dot_prefixes() {
         let sc = scanner();
         // Word char before the match: not a path start.
-        assert!(sc.findings("a/Users/me/x/").is_empty());
-        assert!(sc.findings("a~/Projects/x").is_empty());
+        assert_eq!(sc.findings("a/Users/me/x/").len(), 0);
+        assert_eq!(sc.findings("a~/Projects/x").len(), 0);
         // Dot before a rooted shape: version strings, not paths.
-        assert!(sc.findings("v1./Users/me/x/").is_empty());
+        assert_eq!(sc.findings("v1./Users/me/x/").len(), 0);
         // Dot before tilde: the tilde shape guards words only.
         assert_eq!(sc.findings("x.~/Projects/x").len(), 1);
         // Line start always passes.
@@ -342,9 +342,11 @@ mod tests {
     #[test]
     fn env_default_expansions_are_not_findings() {
         let sc = scanner();
-        assert!(sc
-            .findings("GOH=\"${GOH_DIR:-$HOME/Projects/gates_of_heck}\"")
-            .is_empty());
+        assert_eq!(
+            sc.findings("GOH=\"${GOH_DIR:-$HOME/Projects/gates_of_heck}\"")
+                .len(),
+            0
+        );
     }
 
     #[test]

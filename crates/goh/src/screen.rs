@@ -452,9 +452,18 @@ mod tests {
     #[test]
     fn markers_and_comment_lines_pass() {
         let sc = scanner();
-        assert!(check_text(&sc, "a.swift", "NSScreen.main // screen-ok: fake\n").is_empty());
-        assert!(check_text(&sc, "a.swift", "// screen-ok: whole file\nNSScreen.main\n").is_empty());
-        assert!(check_text(&sc, "a.swift", "// NSScreen.main explains the rule\n").is_empty());
+        assert_eq!(
+            check_text(&sc, "a.swift", "NSScreen.main // screen-ok: fake\n").len(),
+            0
+        );
+        assert_eq!(
+            check_text(&sc, "a.swift", "// screen-ok: whole file\nNSScreen.main\n").len(),
+            0
+        );
+        assert_eq!(
+            check_text(&sc, "a.swift", "// NSScreen.main explains the rule\n").len(),
+            0
+        );
         assert_eq!(check_text(&sc, "a.swift", "NSScreen.main\n").len(), 1);
     }
 
@@ -462,19 +471,18 @@ mod tests {
     fn python_executor_rule() {
         let sc = scanner();
         // Prose naming a command executes nothing.
-        assert!(check_text(&sc, "t.py", "# screencapture is banned\n").is_empty());
+        assert_eq!(
+            check_text(&sc, "t.py", "# screencapture is banned\n").len(),
+            0
+        );
         assert_eq!(
             check_text(&sc, "t.py", "subprocess.run([\"screencapture\", \"-x\"])\n").len(),
             1
         );
         assert_eq!(check_text(&sc, "t.py", "import pyautogui\n").len(), 1);
         // Headless-contract files are out of scope entirely.
-        assert!(check_text(
-            &sc,
-            "t.py",
-            "GOH_HEADLESS = 1\nsubprocess.run([\"screencapture\"])\n"
-        )
-        .is_empty());
+        let src = "GOH_HEADLESS = 1\nsubprocess.run([\"screencapture\"])\n";
+        assert_eq!(check_text(&sc, "t.py", src).len(), 0);
     }
 
     #[test]

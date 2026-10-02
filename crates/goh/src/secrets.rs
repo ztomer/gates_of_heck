@@ -192,9 +192,9 @@ mod tests {
         let (patterns, _) = compiled();
         // Built without literals: a matchable tail in source would trip the gate.
         let long = format!("x ghp_{}", "A".repeat(36));
-        assert!(!findings(&long, &patterns).is_empty());
+        assert_ne!(findings(&long, &patterns).len(), 0);
         let short = format!("x ghp_{}", "A".repeat(10));
-        assert!(findings(&short, &patterns).is_empty());
+        assert_eq!(findings(&short, &patterns).len(), 0);
     }
 
     #[test]
@@ -237,13 +237,19 @@ mod tests {
             "credential-named key with a long value"
         );
         let toml = format!("{} = '{}'", concat!("pass", "word"), "x".repeat(32));
-        assert!(!findings(&toml, &patterns).is_empty());
+        assert_ne!(findings(&toml, &patterns).len(), 0);
         // Placeholders and short fixtures are not findings.
         let short = format!(r#""{name}": "{}""#, "a".repeat(31));
-        assert!(findings(&short, &patterns).is_empty());
-        assert!(findings(&format!("{name} = \"LIDARR_API_KEY\""), &patterns).is_empty());
+        assert_eq!(findings(&short, &patterns).len(), 0);
+        assert_eq!(
+            findings(&format!("{name} = \"LIDARR_API_KEY\""), &patterns).len(),
+            0
+        );
         // An unquoted or env-sourced value is not one either.
-        assert!(findings(&format!("{name} = os.environ[\"K\"]"), &patterns).is_empty());
+        assert_eq!(
+            findings(&format!("{name} = os.environ[\"K\"]"), &patterns).len(),
+            0
+        );
     }
 
     #[test]
@@ -259,6 +265,9 @@ mod tests {
         ] {
             assert!(!findings(header, &patterns).is_empty(), "{header}");
         }
-        assert!(findings(concat!("-----BEGIN ", "PUBLIC KEY-----"), &patterns).is_empty());
+        assert_eq!(
+            findings(concat!("-----BEGIN ", "PUBLIC KEY-----"), &patterns).len(),
+            0
+        );
     }
 }

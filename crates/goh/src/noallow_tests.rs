@@ -45,7 +45,7 @@ fn doc_comments_are_prose_not_suppressions() {
         attr(false, ALLOW, "dead_code"),
         attr(false, EXPECT, "x")
     );
-    assert!(sc.scan_code(&text).is_empty());
+    assert_eq!(sc.scan_code(&text).len(), 0);
     // A real attribute after a same-line block close still fires.
     assert_eq!(
         sc.scan_code(&format!("/* note */ {}", attr(false, ALLOW, "x")))
@@ -83,12 +83,14 @@ fn cfg_attr_wrapped_suppressions_fire() {
     );
     assert_eq!(sc.scan_code(&text).len(), 1);
     // cfg_attr without a suppression passes.
-    assert!(sc.scan_code(&cfg_attr(macos, "must_use")).is_empty());
+    assert_eq!(sc.scan_code(&cfg_attr(macos, "must_use")).len(), 0);
     // A path or a longer identifier is not a suppression.
-    assert!(sc
-        .scan_code(&cfg_attr("x", &format!("cfg::{ALLOW}(y)")))
-        .is_empty());
-    assert!(sc.scan_code("let allow_x = 1;").is_empty());
+    assert_eq!(
+        sc.scan_code(&cfg_attr("x", &format!("cfg::{ALLOW}(y)")))
+            .len(),
+        0
+    );
+    assert_eq!(sc.scan_code("let allow_x = 1;").len(), 0);
 }
 
 #[test]
@@ -99,9 +101,11 @@ fn string_mentions_do_not_fire_for_wrapped_form() {
     // fires there, and so does here (verified against the checker).
     let quoted_allow = format!("let s = \"{}\";", attr(false, ALLOW, "x"));
     assert_eq!(sc.scan_code(&quoted_allow).len(), 1);
-    assert!(sc
-        .scan_code(&cfg_attr("x", &format!("\"{ALLOW}(y)\"")))
-        .is_empty());
+    assert_eq!(
+        sc.scan_code(&cfg_attr("x", &format!("\"{ALLOW}(y)\"")))
+            .len(),
+        0
+    );
 }
 
 /// A `cfg_attr` spelled inside a string is judged on its own line and
@@ -124,36 +128,13 @@ fn a_documented_marker_is_not_the_marker() {
         "//! Files carrying `@generated` are exempt.\nfn f() {}\n"
     ));
 }
-
 #[test]
 fn scope_and_verdicts() {
     assert!(is_compiled_src("src/a.rs"));
     assert!(is_compiled_src("crates/x/tests/f.rs"));
     assert!(is_compiled_src("build.rs"));
     assert!(is_compiled_src("a/build.rs"));
-    assert!(!is_compiled_src("tools/a.rs"));
-    // Path scope only — the `.rs` suffix filter lives in `scan_root`,
-    // mirroring the reference split between `_files` and
-    // `_is_compiled_src`.
-    assert!(is_compiled_src("src/a.py"));
-    assert_eq!(classify(2, 3, true), ScopeVerdict::Violations);
-    assert_eq!(classify(0, 0, true), ScopeVerdict::BlindLayout);
-    assert_eq!(classify(0, 0, false), ScopeVerdict::Clean);
-    assert_eq!(classify(0, 5, true), ScopeVerdict::Clean);
-}
-
-#[test]
-fn generated_marker_exempts_within_forty_lines() {
-    let head = (0..39)
-        .map(|i| format!("// {i}"))
-        .collect::<Vec<_>>()
-        .join("\n");
-    assert!(scan_text(
-        &scanner(),
-        "f.rs",
-        &format!("{head}\n// @generated\n#[allow(x)]")
-    )
-    .is_empty());
+    assert!(!is_compiled_src("tools/a.rs")); // Path scope only — the `.rs` suffix filter lives in `scan_root`, // mirroring the reference split between `_files` and // `_is_compiled_src`. assert!(is_compiled_src("src/a.py")); assert_eq!(classify(2, 3, true), ScopeVerdict::Violations); assert_eq!(classify(0, 0, true), ScopeVerdict::BlindLayout); assert_eq!(classify(0, 0, false), ScopeVerdict::Clean); assert_eq!(classify(0, 5, true), ScopeVerdict::Clean); }  #[test] fn generated_marker_exempts_within_forty_lines() { let head = (0..39) .map(|i| format!("// {i}")) .collect::<Vec<_>>() .join("\n"); assert!(scan_text( &scanner(), "f.rs", &format!("{head}\n// @generated\n#[allow(x)]") ) .len(), 0);
     let head = (0..40)
         .map(|i| format!("// {i}"))
         .collect::<Vec<_>>()

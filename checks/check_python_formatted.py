@@ -50,7 +50,7 @@ sys.path.insert(
         "GOH_DIR", os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     ),
 )
-from tui.lib import err, ok  # noqa: E402
+from tui.lib import err, info, ok  # noqa: E402
 
 REPO = Path.cwd()
 
@@ -69,6 +69,30 @@ def repo_root():
         return REPO
     top = out.stdout.strip()
     return Path(top).resolve() if out.returncode == 0 and top else REPO
+
+
+def _python_files(root, tree):
+    """The Python files a scanner would really SEE under `tree`.
+
+    Git's WORKTREE, not `rglob`. This is the hole `check_empty_scope.py`
+    exists to catch, and it caught it here: over its empty skeleton it
+    reported "every file under . is ruff-formatted" about the gate directory
+    it had copied in -- untracked and git-ignored, therefore not part of the
+    repository, but plainly on disk for any filesystem walk to find. A
+    formatter that checks files the repo does not contain is reporting on
+    something other than the repo.
+
+    `listed_files` is tracked + untracked minus ignored, so an empty tree
+    yields none and the emptiness test below can say so.
+    """
+    from _gitutil import listed_files
+
+    try:
+        listed = listed_files(str(root), staged=False)
+    except (OSError, RuntimeError):
+        return []
+    prefix = "" if tree in (".", "") else tree.rstrip("/") + "/"
+    return [f for f in listed if f.startswith(prefix) and f.endswith(".py")]
 
 
 def check(root, paths):
@@ -133,6 +157,16 @@ def main():
             "missing gate, not a pass."
         )
         return 1
+
+    # No Python in the repository is a NAMED NON-RUN, not a pass: "every file
+    # under . is ruff-formatted" over zero files is vacuously true and reads
+    # exactly like compliance.
+    if not _python_files(root, (args.trees or ["."])[0]):
+        info(
+            f"not applicable: no Python files under {', '.join(args.trees or ['.'])} "
+            "-- nothing for the formatter to have an opinion about"
+        )
+        return 0
 
     code, out = check(root, args.trees or ["."])
     if code != 0:

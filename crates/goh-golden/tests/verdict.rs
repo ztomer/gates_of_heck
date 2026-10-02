@@ -142,7 +142,7 @@ fn identical_frames_pass_with_the_identical_values() {
     assert!(v.identical && v.ok);
     assert_eq!(v.size, (100, 1));
     assert_eq!(v.values, vec![0.0, 0.0, 1.0]);
-    assert!(v.failures.is_empty());
+    assert_eq!(v.failures, [] as [std::string::String; 0]);
     assert_eq!(
         verdict_line(&v),
         "→ mean_abs_diff=0.0000 changed_frac=0.000000 ssim=1.0000 [png-crate/native] identical"

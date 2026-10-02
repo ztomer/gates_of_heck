@@ -169,7 +169,7 @@ mod tests {
         full.sort();
         assert_eq!(full, [".gitignore", "fresh.md", "tracked.md"]);
         // Staged scope is still the index: nothing is staged.
-        assert!(listed_files(&td, true).unwrap_or_default().is_empty());
+        assert_eq!(listed_files(&td, true).unwrap_or_default().len(), 0);
         let _ = std::fs::remove_dir_all(&td);
     }
 }
