@@ -55,9 +55,16 @@ def _hermetic_env(**overrides: str) -> dict[str, str]:
 # What docs/config.md documents in its STRUCTURAL table that is NOT pipeline config: the
 # first two say WHICH BINARY runs, the rest belong to the push gate, install.sh or
 # build-goh.sh. Absent from the drop list is safe only while somebody has said so.
+#
+# GOH_CROSS_REPO_ROOT is here for the same reason as GOH_PUSH_WORKTREES and GOH_PUSH_LOGS: it is
+# SET BY push_gate.sh on the one command that needs it (`gate.sh --full` in the export worktree),
+# not read from an ambient environment by any structural step. Dropping it is therefore both safe
+# and required -- and required rather than merely tidy, because the value names a REAL checkout, so
+# an inherited one would silently point a gate at somebody else's tree.
 NOT_PIPELINE_CONFIG = set(
     "GOH_BIN GOH_NO_NATIVE GOH_SKIP_BUILD GOH_BUILD_DIRTY "
-    "GOH_EXPORT_KEEP GOH_PUSH_WORKTREES GOH_PUSH_LOGS GOH_TAG_VERSION_SOURCES".split()
+    "GOH_EXPORT_KEEP GOH_PUSH_WORKTREES GOH_PUSH_LOGS GOH_TAG_VERSION_SOURCES "
+    "GOH_CROSS_REPO_ROOT".split()
 )
 
 DROP_LIST_RE = re.compile(r'_goh_config_keys="([^"]+)"', re.S)
