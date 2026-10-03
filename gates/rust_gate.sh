@@ -58,6 +58,14 @@ cargo_dir="${2:-$repo}"
 cd "$repo"
 cargo_dir="$(cd "$cargo_dir" && pwd)"
 
+# A fixture's environment must not decide its verdict. structural.sh already
+# drops these before sourcing .gatesrc; rust_gate.sh is spawned by every test
+# that exercises it, with GOH_DIR at a real checkout, so the same class of
+# leak would let an inherited GOH_COV_FLOOR_RUST arm a coverage floor no
+# fixture declared. A key is configuration iff the repo's own file says so.
+unset GOH_COV_FLOOR_RUST GOH_RUST_LINT_CONFIGS GOH_DEPS_RATCHET \
+      GOH_CROSS_REPO_ROOT GOH_PYTHON_FORMATTED GOH_SKILLS_CORPUS 2>/dev/null || true
+
 [ -f .gatesrc ] && . ./.gatesrc
 
 goh_init "rust"

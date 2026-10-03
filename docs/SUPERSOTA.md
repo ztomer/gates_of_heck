@@ -289,36 +289,47 @@ the file from the message it was given.
 
 ## 3. Where we fall short, ranked
 
-1. **R3 — checks are proven against fixtures we wrote.** Two of this session's
-   own checks were wrong against reality. **Narrowed 2026-10-03**, not closed:
-   `checks/check_estate_corpus.py` measures six house checkers against real
-   corpora from six real consumer repos, and replays the receiver bug in the shape
-   it failed in. What it cannot do is judge its own PLANT — the plant is authored
-   beside the checker, which is how the first version of it proved nothing — and
-   it says so. Consumer checks are still unmeasured here.
-2. **R4 — a stale binary silently skips steps.** ~6 lines at gate time would
-   close the measured instance; a step-inventory assertion in the parity suite
-   would close the class.
-3. **R5 — vendored checker copies are unenforced.** The two that existed are
-   gone (ZeroThunder's, retired per R6), but **nothing refuses the next one**:
-   the rule lives in `AGENTS.md` and in no gate.
-4. **R8 — the failing tier hides the path.**
+**Re-measured 2026-10-03, after v0.16.0.** Items 2, 4 and 5 are closed; item 3
+is half; item 1 is narrowed. What remains is tracked in
+[`BACKLOG.md`](BACKLOG.md).
 
-Item 2 is small. Item 1 is the one that changes outcomes.
+1. **R3 — NARROWED, not closed.** `checks/check_estate_corpus.py` plants a
+   violation inside a real consumer corpus and requires the checker to go red
+   and name the file. Its own first version proved nothing — it was 6/6 green
+   while the 2026-10-02 receiver bug was replayed, because the plant was a shape
+   clippy is silent on and the corpus carried a finding of its own. It now
+   requires a clean corpus first. **Residual:** it cannot judge its own plant,
+   it proves a checker still refuses rather than that it is correct, and it
+   measures *house* checkers — the consumer class in R3's own table
+   (`gluetun_socks5` reading the last `image:` of a 40-service compose file) is
+   still unmeasured here.
+2. **R4 — CLOSED.** A stale `bin/goh` was skipping steps silently; the version
+   compare is now at gate time, and `test_both_tiers_run_the_same_steps`
+   compares the tiers' step inventories **as sets** (the old `(rc, label)`
+   comparison was blind to a missing step — 25 pre-existing cases passed with a
+   step deleted). Residual: a version bump is visible, a step added without a
+   bump is not; closing that needs a source hash embedded at build time.
+3. **R5 — HALF.** ZeroThunder's two vendored copies are retired, one after a
+   capability diff that found the local checker was **not** a copy of the house
+   checker of that name — its rule was different, so widening the house gate
+   would have deleted a capability. The capability landed as
+   `checks/check_display_seam.py`. **Nothing refuses a future vendored copy.**
+4. **R7 — CLOSED.** `checks/gate_calibration.json` is read, from
+   `check_probes_pass.py`. Four rules, each a way the registry had been lying,
+   including a prover that must have run green in the same sweep. It found a
+   live key-spelling inconsistency on its first run — nothing had read the file.
+5. **R8 — CLOSED.** The native tier prints the path the OS was handed and routes
+   to the gate's documentation.
 
-**Closed 2026-10-03:** R7 (the calibration registry is now read here, by
-`check_probes_pass.py` via `checks/_calibration.py` — see R7's *Checked by*), and
-the two instances of R5 (retired per R6).
+### The highest-severity item, unchanged
 
-### A risk of shared ownership nobody has guarded
-
-The Python tier consumes `checks/*.py` as **working-tree source**. Appending one
-comment line changes the gate every repo runs — no reinstall, no output, no
-refusal. `scripts/build-goh.sh` refuses to publish `bin/goh` from a dirty tree,
-but only for `crates/`. A dirty `checks/` is unguarded, and that is the highest
-severity item in this document: it is silent and total.
-
----
+**Dirty `checks/` is now guarded, at both ends.** Publishing `bin/goh` refuses a
+dirty tree, and every repo's pre-commit certifies by name. The severity
+decision is worth recording: a gate-time *refusal* was the wrong shape, because
+`structural.sh` and `push_gate.sh` are spawned by every test that exercises
+them — a refusal is 22 tests red on any session with uncommitted work here, and
+that is a gate whose verdict depends on the working tree, one level up from the
+bug it was fixing.
 
 ## 4. Decisions taken 2026-10-02, and why
 

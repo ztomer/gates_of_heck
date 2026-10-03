@@ -1,6 +1,19 @@
 # CHANGELOG
 
-## Unreleased — house checkers are measured against real corpora, and R3's own first failure is recorded _(2026-10-03)_
+## v0.16.0 — a repo's own config stops deciding its gate's verdict _(2026-10-03)_
+
+SUPERSOTA **R3** — house checkers measured against real corpora, and R3's own
+first failure recorded (the gate caught itself).
+SUPERSOTA **R5/R6** — the display-seam gate, and ZeroThunder's two vendored
+checkers retired after a capability diff.
+SUPERSOTA **R7** — the calibration registry is read here, and every claim in it
+is checked.
+SUPERSOTA **R4** — a step that does not run is now a failure, and the two tiers'
+step inventories are compared as sets.
+SUPERSOTA **R8** — the failing tier names the checker and routes to its rule.
+The push gate stops handing the export gate this repo's `.gatesrc`.
+Uncommitted gate source: publish refuses, certify names itself.
+
 
 SUPERSOTA **R3**: "a gate that cannot fail in the shape it was written for is
 not proven." The mechanism for the estate as a whole lives in
@@ -60,7 +73,7 @@ checkers — the consumer class in R3's table (`gluetun_socks5`, read the last
 not closed**, and `docs/SUPERSOTA.md` R3 plus `docs/BACKLOG.md` say so in those
 words.
 
-## Unreleased — the display-seam gate, and ZeroThunder's two vendored checkers retired _(2026-10-03)_
+### The display-seam gate, and ZeroThunder's two vendored checkers retired
 
 SUPERSOTA **R5/R6**. `games/ZeroThunder` carried repo-local copies of two house
 checkers, both sha-diverged. The rule is that a checker one repo needs is added
@@ -129,7 +142,7 @@ undeclared `screencapture` harness in `tests/`; an unguarded `osascript` at the
 repo root; a **bare** `// screen-ok:` — the hole the original gate was measured
 against; and a planted conflict marker caught by the house marker checker.
 
-## Unreleased — the calibration registry is read here, and every claim in it is checked _(2026-10-03)_
+### The calibration registry is read here, and every claim in it is checked
 
 SUPERSOTA **R7**. `checks/gate_calibration.json` had held 23 entries claiming
 named gates had proven they can fail, and nothing in this repo read it:

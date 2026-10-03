@@ -5,54 +5,31 @@ One file; prune landed items to git history. Seeded from EVAL-2026-09-04.md
 
 ## Open
 
-### From `docs/SUPERSOTA.md` §3 — where we fall short, in the doc's order
+### Remaining from `docs/SUPERSOTA.md` §3
 
-Seeded 2026-10-02. The document states the ranked gap list; these are the boxes
-that close it. Without these the list is a confession, not a plan.
+R4, R7 and R8 closed in v0.16.0. R3 **narrowed, not closed** — it cannot judge
+its own plant, and it measures house checkers, not the consumer class in R3's
+table. Carried here so the residual is not lost:
 
-- **SUPERSOTA R3, the part left over — nothing judges the PLANT, and consumer
-  checks are unmeasured.** `checks/check_estate_corpus.py` (2026-10-03) runs six
-  house checkers against real subtrees copied out of six real consumer repos and
-  replays the 2026-10-02 receiver bug in the shape it failed in. Two gaps it
-  states rather than hides: **(a)** the plant is authored beside the checker, so a
-  checker that is blind to a shape the estate really has can still be measured
-  green — the first version of the gate proved exactly that, and the honest fix
-  is a language-aware mutator that derives each plant from a real finding in the
-  corpus, per checker, which is not built; **(b)** it measures HOUSE checkers, and
-  `gluetun_socks5`-class consumer checks stay where they were, covered only by
-  the cross-repo survey in `games/game_asset_factory`. Also open: whether the
-  corpus sweep belongs at `--staged` at all — it is a full-scope measurement
-  (real trees, real corpora) and costs ~3 s of the ~11 s
-  `check_probes_pass.py` now takes; moving it behind `structural.sh --full` is a
-  `gates/` change.
-- **SUPERSOTA R4 — a stale `bin/goh` silently skips steps.** Measured: a
-  `bin/goh` predating the markdown-links step meant that step did not run,
-  and a step that does not run prints what a passing step prints. Two
-  long-standing broken links sat in the tree the whole time. Two parts:
-  (a) ~6 lines at gate time comparing the binary's version to `Cargo.toml` —
-  `scripts/build-goh.sh:85-90` does this but only *inside the build*;
-  (b) a real step-inventory assertion in `test_goh_structural_parity.py`,
-  which claims to compare inventories and does not — it compares
-  `(rc, failing label)` tuples, so a step missing from one tier is invisible
-  unless a fixture happens to make it fail.
-- **SUPERSOTA R5, the part left over — nothing REFUSES a vendored copy.** The two
-  that existed (`games/ZeroThunder`'s) were retired 2026-10-03 per **R6**, so the
-  class is empty and nothing will notice the next one. A gate that refuses a
-  repo-local copy of a house checker: its home is `gates/structural.sh`, one
-  `goh_step` reusing the file list every structural checker already walks, and
-  the house checker's own name is the thing to match on. Not started — outside
-  the ownership of the round that retired the two.
-- **SUPERSOTA R8 — the failing tier hides the path.** The native tier prints
-  `(command: python3 check_md_links.py)` — a bare filename, from the tier
-  that actually runs. The Python tier prints an absolute path. A session that
-  hits a surprising house gate cannot find the file from the message it was
-  given.
-- **Dirty `checks/` is unguarded, and it is the highest-severity item in the
-  document.** The Python tier consumes `checks/*.py` as **working-tree
-  source**, so appending one comment line changes the gate every repo runs —
-  no reinstall, no output, no refusal. `scripts/build-goh.sh` refuses to
-  publish `bin/goh` from a dirty tree, but only for `crates/`. Silent and
-  total.
+- **SUPERSOTA R3 — the residual.** `checks/check_estate_corpus.py` plants a
+  violation inside a real consumer corpus and requires the checker to go red and
+  name it. It proves a checker *still refuses*; it cannot say a checker is
+  *correct*, and a plant derived from a real finding needs a per-checker
+  language-aware mutator. Consumer-side checks are still unmeasured here.
+- **SUPERSOTA R5 — the remaining half.** Nothing refuses a *future* vendored
+  copy. Home is `gates/structural.sh`.
+- **SUPERSOTA R4a — the honest limit.** The gate-time compare sees a version
+  *bump*, not a step added. Closing it needs the binary to embed a hash of its
+  source (`build.rs` under `crates/goh/`).
+- **Uncommitted gate source is certified, not refused.** A push is certified by
+  uncommitted gate source, with a warning. A refusal needs a seam the tests can
+  set (an acknowledged-dirty marker file — a `GOH_*` key would need a
+  `docs/config.md` row).
+- **`check_probes_pass.py` went 3.5s -> 11.4s.** `check_estate_corpus.py` is a
+  full-scope measurement sitting in a staged-scope path; move it behind
+  `structural.sh --full`.
+- **`tests/test_gate_environment.py` duplicates `_hermetic_env`.** The right
+  home is `tests/conftest.py`.
 
 - Secrets v2: entropy heuristics for unknown key shapes. Blocked on FP
   tuning first — v1 (prefixes + key headers) ships instead. Measure FP
