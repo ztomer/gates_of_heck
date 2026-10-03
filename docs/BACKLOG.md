@@ -30,12 +30,13 @@ that close it. Without these the list is a confession, not a plan.
   which claims to compare inventories and does not — it compares
   `(rc, failing label)` tuples, so a step missing from one tier is invisible
   unless a fixture happens to make it fail.
-- **SUPERSOTA R5 — vendored checker copies are unenforced.** `AGENTS.md` says
-  no repo-local copies; nothing checks. Two exist now:
-  `games/ZeroThunder/tools/check_no_conflict_markers.py` and
-  `check_no_screen_presentation.py`, both sha-**diverged** from the house
-  originals, one carrying a capability (`DisplayPolicy`) the house copy lacks.
-  Retire per **R6** — diff capabilities, not bytes.
+- **SUPERSOTA R5, the part left over — nothing REFUSES a vendored copy.** The two
+  that existed (`games/ZeroThunder`'s) were retired 2026-10-03 per **R6**, so the
+  class is empty and nothing will notice the next one. A gate that refuses a
+  repo-local copy of a house checker: its home is `gates/structural.sh`, one
+  `goh_step` reusing the file list every structural checker already walks, and
+  the house checker's own name is the thing to match on. Not started — outside
+  the ownership of the round that retired the two.
 - **SUPERSOTA R8 — the failing tier hides the path.** The native tier prints
   `(command: python3 check_md_links.py)` — a bare filename, from the tier
   that actually runs. The Python tier prints an absolute path. A session that

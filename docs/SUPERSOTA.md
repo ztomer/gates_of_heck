@@ -113,13 +113,21 @@ for one repo is added here and wired into that repo.
 **Why.** `gates/rust_gate.sh` records it: until 2026-09-14 the step looked for a
 repo-local `tools/check_no_allow.py` and skipped when absent, so four repos
 carried vendored copies and the rest were not checked at all. The class
-**recurred within a month** — `games/ZeroThunder` currently carries
+**recurred within a month** — `games/ZeroThunder` carried
 `check_no_conflict_markers.py` and `check_no_screen_presentation.py`, both
 sha-**diverged** from the house originals, one of them carrying a capability
 (`DisplayPolicy`) the house copy does not have.
 
-**Checked by.** Currently: nothing. `AGENTS.md` states the rule; no gate
-enforces it.
+**Done for those two, 2026-10-03.** See R6 for what the capability diff found
+and where it went. The house marker checker needed nothing — it is a strict
+superset of the local copy's detection (see R6) — so that one was a straight
+deletion.
+
+**Checked by.** The deletions: nothing enforces the RULE. `AGENTS.md` states it;
+no gate refuses a repo-local copy of a house checker. The natural home for that
+gate is `gates/structural.sh` (one `goh_step`, reusing the file lists every other
+structural checker already walks), which is outside the ownership this work had.
+Stated as a gap rather than quietly left.
 
 ### R6 — Before replacing a repo-local checker with a house one, diff CAPABILITIES
 
@@ -130,6 +138,53 @@ they can do, not their bytes. Port the something before deleting the copy.
 escaped-codepoint reading, because two padlocks had once hidden in its config
 panel as Rust escapes. Found only when the house gate's own suite used an escape
 as a fixture.
+
+**Worked, 2026-10-03, on `games/ZeroThunder`'s two copies.** The capability diff
+was read, not the bytes, and it said something neither `shasum` nor a line count
+could:
+
+| what the local copy did | house `check_no_conflict_markers.py` |
+|---|---|
+| `<<<<<<< ` + space, at line start | `^(<{7}\|>{7}\|{7})(\s\|$)` — space, tab, or end of line |
+| staged mode read the **worktree** while staging | reads the **index** (`_gitutil.content_bytes`) |
+| exit 3 = SKIP when not in a git repo | no such case; `repo_root()` is the caller's problem |
+
+A strict superset, plus index truth the local copy did not have. **Nothing to
+port.** The local copy is deleted, and the reason it could drift unnoticed is
+also named: nothing ran both.
+
+The screen checker was the opposite, and the interesting half:
+
+* **`check_no_screen_presentation.py` was not a copy of the house
+  `check_no_screen_presentation.py`.** Different rule, different scope. The house
+  gate answers *test targets never touch the screen*; the local one answered *app
+  source must route presentation through a seam*, and refused the seam's own
+  file. Widening the house gate to cover it would have deleted a capability, not
+  unified one — so the capability moved HERE as its own gate
+  (`checks/check_display_seam.py`), the consumer's sweep roots / seam / exemptions
+  / live-tier vocabulary became `tools/display_seam_policy.json`, and the copy was
+  deleted. Same for `marker_reason.py`, which eight of ZeroThunder's gates
+  imported: the rule moved to `checks/_marker_reason.py` and the consumer's file
+  is now a re-export, because a rule about duplicates is the last thing to have
+  two copies of.
+* **What came across:** the seam exemption; the input tier (`NSEvent.mouseLocation`,
+  `addGlobal|LocalMonitorForEvents`, `pressedMouseButtons`, `CGEvent.tapCreate`,
+  `CGWarpMouseCursorPosition`, `CGDisplayMoveCursorToPoint`, `NSCursor.hide`,
+  `.post(tap:)`) — input is the same problem as presentation, because they fight
+  the user for the same mouse; `NSWorkspace.shared.open` of a system pane; the
+  `input-ok:` marker beside `screen-ok:`; justified markers (a bare
+  `// screen-ok:` silenced nothing locally either, and here it is the house rule
+  in `checks/_marker_reason.py`); a live-tier declaration that must be a **call**
+  and carry a substantive non-placeholder reason; the executor being allowed on
+  an earlier line than the command, which is the shape `ruff format` emits and
+  which the house copy is blind to; the global `.sh` pass; and an inline
+  self-proof the house copy did not have at all.
+* **What was measured and deliberately NOT ported:** the local copy's
+  `APP_LAUNCH` regex also matched `pkill -f .*ZeroThunder`. `pkill` belongs to
+  `check_no_kill_by_name.py`, which already owns it; putting a kill pattern
+  inside a policy file the kill gate does not read would have been the bypass,
+  not the port. No finding is lost — measured by running the house gate over the
+  whole tree before and after.
 
 ### R7 — A registry nothing reads is a rumour
 
@@ -200,13 +255,16 @@ the file from the message it was given.
 2. **R4 — a stale binary silently skips steps.** ~6 lines at gate time would
    close the measured instance; a step-inventory assertion in the parity suite
    would close the class.
-3. **R5 — vendored checker copies are unenforced.** Two exist right now.
+3. **R5 — vendored checker copies are unenforced.** The two that existed are
+   gone (ZeroThunder's, retired per R6), but **nothing refuses the next one**:
+   the rule lives in `AGENTS.md` and in no gate.
 4. **R8 — the failing tier hides the path.**
 
 Item 2 is small. Item 1 is the one that changes outcomes.
 
 **Closed 2026-10-03:** R7 (the calibration registry is now read here, by
-`check_probes_pass.py` via `checks/_calibration.py` — see R7's *Checked by*).
+`check_probes_pass.py` via `checks/_calibration.py` — see R7's *Checked by*), and
+the two instances of R5 (retired per R6).
 
 ### A risk of shared ownership nobody has guarded
 

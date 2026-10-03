@@ -1,5 +1,74 @@
 # CHANGELOG
 
+## Unreleased — the display-seam gate, and ZeroThunder's two vendored checkers retired _(2026-10-03)_
+
+SUPERSOTA **R5/R6**. `games/ZeroThunder` carried repo-local copies of two house
+checkers, both sha-diverged. The rule is that a checker one repo needs is added
+here and wired into that repo; the caution is that a local copy may be doing
+something the house one does not, so diff **capabilities**, not bytes.
+
+**`check_no_conflict_markers.py`** needed nothing. The house copy is a strict
+superset of the local one's detection (`\s` or end-of-line after the marker, not
+just a space) and additionally reads THE INDEX in `--staged` where the local copy
+read the worktree. Deleted; ZeroThunder now runs the house one, which
+`gates/structural.sh` was already running for every repo anyway — the local copy
+had been invisible precisely because it duplicated a gate that already ran.
+
+**`check_no_screen_presentation.py`** was not a copy of the house checker of that
+name. Different rule, different scope: the house gate refuses screen APIs in TEST
+TARGETS; this one refused them in APP SOURCE unless they routed through a seam,
+and exempted the seam's own file. Widening the house gate would have deleted a
+capability, so the capability moved here as its own gate.
+
+`checks/check_display_seam.py` — on-screen presentation and real-input use route
+through a seam the consumer names; a live-tier harness must CALL the helper and
+carry a substantive, non-placeholder reason; every tracked `*.sh` is policed
+whatever the sweep roots say. The consumer's sweep roots, seam, exemption list
+and live-tier vocabulary are policy: `tools/display_seam_policy.json`, committed
+in the consumer and read by the house gate. `docs/new-checker.md` §3 forbids
+per-repo policy inside shared code; a policy file is the other half of that.
+
+Ported across, none of which the house checker had: the input tier
+(`NSEvent.mouseLocation`, event taps, `pressedMouseButtons`, cursor warp/hide,
+`.post(tap:)`), `NSWorkspace.shared.open` of a system pane, the `input-ok:`
+marker, **justified** markers (a bare `// screen-ok:` silences nothing — that
+rule moved to `checks/_marker_reason.py`, and ZeroThunder's `tools/marker_reason.py`,
+imported by eight of its gates, is now a re-export of it rather than a fourth
+copy), a live declaration that must be a call rather than a mention, the executor
+allowed on an **earlier line** than the command (the shape `ruff format` emits,
+and which the house checker is blind to), the global shell pass, and an inline
+self-proof.
+
+Measured and deliberately NOT ported: the local `APP_LAUNCH` regex also matched
+`pkill -f .*ZeroThunder`. `pkill` belongs to `check_no_kill_by_name.py`, which
+already owns it; a kill pattern inside a policy file that gate does not read
+would be the bypass, not the port. No finding is lost — the house gate was run
+over the whole tree before and after.
+
+**`--probe` is 58 cases, and every rule is calibrated.** One case per pattern in
+the Swift and live-command vocabularies (a pattern nobody drives is a pattern
+nobody knows works), plus the config refusals. `tests/test_display_seam.py`
+re-runs the probe against a copy of the real module with each of its 23 rules
+neutered, so dropping one turns its own row red and nothing else:
+
+    swift-input-family    -> Swift: reading the real pointer is refused
+    swift-tap-family      -> Swift: CGEvent.tapCreate is refused
+    masking               -> Swift: a string naming a shape is prose, not code
+    justified-marker      -> a BARE screen-ok marker silences nothing
+    lookback              -> a MULTI-LINE subprocess call is caught
+    helper-must-be-called -> merely DOCUMENTING the helper is not a declaration
+    live-reason           -> a PLACEHOLDER live reason is a violation
+    shell-pass-global     -> an unguarded .sh is a violation, wherever it lives
+    offscreen-declared    -> a SECOND offscreen mode inherits no recognition
+    unknown-key-refused   -> an unknown policy key is refused, not ignored
+    zero-scope-refused    -> a policy matching no source is REFUSED, not passed
+
+ZeroThunder's coverage afterwards, planted and caught, not assumed: a planted
+`makeKeyAndOrderFront` in `UI/` (red, and red again through `--staged`); an
+undeclared `screencapture` harness in `tests/`; an unguarded `osascript` at the
+repo root; a **bare** `// screen-ok:` — the hole the original gate was measured
+against; and a planted conflict marker caught by the house marker checker.
+
 ## Unreleased — the calibration registry is read here, and every claim in it is checked _(2026-10-03)_
 
 SUPERSOTA **R7**. `checks/gate_calibration.json` had held 23 entries claiming
