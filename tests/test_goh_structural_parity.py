@@ -257,6 +257,22 @@ def test_both_tiers_run_the_same_steps(goh: Path, tmp_path: Path) -> None:
     assert len(in_bash) == 16, f"the pipeline's step inventory changed: {sorted(in_bash)}"
 
 
+def test_a_failing_step_names_the_checker_and_the_docs(goh: Path, tmp_path: Path) -> None:
+    """R8: the failing tier must be able to be FOUND from the message it gives.
+
+    This printed `command: python3 check_md_links.py` — a bare filename — from the
+    tier that actually runs in every repo, while the Python tier printed an
+    absolute path. A session hitting a surprising house gate had no way to find
+    the file from what it was told, and neither tier said where the RULE is
+    written. Both facts are now in the failure: the path the OS was handed, and
+    the docs page that documents the gate.
+    """
+    repo = make_repo(tmp_path, FULL_CASES["md_link_red"])
+    out = (lambda r: r.stdout + r.stderr)(_run_goh(goh, repo, False))
+    assert str(ROOT / "checks" / "check_md_links.py") in out, out
+    assert str(ROOT / "docs" / "map.md") in out and str(ROOT / "docs" / "config.md") in out, out
+
+
 def test_staged_marker_agrees(goh: Path, tmp_path: Path) -> None:
     repo = make_repo(tmp_path, {".gatesrc": GATESRC, "a.py": b"x = 1\n"})
     (repo / "a.py").write_bytes(b"x = 1\n<<<<<<< ours\n")

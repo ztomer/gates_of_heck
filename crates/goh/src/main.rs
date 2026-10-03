@@ -182,7 +182,7 @@ enum Commands {
     },
 }
 
-fn goh_root() -> PathBuf {
+pub(crate) fn goh_root() -> PathBuf {
     std::env::var("GOH_DIR")
         .or_else(|_| std::env::var("GOH"))
         .map_or_else(

@@ -45,7 +45,9 @@ pub(crate) fn ok(label: &str, start: Instant) {
 }
 
 /// Fail the gate like `goh_step`: blank line, failing-output tail, blank
-/// line, then the failure. `how` names the runner (`native` or the command).
+/// line, then the failure. `how` names the runner (`native`, or the command
+/// with the checker's own path in it) and is followed by the docs route, so the
+/// failure says both WHAT ran and WHERE the rule for it is written.
 pub(crate) fn fail(label: &str, how: &str, report: &str, _start: Instant) -> i32 {
     println!();
     let lines: Vec<&str> = report.lines().collect();
@@ -56,7 +58,38 @@ pub(crate) fn fail(label: &str, how: &str, report: &str, _start: Instant) -> i32
     }
     println!();
     eprintln!("✗ structural: {label} failed ({how})");
+    eprintln!("  → {}", docs_route());
     1
+}
+
+/// Where the rules behind a failing step are WRITTEN.
+///
+/// docs/SUPERSOTA.md R8: a statement about the house belongs where the failure
+/// happens. A gate names the file that failed and says where it lives; a docs
+/// page states the rule; the output routes to it. This used to print the bare
+/// filename from the tier that actually runs, so a session that hit a surprising
+/// house gate had no way to find the file from the message it was given — the
+/// Python tier printed an absolute path and the native one did not.
+///
+/// Both pages, because they answer different questions: `map.md` says what a
+/// gate or checker DOES, `config.md` says what a `GOH_*` key MEANS, and a step
+/// that failed on configuration needs the second more than the first.
+fn docs_route() -> String {
+    let root = crate::goh_root();
+    let root = root.display();
+    format!("{root}/docs/map.md documents this gate; its GOH_* keys are in {root}/docs/config.md")
+}
+
+/// The command line as it was run, with the checker's FULL path in argument 0.
+///
+/// The bare filename was the R8 defect: `command: python3 check_md_links.py`
+/// names something the reader has to go and find, from the tier that runs in
+/// every repo. `dir` is what the child was actually handed, so this is the same
+/// string the OS saw.
+fn command_line(program: &str, args: &[String], dir: &std::path::Path) -> String {
+    let mut spelled_out = args.to_vec();
+    spelled_out[0] = dir.join(&args[0]).to_string_lossy().into_owned();
+    format!("command: {program} {}", spelled_out.join(" "))
 }
 
 /// Run a remaining checker as a subprocess, capturing merged output.
@@ -71,18 +104,12 @@ pub(crate) fn delegated(
     args: &[String],
 ) -> i32 {
     let start = begin(label);
-    let command_line = args.join(" ");
     let (code, out) = run_child(program, args, checks, repo);
     if code == 0 {
         ok(label, start);
         0
     } else {
-        fail(
-            label,
-            &format!("command: {program} {command_line}"),
-            &out,
-            start,
-        )
+        fail(label, &command_line(program, args, checks), &out, start)
     }
 }
 
