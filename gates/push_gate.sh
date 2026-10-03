@@ -246,8 +246,21 @@ while read -r local_ref local_sha _remote_ref _remote_sha; do
     # re-initialises the real repository and writes core.bare=true into its shared config
     # (zinc, 2026-09-27). The export is its own worktree; git finds it from its `.git` file.
     # shellcheck disable=SC2046  # word-splitting git's variable list is the point
+    # GOH_CROSS_REPO_ROOT, and why the export is the wrong venue without it. The worktree holds the
+    # pushed commit's TRACKED files. A metarepo whose evidence IS its sibling repositories has no
+    # tracked children -- they are separate repos, not submodules -- so in here every cross-repo
+    # citation resolves to nothing and the gate reports a dozen scripts as "no longer exists in the
+    # estate" that are sitting in the checkout, right now, resolvable. Measured 2026-10-03 on
+    # games: 9 findings on the commit that exits 0 in the working tree, same checker, same sha.
+    #
+    # Deliberately NOT a symlink of the children into the worktree: that would put sibling files
+    # inside this repo's scanned tree, so a parent's whole-repo scanners would police the children's
+    # sources and a parent push would fail on a finding that is the child's to fix. This names the
+    # real checkout instead, and a checker reads it only for citations that name a child. The
+    # isolation the worktree buys -- never certify the working tree -- is untouched, because what it
+    # guards is this repo's OWN files, and those still come from the worktree.
     (unset $(git rev-parse --local-env-vars) && cd "$worktree" \
-        && bash "$worktree/tools/gate.sh" --full) 2>&1 | tee "$log"
+        && GOH_CROSS_REPO_ROOT="$root" bash "$worktree/tools/gate.sh" --full) 2>&1 | tee "$log"
     status="${PIPESTATUS[0]}"
     set -e
     if [ "$status" -ne 0 ]; then
