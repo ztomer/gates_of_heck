@@ -44,6 +44,53 @@ esac
     err "structural.sh: unexpected extra arguments: $* (accepted: no argument | --full | --staged)"
     exit 2
 }
+
+# ── The gate runs SOURCE, and uncommitted source is a different gate. ───────
+#
+# Every step below is a Python file under $GOH_DIR/checks, and this script is
+# itself a file under $GOH_DIR/gates. Both are read from the shared checkout's
+# WORKING TREE, at the moment the gate runs, in whatever repo it is running for.
+# Appending one comment line to one of them changes the verdict of every repo
+# whose hooks delegate here — with no reinstall, no output and no refusal, and
+# that combination is the worst property a gate can have: silent, and total.
+#
+# This WARNS and runs, at both scopes, and that is deliberate — the refusal is in
+# scripts/build-goh.sh, and here is the measurement that put it there. Failing
+# here instead looked right and was wrong for two reasons, both found by doing it:
+#   - this script is what 30 repos' PRE-COMMIT hooks run. A gate that failed on
+#     uncommitted source would stop every repo in the estate committing, over
+#     work in a checkout none of them can see or fix.
+#   - every test in the estate that spawns this gate with GOH_DIR pointing at a
+#     real checkout would go red the moment a session had uncommitted work here.
+#     Measured: 22 tests, from one session's own box halfway through. A gate whose
+#     verdict depends on the working tree is the same defect as the one two dozen
+#     lines below used to have.
+# So the shape is: PUBLISH refuses (scripts/build-goh.sh, which install.sh calls,
+# so the "no reinstall" half is closed where a reinstall actually happens) and
+# CERTIFY names itself — here, in every repo's pre-commit, and again in
+# gates/push_gate.sh where a human reads the scrollback. What the gate can no
+# longer do is change silently.
+#
+# WHAT COUNTS AS DIRTY: anything `git status --porcelain` reports under those
+# paths — modified, staged, deleted, renamed, or untracked-and-not-ignored.
+# Untracked counts because a checker that is written but not yet wired is still
+# gate source, and the conservative direction is the one that refuses. Ignored
+# build output (`__pycache__/`, `*.pyc`) is excluded by git itself, so running a
+# checker never makes the tree dirty and warns about itself.
+#
+# THE PATHS are what a gate READS OR EXECUTES at run time. `crates/` is
+# deliberately in build-goh.sh's list and not in this one: uncommitted Rust
+# changes nothing until someone rebuilds bin/goh, which is a publish, and a
+# publish is where refusing costs nothing. `install.sh`, `hooks/` and `tools/`
+# are read at INSTALL time, not by a gate run. A tree that is not a git checkout
+# — a tarball install — has nothing to compare and says nothing, like every other
+# gate here.
+_goh_gate_source_paths="gates checks lib tui"
+_goh_dirty_gate_source() {
+    git -C "$GOH_ROOT" status --porcelain --untracked-files=normal \
+        -- $_goh_gate_source_paths 2>/dev/null || true
+}
+
 # ── Native first. ───────────────────────────────────────────────────────────
 # The `goh` binary carries this whole pipeline (native emoji / markers /
 # length / secrets scanners; the remaining checkers delegated to the same
@@ -53,6 +100,16 @@ esac
 # pipeline below runs and SAYS so once — a fallback that looks like the real
 # thing is how interpreter drift stays invisible. GOH_NO_NATIVE=1 forces the
 # Python path (the parity test uses it to drive this side).
+_goh_dirty="$(_goh_dirty_gate_source)"
+if [ -n "$_goh_dirty" ]; then
+    warn "the gates about to judge this tree are NOT committed — a verdict from uncommitted"
+    warn "  gate source is not reproducible from any commit. Every repo's hooks run these files:"
+    printf '%s\n' "$_goh_dirty" | sed 's/^/    /' >&2
+    warn "  … in the shared gates checkout at $GOH_ROOT, not in this repo. Commit or stash."
+    warn "  scripts/build-goh.sh will not publish bin/goh from such a tree."
+    unset _goh_dirty
+fi
+
 # shellcheck source=gates/_goh_bin.sh
 . "$HERE/_goh_bin.sh"
 goh_resolve_native

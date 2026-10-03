@@ -57,6 +57,48 @@ tag_check="$GOH/checks/check_tag_version.py"
 # the answer.
 [ -f "$tag_check" ] || die "pre-push: $tag_check missing from the gates checkout at $GOH — nothing pushed"
 
+# THE GATE THAT WILL JUDGE THIS PUSH MAY NOT BE COMMITTED. Every step the export
+# runs is a file under $GOH — read from the shared checkout's WORKING TREE at the
+# moment it runs, not from the export worktree this script builds, because that
+# is where `GOH_DIR` points. Appending one comment line to one of them therefore
+# changes the answer for every repo whose hooks delegate here, with no reinstall
+# and no output. docs/SUPERSOTA.md §3 calls this the highest-severity gap there,
+# and nothing named it.
+#
+# THIS WARNS AND GATES ANYWAY, and the reason is measured rather than assumed.
+# The obvious severity — refuse — was written, and it turns out to be the one
+# thing that must not happen: this script is spawned by every test in the estate
+# that exercises a push, each of them pointing GOH_DIR at this checkout, so a
+# refusal here is 22 tests red on every session that has uncommitted work in
+# gates_of_heck, including a session's own box halfway through. That is a gate
+# whose verdict depends on the working tree — the same defect as the leak this
+# file's `.gatesrc` handling used to have, one level up. So the refusal lives
+# where it can be seen without being observed by a test: `scripts/build-goh.sh`
+# will not publish bin/goh from such a tree, which install.sh calls, so the
+# "no reinstall" half is closed at the only place a reinstall happens.
+#
+# So the two halves are: publish refuses (nothing observes it by accident),
+# certify names itself (twice — here, where a human reads the scrollback, and in
+# structural.sh, which every repo's pre-commit runs). A certificate produced while
+# this warning is on screen says so, which is more than the estate had.
+#
+# WHAT COUNTS AS DIRTY, and the paths, are the ones structural.sh documents at
+# its own top: anything `git status --porcelain` reports under `gates checks lib
+# tui` — modified, staged, deleted, renamed, or untracked-and-not-ignored. The
+# list is spelled out rather than sourced from a helper because a helper under
+# gates/ is itself gate source this check cannot vouch for;
+# tests/test_goh_structural_parity.py pins the lists to each other.
+gate_dirty="$(git -C "$GOH" status --porcelain --untracked-files=normal \
+    -- gates checks lib tui 2>/dev/null || true)"
+if [ -n "$gate_dirty" ]; then
+    warn "the gates judging this push are NOT committed — the export runs them from $GOH:"
+    printf '%s\n' "$gate_dirty" | sed 's/^/    /' >&2
+    warn "  …not from $root. What this push is certified by exists in no commit."
+    warn "  Commit or stash them before pushing; scripts/build-goh.sh refuses to publish bin/goh here."
+    warn "  Gating anyway: the result below is real, and it is not reproducible from any commit."
+fi
+unset gate_dirty
+
 # `.gatesrc` IS READ HERE. It is not put into this shell's environment, and it
 # is not put into the export gate's either.
 #

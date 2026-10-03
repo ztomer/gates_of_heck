@@ -48,11 +48,30 @@ fi
 # check that said a pattern matching 71 files matched none. Uncommitted goh
 # sources therefore build nowhere live: commit them, or try the dev build in ONE
 # repo through GOH_BIN. GOH_BUILD_DIRTY=1 publishes anyway, on purpose.
+#
+# THE GATE SOURCE IS PART OF WHAT IS PUBLISHED. `goh` is not the whole pipeline:
+# it DELEGATES the emoji-free steps to the Python files under checks/ (see
+# crates/goh/src/steps_delegated.rs), and every one of them is read from this
+# checkout's working tree at the moment the gate runs. So a bin/goh published
+# from a tree whose checks/ is uncommitted is a live gate running code that
+# exists nowhere but this working tree — the same defect the crates/ refusal
+# exists for, one directory over, and it was unguarded: docs/SUPERSOTA.md §3
+# calls it the highest-severity item there precisely because it is silent and
+# total (no reinstall, no output, no refusal).
+#
+# The paths are what a gate READS OR EXECUTES at run time, and they are the same
+# list structural.sh and push_gate.sh warn and refuse on, spelled twice more
+# rather than sourced from a helper — a helper file would itself be gate source
+# that these checks cannot vouch for. tests/test_goh_structural_parity.py pins
+# the three lists to each other.
 # A tree that is not a git checkout (a tarball install) has nothing to compare.
-dirty="$(git -C "${PROJECT_ROOT}" status --porcelain -- crates Cargo.toml Cargo.lock 2>/dev/null || true)"
+dirty="$(git -C "${PROJECT_ROOT}" status --porcelain --untracked-files=normal \
+  -- crates Cargo.toml Cargo.lock checks gates lib tui 2>/dev/null || true)"
 if [[ -n "${dirty}" && -z "${GOH_BUILD_DIRTY:-}" ]]; then
   echo "✗ refusing to publish bin/goh from uncommitted goh sources — every repo's hooks run it:" >&2
   echo "${dirty}" | sed 's/^/    /' >&2
+  echo "  checks/ and gates/ are in that list because the binary delegates to them at RUN time," >&2
+  echo "  so uncommitted source there is a live gate reading a working tree, not a stale build." >&2
   echo "  commit them, or build for one repo: cargo build --release -p goh, then GOH_BIN=<that binary>" >&2
   echo "  (GOH_BUILD_DIRTY=1 publishes anyway)" >&2
   exit 1
