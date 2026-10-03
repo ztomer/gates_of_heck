@@ -91,6 +91,44 @@ _goh_dirty_gate_source() {
         -- $_goh_gate_source_paths 2>/dev/null || true
 }
 
+# A STEP THAT DOES NOT RUN PRINTS EXACTLY WHAT A STEP THAT PASSES PRINTS.
+#
+# `goh` carries the pipeline, so a binary built before a step was added is a
+# pipeline that does not contain it — and every signal the run emits is
+# indistinguishable from a clean run. Measured 2026-10-02: a `bin/goh`
+# predating the markdown-links step, so that step did not run, and two
+# long-standing broken links sat in the tree the whole time (one a TOC entry
+# contradicting the heading it linked to).
+#
+# `scripts/build-goh.sh` already compares these two numbers — but only INSIDE
+# the build, which is why the gap was invisible: nothing between a version bump
+# and the next `install.sh` could see it, and 30 repos' hooks read the binary in
+# between. This is that comparison, at gate time, where a run of the gate can
+# see it.
+#
+# FAIL-CLOSED, and deliberately so: the alternative is the status quo. The one
+# soft case is a checkout with no manifest to compare against (a tarball
+# install), which is reported by name rather than obeyed silently — the
+# swiftlint and cargo-machete precedent, and the same rule check_empty_scope.py
+# holds every gate to.
+goh_require_current() {
+    local bin="$1" manifest="$GOH_ROOT/Cargo.toml" want got
+    if [ ! -f "$manifest" ]; then
+        warn "no $manifest — cannot tell whether $bin is current, and it may be skipping steps"
+        return 0
+    fi
+    want="$(grep -m1 '^version = ' "$manifest" | cut -d'"' -f2)"
+    got="$("$bin" --version 2>/dev/null | awk '{print $NF}')"
+    if [ -n "$want" ] && [ "$got" = "$want" ]; then
+        return 0
+    fi
+    err "the goh binary serving this gate is BEHIND the source: $bin reports ${got:-nothing},"
+    err "  $manifest declares $want. A step added since that binary was built is NOT running, and"
+    err "  a step that does not run prints exactly what a step that passes prints."
+    err "  Rebuild it:  $GOH_ROOT/scripts/build-goh.sh    (or ./install.sh, which calls it)"
+    return 1
+}
+
 # ── Native first. ───────────────────────────────────────────────────────────
 # The `goh` binary carries this whole pipeline (native emoji / markers /
 # length / secrets scanners; the remaining checkers delegated to the same
@@ -114,6 +152,7 @@ fi
 . "$HERE/_goh_bin.sh"
 goh_resolve_native
 if [ -n "$goh_native" ]; then
+    goh_require_current "$goh_native" || exit 1
     # Arguments were validated above; only the two accepted scopes reach here.
     if [ "$SCOPE" = "--staged" ]; then
         exec "$goh_native" structural --staged
