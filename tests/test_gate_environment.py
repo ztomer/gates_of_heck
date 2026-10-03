@@ -37,6 +37,12 @@ def _git(repo: Path, *args: str) -> None:
     subprocess.run(["git", *args], cwd=repo, capture_output=True, check=True)
 
 
+def _porcelain(repo: Path) -> str:
+    return subprocess.run(
+        ["git", "-C", str(repo), "status", "--porcelain"], capture_output=True, text=True
+    ).stdout
+
+
 def _hermetic_env(**overrides: str) -> dict[str, str]:
     """A child environment with NO inherited `GOH_*` in it. Every step's opt-in is
     a `GOH_*` PRESENCE test, so an inherited value adds a step the caller never
@@ -186,11 +192,15 @@ def _clean_checkout_of_todays_gates(tmp_path: Path) -> Path:
     if work:
         subprocess.run(["git", "-C", str(checkout), "apply", "-"], input=work, check=True)
     _git(checkout, "add", "-A")
-    _git(checkout, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "-m", "today")
-    clean = subprocess.run(
-        ["git", "-C", str(checkout), "status", "--porcelain"], capture_output=True, text=True
-    ).stdout
-    assert not clean.strip(), f"the fixture checkout is not clean: {clean}"
+    # A clean working tree has NOTHING to commit and `git commit` says so with a
+    # non-zero exit — and this fixture is built from a diff, so it is empty
+    # exactly when the session has committed its work, which is the state this
+    # file is developed in half the time. Commit only when there is something,
+    # then insist the result is clean either way.
+    if _porcelain(checkout):
+        _git(checkout, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "-m", "today")
+    clean = _porcelain(checkout)
+    assert not clean, f"the fixture checkout is not clean: {clean}"
     return checkout
 
 
