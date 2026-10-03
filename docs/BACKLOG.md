@@ -5,6 +5,54 @@ One file; prune landed items to git history. Seeded from EVAL-2026-09-04.md
 
 ## Open
 
+### From `docs/SUPERSOTA.md` §3 — where we fall short, in the doc's order
+
+Seeded 2026-10-02. The document states the ranked gap list; these are the boxes
+that close it. Without these the list is a confession, not a plan.
+
+- **SUPERSOTA R3 — checks are proven against fixtures we wrote.** The highest
+  value item here, and the one that changes outcomes. Two checks written
+  2026-10-02 were green across a dozen fixtures and wrong against reality:
+  `check_no_empty_assert.py`'s receiver pattern skipped every assert with a
+  string literal in it, and `gluetun_socks5` (a consumer check) read the LAST
+  `image:` in the file so it judged gluetun's pin by TRAWL's image. Both
+  fixtures had exactly one service and one image — the shape the author had
+  imagined. **Fix:** run every new or changed house checker against the other
+  repos before it lands. A fixture cannot disagree with the assumption that
+  produced it.
+- **SUPERSOTA R4 — a stale `bin/goh` silently skips steps.** Measured: a
+  `bin/goh` predating the markdown-links step meant that step did not run,
+  and a step that does not run prints what a passing step prints. Two
+  long-standing broken links sat in the tree the whole time. Two parts:
+  (a) ~6 lines at gate time comparing the binary's version to `Cargo.toml` —
+  `scripts/build-goh.sh:85-90` does this but only *inside the build*;
+  (b) a real step-inventory assertion in `test_goh_structural_parity.py`,
+  which claims to compare inventories and does not — it compares
+  `(rc, failing label)` tuples, so a step missing from one tier is invisible
+  unless a fixture happens to make it fail.
+- **SUPERSOTA R5 — vendored checker copies are unenforced.** `AGENTS.md` says
+  no repo-local copies; nothing checks. Two exist now:
+  `games/ZeroThunder/tools/check_no_conflict_markers.py` and
+  `check_no_screen_presentation.py`, both sha-**diverged** from the house
+  originals, one carrying a capability (`DisplayPolicy`) the house copy lacks.
+  Retire per **R6** — diff capabilities, not bytes.
+- **SUPERSOTA R7 — `checks/gate_calibration.json` is read by nobody here.**
+  23 entries claiming gates are proven; `check_probes_pass.py` sweeps 11 gates
+  and does not read the file. The reader lives in another estate
+  (`games/game_asset_factory/tools/check_gate_calibration.py`, which reports
+  `gates_of_heck 24/25`). Either a gate here reads it or it is deleted.
+- **SUPERSOTA R8 — the failing tier hides the path.** The native tier prints
+  `(command: python3 check_md_links.py)` — a bare filename, from the tier
+  that actually runs. The Python tier prints an absolute path. A session that
+  hits a surprising house gate cannot find the file from the message it was
+  given.
+- **Dirty `checks/` is unguarded, and it is the highest-severity item in the
+  document.** The Python tier consumes `checks/*.py` as **working-tree
+  source**, so appending one comment line changes the gate every repo runs —
+  no reinstall, no output, no refusal. `scripts/build-goh.sh` refuses to
+  publish `bin/goh` from a dirty tree, but only for `crates/`. Silent and
+  total.
+
 - Secrets v2: entropy heuristics for unknown key shapes. Blocked on FP
   tuning first — v1 (prefixes + key headers) ships instead. Measure FP
   rate on all consumer trees before enforcing.
