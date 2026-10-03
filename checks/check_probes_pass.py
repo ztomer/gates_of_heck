@@ -33,6 +33,7 @@ import subprocess
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from _calibration import external_note, load as load_registry, verify  # noqa: E402
 from _gitutil import foreign_repo_env, listed_files, repo_root  # noqa: E402
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -196,6 +197,24 @@ def blind(root, dirs=GATE_DIRS):
     return False
 
 
+def registry_verdict(root, ran):
+    """The calibration registry's claims, checked against what this run observed.
+
+    `checks/gate_calibration.json` is the estate's record of which gates have proven they can
+    fail. It was read by nobody HERE for its whole life (SUPERSOTA R7) -- `discover` sweeps what a
+    gate DECLARES and cannot see a claim about a gate it did not discover -- so a checker that
+    stopped dispatching on `--probe` simply stopped being counted, while the registry went on
+    calling it proven. This is the half that closes it: every entry is verified against reality,
+    and one whose gate does not exist or whose proof did not run here is a finding.
+
+    Returns (findings, notes). An absent registry is not a finding: only this repo has one.
+    """
+    data = load_registry(root)
+    if data is None:
+        return [], []
+    return verify(root, data, ran), external_note(root, data)
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--list", action="store_true", help="name the probes, run nothing")
@@ -228,6 +247,17 @@ def main(argv=None):
             f"{total} gate(s) here and not one declares an INLINE self-proof -- any proof they\n"
             f"      have lives elsewhere, and this gate does not check that it still runs"
         )
+        # The registry is still read. A registry full of proof claims over a tree with no
+        # discoverable self-proof is precisely the R7 shape -- the claims cannot be wrong here,
+        # because there is nothing left to prove.
+        bad, notes = registry_verdict(root, set())
+        for line in bad:
+            err(line)
+        if bad:
+            err(f"{len(bad)} claim(s) in the calibration registry do not hold.")
+            return 1
+        for line in notes:
+            info(line)
         return 0
 
     if args.list:
@@ -235,10 +265,13 @@ def main(argv=None):
             info(f"{os.path.relpath(path, root)} {flag}")
         return 0
 
+    ran = set()
     failed = []
     for path, flag in probes:
         passed, detail = run_one(path, flag, cwd=root)
-        if not passed:
+        if passed:
+            ran.add(os.path.relpath(path, root))
+        else:
             failed.append((path, detail))
 
     for path, detail in failed:
@@ -250,7 +283,21 @@ def main(argv=None):
         info("Fix the probe against the gate as it is now, or delete it and lose the claim.")
         return 1
 
+    bad, notes = registry_verdict(root, ran)
+    for line in bad:
+        err(line)
+    if bad:
+        err(f"{len(bad)} claim(s) in the calibration registry do not hold against this estate.")
+        info("A registry nothing reads is a rumour (docs/SUPERSOTA.md R7). One that is read and")
+        info("disagrees with the estate is worse: it names proofs that do not run.")
+        info("Fix the entry, or delete the claim -- do not reword it.")
+        return 1
+
+    for line in notes:
+        info(line)
     ok(f"{len(probes)} of {total} gate(s) carry an inline self-proof, every one still passing")
+    if load_registry(root) is not None:
+        ok("every claim in the calibration registry holds against the estate it names")
     return 0
 
 
@@ -258,6 +305,8 @@ def probe():
     """Three cases: a passing proof, a BROKEN proof, and a gate that declares none."""
     import tempfile
     import textwrap
+
+    from _calibration_probe import probe as calibration_probe
 
     bad = 0
     with tempfile.TemporaryDirectory() as td:
@@ -357,6 +406,10 @@ def probe():
             bad += 1
         else:
             ok("probe: a repo with no gates at all is reported, not failed")
+
+    # The registry reader rides here because it is the half of R1 that discovery cannot see. It is
+    # a MODULE's self-proof rather than this gate's, so it is driven and counted here.
+    bad += calibration_probe()
 
     if bad:
         err(f"check_probes_pass --probe: {bad} case(s) wrong")

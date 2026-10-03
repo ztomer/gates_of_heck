@@ -36,11 +36,6 @@ that close it. Without these the list is a confession, not a plan.
   `check_no_screen_presentation.py`, both sha-**diverged** from the house
   originals, one carrying a capability (`DisplayPolicy`) the house copy lacks.
   Retire per **R6** — diff capabilities, not bytes.
-- **SUPERSOTA R7 — `checks/gate_calibration.json` is read by nobody here.**
-  23 entries claiming gates are proven; `check_probes_pass.py` sweeps 11 gates
-  and does not read the file. The reader lives in another estate
-  (`games/game_asset_factory/tools/check_gate_calibration.py`, which reports
-  `gates_of_heck 24/25`). Either a gate here reads it or it is deleted.
 - **SUPERSOTA R8 — the failing tier hides the path.** The native tier prints
   `(command: python3 check_md_links.py)` — a bare filename, from the tier
   that actually runs. The Python tier prints an absolute path. A session that

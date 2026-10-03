@@ -46,9 +46,10 @@ assumption, so they agree by construction.
 and none had ever been watched refusing anything. That day they were green by
 luck, and luck is not a gate.
 
-**Checked by.** `check_probes_pass.py`, which runs every declared self-proof.
-`checks/gate_calibration.json` is the registry — **currently read by nobody in
-this repo**, which is a known gap (R7).
+**Checked by.** `check_probes_pass.py`, which runs every declared self-proof, and — since
+2026-10-03 — `checks/_calibration.py`, which reads `checks/gate_calibration.json` and holds every
+entry in it to the estate. Both run on every gate run in every repo; a consumer repo with no
+registry is reported, not failed.
 
 ### R2 — A checker's spec is a MEASURED TABLE, not a docstring
 
@@ -139,6 +140,29 @@ gate in this repo or it is deleted.
 proven; `check_probes_pass.py` sweeps 11 gates and does not read the file. The
 reader lives in another estate.
 
+**Checked by.** `check_probes_pass.py`, via `checks/_calibration.py`. Four rules,
+each of them a way the registry has lied or could:
+
+* **the key names a gate that exists** — estate-independent, so it holds on a
+  machine that has never heard of the other estates;
+* **a cited prover resolves, and is COMMITTED at HEAD** — a file on disk is not a
+  claim, it is a rumour its author alone can check;
+* **a prover inside this repo ran the claimed self-proof green in the same
+  sweep** — this is the half discovery structurally cannot see. The sweep runs
+  what a gate *declares*, so a checker that stopped dispatching on `--probe`
+  simply stops being run, silently, while the registry keeps earning it the word
+  "proven". Measured: stripping the dispatch from `check_md_links.py` took the
+  sweep from 11 self-proofs to 10 and left the gate GREEN; the registry reader
+  fails that tree;
+* **a prover outside this repo lists the key among what it proves** (`--proves`),
+  and its estate is named in the output rather than assumed.
+
+**Not checked here, and said so rather than implied.** The 18 canary citations
+are verified for the two things this repo *can* see (committed; claimed) — the
+red-on-violation run itself lives in `game_asset_factory`. That reader also
+remains the cross-repo survey; this one deliberately is not a second copy of it,
+because two numbers that can disagree are worse than one.
+
 ### R8 — A statement about the house belongs where the failure happens
 
 **Rule.** A gate's failure output names the file that failed and says where it
@@ -177,10 +201,12 @@ the file from the message it was given.
    close the measured instance; a step-inventory assertion in the parity suite
    would close the class.
 3. **R5 — vendored checker copies are unenforced.** Two exist right now.
-4. **R7 — the calibration registry is read by nobody here.**
-5. **R8 — the failing tier hides the path.**
+4. **R8 — the failing tier hides the path.**
 
-Items 2–4 are small. Item 1 is the one that changes outcomes.
+Item 2 is small. Item 1 is the one that changes outcomes.
+
+**Closed 2026-10-03:** R7 (the calibration registry is now read here, by
+`check_probes_pass.py` via `checks/_calibration.py` — see R7's *Checked by*).
 
 ### A risk of shared ownership nobody has guarded
 

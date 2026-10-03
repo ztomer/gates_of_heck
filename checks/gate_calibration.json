@@ -2,6 +2,12 @@
   "_doc": [
     "Which shared gates have PROVEN they can fail, and how.",
     "",
+    "READ BY checks/check_probes_pass.py, through checks/_calibration.py. Every entry is verified",
+    "against the estate before this file is believed: the key must name a gate that exists, a cited",
+    "prover must resolve and be COMMITTED, and a prover inside this repo must have had its claimed",
+    "self-proof run green by the same sweep. An entry naming no gate, no file, no commit or no",
+    "running proof is a FINDING (SUPERSOTA R7: a registry nothing reads is a rumour).",
+    "",
     "These gates run in four repos, so their proof belongs HERE rather than inside any one",
     "consumer -- two of them were canaried from inside ZeroThunder, which meant the other three",
     "inherited the gate without the evidence.",
@@ -12,7 +18,9 @@
     "that scanned everything, and two fixtures in this very table were silently out of scope",
     "before that assertion caught them.",
     "",
-    "Regenerate with the canary, never by hand -- a registry a human types is a registry that",
+    "Keys name the gate WITHOUT its check_ prefix, and a prose claim that names no prover file",
+    "(an in-selftest: entry) is left to the sweep rather than resolved here. Regenerate the canary",
+    "citations with the canary, never by hand -- a registry a human types is a registry that",
     "outlives the thing it describes."
   ],
   "proven_by": {

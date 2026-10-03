@@ -1,5 +1,47 @@
 # CHANGELOG
 
+## Unreleased — the calibration registry is read here, and every claim in it is checked _(2026-10-03)_
+
+SUPERSOTA **R7**. `checks/gate_calibration.json` had held 23 entries claiming
+named gates had proven they can fail, and nothing in this repo read it:
+`check_probes_pass.py` sweeps what a gate *declares*, and the registry was not
+part of what a gate declares. The only reader lived in another estate
+(`games/game_asset_factory/tools/check_gate_calibration.py`, which is also the
+cross-repo survey and remains so).
+
+The defect is sharper than "a file nobody reads". The sweep runs what
+`discover()` finds, so a checker that stopped dispatching on `--probe` simply
+stops being run — silently, with no output, while the registry goes on calling
+it proven. Measured on this tree: stripping the `--probe` dispatch from
+`check_md_links.py` took the sweep from 11 self-proofs to 10 and left the gate
+**green**.
+
+`checks/_calibration.py` reads the registry and holds every entry to the estate:
+
+* the key must name a gate that exists (estate-independent — it holds on a
+  machine that has never heard of the other estates);
+* a cited prover must resolve, and be **committed at HEAD**: a file on disk is
+  not a claim, it is a rumour its author alone can check;
+* a prover inside this repo must have had the claimed self-proof run green by
+  the same sweep;
+* a prover outside this repo must list the key among what it proves
+  (`--proves`), and its estate is named in the output rather than assumed.
+
+It runs from `check_probes_pass.py`, so it is read on every gate run in every
+repo; a consumer repo with no registry is reported, not failed. It is not a
+second copy of the external survey — two numbers that can disagree are worse
+than one.
+
+It also found a live inconsistency on its first run: `known_unproven` spelled
+its key `check_swift_coverage` where `proven_by` spells the same gate
+`swift_coverage`. Nothing had read the file.
+
+Self-proof: `checks/_calibration_probe.py`, split out so neither file crowds
+the 500-line cap, driven by `check_probes_pass.py --probe`. Fourteen cases —
+every way the registry can lie asserted red, the sound registry asserted clean —
+and `tests/test_gate_calibration.py` re-runs the probe with each rule
+neutered, so the reader cannot lose a check quietly.
+
 ## v0.15.1 — two version layouts a release could not be checked against _(2026-10-02)_
 
 `v0.15.0` shipped with the emptiness-assert gate and the declared Python rule
