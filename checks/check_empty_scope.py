@@ -43,6 +43,7 @@ import sys
 import tempfile
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from _empty_scope_usage import first_error_line, is_usage_error  # noqa: E402
 from _gitutil import foreign_repo_env, repo_root  # noqa: E402
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -176,10 +177,15 @@ def build_skeleton(root, gates, workdir):
 # runner (monitor's codesign check, 2026-09-14) reads as "did not apply"
 # rather than "passed over nothing" -- without an excuse whose truth would
 # depend on which host ran the sweep.
+# The one non-run an excuse may cover: a gate that demands an argument is unrunnable BY DESIGN and
+# the reason is recorded. A timeout is never excusable — being too slow is a property of the
+# machine, not of the gate — which is why this is checked here rather than merely "is it excused".
+BY_DESIGN = "demands an argument"
+
 NOT_APPLICABLE = "not applicable"
 
 
-def sweep(skeleton, gate_name, names, timeout=None):
+def sweep(skeleton, gate_name, names, timeout=None, excused=()):
     """(blind, unrunnable) over the empty tree.
 
     blind is {gate: last line of output} for every gate that EXITED 0 WITHOUT declaring itself not
@@ -223,6 +229,13 @@ def sweep(skeleton, gate_name, names, timeout=None):
                 continue  # a named non-run, not a pass
             lines = [ln for ln in text.splitlines() if ln.strip()]
             blind[name] = lines[-1].strip()[:100] if lines else "(no output)"
+        elif is_usage_error(result.stdout + result.stderr):
+            # A gate that DEMANDS an argument did not refuse to report compliance — it never got
+            # to look. Scored as a pass it is worse than a blind gate, because it is silent AND
+            # looks deliberate: `check_display_seam.py` exits 2 with argparse's usage line when
+            # swept bare, and that landed in the healthy column. The timeout error one layer down.
+            unrunnable[name] = f"{BY_DESIGN}, so it never looked: {first_error_line(result.stderr)}"
+        # else: it ran and returned non-zero — a refusal, which is the healthy case.
     return blind, unrunnable
 
 
@@ -239,6 +252,8 @@ def main(argv=None):
     parser.add_argument("--root", default=None)
     args = parser.parse_args(argv)
     if args.probe:
+        from _empty_scope_probe import probe
+
         return probe()
 
     root = args.root or repo_root()
@@ -263,11 +278,21 @@ def main(argv=None):
         blind, unrunnable = sweep(skeleton, os.path.basename(gates), names)
 
     unexcused = {k: v for k, v in blind.items() if k not in excused}
+    # A gate excused because it demands an argument is DECLARED not run. It is still absent from
+    # `blind`, so the stale-excuse ratchet would otherwise demand its excuse be deleted every run.
+    declared = {k: v for k, v in unrunnable.items() if k in excused and v.startswith(BY_DESIGN)}
+    unrunnable = {k: v for k, v in unrunnable.items() if k not in declared}
     # The other direction, and it is the one an allowlist loses: a gate excused here that now
     # FAILS on an empty tree has been fixed, and its excuse is permission nobody needs any more.
     # A gate that never reported is not such a gate, so it cannot retire an excuse.
-    stale = sorted(k for k in excused if k not in blind and k in names and k not in unrunnable)
+    stale = sorted(
+        k
+        for k in excused
+        if k not in blind and k in names and k not in unrunnable and k not in declared
+    )
 
+    for name, why in sorted(declared.items()):
+        info(f"{name} is EXCUSED from the sweep: {why.splitlines()[0][:100] if why else ''}")
     for name, why in sorted(unrunnable.items()):
         warn(f"{name} gave NO verdict ({why}) -- its scope is unchecked, not clean")
     if unrunnable:
@@ -295,155 +320,6 @@ def main(argv=None):
             f"{len(known_blind)} gate(s) are KNOWN blind and still unguarded -- "
             f"this list may only shrink, see {os.path.basename(gates)}/{ALLOW_FILE}"
         )
-    return 0
-
-
-def probe():
-    """A blind gate, a guarded one, an excused one, and the stale excuse."""
-    bad = 0
-    with tempfile.TemporaryDirectory() as td:
-        root = os.path.join(td, "repo")
-        tools = os.path.join(root, "tools")
-        os.makedirs(os.path.join(root, "Sources", "Deep"))
-        os.makedirs(tools)
-        scratch_git("init", "-q", root, check=True)
-
-        def gate(name, body):
-            with open(os.path.join(tools, name), "w", encoding="utf-8") as handle:
-                handle.write(body)
-
-        # Counts files under Sources and reports success regardless -- the class, exactly.
-        gate(
-            "check_blind.py",
-            "import os, sys\n"
-            "n = sum(len(f) for _, _, f in os.walk('Sources'))\n"
-            "print(f'ok {n} files clean')\n"
-            "sys.exit(0)\n",
-        )
-        # Same scan, with the guard.
-        gate(
-            "check_guarded.py",
-            "import os, sys\n"
-            "n = sum(len(f) for _, _, f in os.walk('Sources'))\n"
-            "if not n:\n"
-            "    print('x scanned nothing')\n"
-            "    sys.exit(1)\n"
-            "sys.exit(0)\n",
-        )
-
-        # A gate that does not apply on this host and SAYS so, exiting 0: a
-        # named non-run, not a pass (a macOS-only check on a Linux runner).
-        gate(
-            "check_foreign_host.py",
-            "import sys\n"
-            "print('foreign-host: not applicable on this OS (nothing to sign here)')\n"
-            "sys.exit(0)\n",
-        )
-
-        names = gate_names(tools)
-        with tempfile.TemporaryDirectory() as work:
-            skeleton = build_skeleton(root, tools, os.path.join(work, "s"))
-            blind, _unrunnable = sweep(skeleton, "tools", names)
-
-        cases = [
-            (
-                "all gates are discovered",
-                ["check_blind.py", "check_foreign_host.py", "check_guarded.py"],
-                names,
-            ),
-            ("the unguarded gate is caught passing over nothing", True, "check_blind.py" in blind),
-            ("the guarded gate is not", False, "check_guarded.py" in blind),
-            ("a named not-applicable skip is not a pass", False, "check_foreign_host.py" in blind),
-            ("the sweep goes red", 1, main(["--root", root])),
-        ]
-        for label, want, got in cases:
-            if want != got:
-                err(f"probe: {label} (wanted {want!r}, got {got!r})")
-                bad += 1
-            else:
-                ok(f"probe: {label}")
-
-        # Excused: the sweep must go quiet.
-        with open(os.path.join(tools, ALLOW_FILE), "w", encoding="utf-8") as handle:
-            json.dump(
-                {"known_blind": {"check_blind.py": "a fixture, excused to prove the list works"}},
-                handle,
-            )
-        if main(["--root", root]) != 0:
-            err("probe: an EXCUSED blind gate still failed the sweep")
-            bad += 1
-        else:
-            ok("probe: an excused gate is skipped")
-
-        # Stale: excuse the GUARDED one, which does not pass on nothing.
-        with open(os.path.join(tools, ALLOW_FILE), "w", encoding="utf-8") as handle:
-            json.dump(
-                {
-                    "known_blind": {"check_blind.py": "still blind"},
-                    "legitimate": {"check_guarded.py": "excused, but it was fixed"},
-                },
-                handle,
-            )
-        if main(["--root", root]) == 0:
-            err("probe: a STALE excuse passed -- the allowlist is a rug, not a ratchet")
-            bad += 1
-        else:
-            ok("probe: an excuse for a gate that now fails is reported")
-
-        # A gate that TIMES OUT is UNRUNNABLE, and its silence must never read as a verdict. This
-        # is the false report that started it: an excused gate that outran the budget was told it
-        # "now FAILS on an empty tree -- delete its excuse", which is a claim about what it said,
-        # from a gate that said nothing. Deleting that excuse silences a real guard over a slow
-        # machine, so the two must be told apart.
-        with open(os.path.join(tools, "check_hang.py"), "w", encoding="utf-8") as handle:
-            handle.write("import time\ntime.sleep(30)\n")
-        with open(os.path.join(tools, ALLOW_FILE), "w", encoding="utf-8") as handle:
-            json.dump(
-                {"legitimate": {"check_hang.py": "slow but correct on a loaded machine"}}, handle
-            )
-        globals()["TIMEOUT"] = 1
-        try:
-            buf = io.StringIO()
-            # err() writes to stderr and warn() to stdout, and this case reads both.
-            with contextlib.redirect_stderr(buf), contextlib.redirect_stdout(buf):
-                hang_rc = main(["--root", root])
-            hang_err = buf.getvalue()
-        finally:
-            globals()["TIMEOUT"] = TIMEOUT
-        for label, want, got in [
-            ("a gate that never reports does not pass the sweep", 1, hang_rc),
-            (
-                "its silence is reported as no verdict, not as a pass",
-                True,
-                "gave NO verdict" in hang_err + str(hang_rc),
-            ),
-            (
-                "and it is NOT told to delete a correct excuse",
-                False,
-                "delete its excuse" in hang_err,
-            ),
-        ]:
-            if want != got:
-                err(f"probe: {label} (wanted {want!r}, got {got!r})")
-                bad += 1
-            else:
-                ok(f"probe: {label}")
-        os.remove(os.path.join(tools, "check_hang.py"))
-
-        # A flat file predates the split; it must read as DEFECTS, never as legitimate.
-        with open(os.path.join(tools, ALLOW_FILE), "w", encoding="utf-8") as handle:
-            json.dump({"check_blind.py": "an old flat entry"}, handle)
-        flat_legit, flat_blind = allowed(tools)
-        if flat_legit or list(flat_blind) != ["check_blind.py"]:
-            err("probe: a flat allowlist was not read conservatively as known-blind")
-            bad += 1
-        else:
-            ok("probe: a pre-split flat allowlist reads as defects, not as legitimate")
-
-    if bad:
-        err(f"check_empty_scope --probe: {bad} case(s) wrong")
-        return 1
-    ok("check_empty_scope --probe: a blind gate is caught, a guarded one is not, both ways")
     return 0
 
 
