@@ -73,8 +73,37 @@ FWD=""
 [ "$SCOPE" = "--staged" ] && FWD="--staged"
 
 # Config comes from the TARGET repo root, wherever the gate was invoked from.
+#
+# AND FROM NOWHERE ELSE. Every optional step below is decided by whether a
+# `GOH_*` key is PRESENT, so a value this process merely INHERITED does not
+# fail the gate -- it quietly adds a step to it, or exempts a path from one.
+# Measured 2026-10-02: `push_gate.sh` sourced `.gatesrc` under `set -a`, so a
+# push of one repo reached the export gate with that repo's real
+# `GOH_SKILLS_ROOT`, `GOH_SKILLS_CORPUS` and `GOH_PYTHON_FORMATTED` in its
+# environment; the pytest suite the export gate runs inherited all three while
+# every fixture repo in it declared none, and 18 tests went red on a clean tree.
+# `gates/push_gate.sh` no longer exports the file (that was the producer), and
+# this is the consumer half: the keys are dropped from the environment first, so
+# a key is configuration if and only if the repo's own file says so.
+#
+# The list is the keys this script READS below, spelled once. `GOH_DIR`,
+# `GOH_BIN` and `GOH_NO_NATIVE` are deliberately NOT in it: they say which
+# binary to run, not which checks to run, there is no file for them, and the
+# native binary resolved above reads the file and nothing else -- so this list
+# is also what makes the two tiers agree about configuration.
+#
+# A key the file DOES declare is set by the source below whatever the
+# environment said, so a repo can still override a value set higher up.
+_goh_config_keys="GOH_MAX_LINES GOH_LINE_EXCLUDE GOH_LINE_BASELINE GOH_LINE_UNBOUNDED
+GOH_EXCLUDE GOH_ALLOW GOH_SKILLS_CORPUS GOH_SKILLS_ROOT GOH_SKILLS_MAX_WORDS
+GOH_NO_HOME_PATHS GOH_NO_KILL_BY_NAME GOH_PYTHON_FORMATTED"
+for _goh_key in $_goh_config_keys; do unset "$_goh_key" || true; done
+unset _goh_key _goh_config_keys
 GOH_REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
-[ -f "$GOH_REPO_ROOT/.gatesrc" ] && . "$GOH_REPO_ROOT/.gatesrc"
+if [ -f "$GOH_REPO_ROOT/.gatesrc" ]; then
+    # shellcheck source=/dev/null
+    . "$GOH_REPO_ROOT/.gatesrc"
+fi
 
 goh_init "structural"
 

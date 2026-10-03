@@ -3,10 +3,18 @@
 Fixture repos per case; asserts identical exit codes and identical failing
 step labels in full and staged modes. Either side's step order, labels,
 config handling, or scope gating drifting goes red.
+
+The last section is not parity but the OTHER end of the same contract: where
+a config key comes FROM. A `.gatesrc` is a repo's declaration of how it is
+gated, and a value arriving from anywhere else is ambient state the repo
+never chose. The push gate is the producer of that state and `structural.sh`
+is a consumer of it, so both are pinned here rather than in the two suites
+that happen to be the first to notice.
 """
 
 from __future__ import annotations
 
+import os
 import re
 import subprocess
 from pathlib import Path
@@ -15,6 +23,7 @@ import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
 STRUCTURAL = ROOT / "gates" / "structural.sh"
+PUSH_GATE = ROOT / "gates" / "push_gate.sh"
 FAIL_RE = re.compile(r"structural: (.+) failed")
 
 
@@ -39,25 +48,72 @@ def _failing(out: str, err: str) -> str | None:
     return m.group(1) if m else None
 
 
-def run_bash(repo: Path, staged: bool) -> tuple[int, str | None]:
+def _hermetic_env(**overrides: str) -> dict[str, str]:
+    """A child environment with NO inherited `GOH_*` in it.
+
+    A fixture's answer must be the answer its own `.gatesrc` implies. Anything
+    a parent happened to export is process state the fixture never chose, and
+    every step's opt-in in this pipeline is a `GOH_*` presence test — so an
+    inherited one silently adds a step the fixture never declared. That is how
+    `push_gate.sh`'s `set -a` (below) reached this suite at all: the push gate
+    exported this repo's `.gatesrc` into the export gate's environment, the
+    export gate ran `tools/gate.sh --full`, and the pytest suite inherited the
+    machine's real `GOH_SKILLS_ROOT` and `GOH_PYTHON_FORMATTED` while every
+    fixture declared neither. Scrubbing here is the fixture half of that fix;
+    `test_an_inherited_config_key_...` below is the gate half.
+    """
+    env = {k: v for k, v in os.environ.items() if not k.startswith("GOH_")}
+    env.update(overrides)
+    return env
+
+
+def _run_bash(
+    repo: Path, staged: bool, extra: dict[str, str] | None = None
+) -> subprocess.CompletedProcess:
     """The PYTHON pipeline. structural.sh execs the native binary when one is
     around, so this side is pinned to the checkers with GOH_NO_NATIVE — the
     comparison is native vs Python, never native vs itself."""
-    import os
-
-    env = dict(os.environ, GOH_NO_NATIVE="1")
+    env = _hermetic_env(GOH_NO_NATIVE="1", GOH_DIR=str(ROOT), **(extra or {}))
     cmd = ["bash", str(STRUCTURAL), "--staged"] if staged else ["bash", str(STRUCTURAL)]
-    r = subprocess.run(cmd, cwd=repo, capture_output=True, text=True, env=env)
+    return subprocess.run(cmd, cwd=repo, capture_output=True, text=True, env=env)
+
+
+def run_bash(repo: Path, staged: bool) -> tuple[int, str | None]:
+    r = _run_bash(repo, staged)
     return r.returncode, _failing(r.stdout, r.stderr)
+
+
+def _run_goh(
+    goh: Path, repo: Path, staged: bool, extra: dict[str, str] | None = None
+) -> subprocess.CompletedProcess:
+    env = _hermetic_env(GOH_DIR=str(ROOT), **(extra or {}))
+    cmd = [str(goh), "structural", "--staged"] if staged else [str(goh), "structural"]
+    return subprocess.run(cmd, cwd=repo, capture_output=True, text=True, env=env)
 
 
 def run_goh(goh: Path, repo: Path, staged: bool) -> tuple[int, str | None]:
-    import os
-
-    env = dict(os.environ, GOH_DIR=str(ROOT))
-    cmd = [str(goh), "structural", "--staged"] if staged else [str(goh), "structural"]
-    r = subprocess.run(cmd, cwd=repo, capture_output=True, text=True, env=env)
+    r = _run_goh(goh, repo, staged)
     return r.returncode, _failing(r.stdout, r.stderr)
+
+
+ANSI_RE = re.compile(r"\x1b\[[0-9;]*m")
+STEP_RE = re.compile(r"^· (.+)$")
+
+
+def announced_steps(out: str) -> list[str]:
+    """The step labels a run ANNOUNCED, in order — `· label`, both tiers.
+
+    A step announces before it runs, so this is the inventory of what the
+    pipeline ATTEMPTED, which is the thing a `(rc, failing label)` comparison
+    cannot see: two tiers that both skip a step agree perfectly. See
+    `test_both_tiers_run_the_same_steps`.
+    """
+    steps = []
+    for line in out.splitlines():
+        match = STEP_RE.match(ANSI_RE.sub("", line).rstrip())
+        if match:
+            steps.append(match.group(1))
+    return steps
 
 
 GATESRC = b"GOH_MAX_LINES=10\n"
@@ -188,18 +244,185 @@ def test_structural_sh_execs_the_native_binary_when_told_where_it_is(goh, tmp_pa
     bad emoji proves which side answered: the native step label is the same,
     but the Python fallback notice must be absent."""
     repo = make_repo(tmp_path, {"a.md": "ok\n".encode(), ".gatesrc": GATESRC})
-    import os
 
-    env = dict(os.environ, GOH_BIN=str(goh), GOH_DIR=str(ROOT))
+    env = _hermetic_env(GOH_BIN=str(goh), GOH_DIR=str(ROOT))
     r = subprocess.run(["bash", str(STRUCTURAL)], cwd=repo, capture_output=True, text=True, env=env)
     assert r.returncode == 0, r.stdout + r.stderr
     assert "goh binary not built" not in r.stderr
     # An explicit pointer at nothing is reported, once, and the Python runs.
-    env = dict(os.environ, GOH_BIN="/nonexistent/goh", GOH_DIR=str(ROOT))
+    env = _hermetic_env(GOH_BIN="/nonexistent/goh", GOH_DIR=str(ROOT))
     env.pop("GOH_NO_NATIVE", None)
     r = subprocess.run(["bash", str(STRUCTURAL)], cwd=repo, capture_output=True, text=True, env=env)
     assert r.returncode == 0, r.stdout + r.stderr
     assert r.stderr.count("GOH_BIN=/nonexistent/goh is not an executable") == 1, r.stderr
+
+
+# ── Where a config key comes FROM ─────────────────────────────────────────────
+#
+# A `.gatesrc` is a repo stating how it is gated. A `GOH_*` value arriving from
+# anywhere else is process state the repo never chose, and every optional step
+# in this pipeline is decided by the PRESENCE of one — so an inherited value
+# does not fail the gate, it silently adds a step to it. Measured 2026-10-02:
+# `gates/push_gate.sh` sourced `.gatesrc` under `set -a`, which exported this
+# repo's real keys into the environment of the export gate; the export gate ran
+# `tools/gate.sh --full`; and the pytest suite that runs there inherited
+# `GOH_SKILLS_ROOT=~/.claude/skills` and `GOH_PYTHON_FORMATTED=1` while every
+# one of its fixture repos declared neither. Seven tests went red on a tree that
+# was green, and the push gate refused pushes that passed locally.
+
+# Every value here turns a step ON, exempts a path, or redirects a corpus. One
+# key the repo declared would be overridden by the file anyway, so a
+# discriminating value has to be for a key the repo does NOT declare.
+HOSTILE = {
+    "GOH_PYTHON_FORMATTED": "1",
+    "GOH_NO_HOME_PATHS": "1",
+    "GOH_NO_KILL_BY_NAME": "1",
+    "GOH_SKILLS_CORPUS": "1",
+    "GOH_SKILLS_MAX_WORDS": "1",
+    "GOH_EXCLUDE": ".*",
+    "GOH_LINE_EXCLUDE": ".*",
+    "GOH_ALLOW": "Q",
+}
+
+
+# The keys docs/config.md documents in its STRUCTURAL table that are NOT pipeline
+# configuration, each with why: they choose WHICH binary runs, or they belong to
+# another script entirely. "Absent from the list" is only safe while somebody has
+# said so here, which is what the list below is.
+NOT_PIPELINE_CONFIG = {
+    "GOH_BIN": "which binary runs the pipeline, not which checks",
+    "GOH_NO_NATIVE": "the same question, answered 'neither'",
+    "GOH_SKIP_BUILD": "install.sh",
+    "GOH_BUILD_DIRTY": "scripts/build-goh.sh",
+    "GOH_EXPORT_KEEP": "which ignored files the pre-push export carries",
+    "GOH_PUSH_WORKTREES": "where that export is checked out",
+    "GOH_PUSH_LOGS": "where its output is kept",
+    "GOH_TAG_VERSION_SOURCES": "the pre-push tag check, which is not a step",
+}
+
+DROP_LIST_RE = re.compile(r'_goh_config_keys="([^"]+)"', re.S)
+
+
+def test_every_documented_structural_key_is_dropped_from_the_environment() -> None:
+    """The drop list in structural.sh, pinned against docs/config.md.
+
+    `structural.sh` drops its inherited config keys by NAME, so the list and the
+    documented key set are two things that can drift, and the drift is silent in
+    the direction that hurts: a new `.gatesrc` key added to structural.sh, to
+    config.md and to no list is an ambient value that silently enables it again.
+    Checked both ways -- a key in the list that no longer exists is a name that
+    has gone stale and will hide the next gate added under it.
+    """
+    doc = (ROOT / "docs" / "config.md").read_text(encoding="utf-8")
+    section = doc.split("## Structural", 1)[1].split("\n## ", 1)[0]
+    documented = set(re.findall(r"`(GOH_[A-Z][A-Z_]*)`", section))
+    match = DROP_LIST_RE.search((ROOT / "gates" / "structural.sh").read_text(encoding="utf-8"))
+    assert match, "structural.sh no longer drops its inherited config keys at all"
+    dropped = set(match.group(1).split())
+
+    not_config = documented & set(NOT_PIPELINE_CONFIG)
+    pipeline = documented - set(NOT_PIPELINE_CONFIG)
+    assert not (dropped & not_config), (
+        f"structural.sh drops {sorted(dropped & not_config)}, which config.md documents as "
+        "something other than pipeline configuration -- say why in NOT_PIPELINE_CONFIG"
+    )
+    assert dropped == pipeline, (
+        "structural.sh's drop list and docs/config.md's structural key set disagree.\n"
+        f"  documented, never dropped: {sorted(pipeline - dropped)}\n"
+        f"  dropped, never documented: {sorted(dropped - pipeline)}\n"
+        "An undocumented value in the environment would enable that step again."
+    )
+
+
+@pytest.mark.parametrize("tier", ["python", "native"])
+def test_an_inherited_config_key_cannot_enable_a_step_this_repo_never_declared(
+    goh: Path, tmp_path: Path, tier: str
+) -> None:
+    """A hostile ambient `GOH_*` must change NOTHING about what the gate runs.
+
+    Both directions are the same defect. An inherited opt-in runs a check the
+    repo never asked for — a false red, and on a fixture, a verdict about
+    files that fixture does not contain. An inherited `GOH_EXCLUDE=.*` hides a
+    real violation — a false green, which is the direction nobody notices.
+    """
+    repo = make_repo(tmp_path, FULL_CASES["clean"])
+    runner = (
+        (lambda r: _run_bash(repo, False, r))
+        if tier == "python"
+        else (lambda r: _run_goh(goh, repo, False, r))
+    )
+    quiet, hostile = runner({}), runner(HOSTILE)
+    ran_quietly, ran_hostile = announced_steps(quiet.stdout), announced_steps(hostile.stdout)
+    assert ran_hostile == ran_quietly, (
+        f"ambient GOH_* changed which steps the {tier} tier ran:\n"
+        f"  quiet:   {ran_quietly}\n  hostile: {ran_hostile}\n" + hostile.stdout + hostile.stderr
+    )
+    assert hostile.returncode == quiet.returncode, hostile.stdout + hostile.stderr
+
+
+def test_an_inherited_exemption_does_not_hide_a_violation(tmp_path: Path) -> None:
+    """`GOH_EXCLUDE=.*` in the environment is the sharp end of the same class:
+    exempt everything, and the emoji gate reports a clean tree."""
+    repo = make_repo(tmp_path, FULL_CASES["emoji"])
+    hostile = _run_bash(repo, False, {"GOH_EXCLUDE": ".*"})
+    assert hostile.returncode != 0, hostile.stdout + hostile.stderr
+    assert "emoji" in (hostile.stdout + hostile.stderr).lower()
+
+
+def test_the_push_gate_does_not_hand_the_export_gate_this_repos_gatesrc(
+    tmp_path: Path,
+) -> None:
+    """The producer, end to end: a repo's `.gatesrc` keys stay in the push gate.
+
+    The fixture's `tools/gate.sh` IS the export gate, and it records what it was
+    given. `push_gate.sh` reads one key out of `.gatesrc` — `GOH_EXPORT_KEEP` —
+    and hands the tag check its environment in a subshell of its own; nothing
+    else escapes into the gate the push actually runs. Before that, `set -a`
+    around the source exported every key, so this report was the pushing repo's
+    real configuration and the gate run on it inherited it.
+    """
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init", "-q", "-b", "main")
+    _git(repo, "config", "user.email", "t@t")
+    _git(repo, "config", "user.name", "t")
+    (repo / "tools").mkdir()
+    (repo / "tools" / "gate.sh").write_text(
+        "#!/usr/bin/env bash\n"
+        "set -euo pipefail\n"
+        "for k in GOH_MAX_LINES GOH_SKILLS_CORPUS GOH_SKILLS_ROOT "
+        "GOH_PYTHON_FORMATTED GOH_NO_KILL_BY_NAME GOH_LINE_BASELINE; do\n"
+        '  printf \'%s=%s\\n\' "$k" "${!k-UNSET}" >> "$GATE_REPORT"\n'
+        "done\n"
+    )
+    (repo / "VERSION").write_text("1.0.0\n")
+    (repo / ".gatesrc").write_text(
+        "GOH_MAX_LINES=500\nGOH_SKILLS_CORPUS=1\nGOH_NO_KILL_BY_NAME=1\n"
+        "GOH_SKILLS_ROOT=/somewhere/else\nGOH_PYTHON_FORMATTED=1\n"
+        "GOH_LINE_BASELINE=base.txt\n"
+    )
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "-q", "-m", "one")
+    sha = subprocess.run(
+        ["git", "-C", str(repo), "rev-parse", "HEAD"], capture_output=True, text=True, check=True
+    ).stdout.strip()
+
+    report = tmp_path / "report.txt"
+    env = _hermetic_env(
+        GATE_REPORT=str(report), GOH_DIR=str(ROOT), GOH_PUSH_LOGS=str(tmp_path / "logs")
+    )
+    proc = subprocess.run(
+        ["bash", str(PUSH_GATE)],
+        cwd=repo,
+        env=env,
+        text=True,
+        input=f"refs/heads/main {sha} refs/heads/main {'0' * 40}\n",
+        capture_output=True,
+    )
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    seen = dict(line.split("=", 1) for line in report.read_text().splitlines() if "=" in line)
+    leaked = {k: v for k, v in seen.items() if v != "UNSET"}
+    assert not leaked, f"the export gate inherited this repo's configuration: {leaked}"
 
 
 def test_goh_is_built_once_per_session(goh: Path, goh_build_count: int) -> None:

@@ -57,22 +57,50 @@ tag_check="$GOH/checks/check_tag_version.py"
 # the answer.
 [ -f "$tag_check" ] || die "pre-push: $tag_check missing from the gates checkout at $GOH — nothing pushed"
 
-# Ignored files the export must carry, from the repo's .gatesrc (space-separated, relative).
+# `.gatesrc` IS READ HERE. It is not put into this shell's environment, and it
+# is not put into the export gate's either.
 #
-# `set -a` AROUND the source, so every key .gatesrc sets is EXPORTED. Sourcing alone sets shell
-# variables, which is enough for the keys a BASH gate reads (structural.sh re-sources .gatesrc in
-# the export and reads them itself) — but `check_tag_version.py` reads
-# `GOH_TAG_VERSION_SOURCES` from the ENVIRONMENT, and a key documented as "set this in .gatesrc"
-# that the checker can never see is worse than an undocumented one: ZoneWM set it exactly as
-# documented, the checker silently fell back to its defaults, and the pre-push refused a correct
-# release with "NO version source declares a version at this commit" — the config was read and
-# ignored. `set +a` restores the shell's own scope straight after.
+# It used to be, via `set -a` around the source, and that exported EVERY key the
+# repo declares to the gate the push actually runs. Measured 2026-10-02: a push
+# of this repo exported `GOH_SKILLS_ROOT=$HOME/.claude/skills`,
+# `GOH_SKILLS_CORPUS=1` and `GOH_PYTHON_FORMATTED=1`; the export gate ran
+# `tools/gate.sh --full`; the pytest suite it runs inherited all three while
+# every fixture repo in it declared NONE of them. Seven tests went red on a tree
+# that was green in the checkout, and the push gate refused pushes that passed
+# locally -- a gate whose result depends on what a parent happened to export.
+#
+# Two keys are wanted from the file, and each is taken by name instead:
+#   - GOH_EXPORT_KEEP, for the ignored files the export must carry. Read in a
+#     CHILD, so a consumer's `export GOH_…` line (three write one) cannot reach
+#     this shell's environment either -- the leak does not need `set -a`.
+#   - the tag check's keys, read from the ENVIRONMENT by check_tag_version.py.
+#     A key documented as "set this in .gatesrc" that the checker can never see
+#     is worse than an undocumented one: ZoneWM set it exactly as documented, the
+#     checker silently fell back to its defaults, and the pre-push refused a
+#     correct release with "NO version source declares a version at this commit"
+#     -- the config was read and ignored. Its own subshell gets the export.
 GOH_EXPORT_KEEP=""
 if [ -f "$root/.gatesrc" ]; then
-    set -a
-    . "$root/.gatesrc"
-    set +a
+    GOH_EXPORT_KEEP="$(bash -c 'set -a; . "$1"; printf %s "${GOH_EXPORT_KEEP-}"' _ \
+        "$root/.gatesrc")" || die "pre-push: cannot read $root/.gatesrc"
 fi
+
+# The tag check, run with .gatesrc in the ENVIRONMENT and nothing else changed.
+# IN A SUBSHELL, and that is the load-bearing word: `set -a` marks the shell that
+# runs it, and `set +a` stops new assignments being exported -- it does NOT take
+# the export attribute back off the keys already assigned, so a function called
+# directly from this shell left .gatesrc's keys exported for the rest of the
+# hook, which is the leak this whole block exists to close. A subshell's export
+# table dies with it.
+tag_check_run() {
+    if [ -f "$root/.gatesrc" ]; then
+        set -a
+        # shellcheck source=/dev/null
+        . "$root/.gatesrc"
+        set +a
+    fi
+    python3 -B "$tag_check" --root "$root" --refs-file "$refs_file"
+}
 
 zero="0000000000000000000000000000000000000000"
 remote_name="${1:-}"
@@ -120,7 +148,7 @@ cat >"$refs_file"
 # every step the pre-commit hook proved is re-run in the export — measured by
 # tests/test_proven.py, whose gates copy is exactly such a checkout. Reading a
 # shared directory must never modify it.
-if ! python3 -B "$tag_check" --root "$root" --refs-file "$refs_file"; then
+if ! ( tag_check_run ); then
     err "pre-push: a tag being pushed does not match the version its own commit declares — nothing pushed"
     exit 1
 fi
