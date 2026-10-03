@@ -81,10 +81,50 @@ session were green across a dozen fixtures and wrong against reality:
 Both fixtures had exactly one service and one image — the shape the author had
 imagined. **A fixture cannot disagree with the assumption that produced it.**
 
-**Checked by.** Currently: not enforced. The mechanism exists elsewhere —
-`games/game_asset_factory/tools/check_gate_calibration.py` proves gates against
-the real estate and reports `gates_of_heck 24/25`. Ours does not. **This is the
-largest single gap in this document.**
+**Checked by.** Partly, since 2026-10-03, and the remainder is named rather
+than implied.
+
+`checks/check_estate_corpus.py` runs each declared house checker against a
+**real subtree copied out of a real consumer repo** with one violation planted
+inside it, and requires the checker to go red and name the planted file. Six
+entries, each recording which corpus and why; the `check_no_empty_assert` entry
+replays this requirement's own failure in the exact shape it failed in (a string
+literal *inside* the receiver — the message form is the other silent shape and
+would have tested something else). It runs from `check_probes_pass.py`, so it
+runs on every gate run in every repo, at the cost of a corpus copy only on a
+machine that has the estate.
+
+Two rules in it exist because the first version of it was wrong, which is worth
+recording because both would have made it report green while proving nothing:
+
+* **the corpus must be CLEAN under the checker before the plant lands.** Replaying
+  the 2026-10-02 receiver bug, the sweep reported 6/6 while the checker was blind
+  to the plant: the corpus carried a finding of its own and the output named the
+  file either way. A red that cannot be attributed to what caused it is not
+  evidence.
+* **a corpus below a file floor, and a plant that would land in a stub, are
+  refusals.** A "real corpus" that quietly degraded to one file is the failure
+  this gate exists to catch, reproduced inside the gate.
+
+**What is still not checked here, stated plainly:**
+
+* **whether the PLANT is the shape the estate really has.** The plant is written
+  by the same person as the checker, and the first version of this gate proved
+  nothing for exactly that reason — it planted `assert!(v.is_empty(), "msg")`
+  (the shape clippy is silent on) and called the historical receiver bug
+  covered. A plant cannot be derived from the estate mechanically without a
+  language-aware mutator per checker, which is not built. Mitigation in place: one
+  shape per entry, the reason recorded, and the plant re-derived from the real
+  finding each time it was found not to discriminate.
+* **whether a checker is CORRECT**, only that it still refuses. R3 claims the
+  second; the first is not checkable without a live system.
+* **the consumer checks.** Both examples in the table above are gates other repos
+  own — `storage-server`'s is not even named in this file's history the way the
+  house one is. The cross-repo survey that measures their coverage is
+  `games/game_asset_factory/tools/check_gate_calibration.py`, and it remains
+  there. **This is still the largest gap in this document**, narrowed to: a house
+  checker is measured against real corpora, and a consumer checker is not
+  measured at all.
 
 ### R4 — A gate that does not run must be visible
 
@@ -250,8 +290,12 @@ the file from the message it was given.
 ## 3. Where we fall short, ranked
 
 1. **R3 — checks are proven against fixtures we wrote.** Two of this session's
-   own checks were wrong against reality. Highest value fix: run each new or
-   changed house checker against the other repos before it lands.
+   own checks were wrong against reality. **Narrowed 2026-10-03**, not closed:
+   `checks/check_estate_corpus.py` measures six house checkers against real
+   corpora from six real consumer repos, and replays the receiver bug in the shape
+   it failed in. What it cannot do is judge its own PLANT — the plant is authored
+   beside the checker, which is how the first version of it proved nothing — and
+   it says so. Consumer checks are still unmeasured here.
 2. **R4 — a stale binary silently skips steps.** ~6 lines at gate time would
    close the measured instance; a step-inventory assertion in the parity suite
    would close the class.

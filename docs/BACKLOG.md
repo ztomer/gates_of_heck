@@ -10,16 +10,21 @@ One file; prune landed items to git history. Seeded from EVAL-2026-09-04.md
 Seeded 2026-10-02. The document states the ranked gap list; these are the boxes
 that close it. Without these the list is a confession, not a plan.
 
-- **SUPERSOTA R3 — checks are proven against fixtures we wrote.** The highest
-  value item here, and the one that changes outcomes. Two checks written
-  2026-10-02 were green across a dozen fixtures and wrong against reality:
-  `check_no_empty_assert.py`'s receiver pattern skipped every assert with a
-  string literal in it, and `gluetun_socks5` (a consumer check) read the LAST
-  `image:` in the file so it judged gluetun's pin by TRAWL's image. Both
-  fixtures had exactly one service and one image — the shape the author had
-  imagined. **Fix:** run every new or changed house checker against the other
-  repos before it lands. A fixture cannot disagree with the assumption that
-  produced it.
+- **SUPERSOTA R3, the part left over — nothing judges the PLANT, and consumer
+  checks are unmeasured.** `checks/check_estate_corpus.py` (2026-10-03) runs six
+  house checkers against real subtrees copied out of six real consumer repos and
+  replays the 2026-10-02 receiver bug in the shape it failed in. Two gaps it
+  states rather than hides: **(a)** the plant is authored beside the checker, so a
+  checker that is blind to a shape the estate really has can still be measured
+  green — the first version of the gate proved exactly that, and the honest fix
+  is a language-aware mutator that derives each plant from a real finding in the
+  corpus, per checker, which is not built; **(b)** it measures HOUSE checkers, and
+  `gluetun_socks5`-class consumer checks stay where they were, covered only by
+  the cross-repo survey in `games/game_asset_factory`. Also open: whether the
+  corpus sweep belongs at `--staged` at all — it is a full-scope measurement
+  (real trees, real corpora) and costs ~3 s of the ~11 s
+  `check_probes_pass.py` now takes; moving it behind `structural.sh --full` is a
+  `gates/` change.
 - **SUPERSOTA R4 — a stale `bin/goh` silently skips steps.** Measured: a
   `bin/goh` predating the markdown-links step meant that step did not run,
   and a step that does not run prints what a passing step prints. Two

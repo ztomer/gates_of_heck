@@ -1,5 +1,65 @@
 # CHANGELOG
 
+## Unreleased — house checkers are measured against real corpora, and R3's own first failure is recorded _(2026-10-03)_
+
+SUPERSOTA **R3**: "a gate that cannot fail in the shape it was written for is
+not proven." The mechanism for the estate as a whole lives in
+`games/game_asset_factory/tools/check_gate_calibration.py`. What lands here is
+the part that can be checked from this side.
+
+`checks/check_estate_corpus.py` takes a **real subtree copied out of a real
+consumer repo**, plants one violation inside a real file of the estate's own
+language, and requires the checker to go red AND name the planted file. Six
+entries, each recording which corpus and why. Copies, never in place — these are
+other people's working trees.
+
+**It found its own first version proving nothing**, which is the part worth
+reading. The gate reported 6/6 green while `check_no_empty_assert.py` was
+replayed with the 2026-10-02 receiver bug — the class that omitted `"` — because
+(a) the plant was the wrong shape (`assert!(v.is_empty(), "msg")` is the shape
+*clippy* is silent on, not the receiver bug), and (b) the corpus carried a
+finding of its own, so the output named the file whether or not the checker had
+seen the plant. A red that cannot be attributed to what caused it is not
+evidence.
+
+So the gate carries two rules it did not have:
+
+* **the corpus must be CLEAN under the checker before the plant lands.** Not
+  clean → refuse the entry, because a plant's verdict there is unattributable;
+* **a corpus below a file floor, and a plant that would land in a stub, are
+  refusals.** A "real corpus" that quietly degraded to one file is the failure
+  this gate exists to catch, reproduced inside the gate.
+
+And the `check_no_empty_assert` entry's plant is now the shape it actually
+failed in — a string literal *inside* the receiver — with the replay as the
+demonstration:
+
+    # _RECEIVER = r"[A-Za-z0-9_.:()\s-]+"   (the 2026-10-02 bug, replayed)
+    x check_no_empty_assert.py: a violation planted in 9 real file(s) from
+      ~/Projects/servers/storage-server was NOT caught (exit 0)
+    x 1 checker(s) did not refuse a violation planted in the real estate.   rc=1
+    # restored
+    v 6/6 checker(s) went red on a plant inside real estate corpora          rc=0
+
+Three corpora were rejected while choosing the table, each for a reason worth
+keeping: ztools is red under `check_no_allow` (a vendored tree carries ten), eight
+candidate repos are red under `check_no_home_paths` before any plant lands, and
+scoping the `check_md_links` entry to `docs/` reported two "findings" that were
+artefacts of the subtree copy breaking every link that escapes it.
+
+`--probe` proves the two refusals and that a checker which always exits 0 is
+caught. It runs from `check_probes_pass.py`, so it runs on every gate run in
+every repo — and pays for a corpus copy only on a machine that has the estate.
+
+**What this does NOT do, stated rather than implied:** it cannot judge its own
+plant. The plant is authored beside the checker, which is precisely how the first
+version proved nothing; a plant derived mechanically from a real finding needs a
+language-aware mutator per checker, and that is not built. And it measures HOUSE
+checkers — the consumer class in R3's table (`gluetun_socks5`, read the last
+`image:` in a 40-service compose file) is still unmeasured here. **R3 is narrowed,
+not closed**, and `docs/SUPERSOTA.md` R3 plus `docs/BACKLOG.md` say so in those
+words.
+
 ## Unreleased — the display-seam gate, and ZeroThunder's two vendored checkers retired _(2026-10-03)_
 
 SUPERSOTA **R5/R6**. `games/ZeroThunder` carried repo-local copies of two house
