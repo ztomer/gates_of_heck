@@ -59,6 +59,16 @@ def goh(tmp_path: Path) -> Path:
     for name in ("check_tag_version.py", "_gitutil.py", "_version_sources.py"):
         shutil.copy2(REPO_ROOT / "checks" / name, d / "checks" / name)
     shutil.copytree(REPO_ROOT / "tui", d / "tui", ignore=shutil.ignore_patterns("__pycache__"))
+    # `lib/` because `local_ci.sh` runs every step through `lib/bounded_run.py` — the per-step
+    # CEILING and the whole-subtree sweep. A fixture that assembles an incomplete checkout gets a
+    # correct "No such file" refusal about a tree the test itself built wrong, which is the same
+    # mistake the comment above records for `checks/`. The estate is `gates/` + `checks/` + `lib/`
+    # + `tui/`; a copy that omits one of them is not the estate.
+    shutil.copytree(
+        REPO_ROOT / "lib",
+        d / "lib",
+        ignore=shutil.ignore_patterns("__pycache__", "desktop_lock"),
+    )
     _git(d, "init", "-q", "-b", "main")
     _git(d, "add", "-A")
     _git(d, "commit", "-q", "-m", "gates")

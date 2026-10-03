@@ -34,3 +34,14 @@ GOH_MAX_LINES=500                 # file-length cap; unset disables the check
 #   (cargo:crates/*/Cargo.toml); **/Cargo.toml sweeps vendor/ and invents
 #   findings about crates you do not ship.
 # GOH_TAIL=60                     # log lines printed on step failure
+
+# Per-step wall-clock CEILINGS, and they are ON by default (GOH_LCI_TIMEOUT 900s for a
+# local_ci step, GOH_STEP_TIMEOUT 1800s for a toolchain gate's goh_step). Both are printed on
+# every run and both sweep the step's whole process group on expiry, naming what they swept.
+# media_server, 2026-10-03: a leaked server held the cargo build lock, every later `cargo
+# test` blocked, and nothing said why -- because the run that would have reported it was the
+# run that had been killed. Raise these when a step genuinely needs longer; 0 opts OUT and says
+# so on the step line rather than looking identical to a bounded step.
+# GOH_LCI_TIMEOUT=1800
+# GOH_STEP_TIMEOUT=3600
+# GOH_STEP_GRACE=5

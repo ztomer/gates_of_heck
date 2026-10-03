@@ -133,18 +133,81 @@ goh_init() {
     printf '\n== %s gate ==\n' "$GOH_NAME"
 }
 
+# goh_step_timeout <label> -- prints the ceiling in seconds, or 0 for none.
+#
+# A step with no ceiling is a gate that cannot tell a slow step from a hung one, and this file's
+# steps run BUILD AND TEST commands: `cargo test`, `swift test`, `pytest`. `gates/local_ci.sh` has
+# had a ceiling since it was written; `goh_step` did not, so the same hang was bounded in one path
+# and unbounded in the other. That is not two policies, it is the absence of one.
+#
+# DEFAULT 1800 for a goh_step (and 900 for a local_ci step (see local_ci.sh for why that half is
+# lower), both set from measurement rather than taste: this estate's slowest measured single step is
+# mediaops' rust gate at 168 s, and a cold `swift test`/`cargo build --all-targets` is minutes. The
+# point is not the number -- it is that it EXISTS, is PRINTED on every run, and that exceeding it
+# says "TIMED OUT after Ns" with the survivors named instead of dying silently.
+#
+# GOH_STEP_TIMEOUT=0 opts out, and has to be typed. A non-numeric value is a config error naming the
+# value: silently ignoring a typo'd ceiling would leave the step unbounded, which is the defect.
+# Lower-case on purpose: a `GOH_*` name here reads as a repo-settable config key to
+# `test_config_schema.py`, and this one is not one -- it is the constant the default
+# comes from. GOH_STEP_TIMEOUT is the key; this is what it falls back to.
+_goh_step_default_timeout=1800
+goh_step_timeout() {
+    case "${GOH_STEP_TIMEOUT:-$_goh_step_default_timeout}" in
+        ""|0) echo 0 ;;
+        *[!0-9]*)
+            err "${GOH_NAME:-gate}: GOH_STEP_TIMEOUT must be a non-negative integer of seconds (got '${GOH_STEP_TIMEOUT}') — refusing to run a step with an unknown ceiling"
+            exit 2 ;;
+        *) echo "${GOH_STEP_TIMEOUT:-$_goh_step_default_timeout}" ;;
+    esac
+}
+
 # goh_step <label> <command...>
 # Runs the command with output captured. On failure: dump the tail, then exit.
 # GOH_TIME=1 appends per-step elapsed whole seconds to the ok line — the
 # ornament that would have caught the 15s disk-hygiene cost without hand
 # timing. Off by default; zero overhead otherwise.
+#
+# Under a CEILING, by default. The step runs as its own process group (lib/bounded_run.py), so on
+# expiry the sweep reaches the whole subtree rather than the direct children -- measured 2026-10-03:
+# `pkill -P` left two grandchildren alive against `bash -c 'sleep 400 & wait'`, and those are the
+# processes that make the NEXT run hang.
 goh_step() {
     local label="$1"; shift
-    local _goh_t0
+    local _goh_t0 _goh_rc=0 _goh_limit
     _goh_t0=$(date +%s)
-    step "$label"
-    if ! "$@" >"$GOH_LOG" 2>&1; then
+    _goh_limit="$(goh_step_timeout)"
+    # `if cmd; then rc=0; else rc=$?; fi` and NEVER `if ! cmd; then rc=$?`. In the negated form `$?`
+    # is the status of the `!` — 0 when the command FAILED — so a step that died came back
+    # successful and the gate ran on. Caught by tests/test_tui_integration.py
+    # (`failing step's output was withheld`), which is the contract this line exists to keep.
+    if [ "$_goh_limit" -gt 0 ]; then
+        step "$label (≤${_goh_limit}s)"
+        if python3 "$GOH_ROOT/lib/bounded_run.py" --timeout "$_goh_limit" \
+                --grace "${GOH_STEP_GRACE:-5}" --label "$label" -- "$@" >"$GOH_LOG" 2>&1; then
+            _goh_rc=0
+        else
+            _goh_rc=$?
+        fi
+    else
+        step "$label (UNBOUNDED — GOH_STEP_TIMEOUT=0)"
+        if "$@" >"$GOH_LOG" 2>&1; then
+            _goh_rc=0
+        else
+            _goh_rc=$?
+        fi
+    fi
+    if [ "$_goh_rc" -ne 0 ]; then
         printf '\n'
+        # A TIMEOUT is named as one, before the tail. The tail of a step killed on a ceiling is
+        # whatever it printed before it stalled, which is usually nothing at all -- and a red step
+        # with no output and no reason reads exactly like the 2026-10-03 incident: a run that hangs
+        # and says nothing. So the number, the reason, and the survivors come first.
+        if [ "$_goh_rc" -eq 124 ]; then
+            err "$label: TIMED OUT after ${_goh_limit}s (GOH_STEP_TIMEOUT; default ${_goh_step_default_timeout})"
+            err "  Raise it in .gatesrc if the step genuinely needs longer. An unbounded step cannot"
+            err "  be told apart from a hung one — and a hung test step used to be the silent failure."
+        fi
         # The FAILURES first, then the tail: a 173-test `swift test` puts its
         # nine failing cases far above the last 60 lines, and the log is
         # deleted at exit — a red gate that names no test is a red gate

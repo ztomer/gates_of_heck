@@ -95,6 +95,43 @@ ESTATE = (
         "docs/SUPERSOTA.md R3 as found at a real site in this repo on 2026-10-02.",
     },
     {
+        "checker": "check_no_unreaped_spawn.py",
+        "root": "~/Projects/servers/media_server",
+        "scope": ("crates",),
+        "ext": ".rs",
+        # THE INCIDENT, IN ITS OWN WORDS. Not "a spawn and a kill": the four lines that can panic
+        # BETWEEN the spawn and the explicit `child.kill(); child.wait()`, because that ORDER is the
+        # defect. The crate is clean under this gate today -- the fix is in it, a `ReapOnDrop` guard
+        # -- so the plant's red is its own, and the file it lands in is the file the bug lived in.
+        "plant": (
+            "\n#[cfg(test)]\nmod corpus_probe {\n"
+            "    use std::process::{Command, Stdio};\n"
+            "    #[test]\n"
+            "    fn reap_after_the_panic() {\n"
+            '        let mut child = Command::new(env!("CARGO_BIN_EXE_archive_torznab"))\n'
+            '            .args(["--bind", "127.0.0.1:0"])\n'
+            "            .stderr(Stdio::piped())\n"
+            "            .spawn()\n"
+            '            .expect("the binary runs");\n'
+            '        let banner = child.stderr.take().expect("piped stderr");\n'
+            '        let port = banner.parse::<u16>().unwrap_or_else(|| panic!("no port: {banner:?}"));\n'
+            '        assert_ne!(port, 0, "the kernel assigns a real port");\n'
+            "        let _ = child.kill();\n"
+            "        let _ = child.wait();\n"
+            "        assert!(port > 0);\n"
+            "    }\n"
+            "}\n"
+        ),
+        "args": (),
+        "why": "media_server's whole crates/ tree — the scope matcher reads the TOP directory, and "
+        "this repo keeps its crates one level down, so naming the crate found 0 files and the floor "
+        "refused the corpus rather than letting a fixture wear its name. Nine live "
+        "orphans from that one test, each holding the cargo build lock, and the only observable was "
+        "a `cargo test` printing nothing at all. The plant carries the ORDER, because the reap "
+        "EXISTED in the real file — a plant that only added a missing kill would have tested a rule "
+        "this checker does not have, and reported green over the defect it was written for.",
+    },
+    {
         "checker": "check_no_allow.py",
         "root": "~/Projects/routines",
         "scope": (".",),

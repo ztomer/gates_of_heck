@@ -192,7 +192,8 @@ FWD=""
 # environment said, so a repo can still override a value set higher up.
 _goh_config_keys="GOH_MAX_LINES GOH_LINE_EXCLUDE GOH_LINE_BASELINE GOH_LINE_UNBOUNDED
 GOH_EXCLUDE GOH_ALLOW GOH_SKILLS_CORPUS GOH_SKILLS_ROOT GOH_SKILLS_MAX_WORDS
-GOH_NO_HOME_PATHS GOH_NO_KILL_BY_NAME GOH_PYTHON_FORMATTED"
+GOH_NO_HOME_PATHS GOH_NO_KILL_BY_NAME GOH_PYTHON_FORMATTED
+GOH_STEP_TIMEOUT GOH_STEP_GRACE"
 for _goh_key in $_goh_config_keys; do unset "$_goh_key" || true; done
 unset _goh_key _goh_config_keys
 GOH_REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
@@ -441,6 +442,23 @@ if [ -n "${GOH_NO_KILL_BY_NAME:-}" ]; then
             ${GOH_EXCLUDE:+--exclude "$GOH_EXCLUDE"}
     fi
 fi
+
+# A TEST that spawns a child nothing reaps on the panic path. media_server,
+# 2026-10-03: a test spawned the real binary with `--bind 127.0.0.1:0` (a
+# server that loops forever by design) and reaped it with an explicit
+# `child.kill(); child.wait();` below four lines that can panic. Nine orphans
+# accumulated, each holding the cargo build lock, so every LATER `cargo test`
+# blocked -- and the leak itself was INVISIBLE, because the run that would
+# have reported it was the run that had been killed. Run to completion the suite
+# takes 0.22 s.
+#
+# The ordering rule is the point, and it is why this is not "is there a kill in
+# the function": the reap EXISTED in that file. A failing test skips it.
+# Same GOH_EXCLUDE as its siblings, so one line exempts a vendored tree.
+#
+# MIRRORED in crates/goh/src/steps_delegated.rs.
+goh_step "no unreaped spawns in tests" python3 "$CHECKS/check_no_unreaped_spawn.py" \
+    ${GOH_EXCLUDE:+--exclude "$GOH_EXCLUDE"} ${FWD:+"$FWD"}
 
 # The companion question to the one below, and a different one: a self-proof shows a gate can
 # fail on a VIOLATION; this shows it does not report compliance when its subject is ABSENT. Three

@@ -253,8 +253,9 @@ def test_both_tiers_run_the_same_steps(goh: Path, tmp_path: Path) -> None:
     )
     # An empty comparison proves nothing, so the inventory is pinned too: a step
     # added to ONE tier and not the other is the defect, and a step added to
-    # neither is a step nobody runs.
-    assert len(in_bash) == 16, f"the pipeline's step inventory changed: {sorted(in_bash)}"
+    # neither is a step nobody runs. 16 -> 17 on 2026-10-03 for
+    # `no unreaped spawns in tests`.
+    assert len(in_bash) == 17, f"the pipeline's step inventory changed: {sorted(in_bash)}"
 
 
 def test_a_failing_step_names_the_checker_and_the_docs(goh: Path, tmp_path: Path) -> None:

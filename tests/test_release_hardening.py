@@ -181,6 +181,16 @@ class TestSelfBuffering:
             RELEASE.write_bytes(b"#!/usr/bin/env bash\necho corrupted mid-run ((\n")
             out, err = proc.communicate(timeout=120)
         finally:
+            # The reap belongs HERE, not only on the line that reads the output: the two asserts
+            # above can fire, and `communicate` can raise TimeoutExpired, and this test starts a
+            # `bash --gate 'touch … && sleep 5'` that outlives all three. A `finally` that restores
+            # a file but not a process is a finally that half does its job — found by
+            # checks/check_no_unreaped_spawn.py, which is the house rule for it
+            # (media_server 2026-10-03: nine live orphans, each holding the cargo build lock, and
+            # the only observable was a test run printing nothing at all).
+            if proc.poll() is None:
+                proc.kill()
+            proc.wait(timeout=10)
             RELEASE.write_bytes(original)
 
         assert proc.returncode == 0, out + err

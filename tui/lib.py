@@ -54,19 +54,36 @@ else:
 
 
 def info(message: str) -> None:
-    print(f"{_C_GRAY}{ICON_START}{_C_RESET} {_C_DIM}{message}{_C_RESET}")
+    print(f"{_C_GRAY}{ICON_START}{_C_RESET} {_C_DIM}{message}{_C_RESET}", flush=True)
+
+
+def step(message: str) -> None:
+    """A sub-item under an info line.
+
+    Added 2026-10-03 to close a drift between the two halves of this library:
+    `tui/lib.sh` has always had `step` (ICON_STEP, dim, no colour of its own) and
+    `tui/lib.py` did not, so a Python tool had no way to render the per-item
+    lines it wanted and a shell tool did. ICON_STEP was already parsed here and
+    unused — the config key was read and thrown away.
+    """
+    print(f"{_C_DIM}{ICON_STEP} {message}{_C_RESET}", flush=True)
 
 
 def ok(message: str) -> None:
-    print(f"{_C_GREEN}{ICON_OK}{_C_RESET} {message}")
+    print(f"{_C_GREEN}{ICON_OK}{_C_RESET} {message}", flush=True)
 
 
 def err(message: str) -> None:
-    print(f"{_C_RED}{ICON_ERR}{_C_RESET} {message}", file=sys.stderr)
+    print(f"{_C_RED}{ICON_ERR}{_C_RESET} {message}", file=sys.stderr, flush=True)
 
 
 def warn(message: str) -> None:
-    print(f"{_C_YELLOW}{ICON_WARN}{_C_RESET} {message}")
+    # STDERR, matching tui/lib.sh's `_tui_warn`. This used to print to stdout,
+    # so the two halves of the same house library disagreed: a shell tool
+    # piping stdout got warnings on stderr while a Python tool piping stdout got
+    # them mixed into its data. `err` already went to stderr; a warning is a
+    # diagnostic for the same reason an error is.
+    print(f"{_C_YELLOW}{ICON_WARN}{_C_RESET} {message}", file=sys.stderr, flush=True)
 
 
 def die(message: str, code: int = 1) -> None:
@@ -75,11 +92,11 @@ def die(message: str, code: int = 1) -> None:
 
 
 def hr(width: int = 72) -> None:
-    print(f"{_C_GRAY}{'─' * width}{_C_RESET}")
+    print(f"{_C_GRAY}{'─' * width}{_C_RESET}", flush=True)
 
 
 def section(title: str) -> None:
     print()
     hr()
-    print(f"{_C_BOLD}  {title}{_C_RESET}")
+    print(f"{_C_BOLD}  {title}{_C_RESET}", flush=True)
     hr()

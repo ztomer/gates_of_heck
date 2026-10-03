@@ -66,7 +66,7 @@ The separator is a bare colon split: keep colons OUT of step strings —
 parameter expansions like ${VAR:+flag} contain one and will be cut. Put such
 logic in a small repo script and invoke that as the step.
 .gatesrc steps run first, then --step ones.
-GOH_LCI_TIMEOUT=N caps each step at N seconds (exit 124, named); unset
+GOH_LCI_TIMEOUT=N caps each step at N seconds (exit 124, named); the default is 900.
 means no limit.
 EOF
 }
@@ -102,16 +102,32 @@ SRC_GATESRC="${GOH_CI_STEPS:-}"
 _proven_err="$(proven_settings 2>&1)" || die "$_proven_err"
 proven_settings
 
-# GOH_LCI_TIMEOUT: per-step wall-clock ceiling in seconds. Unset/0 = none
-# (previous behavior). A hung step used to hang the whole run silently; on
-# expiry the step is TERM-then-KILLed with its subtree swept best-effort,
-# and fails NAMED with exit 124 (the GNU timeout convention). A non-numeric
-# value is a usage error naming the value, never silently ignored.
-case "${GOH_LCI_TIMEOUT:-0}" in
+# GOH_LCI_TIMEOUT: per-step wall-clock ceiling in seconds. The DEFAULT is 900 (15 min), and the
+# default is the point: this was unset everywhere in the estate, which means "no limit", which means
+# a hung `cargo test` sat there until something killed it -- and the thing that killed it (a timeout,
+# a cancelled agent) killed the run BEFORE it could report anything, so the only observable was
+# silence. media_server 2026-10-03: nine orphans, each holding the cargo build lock, every later
+# `cargo test` blocked, and nothing anywhere said why. A ceiling nobody gave a number is a
+# suggestion. 900 is set from measurement, not taste: this estate's own slowest test step is
+# mediaops' rust gate at 168 s and the whole pytest suite is 76 s, so 900 is 5x the slowest thing
+# measured and a fifteenth of the day it cost.
+#
+# `0` is the explicit escape hatch and now has to be typed.
+#
+# THE SWEEP IS THE OTHER HALF, and it was measured wrong. The old sweep was `pkill -P "$pid"`,
+# DIRECT children only, on a step shaped `cargo test` -> test binary -> the server the test spawned.
+# Measured 2026-10-03 with `bash -c 'sleep 400 & wait'`: the old sweep left 2 grandchildren ALIVE;
+# `lib/bounded_run.py` (own session + killpg) leaves NOTHING. So the mechanism meant to unstick a
+# hung step left running exactly the processes that make the NEXT step hang.
+case "${GOH_LCI_TIMEOUT:-900}" in
     ""|0) LCI_LIMIT=0 ;;
     *[!0-9]*)
         die "GOH_LCI_TIMEOUT must be a non-negative integer of seconds (got '${GOH_LCI_TIMEOUT}')" ;;
-    *) LCI_LIMIT="$GOH_LCI_TIMEOUT" ;;
+    # `:-900` on BOTH reads, not just the subject. The case matched the defaulted value and the arm
+    # then read the bare name, so a repo that never set the key died on an unbound variable under
+    # `set -u` -- the default being on is what made it reachable. (The key was unset in every repo
+    # in the estate until now, and the branch was simply never taken.)
+    *) LCI_LIMIT="${GOH_LCI_TIMEOUT:-900}" ;;
 esac
 
 if [ -z "$SRC_GATESRC" ] && [ -z "$CLI_STEPS" ]; then
@@ -186,40 +202,22 @@ PROVEN_SKIPPED=0
 i=0
 
 # run_step <logf> <cmd-string> — exit code of the step, 124 on timeout.
-# Subtree discipline (the killtree class): TERM the child, sweep its subtree
-# best-effort via pkill -P, escalate to KILL. pkill may be absent on minimal
-# systems; then only the direct child dies and the log says so.
+#
+# Two things happen here that did not before, and both are the same defect seen from two sides:
+#
+#  * the step runs under a CEILING (lib/bounded_run.py), and on expiry it is TERM-then-KILLed in its
+#    OWN PROCESS GROUP — not with `pkill -P`, which reaches direct children only and so leaves the
+#    test binary's children, i.e. the orphans, running. See the header for the measurement.
+#  * the process table is sampled either side of the step, so a child the step leaked is REPORTED
+#    rather than inferred from the next run's hang. That is the case the ceiling cannot see: the
+#    step exits 0 and the server outlives it.
 run_step() {
     local logf="$1" cmd="$2"
-    if [ "$LCI_LIMIT" -le 0 ]; then
-        bash -c "$cmd" >"$logf" 2>&1 </dev/null
-        return $?
-    fi
-    bash -c "$cmd" >"$logf" 2>&1 </dev/null &
-    local pid=$!
-    local deadline=$(( $(date +%s) + LCI_LIMIT ))
-    while kill -0 "$pid" 2>/dev/null; do
-        if [ "$(date +%s)" -ge "$deadline" ]; then
-            kill -TERM "$pid" 2>/dev/null || true
-            if command -v pkill >/dev/null 2>&1; then
-                pkill -TERM -P "$pid" 2>/dev/null || true
-            fi
-            sleep 2
-            if kill -0 "$pid" 2>/dev/null; then
-                kill -KILL "$pid" 2>/dev/null || true
-                if command -v pkill >/dev/null 2>&1; then
-                    pkill -KILL -P "$pid" 2>/dev/null || true
-                fi
-            fi
-            wait "$pid" 2>/dev/null || true
-            printf 'local_ci: step timed out after %ss (GOH_LCI_TIMEOUT)\n' \
-                "$LCI_LIMIT" >>"$logf"
-            return 124
-        fi
-        sleep 1
-    done
-    wait "$pid" 2>/dev/null
-    return $?
+    local args=(--grace "${GOH_STEP_GRACE:-5}" --label "$cmd")
+    [ "$LCI_LIMIT" -gt 0 ] && args=(--timeout "$LCI_LIMIT" "${args[@]}")
+    # </dev/null on the command string: the caller's loop stdin is the step list.
+    # shellcheck disable=SC2086  # a command STRING is the feature here; see the header
+    python3 "$GOH_ROOT/lib/bounded_run.py" "${args[@]}" -- bash -c "$cmd" >"$logf" 2>&1 </dev/null
 }
 
 while IFS="	" read -r src cmd; do
@@ -245,8 +243,19 @@ while IFS="	" read -r src cmd; do
     # </dev/null: without it every child inherits the while loop's heredoc
     # stdin — one step that reads stdin (cat, an interactive prompt) swallows
     # the REMAINING step list silently.
+    # The canary's "before". Taken here, immediately before the step, so the window is the STEP and
+    # not the whole run — a diff taken once at the start of a multi-minute gate cannot say which
+    # step leaked anything.
+    python3 "$GOH_ROOT/lib/orphan_canary.py" take "$LOGDIR/orphans-$i.json" 2>/dev/null || true
     run_step "$logf" "$cmd"
     rc=$?
+    # ...and its verdict, every step, whether or not the step passed. A leak does not care whether
+    # the suite was green; that is the entire reason it is silent today.
+    orphan_rc=0
+    if [ -f "$LOGDIR/orphans-$i.json" ]; then
+        python3 "$GOH_ROOT/lib/orphan_canary.py" since "$LOGDIR/orphans-$i.json" --repo "$ROOT" || orphan_rc=$?
+        [ "$orphan_rc" -ne 0 ] && FAILED=$((FAILED + 1))
+    fi
     if [ "$rc" -eq 0 ] && [ -n "$pkey" ]; then
         # Recorded only if the tree (and the gates) did not move while it ran.
         if [ "$(proven_key "$cmd" </dev/null)" = "$pkey $ptree" ]; then
@@ -256,10 +265,20 @@ while IFS="	" read -r src cmd; do
             step "the tree or the gates moved while the step ran — not recorded as proven"
         fi
     fi
-    if [ "$rc" -eq 0 ]; then
+    if [ "$rc" -eq 0 ] && [ "$orphan_rc" -eq 0 ]; then
         ok "[$i/$_n] $cmd"
+    elif [ "$rc" -eq 0 ]; then
+        # The step was GREEN and something it spawned outlived it. Named separately, because the
+        # common reading of "the test suite passed" is that nothing survived it — and a leaked
+        # server is what makes the NEXT suite hang with no output at all.
+        err "[$i/$_n] $cmd PASSED, and left processes running (see the canary above)"
+        FAILED=$((FAILED + 1))
+        FAILED_NAMES="$FAILED_NAMES
+  $cmd (orphans)"
     elif [ "$rc" -eq 124 ]; then
         err "[$i/$_n] TIMED OUT after ${LCI_LIMIT}s: $cmd"
+        warn "  The ceiling is GOH_LCI_TIMEOUT (default ${GOH_LCI_TIMEOUT:-900}s). A step that needs"
+        warn "  longer must say so in .gatesrc — an unbounded step cannot be told apart from a hang."
         warn "--- output (tail ${GOH_TAIL:-30}; full log kept, path below) ---"
         tail -n "${GOH_TAIL:-30}" "$logf" >&2
         FAILED=$((FAILED + 1))

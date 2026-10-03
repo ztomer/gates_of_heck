@@ -29,9 +29,52 @@ fn show_time() -> bool {
     std::env::var("GOH_TIME").is_ok_and(|raw| !raw.is_empty())
 }
 
+/// `GOH_STEP_TIMEOUT`'s default, in seconds. THE SAME constant as `gates/_common.sh`'s
+/// `_goh_step_default_timeout`, because a ceiling that differs by tier is not a ceiling.
+///
+/// Measured rather than chosen: the slowest single step in this estate is mediaops' rust gate at
+/// 168 s and the whole pytest suite is 76 s, so 1800 is an order of magnitude above anything
+/// legitimate. The point is not the number — it is that it EXISTS, is printed on every step line,
+/// and that exceeding it says "TIMED OUT after Ns" instead of hanging until something kills the run
+/// and takes the report with it (`media_server`, 2026-10-03: nine orphans, each holding the cargo
+/// build lock, every later `cargo test` blocked, and nothing anywhere said why).
+const fn default_timeout() -> u64 {
+    1800
+}
+
+/// The ceiling in force, or `None` when `GOH_STEP_TIMEOUT=0` opted out.
+fn ceiling() -> Option<u64> {
+    let raw = std::env::var("GOH_STEP_TIMEOUT").ok();
+    match raw.as_deref().map(str::trim).filter(|s| !s.is_empty()) {
+        None => Some(default_timeout()),
+        Some("0") => None,
+        // A typo'd ceiling must never silently leave a step UNBOUNDED, which is the defect. Named
+        // and refused rather than guessed at: a wrong guess reads as a working gate.
+        Some(other) => other.parse::<u64>().ok().filter(|n| *n > 0).or_else(|| {
+            eprintln!(
+                "✗ structural: GOH_STEP_TIMEOUT must be a non-negative integer of seconds \
+                 (got {other:?}) — refusing to run a step with an unknown ceiling"
+            );
+            None
+        }),
+    }
+}
+
+/// The suffix both tiers put on a step line, so the parity comparison is over the same string.
+///
+/// A step whose ceiling is off says `UNBOUNDED` rather than looking identical to a bounded one:
+/// `docs/contracts.md` R4 is that a step which does not run must be visible, and an unbounded step
+/// that reads like a bounded one is the same shape.
+fn ceiling_suffix() -> String {
+    ceiling().map_or_else(
+        || " (UNBOUNDED — GOH_STEP_TIMEOUT=0)".to_owned(),
+        |n| format!(" (≤{n}s)"),
+    )
+}
+
 /// Announce a step; returns its start time.
 pub(crate) fn begin(label: &str) -> Instant {
-    println!("· {label}");
+    println!("· {label}{}", ceiling_suffix());
     Instant::now()
 }
 
@@ -116,15 +159,48 @@ pub(crate) fn delegated(
 /// Run `program` with `args` (first arg: script name under `checks`),
 /// working directory `repo`, merging stdout and stderr like `goh_step`'s
 /// capture. Returns (exit code, merged output).
+///
+/// THROUGH `lib/bounded_run.py`, which is the whole point of this function's
+/// shape. `Command::output()` blocks with no ceiling of its own — the very
+/// disposition `checks/check_no_unreaped_spawn.py` MEASURES and documents as
+/// "reaps by blocking, so it cannot leak but has no timeout" — and a structural
+/// step is a whole-tree scan of another repo. Bounding the shell tier and
+/// leaving this one unbounded is one hang with two answers, so BOTH tiers route
+/// through the one implementation: same ceiling, same whole-subtree sweep on
+/// expiry (a group SIGKILL, where a direct kill would leave the grandchildren),
+/// same `TIMED OUT after Ns`, same exit 124.
+///
+/// Exit 127 (the child's own "could not start") is passed through rather than
+/// collapsed, and a missing `bounded_run.py` is named instead of silently
+/// running unbounded.
 pub(crate) fn run_child(
     program: &str,
     args: &[String],
     checks: &std::path::Path,
     repo: &std::path::Path,
 ) -> (i32, String) {
-    let script = checks.join(&args[0]);
-    let mut cmd = Command::new(program);
-    cmd.arg(&script);
+    let runner = crate::goh_root().join("lib").join("bounded_run.py");
+    if !runner.is_file() {
+        return (
+            SPAWN_FAILED,
+            format!(
+                "the step runner is missing: {}\n  every structural step is supposed to run under \
+                 a ceiling, and without it they would run unbounded\n",
+                runner.display()
+            ),
+        );
+    }
+    let mut cmd = Command::new("python3");
+    cmd.arg(&runner);
+    // `ceiling()` is `None` only for an explicit opt-out, and bounded_run's own default would
+    // then apply anyway -- so pass the DEFAULT rather than the opt-out, and let the step line be
+    // the only place the opt-out is visible. Two places deciding one bound is how they disagree.
+    cmd.arg("--timeout")
+        .arg(ceiling().unwrap_or_else(default_timeout).to_string());
+    cmd.arg("--label").arg(args[0].clone());
+    cmd.arg("--");
+    cmd.arg(program);
+    cmd.arg(checks.join(&args[0]));
     cmd.args(&args[1..]);
     cmd.current_dir(repo);
     match cmd.output() {

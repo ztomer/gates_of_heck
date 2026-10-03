@@ -58,13 +58,17 @@ cargo_dir="${2:-$repo}"
 cd "$repo"
 cargo_dir="$(cd "$cargo_dir" && pwd)"
 
-# A fixture's environment must not decide its verdict. structural.sh already
+# A fixture's environment must not decide its verdict -- and `goh_step`, which every step below
+# runs through, now reads GOH_STEP_TIMEOUT for its ceiling, so a key that merely sat in the
+# environment would silently re-arm (or remove) the bound on every step of every fixture.
+# structural.sh already
 # drops these before sourcing .gatesrc; rust_gate.sh is spawned by every test
 # that exercises it, with GOH_DIR at a real checkout, so the same class of
 # leak would let an inherited GOH_COV_FLOOR_RUST arm a coverage floor no
 # fixture declared. A key is configuration iff the repo's own file says so.
 unset GOH_COV_FLOOR_RUST GOH_RUST_LINT_CONFIGS GOH_DEPS_RATCHET \
-      GOH_CROSS_REPO_ROOT GOH_PYTHON_FORMATTED GOH_SKILLS_CORPUS 2>/dev/null || true
+      GOH_CROSS_REPO_ROOT GOH_PYTHON_FORMATTED GOH_SKILLS_CORPUS \
+      GOH_STEP_TIMEOUT GOH_STEP_GRACE GOH_LCI_TIMEOUT 2>/dev/null || true
 
 [ -f .gatesrc ] && . ./.gatesrc
 

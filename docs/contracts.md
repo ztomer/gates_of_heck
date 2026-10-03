@@ -274,3 +274,37 @@ Three scope decisions, each of which was wrong first:
 Pin: `tests/test_check_md_links.py` (the audit's own mis-derived anchor is red,
 the right one is green, a missing file is red, each example shape is quiet) and
 `checks/check_md_links.py --probe`.
+
+## 17. A wait is bounded, and a leak is reported by the run that made it
+
+media_server, 2026-10-03: `crates/archive-torznab-rs/tests/test_net_and_bin.rs` spawned the real
+binary with `--bind 127.0.0.1:0` — a server that loops forever by design — and reaped it with an
+explicit `child.kill(); child.wait();` below four lines that can panic. Nine orphans accumulated,
+each holding the cargo build lock, so every later `cargo test` blocked with no output at all, and
+the leak itself was invisible because the run that would have reported it was the run that had been
+killed. Four separate rules came out of it, and each answers a different question:
+
+* **A reap must survive a panic.** `checks/check_no_unreaped_spawn.py`, because "is there a kill in
+  this function" is the wrong question — the reap EXISTED in that file, and the ordinary outcome of
+  a failing test is to skip it. A guard is the only shape that gets there (`Drop`, `with`, a
+  `try`/`finally` that reaps, a shell `trap`), and it is judged by what it DOES.
+* **A wait is bounded.** `GOH_STEP_TIMEOUT` for `goh_step`, `GOH_LCI_TIMEOUT` for `local_ci.sh`,
+  both ON by default, both PRINTED on every run. Before this, `local_ci.sh`'s ceiling was unset in
+  every repo in the estate and `goh_step` had none at all, so the same hang was bounded in one path
+  and unbounded in the other.
+* **The bound sweeps the SUBTREE.** `lib/bounded_run.py` runs each step in its own process group
+  and `killpg`s it. The sweep this replaced was `pkill -P "$pid"` — direct children only — which,
+  measured against `bash -c 'sleep 400 & wait'`, left two grandchildren alive. Those are the
+  processes that make the NEXT run hang, so the mechanism meant to unstick a hung step was leaving
+  the thing that caused it.
+* **A leak is reported by the run that made it.** `lib/orphan_canary.py` diffs the process table
+  either side of every step. The ceiling cannot see this case: the step exits 0 and the orphan
+  outlives it, which is why the leak was silent for a day.
+
+Pin: `tests/test_check_no_unreaped_spawn.py` (the incident quoted from `media_server@052772a`, red
+on the real pre-fix file and green on the same file after its fix; narrowing the ordering rule alone
+turns `--probe` red), `tests/test_bounded_run.py` (the grandchild case, and a passing step passes
+through untouched), `tests/test_orphan_canary.py` (the incident's shape is red, a clean step is
+silent, another program's process is counted and never failed on), and
+`checks/check_estate_corpus.py`'s `no_unreaped_spawn` entry (the incident planted inside 611 real
+files from media_server).
