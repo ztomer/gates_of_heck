@@ -148,7 +148,9 @@ owns. **The reap is load-bearing:** with it stubbed to a no-op the suite still
 passes green and leaves 3 orphans behind — the process table, not the test, is
 what shows the cleanup happened. Two concurrent suites, twice, on this tree:
 **1316 passed, 0 failed, four runs out of four**; the same experiment before:
-8 failed, 5 failed, 3 failed, 0 failed.
+8 failed, 5 failed, 3 failed, 0 failed. *(Those four runs are the measurement
+`56ee59f` recorded on 2026-10-03; this release did not re-run the concurrency
+experiment, and the release gate ran the suite once, not twice at once.)*
 
 `docs/config.md` already stated the contract this code violated ("no `pkill` or
 `killall` by name … in tracked code and scripts"), with no carve-out for a path.
