@@ -289,9 +289,15 @@ the file from the message it was given.
 
 ## 3. Where we fall short, ranked
 
-**Re-measured 2026-10-03, after v0.16.0.** Items 2, 4 and 5 are closed; item 3
-is half; item 1 is narrowed. What remains is tracked in
-[`BACKLOG.md`](BACKLOG.md).
+**Re-measured 2026-10-04, after v0.17.0.** Items 2, 4 and 5 are closed; item 3
+is half; item 1 is narrowed. **No ranked item moved in v0.17.0**, and saying so
+is the finding rather than leaving it implied: that release added a gate
+(`check_no_unreaped_spawn.py`), two libraries (`lib/bounded_run.py`,
+`lib/orphan_canary.py`) and a ceiling on every step — none of which is a closure
+of anything listed here. What it did do is make R3's mechanism carry one more
+entry (`check_no_unreaped_spawn.py` over `media_server`'s whole `crates/` tree,
+36 measured shapes behind a `--probe`), which is R3 working as narrowed, not R3
+closing. What remains is tracked in [`BACKLOG.md`](BACKLOG.md).
 
 1. **R3 — NARROWED, not closed.** `checks/check_estate_corpus.py` plants a
    violation inside a real consumer corpus and requires the checker to go red
@@ -324,12 +330,17 @@ is half; item 1 is narrowed. What remains is tracked in
 ### The highest-severity item, unchanged
 
 **Dirty `checks/` is now guarded, at both ends.** Publishing `bin/goh` refuses a
-dirty tree, and every repo's pre-commit certifies by name. The severity
-decision is worth recording: a gate-time *refusal* was the wrong shape, because
-`structural.sh` and `push_gate.sh` are spawned by every test that exercises
-them — a refusal is 22 tests red on any session with uncommitted work here, and
-that is a gate whose verdict depends on the working tree, one level up from the
-bug it was fixing.
+dirty tree, and every repo's pre-commit certifies by name. Both claims verified
+against the code on 2026-10-04, with the two escape hatches stated rather than
+implied: `scripts/build-goh.sh:70` is the refusal, over
+`crates Cargo.toml Cargo.lock checks gates lib tui`, overridable only by
+`GOH_BUILD_DIRTY=1`; `gates/structural.sh:88` is the naming half, over
+`gates checks lib tui`, and it **warns** — `structural.sh` is layer 1, so every
+repo's pre-commit runs it. The severity decision is worth recording: a gate-time
+*refusal* was the wrong shape, because `structural.sh` and `push_gate.sh` are
+spawned by every test that exercises them — a refusal is 22 tests red on any
+session with uncommitted work here, and that is a gate whose verdict depends on
+the working tree, one level up from the bug it was fixing.
 
 ## 4. Decisions taken 2026-10-02, and why
 
