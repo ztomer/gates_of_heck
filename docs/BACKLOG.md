@@ -22,10 +22,55 @@ discovered:
 - **Three languages.** Rust, Python, shell. Swift, JS/TS and Go are not read. The estate sweep found
   no spawn sites in any `.swift`/`.ts`/`.go` test file, so the cost is currently zero — re-measure
   rather than trust that.
-- **Four real findings are reported, not fixed** — `routines/tests/follow_lifecycle.rs` (×3, a
-  `sleep 300` with asserts between the spawn and the kill), `monitor`'s `ssh_tests.rs`,
-  `games/ZeroThunder`'s `live_probe_lib.py`. Each repo's gate now refuses its own commits until they
-  are fixed; they are in other checkouts and were left for their owners.
+- **Sweep findings are reported, not fixed** — three repos were red and two are
+  still. They are in other checkouts, their gates now refuse their own commits,
+  and each repo's own roadmap/AGENTS carries its line. The index, with the state
+  **re-measured rather than remembered**, is the section below.
+
+### Estate findings from `checks/check_no_unreaped_spawn.py`
+
+The incident that motivated the checker: `media_server`'s `archive_torznab` test
+spawned a server that loops forever and reaped it *after* the assertion that can
+panic. **Nine live processes** accumulated, each holding the cargo build lock, and
+`cargo test` showed **no output at all** for 30 minutes while the suite itself
+finished in 0.22s. The hang was the leak's symptom; the leak was invisible
+because the test process was killed before it could report. It cost a day.
+`media_server` is fixed (`cc70f6a`, shipped).
+
+The checker landed and immediately found the same shape elsewhere. They are
+recorded HERE rather than only in each repo's own backlog, because the class is
+shared and the gate that found them is here: a repo whose gate is red refuses its
+own commits, and **a red gate nobody has heard of is how a leak becomes an
+outage**. Every row below was re-measured on 2026-10-04 by running the house
+checker in that repo, read-only — the counts are the gate's, not this file's.
+
+| repo | finding | state, measured 2026-10-04 |
+|---|---|---|
+| **routines** | `tests/follow_lifecycle.rs` — **3 sites** (lines 72, 95, 102): `Command::new("/bin/sleep").arg("300")` with `assert!` between the spawn and the `kill`/`wait` pair. **The same shape as the incident**, and the same cost: `sleep 300` is a five-minute orphan. | **UNFIXED — gate red (exit 1)** |
+| **monitor** | `crates/multitop/src/ssh/ssh_tests.rs:88` — `child.stdin.take().unwrap().write_all(payload).unwrap()` above `child.wait()`. Two `unwrap()`s that can panic with the child live; the leaked process is the upload script, which starts an `sshd`. | **UNFIXED — gate red (exit 1)**; also separately red on clippy 1.99 (see its `docs/roadmap.md`) |
+| **games/ZeroThunder** | `tests/e2e/live_probe_lib.py:31` — was `return proc if wait_for_app(...) else None`, **dropping the handle on the failure path**, so the failure branch was the leaking one | **FIXED** at `a6f6962`: `terminate` → `wait(timeout=5)` → `kill`, with the reason inline. Gate green. (This file previously also carried a "19 files dirty" warning from the R5 retirement; that tree is clean apart from `info.plist`, so the warning is withdrawn.) |
+| **ztools** | 6 hits, all under `vendor/camoufox-rs` | **NOT findings** — green via `GOH_EXCLUDE='vendor/'`. Recorded so the 6 are not re-litigated; the exemption itself is measured below. |
+
+So: **two unfixed leaks, in two repos, five sites.** The ztools row is the one
+that could have quietly blinded the gate, so it was measured rather than believed
+— planted in a throwaway copy of ztools' tracked tree, never in ztools itself:
+
+| arm | what it shows |
+|---|---|
+| real tree, `--exclude 'vendor/'` as `.gatesrc` declares it | green — and **106 of ztools' own test files are still in scope**, so the gate is not switched off over ztools |
+| the incident's ORDER planted in `rust/src/units_tests.rs`, exclusion still in force | **RED, exit 1**, naming the panicking line and the reap below it — a genuine spawn elsewhere in ztools is still caught |
+| the same violation at `rust/src/myvendor/a_tests.rs` — a path that merely *contains* `vendor/` | **silently exempt, exit 0** |
+
+**The residual, stated rather than left as a feeling:** `GOH_EXCLUDE` is compiled
+with `re.search`, not `re.match` — it is a **substring** test, so `'vendor/'`
+exempts any path with `vendor/` anywhere in it, not only a top-level vendored
+tree. Today that is harmless: `vendor/camoufox-rs` is the only thing it matches in
+ztools, and 106 first-party test files stay policed. The house checker's own usage
+line says `--exclude '^vendor/'` (anchored, `checks/check_no_unreaped_spawn.py:7`)
+and ztools declares the unanchored form. Re-anchor it when ztools' owner is next
+in that repo; changing the semantics of a key every consumer's checker shares
+belongs in its own release, not in this one. The anchoring is now written down in
+`docs/config.md`.
 
 ### Remaining from `docs/SUPERSOTA.md` §3
 
