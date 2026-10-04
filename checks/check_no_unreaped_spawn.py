@@ -39,7 +39,7 @@ right one.
 | shape                                                     | measured                       | this gate |
 |------------------------------------------------------------|--------------------------------|-----------|
 | `spawn()` then the `Child` is dropped                      | **LIVE orphan** (pid reparented to 1) | FINDING |
-| `spawn()` then `kill()` with no `wait()`                   | **ZOMBIE** (killed, never reaped)     | FINDING |
+| `spawn()` then `kill()` with no `wait()`                   | **ZOMBIE** (killed, never reaped)     | clean |
 | `spawn()` then `kill()` + `wait()`                          | reaped                               | clean |
 | `spawn()` then `wait()` / `wait_with_output()`              | reaped                               | clean |
 | `spawn()` then a `Drop` impl that kills and waits          | reaped                               | clean |
@@ -55,10 +55,13 @@ a `sleep 300`), which is a DIFFERENT defect with a different home: a bounded wai
 gate runner, not to a static scan. `checks/` refuses that as "not applicable here"; see
 `lib/bounded_run.py` and the ceiling in `gates/_common.sh`.
 
-`kill()` without `wait()` is a finding and `kill()` with it is clean, which is the opposite of what
-a reader expects, and the reason is that `kill` STOPS the child while `wait` only COLLECTS it: the
-first ends the leak, the second ends the zombie. A test that panics after `kill()` has no live
-process left to leak.
+`kill()` WITHOUT `wait()` is deliberately NOT a finding, and it is the row a reader is most likely
+to argue with. The measurement says a bare `kill()` leaves a ZOMBIE, and a zombie cannot hold a build
+lock, cannot outlive the run, and cannot make a suite hang -- it is collected when the parent exits.
+`kill` STOPS the child; `wait` only COLLECTS it. Only the first ends the leak, so only the first is
+this gate's business, and flagging the second would be flagging correct Rust -- which is how a gate
+earns being switched off. (The estate sweep is what forced this: four of the first seven hits across
+twelve repos were correct code, and a checker that flags the fix is not a checker.)
 
 # THE DROP GUARD, named because an unnamed pattern cannot be checked
 
