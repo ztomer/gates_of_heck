@@ -195,7 +195,7 @@ dependencies = [
 
 [[package]]
 name = "goh"
-version = "0.16.0"
+version = "0.17.0"
 dependencies = [
  "bytecount",
  "clap",
@@ -210,7 +210,7 @@ dependencies = [
 
 [[package]]
 name = "goh-golden"
-version = "0.16.0"
+version = "0.17.0"
 dependencies = [
  "num-traits",
  "png",
@@ -220,7 +220,7 @@ dependencies = [
 
 [[package]]
 name = "goh-testkit"
-version = "0.16.0"
+version = "0.17.0"
 dependencies = [
  "tempfile",
 ]
