@@ -197,5 +197,26 @@ desktop_lock_acquire() {
 desktop_lock_release() {
     [[ $DESKTOP_LOCK_HELD -eq 1 ]] || return 0
     DESKTOP_LOCK_HELD=0
+    # The flag alone is NOT enough, and the gap was live in every repo that
+    # sources this file (koffee_big/tools/smoke.sh, ZoneWM/scripts/
+    # with_desktop_lock.sh, routines/tools/capture_ui.sh). The sequence is
+    # ordinary: we acquire, we are judged expired or wedged, a PEER reclaims the
+    # desktop, and then our EXIT trap fires and deletes the lock the peer now
+    # holds. Both halves believed they owned the desktop, and the desktop was
+    # unlocked under a running capture. Proven, not hypothesised:
+    #
+    #   bash:   DELETED  -- release() removed a lock it no longer owned
+    #   python: SURVIVED -- release() respected the peer
+    #
+    # So the owner is checked, which is what the python half already did. An
+    # UNREADABLE owner record is also left alone rather than removed: we cannot
+    # show the lock is ours, and removing on doubt is the corrupting case.
+    #
+    # The flag and the owner check are NOT redundant. The flag stops a process
+    # that never acquired from touching a stranger's lock; the owner check stops
+    # a process that DID acquire, lost it, and is now tidying up on the way out.
+    local pid
+    pid="$(_desktop_lock_field 1)"
+    [[ -n "$pid" && "$pid" == "$$" ]] || return 0
     rm -rf "$DESKTOP_LOCK_DIR"
 }

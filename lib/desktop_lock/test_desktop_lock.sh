@@ -105,6 +105,34 @@ check "a non-holder's release does not free the lock" \
 kill -9 "$PID" 2>/dev/null; wait "$PID" 2>/dev/null
 rm -rf "$DESKTOP_LOCK_DIR"
 
+# 5b. RELEASE AFTER LOSING THE LOCK. Section 5 covers a process that NEVER held
+#     the lock. This covers one that DID, was reclaimed while it was still
+#     running, and then exits through its trap — the ordinary sequence, and the
+#     one that was live in every repo sourcing this file: bash deleted the
+#     PEER's lock while the python half left it alone.
+PID="$(holder 10)"; sleep 1; assert_held_by "$PID"
+bash -c "
+    source '${GOH_DIR:-$GOH_ROOT}/tui/lib.sh'; source '$PWD/desktop_lock.sh'
+    DESKTOP_LOCK_HELD=1
+    desktop_lock_release
+" >/dev/null 2>&1
+check "a release by a process that LOST the lock does not free the peer's" \
+    "$([[ -d "$DESKTOP_LOCK_DIR" ]] && echo held || echo freed)" "held"
+kill -9 "$PID" 2>/dev/null; wait "$PID" 2>/dev/null
+rm -rf "$DESKTOP_LOCK_DIR"
+
+# 5c. RELEASE ON AN UNREADABLE OWNER RECORD. Removing on doubt is the corrupting
+#     case: we cannot show the lock is ours, so we leave it.
+mkdir -p "$DESKTOP_LOCK_DIR"
+bash -c "
+    source '${GOH_DIR:-$GOH_ROOT}/tui/lib.sh'; source '$PWD/desktop_lock.sh'
+    DESKTOP_LOCK_HELD=1
+    desktop_lock_release
+" >/dev/null 2>&1
+check "a release does not delete a lock whose owner cannot be read" \
+    "$([[ -d "$DESKTOP_LOCK_DIR" ]] && echo held || echo freed)" "held"
+rm -rf "$DESKTOP_LOCK_DIR"
+
 # 6. THE TRAP. Normal exit must leave nothing behind.
 bash -c "
     source '${GOH_DIR:-$GOH_ROOT}/tui/lib.sh'; source '$PWD/desktop_lock.sh'
