@@ -17,6 +17,7 @@ here rather than notes.
 from pathlib import Path
 import json
 import os
+import signal
 import subprocess
 import sys
 import time
@@ -49,14 +50,68 @@ def repo(tmp_path: Path) -> Path:
     return root
 
 
-def wrap(repo: Path, *args: str) -> subprocess.CompletedProcess:
+def wrap(repo: Path, *args: str, snapshot: Path | None = None) -> subprocess.CompletedProcess:
+    argv = [sys.executable, CANARY, "wrap", "--repo", str(repo), "--timeout", "30"]
+    if snapshot is not None:
+        argv += ["--snapshot", str(snapshot)]
     return subprocess.run(
-        [sys.executable, CANARY, "wrap", "--repo", str(repo), "--timeout", "30", "--", *args],
+        [*argv, "--", *args],
         capture_output=True,
         text=True,
         check=False,
         cwd=repo,
     )
+
+
+def kill(pid: int) -> None:
+    try:
+        os.kill(pid, signal.SIGKILL)
+    except (OSError, ProcessLookupError):
+        pass
+
+
+def reap(snapshot: Path) -> None:
+    """Kill the pids the canary NAMED, and nothing else.
+
+    Every one of these cleanups used to be `pkill -f "sleep 1200"`, which is a machine-global
+    match: `pkill -f` matches a full command line, and the canary's own argv SPELLS the command it
+    is wrapping — so the cleanup also matched the canary that had just reported the leak, and any
+    second suite on this box running the same test. Measured 2026-10-03 under a two-suite run: three
+    tests red at returncode -15, SIGTERMed by a sibling, for a reason that had nothing to do with
+    what they measured.
+
+    The canary already publishes the exact pids as a machine-readable channel (`--snapshot`), so
+    the reap reads that instead of guessing from a name. `checks/check_no_kill_by_name.py` is the
+    gate for this class, and it could not see these four lines -- its word boundary excluded a
+    preceding `/`, so `/usr/bin/pkill` was invisible to it.
+    """
+    if not snapshot.exists():
+        return
+    for pid in json.loads(snapshot.read_text())["survivors"]:
+        kill(pid)
+
+
+def reap_tree(root: int) -> None:
+    """Kill `root` and everything below it, by pid — for a canary killed before it could report.
+
+    Walking down from a pid we own is owner-scoped and passes the gate; `pkill -P` is direct
+    children only, which this tree is not (canary -> sh -> sleep), and `pkill -f` is the machine.
+    """
+    children: dict[int, list[int]] = {}
+    table = subprocess.run(
+        ["ps", "-Ao", "pid=,ppid="], capture_output=True, text=True, check=False
+    ).stdout
+    for line in table.splitlines():
+        parts = line.split()
+        if len(parts) == 2 and parts[1].isdigit():
+            children.setdefault(int(parts[1]), []).append(int(parts[0]))
+    found, stack = [], [root]
+    while stack:
+        for kid in children.get(stack.pop(), []):
+            found.append(kid)
+            stack.append(kid)
+    for pid in [root, *found]:
+        kill(pid)
 
 
 # ── the incident's shape: a step that PASSES and leaks a server ──────────────
@@ -65,14 +120,22 @@ def wrap(repo: Path, *args: str) -> subprocess.CompletedProcess:
 def test_a_step_that_leaks_a_server_is_red(repo: Path) -> None:
     """THE case. The step exits 0 — the suite is green — and the server is still running. This is
     what `lib/bounded_run.py` cannot see, because nothing hung."""
-    proc = wrap(repo, "/bin/sh", "-c", "/bin/sleep 1200 >/dev/null 2>&1 & disown; exit 0")
+    snap = repo / "leak.json"
+    proc = wrap(
+        repo,
+        "/bin/sh",
+        "-c",
+        "/bin/sleep 1200 >/dev/null 2>&1 & disown; exit 0",
+        snapshot=snap,
+    )
     try:
         out = proc.stdout + proc.stderr
         assert proc.returncode == O.LEAK_EXIT, out
         assert "outlived the run that started them" in out, out
         assert "sleep 1200" in out, out
+        assert json.loads(snap.read_text())["survivors"], "the leak was reported but not recorded"
     finally:
-        subprocess.run(["/usr/bin/pkill", "-f", "sleep 1200"], check=False)
+        reap(snap)
 
 
 def test_a_leaked_binary_under_the_repos_target_dir_is_red(repo: Path) -> None:
@@ -91,7 +154,8 @@ def test_a_leaked_binary_under_the_repos_target_dir_is_red(repo: Path) -> None:
         "exit 0\n"
     )
     fake.chmod(0o755)
-    proc = wrap(repo, "/bin/sh", "-c", str(fake))
+    snap = repo / "leak.json"
+    proc = wrap(repo, "/bin/sh", "-c", str(fake), snapshot=snap)
     try:
         out = proc.stdout + proc.stderr
         assert proc.returncode == O.LEAK_EXIT, out
@@ -101,7 +165,7 @@ def test_a_leaked_binary_under_the_repos_target_dir_is_red(repo: Path) -> None:
             "the ppid arm wearing the path arm's name"
         )
     finally:
-        subprocess.run(["/usr/bin/pkill", "-f", "sleep 1201"], check=False)
+        reap(snap)
 
 
 # ── it must not cry wolf, or it gets switched off ────────────────────────────
@@ -152,9 +216,11 @@ def test_the_canary_never_reports_a_concurrent_gate_run(repo: Path) -> None:
         assert concurrent.code == 0, concurrent.ours
         assert not concurrent.ours, concurrent.ours
     finally:
-        other.kill()
+        reap_tree(other.pid)
+        # reap_tree kills the pid; `wait` is what collects it. The kill has to reach the whole
+        # subtree because the step is a grandchild (`canary -> sh -> sleep`), which is why the
+        # literal `kill()` this used to call is no longer the thing doing the reaping.
         other.wait(timeout=30)
-        subprocess.run(["/usr/bin/pkill", "-f", "sleep 913"], check=False)
 
     # ...and an ordinary clean run stays clean and silent.
     proc = wrap(repo, "/bin/sh", "-c", "exit 0")
@@ -208,12 +274,18 @@ def test_the_steps_own_exit_code_is_preserved(repo: Path, code: int) -> None:
 def test_a_green_steps_leak_gets_its_own_exit_code(repo: Path) -> None:
     """125, distinct from a step that simply failed: the two have opposite fixes — write a guard
     versus fix the test — and one exit status for both sends someone to the wrong one."""
-    proc = wrap(repo, "/bin/sh", "-c", "/bin/sleep 1203 >/dev/null 2>&1 & disown; exit 0")
+    proc = wrap(
+        repo,
+        "/bin/sh",
+        "-c",
+        "/bin/sleep 1203 >/dev/null 2>&1 & disown; exit 0",
+        snapshot=repo / "leak.json",
+    )
     try:
         assert proc.returncode == O.LEAK_EXIT, proc.stdout + proc.stderr
         assert O.LEAK_EXIT != 124, "a leak must not share a code with a timeout"
     finally:
-        subprocess.run(["/usr/bin/pkill", "-f", "sleep 1203"], check=False)
+        reap(repo / "leak.json")
 
 
 # ── refusals ─────────────────────────────────────────────────────────────────

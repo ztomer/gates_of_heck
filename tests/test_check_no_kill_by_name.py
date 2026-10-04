@@ -45,6 +45,18 @@ def test_every_claimed_shape_is_red_and_named(repo):
         "Makefile": f"clean:\n\t{PK} -x MyApp || true",
         "tool": f"#!/bin/sh\n{PK} -x MyApp",
         "ci.yml": f"      - run: {PK} -f server || true",
+        # PATH-QUALIFIED, which is the spelling this gate did not claim and could not see: its word
+        # boundary excluded a preceding `/`, so `bin/pkill`, `./pkill` and — above all, because it
+        # is how a careful author spells it in an argv list — `/usr/bin/pkill` all went unreported
+        # while the gate printed "no kill by name". Measured 2026-10-03: four of them in this
+        # repo's own `tests/test_orphan_canary.py`, and one in ZoneWM's `DesktopShortcutMonitor.swift`
+        # setting `executableURL` to `/usr/bin/killall` to restart the Dock. A self-proof that lists
+        # every spelling except the one in use is a self-proof that passes over the hole.
+        "p1.py": f'import subprocess\nsubprocess.run(["/usr/bin/{PK}", "-f", "worker"])\n',
+        "p2.py": f'import subprocess\nsubprocess.run(["./{PK}", "-f", "worker"])\n',
+        "p3.sh": f"/usr/bin/{PK} -f worker\n",
+        "p4.rs": f'let _ = std::process::Command::new("/usr/bin/{PK}").status();',
+        "p5.swift": f'process.executableURL = URL(fileURLWithPath: "/usr/bin/{KA}")',
     }
     for name, text in shapes.items():
         write(repo, name, text + "\n")

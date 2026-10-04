@@ -97,7 +97,18 @@ SLASH_COMMENT = {
 NAMED = {"Makefile", "makefile", "GNUmakefile", "justfile", "Justfile"}
 
 # A word, not a substring: `pkill` inside `skill_pkill_x` or `pkill.py` is not the command.
-_WORD = r"(?<![\w./-]){}(?![\w-])"
+#
+# The leading class is `[\w-]` and NOT `[\w./-]`, and the `/` it used to carry was the gate's worst
+# hole. A path-qualified command IS the command -- `bin/pkill`, `./pkill`, and above all
+# `/usr/bin/pkill`, which is how a careful author spells it in Python argv and which is what this
+# repository's own test suite wrote four times. Every one of those was invisible: the gate printed
+# "OK -- 306 tracked code files, no kill by name" over a tree holding them. Measured 2026-10-03 by
+# running both boundaries over the estate: the old one found 0 in those four lines, the new one
+# finds 4, and across eleven repos the delta is exactly one further hit -- ZoneWM's
+# `DesktopShortcutMonitor.swift` running `/usr/bin/killall Dock`, a real violation this gate was
+# built to catch and could not see. The gate's own `test_every_claimed_shape_is_red_and_named`
+# never listed the path-qualified spelling, which is how a self-proof passes over the hole.
+_WORD = r"(?<![\w-]){}(?![\w-])"
 KILL_BY_NAME = re.compile(_WORD.format("(?:pkill|killall)"))
 LOOKUP = re.compile(_WORD.format("(?:pgrep|pidof)"))
 KILL = re.compile(_WORD.format("kill"))
