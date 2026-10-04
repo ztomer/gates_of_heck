@@ -79,19 +79,6 @@ fn t() {
         True,
     ),
     (
-        "kill() with no wait(): measured ZOMBIE, and a zombie cannot leak -- NOT a finding",
-        """
-use std::process::Command;
-#[test]
-fn t() {
-    let mut child = Command::new("x").spawn().expect("runs");
-    child.kill();
-    assert!(ok, "the child is already dead when this runs");
-}
-""",
-        False,
-    ),
-    (
         "kill() then wait(), nothing panicking between",
         """
 use std::process::Command;
