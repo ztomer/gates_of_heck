@@ -123,7 +123,6 @@ def test_the_canary_never_reports_a_concurrent_gate_run(repo: Path) -> None:
     while its command line can still be read: judging an exited process tests the
     "(exited before it could be described)" branch instead.
     """
-    before = O.snapshot()
     other = subprocess.Popen(
         [
             sys.executable,
@@ -142,16 +141,16 @@ def test_the_canary_never_reports_a_concurrent_gate_run(repo: Path) -> None:
         stderr=subprocess.DEVNULL,
     )
     try:
+        # Judge THIS canary's own pid, and only that. Judging "every pid that appeared" reads the
+        # whole machine, so under the parallel suite it picked up the other workers' deliberately
+        # leaked orphans and failed for a reason unrelated to what it measures.
         deadline = time.monotonic() + 10
-        while time.monotonic() < deadline:
-            new = [int(p) for p in set(O.snapshot()) - set(before) if p.isdigit()]
-            if new:
-                break
+        while time.monotonic() < deadline and not alive(other.pid):
             time.sleep(0.05)
-        assert new, "the concurrent canary never appeared"
-        concurrent = O.judge(new, O.roots_for(str(repo)))
-        assert not [ln for ln in concurrent.ours if "exited before" not in ln], concurrent.ours
+        assert alive(other.pid), "the concurrent canary never started"
+        concurrent = O.judge([other.pid], O.roots_for(str(repo)))
         assert concurrent.code == 0, concurrent.ours
+        assert not concurrent.ours, concurrent.ours
     finally:
         other.kill()
         other.wait(timeout=30)
