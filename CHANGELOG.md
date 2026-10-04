@@ -1,5 +1,186 @@
 # CHANGELOG
 
+## v0.17.0 — an unreaped child can never again be invisible, and every wait is bounded _(2026-10-04)_
+
+`media_server`'s `archive_torznab` test spawned the real binary with `--bind
+127.0.0.1:0` — a server that loops forever by design — and reaped it with an
+explicit `child.kill(); child.wait();` **sitting below four lines that can
+panic**. **Nine live processes** accumulated, each holding the cargo build lock,
+so every later `cargo test` blocked producing **no output at all** for 30
+minutes on a suite that finishes in **0.22 s**. The hang was the leak's
+*symptom*; the leak was invisible because the run that would have reported it was
+the run that had been killed. It cost a day.
+
+Four things, because the class has four faces.
+
+**1. `checks/check_no_unreaped_spawn.py`** (+ `_spawn_mask`, `_spawn_shapes`,
+`_unreaped_spawn_probe`, `_unreaped_spawn_table*`) — a test that spawns a child
+nothing reaps **on the panic path**. Rust, Python, shell. The ordering rule is
+the point: the reap *existed* in that file, so "is there a kill in the function"
+answers yes and the file is clean. A guard is the only shape that survives a
+panic — a `Drop` impl that kills or waits, `with subprocess.Popen(...)`, a
+`try`/`finally` that reaps, a shell `trap` — and a guard is judged by **what it
+does**, never by its name, because the second defect in that same file had
+already been "fixed" by a rename.
+
+The measured table (SUPERSOTA **R2**) is **36 shapes run as `--probe`**, every
+disposition measured against rustc 1.99.0 by a PID-liveness probe. Two rows are
+measured *decisions*: `.output()`/`.status()` reap by **blocking** and are not
+findings, because flagging them flags the fix — and the unbounded wait they do
+instead is item 3 below, not this gate's business.
+
+The instrument was wrong twice before the table was right, and both corrections
+are the point: a name-matching probe reported `survivors=0` for every arm because
+a copied `/bin/sleep` is killed by the kernel at exec (`rc=137`), so it was
+measuring a process that never existed; and a first fixture for the incident
+dropped the `.expect()` calls the gate exists to find, so the checker reported the
+incident **clean**.
+
+Calibrated against all 32 wired repos before landing: **44 raw hits → 5 real
+leaks in 3 repos**, after seven checker defects the sweep itself exposed — each
+fixed at the rule, none exempted. File-granular instead of region-granular
+`#[cfg(test)]` scope; `try`/`finally` not modelled as Python's `Drop`; a `Popen`
+stored or returned not modelled as a handoff; a `Drop` that only *waits* not
+recognised as a guard; a `Child` handed to `wait_timeout()` not recognised as
+reaped; a deadline watchdog not counted; and `Self { child }` not recognised as a
+guard construction. The leaks: **3** in `routines/tests/follow_lifecycle.rs` (a
+`sleep 300` with asserts between the spawn and the kill — the incident's shape,
+in the wild), **1** in `monitor/crates/multitop/src/ssh/ssh_tests.rs`, **1** in
+`games/ZeroThunder/tests/e2e/live_probe_lib.py`, and **1 in this repo's own
+`tests/test_release_hardening.py`**, whose `finally` restored a script and left
+the process running. Re-measured 2026-10-04: ZeroThunder is fixed (`a6f6962`),
+so **2 leaks in 2 repos remain**, and their gates refuse their own commits. See
+`docs/BACKLOG.md`.
+
+The checker is **wired**, not filed: `gates/structural.sh:460` (layer 1, every
+repo) and the native tier's `steps_delegated::step_unreaped_spawn`. It carries a
+`--probe` that goes red when the ordering rule is switched off at its own named
+seam — measured: *"2 of 36 measured shapes disagree with the table"* — and a
+`check_estate_corpus.py` entry that plants the incident's ORDER inside 621 real
+files of `media_server`'s `crates/` and requires the gate to go red and name the
+panicking line and the reap below it.
+
+**2. The drop guard is named.** `ReapOnDrop`, its contract spelled out in the
+checker's docstring, and its absence a finding wherever a raw `Child` is spawned
+in a test.
+
+**3. Every wait is bounded.** `lib/bounded_run.py` runs a command in its **own
+process group** and sweeps the **whole subtree** on expiry — TERM, grace, KILL —
+then prints `TIMED OUT after Ns` with the survivors named and returns **124**.
+Measured against `bash -c 'sleep 400 & wait'`: `local_ci.sh`'s old `pkill -P
+"$pid"` sweep left **2 grandchildren ALIVE**, i.e. the mechanism meant to unstick
+a hung step left running exactly the orphans that make the *next* step hang.
+
+Ceilings are now **ON**: `GOH_STEP_TIMEOUT` **1800** (`goh_step` had **no**
+timeout while `local_ci.sh` had one — one hang, two answers) and `GOH_LCI_TIMEOUT`
+**900** (unset in every repo in the estate, which meant *no limit*). Both are
+printed on every step line; `0` opts out and says `UNBOUNDED` rather than looking
+identical to a bounded step; a non-numeric value is exit 2, because a typo'd
+ceiling must not silently leave the step unbounded. The **native** tier had no
+bound either and now routes every delegated step through the same
+`lib/bounded_run.py`, so all three paths share one implementation of the ceiling
+instead of three that could disagree — and `test_goh_structural_parity.py`
+compares the tiers' step inventories **as sets**, which is how the gap was found.
+
+**4. `lib/orphan_canary.py`** brackets every step, because the ceiling cannot see
+this case: the step exits 0 and the server outlives it. A leak now exits **125**,
+distinct from 124 and from the step's own code — "the suite passed and left a
+server running" and "a test failed" have opposite fixes, and one exit status for
+both sends someone to the wrong one.
+
+**It attributes by PROCESS GROUP, because everything cheaper was a rumour.** The
+first version diffed the whole process table either side of a step and called "a
+new process whose ppid is 1" an orphan. True alone, machine-global in practice:
+under this repo's own parallel suite every run reported the *other* workers'
+deliberately-leaked processes, and three end-to-end tests went red for a reason
+that had nothing to do with what they measured. The replacement — a descendant
+walk at step exit — was **blind for exactly the case the tool exists for**: a
+leaked child is reparented the instant its parent exits, so `ps` shows `ppid 1`
+and the walk finds nothing. Measured: the canary reported a clean run while
+`sleep 422` ran on. The process *group* survives reparenting (`64886 1 64885
+/bin/sleep 422` — ppid gone, pgid intact), so ownership became a fact rather than
+a guess, and there is no second "probably ours" category: a verdict built on two
+kinds of evidence is a verdict whose wrong answers nobody can tell apart. The
+limit is named rather than papered over — a child that calls `setsid()` leaves
+the group. Consequently **one** invocation per step (`take`/`since` are gone),
+and everything not attributable is counted in one line and never failed on,
+because a canary that cries wolf is one nobody leaves switched on.
+
+**Four more defects the wiring found, each of which would have shipped:**
+`if ! cmd; then rc=$?; fi` in `goh_step` read the status of the `!`, so a step
+that died came back **successful** and the gate ran on; `output=None` had been
+collapsed into "discard", so `goh_step` — whose contract is capturing a failing
+step's output — captured **nothing** and reported "failed" against an empty log;
+a `case` arm read bare `$GOH_LCI_TIMEOUT` while its subject read
+`${GOH_LCI_TIMEOUT:-900}`, so the new default was an unbound-variable crash under
+`set -u` in every repo that never set it; and the canary's own `int`/`str` pid
+mismatch made its self-exclusion subtract nothing, so every green step failed,
+attributed to the canary watching it.
+
+### The kill-by-name gate was blind to `/usr/bin/pkill`, and four of them were ours
+
+`check_no_kill_by_name.py`'s word boundary was `(?<![\w./-])`. The `/` in that
+class meant **a path-qualified command is not the command**: `/usr/bin/pkill`,
+`bin/pkill`, `./pkill` all went unreported — in shell, in a Python argv list and
+in a Swift `executableURL`. The gate printed *"OK — 306 tracked code files, no
+kill by name"* over a tree holding four of them, **in its own tests**.
+
+Measured on both boundaries over 11 estate repos: here the old boundary finds 0
+of the 4 and the new one finds all 4; across the estate the delta is exactly one
+further hit — ZoneWM `Sources/zt-agent/DesktopShortcutMonitor.swift:121`,
+`process.executableURL = URL(fileURLWithPath: "/usr/bin/killall")` with
+`arguments = ["Dock"]`. A true positive, and one this gate was built to catch.
+
+The self-proof is why it survived: `test_every_claimed_shape_is_red_and_named`
+listed ten spellings and every one was the bare word. Five path-qualified shapes
+are now claimed, and the gate goes red without the fix — measured **10 hits where
+it must be 15**. Grepped the siblings for the same blindness: `_spawn_shapes.py`
+and `check_no_allow.py` need their `.` to avoid `foo.Popen`, and
+`check_no_home_paths.py` matches the path itself. Only this one carried a `/`.
+
+Those four cleanups were killing by name, which is what made a second suite on
+this box go red: `pkill -f "sleep 1200"` matches a full command line, and the
+canary's own argv spells the command it wraps, so the cleanup SIGTERMed the
+canary that had just reported the leak. Two concurrent suites at HEAD gave 8 and
+5 failures in two different sets, three at `returncode -15`. Each test now reaps
+the pids the canary published through `--snapshot`, or walks down from a pid it
+owns. **The reap is load-bearing:** with it stubbed to a no-op the suite still
+passes green and leaves 3 orphans behind — the process table, not the test, is
+what shows the cleanup happened. Two concurrent suites, twice, on this tree:
+**1316 passed, 0 failed, four runs out of four**; the same experiment before:
+8 failed, 5 failed, 3 failed, 0 failed.
+
+`docs/config.md` already stated the contract this code violated ("no `pkill` or
+`killall` by name … in tracked code and scripts"), with no carve-out for a path.
+The doc was right, so no doc changed.
+
+### Two corrections to the measured table, because a spec table that disagrees with its own probe is worse than no table
+
+A row said kill-without-wait was a finding; the measurement says a bare `kill()`
+leaves a **ZOMBIE**, and a zombie cannot hold a build lock, cannot outlive the
+run and cannot make a suite hang. The row now says clean, and says why in the
+place a reader arguing with it will actually look. And the table was **37 rows
+and 36 shapes** — two byte-identical `kill() with no wait()` cases left over from
+an earlier edit, so the probe printed 37, asserted 37, and measured 36 distinct
+shapes. A duplicated case is not harmless in a table whose whole job is to be the
+specification: it inflates the count a reader trusts, and it is the one kind of
+duplication that would make a narrowed rule look better covered than it is.
+
+### Docs
+
+`docs/BACKLOG.md`'s estate index is **re-measured rather than remembered** (every
+row by running the house checker in that repo, read-only), and two of its rows
+were stale: ZeroThunder's leak is fixed at `a6f6962` and its "19 files dirty"
+warning is withdrawn; `monitor`'s path is the full
+`crates/multitop/src/ssh/ssh_tests.rs:88`. The `ztools` exemption is **measured,
+not believed** — planted in a throwaway copy of ztools' tracked tree, never in
+ztools itself: the real tree is green *and still examines 106 of ztools' own test
+files*, and a violation planted in one of them is still **red** — while the same
+violation at a path that merely *contains* `vendor/` is **silently exempt**,
+because `GOH_EXCLUDE` is `re.search`, a substring test. Harmless today; the
+anchoring is now written down in `docs/config.md`. `docs/SUPERSOTA.md` §3 is
+re-dated and records that **no ranked item moved** in this release.
+
 ## v0.16.0 — a repo's own config stops deciding its gate's verdict _(2026-10-03)_
 
 SUPERSOTA **R3** — house checkers measured against real corpora, and R3's own
