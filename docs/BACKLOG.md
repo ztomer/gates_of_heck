@@ -5,6 +5,28 @@ One file; prune landed items to git history. Seeded from EVAL-2026-09-04.md
 
 ## Open
 
+### From `check_no_unreaped_spawn.py` + `lib/orphan_canary.py` (2026-10-03)
+
+Both landed green across 32 wired repos. These are the residuals, stated rather than left to be
+discovered:
+
+- **A child that calls `setsid()` is invisible to the canary.** It leaves the step's process group,
+  and group membership is the only evidence the canary accepts (the `ppid == 1` alternative was
+  measured cross-reporting every concurrent gate on the box). A daemonising test helper is a
+  different design and would need its own signal — most likely the helper writing its own pidfile.
+- **The checker is per-function, not interprocedural.** A spawn RETURNED to the caller is a handoff:
+  counted, never a finding. Four across the estate. Following it means judging a callee's contract,
+  which is the caller's judgement.
+- **A kill inside a conditional is accepted.** `if cond { child.kill(); }` satisfies the rule
+  statically and does nothing when `cond` is false. Measured cost: unknown; it needs a corpus.
+- **Three languages.** Rust, Python, shell. Swift, JS/TS and Go are not read. The estate sweep found
+  no spawn sites in any `.swift`/`.ts`/`.go` test file, so the cost is currently zero — re-measure
+  rather than trust that.
+- **Four real findings are reported, not fixed** — `routines/tests/follow_lifecycle.rs` (×3, a
+  `sleep 300` with asserts between the spawn and the kill), `monitor`'s `ssh_tests.rs`,
+  `games/ZeroThunder`'s `live_probe_lib.py`. Each repo's gate now refuses its own commits until they
+  are fixed; they are in other checkouts and were left for their owners.
+
 ### Remaining from `docs/SUPERSOTA.md` §3
 
 R4, R7 and R8 closed in v0.16.0. R3 **narrowed, not closed** — it cannot judge
