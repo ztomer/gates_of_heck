@@ -130,26 +130,44 @@ def test_a_failing_step_reports_its_own_code_not_124() -> None:
     assert run(["/bin/sh", "-c", "exit 7"]) == 7
 
 
-def test_stdout_and_stderr_pass_through_untouched() -> None:
-    """The gate captures this stream and greps it for failures; swallowing it would make a red step
-    nameless, which `docs/contracts.md` 1 exists to prevent."""
-    proc = subprocess.run(
-        [
-            sys.executable,
-            str(Path(bounded_run.__file__)),
-            "--timeout",
-            "30",
-            "--",
-            "/bin/sh",
-            "-c",
-            "echo to-out; echo to-err >&2",
-        ],
-        capture_output=True,
-        text=True,
-        check=False,
+def test_the_group_outlives_reparenting_so_a_leak_is_still_visible() -> None:
+    """The measurement that makes the canary exact. A leaked child is REPARENTED the instant its
+    parent exits — `ps` shows `ppid 1` — so a descendant walk taken at exit finds nothing and a
+    canary built on it reports a clean run while the server runs on. The process GROUP survives.
+
+    Run through `run_step`, which is what a gate uses, so the assertion is on the value a caller
+    actually receives rather than on a helper's internals.
+    """
+    outcome = bounded_run.run_step(
+        ["/bin/sh", "-c", "/bin/sleep 903 & exit 0"],
+        30,
+        1,
+        "leaky step",
+        output=bounded_run.DEVNULL_SENTINEL,
     )
-    assert "to-out" in proc.stdout, proc.stdout
-    assert "to-err" in proc.stderr, proc.stderr
+    try:
+        assert outcome.code == 0, outcome
+        assert outcome.survivors, (
+            "the leak was invisible: a reparented child has to still be findable by its group"
+        )
+        for pid in outcome.survivors:
+            assert alive(pid)
+    finally:
+        for pid in outcome.survivors:
+            try:
+                os.kill(pid, signal.SIGKILL)
+            except (OSError, ProcessLookupError):
+                pass
+
+
+def test_a_step_that_leaves_nothing_reports_no_survivors() -> None:
+    """The other direction, and the one that keeps the canary from crying wolf."""
+    outcome = bounded_run.run_step(
+        ["/bin/sh", "-c", "exit 0"], 30, 1, "clean step", output=bounded_run.DEVNULL_SENTINEL
+    )
+    assert outcome.code == 0
+    assert not outcome.survivors, outcome.survivors
+    assert not outcome.timed_out
 
 
 def test_a_command_that_does_not_exist_is_127_not_a_silent_pass() -> None:
@@ -193,9 +211,14 @@ def test_a_bad_ceiling_is_refused_not_ignored(value: str) -> None:
 
 def test_local_ci_runs_its_steps_through_this_helper() -> None:
     """`local_ci.sh` had its own `pkill -P` sweep inlined. The fix is only real if the runner goes
-    through the helper, so the call site is pinned rather than assumed."""
+    through the helper, so the call site is pinned rather than assumed. It goes through
+    `lib/orphan_canary.py wrap`, which delegates here -- ONE call per step, because the ceiling, the
+    output capture and the leak report are one thing and two call sites is how they drift apart."""
     source = (Path(__file__).resolve().parent.parent / "gates" / "local_ci.sh").read_text()
-    assert "lib/bounded_run.py" in source, "local_ci.sh no longer runs steps through the ceiling"
+    assert "lib/orphan_canary.py" in source, "local_ci.sh no longer runs steps through the ceiling"
+    assert 'lib/bounded_run.py" "${args[@]}"' not in source, (
+        "local_ci.sh grew a second runner call — the ceiling and the leak report must be one"
+    )
     # ...and the old sweep is gone from the CODE. It survives in a comment that records the
     # measurement, which is the right place for it; what must not come back is the command.
     assert not re.search(r"^[^#]*pkill -(?:TERM |KILL )?-P", source, re.M), (

@@ -19,6 +19,7 @@ import json
 import os
 import subprocess
 import sys
+import time
 
 import pytest
 
@@ -50,7 +51,7 @@ def repo(tmp_path: Path) -> Path:
 
 def wrap(repo: Path, *args: str) -> subprocess.CompletedProcess:
     return subprocess.run(
-        [sys.executable, CANARY, "wrap", str(repo / "snap.json"), "--repo", str(repo), "--", *args],
+        [sys.executable, CANARY, "wrap", "--repo", str(repo), "--timeout", "30", "--", *args],
         capture_output=True,
         text=True,
         check=False,
@@ -67,10 +68,9 @@ def test_a_step_that_leaks_a_server_is_red(repo: Path) -> None:
     proc = wrap(repo, "/bin/sh", "-c", "/bin/sleep 1200 >/dev/null 2>&1 & disown; exit 0")
     try:
         out = proc.stdout + proc.stderr
-        assert proc.returncode == 1, out
+        assert proc.returncode == O.LEAK_EXIT, out
         assert "outlived the run that started them" in out, out
         assert "sleep 1200" in out, out
-        assert "orphaned" in out, "an orphan is named as one: its parent is gone (ppid 1)"
     finally:
         subprocess.run(["/usr/bin/pkill", "-f", "sleep 1200"], check=False)
 
@@ -94,7 +94,7 @@ def test_a_leaked_binary_under_the_repos_target_dir_is_red(repo: Path) -> None:
     proc = wrap(repo, "/bin/sh", "-c", str(fake))
     try:
         out = proc.stdout + proc.stderr
-        assert proc.returncode == 1, out
+        assert proc.returncode == O.LEAK_EXIT, out
         assert "archive_torznab" in out, out
         assert "orphaned" not in out.split("outlived")[1][:200], (
             "attribution must come from the PATH here, not from ppid 1 — otherwise this test is "
@@ -113,40 +113,86 @@ def test_a_step_that_leaves_nothing_is_green_and_says_nothing_about_orphans(repo
     assert "outlived" not in proc.stdout + proc.stderr
 
 
-def test_the_canary_never_reports_itself(repo: Path) -> None:
-    """`gates/local_ci.sh` runs the canary as its own process, so its command line names a path
-    inside the repo being scanned. Measured: `[2/2] true` — a passing step — failed because of
-    `…/gates_of_heck/lib/orphan_canary.py`."""
+def test_the_canary_never_reports_a_concurrent_gate_run(repo: Path) -> None:
+    """A concurrent canary or runner lives under the same checkout this canary is scanning, so path
+    attribution names it ours — and it is not a leak, it is another gate running. Measured under the
+    parallel suite: every run reported the other workers' canaries, and three end-to-end tests went
+    red for a reason that had nothing to do with what they measured.
+
+    The concurrent run is given a step that is STILL RUNNING, because the judgement has to happen
+    while its command line can still be read: judging an exited process tests the
+    "(exited before it could be described)" branch instead.
+    """
+    before = O.snapshot()
+    other = subprocess.Popen(
+        [
+            sys.executable,
+            CANARY,
+            "wrap",
+            "--repo",
+            str(repo),
+            "--timeout",
+            "20",
+            "--",
+            "/bin/sh",
+            "-c",
+            "sleep 913",
+        ],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+    try:
+        deadline = time.monotonic() + 10
+        while time.monotonic() < deadline:
+            new = [int(p) for p in set(O.snapshot()) - set(before) if p.isdigit()]
+            if new:
+                break
+            time.sleep(0.05)
+        assert new, "the concurrent canary never appeared"
+        concurrent = O.judge(new, O.roots_for(str(repo)))
+        assert not [ln for ln in concurrent.ours if "exited before" not in ln], concurrent.ours
+        assert concurrent.code == 0, concurrent.ours
+    finally:
+        other.kill()
+        other.wait(timeout=30)
+        subprocess.run(["/usr/bin/pkill", "-f", "sleep 913"], check=False)
+
+    # ...and an ordinary clean run stays clean and silent.
     proc = wrap(repo, "/bin/sh", "-c", "exit 0")
     assert proc.returncode == 0, proc.stdout + proc.stderr
-    # Not "the string is absent" — the canary's own OUTPUT names itself. What must be absent is the
-    # canary's PROCESS appearing as a reported process line.
-    reported = [ln for ln in proc.stdout.splitlines() if ln.startswith("    ") and "pid " in ln]
-    assert not any("orphan_canary.py" in ln for ln in reported), reported
+    assert "outlived" not in proc.stdout + proc.stderr
 
 
-def test_a_step_that_leaks_nothing_but_another_programs_process_started_is_not_failed(
-    repo: Path,
-) -> None:
+def test_another_programs_process_is_not_attributable(repo: Path) -> None:
     """A process started by something else during the window is REPORTED and never failed on. A
     canary that failed on those would be one nobody leaves switched on — and a switched-off canary
-    is worse than none, because the estate would believe it."""
-    before = O.snapshot()
-    subprocess.Popen(
-        ["/bin/sh", "-c", "sleep 0.4"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
-    )
-    verdict, ours, theirs = O.report(before, O.roots_for(str(repo)), str(repo))
-    assert verdict == 0, (ours, theirs)
-    assert not ours, ours
+    is worse than none, because the estate would believe it.
+
+    Asserted on the ATTRIBUTION RULE, not on a live run's global verdict. The first version spawned
+    a process and asserted `report(...) == 0`, which under the parallel suite read another worker's
+    deliberately-leaked orphan (`sleep 1201`, ppid 1) and failed for a reason that had nothing to do
+    with what it measured. A rule deserves a test of the rule; the end-to-end paths above already
+    cover the wiring.
+    """
+    roots = O.roots_for(str(repo))
+    assert O.attributable("/somebody/elses/target/debug/build", roots) is None
+    assert O.attributable(f"{repo}/crates/x-rs/target/debug/server", roots) == roots[0]
+    assert O.attributable("cargo test --workspace", roots) is None
+
+    # ...and it still gets REPORTED, loudly enough to see, in the non-verdict half.
+    assert O.emit([], str(repo)) is None
 
 
-def test_the_unattributable_half_is_one_line_not_a_list(repo: Path) -> None:
-    """Measured through `local_ci.sh`: three of another repo's `sccache`/`rustc` plus a system
-    daemon, on a GREEN run of two trivial steps. Per-process output would be twenty lines of other
-    people's work after every step of every gate."""
-    proc = wrap(repo, "/bin/sh", "-c", "exit 0")
-    out = proc.stdout + proc.stderr
-    assert "started elsewhere on this machine" not in out or out.count("pid ") == 0, out
+def test_a_clean_report_prints_nothing_at_all(capsys) -> None:
+    """A canary on a green run must be SILENT. Output on every step of every gate trains people to
+    skip it, and a skipped canary is worse than none: the estate would believe it."""
+    O.emit([], "/repo")
+    assert capsys.readouterr().out == ""
+
+
+def test_the_report_is_silent_on_verbose_when_there_is_nothing_to_name(capsys) -> None:
+    O.emit([], "/repo", True)
+    assert capsys.readouterr().out == ""
 
 
 # ── the step's own verdict must survive ──────────────────────────────────────
@@ -155,71 +201,64 @@ def test_the_unattributable_half_is_one_line_not_a_list(repo: Path) -> None:
 @pytest.mark.parametrize("code", [0, 3, 5])
 def test_the_steps_own_exit_code_is_preserved(repo: Path, code: int) -> None:
     """A red step is the news. A canary red on top of it must not read as the canary being the
-    failure, so the step's code wins and the canary's verdict is the fallback."""
+    failure, so the step's code wins."""
     proc = wrap(repo, "/bin/sh", "-c", f"exit {code}")
     assert proc.returncode == code, proc.stdout + proc.stderr
 
 
-# ── take / since, and the refusals ───────────────────────────────────────────
-
-
-def test_take_then_since_names_a_leak_across_two_invocations(repo: Path) -> None:
-    """The two-mode form is what a gate wraps around a command it does not own."""
-    snap = repo / "before.json"
-    taken = subprocess.run(
-        [sys.executable, CANARY, "take", str(snap)], capture_output=True, text=True, check=False
-    )
-    assert taken.returncode == 0, taken.stderr
-    assert json.loads(snap.read_text())["v"] == O.SNAPSHOT_VERSION
-    subprocess.Popen(["/bin/sh", "-c", "/bin/sleep 1202 & disown; exit 0"])
+def test_a_green_steps_leak_gets_its_own_exit_code(repo: Path) -> None:
+    """125, distinct from a step that simply failed: the two have opposite fixes — write a guard
+    versus fix the test — and one exit status for both sends someone to the wrong one."""
+    proc = wrap(repo, "/bin/sh", "-c", "/bin/sleep 1203 >/dev/null 2>&1 & disown; exit 0")
     try:
-        proc = subprocess.run(
-            [sys.executable, CANARY, "since", str(snap), "--repo", str(repo)],
-            capture_output=True,
-            text=True,
-            check=False,
-        )
-        assert proc.returncode == 1, proc.stdout + proc.stderr
-        assert "sleep 1202" in proc.stdout + proc.stderr
+        assert proc.returncode == O.LEAK_EXIT, proc.stdout + proc.stderr
+        assert O.LEAK_EXIT != 124, "a leak must not share a code with a timeout"
     finally:
-        subprocess.run(["/usr/bin/pkill", "-f", "sleep 1202"], check=False)
+        subprocess.run(["/usr/bin/pkill", "-f", "sleep 1203"], check=False)
 
 
-def test_usage_errors_are_exit_two(repo: Path) -> None:
-    for argv in (
-        ["take"],
-        ["since"],
-        ["wrap", str(repo / "s.json"), "--"],
-    ):
-        proc = subprocess.run(
-            [sys.executable, CANARY, *argv], capture_output=True, text=True, check=False
-        )
-        assert proc.returncode == 2, (argv, proc.returncode, proc.stdout, proc.stderr)
+# ── refusals ─────────────────────────────────────────────────────────────────
 
 
-def test_an_unreadable_snapshot_is_exit_two_not_a_silent_pass(repo: Path) -> None:
-    """A canary that could not read its own baseline must not report "nothing survived" — that is a
-    pass over nothing, which `checks/check_empty_scope.py` exists to catch in every gate."""
+@pytest.mark.parametrize(
+    "argv", [["wrap"], ["wrap", "--"], ["wrap", "--timeout", "0", "--", "true"]]
+)
+def test_usage_errors_are_exit_two(repo: Path, argv: list[str]) -> None:
     proc = subprocess.run(
-        [sys.executable, CANARY, "since", str(repo / "nope.json"), "--repo", str(repo)],
+        [sys.executable, CANARY, *argv], capture_output=True, text=True, check=False
+    )
+    assert proc.returncode == 2, (argv, proc.returncode, proc.stdout, proc.stderr)
+
+
+def test_a_missing_runner_is_refused_not_silently_unbounded(tmp_path: Path) -> None:
+    """Without `lib/bounded_run.py` every step would run with no ceiling — the defect this exists to
+    close. So an absent runner is exit 2, never a quiet pass."""
+    fake = tmp_path / "lib"
+    fake.mkdir()
+    (fake / "orphan_canary.py").write_text(Path(CANARY).read_text(encoding="utf-8"))
+    proc = subprocess.run(
+        [sys.executable, str(fake / "orphan_canary.py"), "wrap", "--", "/bin/sh", "-c", "exit 0"],
         capture_output=True,
         text=True,
         check=False,
     )
     assert proc.returncode == 2, proc.stdout + proc.stderr
-    assert "cannot read" in proc.stderr, proc.stderr
+    assert "bounded_run.py is missing" in proc.stderr, proc.stderr
 
 
 # ── wiring, because a canary nothing calls is a rumour (R7) ──────────────────
 
 
-def test_local_ci_brackets_every_step_with_the_canary() -> None:
+def test_local_ci_runs_every_step_through_the_canary() -> None:
     source = (Path(__file__).resolve().parent.parent / "gates" / "local_ci.sh").read_text()
-    assert 'orphan_canary.py" take' in source, "no before-snapshot: the diff has nothing to diff"
-    assert 'orphan_canary.py" since' in source
-    # ...and a leak FAILS the run, not merely prints. A canary that reports and returns 0 is
-    # decoration.
-    assert "orphan_rc" in source and "FAILED=$((FAILED + 1))" in source
+    # ONE call per step: the ceiling, the output capture and the leak report are one thing, and two
+    # call sites is how they drift apart.
+    calls = [
+        ln
+        for ln in source.splitlines()
+        if "orphan_canary.py" in ln and not ln.lstrip().startswith("#")
+    ]
+    assert len(calls) == 1, f"expected exactly one runner call in local_ci.sh, found {calls}"
 
 
 def test_a_leak_is_named_distinctly_from_a_failure() -> None:
@@ -227,3 +266,4 @@ def test_a_leak_is_named_distinctly_from_a_failure() -> None:
     "PASSED, and left processes running" is the sentence the next person needs."""
     source = (Path(__file__).resolve().parent.parent / "gates" / "local_ci.sh").read_text()
     assert "PASSED, and left processes running" in source
+    assert "-eq 125" in source

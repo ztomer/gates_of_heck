@@ -39,6 +39,7 @@ import signal
 import subprocess
 import sys
 import time
+from dataclasses import dataclass
 
 # GNU timeout's exit code for "the ceiling expired". `gates/local_ci.sh` already prints
 # "TIMED OUT" on 124 and keeps the log; a different number would be a different contract in two
@@ -46,17 +47,22 @@ import time
 TIMEOUT_EXIT = 124
 
 DEFAULT_TIMEOUT = 900
+# The one value that means "throw the step's output away". Named rather than passed as
+# `subprocess.DEVNULL` from a caller, because a caller that spells it inline re-spells it, and two
+# spellings of one intent is how a gate ends up capturing output somewhere nobody looks.
+DEVNULL_SENTINEL = "DEVNULL"
 DEFAULT_GRACE = 5
 # How often the ceiling is checked. 0.2 s is short enough that a 900 s ceiling is honest to within
 # a fifth of a second, and long enough that the poll is noise next to the step it is bounding.
 POLL = 0.2
 
 
-def _descendants(root: int) -> list[int]:
-    """Every live pid below `root`, by walking the process table. Reporting, not killing.
+def _descendants(pid: int) -> list[int]:
+    """Every live pid below `pid`, by walking the process table. Reporting, not killing.
 
-    Used only to say what was still running when the ceiling expired -- a step that times out with
-    three survivors named is a step whose leak is now visible, which is the point of the canary.
+    Sampled at the moment the step exits, this is what turns "the step leaked something" from an
+    inference into a measurement, and it is the only attribution that survives two gates running at
+    once on the same machine.
     """
     try:
         out = subprocess.run(
@@ -69,7 +75,7 @@ def _descendants(root: int) -> list[int]:
         parts = line.split()
         if len(parts) == 2 and parts[1].isdigit():
             children.setdefault(int(parts[1]), []).append(int(parts[0]))
-    found, stack = [], [root]
+    found, stack = [], [pid]
     while stack:
         for kid in children.get(stack.pop(), []):
             found.append(kid)
@@ -108,6 +114,143 @@ def _sweep(pgid: int | None, pid: int, grace: float) -> list[int]:
     return sorted(before - set(_descendants(pid)) - {pid})
 
 
+@dataclass(frozen=True)
+class Outcome:
+    """What a bounded run ended up as.
+
+    `descendants` is the point. Sampled at the MOMENT the step exits, it is the exact set of
+    processes that were under it — which is the only attribution that cannot be fooled. The
+    alternative, "a new process whose ppid is 1", is machine-global: two gates running at once, or
+    one gate's eight pytest workers, cross-report each other's orphans. Measured 2026-10-03 under
+    this repo's own parallel suite — every run reported the other worker's leak, three tests red for
+    a reason that had nothing to do with what they measured. Ancestry is a fact; a pid's parentage
+    after reparenting is a rumour.
+    """
+
+    code: int
+    descendants: list[int]
+    timed_out: bool
+
+    @property
+    def survivors(self) -> list[int]:
+        """Descendants still alive after the step exited — the leaks."""
+        return [pid for pid in self.descendants if _alive(pid)]
+
+
+def group_members(pgid: int) -> list[int]:
+    """Every live pid in `pgid`'s process GROUP.
+
+    This, not the descendant walk, is what makes the leak measurement exact. A leaked child is
+    REPARENTED the instant its parent exits -- measured: `sleep 422` with `ppid 1` -- so a descendant
+    walk taken at exit finds nothing, and the canary reported a clean run while the server ran on.
+    The process GROUP survives reparenting: the step was started with `start_new_session`, so
+    everything it spawned inherited that pgid and keeps it, and one `ps -Ao pid=,pgid=` names them
+    all. Measured on the same shape: `64886 1 64885 /bin/sleep 422`, pgid intact.
+
+    The limit, stated: a child that calls `setsid()` leaves the group and is invisible here. A
+    daemonizing test helper is a different design, and it is named in the docs rather than guessed
+    at.
+    """
+    try:
+        out = subprocess.run(
+            ["ps", "-Ao", "pid=,pgid="], capture_output=True, text=True, check=False
+        )
+    except (OSError, subprocess.SubprocessError):
+        return []
+    found = []
+    for line in out.stdout.splitlines():
+        parts = line.split()
+        if (
+            len(parts) == 2
+            and parts[1].isdigit()
+            and int(parts[1]) == pgid
+            and int(parts[0]) != pgid
+        ):
+            found.append(int(parts[0]))
+    return found
+
+
+def _alive(pid: int) -> bool:
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    return True
+
+
+def run_step(
+    argv: list[str],
+    timeout: int,
+    grace: float,
+    label: str,
+    output: object | None = None,
+) -> Outcome:
+    """Run `argv` under a ceiling; report the code and whatever it left running."""
+    stream = None
+    merged = False  # stderr folds into stdout only when both are going to the same file
+    # `None` INHERITS, and it must. The first version collapsed `None` and the DEVNULL sentinel into
+    # one branch, so `goh_step` -- whose entire contract is capturing the step's output into its log --
+    # captured nothing: every failing step reported "failed" with an empty log and no failure lines.
+    # Caught by tests/test_tui_integration.py (`goh_step names the failures buried above the tail`).
+    if output is None:
+        stream = None
+    elif output == DEVNULL_SENTINEL:
+        stream = subprocess.DEVNULL
+    elif isinstance(output, str):
+        stream = open(output, "ab")  # noqa: SIM115  # closed in the finally below
+        merged = True
+    else:
+        stream = output
+    try:
+        try:
+            proc = subprocess.Popen(  # noqa: S603  # argv, never a shell string: the caller's words
+                argv,
+                stdin=subprocess.DEVNULL,
+                stdout=stream,
+                stderr=subprocess.STDOUT if merged else stream,
+                start_new_session=True,  # POSIX; its own group, so killpg covers the tree
+            )
+        except OSError as exc:
+            print(f"bounded_run: cannot start {label or argv[0]}: {exc}", file=sys.stderr)
+            return Outcome(code=127, descendants=[], timed_out=False)
+        try:
+            pgid: int | None = os.getpgid(proc.pid)
+        except OSError:
+            pgid = None
+        deadline = time.monotonic() + timeout
+        timed_out = False
+        while proc.poll() is None:
+            if time.monotonic() >= deadline:
+                timed_out = True
+                _sweep(pgid, proc.pid, grace)
+                try:
+                    proc.wait(timeout=grace)
+                except subprocess.TimeoutExpired:
+                    pass
+                print(f"TIMED OUT after {timeout}s: {label or ' '.join(argv)}", file=sys.stderr)
+                return Outcome(
+                    code=TIMEOUT_EXIT, descendants=_descendants(pid=proc.pid), timed_out=True
+                )
+            time.sleep(POLL)
+        # Sampled HERE, at exit, by PROCESS GROUP rather than by ancestry: a leaked child has already
+        # been reparented to init, so the walk below finds nothing where the group still finds it.
+        left = [p for p in (group_members(pgid) if pgid is not None else []) if p != proc.pid]
+        left += [p for p in _descendants(pid=proc.pid) if p not in left]
+        left = sorted(set(left))
+        if left and stream is None:
+            print(
+                f"  left {len(left)} process(es) running under it: "
+                + ", ".join(str(p) for p in left[:20]),
+                file=sys.stderr,
+            )
+        return Outcome(code=proc.returncode or 0, descendants=left, timed_out=timed_out)
+    finally:
+        if merged:
+            stream.close()
+
+
 def run(argv: list[str], timeout: int, grace: float, label: str, output=None) -> int:
     """Run `argv` with a ceiling. Returns the command's code, or 124.
 
@@ -119,51 +262,10 @@ def run(argv: list[str], timeout: int, grace: float, label: str, output=None) ->
     child exits — which, for a leaked server, is never. Measured 2026-10-03: a canary whose whole
     job is to report a leaked `sleep 1201` hung for 1201 s reporting it, inside the test that
     asserted the report. `gates/local_ci.sh` is unaffected (it redirects each step to a log FILE),
-    and `wrap` passes `DEVNULL` for the same reason: a reporter must not be made to wait by the
+    and `wrap` passes a path for the same reason: a reporter must not be made to wait by the
     thing it is reporting.
     """
-    stream = None
-    if isinstance(output, str):
-        stream = open(output, "ab")  # noqa: SIM115  # closed in the finally below
-    elif output is not None:
-        stream = output
-    try:
-        try:
-            proc = subprocess.Popen(  # noqa: S603  # argv, never a shell string: the caller's words
-                argv,
-                stdin=subprocess.DEVNULL,
-                stdout=stream if stream is not None else None,
-                stderr=subprocess.STDOUT if stream is not None else None,
-                start_new_session=True,  # POSIX; its own group, so killpg covers the tree
-            )
-        except OSError as exc:
-            print(f"bounded_run: cannot start {label or argv[0]}: {exc}", file=sys.stderr)
-            return 127
-        try:
-            pgid: int | None = os.getpgid(proc.pid)
-        except OSError:
-            pgid = None
-        deadline = time.monotonic() + timeout
-        while proc.poll() is None:
-            if time.monotonic() >= deadline:
-                survivors = _sweep(pgid, proc.pid, grace)
-                try:
-                    proc.wait(timeout=grace)
-                except subprocess.TimeoutExpired:
-                    pass
-                print(f"TIMED OUT after {timeout}s: {label or ' '.join(argv)}", file=sys.stderr)
-                if survivors:
-                    print(
-                        f"  swept {len(survivors)} process(es) that were still running under it: "
-                        + ", ".join(str(p) for p in survivors[:20]),
-                        file=sys.stderr,
-                    )
-                return TIMEOUT_EXIT
-            time.sleep(POLL)
-        return proc.returncode
-    finally:
-        if isinstance(output, str) and stream is not None:
-            stream.close()
+    return run_step(argv, timeout, grace, label, output).code
 
 
 def main(argv=None) -> int:

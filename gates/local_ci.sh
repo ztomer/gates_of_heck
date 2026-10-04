@@ -201,23 +201,26 @@ FAILED_NAMES=""
 PROVEN_SKIPPED=0
 i=0
 
-# run_step <logf> <cmd-string> — exit code of the step, 124 on timeout.
+# run_step <logf> <cmd-string> — exit code of the step, 124 on a timeout.
 #
-# Two things happen here that did not before, and both are the same defect seen from two sides:
+# ONE call, because the three things this step needs are one thing and cannot drift apart:
 #
-#  * the step runs under a CEILING (lib/bounded_run.py), and on expiry it is TERM-then-KILLed in its
-#    OWN PROCESS GROUP — not with `pkill -P`, which reaches direct children only and so leaves the
-#    test binary's children, i.e. the orphans, running. See the header for the measurement.
-#  * the process table is sampled either side of the step, so a child the step leaked is REPORTED
-#    rather than inferred from the next run's hang. That is the case the ceiling cannot see: the
-#    step exits 0 and the server outlives it.
+#  * a CEILING. On expiry the step is TERM-then-KILLed in its OWN PROCESS GROUP — not with
+#    `pkill -P`, which reaches direct children only and so leaves the test binary's children, i.e.
+#    the orphans, running. Measured on the header's shape; see it there.
+#  * the step's OUTPUT, captured to <logf> with stderr folded in, exactly as before.
+#  * a LEAK REPORT for whatever is still in the step's process group when it exits. This is the case
+#    the ceiling cannot see: the step exits 0 and the server outlives it, and the only evidence is a
+#    LATER run that blocks. lib/orphan_canary.py owns it; --log keeps the evidence beside the step's
+#    output so a red push has both.
 run_step() {
     local logf="$1" cmd="$2"
-    local args=(--grace "${GOH_STEP_GRACE:-5}" --label "$cmd")
+    local args=(--repo "$ROOT" --log "$logf" --grace "${GOH_STEP_GRACE:-5}" --label "$cmd"
+                --snapshot "$LOGDIR/orphans-$i.json")
     [ "$LCI_LIMIT" -gt 0 ] && args=(--timeout "$LCI_LIMIT" "${args[@]}")
     # </dev/null on the command string: the caller's loop stdin is the step list.
     # shellcheck disable=SC2086  # a command STRING is the feature here; see the header
-    python3 "$GOH_ROOT/lib/bounded_run.py" "${args[@]}" -- bash -c "$cmd" >"$logf" 2>&1 </dev/null
+    python3 "$GOH_ROOT/lib/orphan_canary.py" wrap "${args[@]}" -- bash -c "$cmd" </dev/null
 }
 
 while IFS="	" read -r src cmd; do
@@ -243,19 +246,8 @@ while IFS="	" read -r src cmd; do
     # </dev/null: without it every child inherits the while loop's heredoc
     # stdin — one step that reads stdin (cat, an interactive prompt) swallows
     # the REMAINING step list silently.
-    # The canary's "before". Taken here, immediately before the step, so the window is the STEP and
-    # not the whole run — a diff taken once at the start of a multi-minute gate cannot say which
-    # step leaked anything.
-    python3 "$GOH_ROOT/lib/orphan_canary.py" take "$LOGDIR/orphans-$i.json" 2>/dev/null || true
     run_step "$logf" "$cmd"
     rc=$?
-    # ...and its verdict, every step, whether or not the step passed. A leak does not care whether
-    # the suite was green; that is the entire reason it is silent today.
-    orphan_rc=0
-    if [ -f "$LOGDIR/orphans-$i.json" ]; then
-        python3 "$GOH_ROOT/lib/orphan_canary.py" since "$LOGDIR/orphans-$i.json" --repo "$ROOT" || orphan_rc=$?
-        [ "$orphan_rc" -ne 0 ] && FAILED=$((FAILED + 1))
-    fi
     if [ "$rc" -eq 0 ] && [ -n "$pkey" ]; then
         # Recorded only if the tree (and the gates) did not move while it ran.
         if [ "$(proven_key "$cmd" </dev/null)" = "$pkey $ptree" ]; then
@@ -265,13 +257,15 @@ while IFS="	" read -r src cmd; do
             step "the tree or the gates moved while the step ran — not recorded as proven"
         fi
     fi
-    if [ "$rc" -eq 0 ] && [ "$orphan_rc" -eq 0 ]; then
+    if [ "$rc" -eq 0 ]; then
         ok "[$i/$_n] $cmd"
-    elif [ "$rc" -eq 0 ]; then
-        # The step was GREEN and something it spawned outlived it. Named separately, because the
-        # common reading of "the test suite passed" is that nothing survived it — and a leaked
-        # server is what makes the NEXT suite hang with no output at all.
-        err "[$i/$_n] $cmd PASSED, and left processes running (see the canary above)"
+    elif [ "$rc" -eq 125 ]; then
+        # The step was GREEN and something it spawned outlived it. Named separately, and with its own
+        # exit code, because the common reading of "the test suite passed" is that nothing survived
+        # it — and a leaked server is what makes the NEXT suite hang with no output at all.
+        err "[$i/$_n] PASSED, and left processes running: $cmd"
+        err "  Wrap the child in a guard that reaps it on a panic — the pids are named above, and"
+        err "  checks/check_no_unreaped_spawn.py is the gate that keeps the shape out."
         FAILED=$((FAILED + 1))
         FAILED_NAMES="$FAILED_NAMES
   $cmd (orphans)"

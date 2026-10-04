@@ -1,39 +1,38 @@
 #!/usr/bin/env python3
-"""Report the processes a test suite LEFT RUNNING — the orphans, which are silent by construction.
+"""Report the processes a test step LEFT RUNNING — the orphans, which are silent by construction.
 
-    lib/orphan_canary.py take   SNAP                 # record the live process table
-    lib/orphan_canary.py since  SNAP [--repo DIR]    # what is new since that snapshot
-    lib/orphan_canary.py wrap   SNAP -- CMD...       # take, run, report; exit 1 if attributable
+    lib/orphan_canary.py wrap [--repo DIR] [--log FILE] [--snapshot FILE]
+                              [--timeout N] [--grace N] [--label TEXT] [--verbose] -- CMD
 
-EXIT. 0 nothing attributable survived · 1 an orphan this repo can be named as the owner of ·
+EXIT. 0 nothing survived · 1 the step left something running · the STEP's own code otherwise (a red
+step is the news, and a canary red on top of it must not read as the canary being the failure) ·
 2 usage error.
 
 WHY, and why it is separate from the ceiling
 --------------------------------------------
-`lib/bounded_run.py` bounds a step and sweeps what the step itself spawned. It cannot help with
-the case that actually cost a day: the test **finished**, so the step exited 0, and the server the
-test leaked outlived it. media_server, 2026-10-03: nine live orphans, each holding the cargo build
-lock, every later `cargo test` blocked with no output at all, and the run that could have reported
-the leak was the run that had been killed. A leak that only shows up as a *later* hang is a leak
-with no signal of its own, so this measures one.
+`lib/bounded_run.py` bounds a step and sweeps what the step itself spawned. It cannot help with the
+case that actually cost a day: the test **finished**, so the step exited 0, and the server the test
+leaked outlived it. media_server, 2026-10-03: nine live orphans, each holding the cargo build lock,
+every later `cargo test` blocked with no output at all, and the run that could have reported the
+leak was the run that had been killed. A leak that only shows up as a *later* hang is a leak with
+no signal of its own, so this measures one.
 
-HOW, and the honest limit
--------------------------
-A before/after diff of the live process table. Everything new since the snapshot is a candidate;
-a candidate is ATTRIBUTABLE when its command line names this repo — the checkout path, a `target/`
-under it, or `$CARGO_TARGET_DIR`. That is the shape the incident had: the leaked binary lived at
-`crates/archive-torznab-rs/target/debug/archive_torznab`.
+HOW: ANCESTRY, EXACTLY. `lib/bounded_run.py` samples the descendant set of the step at the instant
+it exits; anything in that set still alive afterwards is a leak, with no inference.
 
-**Measured, and the reason for the ppid rule:** an orphan's parent is gone, so on this platform it
-is reparented to 1 (`ps -o ppid=`, 2026-10-03, confirmed from outside the test). Candidates with
-`ppid == 1` are therefore named even when their command line says nothing about this repo, because
-"a brand-new process adopted by init" is the signature of a leak and nothing else.
+**What this replaced, and why it was wrong.** The first version diffed the whole process table
+either side of the step and treated "a new process whose ppid is 1" as an orphan — true in isolation,
+and a machine-global heuristic in practice. Measured 2026-10-03 under this repo's own parallel
+suite: every run reported the OTHER workers' deliberately-leaked processes, and three end-to-end
+tests went red for a reason that had nothing to do with what they measured. Two gates on one machine
+cross-report for the same reason; so does `--full` racing a pre-commit. A pid's parentage after
+reparenting is a rumour; "was under this step a moment ago" is a fact.
 
-**What this cannot do.** On a machine running anything else, a process started by another program
-during the window is a candidate, and this reports it rather than guessing. Candidates that are not
-attributable are printed under a heading that says so and do NOT fail the run: a canary that cries
-wolf on every run is a canary that gets switched off, and a switched-off canary is worse than none
-because the estate would believe it. Only the attributable ones are a verdict.
+THE OTHER HALF, KEPT DELIBERATELY: a process whose command line names this repo — the checkout, a
+`target/` under it, or `$CARGO_TARGET_DIR` — is also ours, and is reported even if it was not
+observed under the step. That covers the case where the step is not our process to begin with (a
+gate that shells out to a script which leaks). The house's own runner machinery (`orphan_canary.py`,
+`bounded_run.py`) is excluded: a concurrent gate run is not a leak this repo made.
 """
 
 from __future__ import annotations
@@ -43,8 +42,31 @@ import json
 import os
 import subprocess
 import sys
+from dataclasses import dataclass
 
 SNAPSHOT_VERSION = 1
+
+# "The step passed and left something running." Its own code, above bounded_run's 124, because a
+# caller has to tell this apart from a step that simply failed — the two have opposite fixes (write
+# a guard vs. fix the test) and the same exit status would send someone to the wrong one. 125 is the
+# conventional "reserved, do not use" value, which is exactly right for a condition a step did not
+# choose.
+LEAK_EXIT = 125
+
+# A path inside this repo makes a process ours even when we did not observe it under the step.
+# Also what a leaked cargo-built binary looks like: `…/crates/x-rs/target/debug/archive_torznab`.
+# A process started by something else on the machine is NOT reported at all: on a shared box that is
+# every build on the host, and a canary that cries wolf is one nobody leaves switched on.
+MACHINERY = ("orphan_canary.py", "bounded_run.py")
+
+
+@dataclass(frozen=True)
+class Verdict:
+    """(code, attributable lines, unattributable lines). Attributable lines are the failures."""
+
+    code: int
+    ours: list[str]
+    theirs: list[str]
 
 
 def snapshot() -> dict[str, list[int]]:
@@ -65,7 +87,13 @@ def snapshot() -> dict[str, list[int]]:
 
 
 def describe(pids: list[str]) -> dict[str, str]:
-    """{pid: command line} for the named pids, one `ps` for all of them."""
+    """{pid: command line} for the named pids, one `ps` for all of them.
+
+    FULL command lines: attribution matches a PATH, and truncating at 160 chars cut the path off
+    before the token that proves it -- measured: a leaked `…/target/debug/archive_torznab` under
+    pytest's tmp dir (a 190-char path) was attributed but then displayed without its own name, so
+    the report could not name what it found. Truncation is a DISPLAY decision, made at print time.
+    """
     if not pids:
         return {}
     try:
@@ -77,10 +105,6 @@ def describe(pids: list[str]) -> dict[str, str]:
         )
     except (OSError, subprocess.SubprocessError):
         return {}
-    # FULL command lines: attribution matches a PATH, and truncating at 160 chars cut the path off
-    # before the token that proves it — measured: a leaked `…/target/debug/archive_torznab` under
-    # pytest's tmp dir (a 190-char path) was attributed but then displayed without its own name, so
-    # the report could not name what it found. Truncation is a DISPLAY decision, made at print time.
     lines = out.stdout.splitlines()
     return dict(zip(pids, (line.strip() for line in lines)))
 
@@ -104,96 +128,100 @@ def roots_for(repo: str | None) -> list[str]:
     return out
 
 
-def _own_descendants() -> set[str]:
-    """The canary's own subprocesses — the `ps` calls it makes while measuring.
+def judge(pids: list[int], roots: list[str]) -> Verdict:
+    """Every pid handed in is OURS, by proof rather than by inference.
 
-    Excluded because they are not the subject: without this, every run reports two or three of its
-    own helper processes as "new, not attributable", and a report that always has three entries in
-    it is a report nobody reads. Measured on a busy machine, 2026-10-03: three unrelated `sccache`/
-    `rustc` processes from another repo were also reported, which is the honest part and is why the
-    unattributable half is a COUNT.
+    `pids` comes from `bounded_run`'s sample of the step's own PROCESS GROUP at the instant it exited
+    (see `group_members`). Membership of that group is not a guess about whose process it was: a
+    non-interactive shell does not put a background job in a new group, and the step was started with
+    `start_new_session`, so anything still there was started by this step. Measured on the incident's
+    shape: `64886 1 64885 /bin/sleep 422` -- reparented to init, pgid intact, named.
+
+    That is what replaced the machine-global "new process with ppid 1" rule, which cross-reported
+    every concurrent gate on the box and made three end-to-end tests red for a reason unrelated to
+    what they measured. It is also why there is no second, "probably ours" category here: a verdict
+    built on two kinds of evidence is a verdict whose wrong answers nobody can tell apart.
     """
-    mine = str(os.getpid())
-    out = subprocess.run(["ps", "-Ao", "pid=,ppid="], capture_output=True, text=True, check=False)
-    children: dict[str, list[str]] = {}
-    for line in out.stdout.splitlines():
-        parts = line.split()
-        if len(parts) == 2 and parts[1].isdigit():
-            children.setdefault(parts[1], []).append(parts[0])
-    # `mine` is in the set, and it is a STRING like every key `snapshot()` produces.
-    #
-    # Both halves were measured wrong first. `gates/local_ci.sh` invokes this canary as its own
-    # process AND passes `--repo <root>` on the same command line, so the canary matches its own
-    # attribution root by path — every passing step failed, attributed to the canary watching it
-    # (2026-10-03). Excluding `mine` fixed nothing, because this set held `int`s and `snapshot()`
-    # keys `str`s: `{"53167"} - {53167}` is `{"53167"}`. A subtraction across two representations
-    # of one value is a subtraction that does not happen, and it reads exactly like a working one.
-    found, stack = {mine}, [mine]
-    while stack:
-        for kid in children.get(stack.pop(), []):
-            if kid not in found:
-                found.add(kid)
-                stack.append(kid)
-    return found
-
-
-def report(before: dict, roots: list[str], repo: str | None) -> tuple[int, list[str], list[str]]:
-    """(verdict, attributable lines, unattributable lines)."""
-    after = snapshot()
-    skip = _own_descendants()
-    new = sorted(set(after) - set(before) - skip, key=int)
-    if not new:
-        return 0, [], []
-    commands = describe(new)
-    ours, theirs = [], []
-    for pid in new:
+    # A pid that has already exited is not a survivor and cannot be a leak. `bounded_run` filters
+    # these with `kill -0` before calling; doing it here too means a caller that does not cannot
+    # manufacture a finding out of a process that finished. Measured: the transient `ps` children a
+    # concurrent canary makes are reported as "(exited before it could be described)" and were
+    # counted as leaks.
+    live = []
+    for pid in pids:
+        try:
+            os.kill(pid, 0)
+        except ProcessLookupError:
+            continue
+        except PermissionError:
+            pass
+        live.append(pid)
+    keys = [str(pid) for pid in live]
+    commands = describe(keys)
+    ours = []
+    for pid in keys:
         cmd = commands.get(pid, "(exited before it could be described)")
-        ppid = after[pid][0]
-        root = attributable(cmd, roots)
-        if root:
-            ours.append(f"pid {pid} (ppid {ppid}) {cmd}")
-        elif ppid == 1:
-            # Measured: a leaked child's parent is gone, so it is adopted by init. That is the
-            # signature of an orphan and it is named even when the command line says nothing.
-            ours.append(f"pid {pid} (ppid 1 — orphaned) {cmd}")
-        else:
-            theirs.append(f"pid {pid} (ppid {ppid}) {cmd}")
-    return (1 if ours else 0), ours, theirs
+        if any(tool in cmd for tool in MACHINERY):
+            continue  # a concurrent gate run, not a leak this step made
+        where = attributable(cmd, roots)
+        ours.append(f"pid {pid} {cmd}" + (f"   [under {where}]" if where else ""))
+    return Verdict(code=1 if ours else 0, ours=ours, theirs=[])
 
 
-def emit(ours: list[str], theirs: list[str], repo: str | None, verbose: bool = False) -> None:
+def emit(ours: list[str], repo: str | None, verbose: bool = False) -> None:
+    """The report. Every line here is a process this step left running."""
     if ours:
         print(f"✗ [orphan_canary] {len(ours)} process(es) outlived the run that started them:")
         for line in ours:
             print(f"    {line[:240]}")
         print(
-            f"  Something a test spawned is still running{f' out of {repo}' if repo else ''}. A leak that"
+            f"  Something a test spawned is still running{f' out of {repo}' if repo else ''}. A leak"
         )
         print(
-            "  only shows up as a LATER hang is a leak with no signal of its own — an orphan holding a"
+            "  that only shows up as a LATER hang is a leak with no signal of its own — an orphan"
         )
+        print("  holding a build lock blocks every subsequent run with no output at all. Wrap the")
         print(
-            "  build lock blocks every subsequent run with no output at all. Wrap the child in a guard"
+            "  child in a guard that reaps it on a panic (checks/check_no_unreaped_spawn.py names the"
         )
-        print("  that reaps it on a panic (checks/check_no_unreaped_spawn.py names the pattern).")
-    if theirs:
-        # ONE line, no pids unless asked. Another program on a shared machine starts processes during
-        # the window -- measured 2026-10-03 through local_ci.sh: three of another repo's
-        # `sccache`/`rustc` plus a Karabiner daemon, on a GREEN run of two trivial steps. Per-pid
-        # output would put twenty lines of other people's work on screen after every step of every
-        # gate, which is how a canary earns being switched off. The attributable half above is the
-        # one that is loud, because that is the one that means something.
-        print(
-            f"⚠ [orphan_canary] {len(theirs)} process(es) started elsewhere on this machine during"
-        )
-        print(
-            "  the step — reported, not failed (a canary that failed on those is one nobody leaves"
-        )
-        print(
-            "  on). --verbose names them; lib/orphan_canary.py attributes by checkout path and ppid."
-        )
-        for line in theirs if verbose else []:
-            print(f"    {line}")
+        print("  pattern).")
+
+
+def wrap(args, command: list[str]) -> int:
+    """Snapshot the step's descendants, run it under a ceiling, report what it left."""
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    import bounded_run
+
+    outcome = bounded_run.run_step(
+        command,
+        args.timeout,
+        args.grace,
+        args.label or command[0],
+        output=args.log or bounded_run.DEVNULL_SENTINEL,
+    )
+    survivors = outcome.survivors
+    roots = roots_for(args.repo or os.getcwd())
+    verdict = judge(survivors, roots)
+    if args.snapshot and survivors:
+        # Kept as evidence for a red push: which pids, and when. `push_gate.sh` keeps a red run's
+        # log and deletes a green one's, so a canary finding has to travel with the step's output
+        # rather than only on the scrollback.
+        try:
+            os.makedirs(os.path.dirname(os.path.abspath(args.snapshot)), exist_ok=True)
+            with open(args.snapshot, "w", encoding="utf-8") as handle:
+                json.dump(
+                    {"v": SNAPSHOT_VERSION, "step": command, "survivors": survivors},
+                    handle,
+                    indent=2,
+                )
+        except OSError as exc:
+            print(f"orphan_canary: cannot write {args.snapshot}: {exc}", file=sys.stderr)
+    emit(verdict.ours, args.repo or os.getcwd(), args.verbose)
+    # The step's own verdict first: a red step is the news, and the leak is still printed beside it.
+    # Only a GREEN step's leak gets its own code, because that is the case with no other news.
+    if outcome.code:
+        return outcome.code
+    return LEAK_EXIT if verdict.ours else 0
 
 
 def main(argv=None) -> int:
@@ -210,69 +238,32 @@ def main(argv=None) -> int:
     ap = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )
-    ap.add_argument("mode", choices=("take", "since", "wrap"))
-    ap.add_argument("snapshot", nargs="?", help="path to a snapshot file")
+    ap.add_argument("mode", choices=("wrap",))
+    ap.add_argument(
+        "--snapshot", default=None, help="where to record the surviving pids, for a red push"
+    )
     ap.add_argument("--repo", default=None, help="repo root, for attribution (default: cwd)")
+    ap.add_argument("--log", default=None, help="file for the step's own output")
+    ap.add_argument("--timeout", type=int, default=900, help="ceiling for the step, seconds")
+    ap.add_argument("--grace", type=int, default=5, help="TERM->KILL grace on expiry, seconds")
+    ap.add_argument("--label", default="", help="what to call the step in messages")
     ap.add_argument("--verbose", action="store_true", help="name every unattributable process")
     args = ap.parse_args(argv)
-    repo = os.path.realpath(args.repo or os.getcwd())
-
-    if args.mode == "take":
-        if not args.snapshot:
-            print("orphan_canary take needs a snapshot path", file=sys.stderr)
-            return 2
-        os.makedirs(os.path.dirname(os.path.abspath(args.snapshot)), exist_ok=True)
-        with open(args.snapshot, "w", encoding="utf-8") as handle:
-            json.dump({"v": SNAPSHOT_VERSION, "pids": snapshot()}, handle)
-        return 0
-
-    if args.mode == "wrap":
-        if not command:
-            print("orphan_canary wrap needs a command: ... wrap SNAP -- CMD", file=sys.stderr)
-            return 2
-        sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-        import bounded_run
-
-        # The BEFORE table is KEPT, not re-read and not re-taken. The first version of `wrap` took
-        # the snapshot, wrote it, ran the step, and then called `report(snapshot(), ...)` — handing
-        # the function the AFTER table as its `before`. Every orphan was then present in both
-        # tables, so `new` was empty and the canary reported a clean run while the leaked server
-        # was still running. Measured on this machine, 2026-10-03: `sleep 408` alive with ppid 1,
-        # canary exit 0. A canary's whole job is to be right about the case it exists for, and the
-        # only way to know it is, is to check that case.
-        before = snapshot()
-        if args.snapshot:
-            os.makedirs(os.path.dirname(os.path.abspath(args.snapshot)), exist_ok=True)
-            with open(args.snapshot, "w", encoding="utf-8") as handle:
-                json.dump({"v": SNAPSHOT_VERSION, "pids": before}, handle)
-        # DEVNULL, not inherit: a leaked child holding an inherited pipe's write end blocks the
-        # caller to EOF, so `wrap` would hang FOREVER on the very orphan it exists to report.
-        # Measured 2026-10-03: 1201 s, inside the test asserting the report.
-        code = bounded_run.run(
-            command,
-            bounded_run.DEFAULT_TIMEOUT,
-            5,
-            command[0],
-            output=subprocess.DEVNULL,
+    if not command:
+        print("orphan_canary wrap needs a command: ... wrap [opts] -- CMD", file=sys.stderr)
+        return 2
+    if args.timeout <= 0:
+        print(f"orphan_canary: --timeout must be positive (got {args.timeout})", file=sys.stderr)
+        return 2
+    if not os.path.isfile(
+        os.path.join(os.path.dirname(os.path.abspath(__file__)), "bounded_run.py")
+    ):
+        print(
+            "orphan_canary: lib/bounded_run.py is missing — a step would run unbounded",
+            file=sys.stderr,
         )
-        verdict, ours, theirs = report(before, roots_for(repo), repo)
-        emit(ours, theirs, repo, args.verbose)
-        # The step's own verdict first: a red step is the news, and a canary red on top of it must
-        # not read as the canary being the failure.
-        return code or verdict
-
-    if not args.snapshot:
-        print("orphan_canary since needs a snapshot path", file=sys.stderr)
         return 2
-    try:
-        with open(args.snapshot, encoding="utf-8") as handle:
-            before = json.load(handle).get("pids", {})
-    except (OSError, ValueError) as exc:
-        print(f"orphan_canary: cannot read {args.snapshot}: {exc}", file=sys.stderr)
-        return 2
-    verdict, ours, theirs = report(before, roots_for(repo), repo)
-    emit(ours, theirs, repo, args.verbose)
-    return verdict
+    return wrap(args, command)
 
 
 if __name__ == "__main__":
