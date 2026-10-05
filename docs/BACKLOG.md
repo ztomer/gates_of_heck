@@ -85,6 +85,16 @@ spends 1-7 s per crate in the house rust gate across 29 crates.
 - **Newly over the line cap** (build files entered the scope): `CadGoose/CMakeLists.txt` (702),
   `games/CadGoose2/CMakeLists.txt` (1142), `games/necrohand/Makefile` (511).
 
+- **monitor:** its `.githooks/pre-commit` is locally customised (`check_gate_parity.py` pins its
+  checker list), so `install.sh` refuses, and its pre-push is still the working-tree generation.
+  Convergence is monitor's call (`install.sh --force` after porting its customisation).
+- **O35 (servers):** `check_gate_calibration` cannot serve consumers -- no fleet repo carries a
+  `gate_calibration.json`. A per-consumer registry would be a feature here; unscoped.
+- **This repo's own push reads `~/.claude/skills`** (`GOH_SKILLS_CORPUS`), a corpus every session
+  edits: a peer's case study tipped `calibrate-the-instrument/SKILL.md` to 5148 words mid-release and
+  refused the push. Fixed by moving dated cases to `references/` (that skill's convention). Open: the
+  corpus has no gate of its own at the moment of WRITING, so the next push finds it.
+
 **Blocked / owner decisions**
 
 - O33 (servers): the `gho_` PAT was never rotated, and an older `ghp_` is still live in `.90`'s zsh
