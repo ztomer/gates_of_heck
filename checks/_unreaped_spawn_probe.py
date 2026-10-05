@@ -33,6 +33,11 @@ from tui.lib import err, ok  # noqa: E402
 
 
 from _unreaped_spawn_table import PYTHON, PYTHON_EXTRA, RUST, SHELL  # noqa: E402
+from _unreaped_spawn_table_regressions import (  # noqa: E402
+    PYTHON_RAW_QUOTE_CALIBRATION,
+    PYTHON_REGRESSIONS,
+    RUST_REGRESSIONS,
+)
 
 
 def _got(source: str, ext: str) -> bool:
@@ -56,6 +61,27 @@ def probe() -> int:
             bad += 1
         else:
             ok(f"probe [rust]: {label} -> {'finding' if got else 'clean'}")
+    for label, source, want in RUST_REGRESSIONS:
+        got = _got(source, ".rs")
+        if got != want:
+            err(f"probe [rust]: {label} — wanted findings={want}, got {got}")
+            bad += 1
+        else:
+            ok(f"probe [rust]: {label} -> {'finding' if got else 'clean'}")
+    for label, source, want in PYTHON_REGRESSIONS:
+        got = _got(source, ".py")
+        if got != want:
+            err(f"probe [python]: {label} — wanted findings={want}, got {got}")
+            bad += 1
+        else:
+            ok(f"probe [python]: {label} -> {'finding' if got else 'clean'}")
+    for label, source, want in (PYTHON_RAW_QUOTE_CALIBRATION,):
+        got = _got(source, ".py")
+        if got != want:
+            err(f"probe [python]: {label} — wanted findings={want}, got {got}")
+            bad += 1
+        else:
+            ok(f"probe [python]: {label} -> {'finding' if got else 'clean'}")
     for label, source, want in PYTHON:
         got = _got(source, ".py")
         if got != want:
@@ -77,14 +103,23 @@ def probe() -> int:
             bad += 1
         else:
             ok(f"probe [shell]: {label} -> {'finding' if got else 'clean'}")
-    total = len(RUST) + len(PYTHON) + len(PYTHON_EXTRA) + len(SHELL)
+    total = (
+        len(RUST)
+        + len(RUST_REGRESSIONS)
+        + len(PYTHON)
+        + len(PYTHON_EXTRA)
+        + len(PYTHON_REGRESSIONS)
+        + 1  # PYTHON_RAW_QUOTE_CALIBRATION, a row that pins a refuted theory
+        + len(SHELL)
+    )
     if bad:
         err(
             f"check_no_unreaped_spawn --probe: {bad} of {total} measured shapes disagree with the table"
         )
         return 1
     ok(
-        f"check_no_unreaped_spawn --probe: {total} shapes, measured against rustc 1.99.0 on 2026-10-03"
+        f"check_no_unreaped_spawn --probe: {total} shapes, measured against rustc 1.99.0 / CPython "
+        "3.14 on 2026-10-03 and 2026-10-05"
     )
     return 0
 

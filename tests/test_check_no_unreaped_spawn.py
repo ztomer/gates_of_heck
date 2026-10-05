@@ -246,7 +246,7 @@ def test_the_probe_goes_red_when_the_ordering_rule_is_dropped(repo: Path) -> Non
     try:
         module = importlib.import_module("check_no_unreaped_spawn")
         importlib.reload(module)
-        shapes = importlib.import_module("_spawn_shapes")
+        shapes = importlib.import_module("_spawn_rust")
         importlib.reload(shapes)
         proof = importlib.import_module("_unreaped_spawn_probe")
         importlib.reload(proof)

@@ -27,12 +27,27 @@ import re
 # than stripping comments then strings) is what stops a `#` inside a string from eating real code
 # and a `//` inside a string from opening a comment that swallows the rest of the file.
 _PY_STR_OPEN = re.compile(r"([rRbBfFuU]{0,2})(\"\"\"|'''|\"|')")
-_RS_RAW_OPEN = re.compile(r"b?r(#*)\"")
-_RS_STR_OPEN = re.compile(r"b?\"")
+# Rust opens a raw string with `r`, `br` or `cr` (byte-raw, C-raw) plus any number of `#`. All
+# three prefix forms are here because the first version read `b?r` only, and `cr#"` desynchronised
+# the same way `r#"` did.
+_RS_RAW_OPEN = re.compile(r"[bcr]?r(#*)\"")
+_RS_STR_OPEN = re.compile(r"[bc]?\"")
 
 
 def mask_py(text: str) -> str:
-    """Comments and string bodies replaced by spaces; newlines and offsets preserved."""
+    """Comments and string bodies replaced by spaces; newlines and offsets preserved.
+
+    THE PREFIX IS PART OF THE OPENER and is matched before the quote, not at it: matched only at a
+    quote, the prefix group is always empty and `rb"…"` leaves a stray `rb` in the masked text.
+
+    A BACKSLASH ESCAPES THE CLOSING QUOTE EVEN IN A RAW LITERAL, and this is the opposite of Rust,
+    so it was measured against CPython rather than reasoned about: `r"a\""` is ONE string whose
+    content is `a\"`, and `r'''a\'''` is a SyntaxError because the `\'` swallows the first quote.
+    Rawness changes the CONTENT (`r"a\nb"` keeps both characters) and not the CLOSING rule. A first
+    attempt branched on `r` and blanked four real literals in the estate's shape; the interpreter
+    said so, and the branch is gone. `--edition 2024` rustc agrees with CPython on nothing here,
+    which is why the Rust arm below keeps its own flag.
+    """
     out = []
     i, n, quote, escape = 0, len(text), "", False
     while i < n:
@@ -61,11 +76,17 @@ def mask_py(text: str) -> str:
                 out.append(" ")
                 i += 1
             continue
+        # The pattern needs a quote straight after the prefix, so an identifier like `fn`, `return`
+        # or `for` cannot match it.
+        m = _PY_STR_OPEN.match(text, i)
+        if m:
+            quote = m.group(2)
+            out.append(" " * len(m.group(0)))
+            i += len(m.group(0))
+            continue
         if ch in "\"'":
-            m = _PY_STR_OPEN.match(text, i)
-            quote = m.group(2) if m else ch
-            out.append(" " * len(quote))
-            i += len(quote)
+            out.append(" ")
+            i += 1
             continue
         out.append(ch)
         i += 1
@@ -78,29 +99,35 @@ def mask_rust(text: str) -> str:
 
     Char literals are left ALONE: `'a` is a LIFETIME far more often than a character, and blanking
     `'static` would break the one thing the compiler cares about here.
+
+    THE CLOSING DELIMITER IS NOT THE OPENING TOKEN. The first version stored the whole opener --
+    `r"`, `r#"`, `br#"#` -- as the sentinel to match at the close, and a raw string's own closing
+    delimiter is only the quote plus its hashes. `r#"{"op":"shutdown"}"#` therefore never closed,
+    and the scanner blanked every remaining line of the file: measured on `routines`, NINE spawn
+    sites invisible to this gate, and two files that leaked a five-minute `sleep` reported clean.
+    A backslash also cannot escape inside a Rust raw string, so it must not arm the escape state
+    either -- the second half of the same bug, and `r"a\\\\"` desynchronised for exactly that
+    reason (the closing quote was swallowed as an escaped character). State is
+    now `(close, raw)`: the delimiter that must be matched, and whether a backslash means anything.
     """
     out = []
-    i, n, depth, quote, escape = 0, len(text), 0, "", False
+    i, n, depth, close, escape, raw = 0, len(text), 0, "", False, False
     while i < n:
-        if quote:
+        if close:
             if escape:
-                # A backslash escape consumes the next character, so `\"` inside a literal cannot
-                # close it. Without this arm every Rust literal containing an escaped quote ended
-                # early and the rest of the file was scanned as code -- which is how a fixture
-                # string carrying the whole spawn shape reads as a real spawn.
                 escape = False
                 out.append("\n" if text[i] == "\n" else " ")
                 i += 1
                 continue
-            if text[i] == "\\" and not quote.startswith(("r", "br")):
+            if text[i] == "\\" and not raw:
                 escape = True
                 out.append(" ")
                 i += 1
                 continue
-            if text.startswith(quote, i):
-                out.append(" " * len(quote))
-                i += len(quote)
-                quote = ""
+            if text.startswith(close, i):
+                out.append(" " * len(close))
+                i += len(close)
+                close = ""
                 continue
             out.append("\n" if text[i] == "\n" else " ")
             i += 1
@@ -131,13 +158,15 @@ def mask_rust(text: str) -> str:
             continue
         m = _RS_RAW_OPEN.match(text, i)
         if m:
-            quote = "r" + m.group(1) + '"' + m.group(1)
-            out.append(" " * len(quote))
-            i += len(quote)
+            close = '"' + m.group(1)
+            raw = True
+            out.append(" " * len(m.group(0)))
+            i += len(m.group(0))
             continue
         m = _RS_STR_OPEN.match(text, i)
         if m:
-            quote = '"'
+            close = '"'
+            raw = False
             out.append(" " * len(m.group(0)))
             i += len(m.group(0))
             continue

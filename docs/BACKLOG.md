@@ -8,24 +8,46 @@ One file; prune landed items to git history. Seeded from EVAL-2026-09-04.md
 ### From `check_no_unreaped_spawn.py` + `lib/orphan_canary.py` (2026-10-03)
 
 Both landed green across 32 wired repos. These are the residuals, stated rather than left to be
-discovered:
+discovered. **Re-measured 2026-10-05 after the v0.18.0 binding fix** — the sweep is the only place
+this is true, and two of these changed:
 
 - **A child that calls `setsid()` is invisible to the canary.** It leaves the step's process group,
   and group membership is the only evidence the canary accepts (the `ppid == 1` alternative was
   measured cross-reporting every concurrent gate on the box). A daemonising test helper is a
   different design and would need its own signal — most likely the helper writing its own pidfile.
+  **UNCHANGED by v0.18.0**: detection is per-spawn, not per-group, so nothing in that release touched
+  this.
 - **The checker is per-function, not interprocedural.** A spawn RETURNED to the caller is a handoff:
   counted, never a finding. Four across the estate. Following it means judging a callee's contract,
-  which is the caller's judgement.
+  which is the caller's judgement. **NARROWED IN ONE RESPECT by v0.18.0, and only that:** a call to a
+  function defined in the SAME FILE whose body can panic is now treated as panicking, because
+  `routines`' `wait_for_socket` is a local function whose whole body is an `assert!` and it was the
+  only construct between that spawn and its reap. A helper in another crate is still an unknown
+  contract. A spawn crossing a file boundary remains a handoff.
+- **Cross-CRATE guard types are not read.** A guard defined in `tests/common/` *is* (crate scope,
+  measured over the estate: two files, both `routines`, and both of them sites the guard FIXES — a
+  per-file reading reported correct code as broken). A guard that lives in a different **crate** is
+  a dependency's contract and is reported `unjudgeable`: counted and named, never failed on.
 - **A kill inside a conditional is accepted.** `if cond { child.kill(); }` satisfies the rule
   statically and does nothing when `cond` is false. Measured cost: unknown; it needs a corpus.
+  **UNCHANGED by v0.18.0**, and worth saying plainly: the fix made the rules narrower in SCOPE, not
+  stricter in CONTROL FLOW, so this hole is exactly as wide as it was.
 - **Three languages.** Rust, Python, shell. Swift, JS/TS and Go are not read. The estate sweep found
   no spawn sites in any `.swift`/`.ts`/`.go` test file, so the cost is currently zero — re-measure
   rather than trust that.
-- **Sweep findings are reported, not fixed** — three repos were red and two are
-  still. They are in other checkouts, their gates now refuse their own commits,
-  and each repo's own roadmap/AGENTS carries its line. The index, with the state
-  **re-measured rather than remembered**, is the section below.
+- **A PEP 604 annotation under `checks/` needs `from __future__ import annotations`.** Found by
+  running `./tools/gate.sh --full`, not by reading: the self-host install test died with
+  `TypeError: unsupported operand type(s) for |: 'type' and 'NoneType'` because `install.sh` runs on
+  whatever interpreter the PATH offers. **A sweep of every module under `checks/`, `lib/`, `gates/`
+  and `tests/` found 11 further instances** — one in `checks/` was mine and is fixed; the other ten
+  are all in `tests/*.py`, which run under the session interpreter and so are not currently a
+  failure. No gate forbids the omission: `pyproject.toml` deliberately enables the ruff FORMATTER
+  only, with the comment "enabling a ruleset nobody has run would produce a red tree on day one",
+  and enabling one is that repo's separate decision, not this release's.
+- **Sweep findings are reported, not fixed** — the index below is **re-measured rather than
+  remembered**. One repo is red on a spawn site; the other is an exclusion hazard, not a finding.
+  They are in other checkouts, their gates now refuse their own commits, and each repo's own
+  roadmap/AGENTS carries its line.
 
 ### Estate findings from `checks/check_no_unreaped_spawn.py`
 
@@ -41,19 +63,45 @@ The checker landed and immediately found the same shape elsewhere. They are
 recorded HERE rather than only in each repo's own backlog, because the class is
 shared and the gate that found them is here: a repo whose gate is red refuses its
 own commits, and **a red gate nobody has heard of is how a leak becomes an
-outage**. Every row below was re-measured on 2026-10-04 by running the house
-checker in that repo, read-only — the counts are the gate's, not this file's.
+outage**.
 
-| repo | finding | state, measured 2026-10-04 |
+**The table below was RE-MEASURED on 2026-10-05** by running this checker
+(v0.18.0, post-fix) in every one of the 32 wired repos, read-only, honouring each
+repo's own declared `GOH_EXCLUDE`. The counts are the gate's, not this file's.
+The previous version of this table said "four real leaks" over rows that were not
+all findings — the `ztools` row was an exemption and the `media_server` row was
+already fixed — so the headline number is stated from the rows this time.
+
+| repo | finding | state, measured 2026-10-05 |
 |---|---|---|
-| **routines** | `tests/follow_lifecycle.rs` — **3 sites** (lines 72, 95, 102): `Command::new("/bin/sleep").arg("300")` with `assert!` between the spawn and the `kill`/`wait` pair. **The same shape as the incident**, and the same cost: `sleep 300` is a five-minute orphan. | **UNFIXED — gate red (exit 1)** |
-| **monitor** | `crates/multitop/src/ssh/ssh_tests.rs:88` — `child.stdin.take().unwrap().write_all(payload).unwrap()` above `child.wait()`. Two `unwrap()`s that can panic with the child live; the leaked process is the upload script, which starts an `sshd`. | **UNFIXED — gate red (exit 1)**; also separately red on clippy 1.99 — that one is monitor's own claim from its `docs/roadmap.md`, not re-measured here |
-| **games/ZeroThunder** | `tests/e2e/live_probe_lib.py:31` — was `return proc if wait_for_app(...) else None`, **dropping the handle on the failure path**, so the failure branch was the leaking one | **FIXED** at `a6f6962`: `terminate` → `wait(timeout=5)` → `kill`, with the reason inline. Gate green. (This file previously also carried a "19 files dirty" warning from the R5 retirement; that tree is clean apart from `info.plist`, so the warning is withdrawn.) |
+| **routines** | `tests/follow_lifecycle.rs` — 3 sites: `Command::new("/bin/sleep").arg("300")` with `assert!` between the spawn and the `kill`/`wait` pair. The same shape as the incident, and the same cost: `sleep 300` is a five-minute orphan. | **FIXED** at `7e8cc4c`, shipped in **v0.59.1**. |
+| **routines** | `tests/control_lifecycle.rs:227`, `tests/control_takeover.rs:190` — a RAW, unguarded owner beside a `Reap`-wrapped server, reaped below `wait_for_socket`'s `assert!`. A guard on `child` laundered `owner`; **the gate reported both clean.** | **FIXED** in the same `7e8cc4c`, shipped in **v0.59.1**, with all three sites sharing one root cause: the owner fixture and its guard now live once, in `tests/lifecycle_support/`. |
+| **monitor** | `crates/multitop/src/ssh/ssh_tests.rs:88` — `child.stdin.take().unwrap().write_all(payload).unwrap()` above `child.wait()`. Two `unwrap()`s that can panic with the child live; the leaked process is the upload script, which starts an `sshd`. | **FIXED**, shipped in **v0.52.0**. |
+| **monitor** | the same file's guard, `Reap::spawn`, **with its `Drop` body emptied to nothing**: the gate still reported clean. `Self(` was accepted whenever ANY `impl Drop` existed in the file, so a `Drop` that does nothing passed as protection — precisely the failure monitor's own `a_panic_after_the_spawn_leaves_no_child` test was written to catch, and the gate could not catch it. | **FIXED in this release** (`_self_type` resolves `Self`; `guard_types` still judges the body). |
+| **games/ZeroThunder** | `tests/e2e/live_probe_lib.py:31` — was `return proc if wait_for_app(...) else None`, **dropping the handle on the failure path**, so the failure branch was the leaking one. | **FIXED** at `a6f6962`: `terminate` → `wait(timeout=5)` → `kill`, with the reason inline. (This file previously also carried a "19 files dirty" warning from the R5 retirement; that tree is clean apart from `info.plist`, so the warning is withdrawn.) |
 | **ztools** | 6 hits, all under `vendor/camoufox-rs` | **NOT findings** — green via `GOH_EXCLUDE='vendor/'`. Recorded so the 6 are not re-litigated; the exemption itself is measured below. |
 
-So: **two unfixed leaks, in two repos, five sites.** The ztools row is the one
-that could have quietly blinded the gate, so it was measured rather than believed
-— planted in a throwaway copy of ztools' tracked tree, never in ztools itself:
+**So: one real leak remains unfixed in the estate, in one repo** — and the
+count is 1 because it was re-measured, not because the number moved down:
+
+| repo | finding | state, measured 2026-10-05 |
+|---|---|---|
+| **games/ZeroThunder** | `tests/e2e/garden_drag_flicker.py:73` — `proc = subprocess.Popen([binpath, ...])`, then `if not z.wait_for_app(timeout=15): return 2` at line 76, with `proc.terminate()` at line 119. **The identical dropped-handle defect** as the `live_probe_lib.py` row above, on the LIVE tier. | **UNFIXED, and the gate now says so** (exit 1). Deliberately not fixed: it needs a real screen, and a fix could not be *proven* here, so shipping one would violate prove-before-claim. **NEWLY VISIBLE** — see below. |
+| **ztools** | the unanchored `GOH_EXCLUDE` hazard, not a spawn site: `'vendor/'` is a SUBSTRING test compiled with `re.search`, so it exempts any path with `vendor/` anywhere in it. | **UNFIXED**, and still not this gate's to change: re-anchoring `GOH_EXCLUDE` alters the semantics of a key every consumer's checker shares, so it belongs in its own release, in that repo. Harmless today — `vendor/camoufox-rs` is the only match and 106 first-party test files stay policed. |
+
+**Why `garden_drag_flicker.py:73` became visible only now.** It is a Python
+site, and Python's panic scan never counted a bare `return` as an exit that skips
+a reap — Rust's `PANICS` always did. The asymmetry was not found by reading the
+rule; it was found by reading a site the gate could not see. Three further shapes
+it had been reporting wrongly were closed at the same time, all measured against
+the real file: `return proc` is a HANDOFF and not a skip (that is `live_probe_lib.py`'s
+own repaired form, and reading any `return` as a skip reported the repair as the
+defect); a `return` under `proc.poll()` is a child already exited; and a `try:`
+ABOVE the spawn with the reap in its `finally:` was not seen at all.
+
+The ztools row is the one that could have quietly blinded the gate, so it was
+measured rather than believed — planted in a throwaway copy of ztools' tracked
+tree, never in ztools itself:
 
 | arm | what it shows |
 |---|---|

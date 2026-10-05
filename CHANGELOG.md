@@ -1,5 +1,76 @@
 # CHANGELOG
 
+## v0.18.0 — the unit of protection is the BINDING, and a masker that lost the file _(2026-10-05)_
+
+Three confirmed blind spots in `checks/check_no_unreaped_spawn.py`, all found by **consumers with
+real fixtures** rather than by this repo. They are one class, and it is the class `docs/SUPERSOTA.md`
+**R3** exists to name: *a gate that passes on a shape it cannot actually see.* v0.17.0 shipped this
+checker calibrated against its own table, reporting `36 shapes green` across 32 wired repos, while
+missing leaks that two independent repos found in the same week. A silently blind gate is worse than
+no gate, because it converts an unknown into a false pass.
+
+**1. A guard on one variable laundered a second, unguarded one.** Protection was a property of the
+enclosing FUNCTION: if the function mentioned a guard type anywhere, every spawn in it was guarded.
+`routines`' `tests/control_lifecycle.rs:227` and `tests/control_takeover.rs:190` each spawned a **raw,
+unguarded** `/bin/sleep 300` owner beside a `Reap`-wrapped server and reaped it below
+`wait_for_socket`'s `assert!`. **The gate reported both clean.** Fixed by attaching protection to the
+**binding** the spawn's result was assigned to — and because a wrapper's ownership is often a
+`Self(...)` tuple field, `Self` is resolved through the enclosing `impl` and *that* type's `Drop` is
+read. The same attribution now applies to every other protection: an `EXTERNAL_REAPERS` call or a
+deadline watchdog has to name that binding, or a pid derived from it. Both were laundering a second
+child exactly as the guard did.
+
+**2. The Rust masker desynchronised on a raw string and blanked the rest of the file.** The closing
+delimiter was matched against the whole OPENING token (`r#"`, `r##"##`, `br#"#`), so
+`r#"{"op":"shutdown"}"#` never closed and every remaining line was blanked before the spawn scan saw
+it. **Nine spawn sites in `routines`' tests were invisible to this gate**, which is why both files
+above read clean twice over. State is now `(close, raw)`. The `raw` half is a genuine Rust/Python
+difference and was **measured against both toolchains rather than reasoned about**: `r"a\"` is valid
+Rust, `r"a"b"` is not, and `r"a""` is ONE string in CPython. The first attempt branched on `r` in
+the Python masker and blanked four real literals; the interpreter refuted it and the branch is gone,
+pinned by a calibration row so it is not re-derived.
+
+**3. A `Drop` that does nothing was accepted as a guard.** `Self(` was honoured whenever ANY
+`impl Drop` existed in the file, so with **`monitor`'s guard `Drop` body emptied to nothing the gate
+still reported clean** — precisely the failure `monitor`'s own `a_panic_after_the_spawn_leaves_no_child`
+test was written to catch, and the gate could not catch it. `Self` now resolves to a type, and a
+resolved type whose `Drop` neither kills nor waits is a finding.
+
+**Sibling bugs, closed rather than left for the next reader.** A guard carrying a lifetime
+(`impl Drop for X<'_>`) was invisible to the old regex; `cmd.spawn()` behind a `&mut Command`
+parameter — how a guard's own constructor spawns — was not recognised as a process spawn *at all*;
+`_fn_bounds` picked the nearest preceding `fn`, which for a guard declared inside a test is `fn drop`
+twelve lines above the spawn; the guard-construction window was 8 lines and the incident's own
+repaired file has a nine-line comment between the spawn and `ReapOnDrop(child)`. A cross-file
+`tests/common/` guard was invisible per-file, which reported `routines`' **fixed** code as broken, so
+guard types are now gathered at **crate scope** — while a LOCAL `impl Drop` still overrides it, since
+the compiler uses the local one.
+
+**A shape a text pass cannot judge is now reported, not passed.** `unjudgeable` is counted and named
+and never failed on: a wrapper whose `Drop` is in another crate is a dependency's contract. Passing
+it silently is the blind spot this release exists to remove; failing it would teach everyone to ignore
+the gate — the same reasoning as `is_locked`'s "an unanswerable question must not read as free".
+
+**Measured, then fixed, then measured again.** The estate was swept before and after, all **32 wired
+repos**, honouring each repo's own `GOH_EXCLUDE`. **Sites policed rose 27 → 30** (+11%): `monitor`'s
+guard constructor and `routines`' two raw-string-hidden sites, all three now judged correctly. Exactly
+**one new finding**, `games/ZeroThunder`'s `tests/e2e/garden_drag_flicker.py:73` — a **real** dropped
+handle on the LIVE tier that the estate has been carrying unfixed, now visible because Python's panic
+scan had never counted a bare `return` as an exit that skips a reap, the way Rust's always did. Three
+shapes the same widening got wrong were caught and corrected against the real files: `return proc` is
+a handoff, a `return` under `poll()` is a child already gone, and a `try:` ABOVE the spawn reaps.
+
+The measured table (SUPERSOTA **R2**) is now **55 shapes**, and **18 of them are rows that were
+measured CLEAN before this fix and FINDING after it** — run as two isolated processes, because a
+comparison harness that shares modules with what it compares cannot see the difference it exists to
+measure. Every new Rust row is verified to **compile** under rustc 1.99.0 and every Python row to
+**parse** under CPython; `rustc` is what disproved the fifth "desync" case, which turned out to be the
+checker's own bug wearing a fixture's clothes.
+
+Files: `checks/check_no_unreaped_spawn.py`, `_spawn_mask.py`, `_spawn_lex.py`, `_spawn_rust.py`,
+`_spawn_guard_attr.py`, `_spawn_reap.py`, `_spawn_py_sh.py` (replacing `_spawn_shapes.py`),
+`_unreaped_spawn_probe.py`, `_unreaped_spawn_table_regressions.py`, `tests/test_no_unreaped_spawn_estate.py`.
+
 ## v0.17.0 — an unreaped child can never again be invisible, and every wait is bounded _(2026-10-04)_
 
 `media_server`'s `archive_torznab` test spawned the real binary with `--bind
