@@ -23,7 +23,6 @@ import pytest
 
 ROOT = Path(__file__).resolve().parent.parent
 RUST_GATE = ROOT / "gates" / "rust_gate.sh"
-GOH = ROOT / "target" / "release" / "goh"
 
 pytestmark = [
     pytest.mark.skipif(shutil.which("cargo") is None, reason="cargo not installed"),
@@ -47,6 +46,13 @@ def _crate(repo: Path, name: str, deps: str = "", lib: str = LIB) -> None:
         f'[package]\nname = "{name}"\nversion = "0.1.0"\nedition = "2021"\n\n[dependencies]\n{deps}'
     )
     (d / "src" / "lib.rs").write_text(lib)
+
+
+@pytest.fixture(autouse=True)
+def _native(goh: Path, monkeypatch) -> None:
+    """The session's own goh build (conftest), never cargo's target path: another test may be
+    re-linking that while this one reads it -- the race conftest's fixture exists to close."""
+    monkeypatch.setenv("SCOPED_CACHE_GOH", str(goh))
 
 
 @pytest.fixture
@@ -74,7 +80,7 @@ def estate(tmp_path: Path) -> Path:
 
 def _gate(repo: Path, crate: str, **env: str) -> subprocess.CompletedProcess:
     full = {k: v for k, v in os.environ.items() if not k.startswith(("GOH_", "GIT_"))}
-    full.update(GOH_DIR=str(ROOT), GOH_BIN=str(GOH), **env)
+    full.update(GOH_DIR=str(ROOT), GOH_BIN=os.environ["SCOPED_CACHE_GOH"], **env)
     return subprocess.run(
         ["bash", str(RUST_GATE), str(repo), str(repo / "crates" / crate)],
         cwd=repo,
