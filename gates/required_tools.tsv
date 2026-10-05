@@ -1,0 +1,22 @@
+# required_tools.tsv -- every tool a gate REFUSES without, one row per refusal site.
+# Consumers install from this (gates/required_tools.py --repo . --install), never from a copy:
+# a copied list drifts the day a gate gains a requirement (antiknob CI, 2026-10-05).
+# tests/test_required_tools_manifest.py pins it to the code in both directions.
+# Columns (TAB-separated): layer, tool, kind (brew|cargo|pip|system), install, site.
+structural	shellcheck	brew	brew install shellcheck	checks/check_shell_lint.sh
+structural	ruff	brew	brew install ruff	checks/check_python_formatted.py
+python	python3	system	a python3 on PATH	gates/py_gate.sh
+rust	cargo	system	rustup (https://rustup.rs)	gates/rust_gate.sh
+rust	cargo-machete	cargo	cargo install cargo-machete	gates/rust_gate.sh
+swift	swiftlint	brew	brew install swiftlint	gates/swift_gate.sh
+coverage-rust	cargo	system	rustup (https://rustup.rs)	gates/coverage_gate.sh
+coverage-rust	cargo-llvm-cov	cargo	cargo install cargo-llvm-cov	gates/coverage_gate.sh
+coverage-rust	python3	system	a python3 on PATH	gates/coverage_gate.sh
+coverage-cpp	cmake	brew	brew install cmake	gates/coverage_gate.sh
+coverage-cpp	ctest	brew	brew install cmake	gates/coverage_gate.sh
+coverage-cpp	xcrun	system	xcode-select --install	gates/coverage_gate.sh
+coverage-cpp	python3	system	a python3 on PATH	gates/coverage_gate.sh
+coverage-py	python3	system	a python3 on PATH	gates/coverage_gate.sh
+coverage-py	coverage	pip	python3 -m pip install coverage	gates/coverage_gate.sh
+coverage-py	pytest	pip	python3 -m pip install pytest	gates/coverage_gate.sh
+screen-linkage	nm	system	xcode-select --install	checks/check_no_screen_linkage.sh
