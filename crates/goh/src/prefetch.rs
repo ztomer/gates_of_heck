@@ -97,3 +97,30 @@ impl Drop for Drain {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn collected_commands_start_together_and_are_taken_once() {
+        let specs = super::collect(|| {
+            assert!(super::record_if_collecting("true", &["a".to_owned()]));
+            assert!(super::record_if_collecting("true", &["b".to_owned()]));
+        });
+        assert_eq!(specs.len(), 2);
+        assert!(
+            !super::record_if_collecting("true", &["c".to_owned()]),
+            "outside collect"
+        );
+        let dir = tempfile::tempdir().expect("tempdir");
+        let drain = super::Drain;
+        super::start(specs, dir.path(), dir.path());
+        let (code, _) = super::take("true", &["a".to_owned()]).expect("a was started");
+        assert_eq!(code, 0);
+        assert!(
+            super::take("true", &["a".to_owned()]).is_none(),
+            "taken once"
+        );
+        drop(drain); // joins `b`, which nobody took
+        assert!(super::take("true", &["b".to_owned()]).is_none(), "drained");
+    }
+}

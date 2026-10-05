@@ -83,18 +83,27 @@ pub(crate) fn begin(label: &str) -> Instant {
 /// ONE `write` of one line under `O_APPEND`, below `PIPE_BUF`, so concurrent gates interleave
 /// whole lines. Every failure is dropped on purpose: the instrument must never turn a gate red.
 fn record(label: &str, start: Instant, rc: i32) {
-    use std::io::Write as _;
     let Some(path) = std::env::var_os("GOH_TIMINGS").filter(|p| !p.is_empty()) else {
         return;
     };
     let cwd = std::env::current_dir().map_or_else(|_| String::new(), |p| p.display().to_string());
+    let parent = std::env::var("GOH_TIMINGS_PARENT").unwrap_or_default();
+    let ms = (start.elapsed().as_secs_f64() * 10_000.0).round() / 10.0;
+    record_to(std::path::Path::new(&path), label, ms, rc, &parent, &cwd);
+}
+
+/// The write itself, environment-free so it is testable: one JSON line appended to `path`.
+pub(crate) fn record_to(
+    path: &std::path::Path,
+    label: &str,
+    ms: f64,
+    rc: i32,
+    parent: &str,
+    cwd: &str,
+) {
+    use std::io::Write as _;
     let row = serde_json::json!({
-        "label": label,
-        "ms": (start.elapsed().as_secs_f64() * 10_000.0).round() / 10.0,
-        "rc": rc,
-        "tier": "native",
-        "parent": std::env::var("GOH_TIMINGS_PARENT").unwrap_or_default(),
-        "cwd": cwd,
+        "label": label, "ms": ms, "rc": rc, "tier": "native", "parent": parent, "cwd": cwd,
     });
     let mut line = row.to_string();
     line.push('\n');
@@ -255,5 +264,27 @@ pub(crate) fn run_child(
             }
             (code, text)
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn a_timing_line_is_one_whole_json_object_and_a_bad_path_is_dropped() {
+        let dir = tempfile::tempdir().unwrap_or_else(|e| panic!("tempdir: {e}"));
+        let path = dir.path().join("t.jsonl");
+        super::record_to(&path, "emoji", 12.5, 0, "outer", "/repo");
+        super::record_to(&path, "markers", 3.0, 1, "", "/repo");
+        let text = std::fs::read_to_string(&path).unwrap_or_default();
+        let rows: Vec<serde_json::Value> = text
+            .lines()
+            .filter_map(|l| serde_json::from_str(l).ok())
+            .collect();
+        assert_eq!(rows.len(), 2, "{text}");
+        assert_eq!(rows[0]["label"], "emoji");
+        assert_eq!(rows[0]["parent"], "outer");
+        assert_eq!(rows[1]["rc"], 1);
+        // The instrument never fails a gate: an unwritable path is silently dropped.
+        super::record_to(&dir.path().join("no/such/dir/t"), "x", 1.0, 0, "", "");
     }
 }
