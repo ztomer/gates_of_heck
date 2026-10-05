@@ -210,6 +210,7 @@ def test_rust_test_code_spawns_git_only_through_the_testkit():
     variables on purpose) or the testkit's one scrubbed helper. A new hand-rolled fixture
     `fn git` -- four existed, none scrubbed -- lands here first: use goh_testkit::git_in."""
     allowed = {
+        "crates/goh/build.rs": 1,  # the source stamp (C3); strips the hook's GIT_* itself
         "crates/goh-testkit/src/lib.rs": 2,  # local_env_vars() probe + git_command()
         "crates/goh/src/gitutil.rs": 3,  # repo_root / listed_files / content_bytes
         "crates/goh/src/blobs.rs": 1,  # prefetch_staged's cat-file
