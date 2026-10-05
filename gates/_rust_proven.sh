@@ -55,7 +55,11 @@ _rust_scope_init() {
 _rust_step() {
     local env_hash
     env_hash="$(env | grep '^GOH_' | grep -v '^GOH_TIMINGS' | LC_ALL=C sort | hash_hex /dev/stdin)"
-    printf 'rust_gate v1 group=%s cargo_dir=%s env=%s\n' "$1" "${cargo_dir#"$PWD"/}" "$env_hash"
+    # The repo group's scans read the whole repo whichever crate called them, so its step names no
+    # crate: in a 29-crate push the first records it and the other 28 find the record.
+    local where="${cargo_dir#"$PWD"/}"
+    [ "$1" = repo ] && where="(repo)"
+    printf 'rust_gate v1 group=%s cargo_dir=%s env=%s\n' "$1" "$where" "$env_hash"
 }
 
 _rust_key() { # <mode> <step>

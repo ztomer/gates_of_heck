@@ -100,6 +100,9 @@ def test_only_the_edited_crate_and_its_users_are_re_gated(estate: Path) -> None:
         first = _gate(estate, name)
         assert first.returncode == 0, first.stdout + first.stderr
         assert not _skipped(first, "crate"), name
+        # The repo-wide scans read the whole repo whichever crate called them: the first crate
+        # records them and every later crate of the same tree finds the record.
+        assert _skipped(first, "repo") == (name != "a"), (name, first.stdout + first.stderr)
     again = _gate(estate, "c")
     assert _skipped(again, "crate") and _skipped(again, "repo"), again.stdout + again.stderr
 
