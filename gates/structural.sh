@@ -149,6 +149,22 @@ if [ -n "$_goh_dirty" ]; then
     unset _goh_dirty
 fi
 
+# ── A hook that is an OLDER stock is named, with its fix. ─────────────────────
+# Everything delegates to this checkout at runtime EXCEPT the hooks, which install.sh copies: a stock
+# change reaches no repo until it re-installs. Measured 2026-10-05: 14 repos still ran the
+# pre-0ac0f70 pre-push, which gates the working tree, not the pushed commit. A hook listed in
+# retired_hooks.sha256 is pristine-but-old, so install.sh replaces it without --force. Named here,
+# before the native exec, so both tiers say it (tests/test_hook_currency.py).
+_goh_hooks="$(git config core.hooksPath 2>/dev/null || echo .githooks)"
+for _goh_h in pre-commit pre-push; do
+    [ -f "$_goh_hooks/$_goh_h" ] || continue
+    _goh_sum="$(shasum -a 256 <"$_goh_hooks/$_goh_h" | cut -d' ' -f1)"
+    if grep -q "^$_goh_sum  $_goh_h" "$GOH_ROOT/retired_hooks.sha256" 2>/dev/null; then
+        warn "$_goh_hooks/$_goh_h is an OLDER stock hook; update it:  $GOH_ROOT/install.sh \"$PWD\""
+    fi
+done
+unset _goh_hooks _goh_h _goh_sum
+
 # shellcheck source=gates/_goh_bin.sh
 . "$HERE/_goh_bin.sh"
 goh_resolve_native

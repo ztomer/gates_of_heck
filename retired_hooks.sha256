@@ -6,3 +6,7 @@
 # remove: a hash removed from here turns a pristine old install back into a refusal.
 d5603f176139d3ddca9b21bc94f87fa2e7663a94d5980c5346c26ba5a46682bf  pre-commit  (73391f0, before v0.12.3)
 87c60cd19cb13dc32c581cddca2cb305f91f972aba343ada2750bc2bfc2e761a  pre-push    (73391f0, before v0.12.3)
+d3722589597101b105161fd23507dbd76f2a804b88baa55dbbffa0620b5a9cc8  pre-commit  (a15c96a, v0.12.3)
+1139cbc22befa18f66b813133c0598cce26df41d9a039ec620ae23dec271eef3  pre-push    (0ac0f70, push_gate)
+830c174e2e642ba5fe8fce5483964b4918ce0ce844eb907acf475b0e851cd91b  pre-commit  (e3c829e, parse-guard)
+1a9b14a1e276decc03a0e73e112e4f5364939e2059416f93544103c8db41211f  pre-push    (e3c829e, parse-guard)

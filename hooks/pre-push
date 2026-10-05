@@ -7,6 +7,15 @@
 set -euo pipefail
 
 GOH="${GOH_DIR:-${GOH:-$HOME/Projects/gates_of_heck}}"
-exec bash "$GOH/gates/push_gate.sh" "$@"
+push_gate="$GOH/gates/push_gate.sh"
+# No fallback to gating the working tree: that is a different object than the push. Name the remedy
+# instead of a bare "No such file or directory" (upstreamed from ztools, 2026-10-05).
+if [ ! -f "$push_gate" ]; then
+    echo "✗ pre-push: no gates_of_heck push gate at $push_gate -- clone gates_of_heck there," \
+        "or point GOH_DIR at your checkout, then re-run its install.sh" >&2
+    exit 1
+fi
+# "$@" carries the remote's name: push_gate.sh needs it to skip commits the remote already has.
+exec bash "$push_gate" "$@"
 exit
 } # parse-guard

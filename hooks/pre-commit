@@ -26,6 +26,8 @@ if [ ! -f "$structural" ]; then
     exit 1
 fi
 
-exec "$structural" --staged
+# `bash <path>`, not `exec <path>`: executing the file directly also needs its exec bit, which lives
+# in another repo and is what a clone or tarball silently loses (upstreamed from ztools, 2026-10-05).
+exec bash "$structural" --staged
 exit
 } # parse-guard
