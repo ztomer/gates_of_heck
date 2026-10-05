@@ -6,11 +6,26 @@ not ready to start: the **measured baseline** it moves, the **exit number** that
 hit can be wrong, each with a test BEFORE the cache exists). A perf change without a before/after
 from the P0 instrument does not land.
 
-## State — 2026-10-05, v0.20.0 (read first)
+## State — 2026-10-05, v0.20.0 + unreleased (read first)
 
-v0.20.0 shipped green; details in CHANGELOG.md. The pytest hang is retired (full suite completes,
-94.4 s at `-n 8`). Box: 16 cores, 4-5 busy at idle, sys ~= user, so **spawn count, tree walks and
-network round trips are the cost metric, not CPU**; `-n 12` is slower than `-n 8`.
+v0.20.0 shipped green; details in CHANGELOG.md. The pytest hang is retired. Box: 16 cores, 4-5 busy
+at idle, sys ~= user, so **spawn count, tree walks and network round trips are the cost metric, not
+CPU**; `-n 12` is slower than `-n 8`.
+
+**Landed since v0.20.0, unpushed, unreleased** (each red-first; details in its commit):
+
+| item | commit | measured |
+|---|---|---|
+| C1 staged ruff check, both tiers | `f711a57` | pre-commit now refuses what pre-push refused |
+| P0 `GOH_TIMINGS` + `tools/gate_profile.sh` | `79e1732` | media_server push profiled: 177 s, 297 steps |
+| P1a manifest walks read git's listing | `38aea55` | `lints` 2.42 s -> 0.05 s native, 1.4 -> 0.08 s Python; `deps` 7 s -> 0.09 s on a small crate |
+| P1b crates.io answers cached + concurrent | `fe354ac` | routines `deps` 0.97 s -> 0.12 s warm |
+| P1c (gate side) failing test named under coverage | `a2bc0a6` | verified on real cargo-llvm-cov |
+| P1d coverage builds once, profile reset per target | `7d7bd8c` | mediaops-rs 60 -> 27 s, routines 144 -> 73 s, merged report identical |
+| P1e native delegated checkers start together | `8124ce4` | media_server `--full` 4.75 -> 2.4 s |
+| C3 bin/goh from HEAD, source-stamped, rebuilt when stale | `833b2e7` | -- |
+| `gates/required_tools.{tsv,py}` (antiknob CI ask) | `54e2ee7` | manifest == code, both directions |
+| push_gate refuses a branch that moved while gated (ZoneWM D-0211) | `e148449` | -- |
 
 ## Phase P — make goh fast (the program)
 
@@ -47,15 +62,15 @@ What the table says, in four classes:
 
 ### Targets (each re-measured with P0, recorded here)
 
-| what | now | target |
-|---|---|---|
-| media_server push, one crate changed, warm | 197 s | <= 30 s |
-| media_server push, everything changed, warm | 197 s | <= 90 s |
-| any consumer's pre-commit structural layer | ~1 s | <= 0.4 s |
-| `structural.sh --full`, media_server | 4.9 s | <= 1.5 s |
-| this repo's suite, `-n 8` | 94.4 s | <= 60 s |
+| what | baseline | now | target |
+|---|---|---|---|
+| media_server push, one crate changed, warm | 197 s | re-measure (P1a/b/d landed) | <= 30 s (needs P3) |
+| media_server push, everything changed, warm | 177 s (P0) | re-measure | <= 90 s |
+| any consumer's pre-commit structural layer | ~1 s | re-measure | <= 0.4 s |
+| `structural.sh --full`, media_server | 4.9 s | 2.4 s (P1e) | <= 1.5 s (needs the unreaped-spawn port, N1) |
+| this repo's suite, `-n 8` | 94.4 s | re-measure | <= 60 s |
 
-### P0 — the instrument (prerequisite, small)
+### P0 — the instrument -- LANDED `79e1732`
 
 `GOH_TIME` prints whole seconds on the ok line, too coarse for anything under 1 s.
 - `goh_step` and `local_ci.sh` append one JSON line per step (label, ms, exit, cache hit or miss)
@@ -68,7 +83,7 @@ What the table says, in four classes:
 
 ### P1 — remove waste (no cache, so nothing can lie; do first)
 
-- **P1a. Tree walks read the index, never the filesystem.** `rglob`/`os.walk`/`glob("**")` in
+- **P1a. LANDED `38aea55` for the Cargo.toml walkers** (the rest are allowlisted with reasons in `tests/test_tree_walks.py`). **Tree walks read the index, never the filesystem.** `rglob`/`os.walk`/`glob("**")` in
   `checks/_dep_tree.py`, `_rust_crates.py`, `_empty_scope_probe.py`, `check_empty_scope.py`,
   `check_lints_optin.py`, `check_no_screen_presentation.py`, `check_python_formatted.py`,
   `check_tests_registered.py`, `gates/coverage_engines.py`, `coverage_markers.py`; Rust
@@ -79,13 +94,13 @@ What the table says, in four classes:
   fixture with a 5,000-directory ignored `target/` and a stray `Cargo.toml` inside it, run against
   every walking checker: the stray file is never reported, and walk time stays under a fixed bound.
   Expected: lints-inherited 3-6 s -> < 0.1 s per crate.
-- **P1b. Dependency currency: one lookup per crate NAME per day, concurrently.** A shared response
+- **P1b. LANDED `fe354ac`. Dependency currency: one lookup per crate NAME per TTL, concurrently.** A shared response
   cache under `~/.cache/goh/crates-io/<name>.json`, honouring the index's own `ETag`/`max-age`;
   lookups in a thread pool. **Why caching cannot turn a red green:** the fatal arm (pinned below
   the graph) is offline and never touches the cache; only the report-only arm reads it. Test the
   claim, don't just state it: the fatal arm must go red with the network seam disabled.
   Expected: 6-7 s -> ~0.1 s warm, in every Rust crate of every consumer.
-- **P1c. Every test runs once per push, the expensive run included.** Reordering alone cannot do
+- **P1c. GATE SIDE LANDED `a2bc0a6`; the consumer half is routines', ztools' and monitor's own commit.** **Every test runs once per push, the expensive run included.** Reordering alone cannot do
   it: the plain `cargo test` is a separate step and re-runs whatever ran before it. What can: the
   instrumented coverage run executes every `lib`/`bin`/`test` target with `--all-features`, which is
   everything `cargo test --all-features` runs EXCEPT doctests (and examples/benches, inventoried per
@@ -101,7 +116,7 @@ What the table says, in four classes:
   pre-commit and again at push (monitor); that duplicate is P3's to remove (a pre-commit record on
   the same crate scope satisfies the push). Expected: one full test run saved per push in those
   three repos.
-- **P1d. Incremental coverage.** `cargo llvm-cov clean --workspace` exists because the export
+- **P1d. LANDED `7d7bd8c` (the per-target recompile; the per-binary-export idea is unneeded: 2x already, merged report identical).** **Incremental coverage.** `cargo llvm-cov clean --workspace` exists because the export
   globbed STALE instrumented binaries from a shared build dir (routines, 2026-09-21: 96% read as
   93.5%). The root-cause fix is to export only from the executables cargo reports for THIS run
   (`--message-format=json`, `profile.test` artifacts). Then the clean can go and instrumented builds
@@ -110,10 +125,17 @@ What the table says, in four classes:
   media_server, routines and app_updates. The phantom-miss reason for per-target parts (CGU-hash
   instantiations) must survive, so its existing test is the pin. Expected: `mediaops-rs` coverage
   53 s -> to be measured, but it is the largest single lever in the table.
-- **P1e. Run checkers concurrently, in both tiers, with output in declared order.** The native tier
+- **P1e. NATIVE TIER LANDED `8124ce4`; the Python tier is left serial on purpose -- it is being retired (N).** **Run checkers concurrently, with output in declared order.** The native tier
   runs its 7 delegated Python steps in a pool (`steps_delegated.rs`); `structural.sh` does the same
   for its Python steps (buffer each, print in order). The parity test already pins order, so it is
   the gate. Expected: `--full` 4.9 s -> ~2.3 s (bounded by unreaped-spawn).
+
+- **P1f. Two per-crate steps that are not per-crate** (measured by P0 on media_server's push):
+  `no emptiness asserts` scans the WHOLE repo (554 files) once per crate, 29 times, 24 job-s; and
+  `cargo lints (manifest)` is a second full `cargo check --workspace` after clippy, 24 job-s. The
+  first belongs in P2's `--each-crate` (repo-wide scans once per run); the second may be readable from
+  clippy's own output (cargo's manifest warnings are cargo's, not the driver's) -- prove it on a
+  planted `non_kebab_case_bins` before removing the extra build.
 
 ### P2 — a scheduler for the step list
 
@@ -192,11 +214,42 @@ HEAD:<path>`, so computing a key stays O(scope), not O(files).
   `~/.claude/skills` (`GOH_SKILLS_CORPUS`); a peer's edit tipped a skill over the word ceiling and
   refused a release. Home: a hook or a check the skill-editing path runs, so the writer finds out,
   not the next pusher.
-- **C3. SUPERSOTA R4a.** The binary's version check sees a version bump, not a step added. Close it
-  with a source hash built into `goh` (`crates/goh/build.rs`). P4's checker-source hash needs the
-  same thing, so build it once.
-- **C4. Uncommitted gate source certifies a push with only a warning.** A refusal needs a seam the
-  tests can set (an acknowledged-dirty marker file; a `GOH_*` key would need a `docs/config.md` row).
+- **C3. LANDED `833b2e7`** (SUPERSOTA R4a): `bin/goh` is built from an export of HEAD, stamped with
+  the git trees of its inputs (`goh source-tree`), and `gates/_goh_bin.sh` rebuilds a stale one
+  under a lock before using it. Owner's choice 2026-10-05: rebuild, not fall back.
+- **C4. Gate source edited in the shared checkout is LIVE in every consumer, the moment it is
+  saved.** Proven again 2026-10-05: this session's uncommitted `_goh_bin.sh` reached antiknob's push
+  ahead of the binary it checks ("unrecognized subcommand 'source-tree'"). The warning exists; the
+  cause does not have to. C3's pattern generalises: consumers run `checks/` / `gates/` / `lib/` /
+  `tui/` from a HEAD export too (a stable cache dir, `read-tree -u`, keyed by HEAD's tree), and
+  development points `GOH_DIR` at the working tree on purpose. Then "uncommitted gate source
+  certifies a push" is impossible by construction, and the SUPERSOTA item closes with it.
+- **C5. A `✗` line from a step that exited 0 is listed as a failure** (ZoneWM H2). `goh_step`'s
+  "failure lines" grep reads the whole log of the failing step, so a nested gate's red summary
+  quotes inner steps that passed -- a calibration plant's deliberate `✗` included. Fix: failure
+  lines come from the innermost step that FAILED (the P0 parent chain says which), and a `✗` under
+  an exit-0 step is flagged as such, never listed as the failure.
+
+## Phase N — retire the Python checkers (owner's direction, 2026-10-05)
+
+The Python checkers are today both the second tier (`GOH_NO_NATIVE`) and the SPEC the native ports
+are pinned to. Retiring them means porting the delegated ones and then deleting the tier, in that
+order, never the reverse:
+
+- **N1. Port the delegated checkers, slowest first** (P0 numbers): `check_no_unreaped_spawn.py`
+  (2.2 s, the P1e floor), `check_version_provenance.py` (1.4 s), then `check_no_kill_by_name`,
+  `check_claim_derivation`, `check_md_links`, `check_python_formatted` (spawns ruff either way),
+  `check_lock_version`, `check_no_credential_urls`, `check_shell_lint.sh` (spawns shellcheck), and
+  the gate-side Python (`check_dep_currency`, `check_lints_optin`'s twin, `lcov_merge`). Each port
+  lands parity-pinned against the Python it replaces and red-proven both ways, as Phase 3 did.
+- **N2. Re-home the spec.** A parity test whose reference is deleted pins nothing. Before a Python
+  checker goes, its behaviour table moves into the native crate's own tests (the calibration tables
+  stay whole -- they are the spec, not the implementation).
+- **N3. Delete the tier.** `GOH_NO_NATIVE`, the Python branch of `structural.sh`, the fallback in
+  `_goh_bin.sh` (a failed rebuild then REFUSES, which is correct once there is nothing else),
+  `docs/config.md` rows, and the "both tiers" tests that become one-tier tests.
+- **Cost of the end state to say plainly:** every consumer then needs a Rust toolchain to rebuild
+  `bin/goh`; `gates/required_tools.tsv` gains `cargo` for the structural layer.
 
 ## Downstream: what each consumer session needs to know
 
@@ -226,7 +279,15 @@ HEAD:<path>`, so computing a key stays O(scope), not O(files).
   Unfixed because it needs a real screen to prove.
 - **O35 (servers):** a per-consumer `gate_calibration.json` registry; a feature here, unscoped.
 
+- **antiknob / divoom CI:** install from `python3 $GOH_DIR/gates/required_tools.py --repo . --install`
+  once gates_of_heck is pushed (the divoom/antiknob session has asked to switch).
+- **Every consumer pushing by branch name over HTTPS:** `push_gate.sh` now refuses a ref that moved
+  while it was gated; ZoneWM's pinned `git push <remote> <sha>:<branch>` is the airtight form.
+
 ## Blocked / owner decisions
+
+- **Push and release** of the unreleased table above: the owner's call (consumers read the local
+  checkout, so only CI clones are behind).
 
 - O33 (servers): the `gho_` PAT was never rotated; an older `ghp_` is still live in `.90`'s zsh
   history and three conversation DBs. Only the owner can rotate it.
