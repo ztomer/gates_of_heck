@@ -185,6 +185,18 @@ BY_DESIGN = "demands an argument"
 NOT_APPLICABLE = "not applicable"
 
 
+def _runtime_env():
+    """The checkers' RUNTIME, which copying them into the skeleton left behind: the skeleton mirrors
+    `tui/` and `lib/` as empty directories, so a copied checker finds neither unless the sweep says
+    where they really are. Content stays absent; only the libraries come along."""
+    home = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    env = foreign_repo_env()
+    env["PYTHONPATH"] = os.pathsep.join(
+        p for p in (home, os.path.join(home, "lib"), env.get("PYTHONPATH", "")) if p
+    )
+    return env
+
+
 def sweep(skeleton, gate_name, names, timeout=None, excused=()):
     """(blind, unrunnable) over the empty tree.
 
@@ -215,13 +227,19 @@ def sweep(skeleton, gate_name, names, timeout=None, excused=()):
                 check=False,
                 # Inside the skeleton, not the hook's repo: with the hook's GIT_DIR a gate's git
                 # calls would read the REAL tree, and the sweep would measure the wrong thing.
-                env=foreign_repo_env(),
+                env=_runtime_env(),
             )
         except subprocess.TimeoutExpired:
             unrunnable[name] = f"no verdict within {timeout}s"
             continue
         except (OSError, subprocess.SubprocessError) as exc:
             unrunnable[name] = f"could not run: {exc}"
+            continue
+        if "Traceback (most recent call last)" in result.stderr:
+            # A CRASH is not a refusal. With no PYTHONPATH every checker died on an import inside
+            # the skeleton and each exit 1 was scored as the gate refusing the empty tree
+            # (2026-10-05, tests/test_gate_runtime_path.py).
+            unrunnable[name] = f"crashed: {result.stderr.strip().splitlines()[-1][:100]}"
             continue
         if result.returncode == 0:
             text = result.stdout + result.stderr

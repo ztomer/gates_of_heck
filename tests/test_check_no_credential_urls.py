@@ -373,3 +373,23 @@ def test_a_config_credential_is_judged_in_a_repo_with_no_remote(repo):
     git(repo, "config", "credential.helper", f"!echo password={LIVE_TOKEN}")
     got = findings(repo)
     assert got.returncode == 1 and "not applicable" not in out_of(got), out_of(got)
+
+
+def test_global_helpers_alone_are_judged_but_do_not_make_the_repo_applicable(repo, tmp_path):
+    """Found by the empty-tree sweep: a repo with no remote, on a machine whose ~/.gitconfig holds
+    helpers, printed `OK` -- compliance over a repo config with nothing in it. The global values are
+    still JUDGED (a token there leaks too) and the verdict says the repo had nothing of its own."""
+    import os
+
+    glob = tmp_path / "global.gitconfig"
+    glob.write_text("[credential]\n\thelper = osxkeychain\n")
+    env = dict(os.environ, GIT_CONFIG_GLOBAL=str(glob), GIT_CONFIG_NOSYSTEM="1")
+    got = subprocess.run(
+        ["python3", str(ROOT / CHECK)], cwd=repo, capture_output=True, text=True, env=env
+    )
+    assert got.returncode == 0 and "not applicable" in out_of(got), out_of(got)
+    glob.write_text(f"[credential]\n\thelper = !echo password={LIVE_TOKEN}\n")
+    got = subprocess.run(
+        ["python3", str(ROOT / CHECK)], cwd=repo, capture_output=True, text=True, env=env
+    )
+    assert got.returncode == 1 and str(glob) in out_of(got), out_of(got)

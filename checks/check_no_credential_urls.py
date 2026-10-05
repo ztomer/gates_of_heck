@@ -368,7 +368,19 @@ def main(argv=None) -> int:
         else:
             print(report(bad))
         return 1
-    if not urls and not values:
+    common = os.path.realpath(
+        subprocess.run(
+            ["git", "rev-parse", "--path-format=absolute", "--git-common-dir"],
+            cwd=repo,
+            capture_output=True,
+            text=True,
+            check=False,
+        ).stdout.strip()
+        or os.path.join(repo, ".git")
+    )
+    # Applicable only when the REPO's own config holds something: global helpers are still judged
+    # above, but they are not this repo's subject (the empty-tree sweep, 2026-10-05).
+    if not urls and not any(origin.startswith(common + os.sep) for origin, _, _ in values):
         # A NAMED NON-RUN, not a pass over zero files. Measured, and the sweep is what found it:
         # `check_empty_scope.py` ran this gate over a skeleton repo and read
         # `✓ [no_credential_urls] OK — every git remote URL carries no userinfo` as a gate that
@@ -379,7 +391,9 @@ def main(argv=None) -> int:
         if args.json:
             print("[]")
         else:
-            ok("[no_credential_urls] not applicable — this repo holds no remote URL to judge")
+            ok(
+                f"[no_credential_urls] not applicable — no remote URL here ({len(values)} global value(s) clean)"
+            )
         return 0
     if args.json:
         print("[]")

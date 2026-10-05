@@ -81,6 +81,18 @@ the release commit refused every consumer's commit (ZoneWM reported it within mi
 HEAD's version now; uncommitted gate source keeps its own by-path warning
 (`tests/test_binary_currency.py`, which no test had pinned before).
 
+### 7. A gate finds its own runtime, and a crash is not a refusal
+
+`~/.zshrc` exported `PYTHONPATH=$GOH_DIR`, and non-interactive shells never read it (ZoneWM had to
+export it in its own Makefile). `gates/_common.sh` now exports it for everything a gate runs. Under
+an empty PYTHONPATH the empty-tree sweep's copied checkers all died on `ModuleNotFoundError` and the
+sweep scored every crash as a healthy refusal: it now names a Traceback as "crashed", and supplies
+the copied checkers' runtime (`tui/`, `lib/`) itself. That honesty surfaced three checkers that
+demand an argument by design (excused, with reasons) and one real finding, fixed:
+`check_no_credential_urls.py` printed `OK` in a repo with no remote because it had judged the
+machine's GLOBAL helpers. Those are still judged; the repo is "not applicable" unless its own config
+holds something.
+
 ### Decided
 
 * `GOH_EXCLUDE` keeps `re.search` (substring) semantics: every consumer's patterns are written for

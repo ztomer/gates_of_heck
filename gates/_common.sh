@@ -25,6 +25,10 @@ set -euo pipefail
 # Prefer a vendored tui/lib.sh in the target repo (resolved from the GIT ROOT,
 # not the CWD — gates may run from a subdirectory), else the one shipped here.
 GOH_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# Every Python a gate runs finds tui.lib from HERE, never from the caller's shell: ~/.zshrc exported
+# it, and non-interactive shells never read ~/.zshrc (ZoneWM, 2026-10-05). The gate knows where it
+# lives; making every consumer re-export it was the workaround (tests/test_gate_runtime_path.py).
+export PYTHONPATH="$GOH_ROOT${PYTHONPATH:+:$PYTHONPATH}"
 GOH_GIT_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || true)"
 for _goh_tui in "${GOH_GIT_ROOT:+$GOH_GIT_ROOT/tui/lib.sh}" \
                 "tui/lib.sh" \
