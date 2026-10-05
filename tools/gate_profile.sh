@@ -24,7 +24,9 @@ zero=0000000000000000000000000000000000000000
 proven=0
 [ -n "${GOH_PROFILE_PROVEN:-}" ] && proven=1
 t0=$(date +%s)
-printf 'refs/heads/goh-profile %s refs/heads/goh-profile %s\n' "$sha" "$zero" \
+# The local ref is the SHA itself (the pinned form): push_gate.sh refuses a named ref that no longer
+# names the gated commit, and a made-up branch name names nothing at all.
+printf '%s %s refs/heads/goh-profile %s\n' "$sha" "$sha" "$zero" \
     | (cd "$repo" && GOH_TIMINGS="$out" GOH_PROVEN="$proven" \
         bash "$GOH/gates/push_gate.sh" goh-profile "$repo") >"$out.log" 2>&1
 rc=$?
