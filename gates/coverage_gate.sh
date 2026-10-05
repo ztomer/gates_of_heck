@@ -90,7 +90,14 @@ die() { err "coverage_gate: $*"; exit 2; }
 # /dev/null and a one-off failure (monitor, local_agent_test) left nothing to
 # diagnose but "export failed" -- a gate hole, since a defect that reaches the
 # push with no evidence has to be reproduced by hand before it can be fixed.
+# A failing TEST is named as one (BACKLOG P1c): the coverage run is the test run, so "export
+# failed" over a red test named a mechanism, not the defect, and read like a tooling retry.
 export_failed() {
+    local failed
+    if grep -q '^test result: FAILED' "$2"; then
+        failed="$(sed -n 's/^test \(.*\) \.\.\. FAILED$/\1/p' "$2" | sort -u | tr '\n' ' ')"
+        err "$1: TESTS FAILED under coverage: ${failed:-see the tail below}"
+    fi
     warn "$1 export failed — tail of $2:"
     tail -n 25 "$2" | sed 's/^/    /' >&2
 }

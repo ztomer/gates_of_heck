@@ -94,3 +94,65 @@ def test_each_part_measures_only_its_own_target_and_the_build_happens_once(tmp_p
         ran = [ln[6:] for ln in (parts / name).read_text().splitlines() if ln.startswith("# ran")]
         assert ran == [me], (name, ran)
     assert (tmp_path / "state.builds").read_text().count("build") == 1
+
+
+# ── the coverage run IS the test run (BACKLOG P1c) ──────────────────────────
+#
+# A consumer may drop its plain `cargo test` step only if a failing test under coverage turns the
+# gate red AND says which test -- "export failed" names a mechanism, not a defect, and reads like a
+# tooling problem someone will retry.
+
+FAILING_TEST_CARGO = """\
+#!/bin/bash
+case "$1" in
+  metadata)
+    echo '{"packages":[{"name":"ft","targets":[{"name":"ft","kind":["lib"]}]}]}'
+    exit 0 ;;
+  llvm-cov)
+    case "$2" in --version|clean) exit 0 ;; esac
+    cat <<'OUT'
+running 2 tests
+test tests::fine ... ok
+test tests::parses_the_header ... FAILED
+
+failures:
+
+---- tests::parses_the_header stdout ----
+thread 'tests::parses_the_header' panicked at src/lib.rs:9:5:
+assertion `left == right` failed
+
+failures:
+    tests::parses_the_header
+
+test result: FAILED. 1 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out
+error: test failed, to rerun pass `--lib`
+OUT
+    exit 101 ;;
+esac
+exit 0
+"""
+
+
+def test_a_failing_test_under_coverage_is_named_as_a_test_failure(tmp_path):
+    bin_ = tmp_path / "fakebin"
+    bin_.mkdir()
+    shim = bin_ / "cargo"
+    shim.write_text(FAILING_TEST_CARGO)
+    shim.chmod(shim.stat().st_mode | stat.S_IEXEC)
+    llvm_cov_shim(bin_)
+    proj = tmp_path / "proj"
+    proj.mkdir()
+    env = dict(os.environ)
+    env["PATH"] = f"{bin_}:/usr/bin:/bin"
+    env.pop("GOH_COV_FLOOR_RUST", None)
+    r = subprocess.run(
+        ["/bin/bash", str(COV_GATE), str(proj), "--lang", "rust", "--floor", "0"],
+        cwd=str(proj),
+        capture_output=True,
+        text=True,
+        env=env,
+        timeout=60,
+    )
+    assert r.returncode != 0, r.stdout + r.stderr
+    assert "TESTS FAILED" in r.stderr, r.stderr
+    assert "tests::parses_the_header" in r.stderr.split("TESTS FAILED", 1)[1].splitlines()[0]
