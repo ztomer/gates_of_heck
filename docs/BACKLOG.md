@@ -133,9 +133,10 @@ What the table says, in four classes:
 - **P1f. Two per-crate steps that are not per-crate** (measured by P0 on media_server's push):
   `no emptiness asserts` scans the WHOLE repo (554 files) once per crate, 29 times, 24 job-s; and
   `cargo lints (manifest)` is a second full `cargo check --workspace` after clippy, 24 job-s. The
-  first belongs in P2's `--each-crate` (repo-wide scans once per run); the second may be readable from
-  clippy's own output (cargo's manifest warnings are cargo's, not the driver's) -- prove it on a
-  planted `non_kebab_case_bins` before removing the extra build.
+  first belongs in P2's `--each-crate` (repo-wide scans once per run). The second is NOT redundant,
+  checked 2026-10-05: it deliberately builds without `--all-targets`, so a `[dependencies]` entry
+  only tests use is flagged -- clippy's all-targets run counts it as used (routines shipped exactly
+  that, `gates/rust_manifest_gate.sh` header). It stays.
 
 ### P2 — a scheduler for the step list
 
