@@ -90,7 +90,7 @@ class Report:
     checked_currency: bool = False
 
 
-from _crates_io import latest_stable
+from _crates_io import latest_many
 from _dep_tree import Dep, declared_deps, lock_versions, manifests, nearest_lock, read_manifest
 from _semver import _cmp, parse_version, req_allows  # noqa: F401  (re-exported for the probe)
 
@@ -138,8 +138,9 @@ def check_currency(
 ) -> tuple[list[Finding], list[str]]:
     findings: list[Finding] = []
     notes: list[str] = []
+    answers = latest_many([dep.name for dep in deps])  # concurrent, cached per name (P1b)
     for dep in deps:
-        latest = latest_stable(dep.name)
+        latest = answers.get(dep.name)
         if latest is None:
             notes.append(f"{dep.name}: crates.io unreachable, not checked")
             continue

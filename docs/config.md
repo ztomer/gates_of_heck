@@ -73,6 +73,8 @@ how a currency check becomes a gate nobody reads.
 | `GOH_DEPS_STRICT` | unset | `1` also fails on a MAJOR behind. Off by default: a major moves in its own commit by house rule, and a patch is routine, so failing on drift would be red on every honest commit. |
 | `GOH_DEPS_RATCHET` | unset | Path to a file of crate names this repo has already TRIAGED as behind. Any major-behind NOT listed fails, so the set can shrink but not grow back. |
 | `GOH_DEPS_OFFLINE` | unset | `1` skips the crates.io arm and PRINTS that it did. Absence of evidence is not a clean bill, and a check that prints "clean" because the index was unreachable converts a missing measurement into evidence. |
+| `GOH_CRATES_IO_CACHE` | `~/.cache/goh/crates-io` | Where crates.io answers are kept, one file per crate name, shared by every crate and repo; `off` asks every time. Read only by the report-only arm; an UNREACHED lookup is never cached. |
+| `GOH_CRATES_IO_TTL_S` | `21600` (6 h) | How old a cached answer may be. Under `GOH_DEPS_STRICT` / `GOH_DEPS_RATCHET`, a release newer than this can be missed for up to the TTL -- the stated price of not asking crates.io once per dependency per crate per push. |
 
 FATAL with no key set at all, and needing no network: a direct dependency
 pinned BELOW a version the graph already resolves. Our pin is then why two
