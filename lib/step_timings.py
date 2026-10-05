@@ -109,7 +109,10 @@ def main(argv: list[str]) -> int:
         top = int(argv[2]) if len(argv) > 2 else 15
         print(report(load(argv[1]), top))
         return 0
-    print("usage: step_timings.py report FILE [TOP] | record LABEL MS RC TIER [CACHE]", file=sys.stderr)
+    print(
+        "usage: step_timings.py report FILE [TOP] | record LABEL MS RC TIER [CACHE]",
+        file=sys.stderr,
+    )
     return 2
 
 

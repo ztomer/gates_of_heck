@@ -114,11 +114,16 @@ def test_goh_step_in_records_the_directory_it_ran_in(tmp_path):
     crate = tmp_path / "crate-a"
     crate.mkdir()
     script = (
-        f'. "{ROOT}/gates/_common.sh"; goh_init t; '
-        f'goh_step_in "{crate}" "inside" true; goh_done'
+        f'. "{ROOT}/gates/_common.sh"; goh_init t; goh_step_in "{crate}" "inside" true; goh_done'
     )
-    r = subprocess.run(["bash", "-c", script], env=_env(out), capture_output=True, text=True,
-                       cwd=tmp_path, timeout=60)
+    r = subprocess.run(
+        ["bash", "-c", script],
+        env=_env(out),
+        capture_output=True,
+        text=True,
+        cwd=tmp_path,
+        timeout=60,
+    )
     assert r.returncode == 0, r.stdout + r.stderr
     (row,) = _rows(out)
     assert row["label"] == "inside" and Path(row["cwd"]).resolve() == crate.resolve(), row
