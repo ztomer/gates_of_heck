@@ -1,5 +1,128 @@
 # CHANGELOG
 
+## v0.19.0 — the 5x was not the table, and a credential in a remote URL was invisible _(2026-10-05)_
+
+Two findings, one measured and one proven, and they point the same way: **every question this estate
+asks about a repo, it asks about the wrong tree.** v0.18.0 grew `check_no_unreaped_spawn.py`'s
+measured table from 36 shapes to 55 and the pytest suite went 226 s to 1190 s. The obvious reading is
+that the table is the cost. It is not.
+
+### 1. The suite was slow because the R3 estate sweep ran against throwaway fixtures
+
+Measured, one contributor at a time:
+
+| what | cost |
+|---|---|
+| `check_no_unreaped_spawn.py --probe` — **55 shapes** | **0.06 s** |
+| `check_estate_corpus.py` — 8 real consumer corpora | 73.4 s |
+| `check_probes_pass.py --root <this repo>` | 116.8 s |
+
+The probe is in-process analysis over source strings; 55 shapes cost a sixteenth of a second. **The
+table is the point of the gate and it was not shrunk** — it is 55 measured shapes and every row that
+grew it was a shape the checker had been calling clean.
+
+The minutes were `check_probes_pass.py` running the R3 corpus sweep on *every* invocation, whatever
+`--root` named. A run against a tmp estate holding **one trivial gate** cost **53.7 s**, of which
+53.66 s was that sweep; the same command with `--no-corpus` takes **0.03 s**. The sweep's subject is
+the checkers in *this* `checks/` directory — `--root` names a tree whose self-proofs are being swept,
+which is a different subject. So:
+
+* `check_probes_pass.py --probe` cost **54 s**, because the probe calls `main()` three times on a
+  fixture and each of those swept eight real consumer repos;
+* five tests asserting that a **fixture's** registry is sound were paying for those eight repos, and
+  would have gone red because a `media_server` commit landed.
+
+Scoped now to the repo that owns the checkers, with `--estate` to force it, and the skip is **stated
+rather than silent** — `docs/SUPERSOTA.md` **R4**'s rule is that a step which does not run must be
+visible. Nothing is cached: a foreign root re-derives every time, and the sweep's content is still
+proved entry by entry by `tests/test_estate_corpus.py`.
+
+### 2. A quadratic in the spawn checker, 23.2 s → 2.1 s over the same corpus
+
+`rust_findings` re-derived `guard_types(crate)`, `drop_types(crate)` and `_known_types(crate)`
+**once per file** over a crate context that is the same string for the whole scan. Measured over
+`media_server`'s `crates/`: a per-file call cost **134x** one without the context, and one pass over
+that 626-file tree took **23.2 s** where it now takes **2.1 s**. The arithmetic is deliberately
+unchanged — same sets, same subtractions, same unions — because a cost fix that moved a rule would
+be two changes in one commit.
+
+The memo is held to the same bar as the gate it speeds up. Breaking it to ignore its key turns three
+tests red including `--probe`, and the failure reads:
+
+    ✓ [no_unreaped_spawn] OK — 3 test file(s), every spawned child reaped on a panic
+    assert 0 == 1
+
+A gate reporting success over a shadowed empty `Drop` it cannot see — the cached-clean-over-nothing
+failure `check_empty_scope.py` exists to catch, reproduced inside the memo. Verified by **differential**
+as well as by the table: the pre-fix checker tree and this one, over all eight real corpora with the
+plant in each, produce identical finding lines and identical exit codes.
+
+| suite, 8 workers, `--durations=0` | before | after |
+|---|---|---|
+| total test time | 1379.8 s | **735.6 s** |
+| wall clock | 233.6 s | **105.7 s** |
+| `test_gate_calibration.py` | 387.0 s | 33.3 s |
+| a pass over media_server's 626-file `crates/` | 23.2 s | 2.1 s |
+
+Not all of that was the regression, and the remainder is named rather than implied:
+`test_goh_structural_parity.py` (121.9 s) and `test_display_seam.py` (108.8 s) are now the largest
+contributors and this release does not touch them.
+
+### 3. `check_no_credential_urls.py`: no gate could see a credential in `.git/config`
+
+`check_no_secrets.py` reads git-**tracked files**. `.git/config` is untracked by definition, so a live
+credential in a remote URL survived every sweep the estate ran — **proven in a scratch repo**: a
+`gho_` token in `remote.origin.url`, and `check_no_secrets.py` reported `✓ OK`. A test now asserts
+that sibling verdict, so this gate's reason to exist cannot quietly become false.
+
+**26 measured shapes**, in the table, in the docstring and in `--probe`, every one read back through
+git's own config reader and CPython's `urlsplit`. Three of them are measurements of things the
+obvious implementation gets wrong:
+
+* **`remote\..*\.url` does NOT match `remote.<n>.pushurl`** — the obvious regex returns nothing for a
+  push URL, so the *write* side of every remote is invisible.
+* **git LOWERCASES the variable name of a subsection key.** `insteadOf` is stored and read back as
+  `insteadof`, so a case-sensitive match finds nothing — and that is the one shape a remote must look
+  clean to carry a credential in, because the credential sits in the **key**.
+* **The fingerprint is over the whole userinfo.** `url.split("@")` splits on the first `@` and reads
+  `p@ss` as the host; the report then names a host that does not exist while still exiting 1. Pinned
+  to the digest rather than to an equality between two runs, because a comparison cannot see a split
+  that is wrong in both of them.
+
+**The credential is never printed** — a `sha256` fingerprint of the userinfo plus file, remote, host
+and reason. The estate learned this with `gho_` and `ghp_`.
+
+**A rule was removed, and that is the finding worth recording.** The first version had a scheme
+allow-list (`http`/`https` only). `ssh://git@github.com` is userinfo and must stay silent — handled
+by the shape test instead. But the allow-list would also have called `ssh://gho_<36>@github.com`
+clean, and measured against a real `ls-remote`, git reads an `ssh://` userinfo as the SSH **username**
+and hands the rest to `ssh`, which ignores a password: **not a live credential on the wire, and still
+a plaintext secret in `.git/config`**. A test pins the refusal so the weaker rule cannot come back.
+
+Silent on `ssh://git@host`, `git@host:path`, `file://`, a local path, `git://`, an IPv6 literal and
+`https://someuser@github.com/...`. Red on a password, on a bare credential-shaped userinfo, and on a
+token in an `ssh://` remote.
+
+**Deliberately not scanned**, each with its reason in the docstring and in `docs/BACKLOG.md`:
+`.netrc`, CI configs (a token there *is* committed, so `check_no_secrets.py` already has it), shell
+history, `credential.helper` and `http.*.extraheader`. The last two are measured to carry tokens and
+are the real next step — they want `check_no_secrets.py`'s existing credential-named-key rule applied
+to `.git/config`, not a third variant of it.
+
+Wired into `gates/structural.sh` (layer 1) and the native tier, and registered in
+`checks/gate_calibration.json` per **R7**. That entry also corrects the `no_unreaped_spawn` claim,
+which still said 37 shapes after the table grew to 55. The native step is **delegated, not ported**:
+every other native step ports a Python checker over files the binary has already read, this one reads
+`git config`, and duplicating a 26-row credential table in Rust would be the second copy of a rule
+about credentials.
+
+### Also
+
+* `checks/_estate_sweep.py` — the R3 corpus scoping, split out of `check_probes_pass.py` at the
+  500-line cap and cut at a real boundary: R3 corpus is not probe discovery.
+* `cargo update` — nine crates moved to latest (`clap` 4.6.6 → 4.6.7, `libc` 0.2.189 → 0.2.190,
+  `rustix` 1.1.4 → 1.1.5, `syn` 3.0.5 → 3.0.6, and five more).
+
 ## v0.18.0 — the unit of protection is the BINDING, and a masker that lost the file _(2026-10-05)_
 
 Three confirmed blind spots in `checks/check_no_unreaped_spawn.py`, all found by **consumers with
