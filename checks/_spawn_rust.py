@@ -346,7 +346,6 @@ def is_command_spawn(lines, i):
     )
 
 
-
 def rust_findings(masked: str, crate: str | None = None) -> list[tuple[int, str, str]]:
     """[(lineno, tag, why)] over one masked Rust file.
 
