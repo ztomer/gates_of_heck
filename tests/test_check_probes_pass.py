@@ -350,3 +350,40 @@ def test_a_self_proof_outside_the_check_convention_is_named_not_run(tmp_path, ca
     out = capsys.readouterr()
     text = out.out + out.err
     assert "tools/idle_probe.py" in text and "NOT run" in text, text
+
+
+def test_self_proofs_run_concurrently_and_report_in_order(tmp_path, capsys):
+    """Every consumer's pre-push runs this, and it ran the probes one after another: 8.1 s summed
+    here for a 2.0 s longest probe (2026-10-05). Each probe below can only finish if the OTHER is
+    running at the same time -- a serial runner times both out -- and a failure is still reported
+    against the probe that failed, in discovery order."""
+    meet = tmp_path / "meet"
+    meet.mkdir()
+
+    def rendezvous(me, other):
+        return f"""
+            import os, sys, time
+            if "--probe" in sys.argv:
+                open(os.path.join({str(meet)!r}, {me!r}), "w").close()
+                deadline = time.monotonic() + 8
+                while not os.path.exists(os.path.join({str(meet)!r}, {other!r})):
+                    if time.monotonic() > deadline:
+                        sys.exit("the other probe never ran alongside this one")
+                    time.sleep(0.05)
+                sys.exit(0)
+            sys.exit(0)
+        """
+
+    root = _tree(
+        tmp_path,
+        {
+            "check_a.py": rendezvous("a", "b"),
+            "check_b.py": rendezvous("b", "a"),
+            "check_c.py": BROKEN,
+        },
+    )
+    assert gate.main(["--root", str(root), "--no-corpus"]) == 1
+    out = capsys.readouterr()
+    text = out.out + out.err
+    assert "check_c.py --probe is BROKEN" in text, text
+    assert "check_a.py --probe is BROKEN" not in text and "check_b.py" not in text, text

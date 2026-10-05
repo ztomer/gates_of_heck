@@ -55,6 +55,7 @@ import sys
 import tempfile
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from _ordered_pool import in_order  # noqa: E402
 from _gitutil import foreign_repo_env, listed_files  # noqa: E402
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -354,6 +355,13 @@ def judge(entry, bad):
     return "verified"
 
 
+def _judged(entry, bad):
+    mine = []
+    state = judge(entry, mine)
+    bad.extend(mine)  # list.extend is atomic under the GIL; order is fixed by the replay below
+    return state
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--list", action="store_true", help="name the corpora without building them")
@@ -369,11 +377,9 @@ def main(argv=None):
         return 0
 
     bad = []
-    verified = unavailable = 0
-    for entry in ESTATE:
-        state = judge(entry, bad)
-        verified += state == "verified"
-        unavailable += state == "unavailable"
+    states = in_order(lambda entry: _judged(entry, bad), ESTATE)
+    verified = states.count("verified")
+    unavailable = states.count("unavailable")
     if bad:
         err(f"{len(bad)} checker(s) did not refuse a violation planted in the real estate.")
         info("A checker that only works on the shape its author imagined is not a gate, and the")

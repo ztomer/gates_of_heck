@@ -322,8 +322,13 @@ def main(argv=None):
 
     ran = set()
     failed = []
-    for path, flag in probes:
-        passed, detail = run_one(path, flag, cwd=root)
+    # CONCURRENTLY, reported in discovery order. Each probe is a subprocess over its own fixtures;
+    # serially they summed 8.1 s here for a 2.0 s longest probe, in every consumer's pre-push.
+    from concurrent.futures import ThreadPoolExecutor
+
+    with ThreadPoolExecutor(max_workers=min(len(probes), os.cpu_count() or 4)) as pool:
+        verdicts = list(pool.map(lambda probe: run_one(probe[0], probe[1], cwd=root), probes))
+    for (path, flag), (passed, detail) in zip(probes, verdicts):
         if passed:
             ran.add(os.path.relpath(path, root))
         else:
