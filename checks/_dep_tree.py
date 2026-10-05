@@ -52,12 +52,9 @@ class Dep:
 
 def manifests(root: Path) -> list[Path]:
     """Every Cargo.toml in the tree, skipping vendored and target trees."""
-    skip = {"target", "vendor", ".git", "node_modules", "build", ".build"}
-    return sorted(
-        p
-        for p in root.rglob("Cargo.toml")
-        if not any(part in skip for part in p.relative_to(root).parts)
-    )
+    from _gitutil import cargo_manifests
+
+    return cargo_manifests(root, {"target", "vendor", ".git", "node_modules", "build", ".build"})
 
 
 def read_manifest(path: Path) -> dict | None:

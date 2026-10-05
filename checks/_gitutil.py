@@ -93,6 +93,50 @@ def listed_files(root: str, staged: bool) -> list[str]:
     return [n.decode("utf-8", "replace") for n in out.stdout.split(b"\0") if n]
 
 
+# Directories a FALLBACK walk never descends: build output and VCS internals. Only consulted
+# when git cannot name the tree; inside a work tree, git's own ignore rules decide.
+PRUNE = frozenset({".git", "target", ".build", "build", "node_modules", "__pycache__", ".venv"})
+
+
+def tree_files(root: str) -> list:
+    """Root-relative paths of every file the TREE under `root` holds, without reading build output.
+
+    Inside a git work tree this is git's listing of the worktree (`listed_files`): tracked plus
+    untracked-but-not-ignored, relative to `root` even when `root` is a subdirectory. Git already
+    knows which directories are build output, so nothing under an ignored `target/` is ever
+    opened -- measured 2026-10-05, `rglob("Cargo.toml")` in one crate descended 50,950
+    directories of `target/` (2.27 s of system time) and then threw the results away. Outside a
+    work tree (a fixture, a skills corpus) it walks, PRUNING `PRUNE` instead of filtering after.
+    """
+    try:
+        return listed_files(root, staged=False)
+    except RuntimeError:
+        pass
+    found = []
+    for current, dirnames, filenames in os.walk(root):
+        dirnames[:] = sorted(d for d in dirnames if d not in PRUNE)
+        rel = os.path.relpath(current, root)
+        for name in sorted(filenames):
+            found.append(name if rel == "." else f"{rel}/{name}".replace(os.sep, "/"))
+    return found
+
+
+def cargo_manifests(root, skip=()) -> list:
+    """Every `Cargo.toml` in the tree (`tree_files`), as Paths, minus any whose path has a part in
+    `skip` (each caller's own policy: vendored trees, reference copies)."""
+    from pathlib import Path
+
+    base = Path(root)
+    skip = set(skip)
+    return sorted(
+        base / rel
+        for rel in tree_files(str(root))
+        if rel.rsplit("/", 1)[-1] == "Cargo.toml"
+        and not skip.intersection(rel.split("/"))
+        and (base / rel).is_file()  # a tracked manifest deleted from the worktree is not there
+    )
+
+
 def content_bytes(root: str, rel: str, staged: bool):
     """The bytes this check should police: the index blob when staged, the
     worktree otherwise. None means 'nothing to police' (deleted/binary-unreadable

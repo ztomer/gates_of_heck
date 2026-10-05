@@ -53,14 +53,11 @@ def rust_package_roots(root: Path) -> list[Path]:
     under `crates/*/src/main.rs`. A gate that never reaches the code is a gate
     that reports compliance over zero files.
     """
-    seen: set[Path] = set()
-    for crate in root.rglob("Cargo.toml"):
-        # Skip vendored and target directories: their sources are not ours to
-        # hold to this repo's policy, and they are large.
-        parts = set(crate.relative_to(root).parts)
-        if parts & {"target", ".build", "vendor", "node_modules"}:
-            continue
-        seen.add(crate.parent)
+    from _gitutil import cargo_manifests
+
+    # Vendored and target directories are skipped: their sources are not ours to hold to this
+    # repo's policy. The listing never descends them (`_gitutil.tree_files`).
+    seen = {m.parent for m in cargo_manifests(root, {"target", ".build", "vendor", "node_modules"})}
     if not seen:
         seen.add(root)
     return sorted(seen)

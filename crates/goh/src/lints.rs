@@ -100,21 +100,7 @@ pub fn audit(
     scanner: &Scanner,
     root: &std::path::Path,
 ) -> (Vec<Finding>, usize, usize, bool, usize) {
-    let mut manifests = Vec::new();
-    let mut stack = vec![root.to_path_buf()];
-    while let Some(dir) = stack.pop() {
-        let Ok(entries) = std::fs::read_dir(&dir) else {
-            continue;
-        };
-        for entry in entries.filter_map(Result::ok) {
-            let path = entry.path();
-            if path.is_dir() {
-                stack.push(path);
-            } else if path.file_name().is_some_and(|n| n == "Cargo.toml") {
-                manifests.push(path);
-            }
-        }
-    }
+    let mut manifests = crate::gitutil::cargo_manifests(root);
     manifests.sort();
     let mut findings = Vec::new();
     let mut inspected = 0;

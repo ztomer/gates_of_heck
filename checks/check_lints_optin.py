@@ -37,7 +37,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from _gitutil import repo_root  # noqa: E402
+from _gitutil import cargo_manifests, repo_root  # noqa: E402
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from tui.lib import err, info, ok  # noqa: E402
@@ -71,9 +71,7 @@ def audit(root: Path) -> tuple[list[str], int, int, bool, int]:
     manifests = 0
     members = 0
     policy = False
-    for manifest in sorted(root.rglob("Cargo.toml")):
-        if "target" in manifest.parts or "references" in manifest.parts:
-            continue
+    for manifest in cargo_manifests(root, {"target", "references"}):
         manifests += 1
         text = manifest.read_text(errors="replace")
         if not WORKSPACE_LINTS.search(text):

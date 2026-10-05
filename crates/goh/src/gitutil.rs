@@ -70,6 +70,62 @@ pub fn listed_files(root: &Path, staged: bool) -> Result<Vec<String>, String> {
         .collect())
 }
 
+/// Directories a FALLBACK walk never descends (mirrors `checks/_gitutil.py` `PRUNE`).
+const PRUNE: &[&str] = &[
+    ".git",
+    "target",
+    ".build",
+    "build",
+    "node_modules",
+    "__pycache__",
+    ".venv",
+];
+
+/// Root-relative paths of every file the tree under `root` holds, without reading build output.
+///
+/// Mirrors `checks/_gitutil.py::tree_files`: git's worktree listing when `root` is in a work tree
+/// (so an ignored `target/` is never opened -- one crate's walk descended 50,950 directories of it,
+/// measured 2026-10-05), else a walk that PRUNES `PRUNE` rather than filtering afterwards.
+#[must_use]
+pub fn tree_files(root: &Path) -> Vec<String> {
+    if let Ok(files) = listed_files(root, false) {
+        return files;
+    }
+    let mut found = Vec::new();
+    let mut stack = vec![root.to_path_buf()];
+    while let Some(dir) = stack.pop() {
+        let Ok(entries) = std::fs::read_dir(&dir) else {
+            continue;
+        };
+        for entry in entries.filter_map(Result::ok) {
+            let path = entry.path();
+            if path.is_dir() {
+                if !path
+                    .file_name()
+                    .is_some_and(|n| PRUNE.iter().any(|p| n == *p))
+                {
+                    stack.push(path);
+                }
+            } else if let Ok(rel) = path.strip_prefix(root) {
+                found.push(rel.to_string_lossy().replace('\\', "/"));
+            }
+        }
+    }
+    found.sort();
+    found
+}
+
+/// Every `Cargo.toml` file in the tree (`tree_files`), as paths under `root`.
+#[must_use]
+pub fn cargo_manifests(root: &Path) -> Vec<std::path::PathBuf> {
+    tree_files(root)
+        .into_iter()
+        .filter(|rel| rel.rsplit('/').next() == Some("Cargo.toml"))
+        .map(|rel| root.join(rel))
+        .filter(|p| p.is_file())
+        .collect()
+}
+
 /// The bytes a check should police: the index blob when staged (falling back
 /// to the worktree on an index race), the worktree otherwise. `None` means
 /// nothing to police.
