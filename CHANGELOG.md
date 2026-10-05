@@ -1,5 +1,73 @@
 # CHANGELOG
 
+## v0.21.0 — measured first: the time was walks, rebuilds and serial waits, and a version is not a source _(2026-10-05)_
+
+Every change below began as a number from the new instrument (`GOH_TIMINGS`, `tools/gate_profile.sh`)
+on a real consumer push, and was proven against a test that failed before it.
+
+### 1. The instrument (P0)
+
+`GOH_TIMINGS=<file>` makes every bounded step of both tiers, every `goh_step` and every `local_ci.sh`
+step append one JSON line (label, ms, rc, tier, parent label, real cwd); proven-cache hits are marked.
+`tools/gate_profile.sh <repo>` runs a repo's push gate on HEAD, nothing pushed, and prints the
+slowest steps and each label SUMMED across every place it ran -- the view that found a 7 s step
+repeated in 29 crates, invisible on any single line.
+
+### 2. Speed
+
+| what | before | after |
+|---|---|---|
+| `goh lints`, one media_server crate (native / Python) | 2.42 s / 1.4 s | 0.05 s / 0.08 s |
+| `dependency currency`, a small crate | 7 s | 0.09 s |
+| `dependency currency`, routines (14 deps), warm | 0.97 s | 0.12 s |
+| coverage, media_server `mediaops-rs` | 60 s | 27 s |
+| coverage, routines | 144 s | 73 s |
+| `structural.sh --full`, media_server | 4.75 s | 2.4 s |
+| media_server push, `time-mini-rs` changed (13 crates use it): house rust-gate work | 362 job-s | 285 job-s, plus ~30 more from the shared repo scans |
+
+* **Walks read git's listing, never the build tree** (P1a). `rglob("Cargo.toml")` descended 50,950
+  directories of `target/` per crate and threw them away. One helper per tier; a class test plants
+  an ignored build tree and refuses new disk walks under `checks/` and `gates/`.
+* **crates.io answers cached per crate name, asked concurrently** (P1b). Only the report-only arm
+  reads the cache; the fatal arm is offline, and goes red with the network seam broken.
+* **Coverage builds once** (P1d). Each per-target `cargo llvm-cov` recompiled the workspace; now one
+  clean, `--no-clean` per target, `clean --profraw-only` between them (`--no-clean` alone leaked one
+  target's profile into the next). Merged reports byte-identical on both repos measured.
+* **The native tier starts its delegated checkers together** (P1e), reporting in order; a red step
+  still joins every checker it started.
+* **`rust_gate.sh` proves each group once on its own inputs** (P3). Crate group keyed on
+  `goh rust-scope` (the workspace, its `path =` packages, the config they read); repo-wide scans on
+  the whole tree; coverage separately. A reach outside the crate that cannot be named widens its
+  key to the tree; a build whose dep-info read a file outside the scope is never recorded. A reach outside the crate is
+  RESOLVED to the file it names (`include_str!("../../../VERSION")` keys on `VERSION`), so 28 of
+  media_server's 29 crates key on their own files; the 29th really reads the repo root.
+* **What did NOT move, said plainly:** media_server's push wall time (~170 s) is now its own
+  `scripts/dev/check.sh` (154 s alone: `repo_tests.sh` 98 s, a serial cross-target clippy 46 s); the
+  house crate fan-out finishes first. The cross-clippy needs a cargo-command seam here (BACKLOG
+  P1g); the tests are media_server's (servers ROADMAP O41).
+
+### 3. Correctness
+
+* **The ruff format check runs at commit time** (C1), over the staged index blobs, both tiers.
+* **`bin/goh` is built from HEAD, stamped with its source, rebuilt when stale** (C3). A same-version
+  binary lacking a step passed the version check; now `build.rs` stamps the git trees of its inputs,
+  `build-goh.sh` builds an export of HEAD (uncommitted edits cannot reach it), and the resolver
+  rebuilds a stale binary under a lock before using it. `GOH_BUILD_DIRTY` is gone with its cause.
+* **A push whose branch moved while it was gated is refused** (ZoneWM D-0211): over HTTPS git sends
+  the ref as it is AFTER the hook returns.
+* **A failing test under coverage is named as one** (P1c, gate side), so a consumer's plain
+  `cargo test` step can become `cargo test --doc`.
+* **`GOH_DEPS_OFFLINE` / `GOH_DEPS_RATCHET` never worked**: the flags were passed quoted, as one
+  argument with a leading space. Found by the P3 tests.
+* `cargo-llvm-cov` is required up front; `git rev-parse` echoing an unresolvable revision under
+  `pipefail` no longer kills a gate silently.
+
+### 4. `gates/required_tools.{tsv,py}`
+
+One published list of the tools a gate refuses without, one row per refusal site, pinned to the code
+in both directions. `--repo . --install` prints the install commands for the layers a repo declares;
+`--names` feeds any package manager; ruff is its own opt-in layer. Asked for by antiknob's CI.
+
 ## v0.20.0 — the ceiling cost 200 ms a step, and the gates broke under their own edits _(2026-10-05)_
 
 The 2026-10-05 resume point said the suite hung. It did not: at v0.19.0 it finished in 109.2 s at
