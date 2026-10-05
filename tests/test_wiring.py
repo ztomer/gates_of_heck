@@ -53,12 +53,21 @@ def _referenced_scripts(files=None) -> list[tuple[str, int, str]]:
     return refs
 
 
+# This list pins the PARSER, not the pipeline: it is the instrument calibration
+# for `_referenced_scripts`, so an entry here fails when the parser stops finding a
+# reference it used to find -- which includes the reference having MOVED, as
+# `check_file_length.py` did into `gates/_line_cap.sh` on 2026-10-04 when the
+# length-cap cluster outgrew `structural.sh`. That is the correct failure: it is how
+# a reader learns the pin tracks a reference rather than a file.
 EXPECTED_REFS = [
     ("gates/structural.sh", "checks/check_no_emoji.py"),
     ("gates/structural.sh", "checks/check_no_conflict_markers.py"),
-    ("gates/structural.sh", "checks/check_file_length.py"),
-    ("gates/structural.sh", "checks/check_shell_lint.sh"),
     ("gates/structural.sh", "checks/check_no_secrets.py"),
+    ("gates/structural.sh", "checks/check_claim_derivation.py"),
+    ("gates/_line_cap.sh", "checks/check_file_length.py"),
+    ("gates/_line_cap.sh", "checks/check_exclusion_has_ceiling.py"),
+    ("gates/_line_cap.sh", "checks/check_baseline_ratchet.py"),
+    ("gates/structural.sh", "checks/check_shell_lint.sh"),
     # NOTE: the disk watch is not here at all any more. It moved out of CI in
     # v0.8.0 and out of this REPO on 2026-09-07, to
     # ~/Projects/scripts/{lib/disk_hygiene.py,bin/disk_hygiene.sh}. See

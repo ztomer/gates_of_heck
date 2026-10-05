@@ -1,6 +1,6 @@
 """Read `checks/gate_calibration.json` and CHECK every claim it makes.
 
-WHY THIS EXISTS. The registry holds 23 entries asserting that named gates have proven they can
+WHY THIS EXISTS. The registry holds 25 entries asserting that named gates have proven they can
 fail, and for its whole life nothing in this repo read it: `check_probes_pass.py` swept the gates
 it could DISCOVER and ignored the file, while the only reader lived in another estate
 (`games/game_asset_factory/tools/check_gate_calibration.py`). A registry nothing reads is a rumour

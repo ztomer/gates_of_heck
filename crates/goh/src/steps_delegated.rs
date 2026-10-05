@@ -263,6 +263,56 @@ pub fn step_unreaped_spawn(
     None
 }
 
+/// A number in prose, re-derived from the tree it describes.
+///
+/// Three adversarial reviews of the games estate converged on this class (2026-10):
+/// the prose is written one step ahead of the mechanism, in files where the prose
+/// is far more convincing than the mechanism is load-bearing. `roadmap_state.py`
+/// said "64 declared gates" against 70 declared in `verify.py` — a regex that
+/// cannot match a label carrying a second space, fixed twenty lines from the
+/// docstring still quoting its old output. `check_mcp_server.py` said "477 lines
+/// and 18 characterization tests" for 321 and 20, in the gate whose entire job is
+/// COUNTING. All six instances were found by hand, at hours each.
+///
+/// A number in prose cannot watch itself, so the checker reads only a claim the
+/// author MARKED — the number AND the path in backticks, or a leading `claim:`.
+/// Unmarked numbers stay prose. The rule that would have caught all six as they
+/// stood is English interpretation, and that is how a gate ends up switched off.
+///
+/// Opt-in per repo (`GOH_CLAIM_DERIVATION`): this lands red in every repo in the
+/// estate, because every repo in the estate has the defect. A claim that must
+/// stand carries `claim:` plus a reason in `claim_derivation_allow.json`, and a
+/// stale entry fails, so the list can shrink but not rot.
+#[must_use]
+pub fn step_claim_derivation(
+    repo: &std::path::Path,
+    cfg: &gatesrc::Gatesrc,
+    checks: &std::path::Path,
+    staged: bool,
+) -> Option<i32> {
+    if !gatesrc::opt_in(cfg, "GOH_CLAIM_DERIVATION") {
+        return None;
+    }
+    let label = if staged {
+        "prose claims are derived (staged)"
+    } else {
+        "prose claims are derived"
+    };
+    let mut args = vec!["check_claim_derivation.py".to_owned()];
+    if staged {
+        args.push("--staged".to_owned());
+    }
+    if !cfg.exclude.is_empty() {
+        args.push("--exclude".to_owned());
+        args.push(cfg.exclude.clone());
+    }
+    let code = delegated(checks, repo, label, "python3", &args);
+    if code != 0 {
+        return Some(code);
+    }
+    None
+}
+
 #[must_use]
 pub fn step_full_only(
     repo: &std::path::Path,

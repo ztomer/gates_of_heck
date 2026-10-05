@@ -31,7 +31,7 @@ pub type OptIns = std::collections::BTreeSet<String>;
 ///
 /// Read by the test that pins the key set, so a gate cannot read a key nobody
 /// documented and a doc cannot name a gate that reads nothing.
-pub const OPT_IN_KEYS: [&str; 4] = [
+pub const OPT_IN_KEYS: [&str; 5] = [
     "GOH_SKILLS_CORPUS",
     "GOH_NO_HOME_PATHS",
     "GOH_NO_KILL_BY_NAME",
@@ -39,6 +39,11 @@ pub const OPT_IN_KEYS: [&str; 4] = [
     // like the rest: a repo that has never chosen a rule set should not learn
     // one by going red.
     "GOH_PYTHON_FORMATTED",
+    // A number in prose, re-derived from the tree. Opt-in because it lands RED
+    // in every repo in the estate — every repo in the estate has the defect —
+    // and a gate that goes red in twenty places on the day it lands is a gate
+    // that gets disabled.
+    "GOH_CLAIM_DERIVATION",
 ];
 
 /// Structural knobs read from `.gatesrc`.
@@ -245,6 +250,7 @@ mod tests {
             "GOH_NO_HOME_PATHS",
             "GOH_NO_KILL_BY_NAME",
             "GOH_PYTHON_FORMATTED",
+            "GOH_CLAIM_DERIVATION",
         ]
         .into_iter()
         .collect();

@@ -4,6 +4,14 @@ GOH_MAX_LINES=500                 # file-length cap; unset disables the check
 # GOH_EXCLUDE='vendor/|\.generated\.'   # shared vendor/generated exemption
 # GOH_LINE_EXCLUDE='third_party/'       # length-only exemption (additive)
 # GOH_ALLOW=''                          # extra permitted characters (keep minimal)
+# GOH_CLAIM_DERIVATION=1                # re-derive MARKED numbers in prose from the
+#   tree: `N` lines in `path`, `N` tests in `path`, `N` gates in `path:NAME`,
+#   `N` `*.ext` files under `dir`. A claim is read only when the number AND the
+#   path are backticked, or the line carries a leading `claim:`; every finding
+#   prints the command that re-derives the truth. Land it ONCE your claims are
+#   marked or fixed: it goes red wherever it lands first, because the defect it
+#   finds is everywhere. Survivors go in claim_derivation_allow.json with a
+#   reason, and a stale entry fails.
 # Disk ceilings live OUTSIDE the gates since v0.8.0 — set them in the
 # environment for ~/Projects/scripts/bin/disk_hygiene.sh, not here:
 # GOH_MAX_SCRATCH_GB=25 GOH_MAX_CACHE_GB=50 GOH_MIN_FREE_GB=20

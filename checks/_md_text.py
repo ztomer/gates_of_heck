@@ -37,6 +37,13 @@ ATX = re.compile(r"^\s{0,3}(#{1,6})\s+(.*?)\s*#*\s*$")
 SETEXT = re.compile(r"^\s{0,3}(=+|-+)\s*$")
 # Fenced blocks: ``` or ~~~ with an optional info string.
 FENCE = re.compile(r"^\s{0,3}(`{3,}|~{3,})")
+# ...and the same, at ANY indentation. The three-space ceiling above is a
+# CommonMark rule, and it is wrong outside markup: in a Python docstring a fenced
+# example is indented to match the code around it, and a fence at four spaces is
+# still a fence. `check_claim_derivation` reuses this to keep its own grammar and
+# the grammar it documents in one place, and it read its own docstring as claims
+# until this existed.
+FENCE_ANY = re.compile(r"^\s*(`{3,}|~{3,})")
 # An INDENTED code block: four spaces or a tab, per CommonMark.
 INDENTED = re.compile(r"^(?: {4}|\t)")
 # Inline code spans, so `[x](y)` inside one is an example, not a link.
@@ -49,8 +56,8 @@ HTML_ANCHOR = re.compile(r"<a\s+(?:id|name)\s*=\s*[\"']([^\"']+)[\"']", re.IGNOR
 SCHEME = re.compile(r"^[A-Za-z][A-Za-z0-9+.-]*:")
 
 
-def strip_fences(text: str) -> str:
-    """Blank out FENCED and INDENTED code blocks, keeping line structure.
+def strip_fences(text: str, indented: bool = True) -> str:
+    """Blank out FENCED (and, by default, INDENTED) code blocks, keeping line structure.
 
     Line numbers have to survive: a finding is reported as `file:line`, and a
     checker that renumbered the lines would report every finding against the
@@ -61,12 +68,18 @@ def strip_fences(text: str) -> str:
     the anchor. Blanking it here turned `4.8. What `.90` can actually do` into
     `48-what-------can-actually-do`, and the gate rejected the very link it was
     written to check.
+
+    `indented=False` blanks fences alone. `check_claim_derivation` reuses this for
+    Python, where four-space indentation is CODE and blanking it would delete the
+    file — but a fenced block inside a docstring is still an example, and that
+    gate writes its own grammar there.
     """
+    fence_re = FENCE if indented else FENCE_ANY
     out: list[str] = []
     fence: str | None = None
-    indented = False
+    in_indented = False
     for raw in text.splitlines():
-        hit = FENCE.match(raw)
+        hit = fence_re.match(raw)
         if fence is not None:
             out.append("")
             if hit and hit.group(1)[0] == fence[0] and len(hit.group(1)) >= len(fence):
@@ -76,17 +89,20 @@ def strip_fences(text: str) -> str:
             fence = hit.group(1)
             out.append("")
             continue
+        if not indented:
+            out.append(raw)
+            continue
         # An INDENTED code block: four spaces or a tab, ending at the first blank
         # line. Both fences and indentation are code blocks in CommonMark, and
         # handling only fences reports every indented example in every doc as a
         # broken link.
         if INDENTED.match(raw):
-            indented = True
+            in_indented = True
             out.append("")
             continue
-        if indented:
+        if in_indented:
             if not raw.strip():
-                indented = False
+                in_indented = False
             out.append("")
             continue
         out.append(raw)

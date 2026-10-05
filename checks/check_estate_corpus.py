@@ -190,6 +190,27 @@ ESTATE = (
         "attributable corpus needs. Measured, not assumed: eight other candidate repos are red "
         "under it before any plant lands.",
     },
+    {
+        "checker": "check_claim_derivation.py",
+        "root": "~/Projects/games/game_asset_factory",
+        "scope": (".",),
+        "ext": ".md",
+        # THE ESTATE'S OWN SHAPE, in the repo that carries the inventory this gate
+        # exists for: `README.md` said "86 Python files, 64 test files and 1059
+        # tests" against 101 / 91 / 1732, and the file's own stated remedy ("names
+        # the date it was counted") held for 26 days. The plant is a claim the
+        # author MARKED, because that is the only form this checker reads -- an
+        # unmarked number is prose by design, and planting one would test a rule
+        # this checker deliberately does not have.
+        "plant": ("\n<!-- corpus probe -->\n\nThe suite is `9` lines in `README.md`.\n"),
+        "args": (),
+        "why": "the whole tree, 294 files, and CLEAN under this checker today — measured, "
+        "not assumed: six sibling repos were measured clean too, so this is a choice of "
+        "where the defect was found rather than a claim that only one repo is clean. The "
+        "plant lands in the first real markdown file git lists (a CHANGELOG), which is "
+        "where a repo writes 'the file is now N lines' anyway, and names a real file so "
+        "the finding is about a resolvable target rather than a missing path.",
+    },
 )
 
 

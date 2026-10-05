@@ -192,7 +192,7 @@ FWD=""
 # environment said, so a repo can still override a value set higher up.
 _goh_config_keys="GOH_MAX_LINES GOH_LINE_EXCLUDE GOH_LINE_BASELINE GOH_LINE_UNBOUNDED
 GOH_EXCLUDE GOH_ALLOW GOH_SKILLS_CORPUS GOH_SKILLS_ROOT GOH_SKILLS_MAX_WORDS
-GOH_NO_HOME_PATHS GOH_NO_KILL_BY_NAME GOH_PYTHON_FORMATTED
+GOH_NO_HOME_PATHS GOH_NO_KILL_BY_NAME GOH_PYTHON_FORMATTED GOH_CLAIM_DERIVATION
 GOH_STEP_TIMEOUT GOH_STEP_GRACE"
 for _goh_key in $_goh_config_keys; do unset "$_goh_key" || true; done
 unset _goh_key _goh_config_keys
@@ -285,71 +285,10 @@ if [ "$SCOPE" != "--staged" ] && [ -n "${GOH_PYTHON_FORMATTED:-}" ]; then
     goh_step "python is ruff-formatted" python3 "$CHECKS/check_python_formatted.py"
 fi
 
-# One cap, one name. Repos previously called this check_file_length,
-# check_loc and check_file_size, with three different limits.
-# Exemption semantics: GOH_EXCLUDE exempts vendored/generated paths from BOTH
-# the emoji scan and the cap. GOH_LINE_EXCLUDE is ADDITIVE to the length check
-# only — the length exemption is GOH_EXCLUDE ∪ GOH_LINE_EXCLUDE. Paths named
-# only by LINE_EXCLUDE stay exempt from the cap but ARE scanned for emoji
-# unless GOH_EXCLUDE separately covers them (no consumer ever relied on
-# replacement; surveyed 2026-08-25).
-GOH_EX="${GOH_EXCLUDE:-}"
-if [ -n "${GOH_LINE_EXCLUDE:-}" ]; then
-    GOH_EX="${GOH_EX:+${GOH_EX}|}${GOH_LINE_EXCLUDE}"
-fi
-if [ -n "${GOH_MAX_LINES:-}" ]; then
-    goh_step "file length <= ${GOH_MAX_LINES}" \
-        python3 "$CHECKS/check_file_length.py" --max "$GOH_MAX_LINES" \
-        ${GOH_EX:+--exclude "$GOH_EX"} ${FWD:+"$FWD"}
-else
-    warn "file-length cap not set — add GOH_MAX_LINES to .gatesrc to enable it"
-fi
-
-# The two line-cap bounds below read a baseline and measure files, so at
-# --staged they run INSIDE the index view (goh_index_view): the commit is what
-# is judged, not the tree around it. Both run from the repo root (the view's
-# root at --staged), never the caller's cwd: the ratchet's `[ -f ]` and the
-# checkers' relative paths once resolved against a subdirectory and skipped
-# the ratchet without a word.
-goh_line_root="$GOH_REPO_ROOT"
-if [ "$SCOPE" = "--staged" ] && [ -n "${GOH_LINE_BASELINE:-}" ]; then
-    goh_index_view "$GOH_REPO_ROOT" || die "structural: the repo root is outside the repo?"
-    goh_line_root="$GOH_INDEX_VIEW"
-fi
-case "${GOH_LINE_BASELINE:-}" in
-    /*) goh_line_baseline_path="$GOH_LINE_BASELINE" ;;
-    *)  goh_line_baseline_path="$goh_line_root/${GOH_LINE_BASELINE:-}" ;;
-esac
-
-# An exemption from the CAP is not an exemption from having any bound at all.
-# GOH_LINE_EXCLUDE and the shrink-only ratchet are separate mechanisms with
-# separate lists, and nothing compared them: monitor had a 619-line test file
-# named in LINE_EXCLUDE and absent from its baseline, so it was bounded by
-# nothing and no gate said a word. Only runs when the repo points
-# GOH_LINE_BASELINE at its ratchet baseline; a repo without one is told the
-# check is off rather than passed over in silence.
-if [ -n "${GOH_MAX_LINES:-}" ] && [ -n "${GOH_LINE_BASELINE:-}" ]; then
-    goh_step_in "$goh_line_root" "line-cap exemptions carry a ceiling" \
-        python3 "$CHECKS/check_exclusion_has_ceiling.py" --max "$GOH_MAX_LINES" \
-        --baseline "$GOH_LINE_BASELINE" \
-        ${GOH_LINE_EXCLUDE:+--line-exclude "$GOH_LINE_EXCLUDE"} \
-        ${GOH_LINE_UNBOUNDED:+--unbounded "$GOH_LINE_UNBOUNDED"}
-elif [ -n "${GOH_LINE_EXCLUDE:-}" ]; then
-    warn "GOH_LINE_EXCLUDE is set but GOH_LINE_BASELINE is not — an exempted file"
-    warn "  is bounded by nothing. Point GOH_LINE_BASELINE at the ratchet baseline."
-fi
-
-# ...and the ceilings are ENFORCED here, not left to each repo's own gate
-# script. Until 2026-09-14 only the "carries a ceiling" check above ran in
-# the shared layer; the shrink-only ratchet over `wc -l` was wired per repo,
-# so a repo that listed ceilings and never ran the ratchet was, again,
-# bounded by nothing. Files named in the baseline may come down and may not
-# grow past their number.
-if [ -n "${GOH_LINE_BASELINE:-}" ] && [ -f "$goh_line_baseline_path" ]; then
-    goh_step_in "$goh_line_root" "cap-exempt files within their ceilings" \
-        python3 "$CHECKS/check_baseline_ratchet.py" --baseline "$GOH_LINE_BASELINE" \
-        --current-from-command "python3 '$CHECKS/loc_of_baseline_files.py' '$GOH_LINE_BASELINE'"
-fi
+# ── the file-length cap and its two bounds ──────────────────────────────────
+# Sourced; why the cluster is a separate file is in that file's own header.
+# shellcheck source=gates/_line_cap.sh
+. "$HERE/_line_cap.sh"
 
 # An agent SKILLS corpus (~/.claude/skills and friends) is authored prose that
 # nothing compiles, so its defects are silent: a SKILL.md with no frontmatter
@@ -459,6 +398,42 @@ fi
 # MIRRORED in crates/goh/src/steps_delegated.rs.
 goh_step "no unreaped spawns in tests" python3 "$CHECKS/check_no_unreaped_spawn.py" \
     ${GOH_EXCLUDE:+--exclude "$GOH_EXCLUDE"} ${FWD:+"$FWD"}
+
+# A number in prose, re-derived from the tree it describes.
+#
+# Three adversarial reviews of the games estate converged on this class (2026-10):
+# the prose is written one step ahead of the mechanism, in files where the prose
+# is far more convincing than the mechanism is load-bearing. `roadmap_state.py` said
+# "64 declared gates" against 70 in `verify.py` -- a regex that cannot match a
+# label carrying a second space, fixed twenty lines from the docstring still
+# quoting its old output. `check_mcp_server.py` said "477 lines and 18
+# characterization tests" for 321 and 20, in the gate whose job is COUNTING. All six
+# instances were found by hand, at hours each.
+#
+# A number in prose cannot watch itself, so this step only reads a claim the author
+# MARKED: the number AND the path in backticks, or a leading `claim:`. Unmarked
+# numbers stay prose -- the gate would have caught none of the six as they stood,
+# and the rule that would have is English interpretation, which is how a gate ends
+# up switched off. Every finding prints the command that re-derives the truth, and
+# `--probe` executes those commands against fixtures so they cannot rot.
+#
+# Opt in per repo with GOH_CLAIM_DERIVATION=1: this lands RED in every repo in the
+# estate, because every repo in the estate has this defect, and a gate that goes
+# red in twenty places on the day it lands is a gate that gets disabled. A claim
+# that must stand carries `claim:` plus a reason in claim_derivation_allow.json,
+# and a STALE entry fails.
+#
+# MIRRORED in crates/goh/src/steps_delegated.rs, which is what actually runs when
+# the native binary is present (this script execs it).
+if [ -n "${GOH_CLAIM_DERIVATION:-}" ]; then
+    if [ "$SCOPE" = "--staged" ]; then
+        goh_step "prose claims are derived (staged)" python3 "$CHECKS/check_claim_derivation.py" \
+            --staged ${GOH_EXCLUDE:+--exclude "$GOH_EXCLUDE"}
+    else
+        goh_step "prose claims are derived" python3 "$CHECKS/check_claim_derivation.py" \
+            ${GOH_EXCLUDE:+--exclude "$GOH_EXCLUDE"}
+    fi
+fi
 
 # The companion question to the one below, and a different one: a self-proof shows a gate can
 # fail on a VIOLATION; this shows it does not report compliance when its subject is ABSENT. Three

@@ -308,3 +308,46 @@ through untouched), `tests/test_orphan_canary.py` (the incident's shape is red, 
 silent, another program's process is counted and never failed on), and
 `checks/check_estate_corpus.py`'s `no_unreaped_spawn` entry (the incident planted inside 611 real
 files from media_server).
+
+## 18. A number in prose is re-derived from the tree, and only a MARKED one
+
+Three adversarial reviews of the games estate converged on one finding (2026-10): **the prose is
+written one step ahead of the mechanism, in files where the prose is far more convincing than the
+mechanism is load-bearing.** `roadmap_state.py` said "64 declared gates" against 70 declared in
+`verify.py` — a regex that cannot match a label carrying a second space, fixed twenty lines from the
+docstring that still quoted its old output. `check_mcp_server.py` said "477 lines and 18
+characterization tests" for 321 and 20, in the gate whose entire job is counting. `.gatesrc`
+described three "grandfathered" exemptions for a file that declares none, nine lines after saying so.
+`gaf/README.md` said 86 files / 64 test files / 1059 tests for 101 / 91 / 1732. All six were found by
+hand, at hours each, and none was noticed by a gate, a test or a review of the diff.
+
+* **The claim form is EXPLICIT, and the looser rule was rejected.** A claim is read only when the
+  number AND the thing it counts are both in backticks — the estate's existing convention that a
+  backtick means "this is the evidence" — or when the line carries a leading `claim:`. A bare number
+  beside a path is prose. The looser rule ("any number in a sentence naming a path") is English
+  interpretation, and it is wrong in a direction nobody notices: it cannot tell an inventory from an
+  incident, a current claim from a quoted one, or a count from a version — and when it is wrong it is
+  wrong loudly and in bulk, which is how a gate gets switched off. The cost of this limit is stated
+  plainly: the six defects above are BARE numbers, so this gate would have caught none of them as
+  they stood. What it buys is that the first edit after a defect re-derives the number instead of
+  retyping it.
+* **A claim the tree cannot answer is a FINDING, named for why** — never a skip. A number nobody is
+  re-deriving is the state the whole gate exists to end, and reporting nothing about it would be the
+  worst available answer.
+* **The printed command is part of the finding, and `--probe` EXECUTES it.** "The tree says 64" is a
+  claim; "the tree says 64 — `python3 -c …`" is something the reader can check. A finding whose
+  command disagrees with the gate is worse than one with no command, because it looks checked.
+* **An exemption is a ratchet.** `claim_derivation_allow.json` names the file, the claim and a reason;
+  an entry matching nothing is STALE and fails, so a fixed claim takes its exemption with it; and the
+  match collapses whitespace, because an exemption a routine `ruff format` can revoke is not one.
+* **Opt-in per repo** (`GOH_CLAIM_DERIVATION=1`), because this lands red in every repo in the estate:
+  every repo in the estate has this defect, and a gate that goes red in twenty places on the day it
+  lands is a gate that gets disabled. Each repo turns it on when it has marked its claims or fixed
+  them.
+
+Pin: `tests/test_check_claim_derivation.py` (every unit red-before and green-after, the negative
+controls that must stay quiet, every printed command executed and compared, the staged-scope
+boundary, and the allowlist ratchet in both directions), `checks/check_claim_derivation.py --probe`
+(the same table through the checker's own entry point, plus its exit codes), and
+`checks/check_estate_corpus.py`'s `claim_derivation` entry (a false claim planted inside a real
+markdown file from a real estate repo).

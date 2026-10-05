@@ -52,7 +52,7 @@ def repo_root() -> str:
     return out.stdout.strip()
 
 
-def listed_files(root: str, staged: bool, pathspec: str = "*") -> list[str]:
+def listed_files(root: str, staged: bool) -> list[str]:
     """Repo-root-relative file list. Staged mode lists Added/Copied/Modified
     index entries; full mode lists the WORKTREE: everything tracked plus every
     untracked file git does not ignore (`--cached --others --exclude-standard`).
@@ -62,6 +62,14 @@ def listed_files(root: str, staged: bool, pathspec: str = "*") -> list[str]:
     until it was staged, when pre-commit finally saw it (2026-09-13: two repos,
     twice in one day). "Full" answers "is my tree green"; an untracked file IS
     the tree. Ignored files (build output, caches) stay out, as before.
+
+    No `pathspec` parameter, and it used to have one that was accepted and
+    IGNORED: every caller got the whole tree whatever it asked for. A parameter
+    that lies is worse than no parameter — the next caller passes a scope, gets
+    everything, and does not find out. A caller that needs a PATHSPEC wants a
+    different question anyway: this lists the staged DIFF, so it cannot answer
+    "what does this commit contain", which is what a tree-scope count needs.
+    `checks/_claim_derive.tree_files` asks git that question directly.
 
     `-z` + NUL splitting is load-bearing: without it git QUOTES paths holding
     non-ASCII or control characters ("caf\\303\\251.md", "we\\nird.md"), names

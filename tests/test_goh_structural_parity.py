@@ -97,6 +97,9 @@ def announced_steps(out: str) -> list[str]:
 
 
 GATESRC = b"GOH_MAX_LINES=10\n"
+# A `.gatesrc` that opts into the prose-claim gate. 500 rather than 10 because the
+# claim document below is three lines and the cap has to be out of its way.
+CLAIM_SRC = b"GOH_MAX_LINES=500\nGOH_CLAIM_DERIVATION=1\n"
 
 FULL_CASES: dict[str, dict[str, bytes]] = {
     "clean": {".gatesrc": GATESRC, "a.py": b"x = 1\n"},
@@ -190,6 +193,23 @@ FULL_CASES: dict[str, dict[str, bytes]] = {
         "Cargo.toml": b'[package]\nname = "app"\nversion = "1.2.3"\n',
         "Cargo.lock": b'[[package]]\nname = "app"\nversion = "1.2.3"\n',
     },
+    # The prose-claim step, BOTH outcomes. It is opt-in, and opt-in means the
+    # fixture has to DECLARE it: a case the parity table never turns on is a step
+    # both tiers skip, which is the one situation in which they agree perfectly.
+    #
+    # The `.gatesrc` here carries the key, and the document carries a claim -- and
+    # they are the same fixture's two halves on purpose. That step REFUSES a tree
+    # that declares the convention and has no marked claim in it, which is the
+    # empty-scope rule, so a fixture with the key and no claim exercises the refusal
+    # rather than the gate.
+    "claim_red": {
+        ".gatesrc": CLAIM_SRC,
+        "doc.md": b"# t\n\nclaim: 9 lines in doc.md\n",
+    },
+    "claim_green": {
+        ".gatesrc": CLAIM_SRC,
+        "doc.md": b"# t\n\nclaim: 3 lines in doc.md\n",
+    },
 }
 
 
@@ -218,12 +238,13 @@ _SKILL = b"---\nname: skill-%d\ndescription: does a thing worth triggering on.\n
 INVENTORY_CASE: dict[str, bytes] = {
     ".gatesrc": (
         b"GOH_MAX_LINES=500\nGOH_SKILLS_CORPUS=1\nGOH_NO_HOME_PATHS=1\nGOH_NO_KILL_BY_NAME=1\n"
-        b"GOH_PYTHON_FORMATTED=1\nGOH_LINE_EXCLUDE='big.py'\nGOH_LINE_BASELINE='base.txt'\n"
+        b"GOH_PYTHON_FORMATTED=1\nGOH_CLAIM_DERIVATION=1\nGOH_LINE_EXCLUDE='big.py'\n"
+        b"GOH_LINE_BASELINE='base.txt'\n"
     ),
     ".gates-version-baseline.json": b"[]\n",
     "base.txt": b"600\tbig.py\n",
     "big.py": b"".join(b"# %d\n" % i for i in range(600)),
-    "README.md": b"# ok\n",
+    "README.md": b"# ok\n\nclaim: 3 lines in README.md\n",
     "a.py": b"x = 1\n",
     **{f"skill-{i}/SKILL.md": _SKILL % (i, i) for i in range(6)},
 }
@@ -254,8 +275,9 @@ def test_both_tiers_run_the_same_steps(goh: Path, tmp_path: Path) -> None:
     # An empty comparison proves nothing, so the inventory is pinned too: a step
     # added to ONE tier and not the other is the defect, and a step added to
     # neither is a step nobody runs. 16 -> 17 on 2026-10-03 for
-    # `no unreaped spawns in tests`.
-    assert len(in_bash) == 17, f"the pipeline's step inventory changed: {sorted(in_bash)}"
+    # `no unreaped spawns in tests`; 17 -> 18 on 2026-10-04 for
+    # `prose claims are derived`.
+    assert len(in_bash) == 18, f"the pipeline's step inventory changed: {sorted(in_bash)}"
 
 
 def test_a_failing_step_names_the_checker_and_the_docs(goh: Path, tmp_path: Path) -> None:
@@ -318,6 +340,7 @@ HOSTILE = {
     "GOH_PYTHON_FORMATTED": "1",
     "GOH_NO_HOME_PATHS": "1",
     "GOH_NO_KILL_BY_NAME": "1",
+    "GOH_CLAIM_DERIVATION": "1",
     "GOH_SKILLS_CORPUS": "1",
     "GOH_SKILLS_MAX_WORDS": "1",
     "GOH_EXCLUDE": ".*",
