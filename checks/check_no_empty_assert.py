@@ -150,6 +150,35 @@ def _condition_of(invocation: str) -> str:
     return body[:-1].strip() if body.endswith(")") else body
 
 
+def _format_args(invocation: str) -> list[str]:
+    """The format arguments a macro invocation passes after its condition.
+
+    Every string literal in `invocation` has been masked to `"` characters with
+    its `{..}` interpolations preserved, so what is left after the first
+    top-level comma is the trailing argument list with its literal prose
+    removed. An empty result means the assertion carries no message, or only a
+    static one; a non-empty one means it interpolates something.
+    """
+    depth = 0
+    start = None
+    for i, ch in enumerate(invocation):
+        if ch == "(":
+            depth += 1
+        elif ch == ")":
+            depth -= 1
+        elif ch == "," and depth == 1:
+            start = i + 1
+            break
+    if start is None:
+        return []
+    rest = invocation[start:]
+    trailing = rest.rstrip()
+    if trailing.endswith(")"):
+        trailing = trailing[:-1]
+    # Only `{..}` interpolations count. A bare trailing comma is still silence.
+    return [a for a in trailing.split(",") if "{" in a and "}" in a]
+
+
 def _is_violation(invocation: str) -> bool:
     """Is one whole macro invocation an emptiness assertion in a bad shape?
 
@@ -170,11 +199,39 @@ def _is_violation(invocation: str) -> bool:
     was made to fail one gate or the other. And a nested emptiness test is not
     the pattern this gate is about: the assertion is about the compound, and
     splitting it into an emptiness assert would change what is being claimed.
+
+    A message that INTERPOLATES THE VALUE is also exempt, because it is the
+    improvement this gate exists to ask for, already made. This gate's stated
+    purpose is that "a failure line which says which value was empty is worth
+    having"; `assert!(v.is_empty(), "left {v:?} over")` prints the value, so
+    flagging it demands the author remove the very information the gate wants.
+    Flagging it was how a correctly-written assertion in divoom-control's
+    `nowplaying/src/track.rs` came to have no acceptable spelling: `is_empty()`
+    there is a domain predicate over three Options with no `len()` to compare,
+    so `assert_eq!(v.len(), 0)` does not exist for it, and
+    `assert_eq!(v.is_empty(), true)` is refused by clippy's
+    `bool_assert_comparison`. A STATIC message is still a violation -- it names
+    the condition, not the value.
     """
     cond = _condition_of(invocation)
     if "&&" in cond or "||" in cond:
         return False
+    if _format_args(invocation):
+        return False
     return bool(_CONDITION_IS_EMPTY.fullmatch(cond) or _CONDITION_LEN_ZERO.fullmatch(cond))
+
+
+def _mask_literal(m: "re.Match[str]") -> str:
+    """Blank a string literal to `"` characters, KEEPING its `{..}` interpolations.
+
+    Length-preserving on purpose. The scan walks the masked text with a running
+    paren depth, so a mask that changed length would desynchronise the index
+    from the source and could attribute a finding to the wrong line. Quotes
+    cannot move the depth, and braces are not parens, so leaving them in is safe
+    for the scan — and it is what lets `_format_args` tell an interpolating
+    message ("left {v:?} over") from a static one ("must be empty").
+    """
+    return "".join(ch if ch in "{}" else '"' for ch in m.group(0))
 
 
 def _findings(text: str):
@@ -196,9 +253,9 @@ def _findings(text: str):
     buf: list[str] = []
     start = 0
     for lineno, code in code_portions(text):
-        # Blank literals BEFORE the scan: quoted text is not code, and a quoted
+        # Mask literals BEFORE the scan: quoted text is not code, and a quoted
         # paren must not move the depth.
-        free = STRING_LITERAL.sub('""', code)
+        free = STRING_LITERAL.sub(_mask_literal, code)
         i = 0
         while i < len(free):
             if depth == 0:
@@ -238,6 +295,17 @@ def _is_generated(root: str, rel: str, staged: bool) -> bool:
     return blob is not None and is_generated_blob(blob)
 
 
+def _readable(invocation: str) -> str:
+    """The invocation as evidence, with the literal mask collapsed.
+
+    `_mask_literal` turns `"a static message"` into a run of quote characters,
+    which is right for the scan and unreadable in a finding. Collapsing each
+    run back to `""` keeps the line saying what it says. Display only — the
+    decision was already made on the masked text.
+    """
+    return " ".join(re.sub(r'"+', '""', invocation).split())
+
+
 def _scan(root: str, paths, staged: bool):
     hits = []
     for rel in paths:
@@ -247,7 +315,7 @@ def _scan(root: str, paths, staged: bool):
         for lineno, code in _findings(blob.decode("utf-8", errors="replace")):
             # One line per finding: the invocation is accumulated across lines,
             # so its own indentation would otherwise print as a ragged block.
-            hits.append(f"{rel}:{lineno}: {' '.join(code.split())}")
+            hits.append(f"{rel}:{lineno}: {_readable(code)}")
     return hits
 
 

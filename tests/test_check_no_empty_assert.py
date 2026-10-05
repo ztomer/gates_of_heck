@@ -35,6 +35,12 @@ DIRTY = [
     'assert!(!v.is_empty(), "msg");',
     "assert!(s\n    .as_bytes()\n    .is_empty());",
     'assert!(s.as_bytes().is_empty(),\n    "split message");',
+    # Trailing arguments that are NOT interpolations still fail, and so does a
+    # purely static message: both name the condition rather than the value, so
+    # the failure line cannot show it. These are the boundary the
+    # interpolating-message exemption must not slide past.
+    'assert!(v.is_empty(), "left ", v.len(), " bytes");',
+    'assert!(v.is_empty(), "a static message names the condition, not the value");',
 ]
 
 CLEAN = [
@@ -60,6 +66,17 @@ CLEAN = [
     "assert!(v.iter().next().is_none());",
     "my_assert!(v.is_empty());",
     "a::assert!(v.is_empty());",
+    # A message that INTERPOLATES THE VALUE is the improvement this gate asks
+    # for, already made, so flagging it demands the author delete the very
+    # information the gate wants. Found by divoom-control's
+    # `nowplaying/src/track.rs`, where `Track::is_empty()` is a domain predicate
+    # over three Options with no `len()` to compare against, and
+    # `assert_eq!(x.is_empty(), true)` is refused by clippy's
+    # `bool_assert_comparison` -- so before this exemption a correctly written
+    # assertion there had NO acceptable spelling.
+    'assert!(v.is_empty(), "left {v:?} behind");',
+    'assert!(!v.is_empty(), "must hold something: {v:?}");',
+    'assert!(v.is_empty(), "{}", v.len());',
     # Prose and fixtures are not code.
     "// assert!(v.is_empty()); is what we do not write\nfn f() {}\n",
     "/* assert!(v.is_empty()); */\nfn f() {}\n",
