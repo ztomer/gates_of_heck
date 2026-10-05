@@ -114,6 +114,18 @@ def test_repo_detection_finds_the_layers_a_repo_declares(tmp_path):
     assert "swiftlint" not in tools, out.stdout
 
 
+def test_ruff_is_only_for_repos_that_opted_into_the_format_check():
+    """`--layer structural` must not install a tool only GOH_PYTHON_FORMATTED needs."""
+    out = subprocess.run(
+        [sys.executable, str(CLI), "--layer", "structural", "--names"],
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    assert out.returncode == 0, out.stderr
+    assert out.stdout.split() == ["shellcheck"], out.stdout
+
+
 def test_an_unknown_layer_is_refused_not_ignored():
     out = subprocess.run(
         [sys.executable, str(CLI), "--layer", "rsut"], capture_output=True, text=True, timeout=30

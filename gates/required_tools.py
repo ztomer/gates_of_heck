@@ -5,9 +5,19 @@
     gates/required_tools.py --repo . --install    # the install commands, grouped
     gates/required_tools.py --layer rust --layer swift --install
 
+    gates/required_tools.py --repo . --names      # bare tool names, for any package manager
+
 For a CI workflow: `brew install $(...)` from a hand-kept list drifts the day a gate gains a
 requirement -- antiknob's first CI run went red on v0.20.0 for exactly that (shellcheck). Install
 from this instead; tests/test_required_tools_manifest.py keeps the manifest equal to the code.
+Consume it so a failure here FAILS the step (an `eval "$(...)"` of a failed command runs nothing,
+and the step passes having installed nothing):
+
+    set -euo pipefail; cmds="$(python3 "$GOH_DIR/gates/required_tools.py" --repo . --install)"
+    grep -v '^#' <<<"$cmds" | bash -eux
+
+On a runner without brew (ubuntu-latest), use `--names` and the runner's own package manager.
+`ruff` is its own layer (`python-format`): only repos that set GOH_PYTHON_FORMATTED need it.
 
 --repo infers layers from what the repo declares (.gatesrc, tools/gate.sh, .githooks/*): a gate
 script named there, a `--lang` passed to coverage_gate.sh, `GOH_PYTHON_FORMATTED` set, shell files
@@ -81,7 +91,7 @@ def detect(repo: str) -> tuple[set[str], set[str]]:
     if _tracks_shell(repo):
         structural.add("shellcheck")
     if re.search(r"^\s*(export\s+)?GOH_PYTHON_FORMATTED=\S", text, re.M):
-        structural.add("ruff")
+        layers.add("python-format")
     return layers, structural
 
 
@@ -110,6 +120,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--layer", action="append", default=[])
     ap.add_argument("--repo", default=None)
     ap.add_argument("--install", action="store_true")
+    ap.add_argument("--names", action="store_true", help="bare tool names, one per line")
     args = ap.parse_args(argv)
     table = rows()
     known = {r["layer"] for r in table}
@@ -130,7 +141,9 @@ def main(argv: list[str] | None = None) -> int:
         for r in table
         if r["layer"] == "structural" and (r["tool"] in structural or "structural" in args.layer)
     ]
-    if args.install:
+    if args.names:
+        print("\n".join(dict.fromkeys(r["tool"] for r in selected)))
+    elif args.install:
         print("\n".join(install_lines(selected)))
     else:
         for r in selected:
