@@ -1,5 +1,95 @@
 # CHANGELOG
 
+## v0.20.0 — the ceiling cost 200 ms a step, and the gates broke under their own edits _(2026-10-05)_
+
+The 2026-10-05 resume point said the suite hung. It did not: at v0.19.0 it finished in 109.2 s at
+`-n 8`, 1453 passed. Every finding below came from measuring something end to end -- a gate run on
+a one-file fixture, then three consumers' real pre-push -- rather than from reading code.
+
+### 1. Speed: the costs were per STEP and per SPAWN, not per test
+
+On this box sys time equals user time throughout, so process spawns are the cost metric.
+
+| what | before | after |
+|---|---|---|
+| full suite, `-n 8 --dist loadgroup` | 109.2 s | 94.4 s (and 39 more tests) |
+| `structural.sh`, Python tier, one-file fixture | 3.28 s wall for 1.5 s CPU | 1.60 s |
+| `check_display_seam.py --probe` (the suite runs it 24 times) | 4.2 s | 1.4 s |
+| `check_probes_pass.py` on this repo, probes only | 9.6 s | 3.5 s |
+| R3 estate sweep | 9.4 s | 5.2 s |
+
+* **`lib/bounded_run.py` polled every 0.2 s**, so every step of every gate in every consumer was
+  reported up to 200 ms after it finished. It waits now, and reads the process table once at exit.
+* **The display-seam probe made 6 git spawns per fixture** for a probe that never commits and drives
+  full mode (which lists `--others`). One `git init`, copied. No case dropped; the 23-case rule-drop
+  calibration still goes red on every rule.
+* **Self-proofs and the estate sweep ran serially.** Both run on a thread pool now, reported in
+  order; the sweep's output is byte-identical to the serial run (`checks/_ordered_pool.py`). Both
+  proven concurrent by rendezvous, not by timing.
+
+### 2. A running gate is pinned to the bytes it started with
+
+routines' pre-push died with `coverage_gate.sh: line 485: syntax error near unexpected token ';;'`.
+bash reads a script lazily by byte offset; this checkout was edited while a consumer ran it. Every
+EXECUTED script (20) now wraps its body in a parse-guard brace group (`docs/contracts.md` 19).
+
+### 3. A missing tool and a moving lockfile are failures
+
+* `cargo-machete`, `swiftlint` and `shellcheck` absent each printed a warning and exited 0. They
+  fail up front now (`goh_require`). The shell-lint test that asserted the degrade pinned the defect.
+* `rust_gate.sh` had no `--locked` anywhere, so a stale `Cargo.lock` was silently rewritten and the
+  gate went green (antiknob carried `tools/lock_guard.sh` against it). It now refuses a missing lock,
+  runs `cargo metadata --locked` first, passes `--locked` to every resolving call, and checks the
+  lock is byte-identical at the end (`docs/contracts.md` 20).
+
+### 4. The push gate leaked, and built cold every time
+
+In `~/.cache/goh/push/`: a three-day-old export worktree and 230 `*.out` files; in
+`~/.cargo/build/`: **24 orphaned build-dirs, 30 GB**, because cargo keys the build-dir by
+`{workspace-path-hash}` and the export path was random -- every push built every dependency cold.
+A run now owns `<root>/<repo>-<hash>/<repo>` with an owner stamp (pid + start time): stable per
+repo, so dependencies stay warm; a concurrent push takes a private path with its build-dir inside
+it; cleanup NAMES what the gate wrote outside its tree (Finance's tests write `"$HERE.out"`); and
+each run reaps runs whose owner is dead, which `git worktree prune` never did (`docs/contracts.md`
+21). The litter was removed.
+
+Consumer pre-push end to end: media_server 201 s before; 242 s on the first claim of its stable path
+(cold), **197 s warm**, green. routines 303 s, green (its first claim). ztools stays red on its own
+clippy 1.99 findings. The shared structural layer costs ~3 s in each.
+
+### 5. Scope
+
+* **Build scripts are under the line cap**, both tiers: `Makefile`, `GNUmakefile`, `makefile`,
+  `CMakeLists.txt`, `[Jj]ustfile`, `*.mk`, `*.cmake` (ZoneWM's 698-line Makefile passed). The two
+  copies of the list are compared whole by a test. Newly over: CadGoose/CMakeLists.txt (702),
+  games/CadGoose2/CMakeLists.txt (1142), games/necrohand/Makefile (511).
+* **`check_probes_pass.py` names the self-proofs it does not run** (non-`check_*` files with a
+  probe flag; 23 in ZoneWM). Discovery stays by name: ZoneWM's `input_lock.py --probe` locks the
+  owner's real input.
+* **`credential.helper` and `http.*.extraheader`** are judged with `check_no_secrets.py`'s
+  patterns plus a helper's literal `password=` and the credential after an auth scheme
+  (`checks/_credential_config.py`). The probe is 32 shapes.
+* **Stale hooks say so.** Hooks are copied, not delegated: 14 repos still ran the pre-`0ac0f70`
+  pre-push, which gates the working tree. `structural.sh` names an older stock hook with the
+  `install.sh` command; `retired_hooks.sha256` gained the two shipped versions it was missing, and
+  a test derives every shipped version from history. ztools' two hook fixes are upstreamed.
+
+### 6. One session's uncommitted edit no longer stops the estate
+
+The binary-currency check read the shared checkout's WORKING-TREE `Cargo.toml`. Bumping it ahead of
+the release commit refused every consumer's commit (ZoneWM reported it within minutes). It reads
+HEAD's version now; uncommitted gate source keeps its own by-path warning
+(`tests/test_binary_currency.py`, which no test had pinned before).
+
+### Decided
+
+* `GOH_EXCLUDE` keeps `re.search` (substring) semantics: every consumer's patterns are written for
+  it. ztools anchors its own pattern (`'^vendor/'`).
+
+### Dependencies
+
+`cargo update`: nothing newer. numpy 2.4.3 -> 2.5.3; the golden tier stays bit-identical.
+
 ## v0.19.0 — the 5x was not the table, and a credential in a remote URL was invisible _(2026-10-05)_
 
 Two findings, one measured and one proven, and they point the same way: **every question this estate

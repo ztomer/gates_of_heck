@@ -3,115 +3,88 @@
 One file; prune landed items to git history. Seeded from EVAL-2026-09-04.md
 (delete that file once this list is accepted as the transfer).
 
-## Resume point — 2026-10-05 (opencode session ses_f064f549affe8H5LpvD7S411Y4 stopped mid-work)
+## State — 2026-10-05, v0.20.0 (read first)
 
-Read this section first. This repo had no session of its own after 2026-09-23; its work came from
-the app_updates/servers orchestrator (root `ses_f064f549affe8H5LpvD7S411Y4`) and the games
-orchestrator (root `ses_f05f17b6dffejZ7dmIqQ9NwIH1`). Both were stopped ~12:20-12:30.
+The 2026-10-05 resume point (reconstructed after the opencode orchestrators stopped) is worked
+through; its text is in git history at `890691f`. **The "pytest hang" is retired**: the full suite
+ran to completion at `a93dfe1`, 1453 passed in 109.2 s wall at `-n 8`, no hang.
 
-**THE GOAL, AHEAD OF EVERYTHING ELSE: the full suite runs in seconds-to-low-minutes, and pre-push
-is fast for the ~30 consuming repos.** Every other repo's session is serialized behind this one,
-and no downstream session should edit this repo — a dedicated session owns it and runs first.
+**Speed, measured on this box** (16 cores, 4-5 of them busy with coreaudiod / FSEvents /
+WindowServer at idle; sys time ~= user time throughout, so process SPAWNS are the cost metric):
 
-**In flight when stopped**
+| what | before | after |
+|---|---|---|
+| full suite, `-n 8 --dist loadgroup` | 109.2 s, 1453 tests | 94.4 s, 1492+ tests |
+| full suite, `-n 12` | -- | 102 s (contention: more workers is slower here) |
+| one `structural.sh` run, Python tier, one-file fixture | 3.28 s (1.5 s CPU) | 1.60 s |
+| `check_display_seam.py --probe` (run 24x by the suite) | 4.2 s | 1.4 s |
+| `check_probes_pass.py` on this repo, probes only | 9.6 s | 3.5 s |
+| R3 estate sweep (this repo only) | 9.4 s | 5.2 s |
 
-- **"Fix gates_of_heck pytest hang"** (child `ses_ef320d579ffeXWbEkP6tNzLXqQ`, ABORTED after
-  ~90 s). Premise: full pytest hangs at
-  `tests/test_estate_corpus.py::test_a_declared_entry_verifies_against_the_real_estate[1]`. It got
-  as far as measuring: the checker run directly on media_server took 2.3 s (the prompt said 23 s);
-  the single test passed in 5.29 s; a 45 s-bounded serial `pytest tests/ -v` was cut off at 13 %,
-  inside `test_check_lints_optin.py`, which is slow, not stuck. **Nothing was written in the repo**
-  (only `/tmp/ser1.log`, `/tmp/ms_crates_files.txt`). **The premise was stale:** the orchestrator's
-  12:20 context summary carried the pre-v0.19.0 state (HEAD `5ec6b13`, 23 s per pass) forward as
-  "Blocked: hangs", although its own earlier note had said "not a hang — the checker takes 23s",
-  and v0.19.0 (`2ae5340`) had already removed that cost. Treat the hang as RETIRED unless step 1
-  below reproduces it.
-- **"O32: fix the 20-minute gate suite"** (child `ses_ef41768a9ffekx1J3C90LVBXMr`) COMPLETED and
-  shipped v0.19.0: estate sweep scoped to this repo, quadratic in `_spawn_rust.py` removed. Its
-  report: 8 workers, wall 233.6 s → 105.6 s, test time 1380 s → 754 s, 1453 passed. It named the
-  costs it did not touch: `test_goh_structural_parity` (123 s) and `test_display_seam` (99 s).
-- The root's todo list is stale (`check_python_formatted` wiring is done at `5e667c4`; "finish the
-  v0.18.0 release" is done — v0.18.0 and v0.19.0 are both tagged and pushed).
+The causes, each a class fix: `lib/bounded_run.py` polled every 0.2 s, charging EVERY step of EVERY
+gate in EVERY consumer up to 200 ms; the display-seam probe made 6 git spawns per fixture where 1
+copy does; self-proofs and the estate sweep ran serially. Serial suite: NOT re-timed this round
+(the last serial number on record is ~12 min); `tools/pytest.sh` still falls back to serial when
+xdist is missing.
 
-**Measured at HEAD `a93dfe1` (v0.19.0) during reconstruction, each command under `timeout 60`**
+**Consumer pre-push, end to end** (`push_gate.sh` fed HEAD's ref line, nothing pushed):
 
-| measurement | result |
-|---|---|
-| `pytest '...real_estate[1]' -x -q` | **1 passed in 4.80 s** (5.0 s wall). No hang. |
-| `tests/test_estate_corpus.py -n 8 --durations=25` | 13 passed, 5.78 s; slowest `[1]` 5.24 s, `[7]` 1.68 s |
-| `test_goh_structural_parity.py` + `test_display_seam.py`, `-n 8` | 66 passed, 32.4 s wall (63 s user, **90 s sys**); `test_both_tiers_run_the_same_steps` 8.7 s; every `test_full_mode_agrees[*]` 5.2-6.4 s |
-| consumer `check_no_unreaped_spawn.py`: media_server / routines / ztools | 2.1 s / 0.8 s / 1.2 s |
-| consumer `check_probes_pass.py`: same three | 0.1 s each (the estate sweep is stated NOT RUN outside this repo) |
+| repo | before (random export path) | after (stable export path) |
+|---|---|---|
+| media_server | 201 s, green | 242 s first claim (cold), **197 s warm**, green |
+| routines | 306 s, red (a script edited mid-run: the parse-guard incident) | 303 s first claim (cold), green |
+| ztools | 119 s, red | 113 s, red -- ztools' own code (clippy 1.99 `assert_is_empty`, 72) |
 
-NOT measured here, deliberately: the full suite. Last recorded numbers: 105.6 s wall at `-n 8`
-(O32); "1453 passed in 729 s" (games session, 10:38, configuration not recorded, probably serial).
-The serial suite is still ~12 minutes, and `tools/pytest.sh` falls back to serial when xdist is
-missing. System time above user time points at process spawning, not computation.
-
-**State on disk** (tree clean; `main` == `origin/main` == `a93dfe1`; tag `v0.19.0` pushed)
-
-- `stash@{0}` `wip-orphan-canary-ancestry` (2026-10-03): the games child
-  `ses_efbc7d657ffedGWnXOIsTz9bs5`, which reported it redundant with `9f69efb` and left it in
-  place. Drop after `git stash show -p` confirms that.
-- `stash@{1}` (2026-09-21, a 2-line `Cargo.lock` bump on `9c7db39`): unknown, old, almost certainly
-  superseded.
-- Worktree `~/.cache/goh/push/MA4NUA`, detached at `bcd444e` (v0.15.1, 2026-10-02), plus 230 `*.out`
-  files in `~/.cache/goh/push/` going back to 2026-09-22: **push-gate litter**, an export worktree
-  that was never removed. Attribution unknown. It is a cleanup defect in the push gate, not someone's work.
-- Worktree `.claude/worktrees/priceless-wu-f3d911` / branch `claude/priceless-wu-f3d911` at
-  `362ddd1` (2026-09-27): already merged into `main`, clean, removable.
+Shared structural layer in each: ~3 s. The rest is each repo's own pipeline; media_server's warm run
+spends 1-7 s per crate in the house rust gate across 29 crates.
 
 **Next steps, in order**
 
-1. **Verify v0.19.0's speed claim before building on it.** Run the full suite once, bounded and
-   attributed: `timeout 600 python3 lib/bounded_run.py --timeout 590 -- python3 -m pytest tests/
-   -q -n 8 --dist loadgroup --durations=40`. Record wall time and summed test time. Expect about
-   106 s. If it does not finish, that is a real hang: attribute it with `lib/bounded_run.py` and
-   `lib/orphan_canary.py`, don't guess.
-2. **Make the suite seconds-to-low-minutes** by measured cost. Start with
-   `test_goh_structural_parity` (each full-mode case runs `structural.sh --full` in both tiers over
-   a fresh fixture, so build each fixture once and share it) and `test_display_seam`. Then work
-   down the `--durations` list. Do not shrink the 55-shape table and do not drop coverage. Re-time
-   serial as well.
-3. **Measure consumer pre-push end to end** in media_server, routines and ztools, one bounded run
-   each with per-step timings. Any shared checker above a few seconds is this repo's to fix.
-4. **Hygiene, as class fixes:** make the push gate's export cleanup survive interruption (no
-   leaked worktree, no unbounded `*.out` growth) with a test, then prune `MA4NUA`. Drop both
-   stashes after a diff check. Remove the merged `priceless-wu` worktree and branch.
-5. **The downstream asks below,** then the pre-existing Open items.
+1. Re-time the SERIAL suite once and record it here.
+2. The remaining long poles are spawn count, not test count: `test_goh_structural_parity`
+   (22 full-mode cases x both tiers) and every test that runs a gate end to end. The lever with the
+   widest reach is the native tier running its 7 delegated Python steps concurrently (~0.9 s ->
+   ~0.3 s per run, in every consumer's pre-commit) -- measure first, the parity test pins output
+   order.
+3. The Open items below.
+
+**Downstream: what each consumer session needs to know**
+
+- **Every repo:** re-run `$GOH_DIR/install.sh <repo>`. `structural.sh` now NAMES a hook that is an
+  older stock; 14 repos were still on the pre-`0ac0f70` pre-push, which gates the working tree and
+  never reaches `push_gate.sh`. Pristine old hooks upgrade without `--force`.
+- **Every Rust repo:** `rust_gate.sh` now refuses a missing `Cargo.lock`, runs `cargo metadata
+  --locked` first, passes `--locked` everywhere and fails if any step rewrote the lock. A stale lock
+  is now RED. `cargo-machete`, `swiftlint` and `shellcheck` absent is now RED, up front.
+- **antiknob / divoom:** both gaps from antiknob's PLAN.md are closed upstream (`--locked`, tool
+  absence); `tools/lock_guard.sh` is redundant with the gate now and can be retired there.
+- **ZoneWM:** `Makefile`, `GNUmakefile`, `makefile`, `CMakeLists.txt`, `[Jj]ustfile`, `*.mk`,
+  `*.cmake` are under the line cap in both tiers. `check_probes_pass.py` discovery stays by the
+  `check_*` NAME -- deliberately: `input_lock.py --probe` locks the owner's real input, so discovery
+  by flag would hand the keyboard to a pre-push hook -- and the gate now NAMES the 23 self-proofs it
+  does not run, instead of staying silent.
+- **ztools:** its two local hook fixes are upstreamed (`exec bash "$structural"`; pre-push names
+  the remedy when `push_gate.sh` is missing). Its hooks still differ textually, so convergence is
+  `install.sh --force`, ztools' call. **ztools' HEAD (`40148ae`) is RED** on its own code under
+  clippy 1.99: 72 `assert_is_empty` errors (e.g. `src/ztools/model_health_tests.rs:144`).
+  **`GOH_EXCLUDE` anchoring: DECIDED, not changed.** It stays a `re.search` substring test: every
+  consumer's patterns (`'third_party/|\.generated\.'`) are written for it, and anchoring would
+  silently UN-exempt them. ztools should write `'^vendor/'`, as the checker's own usage line does.
+- **servers (media_server, storage-server, adguard_server):** `credential.helper` and
+  `http.*.extraheader` are now judged (`checks/_credential_config.py`); all three are clean.
+- **Finance:** `tests/test_repos.sh:113` and `tests/test_one_plan_of_record.sh:214` set
+  `root="$HERE"` and write `"$root.out"` -- a sibling of the repo root. In a push export that was
+  the shared export root (230 files accumulated); in the main checkout it is
+  `~/Projects/Finance.out`. `push_gate.sh` now removes and NAMES such writes; the fix is Finance's.
+- **Newly over the line cap** (build files entered the scope): `CadGoose/CMakeLists.txt` (702),
+  `games/CadGoose2/CMakeLists.txt` (1142), `games/necrohand/Makefile` (511).
 
 **Blocked / owner decisions**
 
-- O33 (servers): "The `gho_` PAT ... **never rotated**", and an older `ghp_` is still live in
-  `.90`'s zsh history and three conversation DBs. Only the owner can rotate it.
-- `GOH_EXCLUDE` anchoring is still undecided: should a shared key change from a substring match
-  to an anchored one (see the ztools row below)?
+- O33 (servers): the `gho_` PAT was never rotated, and an older `ghp_` is still live in `.90`'s zsh
+  history and three conversation DBs. Only the owner can rotate it.
 - Wording for "everyone owns gates_of_heck" and the `:latest` image policy in `~/.claude/CLAUDE.md`
-  was a pending orchestrator item. That is the owner's file.
-
-**Cross-repo: what downstream sessions are waiting on**
-
-- **All consumers:** steps 1-3. That is proof that HEAD's suite and pre-push are fast and green.
-  The "hang" that the app_updates orchestrator believed was blocking `tools/gate.sh --full` does
-  not reproduce.
-- **ZoneWM:** `checks/check_file_length.py` skips any path not ending in `SOURCE_SUFFIXES`, so a
-  698-line `Makefile` passed the 500-line cap. ZoneWM has split its Makefile and polices it in
-  `verify`. The pre-commit line-cap stage still cannot see build files, and that needs a change
-  here (`ses_ef35ef237ffeA5dovgl4g80rdq`).
-- **ztools:** its `.githooks/pre-commit` and `pre-push` differ from `hooks/` and it has no
-  `.githooks/.goh-installed/`, so `install.sh` refuses to reinstall without `--force`. Its agent
-  asked for the hooks to converge upstream (`ses_ef35b36e0ffeeLBDhgjRFWzf4Z`). The `GOH_EXCLUDE`
-  substring hazard is the other ztools item (Open, below).
-  ztools' reconstruction pass (see `ztools/docs/ROADMAP.md` Resume point) adds two
-  `coverage_gate.sh` asks that ztools is waiting on before it wires its new gate steps:
-  (a) a relative `--floors-json` path silently turns the per-file floor off, so resolve it
-  against the repo root or refuse it; (b) an unreadable floors file is currently skipped, and it
-  must fail instead.
-- **servers (media_server, storage-server, adguard_server):** O33's follow-up is to read
-  `.git/config` with `check_no_secrets.py`'s credential-named-key rule. That is already an Open
-  item below.
-- **games/ZeroThunder:** `garden_drag_flicker.py:73` is ZeroThunder's own fix. Nothing here
-  blocks it.
+  is the owner's file.
 
 ## Open
 
@@ -197,7 +170,7 @@ count is 1 because it was re-measured, not because the number moved down:
 | repo | finding | state, measured 2026-10-05 |
 |---|---|---|
 | **games/ZeroThunder** | `tests/e2e/garden_drag_flicker.py:73` — `proc = subprocess.Popen([binpath, ...])`, then `if not z.wait_for_app(timeout=15): return 2` at line 76, with `proc.terminate()` at line 119. **The identical dropped-handle defect** as the `live_probe_lib.py` row above, on the LIVE tier. | **UNFIXED, and the gate now says so** (exit 1). Deliberately not fixed: it needs a real screen, and a fix could not be *proven* here, so shipping one would violate prove-before-claim. **NEWLY VISIBLE** — see below. |
-| **ztools** | the unanchored `GOH_EXCLUDE` hazard, not a spawn site: `'vendor/'` is a SUBSTRING test compiled with `re.search`, so it exempts any path with `vendor/` anywhere in it. | **UNFIXED**, and still not this gate's to change: re-anchoring `GOH_EXCLUDE` alters the semantics of a key every consumer's checker shares, so it belongs in its own release, in that repo. Harmless today — `vendor/camoufox-rs` is the only match and 106 first-party test files stay policed. |
+| **ztools** | the unanchored `GOH_EXCLUDE` hazard, not a spawn site: `'vendor/'` is a SUBSTRING test compiled with `re.search`, so it exempts any path with `vendor/` anywhere in it. | **DECIDED 2026-10-05: the key's semantics stay `re.search`** (every consumer's patterns are written for it; anchoring would silently un-exempt them). The fix is ztools' pattern: `'^vendor/'`. Harmless today -- `vendor/camoufox-rs` is the only match. |
 
 **Why `garden_drag_flicker.py:73` became visible only now.** It is a Python
 site, and Python's panic scan never counted a bare `return` as an exit that skips
@@ -225,10 +198,8 @@ exempts any path with `vendor/` anywhere in it, not only a top-level vendored
 tree. Today that is harmless: `vendor/camoufox-rs` is the only thing it matches in
 ztools, and 106 first-party test files stay policed. The house checker's own usage
 line says `--exclude '^vendor/'` (anchored, `checks/check_no_unreaped_spawn.py:7`)
-and ztools declares the unanchored form. Re-anchor it when ztools' owner is next
-in that repo; changing the semantics of a key every consumer's checker shares
-belongs in its own release, not in this one. The anchoring is now written down in
-`docs/config.md`.
+and ztools declares the unanchored form. The key keeps its `re.search` semantics
+(decided 2026-10-05, see the state section above); ztools anchors its own pattern.
 
 ### Remaining from `docs/SUPERSOTA.md` §3
 
@@ -284,33 +255,24 @@ table. Carried here so the residual is not lost:
 
 ### Credential scope left open by `check_no_credential_urls.py` (2026-10-05)
 
-The checker is scoped to git-config URLs and says so in its docstring. Four
-adjacent shapes are deliberately NOT covered, each with a reason recorded there
-rather than left for a reader to guess:
+`credential.helper` and `http.*.extraheader` landed in v0.20.0 (`checks/_credential_config.py`).
+Two shapes remain deliberately uncovered:
 
 - **`.netrc` / `_netrc`** — a real credential store, out of scope because it is a
   file outside the repo and no house gate reads from `$HOME` anywhere else. Half
   a checker that reads `$HOME` is worse than none: it works on one machine, and
   the day it is wrong nobody can tell. Re-open when some gate already reads a
   path outside its repo, so there is a precedent to follow rather than invent.
-- **`credential.helper`** — measured: multi-valued, and any value may carry a
-  token (`!f() { echo username=…; }; f`). It is not a URL, so the rule does not
-  reach it. The rule that would: a credential-NAMED key holding an opaque value,
-  which is `check_no_secrets.py`'s existing pattern applied to `.git/config`
-  instead of to tracked files.
-- **`http.*.extraheader`** — measured to carry `AUTHORIZATION: basic <token>`.
-  Same shape, same fix, same reason it is separate: it is a header, not a URL.
 - **CI configs** — a token in `.github/workflows` IS committed, so
-  `check_no_secrets.py` already has it. Duplicating its patterns in a second
-  checker would be the second copy a rule about duplicates should never have.
-  NOT a gap; listed so nobody re-raises it as one.
-
-The two `.git/config` shapes are the real work and they want ONE change, not
-two: read `.git/config` with the credential-named-key rule `check_no_secrets.py`
-already owns, so a token in `credential.helper` or `http.*.extraheader` is caught
-by the rule that exists rather than by a third variant of it.
+  `check_no_secrets.py` already has it. NOT a gap; listed so nobody re-raises it.
 
 ## Done (prune to history)
+
+- v0.20.0 (2026-10-05): the per-step 0.2 s poll, the probe's git spawns, serial self-proofs and
+  sweep (suite 109 -> 94 s); parse-guarded scripts; tools and `Cargo.lock` as hard inputs; the push
+  gate's run ownership, stable export path and reaper (30 GB of orphaned build-dirs, 230 `*.out`,
+  one leaked worktree removed); build files under the cap; credential helpers and headers; stale
+  hooks self-reporting. Details in CHANGELOG.md.
 
 - v0.19.0 (2026-10-05): the R3 estate sweep in `check_probes_pass.py` is scoped to this repo
   (`checks/_estate_sweep.py`). Consumers print "estate corpus sweep NOT RUN" and take 0.1 s,
