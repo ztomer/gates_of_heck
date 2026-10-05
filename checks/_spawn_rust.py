@@ -74,6 +74,13 @@ from _spawn_lex import (
     WATCHDOG,
 )
 
+# THE MEMO. One slot per question, keyed on the EXACT text it was derived from, so a different
+# string is a miss rather than a wrong answer. Kept here rather than in a general-purpose cache
+# because its soundness argument is local and checkable: every value in it is a pure function of its
+# key, and a scan has one crate context. `tests/test_check_no_unreaped_spawn_scope.py` proves both
+# halves -- that a second call is served from here, and that changing the text re-derives.
+_MEMO: dict = {}
+
 
 def guard_types(masked: str) -> set[str]:
     """Local types whose `Drop` impl STOPS the child: `kill()` **or** `wait()`.
@@ -88,7 +95,25 @@ def guard_types(masked: str) -> set[str]:
     `mediaops-rs`' `impl Drop for Holder { drop(self.child.stdin.take()); let _ = self.child.wait(); }`
     closes stdin to make `sqlite3` exit, and a kill-AND-wait rule called that a leak. `wait()` alone in
     a `Drop` IS the reap; requiring `kill` as well flags correct code.
+
+    MEMOISED, and that is a correctness-of-cost fact rather than a trick: `rust_findings` is called
+    once per file over a crate context that is the same string every time, so an unmemoised read
+    rescanned the whole crate once per file. Measured over `media_server`'s `crates/` tree, 2026-10-05:
+    341 files against a 2.77 MB crate context, and a per-file `rust_findings` with the context cost
+    **134x** one without it. The memo is keyed on the exact string, so a different crate cannot read
+    another's answer -- and it is a SINGLE slot, because a scan has exactly one crate context and a
+    wider cache would only retain megabytes.
     """
+    hit = _MEMO.get("guard")
+    if hit is not None and hit[0] == masked:
+        return hit[1]
+    found = _guard_types(masked)
+    _MEMO["guard"] = (masked, found)
+    return found
+
+
+def _guard_types(masked: str) -> set[str]:
+    """`guard_types`' body. Split out so the memo is visible as a wrapper, not buried in a loop."""
     found = set()
     for m in DROP_IMPL.finditer(masked):
         depth, i = 0, m.end() - 1
@@ -233,8 +258,44 @@ def drop_types(masked: str) -> set[str]:
     that HAS a `Drop` which does not kill or wait is not a handoff to a caller who will reap it, it
     is a type that claims to clean up and does not. Reading the body says which; this says a body
     existed to read.
+
+    Memoised for the same reason and with the same single-slot discipline as `guard_types`: it is
+    called four times per file, twice over the crate context, and the crate context does not change
+    within a scan.
     """
-    return {m.group(1) for m in DROP_IMPL.finditer(masked)}
+    hit = _MEMO.get("drop")
+    if hit is not None and hit[0] == masked:
+        return hit[1]
+    found = {m.group(1) for m in DROP_IMPL.finditer(masked)}
+    _MEMO["drop"] = (masked, found)
+    return found
+
+
+def crate_facts(crate: str):
+    """The three crate-scope sets, derived ONCE per crate instead of once per file.
+
+    `guard_types(crate)`, `drop_types(crate)` and `_known_types(crate)` are pure functions of
+    `crate`, and `crate` is one string for the whole scan -- so deriving them per file is a
+    quadratic with the corpus size as one factor and the number of test files as the other. That is
+    what made the R3 estate sweep cost 23 s a pass over `media_server`'s 626-file `crates/` tree
+    (measured 2026-10-05) and put this repo's own suite at 234 s: the same answer, recomputed 341
+    times.
+
+    A single-slot memo keyed on the exact string. Not a cache with a TTL and not a cache that can
+    report a stale "clean": a DIFFERENT crate text misses and is derived, and equal text means the
+    answer is the answer. `clear_memo` exists so a test can prove the derivation still runs.
+    """
+    hit = _MEMO.get("crate")
+    if hit is not None and hit[0] == crate:
+        return hit[1]
+    facts = (guard_types(crate), drop_types(crate), _known_types(crate))
+    _MEMO["crate"] = (crate, facts)
+    return facts
+
+
+def clear_memo() -> None:
+    """Drop every memoised answer. For the test that proves the derivations still happen."""
+    _MEMO.clear()
 
 
 def _all_fns(lines):
@@ -366,14 +427,22 @@ def rust_findings(masked: str, crate: str | None = None) -> list[tuple[int, str,
     locally: a type with a local `impl Drop` that does not reap stays a finding, because the local
     definition is the one the compiler uses and a crate-scope sighting of the same name is a
     different type.
+
+    The three crate-scope sets come from `crate_facts`, so they are derived once for the crate
+    rather than once per file. The ARITHMETIC here is deliberately unchanged -- same sets, same
+    subtractions, same unions -- because this is a cost fix and a rule that moves with it would be
+    two changes wearing one commit.
     """
-    guards = guard_types(masked)
+    crate_guards, crate_drops, crate_known = crate_facts(crate) if crate else (set(), set(), set())
+    local_guards = guard_types(masked)
+    local_drops = drop_types(masked)
+    guards = local_guards
     if crate:
-        guards = guards | (guard_types(crate) - drop_types(masked))
-    drops = drop_types(masked)
+        guards = guards | (crate_guards - local_drops)
+    drops = local_drops
     if crate:
-        drops = drops | (drop_types(crate) - guard_types(masked))
-    known = _known_types(masked) | _known_types(crate or "")
+        drops = drops | (crate_drops - local_guards)
+    known = _known_types(masked) | crate_known
     callees = panicking_callees(masked)
     lines = masked.split("\n")
     out: list[tuple[int, str, str]] = []

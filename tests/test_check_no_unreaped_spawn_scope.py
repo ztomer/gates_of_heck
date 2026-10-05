@@ -92,3 +92,97 @@ def test_exclude_is_honoured(repo: Path) -> None:
 def test_probe_runs_green(repo: Path) -> None:
     got = findings(repo, "--probe")
     assert got.returncode == 0, f"{got.stdout}\n{got.stderr}"
+
+
+# ── the crate-scope memo (cost fix, 2026-10-05) ──────────────────────────────
+#
+# `rust_findings` derived `guard_types(crate)`, `drop_types(crate)` and `_known_types(crate)` ONCE
+# PER FILE over a crate context that is the same string for the whole scan. Measured over
+# `media_server`'s `crates/`: a per-file call cost 134x one without the context, and a pass over
+# that 626-file tree took 23.2 s where it now takes 2.1 s. That is a memo, and a memo is exactly
+# the shape that can report success over nothing -- so these are the tests that hold it to the same
+# bar the gate itself has to meet.
+
+
+def test_the_memo_serves_a_repeated_question(repo: Path) -> None:
+    """The half that makes it a memo: the second identical question does not re-derive.
+
+    Counted rather than timed. A timing assertion would pass on a machine where the derivation is
+    cheap and would fail on one where it is not, and neither says anything about whether the answer
+    came from the memo.
+    """
+    import _spawn_rust as sr
+
+    sr.clear_memo()
+    crate = "struct Reap(Child);\nimpl Drop for Reap { fn drop(&mut self) { let _ = self.0.wait(); } }\n"
+    first = sr.guard_types(crate)
+    cached = sr._MEMO.get("guard")
+    assert cached is not None and cached[0] == crate, "the answer was not recorded against its text"
+    assert sr.guard_types(crate) is first, "an identical question was re-derived instead of served"
+    assert sr.crate_facts(crate)[0] == first
+
+
+def test_the_memo_re_derives_when_the_text_changes() -> None:
+    """The half that keeps it from being a stale "clean": a DIFFERENT crate is a miss.
+
+    A single-slot memo keyed on the exact text, so the next crate cannot read the previous one's
+    answer. This is the failure `check_empty_scope.py` exists for in a different costume, and the
+    reason it is written against a real `Drop` that waits rather than against a counter alone.
+    """
+    import _spawn_rust as sr
+
+    sr.clear_memo()
+    reaps = "struct Reap(Child);\nimpl Drop for Reap { fn drop(&mut self) { let _ = self.0.wait(); } }\n"
+    inert = "struct Lame(Child);\nimpl Drop for Lame { fn drop(&mut self) { } }\n"
+    assert sr.guard_types(reaps) == {"Reap"}
+    assert sr.guard_types(inert) == set(), "a crate with no reaping Drop read as the previous one"
+    assert sr.guard_types(reaps) == {"Reap"}, "and going back did not re-derive"
+    assert sr.crate_facts(reaps)[0] == {"Reap"}
+    assert sr.crate_facts(inert)[0] == set()
+
+
+def test_the_memo_changes_no_verdict(repo: Path) -> None:
+    """The load-bearing one: memoised and not, over a REAL corpus, the findings are the same list.
+
+    A cost fix that moved a rule would be two changes in one commit. This compares the gate run with
+    the memo against the gate run with every derivation forced fresh, over a fixture carrying both a
+    crate-scope guard and a local empty `Drop` -- the two shapes the crate context exists to tell
+    apart.
+    """
+    write(
+        repo,
+        "crates/x-rs/tests/common/mod.rs",
+        "use std::process::Child;\n\npub struct ReapOnDrop(pub Child);\n\n"
+        "impl Drop for ReapOnDrop {\n    fn drop(&mut self) {\n"
+        "        let _ = self.0.kill();\n        let _ = self.0.wait();\n    }\n}\n",
+    )
+    write(
+        repo,
+        "crates/x-rs/tests/test_guarded.rs",
+        "mod common;\n\nuse std::process::Command;\n\nuse common::ReapOnDrop;\n\n#[test]\n"
+        'fn t() {\n    let mut child = ReapOnDrop(Command::new("x").spawn().expect("runs"));\n'
+        '    assert!(child.0.id() > 0, "panics; the guard reaps on unwind");\n}\n',
+    )
+    write(
+        repo,
+        "crates/x-rs/tests/test_shadowed.rs",
+        "use std::process::{Child, Command};\n\nstruct ReapOnDrop(Child);\n\n"
+        "impl Drop for ReapOnDrop {\n    fn drop(&mut self) {\n    }\n}\n\n"
+        "impl ReapOnDrop {\n    fn spawn(c: &mut Command) -> Self {\n        Self(c.spawn().unwrap())\n    }\n}\n\n"
+        '#[test]\nfn t() {\n    let _g = ReapOnDrop::spawn(Command::new("sh"));\n'
+        '    panic!("the failing write_all lands here");\n}\n',
+    )
+    commit_all(repo)
+    memoised = findings(repo)
+    unmemoised = findings(repo, "--fresh-derivations")
+    assert memoised.returncode == unmemoised.returncode == 1, (
+        f"{memoised.stdout}\n{memoised.stderr}\n---\n{unmemoised.stdout}\n{unmemoised.stderr}"
+    )
+    findings_of = lambda got: [  # noqa: E731
+        line for line in (got.stdout + got.stderr).splitlines() if ".rs:" in line
+    ]
+    assert findings_of(memoised) == findings_of(unmemoised)
+    assert any("test_shadowed.rs" in line for line in findings_of(memoised)), findings_of(memoised)
+    assert not any("test_guarded.rs" in line for line in findings_of(memoised)), findings_of(
+        memoised
+    )

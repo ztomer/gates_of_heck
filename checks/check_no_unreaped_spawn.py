@@ -306,6 +306,12 @@ def main(argv=None):
     ap.add_argument("--staged", action="store_true", help="police the INDEX, not the worktree")
     ap.add_argument("--exclude", default="", help="regex on repo-relative paths (GOH_EXCLUDE)")
     ap.add_argument("--probe", action="store_true", help="prove this gate can go red")
+    ap.add_argument(
+        "--fresh-derivations",
+        action="store_true",
+        help="ignore the crate-scope memo and re-derive every guard/drop/type set from scratch; "
+        "the differential half of the memo's own test, and a way to price the fix on demand",
+    )
     args = ap.parse_args(argv)
     if args.probe:
         # Beside this file so neither crowds the 500-line cap, and driven from here so the probe
@@ -313,6 +319,10 @@ def main(argv=None):
         from _unreaped_spawn_probe import probe
 
         return probe()
+    if args.fresh_derivations:
+        from _spawn_rust import clear_memo
+
+        clear_memo()
 
     root = repo_root() or os.getcwd()
     try:

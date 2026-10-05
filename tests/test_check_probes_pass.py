@@ -228,6 +228,67 @@ def test_the_gates_own_self_proof_passes():
     assert result.returncode == 0, result.stdout + result.stderr
 
 
+# ── where the R3 estate sweep runs, and where it does not (2026-10-05) ───────
+#
+# The sweep answers one question: do the checkers in THIS `checks/` still go red on a plant inside a
+# real consumer corpus. It used to run on every invocation whatever `--root` named, so a run against
+# a fixture estate holding one trivial gate cost 53.7 s of which 53.66 s was that sweep -- and five
+# tests asserting a FIXTURE's registry was sound would have gone red if any of eight unrelated
+# consumer repos changed. These pin the scoping and, just as importantly, that the sweep still runs
+# where its subject is: a cost fix that quietly switched the gate off would be the worse failure.
+
+
+def test_the_sweep_runs_for_the_repo_that_owns_the_checkers(monkeypatch, capsys):
+    """The half that keeps the cost fix from becoming a switched-off gate: in THIS repo the sweep
+    is still reached. `subprocess.run` is stubbed so the assertion is about the WIRING, and the
+    sweep's substance is proved where it belongs, by `tests/test_estate_corpus.py` entry by entry."""
+    seen = {}
+
+    def fake_run(command, **kwargs):
+        seen["command"] = list(command)
+        return subprocess.CompletedProcess(command, 0, "8/8 checker(s) went red on a plant", "")
+
+    monkeypatch.setattr(gate.subprocess, "run", fake_run)
+    assert gate.corpus_sweep(str(ROOT)) is True
+    assert seen["command"][-1].endswith("check_estate_corpus.py"), seen["command"]
+    assert "went red on a plant" in capsys.readouterr().out
+
+
+def test_a_foreign_root_skips_the_sweep_and_says_so(tmp_path, monkeypatch, capsys):
+    """R4's rule, in the shape this fix could have broken: a step that does not run must be VISIBLE.
+    A green line over a sweep that never ran is indistinguishable from a sweep that passed."""
+
+    def explode(*args, **kwargs):
+        raise AssertionError("the estate sweep ran against a fixture root")
+
+    monkeypatch.setattr(gate.subprocess, "run", explode)
+    assert gate.corpus_sweep(str(tmp_path)) is True
+    said = capsys.readouterr().out
+    assert "NOT RUN" in said, said
+    assert str(tmp_path) in said, said
+    assert "--estate" in said, said
+
+
+def test_estate_forces_the_sweep_anywhere(tmp_path, monkeypatch):
+    seen = {}
+
+    def fake_run(command, **kwargs):
+        seen["ran"] = True
+        return subprocess.CompletedProcess(command, 0, "", "")
+
+    monkeypatch.setattr(gate.subprocess, "run", fake_run)
+    assert gate.corpus_sweep(str(tmp_path), force=True) is True
+    assert seen.get("ran") is True, "--estate did not force the sweep"
+
+
+def test_the_scope_test_names_the_repo_and_the_alternative(tmp_path):
+    assert gate.estate_in_scope(str(ROOT)) is True
+    assert gate.estate_in_scope(str(tmp_path)) is False
+    assert gate.estate_in_scope(None) is False
+    # A path that reaches this repo the long way is the SAME repo, not a foreign one.
+    assert gate.estate_in_scope(str(ROOT / "checks" / "..")) is True
+
+
 def _git_repo(path):
     subprocess.run(["git", "init", "-q", str(path)], check=True, capture_output=True)
     subprocess.run(

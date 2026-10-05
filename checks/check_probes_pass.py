@@ -34,6 +34,7 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from _calibration import external_note, load as load_registry, verify  # noqa: E402
+from _estate_sweep import CORPUS_TIMEOUT, corpus_sweep, estate_in_scope  # noqa: E402,F401
 from _gitutil import foreign_repo_env, listed_files, repo_root  # noqa: E402
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -51,10 +52,6 @@ FLAGS = ("--probe", "--break-probe", "--selftest", "--self-test")
 # A per-probe ceiling. A probe is a fixture-driven unit check; one that needs longer than this has
 # quietly become an integration test and belongs somewhere it can be seen to be slow.
 TIMEOUT = 180
-
-# The estate corpus sweep copies real subtrees and spawns a checker per entry, so it earns its own
-# ceiling rather than sharing the per-probe one.
-CORPUS_TIMEOUT = 600
 
 
 # A PYTHON self-proof dispatches on argv: `"--probe" in sys.argv`, a `--probe` item in a list, or
@@ -201,36 +198,6 @@ def blind(root, dirs=GATE_DIRS):
     return False
 
 
-def corpus_sweep(enabled=True):
-    """Run the R3 sweep: every house checker against a corpus taken from a real consumer repo.
-
-    IT LIVES HERE, not in gates/structural.sh, because that file was outside the ownership this
-    round had and wiring an unwired gate is worse than wiring it here (house rule: a gate nobody
-    runs is indistinguishable from a gate that passes). `check_probes_pass.py` is already the
-    meta-gate every repo's hook runs, and R3 is the same question one level out from R1: not "does
-    this gate carry a self-proof" but "does it still refuse a violation in the shape the estate
-    really has". Move it when structural.sh becomes available.
-
-    Cost is paid only on a machine that HAS the estate: an absent corpus is reported per entry and
-    skipped, which is also why a repo whose hooks delegate here pays nothing for this.
-    """
-    command = [
-        sys.executable,
-        os.path.join(os.path.dirname(os.path.abspath(__file__)), "check_estate_corpus.py"),
-    ]
-    result = subprocess.run(
-        command,
-        capture_output=True,
-        text=True,
-        timeout=CORPUS_TIMEOUT,
-        check=False,
-        env=foreign_repo_env(),
-    )
-    for line in (result.stdout + result.stderr).strip().splitlines():
-        info(line)
-    return result.returncode == 0
-
-
 def registry_verdict(root, ran):
     """The calibration registry's claims, checked against what this run observed.
 
@@ -258,6 +225,12 @@ def main(argv=None):
         "--no-corpus",
         action="store_true",
         help="skip the estate corpus sweep (R3); for a run that only wants the self-proofs",
+    )
+    parser.add_argument(
+        "--estate",
+        action="store_true",
+        help="run the R3 estate corpus sweep even when --root is not the repo that owns these "
+        "checkers; by default the sweep runs only where its subject is on disk (see corpus_sweep)",
     )
     args = parser.parse_args(argv)
     if args.probe:
@@ -297,7 +270,7 @@ def main(argv=None):
             return 1
         for line in notes:
             info(line)
-        return 0 if corpus_sweep() else 1
+        return 0 if corpus_sweep(root, force=args.estate) else 1
 
     if args.list:
         for path, flag in probes:
@@ -339,7 +312,7 @@ def main(argv=None):
         ok("every claim in the calibration registry holds against the estate it names")
     if args.no_corpus:
         return 0
-    return 0 if corpus_sweep() else 1
+    return 0 if corpus_sweep(root, force=args.estate) else 1
 
 
 def probe():
