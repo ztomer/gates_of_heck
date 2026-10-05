@@ -37,6 +37,7 @@ import contextlib
 import io
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -185,6 +186,20 @@ BY_DESIGN = "demands an argument"
 NOT_APPLICABLE = "not applicable"
 
 
+UNMEASURABLE = "not measurable on an empty tree"
+
+
+def _is_gate_runtime(module):
+    """True when `module` is part of THIS checkout's runtime (tui, lib/, checks/): failing to import
+    it is the sweep's own defect, never a property of the consumer's tree."""
+    home = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    return any(
+        os.path.exists(os.path.join(home, where, module + suffix))
+        for where in ("", "lib", "checks")
+        for suffix in ("", ".py")
+    )
+
+
 def _runtime_env():
     """The checkers' RUNTIME, which copying them into the skeleton left behind: the skeleton mirrors
     `tui/` and `lib/` as empty directories, so a copied checker finds neither unless the sweep says
@@ -235,11 +250,22 @@ def sweep(skeleton, gate_name, names, timeout=None, excused=()):
         except (OSError, subprocess.SubprocessError) as exc:
             unrunnable[name] = f"could not run: {exc}"
             continue
-        if "Traceback (most recent call last)" in result.stderr:
-            # A CRASH is not a refusal. With no PYTHONPATH every checker died on an import inside
-            # the skeleton and each exit 1 was scored as the gate refusing the empty tree
-            # (2026-10-05, tests/test_gate_runtime_path.py).
-            unrunnable[name] = f"crashed: {result.stderr.strip().splitlines()[-1][:100]}"
+        if "Traceback (most recent call last)" in result.stderr and re.search(
+            r"^(ModuleNotFoundError|ImportError):", result.stderr, re.M
+        ):
+            # The SWEEP could not run it: an import its copy cannot resolve is the skeleton's defect,
+            # and with no PYTHONPATH every checker died that way, each exit 1 scored as a refusal.
+            # A checker that dies on the empty tree ITSELF (a missing subject file) did refuse --
+            # loudly -- and stays a refusal (2026-10-05, tests/test_gate_runtime_path.py).
+            last = result.stderr.strip().splitlines()[-1]
+            missing = re.search(r"No module named '([^'.]+)", last)
+            if missing and not _is_gate_runtime(missing.group(1)):
+                # The consumer's OWN package: the skeleton has none of its content, by design, so
+                # this gate cannot be measured on an empty tree. Named, never failing -- it is the
+                # sweep's limit, not the gate's defect (divoom-control, ZeroThunder, gaf).
+                unrunnable[name] = f"{UNMEASURABLE}: it imports its repo's own `{missing.group(1)}`"
+            else:
+                unrunnable[name] = f"crashed: {last[:100]}"
             continue
         if result.returncode == 0:
             text = result.stdout + result.stderr
@@ -300,14 +326,22 @@ def main(argv=None):
     # `blind`, so the stale-excuse ratchet would otherwise demand its excuse be deleted every run.
     declared = {k: v for k, v in unrunnable.items() if k in excused and v.startswith(BY_DESIGN)}
     unrunnable = {k: v for k, v in unrunnable.items() if k not in declared}
+    unmeasurable = {k: v for k, v in unrunnable.items() if v.startswith(UNMEASURABLE)}
+    unrunnable = {k: v for k, v in unrunnable.items() if k not in unmeasurable}
     # The other direction, and it is the one an allowlist loses: a gate excused here that now
     # FAILS on an empty tree has been fixed, and its excuse is permission nobody needs any more.
     # A gate that never reported is not such a gate, so it cannot retire an excuse.
     stale = sorted(
         k
         for k in excused
-        if k not in blind and k in names and k not in unrunnable and k not in declared
+        if k not in blind
+        and k in names
+        and k not in unrunnable
+        and k not in declared
+        and k not in unmeasurable
     )
+    for name, why in sorted(unmeasurable.items()):
+        info(f"{name}: {why} -- its empty-tree behaviour is unmeasured here, not passed")
 
     for name, why in sorted(declared.items()):
         info(f"{name} is EXCUSED from the sweep: {why.splitlines()[0][:100] if why else ''}")

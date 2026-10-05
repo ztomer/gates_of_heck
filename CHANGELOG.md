@@ -91,7 +91,9 @@ the copied checkers' runtime (`tui/`, `lib/`) itself. That honesty surfaced thre
 demand an argument by design (excused, with reasons) and one real finding, fixed:
 `check_no_credential_urls.py` printed `OK` in a repo with no remote because it had judged the
 machine's GLOBAL helpers. Those are still judged; the repo is "not applicable" unless its own config
-holds something.
+holds something. A checker that dies on the empty tree ITSELF (app_updates' `check_literal_list.py`
+reads its subject unconditionally) still counts as refusing; one that imports its repo's own package,
+which a skeleton cannot hold, is named "not measurable on an empty tree" rather than failing.
 
 ### Decided
 
