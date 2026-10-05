@@ -170,6 +170,53 @@ def test_a_step_that_leaves_nothing_reports_no_survivors() -> None:
     assert not outcome.timed_out
 
 
+def test_a_step_that_exits_on_its_own_is_not_charged_a_ceiling_poll(monkeypatch) -> None:
+    """The ceiling must cost (almost) NOTHING on the path where it does not fire.
+
+    Measured 2026-10-05: the ceiling polled `proc.poll()` then slept POLL (0.2 s), so a step that
+    finished in 30 ms was reported up to 200 ms later -- every step, in every gate run, in every
+    consumer. One `structural.sh` run over a one-file fixture took 3.3 s of wall for 1.5 s of CPU:
+    eleven steps, eleven sleeps. The fix is `wait(timeout=...)`. CPython implements that with its
+    own short back-off (0.5 ms doubling, capped at 50 ms), so the invariant is not "nothing sleeps"
+    but "nothing sleeps a ceiling poll": every sleep on this path is under POLL.
+    """
+    slept: list[float] = []
+    real_sleep = bounded_run.time.sleep
+
+    def spy(seconds: float) -> None:
+        slept.append(seconds)
+        real_sleep(seconds)
+
+    monkeypatch.setattr(bounded_run.time, "sleep", spy)
+    outcome = bounded_run.run_step(
+        ["/bin/sh", "-c", "/bin/sleep 0.05"],
+        30,
+        1,
+        "fast step",
+        output=bounded_run.DEVNULL_SENTINEL,
+    )
+    assert outcome.code == 0 and not outcome.timed_out, outcome
+    assert all(s < bounded_run.POLL for s in slept), (
+        f"a ceiling-sized sleep on the exit path: {slept}"
+    )
+
+
+def test_the_exit_sample_reads_the_process_table_once(monkeypatch) -> None:
+    """Group membership and ancestry come from ONE `ps`, not two: each spawn is per step, per gate."""
+    calls: list[list[str]] = []
+    real = bounded_run.subprocess.run
+
+    def counting(argv, *args, **kwargs):
+        calls.append(list(argv))
+        return real(argv, *args, **kwargs)
+
+    monkeypatch.setattr(bounded_run.subprocess, "run", counting)
+    bounded_run.run_step(
+        ["/bin/sh", "-c", "exit 0"], 30, 1, "fast step", output=bounded_run.DEVNULL_SENTINEL
+    )
+    assert sum(1 for argv in calls if argv[0] == "ps") == 1, calls
+
+
 def test_a_command_that_does_not_exist_is_127_not_a_silent_pass() -> None:
     """An unbound ceiling must never read as a step that passed."""
     assert run(["/nonexistent/goh-no-such-binary"]) == 127

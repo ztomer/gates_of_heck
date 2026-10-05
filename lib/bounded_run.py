@@ -52,29 +52,42 @@ DEFAULT_TIMEOUT = 900
 # spellings of one intent is how a gate ends up capturing output somewhere nobody looks.
 DEVNULL_SENTINEL = "DEVNULL"
 DEFAULT_GRACE = 5
-# How often the ceiling is checked. 0.2 s is short enough that a 900 s ceiling is honest to within
-# a fifth of a second, and long enough that the poll is noise next to the step it is bounding.
+# How often the TERM->KILL grace checks for survivors. Only the timeout path polls; a step that
+# exits on its own is waited on, not polled (tests/test_bounded_run.py pins that nothing sleeps).
 POLL = 0.2
 
 
-def _descendants(pid: int) -> list[int]:
+def _process_table() -> list[tuple[int, int, int]]:
+    """`(pid, ppid, pgid)` for every live process, from ONE `ps`.
+
+    One read serves both questions the exit sample asks -- who is in the step's group, and who is
+    below its pid. They were two `ps` spawns per step, per gate run, in every consumer (measured
+    2026-10-05; `tests/test_bounded_run.py` pins the count).
+    """
+    try:
+        out = subprocess.run(
+            ["ps", "-Ao", "pid=,ppid=,pgid="], capture_output=True, text=True, check=False
+        )
+    except (OSError, subprocess.SubprocessError):
+        return []
+    rows = []
+    for line in out.stdout.splitlines():
+        parts = line.split()
+        if len(parts) == 3 and all(p.isdigit() for p in parts):
+            rows.append((int(parts[0]), int(parts[1]), int(parts[2])))
+    return rows
+
+
+def _descendants(pid: int, table: list[tuple[int, int, int]] | None = None) -> list[int]:
     """Every live pid below `pid`, by walking the process table. Reporting, not killing.
 
     Sampled at the moment the step exits, this is what turns "the step leaked something" from an
     inference into a measurement, and it is the only attribution that survives two gates running at
     once on the same machine.
     """
-    try:
-        out = subprocess.run(
-            ["ps", "-Ao", "pid=,ppid="], capture_output=True, text=True, check=False
-        )
-    except (OSError, subprocess.SubprocessError):
-        return []
     children: dict[int, list[int]] = {}
-    for line in out.stdout.splitlines():
-        parts = line.split()
-        if len(parts) == 2 and parts[1].isdigit():
-            children.setdefault(int(parts[1]), []).append(int(parts[0]))
+    for kid, parent, _ in _process_table() if table is None else table:
+        children.setdefault(parent, []).append(kid)
     found, stack = [], [pid]
     while stack:
         for kid in children.get(stack.pop(), []):
@@ -137,7 +150,7 @@ class Outcome:
         return [pid for pid in self.descendants if _alive(pid)]
 
 
-def group_members(pgid: int) -> list[int]:
+def group_members(pgid: int, table: list[tuple[int, int, int]] | None = None) -> list[int]:
     """Every live pid in `pgid`'s process GROUP.
 
     This, not the descendant walk, is what makes the leak measurement exact. A leaked child is
@@ -151,23 +164,8 @@ def group_members(pgid: int) -> list[int]:
     daemonizing test helper is a different design, and it is named in the docs rather than guessed
     at.
     """
-    try:
-        out = subprocess.run(
-            ["ps", "-Ao", "pid=,pgid="], capture_output=True, text=True, check=False
-        )
-    except (OSError, subprocess.SubprocessError):
-        return []
-    found = []
-    for line in out.stdout.splitlines():
-        parts = line.split()
-        if (
-            len(parts) == 2
-            and parts[1].isdigit()
-            and int(parts[1]) == pgid
-            and int(parts[0]) != pgid
-        ):
-            found.append(int(parts[0]))
-    return found
+    rows = _process_table() if table is None else table
+    return [pid for pid, _, group in rows if group == pgid and pid != pgid]
 
 
 def _alive(pid: int) -> bool:
@@ -219,25 +217,29 @@ def run_step(
             pgid: int | None = os.getpgid(proc.pid)
         except OSError:
             pgid = None
-        deadline = time.monotonic() + timeout
+        # WAIT, never poll. `wait(timeout=)` returns the instant the child exits; the 0.2 s poll it
+        # replaced charged every step up to a fifth of a second of pure latency -- measured
+        # 2026-10-05 as most of a structural run's wall time on a small tree.
+        try:
+            proc.wait(timeout=timeout)
+        except subprocess.TimeoutExpired:
+            _sweep(pgid, proc.pid, grace)
+            try:
+                proc.wait(timeout=grace)
+            except subprocess.TimeoutExpired:
+                pass
+            print(f"TIMED OUT after {timeout}s: {label or ' '.join(argv)}", file=sys.stderr)
+            return Outcome(
+                code=TIMEOUT_EXIT, descendants=_descendants(pid=proc.pid), timed_out=True
+            )
         timed_out = False
-        while proc.poll() is None:
-            if time.monotonic() >= deadline:
-                timed_out = True
-                _sweep(pgid, proc.pid, grace)
-                try:
-                    proc.wait(timeout=grace)
-                except subprocess.TimeoutExpired:
-                    pass
-                print(f"TIMED OUT after {timeout}s: {label or ' '.join(argv)}", file=sys.stderr)
-                return Outcome(
-                    code=TIMEOUT_EXIT, descendants=_descendants(pid=proc.pid), timed_out=True
-                )
-            time.sleep(POLL)
         # Sampled HERE, at exit, by PROCESS GROUP rather than by ancestry: a leaked child has already
         # been reparented to init, so the walk below finds nothing where the group still finds it.
-        left = [p for p in (group_members(pgid) if pgid is not None else []) if p != proc.pid]
-        left += [p for p in _descendants(pid=proc.pid) if p not in left]
+        table = _process_table()
+        left = [
+            p for p in (group_members(pgid, table) if pgid is not None else []) if p != proc.pid
+        ]
+        left += [p for p in _descendants(proc.pid, table) if p not in left]
         left = sorted(set(left))
         if left and stream is None:
             print(
