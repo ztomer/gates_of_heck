@@ -377,3 +377,11 @@ def _never_publish_the_live_goh():
         os.environ.pop("GOH_SKIP_BUILD", None)
     else:
         os.environ["GOH_SKIP_BUILD"] = previous
+
+
+def llvm_cov_shim(bin_: Path) -> None:
+    """The gate requires `cargo-llvm-cov` on PATH up front (gates/required_tools.tsv); the fake
+    `cargo` above answers its subcommand, so the binary only has to exist."""
+    shim = bin_ / "cargo-llvm-cov"
+    shim.write_text("#!/bin/bash\nexit 0\n")
+    shim.chmod(shim.stat().st_mode | _stat.S_IEXEC)

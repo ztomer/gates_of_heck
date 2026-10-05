@@ -215,6 +215,7 @@ need() { # need <cmd> <what-it-is-for>
 run_rust() {
     cd "$PROJ"
     need cargo "cargo llvm-cov drives the instrumented build"
+    need cargo-llvm-cov "the instrumented build and the lcov export -- cargo install cargo-llvm-cov"
     need python3 "the lcov merge post-processor"
 
     # Coverage builds must NOT share the global cargo target dir: stale
@@ -235,6 +236,16 @@ run_rust() {
     export RUSTC_WRAPPER=""
     export CARGO_INCREMENTAL=0
     cargo llvm-cov clean --workspace >/dev/null 2>&1 || rm -rf "$CARGO_TARGET_DIR"
+
+    # ONE BUILD, N PROFILES: built once (cleaned above), then `--no-clean` per target -- each export
+    # recompiled the members, 16 x ~2 s on media_server's mediaops-rs. Only the PROFILE is reset
+    # per target (`--no-clean` alone leaked `cli` into the `version` part). A/B on mediaops-rs: merged report identical.
+    fresh_profile() {
+        cargo llvm-cov clean --profraw-only >/dev/null 2>&1 || {
+            err "could not clear the previous target's profile before $1 -- its part would carry it"
+            exit 1
+        }
+    }
 
     PARTS="$CARGO_TARGET_DIR/lcov-parts"
     rm -rf "$PARTS"; mkdir -p "$PARTS"
@@ -278,7 +289,8 @@ PYEOF
             # Completeness marker: written ONLY on cargo-llvm-cov exit 0. A
             # failing export that leaves a stale/partial file behind must not
             # pass as measured data — the marker is the proof of success.
-            if cargo llvm-cov --locked -p "$PKG" --lib --all-features \
+            fresh_profile "$label"
+            if cargo llvm-cov --locked --no-clean -p "$PKG" --lib --all-features \
                     ${IGNORE:+--ignore-filename-regex "$IGNORE"} \
                     --lcov --output-path "$part" \
                     >"$part.log" 2>&1; then
@@ -293,7 +305,8 @@ PYEOF
             info "exporting $PKG ($KIND $TNAME)"
             part="$PARTS/part-$PKG-$KIND-$TNAME.info"
             label="$PKG ($KIND $TNAME)"
-            if cargo llvm-cov --locked -p "$PKG" "--$KIND" "$TNAME" --all-features \
+            fresh_profile "$label"
+            if cargo llvm-cov --locked --no-clean -p "$PKG" "--$KIND" "$TNAME" --all-features \
                     ${IGNORE:+--ignore-filename-regex "$IGNORE"} \
                     --lcov --output-path "$part" \
                     >"$part.log" 2>&1; then

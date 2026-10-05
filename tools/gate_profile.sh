@@ -32,5 +32,6 @@ printf '%s @ %s: push gate exit %s in %ss (log: %s)\n' \
     "$(basename "$repo")" "${sha:0:12}" "$rc" "$(( $(date +%s) - t0 ))" "$out.log"
 python3 "$GOH/lib/step_timings.py" report "$out" "$top"
 printf 'timings: %s\n' "$out"
-exit "$rc"
+(exit "$rc")
+exit
 } # parse-guard

@@ -15,7 +15,7 @@ from pathlib import Path
 
 import pytest
 
-from conftest import REPO_ROOT
+from conftest import REPO_ROOT, llvm_cov_shim
 
 COV_GATE = REPO_ROOT / "gates" / "coverage_gate.sh"
 LOCAL_CI = REPO_ROOT / "gates" / "local_ci.sh"
@@ -240,6 +240,7 @@ def _run_with_fake_cargo(tmp_path: Path, *args: str):
     shim = bin_ / "cargo"
     shim.write_text(FAKE_CARGO)
     shim.chmod(shim.stat().st_mode | stat.S_IEXEC)
+    llvm_cov_shim(bin_)
     env = dict(os.environ)
     env["PATH"] = f"{bin_}:/usr/bin:/bin"
     env.pop("GOH_COV_FLOOR_RUST", None)
