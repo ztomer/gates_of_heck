@@ -118,13 +118,15 @@ goh_require_current() {
         warn "no $manifest — cannot tell whether $bin is current, and it may be skipping steps"
         return 0
     fi
-    want="$(grep -m1 '^version = ' "$manifest" | cut -d'"' -f2)"
+    # HEAD's version, never the working tree's: one session's uncommitted bump refused every
+    # consumer's commit (2026-10-05, tests/test_binary_currency.py).
+    want="$({ git -C "$GOH_ROOT" show HEAD:Cargo.toml 2>/dev/null || cat "$manifest"; } | grep -m1 '^version = ' | cut -d'"' -f2)"
     got="$("$bin" --version 2>/dev/null | awk '{print $NF}')"
     if [ -n "$want" ] && [ "$got" = "$want" ]; then
         return 0
     fi
     err "the goh binary serving this gate is BEHIND the source: $bin reports ${got:-nothing},"
-    err "  $manifest declares $want. A step added since that binary was built is NOT running, and"
+    err "  $manifest declares $want at HEAD. A step added since that build is NOT running, and"
     err "  a step that does not run prints exactly what a step that passes prints."
     err "  Rebuild it:  $GOH_ROOT/scripts/build-goh.sh    (or ./install.sh, which calls it)"
     return 1
@@ -150,11 +152,9 @@ if [ -n "$_goh_dirty" ]; then
 fi
 
 # ── A hook that is an OLDER stock is named, with its fix. ─────────────────────
-# Everything delegates to this checkout at runtime EXCEPT the hooks, which install.sh copies: a stock
-# change reaches no repo until it re-installs. Measured 2026-10-05: 14 repos still ran the
-# pre-0ac0f70 pre-push, which gates the working tree, not the pushed commit. A hook listed in
-# retired_hooks.sha256 is pristine-but-old, so install.sh replaces it without --force. Named here,
-# before the native exec, so both tiers say it (tests/test_hook_currency.py).
+# Hooks are COPIED by install.sh, so a stock change reaches no repo until it re-installs (14 repos
+# still gated the working tree on 2026-10-05). A retired stock hash is pristine-but-old; named
+# here, before the native exec, so both tiers say it (tests/test_hook_currency.py).
 _goh_hooks="$(git config core.hooksPath 2>/dev/null || echo .githooks)"
 for _goh_h in pre-commit pre-push; do
     [ -f "$_goh_hooks/$_goh_h" ] || continue
