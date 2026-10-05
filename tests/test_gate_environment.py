@@ -62,7 +62,7 @@ def _hermetic_env(**overrides: str) -> dict[str, str]:
 # and required -- and required rather than merely tidy, because the value names a REAL checkout, so
 # an inherited one would silently point a gate at somebody else's tree.
 NOT_PIPELINE_CONFIG = set(
-    "GOH_BIN GOH_NO_NATIVE GOH_SKIP_BUILD GOH_BUILD_DIRTY "
+    "GOH_BIN GOH_NO_NATIVE GOH_SKIP_BUILD "
     "GOH_EXPORT_KEEP GOH_PUSH_WORKTREES GOH_PUSH_LOGS GOH_TAG_VERSION_SOURCES "
     "GOH_CROSS_REPO_ROOT".split()
 )
@@ -162,12 +162,13 @@ def test_the_push_gate_does_not_hand_the_export_gate_this_repos_gatesrc(
 SOURCE_PATH_LISTS = {
     "gates/structural.sh": r'_goh_gate_source_paths="([\w ]+)"',
     "gates/push_gate.sh": r"--\s+(gates checks lib tui)\s+2>",
-    "scripts/build-goh.sh": r"--\s+crates Cargo\.toml Cargo\.lock ([\w ]+?)\s*2>",
 }
+# scripts/build-goh.sh left this list in C3: it builds bin/goh from an export of HEAD, so it
+# publishes no working-tree source at all, and has nothing of this kind to warn on.
 
 
-def test_all_three_gate_source_path_lists_are_the_same_list() -> None:
-    """Three files warn or refuse on uncommitted gate source, each spelling the paths out.
+def test_all_gate_source_path_lists_are_the_same_list() -> None:
+    """Two files warn or refuse on uncommitted gate source, each spelling the paths out.
     A helper is the obvious dedup and the wrong one: it would be gate source itself, and
     a check whose list is written by what it checks cannot vouch for it."""
     lists = {}
@@ -177,7 +178,7 @@ def test_all_three_gate_source_path_lists_are_the_same_list() -> None:
         lists[name] = set(found.group(1).split())
     shared = set.intersection(*lists.values())
     assert all(entries == shared for entries in lists.values()), (
-        "the three uncommitted-gate-source path lists disagree:\n"
+        "the uncommitted-gate-source path lists disagree:\n"
         + "\n".join(f"  {name}: {sorted(entries)}" for name, entries in lists.items())
     )
     assert shared == {"gates", "checks", "lib", "tui"}, sorted(shared)
@@ -263,8 +264,7 @@ def test_uncommitted_gate_source_is_named_by_every_gate_that_runs_one(tmp_path: 
             assert run.returncode == 0 and "gating refs/heads/main" in out, (
                 f"the push gate refused instead of naming — the 22-red-tests mistake: {out}"
             )
-    # ...and the one place that may refuse, does.
-    refused = publish_gate()
-    out = refused.stdout + refused.stderr
-    assert refused.returncode == 1, out
-    assert "refusing to publish bin/goh" in out and "check_no_emoji.py" in out, out
+    # ...and the binary build is not affected at all: since C3 it builds an export of HEAD, so a
+    # dirty checks/ is nothing it publishes (it used to be the one place that refused).
+    built = publish_gate()
+    assert built.returncode == 0 and "committed source at HEAD" in built.stdout, built.stdout

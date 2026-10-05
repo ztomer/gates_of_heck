@@ -147,7 +147,7 @@ if [ -n "$_goh_dirty" ]; then
     warn "  gate source is not reproducible from any commit. Every repo's hooks run these files:"
     printf '%s\n' "$_goh_dirty" | sed 's/^/    /' >&2
     warn "  … in the shared gates checkout at $GOH_ROOT, not in this repo. Commit or stash."
-    warn "  scripts/build-goh.sh will not publish bin/goh from such a tree."
+    warn "  bin/goh is built from HEAD only, but checks/ is read live: these edits ARE this gate."
     unset _goh_dirty
 fi
 

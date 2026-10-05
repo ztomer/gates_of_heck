@@ -83,10 +83,10 @@ tag_check="$GOH/checks/check_tag_version.py"
 # whose verdict depends on the working tree — the same defect as the leak this
 # file's `.gatesrc` handling used to have, one level up. So the refusal lives
 # where it can be seen without being observed by a test: `scripts/build-goh.sh`
-# will not publish bin/goh from such a tree, which install.sh calls, so the
-# "no reinstall" half is closed at the only place a reinstall happens.
+# builds bin/goh from an export of HEAD only (C3), so the binary half is closed by
+# construction -- a dirty tree cannot reach it at all.
 #
-# So the two halves are: publish refuses (nothing observes it by accident),
+# So the two halves are: the binary is HEAD's (nothing observes it by accident),
 # certify names itself (twice — here, where a human reads the scrollback, and in
 # structural.sh, which every repo's pre-commit runs). A certificate produced while
 # this warning is on screen says so, which is more than the estate had.

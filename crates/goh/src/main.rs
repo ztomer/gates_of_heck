@@ -67,6 +67,8 @@ struct SkillsArgs {
 
 #[derive(Debug, Subcommand)]
 enum Commands {
+    /// Print the git trees this binary was built from (`crates=`... at HEAD, or `dirty`).
+    SourceTree,
     /// Run the structural gate (every repo, any language).
     Structural {
         /// Staged files only (pre-commit scope, fast).
@@ -205,6 +207,10 @@ fn main() {
     }
     let cli = Cli::parse();
     let code = match cli.command {
+        Commands::SourceTree => {
+            println!("{}", env!("GOH_SOURCE_STAMP"));
+            0
+        }
         Commands::Structural { staged, full } => run_structural(staged, full),
         Commands::Markers { staged } => commands::run_markers(staged),
         Commands::Length {
