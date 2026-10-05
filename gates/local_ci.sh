@@ -27,6 +27,7 @@
 # GOH_PROVEN=0 turns the cache off.
 #
 # Exit codes: 0 all green · 1 any step failed · 2 usage/config error.
+{ # parse-guard -- bash reads this group whole before running it (tests/test_parse_guard.py)
 set -uo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -306,3 +307,5 @@ err "$FAILED_NAMES"
 err ""
 err "  full output: $LOGDIR"
 exit 1
+exit
+} # parse-guard

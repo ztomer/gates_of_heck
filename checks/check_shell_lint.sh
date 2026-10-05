@@ -6,8 +6,9 @@
 #   1. `bash -n` — syntax. Always available, always runs.
 #   2. `shellcheck --severity=error` — error-level findings only (warnings
 #      stay advisory; the tree has deliberate word-splitting with its own
-#      disables). Missing shellcheck degrades to stage 1 with a NAMED
-#      warning (the swiftlint precedent), never a silent pass.
+#      disables). Missing shellcheck FAILS the gate: syntax-only under an
+#      OK line was a pass over a step that never ran (swiftlint, the old
+#      precedent for degrading, fails now too).
 #
 # Scope: tracked `*.sh` plus extensionless `hooks/*` in full mode; the git
 # index (`git show :path` into a temp dir, display names preserved) in
@@ -19,6 +20,7 @@
 #
 # Exit: 0 clean · 1 violation found · 2 usage/config error.
 # macOS stock bash 3.2 compatible (no assoc arrays, no mapfile).
+{ # parse-guard -- bash reads this group whole before running it (tests/test_parse_guard.py)
 set -euo pipefail
 
 usage() {
@@ -98,11 +100,13 @@ if [ "$N" -eq 0 ]; then
     exit 0
 fi
 
-HAVE_SC=0
-command -v shellcheck >/dev/null 2>&1 && HAVE_SC=1
-if [ "$HAVE_SC" -eq 0 ]; then
-    printf '⚠ [shell_lint] shellcheck not installed — syntax check only (brew install shellcheck)\n' >&2
+# A missing shellcheck FAILS. It used to degrade to `bash -n` and print OK, so a machine without
+# the tool reported "shell lint" green having checked syntax only (tests/test_required_tools.py).
+if ! command -v shellcheck >/dev/null 2>&1; then
+    printf '✗ [shell_lint] shellcheck is not installed, and this gate does not pass without it -- brew install shellcheck\n' >&2
+    exit 1
 fi
+HAVE_SC=1
 
 FAIL=()
 # Distinct failing files for the "%d file(s)" report (findings are per
@@ -177,7 +181,7 @@ fi
 
 scope="tracked"
 [ "$STAGED" = "1" ] && scope="staged"
-extra=""
-[ "$HAVE_SC" -eq 0 ] && extra=" (bash -n only; shellcheck not installed)"
-printf '✓ [shell_lint] OK — %d %s shell files clean%s\n' "$N" "$scope" "$extra"
+printf '✓ [shell_lint] OK — %d %s shell files clean\n' "$N" "$scope"
 exit 0
+exit
+} # parse-guard

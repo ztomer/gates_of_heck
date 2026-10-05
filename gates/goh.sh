@@ -9,6 +9,7 @@
 #
 #   goh.sh home-paths --staged --exclude '^tests/fixtures/'
 #   goh.sh golden a.png b.png --tolerances '{"ssim_min": 0.99}' --json
+{ # parse-guard -- bash reads this group whole before running it (tests/test_parse_guard.py)
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -82,3 +83,5 @@ elif [ -n "$goh_native_why" ]; then
     echo "· goh.sh: $goh_native_why — running $python_file" >&2
 fi
 exec python3 "$ROOT/$python_file" "$@"
+exit
+} # parse-guard

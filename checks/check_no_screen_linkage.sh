@@ -16,6 +16,7 @@
 # binaries (or .o/.dylib objects) after the suite builds.
 #
 # Exit codes: 0 clean · 1 forbidden symbol linked · 2 usage/config error.
+{ # parse-guard -- bash reads this group whole before running it (tests/test_parse_guard.py)
 set -euo pipefail
 
 command -v nm >/dev/null 2>&1 || {
@@ -75,3 +76,5 @@ if [ "$fail" -eq 1 ]; then
     echo "  real cursor, screen and window server belong to the user." >&2
 fi
 exit "$((fail > 0 ? (fail == 2 ? 2 : 1) : 0))"
+exit
+} # parse-guard

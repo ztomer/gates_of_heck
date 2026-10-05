@@ -10,6 +10,7 @@
 # gate reads. This script checks each layer and names the fix.
 #
 # Exit 0 when healthy (warnings allowed), 1 naming each hard problem.
+{ # parse-guard -- bash reads this group whole before running it (tests/test_parse_guard.py)
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -131,3 +132,5 @@ if [ "$PROBLEMS" -eq 0 ]; then
 fi
 err "doctor: $PROBLEMS problem(s) — fix the named lines above"
 exit 1
+exit
+} # parse-guard

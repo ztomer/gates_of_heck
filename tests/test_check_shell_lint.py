@@ -69,20 +69,15 @@ def test_prose_starting_with_shellcheck_word_is_a_directive(repo):
     assert "prose.sh" in (r.stdout + r.stderr)
 
 
-def test_missing_shellcheck_warns_and_checks_syntax_only(repo):
-    # shellcheck lives outside /usr/bin:/bin on this machine; stripping PATH
-    # proves the degrade path. Syntax errors must STILL fail.
+def test_missing_shellcheck_fails_naming_the_tool(repo):
+    # It used to degrade to `bash -n` and exit 0 -- "shell lint" green having checked syntax only.
+    # That was this test's assertion; it pinned the defect (tests/test_required_tools.py).
     no_sc = {"PATH": "/usr/bin:/bin"}
     write(repo, "ok.sh", "#!/usr/bin/env bash\necho hi\n")
     stage(repo, "ok.sh")
     r = run_lint(repo, "--staged", env=no_sc)
-    assert r.returncode == 0, r.stdout + r.stderr
-    assert "shellcheck" in (r.stdout + r.stderr).lower()
-
-    write(repo, "bad.sh", "#!/usr/bin/env bash\nif [ -n x ]; then\n")
-    stage(repo, "bad.sh")
-    r = run_lint(repo, "--staged", env=no_sc)
     assert r.returncode == 1, r.stdout + r.stderr
+    assert "shellcheck is not installed" in r.stdout + r.stderr
 
 
 def test_staged_mode_reads_the_index(repo):

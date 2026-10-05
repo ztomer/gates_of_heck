@@ -3,6 +3,7 @@
 # delegates; it holds no gate logic of its own.
 #   --staged : pre-commit scope (fast) — layer 1 only
 #   --full   : pre-push scope — every layer
+{ # parse-guard -- bash reads this group whole before running it (tests/test_parse_guard.py)
 set -euo pipefail
 GOH="${GOH_DIR:-${GOH:-$HOME/Projects/gates_of_heck}}"
 
@@ -40,3 +41,5 @@ case "${1:-}" in
     exec "$GOH/gates/structural.sh" "$@"
     ;;
 esac
+exit
+} # parse-guard

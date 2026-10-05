@@ -63,6 +63,7 @@
 #           would be dropping the regex on the floor, i.e. inventing policy).
 #
 # Exit codes: 0 pass · 1 coverage below floor · 2 usage/config error.
+{ # parse-guard -- bash reads this group whole before running it (tests/test_parse_guard.py)
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -277,7 +278,7 @@ PYEOF
             # Completeness marker: written ONLY on cargo-llvm-cov exit 0. A
             # failing export that leaves a stale/partial file behind must not
             # pass as measured data — the marker is the proof of success.
-            if cargo llvm-cov -p "$PKG" --lib --all-features \
+            if cargo llvm-cov --locked -p "$PKG" --lib --all-features \
                     ${IGNORE:+--ignore-filename-regex "$IGNORE"} \
                     --lcov --output-path "$part" \
                     >"$part.log" 2>&1; then
@@ -292,7 +293,7 @@ PYEOF
             info "exporting $PKG ($KIND $TNAME)"
             part="$PARTS/part-$PKG-$KIND-$TNAME.info"
             label="$PKG ($KIND $TNAME)"
-            if cargo llvm-cov -p "$PKG" "--$KIND" "$TNAME" --all-features \
+            if cargo llvm-cov --locked -p "$PKG" "--$KIND" "$TNAME" --all-features \
                     ${IGNORE:+--ignore-filename-regex "$IGNORE"} \
                     --lcov --output-path "$part" \
                     >"$part.log" 2>&1; then
@@ -482,3 +483,5 @@ case "$LANG_" in
     cpp)   run_cpp ;;
     py)    run_py ;;
 esac
+exit
+} # parse-guard

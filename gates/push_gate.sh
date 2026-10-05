@@ -18,8 +18,16 @@
 #
 # The worktree lives under ~/.cache/goh/push (GOH_PUSH_WORKTREES overrides), never inside the
 # repo (a nested worktree is a tracked-file scan's worst day) and never under the temp directory
-# (see the SwiftLint note below). It is removed on every exit path; a worktree left behind by a
-# SIGKILL is pruned by the next run (`git worktree prune`), so nothing accumulates.
+# (see the SwiftLint note below).
+#
+# A RUN OWNS ONE DIRECTORY: <export root>/<repo>-<hash>/<repo>, with `.owner` (pid + start time) beside
+# the tree. Measured 2026-10-05: the export root held a three-day-old worktree and 230 `*.out` files.
+# The worktree sat directly in the shared root, so whatever a gate wrote BESIDE its tree (Finance's
+# tests write "$HERE.out") outlived every run; and the promise that the next run's `git worktree
+# prune` cleans up after a SIGKILL was false -- prune forgets a worktree whose DIRECTORY is gone, and
+# a killed run's directory is not gone. Now cleanup removes the whole run directory on every exit
+# path and NAMES anything found outside the tree, and each run first reaps any run directory whose
+# owner is dead (tests/test_push_gate_runs.py).
 #
 # Protocol: git feeds `<local ref> <local sha> <remote ref> <remote sha>` lines on stdin, and passes
 # the remote's name as $1. A delete (local sha all zeros) has nothing to test. Several refs are
@@ -41,6 +49,7 @@
 # longer existed. Every run is now teed to a log under ~/.cache/goh/push-logs (GOH_PUSH_LOGS
 # overrides). A green run deletes its log; a red one keeps it, prints its path, and the newest
 # `keep_failed_logs` are kept. The cost: the gate writes to a pipe, so its colours are off.
+{ # parse-guard -- bash reads this group whole before running it (tests/test_parse_guard.py)
 set -euo pipefail
 
 GOH="${GOH_DIR:-${GOH:-$HOME/Projects/gates_of_heck}}"
@@ -150,15 +159,55 @@ gated_commits=" "
 log_root="${GOH_PUSH_LOGS:-$HOME/.cache/goh/push-logs}"
 keep_failed_logs=20
 worktree=""
+run_dir=""
 refs_file=""
-cleanup() {
+export_root="${GOH_PUSH_WORKTREES:-$HOME/.cache/goh/push}"
+
+# `<pid> <start time>`: the identity of a live process. A pid alone is reused; the pair is not.
+owner_stamp() {
+    printf '%s %s\n' "$1" "$(ps -o lstart= -p "$1" 2>/dev/null | tr -s ' ' | sed 's/^ //;s/ $//')"
+}
+
+cleanup_run() {
     if [ -n "$worktree" ] && [ -d "$worktree" ]; then
         git -C "$root" worktree remove --force "$worktree" >/dev/null 2>&1 || rm -rf "$worktree"
     fi
+    if [ -n "$run_dir" ] && [ -d "$run_dir" ]; then
+        local litter
+        # `|| true`: an empty list is grep's exit 1, and under pipefail that killed the cleanup.
+        litter="$(cd "$run_dir" && ls -A | { grep -vx -e .owner -e .cargo-build -e "$(basename "$worktree")" || true; } | tr '\n' ' ')"
+        # Named, not silently swept: a gate that writes outside its own tree writes into the
+        # operator's checkout parent when it runs there. The defect is the consumer's to fix.
+        [ -n "$litter" ] && warn "pre-push: the gate wrote outside its tree (removed): $litter"
+        rm -rf "$run_dir"
+    fi
+    worktree=""
+    run_dir=""
+}
+cleanup() {
+    cleanup_run
     [ -n "$refs_file" ] && rm -f "$refs_file"
 }
-trap cleanup EXIT INT TERM
+trap cleanup EXIT
+trap 'cleanup; exit 129' HUP
+trap 'cleanup; exit 130' INT
+trap 'cleanup; exit 143' TERM
 
+# Reap what killed runs left: a run directory whose owner is not alive. Only directories carrying an
+# `.owner` are judged; anything else in the root is not this layout's to delete.
+reap_dead_runs() {
+    local dir pid
+    for dir in "$export_root"/*/; do
+        [ -f "$dir.owner" ] || continue
+        read -r pid _ <"$dir.owner" || continue
+        if [ "$(owner_stamp "$pid")" = "$(cat "$dir.owner")" ] && kill -0 "$pid" 2>/dev/null; then
+            continue
+        fi
+        info "pre-push: removing a run left by a killed gate: ${dir%/}"
+        rm -rf "$dir"
+    done
+}
+[ -d "$export_root" ] && reap_dead_runs
 git -C "$root" worktree prune >/dev/null 2>&1 || true
 
 # THE REFS ARE READ ONCE, HERE. git hands a pre-push hook its refs on stdin, and
@@ -223,11 +272,25 @@ while read -r local_ref local_sha _remote_ref _remote_sha; do
     # THERE). The cause is inside SwiftLint's path relativisation; the fix that holds without
     # theory is to gate where the tools were calibrated: a directory beside the user's checkouts.
     # `pwd -P` besides, so a symlinked component can never be the difference.
-    export_root="${GOH_PUSH_WORKTREES:-$HOME/.cache/goh/push}"
     mkdir -p "$export_root"
-    worktree="$(mktemp -d "$export_root/XXXXXX")"
-    worktree="$(cd "$worktree" && pwd -P)"
-    rmdir "$worktree"                                # git wants to create it
+    # A STABLE path per repo, claimed with an atomic mkdir. ~/.cargo/config.toml keys the build
+    # directory by `{workspace-path-hash}`, so a random export path meant every push built every
+    # dependency cold into a new build-dir and left it behind (measured 2026-10-05: 24 dirs, 30 GB,
+    # three days). A concurrent push of the same repo finds the path held by a live run and takes a
+    # private one, with its cargo build-dir INSIDE the run directory so it is removed with it.
+    export_build_dir=""
+    run_dir="$export_root/$(basename "$root")-$(printf '%s' "$root" | shasum -a 256 | cut -c1-12)"
+    if ! mkdir "$run_dir" 2>/dev/null; then
+        run_dir="$(mktemp -d "$export_root/XXXXXX")"
+        export_build_dir="$run_dir/.cargo-build"
+        info "pre-push: $(basename "$root")'s export path is held by a live push; using a private one (cold build)"
+    fi
+    run_dir="$(cd "$run_dir" && pwd -P)"
+    [ -n "$export_build_dir" ] && export_build_dir="$run_dir/.cargo-build"
+    owner_stamp "$$" >"$run_dir/.owner"
+    # Named after the repo, so a tool that reads its project's name from the directory sees the
+    # real one rather than a mktemp suffix.
+    worktree="$run_dir/$(basename "$root")"
     section "pre-push: gating $local_ref @ $short in a clean worktree"
     git -C "$root" worktree add --detach --quiet "$worktree" "$commit"
     for f in $GOH_EXPORT_KEEP; do
@@ -260,6 +323,7 @@ while read -r local_ref local_sha _remote_ref _remote_sha; do
     # isolation the worktree buys -- never certify the working tree -- is untouched, because what it
     # guards is this repo's OWN files, and those still come from the worktree.
     (unset $(git rev-parse --local-env-vars) && cd "$worktree" \
+        && { [ -z "$export_build_dir" ] || export CARGO_BUILD_BUILD_DIR="$export_build_dir"; } \
         && GOH_CROSS_REPO_ROOT="$root" bash "$worktree/tools/gate.sh" --full) 2>&1 | tee "$log"
     status="${PIPESTATUS[0]}"
     set -e
@@ -272,9 +336,11 @@ while read -r local_ref local_sha _remote_ref _remote_sha; do
         exit 1
     fi
     rm -f "$log"
-    cleanup; worktree=""
+    cleanup_run
     gated=$((gated + 1))
     gated_commits="$gated_commits$commit "
 done <"$refs_file"
 
 [ "$gated" -gt 0 ] || info "pre-push: nothing to gate (deletes, or commits the remote already has)"
+exit
+} # parse-guard

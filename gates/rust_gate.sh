@@ -17,7 +17,7 @@
 #   2e. cargo machete — unused dependencies. `[lints.cargo]
 #      unused_dependencies = "deny"` looks like this and is not: the key needs
 #      -Zcargo-lints on nightly, so on stable cargo prints "unused manifest key"
-#      and exits 0. Named skip when the tool is absent.
+#      and exits 0. A missing cargo-machete FAILS the gate up front (goh_require).
 #   3. checks/check_no_allow.py — no #[allow] and no #[expect]; fix findings, never silence.
 #      The HOUSE checker, always. Until 2026-09-14 this step looked for a
 #      repo-local tools/check_no_allow.py and skipped when absent, so four
@@ -48,6 +48,7 @@
 #
 # NOTE: sccache is expected via RUSTC_WRAPPER (see ~/.zshenv). fmt and clippy
 # are largely cache-hostile; the real cache win is on build/test steps.
+{ # parse-guard -- bash reads this group whole before running it (tests/test_parse_guard.py)
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -76,11 +77,26 @@ goh_init "rust"
 goh_tree_stamp
 
 command -v cargo >/dev/null 2>&1 || die "cargo not on PATH"
+goh_require cargo-machete "cargo install cargo-machete"
+
+# THE LOCKFILE IS AN INPUT, NEVER AN OUTPUT. Without `--locked`, cargo re-resolves and REWRITES a
+# lockfile its manifests disagree with, then lints and tests happily: a manifest-only dependency
+# change passes green and the lockfile diff is the only trace of what moved (antiknob, 2026-10-04,
+# which carried tools/lock_guard.sh because this gate had no `--locked` anywhere). Pinned from both
+# ends: every resolving cargo call below passes `--locked` (tests/test_rust_gate.py reads the source
+# for one that does not), and the lock is hashed here and re-checked at the end, so no step --
+# including the ones that take no such flag -- can leave a rewritten lockfile behind.
+manifest="$(cd "$cargo_dir" && cargo locate-project --workspace --message-format plain 2>/dev/null)" \
+    || die "[rust] cargo cannot find a workspace manifest from $cargo_dir"
+lockfile="$(dirname "$manifest")/Cargo.lock"
+[ -f "$lockfile" ] || die "[rust] no Cargo.lock at $lockfile -- commit one; without it the gate certifies whatever resolves today"
+lock_sum="$(shasum -a 256 "$lockfile")"
+goh_step_in "$cargo_dir" "the lockfile resolves --locked" cargo metadata --locked --format-version 1
 
 goh_step_in "$cargo_dir" "fmt" cargo fmt --all -- --check
 
 goh_step_in "$cargo_dir" "clippy (-D warnings, all targets, all features)" \
-    cargo clippy --workspace --all-targets --all-features -- -D warnings
+    cargo clippy --locked --workspace --all-targets --all-features -- -D warnings
 
 # EVERY SHIPPED CONFIGURATION, NOT JUST THIS ONE.
 #
@@ -116,7 +132,7 @@ if [ -n "${GOH_RUST_LINT_CONFIGS:-}" ]; then
         esac
         # shellcheck disable=SC2086
         goh_step_in "$cargo_dir" "clippy ($cfg)" \
-            cargo clippy --all-targets $cfg -- -D warnings
+            cargo clippy --locked --all-targets $cfg -- -D warnings
         IFS=':'
     done
     IFS="$saved_ifs"
@@ -140,18 +156,13 @@ goh_step "lint policy is inherited" bash "$HERE/goh.sh" lints
 # finding is either real debt or a false positive worth recording with its
 # reason -- both are actions, neither is "look at this every commit".
 #
-# Absent, it is a NAMED skip: a missing tool must never count toward a pass.
+# Absent, the gate FAILS up front (goh_require above): a missing tool must never count toward a pass.
 # Its own blind spot is ident-based scanning, so a crate whose lib name differs
 # from its package name (md-5 -> md5) or that is reached only through a string
 # (`#[serde(with = "serde_bytes")]`) reads as unused. Those go in the crate's
 # own `[package.metadata.cargo-machete] ignored = [...]` WITH the reason --
 # policy central, exemptions local.
-if command -v cargo-machete >/dev/null 2>&1; then
-    goh_step_in "$cargo_dir" "no unused dependencies" cargo machete
-else
-    warn "cargo-machete not installed — unused dependencies were NOT checked"
-    warn "  cargo install cargo-machete"
-fi
+goh_step_in "$cargo_dir" "no unused dependencies" cargo machete
 
 # Cargo's own lint namespace. Separate from clippy because clippy CANNOT fail
 # on these -- see the header of the script for the measurement that proved it.
@@ -212,4 +223,10 @@ else
     warn "no coverage floor — set GOH_COV_FLOOR_RUST in .gatesrc"
 fi
 
+[ "$(shasum -a 256 "$lockfile")" = "$lock_sum" ] \
+    || die "[rust] a step rewrote $lockfile -- the gate must judge the lockfile, never repair it"
+ok "Cargo.lock is byte-identical to the one the gate started from"
+
 goh_done
+exit
+} # parse-guard

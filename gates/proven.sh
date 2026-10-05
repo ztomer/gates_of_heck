@@ -37,6 +37,7 @@
 #   --log    send the step's output to FILE; this script's own lines stay on stdout
 # Exit: the step's code; 0 when skipped; 2 on a usage or configuration error.
 # GOH_PROVEN=0 disables the cache (always run, never record).
+{ # parse-guard -- bash reads this group whole before running it (tests/test_parse_guard.py)
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -100,3 +101,5 @@ if [ "$rc" -eq 0 ] && [ -n "$key" ]; then
     fi
 fi
 exit "$rc"
+exit
+} # parse-guard

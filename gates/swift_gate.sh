@@ -44,6 +44,7 @@
 #       linting. Semantics match swiftlint's own --baseline (probed 0.65.1):
 #       a violation is "the same one" by file + rule + reason, NOT line or
 #       severity.
+{ # parse-guard -- bash reads this group whole before running it (tests/test_parse_guard.py)
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -60,6 +61,7 @@ fi
 
 goh_init "swift"
 goh_tree_stamp
+goh_require swiftlint "brew install swiftlint"
 
 # The toolchain is RESOLVED, not whatever PATH says first — see
 # swift_toolchain.sh for the swiftly-shadows-Xcode incident that made
@@ -90,14 +92,10 @@ swift_lint_with_baseline() {
     rm -f "$report"
 }
 
-if command -v swiftlint >/dev/null 2>&1; then
-    if [ -n "${GOH_SWIFT_LINT_BASELINE:-}" ]; then
-        swift_lint_with_baseline
-    else
-        goh_step "swiftlint --strict" swiftlint --strict
-    fi
+if [ -n "${GOH_SWIFT_LINT_BASELINE:-}" ]; then
+    swift_lint_with_baseline
 else
-    warn "swiftlint not installed — lint gate skipped (brew install swiftlint)"
+    goh_step "swiftlint --strict" swiftlint --strict
 fi
 
 # ONE GATE PER TREE AT A TIME, cold or warm: a cold peer's wipe under this run's
@@ -194,3 +192,5 @@ case "$MODE" in
 esac
 
 goh_done
+exit
+} # parse-guard

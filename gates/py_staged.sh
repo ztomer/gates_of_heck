@@ -15,6 +15,7 @@
 # whole tree is measured. Exits 0 when nothing Python is staged.
 #
 # The runner resolution is py_gate.sh's (GOH_PY_RUNNER, else .venv, else python3).
+{ # parse-guard -- bash reads this group whole before running it (tests/test_parse_guard.py)
 set -euo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 . "$HERE/_common.sh"
@@ -43,3 +44,5 @@ fi
 goh_step "ruff check (staged)"        "${RUN_ARR[@]}" ruff check "${STAGED[@]}"
 goh_step "ruff format check (staged)" "${RUN_ARR[@]}" ruff format --check "${STAGED[@]}"
 goh_done
+exit
+} # parse-guard

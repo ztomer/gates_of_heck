@@ -232,6 +232,15 @@ goh_step() {
     fi
 }
 
+# goh_require <tool> <how to install>
+# A gate whose tool is missing FAILS, before any slow step runs. It used to warn and carry on
+# green ("cargo-machete not installed -- NOT checked", "swiftlint not installed -- lint gate
+# skipped"): a step that did not run, under a passing result (tests/test_required_tools.py).
+goh_require() {
+    command -v "$1" >/dev/null 2>&1 \
+        || die "$GOH_NAME: $1 is not installed, and this gate does not pass without the step it runs -- $2"
+}
+
 # goh_optional_step <label> <file-that-must-exist> <command...>
 # For checks that only apply when the repo opted into them.
 goh_optional_step() {

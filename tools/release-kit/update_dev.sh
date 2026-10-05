@@ -38,6 +38,7 @@
 # Usage:
 #   APP_NAME=Demo.app BUILD_CMD="make build" APP_PATH=build/Demo.app \
 #     tools/release-kit/update_dev.sh [--launch]
+{ # parse-guard -- bash reads this group whole before running it (tests/test_parse_guard.py)
 set -euo pipefail
 
 GOH="${GOH_DIR:-$HOME/Projects/gates_of_heck}"
@@ -128,3 +129,5 @@ if [ "$LAUNCH" = 1 ]; then
 else
   info "launch it with: open $DEST   (or re-run with --launch)"
 fi
+exit
+} # parse-guard

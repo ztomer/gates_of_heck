@@ -35,6 +35,7 @@
 # and catching it would mean a second full check; if that trade ever changes,
 # add a second pass rather than swapping this one's flags and silently losing
 # the case above.
+{ # parse-guard -- bash reads this group whole before running it (tests/test_parse_guard.py)
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -48,7 +49,7 @@ trap 'rm -f "$log"' EXIT
 
 # A compile failure is a real failure and must not be swallowed while looking
 # for warnings. Reported as itself, not as a manifest finding.
-if ! cargo check --workspace --all-features >"$log" 2>&1; then
+if ! cargo check --locked --workspace --all-features >"$log" 2>&1; then
     tail -n "${GOH_TAIL:-60}" "$log" >&2
     die "[cargo_manifest] cargo check failed"
 fi
@@ -88,3 +89,5 @@ if grep -qE '^warning: .*\(manifest\) generated' "$log"; then
 fi
 
 ok "[cargo_manifest] no cargo-lint findings"
+exit
+} # parse-guard

@@ -22,6 +22,7 @@
 # The coverage step scopes --cov to <pkg_dir> explicitly. Bare `--cov` is a
 # vacuous floor: it only measures what pytest imported, so a never-imported
 # 0%-covered module is invisible to even GOH_PY_COV_MIN=100.
+{ # parse-guard -- bash reads this group whole before running it (tests/test_parse_guard.py)
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -62,3 +63,5 @@ else
 fi
 
 goh_done
+exit
+} # parse-guard

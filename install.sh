@@ -17,6 +17,7 @@
 #
 # It does NOT copy the checkers: hooks delegate to this checkout at runtime,
 # so a fix here reaches every installed repo with zero re-install steps.
+{ # parse-guard -- bash reads this group whole before running it (tests/test_parse_guard.py)
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -158,3 +159,5 @@ fi
 
 ok "installed into $target (core.hooksPath → .githooks)"
 info "pre-commit runs tools/gate.sh --staged; pre-push runs tools/gate.sh --full on the pushed commit in a clean worktree"
+exit
+} # parse-guard

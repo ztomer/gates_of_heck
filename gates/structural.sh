@@ -11,6 +11,7 @@
 # Config, all optional, read from the TARGET repo's .gatesrc:
 #   GOH_MAX_LINES=500          # file-length cap; unset disables the check
 #   GOH_LINE_EXCLUDE="re1|re2" # paths exempt from the cap
+{ # parse-guard -- bash reads this group whole before running it (tests/test_parse_guard.py)
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -479,3 +480,5 @@ fi
 # longer block pushes.
 
 goh_done
+exit
+} # parse-guard

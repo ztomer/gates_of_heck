@@ -52,7 +52,13 @@ def mkcrate(tmp: Path) -> Path:
     # checker scans TRACKED Rust files, so a bare directory is not a subject.
     (tmp / "src").mkdir(parents=True)
     (tmp / "Cargo.toml").write_text(CARGO_TOML)
+    (tmp / "src" / "lib.rs").write_text("")  # a target, or cargo has no package to lock
+    # A TRACKED lockfile, like every Rust repo in the estate: the gate treats it as an input.
+    subprocess.run(
+        ["cargo", "generate-lockfile", "--offline"], cwd=tmp, capture_output=True, check=True
+    )
     _git(tmp, "init", "-q")
+    _git(tmp, "add", "Cargo.lock")
     _git(
         tmp,
         "-c",
@@ -234,3 +240,48 @@ def test_an_unknown_coverage_mode_fails(tmp_path, warm_crate):
     r = run_script(CURRENT, c, {"GOH_RUST_COVERAGE": "skip"})
     assert r.returncode != 0, r.stdout + r.stderr
     assert "GOH_RUST_COVERAGE" in r.stdout + r.stderr
+
+
+# ── the lockfile is an INPUT to the gate, never an OUTPUT ─────────────────────
+# antiknob, 2026-10-04: without `--locked`, cargo re-resolves and REWRITES a stale `Cargo.lock`,
+# then lints and builds happily -- a manifest-only dependency change passes green and the lockfile
+# diff is the only trace of what moved. antiknob neutralised it locally with tools/lock_guard.sh;
+# the gate every Rust repo runs is where the class closes.
+
+
+def test_a_stale_lockfile_fails_the_gate_and_is_not_rewritten(tmp_path, warm_crate):
+    c = clone(warm_crate, tmp_path / "stale")
+    # A manifest change the lockfile does not record: the package's version moved.
+    (c / "Cargo.toml").write_text(CARGO_TOML.replace('version = "0.1.0"', 'version = "0.2.0"'))
+    before = (c / "Cargo.lock").read_bytes()
+    got = run_script(CURRENT, c)
+    assert got.returncode != 0, got.stdout + got.stderr
+    assert "--locked" in got.stdout + got.stderr, got.stdout + got.stderr
+    assert (c / "Cargo.lock").read_bytes() == before, "the gate rewrote the lockfile it was judging"
+
+
+def test_a_missing_lockfile_is_refused_not_generated(tmp_path, warm_crate):
+    c = clone(warm_crate, tmp_path / "nolock")
+    _git(c, "rm", "-q", "Cargo.lock")
+    got = run_script(CURRENT, c)
+    assert got.returncode != 0 and "Cargo.lock" in got.stdout + got.stderr, got.stdout + got.stderr
+    assert not (c / "Cargo.lock").exists(), "the gate generated the lockfile it should require"
+
+
+def test_every_resolving_cargo_call_in_the_house_gates_is_locked():
+    """The class, read off the source: a new cargo step without `--locked` goes red here."""
+    import re
+
+    resolving = re.compile(r"\bcargo (clippy|check|build|test|llvm-cov(?! clean)|run|doc)\b")
+    missing = []
+    for path in ("gates/rust_gate.sh", "gates/rust_manifest_gate.sh", "gates/coverage_gate.sh"):
+        for n, line in enumerate((REPO_ROOT / path).read_text().splitlines(), 1):
+            # A message that NAMES a command is not a call: quoted text is dropped first.
+            code = re.sub(r'"[^"]*"', '""', line.split("#", 1)[0])
+            if (
+                resolving.search(code)
+                and "--locked" not in code
+                and not code.rstrip().endswith("\\")
+            ):
+                missing.append(f"{path}:{n}: {line.strip()}")
+    assert not missing, "cargo calls that may rewrite Cargo.lock:\n" + "\n".join(missing)

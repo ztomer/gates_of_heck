@@ -6,6 +6,7 @@
 # MID-RUN on purpose, and test_release_kit.py runs real releases -- split
 # across workers, the latter reads corrupted bytes and dies. loadfile alone
 # only groups within a file, not across the two.
+{ # parse-guard -- bash reads this group whole before running it (tests/test_parse_guard.py)
 set -euo pipefail
 GOH="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 # shellcheck source=/Users/ztomer/Projects/gates_of_heck/tui/lib.sh
@@ -16,3 +17,5 @@ if python3 -c "import xdist" 2>/dev/null; then
 fi
 warn "pytest-xdist not installed — serial suite (pip3 install pytest-xdist)"
 exec python3 -m pytest tests/ -q
+exit
+} # parse-guard

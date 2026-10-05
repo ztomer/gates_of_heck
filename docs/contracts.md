@@ -351,3 +351,43 @@ boundary, and the allowlist ratchet in both directions), `checks/check_claim_der
 (the same table through the checker's own entry point, plus its exit codes), and
 `checks/check_estate_corpus.py`'s `claim_derivation` entry (a false claim planted inside a real
 markdown file from a real estate repo).
+
+## 19. A running gate is pinned to the bytes it started with
+
+Every consumer executes these scripts live from this checkout, and bash reads a script LAZILY, by
+byte offset. An edit, pull or checkout here while a consumer's gate runs shifts every unread offset:
+routines' pre-push died with `coverage_gate.sh: line 485: syntax error near unexpected token ';;'`
+(2026-10-05) on a line that is not a syntax error. Every EXECUTED bash script wraps its body in
+`{ # parse-guard … exit; } # parse-guard`, so bash parses the whole group before running any of it.
+Sourced files need nothing (`source` reads the whole file first); `release.sh` re-execs a temp copy
+of itself instead, which it can afford because it never resolves siblings from its own path.
+
+Pin: `tests/test_parse_guard.py` (every executed script carries the guard; a guarded script
+rewritten mid-run completes as written, and the unguarded control does not).
+
+## 20. A gate's tool and a gate's lockfile are inputs it refuses to run without
+
+* **A missing tool FAILS, before any slow step** (`goh_require` in `gates/_common.sh`): cargo-machete,
+  swiftlint and shellcheck each used to warn and exit 0, a step that never ran under a green result.
+* **`Cargo.lock` is an input, never an output.** `rust_gate.sh` refuses a missing lockfile, runs
+  `cargo metadata --locked` first, passes `--locked` to every resolving cargo call (here, in
+  `rust_manifest_gate.sh` and in `coverage_gate.sh`), and ends by checking the lockfile is
+  byte-identical to the one it started from — so a step that takes no such flag still cannot launder
+  a re-resolve (antiknob carried `tools/lock_guard.sh` for this, 2026-10-04).
+
+Pin: `tests/test_required_tools.py` (one tool removed from PATH at a time),
+`tests/test_rust_gate.py` (`test_a_stale_lockfile_fails_the_gate_and_is_not_rewritten`,
+`test_a_missing_lockfile_is_refused_not_generated`, and a source read that finds any resolving cargo
+call without `--locked`).
+
+## 21. A pre-push run owns one directory, and nothing it leaves outlives it
+
+`push_gate.sh` exports to `<export root>/<repo>-<hash>/<repo>` beside an `.owner` stamp (pid + start
+time). The path is STABLE per repo, so cargo's `{workspace-path-hash}` build-dir repeats and
+dependencies stay warm; a concurrent push of the same repo takes a private path with its build-dir
+inside the run. Cleanup removes the run directory and NAMES anything the gate wrote outside its
+tree; each run first reaps run directories whose owner is dead (a SIGKILL leaves the directory, which
+`git worktree prune` never removes). Measured before: one three-day-old worktree, 230 `*.out` files,
+and 24 orphaned cargo build-dirs (30 GB).
+
+Pin: `tests/test_push_gate_runs.py`.

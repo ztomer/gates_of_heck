@@ -6,6 +6,7 @@
 # there is exactly ONE copy of every checker (this hook vendors nothing).
 # The pre-push hook goes through tools/gate.sh --full the same way: a
 # commit hook that bypassed gate.sh made every staged layer decorative.
+{ # parse-guard -- bash reads this group whole before running it (tests/test_parse_guard.py)
 set -euo pipefail
 
 GOH="${GOH_DIR:-${GOH:-$HOME/Projects/gates_of_heck}}"
@@ -26,3 +27,5 @@ if [ ! -f "$structural" ]; then
 fi
 
 exec "$structural" --staged
+exit
+} # parse-guard
