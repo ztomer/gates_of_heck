@@ -9,9 +9,9 @@ python	python3	system	a python3 on PATH	gates/py_gate.sh
 rust	cargo	system	rustup (https://rustup.rs)	gates/rust_gate.sh
 rust	cargo-machete	cargo	cargo install cargo-machete	gates/rust_gate.sh
 swift	swiftlint	brew	brew install swiftlint	gates/swift_gate.sh
-coverage-rust	cargo	system	rustup (https://rustup.rs)	gates/coverage_gate.sh
-coverage-rust	cargo-llvm-cov	cargo	cargo install cargo-llvm-cov	gates/coverage_gate.sh
-coverage-rust	python3	system	a python3 on PATH	gates/coverage_gate.sh
+coverage-rust	cargo	system	rustup (https://rustup.rs)	gates/_coverage_rust.sh
+coverage-rust	cargo-llvm-cov	cargo	cargo install cargo-llvm-cov	gates/_coverage_rust.sh
+coverage-rust	python3	system	a python3 on PATH	gates/_coverage_rust.sh
 coverage-cpp	cmake	brew	brew install cmake	gates/coverage_gate.sh
 coverage-cpp	ctest	brew	brew install cmake	gates/coverage_gate.sh
 coverage-cpp	xcrun	system	xcode-select --install	gates/coverage_gate.sh
