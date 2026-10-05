@@ -177,8 +177,12 @@ pub(crate) fn delegated(
     program: &str,
     args: &[String],
 ) -> i32 {
+    if crate::prefetch::record_if_collecting(program, args) {
+        return 0;
+    }
     let start = begin(label);
-    let (code, out) = run_child(program, args, checks, repo);
+    let (code, out) = crate::prefetch::take(program, args)
+        .unwrap_or_else(|| run_child(program, args, checks, repo));
     if code == 0 {
         ok(label, start);
         0

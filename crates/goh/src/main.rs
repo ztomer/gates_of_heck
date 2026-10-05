@@ -21,6 +21,7 @@ pub mod lints;
 pub mod markers;
 pub mod noallow;
 pub mod platform;
+pub mod prefetch;
 pub mod ratchet;
 pub mod scope;
 pub mod screen;
@@ -286,6 +287,23 @@ fn run_structural(staged: bool, full: bool) -> i32 {
     if staged {
         let _cached = blobs::prefetch_staged(&repo, &files);
     }
+
+    // The delegated checkers start together and report in order (crate::prefetch, BACKLOG P1e);
+    // `_drain` joins any still running on every return path below, the red ones included.
+    let _drain = prefetch::Drain;
+    let specs = prefetch::collect(|| {
+        let _ = steps_delegated::step_shell(&repo, &cfg, &checks, staged);
+        let _ = steps_delegated::step_credential_urls(&repo, &checks);
+        let _ = steps_delegated::step_version_provenance(&repo, &checks, staged);
+        let _ = steps_delegated::step_md_links(&repo, &checks, &cfg, staged);
+        let _ = steps_delegated::step_lock_version(&repo, &checks);
+        let _ = steps_delegated::step_python_formatted(&repo, &cfg, &checks, staged);
+        let _ = steps_delegated::step_kill_by_name(&repo, &cfg, &checks, staged);
+        let _ = steps_delegated::step_unreaped_spawn(&repo, &cfg, &checks, staged);
+        let _ = steps_delegated::step_claim_derivation(&repo, &cfg, &checks, staged);
+        let _ = steps_delegated::step_full_only(&repo, &checks, staged);
+    });
+    prefetch::start(specs, &checks, &repo);
 
     if let Some(code) = steps::step_emoji(&repo, &files, &cfg, staged) {
         return code;
