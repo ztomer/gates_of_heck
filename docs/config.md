@@ -138,6 +138,9 @@ TTL. Rationale and the full key: the header of `gates/proven.sh`.
 | `GOH_PROVEN_TTL_S` | `86400` | Record lifetime in seconds; older records are ignored and pruned. Non-numeric values are exit-2 usage errors. |
 | `GOH_PROVEN_ENV` | unset | Space-separated environment variable NAMES (in `.gatesrc`) whose values join the key, beside the built-in `CI RUSTFLAGS RUSTDOCFLAGS CARGO_BUILD_TARGET PYTHONPATH`. Name a variable here when a step's verdict depends on it. |
 | `GOH_PROVEN_NOW` | internal | Clock seam for the tests (epoch seconds). Not user config. |
+
+`rust_gate.sh` proves its three groups separately (`gates/_rust_proven.sh`): the crate group and coverage on the crate's own inputs (`goh rust-scope`), the repo-wide scans on the whole tree. The same `GOH_PROVEN` / `GOH_PROVEN_TTL_S` apply; every `GOH_*` in the environment is part of each group's key.
+
 ## Release kit (`tools/release-kit/release.sh`)
 
 | Key | Default | Meaning |

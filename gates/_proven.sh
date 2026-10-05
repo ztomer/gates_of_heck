@@ -168,6 +168,28 @@ proven_key() {
     printf '%s %s\n' "$key" "$tree"
 }
 
+# proven_scoped_key <step> <entry>... — like proven_key, but the tree part is the git OBJECT of
+# each repo-relative entry (`.` is the whole tree) rather than the whole tree, so a step whose
+# inputs are named keys only on them (BACKLOG P3; `goh rust-scope` names a crate's). An entry that
+# does not exist is keyed as `missing`, so creating one changes the key. Same clean-tree
+# precondition and identity as proven_key; one `cat-file --batch-check` for every entry.
+proven_scoped_key() {
+    local step="$1" tree objs key e; shift
+    [ "${PROVEN_ON:-1}" = 1 ] || return 1
+    [ "$#" -gt 0 ] || return 1
+    tree="$(proven_tree)" && [ -n "$tree" ] || return 1
+    objs="$(for e in "$@"; do
+                if [ "$e" = . ]; then printf '%s\n' "$tree"; else printf '%s:%s\n' "$tree" "$e"; fi
+            done | git cat-file --batch-check='%(objectname) %(objecttype)' 2>/dev/null \
+            | sed 's/^.* missing$/missing/')" || return 1
+    # (cat-file answers a missing entry by ECHOING "<tree>:<path> missing", and the whole tree's
+    # hash in that line would key every scope on the whole tree again.)
+    key="$({ printf 'proven v1 scoped\nstep %s\n' "$step"; printf 'scope %s\n' "$@"
+             printf '%s\n' "$objs"; proven_identity; } | hash_hex /dev/stdin)" && [ -n "$key" ] \
+        || return 1
+    printf '%s %s\n' "$key" "$tree"
+}
+
 # proven_dir — where records live: the COMMON git dir, so every worktree of a repo (the push
 # gate's throwaway export included) sees what the main checkout proved.
 proven_dir() {

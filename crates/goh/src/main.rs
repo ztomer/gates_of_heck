@@ -23,6 +23,7 @@ pub mod noallow;
 pub mod platform;
 pub mod prefetch;
 pub mod ratchet;
+pub mod rust_scope;
 pub mod scope;
 pub mod screen;
 pub mod screen_mask;
@@ -67,8 +68,18 @@ struct SkillsArgs {
 
 #[derive(Debug, Subcommand)]
 enum Commands {
-    /// Print the git trees this binary was built from (`crates=`... at HEAD, or `dirty`).
+    /// Print the git trees this binary was built from (HEAD's, or `dirty`).
     SourceTree,
+    /// The input scope of a cargo workspace for the proven cache (BACKLOG P3): repo-relative
+    /// paths, one per line, or `.` for the whole tree.
+    RustScope {
+        /// The cargo workspace directory (default: current directory).
+        #[arg(default_value = ".")]
+        cargo_dir: PathBuf,
+        /// Instead: name every file the last build read that lies outside the scope in FILE.
+        #[arg(long)]
+        check_depinfo: Option<PathBuf>,
+    },
     /// Run the structural gate (every repo, any language).
     Structural {
         /// Staged files only (pre-commit scope, fast).
@@ -207,6 +218,10 @@ fn main() {
     }
     let cli = Cli::parse();
     let code = match cli.command {
+        Commands::RustScope {
+            cargo_dir,
+            check_depinfo,
+        } => rust_scope::run_command(&cargo_dir, check_depinfo.as_deref()),
         Commands::SourceTree => {
             println!("{}", env!("GOH_SOURCE_STAMP"));
             0
