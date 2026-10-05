@@ -78,8 +78,38 @@ pub(crate) fn begin(label: &str) -> Instant {
     Instant::now()
 }
 
+/// Append this step's line to `$GOH_TIMINGS`, the same shape `lib/step_timings.py` writes.
+///
+/// ONE `write` of one line under `O_APPEND`, below `PIPE_BUF`, so concurrent gates interleave
+/// whole lines. Every failure is dropped on purpose: the instrument must never turn a gate red.
+fn record(label: &str, start: Instant, rc: i32) {
+    use std::io::Write as _;
+    let Some(path) = std::env::var_os("GOH_TIMINGS").filter(|p| !p.is_empty()) else {
+        return;
+    };
+    let cwd = std::env::current_dir().map_or_else(|_| String::new(), |p| p.display().to_string());
+    let row = serde_json::json!({
+        "label": label,
+        "ms": (start.elapsed().as_secs_f64() * 10_000.0).round() / 10.0,
+        "rc": rc,
+        "tier": "native",
+        "parent": std::env::var("GOH_TIMINGS_PARENT").unwrap_or_default(),
+        "cwd": cwd,
+    });
+    let mut line = row.to_string();
+    line.push('\n');
+    if let Ok(mut f) = std::fs::OpenOptions::new()
+        .append(true)
+        .create(true)
+        .open(path)
+    {
+        let _ = f.write_all(line.as_bytes());
+    }
+}
+
 /// Announce a passed step.
 pub(crate) fn ok(label: &str, start: Instant) {
+    record(label, start, 0);
     if show_time() {
         println!("✓ {label} ({}s)", start.elapsed().as_secs());
     } else {
@@ -91,7 +121,8 @@ pub(crate) fn ok(label: &str, start: Instant) {
 /// line, then the failure. `how` names the runner (`native`, or the command
 /// with the checker's own path in it) and is followed by the docs route, so the
 /// failure says both WHAT ran and WHERE the rule for it is written.
-pub(crate) fn fail(label: &str, how: &str, report: &str, _start: Instant) -> i32 {
+pub(crate) fn fail(label: &str, how: &str, report: &str, start: Instant) -> i32 {
+    record(label, start, 1);
     println!();
     let lines: Vec<&str> = report.lines().collect();
     let tail = tail_len();
@@ -203,6 +234,9 @@ pub(crate) fn run_child(
     cmd.arg(checks.join(&args[0]));
     cmd.args(&args[1..]);
     cmd.current_dir(repo);
+    // This tier records the step itself (`ok` / `fail`); the runner recording it too would
+    // count every delegated step twice.
+    cmd.env_remove("GOH_TIMINGS");
     match cmd.output() {
         Err(e) => (SPAWN_FAILED, format!("spawn failed: {e}\n")),
         Ok(out) => {

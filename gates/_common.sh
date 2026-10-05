@@ -264,7 +264,9 @@ goh_optional_step() {
 goh_step_in() {
     local dir="$1" label="$2"; shift 2
     if [ "$dir" != "$PWD" ]; then
-        goh_step "$label" /usr/bin/env bash -c 'cd "$1" && exec "${@:2}"' _ "$dir" "$@"
+        # GOH_TIMINGS_CWD: the timing line names <dir>, not the caller's cwd (lib/step_timings.py).
+        GOH_TIMINGS_CWD="$(cd "$dir" 2>/dev/null && pwd || printf %s "$dir")" \
+            goh_step "$label" /usr/bin/env bash -c 'cd "$1" && exec "${@:2}"' _ "$dir" "$@"
     else
         goh_step "$label" "$@"
     fi

@@ -161,6 +161,10 @@ TTL. Rationale and the full key: the header of `gates/proven.sh`.
 | `GOH_FAIL_PATTERN` | `error:\|FAILED\|failed\|panicked at\|Assertion\|✗` | On step failure, the grep whose hits are printed BEFORE the tail — the failing cases a long suite buried above it. |
 | `GOH_FAIL_LINES` | `40` | How many of those hits are printed. |
 | `GOH_TIME` | unset | When set (any value), `goh_step` appends per-step elapsed whole seconds to its ok line. Off by default. |
+| `GOH_TIMINGS` | unset | A file path. Every bounded step of both structural tiers, every `goh_step`, and every `local_ci.sh` step (and its proven-cache hits, marked `"cache": "hit"`) appends ONE JSON line: `label`, `ms`, `rc`, `tier`, `parent`, `cwd` (`lib/step_timings.py`). Whole lines under `O_APPEND`, so concurrent gates share one file. A failed write is dropped: the instrument never changes a verdict. Steps run with `GOH_STEP_TIMEOUT=0` (unbounded) are not timed. Report: `python3 lib/step_timings.py report FILE`; front end: `tools/gate_profile.sh <repo>`. |
+| `GOH_TIMINGS_PARENT` | set by `lib/bounded_run.py` | The label of the timed step a child runs inside, so a nested gate's lines name their parent. Not a setting: written for children, read by the recorder. |
+| `GOH_TIMINGS_CWD` | set by `goh_step_in` | The directory a timed step really runs in (`goh_step_in` changes directory inside the child), so the timing line of each crate's step names that crate. Not a setting. |
+| `GOH_PROFILE_PROVEN` | unset | `tools/gate_profile.sh` only: keep the proven-step cache on while profiling (default off, because a profile of cache hits measures the cache, not the work). |
 | `GOH_AWK_VER_RE` | internal | Version regex passed into the release stanza matcher. Not user config. |
 | `GOH_TREE_STAMP_FILE` | internal | The working tree's stamp taken at the first `goh_init` (`lib/tree_stamp.py`); compared in `goh_done` and on a red exit. Not user config. |
 | `GOH_TREE_CHECKED` | internal | Set once the stamp has been compared, so the EXIT trap does not report the move twice. Not user config. |

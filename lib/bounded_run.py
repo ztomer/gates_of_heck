@@ -41,6 +41,9 @@ import sys
 import time
 from dataclasses import dataclass
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import step_timings  # noqa: E402  # beside this file; run as a script AND imported by orphan_canary
+
 # GNU timeout's exit code for "the ceiling expired". `gates/local_ci.sh` already prints
 # "TIMED OUT" on 124 and keeps the log; a different number would be a different contract in two
 # places.
@@ -185,7 +188,26 @@ def run_step(
     label: str,
     output: object | None = None,
 ) -> Outcome:
-    """Run `argv` under a ceiling; report the code and whatever it left running."""
+    """Run `argv` under a ceiling; report the code and whatever it left running.
+
+    With `GOH_TIMINGS` set, the step's wall time lands there as one JSON line
+    (lib/step_timings.py), and the child learns its parent's label.
+    """
+    t0 = time.monotonic()
+    outcome = _run_step(argv, timeout, grace, label, output)
+    step_timings.record(
+        label or " ".join(argv), (time.monotonic() - t0) * 1000, outcome.code, "step"
+    )
+    return outcome
+
+
+def _run_step(
+    argv: list[str],
+    timeout: int,
+    grace: float,
+    label: str,
+    output: object | None = None,
+) -> Outcome:
     stream = None
     merged = False  # stderr folds into stdout only when both are going to the same file
     # `None` INHERITS, and it must. The first version collapsed `None` and the DEVNULL sentinel into
@@ -208,6 +230,7 @@ def run_step(
                 stdin=subprocess.DEVNULL,
                 stdout=stream,
                 stderr=subprocess.STDOUT if merged else stream,
+                env=step_timings.child_env(label or " ".join(argv)),
                 start_new_session=True,  # POSIX; its own group, so killpg covers the tree
             )
         except OSError as exc:

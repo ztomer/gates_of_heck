@@ -87,6 +87,7 @@ logic goes in the engine; new floor/CLI semantics go in `coverage_gate.sh`.
 
 | Module | Purpose | Test |
 | `bounded_run.py` | Run one command under a wall-clock CEILING, in its OWN process group, and sweep the whole subtree on expiry (TERM, grace, KILL) — then print `TIMED OUT after Ns` and return 124 with the surviving pids named. It WAITS rather than polls (a 0.2 s poll charged every step of every gate up to 200 ms) and samples the process table once at exit. The group discipline is the measured part: `gates/local_ci.sh`'s old sweep was `pkill -P "$pid"`, DIRECT children only, which against `bash -c 'sleep 400 & wait'` left 2 grandchildren ALIVE — i.e. the mechanism meant to unstick a hung step left running exactly the orphans that make the NEXT step hang. `lib/killtree.py` already knew the answer for the Python callers; this exposes it to the shell gates. | `test_bounded_run.py` |
+| `step_timings.py` | The P0 perf instrument: `record()` appends one JSON line per step to `$GOH_TIMINGS` (ms, rc, tier, parent label, cwd), called by `bounded_run.py` and, for its in-process steps, by the native tier (`step_report.rs`); `report FILE` prints the slowest steps and each label summed across every place it ran. | `test_step_timings.py`, `test_goh_structural_parity.py` |
 | `orphan_canary.py` | Before/after diff of the live process table, so a child a suite LEAKED is reported instead of inferred from the next run's hang — the case a ceiling cannot see, because the step exits 0 and the server outlives it. Attributable when the command line names this repo (checkout, a `target/` under it, `$CARGO_TARGET_DIR`) or when the pid is ORPHANED (`ppid 1`, measured). Everything else is counted in one line and never failed on: on a shared machine another program's processes are noise, and a canary that cries wolf is one nobody leaves switched on. | `test_orphan_canary.py` |
 |---|---|---|
 | `golden_core.py` | Pixel-diff math only (no render, no bless, no `--update`). | `test_golden_core.py`, `test_golden_core_cli.py` |
@@ -104,6 +105,7 @@ logic goes in the engine; new floor/CLI semantics go in `coverage_gate.sh`.
 * `tools/release-kit/` — `release.sh` (gate → stanza → tag → push → release),
   `gen_app_icons.py`, `update_dev.sh`. Pinned by `test_release_kit.py` (+
   `test_release_hardening.py`, `test_profiling_scripts.py` for profiling).
+* `tools/gate_profile.sh <repo>` — profile a repo's push gate on HEAD (nothing pushed) with `GOH_TIMINGS` set; prints the slowest steps and per-label totals.
 * `tools/profiling/` — soak/profile harness. See its `README.md`.
 * `install.sh` — wires `.githooks/` + starter `tools/gate.sh` / `.gatesrc`
   into a consumer repo. Pinned by `test_install.py`.

@@ -236,6 +236,8 @@ while IFS="	" read -r src cmd; do
         if hit="$(proven_lookup "$pkey" "$cmd")"; then
             read -r age by <<<"$hit"
             step "proven on this tree $age ago by $by — skipped"
+            [ -z "${GOH_TIMINGS:-}" ] \
+                || python3 "$GOH_ROOT/lib/step_timings.py" record "$cmd" 0 0 step hit </dev/null
             ok "[$i/$_n] $cmd"
             PROVEN_SKIPPED=$((PROVEN_SKIPPED + 1))
             continue

@@ -282,6 +282,26 @@ def test_both_tiers_run_the_same_steps(goh: Path, tmp_path: Path) -> None:
     assert len(in_bash) == 19, f"the pipeline's step inventory changed: {sorted(in_bash)}"
 
 
+def test_both_tiers_time_the_same_steps(goh: Path, tmp_path: Path) -> None:
+    """P0's instrument, per tier: every announced step leaves exactly one timing line, so a
+    native-vs-Python comparison is over the same labels and no step is counted twice (the
+    native tier's delegated steps run through bounded_run.py, which also records)."""
+    import json
+
+    labels = {}
+    for tier in ("python", "native"):
+        repo = make_repo(tmp_path / tier, INVENTORY_CASE)
+        out = tmp_path / f"{tier}.jsonl"
+        extra = {"GOH_TIMINGS": str(out)}
+        r = _run_bash(repo, False, extra) if tier == "python" else _run_goh(goh, repo, False, extra)
+        assert r.returncode == 0, r.stdout + r.stderr
+        rows = [json.loads(line) for line in out.read_text().splitlines()]
+        announced = sorted(s.split(" (\u2264")[0] for s in announced_steps(r.stdout))
+        assert sorted(row["label"] for row in rows) == announced, (tier, rows)
+        labels[tier] = set(announced)
+    assert labels["python"] == labels["native"]
+
+
 def test_a_failing_step_names_the_checker_and_the_docs(goh: Path, tmp_path: Path) -> None:
     """R8: the failing tier must be able to be FOUND from the message it gives.
 
