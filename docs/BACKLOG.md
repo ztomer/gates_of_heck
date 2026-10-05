@@ -40,13 +40,19 @@ spends 1-7 s per crate in the house rust gate across 29 crates.
 
 **Next steps, in order**
 
-1. Re-time the SERIAL suite once and record it here.
-2. The remaining long poles are spawn count, not test count: `test_goh_structural_parity`
+1. **Pre-commit is weaker than pre-push for a cheap check.** `python is ruff-formatted` runs at full
+   scope only, so two unformatted test files passed pre-commit and refused the v0.20.0 push. The
+   stated reason ("a pre-commit hook that reformatted the repository ... would be worse") is about
+   REFORMATTING; a `ruff format --check` over the staged blobs of staged `.py` files reformats
+   nothing. Add a staged mode to `check_python_formatted.py` (index blobs via `--stdin-filename`),
+   wire it in both tiers (`steps_delegated.rs::step_python_formatted`), and re-pin the parity table.
+2. Re-time the SERIAL suite once and record it here.
+3. The remaining long poles are spawn count, not test count: `test_goh_structural_parity`
    (22 full-mode cases x both tiers) and every test that runs a gate end to end. The lever with the
    widest reach is the native tier running its 7 delegated Python steps concurrently (~0.9 s ->
    ~0.3 s per run, in every consumer's pre-commit) -- measure first, the parity test pins output
    order.
-3. The Open items below.
+4. The Open items below.
 
 **Downstream: what each consumer session needs to know**
 

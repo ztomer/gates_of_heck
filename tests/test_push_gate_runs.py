@@ -143,7 +143,9 @@ def test_the_same_repo_exports_to_the_same_path_every_time(tmp_path):
 def test_a_concurrent_push_of_the_same_repo_takes_a_private_path_and_build_dir(tmp_path):
     repo = _repo(tmp_path)
     (repo / "tools" / "gate.sh").write_text(
-        GATE.replace("exit 0\n", 'printf "build=%s\\n" "${CARGO_BUILD_BUILD_DIR:-}" >> "$out"\nexit 0\n')
+        GATE.replace(
+            "exit 0\n", 'printf "build=%s\\n" "${CARGO_BUILD_BUILD_DIR:-}" >> "$out"\nexit 0\n'
+        )
     )
     _git(repo, "commit", "-qam", "report the build dir")
     export_root = tmp_path / "exports"
@@ -156,4 +158,6 @@ def test_a_concurrent_push_of_the_same_repo_takes_a_private_path_and_build_dir(t
     second = _cwds(tmp_path)[-1]
     assert Path(second).parent != stable, "a live run's export path was taken"
     build = (tmp_path / "report.txt").read_text().splitlines()[-1].split("=", 1)[1]
-    assert build.startswith(str(Path(second).parent)), f"the fallback build-dir outlives its run: {build}"
+    assert build.startswith(str(Path(second).parent)), (
+        f"the fallback build-dir outlives its run: {build}"
+    )

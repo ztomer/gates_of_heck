@@ -31,7 +31,9 @@ def _bump(checkout: Path, to: str) -> None:
 
 
 def _committed_version(checkout: Path) -> str:
-    line = next(l for l in (checkout / "Cargo.toml").read_text().splitlines() if l.startswith("version = "))
+    line = next(
+        l for l in (checkout / "Cargo.toml").read_text().splitlines() if l.startswith("version = ")
+    )
     return line.split('"')[1]
 
 
