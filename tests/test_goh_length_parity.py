@@ -109,3 +109,47 @@ def test_staged_ignores_unstaged_dirt(goh: Path, tmp_path: Path) -> None:
         == run_goh(goh, repo, ["--max", "100", "--staged"])
         == (0, [], 1)
     )
+
+
+# Build scripts are source. ZoneWM, 2026-10-05: a 698-line `Makefile` passed the 500-line cap
+# because the scope was a SUFFIX list and a Makefile has no suffix; `mk/*.mk` was invisible too.
+BUILD_FILES = {
+    "Makefile": lines(101),
+    "sub/GNUmakefile": lines(101),
+    "lower/makefile": lines(101),
+    "mk/rules.mk": lines(101),
+    "CMakeLists.txt": lines(101),
+    "cmake/find.cmake": lines(101),
+    "justfile": lines(101),
+    "Justfile.d/Justfile": lines(101),
+    # Controls: a generated automake template, and a name that merely CONTAINS one of the above.
+    "Makefile.in": lines(500),
+    "docs/Makefile-notes.txt": lines(500),
+}
+
+
+def test_build_scripts_are_capped_in_both_tiers(goh: Path, tmp_path: Path) -> None:
+    repo = make_repo(tmp_path, BUILD_FILES)
+    want = sorted(p for p, body in BUILD_FILES.items() if body == lines(101))
+    py = run_python(repo, ["--max", "100"])
+    assert py[0] == 1 and sorted(p for p, _ in py[1]) == want, py
+    assert run_goh(goh, repo, ["--max", "100"]) == py
+
+
+def _rust_strings(name: str) -> list[str]:
+    src = (ROOT / "crates" / "goh" / "src" / "length.rs").read_text(encoding="utf-8")
+    body = re.search(rf"pub const {name}: &\[&str\] = &\[(.*?)\];", src, re.S)
+    assert body, f"length.rs no longer declares {name}"
+    return re.findall(r'"([^"]*)"', body.group(1))
+
+
+def test_the_two_tiers_scope_the_cap_from_one_list() -> None:
+    """The suffix list was written twice and "mirrored" by a comment. A suffix added to one tier is
+    a file one tier caps and the other waves through; this compares the lists, not a sample."""
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location("check_file_length", CHECKER)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    assert list(mod.SOURCE_SUFFIXES) == _rust_strings("SOURCE_SUFFIXES")
+    assert list(mod.SOURCE_NAMES) == _rust_strings("SOURCE_NAMES")

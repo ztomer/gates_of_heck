@@ -6,10 +6,22 @@
 //! markers scan, binary blobs are NOT skipped here — the reference counts
 //! whatever bytes a source-suffixed file holds.
 
-/// Source suffixes the cap applies to. Mirrors `SOURCE_SUFFIXES`.
+/// Source suffixes the cap applies to. The same list as `SOURCE_SUFFIXES` in
+/// `checks/check_file_length.py`; `tests/test_goh_length_parity.py` compares the two whole.
 pub const SOURCE_SUFFIXES: &[&str] = &[
     ".rs", ".py", ".swift", ".c", ".h", ".cpp", ".hpp", ".cc", ".m", ".mm", ".kt", ".java", ".go",
-    ".ts", ".tsx", ".js", ".jsx", ".sh", ".bash", ".rb",
+    ".ts", ".tsx", ".js", ".jsx", ".sh", ".bash", ".rb", ".mk", ".cmake",
+];
+
+/// Source files with no suffix, matched on the exact basename. Build scripts are source: a
+/// 698-line `Makefile` passed the cap while the scope was suffixes only (`ZoneWM`, 2026-10-05).
+pub const SOURCE_NAMES: &[&str] = &[
+    "Makefile",
+    "GNUmakefile",
+    "makefile",
+    "CMakeLists.txt",
+    "Justfile",
+    "justfile",
 ];
 
 /// One file over the cap.
@@ -24,7 +36,10 @@ pub struct OverCap {
 /// True when the cap polices `path` (source suffix, not excluded).
 #[must_use]
 pub fn is_measured(path: &str, exclude: Option<&regex::Regex>) -> bool {
-    if !SOURCE_SUFFIXES.iter().any(|suffix| path.ends_with(suffix)) {
+    let basename = path.rsplit('/').next().unwrap_or(path);
+    if !SOURCE_SUFFIXES.iter().any(|suffix| path.ends_with(suffix))
+        && !SOURCE_NAMES.contains(&basename)
+    {
         return false;
     }
     exclude.is_none_or(|rx| !rx.is_match(path))
@@ -108,6 +123,22 @@ mod tests {
         assert!(!is_measured("c.md", None));
         assert!(!is_measured("Cargo.lock", None));
         assert!(!is_measured("notes.txt", None));
+    }
+
+    #[test]
+    fn build_scripts_are_measured_by_exact_basename() {
+        for path in [
+            "Makefile",
+            "a/GNUmakefile",
+            "mk/x.mk",
+            "CMakeLists.txt",
+            "c/f.cmake",
+            "justfile",
+        ] {
+            assert!(is_measured(path, None), "{path}");
+        }
+        assert!(!is_measured("Makefile.in", None));
+        assert!(!is_measured("docs/Makefile-notes.txt", None));
     }
 
     #[test]

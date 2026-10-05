@@ -126,6 +126,49 @@ def discover(root, dirs=GATE_DIRS):
     return found, total
 
 
+def undeclared(root, dirs=GATE_DIRS):
+    """Files under the gate directories that carry a self-proof flag but are NOT named `check_*`.
+
+    They are not run, deliberately: the `check_` name is a repo DECLARING a headless gate, and a
+    flag alone declares nothing about what the probe touches -- ZoneWM's `input_lock.py --probe`
+    installs an event tap and locks the owner's real input. They are NAMED, because a self-proof
+    nothing runs and nothing mentions is the silence this gate exists to end (ZoneWM, 2026-10-05).
+    """
+    try:
+        scoped = sorted(listed_files(root, staged=False))
+    except Exception:
+        # Not a git tree: the same fallback `discover` takes, so the two never disagree on scope.
+        scoped = sorted(
+            f"{name}/{entry}"
+            for name in dirs
+            if os.path.isdir(os.path.join(root, name))
+            for entry in os.listdir(os.path.join(root, name))
+        )
+    out = []
+    for rel in scoped:
+        head, _, entry = rel.rpartition("/")
+        if head not in dirs or entry.startswith("check_") or not entry.endswith((".py", ".sh")):
+            continue
+        try:
+            with open(os.path.join(root, rel), encoding="utf-8", errors="replace") as handle:
+                if probe_flag(handle.read()):
+                    out.append(rel)
+        except OSError:
+            continue
+    return out
+
+
+def _report_undeclared(root, show=5):
+    names = undeclared(root)
+    if not names:
+        return
+    shown = ", ".join(names[:show]) + (f" (+{len(names) - show} more)" if len(names) > show else "")
+    info(
+        f"{len(names)} self-proof(s) NOT run here -- not named check_*, so not declared headless "
+        f"gates: {shown}"
+    )
+
+
 def _interpreter(path):
     """How to invoke this gate. Python runs under the running interpreter; anything else under the
     interpreter its SHEBANG names, falling back to bash.
@@ -308,6 +351,7 @@ def main(argv=None):
     for line in notes:
         info(line)
     ok(f"{len(probes)} of {total} gate(s) carry an inline self-proof, every one still passing")
+    _report_undeclared(root)
     if load_registry(root) is not None:
         ok("every claim in the calibration registry holds against the estate it names")
     if args.no_corpus:

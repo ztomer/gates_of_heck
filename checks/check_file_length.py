@@ -24,7 +24,10 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from _gitutil import content_bytes, line_count, listed_files, repo_root  # noqa: E402
 
-# Files the cap is about. Data, docs and lockfiles are legitimately long.
+# Files the cap is about. Data, docs and lockfiles are legitimately long. Build scripts are not
+# data: ZoneWM's 698-line `Makefile` passed this cap because the scope was suffixes only and a
+# Makefile has none (2026-10-05). `crates/goh/src/length.rs` holds the same two lists, and
+# tests/test_goh_length_parity.py compares them whole.
 SOURCE_SUFFIXES = (
     ".rs",
     ".py",
@@ -46,7 +49,23 @@ SOURCE_SUFFIXES = (
     ".sh",
     ".bash",
     ".rb",
+    ".mk",
+    ".cmake",
 )
+# Source files that have no suffix: matched on the BASENAME, exactly. `Makefile.in` is automake
+# output and stays out.
+SOURCE_NAMES = (
+    "Makefile",
+    "GNUmakefile",
+    "makefile",
+    "CMakeLists.txt",
+    "Justfile",
+    "justfile",
+)
+
+
+def is_source(path: str) -> bool:
+    return path.endswith(SOURCE_SUFFIXES) or path.rsplit("/", 1)[-1] in SOURCE_NAMES
 
 
 def main() -> int:
@@ -62,7 +81,7 @@ def main() -> int:
     checked = 0
 
     for path in listed_files(root, staged=args.staged):
-        if not path.endswith(SOURCE_SUFFIXES):
+        if not is_source(path):
             continue
         if skip and skip.search(path):
             continue
