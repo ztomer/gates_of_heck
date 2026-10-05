@@ -261,7 +261,14 @@ def test_a_repo_with_no_remote_is_a_named_non_run_not_a_pass(repo):
     `not applicable` and nothing else, so this is the gate declaring the non-run rather than the
     sweep inferring it.
     """
-    got = findings(repo)
+    # Hermetic: the gate also judges global/system helpers, and this machine has some.
+    got = subprocess.run(
+        ["python3", str(ROOT / CHECK)],
+        cwd=repo,
+        capture_output=True,
+        text=True,
+        env=dict(__import__("os").environ, GIT_CONFIG_GLOBAL="/dev/null", GIT_CONFIG_NOSYSTEM="1"),
+    )
     assert got.returncode == 0, out_of(got)
     assert "not applicable" in out_of(got), out_of(got)
     assert "OK —" not in out_of(got), out_of(got)
@@ -277,7 +284,13 @@ def test_the_empty_scope_sweep_accepts_this_gate(tmp_path):
     git(root, "init", "-q", "-b", "main")
     git(root, "config", "user.email", "s@e.invalid")
     git(root, "config", "user.name", "s")
-    for name in ("check_no_credential_urls.py", "check_no_secrets.py", "_gitutil.py"):
+    for name in (
+        "check_no_credential_urls.py",
+        "_credential_config.py",
+        "_credential_urls_probe.py",
+        "check_no_secrets.py",
+        "_gitutil.py",
+    ):
         shutil.copy(ROOT / "checks" / name, root / "checks" / name)
     shutil.copytree(ROOT / "tui", root / "tui")
     git(root, "add", "-A")
@@ -308,3 +321,55 @@ def test_outside_a_git_repo_is_a_usage_error_not_a_pass(tmp_path):
     )
     assert got.returncode == 2, out_of(got)
     assert "not a git repo" in out_of(got)
+
+
+# ── the two NON-URL shapes in .git/config: a credential helper and an extra header ─────────────
+# Both were stated out of scope when this checker shipped, each measured to carry a token. They are
+# judged with check_no_secrets.py's own patterns plus the two shapes those patterns cannot see: an
+# unquoted `password=` inside a helper script, and the credential after an Authorization scheme.
+
+
+@pytest.mark.parametrize(
+    "key,value",
+    [
+        ("credential.helper", "!f() { echo username=x; echo password=s3cretvalue; }; f"),
+        ("credential.helper", f"!f() {{ echo password={LIVE_TOKEN}; }}; f"),
+        ("credential.https://github.com.helper", "!echo password=hunter22hunter22"),
+        ("http.extraheader", "AUTHORIZATION: basic dXNlcjpwYXNzd29yZA=="),
+        ("http.https://github.com/.extraHeader", f"Authorization: Bearer {LIVE_TOKEN}"),
+        ("http.extraheader", "PRIVATE-TOKEN: glpat-abcdefghijklmnopqrst"),
+    ],
+)
+def test_a_credential_in_a_helper_or_header_is_refused(repo, key, value):
+    git(repo, "config", "--add", key, value)
+    got = findings(repo)
+    assert got.returncode == 1, out_of(got)
+    secret = value.split("password=")[-1].split(";")[0].split()[-1]
+    assert secret not in out_of(got), "the report printed the credential"
+    assert "sha256:" in out_of(got), out_of(got)
+
+
+@pytest.mark.parametrize(
+    "key,value",
+    [
+        ("credential.helper", "osxkeychain"),
+        ("credential.helper", "store"),
+        ("credential.helper", "cache --timeout=3600"),
+        ("credential.helper", "!gh auth git-credential"),
+        ("credential.helper", "!f() { echo username=x; echo password=$GH_TOKEN; }; f"),
+        ("credential.helper", ""),
+        ("http.extraheader", "X-Trace: on"),
+        ("http.extraheader", "Authorization: Bearer ${TOKEN}"),
+    ],
+)
+def test_a_helper_or_header_holding_no_credential_is_silent(repo, key, value):
+    git(repo, "config", "--add", key, value)
+    got = findings(repo)
+    assert got.returncode == 0, out_of(got)
+
+
+def test_a_config_credential_is_judged_in_a_repo_with_no_remote(repo):
+    """The `not applicable` path is for a config with nothing to judge -- a helper IS something."""
+    git(repo, "config", "credential.helper", f"!echo password={LIVE_TOKEN}")
+    got = findings(repo)
+    assert got.returncode == 1 and "not applicable" not in out_of(got), out_of(got)
