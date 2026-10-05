@@ -339,7 +339,23 @@ while read -r local_ref local_sha _remote_ref _remote_sha; do
     cleanup_run
     gated=$((gated + 1))
     gated_commits="$gated_commits$commit "
+    gated_refs="${gated_refs:-}$local_ref=$commit "
 done <"$refs_file"
+
+# THE BRANCH MUST STILL BE WHAT WAS GATED (ZoneWM D-0211, tests/test_push_gate_race.py). Over an
+# HTTPS remote git sends what the local ref names when the helper SENDS, after this hook returns:
+# a 25-minute gate of d0cf1968 delivered f79cf19f, two commits no gate ran on. Re-read every
+# gated ref now; one that moved is refused. A pinned `<sha>:refs/heads/x` push resolves to itself.
+for pair in ${gated_refs:-}; do
+    ref="${pair%%=*}" want="${pair#*=}"
+    now="$(git -C "$root" rev-parse --verify --quiet "${ref}^{commit}" || echo "(gone)")"
+    if [ "$now" != "$want" ]; then
+        err "pre-push: $ref moved while it was being gated: gated ${want:0:12}, now ${now:0:12}"
+        err "  git would send ${now:0:12}, which no gate ran on -- nothing pushed. Push again, or pin"
+        err "  the commit:  git push <remote> ${want:0:12}:<branch>"
+        exit 1
+    fi
+done
 
 [ "$gated" -gt 0 ] || info "pre-push: nothing to gate (deletes, or commits the remote already has)"
 exit
