@@ -23,6 +23,7 @@ pub mod noallow;
 pub mod platform;
 pub mod prefetch;
 pub mod ratchet;
+pub mod rust_depinfo;
 pub mod rust_scope;
 pub mod scope;
 pub mod screen;

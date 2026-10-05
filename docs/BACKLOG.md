@@ -26,6 +26,8 @@ CPU**; `-n 12` is slower than `-n 8`.
 | C3 bin/goh from HEAD, source-stamped, rebuilt when stale | `833b2e7` | -- |
 | `gates/required_tools.{tsv,py}` (antiknob CI ask) | `54e2ee7` | manifest == code, both directions |
 | push_gate refuses a branch that moved while gated (ZoneWM D-0211) | `e148449` | -- |
+| P3 rust_gate groups proven on their own inputs (`goh rust-scope`) | `750a114` | see the v0.21.0 stanza |
+| `required_tools --names`, ruff its own layer (divoom CI) | `3a9b465` | -- |
 
 ## Phase P — make goh fast (the program)
 
@@ -130,6 +132,12 @@ What the table says, in four classes:
   for its Python steps (buffer each, print in order). The parity test already pins order, so it is
   the gate. Expected: `--full` 4.9 s -> ~2.3 s (bounded by unreaped-spawn).
 
+- **P1g. Cross-target clippy inside the fan-out** (servers O41, 2026-10-05): media_server's serial
+  `cargo-zigbuild clippy --target x86_64-unknown-linux-musl` is 46 s after the crate fan-out ends.
+  `GOH_RUST_LINT_CONFIGS` cannot carry it: plain `cargo clippy --target` fails on ring's C build on
+  macOS. Needs a per-config cargo command seam (`GOH_RUST_LINT_CARGO=cargo-zigbuild`, or zigbuild
+  picked for a `--target` cfg), and the installed-target check requiring cargo-zigbuild + zig
+  (rows in `gates/required_tools.tsv`).
 - **P1f. Two per-crate steps that are not per-crate** (measured by P0 on media_server's push):
   `no emptiness asserts` scans the WHOLE repo (554 files) once per crate, 29 times, 24 job-s; and
   `cargo lints (manifest)` is a second full `cargo check --workspace` after clippy, 24 job-s. The
@@ -156,7 +164,7 @@ printed in declared order, the fail accumulator and exit codes unchanged.
   step that reads the terminal; a timeout that must kill only its own group (`bounded_run.py`
   already does; prove it under concurrency).
 
-### P3 — input-scoped proven cache (the "common caching")
+### P3 — input-scoped proven cache -- LANDED `750a114` (rust_gate's crate/repo/coverage groups)
 
 Extend `gates/_proven.sh`: a step may declare its INPUT SCOPE, and its key uses the git tree
 objects of those paths instead of the whole tree. A tree sha per path costs one `git rev-parse

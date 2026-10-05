@@ -129,12 +129,45 @@ def test_an_edit_outside_every_crate_re_gates_no_crate_but_shared_config_re_gate
     assert not _skipped(config, "crate"), "a new clippy.toml above the crate did not re-gate it"
 
 
-def test_a_runtime_reach_outside_the_crate_keys_it_on_the_whole_tree(estate: Path) -> None:
+def test_a_resolvable_reach_outside_the_crate_keys_on_exactly_that_file(estate: Path) -> None:
+    """A test reading `../shared/fixture.json` (relative to its package) is keyed on that file:
+    editing it re-gates the crate, a README edit does not. Measured 2026-10-05: every media_server
+    crate has include_str!("../../../VERSION"), and keying them on the whole tree for it made the
+    cache worthless."""
+    (estate / "crates" / "shared").mkdir()
+    (estate / "crates" / "shared" / "fixture.json").write_text("{}\n")
     _edit(estate, "crates/c/src/lib.rs", '\npub const FIXTURE: &str = "../shared/fixture.json";\n')
     assert _gate(estate, "c").returncode == 0
     _edit(estate, "README.md", "more prose\n")
-    again = _gate(estate, "c")
-    assert not _skipped(again, "crate"), "a crate that reads ../ was keyed on its own dir only"
+    assert _skipped(_gate(estate, "c"), "crate"), "a README edit re-gated a precisely keyed crate"
+    _edit(estate, "crates/shared/fixture.json", "\n")
+    assert not _skipped(_gate(estate, "c"), "crate"), "editing the file it reads did not re-gate"
+
+
+def test_an_unnameable_reach_keys_the_crate_on_the_whole_tree(estate: Path) -> None:
+    _edit(
+        estate,
+        "crates/c/src/lib.rs",
+        "\npub fn up() -> std::path::PathBuf {\n"
+        '    std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("..")\n'
+        "}\n",
+    )
+    assert _gate(estate, "c").returncode == 0
+    _edit(estate, "README.md", "more prose\n")
+    assert not _skipped(_gate(estate, "c"), "crate"), "a `..` join was keyed on the crate only"
+
+
+def test_a_path_dependencys_own_test_reads_do_not_widen_its_users(estate: Path) -> None:
+    """b's tests walk the repo root; a's gate never compiles or runs b's tests."""
+    (estate / "crates" / "b" / "tests").mkdir()
+    (estate / "crates" / "b" / "tests" / "walk.rs").write_text(
+        "#[test]\nfn walks() {\n"
+        '    let _ = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");\n}\n'
+    )
+    _git(estate, "add", "-A")
+    assert _gate(estate, "a").returncode == 0
+    _edit(estate, "README.md", "more prose\n")
+    assert _skipped(_gate(estate, "a"), "crate"), "b's own tests widened a's scope"
 
 
 def test_a_build_that_read_outside_the_scope_is_never_recorded(estate: Path) -> None:
