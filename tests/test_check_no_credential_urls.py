@@ -249,6 +249,48 @@ def test_the_probe_goes_red_on_a_planted_credential_and_green_on_the_rest(repo):
     assert got.returncode == 0, out_of(got)
 
 
+def test_a_repo_with_no_remote_is_a_named_non_run_not_a_pass(repo):
+    """The empty-scope case, and it was FOUND by `check_empty_scope.py` rather than by me.
+
+    A skeleton repo has a `.git/config` and no remote in it. This gate read "zero URLs, zero
+    findings" as a clean pass, and a gate that reports compliance having inspected nothing is the
+    exact failure `checks/empty_scope_allow.json` exists to refuse — the excuse file is for a gate
+    that CANNOT answer, and this one can: it has nothing to judge, and says so.
+
+    The phrase matters as much as the exit code. `check_empty_scope.py` reads the literal string
+    `not applicable` and nothing else, so this is the gate declaring the non-run rather than the
+    sweep inferring it.
+    """
+    got = findings(repo)
+    assert got.returncode == 0, out_of(got)
+    assert "not applicable" in out_of(got), out_of(got)
+    assert "OK —" not in out_of(got), out_of(got)
+
+
+def test_the_empty_scope_sweep_accepts_this_gate(tmp_path):
+    """...and the sweep agrees, end to end, over a real skeleton. The string assertion above is the
+    contract; this is the counterparty reading it."""
+    import shutil
+
+    root = tmp_path / "skeleton"
+    (root / "checks").mkdir(parents=True)
+    git(root, "init", "-q", "-b", "main")
+    git(root, "config", "user.email", "s@e.invalid")
+    git(root, "config", "user.name", "s")
+    for name in ("check_no_credential_urls.py", "check_no_secrets.py", "_gitutil.py"):
+        shutil.copy(ROOT / "checks" / name, root / "checks" / name)
+    shutil.copytree(ROOT / "tui", root / "tui")
+    git(root, "add", "-A")
+    git(root, "-c", "user.name=s", "-c", "user.email=s@e.invalid", "commit", "-qm", "skeleton")
+    got = subprocess.run(
+        ["python3", str(ROOT / "checks" / "check_empty_scope.py"), "--root", str(root)],
+        capture_output=True,
+        text=True,
+    )
+    assert "check_no_credential_urls.py PASSED over an empty tree" not in out_of(got), out_of(got)
+    assert "check_no_credential_urls.py gave NO verdict" not in out_of(got), out_of(got)
+
+
 def test_outside_a_git_repo_is_a_usage_error_not_a_pass(tmp_path):
     """Contract 7: a check that could not read its subject must say so. `.git/config` is the
     subject, so a directory that is not a repo has nothing to judge — and printing OK there would be

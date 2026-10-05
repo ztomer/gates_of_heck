@@ -289,15 +289,38 @@ the file from the message it was given.
 
 ## 3. Where we fall short, ranked
 
-**Re-measured 2026-10-04, after v0.17.0.** Items 2, 4 and 5 are closed; item 3
-is half; item 1 is narrowed. **No ranked item moved in v0.17.0**, and saying so
-is the finding rather than leaving it implied: that release added a gate
-(`check_no_unreaped_spawn.py`), two libraries (`lib/bounded_run.py`,
-`lib/orphan_canary.py`) and a ceiling on every step — none of which is a closure
-of anything listed here. What it did do is make R3's mechanism carry one more
-entry (`check_no_unreaped_spawn.py` over `media_server`'s whole `crates/` tree,
-36 measured shapes behind a `--probe`), which is R3 working as narrowed, not R3
-closing. What remains is tracked in [`BACKLOG.md`](BACKLOG.md).
+**Re-measured 2026-10-05, after v0.19.0.** Items 2, 4 and 5 are closed; item 3
+is half; item 1 is narrowed. **No ranked item moved in v0.18.0 or v0.19.0**, and
+saying so is the finding rather than leaving it implied. What v0.19.0 closed is
+neither: it removed a cost and added a scope.
+
+**The cost, and what it was not.** v0.18.0 grew `check_no_unreaped_spawn.py`'s
+measured table 36 → 55 and the pytest suite went 226 s → 1190 s. Measured
+contributor by contributor, the table was **0.06 s of it** — the probe is
+in-process analysis over source strings, and 55 shapes cost a sixteenth of a
+second. The minutes were two defects instead: the R3 estate sweep ran on every
+`check_probes_pass.py` invocation including ones whose `--root` was a throwaway
+fixture (53.7 s to answer a question about a one-file estate), and
+`rust_findings` re-derived three crate-scope sets **once per file** over a
+2.77 MB crate context, which is 23.2 s → 2.1 s over `media_server`'s 626-file
+`crates/` tree. Suite: **1379.8 s → 735.6 s** of test time, **233.6 s → 105.7 s**
+wall. The table was not shrunk.
+
+**The scope.** R3's mechanism, and everything in this document, asks questions of
+a **repo**. `.git/config` is not in a repo, which is why a live `gho_` token sat
+in `remote.origin.url` while `check_no_secrets.py` printed `✓ OK` — proven in a
+scratch repo, and now pinned by a test asserting that sibling's verdict. R3 does
+not have a mechanism for a question about the *machine's* git configuration, and
+`check_no_credential_urls.py` is that first entry rather than a closure of R3.
+Its own limits are stated in its docstring: `.netrc`, `credential.helper` and
+`http.*.extraheader` are all measured to carry tokens and none of them is
+covered, and `docs/BACKLOG.md` carries them.
+
+**And the lesson that outranks both.** The suite was slow because a gate asked
+its question of the **wrong tree**, five times over, and the class went
+unnoticed for a release because a 20-minute suite inside a 1800 s ceiling is
+not red. A step nobody waits for is a step somebody reaches for
+`--no-verify`. What remains is tracked in [`BACKLOG.md`](BACKLOG.md).
 
 1. **R3 — NARROWED, not closed.** `checks/check_estate_corpus.py` plants a
    violation inside a real consumer corpus and requires the checker to go red

@@ -268,10 +268,15 @@ def label_of(key: str) -> str:
     return f"{remote_of(key)}.{which}"
 
 
-def findings_for(root: str):
-    """[{file, key, label, remote, which, host, kind, why, fingerprint}] for every finding."""
+def findings_for(root: str, urls=None):
+    """[{file, key, label, remote, which, host, kind, why, fingerprint}] for every finding.
+
+    `urls` is accepted rather than read so the caller can tell "no remote URLs at all" from "read
+    them and found them all clean" -- a distinction a `for` loop over an empty list erases, and the
+    empty-scope sweep is right to refuse a gate that cannot tell them apart.
+    """
     out = []
-    for key, url in read_urls(root):
+    for key, url in read_urls(root) if urls is None else urls:
         got = verdict(url)
         if got is None:
             continue
@@ -433,7 +438,8 @@ def main(argv=None) -> int:
         return probe()
     try:
         repo = root_for(args.root)
-        bad = findings_for(repo)
+        urls = read_urls(repo)
+        bad = findings_for(repo, urls)
     except (RuntimeError, subprocess.CalledProcessError) as exc:
         # Contract 7: a check that could not read its subject says so and exits 2. "OK" here would be
         # this gate reporting success over nothing.
@@ -446,10 +452,23 @@ def main(argv=None) -> int:
         else:
             print(report(bad))
         return 1
+    if not urls:
+        # A NAMED NON-RUN, not a pass over zero files. Measured, and the sweep is what found it:
+        # `check_empty_scope.py` ran this gate over a skeleton repo and read
+        # `✓ [no_credential_urls] OK — every git remote URL carries no userinfo` as a gate that
+        # reported compliance having inspected nothing -- the exact failure
+        # `checks/empty_scope_allow.json` exists to refuse. A repo with no remote at all has no
+        # remote URL to carry a credential, and saying so is the honest answer; the excuse file is
+        # for a gate that CANNOT answer, and this one can.
+        if args.json:
+            print("[]")
+        else:
+            ok("[no_credential_urls] not applicable — this repo holds no remote URL to judge")
+        return 0
     if args.json:
         print("[]")
     else:
-        ok("[no_credential_urls] OK — every git remote URL carries no userinfo")
+        ok(f"[no_credential_urls] OK — {len(urls)} git remote URL(s), none carrying userinfo")
     return 0
 
 
