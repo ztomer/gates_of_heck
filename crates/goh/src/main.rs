@@ -308,6 +308,13 @@ fn run_structural(staged: bool, full: bool) -> i32 {
     if let Some(code) = steps::step_secrets(&repo, &files, &cfg, staged) {
         return code;
     }
+    // A credential in a git remote URL, which the step above cannot see: `.git/config` is
+    // untracked. Adjacent to `step_secrets` because it is the same defect class and the same
+    // reasoning about it -- one committed, one not -- so a reader comparing the two steps finds
+    // them adjacent rather than having to know they are related.
+    if let Some(code) = steps_delegated::step_credential_urls(&repo, &checks) {
+        return code;
+    }
     if let Some(code) = steps::step_home_paths(&repo, &files, &cfg, staged) {
         return code;
     }

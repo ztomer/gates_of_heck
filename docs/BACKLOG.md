@@ -175,6 +175,34 @@ table. Carried here so the residual is not lost:
 - `check_tests_registered.py` / `check_generated_fresh.py` stay Python: no
   shared gate runs them (Phase 3c scoped to what the gates actually invoke).
 
+### Credential scope left open by `check_no_credential_urls.py` (2026-10-05)
+
+The checker is scoped to git-config URLs and says so in its docstring. Four
+adjacent shapes are deliberately NOT covered, each with a reason recorded there
+rather than left for a reader to guess:
+
+- **`.netrc` / `_netrc`** — a real credential store, out of scope because it is a
+  file outside the repo and no house gate reads from `$HOME` anywhere else. Half
+  a checker that reads `$HOME` is worse than none: it works on one machine, and
+  the day it is wrong nobody can tell. Re-open when some gate already reads a
+  path outside its repo, so there is a precedent to follow rather than invent.
+- **`credential.helper`** — measured: multi-valued, and any value may carry a
+  token (`!f() { echo username=…; }; f`). It is not a URL, so the rule does not
+  reach it. The rule that would: a credential-NAMED key holding an opaque value,
+  which is `check_no_secrets.py`'s existing pattern applied to `.git/config`
+  instead of to tracked files.
+- **`http.*.extraheader`** — measured to carry `AUTHORIZATION: basic <token>`.
+  Same shape, same fix, same reason it is separate: it is a header, not a URL.
+- **CI configs** — a token in `.github/workflows` IS committed, so
+  `check_no_secrets.py` already has it. Duplicating its patterns in a second
+  checker would be the second copy a rule about duplicates should never have.
+  NOT a gap; listed so nobody re-raises it as one.
+
+The two `.git/config` shapes are the real work and they want ONE change, not
+two: read `.git/config` with the credential-named-key rule `check_no_secrets.py`
+already owns, so a token in `credential.helper` or `http.*.extraheader` is caught
+by the rule that exists rather than by a third variant of it.
+
 ## Done (prune to history)
 
 - Rust-port arc (2026-09-23, `docs/rust-port-plan.md` retired into git

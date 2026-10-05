@@ -155,6 +155,39 @@ pub fn step_lock_version(repo: &std::path::Path, checks: &std::path::Path) -> Op
     None
 }
 
+/// A credential in a git remote URL.
+///
+/// `check_no_secrets.py` reads TRACKED FILES and `.git/config` is untracked by
+/// definition, so this class was invisible to the whole estate. Proven in a
+/// scratch repo on 2026-10-05: `check_no_secrets.py` reported `OK` over a repo
+/// whose `remote.origin.url` carried a live `gho_` token.
+///
+/// DELEGATED rather than ported, deliberately. Every other native step here is a
+/// port of a Python checker over files this binary has already read; this one
+/// reads `git config`, which the native tier does not load, and the reason to
+/// get it right is a MEASURED TABLE of remote-URL shapes (26 rows, in the
+/// checker's docstring and its `--probe`) rather than a port. Duplicating that
+/// table in Rust would be a second copy of a rule about credentials, which is the
+/// last thing that should have two.
+///
+/// No `--staged` and no `--exclude`: the subject is `.git/config`, which is not
+/// a file the staged scope reads and not a tree anything excludes. A `(staged)`
+/// label would be a lie about what was read.
+#[must_use]
+pub fn step_credential_urls(repo: &std::path::Path, checks: &std::path::Path) -> Option<i32> {
+    let code = delegated(
+        checks,
+        repo,
+        "no credential in a git remote URL",
+        "python3",
+        &["check_no_credential_urls.py".to_owned()],
+    );
+    if code != 0 {
+        return Some(code);
+    }
+    None
+}
+
 /// Python shape, decided by the repo's own declared rule set.
 ///
 /// Only run on a FULL structural pass, not on a staged one: a formatter's

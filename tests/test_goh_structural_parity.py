@@ -276,8 +276,9 @@ def test_both_tiers_run_the_same_steps(goh: Path, tmp_path: Path) -> None:
     # added to ONE tier and not the other is the defect, and a step added to
     # neither is a step nobody runs. 16 -> 17 on 2026-10-03 for
     # `no unreaped spawns in tests`; 17 -> 18 on 2026-10-04 for
-    # `prose claims are derived`.
-    assert len(in_bash) == 18, f"the pipeline's step inventory changed: {sorted(in_bash)}"
+    # `prose claims are derived`; 18 -> 19 on 2026-10-05 for
+    # `no credential in a git remote URL`.
+    assert len(in_bash) == 19, f"the pipeline's step inventory changed: {sorted(in_bash)}"
 
 
 def test_a_failing_step_names_the_checker_and_the_docs(goh: Path, tmp_path: Path) -> None:

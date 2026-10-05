@@ -350,6 +350,21 @@ else
         ${GOH_EXCLUDE:+--exclude "$GOH_EXCLUDE"}
 fi
 
+# A credential in a git REMOTE URL, which the step above cannot see because `.git/config` is
+# untracked by definition. Proven in a scratch repo on 2026-10-05: `check_no_secrets.py` reported
+# `OK` over a repo whose `remote.origin.url` carried a live `gho_` token, and its own test suite
+# pins that verdict so this step's reason to exist cannot quietly become false.
+#
+# ONE SCOPE, not one gate: `.netrc`, CI configs and shell history are named as deliberately out of
+# scope in the checker's docstring, with the reason for each. A credential in a remote URL is the
+# shape git will send to a server unencrypted on an http(s) fetch, and it is the one place the
+# estate's own `gho_` already lived. Reads `git config`, so `--staged` is meaningless and `--exclude`
+# does not apply — this walks no files.
+#
+# The finding carries a sha256 fingerprint of the userinfo and NEVER the value, for the reason the
+# estate learned with `gho_` and `ghp_`.
+goh_step "no credential in a git remote URL" python3 "$CHECKS/check_no_credential_urls.py"
+
 # A hard-coded home path (/Users/<x>/…, ~/Projects/…, $HOME/Projects/…) in a
 # shipped binary, script or doc works on one machine at one moment; the
 # salary CLI failed for two weeks after its repos moved (2026-09). Opt in per
