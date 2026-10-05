@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import os
 import re
+import shutil
 import subprocess
 from pathlib import Path
 
@@ -302,6 +303,25 @@ def test_staged_marker_agrees(goh: Path, tmp_path: Path) -> None:
     (repo / "a.py").write_bytes(b"x = 1\n<<<<<<< ours\n")
     _git(repo, "add", "a.py")
     assert run_goh(goh, repo, staged=True) == run_bash(repo, staged=True)
+
+
+FORMATTED_SRC = b"GOH_MAX_LINES=500\nGOH_PYTHON_FORMATTED=1\n"
+
+
+@pytest.mark.skipif(shutil.which("ruff") is None, reason="ruff is not installed")
+@pytest.mark.parametrize(
+    ("staged_bytes", "expected"),
+    [(b"x = {  'a':1 }\n", (1, "python is ruff-formatted (staged)")), (b"x = 1\n", (0, None))],
+)
+def test_staged_python_format_agrees(goh: Path, tmp_path: Path, staged_bytes, expected) -> None:
+    """Pre-commit was weaker than pre-push for this check (v0.20.0's refused push):
+    both tiers now run it over the staged blobs, and agree on the verdict."""
+    repo = make_repo(tmp_path, {".gatesrc": FORMATTED_SRC, "a.py": staged_bytes})
+    py = _run_bash(repo, staged=True)
+    steps = announced_steps(py.stdout + py.stderr)
+    assert any(s.startswith("python is ruff-formatted (staged)") for s in steps), steps
+    assert run_goh(goh, repo, staged=True) == (py.returncode, _failing(py.stdout, py.stderr))
+    assert (py.returncode, _failing(py.stdout, py.stderr)) == expected
 
 
 def test_staged_ignores_unstaged_dirt(goh: Path, tmp_path: Path) -> None:

@@ -289,16 +289,12 @@ goh_step "Cargo.lock matches its manifests" python3 "$CHECKS/check_lock_version.
 # NOT gated on ruff's absence being a pass: check_python_formatted.py refuses to
 # skip when ruff is missing, because a formatter that is not installed is a
 # missing gate.
-# Full scope ONLY, and the guard is explicit rather than inherited: a
-# formatter's verdict is a property of the whole tree, so a pre-commit hook
-# that reformatted the repository to satisfy one commit would be worse than one
-# that waits. crates/goh/src/steps_delegated.rs::step_python_formatted carries the
-# same rule, and tests/test_goh_structural_parity.py is what caught the two
-# disagreeing when the shell side ran it in staged mode and the native side did
-# not.
-# OPT-IN via GOH_PYTHON_FORMATTED in .gatesrc, and full scope only -- a repo
-# that has never declared a rule set should not learn one by going red.
-if [ "$SCOPE" != "--staged" ] && [ -n "${GOH_PYTHON_FORMATTED:-}" ]; then
+# OPT-IN (GOH_PYTHON_FORMATTED), BOTH scopes: --staged judges the staged blobs and reformats
+# nothing (full-only let two files through pre-commit and refused the v0.20.0 push). Pinned to
+# steps_delegated.rs::step_python_formatted by tests/test_goh_structural_parity.py.
+if [ -n "${GOH_PYTHON_FORMATTED:-}" ] && [ "$SCOPE" = "--staged" ]; then
+    goh_step "python is ruff-formatted (staged)" python3 "$CHECKS/check_python_formatted.py" --staged
+elif [ -n "${GOH_PYTHON_FORMATTED:-}" ]; then
     goh_step "python is ruff-formatted" python3 "$CHECKS/check_python_formatted.py"
 fi
 

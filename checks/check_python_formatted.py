@@ -18,7 +18,19 @@ piece a repo wants when it has Python but no pytest project: the shape, alone.
 
     check_python_formatted.py                  # the whole repo, from its root
     check_python_formatted.py tools scripts    # named trees
+    check_python_formatted.py --staged         # the staged .py files' INDEX blobs
     check_python_formatted.py --selftest       # a mis-formatted file fails
+
+STAGED. Pre-commit used to skip this step on the theory that a formatter's
+verdict is a property of the whole tree and a hook that REFORMATTED the
+repository would be worse than one that waits. Both halves were true and
+neither was the question: `--staged` reformats nothing, and it judges only the
+files the commit touches, so a commit is refused for its own bytes and nothing
+else. The cost of the old rule was measured -- two unformatted test files passed
+pre-commit and refused the v0.20.0 push. Each staged blob goes to
+`ruff format --check --force-exclude --stdin-filename <path> -`: ruff resolves the
+settings that apply to <path> (so the verdict matches the full run), and
+`--force-exclude` keeps the repo's own excludes in force for a named path.
 
 TWO THINGS THIS REFUSES TO DO. It does not SKIP when `ruff` is absent — a
 formatter that is not installed is a missing gate, not a pass, and a gate that
@@ -105,6 +117,39 @@ def check(root, paths):
     return out.returncode, (out.stdout + out.stderr).strip()
 
 
+def _check_blob(root, rel, blob):
+    """(rel, exit code, output) for one staged blob, judged as if it lived at `rel`."""
+    out = subprocess.run(
+        ["ruff", "format", "--check", "--force-exclude", "--stdin-filename", rel, "-"],
+        cwd=root,
+        input=blob,
+        capture_output=True,
+        check=False,
+    )
+    text = (out.stdout + out.stderr).decode("utf-8", "replace").strip()
+    return rel, out.returncode, text
+
+
+def check_staged(root):
+    """(staged .py paths, [(rel, output)] of the misformatted ones), from the INDEX.
+
+    One ruff per blob (ruff reads one stdin file), run concurrently: a commit
+    touching 30 Python files costs about one ruff start, not thirty in a row.
+    """
+    from concurrent.futures import ThreadPoolExecutor
+
+    from _gitutil import content_bytes, listed_files
+
+    def judge(rel):
+        blob = content_bytes(str(root), rel, staged=True)
+        return None if blob is None else _check_blob(root, rel, blob)
+
+    staged = [f for f in listed_files(str(root), staged=True) if f.endswith(".py")]
+    with ThreadPoolExecutor(max_workers=min(8, max(1, len(staged)))) as pool:
+        results = [r for r in pool.map(judge, staged) if r is not None]
+    return [rel for rel, _, _ in results], [(rel, text) for rel, code, text in results if code]
+
+
 def selftest(root):
     """The gate must refuse a mis-formatted file and pass a formatted one.
 
@@ -138,6 +183,9 @@ def main():
         "trees", nargs="*", default=["."], help="trees to check (default: the repo)"
     )
     parser.add_argument("--selftest", action="store_true")
+    parser.add_argument(
+        "--staged", action="store_true", help="judge the staged .py files' index blobs"
+    )
     args = parser.parse_args()
 
     root = repo_root()
@@ -151,6 +199,23 @@ def main():
             "missing gate, not a pass."
         )
         return 1
+
+    if args.staged:
+        paths, bad = check_staged(root)
+        if not paths:
+            info("not applicable: no staged Python files -- nothing for the formatter to judge")
+            return 0
+        if bad:
+            for rel, text in bad:
+                err(f"  {rel}: {text.splitlines()[0] if text else 'would reformat'}")
+            err(
+                f"{len(bad)} of {len(paths)} staged Python file(s) are not ruff-formatted. "
+                "Run your repo's fmt target (`ruff format`) and re-stage -- do not hand-fix "
+                "the shape."
+            )
+            return 1
+        ok(f"every staged Python file ({len(paths)}) is ruff-formatted")
+        return 0
 
     # No Python in the repository is a NAMED NON-RUN, not a pass: "every file
     # under . is ruff-formatted" over zero files is vacuously true and reads
