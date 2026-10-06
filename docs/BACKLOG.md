@@ -36,7 +36,7 @@ CPU**; `-n 12` is slower than `-n 8`.
 | C5 failure block quotes only the step that failed (ZoneWM H2; `lib/fail_lines.py`) | `24eb31d` | nested: innermost dump alone, others counted; `make`: its failing target first, matches flagged |
 | P2 `GOH_CI_JOBS` scheduler: declared-order reports, `[tag]` exclusion | `3044941` | gates_of_heck's own push steps, warm, proven off: 1 job 186 s, 2 jobs 147 s, 4 jobs 138 s (box busy with other runs: provisional) |
 | a stopped gate stops its steps (bounded_run + local_ci forward TERM/INT/HUP) | `efbaf12` | -- |
-| P2 `rust_gate.sh --each-crate` + P1f repo scans once (`GOH_RUST_GROUPS`, `GOH_RUST_JOBS`) | (this) | -- (media_server adoption is servers' own commit) |
+| P2 `rust_gate.sh --each-crate` + P1f repo scans once (`GOH_RUST_GROUPS`, `GOH_RUST_JOBS`) | `17e1541` | -- (media_server adoption is servers' own commit) |
 
 ## Phase P — make goh fast (the program)
 
