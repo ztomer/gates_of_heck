@@ -370,7 +370,7 @@ pub fn step() -> Option<i32> {
             let _ = crate::step_report::fail(
                 label,
                 &crate::step_report::ported(
-                    "crates/goh/src/credurls.rs",
+                    "crates/goh/src/credurls/mod.rs",
                     "check_no_credential_urls.py",
                 ),
                 &text,
