@@ -80,7 +80,7 @@ Status: `[ ]` open, `[x]` done (with the commit), `[~]` handed off.
 **Phase 3 — coverage without the clean rebuild** (details: "Open -- found", 3)
 - [x] 3.1 An incremental instrumented build whose report counts ONLY the current build's objects;
       each way it can lie (a deleted/renamed test binary, a previous build's profile) tested first;
-      the 29-crate A/B shows identical reports. Done (`1b12b22`): only the PROFILES are reset;
+      the 29-crate A/B shows identical reports. Done (`06afca4`): only the PROFILES are reset;
       29/29 crates identical to the clean build, 173 -> 76 s. It also exposed the gate WRITING a
       missing Cargo.lock as a side effect of the clean (a fixture relied on it).
 
