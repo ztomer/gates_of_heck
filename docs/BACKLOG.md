@@ -245,8 +245,12 @@ order, never the reverse:
   the look-ahead), and the shell masker blanks a quoted heredoc tag before reading it, so
   `<<'EOF'` bodies are scanned as code. **`check_version_provenance.py` LANDED** as
   `goh version-provenance` (`crates/goh/src/provenance.rs`; tests on both tiers via
-  `tests/tier_kit.py`, byte-identical on every local repo at all three output modes). Next: `check_no_kill_by_name`,
-  `check_claim_derivation`, `check_md_links`, `check_python_formatted` (spawns ruff either way),
+  `tests/tier_kit.py`, byte-identical on every local repo at all three output modes).
+  **`check_no_kill_by_name` LANDED** as `goh kill-by-name` (`crates/goh/src/killname/`): a Python
+  lexer replaces `ast`+`tokenize` for the comment/docstring strip; code lines identical on 1,767
+  `.py` files across 30 repos, reports identical at both scopes. Its one possible divergence is a
+  file that TOKENIZES but does not PARSE (the reference falls back to plain lines; the port cannot
+  see a parse error) -- none in the estate. Next: `check_claim_derivation`, `check_md_links`, `check_python_formatted` (spawns ruff either way),
   `check_lock_version`, `check_no_credential_urls`, `check_shell_lint.sh` (spawns shellcheck), and
   the gate-side Python (`check_dep_currency`, `check_lints_optin`'s twin, `lcov_merge`). Each port
   lands parity-pinned against the Python it replaces and red-proven both ways, as Phase 3 did.

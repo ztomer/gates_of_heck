@@ -16,16 +16,20 @@ import json
 import subprocess
 from pathlib import Path
 
-from conftest import REPO_ROOT, commit_all, stage, write
+import pytest
+
+from conftest import commit_all, stage, write
+from tier_kit import both_tiers, run_tiered  # noqa: F401  # both_tiers: a fixture
 
 CHECK = "checks/check_no_kill_by_name.py"
 PK, KA, PG = "p" + "kill", "kill" + "all", "p" + "grep"
 
+pytestmark = pytest.mark.usefixtures("both_tiers")
+
 
 def run(repo: Path, *args: str) -> subprocess.CompletedProcess:
-    return subprocess.run(
-        ["python3", str(REPO_ROOT / CHECK), *args], cwd=repo, capture_output=True, text=True
-    )
+    """The checker over `repo`, on the current tier (Python, or `goh kill-by-name`)."""
+    return run_tiered(repo, CHECK, "kill-by-name", *args)
 
 
 def allow(repo: Path, *entries: dict) -> None:

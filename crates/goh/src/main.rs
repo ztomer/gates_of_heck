@@ -16,6 +16,7 @@ pub mod gatesrc;
 pub mod gitutil;
 pub mod homepaths;
 pub mod index_view;
+pub mod killname;
 pub mod length;
 pub mod lints;
 pub mod markers;
@@ -177,6 +178,18 @@ enum Commands {
         #[arg(long)]
         json: bool,
     },
+    /// Fail on a process kill by NAME (native port of `check_no_kill_by_name`).
+    KillByName {
+        /// Regex on repo-relative paths to skip (`GOH_EXCLUDE`).
+        #[arg(long, default_value = "")]
+        exclude: String,
+        /// Staged blobs (polices the index, like the Python checker).
+        #[arg(long)]
+        staged: bool,
+        /// Print the code lines read from stdin for this path, as JSON.
+        #[arg(long)]
+        code_lines: Option<String>,
+    },
     /// Fail on a test spawn no guard reaps, or whose reap sits below a line
     /// that can panic (native port of `check_no_unreaped_spawn`).
     UnreapedSpawn {
@@ -284,6 +297,11 @@ fn main() {
             staged,
             json,
         } => provenance::run_command(&root, baseline.as_deref(), staged, json),
+        Commands::KillByName {
+            exclude,
+            staged,
+            code_lines,
+        } => killname::run_command(staged, &exclude, code_lines.as_deref()),
         Commands::UnreapedSpawn {
             exclude,
             staged,
@@ -361,7 +379,6 @@ fn run_structural(staged: bool, full: bool) -> i32 {
         let _ = steps_delegated::step_md_links(&repo, &checks, &cfg, staged);
         let _ = steps_delegated::step_lock_version(&repo, &checks);
         let _ = steps_delegated::step_python_formatted(&repo, &cfg, &checks, staged);
-        let _ = steps_delegated::step_kill_by_name(&repo, &cfg, &checks, staged);
         let _ = steps_delegated::step_claim_derivation(&repo, &cfg, &checks, staged);
         let _ = steps_delegated::step_full_only(&repo, &checks, staged);
     });
@@ -410,7 +427,7 @@ fn run_structural(staged: bool, full: bool) -> i32 {
     if let Some(code) = steps_delegated::step_python_formatted(&repo, &cfg, &checks, staged) {
         return code;
     }
-    if let Some(code) = steps_delegated::step_kill_by_name(&repo, &cfg, &checks, staged) {
+    if let Some(code) = killname::step(&cfg, staged) {
         return code;
     }
     if let Some(code) = unreaped::step(&cfg, staged) {

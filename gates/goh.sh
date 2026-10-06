@@ -37,6 +37,7 @@ case "$check" in
     deps)       python_file="checks/check_dep_currency.py" ;;
     unreaped-spawn) python_file="checks/check_no_unreaped_spawn.py" ;;
     version-provenance) python_file="checks/check_version_provenance.py" ;;
+    kill-by-name) python_file="checks/check_no_kill_by_name.py" ;;
     *) echo "✗ goh.sh: unknown check '$check'" >&2; exit 2 ;;
 esac
 

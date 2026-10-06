@@ -192,41 +192,6 @@ pub fn step_python_formatted(
     None
 }
 
-#[must_use]
-pub fn step_kill_by_name(
-    repo: &std::path::Path,
-    cfg: &gatesrc::Gatesrc,
-    checks: &std::path::Path,
-    staged: bool,
-) -> Option<i32> {
-    // 7c. Process kills by name (opt-in per repo): a name matches processes
-    // the caller does not own. Delegated to the Python checker, which owns
-    // the comment stripping and the allowlist ratchet.
-    if !gatesrc::opt_in(cfg, "GOH_NO_KILL_BY_NAME") {
-        return None;
-    }
-    let label = if staged {
-        "no process kill by name (staged)"
-    } else {
-        "no process kill by name"
-    };
-    let mut args = vec!["check_no_kill_by_name.py".to_owned()];
-    if staged {
-        args.push("--staged".to_owned());
-    }
-    if !cfg.exclude.is_empty() {
-        args.push("--exclude".to_owned());
-        args.push(cfg.exclude.clone());
-    }
-    let code = delegated(checks, repo, label, "python3", &args);
-    if code != 0 {
-        return Some(code);
-    }
-    None
-}
-
-/// A TEST that spawns a child nothing reaps on the panic path.
-///
 /// A number in prose, re-derived from the tree it describes.
 ///
 /// Three adversarial reviews of the games estate converged on this class (2026-10):
