@@ -129,7 +129,7 @@ behind the same tests the shell passes today, red-proven, one at a time:
       leak sample, GOH_TIMINGS). Its one blocker -- a signal ignored at entry must stay ignored --
       needs the inherited disposition (`sigaction`); `unsafe` is denied in the crate, so either a
       vetted crate exposing it safely, or one exemption the unsafe allowlist names, with a test.
-      Done (`COMMIT`): `crates/goh-sys` (the one allowlisted `unsafe`) + `signal-hook`; the CLI
+      Done (`3b94809`): `crates/goh-sys` (the one allowlisted `unsafe`) + `signal-hook`; the CLI
       contract pinned against BOTH wrappers (15 cases each); 26-79 ms -> 4.3 ms a step.
 - [ ] 4C.2 The proven cache native (`goh proven key|lookup|record`): the tree key, the scoped
       key and the identity computed in-process with git asked once per fact.
