@@ -164,6 +164,7 @@ def test_goh_live_runs_the_working_trees_binary_not_heads(tmp_path: Path) -> Non
     env.update(
         GOH_LIVE="1",
         GOH_LIVE_TARGET_DIR=str(Path(__file__).resolve().parents[1] / "target" / "goh-live-test"),
+        DRIFT_BUILD_OK="1",  # building the working tree's goh is the subject (tests/_drift_guard.py)
     )
     live = subprocess.run(
         ["bash", str(gates / "gates" / "goh.sh"), "lints", "--help"],

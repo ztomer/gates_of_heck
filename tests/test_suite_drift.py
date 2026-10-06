@@ -90,7 +90,9 @@ def _ratchet(found: Counter[str], allowed: dict[str, int], what: str) -> None:
 
 
 def test_no_new_git_init_in_tests() -> None:
-    paths = [p for p in _tracked("tests/*.py") if not p.endswith("_fast_git.py")]
+    # The template's home, and the two files that police the pattern (they name it, never run it).
+    own = ("_fast_git.py", "_drift_guard.py", "test_suite_drift.py")
+    paths = [p for p in _tracked("tests/*.py") if not p.endswith(own)]
     found = _count(_INIT, paths)
     _ratchet(Counter({Path(f).name: n for f, n in found.items()}), GIT_INIT_SITES, "git init site")
 
