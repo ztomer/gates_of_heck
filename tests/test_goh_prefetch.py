@@ -9,7 +9,7 @@ only sleep and leave a marker:
   FINISHED by the time `goh` returns (its marker exists) -- a gate that exits leaving children
   running is the class check_no_unreaped_spawn.py exists for.
 
-Output order and verdicts are pinned separately by test_goh_structural_parity.py.
+Output order and verdicts are pinned separately by test_goh_structural.py.
 """
 
 from __future__ import annotations

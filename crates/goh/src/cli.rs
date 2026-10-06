@@ -160,6 +160,9 @@ pub enum Commands {
         /// Judge the staged `.py` files' index blobs.
         #[arg(long)]
         staged: bool,
+        /// Prove the gate: a mis-formatted file is refused and a formatted one passes.
+        #[arg(long)]
+        selftest: bool,
     },
     /// Fail on a credential in `.git/config` (native port of `check_no_credential_urls`).
     CredentialUrls {
@@ -261,6 +264,9 @@ pub enum Commands {
         /// Machine-readable output.
         #[arg(long)]
         json: bool,
+        /// Print the claims stdin makes, read as this path, as JSON (the grammar's test seam).
+        #[arg(long, value_name = "PATH")]
+        parse_claims: Option<String>,
     },
     /// Fail on a process kill by NAME (native port of `check_no_kill_by_name`).
     KillByName {

@@ -194,9 +194,7 @@ def emit(ours: list[str], repo: str | None, verbose: bool = False) -> None:
             "  that only shows up as a LATER hang is a leak with no signal of its own — an orphan"
         )
         print("  holding a build lock blocks every subsequent run with no output at all. Wrap the")
-        print(
-            "  child in a guard that reaps it on a panic (checks/check_no_unreaped_spawn.py names the"
-        )
+        print("  child in a guard that reaps it on a panic (`goh unreaped-spawn` names the")
         print("  pattern).")
 
 

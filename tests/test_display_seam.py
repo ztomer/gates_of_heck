@@ -259,7 +259,7 @@ def test_the_probe_goes_red_when_one_rule_is_dropped(tmp_path, label, old, new):
         "_display_seam_probe.py",
         "_marker_reason.py",
         "_gitutil.py",
-        "check_no_screen_presentation.py",
+        "_swift_text.py",
     ):
         (work / name).write_text((ROOT / "checks" / name).read_text(encoding="utf-8"), "utf-8")
     got = subprocess.run(

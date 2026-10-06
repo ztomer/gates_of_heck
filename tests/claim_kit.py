@@ -12,22 +12,23 @@ fixture that disagrees with the gate is the failure this estate has already paid
 for twice (SUPERSOTA R3: a check written against a fixture invented beside it).
 
 Pure builders plus git. Every tree is staged as it is built, because the checker
-reads git SCOPE: a directory on disk is not a repository it can see.
+reads git SCOPE: a directory on disk is not a repository it can see. The gate is the
+native `goh claim-derivation` (the Python checker is retired, Phase N3): `findings`
+reads its `--json` back into the verdict shape these suites assert on, and `parse`
+asks the grammar alone through `--parse-claims`.
 """
 
 from __future__ import annotations
 
 import json
-import sys
+import subprocess
 from pathlib import Path
+from types import SimpleNamespace
 
-from conftest import REPO_ROOT, commit_all, stage, write
+from conftest import commit_all, run_goh, stage, write
 
-sys.path.insert(0, str(REPO_ROOT / "checks"))
-from check_claim_derivation import check
-
-# The size of the derivation table `checks/_claim_derive.CHECKS` carries, and the
-# number `checks/check_claim_derivation.py`'s own docstring CLAIMS about it.
+# The number of derivations (`crates/goh/src/claims/derive.rs::derive`), pinned there by
+# `every_unit_names_a_derivation_and_there_are_four`.
 GATES = 4
 
 # A package with two declared lists (so `declared` can be asked for one by name and
@@ -101,11 +102,57 @@ def doc(repo: Path, body: str, name: str = "docs/note.md") -> Path:
     return repo
 
 
-def findings(repo: Path, body: str | None = None):
-    """One `check()` pass over `repo`, optionally with `body` written into it."""
+def verdict(repo: Path, *args: str) -> SimpleNamespace:
+    """One `goh claim-derivation --json` pass over `repo`, as the verdict the suites read:
+    `findings` are `(file, claim, kind, detail, command, value)` with `claim.line` and
+    `claim.number`; `stale`, `problems`, `notes`, `claims`, `examined`, `excused`, `debt`."""
+    r = run_goh(repo, "claim-derivation", "--root", str(repo), "--json", *args)
+    if r.returncode == 2 or not r.stdout.strip():
+        raise AssertionError(f"claim-derivation refused (exit {r.returncode}): {r.stderr}")
+    doc_ = json.loads(r.stdout)
+    rows = [
+        (
+            f["file"],
+            SimpleNamespace(line=f["line"], number=f["number"]),
+            f["kind"],
+            f["detail"],
+            f["command"],
+            f["value"],
+        )
+        for f in doc_["findings"]
+    ]
+    return SimpleNamespace(
+        findings=rows,
+        stale=doc_["stale_allow_entries"],
+        problems=doc_["problems"],
+        notes=doc_["notes"],
+        claims=doc_["claims"],
+        examined=doc_["examined"],
+        excused=doc_["allowlisted"],
+        debt=doc_["unreviewed"],
+        code=r.returncode,
+    )
+
+
+def findings(repo: Path, body: str | None = None) -> SimpleNamespace:
+    """One pass over `repo`, optionally with `body` written into it."""
     if body is not None:
         doc(repo, body)
-    return check(str(repo), None, False)
+    return verdict(repo)
+
+
+def parse(text: str, rel: str = "docs/x.md") -> list[SimpleNamespace]:
+    """The claims the grammar reads in `text` as file `rel` -- no tree is asked."""
+    r = run_goh(Path.cwd(), "claim-derivation", "--parse-claims", rel, input=text)
+    assert r.returncode == 0, r.stderr
+    return [SimpleNamespace(**c) for c in json.loads(r.stdout)]
+
+
+def run_command(command: str, cwd: str) -> str:
+    """Run a finding's printed re-derivation and return its stdout: the command is EXECUTED,
+    never trusted."""
+    out = subprocess.run(command, shell=True, cwd=cwd, capture_output=True, text=True)
+    return out.stdout.strip()
 
 
 def numbers(repo: Path, prose: str) -> tuple[int, str, str]:

@@ -17,7 +17,7 @@ import pytest
 from conftest import REPO_ROOT
 
 sys.path.insert(0, str(REPO_ROOT / "checks"))
-import _version_sources as sources
+from _tag_version_kit import extract  # noqa: E402
 
 PEP621 = """[project]
 name = "thing"
@@ -42,7 +42,7 @@ python = "^3.13"
 
 
 def test_it_reads_the_project_section():
-    assert sources.from_pyproject(PEP621) == [("(project)", "1.4.2")]
+    assert extract("pyproject", PEP621) == [("(project)", "1.4.2")]
 
 
 def test_a_version_under_another_table_is_not_the_distribution_version():
@@ -51,32 +51,31 @@ def test_a_version_under_another_table_is_not_the_distribution_version():
     Unanchored, a `version =` match would return both numbers and the gate would report a correct
     release as disagreeing with itself.
     """
-    found = sources.from_pyproject(PEP621)
+    found = extract("pyproject", PEP621)
     assert all(version != "9.9.9" for _table, version in found), found
 
 
 def test_it_reads_the_poetry_spelling_too():
     """The other live spelling. Two spellings disagreeing is exactly what this gate is for."""
-    assert sources.from_pyproject(POETRY) == [("(tool.poetry)", "1.4.2")]
+    assert extract("pyproject", POETRY) == [("(tool.poetry)", "1.4.2")]
 
 
 def test_two_disagreeing_spellings_are_both_returned():
     text = '[project]\nversion = "1.0.0"\n\n[tool.poetry]\nversion = "2.0.0"\n'
-    assert len(sources.from_pyproject(text)) == 2
+    assert len(extract("pyproject", text)) == 2
 
 
 def test_a_pyproject_with_no_version_declares_nothing():
-    assert sources.from_pyproject('[project]\nname = "thing"\n') == []
+    assert extract("pyproject", '[project]\nname = "thing"\n') == []
 
 
 def test_the_cargo_strategy_correctly_reads_nothing_here():
     """The two must not overlap. `cargo:` matching a `pyproject.toml` would be a false disagreement."""
-    assert sources.from_cargo(PEP621) == []
+    assert extract("cargo", PEP621) == []
 
 
 def test_it_is_registered_and_configurable():
-    assert "pyproject" in sources.KINDS
-    assert sources.STRATEGIES["pyproject"] is sources.from_pyproject
+    assert extract("pyproject", "") == []  # the native answers to the name
 
 
 @pytest.mark.parametrize(
@@ -88,5 +87,5 @@ def test_it_is_registered_and_configurable():
 )
 def test_value_shape_is_whatever_a_release_number_is(mutate, expect_empty):
     """`1.4` is not a release number; `1.4.2-dev` is one, and SEMVER_VALUE is the shared judge."""
-    found = sources.from_pyproject(mutate(PEP621))
+    found = extract("pyproject", mutate(PEP621))
     assert (found == []) is expect_empty

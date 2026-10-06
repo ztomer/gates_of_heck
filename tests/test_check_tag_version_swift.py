@@ -23,11 +23,11 @@ pytestmark = pytest.mark.usefixtures("both_tiers")
 
 def run_check(repo, script, *args):
     """The checker over `repo`, on the current tier (Python, or `goh tag-version`)."""
-    return run_tiered(repo, script, "tag-version", *args, python_only=("--probe",))
+    return run_tiered(repo, script, "tag-version", *args)
 
 
 sys.path.insert(0, str(REPO_ROOT / "checks"))
-import _version_sources as sources  # noqa: E402
+from _tag_version_kit import extract  # noqa: E402
 
 CHECKER = "checks/check_tag_version.py"
 ZERO = "0" * 40
@@ -118,7 +118,7 @@ def test_the_swift_strategy_reads_the_release_number_not_the_build_number():
         '    public static let build = "131"\n'
         "}\n"
     )
-    assert sources.from_swift(source) == [("(swift:marketing)", "2.73.0")]
+    assert extract("swift", source) == [("(swift:marketing)", "2.73.0")]
 
 
 def test_a_swift_file_that_declares_nothing_is_a_named_non_run_not_a_pass(tmp_path):

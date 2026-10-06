@@ -1,4 +1,4 @@
-//! Merge-conflict marker scan — Rust port of `checks/check_no_conflict_markers.py`.
+//! Merge-conflict marker scan — Rust port of the retired `checks/check_no_conflict_markers.py`.
 //!
 //! Only a marker at the start of a line counts: `<<<<<<< ` / `>>>>>>> ` /
 //! `||||||| ` (the diff3 base marker), each followed by whitespace or

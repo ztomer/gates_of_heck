@@ -1,18 +1,6 @@
 {
  "entries": [
   {
-   "path": "checks/check_no_kill_by_name.py",
-   "line": "KILL_BY_NAME = re.compile(_WORD.format(\"(?:pkill|killall)\"))",
-   "status": "legitimate",
-   "reason": "the gate's own pattern; it matches kills and runs none"
-  },
-  {
-   "path": "checks/check_no_kill_by_name.py",
-   "line": "if m.group(0) == \"pkill\" and SCOPED.search(code[m.end():]):",
-   "status": "legitimate",
-   "reason": "the gate's own pattern; it matches kills and runs none"
-  },
-  {
    "path": "tools/profiling/hotspot_profile.sh",
    "line": "pkill -x \"CadGoose\" 2>/dev/null || true",
    "status": "unreviewed",

@@ -1,4 +1,4 @@
-//! Workspace-lint opt-in audit — Rust port of `checks/check_lints_optin.py`.
+//! Workspace-lint opt-in audit — Rust port of the retired `checks/check_lints_optin.py`.
 //!
 //! `[workspace.lints]` is a declaration, not an application: a member
 //! crate inherits it only with `[lints] workspace = true` of its own,

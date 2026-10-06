@@ -101,7 +101,7 @@ tag_check="$GOH/gates/goh.sh"
 # tui` — modified, staged, deleted, renamed, or untracked-and-not-ignored. The
 # list is spelled out rather than sourced from a helper because a helper under
 # gates/ is itself gate source this check cannot vouch for;
-# tests/test_goh_structural_parity.py pins the lists to each other.
+# tests/test_goh_structural.py pins the lists to each other.
 gate_dirty="$(git -C "$GOH" status --porcelain --untracked-files=normal \
     -- gates checks lib tui 2>/dev/null || true)"
 if [ -n "$gate_dirty" ]; then

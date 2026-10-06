@@ -1,4 +1,4 @@
-"""check_md_links.py — a relative markdown link must resolve to a file AND an anchor.
+"""`goh md-links` — a relative markdown link must resolve to a file AND an anchor.
 
 An audit of `app_updates` (2026-10-01) had to link into another file in the same
 repo and hand-derived the heading anchor `#48-what-90-can-actually-do-measured`.
@@ -18,16 +18,33 @@ a heading numbered 4.8 reading "What .90 can actually do, measured"
 
 import json
 import subprocess
-import sys
 
 import pytest
 
-from conftest import REPO_ROOT, commit_all, git, write
+from conftest import commit_all, git, write
 from tier_kit import both_tiers, run_tiered  # noqa: F401  # both_tiers: a fixture
 
-sys.path.insert(0, str(REPO_ROOT / "checks"))
-import check_md_links as gate  # noqa: E402
-import _md_text as md  # noqa: E402
+from conftest import native_goh_path  # noqa: E402
+
+
+def anchors(text: str) -> set[str]:
+    """The anchors `goh md-links --anchors` reads in `text`."""
+    r = subprocess.run(
+        [str(native_goh_path()), "md-links", "--anchors"],
+        input=text,
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    assert r.returncode == 0, r.stderr
+    return set(json.loads(r.stdout)["anchors"])
+
+
+def slugify(heading: str) -> str:
+    """The one anchor a lone `# heading` gets."""
+    (slug,) = anchors(f"# {heading}\n")
+    return slug
+
 
 CHECKER = "checks/check_md_links.py"
 
@@ -36,7 +53,7 @@ pytestmark = pytest.mark.usefixtures("both_tiers")
 
 def _run(repo, *args):
     """The checker over `repo`, on the current tier (Python, or `goh md-links`)."""
-    return run_tiered(repo, CHECKER, "md-links", *args, python_only=("--probe",))
+    return run_tiered(repo, CHECKER, "md-links", *args)
 
 
 # ── the slug, which is the whole difficulty ──────────────────────────────────
@@ -47,7 +64,7 @@ def test_a_numbered_heading_slugs_like_github():
     the backticked `.90` keeps its digits and loses its punctuation, the trailing
     comma goes, and every space becomes a hyphen."""
     assert (
-        md.slugify("4.8. What `.90` can actually do, measured")
+        slugify("4.8. What `.90` can actually do, measured")
         == "48-what-90-can-actually-do-measured"
     )
 
@@ -56,7 +73,7 @@ def test_a_backticked_heading_keeps_its_inner_text():
     """The regression this gate's first draft had, and it rejected the correct
     link it was written to check: blanking inline code spans turned `.90` into
     seven hyphens. Anchors must come from the RAW heading text."""
-    slug = md.slugify("4.8. What `.90` can actually do, measured")
+    slug = slugify("4.8. What `.90` can actually do, measured")
     assert "90" in slug and "---" not in slug, slug
 
 
@@ -64,39 +81,37 @@ def test_a_duplicate_heading_gets_a_counter():
     """A link to the SECOND `## Notes` has to resolve; the bare slug resolves to
     the first. GitHub numbers them `notes`, `notes-1`, `notes-2`."""
     text = "# T\n\n## Notes\n\na\n\n## Notes\n\nb\n\n## Notes\n"
-    assert {"notes", "notes-1", "notes-2"} <= md.anchors(text), md.anchors(text)
+    assert {"notes", "notes-1", "notes-2"} <= anchors(text), anchors(text)
 
 
 def test_a_setext_heading_is_a_heading():
     """Underlined headings are real CommonMark, and a regex that only knows `#`
     misses them, so every link into one is reported broken."""
     text = "# Title\n\nSome prose\n\nMeasured Results\n==============\n\nmore\n"
-    assert "measured-results" in md.anchors(text), md.anchors(text)
+    assert "measured-results" in anchors(text), anchors(text)
 
 
 def test_an_explicit_id_is_an_anchor():
     """`{#my-own-id}` names the heading directly, so the literal wins and the
     derived slug is not what a link has to use."""
-    assert "my-own-id" in md.anchors("## Custom {#my-own-id}\n"), md.anchors(
-        "## Custom {#my-own-id}\n"
-    )
+    assert "my-own-id" in anchors("## Custom {#my-own-id}\n"), anchors("## Custom {#my-own-id}\n")
 
 
 def test_a_raw_html_anchor_is_an_anchor():
     text = '<a id="manual-anchor"></a>\n\n## Something\n'
-    assert "manual-anchor" in md.anchors(text), md.anchors(text)
+    assert "manual-anchor" in anchors(text), anchors(text)
 
 
 def test_accented_headings_keep_their_letters():
     """GitHub keeps `café` as `café`. Normalising to ASCII here would invent a
     broken anchor for every non-English heading in the estate — the precise
     failure this checker exists to end, manufactured by the checker."""
-    assert md.slugify("Café numbers") == "café-numbers", md.slugify("Café numbers")
+    assert slugify("Café numbers") == "café-numbers", slugify("Café numbers")
 
 
 def test_a_hash_inside_a_fenced_block_is_not_a_heading():
     text = "# Real\n\n```sh\n# not a heading\necho hi\n```\n\n## Also real\n"
-    found = md.anchors(text)
+    found = anchors(text)
     assert "real" in found and "also-real" in found, found
     assert not any("not-a-heading" in a for a in found), found
 
@@ -365,55 +380,6 @@ def test_staged_judges_the_commit_not_the_worktree(tmp_path):
     assert r.returncode == 0, f"an unstaged edit blocked a clean commit: {r.stdout}{r.stderr}"
 
 
-# ── calibration: these cases can go RED ─────────────────────────────────────
-
-
-def test_calibration_a_checker_that_never_reads_anchors_is_green(tmp_path):
-    """The blind shape: resolve the FILE, ignore the fragment. This is what the
-    gate looks like with no anchor checking at all, and it passes the audit's
-    wrong anchor."""
-    repo = tmp_path / "app"
-    repo.mkdir()
-    git(repo, "init", "-q", "-b", "main")
-    write(repo, "README.md", "[x](ROADMAP.md#no-such-anchor)\n")
-    write(repo, "ROADMAP.md", "# Real heading\n")
-    commit_all(repo)
-
-    assert gate.split_target("ROADMAP.md#no-such-anchor") == ("ROADMAP.md", "no-such-anchor")
-    # ...and the real checker, on the same tree, is red.
-    r = _run(repo)
-    assert r.returncode == 1, r.stdout + r.stderr
-    assert "no anchor #no-such-anchor" in r.stderr, r.stderr
-
-
-def test_calibration_the_probe_goes_red_when_the_anchor_check_is_dropped(tmp_path):
-    """The same break as the gate RUNS the probe. A probe that has quietly
-    stopped covering half its checker is exactly what check_probes_pass exists
-    for, and only breaking the checker demonstrates it."""
-    source = (REPO_ROOT / CHECKER).read_text(encoding="utf-8")
-    blind = tmp_path / "blind.py"
-    blind.write_text(
-        source.replace("if fragment and fragment not in target_anchors:", "if False:"),
-        encoding="utf-8",
-    )
-    import os
-
-    r = subprocess.run(
-        [sys.executable, str(blind), "--probe"],
-        cwd=tmp_path,
-        capture_output=True,
-        text=True,
-        env=dict(
-            os.environ, PYTHONPATH=os.pathsep.join([str(REPO_ROOT / "checks"), str(REPO_ROOT)])
-        ),
-    )
-    assert r.returncode == 1, r.stdout + r.stderr
-    assert "hand-mis-derived anchor is RED" in r.stderr, r.stderr
-
-
-def test_the_probe_runs_and_is_green():
-    r = subprocess.run(
-        [sys.executable, str(REPO_ROOT / CHECKER), "--probe"], capture_output=True, text=True
-    )
-    assert r.returncode == 0, r.stdout + r.stderr
-    assert "both go red" in r.stdout, r.stdout
+# The retired Python checker's `--probe` and its blinded-source calibrations went with it (Phase
+# N3). `test_a_wrong_anchor_is_red` is the same proof against the native: the anchor arm is
+# load-bearing, or the audit's wrong anchor would pass.

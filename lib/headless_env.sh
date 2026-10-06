@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # headless_env.sh — the RUNTIME half of the "tests never render to the real
-# screen" invariant. The static half is checks/check_no_screen_presentation.py;
+# screen" invariant. The static half is `goh screen` (gates/goh.sh);
 # neither subsumes the other: the grep sees what a test ASKS for, this file is
 # what actually reaches the child process's environment.
 #

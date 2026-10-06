@@ -1,4 +1,4 @@
-//! No-suppression scan — Rust port of `checks/check_no_allow.py`.
+//! No-suppression scan — Rust port of the retired `checks/check_no_allow.py`.
 //!
 //! Clippy runs at `-D warnings` everywhere; warnings are fixed, never
 //! silenced. Both `#[allow(…)]` / `#![allow(…)]` and `#[expect(…)]` /

@@ -24,11 +24,11 @@ pytestmark = pytest.mark.usefixtures("both_tiers")
 
 def run_check(repo, script, *args):
     """The checker over `repo`, on the current tier (Python, or `goh tag-version`)."""
-    return run_tiered(repo, script, "tag-version", *args, python_only=("--probe",))
+    return run_tiered(repo, script, "tag-version", *args)
 
 
 sys.path.insert(0, str(REPO_ROOT / "checks"))
-import _version_sources as sources  # noqa: E402
+from _tag_version_kit import extract  # noqa: E402
 
 CHECKER = "checks/check_tag_version.py"
 ZERO = "0" * 40
@@ -76,7 +76,7 @@ def test_the_xcconfig_strategy_reads_the_release_number_not_the_build_number():
     """`CURRENT_PROJECT_VERSION = 131` is not `x.y.z`. Taking the first assignment would
     refuse every correct tag; taking the first ASSIGNMENT rather than the first release number
     would read `MARKETING_VERSION = 2.73.0` whole and refuse them too."""
-    assert sources.from_xcconfig(VERSION_XCCONFIG) == [("(xcconfig:MARKETING_VERSION)", "2.73.0")]
+    assert extract("xcconfig", VERSION_XCCONFIG) == [("(xcconfig:MARKETING_VERSION)", "2.73.0")]
 
 
 def test_the_file_strategy_would_have_read_this_layout_wrong():
@@ -85,10 +85,10 @@ def test_the_file_strategy_would_have_read_this_layout_wrong():
     SENTENCE as its version, and an uncommented one hands it `MARKETING_VERSION = 2.73.0`
     whole. Either way a correct release reads as a mismatch against its own tag — the one
     failure mode nobody investigates."""
-    assert sources.from_version_file(VERSION_XCCONFIG) == [
+    assert extract("file", VERSION_XCCONFIG) == [
         ("(file)", "// The one place the version is written. See D-0195.")
     ]
-    assert sources.from_version_file("MARKETING_VERSION = 2.73.0\n") == [
+    assert extract("file", "MARKETING_VERSION = 2.73.0\n") == [
         ("(file)", "MARKETING_VERSION = 2.73.0")
     ]
 
@@ -100,7 +100,7 @@ def test_a_trailing_comment_and_an_sdk_condition_are_not_part_of_the_value():
         "MARKETING_VERSION[sdk=macosx*] = 2.73.0 // bumped by tools/gen_version.py\n"
         "CURRENT_PROJECT_VERSION = 131\n"
     )
-    assert sources.from_xcconfig(source) == [("(xcconfig:MARKETING_VERSION)", "2.73.0")]
+    assert extract("xcconfig", source) == [("(xcconfig:MARKETING_VERSION)", "2.73.0")]
 
 
 def test_a_settings_file_that_declares_no_release_number_is_a_named_non_run(tmp_path):
@@ -142,7 +142,7 @@ def test_a_settings_file_disagreeing_with_itself_fails_rather_than_picking_one(t
     """Two `x.y.z` settings cannot both be the release. Returning both means the gate sees the
     disagreement; returning the first would resolve it silently and read as truth."""
     source = "MARKETING_VERSION = 2.73.0\nMARKETING_VERSION_OVERRIDE = 9.9.9\n"
-    assert len(sources.from_xcconfig(source)) == 2
+    assert len(extract("xcconfig", source)) == 2
     repo, refs = _tagged_repo(tmp_path, "selfdisagree", "Config/Version.xcconfig", source)
     result = _run(repo, refs, "xcconfig:Config/Version.xcconfig")
     assert result.returncode == 1, result.stdout + result.stderr

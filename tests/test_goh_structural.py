@@ -1,15 +1,17 @@
-"""Structural parity: `goh structural` agrees with `gates/structural.sh`.
+"""The structural pipeline: `goh structural`, and `gates/structural.sh` that hooks call.
 
-Fixture repos per case; identical exit codes and failing step labels in full and
-staged modes, so step order, labels, config handling or scope gating drifting goes
-red. The last two sections are the OTHER end of the same contract: where a config
-key comes FROM, and what happens when the gate's own source is uncommitted — a
-gate's inputs, and its source itself, are inputs.
+Fixture repos per case, each with its EXPECTED exit code and failing step label in
+full and staged modes, so step order, labels, config handling or scope gating
+drifting goes red. Until Phase N3 this compared the native tier against the Python
+one; the verdicts here are the ones both tiers gave on 2026-10-06 (the last day
+there were two), frozen. Agreement between tiers could not see a case both tiers
+SKIPPED -- the python-format "red" case was green in both for exactly that reason,
+and an expected verdict caught it. The last sections are the other end of the same
+contract: where a config key comes FROM, and which binary answers.
 """
 
 from __future__ import annotations
 
-import os
 import re
 import shutil
 import subprocess
@@ -45,19 +47,14 @@ def _failing(out: str, err: str) -> str | None:
 
 
 def _run_bash(
-    repo: Path, staged: bool, extra: dict[str, str] | None = None
+    repo: Path, staged: bool, extra: dict[str, str] | None = None, goh: Path | None = None
 ) -> subprocess.CompletedProcess:
-    """The PYTHON pipeline. structural.sh execs the native binary when one is around,
-    so this side is pinned to the checkers with GOH_NO_NATIVE: native vs Python,
-    never native vs itself."""
-    env = hermetic_env(GOH_NO_NATIVE="1", GOH_DIR=str(ROOT), **(extra or {}))
+    """The HOOK's entry point: structural.sh, which resolves the binary and execs it."""
+    env = hermetic_env(GOH_DIR=str(ROOT), **(extra or {}))
+    if goh is not None:
+        env["GOH_BIN"] = str(goh)
     cmd = ["bash", str(STRUCTURAL), "--staged"] if staged else ["bash", str(STRUCTURAL)]
     return subprocess.run(cmd, cwd=repo, capture_output=True, text=True, env=env)
-
-
-def run_bash(repo: Path, staged: bool) -> tuple[int, str | None]:
-    r = _run_bash(repo, staged)
-    return r.returncode, _failing(r.stdout, r.stderr)
 
 
 def _run_goh(
@@ -90,6 +87,7 @@ def announced_steps(out: str) -> list[str]:
 
 
 GATESRC = b"GOH_MAX_LINES=10\n"
+PYFMT_SRC = b"GOH_MAX_LINES=10\nGOH_PYTHON_FORMATTED=1\n"
 # A `.gatesrc` that opts into the prose-claim gate. 500 rather than 10 because the
 # claim document below is three lines and the cap has to be out of its way.
 CLAIM_SRC = b"GOH_MAX_LINES=500\nGOH_CLAIM_DERIVATION=1\n"
@@ -103,8 +101,12 @@ FULL_CASES: dict[str, dict[str, bytes]] = {
     # tiers that both skip a step also agree. That is exactly how the shell side
     # ran it in staged mode while the native side skipped it, and the only thing
     # that noticed was this suite.
-    "pyfmt_green": {".gatesrc": GATESRC, "a.py": b"import os\n\nos.environ.get('X')\n"},
-    "pyfmt_red": {".gatesrc": GATESRC, "a.py": b"import os\nos.environ.get('X')\n"},
+    # The step is OPT-IN: until 2026-10-06 both cases declared only GATESRC, so the step was
+    # skipped, both tiers agreed on (0, None), and the "red" case was green -- the miss this
+    # comment describes, inside the fixture written to catch it. Expected verdicts (below)
+    # instead of tier agreement are what exposed it.
+    "pyfmt_green": {".gatesrc": PYFMT_SRC, "a.py": b'import os\n\nos.environ.get("X")\n'},
+    "pyfmt_red": {".gatesrc": PYFMT_SRC, "a.py": b'import os\nos.environ.get("X")\n'},
     "over_cap": {".gatesrc": GATESRC, "a.py": b"x = 1\n" * 20},
     "no_gatesrc": {"a.py": b"x = 1\n"},
     "exclude_warn": {
@@ -206,17 +208,46 @@ FULL_CASES: dict[str, dict[str, bytes]] = {
 }
 
 
-def test_the_kill_by_name_red_case_is_red_in_both_tiers(goh: Path, tmp_path: Path) -> None:
-    # Two tiers that both skip the step also "agree"; the red case must fail it.
-    repo = make_repo(tmp_path, FULL_CASES["kill_by_name_red"])
-    for rc, step in (run_goh(goh, repo, staged=False), run_bash(repo, staged=False)):
-        assert rc != 0 and step and "kill by name" in step, (rc, step)
+# Every case's verdict, `(exit code, first failing step)`. A red case that is not red here is a
+# step its fixture never turned on.
+EXPECTED: dict[str, tuple[int, str | None]] = {
+    "ceiling_green": (0, None),
+    "ceiling_missing": (1, "line-cap exemptions carry a ceiling"),
+    "ceiling_no_ceiling": (1, "line-cap exemptions carry a ceiling"),
+    "ceiling_over": (1, "cap-exempt files within their ceilings"),
+    "claim_green": (0, None),
+    "claim_red": (1, "prose claims are derived"),
+    "clean": (0, None),
+    "emoji": (1, "no disallowed emoji"),
+    "exclude_warn": (0, None),
+    "home_path_green": (0, None),
+    "home_path_red": (1, "no hard-coded home paths"),
+    "kill_by_name_green": (0, None),
+    "kill_by_name_red": (1, "no process kill by name"),
+    "lock_green": (0, None),
+    "lock_red": (1, "Cargo.lock matches its manifests"),
+    "marker": (1, "no conflict markers"),
+    "md_link_green": (0, None),
+    "md_link_red": (1, "markdown links resolve"),
+    "no_gatesrc": (0, None),
+    "over_cap": (1, "file length <= 10"),
+    "pyfmt_green": (0, None),
+    "pyfmt_red": (1, "python is ruff-formatted"),
+    "shell_fail": (1, "shell lint"),
+}
+
+
+def test_every_case_has_an_expected_verdict_and_every_red_case_is_red() -> None:
+    assert set(EXPECTED) == set(FULL_CASES)
+    for name, (rc, step) in EXPECTED.items():
+        if name.endswith(("_red", "_missing", "_over", "_no_ceiling", "_fail")):
+            assert rc == 1 and step, name
 
 
 @pytest.mark.parametrize("name", sorted(FULL_CASES))
-def test_full_mode_agrees(goh: Path, tmp_path: Path, name: str) -> None:
+def test_full_mode_gives_the_expected_verdict(goh: Path, tmp_path: Path, name: str) -> None:
     repo = make_repo(tmp_path, FULL_CASES[name])
-    assert run_goh(goh, repo, staged=False) == run_bash(repo, staged=False), name
+    assert run_goh(goh, repo, staged=False) == EXPECTED[name], name
 
 
 # A repo that turns on EVERY optional gate and trips nothing, so both tiers run
@@ -243,55 +274,60 @@ INVENTORY_CASE: dict[str, bytes] = {
 }
 
 
-def test_both_tiers_run_the_same_steps(goh: Path, tmp_path: Path) -> None:
-    """The step INVENTORY is compared, which `(rc, failing label)` never was.
+# The whole pipeline, every optional step on: what a fully-opted-in repo runs. NAMED, not
+# counted -- a step that does not run prints exactly what a step that passes prints
+# (docs/SUPERSOTA.md R4), so the only proof a step runs is its label here. 16 -> 17 on
+# 2026-10-03 (`no unreaped spawns in tests`), 18 on 2026-10-04 (`prose claims are derived`),
+# 19 on 2026-10-05 (`no credential in a git remote URL`).
+INVENTORY = {
+    "Cargo.lock matches its manifests",
+    "cap-exempt files within their ceilings",
+    "file length <= 500",
+    "gate self-proofs still pass",
+    "gates refuse to pass over an empty tree",
+    "line-cap exemptions carry a ceiling",
+    "markdown links resolve",
+    "no committed secrets",
+    "no conflict markers",
+    "no credential in a git remote URL",
+    "no disallowed emoji",
+    "no hard-coded home paths",
+    "no process kill by name",
+    "no unreaped spawns in tests",
+    "prose claims are derived",
+    "python is ruff-formatted",
+    "shell lint",
+    "skills corpus",
+    "version provenance",
+}
 
-    This suite's module docstring claimed to compare step inventories and did
-    not: it compared a return code and the label of whichever step failed first,
-    so a step present in one tier and absent from the other was invisible unless
-    a fixture happened to make it fail. Two tiers that both SKIP a step agree
-    perfectly — that is the whole mechanism of the miss. The measured
-    consequence is in docs/SUPERSOTA.md R4: a step that does not run prints
-    exactly what a step that passes prints.
-    """
+
+def _labels(out: str) -> set[str]:
+    return {s.split(" (\u2264")[0] for s in announced_steps(out)}
+
+
+def test_the_whole_pipeline_runs_every_step(goh: Path, tmp_path: Path) -> None:
+    """Through BOTH entry points: `goh structural`, and structural.sh as the hooks call it."""
     repo = make_repo(tmp_path, INVENTORY_CASE)
-    bash_run, goh_run = _run_bash(repo, False), _run_goh(goh, repo, False)
-    assert bash_run.returncode == 0, bash_run.stdout + bash_run.stderr
-    assert goh_run.returncode == 0, goh_run.stdout + goh_run.stderr
-    in_bash, in_goh = set(announced_steps(bash_run.stdout)), set(announced_steps(goh_run.stdout))
-    # Named so the diff says WHICH step, and not merely that two lists differ.
-    only_bash, only_goh = sorted(in_bash - in_goh), sorted(in_goh - in_bash)
-    assert not (only_bash or only_goh), (
-        f"the tiers run different steps.\n  python only: {only_bash}\n  native only: {only_goh}\n"
-        f"  python: {sorted(in_bash)}\n  native: {sorted(in_goh)}\n" + goh_run.stdout
-    )
-    # An empty comparison proves nothing, so the inventory is pinned too: a step
-    # added to ONE tier and not the other is the defect, and a step added to
-    # neither is a step nobody runs. 16 -> 17 on 2026-10-03 for
-    # `no unreaped spawns in tests`; 17 -> 18 on 2026-10-04 for
-    # `prose claims are derived`; 18 -> 19 on 2026-10-05 for
-    # `no credential in a git remote URL`.
-    assert len(in_bash) == 19, f"the pipeline's step inventory changed: {sorted(in_bash)}"
+    for run in (_run_goh(goh, repo, False), _run_bash(repo, False, goh=goh)):
+        assert run.returncode == 0, run.stdout + run.stderr
+        got = _labels(run.stdout)
+        assert got == INVENTORY, (
+            f"missing: {sorted(INVENTORY - got)}  new: {sorted(got - INVENTORY)}\n" + run.stdout
+        )
 
 
-def test_both_tiers_time_the_same_steps(goh: Path, tmp_path: Path) -> None:
-    """P0's instrument, per tier: every announced step leaves exactly one timing line, so a
-    native-vs-Python comparison is over the same labels and no step is counted twice (the
-    native tier's delegated steps run through bounded_run.py, which also records)."""
+def test_every_announced_step_is_timed_once(goh: Path, tmp_path: Path) -> None:
+    """P0's instrument: every announced step leaves exactly one timing line, so no step is
+    counted twice (the delegated steps run through bounded_run.py, which also records)."""
     import json
 
-    labels = {}
-    for tier in ("python", "native"):
-        repo = make_repo(tmp_path / tier, INVENTORY_CASE)
-        out = tmp_path / f"{tier}.jsonl"
-        extra = {"GOH_TIMINGS": str(out)}
-        r = _run_bash(repo, False, extra) if tier == "python" else _run_goh(goh, repo, False, extra)
-        assert r.returncode == 0, r.stdout + r.stderr
-        rows = [json.loads(line) for line in out.read_text().splitlines()]
-        announced = sorted(s.split(" (\u2264")[0] for s in announced_steps(r.stdout))
-        assert sorted(row["label"] for row in rows) == announced, (tier, rows)
-        labels[tier] = set(announced)
-    assert labels["python"] == labels["native"]
+    repo = make_repo(tmp_path, INVENTORY_CASE)
+    out = tmp_path / "timings.jsonl"
+    r = _run_goh(goh, repo, False, {"GOH_TIMINGS": str(out)})
+    assert r.returncode == 0, r.stdout + r.stderr
+    rows = [json.loads(line) for line in out.read_text().splitlines()]
+    assert sorted(row["label"] for row in rows) == sorted(_labels(r.stdout)), rows
 
 
 def test_a_failing_step_names_the_checker_and_the_docs(goh: Path, tmp_path: Path) -> None:
@@ -306,7 +342,7 @@ def test_a_failing_step_names_the_checker_and_the_docs(goh: Path, tmp_path: Path
     """
     repo = make_repo(tmp_path, FULL_CASES["md_link_red"])
     out = (lambda r: r.stdout + r.stderr)(_run_goh(goh, repo, False))
-    assert str(ROOT / "checks" / "check_md_links.py") in out, out
+    assert str(ROOT / "crates" / "goh" / "src" / "mdlinks.rs") in out, out
     assert str(ROOT / "docs" / "map.md") in out and str(ROOT / "docs" / "config.md") in out, out
 
 
@@ -314,7 +350,7 @@ def test_staged_marker_agrees(goh: Path, tmp_path: Path) -> None:
     repo = make_repo(tmp_path, {".gatesrc": GATESRC, "a.py": b"x = 1\n"})
     (repo / "a.py").write_bytes(b"x = 1\n<<<<<<< ours\n")
     _git(repo, "add", "a.py")
-    assert run_goh(goh, repo, staged=True) == run_bash(repo, staged=True)
+    assert run_goh(goh, repo, staged=True) == (1, "no conflict markers")
 
 
 FORMATTED_SRC = b"GOH_MAX_LINES=500\nGOH_PYTHON_FORMATTED=1\n"
@@ -326,20 +362,19 @@ FORMATTED_SRC = b"GOH_MAX_LINES=500\nGOH_PYTHON_FORMATTED=1\n"
     [(b"x = {  'a':1 }\n", (1, "python is ruff-formatted (staged)")), (b"x = 1\n", (0, None))],
 )
 def test_staged_python_format_agrees(goh: Path, tmp_path: Path, staged_bytes, expected) -> None:
-    """Pre-commit was weaker than pre-push for this check (v0.20.0's refused push):
-    both tiers now run it over the staged blobs, and agree on the verdict."""
+    """Pre-commit was weaker than pre-push for this check (v0.20.0's refused push): it runs
+    over the staged blobs."""
     repo = make_repo(tmp_path, {".gatesrc": FORMATTED_SRC, "a.py": staged_bytes})
-    py = _run_bash(repo, staged=True)
-    steps = announced_steps(py.stdout + py.stderr)
+    r = _run_goh(goh, repo, staged=True)
+    steps = announced_steps(r.stdout + r.stderr)
     assert any(s.startswith("python is ruff-formatted (staged)") for s in steps), steps
-    assert run_goh(goh, repo, staged=True) == (py.returncode, _failing(py.stdout, py.stderr))
-    assert (py.returncode, _failing(py.stdout, py.stderr)) == expected
+    assert (r.returncode, _failing(r.stdout, r.stderr)) == expected
 
 
 def test_staged_ignores_unstaged_dirt(goh: Path, tmp_path: Path) -> None:
     repo = make_repo(tmp_path, {".gatesrc": GATESRC, "a.py": b"x = 1\n"})
     (repo / "a.py").write_bytes(b"x = 1\n<<<<<<< ours\n")
-    assert run_goh(goh, repo, staged=True) == run_bash(repo, staged=True) == (0, None)
+    assert run_goh(goh, repo, staged=True) == (0, None)
 
 
 def test_structural_sh_execs_the_native_binary_when_told_where_it_is(goh, tmp_path):
@@ -381,7 +416,7 @@ HOSTILE = {
 }
 
 
-@pytest.mark.parametrize("tier", ["python", "native"])
+@pytest.mark.parametrize("tier", ["structural.sh", "goh structural"])
 def test_an_inherited_config_key_cannot_enable_a_step_this_repo_never_declared(
     goh: Path, tmp_path: Path, tier: str
 ) -> None:
@@ -390,24 +425,24 @@ def test_an_inherited_config_key_cannot_enable_a_step_this_repo_never_declared(
     `GOH_EXCLUDE=.*` hides one (false green — the direction nobody sees)."""
     repo = make_repo(tmp_path, FULL_CASES["clean"])
     runner = (
-        (lambda r: _run_bash(repo, False, r))
-        if tier == "python"
+        (lambda r: _run_bash(repo, False, r, goh=goh))
+        if tier == "structural.sh"
         else (lambda r: _run_goh(goh, repo, False, r))
     )
     quiet, hostile = runner({}), runner(HOSTILE)
     ran_quietly, ran_hostile = announced_steps(quiet.stdout), announced_steps(hostile.stdout)
     assert ran_hostile == ran_quietly, (
-        f"ambient GOH_* changed which steps the {tier} tier ran:\n"
+        f"ambient GOH_* changed which steps {tier} ran:\n"
         f"  quiet:   {ran_quietly}\n  hostile: {ran_hostile}\n" + hostile.stdout + hostile.stderr
     )
     assert hostile.returncode == quiet.returncode, hostile.stdout + hostile.stderr
 
 
-def test_an_inherited_exemption_does_not_hide_a_violation(tmp_path: Path) -> None:
+def test_an_inherited_exemption_does_not_hide_a_violation(goh: Path, tmp_path: Path) -> None:
     """`GOH_EXCLUDE=.*` is the sharp end of that class: exempt everything, and the
     emoji gate reports a clean tree."""
     repo = make_repo(tmp_path, FULL_CASES["emoji"])
-    hostile = _run_bash(repo, False, {"GOH_EXCLUDE": ".*"})
+    hostile = _run_bash(repo, False, {"GOH_EXCLUDE": ".*"}, goh=goh)
     assert hostile.returncode != 0, hostile.stdout + hostile.stderr
     assert "emoji" in (hostile.stdout + hostile.stderr).lower()
 

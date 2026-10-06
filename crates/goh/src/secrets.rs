@@ -1,4 +1,4 @@
-//! Committed-secret scan — Rust port of `checks/check_no_secrets.py`.
+//! Committed-secret scan — Rust port of the retired `checks/check_no_secrets.py`.
 //!
 //! Deliberately narrow: known high-confidence prefixes, private-key
 //! headers, and a credential-named key with a 32+ character quoted value

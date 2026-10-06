@@ -18,16 +18,11 @@ that was silently optional, and it is what the `+dirty` marker and the
 """
 
 import json
-import subprocess
-import sys
 
 import pytest
 
-from conftest import REPO_ROOT, commit_all, git, write
+from conftest import commit_all, git, write
 from tier_kit import both_tiers, run_tiered  # noqa: F401  # both_tiers: a fixture
-
-sys.path.insert(0, str(REPO_ROOT / "checks"))
-import check_version_provenance as gate  # noqa: E402
 
 CHECKER = "checks/check_version_provenance.py"
 
@@ -36,7 +31,7 @@ pytestmark = pytest.mark.usefixtures("both_tiers")
 
 def vp(repo, *args):
     """The checker over `repo`, on the current tier (Python, or `goh version-provenance`)."""
-    return run_tiered(repo, CHECKER, "version-provenance", *args, python_only=("--probe",))
+    return run_tiered(repo, CHECKER, "version-provenance", *args)
 
 
 # A build script that derives all three, in the honest spellings. This is the
@@ -58,18 +53,6 @@ def _package(repo, version="1.2.3", build=None, main=None, lib=None):
         write(repo, "src/main.rs", main)
     if lib is not None:
         write(repo, "src/lib.rs", lib)
-
-
-def _patch_env() -> dict:
-    """The patched copy sits in tmp, so it cannot find `_gitutil` beside itself.
-
-    PYTHONPATH rather than a second copy of the lib: a vendored duplicate in a
-    calibration fixture is one more thing that can drift from the real one, and
-    this test's whole job is to prove what the REAL checker does.
-    """
-    import os
-
-    return dict(os.environ, PYTHONPATH=str(REPO_ROOT / "checks"))
 
 
 def _cli(version_line, extra=""):
@@ -389,83 +372,8 @@ def test_staged_narrows_to_the_files_being_committed(repo):
     )
 
 
-# ── calibration: the tests above can go RED ─────────────────────────────────
-
-
-def test_the_suite_is_red_when_the_checker_stops_reaching_lib_rs(tmp_path):
-    """Proof the `lib.rs` case is load-bearing. Narrowing MAIN_FILES back to
-    `("src/main.rs",)` -- the state this repo shipped -- must turn it red."""
-    source = (REPO_ROOT / CHECKER).read_text(encoding="utf-8")
-    patched = tmp_path / "checker.py"
-    patched.write_text(
-        source.replace(
-            'MAIN_FILES = ("src/main.rs", "src/lib.rs")', 'MAIN_FILES = ("src/main.rs",)'
-        ),
-        encoding="utf-8",
-    )
-    repo = tmp_path / "repo"
-    repo.mkdir()
-    write(repo, "Cargo.toml", '[workspace]\nmembers = ["crates/cli"]\n')
-    write(
-        repo,
-        "crates/cli/Cargo.toml",
-        '[package]\nname = "cli"\nversion = "1.0.0"\n\n[[bin]]\nname = "app"\n',
-    )
-    write(repo, "crates/cli/build.rs", GOOD_BUILD)
-    write(repo, "crates/cli/src/main.rs", "fn main() { app_updates_cli::run(); }\n")
-    write(repo, "crates/cli/src/lib.rs", _cli('long_version = concat!(env!("BUILD_GIT_HASH"),),'))
-    git(repo, "init", "-q", "-b", "main")
-    commit_all(repo)
-
-    r = subprocess.run(
-        [sys.executable, str(patched)], cwd=repo, capture_output=True, text=True, env=_patch_env()
-    )
-    # The shape the blind checker takes is the dangerous one: it does not report a
-    # WRONG verdict, it reports "not applicable" over a crate that plainly builds
-    # a binary declaring a version -- compliance over zero files.
-    assert r.returncode == 0, r.stdout + r.stderr
-    assert "not applicable" in r.stdout, (
-        "narrowing MAIN_FILES did not blind the checker -- this test proves nothing"
-    )
-    assert "crates/cli/src/lib.rs" not in r.stdout, r.stdout
-    # ...and the real checker, on the same fixture, is red.
-    assert vp(repo).returncode == 1, (
-        "the real checker no longer reaches lib.rs; the calibration is stale"
-    )
-
-
-def test_the_suite_is_red_when_the_checker_stops_seeing_a_dead_entry(tmp_path):
-    """Proof the dead-baseline-entry case is load-bearing: a checker that
-    trusts its baseline unconditionally must turn that test red."""
-    source = (REPO_ROOT / CHECKER).read_text(encoding="utf-8")
-    patched = tmp_path / "checker.py"
-    patched.write_text(
-        source.replace(
-            "    for entry in sorted(allowlist):\n        if entry in declaring:",
-            "    for entry in sorted(allowlist):\n        if True:  # patched",
-        ),
-        encoding="utf-8",
-    )
-    repo = tmp_path / "repo"
-    repo.mkdir()
-    write(repo, "Cargo.toml", '[package]\nname = "app"\nversion = "1.2.3"\n')
-    write(repo, "build.rs", GOOD_BUILD)
-    write(repo, "src/main.rs", _cli("version,"))
-    write(repo, ".gates-version-baseline.json", json.dumps(["src/main.rs", "src/lib.rs"]))
-    git(repo, "init", "-q", "-b", "main")
-    commit_all(repo)
-
-    r = subprocess.run(
-        [sys.executable, str(patched), "--baseline", ".gates-version-baseline.json"],
-        cwd=repo,
-        capture_output=True,
-        text=True,
-        env=_patch_env(),
-    )
-    assert r.returncode == 0, "the blind checker still reported the dead entry"
-    assert "suppresses nothing" not in r.stdout, (
-        "the checker still found it -- this test proves nothing"
-    )
+# The retired Python suite proved its lib.rs and dead-baseline cases load-bearing by blinding the
+# Python's source; both cases stand above against the native (Phase N3).
 
 
 @pytest.mark.parametrize("argv", [["--json"]])

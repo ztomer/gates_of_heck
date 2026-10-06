@@ -1,4 +1,4 @@
-//! No process kill BY NAME -- Rust port of `checks/check_no_kill_by_name.py`
+//! No process kill BY NAME -- Rust port of the retired `checks/check_no_kill_by_name.py`
 //! (Phase N1).
 //!
 //! A name is not an owner: zinc's harness ended every capture with
@@ -420,7 +420,15 @@ fn run(staged: bool, exclude: &str) -> (i32, String) {
         return (1, s);
     }
     let (hits, checked) = scan(&rules, &root, &files, staged);
-    let scanned: BTreeSet<&str> = files.iter().map(String::as_str).collect();
+    let mut scanned: BTreeSet<&str> = files.iter().map(String::as_str).collect();
+    // An entry for a file that no longer exists judges nothing at any scope, so it is stale like
+    // one whose kill is gone: two entries for the retired Python checker outlived it (Phase N3).
+    scanned.extend(
+        entries
+            .iter()
+            .filter(|e| !root.join(&e.path).exists())
+            .map(|e| e.path.as_str()),
+    );
     report(staged, &hits, checked, &entries, &scanned)
 }
 
@@ -475,10 +483,7 @@ pub fn step(cfg: &crate::gatesrc::Gatesrc, staged: bool) -> Option<i32> {
         (code, out) => {
             let _ = crate::step_report::fail(
                 label,
-                &crate::step_report::ported(
-                    "crates/goh/src/killname/mod.rs",
-                    "check_no_kill_by_name.py",
-                ),
+                &crate::step_report::ported("crates/goh/src/killname/mod.rs"),
                 &out,
                 start,
             );

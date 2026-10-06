@@ -13,9 +13,10 @@ import subprocess
 from pathlib import Path
 
 import pytest
+from reference_kit import load_reference, reference_path  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[1]
-CHECKER = ROOT / "checks" / "check_file_length.py"
+CHECKER = reference_path("checks/check_file_length.py")
 OVER_RE = re.compile(r"^\s*(\d+)\s+lines\s+(.+?)\s+\(\+\d+\)\s*$")
 OK_RE = re.compile(r"OK — (\d+) file\(s\) within \d+ lines")
 
@@ -146,10 +147,6 @@ def _rust_strings(name: str) -> list[str]:
 def test_the_two_tiers_scope_the_cap_from_one_list() -> None:
     """The suffix list was written twice and "mirrored" by a comment. A suffix added to one tier is
     a file one tier caps and the other waves through; this compares the lists, not a sample."""
-    import importlib.util
-
-    spec = importlib.util.spec_from_file_location("check_file_length", CHECKER)
-    mod = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(mod)
+    mod = load_reference("check_file_length")
     assert list(mod.SOURCE_SUFFIXES) == _rust_strings("SOURCE_SUFFIXES")
     assert list(mod.SOURCE_NAMES) == _rust_strings("SOURCE_NAMES")

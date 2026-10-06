@@ -1,5 +1,5 @@
 //! Python shape, by the repo's own declared rule set -- Rust port of
-//! `checks/check_python_formatted.py` (Phase N1).
+//! the retired `checks/check_python_formatted.py` (Phase N1).
 //!
 //! `ruff format --check` over the repo's Python (git's worktree listing, so
 //! an untracked or ignored file is not the repo's), or at `--staged` over
@@ -182,10 +182,47 @@ fn run(trees: &[String], staged_scope: bool) -> (i32, Lines) {
     result.unwrap_or_else(|e| (1, vec![(true, format!("✗ {e}"))]))
 }
 
-/// `goh python-formatted [TREES...] [--staged]`.
+/// `--selftest`: a mis-formatted file must be refused and a formatted one passed. Both sit in a
+/// temp directory OUTSIDE the tree, so the repo's own excludes cannot decide the answer.
+fn selftest() -> (i32, Lines) {
+    if !on_path("ruff") {
+        return (
+            1,
+            vec![(
+                true,
+                "✗ selftest: ruff is not installed, so there is no gate to prove".to_owned(),
+            )],
+        );
+    }
+    let dir = std::env::temp_dir().join(format!("goh-pyformat-selftest-{}", std::process::id()));
+    let planted = std::fs::create_dir_all(&dir)
+        .and_then(|()| std::fs::write(dir.join("bad.py"), "x = {  'a':1,'b':2 }\n"))
+        .and_then(|()| std::fs::write(dir.join("good.py"), "x = {\"a\": 1, \"b\": 2}\n"));
+    let verdicts = planted
+        .map_err(|e| format!("cannot plant the fixture: {e}"))
+        .and_then(|()| {
+            Ok((
+                ruff(&dir, &["bad.py"], None)?,
+                ruff(&dir, &["good.py"], None)?,
+            ))
+        });
+    let _ = std::fs::remove_dir_all(&dir);
+    match verdicts {
+        Err(e) => (1, vec![(true, format!("✗ selftest: {e}"))]),
+        Ok(((0, _), _)) => (1, vec![(true, "✗ selftest: a mis-formatted file PASSED — this gate cannot see the defect it exists for".to_owned())]),
+        Ok((_, (code, text))) if code != 0 => (1, vec![(true, format!("✗ selftest: a formatted file FAILED — this gate refuses correct code. output was: {text}"))]),
+        Ok(_) => (0, vec![(false, "✓ python-formatted selftest: a mis-formatted file is caught and a formatted one passes".to_owned())]),
+    }
+}
+
+/// `goh python-formatted [TREES...] [--staged] [--selftest]`.
 #[must_use]
-pub fn run_command(trees: &[String], staged_scope: bool) -> i32 {
-    let (code, lines) = run(trees, staged_scope);
+pub fn run_command(trees: &[String], staged_scope: bool, prove: bool) -> i32 {
+    let (code, lines) = if prove {
+        selftest()
+    } else {
+        run(trees, staged_scope)
+    };
     for (to_err, line) in lines {
         if to_err {
             eprintln!("{line}");
@@ -217,10 +254,7 @@ pub fn step(cfg: &crate::gatesrc::Gatesrc, staged_scope: bool) -> Option<i32> {
             let text: String = lines.into_iter().map(|(_, l)| l + "\n").collect();
             let _ = crate::step_report::fail(
                 label,
-                &crate::step_report::ported(
-                    "crates/goh/src/pyformat.rs",
-                    "check_python_formatted.py",
-                ),
+                &crate::step_report::ported("crates/goh/src/pyformat.rs"),
                 &text,
                 start,
             );

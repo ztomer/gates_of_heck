@@ -13,7 +13,7 @@ a literal — the suite polices itself through the same gate.
 import subprocess
 from pathlib import Path
 
-from conftest import REPO_ROOT, stage, write
+from conftest import run_goh, stage, write
 
 CHECK = "checks/check_no_secrets.py"
 
@@ -24,12 +24,8 @@ SLACK = "xoxb-" + "0" * 12
 
 
 def run_secrets(repo: Path, *args: str) -> subprocess.CompletedProcess:
-    return subprocess.run(
-        ["python3", str(REPO_ROOT / CHECK), *args],
-        cwd=repo,
-        capture_output=True,
-        text=True,
-    )
+    """`goh secrets` (the retired `check_no_secrets.py`'s native, Phase N3)."""
+    return run_goh(repo, "secrets", *args)
 
 
 def test_clean_tree_passes(repo):

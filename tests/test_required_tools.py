@@ -71,7 +71,7 @@ def test_swift_gate_fails_without_swiftlint(tmp_path):
     assert "swiftlint is not installed" in got.stdout + got.stderr, got.stdout + got.stderr
 
 
-def test_shell_lint_fails_without_shellcheck(tmp_path):
+def test_shell_lint_fails_without_shellcheck(tmp_path, goh):
     """It degraded to `bash -n` and printed OK: syntax-only under a green "shell lint" line."""
     repo = tmp_path / "r"
     repo.mkdir()
@@ -81,7 +81,7 @@ def test_shell_lint_fails_without_shellcheck(tmp_path):
     env = hermetic_env()
     env["PATH"] = path_without("shellcheck", tmp_path / "bin")
     got = subprocess.run(
-        ["/bin/bash", str(REPO_ROOT / "checks" / "check_shell_lint.sh")],
+        [str(goh), "shell-lint"],
         cwd=repo,
         env=env,
         capture_output=True,

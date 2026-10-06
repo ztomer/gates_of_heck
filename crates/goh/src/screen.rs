@@ -1,5 +1,5 @@
 //! Screen-presentation scan — Rust port of
-//! `checks/check_no_screen_presentation.py`.
+//! the retired `checks/check_no_screen_presentation.py`.
 //!
 //! A test that reaches the live display (real windows, real input, real
 //! screen capture) flashes over the user's session and cannot run

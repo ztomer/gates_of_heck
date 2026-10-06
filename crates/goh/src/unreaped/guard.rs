@@ -1,4 +1,4 @@
-//! WHO PROTECTS THIS SPAWN. Port of `checks/_spawn_guard_attr.py` and
+//! WHO PROTECTS THIS SPAWN. Port of the retired `checks/_spawn_guard_attr.py` and
 //! `checks/_spawn_guard_attr_rust.py`.
 //!
 //! A guard protects the VALUE it wraps, never the function it was written in:

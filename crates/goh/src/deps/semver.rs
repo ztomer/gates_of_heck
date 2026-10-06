@@ -1,5 +1,5 @@
 //! Semver, narrowly: what a `Cargo.toml` actually spells. Port of
-//! `checks/_semver.py`.
+//! the retired `checks/_semver.py`.
 //!
 //! A missing minor or patch WIDENS a comparator's range, as Cargo reads it
 //! (`~1.0` is `>=1.0.0, <1.1.0`; `^0.0.3` is `>=0.0.3, <0.0.4`). An
@@ -172,8 +172,21 @@ mod tests {
     }
 
     #[test]
+    fn build_metadata_is_ignored_and_a_prerelease_sorts_below_its_release() {
+        assert_eq!(req_allows("1.1.6", "1.1.6+spec-1.1.0"), Some(true));
+        assert!(super::parse_version("1.0.0-rc.1") < super::parse_version("1.0.0"));
+    }
+
+    #[test]
     fn an_unreadable_requirement_abstains() {
-        for req in ["1.*", ">=x", "1.2.3.4", "~>1"] {
+        for req in [
+            "1.*",
+            ">=x",
+            "1.2.3.4",
+            "~>1",
+            "not a version",
+            "^1.2.3.4.5",
+        ] {
             assert_eq!(
                 req_allows(req, "1.0.0"),
                 None,

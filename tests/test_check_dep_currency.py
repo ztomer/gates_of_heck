@@ -1,4 +1,4 @@
-"""check_dep_currency.py — a dependency pinned below the graph is a bug.
+"""`goh deps` — a dependency pinned below the graph is a bug.
 
 The offline arm is the one that can fail a build, so it is the one tested
 hardest here: it reads two files and decides, so every way it can be wrong is
@@ -23,20 +23,42 @@ What the tests pin, in the order the failures actually happened:
 
 from __future__ import annotations
 
-import importlib.util
-import sys
+import json
+import subprocess
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
+from conftest import native_goh_path
 
-ROOT = Path(__file__).resolve().parents[1]
-CHECK = ROOT / "checks" / "check_dep_currency.py"
 
-spec = importlib.util.spec_from_file_location("check_dep_currency", CHECK)
-mod = importlib.util.module_from_spec(spec)
-assert spec and spec.loader
-sys.modules["check_dep_currency"] = mod
-spec.loader.exec_module(mod)
+def run(root: Path, offline: bool = True, ratchet: str | None = None) -> SimpleNamespace:
+    """One `goh deps --json` pass, as the report these tests read: `findings` (severity, name,
+    detail, where), `examined`, `notes`, `checked_currency`, and the not-applicable sentence."""
+    args = [str(native_goh_path()), "deps", "--root", str(root), "--json"]
+    if offline:
+        args.append("--offline")
+    r = subprocess.run(args, capture_output=True, text=True, timeout=60)
+    assert r.returncode in (0, 1), r.stdout + r.stderr
+    doc = json.loads(r.stdout)
+    rows = doc.get("fatal", []) + doc.get("major_behind", []) + doc.get("minor_behind", [])
+    return SimpleNamespace(
+        findings=[SimpleNamespace(**f) for f in rows],
+        examined=doc["examined"],
+        notes=doc.get("notes", []),
+        checked_currency=doc.get("currency_checked", False),
+        not_applicable=doc.get("not_applicable", ""),
+    )
+
+
+def main(root: Path) -> subprocess.CompletedProcess:
+    """`goh deps --root R --offline`, text."""
+    return subprocess.run(
+        [str(native_goh_path()), "deps", "--root", str(root), "--offline"],
+        capture_output=True,
+        text=True,
+        timeout=60,
+    )
 
 
 def write(path: Path, text: str) -> None:
@@ -60,7 +82,7 @@ def test_a_pin_below_the_graph_is_a_finding(tmp_path):
         LOCK_HEADER + '[[package]]\nname = "ureq"\nversion = "2.12.1"\n\n'
         '[[package]]\nname = "ureq"\nversion = "3.4.2"\n',
     )
-    rep = mod.run(root, offline=True, ratchet=None)
+    rep = run(root)
     findings = [f for f in rep.findings if f.severity == "pinned-below-graph"]
     assert len(findings) == 1
     assert findings[0].name == "ureq"
@@ -76,7 +98,7 @@ def test_a_pin_at_or_above_the_graph_is_clean(tmp_path):
         LOCK_HEADER + '[[package]]\nname = "ureq"\nversion = "2.12.1"\n\n'
         '[[package]]\nname = "ureq"\nversion = "3.4.2"\n',
     )
-    rep = mod.run(root, offline=True, ratchet=None)
+    rep = run(root)
     assert not [f for f in rep.findings if f.severity == "pinned-below-graph"]
 
 
@@ -87,7 +109,7 @@ def test_one_version_in_the_graph_is_never_a_finding(tmp_path):
         '[package]\nname = "x"\nversion = "0.1.0"\n\n[dependencies]\nureq = "2"\n',
         LOCK_HEADER + '[[package]]\nname = "ureq"\nversion = "2.12.1"\n',
     )
-    rep = mod.run(root, offline=True, ratchet=None)
+    rep = run(root)
     assert not rep.findings
 
 
@@ -105,7 +127,7 @@ def test_an_inherited_requirement_is_resolved_against_the_workspace_root(tmp_pat
         LOCK_HEADER + '[[package]]\nname = "toml"\nversion = "0.8.23"\n\n'
         '[[package]]\nname = "toml"\nversion = "1.1.6"\n',
     )
-    rep = mod.run(tmp_path, offline=True, ratchet=None)
+    rep = run(tmp_path)
     assert any(f.name == "toml" for f in rep.findings if f.severity == "pinned-below-graph")
 
 
@@ -118,7 +140,7 @@ def test_a_dict_valued_requirement_first_does_not_crash(tmp_path):
         'ureq = { version = "2", default-features = false, features = ["tls"] }\n',
         LOCK_HEADER + '[[package]]\nname = "toml"\nversion = "1.1.6"\n',
     )
-    rep = mod.run(root, offline=True, ratchet=None)
+    rep = run(root)
     assert rep.examined == 2
 
 
@@ -130,7 +152,7 @@ def test_path_and_git_dependencies_are_skipped(tmp_path):
         'ureq = "2"\n',
         LOCK_HEADER + '[[package]]\nname = "ureq"\nversion = "2.12.1"\n',
     )
-    rep = mod.run(root, offline=True, ratchet=None)
+    rep = run(root)
     assert rep.examined == 1
 
 
@@ -142,59 +164,13 @@ def test_target_specific_dependencies_are_examined(tmp_path):
         LOCK_HEADER + '[[package]]\nname = "ureq"\nversion = "2.12.1"\n\n'
         '[[package]]\nname = "ureq"\nversion = "3.4.2"\n',
     )
-    rep = mod.run(root, offline=True, ratchet=None)
+    rep = run(root)
     assert any(f.severity == "pinned-below-graph" for f in rep.findings)
 
 
-@pytest.mark.parametrize(
-    "req,version,expected",
-    [
-        ("1", "1.9.9", True),
-        ("1", "2.0.0", False),
-        ("0.19", "0.19.2", True),
-        ("0.19", "0.20.0", False),
-        ("0", "0.0.5", True),
-        ("^0.14", "0.19.2", False),
-        ("^1.0.5", "2.0.0", False),
-        # A bare three-part req is a CARET req, not an exact one. Two of the
-        # probe's own expectations were wrong about this before the code was.
-        ("1.0.5", "1.0.6", True),
-        ("1.0.5", "1.0.4", False),
-        (">=1.2, <2", "1.7.0", True),
-        (">=1.2, <2", "2.0.0", False),
-        ("~1.2.3", "1.2.9", True),
-        ("~1.2.3", "1.3.0", False),
-        ("*", "9.9.9", True),
-        # Cargo's own table (doc.rust-lang.org, "Specifying dependencies"), each row read WRONG
-        # before 2026-10-05 -- found porting the comparator, Phase N1:
-        ("^0.0.3", "0.0.4", False),  # ^0.0.3 := >=0.0.3, <0.0.4 (was read as <0.1.0)
-        ("0.0.3", "0.0.3", True),
-        ("^0.0", "0.1.0", False),  # ^0.0 := >=0.0.0, <0.1.0 (was read as <1.0.0)
-        ("^0.0", "0.0.9", True),
-        ("~1.0", "1.1.0", False),  # ~1.0 := >=1.0.0, <1.1.0 (was read as <2.0.0)
-        ("~1", "1.9.0", True),  # ~1 := >=1.0.0, <2.0.0
-        ("=1.2", "1.2.7", True),  # =1.2 := >=1.2.0, <1.3.0 (was read as exactly 1.2.0)
-        ("=1.2", "1.3.0", False),
-        ("=1", "1.4.0", True),  # =1 := >=1.0.0, <2.0.0
-        ("=1.2.3", "1.2.4", False),
-    ],
-)
-def test_requirement_semantics(req, version, expected):
-    assert mod.req_allows(req, version) is expected
-
-
-def test_an_unreadable_requirement_abstains_rather_than_guessing():
-    """A guess here invents findings nobody can act on."""
-    assert mod.req_allows("not a version", "1.0.0") is None
-    assert mod.req_allows("^1.2.3.4.5", "1.0.0") is None
-
-
-def test_build_metadata_is_ignored():
-    assert mod.req_allows("1.1.6", "1.1.6+spec-1.1.0") is True
-
-
-def test_a_prerelease_sorts_below_its_release():
-    assert mod.parse_version("1.0.0-rc.1") < mod.parse_version("1.0.0")
+# The requirement comparator's table (Cargo's own, plus the rows read wrong before 2026-10-05),
+# unreadable requirements, build metadata and pre-release order are Rust tests now, beside the
+# comparator: `deps::semver::tests`.
 
 
 def test_offline_states_that_it_did_not_check(tmp_path):
@@ -204,7 +180,7 @@ def test_offline_states_that_it_did_not_check(tmp_path):
         '[package]\nname = "x"\nversion = "0.1.0"\n\n[dependencies]\nureq = "2"\n',
         LOCK_HEADER + '[[package]]\nname = "ureq"\nversion = "2.12.1"\n',
     )
-    rep = mod.run(root, offline=True, ratchet=None)
+    rep = run(root)
     assert not rep.checked_currency
     assert any("offline" in n for n in rep.notes)
 
@@ -212,11 +188,11 @@ def test_offline_states_that_it_did_not_check(tmp_path):
 def test_a_malformed_manifest_is_skipped_not_fatal(tmp_path):
     write(tmp_path / "Cargo.toml", "this is not toml [[[")
     write(tmp_path / "Cargo.lock", LOCK_HEADER)
-    rep = mod.run(tmp_path, offline=True, ratchet=None)
+    rep = run(tmp_path)
     assert rep.examined == 0
 
 
-def test_an_empty_tree_declares_itself_not_applicable(tmp_path, capsys):
+def test_an_empty_tree_declares_itself_not_applicable(tmp_path):
     """The estate refuses a gate that passes over nothing (`check_empty_scope`).
 
     Exit 0 WITH the marker is the only shape that satisfies both estate rules
@@ -224,14 +200,14 @@ def test_an_empty_tree_declares_itself_not_applicable(tmp_path, capsys):
     stays green on a crate that really does declare no dependencies. Passing
     silently breaks the first; failing breaks the second.
     """
-    assert mod.main(["--root", str(tmp_path), "--offline"]) == 0
-    assert "not applicable" in capsys.readouterr().out
+    r = main(tmp_path)
+    assert r.returncode == 0 and "not applicable" in r.stdout, r.stdout + r.stderr
 
 
-def test_a_manifest_with_no_dependencies_also_declares_non_applicable(tmp_path, capsys):
+def test_a_manifest_with_no_dependencies_also_declares_non_applicable(tmp_path):
     write(tmp_path / "Cargo.toml", '[package]\nname = "x"\nversion = "0.1.0"\n')
-    assert mod.main(["--root", str(tmp_path), "--offline"]) == 0
-    assert "not applicable" in capsys.readouterr().out
+    r = main(tmp_path)
+    assert r.returncode == 0 and "not applicable" in r.stdout, r.stdout + r.stderr
 
 
 def test_a_crate_with_no_dependencies_passes(tmp_path):
@@ -243,18 +219,15 @@ def test_a_crate_with_no_dependencies_passes(tmp_path):
     """
     write(tmp_path / "Cargo.toml", '[package]\nname = "x"\nversion = "0.1.0"\nedition = "2021"\n')
     write(tmp_path / "src" / "lib.rs", "")
-    assert mod.main(["--root", str(tmp_path), "--offline"]) == 0
+    r = main(tmp_path)
+    assert r.returncode == 0, r.stdout + r.stderr
 
 
 def test_manifests_are_counted_even_with_no_dependencies(tmp_path):
     write(tmp_path / "Cargo.toml", '[package]\nname = "x"\nversion = "0.1.0"\n')
-    rep = mod.run(tmp_path, offline=True, ratchet=None)
+    rep = run(tmp_path)
     assert rep.examined == 0
-    assert rep.manifests_seen == 1
-
-
-def test_the_probe_passes():
-    assert mod._probe() == 0
+    assert "1 manifest(s), none declaring a dependency" in rep.not_applicable, rep
 
 
 def _crates_io(tmp_path: Path, **latest: str) -> dict:
@@ -277,8 +250,6 @@ def test_the_ratchet_fails_an_untriaged_major_and_passes_a_triaged_one(tmp_path,
     """`--ratchet FILE` is "fail on any major NOT listed in FILE". It read `f["name"]` off a
     dataclass -- a TypeError the moment a major was behind -- and the findings it meant to add
     were not fatal anyway (found porting it, Phase N1)."""
-    import subprocess
-
     root = repo(
         tmp_path / "r",
         '[package]\nname = "x"\nversion = "0.1.0"\n\n[dependencies]\nureq = "2"\n',
@@ -287,7 +258,7 @@ def test_the_ratchet_fails_an_untriaged_major_and_passes_a_triaged_one(tmp_path,
     ratchet = tmp_path / "ratchet.txt"
     ratchet.write_text(triaged)
     r = subprocess.run(
-        [sys.executable, str(CHECK), "--root", str(root), "--ratchet", str(ratchet)],
+        [str(native_goh_path()), "deps", "--root", str(root), "--ratchet", str(ratchet)],
         capture_output=True,
         text=True,
         env=_crates_io(tmp_path, ureq="3.4.2"),

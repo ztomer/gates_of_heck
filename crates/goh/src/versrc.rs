@@ -1,6 +1,6 @@
 //! Version-source TEXT -> the release numbers it declares.
 //!
-//! Port of `checks/_version_sources.py` (Phase N1): one registry, keyed by the `kind`
+//! Port of the retired `checks/_version_sources.py` (Phase N1): one registry, keyed by the `kind`
 //! a repo names in `GOH_TAG_VERSION_SOURCES`. Selection is by VALUE SHAPE,
 //! never by position -- these files carry more than one plausible-looking
 //! declaration (a marketing version AND a build number).

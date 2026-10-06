@@ -1,11 +1,11 @@
-//! No unreaped spawns in tests -- Rust port of `checks/check_no_unreaped_spawn.py`.
+//! No unreaped spawns in tests -- Rust port of the retired `checks/check_no_unreaped_spawn.py`.
 //!
 //! A TEST that spawns a long-running child no guard reaps leaks it, and so
 //! does one whose reap is real but sits BELOW a line that can panic: a failing
 //! test skips it (`media_server`, 2026-10-03: nine orphans, each holding the
 //! cargo build lock, and the only symptom was a later run printing nothing).
 //! The measured table that is this gate's specification lives in the
-//! reference's docstring and `checks/_unreaped_spawn_table*.py`;
+//! reference's docstring and `tests/unreaped_spawn_table*.py`;
 //! `tests/test_unreaped_spawn_native_parity.py` runs every row through both.
 //!
 //! Scope: test sources only (test directories, test file names, `.bats`, and
@@ -322,10 +322,7 @@ pub fn step(cfg: &crate::gatesrc::Gatesrc, staged: bool) -> Option<i32> {
         (code, text) => {
             let _ = crate::step_report::fail(
                 label,
-                &crate::step_report::ported(
-                    "crates/goh/src/unreaped/mod.rs",
-                    "check_no_unreaped_spawn.py",
-                ),
+                &crate::step_report::ported("crates/goh/src/unreaped/mod.rs"),
                 &text,
                 start,
             );

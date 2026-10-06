@@ -9,15 +9,14 @@ a bare marker, honour --exclude, and refuse to report clean over zero files.
 import subprocess
 from pathlib import Path
 
-from conftest import REPO_ROOT, stage, write
+from conftest import run_goh, stage, write
 
 CHECK = "checks/check_no_home_paths.py"
 
 
 def run_check(repo: Path, *args: str) -> subprocess.CompletedProcess:
-    return subprocess.run(
-        ["python3", str(REPO_ROOT / CHECK), *args], cwd=repo, capture_output=True, text=True
-    )
+    """`goh home-paths` (the retired `check_no_home_paths.py`'s native, Phase N3)."""
+    return run_goh(repo, "home-paths", *args)
 
 
 def test_clean_tree_passes(repo):

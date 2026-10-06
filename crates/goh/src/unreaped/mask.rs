@@ -1,5 +1,5 @@
 //! Comment, string-literal and heredoc blanking for the three languages the
-//! unreaped-spawn scan reads. Port of `checks/_spawn_mask.py`.
+//! unreaped-spawn scan reads. Port of the retired `checks/_spawn_mask.py`.
 //!
 //! ONE PASS, comments and strings together: stripping comments first lets a
 //! `#` inside a string eat real code, and a `//` inside a string open a

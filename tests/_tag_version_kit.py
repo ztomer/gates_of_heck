@@ -35,3 +35,46 @@ def _media_shape(repo, version):
         "crates/healthcheck-rs/Cargo.toml",
         f'[package]\nname = "healthcheck"\nversion = "{version}"\n',
     )
+
+
+# The retired `_version_sources` module, as the native reads it (Phase N3): one strategy over one
+# text through `goh tag-version --extract KIND`, and the strategy names it answers to.
+KINDS = ("file", "cargo", "swift", "xcconfig", "plist", "pyproject")
+
+
+def extract(kind, text):
+    """`[(table, version), ...]` the `kind` strategy reads in `text`."""
+    import json
+    import subprocess
+
+    from conftest import native_goh_path
+
+    r = subprocess.run(
+        [str(native_goh_path()), "tag-version", "--extract", kind],
+        input=text,
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    assert r.returncode == 0, r.stderr
+    return [tuple(row) for row in json.loads(r.stdout)]
+
+
+def push_tag(repo, tag, sources=None):
+    """`goh tag-version` judging a push of `refs/tags/<tag>` at HEAD, as the hook hands it."""
+    import os
+    import subprocess
+
+    from conftest import native_goh_path
+
+    env = {k: v for k, v in os.environ.items() if k != "GOH_TAG_VERSION_SOURCES"}
+    if sources is not None:
+        env["GOH_TAG_VERSION_SOURCES"] = sources
+    return subprocess.run(
+        [str(native_goh_path()), "tag-version", "--root", str(repo)],
+        input=_refs((f"refs/tags/{tag}", _sha(repo, "HEAD"))),
+        capture_output=True,
+        text=True,
+        env=env,
+        timeout=60,
+    )

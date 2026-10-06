@@ -151,17 +151,13 @@ pub(crate) fn fail(label: &str, how: &str, report: &str, start: Instant) -> i32 
     1
 }
 
-/// `how` for a failing PORTED step (Phase N1): the native source that ran and
-/// the Python checker it ports, both as full paths -- R8, so the reader can
-/// find the rule from the message, as a delegated step's command line lets them.
+/// `how` for a failing native step: the source that ran, as a full path -- R8,
+/// so the reader can find the rule from the message. (It also named the Python
+/// checker it ported until Phase N3 retired those; a path to a deleted file
+/// routes the reader to nothing, which is the R8 defect itself.)
 #[must_use]
-pub(crate) fn ported(source: &str, reference: &str) -> String {
-    let root = crate::goh_root();
-    format!(
-        "native {}, the port of {}",
-        root.join(source).display(),
-        root.join("checks").join(reference).display()
-    )
+pub(crate) fn ported(source: &str) -> String {
+    format!("native {}", crate::goh_root().join(source).display())
 }
 
 /// Where the rules behind a failing step are WRITTEN.
@@ -225,7 +221,7 @@ pub(crate) fn delegated(
 ///
 /// THROUGH `lib/bounded_run.py`, which is the whole point of this function's
 /// shape. `Command::output()` blocks with no ceiling of its own — the very
-/// disposition `checks/check_no_unreaped_spawn.py` MEASURES and documents as
+/// disposition `goh unreaped-spawn` MEASURES and documents as
 /// "reaps by blocking, so it cannot leak but has no timeout" — and a structural
 /// step is a whole-tree scan of another repo. Bounding the shell tier and
 /// leaving this one unbounded is one hang with two answers, so BOTH tiers route

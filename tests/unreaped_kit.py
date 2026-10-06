@@ -17,6 +17,4 @@ CHECK = "checks/check_no_unreaped_spawn.py"
 
 def findings(repo: Path, *args: str) -> subprocess.CompletedProcess:
     """Run the checker over `repo` (cwd=repo), exactly as a consumer's gate does."""
-    return run_tiered(
-        repo, CHECK, "unreaped-spawn", *args, python_only=("--probe", "--fresh-derivations")
-    )
+    return run_tiered(repo, CHECK, "unreaped-spawn", *args)

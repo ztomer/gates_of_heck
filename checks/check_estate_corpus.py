@@ -73,6 +73,9 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from tui.lib import err, info, ok, warn  # noqa: E402
 
 HERE = os.path.dirname(os.path.abspath(__file__))
+# The gates checkout whose `goh.sh` runs the native checks: GOH_DIR when the caller says (a copy of
+# this file in another tree, as the empty-scope sweep makes), else the checkout this file is in.
+GOH = os.environ.get("GOH_DIR") or os.path.dirname(HERE)
 REPO = os.path.dirname(HERE)
 
 # A corpus below this is not an estate, it is a fixture wearing a real repo's name. Measured: the
@@ -89,7 +92,7 @@ MIN_TARGET_LINES = 10
 # the plant goes into, the plant itself, extra argv, and WHY this corpus for this checker.
 ESTATE = (
     {
-        "checker": "check_no_empty_assert.py",
+        "checker": "empty-assert",
         "root": "~/Projects/servers/storage-server",
         "scope": ("pool-reaper-rs",),
         "ext": ".rs",
@@ -107,7 +110,7 @@ ESTATE = (
         "docs/SUPERSOTA.md R3 as found at a real site in this repo on 2026-10-02.",
     },
     {
-        "checker": "check_no_unreaped_spawn.py",
+        "checker": "unreaped-spawn",
         "root": "~/Projects/servers/media_server",
         "scope": ("crates",),
         "ext": ".rs",
@@ -144,7 +147,7 @@ ESTATE = (
         "this checker does not have, and reported green over the defect it was written for.",
     },
     {
-        "checker": "check_no_allow.py",
+        "checker": "no-allow",
         "root": "~/Projects/routines",
         "scope": (".",),
         "ext": ".rs",
@@ -155,7 +158,7 @@ ESTATE = (
         "per entry, and a second one belongs in a second entry where its own red is measured.",
     },
     {
-        "checker": "check_file_length.py",
+        "checker": "length",
         "root": "~/Projects/servers/server-template",
         "scope": (".",),
         "ext": ".sh",
@@ -168,7 +171,7 @@ ESTATE = (
         "so the ceiling is judged against text the estate produces.",
     },
     {
-        "checker": "check_no_conflict_markers.py",
+        "checker": "markers",
         "root": "~/Projects/monitor",
         "scope": (".",),
         "ext": ".py",
@@ -180,7 +183,7 @@ ESTATE = (
         "example of a retired local copy.",
     },
     {
-        "checker": "check_md_links.py",
+        "checker": "md-links",
         "root": "~/Projects/app_updates",
         "scope": (".",),
         "ext": ".md",
@@ -192,7 +195,7 @@ ESTATE = (
         "is judged beside them.",
     },
     {
-        "checker": "check_no_home_paths.py",
+        "checker": "home-paths",
         "root": "~/Projects/mediaremote-adapter",
         "scope": (".",),
         "ext": ".m",
@@ -203,7 +206,7 @@ ESTATE = (
         "under it before any plant lands.",
     },
     {
-        "checker": "check_claim_derivation.py",
+        "checker": "claim-derivation",
         "root": "~/Projects/games/game_asset_factory",
         "scope": (".",),
         "ext": ".md",
@@ -266,9 +269,16 @@ def materialise(source, files, dest):
 
 
 def run_checker(checker, root, args):
-    """(rc, output). The checker under test, exactly as a consumer runs it."""
+    """(rc, output). The checker under test, exactly as a consumer runs it: a house check by its
+    `goh.sh` name (the Python checkers it named are retired, Phase N3), a `.py` by path -- the
+    probe's own planted checkers, which cannot be anything else."""
+    argv = (
+        [sys.executable, os.path.join(HERE, checker), *args]
+        if checker.endswith(".py")
+        else ["bash", os.path.join(GOH, "gates", "goh.sh"), checker, *args]
+    )
     result = subprocess.run(
-        [sys.executable, os.path.join(HERE, checker), *args],
+        argv,
         cwd=root,
         capture_output=True,
         text=True,

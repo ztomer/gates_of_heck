@@ -18,11 +18,14 @@ import pytest
 
 from conftest import REPO_ROOT, git
 
-sys.path.insert(0, str(REPO_ROOT / "checks"))
-from _credential_urls_probe import CONFIG_TABLE, TABLE  # noqa: E402
-from check_no_credential_urls import fingerprint, verdict  # noqa: E402
+from reference_kit import reference_path, load_reference  # noqa: E402
 
-CHECK = REPO_ROOT / "checks" / "check_no_credential_urls.py"
+_probe = load_reference("_credential_urls_probe")
+_ref = load_reference("check_no_credential_urls")
+CONFIG_TABLE, TABLE = _probe.CONFIG_TABLE, _probe.TABLE
+fingerprint, verdict = _ref.fingerprint, _ref.verdict
+
+CHECK = reference_path("checks/check_no_credential_urls.py")
 EXTRA = [
     ("ipv6 with userinfo", "https://u:p@[::1]:8080/o/r"),
     ("upper-case host", "https://u:p@GitHub.COM/o/r"),

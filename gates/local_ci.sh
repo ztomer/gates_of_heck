@@ -378,7 +378,7 @@ _report() { # _report <i>
         # it — and a leaked server is what makes the NEXT suite hang with no output at all.
         err "[$i/$_n] PASSED, and left processes running: $cmd"
         err "  Wrap the child in a guard that reaps it on a panic — the pids are named above, and"
-        err "  checks/check_no_unreaped_spawn.py is the gate that keeps the shape out."
+        err "  goh unreaped-spawn (gates/goh.sh) is the gate that keeps the shape out."
         FAILED=$((FAILED + 1))
         FAILED_NAMES="$FAILED_NAMES
   $cmd (orphans)"

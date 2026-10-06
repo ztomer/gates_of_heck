@@ -3,11 +3,11 @@
 Nothing may render to the user's display from tests or unattended runs.
 One invariant, enforced from directions that do not subsume each other:
 
-## Static half — `checks/check_no_screen_presentation.py`
+## Static half — `goh screen`
 
 Reads TEST TARGET SOURCES (paths or `--scope` glob) for per-language
-presentation APIs (.swift / .m/.mm / .py pattern sets; see the module
-docstring). It sees what a test ASKS for. Exit 1 names every
+presentation APIs (.swift / .m/.mm / .py pattern sets; see
+`crates/goh/src/screen_shapes.rs`). It sees what a test ASKS for. Exit 1 names every
 `file:line: API`. Escape hatch: a `screen-ok: <reason>` marker on the
 offending line or above.
 
@@ -70,7 +70,7 @@ Both halves are opt-in until a third repo adopts them (layer-3 to layer-1
 graduation). A repo opts in by adding to its gate script:
 
     goh_step "no screen presentation" \
-        python3 "$CHECKS/check_no_screen_presentation.py" --scope 'tests/*'
+        bash "$GOH_DIR/gates/goh.sh" screen --scope 'tests/*'
 
 and sourcing `$GOH_DIR/lib/headless_env.sh` in any live-tier harness.
 
@@ -181,4 +181,4 @@ findings — each with the repo that earned it.
    determinism mode; env-var forces the policy down a process tree, a flag lets
    attended runs opt back out, and every suppression is counted with its reason
    so tests can assert on the runtime evidence. gates_of_heck's halves:
-   `check_no_screen_presentation.py` (static) + `GOH_HEADLESS` (runtime).
+   `goh screen` (static) + `GOH_HEADLESS` (runtime).

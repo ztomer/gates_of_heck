@@ -1,4 +1,4 @@
-//! Cross-file markdown links -- Rust port of `checks/check_md_links.py`
+//! Cross-file markdown links -- Rust port of the retired `checks/check_md_links.py`
 //! (Phase N1).
 //!
 //! A relative link must resolve to a file AND to an anchor that file has.
@@ -298,7 +298,7 @@ pub fn step(cfg: &crate::gatesrc::Gatesrc, staged: bool) -> Option<i32> {
             let text: String = lines.into_iter().map(|(_, l)| l + "\n").collect();
             let _ = crate::step_report::fail(
                 label,
-                &crate::step_report::ported("crates/goh/src/mdlinks.rs", "check_md_links.py"),
+                &crate::step_report::ported("crates/goh/src/mdlinks.rs"),
                 &text,
                 start,
             );

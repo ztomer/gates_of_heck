@@ -1,4 +1,4 @@
-//! The PYTHON and SHELL rules. Port of `checks/_spawn_py_sh.py`.
+//! The PYTHON and SHELL rules. Port of the retired `checks/_spawn_py_sh.py`.
 //!
 //! Python: a `Popen` outside `with`, not handed off, not under a reaping
 //! `try`/`finally`, whose reap is missing or sits below a raising line or an

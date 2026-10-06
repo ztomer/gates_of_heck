@@ -8,7 +8,7 @@ directory is not part of the repository, yet a disk walk counts it.
 
 So the class test plants exactly that: a crate, and an IGNORED build tree holding many
 directories and a stray `Cargo.toml` that would change the answer if read. Every manifest
-finder, in both tiers, must ignore it. The source scan below keeps new disk walks out.
+finder must ignore it. The source scan below keeps new disk walks out.
 """
 
 from __future__ import annotations
@@ -60,55 +60,35 @@ def planted(tmp_path: Path) -> Path:
     return repo
 
 
-def test_dep_tree_manifests_skip_the_ignored_build_tree(planted: Path) -> None:
-    from _dep_tree import manifests
+def test_dep_currency_counts_only_the_crate_git_names(planted: Path, goh) -> None:
+    """The real crate declares no dependency; the two stray manifests in the build trees would
+    make it three manifests if read. `goh deps` names the population it saw."""
+    env = hermetic_env(drop_git=True)
+    r = subprocess.run(
+        [str(goh), "deps", "--root", str(planted), "--offline"],
+        cwd=planted,
+        capture_output=True,
+        text=True,
+        env=env,
+        timeout=60,
+    )
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert "1 manifest(s), none declaring a dependency" in r.stdout, r.stdout
 
-    assert [p.relative_to(planted).as_posix() for p in manifests(planted)] == ["Cargo.toml"]
 
-
-def test_rust_package_roots_skip_the_ignored_build_tree(planted: Path) -> None:
-    from _rust_crates import rust_package_roots
-
-    assert rust_package_roots(planted) == [planted]
-
-
-@pytest.mark.parametrize("tier", ["python", "native"])
-def test_lints_optin_never_reads_the_ignored_build_tree(planted: Path, tier: str, goh) -> None:
+def test_lints_optin_never_reads_the_ignored_build_tree(planted: Path, goh) -> None:
     env = hermetic_env(drop_git=True)
     env["GOH_DIR"] = str(ROOT)
-    if tier == "python":
-        cmd = [sys.executable, str(ROOT / "checks" / "check_lints_optin.py")]
-    else:
-        cmd = [str(goh), "lints"]
-    r = subprocess.run(cmd, cwd=planted, capture_output=True, text=True, env=env, timeout=60)
+    r = subprocess.run(
+        [str(goh), "lints"], cwd=planted, capture_output=True, text=True, env=env, timeout=60
+    )
     assert r.returncode == 0, r.stdout + r.stderr
     assert "unsafe_code" not in r.stdout + r.stderr
 
 
-@pytest.mark.parametrize("finder", ["dep_tree", "rust_crates", "lints_optin"])
-def test_no_finder_descends_into_the_build_tree(planted: Path, finder: str, monkeypatch) -> None:
-    """Filtering `target/` out of the RESULTS is not enough: the 2.27 s of system time was the
-    descent itself. Count every directory listing opened under `target/`; there must be none."""
-    opened: list[str] = []
-    real = os.scandir
-
-    def counting(path=".", *a, **k):
-        opened.append(os.fspath(path))
-        return real(path, *a, **k)
-
-    monkeypatch.setattr(os, "scandir", counting)
-    if finder == "dep_tree":
-        from _dep_tree import manifests as find
-    elif finder == "rust_crates":
-        from _rust_crates import rust_package_roots as find
-    else:
-        import check_lints_optin
-
-        def find(root):
-            return check_lints_optin.audit(root)
-
-    find(planted)
-    assert not [p for p in opened if "/target" in p], [p for p in opened if "/target" in p][:5]
+# The Python finders' descent counts (`os.scandir` patched under `_dep_tree`, `_rust_crates` and
+# `check_lints_optin`) went with them in Phase N3: the native finders read git's listing
+# (`gitutil::tree_files`) and never open a directory under an ignored tree.
 
 
 def test_outside_git_the_walk_still_prunes_the_build_tree(tmp_path: Path) -> None:
@@ -128,7 +108,6 @@ WALK_ALLOWED = {
     "checks/_gitutil.py": "the fallback walk itself, pruned, for trees git cannot name",
     "checks/_empty_scope_probe.py": "fixture source text for the empty-tree probe",
     "checks/check_empty_scope.py": "builds the empty skeleton's directory shape, pruned",
-    "checks/check_no_screen_presentation.py": "walks paths the CALLER named explicitly",
     "checks/check_tests_registered.py": "no shared gate runs it (BACKLOG); pruned walk",
     "gates/coverage_engines.py": "finds .xctest bundles IN the build dir, on purpose",
     "gates/coverage_markers.py": "swift coverage markers under the project's own sources",

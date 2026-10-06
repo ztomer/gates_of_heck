@@ -22,7 +22,10 @@ Pre-push runs `tools/gate.sh --full`. Escape hatch: `git commit --no-verify`.
 * `gates/` — runners (bash). `structural.sh` is layer 1 (every repo);
   `py_gate.sh`, `rust_gate.sh`, `swift_gate.sh`, `coverage_gate.sh`,
   `local_ci.sh` are opt-in per-repo layers. `_common.sh` is sourced, never run.
-* `checks/` — checkers (python, one `nm` shell script). Called by gates.
+* `crates/goh/` — the native `goh` binary: every structural check (`goh <check>`,
+  dispatched by `gates/goh.sh`). The Python checkers are retired (Phase N3).
+* `checks/` — the remaining Python gate-side tools, the six forwarders
+  (`_retired.py`), the calibration registry, the `--full` sweeps.
 * `lib/` — shared libs: `golden_core.py`, `mcp_scaffold.py`,
   `eval_transport.py`, `headless_env.sh`, `killtree.py`, `desktop_lock/`.
 * `tui/` — output style source of truth (`stylerc`, `lib.sh`, `lib.py`).
@@ -41,13 +44,13 @@ Details: `docs/map.md`.
 
 * Emoji are a failure state. Only `→ · ✓ ✗ ⚠ ↔ ↑ ↓ ← ⌘ ⌥ ⌨ ⇧ ⌃ ⏎ ⎋ ↵ ⇒ ⇄`
   plus `© ® ™` (bare forms; VS16 forms fail). Enforced by
-  `checks/check_no_emoji.py`. See `docs/config.md` for `GOH_ALLOW`.
+  `goh emoji` (`crates/goh/src/emoji.rs`). See `docs/config.md` for `GOH_ALLOW`.
 * 500-line cap (`GOH_MAX_LINES`). Keep new docs/code under it.
 * Output style: source `tui/lib.sh`, use `info/ok/err/warn/die/section/hr`.
   Never hand-roll color escapes or `[ PASS ]` markers.
 * 64-bit only; macOS is Apple silicon only, Linux x86_64 stays supported.
   Unsupported OS/arch is a hard failure, never a warn-and-build fallback.
-* Staged checks read the git index (`git show :path` via `checks/_gitutil.py`),
+* Staged checks read the git index (`git show :path`, `crates/goh/src/blobs.rs`),
   not the worktree.
 * Git on any OTHER repo (fixture, skeleton, export) drops the hook's `GIT_*`
   variables: `_gitutil.foreign_repo_env()` / `goh_testkit::git_command()`.

@@ -4,7 +4,7 @@
 //! delegated Python checkers, one after another, while each waited mostly on its own interpreter
 //! start and tree read. They are independent and read-only, so they now START together and are
 //! REPORTED in sequence: every `· label` / `✓ label` line, the first failure and its tail come out
-//! exactly as the serial pipeline printed them (`tests/test_goh_structural_parity.py` pins it).
+//! exactly as the serial pipeline printed them (`tests/test_goh_structural.py` pins it).
 //!
 //! How the set is found without a second list of conditions to drift: `collect` runs the same
 //! delegated step functions in a mode where `delegated()` records its command instead of running

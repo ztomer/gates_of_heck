@@ -27,16 +27,10 @@ from __future__ import annotations
 
 import json
 import re
-import subprocess
-import sys
 
 import pytest
-from claim_kit import GATES, ROSTER, doc, estate, findings, numbers, silent
-from conftest import REPO_ROOT, commit_all, run_check, stage, write
-
-sys.path.insert(0, str(REPO_ROOT / "checks"))
-from _claim_derive import CHECKS, run_command
-from _claim_text import UNITS, claims_in_file, claims_in_line
+from claim_kit import ROSTER, doc, estate, findings, numbers, parse, run_command, silent
+from conftest import REPO_ROOT, commit_all, run_goh, stage, write
 
 # ── the grammar ─────────────────────────────────────────────────────────────
 
@@ -59,7 +53,7 @@ CLAIMED = (
 
 @pytest.mark.parametrize(("prose", "kind", "target", "name"), CLAIMED)
 def test_a_marked_claim_is_recognised_with_its_target(prose, kind, target, name) -> None:
-    got = claims_in_line(prose, 1)
+    got = parse(prose)
     assert len(got) == 1, f"{prose!r} -> {got!r}"
     assert (got[0].kind, got[0].target, got[0].name) == (kind, target, name)
     assert got[0].malformed is None
@@ -88,25 +82,21 @@ UNMARKED = (
 
 @pytest.mark.parametrize("prose", UNMARKED)
 def test_prose_that_is_not_a_marked_claim_produces_nothing(prose) -> None:
-    assert claims_in_line(prose, 1) == []
+    assert parse(prose) == []
 
 
-def test_the_unit_vocabulary_is_closed_and_covers_every_derivation() -> None:
-    """An unknown unit must not be a claim, and every unit must HAVE a derivation
-    -- a word in the vocabulary with no rule behind it is a promise nobody keeps,
-    which is the class this gate is about."""
-    assert set(UNITS.values()) == set(CHECKS), (sorted(set(UNITS.values())), sorted(CHECKS))
-    assert len(CHECKS) == GATES
+# The closed unit vocabulary (every unit has a derivation) is a Rust test now, beside the table:
+# `claims::derive::tests::every_unit_names_a_derivation_and_there_are_four`.
 
 
 def test_a_marked_promise_the_gate_cannot_keep_is_a_malformed_claim_not_a_skip() -> None:
     """The asymmetry is deliberate and load-bearing: the `claim:` form is a promise
     per line, so honouring it strictly costs its author nothing, while the
     backtick form is opportunistic and must stay silent to stay usable."""
-    got = claims_in_line("claim: 3 files under pkg", 1)
+    got = parse("claim: 3 files under pkg")
     assert len(got) == 1 and got[0].malformed and "must name the extension" in got[0].malformed
-    assert claims_in_line("`3` files under `pkg`", 1) == []
-    globbed = claims_in_line("`3` *.py gates in `pkg`", 1)
+    assert parse("`3` files under `pkg`") == []
+    globbed = parse("`3` *.py gates in `pkg`")
     assert globbed == [], "a glob belongs to a `files` claim and nowhere else"
 
 
@@ -264,14 +254,12 @@ def test_a_file_with_no_trailing_newline_counts_its_last_line(repo) -> None:
     [("claim: 99 lines in pkg/notes.md", 1), ("claim: 3 lines in pkg/notes.md", 0)],
 )
 def test_the_exit_code_follows_the_finding(repo, prose, want) -> None:
-    proc = run_check(doc(estate(repo), prose), "checks/check_claim_derivation.py")
+    proc = run_goh(doc(estate(repo), prose), "claim-derivation")
     assert proc.returncode == want, proc.stdout + proc.stderr
 
 
 def test_the_finding_names_the_file_the_line_and_the_command(repo) -> None:
-    proc = run_check(
-        doc(estate(repo), "claim: 99 lines in pkg/notes.md"), "checks/check_claim_derivation.py"
-    )
+    proc = run_goh(doc(estate(repo), "claim: 99 lines in pkg/notes.md"), "claim-derivation")
     out = proc.stdout + proc.stderr
     assert "docs/note.md:3" in out, out
     assert "claims 99, the tree says 3" in out, out
@@ -279,10 +267,8 @@ def test_the_finding_names_the_file_the_line_and_the_command(repo) -> None:
 
 
 def test_json_output_carries_the_same_verdict(repo) -> None:
-    proc = run_check(
-        doc(estate(repo), "claim: 99 lines in pkg/notes.md"),
-        "checks/check_claim_derivation.py",
-        "--json",
+    proc = run_goh(
+        doc(estate(repo), "claim: 99 lines in pkg/notes.md"), "claim-derivation", "--json"
     )
     assert proc.returncode == 1
     payload = json.loads(proc.stdout)
@@ -290,47 +276,20 @@ def test_json_output_carries_the_same_verdict(repo) -> None:
     assert payload["claims"] == 1 and payload["examined"] >= 7, payload
 
 
-# ── calibration: the proof that the proof is not a constant ──────────────────
+# ── this repository's own claims ─────────────────────────────────────────────
 
 
-def test_the_probe_is_green_and_goes_red_when_a_rule_is_narrowed(repo, monkeypatch) -> None:
-    """The probe is the gate's own proof; this is the proof that the proof is not
-    a constant. Narrowing the marker rule so `PATH:NAME` is no longer accepted
-    turns the `declared` case RED: it stops resolving, and a self-proof that cannot
-    fail is a gate reporting coverage it never measured (SUPERSOTA R1).
-    """
-    import _claim_text
-
-    proc = run_check(estate(repo), "checks/check_claim_derivation.py", "--probe")
-    assert proc.returncode == 0, proc.stdout + proc.stderr
-
-    narrowed = _claim_text.MARKER.pattern.replace(r"(?::[A-Za-z_][A-Za-z0-9_]*)?", "")
-    monkeypatch.setattr(_claim_text, "MARKER", re.compile(narrowed))
-    got = _claim_text.claims_in_line("claim: 4 gates in pkg/roster.py:STEPS", 1)
-    assert got and got[0].name == "", got  # the NAME is gone, so it cannot resolve
-
-
-def test_this_repos_own_live_claim_is_true_and_the_table_is_what_it_claims() -> None:
-    """The checker's docstring marks one claim about this repository -- the size
-    of its own derivation table -- and this repository runs the gate over itself,
-    so the sentence and the code cannot drift apart. Measured load-bearing by
-    planting a fifth entry in the table and watching the gate name its own
-    docstring; that measurement is in the commit body, not repeatable here
-    without editing the checker under test."""
-    proc = subprocess.run(
-        [sys.executable, str(REPO_ROOT / "checks" / "check_claim_derivation.py")],
-        cwd=str(REPO_ROOT),
-        capture_output=True,
-        text=True,
-        check=False,
-    )
+def test_this_repos_own_marked_claims_are_true() -> None:
+    """This repository runs the gate over itself (`GOH_CLAIM_DERIVATION=1`), so every number it
+    marks in prose is re-derived on every push. (The retired Python checker's `--probe` and its
+    regex-narrowing calibration went with it: the native grammar is pinned by the tables above.)"""
+    proc = run_goh(REPO_ROOT, "claim-derivation")
     assert proc.returncode == 0, proc.stdout + proc.stderr
     assert "marked claim(s) re-derived" in proc.stdout, proc.stdout
-    assert len(CHECKS) == GATES, len(CHECKS)
 
 
 def test_a_broken_python_file_is_scanned_unchanged_rather_than_skipped() -> None:
     """Untokenisable text returns unchanged -- the direction that can FIND a claim
     rather than hide one."""
     body = 'CLAIMS = [ "unterminated\nclaim: 99 lines in pkg/notes.md"\n'
-    assert len(claims_in_file("pkg/broken.py", body)) == 1
+    assert len(parse(body, "pkg/broken.py")) == 1

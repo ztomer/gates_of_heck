@@ -18,8 +18,10 @@ import pytest
 
 from conftest import REPO_ROOT
 
-sys.path.insert(0, str(REPO_ROOT / "checks"))
-from _md_text import anchors, links_in  # noqa: E402
+from reference_kit import load_reference  # noqa: E402
+
+_md = load_reference("_md_text")
+anchors, links_in = _md.anchors, _md.links_in
 
 SHAPES = [
     "### 4.8. What `.90` can actually do, measured\n",

@@ -220,6 +220,9 @@ def _runtime_env():
     env["PYTHONPATH"] = os.pathsep.join(
         p for p in (home, os.path.join(home, "lib"), env.get("PYTHONPATH", "")) if p
     )
+    # ...and the dispatcher the native checks run through (`gates/goh.sh`), which a checker that
+    # runs one (`check_estate_corpus.py`) finds through GOH_DIR, not beside its copied self.
+    env["GOH_DIR"] = home
     return env
 
 
@@ -294,9 +297,29 @@ def sweep(skeleton, gate_name, names, timeout=None, excused=()):
     return blind, unrunnable
 
 
+# A line that IS the forward, not a mention of it (this file names it, and is a gate).
+FORWARDER = re.compile(r'^__import__\("_retired"\)\.forward\(', re.M)
+
+
+def forwarders(gates):
+    """The retired checkers' entry points (Phase N3): three lines that exec `goh.sh <check>`. Not
+    gates of this repo -- the native check's empty-tree refusal is pinned by its own suite -- so
+    they are named and skipped, never swept as a Python gate that cannot find its dispatcher."""
+    out = []
+    for e in sorted(os.listdir(gates)):
+        if e.startswith("check_") and e.endswith(".py"):
+            with open(os.path.join(gates, e), encoding="utf-8", errors="replace") as fh:
+                if FORWARDER.search(fh.read()):
+                    out.append(e)
+    return out
+
+
 def gate_names(gates):
+    skip = set(forwarders(gates))
     return sorted(
-        e for e in os.listdir(gates) if e.startswith("check_") and e.endswith(".py") and e != SELF
+        e
+        for e in os.listdir(gates)
+        if e.startswith("check_") and e.endswith(".py") and e != SELF and e not in skip
     )
 
 
@@ -326,8 +349,13 @@ def main(argv=None):
             info(name)
         return 0
 
+    for name in forwarders(gates):
+        info(f"{name} forwards to a native check (Phase N3) -- not a gate here, not swept")
     legitimate, known_blind = allowed(gates)
     excused = {**legitimate, **known_blind}
+    # An excuse naming no gate is the same stale permission as one whose gate was fixed: it would
+    # silently excuse the next file to take the name.
+    orphaned = sorted(k for k in excused if k not in names)
     with tempfile.TemporaryDirectory() as workdir:
         skeleton = build_skeleton(root, gates, os.path.join(workdir, "skeleton"))
         blind, unrunnable = sweep(skeleton, os.path.basename(gates), names)
@@ -371,8 +399,10 @@ def main(argv=None):
         info("with the reason it may legitimately pass on nothing.")
     for name in stale:
         err(f"{name} is excused here but now FAILS on an empty tree -- delete its excuse")
+    for name in orphaned:
+        err(f"{name} is excused here but names no gate in this repo -- delete its excuse")
 
-    if unexcused or stale or unrunnable:
+    if unexcused or stale or unrunnable or orphaned:
         return 1
     ok(
         f"empty scope: {len(names)} gate(s) swept over an empty tree, "

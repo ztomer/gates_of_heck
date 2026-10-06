@@ -2,7 +2,7 @@
 the gate's own source is committed.
 
 Neither question is `goh structural` versus `gates/structural.sh` — that is
-tests/test_goh_structural_parity.py. These are the two things a gate run also
+tests/test_goh_structural.py. These are the two things a gate run also
 depends on and that no verdict comparison can see: the environment it inherits,
 and the working tree its own source is read from.
 

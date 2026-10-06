@@ -70,11 +70,10 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from _gitutil import content_bytes, listed_files, repo_root  # noqa: E402
 from _marker_reason import is_justified  # noqa: E402
 
-# ONE masker, both gates. `swift_code_only` blanks Swift comments AND string literals while
-# preserving line count 1:1, so a doc comment explaining the rule is not a violation. The consumer's
-# own gate never masked, because a line-based skip was enough over its roots; over a whole app
-# source tree it is not, and importing beats carrying a second 80-line scanner that would drift.
-from check_no_screen_presentation import swift_code_only  # noqa: E402
+# `swift_code_only` blanks Swift comments AND string literals while preserving line count 1:1, so
+# a doc comment explaining the rule is not a violation. The consumer's own gate never masked,
+# because a line-based skip was enough over its roots; over a whole app source tree it is not.
+from _swift_text import swift_code_only  # noqa: E402
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from tui.lib import err, info, ok  # noqa: E402

@@ -1,5 +1,5 @@
 //! No emptiness assertion in the shapes clippy refuses -- Rust port of
-//! `checks/check_no_empty_assert.py` (Phase N1).
+//! the retired `checks/check_no_empty_assert.py` (Phase N1).
 //!
 //! `assert!(v.is_empty())`, `assert!(v.len() == 0)` and kin are what clippy's
 //! `assert_is_empty` / `len_zero` refuse -- and clippy is SILENT on the same

@@ -60,14 +60,13 @@ def _referenced_scripts(files=None) -> list[tuple[str, int, str]]:
 # length-cap cluster outgrew `structural.sh`. That is the correct failure: it is how
 # a reader learns the pin tracks a reference rather than a file.
 EXPECTED_REFS = [
-    # A plain path, a `python_file="..."` table row, and a `$GOH/...` expansion: the three
-    # spellings the gates use. (structural.sh referenced every checker until Phase N3
-    # retired its Python branch; it now references only the binary's build script.)
+    # A plain path, a `$GOH/...` expansion and a `$HERE/../...` one: the spellings the gates use.
+    # (structural.sh and goh.sh referenced every Python checker until Phase N3 retired them.)
     ("gates/structural.sh", "scripts/build-goh.sh"),
-    ("gates/goh.sh", "checks/check_no_emoji.py"),
-    ("gates/goh.sh", "checks/check_no_conflict_markers.py"),
+    ("gates/_goh_bin.sh", "scripts/build-goh.sh"),
     ("gates/push_gate.sh", "gates/goh.sh"),
-    ("gates/local_ci.sh", "checks/check_no_unreaped_spawn.py"),
+    ("gates/doctor.sh", "gates/structural.sh"),
+    ("gates/_coverage_rust.sh", "gates/lcov_merge.py"),
     # NOTE: the disk watch is not here at all any more. It moved out of CI in
     # v0.8.0 and out of this REPO on 2026-09-07, to
     # ~/Projects/scripts/{lib/disk_hygiene.py,bin/disk_hygiene.sh}. See
@@ -192,3 +191,19 @@ def test_every_script_has_a_row_in_the_map():
     ]
     missing = sorted(p.name for p in scripts if f"`{p.name}`" not in text)
     assert not missing, f"no row in docs/map.md for: {missing}"
+
+
+def test_every_row_in_the_map_names_a_file_that_exists():
+    """The other direction of the inventory: a row for a deleted file routes a reader to nothing.
+    Phase N3 deleted 40 Python files, and their rows outlived them until this asked."""
+    import re as _re
+
+    text = (REPO_ROOT / "docs" / "map.md").read_text(encoding="utf-8")
+    sections = {"Gates": "gates", "Checks": "checks", "Lib": "lib"}
+    stale = []
+    for heading, base in sections.items():
+        body = text.split(f"## {heading}", 1)[1].split("\n## ", 1)[0]
+        for name in _re.findall(r"^\| `([^`/]+\.(?:py|sh|tsv|json))`", body, _re.M):
+            if not (REPO_ROOT / base / name).exists():
+                stale.append(f"{base}/{name}")
+    assert not stale, f"docs/map.md rows for files that do not exist: {stale}"

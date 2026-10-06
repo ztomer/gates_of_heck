@@ -1,12 +1,12 @@
 //! `goh` — static structural-gate binary.
 //!
-//! `structural` is the whole layer-1 pipeline: native emoji / markers /
-//! length / secrets scanners, the remaining checkers delegated to the Python
-//! files under `$GOH_DIR/checks` (the exclusion ceiling, the skills corpus,
-//! shell lint, the empty-scope and probes sweeps). `gates/structural.sh`
-//! execs this binary when `install.sh` has built it to `bin/goh`, and runs
-//! the Python checkers itself otherwise; `tests/test_goh_structural_parity.py`
-//! pins the two to identical verdicts. `GOH_DIR` locates the checkers.
+//! `structural` is the whole layer-1 pipeline, every step native but the two
+//! `--full` sweeps it delegates to `$GOH_DIR/checks` (the empty-scope and
+//! self-proof sweeps, which judge a repo's OWN Python gates). Every other
+//! subcommand is one house check, run as `gates/goh.sh <check>`. The Python
+//! checkers these port are retired (Phase N3); `gates/structural.sh` execs
+//! this binary and refuses without it. `tests/test_goh_structural.py` pins
+//! the pipeline's verdicts and its step inventory.
 
 pub mod blobs;
 pub mod bounded;
@@ -157,7 +157,11 @@ fn run_ported(command: Commands) -> Result<i32, Commands> {
             json,
         } => provenance::run_command(&root, baseline.as_deref(), staged, json),
         Commands::ShellLint { exclude, staged } => shell_lint::run_command(staged, &exclude),
-        Commands::PythonFormatted { trees, staged } => pyformat::run_command(&trees, staged),
+        Commands::PythonFormatted {
+            trees,
+            staged,
+            selftest,
+        } => pyformat::run_command(&trees, staged, selftest),
         Commands::CredentialUrls {
             root,
             json,
@@ -189,10 +193,15 @@ fn run_ported(command: Commands) -> Result<i32, Commands> {
             anchors,
         } => mdlinks::run_command(root.as_deref(), staged, exclude.as_deref(), json, anchors),
         Commands::ClaimDerivation {
+            parse_claims: Some(rel),
+            ..
+        } => claims::parse_claims_command(&rel),
+        Commands::ClaimDerivation {
             root,
             staged,
             exclude,
             json,
+            parse_claims: None,
         } => claims::run_command(root.as_deref(), staged, exclude.as_deref(), json),
         Commands::KillByName {
             exclude,

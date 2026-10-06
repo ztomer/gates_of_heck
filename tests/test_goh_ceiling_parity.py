@@ -13,11 +13,13 @@ from __future__ import annotations
 import subprocess
 from pathlib import Path
 
+from reference_kit import reference_path
+
 import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
 CHECKS = ROOT / "checks"
-CEILING = CHECKS / "check_exclusion_has_ceiling.py"
+CEILING = reference_path("checks/check_exclusion_has_ceiling.py")
 RATCHET = CHECKS / "check_baseline_ratchet.py"
 LOC = CHECKS / "loc_of_baseline_files.py"
 

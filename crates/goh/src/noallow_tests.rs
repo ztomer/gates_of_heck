@@ -149,3 +149,32 @@ fn scope_and_verdicts() {
         1
     );
 }
+
+/// The exemption is for GENERATED files. A hand-written source of ours that reads as generated is
+/// one the gate silently skips -- which is what `noallow.rs` itself was until 2026-09-23. Every
+/// `.rs` file in this workspace, read through the same predicate the gate uses.
+#[test]
+fn no_rust_source_of_ours_reads_as_generated() {
+    fn walk(dir: &std::path::Path, out: &mut Vec<std::path::PathBuf>) {
+        for entry in std::fs::read_dir(dir).expect("readable") {
+            let path = entry.expect("entry").path();
+            if path.is_dir() {
+                walk(&path, out);
+            } else if path.extension().is_some_and(|x| x == "rs") {
+                out.push(path);
+            }
+        }
+    }
+    let crates = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .expect("crates/")
+        .to_path_buf();
+    let mut files = Vec::new();
+    walk(&crates, &mut files);
+    assert!(files.len() > 50, "walked {} files", files.len());
+    let exempt: Vec<_> = files
+        .iter()
+        .filter(|p| is_generated(&String::from_utf8_lossy(&std::fs::read(p).expect("read"))))
+        .collect();
+    assert_eq!(exempt, Vec::<&std::path::PathBuf>::new());
+}

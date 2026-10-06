@@ -1,4 +1,4 @@
-//! Dependency currency -- Rust port of `checks/check_dep_currency.py` (Phase N1).
+//! Dependency currency -- Rust port of the retired `checks/check_dep_currency.py` (Phase N1).
 //!
 //! Two arms of different strength. A direct dependency pinned BELOW what the
 //! graph already resolves (two majors of one crate because of this pin) is

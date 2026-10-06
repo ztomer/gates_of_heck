@@ -1,6 +1,6 @@
 //! crates.io's latest stable version per crate name.
 //!
-//! Port of `checks/_crates_io.py`: one answer per name per TTL in the SAME cache the
+//! Port of the retired `checks/_crates_io.py`: one answer per name per TTL in the SAME cache the
 //! Python tier writes (`~/.cache/goh/crates-io/<name>.json`, `{"fetched",
 //! "version"}`), the misses asked concurrently. The network is `curl`,
 //! bounded; an unreachable index is `None`, which the report says out loud.

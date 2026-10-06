@@ -1,4 +1,4 @@
-//! Git plumbing — Rust port of `checks/_gitutil.py`.
+//! Git plumbing — Rust port of the retired `checks/_gitutil.py`.
 //!
 //! Two contracts:
 //! 1. File listing: tracked files (full runs) vs staged index entries.

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # check_no_screen_linkage.sh — DYNAMIC half of the screen-presentation gate.
 #
-# The static checker (checks/check_no_screen_presentation.py) reasons about
+# The static checker (`goh screen`, gates/goh.sh) reasons about
 # what test SOURCES ask for. This one inspects what a BUILT test binary can
 # DO: a process cannot move or capture the pointer or grab the screen without
 # calling one of a short list of functions, so if the link table imports none

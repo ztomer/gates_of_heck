@@ -13,11 +13,10 @@ agree by construction.
 """
 
 from pathlib import Path
-import sys
 
 import pytest
 
-from conftest import REPO_ROOT, commit_all, write
+from conftest import commit_all, write
 from unreaped_kit import findings, unreaped_tier  # noqa: F401  # unreaped_tier: a fixture
 
 pytestmark = pytest.mark.usefixtures("unreaped_tier")
@@ -232,39 +231,10 @@ fn it_runs_once() {
     assert got.returncode == 0, f"{got.stdout}\n{got.stderr}"
 
 
-def test_the_probe_goes_red_when_the_ordering_rule_is_dropped(repo: Path) -> None:
-    """R3, self-inflicted and measured: delete the ordering rule and watch the probe refuse.
-
-    A gate whose rule list was narrowed to nothing would still exit 0 on every real tree, and the
-    registry would go on calling it proven. The probe is what notices.
-    """
-    import importlib
-
-    sys.path.insert(0, str(REPO_ROOT / "checks"))
-    try:
-        module = importlib.import_module("check_no_unreaped_spawn")
-        importlib.reload(module)
-        shapes = importlib.import_module("_spawn_rust")
-        importlib.reload(shapes)
-        proof = importlib.import_module("_unreaped_spawn_probe")
-        importlib.reload(proof)
-        # The rule the gate exists for, switched off at its own named seam -- in the module that
-        # OWNS it, which after the 500-line split is not the module the probe imports from. Not a
-        # text edit to a copy: a mutated file proves the COPY refuses, and the thing that has to
-        # notice is the probe the sweep runs in 30 repos.
-        assert proof.probe() == 0, "the probe is not green to begin with; fix that first"
-        saved = shapes._ordering_finding
-        shapes._ordering_finding = lambda *args, **kwargs: None  # type: ignore[attr-defined]
-        try:
-            assert proof.probe() != 0, (
-                "the probe passed with the ordering rule removed — a gate narrowed to nothing "
-                "would still exit 0 over every real tree"
-            )
-        finally:
-            shapes._ordering_finding = saved
-        assert proof.probe() == 0, "the probe did not come back green when the rule was restored"
-    finally:
-        sys.path.pop(0)
+# The retired Python probe's ordering-rule calibration (switch `_ordering_finding` off, watch
+# the probe refuse) went with it in Phase N3. The ordering rule is pinned against the native by
+# the incident rows of tests/unreaped_spawn_table*.py (test_unreaped_spawn_native_parity.py):
+# with it gone, the quoted media_server file would read GREEN.
 
 
 # ── Rust: the dispositions the MEASURED table records ────────────────────────

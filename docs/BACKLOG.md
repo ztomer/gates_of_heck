@@ -296,26 +296,30 @@ order, never the reverse:
   `check_lock_version`, `check_no_credential_urls`, `check_shell_lint.sh` (spawns shellcheck), and
   the gate-side Python (`check_dep_currency`, `check_lints_optin`'s twin, `lcov_merge`). Each port
   lands parity-pinned against the Python it replaces and red-proven both ways, as Phase 3 did.
-- **N2. Re-home the spec.** A parity test whose reference is deleted pins nothing. Before a Python
-  checker goes, its behaviour table moves into the native crate's own tests (the calibration tables
-  stay whole -- they are the spec, not the implementation).
-- **N3. Delete the tier.** **Stage A LANDED (2026-10-06):** the Python branch of `structural.sh`
-  is gone (498 -> 181 lines, `_line_cap.sh` with it); `structural.sh` and `goh.sh` REFUSE with no
-  binary (exit 1 / 2, naming `build-goh.sh`), a failed rebuild refuses, `GOH_NO_NATIVE` is said and
-  ignored (monitor's CI sets it). Found doing it: the native tier read `GOH_STEP_TIMEOUT` from the
-  ambient environment and never from `.gatesrc` -- the one key the two tiers answered differently;
-  `gatesrc::adopt_into_env` now makes the environment agree with the file for every pipeline key
-  (`PIPELINE_KEYS`, pinned to config.md). And the push gate said "tag does not match" over a tag
-  check that could not run; the two now read differently. `cargo` is a declared structural
-  requirement (`required_tools.tsv`, refused up front by `build-goh.sh`).
-  **Stage B, open:** the ported `checks/*.py` become shims that exec `goh.sh <sub>` (consumers call
-  `check_no_emoji.py`, `check_file_length.py`, `check_python_formatted.py --selftest`,
-  `check_swift_warnings.py`, `check_version_provenance.py`, `check_tag_version.py`,
-  `check_no_allow.py` directly); their tables move into Rust tests first (N2); the `both_tiers`
-  suites become one-tier; the Python-only flags (`--probe`, `--selftest`, `--fresh-derivations`)
-  get native forms or move to `tools/`.
-- **Cost of the end state to say plainly:** every consumer then needs a Rust toolchain to rebuild
-  `bin/goh`; `gates/required_tools.tsv` gains `cargo` for the structural layer.
+- **N2. Re-home the spec. LANDED (2026-10-06).** The reference is not deleted from history: the
+  parity suites run the Python, exported whole from commit `96018bd` (`tests/reference_kit.py`,
+  `load_reference` leaves no trace on `sys.path`/`sys.modules`, so an unconverted test fails as the
+  to-do list instead of passing on a leaked module). Tables that were Python data moved to
+  `tests/unreaped_spawn_table*.py`; grammar/semver/vocabulary tables became Rust tests beside the
+  code; the structural suite pins FROZEN verdicts, not tier agreement -- which is how its
+  python-format "red" case was found green in both tiers (it never opted in).
+- **N3. Delete the tier. LANDED (2026-10-06).** Stage A: `structural.sh`'s Python branch gone,
+  every entry point refuses with no binary, `GOH_NO_NATIVE` said and ignored, `.gatesrc` is the
+  only source of pipeline config (`gatesrc::adopt_into_env`). Stage B: 16 ported checkers and 21
+  helpers deleted; six entry points consumers call BY PATH kept as forwarders (`checks/_retired.py`
+  -- imported, they raise rather than exec); `goh.sh` dispatches natively and refuses the retired
+  `--probe`/`--fresh-derivations` by name; `python-formatted --selftest` is native. Found doing it,
+  each fixed as a class: allowlist entries for a DELETED file were never stale (kill-by-name,
+  claim derivation), excuses for deleted gates were never orphaned (empty-scope sweep), map rows
+  for deleted files never failed (`test_every_row_in_the_map_names_a_file_that_exists`), and the
+  calibration registry now resolves a key to its native check and accepts a cited test suite only
+  when the push gate runs pytest. Remaining Python in `checks/`: the gate-side tools a consumer runs
+  with arguments (`check_baseline_ratchet`, `check_display_seam`, `check_generated_fresh`,
+  `check_tests_registered`, `check_swift_*`) and the two `--full` sweeps (`check_empty_scope`,
+  `check_probes_pass`, which judge a repo's OWN Python gates and so stay Python by subject).
+- **Cost of the end state, said plainly:** every consumer needs a Rust toolchain to rebuild
+  `bin/goh`; `gates/required_tools.tsv` names `cargo` for the structural layer, and
+  `build-goh.sh` refuses up front without it.
 
 ## Downstream: what each consumer session needs to know
 

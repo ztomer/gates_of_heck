@@ -114,14 +114,25 @@ def hermetic_env(drop_git: bool = False, **overrides: str) -> dict[str, str]:
     return env
 
 
+# A retired checker's path -> the native check that replaced it (Phase N3): `run_check` gives a
+# suite what a consumer calling that path gets -- the native check, same arguments. The table is
+# `checks/_retired.py::NATIVE`, the one spelling.
+from _retired import NATIVE as _NATIVE  # noqa: E402
+
+RETIRED = {
+    f"checks/{stem}.{'sh' if check == 'shell-lint' else 'py'}": check
+    for stem, check in _NATIVE.items()
+}
+
+
 def run_check(repo: Path, script: str, *args: str) -> subprocess.CompletedProcess:
-    """Run a checker from this repo against `repo` (cwd=repo)."""
-    return subprocess.run(
-        ["python3", str(REPO_ROOT / script), *args],
-        cwd=repo,
-        capture_output=True,
-        text=True,
+    """Run a checker from this repo against `repo` (cwd=repo); a retired one runs its native."""
+    argv = (
+        [str(native_goh_path()), RETIRED[script], *args]
+        if script in RETIRED
+        else ["python3", str(REPO_ROOT / script), *args]
     )
+    return subprocess.run(argv, cwd=repo, capture_output=True, text=True)
 
 
 def run_gate(repo: Path, gate: str, *args: str) -> subprocess.CompletedProcess:
@@ -377,6 +388,29 @@ def native_goh(tmp_path_factory) -> Path:
             shutil.copy2(built, staging)
             staging.rename(published)  # atomic: readers see all of it or none
     return published
+
+
+_REQUEST: dict[str, pytest.FixtureRequest] = {}
+
+
+@pytest.fixture(autouse=True)
+def _remember_request(request: pytest.FixtureRequest):
+    """Lets a plain helper (a kit's function) reach the session's binary: `native_goh_path()`."""
+    _REQUEST["now"] = request
+    yield
+    _REQUEST.pop("now", None)
+
+
+def native_goh_path() -> Path:
+    """The session's native `goh`, from a helper with no fixture of its own; built on first use."""
+    return _REQUEST["now"].getfixturevalue("native_goh")
+
+
+def run_goh(cwd: Path, *args: str, **kw) -> subprocess.CompletedProcess:
+    """`goh <args>` in `cwd`, text captured -- the native tier every suite now tests."""
+    return subprocess.run(
+        [str(native_goh_path()), *args], cwd=cwd, capture_output=True, text=True, **kw
+    )
 
 
 @pytest.fixture(scope="session")

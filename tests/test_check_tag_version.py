@@ -18,7 +18,6 @@ files too.
 """
 
 import subprocess
-import sys
 
 import pytest
 
@@ -30,14 +29,10 @@ pytestmark = pytest.mark.usefixtures("both_tiers")
 
 def run_check(repo, script, *args):
     """The checker over `repo`, on the current tier (Python, or `goh tag-version`)."""
-    return run_tiered(repo, script, "tag-version", *args, python_only=("--probe",))
+    return run_tiered(repo, script, "tag-version", *args)
 
 
-from _tag_version_kit import CHECKER, ZERO, _media_shape, _refs, _sha
-
-sys.path.insert(0, str(REPO_ROOT / "checks"))
-import check_tag_version as gate  # noqa: E402
-import _version_sources as sources  # noqa: E402
+from _tag_version_kit import CHECKER, ZERO, _media_shape, _refs, _sha, extract, push_tag
 
 # ── the incident, reproduced ──────────────────────────────────────────────────
 
@@ -239,15 +234,12 @@ def test_a_present_but_empty_source_is_not_absence(tmp_path):
     write(repo, "VERSION", "\n# nothing here\n")
     git(repo, "add", "-A")
     git(repo, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "c")
-    git(repo, "tag", "v1.0.0")
-    found, present = gate.declared_at(
-        str(repo), _sha(repo, "HEAD"), gate.parse_sources("file:VERSION")
-    )
+    r = push_tag(repo, "v1.0.0", "file:VERSION")
     # Present-but-declaring-nothing must read differently from absent: the
     # finding says "VERSION exists and says nothing", which is a different fix
     # from "there is no VERSION file".
-    assert not found
-    assert "VERSION" in present, present
+    assert r.returncode == 1, r.stdout + r.stderr
+    assert "present but empty: VERSION" in r.stderr, r.stderr
 
 
 def test_a_glob_matching_nothing_is_reported_not_skipped(tmp_path):
@@ -258,11 +250,9 @@ def test_a_glob_matching_nothing_is_reported_not_skipped(tmp_path):
     _media_shape(repo, "1.0.0")
     git(repo, "add", "-A")
     git(repo, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "c")
-    found, present = gate.declared_at(
-        str(repo), _sha(repo, "HEAD"), gate.parse_sources("cargo:crate/*/Cargo.toml")
-    )
-    assert not found
-    assert any("matched no path" in p for p in present), present
+    r = push_tag(repo, "v1.0.0", "cargo:crate/*/Cargo.toml")
+    assert r.returncode == 1, r.stdout + r.stderr
+    assert "crate/*/Cargo.toml [cargo] (matched no path)" in r.stderr, r.stderr
 
 
 # ── the strategies, both layouts ──────────────────────────────────────────────
@@ -282,27 +272,34 @@ def test_both_live_layouts_are_covered(tmp_path):
     )
     git(repo, "add", "-A")
     git(repo, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "c")
-    git(repo, "tag", "v4.5.6")
-    found, _ = gate.declared_at(
-        str(repo), _sha(repo, "HEAD"), gate.parse_sources(" ".join(gate.DEFAULT_SOURCES))
-    )
-    assert sorted(v for _, v in found) == ["4.5.6", "4.5.6"], found
+    assert push_tag(repo, "v4.5.6").returncode == 0
+    wrong = push_tag(repo, "v9.9.9")
+    assert wrong.returncode == 1, wrong.stdout + wrong.stderr
+    assert "VERSION [file]" in wrong.stderr and "Cargo.toml [cargo]" in wrong.stderr, wrong.stderr
+    assert wrong.stderr.count("says 4.5.6") == 2, wrong.stderr
 
 
-def test_a_leading_v_in_the_version_file_is_presentation_not_identity():
-    assert gate._norm("v1.2.3") == gate._norm("1.2.3") == "1.2.3"
+def test_a_leading_v_in_the_version_file_is_presentation_not_identity(tmp_path):
+    repo = tmp_path / "app"
+    repo.mkdir()
+    git(repo, "init", "-q", "-b", "main")
+    write(repo, "VERSION", "v1.2.3\n")
+    git(repo, "add", "-A")
+    git(repo, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "c")
+    r = push_tag(repo, "v1.2.3", "file:VERSION")
+    assert r.returncode == 0, r.stdout + r.stderr
 
 
 def test_version_workspace_true_is_an_inheritance_not_a_declaration():
     """app_updates' members all say this. Reading it as a version would invent
     a finding about a number nobody wrote."""
-    found = sources.from_cargo('[package]\nname = "app-updates-cli"\nversion.workspace = true\n')
+    found = extract("cargo", '[package]\nname = "app-updates-cli"\nversion.workspace = true\n')
     assert found == []
 
 
 def test_a_dependency_version_is_not_this_repos_release_number():
-    found = sources.from_cargo(
-        '[package]\nname = "x"\n\n[dependencies]\nserde = { version = "1.0.219" }\n'
+    found = extract(
+        "cargo", '[package]\nname = "x"\n\n[dependencies]\nserde = { version = "1.0.219" }\n'
     )
     assert found == []
 
@@ -318,14 +315,14 @@ def test_a_vendored_crate_is_reachable_only_through_an_explicit_glob(tmp_path):
     write(repo, "vendor/camoufox-rs/Cargo.toml", '[package]\nname = "cf"\nversion = "0.1.0"\n')
     git(repo, "add", "-A")
     git(repo, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "c")
-    head = _sha(repo, "HEAD")
-
-    default, _ = gate.declared_at(
-        str(repo), head, gate.parse_sources(" ".join(gate.DEFAULT_SOURCES))
-    )
-    assert [v for _, v in default] == ["1.35.1"], default
-    scoped, _ = gate.declared_at(str(repo), head, gate.parse_sources("cargo:crates/*/Cargo.toml"))
-    assert [v for _, v in scoped] == ["1.35.1"], scoped
+    # The vendored 0.1.0 is never read: a tag naming it is refused by the release number alone.
+    default = push_tag(repo, "v0.1.0")
+    assert default.returncode == 1 and "says 1.35.1" in default.stderr, default.stderr
+    assert "vendor/" not in default.stderr, default.stderr
+    assert push_tag(repo, "v1.35.1").returncode == 0
+    scoped = push_tag(repo, "v0.1.0", "cargo:crates/*/Cargo.toml")
+    assert "crates/cli/Cargo.toml [cargo]" in scoped.stderr, scoped.stderr
+    assert "vendor/" not in scoped.stderr, scoped.stderr
 
 
 def test_sources_come_from_gatesrc(tmp_path):
@@ -358,12 +355,3 @@ def test_sources_come_from_gatesrc(tmp_path):
 def test_an_unknown_source_kind_is_a_usage_error(tmp_path):
     r = run_check(tmp_path, CHECKER, "--refs-file", "/dev/null")
     assert r.returncode == 2, r.stdout + r.stderr
-
-
-def test_the_probe_runs_and_is_green():
-    """check_probes_pass discovers this by source, then RUNS it."""
-    r = subprocess.run(
-        [sys.executable, str(REPO_ROOT / CHECKER), "--probe"], capture_output=True, text=True
-    )
-    assert r.returncode == 0, r.stdout + r.stderr
-    assert "a lying tag goes red" in r.stdout, r.stdout

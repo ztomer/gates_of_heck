@@ -30,7 +30,7 @@ pytestmark = pytest.mark.usefixtures("both_tiers")
 
 def pf(repo, *args):
     """The checker over `repo`, on the current tier (Python, or `goh python-formatted`)."""
-    return run_tiered(repo, CHECK, "python-formatted", *args, python_only=("--selftest",))
+    return run_tiered(repo, CHECK, "python-formatted", *args)
 
 
 BAD = "x = {  'a':1,'b':2 }\n"

@@ -67,3 +67,42 @@ def test_an_import_of_the_consumers_own_package_is_unmeasurable_not_a_failure(tm
     )
     assert unrunnable["check_own_package.py"].startswith(check_empty_scope.UNMEASURABLE), unrunnable
     assert unrunnable["check_runtime.py"].startswith("crashed"), unrunnable
+
+
+def _sweep_repo(tmp_path, excuses: dict) -> "subprocess.CompletedProcess":
+    import json
+
+    repo = tmp_path / "repo"
+    gates = repo / "checks"
+    gates.mkdir(parents=True)
+    (gates / "check_refuses.py").write_text("import sys\nprint('nothing to judge')\nsys.exit(1)\n")
+    (gates / "check_no_emoji.py").write_text(
+        "import os, sys\nsys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))\n"
+        '__import__("_retired").forward("emoji", __name__)\n'
+    )
+    (gates / "empty_scope_allow.json").write_text(json.dumps({"legitimate": excuses}))
+    subprocess.run(["git", "init", "-q", str(repo)], check=True)
+    return subprocess.run(
+        [sys.executable, str(REPO_ROOT / "checks" / "check_empty_scope.py"), "--root", str(repo)],
+        capture_output=True,
+        text=True,
+        timeout=120,
+    )
+
+
+def test_a_forwarder_is_named_and_not_swept(tmp_path):
+    """A retired checker's entry point forwards to a native check (Phase N3). Swept as a Python
+    gate, it fails in the skeleton for want of its dispatcher -- a verdict about the sweep, not
+    about the check -- so it is named and skipped."""
+    got = _sweep_repo(tmp_path, {})
+    assert got.returncode == 0, got.stdout + got.stderr
+    assert "check_no_emoji.py forwards to a native check" in got.stdout, got.stdout
+    assert "1 gate(s) swept" in got.stdout, got.stdout
+
+
+def test_an_excuse_naming_no_gate_is_a_finding(tmp_path):
+    """Stale permission: an excuse for a file that is gone would excuse the next file to take the
+    name. Seven such excuses outlived the checkers Phase N3 deleted."""
+    got = _sweep_repo(tmp_path, {"check_gone.py": "it used to be here"})
+    assert got.returncode == 1, got.stdout + got.stderr
+    assert "check_gone.py is excused here but names no gate" in got.stderr, got.stderr

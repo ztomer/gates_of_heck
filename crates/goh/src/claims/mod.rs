@@ -1,5 +1,5 @@
 //! Re-derive every MARKED number in a repo's prose from the tree it
-//! describes -- Rust port of `checks/check_claim_derivation.py` (Phase N1).
+//! describes -- Rust port of the retired `checks/check_claim_derivation.py` (Phase N1).
 //!
 //! A number in prose cannot watch itself (`roadmap_state.py` said "64
 //! declared gates" against 70). A marked claim -- `` `N` unit in `PATH` `` or
@@ -10,6 +10,7 @@
 
 pub mod derive;
 mod report;
+pub use report::parse_claims_command;
 pub mod text;
 
 use std::collections::BTreeSet;
@@ -122,8 +123,15 @@ fn key(text: &str) -> String {
 
 /// `(rel, claim, value or None, command-or-reason)` for every marked claim.
 type Scanned = (String, text::Claim, Option<u64>, String);
-/// `(rel, claim, kind, message, command)`.
-type Finding = (String, text::Claim, &'static str, String, Option<String>);
+/// `(rel, claim, kind, message, command, the value the tree gave)`.
+type Finding = (
+    String,
+    text::Claim,
+    &'static str,
+    String,
+    Option<String>,
+    Option<u64>,
+);
 
 struct Verdict {
     findings: Vec<Finding>,
@@ -190,6 +198,7 @@ fn scan(
 
 /// `(findings, stale entries, excused, unreviewed debt)` -- the ratchet.
 fn judge(
+    root: &Path,
     scanned: &[Scanned],
     entries: &[Value],
     files: &[String],
@@ -215,6 +224,7 @@ fn judge(
                 "UNRESOLVED",
                 detail.clone(),
                 None,
+                None,
             )),
             Some(v) if *v != claim.number => findings.push((
                 rel.clone(),
@@ -222,6 +232,7 @@ fn judge(
                 "STALE",
                 format!("claims {}, the tree says {v}", claim.number),
                 Some(detail.clone()),
+                Some(*v),
             )),
             Some(_) => {}
         }
@@ -231,9 +242,11 @@ fn judge(
         .enumerate()
         .filter(|(i, e)| {
             !used.contains(i)
+                // In scope, or GONE: an entry for a file that no longer exists excuses nothing at
+                // any scope and would excuse the next file to take the path.
                 && e.get("path")
                     .and_then(Value::as_str)
-                    .is_some_and(|p| files_set.contains(p))
+                    .is_some_and(|p| files_set.contains(p) || !root.join(p).exists())
         })
         .map(|(_, e)| e.clone())
         .collect();
@@ -279,7 +292,7 @@ fn check(root: &Path, exclude: Option<&str>, staged: bool) -> Result<Verdict, St
         return Ok(Verdict::refusal(problems, Vec::new(), files.len()));
     }
     let (scanned, examined) = scan(&grammar, root, &files, staged);
-    let (findings, stale, excused, debt) = judge(&scanned, &entries, &files);
+    let (findings, stale, excused, debt) = judge(root, &scanned, &entries, &files);
     if !staged && scanned.is_empty() && adopted(root, staged) {
         return Ok(Verdict {
             problems: vec![format!(
@@ -367,10 +380,7 @@ pub fn step_gate(cfg: &crate::gatesrc::Gatesrc, staged: bool) -> Option<i32> {
             let text: String = lines.into_iter().map(|(_, l)| l + "\n").collect();
             let _ = crate::step_report::fail(
                 label,
-                &crate::step_report::ported(
-                    "crates/goh/src/claims/mod.rs",
-                    "check_claim_derivation.py",
-                ),
+                &crate::step_report::ported("crates/goh/src/claims/mod.rs"),
                 &text,
                 start,
             );

@@ -1,4 +1,4 @@
-//! File-length cap — Rust port of `checks/check_file_length.py`.
+//! File-length cap — Rust port of the retired `checks/check_file_length.py`.
 //!
 //! Only source suffixes are measured; data, docs, and lockfiles are
 //! legitimately long. The line definition is the shared one in `gitutil`

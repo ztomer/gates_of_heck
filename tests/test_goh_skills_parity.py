@@ -16,9 +16,10 @@ import subprocess
 from pathlib import Path
 
 import pytest
+from reference_kit import reference_path  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[1]
-CHECK = ROOT / "checks" / "check_skills_corpus.py"
+CHECK = reference_path("checks/check_skills_corpus.py")
 STRUCTURAL = ROOT / "gates" / "structural.sh"
 FAIL_RE = re.compile(r"structural: (.+) failed")
 

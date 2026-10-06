@@ -11,18 +11,18 @@
 #      part `cfg(target_os = ...)` or part `cfg(feature = ...)` has halves that
 #      command never compiles, so it cannot report on them. Unset keeps step 2
 #      alone, with a printed nudge.
-#   2d. checks/check_lints_optin.py — a workspace's [workspace.lints] is a
+#   2d. goh lints (gates/goh.sh) — a workspace's [workspace.lints] is a
 #      DECLARATION; a member applies it with `[lints] workspace = true`. A crate
 #      that never says so inherits nothing and looks clean.
 #   2e. cargo machete — unused dependencies. `[lints.cargo]
 #      unused_dependencies = "deny"` looks like this and is not: the key needs
 #      -Zcargo-lints on nightly, so on stable cargo prints "unused manifest key"
 #      and exits 0. A missing cargo-machete FAILS the gate up front (goh_require).
-#   3. checks/check_no_allow.py — no #[allow] and no #[expect]; fix findings, never silence.
+#   3. goh no-allow (gates/goh.sh) — no #[allow] and no #[expect]; fix findings, never silence.
 #      The HOUSE checker, always. Until 2026-09-14 this step looked for a
 #      repo-local tools/check_no_allow.py and skipped when absent, so four
 #      repos carried vendored copies and the rest were not checked at all.
-#   3a. checks/check_no_empty_assert.py — no `assert!(x.is_empty())` and no
+#   3a. goh empty-assert (gates/goh.sh) — no `assert!(x.is_empty())` and no
 #      `x.len() == 0` inside assert!. Ahead of clippy on purpose, and it is not
 #      a duplicate of the lint: clippy reports NOTHING for an assert that
 #      carries a message, which is the shape most people write on purpose. That

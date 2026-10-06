@@ -24,7 +24,7 @@ import sys
 from conftest import REPO_ROOT, git, write
 
 sys.path.insert(0, str(REPO_ROOT / "checks"))
-import _version_sources as sources
+from _tag_version_kit import extract  # noqa: E402
 
 PLIST = """<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -85,7 +85,7 @@ def _run(root, refs, extra_env=None):
 
 
 def test_it_reads_the_marketing_version_and_ignores_the_build_number(tmp_path):
-    found = sources.from_plist(PLIST.format(version="2.10.0"))
+    found = extract("plist", PLIST.format(version="2.10.0"))
     assert found == [("(plist:CFBundleShortVersionString)", "2.10.0")], (
         "CFBundleVersion is a monotonic INTEGER, not a release number. Reading it would report a "
         "correct release as a mismatch on every bundle that has one."
@@ -98,7 +98,7 @@ def test_the_xml_declaration_is_not_a_version(tmp_path):
     `file:` returns `<?xml version="1.0" …?>` as the version, so the gate compares the tag against
     "1.0". A strategy that reproduced that would make the layout "supported" and still wrong.
     """
-    found = sources.from_plist(PLIST.format(version="2.10.0"))
+    found = extract("plist", PLIST.format(version="2.10.0"))
     assert all(version != "1.0" for _key, version in found), found
     assert not any(
         "1.0" == version.split(".")[0] and len(version.split(".")) == 1 for _key, version in found
@@ -107,8 +107,9 @@ def test_the_xml_declaration_is_not_a_version(tmp_path):
 
 def test_a_plist_with_no_version_declares_nothing(tmp_path):
     assert (
-        sources.from_plist(
-            '<?xml version="1.0"?>\n<dict>\n<key>CFBundleName</key>\n<string>ZeroThunder</string>\n</dict>\n'
+        extract(
+            "plist",
+            '<?xml version="1.0"?>\n<dict>\n<key>CFBundleName</key>\n<string>ZeroThunder</string>\n</dict>\n',
         )
         == []
     )
@@ -151,10 +152,9 @@ def test_two_disagreeing_versions_in_one_plist_still_fail(tmp_path):
     # A second x.y.z string that is not a version key is noise; the point of this case is that the
     # strategy returns BOTH, so a caller can see the file disagrees with itself rather than being
     # handed a single confident answer.
-    assert len(sources.from_plist(text)) == 2
+    assert len(extract("plist", text)) == 2
 
 
 def test_the_strategy_is_registered_and_configurable():
     """A strategy nothing can name is a function, not a capability."""
-    assert "plist" in sources.KINDS
-    assert sources.STRATEGIES["plist"] is sources.from_plist
+    assert extract("plist", "") == []  # the native answers to the name

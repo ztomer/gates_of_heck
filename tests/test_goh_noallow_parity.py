@@ -11,9 +11,10 @@ import subprocess
 from pathlib import Path
 
 import pytest
+from reference_kit import reference_path  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[1]
-CHECK = ROOT / "checks" / "check_no_allow.py"
+CHECK = reference_path("checks/check_no_allow.py")
 
 CARGO = b'[package]\nname = "x"\nversion = "0.1.0"\nedition = "2021"\n'
 
@@ -182,17 +183,4 @@ def test_the_found_bugs_have_the_right_verdict(goh: Path, tmp_path: Path) -> Non
         assert code == 1, "a backticked mention of the marker exempted the file"
 
 
-def test_no_rust_source_of_ours_is_exempt_as_generated() -> None:
-    """The exemption is for GENERATED files. A hand-written file of ours that reads as generated is
-    one the gate silently skips — which is what noallow.rs itself was until 2026-09-23."""
-    import importlib.util
-
-    spec = importlib.util.spec_from_file_location("check_no_allow", CHECK)
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    exempt = [
-        str(p.relative_to(ROOT))
-        for p in (ROOT / "crates").rglob("*.rs")
-        if module._is_generated(str(ROOT), str(p.relative_to(ROOT)), False)
-    ]
-    assert exempt == [], f"hand-written sources exempt from the no-allow gate: {exempt}"
+# `no_rust_source_of_ours_reads_as_generated` is a Rust test now, beside `noallow::is_generated`.

@@ -16,8 +16,6 @@ Every row below is measured by running `git config --get-regexp` over a scratch 
 planted — the table in the checker's docstring is that measurement, and `--probe` re-runs it.
 """
 
-import subprocess
-
 import pytest
 
 from conftest import REPO_ROOT as ROOT  # noqa: F401
@@ -38,7 +36,7 @@ def remote(repo, name, url):
 
 def findings(repo, *args, env=None):
     """The checker over `repo`, on the current tier (Python, or `goh credential-urls`)."""
-    return run_tiered(repo, CHECK, "credential-urls", *args, python_only=("--probe",), env=env)
+    return run_tiered(repo, CHECK, "credential-urls", *args, env=env)
 
 
 def out_of(got):
@@ -248,11 +246,6 @@ def test_an_instead_of_rewrite_with_a_bare_username_is_silent(repo):
 # ── the self-proof, and the refusals ────────────────────────────────────────
 
 
-def test_the_probe_goes_red_on_a_planted_credential_and_green_on_the_rest(repo):
-    got = run_check(ROOT, CHECK, "--probe")
-    assert got.returncode == 0, out_of(got)
-
-
 def test_a_repo_with_no_remote_is_a_named_non_run_not_a_pass(repo):
     """The empty-scope case, and it was FOUND by `check_empty_scope.py` rather than by me.
 
@@ -273,36 +266,6 @@ def test_a_repo_with_no_remote_is_a_named_non_run_not_a_pass(repo):
     assert got.returncode == 0, out_of(got)
     assert "not applicable" in out_of(got), out_of(got)
     assert "OK —" not in out_of(got), out_of(got)
-
-
-def test_the_empty_scope_sweep_accepts_this_gate(tmp_path):
-    """...and the sweep agrees, end to end, over a real skeleton. The string assertion above is the
-    contract; this is the counterparty reading it."""
-    import shutil
-
-    root = tmp_path / "skeleton"
-    (root / "checks").mkdir(parents=True)
-    git(root, "init", "-q", "-b", "main")
-    git(root, "config", "user.email", "s@e.invalid")
-    git(root, "config", "user.name", "s")
-    for name in (
-        "check_no_credential_urls.py",
-        "_credential_config.py",
-        "_credential_urls_probe.py",
-        "check_no_secrets.py",
-        "_gitutil.py",
-    ):
-        shutil.copy(ROOT / "checks" / name, root / "checks" / name)
-    shutil.copytree(ROOT / "tui", root / "tui")
-    git(root, "add", "-A")
-    git(root, "-c", "user.name=s", "-c", "user.email=s@e.invalid", "commit", "-qm", "skeleton")
-    got = subprocess.run(
-        ["python3", str(ROOT / "checks" / "check_empty_scope.py"), "--root", str(root)],
-        capture_output=True,
-        text=True,
-    )
-    assert "check_no_credential_urls.py PASSED over an empty tree" not in out_of(got), out_of(got)
-    assert "check_no_credential_urls.py gave NO verdict" not in out_of(got), out_of(got)
 
 
 def test_outside_a_git_repo_is_a_usage_error_not_a_pass(tmp_path):
@@ -384,3 +347,8 @@ def test_global_helpers_alone_are_judged_but_do_not_make_the_repo_applicable(rep
     glob.write_text(f"[credential]\n\thelper = !echo password={LIVE_TOKEN}\n")
     got = findings(repo, env=env)
     assert got.returncode == 1 and str(glob) in out_of(got), out_of(got)
+
+
+# The retired Python checker's `--probe`, and the empty-scope sweep run over a copy of it, went
+# with it (Phase N3): the sweep judges a repo's OWN Python gates, and this one is native now. The
+# `not applicable` contract the sweep reads is pinned against the native above.

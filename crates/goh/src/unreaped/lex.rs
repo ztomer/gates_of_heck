@@ -1,5 +1,5 @@
 //! The shared VOCABULARY of the unreaped-spawn scan. Port of
-//! `checks/_spawn_lex.py` plus the patterns of the Python and shell rules.
+//! the retired `checks/_spawn_lex.py` plus the patterns of the Python and shell rules.
 //!
 //! The `regex` crate has no look-around, so the reference's look-behinds are
 //! applied by hand with the reference's own semantics: the pattern is tried

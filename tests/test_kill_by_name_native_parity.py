@@ -17,8 +17,9 @@ from pathlib import Path
 
 from conftest import REPO_ROOT
 
-sys.path.insert(0, str(REPO_ROOT / "checks"))
-import check_no_kill_by_name as reference  # noqa: E402
+from reference_kit import load_reference  # noqa: E402
+
+reference = load_reference("check_no_kill_by_name")
 
 
 def _py_files() -> list[str]:

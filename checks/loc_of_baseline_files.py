@@ -8,7 +8,7 @@ from the shared reader, so JSON baselines measure their keys — reading the
 JSON as line format measured a phantom file named after the value fragment
 and failed every JSON baseline as growth (caught 2026-09-23 by the native
 ceiling port's parity test). A listed path that is not a file prints 0: a
-vanished file is under any ceiling (check_exclusion_has_ceiling.py is the
+vanished file is under any ceiling (`goh ceiling` is the
 check that notices a stale entry), and a sentinel row such as
 `0 __under_cap_sentinel__` -- the shape a repo with no real exemptions
 keeps so the pairing check still runs -- measures 0 against its 0, which
@@ -33,7 +33,29 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from check_exclusion_has_ceiling import baseline_keys_ordered  # noqa: E402
+
+
+def baseline_keys_ordered(path: Path) -> list[str]:
+    """Paths carrying a ceiling, in baseline order (first-seen wins on
+    repeats). The order matters here: each key is measured in turn. (It lived in the
+    retired `check_exclusion_has_ceiling.py`, now `goh ceiling`, until Phase N3.)"""
+    text = path.read_text(errors="replace")
+    if text.lstrip().startswith("{"):
+        import json
+
+        data = json.loads(text)
+        if isinstance(data, dict):
+            return list(data)
+        return []
+    keys: list[str] = []
+    for line in text.splitlines():
+        line = line.split("#", 1)[0].strip()
+        if not line:
+            continue
+        parts = line.split("\t") if "\t" in line else line.split(None, 1)
+        if len(parts) == 2 and parts[1].strip() not in keys:
+            keys.append(parts[1].strip())
+    return keys
 
 
 def main() -> int:

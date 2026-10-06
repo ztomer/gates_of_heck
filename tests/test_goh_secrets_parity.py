@@ -16,9 +16,10 @@ import subprocess
 from pathlib import Path
 
 import pytest
+from reference_kit import reference_path  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[1]
-CHECKER = ROOT / "checks" / "check_no_secrets.py"
+CHECKER = reference_path("checks/check_no_secrets.py")
 HIT_RE = re.compile(r"^\s*(.+?):(\d+):(\d+): (.+)$")
 OK_RE = re.compile(r"OK — (\d+) (staged|tracked) files clean")
 

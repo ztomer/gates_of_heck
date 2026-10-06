@@ -1,5 +1,5 @@
 //! A committed `Cargo.lock` must agree with its manifests -- Rust port of
-//! `checks/check_lock_version.py` and `checks/_cargo_toml.py` (Phase N1).
+//! the retired `checks/check_lock_version.py` and `checks/_cargo_toml.py` (Phase N1).
 //!
 //! `app_updates`, 2026-10-01: the release bumped `[workspace.package] version`
 //! and shipped a lockfile one version behind; any `cargo build` heals the
@@ -462,7 +462,7 @@ pub fn step() -> Option<i32> {
             let text: String = lines.into_iter().map(|(_, l)| l + "\n").collect();
             let _ = crate::step_report::fail(
                 label,
-                &crate::step_report::ported("crates/goh/src/lockver.rs", "check_lock_version.py"),
+                &crate::step_report::ported("crates/goh/src/lockver.rs"),
                 &text,
                 start,
             );

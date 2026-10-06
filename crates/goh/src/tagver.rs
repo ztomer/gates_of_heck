@@ -1,5 +1,5 @@
 //! A pushed release tag must name the version its own commit declares --
-//! Rust port of `checks/check_tag_version.py` (Phase N1).
+//! Rust port of the retired `checks/check_tag_version.py` (Phase N1).
 //!
 //! `refs/tags/v1.36.0` pointing at a commit whose `VERSION` (or `Cargo.toml`,
 //! or any `GOH_TAG_VERSION_SOURCES` source) says something else is a release

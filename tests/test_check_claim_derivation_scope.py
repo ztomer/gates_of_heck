@@ -25,15 +25,12 @@ Trees come from `tests/claim_kit.py`, the same ones the gate suite judges.
 from __future__ import annotations
 
 import json
-import sys
 
 import pytest
 from claim_kit import allow, allow_raw, doc, estate, findings, write
-from conftest import REPO_ROOT, commit_all, run_check, stage
+from claim_kit import verdict as judge
+from conftest import REPO_ROOT, commit_all, run_goh, stage
 
-sys.path.insert(0, str(REPO_ROOT / "checks"))
-from _claim_allow import load as load_allowlist
-from check_claim_derivation import adopted, check, main
 
 # ── the allowlist ratchet ────────────────────────────────────────────────────
 
@@ -45,7 +42,7 @@ def test_an_allowlisted_claim_is_excused_and_counts_as_debt(repo) -> None:
     prose = "claim: 99 lines in pkg/notes.md"
     doc(root, prose)
     allow(root, prose)
-    verdict = check(str(root), None, False)
+    verdict = judge(root)
     assert (verdict.findings, verdict.stale, verdict.problems) == ([], [], []), verdict
     assert (verdict.excused, verdict.debt) == (1, 1), verdict
 
@@ -55,7 +52,7 @@ def test_a_decided_entry_is_excused_without_being_debt(repo) -> None:
     prose = "claim: 99 lines in pkg/notes.md"
     doc(root, prose)
     allow(root, prose, status="legitimate", reason="the sentence is true until the split")
-    verdict = check(str(root), None, False)
+    verdict = judge(root)
     assert verdict.excused == 1 and verdict.debt == 0, verdict
 
 
@@ -65,7 +62,7 @@ def test_an_entry_whose_claim_moved_is_stale_and_fails(repo) -> None:
     root = estate(repo)
     allow(root, "claim: 99 lines in pkg/notes.md")
     doc(root, "claim: 3 lines in pkg/notes.md")
-    verdict = check(str(root), None, False)
+    verdict = judge(root)
     assert verdict.findings == [] and verdict.problems == [] and verdict.excused == 0
     assert len(verdict.stale) == 1
     assert verdict.stale[0]["claim"] == "claim: 99 lines in pkg/notes.md"
@@ -86,7 +83,7 @@ def test_a_duplicate_entry_is_stale_because_the_first_takes_every_match(repo) ->
     )
     stage(root, "claim_derivation_allow.json")
     commit_all(root, "two entries")
-    verdict = check(str(root), None, False)
+    verdict = judge(root)
     assert verdict.findings == [] and verdict.excused == 1 and len(verdict.stale) == 1, verdict
 
 
@@ -97,7 +94,7 @@ def test_whitespace_is_not_what_an_entry_is_matched_on(repo) -> None:
     prose = "claim: 99 lines in pkg/notes.md"
     doc(root, prose)
     allow(root, "claim:   99   lines   in   pkg/notes.md")
-    verdict = check(str(root), None, False)
+    verdict = judge(root)
     assert (verdict.findings, verdict.stale, verdict.problems, verdict.excused) == (
         [],
         [],
@@ -120,14 +117,13 @@ def test_an_allowlist_this_gate_cannot_read_is_a_problem_not_a_pass(repo, payloa
     applying nothing -- which reads as a clean tree."""
     root = estate(repo)
     allow_raw(root, payload)
-    verdict = check(str(root), None, False)
+    verdict = judge(root)
     assert verdict.problems and not verdict.findings and not verdict.stale, verdict
 
 
 def test_an_absent_allowlist_is_not_a_problem(repo) -> None:
-    verdict = findings(estate(repo))
-    assert (verdict.problems, verdict.stale, verdict.excused, verdict.debt) == ([], [], 0, 0)
-    assert load_allowlist(str(estate(repo / "second")), False) == ([], [])
+    got = findings(estate(repo))
+    assert (got.problems, got.stale, got.excused, got.debt) == ([], [], 0, 0)
 
 
 # ── which tree: the git view ─────────────────────────────────────────────────
@@ -143,8 +139,8 @@ def test_staged_judges_the_index_and_the_worktree_is_not_the_tree(repo) -> None:
     write(root, "docs/note.md", "# note\n\nclaim: 3 lines in pkg/notes.md\n")
     stage(root, "docs/note.md")
     commit_all(root, "the index holds the claim, the worktree grew the file")
-    assert check(str(root), None, True).findings == []  # 3 lines in the INDEX
-    assert len(check(str(root), None, False).findings) == 1  # 4 in the worktree
+    assert judge(root, "--staged").findings == []  # 3 lines in the INDEX
+    assert len(judge(root).findings) == 1  # 4 in the worktree
 
 
 def test_staged_refuses_a_target_that_is_not_in_the_commit(repo) -> None:
@@ -155,19 +151,19 @@ def test_staged_refuses_a_target_that_is_not_in_the_commit(repo) -> None:
     # committed fixture would put nothing in scope and the gate would be answering
     # a different question than the one under test.
     stage(root, "docs/note.md")
-    found = check(str(root), None, True).findings
+    found = judge(root, "--staged").findings
     assert len(found) == 1 and "not in the index" in found[0][3], found
-    assert check(str(root), None, False).findings == []  # the worktree knows the file
+    assert judge(root).findings == []  # the worktree knows the file
 
 
 def test_nothing_staged_is_a_named_non_run_and_nothing_tracked_is_a_refusal(repo) -> None:
     """Two different facts that print the same sentence otherwise. Nothing staged is
     a fact about a commit; nothing tracked is a fact about the GATE."""
     root = estate(repo)
-    empty = check(str(root), None, True)
+    empty = judge(root, "--staged")
     assert empty.problems == [] and empty.findings == [], empty
     assert "nothing staged" in " ".join(empty.notes), empty
-    proc = run_check(root, "checks/check_claim_derivation.py", "--exclude", ".")
+    proc = run_goh(root, "claim-derivation", "--exclude", ".")
     assert proc.returncode == 1, proc.stdout + proc.stderr
     assert "refusing to report clean over zero files" in proc.stdout + proc.stderr
 
@@ -208,9 +204,9 @@ def test_an_opted_in_tree_with_no_marked_claim_refuses(repo, gatesrc) -> None:
     write(root, ".gatesrc", gatesrc)
     stage(root, ".gatesrc")
     commit_all(root, "opted in")
-    verdict = check(str(root), None, False)
+    verdict = judge(root)
     assert verdict.problems and "adopted" in verdict.problems[0], verdict
-    proc = run_check(root, "checks/check_claim_derivation.py")
+    proc = run_goh(root, "claim-derivation")
     assert proc.returncode == 1, proc.stdout + proc.stderr
 
 
@@ -224,18 +220,24 @@ def test_a_repo_that_has_not_adopted_the_convention_is_reported_not_failed(repo,
     write(root, ".gatesrc", gatesrc)
     stage(root, ".gatesrc")
     commit_all(root, "not adopted")
-    verdict = check(str(root), None, False)
+    verdict = judge(root)
     assert verdict.problems == [] and verdict.findings == [], verdict
-    proc = run_check(root, "checks/check_claim_derivation.py")
+    proc = run_goh(root, "claim-derivation")
     assert proc.returncode == 0, proc.stdout + proc.stderr
 
 
-def test_this_repos_own_gatesrc_is_read_as_adopted() -> None:
+def test_this_repos_own_gatesrc_is_read_as_adopted(repo) -> None:
     """The real file, with its `export`, its quotes and its comments -- a parser
     that only works on a fixture is a parser that has never met a `.gatesrc`."""
     body = (REPO_ROOT / ".gatesrc").read_text(encoding="utf-8")
     assert "GOH_CLAIM_DERIVATION" in body, body
-    assert adopted(str(REPO_ROOT), False) is True
+    # This repo's real file, in a tree with no marked claim: only an ADOPTED reading refuses.
+    root = estate(repo)
+    write(root, ".gatesrc", body)
+    stage(root, ".gatesrc")
+    commit_all(root, "this repo's own .gatesrc")
+    got = judge(root)
+    assert got.problems and "adopted" in got.problems[0], got
 
 
 def test_an_unparsable_exclude_is_a_usage_error_not_a_wide_scan(repo) -> None:
@@ -243,9 +245,9 @@ def test_an_unparsable_exclude_is_a_usage_error_not_a_wide_scan(repo) -> None:
     worse of the two answers, so it is exit 2 and not a pass."""
     root = estate(repo)
     doc(root, "claim: 99 lines in pkg/notes.md")
-    with pytest.raises(ValueError, match="bad --exclude"):
-        check(str(root), "[unclosed", False)
-    assert main(["--root", str(root), "--exclude", "[unclosed"]) == 2
+    proc = run_goh(root, "claim-derivation", "--root", str(root), "--exclude", "[unclosed")
+    assert proc.returncode == 2, proc.stdout + proc.stderr
+    assert "--exclude" in proc.stderr, proc.stderr
 
 
 # ── what is an EXAMPLE, and what is data ─────────────────────────────────────
@@ -260,7 +262,7 @@ def test_a_fenced_block_is_an_example_in_markup_and_in_python(repo) -> None:
     write(root, "pkg/notes.py", '"""Note.\n\n```\nclaim: 99 lines in pkg/notes.md\n```\n"""\n')
     stage(root, "docs/guide.md", "pkg/notes.py")
     commit_all(root, "examples")
-    assert check(str(root), None, False).findings == []
+    assert judge(root).findings == []
 
 
 def test_an_indented_block_is_an_example_in_markup_only(repo) -> None:
@@ -271,11 +273,11 @@ def test_an_indented_block_is_an_example_in_markup_only(repo) -> None:
     write(root, "docs/guide.md", "# g\n\n    claim: 99 lines in pkg/notes.md\n")
     stage(root, "docs/guide.md")
     commit_all(root, "indented example")
-    assert check(str(root), None, False).findings == []
+    assert judge(root).findings == []
     write(root, "pkg/deep.py", "def f():\n    # claim: 99 lines in pkg/notes.md\n    pass\n")
     stage(root, "pkg/deep.py")
     commit_all(root, "indented in python")
-    found = check(str(root), None, False).findings
+    found = judge(root).findings
     assert len(found) == 1 and found[0][0] == "pkg/deep.py", [f[3] for f in found]
 
 
@@ -286,13 +288,13 @@ def test_a_non_docstring_string_literal_is_data_not_prose(repo) -> None:
     write(root, "pkg/cases.py", 'CASES = ("claim: 99 lines in pkg/notes.md",)\n')
     stage(root, "pkg/cases.py")
     commit_all(root, "fixture data")
-    assert check(str(root), None, False).findings == []
+    assert judge(root).findings == []
     # ...and the same text on its OWN LINE inside a docstring IS a claim, which is
     # the half that makes the rule safe rather than a blanket exemption for .py.
     write(root, "pkg/cases.py", '"""Cases.\n\nclaim: 99 lines in pkg/notes.md\n"""\n')
     stage(root, "pkg/cases.py")
     commit_all(root, "moved into a docstring")
-    found = check(str(root), None, False).findings
+    found = judge(root).findings
     assert len(found) == 1 and found[0][2] == "STALE", [f[3] for f in found]
 
 
@@ -303,5 +305,15 @@ def test_a_binary_file_is_not_scanned(repo) -> None:
     (root / "blob.bin").write_bytes(b"\x00\x01claim: 99 lines in pkg/notes.md\x00")
     stage(root, "blob.bin")
     commit_all(root, "binary")
-    verdict = check(str(root), None, False)
+    verdict = judge(root)
     assert verdict.findings == [] and verdict.examined == 8, verdict
+
+
+def test_an_allowlist_entry_for_a_file_that_is_gone_is_stale(repo) -> None:
+    """Stale was only judged for a file in scope, and a deleted file is in no scope: its entry kept
+    excusing nothing, waiting for the next file to take the path."""
+    root = estate(repo)
+    doc(root, "claim: 3 lines in pkg/notes.md")
+    allow(root, "claim: 9 lines in pkg/notes.md", path="docs/gone.md")
+    got = judge(root)
+    assert len(got.stale) == 1 and got.stale[0]["path"] == "docs/gone.md", got

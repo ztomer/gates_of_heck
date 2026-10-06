@@ -18,8 +18,9 @@ from pathlib import Path
 import pytest
 
 from conftest import REPO_ROOT
+from reference_kit import reference_path  # noqa: E402
 
-CHECK = REPO_ROOT / "checks" / "check_dep_currency.py"
+CHECK = reference_path("checks/check_dep_currency.py")
 PIN = (
     '[package]\nname = "x"\nversion = "0.1.0"\n\n[dependencies]\nureq = "2"\nserde = "1.0.100"\n',
     'version = 3\n\n[[package]]\nname = "ureq"\nversion = "2.12.1"\n\n'

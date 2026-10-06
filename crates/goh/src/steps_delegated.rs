@@ -9,7 +9,7 @@
 //! the two clusters have no call sites in common beyond the module itself.
 //!
 //! Each one is mirrored in `gates/structural.sh`, which execs this binary and
-//! so discards the shell; `tests/test_goh_structural_parity.py` compares the
+//! so discards the shell; `tests/test_goh_structural.py` compares the
 //! two pipelines' verdicts step for step. A step added here and not there is a
 //! step that runs in exactly one of the two, which is how a gate ends up
 //! present in the source and absent from every push.

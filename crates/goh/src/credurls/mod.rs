@@ -1,5 +1,5 @@
 //! No credential in `.git/config` -- Rust port of
-//! `checks/check_no_credential_urls.py` and `checks/_credential_config.py`
+//! the retired `checks/check_no_credential_urls.py` and `checks/_credential_config.py`
 //! (Phase N1).
 //!
 //! `check_no_secrets` reads tracked files, and `.git/config` is untracked by
@@ -10,7 +10,7 @@
 //! a FINGERPRINT (`sha256:` + 12 hex of the secret) -- never the value.
 //!
 //! The URL split is Python's `urlsplit`, reproduced: the measured table of
-//! remote-URL shapes in `checks/_credential_urls_probe.py` is the spec, and
+//! remote-URL shapes in the retired `checks/_credential_urls_probe.py` (frozen in `tests/reference_kit.py`) is the spec, and
 //! `tests/test_credential_urls_native_parity.py` runs it through both.
 
 use std::path::{Path, PathBuf};
@@ -369,10 +369,7 @@ pub fn step() -> Option<i32> {
             let text: String = lines.into_iter().map(|(_, l)| l + "\n").collect();
             let _ = crate::step_report::fail(
                 label,
-                &crate::step_report::ported(
-                    "crates/goh/src/credurls/mod.rs",
-                    "check_no_credential_urls.py",
-                ),
+                &crate::step_report::ported("crates/goh/src/credurls/mod.rs"),
                 &text,
                 start,
             );

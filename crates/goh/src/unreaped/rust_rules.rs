@@ -1,5 +1,5 @@
 //! The RUST rules: where a spawn is, which function holds it, and where its
-//! reap is. Port of `checks/_spawn_rust.py` and `checks/_spawn_reap.py`.
+//! reap is. Port of the retired `checks/_spawn_rust.py` and `checks/_spawn_reap.py`.
 //!
 //! Everything here takes ALREADY-MASKED text. The crate-scope sets are
 //! derived once per scan by the caller ([`CrateFacts`]) -- deriving them per

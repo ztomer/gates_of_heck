@@ -19,14 +19,16 @@ import pytest
 
 from conftest import REPO_ROOT
 
-sys.path.insert(0, str(REPO_ROOT / "checks"))
-from _unreaped_spawn_table import PYTHON, PYTHON_EXTRA, RUST, SHELL  # noqa: E402
-from _unreaped_spawn_table_regressions import (  # noqa: E402
+from reference_kit import load_reference, reference_path  # noqa: E402
+
+from unreaped_spawn_table import PYTHON, PYTHON_EXTRA, RUST, SHELL  # noqa: E402
+from unreaped_spawn_table_regressions import (  # noqa: E402
     PYTHON_RAW_QUOTE_CALIBRATION,
     PYTHON_REGRESSIONS,
     RUST_REGRESSIONS,
 )
-from check_no_unreaped_spawn import verdicts  # noqa: E402
+
+verdicts = load_reference("check_no_unreaped_spawn").verdicts
 
 ROWS = (
     [(".rs", label, src) for label, src, _ in RUST + RUST_REGRESSIONS]
@@ -77,6 +79,6 @@ def _report(cmd: list[str]) -> tuple[int, str]:
 
 @pytest.mark.parametrize("scope", [[], ["--staged"]], ids=["full", "staged"])
 def test_this_repositorys_report_is_byte_identical(goh: Path, scope: list[str]) -> None:
-    py = _report([sys.executable, str(REPO_ROOT / "checks/check_no_unreaped_spawn.py"), *scope])
+    py = _report([sys.executable, str(reference_path("checks/check_no_unreaped_spawn.py")), *scope])
     rs = _report([str(goh), "unreaped-spawn", *scope])
     assert rs == py

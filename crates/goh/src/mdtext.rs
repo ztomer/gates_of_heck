@@ -1,5 +1,5 @@
 //! Markdown text -> the links it contains and the anchors it generates.
-//! Port of `checks/_md_text.py`, shared by the ported prose checkers.
+//! Port of the retired `checks/_md_text.py`, shared by the ported prose checkers.
 //!
 //! An anchor is not the heading (GitHub lowercases, keeps alphanumerics,
 //! spaces, `-` and `_`, and hyphenates spaces); code is not content for LINK

@@ -6,7 +6,7 @@ checker's spec is a measured table, not a docstring -- so they are kept where ad
 one-line edit and cannot accidentally disturb the code that runs them.
 """
 
-from _unreaped_spawn_table_rust import RUST  # noqa: E402
+from unreaped_spawn_table_rust import RUST  # noqa: E402
 
 PYTHON = [
     (

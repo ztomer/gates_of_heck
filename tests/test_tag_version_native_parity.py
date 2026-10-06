@@ -17,8 +17,9 @@ import pytest
 
 from conftest import REPO_ROOT
 
-sys.path.insert(0, str(REPO_ROOT / "checks"))
-import _version_sources as sources  # noqa: E402
+from reference_kit import load_reference  # noqa: E402
+
+sources = load_reference("_version_sources")
 
 MODULES = [
     "test_check_tag_version_plist",

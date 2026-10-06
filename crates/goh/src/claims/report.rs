@@ -10,8 +10,14 @@ pub(super) fn json(v: &Verdict) -> (i32, String) {
     let findings: Vec<Value> = v
         .findings
         .iter()
-        .map(|(rel, claim, kind, message, _)| {
-            serde_json::json!({ "file": rel, "line": claim.line, "kind": kind, "detail": message })
+        // `number`, `command` and `value` are past the reference's four keys: what the prose
+        // said, the re-derivation a reader runs, and what the tree said. A machine reader needs
+        // all three as much as a human does.
+        .map(|(rel, claim, kind, message, command, value)| {
+            serde_json::json!({
+                "file": rel, "line": claim.line, "kind": kind, "detail": message,
+                "number": claim.number, "command": command, "value": value,
+            })
         })
         .collect();
     let doc = serde_json::json!({
@@ -33,7 +39,7 @@ fn report_red(v: &Verdict, out: &mut Vec<Line>) -> bool {
     for p in &v.problems {
         err(out, &format!("[claim_derivation] {p}"));
     }
-    for (rel, claim, kind, message, command) in v.findings.iter().take(MAX_REPORTED) {
+    for (rel, claim, kind, message, command, _) in v.findings.iter().take(MAX_REPORTED) {
         err(
             out,
             &format!(
@@ -173,4 +179,34 @@ pub(super) fn text(v: &Verdict, root: &Path, staged: bool) -> (i32, Vec<Line>) {
         ),
     ));
     (0, out)
+}
+
+/// `--parse-claims PATH`: the claims the grammar reads in stdin, read as file `PATH`, as JSON.
+/// The grammar's own seam: what a line IS (kind, target, name) before any tree is asked.
+#[must_use]
+pub fn parse_claims_command(rel: &str) -> i32 {
+    let mut text = String::new();
+    if std::io::Read::read_to_string(&mut std::io::stdin(), &mut text).is_err() {
+        eprintln!("✗ [claim_derivation] stdin is not UTF-8 text");
+        return 2;
+    }
+    let lex = match super::text::Grammar::new() {
+        Ok(lex) => lex,
+        Err(e) => {
+            eprintln!("✗ [claim_derivation] {e}");
+            return 2;
+        }
+    };
+    let rows: Vec<Value> = lex
+        .claims_in_file(rel, &text)
+        .into_iter()
+        .map(|c| {
+            serde_json::json!({
+                "line": c.line, "number": c.number, "kind": c.kind, "glob": c.glob,
+                "target": c.target, "name": c.name, "malformed": c.malformed,
+            })
+        })
+        .collect();
+    println!("{}", crate::pyjson::dumps(&Value::Array(rows)));
+    0
 }

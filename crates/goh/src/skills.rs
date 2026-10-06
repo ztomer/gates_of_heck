@@ -1,4 +1,4 @@
-//! Skills-corpus audit — Rust port of `checks/check_skills_corpus.py`.
+//! Skills-corpus audit — Rust port of the retired `checks/check_skills_corpus.py`.
 //!
 //! An agent skills corpus is code nothing compiles, so its defects are
 //! silent: skills with no frontmatter (never triggerable), links to

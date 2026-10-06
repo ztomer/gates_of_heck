@@ -15,8 +15,7 @@ from pathlib import Path
 
 import pytest
 
-from conftest import REPO_ROOT, stage, write
-import tier_kit
+from conftest import stage, write
 from tier_kit import both_tiers, run_tiered  # noqa: F401  # both_tiers: a fixture
 
 CHECK = "checks/check_shell_lint.sh"
@@ -30,14 +29,6 @@ def run_lint(repo: Path, *args: str, env: dict | None = None) -> subprocess.Comp
     merged = dict(os.environ)
     if env:
         merged.update(env)
-    if tier_kit._TIER["name"] == "python":
-        return subprocess.run(
-            ["/bin/bash", str(REPO_ROOT / CHECK), *args],
-            cwd=repo,
-            capture_output=True,
-            text=True,
-            env=merged,
-        )
     return run_tiered(repo, CHECK, "shell-lint", *args, env=merged)
 
 

@@ -1,4 +1,4 @@
-//! Prose -> the MARKED claims it makes. Port of `checks/_claim_text.py`.
+//! Prose -> the MARKED claims it makes. Port of the retired `checks/_claim_text.py`.
 //!
 //! Two spellings and no others: the BACKTICK form (number and target both in
 //! backticks) and the MARKER form (`claim:` first on the line, after at most
@@ -21,7 +21,7 @@ pub struct Claim {
     pub malformed: Option<String>,
 }
 
-const UNITS: [(&str, &str); 12] = [
+pub(crate) const UNITS: [(&str, &str); 12] = [
     ("line", "lines"),
     ("lines", "lines"),
     ("test", "tests"),

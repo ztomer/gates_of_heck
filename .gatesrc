@@ -19,7 +19,7 @@ GOH_MAX_LINES=500                 # file-length cap; unset disables the check
 # so a push here says when the machine's corpus is broken.
 GOH_SKILLS_CORPUS=1
 
-# No process kill by name (check_no_kill_by_name.py). The CadGoose profiling
+# No process kill by name (`goh kill-by-name`). The CadGoose profiling
 # scripts and the release kit's update_dev.sh still kill by name; they are in
 # kill_by_name_allow.json as `unreviewed`, with the gate's own pattern as the
 # one `legitimate` entry.
@@ -32,17 +32,15 @@ GOH_SKILLS_ROOT=$HOME/.claude/skills
 # pytest, where llvm-cov cannot see it. Ratchet: up only.
 GOH_COV_FLOOR_RUST=95
 
-# A number in prose, re-derived from the tree (check_claim_derivation.py). Opt-in
+# A number in prose, re-derived from the tree (`goh claim-derivation`). Opt-in
 # in every repo because it lands RED wherever it lands first: three adversarial
 # reviews of the games estate found the same class six times (a docstring claiming
 # "64 declared gates" against 70, a gate claiming "477 lines and 18 tests" for
 # 321 and 20), every one of them found by hand at hours each.
 #
-# This repo opts in, and the claim it polices is its OWN: the checker's docstring
-# says its derivation table holds four units, marks that as a claim, and this step
-# re-derives it. Adding a fifth unit without editing the sentence turns the gate red
-# on this repository -- measured, by planting the fifth entry and watching
-# `checks/check_claim_derivation.py` exit 1 on `checks/check_claim_derivation.py:55`.
+# This repo opts in, and the claim it polices is its OWN: `checks/_retired.py`'s
+# docstring marks how many forwarders `SHIMS` holds, and this step re-derives it
+# (the claim moved there when Phase N3 deleted the Python checker that carried it).
 GOH_CLAIM_DERIVATION=1
 
 # The gate of record. `tools/gate.sh --full` (the pre-push hook) delegates to

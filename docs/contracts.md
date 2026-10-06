@@ -137,7 +137,7 @@ does not block an unrelated push) and `tests/test_push_gate.py`.
 ## 14. A committed artifact that makes a claim is checked against its source
 
 `Cargo.lock` states each workspace crate's version; `Cargo.toml` asks for one.
-They are the same claim written twice, and `check_lock_version.py` compares
+They are the same claim written twice, and `goh lock-version` compares
 them. Two rules make that comparison safe rather than noisy:
 
 * **`version.workspace = true` is an INHERITANCE, not a version.** It resolves
@@ -162,8 +162,8 @@ file over.
 
 Pin: `tests/test_check_lock_version.py` (the real shape is red; a regenerated
 lockfile is green; per-crate versions produce no finding; a release number
-bumped in one place only is red) and `checks/check_lock_version.py --probe`,
-which `check_probes_pass` runs.
+bumped in one place only is red), run by this repo's push gate against the
+native `goh lock-version`.
 
 ## 15. The `--version` FORMAT is a contract, and the checker reads the CLAIM not the string
 
@@ -245,7 +245,7 @@ that patch the checker to the broken shape and assert the suite goes red.
 
 ## 16. A cross-file reference is a claim about another file, checked against that file
 
-`check_md_links.py` resolves every relative markdown link in a repo's own docs
+`goh md-links` resolves every relative markdown link in a repo's own docs
 to an existing file AND an existing anchor. Both halves fail silently: a link
 to a heading that does not exist renders, looks like a link, and 404s on click,
 and the anchor is not the heading — GitHub lowercases, drops the punctuation and
@@ -272,8 +272,8 @@ Three scope decisions, each of which was wrong first:
   verified, and unverifiable read as fine is how the next one ships.
 
 Pin: `tests/test_check_md_links.py` (the audit's own mis-derived anchor is red,
-the right one is green, a missing file is red, each example shape is quiet) and
-`checks/check_md_links.py --probe`.
+the right one is green, a missing file is red, each example shape is quiet),
+against the native `goh md-links`.
 
 ## 17. A wait is bounded, and a leak is reported by the run that made it
 
@@ -284,7 +284,7 @@ each holding the cargo build lock, so every later `cargo test` blocked with no o
 the leak itself was invisible because the run that would have reported it was the run that had been
 killed. Four separate rules came out of it, and each answers a different question:
 
-* **A reap must survive a panic.** `checks/check_no_unreaped_spawn.py`, because "is there a kill in
+* **A reap must survive a panic.** `goh unreaped-spawn`, because "is there a kill in
   this function" is the wrong question — the reap EXISTED in that file, and the ordinary outcome of
   a failing test is to skip it. A guard is the only shape that gets there (`Drop`, `with`, a
   `try`/`finally` that reaps, a shell `trap`), and it is judged by what it DOES.
@@ -302,8 +302,8 @@ killed. Four separate rules came out of it, and each answers a different questio
   outlives it, which is why the leak was silent for a day.
 
 Pin: `tests/test_check_no_unreaped_spawn.py` (the incident quoted from `media_server@052772a`, red
-on the real pre-fix file and green on the same file after its fix; narrowing the ordering rule alone
-turns `--probe` red), `tests/test_bounded_run.py` (the grandchild case, and a passing step passes
+on the real pre-fix file and green on the same file after its fix, run against the native through
+`tests/unreaped_spawn_table*.py`), `tests/test_bounded_run.py` (the grandchild case, and a passing step passes
 through untouched), `tests/test_orphan_canary.py` (the incident's shape is red, a clean step is
 silent, another program's process is counted and never failed on), and
 `checks/check_estate_corpus.py`'s `no_unreaped_spawn` entry (the incident planted inside 611 real
@@ -347,8 +347,8 @@ hand, at hours each, and none was noticed by a gate, a test or a review of the d
 
 Pin: `tests/test_check_claim_derivation.py` (every unit red-before and green-after, the negative
 controls that must stay quiet, every printed command executed and compared, the staged-scope
-boundary, and the allowlist ratchet in both directions), `checks/check_claim_derivation.py --probe`
-(the same table through the checker's own entry point, plus its exit codes), and
+boundary, and the allowlist ratchet in both directions) against the native `goh claim-derivation`,
+and
 `checks/check_estate_corpus.py`'s `claim_derivation` entry (a false claim planted inside a real
 markdown file from a real estate repo).
 

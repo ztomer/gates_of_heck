@@ -1,5 +1,5 @@
 //! A marked claim -> the number the tree says, and the COMMAND that says it.
-//! Port of `checks/_claim_derive.py`.
+//! Port of the retired `checks/_claim_derive.py`.
 //!
 //! Four derivations, each a function of the tree: `lines` (the file-length
 //! cap's own `line_count`), `tests` (test functions, `def test_*` at any
@@ -276,5 +276,31 @@ pub fn derive(
         "declared" => derive_declared(root, staged, target, name),
         "files" => derive_files(root, staged, target, glob),
         other => Err(format!("no derivation for '{other}'")),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::derive;
+
+    /// The unit vocabulary is closed and every word in it HAS a derivation: a unit with no rule
+    /// behind it is a promise nobody keeps, the class this gate is about. Four derivations, and
+    /// `goh claim-derivation` re-derives the claim about that number wherever one is marked.
+    #[test]
+    fn every_unit_names_a_derivation_and_there_are_four() {
+        let mut kinds: Vec<&str> = super::super::text::UNITS.iter().map(|(_, k)| *k).collect();
+        kinds.sort_unstable();
+        kinds.dedup();
+        assert_eq!(kinds, ["declared", "files", "lines", "tests"]);
+        let nowhere = std::path::Path::new("/nonexistent-goh-claims-root");
+        for kind in kinds {
+            let got = derive(nowhere, false, kind, "x", "", Some("*.py"));
+            assert!(
+                !got.as_ref().is_err_and(|e| e.starts_with("no derivation")),
+                "{kind}: {got:?}"
+            );
+        }
+        assert!(derive(nowhere, false, "widgets", "x", "", None)
+            .is_err_and(|e| e.starts_with("no derivation")));
     }
 }

@@ -1,4 +1,4 @@
-//! Hard-coded home-path scan — Rust port of `checks/check_no_home_paths.py`.
+//! Hard-coded home-path scan — Rust port of the retired `checks/check_no_home_paths.py`.
 //!
 //! A shipped script, binary, or doc naming a checkout by absolute location
 //! works on one machine at one moment. Four shapes fail: `/Users/<n>/…`,

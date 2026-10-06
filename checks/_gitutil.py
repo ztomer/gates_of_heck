@@ -69,7 +69,7 @@ def listed_files(root: str, staged: bool) -> list[str]:
     everything, and does not find out. A caller that needs a PATHSPEC wants a
     different question anyway: this lists the staged DIFF, so it cannot answer
     "what does this commit contain", which is what a tree-scope count needs.
-    `checks/_claim_derive.tree_files` asks git that question directly.
+    `crates/goh/src/claims/derive.rs::tree_files` asks git that question directly.
 
     `-z` + NUL splitting is load-bearing: without it git QUOTES paths holding
     non-ASCII or control characters ("caf\\303\\251.md", "we\\nird.md"), names

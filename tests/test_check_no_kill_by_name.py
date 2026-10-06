@@ -155,6 +155,17 @@ def test_a_stale_entry_fails_and_a_duplicate_is_stale(repo):
     assert r.returncode == 1 and "1 stale entr" in r.stdout, r.stdout
 
 
+def test_an_entry_for_a_file_that_is_gone_is_stale(repo):
+    """Two entries for the retired Python checker outlived it (Phase N3): stale was only judged for
+    a file in scope, and a deleted file is in no scope -- so its permission stayed, waiting for the
+    next file to take the path."""
+    write(repo, "run.sh", 'kill -TERM "$pid"\n')
+    allow(repo, {"path": "gone.sh", "line": f"{PK} -x MyApp", "reason": "dev relaunch"})
+    commit_all(repo)
+    r = run(repo)
+    assert r.returncode == 1 and "1 stale entr" in r.stdout and "gone.sh" in r.stdout, r.stdout
+
+
 def test_an_allowlisted_tree_passes_and_counts_its_debt(repo):
     write(repo, "run.sh", f"{PK} -x MyApp\n{KA} Dock\n")
     allow(

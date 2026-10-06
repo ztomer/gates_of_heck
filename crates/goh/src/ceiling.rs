@@ -1,5 +1,5 @@
 //! Line-cap exclusion ceilings — Rust port of the structural step's
-//! `checks/check_exclusion_has_ceiling.py` use, plus the step orchestration
+//! the retired `checks/check_exclusion_has_ceiling.py` use, plus the step orchestration
 //! shared with the ratchet engine (`ratchet.rs`).
 //!
 //! Every file exempted from the line cap (`GOH_LINE_EXCLUDE`) is either

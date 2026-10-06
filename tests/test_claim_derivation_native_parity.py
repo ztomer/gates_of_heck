@@ -9,6 +9,7 @@ port reads differently is stated and pinned rather than skipped: a TARGET that t
 
 from __future__ import annotations
 
+import json
 import subprocess
 import sys
 from pathlib import Path
@@ -17,8 +18,9 @@ import pytest
 
 from claim_kit import allow, doc, estate
 from conftest import REPO_ROOT, commit_all, stage, write
+from reference_kit import reference_path  # noqa: E402
 
-CHECK = REPO_ROOT / "checks" / "check_claim_derivation.py"
+CHECK = reference_path("checks/check_claim_derivation.py")
 
 PROSE = [
     "claim: 4 gates in pkg/roster.py:STEPS",
@@ -57,9 +59,24 @@ def _run(argv: list[str], repo: Path) -> tuple[int, str, str]:
     return r.returncode, r.stdout, r.stderr
 
 
+# The native finding carries three keys past the reference's four (`number`, `command`, `value`:
+# what the prose said, the re-derivation, what the tree said). Parity is over the reference's keys.
+NATIVE_ONLY = ("number", "command", "value")
+
+
+def _json_view(out: str):
+    doc = json.loads(out)
+    for f in doc.get("findings", []):
+        for key in NATIVE_ONLY:
+            f.pop(key, None)
+    return doc
+
+
 def both(goh: Path, repo: Path, *args: str) -> tuple[tuple, tuple]:
     py = _run([sys.executable, str(CHECK), *args], repo)
     rs = _run([str(goh), "claim-derivation", *args], repo)
+    if "--json" in args and py[1].strip() and rs[1].strip():
+        py, rs = (py[0], _json_view(py[1]), py[2]), (rs[0], _json_view(rs[1]), rs[2])
     return py, rs
 
 

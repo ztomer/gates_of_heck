@@ -32,7 +32,7 @@ def test_every_python_entry_point_runs_from_head() -> None:
         for p in sorted((REPO_ROOT / base).glob("*.py"))
         if '\nif __name__ == "__main__":' in p.read_text(encoding="utf-8")
     ]
-    assert len(entries) >= 40, entries
+    assert len(entries) >= 20, entries  # 47 until Phase N3 retired the ported checkers
     missing = [p.name for p in entries if not STANZA.search(p.read_text(encoding="utf-8"))]
     assert not missing, f"a script entry point that judges with the live tree: {missing}"
 
@@ -44,7 +44,7 @@ def gates(tmp_path_factory) -> Path:
 
 @pytest.fixture
 def dirty(gates: Path):
-    checker = gates / "checks" / "check_no_conflict_markers.py"
+    checker = gates / "checks" / "loc_of_baseline_files.py"
     before = checker.read_text()
     checker.write_text(before.replace("def main", f'print("{PLANT}")\n\n\ndef main', 1))
     yield gates
@@ -55,7 +55,7 @@ def _run(gates: Path, repo: Path, tmp_path: Path, **extra: str) -> subprocess.Co
     env = {k: v for k, v in os.environ.items() if not k.startswith(("GOH_", "GIT_", "PYTEST_"))}
     env.update(GOH_HEAD_CACHE=str(tmp_path / "head-cache"), **extra)
     return subprocess.run(
-        ["python3", str(gates / "checks" / "check_no_conflict_markers.py")],
+        ["python3", str(gates / "checks" / "loc_of_baseline_files.py"), "b.txt"],
         cwd=repo,
         capture_output=True,
         text=True,
@@ -68,6 +68,7 @@ def test_a_direct_call_judges_with_head_and_goh_live_with_the_tree(
     dirty: Path, repo: Path, tmp_path
 ) -> None:
     (repo / "a.txt").write_text("fine\n")
+    (repo / "b.txt").write_text("1\ta.txt\n")
     subprocess.run(["git", "-C", str(repo), "add", "-A"], check=True)
     head = _run(dirty, repo, tmp_path)
     assert head.returncode == 0, head.stdout + head.stderr

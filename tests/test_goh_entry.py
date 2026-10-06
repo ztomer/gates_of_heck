@@ -9,6 +9,8 @@ from __future__ import annotations
 import os
 import re
 import subprocess
+
+import pytest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -53,10 +55,13 @@ def test_no_native_is_retired_said_and_not_obeyed(tmp_path: Path) -> None:
     assert "GOH_NO_NATIVE is retired" in r.stderr
 
 
-def test_an_argument_only_python_takes_runs_python(tmp_path: Path) -> None:
-    r = run("unreaped-spawn", "--probe", GOH_BIN=str(fake_native(tmp_path)))
-    assert "native" not in r.stdout
-    assert "Python-only" in r.stderr
+@pytest.mark.parametrize("flag", ["--probe", "--fresh-derivations"])
+def test_a_retired_self_proof_flag_is_refused_by_name(tmp_path: Path, flag: str) -> None:
+    """The Python checkers' self-proofs went with them (Phase N3). Handed to the binary, the flag
+    would read as a usage error about some other thing; refused here, it says what happened."""
+    r = run("unreaped-spawn", flag, GOH_BIN=str(fake_native(tmp_path)))
+    assert r.returncode == 2 and "native" not in r.stdout, r.stdout + r.stderr
+    assert "retired Python checker" in r.stderr, r.stderr
 
 
 def test_an_unknown_check_is_refused() -> None:
@@ -75,34 +80,13 @@ def test_no_gate_script_resolves_the_binary_itself() -> None:
     assert offenders == [], f"resolve through gates/_goh_bin.sh: {offenders}"
 
 
-def test_every_dispatched_check_names_a_real_reference_and_a_real_subcommand(goh: Path) -> None:
-    """A row in goh.sh's table is two promises: a native subcommand `goh <check>` exists, and the
-    reference file a fallback runs exists. Each Phase N1 port adds a row, and a row naming a
-    subcommand the binary lacks makes goh.sh exec into "unrecognized subcommand" -- a check that
-    looks available and is not."""
+def test_every_dispatched_check_is_a_real_subcommand(goh: Path) -> None:
+    """A name in goh.sh's list is a promise that `goh <check>` exists; a name the binary lacks
+    makes goh.sh exec into "unrecognized subcommand" -- a check that looks available and is not."""
     text = ENTRY.read_text(encoding="utf-8")
     table = text[text.index('case "$check" in') : text.index("esac")]
-    rows = re.findall(r'^\s*([\w-]+)\)\s+python_file="([^"]+)"', table, re.M)
-    assert len(rows) >= 18, rows
-    python_only: set[str] = set()
-    for check, ref in rows:
-        assert (ROOT / ref).is_file(), (check, ref)
-        if check in python_only:
-            continue
+    names = re.findall(r"[a-z][a-z-]+", table.split(")")[0].split("in", 1)[1])
+    assert len(names) >= 20, names
+    for check in names:
         r = subprocess.run([str(goh), check, "--help"], capture_output=True, text=True)
         assert r.returncode == 0, (check, r.stderr)
-
-
-def test_a_bash_reference_falls_back_to_bash(tmp_path: Path) -> None:
-    """`shell-lint`'s reference is `check_shell_lint.sh`; the fallback ran it under python3."""
-    subprocess.run(["git", "init", "-q", str(tmp_path)], check=True)
-    env = {k: v for k, v in os.environ.items() if k != "GOH_BIN"}
-    r = subprocess.run(
-        ["bash", str(ENTRY), "shell-lint"],
-        capture_output=True,
-        text=True,
-        cwd=tmp_path,
-        env={**env, "GOH_NO_NATIVE": "1"},
-    )
-    assert r.returncode == 0, r.stdout + r.stderr
-    assert "[shell_lint]" in r.stdout + r.stderr, r.stdout + r.stderr

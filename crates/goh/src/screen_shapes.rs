@@ -1,5 +1,5 @@
 //! Screen-presentation vocabularies — the pattern tables ported from
-//! `checks/check_no_screen_presentation.py`.
+//! the retired `checks/check_no_screen_presentation.py`.
 //!
 //! One table per language, in reference order (first match per line
 //! wins). Each entry carries WHY it reaches the screen, so findings say

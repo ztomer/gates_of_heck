@@ -1,4 +1,4 @@
-"""check_lock_version.py — a committed Cargo.lock must agree with its manifest.
+"""`goh lock-version` — a committed Cargo.lock must agree with its manifest.
 
 app_updates, 2026-10-01. The release commit bumped
 `[workspace.package] version` to 1.36.0 and touched nothing else. `Cargo.lock`
@@ -22,15 +22,11 @@ accidental:
 """
 
 import json
-import sys
 
 import pytest
 
-from conftest import REPO_ROOT, commit_all, git, write
+from conftest import commit_all, git, write
 from tier_kit import both_tiers, run_tiered  # noqa: F401  # both_tiers: a fixture
-
-sys.path.insert(0, str(REPO_ROOT / "checks"))
-import check_lock_version as gate  # noqa: E402
 
 pytestmark = pytest.mark.usefixtures("both_tiers")
 
@@ -75,7 +71,7 @@ def _workspace(repo, manifest_version, lock_version, members=("crates/core", "cr
 
 def _run(repo, *args):
     """The checker over `repo`, on the current tier (Python, or `goh lock-version`)."""
-    return run_tiered(repo, CHECKER, "lock-version", *args, python_only=("--probe",))
+    return run_tiered(repo, CHECKER, "lock-version", *args)
 
 
 def audit(repo):
@@ -329,19 +325,34 @@ def test_a_missing_directory_is_a_usage_error(tmp_path):
 # ── parsing: the shapes that read as nothing ────────────────────────────────
 
 
+# Each shape below once read as NOTHING to compare, so it is pinned by what the gate then says
+# about a whole tree: the members it examined, and whether it invented a finding.
+
+
+def _lock(repo, *pkgs):
+    """A Cargo.lock holding exactly these `(name, version)` packages."""
+    body = "version = 4\n" + "".join(
+        f'\n[[package]]\nname = "{n}"\nversion = "{v}"\n' for n, v in pkgs
+    )
+    write(repo, "Cargo.lock", body)
+
+
 def test_a_multiline_member_list_is_read(tmp_path):
     """`divoom-control` writes `members = [` across four lines. A per-line regex
     finds the opening bracket and never its partner, the member list comes back
     empty, and a three-crate workspace reports nothing to compare."""
     repo = tmp_path / "divoom"
-    repo.mkdir()
     write(
         repo,
         "Cargo.toml",
-        '[workspace]\nresolver = "2"\nmembers = [\n    "divoomd",\n    "nowplaying",\n]\n',
+        '[workspace]\nresolver = "2"\nmembers = [\n    "divoomd",\n    "nowplaying",\n]\n'
+        '\n[workspace.package]\nversion = "2.0.0"\n',
     )
-    version, members = gate.parse_workspace((repo / "Cargo.toml").read_text())
-    assert members == ["divoomd", "nowplaying"], members
+    for m in ("divoomd", "nowplaying"):
+        write(repo, f"{m}/Cargo.toml", f'[package]\nname = "{m}"\nversion.workspace = true\n')
+    _lock(repo, ("divoomd", "1.0.0"), ("nowplaying", "1.0.0"))
+    findings, examined, _ = audit(repo)
+    assert examined == 2 and len(findings) == 2, (examined, findings)
 
 
 def test_an_exclude_is_not_mistaken_for_a_member(tmp_path):
@@ -350,52 +361,52 @@ def test_an_exclude_is_not_mistaken_for_a_member(tmp_path):
     becomes a workspace member -- which is what this repo's first run reported
     against monitor, inventing a finding about a crate the workspace excludes."""
     repo = tmp_path / "mon"
-    repo.mkdir()
-    write(repo, "Cargo.toml", '[workspace]\nmembers = ["crates/agent"]\nexclude = ["fuzz"]\n')
-    _, members = gate.parse_workspace((repo / "Cargo.toml").read_text())
-    assert members == ["crates/agent"], members
-
-
-def test_a_dependency_version_is_not_a_declaration(tmp_path):
-    """`version = "1.0.219"` under [dependencies] belongs to serde. Reading it
-    as the package's own version is how a repo's release number becomes a
-    transitive dependency's."""
-    name, version = gate.parse_package(
-        '[package]\nname = "app"\nversion = "1.0.0"\n\n[dependencies]\nserde = "1.0.219"\n'
+    write(
+        repo,
+        "Cargo.toml",
+        '[workspace]\nmembers = ["crates/agent"]\nexclude = ["fuzz"]\n'
+        '\n[workspace.package]\nversion = "1.0.0"\n',
     )
-    assert (name, version) == ("app", "1.0.0"), (name, version)
+    write(repo, "crates/agent/Cargo.toml", '[package]\nname = "agent"\nversion.workspace = true\n')
+    write(repo, "fuzz/Cargo.toml", '[package]\nname = "fuzz"\nversion = "9.9.9"\n')
+    _lock(repo, ("agent", "1.0.0"), ("fuzz", "0.0.1"))
+    findings, examined, _ = audit(repo)
+    assert (examined, findings) == (1, []), (examined, findings)
 
 
-def test_a_metadata_version_is_not_a_declaration(tmp_path):
-    name, version = gate.parse_package(
-        '[package]\nname = "app"\nversion = "1.0.0"\n\n[package.metadata.docs]\nversion = "9.9.9"\n'
-    )
-    assert version == "1.0.0", version
-
-
-def test_a_version_after_the_package_table_ends_the_package(tmp_path):
-    """The `[lib]` table follows `[package]`; a `version` key after it belongs
-    to nothing this checker should read."""
-    name, version = gate.parse_package(
-        '[package]\nname = "app"\nversion = "1.0.0"\n\n[lib]\nversion = "7.7.7"\n'
-    )
-    assert (name, version) == ("app", "1.0.0"), (name, version)
+@pytest.mark.parametrize(
+    "tail",
+    [
+        # `version = "1.0.219"` under [dependencies] belongs to serde: reading it as the
+        # package's own is how a release number becomes a transitive dependency's.
+        '\n[dependencies]\nserde = "1.0.219"\n',
+        '\n[package.metadata.docs]\nversion = "9.9.9"\n',
+        # The `[lib]` table follows `[package]`; a `version` after it belongs to nothing here.
+        '\n[lib]\nversion = "7.7.7"\n',
+    ],
+)
+def test_a_version_outside_the_package_table_is_not_a_declaration(tmp_path, tail):
+    repo = tmp_path / "app"
+    write(repo, "Cargo.toml", '[package]\nname = "app"\nversion = "1.0.0"\n' + tail)
+    _lock(repo, ("app", "1.0.0"), ("serde", "1.0.219"))
+    findings, examined, _ = audit(repo)
+    assert (examined, findings) == (1, []), (examined, findings)
 
 
 def test_a_lockfile_with_a_patch_table_does_not_confuse_the_parser(tmp_path):
     """`[[patch.unused]]` follows the `[[package]]` blocks and has its own
     `name`/`version`. A parser that keeps appending to the last block invents an
-    entry for a patched registry crate."""
+    entry for a patched registry crate -- or overwrites the real one."""
     repo = tmp_path / "app"
     repo.mkdir()
     _workspace(repo, "1.0.0", "1.0.0")
     write(
         repo,
         "Cargo.lock",
-        LOCK.format(version="1.0.0") + '\n[[patch.unused]]\nname = "serde"\nversion = "9.9.9"\n',
+        LOCK.format(version="1.0.0") + '\n[[patch.unused]]\nname = "app-core"\nversion = "9.9.9"\n',
     )
-    entries = gate.parse_lock((repo / "Cargo.lock").read_text())
-    assert entries["serde"]["version"] == "1.0.219", entries["serde"]
+    findings, examined, _ = audit(repo)
+    assert (examined, findings) == (2, []), (examined, findings)
 
 
 # ── wiring and output ────────────────────────────────────────────────────────
@@ -412,68 +423,9 @@ def test_json_output_carries_findings_and_population(tmp_path):
     assert len(payload["findings"]) == 2, payload
 
 
-def test_the_probe_runs_and_is_green():
-    """check_probes_pass discovers this by source, then RUNS it."""
-    import subprocess
-
-    r = subprocess.run(
-        [sys.executable, str(REPO_ROOT / CHECKER), "--probe"], capture_output=True, text=True
-    )
-    assert r.returncode == 0, r.stdout + r.stderr
-    assert "a stale lockfile goes red" in r.stdout, r.stdout
-
-
-# ── calibration: these cases can go RED ─────────────────────────────────────
-
-
-def test_calibration_the_suite_is_red_without_arm_two(tmp_path):
-    """Proof arm 2 is load-bearing. Dropping it must turn the
-    release-number-bumped-in-one-place case red -- and it must be red in the
-    PROBE too, since check_probes_pass runs that."""
-    import os
-    import subprocess
-
-    source = (REPO_ROOT / CHECKER).read_text(encoding="utf-8")
-    assert "elif numbers:" in source
-    blind = tmp_path / "blind.py"
-    blind.write_text(source.replace("elif numbers:", "elif False:"), encoding="utf-8")
-
-    repo = tmp_path / "media"
-    repo.mkdir()
-    _forgotten_member(repo)
-
-    r = subprocess.run(
-        [sys.executable, str(blind)],
-        cwd=repo,
-        capture_output=True,
-        text=True,
-        env=dict(os.environ, PYTHONPATH=str(REPO_ROOT / "checks")),
-    )
-    assert r.returncode == 0, r.stdout + r.stderr
-    assert "1.79.3" not in r.stdout, "arm 2 still fired -- this calibration proves nothing"
-    # ...and the real checker, on the same tree, is red.
-    assert _run(repo).returncode == 1, "the real checker no longer runs arm 2"
-
-
-def test_calibration_the_probe_goes_red_when_arm_two_stops(tmp_path):
-    """The same break, seen by the gate that RUNS the probe. A probe that has
-    silently stopped covering half its checker is the failure check_probes_pass
-    exists for, and it can only be demonstrated by breaking the checker."""
-    import os
-    import subprocess
-
-    source = (REPO_ROOT / CHECKER).read_text(encoding="utf-8")
-    blind = tmp_path / "blind.py"
-    blind.write_text(source.replace("elif numbers:", "elif False:"), encoding="utf-8")
-    r = subprocess.run(
-        [sys.executable, str(blind), "--probe"],
-        capture_output=True,
-        text=True,
-        cwd=tmp_path,
-        env=dict(os.environ, PYTHONPATH=str(REPO_ROOT / "checks")),
-    )
-    assert r.returncode == 1, r.stdout + r.stderr
-    assert "per-crate versions" not in r.stdout.split("probe: ")[-1], r.stdout
+# The retired Python checker's `--probe`, and the two calibrations that blinded its source to
+# prove the probe could go red, went with it (Phase N3). The forgotten-member case above is the
+# same proof against the native: it is red on the tree arm two exists for.
 
 
 def test_an_unknown_version_source_is_a_usage_error_not_a_traceback(tmp_path, monkeypatch):

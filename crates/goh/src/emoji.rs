@@ -1,4 +1,4 @@
-//! Disallowed-emoji scan — Rust port of `checks/check_no_emoji.py`.
+//! Disallowed-emoji scan — Rust port of the retired `checks/check_no_emoji.py`.
 //!
 //! Policy: emoji are a failure state. Only the Kare icon set, functional Mac
 //! key glyphs, domain operators, and legal typographic signs pass; every

@@ -1,6 +1,6 @@
 //! A Cargo tree -> its declared dependencies and locked versions.
 //!
-//! Port of `checks/_dep_tree.py`: a manifest that does not parse is skipped, an
+//! Port of the retired `checks/_dep_tree.py`: a manifest that does not parse is skipped, an
 //! inherited requirement is read from the WORKSPACE ROOT, `path`/`git`
 //! dependencies have no crates.io version and are dropped.
 

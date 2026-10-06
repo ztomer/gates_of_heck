@@ -38,6 +38,7 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from _gitutil import foreign_repo_env  # noqa: E402
+from _retired import NATIVE  # noqa: E402
 
 # The registry, relative to the repo root.
 REGISTRY = os.path.join("checks", "gate_calibration.json")
@@ -79,6 +80,29 @@ def gate_paths(root: str, key: str) -> list[str]:
     out.append(os.path.join("gates", f"{key}.sh"))
     out.append(os.path.join("lib", f"{key}.sh"))
     return out
+
+
+def native_gate(root: str, key: str) -> str | None:
+    """The `goh` check a key names, when its Python checker was retired (Phase N3) and this repo
+    ships the dispatcher that runs it; else None. The gate EXISTS: it is `gates/goh.sh <check>`."""
+    stem = key if key.startswith("check_") else f"check_{key}"
+    check = NATIVE.get(stem)
+    if check and os.path.isfile(os.path.join(root, "gates", "goh.sh")):
+        return check
+    return None
+
+
+def runs_pytest(root: str) -> bool:
+    """Does this repo's push gate run its pytest suite? Read from `.gatesrc`'s GOH_CI_STEPS, the
+    one list `tools/gate.sh --full` runs -- so a cited test file is a proof that actually RUNS on
+    every push, not a file that merely exists."""
+    try:
+        with open(os.path.join(root, ".gatesrc"), encoding="utf-8") as handle:
+            text = handle.read()
+    except OSError:
+        return False
+    steps = re.search(r"^GOH_CI_STEPS=(.+)$", text, re.M)
+    return bool(steps and "pytest" in steps.group(1))
 
 
 def committed(repo_root: str, path: str) -> bool | None:
@@ -201,6 +225,8 @@ def verify(root: str, data: dict, ran: set[str]) -> list[str]:
     for key in list(entries) + list(unproven):
         # (a) The key must name a gate that EXISTS. This half is estate-independent: it holds on
         # a machine that has never heard of the other estates, which is the point.
+        if native_gate(root, key):
+            continue
         if not any(os.path.isfile(os.path.join(root, rel)) for rel in gate_paths(root, key)):
             where = "proven_by" if key in entries else "known_unproven"
             bad.append(f"{where}: {key!r} names no gate here (tried {gate_paths(root, key)})")
@@ -241,6 +267,12 @@ def verify(root: str, data: dict, ran: set[str]) -> list[str]:
                     f"proven_by: {key!r} cites {cited}, which does not list {key!r} among what "
                     f"it proves"
                 )
+            continue
+        if rel.startswith("tests" + os.sep) and not runs_pytest(root):
+            bad.append(
+                f"proven_by: {key!r} cites {rel}, a test suite this repo's push gate does not run "
+                f"(no pytest step in GOH_CI_STEPS) -- a proof nothing runs is a rumour"
+            )
             continue
         flag = SELF_PROOF_FLAG.search(rest)
         if flag and rel not in ran:

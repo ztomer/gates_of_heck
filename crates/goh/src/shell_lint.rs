@@ -1,4 +1,4 @@
-//! Shell lint -- Rust port of `checks/check_shell_lint.sh` (Phase N1).
+//! Shell lint -- Rust port of the retired `checks/check_shell_lint.sh` (Phase N1).
 //!
 //! Every tracked `*.sh` and `hooks/*` file (at `--staged`, the staged blobs,
 //! checked out of the index into a temp dir) must pass `bash -n`, and the
@@ -407,7 +407,7 @@ pub fn step(cfg: &crate::gatesrc::Gatesrc, staged: bool) -> Option<i32> {
             let text: String = lines.into_iter().map(|(_, l)| l + "\n").collect();
             let _ = crate::step_report::fail(
                 label,
-                &crate::step_report::ported("crates/goh/src/shell_lint.rs", "check_shell_lint.sh"),
+                &crate::step_report::ported("crates/goh/src/shell_lint.rs"),
                 &text,
                 start,
             );

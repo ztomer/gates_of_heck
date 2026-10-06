@@ -2,8 +2,14 @@
 
 ## 1. Decide where it lives
 
-* New policy over file contents or repo state: `checks/check_<name>.py`
-  (or `.sh` for link-table style audits like `check_no_screen_linkage.sh`).
+* New structural policy over file contents or repo state: a NATIVE check,
+  `crates/goh/src/<name>.rs` (a `Commands` variant in `cli.rs`, dispatched in
+  `main.rs`, a step in `structural.rs` if every repo runs it, and a name in
+  `gates/goh.sh`'s list). The Python tier is retired (Phase N3): a new
+  structural checker in `checks/` is a second tier nobody runs.
+* A gate-side tool a consumer runs with arguments (`check_baseline_ratchet.py`,
+  `check_display_seam.py`) may still be Python in `checks/`; say why in its
+  `docs/map.md` row.
 * New runner/plumbing over toolchains: `gates/<name>.sh` (rare; prefer a
   checker under an existing gate).
 * Shared math/transport both sides use: `lib/` (comparison only — see the
@@ -12,8 +18,10 @@
 ## 2. Write the failing test first
 
 Helpers live in `tests/conftest.py`: `repo` fixture (throwaway git repo),
-`write` / `stage` / `commit_all`, `run_check` (checker, `cwd=repo`),
-`run_gate` (gate script, `cwd=repo`).
+`write` / `stage` / `commit_all`, `goh` (the session's native binary) and
+`run_goh(repo, check, *args)`, `run_check` (a Python checker, `cwd=repo`),
+`run_gate` (gate script, `cwd=repo`). Rust unit tables go beside the code
+(`#[cfg(test)]`), whole-repo behaviour in `tests/test_check_<name>.py`.
 
 * Build disallowed content with `chr(0x...)`, never as a literal — else
   this repo's own emoji gate trips on your test (see the glyph constants
@@ -23,10 +31,10 @@ Helpers live in `tests/conftest.py`: `repo` fixture (throwaway git repo),
   the code once and watch it go red before trusting green.
 * If the checker has a `--staged` mode, test staged-vs-worktree: stage
   the violation, dirty the worktree differently, assert the checker
-  reports the INDEX via `checks/_gitutil.py` (`git show :path`).
-* A checker (or its `--probe`) that builds its OWN repo — a skeleton, a
-  fixture — runs every git call on it, and every process inside it, with
-  `_gitutil.foreign_repo_env()`. Inheriting a linked worktree hook's
+  reports the INDEX (`crates/goh/src/blobs.rs`, `git show :path`).
+* A check that builds its OWN repo — a skeleton, a fixture — runs every git
+  call on it, and every process inside it, with `goh_testkit::git_command()`
+  (`_gitutil.foreign_repo_env()` in Python). Inheriting a linked worktree hook's
   `GIT_DIR` re-initialises the real repo (contract #12).
 
 ## 3. Implement the checker
@@ -38,14 +46,17 @@ Helpers live in `tests/conftest.py`: `repo` fixture (throwaway git repo),
   (missing binary, unparsable payload, zero measurable files — never a
   silent pass; see `docs/contracts.md` 7).
 * Output: name every violation as `file:line: reason`; print OK-summary
-  on pass (`[name] OK — N files clean`). Source `tui/lib.sh` in shell
-  checkers; use `info/ok/err/warn/die`.
-* Keep it under the 500-line cap.
+  on pass (`[name] OK — N files clean`). Kare icons only (`✓ ✗ ⚠ → ·`).
+* `cargo clippy --all-targets -- -D warnings` with pedantic + nursery; no
+  `#[allow]` / `#[expect]` (`goh no-allow` enforces it on this crate too).
+* Keep each file under the 500-line cap; split into a module directory.
 
 ## 4. Wire it
 
-* Call it from the owning gate with `goh_step` (fail-fast + output) or
-  `goh_optional_step` when it applies only with a guard file.
+* A structural step: add it to `structural.rs` (and `INVENTORY` in
+  `tests/test_goh_structural.py`, with a red and a green case in its `EXPECTED`).
+  A toolchain gate calls it as `bash "$GOH/gates/goh.sh" <check>` from
+  `goh_step` (fail-fast + output).
 * `tests/test_wiring.py` parses `gates/*.sh` + `hooks/` for referenced
   scripts: guarded references must still resolve. A typo'd path fails
   the suite — that is the point.
@@ -57,6 +68,7 @@ Helpers live in `tests/conftest.py`: `repo` fixture (throwaway git repo),
 ## 5. Verify
 
 ```
+cargo clippy --all-targets -q -- -D warnings && cargo test -q -p goh
 python3 -m pytest tests/test_<name>.py tests/test_wiring.py tests/test_config_schema.py -q
 tools/gate.sh --staged
 ```

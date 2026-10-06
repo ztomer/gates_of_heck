@@ -80,18 +80,27 @@ def test_the_gate_agrees_with_the_reader_on_this_repo():
 def test_every_registered_key_names_a_gate_this_repo_has():
     data = reader.load(str(ROOT))
     for key in list(data["proven_by"]) + list(data["known_unproven"]):
-        assert any((ROOT / rel).is_file() for rel in reader.gate_paths(str(ROOT), key)), key
+        native = reader.native_gate(str(ROOT), key)
+        assert native or any((ROOT / rel).is_file() for rel in reader.gate_paths(str(ROOT), key)), (
+            key
+        )
 
 
 def test_every_local_citation_names_a_proof_the_sweep_actually_ran():
     """The load-bearing rule: a claim about a gate the sweep cannot see is a finding."""
     data = reader.load(str(ROOT))
     ran = green_probes(ROOT)
-    local = {key: why for key, why in data["proven_by"].items() if "checks/" in why}
-    assert local, "the registry cites nothing local, so this test would prove nothing"
+    local = {key: why for key, why in data["proven_by"].items() if why.startswith("checks/")}
     for key, why in local.items():
         cited = reader.CITED_FILE.match(why).group(1)
         assert cited in ran, f"{key}: cites {cited}, which the sweep did not run"
+    # Since Phase N3 the local proofs are native test suites, run by the push gate's pytest step.
+    suites = {key: why for key, why in data["proven_by"].items() if why.startswith("tests/")}
+    assert suites, "the registry cites nothing local, so this test would prove nothing"
+    assert reader.runs_pytest(str(ROOT)), "the cited suites are not run by this repo's push gate"
+    for key, why in suites.items():
+        cited = reader.CITED_FILE.match(why).group(1)
+        assert (ROOT / cited).is_file(), f"{key}: cites {cited}, which does not exist"
 
 
 def test_every_external_citation_names_a_prover_that_claims_the_gate():
@@ -193,7 +202,7 @@ def test_the_calibration_probe_goes_red_when_a_rule_is_dropped(tmp_path, label, 
     (work / "_calibration.py").write_text(
         source.replace(rule, f"if False and {rule[len('if ') :]}"), encoding="utf-8"
     )
-    for name in ("_calibration_probe.py", "_gitutil.py"):
+    for name in ("_calibration_probe.py", "_gitutil.py", "_retired.py"):
         (work / name).write_text((ROOT / "checks" / name).read_text(encoding="utf-8"), "utf-8")
     got = subprocess.run(
         [sys.executable, str(work / "_calibration_probe.py")],
@@ -205,3 +214,29 @@ def test_the_calibration_probe_goes_red_when_a_rule_is_dropped(tmp_path, label, 
     )
     assert got.returncode == 1, f"the probe stayed green without the {label} rule:\n{got.stdout}"
     assert "case(s) wrong" in got.stderr, got.stderr
+
+
+@pytest.mark.parametrize(
+    ("steps", "red"),
+    [("GOH_CI_STEPS='make test'\n", True), ("GOH_CI_STEPS='./tools/pytest.sh'\n", False)],
+)
+def test_a_cited_test_suite_counts_only_when_the_push_gate_runs_pytest(tmp_path, steps, red):
+    """A test file is a proof only if something RUNS it on every push; one that merely exists is a
+    rumour with a filename. The push gate's step list is the one place that says so."""
+    root = tmp_path / "repo"
+    (root / "tests").mkdir(parents=True)
+    (root / "gates").mkdir()
+    (root / "gates" / "goh.sh").write_text("#!/bin/sh\n")
+    (root / "tests" / "test_x.py").write_text("def test_x():\n    pass\n")
+    (root / ".gatesrc").write_text(steps)
+    subprocess.run(["git", "init", "-q", str(root)], check=True)
+    subprocess.run(["git", "-C", str(root), "add", "-A"], check=True)
+    subprocess.run(
+        ["git", "-C", str(root), "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "c"],
+        check=True,
+    )
+    data = {"proven_by": {"no_emoji": "tests/test_x.py (native): red on a planted glyph"}}
+    bad = reader.verify(str(root), data, set())
+    assert bool(bad) is red, bad
+    if red:
+        assert "does not run" in bad[0], bad

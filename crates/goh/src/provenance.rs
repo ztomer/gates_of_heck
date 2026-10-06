@@ -1,4 +1,4 @@
-//! Version provenance -- Rust port of `checks/check_version_provenance.py`
+//! Version provenance -- Rust port of the retired `checks/check_version_provenance.py`
 //! and `checks/_rust_crates.py` (Phase N1).
 //!
 //! A shipped binary should say WHICH build it is, not only which number: a
@@ -442,10 +442,7 @@ pub fn step(repo: &Path, staged: bool) -> Option<i32> {
         (code, out, err) => {
             let _ = crate::step_report::fail(
                 label,
-                &crate::step_report::ported(
-                    "crates/goh/src/provenance.rs",
-                    "check_version_provenance.py",
-                ),
+                &crate::step_report::ported("crates/goh/src/provenance.rs"),
                 &format!("{out}{err}"),
                 start,
             );
