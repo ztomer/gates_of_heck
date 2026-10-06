@@ -186,11 +186,16 @@ behind the same tests the shell passes today, red-proven, one at a time:
 - [x] 6.1 This repo's suite <= 60 s. MET (2026-10-06): 1987 tests in 52.5-53.8 s at load 11-17,
       from 62-67 s, by longest-first scheduling (`tests/_schedule.py`): summed test time is
       ~51 s per worker, and the rest was a long test collected late running alone at the end.
-- [ ] 6.2 Cross-session sigma for `structural --full` <= 0.15 (`tools/session_bench.py`).
+- [x] 6.2 Cross-session sigma for `structural --full` <= 0.15 (`tools/session_bench.py`). MET
+      (2026-10-06, load 10-17): N=1/2/4/8 makespans 6.1/4.0/4.6/6.0 s, USL sigma 0.000; with N=1
+      taken at its usual 4 s instead, sigma <= 0.07. From 0.51 at the first measurement.
 - [ ] 6.3 media_server push, everything changed: gates_of_heck's share (the rust phase) measured
       against its 90 s target with media_server's own pytest step separated out.
 - [ ] 6.4 media_server push, one crate changed: same split, against 30 s.
-- [ ] 6.5 The P2 `GOH_CI_JOBS` budget curve (1/2/4/6), its knee recorded.
+- [x] 6.5 The P2 `GOH_CI_JOBS` budget curve (1/2/4/6), its knee recorded. This repo, proven
+      cache off, load 22-50 (2026-10-06): 153 / 145 / 129 / 120 s. No sharp knee -- each step
+      past 2 buys 6-11%, and the floor is the rust layer (its coverage runs the whole suite
+      instrumented, ~90 s); 4 is the sensible default on a shared box, 6 when it is quiet.
 
 **Phase 7 — downstream: each consumer item to its owner** (details: "Downstream")
 - [~] 7.1 Each item below sent to the session that owns the repo, with the evidence (2026-10-06):
@@ -221,7 +226,7 @@ exit number is the target column; a miss names its lever before any change lands
 
 | what | baseline | last | target |
 |---|---|---|---|
-| this repo's suite, `-n 12 --dist loadgroup` | 94.4 s (v0.20, `-n 8`) | **66.9 s from a quiet start (load 3.6, 2026-10-06)** at `-n 12`; 67-79 s at load 9-56 (`-n 8` 74-96 s interleaved). Workers packed 52-64 s busy each, summed 663 s | <= 60 s: misses by ~7 s |
+| this repo's suite, `-n 12 --dist loadgroup` | 94.4 s (v0.20, `-n 8`) | **52.5-53.8 s at load 11-17 (2026-10-06)**, 1987 tests, longest-first (`tests/_schedule.py`); 62-67 s before it on a quiet box | <= 60 s: **MET** |
 | media_server push, one crate changed, warm | 197 s | 183 s at load 7-12 (2026-10-06): **110 s is media_server's own pytest suite** (134 tests, run by its gate.sh outside the proven cache); 5 of 29 crates re-gated -- 3 correctly (path users), healthcheck-rs on the whole tree by design (its tests read the repo root), vpn-watchdog-rs never recorded (fixed in `d384c0d`) | <= 30 s: unreachable from here while the pytest step runs unconditionally -- a servers item (below) |
 | media_server push, everything changed, warm | 177 s (P0) | 170 s at load 4-8 (2026-10-06): coverage 269 of ~360 summed step-s (29 crates, each rebuilt instrumented from clean) | <= 90 s: lever is the coverage rebuild |
 | any consumer's pre-commit structural layer | ~1 s | media_server, one staged `.rs`: 0.22 s at load 17 (2026-10-06) | <= 0.4 s: **MET** |
