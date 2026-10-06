@@ -28,6 +28,11 @@ goh_resolve_native() {
     # bin/goh is not in git: run from an export of HEAD (C4), it is the LIVE checkout's binary,
     # which C3 keeps built from that same HEAD.
     here="${GOH_LIVE_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}/gates"
+    # GOH_LIVE runs the working tree on purpose -- so the binary is the working tree's too.
+    # bin/goh is HEAD's (C3), and under GOH_LIVE with uncommitted Rust it answered for code the
+    # run was not testing: a new subcommand read "unrecognized", and a test of an uncommitted fix
+    # could pass against the old binary (found 2026-10-06 porting dep currency, Phase N1).
+    goh_live_binary "$here/.." && return 0
     want="$(goh_head_stamp "$here/..")"
     # bin/goh is OURS to rebuild: built from other source than HEAD's (or before stamps existed),
     # it is rebuilt from HEAD here, under build-goh.sh's lock, and then used. A version check alone
@@ -50,6 +55,42 @@ goh_resolve_native() {
 
 # goh_head_stamp <goh root> -- the git trees of the binary's build inputs at HEAD, as
 # crates/goh/build.rs stamps them; empty when the root is not a git checkout (nothing to compare).
+# The working tree's Rust inputs as they differ from HEAD: a hash of the diff and of every
+# untracked file under crates/, or nothing when the tree's Rust IS HEAD's.
+goh_live_delta() {
+    local root="$1" diff untracked
+    diff="$( (unset $(git rev-parse --local-env-vars 2>/dev/null)
+              git -C "$root" diff HEAD -- crates Cargo.toml Cargo.lock rust-toolchain.toml) 2>/dev/null)"
+    untracked="$( (unset $(git rev-parse --local-env-vars 2>/dev/null)
+                   cd "$root" && git ls-files -z --others --exclude-standard -- crates \
+                   | xargs -0 shasum 2>/dev/null) 2>/dev/null)"
+    [ -z "$diff$untracked" ] && return 0
+    printf '%s\n%s' "$diff" "$untracked" | shasum | cut -d' ' -f1
+}
+
+# Under GOH_LIVE with the tree's Rust ahead of HEAD: build THAT goh (once per delta) and use it.
+# Returns 1 when it does not apply (no GOH_LIVE, or the tree's Rust is HEAD's).
+goh_live_binary() {
+    [ -n "${GOH_LIVE:-}" ] || return 1
+    local root="$1" delta bin
+    delta="$(goh_live_delta "$root")"
+    [ -n "$delta" ] || return 1
+    local target="${GOH_LIVE_TARGET_DIR:-$root/target/goh-live}"
+    bin="$target/release/goh"
+    if [ ! -x "$bin" ] || [ "$(cat "$bin.delta" 2>/dev/null)" != "$delta" ]; then
+        echo "· GOH_LIVE: the working tree's Rust differs from HEAD -- building its goh" >&2
+        if (cd "$root" && cargo build -q --release -p goh --target-dir "$target") >&2; then
+            printf '%s' "$delta" > "$bin.delta"
+        fi
+    fi
+    if [ -x "$bin" ] && [ "$(cat "$bin.delta" 2>/dev/null)" = "$delta" ]; then
+        goh_native="$bin"
+    else
+        goh_native_why="GOH_LIVE: the working tree's goh could not be built"
+    fi
+    return 0
+}
+
 goh_head_stamp() {
     # Captured FIRST, then joined: a revision git cannot resolve (no HEAD yet, a missing input) is
     # ECHOED to stdout, and under pipefail a failing git inside a pipe killed the gate silently.

@@ -280,7 +280,13 @@ order, never the reverse:
   leader alone hung the run on its child's pipe, measured). Identical on every local repo at
   both scopes. **`check_shell_lint.sh` LANDED** as `goh shell-lint` (`crates/goh/src/shell_lint.rs`;
   `required_tools`' site scan now reads the native `on_path("tool")` shape too). The native
-  structural tier delegates nothing per file any more -- only the two `--full` sweeps. Next: `check_md_links`, `check_python_formatted` (spawns ruff either way),
+  structural tier delegates nothing per file any more -- only the two `--full` sweeps.
+  **`check_dep_currency` LANDED** as `goh deps` (`crates/goh/src/deps/`; `toml` with preserve_order
+  for document order, the shared crates.io cache, `curl` for the network): identical on every local
+  Rust repo in four modes and over the live network. Two reference bugs fixed first, red first:
+  `--ratchet` crashed (`f["name"]` on a dataclass) instead of failing an untriaged major, and the
+  comparator read a missing minor/patch as 0 (`~1.0`, `=1.2`, `^0.0.3`, `^0.0` -- five rows of
+  Cargo's own table). The semver table now lives in the crate's tests (N2 for this checker). Next: `check_md_links`, `check_python_formatted` (spawns ruff either way),
   `check_lock_version`, `check_no_credential_urls`, `check_shell_lint.sh` (spawns shellcheck), and
   the gate-side Python (`check_dep_currency`, `check_lints_optin`'s twin, `lcov_merge`). Each port
   lands parity-pinned against the Python it replaces and red-proven both ways, as Phase 3 did.

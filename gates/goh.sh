@@ -51,6 +51,7 @@ esac
 # Arguments the Python checker takes and the port does not (yet): such a call runs Python.
 case "$check" in
     unreaped-spawn) native_lacks="--probe --fresh-derivations" ;;
+    deps) native_lacks="--probe" ;;
     version-provenance) native_lacks="--probe" ;;
     claim-derivation) native_lacks="--probe" ;;
     md-links) native_lacks="--probe" ;;
@@ -59,16 +60,8 @@ case "$check" in
     python-formatted) native_lacks="--selftest" ;;
     *)     native_lacks="" ;;
 esac
-# `deps` has NO native port: it reads the crates.io index over the network and
-# interprets semver, which is Python's job here. Without this the native binary
-# claimed the subcommand and exited 2 on "unrecognized subcommand" -- a check
-# that exists and cannot be run, which is worse than one that is absent,
-# because it looks available.
 python_only=""
 case "$check" in
-    deps)
-        python_only="dependency currency needs the crates.io index; no native port"
-        ;;
     empty-assert)
         # Deliberately not ported, not merely unported. This checker's SPEC is
         # the measured clippy table in its docstring, and the table is what the

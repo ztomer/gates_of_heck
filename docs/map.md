@@ -47,7 +47,7 @@ logic goes in the engine; new floor/CLI semantics go in `coverage_gate.sh`.
 
 | Script | Purpose | Test |
 |---|---|---|
-| `check_dep_currency.py` | Dependency currency: a direct dependency pinned below the version a transitive parent resolves is FATAL (offline, never cached); one behind crates.io's latest is reported (cached per crate name, asked concurrently). | `test_check_dep_currency.py`, `test_crates_io_cache.py` |
+| `check_dep_currency.py` | Dependency currency: a direct dependency pinned below the version a transitive parent resolves is FATAL (offline, never cached); one behind crates.io's latest is reported (cached per crate name, asked concurrently). **Native port** `goh deps` (`crates/goh/src/deps/`: the semver table pinned in the crate, the same crates.io cache, `curl` bounded for the network) is what `goh.sh deps` runs; byte-identical on every local Rust repo in four modes and over the live network. | `test_check_dep_currency.py`, `test_crates_io_cache.py` |
 | `check_empty_scope.py` | The `--full` sweep: runs every gate over a skeleton with no CONTENT and fails any that passes -- a gate that reports success over nothing is the class. Delegated by the native tier. | `test_gate_runtime_path.py`, the empty-tree rows of each checker's own suite |
 | `check_exclusion_has_ceiling.py` | Every file exempted from the line cap (`GOH_LINE_EXCLUDE`) must still have a CEILING in the baseline, so an exemption is a bound and not a blank cheque. Native port: `goh ceiling`. | `test_check_exclusion_has_ceiling.py`, `test_goh_ceiling_parity.py` |
 | `check_lints_optin.py` | A crate silently exempt from its workspace's lint policy (no `[lints] workspace = true`). Native port: `goh lints`. | `test_check_lints_optin.py`, `test_goh_lints_parity.py` |

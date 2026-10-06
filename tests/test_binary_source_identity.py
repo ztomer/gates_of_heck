@@ -133,3 +133,52 @@ def test_the_real_binary_reports_the_tree_it_was_built_from(goh: Path):
         text=True,
     ).stdout.strip()
     assert out.stdout.strip() == ("dirty" if dirty else _head_tree(root)), out.stdout
+
+
+def test_goh_live_runs_the_working_trees_binary_not_heads(tmp_path: Path) -> None:
+    """GOH_LIVE=1 is "run the working tree"; the native binary is part of it. bin/goh is HEAD's
+    (C3), so with an uncommitted Rust change goh.sh used to run HEAD's binary under GOH_LIVE -- a
+    new subcommand read "unrecognized" and a test of an uncommitted fix could pass against old code
+    (found 2026-10-06, Phase N1). Planted: an uncommitted change to `goh --help`. The build reuses
+    one target dir across runs (GOH_LIVE_TARGET_DIR), so only the first run compiles."""
+    import os
+    import subprocess
+
+    from test_gate_environment import _clean_checkout_of_todays_gates
+
+    gates = _clean_checkout_of_todays_gates(tmp_path)
+    main = gates / "crates" / "goh" / "src" / "main.rs"
+    main.write_text(
+        main.read_text().replace(
+            "/// Fail when a crate is exempt from its workspace lint policy",
+            "/// LIVE-RUST-EDIT-9031",
+            1,
+        )
+    )
+    env = {k: v for k, v in os.environ.items() if not k.startswith(("GOH_", "PYTEST_"))}
+    env.update(
+        GOH_LIVE="1",
+        GOH_LIVE_TARGET_DIR=str(Path(__file__).resolve().parents[1] / "target" / "goh-live-test"),
+    )
+    live = subprocess.run(
+        ["bash", str(gates / "gates" / "goh.sh"), "lints", "--help"],
+        cwd=gates,
+        capture_output=True,
+        text=True,
+        env=env,
+        timeout=600,
+    )
+    assert "LIVE-RUST-EDIT-9031" in live.stdout, live.stdout + live.stderr
+    env.pop("GOH_LIVE")
+    head_cache = tmp_path / "head-cache"
+    env["GOH_HEAD_CACHE"] = str(head_cache)
+    env["GOH_NO_NATIVE"] = "1"  # HEAD's run must not build a second binary in this scratch clone
+    head = subprocess.run(
+        ["bash", str(gates / "gates" / "goh.sh"), "lints", "--help"],
+        cwd=gates,
+        capture_output=True,
+        text=True,
+        env=env,
+        timeout=600,
+    )
+    assert "LIVE-RUST-EDIT-9031" not in head.stdout + head.stderr

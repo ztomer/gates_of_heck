@@ -14,6 +14,7 @@ pub mod ceiling;
 pub mod claims;
 pub mod commands;
 pub mod credurls;
+pub mod deps;
 pub mod emoji;
 pub mod gatesrc;
 pub mod gitutil;
@@ -222,6 +223,25 @@ enum Commands {
         #[arg(long)]
         verdict: Option<String>,
     },
+    /// Dependency currency: a pin below the graph fails; crates.io drift reports
+    /// (native port of `check_dep_currency`).
+    Deps {
+        /// Repository to read (default: cwd).
+        #[arg(long)]
+        root: Option<String>,
+        /// Machine-readable output.
+        #[arg(long)]
+        json: bool,
+        /// Skip the network arm, and say so.
+        #[arg(long)]
+        offline: bool,
+        /// Also fail on a major behind.
+        #[arg(long)]
+        strict: bool,
+        /// Fail on any major not listed in this file.
+        #[arg(long)]
+        ratchet: Option<String>,
+    },
     /// Fail when `Cargo.lock` disagrees with its manifests (native port of
     /// `check_lock_version`).
     LockVersion {
@@ -354,7 +374,16 @@ fn main() {
         std::process::exit(1);
     }
     let cli = Cli::parse();
-    let code = match cli.command {
+    let code = match run_ported(cli.command) {
+        Ok(code) => code,
+        Err(command) => run_core(command),
+    };
+    std::process::exit(code);
+}
+
+/// The commands that are not Phase N1 ports.
+fn run_core(command: Commands) -> i32 {
+    match command {
         Commands::RustScope {
             cargo_dir,
             check_depinfo,
@@ -383,6 +412,36 @@ fn main() {
             scope,
             staged,
         } => commands::run_screen(&paths, scope.as_deref(), staged),
+        Commands::Lints { self_test } => commands::run_lints(self_test),
+        Commands::Skills(args) => commands::run_skills(
+            &args.root,
+            args.max_words,
+            args.min_skills,
+            args.baseline.as_deref(),
+            args.update_baseline,
+        ),
+        Commands::Golden {
+            a,
+            b,
+            tolerances,
+            json,
+        } => commands::run_golden(&a, &b, &tolerances, json),
+        Commands::Ceiling {
+            max,
+            line_exclude,
+            unbounded,
+            baseline,
+        } => commands::run_ceiling(max, &line_exclude, &unbounded, baseline.as_deref()),
+        other => {
+            eprintln!("✗ goh: {other:?} has no runner");
+            2
+        }
+    }
+}
+
+/// The Phase N1 ports, or the command back for `run_core`.
+fn run_ported(command: Commands) -> Result<i32, Commands> {
+    Ok(match command {
         Commands::VersionProvenance {
             root,
             baseline,
@@ -396,6 +455,13 @@ fn main() {
             json,
             verdict,
         } => credurls::run_command(root.as_deref(), json, verdict.as_deref()),
+        Commands::Deps {
+            root,
+            json,
+            offline,
+            strict,
+            ratchet,
+        } => deps::run_command(root.as_deref(), json, offline, strict, ratchet.as_deref()),
         Commands::LockVersion { root, json } => lockver::run_command(root.as_deref(), json),
         Commands::MdLinks {
             root,
@@ -420,26 +486,6 @@ fn main() {
             staged,
             verdicts,
         } => unreaped::run_command(staged, &exclude, verdicts.as_deref()),
-        Commands::Lints { self_test } => commands::run_lints(self_test),
-        Commands::Skills(args) => commands::run_skills(
-            &args.root,
-            args.max_words,
-            args.min_skills,
-            args.baseline.as_deref(),
-            args.update_baseline,
-        ),
-        Commands::Golden {
-            a,
-            b,
-            tolerances,
-            json,
-        } => commands::run_golden(&a, &b, &tolerances, json),
-        Commands::Ceiling {
-            max,
-            line_exclude,
-            unbounded,
-            baseline,
-        } => commands::run_ceiling(max, &line_exclude, &unbounded, baseline.as_deref()),
-    };
-    std::process::exit(code);
+        other => return Err(other),
+    })
 }

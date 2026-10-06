@@ -78,7 +78,7 @@ def test_every_dispatched_check_names_a_real_reference_and_a_real_subcommand(goh
     table = text[text.index('case "$check" in') : text.index("esac")]
     rows = re.findall(r'^\s*([\w-]+)\)\s+python_file="([^"]+)"', table, re.M)
     assert len(rows) >= 18, rows
-    python_only = {"deps", "empty-assert"}
+    python_only = {"empty-assert"}
     for check, ref in rows:
         assert (ROOT / ref).is_file(), (check, ref)
         if check in python_only:
