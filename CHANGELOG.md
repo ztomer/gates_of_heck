@@ -1,5 +1,58 @@
 # CHANGELOG
 
+## v0.23.0 — the Python checkers are retired; the binary is the only tier _(2026-10-06)_
+
+### 1. One structural tier: `bin/goh` (Phase N)
+
+* **Every structural checker is native.** The twelve the native tier still delegated were ported,
+  each parity-pinned against the Python on the estate and red-proven both ways: unreaped-spawn
+  (2.87 -> 0.13 s on media_server), version provenance, kill-by-name, claim derivation, md-links,
+  lock-version, credential-urls, python-formatted (spawns ruff, bounded), shell-lint (with a
+  per-blob verdict cache: media_server `--full` 1.9 -> 0.30 s warm), dependency currency,
+  empty-assert and the push gate's tag check. `goh <check> --help` is each one's usage.
+* **The Python tier is gone.** `structural.sh`'s Python branch is deleted (498 -> 181 lines); with
+  no binary, `structural.sh` and `goh.sh` REFUSE and say how to build one, and a failed rebuild
+  refuses -- nothing else runs in the binary's place. `GOH_NO_NATIVE` is retired: said, and
+  ignored. **Every consumer now needs a Rust toolchain**; `cargo` is a declared structural
+  requirement and `build-goh.sh` refuses up front without it.
+* **16 ported checkers, 21 helpers and `check_exclusion_has_ceiling.py` are deleted.** Six entry
+  points that consumers call BY PATH stay as forwarders to `goh.sh <check>` (`check_no_emoji`,
+  `check_file_length`, `check_python_formatted`, `check_version_provenance`, `check_tag_version`,
+  `check_no_allow`); imported, they raise. `goh.sh` refuses the retired `--probe` and
+  `--fresh-derivations` by name; `python-formatted --selftest` is native.
+* **The spec is frozen, not deleted.** The parity suites run the Python exported whole from commit
+  `96018bd` (`tests/reference_kit.py`); unit tables moved beside the Rust. The structural suite pins
+  FROZEN verdicts and a named step inventory instead of tier agreement -- which found its
+  python-format "red" case green in both tiers: it never opted in.
+
+### 2. New refusals
+
+* **R5: a new vendored copy of a house checker is refused** by the commit that adds it, and an
+  existing one is named at full scope (`no vendored copies of house checkers`, the pipeline's 20th
+  step).
+* **C2: an external skills corpus is judged at its last COMMIT**, never its working tree -- another
+  session's half-done skill edit refused a release here. The writer-time hook is an owner decision.
+* **Allowlist entries for a deleted file are stale** (kill-by-name, claim derivation), an
+  empty-scope excuse naming no gate is a finding, a `docs/map.md` row for a deleted file fails, and
+  the calibration registry resolves a key to its native check.
+
+### 3. Correctness found on the way
+
+* `.gatesrc` is the only source of pipeline config: the native tier read `GOH_STEP_TIMEOUT` from
+  the ambient environment and never from the file (`gatesrc::adopt_into_env`).
+* The push gate said "tag does not match" over a tag check that could not run; the two read
+  differently now.
+* Five reference bugs the ports reproduced were fixed in both tiers first (a `--ratchet` crash, a
+  semver comparator reading a missing minor as 0, a claim lost after a multi-line string, a
+  traceback on a bad version source, an inert `--staged`).
+
+### 4. This repo's suite
+
+Nine tests still set the retired `GOH_NO_NATIVE` -- two ran the same native pipeline twice, three
+compiled `bin/goh` in a scratch clone per run; they name the session binary now, and a meta-test
+refuses the key. 1806 tests, ~90 s at `-n 8` under load (summed test time 693 -> ~620 s). The 60 s
+target needs a quiet-box measurement (BACKLOG).
+
 ## v0.22.0 — the shared checkout stops being live, and the gates run side by side _(2026-10-05)_
 
 ### 1. Consumers run HEAD, never the shared working tree (C4)
