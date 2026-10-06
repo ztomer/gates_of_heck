@@ -3,8 +3,8 @@
 //! `tests/test_goh_structural_parity.py`.
 
 use crate::{
-    blobs, claims, gatesrc, gitutil, goh_root, killname, lockver, mdlinks, prefetch, provenance,
-    scope, steps, steps_delegated, unreaped,
+    blobs, claims, credurls, gatesrc, gitutil, goh_root, killname, lockver, mdlinks, prefetch,
+    provenance, scope, steps, steps_delegated, unreaped,
 };
 
 /// Delegate the structural gate to `gates/structural.sh`. Returns its exit code.
@@ -53,7 +53,6 @@ pub fn run(staged: bool, full: bool) -> i32 {
     let _drain = prefetch::Drain;
     let specs = prefetch::collect(|| {
         let _ = steps_delegated::step_shell(&repo, &cfg, &checks, staged);
-        let _ = steps_delegated::step_credential_urls(&repo, &checks);
         let _ = steps_delegated::step_python_formatted(&repo, &cfg, &checks, staged);
         let _ = steps_delegated::step_full_only(&repo, &checks, staged);
     });
@@ -84,7 +83,7 @@ pub fn run(staged: bool, full: bool) -> i32 {
     // untracked. Adjacent to `step_secrets` because it is the same defect class and the same
     // reasoning about it -- one committed, one not -- so a reader comparing the two steps finds
     // them adjacent rather than having to know they are related.
-    if let Some(code) = steps_delegated::step_credential_urls(&repo, &checks) {
+    if let Some(code) = credurls::step() {
         return code;
     }
     if let Some(code) = steps::step_home_paths(&repo, &files, &cfg, staged) {

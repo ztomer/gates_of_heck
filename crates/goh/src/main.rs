@@ -12,6 +12,7 @@ pub mod blobs;
 pub mod ceiling;
 pub mod claims;
 pub mod commands;
+pub mod credurls;
 pub mod emoji;
 pub mod gatesrc;
 pub mod gitutil;
@@ -186,6 +187,18 @@ enum Commands {
         #[arg(long)]
         json: bool,
     },
+    /// Fail on a credential in `.git/config` (native port of `check_no_credential_urls`).
+    CredentialUrls {
+        /// Repo to judge (default: the enclosing one).
+        #[arg(long)]
+        root: Option<String>,
+        /// Findings as JSON on stdout.
+        #[arg(long)]
+        json: bool,
+        /// Judge one URL and print `[kind, host, fingerprint]` or `null`.
+        #[arg(long)]
+        verdict: Option<String>,
+    },
     /// Fail when `Cargo.lock` disagrees with its manifests (native port of
     /// `check_lock_version`).
     LockVersion {
@@ -349,6 +362,11 @@ fn main() {
             staged,
             json,
         } => provenance::run_command(&root, baseline.as_deref(), staged, json),
+        Commands::CredentialUrls {
+            root,
+            json,
+            verdict,
+        } => credurls::run_command(root.as_deref(), json, verdict.as_deref()),
         Commands::LockVersion { root, json } => lockver::run_command(root.as_deref(), json),
         Commands::MdLinks {
             root,

@@ -18,7 +18,7 @@ from pathlib import Path
 
 import pytest
 
-from conftest import run_check
+from conftest import REPO_ROOT, run_check
 
 _TIER: dict[str, object] = {"name": "python", "goh": None}
 
@@ -31,13 +31,20 @@ def both_tiers(request, goh: Path):
 
 
 def run_tiered(
-    repo: Path, script: str, subcommand: str, *args: str, python_only: tuple[str, ...] = ()
+    repo: Path,
+    script: str,
+    subcommand: str,
+    *args: str,
+    python_only: tuple[str, ...] = (),
+    env: dict[str, str] | None = None,
 ) -> subprocess.CompletedProcess:
     """`python3 <script> args` or `goh <subcommand> args`, cwd=repo, by the current tier."""
     if _TIER["name"] == "python":
-        return run_check(repo, script, *args)
-    if any(flag in args for flag in python_only):
-        pytest.skip("a Python-only flag; the port is pinned by its parity test")
-    return subprocess.run(
-        [str(_TIER["goh"]), subcommand, *args], cwd=repo, capture_output=True, text=True
-    )
+        if env is None:
+            return run_check(repo, script, *args)
+        argv = ["python3", str(REPO_ROOT / script), *args]
+    else:
+        if any(flag in args for flag in python_only):
+            pytest.skip("a Python-only flag; the port is pinned by its parity test")
+        argv = [str(_TIER["goh"]), subcommand, *args]
+    return subprocess.run(argv, cwd=repo, capture_output=True, text=True, env=env)

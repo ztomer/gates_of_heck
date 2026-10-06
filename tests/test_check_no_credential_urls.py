@@ -22,8 +22,11 @@ import pytest
 
 from conftest import REPO_ROOT as ROOT  # noqa: F401
 from conftest import git, run_check
+from tier_kit import both_tiers, run_tiered  # noqa: F401  # both_tiers: a fixture
 
 CHECK = "checks/check_no_credential_urls.py"
+
+pytestmark = pytest.mark.usefixtures("both_tiers")
 
 LIVE_TOKEN = "gho_" + "a" * 36
 
@@ -33,8 +36,9 @@ def remote(repo, name, url):
     return repo
 
 
-def findings(repo, *args):
-    return run_check(repo, CHECK, *args)
+def findings(repo, *args, env=None):
+    """The checker over `repo`, on the current tier (Python, or `goh credential-urls`)."""
+    return run_tiered(repo, CHECK, "credential-urls", *args, python_only=("--probe",), env=env)
 
 
 def out_of(got):
@@ -262,11 +266,8 @@ def test_a_repo_with_no_remote_is_a_named_non_run_not_a_pass(repo):
     sweep inferring it.
     """
     # Hermetic: the gate also judges global/system helpers, and this machine has some.
-    got = subprocess.run(
-        ["python3", str(ROOT / CHECK)],
-        cwd=repo,
-        capture_output=True,
-        text=True,
+    got = findings(
+        repo,
         env=dict(__import__("os").environ, GIT_CONFIG_GLOBAL="/dev/null", GIT_CONFIG_NOSYSTEM="1"),
     )
     assert got.returncode == 0, out_of(got)
@@ -312,13 +313,7 @@ def test_outside_a_git_repo_is_a_usage_error_not_a_pass(tmp_path):
 
     bare = tmp_path / "not-a-repo"
     bare.mkdir()
-    got = subprocess.run(
-        ["python3", str(ROOT / CHECK)],
-        cwd=str(bare),
-        capture_output=True,
-        text=True,
-        env=dict(os.environ, GIT_CEILING_DIRECTORIES=str(tmp_path)),
-    )
+    got = findings(bare, env=dict(os.environ, GIT_CEILING_DIRECTORIES=str(tmp_path)))
     assert got.returncode == 2, out_of(got)
     assert "not a git repo" in out_of(got)
 
@@ -384,12 +379,8 @@ def test_global_helpers_alone_are_judged_but_do_not_make_the_repo_applicable(rep
     glob = tmp_path / "global.gitconfig"
     glob.write_text("[credential]\n\thelper = osxkeychain\n")
     env = dict(os.environ, GIT_CONFIG_GLOBAL=str(glob), GIT_CONFIG_NOSYSTEM="1")
-    got = subprocess.run(
-        ["python3", str(ROOT / CHECK)], cwd=repo, capture_output=True, text=True, env=env
-    )
+    got = findings(repo, env=env)
     assert got.returncode == 0 and "not applicable" in out_of(got), out_of(got)
     glob.write_text(f"[credential]\n\thelper = !echo password={LIVE_TOKEN}\n")
-    got = subprocess.run(
-        ["python3", str(ROOT / CHECK)], cwd=repo, capture_output=True, text=True, env=env
-    )
+    got = findings(repo, env=env)
     assert got.returncode == 1 and str(glob) in out_of(got), out_of(got)

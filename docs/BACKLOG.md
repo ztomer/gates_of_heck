@@ -262,7 +262,10 @@ order, never the reverse:
   as `goh lock-version` (`crates/goh/src/lockver.rs`, the version-source registry in
   `versrc.rs` for the tag gate's port to share): identical on every local repo under five source
   specs; the reference died with a traceback (exit 1, read as findings) on an unknown source kind
-  -- fixed, red first, exit 2. Next: `check_md_links`, `check_python_formatted` (spawns ruff either way),
+  -- fixed, red first, exit 2. **`check_no_credential_urls` LANDED** as `goh credential-urls`
+  (`crates/goh/src/credurls/`; the "delegated on purpose" note on it is superseded by this
+  phase): the measured URL table splits the same through `urlsplit` and the port, reports are
+  byte-identical on every local repo and on a repo holding every table row. Next: `check_md_links`, `check_python_formatted` (spawns ruff either way),
   `check_lock_version`, `check_no_credential_urls`, `check_shell_lint.sh` (spawns shellcheck), and
   the gate-side Python (`check_dep_currency`, `check_lints_optin`'s twin, `lcov_merge`). Each port
   lands parity-pinned against the Python it replaces and red-proven both ways, as Phase 3 did.

@@ -217,6 +217,8 @@ def test_rust_test_code_spawns_git_only_through_the_testkit():
         "crates/goh/src/index_view.rs": 3,  # staged view: GIT_DIR/GIT_INDEX_FILE deliberate
         # claim-derivation's tree listing: GIT_* scrubbed, as the reference's foreign_repo_env
         "crates/goh/src/claims/derive.rs": 1,
+        # credential-urls: `git config` / `rev-parse` of THIS repo, the hook's GIT_* honoured
+        "crates/goh/src/credurls/mod.rs": 1,
     }
     found = {}
     for path in sorted((REPO_ROOT / "crates").rglob("*.rs")):

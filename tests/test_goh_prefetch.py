@@ -20,8 +20,12 @@ import time
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
+# The checkers the native tier still delegates (Phase N1 ports the rest): the opt-in ruff check
+# and the two --full-only sweeps. Shell lint is planted separately, so it can be the red step.
 DELEGATED = [
-    "check_no_credential_urls.py",
+    "check_python_formatted.py",
+    "check_empty_scope.py",
+    "check_probes_pass.py",
 ]
 PY_STUB = (
     "import os, pathlib, sys, time\n"
@@ -50,7 +54,7 @@ def _fake_goh_dir(tmp: Path, shell_fails: bool) -> Path:
 def _repo(tmp: Path) -> Path:
     repo = tmp / "repo"
     repo.mkdir()
-    (repo / ".gatesrc").write_text("GOH_MAX_LINES=500\n")
+    (repo / ".gatesrc").write_text("GOH_MAX_LINES=500\nGOH_PYTHON_FORMATTED=1\n")
     (repo / "README.md").write_text("# fixture\n")
     env = {k: v for k, v in os.environ.items() if not k.startswith("GIT_")}
     subprocess.run(["git", "init", "-q", str(repo)], check=True, env=env)
@@ -67,7 +71,7 @@ def _run(goh: Path, tmp: Path, shell_fails: bool, sleep: str):
     env.update(GOH_DIR=str(_fake_goh_dir(tmp, shell_fails)), MARK_DIR=str(marks), STUB_SLEEP=sleep)
     t0 = time.monotonic()
     r = subprocess.run(
-        [str(goh), "structural", "--staged"],
+        [str(goh), "structural", "--full"],
         cwd=_repo(tmp),
         capture_output=True,
         text=True,
