@@ -133,4 +133,7 @@ Every structural checker is native since Phase N3; the Python checkers they port
 * `retired_hooks.sha256` — digest of every stock hook ever shipped; a repo hook matching one is pristine to `install.sh`
 * `hooks/` — stock `pre-commit` (structural `--staged`) and `pre-push`
   (`tools/gate.sh --full`).
+* `hooks/claude/skill_edit.sh` — a Claude Code PostToolUse hook (wired in `~/.claude/settings.json`,
+  matcher `Write|Edit|MultiEdit`): an edit inside the skills corpus runs `goh skills` at once and
+  a finding is exit 2 back to the writer. Not copied by `install.sh`. Pinned by `test_claude_skill_hook.py`.
 * `tui/` — style source of truth. Pinned by `test_tui_integration.py`.

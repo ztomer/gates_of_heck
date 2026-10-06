@@ -24,6 +24,7 @@ commit bodies.
 | R5 a new vendored copy of a house checker refused at commit | `b4046e3` | -- |
 | P5 (work) no hidden cargo builds, no twice-run tiers | `916a37a` | summed test time 693 -> ~620 s under load |
 | C2 (gate half) an external corpus judged at its commit | `46cf078` | -- |
+| C2 (writer half) `hooks/claude/skill_edit.sh`, a PostToolUse hook: the corpus judged when a skill is written | -- | -- |
 | P0-P4, C1, C3-C5 | v0.20.0-v0.22.0 | see CHANGELOG |
 
 ## Open — measurements (each needs a quiet box)
@@ -80,15 +81,6 @@ summed time cut, not better packing. The levers by summed time (2026-10-06, `--d
 - **Every consumer pushing by branch name over HTTPS:** `push_gate.sh` refuses a ref that moved
   while it was gated; ZoneWM's pinned `git push <remote> <sha>:<branch>` is the airtight form.
 - **O35 (servers):** a per-consumer `gate_calibration.json` registry; a feature here, unscoped.
-
-## Blocked / owner decisions
-
-- **C2 writer-time half:** a PostToolUse hook in `~/.claude/settings.json` running `goh skills` on
-  an edited `SKILL.md`, so the writer hears it before the commit. Changing global settings is the
-  owner's call; the gate half (judge the corpus's commit, not its tree) landed in `46cf078`.
-- **O33 (servers):** the `gho_` PAT was never rotated; an older `ghp_` is still live in `.90`'s zsh
-  history and three conversation DBs. Only the owner can rotate it.
-- Wording for "everyone owns gates_of_heck" and the `:latest` image policy in `~/.claude/CLAUDE.md`.
 
 ## Known limits, stated so they are not rediscovered
 
