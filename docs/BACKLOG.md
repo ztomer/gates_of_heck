@@ -243,7 +243,9 @@ order, never the reverse:
   Found while porting, NOT yet fixed (each a Python behaviour the port reproduces, to fix in both
   with a red row): `RETURNS` matches `-> ()` with a space (the engine gives the whitespace back to
   the look-ahead), and the shell masker blanks a quoted heredoc tag before reading it, so
-  `<<'EOF'` bodies are scanned as code. Next: `check_version_provenance.py` (1.4 s), then `check_no_kill_by_name`,
+  `<<'EOF'` bodies are scanned as code. **`check_version_provenance.py` LANDED** as
+  `goh version-provenance` (`crates/goh/src/provenance.rs`; tests on both tiers via
+  `tests/tier_kit.py`, byte-identical on every local repo at all three output modes). Next: `check_no_kill_by_name`,
   `check_claim_derivation`, `check_md_links`, `check_python_formatted` (spawns ruff either way),
   `check_lock_version`, `check_no_credential_urls`, `check_shell_lint.sh` (spawns shellcheck), and
   the gate-side Python (`check_dep_currency`, `check_lints_optin`'s twin, `lcov_merge`). Each port

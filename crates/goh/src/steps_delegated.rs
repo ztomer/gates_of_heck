@@ -45,46 +45,6 @@ pub fn step_shell(
     None
 }
 
-/// Version provenance: a `--version` flag that carries no commit.
-///
-/// A number answers "is this current?"; only a commit answers "what am I
-/// actually running?" -- the question that matters when behaviour disagrees
-/// with the tree you are reading, which a shared target directory nobody
-/// refreshes makes possible with no other outward sign.
-///
-/// STATIC by design, and that is load-bearing rather than incidental: a gate
-/// that must run every repo's binary is a gate that gets skipped on exactly the
-/// repos it would catch (wrong architecture, missing toolchain, a library with
-/// no binary). This asserts the DECLARATION instead.
-///
-/// Opt-in by convention, not by environment variable: a repo ships
-/// `.gates-version-baseline.json` and entries may only shrink. The shell is
-/// discarded by `structural.sh`, which execs this binary, so the step has to
-/// live here or not at all -- which is also why the same block is mirrored into
-/// the Python pipeline below for `GOH_NO_NATIVE=1` parity.
-#[must_use]
-pub fn step_version_provenance(
-    repo: &std::path::Path,
-    checks: &std::path::Path,
-    staged: bool,
-) -> Option<i32> {
-    let baseline = ".gates-version-baseline.json";
-    if !repo.join(baseline).is_file() {
-        return None;
-    }
-    let mut args = vec!["check_version_provenance.py".to_owned()];
-    if staged {
-        args.push("--staged".to_owned());
-    }
-    args.push("--baseline".to_owned());
-    args.push(baseline.to_owned());
-    let code = delegated(checks, repo, "version provenance", "python3", &args);
-    if code != 0 {
-        return Some(code);
-    }
-    None
-}
-
 /// Cross-file markdown links: a relative link must resolve to a file AND to an
 /// anchor that file actually has.
 ///

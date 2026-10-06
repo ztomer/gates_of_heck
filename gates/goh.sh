@@ -36,6 +36,7 @@ case "$check" in
     golden)     python_file="lib/golden_core.py" ;;
     deps)       python_file="checks/check_dep_currency.py" ;;
     unreaped-spawn) python_file="checks/check_no_unreaped_spawn.py" ;;
+    version-provenance) python_file="checks/check_version_provenance.py" ;;
     *) echo "✗ goh.sh: unknown check '$check'" >&2; exit 2 ;;
 esac
 
@@ -43,6 +44,7 @@ esac
 case "$check" in
     lints) native_lacks="--staged --self-test" ;;
     unreaped-spawn) native_lacks="--probe --fresh-derivations" ;;
+    version-provenance) native_lacks="--probe" ;;
     *)     native_lacks="" ;;
 esac
 # `deps` has NO native port: it reads the crates.io index over the network and

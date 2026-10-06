@@ -22,6 +22,7 @@ pub mod markers;
 pub mod noallow;
 pub mod platform;
 pub mod prefetch;
+pub mod provenance;
 pub mod ratchet;
 pub mod rust_depinfo;
 pub mod rust_scope;
@@ -160,6 +161,22 @@ enum Commands {
         #[arg(long)]
         staged: bool,
     },
+    /// Fail on a version string that names no commit, no build date, or no
+    /// build script behind them (native port of `check_version_provenance`).
+    VersionProvenance {
+        /// Repository root.
+        #[arg(default_value = ".")]
+        root: String,
+        /// JSON list of paths known not to comply; may only shrink.
+        #[arg(long)]
+        baseline: Option<String>,
+        /// Only the files the index holds (pre-commit scope).
+        #[arg(long)]
+        staged: bool,
+        /// Machine-readable output.
+        #[arg(long)]
+        json: bool,
+    },
     /// Fail on a test spawn no guard reaps, or whose reap sits below a line
     /// that can panic (native port of `check_no_unreaped_spawn`).
     UnreapedSpawn {
@@ -261,6 +278,12 @@ fn main() {
             scope,
             staged,
         } => commands::run_screen(&paths, scope.as_deref(), staged),
+        Commands::VersionProvenance {
+            root,
+            baseline,
+            staged,
+            json,
+        } => provenance::run_command(&root, baseline.as_deref(), staged, json),
         Commands::UnreapedSpawn {
             exclude,
             staged,
@@ -335,7 +358,6 @@ fn run_structural(staged: bool, full: bool) -> i32 {
     let specs = prefetch::collect(|| {
         let _ = steps_delegated::step_shell(&repo, &cfg, &checks, staged);
         let _ = steps_delegated::step_credential_urls(&repo, &checks);
-        let _ = steps_delegated::step_version_provenance(&repo, &checks, staged);
         let _ = steps_delegated::step_md_links(&repo, &checks, &cfg, staged);
         let _ = steps_delegated::step_lock_version(&repo, &checks);
         let _ = steps_delegated::step_python_formatted(&repo, &cfg, &checks, staged);
@@ -376,7 +398,7 @@ fn run_structural(staged: bool, full: bool) -> i32 {
     if let Some(code) = steps::step_home_paths(&repo, &files, &cfg, staged) {
         return code;
     }
-    if let Some(code) = steps_delegated::step_version_provenance(&repo, &checks, staged) {
+    if let Some(code) = provenance::step(&repo, staged) {
         return code;
     }
     if let Some(code) = steps_delegated::step_md_links(&repo, &checks, &cfg, staged) {
