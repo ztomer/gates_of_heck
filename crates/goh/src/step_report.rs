@@ -250,10 +250,14 @@ pub(crate) fn run_child(
         );
     }
     // The ceiling is this binary's own `goh step` (stepcmd.rs, the native port of the runner
-    // below, same CLI contract), one exec instead of a Python start-up per delegated step; the
-    // Python runner is the fallback when this binary cannot name itself.
-    let mut cmd = std::env::current_exe().map_or_else(
-        |_| {
+    // below, same CLI contract), one exec instead of a Python start-up per delegated step. Only
+    // when the running binary IS `goh`: under `cargo test` it is the harness (`goh-<hash>`), which
+    // read `step` as a test filter and exited 101 -- the Python runner is the fallback.
+    let me = std::env::current_exe()
+        .ok()
+        .filter(|p| p.file_name().is_some_and(|n| n == "goh"));
+    let mut cmd = me.map_or_else(
+        || {
             let mut c = Command::new("python3");
             c.arg("-S").arg(&runner);
             c

@@ -201,17 +201,32 @@ fn normalize(path: &Path) -> Option<PathBuf> {
     Some(out)
 }
 
-fn tracked_rs(root: &Path, dir: &str) -> Vec<PathBuf> {
-    let spec = if dir == "." {
-        "*.rs".to_owned()
-    } else {
-        format!("{dir}/*.rs")
-    };
-    run(root, "git", &["ls-files", "-z", "--", &spec])
+/// Every tracked `.rs` file under any of `dirs`, from ONE `git ls-files` (each file once): it was
+/// a call per package -- 15 for `media_server`'s mediaops-rs and its path dependencies -- and what a
+/// file contributes depends on its nearest package, never on which listing found it.
+fn tracked_rs(root: &Path, dirs: &[&str]) -> Vec<PathBuf> {
+    if dirs.is_empty() {
+        return Vec::new();
+    }
+    let specs: Vec<String> = dirs
+        .iter()
+        .map(|d| {
+            if *d == "." {
+                "*.rs".to_owned()
+            } else {
+                format!("{d}/*.rs")
+            }
+        })
+        .collect();
+    let mut args = vec!["ls-files", "-z", "--"];
+    args.extend(specs.iter().map(String::as_str));
+    run(root, "git", &args)
         .map(|out| {
             out.split('\0')
                 .filter(|s| !s.is_empty())
                 .map(|s| root.join(s))
+                .collect::<BTreeSet<_>>()
+                .into_iter()
                 .collect()
         })
         .unwrap_or_default()
@@ -259,8 +274,13 @@ pub fn scope(cargo_dir: &Path) -> Result<Vec<String>, String> {
     }
     let members = member_dirs(&meta);
     let package_count = dirs.len() - usize::from(meta["workspace_root"].is_string());
-    for (_, r) in dirs.iter().take(package_count) {
-        for file in tracked_rs(&root, r) {
+    let package_dirs: Vec<&str> = dirs
+        .iter()
+        .take(package_count)
+        .map(|(_, r)| r.as_str())
+        .collect();
+    {
+        for file in tracked_rs(&root, &package_dirs) {
             let text = std::fs::read_to_string(&file).unwrap_or_default();
             // The NEAREST enclosing package is the one `cargo test` runs a file's tests in.
             let package = dirs
@@ -268,7 +288,15 @@ pub fn scope(cargo_dir: &Path) -> Result<Vec<String>, String> {
                 .map(|(d, _)| std::fs::canonicalize(d).unwrap_or_else(|_| d.clone()))
                 .filter(|d| file.starts_with(d))
                 .max_by_key(|d| d.components().count())
-                .unwrap_or_else(|| root.join(r));
+                .unwrap_or_else(|| {
+                    // The listed package dir that holds it (the per-package loop's own dir).
+                    package_dirs
+                        .iter()
+                        .map(|r| root.join(r))
+                        .filter(|d| file.starts_with(d))
+                        .max_by_key(|d| d.components().count())
+                        .unwrap_or_else(|| root.clone())
+                });
             // A path DEPENDENCY's own tests never run in this gate (it lints and covers only its
             // workspace), so their reads are not this crate's inputs; its compiled code's are.
             if !members.contains(&package) && test_only(&file, &package) {

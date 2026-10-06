@@ -60,3 +60,34 @@ def test_a_staged_run_of_the_binary_spawns_git_at_most_this_often(
 ) -> None:
     calls = _calls(goh, tmp_path, "--staged")
     assert sum(calls.values()) <= 9, calls  # 16 before 2026-10-06
+
+
+def test_rust_scope_lists_the_workspaces_sources_once(goh: Path, tmp_path: Path) -> None:
+    """One `git ls-files` for every package's sources: it was one per package (15 for
+    media_server's mediaops-rs and its path dependencies, 2026-10-06)."""
+    shim, log = tmp_path / "shim", tmp_path / "git.log"
+    shim.mkdir()
+    (shim / "git").write_text(f'#!/bin/sh\necho "$*" >> "{log}"\nexec "{REAL_GIT}" "$@"\n')
+    (shim / "git").chmod(0o755)
+    repo = tmp_path / "repo"
+    for name, deps in (
+        ("a", 'b = { path = "../b" }\nc = { path = "../c" }\n'),
+        ("b", ""),
+        ("c", ""),
+    ):
+        (repo / name / "src").mkdir(parents=True)
+        (repo / name / "Cargo.toml").write_text(
+            f'[package]\nname = "{name}"\nversion = "0.1.0"\nedition = "2021"\n\n[dependencies]\n{deps}'
+        )
+        (repo / name / "src" / "lib.rs").write_text("pub fn f() {}\n")
+    subprocess.run(["cargo", "generate-lockfile", "-q", "--offline"], cwd=repo / "a", check=True)
+    subprocess.run([REAL_GIT, "-C", str(repo), "init", "-q"], check=True)
+    subprocess.run([REAL_GIT, "-C", str(repo), "add", "-A"], check=True)
+    env = hermetic_env(drop_git=True)
+    env["PATH"] = f"{shim}:{env['PATH']}"
+    r = subprocess.run(
+        [str(goh), "rust-scope", "a"], cwd=repo, env=env, capture_output=True, text=True
+    )
+    assert r.returncode == 0 and "a" in r.stdout.split(), r.stdout + r.stderr
+    listings = [ln for ln in log.read_text().splitlines() if ln.startswith("ls-files")]
+    assert len(listings) == 1, listings
