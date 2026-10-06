@@ -21,6 +21,12 @@ racing one `cargo build --release` on cargo's lock. `prebuild_live` (conftest's
 `pytest_configure`) now builds it once, in the
 controller, before a worker starts; every gate then finds it current.
 
+* a crate a test builds OUTSIDE this checkout builds into BUILD_DIR, a directory this run owns and
+  removes. `~/.cargo/config.toml` keys `build-dir` by `{workspace-path-hash}`, so each temp
+  workspace is a fresh build dir that removing the temp dir never reaches: 10,450 of them, 250 GB,
+  filled the disk on 2026-10-06. The shim sets it, so a gate a test drives inherits it too; a
+  caller that names its own build dir (the coverage gate does) keeps it.
+
 The static ratchets (a `git init` per fixture, a pool sized to the machine) are in
 tests/test_suite_drift.py.
 """
@@ -47,18 +53,28 @@ SLOW: dict[str, float] = {  # nodeid -> its own ceiling, each with its reason
 }
 
 _REAL_CARGO = shutil.which("cargo")
+BUILD_DIR = tempfile.mkdtemp(prefix="goh-test-cargo-build.")
+atexit.register(shutil.rmtree, BUILD_DIR, True)
 if _REAL_CARGO:
     _shim_dir = tempfile.mkdtemp(prefix="goh-drift-cargo.")
     atexit.register(shutil.rmtree, _shim_dir, True)  # one per worker per run, 42 had leaked
     with open(os.path.join(_shim_dir, "cargo"), "w", encoding="utf-8") as _f:
         _f.write(
             "#!/bin/sh\n"
+            'dir="$PWD"; prev=""\n'
+            'for a; do [ "$prev" = "--manifest-path" ] && dir="$(dirname "$a")"; prev="$a"; done\n'
+            # A workspace outside this checkout is a throwaway: its build goes where the run removes it,
+            # still one directory per workspace -- two estates' crates named `c` sharing one build dir
+            # read each other's dep-info.
+            # The template is assigned, never a `${VAR:-default}`: its `}` would close that expansion
+            # and append a stray `}` to a build dir the caller named.
+            f'case "$(cd "$dir" 2>/dev/null && pwd -P)/" in "{_ROOT.resolve()}/"*) ;; *) '
+            '[ -n "${CARGO_BUILD_BUILD_DIR:-}" ] || export '
+            f"CARGO_BUILD_BUILD_DIR='{BUILD_DIR}/{{workspace-path-hash}}' ;; esac\n"
             'case " $* " in *" build "*|*" test "*|*" run "*|*" install "*) ;; '
             f'*) exec "{_REAL_CARGO}" "$@" ;; esac\n'
             f'[ -n "${{DRIFT_BUILD_OK:-}}" ] && exec "{_REAL_CARGO}" "$@"\n'
             'test_file="${PYTEST_CURRENT_TEST%%::*}"\n'
-            'dir="$PWD"; prev=""\n'
-            'for a; do [ "$prev" = "--manifest-path" ] && dir="$(dirname "$a")"; prev="$a"; done\n'
             'while [ "$dir" != "/" ] && [ -n "$dir" ]; do\n'
             '  if [ -f "$dir/crates/goh/src/main.rs" ]; then\n'
             '    echo "✗ $test_file built goh outside the session fixture (cargo $*): pass the" \\\n'

@@ -142,3 +142,44 @@ def test_a_test_that_builds_goh_fails_and_other_cargo_passes(tmp_path: Path) -> 
         "    assert 'built goh outside the session fixture' in r.stderr\n",
     )
     assert r.returncode == 0, r.stdout + r.stderr
+
+
+def test_a_throwaway_crate_builds_into_the_runs_own_build_dir(tmp_path: Path) -> None:
+    """A crate a test builds in a temp dir must not leave its build behind in cargo's shared build
+    root. `~/.cargo/config.toml` keys `build-dir` by `{workspace-path-hash}`, so every temp workspace
+    is a new, never-reused build dir that deleting the temp dir does not reach: 10,450 of them, 250 GB,
+    filled the disk on 2026-10-06. The suite's cargo shim points every workspace outside this checkout
+    at a build dir the run owns and removes."""
+    import os
+    import shutil
+    import uuid
+
+    if shutil.which("cargo") is None:
+        return
+    name = f"leakprobe{uuid.uuid4().hex[:10]}"
+    crate = tmp_path / name
+    (crate / "src").mkdir(parents=True)
+    (crate / "Cargo.toml").write_text(
+        f'[package]\nname = "{name}"\nversion = "0.0.0"\nedition = "2021"\n', encoding="utf-8"
+    )
+    (crate / "src" / "lib.rs").write_text("", encoding="utf-8")
+    r = subprocess.run(["cargo", "build", "-q"], cwd=crate, capture_output=True, text=True)
+    assert r.returncode == 0, r.stderr
+    shared = Path(os.environ.get("CARGO_HOME", Path.home() / ".cargo")) / "build"
+    leaked = list(shared.glob(f"*/*/debug/.fingerprint/{name}-*"))
+    assert not leaked, f"the throwaway crate's build landed in the shared root: {leaked}"
+    import _drift_guard
+
+    owned = list(Path(_drift_guard.BUILD_DIR).glob(f"**/.fingerprint/{name}-*"))
+    assert owned, f"the build is not in the run's own build dir {_drift_guard.BUILD_DIR}"
+    # A caller that names its own build dir (the coverage gate pins one per project) keeps it, exactly.
+    named = tmp_path / "named-build"
+    r = subprocess.run(
+        ["cargo", "build", "-q"],
+        cwd=crate,
+        capture_output=True,
+        text=True,
+        env=dict(os.environ, CARGO_BUILD_BUILD_DIR=str(named)),
+    )
+    assert r.returncode == 0, r.stderr
+    assert list(named.glob(f"*/.fingerprint/{name}-*")), "a caller's own build dir was not kept"
