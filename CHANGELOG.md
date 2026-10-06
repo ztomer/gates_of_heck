@@ -92,7 +92,8 @@
   `--strict-markers`. Their first run found ~75 tests racing a release build under `GOH_LIVE`
   (now built once, before the workers start) and a shadowed `pytest_configure`.
 * Fixture repos copy a template `.git` (`tests/_fast_git.py`) instead of spawning `git init`.
-  The suite: 94.4 s (v0.20) -> 61-63 s under load 9-11.
+* **Longest first** (`tests/_schedule.py`): tests ordered by the last run's own durations, so
+  a long test never starts last and runs alone. The suite: 94.4 s (v0.20) -> 53 s under load.
 
 ### 11. The C2 hook judges a skill edited through Bash
 

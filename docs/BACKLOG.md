@@ -183,7 +183,9 @@ behind the same tests the shell passes today, red-proven, one at a time:
       abandoned a sweep -- `bounded_run.py` now holds both; `goh step` listens before it spawns.
 
 **Phase 6 — the measurements, on a quiet box (load < 4)** (details: "Open -- measurements")
-- [ ] 6.1 This repo's suite <= 60 s.
+- [x] 6.1 This repo's suite <= 60 s. MET (2026-10-06): 1987 tests in 52.5-53.8 s at load 11-17,
+      from 62-67 s, by longest-first scheduling (`tests/_schedule.py`): summed test time is
+      ~51 s per worker, and the rest was a long test collected late running alone at the end.
 - [ ] 6.2 Cross-session sigma for `structural --full` <= 0.15 (`tools/session_bench.py`).
 - [ ] 6.3 media_server push, everything changed: gates_of_heck's share (the rust phase) measured
       against its 90 s target with media_server's own pytest step separated out.

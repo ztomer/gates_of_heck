@@ -55,6 +55,7 @@ ALLOWED = "→ ✓ ✗ ⚠ ↔ ↑ ↓ ← ⌘ ⌥ ⌨ ⇧ ⌃ ⏎ ⎋ ↵ ⇒ �
 
 def pytest_configure(config):
     _drift_guard.prebuild_live(config)
+    config.pluginmanager.register(_schedule, "goh-longest-first")
 
 
 def git(repo: Path, *args: str) -> str:
@@ -129,6 +130,7 @@ def hermetic_env(drop_git: bool = False, **overrides: str) -> dict[str, str]:
 from _retired import NATIVE as _NATIVE  # noqa: E402
 from _tree_guard import pytest_sessionfinish, pytest_sessionstart  # noqa: E402, F401
 import _drift_guard  # noqa: E402
+import _schedule  # noqa: E402
 from _drift_guard import pytest_runtest_makereport  # noqa: E402, F401
 
 RETIRED = {
