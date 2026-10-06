@@ -116,3 +116,17 @@ def test_an_untokenizable_target_is_unresolved_on_both(goh: Path, repo: Path) ->
     assert pc == rc == 1
     assert "junk/broken.py does not parse as Python" in perr
     assert "junk/broken.py does not parse as Python" in rerr
+
+
+def test_a_scanned_files_invalid_escape_is_not_printed_into_the_report(
+    goh: Path, repo: Path
+) -> None:
+    """`ast.parse` WARNS on `"\\("`; unsuppressed, the warning about someone else's regex landed in
+    this gate's output (divoom-control). Both tiers say nothing about it."""
+    doc(estate(repo), "claim: 4 gates in pkg/roster.py:STEPS")
+    write(repo, "pkg/rx.py", 'import re\nP = re.compile("\\(x")\n')
+    stage(repo, "pkg/rx.py")
+    commit_all(repo, "rx")
+    py, rs = both(goh, repo)
+    assert "SyntaxWarning" not in py[1] + py[2], py
+    assert rs == py
