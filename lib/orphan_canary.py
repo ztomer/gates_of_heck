@@ -28,11 +28,13 @@ tests went red for a reason that had nothing to do with what they measured. Two 
 cross-report for the same reason; so does `--full` racing a pre-commit. A pid's parentage after
 reparenting is a rumour; "was under this step a moment ago" is a fact.
 
-THE OTHER HALF, KEPT DELIBERATELY: a process whose command line names this repo — the checkout, a
-`target/` under it, or `$CARGO_TARGET_DIR` — is also ours, and is reported even if it was not
-observed under the step. That covers the case where the step is not our process to begin with (a
-gate that shells out to a script which leaks). The house's own runner machinery (`orphan_canary.py`,
-`bounded_run.py`) is excluded: a concurrent gate run is not a leak this repo made.
+A PATH IS AN ANNOTATION, NOT EVIDENCE. A survivor whose command line names this repo (the checkout,
+a `target/` under it, `$CARGO_TARGET_DIR`) is labelled `[under <root>]`, which is what makes a leaked
+test binary recognisable in the report -- but only processes from the step's own group are judged
+at all. (This header used to promise the opposite: that a repo-named process NOT observed under the
+step was reported too. `judge` never did that, and must not: under GOH_CI_JOBS two concurrent steps
+of one repo would each report the other's live `cargo test` as its own leak.) The house's runner
+machinery (`orphan_canary.py`, `bounded_run.py`) is excluded: a concurrent gate run is not a leak.
 """
 
 from __future__ import annotations

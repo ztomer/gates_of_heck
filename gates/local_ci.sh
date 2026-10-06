@@ -200,9 +200,8 @@ LOGDIR=$(mktemp -d "${TMPDIR:-/tmp}/goh-local-ci.XXXXXX")
 FAILED=0
 FAILED_NAMES=""
 PROVEN_SKIPPED=0
-i=0
 
-# run_step <logf> <cmd-string> — exit code of the step, 124 on a timeout.
+# run_step <logf> <cmd-string> <index> — exit code of the step, 124 on a timeout.
 #
 # ONE call, because the three things this step needs are one thing and cannot drift apart:
 #
@@ -213,48 +212,113 @@ i=0
 #  * a LEAK REPORT for whatever is still in the step's process group when it exits. This is the case
 #    the ceiling cannot see: the step exits 0 and the server outlives it, and the only evidence is a
 #    LATER run that blocks. lib/orphan_canary.py owns it; --log keeps the evidence beside the step's
-#    output so a red push has both.
+#    output so a red push has both. Judged by PROCESS GROUP, so concurrent steps (GOH_CI_JOBS) never
+#    report each other's processes.
 run_step() {
-    local logf="$1" cmd="$2"
+    local logf="$1" cmd="$2" idx="$3"
     local args=(--repo "$ROOT" --log "$logf" --grace "${GOH_STEP_GRACE:-5}" --label "$cmd"
-                --snapshot "$LOGDIR/orphans-$i.json")
+                --snapshot "$LOGDIR/orphans-$idx.json")
     [ "$LCI_LIMIT" -gt 0 ] && args=(--timeout "$LCI_LIMIT" "${args[@]}")
     # </dev/null on the command string: the caller's loop stdin is the step list.
     # shellcheck disable=SC2086  # a command STRING is the feature here; see the header
     python3 "$GOH_ROOT/lib/orphan_canary.py" wrap "${args[@]}" -- bash -c "$cmd" </dev/null
 }
 
+# THE SCHEDULER (BACKLOG P2). GOH_CI_JOBS=N runs up to N steps at once; unset is 1, i.e. serial,
+# because concurrency is a repo's DECLARATION, never an inference -- two steps that write one file
+# (the Finance `*.out` class) are only safe apart, and nothing here can see that. What a repo
+# declares beside the count is the RESOURCE TAG: `[db,screen] cmd` -- steps sharing a tag never
+# overlap. (A tag cannot hold a colon: the colon separates steps. Write `cargo=crates/x`.)
+#
+# Reports come out in DECLARED order whatever order the steps finish in, so a concurrent run reads
+# exactly like a serial one; the fail accumulator and the exit code do not change. Serial runs print
+# each step's header BEFORE it runs (a live progress line); concurrent ones print it with the report.
+# Completions arrive on a FIFO -- bash 3.2 has no `wait -n`, and polling would charge every step.
+case "${GOH_CI_JOBS:-1}" in
+    *[!0-9]*|0|"") die "GOH_CI_JOBS must be a positive integer of concurrent steps (got '${GOH_CI_JOBS}')" ;;
+    *) JOBS="${GOH_CI_JOBS:-1}" ;;
+esac
+LIVE=0; [ "$JOBS" -eq 1 ] && LIVE=1
+
+n=0
 while IFS="	" read -r src cmd; do
     [ -n "$cmd" ] || continue
-    i=$((i + 1))
-    logf="$LOGDIR/step-$i.log"
-    info "[$i/$_n] ($src) $cmd"
-    # The proven-step cache. </dev/null: the loop's stdin is the step list.
-    pkey="" ptree=""
-    if pair="$(proven_key "$cmd" </dev/null)"; then
-        read -r pkey ptree <<<"$pair"
-        if hit="$(proven_lookup "$pkey" "$cmd")"; then
+    n=$((n + 1))
+    SRC[n]="$src"; CMD[n]="$cmd"; STATE[n]=pending; TAGS[n]=""
+    case "$cmd" in
+        "["*"] "*) _t="${cmd%%] *}"; TAGS[n]=",${_t#[},"
+                   case "${TAGS[n]}" in *[!A-Za-z0-9_.=/,-]*) die "step $n: a tag holds letters, digits and _.=/- only (got '[${_t#[}]')" ;; esac
+                   RUN[n]="${cmd#*] }" ;;
+        *) RUN[n]="$cmd" ;;
+    esac
+done <<EOF
+$ALL_STEPS
+EOF
+
+HELD=","        # the tags of the steps running now, comma-delimited
+RUNNING=0
+mkfifo "$LOGDIR/done"
+exec 3<>"$LOGDIR/done"
+
+_tags_free() { # _tags_free <i> -- none of step i's tags is held
+    local t rest="${TAGS[$1]#,}"
+    while [ -n "$rest" ]; do
+        t="${rest%%,*}"; rest="${rest#*,}"
+        case "$HELD" in *",$t,"*) return 1 ;; esac
+    done
+    return 0
+}
+
+# _start <i> -- a proven hit is done at once; anything else is launched in the background.
+_start() {
+    local i="$1" pair hit age by
+    PKEY[i]="" PTREE[i]=""
+    [ "$LIVE" -eq 1 ] && info "[$i/$_n] (${SRC[i]}) ${CMD[i]}"
+    if pair="$(proven_key "${CMD[i]}" </dev/null)"; then
+        read -r "PKEY[i]" "PTREE[i]" <<<"$pair"
+        if hit="$(proven_lookup "${PKEY[i]}" "${CMD[i]}")"; then
             read -r age by <<<"$hit"
-            step "proven on this tree $age ago by $by — skipped"
+            HIT[i]="$age $by"; STATE[i]=done; RC[i]=0
             [ -z "${GOH_TIMINGS:-}" ] \
-                || python3 "$GOH_ROOT/lib/step_timings.py" record "$cmd" 0 0 step hit </dev/null
-            ok "[$i/$_n] $cmd"
-            PROVEN_SKIPPED=$((PROVEN_SKIPPED + 1))
-            continue
+                || python3 "$GOH_ROOT/lib/step_timings.py" record "${CMD[i]}" 0 0 step hit </dev/null
+            return 0
         fi
     fi
-    # Command strings from the repo's own .gatesrc / CLI — shell semantics are
-    # the feature (pipelines, env prefixes); the source is repo-local config,
-    # the same trust level as every ancestor orchestrator.
-    # </dev/null: without it every child inherits the while loop's heredoc
-    # stdin — one step that reads stdin (cat, an interactive prompt) swallows
-    # the REMAINING step list silently.
-    run_step "$logf" "$cmd"
-    rc=$?
-    if [ "$rc" -eq 0 ] && [ -n "$pkey" ]; then
+    HIT[i]=""; STATE[i]=running; RUNNING=$((RUNNING + 1))
+    HELD="${HELD}${TAGS[i]#,}"
+    # Command strings from the repo's own .gatesrc / CLI — shell semantics are the feature
+    # (pipelines, env prefixes); the source is repo-local config, the same trust level as every
+    # ancestor orchestrator. </dev/null: a step that reads stdin gets EOF, never the step list.
+    ( run_step "$LOGDIR/step-$i.log" "${RUN[i]}" "$i"; echo "$i $?" >&3 ) </dev/null &
+    PID[i]=$!
+}
+
+_launch() { # start every pending step a slot and its tags allow, in declared order
+    local i
+    for ((i = 1; i <= n; i++)); do
+        [ "${STATE[i]}" = pending ] || continue
+        [ "$RUNNING" -lt "$JOBS" ] || return 0
+        _tags_free "$i" && _start "$i"
+        # Serial: a run is reported before the next starts, so the live header stays on top.
+        [ "$LIVE" -eq 1 ] && [ "$RUNNING" -gt 0 ] && return 0
+    done
+    return 0
+}
+
+_report() { # _report <i>
+    local i="$1" rc="${RC[$1]}" cmd="${CMD[$1]}" logf="$LOGDIR/step-$1.log" age by
+    [ "$LIVE" -eq 1 ] || info "[$i/$_n] (${SRC[i]}) $cmd"
+    if [ -n "${HIT[i]}" ]; then
+        read -r age by <<<"${HIT[i]}"
+        step "proven on this tree $age ago by $by — skipped"
+        ok "[$i/$_n] $cmd"
+        PROVEN_SKIPPED=$((PROVEN_SKIPPED + 1))
+        return 0
+    fi
+    if [ "$rc" -eq 0 ] && [ -n "${PKEY[i]}" ]; then
         # Recorded only if the tree (and the gates) did not move while it ran.
-        if [ "$(proven_key "$cmd" </dev/null)" = "$pkey $ptree" ]; then
-            proven_record "$pkey" "$ptree" "$cmd" "local_ci" </dev/null \
+        if [ "$(proven_key "$cmd" </dev/null)" = "${PKEY[i]} ${PTREE[i]}" ]; then
+            proven_record "${PKEY[i]}" "${PTREE[i]}" "$cmd" "local_ci" </dev/null \
                 || warn "[$i/$_n] could not write the proven record"
         else
             step "the tree or the gates moved while the step ran — not recorded as proven"
@@ -289,9 +353,27 @@ while IFS="	" read -r src cmd; do
         FAILED_NAMES="$FAILED_NAMES
   $cmd"
     fi
-done <<EOF
-$ALL_STEPS
-EOF
+}
+
+NEXT=1
+_launch
+while [ "$NEXT" -le "$n" ]; do
+    while [ "$NEXT" -le "$n" ] && [ "${STATE[NEXT]}" = done ]; do
+        _report "$NEXT"; NEXT=$((NEXT + 1))
+    done
+    [ "$NEXT" -le "$n" ] || break
+    if [ "$RUNNING" -eq 0 ]; then _launch; continue; fi
+    read -r -u 3 _i _rc
+    wait "${PID[_i]}" 2>/dev/null || true
+    RC[_i]="$_rc"; STATE[_i]=done; RUNNING=$((RUNNING - 1))
+    _rest="${TAGS[_i]#,}"
+    while [ -n "$_rest" ]; do
+        _t="${_rest%%,*}"; _rest="${_rest#*,}"
+        HELD="${HELD/,$_t,/,}"
+    done
+    _launch
+done
+exec 3>&-
 
 section "result"
 if [ "$FAILED" -eq 0 ]; then

@@ -36,6 +36,7 @@ GOH_MAX_LINES=500                 # file-length cap; unset disables the check
 # GOH_CPP_TEST_BIN=''             # required when several test binaries exist
 # GOH_CTEST_ARGS=''               # extra ctest selection, verbatim
 # GOH_CI_STEPS='./tools/repo_gates.sh'  # colon-separated; keep colons out of steps
+# GOH_CI_JOBS=4                     # run that many steps at once (default 1); '[tag] cmd' steps sharing a tag never overlap
 # GOH_RELEASE_GATE='./tools/gate.sh --full'
 # GOH_TAG_VERSION_SOURCES='file:VERSION cargo:Cargo.toml'   # what a pushed v<semver>
 #   tag must match, read at the tagged COMMIT. Scope a glob to what you ship
