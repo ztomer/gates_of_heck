@@ -33,15 +33,15 @@ def _repo(tmp_path: Path, gatesrc: str) -> Path:
 def _run(tier: str, goh: Path, repo: Path) -> subprocess.CompletedProcess:
     env = hermetic_env()
     env["GOH_DIR"] = str(ROOT)
-    if tier == "python":
-        env["GOH_NO_NATIVE"] = "1"
+    if tier == "structural.sh":  # the hook's entry point, execing the named binary
+        env["GOH_BIN"] = str(goh)
         cmd = ["bash", str(STRUCTURAL)]
     else:
         cmd = [str(goh), "structural"]
     return subprocess.run(cmd, cwd=repo, capture_output=True, text=True, env=env, timeout=120)
 
 
-@pytest.mark.parametrize("tier", ["python", "native"])
+@pytest.mark.parametrize("tier", ["structural.sh", "native"])
 def test_off_is_an_info_line_not_a_warning(goh: Path, tmp_path: Path, tier: str) -> None:
     r = _run(tier, goh, _repo(tmp_path, "GOH_MAX_LINES=off\n"))
     out = r.stdout + r.stderr
@@ -50,14 +50,14 @@ def test_off_is_an_info_line_not_a_warning(goh: Path, tmp_path: Path, tier: str)
     assert "file length <=" not in out, out
 
 
-@pytest.mark.parametrize("tier", ["python", "native"])
+@pytest.mark.parametrize("tier", ["structural.sh", "native"])
 def test_an_absent_cap_still_warns(goh: Path, tmp_path: Path, tier: str) -> None:
     r = _run(tier, goh, _repo(tmp_path, "# no keys\n"))
     assert r.returncode == 0, r.stdout + r.stderr
     assert WARNING in r.stderr and DECLARED not in r.stdout, r.stdout + r.stderr
 
 
-@pytest.mark.parametrize("tier", ["python", "native"])
+@pytest.mark.parametrize("tier", ["structural.sh", "native"])
 def test_a_numeric_cap_still_bites(goh: Path, tmp_path: Path, tier: str) -> None:
     r = _run(tier, goh, _repo(tmp_path, "GOH_MAX_LINES=10\n"))
     assert r.returncode != 0 and "long.py" in r.stdout + r.stderr, r.stdout + r.stderr

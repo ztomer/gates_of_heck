@@ -16,7 +16,7 @@ import subprocess
 from pathlib import Path
 
 from test_gate_environment import _clean_checkout_of_todays_gates
-from conftest import hermetic_env
+from conftest import native_goh_path, hermetic_env
 
 
 def _fake(path: Path, version: str, tree: str | None) -> Path:
@@ -177,7 +177,8 @@ def test_goh_live_runs_the_working_trees_binary_not_heads(tmp_path: Path) -> Non
     env.pop("GOH_LIVE")
     head_cache = tmp_path / "head-cache"
     env["GOH_HEAD_CACHE"] = str(head_cache)
-    env["GOH_NO_NATIVE"] = "1"  # HEAD's run must not build a second binary in this scratch clone
+    # HEAD's run must not build a second binary in this scratch clone: name one.
+    env["GOH_BIN"] = str(native_goh_path())
     head = subprocess.run(
         ["bash", str(gates / "gates" / "goh.sh"), "lints", "--help"],
         cwd=gates,

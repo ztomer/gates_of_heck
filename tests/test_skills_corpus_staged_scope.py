@@ -13,7 +13,7 @@ BOTH directions, so both are pinned:
   - a staged violation passes because its fix is merely unstaged (false
     green) -- the commit records the violation, the gate never saw it.
 
-Both the Python pipeline (GOH_NO_NATIVE=1) and the native binary are driven,
+Both entry points are driven (structural.sh, as the hooks call it, and `goh structural`),
 and each case also runs --full to prove the violation is real to the checker:
 --full must keep reading the tree, since "is my tree green" is its question.
 """
@@ -50,16 +50,15 @@ def _run(
 ) -> subprocess.CompletedProcess:
     env = dict(os.environ, GOH_DIR=str(REPO_ROOT), **extra)
     env.pop("GOH_BIN", None)
-    if runner == "python":
-        env["GOH_NO_NATIVE"] = "1"
+    if runner == "structural.sh":  # the hook's entry point, execing the named binary
+        env["GOH_BIN"] = str(goh)
         cmd = ["bash", str(REPO_ROOT / "gates" / "structural.sh"), scope]
     else:
-        env.pop("GOH_NO_NATIVE", None)
         cmd = [str(goh), "structural", scope]
     return subprocess.run(cmd, cwd=repo, capture_output=True, text=True, env=env)
 
 
-RUNNERS = pytest.mark.parametrize("runner", ["python", "native"])
+RUNNERS = pytest.mark.parametrize("runner", ["structural.sh", "native"])
 # "" is the ~/.claude/skills shape (the corpus IS the repo); "skills" is a
 # corpus in a subdirectory, named by an absolute GOH_SKILLS_ROOT.
 LAYOUTS = pytest.mark.parametrize("sub", ["", "skills"])

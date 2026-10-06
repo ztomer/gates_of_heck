@@ -15,7 +15,7 @@ import subprocess
 
 import pytest
 
-from conftest import REPO_ROOT, hermetic_env
+from conftest import REPO_ROOT, hermetic_env, native_goh_path
 
 
 def _git(*args: str) -> str:
@@ -63,8 +63,10 @@ def _repo_with_hook(tmp_path, body: bytes):
 def _structural(repo, native: bool):
     env = hermetic_env()
     env["GOH_DIR"] = str(REPO_ROOT)
+    # Both values once chose a TIER; since Phase N3 both run the binary, named so no scratch
+    # rebuild happens -- the parameter now reads as "the named binary" vs "the resolved one".
     if not native:
-        env["GOH_NO_NATIVE"] = "1"
+        env["GOH_BIN"] = str(native_goh_path())
     return subprocess.run(
         ["bash", str(REPO_ROOT / "gates" / "structural.sh"), "--staged"],
         cwd=repo,

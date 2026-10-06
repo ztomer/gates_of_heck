@@ -24,9 +24,12 @@ from conftest import hermetic_env
 
 ROOT = Path(__file__).resolve().parent.parent
 
+# NOT an xdist group: every test builds its own crates in its own temp repo, records proofs in that
+# repo's own git dir and runs the session's binary, so nothing here is shared or mutable. Grouped,
+# its ~55 s of cargo work ran on ONE worker and was the whole suite's critical path (P5, measured
+# 2026-10-06 with --durations).
 pytestmark = [
     pytest.mark.skipif(shutil.which("cargo") is None, reason="cargo not installed"),
-    pytest.mark.xdist_group("rust_scoped_cache"),
 ]
 
 LIB = "pub fn f() -> u64 {\n    1\n}\n"

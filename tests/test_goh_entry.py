@@ -90,3 +90,18 @@ def test_every_dispatched_check_is_a_real_subcommand(goh: Path) -> None:
     for check in names:
         r = subprocess.run([str(goh), check, "--help"], capture_output=True, text=True)
         assert r.returncode == 0, (check, r.stderr)
+
+
+def test_no_test_sets_the_retired_tier_switch() -> None:
+    """`GOH_NO_NATIVE` chose the Python tier; since Phase N3 it is ignored. A test still setting it
+    believes it runs something it does not -- found: nine of them, two parametrised on a tier that
+    no longer exists (the same run twice) and three in scratch clones where "no native" had meant
+    "no cargo build", so each run compiled the binary (~15 s apiece). Name the binary instead
+    (`GOH_BIN`, conftest's `native_goh_path()`)."""
+    allowed = {"test_goh_entry.py", "test_gate_environment.py"}  # its retirement; the key list
+    offenders = [
+        p.name
+        for p in ROOT.joinpath("tests").glob("test_*.py")
+        if p.name not in allowed and '"GOH_NO_NATIVE"' in p.read_text(encoding="utf-8")
+    ]
+    assert not offenders, offenders

@@ -176,9 +176,9 @@ def test_structural_enforces_the_ceilings_it_requires(repo):
     import os
 
     def both():
-        # The native binary and the Python pipeline must agree.
+        # The hook's entry point (structural.sh, which execs the native binary).
         out = []
-        for env in ({}, {"GOH_NO_NATIVE": "1"}):
+        for env in ({},):
             r = subprocess.run(
                 ["/bin/bash", str(structural), "--full"],
                 cwd=repo,
@@ -187,7 +187,7 @@ def test_structural_enforces_the_ceilings_it_requires(repo):
                 env={**os.environ, **env},
             )
             out.append((r.returncode, r.stdout + r.stderr))
-        assert out[0][0] == out[1][0], out
+        assert len(out) == 1, out
         return out[0]
 
     code, text = both()

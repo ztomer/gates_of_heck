@@ -53,6 +53,10 @@ PROBING = 'import sys\nif "--probe" in sys.argv:\n    print("clean")\nsys.exit(0
 QUIET = '"""No self-proof here."""\nprint("clean")\n'
 
 
+# One worker, so `ran_here` is computed once rather than once per worker that draws a test.
+pytestmark = pytest.mark.xdist_group("gate_calibration")
+
+
 def green_probes(root):
     """{repo-relative: flag} for the self-proofs this sweep runs to green, by the gate's own
     primitives -- so the test's idea of 'ran' cannot drift from the gate's."""
@@ -67,9 +71,15 @@ def green_probes(root):
 # ── the real registry, against the real estate ────────────────────────────────
 
 
-def test_the_house_registry_holds_against_this_repo():
+@pytest.fixture(scope="module")
+def ran_here() -> dict:
+    """The sweep over THIS repo, once: running every self-proof is ~8 s, and two tests read it."""
+    return green_probes(ROOT)
+
+
+def test_the_house_registry_holds_against_this_repo(ran_here):
     """The claim under test is the real file, not a fixture of it."""
-    bad = reader.verify(str(ROOT), reader.load(str(ROOT)), set(green_probes(ROOT)))
+    bad = reader.verify(str(ROOT), reader.load(str(ROOT)), set(ran_here))
     assert bad == [], bad
 
 
@@ -86,10 +96,10 @@ def test_every_registered_key_names_a_gate_this_repo_has():
         )
 
 
-def test_every_local_citation_names_a_proof_the_sweep_actually_ran():
+def test_every_local_citation_names_a_proof_the_sweep_actually_ran(ran_here):
     """The load-bearing rule: a claim about a gate the sweep cannot see is a finding."""
     data = reader.load(str(ROOT))
-    ran = green_probes(ROOT)
+    ran = ran_here
     local = {key: why for key, why in data["proven_by"].items() if why.startswith("checks/")}
     for key, why in local.items():
         cited = reader.CITED_FILE.match(why).group(1)

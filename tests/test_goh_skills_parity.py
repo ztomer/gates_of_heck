@@ -165,7 +165,7 @@ def test_structural_corpus_step_agrees(goh: Path, tmp_path: Path) -> None:
             cwd=repo,
             capture_output=True,
             text=True,
-            env=dict(env, GOH_NO_NATIVE="1"),
+            env=dict(env, GOH_BIN=str(goh)),
         )
         assert (native.returncode, failing_label(native.stdout, native.stderr)) == (
             python.returncode,

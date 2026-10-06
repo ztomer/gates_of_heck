@@ -46,11 +46,7 @@ def _ceiling_repo(repo: Path) -> Path:
 def _env(runner: str, goh: Path, **extra: str) -> dict:
     env = dict(os.environ, GOH_DIR=str(REPO_ROOT), **extra)
     env.pop("GOH_BIN", None)
-    env.pop("GOH_NO_NATIVE", None)
-    if runner == "python":
-        env["GOH_NO_NATIVE"] = "1"
-    else:
-        env["GOH_BIN"] = str(goh)
+    env["GOH_BIN"] = str(goh)
     return env
 
 
@@ -63,7 +59,7 @@ def _run(
     )
 
 
-RUNNERS = pytest.mark.parametrize("runner", ["python", "native"])
+RUNNERS = pytest.mark.parametrize("runner", ["structural.sh"])
 CEILING = "line-cap exemptions carry a ceiling failed"
 RATCHET = "cap-exempt files within their ceilings failed"
 # The VERDICTS, not just the step labels: a checker that crashes inside the

@@ -18,6 +18,7 @@ import subprocess
 from pathlib import Path
 
 import pytest
+from conftest import native_goh_path
 
 from test_gate_environment import _clean_checkout_of_todays_gates
 
@@ -52,7 +53,8 @@ def consumer(tmp_path: Path) -> Path:
 def _env(tmp_path: Path, **extra: str) -> dict:
     env = {k: v for k, v in os.environ.items() if not k.startswith(("GOH_", "GIT_", "PYTEST_"))}
     env["GOH_HEAD_CACHE"] = str(tmp_path / "head-cache")
-    env["GOH_NO_NATIVE"] = "1"  # the Python tier: no bin/goh rebuild in a scratch clone
+    # No bin/goh rebuild in a scratch clone (a cargo build per test): name the session binary.
+    env["GOH_BIN"] = str(native_goh_path())
     env.update(extra)
     return env
 
