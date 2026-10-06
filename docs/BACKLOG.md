@@ -35,6 +35,24 @@ commit bodies.
 | suite at `-n 12` | `83af2ac` | 74/96 s -> 67/79 s interleaved |
 | P0-P4, C1, C3-C5 | v0.20.0-v0.22.0 | see CHANGELOG |
 
+## Resume here (2026-10-06, after `7b4f79c`)
+
+- Owner, standing for this campaign: no optimisation left on the table -- items declined on YIELD
+  are reopened (4.1 done as `fast_init` for the 10 busiest files, ~200 more sites to migrate; 4C.2
+  native proven cache and 4C.3 native canary/local_ci runner to DO, not decline). Declines on
+  SOUNDNESS stand (2.5's probe cache).
+- A temporary 8 GB RAM disk is mounted at `/Volumes/gohram` (device in `/tmp/gohram.dev`) for this
+  campaign's compiles and suite (`TMPDIR=/Volumes/gohram/tmp`, `CARGO_TARGET_DIR=/Volumes/gohram/target`);
+  eject it (`diskutil eject`) when the campaign ends -- not a standing setup.
+- Main (`~/Projects/gates_of_heck`) is still at `5780297`. Fast-forward it only after this repo's
+  own push gate is green on the branch tip (`tools/gate_profile.sh .` runs it on HEAD in an
+  export); the last run, at `9e13043`, was red on the two defects fixed in `b30fbbe`.
+- Every Rust change runs `cargo test --workspace` before its commit (3b94809 shipped a red one).
+- 5B drift cases seen so far: a test rebuilding goh without `GOH_BIN`, a whole gate run to check one
+  step, per-site `git init`, a test moving the checkout, pools sized to `os.cpu_count()`, a leaked
+  child holding a captured pipe (30 s), and timing thresholds that flake under load
+  (`test_local_ci_jobs.py::test_jobs_flag_wins_over_gatesrc`, 1.11 s against 1.1 s).
+
 ## Roadmap to v0.24.0 — the plan of record
 
 The owner's rule (2026-10-06): every item below is DONE before the release is cut. Done means the
