@@ -44,6 +44,7 @@ Single schema. CLI flags beat env/.gatesrc where both exist. Unset means
 |---|---|---|
 | `GOH_MIN_FREE_GIB` | unset (not checked) | GiB a cold gate needs free. `push_gate.sh` refuses the push before it makes the export, and `round.sh` before it commits, naming the free space and the need (`lib/preflight_disk.py`) -- a full disk failed ZoneWM's pushes as codesign and sanitizer errors. Measure your cold build and add a margin. |
 | `GOH_ROUND_NEVER` | `.claude/settings.local.json` | Space-separated paths `round.sh` refuses to commit, whatever the round names. |
+| `GOH_ROUND_PREFLIGHT` | (unset) | A command `round.sh` runs (`bash -c`, repo root) before the commit; non-zero stops the round with nothing committed. Point it at the repo's warm verify (e.g. `make verify`) so a red test fails in seconds, not after the push's cold gate. |
 
 ## Disk watch (standalone: `~/Projects/scripts/bin/disk_hygiene.sh`)
 

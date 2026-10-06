@@ -116,3 +116,31 @@ def test_a_named_python_file_is_formatted_when_the_repo_opts_in(proj) -> None:
     r = _round(proj, "-m", "round: m", "m.py")
     assert r.returncode == 0, r.stdout + r.stderr
     assert _git(proj, "show", "HEAD:m.py") == "x = 1"
+
+
+@pytest.mark.parametrize("how", ["rm", "mv"])
+def test_a_staged_deletion_is_a_path_the_round_commits(proj, how) -> None:
+    """`git rm` (or the old side of a `git mv`) leaves a path on neither disk nor the index; only
+    HEAD has it. The round must still commit the deletion it names (ZoneWM, 2026-10-06)."""
+    if how == "rm":
+        _git(proj, "rm", "-q", "a.txt")
+        named = ("a.txt",)
+    else:
+        _git(proj, "mv", "a.txt", "b.txt")
+        named = ("a.txt", "b.txt")
+    r = _round(proj, "-m", f"round: {how}", *named)
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert "a.txt" not in _git(proj, "ls-tree", "--name-only", "HEAD").split()
+    assert _git(proj, "status", "--porcelain") == ""
+
+
+def test_a_preflight_runs_before_the_commit_and_a_red_one_stops_it(proj) -> None:
+    (proj / ".gatesrc").write_text("GOH_ROUND_PREFLIGHT='echo warm-verify; exit 3'\n")
+    (proj / "a.txt").write_text("a2\n")
+    r = _round(proj, "-m", "round: a", "a.txt")
+    assert r.returncode == 1 and "preflight" in r.stderr, r.stdout + r.stderr
+    assert "warm-verify" in r.stdout + r.stderr
+    assert _git(proj, "rev-list", "--count", "HEAD") == "1"
+    (proj / ".gatesrc").write_text("GOH_ROUND_PREFLIGHT='test -f a.txt'\n")
+    r = _round(proj, "-m", "round: a", "a.txt")
+    assert r.returncode == 0, r.stdout + r.stderr

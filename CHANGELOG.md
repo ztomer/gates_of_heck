@@ -111,7 +111,10 @@
 
 * **`gates/round.sh -m <message> <path>...`**: one round end to end -- only the named paths are
   committed (`git commit --only`), the repo's own hooks gate the commit and the push, the push is
-  pinned and read back from the remote.
+  pinned and read back from the remote. A named path HEAD alone has -- a `git rm`, the old side
+  of a `git mv` -- is a deletion it commits, not "neither on disk nor tracked".
+  **`GOH_ROUND_PREFLIGHT`** runs the repo's warm verify before the commit, so a red test stops
+  the round in seconds rather than after the push's cold gate.
 * **`GOH_MIN_FREE_GIB`**: `push_gate.sh` and `round.sh` refuse a cold gate on a short disk AS a
   short disk (`lib/preflight_disk.py`), before an export is made.
 

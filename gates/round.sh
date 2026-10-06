@@ -13,6 +13,8 @@
 #   * GOH_ROUND_NEVER (default `.claude/settings.local.json`) is never committed;
 #   * named `.py` files are ruff-formatted first when the repo opts into GOH_PYTHON_FORMATTED;
 #   * GOH_MIN_FREE_GIB is checked before the commit (lib/preflight_disk.py);
+#   * GOH_ROUND_PREFLIGHT, when set, runs before the commit: a WARM verify fails in seconds where
+#     the push's cold one takes minutes (ZoneWM's `make verify`, 25 min cold);
 #   * the push is PINNED (`<sha>:refs/heads/<branch>`), and the remote is read back afterwards.
 { # parse-guard -- bash reads this group whole before running it (tests/test_parse_guard.py)
 . "$(dirname "${BASH_SOURCE[0]}")/_from_head.sh"; goh_from_head "${BASH_SOURCE[0]}" "$@"   # run HEAD, not the tree (C4)
@@ -39,11 +41,17 @@ setting() { # <key> -- its value in .gatesrc, read by name in a child (push_gate
     bash -c 'set -a; . ./.gatesrc; eval "printf %s \"\${$1-}\""' _ "$1"
 }
 never="$(setting GOH_ROUND_NEVER)"; never="${never:-.claude/settings.local.json}"
+add=()  # the named paths `git add` can see; a staged deletion is already staged
 for p in "$@"; do
     case "$p" in -*) die "round refused: '$p' is not a path" ;; esac
     for n in $never; do [ "$p" != "$n" ] || die "round refused: $n is never committed (GOH_ROUND_NEVER)"; done
-    [ -e "$p" ] || git ls-files --error-unmatch -- "$p" >/dev/null 2>&1 \
-        || die "round refused: '$p' is neither on disk nor tracked"
+    # A path is real on disk, in the index, OR in HEAD: `git rm` and the old side of a `git mv`
+    # leave it in HEAD alone, and the round commits that deletion (ZoneWM, 2026-10-06).
+    if [ -e "$p" ] || git ls-files --error-unmatch -- "$p" >/dev/null 2>&1; then
+        add+=("$p")
+    elif ! git cat-file -e "HEAD:$p" 2>/dev/null; then
+        die "round refused: '$p' is neither on disk nor tracked"
+    fi
 done
 
 need="$(setting GOH_MIN_FREE_GIB)"
@@ -60,8 +68,14 @@ if [ -n "$(setting GOH_PYTHON_FORMATTED)" ]; then
     fi
 fi
 
+pre="$(setting GOH_ROUND_PREFLIGHT)"
+if [ -n "$pre" ]; then
+    section "preflight (GOH_ROUND_PREFLIGHT)"
+    bash -c "$pre" || die "round stopped: the preflight failed (above) -- nothing committed"
+fi
+
 section "commit (the pre-commit hook gates it)"
-git add -- "$@"
+[ "${#add[@]}" -eq 0 ] || git add -- "${add[@]}"
 git diff --cached --quiet -- "$@" && die "round stopped: nothing to commit in the named paths"
 git commit -q --only -F - -- "$@" <<<"$msg" || die "round stopped: the commit was refused (above)"
 sha="$(git rev-parse HEAD)"
