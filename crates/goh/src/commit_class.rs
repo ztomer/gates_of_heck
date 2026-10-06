@@ -332,8 +332,11 @@ mod tests {
         let lines = cleaned("fix: a\n\nClass: c\n\nSiblings: s\nCo-Authored-By: x\n");
         let t = final_trailers(&lines);
         assert!(t.contains_key("Siblings") && !t.contains_key("Class"));
-        assert!(final_trailers(&cleaned("Class: subject only\n")).is_empty());
-        assert!(final_trailers(&cleaned("fix: a\n\nprose line\nClass: c\n")).is_empty());
+        assert_eq!(final_trailers(&cleaned("Class: subject only\n")).len(), 0);
+        assert_eq!(
+            final_trailers(&cleaned("fix: a\n\nprose line\nClass: c\n")).len(),
+            0
+        );
         let wrapped = final_trailers(&cleaned("fix: a\n\nClass: one\n  two\n"));
         assert_eq!(wrapped.get("Class").map(String::as_str), Some("one two"));
     }
