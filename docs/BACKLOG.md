@@ -191,9 +191,11 @@ behind the same tests the shell passes today, red-proven, one at a time:
 - [ ] 6.5 The P2 `GOH_CI_JOBS` budget curve (1/2/4/6), its knee recorded.
 
 **Phase 7 — downstream: each consumer item to its owner** (details: "Downstream")
-- [ ] 7.1 Each item below sent to the session that owns the repo, with the evidence; marked `[~]`
-      here with the date. (servers: the pytest step outside the proven cache, `--each-crate`;
-      monitor, antiknob, divoom, routines, ztools, ZoneWM, Finance, ZeroThunder, the line-cap repos.)
+- [~] 7.1 Each item below sent to the session that owns the repo, with the evidence (2026-10-06):
+      servers (pytest outside the proven cache, `--each-crate`), divoom-control + antiknob,
+      ztools, ZoneWM (plus the Phase 8 data question), zinc/Finance, the games metarepo
+      (ZeroThunder, the line-cap build files). monitor and routines have no session open: their
+      items stay in "Downstream" for whoever opens one. The tag notice to servers is 9.1's.
 
 **Phase 8 — the "fix the class" commit gate** (details: its own section)
 - [ ] 8.1 Land ZoneWM's handed-over design here, test-first (red-proven both directions), once its
