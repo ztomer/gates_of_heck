@@ -53,7 +53,7 @@ Status: `[ ]` open, `[x]` done (with the commit), `[~]` handed off.
       check silently dropped: refused, exit 2 (`22c8d49`).
 - [x] 1.2 The HEAD export cache is bounded by LAST USE and count; an export used within the hour is
       never removed (the old prune went by creation time, after a week, with no count bound)
-      (`COMMIT`).
+      (`2517e42`).
 
 **Phase 2 — fewer spawns in every gate** (details: "Open -- found", 4, 6, 7)
 - [ ] 2.1 `goh.sh` resolves the binary once per process tree (exported, validated); ratchet: a
