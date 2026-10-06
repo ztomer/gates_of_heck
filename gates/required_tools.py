@@ -17,7 +17,8 @@ and the step passes having installed nothing):
     grep -v '^#' <<<"$cmds" | bash -eux
 
 On a runner without brew (ubuntu-latest), use `--names` and the runner's own package manager.
-`ruff` is its own layer (`python-format`): only repos that set GOH_PYTHON_FORMATTED need it.
+`ruff` is its own layer (`python-format`): only repos that set GOH_PYTHON_FORMATTED need it;
+`cargo-zigbuild` + `zig` are `rust-cross`, for repos that set GOH_RUST_LINT_CARGO=cargo-zigbuild.
 
 --repo infers layers from what the repo declares (.gatesrc, tools/gate.sh, .githooks/*): a gate
 script named there, a `--lang` passed to coverage_gate.sh, `GOH_PYTHON_FORMATTED` set, shell files
@@ -92,6 +93,8 @@ def detect(repo: str) -> tuple[set[str], set[str]]:
         structural.add("shellcheck")
     if re.search(r"^\s*(export\s+)?GOH_PYTHON_FORMATTED=\S", text, re.M):
         layers.add("python-format")
+    if re.search(r"^\s*(export\s+)?GOH_RUST_LINT_CARGO=['\"]?cargo-zigbuild", text, re.M):
+        layers.add("rust-cross")  # the --target lint configs run through cargo-zigbuild
     return layers, structural
 
 

@@ -16,6 +16,8 @@ from __future__ import annotations
 
 import re
 import subprocess
+
+import pytest
 import sys
 from pathlib import Path
 
@@ -131,3 +133,25 @@ def test_an_unknown_layer_is_refused_not_ignored():
         [sys.executable, str(CLI), "--layer", "rsut"], capture_output=True, text=True, timeout=30
     )
     assert out.returncode == 2 and "rsut" in out.stderr
+
+
+@pytest.mark.parametrize(
+    ("gatesrc", "wanted"), [("GOH_RUST_LINT_CARGO=cargo-zigbuild\n", True), ("", False)]
+)
+def test_the_cross_lint_tools_are_for_repos_that_name_zigbuild(tmp_path, gatesrc, wanted):
+    """media_server's --target clippy needs cargo-zigbuild AND zig; a repo that does not set it
+    must not be told to install either (BACKLOG P1g)."""
+    (tmp_path / "tools").mkdir()
+    (tmp_path / "tools" / "gate.sh").write_text('"$GOH/gates/rust_gate.sh" .\n')
+    (tmp_path / ".gatesrc").write_text(gatesrc)
+    subprocess.run(["git", "init", "-q", str(tmp_path)], check=True)
+    out = subprocess.run(
+        [sys.executable, str(CLI), "--repo", str(tmp_path), "--names"],
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    assert out.returncode == 0, out.stderr
+    names = set(out.stdout.split())
+    assert ({"cargo-zigbuild", "zig"} <= names) is wanted, out.stdout
+    assert ({"cargo-zigbuild", "zig"} & names == set()) is (not wanted), out.stdout

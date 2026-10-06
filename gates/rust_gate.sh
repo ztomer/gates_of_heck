@@ -81,7 +81,7 @@ cargo_dir="$(cd "$cargo_dir" && pwd)"
 # that exercises it, with GOH_DIR at a real checkout, so the same class of
 # leak would let an inherited GOH_COV_FLOOR_RUST arm a coverage floor no
 # fixture declared. A key is configuration iff the repo's own file says so.
-unset GOH_COV_FLOOR_RUST GOH_RUST_LINT_CONFIGS GOH_DEPS_RATCHET \
+unset GOH_COV_FLOOR_RUST GOH_RUST_LINT_CONFIGS GOH_RUST_LINT_CARGO GOH_DEPS_RATCHET \
       GOH_CROSS_REPO_ROOT GOH_PYTHON_FORMATTED GOH_SKILLS_CORPUS \
       GOH_STEP_TIMEOUT GOH_STEP_GRACE GOH_LCI_TIMEOUT 2>/dev/null || true
 
@@ -134,7 +134,23 @@ rust_crate_checks() {
     #
     # Each entry is extra argv for clippy, ':'-separated, e.g.
     #   GOH_RUST_LINT_CONFIGS='--target x86_64-unknown-linux-musl -p agent:-p d --no-default-features'
+    #
+    # THE CARGO THAT CROSS-LINTS (BACKLOG P1g). A `--target` config builds the target's build
+    # scripts, and those compile C FOR THE TARGET: ring needs a musl C compiler, which plain
+    # `cargo clippy` on macOS has not got, so media_server ran its cross clippy serially, in its
+    # own script, 46 s after the crate fan-out ended. GOH_RUST_LINT_CARGO names the cargo command
+    # for `--target` configs (`cargo-zigbuild`, which brings `zig cc`); host configs keep `cargo`.
+    # Required up front, like every tool this gate cannot run without.
     if [ -n "${GOH_RUST_LINT_CONFIGS:-}" ]; then
+        lint_cargo="${GOH_RUST_LINT_CARGO:-cargo}"
+        case "$lint_cargo" in
+            cargo) ;;
+            cargo-zigbuild)
+                goh_require cargo-zigbuild "cargo install --locked cargo-zigbuild"
+                goh_require zig "brew install zig (cargo-zigbuild drives zig cc)" ;;
+            *) command -v "$lint_cargo" >/dev/null 2>&1 \
+                   || die "[rust] GOH_RUST_LINT_CARGO='$lint_cargo' is not on PATH" ;;
+        esac
         installed="$(rustup target list --installed 2>/dev/null || true)"
         saved_ifs="$IFS"; IFS=':'
         for cfg in $GOH_RUST_LINT_CONFIGS; do
@@ -152,9 +168,12 @@ rust_crate_checks() {
                     fi
                     ;;
             esac
+            runner=cargo via=""
+            case "$cfg" in *--target*) runner="$lint_cargo" ;; esac
+            [ "$runner" = cargo ] || via=" via $runner"
             # shellcheck disable=SC2086
-            goh_step_in "$cargo_dir" "clippy ($cfg)" \
-                cargo clippy --locked --all-targets $cfg -- -D warnings
+            goh_step_in "$cargo_dir" "clippy ($cfg)$via" \
+                "$runner" clippy --locked --all-targets $cfg -- -D warnings
             IFS=':'
         done
         IFS="$saved_ifs"
