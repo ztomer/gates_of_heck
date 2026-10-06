@@ -72,6 +72,57 @@ def _cmp(a: VersionKey, b: VersionKey) -> int:
     return -1 if a < b else (0 if a == b else 1)
 
 
+def _opt(text: str | None) -> int | None:
+    return int(text) if text is not None else None
+
+
+def _key(major: int, minor: int = 0, patch: int = 0) -> VersionKey:
+    return (major, minor, patch, (1, ""))
+
+
+def _bounds(op: str, maj: int, mn: int | None, pat: int | None):
+    """`(lowest admitted, lowest refused above)` for one comparator, either side None for open.
+
+    Cargo's table, PARTIAL versions included (doc.rust-lang.org, "Specifying dependencies"): a
+    missing minor or patch widens the range rather than meaning zero. Reading `~1.0` as `~1`,
+    `=1.2` as `=1.2.0` and `^0.0.3` as `^0.0` were three readings of one mistake -- a missing
+    field taken as 0 -- found porting this comparator (Phase N1).
+    """
+    m0, p0 = mn or 0, pat or 0
+    if op == "=":
+        if mn is None:
+            return _key(maj), _key(maj + 1)
+        if pat is None:
+            return _key(maj, mn), _key(maj, mn + 1)
+        return _key(maj, mn, pat), _key(maj, mn, pat + 1)
+    if op == ">=":
+        return _key(maj, m0, p0), None
+    if op == ">":
+        if mn is None:
+            return _key(maj + 1), None
+        if pat is None:
+            return _key(maj, mn + 1), None
+        return _key(maj, mn, pat + 1), None
+    if op == "<":
+        return None, _key(maj, m0, p0)
+    if op == "<=":
+        if mn is None:
+            return None, _key(maj + 1)
+        if pat is None:
+            return None, _key(maj, mn + 1)
+        return None, _key(maj, mn, pat + 1)
+    if op == "~":
+        if mn is None:
+            return _key(maj), _key(maj + 1)
+        return _key(maj, mn, p0), _key(maj, mn + 1)
+    # `^`, and a bare requirement, which is a caret one.
+    if maj > 0 or mn is None:
+        return _key(maj, m0, p0), _key(maj + 1)
+    if mn > 0 or pat is None:
+        return _key(0, mn, p0), _key(0, mn + 1)
+    return _key(0, 0, pat), _key(0, 0, pat + 1)
+
+
 def req_allows(req: str, version: str) -> bool | None:
     """Does `req` admit `version`? `None` when the requirement is unreadable.
 
@@ -93,50 +144,11 @@ def req_allows(req: str, version: str) -> bool | None:
         if not m:
             return None
         op, maj_s, min_s, pat_s = m.groups()
-        maj, mn = int(maj_s), int(min_s or 0)
-        pat = int(pat_s) if pat_s is not None else None
-        base = (maj, mn, pat or 0, (1, ""))
-
-        if op in (">=",):
-            if _cmp(v, base) < 0:
-                return False
-        elif op == ">":
-            if _cmp(v, base) <= 0:
-                return False
-        elif op == "<=":
-            if _cmp(v, base) > 0:
-                return False
-        elif op == "<":
-            if _cmp(v, base) >= 0:
-                return False
-        elif op in ("=", "^", "~", None):
-            if op == "^" or op is None:
-                # caret: leftmost non-zero component is the floor
-                if maj > 0:
-                    hi = (maj + 1, 0, 0, (1, ""))
-                elif mn > 0 or pat is not None:
-                    hi = (0, mn + 1, 0, (1, ""))
-                else:
-                    hi = (1, 0, 0, (1, ""))
-                if _cmp(v, base) < 0 or _cmp(v, hi) >= 0:
-                    return False
-            elif op == "~":
-                # `~1.2.3` is >=1.2.3 <1.3.0 and `~1.2` is >=1.2.0 <1.3.0:
-                # the tilde pins the MINOR when a minor is named, and the
-                # MAJOR when only a major is. Pinning the patch here refused
-                # 1.2.9 to `~1.2.3`, which is not what tilde means.
-                hi = (
-                    (maj + 1, 0, 0, (1, ""))
-                    if (pat is None and mn == 0)
-                    else (maj, mn + 1, 0, (1, ""))
-                )
-                if _cmp(v, base) < 0 or _cmp(v, hi) >= 0:
-                    return False
-            else:  # exact
-                if v[:3] != base[:3]:
-                    return False
-        else:  # pragma: no cover - unreachable, the regex admits nothing else
-            return None
+        lo, hi = _bounds(op or "^", int(maj_s), _opt(min_s), _opt(pat_s))
+        if lo is not None and _cmp(v, lo) < 0:
+            return False
+        if hi is not None and _cmp(v, hi) >= 0:
+            return False
     return True
 
 

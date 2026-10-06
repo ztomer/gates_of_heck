@@ -165,6 +165,18 @@ def test_target_specific_dependencies_are_examined(tmp_path):
         ("~1.2.3", "1.2.9", True),
         ("~1.2.3", "1.3.0", False),
         ("*", "9.9.9", True),
+        # Cargo's own table (doc.rust-lang.org, "Specifying dependencies"), each row read WRONG
+        # before 2026-10-05 -- found porting the comparator, Phase N1:
+        ("^0.0.3", "0.0.4", False),  # ^0.0.3 := >=0.0.3, <0.0.4 (was read as <0.1.0)
+        ("0.0.3", "0.0.3", True),
+        ("^0.0", "0.1.0", False),  # ^0.0 := >=0.0.0, <0.1.0 (was read as <1.0.0)
+        ("^0.0", "0.0.9", True),
+        ("~1.0", "1.1.0", False),  # ~1.0 := >=1.0.0, <1.1.0 (was read as <2.0.0)
+        ("~1", "1.9.0", True),  # ~1 := >=1.0.0, <2.0.0
+        ("=1.2", "1.2.7", True),  # =1.2 := >=1.2.0, <1.3.0 (was read as exactly 1.2.0)
+        ("=1.2", "1.3.0", False),
+        ("=1", "1.4.0", True),  # =1 := >=1.0.0, <2.0.0
+        ("=1.2.3", "1.2.4", False),
     ],
 )
 def test_requirement_semantics(req, version, expected):
