@@ -72,12 +72,17 @@ _goh_head_dir() {
             return 1
         fi
         printf '%s\n' "$head" > "$tmp/.goh-head"
+        : > "$tmp/.goh-used"  # the last-use stamp, made before the rename (gates/_head_cache.py)
         # rename(2), whole: fails if another hook won the race, and theirs is the same commit.
         python3 -c 'import os, sys; os.rename(sys.argv[1], sys.argv[2])' "$tmp" "$dest" 2>/dev/null \
             || rm -rf "$tmp"
-        # Exports of other commits, untouched for a week, go; the current one never does.
-        find "$cache" -mindepth 1 -maxdepth 1 -type d -mtime +7 ! -name "$head" -exec rm -rf {} + 2>/dev/null || true
+        # A NEW export prunes the others by LAST USE (gates/_head_cache.py); the current never goes.
+        python3 -S -c 'import sys; sys.path.insert(0, sys.argv[1]); import _head_cache; _head_cache.prune(sys.argv[2], sys.argv[3])' \
+            "$(dirname "${BASH_SOURCE[0]}")" "$cache" "$head" 2>/dev/null || true
     fi
+    # This use, stamped: a truncate of the export's own empty `.goh-used` -- no spawn, and the
+    # export's files and directory are never rewritten.
+    : > "$dest/.goh-used" 2>/dev/null || true
     rel="${here#"$root"}/$(basename "$1")"
     [ -f "$dest$rel" ] || return 1                # a file HEAD does not have yet: it is development
     export GOH_LIVE_ROOT="$root" GOH_DIR="$dest" PYTHONPATH="$dest${PYTHONPATH:+:$PYTHONPATH}"

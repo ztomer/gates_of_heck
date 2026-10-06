@@ -51,8 +51,9 @@ Status: `[ ]` open, `[x]` done (with the commit), `[~]` handed off.
       now names the same file anywhere (`22c8d49`).
 - [x] 1.4 (same) an unreadable floors file was a warning and a pass on `--floor` alone, the per-file
       check silently dropped: refused, exit 2 (`22c8d49`).
-- [ ] 1.2 The HEAD export cache is pruned, bounded by count/age; an export in use is never removed
-      (test: a gate reading an export survives a prune).
+- [x] 1.2 The HEAD export cache is bounded by LAST USE and count; an export used within the hour is
+      never removed (the old prune went by creation time, after a week, with no count bound)
+      (`COMMIT`).
 
 **Phase 2 — fewer spawns in every gate** (details: "Open -- found", 4, 6, 7)
 - [ ] 2.1 `goh.sh` resolves the binary once per process tree (exported, validated); ratchet: a
@@ -162,8 +163,9 @@ Defects first (a gate that says more than it does), then levers by expected yiel
    target floors (naming the key and the reason), or the feature is built with per-target parts;
    refusing is the honest default. Red-first: a rust run with `{"covfix": 100}` over 50% coverage
    passes today.
-2. **The HEAD export cache is never pruned.** `~/.cache/goh/head/<sha>/` is written once per commit
-   that ran a gate and never removed: 55 exports, 226 MB on 2026-10-06 (`gates/_from_head.sh`).
+2. **The HEAD export cache was pruned by CREATION time, unbounded in count.** An export older than
+   a week went even while a long-lived worktree still ran from it, and 55 exports, 226 MB built up
+   in that week (2026-10-06). Done: phase 1.2.
    Exit: bounded by count or age with the CURRENT export never removed; a pruner that races a gate
    reading an export is the way it lies -- test that an export in use survives (a lock or an mtime
    touched on use).
