@@ -15,8 +15,9 @@ GOH_MAX_LINES=500                 # file-length cap; unset disables the check
 # The corpus is no part of any commit HERE, so pre-commit skips it by name
 # ("outside this repo ... NOT checked at --staged"): a violation there could
 # only ever be a false red on a gates_of_heck diff, and it was one -- other
-# sessions' unstaged skill edits blocked commits here. --full still reads it,
-# so a push here says when the machine's corpus is broken.
+# sessions' unstaged skill edits blocked commits here. --full reads the corpus
+# at its last COMMIT (it is its own repository), so a push here says when the
+# corpus's committed state is broken -- never another session's edit in progress.
 GOH_SKILLS_CORPUS=1
 
 # No process kill by name (`goh kill-by-name`). The CadGoose profiling

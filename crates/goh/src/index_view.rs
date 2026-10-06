@@ -54,10 +54,17 @@ impl IndexView {
     /// As above; the caller returns the carried outcome.
     pub fn at_scope(repo: &Path, dir: &str, staged: bool) -> Result<Self, Option<i32>> {
         if !staged {
-            return Ok(Self {
-                root: PathBuf::from(dir),
-                snapshot: None,
-            });
+            return match Self::committed_outside(repo, Path::new(dir)) {
+                Ok(Some(view)) => Ok(view),
+                Ok(None) => Ok(Self {
+                    root: PathBuf::from(dir),
+                    snapshot: None,
+                }),
+                Err(message) => {
+                    eprintln!("✗ structural: {message} — refusing to read its working tree in its commit's place");
+                    Err(Some(2))
+                }
+            };
         }
         match Self::of(repo, Path::new(dir)) {
             Ok(Some(view)) => Ok(view),
@@ -104,7 +111,7 @@ impl IndexView {
             root: snapshot.join(rel),
             snapshot: Some(snapshot.clone()),
         };
-        export(&top, rel, &snapshot)?;
+        export(&top, rel, &snapshot, None)?;
         let gitdir = git_dir(&top)?;
         std::fs::write(snapshot.join(".git"), format!("gitdir: {gitdir}\n"))
             .map_err(|e| format!("cannot write {}/.git: {e}", snapshot.display()))?;
@@ -112,6 +119,55 @@ impl IndexView {
         // one: the checker's own floor then says so instead of a path error.
         std::fs::create_dir_all(&view.root)
             .map_err(|e| format!("cannot create {}: {e}", view.root.display()))?;
+        Ok(Some(view))
+    }
+
+    /// At FULL scope, a directory OUTSIDE `repo` that is its own repository's work tree, as
+    /// that repository's last COMMIT holds it. `None` when `dir` is inside `repo` (its working
+    /// tree is this run's subject) or in no repository (there is no commit to read).
+    ///
+    /// The working tree of SOMEONE ELSE's repo is not reproducible from any commit -- the C4
+    /// class, one directory over: another session's half-done skill edit refused a `gates_of_heck`
+    /// release (BACKLOG C2). The corpus's own pre-commit gates its commits; a push here judges
+    /// what was committed there.
+    ///
+    /// # Errors
+    /// The commit could not be exported; the caller refuses rather than read the working tree.
+    pub fn committed_outside(repo: &Path, dir: &Path) -> Result<Option<Self>, String> {
+        let (Ok(top), Ok(phys)) = (repo.canonicalize(), dir.canonicalize()) else {
+            return Ok(None);
+        };
+        if phys.starts_with(&top) {
+            return Ok(None);
+        }
+        let Ok(other) = git_out(&phys, &["rev-parse", "--show-toplevel"], None) else {
+            return Ok(None);
+        };
+        let other = PathBuf::from(String::from_utf8_lossy(&other).trim());
+        let other = other.canonicalize().unwrap_or(other);
+        let rel = phys
+            .strip_prefix(&other)
+            .unwrap_or_else(|_| Path::new(""))
+            .to_path_buf();
+        let head = git_out(&other, &["rev-parse", "--short", "HEAD"], None)
+            .map_err(|e| format!("{} has no commit to read: {e}", other.display()))?;
+        let snapshot = make_temp_dir()?;
+        let index = snapshot.with_extension("index");
+        let view = Self {
+            root: snapshot.join(&rel),
+            snapshot: Some(snapshot.clone()),
+        };
+        git_out(&other, &["read-tree", "HEAD"], Some(&index))?;
+        let exported = export(&other, &rel, &snapshot, Some(&index));
+        let _ = std::fs::remove_file(&index);
+        exported?;
+        std::fs::create_dir_all(&view.root)
+            .map_err(|e| format!("cannot create {}: {e}", view.root.display()))?;
+        eprintln!(
+            "· {} is outside this repo: judging its last commit ({}), not its working tree",
+            dir.display(),
+            String::from_utf8_lossy(&head).trim()
+        );
         Ok(Some(view))
     }
 }
@@ -147,47 +203,55 @@ fn pin_git_env() -> Result<(), String> {
 
 /// The repo's absolute git dir, for the view's `.git` file.
 fn git_dir(top: &Path) -> Result<String, String> {
-    let out = Command::new("git")
-        .arg("-C")
-        .arg(top)
-        .args(["rev-parse", "--absolute-git-dir"])
-        .output()
-        .map_err(|e| format!("git rev-parse failed to start: {e}"))?;
-    let dir = String::from_utf8_lossy(&out.stdout).trim().to_owned();
-    if out.status.success() && !dir.is_empty() {
-        Ok(dir)
+    let out = git_out(top, &["rev-parse", "--absolute-git-dir"], None)
+        .map_err(|e| format!("cannot resolve the git dir of {}: {e}", top.display()))?;
+    let dir = String::from_utf8_lossy(&out).trim().to_owned();
+    if dir.is_empty() {
+        return Err(format!("cannot resolve the git dir of {}", top.display()));
+    }
+    Ok(dir)
+}
+
+/// `git -C top <args>`'s stdout, against `index` when given (`GIT_INDEX_FILE`).
+fn git_out(top: &Path, args: &[&str], index: Option<&Path>) -> Result<Vec<u8>, String> {
+    let mut cmd = Command::new("git");
+    cmd.arg("-C").arg(top).args(args);
+    if let Some(index) = index {
+        cmd.env("GIT_INDEX_FILE", index);
+    }
+    let out = cmd.output().map_err(|e| {
+        format!(
+            "git {} failed to start: {e}",
+            args.first().copied().unwrap_or("")
+        )
+    })?;
+    if out.status.success() {
+        Ok(out.stdout)
     } else {
         Err(format!(
-            "cannot resolve the git dir of {}: {}",
-            top.display(),
+            "git {} failed: {}",
+            args.first().copied().unwrap_or(""),
             String::from_utf8_lossy(&out.stderr).trim()
         ))
     }
 }
 
-/// `git ls-files -z -- <rel>` piped into `git checkout-index -z --stdin`.
-fn export(top: &Path, rel: &Path, snapshot: &Path) -> Result<(), String> {
+/// `git ls-files -z -- <rel>` piped into `git checkout-index -z --stdin`, from `index` when given.
+fn export(top: &Path, rel: &Path, snapshot: &Path, index: Option<&Path>) -> Result<(), String> {
     let spec = if rel.as_os_str().is_empty() {
         Path::new(".")
     } else {
         rel
     };
-    let listed = Command::new("git")
-        .arg("-C")
-        .arg(top)
-        .args(["ls-files", "-z", "--"])
-        .arg(spec)
-        .output()
-        .map_err(|e| format!("git ls-files failed to start: {e}"))?;
-    if !listed.status.success() {
-        return Err(format!(
-            "git ls-files failed: {}",
-            String::from_utf8_lossy(&listed.stderr).trim()
-        ));
-    }
+    let spec = spec.to_string_lossy();
+    let listed = git_out(top, &["ls-files", "-z", "--", &spec], index)?;
     let mut prefix = snapshot.as_os_str().to_owned();
     prefix.push("/");
-    let mut child = Command::new("git")
+    let mut checkout = Command::new("git");
+    if let Some(index) = index {
+        checkout.env("GIT_INDEX_FILE", index);
+    }
+    let mut child = checkout
         .arg("-C")
         .arg(top)
         .args(["checkout-index", "-z", "--stdin"])
@@ -199,7 +263,7 @@ fn export(top: &Path, rel: &Path, snapshot: &Path) -> Result<(), String> {
         .map_err(|e| format!("git checkout-index failed to start: {e}"))?;
     if let Some(mut stdin) = child.stdin.take() {
         stdin
-            .write_all(&listed.stdout)
+            .write_all(&listed)
             .map_err(|e| format!("git checkout-index stdin: {e}"))?;
     }
     let done = child

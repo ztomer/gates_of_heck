@@ -224,10 +224,11 @@ HEAD:<path>`, so computing a key stays O(scope), not O(files).
   full scope only; two unformatted test files passed pre-commit and refused the v0.20.0 push. Add a
   staged mode to `check_python_formatted.py` (index blobs via `--stdin-filename`; it reformats
   nothing), wire it in both tiers (`steps_delegated.rs::step_python_formatted`), re-pin parity.
-- **C2. The skills corpus has no gate at the moment of WRITING.** This repo's push reads
-  `~/.claude/skills` (`GOH_SKILLS_CORPUS`); a peer's edit tipped a skill over the word ceiling and
-  refused a release. Home: a hook or a check the skill-editing path runs, so the writer finds out,
-  not the next pusher.
+- **C2. LANDED (the gate half, 2026-10-06).** The failure was a peer's UNCOMMITTED skill edit
+  refusing this repo's release: `--full` read `~/.claude/skills`' working tree. An external corpus
+  that is its own repository is now judged at its last commit (`IndexView::committed_outside`),
+  and the corpus's own pre-commit gates the commit that lands an edit. The writer-time half -- a
+  Claude Code hook on the skill-editing path -- is an owner decision (Blocked, below).
 - **C3. LANDED `833b2e7`** (SUPERSOTA R4a): `bin/goh` is built from an export of HEAD, stamped with
   the git trees of its inputs (`goh source-tree`), and `gates/_goh_bin.sh` rebuilds a stale one
   under a lock before using it. Owner's choice 2026-10-05: rebuild, not fall back.
@@ -355,6 +356,10 @@ order, never the reverse:
   while it was gated; ZoneWM's pinned `git push <remote> <sha>:<branch>` is the airtight form.
 
 ## Blocked / owner decisions
+
+- C2 writer-time half: a PostToolUse hook in `~/.claude/settings.json` running `goh skills` on an
+  edited `SKILL.md`, so the writer hears it before the commit. Changing global settings is the
+  owner's call; the gate half (judge the corpus's commit, not its tree) has landed.
 
 
 - O33 (servers): the `gho_` PAT was never rotated; an older `ghp_` is still live in `.90`'s zsh
