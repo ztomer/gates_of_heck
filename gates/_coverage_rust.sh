@@ -3,8 +3,8 @@
 # the 500-line cap; it uses the gate's own need/err/info/export_failed and its PROJ/IGNORE/... vars.
 
 # ── rust ────────────────────────────────────────────────────────────────────
-# Ported from app_updates/tools/coverage_check.sh; see lineage above. One lcov
-# export PER TEST TARGET, unioned by the CGU-normalizing merger below.
+# Ported from app_updates/tools/coverage_check.sh; see lineage above. ONE instrumented run of
+# every declared lib/bin/test target, its lcov fed to the CGU-normalizing merger below.
 run_rust() {
     cd "$PROJ" || exit 2
     need cargo "cargo llvm-cov drives the instrumented build"
@@ -34,15 +34,13 @@ run_rust() {
     export CARGO_INCREMENTAL=0
     cargo llvm-cov clean --workspace >/dev/null 2>&1 || rm -rf "$CARGO_TARGET_DIR"
 
-    # ONE BUILD, N PROFILES: built once (cleaned above), then `--no-clean` per target -- each export
-    # recompiled the members, 16 x ~2 s on media_server's mediaops-rs. Only the PROFILE is reset
-    # per target (`--no-clean` alone leaked `cli` into the `version` part). A/B on mediaops-rs: merged report identical.
-    fresh_profile() {
-        cargo llvm-cov clean --profraw-only >/dev/null 2>&1 || {
-            err "could not clear the previous target's profile before $1 -- its part would carry it"
-            exit 1
-        }
-    }
+    # ONE RUN, ONE EXPORT. The rust mode exported one lcov part PER TEST TARGET (`--no-clean`, the
+    # profile reset between targets) and unioned them. The phantom misses that design was credited
+    # with come from aggregating duplicate instantiations, and the CGU-normalizing merger fixes
+    # those whatever the part count: A/B on all 29 media_server crates (2026-10-06), one combined
+    # run of the same targets gave the IDENTICAL merged report -- same percentage, same covered and
+    # coverable line counts, every crate -- for 173 s against 226 s, one cargo invocation and one
+    # export per crate instead of one per target.
 
     # THE EXTERNAL PART (--external / GOH_COV_RUST_EXTERNAL): a crate whose behaviour suite drives
     # its binary from outside `cargo test` (gates_of_heck: the pytest suite runs `goh` thousands of
@@ -113,69 +111,44 @@ for p in meta["packages"]:
             print(f"{p['name']}\ttest\t{t['name']}")
 PYEOF
 
-    while IFS="	" read -r PKG KIND TNAME; do
-        [ -n "$PKG" ] || continue
-        if [ "$KIND" = "lib" ]; then
-            info "exporting $PKG (lib unittests)"
-            part="$PARTS/part-$PKG-lib.info"
-            label="$PKG (lib unittests)"
-            # Completeness marker: written ONLY on cargo-llvm-cov exit 0. A
-            # failing export that leaves a stale/partial file behind must not
-            # pass as measured data — the marker is the proof of success.
-            fresh_profile "$label"
-            if cargo llvm-cov --locked --no-clean -p "$PKG" --lib --all-features \
-                    ${IGNORE:+--ignore-filename-regex "$IGNORE"} \
-                    --lcov --output-path "$part" \
-                    >"$part.log" 2>&1; then
-                : >"$part.ok"
-            else
-                export_failed "$label" "$part.log"
-            fi
+    # Which target KINDS exist, from the enumeration above: the run selects exactly those (no
+    # examples, no benches, no doctests), as the per-target exports did.
+    KINDS=""
+    grep -q '	lib	' "$METAF" && KINDS="$KINDS --lib"
+    grep -q '	bin	' "$METAF" && KINDS="$KINDS --bins"
+    grep -q '	test	' "$METAF" && KINDS="$KINDS --tests"
+    WORKSPACE_PART="$PARTS/part-workspace.info"
+    if [ -n "$KINDS" ]; then
+        info "exporting every target in one instrumented run: $(cut -f1,3 "$METAF" | tr '\t\n' ': ' | sed 's/: / /g')"
+        # Completeness marker: written ONLY on cargo-llvm-cov exit 0. A failing run that leaves a
+        # stale or partial file behind must not pass as measured data -- the marker is the proof.
+        # shellcheck disable=SC2086  # KINDS is a list of flags
+        if cargo llvm-cov --locked --no-clean --workspace $KINDS --all-features \
+                ${IGNORE:+--ignore-filename-regex "$IGNORE"} \
+                --lcov --output-path "$WORKSPACE_PART" \
+                >"$WORKSPACE_PART.log" 2>&1; then
+            : >"$WORKSPACE_PART.ok"
         else
-            # Part name carries the package AND kind: two crates with
-            # same-named targets, or a bin and a test target sharing a name,
-            # must not overwrite each other's lcov part.
-            info "exporting $PKG ($KIND $TNAME)"
-            part="$PARTS/part-$PKG-$KIND-$TNAME.info"
-            label="$PKG ($KIND $TNAME)"
-            fresh_profile "$label"
-            if cargo llvm-cov --locked --no-clean -p "$PKG" "--$KIND" "$TNAME" --all-features \
-                    ${IGNORE:+--ignore-filename-regex "$IGNORE"} \
-                    --lcov --output-path "$part" \
-                    >"$part.log" 2>&1; then
-                : >"$part.ok"
-            else
-                export_failed "$label" "$part.log"
-            fi
+            export_failed "the workspace's targets" "$WORKSPACE_PART.log"
         fi
-    done <"$METAF"
+    fi
     if [ -n "${EXTERNAL:-}" ]; then
         external_part
     fi
 
-    # Every DECLARED target must have produced an EXPORT THAT EXITED 0,
-    # proven by its .ok marker. Keying completeness on part-file existence or
-    # size was a LAUNDERING HOLE: cargo-llvm-cov can fail AFTER creating the
-    # output file, leaving garbage or a partial export that then counted as
-    # coverage ("100%" over nothing). The ONLY warn-only case is a marker'd
-    # valid-but-empty part (a target with nothing coverable in it): the
-    # export succeeded, it simply measures zero lines.
+    # The run must have EXITED 0, proven by its .ok marker. Keying completeness on part-file
+    # existence or size was a LAUNDERING HOLE: cargo-llvm-cov can fail AFTER creating the output
+    # file, leaving garbage or a partial export that then counted as coverage ("100%" over
+    # nothing). The ONLY warn-only case is a marker'd valid-but-empty part (targets with nothing
+    # coverable in them): the run succeeded, it simply measures zero lines.
     MISSING=""
-    while IFS="	" read -r PKG KIND TNAME; do
-        [ -n "$PKG" ] || continue
-        if [ "$KIND" = "lib" ]; then
-            part="$PARTS/part-$PKG-lib.info"
-            label="$PKG (lib unittests)"
-        else
-            part="$PARTS/part-$PKG-$KIND-$TNAME.info"
-            label="$PKG ($KIND $TNAME)"
+    if [ -n "$KINDS" ]; then
+        if [ ! -f "$WORKSPACE_PART.ok" ]; then
+            MISSING="$(cut -f1,2,3 "$METAF" | awk -F'\t' '{printf "%s%s (%s%s)", (NR>1?" ":""), $1, $2, ($3==""?"":" " $3)}')"
+        elif [ ! -s "$WORKSPACE_PART" ]; then
+            warn "the workspace's targets exported a valid-but-EMPTY lcov part — nothing coverable was measured"
         fi
-        if [ ! -f "$part.ok" ]; then
-            MISSING="${MISSING}${MISSING:+ }$label"
-        elif [ ! -s "$part" ]; then
-            warn "$label exported a valid-but-EMPTY lcov part — nothing coverable was measured for it"
-        fi
-    done <"$METAF"
+    fi
     if [ -n "${EXTERNAL:-}" ] && [ ! -f "$PARTS/part-external.info.ok" ]; then
         MISSING="${MISSING}${MISSING:+ }external: $EXTERNAL"
     fi

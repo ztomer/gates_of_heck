@@ -35,15 +35,17 @@
 #
 # Lineage (ported, then unified):
 #   rust  ← ~/Projects/app_updates/tools/coverage_check.sh (the best copy):
-#           cargo llvm-cov with ONE lcov export PER TEST TARGET, then a merge
-#           pass that strips CGU hashes so duplicate template/function
-#           instantiations group together (llvm-cov emits one record per
-#           instantiation; naive aggregation reports phantom misses from
-#           zero-count clones of functions other clones demonstrably ran).
-#           Reports EXACT uncovered lines when below floor. Its ancestor
-#           ~/Projects/monitor/tools/coverage_check.sh was a single aggregated
-#           export + --fail-under-lines — kept here only as contrast; its
-#           phantom-miss failure mode is why the per-target exports exist.
+#           cargo llvm-cov, then a merge pass that strips CGU hashes so
+#           duplicate template/function instantiations group together
+#           (llvm-cov emits one record per instantiation; naive aggregation
+#           reports phantom misses from zero-count clones of functions other
+#           clones demonstrably ran). Reports EXACT uncovered lines when below
+#           floor. Its ancestor ~/Projects/monitor/tools/coverage_check.sh was
+#           a single aggregated export + --fail-under-lines: the phantom misses
+#           were that AGGREGATION's, which the merger fixes. app_updates also
+#           exported one part per test target; since 2026-10-06 one run of
+#           every target is exported once (identical merged report on all 29
+#           media_server crates, 226 -> 173 s; _coverage_rust.sh).
 #   swift ← necrohand tools/check_coverage.sh + ZeroThunder tools/run_coverage.sh:
 #           swift test --enable-code-coverage → xcrun llvm-cov export
 #           -summary-only over the .xctest binary's merged profdata, JSON

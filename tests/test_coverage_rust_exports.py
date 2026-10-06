@@ -4,9 +4,9 @@ parsing, driven END TO END through the real bash gate against a STUBBED cargo
 hand-written, no Rust toolchain required.
 
 Contracts pinned here:
-  - every target declared by cargo metadata must yield an export part; a
-    shortfall hard-fails naming the expected-but-missing targets
-  - the ONLY warn-only export outcome is a valid-but-empty part, stated
+  - the ONE run of every declared target must exit 0 (its .ok marker); a failed
+    run hard-fails naming every target it lost, a file left behind or not
+  - a valid-but-empty run is named, and the merger refuses a report over zero lines
   - FN records parse in BOTH live formats: two-field (start,name — today's
     cargo-llvm-cov) and three-field (start,end,name — geninfo)
   - a three-field fn's forgiveness span is bounded by its declared end;
@@ -45,18 +45,17 @@ for a in "$@"; do
 done
 [ -n "$out" ] || exit 2
 parts="${CARGO_STUB_PARTS:?}"
-if [ -n "$tname" ]; then src="$parts/$tname.info"; else src="$parts/lib.info"; fi
-if [ -n "${CARGO_STUB_DROP:-}" ] && { [ "$tname" = "${CARGO_STUB_DROP:-}" ] || \
-     [ -z "$tname" -a "${CARGO_STUB_DROP:-}" = "lib" ]; }; then
-  exit 1   # export fails WITHOUT producing an output file
+# ONE run of every target (`--workspace --lib --tests`): its export is every canned part, in order.
+src="$(mktemp)"; cat "$parts"/*.info > "$src" 2>/dev/null
+if [ -n "${CARGO_STUB_DROP:-}" ]; then
+  exit 1   # the run fails WITHOUT producing an output file
 fi
-if [ -n "${CARGO_STUB_FAIL_LEAVE:-}" ] && { [ "$tname" = "${CARGO_STUB_FAIL_LEAVE:-}" ] || \
-     [ -z "$tname" -a "${CARGO_STUB_FAIL_LEAVE:-}" = "lib" ]; }; then
-  # The LAUNDERING shape: the export FAILS but leaves its output file behind.
-  if [ -f "$src" ]; then cp "$src" "$out"; else : > "$out"; fi
+if [ -n "${CARGO_STUB_FAIL_LEAVE:-}" ]; then
+  # The LAUNDERING shape: the run FAILS but leaves its output file behind.
+  if [ -n "${CARGO_STUB_LEAVE_TEXT:-}" ]; then printf '%s' "$CARGO_STUB_LEAVE_TEXT" > "$out"; else cp "$src" "$out"; fi
   exit 1
 fi
-if [ -f "$src" ]; then cp "$src" "$out"; else : > "$out"; fi
+cp "$src" "$out"
 exit 0
 """
 
@@ -126,10 +125,12 @@ def run_rust_gate(
         env["CARGO_STUB_DROP"] = drop
     else:
         env.pop("CARGO_STUB_DROP", None)
-    if fail_leave:
-        env["CARGO_STUB_FAIL_LEAVE"] = fail_leave
+    if fail_leave is not None:
+        env["CARGO_STUB_FAIL_LEAVE"] = "1"
+        env["CARGO_STUB_LEAVE_TEXT"] = fail_leave
     else:
         env.pop("CARGO_STUB_FAIL_LEAVE", None)
+        env.pop("CARGO_STUB_LEAVE_TEXT", None)
     return subprocess.run(
         ["/bin/bash", str(COV_GATE), "--lang", "rust", "--floor", floor, str(proj)],
         cwd=proj,
@@ -157,7 +158,8 @@ FULL_COVER = [(n, 1) for n in range(1, 5)] + [(n, 1) for n in range(6, 13)]
 # ── B: export completeness ──────────────────────────────────────────────────
 
 
-def test_export_shortfall_hard_fails_naming_the_missing_target(tmp_path):
+def test_a_failed_run_hard_fails_naming_every_target_it_lost(tmp_path):
+    """One run measures every target, so a run that fails loses all of them -- and names them."""
     parts = {"lib.info": build_part(1, "_Za", 5, FULL_COVER)}
     proj = setup_fixture(tmp_path, parts)
     r = run_rust_gate(
@@ -166,20 +168,18 @@ def test_export_shortfall_hard_fails_naming_the_missing_target(tmp_path):
     assert r.returncode == 1, r.stdout + r.stderr
     combined = r.stdout + r.stderr
     assert "expected but missing" in combined
-    assert "test all" in combined, "the missing TARGET must be named"
+    assert "covfix (test all)" in combined and "covfix (lib)" in combined, combined
 
 
-def test_valid_but_empty_part_stays_warn_only_with_reason(tmp_path):
-    parts = {
-        "lib.info": "",  # export succeeded, nothing coverable in it
-        "all.info": build_part(1, "_Za", 5, FULL_COVER),
-    }
+def test_a_valid_but_empty_run_is_named_and_measures_nothing(tmp_path):
+    """The run succeeded and found nothing coverable: named, and never read as a pass -- the
+    merger refuses a report over zero lines."""
+    parts = {"lib.info": "", "all.info": ""}
     proj = setup_fixture(tmp_path, parts)
     r = run_rust_gate(proj, tmp_path / "bin", tmp_path / "meta.json", tmp_path / "canned-parts")
-    assert r.returncode == 0, r.stdout + r.stderr
     combined = r.stdout + r.stderr
-    assert "EMPTY" in combined
-    assert "lib unittests" in combined, "the empty part must be named"
+    assert "EMPTY" in combined, combined
+    assert r.returncode != 0 and "no coverable lines" in combined, combined
 
 
 # ── B2: the LAUNDERING hole — a failing export that leaves its file behind ──
@@ -192,29 +192,30 @@ def test_failed_export_leaving_EMPTY_part_hard_fails(tmp_path):
     parts = {"lib.info": "", "all.info": build_part(1, "_Za", 5, FULL_COVER)}
     proj = setup_fixture(tmp_path, parts)
     r = run_rust_gate(
-        proj, tmp_path / "bin", tmp_path / "meta.json", tmp_path / "canned-parts", fail_leave="lib"
+        proj, tmp_path / "bin", tmp_path / "meta.json", tmp_path / "canned-parts", fail_leave=""
     )
     assert r.returncode == 1, r.stdout + r.stderr
     combined = r.stdout + r.stderr
     assert "expected but missing" in combined
-    assert "lib unittests" in combined, "the failed export must be NAMED"
+    assert "covfix (lib)" in combined, "the failed export must be NAMED"
 
 
 def test_failed_export_leaving_GARBAGE_part_hard_fails(tmp_path):
     # A partial/garbage export left behind by a FAILED run: without the
     # exit-0 marker this must never count as measured coverage.
-    parts = {
-        "lib.info": "SF:src/lib.rs\nDA:1,1\nDA:2,1\ngarbage-truncated-rec",
-        "all.info": build_part(1, "_Za", 5, FULL_COVER),
-    }
+    parts = {"lib.info": build_part(1, "_Za", 5, FULL_COVER)}
     proj = setup_fixture(tmp_path, parts)
     r = run_rust_gate(
-        proj, tmp_path / "bin", tmp_path / "meta.json", tmp_path / "canned-parts", fail_leave="lib"
+        proj,
+        tmp_path / "bin",
+        tmp_path / "meta.json",
+        tmp_path / "canned-parts",
+        fail_leave="SF:src/lib.rs\nDA:1,1\nDA:2,1\ngarbage-truncated-rec",
     )
     assert r.returncode == 1, r.stdout + r.stderr
     combined = r.stdout + r.stderr
     assert "expected but missing" in combined
-    assert "lib unittests" in combined
+    assert "covfix (lib)" in combined
 
 
 def test_every_declared_target_exported_is_green(tmp_path):

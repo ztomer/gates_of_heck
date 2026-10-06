@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
-"""lcov merger for coverage_gate.sh's rust mode — ONE export PER TEST TARGET,
-unioned here with CGU-hash normalization.
+"""lcov merger for coverage_gate.sh's rust mode — every lcov part (one instrumented run of
+all targets, plus the --external part) unioned here with CGU-hash normalization.
 
 Extracted verbatim from coverage_gate.sh (which sat at the 500-line cap) so
 the merge is unit-testable directly. Hardened while moving, four proven

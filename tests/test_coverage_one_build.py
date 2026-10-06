@@ -15,10 +15,10 @@ from test_coverage_gate import COV_GATE
 # ── one build, N profiles (BACKLOG P1d) ──────────────────────────────────────
 #
 # Every per-target export used to clean and RECOMPILE the workspace (16 targets x ~2 s on
-# media_server's mediaops-rs). The build is now cleaned once and each export passes
-# `--no-clean`; what must not carry between targets is the PROFILE. The fake below models the
-# real leak measured on mediaops-rs: profile data accumulates across exports until
-# `clean --profraw-only` runs, and each part reports every target whose run it accumulated.
+# media_server's mediaops-rs); then each target was its own `--no-clean` export with the profile
+# reset between them. Now ONE run measures every declared target (A/B on all 29 media_server
+# crates: identical merged reports, 226 -> 173 s). The fake models the profile leak that made the
+# per-target resets necessary; with one run there is nothing to carry.
 
 LEAKY_CARGO = """\
 #!/bin/bash
@@ -62,7 +62,7 @@ exit 0
 """
 
 
-def test_each_part_measures_only_its_own_target_and_the_build_happens_once(tmp_path):
+def test_one_instrumented_run_of_exactly_the_declared_targets_and_one_build(tmp_path):
     bin_ = tmp_path / "fakebin"
     bin_.mkdir()
     shim = bin_ / "cargo"
@@ -85,14 +85,19 @@ def test_each_part_measures_only_its_own_target_and_the_build_happens_once(tmp_p
         timeout=60,
     )
     assert r.returncode == 0, r.stdout + r.stderr
-    parts = proj / "target" / "llvm-cov" / "lcov-parts"
-    for name, me in (
-        ("part-lk-lib.info", "lib"),
-        ("part-lk-test-a.info", "a"),
-        ("part-lk-test-b.info", "b"),
-    ):
-        ran = [ln[6:] for ln in (parts / name).read_text().splitlines() if ln.startswith("# ran")]
-        assert ran == [me], (name, ran)
+    runs = [
+        c.split()
+        for c in (tmp_path / "state.calls").read_text().splitlines()
+        if c.startswith("llvm-cov") and "--output-path" in c
+    ]
+    assert len(runs) == 1, runs  # ONE instrumented run, not one per target
+    run = runs[0]
+    # exactly the declared kinds: a lib and tests here, no bin; never examples or benches
+    assert "--lib" in run and "--tests" in run and "--bins" not in run, run
+    assert not {"--all-targets", "--examples", "--benches"} & set(run), run
+    part = proj / "target" / "llvm-cov" / "lcov-parts" / "part-workspace.info"
+    ran = [ln[6:] for ln in part.read_text().splitlines() if ln.startswith("# ran")]
+    assert ran == ["lib"], ran  # the fake's one profile: a single run, nothing carried in
     assert (tmp_path / "state.builds").read_text().count("build") == 1
 
 

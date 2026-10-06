@@ -275,7 +275,7 @@ def test_failed_export_shows_its_own_output(tmp_path):
     r = _run_with_fake_cargo(tmp_path, str(proj), "--lang", "rust", "--floor", "50")
     assert r.returncode == 1
     assert "the-real-reason" in r.stderr, r.stderr
-    log = proj / "target" / "llvm-cov" / "lcov-parts" / "part-covfix-lib.info.log"
+    log = proj / "target" / "llvm-cov" / "lcov-parts" / "part-workspace.info.log"
     assert log.exists() and "the-real-reason" in log.read_text()
 
 
@@ -286,9 +286,9 @@ def test_ok_marker_absent_even_though_part_file_exists(tmp_path):
     proj.mkdir()
     _run_with_fake_cargo(tmp_path, str(proj), "--lang", "rust", "--floor", "50")
     parts = proj / "target" / "llvm-cov" / "lcov-parts"
-    part = parts / "part-covfix-lib.info"
+    part = parts / "part-workspace.info"
     assert part.exists()  # the export DID leave a file behind...
-    assert not (parts / "part-covfix-lib.info.ok").exists()  # ...never marked ok
+    assert not (parts / "part-workspace.info.ok").exists()  # ...never marked ok
 
 
 # ── swift mode: engine flag + cov:ignore region forgiveness ──────────────────
