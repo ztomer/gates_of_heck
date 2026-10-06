@@ -1,5 +1,53 @@
 # CHANGELOG
 
+## Unreleased — what one session costs the next
+
+### 1. Measured: cross-session serialization
+
+* **`tools/session_bench.py`** runs one workload in N isolated clones at once (N = 1, 2, 4, 8) and
+  reports makespan, speedup, the Universal Scalability Law fit (sigma: serialized fraction; kappa:
+  interference), every lock wait by name, and the steps that inflated most. First finding:
+  `structural --full` sigma 0.51 with NO lock waited on, while spawn- and CPU-bound controls scale
+  6-7x -- one run is 4.3 s user + 9.0 s sys. Sys-heavy work (spawns, filesystem metadata, a `ps` of
+  the machine) is what fails to scale; the cuts below are that class.
+
+### 2. Fewer spawns, every gate
+
+* **The step wrapper (`lib/bounded_run.py`) costs half** -- 59.6 -> 26.4 ms a step, every step of
+  every gate: no `ps -Ao` of every process when the step's group is empty (`killpg(pgid, 0)`), no
+  `dataclasses`/`argparse`/`threading` on the common path, run under `python3 -S`.
+* **One fact, one git spawn.** `goh` asks for the top level once per process (a staged structural
+  run: 16 -> 9 git calls, ratcheted); the credential-URL step reads both key sets in one `git
+  config`; git's repository-binding variables are asked once per process tree
+  (`GOH_GIT_LOCAL_VARS`, trusted only when it names `GIT_DIR`) -- ~1300 spawns per suite run.
+
+### 3. Rust coverage: one instrumented run, exported once
+
+* The rust mode exported one lcov part PER TEST TARGET. Calibrated on all 29 media_server crates,
+  one run of exactly the same targets gives the IDENTICAL merged report (same percentage, same
+  line counts, every crate) in 173 s against 226 s. Every guard holds over the one run: the .ok
+  marker, a failed run naming every target it lost, an empty run refused.
+
+### 4. The rust proven cache learns a build's reads
+
+* A crate whose build read a file outside its static scope was never recorded, so it ran on every
+  push (media_server's vpn-watchdog-rs reads `compose/`). The compiler's dep-info names those
+  files: an in-repo one is now learned and keyed from the next run on (the learning run records
+  nothing; a learned file's edit re-gates). A read outside the repository is never learned.
+
+### 5. The skills corpus at the moment it is written (C2, writer half)
+
+* `hooks/claude/skill_edit.sh`, a Claude Code PostToolUse hook wired in `~/.claude/settings.json`:
+  an edit inside the corpus runs `goh skills` (183 ms) and a finding goes back to the writer.
+
+### 6. This repo's suite
+
+* `-n 12` (faster than 8 once the spawns were cut), the `repo` fixture copied from a per-worker
+  template (25.7 -> 3.0 s), the display-seam probe without git under every case (44 -> 4.5 s), and
+  a session guard that fails the run when any test moves the checkout (`tests/_tree_guard.py`;
+  one did: the release-hardening test rewrote the real `release.sh`). 94.4 s (v0.20) -> 65.8 s
+  under load.
+
 ## v0.23.0 — the Python checkers are retired; the binary is the only tier _(2026-10-06)_
 
 ### 1. One structural tier: `bin/goh` (Phase N)
