@@ -147,7 +147,7 @@ behind the same tests the shell passes today, red-proven, one at a time:
 
 **Phase 5 — known limits worth closing**
 - [x] 5.1 The C2 writer hook also judges a skill edited through Bash (a PostToolUse `Bash` matcher
-      that fires when the command names the corpus root). Done (`COMMIT`): the matcher is
+      that fires when the command names the corpus root). Done (`4919960`): the matcher is
       `Write|Edit|MultiEdit|Bash`, and a builtin-only fast path exits before Python on an event
       that does not name the corpus's directory -- 7 ms on an unrelated Bash command.
 
