@@ -119,6 +119,18 @@ Status: `[ ]` open, `[x]` done (with the commit), `[~]` handed off.
 - [ ] 5.1 The C2 writer hook also judges a skill edited through Bash (a PostToolUse `Bash` matcher
       that fires when the command names the corpus root).
 
+**Phase 5B — the suite cannot drift back** (owner, 2026-10-06: after every optimisation above)
+- [ ] 5B.1 Design and land the mechanism that keeps a NEW test from undoing this work, the way
+      `tests/test_goh_git_spawns.py` already ratchets one count. The drifts seen this campaign, each a
+      candidate rule: a test that rebuilds `goh` behind the session's back (no `GOH_BIN`); a test
+      that runs a whole gate to check one step; a fixture that spawns `git init`/`config` instead
+      of the template; a test that moves the checkout (`_tree_guard.py` catches it); an inner pool
+      sized to `os.cpu_count()`. Candidate mechanisms, to be chosen by measurement: a per-test
+      budget file (summed seconds and spawn counts per test FILE, recorded by a session plugin,
+      a new file or a regression over budget fails the suite unless the budget is raised in the
+      same commit, with a reason); shim-counted spawn ratchets per gate; a cargo shim that fails a
+      test that builds `goh` outside the session fixture. Exit: a planted slow test goes red.
+
 **Phase 6 — the measurements, on a quiet box (load < 4)** (details: "Open -- measurements")
 - [ ] 6.1 This repo's suite <= 60 s.
 - [ ] 6.2 Cross-session sigma for `structural --full` <= 0.15 (`tools/session_bench.py`).
