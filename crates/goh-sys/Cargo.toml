@@ -1,0 +1,24 @@
+[package]
+name = "goh-sys"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "The one place gates_of_heck calls into libc: what safe std cannot do"
+publish = false
+
+# NOT `[lints] workspace = true`: the workspace denies `unsafe_code`, and this crate is the FFI
+# boundary it exists for. Every other lint is the workspace's; tests/test_unsafe_scope.py fails if
+# `unsafe` appears in any file of the workspace but src/lib.rs here.
+[lints.clippy]
+all = { level = "warn", priority = -1 }
+pedantic = { level = "warn", priority = -1 }
+nursery = { level = "warn", priority = -1 }
+unwrap_used = "warn"
+expect_used = "warn"
+panic = "warn"
+exit = "warn"
+undocumented_unsafe_blocks = "warn"
+
+[dependencies]
+libc = "0.2.190"

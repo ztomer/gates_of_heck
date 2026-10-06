@@ -71,7 +71,7 @@ LEAK_EXIT = 125
 # Also what a leaked cargo-built binary looks like: `…/crates/x-rs/target/debug/archive_torznab`.
 # A process started by something else on the machine is NOT reported at all: on a shared box that is
 # every build on the host, and a canary that cries wolf is one nobody leaves switched on.
-MACHINERY = ("orphan_canary.py", "bounded_run.py")
+MACHINERY = ("orphan_canary.py", "bounded_run.py", "/goh step ")  # the native wrapper too (4C.1)
 
 
 class Verdict:

@@ -48,6 +48,7 @@ pub mod shell_lint;
 pub mod skills;
 pub mod skills_audit;
 pub mod step_report;
+pub mod stepcmd;
 pub mod steps;
 pub mod steps_delegated;
 pub mod structural;
@@ -102,6 +103,12 @@ fn run_core(command: Commands) -> i32 {
             0
         }
         Commands::Structural { staged, full } => structural::run(staged, full),
+        Commands::Step {
+            timeout,
+            grace,
+            label,
+            command,
+        } => stepcmd::run(&timeout, grace, &label, &command),
         Commands::Markers { staged } => commands::run_markers(staged),
         Commands::Length {
             max,

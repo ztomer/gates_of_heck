@@ -189,7 +189,11 @@ goh_step() {
     # (`failing step's output was withheld`), which is the contract this line exists to keep.
     if [ "$_goh_limit" -gt 0 ]; then
         step "$label (≤${_goh_limit}s)"
-        if python3 -S "$GOH_ROOT/lib/bounded_run.py" --timeout "$_goh_limit" \
+        # The native wrapper (`goh step`, one exec) when this gate already resolved the binary --
+        # its CLI contract is the Python's (tests/test_step_wrapper_cli.py) -- else the Python.
+        local _goh_wrap=(python3 -S "$GOH_ROOT/lib/bounded_run.py")
+        [ -x "${GOH_RESOLVED_BIN:-}" ] && _goh_wrap=("$GOH_RESOLVED_BIN" step)
+        if "${_goh_wrap[@]}" --timeout "$_goh_limit" \
                 --grace "${GOH_STEP_GRACE:-5}" --label "$label" -- "$@" >"$GOH_LOG" 2>&1; then
             _goh_rc=0
         else

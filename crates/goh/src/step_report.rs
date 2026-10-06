@@ -249,10 +249,21 @@ pub(crate) fn run_child(
             ),
         );
     }
-    let mut cmd = Command::new("python3");
-    // `-S`: the runner is stdlib-only, and `site` (sitecustomize, every editable install's finder)
-    // was ~5 ms of a ~30 ms step wrapper, on every delegated step (2026-10-06).
-    cmd.arg("-S").arg(&runner);
+    // The ceiling is this binary's own `goh step` (stepcmd.rs, the native port of the runner
+    // below, same CLI contract), one exec instead of a Python start-up per delegated step; the
+    // Python runner is the fallback when this binary cannot name itself.
+    let mut cmd = std::env::current_exe().map_or_else(
+        |_| {
+            let mut c = Command::new("python3");
+            c.arg("-S").arg(&runner);
+            c
+        },
+        |me| {
+            let mut c = Command::new(me);
+            c.arg("step");
+            c
+        },
+    );
     // `ceiling()` is `None` only for an explicit opt-out, and bounded_run's own default would
     // then apply anyway -- so pass the DEFAULT rather than the opt-out, and let the step line be
     // the only place the opt-out is visible. Two places deciding one bound is how they disagree.

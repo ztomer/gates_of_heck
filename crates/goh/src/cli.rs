@@ -48,6 +48,22 @@ pub enum Commands {
         #[arg(long)]
         check_depinfo: Option<PathBuf>,
     },
+    /// Run a command under a ceiling, its process group swept on expiry or on a signal (the
+    /// native `lib/bounded_run.py`).
+    Step {
+        /// The ceiling, in seconds (a positive integer).
+        #[arg(long, default_value = "900", allow_hyphen_values = true)]
+        timeout: String,
+        /// Seconds between TERM and KILL when the group is swept.
+        #[arg(long, default_value_t = 5)]
+        grace: u64,
+        /// What to call the step in messages and timings (default: the command).
+        #[arg(long, default_value = "")]
+        label: String,
+        /// The command, after `--`.
+        #[arg(last = true)]
+        command: Vec<String>,
+    },
     /// Run the structural gate (every repo, any language).
     Structural {
         /// Staged files only (pre-commit scope, fast).

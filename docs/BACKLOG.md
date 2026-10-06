@@ -103,9 +103,11 @@ Status: `[ ]` open, `[x]` done (with the commit), `[~]` handed off.
       diff. Template copying itself is 1 ms of the 18 ms (`GIT_TEMPLATE_DIR` empty: 16.9 ms).
 - [x] 4.2 The `release` xdist group deleted (its reason is gone since `31bbb81`); three suite
       runs green after it, 62-65 s (`2642cbe`).
-- [ ] 4.3 Fewer processes per test in the heaviest files (`test_gate_environment.py`,
+- [x] 4.3 Fewer processes per test in the heaviest files (`test_gate_environment.py`,
       `test_hook_git_env.py`, `test_rust_gate_scoped_cache.py`, `test_proven.py`) without
-      weakening what each proves.
+      weakening what each proves. Done: the gate-environment push rebuilt goh behind the session
+      (10.2 -> 1.7 s, `922f21e`); a cargo shim over a whole run found no other. What is left in
+      the heavy files is gate START-UP cost per run -- phase 4C's subject.
 
 - [x] 4.4 (owner's question, 2026-10-06) a RAM disk for the suite's temp files: MEASURED, 4
       interleaved pairs, `TMPDIR` on a 2 GB APFS RAM disk vs the SSD: 59/65/59/60 s vs 71/64/64/67 s,
@@ -123,10 +125,12 @@ Baselines (2026-10-06, after phases 2-3): a one-step `local_ci.sh` run 526 ms an
 (the proven key twice, the gates identity per key); the step wrapper 26 ms a step; a `goh.sh`
 child 34 ms; `structural.sh --staged` 0.22 s (media_server). Ports in order of yield, each
 behind the same tests the shell passes today, red-proven, one at a time:
-- [ ] 4C.1 `goh step`: the ceiling wrapper native (process group, TERM->grace->KILL sweep, the
+- [x] 4C.1 `goh step`: the ceiling wrapper native (process group, TERM->grace->KILL sweep, the
       leak sample, GOH_TIMINGS). Its one blocker -- a signal ignored at entry must stay ignored --
       needs the inherited disposition (`sigaction`); `unsafe` is denied in the crate, so either a
       vetted crate exposing it safely, or one exemption the unsafe allowlist names, with a test.
+      Done (`COMMIT`): `crates/goh-sys` (the one allowlisted `unsafe`) + `signal-hook`; the CLI
+      contract pinned against BOTH wrappers (15 cases each); 26-79 ms -> 4.3 ms a step.
 - [ ] 4C.2 The proven cache native (`goh proven key|lookup|record`): the tree key, the scoped
       key and the identity computed in-process with git asked once per fact.
 - [ ] 4C.3 `local_ci.sh`'s step runner native: parallel steps under the canary, logs, proven
