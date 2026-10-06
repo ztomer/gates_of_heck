@@ -386,6 +386,7 @@ def _build(root, files, policy, template):
     merged.update(policy)
     with open(os.path.join(root, "policy.json"), "w", encoding="utf-8") as handle:
         json.dump(merged, handle)
+    written = [*files, "policy.json"]
     # A COPY of one freshly initialised `.git`, and nothing else. The probe drives FULL mode, which
     # lists the worktree (`ls-files --cached --others`), so an index is not what is under test, and
     # no case commits, so no identity is read. Measured 2026-10-05: the git spawns were the whole
@@ -394,19 +395,11 @@ def _build(root, files, policy, template):
     # directory per case is unchanged; only the empty repository it starts from is shared.
     if template is not None:
         shutil.copytree(template, os.path.join(root, ".git"))
-
-
-def _listing(root, staged=False):
-    """Every file a case wrote, as `ls-files --cached --others` lists a fixture with no ignores."""
-    out = []
-    for dirpath, dirnames, filenames in os.walk(root):
-        dirnames[:] = [d for d in dirnames if d != ".git"]
-        out.extend(os.path.relpath(os.path.join(dirpath, f), root) for f in filenames)
-    return sorted(out)
+    return written
 
 
 @contextlib.contextmanager
-def _listed_directly():
+def _listed_directly(files):
     """The gate's rules, without git under every case. Each case cost two git spawns (`rev-parse`,
     `ls-files`) and a `.git` copy -- 31 cases, and the rule-drop calibration runs the whole probe 24
     more times: 44 s of the suite, nearly all of it sys time, the class that serializes across
@@ -415,7 +408,9 @@ def _listed_directly():
     listing that lost the files."""
     saved = check_display_seam.repo_root, check_display_seam.listed_files
     check_display_seam.repo_root = lambda: None  # main() falls back to the working directory
-    check_display_seam.listed_files = _listing
+    # What `ls-files --cached --others` lists for a fixture with no ignores: every file the case
+    # wrote (`_build` returns them), so no walk of the disk stands in for git either.
+    check_display_seam.listed_files = lambda root, staged=False: sorted(files)
     try:
         yield
     finally:
@@ -460,8 +455,8 @@ def probe():
             # which is a fixture that cannot disagree with anything -- the exact shape R3 names.
             root = os.path.join(td, f"case{n:02d}")
             through_git = n == 0  # the one case that proves the real listing (_listed_directly)
-            _build(root, files, policy, template if through_git else None)
-            with contextlib.nullcontext() if through_git else _listed_directly():
+            written = _build(root, files, policy, template if through_git else None)
+            with contextlib.nullcontext() if through_git else _listed_directly(written):
                 code = _drive(root, ["--policy", "policy.json"])
             if code == want:
                 ok(f"probe: {label}")
@@ -473,8 +468,8 @@ def probe():
             # TWO clean files, so that with a config rule dropped the run still has something to
             # examine. One file, when that file is the excluded one, made the zero-scan refusal
             # produce the same exit 2 the case was asserting -- two rules, one verdict.
-            _build(root, {"Core/quiet.swift": QUIET, "UI/win.swift": QUIET}, policy, None)
-            with _listed_directly():
+            written = _build(root, {"Core/quiet.swift": QUIET, "UI/win.swift": QUIET}, policy, None)
+            with _listed_directly(written):
                 refused = _drive(root, ["--policy", "policy.json"]) == 2
             if refused:
                 ok(f"probe: {label}")

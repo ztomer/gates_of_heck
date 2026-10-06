@@ -32,4 +32,5 @@ fi
     printf '%s\n' "$out"
 } >&2
 exit 2
+exit
 } # parse-guard
