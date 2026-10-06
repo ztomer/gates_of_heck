@@ -87,6 +87,7 @@ import os
 import re
 import sys
 import tokenize
+import warnings
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from _md_text import strip_fences
@@ -288,7 +289,12 @@ def _python_prose(text: str) -> str:
     """
     docstrings: set[int] = set()
     try:
-        tree = ast.parse(text)
+        # A scanned file's own invalid escapes are not this gate's report: unsuppressed, ast.parse
+        # printed `SyntaxWarning: "\(" is an invalid escape sequence` into the gate's output for
+        # someone else's regex (divoom-control, found porting this, Phase N1).
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            tree = ast.parse(text)
     except (SyntaxError, ValueError):
         return text
     for node in ast.walk(tree):

@@ -11,8 +11,6 @@
 //! Exemptions are a ratchet in `kill_by_name_allow.json`: one file, one exact
 //! line (whitespace-insensitive), a reason; a stale entry fails.
 
-pub mod pylex;
-
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Write as _;
 use std::path::Path;
@@ -146,12 +144,34 @@ impl Rules {
     fn code_lines(&self, rel: &str, text: &str) -> BTreeMap<usize, String> {
         let ext = ext_of(rel);
         if ext == "py" {
-            if let Some(lines) = pylex::python_code_lines(text) {
+            if let Some(lines) = python_code_lines(text) {
                 return lines;
             }
         }
         self.plain_code_lines(text, ext)
     }
+}
+
+/// `{lineno: code}` with comments cut at their column and every statement
+/// that is only a `str` literal dropped -- `ast.walk` + `tokenize`'s view. A
+/// file the tokenizer refuses is `None`, and the plain rules read it.
+fn python_code_lines(text: &str) -> Option<BTreeMap<usize, String>> {
+    let lexed = crate::pylex::lex(text)?;
+    let mut lines: Vec<String> = text.split('\n').map(str::to_owned).collect();
+    for (row, col) in &lexed.comments {
+        if let Some(line) = lines.get_mut(row - 1) {
+            *line = line.chars().take(*col).collect();
+        }
+    }
+    let prose = lexed.bare_strings();
+    Some(
+        lines
+            .into_iter()
+            .enumerate()
+            .map(|(i, l)| (i + 1, l))
+            .filter(|(n, _)| !prose.iter().any(|&(a, b)| a <= *n && *n <= b))
+            .collect(),
+    )
 }
 
 fn basename(rel: &str) -> &str {

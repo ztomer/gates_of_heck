@@ -38,6 +38,7 @@ case "$check" in
     unreaped-spawn) python_file="checks/check_no_unreaped_spawn.py" ;;
     version-provenance) python_file="checks/check_version_provenance.py" ;;
     kill-by-name) python_file="checks/check_no_kill_by_name.py" ;;
+    claim-derivation) python_file="checks/check_claim_derivation.py" ;;
     *) echo "✗ goh.sh: unknown check '$check'" >&2; exit 2 ;;
 esac
 
@@ -46,6 +47,7 @@ case "$check" in
     lints) native_lacks="--staged --self-test" ;;
     unreaped-spawn) native_lacks="--probe --fresh-derivations" ;;
     version-provenance) native_lacks="--probe" ;;
+    claim-derivation) native_lacks="--probe" ;;
     *)     native_lacks="" ;;
 esac
 # `deps` has NO native port: it reads the crates.io index over the network and

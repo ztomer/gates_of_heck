@@ -10,6 +10,7 @@
 
 pub mod blobs;
 pub mod ceiling;
+pub mod claims;
 pub mod commands;
 pub mod emoji;
 pub mod gatesrc;
@@ -20,10 +21,13 @@ pub mod killname;
 pub mod length;
 pub mod lints;
 pub mod markers;
+pub mod mdtext;
 pub mod noallow;
 pub mod platform;
 pub mod prefetch;
 pub mod provenance;
+pub mod pyjson;
+pub mod pylex;
 pub mod ratchet;
 pub mod rust_depinfo;
 pub mod rust_scope;
@@ -178,6 +182,21 @@ enum Commands {
         #[arg(long)]
         json: bool,
     },
+    /// Re-derive every marked number in prose (native port of `check_claim_derivation`).
+    ClaimDerivation {
+        /// Repository to read (default: the cwd's repo).
+        #[arg(long)]
+        root: Option<String>,
+        /// Judge the index, not the working tree.
+        #[arg(long)]
+        staged: bool,
+        /// Regex on repo-relative paths to exempt.
+        #[arg(long)]
+        exclude: Option<String>,
+        /// Machine-readable output.
+        #[arg(long)]
+        json: bool,
+    },
     /// Fail on a process kill by NAME (native port of `check_no_kill_by_name`).
     KillByName {
         /// Regex on repo-relative paths to skip (`GOH_EXCLUDE`).
@@ -297,6 +316,12 @@ fn main() {
             staged,
             json,
         } => provenance::run_command(&root, baseline.as_deref(), staged, json),
+        Commands::ClaimDerivation {
+            root,
+            staged,
+            exclude,
+            json,
+        } => claims::run_command(root.as_deref(), staged, exclude.as_deref(), json),
         Commands::KillByName {
             exclude,
             staged,
@@ -379,7 +404,6 @@ fn run_structural(staged: bool, full: bool) -> i32 {
         let _ = steps_delegated::step_md_links(&repo, &checks, &cfg, staged);
         let _ = steps_delegated::step_lock_version(&repo, &checks);
         let _ = steps_delegated::step_python_formatted(&repo, &cfg, &checks, staged);
-        let _ = steps_delegated::step_claim_derivation(&repo, &cfg, &checks, staged);
         let _ = steps_delegated::step_full_only(&repo, &checks, staged);
     });
     prefetch::start(specs, &checks, &repo);
@@ -433,7 +457,7 @@ fn run_structural(staged: bool, full: bool) -> i32 {
     if let Some(code) = unreaped::step(&cfg, staged) {
         return code;
     }
-    if let Some(code) = steps_delegated::step_claim_derivation(&repo, &cfg, &checks, staged) {
+    if let Some(code) = claims::step_gate(&cfg, staged) {
         return code;
     }
     if let Some(code) = steps_delegated::step_full_only(&repo, &checks, staged) {

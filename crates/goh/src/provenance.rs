@@ -330,31 +330,6 @@ pub fn check(
     Ok((problems, declaring.len()))
 }
 
-/// Python's `json.dumps(s)`: ASCII-only, `\uXXXX` for the rest.
-fn json_str(s: &str) -> String {
-    let mut out = String::from("\"");
-    for c in s.chars() {
-        match c {
-            '"' => out.push_str("\\\""),
-            '\\' => out.push_str("\\\\"),
-            '\n' => out.push_str("\\n"),
-            '\r' => out.push_str("\\r"),
-            '\t' => out.push_str("\\t"),
-            '\u{8}' => out.push_str("\\b"),
-            '\u{c}' => out.push_str("\\f"),
-            c if c.is_ascii() && c >= ' ' => out.push(c),
-            c => {
-                let mut buf = [0u16; 2];
-                for unit in c.encode_utf16(&mut buf) {
-                    let _ = write!(out, "\\u{unit:04x}");
-                }
-            }
-        }
-    }
-    out.push('"');
-    out
-}
-
 /// Read a baseline: a JSON array of paths (an object's keys, as `set()` reads them).
 ///
 /// # Errors
@@ -377,20 +352,8 @@ pub fn read_baseline(path: &Path) -> Result<BTreeSet<String>, String> {
 pub fn report(problems: &[String], examined: usize, json: bool) -> (i32, String) {
     let code = i32::from(!problems.is_empty());
     if json {
-        // `json.dumps({...}, indent=2)`, key order and escaping included.
-        let findings = if problems.is_empty() {
-            "[]".to_owned()
-        } else {
-            let rows: Vec<String> = problems
-                .iter()
-                .map(|p| format!("    {}", json_str(p)))
-                .collect();
-            format!("[\n{}\n  ]", rows.join(",\n"))
-        };
-        return (
-            code,
-            format!("{{\n  \"findings\": {findings},\n  \"examined\": {examined}\n}}\n"),
-        );
+        let doc = serde_json::json!({ "findings": problems, "examined": examined });
+        return (code, format!("{}\n", crate::pyjson::dumps_indent2(&doc)));
     }
     let mut s = String::new();
     for p in problems {

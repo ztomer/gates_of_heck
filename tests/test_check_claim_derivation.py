@@ -201,6 +201,17 @@ def test_a_comprehension_is_not_a_declared_list(repo) -> None:
     assert "declares no module-level string list named 'steps'" in found[0][3], found[0][3]
 
 
+def test_a_list_holding_a_non_literal_is_not_a_declared_list_and_does_not_crash(repo) -> None:
+    """`X = [name, "b"]` beside the list the claim names. `_declared_lists` read `.value` off every
+    element, so a `Name` element raised AttributeError and the whole gate died with a traceback --
+    over a file whose only fault was holding an ordinary list (found porting it, Phase N1)."""
+    write(repo, "pkg/mixed.py", 'name = "a"\nX = [name, "b"]\nD = {**{}, "k": 1}\nY = ["c"]\n')
+    stage(repo, "pkg/mixed.py")
+    assert not findings(repo, "claim: 1 gates in pkg/mixed.py:Y").findings
+    found = findings(repo, "claim: 2 gates in pkg/mixed.py:X").findings
+    assert len(found) == 1 and "named 'X'" in found[0][3], found
+
+
 # ── the printed command is EXECUTED, not trusted ─────────────────────────────
 
 

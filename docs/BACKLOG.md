@@ -250,7 +250,13 @@ order, never the reverse:
   lexer replaces `ast`+`tokenize` for the comment/docstring strip; code lines identical on 1,767
   `.py` files across 30 repos, reports identical at both scopes. Its one possible divergence is a
   file that TOKENIZES but does not PARSE (the reference falls back to plain lines; the port cannot
-  see a parse error) -- none in the estate. Next: `check_claim_derivation`, `check_md_links`, `check_python_formatted` (spawns ruff either way),
+  see a parse error) -- none in the estate. **`check_claim_derivation` LANDED** as
+  `goh claim-derivation` (`crates/goh/src/claims/`, on the shared `crates/goh/src/pylex/`,
+  which kill-by-name now uses too): byte-identical on every local repo and 61 fixture cases. Two
+  reference bugs fixed in the Python with red tests (a module-level list holding a non-literal
+  crashed the gate with AttributeError; `ast.parse` leaked another file's SyntaxWarning into the
+  report). One reproduced, to fix in both: `_python_prose` blanks the REST of the line a multi-line
+  string ends on (`range(row, end_row)` reaches the end row). Next: `check_md_links`, `check_python_formatted` (spawns ruff either way),
   `check_lock_version`, `check_no_credential_urls`, `check_shell_lint.sh` (spawns shellcheck), and
   the gate-side Python (`check_dep_currency`, `check_lints_optin`'s twin, `lcov_merge`). Each port
   lands parity-pinned against the Python it replaces and red-proven both ways, as Phase 3 did.

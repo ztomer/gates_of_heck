@@ -51,6 +51,7 @@ import os
 import shlex
 import subprocess
 import sys
+import warnings
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from _gitutil import content_bytes, foreign_repo_env, line_count
@@ -204,7 +205,9 @@ def _python_files(root: str, staged: bool, target: str) -> list[str]:
 
 def _parse(blob: bytes, rel: str) -> ast.Module:
     try:
-        return ast.parse(blob.decode("utf-8", "replace"))
+        with warnings.catch_warnings():  # the module's own invalid escapes are not our report
+            warnings.simplefilter("ignore")
+            return ast.parse(blob.decode("utf-8", "replace"))
     except SyntaxError as exc:
         raise Unresolved(f"{rel} does not parse as Python: {exc.msg} at line {exc.lineno}") from exc
 
@@ -238,12 +241,11 @@ def _declared_lists(tree: ast.Module) -> dict[str, object]:
         if not isinstance(node, ast.Assign) or not isinstance(node.value, (ast.Dict, ast.List)):
             continue
         value = node.value
-        keys = (
-            [k.value for k in value.keys]
-            if isinstance(value, ast.Dict)
-            else [e.value for e in value.elts]
-        )
-        if keys and all(isinstance(k, str) for k in keys):
+        # Each element (a dict's KEY) must itself be a str constant. Reading `.value` off every
+        # element raised AttributeError on a `Name` (`X = [name, "b"]`) or a `**spread` key
+        # (None), and the whole gate died with a traceback over an ordinary module.
+        keys = value.keys if isinstance(value, ast.Dict) else value.elts
+        if keys and all(isinstance(k, ast.Constant) and isinstance(k.value, str) for k in keys):
             for target in node.targets:
                 if getattr(target, "id", None):
                     out.setdefault(target.id, value)
