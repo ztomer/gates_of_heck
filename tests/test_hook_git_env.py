@@ -221,6 +221,8 @@ def test_rust_test_code_spawns_git_only_through_the_testkit():
         "crates/goh/src/credurls/mod.rs": 1,
         # shell-lint: ls-files / diff --cached / checkout-index of THIS repo, GIT_* honoured
         "crates/goh/src/shell_lint.rs": 2,
+        # tag-version: rev-parse / ls-tree / show of the repo being PUSHED, GIT_* honoured
+        "crates/goh/src/tagver.rs": 1,
     }
     found = {}
     for path in sorted((REPO_ROOT / "crates").rglob("*.rs")):

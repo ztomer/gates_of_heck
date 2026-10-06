@@ -147,14 +147,15 @@ def test_goh_live_runs_the_working_trees_binary_not_heads(tmp_path: Path) -> Non
     from test_gate_environment import _clean_checkout_of_todays_gates
 
     gates = _clean_checkout_of_todays_gates(tmp_path)
-    main = gates / "crates" / "goh" / "src" / "main.rs"
-    main.write_text(
-        main.read_text().replace(
-            "/// Fail when a crate is exempt from its workspace lint policy",
-            "/// LIVE-RUST-EDIT-9031",
-            1,
-        )
+    cli = gates / "crates" / "goh" / "src" / "cli.rs"
+    before = cli.read_text()
+    after = before.replace(
+        "/// Fail when a crate is exempt from its workspace lint policy",
+        "/// LIVE-RUST-EDIT-9031",
+        1,
     )
+    assert after != before, "the plant found nothing to replace: the test would prove nothing"
+    cli.write_text(after)
     env = {k: v for k, v in os.environ.items() if not k.startswith(("GOH_", "PYTEST_"))}
     env.update(
         GOH_LIVE="1",

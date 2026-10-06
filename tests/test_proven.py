@@ -45,26 +45,12 @@ def _git(repo: Path, *args: str) -> str:
 def goh(tmp_path: Path) -> Path:
     """A committed copy of the gates this suite tests."""
     d = tmp_path / "goh"
-    (d / "gates").mkdir(parents=True)
-    for name in (
-        "_proven.sh",
-        "_hash.sh",
-        "_from_head.sh",
-        "proven.sh",
-        "local_ci.sh",
-        "push_gate.sh",
-    ):
-        shutil.copy2(REPO_ROOT / "gates" / name, d / "gates" / name)
-    # push_gate.sh runs the tag check before anything else, so this copy has to
-    # carry it or the gate refuses with "… missing from the gates checkout" —
-    # a correct refusal about a checkout this fixture assembled incomplete.
-    (d / "checks").mkdir()
-    # `_version_sources.py` too: check_tag_version.py imports it, and a fixture
-    # that assembles an incomplete checkout gets a correct "No module named"
-    # refusal about a tree this test built wrong. That is what it did on
-    # clean HEAD, where this test failed for exactly that reason.
-    for name in ("check_tag_version.py", "_gitutil.py", "_version_sources.py"):
-        shutil.copy2(REPO_ROOT / "checks" / name, d / "checks" / name)
+    # WHOLE directories, not a list of the files the gates were last seen to need: this fixture
+    # carried a curated list, and it broke every time a gate gained a dependency (the tag check's
+    # `_version_sources.py`, then `goh.sh` when the tag check moved behind it). The estate is
+    # `gates/` + `checks/` + `lib/` + `tui/`; a copy that omits part of one of them is not it.
+    for part in ("gates", "checks"):
+        shutil.copytree(REPO_ROOT / part, d / part, ignore=shutil.ignore_patterns("__pycache__"))
     shutil.copytree(REPO_ROOT / "tui", d / "tui", ignore=shutil.ignore_patterns("__pycache__"))
     # `lib/` because `local_ci.sh` runs every step through `lib/bounded_run.py` — the per-step
     # CEILING and the whole-subtree sweep. A fixture that assembles an incomplete checkout gets a
