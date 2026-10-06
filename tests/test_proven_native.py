@@ -84,3 +84,61 @@ def test_with_a_resolved_binary_the_wrapper_delegates(repo: Path, tmp_path: Path
     )
     fake.chmod(0o755)
     assert _bash(repo, 'proven_key "s"', GOH_RESOLVED_BIN=str(fake)) == "FAKE TREE"
+
+
+def _git_shim(tmp_path: Path) -> tuple[Path, Path]:
+    """A `git` first on PATH that logs each call, then runs the real one."""
+    import shutil
+
+    shim, log = tmp_path / "shim", tmp_path / "git.log"
+    shim.mkdir()
+    (shim / "git").write_text(
+        f'#!/bin/sh\necho "$*" >> "{log}"\nexec "{shutil.which("git")}" "$@"\n'
+    )
+    (shim / "git").chmod(0o755)
+    return shim, log
+
+
+def _native(cwd: Path, *args: str, **env: str) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        [str(native_goh_path()), "proven", *args], cwd=cwd, capture_output=True, text=True,
+        env=hermetic_env(drop_git=True, **env),
+    )  # fmt: skip
+
+
+def _common_dir(cwd: Path, **env: str) -> Path:
+    out = subprocess.run(
+        ["git", "rev-parse", "--path-format=absolute", "--git-common-dir"], cwd=cwd,
+        capture_output=True, text=True, check=True, env=hermetic_env(drop_git=True, **env),
+    )  # fmt: skip
+    return Path(out.stdout.strip()).resolve()
+
+
+def test_a_record_lands_where_git_keeps_the_common_dir_and_a_lookup_spawns_no_git(
+    repo: Path, tmp_path: Path
+) -> None:
+    """The record directory is resolved from git's own layout (`.git`, a worktree's `gitdir:` file,
+    `commondir`, GIT_DIR) -- one `rev-parse` was most of a lookup. Every layout is checked against
+    git's answer, and the lookup is counted: zero git spawns."""
+    _repo(repo)
+    (repo / "src" / "deep").mkdir()
+    wt = tmp_path / "wt"
+    subprocess.run(["git", "-C", str(repo), "worktree", "add", "-q", "--detach", str(wt)],
+                   check=True, env=hermetic_env(drop_git=True))  # fmt: skip
+    shim, log = _git_shim(tmp_path)
+    path = f"{shim}:{hermetic_env()['PATH']}"
+    cases = [
+        ("root", repo, {}),
+        ("subdirectory", repo / "src" / "deep", {}),
+        ("linked worktree", wt, {}),
+        ("a hook's GIT_DIR", tmp_path, {"GIT_DIR": str(repo / ".git"), "GIT_WORK_TREE": str(repo)}),
+    ]
+    for name, cwd, env in cases:
+        key = f"k{abs(hash(name))}"
+        r = _native(cwd, "record", key, "T", f"step {name}", "lbl", "600", **env)
+        assert r.returncode == 0, (name, r.stderr)
+        assert (_common_dir(cwd, **env) / "goh-proven" / key).is_file(), name
+        log.unlink(missing_ok=True)
+        r = _native(cwd, "lookup", key, f"step {name}", "600", PATH=path, **env)
+        assert r.returncode == 0 and "lbl" in r.stdout, (name, r.stdout, r.stderr)
+        assert not log.exists(), (name, log.read_text())

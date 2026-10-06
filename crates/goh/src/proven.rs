@@ -137,8 +137,61 @@ fn objects(tree: &str, entries: &[String]) -> Option<String> {
 }
 
 fn dir() -> Option<PathBuf> {
-    let common = git(&["rev-parse", "--path-format=absolute", "--git-common-dir"])?;
-    Some(PathBuf::from(common.trim()).join("goh-proven"))
+    let common = layout_common_dir().or_else(|| {
+        git(&["rev-parse", "--path-format=absolute", "--git-common-dir"])
+            .map(|c| PathBuf::from(c.trim()))
+    })?;
+    Some(common.join("goh-proven"))
+}
+
+/// The common git dir read from git's own layout, as `rev-parse --git-common-dir` finds it -- that
+/// one spawn was most of a lookup (15 of 19 ms under load). `GIT_COMMON_DIR`, else `GIT_DIR`, else
+/// the nearest `.git` (a directory, or a worktree's `gitdir:` file) on this filesystem; then that
+/// dir's `commondir` file. Anything this does not model -- a bare repo, a ceiling, a crossed mount,
+/// `GIT_WORK_TREE` without `GIT_DIR` -- is `None`, and git answers instead.
+fn layout_common_dir() -> Option<PathBuf> {
+    use std::os::unix::fs::MetadataExt;
+    let set = |k: &str| std::env::var_os(k).filter(|v| !v.is_empty());
+    let cwd = std::env::current_dir().ok()?;
+    if let Some(common) = set("GIT_COMMON_DIR") {
+        return Some(cwd.join(common));
+    }
+    let gitdir = if let Some(d) = set("GIT_DIR") {
+        cwd.join(d)
+    } else {
+        if set("GIT_WORK_TREE").is_some() || set("GIT_CEILING_DIRECTORIES").is_some() {
+            return None;
+        }
+        let dev = std::fs::metadata(&cwd).ok()?.dev();
+        let mut found = None;
+        for d in cwd.ancestors() {
+            let meta = std::fs::metadata(d).ok()?;
+            if meta.dev() != dev {
+                return None;
+            }
+            let dotgit = d.join(".git");
+            match std::fs::metadata(&dotgit) {
+                Ok(m) if m.is_dir() => found = Some(dotgit),
+                Ok(m) if m.is_file() => {
+                    let text = std::fs::read_to_string(&dotgit).ok()?;
+                    found = Some(d.join(text.strip_prefix("gitdir: ")?.trim_end()));
+                }
+                Ok(_) => return None,
+                Err(_) if d.join("HEAD").is_file() && d.join("objects").is_dir() => return None,
+                Err(_) => continue,
+            }
+            break;
+        }
+        found?
+    };
+    if !gitdir.join("HEAD").is_file() {
+        return None;
+    }
+    match std::fs::read_to_string(gitdir.join("commondir")) {
+        Ok(rel) => Some(gitdir.join(rel.trim_end())),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Some(gitdir),
+        Err(_) => None,
+    }
 }
 
 fn now() -> u64 {
