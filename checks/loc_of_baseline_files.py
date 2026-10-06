@@ -17,6 +17,17 @@ is how an empty ratchet passes instead of aborting on no input.
     python3 checks/loc_of_baseline_files.py .gates_loc_baseline.txt
 """
 
+if __name__ == "__main__":  # C4: run HEAD's copy, not the shared working tree (gates/_from_head.py)
+    import os as _os
+    import sys as _sys
+
+    _sys.path.insert(0, _os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "..", "gates"))
+    try:
+        __import__("_from_head").reexec(__file__)
+    except ModuleNotFoundError:  # a copy outside any checkout: nothing to re-run from
+        pass
+    del _sys.path[0]
+
 import os
 import sys
 from pathlib import Path

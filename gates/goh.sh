@@ -10,6 +10,7 @@
 #   goh.sh home-paths --staged --exclude '^tests/fixtures/'
 #   goh.sh golden a.png b.png --tolerances '{"ssim_min": 0.99}' --json
 { # parse-guard -- bash reads this group whole before running it (tests/test_parse_guard.py)
+. "$(dirname "${BASH_SOURCE[0]}")/_from_head.sh"; goh_from_head "${BASH_SOURCE[0]}" "$@"   # run HEAD, not the tree (C4)
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

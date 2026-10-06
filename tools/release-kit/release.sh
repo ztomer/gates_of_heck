@@ -50,6 +50,7 @@
 #   tools/release-kit/release.sh --version 1.2.3 --gate "make ci"
 #   tools/release-kit/release.sh --version 1.2.3 --gate "$GOH/tools/gate.sh" \
 #       --tap ztomer/homebrew-tap --cask myapp --artifact dist/MyApp-1.2.3.dmg
+. "$(dirname "${BASH_SOURCE[0]}")/../../gates/_from_head.sh"; goh_from_head "${BASH_SOURCE[0]}" "$@"   # run HEAD, not the tree (C4)
 set -euo pipefail
 
 # ── self-buffering (must run before ANY logic) ───────────────────────────────

@@ -26,6 +26,7 @@ from __future__ import annotations
 
 import os
 import re
+import shutil
 import subprocess
 from pathlib import Path
 
@@ -199,6 +200,16 @@ def _clean_checkout_of_todays_gates(tmp_path: Path) -> Path:
     ).stdout
     if work:
         subprocess.run(["git", "-C", str(checkout), "apply", "-"], input=work, check=True)
+    # ...and the NEW files: `git diff HEAD` leaves out an untracked file, so a gate whose change
+    # adds one (gates/_from_head.py did) was judged here without it -- and failed on the import.
+    untracked = subprocess.run(
+        ["git", "-C", str(ROOT), "ls-files", "-z", "--others", "--exclude-standard"],
+        check=True,
+        capture_output=True,
+    ).stdout.split(b"\0")
+    for rel in filter(None, (u.decode() for u in untracked)):
+        (checkout / rel).parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(ROOT / rel, checkout / rel)
     _git(checkout, "add", "-A")
     # A clean working tree has NOTHING to commit and `git commit` says so with a
     # non-zero exit — and this fixture is built from a diff, so it is empty

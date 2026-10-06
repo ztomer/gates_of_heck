@@ -33,7 +33,12 @@ _goh_head_dir() {
     _goh_copy=""
     [ -n "${GOH_LIVE:-}" ] && return 1
     here="$(cd "$(dirname "$1")" && pwd -P)" || return 1
-    root="$(cd "$here/.." && pwd -P)" || return 1
+    # The checkout root: the nearest directory up from the script holding `.goh-head` (an export)
+    # or `.git` (a checkout) -- tools/release-kit/ is two levels down, not one.
+    root="$here"
+    while [ "$root" != "/" ] && [ ! -f "$root/.goh-head" ] && [ ! -e "$root/.git" ]; do
+        root="$(dirname "$root")"
+    done
     [ -f "$root/.goh-head" ] && return 1          # this IS an export: run it
     [ -e "$root/.git" ] || return 1               # not a checkout: nothing to export
     if [ -n "${PYTEST_CURRENT_TEST:-}" ]; then

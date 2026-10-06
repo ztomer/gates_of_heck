@@ -231,10 +231,13 @@ HEAD:<path>`, so computing a key stays O(scope), not O(files).
 - **C3. LANDED `833b2e7`** (SUPERSOTA R4a): `bin/goh` is built from an export of HEAD, stamped with
   the git trees of its inputs (`goh source-tree`), and `gates/_goh_bin.sh` rebuilds a stale one
   under a lock before using it. Owner's choice 2026-10-05: rebuild, not fall back.
-- **C4 residuals** (C4 itself landed, table): three consumer call sites run a Python checker
-  DIRECTLY from the checkout (`check_version_provenance.py` x2, `check_no_secrets.py`), and
-  `tools/*.sh` are not redirected; both still read the working tree. Each wants either a bash entry
-  point in front of it or the PYTHONPATH bootstrap moved into the checker. Phase N removes the first.
+- **C4 residuals -- CLOSED.** Every Python script entry point runs HEAD's copy when called from
+  the shared checkout (`gates/_from_head.py`, pinned by `test_python_from_head.py`, a planted edit
+  reaching a direct call 0 times); `goh.sh`, `rust_each_crate.sh`, `rust_manifest_gate.sh` and the
+  consumer-facing tools (`gate_profile.sh`, `release-kit/*.sh`) gained the bash trampoline, whose
+  root lookup now walks up (release-kit sits two levels down). What still reads the live tree, by
+  design: a consumer's `PYTHONPATH=$GOH_DIR` IMPORT of a house lib (`tui.lib`, `mcp_scaffold`) --
+  an import cannot re-exec its importer; the fix there is the consumer pinning a version.
 
 ## Phase N — retire the Python checkers (owner's direction, 2026-10-05)
 

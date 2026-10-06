@@ -174,3 +174,51 @@ def test_the_self_hosted_gate_judges_its_own_tree_never_goh_dir() -> None:
             if not line.lstrip().startswith("#") and any(b in line for b in banned)
         ]
         assert not live, f"{rel} runs gate code from GOH_DIR, not this tree: {live}"
+
+
+def test_every_entry_point_a_consumer_can_run_starts_from_head() -> None:
+    """The trampoline is the FIRST line inside the parse guard of every script a consumer can
+    run: each gates/*.sh that is not a sourced `_lib`, and the consumer-facing tools. `goh.sh` --
+    "the ONE way a consumer runs a house checker" -- had none, so a direct `goh.sh lints` read the
+    working tree (found 2026-10-05 closing the C4 residuals). This repo's own tools/gate.sh and
+    tools/pytest.sh judge the tree they are in, on purpose."""
+    root = Path(__file__).resolve().parents[1]
+    # Sourced, never executed: loaded by an entry point that is already HEAD's copy.
+    sourced = {"swift_toolchain.sh"}
+    entries = [
+        p
+        for p in sorted((root / "gates").glob("*.sh"))
+        if not p.name.startswith("_") and p.name not in sourced
+    ]
+    entries += [
+        root / "tools" / "gate_profile.sh",
+        root / "tools" / "release-kit" / "release.sh",
+        root / "tools" / "release-kit" / "update_dev.sh",
+    ]
+    missing = [
+        str(p.relative_to(root))
+        for p in entries
+        if 'goh_from_head "${BASH_SOURCE[0]}" "$@"' not in p.read_text(encoding="utf-8")
+    ]
+    assert not missing, missing
+
+
+def test_a_tool_two_levels_down_finds_the_checkout_root(gates: Path, tmp_path) -> None:
+    """`tools/release-kit/release.sh` sits two levels below the root; the helper used to take the
+    script's parent's parent for the root and found `tools/`, so the trampoline did nothing."""
+    out = subprocess.run(
+        [
+            "bash",
+            "-c",
+            '. "$1/gates/_from_head.sh"; _goh_head_dir "$1/tools/release-kit/release.sh" '
+            '&& printf %s "$_goh_copy"',
+            "_",
+            str(gates),
+        ],
+        capture_output=True,
+        text=True,
+        env=_env(tmp_path),
+    )
+    assert out.returncode == 0, out.stderr
+    assert out.stdout.endswith("/tools/release-kit/release.sh"), out.stdout
+    assert str(tmp_path / "head-cache") in out.stdout, out.stdout

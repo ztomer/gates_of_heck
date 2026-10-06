@@ -17,6 +17,7 @@
 #   crate runs only its own groups (GOH_RUST_GROUPS=crate,coverage).
 # * GOH_RUST_JOBS (.gatesrc, default 4) crates at once.
 { # parse-guard -- bash reads this group whole before running it (tests/test_parse_guard.py)
+. "$(dirname "${BASH_SOURCE[0]}")/_from_head.sh"; goh_from_head "${BASH_SOURCE[0]}" "$@"   # run HEAD, not the tree (C4)
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

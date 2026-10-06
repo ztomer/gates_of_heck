@@ -34,6 +34,17 @@ upstream is what the cold pre-push gate last judged, so everything else was alre
   check_swift_warnings.py --list-changed       # the files a warm build is made to recompile
 """
 
+if __name__ == "__main__":  # C4: run HEAD's copy, not the shared working tree (gates/_from_head.py)
+    import os as _os
+    import sys as _sys
+
+    _sys.path.insert(0, _os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "..", "gates"))
+    try:
+        __import__("_from_head").reexec(__file__)
+    except ModuleNotFoundError:  # a copy outside any checkout: nothing to re-run from
+        pass
+    del _sys.path[0]
+
 import argparse
 import os
 import re
