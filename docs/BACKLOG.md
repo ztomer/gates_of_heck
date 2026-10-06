@@ -236,8 +236,14 @@ The Python checkers are today both the second tier (`GOH_NO_NATIVE`) and the SPE
 are pinned to. Retiring them means porting the delegated ones and then deleting the tier, in that
 order, never the reverse:
 
-- **N1. Port the delegated checkers, slowest first** (P0 numbers): `check_no_unreaped_spawn.py`
-  (2.2 s, the P1e floor), `check_version_provenance.py` (1.4 s), then `check_no_kill_by_name`,
+- **N1. Port the delegated checkers, slowest first** (P0 numbers). **`check_no_unreaped_spawn.py`
+  LANDED** as `goh unreaped-spawn` (`crates/goh/src/unreaped/`): every table row's whole verdict
+  list equal through both (`test_unreaped_spawn_native_parity.py`), the four whole-repo test files
+  run on both tiers, the report byte-identical on 30 local repos; media_server 2.87 s -> 0.13 s.
+  Found while porting, NOT yet fixed (each a Python behaviour the port reproduces, to fix in both
+  with a red row): `RETURNS` matches `-> ()` with a space (the engine gives the whitespace back to
+  the look-ahead), and the shell masker blanks a quoted heredoc tag before reading it, so
+  `<<'EOF'` bodies are scanned as code. Next: `check_version_provenance.py` (1.4 s), then `check_no_kill_by_name`,
   `check_claim_derivation`, `check_md_links`, `check_python_formatted` (spawns ruff either way),
   `check_lock_version`, `check_no_credential_urls`, `check_shell_lint.sh` (spawns shellcheck), and
   the gate-side Python (`check_dep_currency`, `check_lints_optin`'s twin, `lcov_merge`). Each port

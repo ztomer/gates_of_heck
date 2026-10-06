@@ -18,13 +18,12 @@ import sys
 
 import pytest
 
-from conftest import REPO_ROOT, commit_all, git, run_check, write
+from conftest import REPO_ROOT, commit_all, git, write
+from unreaped_kit import findings, unreaped_tier  # noqa: F401  # unreaped_tier: a fixture
+
+pytestmark = pytest.mark.usefixtures("unreaped_tier")
 
 CHECK = "checks/check_no_unreaped_spawn.py"
-
-
-def findings(repo: Path, *args: str) -> subprocess.CompletedProcess:
-    return run_check(repo, CHECK, *args)
 
 
 # ── the incident, in the shape it actually had ───────────────────────────────

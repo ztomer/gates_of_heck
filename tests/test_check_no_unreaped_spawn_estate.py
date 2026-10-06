@@ -14,9 +14,12 @@ change against.
 
 from pathlib import Path
 
-from unreaped_kit import findings
+import pytest
+from unreaped_kit import findings, unreaped_tier  # noqa: F401  # unreaped_tier: a fixture
 
 from conftest import commit_all, write
+
+pytestmark = pytest.mark.usefixtures("unreaped_tier")
 
 CHECK = "checks/check_no_unreaped_spawn.py"
 

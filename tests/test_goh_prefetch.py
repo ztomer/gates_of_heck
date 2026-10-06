@@ -24,7 +24,6 @@ DELEGATED = [
     "check_no_credential_urls.py",
     "check_md_links.py",
     "check_lock_version.py",
-    "check_no_unreaped_spawn.py",
 ]
 PY_STUB = (
     "import os, pathlib, sys, time\n"

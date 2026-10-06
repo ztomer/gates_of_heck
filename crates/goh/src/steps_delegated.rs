@@ -267,43 +267,6 @@ pub fn step_kill_by_name(
 
 /// A TEST that spawns a child nothing reaps on the panic path.
 ///
-/// `media_server`, 2026-10-03: a test spawned the real binary with `--bind
-/// 127.0.0.1:0` -- a server that loops forever by design -- and reaped it with
-/// an explicit `child.kill(); child.wait();` sitting below four lines that can
-/// panic. Nine orphans accumulated, each holding the cargo build lock, so every
-/// LATER `cargo test` blocked, and the leak was invisible because the run that
-/// would have reported it was the run that had been killed.
-///
-/// The ordering rule is the whole point, and it is why this is not "is there a
-/// kill somewhere in the function": the reap EXISTED in that file. A failing
-/// test skips it.
-#[must_use]
-pub fn step_unreaped_spawn(
-    repo: &std::path::Path,
-    cfg: &gatesrc::Gatesrc,
-    checks: &std::path::Path,
-    staged: bool,
-) -> Option<i32> {
-    let label = if staged {
-        "no unreaped spawns in tests (staged)"
-    } else {
-        "no unreaped spawns in tests"
-    };
-    let mut args = vec!["check_no_unreaped_spawn.py".to_owned()];
-    if staged {
-        args.push("--staged".to_owned());
-    }
-    if !cfg.exclude.is_empty() {
-        args.push("--exclude".to_owned());
-        args.push(cfg.exclude.clone());
-    }
-    let code = delegated(checks, repo, label, "python3", &args);
-    if code != 0 {
-        return Some(code);
-    }
-    None
-}
-
 /// A number in prose, re-derived from the tree it describes.
 ///
 /// Three adversarial reviews of the games estate converged on this class (2026-10):

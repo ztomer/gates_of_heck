@@ -10,15 +10,14 @@ it does not reap. Both are whole-repo behaviours: they need two files, which a o
 fixture cannot express, and the failure they guard is a FALSE ALARM on correct code.
 """
 
-import subprocess
+import pytest
 
-from conftest import Path, commit_all, run_check, write
+from conftest import Path, commit_all, write
+from unreaped_kit import findings, unreaped_tier  # noqa: F401  # unreaped_tier: a fixture
+
+pytestmark = pytest.mark.usefixtures("unreaped_tier")
 
 CHECK = "checks/check_no_unreaped_spawn.py"
-
-
-def findings(repo: Path, *args: str) -> subprocess.CompletedProcess:
-    return run_check(repo, CHECK, *args)
 
 
 def test_a_guard_defined_in_another_test_file_is_still_a_guard(repo: Path) -> None:
