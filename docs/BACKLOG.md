@@ -131,8 +131,13 @@ behind the same tests the shell passes today, red-proven, one at a time:
       vetted crate exposing it safely, or one exemption the unsafe allowlist names, with a test.
       Done (`3b94809`): `crates/goh-sys` (the one allowlisted `unsafe`) + `signal-hook`; the CLI
       contract pinned against BOTH wrappers (15 cases each); 26-79 ms -> 4.3 ms a step.
-- [ ] 4C.2 The proven cache native (`goh proven key|lookup|record`): the tree key, the scoped
-      key and the identity computed in-process with git asked once per fact.
+- [x] 4C.2 The proven cache native (`goh proven key|lookup|record`): the tree key, the scoped
+      key and the identity computed in-process with git asked once per fact. MEASURED FIRST, and
+      the bash took most of it: the identity once per process tree (`54e8d83`), no top-level
+      git call without `GOH_EXPORT_KEEP`, no `date` per lookup/record (`COMMIT`) -- a warm hit
+      7 -> 6 git calls and one spawn fewer. What a key still costs is `git status` + `write-tree`
+      (any implementation pays them) and one hash spawn; a native port would save ~1 spawn a
+      key for a byte-exact reimplementation of the identity. Declined until a profile says so.
 - [ ] 4C.3 `local_ci.sh`'s step runner native: parallel steps under the canary, logs, proven
       records -- one process instead of a bash + a Python wrapper per step.
 - [ ] 4C.4 Re-measure the baselines above; port further only where a measurement says so.

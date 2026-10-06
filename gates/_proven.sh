@@ -34,11 +34,24 @@ proven_settings() {
         *) PROVEN_ON=1 ;;
     esac
     proven_identity_prime
+    if [ -z "${_proven_epoch0:-}" ]; then
+        _proven_epoch0="$(date +%s)" _proven_seconds0="$SECONDS"
+    fi
     return 0
 }
 
 # proven_now — epoch seconds. GOH_PROVEN_NOW is the clock seam the tests use to age a record.
-proven_now() { printf '%s\n' "${GOH_PROVEN_NOW:-$(date +%s)}"; }
+# The clock, read ONCE per gate (proven_settings) and advanced by bash's own SECONDS: a `date`
+# spawn per lookup and record, against a TTL of a day, bought nothing. GOH_PROVEN_NOW pins it.
+proven_now() {
+    if [ -n "${GOH_PROVEN_NOW:-}" ]; then
+        printf '%s\n' "$GOH_PROVEN_NOW"
+    elif [ -n "${_proven_epoch0:-}" ]; then
+        printf '%s\n' "$((_proven_epoch0 + SECONDS - _proven_seconds0))"
+    else
+        date +%s
+    fi
+}
 
 # proven_tree — the index tree, printed, ONLY when the working tree equals the index: no
 # unstaged change and no untracked file that is not ignored. Anything else returns 1: the bytes
@@ -182,7 +195,9 @@ _proven_identity_live() {
             printf 'env %s unset\n' "$name"
         fi
     done
-    # Ignored files the build reads (push_gate.sh carries the same list into its export).
+    # Ignored files the build reads (push_gate.sh carries the same list into its export). The top
+    # level only when there is a list: it was a git spawn per key for the empty one, the usual case.
+    [ -n "${GOH_EXPORT_KEEP:-}" ] || return 0
     local f top
     top="$(git rev-parse --show-toplevel 2>/dev/null)" || return 0
     for f in ${GOH_EXPORT_KEEP:-}; do
