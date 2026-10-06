@@ -12,6 +12,7 @@ from pathlib import Path
 
 import pytest
 from reference_kit import reference_path  # noqa: E402
+from _fast_git import fast_init  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[1]
 CHECK = reference_path("checks/check_no_home_paths.py")
@@ -24,7 +25,7 @@ def _git(repo: Path, *args: str) -> None:
 def make_repo(tmp_path: Path, files: dict[str, bytes]) -> Path:
     repo = tmp_path
     repo.mkdir(exist_ok=True)
-    _git(repo, "init", "-q")
+    fast_init(repo)
     for name, content in files.items():
         dest = repo / name
         dest.parent.mkdir(parents=True, exist_ok=True)
@@ -130,7 +131,7 @@ def test_exclude_passes_with_a_clean_file_left(goh: Path, tmp_path: Path) -> Non
 def test_empty_tree_refuses_on_both(goh: Path, tmp_path: Path) -> None:
     repo = tmp_path
     repo.mkdir(exist_ok=True)
-    _git(repo, "init", "-q")
+    fast_init(repo)
     got = run_goh(goh, repo)
     assert got == run_py(repo), got
     assert got[0] == 1

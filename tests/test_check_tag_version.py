@@ -33,6 +33,7 @@ def run_check(repo, script, *args):
 
 
 from _tag_version_kit import CHECKER, ZERO, _media_shape, _refs, _sha, extract, push_tag
+from _fast_git import fast_init  # noqa: E402
 
 # ── the incident, reproduced ──────────────────────────────────────────────────
 
@@ -41,7 +42,7 @@ def test_the_incident_shape_is_red(tmp_path):
     """The exact defect: tag v1.79.3 on a commit declaring 1.79.1."""
     repo = tmp_path / "media"
     repo.mkdir()
-    git(repo, "init", "-q", "-b", "main")
+    fast_init(repo, "main")
     _media_shape(repo, "1.79.1")
     git(repo, "add", "-A")
     git(repo, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "c")
@@ -63,7 +64,7 @@ def test_the_commit_is_read_never_the_working_tree(tmp_path):
     """
     repo = tmp_path / "media"
     repo.mkdir()
-    git(repo, "init", "-q", "-b", "main")
+    fast_init(repo, "main")
     _media_shape(repo, "1.79.1")
     git(repo, "add", "-A")
     git(repo, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "c")
@@ -86,7 +87,7 @@ def test_the_commit_is_read_never_the_working_tree(tmp_path):
 def test_a_matching_tag_is_green(tmp_path):
     repo = tmp_path / "app"
     repo.mkdir()
-    git(repo, "init", "-q", "-b", "main")
+    fast_init(repo, "main")
     _media_shape(repo, "1.79.3")
     git(repo, "add", "-A")
     git(repo, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "c")
@@ -103,7 +104,7 @@ def test_a_lightweight_tag_resolves_too(tmp_path):
     """`git tag` without -a: the ref's sha IS the commit, and ^{commit} is a no-op."""
     repo = tmp_path / "app"
     repo.mkdir()
-    git(repo, "init", "-q", "-b", "main")
+    fast_init(repo, "main")
     _media_shape(repo, "2.0.0")
     git(repo, "add", "-A")
     git(repo, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "c")
@@ -117,7 +118,7 @@ def test_a_prerelease_tag_is_compared_in_full(tmp_path):
     """`1.2.3-rc.1` is not `1.2.3`. Smoothing that is the defect, not the fix."""
     repo = tmp_path / "app"
     repo.mkdir()
-    git(repo, "init", "-q", "-b", "main")
+    fast_init(repo, "main")
     _media_shape(repo, "1.2.3-rc.1")
     git(repo, "add", "-A")
     git(repo, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "c")
@@ -144,7 +145,7 @@ def test_a_stale_unrelated_tag_does_not_block_an_unrelated_push(tmp_path):
     until somebody deletes it — a gate that cries wolf gets --no-verify'd."""
     repo = tmp_path / "media"
     repo.mkdir()
-    git(repo, "init", "-q", "-b", "main")
+    fast_init(repo, "main")
     _media_shape(repo, "1.0.0")
     git(repo, "add", "-A")
     git(repo, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "c")
@@ -164,7 +165,7 @@ def test_a_stale_unrelated_tag_does_not_block_an_unrelated_push(tmp_path):
 def test_a_ref_that_claims_no_semver_is_not_policed(tmp_path, name):
     repo = tmp_path / "app"
     repo.mkdir()
-    git(repo, "init", "-q", "-b", "main")
+    fast_init(repo, "main")
     write(repo, "README.md", "x\n")
     git(repo, "add", "-A")
     git(repo, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "c")
@@ -177,7 +178,7 @@ def test_a_ref_that_claims_no_semver_is_not_policed(tmp_path, name):
 def test_a_tag_delete_is_not_policed(tmp_path):
     repo = tmp_path / "app"
     repo.mkdir()
-    git(repo, "init", "-q", "-b", "main")
+    fast_init(repo, "main")
     write(repo, "README.md", "x\n")
     git(repo, "add", "-A")
     git(repo, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "c")
@@ -190,7 +191,7 @@ def test_a_tag_delete_is_not_policed(tmp_path):
 def test_an_empty_push_is_a_named_non_run_not_a_pass(tmp_path):
     repo = tmp_path / "app"
     repo.mkdir()
-    git(repo, "init", "-q", "-b", "main")
+    fast_init(repo, "main")
     write(repo, "README.md", "x\n")
     git(repo, "add", "-A")
     git(repo, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "c")
@@ -212,7 +213,7 @@ def test_a_tag_with_no_version_source_is_a_finding(tmp_path):
     read as fine is how the NEXT one ships."""
     repo = tmp_path / "bare"
     repo.mkdir()
-    git(repo, "init", "-q", "-b", "main")
+    fast_init(repo, "main")
     write(repo, "README.md", "x\n")
     git(repo, "add", "-A")
     git(repo, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "c")
@@ -230,7 +231,7 @@ def test_a_tag_with_no_version_source_is_a_finding(tmp_path):
 def test_a_present_but_empty_source_is_not_absence(tmp_path):
     repo = tmp_path / "app"
     repo.mkdir()
-    git(repo, "init", "-q", "-b", "main")
+    fast_init(repo, "main")
     write(repo, "VERSION", "\n# nothing here\n")
     git(repo, "add", "-A")
     git(repo, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "c")
@@ -246,7 +247,7 @@ def test_a_glob_matching_nothing_is_reported_not_skipped(tmp_path):
     """A typo'd glob must not retire a strategy in silence."""
     repo = tmp_path / "app"
     repo.mkdir()
-    git(repo, "init", "-q", "-b", "main")
+    fast_init(repo, "main")
     _media_shape(repo, "1.0.0")
     git(repo, "add", "-A")
     git(repo, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "c")
@@ -263,7 +264,7 @@ def test_both_live_layouts_are_covered(tmp_path):
     run — neither repo is special-cased."""
     repo = tmp_path / "both"
     repo.mkdir()
-    git(repo, "init", "-q", "-b", "main")
+    fast_init(repo, "main")
     write(repo, "VERSION", "4.5.6\n")
     write(
         repo,
@@ -282,7 +283,7 @@ def test_both_live_layouts_are_covered(tmp_path):
 def test_a_leading_v_in_the_version_file_is_presentation_not_identity(tmp_path):
     repo = tmp_path / "app"
     repo.mkdir()
-    git(repo, "init", "-q", "-b", "main")
+    fast_init(repo, "main")
     write(repo, "VERSION", "v1.2.3\n")
     git(repo, "add", "-A")
     git(repo, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "c")
@@ -309,7 +310,7 @@ def test_a_vendored_crate_is_reachable_only_through_an_explicit_glob(tmp_path):
     sweep it; a scoped glob must be able to reach a repo's own crates."""
     repo = tmp_path / "app"
     repo.mkdir()
-    git(repo, "init", "-q", "-b", "main")
+    fast_init(repo, "main")
     write(repo, "Cargo.toml", '[workspace.package]\nversion = "1.35.1"\n')
     write(repo, "crates/cli/Cargo.toml", '[package]\nname = "cli"\nversion = "1.35.1"\n')
     write(repo, "vendor/camoufox-rs/Cargo.toml", '[package]\nname = "cf"\nversion = "0.1.0"\n')
@@ -329,7 +330,7 @@ def test_sources_come_from_gatesrc(tmp_path):
     """A repo whose version lives elsewhere joins with config, not a code change."""
     repo = tmp_path / "swift"
     repo.mkdir()
-    git(repo, "init", "-q", "-b", "main")
+    fast_init(repo, "main")
     write(repo, "MarketingVersion.txt", "7.0.1\n")
     git(repo, "add", "-A")
     git(repo, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "c")

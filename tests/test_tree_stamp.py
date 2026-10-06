@@ -14,6 +14,7 @@ import textwrap
 import pytest
 
 from conftest import REPO_ROOT
+from _fast_git import fast_init  # noqa: E402
 
 STAMP = REPO_ROOT / "lib" / "tree_stamp.py"
 
@@ -26,7 +27,7 @@ def git(repo, *args):
 def repo(tmp_path):
     r = tmp_path / "repo"
     r.mkdir()
-    git(r, "init", "-q")
+    fast_init(r)
     (r / ".gitignore").write_text("build/\n")
     (r / "a.swift").write_text("let a = 1\n")
     git(r, "add", ".")

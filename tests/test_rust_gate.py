@@ -15,6 +15,7 @@ from pathlib import Path
 import pytest
 
 from conftest import REPO_ROOT
+from _fast_git import fast_init  # noqa: E402
 
 LEGACY = REPO_ROOT / "tests" / "fixtures" / "rust_gate_legacy.sh"
 CURRENT = REPO_ROOT / "gates" / "rust_gate.sh"
@@ -57,7 +58,7 @@ def mkcrate(tmp: Path) -> Path:
     subprocess.run(
         ["cargo", "generate-lockfile", "--offline"], cwd=tmp, capture_output=True, check=True
     )
-    _git(tmp, "init", "-q")
+    fast_init(tmp)
     _git(tmp, "add", "Cargo.lock")
     _git(
         tmp,
@@ -171,7 +172,7 @@ def test_cargo_subdir_argument_supported_by_both(tmp_path, warm_crate):
     inner.mkdir(parents=True)
     (inner / "Cargo.toml").write_text(CARGO_TOML)
     shutil.copytree(warm_crate / "src", inner / "src")
-    _git(repo, "init", "-q")
+    fast_init(repo)
     _git(repo, "add", "-A")
     for script, expect_ok in ((LEGACY, True), (CURRENT, True)):
         r = subprocess.run(

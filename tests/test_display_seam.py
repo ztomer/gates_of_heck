@@ -22,6 +22,7 @@ import sys
 import pytest
 
 from conftest import REPO_ROOT as ROOT
+from _fast_git import fast_init  # noqa: E402
 
 CHECK = ROOT / "checks" / "check_display_seam.py"
 PROBE = ROOT / "checks" / "_display_seam_probe.py"
@@ -69,7 +70,7 @@ def estate(tmp_path, files, policy=None):
     }
     merged.update(policy or {})
     (root / "policy.json").write_text(json.dumps(merged), encoding="utf-8")
-    _git(root, "init", "-q")
+    fast_init(root)
     _git(root, "config", "user.email", "t@example.invalid")
     _git(root, "config", "user.name", "t")
     _git(root, "add", "-A")

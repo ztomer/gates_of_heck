@@ -25,6 +25,7 @@ from conftest import commit_all, git, write
 from tier_kit import both_tiers, run_tiered  # noqa: F401  # both_tiers: a fixture
 
 from conftest import native_goh_path  # noqa: E402
+from _fast_git import fast_init  # noqa: E402
 
 
 def anchors(text: str) -> set[str]:
@@ -123,7 +124,7 @@ def test_a_wrong_anchor_is_red(tmp_path):
     """The audit's own error: the anchor derived without the section number."""
     repo = tmp_path / "app"
     repo.mkdir()
-    git(repo, "init", "-q", "-b", "main")
+    fast_init(repo, "main")
     write(repo, "README.md", "[see the measurement](ROADMAP.md#what-90-can-actually-do-measured)\n")
     write(repo, "ROADMAP.md", "## 4.8. What `.90` can actually do, measured\n")
     commit_all(repo)
@@ -138,7 +139,7 @@ def test_a_wrong_anchor_is_red(tmp_path):
 def test_a_missing_file_is_red(tmp_path):
     repo = tmp_path / "app"
     repo.mkdir()
-    git(repo, "init", "-q", "-b", "main")
+    fast_init(repo, "main")
     write(repo, "README.md", "[the plan](ROADMAP-waf.md#section)\n")
     commit_all(repo)
 
@@ -152,7 +153,7 @@ def test_the_right_anchor_is_green(tmp_path):
     """app_updates' README, the link that exists and resolves."""
     repo = tmp_path / "app"
     repo.mkdir()
-    git(repo, "init", "-q", "-b", "main")
+    fast_init(repo, "main")
     write(
         repo,
         "README.md",
@@ -170,7 +171,7 @@ def test_a_directory_link_resolves(tmp_path):
     such link in the estate as broken — which is how this first landed."""
     repo = tmp_path / "zon"
     repo.mkdir()
-    git(repo, "init", "-q", "-b", "main")
+    fast_init(repo, "main")
     (repo / "docs" / "decisions").mkdir(parents=True)
     write(repo, "docs/decisions/0001-x.md", "# x\n")
     write(
@@ -187,7 +188,7 @@ def test_a_relative_link_resolves_against_the_linking_file(tmp_path):
     the repo root instead, it finds nothing and reports every one of them."""
     repo = tmp_path / "app"
     repo.mkdir()
-    git(repo, "init", "-q", "-b", "main")
+    fast_init(repo, "main")
     write(repo, "README.md", "# top\n")
     write(repo, "docs/guide.md", "see [the top](../README.md#top)\n")
     commit_all(repo)
@@ -203,7 +204,7 @@ def test_http_and_mailto_links_are_skipped_and_counted(tmp_path):
     but http links never prints the same sentence as a file with real links."""
     repo = tmp_path / "app"
     repo.mkdir()
-    git(repo, "init", "-q", "-b", "main")
+    fast_init(repo, "main")
     write(repo, "README.md", "[a](https://example.invalid/p) and [b](mailto:x@example.invalid)\n")
     commit_all(repo)
     r = _run(repo)
@@ -214,7 +215,7 @@ def test_http_and_mailto_links_are_skipped_and_counted(tmp_path):
 def test_a_site_absolute_path_is_skipped(tmp_path):
     repo = tmp_path / "app"
     repo.mkdir()
-    git(repo, "init", "-q", "-b", "main")
+    fast_init(repo, "main")
     write(repo, "README.md", "[a](/somewhere/else)\n")
     commit_all(repo)
     assert _run(repo).returncode == 0, _run(repo).stderr
@@ -225,7 +226,7 @@ def test_a_link_pointing_out_of_the_repository_is_red(tmp_path):
     verified — and unverifiable read as fine is how the next one ships."""
     repo = tmp_path / "app"
     repo.mkdir()
-    git(repo, "init", "-q", "-b", "main")
+    fast_init(repo, "main")
     write(repo, "README.md", "[elsewhere](../other/x.md)\n")
     commit_all(repo)
     r = _run(repo)
@@ -239,7 +240,7 @@ def test_a_link_in_a_code_span_is_an_example_not_a_finding(tmp_path):
     example."""
     repo = tmp_path / "app"
     repo.mkdir()
-    git(repo, "init", "-q", "-b", "main")
+    fast_init(repo, "main")
     write(
         repo,
         "README.md",
@@ -254,7 +255,7 @@ def test_a_link_in_a_code_span_is_an_example_not_a_finding(tmp_path):
 def test_a_reference_style_link_is_checked(tmp_path):
     repo = tmp_path / "app"
     repo.mkdir()
-    git(repo, "init", "-q", "-b", "main")
+    fast_init(repo, "main")
     write(repo, "README.md", "See [the plan][plan].\n\n[plan]: docs/missing.md\n")
     commit_all(repo)
     r = _run(repo)
@@ -266,7 +267,7 @@ def test_an_image_link_resolves_too(tmp_path):
     document link does."""
     repo = tmp_path / "app"
     repo.mkdir()
-    git(repo, "init", "-q", "-b", "main")
+    fast_init(repo, "main")
     write(repo, "README.md", "![diagram](assets/gone.png)\n")
     commit_all(repo)
     r = _run(repo)
@@ -277,7 +278,7 @@ def test_a_link_title_does_not_become_part_of_the_target(tmp_path):
     """`[x](docs/a.md "Why")` — the target stops at the space."""
     repo = tmp_path / "app"
     repo.mkdir()
-    git(repo, "init", "-q", "-b", "main")
+    fast_init(repo, "main")
     write(repo, "docs/a.md", "# A\n")
     write(repo, "README.md", '[x](docs/a.md "Why this exists")\n')
     commit_all(repo)
@@ -290,7 +291,7 @@ def test_a_link_title_does_not_become_part_of_the_target(tmp_path):
 def test_a_repo_with_no_markdown_is_a_named_non_run(tmp_path):
     repo = tmp_path / "code"
     repo.mkdir()
-    git(repo, "init", "-q", "-b", "main")
+    fast_init(repo, "main")
     write(repo, "main.py", "print(1)\n")
     commit_all(repo)
     r = _run(repo)
@@ -301,7 +302,7 @@ def test_a_repo_with_no_markdown_is_a_named_non_run(tmp_path):
 def test_a_markdown_file_with_no_links_is_green_and_not_silent(tmp_path):
     repo = tmp_path / "app"
     repo.mkdir()
-    git(repo, "init", "-q", "-b", "main")
+    fast_init(repo, "main")
     write(repo, "README.md", "# just prose\n")
     commit_all(repo)
     r = _run(repo)
@@ -315,7 +316,7 @@ def test_a_vendored_doc_tree_can_be_excluded(tmp_path):
     `GOH_EXCLUDE` is already the mechanism for exactly that."""
     repo = tmp_path / "z"
     repo.mkdir()
-    git(repo, "init", "-q", "-b", "main")
+    fast_init(repo, "main")
     write(repo, "vendor/camoufox-rs/docs/PROTOCOL.md", "See [CookieOptions](#cookieoptions).\n")
     write(repo, "README.md", "# z\n")
     commit_all(repo)
@@ -332,7 +333,7 @@ def test_a_bad_exclude_regex_is_exit_2_not_a_silent_exemption(tmp_path):
     to have examined it."""
     repo = tmp_path / "app"
     repo.mkdir()
-    git(repo, "init", "-q", "-b", "main")
+    fast_init(repo, "main")
     write(repo, "README.md", "[x](nope.md)\n")
     commit_all(repo)
     r = _run(repo, "--exclude", "[unclosed")
@@ -347,7 +348,7 @@ def test_a_missing_directory_is_a_usage_error(tmp_path):
 def test_json_output(tmp_path):
     repo = tmp_path / "app"
     repo.mkdir()
-    git(repo, "init", "-q", "-b", "main")
+    fast_init(repo, "main")
     write(repo, "README.md", "[x](nope.md)\n")
     commit_all(repo)
     r = _run(repo, "--json")
@@ -364,7 +365,7 @@ def test_staged_judges_the_commit_not_the_worktree(tmp_path):
     editor must not block the commit."""
     repo = tmp_path / "app"
     repo.mkdir()
-    git(repo, "init", "-q", "-b", "main")
+    fast_init(repo, "main")
     write(repo, "README.md", "[x](nope.md)\n")
     commit_all(repo)
 

@@ -19,6 +19,7 @@ from pathlib import Path
 import pytest
 
 from conftest import REPO_ROOT
+from _fast_git import fast_init  # noqa: E402
 
 GIT_VARS = (
     "GIT_DIR",
@@ -62,7 +63,7 @@ def goh(tmp_path: Path) -> Path:
         d / "lib",
         ignore=shutil.ignore_patterns("__pycache__", "desktop_lock"),
     )
-    _git(d, "init", "-q", "-b", "main")
+    fast_init(d, "main")
     _git(d, "add", "-A")
     _git(d, "commit", "-q", "-m", "gates")
     return d
@@ -72,7 +73,7 @@ def goh(tmp_path: Path) -> Path:
 def repo(tmp_path: Path) -> Path:
     r = tmp_path / "repo"
     r.mkdir()
-    _git(r, "init", "-q", "-b", "main")
+    fast_init(r, "main")
     (r / "src.txt").write_text("one\n")
     (r / ".gitignore").write_text("build/\n")
     _git(r, "add", "-A")
