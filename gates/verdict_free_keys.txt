@@ -1,0 +1,16 @@
+# GOH_* keys that never change a verdict: the gates' own bookkeeping and the timing instrument.
+# Every cache key that hashes "the GOH_* configuration" leaves exactly these out
+# (gates/_rust_proven.sh, checks/_estate_cache.py), so a key does not vary with where a gate was
+# started or what its parent already resolved. Pinned to docs/config.md's "Not a setting" rows by
+# tests/test_verdict_free_keys.py: a new internal key cannot slip into a cache key unnoticed.
+GOH_TIMINGS
+GOH_TIMINGS_PARENT
+GOH_TIMINGS_CWD
+GOH_BENCH_SESSION
+GOH_GIT_LOCAL_VARS
+GOH_RESOLVED_FOR
+GOH_RESOLVED_BIN
+GOH_PROVEN_IDENTITY
+GOH_PROVEN_IDENTITY_FOR
+GOH_LIVE_ROOT
+GOH_ESTATE_CACHE

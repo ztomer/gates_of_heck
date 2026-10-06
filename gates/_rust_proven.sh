@@ -81,7 +81,7 @@ _rust_learn() {
 # (the timing instrument's own keys aside), hashed.
 _rust_step() {
     local env_hash
-    env_hash="$(env | grep '^GOH_' | grep -v '^GOH_TIMINGS' | LC_ALL=C sort | hash_hex /dev/stdin)"
+    env_hash="$(goh_config_hash)"  # GOH_* minus gates/verdict_free_keys.txt (gates/_hash.sh)
     # The repo group's scans read the whole repo whichever crate called them, so its step names no
     # crate: in a 29-crate push the first records it and the other 28 find the record.
     local where="${cargo_dir#"$PWD"/}"

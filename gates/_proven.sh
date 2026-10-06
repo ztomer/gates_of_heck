@@ -33,6 +33,7 @@ proven_settings() {
         0) PROVEN_ON=0 ;;
         *) PROVEN_ON=1 ;;
     esac
+    proven_identity_prime
     return 0
 }
 
@@ -110,9 +111,42 @@ _proven_tool() {
     fi
 }
 
+# The run-constant half of proven_identity: the gates checkout's identity and the toolchains.
+# ~110 ms, and every step's key was computed twice in every group of every gate (a media_server
+# push: ~174 times). `proven_settings` asks it ONCE and exports it for the same working
+# directory, PATH, toolchain override, gates root and GOH_LIVE mode; a key computed anywhere else
+# asks again (tests/test_proven_identity_once.py).
+_proven_memo_key() {
+    printf '%s|%s|%s|%s|%s|%s' "$PWD" "$PATH" "${RUSTUP_TOOLCHAIN:-}" "${PROVEN_GOH_ROOT:-}" \
+        "${GOH_DIR:-}" "${GOH_LIVE:-}"
+}
+
+proven_identity_prime() {
+    [ "${PROVEN_ON:-1}" = 1 ] || return 0
+    # Only where the export can reach the steps: a `$(proven_settings)` that only validates (as
+    # local_ci.sh does, to capture the message) would compute it for nobody.
+    [ "${BASH_SUBSHELL:-0}" = 0 ] || return 0
+    local k
+    k="$(_proven_memo_key)"
+    [ "${GOH_PROVEN_IDENTITY_FOR:-}" = "$k" ] && return 0
+    GOH_PROVEN_IDENTITY="$(_proven_identity_slow)"
+    GOH_PROVEN_IDENTITY_FOR="$k"
+    export GOH_PROVEN_IDENTITY GOH_PROVEN_IDENTITY_FOR
+}
+
 # proven_identity — everything besides the tree and the step that decides a step's verdict.
 proven_identity() {
-    local d seen="" files name
+    local name
+    if [ "${GOH_PROVEN_IDENTITY_FOR:-}" = "$(_proven_memo_key)" ]; then
+        printf '%s\n' "$GOH_PROVEN_IDENTITY"
+    else
+        _proven_identity_slow
+    fi
+    _proven_identity_live
+}
+
+_proven_identity_slow() {
+    local d seen="" files
     for d in "$PROVEN_GOH_ROOT" "${GOH_DIR:-}"; do
         [ -n "$d" ] && [ -d "$d" ] || continue
         d="$(cd "$d" && pwd -P)"
@@ -135,6 +169,11 @@ proven_identity() {
     if grep -Eq '\.swift$|(^|/)Package\.swift$|\.xcodeproj/' <<<"$files"; then
         _proven_tool swift swift --version
     fi
+}
+
+# The half read fresh on every key: the environment and the ignored files a build reads.
+_proven_identity_live() {
+    local name
     for name in $PROVEN_ENV_DEFAULT ${GOH_PROVEN_ENV:-}; do
         case "$name" in ""|[0-9]*|*[!A-Za-z0-9_]*) continue ;; esac
         if [ -n "${!name+set}" ]; then

@@ -14,3 +14,13 @@ hash_hex() {
         return 1
     fi
 }
+
+# goh_config_hash -- the GOH_* configuration a verdict depends on, as one hash: every GOH_* in the
+# environment except the keys that never change a verdict (gates/verdict_free_keys.txt, the one
+# list). It held GOH_RESOLVED_* and GOH_PROVEN_IDENTITY_FOR (a $PWD) before that list existed, so
+# a key varied with where a gate was started (tests/test_verdict_free_keys.py).
+goh_config_hash() {
+    local free
+    free="$(grep -v '^#' "$(dirname "${BASH_SOURCE[0]}")/verdict_free_keys.txt" | paste -sd'|' -)"
+    env | grep '^GOH_' | grep -v -E "^(${free})=" | LC_ALL=C sort | hash_hex /dev/stdin
+}

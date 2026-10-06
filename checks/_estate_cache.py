@@ -25,15 +25,14 @@ import subprocess
 import time
 
 TTL_S = 7 * 86400
-# Keys the gates set for their own bookkeeping, which no checker reads.
-_NOT_CONFIG = (
-    "GOH_TIMINGS",
-    "GOH_RESOLVED_",
-    "GOH_GIT_LOCAL_VARS",
-    "GOH_BENCH_SESSION",
-    "GOH_ESTATE_CACHE",
-    "GOH_LIVE_ROOT",
-)
+
+
+def _verdict_free() -> tuple:
+    """GOH_* keys that never change a verdict (gates/verdict_free_keys.txt, the one list)."""
+    path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "gates",
+                        "verdict_free_keys.txt")  # fmt: skip
+    with open(path, encoding="utf-8") as handle:
+        return tuple(ln.strip() for ln in handle if ln.strip() and not ln.startswith("#"))
 
 
 def cache_dir() -> str | None:
@@ -83,7 +82,8 @@ def current_identity(source_path: str, goh_dir: str) -> str:
         with open(source_path, "rb") as handle:
             _SOURCE[source_path] = handle.read()
     env = {k: v for k, v in os.environ.items() if k.startswith("GOH_")}
-    env = {k: v for k, v in env.items() if not k.startswith(_NOT_CONFIG)}
+    free = set(_verdict_free())
+    env = {k: v for k, v in env.items() if k not in free}
     return identity(_SOURCE[source_path], env, _binary(goh_dir))
 
 
