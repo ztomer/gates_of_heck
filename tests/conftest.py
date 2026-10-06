@@ -92,14 +92,23 @@ def commit_all(repo: Path, msg: str = "fixture") -> None:
     git(repo, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-m", msg)
 
 
-@pytest.fixture
-def repo(tmp_path: Path) -> Path:
-    """An initialized git repo with one committed file."""
-    r = tmp_path / "proj"
+@pytest.fixture(scope="session")
+def _repo_template(tmp_path_factory) -> Path:
+    """`repo`'s starting state, made by git ONCE per worker: 614 tests took `repo`, and three git
+    spawns each were ~1800 per run for one identical repository (2026-10-06)."""
+    r = tmp_path_factory.mktemp("repo-template") / "proj"
     r.mkdir()
     git(r, "init", "-q", "-b", "main")
     write(r, "README.md", "# fixture\n")
     commit_all(r)
+    return r
+
+
+@pytest.fixture
+def repo(tmp_path: Path, _repo_template: Path) -> Path:
+    """An initialized git repo with one committed file: a fresh COPY of the template per test."""
+    r = tmp_path / "proj"
+    shutil.copytree(_repo_template, r, symlinks=True)
     return r
 
 
