@@ -39,6 +39,11 @@ Residual, stated in BACKLOG: three consumer call sites run a Python checker dire
 * **A stopped gate stops its steps.** A step in its own session never heard Ctrl-C or a TERM to its
   wrapper, and ran on unowned. `bounded_run` now sweeps its group on TERM/INT/HUP (an ignore
   inherited at entry -- nohup -- stays ignored), and `local_ci` hands the stop to every running step.
+* **A step that exits fast still shows its leak, and a timed-out shell's worker is killed.** On
+  macOS `getpgid` of a zombie is ESRCH, so a step that exited before the wrapper asked for its group
+  had none: `bounded_run` sampled nothing (a leaked `sleep 1200` read clean on a loaded push) and
+  `killtree` skipped the group kill when the shell had exited first. The group of a session child is
+  its pid by construction (`killtree.session_pgid`); nothing asks any more.
 * **The environment is not configuration** for `local_ci`: an inherited `GOH_CI_JOBS` /
   `GOH_CI_STEPS` is dropped (an exported job count had made every nested run concurrent).
 * **`GOH_MAX_LINES=off`** declares no cap in one info line instead of a warning on every commit.

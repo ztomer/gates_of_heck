@@ -43,6 +43,7 @@ import time
 from dataclasses import dataclass
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import killtree  # noqa: E402  # beside this file
 import step_timings  # noqa: E402  # beside this file; run as a script AND imported by orphan_canary
 
 # GNU timeout's exit code for "the ceiling expired". `gates/local_ci.sh` already prints
@@ -275,10 +276,7 @@ def _run_step(
         except OSError as exc:
             print(f"bounded_run: cannot start {label or argv[0]}: {exc}", file=sys.stderr)
             return Outcome(code=127, descendants=[], timed_out=False)
-        try:
-            pgid = os.getpgid(proc.pid)
-        except OSError:
-            pgid = None
+        pgid = killtree.session_pgid(proc)  # known, never asked for: getpgid of a zombie is ESRCH
         # WAIT, never poll. `wait(timeout=)` returns the instant the child exits; the 0.2 s poll it
         # replaced charged every step up to a fifth of a second of pure latency -- measured
         # 2026-10-05 as most of a structural run's wall time on a small tree.

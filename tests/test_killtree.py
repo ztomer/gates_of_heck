@@ -15,7 +15,6 @@ that NOTHING survives the timeout.
 
 import argparse
 import importlib.util
-import os
 import subprocess
 import sys
 import time
@@ -85,16 +84,22 @@ def test_run_captured_kills_whole_group_on_timeout():
     _assert_nothing_survives(marker)
 
 
-def test_missing_getpgid_falls_back_to_direct_kill(monkeypatch):
-    # os.getpgid is POSIX-only; on a platform without it the fallback path
-    # must degrade to proc.kill(), not escape the timeout handler as an
-    # AttributeError. HEAD guarded OSError only — half-guard.
+def test_a_shell_that_exited_before_the_timeout_still_has_its_group_killed():
+    """The direct child is a ZOMBIE when the timeout fires: the shell backgrounded a worker that
+    holds the pipe and exited. macOS answers `getpgid` of a zombie with ESRCH, so the group kill
+    was skipped and `proc.kill()` hit the corpse -- the worker ran on (measured 2026-10-05)."""
+    marker = _unique_marker("ZOMBIE")
+    py = sys.executable
+    step = f'"{py}" -c "import time; time.sleep(120)" {marker}-bg & exit 0'
+    with pytest.raises(subprocess.TimeoutExpired):
+        killtree.run_captured(step, shell=True, timeout=1)
+    _assert_nothing_survives(marker)
+
+
+def test_a_child_without_its_own_group_falls_back_to_direct_kill():
+    # Started WITHOUT start_new_session, the child leads no group: the group kill must degrade to
+    # proc.kill(), not escape the timeout handler as a raw OSError.
     proc = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(60)"])
-    monkeypatch.setattr(
-        os,
-        "getpgid",
-        lambda pid: (_ for _ in ()).throw(AttributeError("no getpgid")),
-    )
     try:
         killtree._kill_process_group(proc)  # must not raise
         deadline = time.time() + 5

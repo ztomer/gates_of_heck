@@ -18,24 +18,26 @@ import signal
 import subprocess
 
 
+def session_pgid(proc: subprocess.Popen) -> int:
+    """The process group of a child started with `start_new_session=True`: its own pid.
+
+    KNOWN BY CONSTRUCTION, never asked for. `setsid()` makes the child the leader of a new group
+    whose id is its pid, and a pid is not reused while a group of that id has members. Asking the
+    kernel instead (`os.getpgid`) is wrong exactly when it matters: macOS answers ESRCH for a
+    ZOMBIE (measured 2026-10-05), so a shell that backgrounded a worker and exited had "no group",
+    the group kill was skipped, and the worker ran on. `lib/bounded_run.py` shared the bug: a fast
+    step's leak read clean on a loaded box.
+    """
+    return proc.pid
+
+
 def _kill_process_group(proc: subprocess.Popen) -> None:
     """SIGKILL the child's whole process group; fall back to p.kill()."""
-    pgid = None
     try:
-        pgid = os.getpgid(proc.pid)
-    except (OSError, AttributeError):
-        # OSError: already reaped — nothing to kill.
-        # AttributeError: os.getpgid is absent on this platform (it is
-        # POSIX-only); fall through to the direct-child kill like any other
-        # unsupported-killpg environment. Half-guarding this left a missing
-        # getpgid able to escape the timeout handler as a raw traceback.
-        pass
-    if pgid is not None and hasattr(os, "killpg"):
-        try:
-            os.killpg(pgid, signal.SIGKILL)
-            return
-        except OSError:
-            pass  # group already gone
+        os.killpg(session_pgid(proc), signal.SIGKILL)
+        return
+    except OSError:
+        pass  # no such group: the child was not started in its own session
     proc.kill()
 
 

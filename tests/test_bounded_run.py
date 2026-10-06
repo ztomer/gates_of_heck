@@ -160,6 +160,33 @@ def test_the_group_outlives_reparenting_so_a_leak_is_still_visible() -> None:
                 pass
 
 
+def test_a_step_that_exits_before_its_group_is_asked_for_still_shows_its_leak(monkeypatch) -> None:
+    """The group is KNOWN, never asked for. On macOS `getpgid` of a zombie is ESRCH (measured
+    2026-10-05), so a step that exited before the wrapper asked -- a fast step on a loaded box --
+    had no group, nothing was sampled, and the v0.22.0 push saw a leaked `sleep 1200` read clean.
+    `getpgid` is made to answer as it does for that zombie; the leak must still be found."""
+
+    def zombie(pid: int) -> int:
+        raise ProcessLookupError(3, "No such process")
+
+    monkeypatch.setattr(bounded_run.os, "getpgid", zombie)
+    outcome = bounded_run.run_step(
+        ["/bin/sh", "-c", "/bin/sleep 904 & exit 0"],
+        30,
+        1,
+        "fast leaky step",
+        output=bounded_run.DEVNULL_SENTINEL,
+    )
+    try:
+        assert outcome.survivors, "a step that exited before getpgid hid its leak"
+    finally:
+        for pid in outcome.survivors:
+            try:
+                os.kill(pid, signal.SIGKILL)
+            except (OSError, ProcessLookupError):
+                pass
+
+
 def test_a_step_that_leaves_nothing_reports_no_survivors() -> None:
     """The other direction, and the one that keeps the canary from crying wolf."""
     outcome = bounded_run.run_step(
