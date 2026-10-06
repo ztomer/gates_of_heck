@@ -71,6 +71,12 @@ Attribution so far: of the sweep, `check_estate_corpus` alone has sigma 0.84 (it
 1935 estate files into 16 scratch repos and `git add`s them; filesystem metadata) and
 `check_probes_pass` 0.40; the per-step wrapper's `ps` of every process was one more machine-wide
 scan per step (removed, `8df0af4`).
+Re-measured after the probe and wrapper cuts (load 7-18): sigma 0.45, one run 3.96 s -- the sweep
+still dominates, and at N=8 even 18 ms native steps run 13x slower, i.e. the sweep saturates the
+box for everything beside it. Next lever, by count: `check_estate_corpus` materialises 16 scratch
+repos per run (copy + `git init`/`config` x2/`add`/`commit` each, a pool of `len(ESTATE)` = 8
+threads, sized as if the machine were idle) and runs 24 `goh.sh` calls. A pool-cap A/B (8 vs 2
+workers) was unreadable at load 18-83; it needs the quiet box like every row above.
 
 ## Open — "fix the class" commit gate (requested by ZoneWM, owner-approved to roadmap, 2026-10-06)
 
