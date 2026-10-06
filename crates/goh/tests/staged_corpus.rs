@@ -77,9 +77,11 @@ fn the_staged_corpus_gate_fails_a_staged_violation_whose_fix_is_unstaged() {
 }
 
 #[test]
-fn a_corpus_outside_the_repo_is_skipped_by_name_at_staged_and_read_at_full() {
+fn a_corpus_outside_the_repo_is_skipped_by_name_at_staged_and_read_at_its_commit_at_full() {
     // gates_of_heck's own wiring of ~/.claude/skills: no part of the commit,
-    // so at --staged a violation there could only ever be a false red.
+    // so at --staged a violation there could only ever be a false red; at
+    // --full it is judged at ITS last commit, never another session's edit
+    // in progress (BACKLOG C2).
     let outside = committed_corpus().expect("fixture");
     outside.write("skill-1/SKILL.md", DANGLING).expect("write");
     let r = repo_with(&[(
@@ -97,6 +99,18 @@ fn a_corpus_outside_the_repo_is_skipped_by_name_at_staged_and_read_at_full() {
         "{}",
         out.text()
     );
+    let out = goh(&r, &["structural", "--full"]).expect("goh runs");
+    assert!(
+        out.status.success(),
+        "an uncommitted edit judged: {}",
+        out.text()
+    );
+    assert!(
+        out.stderr.contains("judging its last commit"),
+        "{}",
+        out.text()
+    );
+    outside.git(&["commit", "-qam", "dangle"]).expect("git");
     let out = goh(&r, &["structural", "--full"]).expect("goh runs");
     assert_eq!(out.status.code(), Some(1), "{}", out.text());
 }
