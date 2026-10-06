@@ -7,9 +7,20 @@ and the third -- the biggest, the one uploaded to every monitored host -- had no
 `[lints]` table at all and had accumulated 254 findings that no gate reported.
 """
 
-from conftest import commit_all, run_check, write
+import pytest
+
+from conftest import commit_all, write
+from tier_kit import both_tiers, run_tiered  # noqa: F401  # both_tiers: a fixture
 
 SCRIPT = "checks/check_lints_optin.py"
+
+pytestmark = pytest.mark.usefixtures("both_tiers")
+
+
+def run_check(repo, script, *args):
+    """The checker over `repo`, on the current tier (Python, or `goh lints`)."""
+    return run_tiered(repo, script, "lints", *args)
+
 
 WS = '[workspace]\nmembers = ["a", "b"]\n\n[workspace.lints.clippy]\npedantic = "warn"\n'
 OPTED_IN = '[package]\nname = "{name}"\n\n[lints]\nworkspace = true\n'

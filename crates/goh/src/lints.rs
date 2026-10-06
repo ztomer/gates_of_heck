@@ -221,6 +221,55 @@ pub fn format_report(
     (false, out, err)
 }
 
+/// `--self-test`: the check goes red on a member that does not inherit, green
+/// once it does, and a workspace with no policy is reported as such -- the
+/// reference's own self-test, run against this audit.
+///
+/// # Errors
+/// The scenario that did not hold, named.
+pub fn self_test(scanner: &Scanner) -> Result<(), String> {
+    let dir = std::env::temp_dir().join(format!("goh-lints-self-test.{}", std::process::id()));
+    let write = |rel: &str, text: &str| -> Result<(), String> {
+        let path = dir.join(rel);
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+        }
+        std::fs::write(path, text).map_err(|e| e.to_string())
+    };
+    let result = (|| {
+        write("Cargo.toml", "[workspace]\nmembers = [\"a\", \"b\"]\n\n[workspace.lints.clippy]\npedantic = \"warn\"\n")?;
+        write(
+            "a/Cargo.toml",
+            "[package]\nname = \"a\"\n\n[lints]\nworkspace = true\n",
+        )?;
+        write("b/Cargo.toml", "[package]\nname = \"b\"\n")?;
+        let (findings, inspected, ..) = audit(scanner, &dir);
+        if inspected != 2 || findings.len() != 1 || !findings[0].manifest.contains("b/Cargo.toml") {
+            return Err(format!("a member that does not inherit was not the one finding: {findings:?} ({inspected} inspected)"));
+        }
+        write(
+            "b/Cargo.toml",
+            "[package]\nname = \"b\"\n\n[lints]\nworkspace = true\n",
+        )?;
+        let (findings, ..) = audit(scanner, &dir);
+        if !findings.is_empty() {
+            return Err(format!(
+                "a fully inheriting workspace was not clean: {findings:?}"
+            ));
+        }
+        write("Cargo.toml", "[workspace]\nmembers = [\"a\", \"b\"]\n")?;
+        let (findings, inspected, ..) = audit(scanner, &dir);
+        if inspected != 0 || !findings.is_empty() {
+            return Err(format!(
+                "a workspace with no policy was not reported as one: {findings:?}"
+            ));
+        }
+        Ok(())
+    })();
+    let _ = std::fs::remove_dir_all(&dir);
+    result
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

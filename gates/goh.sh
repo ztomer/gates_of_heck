@@ -50,7 +50,6 @@ esac
 
 # Arguments the Python checker takes and the port does not (yet): such a call runs Python.
 case "$check" in
-    lints) native_lacks="--staged --self-test" ;;
     unreaped-spawn) native_lacks="--probe --fresh-derivations" ;;
     version-provenance) native_lacks="--probe" ;;
     claim-derivation) native_lacks="--probe" ;;

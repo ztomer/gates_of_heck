@@ -293,7 +293,11 @@ enum Commands {
     },
     /// Fail when a crate is exempt from its workspace lint policy
     /// (native port of `check_lints_optin`).
-    Lints,
+    Lints {
+        /// Prove the check can go red, and stays green on a clean tree.
+        #[arg(long)]
+        self_test: bool,
+    },
     /// Audit an agent skills corpus (native port of
     /// `check_skills_corpus`).
     Skills(SkillsArgs),
@@ -416,7 +420,7 @@ fn main() {
             staged,
             verdicts,
         } => unreaped::run_command(staged, &exclude, verdicts.as_deref()),
-        Commands::Lints => commands::run_lints(),
+        Commands::Lints { self_test } => commands::run_lints(self_test),
         Commands::Skills(args) => commands::run_skills(
             &args.root,
             args.max_words,

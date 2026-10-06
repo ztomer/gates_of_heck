@@ -2,7 +2,6 @@
 """Fail when a crate is silently exempt from its workspace's lint policy.
 
     check_lints_optin.py              # every workspace under the repo root
-    check_lints_optin.py --staged     # only when a Cargo.toml is staged
     check_lints_optin.py --self-test  # prove this gate can go red
 
 WHY. `[workspace.lints]` is a DECLARATION, not an application. A member crate
@@ -117,7 +116,6 @@ def audit(root: Path) -> tuple[list[str], int, int, bool, int]:
 
 def main() -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--staged", action="store_true")
     ap.add_argument("--self-test", action="store_true")
     args = ap.parse_args()
 

@@ -350,7 +350,19 @@ pub fn run_screen(paths: &[String], scope: Option<&str>, staged: bool) -> i32 {
 /// Fail when a crate is exempt from its workspace lint policy.
 /// Returns 0 clean, 1 violations. Streams mirror the reference.
 #[must_use]
-pub fn run_lints() -> i32 {
+pub fn run_lints(self_test: bool) -> i32 {
+    if self_test {
+        return match lints::Scanner::compile().and_then(|s| lints::self_test(&s)) {
+            Ok(()) => {
+                println!("✓ [lints_optin] self-test passed");
+                0
+            }
+            Err(message) => {
+                eprintln!("✗ [lints_optin] self-test: {message}");
+                1
+            }
+        };
+    }
     let Some(root) = gitutil::repo_root().map(PathBuf::from) else {
         println!("[lints_optin] not a git repo — skipping");
         return 0;

@@ -48,7 +48,7 @@ def test_no_native_runs_python_without_a_word(tmp_path: Path) -> None:
 
 
 def test_an_argument_only_python_takes_runs_python(tmp_path: Path) -> None:
-    r = run("lints", "--self-test", GOH_BIN=str(fake_native(tmp_path)))
+    r = run("unreaped-spawn", "--probe", GOH_BIN=str(fake_native(tmp_path)))
     assert "native" not in r.stdout
     assert "Python-only" in r.stderr
 
