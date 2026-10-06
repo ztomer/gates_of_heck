@@ -94,7 +94,7 @@ Status: `[ ]` open, `[x]` done (with the commit), `[~]` handed off.
 **Phase 4 — the suite <= 60 s** (details: "Open -- found", 5)
 - [ ] 4.1 A shared empty-repo template for the 113 test sites that `git init` (~500 spawns).
 - [x] 4.2 The `release` xdist group deleted (its reason is gone since `31bbb81`); three suite
-      runs green after it, 62-65 s (`COMMIT`).
+      runs green after it, 62-65 s (`2642cbe`).
 - [ ] 4.3 Fewer processes per test in the heaviest files (`test_gate_environment.py`,
       `test_hook_git_env.py`, `test_rust_gate_scoped_cache.py`, `test_proven.py`) without
       weakening what each proves.
