@@ -217,10 +217,11 @@ goh_step() {
         # deleted at exit — a red gate that names no test is a red gate
         # nobody can act on (zinc E.1c, 2026-09-21). GOH_FAIL_PATTERN is
         # the grep; GOH_FAIL_LINES caps how many hits are shown.
-        if grep -nE "${GOH_FAIL_PATTERN:-error:|FAILED|failed|panicked at|Assertion|✗}" "$GOH_LOG" \
-                | grep -vE "0 failures|passed|failures \(0" | head -n "${GOH_FAIL_LINES:-40}" > "$GOH_LOG.fails" 2>/dev/null \
+        # Only lines ATTRIBUTABLE to the sub-step that failed: a passing sibling's `✗` (a
+        # calibration plant's quoted row) is left out and counted, and an unframed log says it is
+        # one (ZoneWM H2, BACKLOG C5; lib/fail_lines.py).
+        if python3 "$GOH_ROOT/lib/fail_lines.py" "$GOH_LOG" > "$GOH_LOG.fails" \
             && [ -s "$GOH_LOG.fails" ]; then
-            printf '%s\n' "── failure lines (grep ${GOH_FAIL_PATTERN:-error:|FAILED|failed|panicked at|Assertion|✗}) ──" >&2
             cat "$GOH_LOG.fails" >&2
             printf '%s\n\n' "── tail ──" >&2
         fi

@@ -29,6 +29,12 @@ CPU**; `-n 12` is slower than `-n 8`.
 | P3 rust_gate groups proven on their own inputs (`goh rust-scope`) | `750a114` | see the v0.21.0 stanza |
 | `required_tools --names`, ruff its own layer (divoom CI) | `3a9b465` | -- |
 
+**Landed since v0.21.0:**
+
+| item | commit | measured |
+|---|---|---|
+| C5 failure block quotes only the step that failed (ZoneWM H2; `lib/fail_lines.py`) | (this) | nested: innermost dump alone, others counted; `make`: its failing target first, matches flagged |
+
 ## Phase P — make goh fast (the program)
 
 ### Where the time goes, measured 2026-10-05
@@ -233,12 +239,6 @@ HEAD:<path>`, so computing a key stays O(scope), not O(files).
   `tui/` from a HEAD export too (a stable cache dir, `read-tree -u`, keyed by HEAD's tree), and
   development points `GOH_DIR` at the working tree on purpose. Then "uncommitted gate source
   certifies a push" is impossible by construction, and the SUPERSOTA item closes with it.
-- **C5. A `✗` line from a step that exited 0 is listed as a failure** (ZoneWM H2). `goh_step`'s
-  "failure lines" grep reads the whole log of the failing step, so a nested gate's red summary
-  quotes inner steps that passed -- a calibration plant's deliberate `✗` included. Fix: failure
-  lines come from the innermost step that FAILED (the P0 parent chain says which), and a `✗` under
-  an exit-0 step is flagged as such, never listed as the failure.
-
 ## Phase N — retire the Python checkers (owner's direction, 2026-10-05)
 
 The Python checkers are today both the second tier (`GOH_NO_NATIVE`) and the SPEC the native ports
