@@ -78,9 +78,11 @@ Status: `[ ]` open, `[x]` done (with the commit), `[~]` handed off.
       per push across local_ci's five steps; a second hand parser is not worth that.
 
 **Phase 3 — coverage without the clean rebuild** (details: "Open -- found", 3)
-- [ ] 3.1 An incremental instrumented build whose report counts ONLY the current build's objects;
+- [x] 3.1 An incremental instrumented build whose report counts ONLY the current build's objects;
       each way it can lie (a deleted/renamed test binary, a previous build's profile) tested first;
-      the 29-crate A/B shows identical reports.
+      the 29-crate A/B shows identical reports. Done (`1b12b22`): only the PROFILES are reset;
+      29/29 crates identical to the clean build, 173 -> 76 s. It also exposed the gate WRITING a
+      missing Cargo.lock as a side effect of the clean (a fixture relied on it).
 
 **Phase 4 — the suite <= 60 s** (details: "Open -- found", 5)
 - [ ] 4.1 A shared empty-repo template for the 113 test sites that `git init` (~500 spawns).

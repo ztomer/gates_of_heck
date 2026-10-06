@@ -170,6 +170,9 @@ def _mk_crate(root: Path, lib: str) -> Path:
     (c / "src" / "lib.rs").with_suffix(".rs")
     (c / "tests").mkdir()
     (c / "tests" / "all.rs").write_text(TEST_ALL)
+    # A real crate carries its lockfile: the gate's old `clean --workspace` WROTE one here as a side
+    # effect (a gate writing Cargo.lock); without it a crate with none is refused, as it should be.
+    subprocess.run(["cargo", "generate-lockfile", "-q"], cwd=c, check=True)
     return c
 
 

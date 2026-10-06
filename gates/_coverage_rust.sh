@@ -32,7 +32,16 @@ run_rust() {
     export CARGO_BUILD_BUILD_DIR="$CARGO_TARGET_DIR"
     export RUSTC_WRAPPER=""
     export CARGO_INCREMENTAL=0
-    cargo llvm-cov clean --workspace >/dev/null 2>&1 || rm -rf "$CARGO_TARGET_DIR"
+    # The PROFILES are reset, the BUILD is not. `clean --workspace` rebuilt every member
+    # instrumented on every run (mediaops-rs: 20 s cleaned, 12 s not, identical report). With the
+    # target AND build dir pinned per project (above), cargo-llvm-cov reports only the current
+    # build's objects: a deleted test target, another metadata hash (a version bump) and removed
+    # code each read exactly as after a clean build, and a previous run's profile -- which WOULD
+    # carry a dropped call forward -- is removed here (tests/test_coverage_incremental.py).
+    cargo llvm-cov clean --profraw-only >/dev/null 2>&1 || {
+        err "could not clear the previous run's profiles -- its counts would be this run's"
+        exit 1
+    }
 
     # ONE RUN, ONE EXPORT. The rust mode exported one lcov part PER TEST TARGET (`--no-clean`, the
     # profile reset between targets) and unioned them. The phantom misses that design was credited
