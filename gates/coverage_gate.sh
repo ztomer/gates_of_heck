@@ -200,6 +200,9 @@ fi
 if [ -n "$FLOORS_JSON" ] && [ ! -f "$FLOORS_JSON" ]; then
     die "floors file not found: $FLOORS_JSON (from --floors-json / GOH_COV_FLOORS_JSON)"
 fi
+# Absolute NOW: a mode `cd`s into the project before the merger reads it, and a relative path that
+# passed the check above from the caller's directory then named nothing (ztools, 2026-10-06).
+[ -z "$FLOORS_JSON" ] || FLOORS_JSON="$(cd "$(dirname "$FLOORS_JSON")" && pwd -P)/$(basename "$FLOORS_JSON")"
 if [ -n "$FLOOR" ]; then
     case "$FLOOR" in
         ''|*[!0-9.]*) die "floor must be numeric, got '$FLOOR'${ENV_VAR:+ (from $ENV_VAR)}" ;;

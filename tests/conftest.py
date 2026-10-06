@@ -20,6 +20,9 @@ import pytest
 # tree on purpose -- and a gate started under pytest WITHOUT it refuses rather than quietly
 # judging HEAD. A test that builds its environment by dropping GOH_* must keep this one.
 os.environ["GOH_LIVE"] = "1"
+# ...and the refusal is THIS suite's: the marker says so, and is not GOH_-prefixed so hermetic_env
+# keeps it. A consumer's pytest has no marker and gets the export like any other caller.
+os.environ["GATES_OF_HECK_SUITE"] = "1"
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 

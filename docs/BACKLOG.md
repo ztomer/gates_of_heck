@@ -319,7 +319,8 @@ history; it hands the design over, then 1 lands here test-first (red-proven both
 - **Every repo, after v0.24.0 (nothing to do):** rust coverage runs once per crate (identical
   reports, ~23% faster); a crate whose build reads in-repo files outside its scope is recorded
   from its second run; the step wrapper costs half. Tell servers when it is tagged.
-- **Every repo:** re-run `$GOH_DIR/install.sh <repo>`; `structural.sh` names a hook that is an older
+- **Every INSTALLED repo:** re-run `$GOH_DIR/install.sh <repo>` (a repo never installed, whose
+  hooks another manager owns, is refused since 2026-10-06 -- zinc); `structural.sh` names a hook that is an older
   stock. **A Rust toolchain is now required** for layer 1 (`bin/goh` is the only tier;
   `required_tools.tsv` names `cargo`, and `build-goh.sh` refuses up front without it).
 - **monitor:** its CI runs `GOH_NO_NATIVE=1 bash .gates_of_heck/gates/structural.sh --full`. The key
@@ -344,7 +345,8 @@ history; it hands the design over, then 1 lands here test-first (red-proven both
 - **antiknob / divoom:** `tools/lock_guard.sh` is redundant with the gate; retire it. CI installs
   from `python3 $GOH_DIR/gates/required_tools.py --repo . --install`.
 - **ztools:** `tools/coverage_floors.jsonc`'s exempt key can be repo-relative now
-  (`rust/src/ztools/twitter/native.rs`), valid in a push export too; its `_note` on inert
+  (project-relative: `src/ztools/twitter/native.rs` for project `rust/` -- the first
+  handoff said `rust/...`, wrong, corrected 2026-10-06), valid in a push export too; its `_note` on inert
   per-target floors and unreadable files is answered (both refused since v0.24.0).
 - **ztools:** HEAD (`40148ae`) is RED on its own code under clippy 1.99 (72 `assert_is_empty`); its
   hooks differ textually (`install.sh --force` is ztools' call); write `GOH_EXCLUDE='^vendor/'`.

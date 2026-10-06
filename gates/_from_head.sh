@@ -17,7 +17,7 @@
 #
 # GOH_LIVE=1 runs the working tree ON PURPOSE -- developing the gates, and this repo's own suite
 # (tests/conftest.py sets it). A test that drops it would test HEAD, not the change under test, and
-# say nothing: so under pytest without GOH_LIVE this REFUSES, naming the fix.
+# say nothing: so under THIS suite's pytest without GOH_LIVE this REFUSES, naming the fix.
 #
 # Not a checkout (an installed tarball), or the export cannot be built: the files here are run, with
 # a line saying why -- the state before C4, never a silent change of which code judges.
@@ -52,7 +52,10 @@ _goh_head_dir() {
     done
     [ -f "$root/.goh-head" ] && return 1          # this IS an export: run it
     [ -e "$root/.git" ] || return 1               # not a checkout: nothing to export
-    if [ -n "${PYTEST_CURRENT_TEST:-}" ]; then
+    # THIS suite only (tests/conftest.py exports GATES_OF_HECK_SUITE). A consumer's own pytest that
+    # runs a gate is a caller like any other and gets the export: keyed on PYTEST_CURRENT_TEST alone,
+    # this refused 53 of ztools' 120 tests (2026-10-06), and GOH_LIVE there would run OUR live tree.
+    if [ -n "${PYTEST_CURRENT_TEST:-}" ] && [ -n "${GATES_OF_HECK_SUITE:-}" ]; then
         echo "✗ gates_of_heck: a test ran $1 without GOH_LIVE=1 -- it would judge HEAD's export," \
             "not the tree under test. Keep GOH_LIVE in the test's environment." >&2
         exit 2

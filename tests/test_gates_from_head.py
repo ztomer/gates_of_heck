@@ -224,3 +224,16 @@ def test_a_tool_two_levels_down_finds_the_checkout_root(gates: Path, tmp_path) -
     assert out.returncode == 0, out.stderr
     assert out.stdout.endswith("/tools/release-kit/release.sh"), out.stdout
     assert str(tmp_path / "head-cache") in out.stdout, out.stdout
+
+
+def test_a_consumers_own_pytest_runs_the_export_not_a_refusal(
+    gates: Path, consumer: Path, tmp_path
+) -> None:
+    """The refusal is for THIS suite (it sets GATES_OF_HECK_SUITE). A consumer's pytest that runs a
+    gate -- ztools' tools/tests source tui/lib.sh -- is not developing the gates: it gets the
+    export like any other caller. ztools, 2026-10-06: 53 of 120 tests refused."""
+    env = _env(tmp_path, PYTEST_CURRENT_TEST="tests/x.py::t (call)")
+    env.pop("GATES_OF_HECK_SUITE", None)
+    r = _structural(gates, consumer, env)
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert "GOH_LIVE" not in r.stderr, r.stderr
