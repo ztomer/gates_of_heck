@@ -145,6 +145,19 @@ pub(crate) fn fail(label: &str, how: &str, report: &str, start: Instant) -> i32 
     1
 }
 
+/// `how` for a failing PORTED step (Phase N1): the native source that ran and
+/// the Python checker it ports, both as full paths -- R8, so the reader can
+/// find the rule from the message, as a delegated step's command line lets them.
+#[must_use]
+pub(crate) fn ported(source: &str, reference: &str) -> String {
+    let root = crate::goh_root();
+    format!(
+        "native {}, the port of {}",
+        root.join(source).display(),
+        root.join("checks").join(reference).display()
+    )
+}
+
 /// Where the rules behind a failing step are WRITTEN.
 ///
 /// docs/SUPERSOTA.md R8: a statement about the house belongs where the failure

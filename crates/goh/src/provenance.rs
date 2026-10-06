@@ -440,7 +440,15 @@ pub fn step(repo: &Path, staged: bool) -> Option<i32> {
             None
         }
         (code, out, err) => {
-            let _ = crate::step_report::fail(label, "native", &format!("{out}{err}"), start);
+            let _ = crate::step_report::fail(
+                label,
+                &crate::step_report::ported(
+                    "crates/goh/src/provenance.rs",
+                    "check_version_provenance.py",
+                ),
+                &format!("{out}{err}"),
+                start,
+            );
             Some(code)
         }
     }

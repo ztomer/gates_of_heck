@@ -22,7 +22,6 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 DELEGATED = [
     "check_no_credential_urls.py",
-    "check_md_links.py",
     "check_lock_version.py",
 ]
 PY_STUB = (

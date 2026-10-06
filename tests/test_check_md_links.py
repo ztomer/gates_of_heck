@@ -20,7 +20,10 @@ import json
 import subprocess
 import sys
 
+import pytest
+
 from conftest import REPO_ROOT, commit_all, git, write
+from tier_kit import both_tiers, run_tiered  # noqa: F401  # both_tiers: a fixture
 
 sys.path.insert(0, str(REPO_ROOT / "checks"))
 import check_md_links as gate  # noqa: E402
@@ -28,11 +31,12 @@ import _md_text as md  # noqa: E402
 
 CHECKER = "checks/check_md_links.py"
 
+pytestmark = pytest.mark.usefixtures("both_tiers")
+
 
 def _run(repo, *args):
-    return subprocess.run(
-        [sys.executable, str(REPO_ROOT / CHECKER), *args], cwd=repo, capture_output=True, text=True
-    )
+    """The checker over `repo`, on the current tier (Python, or `goh md-links`)."""
+    return run_tiered(repo, CHECKER, "md-links", *args, python_only=("--probe",))
 
 
 # ── the slug, which is the whole difficulty ──────────────────────────────────

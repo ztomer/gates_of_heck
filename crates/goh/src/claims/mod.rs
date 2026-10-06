@@ -365,7 +365,15 @@ pub fn step_gate(cfg: &crate::gatesrc::Gatesrc, staged: bool) -> Option<i32> {
         }
         (code, lines) => {
             let text: String = lines.into_iter().map(|(_, l)| l + "\n").collect();
-            let _ = crate::step_report::fail(label, "native", &text, start);
+            let _ = crate::step_report::fail(
+                label,
+                &crate::step_report::ported(
+                    "crates/goh/src/claims/mod.rs",
+                    "check_claim_derivation.py",
+                ),
+                &text,
+                start,
+            );
             Some(code)
         }
     }

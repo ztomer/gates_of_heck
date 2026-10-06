@@ -320,7 +320,15 @@ pub fn step(cfg: &crate::gatesrc::Gatesrc, staged: bool) -> Option<i32> {
             None
         }
         (code, text) => {
-            let _ = crate::step_report::fail(label, "native", &text, start);
+            let _ = crate::step_report::fail(
+                label,
+                &crate::step_report::ported(
+                    "crates/goh/src/unreaped/mod.rs",
+                    "check_no_unreaped_spawn.py",
+                ),
+                &text,
+                start,
+            );
             Some(code)
         }
     }

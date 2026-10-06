@@ -21,6 +21,7 @@ pub mod killname;
 pub mod length;
 pub mod lints;
 pub mod markers;
+pub mod mdlinks;
 pub mod mdtext;
 pub mod noallow;
 pub mod platform;
@@ -182,6 +183,25 @@ enum Commands {
         #[arg(long)]
         json: bool,
     },
+    /// Fail on a relative markdown link that resolves to no file or no anchor
+    /// (native port of `check_md_links`).
+    MdLinks {
+        /// Repository to read (default: the cwd's repo).
+        #[arg(long)]
+        root: Option<String>,
+        /// Judge the index, not the working tree.
+        #[arg(long)]
+        staged: bool,
+        /// Regex on repo-relative paths to exempt.
+        #[arg(long)]
+        exclude: Option<String>,
+        /// Machine-readable output.
+        #[arg(long)]
+        json: bool,
+        /// Print the anchors and links of the markdown on stdin, as JSON.
+        #[arg(long)]
+        anchors: bool,
+    },
     /// Re-derive every marked number in prose (native port of `check_claim_derivation`).
     ClaimDerivation {
         /// Repository to read (default: the cwd's repo).
@@ -316,6 +336,13 @@ fn main() {
             staged,
             json,
         } => provenance::run_command(&root, baseline.as_deref(), staged, json),
+        Commands::MdLinks {
+            root,
+            staged,
+            exclude,
+            json,
+            anchors,
+        } => mdlinks::run_command(root.as_deref(), staged, exclude.as_deref(), json, anchors),
         Commands::ClaimDerivation {
             root,
             staged,
@@ -401,7 +428,6 @@ fn run_structural(staged: bool, full: bool) -> i32 {
     let specs = prefetch::collect(|| {
         let _ = steps_delegated::step_shell(&repo, &cfg, &checks, staged);
         let _ = steps_delegated::step_credential_urls(&repo, &checks);
-        let _ = steps_delegated::step_md_links(&repo, &checks, &cfg, staged);
         let _ = steps_delegated::step_lock_version(&repo, &checks);
         let _ = steps_delegated::step_python_formatted(&repo, &cfg, &checks, staged);
         let _ = steps_delegated::step_full_only(&repo, &checks, staged);
@@ -442,7 +468,7 @@ fn run_structural(staged: bool, full: bool) -> i32 {
     if let Some(code) = provenance::step(&repo, staged) {
         return code;
     }
-    if let Some(code) = steps_delegated::step_md_links(&repo, &checks, &cfg, staged) {
+    if let Some(code) = mdlinks::step(&cfg, staged) {
         return code;
     }
     if let Some(code) = steps_delegated::step_lock_version(&repo, &checks) {

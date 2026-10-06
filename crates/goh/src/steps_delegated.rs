@@ -45,46 +45,6 @@ pub fn step_shell(
     None
 }
 
-/// Cross-file markdown links: a relative link must resolve to a file AND to an
-/// anchor that file actually has.
-///
-/// Both halves fail silently. A link to a heading that does not exist renders
-/// fine and 404s only on click, so no linter or CI notices; and the anchor is
-/// not the heading, because GitHub lowercases, drops the punctuation and turns
-/// spaces into hyphens -- a six-step transformation a human must redo at every
-/// link. An audit of `app_updates` (2026-10-01) had to hand-derive
-/// `#48-what-90-can-actually-do-measured` into a sibling file and had already
-/// written a wrong one.
-///
-/// `GOH_EXCLUDE` covers vendored docs: ztools' camoufox-rs PROTOCOL.md carries
-/// upstream's own broken anchor, which is upstream's to fix.
-#[must_use]
-pub fn step_md_links(
-    repo: &std::path::Path,
-    checks: &std::path::Path,
-    cfg: &gatesrc::Gatesrc,
-    staged: bool,
-) -> Option<i32> {
-    let label = if staged {
-        "markdown links resolve (staged)"
-    } else {
-        "markdown links resolve"
-    };
-    let mut args = vec!["check_md_links.py".to_owned()];
-    if staged {
-        args.push("--staged".to_owned());
-    }
-    if !cfg.exclude.is_empty() {
-        args.push("--exclude".to_owned());
-        args.push(cfg.exclude.clone());
-    }
-    let code = delegated(checks, repo, label, "python3", &args);
-    if code != 0 {
-        return Some(code);
-    }
-    None
-}
-
 /// A committed `Cargo.lock` must agree with the manifest it was generated from.
 ///
 /// `app_updates`, 2026-10-01: a release commit bumped `[workspace.package]

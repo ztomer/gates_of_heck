@@ -473,7 +473,15 @@ pub fn step(cfg: &crate::gatesrc::Gatesrc, staged: bool) -> Option<i32> {
             None
         }
         (code, out) => {
-            let _ = crate::step_report::fail(label, "native", &out, start);
+            let _ = crate::step_report::fail(
+                label,
+                &crate::step_report::ported(
+                    "crates/goh/src/killname/mod.rs",
+                    "check_no_kill_by_name.py",
+                ),
+                &out,
+                start,
+            );
             Some(code)
         }
     }

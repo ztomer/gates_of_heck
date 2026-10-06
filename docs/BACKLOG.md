@@ -256,7 +256,9 @@ order, never the reverse:
   reference bugs fixed in the Python with red tests (a module-level list holding a non-literal
   crashed the gate with AttributeError; `ast.parse` leaked another file's SyntaxWarning into the
   report). One reproduced, to fix in both: `_python_prose` blanks the REST of the line a multi-line
-  string ends on (`range(row, end_row)` reaches the end row). Next: `check_md_links`, `check_python_formatted` (spawns ruff either way),
+  string ends on (`range(row, end_row)` reaches the end row). **`check_md_links` LANDED** as
+  `goh md-links` (`crates/goh/src/mdlinks.rs` + `mdtext.rs`): anchors and links identical on 627
+  `.md` files across 30 repos, reports identical at three modes. Next: `check_md_links`, `check_python_formatted` (spawns ruff either way),
   `check_lock_version`, `check_no_credential_urls`, `check_shell_lint.sh` (spawns shellcheck), and
   the gate-side Python (`check_dep_currency`, `check_lints_optin`'s twin, `lcov_merge`). Each port
   lands parity-pinned against the Python it replaces and red-proven both ways, as Phase 3 did.
