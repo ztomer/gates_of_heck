@@ -16,7 +16,16 @@ from pathlib import Path
 
 import pytest
 
-from conftest import REPO_ROOT, git, run_check, write
+from conftest import REPO_ROOT, git, write
+from tier_kit import both_tiers, run_tiered  # noqa: F401  # both_tiers: a fixture
+
+pytestmark = pytest.mark.usefixtures("both_tiers")
+
+
+def run_check(repo, script, *args):
+    """The checker over `repo`, on the current tier (Python, or `goh tag-version`)."""
+    return run_tiered(repo, script, "tag-version", *args, python_only=("--probe",))
+
 
 sys.path.insert(0, str(REPO_ROOT / "checks"))
 import _version_sources as sources  # noqa: E402

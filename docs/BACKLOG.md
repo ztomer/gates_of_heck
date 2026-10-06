@@ -289,7 +289,10 @@ order, never the reverse:
   Cargo's own table). The semver table now lives in the crate's tests (N2 for this checker).
   **`check_no_empty_assert` LANDED** as `goh empty-assert` (`crates/goh/src/emptyassert.rs`): its
   "Python-only, one implementation" note is honoured by moving the measured clippy table INTO the
-  crate's tests, not by keeping two readers; identical on every local repo at both scopes. Next: `check_md_links`, `check_python_formatted` (spawns ruff either way),
+  crate's tests, not by keeping two readers; identical on every local repo at both scopes.
+  **`check_tag_version` LANDED** as `goh tag-version` (`crates/goh/src/tagver.rs`), which the push
+  gate now runs through `goh.sh`: every strategy agrees with `_version_sources` on every fixture
+  text its suites declare; the 48 tag tests run on both tiers. Next: `check_md_links`, `check_python_formatted` (spawns ruff either way),
   `check_lock_version`, `check_no_credential_urls`, `check_shell_lint.sh` (spawns shellcheck), and
   the gate-side Python (`check_dep_currency`, `check_lints_optin`'s twin, `lcov_merge`). Each port
   lands parity-pinned against the Python it replaces and red-proven both ways, as Phase 3 did.

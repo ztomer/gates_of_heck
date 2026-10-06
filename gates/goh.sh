@@ -42,6 +42,7 @@ case "$check" in
     claim-derivation) python_file="checks/check_claim_derivation.py" ;;
     md-links) python_file="checks/check_md_links.py" ;;
     lock-version) python_file="checks/check_lock_version.py" ;;
+    tag-version) python_file="checks/check_tag_version.py" ;;
     credential-urls) python_file="checks/check_no_credential_urls.py" ;;
     python-formatted) python_file="checks/check_python_formatted.py" ;;
     shell-lint) python_file="checks/check_shell_lint.sh" ;;
@@ -57,6 +58,7 @@ case "$check" in
     claim-derivation) native_lacks="--probe" ;;
     md-links) native_lacks="--probe" ;;
     lock-version) native_lacks="--probe" ;;
+    tag-version) native_lacks="--probe" ;;
     credential-urls) native_lacks="--probe" ;;
     python-formatted) native_lacks="--selftest" ;;
     *)     native_lacks="" ;;

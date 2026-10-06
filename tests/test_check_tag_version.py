@@ -22,7 +22,16 @@ import sys
 
 import pytest
 
-from conftest import REPO_ROOT, git, run_check, write
+from conftest import REPO_ROOT, git, write
+from tier_kit import both_tiers, run_tiered  # noqa: F401  # both_tiers: a fixture
+
+pytestmark = pytest.mark.usefixtures("both_tiers")
+
+
+def run_check(repo, script, *args):
+    """The checker over `repo`, on the current tier (Python, or `goh tag-version`)."""
+    return run_tiered(repo, script, "tag-version", *args, python_only=("--probe",))
+
 
 from _tag_version_kit import CHECKER, ZERO, _media_shape, _refs, _sha
 

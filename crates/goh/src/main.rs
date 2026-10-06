@@ -51,6 +51,7 @@ pub mod step_report;
 pub mod steps;
 pub mod steps_delegated;
 pub mod structural;
+pub mod tagver;
 pub mod unreaped;
 pub mod verdict_cache;
 pub mod versrc;
@@ -170,6 +171,15 @@ fn run_ported(command: Commands) -> Result<i32, Commands> {
             ratchet,
         } => deps::run_command(root.as_deref(), json, offline, strict, ratchet.as_deref()),
         Commands::EmptyAssert { exclude, staged } => emptyassert::run_command(staged, &exclude),
+        Commands::TagVersion {
+            root,
+            refs_file,
+            json,
+            extract,
+        } => extract.map_or_else(
+            || tagver::run_command(root.as_deref(), refs_file.as_deref(), json),
+            |kind| tagver::extract_command(&kind),
+        ),
         Commands::LockVersion { root, json } => lockver::run_command(root.as_deref(), json),
         Commands::MdLinks {
             root,

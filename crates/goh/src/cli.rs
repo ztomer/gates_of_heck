@@ -202,6 +202,22 @@ pub enum Commands {
         #[arg(long)]
         staged: bool,
     },
+    /// Fail on a pushed release tag its own commit does not declare (native
+    /// port of `check_tag_version`).
+    TagVersion {
+        /// Repository to read (default: the cwd's repo).
+        #[arg(long)]
+        root: Option<String>,
+        /// File of pre-push ref lines (`-` or absent: stdin).
+        #[arg(long)]
+        refs_file: Option<String>,
+        /// Machine-readable output.
+        #[arg(long)]
+        json: bool,
+        /// Print what one version-source strategy reads from stdin, as JSON.
+        #[arg(long)]
+        extract: Option<String>,
+    },
     /// Fail when `Cargo.lock` disagrees with its manifests (native port of
     /// `check_lock_version`).
     LockVersion {

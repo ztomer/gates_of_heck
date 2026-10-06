@@ -155,7 +155,9 @@ tag_check_run() {
         . "$root/.gatesrc"
         set +a
     fi
-    python3 -B "$tag_check" --root "$root" --refs-file "$refs_file"
+    # The native port (`goh tag-version`, Phase N1) through the one dispatcher; the Python
+    # reference runs when no binary resolves.
+    bash "$GOH/gates/goh.sh" tag-version --root "$root" --refs-file "$refs_file"
 }
 
 zero="0000000000000000000000000000000000000000"
