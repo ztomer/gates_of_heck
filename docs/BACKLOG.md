@@ -150,7 +150,7 @@ behind the same tests the shell passes today, red-proven, one at a time:
       Done (`3b94809`): `crates/goh-sys` (the one allowlisted `unsafe`) + `signal-hook`; the CLI
       contract pinned against BOTH wrappers (15 cases each); 26-79 ms -> 4.3 ms a step.
 - [x] 4C.2 The proven cache native (`goh proven key|lookup|record`): REOPENED (owner) and DONE
-      (`COMMIT`). Byte-identical keys and the bash record format, so either side reads the other's
+      (`23976e1`). Byte-identical keys and the bash record format, so either side reads the other's
       records (`tests/test_proven_native.py`); the identity's constant half from the bash memo,
       its live half (builtins) on stdin. Key + lookup 39.2 -> 30.3 ms; earlier bash cuts
       `54e8d83`/`4c0d4f3`-era: identity once per tree, no needless git/date spawns.
