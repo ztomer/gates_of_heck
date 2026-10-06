@@ -9,9 +9,10 @@ other sessions load, a timing gate flakes and gets switched off:
   meant -- `DRIFT_BUILD_OK=1` in that build's environment: the session fixture's one build, and a
   test whose subject IS the build. Said at the call site, not by file, because such a test scrubs
   its environment (PYTEST_CURRENT_TEST with it), and the opt-in is then the one thing it passes;
-* a test's call phase over CEILING_S fails -- 30 s, wide enough never to flake (the slowest test
-  runs ~16 s under load), tight enough to catch a leaked child holding a captured pipe open (one
-  waited out a whole `sleep 30`) or a runaway build. A test that genuinely needs longer is named in
+* a test's call phase over CEILING_S fails -- 60 s, wide enough never to flake (honest tests
+  reached 25-30 s with a push gate's coverage run and a second suite on the box at once), tight
+  enough to catch a leaked child holding a captured pipe (one waited out a whole `sleep 30` -- a
+  leak that long or longer) or a runaway build. A test that genuinely needs longer is named in
   SLOW with its own ceiling.
 
 Found by the build guard on its first run: under GOH_LIVE with uncommitted Rust, every gate test
@@ -36,8 +37,13 @@ import pytest
 
 _ROOT = Path(__file__).resolve().parents[1]
 
-CEILING_S = 30.0
-SLOW: dict[str, float] = {}  # nodeid -> its own ceiling, each with a reason in a comment
+CEILING_S = 60.0
+SLOW: dict[str, float] = {  # nodeid -> its own ceiling, each with its reason
+    # a real `cargo build --release` of goh, cold in a fresh export: 30 s measured under load
+    "tests/test_goh_build_publish.py::test_a_broken_uncommitted_edit_never_reaches_the_published_binary": 600,
+    # builds the working tree's goh (GOH_LIVE) into its own target dir when that is cold
+    "tests/test_binary_source_identity.py::test_goh_live_runs_the_working_trees_binary_not_heads": 600,
+}
 
 _REAL_CARGO = shutil.which("cargo")
 if _REAL_CARGO:

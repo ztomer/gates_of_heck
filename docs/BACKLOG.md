@@ -172,7 +172,7 @@ behind the same tests the shell passes today, red-proven, one at a time:
       refusal, never a timing budget, since every timing threshold this campaign flaked under load:
       `tests/_drift_guard.py` puts a `cargo` shim first on every worker's PATH that refuses a goh
       build unless the caller says `DRIFT_BUILD_OK=1` (the session fixture; a test whose subject is
-      the build), and fails any test whose call phase passes 30 s (`SLOW` names exceptions);
+      the build), and fails any test whose call phase passes 60 s (`SLOW` names the real builds);
       `tests/test_suite_drift.py` ratchets `git init` sites per test file and `cpu_count()` pools,
       and plants a slow test and a goh build in a child pytest to prove both guards go red;
       `--strict-markers` (pyproject) makes an unregistered mark an error. First run caught two:
