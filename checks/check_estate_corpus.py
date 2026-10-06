@@ -64,9 +64,11 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from _ordered_pool import in_order  # noqa: E402
+import _estate_cache  # noqa: E402
 from _gitutil import foreign_repo_env, listed_files, scratch_git  # noqa: E402
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -318,6 +320,11 @@ def judge(entry, bad):
         bad.append(entry["checker"])
         return "blind"
 
+    ident = _estate_cache.current_identity(os.path.abspath(__file__), GOH)
+    key = _estate_cache.entry_key(ident, entry, source, files)
+    if seen := _estate_cache.lookup(key):  # nothing it depends on moved (checks/_estate_cache.py)
+        ok(f"{seen['line']} -- verified {int(time.time() - seen['at'])}s ago, inputs unchanged")
+        return "verified"
     with tempfile.TemporaryDirectory() as td:
         real = os.path.join(td, "real")
         minimal = os.path.join(td, "minimal")
@@ -366,11 +373,13 @@ def judge(entry, bad):
             f"{entry['checker']}: caught in the real corpus but NOT in a one-file fixture — the "
             f"estate was load-bearing"
         )
-    ok(
+    line = (
         f"{entry['checker']}: red on a plant inside {target} ({existing} lines of real code, "
         f"{len(files)} real file(s) from {os.path.basename(entry['root'])})"
         + ("" if min_rc == 1 else " -- and GREEN on the bare one-file fixture")
     )
+    ok(line)
+    _estate_cache.record(key, line)
     return "verified"
 
 

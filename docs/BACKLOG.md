@@ -65,12 +65,13 @@ Status: `[ ]` open, `[x]` done (with the commit), `[~]` handed off.
       concurrent sessions 7.3 vs 7.3 s -- the pool is not the serializer, so it stays. One run is
       4.6 CPU-s in 2.1 s wall, 3.35 s of it sys: ~4000 file creations (the corpus copies and the
       objects `git add` writes), which contend across processes. That is 2.4.
-- [ ] 2.4 A verdict cache for `check_estate_corpus`, so the corpus is materialised only when an
+- [x] 2.4 A verdict cache for `check_estate_corpus`, so the corpus is materialised only when an
       input moved. Key: each entry's source scope at HEAD and any uncommitted edit under it, the
       checker's own source, the `goh` binary's stamp. Every way a hit can be wrong, tested BEFORE
       the cache: a committed edit in a scope, an uncommitted one, a new checker binary, an edited
       checker, an estate repo gone (never a hit: "unavailable"), a corrupt entry. Exit: a repeat run
-      with nothing moved materialises nothing (counted), and phase 6.2's sigma.
+      with nothing moved materialises nothing (counted), and phase 6.2's sigma. Done (`COMMIT`):
+      a warm run 1.49 -> 0.17 s, sys 3.86 -> 0.43 s; eleven ways-to-lie tests.
 - [x] 2.3 `lib/orphan_canary.py` sheds `dataclasses` and loads `json` only to write a snapshot
       (`6f6110a`). A/B per step, 25 interleaved: 44.3 -> 43.0 ms -- measured, and smaller than
       expected: the rest is the C4 stanza's `subprocess` import (needed anyway) and argparse, ~25 ms
