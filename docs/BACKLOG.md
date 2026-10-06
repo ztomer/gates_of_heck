@@ -1,4 +1,4 @@
-# BACKLOG — forward-looking work (rule #13)
+# BACKLOG — the roadmap, and every open item (rule #16: one forward-looking file)
 
 One file; prune landed items to git history. Every item carries the same four things, or it is
 not ready to start: the **measured baseline** it moves, the **exit number** that closes it, the
@@ -10,7 +10,7 @@ from the P0 instrument does not land.
 
 v0.23.0 retired the Python checkers: `bin/goh` is the only structural tier. Main is 17 commits past
 the tag (CHANGELOG `Unreleased`): the spawn cuts, one-run coverage, the learned rust scope, the C2
-writer hook, `tools/session_bench.py`. **Releasing it as v0.24.0 waits on the owner's OK to push.** Box: 16 cores, 4-5 busy
+writer hook, `tools/session_bench.py`. **v0.24.0 is cut when every phase below is done (owner, 2026-10-06).** Box: 16 cores, 4-5 busy
 at idle, sys ~= user, so **spawn count, tree walks and network round trips are the cost metric, not
 CPU**. The suite runs `-n 12` (faster than 8 since the 2026-10-06 spawn cuts; 16 a draw). Every wall-clock number below needs a QUIET box (load < 4):
 the 2026-10-06 session ran at load 12-31 beside other sessions' gates, so its timings are not
@@ -34,6 +34,64 @@ commit bodies.
 | git's repository-binding variables asked once per process tree (`GOH_GIT_LOCAL_VARS`) | `bd3bff7` | ~1300 fewer spawns per suite run |
 | suite at `-n 12` | `83af2ac` | 74/96 s -> 67/79 s interleaved |
 | P0-P4, C1, C3-C5 | v0.20.0-v0.22.0 | see CHANGELOG |
+
+## Roadmap to v0.24.0 — the plan of record
+
+The owner's rule (2026-10-06): every item below is DONE before the release is cut. Done means the
+item's exit number met, or -- only where the work belongs to another repo or session -- handed to
+its owner with the evidence and recorded here. Phases run in order; within a phase, any order.
+Status: `[ ]` open, `[x]` done (with the commit), `[~]` handed off.
+
+**Phase 1 — correctness: a gate that says more than it does** (details: "Open -- found", 1-2)
+- [ ] 1.1 Rust per-target coverage floors are inert: refuse a floors file whose target floors the
+      rust mode cannot apply, naming the key (red-first: `{"covfix": 100}` over 50% passes today).
+- [ ] 1.2 The HEAD export cache is pruned, bounded by count/age; an export in use is never removed
+      (test: a gate reading an export survives a prune).
+
+**Phase 2 — fewer spawns in every gate** (details: "Open -- found", 4, 6, 7)
+- [ ] 2.1 `goh.sh` resolves the binary once per process tree (exported, validated); ratchet: a
+      `goh.sh` call inside a gate spawns no git.
+- [ ] 2.2 `check_estate_corpus`: scratch repos from a template with the identity on the commit
+      (5 git spawns -> 2 per repo); its pool sized for a shared machine, not `os.cpu_count()`.
+- [ ] 2.3 `lib/orphan_canary.py` sheds `dataclasses`/`argparse` on the common path, as
+      `bounded_run.py` did; A/B per step.
+
+**Phase 3 — coverage without the clean rebuild** (details: "Open -- found", 3)
+- [ ] 3.1 An incremental instrumented build whose report counts ONLY the current build's objects;
+      each way it can lie (a deleted/renamed test binary, a previous build's profile) tested first;
+      the 29-crate A/B shows identical reports.
+
+**Phase 4 — the suite <= 60 s** (details: "Open -- found", 5)
+- [ ] 4.1 A shared empty-repo template for the 113 test sites that `git init` (~500 spawns).
+- [ ] 4.2 The `release` xdist group deleted (its reason is gone since `31bbb81`).
+- [ ] 4.3 Fewer processes per test in the heaviest files (`test_gate_environment.py`,
+      `test_hook_git_env.py`, `test_rust_gate_scoped_cache.py`, `test_proven.py`) without
+      weakening what each proves.
+
+**Phase 5 — known limits worth closing**
+- [ ] 5.1 The C2 writer hook also judges a skill edited through Bash (a PostToolUse `Bash` matcher
+      that fires when the command names the corpus root).
+
+**Phase 6 — the measurements, on a quiet box (load < 4)** (details: "Open -- measurements")
+- [ ] 6.1 This repo's suite <= 60 s.
+- [ ] 6.2 Cross-session sigma for `structural --full` <= 0.15 (`tools/session_bench.py`).
+- [ ] 6.3 media_server push, everything changed: gates_of_heck's share (the rust phase) measured
+      against its 90 s target with media_server's own pytest step separated out.
+- [ ] 6.4 media_server push, one crate changed: same split, against 30 s.
+- [ ] 6.5 The P2 `GOH_CI_JOBS` budget curve (1/2/4/6), its knee recorded.
+
+**Phase 7 — downstream: each consumer item to its owner** (details: "Downstream")
+- [ ] 7.1 Each item below sent to the session that owns the repo, with the evidence; marked `[~]`
+      here with the date. (servers: the pytest step outside the proven cache, `--each-crate`;
+      monitor, antiknob, divoom, routines, ztools, ZoneWM, Finance, ZeroThunder, the line-cap repos.)
+
+**Phase 8 — the "fix the class" commit gate** (details: its own section)
+- [ ] 8.1 Land ZoneWM's handed-over design here, test-first (red-proven both directions), once its
+      prototype has the real-history data it promised.
+
+**Phase 9 — release**
+- [ ] 9.1 v0.24.0: version bump, CHANGELOG `Unreleased` -> `v0.24.0`, full gate green, tag, push,
+      GitHub release (`tools/release-kit/release.sh`); then tell servers the tag.
 
 ## Open — measurements (each needs a quiet box)
 
