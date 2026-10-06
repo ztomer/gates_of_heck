@@ -29,6 +29,7 @@ def run_check(repo, script, *args):
 
 sys.path.insert(0, str(REPO_ROOT / "checks"))
 from _tag_version_kit import extract  # noqa: E402
+from _fast_git import fast_init  # noqa: E402
 
 CHECKER = "checks/check_tag_version.py"
 ZERO = "0" * 40
@@ -52,7 +53,7 @@ def _tagged_repo(tmp_path, name, rel, text):
     """A repo with one commit declaring `text` at `rel`, tagged to match it."""
     repo = tmp_path / name
     repo.mkdir()
-    git(repo, "init", "-q", "-b", "main")
+    fast_init(repo, "main")
     write(repo, rel, text)
     git(repo, "add", "-A")
     git(repo, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "c")

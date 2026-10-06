@@ -64,6 +64,34 @@ pub enum Commands {
         #[arg(last = true)]
         command: Vec<String>,
     },
+    /// Run a step under a ceiling and report what it left running (the native
+    /// `lib/orphan_canary.py wrap`).
+    Canary {
+        /// The repo, for attributing a leaked process by its path (default: cwd).
+        #[arg(long)]
+        repo: Option<PathBuf>,
+        /// Append the step's output here instead of inheriting it.
+        #[arg(long)]
+        log: Option<PathBuf>,
+        /// Record the surviving pids here as JSON when there are any.
+        #[arg(long)]
+        snapshot: Option<PathBuf>,
+        /// The ceiling, in seconds (a positive integer).
+        #[arg(long, default_value = "900", allow_hyphen_values = true)]
+        timeout: String,
+        /// Seconds between TERM and KILL when the group is swept.
+        #[arg(long, default_value_t = 5)]
+        grace: u64,
+        /// What to call the step (default: the command).
+        #[arg(long, default_value = "")]
+        label: String,
+        /// Name every unattributable process too (accepted for the Python's CLI; no effect).
+        #[arg(long)]
+        verbose: bool,
+        /// The command, after `--`.
+        #[arg(last = true)]
+        command: Vec<String>,
+    },
     /// Run the structural gate (every repo, any language).
     Structural {
         /// Staged files only (pre-commit scope, fast).

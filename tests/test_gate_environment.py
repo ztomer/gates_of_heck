@@ -30,6 +30,7 @@ import shutil
 import subprocess
 from pathlib import Path
 from conftest import hermetic_env, native_goh_path
+from _fast_git import fast_init  # noqa: E402
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -119,7 +120,7 @@ def _committable_repo(tmp_path: Path, gate: str) -> Path:
     """A repo the push gate will gate: a `tools/gate.sh`, a VERSION, one commit."""
     repo = tmp_path / "repo"
     repo.mkdir()
-    _git(repo, "init", "-q", "-b", "main")
+    fast_init(repo, "main")
     (repo / "tools").mkdir()
     (repo / "tools" / "gate.sh").write_text(gate)
     (repo / "VERSION").write_text("1.0.0\n")

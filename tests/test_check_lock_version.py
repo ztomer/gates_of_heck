@@ -27,6 +27,7 @@ import pytest
 
 from conftest import commit_all, git, write
 from tier_kit import both_tiers, run_tiered  # noqa: F401  # both_tiers: a fixture
+from _fast_git import fast_init  # noqa: E402
 
 pytestmark = pytest.mark.usefixtures("both_tiers")
 
@@ -90,7 +91,7 @@ def test_the_incident_is_red(tmp_path):
     repo = tmp_path / "app"
     repo.mkdir()
     _workspace(repo, "1.36.0", "1.35.0")
-    git(repo, "init", "-q", "-b", "main")
+    fast_init(repo, "main")
     commit_all(repo)
 
     r = _run(repo)
@@ -104,7 +105,7 @@ def test_regenerating_the_lockfile_is_green(tmp_path):
     repo.mkdir()
     _workspace(repo, "1.36.0", "1.35.0")
     write(repo, "Cargo.lock", LOCK.format(version="1.36.0"))
-    git(repo, "init", "-q", "-b", "main")
+    fast_init(repo, "main")
     commit_all(repo)
     assert _run(repo).returncode == 0, _run(repo).stderr
 
@@ -230,7 +231,7 @@ def test_a_release_number_bumped_in_one_place_only_is_red(tmp_path):
     repo = tmp_path / "media"
     repo.mkdir()
     _forgotten_member(repo)
-    git(repo, "init", "-q", "-b", "main")
+    fast_init(repo, "main")
     commit_all(repo)
 
     r = _run(repo)

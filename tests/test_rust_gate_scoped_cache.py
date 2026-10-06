@@ -21,6 +21,7 @@ from pathlib import Path
 
 import pytest
 from conftest import hermetic_env
+from _fast_git import fast_init  # noqa: E402
 
 ROOT = Path(__file__).resolve().parent.parent
 
@@ -87,7 +88,7 @@ def estate(tmp_path: Path) -> Path:
             check=True,
             capture_output=True,
         )
-    _git(repo, "init", "-q")
+    fast_init(repo)
     _git(repo, "add", "-A")
     return repo
 

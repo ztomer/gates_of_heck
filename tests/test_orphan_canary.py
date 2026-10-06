@@ -50,8 +50,10 @@ def repo(tmp_path: Path) -> Path:
     return root
 
 
-def wrap(repo: Path, *args: str, snapshot: Path | None = None) -> subprocess.CompletedProcess:
-    argv = [sys.executable, CANARY, "wrap", "--repo", str(repo), "--timeout", "30"]
+def _wrap_with(
+    prefix: list[str], repo: Path, *args: str, snapshot: Path | None = None
+) -> subprocess.CompletedProcess:
+    argv = [*prefix, "--repo", str(repo), "--timeout", "30"]
     if snapshot is not None:
         argv += ["--snapshot", str(snapshot)]
     return subprocess.run(
@@ -61,6 +63,19 @@ def wrap(repo: Path, *args: str, snapshot: Path | None = None) -> subprocess.Com
         check=False,
         cwd=repo,
     )
+
+
+@pytest.fixture(params=["python", "native"])
+def wrap(request):
+    """The canary under test: the Python `wrap`, or its native port `goh canary` (roadmap 4C.3).
+    Every command-line case below runs against both."""
+    if request.param == "python":
+        prefix = [sys.executable, CANARY, "wrap"]
+    else:
+        from conftest import native_goh_path
+
+        prefix = [str(native_goh_path()), "canary"]
+    return lambda repo, *args, snapshot=None: _wrap_with(prefix, repo, *args, snapshot=snapshot)
 
 
 def kill(pid: int) -> None:
@@ -117,7 +132,7 @@ def reap_tree(root: int) -> None:
 # ── the incident's shape: a step that PASSES and leaks a server ──────────────
 
 
-def test_a_step_that_leaks_a_server_is_red(repo: Path) -> None:
+def test_a_step_that_leaks_a_server_is_red(wrap, repo: Path) -> None:
     """THE case. The step exits 0 — the suite is green — and the server is still running. This is
     what `lib/bounded_run.py` cannot see, because nothing hung."""
     snap = repo / "leak.json"
@@ -138,7 +153,7 @@ def test_a_step_that_leaks_a_server_is_red(repo: Path) -> None:
         reap(snap)
 
 
-def test_a_leaked_binary_under_the_repos_target_dir_is_red(repo: Path) -> None:
+def test_a_leaked_binary_under_the_repos_target_dir_is_red(wrap, repo: Path) -> None:
     """Attribution by PATH, which is the other half and the one the incident needed: the leaked
     process was `…/target/debug/archive_torznab`, naming nothing about being an orphan at first
     glance."""
@@ -171,13 +186,15 @@ def test_a_leaked_binary_under_the_repos_target_dir_is_red(repo: Path) -> None:
 # ── it must not cry wolf, or it gets switched off ────────────────────────────
 
 
-def test_a_step_that_leaves_nothing_is_green_and_says_nothing_about_orphans(repo: Path) -> None:
+def test_a_step_that_leaves_nothing_is_green_and_says_nothing_about_orphans(
+    wrap, repo: Path
+) -> None:
     proc = wrap(repo, "/bin/sh", "-c", "exit 0")
     assert proc.returncode == 0, proc.stdout + proc.stderr
     assert "outlived" not in proc.stdout + proc.stderr
 
 
-def test_the_canary_never_reports_a_concurrent_gate_run(repo: Path) -> None:
+def test_the_canary_never_reports_a_concurrent_gate_run(wrap, repo: Path) -> None:
     """A concurrent canary or runner lives under the same checkout this canary is scanning, so path
     attribution names it ours — and it is not a leak, it is another gate running. Measured under the
     parallel suite: every run reported the other workers' canaries, and three end-to-end tests went
@@ -264,14 +281,14 @@ def test_the_report_is_silent_on_verbose_when_there_is_nothing_to_name(capsys) -
 
 
 @pytest.mark.parametrize("code", [0, 3, 5])
-def test_the_steps_own_exit_code_is_preserved(repo: Path, code: int) -> None:
+def test_the_steps_own_exit_code_is_preserved(wrap, repo: Path, code: int) -> None:
     """A red step is the news. A canary red on top of it must not read as the canary being the
     failure, so the step's code wins."""
     proc = wrap(repo, "/bin/sh", "-c", f"exit {code}")
     assert proc.returncode == code, proc.stdout + proc.stderr
 
 
-def test_a_green_steps_leak_gets_its_own_exit_code(repo: Path) -> None:
+def test_a_green_steps_leak_gets_its_own_exit_code(wrap, repo: Path) -> None:
     """125, distinct from a step that simply failed: the two have opposite fixes — write a guard
     versus fix the test — and one exit status for both sends someone to the wrong one."""
     proc = wrap(

@@ -157,9 +157,9 @@ behind the same tests the shell passes today, red-proven, one at a time:
       (any implementation pays them) and one hash spawn; a native port would save ~1 spawn a
       key for a byte-exact reimplementation of the identity. Declined until a profile says so.
 - [x] 4C.3 `local_ci.sh`'s step runner native: parallel steps under the canary, logs, proven
-      records -- one process instead of a bash + a Python wrapper per step. MEASURED AND DECLINED:
-      the canary is ~43 ms a step and a push runs ~5 local_ci steps -- ~0.2 s a push for a port
-      of the canary's attribution and snapshot. Re-open if a consumer's step count says so.
+      records -- one process instead of a bash + a Python wrapper per step. REOPENED (owner: no optimisation left
+      on the table) and DONE (`COMMIT`): `goh canary`, the canary's contract pinned against both
+      implementations; `local_ci.sh` resolves the binary once and runs every step under it.
 - [x] 4C.4 Re-measured after 4C: a step wrapper 4.3 ms (native), a `goh.sh` child 34 ms (resolved
       once), a warm proven hit 6 git calls, the suite 57-62 s (RAM-disk temp, load 9-15).
 

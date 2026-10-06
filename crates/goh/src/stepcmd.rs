@@ -54,14 +54,61 @@ pub fn run(timeout: &str, grace: u64, label: &str, argv: &[String]) -> i32 {
         label.to_owned()
     };
     let start = Instant::now();
-    let code = bounded(argv, limit.unsigned_abs(), grace, &label);
+    let (code, left) = bounded(argv, limit.unsigned_abs(), grace, &label, None);
+    if !left.is_empty() {
+        let shown: Vec<String> = left.iter().take(20).map(ToString::to_string).collect();
+        eprintln!(
+            "  left {} process(es) running under it: {}",
+            left.len(),
+            shown.join(", ")
+        );
+    }
     record(&label, start, code);
     code
 }
 
-fn bounded(argv: &[String], limit: u64, grace: u64, label: &str) -> i32 {
+/// Parse a `--timeout` flag: `Some(seconds)`, or `None` after printing `who`'s refusal.
+pub(crate) fn ceiling(timeout: &str, who: &str) -> Option<u64> {
+    match timeout.parse::<i64>() {
+        Ok(limit) if limit > 0 => Some(limit.unsigned_abs()),
+        Ok(limit) => {
+            eprintln!("{who}: --timeout must be positive (got {limit})");
+            None
+        }
+        Err(_) => {
+            eprintln!("{who}: --timeout must be an integer of seconds (got {timeout})");
+            None
+        }
+    }
+}
+
+/// Run `argv` under the ceiling; `(its code, the pids still in its group when it exited)`. With
+/// `out`, the step's stdout and stderr are appended to that file, merged.
+pub(crate) fn bounded(
+    argv: &[String],
+    limit: u64,
+    grace: u64,
+    label: &str,
+    out: Option<&std::path::Path>,
+) -> (i32, Vec<i32>) {
     let mut cmd = Command::new(&argv[0]);
     cmd.args(&argv[1..]).stdin(Stdio::null()).process_group(0);
+    if let Some(path) = out {
+        match std::fs::OpenOptions::new()
+            .append(true)
+            .create(true)
+            .open(path)
+        {
+            Ok(file) => {
+                let err = file.try_clone().map_or_else(|_| Stdio::null(), Stdio::from);
+                cmd.stdout(Stdio::from(file)).stderr(err);
+            }
+            Err(e) => {
+                eprintln!("goh step: cannot open {}: {e}", path.display());
+                return (2, Vec::new());
+            }
+        }
+    }
     if std::env::var_os("GOH_TIMINGS").is_some_and(|v| !v.is_empty()) {
         cmd.env("GOH_TIMINGS_PARENT", label);
     }
@@ -69,14 +116,14 @@ fn bounded(argv: &[String], limit: u64, grace: u64, label: &str) -> i32 {
         Ok(child) => child,
         Err(e) => {
             eprintln!("goh step: cannot start {label}: {e}");
-            return 127;
+            return (127, Vec::new());
         }
     };
     let Ok(pgid) = i32::try_from(child.id()) else {
         let _ = child.kill();
         let _ = child.wait();
         eprintln!("goh step: {label}: a pid that is not a pid");
-        return 127;
+        return (127, Vec::new());
     };
     let (tx, rx) = mpsc::channel();
     let waiter = {
@@ -98,12 +145,13 @@ fn bounded(argv: &[String], limit: u64, grace: u64, label: &str) -> i32 {
             }
         });
     }
+    let mut left = Vec::new();
     let code = match rx.recv_timeout(Duration::from_secs(limit)) {
         Ok(Event::Exited(status)) => {
             let code = status.map_or(127, |s| {
                 s.code().unwrap_or_else(|| 128 + s.signal().unwrap_or(0))
             });
-            name_leaks(pgid);
+            left = survivors(pgid);
             code
         }
         Ok(Event::Stopped(sig)) => {
@@ -126,7 +174,7 @@ fn bounded(argv: &[String], limit: u64, grace: u64, label: &str) -> i32 {
         handle.close();
     }
     drop(waiter);
-    code
+    (code, left)
 }
 
 /// TERM the whole group, wait up to `grace` for it to empty, then KILL whatever is left.
@@ -139,33 +187,26 @@ fn sweep(pgid: i32, grace: u64) {
     let _ = goh_sys::killpg(pgid, signal_hook::consts::SIGKILL);
 }
 
-/// A step that exited with members left in its group leaked them: name them. Asked of the group
-/// first (one syscall); the process table is read only when something is there.
-fn name_leaks(pgid: i32) {
+/// The pids left in `pgid` after its leader exited -- the step's leaks. Asked of the group first
+/// (one syscall); the process table is read only when something is there.
+pub(crate) fn survivors(pgid: i32) -> Vec<i32> {
     if !goh_sys::group_alive(pgid) {
-        return;
+        return Vec::new();
     }
     let table = Command::new("ps")
         .args(["-Ao", "pid=,pgid="])
         .output()
         .map(|o| String::from_utf8_lossy(&o.stdout).into_owned())
         .unwrap_or_default();
-    let left: Vec<&str> = table
+    table
         .lines()
         .filter_map(|l| {
             let mut f = l.split_whitespace();
-            let (member, group) = (f.next()?, f.next()?);
-            (group == pgid.to_string() && member != pgid.to_string()).then_some(member)
+            let member: i32 = f.next()?.parse().ok()?;
+            let group: i32 = f.next()?.parse().ok()?;
+            (group == pgid && member != pgid).then_some(member)
         })
-        .take(20)
-        .collect();
-    if !left.is_empty() {
-        eprintln!(
-            "  left {} process(es) running under it: {}",
-            left.len(),
-            left.join(", ")
-        );
-    }
+        .collect()
 }
 
 const fn signal_name(sig: i32) -> &'static str {
@@ -178,7 +219,7 @@ const fn signal_name(sig: i32) -> &'static str {
 }
 
 /// The `GOH_TIMINGS` line, in `lib/step_timings.py`'s shape, tier `step`.
-fn record(label: &str, start: Instant, rc: i32) {
+pub(crate) fn record(label: &str, start: Instant, rc: i32) {
     use std::io::Write as _;
     let Some(path) = std::env::var_os("GOH_TIMINGS").filter(|p| !p.is_empty()) else {
         return;

@@ -12,6 +12,7 @@
 
 pub mod blobs;
 pub mod bounded;
+pub mod canarycmd;
 pub mod ceiling;
 pub mod claims;
 pub mod cli;
@@ -88,7 +89,7 @@ fn main() {
     let cli = Cli::parse();
     let code = match run_ported(cli.command) {
         Ok(code) => code,
-        Err(command) => run_core(command),
+        Err(command) => run_core(*command),
     };
     std::process::exit(code);
 }
@@ -105,6 +106,24 @@ fn run_core(command: Commands) -> i32 {
             0
         }
         Commands::Structural { staged, full } => structural::run(staged, full),
+        Commands::Canary {
+            repo,
+            log,
+            snapshot,
+            timeout,
+            grace,
+            label,
+            verbose: _,
+            command,
+        } => canarycmd::run(&canarycmd::Args {
+            repo,
+            log,
+            snapshot,
+            timeout,
+            grace,
+            label,
+            command,
+        }),
         Commands::Step {
             timeout,
             grace,
@@ -158,7 +177,7 @@ fn run_core(command: Commands) -> i32 {
 }
 
 /// The Phase N1 ports, or the command back for `run_core`.
-fn run_ported(command: Commands) -> Result<i32, Commands> {
+fn run_ported(command: Commands) -> Result<i32, Box<Commands>> {
     Ok(match command {
         Commands::VersionProvenance {
             root,
@@ -223,6 +242,6 @@ fn run_ported(command: Commands) -> Result<i32, Commands> {
             staged,
             verdicts,
         } => unreaped::run_command(staged, &exclude, verdicts.as_deref()),
-        other => return Err(other),
+        other => return Err(Box::new(other)),
     })
 }

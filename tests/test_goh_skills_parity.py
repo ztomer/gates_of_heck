@@ -17,6 +17,7 @@ from pathlib import Path
 
 import pytest
 from reference_kit import reference_path  # noqa: E402
+from _fast_git import fast_init  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[1]
 CHECK = reference_path("checks/check_skills_corpus.py")
@@ -145,7 +146,7 @@ def test_structural_corpus_step_agrees(goh: Path, tmp_path: Path) -> None:
     for variant in ("clean", "messy"):
         repo = tmp_path / variant
         repo.mkdir(exist_ok=True)
-        _git(repo, "init", "-q")
+        fast_init(repo)
         files = clean_corpus() if variant == "clean" else messy_corpus()
         for name, content in files.items():
             dest = repo / "corpus" / name

@@ -28,6 +28,7 @@ def run_check(repo, script, *args):
 
 sys.path.insert(0, str(REPO_ROOT / "checks"))
 from _tag_version_kit import extract  # noqa: E402
+from _fast_git import fast_init  # noqa: E402
 
 CHECKER = "checks/check_tag_version.py"
 ZERO = "0" * 40
@@ -52,7 +53,7 @@ def _tagged_repo(tmp_path, name, rel, text):
     """A repo with one commit declaring `text` at `rel`, tagged to match it."""
     repo = tmp_path / name
     repo.mkdir()
-    git(repo, "init", "-q", "-b", "main")
+    fast_init(repo, "main")
     write(repo, rel, text)
     git(repo, "add", "-A")
     git(repo, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "c")
@@ -78,7 +79,7 @@ def test_a_swift_constant_is_a_version_source(tmp_path):
     unverifiable and the pre-push refused a correct release."""
     repo = tmp_path / "swiftpkg"
     repo.mkdir()
-    git(repo, "init", "-q", "-b", "main")
+    fast_init(repo, "main")
     write(
         repo,
         "Sources/ZTCore/Version.swift",
@@ -126,7 +127,7 @@ def test_a_swift_file_that_declares_nothing_is_a_named_non_run_not_a_pass(tmp_pa
     correct-looking tag pass on a repo that declares nothing."""
     repo = tmp_path / "buildonly"
     repo.mkdir()
-    git(repo, "init", "-q", "-b", "main")
+    fast_init(repo, "main")
     write(repo, "Version.swift", 'public static let build = "131"\n')
     git(repo, "add", "-A")
     git(repo, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "c")
@@ -151,7 +152,7 @@ def test_two_release_numbers_in_one_swift_file_still_fail_the_gate(tmp_path):
     is caught, rather than resolved by taking whichever came first."""
     repo = tmp_path / "twonums"
     repo.mkdir()
-    git(repo, "init", "-q", "-b", "main")
+    fast_init(repo, "main")
     write(
         repo,
         "Version.swift",

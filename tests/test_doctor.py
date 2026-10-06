@@ -10,6 +10,7 @@ import subprocess
 from pathlib import Path
 
 from conftest import REPO_ROOT, git, write
+from _fast_git import fast_init  # noqa: E402
 
 DOCTOR = REPO_ROOT / "gates" / "doctor.sh"
 
@@ -91,7 +92,7 @@ def test_missing_python_is_named(tmp_path):
 
     target = tmp_path / "proj"
     target.mkdir()
-    git(target, "init", "-q", "-b", "main")
+    fast_init(target, "main")
     write(target, "f.txt", "x\n")
     bindir = tmp_path / "nopython"
     bindir.mkdir()

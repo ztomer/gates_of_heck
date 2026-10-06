@@ -21,6 +21,7 @@ from pathlib import Path
 
 import pytest
 from conftest import hermetic_env
+from _fast_git import fast_init  # noqa: E402
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "checks"))
@@ -55,7 +56,7 @@ def planted(tmp_path: Path) -> Path:
         (vend / "m" / "Cargo.toml").write_text(STRAY_MEMBER)
     for i in range(300):
         (repo / "target" / "debug" / "deps" / f"d{i}" / "x").mkdir(parents=True)
-    _git(repo, "init", "-q")
+    fast_init(repo)
     _git(repo, "add", "-A")
     return repo
 

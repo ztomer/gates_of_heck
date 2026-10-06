@@ -15,6 +15,7 @@ import subprocess
 from conftest import REPO_ROOT, git, write
 
 from _tag_version_kit import _media_shape, _refs, _sha
+from _fast_git import fast_init  # noqa: E402
 
 
 def _push(repo, tmp_path, *pairs, extra_env=None):
@@ -42,7 +43,7 @@ def test_the_push_gate_refuses_a_lying_tag(tmp_path):
     """End to end through gates/push_gate.sh, which is what every repo runs."""
     repo = tmp_path / "media"
     repo.mkdir()
-    git(repo, "init", "-q", "-b", "main")
+    fast_init(repo, "main")
     write(repo, "tools/gate.sh", "#!/usr/bin/env bash\nexit 0\n")
     _media_shape(repo, "1.79.1")
     git(repo, "add", "-A")
@@ -71,7 +72,7 @@ def test_the_push_gate_checks_a_tag_whose_commit_the_remote_already_has(tmp_path
     """
     repo = tmp_path / "media"
     repo.mkdir()
-    git(repo, "init", "-q", "-b", "main")
+    fast_init(repo, "main")
     write(repo, "tools/gate.sh", "#!/usr/bin/env bash\nexit 0\n")
     _media_shape(repo, "1.79.1")
     git(repo, "add", "-A")
@@ -91,7 +92,7 @@ def test_the_push_gate_allows_a_truthful_tag_and_still_runs_the_code_gate(tmp_pa
     for its commit still happens."""
     repo = tmp_path / "media"
     repo.mkdir()
-    git(repo, "init", "-q", "-b", "main")
+    fast_init(repo, "main")
     write(
         repo,
         "tools/gate.sh",
@@ -110,7 +111,7 @@ def test_the_push_gate_allows_a_truthful_tag_and_still_runs_the_code_gate(tmp_pa
 def test_a_branch_only_push_is_not_a_named_non_run_of_the_tag_check(tmp_path):
     repo = tmp_path / "media"
     repo.mkdir()
-    git(repo, "init", "-q", "-b", "main")
+    fast_init(repo, "main")
     write(repo, "tools/gate.sh", "#!/usr/bin/env bash\nexit 0\n")
     _media_shape(repo, "1.0.0")
     git(repo, "add", "-A")
@@ -132,7 +133,7 @@ def test_the_push_gate_leaves_no_refs_file_behind(tmp_path):
     """
     repo = tmp_path / "media"
     repo.mkdir()
-    git(repo, "init", "-q", "-b", "main")
+    fast_init(repo, "main")
     write(repo, "tools/gate.sh", "#!/usr/bin/env bash\nexit 0\n")
     _media_shape(repo, "1.0.0")
     git(repo, "add", "-A")
@@ -156,7 +157,7 @@ def test_a_tag_check_that_cannot_run_is_not_reported_as_a_mismatch(tmp_path):
     alike in a push log and send the reader to opposite fixes (the tag, or the build)."""
     repo = tmp_path / "media"
     repo.mkdir()
-    git(repo, "init", "-q", "-b", "main")
+    fast_init(repo, "main")
     write(repo, "tools/gate.sh", "#!/usr/bin/env bash\nexit 0\n")
     _media_shape(repo, "1.79.3")
     git(repo, "add", "-A")

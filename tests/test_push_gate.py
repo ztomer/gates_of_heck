@@ -9,6 +9,7 @@ something else.
 import os
 import subprocess
 from pathlib import Path
+from _fast_git import fast_init  # noqa: E402
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 PUSH_GATE = REPO_ROOT / "gates" / "push_gate.sh"
@@ -34,7 +35,7 @@ def _git(repo: Path, *args: str) -> str:
 def _repo(tmp_path: Path, gatesrc: str = "", version: str | None = "1.0.0") -> Path:
     repo = tmp_path / "repo"
     repo.mkdir()
-    _git(repo, "init", "-q", "-b", "main")
+    fast_init(repo, "main")
     _git(repo, "config", "user.email", "t@t")
     _git(repo, "config", "user.name", "t")
     (repo / "tools").mkdir()

@@ -14,6 +14,7 @@ from pathlib import Path
 
 import pytest
 from reference_kit import reference_path  # noqa: E402
+from _fast_git import fast_init  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[1]
 CHECK = reference_path("checks/check_no_screen_presentation.py")
@@ -27,7 +28,7 @@ def _git(repo: Path, *args: str) -> None:
 def make_repo(tmp_path: Path, sub: str = "case") -> Path:
     repo = tmp_path / sub
     repo.mkdir(parents=True, exist_ok=True)
-    _git(repo, "init", "-q")
+    fast_init(repo)
     shutil.copytree(FIXTURES, repo / "tests")
     _git(repo, "add", "-A")
     return repo

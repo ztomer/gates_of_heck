@@ -25,6 +25,7 @@ from conftest import REPO_ROOT, git, write
 
 sys.path.insert(0, str(REPO_ROOT / "checks"))
 from _tag_version_kit import extract  # noqa: E402
+from _fast_git import fast_init  # noqa: E402
 
 PLIST = """<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -46,7 +47,7 @@ def _tagged_repo(tmp_path, plist_text, tag="v2.10.0"):
     root = tmp_path / "repo"
     root.mkdir(exist_ok=True)
     write(root, "Info.plist", plist_text)
-    git(root, "init", "-q")
+    fast_init(root)
     git(root, "config", "user.email", "t@local")
     git(root, "config", "user.name", "t")
     git(root, "add", "-A")

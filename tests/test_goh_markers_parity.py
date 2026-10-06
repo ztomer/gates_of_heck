@@ -12,6 +12,7 @@ from pathlib import Path
 
 import pytest
 from reference_kit import reference_path  # noqa: E402
+from _fast_git import fast_init  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[1]
 CHECKER = reference_path("checks/check_no_conflict_markers.py")
@@ -24,7 +25,7 @@ def _git(repo: Path, *args: str) -> None:
 def make_repo(tmp_path: Path, files: dict[str, bytes]) -> Path:
     repo = tmp_path
     repo.mkdir(exist_ok=True)
-    _git(repo, "init", "-q")
+    fast_init(repo)
     for name, content in files.items():
         (repo / name).write_bytes(content)
     _git(repo, "add", "-A")
