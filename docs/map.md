@@ -127,6 +127,9 @@ Every structural checker is native since Phase N3; the Python checkers they port
   `gen_app_icons.py`, `update_dev.sh`. Pinned by `test_release_kit.py` (+
   `test_release_hardening.py`, `test_profiling_scripts.py` for profiling).
 * `tools/gate_profile.sh <repo>` — profile a repo's push gate on HEAD (nothing pushed) with `GOH_TIMINGS` set; prints the slowest steps and per-label totals.
+* `tools/session_bench.py <repo>` — how much N concurrent sessions' gates serialize on each other: one
+  clone per session, makespan and speedup per N, the USL fit (sigma = serialized fraction, kappa =
+  interference), every lock wait by name, and the steps that inflated most. Pinned by `test_session_bench.py`.
 * `tools/profiling/` — soak/profile harness. See its `README.md`.
 * `install.sh` — wires `.githooks/` + starter `tools/gate.sh` / `.gatesrc`
   into a consumer repo. Pinned by `test_install.py`.

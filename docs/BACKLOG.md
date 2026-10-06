@@ -47,6 +47,23 @@ summed time cut, not better packing. The levers by summed time (2026-10-06, `--d
 `test_rust_gate.py` 30 s, `test_proven.py` 23 s, `test_claim_derivation_native_parity.py` 21 s,
 `test_swift_gate_baseline.py` 16 s (13 s is the one real-swiftlint test, `-m "not slow"` skips it).
 
+## Open — cross-session serialization (`tools/session_bench.py`)
+
+First run, 2026-10-06, this repo, `structural.sh --full`, 3 repeats, load 9-21 from other sessions:
+
+| N | makespan | speedup | lock waits |
+|---|---|---|---|
+| 1 | 3.9 s | 1.00 | -- |
+| 2 | 5.8 s | 1.36 | -- |
+| 4 | 11.2 s | 1.41 | -- |
+| 8 | 23.0 s | 1.37 | -- |
+
+USL sigma 0.51, kappa 0.023: half of a structural run is serialized, and NO lock was waited on.
+Controls on the same box scale (8 sessions: `/usr/bin/true` x300 6.3x, CPU-bound python 6.9x), so
+the machine is not the limit -- the gate is: one run is 3.9 s wall for 4.3 s user + **9.0 s sys**,
+and every step inflates ~8x at N=8. The empty-scope sweep is 2.2 s of the 3.9 (4.0 s sys).
+Exit: sigma <= 0.15 for `structural --full` (a session costs the next one < 15% of its run).
+
 ## Downstream: what each consumer session needs to know
 
 - **Every repo:** re-run `$GOH_DIR/install.sh <repo>`; `structural.sh` names a hook that is an older
