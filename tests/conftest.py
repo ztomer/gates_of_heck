@@ -118,6 +118,7 @@ def hermetic_env(drop_git: bool = False, **overrides: str) -> dict[str, str]:
 # suite what a consumer calling that path gets -- the native check, same arguments. The table is
 # `checks/_retired.py::NATIVE`, the one spelling.
 from _retired import NATIVE as _NATIVE  # noqa: E402
+from _tree_guard import pytest_sessionfinish, pytest_sessionstart  # noqa: E402, F401
 
 RETIRED = {
     f"checks/{stem}.{'sh' if check == 'shell-lint' else 'py'}": check

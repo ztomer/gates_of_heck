@@ -155,10 +155,18 @@ class TestSelfBuffering:
         content's semantics: full push + GitHub release of the stanza body.
         """
         marker = tmp_path / "gate-started"
+        # A COPY is the script that gets rewritten, never this repo's own: the real one moved under
+        # every gate reading the tree (tests/_tree_guard.py). It sits two levels down a mirror whose
+        # gates/ is ours, so `_from_head.sh` resolves the way it does for the real one.
+        mirror = tmp_path / "mirror"
+        (mirror / "tools" / "release-kit").mkdir(parents=True)
+        (mirror / "gates").symlink_to(REPO_ROOT / "gates")
+        script = mirror / "tools" / "release-kit" / "release.sh"
+        script.write_bytes(RELEASE.read_bytes())
         proc = subprocess.Popen(
             [
                 "/bin/bash",
-                str(RELEASE),
+                str(script),
                 "--version",
                 VERSION,
                 "--gate",
@@ -170,7 +178,6 @@ class TestSelfBuffering:
             text=True,
             env=release_env(kit),
         )
-        original = RELEASE.read_bytes()
         try:
             deadline = time.monotonic() + 30
             while not marker.exists():
@@ -178,20 +185,19 @@ class TestSelfBuffering:
                 assert proc.poll() is None, "release.sh exited before the edit"
                 time.sleep(0.05)
 
-            RELEASE.write_bytes(b"#!/usr/bin/env bash\necho corrupted mid-run ((\n")
+            script.write_bytes(b"#!/usr/bin/env bash\necho corrupted mid-run ((\n")
             out, err = proc.communicate(timeout=120)
         finally:
             # The reap belongs HERE, not only on the line that reads the output: the two asserts
             # above can fire, and `communicate` can raise TimeoutExpired, and this test starts a
-            # `bash --gate 'touch … && sleep 5'` that outlives all three. A `finally` that restores
-            # a file but not a process is a finally that half does its job — found by
-            # checks/check_no_unreaped_spawn.py, which is the house rule for it
+            # `bash --gate 'touch … && sleep 5'` that outlives all three. A `finally` that cleans up
+            # anything but the process is a finally that half does its job — found by
+            # `goh unreaped-spawn`, which is the house rule for it
             # (media_server 2026-10-03: nine live orphans, each holding the cargo build lock, and
             # the only observable was a test run printing nothing at all).
             if proc.poll() is None:
                 proc.kill()
             proc.wait(timeout=10)
-            RELEASE.write_bytes(original)
 
         assert proc.returncode == 0, out + err
         assert "corrupted" not in out + err
