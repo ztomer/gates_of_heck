@@ -189,9 +189,15 @@ behind the same tests the shell passes today, red-proven, one at a time:
 - [x] 6.2 Cross-session sigma for `structural --full` <= 0.15 (`tools/session_bench.py`). MET
       (2026-10-06, load 10-17): N=1/2/4/8 makespans 6.1/4.0/4.6/6.0 s, USL sigma 0.000; with N=1
       taken at its usual 4 s instead, sigma <= 0.07. From 0.51 at the first measurement.
-- [ ] 6.3 media_server push, everything changed: gates_of_heck's share (the rust phase) measured
-      against its 90 s target with media_server's own pytest step separated out.
-- [ ] 6.4 media_server push, one crate changed: same split, against 30 s.
+- [x] 6.3 media_server push, everything changed: gates_of_heck's share -- the per-crate
+      `rust_gate.sh` layer, all 29 crates, proven cache off, warm build dir -- **39.6 s** at load
+      11-14 (2026-10-06), against 90 s. MET. (The whole push: 217 s at load 14-30.)
+- [x] 6.4 media_server push, one crate changed: gates_of_heck's share **14.4 s** at load 14
+      (4 crates gated, 25 proven), against 30 s. MET. The push's wall clock is now bounded by
+      media_server's OWN layer 3 (`repo_gates.sh`: its pytest ~103 s, then its own Rust step
+      ~60 s, both on every push) -- handed to servers. Method: a scratch clone, a warm-up run,
+      then one-line commits in `status-banner-rs`; the layer timed alone in a stable worktree
+      (a new path means a new cargo build dir: 79.5 s cold).
 - [x] 6.5 The P2 `GOH_CI_JOBS` budget curve (1/2/4/6), its knee recorded. This repo, proven
       cache off, load 22-50 (2026-10-06): 153 / 145 / 129 / 120 s. No sharp knee -- each step
       past 2 buys 6-11%, and the floor is the rust layer (its coverage runs the whole suite
