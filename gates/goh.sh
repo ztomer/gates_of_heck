@@ -78,14 +78,18 @@ if [ -n "$python_only" ]; then
     echo "· goh.sh: $check is Python-only — $python_only" >&2
     exec python3 "$ROOT/$python_file" "$@"
 fi
-if [ -n "$goh_native" ] && [ -z "$needs_python" ]; then
+if [ -z "$needs_python" ]; then
+    if [ -z "$goh_native" ]; then
+        # The Python tier is retired (Phase N3): no fallback to the reference, which would be a
+        # different gate run without saying so.
+        echo "✗ goh.sh: no native goh binary -- ${goh_native_why:-it is not built}; build it:" \
+            "$ROOT/scripts/build-goh.sh (needs cargo)" >&2
+        exit 2  # cannot judge, not a finding: every check's own exit 2
+    fi
     exec "$goh_native" "$check" "$@"
 fi
-if [ -n "$needs_python" ]; then
-    echo "· goh.sh: $check $needs_python is Python-only — running $python_file" >&2
-elif [ -n "$goh_native_why" ]; then
-    echo "· goh.sh: $goh_native_why — running $python_file" >&2
-fi
+# A flag only the reference implements (a self-proof): the reference runs it, and says so.
+echo "· goh.sh: $check $needs_python is Python-only — running $python_file" >&2
 # The reference's own interpreter: a `.sh` port's reference is a bash script (`shell-lint`).
 case "$python_file" in
     *.sh) exec bash "$ROOT/$python_file" "$@" ;;

@@ -149,3 +149,27 @@ def test_the_push_gate_leaves_no_refs_file_behind(tmp_path):
         assert not list(scratch.glob("goh-push-refs.*")), (
             f"{'a green' if green else 'a refused'} push leaked its refs file"
         )
+
+
+def test_a_tag_check_that_cannot_run_is_not_reported_as_a_mismatch(tmp_path):
+    """No binary is a refusal -- but of "could not run", not "does not match". The two read
+    alike in a push log and send the reader to opposite fixes (the tag, or the build)."""
+    repo = tmp_path / "media"
+    repo.mkdir()
+    git(repo, "init", "-q", "-b", "main")
+    write(repo, "tools/gate.sh", "#!/usr/bin/env bash\nexit 0\n")
+    _media_shape(repo, "1.79.3")
+    git(repo, "add", "-A")
+    git(repo, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "c")
+    git(repo, "tag", "v1.79.3")
+
+    r = _push(
+        repo,
+        tmp_path,
+        ("refs/tags/v1.79.3", _sha(repo, "v1.79.3")),
+        extra_env={"GOH_BIN": str(tmp_path / "no-such-goh")},
+    )
+    out = r.stdout + r.stderr
+    assert r.returncode == 1, out
+    assert "the tag check could not run (exit 2" in out, out
+    assert "does not match" not in out, out

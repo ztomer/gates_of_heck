@@ -241,7 +241,7 @@ HEAD:<path>`, so computing a key stays O(scope), not O(files).
 
 ## Phase N — retire the Python checkers (owner's direction, 2026-10-05)
 
-The Python checkers are today both the second tier (`GOH_NO_NATIVE`) and the SPEC the native ports
+The Python checkers were both the second tier (`GOH_NO_NATIVE`, retired in N3) and the SPEC the native ports
 are pinned to. Retiring them means porting the delegated ones and then deleting the tier, in that
 order, never the reverse:
 
@@ -299,9 +299,21 @@ order, never the reverse:
 - **N2. Re-home the spec.** A parity test whose reference is deleted pins nothing. Before a Python
   checker goes, its behaviour table moves into the native crate's own tests (the calibration tables
   stay whole -- they are the spec, not the implementation).
-- **N3. Delete the tier.** `GOH_NO_NATIVE`, the Python branch of `structural.sh`, the fallback in
-  `_goh_bin.sh` (a failed rebuild then REFUSES, which is correct once there is nothing else),
-  `docs/config.md` rows, and the "both tiers" tests that become one-tier tests.
+- **N3. Delete the tier.** **Stage A LANDED (2026-10-06):** the Python branch of `structural.sh`
+  is gone (498 -> 181 lines, `_line_cap.sh` with it); `structural.sh` and `goh.sh` REFUSE with no
+  binary (exit 1 / 2, naming `build-goh.sh`), a failed rebuild refuses, `GOH_NO_NATIVE` is said and
+  ignored (monitor's CI sets it). Found doing it: the native tier read `GOH_STEP_TIMEOUT` from the
+  ambient environment and never from `.gatesrc` -- the one key the two tiers answered differently;
+  `gatesrc::adopt_into_env` now makes the environment agree with the file for every pipeline key
+  (`PIPELINE_KEYS`, pinned to config.md). And the push gate said "tag does not match" over a tag
+  check that could not run; the two now read differently. `cargo` is a declared structural
+  requirement (`required_tools.tsv`, refused up front by `build-goh.sh`).
+  **Stage B, open:** the ported `checks/*.py` become shims that exec `goh.sh <sub>` (consumers call
+  `check_no_emoji.py`, `check_file_length.py`, `check_python_formatted.py --selftest`,
+  `check_swift_warnings.py`, `check_version_provenance.py`, `check_tag_version.py`,
+  `check_no_allow.py` directly); their tables move into Rust tests first (N2); the `both_tiers`
+  suites become one-tier; the Python-only flags (`--probe`, `--selftest`, `--fresh-derivations`)
+  get native forms or move to `tools/`.
 - **Cost of the end state to say plainly:** every consumer then needs a Rust toolchain to rebuild
   `bin/goh`; `gates/required_tools.tsv` gains `cargo` for the structural layer.
 

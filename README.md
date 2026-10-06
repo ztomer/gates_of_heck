@@ -49,15 +49,13 @@ Checks run in three layers:
 
 ## The native binary (`goh`)
 
-Layer 1 is a static Rust binary, `crates/goh`, with the emoji, conflict-marker,
-file-length and secrets scanners native and the remaining checkers delegated
-to the same Python files. `install.sh` builds it to `bin/goh` (gitignored) when
-`cargo` is present; `gates/structural.sh` execs it when it is there and runs
-the Python checkers — saying so once — when it is not, so a machine without a
-toolchain still gets every gate. `tests/test_goh_*_parity.py` pin the two
-paths to identical verdicts, step for step. Resolution: `GOH_BIN` (an explicit
-pointer at nothing is reported, never silently replaced), then `bin/goh`, then
-`goh` on `PATH`; `GOH_NO_NATIVE=1` forces the Python path.
+Layer 1 is a static Rust binary, `crates/goh`, and since Phase N3 it is the
+only tier: every structural checker is native. `install.sh` builds it to
+`bin/goh` (gitignored), which needs `cargo`; `gates/structural.sh` execs it,
+and REFUSES — naming the fix — when no binary resolves, rather than run a
+different gate in its place. Resolution: `GOH_BIN` (an explicit pointer at
+nothing is reported and refused, never silently replaced), then `bin/goh`,
+then `goh` on `PATH`. `GOH_NO_NATIVE` is retired: it is said and ignored.
 
 Platform gate (`scripts/build-goh.sh`, also inside the binary): 64-bit only,
 macOS is Apple silicon only, Linux keeps x86_64 and aarch64. Unsupported

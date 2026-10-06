@@ -56,6 +56,7 @@ def _scanned() -> set[tuple[str, str]]:
         ("gates", "*.sh"),
         ("checks", "*.sh"),
         ("checks", "*.py"),
+        ("scripts", "*.sh"),
         ("crates/goh/src", "**/*.rs"),
     ):
         for path in sorted((ROOT / base).glob(pattern)):
@@ -132,7 +133,7 @@ def test_ruff_is_only_for_repos_that_opted_into_the_format_check():
         timeout=30,
     )
     assert out.returncode == 0, out.stderr
-    assert out.stdout.split() == ["shellcheck"], out.stdout
+    assert out.stdout.split() == ["cargo", "shellcheck"], out.stdout  # cargo builds bin/goh (N3)
 
 
 def test_an_unknown_layer_is_refused_not_ignored():

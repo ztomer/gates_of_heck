@@ -343,21 +343,20 @@ def test_staged_ignores_unstaged_dirt(goh: Path, tmp_path: Path) -> None:
 
 
 def test_structural_sh_execs_the_native_binary_when_told_where_it_is(goh, tmp_path):
-    """The hooks call structural.sh; with a binary the Python never runs. A
-    bad emoji proves which side answered: the native step label is the same,
-    but the Python fallback notice must be absent."""
+    """The hooks call structural.sh, which execs the binary it is told about. A pointer at
+    nothing is reported once and REFUSED: the Python tier it used to fall back to is retired
+    (Phase N3), and running anything else would be a different gate, unannounced."""
     repo = make_repo(tmp_path, {"a.md": "ok\n".encode(), ".gatesrc": GATESRC})
 
     env = hermetic_env(GOH_BIN=str(goh), GOH_DIR=str(ROOT))
     r = subprocess.run(["bash", str(STRUCTURAL)], cwd=repo, capture_output=True, text=True, env=env)
     assert r.returncode == 0, r.stdout + r.stderr
     assert "goh binary not built" not in r.stderr
-    # An explicit pointer at nothing is reported, once, and the Python runs.
     env = hermetic_env(GOH_BIN="/nonexistent/goh", GOH_DIR=str(ROOT))
-    env.pop("GOH_NO_NATIVE", None)
     r = subprocess.run(["bash", str(STRUCTURAL)], cwd=repo, capture_output=True, text=True, env=env)
-    assert r.returncode == 0, r.stdout + r.stderr
+    assert r.returncode == 1, r.stdout + r.stderr
     assert r.stderr.count("GOH_BIN=/nonexistent/goh is not an executable") == 1, r.stderr
+    assert "== structural gate ==" not in r.stdout, "something ran in the binary's place"
 
 
 # ── Where a config key comes FROM ─────────────────────────────────────────────

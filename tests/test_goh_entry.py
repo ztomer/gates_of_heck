@@ -35,16 +35,22 @@ def test_a_resolved_binary_runs_with_the_arguments_as_given(tmp_path: Path) -> N
     assert r.stdout.strip() == "native home-paths --staged --exclude ^x/"
 
 
-def test_a_named_binary_that_is_not_executable_is_reported_and_python_runs(tmp_path: Path) -> None:
+def test_a_named_binary_that_is_not_executable_is_reported_and_refused(tmp_path: Path) -> None:
+    """Phase N3: the binary is the only tier, so a missing one is a refusal that names it --
+    never the Python reference run in its place, which would be a different gate, unannounced."""
     r = run("markers", "--staged", GOH_BIN=str(tmp_path / "missing"))
+    assert r.returncode == 2, r.stdout + r.stderr  # cannot judge, never a finding (1) or a pass
     assert r.stderr.count("is not an executable") == 1, r.stderr
-    assert "no_conflict_markers" in r.stdout, "the Python checker ran — not some other binary"
+    assert "build-goh.sh" in r.stderr, "the refusal does not say how to fix it"
+    assert "no_conflict_markers" not in r.stdout, "the retired Python checker ran"
 
 
-def test_no_native_runs_python_without_a_word(tmp_path: Path) -> None:
+def test_no_native_is_retired_said_and_not_obeyed(tmp_path: Path) -> None:
+    """`GOH_NO_NATIVE` selected the Python tier, which is gone. A CI step still setting it
+    (monitor's did) keeps working on the one tier there is, and is told the key is inert."""
     r = run("markers", "--staged", GOH_NO_NATIVE="1", GOH_BIN=str(fake_native(tmp_path)))
-    assert "native" not in r.stdout
-    assert r.stderr == ""
+    assert r.stdout.strip() == "native markers --staged"
+    assert "GOH_NO_NATIVE is retired" in r.stderr
 
 
 def test_an_argument_only_python_takes_runs_python(tmp_path: Path) -> None:

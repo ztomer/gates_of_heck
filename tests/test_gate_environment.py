@@ -60,30 +60,56 @@ NOT_PIPELINE_CONFIG = set(
     "GOH_CROSS_REPO_ROOT".split()
 )
 
-DROP_LIST_RE = re.compile(r'_goh_config_keys="([^"]+)"', re.S)
+DROP_LIST_RE = re.compile(r"pub const PIPELINE_KEYS: \[&str; \d+\] = \[(.*?)\];", re.S)
 
 
 def test_every_documented_structural_key_is_dropped_from_the_environment() -> None:
-    """structural.sh's drop list, pinned against docs/config.md, both ways. The drift
-    that hurts is a key added to structural.sh, to config.md and to no list: an ambient
+    """The native pipeline's key list (`gatesrc::PIPELINE_KEYS`, the keys `adopt_into_env`
+    makes the environment agree with the file about), pinned against docs/config.md, both
+    ways. The drift that hurts is a key added to a step, to config.md and to no list: an ambient
     value then enables that step again. A key gone stale hides the next one."""
     doc = (ROOT / "docs" / "config.md").read_text(encoding="utf-8")
     section = doc.split("## Structural", 1)[1].split("\n## ", 1)[0]
     documented = set(re.findall(r"`(GOH_[A-Z][A-Z_]*)`", section))
-    shell = (ROOT / "gates" / "structural.sh").read_text(encoding="utf-8")
-    match = DROP_LIST_RE.search(shell)
-    assert match, "structural.sh no longer drops its inherited config keys"
-    dropped, pipeline = set(match.group(1).split()), documented - NOT_PIPELINE_CONFIG
+    source = (ROOT / "crates" / "goh" / "src" / "gatesrc.rs").read_text(encoding="utf-8")
+    match = DROP_LIST_RE.search(source)
+    assert match, "gatesrc.rs no longer lists the pipeline's config keys"
+    dropped = set(re.findall(r'"(GOH_[A-Z_]+)"', match.group(1)))
+    pipeline = documented - NOT_PIPELINE_CONFIG
     assert not dropped & NOT_PIPELINE_CONFIG, (
-        f"structural.sh drops {sorted(dropped & NOT_PIPELINE_CONFIG)}, which config.md "
+        f"PIPELINE_KEYS drops {sorted(dropped & NOT_PIPELINE_CONFIG)}, which config.md "
         "documents as NOT pipeline configuration -- say why above"
     )
     assert dropped == pipeline, (
-        "structural.sh's drop list and docs/config.md's structural key set disagree.\n"
+        "PIPELINE_KEYS and docs/config.md's structural key set disagree.\n"
         f"  documented, never dropped: {sorted(pipeline - dropped)}\n"
         f"  dropped, never documented: {sorted(dropped - pipeline)}\n"
         "An undocumented value in the environment would enable that step again."
     )
+
+
+def test_the_pipeline_reads_its_step_ceiling_from_the_file_never_the_environment(
+    repo: Path, goh: Path
+) -> None:
+    """`GOH_STEP_TIMEOUT` is read from the process environment by the step reporter and by
+    every child it bounds, so before `adopt_into_env` an inherited value set the ceiling and
+    the repo's own `.gatesrc` value was ignored: the Python tier read the file and the native
+    tier the environment, the same key answered two ways. Now the file wins, both ways."""
+
+    def ceilings(env_value: str) -> set[str]:
+        out = subprocess.run(
+            [str(goh), "structural", "--full"],
+            cwd=repo,
+            capture_output=True,
+            text=True,
+            env=hermetic_env(GOH_STEP_TIMEOUT=env_value),
+            timeout=60,
+        )
+        return set(re.findall(r"\((≤\d+s|UNBOUNDED[^)]*)\)", out.stdout))
+
+    assert ceilings("0") == {"≤1800s"}, "an inherited ceiling reached a repo whose file sets none"
+    (repo / ".gatesrc").write_text("GOH_STEP_TIMEOUT=77\n")
+    assert ceilings("5") == {"≤77s"}, "the repo's own .gatesrc ceiling was not the one in force"
 
 
 # ── The push gate's own environment ─────────────────────────────────────────

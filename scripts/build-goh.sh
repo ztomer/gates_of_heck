@@ -42,6 +42,14 @@ if [[ -n "${GOH_BUILD_GATE_ONLY:-}" ]]; then
   exit 0
 fi
 
+# Named up front: since Phase N3 the binary is the only structural tier, so a missing cargo is a
+# repo with no layer-1 gate at all -- not "cargo: command not found" halfway down a build.
+if ! command -v cargo >/dev/null 2>&1; then
+  echo "✗ build-goh: cargo is not on PATH, and the structural gate is this binary." >&2
+  echo "  Install a Rust toolchain: rustup (https://rustup.rs)" >&2
+  exit 1
+fi
+
 # BUILT FROM HEAD, NEVER FROM THE WORKING TREE (BACKLOG C3). bin/goh is the live structural gate
 # of every repo whose hooks delegate here; 2026-09-23 a port in progress was built into it from
 # uncommitted sources and refused another repo's commits for an hour. This used to REFUSE a dirty

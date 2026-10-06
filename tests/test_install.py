@@ -131,9 +131,11 @@ def test_hook_passes_clean_commit(repo):
     assert "all structural gates passed" in (r.stdout + r.stderr)
 
 
-def test_self_hosted_repo_satisfies_its_own_hook(tmp_path):
+def test_self_hosted_repo_satisfies_its_own_hook(tmp_path, goh):
     """gates_of_heck itself must pass its own pre-commit: clone-like check by
-    installing into a fresh copy of THIS repo's tree and committing."""
+    installing into a fresh copy of THIS repo's tree and committing. The copy holds
+    no `bin/goh` (untracked) and its PATH no cargo, so the binary is named: the
+    Python tier that used to answer here is retired (Phase N3)."""
     import shutil
 
     copy = tmp_path / "goh-copy"
@@ -173,6 +175,7 @@ def test_self_hosted_repo_satisfies_its_own_hook(tmp_path):
         text=True,
         env={
             "GOH_DIR": str(copy),
+            "GOH_BIN": str(goh),
             "HOME": str(tmp_path),
             "PATH": "/usr/bin:/bin:/opt/homebrew/bin",
         },

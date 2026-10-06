@@ -65,7 +65,7 @@ Runs the repo's CI steps and exits nonzero if ANY fail.
 
 Steps also come from GOH_CI_STEPS in <repo-root>/.gatesrc — a colon-separated
 command list, e.g.:
-  GOH_CI_STEPS='./tools/repo_gates.sh:cargo test:./scripts/lint.sh'
+  GOH_CI_STEPS='./tools/repo_gates.sh:cargo test:./tools/lint.sh'
 The separator is a bare colon split: keep colons OUT of step strings —
 parameter expansions like ${VAR:+flag} contain one and will be cut. Put such
 logic in a small repo script and invoke that as the step.

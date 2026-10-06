@@ -102,14 +102,17 @@ def test_a_stale_dirty_or_unstamped_binary_is_rebuilt_from_head_and_used(tmp_pat
         calls.unlink()
 
 
-def test_a_failed_rebuild_falls_back_to_the_python_checkers_and_says_so(tmp_path):
+def test_a_failed_rebuild_refuses_and_says_so(tmp_path):
+    """A stale binary whose rebuild fails is neither run (it is not HEAD's) nor replaced by the
+    Python checkers (retired, Phase N3): the gate refuses, naming the build failure."""
     checkout = _clean_checkout_of_todays_gates(tmp_path)
     _fake(checkout / "bin" / "goh", _version(checkout), "0000 0000 0000 0000")
     _fake_builder(checkout, _version(checkout), _head_tree(checkout), ok=False)
     got = _structural(checkout, tmp_path)
     assert "fake native structural ran" not in got.stdout, got.stdout
-    assert got.returncode == 0, got.stdout + got.stderr  # the Python checkers ran, and passed
+    assert got.returncode == 1, got.stdout + got.stderr
     assert "rebuild failed" in got.stderr and "cargo exploded" in got.stderr, got.stderr
+    assert "no native goh binary" in got.stderr, got.stderr
 
 
 def test_an_explicit_goh_bin_is_still_trusted(tmp_path):

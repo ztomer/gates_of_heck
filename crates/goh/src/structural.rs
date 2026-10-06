@@ -1,6 +1,5 @@
-//! The structural pipeline -- `goh structural [--staged|--full]`. Mirrored step
-//! for step by `gates/structural.sh`'s Python branch and pinned to it by
-//! `tests/test_goh_structural_parity.py`.
+//! The structural pipeline -- `goh structural [--staged|--full]`, the only tier
+//! since Phase N3 retired `gates/structural.sh`'s Python branch.
 
 use crate::{
     blobs, claims, credurls, gatesrc, gitutil, goh_root, killname, lockver, mdlinks, prefetch,
@@ -19,6 +18,7 @@ pub fn run(staged: bool, full: bool) -> i32 {
     };
     let staged = scope == scope::Scope::Staged;
     let repo = gatesrc::config_root();
+    gatesrc::adopt_into_env(&repo);
     let cfg = match gatesrc::load(&repo) {
         Ok(cfg) => cfg,
         Err(message) => {

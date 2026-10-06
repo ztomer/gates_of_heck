@@ -15,7 +15,11 @@
 goh_resolve_native() {
     goh_native=""
     goh_native_why=""
-    [ -n "${GOH_NO_NATIVE:-}" ] && return 0
+    if [ -n "${GOH_NO_NATIVE:-}" ]; then
+        # Retired with the Python tier (Phase N3): there is nothing else to run. Said, not obeyed,
+        # so a CI step still setting it keeps working -- on the one tier that exists.
+        echo "· GOH_NO_NATIVE is retired: the native binary is the only tier -- ignoring it" >&2
+    fi
     if [ -n "${GOH_BIN:-}" ]; then
         if [ -x "${GOH_BIN}" ]; then
             goh_native="$GOH_BIN"
@@ -40,7 +44,7 @@ goh_resolve_native() {
     if [ -n "$want" ] && [ "$(goh_stamp_of "$here/../bin/goh")" != "$want" ]; then
         echo "· bin/goh was not built from HEAD's source -- rebuilding it (scripts/build-goh.sh)" >&2
         bash "$here/../scripts/build-goh.sh" --if-stale >&2 \
-            || echo "✗ the rebuild failed (above); this run uses the Python checkers" >&2
+            || echo "✗ the rebuild failed (above)" >&2
     fi
     if [ -x "$here/../bin/goh" ] && { [ -z "$want" ] || [ "$(goh_stamp_of "$here/../bin/goh")" = "$want" ]; }; then
         goh_native="$here/../bin/goh"

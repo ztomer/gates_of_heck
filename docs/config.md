@@ -8,8 +8,8 @@ Single schema. CLI flags beat env/.gatesrc where both exist. Unset means
 
 | Key | Default | Meaning |
 |---|---|---|
-| `GOH_BIN` | unset | Explicit path to the native `goh` binary. Set-but-missing is reported once and the Python checkers run; unset resolves `bin/goh` then `goh` on `PATH`. |
-| `GOH_NO_NATIVE` | unset | Set to `1` to force the Python checkers even when a binary is available (the parity tests use it to drive the Python side). |
+| `GOH_BIN` | unset | Explicit path to the native `goh` binary. Set-but-missing is reported once and the gate REFUSES (there is no other tier since Phase N3); unset resolves `bin/goh` then `goh` on `PATH`. |
+| `GOH_NO_NATIVE` | unset | **Retired** (Phase N3). It selected the Python checkers, which are gone; a run that sets it is told so and runs the binary. Drop it from CI. |
 | `GOH_SKIP_BUILD` | unset | For `install.sh`: install hooks without building `bin/goh`. |
 | `GOH_MAX_LINES` | unset (check skipped + warn) | File-length cap. Set `500` in every repo. `off` records a deliberate no-cap (an info line instead of the warning) for a repo whose files are long by design; say why in a comment beside it. |
 | `GOH_EXPORT_KEEP` | unset | Ignored files the pre-push export must carry (space-separated, repo-relative), e.g. a compile-flag marker the manifest reads. The gate runs on a clean worktree of the pushed commit (`gates/push_gate.sh`); tracked files are always there, ignored ones only if named here. |

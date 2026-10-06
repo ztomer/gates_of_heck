@@ -3,6 +3,7 @@
 # a copied list drifts the day a gate gains a requirement (antiknob CI, 2026-10-05).
 # tests/test_required_tools_manifest.py pins it to the code in both directions.
 # Columns (TAB-separated): layer, tool, kind (brew|cargo|pip|system), install, site.
+structural	cargo	system	rustup (https://rustup.rs)	scripts/build-goh.sh
 structural	shellcheck	brew	brew install shellcheck	checks/check_shell_lint.sh
 structural	shellcheck	brew	brew install shellcheck	crates/goh/src/shell_lint.rs
 python-format	ruff	brew	brew install ruff	checks/check_python_formatted.py

@@ -59,9 +59,9 @@ GOH="${GOH_DIR:-${GOH:-$HOME/Projects/gates_of_heck}}"
 root="$(git rev-parse --show-toplevel)"
 gate="$root/tools/gate.sh"
 [ -f "$gate" ] || die "pre-push: $root/tools/gate.sh missing — run '$GOH/install.sh $root'"
-tag_check="$GOH/checks/check_tag_version.py"
-# Named, not a Python traceback: without this the refusal below reads
-# "can't open file …/check_tag_version.py", which names a path the reader has no
+tag_check="$GOH/gates/goh.sh"
+# Named, not a shell error: without this the refusal below reads
+# "No such file or directory: …/goh.sh", which names a path the reader has no
 # way to act on. It is fail-closed either way — an absent gate is not a pass —
 # and a broken shared checkout is the one case where refusing to push cannot be
 # the answer.
@@ -155,9 +155,9 @@ tag_check_run() {
         . "$root/.gatesrc"
         set +a
     fi
-    # The native port (`goh tag-version`, Phase N1) through the one dispatcher; the Python
-    # reference runs when no binary resolves.
-    bash "$GOH/gates/goh.sh" tag-version --root "$root" --refs-file "$refs_file"
+    # The native port (`goh tag-version`, Phase N1) through the one dispatcher, which
+    # refuses when no binary resolves (Phase N3: the binary is the only tier).
+    bash "$tag_check" tag-version --root "$root" --refs-file "$refs_file"
 }
 
 zero="0000000000000000000000000000000000000000"
@@ -246,8 +246,16 @@ cat >"$refs_file"
 # every step the pre-commit hook proved is re-run in the export — measured by
 # tests/test_proven.py, whose gates copy is exactly such a checkout. Reading a
 # shared directory must never modify it.
-if ! ( tag_check_run ); then
+# Exit 1 is a finding; anything else is a check that could not judge (no binary, an unreadable
+# refs file, a bad GOH_TAG_VERSION_SOURCES). Both refuse; only the first is a mismatch, and
+# saying "does not match" over a missing binary sends the reader to the wrong tag.
+tag_rc=0
+( tag_check_run ) || tag_rc=$?
+if [ "$tag_rc" -eq 1 ]; then
     err "pre-push: a tag being pushed does not match the version its own commit declares — nothing pushed"
+    exit 1
+elif [ "$tag_rc" -ne 0 ]; then
+    err "pre-push: the tag check could not run (exit $tag_rc, above) — nothing pushed"
     exit 1
 fi
 

@@ -81,11 +81,14 @@ def repo(tmp_path: Path) -> Path:
 
 
 @pytest.fixture
-def env(tmp_path: Path, goh: Path) -> dict:
+def env(tmp_path: Path, goh: Path, native_goh: Path) -> dict:
     e = {
         k: v for k, v in os.environ.items() if k not in GIT_VARS and not k.startswith("GOH_PROVEN")
     }
     e["GOH_DIR"] = str(goh)
+    # The copy holds no `bin/goh`, and since Phase N3 there is no Python tier to answer in its
+    # place: the binary is named, as a consumer's CI names one it built.
+    e["GOH_BIN"] = str(native_goh)
     e["COUNT"] = str(tmp_path / "count")  # each real run of a step appends a line here
     e["NO_COLOR"] = "1"
     return e

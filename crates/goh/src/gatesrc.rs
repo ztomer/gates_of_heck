@@ -194,6 +194,49 @@ pub fn from_pairs(pairs: &BTreeMap<String, String>) -> Result<Gatesrc, String> {
     })
 }
 
+/// Every structural `.gatesrc` key, spelled once: the pipeline's configuration.
+///
+/// A key is configuration if and only if the repo's own file says so. Measured
+/// 2026-10-02: a push of one repo reached the export gate with that repo's real
+/// `GOH_SKILLS_ROOT`, `GOH_SKILLS_CORPUS` and `GOH_PYTHON_FORMATTED` in its
+/// environment, and 18 fixture tests went red on a clean tree.
+/// [`adopt_into_env`] makes the environment AGREE with the file for exactly these
+/// keys, so a step that reads one from the environment (`GOH_STEP_TIMEOUT`, and
+/// every child it spawns) sees the file's value, never an inherited one.
+/// Pinned against `docs/config.md` by `tests/test_gate_environment.py`.
+pub const PIPELINE_KEYS: [&str; 15] = [
+    "GOH_MAX_LINES",
+    "GOH_LINE_EXCLUDE",
+    "GOH_LINE_BASELINE",
+    "GOH_LINE_UNBOUNDED",
+    "GOH_EXCLUDE",
+    "GOH_ALLOW",
+    "GOH_SKILLS_CORPUS",
+    "GOH_SKILLS_ROOT",
+    "GOH_SKILLS_MAX_WORDS",
+    "GOH_NO_HOME_PATHS",
+    "GOH_NO_KILL_BY_NAME",
+    "GOH_PYTHON_FORMATTED",
+    "GOH_CLAIM_DERIVATION",
+    "GOH_STEP_TIMEOUT",
+    "GOH_STEP_GRACE",
+];
+
+/// Make the process environment say what `root/.gatesrc` says for every
+/// [`PIPELINE_KEYS`] key: an inherited value is dropped, a declared one set.
+/// Called once, before any thread or child starts.
+pub fn adopt_into_env(root: &Path) {
+    let pairs = std::fs::read_to_string(root.join(".gatesrc"))
+        .map(|t| parse_pairs(&t))
+        .unwrap_or_default();
+    for key in PIPELINE_KEYS {
+        match pairs.get(key) {
+            Some(value) => std::env::set_var(key, value),
+            None => std::env::remove_var(key),
+        }
+    }
+}
+
 /// Repo root for config resolution (`git` top level, else current dir).
 #[must_use]
 pub fn config_root() -> PathBuf {
@@ -248,9 +291,25 @@ mod tests {
     /// declares, and nothing else may be.
     #[test]
     fn the_optional_gate_keys_are_the_ones_the_code_reads() {
-        let src = String::from(include_str!("steps.rs"))
-            + include_str!("steps_delegated.rs")
-            + include_str!("main.rs");
+        // EVERY source file, not a list of the ones the readers were last seen in: the list
+        // named steps.rs/main.rs and went red the day kill-by-name, python-formatted and
+        // claim-derivation moved into their own modules (Phase N1).
+        fn walk(dir: &Path, out: &mut String) {
+            let mut entries: Vec<PathBuf> = std::fs::read_dir(dir)
+                .expect("src readable")
+                .map(|e| e.expect("entry").path())
+                .collect();
+            entries.sort();
+            for path in entries {
+                if path.is_dir() {
+                    walk(&path, out);
+                } else if path.extension().is_some_and(|x| x == "rs") {
+                    out.push_str(&std::fs::read_to_string(&path).expect("utf-8 source"));
+                }
+            }
+        }
+        let mut src = String::new();
+        walk(&Path::new(env!("CARGO_MANIFEST_DIR")).join("src"), &mut src);
         let asked: Vec<&str> = [
             "GOH_SKILLS_CORPUS",
             "GOH_NO_HOME_PATHS",

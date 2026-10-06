@@ -74,7 +74,7 @@ pub fn step_length(
 ) -> Option<i32> {
     // 3. One cap, one name.
     let Some(max) = cfg.max_lines else {
-        // `off` is a recorded decision; only an absent key is an omission (_line_cap.sh).
+        // `off` is a recorded decision; only an absent key is an omission (the shell tier read it the same way).
         if cfg.line_cap_off {
             println!("→ file-length cap off — declared in .gatesrc (GOH_MAX_LINES=off)");
         } else {

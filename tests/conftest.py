@@ -342,8 +342,15 @@ def _shared_tmp(tmp_path_factory) -> Path:
 
 
 @pytest.fixture(scope="session")
-def goh(tmp_path_factory) -> Path:
-    """The native goh binary, built ONCE per test session and read from a private copy.
+def goh(native_goh: Path) -> Path:
+    """The native goh binary (`native_goh`, under the name most suites use)."""
+    return native_goh
+
+
+@pytest.fixture(scope="session")
+def native_goh(tmp_path_factory) -> Path:
+    """The native goh binary, built ONCE per test session and read from a private copy. A suite
+    whose own `goh` fixture means something else (a gates checkout copy) asks for this name.
 
     "session" is per WORKER under xdist, so this fixture used to run `cargo build` once per worker:
     measured 2026-09-22, seven builds of one workspace in one session, four overlapping inside

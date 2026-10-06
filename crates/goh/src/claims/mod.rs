@@ -348,7 +348,7 @@ pub fn run_command(root: Option<&str>, staged: bool, exclude: Option<&str>, json
 /// The structural step (opt-in, `GOH_CLAIM_DERIVATION`); the delegated step's label.
 #[must_use]
 pub fn step_gate(cfg: &crate::gatesrc::Gatesrc, staged: bool) -> Option<i32> {
-    if !crate::gatesrc::opt_in(cfg, OPT_IN_KEY) {
+    if !crate::gatesrc::opt_in(cfg, "GOH_CLAIM_DERIVATION") {
         return None;
     }
     let label = if staged {

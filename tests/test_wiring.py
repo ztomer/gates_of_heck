@@ -21,7 +21,7 @@ import pytest
 from conftest import REPO_ROOT
 
 REF = re.compile(
-    r"((?:checks|tools|hooks|gates)/[A-Za-z0-9_.-]+\.(?:py|sh)|"
+    r"((?:checks|tools|hooks|gates|scripts)/[A-Za-z0-9_.-]+\.(?:py|sh)|"
     r"\$(?:CHECKS|\{CHECKS\})/[A-Za-z0-9_.-]+\.(?:py|sh))"
 )
 VAR_MAP = {"$CHECKS": "checks", "${CHECKS}": "checks"}
@@ -60,14 +60,14 @@ def _referenced_scripts(files=None) -> list[tuple[str, int, str]]:
 # length-cap cluster outgrew `structural.sh`. That is the correct failure: it is how
 # a reader learns the pin tracks a reference rather than a file.
 EXPECTED_REFS = [
-    ("gates/structural.sh", "checks/check_no_emoji.py"),
-    ("gates/structural.sh", "checks/check_no_conflict_markers.py"),
-    ("gates/structural.sh", "checks/check_no_secrets.py"),
-    ("gates/structural.sh", "checks/check_claim_derivation.py"),
-    ("gates/_line_cap.sh", "checks/check_file_length.py"),
-    ("gates/_line_cap.sh", "checks/check_exclusion_has_ceiling.py"),
-    ("gates/_line_cap.sh", "checks/check_baseline_ratchet.py"),
-    ("gates/structural.sh", "checks/check_shell_lint.sh"),
+    # A plain path, a `python_file="..."` table row, and a `$GOH/...` expansion: the three
+    # spellings the gates use. (structural.sh referenced every checker until Phase N3
+    # retired its Python branch; it now references only the binary's build script.)
+    ("gates/structural.sh", "scripts/build-goh.sh"),
+    ("gates/goh.sh", "checks/check_no_emoji.py"),
+    ("gates/goh.sh", "checks/check_no_conflict_markers.py"),
+    ("gates/push_gate.sh", "gates/goh.sh"),
+    ("gates/local_ci.sh", "checks/check_no_unreaped_spawn.py"),
     # NOTE: the disk watch is not here at all any more. It moved out of CI in
     # v0.8.0 and out of this REPO on 2026-09-07, to
     # ~/Projects/scripts/{lib/disk_hygiene.py,bin/disk_hygiene.sh}. See
