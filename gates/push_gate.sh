@@ -50,6 +50,7 @@
 # overrides). A green run deletes its log; a red one keeps it, prints its path, and the newest
 # `keep_failed_logs` are kept. The cost: the gate writes to a pipe, so its colours are off.
 { # parse-guard -- bash reads this group whole before running it (tests/test_parse_guard.py)
+. "$(dirname "${BASH_SOURCE[0]}")/_from_head.sh"; goh_from_head "${BASH_SOURCE[0]}" "$@"   # run HEAD, not the tree (C4)
 set -euo pipefail
 
 GOH="${GOH_DIR:-${GOH:-$HOME/Projects/gates_of_heck}}"
@@ -66,6 +67,10 @@ tag_check="$GOH/checks/check_tag_version.py"
 # the answer.
 [ -f "$tag_check" ] || die "pre-push: $tag_check missing from the gates checkout at $GOH — nothing pushed"
 
+# CLOSED BY C4 (gates/_from_head.sh): this script, and every gate it runs, now runs from an export
+# of the gates checkout's HEAD, so the paragraph below describes GOH_LIVE=1 only -- a developer
+# asking for the working tree on purpose -- and the check stays for exactly that case.
+#
 # THE GATE THAT WILL JUDGE THIS PUSH MAY NOT BE COMMITTED. Every step the export
 # runs is a file under $GOH — read from the shared checkout's WORKING TREE at the
 # moment it runs, not from the export worktree this script builds, because that
@@ -103,7 +108,7 @@ if [ -n "$gate_dirty" ]; then
     warn "the gates judging this push are NOT committed — the export runs them from $GOH:"
     printf '%s\n' "$gate_dirty" | sed 's/^/    /' >&2
     warn "  …not from $root. What this push is certified by exists in no commit."
-    warn "  Commit or stash them before pushing; scripts/build-goh.sh refuses to publish bin/goh here."
+    warn "  GOH_LIVE=1 asked for the working tree; without it this push would run HEAD's gates (C4)."
     warn "  Gating anyway: the result below is real, and it is not reproducible from any commit."
 fi
 unset gate_dirty

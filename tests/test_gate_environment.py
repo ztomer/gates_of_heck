@@ -47,7 +47,7 @@ def _hermetic_env(**overrides: str) -> dict[str, str]:
     """A child environment with NO inherited `GOH_*` in it. Every step's opt-in is
     a `GOH_*` PRESENCE test, so an inherited value adds a step the caller never
     declared — which is how `push_gate.sh`'s `set -a` reached a whole suite."""
-    env = {k: v for k, v in os.environ.items() if not k.startswith("GOH_")}
+    env = {k: v for k, v in os.environ.items() if not k.startswith("GOH_") or k == "GOH_LIVE"}
     env.update(overrides)
     return env
 

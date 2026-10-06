@@ -14,6 +14,13 @@ from pathlib import Path
 
 import pytest
 
+
+# THE SUITE TESTS THE TREE IT IS IN. Consumers run the gates from an export of HEAD (C4,
+# gates/_from_head.sh); this suite exists to judge the change under test, so it asks for the working
+# tree on purpose -- and a gate started under pytest WITHOUT it refuses rather than quietly
+# judging HEAD. A test that builds its environment by dropping GOH_* must keep this one.
+os.environ["GOH_LIVE"] = "1"
+
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
 # Every test builds its OWN repos. Run from a git hook (pre-push from a linked worktree hands

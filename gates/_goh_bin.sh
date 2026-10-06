@@ -25,7 +25,9 @@ goh_resolve_native() {
         return 0
     fi
     local here want
-    here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    # bin/goh is not in git: run from an export of HEAD (C4), it is the LIVE checkout's binary,
+    # which C3 keeps built from that same HEAD.
+    here="${GOH_LIVE_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}/gates"
     want="$(goh_head_stamp "$here/..")"
     # bin/goh is OURS to rebuild: built from other source than HEAD's (or before stamps existed),
     # it is rebuilt from HEAD here, under build-goh.sh's lock, and then used. A version check alone

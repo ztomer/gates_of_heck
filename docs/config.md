@@ -181,3 +181,14 @@ TTL. Rationale and the full key: the header of `gates/proven.sh`.
 
 Internal-only (not `.gatesrc` policy): `GOH_ROOT`, `GOH_GIT_ROOT`,
 `GOH_REPO_ROOT`, `GOH_NAME`, `GOH_LOG`, `GOH_LOGS`, `GOH_COMPLETED`, `GOH_EX`, `GOH_NATIVE_BIN` (the resolved native binary inside `structural.sh`), `GOH_TMPDIRS` (temp dirs the EXIT trap removes), `GOH_INDEX_VIEW` (the index export `goh_index_view` hands a whole-tree checker at `--staged`).
+
+## Which gate source runs (C4)
+
+Consumers never run the shared checkout's working tree: every entry point re-runs itself from an
+immutable export of its HEAD (`gates/_from_head.sh`).
+
+| Key | Default | Meaning |
+|---|---|---|
+| `GOH_LIVE` | unset (consumers run HEAD) | `1` runs the gates from the shared checkout's WORKING TREE. Unset, every entry point (`structural.sh`, `rust_gate.sh`, `push_gate.sh`, ...) and sourced lib (`_common.sh`, `tui/lib.sh`) re-runs itself from an immutable export of the checkout's HEAD (`gates/_from_head.sh`, C4), so an uncommitted edit to gate source cannot judge any consumer's commit. Set it to develop the gates; this repo's suite sets it (`tests/conftest.py`), and a gate started under pytest without it refuses. |
+| `GOH_HEAD_CACHE` | `~/.cache/goh/head` | Where the HEAD exports live, one immutable directory per commit; exports of other commits untouched for 7 days are pruned. |
+| `GOH_LIVE_ROOT` | internal | Set by `_from_head.sh` for the export's children: the live checkout, where `bin/goh` (not in git) is found. Not user config. |

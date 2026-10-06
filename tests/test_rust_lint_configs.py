@@ -61,7 +61,9 @@ def _repo(tmp_path: Path, lib: str, gatesrc: str) -> Path:
 
 
 def _gate(repo: Path, path_prefix: Path | None = None) -> subprocess.CompletedProcess:
-    env = {k: v for k, v in os.environ.items() if not k.startswith(("GOH_", "GIT_"))}
+    env = {
+        k: v for k, v in os.environ.items() if not k.startswith(("GOH_", "GIT_")) or k == "GOH_LIVE"
+    }
     g = Path(os.environ["SCOPED_CACHE_GATES"])
     env.update(GOH_DIR=str(g), GOH_BIN=os.environ["SCOPED_CACHE_GOH"], GOH_RUST_GROUPS="crate")
     if path_prefix is not None:

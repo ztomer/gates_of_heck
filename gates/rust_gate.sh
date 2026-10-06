@@ -49,6 +49,7 @@
 # NOTE: sccache is expected via RUSTC_WRAPPER (see ~/.zshenv). fmt and clippy
 # are largely cache-hostile; the real cache win is on build/test steps.
 { # parse-guard -- bash reads this group whole before running it (tests/test_parse_guard.py)
+. "$(dirname "${BASH_SOURCE[0]}")/_from_head.sh"; goh_from_head "${BASH_SOURCE[0]}" "$@"   # run HEAD, not the tree (C4)
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

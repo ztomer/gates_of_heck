@@ -12,6 +12,7 @@
 #   GOH_MAX_LINES=500          # file-length cap; unset disables the check
 #   GOH_LINE_EXCLUDE="re1|re2" # paths exempt from the cap
 { # parse-guard -- bash reads this group whole before running it (tests/test_parse_guard.py)
+. "$(dirname "${BASH_SOURCE[0]}")/_from_head.sh"; goh_from_head "${BASH_SOURCE[0]}" "$@"   # run HEAD, not the tree (C4)
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -143,11 +144,12 @@ goh_require_current() {
 # Python path (the parity test uses it to drive this side).
 _goh_dirty="$(_goh_dirty_gate_source)"
 if [ -n "$_goh_dirty" ]; then
+    # Reached only with GOH_LIVE=1 (or no git to export from): consumers run HEAD's export (C4).
     warn "the gates about to judge this tree are NOT committed — a verdict from uncommitted"
-    warn "  gate source is not reproducible from any commit. Every repo's hooks run these files:"
+    warn "  gate source is not reproducible from any commit. GOH_LIVE=1 runs these files:"
     printf '%s\n' "$_goh_dirty" | sed 's/^/    /' >&2
-    warn "  … in the shared gates checkout at $GOH_ROOT, not in this repo. Commit or stash."
-    warn "  bin/goh is built from HEAD only, but checks/ is read live: these edits ARE this gate."
+    warn "  … in the gates checkout at $GOH_ROOT, not in this repo. Without GOH_LIVE every"
+    warn "  gate runs that checkout's HEAD (gates/_from_head.sh), so these edits judge only you."
     unset _goh_dirty
 fi
 

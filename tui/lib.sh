@@ -3,6 +3,12 @@
 # Source at the top of any script:  source "$(dirname "$0")/tui/lib.sh"
 # Self-contained: reads tui/stylerc (repo source of truth), no machine dependency.
 # Icons: → · ✓ ✗ ⚠   Colors: restrained, NO_COLOR + non-tty aware (degrades to plain text).
+# Consumers load HEAD's copy of this file, never the shared working tree (C4, gates/_from_head.sh).
+# (A copy of this file outside a gates checkout -- vendored, against the house rule -- has no
+# gates/ beside it, and loads itself.)
+if [ -f "$(dirname "${BASH_SOURCE[0]}")/../gates/_from_head.sh" ]; then
+    . "$(dirname "${BASH_SOURCE[0]}")/../gates/_from_head.sh" && goh_from_head_lib "${BASH_SOURCE[0]}" && return 0
+fi
 
 _TUI_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
 

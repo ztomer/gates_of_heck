@@ -23,6 +23,7 @@
 # vacuous floor: it only measures what pytest imported, so a never-imported
 # 0%-covered module is invisible to even GOH_PY_COV_MIN=100.
 { # parse-guard -- bash reads this group whole before running it (tests/test_parse_guard.py)
+. "$(dirname "${BASH_SOURCE[0]}")/_from_head.sh"; goh_from_head "${BASH_SOURCE[0]}" "$@"   # run HEAD, not the tree (C4)
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

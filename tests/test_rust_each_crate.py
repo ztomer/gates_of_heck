@@ -50,7 +50,9 @@ def estate(tmp_path: Path) -> Path:
 
 
 def _each(repo: Path, timings: Path | None = None, **env: str) -> subprocess.CompletedProcess:
-    full = {k: v for k, v in os.environ.items() if not k.startswith(("GOH_", "GIT_"))}
+    full = {
+        k: v for k, v in os.environ.items() if not k.startswith(("GOH_", "GIT_")) or k == "GOH_LIVE"
+    }
     g = Path(os.environ["SCOPED_CACHE_GATES"])
     full.update(GOH_DIR=str(g), GOH_BIN=os.environ["SCOPED_CACHE_GOH"], **env)
     if timings is not None:
@@ -115,7 +117,9 @@ def test_a_bad_job_count_is_refused(estate: Path, key: str, value: str) -> None:
 
 def test_an_unknown_group_is_a_miswiring(estate: Path) -> None:
     g = Path(os.environ["SCOPED_CACHE_GATES"])
-    env = {k: v for k, v in os.environ.items() if not k.startswith(("GOH_", "GIT_"))}
+    env = {
+        k: v for k, v in os.environ.items() if not k.startswith(("GOH_", "GIT_")) or k == "GOH_LIVE"
+    }
     env.update(GOH_DIR=str(g), GOH_RUST_GROUPS="crate,lint")
     r = subprocess.run(
         ["bash", str(g / "gates" / "rust_gate.sh"), str(estate), str(estate / "crates" / "c")],

@@ -38,6 +38,7 @@ CPU**; `-n 12` is slower than `-n 8`.
 | a stopped gate stops its steps (bounded_run + local_ci forward TERM/INT/HUP) | `efbaf12` | -- |
 | P1g `GOH_RUST_LINT_CARGO=cargo-zigbuild` for `--target` lint configs (+ the first tests of `GOH_RUST_LINT_CONFIGS`) | `89b7c9f`, `f39fed9` | media_server http-mini-rs: plain cargo fails on ring's C, zigbuild 6 s warm |
 | P2 `rust_gate.sh --each-crate` + P1f repo scans once (`GOH_RUST_GROUPS`, `GOH_RUST_JOBS`) | `17e1541` | media_server clone, warm, 4 at a time, proven off: 79 s vs the `xargs -P 4` fan-out's 91 s; repo scans 1 run vs 29 (cold: 104 s, all 29 green). Adoption is servers' own commit |
+| C4 consumers run the gates from an immutable export of HEAD; `GOH_LIVE=1` is the working tree on purpose | (this) | +45 ms per gate run (antiknob pre-commit 0.44 vs 0.40 s); a planted uncommitted edit reached the consumer 0 times, 1 with GOH_LIVE |
 
 ## Phase P — make goh fast (the program)
 
@@ -224,13 +225,11 @@ HEAD:<path>`, so computing a key stays O(scope), not O(files).
 - **C3. LANDED `833b2e7`** (SUPERSOTA R4a): `bin/goh` is built from an export of HEAD, stamped with
   the git trees of its inputs (`goh source-tree`), and `gates/_goh_bin.sh` rebuilds a stale one
   under a lock before using it. Owner's choice 2026-10-05: rebuild, not fall back.
-- **C4. Gate source edited in the shared checkout is LIVE in every consumer, the moment it is
-  saved.** Proven again 2026-10-05: this session's uncommitted `_goh_bin.sh` reached antiknob's push
-  ahead of the binary it checks ("unrecognized subcommand 'source-tree'"). The warning exists; the
-  cause does not have to. C3's pattern generalises: consumers run `checks/` / `gates/` / `lib/` /
-  `tui/` from a HEAD export too (a stable cache dir, `read-tree -u`, keyed by HEAD's tree), and
-  development points `GOH_DIR` at the working tree on purpose. Then "uncommitted gate source
-  certifies a push" is impossible by construction, and the SUPERSOTA item closes with it.
+- **C4 residuals** (C4 itself landed, table): three consumer call sites run a Python checker
+  DIRECTLY from the checkout (`check_version_provenance.py` x2, `check_no_secrets.py`), and
+  `tools/*.sh` are not redirected; both still read the working tree. Each wants either a bash entry
+  point in front of it or the PYTHONPATH bootstrap moved into the checker. Phase N removes the first.
+
 ## Phase N — retire the Python checkers (owner's direction, 2026-10-05)
 
 The Python checkers are today both the second tier (`GOH_NO_NATIVE`) and the SPEC the native ports

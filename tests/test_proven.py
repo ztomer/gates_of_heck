@@ -46,7 +46,14 @@ def goh(tmp_path: Path) -> Path:
     """A committed copy of the gates this suite tests."""
     d = tmp_path / "goh"
     (d / "gates").mkdir(parents=True)
-    for name in ("_proven.sh", "_hash.sh", "proven.sh", "local_ci.sh", "push_gate.sh"):
+    for name in (
+        "_proven.sh",
+        "_hash.sh",
+        "_from_head.sh",
+        "proven.sh",
+        "local_ci.sh",
+        "push_gate.sh",
+    ):
         shutil.copy2(REPO_ROOT / "gates" / name, d / "gates" / name)
     # push_gate.sh runs the tag check before anything else, so this copy has to
     # carry it or the gate refuses with "… missing from the gates checkout" —

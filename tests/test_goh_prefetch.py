@@ -64,7 +64,9 @@ def _repo(tmp: Path) -> Path:
 def _run(goh: Path, tmp: Path, shell_fails: bool, sleep: str):
     marks = tmp / "marks"
     marks.mkdir()
-    env = {k: v for k, v in os.environ.items() if not k.startswith(("GOH_", "GIT_"))}
+    env = {
+        k: v for k, v in os.environ.items() if not k.startswith(("GOH_", "GIT_")) or k == "GOH_LIVE"
+    }
     env.update(GOH_DIR=str(_fake_goh_dir(tmp, shell_fails)), MARK_DIR=str(marks), STUB_SLEEP=sleep)
     t0 = time.monotonic()
     r = subprocess.run(
