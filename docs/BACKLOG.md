@@ -56,8 +56,9 @@ Status: `[ ]` open, `[x]` done (with the commit), `[~]` handed off.
       (`2517e42`).
 
 **Phase 2 — fewer spawns in every gate** (details: "Open -- found", 4, 6, 7)
-- [ ] 2.1 `goh.sh` resolves the binary once per process tree (exported, validated); ratchet: a
-      `goh.sh` call inside a gate spawns no git.
+- [x] 2.1 `goh.sh` resolves the binary once per process tree (exported, validated); ratchet: a
+      `goh.sh` call inside a gate spawns no git. Child call 78 -> 34 ms; `rust_gate.sh` resolves
+      once for its four `goh.sh` steps (`COMMIT`).
 - [ ] 2.2 `check_estate_corpus`: scratch repos from a template with the identity on the commit
       (5 git spawns -> 2 per repo); its pool sized for a shared machine, not `os.cpu_count()`.
 - [ ] 2.3 `lib/orphan_canary.py` sheds `dataclasses`/`argparse` on the common path, as

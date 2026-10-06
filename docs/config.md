@@ -190,6 +190,8 @@ Measured on media_server: `structural --full` 1.9 s -> 0.30 s warm.
 | `GOH_TIMINGS_CWD` | set by `goh_step_in` | The directory a timed step really runs in (`goh_step_in` changes directory inside the child), so the timing line of each crate's step names that crate. Not a setting. |
 | `GOH_BENCH_SESSION` | set by `tools/session_bench.py` | The index of the concurrent session a benchmarked workload runs as (0..N-1), for a workload that wants to tell its sessions apart. Not a setting. |
 | `GOH_GIT_LOCAL_VARS` | set by `gates/_from_head.sh` | git's repository-binding variables (`git rev-parse --local-env-vars`), asked once per process tree and dropped by every git call on a foreign repository (contract #12). Taken from the environment only when it names `GIT_DIR`; otherwise asked again. Not a setting. |
+| `GOH_RESOLVED_FOR` | set by `gates/_goh_bin.sh` | The gates root and `GOH_LIVE` mode the exported `GOH_RESOLVED_BIN` answers for: a child resolving for the same pair takes it instead of re-resolving (~12 spawns). Not a setting. |
+| `GOH_RESOLVED_BIN` | set by `gates/_goh_bin.sh` | The native binary the first resolution in a process tree chose; taken only while it is executable and `GOH_RESOLVED_FOR` matches. Not a setting -- `GOH_BIN` is the override. |
 | `GOH_PROFILE_PROVEN` | unset | `tools/gate_profile.sh` only: keep the proven-step cache on while profiling (default off, because a profile of cache hits measures the cache, not the work). |
 | `GOH_AWK_VER_RE` | internal | Version regex passed into the release stanza matcher. Not user config. |
 | `GOH_TREE_STAMP_FILE` | internal | The working tree's stamp taken at the first `goh_init` (`lib/tree_stamp.py`); compared in `goh_done` and on a red exit. Not user config. |

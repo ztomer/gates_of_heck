@@ -28,10 +28,27 @@ goh_resolve_native() {
         fi
         return 0
     fi
-    local here want
+    local here want key
     # bin/goh is not in git: run from an export of HEAD (C4), it is the LIVE checkout's binary,
     # which C3 keeps built from that same HEAD.
     here="${GOH_LIVE_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}/gates"
+    # ONCE PER PROCESS TREE: the answer below costs ~12 spawns (the GOH_LIVE delta, HEAD's stamp,
+    # the binary's own), and every goh.sh call paid it again (2026-10-06,
+    # tests/test_goh_bin_once.py). A parent's answer for the same gates root and GOH_LIVE mode is
+    # taken while its binary is still executable; anything else is asked again.
+    key="$(cd "$here/.." && pwd -P)|live:${GOH_LIVE:-}"
+    if [ "${GOH_RESOLVED_FOR:-}" = "$key" ] && [ -x "${GOH_RESOLVED_BIN:-}" ]; then
+        goh_native="$GOH_RESOLVED_BIN"
+        return 0
+    fi
+    _goh_resolve_uncached "$here"
+    if [ -n "$goh_native" ]; then
+        export GOH_RESOLVED_FOR="$key" GOH_RESOLVED_BIN="$goh_native"
+    fi
+}
+
+_goh_resolve_uncached() { # <gates dir>
+    local here="$1" want
     # GOH_LIVE runs the working tree on purpose -- so the binary is the working tree's too.
     # bin/goh is HEAD's (C3), and under GOH_LIVE with uncommitted Rust it answered for code the
     # run was not testing: a new subcommand read "unrecognized", and a test of an uncommitted fix

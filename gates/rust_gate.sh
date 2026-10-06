@@ -262,6 +262,9 @@ rust_coverage_checks() {
 
 # shellcheck source=gates/_rust_proven.sh
 . "$HERE/_rust_proven.sh"
+# Resolved ONCE for every goh.sh step below (and the proven cache's rust-scope): the answer is
+# exported, so each step's goh.sh takes it instead of ~12 spawns of its own (gates/_goh_bin.sh).
+goh_resolve_native
 _group_on crate && rust_proven_group crate crate rust_crate_checks
 _group_on repo && rust_proven_group repo tree rust_repo_checks
 
