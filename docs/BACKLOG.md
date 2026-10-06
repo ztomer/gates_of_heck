@@ -36,7 +36,8 @@ CPU**; `-n 12` is slower than `-n 8`.
 | C5 failure block quotes only the step that failed (ZoneWM H2; `lib/fail_lines.py`) | `24eb31d` | nested: innermost dump alone, others counted; `make`: its failing target first, matches flagged |
 | P2 `GOH_CI_JOBS` scheduler: declared-order reports, `[tag]` exclusion | `3044941` | gates_of_heck's own push steps, warm, proven off: 1 job 186 s, 2 jobs 147 s, 4 jobs 138 s (box busy with other runs: provisional) |
 | a stopped gate stops its steps (bounded_run + local_ci forward TERM/INT/HUP) | `efbaf12` | -- |
-| P2 `rust_gate.sh --each-crate` + P1f repo scans once (`GOH_RUST_GROUPS`, `GOH_RUST_JOBS`) | `17e1541` | -- (media_server adoption is servers' own commit) |
+| P1g `GOH_RUST_LINT_CARGO=cargo-zigbuild` for `--target` lint configs (+ the first tests of `GOH_RUST_LINT_CONFIGS`) | `89b7c9f`, `f39fed9` | media_server http-mini-rs: plain cargo fails on ring's C, zigbuild 6 s warm |
+| P2 `rust_gate.sh --each-crate` + P1f repo scans once (`GOH_RUST_GROUPS`, `GOH_RUST_JOBS`) | `17e1541` | media_server clone, warm, 4 at a time, proven off: 79 s vs the `xargs -P 4` fan-out's 91 s; repo scans 1 run vs 29 (cold: 104 s, all 29 green). Adoption is servers' own commit |
 
 ## Phase P — make goh fast (the program)
 
@@ -141,12 +142,6 @@ What the table says, in four classes:
   for its Python steps (buffer each, print in order). The parity test already pins order, so it is
   the gate. Expected: `--full` 4.9 s -> ~2.3 s (bounded by unreaped-spawn).
 
-- **P1g. Cross-target clippy inside the fan-out** (servers O41, 2026-10-05): media_server's serial
-  `cargo-zigbuild clippy --target x86_64-unknown-linux-musl` is 46 s after the crate fan-out ends.
-  `GOH_RUST_LINT_CONFIGS` cannot carry it: plain `cargo clippy --target` fails on ring's C build on
-  macOS. Needs a per-config cargo command seam (`GOH_RUST_LINT_CARGO=cargo-zigbuild`, or zigbuild
-  picked for a `--target` cfg), and the installed-target check requiring cargo-zigbuild + zig
-  (rows in `gates/required_tools.tsv`).
 - **P1f. Two per-crate steps that are not per-crate** (measured by P0 on media_server's push):
   `no emptiness asserts` scans the WHOLE repo (554 files) once per crate, 29 times, 24 job-s; and
   `cargo lints (manifest)` is a second full `cargo check --workspace` after clippy, 24 job-s. The
