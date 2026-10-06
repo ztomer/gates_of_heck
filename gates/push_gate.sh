@@ -337,7 +337,7 @@ while read -r local_ref local_sha _remote_ref _remote_sha; do
     # real checkout instead, and a checker reads it only for citations that name a child. The
     # isolation the worktree buys -- never certify the working tree -- is untouched, because what it
     # guards is this repo's OWN files, and those still come from the worktree.
-    (unset $(git rev-parse --local-env-vars) && cd "$worktree" \
+    (unset ${GOH_GIT_LOCAL_VARS:-$(git rev-parse --local-env-vars)} && cd "$worktree" \
         && { [ -z "$export_build_dir" ] || export CARGO_BUILD_BUILD_DIR="$export_build_dir"; } \
         && GOH_CROSS_REPO_ROOT="$root" bash "$worktree/tools/gate.sh" --full) 2>&1 | tee "$log"
     status="${PIPESTATUS[0]}"

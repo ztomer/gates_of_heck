@@ -63,9 +63,9 @@ goh_resolve_native() {
 # untracked file under crates/, or nothing when the tree's Rust IS HEAD's.
 goh_live_delta() {
     local root="$1" diff untracked
-    diff="$( (unset $(git rev-parse --local-env-vars 2>/dev/null)
+    diff="$( (unset ${GOH_GIT_LOCAL_VARS:-$(git rev-parse --local-env-vars 2>/dev/null)}
               git -C "$root" diff HEAD -- crates Cargo.toml Cargo.lock rust-toolchain.toml) 2>/dev/null)"
-    untracked="$( (unset $(git rev-parse --local-env-vars 2>/dev/null)
+    untracked="$( (unset ${GOH_GIT_LOCAL_VARS:-$(git rev-parse --local-env-vars 2>/dev/null)}
                    cd "$root" && git ls-files -z --others --exclude-standard -- crates \
                    | xargs -0 shasum 2>/dev/null) 2>/dev/null)"
     [ -z "$diff$untracked" ] && return 0
@@ -100,7 +100,7 @@ goh_head_stamp() {
     # ECHOED to stdout, and under pipefail a failing git inside a pipe killed the gate silently.
     local out
     # shellcheck disable=SC2046  # word-splitting git's variable list is the point
-    out="$(unset $(git rev-parse --local-env-vars 2>/dev/null)
+    out="$(unset ${GOH_GIT_LOCAL_VARS:-$(git rev-parse --local-env-vars 2>/dev/null)}
            git -C "$1" rev-parse HEAD:crates HEAD:Cargo.toml HEAD:Cargo.lock HEAD:rust-toolchain.toml \
                2>/dev/null)" || return 0
     printf '%s' "$out" | tr '\n' ' ' | sed 's/ $//'

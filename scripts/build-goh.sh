@@ -64,7 +64,7 @@ INPUTS=(crates Cargo.toml Cargo.lock rust-toolchain.toml)
 IF_STALE=""
 [[ "${1:-}" == "--if-stale" ]] && IF_STALE=1
 # shellcheck disable=SC2046  # word-splitting git's variable list is the point
-git_here() { (unset $(git rev-parse --local-env-vars 2>/dev/null); git -C "${PROJECT_ROOT}" "$@"); }
+git_here() { (unset ${GOH_GIT_LOCAL_VARS:-$(git rev-parse --local-env-vars 2>/dev/null)}; git -C "${PROJECT_ROOT}" "$@"); }
 # Captured first: git ECHOES a revision it cannot resolve (no HEAD yet), which must read as empty.
 head_stamp() { local out; out="$(git_here rev-parse "${INPUTS[@]/#/HEAD:}" 2>/dev/null)" || return 0
   printf '%s' "${out}" | tr '\n' ' ' | sed 's/ $//'; }
@@ -108,7 +108,7 @@ if [[ -n "${STAMP}" ]]; then
   cache="${XDG_CACHE_HOME:-${HOME}/.cache}/goh/build/$(printf %s "${PROJECT_ROOT}" | cksum | cut -d' ' -f1)"
   mkdir -p "${cache}/src"
   # shellcheck disable=SC2046  # word-splitting git's variable list is the point
-  (unset $(git rev-parse --local-env-vars 2>/dev/null)
+  (unset ${GOH_GIT_LOCAL_VARS:-$(git rev-parse --local-env-vars 2>/dev/null)}
    GIT_INDEX_FILE="${cache}/index" git -C "${PROJECT_ROOT}" --work-tree="${cache}/src" read-tree --reset -u HEAD)
   SRC="${cache}/src"
   dirty="$(git_here status --porcelain --untracked-files=normal -- "${INPUTS[@]}" || true)"

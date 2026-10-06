@@ -23,7 +23,13 @@ def local_env_vars() -> tuple:
 
     `git rev-parse --local-env-vars` is the list git clears when it crosses into a submodule;
     asking git (rather than keeping a copy) means a variable a future git adds is covered the day
-    it ships. Works outside any repo and with a GIT_DIR that names nothing."""
+    it ships. Works outside any repo and with a GIT_DIR that names nothing.
+
+    A gate exports git's answer once per process tree (GOH_GIT_LOCAL_VARS, gates/_from_head.sh);
+    it is taken only when it names GIT_DIR -- the variable this list exists to drop."""
+    inherited = os.environ.get("GOH_GIT_LOCAL_VARS", "").split()
+    if "GIT_DIR" in inherited:
+        return tuple(inherited)
     out = subprocess.run(
         ["git", "rev-parse", "--local-env-vars"], capture_output=True, text=True, check=True
     )

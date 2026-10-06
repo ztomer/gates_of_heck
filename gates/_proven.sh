@@ -65,7 +65,7 @@ EOF
 _proven_goh_git() {
     (
         # shellcheck disable=SC2046  # word-splitting the name list is the point
-        unset $(git rev-parse --local-env-vars)
+        unset ${GOH_GIT_LOCAL_VARS:-$(git rev-parse --local-env-vars)}
         git -C "$@"
     )
 }

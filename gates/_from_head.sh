@@ -28,6 +28,17 @@
 # _goh_head_dir <file> -- sets _goh_copy to the export's copy of <file> (and exports GOH_DIR,
 # GOH_LIVE_ROOT, PYTHONPATH for it); fails when <file> itself should run. Never in a $(...): the
 # exports and the refusal's exit must reach the caller.
+# The variables that bind git to ONE repository (contract #12), asked of git ONCE per process
+# tree: this file is sourced first by every gate, and the sites below and checks/_gitutil.py read
+# the export. It was ~1300 spawns per suite run, three per goh.sh call (2026-10-06,
+# tests/test_git_local_vars.py). It is what keeps GIT_DIR out of a foreign repository, so an
+# inherited value is trusted only when it names GIT_DIR; anything else is asked again.
+case " ${GOH_GIT_LOCAL_VARS:-} " in
+    *" GIT_DIR "*) ;;
+    *) GOH_GIT_LOCAL_VARS="$(git rev-parse --local-env-vars 2>/dev/null | tr '\n' ' ')" ;;
+esac
+export GOH_GIT_LOCAL_VARS
+
 _goh_head_dir() {
     local here root rel head cache dest tmp
     _goh_copy=""
@@ -47,14 +58,14 @@ _goh_head_dir() {
         exit 2
     fi
     # shellcheck disable=SC2046  # word-splitting git's variable list is the point
-    head="$( (unset $(git rev-parse --local-env-vars 2>/dev/null); git -C "$root" rev-parse -q --verify HEAD) )" \
+    head="$( (unset ${GOH_GIT_LOCAL_VARS:-$(git rev-parse --local-env-vars 2>/dev/null)}; git -C "$root" rev-parse -q --verify HEAD) )" \
         || return 1
     cache="${GOH_HEAD_CACHE:-${XDG_CACHE_HOME:-$HOME/.cache}/goh/head}"
     dest="$cache/$head"
     if [ ! -f "$dest/.goh-head" ]; then
         mkdir -p "$cache" && tmp="$(mktemp -d "$cache/.build.XXXXXX")" || return 1
         # shellcheck disable=SC2046
-        if ! (unset $(git rev-parse --local-env-vars 2>/dev/null); git -C "$root" archive "$head") \
+        if ! (unset ${GOH_GIT_LOCAL_VARS:-$(git rev-parse --local-env-vars 2>/dev/null)}; git -C "$root" archive "$head") \
                 | tar -x -C "$tmp" 2>/dev/null; then
             rm -rf "$tmp"
             echo "⚠ gates_of_heck: could not export HEAD to $cache -- running the working tree at $root" >&2
