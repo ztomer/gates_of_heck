@@ -51,11 +51,12 @@ if __name__ == "__main__":  # C4: run HEAD's copy, not the shared working tree (
     del _sys.path[0]
 
 import argparse
-import json
 import os
 import subprocess
 import sys
-from dataclasses import dataclass
+
+# json loads where the snapshot is written, and Verdict is a plain class: `dataclasses` pulls in
+# `inspect`, ~4 ms on every local_ci step's path (2026-10-06, as lib/bounded_run.py).
 
 SNAPSHOT_VERSION = 1
 
@@ -73,13 +74,25 @@ LEAK_EXIT = 125
 MACHINERY = ("orphan_canary.py", "bounded_run.py")
 
 
-@dataclass(frozen=True)
 class Verdict:
     """(code, attributable lines, unattributable lines). Attributable lines are the failures."""
 
-    code: int
-    ours: list[str]
-    theirs: list[str]
+    __slots__ = ("code", "ours", "theirs")
+
+    def __init__(self, code: int, ours: list[str], theirs: list[str]) -> None:
+        self.code, self.ours, self.theirs = code, ours, theirs
+
+    def __eq__(self, other: object) -> bool:
+        return isinstance(other, Verdict) and (self.code, self.ours, self.theirs) == (
+            other.code,
+            other.ours,
+            other.theirs,
+        )
+
+    __hash__ = None
+
+    def __repr__(self) -> str:
+        return f"Verdict(code={self.code!r}, ours={self.ours!r}, theirs={self.theirs!r})"
 
 
 def snapshot() -> dict[str, list[int]]:
@@ -220,7 +233,7 @@ def wrap(args, command: list[str]) -> int:
         try:
             os.makedirs(os.path.dirname(os.path.abspath(args.snapshot)), exist_ok=True)
             with open(args.snapshot, "w", encoding="utf-8") as handle:
-                json.dump(
+                __import__("json").dump(
                     {"v": SNAPSHOT_VERSION, "step": command, "survivors": survivors},
                     handle,
                     indent=2,

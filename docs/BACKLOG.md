@@ -71,8 +71,10 @@ Status: `[ ]` open, `[x]` done (with the commit), `[~]` handed off.
       the cache: a committed edit in a scope, an uncommitted one, a new checker binary, an edited
       checker, an estate repo gone (never a hit: "unavailable"), a corrupt entry. Exit: a repeat run
       with nothing moved materialises nothing (counted), and phase 6.2's sigma.
-- [ ] 2.3 `lib/orphan_canary.py` sheds `dataclasses`/`argparse` on the common path, as
-      `bounded_run.py` did; A/B per step.
+- [x] 2.3 `lib/orphan_canary.py` sheds `dataclasses` and loads `json` only to write a snapshot
+      (`COMMIT`). A/B per step, 25 interleaved: 44.3 -> 43.0 ms -- measured, and smaller than
+      expected: the rest is the C4 stanza's `subprocess` import (needed anyway) and argparse, ~25 ms
+      per push across local_ci's five steps; a second hand parser is not worth that.
 
 **Phase 3 — coverage without the clean rebuild** (details: "Open -- found", 3)
 - [ ] 3.1 An incremental instrumented build whose report counts ONLY the current build's objects;
