@@ -61,7 +61,7 @@ Status: `[ ]` open, `[x]` done (with the commit), `[~]` handed off.
       once for its four `goh.sh` steps (`ae8b768`).
 - [x] 2.2 `check_estate_corpus`: scratch repos from a template with the identity on the commit
       (one shared `_gitutil.scratch_git`, the display-seam probe's copy folded in): 90 -> 45 git
-      calls per run (`COMMIT`). Its pool, MEASURED: 8 vs 4 workers alone 1.42 vs 1.73 s, under 4
+      calls per run (`c4e3dc3`). Its pool, MEASURED: 8 vs 4 workers alone 1.42 vs 1.73 s, under 4
       concurrent sessions 7.3 vs 7.3 s -- the pool is not the serializer, so it stays. One run is
       4.6 CPU-s in 2.1 s wall, 3.35 s of it sys: ~4000 file creations (the corpus copies and the
       objects `git add` writes), which contend across processes. That is 2.4.
