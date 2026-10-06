@@ -52,12 +52,14 @@ die() { err "local_ci: $*"; exit "${2:-2}"; }
 
 usage() {
     cat <<'EOF'
-usage: local_ci.sh [--step CMD]... [repo-root]
+usage: local_ci.sh [--step CMD]... [--jobs N] [--steps-only] [--dry-run] [repo-root]
 
 Runs the repo's CI steps and exits nonzero if ANY fail.
 
   --step CMD   add one shell-command string (repeatable)
   --dry-run    list the steps with their source; execute nothing
+  --jobs N     run up to N steps at once (beats GOH_CI_JOBS)
+  --steps-only run the --step steps alone, not .gatesrc's GOH_CI_STEPS
   repo-root    project directory (default: $PWD)
 
 Steps also come from GOH_CI_STEPS in <repo-root>/.gatesrc — a colon-separated
@@ -74,6 +76,8 @@ EOF
 
 DRY_RUN=0
 CLI_STEPS=""
+CLI_JOBS=""
+STEPS_ONLY=0
 ROOT=""
 
 while [ $# -gt 0 ]; do
@@ -81,6 +85,9 @@ while [ $# -gt 0 ]; do
         --step)    [ $# -ge 2 ] || die "--step needs a command argument"
                    CLI_STEPS="${CLI_STEPS}${CLI_STEPS:+:}$2"; shift 2 ;;
         --dry-run) DRY_RUN=1; shift ;;
+        --jobs)    [ $# -ge 2 ] || die "--jobs needs a count"
+                   CLI_JOBS="$2"; shift 2 ;;
+        --steps-only) STEPS_ONLY=1; shift ;;
         -h|--help) usage; exit 0 ;;
         --*)       die "unknown option: $1 (see --help)" ;;
         *)         ROOT="$1"; shift ;;
@@ -94,12 +101,22 @@ ROOT="$(pwd)"
 
 # Per-repo declaration. Sourced like every other gate reads .gatesrc — it may
 # carry other GOH_* settings; only GOH_CI_STEPS concerns this script.
+# THE ENVIRONMENT IS NOT CONFIGURATION: a key is the repo's iff its own file says so (rust_gate.sh
+# and structural.sh drop theirs the same way). Measured: a run that exported GOH_CI_JOBS=4 made
+# every local_ci its test suite started concurrent, and an order test went red -- the parent's
+# budget had become every nested repo's. GOH_CI_STEPS leaked the same way; --step and --jobs are
+# how a caller says what it means.
+unset GOH_CI_STEPS GOH_CI_JOBS 2>/dev/null || true
 if [ -f "$ROOT/.gatesrc" ]; then
     # shellcheck disable=SC1091
     . "$ROOT/.gatesrc"
 fi
 
 SRC_GATESRC="${GOH_CI_STEPS:-}"
+# A caller that schedules FOR the repo (rust_gate.sh --each-crate) passes its own steps and budget:
+# --steps-only drops the repo's GOH_CI_STEPS, --jobs beats its GOH_CI_JOBS.
+[ "$STEPS_ONLY" -eq 1 ] && SRC_GATESRC=""
+[ -n "$CLI_JOBS" ] && GOH_CI_JOBS="$CLI_JOBS"
 _proven_err="$(proven_settings 2>&1)" || die "$_proven_err"
 proven_settings
 

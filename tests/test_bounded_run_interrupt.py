@@ -54,6 +54,10 @@ def test_a_signal_to_the_wrapper_reaps_the_step(tmp_path, sig):
         ],
         stdout=subprocess.DEVNULL,
         stderr=subprocess.PIPE,
+        # The signal's disposition is the TEST's to set: under a non-job-control shell (this suite
+        # run as a local_ci step) a background job starts with SIGINT ignored, and an ignore
+        # inherited at entry is honoured -- measured, that made this test red only under local_ci.
+        preexec_fn=lambda: signal.signal(sig, signal.SIG_DFL),
     )
     try:
         step = int(_wait_for(pidfile))
@@ -62,11 +66,47 @@ def test_a_signal_to_the_wrapper_reaps_the_step(tmp_path, sig):
         deadline = time.monotonic() + 5
         while _alive(step) and time.monotonic() < deadline:
             time.sleep(0.05)
-        assert not _alive(step), f"{sig.name} stopped the wrapper and left its step running"
+        why = wrapper.stderr.read().decode(errors="replace") if wrapper.stderr else ""
+        assert not _alive(step), (
+            f"{sig.name} stopped the wrapper (rc {wrapper.returncode}) and left its step running; "
+            f"wrapper said: {why!r}"
+        )
         assert wrapper.returncode != 0, "an interrupted step must not read as a pass"
     finally:
         wrapper.kill()
         wrapper.wait()
+        try:
+            os.kill(int(pidfile.read_text()), signal.SIGKILL)
+        except (OSError, ValueError):
+            pass
+
+
+def test_a_signal_ignored_at_entry_stays_ignored(tmp_path):
+    """nohup's contract: the caller ignored SIGHUP on purpose, and the wrapper must not undo it."""
+    pidfile = tmp_path / "step.pid"
+    wrapper = subprocess.Popen(
+        [
+            sys.executable,
+            str(REPO_ROOT / "lib" / "bounded_run.py"),
+            "--timeout",
+            "60",
+            "--",
+            "/bin/bash",
+            "-c",
+            f"sleep 300 & echo $! > {pidfile}; wait",
+        ],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        preexec_fn=lambda: signal.signal(signal.SIGHUP, signal.SIG_IGN),
+    )
+    try:
+        step = int(_wait_for(pidfile))
+        wrapper.send_signal(signal.SIGHUP)
+        time.sleep(0.5)
+        assert wrapper.poll() is None and _alive(step), "an ignored SIGHUP stopped the run"
+    finally:
+        wrapper.terminate()
+        wrapper.wait(timeout=10)
         try:
             os.kill(int(pidfile.read_text()), signal.SIGKILL)
         except (OSError, ValueError):

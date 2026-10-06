@@ -34,6 +34,9 @@ CPU**; `-n 12` is slower than `-n 8`.
 | item | commit | measured |
 |---|---|---|
 | C5 failure block quotes only the step that failed (ZoneWM H2; `lib/fail_lines.py`) | `24eb31d` | nested: innermost dump alone, others counted; `make`: its failing target first, matches flagged |
+| P2 `GOH_CI_JOBS` scheduler: declared-order reports, `[tag]` exclusion | `3044941` | gates_of_heck's own push steps, warm, proven off: 1 job 186 s, 2 jobs 147 s, 4 jobs 138 s (box busy with other runs: provisional) |
+| a stopped gate stops its steps (bounded_run + local_ci forward TERM/INT/HUP) | `efbaf12` | -- |
+| P2 `rust_gate.sh --each-crate` + P1f repo scans once (`GOH_RUST_GROUPS`, `GOH_RUST_JOBS`) | (this) | -- (media_server adoption is servers' own commit) |
 
 ## Phase P — make goh fast (the program)
 
@@ -152,23 +155,17 @@ What the table says, in four classes:
   only tests use is flagged -- clippy's all-targets run counts it as used (routines shipped exactly
   that, `gates/rust_manifest_gate.sh` header). It stays.
 
-### P2 — a scheduler for the step list
+### P2 — a scheduler for the step list -- LANDED (see the table); what is left
 
-`local_ci.sh` runs `GOH_CI_STEPS` concurrently under a job budget, each step's output buffered and
-printed in declared order, the fail accumulator and exit codes unchanged.
-- Safety by declaration, not inference: a step may carry a resource tag (`cargo:<dir>`,
-  `screen`, `net`), and steps sharing one never overlap. Untagged steps run concurrently only when
-  the repo opts in (`GOH_CI_JOBS`, documented in `docs/config.md`); the default stays serial
-  until P0 shows the opt-in green in four repos. Cargo's own build lock already serializes steps
-  sharing a target dir correctly; the tag is there to stop them burning budget while blocked.
-- The job budget defaults to a measured value, not `nproc`: on this box more workers were slower.
-  Sweep 2/4/6/8 with P0 and record the curve here.
-- media_server's hand-rolled `xargs -P 4` over crates becomes a goh feature
-  (`rust_gate.sh --each-crate`), so its 29-crate fan-out uses the same budget and P3's per-crate
-  keys.
-- **Lies to test first:** two steps writing the same file (the Finance `*.out` class); a
-  step that reads the terminal; a timeout that must kill only its own group (`bounded_run.py`
-  already does; prove it under concurrency).
+- **The budget curve, on a quiet box.** The one sweep (table) ran beside other suites. Its shape
+  already says the critical path: gates_of_heck's pytest step is ~96 s of 186, so 4 jobs is bounded
+  near 140. Re-sweep 1/2/4/6 quiet, and on routines (a repo whose steps are closer in size).
+- **Opt-ins, each the repo's own commit:** media_server's `xargs -P 4` -> `rust_gate.sh
+  --each-crate` (servers); `GOH_CI_JOBS` with `[cargo]` tags in four repos before any default moves.
+- **Lies tested** (tests/test_local_ci_jobs.py, test_bounded_run_interrupt.py): order, tag
+  exclusion, accumulator, a timeout reaping only its own group, stdin EOF, an inherited
+  `GOH_CI_JOBS`/`GOH_CI_STEPS` ignored, TERM/INT/HUP reaching every running step. Not tested by
+  construction: two UNTAGGED steps writing one file -- that is what declaring a tag is for.
 
 ### P3 — input-scoped proven cache -- LANDED `750a114` (rust_gate's crate/repo/coverage groups)
 

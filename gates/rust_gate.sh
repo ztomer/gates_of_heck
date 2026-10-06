@@ -52,7 +52,21 @@
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# --each-crate: every crate of the repo, concurrently, repo-wide scans once (BACKLOG P2).
+[ "${1:-}" = --each-crate ] && { shift; exec bash "$HERE/rust_each_crate.sh" "$@"; }
 . "$HERE/_common.sh"
+
+# GOH_RUST_GROUPS (env, read BEFORE .gatesrc so a repo file cannot narrow its own gate): which of
+# the three groups below this run proves. rust_each_crate.sh runs `repo` once and `crate,coverage`
+# per crate, which is the whole point of it. Default: all three. An unknown word is a miswiring.
+_groups=",${GOH_RUST_GROUPS:-crate,repo,coverage},"
+_g="${_groups#,}"
+while [ -n "${_g%,}" ]; do
+    case "${_g%%,*}" in crate|repo|coverage) ;; *)
+        die "GOH_RUST_GROUPS='${GOH_RUST_GROUPS}' - the groups are crate, repo and coverage" ;; esac
+    _g="${_g#*,}"
+done
+_group_on() { case "$_groups" in *",$1,"*) return 0 ;; esac; return 1; }
 
 repo="${1:-$PWD}"
 cargo_dir="${2:-$repo}"
@@ -226,8 +240,8 @@ rust_coverage_checks() {
 
 # shellcheck source=gates/_rust_proven.sh
 . "$HERE/_rust_proven.sh"
-rust_proven_group crate crate rust_crate_checks
-rust_proven_group repo tree rust_repo_checks
+_group_on crate && rust_proven_group crate crate rust_crate_checks
+_group_on repo && rust_proven_group repo tree rust_repo_checks
 
 # GOH_RUST_COVERAGE=defer: the caller's PUSH gate checks the floor, so a
 # commit gate need not rebuild every touched crate instrumented (a release
@@ -237,7 +251,9 @@ case "${GOH_RUST_COVERAGE:-}" in
     *) die "GOH_RUST_COVERAGE='${GOH_RUST_COVERAGE}' - the only value is 'defer'" ;;
 esac
 
-if [ "${GOH_RUST_COVERAGE:-}" = defer ]; then
+if ! _group_on coverage; then
+    :   # not this run's group: rust_each_crate.sh asked for the others (GOH_RUST_GROUPS)
+elif [ "${GOH_RUST_COVERAGE:-}" = defer ]; then
     info "coverage deferred to the push gate (GOH_RUST_COVERAGE=defer)"
 elif [ -n "${GOH_COV_FLOOR_RUST:-}" ] || [ -n "${GOH_COV_FLOORS_JSON:-}" ]; then
     rust_proven_group coverage crate rust_coverage_checks

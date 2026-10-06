@@ -21,8 +21,9 @@ LOCAL_CI = REPO_ROOT / "gates" / "local_ci.sh"
 
 
 def run_ci(cwd: Path, *args: str):
-    env = dict(os.environ)
-    env.pop("GOH_CI_STEPS", None)
+    env = dict(
+        os.environ
+    )  # local_ci drops an inherited GOH_CI_STEPS itself (test_local_ci_jobs.py)
     return subprocess.run(
         ["/bin/bash", str(LOCAL_CI), *args],
         cwd=cwd,

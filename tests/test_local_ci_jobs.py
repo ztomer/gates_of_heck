@@ -122,3 +122,67 @@ def test_a_bad_job_count_is_a_config_error(repo, bad):
     r, _ = run_ci(repo)
     assert r.returncode == 2, r.stdout + r.stderr
     assert "GOH_CI_JOBS" in r.stderr and bad in r.stderr
+
+
+def run_cli(cwd: Path, *args: str, **env_extra: str):
+    env = {k: v for k, v in os.environ.items() if not k.startswith("GOH_CI_")}
+    env.update(env_extra)
+    t0 = time.monotonic()
+    r = subprocess.run(
+        ["/bin/bash", str(LOCAL_CI), *args],
+        cwd=cwd,
+        capture_output=True,
+        text=True,
+        env=env,
+        timeout=60,
+        check=False,
+    )
+    return r, time.monotonic() - t0
+
+
+def test_jobs_flag_wins_over_gatesrc(repo):
+    """A caller that schedules for the repo (rust_gate.sh --each-crate) owns the budget."""
+    steps(repo, "sleep 0.6", "sleep 0.61", extra="GOH_CI_JOBS=1\n")
+    r, wall = run_cli(repo, "--jobs", "2")
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert wall < 1.1, f"--jobs 2 ran serially ({wall:.2f} s)"
+
+
+def test_steps_only_ignores_the_repos_own_steps(repo):
+    marker = repo / "gatesrc-step-ran"
+    steps(repo, f"touch {marker}")
+    r, _ = run_cli(repo, "--steps-only", "--step", "true")
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert not marker.exists(), "--steps-only ran a .gatesrc step"
+    assert "1 step(s)" in r.stdout
+
+
+def test_steps_only_without_steps_is_an_error(repo):
+    steps(repo, "true")
+    r, _ = run_cli(repo, "--steps-only")
+    assert r.returncode == 2
+    assert "no steps declared" in r.stderr, r.stderr
+
+
+def test_the_environment_is_not_configuration(repo, tmp_path):
+    """A key is configuration iff the repo's own file says so. Measured: a sweep that exported
+    GOH_CI_JOBS=4 made every local_ci the suite ran concurrent, and an order test went red --
+    the parent's budget had become every nested repo's. GOH_CI_STEPS leaked the same way."""
+    leaked = tmp_path / "leaked-step-ran"
+    steps(repo, "sleep 0.6", "sleep 0.61")
+    env = {k: v for k, v in os.environ.items() if not k.startswith("GOH_CI_")}
+    env.update(GOH_CI_JOBS="4", GOH_CI_STEPS=f"touch {leaked}")
+    t0 = time.monotonic()
+    r = subprocess.run(
+        ["/bin/bash", str(LOCAL_CI)],
+        cwd=repo,
+        capture_output=True,
+        text=True,
+        env=env,
+        timeout=60,
+        check=False,
+    )
+    wall = time.monotonic() - t0
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert wall >= 1.2, f"an inherited GOH_CI_JOBS made the run concurrent ({wall:.2f} s)"
+    assert not leaked.exists(), "an inherited GOH_CI_STEPS ran"
