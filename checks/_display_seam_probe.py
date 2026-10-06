@@ -24,14 +24,13 @@ import contextlib
 import io
 import json
 import os
-import shutil
 import subprocess
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import check_display_seam  # noqa: E402  (the module under proof, driven not copied)
-from _gitutil import foreign_repo_env  # noqa: E402
+from _gitutil import foreign_repo_env, scratch_git  # noqa: E402
 
 SEAM = "func present() { w.orderFrontRegardless() }\n"
 # A file that is none of the gate's business, present in every fixture so that "clean" means
@@ -372,7 +371,7 @@ def _git(root, *args):
     ).returncode
 
 
-def _build(root, files, policy, template):
+def _build(root, files, policy, through_git):
     # The seam file is present in every fixture unless a case says otherwise, because the policy
     # names it and a policy naming a seam that does not exist is exit 2 — which would mask the
     # rule the case is about.
@@ -393,8 +392,8 @@ def _build(root, files, policy, template):
     # cost of this probe -- 4.2 s, run once per probe and 23 more times by the rule-drop
     # calibration -- and `init` + `config` x2 + `add` per fixture were four of them. A fresh case
     # directory per case is unchanged; only the empty repository it starts from is shared.
-    if template is not None:
-        shutil.copytree(template, os.path.join(root, ".git"))
+    if through_git:
+        scratch_git(root)  # one empty .git copied (checks/_gitutil.py)
     return written
 
 
@@ -434,14 +433,6 @@ def _drive(root, argv):
         os.chdir(saved)
 
 
-def _template(td):
-    """One empty repository's `.git`, made by git itself, for `_build` to copy per case."""
-    seed = os.path.join(td, "template")
-    os.makedirs(seed)
-    _git(seed, "init", "-q", "--template=")
-    return os.path.join(seed, ".git")
-
-
 def probe():
     import tempfile
 
@@ -449,13 +440,12 @@ def probe():
 
     bad = 0
     with tempfile.TemporaryDirectory() as td:
-        template = _template(td)
         for n, (label, files, policy, want) in enumerate(CASES):
             # A fresh directory per case. Reusing one made a case see the PREVIOUS case's files,
             # which is a fixture that cannot disagree with anything -- the exact shape R3 names.
             root = os.path.join(td, f"case{n:02d}")
             through_git = n == 0  # the one case that proves the real listing (_listed_directly)
-            written = _build(root, files, policy, template if through_git else None)
+            written = _build(root, files, policy, through_git)
             with contextlib.nullcontext() if through_git else _listed_directly(written):
                 code = _drive(root, ["--policy", "policy.json"])
             if code == want:
@@ -468,7 +458,9 @@ def probe():
             # TWO clean files, so that with a config rule dropped the run still has something to
             # examine. One file, when that file is the excluded one, made the zero-scan refusal
             # produce the same exit 2 the case was asserting -- two rules, one verdict.
-            written = _build(root, {"Core/quiet.swift": QUIET, "UI/win.swift": QUIET}, policy, None)
+            written = _build(
+                root, {"Core/quiet.swift": QUIET, "UI/win.swift": QUIET}, policy, False
+            )
             with _listed_directly(written):
                 refused = _drive(root, ["--policy", "policy.json"]) == 2
             if refused:

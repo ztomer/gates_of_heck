@@ -59,8 +59,18 @@ Status: `[ ]` open, `[x]` done (with the commit), `[~]` handed off.
 - [x] 2.1 `goh.sh` resolves the binary once per process tree (exported, validated); ratchet: a
       `goh.sh` call inside a gate spawns no git. Child call 78 -> 34 ms; `rust_gate.sh` resolves
       once for its four `goh.sh` steps (`ae8b768`).
-- [ ] 2.2 `check_estate_corpus`: scratch repos from a template with the identity on the commit
-      (5 git spawns -> 2 per repo); its pool sized for a shared machine, not `os.cpu_count()`.
+- [x] 2.2 `check_estate_corpus`: scratch repos from a template with the identity on the commit
+      (one shared `_gitutil.scratch_git`, the display-seam probe's copy folded in): 90 -> 45 git
+      calls per run (`COMMIT`). Its pool, MEASURED: 8 vs 4 workers alone 1.42 vs 1.73 s, under 4
+      concurrent sessions 7.3 vs 7.3 s -- the pool is not the serializer, so it stays. One run is
+      4.6 CPU-s in 2.1 s wall, 3.35 s of it sys: ~4000 file creations (the corpus copies and the
+      objects `git add` writes), which contend across processes. That is 2.4.
+- [ ] 2.4 A verdict cache for `check_estate_corpus`, so the corpus is materialised only when an
+      input moved. Key: each entry's source scope at HEAD and any uncommitted edit under it, the
+      checker's own source, the `goh` binary's stamp. Every way a hit can be wrong, tested BEFORE
+      the cache: a committed edit in a scope, an uncommitted one, a new checker binary, an edited
+      checker, an estate repo gone (never a hit: "unavailable"), a corrupt entry. Exit: a repeat run
+      with nothing moved materialises nothing (counted), and phase 6.2's sigma.
 - [ ] 2.3 `lib/orphan_canary.py` sheds `dataclasses`/`argparse` on the common path, as
       `bounded_run.py` did; A/B per step.
 

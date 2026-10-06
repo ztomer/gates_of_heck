@@ -53,6 +53,32 @@ def foreign_repo_env(base=None) -> dict:
     return env
 
 
+_EMPTY_GIT: dict = {}
+
+
+def scratch_git(dest: str) -> None:
+    """Make `dest` a git repository by copying ONE empty `.git` that git itself made once per
+    process: `git init` (+ `config` for an identity) per scratch repo was most of the spawns of
+    every fixture-building checker -- 48 of 80 per `check_estate_corpus` run, sys load that
+    saturated the box for concurrent sessions (tools/session_bench.py, 2026-10-06). Commit with
+    `-c user.email=... -c user.name=...`: no config is written."""
+    import atexit
+    import shutil
+    import tempfile
+
+    if "git" not in _EMPTY_GIT:
+        seed = tempfile.mkdtemp(prefix="goh-empty-git.")
+        atexit.register(shutil.rmtree, seed, True)
+        subprocess.run(
+            ["git", "-C", seed, "init", "-q", "--template="],
+            capture_output=True,
+            check=True,
+            env=foreign_repo_env(),
+        )
+        _EMPTY_GIT["git"] = os.path.join(seed, ".git")
+    shutil.copytree(_EMPTY_GIT["git"], os.path.join(dest, ".git"))
+
+
 def repo_root() -> str:
     out = subprocess.run(["git", "rev-parse", "--show-toplevel"], capture_output=True, text=True)
     return out.stdout.strip()

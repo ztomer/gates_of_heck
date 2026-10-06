@@ -67,7 +67,7 @@ import tempfile
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from _ordered_pool import in_order  # noqa: E402
-from _gitutil import foreign_repo_env, listed_files  # noqa: E402
+from _gitutil import foreign_repo_env, listed_files, scratch_git  # noqa: E402
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from tui.lib import err, info, ok, warn  # noqa: E402
@@ -248,6 +248,9 @@ def plant_in(files, ext, text):
     return None, text
 
 
+_IDENTITY = ("-c", "user.email=corpus@example.invalid", "-c", "user.name=corpus")
+
+
 def materialise(source, files, dest):
     """Copy the real subtree into a scratch repo. Nothing ever runs in another working tree."""
     os.makedirs(dest)
@@ -256,13 +259,8 @@ def materialise(source, files, dest):
         dst = os.path.join(dest, rel)
         os.makedirs(os.path.dirname(dst) or dest, exist_ok=True)
         shutil.copyfile(src, dst)
-    for args in (
-        ("init", "-q"),
-        ("config", "user.email", "corpus@example.invalid"),
-        ("config", "user.name", "corpus"),
-        ("add", "-A"),
-        ("commit", "-qm", "corpus"),
-    ):
+    scratch_git(dest)  # one empty .git copied, not init + config x2 (checks/_gitutil.py)
+    for args in (("add", "-A"), (*_IDENTITY, "commit", "-qm", "corpus")):
         subprocess.run(
             ["git", "-C", dest, *args], capture_output=True, check=False, env=foreign_repo_env()
         )
@@ -416,8 +414,6 @@ def main(argv=None):
 def probe():
     """Three cases: a real estate that is green, a checker that CANNOT fail, and a corpus that
     degraded to a fixture. The second is the whole point of this file."""
-    import json
-    import textwrap
 
     saved, home = ESTATE, HERE
     bad = 0
