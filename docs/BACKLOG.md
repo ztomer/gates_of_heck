@@ -37,13 +37,16 @@ exit number is the target column; a miss names its lever before any change lands
 
 | what | baseline | last | target |
 |---|---|---|---|
-| this repo's suite, `-n 12 --dist loadgroup` | 94.4 s (v0.20, `-n 8`) | 67-79 s at `-n 12`, load 9-56 (2026-10-06, after the spawn cuts; `-n 8` 74-96 s interleaved); workers evenly packed | <= 60 s |
+| this repo's suite, `-n 12 --dist loadgroup` | 94.4 s (v0.20, `-n 8`) | **66.9 s from a quiet start (load 3.6, 2026-10-06)** at `-n 12`; 67-79 s at load 9-56 (`-n 8` 74-96 s interleaved). Workers packed 52-64 s busy each, summed 663 s | <= 60 s: misses by ~7 s |
 | media_server push, one crate changed, warm | 197 s | 183 s at load 7-12 (2026-10-06): **110 s is media_server's own pytest suite** (134 tests, run by its gate.sh outside the proven cache); 5 of 29 crates re-gated -- 3 correctly (path users), healthcheck-rs on the whole tree by design (its tests read the repo root), vpn-watchdog-rs never recorded (fixed in `d384c0d`) | <= 30 s: unreachable from here while the pytest step runs unconditionally -- a servers item (below) |
 | media_server push, everything changed, warm | 177 s (P0) | 170 s at load 4-8 (2026-10-06): coverage 269 of ~360 summed step-s (29 crates, each rebuilt instrumented from clean) | <= 90 s: lever is the coverage rebuild |
 | any consumer's pre-commit structural layer | ~1 s | media_server, one staged `.rs`: 0.22 s at load 17 (2026-10-06) | <= 0.4 s: **MET** |
 | P2 budget curve, `GOH_CI_JOBS` 1/2/4/6, this repo and routines | 186/147/138 s (1/2/4, busy) | provisional | the knee, recorded |
 
-It misses. Levers left by summed time (2026-10-06): `test_rust_gate_scoped_cache.py` ~45 s and
+It misses by ~7 s, and what is left is the suite's own contention, not waste: a nested pytest that
+takes 0.7 s alone takes 16 s inside the run (`test_conftest_scrubs_before_any_fixture_runs`) --
+process start-up under twelve workers' sys load. The lever is FEWER PROCESSES PER TEST (a test
+that runs a whole gate to check one step), not faster ones. Levers by summed time (2026-10-06): `test_rust_gate_scoped_cache.py` ~45 s and
 `test_rust_gate.py` ~28 s of real cargo, `test_claim_derivation_native_parity.py` ~21 s (each case
 runs the frozen Python reference -- the spec, not tunable), `test_proven.py` ~21 s,
 `test_swift_gate_baseline.py` ~21 s (13 s is the one real-swiftlint test). Every gate a test runs
