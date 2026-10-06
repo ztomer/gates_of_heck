@@ -7,6 +7,8 @@
 //! does not reach them: every helper returns a `Result` and the `#[test]`
 //! caller (exempt) unwraps it - no `.expect()` here, no suppression
 //! attribute anywhere (the house refuses `#[allow]` and `#[expect]`).
+
+#![deny(unsafe_code)]
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::OnceLock;

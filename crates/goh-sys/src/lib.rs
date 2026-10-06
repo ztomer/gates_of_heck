@@ -8,6 +8,8 @@
 //!
 //! `unsafe` is denied everywhere else in the workspace; `tests/test_unsafe_scope.py` holds it here.
 
+#![warn(clippy::undocumented_unsafe_blocks)]
+
 use std::io;
 
 /// True when `signal` is set to `SIG_IGN` -- by whoever started this process.

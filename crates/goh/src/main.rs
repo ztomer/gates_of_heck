@@ -8,6 +8,8 @@
 //! this binary and refuses without it. `tests/test_goh_structural.py` pins
 //! the pipeline's verdicts and its step inventory.
 
+#![deny(unsafe_code)]
+
 pub mod blobs;
 pub mod bounded;
 pub mod ceiling;

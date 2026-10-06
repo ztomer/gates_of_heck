@@ -22,6 +22,8 @@
 //! adopting either would silently re-baseline every calibrated tolerance.
 //! Decoding IS a library (`png`); only the definitions are ported.
 
+#![deny(unsafe_code)]
+
 mod decode;
 pub mod metrics;
 pub mod numeric;

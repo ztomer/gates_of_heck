@@ -11,8 +11,9 @@ expect_used = "warn"
 panic = "warn"
 exit = "warn"
 
-[workspace.lints.rust]
-unsafe_code = "deny"
+# `unsafe_code` is denied at each crate ROOT (`#![deny(unsafe_code)]`), not here: crates/goh-sys is
+# the FFI boundary and inherits every other workspace lint (`goh lints` refuses a crate that does
+# not); tests/test_unsafe_scope.py holds `unsafe` to its one file.
 
 [workspace.package]
 version = "0.23.0"

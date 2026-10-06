@@ -28,11 +28,17 @@ TTL_S = 7 * 86400
 
 
 def _verdict_free() -> tuple:
-    """GOH_* keys that never change a verdict (gates/verdict_free_keys.txt, the one list)."""
-    path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "gates",
-                        "verdict_free_keys.txt")  # fmt: skip
-    with open(path, encoding="utf-8") as handle:
-        return tuple(ln.strip() for ln in handle if ln.strip() and not ln.startswith("#"))
+    """GOH_* keys that never change a verdict (gates/verdict_free_keys.txt, the one list), found
+    through GOH_DIR first: a copy of this file run elsewhere -- the empty-scope sweep's skeleton --
+    has no gates/ beside it, and crashing there read as the sweep's "now FAILS". No list found is
+    no exclusions: a key with more in it misses more, and is never wrong."""
+    here = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    for root in (os.environ.get("GOH_DIR", ""), here):
+        path = os.path.join(root, "gates", "verdict_free_keys.txt") if root else ""
+        if path and os.path.isfile(path):
+            with open(path, encoding="utf-8") as handle:
+                return tuple(ln.strip() for ln in handle if ln.strip() and not ln.startswith("#"))
+    return ()
 
 
 def cache_dir() -> str | None:

@@ -7,18 +7,11 @@ license.workspace = true
 description = "The one place gates_of_heck calls into libc: what safe std cannot do"
 publish = false
 
-# NOT `[lints] workspace = true`: the workspace denies `unsafe_code`, and this crate is the FFI
-# boundary it exists for. Every other lint is the workspace's; tests/test_unsafe_scope.py fails if
-# `unsafe` appears in any file of the workspace but src/lib.rs here.
-[lints.clippy]
-all = { level = "warn", priority = -1 }
-pedantic = { level = "warn", priority = -1 }
-nursery = { level = "warn", priority = -1 }
-unwrap_used = "warn"
-expect_used = "warn"
-panic = "warn"
-exit = "warn"
-undocumented_unsafe_blocks = "warn"
+# The workspace's lints, inherited: `unsafe_code` is denied at the OTHER crates' roots, not by the
+# workspace, so this FFI crate can inherit everything else (`goh lints`); tests/test_unsafe_scope.py
+# holds `unsafe` to src/lib.rs here.
+[lints]
+workspace = true
 
 [dependencies]
 libc = "0.2.190"
