@@ -224,6 +224,18 @@ behind the same tests the shell passes today, red-proven, one at a time:
       ZoneWM's own count; `--report` now judges history by the placement rule it was written
       under, so a replay shows class verdicts, not 14 placement lines.
 
+**Phase 10 — ZoneWM's generic tooling, centralised** (ZoneWM, 2026-10-06, on its owner's "use
+goh whenever possible, there's a reason we're centralising")
+- [x] 10.1 Our own leaks in the shared `$TMPDIR` (~7,000 entries): fixed at each cause, and pinned
+      by a test that runs `structural --full` under a private TMPDIR and asserts it EMPTY (`b255a35`).
+- [x] 10.2 `lib/preflight_disk.py` + `GOH_MIN_FREE_GIB` in `push_gate.sh`: a short disk refuses the
+      push as a short disk, before the export.
+- [x] 10.3 `gates/round.sh`: one round, named paths only (`--only` closes the hole ZoneWM named),
+      the repo's hooks as the gates, a pinned push read back from the remote.
+- [x] 10.4 Declined, with reasons: ZoneWM's make-level TMPDIR (D-0218) is its Makefile's -- the goh
+      side is 10.1; `tools_scratch.py` is ZoneWM's layout (`Sources`, `.build`) -- its principle,
+      "a mutation copy is repo-shaped", is in the port-parity skill.
+
 **Phase 9 — release**
 - [ ] 9.1 v0.24.0: version bump, CHANGELOG `Unreleased` -> `v0.24.0`, full gate green, tag, push,
       GitHub release (`tools/release-kit/release.sh`); then tell servers the tag.

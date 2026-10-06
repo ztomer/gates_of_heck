@@ -53,6 +53,7 @@ GIT_INIT_SITES = {
     "test_check_probes_pass.py": 1,
     "test_check_no_home_paths.py": 1,
     "test_binary_source_identity.py": 1,
+    "test_round.py": 1,  # a BARE remote, which the template cannot be
 }
 
 # A pool sized to the machine runs inside every one of the suite's workers at once: 12 workers x

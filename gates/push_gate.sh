@@ -259,6 +259,20 @@ elif [ "$tag_rc" -ne 0 ]; then
     exit 1
 fi
 
+# ROOM FOR A COLD GATE (GOH_MIN_FREE_GIB), asked before any export is made. A full disk failed a
+# push as a codesign and a sanitizer error, so the first reading was a race (ZoneWM, 2026-10-06);
+# refused here, it names the free space and the need. Read by name, in a child, like the others.
+min_free=""
+if [ -f "$root/.gatesrc" ]; then
+    min_free="$(bash -c 'set -a; . "$1"; printf %s "${GOH_MIN_FREE_GIB-}"' _ "$root/.gatesrc")" \
+        || die "pre-push: cannot read $root/.gatesrc"
+fi
+if [ -n "$min_free" ]; then
+    mkdir -p "$export_root"
+    python3 -S "$GOH/lib/preflight_disk.py" "$export_root" "$min_free" \
+        || { err "pre-push: not enough room for the cold gate -- nothing pushed"; exit 1; }
+fi
+
 # THE COMMIT-CLASS RULE OVER THE PUSHED RANGE (GOH_COMMIT_CLASS, roadmap Phase 8). The commit-msg
 # hook asks at commit time, and `--no-verify` skips it; the push asks again, over every commit
 # the remote does not have yet. Read from .gatesrc by name, in a child, like GOH_EXPORT_KEEP.

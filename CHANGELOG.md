@@ -107,6 +107,14 @@
   `Systemic:` or `Filed:` with substance. Run by a new stock `commit-msg` hook and again over the
   pushed range by `push_gate.sh`, so `--no-verify` does not survive the push.
 
+### 14. ZoneWM's generic tooling, centralised
+
+* **`gates/round.sh -m <message> <path>...`**: one round end to end -- only the named paths are
+  committed (`git commit --only`), the repo's own hooks gate the commit and the push, the push is
+  pinned and read back from the remote.
+* **`GOH_MIN_FREE_GIB`**: `push_gate.sh` and `round.sh` refuse a cold gate on a short disk AS a
+  short disk (`lib/preflight_disk.py`), before an export is made.
+
 ### 13. Consumers, fixed the day they reported
 
 * **install.sh never silently bypasses hooks another manager owns** (zinc): live hooks in
