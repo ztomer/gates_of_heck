@@ -72,5 +72,5 @@ cargo clippy --all-targets -q -- -D warnings && cargo test -q -p goh
 python3 -m pytest tests/test_<name>.py tests/test_wiring.py tests/test_config_schema.py -q
 tools/gate.sh --staged
 ```
-Then the full suite (`python3 -m pytest tests/ -q -n 8 --dist loadgroup`,
+Then the full suite (`python3 -m pytest tests/ -q -n 12 --dist loadgroup`,
 ~1 min parallel) before push — pre-push runs it anyway.

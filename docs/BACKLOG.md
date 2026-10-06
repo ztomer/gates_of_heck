@@ -10,7 +10,7 @@ from the P0 instrument does not land.
 
 v0.23.0 retired the Python checkers: `bin/goh` is the only structural tier. Box: 16 cores, 4-5 busy
 at idle, sys ~= user, so **spawn count, tree walks and network round trips are the cost metric, not
-CPU**; `-n 12` is slower than `-n 8`. Every wall-clock number below needs a QUIET box (load < 4):
+CPU**. The suite runs `-n 12` (faster than 8 since the 2026-10-06 spawn cuts; 16 a draw). Every wall-clock number below needs a QUIET box (load < 4):
 the 2026-10-06 session ran at load 12-31 beside other sessions' gates, so its timings are not
 measurements. Landed plans are pruned to this table; their detail is in the CHANGELOG and the
 commit bodies.
@@ -37,7 +37,7 @@ exit number is the target column; a miss names its lever before any change lands
 
 | what | baseline | last | target |
 |---|---|---|---|
-| this repo's suite, `-n 8 --dist loadgroup` | 94.4 s (v0.20) | 79-89 s at load 11-17 after the spawn cuts (2026-10-06); workers evenly packed (80-90 s busy each), so wall = summed / 8 | <= 60 s |
+| this repo's suite, `-n 12 --dist loadgroup` | 94.4 s (v0.20, `-n 8`) | 67-79 s at `-n 12`, load 9-56 (2026-10-06, after the spawn cuts; `-n 8` 74-96 s interleaved); workers evenly packed | <= 60 s |
 | media_server push, one crate changed, warm | 197 s | 183 s at load 7-12 (2026-10-06): **110 s is media_server's own pytest suite** (134 tests, run by its gate.sh outside the proven cache); 5 of 29 crates re-gated -- 3 correctly (path users), healthcheck-rs on the whole tree by design (its tests read the repo root), vpn-watchdog-rs never recorded (fixed in `d384c0d`) | <= 30 s: unreachable from here while the pytest step runs unconditionally -- a servers item (below) |
 | media_server push, everything changed, warm | 177 s (P0) | 170 s at load 4-8 (2026-10-06): coverage 269 of ~360 summed step-s (29 crates, each rebuilt instrumented from clean) | <= 90 s: lever is the coverage rebuild |
 | any consumer's pre-commit structural layer | ~1 s | media_server, one staged `.rs`: 0.22 s at load 17 (2026-10-06) | <= 0.4 s: **MET** |

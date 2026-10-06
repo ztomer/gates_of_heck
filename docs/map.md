@@ -122,7 +122,7 @@ Every structural checker is native since Phase N3; the Python checkers they port
 ## Tools
 
 * `tools/gate.sh` — this repo's own gate entry (layer 1 + parallel pytest
-  on `--full`: `-n 8 --dist loadgroup`, serial fallback without xdist).
+  on `--full`: `-n 12 --dist loadgroup`, serial fallback without xdist).
 * `tools/release-kit/` — `release.sh` (gate → stanza → tag → push → release),
   `gen_app_icons.py`, `update_dev.sh`. Pinned by `test_release_kit.py` (+
   `test_release_hardening.py`, `test_profiling_scripts.py` for profiling).
