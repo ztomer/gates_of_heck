@@ -53,6 +53,9 @@ pub struct Gatesrc {
     pub opt_ins: OptIns,
     /// File-length cap; unset disables the check.
     pub max_lines: Option<usize>,
+    /// `GOH_MAX_LINES=off`: no cap BY DECISION, so the step says so instead of
+    /// warning that one was forgotten. Never true while `max_lines` is `Some`.
+    pub line_cap_off: bool,
     /// Shared vendor/generated exemption (emoji, length, shell-lint, secrets).
     pub exclude: String,
     /// Length-only exemption, additive to the length check.
@@ -160,19 +163,22 @@ pub fn expand_env(value: &str) -> String {
 ///
 /// # Errors
 ///
-/// Returns a message when `GOH_MAX_LINES` is set but not a number (the shell
-/// version fails downstream at the checker; failing here names the key).
+/// Returns a message when `GOH_MAX_LINES` is set but neither a number nor `off`
+/// (the shell version fails downstream at the checker; failing here names the key).
 pub fn from_pairs(pairs: &BTreeMap<String, String>) -> Result<Gatesrc, String> {
     let get = |key: &str| pairs.get(key).cloned().unwrap_or_default();
+    let line_cap_off = pairs.get("GOH_MAX_LINES").is_some_and(|raw| raw == "off");
     let max_lines = match pairs.get("GOH_MAX_LINES") {
         None => None,
+        Some(_) if line_cap_off => None,
         Some(raw) => match raw.parse::<usize>() {
             Ok(n) => Some(n),
-            Err(_) => return Err(format!("GOH_MAX_LINES is not a number: {raw}")),
+            Err(_) => return Err(format!("GOH_MAX_LINES is not a number or `off`: {raw}")),
         },
     };
     Ok(Gatesrc {
         max_lines,
+        line_cap_off,
         exclude: get("GOH_EXCLUDE"),
         line_exclude: get("GOH_LINE_EXCLUDE"),
         allow: get("GOH_ALLOW"),
@@ -321,6 +327,17 @@ mod tests {
         pairs.insert("GOH_MAX_LINES".to_owned(), "many".to_owned());
         assert!(from_pairs(&pairs).is_err());
         assert!(from_pairs(&BTreeMap::new()).unwrap().max_lines.is_none());
+    }
+
+    #[test]
+    fn max_lines_off_is_a_declared_no_cap() {
+        let mut pairs = BTreeMap::new();
+        pairs.insert("GOH_MAX_LINES".to_owned(), "off".to_owned());
+        let cfg = from_pairs(&pairs).unwrap();
+        assert!(cfg.line_cap_off && cfg.max_lines.is_none());
+        assert!(!from_pairs(&BTreeMap::new()).unwrap().line_cap_off);
+        pairs.insert("GOH_MAX_LINES".to_owned(), "500".to_owned());
+        assert!(!from_pairs(&pairs).unwrap().line_cap_off);
     }
 
     #[test]

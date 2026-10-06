@@ -105,7 +105,7 @@ commented starter with every key: `.gatesrc.example`.
 
 ```bash
 # Structural
-GOH_MAX_LINES=500                    # File length cap (unset disables)
+GOH_MAX_LINES=500                    # File length cap (unset disables + warns; `off` = no cap by decision)
 GOH_EXCLUDE='vendor/|\.generated\.'  # Regex of paths to ignore
 GOH_ALLOW=''                         # Extra allowed glyphs if needed
 

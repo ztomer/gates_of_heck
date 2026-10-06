@@ -11,7 +11,7 @@ Single schema. CLI flags beat env/.gatesrc where both exist. Unset means
 | `GOH_BIN` | unset | Explicit path to the native `goh` binary. Set-but-missing is reported once and the Python checkers run; unset resolves `bin/goh` then `goh` on `PATH`. |
 | `GOH_NO_NATIVE` | unset | Set to `1` to force the Python checkers even when a binary is available (the parity tests use it to drive the Python side). |
 | `GOH_SKIP_BUILD` | unset | For `install.sh`: install hooks without building `bin/goh`. |
-| `GOH_MAX_LINES` | unset (check skipped + warn) | File-length cap. Set `500` in every repo. |
+| `GOH_MAX_LINES` | unset (check skipped + warn) | File-length cap. Set `500` in every repo. `off` records a deliberate no-cap (an info line instead of the warning) for a repo whose files are long by design; say why in a comment beside it. |
 | `GOH_EXPORT_KEEP` | unset | Ignored files the pre-push export must carry (space-separated, repo-relative), e.g. a compile-flag marker the manifest reads. The gate runs on a clean worktree of the pushed commit (`gates/push_gate.sh`); tracked files are always there, ignored ones only if named here. |
 | `GOH_PUSH_WORKTREES` | `~/.cache/goh/push` | Where `push_gate.sh` checks the pushed commit out. Never the temp directory: SwiftLint's baseline matches nothing under `/private/tmp` or `$TMPDIR` and everything under `/Users` (measured 2026-09-21). |
 | `GOH_PUSH_LOGS` | `~/.cache/goh/push-logs` | Where `push_gate.sh` tees each run's output. A green run deletes its log; a red one keeps it and prints the path (newest 20 kept), so a refused push never loses its evidence. |

@@ -32,10 +32,24 @@ GOH_EX="${GOH_EXCLUDE:-}"
 if [ -n "${GOH_LINE_EXCLUDE:-}" ]; then
     GOH_EX="${GOH_EX:+${GOH_EX}|}${GOH_LINE_EXCLUDE}"
 fi
+# `GOH_MAX_LINES=off` is a DECISION, not an omission: a repo whose files are long
+# on purpose (the skills corpus, whose references/ ARE the long catalogue) says so
+# in its .gatesrc, and gets one info line instead of a warning on every commit.
+# A warning that fires on a recorded decision is noise, and noise trains readers to
+# skip the line the day it matters. Unset still warns. Normalised to empty here so
+# every later `[ -n "$GOH_MAX_LINES" ]` below reads "no cap" and never passes
+# `--max off` to a checker.
+goh_line_cap_off=""
+if [ "${GOH_MAX_LINES:-}" = "off" ]; then
+    goh_line_cap_off=1
+    GOH_MAX_LINES=""
+fi
 if [ -n "${GOH_MAX_LINES:-}" ]; then
     goh_step "file length <= ${GOH_MAX_LINES}" \
         python3 "$CHECKS/check_file_length.py" --max "$GOH_MAX_LINES" \
         ${GOH_EX:+--exclude "$GOH_EX"} ${FWD:+"$FWD"}
+elif [ -n "$goh_line_cap_off" ]; then
+    info "file-length cap off — declared in .gatesrc (GOH_MAX_LINES=off)"
 else
     warn "file-length cap not set — add GOH_MAX_LINES to .gatesrc to enable it"
 fi
