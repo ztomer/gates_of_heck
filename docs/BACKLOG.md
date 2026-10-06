@@ -134,7 +134,7 @@ behind the same tests the shell passes today, red-proven, one at a time:
 - [x] 4C.2 The proven cache native (`goh proven key|lookup|record`): the tree key, the scoped
       key and the identity computed in-process with git asked once per fact. MEASURED FIRST, and
       the bash took most of it: the identity once per process tree (`54e8d83`), no top-level
-      git call without `GOH_EXPORT_KEEP`, no `date` per lookup/record (`COMMIT`) -- a warm hit
+      git call without `GOH_EXPORT_KEEP`, no `date` per lookup/record (`4f07742`) -- a warm hit
       7 -> 6 git calls and one spawn fewer. What a key still costs is `git status` + `write-tree`
       (any implementation pays them) and one hash spawn; a native port would save ~1 spawn a
       key for a byte-exact reimplementation of the identity. Declined until a profile says so.
