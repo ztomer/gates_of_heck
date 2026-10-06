@@ -52,6 +52,7 @@ esac
 case "$check" in
     unreaped-spawn) native_lacks="--probe --fresh-derivations" ;;
     deps) native_lacks="--probe" ;;
+    empty-assert) native_lacks="--probe" ;;
     version-provenance) native_lacks="--probe" ;;
     claim-derivation) native_lacks="--probe" ;;
     md-links) native_lacks="--probe" ;;
@@ -60,17 +61,9 @@ case "$check" in
     python-formatted) native_lacks="--selftest" ;;
     *)     native_lacks="" ;;
 esac
+# Every check has a native port (Phase N1). A check the binary cannot run would name its reason
+# here and exec the reference instead.
 python_only=""
-case "$check" in
-    empty-assert)
-        # Deliberately not ported, not merely unported. This checker's SPEC is
-        # the measured clippy table in its docstring, and the table is what the
-        # tests and the --probe assert. A second implementation in Rust would be
-        # a second reading of that spec, and the two would agree until the table
-        # moved -- which is the drift this gate exists to stop.
-        python_only="the match table IS the spec (measured against clippy 1.99.0); one implementation, not two"
-        ;;
-esac
 needs_python=""
 for arg in "$@"; do
     for lacked in $native_lacks; do

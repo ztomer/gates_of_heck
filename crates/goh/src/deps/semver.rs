@@ -163,14 +163,22 @@ mod tests {
     #[test]
     fn every_row_of_the_requirement_table_holds() {
         for (req, version, want) in TABLE {
-            assert_eq!(req_allows(req, version), Some(*want), "req {req:?} admits {version}");
+            assert_eq!(
+                req_allows(req, version),
+                Some(*want),
+                "req {req:?} admits {version}"
+            );
         }
     }
 
     #[test]
     fn an_unreadable_requirement_abstains() {
         for req in ["1.*", ">=x", "1.2.3.4", "~>1"] {
-            assert_eq!(req_allows(req, "1.0.0"), None, "{req:?} was read as a verdict");
+            assert_eq!(
+                req_allows(req, "1.0.0"),
+                None,
+                "{req:?} was read as a verdict"
+            );
         }
     }
 }

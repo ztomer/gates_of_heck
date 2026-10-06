@@ -286,7 +286,10 @@ order, never the reverse:
   Rust repo in four modes and over the live network. Two reference bugs fixed first, red first:
   `--ratchet` crashed (`f["name"]` on a dataclass) instead of failing an untriaged major, and the
   comparator read a missing minor/patch as 0 (`~1.0`, `=1.2`, `^0.0.3`, `^0.0` -- five rows of
-  Cargo's own table). The semver table now lives in the crate's tests (N2 for this checker). Next: `check_md_links`, `check_python_formatted` (spawns ruff either way),
+  Cargo's own table). The semver table now lives in the crate's tests (N2 for this checker).
+  **`check_no_empty_assert` LANDED** as `goh empty-assert` (`crates/goh/src/emptyassert.rs`): its
+  "Python-only, one implementation" note is honoured by moving the measured clippy table INTO the
+  crate's tests, not by keeping two readers; identical on every local repo at both scopes. Next: `check_md_links`, `check_python_formatted` (spawns ruff either way),
   `check_lock_version`, `check_no_credential_urls`, `check_shell_lint.sh` (spawns shellcheck), and
   the gate-side Python (`check_dep_currency`, `check_lints_optin`'s twin, `lcov_merge`). Each port
   lands parity-pinned against the Python it replaces and red-proven both ways, as Phase 3 did.

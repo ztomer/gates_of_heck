@@ -89,7 +89,7 @@ impl Scanner {
     /// lines. Returns `(code_only, depth_after)`. Character-indexed, like
     /// the reference (byte indexing would split multi-byte chars when a
     /// comment marker lands beside one).
-    fn strip_line(line: &str, depth: usize) -> (String, usize) {
+    pub(crate) fn strip_line(line: &str, depth: usize) -> (String, usize) {
         let chars: Vec<char> = line.chars().collect();
         let mut kept = String::new();
         let mut depth = depth;
@@ -216,7 +216,7 @@ pub fn is_compiled_src(rel: &str) -> bool {
 /// True when the file carries the generation marker within its first 40
 /// lines — the only exemption. Mirrors `_is_generated` (the docstring
 /// wins over character windows: lines, not bytes).
-fn is_generated(text: &str) -> bool {
+pub(crate) fn is_generated(text: &str) -> bool {
     let head = text
         .lines()
         .take(GENERATED_HEAD_LINES)

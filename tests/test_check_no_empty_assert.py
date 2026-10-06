@@ -11,7 +11,18 @@ carry as much weight as the dirty ones — a checker that flagged
 import subprocess
 import sys
 
-from conftest import REPO_ROOT, commit_all, run_check, stage, write
+import pytest
+
+from conftest import REPO_ROOT, commit_all, stage, write
+from tier_kit import both_tiers, run_tiered  # noqa: F401  # both_tiers: a fixture
+
+pytestmark = pytest.mark.usefixtures("both_tiers")
+
+
+def run_check(repo, script, *args):
+    """The checker over `repo`, on the current tier (Python, or `goh empty-assert`)."""
+    return run_tiered(repo, script, "empty-assert", *args, python_only=("--probe",))
+
 
 SCRIPT = "checks/check_no_empty_assert.py"
 
