@@ -38,7 +38,7 @@ CPU**; `-n 12` is slower than `-n 8`.
 | a stopped gate stops its steps (bounded_run + local_ci forward TERM/INT/HUP) | `efbaf12` | -- |
 | P1g `GOH_RUST_LINT_CARGO=cargo-zigbuild` for `--target` lint configs (+ the first tests of `GOH_RUST_LINT_CONFIGS`) | `89b7c9f`, `f39fed9` | media_server http-mini-rs: plain cargo fails on ring's C, zigbuild 6 s warm |
 | P2 `rust_gate.sh --each-crate` + P1f repo scans once (`GOH_RUST_GROUPS`, `GOH_RUST_JOBS`) | `17e1541` | media_server clone, warm, 4 at a time, proven off: 79 s vs the `xargs -P 4` fan-out's 91 s; repo scans 1 run vs 29 (cold: 104 s, all 29 green). Adoption is servers' own commit |
-| C4 consumers run the gates from an immutable export of HEAD; `GOH_LIVE=1` is the working tree on purpose | (this) | +45 ms per gate run (antiknob pre-commit 0.44 vs 0.40 s); a planted uncommitted edit reached the consumer 0 times, 1 with GOH_LIVE |
+| C4 consumers run the gates from an immutable export of HEAD; `GOH_LIVE=1` is the working tree on purpose | `c327d66` | +45 ms per gate run (antiknob pre-commit 0.44 vs 0.40 s); a planted uncommitted edit reached the consumer 0 times, 1 with GOH_LIVE |
 
 ## Phase P — make goh fast (the program)
 
