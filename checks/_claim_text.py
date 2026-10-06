@@ -325,7 +325,9 @@ def _python_prose(text: str) -> str:
                 )
                 continue
             blanked[row - 1] = blanked[row - 1][:col] + " " * (len(blanked[row - 1]) - col)
-            for middle in range(row, end_row):
+            # The rows strictly BETWEEN the first and the last: `range(row, end_row)` reached the
+            # end row too and blanked whatever followed the closing quotes on it.
+            for middle in range(row, end_row - 1):
                 blanked[middle] = " " * len(blanked[middle])
             blanked[end_row - 1] = " " * end_col + blanked[end_row - 1][end_col:]
     except (tokenize.TokenError, IndentationError, SyntaxError):

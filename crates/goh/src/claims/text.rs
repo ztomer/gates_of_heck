@@ -216,13 +216,11 @@ pub fn python_prose(text: &str) -> String {
         }
         let len = lines[row - 1].len();
         blank(&mut lines[row - 1], col, len);
-        // The reference's middle loop runs through the END row too
-        // (`range(row, end_row)` over 0-based indices), so the rest of that
-        // line is blanked as well: reproduced, and recorded in BACKLOG.
-        for middle in lines.iter_mut().take(end_row).skip(row) {
+        for middle in lines.iter_mut().take(end_row - 1).skip(row) {
             let len = middle.len();
             blank(middle, 0, len);
         }
+        blank(&mut lines[end_row - 1], 0, end_col);
     }
     lines
         .into_iter()

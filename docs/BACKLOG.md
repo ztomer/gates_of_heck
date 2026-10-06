@@ -246,10 +246,9 @@ order, never the reverse:
   LANDED** as `goh unreaped-spawn` (`crates/goh/src/unreaped/`): every table row's whole verdict
   list equal through both (`test_unreaped_spawn_native_parity.py`), the four whole-repo test files
   run on both tiers, the report byte-identical on 30 local repos; media_server 2.87 s -> 0.13 s.
-  Found while porting, NOT yet fixed (each a Python behaviour the port reproduces, to fix in both
-  with a red row): `RETURNS` matches `-> ()` with a space (the engine gives the whitespace back to
-  the look-ahead), and the shell masker blanks a quoted heredoc tag before reading it, so
-  `<<'EOF'` bodies are scanned as code. **`check_version_provenance.py` LANDED** as
+  Found while porting and FIXED in both tiers with red rows (the table is 59 shapes now):
+  `RETURNS` matched `-> ()` with a space, and the shell masker blanked a quoted heredoc tag before
+  reading it, so `<<'EOF'` bodies were scanned as code (and `<<<` opened a heredoc). **`check_version_provenance.py` LANDED** as
   `goh version-provenance` (`crates/goh/src/provenance.rs`; tests on both tiers via
   `tests/tier_kit.py`, byte-identical on every local repo at all three output modes).
   **`check_no_kill_by_name` LANDED** as `goh kill-by-name` (`crates/goh/src/killname/`): a Python
@@ -261,8 +260,8 @@ order, never the reverse:
   which kill-by-name now uses too): byte-identical on every local repo and 61 fixture cases. Two
   reference bugs fixed in the Python with red tests (a module-level list holding a non-literal
   crashed the gate with AttributeError; `ast.parse` leaked another file's SyntaxWarning into the
-  report). One reproduced, to fix in both: `_python_prose` blanks the REST of the line a multi-line
-  string ends on (`range(row, end_row)` reaches the end row). **`check_md_links` LANDED** as
+  report), and -- reproduced first, then fixed in both -- `_python_prose` blanked the rest of the
+  line a multi-line string ends on. **`check_md_links` LANDED** as
   `goh md-links` (`crates/goh/src/mdlinks.rs` + `mdtext.rs`): anchors and links identical on 627
   `.md` files across 30 repos, reports identical at three modes. **`check_lock_version` LANDED**
   as `goh lock-version` (`crates/goh/src/lockver.rs`, the version-source registry in

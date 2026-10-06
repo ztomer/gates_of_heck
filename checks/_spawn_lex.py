@@ -27,7 +27,9 @@ FN = re.compile(r"^\s*(?:pub(?:\([^)]*\))?\s+)?(?:const\s+)?(?:async\s+)?(?:unsa
 # A function that hands something back. `(?!...)` needs a NON-EMPTY body: written `(?!()|...)` the
 # alternative is an empty group, it matches the empty string, the negative lookahead fails on every
 # input, and `-> Child` reads as "returns nothing" -- so every handoff in the estate was a finding.
-RETURNS = re.compile(r"->\s*(?!\(\s*\))")
+# The whitespace is INSIDE the look-ahead: written `->\s*(?!...)`, the engine gave `\s*` back
+# and `-> ()` with a space matched, so a unit function read as handing its Child off.
+RETURNS = re.compile(r"->(?!\s*\(\s*\))")
 # A panic-capable construct. `?` is included because an early return in a `Result`-returning test
 # skips everything below it, exactly as a panic does.
 PANICS = re.compile(

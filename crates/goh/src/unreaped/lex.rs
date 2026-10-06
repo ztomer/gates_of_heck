@@ -120,7 +120,7 @@ impl Lex {
             )?,
             known_types: rx(r"\b(?:struct|enum|union|trait|type)\s+([A-Za-z_][A-Za-z0-9_]*)")?,
             mod_or_close: rx(r"^\s*mod\b|^\s*}")?,
-            heredoc: rx(r#"<<-?\s*['"]?([A-Za-z_][A-Za-z0-9_]*)"#)?,
+            heredoc: rx(r#"^\s*['"]?([A-Za-z_][A-Za-z0-9_]*)"#)?,
             // PY_POPEN, whose `(?<![\w.])` is applied by hand.
             py_popen: rx(r"^(?:subprocess\s*\.\s*)?Popen\s*\(")?,
             py_reap: rx(r"\.\s*(?:wait|communicate|kill|terminate)\s*\(")?,
@@ -159,15 +159,12 @@ impl Lex {
             || Self::search_after(&self.panic_lb, line, |c| word(c) || c == ':')
     }
 
-    /// `RETURNS.search(line)`: `->\s*(?!\(\s*\))`. The engine may give back
-    /// the whitespace, so `-> ()` MATCHES and only `->()` does not.
+    /// `RETURNS.search(line)`: an `->` not followed by `()` (spaces allowed
+    /// anywhere: `-> ()` returns nothing too).
     pub fn returns(&self, line: &str) -> bool {
-        let unit = self.cached(r"^\(\s*\)");
-        line.match_indices("->").any(|(at, _)| {
-            let rest = &line[at + 2..];
-            rest.starts_with(char::is_whitespace)
-                || !unit.as_ref().is_some_and(|u| u.is_match(rest))
-        })
+        let unit = self.cached(r"^\s*\(\s*\)");
+        line.match_indices("->")
+            .any(|(at, _)| !unit.as_ref().is_some_and(|u| u.is_match(&line[at + 2..])))
     }
 
     /// `PY_POPEN.search(line)`.

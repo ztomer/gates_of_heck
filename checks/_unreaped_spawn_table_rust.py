@@ -346,4 +346,21 @@ mod tests {
 """,
         True,
     ),
+    # `-> ()` is "returns nothing". RETURNS was `->\s*(?!\(\s*\))`, and the engine gives the
+    # whitespace back to the look-ahead, so `-> ()` WITH a space matched -- this function read as
+    # handing its Child to the caller, and the dropped Child read as a handoff (found porting the
+    # pattern to Rust, Phase N1).
+    (
+        "a function that returns `()` does not hand its Child off",
+        """
+use std::process::Command;
+fn t(cb: impl Fn() -> ()) {
+    cb();
+    match 1 {
+        _ => Command::new("x").spawn().expect("x"),
+    };
+}
+""",
+        True,
+    ),
 ]

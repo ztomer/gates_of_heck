@@ -98,6 +98,24 @@ SHELL = [
         '#!/usr/bin/env bash\nnote="run it & wait"\ncat <<EOF\nfoo &\nEOF\n',
         False,
     ),
+    # A QUOTED tag (`<<'EOF'`, the form that stops expansion and the commonest in test scripts)
+    # was blanked with the quotes before the tag was read, so its body was scanned as code and a
+    # `&` in it was a "background launch" (found porting the masker, Phase N1).
+    (
+        "a single-quoted heredoc tag's body is data",
+        "#!/usr/bin/env bash\ncat <<'EOF'\nfoo &\nEOF\n",
+        False,
+    ),
+    (
+        "a double-quoted, dash heredoc tag's body is data",
+        '#!/usr/bin/env bash\ncat <<-"EOF"\n\tfoo &\n\tEOF\n',
+        False,
+    ),
+    (
+        "a here-string is not a heredoc, so the next line is still code",
+        "#!/usr/bin/env bash\ncat <<<EOF\nserver &\n",
+        True,
+    ),
 ]
 
 

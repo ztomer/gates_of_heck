@@ -212,6 +212,16 @@ def test_a_list_holding_a_non_literal_is_not_a_declared_list_and_does_not_crash(
     assert len(found) == 1 and "named 'X'" in found[0][3], found
 
 
+def test_a_claim_after_a_multi_line_string_on_its_closing_line_is_read(repo) -> None:
+    """`_python_prose` blanked a multi-line literal's END row whole -- `range(row, end_row)` reached
+    it -- so prose after the closing quotes on that line vanished (found porting it, Phase N1)."""
+    estate(repo)
+    write(repo, "pkg/end.py", 'X = """\ntext\n"""  # `9` gates in `pkg/roster.py:STEPS`\n')
+    stage(repo, "pkg/end.py")
+    found = [f for f in findings(repo).findings if f[0] == "pkg/end.py"]
+    assert len(found) == 1 and found[0][2] == "STALE", found
+
+
 # ── the printed command is EXECUTED, not trusted ─────────────────────────────
 
 

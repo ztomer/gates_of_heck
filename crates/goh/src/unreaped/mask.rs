@@ -198,6 +198,33 @@ pub fn mask_rust(src: &str) -> String {
     out
 }
 
+/// The tag a heredoc on this line opens: the OPERATOR located in the masked
+/// line (not in quotes, not a here-string's `<<<`), the tag read from the
+/// RAW line -- a quoted `<<'EOF'` is blank in the masked one.
+fn heredoc_tag(masked: &str, raw: &str, tag_rx: &regex::Regex) -> Option<String> {
+    let m: Vec<char> = masked.chars().collect();
+    let r: Vec<char> = raw.chars().collect();
+    let mut i = 0usize;
+    while i + 1 < m.len() {
+        let op = m[i] == '<'
+            && m[i + 1] == '<'
+            && (i == 0 || m[i - 1] != '<')
+            && m.get(i + 2) != Some(&'<');
+        if op {
+            let mut end = i + 2;
+            if m.get(end) == Some(&'-') {
+                end += 1;
+            }
+            let rest: String = r.get(end..).unwrap_or(&[]).iter().collect();
+            if let Some(tag) = tag_rx.captures(&rest).and_then(|c| c.get(1)) {
+                return Some(tag.as_str().to_owned());
+            }
+        }
+        i += 1;
+    }
+    None
+}
+
 /// Shell: comments, quoted spans and heredoc bodies. A heredoc body holding a
 /// `&` is data, not a background launch.
 #[must_use]
@@ -234,9 +261,7 @@ pub fn mask_shell(src: &str, heredoc_rx: &regex::Regex) -> String {
             }
         }
         let joined: String = code.into_iter().collect();
-        if let Some(c) = heredoc_rx.captures(&joined) {
-            heredoc = c.get(1).map(|m| m.as_str().to_owned());
-        }
+        heredoc = heredoc_tag(&joined, line, heredoc_rx);
         out.push(joined);
     }
     out.join("\n")

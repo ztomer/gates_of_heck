@@ -130,3 +130,14 @@ def test_a_scanned_files_invalid_escape_is_not_printed_into_the_report(
     py, rs = both(goh, repo)
     assert "SyntaxWarning" not in py[1] + py[2], py
     assert rs == py
+
+
+def test_a_claim_after_a_multi_line_strings_closing_quotes_reads_the_same(
+    goh: Path, repo: Path
+) -> None:
+    estate(repo)
+    write(repo, "pkg/end.py", 'X = """\ntext\n"""  # `9` gates in `pkg/roster.py:STEPS`\n')
+    stage(repo, "pkg/end.py")
+    commit_all(repo, "end")
+    py, rs = both(goh, repo)
+    assert rs == py and py[0] == 1, py

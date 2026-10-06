@@ -175,6 +175,26 @@ def mask_rust(text: str) -> str:
     return "".join(out)
 
 
+# A heredoc OPERATOR, found in the masked line (so one inside quotes or a comment is not one), and
+# not part of a here-string's `<<<`.
+_HEREDOC_OP = re.compile(r"(?<!<)<<(?!<)-?")
+_HEREDOC_TAG = re.compile(r"""\s*['"]?([A-Za-z_][A-Za-z0-9_]*)""")
+
+
+def _heredoc_tag(masked: str, raw: str):
+    """The tag a heredoc on this line opens, or None.
+
+    Read from the RAW line, at the operator the masked line located: the masker blanks quotes,
+    and `<<'EOF'` -- the quoted form, the commonest in test scripts -- read from the masked line is
+    `<<` followed by spaces, so its body was scanned as code (found porting this, Phase N1).
+    """
+    for op in _HEREDOC_OP.finditer(masked):
+        m = _HEREDOC_TAG.match(raw, op.end())
+        if m:
+            return m.group(1)
+    return None
+
+
 def mask_shell(text: str) -> str:
     """Comments, quoted spans and HEREDOC bodies. The heredoc arm is the one that matters: a body
     holding a `&` is data, and reading it as a background launch is a finding invented by the
@@ -208,9 +228,7 @@ def mask_shell(text: str) -> str:
                 code.append(ch)
             i += 1
         joined = "".join(code)
-        m = re.search(r"<<-?\s*['\"]?([A-Za-z_][A-Za-z0-9_]*)", joined)
-        if m:
-            heredoc = m.group(1)
+        heredoc = _heredoc_tag(joined, line)
         out.append(joined)
     return "\n".join(out)
 
