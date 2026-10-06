@@ -86,3 +86,31 @@ def test_an_answer_for_another_gates_root_is_not_taken(tmp_path: Path) -> None:
         text=True,
     )
     assert r.stdout and str(fake) != r.stdout, r.stdout + r.stderr
+
+
+def test_rust_gate_runs_its_native_steps_without_the_dispatcher(tmp_path: Path) -> None:
+    """With the binary resolved, rust_gate's four native steps exec it directly: `bash goh.sh`
+    was ~30 ms of start-up per step, four steps per crate, 29 crates a media_server push."""
+    crate = tmp_path / "c"
+    (crate / "src").mkdir(parents=True)
+    (crate / "Cargo.toml").write_text(
+        '[package]\nname = "c"\nversion = "0.1.0"\nedition = "2021"\n'
+    )
+    (crate / "src" / "lib.rs").write_text("pub fn f() -> u64 {\n    1\n}\n")
+    (crate / ".gatesrc").write_text("GOH_DEPS_OFFLINE=1\n")
+    subprocess.run(["cargo", "generate-lockfile", "-q", "--offline"], cwd=crate, check=True)
+    subprocess.run(["git", "-C", str(crate), "init", "-q"], check=True)
+    subprocess.run(["git", "-C", str(crate), "add", "-A"], check=True)
+    shim, log = tmp_path / "shim", tmp_path / "bash.log"
+    shim.mkdir()
+    (shim / "bash").write_text(f'#!/bin/sh\necho "$*" >> "{log}"\nexec /bin/bash "$@"\n')
+    (shim / "bash").chmod(0o755)
+    env = hermetic_env(GOH_PROVEN="0")
+    env["PATH"] = f"{shim}:{env['PATH']}"
+    r = subprocess.run(
+        ["/bin/bash", str(REPO_ROOT / "gates" / "rust_gate.sh"), str(crate)],
+        cwd=crate, env=env, capture_output=True, text=True, timeout=300,
+    )  # fmt: skip
+    assert r.returncode == 0, r.stdout + r.stderr
+    dispatched = [ln for ln in log.read_text().splitlines() if "/goh.sh " in f"{ln} "]
+    assert not dispatched, dispatched

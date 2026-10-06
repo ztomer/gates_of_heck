@@ -227,23 +227,23 @@ rust_crate_checks() {
     [ -n "${GOH_DEPS_RATCHET:-}" ] && _deps_args="$_deps_args --ratchet $GOH_DEPS_RATCHET"
     [ "${GOH_DEPS_OFFLINE:-}" = "1" ] && _deps_args="$_deps_args --offline"
     # shellcheck disable=SC2086 # deliberate word-splitting: this IS the argv list
-    goh_step "dependency currency" bash "$HERE/goh.sh" deps $_deps_args
+    goh_step "dependency currency" "${_goh_cmd[@]}" deps $_deps_args
 }
 
 rust_repo_checks() {
     # Native first: `goh lints` carries this step (parity-pinned by
     # tests/test_goh_lints_parity.py), through gates/goh.sh — the one resolver
     # every caller shares, with the Python checker as its stated fallback.
-    goh_step "lint policy is inherited" bash "$HERE/goh.sh" lints
+    goh_step "lint policy is inherited" "${_goh_cmd[@]}" lints
 
     # GOH_EXCLUDE (regex, from .gatesrc) exempts a vendored tree here as it does
     # in the structural checks: third-party code is not ours to re-lint.
     # Native first: `goh no-allow` carries this step (parity-pinned by
     # tests/test_goh_noallow_parity.py), through gates/goh.sh like the lints step.
-    goh_step "no #[allow] / #[expect]" bash "$HERE/goh.sh" no-allow ${GOH_EXCLUDE:+--exclude "$GOH_EXCLUDE"}
+    goh_step "no #[allow] / #[expect]" "${_goh_cmd[@]}" no-allow ${GOH_EXCLUDE:+--exclude "$GOH_EXCLUDE"}
 
     # Same GOH_EXCLUDE exemption: a vendored tree is not ours to re-lint.
-    goh_step "no emptiness asserts" bash "$HERE/goh.sh" empty-assert ${GOH_EXCLUDE:+--exclude "$GOH_EXCLUDE"}
+    goh_step "no emptiness asserts" "${_goh_cmd[@]}" empty-assert ${GOH_EXCLUDE:+--exclude "$GOH_EXCLUDE"}
 }
 
 rust_coverage_checks() {
@@ -265,6 +265,11 @@ rust_coverage_checks() {
 # Resolved ONCE for every goh.sh step below (and the proven cache's rust-scope): the answer is
 # exported, so each step's goh.sh takes it instead of ~12 spawns of its own (gates/_goh_bin.sh).
 goh_resolve_native
+# The native steps exec the resolved binary itself: `bash goh.sh` was ~30 ms of dispatcher start-up
+# per step, four per crate (tests/test_goh_bin_once.py). goh.sh stays the path when nothing resolved,
+# and its refusals (an unknown check, a retired --probe) do not apply to these fixed calls.
+_goh_cmd=(bash "$HERE/goh.sh")
+[ -x "${GOH_RESOLVED_BIN:-}" ] && _goh_cmd=("$GOH_RESOLVED_BIN")
 _group_on crate && rust_proven_group crate crate rust_crate_checks
 _group_on repo && rust_proven_group repo tree rust_repo_checks
 
