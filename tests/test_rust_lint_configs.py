@@ -45,7 +45,7 @@ LINUX_ONLY = '#[cfg(target_os = "linux")]\nfn only_linux() {}\n\npub fn f() -> u
 
 def _repo(tmp_path: Path, lib: str, gatesrc: str) -> Path:
     repo = tmp_path / "repo"
-    repo.mkdir()
+    repo.mkdir(parents=True)
     _crate(repo, "a", lib=lib)
     (repo / ".gatesrc").write_text("GOH_DEPS_OFFLINE=1\nGOH_PROVEN=0\n" + gatesrc)
     (repo / ".gitignore").write_text("target/\n")
