@@ -27,6 +27,7 @@ tests/test_suite_drift.py.
 
 from __future__ import annotations
 
+import atexit
 import os
 import shutil
 import subprocess
@@ -48,6 +49,7 @@ SLOW: dict[str, float] = {  # nodeid -> its own ceiling, each with its reason
 _REAL_CARGO = shutil.which("cargo")
 if _REAL_CARGO:
     _shim_dir = tempfile.mkdtemp(prefix="goh-drift-cargo.")
+    atexit.register(shutil.rmtree, _shim_dir, True)  # one per worker per run, 42 had leaked
     with open(os.path.join(_shim_dir, "cargo"), "w", encoding="utf-8") as _f:
         _f.write(
             "#!/bin/sh\n"

@@ -48,18 +48,28 @@ def steps(repo: Path, *cmds: str, extra: str = "") -> None:
     (repo / ".gatesrc").write_text(f"GOH_CI_STEPS='{':'.join(cmds)}'\n{extra}")
 
 
+def meet(d: Path, me: str, *others: str) -> str:
+    """A step that proves CONCURRENCY without a clock: it marks itself started, then waits (up to
+    10 s) for every other step to have started too. Run serially, the first never sees the rest
+    and fails. The wall-clock form (`wall < 1.1`) flaked at 1.11 and 1.33 s under load (5B)."""
+    cond = " && ".join(f"[ -e {d}/{o} ]" for o in others)
+    return (
+        f"touch {d}/{me}; i=0; until {cond} || [ $i -ge 200 ]; do sleep 0.05; i=$((i+1)); done; "
+        f"{cond} || exit 9"  # an exit, not a status: a command appended after it must not mask it
+    )
+
+
 def test_jobs_run_concurrently_and_report_in_declared_order(repo):
     steps(
         repo,
-        "sleep 1.2; echo AAA",
-        "sleep 0.8; echo BBB",
-        "sleep 0.2; echo CCC",
+        meet(repo, "a", "b", "c") + "; sleep 0.4; echo AAA",
+        meet(repo, "b", "a", "c") + "; sleep 0.2; echo BBB",
+        meet(repo, "c", "a", "b") + "; echo CCC",
         extra="GOH_CI_JOBS=3\n",
     )
-    r, wall = run_ci(repo)
+    r, _ = run_ci(repo)
     out = r.stdout + r.stderr
-    assert r.returncode == 0, out
-    assert wall < 2.0, f"three ~1 s steps took {wall:.1f} s with GOH_CI_JOBS=3"
+    assert r.returncode == 0, f"the three steps did not run at once with GOH_CI_JOBS=3:\n{out}"
     a, b, c = (out.index(f"[{i}/3]") for i in (1, 2, 3))
     assert a < b < c, f"reports are not in declared order:\n{out}"
 
@@ -142,10 +152,9 @@ def run_cli(cwd: Path, *args: str, **env_extra: str):
 
 def test_jobs_flag_wins_over_gatesrc(repo):
     """A caller that schedules for the repo (rust_gate.sh --each-crate) owns the budget."""
-    steps(repo, "sleep 0.6", "sleep 0.61", extra="GOH_CI_JOBS=1\n")
-    r, wall = run_cli(repo, "--jobs", "2")
-    assert r.returncode == 0, r.stdout + r.stderr
-    assert wall < 1.1, f"--jobs 2 ran serially ({wall:.2f} s)"
+    steps(repo, meet(repo, "a", "b"), meet(repo, "b", "a"), extra="GOH_CI_JOBS=1\n")
+    r, _ = run_cli(repo, "--jobs", "2")
+    assert r.returncode == 0, f"--jobs 2 ran serially:\n{r.stdout}{r.stderr}"
 
 
 def test_steps_only_ignores_the_repos_own_steps(repo):

@@ -237,3 +237,16 @@ def test_a_consumers_own_pytest_runs_the_export_not_a_refusal(
     r = _structural(gates, consumer, env)
     assert r.returncode == 0, r.stdout + r.stderr
     assert "GOH_LIVE" not in r.stderr, r.stderr
+
+
+def test_a_live_run_names_its_own_tree_as_goh_dir(gates: Path, tmp_path) -> None:
+    """GOH_LIVE runs THIS tree, so the native binary's delegated checkers must come from it too.
+    Unset, GOH_DIR defaulted to ~/Projects/gates_of_heck: a live run from a worktree swept the main
+    checkout's checks/ and never exercised the edit under test (2026-10-06)."""
+    probe = (
+        f'. "{gates}/gates/_from_head.sh"; goh_from_head "{gates}/gates/structural.sh"; '
+        'printf %s "$GOH_DIR"'
+    )
+    env = _env(tmp_path, GOH_LIVE="1", GOH_DIR="/elsewhere")
+    r = subprocess.run(["bash", "-c", probe], capture_output=True, text=True, env=env, timeout=60)
+    assert r.stdout == str(gates.resolve()), r.stdout + r.stderr

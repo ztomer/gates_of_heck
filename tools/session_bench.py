@@ -185,6 +185,10 @@ def inflation(alone: dict[str, float], crowded: dict[str, float]) -> list[dict]:
 def bench(args) -> int:
     repo = Path(args.repo).resolve()
     sessions = sorted({1, *(int(n) for n in args.sessions.split(","))})
+    sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
+    from prune_kept import prune  # a failed bench keeps its work dir; keep the newest few only
+
+    prune(tempfile.gettempdir(), "goh-session-bench.")
     work = Path(tempfile.mkdtemp(prefix="goh-session-bench."))
     logs = work / "logs"
     logs.mkdir()

@@ -42,7 +42,7 @@ export GOH_GIT_LOCAL_VARS
 _goh_head_dir() {
     local here root rel head cache dest tmp
     _goh_copy=""
-    [ -n "${GOH_LIVE:-}" ] && return 1
+    _goh_run_root=""
     here="$(cd "$(dirname "$1")" && pwd -P)" || return 1
     # The checkout root: the nearest directory up from the script holding `.goh-head` (an export)
     # or `.git` (a checkout) -- tools/release-kit/ is two levels down, not one.
@@ -50,6 +50,8 @@ _goh_head_dir() {
     while [ "$root" != "/" ] && [ ! -f "$root/.goh-head" ] && [ ! -e "$root/.git" ]; do
         root="$(dirname "$root")"
     done
+    _goh_run_root="$root"
+    [ -n "${GOH_LIVE:-}" ] && return 1
     [ -f "$root/.goh-head" ] && return 1          # this IS an export: run it
     [ -e "$root/.git" ] || return 1               # not a checkout: nothing to export
     # THIS suite only (tests/conftest.py exports GATES_OF_HECK_SUITE). A consumer's own pytest that
@@ -93,7 +95,14 @@ _goh_head_dir() {
 }
 
 goh_from_head() { # <this script> <args...> -- execs the export's copy, or returns to run this one
-    _goh_head_dir "$1" || return 0
+    if ! _goh_head_dir "$1"; then
+        # THIS copy runs, so GOH_DIR names THIS tree. Unset, the native binary found its delegated
+        # checkers at the default ~/Projects/gates_of_heck: a GOH_LIVE run from a worktree swept
+        # the main checkout's checks/, and an edit there was never exercised (2026-10-06,
+        # tests/test_gates_from_head.py). The export path already says so when it re-execs.
+        [ -z "$_goh_run_root" ] || [ "$_goh_run_root" = "/" ] || export GOH_DIR="$_goh_run_root"
+        return 0
+    fi
     shift
     exec bash "$_goh_copy" "$@"
 }

@@ -424,12 +424,12 @@ def probe():
     """Three cases: a real estate that is green, a checker that CANNOT fail, and a corpus that
     degraded to a fixture. The second is the whole point of this file."""
 
-    saved, home = ESTATE, HERE
+    saved, home, blind_dir = ESTATE, HERE, ""
     bad = 0
     try:
         # A checker that always passes. If the sweep cannot see that, it is a gate that reports
         # coverage it never measured.
-        blind = os.path.join(tempfile.mkdtemp(), "check_cannot_fail.py")
+        blind = os.path.join(blind_dir := tempfile.mkdtemp(), "check_cannot_fail.py")
         with open(blind, "w", encoding="utf-8") as handle:
             handle.write('"""Green whatever the tree says."""\nprint("clean")\n')
         globals()["HERE"] = os.path.dirname(blind)
@@ -486,8 +486,8 @@ def probe():
         else:
             ok("probe: a real estate entry verifies end to end")
     finally:
-        globals()["ESTATE"] = saved
-        globals()["HERE"] = home
+        globals().update(ESTATE=saved, HERE=home)
+        shutil.rmtree(blind_dir, ignore_errors=True)  # it leaked once per probe run (2026-10-06)
 
     if bad:
         err(f"check_estate_corpus --probe: {bad} case(s) wrong")

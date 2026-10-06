@@ -245,6 +245,12 @@ def sweep(skeleton, gate_name, names, timeout=None, excused=()):
     timeout = TIMEOUT if timeout is None else timeout
     blind = {}
     unrunnable = {}
+    # Each gate's temp files land beside the skeleton and go with it: a gate that runs a toolchain
+    # (SwiftPM's TemporaryDirectory.*, a probe's log) left five entries in the shared $TMPDIR per
+    # sweep, every sweep (2026-10-06, tests/test_gate_temp_leaks.py).
+    scratch = os.path.join(os.path.dirname(os.path.abspath(skeleton)), "tmp")
+    os.makedirs(scratch, exist_ok=True)
+    env = {**_runtime_env(), "TMPDIR": scratch + os.sep}
     for name in names:
         try:
             result = subprocess.run(
@@ -256,7 +262,7 @@ def sweep(skeleton, gate_name, names, timeout=None, excused=()):
                 check=False,
                 # Inside the skeleton, not the hook's repo: with the hook's GIT_DIR a gate's git
                 # calls would read the REAL tree, and the sweep would measure the wrong thing.
-                env=_runtime_env(),
+                env=env,
             )
         except subprocess.TimeoutExpired:
             unrunnable[name] = f"no verdict within {timeout}s"

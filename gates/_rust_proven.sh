@@ -46,6 +46,7 @@ _rust_scope_init() {
     fi
     local f
     f="$(mktemp "${TMPDIR:-/tmp}/goh-rust-scope.XXXXXX")"
+    goh_cleanup_add "$f" "$f.err"  # it was never removed: ~4,700 leaked (ZoneWM, 2026-10-06)
     if "$goh_native" rust-scope "$cargo_dir" >"$f" 2>"$f.err" && [ -s "$f" ]; then
         RUST_SCOPE_FILE="$f"
         # What earlier builds of this workspace were seen to read beyond it (see the header).

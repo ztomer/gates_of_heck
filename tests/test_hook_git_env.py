@@ -43,7 +43,7 @@ sys.exit(0)
 # dir it runs under.
 PUSH_GATE_SCRIPT = """#!/usr/bin/env bash
 set -euo pipefail
-git init -q "$(mktemp -d "${TMPDIR:-/tmp}/goh-hookenv.XXXXXX")"
+git init -q "$(mktemp -d "${GATE_REPORT%/*}/goh-hookenv.XXXXXX")"  # beside the report: removed with the test
 printf 'gitdir=%s\\n' "$(git rev-parse --absolute-git-dir)" >> "$GATE_REPORT"
 printf 'GIT_DIR=%s\\n' "${GIT_DIR:-unset}" >> "$GATE_REPORT"
 """

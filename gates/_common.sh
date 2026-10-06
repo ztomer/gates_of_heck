@@ -71,9 +71,21 @@ die() { err "$*"; exit 1; }
 # ---- gate scaffolding ------------------------------------------------------
 GOH_NAME=""
 GOH_LOG=""
-GOH_LOGS=""
 GOH_COMPLETED=""
-GOH_TMPDIRS=""
+# Everything a gate creates and must remove at exit, ONE path per line (goh_cleanup_add). It was
+# two space-joined strings read by an unquoted `for`: a gate named `python (staged)` split its own
+# log's name on the space and removed nothing, and ~2,200 logs leaked into the shared $TMPDIR
+# (ZoneWM, 2026-10-06; tests/test_gate_temp_leaks.py).
+_goh_cleanup=""
+
+# goh_cleanup_add <path>... -- remove it (file or directory) when the gate exits, however it exits.
+goh_cleanup_add() {
+    local p
+    for p in "$@"; do
+        _goh_cleanup="${_goh_cleanup:+$_goh_cleanup
+}$p"
+    done
+}
 # The working tree's stamp (lib/tree_stamp.py), taken by goh_tree_stamp. A
 # gate that BUILDS AND TESTS the working tree certifies the bytes that were
 # there while it ran; an edit mid-run made one die in an untouched target with
@@ -109,7 +121,7 @@ goh_init() {
     # the BSD form failed every Linux CI run of the structural gate (2026-09-14).
     GOH_LOG="$(mktemp "${TMPDIR:-/tmp}/goh-$GOH_NAME.XXXXXX")"
     # Accumulate: a second goh_init must not orphan the first log.
-    GOH_LOGS="${GOH_LOGS:+$GOH_LOGS }$GOH_LOG"
+    goh_cleanup_add "$GOH_LOG"
     GOH_COMPLETED=""
     # rc-PRESERVING cleanup trap. The old form, `trap "rm -f '$GOH_LOG'" EXIT`,
     # failed open twice over: (a) double-quoted, so $GOH_LOG expanded at SET
@@ -129,8 +141,9 @@ goh_init() {
         # A red run names the move, if there was one: that is its likeliest cause.
         if [ "$_goh_rc" -ne 0 ] && [ -z "$GOH_TREE_CHECKED" ]; then goh_tree_check || true; fi
         [ -n "$GOH_TREE_STAMP_FILE" ] && rm -f "$GOH_TREE_STAMP_FILE"
-        for _l in $GOH_LOGS; do rm -f "$_l"; done
-        for _d in $GOH_TMPDIRS; do rm -rf "$_d"; done
+        while IFS= read -r _p; do [ -n "$_p" ] && rm -rf "$_p"; done <<_goh_cleanup_eof
+$_goh_cleanup
+_goh_cleanup_eof
         if [ "$_goh_rc" -eq 0 ] && [ "$GOH_COMPLETED" != "1" ]; then
             err "$GOH_NAME: exited 0 without completing — abnormal termination is never a pass"
             _goh_rc=1
@@ -324,7 +337,7 @@ goh_index_view() {
     # `set -e` is off, and an empty $snap would make the prefix `/`.
     snap="$(mktemp -d "${TMPDIR:-/tmp}/goh-index.XXXXXX")" && [ -n "$snap" ] \
         || die "$GOH_NAME: cannot create a temp dir for the index export"
-    GOH_TMPDIRS="${GOH_TMPDIRS:+$GOH_TMPDIRS }$snap"
+    goh_cleanup_add "$snap"
     if ! git -C "$top" ls-files -z -- "${rel:-.}" \
             | git -C "$top" checkout-index -z --stdin --prefix="$snap/"; then
         die "$GOH_NAME: could not export the index under ${rel:-.} — refusing to check the working tree in its place"

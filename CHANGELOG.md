@@ -123,6 +123,15 @@
 * **The commit gate runs the push's cheap Rust policies over the staged `.rs` files** (no
   `#[allow]`/`#[expect]`, no emptiness asserts): a commit was let through on an assert its push
   refused minutes later. Untouched files never block a commit.
+* **A gate leaves nothing in `$TMPDIR`** (ZoneWM counted ~7,000 of our entries): the EXIT trap's
+  unquoted `for` split `goh-python (staged).XXXX` on its space and removed nothing; the rust gate's
+  scope file was never removed; the estate probe's checker dir and the empty-scope sweep's
+  toolchain droppings (SwiftPM `TemporaryDirectory.*`) stayed. One newline-safe cleanup list
+  (`goh_cleanup_add`), the sweep's gates under a TMPDIR it owns, kept-on-failure logs bounded
+  (`lib/prune_kept.py`), and a 12 h backstop for killed runs; pinned by
+  `tests/test_gate_temp_leaks.py`, which runs `structural --full` and asserts an EMPTY TMPDIR.
+* **A `GOH_LIVE` run names its own tree as `GOH_DIR`**: unset, the binary's delegated checkers came
+  from `~/Projects/gates_of_heck`, so a live run from a worktree swept main's `checks/`.
 * **`--floors-json` is made absolute before a mode `cd`s into the project**; an `exempt` key is
   project-relative, now documented.
 
