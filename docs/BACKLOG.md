@@ -158,7 +158,7 @@ behind the same tests the shell passes today, red-proven, one at a time:
       key for a byte-exact reimplementation of the identity. Declined until a profile says so.
 - [x] 4C.3 `local_ci.sh`'s step runner native: parallel steps under the canary, logs, proven
       records -- one process instead of a bash + a Python wrapper per step. REOPENED (owner: no optimisation left
-      on the table) and DONE (`COMMIT`): `goh canary`, the canary's contract pinned against both
+      on the table) and DONE (`8edb913`): `goh canary`, the canary's contract pinned against both
       implementations; `local_ci.sh` resolves the binary once and runs every step under it.
 - [x] 4C.4 Re-measured after 4C: a step wrapper 4.3 ms (native), a `goh.sh` child 34 ms (resolved
       once), a warm proven hit 6 git calls, the suite 57-62 s (RAM-disk temp, load 9-15).
