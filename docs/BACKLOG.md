@@ -77,12 +77,17 @@ Status: `[ ]` open, `[x]` done (with the commit), `[~]` handed off.
       expected: the rest is the C4 stanza's `subprocess` import (needed anyway) and argparse, ~25 ms
       per push across local_ci's five steps; a second hand parser is not worth that.
 
-- [ ] 2.5 (beyond the targets, owner 2026-10-06) the self-proofs: `gate self-proofs still pass`
+- [x] 2.5 (beyond the targets, owner 2026-10-06) the self-proofs: `gate self-proofs still pass`
       (`check_probes_pass`) is now the largest step of this repo's `structural --full` (2.5 s of
       ~3.6; `check_empty_scope --probe` alone 1.8 s). A self-proof's verdict depends on CODE, not
       on the tree: cache each probe's pass on the gates export's commit (an immutable tree, C4) or,
       under GOH_LIVE, the probe's source and everything it imports, plus the binary and GOH_*.
-      Ways to lie tested first, as 2.4.
+      Ways to lie tested first, as 2.4. MEASURED AND DECLINED: a probe may read its repo's own
+      tree, and nothing records what a Python probe read, so a gate-dir key could lie and a
+      whole-tree key saves nothing the proven cache does not already skip; the slowest probe
+      (`check_empty_scope`, 1.8 s) is a sequential story over one fixture repo whose sweeps share
+      a git index (not safe to parallelise), and 1 s of it is the hang case's timeout, already
+      the floor that does not flake under load. This repo only; consumers run their own probes.
 
 **Phase 3 — coverage without the clean rebuild** (details: "Open -- found", 3)
 - [x] 3.1 An incremental instrumented build whose report counts ONLY the current build's objects;
@@ -92,7 +97,10 @@ Status: `[ ]` open, `[x]` done (with the commit), `[~]` handed off.
       missing Cargo.lock as a side effect of the clean (a fixture relied on it).
 
 **Phase 4 — the suite <= 60 s** (details: "Open -- found", 5)
-- [ ] 4.1 A shared empty-repo template for the 113 test sites that `git init` (~500 spawns).
+- [x] 4.1 A shared empty-repo template for the 113 test sites that `git init` (~500 spawns).
+      MEASURED AND DECLINED: 658 `git init`s per run, spread thin (50 in the busiest file);
+      the template saves ~13 ms each -- ~8.5 s summed, < 1 s of wall -- not worth a 113-site
+      diff. Template copying itself is 1 ms of the 18 ms (`GIT_TEMPLATE_DIR` empty: 16.9 ms).
 - [x] 4.2 The `release` xdist group deleted (its reason is gone since `31bbb81`); three suite
       runs green after it, 62-65 s (`2642cbe`).
 - [ ] 4.3 Fewer processes per test in the heaviest files (`test_gate_environment.py`,

@@ -276,7 +276,12 @@ def test_uncommitted_gate_source_is_named_by_every_gate_that_runs_one(tmp_path: 
             env=dict(os.environ, GOH_BUILD_PUBLISH_CHECK_ONLY="1"),
         )
 
-    quiet = [commit_gate(), _push(repo, checkout, tmp_path), publish_gate()]
+    # The push gate too gets the session's binary: without it the clone (no bin/goh) rebuilt goh
+    # with cargo on its first push -- 6 of this test's 10 s, and nothing this test is about.
+    def push() -> subprocess.CompletedProcess:
+        return _push(repo, checkout, tmp_path, GOH_BIN=str(native_goh_path()))
+
+    quiet = [commit_gate(), push(), publish_gate()]
     assert [r.returncode for r in quiet] == [0, 0, 0], [r.stdout + r.stderr for r in quiet]
     assert not any("NOT committed" in r.stdout + r.stderr for r in quiet), quiet
 
@@ -286,7 +291,7 @@ def test_uncommitted_gate_source_is_named_by_every_gate_that_runs_one(tmp_path: 
     victim.write_text(victim.read_text(encoding="utf-8") + "# planted\n")
 
     # Named, by path, and the run still happened: the gate is not refused.
-    for run, phrase in ((commit_gate(), "NOT committed"), (_push(repo, checkout, tmp_path), None)):
+    for run, phrase in ((commit_gate(), "NOT committed"), (push(), None)):
         out = run.stdout + run.stderr
         assert "check_no_emoji.py" in out, out
         if phrase is not None:
