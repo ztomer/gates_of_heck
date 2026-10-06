@@ -250,7 +250,9 @@ pub(crate) fn run_child(
         );
     }
     let mut cmd = Command::new("python3");
-    cmd.arg(&runner);
+    // `-S`: the runner is stdlib-only, and `site` (sitecustomize, every editable install's finder)
+    // was ~5 ms of a ~30 ms step wrapper, on every delegated step (2026-10-06).
+    cmd.arg("-S").arg(&runner);
     // `ceiling()` is `None` only for an explicit opt-out, and bounded_run's own default would
     // then apply anyway -- so pass the DEFAULT rather than the opt-out, and let the step line be
     // the only place the opt-out is visible. Two places deciding one bound is how they disagree.

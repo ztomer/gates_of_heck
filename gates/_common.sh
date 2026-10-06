@@ -189,7 +189,7 @@ goh_step() {
     # (`failing step's output was withheld`), which is the contract this line exists to keep.
     if [ "$_goh_limit" -gt 0 ]; then
         step "$label (≤${_goh_limit}s)"
-        if python3 "$GOH_ROOT/lib/bounded_run.py" --timeout "$_goh_limit" \
+        if python3 -S "$GOH_ROOT/lib/bounded_run.py" --timeout "$_goh_limit" \
                 --grace "${GOH_STEP_GRACE:-5}" --label "$label" -- "$@" >"$GOH_LOG" 2>&1; then
             _goh_rc=0
         else

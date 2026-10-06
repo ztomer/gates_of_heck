@@ -34,10 +34,11 @@ if __name__ == "__main__":  # C4: run HEAD's copy, not the shared working tree (
         pass
     del _sys.path[0]
 
-import json
 import os
 import sys
-from collections import defaultdict
+
+# json and collections load where they are used: `record` is on every gate step's path
+# (lib/bounded_run.py), and a no-op record must not pay for an encoder it never calls.
 
 ENV = "GOH_TIMINGS"
 PARENT_ENV = "GOH_TIMINGS_PARENT"
@@ -61,6 +62,8 @@ def record(label: str, ms: float, rc: int, tier: str, cache: str = "") -> None:
     }
     if cache:
         row["cache"] = cache
+    import json
+
     line = (json.dumps(row, ensure_ascii=False) + "\n").encode("utf-8")[:_MAX_LINE]
     try:
         fd = os.open(path, os.O_WRONLY | os.O_APPEND | os.O_CREAT, 0o644)
@@ -82,6 +85,8 @@ def child_env(label: str) -> dict[str, str] | None:
 
 
 def load(path: str) -> list[dict]:
+    import json
+
     rows = []
     with open(path, encoding="utf-8") as fh:
         for line in fh:
@@ -103,6 +108,8 @@ def report(rows: list[dict], top: int = 15) -> str:
         where = os.path.basename(r.get("cwd", "")) or "."
         hit = f" [{r['cache']}]" if r.get("cache") else ""
         out.append(f"{r['ms'] / 1000:8.2f} s  rc={r['rc']:<3} {where:<20} {r['label']}{hit}")
+    from collections import defaultdict
+
     sums: dict[str, list[float]] = defaultdict(list)
     for r in rows:
         sums[r["label"]].append(r["ms"])

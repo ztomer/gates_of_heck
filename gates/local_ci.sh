@@ -242,7 +242,7 @@ run_step() {
     # started with `&`, which forks a subshell for the function, and a TERM to that subshell ended it
     # without reaching the wrapper -- so the step's sweep never ran. Exec'd, $! IS the wrapper.
     # shellcheck disable=SC2086  # a command STRING is the feature here; see the header
-    exec python3 "$GOH_ROOT/lib/orphan_canary.py" wrap "${args[@]}" -- bash -c "$cmd" </dev/null
+    exec python3 -S "$GOH_ROOT/lib/orphan_canary.py" wrap "${args[@]}" -- bash -c "$cmd" </dev/null
 }
 
 # THE SCHEDULER (BACKLOG P2). GOH_CI_JOBS=N runs up to N steps at once; unset is 1, i.e. serial,

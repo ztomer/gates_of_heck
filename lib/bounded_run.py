@@ -44,14 +44,11 @@ if __name__ == "__main__":  # C4: run HEAD's copy, not the shared working tree (
         pass
     del _sys.path[0]
 
-import argparse
 import os
 import signal
 import subprocess
 import sys
-import threading
 import time
-from dataclasses import dataclass
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import killtree  # noqa: E402  # beside this file
@@ -143,7 +140,6 @@ def _sweep(pgid: int | None, pid: int, grace: float) -> list[int]:
     return sorted(before - set(_descendants(pid)) - {pid})
 
 
-@dataclass(frozen=True)
 class Outcome:
     """What a bounded run ended up as.
 
@@ -156,9 +152,32 @@ class Outcome:
     after reparenting is a rumour.
     """
 
-    code: int
-    descendants: list[int]
-    timed_out: bool
+    __slots__ = ("code", "descendants", "timed_out")
+
+    def __init__(self, code: int, descendants: list[int], timed_out: bool) -> None:
+        # A plain class, not a frozen dataclass: `dataclasses` pulls in `inspect`, ~4 ms of import on
+        # every gate step's path (2026-10-06). Immutability is kept by __setattr__ below.
+        object.__setattr__(self, "code", code)
+        object.__setattr__(self, "descendants", descendants)
+        object.__setattr__(self, "timed_out", timed_out)
+
+    def __setattr__(self, name: str, value: object) -> None:
+        raise AttributeError(f"Outcome is immutable: {name}")
+
+    def __eq__(self, other: object) -> bool:
+        return isinstance(other, Outcome) and (
+            self.code,
+            self.descendants,
+            self.timed_out,
+        ) == (other.code, other.descendants, other.timed_out)
+
+    __hash__ = None
+
+    def __repr__(self) -> str:
+        return (
+            f"Outcome(code={self.code!r}, descendants={self.descendants!r}, "
+            f"timed_out={self.timed_out!r})"
+        )
 
     @property
     def survivors(self) -> list[int]:
@@ -226,6 +245,8 @@ def _raise_stopped(sig: int, _frame: object) -> None:
 
 
 def _trap_stops() -> dict[int, object]:
+    import threading  # only here: the CLI path is always the main thread, and pays nothing
+
     if threading.current_thread() is not threading.main_thread():
         return {}  # only the main thread may set handlers; a pool worker's caller owns them
     previous = {}
@@ -372,7 +393,39 @@ def run(argv: list[str], timeout: int, grace: float, label: str, output=None) ->
     return run_step(argv, timeout, grace, label, output).code
 
 
+def _fast_args(argv: list[str]) -> tuple[int, int, str, list[str]] | None:
+    """The one shape every gate passes -- `--timeout N [--grace N] [--label L] -- CMD...`, each flag
+    once, N a positive integer -- parsed without `argparse`, whose import is ~5 ms on every gate
+    step's path. Anything else returns None and goes through argparse, so every error message
+    and every unusual spelling behaves exactly as before."""
+    seen: dict[str, str] = {}
+    i = 0
+    while i < len(argv) and argv[i] != "--":
+        flag = argv[i]
+        if flag not in ("--timeout", "--grace", "--label") or flag in seen or i + 1 >= len(argv):
+            return None
+        seen[flag] = argv[i + 1]
+        i += 2
+    rest = argv[i + 1 :]
+    if i >= len(argv) or not rest:
+        return None
+    try:
+        timeout = int(seen.get("--timeout", str(DEFAULT_TIMEOUT)))
+        grace = int(seen.get("--grace", str(DEFAULT_GRACE)))
+    except ValueError:
+        return None
+    if timeout <= 0 or not all(seen.get(f, "0").isdigit() for f in ("--timeout", "--grace")):
+        return None
+    return timeout, grace, seen.get("--label", ""), rest
+
+
 def main(argv=None) -> int:
+    fast = _fast_args(sys.argv[1:] if argv is None else list(argv))
+    if fast is not None:
+        timeout, grace, label, rest = fast
+        return run(rest, timeout, grace, label)
+    import argparse  # the unusual spelling, an error, or --help: the full parser
+
     ap = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )
