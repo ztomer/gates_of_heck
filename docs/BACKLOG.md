@@ -138,13 +138,18 @@ behind the same tests the shell passes today, red-proven, one at a time:
       7 -> 6 git calls and one spawn fewer. What a key still costs is `git status` + `write-tree`
       (any implementation pays them) and one hash spawn; a native port would save ~1 spawn a
       key for a byte-exact reimplementation of the identity. Declined until a profile says so.
-- [ ] 4C.3 `local_ci.sh`'s step runner native: parallel steps under the canary, logs, proven
-      records -- one process instead of a bash + a Python wrapper per step.
-- [ ] 4C.4 Re-measure the baselines above; port further only where a measurement says so.
+- [x] 4C.3 `local_ci.sh`'s step runner native: parallel steps under the canary, logs, proven
+      records -- one process instead of a bash + a Python wrapper per step. MEASURED AND DECLINED:
+      the canary is ~43 ms a step and a push runs ~5 local_ci steps -- ~0.2 s a push for a port
+      of the canary's attribution and snapshot. Re-open if a consumer's step count says so.
+- [x] 4C.4 Re-measured after 4C: a step wrapper 4.3 ms (native), a `goh.sh` child 34 ms (resolved
+      once), a warm proven hit 6 git calls, the suite 57-62 s (RAM-disk temp, load 9-15).
 
 **Phase 5 — known limits worth closing**
-- [ ] 5.1 The C2 writer hook also judges a skill edited through Bash (a PostToolUse `Bash` matcher
-      that fires when the command names the corpus root).
+- [x] 5.1 The C2 writer hook also judges a skill edited through Bash (a PostToolUse `Bash` matcher
+      that fires when the command names the corpus root). Done (`COMMIT`): the matcher is
+      `Write|Edit|MultiEdit|Bash`, and a builtin-only fast path exits before Python on an event
+      that does not name the corpus's directory -- 7 ms on an unrelated Bash command.
 
 **Phase 5B — the suite cannot drift back** (owner, 2026-10-06: after every optimisation above)
 - [ ] 5B.1 Design and land the mechanism that keeps a NEW test from undoing this work, the way
@@ -349,8 +354,8 @@ history; it hands the design over, then 1 lands here test-first (red-proven both
 
 ### The C2 writer hook and the commit gate
 
-- `hooks/claude/skill_edit.sh` fires on Claude Code's Write/Edit/MultiEdit only: a skill edited
-  through Bash (`sed`, a heredoc) is judged at the next commit or push, not at once.
+- `hooks/claude/skill_edit.sh` judges a Bash command that NAMES the corpus (5.1); one that writes
+  it without naming it (a `cd` there first, a variable) is judged at the next commit or push.
 - The commit gate is the STAGED structural layer by design; the suite runs at push. Two commits
   of 2026-10-06 broke the suite and were caught there (`8322984`): run the suite before committing
   gate or test changes.

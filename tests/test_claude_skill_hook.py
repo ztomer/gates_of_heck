@@ -99,3 +99,35 @@ def test_the_installed_settings_point_at_this_hook() -> None:
     hooks = json.loads(settings.read_text()).get("hooks", {}).get("PostToolUse", [])
     commands = [h.get("command", "") for entry in hooks for h in entry.get("hooks", [])]
     assert any("hooks/claude/skill_edit.sh" in c for c in commands), commands
+
+
+def _fire_bash(goh: Path, corpus: Path, command: str):
+    event = {
+        "tool_name": "Bash",
+        "tool_input": {"command": command},
+        "hook_event_name": "PostToolUse",
+    }
+    return subprocess.run(
+        ["/bin/bash", str(HOOK)],
+        input=json.dumps(event),
+        capture_output=True,
+        text=True,
+        env=hermetic_env(GOH_BIN=str(goh), GOH_SKILLS_ROOT=str(corpus)),
+        timeout=60,
+    )
+
+
+def test_a_skill_edited_through_bash_is_judged_too(goh: Path, tmp_path: Path) -> None:
+    """A heredoc or a sed into the corpus is a write the Write/Edit matcher never saw (roadmap 5.1):
+    a Bash command that names the corpus root runs the check."""
+    corpus = _corpus(tmp_path / "skills")
+    (corpus / "skill-4" / "SKILL.md").write_text("no frontmatter at all\n")
+    r = _fire_bash(goh, corpus, f"cat >> {corpus}/skill-4/SKILL.md <<'X'\nmore\nX")
+    assert r.returncode == 2 and "skill-4" in r.stderr, r.stdout + r.stderr
+
+
+def test_a_bash_command_elsewhere_runs_nothing(goh: Path, tmp_path: Path) -> None:
+    corpus = _corpus(tmp_path / "skills")
+    (corpus / "skill-4" / "SKILL.md").write_text("no frontmatter at all\n")
+    r = _fire_bash(goh, corpus, "ls /tmp && echo done")
+    assert (r.returncode, r.stderr) == (0, ""), r.stderr
