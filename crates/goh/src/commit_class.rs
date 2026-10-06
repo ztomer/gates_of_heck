@@ -147,8 +147,12 @@ fn none_with_search(siblings: &str) -> bool {
 }
 
 /// Why this message cannot be committed; empty when it can.
+///
+/// `placement`: the trailers must be git's trailer block -- true for a new commit; false for a REPLAY of history, which is judged by
+/// the rule its commits were written under (a `Key:` line anywhere), so the replay shows what the
+/// class rule says rather than one placement line per pre-port commit.
 #[must_use]
-pub fn refusals(message: &str, earlier: &[String]) -> Vec<String> {
+pub fn refusals(message: &str, earlier: &[String], placement: bool) -> Vec<String> {
     let lines = cleaned(message);
     let Some(subject) = lines.iter().find(|l| !l.is_empty()) else {
         return Vec::new();
@@ -156,11 +160,17 @@ pub fn refusals(message: &str, earlier: &[String]) -> Vec<String> {
     if !gated(subject) {
         return Vec::new();
     }
-    let t = final_trailers(&lines);
     let loose = loose_trailers(&lines);
+    let t = if placement {
+        final_trailers(&lines)
+    } else {
+        let mut both = loose.clone();
+        both.extend(final_trailers(&lines));
+        both
+    };
     let mut out = Vec::new();
     for key in KEYS {
-        if !t.contains_key(key) && loose.contains_key(key) {
+        if placement && !t.contains_key(key) && loose.contains_key(key) {
             out.push(format!(
                 "`{key}:` sits above the message's last paragraph, where git does not read \
                  trailers: move it into the trailer block, beside Co-Authored-By"
@@ -258,7 +268,7 @@ pub fn check_file(path: &str) -> i32 {
         eprintln!("✗ [commit_class] cannot read the message file {path}");
         return 2;
     };
-    let why = refusals(&message, &classes_from("HEAD"));
+    let why = refusals(&message, &classes_from("HEAD"), true);
     for line in &why {
         eprintln!("✗ [commit_class] commit refused: {line}");
     }
@@ -279,7 +289,7 @@ pub fn check_range(revs: &[String], report: bool) -> i32 {
         .unwrap_or_default();
     let mut bad = 0;
     for (sha, body) in &commits {
-        let why = refusals(body, &earlier);
+        let why = refusals(body, &earlier, !report);
         if !why.is_empty() {
             bad += 1;
             let mark = if report { "⚠" } else { "✗" };

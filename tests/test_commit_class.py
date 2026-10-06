@@ -194,3 +194,18 @@ def test_the_push_is_untouched_without_the_key(tmp_path: Path) -> None:
     r = _push_over(tmp_path, "")
     assert r.returncode == 0, r.stdout + r.stderr
     assert "commit_class" not in r.stdout + r.stderr
+
+
+def test_a_replay_judges_history_by_the_rule_it_was_written_under(repo: Path) -> None:
+    """`--report` replays history: a pre-port commit's trailers above Co-Authored-By are read, so
+    the replay shows the class rule's verdicts, not one placement line per old commit."""
+    base = git(repo, "rev-parse", "HEAD").strip()
+    _commit(repo, OK_FIX + "\nCo-Authored-By: x <x@x>\n")  # placement only: the pre-port form
+    bad = _commit(repo, "fix: no trailers at all")
+    r = subprocess.run(
+        [str(native_goh_path()), "commit-class", "--report", "--range", f"{base}..HEAD"],
+        cwd=repo, capture_output=True, text=True, env=hermetic_env(drop_git=True),
+    )  # fmt: skip
+    assert r.returncode == 0, r.stderr
+    assert bad[:8] in r.stderr and "last paragraph" not in r.stderr, r.stderr
+    assert "2 commit(s), 1 the rule refuses" in r.stdout, r.stdout

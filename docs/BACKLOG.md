@@ -220,6 +220,9 @@ behind the same tests the shell passes today, red-proven, one at a time:
       2026-10-09: ZoneWM's real-history data (one class has repeated twice; the repeat detector
       has never fired on a real commit) -- replay it with `goh commit-class --report --range`
       and calibrate the 0.5 similarity before the release. Then ZoneWM drops its repo-local copy.
+      Preliminary replay (2026-10-06, `214f0cf7..HEAD`): 18 commits, 0 refused -- agreeing with
+      ZoneWM's own count; `--report` now judges history by the placement rule it was written
+      under, so a replay shows class verdicts, not 14 placement lines.
 
 **Phase 9 — release**
 - [ ] 9.1 v0.24.0: version bump, CHANGELOG `Unreleased` -> `v0.24.0`, full gate green, tag, push,
