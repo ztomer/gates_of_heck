@@ -119,14 +119,23 @@ goh_require_current() {
         return 0
     fi
     # HEAD's version, never the working tree's: one session's uncommitted bump refused every
-    # consumer's commit (2026-10-05, tests/test_binary_currency.py).
-    want="$({ git -C "$GOH_ROOT" show HEAD:Cargo.toml 2>/dev/null || cat "$manifest"; } | grep -m1 '^version = ' | cut -d'"' -f2)"
+    # consumer's commit (2026-10-05, tests/test_binary_currency.py). EXCEPT under GOH_LIVE=1, where
+    # the run's subject IS the working tree -- its gates, and its binary (goh_live_binary, or one
+    # named by GOH_BIN): an uncommitted version bump read as "behind" there and refused the bump's
+    # own verification (the v0.23.0 release, 2026-10-06). Consumers never run GOH_LIVE.
+    local where="at HEAD"
+    if [ -n "${GOH_LIVE:-}" ]; then
+        where="in the working tree (GOH_LIVE)"
+        want="$(grep -m1 '^version = ' "$manifest" | cut -d'"' -f2)"
+    else
+        want="$({ git -C "$GOH_ROOT" show HEAD:Cargo.toml 2>/dev/null || cat "$manifest"; } | grep -m1 '^version = ' | cut -d'"' -f2)"
+    fi
     got="$("$bin" --version 2>/dev/null | awk '{print $NF}')"
     if [ -n "$want" ] && [ "$got" = "$want" ]; then
         return 0
     fi
     err "the goh binary serving this gate is BEHIND the source: $bin reports ${got:-nothing},"
-    err "  $manifest declares $want at HEAD. A step added since that build is NOT running, and"
+    err "  $manifest declares $want $where. A step added since that build is NOT running, and"
     err "  a step that does not run prints exactly what a step that passes prints."
     err "  Rebuild it:  $GOH_ROOT/scripts/build-goh.sh    (or ./install.sh, which calls it)"
     return 1

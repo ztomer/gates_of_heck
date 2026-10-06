@@ -29,7 +29,7 @@ import re
 import shutil
 import subprocess
 from pathlib import Path
-from conftest import hermetic_env
+from conftest import hermetic_env, native_goh_path
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -262,7 +262,9 @@ def test_uncommitted_gate_source_is_named_by_every_gate_that_runs_one(tmp_path: 
             cwd=repo,
             capture_output=True,
             text=True,
-            env=hermetic_env(GOH_DIR=str(checkout), GOH_BIN=str(ROOT / "bin" / "goh")),
+            # The session's build of TODAY's tree, as the checkout is: `ROOT/bin/goh` is HEAD's
+            # build (C3), so it disagreed with this checkout whenever a version bump was uncommitted.
+            env=hermetic_env(GOH_DIR=str(checkout), GOH_BIN=str(native_goh_path())),
         )
 
     def publish_gate() -> subprocess.CompletedProcess:
