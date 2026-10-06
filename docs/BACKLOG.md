@@ -70,7 +70,7 @@ Status: `[ ]` open, `[x]` done (with the commit), `[~]` handed off.
       checker's own source, the `goh` binary's stamp. Every way a hit can be wrong, tested BEFORE
       the cache: a committed edit in a scope, an uncommitted one, a new checker binary, an edited
       checker, an estate repo gone (never a hit: "unavailable"), a corrupt entry. Exit: a repeat run
-      with nothing moved materialises nothing (counted), and phase 6.2's sigma. Done (`COMMIT`):
+      with nothing moved materialises nothing (counted), and phase 6.2's sigma. Done (`3ede8a3`):
       a warm run 1.49 -> 0.17 s, sys 3.86 -> 0.43 s; eleven ways-to-lie tests.
 - [x] 2.3 `lib/orphan_canary.py` sheds `dataclasses` and loads `json` only to write a snapshot
       (`6f6110a`). A/B per step, 25 interleaved: 44.3 -> 43.0 ms -- measured, and smaller than
