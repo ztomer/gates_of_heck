@@ -145,6 +145,20 @@ TTL. Rationale and the full key: the header of `gates/proven.sh`.
 
 `rust_gate.sh` proves its three groups separately (`gates/_rust_proven.sh`): the crate group and coverage on the crate's own inputs (`goh rust-scope`), the repo-wide scans on the whole tree. The same `GOH_PROVEN` / `GOH_PROVEN_TTL_S` apply; every `GOH_*` in the environment is part of each group's key.
 
+## Per-file verdict cache (BACKLOG P4)
+
+A ported checker whose verdict is a pure function of one file and its tools records it per file
+(`crates/goh/src/verdict_cache.rs`), keyed on EVERY input: today `goh shell-lint`, keyed on both
+tools' identities (path, size, mtime), the flags, `SHELLCHECK_OPTS`, every `.shellcheckrc`
+shellcheck would read, the display path and the file's sha256. An unreadable or malformed record
+is a miss; a run whose shellcheck output cannot be attributed to one file records nothing.
+Measured on media_server: `structural --full` 1.9 s -> 0.30 s warm.
+
+| Key | Default | Meaning |
+|---|---|---|
+| `GOH_VERDICT_CACHE` | unset (on) | `0` disables it: every file is judged by the tools, nothing is recorded. |
+| `GOH_VERDICT_DIR` | `~/.cache/goh/verdicts` | Where the records live, one directory per checker. |
+
 ## Release kit (`tools/release-kit/release.sh`)
 
 | Key | Default | Meaning |

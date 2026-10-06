@@ -80,7 +80,7 @@ What the table says, in four classes:
 | media_server push, one crate changed, warm | 197 s | re-measure (P1a/b/d landed) | <= 30 s (needs P3) |
 | media_server push, everything changed, warm | 177 s (P0) | re-measure | <= 90 s |
 | any consumer's pre-commit structural layer | ~1 s | re-measure | <= 0.4 s |
-| `structural.sh --full`, media_server | 4.9 s | 2.4 s (P1e) | <= 1.5 s (needs the unreaped-spawn port, N1) |
+| `structural.sh --full`, media_server | 4.9 s | 2.4 s (P1e); 1.9 s (N1 ports); **0.30 s warm** (P4 shell-lint cache) | <= 1.5 s -- MET |
 | this repo's suite, `-n 8` | 94.4 s | re-measure | <= 60 s |
 
 ### P0 — the instrument -- LANDED `79e1732`
@@ -196,7 +196,13 @@ HEAD:<path>`, so computing a key stays O(scope), not O(files).
   and calls its `main(argv)` in-process, with stdout captured per checker and `SystemExit` caught.
   That removes ~20 interpreter starts (~44 ms bare, more with imports) per structural run. The
   parity table is the pin; a checker that keeps module-global state is a finding to fix there.
-- **Per-blob verdict cache (`GOH_CACHE`)** for checkers that are pure per file (emoji, conflict
+- **Per-blob verdict cache -- LANDED for shell lint** (`crates/goh/src/verdict_cache.rs`,
+  `GOH_VERDICT_CACHE` / `GOH_VERDICT_DIR`): media_server `structural --full` 1.9 -> 0.30 s warm.
+  Every key input red-proven (`tests/test_shell_lint_verdict_cache.py`: an edit of the same size,
+  a `.shellcheckrc`, `SHELLCHECK_OPTS`, the shellcheck binary, a corrupt record, the switch).
+  The other pure-per-file checkers were already native and cost 10-45 ms each; re-open when one
+  measures over 100 ms. The original plan, kept for that day:
+  **Per-blob verdict cache (`GOH_CACHE`)** for checkers that are pure per file (emoji, conflict
   markers, secrets, home paths, version provenance). Key = checker source hash + its config keys +
   blob sha; value = findings. Its re-open condition ("a run dominated by scan time") is now met at
   full scope: 3.6 of 4.9 s in media_server. **Not** for unreaped-spawn, whose guard types are judged

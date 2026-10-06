@@ -49,6 +49,7 @@ pub mod steps;
 pub mod steps_delegated;
 pub mod structural;
 pub mod unreaped;
+pub mod verdict_cache;
 pub mod versrc;
 
 use std::path::PathBuf;
