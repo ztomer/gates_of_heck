@@ -19,6 +19,7 @@ created.
 """
 
 from pathlib import Path
+import contextlib
 import os
 import signal
 import re
@@ -228,8 +229,7 @@ def test_a_step_that_exits_on_its_own_is_not_charged_a_ceiling_poll(monkeypatch)
     )
 
 
-def test_the_exit_sample_reads_the_process_table_once(monkeypatch) -> None:
-    """Group membership and ancestry come from ONE `ps`, not two: each spawn is per step, per gate."""
+def _ps_calls(monkeypatch, script: str) -> tuple[int, list[int]]:
     calls: list[list[str]] = []
     real = bounded_run.subprocess.run
 
@@ -238,10 +238,28 @@ def test_the_exit_sample_reads_the_process_table_once(monkeypatch) -> None:
         return real(argv, *args, **kwargs)
 
     monkeypatch.setattr(bounded_run.subprocess, "run", counting)
-    bounded_run.run_step(
-        ["/bin/sh", "-c", "exit 0"], 30, 1, "fast step", output=bounded_run.DEVNULL_SENTINEL
+    outcome = bounded_run.run_step(
+        ["/bin/sh", "-c", script], 30, 1, "fast step", output=bounded_run.DEVNULL_SENTINEL
     )
-    assert sum(1 for argv in calls if argv[0] == "ps") == 1, calls
+    return sum(1 for argv in calls if argv[0] == "ps"), outcome.descendants
+
+
+def test_a_step_that_leaves_nothing_never_reads_the_process_table(monkeypatch) -> None:
+    """The exit sample asks the step's GROUP first -- `killpg(pgid, 0)`, one syscall -- and reads the
+    process table only when something is still in it. The table was read after EVERY step: a `ps`
+    of every process on the machine (15.7 ms over 1141 of them, 2026-10-06), per step, per gate,
+    in every consumer, and kernel work of the kind that serializes across concurrent sessions
+    (tools/session_bench.py)."""
+    assert _ps_calls(monkeypatch, "exit 0") == (0, [])
+
+
+def test_a_step_that_leaves_something_reads_the_table_once(monkeypatch) -> None:
+    """Group membership and ancestry come from ONE `ps`, not two: each spawn is per step, per gate."""
+    reads, left = _ps_calls(monkeypatch, "/bin/sleep 3 & exit 0")
+    for pid in left:  # the leak this test made, by the pids the sample named
+        with contextlib.suppress(ProcessLookupError):
+            os.kill(pid, signal.SIGKILL)
+    assert reads == 1 and left, (reads, left)
 
 
 def test_a_command_that_does_not_exist_is_127_not_a_silent_pass() -> None:

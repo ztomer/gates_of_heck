@@ -184,6 +184,18 @@ def group_members(pgid: int, table: list[tuple[int, int, int]] | None = None) ->
     return [pid for pid, _, group in rows if group == pgid and pid != pgid]
 
 
+def _group_empty(pgid: int) -> bool:
+    """True when no process is left in `pgid`: `killpg(pgid, 0)` fails with ESRCH. EPERM means a
+    member exists that is not ours to signal -- not empty."""
+    try:
+        os.killpg(pgid, 0)
+    except ProcessLookupError:
+        return True
+    except PermissionError:
+        return False
+    return False
+
+
 def _alive(pid: int) -> bool:
     try:
         os.kill(pid, 0)
@@ -306,6 +318,11 @@ def _run_step(
         timed_out = False
         # Sampled HERE, at exit, by PROCESS GROUP rather than by ancestry: a leaked child has already
         # been reparented to init, so the walk below finds nothing where the group still finds it.
+        if pgid is not None and _group_empty(pgid):
+            # The common case, asked in ONE syscall: nothing is left in the group, so there is
+            # nothing to name and no `ps` of the whole machine to read (2026-10-06: 15.7 ms per step
+            # over 1141 processes -- kernel work of the kind that serializes across sessions).
+            return Outcome(code=proc.returncode or 0, descendants=[], timed_out=False)
         table = _process_table()
         left = [
             p for p in (group_members(pgid, table) if pgid is not None else []) if p != proc.pid
