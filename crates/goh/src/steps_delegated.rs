@@ -14,36 +14,7 @@
 //! step that runs in exactly one of the two, which is how a gate ends up
 //! present in the source and absent from every push.
 
-use crate::gatesrc;
 use crate::step_report::delegated;
-
-#[must_use]
-pub fn step_shell(
-    repo: &std::path::Path,
-    cfg: &gatesrc::Gatesrc,
-    checks: &std::path::Path,
-    staged: bool,
-) -> Option<i32> {
-    // 6. Bash is the most-edited language under these gates.
-    let label = if staged {
-        "shell lint (staged)"
-    } else {
-        "shell lint"
-    };
-    let mut args = vec!["check_shell_lint.sh".to_owned()];
-    if staged {
-        args.push("--staged".to_owned());
-    }
-    if !cfg.exclude.is_empty() {
-        args.push("--exclude".to_owned());
-        args.push(cfg.exclude.clone());
-    }
-    let code = delegated(checks, repo, label, "bash", &args);
-    if code != 0 {
-        return Some(code);
-    }
-    None
-}
 
 #[must_use]
 pub fn step_full_only(

@@ -41,6 +41,7 @@ pub mod screen;
 pub mod screen_mask;
 pub mod screen_shapes;
 pub mod secrets;
+pub mod shell_lint;
 pub mod skills;
 pub mod skills_audit;
 pub mod step_report;
@@ -188,6 +189,16 @@ enum Commands {
         /// Machine-readable output.
         #[arg(long)]
         json: bool,
+    },
+    /// Fail on a shell file that does not parse or that shellcheck errors on
+    /// (native port of `check_shell_lint.sh`).
+    ShellLint {
+        /// Regex on repo-relative paths to skip (`GOH_EXCLUDE`).
+        #[arg(long, default_value = "")]
+        exclude: String,
+        /// The staged blobs, not the worktree.
+        #[arg(long)]
+        staged: bool,
     },
     /// Fail when the repo's Python is not ruff-formatted (native port of
     /// `check_python_formatted`).
@@ -373,6 +384,7 @@ fn main() {
             staged,
             json,
         } => provenance::run_command(&root, baseline.as_deref(), staged, json),
+        Commands::ShellLint { exclude, staged } => shell_lint::run_command(staged, &exclude),
         Commands::PythonFormatted { trees, staged } => pyformat::run_command(&trees, staged),
         Commands::CredentialUrls {
             root,

@@ -219,6 +219,8 @@ def test_rust_test_code_spawns_git_only_through_the_testkit():
         "crates/goh/src/claims/derive.rs": 1,
         # credential-urls: `git config` / `rev-parse` of THIS repo, the hook's GIT_* honoured
         "crates/goh/src/credurls/mod.rs": 1,
+        # shell-lint: ls-files / diff --cached / checkout-index of THIS repo, GIT_* honoured
+        "crates/goh/src/shell_lint.rs": 2,
     }
     found = {}
     for path in sorted((REPO_ROOT / "crates").rglob("*.rs")):

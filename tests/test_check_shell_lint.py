@@ -13,22 +13,32 @@ import shutil
 import subprocess
 from pathlib import Path
 
+import pytest
+
 from conftest import REPO_ROOT, stage, write
+import tier_kit
+from tier_kit import both_tiers, run_tiered  # noqa: F401  # both_tiers: a fixture
 
 CHECK = "checks/check_shell_lint.sh"
 
 
+pytestmark = pytest.mark.usefixtures("both_tiers")
+
+
 def run_lint(repo: Path, *args: str, env: dict | None = None) -> subprocess.CompletedProcess:
+    """The checker over `repo`, on the current tier (the bash checker, or `goh shell-lint`)."""
     merged = dict(os.environ)
     if env:
         merged.update(env)
-    return subprocess.run(
-        ["/bin/bash", str(REPO_ROOT / CHECK), *args],
-        cwd=repo,
-        capture_output=True,
-        text=True,
-        env=merged,
-    )
+    if tier_kit._TIER["name"] == "python":
+        return subprocess.run(
+            ["/bin/bash", str(REPO_ROOT / CHECK), *args],
+            cwd=repo,
+            capture_output=True,
+            text=True,
+            env=merged,
+        )
+    return run_tiered(repo, CHECK, "shell-lint", *args, env=merged)
 
 
 def test_clean_script_passes(repo):

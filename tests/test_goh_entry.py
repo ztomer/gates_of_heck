@@ -67,3 +67,36 @@ def test_no_gate_script_resolves_the_binary_itself() -> None:
         and any(pattern.search(line.split("#", 1)[0]) for line in p.read_text().splitlines())
     ]
     assert offenders == [], f"resolve through gates/_goh_bin.sh: {offenders}"
+
+
+def test_every_dispatched_check_names_a_real_reference_and_a_real_subcommand(goh: Path) -> None:
+    """A row in goh.sh's table is two promises: a native subcommand `goh <check>` exists, and the
+    reference file a fallback runs exists. Each Phase N1 port adds a row, and a row naming a
+    subcommand the binary lacks makes goh.sh exec into "unrecognized subcommand" -- a check that
+    looks available and is not."""
+    text = ENTRY.read_text(encoding="utf-8")
+    table = text[text.index('case "$check" in') : text.index("esac")]
+    rows = re.findall(r'^\s*([\w-]+)\)\s+python_file="([^"]+)"', table, re.M)
+    assert len(rows) >= 18, rows
+    python_only = {"deps", "empty-assert"}
+    for check, ref in rows:
+        assert (ROOT / ref).is_file(), (check, ref)
+        if check in python_only:
+            continue
+        r = subprocess.run([str(goh), check, "--help"], capture_output=True, text=True)
+        assert r.returncode == 0, (check, r.stderr)
+
+
+def test_a_bash_reference_falls_back_to_bash(tmp_path: Path) -> None:
+    """`shell-lint`'s reference is `check_shell_lint.sh`; the fallback ran it under python3."""
+    subprocess.run(["git", "init", "-q", str(tmp_path)], check=True)
+    env = {k: v for k, v in os.environ.items() if k != "GOH_BIN"}
+    r = subprocess.run(
+        ["bash", str(ENTRY), "shell-lint"],
+        capture_output=True,
+        text=True,
+        cwd=tmp_path,
+        env={**env, "GOH_NO_NATIVE": "1"},
+    )
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert "[shell_lint]" in r.stdout + r.stderr, r.stdout + r.stderr

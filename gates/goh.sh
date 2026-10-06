@@ -43,6 +43,7 @@ case "$check" in
     lock-version) python_file="checks/check_lock_version.py" ;;
     credential-urls) python_file="checks/check_no_credential_urls.py" ;;
     python-formatted) python_file="checks/check_python_formatted.py" ;;
+    shell-lint) python_file="checks/check_shell_lint.sh" ;;
     *) echo "✗ goh.sh: unknown check '$check'" >&2; exit 2 ;;
 esac
 
@@ -97,6 +98,10 @@ if [ -n "$needs_python" ]; then
 elif [ -n "$goh_native_why" ]; then
     echo "· goh.sh: $goh_native_why — running $python_file" >&2
 fi
+# The reference's own interpreter: a `.sh` port's reference is a bash script (`shell-lint`).
+case "$python_file" in
+    *.sh) exec bash "$ROOT/$python_file" "$@" ;;
+esac
 exec python3 "$ROOT/$python_file" "$@"
 exit
 } # parse-guard

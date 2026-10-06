@@ -4,10 +4,9 @@
 
 use crate::{
     blobs, claims, credurls, gatesrc, gitutil, goh_root, killname, lockver, mdlinks, prefetch,
-    provenance, pyformat, scope, steps, steps_delegated, unreaped,
+    provenance, pyformat, scope, shell_lint, steps, steps_delegated, unreaped,
 };
 
-/// Delegate the structural gate to `gates/structural.sh`. Returns its exit code.
 /// `goh structural`: every step, fail-fast, delegated checkers started together.
 #[must_use]
 pub fn run(staged: bool, full: bool) -> i32 {
@@ -52,7 +51,6 @@ pub fn run(staged: bool, full: bool) -> i32 {
     // `_drain` joins any still running on every return path below, the red ones included.
     let _drain = prefetch::Drain;
     let specs = prefetch::collect(|| {
-        let _ = steps_delegated::step_shell(&repo, &cfg, &checks, staged);
         let _ = steps_delegated::step_full_only(&repo, &checks, staged);
     });
     prefetch::start(specs, &checks, &repo);
@@ -72,7 +70,7 @@ pub fn run(staged: bool, full: bool) -> i32 {
     if let Some(code) = steps::step_corpus(&repo, &cfg, staged) {
         return code;
     }
-    if let Some(code) = steps_delegated::step_shell(&repo, &cfg, &checks, staged) {
+    if let Some(code) = shell_lint::step(&cfg, staged) {
         return code;
     }
     if let Some(code) = steps::step_secrets(&repo, &files, &cfg, staged) {

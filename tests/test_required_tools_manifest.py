@@ -35,6 +35,8 @@ SITES = [
     re.compile(r"if not shutil\.which\(\"([\w.-]+)\"\)"),
     re.compile(r"python3 -m ([\w.-]+) --version >/dev/null 2>&1 \\\s*\n\s*\|\|"),
     re.compile(r"cargo ([\w-]+) --version >/dev/null 2>&1 \\\s*\n\s*\|\|"),
+    # The native ports (Phase N1) refuse through one helper, `pyformat::on_path("tool")`.
+    re.compile(r"\bon_path\(\"([\w.-]+)\"\)"),
 ]
 
 
@@ -50,7 +52,12 @@ def _manifest() -> list[dict]:
 
 def _scanned() -> set[tuple[str, str]]:
     found = set()
-    for base, pattern in (("gates", "*.sh"), ("checks", "*.sh"), ("checks", "*.py")):
+    for base, pattern in (
+        ("gates", "*.sh"),
+        ("checks", "*.sh"),
+        ("checks", "*.py"),
+        ("crates/goh/src", "**/*.rs"),
+    ):
         for path in sorted((ROOT / base).glob(pattern)):
             if path.name.startswith("."):
                 continue  # a scratch copy, not a gate
@@ -58,7 +65,7 @@ def _scanned() -> set[tuple[str, str]]:
             text = "\n".join(
                 ln
                 for ln in path.read_text(errors="replace").splitlines()
-                if not ln.lstrip().startswith("#")
+                if not ln.lstrip().startswith(("#", "//"))
             )
             rel = path.relative_to(ROOT).as_posix()
             for rx in SITES:

@@ -270,7 +270,9 @@ order, never the reverse:
   it spawns ruff itself, so `crates/goh/src/bounded.rs` gives native spawns what `bounded_run`
   gives delegated ones -- a ceiling, a process-group kill, bounded pipe drains (a kill of the
   leader alone hung the run on its child's pipe, measured). Identical on every local repo at
-  both scopes. Next: `check_md_links`, `check_python_formatted` (spawns ruff either way),
+  both scopes. **`check_shell_lint.sh` LANDED** as `goh shell-lint` (`crates/goh/src/shell_lint.rs`;
+  `required_tools`' site scan now reads the native `on_path("tool")` shape too). The native
+  structural tier delegates nothing per file any more -- only the two `--full` sweeps. Next: `check_md_links`, `check_python_formatted` (spawns ruff either way),
   `check_lock_version`, `check_no_credential_urls`, `check_shell_lint.sh` (spawns shellcheck), and
   the gate-side Python (`check_dep_currency`, `check_lints_optin`'s twin, `lcov_merge`). Each port
   lands parity-pinned against the Python it replaces and red-proven both ways, as Phase 3 did.

@@ -28,7 +28,8 @@ fn ruff(root: &Path, args: &[&str], input: Option<Vec<u8>>) -> Result<(i32, Stri
     Ok((ran.code.unwrap_or(1), text.trim().to_owned()))
 }
 
-fn on_path(tool: &str) -> bool {
+/// Is `tool` an executable on `PATH` (`shutil.which`)?
+pub(crate) fn on_path(tool: &str) -> bool {
     std::env::var_os("PATH").is_some_and(|paths| {
         std::env::split_paths(&paths).any(|d| {
             let p = d.join(tool);
