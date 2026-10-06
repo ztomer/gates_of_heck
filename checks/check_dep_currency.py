@@ -86,7 +86,7 @@ from pathlib import Path
 
 @dataclass
 class Finding:
-    severity: str  # "pinned-below-graph" | "major-behind" | "minor-behind"
+    severity: str  # "pinned-below-graph" | "major-not-in-ratchet" | "major-behind" | "minor-behind"
     name: str
     detail: str
     where: str
@@ -220,8 +220,16 @@ def run(root: Path, offline: bool, ratchet: set[str] | None) -> Report:
     if not any("unreachable" in n for n in notes):
         rep.checked_currency = True
     if ratchet is not None:
+        # A major the ratchet has not triaged is FATAL -- the ratchet's whole contract. It read
+        # `f["name"]` off a dataclass (a TypeError the moment one was behind) and added findings
+        # no exit code looked at.
         rep.findings.extend(
-            Finding("major-behind", f["name"], "not in the ratchet", f["where"])
+            Finding(
+                "major-not-in-ratchet",
+                f.name,
+                f"{f.detail}; not in the ratchet -- triage it there, or move it",
+                f.where,
+            )
             for f in list(rep.findings)
             if f.severity == "major-behind" and f.name not in ratchet
         )
@@ -359,7 +367,9 @@ def main(argv: list[str] | None = None) -> int:
             print(f"· {msg}")
         return 0
 
-    fatal = [f for f in rep.findings if f.severity == "pinned-below-graph"]
+    fatal = [
+        f for f in rep.findings if f.severity in ("pinned-below-graph", "major-not-in-ratchet")
+    ]
     majors = [f for f in rep.findings if f.severity == "major-behind"]
     minors = [f for f in rep.findings if f.severity == "minor-behind"]
     if args.strict:

@@ -243,3 +243,44 @@ def test_manifests_are_counted_even_with_no_dependencies(tmp_path):
 
 def test_the_probe_passes():
     assert mod._probe() == 0
+
+
+def _crates_io(tmp_path: Path, **latest: str) -> dict:
+    """crates.io answers through the cache seam, so the currency arm runs with no network."""
+    import json as _json
+    import os
+    import time
+
+    cache = tmp_path / "crates-io"
+    cache.mkdir(exist_ok=True)
+    for name, version in latest.items():
+        (cache / f"{name}.json").write_text(
+            _json.dumps({"fetched": time.time(), "version": version})
+        )
+    return dict(os.environ, GOH_CRATES_IO_CACHE=str(cache))
+
+
+@pytest.mark.parametrize(("triaged", "want"), [("", 1), ("ureq\n", 0)])
+def test_the_ratchet_fails_an_untriaged_major_and_passes_a_triaged_one(tmp_path, triaged, want):
+    """`--ratchet FILE` is "fail on any major NOT listed in FILE". It read `f["name"]` off a
+    dataclass -- a TypeError the moment a major was behind -- and the findings it meant to add
+    were not fatal anyway (found porting it, Phase N1)."""
+    import subprocess
+
+    root = repo(
+        tmp_path / "r",
+        '[package]\nname = "x"\nversion = "0.1.0"\n\n[dependencies]\nureq = "2"\n',
+        'version = 3\n\n[[package]]\nname = "ureq"\nversion = "2.12.1"\n',
+    )
+    ratchet = tmp_path / "ratchet.txt"
+    ratchet.write_text(triaged)
+    r = subprocess.run(
+        [sys.executable, str(CHECK), "--root", str(root), "--ratchet", str(ratchet)],
+        capture_output=True,
+        text=True,
+        env=_crates_io(tmp_path, ureq="3.4.2"),
+    )
+    assert "Traceback" not in r.stderr, r.stderr
+    assert r.returncode == want, r.stdout + r.stderr
+    if want:
+        assert "ureq" in r.stdout and "ratchet" in r.stdout, r.stdout
