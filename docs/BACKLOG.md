@@ -77,6 +77,13 @@ Status: `[ ]` open, `[x]` done (with the commit), `[~]` handed off.
       expected: the rest is the C4 stanza's `subprocess` import (needed anyway) and argparse, ~25 ms
       per push across local_ci's five steps; a second hand parser is not worth that.
 
+- [ ] 2.5 (beyond the targets, owner 2026-10-06) the self-proofs: `gate self-proofs still pass`
+      (`check_probes_pass`) is now the largest step of this repo's `structural --full` (2.5 s of
+      ~3.6; `check_empty_scope --probe` alone 1.8 s). A self-proof's verdict depends on CODE, not
+      on the tree: cache each probe's pass on the gates export's commit (an immutable tree, C4) or,
+      under GOH_LIVE, the probe's source and everything it imports, plus the binary and GOH_*.
+      Ways to lie tested first, as 2.4.
+
 **Phase 3 — coverage without the clean rebuild** (details: "Open -- found", 3)
 - [x] 3.1 An incremental instrumented build whose report counts ONLY the current build's objects;
       each way it can lie (a deleted/renamed test binary, a previous build's profile) tested first;
@@ -86,16 +93,19 @@ Status: `[ ]` open, `[x]` done (with the commit), `[~]` handed off.
 
 **Phase 4 — the suite <= 60 s** (details: "Open -- found", 5)
 - [ ] 4.1 A shared empty-repo template for the 113 test sites that `git init` (~500 spawns).
-- [ ] 4.2 The `release` xdist group deleted (its reason is gone since `31bbb81`).
+- [x] 4.2 The `release` xdist group deleted (its reason is gone since `31bbb81`); three suite
+      runs green after it, 62-65 s (`COMMIT`).
 - [ ] 4.3 Fewer processes per test in the heaviest files (`test_gate_environment.py`,
       `test_hook_git_env.py`, `test_rust_gate_scoped_cache.py`, `test_proven.py`) without
       weakening what each proves.
 
-- [ ] 4.4 (owner's question, 2026-10-06) a RAM disk for the suite's temp files: MEASURED, 4
+- [x] 4.4 (owner's question, 2026-10-06) a RAM disk for the suite's temp files: MEASURED, 4
       interleaved pairs, `TMPDIR` on a 2 GB APFS RAM disk vs the SSD: 59/65/59/60 s vs 71/64/64/67 s,
       ~8% faster. It does NOTHING for cross-session contention (git fixture churn, 8 sessions: 5.0 s
       on both, sigma 0.09 on both) -- that is kernel metadata, not I/O. `TMPDIR` already selects it;
-      whether to keep 2 GB of RAM mounted for it is the owner's call (asked).
+      whether to keep 2 GB of RAM mounted for it is the owner's call (asked). Owner: use one for
+      this campaign's compiles and goh runs (also spares the SSD), ejected at its end -- not a
+      standing setup.
 
 **Phase 5 — known limits worth closing**
 - [ ] 5.1 The C2 writer hook also judges a skill edited through Bash (a PostToolUse `Bash` matcher

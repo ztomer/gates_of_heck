@@ -23,7 +23,6 @@ import pytest
 # Same xdist group as test_release_kit.py (see its comment): the
 # mid-run-edit test below corrupts release.sh on purpose; anything running a
 # real release at the same moment must be on this worker, after it.
-pytestmark = pytest.mark.xdist_group("release")
 
 from conftest import FAKE_GH, REPO_ROOT
 

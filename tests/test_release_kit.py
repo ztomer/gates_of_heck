@@ -24,7 +24,6 @@ from pathlib import Path
 import pytest
 
 # Same xdist group as test_release_hardening.py: its mid-run-edit test corrupts release.sh on purpose.
-pytestmark = pytest.mark.xdist_group("release")
 
 from conftest import FAKE_GH, REPO_ROOT
 

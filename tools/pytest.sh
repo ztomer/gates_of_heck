@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # The gates_of_heck test suite: parallel under pytest-xdist when installed.
 # --dist loadgroup: unmarked tests spread by load; files sharing an
-# xdist_group marker stay on ONE worker. That grouping was made for the release
-# tests, when test_release_hardening.py corrupted the real release.sh MID-RUN
-# and test_release_kit.py, on another worker, read the corrupted bytes; it now
-# rewrites a copy (no test moves the checkout: tests/_tree_guard.py).
+# xdist_group marker stay on ONE worker -- for SHARED state only. The release
+# tests' group went 2026-10-06: test_release_hardening.py rewrites a copy of
+# release.sh now, not the real one, and tests/_tree_guard.py fails any run in
+# which a test moves the checkout.
 # -n 12: measured 2026-10-06 against 8 (67/79 s vs 74/96 s, interleaved) once
 # the spawn cuts landed; 16 was a draw with 12 under load, and leaves no
 # headroom for the other sessions sharing the box.
