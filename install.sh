@@ -15,6 +15,10 @@
 #   2. git config core.hooksPath .githooks
 #   3. writes starter tools/gate.sh and .gatesrc if absent (never overwrites)
 #
+# It REFUSES, before writing anything, a repo whose hooks another manager owns
+# (.git/hooks with live hooks, another core.hooksPath, .pre-commit-config.yaml):
+# core.hooksPath would silently stop them. --replace-hooks takes them over.
+#
 # It does NOT copy the checkers: hooks delegate to this checkout at runtime,
 # so a fix here reaches every installed repo with zero re-install steps.
 { # parse-guard -- bash reads this group whole before running it (tests/test_parse_guard.py)
@@ -24,15 +28,19 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 . "$HERE/tui/lib.sh"
 
 FORCE=0
-if [ "${1:-}" = "-h" ] || [ "${1:-}" = "--help" ]; then
-    sed -n '2,20p' "$HERE/install.sh"
-    echo "--force overwrites even locally modified hooks."
-    exit 0
-fi
-if [ "${1:-}" = "--force" ]; then
-    FORCE=1
-    shift
-fi
+REPLACE=0
+while [ $# -gt 0 ]; do
+    case "$1" in
+        -h|--help)
+            sed -n '2,20p' "$HERE/install.sh"
+            echo "--force overwrites even locally modified hooks."
+            echo "--replace-hooks takes over from hooks another manager owns (named first)."
+            exit 0 ;;
+        --force) FORCE=1; shift ;;
+        --replace-hooks) REPLACE=1; shift ;;
+        *) break ;;
+    esac
+done
 
 target="${1:-$PWD}"
 mkdir -p "$target"
@@ -40,6 +48,35 @@ target="$(cd "$target" && pwd)"
 
 git -C "$target" rev-parse --show-toplevel >/dev/null 2>&1 \
     || die "$target is not inside a git repo"
+
+# HOOKS ANOTHER MANAGER OWNS ARE NEVER SILENTLY BYPASSED (zinc, 2026-10-06). Setting
+# core.hooksPath makes git stop running .git/hooks -- the pre-commit framework's home -- and a
+# different hooksPath belongs to husky or a repo's own runner. zinc went from gated to ungated
+# while this script said "installed". So this is asked BEFORE anything is written, and the answer
+# is a refusal naming what would stop running, unless --replace-hooks says to take them over.
+# tests/test_install_foreign_hooks.py
+foreign=""
+current="$(git -C "$target" config core.hooksPath 2>/dev/null || true)"
+if [ -n "$current" ] && [ "$current" != ".githooks" ]; then
+    foreign="$foreign core.hooksPath=$current"
+elif [ -z "$current" ]; then
+    common="$(cd "$target" && git rev-parse --path-format=absolute --git-common-dir)"
+    for h in "$common"/hooks/*; do
+        [ -f "$h" ] && [ -x "$h" ] || continue
+        case "$h" in *.sample) continue ;; esac
+        foreign="$foreign .git/hooks/$(basename "$h")"
+    done
+fi
+[ -f "$target/.pre-commit-config.yaml" ] && foreign="$foreign .pre-commit-config.yaml"
+if [ -n "$foreign" ]; then
+    if [ "$REPLACE" -ne 1 ]; then
+        err "install: $target already has hooks another manager owns:$foreign"
+        err "  core.hooksPath=.githooks would stop git running them -- nothing written"
+        err "  wire gates_of_heck into that manager instead, or pass --replace-hooks to take them over"
+        exit 1
+    fi
+    warn "install: --replace-hooks: these stop running:$foreign"
+fi
 
 # shellcheck source=gates/_hash.sh
 . "$HERE/gates/_hash.sh"
