@@ -223,6 +223,9 @@ def test_rust_test_code_spawns_git_only_through_the_testkit():
         "crates/goh/src/shell_lint.rs": 2,
         # tag-version: rev-parse / ls-tree / show of the repo being PUSHED, GIT_* honoured
         "crates/goh/src/tagver.rs": 1,
+        # the proven cache's key: status / write-tree / cat-file of THIS repo, GIT_INDEX_FILE honoured
+        # (in a pre-commit hook it names the index being committed -- the tree to key on)
+        "crates/goh/src/proven.rs": 2,
     }
     found = {}
     for path in sorted((REPO_ROOT / "crates").rglob("*.rs")):

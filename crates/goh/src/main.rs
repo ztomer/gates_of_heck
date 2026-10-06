@@ -35,6 +35,7 @@ pub mod mdtext;
 pub mod noallow;
 pub mod platform;
 pub mod prefetch;
+pub mod proven;
 pub mod provenance;
 pub mod pyformat;
 pub mod pyjson;
@@ -124,6 +125,17 @@ fn run_core(command: Commands) -> i32 {
             label,
             command,
         }),
+        Commands::Proven { action } => match action {
+            cli::ProvenAction::Key { step, entries } => proven::key(&step, &entries),
+            cli::ProvenAction::Lookup { key, step, ttl } => proven::lookup(&key, &step, ttl),
+            cli::ProvenAction::Record {
+                key,
+                tree,
+                step,
+                label,
+                ttl,
+            } => proven::record(&key, &tree, &step, &label, ttl),
+        },
         Commands::Step {
             timeout,
             grace,

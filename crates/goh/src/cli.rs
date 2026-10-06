@@ -92,6 +92,11 @@ pub enum Commands {
         #[arg(last = true)]
         command: Vec<String>,
     },
+    /// The proven-step cache's key, lookup and record, in-process (`gates/_proven.sh` delegates).
+    Proven {
+        #[command(subcommand)]
+        action: ProvenAction,
+    },
     /// Run the structural gate (every repo, any language).
     Structural {
         /// Staged files only (pre-commit scope, fast).
@@ -376,5 +381,22 @@ pub enum Commands {
         /// Ratchet baseline path, repo-relative (like `GOH_LINE_BASELINE`).
         #[arg(long)]
         baseline: Option<String>,
+    },
+}
+
+/// `goh proven` actions (gates/_proven.sh's hot path).
+#[derive(Debug, Subcommand)]
+pub enum ProvenAction {
+    /// `KEY TREE` for STEP; with ENTRIES, the scoped key. The identity's live half is on stdin.
+    Key { step: String, entries: Vec<String> },
+    /// `AGE LABEL` when a record of KEY, made for STEP, is younger than TTL seconds.
+    Lookup { key: String, step: String, ttl: u64 },
+    /// Record KEY for STEP (its TREE, by LABEL), then prune what is older than TTL seconds.
+    Record {
+        key: String,
+        tree: String,
+        step: String,
+        label: String,
+        ttl: u64,
     },
 }

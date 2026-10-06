@@ -211,11 +211,22 @@ _proven_identity_live() {
     done
 }
 
+# The native half (`goh proven`, crates/goh/src/proven.rs): the same bytes in-process, so a key or
+# record from either side is the other's (tests/test_proven_native.py). Taken when the gate resolved
+# its binary and -- for a key -- the identity memo is this directory's own.
+_proven_native_key() {
+    [ -x "${GOH_RESOLVED_BIN:-}" ] && [ "${GOH_PROVEN_IDENTITY_FOR:-}" = "$(_proven_memo_key)" ]
+}
+
 # proven_key <step> — prints "<key> <tree>", or returns 1 when there is no key: the cache is
 # off, this is no git repo, or the working tree is not a tree git can name.
 proven_key() {
     local tree key
     [ "${PROVEN_ON:-1}" = 1 ] || return 1
+    if _proven_native_key; then
+        _proven_identity_live | "$GOH_RESOLVED_BIN" proven key "$1"
+        return
+    fi
     tree="$(proven_tree)" && [ -n "$tree" ] || return 1
     key="$({ printf 'proven v1\ntree %s\nstep %s\n' "$tree" "$1"; proven_identity; } \
         | hash_hex /dev/stdin)" && [ -n "$key" ] || return 1
@@ -231,6 +242,10 @@ proven_scoped_key() {
     local step="$1" tree objs key e; shift
     [ "${PROVEN_ON:-1}" = 1 ] || return 1
     [ "$#" -gt 0 ] || return 1
+    if _proven_native_key; then
+        _proven_identity_live | "$GOH_RESOLVED_BIN" proven key "$step" "$@"
+        return
+    fi
     tree="$(proven_tree)" && [ -n "$tree" ] || return 1
     objs="$(for e in "$@"; do
                 if [ "$e" = . ]; then printf '%s\n' "$tree"; else printf '%s:%s\n' "$tree" "$e"; fi
@@ -256,6 +271,10 @@ proven_dir() {
 # for this exact step string; prints "<age> <label>" (age human-readable, label the recorder's).
 proven_lookup() {
     local dir f epoch="" by="" step="" line now age
+    if [ -x "${GOH_RESOLVED_BIN:-}" ]; then
+        "$GOH_RESOLVED_BIN" proven lookup "$1" "$2" "${PROVEN_TTL:-86400}"
+        return
+    fi
     dir="$(proven_dir)" || return 1
     f="$dir/$1"
     [ -f "$f" ] || return 1
@@ -287,6 +306,10 @@ proven_age() {
 # proven_record <key> <tree> <step> <label> — write the record atomically, then prune expired ones.
 proven_record() {
     local dir tmp now f epoch line
+    if [ -x "${GOH_RESOLVED_BIN:-}" ]; then
+        "$GOH_RESOLVED_BIN" proven record "$1" "$2" "$3" "$4" "${PROVEN_TTL:-86400}"
+        return
+    fi
     dir="$(proven_dir)" || return 1
     mkdir -p "$dir" || return 1
     now="$(proven_now)"
