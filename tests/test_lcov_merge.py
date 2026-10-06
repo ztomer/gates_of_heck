@@ -127,3 +127,100 @@ def test_no_parts_at_all_reports_nothing_coverable(tmp_path):
     r = run_merge(pd, floor="90")
     assert r.returncode == 1
     assert "no coverable lines" in r.stdout
+
+
+# ── per-target floors are refused, not ignored (roadmap 1.1, 2026-10-06) ─────
+# `_load_floors` read target floors in both shapes and nothing applied them: a rust repo writing
+# `{"mycrate": 100}` was gated on NOTHING (Rust rule #6, "no inert config that reads like a gate").
+# The rust mode measures one workspace part, so a per-target floor is not measurable there.
+
+
+def _floors_run(tmp_path: Path, floors: dict, *extra: str):
+    import json
+
+    parts = tmp_path / "parts"
+    parts.mkdir()
+    write_part(
+        parts, "part-workspace.info", part(fnda=0, das=((1, 1), (2, 0)))
+    )  # 50%, none forgiven
+    (tmp_path / "floors.json").write_text(json.dumps(floors))
+    return subprocess.run(
+        [
+            sys.executable,
+            str(LCOV_MERGE),
+            *extra,
+            "--floors-json",
+            str(tmp_path / "floors.json"),
+            str(parts),
+        ],
+        capture_output=True,
+        text=True,
+    )
+
+
+def test_a_flat_per_target_floor_is_refused_not_ignored(tmp_path: Path) -> None:
+    r = _floors_run(tmp_path, {"covfix": 100})
+    assert r.returncode == 2, r.stdout + r.stderr
+    assert "covfix" in r.stdout + r.stderr and "per-target" in r.stdout + r.stderr
+
+
+def test_wrapped_target_floors_are_refused_not_ignored(tmp_path: Path) -> None:
+    r = _floors_run(tmp_path, {"targets": {"covfix": 100}, "file_floor": 0}, "--floor", "0")
+    assert r.returncode == 2, r.stdout + r.stderr
+    assert "covfix" in r.stdout + r.stderr
+
+
+def test_a_file_floor_alone_is_still_honoured(tmp_path: Path) -> None:
+    r = _floors_run(tmp_path, {"file_floor": 90})
+    assert r.returncode == 1, r.stdout + r.stderr  # 50% < 90: a real refusal, not a config error
+
+
+def test_an_unreadable_floors_file_is_refused_not_dropped(tmp_path: Path) -> None:
+    """It was a warning and a pass on --floor alone: the per-file check silently fell away
+    (ztools' notes, 2026-10-05; roadmap 1.4)."""
+    parts = tmp_path / "parts"
+    write_part(parts, "part-workspace.info", part())
+    (tmp_path / "floors.json").write_text('{"file_floor": 90, // a comment json cannot read\n}')
+    r = subprocess.run(
+        [
+            sys.executable,
+            str(LCOV_MERGE),
+            "--floor",
+            "0",
+            "--floors-json",
+            str(tmp_path / "floors.json"),
+            str(parts),
+        ],
+        capture_output=True,
+        text=True,
+    )
+    assert r.returncode == 2, r.stdout + r.stderr
+
+
+def test_an_exemption_may_name_its_file_relative_to_the_project(tmp_path: Path) -> None:
+    """lcov's SF is absolute, so an exempt key was valid at ONE checkout path only -- not in a
+    push gate's export, not on another machine (ztools, roadmap 1.3). A key relative to the
+    project root (the merger's working directory) names the same file anywhere."""
+    import json
+
+    proj = tmp_path / "proj"
+    (proj / "src").mkdir(parents=True)
+    parts = proj / "parts"
+    sf = proj / "src" / "driver.rs"
+    sf.write_text("fn x() {}\n")
+    write_part(
+        parts,
+        "part-workspace.info",
+        f"SF:{sf}\nFN:1,_Zx\nFNDA:0,_Zx\nDA:1,0\nDA:2,0\nend_of_record\n",
+    )
+    (proj / "floors.json").write_text(
+        json.dumps({"file_floor": 90, "exempt": {"src/driver.rs": "needs a real browser"}})
+    )
+    r = subprocess.run(
+        [sys.executable, str(LCOV_MERGE), "--floors-json", "floors.json", "parts"],
+        cwd=proj,
+        capture_output=True,
+        text=True,
+    )
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert "stale" not in r.stdout + r.stderr, r.stdout + r.stderr

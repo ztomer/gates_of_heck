@@ -43,8 +43,14 @@ its owner with the evidence and recorded here. Phases run in order; within a pha
 Status: `[ ]` open, `[x]` done (with the commit), `[~]` handed off.
 
 **Phase 1 — correctness: a gate that says more than it does** (details: "Open -- found", 1-2)
-- [ ] 1.1 Rust per-target coverage floors are inert: refuse a floors file whose target floors the
+- [x] 1.1 Rust per-target coverage floors are inert: refuse a floors file whose target floors the
       rust mode cannot apply, naming the key (red-first: `{"covfix": 100}` over 50% passes today).
+      Both shapes refused, exit 2 (`COMMIT`).
+- [x] 1.3 (found by ztools' notes) a rust `exempt` key matched only the ABSOLUTE SF path, so it held
+      at one checkout path and read "stale" in a push gate's export: a key relative to the project
+      now names the same file anywhere (`COMMIT`).
+- [x] 1.4 (same) an unreadable floors file was a warning and a pass on `--floor` alone, the per-file
+      check silently dropped: refused, exit 2 (`COMMIT`).
 - [ ] 1.2 The HEAD export cache is pruned, bounded by count/age; an export in use is never removed
       (test: a gate reading an export survives a prune).
 
@@ -230,6 +236,9 @@ history; it hands the design over, then 1 lands here test-first (red-proven both
   landed in v0.21.0.
 - **antiknob / divoom:** `tools/lock_guard.sh` is redundant with the gate; retire it. CI installs
   from `python3 $GOH_DIR/gates/required_tools.py --repo . --install`.
+- **ztools:** `tools/coverage_floors.jsonc`'s exempt key can be repo-relative now
+  (`rust/src/ztools/twitter/native.rs`), valid in a push export too; its `_note` on inert
+  per-target floors and unreadable files is answered (both refused since v0.24.0).
 - **ztools:** HEAD (`40148ae`) is RED on its own code under clippy 1.99 (72 `assert_is_empty`); its
   hooks differ textually (`install.sh --force` is ztools' call); write `GOH_EXCLUDE='^vendor/'`.
 - **ZoneWM:** `check_probes_pass.py` discovery stays by `check_*` NAME (`input_lock.py --probe` would

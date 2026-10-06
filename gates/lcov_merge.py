@@ -106,21 +106,37 @@ def _load_floors(path):
     try:
         raw = json.load(open(path, encoding="utf-8"))
     except Exception as exc:
+        # REFUSED, not dropped: this returned None and the run went on to pass on --floor alone,
+        # its per-file check silently gone (ztools wrote _note strings instead of comments for
+        # exactly this reason, 2026-10-05).
         print(f"✗ [coverage] cannot read floors file {path}: {exc}", file=sys.stderr)
-        return None
+        return {"refused": True}
     if not isinstance(raw, dict):
-        return None
-    if any(k in raw for k in ("targets", "file_floor", "tolerance", "exempt")):
-        return {
-            "file_floor": float(raw["file_floor"]) if "file_floor" in raw else None,
-            "tolerance": float(raw.get("tolerance", 0.0)),
-            "exempt": dict(raw.get("exempt", {})),
-        }
+        print(f"✗ [coverage] floors file {path} is not a JSON object", file=sys.stderr)
+        return {"refused": True}
+    wrapped = any(k in raw for k in ("targets", "file_floor", "tolerance", "exempt"))
+    targets = (
+        dict(raw.get("targets") or {})
+        if wrapped
+        else {k: v for k, v in raw.items() if isinstance(v, (int, float))}
+    )
+    if targets:
+        # PER-TARGET floors are a swift-mode feature (gates/coverage_swift.py applies them). Here
+        # both shapes were read and NOTHING applied them -- a rust repo writing {"mycrate": 100}
+        # was gated on nothing (2026-10-06). The rust mode measures one workspace part, so a
+        # per-target floor is not measurable: refuse, naming them, rather than look like a gate.
+        names = ", ".join(sorted(targets))
+        print(
+            f"✗ [coverage] {path}: per-target floors ({names}) cannot be applied in the rust "
+            "mode -- it measures the workspace as one part. Use --floor N, or file_floor for "
+            "per-file floors.",
+            file=sys.stderr,
+        )
+        return {"refused": True}
     return {
-        "file_floor": None,
-        "tolerance": 0.0,
-        "exempt": {},
-        "targets": {k: float(v) for k, v in raw.items() if isinstance(v, (int, float))},
+        "file_floor": float(raw["file_floor"]) if "file_floor" in raw else None,
+        "tolerance": float(raw.get("tolerance", 0.0)),
+        "exempt": dict(raw.get("exempt", {})),
     }
 
 
@@ -196,10 +212,21 @@ def merge(parts, floor, include_re="", floors_json=None, marker_ceiling=None):
 
     pct = round(100.0 * covered / total, 2)
     floors = _load_floors(floors_json) if floors_json else None
+    if floors and floors.get("refused"):
+        return 2
     per_file_fail = False
     if floors and floors.get("file_floor") is not None:
         ff = floors["file_floor"]
-        exempt = floors.get("exempt", {})
+
+        # An exempt key names its file absolutely or RELATIVE TO THE PROJECT (the merger runs in
+        # it): lcov's SF is absolute, so an absolute-only key held at one checkout path and was
+        # "stale" in a push gate's export or on another machine (ztools, 2026-10-05).
+        def _norm(path):
+            return os.path.realpath(
+                path if os.path.isabs(path) else os.path.join(os.getcwd(), path)
+            )
+
+        exempt_by_path = {_norm(k): k for k in floors.get("exempt", {})}
         per_tot = defaultdict(int)
         per_cov = defaultdict(int)
         for (f, ln), cnt in line_best.items():
@@ -213,7 +240,7 @@ def merge(parts, floor, include_re="", floors_json=None, marker_ceiling=None):
             per_cov[f] += cov
         below = []
         for f, tot in per_tot.items():
-            if f in exempt:
+            if _norm(f) in exempt_by_path:
                 continue
             cur = 100.0 * per_cov[f] / tot if tot else 100.0
             if cur + 1e-9 < ff - floors.get("tolerance", 0.0):
@@ -225,7 +252,8 @@ def merge(parts, floor, include_re="", floors_json=None, marker_ceiling=None):
             for f, cov, tot, cur in sorted(below, key=lambda r: r[3]):
                 print(f"    {cur:5.1f}%  {tot - cov:4d} uncovered  {f}", file=sys.stderr)
             per_file_fail = True
-        stale = sorted(set(exempt) - set(per_tot))
+        measured = {_norm(f) for f in per_tot}
+        stale = sorted(k for n, k in exempt_by_path.items() if n not in measured)
         if stale:
             print(f"✗ {len(stale)} exemption(s) stale (file gone).", file=sys.stderr)
             for s in stale:
