@@ -6,7 +6,7 @@
 #   GOH_DIR=~/goh install.sh   # shared checkout lives somewhere else
 #
 # What it does, idempotently:
-#   1. copies hooks/pre-commit + hooks/pre-push into <repo>/.githooks/,
+#   1. copies hooks/pre-commit, pre-push and commit-msg into <repo>/.githooks/,
 #      PROTECTED: the sha256 of each installed hook is recorded in
 #      .githooks/.goh-installed/<name>.sha256, and a reinstall overwrites a
 #      hook only if its current bytes equal the stock copy OR our recorded
@@ -84,7 +84,11 @@ fi
 hooks_dir="$target/.githooks"
 rec_dir="$hooks_dir/.goh-installed"
 mkdir -p "$hooks_dir" "$rec_dir"
-for h in pre-commit pre-push; do
+# Every stock hook is a FILE in hooks/ (hooks/claude/ is a directory, a different kind): the
+# directory is the list, so a new hook is installed without a second place to name it.
+for stock in "$HERE"/hooks/*; do
+    [ -f "$stock" ] || continue
+    h="$(basename "$stock")"
     dst="$hooks_dir/$h"
     stock_hash="$(hash_hex "$HERE/hooks/$h")" \
         || die "no sha256 tool found (need shasum, sha256sum, or cksum -a sha256)"

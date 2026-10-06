@@ -17,6 +17,7 @@ pub mod ceiling;
 pub mod claims;
 pub mod cli;
 pub mod commands;
+pub mod commit_class;
 pub mod credurls;
 pub mod deps;
 pub mod emoji;
@@ -125,6 +126,11 @@ fn run_core(command: Commands) -> i32 {
             label,
             command,
         }),
+        Commands::CommitClass {
+            file,
+            range,
+            report,
+        } => commit_class::run(file.as_deref(), &range, report),
         Commands::Proven { action } => match action {
             cli::ProvenAction::Key { step, entries } => proven::key(&step, &entries),
             cli::ProvenAction::Lookup { key, step, ttl } => proven::lookup(&key, &step, ttl),

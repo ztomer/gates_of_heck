@@ -48,6 +48,75 @@
   one did: the release-hardening test rewrote the real `release.sh`). 94.4 s (v0.20) -> 65.8 s
   under load.
 
+### 7. Correctness: a gate that said more than it did
+
+* **Rust coverage floors that cannot be applied are refused**, exit 2, naming the key: per-target
+  floors the rust mode never applied, and an unreadable floors file (a warning and a pass before,
+  with the per-file check silently dropped). An `exempt` key relative to the project now names the
+  same file in a push export as in the checkout; an absolute one held at one path only.
+* **The HEAD export cache is pruned by last use and bounded in count**; an export used within the
+  hour is never removed (the old prune went by creation time, after a week, unbounded).
+* **A stop can no longer orphan the step it was sent to sweep.** A TERM/INT landing while `Popen`
+  was still returning unwound with nothing to sweep, the step ran on, and the wrapper printed
+  "swept"; a second Ctrl-C abandoned a sweep halfway. `bounded_run.py` holds a stop through both
+  windows; `goh step` registers its listener before it spawns.
+
+### 8. The orchestration native, where shell was the wrong tool
+
+* **`goh step`** -- the ceiling wrapper (own process group, TERM -> grace -> KILL, the leak sample,
+  GOH_TIMINGS): 26-79 ms -> 4.3 ms a step. Its one `unsafe` (the inherited signal disposition,
+  `sigaction`; `killpg`) lives in `crates/goh-sys`, the workspace's only allowlisted unsafe crate.
+* **`goh canary`** runs `local_ci.sh`'s steps: one process instead of a bash and a Python wrapper
+  per step, the canary's contract pinned against both implementations.
+* **`goh proven key|lookup|record`** -- the proven cache in-process, byte-identical keys and the
+  same record format, so either side finds the other's records. The record directory is read
+  from git's layout, not a `rev-parse`: a lookup 19 -> 3 ms.
+* `goh.sh` resolves the binary once per process tree (a child call 78 -> 34 ms); `rust_gate.sh`
+  execs it directly for its four native steps; `rust-scope` lists every package's sources in one
+  git call (mediaops-rs 16 -> 2).
+
+### 9. Caches that skip work only when nothing moved
+
+* **`check_estate_corpus` remembers a verified entry** (keyed on each entry's scope at HEAD and any
+  uncommitted edit under it, the checker, the binary): a warm run 1.49 -> 0.17 s, sys 3.86 ->
+  0.43 s. Eleven ways a hit could lie were tested before the cache existed. Cross-session sigma
+  for `structural --full` 0.45 -> 0.01.
+* **Rust coverage is incremental**: only the profiles are reset, never the build; 29 of 29
+  media_server crates give reports identical to the clean build, 173 -> 76 s.
+
+### 10. The suite cannot drift back
+
+* `tests/_drift_guard.py`: a `cargo` shim refuses a goh build that the caller did not declare
+  (`DRIFT_BUILD_OK=1`), and a test over 60 s fails. `tests/test_suite_drift.py` ratchets `git init`
+  sites per test file and machine-sized pools, and proves both guards red in a child pytest.
+  `--strict-markers`. Their first run found ~75 tests racing a release build under `GOH_LIVE`
+  (now built once, before the workers start) and a shadowed `pytest_configure`.
+* Fixture repos copy a template `.git` (`tests/_fast_git.py`) instead of spawning `git init`.
+  The suite: 94.4 s (v0.20) -> 61-63 s under load 9-11.
+
+### 11. The C2 hook judges a skill edited through Bash
+
+* The matcher is `Write|Edit|MultiEdit|Bash`; a builtin-only fast path exits before Python when the
+  command does not name the corpus -- 7 ms on an unrelated Bash command.
+
+### 12. "Fix the class", asked where it cannot be skipped (opt-in, `GOH_COMMIT_CLASS`)
+
+* **`goh commit-class`**, ported from ZoneWM: a `fix:`/`perf:` commit carries `Class:` and
+  `Siblings:` in its trailer block; a class sharing half its words with two earlier ones carries
+  `Systemic:` or `Filed:` with substance. Run by a new stock `commit-msg` hook and again over the
+  pushed range by `push_gate.sh`, so `--no-verify` does not survive the push.
+
+### 13. Consumers, fixed the day they reported
+
+* **install.sh never silently bypasses hooks another manager owns** (zinc): live hooks in
+  `.git/hooks`, another `core.hooksPath` or a `.pre-commit-config.yaml` refuse the install before
+  anything is written; `--replace-hooks` takes them over, naming what stops running. Every stock
+  hook in `hooks/` is installed -- the directory is the list.
+* **A consumer's own pytest gets the HEAD export** (ztools: 53 of 120 tests refused since
+  v0.22.0): the "test without GOH_LIVE" refusal is scoped to this suite (`GATES_OF_HECK_SUITE`).
+* **`--floors-json` is made absolute before a mode `cd`s into the project**; an `exempt` key is
+  project-relative, now documented.
+
 ## v0.23.0 — the Python checkers are retired; the binary is the only tier _(2026-10-06)_
 
 ### 1. One structural tier: `bin/goh` (Phase N)

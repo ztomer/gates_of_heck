@@ -198,8 +198,15 @@ behind the same tests the shell passes today, red-proven, one at a time:
       items stay in "Downstream" for whoever opens one. The tag notice to servers is 9.1's.
 
 **Phase 8 — the "fix the class" commit gate** (details: its own section)
-- [ ] 8.1 Land ZoneWM's handed-over design here, test-first (red-proven both directions), once its
-      prototype has the real-history data it promised.
+- [~] 8.1 PORTED (2026-10-06): `goh commit-class`, the stock `commit-msg` hook
+      (`gates/commit_msg.sh`) and the pushed-range check in `push_gate.sh`, all under
+      `GOH_COMMIT_CLASS`; ZoneWM's selftest cases plus the hook, the range and the push,
+      red-proven by mutating similarity, the not-ended prefixes, the trailer placement and the
+      push wiring. Changed from the prototype, at its author's suggestion: a new commit's
+      trailers must be git's trailer block (history is still read leniently). OPEN until
+      2026-10-09: ZoneWM's real-history data (one class has repeated twice; the repeat detector
+      has never fired on a real commit) -- replay it with `goh commit-class --report --range`
+      and calibrate the 0.5 similarity before the release. Then ZoneWM drops its repo-local copy.
 
 **Phase 9 — release**
 - [ ] 9.1 v0.24.0: version bump, CHANGELOG `Unreleased` -> `v0.24.0`, full gate green, tag, push,

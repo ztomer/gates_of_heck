@@ -226,6 +226,8 @@ def test_rust_test_code_spawns_git_only_through_the_testkit():
         # the proven cache's key: status / write-tree / cat-file of THIS repo, GIT_INDEX_FILE honoured
         # (in a pre-commit hook it names the index being committed -- the tree to key on)
         "crates/goh/src/proven.rs": 2,
+        # commit-class: `git log` of the repo being committed to / pushed, GIT_* honoured
+        "crates/goh/src/commit_class.rs": 1,
     }
     found = {}
     for path in sorted((REPO_ROOT / "crates").rglob("*.rs")):

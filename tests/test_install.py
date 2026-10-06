@@ -271,8 +271,8 @@ def test_recorded_hash_allows_update_after_a_stock_bump(tmp_path):
     shutil.copy2(REPO_ROOT / "install.sh", src / "install.sh")
     ((src) / "gates").mkdir(exist_ok=True)
     shutil.copy2(REPO_ROOT / "gates" / "_hash.sh", src / "gates" / "_hash.sh")
-    for h in ("pre-commit", "pre-push"):
-        shutil.copy2(REPO_ROOT / "hooks" / h, src / "hooks" / h)
+    for h in (p for p in (REPO_ROOT / "hooks").iterdir() if p.is_file()):
+        shutil.copy2(h, src / "hooks" / h.name)
 
     repo = tmp_path / "proj"
     subprocess.run(["git", "-C", str(repo.parent), "init", "-q", str(repo.name)], check=True)

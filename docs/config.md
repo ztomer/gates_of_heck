@@ -32,6 +32,12 @@ Single schema. CLI flags beat env/.gatesrc where both exist. Unset means
 | `GOH_NO_KILL_BY_NAME` | unset (check skipped) | Set to `1` to run `goh kill-by-name`: no `pkill` or `killall` by name, and no `pgrep`/`pidof` feeding a `kill`, in tracked code and scripts (a `pkill -P`/`-g`/`-s` is owner-scoped and passes). A name matches processes the caller does not own. Survivors go in `kill_by_name_allow.json` at the repo root: one exact line in one file each, with a `reason` and a `status` (`legitimate` or `unreviewed`); a stale entry fails. Opt-in per repo, seeded first. Same `GOH_EXCLUDE`. |
 | `GOH_SKILLS_MAX_WORDS` | `5000` | Word ceiling on each `SKILL.md` — the file that loads on invoke. Oversized skills are ratcheted in `skills_size_baseline.json` beside the corpus: shrink-only, and a stale entry FAILS. |
 
+## Commit messages (`gates/commit_msg.sh` via `hooks/commit-msg`, and `gates/push_gate.sh`)
+
+| Key | Default | Meaning |
+|---|---|---|
+| `GOH_COMMIT_CLASS` | unset (rule off) | Set to `1` to run `goh commit-class` from the stock `commit-msg` hook (`gates/commit_msg.sh`) and again over the pushed range in `push_gate.sh`, so `--no-verify` does not survive the push. A `fix:`/`perf:` commit carries `Class:` (the invariant that broke, as a reusable phrase) and `Siblings:` (the other sites, or `none (<the search>)`) **in git's trailer block** -- the last paragraph, beside Co-Authored-By -- so `%(trailers)` reads them; a Class sharing half its words with two or more earlier classes (the last 400 commits, read leniently) also carries `Systemic:` or `Filed:` with substance (`none`, `n/a`, `tbd`, `-` are refused). Ported from ZoneWM's prototype (roadmap Phase 8). A pushed range with no remote ref to bound it is left to the commit-msg hook, said once. Known limit: `--amend` of a fix counts the commit being amended as an earlier instance. |
+
 ## Disk watch (standalone: `~/Projects/scripts/bin/disk_hygiene.sh`)
 
 NOT a gate since v0.8.0 — a du stat-storm over host trees does not belong

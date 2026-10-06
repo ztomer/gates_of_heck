@@ -259,6 +259,38 @@ elif [ "$tag_rc" -ne 0 ]; then
     exit 1
 fi
 
+# THE COMMIT-CLASS RULE OVER THE PUSHED RANGE (GOH_COMMIT_CLASS, roadmap Phase 8). The commit-msg
+# hook asks at commit time, and `--no-verify` skips it; the push asks again, over every commit
+# the remote does not have yet. Read from .gatesrc by name, in a child, like GOH_EXPORT_KEEP.
+commit_class=""
+if [ -f "$root/.gatesrc" ]; then
+    commit_class="$(bash -c 'set -a; . "$1"; printf %s "${GOH_COMMIT_CLASS-}"' _ \
+        "$root/.gatesrc")" || die "pre-push: cannot read $root/.gatesrc"
+fi
+if [ -n "$commit_class" ]; then
+    class_rc=0
+    while read -r class_ref class_sha _ class_remote; do
+        [ -n "${class_sha:-}" ] && [ "$class_sha" != "$zero" ] || continue
+        class_commit="$(git -C "$root" rev-parse --verify --quiet "${class_sha}^{commit}")" || continue
+        if [ "${class_remote:-$zero}" != "$zero" ] \
+                && git -C "$root" cat-file -e "${class_remote}^{commit}" 2>/dev/null; then
+            class_revs=("$class_remote..$class_commit")
+        elif [ -n "$remote_name" ] \
+                && [ -n "$(git -C "$root" for-each-ref --count=1 "refs/remotes/$remote_name/")" ]; then
+            class_revs=("$class_commit" --not "--remotes=$remote_name")
+        else
+            info "pre-push: commit-class: nothing bounds $class_ref's new commits (no ref of" \
+                "${remote_name:-the remote}); the commit-msg hook judged each one"
+            continue
+        fi
+        (cd "$root" && bash "$tag_check" commit-class --range "${class_revs[@]}") || class_rc=1
+    done <"$refs_file"
+    if [ "$class_rc" -ne 0 ]; then
+        err "pre-push: a pushed fix does not name its class (above) -- nothing pushed"
+        exit 1
+    fi
+fi
+
 gated=0
 # <"$refs_file", NOT stdin: `cat` above drained it, and a while-read on a spent
 # stream is a loop that never runs — a gate that silently gates nothing.

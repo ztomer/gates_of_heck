@@ -92,6 +92,18 @@ pub enum Commands {
         #[arg(last = true)]
         command: Vec<String>,
     },
+    /// A fix or perf commit names its Class and Siblings; a third instance ends the class
+    /// (`gates/commit_msg.sh`, `gates/push_gate.sh`; opt-in by `GOH_COMMIT_CLASS`).
+    CommitClass {
+        /// The message file git hands a commit-msg hook.
+        file: Option<String>,
+        /// Check every commit `git log <REV>...` names instead (the pushed range).
+        #[arg(long, num_args = 1.., allow_hyphen_values = true, conflicts_with = "file")]
+        range: Vec<String>,
+        /// Report what the rule refuses, exit 0 (a replay of history).
+        #[arg(long)]
+        report: bool,
+    },
     /// The proven-step cache's key, lookup and record, in-process (`gates/_proven.sh` delegates).
     Proven {
         #[command(subcommand)]
