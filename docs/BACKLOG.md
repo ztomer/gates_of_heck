@@ -91,6 +91,12 @@ Status: `[ ]` open, `[x]` done (with the commit), `[~]` handed off.
       `test_hook_git_env.py`, `test_rust_gate_scoped_cache.py`, `test_proven.py`) without
       weakening what each proves.
 
+- [ ] 4.4 (owner's question, 2026-10-06) a RAM disk for the suite's temp files: MEASURED, 4
+      interleaved pairs, `TMPDIR` on a 2 GB APFS RAM disk vs the SSD: 59/65/59/60 s vs 71/64/64/67 s,
+      ~8% faster. It does NOTHING for cross-session contention (git fixture churn, 8 sessions: 5.0 s
+      on both, sigma 0.09 on both) -- that is kernel metadata, not I/O. `TMPDIR` already selects it;
+      whether to keep 2 GB of RAM mounted for it is the owner's call (asked).
+
 **Phase 5 — known limits worth closing**
 - [ ] 5.1 The C2 writer hook also judges a skill edited through Bash (a PostToolUse `Bash` matcher
       that fires when the command names the corpus root).
