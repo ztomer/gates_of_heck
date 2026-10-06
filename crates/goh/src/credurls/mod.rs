@@ -110,16 +110,56 @@ fn get_regexp(root: &Path, keys: &str, origin: bool) -> Result<String, String> {
     }
 }
 
-fn read_urls(root: &Path) -> Result<Vec<(String, String)>, String> {
+/// Both key sets from ONE `git config --show-origin --get-regexp`, split by key here: two spawns
+/// were half of this step's 47 ms on a one-file repo (2026-10-06). Any failure falls back to the
+/// two original questions, so a failing git is reported exactly as before.
+/// `(key, url)` pairs, and `(file, key, value)` triples.
+type Urls = Vec<(String, String)>;
+type Values = Vec<(String, String, String)>;
+
+fn read_both(root: &Path) -> Result<(Urls, Values), String> {
+    let joint = format!("{URL_KEYS}|{CONFIG_KEYS}");
+    let Ok(text) = get_regexp(root, &joint, true) else {
+        return Ok((read_urls(root)?, read_values(root)?));
+    };
+    let url_key = regex::Regex::new(URL_KEYS).map_err(|e| e.to_string())?;
+    let (mut urls, mut values) = (Vec::new(), Vec::new());
+    for line in crate::mdtext::splitlines(&text) {
+        let (origin, rest) = line.split_once('\t').unwrap_or((line, ""));
+        let key = rest.split_once(' ').map_or(rest, |(k, _)| k);
+        if url_key.is_match(key) {
+            push_url(&mut urls, rest);
+        } else {
+            push_value(&mut values, root, origin, rest);
+        }
+    }
+    Ok((urls, values))
+}
+
+fn push_url(out: &mut Urls, line: &str) {
+    let Some((key, url)) = line.split_once(' ').filter(|(_, u)| !u.is_empty()) else {
+        return;
+    };
+    if key.to_lowercase().ends_with(".insteadof") {
+        out.push((key.to_owned(), instead_of_base(key)));
+    }
+    out.push((key.to_owned(), url.to_owned()));
+}
+
+fn push_value(out: &mut Values, root: &Path, origin: &str, rest: &str) {
+    let (key, value) = rest.split_once(' ').unwrap_or((rest, ""));
+    let path = realpath(&root.join(origin.strip_prefix("file:").unwrap_or(origin)));
+    out.push((
+        path.to_string_lossy().into_owned(),
+        key.to_owned(),
+        value.to_owned(),
+    ));
+}
+
+fn read_urls(root: &Path) -> Result<Urls, String> {
     let mut out = Vec::new();
     for line in crate::mdtext::splitlines(&get_regexp(root, URL_KEYS, false)?) {
-        let Some((key, url)) = line.split_once(' ').filter(|(_, u)| !u.is_empty()) else {
-            continue;
-        };
-        if key.to_lowercase().ends_with(".insteadof") {
-            out.push((key.to_owned(), instead_of_base(key)));
-        }
-        out.push((key.to_owned(), url.to_owned()));
+        push_url(&mut out, line);
     }
     Ok(out)
 }
@@ -129,22 +169,24 @@ fn realpath(p: &Path) -> PathBuf {
         .unwrap_or_else(|_| std::path::absolute(p).unwrap_or_else(|_| p.to_path_buf()))
 }
 
-fn read_values(root: &Path) -> Result<Vec<(String, String, String)>, String> {
+fn read_values(root: &Path) -> Result<Values, String> {
     let mut out = Vec::new();
     for line in crate::mdtext::splitlines(&get_regexp(root, CONFIG_KEYS, true)?) {
         let (origin, rest) = line.split_once('\t').unwrap_or((line, ""));
-        let (key, value) = rest.split_once(' ').unwrap_or((rest, ""));
-        let path = realpath(&root.join(origin.strip_prefix("file:").unwrap_or(origin)));
-        out.push((
-            path.to_string_lossy().into_owned(),
-            key.to_owned(),
-            value.to_owned(),
-        ));
+        push_value(&mut out, root, origin, rest);
     }
     Ok(out)
 }
 
 fn root_for(root: Option<&str>) -> Result<PathBuf, String> {
+    // The common case, from the process's one cached answer (`gitutil::repo_root`): a work tree's
+    // top level IS a git dir's work tree. Anything else -- an explicit root, a bare repo, no repo --
+    // takes the two questions below, so every failure keeps its exact message.
+    if root.is_none() {
+        if let Some(top) = crate::gitutil::repo_root().filter(|t| !t.is_empty()) {
+            return Ok(realpath(Path::new(&top)));
+        }
+    }
     let cwd = root.map_or_else(
         || std::env::current_dir().unwrap_or_default(),
         PathBuf::from,
@@ -286,7 +328,7 @@ fn run(root: Option<&str>, json: bool) -> (i32, Lines) {
         Err(e) => return fail(e),
     };
     let (repo, urls, values) =
-        match root_for(root).and_then(|r| Ok((read_urls(&r)?, read_values(&r)?, r))) {
+        match root_for(root).and_then(|r| read_both(&r).map(|(u, v)| (u, v, r))) {
             Ok((u, v, r)) => (r, u, v),
             Err(e) => return fail(e),
         };

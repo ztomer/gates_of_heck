@@ -12,17 +12,38 @@ use std::path::Path;
 use std::process::Command;
 
 /// The repo top level, or `None` outside a git checkout.
+///
+/// Asked of git ONCE per working directory per process: a structural run's steps each asked for
+/// themselves, six `rev-parse --show-toplevel` spawns per `--staged` run over the same answer
+/// (2026-10-06; `tests/test_goh_git_spawns.py` is the ratchet). Keyed by the working directory,
+/// so a caller that changes directory asks again.
 #[must_use]
 pub fn repo_root() -> Option<String> {
+    use std::collections::HashMap;
+    use std::sync::{Mutex, OnceLock, PoisonError};
+    static ROOTS: OnceLock<Mutex<HashMap<std::path::PathBuf, Option<String>>>> = OnceLock::new();
+    let cwd = std::env::current_dir().ok()?;
+    let roots = ROOTS.get_or_init(Mutex::default);
+    if let Some(known) = roots
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner)
+        .get(&cwd)
+    {
+        return known.clone();
+    }
     let out = Command::new("git")
         .args(["rev-parse", "--show-toplevel"])
         .output()
         .ok()?;
-    if out.status.success() {
-        Some(String::from_utf8_lossy(&out.stdout).trim().to_owned())
-    } else {
-        None
-    }
+    let top = out
+        .status
+        .success()
+        .then(|| String::from_utf8_lossy(&out.stdout).trim().to_owned());
+    roots
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner)
+        .insert(cwd, top.clone());
+    top
 }
 
 /// Repo-root-relative file list.
