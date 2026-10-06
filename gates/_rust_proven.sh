@@ -16,7 +16,12 @@
 #   * a source reaching outside its crate at run time (`"../`, CARGO_MANIFEST_DIR + `..`) widens
 #     the scope to the whole tree -- `goh rust-scope` sees it;
 #   * after a green crate or coverage group, the compiler's own dep-info is read, and a build that
-#     read any file outside the scope records NOTHING, naming the file;
+#     read any file outside the scope records NOTHING, naming the file. A file INSIDE the
+#     repository is then LEARNED: kept beside the records (scope-extra/), and keyed with the scope
+#     from the next run on, before AND after it runs -- so the run that learns records nothing (the
+#     file was not keyed before it ran) and the next one can. Without this a crate whose build.rs
+#     reads `compose/` ran on every push forever (media_server's vpn-watchdog-rs, 2026-10-06). A
+#     read outside the repository has no git object to key on: never learned, never recorded;
 #   * the inputs are keyed again after the group ran; if they moved, nothing is recorded;
 #   * no native goh, or a scope it cannot name: the group simply runs, uncached, and says so.
 # GOH_PROVEN=0 turns all of it off.
@@ -43,11 +48,33 @@ _rust_scope_init() {
     f="$(mktemp "${TMPDIR:-/tmp}/goh-rust-scope.XXXXXX")"
     if "$goh_native" rust-scope "$cargo_dir" >"$f" 2>"$f.err" && [ -s "$f" ]; then
         RUST_SCOPE_FILE="$f"
+        # What earlier builds of this workspace were seen to read beyond it (see the header).
+        local learned
+        learned="$(_rust_learned_file)" && [ -s "$learned" ] && cat "$learned" >>"$f"
     else
         warn "per-crate proven cache off: $(head -n 1 "$f.err" 2>/dev/null)"
         rm -f "$f"
     fi
     rm -f "$f.err"
+}
+
+# Where this workspace's learned extra inputs live: one file per cargo dir, beside the records.
+_rust_learned_file() {
+    local dir where="${cargo_dir#"$PWD"/}"
+    dir="$(proven_dir)" || return 1
+    printf '%s/scope-extra/%s\n' "$dir" "$(printf 'rust_gate scope-extra v1 %s' "$where" | hash_hex /dev/stdin)"
+}
+
+# _rust_learn <escaped paths...> -- 0 when every one is repo-relative and is now learned.
+_rust_learn() {
+    local learned e
+    for e in "$@"; do
+        case "$e" in /*) return 1 ;; esac
+    done
+    learned="$(_rust_learned_file)" || return 1
+    mkdir -p "$(dirname "$learned")" || return 1
+    { [ -f "$learned" ] && cat "$learned"; printf '%s\n' "$@"; } | LC_ALL=C sort -u >"$learned.tmp.$$" \
+        && mv "$learned.tmp.$$" "$learned"
 }
 
 # The configuration a group's verdict depends on, as one line: every GOH_* in the environment
@@ -89,8 +116,14 @@ rust_proven_group() {
     [ -n "$pkey" ] || return 0
     if [ "$mode" = crate ]; then
         if ! escaped="$("$goh_native" rust-scope "$cargo_dir" --check-depinfo "$RUST_SCOPE_FILE" 2>&1)"; then
-            warn "[rust] $group checks not recorded as proven: the build read files outside the"
-            warn "  crate's scope, so a change there could not invalidate the record: $(printf '%s' "$escaped" | tr '\n' ' ')"
+            # shellcheck disable=SC2086  # one path per line, no spaces: rust-scope prints paths
+            if _rust_learn $escaped; then
+                info "[rust] $group checks not recorded this run: the build read $(printf '%s' "$escaped" | tr '\n' ' ')"
+                info "  outside the crate's scope -- keyed on it from now on, so the next run can record"
+            else
+                warn "[rust] $group checks not recorded as proven: the build read files outside the"
+                warn "  crate's scope, so a change there could not invalidate the record: $(printf '%s' "$escaped" | tr '\n' ' ')"
+            fi
             return 0
         fi
     fi

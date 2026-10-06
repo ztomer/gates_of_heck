@@ -194,32 +194,54 @@ def test_a_path_dependencys_own_test_reads_do_not_widen_its_users(estate: Path) 
     assert _skipped(_gate(estate, "a"), "crate"), "b's own tests widened a's scope"
 
 
-def test_a_build_that_read_outside_the_scope_is_never_recorded(estate: Path) -> None:
-    """No `../` anywhere in the source: the path is built at compile time, so only the compiler's
-    dep-info can see that the crate read `shared.txt`."""
-    (estate / "shared.txt").write_text("v1\n")
-    build = estate / "crates" / "c" / "build.rs"
-    build.write_text(
-        "fn main() {\n"
-        '    let dir = std::path::PathBuf::from(std::env::var("CARGO_MANIFEST_DIR").unwrap_or_default());\n'
-        "    let root = dir\n"
-        "        .parent()\n"
-        "        .and_then(std::path::Path::parent)\n"
-        '        .map(|p| p.join("shared.txt"));\n'
-        "    println!(\n"
-        '        "cargo:rustc-env=SHARED={}",\n'
-        "        root.unwrap_or_default().display()\n"
-        "    );\n"
-        "}\n"
+def _reads_at_compile_time(estate: Path, target: Path) -> None:
+    """crates/c reads `target` through a path built at compile time (no `../` in any source), so
+    only the compiler's dep-info can see it."""
+    (estate / "crates" / "c" / "build.rs").write_text(
+        f'fn main() {{\n    println!("cargo:rustc-env=SHARED={target}");\n}}\n'
     )
     _edit(estate, "crates/c/src/lib.rs", '\npub const S: &str = include_str!(env!("SHARED"));\n')
+
+
+def test_a_build_that_read_a_file_outside_its_scope_is_keyed_on_it_from_then_on(
+    estate: Path,
+) -> None:
+    """The dep-info NAMES what the build read, so the crate is keyed on it rather than run on every
+    push forever: media_server's vpn-watchdog-rs read `compose/` and `docker-compose.yml` and was
+    never recorded at all (2026-10-06). The run that learns records nothing -- those files were
+    not keyed BEFORE it ran, so a change during it would go unseen; the next run keys them before
+    and after, and records. An edit to a learned file re-gates the crate."""
+    (estate / "shared.txt").write_text("v1\n")
+    _reads_at_compile_time(estate, estate / "shared.txt")
+    _git(estate, "add", "-A")
+    first = _gate(estate, "c")
+    out = first.stdout + first.stderr
+    assert first.returncode == 0, out
+    assert "not recorded" in out and "shared.txt" in out and "keyed on" in out, out
+    second = _gate(estate, "c")
+    assert second.returncode == 0 and not _skipped(second, "crate"), second.stdout + second.stderr
+    third = _gate(estate, "c")
+    assert _skipped(third, "crate"), "a learned read was not keyed: the crate never records"
+    _edit(estate, "shared.txt", "v2\n")
+    fourth = _gate(estate, "c")
+    assert fourth.returncode == 0 and not _skipped(fourth, "crate"), (
+        "an edit to a file the build read did not re-gate the crate"
+    )
+
+
+def test_a_read_outside_the_repository_is_never_learned_or_recorded(
+    estate: Path, tmp_path: Path
+) -> None:
+    """A file outside the repository has no git object to key on: nothing is recorded, ever."""
+    outside = tmp_path / "outside.txt"
+    outside.write_text("v1\n")
+    _reads_at_compile_time(estate, outside)
     first = _gate(estate, "c")
     assert first.returncode == 0, first.stdout + first.stderr
-    assert "not recorded as proven" in first.stdout + first.stderr and "shared.txt" in (
-        first.stdout + first.stderr
-    ), first.stdout + first.stderr
-    again = _gate(estate, "c")
-    assert not _skipped(again, "crate"), "a record was written for a build that read outside"
+    assert "not recorded" in first.stdout + first.stderr, first.stdout + first.stderr
+    for _ in range(2):
+        again = _gate(estate, "c")
+        assert not _skipped(again, "crate"), "a record was written for a build that read outside"
 
 
 def test_goh_proven_0_runs_everything(estate: Path) -> None:
