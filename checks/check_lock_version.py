@@ -280,7 +280,11 @@ def main(argv=None) -> int:
         return 2
     spec = os.environ.get("GOH_TAG_VERSION_SOURCES") or " ".join(DEFAULT_SOURCES)
 
-    findings, examined, notes = audit(root, spec)
+    try:
+        findings, examined, notes = audit(root, spec)
+    except ValueError as exc:  # an unknown GOH_TAG_VERSION_SOURCES kind: config, so exit 2
+        err(f"[lock_version] {exc}")
+        return 2
 
     if args.json:
         print(json.dumps({"findings": findings, "examined": examined, "notes": notes}, indent=2))

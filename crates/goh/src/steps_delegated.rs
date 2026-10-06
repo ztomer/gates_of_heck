@@ -45,36 +45,6 @@ pub fn step_shell(
     None
 }
 
-/// A committed `Cargo.lock` must agree with the manifest it was generated from.
-///
-/// `app_updates`, 2026-10-01: a release commit bumped `[workspace.package]
-/// version` to 1.36.0 and shipped a lockfile still saying 1.35.0 for all four
-/// crates. Nothing noticed, and the reason is structural rather than accidental:
-/// any `cargo build` silently rewrites the lockfile, so the working tree heals on
-/// the next compile while the COMMIT -- which is what gets published and what a
-/// clone reproduces -- stays wrong.
-///
-/// The tag checker cannot see it: `check_tag_version.py` reads `Cargo.toml` and
-/// never opens `Cargo.lock`. Same class as the tag incident, one file over.
-///
-/// NOT gated on being a Rust repo. The checker reports absence as a named
-/// non-run, which is what `check_empty_scope.py` requires of it; a guard here
-/// would be a second thing that could be mis-wired.
-#[must_use]
-pub fn step_lock_version(repo: &std::path::Path, checks: &std::path::Path) -> Option<i32> {
-    let code = delegated(
-        checks,
-        repo,
-        "Cargo.lock matches its manifests",
-        "python3",
-        &["check_lock_version.py".to_owned()],
-    );
-    if code != 0 {
-        return Some(code);
-    }
-    None
-}
-
 /// A credential in a git remote URL.
 ///
 /// `check_no_secrets.py` reads TRACKED FILES and `.git/config` is untracked by

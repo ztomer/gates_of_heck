@@ -24,10 +24,15 @@ accidental:
 import json
 import sys
 
+import pytest
+
 from conftest import REPO_ROOT, commit_all, git, write
+from tier_kit import both_tiers, run_tiered  # noqa: F401  # both_tiers: a fixture
 
 sys.path.insert(0, str(REPO_ROOT / "checks"))
 import check_lock_version as gate  # noqa: E402
+
+pytestmark = pytest.mark.usefixtures("both_tiers")
 
 CHECKER = "checks/check_lock_version.py"
 
@@ -69,11 +74,16 @@ def _workspace(repo, manifest_version, lock_version, members=("crates/core", "cr
 
 
 def _run(repo, *args):
-    import subprocess
+    """The checker over `repo`, on the current tier (Python, or `goh lock-version`)."""
+    return run_tiered(repo, CHECKER, "lock-version", *args, python_only=("--probe",))
 
-    return subprocess.run(
-        [sys.executable, str(REPO_ROOT / CHECKER), *args], cwd=repo, capture_output=True, text=True
-    )
+
+def audit(repo):
+    """`(findings, examined, notes)` on the current tier: in process for Python, `--json` for the
+    port -- the same three values, so every audit-level test judges both."""
+    r = _run(repo, "--json")
+    data = json.loads(r.stdout)
+    return data["findings"], data["examined"], data["notes"]
 
 
 # ── the incident, reproduced ──────────────────────────────────────────────────
@@ -109,7 +119,7 @@ def test_every_member_is_named(tmp_path):
     repo = tmp_path / "app"
     repo.mkdir()
     _workspace(repo, "2.0.0", "1.0.0", members=("crates/a", "crates/b", "crates/c", "crates/d"))
-    findings, examined, _ = gate.audit(repo, " ".join(gate.DEFAULT_SOURCES))
+    findings, examined, _ = audit(repo)
     assert examined == 4, examined
     assert len(findings) == 4, findings
     for member in ("app-a", "app-b", "app-c", "app-d"):
@@ -122,7 +132,7 @@ def test_a_lockfile_missing_a_member_is_red(tmp_path):
     repo.mkdir()
     _workspace(repo, "1.0.0", "1.0.0")
     write(repo, "Cargo.lock", '[[package]]\nname = "app-core"\nversion = "1.0.0"\n')
-    findings, _, _ = gate.audit(repo, " ".join(gate.DEFAULT_SOURCES))
+    findings, _, _ = audit(repo)
     assert len(findings) == 1, findings
     assert "no entry for app-cli" in findings[0], findings
 
@@ -133,7 +143,7 @@ def test_a_third_party_version_is_never_this_repos_claim(tmp_path):
     repo = tmp_path / "app"
     repo.mkdir()
     _workspace(repo, "1.0.0", "1.0.0")
-    findings, _, _ = gate.audit(repo, " ".join(gate.DEFAULT_SOURCES))
+    findings, _, _ = audit(repo)
     assert findings == [], findings
 
 
@@ -158,7 +168,7 @@ def test_per_crate_versions_are_a_layout_not_a_defect(tmp_path):
         '[[package]]\nname = "a"\nversion = "1.2.3"\n\n'
         '[[package]]\nname = "b"\nversion = "4.5.6"\n',
     )
-    findings, examined, _ = gate.audit(repo, " ".join(gate.DEFAULT_SOURCES))
+    findings, examined, _ = audit(repo)
     assert findings == [], findings
     assert examined == 2, examined
 
@@ -180,7 +190,7 @@ def test_a_member_at_its_own_version_under_a_workspace_version_is_a_layout(tmp_p
         repo, "crates/vault/Cargo.toml", '[package]\nname = "multitop-vault"\nversion = "0.21.0"\n'
     )
     write(repo, "Cargo.lock", '[[package]]\nname = "multitop-vault"\nversion = "0.21.0"\n')
-    findings, _, _ = gate.audit(repo, " ".join(gate.DEFAULT_SOURCES))
+    findings, _, _ = audit(repo)
     assert findings == [], findings
 
 
@@ -191,7 +201,7 @@ def test_inheritance_is_resolved_not_compared_literally(tmp_path):
     repo = tmp_path / "app"
     repo.mkdir()
     _workspace(repo, "1.36.0", "1.36.0")
-    findings, examined, _ = gate.audit(repo, " ".join(gate.DEFAULT_SOURCES))
+    findings, examined, _ = audit(repo)
     assert findings == [] and examined == 2, (findings, examined)
 
 
@@ -260,7 +270,7 @@ def test_two_release_numbers_at_once_is_red(tmp_path):
     )
     write(repo, "crates/hc/Cargo.toml", '[package]\nname = "healthcheck"\nversion = "1.79.1"\n')
     write(repo, "Cargo.lock", '[[package]]\nname = "healthcheck"\nversion = "1.79.1"\n')
-    findings, _, _ = gate.audit(repo, " ".join(gate.DEFAULT_SOURCES))
+    findings, _, _ = audit(repo)
     assert any("no single answer" in f for f in findings), findings
 
 
@@ -271,7 +281,7 @@ def test_a_stale_lockfile_is_reported_once_not_twice(tmp_path):
     repo.mkdir()
     write(repo, "VERSION", "1.36.0\n")
     _workspace(repo, "1.36.0", "1.35.0")
-    findings, _, _ = gate.audit(repo, " ".join(gate.DEFAULT_SOURCES))
+    findings, _, _ = audit(repo)
     assert len(findings) == 2, findings
     assert sum("1.35.0" in f for f in findings) == 2, findings
 
@@ -305,7 +315,7 @@ def test_zero_compared_is_never_reported_as_agreement(tmp_path):
     repo.mkdir()
     write(repo, "Cargo.toml", "[workspace]\nmembers = []\n")
     write(repo, "Cargo.lock", "version = 4\n")
-    findings, examined, notes = gate.audit(repo, " ".join(gate.DEFAULT_SOURCES))
+    findings, examined, notes = audit(repo)
     assert examined == 0 and not findings and notes
     r = _run(repo)
     assert "OK —" not in r.stdout, r.stdout
@@ -464,3 +474,16 @@ def test_calibration_the_probe_goes_red_when_arm_two_stops(tmp_path):
     )
     assert r.returncode == 1, r.stdout + r.stderr
     assert "per-crate versions" not in r.stdout.split("probe: ")[-1], r.stdout
+
+
+def test_an_unknown_version_source_is_a_usage_error_not_a_traceback(tmp_path, monkeypatch):
+    """`GOH_TAG_VERSION_SOURCES=bogus:x` raised ValueError out of `audit` and the checker died with
+    a traceback, exit 1 -- read by a pipeline as FINDINGS. A config error is exit 2 (found porting
+    this, Phase N1)."""
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _workspace(repo, "1.0.0", "1.0.0")
+    monkeypatch.setenv("GOH_TAG_VERSION_SOURCES", "bogus:x")
+    r = _run(repo)
+    assert r.returncode == 2, r.stdout + r.stderr
+    assert "unknown version source 'bogus:x'" in r.stderr and "Traceback" not in r.stderr, r.stderr

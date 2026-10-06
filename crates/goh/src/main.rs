@@ -20,6 +20,7 @@ pub mod index_view;
 pub mod killname;
 pub mod length;
 pub mod lints;
+pub mod lockver;
 pub mod markers;
 pub mod mdlinks;
 pub mod mdtext;
@@ -42,7 +43,9 @@ pub mod skills_audit;
 pub mod step_report;
 pub mod steps;
 pub mod steps_delegated;
+pub mod structural;
 pub mod unreaped;
+pub mod versrc;
 
 use std::path::PathBuf;
 
@@ -183,6 +186,16 @@ enum Commands {
         #[arg(long)]
         json: bool,
     },
+    /// Fail when `Cargo.lock` disagrees with its manifests (native port of
+    /// `check_lock_version`).
+    LockVersion {
+        /// Repository to read (default: the cwd's repo).
+        #[arg(long)]
+        root: Option<String>,
+        /// Machine-readable output.
+        #[arg(long)]
+        json: bool,
+    },
     /// Fail on a relative markdown link that resolves to no file or no anchor
     /// (native port of `check_md_links`).
     MdLinks {
@@ -310,7 +323,7 @@ fn main() {
             println!("{}", env!("GOH_SOURCE_STAMP"));
             0
         }
-        Commands::Structural { staged, full } => run_structural(staged, full),
+        Commands::Structural { staged, full } => structural::run(staged, full),
         Commands::Markers { staged } => commands::run_markers(staged),
         Commands::Length {
             max,
@@ -336,6 +349,7 @@ fn main() {
             staged,
             json,
         } => provenance::run_command(&root, baseline.as_deref(), staged, json),
+        Commands::LockVersion { root, json } => lockver::run_command(root.as_deref(), json),
         Commands::MdLinks {
             root,
             staged,
@@ -381,116 +395,4 @@ fn main() {
         } => commands::run_ceiling(max, &line_exclude, &unbounded, baseline.as_deref()),
     };
     std::process::exit(code);
-}
-
-/// Delegate the structural gate to `gates/structural.sh`. Returns its exit code.
-fn run_structural(staged: bool, full: bool) -> i32 {
-    let scope = match scope::resolve(staged, full) {
-        Ok(scope) => scope,
-        Err(message) => {
-            eprintln!("✗ {message}");
-            return 2;
-        }
-    };
-    let staged = scope == scope::Scope::Staged;
-    let repo = gatesrc::config_root();
-    let cfg = match gatesrc::load(&repo) {
-        Ok(cfg) => cfg,
-        Err(message) => {
-            eprintln!("✗ structural: {message}");
-            return 2;
-        }
-    };
-    let checks = goh_root().join("checks");
-
-    println!("\n== structural gate ==");
-
-    // One enumeration shared by every native scanner: four separate `git
-    // ls-files` spawns measured ~30 ms of the ~80 ms native total
-    // (2026-09-23). The delegated steps below re-enumerate inside their
-    // own processes until they are ported (Phases 2-3).
-    let files = match gitutil::listed_files(&repo, staged) {
-        Ok(files) => files,
-        Err(message) => {
-            eprintln!("✗ structural: {message}");
-            return 2;
-        }
-    };
-    // ...and at --staged one read of every staged blob, shared by every
-    // native scanner (Phase 3d): it was one `git show` per file PER scanner.
-    if staged {
-        let _cached = blobs::prefetch_staged(&repo, &files);
-    }
-
-    // The delegated checkers start together and report in order (crate::prefetch, BACKLOG P1e);
-    // `_drain` joins any still running on every return path below, the red ones included.
-    let _drain = prefetch::Drain;
-    let specs = prefetch::collect(|| {
-        let _ = steps_delegated::step_shell(&repo, &cfg, &checks, staged);
-        let _ = steps_delegated::step_credential_urls(&repo, &checks);
-        let _ = steps_delegated::step_lock_version(&repo, &checks);
-        let _ = steps_delegated::step_python_formatted(&repo, &cfg, &checks, staged);
-        let _ = steps_delegated::step_full_only(&repo, &checks, staged);
-    });
-    prefetch::start(specs, &checks, &repo);
-
-    if let Some(code) = steps::step_emoji(&repo, &files, &cfg, staged) {
-        return code;
-    }
-    if let Some(code) = steps::step_markers(&repo, &files, staged) {
-        return code;
-    }
-    if let Some(code) = steps::step_length(&repo, &files, &cfg, staged) {
-        return code;
-    }
-    if let Some(code) = steps::step_ceiling(&repo, &files, &cfg, staged) {
-        return code;
-    }
-    if let Some(code) = steps::step_corpus(&repo, &cfg, staged) {
-        return code;
-    }
-    if let Some(code) = steps_delegated::step_shell(&repo, &cfg, &checks, staged) {
-        return code;
-    }
-    if let Some(code) = steps::step_secrets(&repo, &files, &cfg, staged) {
-        return code;
-    }
-    // A credential in a git remote URL, which the step above cannot see: `.git/config` is
-    // untracked. Adjacent to `step_secrets` because it is the same defect class and the same
-    // reasoning about it -- one committed, one not -- so a reader comparing the two steps finds
-    // them adjacent rather than having to know they are related.
-    if let Some(code) = steps_delegated::step_credential_urls(&repo, &checks) {
-        return code;
-    }
-    if let Some(code) = steps::step_home_paths(&repo, &files, &cfg, staged) {
-        return code;
-    }
-    if let Some(code) = provenance::step(&repo, staged) {
-        return code;
-    }
-    if let Some(code) = mdlinks::step(&cfg, staged) {
-        return code;
-    }
-    if let Some(code) = steps_delegated::step_lock_version(&repo, &checks) {
-        return code;
-    }
-    if let Some(code) = steps_delegated::step_python_formatted(&repo, &cfg, &checks, staged) {
-        return code;
-    }
-    if let Some(code) = killname::step(&cfg, staged) {
-        return code;
-    }
-    if let Some(code) = unreaped::step(&cfg, staged) {
-        return code;
-    }
-    if let Some(code) = claims::step_gate(&cfg, staged) {
-        return code;
-    }
-    if let Some(code) = steps_delegated::step_full_only(&repo, &checks, staged) {
-        return code;
-    }
-
-    println!();
-    println!("✓ all structural gates passed");
-    0
 }
