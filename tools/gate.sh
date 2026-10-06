@@ -5,7 +5,8 @@
 #   --full   : pre-push scope — every layer
 { # parse-guard -- bash reads this group whole before running it (tests/test_parse_guard.py)
 set -euo pipefail
-GOH="${GOH_DIR:-${GOH:-$HOME/Projects/gates_of_heck}}"
+# THIS repo is the gates: its gate is its own tree, never $GOH_DIR (see .gatesrc's GOH_CI_STEPS).
+GOH="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 # Style for our own branch lines below (structural.sh styles itself in its
 # own process; functions do not propagate back here).

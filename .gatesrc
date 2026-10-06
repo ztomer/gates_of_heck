@@ -58,4 +58,7 @@ export GOH_DIR="${GOH_DIR:-$HOME/Projects/gates_of_heck}"
 # applied defaults and the shape of each file was decided by whichever hand
 # last edited it -- and no gate here ever ran the check over this tree.
 GOH_PYTHON_FORMATTED=1
-GOH_CI_STEPS='"$GOH_DIR/gates/rust_gate.sh":cargo audit --deny warnings --deny unmaintained --deny unsound --deny yanked:"$GOH_DIR/gates/structural.sh" --full:cargo test --workspace:"$GOH_DIR/tools/pytest.sh"'
+# THIS repo is the gates, so every step names ITS OWN tree (./), never $GOH_DIR: the push runs in
+# a worktree of the pushed commit, and GOH_DIR there is the shared checkout's HEAD export (C4) --
+# the v0.22.0 push ran that export's tests, outside any git repo (tests/test_gates_from_head.py).
+GOH_CI_STEPS='./gates/rust_gate.sh:cargo audit --deny warnings --deny unmaintained --deny unsound --deny yanked:./gates/structural.sh --full:cargo test --workspace:./tools/pytest.sh'

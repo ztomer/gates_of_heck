@@ -158,3 +158,19 @@ def test_the_export_is_built_once_per_commit(gates: Path, consumer: Path, tmp_pa
     _structural(gates, consumer, env)
     assert [p for p in cache.iterdir() if not p.name.startswith(".")] == exports
     assert exports[0].stat().st_mtime_ns == stamp, "an export was rebuilt for the same commit"
+
+
+def test_the_self_hosted_gate_judges_its_own_tree_never_goh_dir() -> None:
+    """THIS repo is the gates. Its push runs in a worktree of the pushed commit, where GOH_DIR
+    names the shared checkout's HEAD export (C4) -- before C4, the shared working tree. Either way
+    a step spelled "$GOH_DIR/tools/pytest.sh" ran SOMEONE ELSE's tests: the v0.22.0 push ran the
+    export's, from a directory that is not a git repo, 19 failed + 26 errors. Its own gate names
+    its own tree."""
+    root = Path(__file__).resolve().parent.parent
+    for rel, banned in ((".gatesrc", ("$GOH_DIR/", "$GOH/")), ("tools/gate.sh", ("GOH_DIR",))):
+        live = [
+            line
+            for line in (root / rel).read_text().splitlines()
+            if not line.lstrip().startswith("#") and any(b in line for b in banned)
+        ]
+        assert not live, f"{rel} runs gate code from GOH_DIR, not this tree: {live}"
