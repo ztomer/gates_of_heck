@@ -91,6 +91,10 @@
   sites per test file and machine-sized pools, and proves both guards red in a child pytest.
   `--strict-markers`. Their first run found ~75 tests racing a release build under `GOH_LIVE`
   (now built once, before the workers start) and a shadowed `pytest_configure`.
+* **A throwaway crate builds into the run's own dir.** The shim points every workspace outside this
+  checkout at `<run dir>/{workspace-path-hash}`, removed at exit (a caller's own build dir is kept).
+  Before, each temp fixture crate left a cold build in `~/.cargo/build`: **10,450 dirs, 250 GB**,
+  which filled the disk on 2026-10-06. A full suite run now adds none.
 * Fixture repos copy a template `.git` (`tests/_fast_git.py`) instead of spawning `git init`.
 * **Longest first** (`tests/_schedule.py`): tests ordered by the last run's own durations, so
   a long test never starts last and runs alone. The suite: 94.4 s (v0.20) -> 53 s under load.
