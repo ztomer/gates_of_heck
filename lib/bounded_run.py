@@ -38,6 +38,7 @@ import os
 import signal
 import subprocess
 import sys
+import threading
 import time
 from dataclasses import dataclass
 
@@ -181,6 +182,41 @@ def _alive(pid: int) -> bool:
     return True
 
 
+class _Stopped(Exception):  # a signal, not an error
+    def __init__(self, sig: int) -> None:
+        super().__init__(sig)
+        self.sig = sig
+
+
+# The signals that stop a GATE. A step in its own session never sees them -- Ctrl-C goes to the
+# terminal's foreground group, which the step left, and a TERM to this wrapper used to kill the
+# wrapper alone -- so the step ran on, unowned: the orphan this file exists to prevent, made by it
+# (tests/test_bounded_run_interrupt.py). So the wrapper takes them, sweeps the step's group, and
+# returns 128+N. A signal IGNORED when this process started (nohup, a non-job-control shell's
+# background job and SIGINT) stays ignored: that is the caller's decision, not ours to undo.
+STOP_SIGNALS = (signal.SIGTERM, signal.SIGINT, signal.SIGHUP)
+
+
+def _raise_stopped(sig: int, _frame: object) -> None:
+    raise _Stopped(sig)
+
+
+def _trap_stops() -> dict[int, object]:
+    if threading.current_thread() is not threading.main_thread():
+        return {}  # only the main thread may set handlers; a pool worker's caller owns them
+    previous = {}
+    for sig in STOP_SIGNALS:
+        current = signal.getsignal(sig)
+        if current is not signal.SIG_IGN:
+            previous[sig] = signal.signal(sig, _raise_stopped)
+    return previous
+
+
+def _restore(previous: dict[int, object]) -> None:
+    for sig, handler in previous.items():
+        signal.signal(sig, handler)
+
+
 def run_step(
     argv: list[str],
     timeout: int,
@@ -223,6 +259,9 @@ def _run_step(
         merged = True
     else:
         stream = output
+    proc = None
+    pgid: int | None = None
+    previous = _trap_stops()
     try:
         try:
             proc = subprocess.Popen(  # noqa: S603  # argv, never a shell string: the caller's words
@@ -237,7 +276,7 @@ def _run_step(
             print(f"bounded_run: cannot start {label or argv[0]}: {exc}", file=sys.stderr)
             return Outcome(code=127, descendants=[], timed_out=False)
         try:
-            pgid: int | None = os.getpgid(proc.pid)
+            pgid = os.getpgid(proc.pid)
         except OSError:
             pgid = None
         # WAIT, never poll. `wait(timeout=)` returns the instant the child exits; the 0.2 s poll it
@@ -271,7 +310,21 @@ def _run_step(
                 file=sys.stderr,
             )
         return Outcome(code=proc.returncode or 0, descendants=left, timed_out=timed_out)
+    except _Stopped as stop:
+        if proc is not None:
+            _sweep(pgid, proc.pid, grace)
+            try:
+                proc.wait(timeout=grace)
+            except subprocess.TimeoutExpired:
+                pass
+        name = signal.Signals(stop.sig).name
+        print(
+            f"STOPPED by {name}: {label or ' '.join(argv)} -- its process group was swept",
+            file=sys.stderr,
+        )
+        return Outcome(code=128 + stop.sig, descendants=[], timed_out=False)
     finally:
+        _restore(previous)
         if merged:
             stream.close()
 

@@ -201,7 +201,8 @@ FAILED=0
 FAILED_NAMES=""
 PROVEN_SKIPPED=0
 
-# run_step <logf> <cmd-string> <index> — exit code of the step, 124 on a timeout.
+# run_step <logf> <cmd-string> <index> — exit code of the step, 124 on a timeout. Background only:
+# it EXECs, so it replaces the shell that runs it.
 #
 # ONE call, because the three things this step needs are one thing and cannot drift apart:
 #
@@ -219,9 +220,11 @@ run_step() {
     local args=(--repo "$ROOT" --log "$logf" --grace "${GOH_STEP_GRACE:-5}" --label "$cmd"
                 --snapshot "$LOGDIR/orphans-$idx.json")
     [ "$LCI_LIMIT" -gt 0 ] && args=(--timeout "$LCI_LIMIT" "${args[@]}")
-    # </dev/null on the command string: the caller's loop stdin is the step list.
+    # </dev/null on the command string: the caller's loop stdin is the step list. EXEC: run_step is
+    # started with `&`, which forks a subshell for the function, and a TERM to that subshell ended it
+    # without reaching the wrapper -- so the step's sweep never ran. Exec'd, $! IS the wrapper.
     # shellcheck disable=SC2086  # a command STRING is the feature here; see the header
-    python3 "$GOH_ROOT/lib/orphan_canary.py" wrap "${args[@]}" -- bash -c "$cmd" </dev/null
+    exec python3 "$GOH_ROOT/lib/orphan_canary.py" wrap "${args[@]}" -- bash -c "$cmd" </dev/null
 }
 
 # THE SCHEDULER (BACKLOG P2). GOH_CI_JOBS=N runs up to N steps at once; unset is 1, i.e. serial,
@@ -254,6 +257,26 @@ while IFS="	" read -r src cmd; do
 done <<EOF
 $ALL_STEPS
 EOF
+
+# A STOPPED run stops its steps. Each runs in the background under its own wrapper, so a TERM to
+# this script used to end the script alone and leave every running step going, unowned
+# (tests/test_bounded_run_interrupt.py). The wrapper sweeps its step's group on TERM; this hands
+# the TERM on. (A background job of a non-job-control shell ignores SIGINT from birth, and an
+# ignored-at-entry signal cannot be trapped -- so INT is turned into TERM here, not relied on there.)
+_stop() {
+    local i
+    trap - TERM INT HUP
+    for ((i = 1; i <= n; i++)); do
+        [ "${STATE[i]:-}" = running ] && kill -TERM "${WRAP[i]:-}" 2>/dev/null
+    done
+    wait
+    FAILED=$((FAILED + 1))
+    err "local_ci: stopped by $1 -- every running step was stopped with it"
+    exit "$2"
+}
+trap '_stop TERM 143' TERM
+trap '_stop INT 130' INT
+trap '_stop HUP 129' HUP
 
 HELD=","        # the tags of the steps running now, comma-delimited
 RUNNING=0
@@ -289,8 +312,13 @@ _start() {
     # Command strings from the repo's own .gatesrc / CLI — shell semantics are the feature
     # (pipelines, env prefixes); the source is repo-local config, the same trust level as every
     # ancestor orchestrator. </dev/null: a step that reads stdin gets EOF, never the step list.
-    ( run_step "$LOGDIR/step-$i.log" "${RUN[i]}" "$i"; echo "$i $?" >&3 ) </dev/null &
-    PID[i]=$!
+    # The wrapper is the subshell's child; the subshell hands a TERM on to it (see _stop).
+    ( trap 'kill -TERM "$wrap" 2>/dev/null; wait "$wrap"; exit 143' TERM
+      run_step "$LOGDIR/step-$i.log" "${RUN[i]}" "$i" &
+      wrap=$!
+      wait "$wrap"
+      echo "$i $?" >&3 ) </dev/null &
+    WRAP[i]=$!
 }
 
 _launch() { # start every pending step a slot and its tags allow, in declared order
@@ -364,7 +392,7 @@ while [ "$NEXT" -le "$n" ]; do
     [ "$NEXT" -le "$n" ] || break
     if [ "$RUNNING" -eq 0 ]; then _launch; continue; fi
     read -r -u 3 _i _rc
-    wait "${PID[_i]}" 2>/dev/null || true
+    wait "${WRAP[_i]}" 2>/dev/null || true
     RC[_i]="$_rc"; STATE[_i]=done; RUNNING=$((RUNNING - 1))
     _rest="${TAGS[_i]#,}"
     while [ -n "$_rest" ]; do
