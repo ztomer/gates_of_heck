@@ -115,6 +115,24 @@ Status: `[ ]` open, `[x]` done (with the commit), `[~]` handed off.
       this campaign's compiles and goh runs (also spares the SSD), ejected at its end -- not a
       standing setup.
 
+**Phase 4C — the orchestration in Rust, where shell is the wrong tool** (owner, 2026-10-06:
+"nothing forces us to stay on shell")
+Every lever left is the cost of STARTING something: a bash, its sourced libs, a Python wrapper,
+the same git question per process. One native process holding the answers removes the class.
+Baselines (2026-10-06, after phases 2-3): a one-step `local_ci.sh` run 526 ms and 21 git calls
+(the proven key twice, the gates identity per key); the step wrapper 26 ms a step; a `goh.sh`
+child 34 ms; `structural.sh --staged` 0.22 s (media_server). Ports in order of yield, each
+behind the same tests the shell passes today, red-proven, one at a time:
+- [ ] 4C.1 `goh step`: the ceiling wrapper native (process group, TERM->grace->KILL sweep, the
+      leak sample, GOH_TIMINGS). Its one blocker -- a signal ignored at entry must stay ignored --
+      needs the inherited disposition (`sigaction`); `unsafe` is denied in the crate, so either a
+      vetted crate exposing it safely, or one exemption the unsafe allowlist names, with a test.
+- [ ] 4C.2 The proven cache native (`goh proven key|lookup|record`): the tree key, the scoped
+      key and the identity computed in-process with git asked once per fact.
+- [ ] 4C.3 `local_ci.sh`'s step runner native: parallel steps under the canary, logs, proven
+      records -- one process instead of a bash + a Python wrapper per step.
+- [ ] 4C.4 Re-measure the baselines above; port further only where a measurement says so.
+
 **Phase 5 — known limits worth closing**
 - [ ] 5.1 The C2 writer hook also judges a skill edited through Bash (a PostToolUse `Bash` matcher
       that fires when the command names the corpus root).
