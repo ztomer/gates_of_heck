@@ -44,9 +44,9 @@ commit bodies.
 - A temporary 8 GB RAM disk is mounted at `/Volumes/gohram` (device in `/tmp/gohram.dev`) for this
   campaign's compiles and suite (`TMPDIR=/Volumes/gohram/tmp`, `CARGO_TARGET_DIR=/Volumes/gohram/target`);
   eject it (`diskutil eject`) when the campaign ends -- not a standing setup.
-- Main (`~/Projects/gates_of_heck`) is still at `5780297`. Fast-forward it only after this repo's
+- Main (`~/Projects/gates_of_heck`) is at `b174dba`. Fast-forward it only after this repo's
   own push gate is green on the branch tip (`tools/gate_profile.sh .` runs it on HEAD in an
-  export); the last run, at `9e13043`, was red on the two defects fixed in `b30fbbe`.
+  export).
 - Every Rust change runs `cargo test --workspace` before its commit (3b94809 shipped a red one).
 - 5B drift cases seen so far: a test rebuilding goh without `GOH_BIN`, a whole gate run to check one
   step, per-site `git init`, a test moving the checkout, pools sized to `os.cpu_count()`, a leaked
@@ -168,16 +168,19 @@ behind the same tests the shell passes today, red-proven, one at a time:
       that does not name the corpus's directory -- 7 ms on an unrelated Bash command.
 
 **Phase 5B — the suite cannot drift back** (owner, 2026-10-06: after every optimisation above)
-- [ ] 5B.1 Design and land the mechanism that keeps a NEW test from undoing this work, the way
-      `tests/test_goh_git_spawns.py` already ratchets one count. The drifts seen this campaign, each a
-      candidate rule: a test that rebuilds `goh` behind the session's back (no `GOH_BIN`); a test
-      that runs a whole gate to check one step; a fixture that spawns `git init`/`config` instead
-      of the template; a test that moves the checkout (`_tree_guard.py` catches it); an inner pool
-      sized to `os.cpu_count()`. Candidate mechanisms, to be chosen by measurement: a per-test
-      budget file (summed seconds and spawn counts per test FILE, recorded by a session plugin,
-      a new file or a regression over budget fails the suite unless the budget is raised in the
-      same commit, with a reason); shim-counted spawn ratchets per gate; a cargo shim that fails a
-      test that builds `goh` outside the session fixture. Exit: a planted slow test goes red.
+- [x] 5B.1 The suite cannot drift back. Chosen by what can fail WITHOUT flaking -- a count or a
+      refusal, never a timing budget, since every timing threshold this campaign flaked under load:
+      `tests/_drift_guard.py` puts a `cargo` shim first on every worker's PATH that refuses a goh
+      build unless the caller says `DRIFT_BUILD_OK=1` (the session fixture; a test whose subject is
+      the build), and fails any test whose call phase passes 30 s (`SLOW` names exceptions);
+      `tests/test_suite_drift.py` ratchets `git init` sites per test file and `cpu_count()` pools,
+      and plants a slow test and a goh build in a child pytest to prove both guards go red;
+      `--strict-markers` (pyproject) makes an unregistered mark an error. First run caught two:
+      under GOH_LIVE with uncommitted Rust, ~75 gate tests each built `target/goh-live` (now built
+      once, before the workers start), and conftest's own `pytest_configure` shadowed by an import
+      (the `slow` mark went unregistered, silently). The flake it surfaced was a real race, fixed:
+      a stop landing while `Popen` was still returning orphaned the step, and a second Ctrl-C
+      abandoned a sweep -- `bounded_run.py` now holds both; `goh step` listens before it spawns.
 
 **Phase 6 — the measurements, on a quiet box (load < 4)** (details: "Open -- measurements")
 - [ ] 6.1 This repo's suite <= 60 s.

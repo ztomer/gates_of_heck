@@ -24,3 +24,13 @@ line-length = 100
 [tool.ruff.format]
 # Preserve the blank-line conventions the existing files already use.
 docstring-code-format = false
+# The suite's own markers are declared HERE, with --strict-markers, so an unknown or unregistered
+# mark is an error rather than a warning. A conftest `pytest_configure` registering them was once
+# shadowed by a later import of another `pytest_configure`: `slow` went unregistered, `-m "not
+# slow"` kept silently working, and the only sign was a warnings line nobody reads.
+[tool.pytest.ini_options]
+addopts = "--strict-markers"
+markers = [
+    "slow: needs a real toolchain (swiftlint, a release build); skip with -m 'not slow'",
+    "xdist_group: pin tests to one worker under --dist loadgroup (also declared by pytest-xdist)",
+]

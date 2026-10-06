@@ -240,11 +240,34 @@ class _Stopped(Exception):  # a signal, not an error
 STOP_SIGNALS = (signal.SIGTERM, signal.SIGINT, signal.SIGHUP)
 
 
-def _raise_stopped(sig: int, _frame: object) -> None:
-    raise _Stopped(sig)
+class _Stops:
+    """A stop is HELD while the wrapper cannot act on it, not raised:
+
+    * while `Popen` is starting the step -- raised there, it unwinds out of `Popen` before the
+      wrapper holds the step, so there is nothing to sweep and the step runs on (seen under load);
+    * while a stop is already sweeping -- a second Ctrl-C, which people press, raised mid-sweep and
+      abandoned it with the group half-signalled.
+
+    `release()` raises a held stop the moment the step is the wrapper's. Both windows are pinned in
+    tests/test_bounded_run_interrupt.py by stopping inside `Popen` itself."""
+
+    def __init__(self) -> None:
+        self.holding = True
+        self.pending: int | None = None
+
+    def handler(self, sig: int, _frame: object) -> None:
+        if self.holding:
+            self.pending = self.pending or sig
+            return
+        raise _Stopped(sig)
+
+    def release(self) -> None:
+        self.holding = False
+        if self.pending is not None:
+            raise _Stopped(self.pending)
 
 
-def _trap_stops() -> dict[int, object]:
+def _trap_stops(stops: _Stops) -> dict[int, object]:
     import threading  # only here: the CLI path is always the main thread, and pays nothing
 
     if threading.current_thread() is not threading.main_thread():
@@ -253,7 +276,7 @@ def _trap_stops() -> dict[int, object]:
     for sig in STOP_SIGNALS:
         current = signal.getsignal(sig)
         if current is not signal.SIG_IGN:
-            previous[sig] = signal.signal(sig, _raise_stopped)
+            previous[sig] = signal.signal(sig, stops.handler)
     return previous
 
 
@@ -306,7 +329,8 @@ def _run_step(
         stream = output
     proc = None
     pgid: int | None = None
-    previous = _trap_stops()
+    stops = _Stops()
+    previous = _trap_stops(stops)
     try:
         try:
             proc = subprocess.Popen(  # noqa: S603  # argv, never a shell string: the caller's words
@@ -318,9 +342,11 @@ def _run_step(
                 start_new_session=True,  # POSIX; its own group, so killpg covers the tree
             )
         except OSError as exc:
+            stops.holding = False
             print(f"bounded_run: cannot start {label or argv[0]}: {exc}", file=sys.stderr)
             return Outcome(code=127, descendants=[], timed_out=False)
         pgid = killtree.session_pgid(proc)  # known, never asked for: getpgid of a zombie is ESRCH
+        stops.release()
         # WAIT, never poll. `wait(timeout=)` returns the instant the child exits; the 0.2 s poll it
         # replaced charged every step up to a fifth of a second of pure latency -- measured
         # 2026-10-05 as most of a structural run's wall time on a small tree.
@@ -358,6 +384,7 @@ def _run_step(
             )
         return Outcome(code=proc.returncode or 0, descendants=left, timed_out=timed_out)
     except _Stopped as stop:
+        stops.holding = True  # a second stop must not abandon this sweep
         if proc is not None:
             _sweep(pgid, proc.pid, grace)
             try:

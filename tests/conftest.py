@@ -51,10 +51,7 @@ ALLOWED = "→ ✓ ✗ ⚠ ↔ ↑ ↓ ← ⌘ ⌥ ⌨ ⇧ ⌃ ⏎ ⎋ ↵ ⇒ �
 
 
 def pytest_configure(config):
-    config.addinivalue_line(
-        "markers",
-        "slow: needs a real toolchain (swiftlint); skip with -m 'not slow'",
-    )
+    _drift_guard.prebuild_live(config)
 
 
 def git(repo: Path, *args: str) -> str:
@@ -128,6 +125,8 @@ def hermetic_env(drop_git: bool = False, **overrides: str) -> dict[str, str]:
 # `checks/_retired.py::NATIVE`, the one spelling.
 from _retired import NATIVE as _NATIVE  # noqa: E402
 from _tree_guard import pytest_sessionfinish, pytest_sessionstart  # noqa: E402, F401
+import _drift_guard  # noqa: E402
+from _drift_guard import pytest_runtest_makereport  # noqa: E402, F401
 
 RETIRED = {
     f"checks/{stem}.{'sh' if check == 'shell-lint' else 'py'}": check
@@ -335,6 +334,7 @@ def _build_goh() -> Path:
         ],
         capture_output=True,
         text=True,
+        env=dict(os.environ, DRIFT_BUILD_OK="1"),  # the one build tests/_drift_guard.py allows
     )
     assert r.returncode == 0, f"cargo build failed:\n{r.stderr}"
     for line in r.stdout.splitlines():

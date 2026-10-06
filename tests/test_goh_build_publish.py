@@ -69,7 +69,8 @@ def test_a_broken_uncommitted_edit_never_reaches_the_published_binary(clone: Pat
     HEAD's binary, stamped with HEAD's trees, and the stale-check then finds nothing to do."""
     main = clone / "crates" / "goh" / "src" / "main.rs"
     main.write_text(main.read_text() + "\nthis is not rust\n")
-    env = {"PATH": os.environ["PATH"], "HOME": os.environ.get("HOME", "")}
+    # DRIFT_BUILD_OK: building goh is this test's subject (tests/_drift_guard.py).
+    env = {"PATH": os.environ["PATH"], "HOME": os.environ.get("HOME", ""), "DRIFT_BUILD_OK": "1"}
     script = clone / "scripts" / "build-goh.sh"
     r = subprocess.run(["bash", str(script)], capture_output=True, text=True, env=env, timeout=900)
     assert r.returncode == 0, r.stdout + r.stderr

@@ -144,3 +144,31 @@ def test_a_term_to_a_concurrent_local_ci_reaps_every_running_step(tmp_path):
                 os.kill(int(p.read_text()), signal.SIGKILL)
             except (OSError, ValueError):
                 pass
+
+
+def test_a_stop_that_lands_while_the_step_is_starting_still_sweeps_it(monkeypatch) -> None:
+    """The window between fork and `Popen` returning: the step is running, the wrapper does not yet
+    hold it. A stop raised there used to unwind with nothing to sweep, leaving the step running --
+    seen once in 1911 tests under load, made deterministic here by stopping inside `Popen`."""
+    sys.path.insert(0, str(REPO_ROOT / "lib"))
+    import bounded_run
+
+    started = []
+    real = bounded_run.subprocess.Popen
+
+    def popen_then_stop(*args, **kwargs):
+        proc = real(*args, **kwargs)
+        started.append(proc)
+        os.kill(os.getpid(), signal.SIGTERM)  # the handler runs before this frame returns
+        time.sleep(0.05)
+        return proc
+
+    monkeypatch.setattr(bounded_run.subprocess, "Popen", popen_then_stop)
+    outcome = bounded_run.run_step(["sleep", "300"], timeout=60, grace=1, label="sleep")
+    try:
+        assert outcome.code == 128 + signal.SIGTERM
+        started[0].wait(timeout=5)
+    finally:
+        if started[0].poll() is None:
+            started[0].kill()
+            started[0].wait()

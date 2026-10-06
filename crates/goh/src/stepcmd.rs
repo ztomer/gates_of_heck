@@ -112,26 +112,11 @@ pub(crate) fn bounded(
     if std::env::var_os("GOH_TIMINGS").is_some_and(|v| !v.is_empty()) {
         cmd.env("GOH_TIMINGS_PARENT", label);
     }
-    let mut child = match cmd.spawn() {
-        Ok(child) => child,
-        Err(e) => {
-            eprintln!("goh step: cannot start {label}: {e}");
-            return (127, Vec::new());
-        }
-    };
-    let Ok(pgid) = i32::try_from(child.id()) else {
-        let _ = child.kill();
-        let _ = child.wait();
-        eprintln!("goh step: {label}: a pid that is not a pid");
-        return (127, Vec::new());
-    };
+    // The stops are taken BEFORE the spawn: a stop between the spawn and the listener would meet the
+    // default action, kill this wrapper, and leave the step running unowned. Taken first, it waits
+    // in the channel and sweeps the step the moment there is one (bounded_run.py holds it the same
+    // way). A later stop is absorbed by the still-registered listener, so it cannot cut a sweep short.
     let (tx, rx) = mpsc::channel();
-    let waiter = {
-        let tx = tx.clone();
-        std::thread::spawn(move || {
-            let _ = tx.send(Event::Exited(child.wait()));
-        })
-    };
     let handled: Vec<i32> = STOPS
         .into_iter()
         .filter(|s| !goh_sys::ignored_at_entry(*s))
@@ -139,12 +124,36 @@ pub(crate) fn bounded(
     let signals = signal_hook::iterator::Signals::new(&handled).ok();
     let listener = signals.as_ref().map(signal_hook::iterator::Signals::handle);
     if let Some(mut signals) = signals {
+        let tx = tx.clone();
         std::thread::spawn(move || {
             if let Some(sig) = signals.forever().next() {
                 let _ = tx.send(Event::Stopped(sig));
             }
         });
     }
+    let close = || {
+        if let Some(handle) = &listener {
+            handle.close();
+        }
+    };
+    let mut child = match cmd.spawn() {
+        Ok(child) => child,
+        Err(e) => {
+            close();
+            eprintln!("goh step: cannot start {label}: {e}");
+            return (127, Vec::new());
+        }
+    };
+    let Ok(pgid) = i32::try_from(child.id()) else {
+        let _ = child.kill();
+        let _ = child.wait();
+        close();
+        eprintln!("goh step: {label}: a pid that is not a pid");
+        return (127, Vec::new());
+    };
+    let waiter = std::thread::spawn(move || {
+        let _ = tx.send(Event::Exited(child.wait()));
+    });
     let mut left = Vec::new();
     let code = match rx.recv_timeout(Duration::from_secs(limit)) {
         Ok(Event::Exited(status)) => {
@@ -170,9 +179,7 @@ pub(crate) fn bounded(
             TIMEOUT_EXIT
         }
     };
-    if let Some(handle) = listener {
-        handle.close();
-    }
+    close();
     drop(waiter);
     (code, left)
 }
