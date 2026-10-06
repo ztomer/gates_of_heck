@@ -46,7 +46,23 @@
   semver comparator reading a missing minor as 0, a claim lost after a multi-line string, a
   traceback on a bad version source, an inert `--staged`).
 
-### 4. This repo's suite
+### 4. Coverage counts a binary's tests from outside `cargo test`
+
+`coverage_gate.sh --lang rust --external CMD` (`GOH_COV_RUST_EXTERNAL`) builds the binaries
+instrumented, runs CMD with `$GOH_COVERAGE_BIN_DIR` naming them, and counts the profiles as one more
+part; a failing CMD is a missing part, never a smaller report, and `rust_gate.sh` then keys its
+coverage group on the whole tree. This repo's native checks are tested by the pytest suite, which
+the floor never saw: `crates/goh` read 62.5% against its 95% floor until the suite was counted
+(the suite's `goh` fixture takes the instrumented binary from `GOH_TEST_BIN`).
+
+CMD runs in the CALLER's environment plus the profile destination: the instrumented build's
+(`RUSTC_WRAPPER`, `CARGO_LLVM_COV*`, its target dir) leaked into a suite that builds crates of its
+own made four suites red. While measured, a test that passes its own `env=` keeps
+`LLVM_PROFILE_FILE` (conftest), so its runs count instead of littering `default_*.profraw`. The
+`--locked` check now reads every gate script, not three: it found the `GOH_LIVE` build of `goh`
+(`_goh_bin.sh`) resolving without `--locked`.
+
+### 5. This repo's suite
 
 Nine tests still set the retired `GOH_NO_NATIVE` -- two ran the same native pipeline twice, three
 compiled `bin/goh` in a scratch clone per run; they name the session binary now, and a meta-test

@@ -32,6 +32,10 @@ GOH_SKILLS_ROOT=$HOME/.claude/skills
 # fixture repos -- the same exercise the Python parity suites give it from
 # pytest, where llvm-cov cannot see it. Ratchet: up only.
 GOH_COV_FLOOR_RUST=95
+# The native checks' behaviour suite is the pytest suite (Phase N3: it drives `goh` from outside
+# cargo test), so the coverage gate also runs it against the INSTRUMENTED binary and counts it.
+# Without it the crate read 62.5% (2026-10-06) for code the suite covers.
+GOH_COV_RUST_EXTERNAL='GOH_TEST_BIN="$GOH_COVERAGE_BIN_DIR/goh" ./tools/pytest.sh'
 
 # A number in prose, re-derived from the tree (`goh claim-derivation`). Opt-in
 # in every repo because it lands RED wherever it lands first: three adversarial

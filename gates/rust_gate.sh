@@ -82,7 +82,7 @@ cargo_dir="$(cd "$cargo_dir" && pwd)"
 # that exercises it, with GOH_DIR at a real checkout, so the same class of
 # leak would let an inherited GOH_COV_FLOOR_RUST arm a coverage floor no
 # fixture declared. A key is configuration iff the repo's own file says so.
-unset GOH_COV_FLOOR_RUST GOH_RUST_LINT_CONFIGS GOH_RUST_LINT_CARGO GOH_DEPS_RATCHET \
+unset GOH_COV_FLOOR_RUST GOH_COV_RUST_EXTERNAL GOH_RUST_LINT_CONFIGS GOH_RUST_LINT_CARGO GOH_DEPS_RATCHET \
       GOH_CROSS_REPO_ROOT GOH_PYTHON_FORMATTED GOH_SKILLS_CORPUS \
       GOH_STEP_TIMEOUT GOH_STEP_GRACE GOH_LCI_TIMEOUT 2>/dev/null || true
 
@@ -250,10 +250,12 @@ rust_coverage_checks() {
     if [ -n "${GOH_COV_FLOOR_RUST:-}" ]; then
         goh_step "coverage (floor ${GOH_COV_FLOOR_RUST}%)" \
             bash "$HERE/coverage_gate.sh" --lang rust \
+            ${GOH_COV_RUST_EXTERNAL:+--external "$GOH_COV_RUST_EXTERNAL"} \
             --floor "$GOH_COV_FLOOR_RUST" "$cargo_dir"
     else
         goh_step "coverage (per-target floors)" \
             bash "$HERE/coverage_gate.sh" --lang rust \
+            ${GOH_COV_RUST_EXTERNAL:+--external "$GOH_COV_RUST_EXTERNAL"} \
             --floors-json "$GOH_COV_FLOORS_JSON" "$cargo_dir"
     fi
 }
@@ -276,7 +278,10 @@ if ! _group_on coverage; then
 elif [ "${GOH_RUST_COVERAGE:-}" = defer ]; then
     info "coverage deferred to the push gate (GOH_RUST_COVERAGE=defer)"
 elif [ -n "${GOH_COV_FLOOR_RUST:-}" ] || [ -n "${GOH_COV_FLOORS_JSON:-}" ]; then
-    rust_proven_group coverage crate rust_coverage_checks
+    # An external command reads the whole tree (a test suite), so its group keys on the whole tree:
+    # a crate-scoped key would skip a coverage run whose tests changed.
+    rust_proven_group coverage "$([ -n "${GOH_COV_RUST_EXTERNAL:-}" ] && echo tree || echo crate)" \
+        rust_coverage_checks
 else
     warn "no coverage floor — set GOH_COV_FLOOR_RUST in .gatesrc"
 fi

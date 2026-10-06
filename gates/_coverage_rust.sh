@@ -24,6 +24,10 @@ run_rust() {
     # binaries of the PREVIOUS source in that shared dir, and the export
     # merged them in: lines past the end of the current file, all uncovered,
     # a 96% tree reading 93.5% (routines, 2026-09-21).
+    # The caller's values of what this mode overrides: --external's CMD runs in THEM (see below).
+    CALLER_CARGO_ENV="$(for v in CARGO_TARGET_DIR CARGO_BUILD_BUILD_DIR RUSTC_WRAPPER CARGO_INCREMENTAL; do
+        if [ -n "${!v+x}" ]; then printf 'export %s=%q\n' "$v" "${!v}"; else printf 'unset %s\n' "$v"; fi
+    done)"
     export CARGO_TARGET_DIR="$PROJ/target/llvm-cov"
     export CARGO_BUILD_BUILD_DIR="$CARGO_TARGET_DIR"
     export RUSTC_WRAPPER=""
@@ -40,6 +44,42 @@ run_rust() {
         }
     }
 
+    # THE EXTERNAL PART (--external / GOH_COV_RUST_EXTERNAL): a crate whose behaviour suite drives
+    # its binary from outside `cargo test` (gates_of_heck: the pytest suite runs `goh` thousands of
+    # times) was measured by its Rust tests alone -- 62.5% for code the suite covers. The binaries
+    # are built instrumented in a target dir of their own (`cargo llvm-cov show-env`), CMD runs with
+    # $GOH_COVERAGE_BIN_DIR naming them and LLVM_PROFILE_FILE set, and the profiles it leaves are
+    # one more part. A failing CMD is a failed part, never a silently smaller report.
+    # CMD runs in the CALLER's environment: it is a suite that builds crates of its own, and the
+    # build's (RUSTC_WRAPPER, CARGO_LLVM_COV*, this target dir) made each of them an instrumented
+    # build in the wrong place and a nested coverage gate fail. It gains only the profile
+    # destination -- a pool of files, not one per process (`%p`: 326 files, 474 MB per suite run).
+    external_part() {
+        local label="external: $EXTERNAL" part="$PARTS/part-external.info"
+        info "exporting $label"
+        if (
+            export CARGO_TARGET_DIR="$PROJ/target/llvm-cov-external"
+            export CARGO_BUILD_BUILD_DIR="$CARGO_TARGET_DIR"
+            showenv="$(cargo llvm-cov show-env --sh 2>/dev/null)" || exit 1
+            eval "$showenv"
+            cargo llvm-cov clean --profraw-only >/dev/null 2>&1 || true
+            cargo build --locked --bins >"$part.log" 2>&1 || exit 1
+            bins="$CARGO_TARGET_DIR/debug" profile="${LLVM_PROFILE_FILE/-%p/}"
+            (
+                for v in $(printf '%s\n' "$showenv" | sed -n 's/^export \([A-Za-z_][A-Za-z0-9_]*\)=.*/\1/p'); do
+                    unset "$v"
+                done
+                eval "$CALLER_CARGO_ENV"
+                LLVM_PROFILE_FILE="$profile" GOH_COVERAGE_BIN_DIR="$bins" bash -c "$EXTERNAL"
+            ) >>"$part.log" 2>&1 || exit 1
+            cargo llvm-cov report ${IGNORE:+--ignore-filename-regex "$IGNORE"} \
+                --lcov --output-path "$part" >>"$part.log" 2>&1
+        ); then
+            : >"$part.ok"
+        else
+            export_failed "$label" "$part.log"
+        fi
+    }
     PARTS="$CARGO_TARGET_DIR/lcov-parts"
     rm -rf "$PARTS"; mkdir -p "$PARTS"
 
@@ -109,6 +149,9 @@ PYEOF
             fi
         fi
     done <"$METAF"
+    if [ -n "${EXTERNAL:-}" ]; then
+        external_part
+    fi
 
     # Every DECLARED target must have produced an EXPORT THAT EXITED 0,
     # proven by its .ok marker. Keying completeness on part-file existence or
@@ -133,6 +176,9 @@ PYEOF
             warn "$label exported a valid-but-EMPTY lcov part — nothing coverable was measured for it"
         fi
     done <"$METAF"
+    if [ -n "${EXTERNAL:-}" ] && [ ! -f "$PARTS/part-external.info.ok" ]; then
+        MISSING="${MISSING}${MISSING:+ }external: $EXTERNAL"
+    fi
     if [ -n "$MISSING" ]; then
         err "coverage exports incomplete — expected but missing (failed or never written):${MISSING}"
         err "  each failed export above is lost coverage — fix it, do not trust this run"

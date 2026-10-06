@@ -340,6 +340,28 @@ def _build_goh() -> Path:
     raise AssertionError("goh artifact missing from cargo build output")
 
 
+# Under the coverage gate's external part (GOH_COVERAGE_BIN_DIR set), every explicit `env=` keeps
+# LLVM_PROFILE_FILE: a test that scrubs its child's environment (a fake `curl` on PATH, a bare
+# HOME) otherwise loses the instrumented binary's runs to the report and leaves default_*.profraw
+# in its cwd. Read at each call, so a suite run outside the gate is untouched.
+_popen_init = subprocess.Popen.__init__
+
+
+def _measured_popen_init(self, *args, **kwargs):
+    env = kwargs.get("env")
+    if (
+        env is not None
+        and "LLVM_PROFILE_FILE" not in env
+        and os.environ.get("GOH_COVERAGE_BIN_DIR")
+        and os.environ.get("LLVM_PROFILE_FILE")
+    ):
+        kwargs["env"] = {**env, "LLVM_PROFILE_FILE": os.environ["LLVM_PROFILE_FILE"]}
+    _popen_init(self, *args, **kwargs)
+
+
+subprocess.Popen.__init__ = _measured_popen_init
+
+
 # Every `cargo build` the goh fixture runs this session, one line each. Read by
 # test_goh_is_built_once_per_session: the count is the regression, not a timing.
 GOH_BUILD_RECORD = "goh-builds.log"
@@ -377,8 +399,18 @@ def native_goh(tmp_path_factory) -> Path:
     """
     shared = _shared_tmp(tmp_path_factory)
     published = shared / "goh-bin" / "goh"
+    # GOH_TEST_BIN: a binary built elsewhere, used as is -- the coverage gate's INSTRUMENTED build
+    # (GOH_COV_RUST_EXTERNAL), whose profiles are this suite's share of the crate's coverage. A
+    # copy would still count; a rebuild here would not be instrumented.
+    provided = os.environ.get("GOH_TEST_BIN", "")
     with open(shared / "goh-bin.lock", "w") as lock:
         fcntl.flock(lock, fcntl.LOCK_EX)  # released when the file closes
+        if provided:
+            if not os.access(provided, os.X_OK):
+                raise RuntimeError(f"GOH_TEST_BIN={provided} is not an executable")
+            if not (shared / GOH_BUILD_RECORD).exists():
+                (shared / GOH_BUILD_RECORD).write_text("provided\n")
+            return Path(provided)
         if not published.exists():
             built = _build_goh()
             with open(shared / GOH_BUILD_RECORD, "a") as record:

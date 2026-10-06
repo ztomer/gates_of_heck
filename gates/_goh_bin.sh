@@ -83,7 +83,7 @@ goh_live_binary() {
     bin="$target/release/goh"
     if [ ! -x "$bin" ] || [ "$(cat "$bin.delta" 2>/dev/null)" != "$delta" ]; then
         echo "· GOH_LIVE: the working tree's Rust differs from HEAD -- building its goh" >&2
-        if (cd "$root" && cargo build -q --release -p goh --target-dir "$target") >&2; then
+        if (cd "$root" && cargo build -q --locked --release -p goh --target-dir "$target") >&2; then
             printf '%s' "$delta" > "$bin.delta"
         fi
     fi

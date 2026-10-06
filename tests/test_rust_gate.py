@@ -272,10 +272,25 @@ def test_every_resolving_cargo_call_in_the_house_gates_is_locked():
     """The class, read off the source: a new cargo step without `--locked` goes red here."""
     import re
 
-    resolving = re.compile(r"\bcargo (clippy|check|build|test|llvm-cov(?! clean)|run|doc)\b")
+    resolving = re.compile(
+        r"\bcargo (clippy|check|build|test|llvm-cov(?! (clean|show-env|report))|run|doc)\b"
+    )
     missing = []
-    for path in ("gates/rust_gate.sh", "gates/rust_manifest_gate.sh", "gates/coverage_gate.sh"):
-        for n, line in enumerate((REPO_ROOT / path).read_text().splitlines(), 1):
+    # EVERY gate script, not a list of three: `_coverage_rust.sh` was split out of coverage_gate.sh
+    # for the line cap and its cargo calls were never read here.
+    gates = sorted(p for p in (REPO_ROOT / "gates").glob("*.sh") if "cargo " in p.read_text())
+    assert any(p.name == "_coverage_rust.sh" for p in gates), [p.name for p in gates]
+    for gate in gates:
+        path = f"gates/{gate.name}"
+        heredoc = None
+        for n, line in enumerate(gate.read_text().splitlines(), 1):
+            # A heredoc body (a usage text) is prose, not a call.
+            if heredoc is not None:
+                heredoc = None if line.strip() == heredoc else heredoc
+                continue
+            opened = re.search(r"<<-?\s*'?\"?(\w+)", line)
+            if opened:
+                heredoc = opened.group(1)
             # A message that NAMES a command is not a call: quoted text is dropped first.
             code = re.sub(r'"[^"]*"', '""', line.split("#", 1)[0])
             if (
