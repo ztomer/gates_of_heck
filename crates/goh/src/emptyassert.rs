@@ -171,7 +171,7 @@ fn format_args(invocation: &str) -> Vec<String> {
         .collect()
 }
 
-fn run(staged: bool, exclude: &str) -> (i32, String, String) {
+pub(crate) fn run(staged: bool, exclude: &str) -> (i32, String, String) {
     let exclude = match crate::steps::compile_exclude(exclude) {
         Ok(x) => x,
         Err(m) => return (2, String::new(), format!("✗ [no_empty_assert] {m}\n")),

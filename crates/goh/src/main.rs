@@ -57,6 +57,7 @@ pub mod step_report;
 pub mod stepcmd;
 pub mod steps;
 pub mod steps_delegated;
+pub mod steps_rust;
 pub mod structural;
 pub mod tagver;
 pub mod unreaped;

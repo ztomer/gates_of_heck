@@ -3,7 +3,8 @@
 
 use crate::{
     blobs, claims, credurls, gatesrc, gitutil, goh_root, killname, lockver, mdlinks, prefetch,
-    provenance, pyformat, scope, shell_lint, steps, steps_delegated, unreaped, vendored,
+    provenance, pyformat, scope, shell_lint, steps, steps_delegated, steps_rust, unreaped,
+    vendored,
 };
 
 /// `goh structural`: every step, fail-fast, delegated checkers started together.
@@ -84,6 +85,9 @@ pub fn run(staged: bool, full: bool) -> i32 {
         return code;
     }
     if let Some(code) = steps::step_home_paths(&repo, &files, &cfg, staged) {
+        return code;
+    }
+    if let Some(code) = steps_rust::step(&repo, &files, &cfg, staged) {
         return code;
     }
     if let Some(code) = provenance::step(&repo, staged) {

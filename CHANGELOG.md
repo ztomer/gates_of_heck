@@ -119,6 +119,9 @@
   forwarder for all 22, pinned by a class test. **`--exclude` takes Python's look-around** again
   (`^(?!vendor/)` was refused by the native port's regex dialect): every consumer pattern
   compiles through one `PathFilter` (`fancy-regex`).
+* **The commit gate runs the push's cheap Rust policies over the staged `.rs` files** (no
+  `#[allow]`/`#[expect]`, no emptiness asserts): a commit was let through on an assert its push
+  refused minutes later. Untouched files never block a commit.
 * **`--floors-json` is made absolute before a mode `cd`s into the project**; an `exempt` key is
   project-relative, now documented.
 
