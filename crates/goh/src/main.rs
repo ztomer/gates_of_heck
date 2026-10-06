@@ -53,6 +53,7 @@ pub mod steps_delegated;
 pub mod structural;
 pub mod tagver;
 pub mod unreaped;
+pub mod vendored;
 pub mod verdict_cache;
 pub mod versrc;
 

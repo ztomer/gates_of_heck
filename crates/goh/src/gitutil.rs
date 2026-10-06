@@ -39,25 +39,51 @@ pub fn repo_root() -> Option<String> {
 /// Returns a message when git answers and fails (a corrupt index reads like
 /// a spotless repo if this were silent — it must be loud instead).
 pub fn listed_files(root: &Path, staged: bool) -> Result<Vec<String>, String> {
-    let mut cmd = Command::new("git");
-    cmd.arg("-C").arg(root);
     if staged {
-        cmd.args(["diff", "--cached", "--name-only", "-z", "--diff-filter=ACM"]);
+        nul_list(
+            root,
+            &["diff", "--cached", "--name-only", "-z", "--diff-filter=ACM"],
+        )
     } else {
-        cmd.args([
-            "ls-files",
-            "-z",
-            "--cached",
-            "--others",
-            "--exclude-standard",
-        ]);
+        nul_list(
+            root,
+            &[
+                "ls-files",
+                "-z",
+                "--cached",
+                "--others",
+                "--exclude-standard",
+            ],
+        )
     }
-    let out = cmd.output().map_err(|e| format!("git list failed: {e}"))?;
+}
+
+/// The files this commit ADDS to the index (`--diff-filter=A`): a new path, not an edit.
+///
+/// # Errors
+///
+/// As `listed_files`: a failing git is loud, never an empty list.
+pub fn added_files(root: &Path) -> Result<Vec<String>, String> {
+    nul_list(
+        root,
+        &["diff", "--cached", "--name-only", "-z", "--diff-filter=A"],
+    )
+}
+
+/// `git -C root <args>`, its NUL-separated stdout as paths; a git that answers and fails is an
+/// error (a corrupt index must not read like a spotless repo).
+fn nul_list(root: &Path, args: &[&str]) -> Result<Vec<String>, String> {
+    let out = Command::new("git")
+        .arg("-C")
+        .arg(root)
+        .args(args)
+        .output()
+        .map_err(|e| format!("git list failed: {e}"))?;
     if !out.status.success() {
         let detail = String::from_utf8_lossy(&out.stderr);
         return Err(format!(
             "git {} failed (exit {}): {}",
-            if staged { "diff" } else { "ls-files" },
+            args.first().copied().unwrap_or("git"),
             out.status.code().unwrap_or(-1),
             detail.trim().chars().take(200).collect::<String>()
         ));

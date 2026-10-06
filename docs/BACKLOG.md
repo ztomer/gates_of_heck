@@ -380,7 +380,8 @@ order, never the reverse:
 
 - R3: `check_estate_corpus.py` proves a checker still REFUSES a plant; it cannot prove the checker
   is correct, and consumer-side checks are unmeasured.
-- R5: nothing refuses a future vendored copy. Home: `gates/structural.sh`.
+- R5: CLOSED 2026-10-06 -- `crates/goh/src/vendored.rs` refuses a NEW copy of a house checker at
+  commit and names existing ones at full scope (antiknob's `tools/_gitutil.py` is the one known).
 
 ### Deferred, each with its re-open condition
 

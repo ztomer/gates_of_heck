@@ -3,7 +3,7 @@
 
 use crate::{
     blobs, claims, credurls, gatesrc, gitutil, goh_root, killname, lockver, mdlinks, prefetch,
-    provenance, pyformat, scope, shell_lint, steps, steps_delegated, unreaped,
+    provenance, pyformat, scope, shell_lint, steps, steps_delegated, unreaped, vendored,
 };
 
 /// `goh structural`: every step, fail-fast, delegated checkers started together.
@@ -105,6 +105,9 @@ pub fn run(staged: bool, full: bool) -> i32 {
         return code;
     }
     if let Some(code) = claims::step_gate(&cfg, staged) {
+        return code;
+    }
+    if let Some(code) = vendored::step(&repo, &files, staged) {
         return code;
     }
     if let Some(code) = steps_delegated::step_full_only(&repo, &checks, staged) {

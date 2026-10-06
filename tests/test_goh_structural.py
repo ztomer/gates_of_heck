@@ -278,8 +278,9 @@ INVENTORY_CASE: dict[str, bytes] = {
 # counted -- a step that does not run prints exactly what a step that passes prints
 # (docs/SUPERSOTA.md R4), so the only proof a step runs is its label here. 16 -> 17 on
 # 2026-10-03 (`no unreaped spawns in tests`), 18 on 2026-10-04 (`prose claims are derived`),
-# 19 on 2026-10-05 (`no credential in a git remote URL`).
-INVENTORY = {
+# 19 on 2026-10-05 (`no credential in a git remote URL`), 20 on 2026-10-06 (`no vendored
+# copies of house checkers`, R5).
+INVENTORY = [
     "Cargo.lock matches its manifests",
     "cap-exempt files within their ceilings",
     "file length <= 500",
@@ -294,12 +295,13 @@ INVENTORY = {
     "no hard-coded home paths",
     "no process kill by name",
     "no unreaped spawns in tests",
+    "no vendored copies of house checkers",
     "prose claims are derived",
     "python is ruff-formatted",
     "shell lint",
     "skills corpus",
     "version provenance",
-}
+]
 
 
 def _labels(out: str) -> set[str]:
@@ -312,8 +314,9 @@ def test_the_whole_pipeline_runs_every_step(goh: Path, tmp_path: Path) -> None:
     for run in (_run_goh(goh, repo, False), _run_bash(repo, False, goh=goh)):
         assert run.returncode == 0, run.stdout + run.stderr
         got = _labels(run.stdout)
-        assert got == INVENTORY, (
-            f"missing: {sorted(INVENTORY - got)}  new: {sorted(got - INVENTORY)}\n" + run.stdout
+        want = set(INVENTORY)
+        assert got == want, (
+            f"missing: {sorted(want - got)}  new: {sorted(got - want)}\n" + run.stdout
         )
 
 
