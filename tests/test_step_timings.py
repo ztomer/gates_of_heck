@@ -14,6 +14,7 @@ import subprocess
 import sys
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
+from conftest import hermetic_env
 
 ROOT = Path(__file__).resolve().parent.parent
 BOUNDED = ROOT / "lib" / "bounded_run.py"
@@ -21,7 +22,7 @@ TIMINGS = ROOT / "lib" / "step_timings.py"
 
 
 def _env(path: Path, **extra: str) -> dict[str, str]:
-    env = {k: v for k, v in os.environ.items() if not k.startswith("GOH_") or k == "GOH_LIVE"}
+    env = hermetic_env()
     env["GOH_TIMINGS"] = str(path)
     env.update(extra)
     return env
@@ -69,7 +70,7 @@ def test_a_nested_step_names_its_parent(tmp_path):
 
 
 def test_unset_writes_nothing_and_changes_nothing(tmp_path):
-    env = {k: v for k, v in os.environ.items() if not k.startswith("GOH_") or k == "GOH_LIVE"}
+    env = hermetic_env()
     assert _bounded(env, "true", label="quiet") == 0
     assert not list(tmp_path.iterdir())
 

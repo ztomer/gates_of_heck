@@ -14,7 +14,7 @@ from pathlib import Path
 
 import pytest
 
-from conftest import REPO_ROOT
+from conftest import REPO_ROOT, hermetic_env
 
 
 def path_without(tool: str, into: Path) -> str:
@@ -35,7 +35,7 @@ def path_without(tool: str, into: Path) -> str:
 
 
 def run(script: str, cwd: Path, path: str) -> subprocess.CompletedProcess:
-    env = {k: v for k, v in os.environ.items() if not k.startswith("GOH_") or k == "GOH_LIVE"}
+    env = hermetic_env()
     env.update(PATH=path, GOH_DIR=str(REPO_ROOT))
     return subprocess.run(
         ["/bin/bash", str(REPO_ROOT / "gates" / script), str(cwd)],
@@ -78,7 +78,7 @@ def test_shell_lint_fails_without_shellcheck(tmp_path):
     (repo / "a.sh").write_text("#!/bin/bash\necho ok\n")
     subprocess.run(["git", "init", "-q"], cwd=repo, check=True)
     subprocess.run(["git", "add", "-A"], cwd=repo, check=True)
-    env = {k: v for k, v in os.environ.items() if not k.startswith("GOH_") or k == "GOH_LIVE"}
+    env = hermetic_env()
     env["PATH"] = path_without("shellcheck", tmp_path / "bin")
     got = subprocess.run(
         ["/bin/bash", str(REPO_ROOT / "checks" / "check_shell_lint.sh")],

@@ -15,7 +15,8 @@ checkers run and the line says so. An explicit GOH_BIN stays trusted, as documen
 import subprocess
 from pathlib import Path
 
-from test_gate_environment import _clean_checkout_of_todays_gates, _hermetic_env
+from test_gate_environment import _clean_checkout_of_todays_gates
+from conftest import hermetic_env
 
 
 def _fake(path: Path, version: str, tree: str | None) -> Path:
@@ -60,7 +61,7 @@ def _structural(checkout: Path, tmp_path: Path, **env: str):
         cwd=repo,
         capture_output=True,
         text=True,
-        env=_hermetic_env(GOH_DIR=str(checkout), **env),
+        env=hermetic_env(GOH_DIR=str(checkout), **env),
         timeout=120,
     )
 

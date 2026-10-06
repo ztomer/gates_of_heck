@@ -103,6 +103,17 @@ def repo(tmp_path: Path) -> Path:
     return r
 
 
+def hermetic_env(drop_git: bool = False, **overrides: str) -> dict[str, str]:
+    """A child environment with NO inherited `GOH_*` but `GOH_LIVE` (and, with `drop_git`, no
+    `GIT_*`): every step's opt-in is a `GOH_*` PRESENCE test, so an inherited value adds a step the
+    test never declared -- which is how `push_gate.sh`'s `set -a` reached a whole suite. ONE
+    definition: eleven files carried this filter inline, and two had grown their own copy."""
+    drop = ("GOH_", "GIT_") if drop_git else ("GOH_",)
+    env = {k: v for k, v in os.environ.items() if not k.startswith(drop) or k == "GOH_LIVE"}
+    env.update(overrides)
+    return env
+
+
 def run_check(repo: Path, script: str, *args: str) -> subprocess.CompletedProcess:
     """Run a checker from this repo against `repo` (cwd=repo)."""
     return subprocess.run(

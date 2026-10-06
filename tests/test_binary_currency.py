@@ -10,7 +10,8 @@ already named, by path, by its own warning; it must not also stop the estate.
 import subprocess
 from pathlib import Path
 
-from test_gate_environment import _clean_checkout_of_todays_gates, _git, _hermetic_env
+from test_gate_environment import _clean_checkout_of_todays_gates, _git
+from conftest import hermetic_env
 
 
 def _fake_goh(tmp_path: Path, version: str) -> Path:
@@ -48,7 +49,7 @@ def _structural(checkout: Path, fake: Path, tmp_path: Path):
         cwd=repo,
         capture_output=True,
         text=True,
-        env=_hermetic_env(GOH_DIR=str(checkout), GOH_BIN=str(fake)),
+        env=hermetic_env(GOH_DIR=str(checkout), GOH_BIN=str(fake)),
         timeout=120,
     )
 

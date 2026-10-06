@@ -20,6 +20,7 @@ import subprocess
 from pathlib import Path
 
 import pytest
+from conftest import hermetic_env
 
 ROOT = Path(__file__).resolve().parent.parent
 
@@ -89,9 +90,7 @@ def estate(tmp_path: Path) -> Path:
 
 
 def _gate(repo: Path, crate: str, **env: str) -> subprocess.CompletedProcess:
-    full = {
-        k: v for k, v in os.environ.items() if not k.startswith(("GOH_", "GIT_")) or k == "GOH_LIVE"
-    }
+    full = hermetic_env(drop_git=True)
     gates = Path(os.environ["SCOPED_CACHE_GATES"])
     full.update(GOH_DIR=str(gates), GOH_BIN=os.environ["SCOPED_CACHE_GOH"], **env)
     return subprocess.run(

@@ -13,7 +13,6 @@ file" should find one file, not a section of the other layouts' suites.
 import os
 import subprocess
 import sys
-from pathlib import Path
 
 import pytest
 

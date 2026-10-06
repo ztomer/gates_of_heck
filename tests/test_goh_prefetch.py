@@ -18,6 +18,7 @@ import os
 import subprocess
 import time
 from pathlib import Path
+from conftest import hermetic_env
 
 ROOT = Path(__file__).resolve().parent.parent
 # The checkers the native tier still delegates (Phase N1 ports the rest): the two --full-only
@@ -60,9 +61,7 @@ def _repo(tmp: Path, red: bool) -> Path:
 def _run(goh: Path, tmp: Path, red: bool, sleep: str):
     marks = tmp / "marks"
     marks.mkdir()
-    env = {
-        k: v for k, v in os.environ.items() if not k.startswith(("GOH_", "GIT_")) or k == "GOH_LIVE"
-    }
+    env = hermetic_env(drop_git=True)
     env.update(GOH_DIR=str(_fake_goh_dir(tmp)), MARK_DIR=str(marks), STUB_SLEEP=sleep)
     t0 = time.monotonic()
     r = subprocess.run(

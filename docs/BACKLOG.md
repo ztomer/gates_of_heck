@@ -365,7 +365,6 @@ order, never the reverse:
 - R3: `check_estate_corpus.py` proves a checker still REFUSES a plant; it cannot prove the checker
   is correct, and consumer-side checks are unmeasured.
 - R5: nothing refuses a future vendored copy. Home: `gates/structural.sh`.
-- `tests/test_gate_environment.py` duplicates `_hermetic_env`; its home is `tests/conftest.py`.
 
 ### Deferred, each with its re-open condition
 

@@ -29,6 +29,7 @@ import re
 import shutil
 import subprocess
 from pathlib import Path
+from conftest import hermetic_env
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -42,15 +43,6 @@ def _porcelain(repo: Path) -> str:
     return subprocess.run(
         ["git", "-C", str(repo), "status", "--porcelain"], capture_output=True, text=True
     ).stdout
-
-
-def _hermetic_env(**overrides: str) -> dict[str, str]:
-    """A child environment with NO inherited `GOH_*` in it. Every step's opt-in is
-    a `GOH_*` PRESENCE test, so an inherited value adds a step the caller never
-    declared — which is how `push_gate.sh`'s `set -a` reached a whole suite."""
-    env = {k: v for k, v in os.environ.items() if not k.startswith("GOH_") or k == "GOH_LIVE"}
-    env.update(overrides)
-    return env
 
 
 # What docs/config.md documents in its STRUCTURAL table that is NOT pipeline config: the
@@ -118,7 +110,7 @@ def _push(repo: Path, checkout: Path, tmp_path: Path, **env: str):
     return subprocess.run(
         ["bash", str(checkout / "gates" / "push_gate.sh"), "origin"],
         cwd=repo,
-        env=_hermetic_env(GOH_DIR=str(checkout), GOH_PUSH_LOGS=str(tmp_path / "logs"), **env),
+        env=hermetic_env(GOH_DIR=str(checkout), GOH_PUSH_LOGS=str(tmp_path / "logs"), **env),
         text=True,
         input=f"refs/heads/main {sha} refs/heads/main {'0' * 40}\n",
         capture_output=True,
@@ -244,7 +236,7 @@ def test_uncommitted_gate_source_is_named_by_every_gate_that_runs_one(tmp_path: 
             cwd=repo,
             capture_output=True,
             text=True,
-            env=_hermetic_env(GOH_DIR=str(checkout), GOH_BIN=str(ROOT / "bin" / "goh")),
+            env=hermetic_env(GOH_DIR=str(checkout), GOH_BIN=str(ROOT / "bin" / "goh")),
         )
 
     def publish_gate() -> subprocess.CompletedProcess:

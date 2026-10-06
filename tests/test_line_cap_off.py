@@ -14,6 +14,7 @@ import subprocess
 from pathlib import Path
 
 import pytest
+from conftest import hermetic_env
 
 ROOT = Path(__file__).resolve().parents[1]
 STRUCTURAL = ROOT / "gates" / "structural.sh"
@@ -30,7 +31,7 @@ def _repo(tmp_path: Path, gatesrc: str) -> Path:
 
 
 def _run(tier: str, goh: Path, repo: Path) -> subprocess.CompletedProcess:
-    env = {k: v for k, v in os.environ.items() if not k.startswith("GOH_") or k == "GOH_LIVE"}
+    env = hermetic_env()
     env["GOH_DIR"] = str(ROOT)
     if tier == "python":
         env["GOH_NO_NATIVE"] = "1"

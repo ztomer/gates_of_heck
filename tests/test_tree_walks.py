@@ -20,6 +20,7 @@ import sys
 from pathlib import Path
 
 import pytest
+from conftest import hermetic_env
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "checks"))
@@ -73,9 +74,7 @@ def test_rust_package_roots_skip_the_ignored_build_tree(planted: Path) -> None:
 
 @pytest.mark.parametrize("tier", ["python", "native"])
 def test_lints_optin_never_reads_the_ignored_build_tree(planted: Path, tier: str, goh) -> None:
-    env = {
-        k: v for k, v in os.environ.items() if not k.startswith(("GOH_", "GIT_")) or k == "GOH_LIVE"
-    }
+    env = hermetic_env(drop_git=True)
     env["GOH_DIR"] = str(ROOT)
     if tier == "python":
         cmd = [sys.executable, str(ROOT / "checks" / "check_lints_optin.py")]

@@ -15,7 +15,7 @@ import subprocess
 
 import pytest
 
-from conftest import REPO_ROOT
+from conftest import REPO_ROOT, hermetic_env
 
 
 def _git(*args: str) -> str:
@@ -61,7 +61,7 @@ def _repo_with_hook(tmp_path, body: bytes):
 
 
 def _structural(repo, native: bool):
-    env = {k: v for k, v in os.environ.items() if not k.startswith("GOH_") or k == "GOH_LIVE"}
+    env = hermetic_env()
     env["GOH_DIR"] = str(REPO_ROOT)
     if not native:
         env["GOH_NO_NATIVE"] = "1"

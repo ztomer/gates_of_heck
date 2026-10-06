@@ -13,12 +13,11 @@ agree by construction.
 """
 
 from pathlib import Path
-import subprocess
 import sys
 
 import pytest
 
-from conftest import REPO_ROOT, commit_all, git, write
+from conftest import REPO_ROOT, commit_all, write
 from unreaped_kit import findings, unreaped_tier  # noqa: F401  # unreaped_tier: a fixture
 
 pytestmark = pytest.mark.usefixtures("unreaped_tier")

@@ -20,6 +20,7 @@ from pathlib import Path
 import pytest
 
 from test_rust_gate_scoped_cache import _crate, _git, _native, gates  # noqa: F401  # fixtures
+from conftest import hermetic_env
 
 TARGET = "x86_64-unknown-linux-musl"
 
@@ -61,9 +62,7 @@ def _repo(tmp_path: Path, lib: str, gatesrc: str) -> Path:
 
 
 def _gate(repo: Path, path_prefix: Path | None = None) -> subprocess.CompletedProcess:
-    env = {
-        k: v for k, v in os.environ.items() if not k.startswith(("GOH_", "GIT_")) or k == "GOH_LIVE"
-    }
+    env = hermetic_env(drop_git=True)
     g = Path(os.environ["SCOPED_CACHE_GATES"])
     env.update(GOH_DIR=str(g), GOH_BIN=os.environ["SCOPED_CACHE_GOH"], GOH_RUST_GROUPS="crate")
     if path_prefix is not None:

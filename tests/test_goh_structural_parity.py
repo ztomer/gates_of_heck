@@ -16,6 +16,7 @@ import subprocess
 from pathlib import Path
 
 import pytest
+from conftest import hermetic_env
 
 ROOT = Path(__file__).resolve().parents[1]
 STRUCTURAL = ROOT / "gates" / "structural.sh"
@@ -43,22 +44,13 @@ def _failing(out: str, err: str) -> str | None:
     return m.group(1) if m else None
 
 
-def _hermetic_env(**overrides: str) -> dict[str, str]:
-    """A child environment with NO inherited `GOH_*` in it. Every step's opt-in here is a
-    `GOH_*` PRESENCE test, so an inherited value adds a step the fixture never declared —
-    which is how `push_gate.sh`'s `set -a` reached this suite."""
-    env = {k: v for k, v in os.environ.items() if not k.startswith("GOH_") or k == "GOH_LIVE"}
-    env.update(overrides)
-    return env
-
-
 def _run_bash(
     repo: Path, staged: bool, extra: dict[str, str] | None = None
 ) -> subprocess.CompletedProcess:
     """The PYTHON pipeline. structural.sh execs the native binary when one is around,
     so this side is pinned to the checkers with GOH_NO_NATIVE: native vs Python,
     never native vs itself."""
-    env = _hermetic_env(GOH_NO_NATIVE="1", GOH_DIR=str(ROOT), **(extra or {}))
+    env = hermetic_env(GOH_NO_NATIVE="1", GOH_DIR=str(ROOT), **(extra or {}))
     cmd = ["bash", str(STRUCTURAL), "--staged"] if staged else ["bash", str(STRUCTURAL)]
     return subprocess.run(cmd, cwd=repo, capture_output=True, text=True, env=env)
 
@@ -71,7 +63,7 @@ def run_bash(repo: Path, staged: bool) -> tuple[int, str | None]:
 def _run_goh(
     goh: Path, repo: Path, staged: bool, extra: dict[str, str] | None = None
 ) -> subprocess.CompletedProcess:
-    env = _hermetic_env(GOH_DIR=str(ROOT), **(extra or {}))
+    env = hermetic_env(GOH_DIR=str(ROOT), **(extra or {}))
     cmd = [str(goh), "structural", "--staged"] if staged else [str(goh), "structural"]
     return subprocess.run(cmd, cwd=repo, capture_output=True, text=True, env=env)
 
@@ -356,12 +348,12 @@ def test_structural_sh_execs_the_native_binary_when_told_where_it_is(goh, tmp_pa
     but the Python fallback notice must be absent."""
     repo = make_repo(tmp_path, {"a.md": "ok\n".encode(), ".gatesrc": GATESRC})
 
-    env = _hermetic_env(GOH_BIN=str(goh), GOH_DIR=str(ROOT))
+    env = hermetic_env(GOH_BIN=str(goh), GOH_DIR=str(ROOT))
     r = subprocess.run(["bash", str(STRUCTURAL)], cwd=repo, capture_output=True, text=True, env=env)
     assert r.returncode == 0, r.stdout + r.stderr
     assert "goh binary not built" not in r.stderr
     # An explicit pointer at nothing is reported, once, and the Python runs.
-    env = _hermetic_env(GOH_BIN="/nonexistent/goh", GOH_DIR=str(ROOT))
+    env = hermetic_env(GOH_BIN="/nonexistent/goh", GOH_DIR=str(ROOT))
     env.pop("GOH_NO_NATIVE", None)
     r = subprocess.run(["bash", str(STRUCTURAL)], cwd=repo, capture_output=True, text=True, env=env)
     assert r.returncode == 0, r.stdout + r.stderr
