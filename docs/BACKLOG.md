@@ -24,7 +24,10 @@ commit bodies.
 | R5 a new vendored copy of a house checker refused at commit | `b4046e3` | -- |
 | P5 (work) no hidden cargo builds, no twice-run tiers | `916a37a` | summed test time 693 -> ~620 s under load |
 | C2 (gate half) an external corpus judged at its commit | `46cf078` | -- |
-| C2 (writer half) `hooks/claude/skill_edit.sh`, a PostToolUse hook: the corpus judged when a skill is written | -- | -- |
+| C2 (writer half) `hooks/claude/skill_edit.sh`, a PostToolUse hook: the corpus judged when a skill is written | `5780297` | 183 ms per skill edit |
+| `tools/session_bench.py`: cross-session serialization, USL-fitted | `22f5bc8` | below |
+| spawn cuts: display-seam probe without git per case; `bounded_run` lean (no `ps` when the group is empty, lazy imports, `-S`); `repo_root` asked once; one `git config`; `repo` fixture copied from a template | `1278870`..`a651052` | probe 1.2 -> 0.14 s; per step 59.6 -> 26.4 ms; staged run 16 -> 9 git calls; fixture 41.9 -> 4.8 ms (x614) |
+| a build's in-repo reads outside its scope are learned, not fatal (rust proven cache) | `d384c0d` | vpn-watchdog-rs: never recorded -> skipped from the 3rd run |
 | P0-P4, C1, C3-C5 | v0.20.0-v0.22.0 | see CHANGELOG |
 
 ## Open — measurements (each needs a quiet box)
@@ -34,18 +37,19 @@ exit number is the target column; a miss names its lever before any change lands
 
 | what | baseline | last | target |
 |---|---|---|---|
-| this repo's suite, `-n 8 --dist loadgroup` | 94.4 s (v0.20) | 85-93 s from load 4.6 (2026-10-06; the suite itself drives load to 18), summed 600 s | <= 60 s |
-| media_server push, one crate changed, warm | 197 s | not re-measured since P1a/b/d, P3 | <= 30 s |
-| media_server push, everything changed, warm | 177 s (P0) | not re-measured | <= 90 s |
-| any consumer's pre-commit structural layer | ~1 s | not re-measured since N1 | <= 0.4 s |
+| this repo's suite, `-n 8 --dist loadgroup` | 94.4 s (v0.20) | 79-89 s at load 11-17 after the spawn cuts (2026-10-06); workers evenly packed (80-90 s busy each), so wall = summed / 8 | <= 60 s |
+| media_server push, one crate changed, warm | 197 s | 183 s at load 7-12 (2026-10-06): **110 s is media_server's own pytest suite** (134 tests, run by its gate.sh outside the proven cache); 5 of 29 crates re-gated -- 3 correctly (path users), healthcheck-rs on the whole tree by design (its tests read the repo root), vpn-watchdog-rs never recorded (fixed in `d384c0d`) | <= 30 s: unreachable from here while the pytest step runs unconditionally -- a servers item (below) |
+| media_server push, everything changed, warm | 177 s (P0) | 170 s at load 4-8 (2026-10-06): coverage 269 of ~360 summed step-s (29 crates, each rebuilt instrumented from clean) | <= 90 s: lever is the coverage rebuild |
+| any consumer's pre-commit structural layer | ~1 s | media_server, one staged `.rs`: 0.22 s at load 17 (2026-10-06) | <= 0.4 s: **MET** |
 | P2 budget curve, `GOH_CI_JOBS` 1/2/4/6, this repo and routines | 186/147/138 s (1/2/4, busy) | provisional | the knee, recorded |
 
-It misses: 600 s summed over 8 workers is 75 s before any packing loss, so 60 s needs ~150 s of
-summed time cut, not better packing. The levers by summed time (2026-10-06, `--durations=0`):
-`test_rust_gate_scoped_cache.py` 47 s of real cargo builds, `test_display_seam.py` 44 s (a whole
-1.2 s probe per neutered rule x 24; sys time, i.e. one `git ls-files` per fixture, dominates),
-`test_rust_gate.py` 30 s, `test_proven.py` 23 s, `test_claim_derivation_native_parity.py` 21 s,
-`test_swift_gate_baseline.py` 16 s (13 s is the one real-swiftlint test, `-m "not slow"` skips it).
+It misses. Levers left by summed time (2026-10-06): `test_rust_gate_scoped_cache.py` ~45 s and
+`test_rust_gate.py` ~28 s of real cargo, `test_claim_derivation_native_parity.py` ~21 s (each case
+runs the frozen Python reference -- the spec, not tunable), `test_proven.py` ~21 s,
+`test_swift_gate_baseline.py` ~21 s (13 s is the one real-swiftlint test). Every gate a test runs
+pays `goh.sh` resolution (31 ms from the export, 62 ms from the checkout) and per-step wrapper
+cost (now 26 ms); those are the broad levers left. On this box wall clock moved +/-25% run to run
+with other sessions' xctest, so the exit needs a quiet window; judge changes by A/B and by counts.
 
 ## Open — cross-session serialization (`tools/session_bench.py`)
 
@@ -63,6 +67,25 @@ Controls on the same box scale (8 sessions: `/usr/bin/true` x300 6.3x, CPU-bound
 the machine is not the limit -- the gate is: one run is 3.9 s wall for 4.3 s user + **9.0 s sys**,
 and every step inflates ~8x at N=8. The empty-scope sweep is 2.2 s of the 3.9 (4.0 s sys).
 Exit: sigma <= 0.15 for `structural --full` (a session costs the next one < 15% of its run).
+Attribution so far: of the sweep, `check_estate_corpus` alone has sigma 0.84 (it materialises
+1935 estate files into 16 scratch repos and `git add`s them; filesystem metadata) and
+`check_probes_pass` 0.40; the per-step wrapper's `ps` of every process was one more machine-wide
+scan per step (removed, `8df0af4`).
+
+## Open — "fix the class" commit gate (requested by ZoneWM, owner-approved to roadmap, 2026-10-06)
+
+The metarule is written down and was still applied one site at a time (ZoneWM, one night: window
+pools hand-rolled in 4 overlays, a verify-commit-push chain broken 3 ways, one lock path in 5
+files). A mechanism, in three parts, here so every repo gets it with zero re-installs:
+1. a commit-msg gate: every `fix:`/`perf:` commit carries `Class: <the invariant that broke>` and
+   `Siblings: <sites fixed here, or filed by roadmap id> | none (<the search that found none>)`;
+   a missing trailer, or `none` without its search, is refused;
+2. a repeat detector over those trailers: a Class matching 2+ earlier commits (fuzzy) is refused
+   unless the commit is the systemic fix (a shared helper, a gate, a type) or cites the item that is;
+3. a loop-start audit: cluster recent commits by Class and touched-file family, each cluster a
+   candidate hardening item (catches repeats committed without trailers).
+**Blocked on:** ZoneWM's repo-local prototype and its red/green results against its 2026-10-05/06
+history; it hands the design over, then 1 lands here test-first (red-proven both directions).
 
 ## Downstream: what each consumer session needs to know
 
@@ -79,6 +102,11 @@ Exit: sigma <= 0.15 for `structural --full` (a session costs the next one < 15% 
   `check_python_formatted.py`, `check_version_provenance.py`, `check_tag_version.py`,
   `check_no_allow.py`): they still work, as forwarders to `goh.sh <check>`; move to
   `bash "$GOH_DIR/gates/goh.sh" <check>`. Any other retired path is gone; `goh --help` lists checks.
+- **servers (media_server push, 2026-10-06):** its `tools/gate.sh` step 6 runs the 134-test pytest
+  suite (110 s) on every push, outside the proven cache -- the floor under the <= 30 s one-crate
+  target. Route it through a proven step (local_ci `GOH_CI_STEPS`, or a scoped key on what the
+  tests read) so an unchanged input set skips it. healthcheck-rs's native-check tests read the
+  repo root, so it is keyed on the whole tree by design: every edit re-gates it (~40 s coverage).
 - **servers:** adopt `rust_gate.sh --each-crate` and `GOH_RUST_LINT_CARGO=cargo-zigbuild` (ROADMAP
   O41), both shipped in v0.22.0; they replace media_server's `xargs -P 4` loop.
 - **routines, ztools, monitor:** drop the plain `cargo test` step (keep `--doc`); P1c's gate side
