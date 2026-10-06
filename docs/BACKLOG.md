@@ -33,16 +33,18 @@ exit number is the target column; a miss names its lever before any change lands
 
 | what | baseline | last | target |
 |---|---|---|---|
-| this repo's suite, `-n 8 --dist loadgroup` | 94.4 s (v0.20) | ~88-120 s at load 12-31 | <= 60 s |
+| this repo's suite, `-n 8 --dist loadgroup` | 94.4 s (v0.20) | 85-93 s from load 4.6 (2026-10-06; the suite itself drives load to 18), summed 600 s | <= 60 s |
 | media_server push, one crate changed, warm | 197 s | not re-measured since P1a/b/d, P3 | <= 30 s |
 | media_server push, everything changed, warm | 177 s (P0) | not re-measured | <= 90 s |
 | any consumer's pre-commit structural layer | ~1 s | not re-measured since N1 | <= 0.4 s |
 | P2 budget curve, `GOH_CI_JOBS` 1/2/4/6, this repo and routines | 186/147/138 s (1/2/4, busy) | provisional | the knee, recorded |
 
-If the suite misses 60 s on a quiet box, the levers by summed test time (2026-10-06):
-`test_rust_gate_scoped_cache.py` ~50 s of real cargo builds (now spread across workers),
-`test_display_seam.py` ~45 s (a whole probe per neutered rule, 24 x ~31 fixture repos; git spawns
-dominate), `test_rust_gate.py` ~30 s, `test_proven.py` ~24 s, `test_gate_calibration.py` ~24 s.
+It misses: 600 s summed over 8 workers is 75 s before any packing loss, so 60 s needs ~150 s of
+summed time cut, not better packing. The levers by summed time (2026-10-06, `--durations=0`):
+`test_rust_gate_scoped_cache.py` 47 s of real cargo builds, `test_display_seam.py` 44 s (a whole
+1.2 s probe per neutered rule x 24; sys time, i.e. one `git ls-files` per fixture, dominates),
+`test_rust_gate.py` 30 s, `test_proven.py` 23 s, `test_claim_derivation_native_parity.py` 21 s,
+`test_swift_gate_baseline.py` 16 s (13 s is the one real-swiftlint test, `-m "not slow"` skips it).
 
 ## Downstream: what each consumer session needs to know
 
