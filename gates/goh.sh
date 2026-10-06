@@ -42,6 +42,7 @@ case "$check" in
     md-links) python_file="checks/check_md_links.py" ;;
     lock-version) python_file="checks/check_lock_version.py" ;;
     credential-urls) python_file="checks/check_no_credential_urls.py" ;;
+    python-formatted) python_file="checks/check_python_formatted.py" ;;
     *) echo "✗ goh.sh: unknown check '$check'" >&2; exit 2 ;;
 esac
 
@@ -54,6 +55,7 @@ case "$check" in
     md-links) native_lacks="--probe" ;;
     lock-version) native_lacks="--probe" ;;
     credential-urls) native_lacks="--probe" ;;
+    python-formatted) native_lacks="--selftest" ;;
     *)     native_lacks="" ;;
 esac
 # `deps` has NO native port: it reads the crates.io index over the network and

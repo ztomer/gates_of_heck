@@ -9,6 +9,7 @@
 //! pins the two to identical verdicts. `GOH_DIR` locates the checkers.
 
 pub mod blobs;
+pub mod bounded;
 pub mod ceiling;
 pub mod claims;
 pub mod commands;
@@ -29,6 +30,7 @@ pub mod noallow;
 pub mod platform;
 pub mod prefetch;
 pub mod provenance;
+pub mod pyformat;
 pub mod pyjson;
 pub mod pylex;
 pub mod ratchet;
@@ -186,6 +188,15 @@ enum Commands {
         /// Machine-readable output.
         #[arg(long)]
         json: bool,
+    },
+    /// Fail when the repo's Python is not ruff-formatted (native port of
+    /// `check_python_formatted`).
+    PythonFormatted {
+        /// Trees to check (default: the repo).
+        trees: Vec<String>,
+        /// Judge the staged `.py` files' index blobs.
+        #[arg(long)]
+        staged: bool,
     },
     /// Fail on a credential in `.git/config` (native port of `check_no_credential_urls`).
     CredentialUrls {
@@ -362,6 +373,7 @@ fn main() {
             staged,
             json,
         } => provenance::run_command(&root, baseline.as_deref(), staged, json),
+        Commands::PythonFormatted { trees, staged } => pyformat::run_command(&trees, staged),
         Commands::CredentialUrls {
             root,
             json,

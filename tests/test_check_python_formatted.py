@@ -20,9 +20,18 @@ import sys
 from pathlib import Path
 
 import pytest
-from conftest import REPO_ROOT, commit_all, run_check, stage, write
+from conftest import REPO_ROOT, commit_all, stage, write
+from tier_kit import both_tiers, run_tiered  # noqa: F401  # both_tiers: a fixture
 
 CHECK = "checks/check_python_formatted.py"
+
+pytestmark = pytest.mark.usefixtures("both_tiers")
+
+
+def pf(repo, *args):
+    """The checker over `repo`, on the current tier (Python, or `goh python-formatted`)."""
+    return run_tiered(repo, CHECK, "python-formatted", *args, python_only=("--selftest",))
+
 
 BAD = "x = {  'a':1,'b':2 }\n"
 GOOD = 'x = {"a": 1, "b": 2}\n'
@@ -34,12 +43,12 @@ needs_ruff = pytest.mark.skipif(shutil.which("ruff") is None, reason="ruff is no
 def test_misformatted_file_is_red_and_formatted_is_green(repo):
     write(repo, "tools/bad.py", BAD)
     write(repo, "tools/good.py", GOOD)
-    bad = run_check(repo, CHECK, "tools")
+    bad = pf(repo, "tools")
     assert bad.returncode == 1, bad.stdout + bad.stderr
     assert "not ruff-formatted" in bad.stdout + bad.stderr
 
     (repo / "tools" / "bad.py").unlink()
-    good = run_check(repo, CHECK, "tools")
+    good = pf(repo, "tools")
     assert good.returncode == 0, good.stdout + good.stderr
 
 
@@ -50,10 +59,10 @@ def test_a_named_tree_does_not_judge_the_rest_of_the_repo(repo):
     the trees — and a rename that moves a file out of the list silences it."""
     write(repo, "tools/good.py", GOOD)
     write(repo, "scratch/bad.py", BAD)
-    only_tools = run_check(repo, CHECK, "tools")
+    only_tools = pf(repo, "tools")
     assert only_tools.returncode == 0, only_tools.stdout + only_tools.stderr
 
-    whole_repo = run_check(repo, CHECK)
+    whole_repo = pf(repo)
     assert whole_repo.returncode == 1, whole_repo.stdout + whole_repo.stderr
 
 
@@ -73,7 +82,7 @@ def test_missing_ruff_is_a_failure_not_a_skip(repo, monkeypatch, tmp_path):
     assert shutil.which("ruff") is None, (
         "ruff is still reachable; the control is not testing itself"
     )
-    out = run_check(repo, CHECK, "tools")
+    out = pf(repo, "tools")
     assert out.returncode == 1, out.stdout + out.stderr
     assert "ruff is not installed" in out.stdout + out.stderr
 
@@ -97,7 +106,7 @@ def test_the_gate_does_not_reformat_anything(repo):
     target, so a red gate and an edited tree are never the same event."""
     write(repo, "tools/bad.py", BAD)
     before = (repo / "tools" / "bad.py").read_text()
-    run_check(repo, CHECK, "tools")
+    pf(repo, "tools")
     assert (repo / "tools" / "bad.py").read_text() == before
 
 
@@ -116,13 +125,13 @@ def test_staged_judges_the_index_blob_not_the_worktree(repo):
     write(repo, "tools/a.py", BAD)
     stage(repo, "tools/a.py")
     write(repo, "tools/a.py", GOOD)
-    red = run_check(repo, CHECK, "--staged")
+    red = pf(repo, "--staged")
     assert red.returncode == 1, red.stdout + red.stderr
     assert "tools/a.py" in red.stdout + red.stderr
 
     stage(repo, "tools/a.py")
     write(repo, "tools/a.py", BAD)
-    green = run_check(repo, CHECK, "--staged")
+    green = pf(repo, "--staged")
     assert green.returncode == 0, green.stdout + green.stderr
 
 
@@ -135,7 +144,7 @@ def test_staged_does_not_judge_files_outside_the_commit(repo):
     commit_all(repo)
     write(repo, "tools/good.py", GOOD)
     stage(repo, "tools/good.py")
-    out = run_check(repo, CHECK, "--staged")
+    out = pf(repo, "--staged")
     assert out.returncode == 0, out.stdout + out.stderr
 
 
@@ -143,7 +152,7 @@ def test_staged_does_not_judge_files_outside_the_commit(repo):
 def test_staged_with_no_python_is_a_named_non_run(repo):
     write(repo, "notes.md", "# notes\n")
     stage(repo, "notes.md")
-    out = run_check(repo, CHECK, "--staged")
+    out = pf(repo, "--staged")
     assert out.returncode == 0, out.stdout + out.stderr
     assert "not applicable" in out.stdout + out.stderr
 
@@ -156,9 +165,9 @@ def test_staged_honours_the_repos_own_excludes(repo):
     write(repo, "pyproject.toml", '[tool.ruff]\nextend-exclude = ["gen"]\n')
     write(repo, "gen/out.py", BAD)
     stage(repo, "pyproject.toml", "gen/out.py")
-    out = run_check(repo, CHECK, "--staged")
+    out = pf(repo, "--staged")
     assert out.returncode == 0, out.stdout + out.stderr
-    full = run_check(repo, CHECK)
+    full = pf(repo)
     assert full.returncode == 0, full.stdout + full.stderr
 
 
@@ -171,6 +180,39 @@ def test_staged_missing_ruff_is_a_failure_not_a_skip(repo, monkeypatch, tmp_path
     (narrow / "python3").symlink_to(Path(sys.executable))
     (narrow / "git").symlink_to(shutil.which("git"))
     monkeypatch.setenv("PATH", str(narrow))
-    out = run_check(repo, CHECK, "--staged")
+    out = pf(repo, "--staged")
     assert out.returncode == 1, out.stdout + out.stderr
     assert "ruff is not installed" in out.stdout + out.stderr
+
+
+def test_a_hung_ruff_is_timed_out_and_its_group_killed(repo, tmp_path, goh):
+    """The port spawns ruff itself, so it owns the ceiling `bounded_run` gave the delegated step:
+    a ruff that never returns is cut at GOH_STEP_TIMEOUT, its process GROUP killed, and the run
+    says TIMED OUT -- never a hang. (Native only: the Python checker is bounded by its caller.)"""
+    import os
+    import subprocess
+    import time
+
+    marker = tmp_path / "ruff-child.pid"
+    fake = tmp_path / "bin"
+    fake.mkdir()
+    (fake / "ruff").write_text(f"#!/bin/sh\nsleep 300 &\necho $! > {marker}\nwait\n")
+    (fake / "ruff").chmod(0o755)
+    write(repo, "tools/good.py", GOOD)
+    env = dict(os.environ, PATH=f"{fake}:{os.environ['PATH']}", GOH_STEP_TIMEOUT="2")
+    t0 = time.monotonic()
+    r = subprocess.run(
+        [str(goh), "python-formatted", "tools"], cwd=repo, capture_output=True, text=True, env=env
+    )
+    assert time.monotonic() - t0 < 20, "the ceiling did not hold"
+    assert r.returncode == 1 and "TIMED OUT after 2s" in r.stderr, r.stdout + r.stderr
+    pid = int(marker.read_text())
+    time.sleep(0.2)
+    try:
+        os.kill(pid, 0)
+        alive = True
+    except ProcessLookupError:
+        alive = False
+    if alive:
+        os.kill(pid, 9)
+    assert not alive, "ruff's own child survived: the group was not killed"

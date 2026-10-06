@@ -265,7 +265,12 @@ order, never the reverse:
   -- fixed, red first, exit 2. **`check_no_credential_urls` LANDED** as `goh credential-urls`
   (`crates/goh/src/credurls/`; the "delegated on purpose" note on it is superseded by this
   phase): the measured URL table splits the same through `urlsplit` and the port, reports are
-  byte-identical on every local repo and on a repo holding every table row. Next: `check_md_links`, `check_python_formatted` (spawns ruff either way),
+  byte-identical on every local repo and on a repo holding every table row.
+  **`check_python_formatted` LANDED** as `goh python-formatted` (`crates/goh/src/pyformat.rs`):
+  it spawns ruff itself, so `crates/goh/src/bounded.rs` gives native spawns what `bounded_run`
+  gives delegated ones -- a ceiling, a process-group kill, bounded pipe drains (a kill of the
+  leader alone hung the run on its child's pipe, measured). Identical on every local repo at
+  both scopes. Next: `check_md_links`, `check_python_formatted` (spawns ruff either way),
   `check_lock_version`, `check_no_credential_urls`, `check_shell_lint.sh` (spawns shellcheck), and
   the gate-side Python (`check_dep_currency`, `check_lints_optin`'s twin, `lcov_merge`). Each port
   lands parity-pinned against the Python it replaces and red-proven both ways, as Phase 3 did.

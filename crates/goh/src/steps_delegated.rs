@@ -45,50 +45,6 @@ pub fn step_shell(
     None
 }
 
-/// Python shape, decided by the repo's own declared rule set.
-///
-/// Both scopes. A staged pass judges the staged `.py` files' index blobs
-/// (`--staged`) and reformats nothing; a full pass judges the tree. The checker
-/// resolves ruff's settings from the tree it runs in, which is why it takes the
-/// repo root.
-///
-/// Paired with the `goh_step` of the same name in gates/structural.sh; the two
-/// are kept in step by `tests/test_goh_structural_parity.py`.
-#[must_use]
-pub fn step_python_formatted(
-    repo: &std::path::Path,
-    cfg: &gatesrc::Gatesrc,
-    checks: &std::path::Path,
-    staged: bool,
-) -> Option<i32> {
-    // Opt-in, stated at the call site: a repo that has not declared a rule set
-    // should not learn one by going red. Both scopes: staged mode judges the
-    // staged blobs and reformats nothing (v0.20.0's refused push was the cost of
-    // keeping it full-only).
-    if !gatesrc::opt_in(cfg, "GOH_PYTHON_FORMATTED") {
-        return None;
-    }
-    let (label, args) = if staged {
-        (
-            "python is ruff-formatted (staged)",
-            vec![
-                "check_python_formatted.py".to_owned(),
-                "--staged".to_owned(),
-            ],
-        )
-    } else {
-        (
-            "python is ruff-formatted",
-            vec!["check_python_formatted.py".to_owned()],
-        )
-    };
-    let code = delegated(checks, repo, label, "python3", &args);
-    if code != 0 {
-        return Some(code);
-    }
-    None
-}
-
 #[must_use]
 pub fn step_full_only(
     repo: &std::path::Path,

@@ -20,10 +20,9 @@ import time
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-# The checkers the native tier still delegates (Phase N1 ports the rest): the opt-in ruff check
-# and the two --full-only sweeps. Shell lint is planted separately, so it can be the red step.
+# The checkers the native tier still delegates (Phase N1 ports the rest): the two --full-only
+# sweeps. Shell lint is planted separately, so it can be the red step.
 DELEGATED = [
-    "check_python_formatted.py",
     "check_empty_scope.py",
     "check_probes_pass.py",
 ]

@@ -176,3 +176,19 @@ def test_install_sh_exists_and_wires_hooks():
     assert "core.hooksPath" in body, "installer must set core.hooksPath"
     for needed in ("pre-commit", "pre-push"):
         assert needed in body, f"installer must wire {needed}"
+
+
+def test_every_script_has_a_row_in_the_map():
+    """`docs/map.md` is the inventory, and an inventory that silently drops entries is the class
+    `check_claim_derivation.py` exists for. Found 2026-10-05 porting Phase N1: fifteen scripts --
+    `check_python_formatted.py`, `check_dep_currency.py`, `_from_head.sh` among them -- had no row,
+    so the doc route a failing step prints led to a page that did not mention the step."""
+    text = (REPO_ROOT / "docs" / "map.md").read_text(encoding="utf-8")
+    scripts = [
+        *(REPO_ROOT / "checks").glob("check_*"),
+        *(REPO_ROOT / "gates").glob("*.py"),
+        *(REPO_ROOT / "gates").glob("*.sh"),
+        *(REPO_ROOT / "lib").glob("*.py"),
+    ]
+    missing = sorted(p.name for p in scripts if f"`{p.name}`" not in text)
+    assert not missing, f"no row in docs/map.md for: {missing}"

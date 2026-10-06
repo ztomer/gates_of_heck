@@ -42,6 +42,12 @@ const fn default_timeout() -> u64 {
     1800
 }
 
+/// The ceiling a spawned tool runs under: the configured one, or the default
+/// for an explicit opt-out (`run_child`'s rule -- one bound, decided once).
+pub(crate) fn ceiling_secs() -> u64 {
+    ceiling().unwrap_or_else(default_timeout)
+}
+
 /// The ceiling in force, or `None` when `GOH_STEP_TIMEOUT=0` opted out.
 fn ceiling() -> Option<u64> {
     let raw = std::env::var("GOH_STEP_TIMEOUT").ok();
