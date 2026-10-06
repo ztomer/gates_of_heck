@@ -35,7 +35,7 @@ pub struct OverCap {
 
 /// True when the cap polices `path` (source suffix, not excluded).
 #[must_use]
-pub fn is_measured(path: &str, exclude: Option<&regex::Regex>) -> bool {
+pub fn is_measured(path: &str, exclude: Option<&crate::pathfilter::PathFilter>) -> bool {
     let basename = path.rsplit('/').next().unwrap_or(path);
     if !SOURCE_SUFFIXES.iter().any(|suffix| path.ends_with(suffix))
         && !SOURCE_NAMES.contains(&basename)
@@ -54,7 +54,7 @@ pub fn is_measured(path: &str, exclude: Option<&regex::Regex>) -> bool {
 pub fn scan_root(
     root: &std::path::Path,
     max: usize,
-    exclude: Option<&regex::Regex>,
+    exclude: Option<&crate::pathfilter::PathFilter>,
     staged: bool,
 ) -> Result<(Vec<OverCap>, usize), String> {
     let files = crate::gitutil::listed_files(root, staged)?;
@@ -68,7 +68,7 @@ pub fn scan_files(
     root: &std::path::Path,
     files: &[String],
     max: usize,
-    exclude: Option<&regex::Regex>,
+    exclude: Option<&crate::pathfilter::PathFilter>,
     staged: bool,
 ) -> (Vec<OverCap>, usize) {
     let mut over = Vec::new();
@@ -143,7 +143,7 @@ mod tests {
 
     #[test]
     fn exclusion_is_a_search() {
-        let rx = regex::Regex::new("third_party/|\\.generated\\.").unwrap();
+        let rx = crate::pathfilter::PathFilter::new("third_party/|\\.generated\\.").unwrap();
         assert!(!is_measured("third_party/a.py", Some(&rx)));
         assert!(!is_measured("x.generated.py", Some(&rx)));
         assert!(is_measured("src/a.py", Some(&rx)));

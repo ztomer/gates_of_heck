@@ -2,11 +2,8 @@
 
 A consumer that calls `python3 $GOH_DIR/checks/check_no_emoji.py` by path keeps working: the file
 is now three lines that exec `gates/goh.sh <check>` with the same arguments, so it gets the one
-binary resolution and the one refusal when no binary exists. Only the entry points a consumer was
-MEASURED calling by path are kept (an estate sweep, 2026-10-06); the rest were deleted, and their
-behaviour is the frozen spec in `tests/reference_kit.py`.
-
-claim: 6 checks in checks/_retired.py:SHIMS
+binary resolution and the one refusal when no binary exists. EVERY retired entry point is kept
+(see SHIMS); the behaviour each had is the frozen spec in `tests/reference_kit.py`.
 """
 
 from __future__ import annotations
@@ -43,16 +40,13 @@ NATIVE = {
     "check_exclusion_has_ceiling": "ceiling",
 }
 
-# The entry points still on disk as forwarders, because a consumer calls them BY PATH. Pinned both
-# ways by tests/test_retired_shims.py: each forwards to `NATIVE[stem]`, and no other file does.
-SHIMS = [
-    "check_no_emoji",
-    "check_file_length",
-    "check_python_formatted",
-    "check_version_provenance",
-    "check_tag_version",
-    "check_no_allow",
-]
+# Every retired checker's entry point stays on disk as a forwarder: a consumer calls it BY PATH,
+# and the first cut -- "keep only the ones an estate sweep measured" -- missed two (ztools called
+# check_no_secrets.py and check_no_home_paths.py; its gate died with "can't open file",
+# 2026-10-06). A forwarder is ten lines; a by-path caller left red is a consumer's broken gate.
+# Pinned by tests/test_retired_shims.py both ways. `check_shell_lint` was a shell script, and its
+# forwarder is one (checks/check_shell_lint.sh).
+SHIMS = [stem for stem in NATIVE if stem != "check_shell_lint"]
 
 
 def forward(check: str, module: str) -> NoReturn:

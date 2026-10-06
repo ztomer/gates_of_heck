@@ -24,7 +24,7 @@ Pre-push runs `tools/gate.sh --full`. Escape hatch: `git commit --no-verify`.
   `local_ci.sh` are opt-in per-repo layers. `_common.sh` is sourced, never run.
 * `crates/goh/` — the native `goh` binary: every structural check (`goh <check>`,
   dispatched by `gates/goh.sh`). The Python checkers are retired (Phase N3).
-* `checks/` — the remaining Python gate-side tools, the six forwarders
+* `checks/` — the remaining Python gate-side tools, a forwarder per retired checker
   (`_retired.py`), the calibration registry, the `--full` sweeps.
 * `lib/` — shared libs: `golden_core.py`, `mcp_scaffold.py`,
   `eval_transport.py`, `headless_env.sh`, `killtree.py`, `desktop_lock/`.

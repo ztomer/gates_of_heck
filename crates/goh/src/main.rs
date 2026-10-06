@@ -34,6 +34,7 @@ pub mod markers;
 pub mod mdlinks;
 pub mod mdtext;
 pub mod noallow;
+pub mod pathfilter;
 pub mod platform;
 pub mod prefetch;
 pub mod proven;

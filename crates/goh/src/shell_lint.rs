@@ -28,7 +28,7 @@ fn git_z(root: &Path, args: &[&str]) -> Result<Vec<String>, String> {
         .collect())
 }
 
-fn in_scope(f: &str, exclude: Option<&regex::Regex>) -> bool {
+fn in_scope(f: &str, exclude: Option<&crate::pathfilter::PathFilter>) -> bool {
     (f.as_bytes().ends_with(b".sh") || f.starts_with("hooks/"))
         && !exclude.is_some_and(|x| x.is_match(f))
 }
@@ -67,7 +67,7 @@ fn bounded(cmd: &mut Command) -> Result<crate::bounded::Ran, String> {
 fn gather(
     root: &Path,
     staged: bool,
-    exclude: Option<&regex::Regex>,
+    exclude: Option<&crate::pathfilter::PathFilter>,
 ) -> Result<(Files, Option<TempDir>), String> {
     if !staged {
         let files = git_z(root, &["ls-files", "-z"])?

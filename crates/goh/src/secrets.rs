@@ -102,7 +102,7 @@ pub fn findings(
 /// Returns a message when git lists files and fails.
 pub fn scan_root(
     root: &std::path::Path,
-    exclude: Option<&regex::Regex>,
+    exclude: Option<&crate::pathfilter::PathFilter>,
     staged: bool,
 ) -> Result<(Vec<Finding>, usize), String> {
     let files = crate::gitutil::listed_files(root, staged)?;
@@ -118,7 +118,7 @@ pub fn scan_root(
 pub fn scan_files(
     root: &std::path::Path,
     files: &[String],
-    exclude: Option<&regex::Regex>,
+    exclude: Option<&crate::pathfilter::PathFilter>,
     staged: bool,
 ) -> Result<(Vec<Finding>, usize), String> {
     let (patterns, marker) = compile_all()?;

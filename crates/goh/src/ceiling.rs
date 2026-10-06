@@ -61,8 +61,8 @@ pub fn check_exclusions(
     root: &std::path::Path,
     files: &[String],
     max: usize,
-    line_exclude: &regex::Regex,
-    unbounded: Option<&regex::Regex>,
+    line_exclude: &crate::pathfilter::PathFilter,
+    unbounded: Option<&crate::pathfilter::PathFilter>,
     have: &BTreeSet<String>,
 ) -> (Vec<Unceiled>, usize, usize) {
     let mut offenders = Vec::new();
@@ -222,7 +222,7 @@ pub fn run_exclusion(
             err: String::new(),
         };
     }
-    let line_exclude = match regex::Regex::new(line_exclude) {
+    let line_exclude = match crate::pathfilter::PathFilter::new(line_exclude) {
         Ok(rx) => rx,
         Err(e) => {
             return CheckOutcome::Ran {
@@ -235,7 +235,7 @@ pub fn run_exclusion(
     let unbounded = if line_unbounded.is_empty() {
         None
     } else {
-        match regex::Regex::new(line_unbounded) {
+        match crate::pathfilter::PathFilter::new(line_unbounded) {
             Ok(rx) => Some(rx),
             Err(e) => {
                 return CheckOutcome::Ran {

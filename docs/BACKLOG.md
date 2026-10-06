@@ -336,10 +336,10 @@ history; it hands the design over, then 1 lands here test-first (red-proven both
   which P3 lets the push reuse.
 - **antiknob:** `tools/_gitutil.py` is a vendored copy of a house file; `goh structural --full` now
   names it (a NEW copy is refused at commit). Delete it and import the shared one via `PYTHONPATH`.
-- **Consumers calling a Python checker by path** (`check_no_emoji.py`, `check_file_length.py`,
-  `check_python_formatted.py`, `check_version_provenance.py`, `check_tag_version.py`,
-  `check_no_allow.py`): they still work, as forwarders to `goh.sh <check>`; move to
-  `bash "$GOH_DIR/gates/goh.sh" <check>`. Any other retired path is gone; `goh --help` lists checks.
+- **Consumers calling a Python checker by path** (any of the 22 retired: `check_no_emoji.py`,
+  `check_no_secrets.py`, `check_no_home_paths.py`, ...): each still works as a forwarder to
+  `goh.sh <check>` -- all of them since 2026-10-06 (two were missing, ztools). Move to
+  `bash "$GOH_DIR/gates/goh.sh" <check>`. `--exclude` takes Python's look-around again.
 - **servers (media_server push, 2026-10-06):** its `tools/gate.sh` step 6 runs the 134-test pytest
   suite (110 s) on every push, outside the proven cache -- the floor under the <= 30 s one-crate
   target. Route it through a proven step (local_ci `GOH_CI_STEPS`, or a scoped key on what the

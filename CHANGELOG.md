@@ -114,6 +114,11 @@
   hook in `hooks/` is installed -- the directory is the list.
 * **A consumer's own pytest gets the HEAD export** (ztools: 53 of 120 tests refused since
   v0.22.0): the "test without GOH_LIVE" refusal is scoped to this suite (`GATES_OF_HECK_SUITE`).
+* **Every retired checker answers by path again** (ztools: `check_no_secrets.py` and
+  `check_no_home_paths.py` were deleted with no forwarder, and a consumer's gate died on them): a
+  forwarder for all 22, pinned by a class test. **`--exclude` takes Python's look-around** again
+  (`^(?!vendor/)` was refused by the native port's regex dialect): every consumer pattern
+  compiles through one `PathFilter` (`fancy-regex`).
 * **`--floors-json` is made absolute before a mode `cd`s into the project**; an `exempt` key is
   project-relative, now documented.
 

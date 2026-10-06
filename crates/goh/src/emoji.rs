@@ -184,7 +184,7 @@ fn hex_run(bytes: &[u8], start: usize, n: usize) -> Option<usize> {
 /// Returns a message when git lists files and fails.
 pub fn scan_root(
     root: &std::path::Path,
-    exclude: Option<&regex::Regex>,
+    exclude: Option<&crate::pathfilter::PathFilter>,
     extra: &BTreeSet<char>,
     staged: bool,
 ) -> Result<(Vec<Hit>, usize), String> {
@@ -198,7 +198,7 @@ pub fn scan_root(
 pub fn scan_files(
     root: &std::path::Path,
     files: &[String],
-    exclude: Option<&regex::Regex>,
+    exclude: Option<&crate::pathfilter::PathFilter>,
     extra: &BTreeSet<char>,
     staged: bool,
 ) -> (Vec<Hit>, usize) {

@@ -135,7 +135,7 @@ pub fn scan(
     root: &Path,
     paths: &[String],
     staged: bool,
-    exclude: Option<&regex::Regex>,
+    exclude: Option<&crate::pathfilter::PathFilter>,
 ) -> Outcome {
     let mut sources: Vec<(&str, &str, String)> = Vec::new();
     for rel in paths {

@@ -257,7 +257,7 @@ pub fn scan_text(scanner: &Scanner, path: &str, text: &str) -> Vec<Hit> {
 pub fn scan_root(
     root: &std::path::Path,
     files: &[String],
-    exclude: Option<&regex::Regex>,
+    exclude: Option<&crate::pathfilter::PathFilter>,
     staged: bool,
 ) -> Result<(Vec<Hit>, Vec<String>), String> {
     let scanner = Scanner::compile()?;

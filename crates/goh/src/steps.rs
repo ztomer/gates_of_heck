@@ -4,13 +4,15 @@
 use crate::step_report::{begin, fail, ok};
 use crate::{emoji, gatesrc, index_view::IndexView, length, markers, secrets};
 
-pub(crate) fn compile_exclude(exclude: &str) -> Result<Option<regex::Regex>, String> {
+pub(crate) fn compile_exclude(
+    exclude: &str,
+) -> Result<Option<crate::pathfilter::PathFilter>, String> {
     if exclude.is_empty() {
         return Ok(None);
     }
-    regex::Regex::new(exclude)
+    crate::pathfilter::PathFilter::new(exclude)
         .map(Some)
-        .map_err(|e| format!("bad --exclude regex: {e}"))
+        .map_err(|e| format!("bad --exclude regex '{exclude}': {e}"))
 }
 
 #[must_use]

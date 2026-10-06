@@ -72,3 +72,28 @@ def test_every_retired_checker_names_a_check_goh_dispatches() -> None:
     assert set(NATIVE.values()) <= dispatched, sorted(set(NATIVE.values()) - dispatched)
     for stem in NATIVE:
         assert not (ROOT / "checks" / f"{stem}.py").exists() or stem in SHIMS, stem
+
+
+def test_every_retired_entry_point_still_answers_by_path() -> None:
+    """THE CLASS: a by-path entry point retired with no forwarder. The first cut kept only the
+    forwarders an estate sweep measured, and missed two a consumer's gate called (ztools)."""
+    missing = [
+        stem
+        for stem in NATIVE
+        if not (ROOT / "checks" / f"{stem}.py").exists()
+        and not (ROOT / "checks" / f"{stem}.sh").exists()
+    ]
+    assert not missing, missing
+
+
+def test_the_shell_lint_forwarder_runs_its_native_check(tmp_path) -> None:
+    fake = tmp_path / "goh"
+    fake.write_text('#!/bin/sh\necho "native $*"\nexit 3\n')
+    fake.chmod(0o755)
+    r = subprocess.run(
+        ["bash", str(ROOT / "checks" / "check_shell_lint.sh"), "--staged"],
+        capture_output=True, text=True, timeout=60,
+        env={"PATH": "/usr/bin:/bin", "GOH_BIN": str(fake), "GOH_LIVE": "1"},
+    )  # fmt: skip
+    assert r.stdout.strip() == "native shell-lint --staged", r.stdout + r.stderr
+    assert r.returncode == 3

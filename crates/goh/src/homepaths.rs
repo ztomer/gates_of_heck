@@ -177,7 +177,7 @@ pub fn scan_text(scanner: &Scanner, path: &str, text: &str) -> Vec<Hit> {
 /// pattern fails to compile.
 pub fn scan_root(
     root: &std::path::Path,
-    exclude: Option<&regex::Regex>,
+    exclude: Option<&crate::pathfilter::PathFilter>,
     staged: bool,
 ) -> Result<(Vec<Hit>, usize), String> {
     let files = crate::gitutil::listed_files(root, staged)?;
@@ -193,7 +193,7 @@ pub fn scan_root(
 pub fn scan_files(
     root: &std::path::Path,
     files: &[String],
-    exclude: Option<&regex::Regex>,
+    exclude: Option<&crate::pathfilter::PathFilter>,
     staged: bool,
 ) -> Result<(Vec<Hit>, usize), String> {
     let scanner = Scanner::compile()?;

@@ -82,8 +82,8 @@ fn check(
         .filter(|f| f.to_lowercase().ends_with(".md"))
         .collect();
     if let Some(e) = exclude.filter(|e| !e.is_empty()) {
-        let pattern =
-            regex::Regex::new(e).map_err(|x| format!("bad --exclude regex '{e}': {x}"))?;
+        let pattern = crate::pathfilter::PathFilter::new(e)
+            .map_err(|x| format!("bad --exclude regex '{e}': {x}"))?;
         files.retain(|f| !pattern.is_match(f));
     }
     let mut out = Outcome {
