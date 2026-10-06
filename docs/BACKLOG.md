@@ -33,7 +33,7 @@ CPU**; `-n 12` is slower than `-n 8`.
 
 | item | commit | measured |
 |---|---|---|
-| C5 failure block quotes only the step that failed (ZoneWM H2; `lib/fail_lines.py`) | (this) | nested: innermost dump alone, others counted; `make`: its failing target first, matches flagged |
+| C5 failure block quotes only the step that failed (ZoneWM H2; `lib/fail_lines.py`) | `24eb31d` | nested: innermost dump alone, others counted; `make`: its failing target first, matches flagged |
 
 ## Phase P — make goh fast (the program)
 
