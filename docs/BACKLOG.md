@@ -6,9 +6,11 @@ not ready to start: the **measured baseline** it moves, the **exit number** that
 hit can be wrong, each with a test BEFORE the cache exists). A perf change without a before/after
 from the P0 instrument does not land.
 
-## State — 2026-10-06, v0.23.0 (read first)
+## State — 2026-10-06, v0.23.0 + unreleased (read first)
 
-v0.23.0 retired the Python checkers: `bin/goh` is the only structural tier. Box: 16 cores, 4-5 busy
+v0.23.0 retired the Python checkers: `bin/goh` is the only structural tier. Main is 17 commits past
+the tag (CHANGELOG `Unreleased`): the spawn cuts, one-run coverage, the learned rust scope, the C2
+writer hook, `tools/session_bench.py`. **Releasing it as v0.24.0 waits on the owner's OK to push.** Box: 16 cores, 4-5 busy
 at idle, sys ~= user, so **spawn count, tree walks and network round trips are the cost metric, not
 CPU**. The suite runs `-n 12` (faster than 8 since the 2026-10-06 spawn cuts; 16 a draw). Every wall-clock number below needs a QUIET box (load < 4):
 the 2026-10-06 session ran at load 12-31 beside other sessions' gates, so its timings are not
@@ -28,6 +30,9 @@ commit bodies.
 | `tools/session_bench.py`: cross-session serialization, USL-fitted | `22f5bc8` | below |
 | spawn cuts: display-seam probe without git per case; `bounded_run` lean (no `ps` when the group is empty, lazy imports, `-S`); `repo_root` asked once; one `git config`; `repo` fixture copied from a template | `1278870`..`a651052` | probe 1.2 -> 0.14 s; per step 59.6 -> 26.4 ms; staged run 16 -> 9 git calls; fixture 41.9 -> 4.8 ms (x614) |
 | a build's in-repo reads outside its scope are learned, not fatal (rust proven cache) | `d384c0d` | vpn-watchdog-rs: never recorded -> skipped from the 3rd run |
+| rust coverage: one instrumented run of every target, exported once | `170f60b` | 29/29 media_server crates identical; 226 -> 173 s |
+| git's repository-binding variables asked once per process tree (`GOH_GIT_LOCAL_VARS`) | `bd3bff7` | ~1300 fewer spawns per suite run |
+| suite at `-n 12` | `83af2ac` | 74/96 s -> 67/79 s interleaved |
 | P0-P4, C1, C3-C5 | v0.20.0-v0.22.0 | see CHANGELOG |
 
 ## Open — measurements (each needs a quiet box)
@@ -81,6 +86,48 @@ repos per run (copy + `git init`/`config` x2/`add`/`commit` each, a pool of `len
 threads, sized as if the machine were idle) and runs 24 `goh.sh` calls. A pool-cap A/B (8 vs 2
 workers) was unreadable at load 18-83; it needs the quiet box like every row above.
 
+## Open — found 2026-10-06, each sized and ready to start
+
+Defects first (a gate that says more than it does), then levers by expected yield.
+
+1. **Rust per-target coverage floors are INERT.** `lcov_merge.py::_load_floors` reads a flat
+   `{target: floor}` file into `targets` and nothing applies it -- only `coverage_swift.py` does. A
+   rust consumer writing per-target floors is told nothing and gated on nothing (Rust rule #6, "no
+   inert config that reads like a gate"). Since `170f60b` the rust mode has ONE part, so a
+   per-target floor is not even measurable there. Exit: the rust mode REFUSES a floors file with
+   target floors (naming the key and the reason), or the feature is built with per-target parts;
+   refusing is the honest default. Red-first: a rust run with `{"covfix": 100}` over 50% coverage
+   passes today.
+2. **The HEAD export cache is never pruned.** `~/.cache/goh/head/<sha>/` is written once per commit
+   that ran a gate and never removed: 55 exports, 226 MB on 2026-10-06 (`gates/_from_head.sh`).
+   Exit: bounded by count or age with the CURRENT export never removed; a pruner that races a gate
+   reading an export is the way it lies -- test that an export in use survives (a lock or an mtime
+   touched on use).
+3. **The media_server everything-changed push rebuilds every crate instrumented from clean**
+   (`cargo llvm-cov clean --workspace` at the start of each coverage run: 225 of ~330 summed step-s
+   are coverage). The clean exists because stale instrumented artifacts merged into a report (93.5%
+   read for 96%, routines 2026-09-21). Exit: an incremental instrumented build whose report counts
+   ONLY the current build's objects; lies: a renamed/deleted test binary's stale object, a
+   profile of a previous build. Test each before the change; target <= 90 s for the push.
+4. **Every `goh.sh` call re-resolves the binary**: 31 ms from the export, 62 ms from the checkout,
+   and under `GOH_LIVE` six git calls for the working-tree delta. One resolution per process tree
+   (an exported, validated answer -- the `GOH_GIT_LOCAL_VARS` pattern) removes most of it. Lies: a
+   binary rebuilt mid-tree, a delta that changed mid-run (the tree guard already fails a run that
+   moves the checkout). Exit: a `goh.sh` call inside a gate spawns no git (shim-counted ratchet).
+5. **The suite's last ~7 s (66.9 s quiet against 60 s).** Fewer processes per test: the heaviest
+   tests run a whole gate to check one step (`test_gate_environment.py` ~15 s,
+   `test_hook_git_env.py::test_conftest_scrubs...` 0.7 s alone / 16 s in-suite,
+   `test_rust_gate_scoped_cache.py` ~45 s of real cargo). Small, mechanical: 113 test sites `git
+   init` a fresh repo each (a shared template helper, as `repo` got: ~500 spawns); the `release`
+   xdist group's reason is gone since `31bbb81` (the hardening test rewrites a copy), so the group
+   only constrains packing -- delete it, and keep the tree guard as the proof.
+6. **`check_estate_corpus` saturates the box inside `structural --full`** (sigma 0.84 alone): 16
+   scratch repos per run, 5 git spawns each (init, config x2, add, commit -> template + `-c`
+   identity = 2), a pool of 8 threads sized as if the machine were idle, 24 `goh.sh` calls (item
+   4). Exit: the cross-session sigma <= 0.15 above, measured on a quiet box.
+7. **`lib/orphan_canary.py` still imports `dataclasses` and `argparse`** on every `local_ci.sh`
+   step; the `bounded_run.py` treatment (`7dfb65c`) applies. Small.
+
 ## Open — "fix the class" commit gate (requested by ZoneWM, owner-approved to roadmap, 2026-10-06)
 
 The metarule is written down and was still applied one site at a time (ZoneWM, one night: window
@@ -98,6 +145,9 @@ history; it hands the design over, then 1 lands here test-first (red-proven both
 
 ## Downstream: what each consumer session needs to know
 
+- **Every repo, after v0.24.0 (nothing to do):** rust coverage runs once per crate (identical
+  reports, ~23% faster); a crate whose build reads in-repo files outside its scope is recorded
+  from its second run; the step wrapper costs half. Tell servers when it is tagged.
 - **Every repo:** re-run `$GOH_DIR/install.sh <repo>`; `structural.sh` names a hook that is an older
   stock. **A Rust toolchain is now required** for layer 1 (`bin/goh` is the only tier;
   `required_tools.tsv` names `cargo`, and `build-goh.sh` refuses up front without it).
@@ -149,6 +199,14 @@ history; it hands the design over, then 1 lands here test-first (red-proven both
   corpus.
 - Rust, Python, shell only. No `.swift`/`.ts`/`.go` test spawns in the estate today; re-measure.
 
+### The C2 writer hook and the commit gate
+
+- `hooks/claude/skill_edit.sh` fires on Claude Code's Write/Edit/MultiEdit only: a skill edited
+  through Bash (`sed`, a heredoc) is judged at the next commit or push, not at once.
+- The commit gate is the STAGED structural layer by design; the suite runs at push. Two commits
+  of 2026-10-06 broke the suite and were caught there (`8322984`): run the suite before committing
+  gate or test changes.
+
 ### SUPERSOTA residuals (`docs/SUPERSOTA.md` §3)
 
 - R3: `check_estate_corpus.py` proves a checker still REFUSES a plant; it cannot prove the checker
@@ -174,5 +232,12 @@ history; it hands the design over, then 1 lands here test-first (red-proven both
   each with arguments and no structural step runs them. Re-open when one measures on a hot path.
 - The `--full` sweeps (`check_empty_scope.py`, `check_probes_pass.py`) stay Python by SUBJECT: they
   run a repo's own Python gates. Re-open when either costs > 1 s on a consumer's push.
+- A native `goh step` (the ceiling wrapper in Rust, ~3 ms against 26 ms): `nohup`'s contract --
+  a signal ignored at entry stays ignored -- needs the inherited disposition, which only
+  `sigaction` reads, and `unsafe` is denied in the crate. Re-open with a vetted crate that
+  exposes the query safely, or a per-site exemption the unsafe allowlist names.
+- One `rev-parse --show-toplevel` per delegated Python checker process (two per `--full`): a
+  cross-process answer was judged not worth its staleness risk for two spawns. Re-open if a
+  shim count shows more.
 - Credentials: `.netrc` out of scope until some gate already reads outside its repo; CI configs are
   committed, so `goh secrets` covers them. Not a gap.
