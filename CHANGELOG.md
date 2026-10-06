@@ -1,5 +1,50 @@
 # CHANGELOG
 
+## v0.22.0 — the shared checkout stops being live, and the gates run side by side _(2026-10-05)_
+
+### 1. Consumers run HEAD, never the shared working tree (C4)
+
+Every entry point (`structural.sh`, `rust_gate.sh`, `push_gate.sh`, `swift_gate.sh`, `py_gate.sh`,
+`py_staged.sh`, `coverage_gate.sh`, `local_ci.sh`, `doctor.sh`, `proven.sh`) and the two sourced libs
+consumers load (`_common.sh`, `tui/lib.sh`) re-run themselves from an immutable export of the gates
+checkout's HEAD (`~/.cache/goh/head/<sha>`, `GOH_HEAD_CACHE`), built once per commit and renamed into
+place whole. An uncommitted edit in the shared checkout -- three incidents on 2026-10-05 alone -- now
+judges no consumer. `PYTHONPATH` gains the export first; `bin/goh` is found in the live checkout,
+where C3 keeps it HEAD's. **`GOH_LIVE=1` runs the working tree on purpose** (developing the gates;
+this suite sets it, and a gate started under pytest without it refuses). Cost: +45 ms per gate run.
+Residual, stated in BACKLOG: three consumer call sites run a Python checker directly, and
+`tools/*.sh` are not redirected.
+
+### 2. Speed: the step list and the crate fan-out run side by side (P2, P1f, P1g)
+
+* **`GOH_CI_JOBS=N`** runs `local_ci.sh` steps concurrently. Reports come out in DECLARED order, the
+  fail accumulator and exit code are unchanged, and `[tag,...] cmd` steps sharing a tag never
+  overlap. Serial stays the default: only the repo knows which of its steps write one file.
+  `--jobs N` and `--steps-only` are for a caller that schedules for the repo.
+* **`rust_gate.sh --each-crate [repo]`** gates every tracked top-level crate, biggest first,
+  `GOH_RUST_JOBS` (default 4) at a time, through that same scheduler, with the whole-repo scans run
+  ONCE (`GOH_RUST_GROUPS`). media_server, warm, proven off: 79 s against its hand-rolled
+  `xargs -P 4` fan-out's 91 s; the repo scans 1 run instead of 29.
+* **`GOH_RUST_LINT_CARGO=cargo-zigbuild`** runs the `--target` lint configs (only those) through
+  zigbuild, whose `zig cc` builds ring's C for musl -- so a cross clippy can live in the crate's gate
+  instead of a serial tail (media_server: 46 s). `required_tools` layer `rust-cross`.
+  `GOH_RUST_LINT_CONFIGS` had no test at all; it is now calibrated (Linux-only dead code: host green,
+  the musl config red).
+
+### 3. Correctness
+
+* **A red step's failure block quotes the step that FAILED** (ZoneWM H2, `lib/fail_lines.py`): a
+  nested failure quotes the innermost dump alone and counts the rest; an unframed `make` log says
+  so and puts make's `*** [target] Error N` first. The inner header used to match itself, too.
+* **A stopped gate stops its steps.** A step in its own session never heard Ctrl-C or a TERM to its
+  wrapper, and ran on unowned. `bounded_run` now sweeps its group on TERM/INT/HUP (an ignore
+  inherited at entry -- nohup -- stays ignored), and `local_ci` hands the stop to every running step.
+* **The environment is not configuration** for `local_ci`: an inherited `GOH_CI_JOBS` /
+  `GOH_CI_STEPS` is dropped (an exported job count had made every nested run concurrent).
+* **`GOH_MAX_LINES=off`** declares no cap in one info line instead of a warning on every commit.
+* `orphan_canary`'s header promised to report repo-named processes not observed under the step;
+  it never did, and must not under concurrency. The header now says what the code does.
+
 ## v0.21.0 — measured first: the time was walks, rebuilds and serial waits, and a version is not a source _(2026-10-05)_
 
 Every change below began as a number from the new instrument (`GOH_TIMINGS`, `tools/gate_profile.sh`)

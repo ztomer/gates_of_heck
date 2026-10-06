@@ -6,9 +6,9 @@ not ready to start: the **measured baseline** it moves, the **exit number** that
 hit can be wrong, each with a test BEFORE the cache exists). A perf change without a before/after
 from the P0 instrument does not land.
 
-## State — 2026-10-05, v0.21.0 (read first)
+## State — 2026-10-05, v0.22.0 (read first)
 
-v0.21.0 shipped; details in CHANGELOG.md. The pytest hang is retired. Box: 16 cores, 4-5 busy
+v0.22.0 shipped; details in CHANGELOG.md. The pytest hang is retired. Box: 16 cores, 4-5 busy
 at idle, sys ~= user, so **spawn count, tree walks and network round trips are the cost metric, not
 CPU**; `-n 12` is slower than `-n 8`.
 
@@ -29,7 +29,7 @@ CPU**; `-n 12` is slower than `-n 8`.
 | P3 rust_gate groups proven on their own inputs (`goh rust-scope`) | `750a114` | see the v0.21.0 stanza |
 | `required_tools --names`, ruff its own layer (divoom CI) | `3a9b465` | -- |
 
-**Landed since v0.21.0:**
+**Landed in v0.22.0:**
 
 | item | commit | measured |
 |---|---|---|
