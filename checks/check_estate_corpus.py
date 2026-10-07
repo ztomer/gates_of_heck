@@ -325,7 +325,7 @@ def judge(entry, bad):
     if seen := _estate_cache.lookup(key):  # nothing it depends on moved (checks/_estate_cache.py)
         ok(f"{seen['line']} -- verified {int(time.time() - seen['at'])}s ago, inputs unchanged")
         return "verified"
-    with tempfile.TemporaryDirectory() as td:
+    with tempfile.TemporaryDirectory(prefix="goh-estate.") as td:
         real = os.path.join(td, "real")
         minimal = os.path.join(td, "minimal")
         materialise(source, files, real)
@@ -427,9 +427,9 @@ def probe():
     saved, home, blind_dir = ESTATE, HERE, ""
     bad = 0
     try:
-        # A checker that always passes. If the sweep cannot see that, it is a gate that reports
-        # coverage it never measured.
-        blind = os.path.join(blind_dir := tempfile.mkdtemp(), "check_cannot_fail.py")
+        # A checker that always passes: a sweep blind to it reports coverage it never measured.
+        blind_dir = tempfile.mkdtemp(prefix="goh-estate-blind.")
+        blind = os.path.join(blind_dir, "check_cannot_fail.py")
         with open(blind, "w", encoding="utf-8") as handle:
             handle.write('"""Green whatever the tree says."""\nprint("clean")\n')
         globals()["HERE"] = os.path.dirname(blind)
@@ -454,7 +454,7 @@ def probe():
 
         # A corpus below the floor must be REFUSED, not used: a real repo's name on one file is
         # the failure this gate exists to catch, reproduced inside the gate.
-        with tempfile.TemporaryDirectory() as td:
+        with tempfile.TemporaryDirectory(prefix="goh-estate.") as td:
             thin = os.path.join(td, "thin")
             os.makedirs(os.path.join(thin, "src"))
             with open(os.path.join(thin, "src", "lib.rs"), "w", encoding="utf-8") as handle:

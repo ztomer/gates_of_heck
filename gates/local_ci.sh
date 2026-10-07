@@ -226,7 +226,7 @@ python3 -S "$GOH_ROOT/lib/prune_kept.py" "${TMPDIR:-/tmp}" goh-local-ci. 2>/dev/
 # The backstop for what a KILLED run could not remove (a trap does not run on SIGKILL): any of our
 # own `goh-*` entries untouched for 12 hours. Every gate's own files are removed at its exit
 # (goh_cleanup_add, tests/test_gate_temp_leaks.py); this bounds the rest.
-python3 -S "$GOH_ROOT/lib/prune_kept.py" "${TMPDIR:-/tmp}" goh- 0 43200 2>/dev/null || true
+python3 -S "$GOH_ROOT/lib/prune_kept.py" "${TMPDIR:-/tmp}" --backstop 2>/dev/null || true
 LOGDIR=$(mktemp -d "${TMPDIR:-/tmp}/goh-local-ci.XXXXXX")
 FAILED=0
 FAILED_NAMES=""

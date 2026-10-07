@@ -31,7 +31,7 @@ CHILD_FLAG = "GOH_HOOK_ENV_CHILD"
 # characters, and --show-toplevel is blind (with GIT_DIR set and no work tree it answers the cwd).
 GATE = """import os, subprocess, sys, tempfile
 if "--probe" in sys.argv:
-    with tempfile.TemporaryDirectory() as td:
+    with tempfile.TemporaryDirectory(prefix="goh-hookenv-test.") as td:
         subprocess.run(["git", "init", "-q", td], check=True)
     sys.exit(0)
 gd = subprocess.run(["git", "rev-parse", "--absolute-git-dir"], capture_output=True, text=True)

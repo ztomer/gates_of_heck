@@ -8,23 +8,34 @@ gate" (2026-10-06). A test that drops a file into the checkout (an instrumented 
 `default_*.profraw`) is the same class. So the controller stamps the tree (`lib/tree_stamp.py`,
 the gates' own instrument) at session start, compares at the end, and fails the session naming
 every path that moved. A test works on a COPY under tmp_path.
+
+The same session start sweeps the temp dir (`sweep_temp`): a worker killed mid-run leaves its
+`goh-*` temps, and only a push swept them, so a day of suite runs stranded ~1,500 (ZoneWM,
+2026-10-07). The sweep is prune_kept's backstop, the one local_ci.sh runs.
 """
 
 from __future__ import annotations
 
 import sys
+import tempfile
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO_ROOT / "lib"))
 import tree_stamp  # noqa: E402
+from prune_kept import backstop  # noqa: E402
 
 _KEY = "_goh_tree_stamp"
+
+
+def sweep_temp(directory: str | None = None) -> list[str]:
+    return backstop(directory or tempfile.gettempdir())
 
 
 def pytest_sessionstart(session) -> None:
     if not hasattr(session.config, "workerinput"):  # the controller only: one stamp per run
         setattr(session.config, _KEY, tree_stamp.fingerprint(REPO_ROOT))
+        sweep_temp()
 
 
 def pytest_sessionfinish(session, exitstatus) -> None:

@@ -46,7 +46,7 @@ done
 [ -n "$out" ] || exit 2
 parts="${CARGO_STUB_PARTS:?}"
 # ONE run of every target (`--workspace --lib --tests`): its export is every canned part, in order.
-src="$(mktemp)"; cat "$parts"/*.info > "$src" 2>/dev/null
+src="$(mktemp "${parts%/}.export.XXXXXX")"; cat "$parts"/*.info > "$src" 2>/dev/null
 if [ -n "${CARGO_STUB_DROP:-}" ]; then
   exit 1   # the run fails WITHOUT producing an output file
 fi

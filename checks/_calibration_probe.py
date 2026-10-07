@@ -230,7 +230,7 @@ def _external(td, estate):
 
 def probe():
     bad = 0
-    with tempfile.TemporaryDirectory() as td:
+    with tempfile.TemporaryDirectory(prefix="goh-calibration.") as td:
         estate = os.path.join(td, "estate")
         bad += _cases(estate)
         bad += _uncommitted(td)

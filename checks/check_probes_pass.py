@@ -383,7 +383,7 @@ def probe():
     from _calibration_probe import probe as calibration_probe
 
     bad = 0
-    with tempfile.TemporaryDirectory() as td:
+    with tempfile.TemporaryDirectory(prefix="goh-probes.") as td:
         tools = os.path.join(td, "tools")
         os.makedirs(tools)
 

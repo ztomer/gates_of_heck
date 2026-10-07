@@ -439,7 +439,7 @@ def probe():
     from tui.lib import err, ok
 
     bad = 0
-    with tempfile.TemporaryDirectory() as td:
+    with tempfile.TemporaryDirectory(prefix="goh-display-seam.") as td:
         for n, (label, files, policy, want) in enumerate(CASES):
             # A fresh directory per case. Reusing one made a case see the PREVIOUS case's files,
             # which is a fixture that cannot disagree with anything -- the exact shape R3 names.

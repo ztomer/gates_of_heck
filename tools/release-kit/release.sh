@@ -65,7 +65,7 @@ set -euo pipefail
 # coupled to a concurrent writer instead of a finished snapshot. A temp copy
 # needs nothing newer than macOS's stock bash 3.2 (no mapfile/readarray).
 if [ -z "${GOH_RELEASE_BUFFERED:-}" ]; then
-  _SELF_COPY="$(mktemp "${TMPDIR:-/tmp}/release-buffered.XXXXXX")"
+  _SELF_COPY="$(mktemp "${TMPDIR:-/tmp}/goh-release-buffered.XXXXXX")"
   cat "$0" > "${_SELF_COPY}"
   export GOH_RELEASE_BUFFERED="${_SELF_COPY}"
   exec /bin/bash "${_SELF_COPY}" "$@"
@@ -126,12 +126,13 @@ if [ -n "$TAP_NAME" ] && [ -z "$TAP" ]; then
 fi
 
 TAG="v${VERSION}"
-BODY="" NOTES="" TAP_DIR=""
+BODY="" NOTES="" TAP_DIR="" ARCHIVE_DIR=""
 cleanup() {
   # Every branch must succeed — this trap's status becomes the script's.
   [ -z "$BODY" ] || rm -f "$BODY"
   [ -z "$NOTES" ] || rm -f "$NOTES"
   [ -z "$TAP_DIR" ] || rm -rf "$TAP_DIR"
+  [ -z "$ARCHIVE_DIR" ] || rm -rf "$ARCHIVE_DIR"  # a build that fails exits before its own rm
   [ -z "${_SELF_COPY:-}" ] || rm -f "${_SELF_COPY}"
   true
 }
@@ -213,7 +214,7 @@ if [ -n "$ARCHIVE_BUILD" ]; then
   if [ "$DRY_RUN" = 1 ]; then
     plan "git archive HEAD | tar -x into a temp dir; run: ${ARCHIVE_BUILD}"
   else
-    ARCHIVE_DIR="$(mktemp -d "${TMPDIR:-/tmp}/release-archive.XXXXXX")"
+    ARCHIVE_DIR="$(mktemp -d "${TMPDIR:-/tmp}/goh-release-archive.XXXXXX")"
     git archive --format=tar HEAD | tar -x -C "$ARCHIVE_DIR" \
       || fail "git archive HEAD could not be extracted"
     ( cd "$ARCHIVE_DIR" && GOH_RELEASE_VERSION="$VERSION" bash -c "$ARCHIVE_BUILD" ) \
@@ -262,7 +263,7 @@ bump --version, or move the tag deliberately: git tag -f ${TAG} && git push -f o
 elif [ "$DRY_RUN" = 1 ]; then
   plan "git tag -a ${TAG} at $(git rev-parse --short HEAD)"
 else
-  BODY="$(mktemp)"
+  BODY="$(mktemp "${TMPDIR:-/tmp}/goh-release-body.XXXXXX")"
   stanza_body > "$BODY"
   [ -s "$BODY" ] || printf '%s\n' "${TAG}" > "$BODY"
   # --cleanup=verbatim: without it git strips '#' lines from -F messages as
@@ -301,7 +302,7 @@ elif [ -z "$GH_REPO_SLUG" ]; then
 elif [ "$DRY_RUN" = 1 ]; then
   plan "gh release create ${TAG} --notes-file <stanza body> (repo ${GH_REPO_SLUG})"
 else
-  NOTES="$(mktemp)"
+  NOTES="$(mktemp "${TMPDIR:-/tmp}/goh-release-notes.XXXXXX")"
   stanza_body > "$NOTES"
   if gh release view "$TAG" --repo "$GH_REPO_SLUG" >/dev/null 2>&1; then
     ok "GitHub release ${TAG} already exists — leaving it (idempotent)"
@@ -329,7 +330,7 @@ else
     else
       fail "--tap must be ORG/REPO or a local git path (got '${TAP}')"
     fi
-    TAP_DIR="$(mktemp -d)"
+    TAP_DIR="$(mktemp -d "${TMPDIR:-/tmp}/goh-release-tap.XXXXXX")"
     git clone -q "$TAP_SRC" "$TAP_DIR/tap" || fail "could not clone ${TAP}"
     FORMULA_FILE="$TAP_DIR/tap/${TAP_SUBDIR}/${TAP_NAME}.rb"
     [ -f "$FORMULA_FILE" ] || fail "not found: ${TAP_SUBDIR}/${TAP_NAME}.rb in ${TAP}"
@@ -344,7 +345,7 @@ else
     fi
     case "$ARTIFACT" in
       http://*|https://*)
-        artifact_dl="$(mktemp "${TMPDIR:-/tmp}/release-artifact.XXXXXX")"
+        artifact_dl="$(mktemp "${TMPDIR:-/tmp}/goh-release-artifact.XXXXXX")"
         if ! curl -fsSL "$ARTIFACT" -o "$artifact_dl"; then
           rm -f "$artifact_dl"
           fail "could not download artifact: ${ARTIFACT}"

@@ -45,7 +45,7 @@ if command -v _lib_info >/dev/null 2>&1; then
     err(){ _lib_err "$*"; };  warn(){ _lib_warn "$*"; }
 fi
 
-log="$(mktemp -t rustgate)"
+log="$(mktemp "${TMPDIR:-/tmp}/goh-rustgate-legacy.XXXXXX")"
 trap 'rm -f "$log"' EXIT
 
 section() { printf '\n== %s ==\n' "$1"; }

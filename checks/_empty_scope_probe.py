@@ -42,7 +42,7 @@ from check_empty_scope import (  # noqa: E402
 def probe():
     """A blind gate, a guarded one, an excused one, and the stale excuse."""
     bad = 0
-    with tempfile.TemporaryDirectory() as td:
+    with tempfile.TemporaryDirectory(prefix="goh-empty-scope.") as td:
         root = os.path.join(td, "repo")
         tools = os.path.join(root, "tools")
         os.makedirs(os.path.join(root, "Sources", "Deep"))
@@ -82,7 +82,7 @@ def probe():
         )
 
         names = gate_names(tools)
-        with tempfile.TemporaryDirectory() as work:
+        with tempfile.TemporaryDirectory(prefix="goh-empty-scope.") as work:
             skeleton = build_skeleton(root, tools, os.path.join(work, "s"))
             blind, unrunnable = sweep(skeleton, "tools", names)
 
@@ -188,7 +188,7 @@ def probe():
             "sys.exit(0)\n",
         )
         try:
-            with tempfile.TemporaryDirectory() as work:
+            with tempfile.TemporaryDirectory(prefix="goh-empty-scope.") as work:
                 demanding_skeleton = build_skeleton(root, tools, os.path.join(work, "s"))
                 d_blind, d_unrunnable = sweep(demanding_skeleton, "tools", ["check_demanding.py"])
             for label, want, got in [

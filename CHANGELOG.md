@@ -145,6 +145,14 @@
   (`goh_cleanup_add`), the sweep's gates under a TMPDIR it owns, kept-on-failure logs bounded
   (`lib/prune_kept.py`), and a 12 h backstop for killed runs; pinned by
   `tests/test_gate_temp_leaks.py`, which runs `structural --full` and asserts an EMPTY TMPDIR.
+* **Every temp we put in the shared dir is claimable, and the suite sweeps it too** (ZoneWM,
+  2026-10-07: ~1,500 `goh-*` entries still stranded a day later). The 12 h backstop only claims
+  `goh-*` names, and only in a push's TMPDIR: release.sh's bare `mktemp`s, a test stub's and every
+  `TemporaryDirectory()` were nobody's; the suite's `goh-test-git.*` seeds were never removed; and a
+  suite run never swept. Every site now carries the `goh-` prefix (a ratchet scans tracked shell and
+  Python for one that does not), the seeds go at worker exit, a failed release removes its archive
+  dir, and the suite's controller runs the same backstop (`prune_kept.py --backstop`) at session
+  start. Pinned by `tests/test_temp_claimable.py`.
 * **A `GOH_LIVE` run names its own tree as `GOH_DIR`**: unset, the binary's delegated checkers came
   from `~/Projects/gates_of_heck`, so a live run from a worktree swept main's `checks/`.
 * **`--floors-json` is made absolute before a mode `cd`s into the project**; an `exempt` key is

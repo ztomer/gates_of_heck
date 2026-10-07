@@ -6,6 +6,10 @@ A red run keeps its logs on purpose, and nothing ever removed them: 619 `goh-loc
 entries named `<prefix>*` and everything modified within `idle` seconds (3600) -- a live run writes
 into its own directory, so a concurrent run is never removed -- and deletes the rest. Exit 0
 always: pruning is housekeeping, never a verdict.
+
+`--backstop` is the other half: a trap or an atexit does not run on SIGKILL, so any of our own
+`goh-*` entries untouched for 12 hours is a killed run's and goes. local_ci.sh runs it on every
+push and the suite's controller at every session start (tests/test_temp_claimable.py), one spelling.
 """
 
 from __future__ import annotations
@@ -28,6 +32,7 @@ import time
 
 KEEP = 20
 IDLE_S = 3600
+BACKSTOP_IDLE_S = 12 * 3600
 
 
 def prune(directory: str, prefix: str, keep: int = KEEP, idle: float = IDLE_S) -> list[str]:
@@ -60,7 +65,15 @@ def prune(directory: str, prefix: str, keep: int = KEEP, idle: float = IDLE_S) -
     return removed
 
 
+def backstop(directory: str) -> list[str]:
+    """Every `goh-*` entry no run has touched for BACKSTOP_IDLE_S: what a killed run left."""
+    return prune(directory, "goh-", keep=0, idle=BACKSTOP_IDLE_S)
+
+
 if __name__ == "__main__":
+    if sys.argv[2:3] == ["--backstop"]:
+        backstop(sys.argv[1])
+        sys.exit(0)
     if len(sys.argv) < 3:
         sys.exit(0)
     args = sys.argv[1:]

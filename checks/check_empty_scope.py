@@ -362,7 +362,7 @@ def main(argv=None):
     # An excuse naming no gate is the same stale permission as one whose gate was fixed: it would
     # silently excuse the next file to take the name.
     orphaned = sorted(k for k in excused if k not in names)
-    with tempfile.TemporaryDirectory() as workdir:
+    with tempfile.TemporaryDirectory(prefix="goh-empty-scope.") as workdir:
         skeleton = build_skeleton(root, gates, os.path.join(workdir, "skeleton"))
         blind, unrunnable = sweep(skeleton, os.path.basename(gates), names)
 
