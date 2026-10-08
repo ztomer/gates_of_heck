@@ -14,6 +14,7 @@ from pathlib import Path
 
 import pytest
 
+from bench_load_fakes import busy_for, fake_load
 from conftest import REPO_ROOT
 
 LIB = REPO_ROOT / "lib" / "bench_lock.sh"
@@ -228,24 +229,6 @@ def _quiet(tmp_path: Path, *args: str, **extra: str) -> subprocess.CompletedProc
                           timeout=60)  # fmt: skip
 
 
-def _fake_load(tmp_path: Path, readings: list[int]) -> dict[str, str]:
-    """A load reader that plays `readings` (the last repeats) and logs, per read, whether the host
-    was held at that moment -- the queue's whole claim is that it holds nothing while it waits."""
-    seq = tmp_path / "readings"
-    seq.write_text("\n".join(map(str, readings)) + "\n")
-    log = tmp_path / "reads"
-    script = tmp_path / "load.sh"
-    script.write_text(
-        "#!/bin/bash\n"
-        f'held=free; [ -d "{tmp_path}/lock/exclusive" ] && held=held\n'
-        f'v="$(head -n 1 "{seq}")"; [ "$(wc -l < "{seq}")" -gt 1 ] && tail -n +2 "{seq}" > "{seq}.n" '
-        f'&& mv "{seq}.n" "{seq}"\n'
-        f'echo "$held $v" >> "{log}"; echo "$v"\n'
-    )
-    script.chmod(0o755)
-    return {"GOH_BENCH_LOADAVG": str(script)}
-
-
 def _reads(tmp_path: Path) -> list[str]:
     return (tmp_path / "reads").read_text().splitlines()
 
@@ -304,7 +287,7 @@ def test_quiet_takes_its_place_before_it_judges_the_box(tmp_path: Path) -> None:
 def test_quiet_lets_go_between_attempts_while_the_box_stays_busy(tmp_path: Path) -> None:
     """With every gate drained and the box still busy (an xctest, Spotlight), holding on would
     block every session's commits for nothing: it lets go, waits, and claims again."""
-    load = _fake_load(tmp_path, [50] * 25 + [1])
+    load = fake_load(tmp_path, [50] * 25 + [1])
     owners = tmp_path / "owners"
     since = f'sed -n 3p "{tmp_path}/lock/exclusive/owner" >> "{owners}"'
     script = Path(load["GOH_BENCH_LOADAVG"])
@@ -410,7 +393,7 @@ def test_a_run_whose_controls_move_is_noisy_not_a_number(tmp_path: Path) -> None
 
 def test_the_floor_is_measured_holding_the_host(tmp_path: Path) -> None:
     """The threshold comes from the box: `--floor` drains every gate and samples what is left."""
-    load = _fake_load(tmp_path, [9, 7, 8])
+    load = fake_load(tmp_path, [9, 7, 8])
     r = _quiet(tmp_path, "--floor", "--settle", "3", **load, **_controls(tmp_path, "0.41"))
     assert r.returncode == 0, r.stdout + r.stderr
     assert "floor: load 7 min" in r.stdout and "control 0.41 s" in r.stdout, r.stdout
@@ -441,7 +424,7 @@ def test_the_cap_bounds_the_whole_block_not_only_the_run(tmp_path: Path) -> None
     """The drain and the settle block every gate too: the first cap bounded only the run, so a
     claim could block for its settle AND its hold. A run that would end past the cap, counted from
     the claim, lets go instead."""
-    load = _fake_load(tmp_path, [50] * 150 + [1])  # ~15 s busy: the old claim held through it
+    load = busy_for(tmp_path, 15)  # the old claim held through it
     lock = tmp_path / "lock"
     env = _quiet_env(tmp_path, GOH_BENCH_MAX_HOLD="12", **load)  # a budget of 2 s: 12 - 10
     hold = subprocess.Popen(
