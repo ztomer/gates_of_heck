@@ -14,6 +14,7 @@ import textwrap
 import pytest
 
 from conftest import REPO_ROOT as ROOT  # noqa: F401
+from conftest import git
 
 sys.path.insert(0, str(ROOT / "checks"))
 import check_probes_pass as gate  # noqa: E402
@@ -405,16 +406,15 @@ PLANTS = """
 
 
 @pytest.mark.parametrize("in_git", [False, True])
-def test_a_probe_that_changes_the_tree_it_was_given_is_named(tmp_path, capsys, in_git):
+def test_a_probe_that_changes_the_tree_it_was_given_is_named(tmp_path, capsys, request, in_git):
     """koffee_big, 2026-10-08: one probe unlinked a real source and wrote it back while another
     copied the same tree in parallel, and the copy failed on the missing file -- a push refused on
     a clean tree. Killed mid-plant it deletes the owner's source. The bytes come back, so git
     status is clean; the inode and mtime do not, so the gate sees it and names the probe."""
-    root = _tree(tmp_path, {"check_plants.py": PLANTS, "check_reads.py": PASSING})
+    base = request.getfixturevalue("repo") if in_git else tmp_path
+    root = _tree(base, {"check_plants.py": PLANTS, "check_reads.py": PASSING})
     if in_git:
-        env = gate.foreign_repo_env()
-        for cmd in (["init", "-q"], ["add", "-A"]):
-            subprocess.run(["git", "-C", str(root), *cmd], check=True, env=env)
+        git(root, "add", "-A")
     assert gate.main(["--root", str(root), "--no-corpus"]) == 1
     out = capsys.readouterr()
     text = out.out + out.err
