@@ -20,106 +20,15 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::process::Command;
 
+#[path = "commit_class_words.rs"]
+mod similarity;
+#[cfg(test)]
+use similarity::FREQUENT_FLOOR;
+use similarity::{frequent, same_class};
+
 const HISTORY: &str = "-400"; // earlier commits a class is compared against
 const REPEATS: usize = 2;
 const KEYS: [&str; 4] = ["Class", "Siblings", "Systemic", "Filed"];
-/// Words that carry no class: the prototype dropped 17; the calibration on `ZoneWM`'s 54 classes
-/// (2026-10-08) found `that`, `what`, `when`, `can` and their like were most of what unrelated
-/// classes shared, so every function word goes.
-const STOP: &[&str] = &[
-    "a",
-    "an",
-    "the",
-    "of",
-    "in",
-    "on",
-    "is",
-    "it",
-    "its",
-    "to",
-    "and",
-    "or",
-    "for",
-    "by",
-    "not",
-    "no",
-    "be",
-    "that",
-    "what",
-    "which",
-    "when",
-    "where",
-    "while",
-    "whose",
-    "who",
-    "can",
-    "cannot",
-    "one",
-    "with",
-    "from",
-    "into",
-    "inside",
-    "about",
-    "than",
-    "then",
-    "there",
-    "this",
-    "these",
-    "those",
-    "every",
-    "each",
-    "another",
-    "other",
-    "same",
-    "still",
-    "never",
-    "does",
-    "only",
-    "much",
-    "something",
-    "rather",
-    "instead",
-    "because",
-    "after",
-    "before",
-    "under",
-    "over",
-    "through",
-    "per",
-    "own",
-    "but",
-    "has",
-    "have",
-    "was",
-    "were",
-    "are",
-    "been",
-    "being",
-    "their",
-    "they",
-    "them",
-    "would",
-    "could",
-    "should",
-    "must",
-    "may",
-    "all",
-    "any",
-    "some",
-    "more",
-    "most",
-    "very",
-    "so",
-    "as",
-    "at",
-    "if",
-    "up",
-    "out",
-    "once",
-    "how",
-    "why",
-];
-
 /// `fix:`, `perf(scope):`, `fix!:` -- never `fixup! ...` or `fixes ...`.
 fn gated(subject: &str) -> bool {
     let Some(mut rest) = subject
@@ -202,34 +111,6 @@ fn loose_trailers(lines: &[&str]) -> BTreeMap<String, String> {
     out
 }
 
-/// `recorded` and `record`, `ceilings` and `ceiling` are one word: the longest inflection off,
-/// never below a four-letter root.
-fn stem(word: &str) -> &str {
-    ["ings", "ing", "ies", "ied", "ed", "es", "s"]
-        .iter()
-        .find_map(|suffix| word.strip_suffix(suffix).filter(|root| root.len() >= 4))
-        .unwrap_or(word)
-}
-
-fn words(class: &str) -> BTreeSet<String> {
-    class
-        .to_lowercase()
-        .split(|c: char| !c.is_ascii_alphanumeric())
-        .filter(|w| w.len() > 2 && !STOP.contains(w))
-        .map(|w| stem(w).to_owned())
-        .collect()
-}
-
-/// Two content words shared (a one-word class needs that word). Calibrated on `ZoneWM`'s 54
-/// classes and the pairs their author labelled (2026-10-08): the prototype's "half the smaller
-/// class" matched 1 of 13 same-class pairs; this matches 6, with 2 of 1,418 other pairs and
-/// neither labelled near-miss. The other 7 are paraphrase, which no word overlap sees.
-fn same_class(a: &str, b: &str) -> bool {
-    let (wa, wb) = (words(a), words(b));
-    let smaller = wa.len().min(wb.len());
-    smaller > 0 && wa.intersection(&wb).count() >= smaller.min(2)
-}
-
 fn ends_the_class(t: &BTreeMap<String, String>) -> bool {
     ["Systemic", "Filed"].iter().any(|k| {
         t.get(*k).is_some_and(|v| {
@@ -256,7 +137,12 @@ fn none_with_search(siblings: &str) -> bool {
 /// the rule its commits were written under (a `Key:` line anywhere), so the replay shows what the
 /// class rule says rather than one placement line per pre-port commit.
 #[must_use]
-pub fn refusals(message: &str, earlier: &[String], placement: bool) -> Vec<String> {
+pub fn refusals(
+    message: &str,
+    earlier: &[String],
+    vocabulary: &BTreeSet<String>,
+    placement: bool,
+) -> Vec<String> {
     let lines = cleaned(message);
     let Some(subject) = lines.iter().find(|l| !l.is_empty()) else {
         return Vec::new();
@@ -300,7 +186,10 @@ pub fn refusals(message: &str, earlier: &[String], placement: bool) -> Vec<Strin
         _ => {}
     }
     if let Some(class) = class {
-        let seen: Vec<&String> = earlier.iter().filter(|c| same_class(class, c)).collect();
+        let seen: Vec<&String> = earlier
+            .iter()
+            .filter(|c| same_class(class, c, vocabulary))
+            .collect();
         if seen.len() >= REPEATS && !ends_the_class(&t) {
             let named: Vec<&str> = seen.iter().take(3).map(|s| s.as_str()).collect();
             out.push(format!(
@@ -316,22 +205,31 @@ pub fn refusals(message: &str, earlier: &[String], placement: bool) -> Vec<Strin
 }
 
 /// `[(sha, message)]` from `git log <args>`, in git's order.
-fn log(args: &[&str]) -> Vec<(String, String)> {
-    let Ok(out) = Command::new("git")
+///
+/// # Errors
+///
+/// git's own message when it refuses: a range it cannot read is never zero commits.
+fn log(args: &[&str]) -> Result<Vec<(String, String)>, String> {
+    let out = Command::new("git")
         .arg("log")
         .arg("--format=%H%x00%B%x01")
         .args(args)
         .output()
-    else {
-        return Vec::new();
-    };
-    String::from_utf8_lossy(&out.stdout)
+        .map_err(|e| format!("git log: {e}"))?;
+    if !out.status.success() {
+        return Err(format!(
+            "git log {} failed: {}",
+            args.join(" "),
+            String::from_utf8_lossy(&out.stderr).trim()
+        ));
+    }
+    Ok(String::from_utf8_lossy(&out.stdout)
         .split('\u{1}')
         .filter_map(|chunk| {
             let (sha, body) = chunk.split_once('\0')?;
             Some((sha.trim().to_owned(), body.trim().to_owned()))
         })
-        .collect()
+        .collect())
 }
 
 fn class_of(message: &str) -> Option<String> {
@@ -342,14 +240,26 @@ fn class_of(message: &str) -> Option<String> {
         .filter(|c| !c.is_empty())
 }
 
-/// The classes of the commits before `rev` (inclusive), oldest first.
-fn classes_from(rev: &str) -> Vec<String> {
-    let mut found: Vec<String> = log(&[HISTORY, rev])
+/// The classes of the commits before `rev` (inclusive), oldest first; none before a first commit.
+fn classes_from(rev: &str) -> Result<Vec<String>, String> {
+    let born = Command::new("git")
+        .args([
+            "rev-parse",
+            "--verify",
+            "--quiet",
+            &format!("{rev}^{{commit}}"),
+        ])
+        .output()
+        .is_ok_and(|o| o.status.success());
+    if !born {
+        return Ok(Vec::new());
+    }
+    let mut found: Vec<String> = log(&[HISTORY, rev])?
         .iter()
         .filter_map(|(_, m)| class_of(m))
         .collect();
     found.reverse();
-    found
+    Ok(found)
 }
 
 /// `goh commit-class [FILE | --range REV... [--report]]`.
@@ -372,7 +282,14 @@ pub fn check_file(path: &str) -> i32 {
         eprintln!("✗ [commit_class] cannot read the message file {path}");
         return 2;
     };
-    let why = refusals(&message, &classes_from("HEAD"), true);
+    let history = match classes_from("HEAD") {
+        Ok(h) => h,
+        Err(e) => {
+            eprintln!("✗ [commit_class] {e}");
+            return 2;
+        }
+    };
+    let why = refusals(&message, &history, &frequent(&history), true);
     for line in &why {
         eprintln!("✗ [commit_class] commit refused: {line}");
     }
@@ -386,14 +303,29 @@ pub fn check_range(revs: &[String], report: bool) -> i32 {
     let args: Vec<&str> = std::iter::once("--reverse")
         .chain(revs.iter().map(String::as_str))
         .collect();
-    let commits = log(&args);
-    let mut earlier = commits
-        .first()
-        .map(|(sha, _)| classes_from(&format!("{sha}^")))
-        .unwrap_or_default();
+    let read = log(&args).and_then(|commits| {
+        let earlier = match commits.first() {
+            Some((sha, _)) => classes_from(&format!("{sha}^"))?,
+            None => Vec::new(),
+        };
+        Ok((commits, earlier))
+    });
+    let (commits, mut earlier) = match read {
+        Ok(r) => r,
+        Err(e) => {
+            eprintln!("✗ [commit_class] {e}");
+            return 2;
+        }
+    };
+    let whole: Vec<String> = earlier
+        .iter()
+        .cloned()
+        .chain(commits.iter().filter_map(|(_, m)| class_of(m)))
+        .collect();
+    let vocabulary = frequent(&whole);
     let mut bad = 0;
     for (sha, body) in &commits {
-        let why = refusals(body, &earlier, !report);
+        let why = refusals(body, &earlier, &vocabulary, !report);
         if !why.is_empty() {
             bad += 1;
             let mark = if report { "⚠" } else { "✗" };

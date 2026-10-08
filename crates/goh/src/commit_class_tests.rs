@@ -2,6 +2,61 @@
 
 use super::*;
 
+fn none() -> BTreeSet<String> {
+    BTreeSet::new()
+}
+
+/// `ZoneWM`'s 75 classes, oldest first (`tests/fixtures/commit_class/zonewm_classes.tsv`).
+fn zonewm() -> Vec<(String, String)> {
+    include_str!("../../../tests/fixtures/commit_class/zonewm_classes.tsv")
+        .lines()
+        .filter(|l| !l.starts_with('#'))
+        .filter_map(|l| l.split_once('\t'))
+        .map(|(sha, class)| (sha.to_owned(), class.to_owned()))
+        .collect()
+}
+
+/// The replay's verdict on one of `ZoneWM`'s commits: refused or not, against the classes before it.
+fn refused(sha: &str, vocabulary: &BTreeSet<String>) -> bool {
+    let all = zonewm();
+    let at = all
+        .iter()
+        .position(|(s, _)| s == sha)
+        .expect("in the fixture");
+    let earlier: Vec<String> = all[..at].iter().map(|(_, c)| c.clone()).collect();
+    let message = format!(
+        "fix: x\n\nClass: {}\nSiblings: none (grep -rn the pattern)\n",
+        all[at].1
+    );
+    !refusals(&message, &earlier, vocabulary, true).is_empty()
+}
+
+/// BACKLOG 2.2: the replay's one wrong refusal shared only `read` and `window`, `ZoneWM`'s own
+/// domain nouns. A word in more than an eighth of a repo's classes says nothing about which class.
+#[test]
+fn domain_frequent_words_do_not_count() {
+    let classes: Vec<String> = zonewm().into_iter().map(|(_, c)| c).collect();
+    let vocabulary = frequent(&classes);
+    assert_eq!(vocabulary.into_iter().collect::<Vec<_>>(), ["read"]);
+    let vocabulary = frequent(&classes);
+    assert!(refused("078f137f", &none()), "today's rule refuses it");
+    assert!(!refused("078f137f", &vocabulary));
+    for right in ["6081eb0f", "f1ef8eb1", "5aaf0b95"] {
+        assert!(
+            refused(right, &vocabulary),
+            "{right} is still a third instance"
+        );
+    }
+}
+
+/// A small history makes every word frequent: below the floor nothing is dropped.
+#[test]
+fn a_small_history_has_no_frequent_words() {
+    let classes: Vec<String> = zonewm().into_iter().map(|(_, c)| c).collect();
+    assert_eq!(frequent(&classes[..FREQUENT_FLOOR - 1]).len(), 0);
+    assert_ne!(frequent(&classes[..FREQUENT_FLOOR]).len(), 0);
+}
+
 #[test]
 fn the_subjects_it_gates() {
     for s in ["fix: a", "perf(x): a", "fix!: a", "fix(core)!: a"] {
@@ -36,6 +91,7 @@ fn the_trailer_block_is_the_last_paragraph_only() {
 /// and the pairs that share words but are not.
 #[test]
 fn calibrated_on_zonewm_one_class_pairs_match() {
+    let vocabulary = frequent(&zonewm().into_iter().map(|(_, c)| c).collect::<Vec<_>>());
     for (a, b) in [
         (
             "a ceiling recorded over a defect, which then guards the defect",
@@ -50,7 +106,11 @@ fn calibrated_on_zonewm_one_class_pairs_match() {
             "a detector that can time a slow round but cannot say what the round waited on",
         ),
     ] {
-        assert!(same_class(a, b), "{a} / {b}");
+        assert!(same_class(a, b, &none()), "{a} / {b}");
+        assert!(
+            same_class(a, b, &vocabulary),
+            "{a} / {b}, ZoneWM's vocabulary aside"
+        );
     }
 }
 
@@ -74,19 +134,22 @@ fn calibrated_on_zonewm_shared_words_are_not_a_class() {
             "a verdict about framing that never reads what is framed",
         ),
     ] {
-        assert!(!same_class(a, b), "{a} / {b}");
+        assert!(!same_class(a, b, &none()), "{a} / {b}");
     }
 }
 
 #[test]
 fn similarity_is_two_shared_content_words() {
+    let n = none();
     assert!(same_class(
         "lock path declared twice",
-        "a lock path declared in several files"
+        "a lock path declared in several files",
+        &n
     ));
     assert!(!same_class(
         "window built per show",
-        "a lock path declared in several files"
+        "a lock path declared in several files",
+        &n
     ));
-    assert!(!same_class("the of", "the of"));
+    assert!(!same_class("the of", "the of", &n));
 }

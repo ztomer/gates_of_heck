@@ -135,6 +135,15 @@ def test_a_range_names_each_bad_commit_and_counts_classes_within_it(repo: Path) 
     assert r.stderr.count("✗ ") >= 2
 
 
+def test_a_range_git_cannot_read_is_named_never_passed(repo: Path) -> None:
+    """`--range A..B --report` once handed `--report` to git as a revision (the flag takes git's
+    own `--not` and friends): git failed, the check read zero commits and printed a pass. A range
+    git refuses is an error naming git's message, never "0 commit(s)"."""
+    r = _range(repo, "no-such-rev..HEAD")
+    assert r.returncode == 2 and "no-such-rev" in r.stderr, r.stdout + r.stderr
+    assert "0 commit(s)" not in r.stdout, r.stdout
+
+
 def test_a_range_with_every_fix_named_passes(repo: Path) -> None:
     base = git(repo, "rev-parse", "HEAD").strip()
     _commit(repo, OK_FIX)

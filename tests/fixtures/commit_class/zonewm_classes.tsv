@@ -1,0 +1,77 @@
+# ZoneWM's Class trailers, oldest first: the 75 in `git log -400` at 3318f87c (2026-10-08).
+# Calibration data for goh commit-class (BACKLOG 2.1, 2.2); its author labelled the clusters.
+214f0cf7	a written rule that nothing enforces at the point it applies
+340fb377	a window built for every show and dropped after it
+03fc3c42	a view tree rebuilt and laid out on every show though its input did not change
+a0f320f3	a gate satisfied by the presence of a field rather than its content
+9ef2c602	a view tree rebuilt and laid out on every show though its input did not change
+57c5d8f0	a reading taken before the thing read is ready, reported as its answer
+5379eb95	one report for two states, so the reader is told the wrong one
+6cda80a1	a statistic compared against one estimated on a different sample size
+6b61ed30	a window signature that two states share, read as one of them
+c47fd7c1	a restore that reads the value to restore after the change it undoes
+82114193	a sum judged as a max (an additive background compared with max() instead of subtracted)
+49583c34	a ceiling stored below the baseline it was derived from (a kept value paired with a new one)
+a3ae960a	a race the caller lost, surfaced as a crash instead of a reading (a window closed between list and capture)
+16230c01	scratch written to a shared directory that nothing takes back
+1f5c34b0	a list restated by hand beside the registry it copies (instruments the census passes and refuses)
+91272400	a window built for every show and dropped after it
+170694f9	a citation of a roadmap item outlives the item
+17e816f3	a teardown closes a surface the product holds
+b6ed9f8e	a count judged finer than the background it is net of
+5e624bb6	a held surface timed by its appearing
+2fbdee94	a verdict about framing that never reads what is framed
+4e4ce9a1	a wire id compared across its type
+cea58300	a feature added to the composition root instead of its coordinator
+b28376a1	a question answered by hand-kept copies drifts, and each copy fails in its own way
+cd3190db	a non-finite value from the OS reaching integer conversion
+078f137f	an AX read where the window list answers
+126a7179	a wait for an event that is served by a periodic tick
+5695e63a	one event reaching the same synchronous redraw through several observers
+15cd463d	an instrument whose sampling sets the rate of the action it samples
+b9e23e4d	a sentinel value inside an id that masquerades as a real one
+41db46f1	per-site cleanup of a shared resource, where one forgotten or crashed site leaks
+1b5ed10d	a cleanup that deletes what another record still names
+9e9a6cb7	a probe's restore that does not undo what it wrote, or never runs
+6e29c290	a gate or wait keyed on CPU time, which the core's clock moves
+21194afe	a picture read at full size to draw something much smaller
+8ef669a9	a picture drawn into a surface of another shape by stretching it
+3ca53e64	a verb that waits on main for a write its caller could wait for
+5d59c32d	a teardown that a signal can cut short
+6081eb0f	a surface that hands the icon service's image to a view per show
+6a0665e1	a detector whose own capture cost lands in the reading
+40e3fc5f	a census row whose trigger does not perform the action it names
+f1c3c993	a record that writes a cell measured as an instrument, not a subject
+3f8e00e1	an end-to-end detector that cannot name what it waited on
+caeb4026	a hot numeric loop in Swift that every debug build (dev install, census, suite) runs at debug speed
+ac2f455a	one event delivered once per announcer rather than once per change
+efeacdd1	a ceiling recorded over a defect, which then guards the defect
+95b9cf3c	a ceiling recorded under conditions the gate never judges it in
+16b535b4	a warning about a judged number that omits the number
+143c3d52	a "mark what is current" rule run when a notice is HEARD, racing the work the event caused
+a776fe2f	a consumer acting on "what is current" at a notice through a copy the same notice is still updating
+b063c5d9	a reading that breaches its ceiling with no account of what it waited on
+419724cb	a gate tighter than its instrument's resolution, red on the instrument's step
+9e0f1a1f	an audit rule contradicting a documented product invariant, failing every gate on legal state
+f1ef8eb1	a ceiling recorded before a fix still carries the worst round the fix removed
+5aaf0b95	a detector that can time a slow round but cannot say what the round waited on
+ceeeb384	a teardown post-condition that covers what a run raised but not the state it found
+066b9485	a "latest wins" token minted when work finishes rather than when it was asked for
+d96c96a0	a write treated as free because it is idempotent, whose real cost is downstream of the call
+a9604cf3	a measurement started when the screen is quiet while the work behind it is not
+fa855ac5	a log read from all time when its subject restarted inside it
+d8e69f18	work handed to an uncancellable consumer the moment it is asked for, when a newer ask commonly follows
+5763f5a4	a cost rule applied at one writer instead of at the funnel every writer shares
+a44548af	a tree scan that walks into another checkout nested inside the tree
+e3da74b0	a resource sized to its source where every consumer is bounded by its destination
+148f857c	a test asserting a join that only holds while an asynchronous read happens to still be running
+f127280c	a shared filesystem name taken by unlink-then-bind, which lets a second starter strand a live owner
+a4939fc1	a control that makes a temporary directory and leaves it for the next run's audit
+b27c1204	a measured interval that includes a step the report cannot see
+04cfbdb6	a gate allowance set from one row's instrument step, below another row's
+f9093777	a command line sized by the number of test processes
+e5e3b34d	a post-condition wired at two call sites of a shared step, so every other caller of the step ran without it
+9c4e1ba0	a capture taken after a fixed sleep, racing the asynchronous work whose result it captures
+12b49905	a pattern search over a large corpus per query, where a substring scan finds the few candidates first
+83d690ed	a push-time refusal asked only after the long work the push follows
+3318f87c	a bound on a style's ink computed from its fixed geometry, while the ink scales with the window or swings past the stroke

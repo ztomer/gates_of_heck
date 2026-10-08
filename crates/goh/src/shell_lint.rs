@@ -20,6 +20,14 @@ fn git_z(root: &Path, args: &[&str]) -> Result<Vec<String>, String> {
         .args(args)
         .output()
         .map_err(|e| format!("git: {e}"))?;
+    // A git that refuses (a corrupt index) lists nothing; read as no shell files, that passed.
+    if !out.status.success() {
+        return Err(format!(
+            "git {} failed: {}",
+            args.first().copied().unwrap_or(""),
+            String::from_utf8_lossy(&out.stderr).trim()
+        ));
+    }
     Ok(out
         .stdout
         .split(|b| *b == 0)

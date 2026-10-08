@@ -133,3 +133,14 @@ def test_hooks_without_extension_are_linted(repo):
 
 def test_shellcheck_binary_is_used_when_present():
     assert shutil.which("shellcheck"), "red-proof needs shellcheck on PATH"
+
+
+def test_a_listing_git_refuses_is_an_error_not_zero_files(repo):
+    """The class of `goh commit-class --range` reading zero commits from a git that failed: a
+    corrupt index lists nothing, and a lint over nothing passed (2026-10-08)."""
+    write(repo, "bad.sh", "#!/usr/bin/env bash\nif [ -n x ]; then\n")
+    stage(repo, "bad.sh")
+    (repo / ".git" / "index").write_bytes(b"not an index")
+    for args in (("--staged",), ()):
+        r = run_lint(repo, *args)
+        assert r.returncode != 0, (args, r.stdout + r.stderr)

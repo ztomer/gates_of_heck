@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+* **`goh commit-class`: a repo's domain vocabulary is not a class.** A word in more than an eighth
+  of the repo's classes (over its whole history; none below 30 classes) no longer counts toward
+  "same class". ZoneWM's replay keeps its 3 right refusals and loses the wrong one, `078f137f`,
+  which shared only `read` and `window`; the labelled pairs that matched still match. Its 75
+  classes are the fixture (`tests/fixtures/commit_class/zonewm_classes.tsv`).
+* **A git that refuses is an error, never an empty list.** `goh commit-class --range A..B
+  --report` handed `--report` to git as a revision and printed "0 commit(s), 0 the rule
+  refuses"; `goh shell-lint --staged` over a corrupt index printed "no shell files in scope". Both
+  now exit non-zero with git's message.
 * **`tools/land.sh`: a branch reaches main only through a green gate.** By hand it was `gate; merge`,
   and a `;` where `&&` belonged moved main onto a red gate run (2026-10-08). Now one command gates
   the tip and fast-forwards main to the gated SHA; a red gate, a tip that moved under it, or a main
