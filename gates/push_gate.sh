@@ -55,6 +55,9 @@ set -euo pipefail
 
 GOH="${GOH_DIR:-${GOH:-$HOME/Projects/gates_of_heck}}"
 . "$GOH/tui/lib.sh"
+# shellcheck source=lib/bench_lock.sh
+. "$GOH/lib/bench_lock.sh"
+bench_lock_join "pre-push" # the whole push is one registration; a measurement waits for it
 
 root="$(git rev-parse --show-toplevel)"
 gate="$root/tools/gate.sh"
@@ -194,6 +197,7 @@ cleanup_run() {
 cleanup() {
     cleanup_run
     [ -n "$refs_file" ] && rm -f "$refs_file"
+    if [ -n "$BENCH_LOCK_ENTRY" ]; then rm -f "$BENCH_LOCK_ENTRY"; fi
 }
 trap cleanup EXIT
 trap 'cleanup; exit 129' HUP

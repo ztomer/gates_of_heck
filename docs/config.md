@@ -42,6 +42,11 @@ Single schema. CLI flags beat env/.gatesrc where both exist. Unset means
 
 | Key | Default | Meaning |
 |---|---|---|
+| `GOH_BENCH_LOCK_DIR` | `/tmp/gates-of-heck-bench.lock` | The host-wide bench lock (`lib/bench_lock.sh`): every gate registers here and a measurement (`tools/quiet.sh`) holds it exclusive. Machine-wide on purpose; set it only to isolate a test. |
+| `GOH_BENCH_MAX_HOLD` | `3600` | Seconds a measurement may hold the host before a waiting gate treats its claim as wedged and reclaims it. |
+| `GOH_BENCH_WAIT` | `1800` | Seconds `tools/quiet.sh` waits for another measurement, then for running gates, before it gives up naming them. |
+| `GOH_BENCH_DESKTOP_LOCK_DIR` | (the desktop lock's own) | Where `tools/quiet.sh` takes the desktop lock; tests only. |
+| `GOH_BENCH_JOINED` | (set by a gate) | Exported by a gate that registered with the bench lock, so its children do not register again. Never set by hand. |
 | `GOH_MIN_FREE_GIB` | unset (not checked) | GiB a cold gate needs free. `push_gate.sh` refuses the push before it makes the export, and `round.sh` before it commits, naming the free space and the need (`lib/preflight_disk.py`) -- a full disk failed ZoneWM's pushes as codesign and sanitizer errors. Measure your cold build and add a margin. |
 | `GOH_ROUND_NEVER` | `.claude/settings.local.json` | Space-separated paths `round.sh` refuses to commit, whatever the round names. |
 | `GOH_ROUND_PREFLIGHT` | (unset) | A command `round.sh` runs (`bash -c`, repo root) before the commit; non-zero stops the round with nothing committed. Point it at the repo's warm verify (e.g. `make verify`) so a red test fails in seconds, not after the push's cold gate. |

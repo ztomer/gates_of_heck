@@ -52,6 +52,9 @@ die() { err "local_ci: $*"; exit "${2:-2}"; }
 . "$HERE/_proven.sh"
 # shellcheck source=gates/_goh_bin.sh
 . "$HERE/_goh_bin.sh"
+# shellcheck source=lib/bench_lock.sh
+. "$GOH_ROOT/lib/bench_lock.sh"
+bench_lock_join "local ci" # a measurement (tools/quiet.sh) waits for this run to finish
 # Resolved ONCE, exported: every step runs under `goh canary` (below), and any gate a step runs
 # (rust_gate, structural) takes the same answer instead of resolving again.
 goh_resolve_native
@@ -171,6 +174,7 @@ cleanup() {
     if [ -n "$LOGDIR" ] && [ "${FAILED:-0}" -eq 0 ]; then
         rm -rf "$LOGDIR" || true
     fi
+    if [ -n "$BENCH_LOCK_ENTRY" ]; then rm -f "$BENCH_LOCK_ENTRY"; fi
 }
 trap cleanup EXIT
 

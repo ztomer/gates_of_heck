@@ -59,6 +59,7 @@ names its commit, or `tests/test_backlog_items.py` fails. A landed item moves to
 Phases run in order; within a phase, any order. `[ ]` open, `[x]` done, `[~]` handed off.
 
 **Phase 1 — re-measure what v0.24.0 claims, on a quiet box (load < 4, recorded beside each number)**
+Each runs under `tools/quiet.sh --` (every gate on the host held off, the desktop held, load < 4).
 - [ ] 1.1 Cross-session serialization of `structural --full` (`tools/session_bench.py`, N=1/2/4/8).
       Baseline: sigma 0.45 at load 7-18, BEFORE the estate cache (`3ede8a3`) landed. Exit: sigma
       <= 0.15, or the step that holds it named by `session_bench`'s per-step inflation. Red-first:

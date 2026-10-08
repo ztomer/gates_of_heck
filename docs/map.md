@@ -145,6 +145,7 @@ Every structural checker is native since Phase N3; the Python checkers they port
 | `headless_env.sh` | `GOH_HEADLESS=1` contract; `headless_require_live` exits 3 when enforced. | `test_screen_presentation.py` |
 | `killtree.py` | Kill whole process groups on timeout. | `test_killtree.py` |
 | `desktop_lock/` | Machine-wide desktop mutex. | `test_desktop_lock.py` |
+| `bench_lock.sh` | The host held for a measurement: every gate registers (`goh_init`, `push_gate.sh`, `local_ci.sh`; bash builtins only), a measurement takes it exclusive and waits for them. A nested gate, the measurement's own, and a dead, recycled or overdue holder never deadlock it. | `test_bench_lock.py` |
 
 ## Tools
 
@@ -153,6 +154,7 @@ Every structural checker is native since Phase N3; the Python checkers they port
 * `tools/release-kit/` — `release.sh` (gate → stanza → tag → push → release),
   `gen_app_icons.py`, `update_dev.sh`. Pinned by `test_release_kit.py` (+
   `test_release_hardening.py`, `test_profiling_scripts.py` for profiling).
+* `tools/quiet.sh [--max-load N] [--settle S] -- CMD...` — run a measurement on a quiet host: every goh gate held off and drained (`lib/bench_lock.sh`), the desktop lock held, the 1-minute load below N (4) within S seconds (600), or refuse naming the busiest processes. Pinned by `test_bench_lock.py`.
 * `tools/gate_profile.sh <repo>` — profile a repo's push gate on HEAD (nothing pushed) with `GOH_TIMINGS` set; prints the slowest steps and per-label totals.
 * `tools/session_bench.py <repo>` — how much N concurrent sessions' gates serialize on each other: one
   clone per session, makespan and speedup per N, the USL fit (sigma = serialized fraction, kappa =

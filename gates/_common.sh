@@ -42,6 +42,8 @@ for _goh_tui in "${GOH_GIT_ROOT:+$GOH_GIT_ROOT/tui/lib.sh}" \
     fi
 done
 unset _goh_tui
+# shellcheck source=lib/bench_lock.sh
+. "$GOH_ROOT/lib/bench_lock.sh"  # a measurement holds off every gate on the host (goh_init)
 
 # Fallbacks for every helper we use. Defined unconditionally, then overridden
 # by the real lib below — a previous version of this logic defined info/ok/err
@@ -122,6 +124,9 @@ goh_init() {
     GOH_LOG="$(mktemp "${TMPDIR:-/tmp}/goh-$GOH_NAME.XXXXXX")"
     # Accumulate: a second goh_init must not orphan the first log.
     goh_cleanup_add "$GOH_LOG"
+    # One gate tree, one registration: a measurement (tools/quiet.sh) waits for it to finish.
+    bench_lock_join "$GOH_NAME"
+    [ -z "$BENCH_LOCK_ENTRY" ] || goh_cleanup_add "$BENCH_LOCK_ENTRY"
     GOH_COMPLETED=""
     # rc-PRESERVING cleanup trap. The old form, `trap "rm -f '$GOH_LOG'" EXIT`,
     # failed open twice over: (a) double-quoted, so $GOH_LOG expanded at SET
