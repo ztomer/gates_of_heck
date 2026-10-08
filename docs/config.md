@@ -46,7 +46,6 @@ Single schema. CLI flags beat env/.gatesrc where both exist. Unset means
 | `GOH_BENCH_MAX_HOLD` | `3600` | Seconds a measurement may hold the host before a waiting gate treats its claim as wedged and reclaims it. |
 | `GOH_BENCH_WAIT` | `1800` | Seconds `tools/quiet.sh` waits for another measurement, then for running gates, before it gives up naming them. |
 | `GOH_BENCH_DESKTOP_LOCK_DIR` | (the desktop lock's own) | Where `tools/quiet.sh` takes the desktop lock; tests only. |
-| `GOH_BENCH_JOINED` | (set by a gate) | Exported by a gate that registered with the bench lock, so its children do not register again. Never set by hand. |
 | `GOH_MIN_FREE_GIB` | unset (not checked) | GiB a cold gate needs free. `push_gate.sh` refuses the push before it makes the export, and `round.sh` before it commits, naming the free space and the need (`lib/preflight_disk.py`) -- a full disk failed ZoneWM's pushes as codesign and sanitizer errors. Measure your cold build and add a margin. |
 | `GOH_ROUND_NEVER` | `.claude/settings.local.json` | Space-separated paths `round.sh` refuses to commit, whatever the round names. |
 | `GOH_ROUND_PREFLIGHT` | (unset) | A command `round.sh` runs (`bash -c`, repo root) before the commit; non-zero stops the round with nothing committed. Point it at the repo's warm verify (e.g. `make verify`) so a red test fails in seconds, not after the push's cold gate. |
@@ -208,6 +207,7 @@ Measured on media_server: `structural --full` 1.9 s -> 0.30 s warm.
 | `GOH_TIMINGS_PARENT` | set by `lib/bounded_run.py` | The label of the timed step a child runs inside, so a nested gate's lines name their parent. Not a setting: written for children, read by the recorder. |
 | `GOH_TIMINGS_CWD` | set by `goh_step_in` | The directory a timed step really runs in (`goh_step_in` changes directory inside the child), so the timing line of each crate's step names that crate. Not a setting. |
 | `GOH_BENCH_SESSION` | set by `tools/session_bench.py` | The index of the concurrent session a benchmarked workload runs as (0..N-1), for a workload that wants to tell its sessions apart. Not a setting. |
+| `GOH_BENCH_JOINED` | set by `lib/bench_lock.sh` | The pid of the gate that registered this process tree with the bench lock, so its children do not register again. A pid per run: in a cache key it would re-gate everything, so it is verdict-free. Not a setting. |
 | `GOH_GIT_LOCAL_VARS` | set by `gates/_from_head.sh` | git's repository-binding variables (`git rev-parse --local-env-vars`), asked once per process tree and dropped by every git call on a foreign repository (contract #12). Taken from the environment only when it names `GIT_DIR`; otherwise asked again. Not a setting. |
 | `GOH_RESOLVED_FOR` | set by `gates/_goh_bin.sh` | The gates root and `GOH_LIVE` mode the exported `GOH_RESOLVED_BIN` answers for: a child resolving for the same pair takes it instead of re-resolving (~12 spawns). Not a setting. |
 | `GOH_RESOLVED_BIN` | set by `gates/_goh_bin.sh` | The native binary the first resolution in a process tree chose; taken only while it is executable and `GOH_RESOLVED_FOR` matches. Not a setting -- `GOH_BIN` is the override. |

@@ -74,4 +74,5 @@ rc=0
 "$@" || rc=$?
 info "quiet: load at the end $(load1); exit $rc"
 exit "$rc"
+exit
 } # parse-guard

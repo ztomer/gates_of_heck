@@ -41,7 +41,7 @@ def _wait_for(path: Path, seconds: float = 10) -> None:
 
 def _hold(lock: Path, tmp_path: Path) -> subprocess.Popen[str]:
     """A measurement that holds the host until killed; `ready` once it has drained."""
-    p = _bash(lock, f'bench_lock_exclusive "test hold" && : > "{tmp_path}/ready" && sleep 60')
+    p = _bash(lock, f'bench_lock_exclusive "test hold" && : > "{tmp_path}/ready" && exec sleep 60')
     _wait_for(tmp_path / "ready")
     return p
 
@@ -120,7 +120,7 @@ def test_the_measurements_own_gates_run(tmp_path: Path) -> None:
 
 def test_an_overdue_holder_is_void(tmp_path: Path) -> None:
     lock = tmp_path / "lock"
-    holder = _bash(lock, f'bench_lock_exclusive m && : > "{tmp_path}/ready" && sleep 60',
+    holder = _bash(lock, f'bench_lock_exclusive m && : > "{tmp_path}/ready" && exec sleep 60',
                    GOH_BENCH_MAX_HOLD="1")  # fmt: skip
     _wait_for(tmp_path / "ready")
     time.sleep(2.2)

@@ -30,6 +30,26 @@ def test_every_internal_key_is_on_the_list() -> None:
     assert internal and internal <= _listed(), sorted(internal - _listed())
 
 
+# A key the gates EXPORT is bookkeeping for their children, not a setting -- and one that holds a
+# pid re-gates every cached step on every run: GOH_BENCH_JOINED did, documented as a setting row
+# so the doc-driven check above never saw it (2026-10-08). These two are exported and DO belong in
+# a key, each with its reason.
+EXPORTED_AND_KEYED = {
+    "GOH_DIR": "the gates checkout that judges: a different one can judge differently",
+    "GOH_RELEASE_BUFFERED": "release.sh's own self-copy; no gate runs under it",
+}
+
+
+def test_every_key_the_gates_export_is_verdict_free() -> None:
+    out = subprocess.run(["git", "-C", str(REPO_ROOT), "grep", "-ohE", r"export +GOH_[A-Z0-9_]+",
+                          "--", "gates", "lib", "tools", "hooks"],
+                         capture_output=True, text=True, env=hermetic_env(drop_git=True)).stdout  # fmt: skip
+    exported = {w.split()[-1] for w in out.split("\n") if w}
+    assert exported, "found no exported GOH_ key: the pattern moved"
+    stray = sorted(exported - _listed() - set(EXPORTED_AND_KEYED))
+    assert stray == [], f"exported, so internal -- add to gates/verdict_free_keys.txt: {stray}"
+
+
 def test_every_listed_key_is_documented() -> None:
     doc = (REPO_ROOT / "docs" / "config.md").read_text()
     missing = sorted(k for k in _listed() if f"| `{k}` |" not in doc)
