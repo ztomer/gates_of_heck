@@ -24,8 +24,9 @@ def test_a_look_ahead_scopes_the_emoji_scan_to_vendor(repo) -> None:
     assert "vendor/b.md" in out and "src/a.md" not in out, out
 
 
+# Not `secrets`: it takes no path exemption at all (2026-10-08, crates/goh/src/secrets.rs).
 @pytest.mark.parametrize(
-    "check", [["secrets"], ["home-paths"], ["length", "--max", "500"], ["emoji"], ["no-allow"]]
+    "check", [["home-paths"], ["length", "--max", "500"], ["emoji"], ["no-allow"]]
 )
 def test_every_exclude_takes_the_python_dialect(repo, check) -> None:
     write(repo, "src/ok.txt", "fine\n")

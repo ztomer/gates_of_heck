@@ -143,7 +143,17 @@ CASES: dict[str, dict[str, bytes]] = {
 def test_no_allow_agrees(goh: Path, tmp_path: Path, name: str, staged: bool) -> None:
     repo = make_repo(tmp_path, CASES[name])
     args = ["--staged"] if staged else []
+    if staged and name in STAGED_DIVERGENCE:
+        # A deliberate divergence (2026-10-08): the reference refused a blind layout at
+        # --staged too, but a staged listing is a diff, not a layout -- the same rule refused
+        # app_updates' commit whose only Rust was an excluded vendored crate. The push's
+        # whole-tree run owns the refusal, and still agrees with the reference (staged=False).
+        assert run_goh(goh, repo, *args)[0] == 0 and run_py(repo, *args)[0] == 1, name
+        return
     assert run_goh(goh, repo, *args) == run_py(repo, *args), name
+
+
+STAGED_DIVERGENCE = {"outside_scope", "blind_layout"}
 
 
 def test_exclude_skips_vendored_crate(goh: Path, tmp_path: Path) -> None:

@@ -69,7 +69,16 @@ import time
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from _ordered_pool import in_order  # noqa: E402
 import _estate_cache  # noqa: E402
-from _gitutil import foreign_repo_env, listed_files, scratch_git  # noqa: E402
+from _gitutil import foreign_repo_env  # noqa: E402
+import _estate_corpus_io  # noqa: E402
+from _estate_corpus_io import (  # noqa: E402,F401  (re-exported: tests and probe call them here)
+    consumer_exclude,
+    corpus_files,
+    materialise,
+    plant_in,
+    run_checker,
+    takes_exclude,
+)
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from tui.lib import err, info, ok, warn  # noqa: E402
@@ -231,63 +240,6 @@ ESTATE = (
 )
 
 
-def corpus_files(root, scope):
-    """Tracked files under any of `scope`, repo-relative. The estate, not a directory listing."""
-    out = []
-    for rel in listed_files(root, staged=False):
-        top = rel.split("/")[0] if "/" in rel else ""
-        if scope == (".",) or top in scope:
-            out.append(rel)
-    return sorted(out)
-
-
-def plant_in(files, ext, text):
-    """The first real file of this language, and its path. Appending puts the violation inside real,
-    structurally non-trivial code instead of in a file invented for it."""
-    for rel in files:
-        if os.path.splitext(rel)[1] == ext:
-            return rel, text
-    return None, text
-
-
-_IDENTITY = ("-c", "user.email=corpus@example.invalid", "-c", "user.name=corpus")
-
-
-def materialise(source, files, dest):
-    """Copy the real subtree into a scratch repo. Nothing ever runs in another working tree."""
-    os.makedirs(dest)
-    for rel in files:
-        src = os.path.join(source, rel)
-        dst = os.path.join(dest, rel)
-        os.makedirs(os.path.dirname(dst) or dest, exist_ok=True)
-        shutil.copyfile(src, dst)
-    scratch_git(dest)  # one empty .git copied, not init + config x2 (checks/_gitutil.py)
-    for args in (("add", "-A"), (*_IDENTITY, "commit", "-qm", "corpus")):
-        subprocess.run(
-            ["git", "-C", dest, *args], capture_output=True, check=False, env=foreign_repo_env()
-        )
-
-
-def run_checker(checker, root, args):
-    """(rc, output). The checker under test, exactly as a consumer runs it: a house check by its
-    `goh.sh` name (the Python checkers it named are retired, Phase N3), a `.py` by path -- the
-    probe's own planted checkers, which cannot be anything else."""
-    argv = (
-        [sys.executable, os.path.join(HERE, checker), *args]
-        if checker.endswith(".py")
-        else ["bash", os.path.join(GOH, "gates", "goh.sh"), checker, *args]
-    )
-    result = subprocess.run(
-        argv,
-        cwd=root,
-        capture_output=True,
-        text=True,
-        check=False,
-        env=foreign_repo_env(),
-    )
-    return result.returncode, (result.stdout + result.stderr)
-
-
 def judge(entry, bad):
     """One entry, both corpora. Returns 'verified' | 'unavailable' | 'blind'."""
     source = os.path.expanduser(entry["root"])
@@ -303,7 +255,10 @@ def judge(entry, bad):
         )
         bad.append(entry["checker"])
         return "blind"
-    target, _ = plant_in(files, entry["ext"], entry["plant"])
+    # Judged as its owner's gate judges it: a path the owner exempts is not the estate for that
+    # check (app_updates' vendored crate, 2026-10-08, carried a dead anchor its own gate exempts).
+    exclude = consumer_exclude(source)
+    target, _ = plant_in(files, entry["ext"], entry["plant"], exclude)
     if target is None:
         err(f"{entry['checker']}: no tracked {entry['ext']} file under that corpus to plant into")
         bad.append(entry["checker"])
@@ -337,13 +292,13 @@ def judge(entry, bad):
         # to what caused it. Found by replaying the 2026-10-02 receiver bug: the sweep reported
         # 6/6 green while the checker was blind to the plant, because the corpus carried a finding
         # of its own and the output named the file either way.
-        pristine_rc, pristine_out = run_checker(entry["checker"], real, entry["args"])
+        pristine_rc, pristine_out = run_checker(entry["checker"], real, entry["args"], exclude)
 
         for corpus in (real, minimal):
             with open(os.path.join(corpus, target), "a", encoding="utf-8") as handle:
                 handle.write(entry["plant"])
-        real_rc, real_out = run_checker(entry["checker"], real, entry["args"])
-        min_rc, _ = run_checker(entry["checker"], minimal, entry["args"])
+        real_rc, real_out = run_checker(entry["checker"], real, entry["args"], exclude)
+        min_rc, _ = run_checker(entry["checker"], minimal, entry["args"], exclude)
 
     named = target in real_out
     if pristine_rc != 0:
@@ -424,7 +379,7 @@ def probe():
     """Three cases: a real estate that is green, a checker that CANNOT fail, and a corpus that
     degraded to a fixture. The second is the whole point of this file."""
 
-    saved, home, blind_dir = ESTATE, HERE, ""
+    saved, home, blind_dir = ESTATE, _estate_corpus_io.HERE, ""
     bad = 0
     try:
         # A checker that always passes: a sweep blind to it reports coverage it never measured.
@@ -432,7 +387,7 @@ def probe():
         blind = os.path.join(blind_dir, "check_cannot_fail.py")
         with open(blind, "w", encoding="utf-8") as handle:
             handle.write('"""Green whatever the tree says."""\nprint("clean")\n')
-        globals()["HERE"] = os.path.dirname(blind)
+        _estate_corpus_io.HERE = os.path.dirname(blind)  # where run_checker finds a .py
         entry = {
             "checker": "check_cannot_fail.py",
             "root": saved[0]["root"],
@@ -479,14 +434,15 @@ def probe():
                 err("probe: a one-file 'estate' was accepted — the gate can prove a fixture")
                 bad += 1
 
-        globals()["HERE"] = home
+        _estate_corpus_io.HERE = home
         if judge(saved[0], []) != "verified":
             err("probe: the first real estate entry did not verify — the sweep is broken")
             bad += 1
         else:
             ok("probe: a real estate entry verifies end to end")
     finally:
-        globals().update(ESTATE=saved, HERE=home)
+        globals()["ESTATE"] = saved
+        _estate_corpus_io.HERE = home
         shutil.rmtree(blind_dir, ignore_errors=True)  # it leaked once per probe run (2026-10-06)
 
     if bad:

@@ -17,6 +17,14 @@
   files that read the key, so the two lists cannot drift again. Pinned tests that encoded the
   exemption (`test_exclude_agrees`, `test_exclude_skips_matching_paths`, two CLI tests) now pin
   its refusal.
+* **The R3 estate sweep judges a consumer's corpus with that consumer's `GOH_EXCLUDE`.** It ran
+  each house check bare, so app_updates' vendored crate -- exempt under app_updates' own gate --
+  carried a dead anchor that made the md-links corpus "NOT clean", and the sweep (and this repo's
+  push gate, through it and through the empty-scope sweep) went red on a consumer that was green.
+  The owner's key is read from its `.gatesrc` as data, never sourced, and passed to every check
+  whose own `--help` takes `--exclude`, so no list here can drift from the binary; a plant never
+  lands in an exempt file. The corpus helpers moved to `checks/_estate_corpus_io.py` at the
+  500-line cap. Red-first: `test_a_path_the_consumer_exempts_is_not_judged_for_it`.
 * **A commit whose only staged Rust is excluded is nothing to judge, not a blind scanner.** The
   commit-time "rust source policies (staged)" step decided it had work BEFORE applying
   `GOH_EXCLUDE` and ran the empty-scope check AFTER it, so `app_updates`' commit vendoring a

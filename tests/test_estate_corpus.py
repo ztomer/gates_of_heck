@@ -132,6 +132,39 @@ def test_a_corpus_that_is_not_clean_is_refused(tmp_path):
     assert findings == ["check_no_conflict_markers.py"]
 
 
+def test_a_path_the_consumer_exempts_is_not_judged_for_it(repo):
+    """The corpus is judged the way its owner's gate judges it: with the owner's `GOH_EXCLUDE`.
+    app_updates vendored a crate whose docs carry a dead anchor, excluded it, and was green under
+    its own gate while this sweep called the corpus "NOT clean" and went red (2026-10-08). The
+    excluded tree sorts FIRST here, so the plant must also skip it to land in judged code."""
+    body = "".join(f"line {i}\n" for i in range(12))
+    files = {
+        ".gatesrc": "GOH_MAX_LINES=500  # cap\nexport GOH_EXCLUDE='^A_vendor/'  # third-party\n",
+        "A_vendor/x/PROTOCOL.md": body + "See [nothing](#no-such-anchor).\n",
+        "README.md": body + "See [the guide](docs/guide.md).\n",
+        **{f"docs/{n}.md": body for n in ("guide", "a", "b", "c")},
+    }
+    for rel, text in files.items():
+        (repo / rel).parent.mkdir(parents=True, exist_ok=True)
+        (repo / rel).write_text(text, encoding="utf-8")
+    subprocess.run(["git", "-C", str(repo), "add", "-A"], capture_output=True, check=True)
+    assert sweep.consumer_exclude(str(repo)) == "^A_vendor/"
+    findings = []
+    state = sweep.judge(
+        {
+            "checker": "md-links",
+            "root": str(repo),
+            "scope": (".",),
+            "ext": ".md",
+            "plant": "\nSee [the probe](./ZZProbeDoesNotExist.md).\n",
+            "args": (),
+            "why": "probe",
+        },
+        findings,
+    )
+    assert (state, findings) == ("verified", [])
+
+
 @pytest.mark.parametrize("index", range(len(sweep.ESTATE)))
 def test_a_declared_entry_verifies_against_the_real_estate(index):
     """One entry per worker: each builds its corpus and runs its checker. Skipped, not failed, when
