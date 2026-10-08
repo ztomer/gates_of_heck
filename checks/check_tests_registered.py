@@ -79,6 +79,49 @@ def cmake_registered_tokens(text: str) -> set:
     return tokens
 
 
+INCLUDE = re.compile(r"\binclude\s*\(\s*\"?([^)\s\"]+\.cmake)\"?", re.IGNORECASE)
+# The variables an in-tree include() path is spelled with. include() does not change
+# CMAKE_CURRENT_SOURCE_DIR, so a relative path resolves against the top file's directory;
+# CMAKE_CURRENT_LIST_DIR is the directory of the file doing the including.
+SOURCE_DIR_VARS = ("CMAKE_CURRENT_SOURCE_DIR", "PROJECT_SOURCE_DIR", "CMAKE_SOURCE_DIR")
+
+
+def _strip_comments(text: str) -> str:
+    return "\n".join(line.split("#", 1)[0] for line in text.splitlines())
+
+
+def cmake_text(makefile: str) -> str:
+    """The makefile and every in-tree `.cmake` file it include()s, transitively, as one text.
+
+    The line cap counts CMakeLists.txt, so a long one must be split, and the usual split is
+    `include(cmake/Tests.cmake)`. Reading only the top file reported every test the split
+    moved as an orphan (CadGoose, 2026-10-08). A module name (`include(FetchContent)`), a
+    commented-out include and a path with an unresolved variable are not followed.
+    """
+    source_dir = os.path.dirname(os.path.abspath(makefile))
+    seen: set[str] = set()
+    parts: list[str] = []
+
+    def visit(path: str) -> None:
+        path = os.path.normpath(path)
+        if path in seen or not os.path.isfile(path):
+            return
+        seen.add(path)
+        with open(path, encoding="utf-8", errors="replace") as fh:
+            text = fh.read()
+        parts.append(text)
+        for m in INCLUDE.finditer(_strip_comments(text)):
+            target = m.group(1).replace("${CMAKE_CURRENT_LIST_DIR}", os.path.dirname(path))
+            for var in SOURCE_DIR_VARS:
+                target = target.replace("${" + var + "}", source_dir)
+            if "${" in target:
+                continue
+            visit(target if os.path.isabs(target) else os.path.join(source_dir, target))
+
+    visit(makefile)
+    return "\n".join(parts)
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--buildsystem", required=True, choices=sorted(UNSUPPORTED) + ["cmake"])
@@ -122,8 +165,7 @@ def main() -> int:
         )
         return 2
 
-    with open(makefile, encoding="utf-8", errors="replace") as fh:
-        registered = cmake_registered_tokens(fh.read())
+    registered = cmake_registered_tokens(cmake_text(makefile))
 
     orphans = []
     total = 0

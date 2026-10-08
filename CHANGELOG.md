@@ -2,6 +2,20 @@
 
 ## Unreleased
 
+* **`check_tests_registered.py`: a test registered in an `include()`d `.cmake` file counts**
+  (`checks/check_tests_registered.py`). The line cap counts `CMakeLists.txt` (b85e0af), and the
+  usual way to bring a long one under it is `include(cmake/Tests.cmake)`. The checker read only
+  `--makefile`, so CadGoose's split (b377d79) reported all 119 of its registered tests as orphans:
+  the two gates contradicted each other, and a repo could satisfy one only by failing the other.
+  The checker now reads the makefile plus every in-tree `.cmake` file it includes, transitively and
+  cycle-safe. A relative path and `${CMAKE_CURRENT_SOURCE_DIR}`, `${PROJECT_SOURCE_DIR}` and
+  `${CMAKE_SOURCE_DIR}` resolve against the top file's directory (`include()` does not change
+  `CMAKE_CURRENT_SOURCE_DIR`); `${CMAKE_CURRENT_LIST_DIR}` resolves against the including file's.
+  A module name (`include(FetchContent)`), a commented-out include and a path with an unresolved
+  variable are not followed, and a `.cmake` file nobody includes registers nothing.
+  RED FIRST, by mutation: the top file read alone (3 tests red), comments not stripped before
+  following (1 red).
+
 * **`goh bare-hook-index`: the hook's carried index is read only by `goh_bind_hook_index`**
   (`crates/goh/src/hookindex/`). A commit hook carries the index being committed as
   `GOH_HOOK_INDEX_FILE` beside `GOH_HOOK_GIT_DIR` (contract #12), exported, so a gate a consumer's
