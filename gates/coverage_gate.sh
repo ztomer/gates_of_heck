@@ -279,7 +279,7 @@ run_cpp() {
     # number. `%8m` pools them (at most 8 per instrumented binary, merged online by the runtime);
     # `%p` wrote one per test process, a merge command line sized by the test count -- ZoneWM's
     # SwiftPM twin died at ARG_MAX at 6,965 (D-0245). tests/test_coverage_gate_cpp_merge.py.
-    find "$PROJ/$build_dir" -maxdepth 1 -name 'default-*.profraw' -delete
+    rm -f "$PROJ/$build_dir"/default-*.profraw  # never fails: a build dir cmake did not make has none
     # shellcheck disable=SC2086
     (cd "$PROJ/$build_dir" && \
         LLVM_PROFILE_FILE="$PROJ/$build_dir/default-%8m.profraw" \
