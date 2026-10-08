@@ -44,6 +44,7 @@ Single schema. CLI flags beat env/.gatesrc where both exist. Unset means
 
 | Key | Default | Meaning |
 |---|---|---|
+| `GOH_LAND_GATE` | `tools/gate_profile.sh .` | The gate `tools/land.sh` runs on the branch tip before it fast-forwards the main checkout to that SHA; tests point it at `true`/`false`. |
 | `GOH_BENCH_LOCK_DIR` | `/tmp/gates-of-heck-bench.lock` | The host-wide bench lock (`lib/bench_lock.sh`): every gate registers here and a measurement (`tools/quiet.sh`) holds it exclusive. Machine-wide on purpose; set it only to isolate a test. |
 | `GOH_BENCH_MAX_HOLD` | `3600` | Seconds a measurement may hold the host before a waiting gate treats its claim as wedged and reclaims it. |
 | `GOH_BENCH_WAIT` | `1800` | Seconds `tools/quiet.sh` waits for another measurement, then for running gates, before it gives up naming them. |

@@ -47,8 +47,8 @@ QUIET box (load < 4). Landed plans are pruned to this table.
 ## Resume here (2026-10-08, after v0.24.0)
 
 - Every Rust change runs `cargo test --workspace` before its commit (3b94809 shipped a red one).
-- Main (`~/Projects/gates_of_heck`) is fast-forwarded only after this repo's own push gate is
-  green on the branch tip (`tools/gate_profile.sh .` runs it on HEAD in an export).
+- Main (`~/Projects/gates_of_heck`) is fast-forwarded only by `tools/land.sh` from the branch's
+  worktree: it gates the tip (`tools/gate_profile.sh .`) and merges that SHA, or nothing.
 - Consumers told of the tag: servers and ztools only (the owner's call, 2026-10-08, for quota).
   ZoneWM was told on the owner's word (2026-10-08) and puts its switch to the stock commit-msg
   hook (`GOH_COMMIT_CLASS=1`) to its owner. ztools had no session open: not yet told.

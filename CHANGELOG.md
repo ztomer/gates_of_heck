@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+* **`tools/land.sh`: a branch reaches main only through a green gate.** By hand it was `gate; merge`,
+  and a `;` where `&&` belonged moved main onto a red gate run (2026-10-08). Now one command gates
+  the tip and fast-forwards main to the gated SHA; a red gate, a tip that moved under it, or a main
+  that moved on lands nothing. Pinned by `tests/test_land.py`, each refusal red-proven.
+
 * **`goh requires-call`** (ZoneWM's proposal, opt-in by `GOH_REQUIRES_CALL`): "a Python file that
   CALLS X must also CALL Y", configured as rows in a TOML file, read from the AST so a docstring
   naming Y never satisfies it. A dotted name resolves through the file's own imports (another

@@ -156,6 +156,7 @@ Every structural checker is native since Phase N3; the Python checkers they port
 * `tools/release-kit/` — `release.sh` (gate → stanza → tag → push → release),
   `gen_app_icons.py`, `update_dev.sh`. Pinned by `test_release_kit.py` (+
   `test_release_hardening.py`, `test_profiling_scripts.py` for profiling).
+* `tools/land.sh` — from a worktree: gate the branch tip (`GOH_LAND_GATE`, default `tools/gate_profile.sh .`), then fast-forward the main checkout to THAT SHA; a red gate, a tip that moved while gated, or a main that moved on lands nothing. Nothing is pushed. Pinned by `test_land.py`.
 * `tools/quiet.sh [--max-load N] [--settle S] [--deadline D] -- CMD...` — a measurement QUEUED for a quiet host: it waits for the 1-minute load under N (4) holding nothing, then holds every goh gate off (`lib/bench_lock.sh`) and the desktop, re-checks for S seconds (120), lets go and waits again if the window closed, and refuses only after D seconds (4 h), naming the busiest processes. Pinned by `test_bench_lock.py`.
 * `tools/gate_profile.sh <repo>` — profile a repo's push gate on HEAD (nothing pushed) with `GOH_TIMINGS` set; prints the slowest steps and per-label totals.
 * `tools/session_bench.py <repo>` — how much N concurrent sessions' gates serialize on each other: one
