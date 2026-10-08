@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+* **`goh requires-call`** (ZoneWM's proposal, opt-in by `GOH_REQUIRES_CALL`): "a Python file that
+  CALLS X must also CALL Y", configured as rows in a TOML file, read from the AST so a docstring
+  naming Y never satisfies it. A dotted name resolves through the file's own imports (another
+  module's `verify` is not this one's); an exemption that outlived its reason fails; a rule that
+  finds nothing to judge is exit 2. The parser is `ruff_python_parser` (Astral's own crate): over
+  ZoneWM's `tools/` and this repo's 457 Python files it found the same 29,973 call sites as
+  Python's `ast`, in 0.10 s. It brings `syn` 2 beside the crate's `syn` 3, build-time only (its
+  derive macros). ZoneWM's selftest is lifted as the test; every branch is red-proven by mutation.
+
 * **A quiet host on demand: `tools/quiet.sh -- CMD`** (`lib/bench_lock.sh`). Every wall-clock number
   in BACKLOG needs load < 4, and two days of them were taken at load 7-31 beside other sessions'
   gates. Every gate now registers with a host-wide lock using bash builtins only (no process on

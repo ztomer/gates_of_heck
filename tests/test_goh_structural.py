@@ -93,6 +93,11 @@ PYFMT_SRC = b"GOH_MAX_LINES=10\nGOH_PYTHON_FORMATTED=1\n"
 # claim document below is three lines and the cap has to be out of its way.
 CLAIM_SRC = b"GOH_MAX_LINES=500\nGOH_CLAIM_DERIVATION=1\n"
 
+RC_RULES = (
+    b'[[rule]]\nname = "placement"\nwhy = "a relaunch can move windows"\nfiles = ["tools/*.py"]\n'
+    b'calls = ["relaunch"]\nmust_call = ["window_placement.verify"]\n'
+)
+
 FULL_CASES: dict[str, dict[str, bytes]] = {
     "clean": {".gatesrc": GATESRC, "a.py": b"x = 1\n"},
     "emoji": {".gatesrc": GATESRC, "a.py": f"x = 1  # {chr(0x1F389)}\n".encode()},
@@ -206,6 +211,17 @@ FULL_CASES: dict[str, dict[str, bytes]] = {
         ".gatesrc": CLAIM_SRC,
         "doc.md": b"# t\n\nclaim: 3 lines in doc.md\n",
     },
+    # `goh requires-call`, opt-in by naming its rules file: a tool that relaunches must judge.
+    "requires_call_red": {
+        ".gatesrc": GATESRC + b"GOH_REQUIRES_CALL='rc.toml'\n",
+        "rc.toml": RC_RULES,
+        "tools/probe.py": b"def run():\n    relaunch()\n",
+    },
+    "requires_call_green": {
+        ".gatesrc": GATESRC + b"GOH_REQUIRES_CALL='rc.toml'\n",
+        "rc.toml": RC_RULES,
+        "tools/probe.py": b"import window_placement as p\n\n\ndef run():\n    relaunch()\n    p.verify()\n",
+    },
 }
 
 
@@ -218,6 +234,8 @@ EXPECTED: dict[str, tuple[int, str | None]] = {
     "ceiling_over": (1, "cap-exempt files within their ceilings"),
     "claim_green": (0, None),
     "claim_red": (1, "prose claims are derived"),
+    "requires_call_green": (0, None),
+    "requires_call_red": (1, "a file that calls X calls Y"),
     "clean": (0, None),
     "emoji": (1, "no disallowed emoji"),
     "exclude_warn": (0, None),
@@ -264,8 +282,10 @@ INVENTORY_CASE: dict[str, bytes] = {
     ".gatesrc": (
         b"GOH_MAX_LINES=500\nGOH_SKILLS_CORPUS=1\nGOH_NO_HOME_PATHS=1\nGOH_NO_KILL_BY_NAME=1\n"
         b"GOH_PYTHON_FORMATTED=1\nGOH_CLAIM_DERIVATION=1\nGOH_LINE_EXCLUDE='big.py'\n"
-        b"GOH_LINE_BASELINE='base.txt'\n"
+        b"GOH_LINE_BASELINE='base.txt'\nGOH_REQUIRES_CALL='rc.toml'\n"
     ),
+    "rc.toml": b'[[rule]]\nname = "b"\nwhy = "y"\nfiles = ["b.py"]\nmust_call = ["print"]\n',
+    "b.py": b"print(1)\n",
     ".gates-version-baseline.json": b"[]\n",
     "base.txt": b"600\tbig.py\n",
     "big.py": b"".join(b"# %d\n" % i for i in range(600)),
@@ -280,8 +300,9 @@ INVENTORY_CASE: dict[str, bytes] = {
 # (docs/SUPERSOTA.md R4), so the only proof a step runs is its label here. 16 -> 17 on
 # 2026-10-03 (`no unreaped spawns in tests`), 18 on 2026-10-04 (`prose claims are derived`),
 # 19 on 2026-10-05 (`no credential in a git remote URL`), 20 on 2026-10-06 (`no vendored
-# copies of house checkers`, R5).
+# copies of house checkers`, R5), 21 on 2026-10-08 (`a file that calls X calls Y`).
 INVENTORY = [
+    "a file that calls X calls Y",
     "Cargo.lock matches its manifests",
     "cap-exempt files within their ceilings",
     "file length <= 500",

@@ -26,7 +26,7 @@ shift
 case "$check" in
     emoji|markers|length|secrets|home-paths|no-allow|empty-assert|screen|lints|skills|golden|\
     deps|unreaped-spawn|version-provenance|kill-by-name|claim-derivation|md-links|lock-version|\
-    tag-version|credential-urls|python-formatted|shell-lint|ceiling|commit-class) ;;
+    tag-version|credential-urls|python-formatted|shell-lint|ceiling|commit-class|requires-call) ;;
     *) echo "✗ goh.sh: unknown check '$check'" >&2; exit 2 ;;
 esac
 

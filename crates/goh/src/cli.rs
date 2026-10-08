@@ -104,6 +104,14 @@ pub enum Commands {
         #[arg(long)]
         report: bool,
     },
+    /// A Python file that calls X must also call Y, from the AST (opt-in by `GOH_REQUIRES_CALL`).
+    RequiresCall {
+        /// The rules file (default: `GOH_REQUIRES_CALL` in `.gatesrc`).
+        #[arg(long)]
+        rules: Option<String>,
+        /// The repository root (default: `.`).
+        root: Option<String>,
+    },
     /// The proven-step cache's key, lookup and record, in-process (`gates/_proven.sh` delegates).
     Proven {
         #[command(subcommand)]

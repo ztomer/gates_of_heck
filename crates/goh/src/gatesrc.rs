@@ -70,6 +70,8 @@ pub struct Gatesrc {
     pub skills_root: Option<String>,
     /// Skills-corpus word cap.
     pub skills_max_words: Option<String>,
+    /// `goh requires-call`'s rules file, repo-relative (unset: the step does not run).
+    pub requires_call: Option<String>,
 }
 
 /// Parse one right-hand side: single/double-quoted or bare with `#` comment.
@@ -191,6 +193,10 @@ pub fn from_pairs(pairs: &BTreeMap<String, String>) -> Result<Gatesrc, String> {
             .collect(),
         skills_root: pairs.get("GOH_SKILLS_ROOT").cloned(),
         skills_max_words: pairs.get("GOH_SKILLS_MAX_WORDS").cloned(),
+        requires_call: pairs
+            .get("GOH_REQUIRES_CALL")
+            .filter(|v| !v.is_empty())
+            .cloned(),
     })
 }
 
@@ -204,7 +210,7 @@ pub fn from_pairs(pairs: &BTreeMap<String, String>) -> Result<Gatesrc, String> {
 /// keys, so a step that reads one from the environment (`GOH_STEP_TIMEOUT`, and
 /// every child it spawns) sees the file's value, never an inherited one.
 /// Pinned against `docs/config.md` by `tests/test_gate_environment.py`.
-pub const PIPELINE_KEYS: [&str; 15] = [
+pub const PIPELINE_KEYS: [&str; 16] = [
     "GOH_MAX_LINES",
     "GOH_LINE_EXCLUDE",
     "GOH_LINE_BASELINE",
@@ -220,6 +226,7 @@ pub const PIPELINE_KEYS: [&str; 15] = [
     "GOH_CLAIM_DERIVATION",
     "GOH_STEP_TIMEOUT",
     "GOH_STEP_GRACE",
+    "GOH_REQUIRES_CALL",
 ];
 
 /// Make the process environment say what `root/.gatesrc` says for every

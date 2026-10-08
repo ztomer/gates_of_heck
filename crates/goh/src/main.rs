@@ -43,6 +43,8 @@ pub mod pyformat;
 pub mod pyjson;
 pub mod pylex;
 pub mod ratchet;
+pub mod requires_call;
+pub mod requires_call_py;
 pub mod rust_depinfo;
 pub mod rust_scope;
 pub mod scope;
@@ -133,6 +135,9 @@ fn run_core(command: Commands) -> i32 {
             range,
             report,
         } => commit_class::run(file.as_deref(), &range, report),
+        Commands::RequiresCall { rules, root } => {
+            requires_call::run(rules.as_deref(), root.as_deref())
+        }
         Commands::Proven { action } => match action {
             cli::ProvenAction::Key { step, entries } => proven::key(&step, &entries),
             cli::ProvenAction::Lookup { key, step, ttl } => proven::lookup(&key, &step, ttl),

@@ -13,6 +13,7 @@ GOH_MAX_LINES=500                 # file-length cap; unset disables the check
 # GOH_ROUND_PREFLIGHT='make verify'                # gates/round.sh runs it before committing
 # GOH_COMMIT_CLASS=1                    # a fix/perf commit names its Class + Siblings (trailers);
 #                                       # a third instance of a class says how it ends it
+# GOH_REQUIRES_CALL='tools/requires_call.toml'  # a Python file that calls X must call Y (AST)
 # GOH_CLAIM_DERIVATION=1                # re-derive MARKED numbers in prose from the
 #   tree: `N` lines in `path`, `N` tests in `path`, `N` gates in `path:NAME`,
 #   `N` `*.ext` files under `dir`. A claim is read only when the number AND the

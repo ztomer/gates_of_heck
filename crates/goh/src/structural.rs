@@ -114,6 +114,9 @@ pub fn run(staged: bool, full: bool) -> i32 {
     if let Some(code) = vendored::step(&repo, &files, staged) {
         return code;
     }
+    if let Some(code) = crate::requires_call::step(&repo, &cfg, staged) {
+        return code;
+    }
     if let Some(code) = steps_delegated::step_full_only(&repo, &checks, staged) {
         return code;
     }
