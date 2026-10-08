@@ -46,7 +46,7 @@ Single schema. CLI flags beat env/.gatesrc where both exist. Unset means
 |---|---|---|
 | `GOH_LAND_GATE` | `tools/gate_profile.sh .` | The gate `tools/land.sh` runs on the branch tip before it fast-forwards the main checkout to that SHA; tests point it at `true`/`false`. |
 | `GOH_BENCH_LOCK_DIR` | `/tmp/gates-of-heck-bench.lock` | The host-wide bench lock (`lib/bench_lock.sh`): every gate registers here and a measurement (`tools/quiet.sh`) holds it exclusive. Machine-wide on purpose; set it only to isolate a test. |
-| `GOH_BENCH_MAX_HOLD` | `3600` | Seconds a measurement may hold the host before a waiting gate treats its claim as wedged and reclaims it. |
+| `GOH_BENCH_MAX_HOLD` | `900` | Seconds a measurement may hold the host -- every session's commits wait behind it -- before a waiting gate treats its claim as void and proceeds. `tools/quiet.sh --hold S` declares a shorter run (stamped when it starts, printed to a waiting gate) and refuses one longer than this: split it. |
 | `GOH_BENCH_WAIT` | `1800` | Seconds `tools/quiet.sh` waits for another measurement, then for running gates, before it gives up naming them. |
 | `GOH_BENCH_DESKTOP_LOCK_DIR` | (the desktop lock's own) | Where `tools/quiet.sh` takes the desktop lock; tests only. |
 | `GOH_BENCH_LOADAVG` | (the host's) | A command `tools/quiet.sh` runs to read the 1-minute load instead of `sysctl`/`/proc`; tests only. |

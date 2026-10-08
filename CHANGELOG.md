@@ -141,7 +141,10 @@
   `xctest`, Spotlight) is let go for `--retry` (300 s) and claimed again; only after
   `--deadline` (4 h) does it refuse, naming the busiest processes. Its first form waited for the
   load holding NOTHING, and on a box a dozen sessions share it waited 2 h without one window:
-  each new gate started ahead of it (BACKLOG 3.1). No session is asked to do anything. A gate
+  each new gate started ahead of it (BACKLOG 3.1). A hold is short and says how long: CMD
+  holds for at most `--hold` (`GOH_BENCH_MAX_HOLD`, now 900 s, was 3600), a waiting gate prints
+  the hold's label and latest end, a longer hold is refused up front -- split it -- and a run that
+  outlives its hold fails, because the gates resumed under it (3.2). A gate
   nested in a registered gate or in the measurement, and a dead, PID-recycled or overdue holder,
   never deadlock it. Pinned by `tests/test_bench_lock.py`, each case red-proven by mutation.
 

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# quiet.sh [--max-load N] [--settle S] [--retry R] [--deadline D] [--label L] -- CMD... -- measure
-# when quiet.
+# quiet.sh [--max-load N] [--settle S] [--retry R] [--hold H] [--deadline D] [--label L] -- CMD...
+# -- measure when quiet.
 #
 # Every wall-clock number in docs/BACKLOG.md needs a quiet box (load < 4), and for two days every
 # one was taken at load 7-31 beside other sessions' gates (2026-10-08). A QUEUE, not a demand --
@@ -17,6 +17,11 @@
 #      Spotlight): holding on would only block every session's commits, so let go, name the
 #      busiest processes, wait --retry seconds (300) holding nothing, and go back to 1;
 #   4. past --deadline seconds (14400, 4 h): REFUSE, naming the busiest processes.
+#
+# A hold blocks every session's commits, so it is SHORT and says how long (BACKLOG 3.2): CMD runs
+# for at most --hold seconds (GOH_BENCH_MAX_HOLD, 900), stamped when it starts, which a waiting
+# gate prints. Longer than the cap is refused up front -- split it -- and a run that outlives its
+# hold fails, named: the gates resumed under it, so its numbers were not taken quiet.
 #
 # Then CMD runs, with the load printed at its start and end; this exits with CMD's status. Two
 # measurements queue on the host lock. The desktop lock's own max hold (900 s, a peer's rule)
@@ -36,20 +41,24 @@ GOH="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 . "$GOH/lib/desktop_lock/desktop_lock.sh"
 DESKTOP_LOCK_DIR="${GOH_BENCH_DESKTOP_LOCK_DIR:-$DESKTOP_LOCK_DIR}"
 
-max_load=4 settle=300 retry=300 deadline=14400 label="a measurement" poll="${GOH_BENCH_POLL:-15}"
+max_load=4 settle=300 retry=300 hold="" deadline=14400 label="a measurement" poll="${GOH_BENCH_POLL:-15}"
 while [ $# -gt 0 ]; do
     case "$1" in
         --max-load) max_load="${2:?--max-load needs a value}"; shift 2 ;;
         --settle) settle="${2:?--settle needs a value}"; shift 2 ;;
         --retry) retry="${2:?--retry needs a value}"; shift 2 ;;
+        --hold) hold="${2:?--hold needs a value}"; shift 2 ;;
         --deadline) deadline="${2:?--deadline needs a value}"; shift 2 ;;
         --label) label="${2:?--label needs a value}"; shift 2 ;;
         --) shift; break ;;
-        *) die "quiet.sh: unknown argument $1 (usage: quiet.sh [--max-load N] [--settle S] [--retry R] [--deadline D] -- CMD...)" ;;
+        *) die "quiet.sh: unknown argument $1 (usage: quiet.sh [--max-load N] [--settle S] [--retry R] [--hold H] [--deadline D] -- CMD...)" ;;
     esac
 done
 [ $# -gt 0 ] || die "quiet.sh: no command to run (usage: quiet.sh [--max-load N] [--settle S] -- CMD...)"
 
+hold="${hold:-$BENCH_LOCK_MAX_HOLD}"
+[ "$hold" -le "$BENCH_LOCK_MAX_HOLD" ] ||
+    die "quiet.sh: --hold ${hold}s is past the ${BENCH_LOCK_MAX_HOLD}s every other session may wait behind (GOH_BENCH_MAX_HOLD): split the measurement"
 load1() { # the 1-minute load average
     if [ -n "${GOH_BENCH_LOADAVG:-}" ]; then
         "$GOH_BENCH_LOADAVG"
@@ -92,9 +101,14 @@ while :; do
     busiest                                                                      # 3. let go
     sleep "$retry"
 done
-info "quiet: load $(load1) (max $max_load), every gate held -- running: $*"
-rc=0
+bench_lock_hold "$hold"
+info "quiet: load $(load1) (max $max_load), every gate held for ${hold}s -- running: $*"
+t2="$(date +%s)" rc=0
 "$@" || rc=$?
+if over "$(elapsed "$t2")" "$hold"; then
+    err "quiet: the run outlived its ${hold}s hold ($(elapsed "$t2")s): the gates resumed under it, so its numbers were not taken quiet -- split it, or hold longer"
+    [ "$rc" -ne 0 ] || rc=1
+fi
 info "quiet: load at the end $(load1); exit $rc"
 exit "$rc"
 exit

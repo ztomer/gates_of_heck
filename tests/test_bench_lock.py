@@ -267,3 +267,66 @@ def test_quiet_refuses_after_its_deadline_and_names_what_is_busy(tmp_path: Path)
     assert r.returncode == 1, r.stdout + r.stderr
     assert "not quiet" in r.stderr and "%CPU" in r.stderr, r.stderr
     assert not (tmp_path / "lock" / "exclusive").exists()
+
+
+def test_a_hold_longer_than_the_cap_is_refused_up_front(tmp_path: Path) -> None:
+    """BACKLOG 3.2: a hold blocks every session's commits, so it is short and says how long. One
+    that needs longer than the cap is split, never extended."""
+    r = _quiet(tmp_path, "--max-load", "1000", "--hold", "1000", "--", "true",
+               GOH_BENCH_MAX_HOLD="900")  # fmt: skip
+    assert r.returncode != 0 and "split" in r.stderr, r.stdout + r.stderr
+    assert not (tmp_path / "lock" / "exclusive").exists()
+
+
+def test_a_waiting_gate_names_the_hold_and_when_it_ends(tmp_path: Path) -> None:
+    lock = tmp_path / "lock"
+    env = _env(
+        lock, GOH_BENCH_DESKTOP_LOCK_DIR=str(tmp_path / "desktop.lock"), GOH_BENCH_POLL="0.1"
+    )
+    hold = subprocess.Popen(
+        ["bash", str(QUIET), "--max-load", "1000", "--hold", "30", "--label", "bench 4.1", "--",
+         "bash", "-c", f': > "{tmp_path}/running"; exec sleep 3'],
+        env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+    )  # fmt: skip
+    try:
+        _wait_for(tmp_path / "running")
+        r = _run(lock, "bench_lock_join gate && echo joined", timeout=30)
+    finally:
+        hold.kill()
+        hold.wait()
+    assert r.stdout.strip() == "joined", r.stderr
+    assert "bench 4.1" in r.stderr and "at the latest" in r.stderr, r.stderr
+
+
+def test_a_run_that_outlives_its_hold_is_named_and_fails(tmp_path: Path) -> None:
+    """Past its hold the gates resume, so what it measured after that was not taken quiet."""
+    r = _quiet(tmp_path, "--max-load", "1000", "--hold", "1", "--", "sleep", "2.5")
+    assert r.returncode != 0 and "outlived its" in r.stderr, r.stdout + r.stderr
+
+
+def test_the_default_hold_is_fifteen_minutes() -> None:
+    env = {k: v for k, v in os.environ.items() if not k.startswith("GOH_BENCH_")}
+    r = subprocess.run(["bash", "-c", f'. "{LIB}"; echo "$BENCH_LOCK_MAX_HOLD"'], env=env,
+                       capture_output=True, text=True, timeout=10)  # fmt: skip
+    assert r.stdout.strip() == "900", r.stdout + r.stderr
+
+
+def test_a_gate_behind_an_overrunning_hold_proceeds_at_the_hold_not_the_cap(tmp_path: Path) -> None:
+    lock = tmp_path / "lock"
+    env = _env(
+        lock, GOH_BENCH_DESKTOP_LOCK_DIR=str(tmp_path / "desktop.lock"), GOH_BENCH_POLL="0.1"
+    )
+    hold = subprocess.Popen(
+        ["bash", str(QUIET), "--max-load", "1000", "--hold", "2", "--",
+         "bash", "-c", f': > "{tmp_path}/running"; exec sleep 30'],
+        env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+    )  # fmt: skip
+    try:
+        _wait_for(tmp_path / "running")
+        start = time.monotonic()
+        r = _run(lock, "bench_lock_join gate && echo joined", timeout=20)
+        waited = time.monotonic() - start
+    finally:
+        hold.kill()
+        hold.wait()
+    assert r.stdout.strip() == "joined" and waited < 10, (waited, r.stderr)

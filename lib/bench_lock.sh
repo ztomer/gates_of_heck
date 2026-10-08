@@ -21,7 +21,9 @@
 #      registered gate -- or the measurement itself, whose own run starts gates -- lets it through.
 #   2. A holder that died (SIGKILL, a crashed session): its pid is dead, or recycled -- the start
 #      time recorded beside it no longer matches. Its claim is void and the next waiter reclaims.
-#   3. A holder alive but wedged: past its max hold (GOH_BENCH_MAX_HOLD, default 3600 s), void.
+#   3. A holder alive but wedged: past its max hold (GOH_BENCH_MAX_HOLD, default 900 s), void.
+#      A hold blocks every session's commits, so it is short and says how long (BACKLOG 3.2):
+#      `bench_lock_hold S` re-stamps it for a run of S seconds, and a waiting gate prints its end.
 #   4. A holder killed between its `mkdir` and writing its owner file: an ownerless claim older
 #      than a minute is void.
 #
@@ -32,7 +34,7 @@
 # Pinned by tests/test_bench_lock.py.
 
 BENCH_LOCK_DIR="${GOH_BENCH_LOCK_DIR:-/tmp/gates-of-heck-bench.lock}"
-BENCH_LOCK_MAX_HOLD="${GOH_BENCH_MAX_HOLD:-3600}"
+BENCH_LOCK_MAX_HOLD="${GOH_BENCH_MAX_HOLD:-900}"
 BENCH_LOCK_ENTRY="" # this process's registration: the caller's cleanup removes it
 BENCH_LOCK_HELD=0
 BENCH_LOCK_BUSY="" # the gates a drain is still waiting for
@@ -77,6 +79,14 @@ _bench_exclusive_stale() {
     [ $((now - since)) -gt "$hold" ]
 }
 
+# `, until HH:MM at the latest` -- when the holder's claim goes void; empty when it cannot say.
+_bench_ends() {
+    local since hold end
+    since="$(_bench_owner_field 3)" && hold="$(_bench_owner_field 4)" || return 0
+    end=$((since + hold))
+    printf ', until %s at the latest' "$(date -r "$end" +%H:%M 2>/dev/null || date -d "@$end" +%H:%M)"
+}
+
 # This process descends from the measurement, or from a gate already registered.
 _bench_nested() {
     local p owner
@@ -111,8 +121,8 @@ bench_lock_join() {
         rm -f "$BENCH_LOCK_ENTRY"
         BENCH_LOCK_ENTRY=""
         if [ -z "$said" ]; then
-            printf '· %s: waiting for a measurement to finish: %s\n' "$1" \
-                "$(_bench_owner_field 5 || echo 'one starting')" >&2
+            printf '· %s: waiting for a measurement to finish: %s%s\n' "$1" \
+                "$(_bench_owner_field 5 || echo 'one starting')" "$(_bench_ends)" >&2
             said=1
         fi
         sleep 2
@@ -177,6 +187,14 @@ bench_lock_exclusive() {
         said=1
         sleep 2
     done
+}
+
+# bench_lock_hold <seconds> -- re-stamp this process's claim for a run of that long, from now.
+bench_lock_hold() {
+    [ "$BENCH_LOCK_HELD" = 1 ] && [ "$(_bench_owner_field 1)" = "$$" ] || return 1
+    printf '%s\n%s\n%s\n%s\n%s\n' "$$" "$(_bench_owner_field 2)" "$(date +%s)" "$1" \
+        "$(_bench_owner_field 5)" >"$BENCH_LOCK_DIR/exclusive/owner.new" &&
+        mv "$BENCH_LOCK_DIR/exclusive/owner.new" "$BENCH_LOCK_DIR/exclusive/owner"
 }
 
 # Release a claim this process holds; a no-op otherwise, so an EXIT trap can call it always.
