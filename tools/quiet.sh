@@ -12,7 +12,9 @@
 #      one window: every new gate started ahead of it (BACKLOG 3.1, a reader-preferring queue
 #      starving its writer);
 #   2. with every gate drained, wait up to --settle seconds (300: the 1-minute average takes
-#      minutes to forget a drained load of 50) for the load under --max-load (4);
+#      minutes to forget a drained load of 50) for the load under --max-load (8: this box's
+#      drained floor is 4.5 min / 6.2 median, measured by --floor, 2026-10-08 -- the first
+#      version's 4 was under it);
 #   3. still busy -- work goh cannot hold off (an `xctest` started by a Makefile, Xcode,
 #      Spotlight): holding on would only block every session's commits, so let go, name the
 #      busiest processes, wait --retry seconds (300) holding nothing, and go back to 1;
@@ -41,7 +43,7 @@ GOH="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 . "$GOH/lib/desktop_lock/desktop_lock.sh"
 DESKTOP_LOCK_DIR="${GOH_BENCH_DESKTOP_LOCK_DIR:-$DESKTOP_LOCK_DIR}"
 
-max_load=4 settle=300 retry=300 hold="" deadline=14400 label="a measurement" poll="${GOH_BENCH_POLL:-15}" floor=""
+max_load=8 settle=300 retry=300 hold="" deadline=14400 label="a measurement" poll="${GOH_BENCH_POLL:-15}" floor=""
 while [ $# -gt 0 ]; do
     case "$1" in
         --max-load) max_load="${2:?--max-load needs a value}"; shift 2 ;;

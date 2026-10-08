@@ -14,7 +14,9 @@ learned rust scope, the C2 writer hook, `tools/session_bench.py`, the suite's dr
 `goh commit-class` calibrated on ZoneWM's history, `gates/round.sh`, and the shared temp dir kept
 claimable. Box: 16 cores, 4-5 busy at idle, sys ~= user, so **spawn count, tree walks and network
 round trips are the cost metric, not CPU**. The suite runs `-n 12`. Every wall-clock number needs a
-QUIET box (load < 4). Landed plans are pruned to this table.
+QUIET box: through `tools/quiet.sh` (every gate held, load under 8 -- the drained floor is
+4.5-6.2, measured 2026-10-08 -- and its before/after controls within 10%). Landed plans are
+pruned to this table.
 
 | landed | commit | measured |
 |---|---|---|
@@ -72,21 +74,22 @@ starves its writer -- and load < 4 is under this box's own idle floor (State: "4
 idle"; macOS counts threads blocked on Spotlight's I/O as load). The queue gets fixed first.
 
 **Phase 3 — a queue that runs (blocks Phase 4)**
-- [ ] 3.1 `quiet.sh` takes its place before it waits: claim the exclusive lock first (new gates
+- [x] 3.1 `quiet.sh` takes its place before it waits (`9b0d898`): claim the exclusive lock first (new gates
       queue behind it, running ones drain), THEN judge the box. Baseline: 0 windows in 2 h at load
       14-50 (2026-10-08 09:57-12:00), every gate overtaking it. Exit: under a fake load that is
       high exactly while a gate is registered, the measurement runs within drain + settle, and a
       box still busy without any gate is refused, naming its busiest processes. Red-first: that
       fake against today's `quiet.sh` refuses at its deadline. Lies: a gate already running holds
       its whole run -- the drain waits for it, up to `GOH_BENCH_WAIT`.
-- [ ] 3.2 A hold is short and bounded: each measurement holds the host only for its own run and
+- [x] 3.2 A hold is short and bounded (`cb8ce7b`; the Phase 4 run itself is the exit's proof): each measurement holds the host only for its own run and
       queues again before the next, so other sessions' commits interleave; a hold has its
       expected length up front, and `GOH_BENCH_MAX_HOLD` defaults to 15 min, not 60. Baseline:
       Phase 4 queued as ONE command (all of 4.1-4.3, ~40 min); a gate waits behind a hold up to
       its 60 min max. Exit: no hold over 15 min in the Phase 4 run; a waiting gate prints the hold's
       label and expected end. Red-first: a gate behind an overdue hold proceeds at the cap, not
       after it. Lies: one chunk that needs longer -- it says so and is refused, never extended.
-- [ ] 3.3 The quiet criterion calibrated, not assumed. With every gate drained, `quiet.sh` records
+- [x] 3.3 The quiet criterion calibrated, not assumed (`f9c9094`; floor 4.52 min / 6.16 median
+      over 180 s drained, control 0.31 s: `--max-load` 8 -- in `docs/config.md`). With every gate drained, `quiet.sh` records
       the load and the controls (`session_bench`'s `/usr/bin/true` x300 and CPU-bound Python)
       before and after each run; the threshold comes from the measured floor, and a number is
       reported with its controls. Baseline: no floor ever recorded; 4 chosen by hand. Exit: the
@@ -111,8 +114,19 @@ idle"; macOS counts threads blocked on Spotlight's I/O as load). The queue gets 
       Red-first: a run at jobs=1 is no faster than jobs=4, or the steps are serial somewhere.
       Lies: one repo's knee read as every repo's.
 
-**Phase 5 — release**
-- [ ] 5.1 v0.25.0. Baseline: v0.24.0 (`3ab524c`). Exit: version bump, CHANGELOG `Unreleased` ->
+**Phase 5 — hardening from the estate** (servers, 2026-10-08)
+- [ ] 5.1 A statement after an unconditional `exec` is unreachable, and refused. Baseline:
+      app_updates' `tools/gate.sh` ran `exec python3 tools/check_roadmap.py --self-test` and then
+      `exec python3 tools/check_roadmap.py`: the second line never ran, so its roadmap check was
+      dead for months, and ShellCheck 0.11 does not flag it (SC2093 does not fire here). servers'
+      sweep of every `tools/gate.sh`: that one instance, fixed. Exit: a native structural step over
+      every shell source; 0 findings across the estate at HEAD. Red-first: app_updates' two-`exec`
+      form, planted. Lies: `exec >log 2>&1` (redirections only) replaces nothing and is not
+      terminal; an `exec` under `if`, `case`, `&&`/`||` is conditional; a heredoc or a string
+      naming `exec` is not a statement.
+
+**Phase 6 — release**
+- [ ] 6.1 v0.25.0. Baseline: v0.24.0 (`3ab524c`). Exit: version bump, CHANGELOG `Unreleased` ->
       `v0.25.0`, full gate green on the tag commit, tag, push, GitHub release; servers and ztools
       told. Red-first: `release.sh --dry-run` prints no shell error (`c9e3939`). Lies: a gate run
       on a different commit than the one tagged.
