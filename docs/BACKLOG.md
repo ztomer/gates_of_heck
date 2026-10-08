@@ -6,7 +6,7 @@ not ready to start: the **measured baseline** it moves, the **exit number** that
 hit can be wrong, each with a test BEFORE the cache exists). A perf change without a before/after
 from the P0 instrument does not land.
 
-## State — 2026-10-08, v0.24.0 (read first)
+## State — 2026-10-08, v0.24.0 + Phases 1-3 of v0.25.0 (read first)
 
 v0.24.0 closed the roadmap that followed v0.23.0 (every phase, 1-10; the plan of record is in git
 history at `9241ecc`, its detail in the CHANGELOG stanza): the spawn cuts, one-run coverage, the
@@ -43,6 +43,9 @@ QUIET box (load < 4). Landed plans are pruned to this table.
 | C++ coverage merge bounded (`%8m`, `--input-files`), this run only | `6350c42`, `3ab524c` | -- |
 | `tools/quiet.sh`: a quiet host on demand (every gate held off, the desktop held, load gated) | `072bc3f`, `f0aad3b` | first real run (2026-10-08): no goh gate running, load 20 from ZoneWM's `xctest` -- refused, as designed |
 | self-proofs leave the tree they ran over untouched (inode, mtime, size stamped; the probe named) | `1bf8b33` | from koffee_big: a plant-and-restore raced a parallel `copytree`; no estate probe changes its tree today |
+| `goh requires-call` (v0.25 1.1-1.3): "a Python file that calls X calls Y", from the AST (`ruff_python_parser`), string-argument triggers | `4474822`, `6a26828` | ZoneWM's courtesy rule as a row: 12 of its regex's 17 files bound, the 5 others name a verb only as text |
+| `goh commit-class`: domain vocabulary dropped (2.2), `--clusters` (2.1), a refused git is an error | `4d9d9f9`, `c4a542e` | replay 4 -> 3 refusals, all right; clusters: 1 labelled cluster whole by words, +2 by files; 2 are paraphrase in different files, beyond words and paths |
+| Downstream verified at each repo's HEAD (3.1) | `feefd2c` + this rework | 20 items: 7 done (pruned), 3 partly, 8 open, 2 general |
 | P0-P4, C1, C3-C5 | v0.20.0-v0.22.0 | see CHANGELOG |
 
 ## Resume here (2026-10-08, after v0.24.0)
@@ -53,84 +56,51 @@ QUIET box (load < 4). Landed plans are pruned to this table.
 - Consumers told of the tag: servers and ztools only (the owner's call, 2026-10-08, for quota).
   ZoneWM was told on the owner's word (2026-10-08) and puts its switch to the stock commit-msg
   hook (`GOH_COMMIT_CLASS=1`) to its owner. ztools had no session open: not yet told.
+- The Phase 4 driver queued at 09:57 (`quiet.sh`, one command for all three) refuses at its 4 h
+  deadline (~13:57) without having run; re-queue it per item once 3.1-3.2 land.
 
-## Roadmap to v0.25.0 — the plan of record
+## Roadmap to v0.25.0 — the plan of record (re-phased 2026-10-08 12:00)
 
 Every item carries its **Baseline:**, **Exit:**, **Red-first:** and **Lies:**, and a done item
 names its commit, or `tests/test_backlog_items.py` fails. A landed item moves to the State table.
-Phases run in order; within a phase, any order. The measurements (Phase 4) come last: nothing
-else waits on their numbers (owner, 2026-10-08). `[ ]` open, `[x]` done, `[~]` handed off.
+Phases run in order; within a phase, any order. `[ ]` open, `[x]` done, `[~]` handed off.
+Phases 1-2 (`goh requires-call`, the commit-class vocabulary and clusters) and the downstream
+sweep are landed (State table). **Why the re-phase:** the measurements were queued at 09:57 and in
+2 h never ran. `tools/quiet.sh` waits for load < 4 HOLDING NOTHING, so every new gate from the
+other sessions (11-12 registered at a time) starts ahead of it -- a reader-preferring queue, which
+starves its writer -- and load < 4 is under this box's own idle floor (State: "4-5 busy at
+idle"; macOS counts threads blocked on Spotlight's I/O as load). The queue gets fixed first.
 
-**Phase 1 — `goh requires-call`** (ZoneWM, 2026-10-08; owner: "generic tooling goes to goh")
-- [x] 1.1 A Python parser in the binary, sized (`4474822`: `ruff_python_parser` 0.0.16, Astral's own;
-      29,973 of 29,973 call sites equal to Python `ast` over 457 files, 0.10 s; 41 crates, ~1.4 MB;
-      audit clean; `syn` 2 beside `syn` 3, build-time only). Baseline: none in the crate today; ZoneWM's
-      checkers use `ast`. Exit: one crate chosen (candidates: `ruff_python_parser`,
-      `rustpython-parser`, `tree-sitter-python`) with its build-time and binary-size cost measured,
-      `cargo audit` clean, one version in the lock. Red-first: the call sites it finds in ZoneWM's
-      `tools/*.py` equal Python `ast`'s, byte for byte. Lies: a newer syntax (3.14) parsed
-      differently -- test the estate's own Python, not a sample.
-- [x] 1.2 The check: "a file that CALLS X must also CALL Y", rows in `.gatesrc` (`4474822`: `goh
-      requires-call`, every branch mutation-proven; placement and long-runner rows expressible). Baseline: two
-      repo-local ZoneWM gates of this shape (`tools/check_probe_courtesy.py`,
-      `tools/check_probe_placement.py`, 170 lines, an 8-case selftest). Exit: both expressible as
-      rows, the 8 cases pass native, ZoneWM's copies deletable (its owner's call). Red-first: each
-      case red-proven -- a docstring naming Y does not satisfy; Y reached through an import alias
-      does, another module's same-named function does not; an exemption goes STALE three ways (file
-      gone, no longer calls X, now calls Y); zero X-callers fails the floor. Lies: `getattr` and
-      star imports (named as limits, not passed).
+**Phase 3 — a queue that runs (blocks Phase 4)**
+- [ ] 3.1 `quiet.sh` takes its place before it waits: claim the exclusive lock first (new gates
+      queue behind it, running ones drain), THEN judge the box. Baseline: 0 windows in 2 h at load
+      14-50 (2026-10-08 09:57-12:00), every gate overtaking it. Exit: under a fake load that is
+      high exactly while a gate is registered, the measurement runs within drain + settle, and a
+      box still busy without any gate is refused, naming its busiest processes. Red-first: that
+      fake against today's `quiet.sh` refuses at its deadline. Lies: a gate already running holds
+      its whole run -- the drain waits for it, up to `GOH_BENCH_WAIT`.
+- [ ] 3.2 A hold is short and bounded: each measurement holds the host only for its own run and
+      queues again before the next, so other sessions' commits interleave; a hold has its
+      expected length up front, and `GOH_BENCH_MAX_HOLD` defaults to 15 min, not 60. Baseline:
+      Phase 4 queued as ONE command (all of 4.1-4.3, ~40 min); a gate waits behind a hold up to
+      its 60 min max. Exit: no hold over 15 min in the Phase 4 run; a waiting gate prints the hold's
+      label and expected end. Red-first: a gate behind an overdue hold proceeds at the cap, not
+      after it. Lies: one chunk that needs longer -- it says so and is refused, never extended.
+- [ ] 3.3 The quiet criterion calibrated, not assumed. With every gate drained, `quiet.sh` records
+      the load and the controls (`session_bench`'s `/usr/bin/true` x300 and CPU-bound Python)
+      before and after each run; the threshold comes from the measured floor, and a number is
+      reported with its controls. Baseline: no floor ever recorded; 4 chosen by hand. Exit: the
+      floor measured under a hold and written to `docs/config.md`; a run whose before/after
+      controls differ by > 10% is marked noisy, not reported. Red-first: a fake control that
+      doubles across a run is marked noisy. Lies: background that is not a gate (`xctest`,
+      Spotlight, a cargo build run by hand) moves inside a hold -- only the controls see it.
 
-- [x] 1.3 A trigger on a call's string argument, so ZoneWM's courtesy rule ("a tool that drives the
-      desktop must call `wait_for_rest`") is a row too (`6a26828`: `*("theme", "--id")`; over
-      ZoneWM's tools it binds 12 of the regex's 17 -- the 5 others name a verb only as text, and
-      `census_drivers.py`'s `self.cli(*self.args)` is the run-time limit). Baseline: its `DRIVES` regex matches
-      `"switch-space"`, `"config-set"`, `"theme", "--id"` -- arguments, not callee names -- so
-      only its long-runner half is a row today. Exit: `calls` accepts `name("literal", ...)`
-      and `check_probe_courtesy.py`'s planted cases pass as rows. Red-first: a literal named
-      only in a comment or a non-argument string does not trigger. Lies: an argument built at
-      run time (an f-string, a variable) -- named as a limit, not matched.
-
-**Phase 2 — "fix the class", part 3: the clustering audit**
-- [x] 2.1 `goh commit-class --clusters REV..`: cluster commits by Class AND touched-file family, each
-      cluster a hardening candidate (`c4a542e`). Measured: words alone keep cluster 2 whole and
-      two members each of 1 and 3; with 3 shared files (a sweep commit and a ROADMAP excluded) 6 and
-      the 4 pair join. Exit RE-STATED: 5 and the thirds of 1 and 3 share neither a content word
-      nor a file -- paraphrase in different files, the ceiling of words and paths -- so "names 1-6"
-      cannot hold for any such measure; the unit tests pin what it can see. Baseline: the word measure sees 6 of ZoneWM's 13 labelled
-      pairs; repeats committed without trailers are seen by nothing. Exit: over ZoneWM's
-      `214f0cf7..HEAD` it names its author's clusters 1-6 with at most 2 spurious clusters.
-      Red-first: the labelled list (`9241ecc`'s data) as the fixture, run against the current
-      rule first. Lies: a file every commit touches (a Makefile, a CHANGELOG) linking everything --
-      files touched by more than a quarter of the range do not count.
-      A further labelled pair (ZoneWM, 2026-10-08): `30b74237` "a capture taken after a fixed
-      sleep, racing the asynchronous work whose result it captures" with `a9604cf3` -- one shared
-      word, a rephrasing.
-- [x] 2.2 Domain-frequent words do not count (`4d9d9f9`: a word in more than 1/8 of the repo's
-      classes, over its whole history, none below 30; ZoneWM's 75 drop only `read`). Baseline: the full replay's one wrong refusal,
-      `078f137f`, shares only "read" and "window", ZoneWM's own domain nouns. Exit: words in more
-      than a set share of a repo's own classes are dropped per repo; the replay keeps its 3 right
-      refusals and loses `078f137f`, and the 6 of 13 labelled pairs stay. Red-first: `078f137f`
-      refused by today's rule, as the fixture. Lies: a small history, where every word is
-      "frequent" -- below a minimum class count the list is empty.
-
-**Phase 3 — downstream, verified at each repo's HEAD**
-- [ ] 3.1 Every "Downstream" item below checked against its repo's current HEAD, then pruned or
-      re-stated. Baseline: 17 items, last verified 2026-10-06. Exit: each carries the sha it was
-      verified at, or is gone. Red-first: none -- coordination, no code; the sha stamp is the
-      check. Lies: an item marked fixed from a session's word, not the repo's HEAD. Messages go
-      out only where the owner says (servers and ztools on a release; quota, 2026-10-08).
-
-**Phase 4 — re-measure what v0.24.0 claims, on a quiet box (load < 4, recorded beside each number)**
-Last before the release, by the owner's order (2026-10-08): nothing else waits on these numbers.
-Each runs under `tools/quiet.sh --` (every gate on the host held off, the desktop held, load < 4).
-Its first real run refused at load 20: ZoneWM's `xctest`, started by its own `make verify`, not by
-a goh gate, which no lock here holds off. So `quiet.sh` is a queue: it waits for a window holding
-nothing and runs when the box goes quiet by itself -- queue all three and let them run unattended.
+**Phase 4 — re-measure what v0.24.0 claims (through the Phase 3 queue, one hold each)**
 - [ ] 4.1 Cross-session serialization of `structural --full` (`tools/session_bench.py`, N=1/2/4/8).
       Baseline: sigma 0.45 at load 7-18, BEFORE the estate cache (`3ede8a3`) landed. Exit: sigma
       <= 0.15, or the step that holds it named by `session_bench`'s per-step inflation. Red-first:
       the bench on a deliberately serialized control (one `flock`ed step) reports sigma near 1, or
-      the instrument is blind. Lies: other sessions' load (record it); a warm cache measured as cold.
+      the instrument is blind. Lies: other sessions' load (the 3.3 controls); a warm cache as cold.
 - [ ] 4.2 media_server push, everything changed, warm. Baseline: 170 s at load 4-8, BEFORE the
       incremental coverage build (`06afca4`: 173 -> 76 s on this repo). Exit: <= 90 s. Red-first:
       the P0 instrument's per-step sum within 5% of wall on the same run. Lies: a cold sccache; a
@@ -193,51 +163,43 @@ re-measures.
 
 ## Downstream: what each consumer session needs to know
 
-- **Every repo, after v0.24.0 (nothing to do):** rust coverage runs once per crate (identical
-  reports, ~23% faster); a crate whose build reads in-repo files outside its scope is recorded
-  from its second run; the step wrapper costs half. Servers told 2026-10-08; ztools not yet.
-- **Every INSTALLED repo:** re-run `$GOH_DIR/install.sh <repo>` (a repo never installed, whose
-  hooks another manager owns, is refused since 2026-10-06 -- zinc); `structural.sh` names a hook that is an older
-  stock. **A Rust toolchain is now required** for layer 1 (`bin/goh` is the only tier;
-  `required_tools.tsv` names `cargo`, and `build-goh.sh` refuses up front without it).
-- **monitor:** its CI runs `GOH_NO_NATIVE=1 bash .gates_of_heck/gates/structural.sh --full`. The key
-  is retired and ignored (said once); drop it. Its customised pre-commit (`check_gate_parity.py`) and
-  working-tree pre-push generation are monitor's call; its pre-commit runs the full test suite,
-  which P3 lets the push reuse.
-- **antiknob:** `tools/_gitutil.py` is a vendored copy of a house file; `goh structural --full` now
-  names it (a NEW copy is refused at commit). Delete it and import the shared one via `PYTHONPATH`.
-- **Consumers calling a Python checker by path** (any of the 22 retired: `check_no_emoji.py`,
-  `check_no_secrets.py`, `check_no_home_paths.py`, ...): each still works as a forwarder to
-  `goh.sh <check>` -- all of them since 2026-10-06 (two were missing, ztools). Move to
-  `bash "$GOH_DIR/gates/goh.sh" <check>`. `--exclude` takes Python's look-around again.
-- **servers (media_server push, 2026-10-06):** its `tools/gate.sh` step 6 runs the 134-test pytest
-  suite (110 s) on every push, outside the proven cache -- the floor under the <= 30 s one-crate
-  target. Route it through a proven step (local_ci `GOH_CI_STEPS`, or a scoped key on what the
-  tests read) so an unchanged input set skips it. healthcheck-rs's native-check tests read the
-  repo root, so it is keyed on the whole tree by design: every edit re-gates it (~40 s coverage).
-- **servers:** adopt `rust_gate.sh --each-crate` and `GOH_RUST_LINT_CARGO=cargo-zigbuild` (ROADMAP
-  O41), both shipped in v0.22.0; they replace media_server's `xargs -P 4` loop.
-- **routines, ztools, monitor:** drop the plain `cargo test` step (keep `--doc`); P1c's gate side
-  landed in v0.21.0.
-- **antiknob / divoom:** `tools/lock_guard.sh` is redundant with the gate; retire it. CI installs
-  from `python3 $GOH_DIR/gates/required_tools.py --repo . --install`.
-- **ztools:** `tools/coverage_floors.jsonc`'s exempt key can be repo-relative now
-  (project-relative: `src/ztools/twitter/native.rs` for project `rust/` -- the first
-  handoff said `rust/...`, wrong, corrected 2026-10-06), valid in a push export too; its `_note` on inert
-  per-target floors and unreadable files is answered (both refused since v0.24.0).
-- **ztools:** HEAD (`40148ae`) is RED on its own code under clippy 1.99 (72 `assert_is_empty`); its
-  hooks differ textually (`install.sh --force` is ztools' call); write `GOH_EXCLUDE='^vendor/'`.
-- **ZoneWM:** `goh requires-call` (`4474822`, `6a26828`) expresses `check_probe_placement.py` and
-  both halves of `check_probe_courtesy.py` as rows (`GOH_REQUIRES_CALL`); as rows, 5 of its 17
-  LEGITIMATE entries go stale (they name a verb only as text). Deleting the copies is its owner's call.
-- **ZoneWM:** `check_probes_pass.py` discovery stays by `check_*` NAME (`input_lock.py --probe` would
-  grab the real keyboard) and names the self-proofs it does not run.
-- **Finance:** `tests/test_repos.sh:113`, `tests/test_one_plan_of_record.sh:214` write
-  `"$root.out"` beside the repo root; `push_gate.sh` removes and names it; the fix is Finance's.
-- **Over the line cap since build files entered scope:** `CadGoose/CMakeLists.txt` (702),
-  `games/CadGoose2/CMakeLists.txt` (1142), `games/necrohand/Makefile` (511).
-- **games/ZeroThunder:** `tests/e2e/garden_drag_flicker.py:73` drops its process handle on the
-  `wait_for_app` failure path; the gate is red on it. Unfixed because it needs a real screen.
+Verified read-only at each repo's committed HEAD on 2026-10-08 (the sha in brackets); an item
+marked fixed from a session's word is not pruned. Done and pruned: antiknob's vendored
+`_gitutil.py`, antiknob's and divoom's `lock_guard.sh`, antiknob's CI install, ztools' exempt key,
+Finance's `"$root.out"`, ZeroThunder's dropped process handle.
+
+- **Every repo, after v0.24.0 (nothing to do):** rust coverage runs once per crate; a crate whose
+  build reads in-repo files outside its scope is recorded from its second run; the step wrapper
+  costs half. Servers told 2026-10-08; ztools not yet.
+- **Every INSTALLED repo:** re-run `$GOH_DIR/install.sh <repo>`; `structural.sh` names an older
+  stock hook. At `2fb2901` (the hook-env fix) 6 of 29 matched the stock pre-commit, 23 did not;
+  servers is reinstalling across the estate now -- re-check after. **A Rust toolchain is required**
+  for layer 1 (`bin/goh` is the only tier).
+- **Callers of a retired Python checker by path** (forwarders to `goh.sh <check>` keep working):
+  ZoneWM [`d2aa402b`] `tools/release_precheck.sh:35`; app_updates [`22ec4aa2`] `tools/gate.sh:35,51`;
+  koffee_big [`9e375e37`] `tools/gates_lint.sh:28,30,131`; Finance/salary [`e553bf2f`] and
+  Finance/zinc-core [`972bcd47`] `tools/local_ci.sh`; games/CadGoose2 [`1a3f659d`] `.gatesrc:37`;
+  games/necrohand [`fae673d3`] `Makefile:80,254`. Move to `bash "$GOH_DIR/gates/goh.sh" <check>`.
+- **monitor** [`b690cfc8`]: CI still runs `GOH_NO_NATIVE=1 ... structural.sh --full` (`ci.yml:67`;
+  the key is retired and ignored), and a plain `cargo test --workspace` (`.gatesrc:44`,
+  `ci.yml:119`) beside the gate's. Its customised hooks are monitor's call.
+- **routines** [`a4712bcc`]: `.gatesrc:26` still runs plain `cargo test --all-features --locked`
+  (keep `--doc`; P1c landed in v0.21.0).
+- **ztools** [`efe364a1`]: `rust/` done; `vendor/camoufox-rs` still runs a plain `cargo test`, and
+  carries 24 `assert!(..is_empty())` (rust/ 1). `GOH_EXCLUDE='^vendor/'` is set. Not yet told of v0.24.0.
+- **servers / media_server** [`a1a1d9ac`]: `scripts/dev/check.sh` step 6 runs the pytest suite
+  (110 s) on every push outside the proven cache -- the floor under the <= 30 s one-crate target;
+  route it through a proven step. `tools/gate.sh:88` still loops crates with `xargs -P 4`: adopt
+  `rust_gate.sh --each-crate` and `GOH_RUST_LINT_CARGO=cargo-zigbuild` (v0.22.0).
+- **divoom-control** [`0ac21228`]: CI installs with `required_tools.py --layer structural --names`
+  plus apt, not `--repo . --install`.
+- **ZoneWM** [`d2aa402b`]: `goh requires-call` expresses `check_probe_placement.py` and both halves
+  of `check_probe_courtesy.py` as rows; `.gatesrc` sets no `GOH_REQUIRES_CALL` and both copies are
+  there (5 of its 17 LEGITIMATE entries would go stale as rows). Deleting them is its owner's call.
+  Its `check_focused_border_verdicts.py --probe` fails alone at that HEAD (a fill-arm assertion).
+- **Over the line cap since build files entered scope:** CadGoose [`e1fa2b3c`] `CMakeLists.txt`
+  (702), games/CadGoose2 [`1a3f659d`] `CMakeLists.txt` (1142), games/necrohand [`fae673d3`]
+  `Makefile` (511); no exclude names them.
 - **Every consumer pushing by branch name over HTTPS:** `push_gate.sh` refuses a ref that moved
   while it was gated; ZoneWM's pinned `git push <remote> <sha>:<branch>` is the airtight form.
 - **O35 (servers):** a per-consumer `gate_calibration.json` registry; a feature here, unscoped.
