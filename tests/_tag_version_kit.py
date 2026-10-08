@@ -39,7 +39,7 @@ def _media_shape(repo, version):
 
 # The retired `_version_sources` module, as the native reads it (Phase N3): one strategy over one
 # text through `goh tag-version --extract KIND`, and the strategy names it answers to.
-KINDS = ("file", "cargo", "swift", "xcconfig", "plist", "pyproject")
+KINDS = ("file", "cargo", "swift", "xcconfig", "plist", "pyproject", "xcodegen", "gradle")
 
 
 def extract(kind, text):
@@ -55,6 +55,7 @@ def extract(kind, text):
         capture_output=True,
         text=True,
         timeout=30,
+        check=False,
     )
     assert r.returncode == 0, r.stderr
     return [tuple(row) for row in json.loads(r.stdout)]
@@ -77,4 +78,5 @@ def push_tag(repo, tag, sources=None):
         text=True,
         env=env,
         timeout=60,
+        check=False,
     )

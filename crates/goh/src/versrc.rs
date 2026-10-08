@@ -19,10 +19,21 @@ pub struct Strategies {
     xcconfig: Regex,
     plist_key: Regex,
     plist_string: Regex,
+    xcodegen: Regex,
+    gradle: Regex,
 }
 
-/// The kinds, in the reference's order.
-pub const KINDS: [&str; 6] = ["file", "cargo", "swift", "xcconfig", "plist", "pyproject"];
+/// The kinds: the frozen reference's six in its order, then the ones added since (native only).
+pub const KINDS: [&str; 8] = [
+    "file",
+    "cargo",
+    "swift",
+    "xcconfig",
+    "plist",
+    "pyproject",
+    "xcodegen",
+    "gradle",
+];
 /// The default `GOH_TAG_VERSION_SOURCES`.
 pub const DEFAULT_SOURCES: [&str; 2] = ["file:VERSION", "cargo:Cargo.toml"];
 
@@ -43,6 +54,12 @@ impl Strategies {
             )?,
             plist_key: rx(r"^<key>\s*([^<]*)</\s*key\s*>")?,
             plist_string: rx(r"^<string>\s*([^<]*)</\s*string\s*>")?,
+            // XcodeGen's `project.yml` sets the build setting as a YAML key. Only this key: the
+            // same file pins package and tool versions that are not the release's.
+            xcodegen: rx(r#"^\s*MARKETING_VERSION\s*:\s*["']?([^"'\s#]+)["']?\s*(?:#.*)?$"#)?,
+            // Android's `build.gradle(.kts)`: `versionName = "x"` (Kotlin) or `versionName "x"`
+            // (Groovy). Only this name: dependency coordinates carry versions too.
+            gradle: rx(r#"^\s*versionName\s*(?:=\s*)?["']([^"']+)["']"#)?,
         })
     }
 
@@ -122,6 +139,18 @@ impl Strategies {
                         }
                     }
                     key = None;
+                }
+            }
+            "xcodegen" | "gradle" => {
+                let (rx, label) = if kind == "xcodegen" {
+                    (&self.xcodegen, "(xcodegen:MARKETING_VERSION)")
+                } else {
+                    (&self.gradle, "(gradle:versionName)")
+                };
+                for raw in lines {
+                    if let Some(v) = cap(rx, raw, 1).filter(|v| self.semver.is_match(v)) {
+                        out.push((label.to_owned(), v));
+                    }
                 }
             }
             _ => return None,

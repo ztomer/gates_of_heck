@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+* **`goh tag-version`: the `xcodegen` and `gradle` version sources** (`crates/goh/src/versrc.rs`).
+  koffee_big's `v2.11.5` push was refused with "NO version source declares a version at this
+  commit" -- correct by the rule, because its release is declared as `MARKETING_VERSION:` in
+  XcodeGen's `project.yml` (a YAML key; `xcconfig` reads `NAME = value`) and as `versionName` in
+  `build.gradle.kts`, shapes no kind read. Each reads ONE name, because every declaration found
+  must equal the tag and both files pin other semver values (packages, `SWIFT_VERSION`,
+  dependency coordinates). `tests/test_check_tag_version_build_files.py`: red on the old native
+  (all 11) and on a reader taking any YAML key (2).
+
 * **`goh dead-after-exec`: no code after an `exec` that replaced the shell** (`crates/goh/src/deadexec/`).
   app_updates' tools/gate.sh ran `exec python3 tools/check_roadmap.py --self-test` and then
   `exec python3 tools/check_roadmap.py` in one case arm. The second never ran, so the full gate
