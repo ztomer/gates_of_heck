@@ -28,7 +28,7 @@ SERIAL = (
     "python3 -c \"import fcntl,time,os; f=open(os.environ['SHARED_LOCK'],'a'); "
     f'fcntl.flock(f, fcntl.LOCK_EX); time.sleep({HOLD})"'
 )
-PARALLEL = "sleep 0.4"
+PARALLEL = f"sleep {HOLD}"
 
 
 def _repo(tmp_path: Path) -> Path:
@@ -93,6 +93,9 @@ def test_a_workload_holding_a_shared_lock_reads_as_serial(tmp_path: Path) -> Non
 
 
 def test_a_workload_sharing_nothing_reads_as_parallel(tmp_path: Path) -> None:
+    """The bench starts its N sessions one Popen after another, so a session starts up to N-1
+    spawns late; at load 55 that skew turned a 0.4 s sleep's 4.0 into 2.98 against 3.0
+    (2026-10-08). The sleep is HOLD, long against any spawn skew, so the floor measures overlap."""
     doc = _bench(tmp_path, PARALLEL, "--sessions", "1,2,4", "--warmup", "0")
     assert _row(doc, 4)["speedup"] > 3.0, doc
     assert doc["usl"]["sigma"] < 0.15, doc
