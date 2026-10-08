@@ -70,7 +70,7 @@ Every structural checker is native since Phase N3; the Python checkers they port
 | `goh markers` | `crates/goh/src/markers.rs` | Fails on merge markers. | `test_file_length_and_markers.py` |
 | `goh length` | `crates/goh/src/length.rs` | `--max N` file-length cap. | `test_file_length_and_markers.py` |
 | `goh shell-lint` | `crates/goh/src/shell_lint.rs` | `bash -n` + `shellcheck --severity=error` over tracked `*.sh` + `hooks/*`. | `test_check_shell_lint.py` |
-| `goh secrets` | `crates/goh/src/secrets.rs` | Narrow secrets gate: known key prefixes + private-key headers + a credential-named key (`api_key`, `password`, …) with a 32+ char quoted value, staged + full. | `test_check_no_secrets.py` |
+| `goh secrets` | `crates/goh/src/secrets.rs` | Narrow secrets gate: known key prefixes + private-key headers + a credential-named key (`api_key`, `password`, …) with a 32+ char quoted value, staged + full. No path exemption: takes no `--exclude`, and `GOH_EXCLUDE` does not reach it. | `test_check_no_secrets.py` |
 | `goh credential-urls` | `crates/goh/src/credurls/` | A credential in a **git remote URL** — the class `check_no_secrets.py` cannot reach, because `.git/config` is untracked by definition. | `test_check_no_credential_urls.py` |
 | `goh no-allow` | `crates/goh/src/noallow.rs` | No `#[allow]` in Rust (repo-local twin; structural twin lives in consumer `tools/`). | `test_check_no_allow.py` |
 | `goh empty-assert` | `crates/goh/src/emptyassert.rs` | No `assert!(x.is_empty())` / `x.len() == 0` in `assert!`, where clippy's own suggestions (`assert_eq!(x.len(), 0)`, `assert_ne!`) are left alone. | `test_check_no_empty_assert.py` |

@@ -78,7 +78,7 @@ pub fn run(staged: bool, full: bool) -> i32 {
     if let Some(code) = earlypipe::step(&repo, &files, &cfg, staged) {
         return code;
     }
-    if let Some(code) = steps::step_secrets(&repo, &files, &cfg, staged) {
+    if let Some(code) = steps::step_secrets(&repo, &files, staged) {
         return code;
     }
     // A credential in a git remote URL, which the step above cannot see: `.git/config` is

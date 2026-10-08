@@ -223,11 +223,7 @@ pub(crate) fn run(staged: bool, exclude: &str) -> (i32, String, String) {
         );
         return (1, out, String::new());
     }
-    if files.is_empty()
-        && listed
-            .iter()
-            .any(|f| f == "Cargo.toml" || f.ends_with("/Cargo.toml"))
-    {
+    if files.is_empty() && crate::noallow::has_own_rust(&listed, exclude.as_ref(), staged) {
         return (
             1,
             String::new(),

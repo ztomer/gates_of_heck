@@ -160,11 +160,9 @@ pub enum Commands {
         #[arg(long)]
         staged: bool,
     },
-    /// Fail on committed secrets (native port of `check_no_secrets`).
+    /// Fail on committed secrets (native port of `check_no_secrets`). Takes no `--exclude`: no
+    /// path is exempt from the secrets scan (a revoked vector carries `secret-ok: <reason>`).
     Secrets {
-        /// Regex exempting paths (search, like the Python checker).
-        #[arg(long, default_value = "")]
-        exclude: String,
         /// Staged files only (polices the index, like the Python checker).
         #[arg(long)]
         staged: bool,

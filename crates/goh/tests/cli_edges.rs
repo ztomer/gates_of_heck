@@ -115,14 +115,9 @@ fn gatesrc_values_read_the_way_bash_reads_them() {
 #[test]
 fn older_subcommands_refuse_a_bad_exclude_and_secrets_says_clean() {
     let r = repo_with(&[("a.md", "fine\n")]).expect("fixture");
-    for args in [
-        vec!["length", "--max", "5", "--exclude", "("],
-        vec!["secrets", "--exclude", "("],
-    ] {
-        let out = goh(&r, &args);
-        assert_eq!(out.status.code(), Some(2), "{args:?}: {}", out.text());
-        assert!(out.stderr.contains("regex"), "{args:?}: {}", out.text());
-    }
+    let out = goh(&r, &["length", "--max", "5", "--exclude", "("]);
+    assert_eq!(out.status.code(), Some(2), "{}", out.text());
+    assert!(out.stderr.contains("regex"), "{}", out.text());
     let out = goh(&r, &["secrets"]);
     assert!(out.status.success(), "{}", out.text());
     assert_eq!(out.stdout, "✓ [no_secrets] OK — 1 tracked files clean\n");

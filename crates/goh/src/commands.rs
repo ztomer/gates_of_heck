@@ -93,20 +93,14 @@ pub fn run_emoji(exclude: &str, allow: &str, staged: bool) -> i32 {
     }
 }
 
-/// Fail on committed secrets. Returns 0 clean, 1 violations, 2 on error.
-pub fn run_secrets(exclude: &str, staged: bool) -> i32 {
-    let filter = match steps::compile_exclude(exclude) {
-        Ok(filter) => filter,
-        Err(message) => {
-            eprintln!("✗ [no_secrets] {message}");
-            return 2;
-        }
-    };
+/// Fail on committed secrets. Returns 0 clean, 1 violations, 2 on error. No path exemption
+/// (see `crate::secrets`).
+pub fn run_secrets(staged: bool) -> i32 {
     let Some(root) = gitutil::repo_root().map(PathBuf::from) else {
         println!("[no_secrets] not a git repo — skipping");
         return 0;
     };
-    match secrets::scan_root(&root, filter.as_ref(), staged) {
+    match secrets::scan_root(&root, staged) {
         Err(message) => {
             eprintln!("✗ [no_secrets] {message}");
             2
@@ -252,7 +246,11 @@ pub fn run_no_allow(exclude: &str, staged: bool) -> i32 {
             2
         }
         Ok((hits, scanned)) => {
-            match noallow::classify(hits.len(), scanned.len(), noallow::has_rust(&files)) {
+            match noallow::classify(
+                hits.len(),
+                scanned.len(),
+                noallow::has_own_rust(&files, filter.as_ref(), staged),
+            ) {
                 noallow::ScopeVerdict::Violations => {
                     // NOTE: violations go to stdout, matching the reference.
                     print!("{}", noallow::format_report(&hits, staged));

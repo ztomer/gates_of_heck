@@ -2,6 +2,30 @@
 
 ## Unreleased
 
+* **`GOH_EXCLUDE` no longer reaches the secrets scan, and cannot.** docs/config.md said the key
+  exempted the emoji scan, the length cap and unreaped spawns; the code applied it to ten checks,
+  the credential scan among them. `app_updates` excluded a vendored crate from house style
+  (`^vendor/camoufox-rs/`) and 57 of its 63 staged files went unscanned for secrets, with no
+  output (2026-10-08; ztools had grown its own vendor secrets step over the same hole). The
+  seam is removal, not a new key: `goh secrets` and its scanner take no exclusion at all, so no
+  setting -- this one, a future one, or a script passing `--exclude` (now a usage error, exit 2,
+  rather than an ignored flag) -- can drop it. A second key meaning "vendored" was the other
+  option and was rejected: `GOH_EXCLUDE` would still have been able to drop the scan, so the
+  defect would have stayed representable. A real vector in vendored code is fixed or carries
+  `secret-ok: <reason>`, as first-party code does. `GOH_EXCLUDE` keeps every other exemption and
+  the doc row now names them all; `tests/test_exclude_scope_doc.py` holds the row equal to the
+  files that read the key, so the two lists cannot drift again. Pinned tests that encoded the
+  exemption (`test_exclude_agrees`, `test_exclude_skips_matching_paths`, two CLI tests) now pin
+  its refusal.
+* **A commit whose only staged Rust is excluded is nothing to judge, not a blind scanner.** The
+  commit-time "rust source policies (staged)" step decided it had work BEFORE applying
+  `GOH_EXCLUDE` and ran the empty-scope check AFTER it, so `app_updates`' commit vendoring a
+  crate was refused with "matched NO compiled source". The step now decides after the
+  exclusion, and the refusal (`noallow::has_own_rust`, shared by `no-allow` and `empty-assert`,
+  which had the same shape at `--staged`) fires only at full scope and only on a `Cargo.toml`
+  the exclusion leaves in scope -- so a repo whose only Rust is vendored passes at push too,
+  while a scanner blind to the repo's own crate is still red (`crates/goh/tests/exclusion_scope.rs`,
+  red-proven both ways).
 * **`goh commit-class --clusters --range REV...`: the fixes in a range, grouped.** Two fixes are
   one when their classes are (the commit gate's measure) or when they touched three of the same
   files; each connected group is a hardening candidate. A file in more than a quarter of the

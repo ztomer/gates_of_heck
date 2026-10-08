@@ -8,6 +8,13 @@
 //!
 //! A revoked vector is suppressed with a reasoned marker on its line or the
 //! one above (`secret-ok: <reason>`); a bare marker suppresses nothing.
+//!
+//! There is NO path exemption, by construction: neither scan takes an exclusion, and
+//! `goh secrets` has no `--exclude`. `GOH_EXCLUDE` once reached this scan, and a repo that
+//! excluded a vendored crate from house style scanned 6 of its 63 staged files for credentials
+//! (`app_updates`, 2026-10-08). A path pattern written for style cannot say anything about a
+//! leak; a credential in vendored code is as committed as one anywhere else. The one way past a
+//! finding is the line-level, reasoned marker above.
 
 /// (kind, pattern) pairs. Mirrors `PATTERNS` in order — findings report
 /// pattern-grouped, so order is user-visible.
@@ -100,13 +107,9 @@ pub fn findings(
 /// # Errors
 ///
 /// Returns a message when git lists files and fails.
-pub fn scan_root(
-    root: &std::path::Path,
-    exclude: Option<&crate::pathfilter::PathFilter>,
-    staged: bool,
-) -> Result<(Vec<Finding>, usize), String> {
+pub fn scan_root(root: &std::path::Path, staged: bool) -> Result<(Vec<Finding>, usize), String> {
     let files = crate::gitutil::listed_files(root, staged)?;
-    scan_files(root, &files, exclude, staged)
+    scan_files(root, &files, staged)
 }
 
 /// Scan a pre-enumerated file list: the structural pipeline lists the tree
@@ -118,18 +121,12 @@ pub fn scan_root(
 pub fn scan_files(
     root: &std::path::Path,
     files: &[String],
-    exclude: Option<&crate::pathfilter::PathFilter>,
     staged: bool,
 ) -> Result<(Vec<Finding>, usize), String> {
     let (patterns, marker) = compile_all()?;
     let mut bad = Vec::new();
     let mut checked = 0;
     for path in files {
-        if let Some(rx) = exclude {
-            if rx.is_match(path) {
-                continue;
-            }
-        }
         let Some(blob) = crate::gitutil::content_bytes(root, path, staged) else {
             continue;
         };

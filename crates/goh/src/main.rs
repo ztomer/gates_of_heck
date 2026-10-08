@@ -168,7 +168,7 @@ fn run_core(command: Commands) -> i32 {
             allow,
             staged,
         } => commands::run_emoji(&exclude, &allow, staged),
-        Commands::Secrets { exclude, staged } => commands::run_secrets(&exclude, staged),
+        Commands::Secrets { staged } => commands::run_secrets(staged),
         Commands::HomePaths { exclude, staged } => commands::run_home_paths(&exclude, staged),
         Commands::NoAllow { exclude, staged } => commands::run_no_allow(&exclude, staged),
         Commands::Screen {

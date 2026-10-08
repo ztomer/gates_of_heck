@@ -297,14 +297,26 @@ pub fn scan_root(
     Ok((hits, matched))
 }
 
-/// True when the repo contains Rust at all: a tracked `Cargo.toml` is the
-/// manifest that says so. A repo with Rust but zero matched sources is
-/// blind (the layout moved), not clean.
+/// Whether an EMPTY scan of `files` is a blind scanner rather than nothing to judge.
+///
+/// A `Cargo.toml` the exclusion leaves in scope says the repo has Rust of its OWN, and a scan
+/// that matched none of it has lost the layout, not found it clean.
+///
+/// Only at full scope. A staged listing is a diff, not a layout: a commit whose only Rust is
+/// excluded (vendored third-party source) has nothing to judge, and the push's whole-tree run
+/// owns the refusal. An excluded manifest is never evidence: a repo whose only Rust is vendored
+/// has no source of its own for an empty scan to have missed (`app_updates`, 2026-10-08).
 #[must_use]
-pub fn has_rust(files: &[String]) -> bool {
-    files
-        .iter()
-        .any(|f| f == "Cargo.toml" || f.ends_with("/Cargo.toml"))
+pub fn has_own_rust(
+    files: &[String],
+    exclude: Option<&crate::pathfilter::PathFilter>,
+    staged: bool,
+) -> bool {
+    !staged
+        && files.iter().any(|f| {
+            (f == "Cargo.toml" || f.ends_with("/Cargo.toml"))
+                && !exclude.is_some_and(|x| x.is_match(f))
+        })
 }
 
 /// Classify a finished scan: violations, the blind-layout refusal, or a

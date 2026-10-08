@@ -1,7 +1,7 @@
 # gates_of_heck configuration. All keys optional; delete what you don't use.
 # Full reference: docs/config.md in the shared checkout.
 GOH_MAX_LINES=500                 # file-length cap; unset disables the check
-# GOH_EXCLUDE='vendor/|\.generated\.'   # shared vendor/generated exemption
+# GOH_EXCLUDE='^vendor/|\.generated\.'  # not ours to re-style (never exempts the secrets scan)
 # GOH_LINE_EXCLUDE='third_party/'       # length-only exemption (additive)
 # GOH_ALLOW=''                          # extra permitted characters (keep minimal)
 # GOH_LAND_GATE='tools/gate_profile.sh .'           # tools/land.sh's gate before it lands a branch

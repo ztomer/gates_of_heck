@@ -223,27 +223,16 @@ pub fn step_corpus(repo: &std::path::Path, cfg: &gatesrc::Gatesrc, staged: bool)
 }
 
 #[must_use]
-pub fn step_secrets(
-    repo: &std::path::Path,
-    files: &[String],
-    cfg: &gatesrc::Gatesrc,
-    staged: bool,
-) -> Option<i32> {
-    // 7. Committed secrets outrank every other defect class.
+pub fn step_secrets(repo: &std::path::Path, files: &[String], staged: bool) -> Option<i32> {
+    // 7. Committed secrets outrank every other defect class -- so `GOH_EXCLUDE` does not reach
+    // them: it exempts a path from house STYLE, and a leak is not a style (see crate::secrets).
     let label = if staged {
         "no committed secrets (staged)"
     } else {
         "no committed secrets"
     };
-    let exclude = match compile_exclude(&cfg.exclude) {
-        Ok(filter) => filter,
-        Err(message) => {
-            eprintln!("✗ [no_secrets] {message}");
-            return Some(2);
-        }
-    };
     let start = begin(label);
-    match secrets::scan_files(repo, files, exclude.as_ref(), staged) {
+    match secrets::scan_files(repo, files, staged) {
         Err(message) => Some(fail(label, "native", &format!("{message}\n"), start)),
         Ok((bad, _)) if !bad.is_empty() => Some(fail(
             label,

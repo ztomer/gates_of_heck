@@ -168,7 +168,7 @@ if [ ! -f "$target/.gatesrc" ]; then
 # Full key reference: docs/config.md in the gates_of_heck checkout
 # (or .gatesrc.example there for a commented starter with every key).
 GOH_MAX_LINES=500                 # file-length cap; unset disables the check
-# GOH_EXCLUDE='vendor/|\.generated\.'   # shared vendor/generated exemption
+# GOH_EXCLUDE='^vendor/|\.generated\.'  # not ours to re-style (never exempts the secrets scan)
 # GOH_ALLOW='<glyph>'                          # extra permitted characters (keep minimal)
 # GOH_LINE_EXCLUDE='third_party/'       # length-only alias
 # GOH_PY_COV_MIN=95

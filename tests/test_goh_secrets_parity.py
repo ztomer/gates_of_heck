@@ -111,14 +111,15 @@ def test_full_mode_agrees(goh: Path, tmp_path: Path, name: str) -> None:
     assert run_goh(goh, repo, []) == run_python(repo, [])
 
 
-def test_exclude_agrees(goh: Path, tmp_path: Path) -> None:
+def test_exclude_is_a_deliberate_divergence(goh: Path, tmp_path: Path) -> None:
+    """The reference took `--exclude`; goh refuses it (2026-10-08). A path exemption from the
+    secrets scan is how `GOH_EXCLUDE` -- written to exempt a vendored crate from house STYLE --
+    took 57 of 63 staged files out of `app_updates`' credential scan. Refused, not ignored: a
+    caller passing it is told the scan was not narrowed. Without it, the two still agree."""
     repo = make_repo(tmp_path, {"vendor/e.py": f"tok = {GHP}\n".encode(), "src/ok.py": b"ok\n"})
-    assert (
-        run_goh(goh, repo, ["--exclude", "vendor/"])
-        == run_python(repo, ["--exclude", "vendor/"])
-        == (0, [], 1)
-    )
+    assert run_goh(goh, repo, ["--exclude", "vendor/"])[0] == 2
     assert run_goh(goh, repo, []) == run_python(repo, [])
+    assert run_goh(goh, repo, [])[1], "the vendored token is found"
 
 
 def test_staged_sees_the_index(goh: Path, tmp_path: Path) -> None:

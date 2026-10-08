@@ -84,11 +84,15 @@ def test_secret_ok_marker_without_reason_still_fails(repo):
     assert r.returncode == 1, r.stdout + r.stderr
 
 
-def test_exclude_skips_matching_paths(repo):
+def test_no_path_is_exempt_from_the_secrets_scan(repo):
+    """`--exclude` is refused, not honoured (2026-10-08): a vendored tree is exempt from house
+    style, never from a credential scan. The one way past a finding is `secret-ok: <reason>`."""
     write(repo, "vendor/leak.py", f"k = {GHP!r}\n")
     stage(repo, "vendor/leak.py")
     r = run_secrets(repo, "--staged", "--exclude", "vendor/")
-    assert r.returncode == 0, r.stdout + r.stderr
+    assert r.returncode == 2, r.stdout + r.stderr
+    r = run_secrets(repo, "--staged")
+    assert r.returncode == 1 and "vendor/leak.py" in r.stdout, r.stdout + r.stderr
 
 
 def test_full_mode_scans_tracked_files(repo):

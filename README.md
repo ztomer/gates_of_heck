@@ -104,7 +104,7 @@ commented starter with every key: `.gatesrc.example`.
 ```bash
 # Structural
 GOH_MAX_LINES=500                    # File length cap (unset disables + warns; `off` = no cap by decision)
-GOH_EXCLUDE='vendor/|\.generated\.'  # Regex of paths to ignore
+GOH_EXCLUDE='^vendor/|\.generated\.'  # Paths not ours to re-style (still secrets-scanned)
 GOH_ALLOW=''                         # Extra allowed glyphs if needed
 
 Machine disk watch lives outside the gates since v0.8.0:

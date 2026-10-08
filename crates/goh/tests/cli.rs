@@ -246,8 +246,11 @@ fn secrets_gate_finds_credentials_honours_secret_ok_and_excludes() {
         "secret-ok must exempt: {}",
         out.stderr
     );
+    // No path is exempt from the secrets scan (2026-10-08): the vendored token is found, and
+    // `--exclude` is a usage error rather than a narrowing.
+    assert!(out.text().contains("vendor/x.py"), "{}", out.text());
     let out = goh(Some(&r), &["secrets", "--exclude", "^vendor/"], &[]).expect("goh runs");
-    assert!(!out.text().contains("vendor/x.py"), "{}", out.text());
+    assert_eq!(out.status.code(), Some(2), "{}", out.text());
     let out = goh(Some(&r), &["secrets", "--staged"], &[]).expect("goh runs");
     assert_eq!(out.status.code(), Some(1));
 }

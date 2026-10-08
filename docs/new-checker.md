@@ -41,7 +41,12 @@ Helpers live in `tests/conftest.py`: `repo` fixture (throwaway git repo),
 
 * CLI: `--staged` flag when it polices commits; `--exclude RE` when it
   walks trees (wired from `GOH_EXCLUDE` by the calling gate, never
-  hardcoded per-repo policy in shared code).
+  hardcoded per-repo policy in shared code) -- UNLESS it is a security
+  check. `GOH_EXCLUDE` exempts what is not ours to re-style; a leak is not
+  a style, so a credential scanner takes no exclusion at all (`goh secrets`),
+  and its one escape is a reasoned per-line marker. Add the checker's name to
+  the `GOH_EXCLUDE` row of `docs/config.md` when it honours the key
+  (`tests/test_exclude_scope_doc.py` holds the two lists equal).
 * Exit codes: `0` pass, `1` violation found, `2` usage/config error
   (missing binary, unparsable payload, zero measurable files — never a
   silent pass; see `docs/contracts.md` 7).
