@@ -42,7 +42,7 @@ QUIET box (load < 4). Landed plans are pruned to this table.
 | every temp in the shared dir claimable; the suite sweeps it | `cee397b` | ~1,470 stranded -> 14 |
 | C++ coverage merge bounded (`%8m`, `--input-files`), this run only | `6350c42`, `3ab524c` | -- |
 | `tools/quiet.sh`: a quiet host on demand (every gate held off, the desktop held, load gated) | `072bc3f`, `f0aad3b` | first real run (2026-10-08): no goh gate running, load 20 from ZoneWM's `xctest` -- refused, as designed |
-| self-proofs leave the tree they ran over untouched (inode, mtime, size stamped; the probe named) | (this commit) | from koffee_big: a plant-and-restore raced a parallel `copytree`; no estate probe changes its tree today |
+| self-proofs leave the tree they ran over untouched (inode, mtime, size stamped; the probe named) | `c810c3a` | from koffee_big: a plant-and-restore raced a parallel `copytree`; no estate probe changes its tree today |
 | P0-P4, C1, C3-C5 | v0.20.0-v0.22.0 | see CHANGELOG |
 
 ## Resume here (2026-10-08, after v0.24.0)
