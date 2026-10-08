@@ -53,6 +53,7 @@ def reexec(script: str) -> None:
         sys.stderr.write(got.stderr)
         return  # no export (a warning was printed) or a file HEAD does not have: run this one
     copy, export = lines[0], lines[1]
+    sys.stderr.write(got.stderr)  # the helper's notice that a worktree's edit is not what runs
     env = dict(os.environ, GOH_LIVE_ROOT=root, GOH_DIR=export)
     env["PYTHONPATH"] = lines[2] if len(lines) > 2 else export
     sys.stdout.flush()

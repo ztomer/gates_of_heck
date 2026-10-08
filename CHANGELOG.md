@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+* **The from-HEAD trampoline says so when a worktree's edit is not what ran** (`gates/_from_head.sh`,
+  `gates/_from_head.py`). C4 runs HEAD's export of every entry point, so a checker called by path
+  from a LINKED worktree with an uncommitted edit ran the old code and printed the old verdict as
+  if it were the edit's: the include()-following fix (below) was run on CadGoose that way, reported
+  119 orphans, and was debugged as a wrong fix. The skill already carried the trap; it was hit
+  anyway. Now `_goh_head_dir`, the one definition both trampolines use, prints one `⚠` line naming
+  the file, HEAD's sha and `GOH_LIVE=1` when the script is in a linked worktree and differs from
+  HEAD's copy; the Python trampoline forwards it. The shared checkout stays quiet -- consumers'
+  GOH_DIR points there, and a peer's half-done edit in it is the noise C4 removed. RED FIRST:
+  `test_a_linked_worktree_says_its_edit_is_not_what_ran` failed on the missing notice.
+
 * **`goh checkout-credentials`: an `actions/checkout` step drops the job token**
   (`crates/goh/src/checkoutcreds/`). checkout writes the job token into `.git/config` as
   `http.*.extraheader` unless its step sets `persist-credentials: false`; every later step can read

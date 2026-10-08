@@ -19,6 +19,7 @@ from conftest import REPO_ROOT
 from test_gate_environment import _clean_checkout_of_todays_gates
 
 PLANT = "LIVE-PYTHON-CHECKER-EDIT-7714"
+NOTICE = "running HEAD's copy"
 STANZA = re.compile(
     r'^if __name__ == "__main__":.*\n(?:    .*\n|\n)*?\s+__import__\("_from_head"\)\.reexec\(__file__\)',
     re.M,
@@ -73,5 +74,33 @@ def test_a_direct_call_judges_with_head_and_goh_live_with_the_tree(
     head = _run(dirty, repo, tmp_path)
     assert head.returncode == 0, head.stdout + head.stderr
     assert PLANT not in head.stdout + head.stderr, "an uncommitted checker edit judged a consumer"
+    assert NOTICE not in head.stderr, "the shared checkout is what consumers call: no notice there"
     live = _run(dirty, repo, tmp_path, GOH_LIVE="1")
     assert PLANT in live.stdout, "GOH_LIVE=1 must run the working tree"
+
+
+def test_a_linked_worktree_says_its_edit_is_not_what_ran(gates: Path, repo: Path, tmp_path) -> None:
+    """A worktree is where the gates are developed, and no consumer's GOH_DIR points into one.
+
+    There, HEAD's copy silently judging in place of the edit read as the edit passing: a checker
+    fix was run against CadGoose from its worktree, reported the old verdict, and was debugged as
+    a wrong fix (2026-10-08). The shared checkout stays quiet (the test above): a peer's half-done
+    edit there is exactly the noise C4 removed from consumers' gates.
+    """
+    wt = tmp_path / "wt"
+    subprocess.run(["git", "-C", str(gates), "worktree", "add", "-q", str(wt)], check=True)
+    (repo / "a.txt").write_text("fine\n")
+    (repo / "b.txt").write_text("1\ta.txt\n")
+    subprocess.run(["git", "-C", str(repo), "add", "-A"], check=True)
+    clean = _run(wt, repo, tmp_path)
+    assert clean.returncode == 0, clean.stdout + clean.stderr
+    assert NOTICE not in clean.stderr, "an unedited file ran as committed: nothing to say"
+    checker = wt / "checks" / "loc_of_baseline_files.py"
+    checker.write_text(
+        checker.read_text().replace("def main", f'print("{PLANT}")\n\n\ndef main', 1)
+    )
+    head = _run(wt, repo, tmp_path)
+    assert head.returncode == 0, head.stdout + head.stderr
+    assert PLANT not in head.stdout, "HEAD's copy still judges"
+    assert NOTICE in head.stderr and "checks/loc_of_baseline_files.py" in head.stderr, head.stderr
+    assert "GOH_LIVE=1" in head.stderr, head.stderr

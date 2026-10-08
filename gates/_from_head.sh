@@ -83,6 +83,14 @@ _goh_head_dir() {
     : > "$dest/.goh-used" 2>/dev/null || true
     rel="${here#"$root"}/$(basename "$1")"
     [ -f "$dest$rel" ] || return 1                # a file HEAD does not have yet: it is development
+    # A LINKED worktree (`.git` is a file) is where the gates are developed, and no consumer's
+    # GOH_DIR points into one: there, HEAD's copy judging in place of an edit read as the edit's
+    # verdict (a checker fix run on CadGoose reported the old result, 2026-10-08), so say so. The
+    # shared checkout stays quiet -- a peer's half-done edit there is the noise C4 removed.
+    if [ -f "$root/.git" ] && ! cmp -s "$1" "$dest$rel"; then
+        echo "⚠ gates_of_heck: ${rel#/} has an uncommitted edit in this worktree -- running HEAD's" \
+            "copy (${head:0:7}); GOH_LIVE=1 runs the edit" >&2
+    fi
     export GOH_LIVE_ROOT="$root" GOH_DIR="$dest" PYTHONPATH="$dest${PYTHONPATH:+:$PYTHONPATH}"
     _goh_copy="$dest$rel"
 }
