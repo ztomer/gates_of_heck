@@ -7,6 +7,8 @@ use crate::{
     unreaped, vendored,
 };
 
+mod trackedignored;
+
 /// `goh structural`: every step, fail-fast, delegated checkers started together.
 #[must_use]
 pub fn run(staged: bool, full: bool) -> i32 {
@@ -85,6 +87,11 @@ pub fn run(staged: bool, full: bool) -> i32 {
         return code;
     }
     if let Some(code) = steps::step_home_paths(&repo, &files, &cfg, staged) {
+        return code;
+    }
+    // A tracked file the repo's own `.gitignore` matches; beside the home-path step because both
+    // find a file in the tree that one machine's state put there.
+    if let Some(code) = trackedignored::step(&repo, &files, staged) {
         return code;
     }
     if let Some(code) = steps_rust::step(&repo, &files, &cfg, staged) {

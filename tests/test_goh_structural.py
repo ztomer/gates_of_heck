@@ -323,7 +323,8 @@ INVENTORY_CASE: dict[str, bytes] = {
 # (docs/SUPERSOTA.md R4), so the only proof a step runs is its label here. 16 -> 17 on
 # 2026-10-03 (`no unreaped spawns in tests`), 18 on 2026-10-04 (`prose claims are derived`),
 # 19 on 2026-10-05 (`no credential in a git remote URL`), 20 on 2026-10-06 (`no vendored copies
-# of house checkers`, R5), 21-23 on 2026-10-08 (requires-call, early-exit pipe, code after exec).
+# of house checkers`, R5), 21-23 on 2026-10-08 (requires-call, early-exit pipe, code after exec),
+# 24 the same day (`no tracked file its .gitignore ignores`).
 INVENTORY = [
     "a file that calls X calls Y",
     "Cargo.lock matches its manifests",
@@ -341,6 +342,7 @@ INVENTORY = [
     "no early-exit pipe under pipefail",
     "no hard-coded home paths",
     "no process kill by name",
+    "no tracked file its .gitignore ignores",
     "no unreaped spawns in tests",
     "no vendored copies of house checkers",
     "prose claims are derived",

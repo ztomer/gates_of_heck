@@ -25,6 +25,20 @@
   `--retry`. The let-go gives the budget OR the load, from the reading that decided it. RED
   FIRST: a gate joining behind a drain past a 3 s budget waited 8.2 s on the old code; < 5 now.
 
+* **structural: no tracked file its own `.gitignore` ignores** (`crates/goh/src/structural/trackedignored.rs`).
+  koffee_big held three tracked files its rules ignored -- `build.sh` and `run.sh`, tools AGENTS.md
+  documents, under a stale "local only" rule, and a Kotlin daemon crash log under an ignored build
+  directory -- and nothing saw them: a tracked path is never ignored, so `git status` is clean. A
+  new step in every repo lists tracked files an in-tree `.gitignore` matches (`ls-files --ignored
+  --exclude-per-directory=.gitignore`; one machine's excludes would make the verdict the
+  machine's) and names each one's rule and both fixes. `--staged` judges what the commit brings:
+  its files, or every tracked file when it stages a `.gitignore`. The estate sweep found two other
+  repos red, both fixed the same day: CadGoose (four force-added files under `*.md` and
+  `FoundationLLM.*`, now negations) and ZoneWM (`.vscode/settings.json`). RED FIRST: eight cases
+  in `tests/test_goh_tracked_ignored.py`, red before the step existed; reading the machine's
+  excludes too turns the machine-local case red, and judging every file at `--staged` turns the
+  unrelated-commit case red.
+
 * **bench lock: a waiting gate is not a running one** (`lib/bench_lock.sh`). A gate behind a
   hold re-registered in `gates/` on every 2 s re-check and stayed there through its stale and
   nested checks (a `ps` each), so the drain counted waiters as running gates. With dozens queued
@@ -1075,7 +1089,6 @@ SUPERSOTA **R8** — the failing tier names the checker and routes to its rule.
 The push gate stops handing the export gate this repo's `.gatesrc`.
 Uncommitted gate source: publish refuses, certify names itself.
 
-
 SUPERSOTA **R3**: "a gate that cannot fail in the shape it was written for is
 not proven." The mechanism for the estate as a whole lives in
 `games/game_asset_factory/tools/check_gate_calibration.py`. What lands here is
@@ -1319,7 +1332,6 @@ preference:
   the 500-line cap with tests inline, and twice in one session a test edit pushed
   a file over it. The cost of that class is paid by the next change, at commit
   time, in the gate.
-
 
 ## v0.14.0 — four gate gaps an independent audit found, closed structurally _(2026-10-01)_
 
