@@ -50,7 +50,7 @@ echo $$ > "$LOCKFILE"
 
 # ---- Detect screen recording ----
 IS_GHOSTTY=0
-if echo "${TERM_PROGRAM:-}" | grep -qi ghostty; then
+if grep -qi ghostty <<<"${TERM_PROGRAM:-}"; then   # not a pipe: goh early-exit-pipe
     IS_GHOSTTY=1
 fi
 

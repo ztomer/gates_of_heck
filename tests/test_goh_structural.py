@@ -149,6 +149,20 @@ FULL_CASES: dict[str, dict[str, bytes]] = {
         # command name is still built with `+` so this file never spells it.
         "run.py": b'import subprocess\n\nsubprocess.run(["p' + b'kill", "-f", "helper"])\n',
     },
+    # early-exit-pipe runs in EVERY repo: ratchet closed (opt-in) an old racy pipe fails at full
+    # scope and the fixed shape passes; ratchet open it is named, not failed (`_named`).
+    "early_exit_pipe_red": {
+        ".gatesrc": b"GOH_MAX_LINES=10\nGOH_NO_EARLY_EXIT_PIPE=1\n",
+        "a.sh": b"#!/bin/bash\nset -euo pipefail\nls | grep -q x\n",
+    },
+    "early_exit_pipe_green": {
+        ".gatesrc": b"GOH_MAX_LINES=10\nGOH_NO_EARLY_EXIT_PIPE=1\n",
+        "a.sh": b'#!/bin/bash\nset -euo pipefail\nout="$(ls)"\ngrep -q x <<<"$out"\n',
+    },
+    "early_exit_pipe_named": {
+        ".gatesrc": GATESRC,
+        "a.sh": b"#!/bin/bash\nset -euo pipefail\nls | grep -q x\n",
+    },
     "kill_by_name_green": {
         ".gatesrc": b"GOH_MAX_LINES=10\nGOH_NO_KILL_BY_NAME=1\n",
         "run.py": b"import os\nos.killpg(os.getpgid(0), 15)\n",
@@ -237,6 +251,9 @@ EXPECTED: dict[str, tuple[int, str | None]] = {
     "requires_call_green": (0, None),
     "requires_call_red": (1, "a file that calls X calls Y"),
     "clean": (0, None),
+    "early_exit_pipe_green": (0, None),
+    "early_exit_pipe_named": (0, None),
+    "early_exit_pipe_red": (1, "no early-exit pipe under pipefail"),
     "emoji": (1, "no disallowed emoji"),
     "exclude_warn": (0, None),
     "home_path_green": (0, None),
@@ -281,7 +298,8 @@ _SKILL = b"---\nname: skill-%d\ndescription: does a thing worth triggering on.\n
 INVENTORY_CASE: dict[str, bytes] = {
     ".gatesrc": (
         b"GOH_MAX_LINES=500\nGOH_SKILLS_CORPUS=1\nGOH_NO_HOME_PATHS=1\nGOH_NO_KILL_BY_NAME=1\n"
-        b"GOH_PYTHON_FORMATTED=1\nGOH_CLAIM_DERIVATION=1\nGOH_LINE_EXCLUDE='big.py'\n"
+        b"GOH_PYTHON_FORMATTED=1\nGOH_CLAIM_DERIVATION=1\nGOH_NO_EARLY_EXIT_PIPE=1\n"
+        b"GOH_LINE_EXCLUDE='big.py'\n"
         b"GOH_LINE_BASELINE='base.txt'\nGOH_REQUIRES_CALL='rc.toml'\n"
     ),
     "rc.toml": b'[[rule]]\nname = "b"\nwhy = "y"\nfiles = ["b.py"]\nmust_call = ["print"]\n',
@@ -299,8 +317,8 @@ INVENTORY_CASE: dict[str, bytes] = {
 # counted -- a step that does not run prints exactly what a step that passes prints
 # (docs/SUPERSOTA.md R4), so the only proof a step runs is its label here. 16 -> 17 on
 # 2026-10-03 (`no unreaped spawns in tests`), 18 on 2026-10-04 (`prose claims are derived`),
-# 19 on 2026-10-05 (`no credential in a git remote URL`), 20 on 2026-10-06 (`no vendored
-# copies of house checkers`, R5), 21 on 2026-10-08 (`a file that calls X calls Y`).
+# 19 on 2026-10-05 (`no credential in a git remote URL`), 20 on 2026-10-06 (`no vendored copies
+# of house checkers`, R5), 21+22 on 2026-10-08 (requires-call, `no early-exit pipe under pipefail`).
 INVENTORY = [
     "a file that calls X calls Y",
     "Cargo.lock matches its manifests",
@@ -314,6 +332,7 @@ INVENTORY = [
     "no conflict markers",
     "no credential in a git remote URL",
     "no disallowed emoji",
+    "no early-exit pipe under pipefail",
     "no hard-coded home paths",
     "no process kill by name",
     "no unreaped spawns in tests",

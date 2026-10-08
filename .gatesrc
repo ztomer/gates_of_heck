@@ -25,6 +25,11 @@ GOH_SKILLS_CORPUS=1
 # kill_by_name_allow.json as `unreviewed`, with the gate's own pattern as the
 # one `legitimate` entry.
 GOH_NO_KILL_BY_NAME=1
+
+# No early-exit consumer on a pipe under pipefail (`goh early-exit-pipe`). The step runs in every
+# repo with the ratchet open (a NEW racy pipe refused at commit); this repo's tree is clean, so it
+# closes the ratchet and every finding fails.
+GOH_NO_EARLY_EXIT_PIPE=1
 GOH_SKILLS_ROOT=$HOME/.claude/skills
 
 # COVERAGE FLOOR for crates/goh: 95, the house floor. Measured 97.91% on

@@ -20,6 +20,7 @@ pub mod commands;
 pub mod commit_class;
 pub mod credurls;
 pub mod deps;
+pub mod earlypipe;
 pub mod emoji;
 pub mod emptyassert;
 pub mod gatesrc;
@@ -262,6 +263,7 @@ fn run_ported(command: Commands) -> Result<i32, Box<Commands>> {
             staged,
             code_lines,
         } => killname::run_command(staged, &exclude, code_lines.as_deref()),
+        Commands::EarlyExitPipe { exclude, staged } => earlypipe::run_command(staged, &exclude),
         Commands::UnreapedSpawn {
             exclude,
             staged,

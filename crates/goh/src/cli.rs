@@ -349,6 +349,16 @@ pub enum Commands {
         #[arg(long)]
         code_lines: Option<String>,
     },
+    /// Fail on an early-exit consumer (`grep -q`, `grep -m`, `head`, awk `exit`, sed `q`) reading
+    /// a pipe in a script that turns pipefail on: the producer's SIGPIPE becomes the verdict.
+    EarlyExitPipe {
+        /// Regex on repo-relative paths to skip (`GOH_EXCLUDE`).
+        #[arg(long, default_value = "")]
+        exclude: String,
+        /// Staged blobs (polices the index).
+        #[arg(long)]
+        staged: bool,
+    },
     /// Fail on a test spawn no guard reaps, or whose reap sits below a line
     /// that can panic (native port of `check_no_unreaped_spawn`).
     UnreapedSpawn {

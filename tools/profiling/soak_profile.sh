@@ -26,7 +26,8 @@ if ! pgrep -f "CadGoose" > /dev/null; then
     sleep 3
 fi
 
-CADGOOSE_PID=$(pgrep -f "CadGoose" | head -1)
+pids="$(pgrep -f "CadGoose" || true)"   # whole, then the first: not a pipe (goh early-exit-pipe)
+CADGOOSE_PID="$(head -n1 <<<"$pids")"
 if [ -z "$CADGOOSE_PID" ]; then
     echo "Error: Could not start CadGoose"
     exit 1

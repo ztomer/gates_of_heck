@@ -8,7 +8,10 @@ DURATION=${2:-30}
 PID=$1
 
 if [ -z "$PID" ]; then
-    PID=$(pgrep -f "CadGoose" | head -1)
+    # Read whole, then the first: `pgrep | head -1` is a race under a caller's pipefail
+    # (goh early-exit-pipe).
+    pids="$(pgrep -f "CadGoose" || true)"
+    PID="$(head -n1 <<<"$pids")"
 fi
 
 if [ -z "$PID" ]; then

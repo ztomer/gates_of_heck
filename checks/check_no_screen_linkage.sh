@@ -58,7 +58,9 @@ for bin in "$@"; do
     while IFS= read -r sym; do
         [ -n "$sym" ] || continue
         # macOS links these as _<symbol>; substring match covers both spellings.
-        if printf '%s\n' "$table" | grep -q "$sym"; then
+        # A here-string, not `printf | grep -q`: under pipefail grep's early exit SIGPIPEs the
+        # printf and a FOUND symbol reads as absent (goh early-exit-pipe).
+        if grep -q "$sym" <<<"$table"; then
             found="$found$sym"$'\n'
         fi
     done <<<"$FORBIDDEN"

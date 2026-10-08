@@ -199,6 +199,21 @@ pub fn content_bytes(root: &Path, rel: &str, staged: bool) -> Option<Vec<u8>> {
     std::fs::read(root.join(rel)).ok()
 }
 
+/// The bytes `rel` has at HEAD (`git show HEAD:rel`); `None` when HEAD lacks it.
+///
+/// What a ratchet compares a staged blob against to tell a NEW finding from an old one. No HEAD
+/// at all is also `None`. The hook's `GIT_*` are honoured: it is THIS repo's HEAD.
+#[must_use]
+pub fn committed_bytes(root: &Path, rel: &str) -> Option<Vec<u8>> {
+    let out = Command::new("git")
+        .arg("-C")
+        .arg(root)
+        .args(["show", &format!("HEAD:{rel}")])
+        .output()
+        .ok()?;
+    out.status.success().then_some(out.stdout)
+}
+
 /// Lines in a blob, by the one definition the gates share: a trailing newline
 /// terminates the last line, it does not begin another.
 #[must_use]

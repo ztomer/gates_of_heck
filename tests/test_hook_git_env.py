@@ -212,7 +212,7 @@ def test_rust_test_code_spawns_git_only_through_the_testkit():
     allowed = {
         "crates/goh/build.rs": 1,  # the source stamp (C3); strips the hook's GIT_* itself
         "crates/goh-testkit/src/lib.rs": 2,  # local_env_vars() probe + git_command()
-        "crates/goh/src/gitutil.rs": 3,  # repo_root / listed_files / content_bytes
+        "crates/goh/src/gitutil.rs": 4,  # repo_root / listed_files / content_bytes / committed_bytes
         "crates/goh/src/blobs.rs": 1,  # prefetch_staged's cat-file
         "crates/goh/src/index_view.rs": 2,  # staged + committed views: GIT_DIR/GIT_INDEX_FILE deliberate
         # claim-derivation's tree listing: GIT_* scrubbed, as the reference's foreign_repo_env

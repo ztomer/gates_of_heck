@@ -31,7 +31,7 @@ pub type OptIns = std::collections::BTreeSet<String>;
 ///
 /// Read by the test that pins the key set, so a gate cannot read a key nobody
 /// documented and a doc cannot name a gate that reads nothing.
-pub const OPT_IN_KEYS: [&str; 5] = [
+pub const OPT_IN_KEYS: [&str; 6] = [
     "GOH_SKILLS_CORPUS",
     "GOH_NO_HOME_PATHS",
     "GOH_NO_KILL_BY_NAME",
@@ -44,6 +44,10 @@ pub const OPT_IN_KEYS: [&str; 5] = [
     // and a gate that goes red in twenty places on the day it lands is a gate
     // that gets disabled.
     "GOH_CLAIM_DERIVATION",
+    // Closes the early-exit-pipe ratchet: every finding fails, not only a new one. The step
+    // itself runs in every repo (a NEW racy pipe is refused at commit); this is the switch a
+    // repo throws once its tree is clean.
+    "GOH_NO_EARLY_EXIT_PIPE",
 ];
 
 /// Structural knobs read from `.gatesrc`.
@@ -210,7 +214,7 @@ pub fn from_pairs(pairs: &BTreeMap<String, String>) -> Result<Gatesrc, String> {
 /// keys, so a step that reads one from the environment (`GOH_STEP_TIMEOUT`, and
 /// every child it spawns) sees the file's value, never an inherited one.
 /// Pinned against `docs/config.md` by `tests/test_gate_environment.py`.
-pub const PIPELINE_KEYS: [&str; 16] = [
+pub const PIPELINE_KEYS: [&str; 17] = [
     "GOH_MAX_LINES",
     "GOH_LINE_EXCLUDE",
     "GOH_LINE_BASELINE",
@@ -224,6 +228,7 @@ pub const PIPELINE_KEYS: [&str; 16] = [
     "GOH_NO_KILL_BY_NAME",
     "GOH_PYTHON_FORMATTED",
     "GOH_CLAIM_DERIVATION",
+    "GOH_NO_EARLY_EXIT_PIPE",
     "GOH_STEP_TIMEOUT",
     "GOH_STEP_GRACE",
     "GOH_REQUIRES_CALL",
@@ -323,6 +328,7 @@ mod tests {
             "GOH_NO_KILL_BY_NAME",
             "GOH_PYTHON_FORMATTED",
             "GOH_CLAIM_DERIVATION",
+            "GOH_NO_EARLY_EXIT_PIPE",
         ]
         .into_iter()
         .collect();

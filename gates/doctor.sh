@@ -103,7 +103,7 @@ else
     used="$(grep -o '^GOH_[A-Z][A-Z_]*' "$repo/.gatesrc" 2>/dev/null | sort -u || true)"
     unknown=""
     for k in $used; do
-        printf '%s\n' "$known" | grep -qx "$k" || unknown="${unknown}${unknown:+ }$k"
+        grep -qx "$k" <<<"$known" || unknown="${unknown}${unknown:+ }$k"   # not a pipe: goh early-exit-pipe
     done
     if [ -n "$unknown" ]; then
         warn "unknown GOH_* keys in .gatesrc (no gate reads them — typo or stale name): $unknown"

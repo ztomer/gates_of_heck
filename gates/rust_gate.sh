@@ -162,7 +162,8 @@ rust_crate_checks() {
             case "$cfg" in
                 *--target*)
                     tgt="$(printf '%s\n' "$cfg" | sed -n 's/.*--target[= ]\([^ ]*\).*/\1/p')"
-                    if [ -n "$tgt" ] && ! printf '%s\n' "$installed" | grep -qx "$tgt"; then
+                    # A here-string, not a pipe into grep -q (goh early-exit-pipe).
+                    if [ -n "$tgt" ] && ! grep -qx "$tgt" <<<"$installed"; then
                         err "[rust] target $tgt is not installed; this step would inspect nothing."
                         err "  rustup target add $tgt"
                         exit 1

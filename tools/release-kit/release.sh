@@ -118,7 +118,8 @@ done
 [ -n "$VERSION" ] || die_usage
 # X.Y.Z (semver) or X.Y — some repos' tag scheme is two-component (CadGoose:
 # v1.71 … v1.79); the old three-glob check rejected their entire history.
-if printf '%s' "$VERSION" | grep -Eq '^[0-9]+\.[0-9]+(\.[0-9]+)?$'; then :; else
+# A here-string, never `printf | grep -q`: under pipefail that is a race (goh early-exit-pipe).
+if grep -Eq '^[0-9]+\.[0-9]+(\.[0-9]+)?$' <<<"$VERSION"; then :; else
   die "step 'args': --version must look like 1.2.3 or 1.79 (got '$VERSION')"
 fi
 if [ -n "$TAP" ] && [ -z "$TAP_NAME" ]; then
@@ -328,7 +329,7 @@ else
   else
     if [ -d "$TAP" ]; then
       TAP_SRC="$TAP"          # local path (tests, private remotes)
-    elif printf '%s' "$TAP" | grep -q '/'; then
+    elif grep -q '/' <<<"$TAP"; then
       TAP_SRC="https://github.com/${TAP}"
     else
       fail "--tap must be ORG/REPO or a local git path (got '${TAP}')"

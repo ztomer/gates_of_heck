@@ -22,6 +22,24 @@
   nested in a registered gate or in the measurement, and a dead, PID-recycled or overdue holder,
   never deadlock it. Pinned by `tests/test_bench_lock.py`, each case red-proven by mutation.
 
+* **`goh early-exit-pipe`: no early-exit consumer on a pipe under pipefail** (`crates/goh/src/earlypipe/`).
+  `producer | grep -q` with pipefail on is a race: the consumer exits at its first match, the
+  producer's next write dies of SIGPIPE (141), and pipefail makes that the status -- so a match
+  reads as a miss, on a loaded host only. Measured 2026-10-08: media_server's deploy.sh read a
+  RUNNING service as absent, a `git diff --cached | grep -qE` decided whether a gate layer ran,
+  and `ps | head -6` exited 141 here. Consumers: `grep -q`/`--quiet`/`--silent`/`-l`, `grep -m`/
+  `--max-count`, `head` (not `-n -N`), awk `exit` outside `END`, sed `q`/`Q`; in EVERY shell
+  source -- `*.sh`, `*.sh.tmpl`, `*.bash`, `*.zsh`, shell shebangs -- whether or not the file
+  says pipefail itself: media_server's scan read only `*.sh` files saying "pipefail", and let a
+  release through on a sourced install-lib.sh and the install.sh.tmpl that regenerates
+  install.sh. Only a status something READS is a finding: a
+  substitution used as an argument and a pipeline ending `|| true` pass. A structural step in EVERY
+  repo, ratcheted like `vendored.rs`: a NEW finding is refused at `--staged`, existing ones are named
+  at full scope, and `GOH_NO_EARLY_EXIT_PIPE=1` fails them all (this repo sets it). The fourteen sites
+  here are fixed with here-strings (doctor, rust_gate, structural, release kit x2, profiling x8,
+  screen linkage). Pinned by `earlypipe/tests.rs` (every rule mutation-proven red) and
+  `tests/test_check_no_early_exit_pipe.py`.
+
 ## v0.24.0 — what one session costs the next _(2026-10-08)_
 
 ### 1. Measured: cross-session serialization

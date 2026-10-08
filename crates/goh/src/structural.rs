@@ -2,9 +2,9 @@
 //! since Phase N3 retired `gates/structural.sh`'s Python branch.
 
 use crate::{
-    blobs, claims, credurls, gatesrc, gitutil, goh_root, killname, lockver, mdlinks, prefetch,
-    provenance, pyformat, scope, shell_lint, steps, steps_delegated, steps_rust, unreaped,
-    vendored,
+    blobs, claims, credurls, earlypipe, gatesrc, gitutil, goh_root, killname, lockver, mdlinks,
+    prefetch, provenance, pyformat, scope, shell_lint, steps, steps_delegated, steps_rust,
+    unreaped, vendored,
 };
 
 /// `goh structural`: every step, fail-fast, delegated checkers started together.
@@ -72,6 +72,10 @@ pub fn run(staged: bool, full: bool) -> i32 {
         return code;
     }
     if let Some(code) = shell_lint::step(&cfg, staged) {
+        return code;
+    }
+    // Beside shell lint: the same files, and a defect shellcheck cannot see (it is a race).
+    if let Some(code) = earlypipe::step(&repo, &files, &cfg, staged) {
         return code;
     }
     if let Some(code) = steps::step_secrets(&repo, &files, &cfg, staged) {

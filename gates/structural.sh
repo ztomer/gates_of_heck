@@ -128,7 +128,11 @@ goh_require_current() {
         where="in the working tree (GOH_LIVE)"
         want="$(grep -m1 '^version = ' "$manifest" | cut -d'"' -f2)"
     else
-        want="$({ git -C "$GOH_ROOT" show HEAD:Cargo.toml 2>/dev/null || cat "$manifest"; } | grep -m1 '^version = ' | cut -d'"' -f2)"
+        # Read whole, then searched: `producer | grep -m1` under pipefail is a race (goh
+        # early-exit-pipe) -- grep's early exit SIGPIPEs the producer and fails the pipeline.
+        local text
+        text="$(git -C "$GOH_ROOT" show HEAD:Cargo.toml 2>/dev/null || cat "$manifest")"
+        want="$(grep -m1 '^version = ' <<<"$text" | cut -d'"' -f2)"
     fi
     got="$("$bin" --version 2>/dev/null | awk '{print $NF}')"
     if [ -n "$want" ] && [ "$got" = "$want" ]; then

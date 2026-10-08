@@ -6,7 +6,8 @@
 # quick_profile.sh - Quick 60-second CPU profile
 
 DURATION=${1:-60}
-PID=$(pgrep -f "CadGoose" | head -1)
+pids="$(pgrep -f "CadGoose" || true)"   # whole, then the first: not a pipe (goh early-exit-pipe)
+PID="$(head -n1 <<<"$pids")"
 
 if [ -z "$PID" ]; then
     echo "Error: CadGoose not running"
@@ -31,4 +32,8 @@ echo ""
 echo "Profile saved to: $TRACE_FILE"
 echo ""
 echo "Top symbols:"
-xctrace analyze --symbolicate --quiet "$TRACE_FILE" 2>/dev/null | head -20 || echo "Open in Instruments: open \"$TRACE_FILE\""
+if analysis="$(xctrace analyze --symbolicate --quiet "$TRACE_FILE" 2>/dev/null)"; then
+    head -20 <<<"$analysis"   # read whole, not piped into head (goh early-exit-pipe)
+else
+    echo "Open in Instruments: open \"$TRACE_FILE\""
+fi
