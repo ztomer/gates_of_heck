@@ -357,8 +357,10 @@ def test_self_proofs_run_concurrently_and_report_in_order(tmp_path, capsys):
     here for a 2.0 s longest probe (2026-10-05). Each probe below can only finish if the OTHER is
     running at the same time -- a serial runner times both out -- and a failure is still reported
     against the probe that failed, in discovery order."""
-    meet = tmp_path / "meet"
+    meet = tmp_path / "meet"  # outside the tree: a probe writing into it is refused
     meet.mkdir()
+    tmp_path = tmp_path / "root"
+    tmp_path.mkdir()
 
     def rendezvous(me, other):
         return f"""
@@ -387,3 +389,34 @@ def test_self_proofs_run_concurrently_and_report_in_order(tmp_path, capsys):
     text = out.out + out.err
     assert "check_c.py --probe is BROKEN" in text, text
     assert "check_a.py --probe is BROKEN" not in text and "check_b.py" not in text, text
+
+
+PLANTS = """
+    import os, sys, time
+    if "--probe" in sys.argv:
+        here = os.path.join(os.path.dirname(os.path.abspath(__file__)), "check_reads.py")
+        body = open(here).read()
+        os.unlink(here)  # plant: the file is gone while the probe runs
+        time.sleep(0.2)
+        open(here, "w").write(body)  # and restored, byte for byte
+        sys.exit(0)
+    sys.exit(0)
+"""
+
+
+@pytest.mark.parametrize("in_git", [False, True])
+def test_a_probe_that_changes_the_tree_it_was_given_is_named(tmp_path, capsys, in_git):
+    """koffee_big, 2026-10-08: one probe unlinked a real source and wrote it back while another
+    copied the same tree in parallel, and the copy failed on the missing file -- a push refused on
+    a clean tree. Killed mid-plant it deletes the owner's source. The bytes come back, so git
+    status is clean; the inode and mtime do not, so the gate sees it and names the probe."""
+    root = _tree(tmp_path, {"check_plants.py": PLANTS, "check_reads.py": PASSING})
+    if in_git:
+        env = gate.foreign_repo_env()
+        for cmd in (["init", "-q"], ["add", "-A"]):
+            subprocess.run(["git", "-C", str(root), *cmd], check=True, env=env)
+    assert gate.main(["--root", str(root), "--no-corpus"]) == 1
+    out = capsys.readouterr()
+    text = out.out + out.err
+    assert "tools/check_reads.py" in text and "check_plants.py --probe changes" in text, text
+    assert "check_reads.py --probe changes" not in text, text

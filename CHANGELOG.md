@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+* **A self-proof must leave the tree it ran over as it found it.** `check_probes_pass.py` runs
+  every probe in parallel over the live tree; in koffee_big one probe unlinked a real source and
+  wrote it back while another copied the tree, and the copy failed on the missing file -- a push
+  refused on a clean tree, and, killed mid-plant, the owner's source deleted. The bytes came back,
+  so git status was clean. Each file's inode, mtime and size are now stamped before and after;
+  a change fails the gate, names the files, and a serial re-run names the probe. (From the
+  koffee_big session, 2026-10-08.)
 * **A commit hook's repository variables no longer reach what the gate spawns** (contract #12;
   media_server, 2026-10-08). From a linked worktree git hands pre-commit an absolute `GIT_DIR` and
   `GIT_INDEX_FILE`, and the stock hook passed both to `tools/gate.sh --staged` and its children: a
@@ -20,7 +27,6 @@
   OLD hook as well; the scratch-repo corruption needs the new hook (`install.sh`, which the
   structural gate already asks an older stock hook for). Pinned by
   `tests/test_commit_hook_git_env.py`, each test red-proven.
-
 * **`goh commit-class`: a repo's domain vocabulary is not a class.** A word in more than an eighth
   of the repo's classes (over its whole history; none below 30 classes) no longer counts toward
   "same class". ZoneWM's replay keeps its 3 right refusals and loses the wrong one, `078f137f`,

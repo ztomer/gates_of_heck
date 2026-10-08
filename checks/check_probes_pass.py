@@ -47,6 +47,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from _calibration import external_note, load as load_registry, verify  # noqa: E402
 from _estate_sweep import CORPUS_TIMEOUT, corpus_sweep, estate_in_scope  # noqa: E402,F401
 from _gitutil import foreign_repo_env, listed_files, repo_root  # noqa: E402
+from _tree_stamp import stamp, tree_changed  # noqa: E402
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from tui.lib import err, info, ok, warn  # noqa: E402
@@ -337,8 +338,11 @@ def main(argv=None):
     # serially they summed 8.1 s here for a 2.0 s longest probe, in every consumer's pre-push.
     from concurrent.futures import ThreadPoolExecutor
 
+    before = stamp(root)
     with ThreadPoolExecutor(max_workers=min(len(probes), os.cpu_count() or 4)) as pool:
         verdicts = list(pool.map(lambda probe: run_one(probe[0], probe[1], cwd=root), probes))
+    if tree_changed(root, before, probes, run_one):  # parallel probes race a probe writing in it
+        return 1
     for (path, flag), (passed, detail) in zip(probes, verdicts):
         if passed:
             ran.add(os.path.relpath(path, root))
