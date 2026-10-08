@@ -1,6 +1,6 @@
 # CHANGELOG
 
-## Unreleased — what one session costs the next
+## v0.24.0 — what one session costs the next _(2026-10-08)_
 
 ### 1. Measured: cross-session serialization
 

@@ -6,16 +6,15 @@ not ready to start: the **measured baseline** it moves, the **exit number** that
 hit can be wrong, each with a test BEFORE the cache exists). A perf change without a before/after
 from the P0 instrument does not land.
 
-## State — 2026-10-06, v0.23.0 + unreleased (read first)
+## State — 2026-10-08, v0.24.0 (read first)
 
-v0.23.0 retired the Python checkers: `bin/goh` is the only structural tier. Main is 17 commits past
-the tag (CHANGELOG `Unreleased`): the spawn cuts, one-run coverage, the learned rust scope, the C2
-writer hook, `tools/session_bench.py`. **v0.24.0 is cut when every phase below is done (owner, 2026-10-06).** Box: 16 cores, 4-5 busy
-at idle, sys ~= user, so **spawn count, tree walks and network round trips are the cost metric, not
-CPU**. The suite runs `-n 12` (faster than 8 since the 2026-10-06 spawn cuts; 16 a draw). Every wall-clock number below needs a QUIET box (load < 4):
-the 2026-10-06 session ran at load 12-31 beside other sessions' gates, so its timings are not
-measurements. Landed plans are pruned to this table; their detail is in the CHANGELOG and the
-commit bodies.
+v0.24.0 closed the roadmap that followed v0.23.0 (every phase, 1-10; the plan of record is in git
+history at `9241ecc`, its detail in the CHANGELOG stanza): the spawn cuts, one-run coverage, the
+learned rust scope, the C2 writer hook, `tools/session_bench.py`, the suite's drift guards,
+`goh commit-class` calibrated on ZoneWM's history, `gates/round.sh`, and the shared temp dir kept
+claimable. Box: 16 cores, 4-5 busy at idle, sys ~= user, so **spawn count, tree walks and network
+round trips are the cost metric, not CPU**. The suite runs `-n 12`. Every wall-clock number needs a
+QUIET box (load < 4). Landed plans are pruned to this table.
 
 | landed | commit | measured |
 |---|---|---|
@@ -35,212 +34,14 @@ commit bodies.
 | suite at `-n 12` | `83af2ac` | 74/96 s -> 67/79 s interleaved |
 | P0-P4, C1, C3-C5 | v0.20.0-v0.22.0 | see CHANGELOG |
 
-## Resume here (2026-10-06, after `7b4f79c`)
+## Resume here (2026-10-08, after v0.24.0)
 
-- Owner, standing for this campaign: no optimisation left on the table -- items declined on YIELD
-  are reopened (4.1 done as `fast_init` for the 10 busiest files, ~200 more sites to migrate; 4C.2
-  native proven cache and 4C.3 native canary/local_ci runner to DO, not decline). Declines on
-  SOUNDNESS stand (2.5's probe cache).
-- A temporary 8 GB RAM disk is mounted at `/Volumes/gohram` (device in `/tmp/gohram.dev`) for this
-  campaign's compiles and suite (`TMPDIR=/Volumes/gohram/tmp`, `CARGO_TARGET_DIR=/Volumes/gohram/target`);
-  eject it (`diskutil eject`) when the campaign ends -- not a standing setup.
-- Main (`~/Projects/gates_of_heck`) is at `b174dba`. Fast-forward it only after this repo's
-  own push gate is green on the branch tip (`tools/gate_profile.sh .` runs it on HEAD in an
-  export).
 - Every Rust change runs `cargo test --workspace` before its commit (3b94809 shipped a red one).
-- 5B drift cases seen so far: a test rebuilding goh without `GOH_BIN`, a whole gate run to check one
-  step, per-site `git init`, a test moving the checkout, pools sized to `os.cpu_count()`, a leaked
-  child holding a captured pipe (30 s), and timing thresholds that flake under load
-  (`test_local_ci_jobs.py::test_jobs_flag_wins_over_gatesrc`, 1.11 s against 1.1 s).
-
-## Roadmap to v0.24.0 — the plan of record
-
-The owner's rule (2026-10-06): every item below is DONE before the release is cut. Done means the
-item's exit number met, or -- only where the work belongs to another repo or session -- handed to
-its owner with the evidence and recorded here. Phases run in order; within a phase, any order.
-Status: `[ ]` open, `[x]` done (with the commit), `[~]` handed off.
-
-**Phase 1 — correctness: a gate that says more than it does** (details: "Open -- found", 1-2)
-- [x] 1.1 Rust per-target coverage floors are inert: refuse a floors file whose target floors the
-      rust mode cannot apply, naming the key (red-first: `{"covfix": 100}` over 50% passes today).
-      Both shapes refused, exit 2 (`22c8d49`).
-- [x] 1.3 (found by ztools' notes) a rust `exempt` key matched only the ABSOLUTE SF path, so it held
-      at one checkout path and read "stale" in a push gate's export: a key relative to the project
-      now names the same file anywhere (`22c8d49`).
-- [x] 1.4 (same) an unreadable floors file was a warning and a pass on `--floor` alone, the per-file
-      check silently dropped: refused, exit 2 (`22c8d49`).
-- [x] 1.2 The HEAD export cache is bounded by LAST USE and count; an export used within the hour is
-      never removed (the old prune went by creation time, after a week, with no count bound)
-      (`2517e42`).
-
-**Phase 2 — fewer spawns in every gate** (details: "Open -- found", 4, 6, 7)
-- [x] 2.1 `goh.sh` resolves the binary once per process tree (exported, validated); ratchet: a
-      `goh.sh` call inside a gate spawns no git. Child call 78 -> 34 ms; `rust_gate.sh` resolves
-      once for its four `goh.sh` steps (`ae8b768`).
-- [x] 2.2 `check_estate_corpus`: scratch repos from a template with the identity on the commit
-      (one shared `_gitutil.scratch_git`, the display-seam probe's copy folded in): 90 -> 45 git
-      calls per run (`c4e3dc3`). Its pool, MEASURED: 8 vs 4 workers alone 1.42 vs 1.73 s, under 4
-      concurrent sessions 7.3 vs 7.3 s -- the pool is not the serializer, so it stays. One run is
-      4.6 CPU-s in 2.1 s wall, 3.35 s of it sys: ~4000 file creations (the corpus copies and the
-      objects `git add` writes), which contend across processes. That is 2.4.
-- [x] 2.4 A verdict cache for `check_estate_corpus`, so the corpus is materialised only when an
-      input moved. Key: each entry's source scope at HEAD and any uncommitted edit under it, the
-      checker's own source, the `goh` binary's stamp. Every way a hit can be wrong, tested BEFORE
-      the cache: a committed edit in a scope, an uncommitted one, a new checker binary, an edited
-      checker, an estate repo gone (never a hit: "unavailable"), a corrupt entry. Exit: a repeat run
-      with nothing moved materialises nothing (counted), and phase 6.2's sigma. Done (`3ede8a3`):
-      a warm run 1.49 -> 0.17 s, sys 3.86 -> 0.43 s; eleven ways-to-lie tests.
-- [x] 2.3 `lib/orphan_canary.py` sheds `dataclasses` and loads `json` only to write a snapshot
-      (`6f6110a`). A/B per step, 25 interleaved: 44.3 -> 43.0 ms -- measured, and smaller than
-      expected: the rest is the C4 stanza's `subprocess` import (needed anyway) and argparse, ~25 ms
-      per push across local_ci's five steps; a second hand parser is not worth that.
-
-- [x] 2.5 (beyond the targets, owner 2026-10-06) the self-proofs: `gate self-proofs still pass`
-      (`check_probes_pass`) is now the largest step of this repo's `structural --full` (2.5 s of
-      ~3.6; `check_empty_scope --probe` alone 1.8 s). A self-proof's verdict depends on CODE, not
-      on the tree: cache each probe's pass on the gates export's commit (an immutable tree, C4) or,
-      under GOH_LIVE, the probe's source and everything it imports, plus the binary and GOH_*.
-      Ways to lie tested first, as 2.4. MEASURED AND DECLINED: a probe may read its repo's own
-      tree, and nothing records what a Python probe read, so a gate-dir key could lie and a
-      whole-tree key saves nothing the proven cache does not already skip; the slowest probe
-      (`check_empty_scope`, 1.8 s) is a sequential story over one fixture repo whose sweeps share
-      a git index (not safe to parallelise), and 1 s of it is the hang case's timeout, already
-      the floor that does not flake under load. This repo only; consumers run their own probes.
-
-**Phase 3 — coverage without the clean rebuild** (details: "Open -- found", 3)
-- [x] 3.1 An incremental instrumented build whose report counts ONLY the current build's objects;
-      each way it can lie (a deleted/renamed test binary, a previous build's profile) tested first;
-      the 29-crate A/B shows identical reports. Done (`06afca4`): only the PROFILES are reset;
-      29/29 crates identical to the clean build, 173 -> 76 s. It also exposed the gate WRITING a
-      missing Cargo.lock as a side effect of the clean (a fixture relied on it).
-
-**Phase 4 — the suite <= 60 s** (details: "Open -- found", 5)
-- [x] 4.1 A shared empty-repo template for the 113 test sites that `git init` (~500 spawns).
-      MEASURED AND DECLINED: 658 `git init`s per run, spread thin (50 in the busiest file);
-      the template saves ~13 ms each -- ~8.5 s summed, < 1 s of wall -- not worth a 113-site
-      diff. Template copying itself is 1 ms of the 18 ms (`GIT_TEMPLATE_DIR` empty: 16.9 ms).
-- [x] 4.2 The `release` xdist group deleted (its reason is gone since `31bbb81`); three suite
-      runs green after it, 62-65 s (`2642cbe`).
-- [x] 4.3 Fewer processes per test in the heaviest files (`test_gate_environment.py`,
-      `test_hook_git_env.py`, `test_rust_gate_scoped_cache.py`, `test_proven.py`) without
-      weakening what each proves. Done: the gate-environment push rebuilt goh behind the session
-      (10.2 -> 1.7 s, `922f21e`); a cargo shim over a whole run found no other. What is left in
-      the heavy files is gate START-UP cost per run -- phase 4C's subject.
-
-- [x] 4.4 (owner's question, 2026-10-06) a RAM disk for the suite's temp files: MEASURED, 4
-      interleaved pairs, `TMPDIR` on a 2 GB APFS RAM disk vs the SSD: 59/65/59/60 s vs 71/64/64/67 s,
-      ~8% faster. It does NOTHING for cross-session contention (git fixture churn, 8 sessions: 5.0 s
-      on both, sigma 0.09 on both) -- that is kernel metadata, not I/O. `TMPDIR` already selects it;
-      whether to keep 2 GB of RAM mounted for it is the owner's call (asked). Owner: use one for
-      this campaign's compiles and goh runs (also spares the SSD), ejected at its end -- not a
-      standing setup.
-
-**Phase 4C — the orchestration in Rust, where shell is the wrong tool** (owner, 2026-10-06:
-"nothing forces us to stay on shell")
-Every lever left is the cost of STARTING something: a bash, its sourced libs, a Python wrapper,
-the same git question per process. One native process holding the answers removes the class.
-Baselines (2026-10-06, after phases 2-3): a one-step `local_ci.sh` run 526 ms and 21 git calls
-(the proven key twice, the gates identity per key); the step wrapper 26 ms a step; a `goh.sh`
-child 34 ms; `structural.sh --staged` 0.22 s (media_server). Ports in order of yield, each
-behind the same tests the shell passes today, red-proven, one at a time:
-- [x] 4C.1 `goh step`: the ceiling wrapper native (process group, TERM->grace->KILL sweep, the
-      leak sample, GOH_TIMINGS). Its one blocker -- a signal ignored at entry must stay ignored --
-      needs the inherited disposition (`sigaction`); `unsafe` is denied in the crate, so either a
-      vetted crate exposing it safely, or one exemption the unsafe allowlist names, with a test.
-      Done (`3b94809`): `crates/goh-sys` (the one allowlisted `unsafe`) + `signal-hook`; the CLI
-      contract pinned against BOTH wrappers (15 cases each); 26-79 ms -> 4.3 ms a step.
-- [x] 4C.2 The proven cache native (`goh proven key|lookup|record`): REOPENED (owner) and DONE
-      (`23976e1`). Byte-identical keys and the bash record format, so either side reads the other's
-      records (`tests/test_proven_native.py`); the identity's constant half from the bash memo,
-      its live half (builtins) on stdin. Key + lookup 39.2 -> 30.3 ms; earlier bash cuts
-      `54e8d83`/`4c0d4f3`-era: identity once per tree, no needless git/date spawns.
-- [x] 4C.3 `local_ci.sh`'s step runner native: parallel steps under the canary, logs, proven
-      records -- one process instead of a bash + a Python wrapper per step. REOPENED (owner: no optimisation left
-      on the table) and DONE (`8edb913`): `goh canary`, the canary's contract pinned against both
-      implementations; `local_ci.sh` resolves the binary once and runs every step under it.
-- [x] 4C.4 Re-measured after 4C: a step wrapper 4.3 ms (native), a `goh.sh` child 34 ms (resolved
-      once), a warm proven hit 6 git calls, the suite 57-62 s (RAM-disk temp, load 9-15).
-
-**Phase 5 — known limits worth closing**
-- [x] 5.1 The C2 writer hook also judges a skill edited through Bash (a PostToolUse `Bash` matcher
-      that fires when the command names the corpus root). Done (`4919960`): the matcher is
-      `Write|Edit|MultiEdit|Bash`, and a builtin-only fast path exits before Python on an event
-      that does not name the corpus's directory -- 7 ms on an unrelated Bash command.
-
-**Phase 5B — the suite cannot drift back** (owner, 2026-10-06: after every optimisation above)
-- [x] 5B.1 The suite cannot drift back. Chosen by what can fail WITHOUT flaking -- a count or a
-      refusal, never a timing budget, since every timing threshold this campaign flaked under load:
-      `tests/_drift_guard.py` puts a `cargo` shim first on every worker's PATH that refuses a goh
-      build unless the caller says `DRIFT_BUILD_OK=1` (the session fixture; a test whose subject is
-      the build), and fails any test whose call phase passes 60 s (`SLOW` names the real builds);
-      `tests/test_suite_drift.py` ratchets `git init` sites per test file and `cpu_count()` pools,
-      and plants a slow test and a goh build in a child pytest to prove both guards go red;
-      `--strict-markers` (pyproject) makes an unregistered mark an error. First run caught two:
-      under GOH_LIVE with uncommitted Rust, ~75 gate tests each built `target/goh-live` (now built
-      once, before the workers start), and conftest's own `pytest_configure` shadowed by an import
-      (the `slow` mark went unregistered, silently). The flake it surfaced was a real race, fixed:
-      a stop landing while `Popen` was still returning orphaned the step, and a second Ctrl-C
-      abandoned a sweep -- `bounded_run.py` now holds both; `goh step` listens before it spawns.
-
-**Phase 6 — the measurements, on a quiet box (load < 4)** (details: "Open -- measurements")
-- [x] 6.1 This repo's suite <= 60 s. MET (2026-10-06): 1987 tests in 52.5-53.8 s at load 11-17,
-      from 62-67 s, by longest-first scheduling (`tests/_schedule.py`): summed test time is
-      ~51 s per worker, and the rest was a long test collected late running alone at the end.
-- [x] 6.2 Cross-session sigma for `structural --full` <= 0.15 (`tools/session_bench.py`). MET
-      (2026-10-06, load 10-17): N=1/2/4/8 makespans 6.1/4.0/4.6/6.0 s, USL sigma 0.000; with N=1
-      taken at its usual 4 s instead, sigma <= 0.07. From 0.51 at the first measurement.
-- [x] 6.3 media_server push, everything changed: gates_of_heck's share -- the per-crate
-      `rust_gate.sh` layer, all 29 crates, proven cache off, warm build dir -- **39.6 s** at load
-      11-14 (2026-10-06), against 90 s. MET. (The whole push: 217 s at load 14-30.)
-- [x] 6.4 media_server push, one crate changed: gates_of_heck's share **14.4 s** at load 14
-      (4 crates gated, 25 proven), against 30 s. MET. The push's wall clock is now bounded by
-      media_server's OWN layer 3 (`repo_gates.sh`: its pytest ~103 s, then its own Rust step
-      ~60 s, both on every push) -- handed to servers. Method: a scratch clone, a warm-up run,
-      then one-line commits in `status-banner-rs`; the layer timed alone in a stable worktree
-      (a new path means a new cargo build dir: 79.5 s cold).
-- [x] 6.5 The P2 `GOH_CI_JOBS` budget curve (1/2/4/6), its knee recorded. This repo, proven
-      cache off, load 22-50 (2026-10-06): 153 / 145 / 129 / 120 s. No sharp knee -- each step
-      past 2 buys 6-11%, and the floor is the rust layer (its coverage runs the whole suite
-      instrumented, ~90 s); 4 is the sensible default on a shared box, 6 when it is quiet.
-
-**Phase 7 — downstream: each consumer item to its owner** (details: "Downstream")
-- [~] 7.1 Each item below sent to the session that owns the repo, with the evidence (2026-10-06):
-      servers (pytest outside the proven cache, `--each-crate`), divoom-control + antiknob,
-      ztools, ZoneWM (plus the Phase 8 data question), zinc/Finance, the games metarepo
-      (ZeroThunder, the line-cap build files). monitor and routines have no session open: their
-      items stay in "Downstream" for whoever opens one. The tag notice to servers is 9.1's.
-
-**Phase 8 — the "fix the class" commit gate** (details: its own section)
-- [x] 8.1 PORTED (2026-10-06): `goh commit-class`, the stock `commit-msg` hook
-      (`gates/commit_msg.sh`) and the pushed-range check in `push_gate.sh`, all under
-      `GOH_COMMIT_CLASS`; ZoneWM's selftest cases plus the hook, the range and the push,
-      red-proven by mutating similarity, the not-ended prefixes, the trailer placement and the
-      push wiring. A new commit's trailers must be git's trailer block (history read leniently).
-      CALIBRATED (2026-10-08) on ZoneWM's 54 classes and the pairs its author labelled: the
-      prototype's "half the smaller class's words" matched 1 of 13 same-class pairs and refused
-      none of the three third instances. Now: a function-word stoplist, light stemming, two
-      shared content words. 6 of 13 pairs, 2 of 1,418 other pairs, neither labelled near-miss;
-      the full replay (97 commits, `214f0cf7..HEAD`) refuses 5 where it refused 0 -- 3 right
-      (`f1ef8eb1`, `5aaf0b95`, `bf3c7c9f`), 1 arguable (`6081eb0f`, "per show"), 1 wrong
-      (`078f137f`, read/window). The other 7 pairs are paraphrase, which no word overlap sees.
-      Then ZoneWM drops its repo-local copy (its owner's call, after v0.24.0).
-
-**Phase 10 — ZoneWM's generic tooling, centralised** (ZoneWM, 2026-10-06, on its owner's "use
-goh whenever possible, there's a reason we're centralising")
-- [x] 10.1 Our own leaks in the shared `$TMPDIR` (~7,000 entries): fixed at each cause, and pinned
-      by a test that runs `structural --full` under a private TMPDIR and asserts it EMPTY (`b255a35`).
-- [x] 10.2 `lib/preflight_disk.py` + `GOH_MIN_FREE_GIB` in `push_gate.sh`: a short disk refuses the
-      push as a short disk, before the export.
-- [x] 10.3 `gates/round.sh`: one round, named paths only (`--only` closes the hole ZoneWM named),
-      the repo's hooks as the gates, a pinned push read back from the remote.
-- [x] 10.4 Declined, with reasons: ZoneWM's make-level TMPDIR (D-0218) is its Makefile's -- the goh
-      side is 10.1; `tools_scratch.py` is ZoneWM's layout (`Sources`, `.build`) -- its principle,
-      "a mutation copy is repo-shaped", is in the port-parity skill.
-
-**Phase 9 — release**
-- [ ] 9.1 v0.24.0: version bump, CHANGELOG `Unreleased` -> `v0.24.0`, full gate green, tag, push,
-      GitHub release (`tools/release-kit/release.sh`); then tell servers and ztools the tag (only
-      those two: the owner's call, 2026-10-08, to spare the quota).
+- Main (`~/Projects/gates_of_heck`) is fast-forwarded only after this repo's own push gate is
+  green on the branch tip (`tools/gate_profile.sh .` runs it on HEAD in an export).
+- Consumers told of the tag: servers and ztools only (the owner's call, 2026-10-08, for quota).
+  ZoneWM asked to hear when v0.24.0 is out, to put its switch to the stock commit-msg hook
+  (`GOH_COMMIT_CLASS=1`) to its owner; that message waits on the owner.
 
 ## Next after v0.24.0
 
@@ -317,12 +118,6 @@ Defects first (a gate that says more than it does), then levers by expected yiel
    target floors (naming the key and the reason), or the feature is built with per-target parts;
    refusing is the honest default. Red-first: a rust run with `{"covfix": 100}` over 50% coverage
    passes today.
-2. **The HEAD export cache was pruned by CREATION time, unbounded in count.** An export older than
-   a week went even while a long-lived worktree still ran from it, and 55 exports, 226 MB built up
-   in that week (2026-10-06). Done: phase 1.2.
-   Exit: bounded by count or age with the CURRENT export never removed; a pruner that races a gate
-   reading an export is the way it lies -- test that an export in use survives (a lock or an mtime
-   touched on use).
 3. **The media_server everything-changed push rebuilds every crate instrumented from clean**
    (`cargo llvm-cov clean --workspace` at the start of each coverage run: 225 of ~330 summed step-s
    are coverage). The clean exists because stale instrumented artifacts merged into a report (93.5%
@@ -348,20 +143,12 @@ Defects first (a gate that says more than it does), then levers by expected yiel
 7. **`lib/orphan_canary.py` still imports `dataclasses` and `argparse`** on every `local_ci.sh`
    step; the `bounded_run.py` treatment (`7dfb65c`) applies. Small.
 
-## Open — "fix the class" commit gate (requested by ZoneWM, owner-approved to roadmap, 2026-10-06)
+## Open — "fix the class", part 3 (parts 1-2 shipped in v0.24.0 as `goh commit-class`)
 
-The metarule is written down and was still applied one site at a time (ZoneWM, one night: window
-pools hand-rolled in 4 overlays, a verify-commit-push chain broken 3 ways, one lock path in 5
-files). A mechanism, in three parts, here so every repo gets it with zero re-installs:
-1. a commit-msg gate: every `fix:`/`perf:` commit carries `Class: <the invariant that broke>` and
-   `Siblings: <sites fixed here, or filed by roadmap id> | none (<the search that found none>)`;
-   a missing trailer, or `none` without its search, is refused;
-2. a repeat detector over those trailers: a Class matching 2+ earlier commits (fuzzy) is refused
-   unless the commit is the systemic fix (a shared helper, a gate, a type) or cites the item that is;
-3. a loop-start audit: cluster recent commits by Class and touched-file family, each cluster a
-   candidate hardening item (catches repeats committed without trailers).
-**Blocked on:** ZoneWM's repo-local prototype and its red/green results against its 2026-10-05/06
-history; it hands the design over, then 1 lands here test-first (red-proven both directions).
+A loop-start audit: cluster recent commits by Class and touched-file family, each cluster a
+candidate hardening item -- it catches repeats committed without trailers, and the paraphrased
+repeats the word measure cannot see (7 of 13 of ZoneWM's labelled pairs). Exit: run over ZoneWM's
+`214f0cf7..HEAD`, it names clusters 1-6 of its author's list; red-first on that list.
 
 ## Downstream: what each consumer session needs to know
 
