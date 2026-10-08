@@ -31,6 +31,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
 import bounded_run  # noqa: E402
+from timing_bounds import assert_sooner
 
 
 def alive(pid: int) -> bool:
@@ -116,7 +117,7 @@ def test_the_ceiling_is_honoured_within_its_own_tolerance() -> None:
     code = run(["/bin/bash", "-c", "sleep 902"], timeout=2, grace=1)
     elapsed = time.monotonic() - started
     assert code == bounded_run.TIMEOUT_EXIT
-    assert elapsed < 20, f"a 2s ceiling took {elapsed:.1f}s"
+    assert_sooner(elapsed, 3, 902, "a 2 s ceiling with a 1 s grace")
 
 
 # ── pass-through: a bounded step must not change anything ────────────────────

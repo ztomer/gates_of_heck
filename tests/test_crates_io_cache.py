@@ -141,14 +141,20 @@ def test_a_hostile_name_cannot_escape_the_cache_dir(seam: Seam) -> None:
 
 
 def test_lookups_run_concurrently(seam: Seam) -> None:
-    """20 names at 0.3 s each is 6 s serial; concurrent it must be well under that."""
+    """20 names at 0.3 s each add 19 x 0.3 s to one lookup if they run one after another, and
+    little if they overlap. One lookup is timed first, in the same test, so the box's load is in
+    both; a fixed 3 s was a bound on the box's spawn speed as much as on the overlap."""
     names = [f"c{i}" for i in range(20)]
-    seam.answer(**{n: "1.0.0" for n in names})
+    seam.answer(solo="1.0.0", **{n: "1.0.0" for n in names})
+    t0 = time.monotonic()
+    seam.deps(seam.repo("solo"), DELAY="0.3")
+    alone = time.monotonic() - t0
     root = seam.repo(*names)
     t0 = time.monotonic()
     seam.deps(root, DELAY="0.3")
-    assert time.monotonic() - t0 < 3.0
-    assert sorted(seam.asked()) == sorted(names)
+    added = time.monotonic() - t0 - alone
+    assert added < 19 * 0.3 / 2, f"19 more lookups added {added:.1f} s: they ran in series"
+    assert sorted(seam.asked()) == sorted(["solo", *names])
 
 
 def test_the_fatal_arm_never_needs_the_network(seam: Seam) -> None:

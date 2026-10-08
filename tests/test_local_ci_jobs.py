@@ -16,6 +16,7 @@ from pathlib import Path
 
 import pytest
 
+from timing_bounds import assert_sooner
 from conftest import REPO_ROOT
 
 LOCAL_CI = REPO_ROOT / "gates" / "local_ci.sh"
@@ -112,12 +113,12 @@ def test_a_failure_among_concurrent_steps_is_accumulated_and_named(repo):
 
 def test_a_timeout_reaps_only_its_own_step(repo):
     done = repo / "sibling.done"
-    steps(repo, "sleep 30", f"sleep 1; touch {done}", extra="GOH_CI_JOBS=2\nGOH_LCI_TIMEOUT=2\n")
+    steps(repo, "sleep 60", f"sleep 1; touch {done}", extra="GOH_CI_JOBS=2\nGOH_LCI_TIMEOUT=2\n")
     r, wall = run_ci(repo)
     assert r.returncode == 1
-    assert "TIMED OUT after 2s: sleep 30" in r.stderr, r.stderr
+    assert "TIMED OUT after 2s: sleep 60" in r.stderr, r.stderr
     assert done.exists(), "the sibling was killed with the timed-out step"
-    assert wall < 15
+    assert_sooner(wall, 3, 60, "a 2 s timeout over a 60 s step")
 
 
 def test_a_step_reading_stdin_gets_eof(repo):

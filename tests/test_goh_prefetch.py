@@ -4,7 +4,8 @@
 another. Two things must hold once they overlap, each tested against a fake GOH_DIR whose checkers
 only sleep and leave a marker:
 
-* they really do overlap (two 1 s checkers finish in well under 2 s);
+* they really do overlap: two 2 s checkers add well under 4 s to the same gate with 0 s ones
+  (a control in the same test, so the box's load is in both);
 * nothing outlives the gate: after a fail-fast red step, every checker already started has
   FINISHED by the time `goh` returns (its marker exists) -- a gate that exits leaving children
   running is the class check_no_unreaped_spawn.py exists for.
@@ -76,10 +77,17 @@ def _run(goh: Path, tmp: Path, red: bool, sleep: str):
 
 
 def test_delegated_checkers_overlap(goh: Path, tmp_path: Path) -> None:
-    r, elapsed, marks = _run(goh, tmp_path, red=False, sleep="1")
+    """Overlapped, two 2 s checkers add 2 s to the gate's own cost; one after another, 4 s. That
+    cost is measured here (0 s checkers), not guessed: a fixed 1.8 s for two 1 s checkers is a
+    bound on the box's spawn speed as much as on the overlap."""
+    (tmp_path / "ctl").mkdir()
+    (tmp_path / "run").mkdir()
+    _, alone, _ = _run(goh, tmp_path / "ctl", red=False, sleep="0")
+    r, elapsed, marks = _run(goh, tmp_path / "run", red=False, sleep="2")
     assert r.returncode == 0, r.stdout + r.stderr
     assert marks == set(DELEGATED), marks
-    assert elapsed < 1.8, f"two 1 s checkers took {elapsed:.1f} s: they ran one after another"
+    added = elapsed - alone
+    assert added < 3, f"two 2 s checkers added {added:.1f} s: they ran one after another"
 
 
 def test_a_red_step_still_joins_every_checker_it_started(goh: Path, tmp_path: Path) -> None:

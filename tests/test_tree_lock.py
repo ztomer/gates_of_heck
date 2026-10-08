@@ -12,6 +12,7 @@ import signal
 import subprocess
 import time
 from pathlib import Path
+from timing_bounds import assert_sooner
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 LIB = REPO_ROOT / "lib" / "tree_lock.sh"
@@ -77,8 +78,8 @@ def test_a_killed_holder_releases_at_once(tmp_path):
     assert second.poll() is None, "the second gate did not block behind a live holder"
     os.killpg(first.pid, signal.SIGKILL)  # the gate and its `sleep`
     t0 = time.time()
-    _wait_line(second, "LOCKED", 10)
-    assert time.time() - t0 < 5, "a SIGKILLed holder did not release the lock"
+    _wait_line(second, "LOCKED", 50)
+    assert_sooner(time.time() - t0, 1, 60, "the lock freed by a SIGKILL, not the holder's 60 s")
     second.wait(10)
     assert second.returncode == 0
 

@@ -7,6 +7,7 @@ each listed artifact at the same relative path beneath it.
 
 import time
 
+from timing_bounds import assert_sooner
 from conftest import commit_all, run_check, write
 
 FRESH = "checks/check_generated_fresh.py"
@@ -94,7 +95,7 @@ def test_timeout_kills_hung_generator(repo):
     elapsed = time.monotonic() - start
     assert r.returncode == 2
     assert "timed out" in r.stderr
-    assert elapsed < 15, f"timeout did not kill the generator ({elapsed:.0f}s)"
+    assert_sooner(elapsed, 2, 60, "the 1 s timeout killing a 60 s generator")
 
 
 def test_default_timeout_exists():

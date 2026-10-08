@@ -25,6 +25,7 @@ from _eval_transport_kit import (
     et,
     fake_api,  # noqa: F401
 )
+from timing_bounds import assert_sooner
 
 # ---- round-trip --------------------------------------------------------------
 
@@ -182,7 +183,7 @@ def test_whole_call_deadline_bounds_a_slow_drip_body(fake_api=None):
         elapsed = time.monotonic() - start
         # Bounded by the whole-call deadline (+ small tolerance), NOT by the
         # never-ending drip: pre-fix behavior was unbounded growth.
-        assert elapsed < 6.0, f"call stretched {elapsed:.1f}s past a 2s timeout"
+        assert_sooner(elapsed, 2, 60, "a 2 s whole-call deadline over an endless drip")
     finally:
         server.shutdown()
         server.server_close()

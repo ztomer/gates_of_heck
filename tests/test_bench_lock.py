@@ -16,6 +16,7 @@ import pytest
 
 from bench_load_fakes import busy_for, fake_load
 from conftest import REPO_ROOT
+from timing_bounds import assert_sooner
 
 LIB = REPO_ROOT / "lib" / "bench_lock.sh"
 
@@ -366,7 +367,8 @@ def test_a_gate_behind_an_overrunning_hold_proceeds_at_the_hold_not_the_cap(tmp_
     finally:
         hold.kill()
         hold.wait()
-    assert r.stdout.strip() == "joined" and waited < 10, (waited, r.stderr)
+    assert r.stdout.strip() == "joined", r.stderr
+    assert_sooner(waited, 2.5, 30, "a gate behind a 2 s hold, not its 30 s run")
 
 
 def _controls(tmp_path: Path, *seconds: str) -> dict[str, str]:
@@ -424,27 +426,28 @@ def test_the_cap_bounds_the_whole_block_not_only_the_run(tmp_path: Path) -> None
     """The drain and the settle block every gate too: the first cap bounded only the run, so a
     claim could block for its settle AND its hold. A run that would end past the cap, counted from
     the claim, lets go instead."""
-    load = busy_for(tmp_path, 15)  # the old claim held through it
+    load = busy_for(tmp_path, 60)  # the old claim held through it, to the cap
     lock = tmp_path / "lock"
-    env = _quiet_env(tmp_path, GOH_BENCH_MAX_HOLD="12", **load)  # a budget of 2 s: 12 - 10
+    env = _quiet_env(tmp_path, GOH_BENCH_MAX_HOLD="40", **load)  # a budget of 2 s: 40 - 38
     hold = subprocess.Popen(
-        ["bash", str(QUIET), "--hold", "10", "--settle", "20", "--retry", "0.2", "--",
+        ["bash", str(QUIET), "--hold", "38", "--settle", "20", "--retry", "0.2", "--",
          "sleep", "2.5"],
         env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
     )  # fmt: skip
     try:
         _wait_for(lock / "exclusive" / "owner")
         start = time.monotonic()
-        r = _run(lock, "bench_lock_join gate && echo joined", timeout=30)
+        r = _run(lock, "bench_lock_join gate && echo joined", timeout=50)
         waited = time.monotonic() - start
-        hold.wait(timeout=40)
     finally:
-        hold.kill()
-    # The budget (2 s) + a waiter's 2 s re-check + slack for a loaded box. The old claim held until
-    # a waiter voided it at the 12 s cap.
-    assert r.stdout.strip() == "joined" and waited < 9, (waited, r.stderr)
+        hold.kill()  # the box stays busy for a minute: the let-go is the claim, not the run
+        hold.wait()
+    # The budget (2 s) + a waiter's 2 s re-check. The old claim (f69c1fe^) held past the 40 s cap:
+    # the join timed out at 50 s.
+    assert r.stdout.strip() == "joined", r.stderr
+    assert_sooner(waited, 4, 40, "a claim past its budget letting go, not the cap")
     err = hold.stderr.read()
-    assert hold.returncode == 0 and "letting go" in err, err
+    assert "letting go" in err, err
 
 
 def test_a_drain_past_the_budget_lets_go_at_the_budget(tmp_path: Path) -> None:
@@ -452,25 +455,28 @@ def test_a_drain_past_the_budget_lets_go_at_the_budget(tmp_path: Path) -> None:
     new gate blocked behind it, then let go unmeasured -- its run no longer fit the cap -- and
     blamed the load ("not goh's") at 5.58, under the max. A drain is bounded by the budget."""
     lock = tmp_path / "lock"
-    slow = _bash(lock, f'bench_lock_join pre-push; : > "{tmp_path}/in"; sleep 20')
+    slow = _bash(lock, f'bench_lock_join pre-push; : > "{tmp_path}/in"; sleep 60')
     _wait_for(tmp_path / "in")
     q = subprocess.Popen(
-        ["bash", str(QUIET), "--max-load", "1000", "--hold", "9", "--retry", "0.5", "--", "true"],
-        env=_quiet_env(tmp_path, GOH_BENCH_MAX_HOLD="12"), stdout=subprocess.PIPE,
+        ["bash", str(QUIET), "--max-load", "1000", "--hold", "37", "--retry", "0.5", "--", "true"],
+        env=_quiet_env(tmp_path, GOH_BENCH_MAX_HOLD="40"), stdout=subprocess.PIPE,
         stderr=subprocess.PIPE, text=True,
     )  # fmt: skip
     try:
         _wait_for(lock / "exclusive" / "owner")
         start = time.monotonic()
-        r = _run(lock, "bench_lock_join gate && echo joined", timeout=30)
+        r = _run(lock, "bench_lock_join gate && echo joined", timeout=50)
         waited = time.monotonic() - start
+        slow.kill()  # the gate it drained ends: the retry claims and runs
+        slow.wait()
         q.wait(timeout=40)
     finally:
         q.kill()
         slow.kill()
         slow.wait()
-    # The budget (3 s: 12 - 9) + a waiter's 2 s re-check + slack: 5.2 s at load 100 (2026-10-08).
-    # The old drain held until a waiter voided it at the 12 s cap.
-    assert r.stdout.strip() == "joined" and waited < 9, (waited, r.stderr)
+    # The budget (3 s: 40 - 37) + a waiter's 2 s re-check: 5.2 s at load 100 (2026-10-08). The old
+    # drain held until a waiter voided it at the 40 s cap.
+    assert r.stdout.strip() == "joined", r.stderr
+    assert_sooner(waited, 5, 40, "a drain past its budget letting go, not the cap")
     err = q.stderr.read()
     assert q.returncode == 0 and "budget" in err and "not goh's" not in err, err

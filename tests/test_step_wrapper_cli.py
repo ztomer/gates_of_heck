@@ -19,6 +19,7 @@ import time
 from pathlib import Path
 
 import pytest
+from timing_bounds import assert_sooner
 from conftest import REPO_ROOT, native_goh_path
 
 
@@ -59,10 +60,10 @@ def test_the_steps_own_code_passes_through(wrapper) -> None:
 
 def test_a_ceiling_times_out_with_124_and_says_so(wrapper) -> None:
     t0 = time.monotonic()
-    r = _run(wrapper, "--timeout", "1", "--grace", "1", "--label", "slow", "--", "sleep", "30")
+    r = _run(wrapper, "--timeout", "1", "--grace", "1", "--label", "slow", "--", "sleep", "60")
     assert r.returncode == 124, r.stdout + r.stderr
     assert "TIMED OUT after 1s: slow" in r.stderr, r.stderr
-    assert time.monotonic() - t0 < 10
+    assert_sooner(time.monotonic() - t0, 2, 60, "a 1 s ceiling over a 60 s sleep")
 
 
 def test_the_ceiling_sweep_reaches_a_grandchild(wrapper, tmp_path: Path) -> None:

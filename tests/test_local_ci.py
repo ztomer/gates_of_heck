@@ -15,6 +15,7 @@ from pathlib import Path
 
 import pytest
 
+from timing_bounds import assert_sooner
 from conftest import REPO_ROOT
 
 LOCAL_CI = REPO_ROOT / "gates" / "local_ci.sh"
@@ -190,17 +191,17 @@ def test_unknown_flag_rejected(repo):
 
 
 def test_step_timeout_kills_hung_step(repo, monkeypatch):
-    # Without the feature this test costs 30s and PASSES (sleep exits 0) —
+    # Without the feature this test costs 60s and PASSES (sleep exits 0) —
     # red-proofed that way against the pre-timeout local_ci.sh.
     monkeypatch.setenv("GOH_LCI_TIMEOUT", "2")
-    gatesrc(repo, "sleep 30")
+    gatesrc(repo, "sleep 60")
     t0 = time.time()
     r = run_ci(repo)
     dt = time.time() - t0
     assert r.returncode == 1, r.stdout + r.stderr  # accumulator exit, not 124
     combined = r.stdout + r.stderr
     assert "TIMED OUT" in combined and "GOH_LCI_TIMEOUT" in combined
-    assert dt < 15, f"timeout did not fire (took {dt:.1f}s)"
+    assert_sooner(dt, 3, 60, "a 2 s step timeout over a 60 s step")
 
 
 def test_invalid_timeout_is_usage_error(repo, monkeypatch):

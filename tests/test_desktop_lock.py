@@ -23,6 +23,7 @@ import time
 from pathlib import Path
 
 import pytest
+from timing_bounds import assert_sooner
 
 # Pinned to one xdist worker: these tests take the REAL machine-wide desktop
 # mutex (with timeouts), so splitting them across workers would make them
@@ -106,8 +107,8 @@ def test_stale_lock_no_live_owner_is_reclaimed_immediately(lock):
         "999999999\nThu Jan  1 00:00:00 1970\ndead run (pid 999999999)\n"
     )
     start = time.monotonic()
-    lock.acquire("after stale", timeout=5, log=lambda *_: None)
-    assert time.monotonic() - start < 2, "stale reclaim should not wait out the timeout"
+    lock.acquire("after stale", timeout=30, log=lambda *_: None)
+    assert_sooner(time.monotonic() - start, 0.5, 30, "a stale reclaim, not the 30 s timeout")
 
 
 def test_recycled_pid_does_not_impersonate_the_owner(lock):

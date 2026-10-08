@@ -20,6 +20,7 @@ import sys
 from pathlib import Path
 
 import pytest
+from timing_bounds import assert_sooner
 from conftest import REPO_ROOT, commit_all, stage, write
 from tier_kit import both_tiers, run_tiered  # noqa: F401  # both_tiers: a fixture
 
@@ -204,7 +205,7 @@ def test_a_hung_ruff_is_timed_out_and_its_group_killed(repo, tmp_path, goh):
     r = subprocess.run(
         [str(goh), "python-formatted", "tools"], cwd=repo, capture_output=True, text=True, env=env
     )
-    assert time.monotonic() - t0 < 20, "the ceiling did not hold"
+    assert_sooner(time.monotonic() - t0, 3, 300, "a 2 s step ceiling over a 300 s ruff")
     assert r.returncode == 1 and "TIMED OUT after 2s" in r.stderr, r.stdout + r.stderr
     pid = int(marker.read_text())
     time.sleep(0.2)
