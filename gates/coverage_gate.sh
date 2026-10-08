@@ -275,18 +275,23 @@ run_cpp() {
     # Hard fail, not warn: coverage measured over a failing suite is partial
     # data wearing a green number. A release gate must not launder test
     # failures into a percentage.
+    # Profiles are THIS run's: a previous run's sat in the build dir and was merged into the
+    # number. `%8m` pools them (at most 8 per instrumented binary, merged online by the runtime);
+    # `%p` wrote one per test process, a merge command line sized by the test count -- ZoneWM's
+    # SwiftPM twin died at ARG_MAX at 6,965 (D-0245). tests/test_coverage_gate_cpp_merge.py.
+    find "$PROJ/$build_dir" -maxdepth 1 -name 'default-*.profraw' -delete
     # shellcheck disable=SC2086
     (cd "$PROJ/$build_dir" && \
-        LLVM_PROFILE_FILE="$PROJ/$build_dir/default-%p.profraw" \
+        LLVM_PROFILE_FILE="$PROJ/$build_dir/default-%8m.profraw" \
         ctest --output-on-failure ${GOH_CTEST_ARGS:-} >/dev/null 2>&1) \
         || { err "ctest reported failures — refusing to measure partial coverage"; exit 1; }
 
     local raws profdata
-    raws=$(find "$PROJ/$build_dir" -maxdepth 1 -name 'default-*.profraw')
-    [ -n "$raws" ] || { err "no .profraw written — instrumentation emitted no profiles"; exit 1; }
+    raws="$PROJ/$build_dir/default.profraw-list"  # one path per line: no argv limit, no word split
+    find "$PROJ/$build_dir" -maxdepth 1 -name 'default-*.profraw' > "$raws"
+    [ -s "$raws" ] || { err "no .profraw written — instrumentation emitted no profiles"; exit 1; }
     profdata="$PROJ/$build_dir/default.profdata"
-    # shellcheck disable=SC2086
-    xcrun llvm-profdata merge -sparse $raws -o "$profdata" \
+    xcrun llvm-profdata merge -sparse --input-files="$raws" -o "$profdata" \
         || { err "profdata merge failed"; exit 1; }
 
     # Test binary: explicit seam first, else the unique *test* executable at

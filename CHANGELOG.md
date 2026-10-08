@@ -159,6 +159,13 @@
   Python for one that does not), the seeds go at worker exit, a failed release removes its archive
   dir, and the suite's controller runs the same backstop (`prune_kept.py --backstop`) at session
   start. Pinned by `tests/test_temp_claimable.py`.
+* **The C++ coverage merge is bounded and judges only this run** (ZoneWM D-0245): `ctest` wrote one
+  profile per test process (`%p`) and the merge took them all as argv -- ZoneWM's SwiftPM twin died
+  at ARG_MAX at 6,965 -- unquoted, so a path with a space split. Now `%8m` pools them and the merge
+  reads `--input-files`. Found beside it: a previous run's profiles were merged into this run's
+  number; they are removed before `ctest`. Pinned by `tests/test_coverage_gate_cpp_merge.py`.
+* **`release.sh`'s buffered copy no longer prints two shell errors**: the copy in `$TMPDIR` re-ran
+  the HEAD trampoline, resolving `../../gates` there, on every release since `4cc8976`.
 * **A `GOH_LIVE` run names its own tree as `GOH_DIR`**: unset, the binary's delegated checkers came
   from `~/Projects/gates_of_heck`, so a live run from a worktree swept main's `checks/`.
 * **`--floors-json` is made absolute before a mode `cd`s into the project**; an `exempt` key is
