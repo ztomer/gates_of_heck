@@ -5,7 +5,9 @@ started together, all missed the shared repo-scan record at once and ran the who
 times (BACKLOG P1f). On real cargo crates:
 * every top-level crate is gated, a nested manifest (a testkit) is its crate's business;
 * the repo-wide scans run ONCE; biggest crate first;
-* a red crate is named and the others still finish; bad config is refused, named.
+* a red crate is named and the others still finish; bad config is refused, named;
+* GOH_EXCLUDE is a regex over repo-relative FILE paths here as everywhere else (the manifest's);
+* `--list` prints the crates a run gates, through the run's own selection, and runs nothing.
 """
 
 from __future__ import annotations
@@ -50,14 +52,16 @@ def estate(tmp_path: Path) -> Path:
     return repo
 
 
-def _each(repo: Path, timings: Path | None = None, **env: str) -> subprocess.CompletedProcess:
+def _each(
+    repo: Path, timings: Path | None = None, *flags: str, **env: str
+) -> subprocess.CompletedProcess:
     full = hermetic_env(drop_git=True)
     g = Path(os.environ["SCOPED_CACHE_GATES"])
     full.update(GOH_DIR=str(g), GOH_BIN=os.environ["SCOPED_CACHE_GOH"], **env)
     if timings is not None:
         full["GOH_TIMINGS"] = str(timings)
     return subprocess.run(
-        ["bash", str(g / "gates" / "rust_gate.sh"), "--each-crate", str(repo)],
+        ["bash", str(g / "gates" / "rust_gate.sh"), "--each-crate", *flags, str(repo)],
         cwd=repo,
         capture_output=True,
         text=True,
@@ -127,3 +131,82 @@ def test_an_unknown_group_is_a_miswiring(estate: Path) -> None:
         check=False,
     )
     assert r.returncode != 0 and "GOH_RUST_GROUPS='crate,lint'" in r.stderr, r.stderr
+
+
+def _gated(r: subprocess.CompletedProcess) -> list[str]:
+    """The crates a run gated, in its declared order: each per-crate step's last word."""
+    return [
+        line.split()[-1]
+        for line in r.stdout.splitlines()
+        if "GOH_RUST_GROUPS=crate,coverage" in line and "→" in line
+    ]
+
+
+def test_a_trailing_slash_directory_pattern_excludes_its_crate(estate: Path) -> None:
+    # Everywhere else GOH_EXCLUDE is a regex over repo-relative FILE paths, so a directory is
+    # written `^crates/c/`. Matched against the bare directory `crates/c`, it matched nothing and
+    # the crate it names was gated anyway. Read through --list: the test below holds the list equal
+    # to what a run gates, so the selection is checked here without running a whole gate.
+    (estate / ".gatesrc").write_text("GOH_EXCLUDE='^crates/c/'\n")
+    _git(estate, "add", "-A")
+    r = _each(estate, None, "--list")
+    assert (r.returncode, r.stdout) == (0, "crates/a\ncrates/b\n"), r.stdout + r.stderr
+
+
+def test_exclude_reads_the_python_dialect_every_other_check_reads(estate: Path) -> None:
+    # `^(?!crates/c/)` scopes a scan TO a directory (ztools); `grep -E` has no look-ahead, refused
+    # it, and `|| true` turned the refusal into "no tracked Cargo.toml".
+    (estate / ".gatesrc").write_text("GOH_EXCLUDE='^(?!crates/c/)'\n")
+    _git(estate, "add", "-A")
+    r = _each(estate, None, "--list")
+    assert (r.returncode, r.stdout) == (0, "crates/c\n"), r.stdout + r.stderr
+
+
+def test_a_bad_exclude_is_refused_named(estate: Path) -> None:
+    (estate / ".gatesrc").write_text("GOH_EXCLUDE='('\n")
+    _git(estate, "add", "-A")
+    r = _each(estate, None, "--list")
+    assert r.returncode != 0 and "GOH_EXCLUDE" in r.stderr and "'('" in r.stderr, r.stderr
+
+
+def test_list_prints_exactly_the_crates_a_run_gates_in_order(estate: Path) -> None:
+    kit = estate / "crates" / "c" / "testkit"  # nested: c's business, never its own crate
+    (kit / "src").mkdir(parents=True)
+    (kit / "Cargo.toml").write_text(
+        '[package]\nname = "kit"\nversion = "0.1.0"\nedition = "2021"\n'
+    )
+    (kit / "src" / "lib.rs").write_text("")
+    _git(estate, "add", "-A")
+    _crate(estate, "d")  # untracked: not in the index, so not a crate of the repo
+    listed = _each(estate, None, "--list")
+    assert listed.returncode == 0, listed.stdout + listed.stderr
+    assert listed.stdout.splitlines() == ["crates/c", "crates/a", "crates/b"], listed.stdout
+    run = _each(estate)
+    assert _gated(run) == listed.stdout.splitlines(), run.stdout + run.stderr
+
+
+def test_list_nested_under_an_excluded_crate_stays_its_business(estate: Path) -> None:
+    # The header's order: top-level crates first, THEN minus GOH_EXCLUDE. Excluding first promoted
+    # an excluded crate's testkit to a crate of its own.
+    kit = estate / "crates" / "c" / "testkit"
+    (kit / "src").mkdir(parents=True)
+    (kit / "Cargo.toml").write_text('[package]\nname = "kit"\nversion = "0.1.0"\n')
+    (estate / ".gatesrc").write_text("GOH_EXCLUDE='^crates/c/Cargo\\.toml$'\n")
+    _git(estate, "add", "-A")
+    r = _each(estate, None, "--list")
+    assert (r.returncode, r.stdout) == (0, "crates/a\ncrates/b\n"), r.stdout + r.stderr
+
+
+def test_list_runs_nothing(estate: Path, tmp_path: Path) -> None:
+    shim = tmp_path / "shim"
+    shim.mkdir()
+    ran = tmp_path / "cargo-ran"
+    (shim / "cargo").write_text(f"#!/bin/sh\ntouch {ran}\nexit 1\n")
+    (shim / "cargo").chmod(0o755)
+    timings = tmp_path / "t.jsonl"
+    r = _each(estate, timings, "--list", PATH=f"{shim}:{os.environ['PATH']}")
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert r.stdout == "crates/c\ncrates/a\ncrates/b\n", r.stdout
+    assert not ran.exists(), "cargo ran"
+    assert not timings.exists() or not timings.read_text().strip(), timings.read_text()
+    assert not any(estate.glob("crates/*/target")), "a build ran"

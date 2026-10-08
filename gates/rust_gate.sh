@@ -54,6 +54,7 @@ set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # --each-crate: every crate of the repo, concurrently, repo-wide scans once (BACKLOG P2).
+# --each-crate --list [repo]: the crates that would gate, one per line, biggest first; runs nothing.
 [ "${1:-}" = --each-crate ] && { shift; exec bash "$HERE/rust_each_crate.sh" "$@"; }
 . "$HERE/_common.sh"
 

@@ -2,6 +2,20 @@
 
 ## Unreleased
 
+* **`rust_gate.sh --each-crate`: `GOH_EXCLUDE` on the manifest path, and `--list`**
+  (`gates/rust_each_crate.sh`). Everywhere else `GOH_EXCLUDE` is `re.search` over a repo-relative
+  FILE path; here it was `grep -vE` over the crate's bare DIRECTORY, so `'^crates/vendored-rs/'`
+  never matched `crates/vendored-rs` and that crate was gated anyway, and a look-ahead
+  (`'^(?!crates/c/)'`, the scope-TO form) was refused by `grep -E` and swallowed by `|| true` into
+  "no tracked Cargo.toml". It now matches the manifest path (`crates/vendored-rs/Cargo.toml`) in
+  Python's dialect, a bad pattern is refused by name, and the nesting rule runs FIRST as the header
+  always said: excluding a crate no longer promotes its testkit to a crate of its own. New:
+  `rust_gate.sh --each-crate --list [repo]` prints the crates a run would gate, one repo-relative
+  directory per line, biggest first, and runs nothing -- the run's own `ordered`, so media_server's
+  layer 3 can skip exactly those crates without a copy of the rule. RED FIRST: the trailing-slash
+  run gated 3 crates of 3; every `--list` test fell through to `cd --list`; the exclusion tests,
+  read through `--list`, are red again on the old directory `grep`.
+
 * **post-rewrite + pre-applypatch: the marker check for commits git makes without pre-commit**
   (`hooks/post-rewrite`, `hooks/pre-applypatch`, `gates/sequencer_gate.sh`, `goh markers
   --commits`). On 2026-10-08 a CHANGELOG.md conflict resolved during `git rebase --continue` kept
