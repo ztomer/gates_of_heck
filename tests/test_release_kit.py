@@ -235,6 +235,14 @@ class TestIdempotency:
 
 
 class TestDryRun:
+    def test_the_buffered_copy_runs_without_a_shell_error(self, kit):
+        """The self-buffered copy runs from $TMPDIR, where `../../gates/_from_head.sh` is nothing:
+        every release since 4cc8976 printed "No such file" and "command not found" first."""
+        r = run_release(kit, "--dry-run")
+        assert r.returncode == 0, r.stdout + r.stderr
+        for sign in ("No such file", "command not found", "syntax error"):
+            assert sign not in r.stderr, r.stderr
+
     def test_dry_run_has_zero_side_effects(self, kit):
         marker = kit["proj"] / "gate-marker"
         r = run_release(

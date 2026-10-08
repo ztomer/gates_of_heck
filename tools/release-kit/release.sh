@@ -50,7 +50,10 @@
 #   tools/release-kit/release.sh --version 1.2.3 --gate "make ci"
 #   tools/release-kit/release.sh --version 1.2.3 --gate "$GOH/tools/gate.sh" \
 #       --tap ztomer/homebrew-tap --cask myapp --artifact dist/MyApp-1.2.3.dmg
-. "$(dirname "${BASH_SOURCE[0]}")/../../gates/_from_head.sh"; goh_from_head "${BASH_SOURCE[0]}" "$@"   # run HEAD, not the tree (C4)
+# Run HEAD, not the tree (C4) -- once: the self-buffered copy below runs from $TMPDIR, where
+# `../../gates` is nothing, and its parent already chose the tree (tests/test_release_kit.py).
+[ -n "${GOH_RELEASE_BUFFERED:-}" ] \
+  || { . "$(dirname "${BASH_SOURCE[0]}")/../../gates/_from_head.sh"; goh_from_head "${BASH_SOURCE[0]}" "$@"; }
 set -euo pipefail
 
 # ── self-buffering (must run before ANY logic) ───────────────────────────────
