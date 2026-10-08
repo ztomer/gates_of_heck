@@ -58,8 +58,9 @@ pruned to this table.
 - Consumers told of the tag: servers and ztools only (the owner's call, 2026-10-08, for quota).
   ZoneWM was told on the owner's word (2026-10-08) and puts its switch to the stock commit-msg
   hook (`GOH_COMMIT_CLASS=1`) to its owner. ztools had no session open: not yet told.
-- The Phase 4 driver queued at 09:57 (`quiet.sh`, one command for all three) refuses at its 4 h
-  deadline (~13:57) without having run; re-queue it per item once 3.1-3.2 land.
+- Phase 4's per-item series (12:36) was stopped at 13:31 on 3.4's finding. 4.2 is measured; 4.1
+  failed in a warm-up whose log the bench deleted (`8fc1358` keeps it now), and the gates_of_heck
+  4.3 rows ran before `a8e56e1` and timed a red gate. Both re-run after the 3.4 land.
 
 ## Roadmap to v0.25.0 — the plan of record (re-phased 2026-10-08 12:00)
 
@@ -74,21 +75,21 @@ starves its writer -- and load < 4 is under this box's own idle floor (State: "4
 idle"; macOS counts threads blocked on Spotlight's I/O as load). The queue gets fixed first.
 
 **Phase 3 — a queue that runs (blocks Phase 4)**
-- [x] 3.1 `quiet.sh` takes its place before it waits (`9b0d898`): claim the exclusive lock first (new gates
+- [x] 3.1 `quiet.sh` takes its place before it waits (`14e7113`): claim the exclusive lock first (new gates
       queue behind it, running ones drain), THEN judge the box. Baseline: 0 windows in 2 h at load
       14-50 (2026-10-08 09:57-12:00), every gate overtaking it. Exit: under a fake load that is
       high exactly while a gate is registered, the measurement runs within drain + settle, and a
       box still busy without any gate is refused, naming its busiest processes. Red-first: that
       fake against today's `quiet.sh` refuses at its deadline. Lies: a gate already running holds
       its whole run -- the drain waits for it, up to `GOH_BENCH_WAIT`.
-- [x] 3.2 A hold is short and bounded (`cb8ce7b`; the Phase 4 run itself is the exit's proof): each measurement holds the host only for its own run and
+- [x] 3.2 A hold is short and bounded (`9a80351`; the Phase 4 run disproved it: see 3.4): each measurement holds the host only for its own run and
       queues again before the next, so other sessions' commits interleave; a hold has its
       expected length up front, and `GOH_BENCH_MAX_HOLD` defaults to 15 min, not 60. Baseline:
       Phase 4 queued as ONE command (all of 4.1-4.3, ~40 min); a gate waits behind a hold up to
       its 60 min max. Exit: no hold over 15 min in the Phase 4 run; a waiting gate prints the hold's
       label and expected end. Red-first: a gate behind an overdue hold proceeds at the cap, not
       after it. Lies: one chunk that needs longer -- it says so and is refused, never extended.
-- [x] 3.3 The quiet criterion calibrated, not assumed (`f9c9094`; floor 4.52 min / 6.16 median
+- [x] 3.3 The quiet criterion calibrated, not assumed (`310cbd3`; floor 4.52 min / 6.16 median
       over 180 s drained, control 0.31 s: `--max-load` 8 -- in `docs/config.md`). With every gate drained, `quiet.sh` records
       the load and the controls (`session_bench`'s `/usr/bin/true` x300 and CPU-bound Python)
       before and after each run; the threshold comes from the measured floor, and a number is
@@ -97,6 +98,15 @@ idle"; macOS counts threads blocked on Spotlight's I/O as load). The queue gets 
       controls differ by > 10% is marked noisy, not reported. Red-first: a fake control that
       doubles across a run is marked noisy. Lies: background that is not a gate (`xctest`,
       Spotlight, a cargo build run by hand) moves inside a hold -- only the controls see it.
+- [x] 3.4 A series is not one hold (`f69c1fe`). Baseline: Phase 4's per-item series held the lock
+      25+ min in a row, and two servers pushes timed out behind it (2026-10-08 13:30): each claim
+      followed the last release at once, so no gate queued behind run N started before run N+1,
+      and the cap bounded only the run, not the drain and the 300 s settle before it. Exit: a new
+      claim lets the gates already waiting start first (phase-fair), and the cap counts from the
+      claim. Red-first: a back-to-back series in one process never let a waiting gate in; a gate
+      behind a long settle waited 6.2 s against a 5 s cap. Lies: a gate that waits marks itself
+      only once, so a waiter whose mark is lost is not yielded to -- the claim's 10 s bound and its
+      `_bench_running` check keep a lost or dead mark from holding it.
 
 **Phase 4 — re-measure what v0.24.0 claims (through the Phase 3 queue, one hold each)**
 - [ ] 4.1 Cross-session serialization of `structural --full` (`tools/session_bench.py`, N=1/2/4/8).
@@ -105,7 +115,9 @@ idle"; macOS counts threads blocked on Spotlight's I/O as load). The queue gets 
       the bench on a deliberately serialized control (one `flock`ed step) reports sigma near 1, or
       the instrument is blind. Lies: other sessions' load (the 3.3 controls); a warm cache as cold.
 - [ ] 4.2 media_server push, everything changed, warm. Baseline: 170 s at load 4-8, BEFORE the
-      incremental coverage build (`06afca4`: 173 -> 76 s on this repo). Exit: <= 90 s. Red-first:
+      incremental coverage build (`06afca4`: 173 -> 76 s on this repo). Measured 2026-10-08
+      12:47 under a hold: 208 s, controls 0.30/0.30 s -- the exit is NOT met. Five coverage
+      steps are 110 s of the step sum (11-31 s each); clippy, 8 s a crate, comes next. Exit: <= 90 s. Red-first:
       the P0 instrument's per-step sum within 5% of wall on the same run. Lies: a cold sccache; a
       crate the "everything changed" diff did not touch; media_server's own 110 s pytest step
       (a servers item) counted as goh's.
@@ -115,7 +127,7 @@ idle"; macOS counts threads blocked on Spotlight's I/O as load). The queue gets 
       Lies: one repo's knee read as every repo's.
 
 **Phase 5 — hardening from the estate** (servers, 2026-10-08)
-- [ ] 5.1 A statement after an unconditional `exec` is unreachable, and refused. Baseline:
+- [x] 5.1 A statement after an unconditional `exec` is unreachable, and refused (`cf92969`, servers: `goh dead-after-exec`, 0 findings across 30 repos). Baseline:
       app_updates' `tools/gate.sh` ran `exec python3 tools/check_roadmap.py --self-test` and then
       `exec python3 tools/check_roadmap.py`: the second line never ran, so its roadmap check was
       dead for months, and ShellCheck 0.11 does not flag it (SC2093 does not fire here). servers'
