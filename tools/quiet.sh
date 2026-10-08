@@ -1,18 +1,22 @@
 #!/usr/bin/env bash
-# quiet.sh [--max-load N] [--settle S] [--deadline D] [--label L] -- CMD... -- measure when quiet.
+# quiet.sh [--max-load N] [--settle S] [--retry R] [--deadline D] [--label L] -- CMD... -- measure
+# when quiet.
 #
 # Every wall-clock number in docs/BACKLOG.md needs a quiet box (load < 4), and for two days every
-# one was taken at load 7-31 beside other sessions' gates (2026-10-08). A QUEUE, not a demand:
+# one was taken at load 7-31 beside other sessions' gates (2026-10-08). A QUEUE, not a demand --
+# and a queue that takes its PLACE first:
 #
-#   1. wait for a window -- the 1-minute load under --max-load (4) -- holding NOTHING, so no
-#      session waits on a measurement that is only waiting itself;
-#   2. then hold the host (lib/bench_lock.sh: no new goh gate starts, the running ones finish) and
-#      the desktop (lib/desktop_lock/, which ZoneWM's probes respect), and check the load again for
-#      up to --settle seconds (120): gates that drained still sit in the 1-minute average;
+#   1. hold the host (lib/bench_lock.sh: no new goh gate starts, the running ones finish) and the
+#      desktop (lib/desktop_lock/, which ZoneWM's probes respect). The first version waited for
+#      the load to fall HOLDING NOTHING, and on a box a dozen sessions share it waited 2 h without
+#      one window: every new gate started ahead of it (BACKLOG 3.1, a reader-preferring queue
+#      starving its writer);
+#   2. with every gate drained, wait up to --settle seconds (300: the 1-minute average takes
+#      minutes to forget a drained load of 50) for the load under --max-load (4);
 #   3. still busy -- work goh cannot hold off (an `xctest` started by a Makefile, Xcode,
-#      Spotlight): the window closed, so let go and go back to 1. Nobody else is asked to do
-#      anything; a measurement runs when the box goes quiet on its own (a night, a lull);
-#   4. past --deadline seconds (14400, 4 h) with no window: REFUSE, naming the busiest processes.
+#      Spotlight): holding on would only block every session's commits, so let go, name the
+#      busiest processes, wait --retry seconds (300) holding nothing, and go back to 1;
+#   4. past --deadline seconds (14400, 4 h): REFUSE, naming the busiest processes.
 #
 # Then CMD runs, with the load printed at its start and end; this exits with CMD's status. Two
 # measurements queue on the host lock. The desktop lock's own max hold (900 s, a peer's rule)
@@ -32,15 +36,16 @@ GOH="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 . "$GOH/lib/desktop_lock/desktop_lock.sh"
 DESKTOP_LOCK_DIR="${GOH_BENCH_DESKTOP_LOCK_DIR:-$DESKTOP_LOCK_DIR}"
 
-max_load=4 settle=120 deadline=14400 label="a measurement" poll="${GOH_BENCH_POLL:-15}"
+max_load=4 settle=300 retry=300 deadline=14400 label="a measurement" poll="${GOH_BENCH_POLL:-15}"
 while [ $# -gt 0 ]; do
     case "$1" in
         --max-load) max_load="${2:?--max-load needs a value}"; shift 2 ;;
         --settle) settle="${2:?--settle needs a value}"; shift 2 ;;
+        --retry) retry="${2:?--retry needs a value}"; shift 2 ;;
         --deadline) deadline="${2:?--deadline needs a value}"; shift 2 ;;
         --label) label="${2:?--label needs a value}"; shift 2 ;;
         --) shift; break ;;
-        *) die "quiet.sh: unknown argument $1 (usage: quiet.sh [--max-load N] [--settle S] [--deadline D] -- CMD...)" ;;
+        *) die "quiet.sh: unknown argument $1 (usage: quiet.sh [--max-load N] [--settle S] [--retry R] [--deadline D] -- CMD...)" ;;
     esac
 done
 [ $# -gt 0 ] || die "quiet.sh: no command to run (usage: quiet.sh [--max-load N] [--settle S] -- CMD...)"
@@ -65,30 +70,27 @@ trap 'exit 143' TERM
 label="$label (tools/quiet.sh)"
 elapsed() { awk -v a="$1" -v b="$(date +%s)" 'BEGIN { print b - a }'; }
 over() { awk -v a="$1" -v b="$2" 'BEGIN { exit !(a >= b) }'; }
-t0="$(date +%s)" said=""
+busiest() { ps -Ao pcpu,comm -r | head -6 >&2 || true; } # head closes early: ps's SIGPIPE is not the verdict
+t0="$(date +%s)"
 while :; do
-    until below "$(load1)" "$max_load"; do                  # 1. a window, holding nothing
-        if over "$(elapsed "$t0")" "$deadline"; then
-            err "the host is not quiet: no window under load $max_load in ${deadline}s (load $(load1)); busiest:"
-            ps -Ao pcpu,comm -r | head -6 >&2 || true # head closes early: ps's SIGPIPE is not the verdict
-            exit 1
-        fi
-        [ -n "$said" ] || info "quiet: load $(load1), waiting for a window under $max_load (holding nothing)"
-        said=1
-        sleep "$poll"
-    done
-    bench_lock_exclusive "$label" || die "quiet.sh: could not hold the host (above)"  # 2. hold
+    bench_lock_exclusive "$label" || die "quiet.sh: could not hold the host (above)"  # 1. our place
     desktop_lock_acquire "$label"
     t1="$(date +%s)"
-    until below "$(load1)" "$max_load"; do
+    until below "$(load1)" "$max_load"; do                                      # 2. the box, drained
         over "$(elapsed "$t1")" "$settle" && break
         sleep "$(awk -v p="$poll" 'BEGIN { print (p < 5 ? p : 5) }')"
     done
     below "$(load1)" "$max_load" && break
-    warn "quiet: the window closed (load $(load1) after ${settle}s held): letting go, waiting again"  # 3.
     desktop_lock_release
     bench_lock_release
-    said=""
+    if over "$(elapsed "$t0")" "$deadline"; then                                # 4. refuse
+        err "the host is not quiet: no window under load $max_load in ${deadline}s, every gate held (load $(load1)); busiest:"
+        busiest
+        exit 1
+    fi
+    warn "quiet: load $(load1) with every gate drained for ${settle}s -- not goh's: letting go for ${retry}s; busiest:"
+    busiest                                                                      # 3. let go
+    sleep "$retry"
 done
 info "quiet: load $(load1) (max $max_load), every gate held -- running: $*"
 rc=0

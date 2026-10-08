@@ -135,11 +135,13 @@
 * **A quiet host on demand: `tools/quiet.sh -- CMD`** (`lib/bench_lock.sh`). Every wall-clock number
   in BACKLOG needs load < 4, and two days of them were taken at load 7-31 beside other sessions'
   gates. Every gate now registers with a host-wide lock using bash builtins only (no process on
-  the commit path). `quiet.sh` is a QUEUE: it waits for a window (load under `--max-load`)
-  holding nothing, then holds the lock -- running gates finish, new ones wait -- and the desktop,
-  re-checks, and runs CMD; a window that closes is let go and waited for again, and only after
-  `--deadline` (4 h) does it refuse, naming the busiest processes. No session is asked to do
-  anything: a measurement runs when the box goes quiet on its own. A gate
+  the commit path). `quiet.sh` is a QUEUE that takes its place first: it holds the lock --
+  running gates finish, new ones wait -- and the desktop, then waits up to `--settle` (300 s) for
+  the load under `--max-load`, and runs CMD. A box still busy with what goh cannot hold (an
+  `xctest`, Spotlight) is let go for `--retry` (300 s) and claimed again; only after
+  `--deadline` (4 h) does it refuse, naming the busiest processes. Its first form waited for the
+  load holding NOTHING, and on a box a dozen sessions share it waited 2 h without one window:
+  each new gate started ahead of it (BACKLOG 3.1). No session is asked to do anything. A gate
   nested in a registered gate or in the measurement, and a dead, PID-recycled or overdue holder,
   never deadlock it. Pinned by `tests/test_bench_lock.py`, each case red-proven by mutation.
 

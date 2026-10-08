@@ -208,30 +208,62 @@ def test_quiet_runs_the_measurement_holding_the_host_and_the_desktop(tmp_path: P
     assert "load" in r.stdout and not (lock / "exclusive").exists() and not desk.exists()
 
 
-def test_quiet_waits_for_a_window_holding_nothing(tmp_path: Path) -> None:
-    load = _fake_load(tmp_path, [50, 50, 50, 1])
-    r = _quiet(tmp_path, "--", "true", **load)
-    assert r.returncode == 0, r.stdout + r.stderr
-    reads = _reads(tmp_path)
-    assert reads[:3] == ["free 50"] * 3, reads  # three busy reads, the host never held
-    assert any(x.startswith("held") for x in reads), reads  # then held for the run
-
-
-def test_quiet_lets_go_when_the_window_closes(tmp_path: Path) -> None:
-    # Busy for 3 s of 0.1 s reads, well past the 1 s settle (whole seconds, so up to 2 s).
-    load = _fake_load(tmp_path, [1] + [50] * 30 + [1])
-    r = _quiet(tmp_path, "--settle", "1", "--", "true", **load)
-    assert r.returncode == 0, r.stdout + r.stderr
-    reads = _reads(tmp_path)
-    first_held = next(i for i, x in enumerate(reads) if x.startswith("held"))
-    assert any(x.startswith("free") for x in reads[first_held:]), (
-        f"it kept the host held while the box was busy: {reads}"
+def _gate_load(tmp_path: Path) -> dict[str, str]:
+    """A load that is high exactly while a gate is registered: the box the other sessions make."""
+    script = tmp_path / "gate_load.sh"
+    script.write_text(
+        "#!/bin/bash\n"
+        f'held=free; [ -d "{tmp_path}/lock/exclusive" ] && held=held\n'
+        f'v=1; [ -n "$(ls -A "{tmp_path}/lock/gates" 2>/dev/null)" ] && v=50\n'
+        f'echo "$held $v" >> "{tmp_path}/reads"; echo "$v"\n'
     )
-    assert "window closed" in r.stderr
+    script.chmod(0o755)
+    return {"GOH_BENCH_LOADAVG": str(script)}
+
+
+def _gate_stream(lock: Path) -> subprocess.Popen[str]:
+    """Other sessions: a new 0.6 s gate every 0.2 s, so some gate is always registered."""
+    gate = f'. "{LIB}"; bench_lock_join stream; sleep 0.6; rm -f "$BENCH_LOCK_ENTRY"'
+    loop = f"while :; do bash -c {gate!r} & sleep 0.2; done"
+    return subprocess.Popen(["bash", "-c", loop], env=_env(lock), start_new_session=True,
+                            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, text=True)  # fmt: skip
+
+
+def test_quiet_takes_its_place_before_it_judges_the_box(tmp_path: Path) -> None:
+    """BACKLOG 3.1: queued at 09:57, it waited 2 h for load < 4 holding nothing, and every new gate
+    from the other sessions started ahead of it -- a reader-preferring queue starves its writer.
+    It claims the host FIRST: new gates queue behind it, the running ones drain, the load falls."""
+    (tmp_path / "lock" / "gates").mkdir(parents=True)
+    stream = _gate_stream(tmp_path / "lock")
+    try:
+        r = _quiet(tmp_path, "--deadline", "20", "--settle", "10", "--", "true",
+                   **_gate_load(tmp_path))  # fmt: skip
+    finally:
+        os.killpg(stream.pid, 9)
+        stream.wait()
+    assert r.returncode == 0, r.stdout + r.stderr
+    reads = _reads(tmp_path)
+    assert reads and all(x.startswith("held") for x in reads), reads  # judged only while holding
+    assert reads[-1] == "held 1", reads
+
+
+def test_quiet_lets_go_between_attempts_while_the_box_stays_busy(tmp_path: Path) -> None:
+    """With every gate drained and the box still busy (an xctest, Spotlight), holding on would
+    block every session's commits for nothing: it lets go, waits, and claims again."""
+    load = _fake_load(tmp_path, [50] * 25 + [1])
+    owners = tmp_path / "owners"
+    since = f'sed -n 3p "{tmp_path}/lock/exclusive/owner" >> "{owners}"'
+    script = Path(load["GOH_BENCH_LOADAVG"])
+    script.write_text(script.read_text().replace("#!/bin/bash\n", f"#!/bin/bash\n{since}\n", 1))
+    r = _quiet(tmp_path, "--settle", "1", "--retry", "0.2", "--", "true", **load)
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert "letting go" in r.stderr, r.stderr
+    assert len(set(owners.read_text().split())) >= 2, "one claim held through the busy box"
 
 
 def test_quiet_refuses_after_its_deadline_and_names_what_is_busy(tmp_path: Path) -> None:
-    r = _quiet(tmp_path, "--max-load", "0", "--deadline", "1", "--", "true")
+    r = _quiet(tmp_path, "--max-load", "0", "--deadline", "1", "--settle", "0", "--retry", "0.1",
+               "--", "true")  # fmt: skip
     assert r.returncode == 1, r.stdout + r.stderr
     assert "not quiet" in r.stderr and "%CPU" in r.stderr, r.stderr
     assert not (tmp_path / "lock" / "exclusive").exists()
