@@ -61,13 +61,16 @@ Phases run in order; within a phase, any order. The measurements (Phase 4) come 
 else waits on their numbers (owner, 2026-10-08). `[ ]` open, `[x]` done, `[~]` handed off.
 
 **Phase 1 — `goh requires-call`** (ZoneWM, 2026-10-08; owner: "generic tooling goes to goh")
-- [ ] 1.1 A Python parser in the binary, sized. Baseline: none in the crate today; ZoneWM's
+- [x] 1.1 A Python parser in the binary, sized (`4474822`: `ruff_python_parser` 0.0.16, Astral's own;
+      29,973 of 29,973 call sites equal to Python `ast` over 457 files, 0.10 s; 41 crates, ~1.4 MB;
+      audit clean; `syn` 2 beside `syn` 3, build-time only). Baseline: none in the crate today; ZoneWM's
       checkers use `ast`. Exit: one crate chosen (candidates: `ruff_python_parser`,
       `rustpython-parser`, `tree-sitter-python`) with its build-time and binary-size cost measured,
       `cargo audit` clean, one version in the lock. Red-first: the call sites it finds in ZoneWM's
       `tools/*.py` equal Python `ast`'s, byte for byte. Lies: a newer syntax (3.14) parsed
       differently -- test the estate's own Python, not a sample.
-- [ ] 1.2 The check: "a file that CALLS X must also CALL Y", rows in `.gatesrc`. Baseline: two
+- [x] 1.2 The check: "a file that CALLS X must also CALL Y", rows in `.gatesrc` (`4474822`: `goh
+      requires-call`, every branch mutation-proven; placement and long-runner rows expressible). Baseline: two
       repo-local ZoneWM gates of this shape (`tools/check_probe_courtesy.py`,
       `tools/check_probe_placement.py`, 170 lines, an 8-case selftest). Exit: both expressible as
       rows, the 8 cases pass native, ZoneWM's copies deletable (its owner's call). Red-first: each
@@ -75,6 +78,14 @@ else waits on their numbers (owner, 2026-10-08). `[ ]` open, `[x]` done, `[~]` h
       does, another module's same-named function does not; an exemption goes STALE three ways (file
       gone, no longer calls X, now calls Y); zero X-callers fails the floor. Lies: `getattr` and
       star imports (named as limits, not passed).
+
+- [ ] 1.3 A trigger on a call's string argument, so ZoneWM's courtesy rule ("a tool that drives the
+      desktop must call `wait_for_rest`") is a row too. Baseline: its `DRIVES` regex matches
+      `"switch-space"`, `"config-set"`, `"theme", "--id"` -- arguments, not callee names -- so
+      only its long-runner half is a row today. Exit: `calls` accepts `name("literal", ...)`
+      and `check_probe_courtesy.py`'s planted cases pass as rows. Red-first: a literal named
+      only in a comment or a non-argument string does not trigger. Lies: an argument built at
+      run time (an f-string, a variable) -- named as a limit, not matched.
 
 **Phase 2 — "fix the class", part 3: the clustering audit**
 - [ ] 2.1 `goh commit-class --clusters REV..`: cluster commits by Class AND touched-file family, each
@@ -208,6 +219,9 @@ re-measures.
   per-target floors and unreadable files is answered (both refused since v0.24.0).
 - **ztools:** HEAD (`40148ae`) is RED on its own code under clippy 1.99 (72 `assert_is_empty`); its
   hooks differ textually (`install.sh --force` is ztools' call); write `GOH_EXCLUDE='^vendor/'`.
+- **ZoneWM:** `goh requires-call` (`4474822`) expresses `check_probe_placement.py` and the long-runner
+  half of `check_probe_courtesy.py` as rows (`GOH_REQUIRES_CALL`); the drives half waits on 1.3.
+  Deleting the copies is ZoneWM's owner's call.
 - **ZoneWM:** `check_probes_pass.py` discovery stays by `check_*` NAME (`input_lock.py --probe` would
   grab the real keyboard) and names the self-proofs it does not run.
 - **Finance:** `tests/test_repos.sh:113`, `tests/test_one_plan_of_record.sh:214` write
