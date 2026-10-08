@@ -17,6 +17,7 @@ import sys
 import time
 from pathlib import Path
 
+from _own_files import own_source_files
 from conftest import REPO_ROOT
 
 SHELL = re.compile(r"\$\(\s*mktemp\b([^)]*)\)")
@@ -43,8 +44,7 @@ def _py_unclaimable(args: str) -> bool:
 
 
 def _offenders() -> list[str]:
-    files = subprocess.run(["git", "-C", str(REPO_ROOT), "ls-files", "*.sh", "*.py", "hooks/*"],
-                           capture_output=True, text=True, check=True).stdout.split()  # fmt: skip
+    files = own_source_files("*.sh", "*.py", "hooks/*")
     bad = []
     for rel in files:
         if rel == "tests/test_temp_claimable.py":

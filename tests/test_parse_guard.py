@@ -18,16 +18,15 @@ import subprocess
 import time
 from pathlib import Path
 
+from _own_files import own_source_files
 from conftest import REPO_ROOT
 
 OPEN = "{ # parse-guard"
 CLOSE = "} # parse-guard"
 
 
-def _tracked_bash() -> list[str]:
-    out = subprocess.run(
-        ["git", "-C", str(REPO_ROOT), "ls-files"], capture_output=True, text=True, check=True
-    ).stdout.split()
+def _own_bash() -> list[str]:
+    out = own_source_files()
     return [
         f
         for f in out
@@ -52,7 +51,7 @@ def _sourced(files: list[str]) -> set[str]:
 
 
 def executed_scripts() -> list[str]:
-    files = _tracked_bash()
+    files = _own_bash()
     sourced = _sourced(files)
     return [
         f

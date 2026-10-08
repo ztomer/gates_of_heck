@@ -50,4 +50,5 @@ case "$hook" in
         err "sequencer_gate.sh: unknown hook '$hook' (post-rewrite | pre-applypatch)"
         exit 2 ;;
 esac
+exit
 } # parse-guard

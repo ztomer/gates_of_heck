@@ -59,7 +59,8 @@ def test_a_staged_run_of_the_binary_spawns_git_at_most_this_often(
     goh: Path, tmp_path: Path
 ) -> None:
     calls = _calls(goh, tmp_path, "--staged")
-    assert sum(calls.values()) <= 9, calls  # 16 before 2026-10-06
+    # 16 before 2026-10-06; 9 -> 10 with the tracked-ignored step's one `ls-files --ignored` (66e638d)
+    assert sum(calls.values()) <= 10, calls
 
 
 def test_rust_scope_lists_the_workspaces_sources_once(goh: Path, tmp_path: Path) -> None:

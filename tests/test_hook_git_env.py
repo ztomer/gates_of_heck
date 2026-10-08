@@ -231,6 +231,8 @@ def test_rust_test_code_spawns_git_only_through_the_testkit():
         # markers --commits: rev-parse / diff-tree + one cat-file of the repo whose rebase
         # post-rewrite reports (GIT_* honoured)
         "crates/goh/src/revblobs.rs": 2,
+        # tracked-ignored: ls-files --ignored / check-ignore of THIS repo, GIT_* honoured
+        "crates/goh/src/structural/trackedignored.rs": 1,
     }
     found = {}
     for path in sorted((REPO_ROOT / "crates").rglob("*.rs")):
