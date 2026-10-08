@@ -100,7 +100,8 @@ else waits on their numbers (owner, 2026-10-08). `[ ]` open, `[x]` done, `[~]` h
       A further labelled pair (ZoneWM, 2026-10-08): `30b74237` "a capture taken after a fixed
       sleep, racing the asynchronous work whose result it captures" with `a9604cf3` -- one shared
       word, a rephrasing.
-- [ ] 2.2 Domain-frequent words do not count. Baseline: the full replay's one wrong refusal,
+- [x] 2.2 Domain-frequent words do not count (`4d9d9f9`: a word in more than 1/8 of the repo's
+      classes, over its whole history, none below 30; ZoneWM's 75 drop only `read`). Baseline: the full replay's one wrong refusal,
       `078f137f`, shares only "read" and "window", ZoneWM's own domain nouns. Exit: words in more
       than a set share of a repo's own classes are dropped per repo; the replay keeps its 3 right
       refusals and loses `078f137f`, and the 6 of 13 labelled pairs stay. Red-first: `078f137f`
