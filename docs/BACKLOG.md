@@ -91,8 +91,12 @@ else waits on their numbers (owner, 2026-10-08). `[ ]` open, `[x]` done, `[~]` h
       run time (an f-string, a variable) -- named as a limit, not matched.
 
 **Phase 2 — "fix the class", part 3: the clustering audit**
-- [ ] 2.1 `goh commit-class --clusters REV..`: cluster commits by Class AND touched-file family, each
-      cluster a hardening candidate. Baseline: the word measure sees 6 of ZoneWM's 13 labelled
+- [x] 2.1 `goh commit-class --clusters REV..`: cluster commits by Class AND touched-file family, each
+      cluster a hardening candidate (`(this commit)`). Measured: words alone keep cluster 2 whole and
+      two members each of 1 and 3; with 3 shared files (a sweep commit and a ROADMAP excluded) 6 and
+      the 4 pair join. Exit RE-STATED: 5 and the thirds of 1 and 3 share neither a content word
+      nor a file -- paraphrase in different files, the ceiling of words and paths -- so "names 1-6"
+      cannot hold for any such measure; the unit tests pin what it can see. Baseline: the word measure sees 6 of ZoneWM's 13 labelled
       pairs; repeats committed without trailers are seen by nothing. Exit: over ZoneWM's
       `214f0cf7..HEAD` it names its author's clusters 1-6 with at most 2 spurious clusters.
       Red-first: the labelled list (`9241ecc`'s data) as the fixture, run against the current

@@ -103,6 +103,10 @@ pub enum Commands {
         /// Report what the rule refuses, exit 0 (a replay of history).
         #[arg(long)]
         report: bool,
+        /// Cluster the range's fixes by Class and touched files instead, each cluster a
+        /// hardening candidate (exit 0). Put it before `--range`, which takes what follows.
+        #[arg(long, requires = "range")]
+        clusters: bool,
     },
     /// A Python file that calls X must also call Y, from the AST (opt-in by `GOH_REQUIRES_CALL`).
     RequiresCall {

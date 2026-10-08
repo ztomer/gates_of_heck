@@ -135,7 +135,8 @@ fn run_core(command: Commands) -> i32 {
             file,
             range,
             report,
-        } => commit_class::run(file.as_deref(), &range, report),
+            clusters,
+        } => commit_class::run(file.as_deref(), &range, report, clusters),
         Commands::RequiresCall { rules, root } => {
             requires_call::run(rules.as_deref(), root.as_deref())
         }

@@ -20,6 +20,8 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::process::Command;
 
+#[path = "commit_class_clusters.rs"]
+mod clusters;
 #[path = "commit_class_words.rs"]
 mod similarity;
 #[cfg(test)]
@@ -270,11 +272,12 @@ fn classes_from(rev: &str) -> Result<Vec<String>, String> {
     Ok(found)
 }
 
-/// `goh commit-class [FILE | --range REV... [--report]]`.
+/// `goh commit-class [FILE | --range REV... [--report | --clusters]]`.
 #[must_use]
-pub fn run(file: Option<&str>, range: &[String], report: bool) -> i32 {
+pub fn run(file: Option<&str>, range: &[String], report: bool, clusters: bool) -> i32 {
     match file {
         Some(f) => check_file(f),
+        None if clusters && !range.is_empty() => clusters::report(range),
         None if !range.is_empty() => check_range(range, report),
         None => {
             eprintln!("goh commit-class: FILE or --range REV...");

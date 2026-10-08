@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+* **`goh commit-class --clusters --range REV...`: the fixes in a range, grouped.** Two fixes are
+  one when their classes are (the commit gate's measure) or when they touched three of the same
+  files; each connected group is a hardening candidate. A file in more than a quarter of the
+  range (a ROADMAP) and a commit touching more than 20 files (a sweep) link nothing; in a range
+  under 20 commits no file is common. On ZoneWM's labelled clusters, words alone keep 1 whole and
+  files add the pictures and the teardown pair; the rest is paraphrase in different files, which
+  no measure of words and paths sees. Its range is the fixture (`zonewm_range.tsv`).
 * **A self-proof must leave the tree it ran over as it found it.** `check_probes_pass.py` runs
   every probe in parallel over the live tree; in koffee_big one probe unlinked a real source and
   wrote it back while another copied the tree, and the copy failed on the missing file -- a push

@@ -232,3 +232,40 @@ def test_a_reworded_third_instance_is_still_the_class(repo: Path) -> None:
         "a ceiling recorded before a fix still carries the worst round the fix removed",
     )
     assert _refused(_check(repo, third, *earlier), "earlier ones")
+
+
+def _touch(repo: Path, msg: str, *files: str) -> str:
+    for name in files:
+        path = repo / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(path.read_text() + "x\n" if path.exists() else "x\n")
+    git(repo, "add", "-A")
+    return _commit(repo, msg)
+
+
+def _clusters(repo: Path, rev: str) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        [str(native_goh_path()), "commit-class", "--clusters", "--range", rev], cwd=repo,
+        capture_output=True, text=True, env=hermetic_env(drop_git=True),
+    )  # fmt: skip
+
+
+def test_clusters_link_fixes_by_class_or_by_the_files_they_share(repo: Path) -> None:
+    """BACKLOG 2.1: two fixes whose classes share no word but whose fixes landed in the same three
+    files are one hardening candidate; a feature touching them is not a fix and links nothing."""
+    base = git(repo, "rev-parse", "HEAD").strip()
+    trio = ("src/a.py", "src/b.py", "src/c.py")
+    teardown = _touch(repo, "fix: x\n\nClass: a teardown a signal cuts short\nSiblings: s", *trio)
+    _touch(repo, "feat: y", *trio)
+    restore = _touch(repo, "fix: z\n\nClass: a probe's restore that never runs\nSiblings: s", *trio)
+    alone = _touch(repo, "fix: w\n\nClass: a picture read at full size\nSiblings: s", "img.py")
+    r = _clusters(repo, f"{base}..HEAD")
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert "cluster 1 (2 fixes)" in r.stdout and "cluster 2" not in r.stdout, r.stdout
+    assert teardown[:8] in r.stdout and restore[:8] in r.stdout and alone[:8] not in r.stdout
+    assert "4 commit(s), 1 cluster(s) of 2 fix(es)" in r.stdout, r.stdout
+
+
+def test_clusters_over_a_range_git_refuses_is_an_error(repo: Path) -> None:
+    r = _clusters(repo, "no-such-rev..HEAD")
+    assert r.returncode == 2 and "no-such-rev" in r.stderr, r.stdout + r.stderr
