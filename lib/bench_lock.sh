@@ -192,11 +192,14 @@ _bench_drained() {
     [ -z "$BENCH_LOCK_BUSY" ]
 }
 
-# bench_lock_exclusive <label> -- hold the host: claim it, then wait for every gate to finish.
-# Fails (claim released) after GOH_BENCH_WAIT seconds (default 1800), naming what it waited on.
+# bench_lock_exclusive <label> [drain] -- hold the host: claim it, then wait for every gate to
+# finish. Fails after GOH_BENCH_WAIT seconds (default 1800), naming what it waited on; a drain
+# still busy `drain` seconds after the claim fails too, the claim released and BENCH_LOCK_BUSY set
+# (every new gate waits behind a drain: tools/quiet.sh bounds it by its budget).
 bench_lock_exclusive() {
-    local label="$1" deadline said=""
-    deadline=$(($(date +%s) + ${GOH_BENCH_WAIT:-1800}))
+    local label="$1" deadline said="" wait_s="${GOH_BENCH_WAIT:-1800}"
+    BENCH_LOCK_BUSY=""
+    deadline=$(($(date +%s) + wait_s))
     mkdir -p "$BENCH_LOCK_DIR/gates" 2>/dev/null && chmod 1777 "$BENCH_LOCK_DIR" "$BENCH_LOCK_DIR/gates" 2>/dev/null
     while :; do
         if [ ! -d "$BENCH_LOCK_DIR/exclusive" ]; then
@@ -219,10 +222,13 @@ bench_lock_exclusive() {
         "$BENCH_LOCK_MAX_HOLD" "$label (pid $$)" >"$BENCH_LOCK_DIR/exclusive/owner"
     BENCH_LOCK_HELD=1
     said=""
+    if [ -n "${2:-}" ] && [ "$2" -lt $((deadline - $(date +%s))) ]; then
+        wait_s="$2"
+        deadline=$(($(date +%s) + wait_s))
+    fi
     until _bench_drained; do
         if [ "$(date +%s)" -ge "$deadline" ]; then
-            printf '✗ bench lock: gates still running after %ss:%s\n' "${GOH_BENCH_WAIT:-1800}" \
-                "$BENCH_LOCK_BUSY" >&2
+            printf '✗ bench lock: gates still running after %ss:%s\n' "$wait_s" "$BENCH_LOCK_BUSY" >&2
             bench_lock_release
             return 1
         fi

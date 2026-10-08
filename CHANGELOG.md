@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+* **quiet: a drain is bounded by the budget, and a let-go names one reason** (`tools/quiet.sh`,
+  `lib/bench_lock.sh`). BACKLOG 4.3 routines-j4's claim waited 579 s for two other sessions'
+  pre-push gates -- every new gate blocked behind it -- then let go unmeasured, because a 600 s
+  run no longer fit the cap, and blamed the load ("not goh's") at 5.58, under the max of 8.
+  `bench_lock_exclusive LABEL [DRAIN]` now fails a drain still busy DRAIN seconds after the
+  claim (claim released, `BENCH_LOCK_BUSY` set); quiet passes its budget and retries after
+  `--retry`. The let-go gives the budget OR the load, from the reading that decided it. RED
+  FIRST: a gate joining behind a drain past a 3 s budget waited 8.2 s on the old code; < 5 now.
+
 * **bench lock: a waiting gate is not a running one** (`lib/bench_lock.sh`). A gate behind a
   hold re-registered in `gates/` on every 2 s re-check and stayed there through its stale and
   nested checks (a `ps` each), so the drain counted waiters as running gates. With dozens queued

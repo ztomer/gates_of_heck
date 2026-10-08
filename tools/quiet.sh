@@ -10,7 +10,8 @@
 #      desktop (lib/desktop_lock/, which ZoneWM's probes respect). The first version waited for
 #      the load to fall HOLDING NOTHING, and on a box a dozen sessions share it waited 2 h without
 #      one window: every new gate started ahead of it (BACKLOG 3.1, a reader-preferring queue
-#      starving its writer);
+#      starving its writer). The drain is bounded by the budget too: one that waited 579 s for
+#      two pre-push gates blocked every new gate and then could not fit its run (BACKLOG 4.3);
 #   2. with every gate drained, wait up to --settle seconds (300: the 1-minute average takes
 #      minutes to forget a drained load of 50) for the load under --max-load (8: this box's
 #      drained floor is 4.5 min / 6.2 median, measured by --floor, 2026-10-08 -- the first
@@ -104,7 +105,13 @@ over() { awk -v a="$1" -v b="$2" 'BEGIN { exit !(a >= b) }'; }
 busiest() { ps -Ao pcpu,comm -r | head -6 >&2 || true; } # head closes early: ps's SIGPIPE is not the verdict
 t0="$(date +%s)"
 while :; do
-    bench_lock_exclusive "$label" || die "quiet.sh: could not hold the host (above)"  # 1. our place
+    if ! bench_lock_exclusive "$label" "$budget"; then                            # 1. our place
+        [ -n "$BENCH_LOCK_BUSY" ] && ! over "$(elapsed "$t0")" "$deadline" ||
+            die "quiet.sh: could not hold the host (above)"
+        warn "quiet: the gates running at the claim outlasted its ${budget}s budget -- letting go for ${retry}s"
+        sleep "$retry"
+        continue
+    fi
     desktop_lock_acquire "$label"
     t1="$(date +%s)"
     if [ -n "$floor" ]; then # the floor: every gate drained, what is left, for --settle seconds
@@ -122,19 +129,21 @@ while :; do
         over "$(bench_lock_spent)" "$budget" && break
         sleep "$(awk -v p="$poll" 'BEGIN { print (p < 5 ? p : 5) }')"
     done
-    spent="$(bench_lock_spent)"
-    below "$(load1)" "$max_load" && bench_lock_hold "$hold" && break
+    spent="$(bench_lock_spent)" load="$(load1)"
+    below "$load" "$max_load" && bench_lock_hold "$hold" && break
     desktop_lock_release
     bench_lock_release
-    over "$spent" "$budget" &&
-        warn "quiet: the drain and settle took ${spent}s, and a ${hold}s run would block gates past the ${BENCH_LOCK_MAX_HOLD}s cap"
     if over "$(elapsed "$t0")" "$deadline"; then                                # 4. refuse
-        err "the host is not quiet: no window under load $max_load in ${deadline}s, every gate held (load $(load1)); busiest:"
+        err "the host is not quiet: no window under load $max_load in ${deadline}s, every gate held (load $load); busiest:"
         busiest
         exit 1
     fi
-    warn "quiet: load $(load1) with every gate drained for ${settle}s -- not goh's: letting go for ${retry}s; busiest:"
-    busiest                                                                      # 3. let go
+    if below "$load" "$max_load"; then # quiet, but the run no longer fits: the budget, not the load
+        warn "quiet: the drain and settle took ${spent}s of the ${budget}s budget: a ${hold}s run would block gates past the ${BENCH_LOCK_MAX_HOLD}s cap -- letting go for ${retry}s"
+    else
+        warn "quiet: load $load with every gate drained for ${settle}s -- not goh's: letting go for ${retry}s; busiest:"
+        busiest                                                                  # 3. let go
+    fi
     sleep "$retry"
 done
 info "quiet: load $(load1) (max $max_load), every gate held for ${hold}s -- running: $*"

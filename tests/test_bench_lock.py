@@ -460,3 +460,30 @@ def test_the_cap_bounds_the_whole_block_not_only_the_run(tmp_path: Path) -> None
     assert r.stdout.strip() == "joined" and waited < 5, (waited, r.stderr)
     err = hold.stderr.read()
     assert hold.returncode == 0 and "letting go" in err, err
+
+
+def test_a_drain_past_the_budget_lets_go_at_the_budget(tmp_path: Path) -> None:
+    """BACKLOG 4.3 routines-j4 (2026-10-08): the claim waited 579 s for two pre-push gates, every
+    new gate blocked behind it, then let go unmeasured -- its run no longer fit the cap -- and
+    blamed the load ("not goh's") at 5.58, under the max. A drain is bounded by the budget."""
+    lock = tmp_path / "lock"
+    slow = _bash(lock, f'bench_lock_join pre-push; : > "{tmp_path}/in"; sleep 9')
+    _wait_for(tmp_path / "in")
+    q = subprocess.Popen(
+        ["bash", str(QUIET), "--max-load", "1000", "--hold", "3", "--retry", "0.5", "--", "true"],
+        env=_quiet_env(tmp_path, GOH_BENCH_MAX_HOLD="6"), stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE, text=True,
+    )  # fmt: skip
+    try:
+        _wait_for(lock / "exclusive" / "owner")
+        start = time.monotonic()
+        r = _run(lock, "bench_lock_join gate && echo joined", timeout=30)
+        waited = time.monotonic() - start
+        q.wait(timeout=40)
+    finally:
+        q.kill()
+        slow.kill()
+        slow.wait()
+    assert r.stdout.strip() == "joined" and waited < 5, (waited, r.stderr)
+    err = q.stderr.read()
+    assert q.returncode == 0 and "budget" in err and "not goh's" not in err, err
