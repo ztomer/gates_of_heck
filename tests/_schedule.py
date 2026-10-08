@@ -7,8 +7,11 @@ classic LPT schedule -- the long ones start at once and the short ones fill in a
 
 The order comes from the last run's own measurement, never from a list someone keeps: the
 controller records every test's call+setup+teardown at session end to a cache OUTSIDE the tree
-(the tree guard forbids writing in it), and each worker sorts by it at collection. Same file, same
-sort, so every worker collects the same order (xdist requires it). A test not yet measured counts
+(the tree guard forbids writing in it). The CONTROLLER reads it once and hands that read to every
+worker (`pytest_configure_node`), so every worker sorts the same table and collects the same order,
+which xdist requires: the file is shared by every suite on the box, and workers that each read it
+collected in different orders whenever another session's suite rewrote it between their starts
+("Different tests were collected", 2026-10-08). A test not yet measured counts
 as UNKNOWN_S. An xdist_group is one unit of work, so its members move together, by their sum.
 Ordering cannot change a verdict: the suite already runs in any order under xdist.
 
@@ -23,7 +26,11 @@ import os
 from collections import defaultdict
 from pathlib import Path
 
+import pytest
+
 UNKNOWN_S = 1.0
+_KEY = "goh_test_durations"
+_read: dict[str, dict[str, float]] = {}  # this process's one read: the controller's, on a worker
 
 
 def _cache() -> Path:
@@ -47,9 +54,21 @@ def _load() -> dict[str, float]:
     return {k: float(v) for k, v in data.items() if isinstance(v, (int, float))}
 
 
+def pytest_configure(config) -> None:
+    """A worker takes the controller's read; the controller (or a run without xdist) reads now."""
+    worker = getattr(config, "workerinput", None)
+    _read[_KEY] = worker.get(_KEY, {}) if worker is not None else _load()
+
+
+@pytest.hookimpl(optionalhook=True)
+def pytest_configure_node(node) -> None:
+    """xdist, on the controller: every worker it starts sorts by the controller's one read."""
+    node.workerinput[_KEY] = _read.get(_KEY, {})
+
+
 def pytest_collection_modifyitems(items) -> None:
     """Sort `items` in place: the longest unit of work first, ties by nodeid."""
-    known = _load()
+    known = _read[_KEY] if _KEY in _read else _load()
     if not known:
         return
     weight: dict[str, float] = defaultdict(float)
