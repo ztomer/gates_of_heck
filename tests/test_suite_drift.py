@@ -8,12 +8,14 @@ in unseen.
 
 from __future__ import annotations
 
+import os
 import re
 import subprocess
 import sys
 from collections import Counter
 from pathlib import Path
 
+import _drift_guard
 from conftest import REPO_ROOT
 
 TESTS = REPO_ROOT / "tests"
@@ -105,13 +107,17 @@ def test_no_new_pool_sized_to_the_machine() -> None:
     _ratchet(found, CPU_COUNT_POOLS, "cpu_count() pool")
 
 
-def _planted(tmp_path: Path, body: str, ceiling: float = 30) -> subprocess.CompletedProcess[str]:
-    """A one-test suite whose conftest is the real guard's, run in a child pytest."""
+def _planted(
+    tmp_path: Path, body: str, ceiling: float = 30, load: float = 1.0
+) -> subprocess.CompletedProcess[str]:
+    """A one-test suite whose conftest is the real guard's, run in a child pytest, at a pinned
+    load factor -- the box running this test has its own, and the planted ceilings are tenths."""
     (tmp_path / "conftest.py").write_text(
         f"import sys\nsys.path.insert(0, {str(TESTS)!r})\n"
         "import _drift_guard\n"
         "from _drift_guard import pytest_runtest_makereport  # noqa: F401\n"
         f"_drift_guard.CEILING_S = {ceiling}\n"
+        f"_drift_guard.load_factor = lambda: {load}\n"
     )
     (tmp_path / "test_planted.py").write_text(body)
     return subprocess.run(
@@ -121,10 +127,34 @@ def _planted(tmp_path: Path, body: str, ceiling: float = 30) -> subprocess.Compl
     )  # fmt: skip
 
 
+SLEEPER = "import time\n\ndef test_slow():\n    time.sleep(0.6)\n"
+
+
 def test_a_test_over_its_ceiling_fails(tmp_path: Path) -> None:
-    r = _planted(tmp_path, "import time\n\ndef test_slow():\n    time.sleep(0.6)\n", ceiling=0.3)
+    r = _planted(tmp_path, SLEEPER, ceiling=0.3)
     assert r.returncode == 1, r.stdout + r.stderr
     assert "over its 0.3 s ceiling" in r.stdout, r.stdout
+
+
+def test_the_ceiling_stretches_with_the_boxs_load(tmp_path: Path) -> None:
+    """A 15 s test took 63.8 s at load 38 on 16 cores and refused a push (bigkoff, 2026-10-08): a
+    fixed wall-clock bound on a box other sessions load is the flake the docstring says it is not."""
+    r = _planted(tmp_path, SLEEPER, ceiling=0.3, load=4.0)
+    assert r.returncode == 0, r.stdout + r.stderr
+
+
+def test_a_stretched_ceiling_still_fails_and_says_by_how_much(tmp_path: Path) -> None:
+    r = _planted(tmp_path, SLEEPER, ceiling=0.3, load=1.5)
+    assert r.returncode == 1, r.stdout + r.stderr
+    assert "over its 0.3 s ceiling x1.5 for the box's load" in r.stdout, r.stdout
+
+
+def test_the_load_factor_is_run_queue_per_core_never_below_one(monkeypatch) -> None:
+    monkeypatch.setattr(os, "cpu_count", lambda: 16)
+    monkeypatch.setattr(os, "getloadavg", lambda: (38.0, 30.0, 20.0))
+    assert _drift_guard.load_factor() == 38.0 / 16
+    monkeypatch.setattr(os, "getloadavg", lambda: (4.0, 5.0, 6.0))
+    assert _drift_guard.load_factor() == 1.0
 
 
 def test_a_test_that_builds_goh_fails_and_other_cargo_passes(tmp_path: Path) -> None:

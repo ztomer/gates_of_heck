@@ -9,11 +9,12 @@ other sessions load, a timing gate flakes and gets switched off:
   meant -- `DRIFT_BUILD_OK=1` in that build's environment: the session fixture's one build, and a
   test whose subject IS the build. Said at the call site, not by file, because such a test scrubs
   its environment (PYTEST_CURRENT_TEST with it), and the opt-in is then the one thing it passes;
-* a test's call phase over CEILING_S fails -- 60 s, wide enough never to flake (honest tests
-  reached 25-30 s with a push gate's coverage run and a second suite on the box at once), tight
-  enough to catch a leaked child holding a captured pipe (one waited out a whole `sleep 30` -- a
-  leak that long or longer) or a runaway build. A test that genuinely needs longer is named in
-  SLOW with its own ceiling.
+* a test's call phase over CEILING_S fails -- 60 s on a box at most one runnable thread per
+  core, tight enough to catch a leaked child holding a captured pipe (one waited out a whole
+  `sleep 30` -- a leak that long or longer) or a runaway build. A wall-clock bound IS a timing
+  gate, so it stretches by `load_factor()`, the run queue per core: a 15 s test took 63.8 s at
+  load 38 on 16 cores and refused a push (2026-10-08). A test that genuinely needs longer is
+  named in SLOW with its own ceiling, which stretches the same way.
 
 Found by the build guard on its first run: under GOH_LIVE with uncommitted Rust, every gate test
 resolved the working tree's goh by BUILDING it (gates/_goh_bin.sh, `goh_live_binary`) -- 75 tests
@@ -51,6 +52,13 @@ SLOW: dict[str, float] = {  # nodeid -> its own ceiling, each with its reason
     # builds the working tree's goh (GOH_LIVE) into its own target dir when that is cold
     "tests/test_binary_source_identity.py::test_goh_live_runs_the_working_trees_binary_not_heads": 600,
 }
+
+
+def load_factor() -> float:
+    """How much slower than quiet this box runs a test: the 1-minute run queue per core, never
+    below 1. Read when the test ends, so it covers the minute the test ran in."""
+    return max(1.0, os.getloadavg()[0] / (os.cpu_count() or 1))
+
 
 _REAL_CARGO = shutil.which("cargo")
 BUILD_DIR = tempfile.mkdtemp(prefix="goh-test-cargo-build.")
@@ -96,10 +104,12 @@ def pytest_runtest_makereport(item, call):
     if rep.when != "call" or not rep.passed:
         return
     ceiling = SLOW.get(item.nodeid, CEILING_S)
-    if call.duration > ceiling:
+    factor = load_factor()
+    if call.duration > ceiling * factor:
+        stretch = f" x{factor:.2g} for the box's load" if factor > 1 else ""
         rep.outcome = "failed"
         rep.longrepr = (
-            f"{item.nodeid} took {call.duration:.1f} s, over its {ceiling:g} s ceiling "
+            f"{item.nodeid} took {call.duration:.1f} s, over its {ceiling:g} s ceiling{stretch} "
             "(tests/_drift_guard.py): a leaked child holding a captured pipe, a hidden build, or a "
             "test that runs a whole gate to check one step. Fix it, or name it in SLOW with a reason."
         )
