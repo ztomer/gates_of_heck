@@ -441,11 +441,11 @@ def test_the_cap_bounds_the_whole_block_not_only_the_run(tmp_path: Path) -> None
     """The drain and the settle block every gate too: the first cap bounded only the run, so a
     claim could block for its settle AND its hold. A run that would end past the cap, counted from
     the claim, lets go instead."""
-    load = _fake_load(tmp_path, [50] * 35 + [1])
+    load = _fake_load(tmp_path, [50] * 150 + [1])  # ~15 s busy: the old claim held through it
     lock = tmp_path / "lock"
-    env = _quiet_env(tmp_path, GOH_BENCH_MAX_HOLD="6", **load)
+    env = _quiet_env(tmp_path, GOH_BENCH_MAX_HOLD="12", **load)  # a budget of 2 s: 12 - 10
     hold = subprocess.Popen(
-        ["bash", str(QUIET), "--hold", "4", "--settle", "20", "--retry", "0.2", "--",
+        ["bash", str(QUIET), "--hold", "10", "--settle", "20", "--retry", "0.2", "--",
          "sleep", "2.5"],
         env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
     )  # fmt: skip
@@ -457,7 +457,9 @@ def test_the_cap_bounds_the_whole_block_not_only_the_run(tmp_path: Path) -> None
         hold.wait(timeout=40)
     finally:
         hold.kill()
-    assert r.stdout.strip() == "joined" and waited < 5, (waited, r.stderr)
+    # The budget (2 s) + a waiter's 2 s re-check + slack for a loaded box. The old claim held until
+    # a waiter voided it at the 12 s cap.
+    assert r.stdout.strip() == "joined" and waited < 9, (waited, r.stderr)
     err = hold.stderr.read()
     assert hold.returncode == 0 and "letting go" in err, err
 
@@ -467,11 +469,11 @@ def test_a_drain_past_the_budget_lets_go_at_the_budget(tmp_path: Path) -> None:
     new gate blocked behind it, then let go unmeasured -- its run no longer fit the cap -- and
     blamed the load ("not goh's") at 5.58, under the max. A drain is bounded by the budget."""
     lock = tmp_path / "lock"
-    slow = _bash(lock, f'bench_lock_join pre-push; : > "{tmp_path}/in"; sleep 9')
+    slow = _bash(lock, f'bench_lock_join pre-push; : > "{tmp_path}/in"; sleep 20')
     _wait_for(tmp_path / "in")
     q = subprocess.Popen(
-        ["bash", str(QUIET), "--max-load", "1000", "--hold", "3", "--retry", "0.5", "--", "true"],
-        env=_quiet_env(tmp_path, GOH_BENCH_MAX_HOLD="6"), stdout=subprocess.PIPE,
+        ["bash", str(QUIET), "--max-load", "1000", "--hold", "9", "--retry", "0.5", "--", "true"],
+        env=_quiet_env(tmp_path, GOH_BENCH_MAX_HOLD="12"), stdout=subprocess.PIPE,
         stderr=subprocess.PIPE, text=True,
     )  # fmt: skip
     try:
@@ -484,6 +486,8 @@ def test_a_drain_past_the_budget_lets_go_at_the_budget(tmp_path: Path) -> None:
         q.kill()
         slow.kill()
         slow.wait()
-    assert r.stdout.strip() == "joined" and waited < 5, (waited, r.stderr)
+    # The budget (3 s: 12 - 9) + a waiter's 2 s re-check + slack: 5.2 s at load 100 (2026-10-08).
+    # The old drain held until a waiter voided it at the 12 s cap.
+    assert r.stdout.strip() == "joined" and waited < 9, (waited, r.stderr)
     err = q.stderr.read()
     assert q.returncode == 0 and "budget" in err and "not goh's" not in err, err
