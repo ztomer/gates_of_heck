@@ -171,9 +171,16 @@ def test_the_push_gate_joins(repo: Path, tmp_path: Path) -> None:
 QUIET = REPO_ROOT / "tools" / "quiet.sh"
 
 
+def _quiet_env(tmp_path: Path, **extra: str) -> dict[str, str]:
+    """A private lock and desktop lock, fast polls, and a steady control (the real one times 200
+    spawns, which the live box's load would move)."""
+    base = {"GOH_BENCH_DESKTOP_LOCK_DIR": str(tmp_path / "desktop.lock"), "GOH_BENCH_POLL": "0.1",
+            "GOH_BENCH_CONTROL": "echo 1.0"}  # fmt: skip
+    return _env(tmp_path / "lock", **{**base, **extra})
+
+
 def _quiet(tmp_path: Path, *args: str, **extra: str) -> subprocess.CompletedProcess[str]:
-    env = _env(tmp_path / "lock", GOH_BENCH_DESKTOP_LOCK_DIR=str(tmp_path / "desktop.lock"),
-               GOH_BENCH_POLL="0.1", **extra)  # fmt: skip
+    env = _quiet_env(tmp_path, **extra)
     return subprocess.run(["bash", str(QUIET), *args], env=env, capture_output=True, text=True,
                           timeout=60)  # fmt: skip
 
@@ -244,7 +251,8 @@ def test_quiet_takes_its_place_before_it_judges_the_box(tmp_path: Path) -> None:
     assert r.returncode == 0, r.stdout + r.stderr
     reads = _reads(tmp_path)
     assert reads and all(x.startswith("held") for x in reads), reads  # judged only while holding
-    assert reads[-1] == "held 1", reads
+    assert "held 1" in reads, reads  # the drained box read quiet; a waiting join that re-checks
+    # registers for an instant, so a later read may still catch one
 
 
 def test_quiet_lets_go_between_attempts_while_the_box_stays_busy(tmp_path: Path) -> None:
@@ -330,3 +338,35 @@ def test_a_gate_behind_an_overrunning_hold_proceeds_at_the_hold_not_the_cap(tmp_
         hold.kill()
         hold.wait()
     assert r.stdout.strip() == "joined" and waited < 10, (waited, r.stderr)
+
+
+def _controls(tmp_path: Path, *seconds: str) -> dict[str, str]:
+    seq = tmp_path / "controls"
+    seq.write_text("\n".join(seconds) + "\n")
+    script = tmp_path / "control.sh"
+    script.write_text(
+        f'#!/bin/bash\nhead -n 1 "{seq}"; tail -n +2 "{seq}" > "{seq}.n"; mv "{seq}.n" "{seq}"\n'
+    )
+    script.chmod(0o755)
+    return {"GOH_BENCH_CONTROL": str(script)}
+
+
+def test_a_run_whose_controls_move_is_noisy_not_a_number(tmp_path: Path) -> None:
+    """BACKLOG 3.3: background goh cannot hold (an xctest, Spotlight) moves inside a hold, and only
+    a control taken before AND after the run sees it."""
+    r = _quiet(tmp_path, "--max-load", "1000", "--", "true", **_controls(tmp_path, "0.40", "0.80"))
+    assert r.returncode != 0 and "noisy" in r.stderr, r.stdout + r.stderr
+    steady = _quiet(tmp_path, "--max-load", "1000", "--", "true",
+                    **_controls(tmp_path, "0.40", "0.42"))  # fmt: skip
+    assert steady.returncode == 0, steady.stdout + steady.stderr
+    assert "control 0.40 s before, 0.42 s after" in steady.stdout, steady.stdout
+
+
+def test_the_floor_is_measured_holding_the_host(tmp_path: Path) -> None:
+    """The threshold comes from the box: `--floor` drains every gate and samples what is left."""
+    load = _fake_load(tmp_path, [9, 7, 8])
+    r = _quiet(tmp_path, "--floor", "--settle", "3", **load, **_controls(tmp_path, "0.41"))
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert "floor: load 7 min" in r.stdout and "control 0.41 s" in r.stdout, r.stdout
+    assert all(x.startswith("held") for x in _reads(tmp_path)), _reads(tmp_path)
+    assert not (tmp_path / "lock" / "exclusive").exists()

@@ -41,7 +41,7 @@ GOH="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 . "$GOH/lib/desktop_lock/desktop_lock.sh"
 DESKTOP_LOCK_DIR="${GOH_BENCH_DESKTOP_LOCK_DIR:-$DESKTOP_LOCK_DIR}"
 
-max_load=4 settle=300 retry=300 hold="" deadline=14400 label="a measurement" poll="${GOH_BENCH_POLL:-15}"
+max_load=4 settle=300 retry=300 hold="" deadline=14400 label="a measurement" poll="${GOH_BENCH_POLL:-15}" floor=""
 while [ $# -gt 0 ]; do
     case "$1" in
         --max-load) max_load="${2:?--max-load needs a value}"; shift 2 ;;
@@ -50,11 +50,12 @@ while [ $# -gt 0 ]; do
         --hold) hold="${2:?--hold needs a value}"; shift 2 ;;
         --deadline) deadline="${2:?--deadline needs a value}"; shift 2 ;;
         --label) label="${2:?--label needs a value}"; shift 2 ;;
+        --floor) floor=1; shift ;;
         --) shift; break ;;
         *) die "quiet.sh: unknown argument $1 (usage: quiet.sh [--max-load N] [--settle S] [--retry R] [--hold H] [--deadline D] -- CMD...)" ;;
     esac
 done
-[ $# -gt 0 ] || die "quiet.sh: no command to run (usage: quiet.sh [--max-load N] [--settle S] -- CMD...)"
+[ $# -gt 0 ] || [ -n "$floor" ] || die "quiet.sh: no command to run (usage: quiet.sh [--max-load N] [--settle S] -- CMD... | --floor)"
 
 hold="${hold:-$BENCH_LOCK_MAX_HOLD}"
 [ "$hold" -le "$BENCH_LOCK_MAX_HOLD" ] ||
@@ -72,6 +73,19 @@ load1() { # the 1-minute load average
     fi
 }
 below() { awk -v a="$1" -v b="$2" 'BEGIN { exit !(a < b) }'; }
+# The control, in seconds: 200 spawns of /usr/bin/true, the cost this box's gates are bound by
+# (BACKLOG State) -- what background goh cannot hold moves it, and the load average may not.
+control() {
+    if [ -n "${GOH_BENCH_CONTROL:-}" ]; then
+        bash -c "$GOH_BENCH_CONTROL"
+    else
+        python3 -c 'import subprocess, time
+t = time.perf_counter()
+for _ in range(200):
+    subprocess.run(["/usr/bin/true"])
+print(f"{time.perf_counter() - t:.2f}")'
+    fi
+}
 
 trap 'desktop_lock_release; bench_lock_release' EXIT
 trap 'exit 130' INT
@@ -85,6 +99,16 @@ while :; do
     bench_lock_exclusive "$label" || die "quiet.sh: could not hold the host (above)"  # 1. our place
     desktop_lock_acquire "$label"
     t1="$(date +%s)"
+    if [ -n "$floor" ]; then # the floor: every gate drained, what is left, for --settle seconds
+        samples=""
+        until over "$(elapsed "$t1")" "$settle"; do
+            samples="$samples $(load1)"
+            sleep "$(awk -v p="$poll" 'BEGIN { print (p < 5 ? p : 5) }')"
+        done
+        stats="$(printf '%s\n' $samples | sort -n | awk '{ v[NR] = $1 } END { printf "%s min, %s median", v[1], v[int((NR + 1) / 2)] }')"
+        ok "quiet: floor: load $stats over ${settle}s with every gate drained; control $(control) s (200 spawns)"
+        exit 0
+    fi
     until below "$(load1)" "$max_load"; do                                      # 2. the box, drained
         over "$(elapsed "$t1")" "$settle" && break
         sleep "$(awk -v p="$poll" 'BEGIN { print (p < 5 ? p : 5) }')"
@@ -103,13 +127,18 @@ while :; do
 done
 bench_lock_hold "$hold"
 info "quiet: load $(load1) (max $max_load), every gate held for ${hold}s -- running: $*"
-t2="$(date +%s)" rc=0
+c0="$(control)" t2="$(date +%s)" rc=0
 "$@" || rc=$?
+c1="$(control)"
 if over "$(elapsed "$t2")" "$hold"; then
     err "quiet: the run outlived its ${hold}s hold ($(elapsed "$t2")s): the gates resumed under it, so its numbers were not taken quiet -- split it, or hold longer"
     [ "$rc" -ne 0 ] || rc=1
 fi
-info "quiet: load at the end $(load1); exit $rc"
+info "quiet: control $c0 s before, $c1 s after; load at the end $(load1); exit $rc"
+if ! awk -v a="$c0" -v b="$c1" 'BEGIN { d = (b - a) / a; exit !(d <= 0.10 && d >= -0.10) }'; then
+    err "quiet: noisy: the control moved from $c0 s to $c1 s across the run (> 10%): background goh cannot hold changed under it -- not a quiet number"
+    [ "$rc" -ne 0 ] || rc=1
+fi
 exit "$rc"
 exit
 } # parse-guard
