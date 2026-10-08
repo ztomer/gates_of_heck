@@ -53,7 +53,10 @@ from _gitutil import foreign_repo_env  # noqa: E402
 from tui.lib import err, info, ok, warn  # noqa: E402
 
 DEFAULT_WORKLOAD = f'bash "{GOH}/gates/structural.sh" --full'
-QUIET_LOAD = 4.0
+# tools/quiet.sh's --max-load: this box's floor with every gate drained is 4.5 min / 6.2 median
+# (2026-10-08), so the 4 this once was flagged every row (test_session_bench pins the two equal).
+QUIET_LOAD = 8.0
+TAIL = 20  # lines of a failed run's log printed beside its path
 
 # What a waiter prints, per lock. Cargo names the lock it waits on; the house locks say "held by".
 SIGNATURES = (
@@ -145,9 +148,22 @@ def run_row(clones: list[Path], n: int, workload: str, logs: Path, tag: str) -> 
         "makespan": max(s["end"] for s in sessions) - min(s["start"] for s in sessions),
         "walls": [s["end"] - s["start"] for s in sessions],
         "failed": sum(1 for s in sessions if s["rc"] != 0),
+        "rcs": [s["rc"] for s in sessions],
         "logs": [s["log"] for s in sessions],
         "timings": [s["timings"] for s in sessions],
     }
+
+
+def show_failure(runs: list[dict]) -> None:
+    """The first failed run's log, its last TAIL lines: the cause, printed while the path to the
+    whole log is kept. A failure that names only a path names one the caller may delete."""
+    for r in runs:
+        for rc, log in zip(r["rcs"], r["logs"], strict=True):
+            if rc:
+                lines = log.read_text(errors="replace").splitlines()[-TAIL:]
+                err(f"{log} exited {rc}; its last {len(lines)} line(s):")
+                print("\n".join(lines), file=sys.stderr)
+                return
 
 
 def step_means(files: list[Path]) -> dict[str, float]:
@@ -203,9 +219,11 @@ def bench(args) -> int:
             for i, c in enumerate(clones):
                 r = run_row([c], 1, args.workload, logs, f"warm{w}-c{i}")
                 if r["failed"]:
-                    err(f"warm-up failed in clone {i}: {r['logs'][0]}")
+                    show_failure([r])
+                    err(f"warm-up failed in clone {i} -- logs in {logs} (kept)")
+                    args.keep = True
                     return 1
-        rows, timed = [], {}
+        rows, timed, runs = [], {}, []
         for n in sessions:
             load = os.getloadavg()[0]
             if load > QUIET_LOAD:
@@ -215,6 +233,7 @@ def bench(args) -> int:
             reps = [
                 run_row(clones, n, args.workload, logs, f"n{n}-r{r}") for r in range(args.repeat)
             ]
+            runs += reps
             makespan = statistics.median(r["makespan"] for r in reps)
             waits: dict[str, int] = {}
             for r in reps:
@@ -256,6 +275,7 @@ def bench(args) -> int:
             Path(args.json).write_text(json.dumps(doc, indent=2) + "\n")
         failed = sum(r["failed"] for r in rows)
         if failed:
+            show_failure(runs)
             err(
                 f"{failed} session run(s) failed -- logs in {logs} (kept); this is not a measurement"
             )

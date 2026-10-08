@@ -14,6 +14,7 @@ Pinned with workloads whose answer is known: one that holds a shared flock for i
 from __future__ import annotations
 
 import json
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -40,6 +41,16 @@ def _repo(tmp_path: Path) -> Path:
         check=True,
     )
     return repo
+
+
+def _run(tmp_path: Path, workload: str, *args: str) -> subprocess.CompletedProcess:
+    return subprocess.run(
+        [sys.executable, str(BENCH), "--workload", workload, *args, str(_repo(tmp_path))],
+        capture_output=True,
+        text=True,
+        env=hermetic_env(SHARED_LOCK=str(tmp_path / "shared.lock"), TMPDIR=str(tmp_path)),
+        timeout=120,
+    )
 
 
 def _bench(tmp_path: Path, workload: str, *args: str, rc: int = 0) -> dict:
@@ -119,3 +130,32 @@ def test_the_slowest_inflating_steps_are_reported(tmp_path: Path) -> None:
     doc = _bench(tmp_path, timed, "--sessions", "1,3", "--warmup", "0")
     top = doc["inflation"][0]
     assert top["label"] == "locked step" and top["ratio"] > 1.5, doc["inflation"]
+
+
+FAILS = "echo the cause of it; exit 3"
+
+
+def test_a_failed_warm_up_shows_its_cause_and_keeps_its_log(tmp_path: Path) -> None:
+    """The first Phase 4 bench failed in its warm-up, named the log, and then deleted it with the
+    work dir (2026-10-08): the cause was gone. A failure prints the log's tail and keeps it."""
+    r = _run(tmp_path, FAILS, "--sessions", "1", "--warmup", "1")
+    assert r.returncode == 1, r.stdout + r.stderr
+    assert "the cause of it" in r.stderr, r.stderr
+    kept = list(tmp_path.glob("goh-session-bench.*/logs/warm0-c0-s0.log"))
+    assert len(kept) == 1, r.stderr
+
+
+def test_a_failed_row_shows_its_cause(tmp_path: Path) -> None:
+    """The same for a row's failed sessions, which were kept but never shown."""
+    r = _run(tmp_path, FAILS, "--sessions", "2", "--warmup", "0")
+    assert r.returncode == 1, r.stdout + r.stderr
+    assert "the cause of it" in r.stderr, r.stderr
+
+
+def test_the_quiet_threshold_is_quiet_sh_s() -> None:
+    """The bench's 'not a quiet box' warning and tools/quiet.sh judge one box by one number."""
+    ours = re.search(r"^QUIET_LOAD = ([0-9.]+)$", BENCH.read_text(), re.MULTILINE)
+    theirs = re.search(
+        r"^max_load=([0-9.]+) ", (REPO_ROOT / "tools" / "quiet.sh").read_text(), re.MULTILINE
+    )
+    assert ours and theirs and float(ours[1]) == float(theirs[1]), (ours, theirs)
