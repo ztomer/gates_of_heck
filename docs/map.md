@@ -171,7 +171,7 @@ Every structural checker is native since Phase N3; the Python checkers they port
   interference), every lock wait by name, and the steps that inflated most. Pinned by `test_session_bench.py`.
 * `tools/profiling/` — soak/profile harness. See its `README.md`.
 * `install.sh` — wires `.githooks/` + starter `tools/gate.sh` / `.gatesrc`
-  into a consumer repo. Pinned by `test_install.py`.
+  into a consumer repo, all-or-nothing. Pinned by `test_install.py`, `test_install_atomic.py`.
 * `retired_hooks.sha256` — digest of every stock hook ever shipped; a repo hook matching one is pristine to `install.sh`
 * `hooks/` — stock `pre-commit` (structural `--staged`), `pre-push`
   (`tools/gate.sh --full`), `commit-msg` (`gates/commit_msg.sh`), and `post-rewrite` +

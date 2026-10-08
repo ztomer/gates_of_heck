@@ -2,6 +2,18 @@
 
 ## Unreleased
 
+* **`install.sh` is all-or-nothing: a refused install changes nothing** (`install.sh`). The hook
+  loop checked each hook just before copying it, so a refusal on a customised `pre-commit` came
+  after `commit-msg`, which sorts first, had been copied and recorded: monitor (2026-10-08) was
+  left with a stray stock `.githooks/commit-msg` and a `.githooks/.goh-installed/` beside the hook
+  install.sh said it would not touch. The class is write-as-you-go-then-refuse, and the script had
+  two more: `mkdir -p "$target"` ran before the "is it a git repo" check (a refused path was
+  created), and the `bin/goh` build -- the last step that can die -- ran after every target write.
+  The script is now validate → build (this checkout only) → write: pass 1 decides every hook and
+  names EVERY modified one in a single refusal (it used to stop at the first), the build follows,
+  and nothing after it refuses. RED FIRST: `tests/test_install_atomic.py`, five tests red against
+  the old script, each asserting the target byte-for-byte unchanged (directories and modes too).
+
 * **`check_tests_registered.py`: a test registered in an `include()`d `.cmake` file counts**
   (`checks/check_tests_registered.py`). The line cap counts `CMakeLists.txt` (b85e0af), and the
   usual way to bring a long one under it is `include(cmake/Tests.cmake)`. The checker read only

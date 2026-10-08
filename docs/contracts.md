@@ -66,9 +66,12 @@ Pin: `tests/test_coverage_gate.py`, `tests/test_cwd_and_py_gate.py`.
 Hooks delegate to the shared checkout via `GOH_DIR` and vendor nothing.
 `install.sh` records installed-hook hashes and refuses to clobber a
 locally modified hook without `--force`; it writes starter
-`tools/gate.sh` / `.gatesrc` only when absent. `pre-push` names a
-missing `tools/gate.sh` instead of exec-failing.
-Pin: `tests/test_install.py`, `tests/test_wiring.py`.
+`tools/gate.sh` / `.gatesrc` only when absent. It is all-or-nothing:
+every refusal (each modified hook named) and a failed `bin/goh` build
+come before the first write, so a refused install leaves the target
+byte-for-byte unchanged. `pre-push` names a missing `tools/gate.sh`
+instead of exec-failing.
+Pin: `tests/test_install.py`, `tests/test_install_atomic.py`, `tests/test_wiring.py`.
 
 ## 9. Config schema cannot drift (`docs/config.md`, `.gatesrc.example`)
 

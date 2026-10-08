@@ -10,13 +10,14 @@
 #      PROTECTED: the sha256 of each installed hook is recorded in
 #      .githooks/.goh-installed/<name>.sha256, and a reinstall overwrites a
 #      hook only if its current bytes equal the stock copy OR our recorded
-#      install-time hash. A locally extended/replaced hook is refused BY NAME
-#      unless --force is passed.
+#      install-time hash. Locally extended/replaced hooks are refused, EVERY
+#      one by name, unless --force is passed.
 #   2. git config core.hooksPath .githooks
 #   3. writes starter tools/gate.sh and .gatesrc if absent (never overwrites)
 #
-# It REFUSES, before writing anything, a repo whose hooks another manager owns
-# (.git/hooks with live hooks, another core.hooksPath, .pre-commit-config.yaml):
+# ALL-OR-NOTHING: every refusal and a failed bin/goh build come before the first
+# write; an install completes or leaves the target untouched. It REFUSES hooks
+# another manager owns (.git/hooks, another core.hooksPath, pre-commit config):
 # core.hooksPath would silently stop them. --replace-hooks takes them over.
 #
 # It does NOT copy the checkers: hooks delegate to this checkout at runtime,
@@ -32,7 +33,7 @@ REPLACE=0
 while [ $# -gt 0 ]; do
     case "$1" in
         -h|--help)
-            sed -n '2,20p' "$HERE/install.sh"
+            sed -n '2,21p' "$HERE/install.sh"
             echo "--force overwrites even locally modified hooks."
             echo "--replace-hooks takes over from hooks another manager owns (named first)."
             exit 0 ;;
@@ -43,7 +44,10 @@ while [ $# -gt 0 ]; do
 done
 
 target="${1:-$PWD}"
-mkdir -p "$target"
+# ALL-OR-NOTHING (monitor, 2026-10-08): every check runs before the first write to the target, so a
+# refusal or a failure leaves it byte-for-byte as it was. Order: validate → build (this checkout
+# only) → write. tests/test_install_atomic.py
+[ -d "$target" ] || die "$target is not a directory -- nothing written"
 target="$(cd "$target" && pwd)"
 
 git -C "$target" rev-parse --show-toplevel >/dev/null 2>&1 \
@@ -83,16 +87,19 @@ fi
 
 hooks_dir="$target/.githooks"
 rec_dir="$hooks_dir/.goh-installed"
-mkdir -p "$hooks_dir" "$rec_dir"
-# Every stock hook is a FILE in hooks/ (hooks/claude/ is a directory, a different kind): the
-# directory is the list, so a new hook is installed without a second place to name it.
+# Pass 1 decides every hook, writes nothing. Copying as it checked left monitor with a stock
+# commit-msg and an install record beside the customised pre-commit it then refused. Every stock
+# hook is a FILE in hooks/ (hooks/claude/ is a directory, a different kind): the directory is the
+# list, so a new hook is installed without a second place to name it.
+install_hooks=()
+refused=()
 for stock in "$HERE"/hooks/*; do
     [ -f "$stock" ] || continue
     h="$(basename "$stock")"
     dst="$hooks_dir/$h"
-    stock_hash="$(hash_hex "$HERE/hooks/$h")" \
+    stock_hash="$(hash_hex "$stock")" \
         || die "no sha256 tool found (need shasum, sha256sum, or cksum -a sha256)"
-    if [ -f "$dst" ]; then
+    if [ -f "$dst" ] && [ "$FORCE" -ne 1 ]; then
         cur_hash="$(hash_hex "$dst")" || die "no sha256 tool found for hashing $dst"
         recorded_hash="$(cat "$rec_dir/$h.sha256" 2>/dev/null || true)"
         # Overwrite ONLY when the target is pristine: identical to the stock
@@ -101,21 +108,49 @@ for stock in "$HERE"/hooks/*; do
         # record). Anything else was edited locally (repos append stages to
         # pre-push, replace pre-commit outright) and is not ours to clobber
         # silently.
-        retired=0
-        if grep -q "^$cur_hash  $h" "$HERE/retired_hooks.sha256" 2>/dev/null; then
-            retired=1
-        fi
         if [ "$cur_hash" != "$stock_hash" ] && [ "$cur_hash" != "$recorded_hash" ] \
-           && [ "$retired" -ne 1 ] && [ "$FORCE" -ne 1 ]; then
-            err "install: $dst differs from both the stock hook and our install record"
-            err "  it looks locally modified — refusing to overwrite it"
-            err "  pass --force to replace it with the stock hook anyway"
-            exit 1
+           && ! grep -q "^$cur_hash  $h" "$HERE/retired_hooks.sha256" 2>/dev/null; then
+            refused+=("$h")
+            continue
         fi
     fi
-    cp "$HERE/hooks/$h" "$dst"
-    chmod +x "$dst"
-    hash_hex "$dst" >"$rec_dir/$h.sha256"
+    install_hooks+=("$h")
+done
+if [ "${#refused[@]}" -gt 0 ]; then
+    for h in "${refused[@]}"; do
+        err "install: $hooks_dir/$h differs from both the stock hook and our install record"
+    done
+    err "  it looks locally modified — refusing to overwrite it; nothing written"
+    err "  pass --force to replace it with the stock hook anyway"
+    exit 1
+fi
+
+# The native structural binary. gates/structural.sh execs bin/goh when it is
+# here and runs the Python checkers (saying so) when it is not, so this step
+# is an accelerator, never a prerequisite: a machine without cargo still gets
+# every gate. Built once per checkout, idempotent, shared across every repo
+# the hooks point at (they all delegate to this directory). It is the last step
+# that can die and it touches only this checkout, so it runs BEFORE the target
+# is written: a dead build installs nothing.
+if [ ! -f "$HERE/scripts/build-goh.sh" ]; then
+    warn "scripts/build-goh.sh not present beside install.sh — bin/goh not built; structural.sh runs the Python checkers"
+elif command -v cargo >/dev/null 2>&1; then
+    if [ -n "${GOH_SKIP_BUILD:-}" ]; then
+        info "GOH_SKIP_BUILD set — not building bin/goh"
+    else
+        "$HERE/scripts/build-goh.sh" \
+            || die "goh build failed — nothing written to $target; fix it or set GOH_SKIP_BUILD=1 to install hooks only"
+    fi
+else
+    warn "cargo not found — bin/goh not built; structural.sh runs the Python checkers until it is"
+fi
+
+# Pass 2: the writes. Nothing below refuses.
+mkdir -p "$hooks_dir" "$rec_dir"
+for h in ${install_hooks[@]+"${install_hooks[@]}"}; do   # bash 3.2: empty "${a[@]}" is unbound
+    cp "$HERE/hooks/$h" "$hooks_dir/$h"
+    chmod +x "$hooks_dir/$h"
+    hash_hex "$hooks_dir/$h" >"$rec_dir/$h.sha256"
 done
 
 git -C "$target" config core.hooksPath .githooks
@@ -179,23 +214,6 @@ GOH_MAX_LINES=500                 # file-length cap; unset disables the check
 # in the environment for ~/Projects/scripts/bin/disk_hygiene.sh, not here.
 SRC
     info "wrote .gatesrc"
-fi
-
-# The native structural binary. gates/structural.sh execs bin/goh when it is
-# here and runs the Python checkers (saying so) when it is not, so this step
-# is an accelerator, never a prerequisite: a machine without cargo still gets
-# every gate. Built once per checkout, idempotent, shared across every repo
-# the hooks point at (they all delegate to this directory).
-if [ ! -f "$HERE/scripts/build-goh.sh" ]; then
-    warn "scripts/build-goh.sh not present beside install.sh — bin/goh not built; structural.sh runs the Python checkers"
-elif command -v cargo >/dev/null 2>&1; then
-    if [ -n "${GOH_SKIP_BUILD:-}" ]; then
-        info "GOH_SKIP_BUILD set — not building bin/goh"
-    else
-        "$HERE/scripts/build-goh.sh" || die "goh build failed — fix it or set GOH_SKIP_BUILD=1 to install hooks only"
-    fi
-else
-    warn "cargo not found — bin/goh not built; structural.sh runs the Python checkers until it is"
 fi
 
 ok "installed into $target (core.hooksPath → .githooks)"
