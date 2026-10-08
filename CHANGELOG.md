@@ -2,6 +2,28 @@
 
 ## Unreleased
 
+* **`goh checkout-credentials`: an `actions/checkout` step drops the job token**
+  (`crates/goh/src/checkoutcreds/`). checkout writes the job token into `.git/config` as
+  `http.*.extraheader` unless its step sets `persist-credentials: false`; every later step can read
+  it there, and `goh credential-urls` (0560b72) refuses it -- so every consumer whose CI runs the
+  structural gate after a default checkout is red in CI and nowhere else (monitor, 2026-10-05..08).
+  The class -- a checkout that leaves the token in git config -- is now red at the commit: every
+  `uses: actions/checkout@<any ref>` step in `.github/workflows/*.yml|yaml` and in a composite
+  action (`.github/actions/**/action.yml|yaml`) sets `persist-credentials` to the literal `false`,
+  or carries `# persist-credentials-ok: <reason>` on the step or directly above it (a release job
+  that pushes its tag). `true`, an expression, `no`, an empty reason and a stale marker on a
+  checkout that already sets `false` are findings, named `file:line` with the step and the fix.
+  The YAML is PARSED, not line-scanned (new dependency `saphyr` 0.1.0, default features off: a
+  `uses:` in a `run: |` block is script text, a flow-mapping step is a step, an alias resolves to
+  what it names); comments are not in a parse, so the marker is read from the step's own source
+  lines. A HARD structural step in every repo at both scopes, beside `credential-urls`. No path
+  exemption: a credential check takes none (`goh secrets`), and a workflow under `.github/` is the
+  repo's own by construction; `tests/test_exclude_scope_doc.py` holds it there. RED FIRST, by
+  mutation: checkout not recognised, `true` accepted, the marker ignored, the block-scalar guard
+  dropped (each red in `checkoutcreds/tests.rs`), and the step unwired (the pipeline inventory and
+  both-scopes tests red).
+
+
 * **`install.sh` is all-or-nothing: a refused install changes nothing** (`install.sh`). The hook
   loop checked each hook just before copying it, so a refusal on a customised `pre-commit` came
   after `commit-msg`, which sorts first, had been copied and recorded: monitor (2026-10-08) was

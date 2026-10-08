@@ -2,9 +2,9 @@
 //! since Phase N3 retired `gates/structural.sh`'s Python branch.
 
 use crate::{
-    blobs, claims, credurls, deadexec, earlypipe, gatesrc, gitutil, goh_root, hookindex, killname,
-    lockver, mdlinks, prefetch, provenance, pyformat, scope, shell_lint, steps, steps_delegated,
-    steps_rust, unreaped, vendored,
+    blobs, checkoutcreds, claims, credurls, deadexec, earlypipe, gatesrc, gitutil, goh_root,
+    hookindex, killname, lockver, mdlinks, prefetch, provenance, pyformat, scope, shell_lint,
+    steps, steps_delegated, steps_rust, unreaped, vendored,
 };
 
 mod trackedignored;
@@ -79,11 +79,7 @@ pub fn run(staged: bool, full: bool) -> i32 {
     if let Some(code) = steps::step_secrets(&repo, &files, staged) {
         return code;
     }
-    // A credential in a git remote URL, which the step above cannot see: `.git/config` is
-    // untracked. Adjacent to `step_secrets` because it is the same defect class and the same
-    // reasoning about it -- one committed, one not -- so a reader comparing the two steps finds
-    // them adjacent rather than having to know they are related.
-    if let Some(code) = credurls::step() {
+    if let Some(code) = git_config_steps(&repo, &files, staged) {
         return code;
     }
     if let Some(code) = steps::step_home_paths(&repo, &files, &cfg, staged) {
@@ -146,4 +142,15 @@ fn shell_steps(
         .or_else(|| earlypipe::step(repo, files, cfg, staged))
         .or_else(|| deadexec::step(repo, files, cfg, staged))
         .or_else(|| hookindex::step(repo, files, cfg, staged))
+}
+
+/// A credential in git config, which `step_secrets` cannot see: `.git/config` is untracked.
+/// Adjacent to `step_secrets` because it is the same defect class and the same reasoning about
+/// it -- one committed, one not -- so a reader comparing the steps finds them adjacent rather than
+/// having to know they are related. Then the commonest way a token GETS there: `actions/checkout`
+/// persists the job token as `http.*.extraheader` unless its step sets
+/// `persist-credentials: false`. The first step finds it in CI, after the checkout ran; the second
+/// finds it in the workflow, at the commit.
+fn git_config_steps(repo: &std::path::Path, files: &[String], staged: bool) -> Option<i32> {
+    credurls::step().or_else(|| checkoutcreds::step(repo, files, staged))
 }

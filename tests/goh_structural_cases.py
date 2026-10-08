@@ -90,6 +90,18 @@ FULL_CASES: dict[str, dict[str, bytes]] = {
         "a.sh": b'#!/bin/sh\nGIT_INDEX_FILE="${GOH_HOOK_INDEX_FILE:-x}" git diff --cached\n',
     },
     "hook_index_green": {".gatesrc": GATESRC, "a.sh": b"#!/bin/sh\nunset GOH_HOOK_INDEX_FILE\n"},
+    # checkout-credentials, a hard gate in every repo: a default checkout fails; `false` passes.
+    "checkout_token_red": {
+        ".gatesrc": GATESRC,
+        ".github/workflows/ci.yml": b"jobs:\n  a:\n    steps:\n      - uses: actions/checkout@v4\n",
+    },
+    "checkout_token_green": {
+        ".gatesrc": GATESRC,
+        ".github/workflows/ci.yml": (
+            b"jobs:\n  a:\n    steps:\n      - uses: actions/checkout@v4\n"
+            b"        with:\n          persist-credentials: false\n"
+        ),
+    },
     "kill_by_name_green": {
         ".gatesrc": b"GOH_MAX_LINES=10\nGOH_NO_KILL_BY_NAME=1\n",
         "run.py": b"import os\nos.killpg(os.getpgid(0), 15)\n",
@@ -177,6 +189,8 @@ EXPECTED: dict[str, tuple[int, str | None]] = {
     "claim_red": (1, "prose claims are derived"),
     "requires_call_green": (0, None),
     "requires_call_red": (1, "a file that calls X calls Y"),
+    "checkout_token_green": (0, None),
+    "checkout_token_red": (1, "no checkout leaves its token in git config"),
     "clean": (0, None),
     "dead_exec_green": (0, None),
     "dead_exec_red": (1, "no code after exec"),

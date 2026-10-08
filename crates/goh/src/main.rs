@@ -14,6 +14,7 @@ pub mod blobs;
 pub mod bounded;
 pub mod canarycmd;
 pub mod ceiling;
+pub mod checkoutcreds;
 pub mod claims;
 pub mod cli;
 pub mod commands;
@@ -323,6 +324,7 @@ fn run_ported(command: Commands) -> Result<i32, Box<Commands>> {
             declared(exclude, None, gatesrc::Exempt::Paths)
                 .map_or_else(|code| code, |x| hookindex::run_command(staged, &x))
         }
+        Commands::CheckoutCredentials { staged } => checkoutcreds::run_command(staged),
         Commands::UnreapedSpawn {
             exclude,
             staged,

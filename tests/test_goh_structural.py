@@ -134,7 +134,8 @@ INVENTORY_CASE: dict[str, bytes] = {
 # 2026-10-03 (`no unreaped spawns in tests`), 18 on 2026-10-04 (`prose claims are derived`),
 # 19 on 2026-10-05 (`no credential in a git remote URL`), 20 on 2026-10-06 (`no vendored copies
 # of house checkers`, R5), 21-23 on 2026-10-08 (requires-call, early-exit pipe, code after exec),
-# 24 the same day (`no tracked file its .gitignore ignores`), 25 (`no bare read of the hook's index`).
+# 24 the same day (`no tracked file its .gitignore ignores`), 25 (`no bare read of the hook's index`),
+# 26 (`no checkout leaves its token in git config`).
 INVENTORY = [
     "a file that calls X calls Y",
     "Cargo.lock matches its manifests",
@@ -145,6 +146,7 @@ INVENTORY = [
     "line-cap exemptions carry a ceiling",
     "markdown links resolve",
     "no bare read of the hook's index",
+    "no checkout leaves its token in git config",
     "no committed secrets",
     "no conflict markers",
     "no credential in a git remote URL",

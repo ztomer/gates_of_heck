@@ -396,6 +396,15 @@ pub enum Commands {
         #[arg(long)]
         staged: bool,
     },
+    /// Fail on an `actions/checkout` step (workflow or composite action) that leaves the job token
+    /// in `.git/config`: `persist-credentials` not the literal `false`, and no
+    /// `# persist-credentials-ok: <reason>` on the step. No `--exclude`: a credential check takes no
+    /// path exemption (`goh secrets`).
+    CheckoutCredentials {
+        /// Staged blobs (polices the index).
+        #[arg(long)]
+        staged: bool,
+    },
     /// Fail on a test spawn no guard reaps, or whose reap sits below a line
     /// that can panic (native port of `check_no_unreaped_spawn`).
     UnreapedSpawn {

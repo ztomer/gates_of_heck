@@ -23,6 +23,9 @@ regex = "1"
 ruff_python_ast = "0.0.16"
 ruff_python_parser = "0.0.16"
 ruff_text_size = "0.0.16"
+# YAML for `goh checkout-credentials`: a workflow's structure (block scalars, flow maps, anchors)
+# decides which `uses:` is a step, and a line scan guesses at it. No encoding_rs: input is UTF-8.
+saphyr = { version = "0.1.0", default-features = false }
 fancy-regex = "0.19.2"
 serde_json = { version = "1", features = ["preserve_order"] }
 signal-hook = "0.4.5"

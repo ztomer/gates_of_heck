@@ -69,3 +69,14 @@ def test_the_secrets_scan_cannot_take_a_path_exemption() -> None:
     step = (SRC / "steps.rs").read_text(encoding="utf-8").split("pub fn step_secrets", 1)[1]
     step = step.split("\n}\n", 1)[0]
     assert "cfg" not in step and "compile_exclude" not in step, step
+
+
+def test_the_checkout_credentials_scan_cannot_take_a_path_exemption() -> None:
+    """The same rule for the token a checkout leaves in git config: its one escape is the
+    reasoned `persist-credentials-ok:` marker on the step, never a path pattern."""
+    assert "nor the checkout-credentials scan" in _row()
+    mod = SRC / "checkoutcreds"
+    for f in mod.glob("*.rs"):
+        text = f.read_text(encoding="utf-8")
+        assert "PathFilter" not in text and "compile_exclude" not in text, f
+        assert not READS_KEY.search(text), f
