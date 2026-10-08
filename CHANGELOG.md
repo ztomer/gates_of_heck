@@ -2,6 +2,34 @@
 
 ## Unreleased
 
+* **`goh dead-after-exec`: no code after an `exec` that replaced the shell** (`crates/goh/src/deadexec/`).
+  app_updates' tools/gate.sh ran `exec python3 tools/check_roadmap.py --self-test` and then
+  `exec python3 tools/check_roadmap.py` in one case arm. The second never ran, so the full gate
+  never judged ROADMAP.md, only its self-test fixtures -- a gate that could not fail (fixed in
+  app_updates 5a4b33c). shellcheck 0.11.0 exits 0 on that arm and on a top-level
+  `exec echo a; echo b`. The class: a statement after a non-redirect `exec CMD` in the same
+  block is unreachable. A block ends at `;;`/`;&`/`;;&`, `esac`, `fi`, `else`, `elif`, `done`,
+  `}`, `)`, `then`/`do`, or EOF; blank lines and comments are not statements; a line
+  continuation, a multi-line quoted argument, a `$( )`/`<( )`/backtick and a heredoc body are
+  all part of the exec's own statement. Not findings: a redirect-only `exec` (`exec >log 2>&1`,
+  `exec 3<&-`, `exec {fd}>f`); an `exec` joined by `||`/`&&`/`|` (also across a line break),
+  backgrounded, or ended by `)` (`( exec x ); y`: only the subshell is replaced); and ONE bare
+  `exit`/`exit N` after it -- the house parse-guard's `exec ... "$@"` / `exit` / `} # parse-guard`.
+  Anything after that `exit` is still dead, and so is the rest of a subshell after its own
+  `exec`. Scope is every shell source, the set early-exit-pipe reads; "what is a shell source"
+  moved to `crates/goh/src/shellsrc.rs` so the two scanners share one definition, and the lexer
+  gained `mask_top` so a newline inside a quote ends no statement. A HARD structural step in
+  every repo at both scopes, not a ratchet: the sweep over all 30 `.gatesrc` repos (547 shell
+  sources, 190 `exec CMD` lines) found nothing to migrate. `GOH_EXCLUDE` applies. RED FIRST: the
+  table in `deadexec/tests.rs` ran red against a stub. The first mutation round left 6 of 17
+  green: four were rules no row discriminated (rows added: `exec -a NAME` alone, a multi-line
+  subshell after an exec, a `||`/`&&`/`|` at a line end before the exec, a `$( )` in the exec's
+  own words) and two were DEAD logic, deleted -- a `case`/`(` context stack (the judgment reads
+  only what ended a statement, and a pattern's `)` and a subshell's `)` both end the block) and a
+  non-top token branch in the splitter. Final round: 18 mutations, every one red. The incident
+  replayed: app_updates' pre-5a4b33c `tools/gate.sh` is red at `:54`, its fixed blob green; the
+  table's first row is that arm. Pinned by `deadexec/tests.rs` and `tests/test_check_dead_after_exec.py`; the 23rd
+  INVENTORY step.
 * **`GOH_EXCLUDE` no longer reaches the secrets scan, and cannot.** docs/config.md said the key
   exempted the emoji scan, the length cap and unreaped spawns; the code applied it to ten checks,
   the credential scan among them. `app_updates` excluded a vendored crate from house style

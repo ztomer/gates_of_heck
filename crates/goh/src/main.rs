@@ -19,6 +19,7 @@ pub mod cli;
 pub mod commands;
 pub mod commit_class;
 pub mod credurls;
+pub mod deadexec;
 pub mod deps;
 pub mod earlypipe;
 pub mod emoji;
@@ -54,6 +55,7 @@ pub mod screen_mask;
 pub mod screen_shapes;
 pub mod secrets;
 pub mod shell_lint;
+pub mod shellsrc;
 pub mod skills;
 pub mod skills_audit;
 pub mod step_report;
@@ -310,6 +312,10 @@ fn run_ported(command: Commands) -> Result<i32, Box<Commands>> {
         Commands::EarlyExitPipe { exclude, staged } => {
             declared(exclude, None, gatesrc::Exempt::Paths)
                 .map_or_else(|code| code, |x| earlypipe::run_command(staged, &x))
+        }
+        Commands::DeadAfterExec { exclude, staged } => {
+            declared(exclude, None, gatesrc::Exempt::Paths)
+                .map_or_else(|code| code, |x| deadexec::run_command(staged, &x))
         }
         Commands::UnreapedSpawn {
             exclude,

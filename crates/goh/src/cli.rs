@@ -371,6 +371,16 @@ pub enum Commands {
         #[arg(long)]
         staged: bool,
     },
+    /// Fail on a statement after an `exec` that replaced the shell: it can never run.
+    DeadAfterExec {
+        /// Regex on repo-relative paths to skip. Unset: the repo's own `.gatesrc` `GOH_EXCLUDE`, as
+        /// its structural gate applies it; `--exclude ''` opts out.
+        #[arg(long)]
+        exclude: Option<String>,
+        /// Staged blobs (polices the index).
+        #[arg(long)]
+        staged: bool,
+    },
     /// Fail on a test spawn no guard reaps, or whose reap sits below a line
     /// that can panic (native port of `check_no_unreaped_spawn`).
     UnreapedSpawn {

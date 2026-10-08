@@ -43,7 +43,8 @@ fn words_from(m: &[char], mut i: usize) -> (Vec<(usize, usize)>, usize) {
 }
 
 /// A word's shell value, quotes removed (enough for flags and literal programs).
-fn unquote(raw: &[char]) -> String {
+#[must_use]
+pub fn unquote(raw: &[char]) -> String {
     let mut out = String::new();
     let mut quote: Option<char> = None;
     let mut i = 0usize;

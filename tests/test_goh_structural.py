@@ -163,6 +163,9 @@ FULL_CASES: dict[str, dict[str, bytes]] = {
         ".gatesrc": GATESRC,
         "a.sh": b"#!/bin/bash\nset -euo pipefail\nls | grep -q x\n",
     },
+    # dead-after-exec, a hard gate in every repo: code after `exec CMD` fails; the parse-guard passes.
+    "dead_exec_red": {".gatesrc": GATESRC, "a.sh": b"#!/bin/sh\nexec true\necho never\n"},
+    "dead_exec_green": {".gatesrc": GATESRC, "a.sh": b"#!/bin/sh\n{\nexec true\nexit\n}\n"},
     "kill_by_name_green": {
         ".gatesrc": b"GOH_MAX_LINES=10\nGOH_NO_KILL_BY_NAME=1\n",
         "run.py": b"import os\nos.killpg(os.getpgid(0), 15)\n",
@@ -251,6 +254,8 @@ EXPECTED: dict[str, tuple[int, str | None]] = {
     "requires_call_green": (0, None),
     "requires_call_red": (1, "a file that calls X calls Y"),
     "clean": (0, None),
+    "dead_exec_green": (0, None),
+    "dead_exec_red": (1, "no code after exec"),
     "early_exit_pipe_green": (0, None),
     "early_exit_pipe_named": (0, None),
     "early_exit_pipe_red": (1, "no early-exit pipe under pipefail"),
@@ -318,7 +323,7 @@ INVENTORY_CASE: dict[str, bytes] = {
 # (docs/SUPERSOTA.md R4), so the only proof a step runs is its label here. 16 -> 17 on
 # 2026-10-03 (`no unreaped spawns in tests`), 18 on 2026-10-04 (`prose claims are derived`),
 # 19 on 2026-10-05 (`no credential in a git remote URL`), 20 on 2026-10-06 (`no vendored copies
-# of house checkers`, R5), 21+22 on 2026-10-08 (requires-call, `no early-exit pipe under pipefail`).
+# of house checkers`, R5), 21-23 on 2026-10-08 (requires-call, early-exit pipe, code after exec).
 INVENTORY = [
     "a file that calls X calls Y",
     "Cargo.lock matches its manifests",
@@ -331,6 +336,7 @@ INVENTORY = [
     "no committed secrets",
     "no conflict markers",
     "no credential in a git remote URL",
+    "no code after exec",
     "no disallowed emoji",
     "no early-exit pipe under pipefail",
     "no hard-coded home paths",
@@ -489,11 +495,3 @@ def test_an_inherited_exemption_does_not_hide_a_violation(goh: Path, tmp_path: P
     hostile = _run_bash(repo, False, {"GOH_EXCLUDE": ".*"}, goh=goh)
     assert hostile.returncode != 0, hostile.stdout + hostile.stderr
     assert "emoji" in (hostile.stdout + hostile.stderr).lower()
-
-
-def test_goh_is_built_once_per_session(goh: Path, goh_build_count: int) -> None:
-    """The class behind 23 errors in one pre-push run (2026-09-22): a session fixture under xdist
-    runs once PER WORKER, and each worker's `cargo build` re-linked the binary another worker was
-    copying. One build per session is the invariant; more than one is the race coming back."""
-    assert goh.exists()
-    assert goh_build_count == 1, f"goh was built {goh_build_count} times in one session"

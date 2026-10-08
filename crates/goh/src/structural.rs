@@ -2,8 +2,8 @@
 //! since Phase N3 retired `gates/structural.sh`'s Python branch.
 
 use crate::{
-    blobs, claims, credurls, earlypipe, gatesrc, gitutil, goh_root, killname, lockver, mdlinks,
-    prefetch, provenance, pyformat, scope, shell_lint, steps, steps_delegated, steps_rust,
+    blobs, claims, credurls, deadexec, earlypipe, gatesrc, gitutil, goh_root, killname, lockver,
+    mdlinks, prefetch, provenance, pyformat, scope, shell_lint, steps, steps_delegated, steps_rust,
     unreaped, vendored,
 };
 
@@ -71,11 +71,7 @@ pub fn run(staged: bool, full: bool) -> i32 {
     if let Some(code) = steps::step_corpus(&repo, &cfg, staged) {
         return code;
     }
-    if let Some(code) = shell_lint::step(&cfg, staged) {
-        return code;
-    }
-    // Beside shell lint: the same files, and a defect shellcheck cannot see (it is a race).
-    if let Some(code) = earlypipe::step(&repo, &files, &cfg, staged) {
+    if let Some(code) = shell_steps(&repo, &files, &cfg, staged) {
         return code;
     }
     if let Some(code) = steps::step_secrets(&repo, &files, staged) {
@@ -128,4 +124,17 @@ pub fn run(staged: bool, full: bool) -> i32 {
     println!();
     println!("✓ all structural gates passed");
     0
+}
+
+/// The shell-source steps, in order: shell lint, then two defects shellcheck 0.11.0 exits 0 on,
+/// over the same files -- a race (an early-exit pipe) and dead code (a statement after `exec`).
+fn shell_steps(
+    repo: &std::path::Path,
+    files: &[String],
+    cfg: &gatesrc::Gatesrc,
+    staged: bool,
+) -> Option<i32> {
+    shell_lint::step(cfg, staged)
+        .or_else(|| earlypipe::step(repo, files, cfg, staged))
+        .or_else(|| deadexec::step(repo, files, cfg, staged))
 }

@@ -231,6 +231,15 @@ impl Masker {
 /// The masked text: code kept, strings filled, comments and heredoc bodies blanked.
 #[must_use]
 pub fn mask(src: &str) -> Vec<char> {
+    mask_top(src).0
+}
+
+/// [`mask`], and per output char whether it was read at the TOP frame.
+///
+/// The top frame is outside every string and every `$( )` opened inside one. A newline flagged `false` sits inside a quoted span, so it does
+/// not end a command (`goh dead-after-exec` splits statements on the flagged ones only).
+#[must_use]
+pub fn mask_top(src: &str) -> (Vec<char>, Vec<bool>) {
     let text: Vec<char> = src.chars().collect();
     let mut m = Masker {
         out: Vec::with_capacity(text.len()),
@@ -238,15 +247,18 @@ pub fn mask(src: &str) -> Vec<char> {
         stack: vec![TOP],
         pending: Vec::new(),
     };
+    let mut top = Vec::with_capacity(m.text.len());
     let mut i = 0usize;
     while i < m.text.len() {
+        let at_top = m.stack.len() == 1;
         i = match m.stack.last().copied().unwrap_or(TOP) {
             Frame::Single { ansi } => m.single(i, ansi),
             Frame::Double => m.double(i),
             Frame::Code { close, depth } => m.code(i, close, depth),
         };
+        top.resize(m.out.len(), at_top);
     }
-    m.out
+    (m.out, top)
 }
 
 #[cfg(test)]
