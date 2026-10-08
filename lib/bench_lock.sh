@@ -8,7 +8,8 @@
 #
 #   * every gate JOINS (goh_init, push_gate.sh, local_ci.sh): a file named by its pid in
 #     $BENCH_LOCK_DIR/gates, written with bash builtins only -- no process spawned on the path
-#     every commit takes -- and then a look for a measurement;
+#     every commit takes -- and then a look for a measurement. One that finds a measurement
+#     waits with NO file there: registered, a waiter is a running gate to the drain;
 #   * a measurement takes it EXCLUSIVE (`bench_lock_exclusive`, tools/quiet.sh): `mkdir` of
 #     $BENCH_LOCK_DIR/exclusive (atomic), then it waits for every registered gate to finish.
 #     Either the gate sees the measurement and steps back, or the measurement sees the gate and
@@ -55,7 +56,7 @@ _bench_owner_field() {
             printf '%s' "$line"
             return 0
         fi
-    done <"$BENCH_LOCK_DIR/exclusive/owner" 2>/dev/null
+    done 2>/dev/null <"$BENCH_LOCK_DIR/exclusive/owner"
     return 1
 }
 
@@ -110,31 +111,40 @@ _bench_nested() {
 # Never fails a gate: a lock it cannot write is a lock it does not take part in.
 bench_lock_join() {
     [ -n "${GOH_BENCH_JOINED:-}" ] && return 0 # an ancestor gate joined for this tree
-    local gates="$BENCH_LOCK_DIR/gates" said=""
+    local gates="$BENCH_LOCK_DIR/gates" said="" through=""
     [ -d "$gates" ] || { mkdir -p "$gates" && chmod 1777 "$BENCH_LOCK_DIR" "$gates"; } 2>/dev/null || return 0
     while :; do
+        # Held: look WITHOUT a file in gates/ -- a waiter registered there through its stale and
+        # nested checks (a `ps` each) reads to the drain as a running gate, and on a loaded box
+        # with dozens queued the drain never saw gates/ empty (2026-10-08).
+        if [ -d "$BENCH_LOCK_DIR/exclusive" ] && [ -z "$through" ]; then
+            if _bench_exclusive_stale; then
+                rm -rf "$BENCH_LOCK_DIR/exclusive"
+                continue
+            fi
+            if _bench_nested; then
+                through=1
+            else
+                if [ -z "$said" ]; then # queued: the next claim lets this gate in first (_bench_yield)
+                    mkdir -p "$BENCH_LOCK_DIR/waiting" 2>/dev/null && chmod 1777 "$BENCH_LOCK_DIR/waiting" 2>/dev/null
+                    : >"$BENCH_LOCK_DIR/waiting/$$" 2>/dev/null
+                    printf '· %s: waiting for a measurement to finish: %s%s\n' "$1" \
+                        "$(_bench_owner_field 5 || echo 'one starting')" "$(_bench_ends)" >&2
+                    said=1
+                fi
+                sleep 2
+                continue
+            fi
+        fi
         BENCH_LOCK_ENTRY="$gates/$$"
         printf '%s\n' "$1" >"$BENCH_LOCK_ENTRY" 2>/dev/null || {
             BENCH_LOCK_ENTRY=""
             [ -z "$said" ] || rm -f "$BENCH_LOCK_DIR/waiting/$$"
             return 0
         }
-        [ -d "$BENCH_LOCK_DIR/exclusive" ] || break
-        if _bench_exclusive_stale; then
-            rm -rf "$BENCH_LOCK_DIR/exclusive"
-            continue
-        fi
-        _bench_nested && break
-        rm -f "$BENCH_LOCK_ENTRY"
+        [ -d "$BENCH_LOCK_DIR/exclusive" ] && [ -z "$through" ] || break
+        rm -f "$BENCH_LOCK_ENTRY" # a claim landed between the look and the mark: it goes first
         BENCH_LOCK_ENTRY=""
-        if [ -z "$said" ]; then # queued: the next claim lets this gate in first (_bench_yield)
-            mkdir -p "$BENCH_LOCK_DIR/waiting" 2>/dev/null && chmod 1777 "$BENCH_LOCK_DIR/waiting" 2>/dev/null
-            : >"$BENCH_LOCK_DIR/waiting/$$" 2>/dev/null
-            printf '· %s: waiting for a measurement to finish: %s%s\n' "$1" \
-                "$(_bench_owner_field 5 || echo 'one starting')" "$(_bench_ends)" >&2
-            said=1
-        fi
-        sleep 2
     done
     [ -z "$said" ] || rm -f "$BENCH_LOCK_DIR/waiting/$$"
     export GOH_BENCH_JOINED="$$"

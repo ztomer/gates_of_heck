@@ -12,6 +12,8 @@ import subprocess
 import time
 from pathlib import Path
 
+import pytest
+
 from conftest import REPO_ROOT
 
 LIB = REPO_ROOT / "lib" / "bench_lock.sh"
@@ -66,6 +68,47 @@ def test_a_gate_waits_while_a_measurement_holds_and_runs_when_it_ends(tmp_path: 
     gate.wait(timeout=15)
     assert (tmp_path / "ran").exists()
     assert "waiting for a measurement" in gate.stderr.read()
+
+
+def test_a_waiting_gate_is_never_counted_as_a_running_one(tmp_path: Path) -> None:
+    """A waiter that re-registered on every re-check stayed in gates/ while it ran its stale and
+    nested checks (a `ps` each), so the drain saw waiters as running gates: dozens of them on a
+    loaded box and it never drained (2026-10-08, every push gate). A slow `ps` makes it certain."""
+    lock, shim = tmp_path / "lock", tmp_path / "bin"
+    shim.mkdir()
+    (shim / "ps").write_text('#!/bin/bash\nsleep 0.5\nexec /bin/ps "$@"\n')
+    (shim / "ps").chmod(0o755)
+    holder = _hold(lock, tmp_path)
+    path = f"{shim}:{os.environ['PATH']}"
+    waiters = [_bash(lock, 'bench_lock_join "py gate"', PATH=path) for _ in range(5)]
+    try:
+        end = time.monotonic() + 20
+        while len(list((lock / "waiting").glob("*")) if (lock / "waiting").is_dir() else []) < 5:
+            assert time.monotonic() < end, "the gates never queued"
+            time.sleep(0.05)
+        seen, end = set(), time.monotonic() + 5
+        while time.monotonic() < end:
+            seen |= {p.name for p in (lock / "gates").iterdir()}
+            time.sleep(0.05)
+        assert len(seen) == 0, f"waiting gates were registered as running: {sorted(seen)}"
+    finally:
+        for w in waiters:
+            w.kill()
+            w.wait()
+        holder.kill()
+        holder.wait()
+
+
+@pytest.mark.parametrize(("lib", "reader"), [
+    ("lib/bench_lock.sh", "BENCH_LOCK_DIR=/nonexistent; _bench_owner_field 1"),
+    ("lib/desktop_lock/desktop_lock.sh", "DESKTOP_LOCK_DIR=/nonexistent; _desktop_lock_field 1"),
+])  # fmt: skip
+def test_an_owner_read_as_the_claim_vanishes_is_silent(lib: str, reader: str) -> None:
+    """`done <file 2>/dev/null` opens the file BEFORE it silences the error: a gate that read an
+    owner the instant its holder released printed `No such file or directory` (2026-10-08)."""
+    r = subprocess.run(["bash", "-c", f'. "{REPO_ROOT / lib}"; {reader}; echo "rc=$?"'],
+                       capture_output=True, text=True, timeout=20)  # fmt: skip
+    assert (r.stdout, r.stderr) == ("rc=1\n", "")
 
 
 def test_a_killed_measurement_releases_the_host(tmp_path: Path) -> None:
@@ -217,8 +260,8 @@ def test_quiet_runs_the_measurement_holding_the_host_and_the_desktop(tmp_path: P
 
 def _gate_load(tmp_path: Path) -> dict[str, str]:
     """A load that is high exactly while a gate RUNS: the box the other sessions make. (Not while
-    one is registered: a join waiting behind the hold re-registers for an instant on every
-    re-check, by design, and dozens of waiters made that a flake under load.)"""
+    one is registered: a join lost to a claim between its look and its mark is registered for
+    an instant.)"""
     script = tmp_path / "gate_load.sh"
     script.write_text(
         "#!/bin/bash\n"

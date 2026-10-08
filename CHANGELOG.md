@@ -2,6 +2,21 @@
 
 ## Unreleased
 
+* **bench lock: a waiting gate is not a running one** (`lib/bench_lock.sh`). A gate behind a
+  hold re-registered in `gates/` on every 2 s re-check and stayed there through its stale and
+  nested checks (a `ps` each), so the drain counted waiters as running gates. With dozens queued
+  on a loaded box it never saw `gates/` empty: the suite's own
+  `test_quiet_takes_its_place_before_it_judges_the_box` hung to its 60 s timeout in every push
+  gate since 3.4 landed, and every BACKLOG 4.3 gates_of_heck row timed a red gate. A waiter now
+  looks WITHOUT a mark, writes it only when the host looks free, and looks again (a claim that
+  landed in between goes first). RED FIRST: five waiters behind a hold with a slowed `ps` on
+  their PATH, `gates/` sampled for 5 s -- red on the old lib, empty now. Also: the pure-bash owner
+  readers in `bench_lock.sh` and `desktop_lock.sh` ran `done <file 2>/dev/null`, which opens the
+  file before it silences the error, and printed `No such file or directory` whenever a claim
+  vanished under them (now `done 2>/dev/null <file`, pinned for both). And the `repo` fixture's
+  session template sets `maintenance.auto=false`: each commit detached a `git maintenance run`
+  whose lock the per-test `copytree` raced (`shutil.Error`, a different test each push gate).
+
 * **`goh tag-version`: the `xcodegen` and `gradle` version sources** (`crates/goh/src/versrc.rs`).
   koffee_big's `v2.11.5` push was refused with "NO version source declares a version at this
   commit" -- correct by the rule, because its release is declared as `MARKETING_VERSION:` in

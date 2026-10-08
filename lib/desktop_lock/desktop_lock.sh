@@ -101,7 +101,7 @@ _desktop_lock_field() {
     while IFS= read -r line || [[ -n "$line" ]]; do
         n=$((n + 1))
         if [[ $n -eq $1 ]]; then printf '%s' "$line"; return 0; fi
-    done < "$DESKTOP_LOCK_DIR/owner" 2>/dev/null
+    done 2>/dev/null < "$DESKTOP_LOCK_DIR/owner"
     return 1
 }
 

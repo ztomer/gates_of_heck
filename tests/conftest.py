@@ -96,10 +96,12 @@ def commit_all(repo: Path, msg: str = "fixture") -> None:
 @pytest.fixture(scope="session")
 def _repo_template(tmp_path_factory) -> Path:
     """`repo`'s starting state, made by git ONCE per worker: 614 tests took `repo`, and three git
-    spawns each were ~1800 per run for one identical repository (2026-10-06)."""
+    spawns each were ~1800 per run for one identical repository (2026-10-06). No auto-maintenance:
+    a commit detaches `git maintenance run`, whose lock the copies raced (shutil.Error, 2026-10-08)."""
     r = tmp_path_factory.mktemp("repo-template") / "proj"
     r.mkdir()
     git(r, "init", "-q", "-b", "main")
+    git(r, "config", "maintenance.auto", "false")
     write(r, "README.md", "# fixture\n")
     commit_all(r)
     return r
