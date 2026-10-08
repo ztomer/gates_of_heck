@@ -204,26 +204,36 @@ pub fn refusals(
     out
 }
 
+/// git's stdout.
+///
+/// # Errors
+///
+/// git's own message when it refuses: a listing git refused is never an empty one.
+fn git(args: &[&str]) -> Result<Vec<u8>, String> {
+    let out = Command::new("git")
+        .args(args)
+        .output()
+        .map_err(|e| format!("git: {e}"))?;
+    if !out.status.success() {
+        return Err(format!(
+            "git {} failed: {}",
+            args.join(" "),
+            String::from_utf8_lossy(&out.stderr).trim()
+        ));
+    }
+    Ok(out.stdout)
+}
+
 /// `[(sha, message)]` from `git log <args>`, in git's order.
 ///
 /// # Errors
 ///
 /// git's own message when it refuses: a range it cannot read is never zero commits.
 fn log(args: &[&str]) -> Result<Vec<(String, String)>, String> {
-    let out = Command::new("git")
-        .arg("log")
-        .arg("--format=%H%x00%B%x01")
-        .args(args)
-        .output()
-        .map_err(|e| format!("git log: {e}"))?;
-    if !out.status.success() {
-        return Err(format!(
-            "git log {} failed: {}",
-            args.join(" "),
-            String::from_utf8_lossy(&out.stderr).trim()
-        ));
-    }
-    Ok(String::from_utf8_lossy(&out.stdout)
+    let mut all = vec!["log", "--format=%H%x00%B%x01"];
+    all.extend_from_slice(args);
+    let out = git(&all)?;
+    Ok(String::from_utf8_lossy(&out)
         .split('\u{1}')
         .filter_map(|chunk| {
             let (sha, body) = chunk.split_once('\0')?;
@@ -242,15 +252,13 @@ fn class_of(message: &str) -> Option<String> {
 
 /// The classes of the commits before `rev` (inclusive), oldest first; none before a first commit.
 fn classes_from(rev: &str) -> Result<Vec<String>, String> {
-    let born = Command::new("git")
-        .args([
-            "rev-parse",
-            "--verify",
-            "--quiet",
-            &format!("{rev}^{{commit}}"),
-        ])
-        .output()
-        .is_ok_and(|o| o.status.success());
+    let born = git(&[
+        "rev-parse",
+        "--verify",
+        "--quiet",
+        &format!("{rev}^{{commit}}"),
+    ])
+    .is_ok();
     if !born {
         return Ok(Vec::new());
     }
