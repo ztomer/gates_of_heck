@@ -23,9 +23,10 @@ from conftest import REPO_ROOT, hermetic_env
 
 BENCH = REPO_ROOT / "tools" / "session_bench.py"
 
+HOLD = 1.0  # seconds SERIAL holds the shared lock
 SERIAL = (
     "python3 -c \"import fcntl,time,os; f=open(os.environ['SHARED_LOCK'],'a'); "
-    'fcntl.flock(f, fcntl.LOCK_EX); time.sleep(0.4)"'
+    f'fcntl.flock(f, fcntl.LOCK_EX); time.sleep({HOLD})"'
 )
 PARALLEL = "sleep 0.4"
 
@@ -80,9 +81,15 @@ def _row(doc: dict, n: int) -> dict:
 
 
 def test_a_workload_holding_a_shared_lock_reads_as_serial(tmp_path: Path) -> None:
+    """SERIAL is not wholly serial: its interpreter start runs in parallel, outside the lock, and
+    grows with the box's load. With s that start and L the hold, N sessions take s + N*L, so its
+    true serialized fraction is L / (s + L) = HOLD / t1 -- and at load 40 a 0.4 s hold read 0.693
+    against a fixed 0.7 (2026-10-08). The bound is the fraction THIS box allowed, measured on the
+    same run; a blind fit (sigma ~0) or a halved one still fails it."""
     doc = _bench(tmp_path, SERIAL, "--sessions", "1,2,4", "--warmup", "0")
-    assert _row(doc, 4)["speedup"] < 1.4, doc
-    assert doc["usl"]["sigma"] > 0.7, doc
+    truth = HOLD / _row(doc, 1)["makespan_s"]
+    assert doc["usl"]["sigma"] > 0.8 * truth, (truth, doc)
+    assert _row(doc, 4)["speedup"] < 4 / (1 + 3 * 0.8 * truth), (truth, doc)
 
 
 def test_a_workload_sharing_nothing_reads_as_parallel(tmp_path: Path) -> None:
