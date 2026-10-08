@@ -86,10 +86,16 @@ esac
 # are read at INSTALL time, not by a gate run. A tree that is not a git checkout
 # — a tarball install — has nothing to compare and says nothing, like every other
 # gate here.
+#
+# THE GATES CHECKOUT IS ANOTHER REPOSITORY. A hook's GIT_DIR/GIT_INDEX_FILE, inherited, made this
+# `git status` answer with the CONSUMER's index against the export's files: every commit from a
+# linked worktree listed the consumer's tree as deleted and the gates as untracked, under "NOT
+# committed" (media_server, 2026-10-08). An older stock hook still passes them, so this git drops
+# them itself (contract #12), as does the version read below.
 _goh_gate_source_paths="gates checks lib tui"
 _goh_dirty_gate_source() {
-    git -C "$GOH_ROOT" status --porcelain --untracked-files=normal \
-        -- $_goh_gate_source_paths 2>/dev/null || true
+    (goh_unbind_git; git -C "$GOH_ROOT" status --porcelain --untracked-files=normal \
+        -- $_goh_gate_source_paths 2>/dev/null) || true
 }
 
 # A STEP THAT DOES NOT RUN PRINTS EXACTLY WHAT A STEP THAT PASSES PRINTS.
@@ -131,7 +137,8 @@ goh_require_current() {
         # Read whole, then searched: `producer | grep -m1` under pipefail is a race (goh
         # early-exit-pipe) -- grep's early exit SIGPIPEs the producer and fails the pipeline.
         local text
-        text="$(git -C "$GOH_ROOT" show HEAD:Cargo.toml 2>/dev/null || cat "$manifest")"
+        text="$( (goh_unbind_git; git -C "$GOH_ROOT" show HEAD:Cargo.toml) 2>/dev/null \
+            || cat "$manifest")"
         want="$(grep -m1 '^version = ' <<<"$text" | cut -d'"' -f2)"
     fi
     got="$("$bin" --version 2>/dev/null | awk '{print $NF}')"
@@ -187,6 +194,7 @@ fi
 goh_require_current "$goh_native" || exit 1
 # Arguments were validated above; only the two accepted scopes reach here.
 if [ "$SCOPE" = "--staged" ]; then
+    goh_bind_hook_index  # the index being committed, when the hook carried one (gates/_git_env.sh)
     exec "$goh_native" structural --staged
 fi
 exec "$goh_native" structural --full

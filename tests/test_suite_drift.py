@@ -24,6 +24,7 @@ TESTS = REPO_ROOT / "tests"
 GIT_INIT_SITES = {
     "conftest.py": 2,  # the templates fast_init and the `repo` fixture copy
     "test_hook_git_env.py": 7,  # init under a hook's GIT_* environment is the subject
+    "test_commit_hook_git_env.py": 2,  # the scratch suite's init under a real hook; a bare repo
     "test_cwd_and_py_gate.py": 3,
     "test_skills_corpus_external.py": 2,
     "test_required_tools_manifest.py": 2,

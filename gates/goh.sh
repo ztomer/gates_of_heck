@@ -49,6 +49,8 @@ if [ -z "$goh_native" ]; then
         "$ROOT/scripts/build-goh.sh (needs cargo)" >&2
     exit 2  # cannot judge, not a finding: every check's own exit 2
 fi
+# A staged check judges the index being committed, when the hook carried one (gates/_git_env.sh).
+goh_bind_hook_index
 exec "$goh_native" "$check" "$@"
 exit
 } # parse-guard

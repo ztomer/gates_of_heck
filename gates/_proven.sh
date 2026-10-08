@@ -13,6 +13,8 @@
 
 # shellcheck source=gates/_hash.sh
 . "$(dirname "${BASH_SOURCE[0]}")/_hash.sh"
+# shellcheck source=gates/_git_env.sh
+. "$(dirname "${BASH_SOURCE[0]}")/_git_env.sh"
 PROVEN_GOH_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 
 # Environment variables whose values change what a gate step concludes, keyed by default. The
@@ -73,13 +75,11 @@ EOF
     git write-tree 2>/dev/null
 }
 
-# _proven_goh_git <dir> <git args...> — git on a gates_of_heck checkout, hook variables stripped.
-# The list is git's own (`--local-env-vars`, what it clears entering a submodule), never a copy:
-# the hand-kept one this replaced had drifted to 7 of git's 15.
+# _proven_goh_git <dir> <git args...> — git on a gates_of_heck checkout, hook variables stripped
+# (goh_unbind_git, gates/_git_env.sh).
 _proven_goh_git() {
     (
-        # shellcheck disable=SC2046  # word-splitting the name list is the point
-        unset ${GOH_GIT_LOCAL_VARS:-$(git rev-parse --local-env-vars)}
+        goh_unbind_git
         git -C "$@"
     )
 }
@@ -219,9 +219,12 @@ _proven_native_key() {
 }
 
 # proven_key <step> — prints "<key> <tree>", or returns 1 when there is no key: the cache is
-# off, this is no git repo, or the working tree is not a tree git can name.
-proven_key() {
+# off, this is no git repo, or the working tree is not a tree git can name. A SUBSHELL body, both
+# keys: under a commit hook that carried its index (`commit -a`, gates/_git_env.sh) the tree is the
+# one being committed, and that binding must not outlive the key.
+proven_key() (
     local tree key
+    goh_bind_hook_index
     [ "${PROVEN_ON:-1}" = 1 ] || return 1
     if _proven_native_key; then
         _proven_identity_live | "$GOH_RESOLVED_BIN" proven key "$1"
@@ -231,15 +234,16 @@ proven_key() {
     key="$({ printf 'proven v1\ntree %s\nstep %s\n' "$tree" "$1"; proven_identity; } \
         | hash_hex /dev/stdin)" && [ -n "$key" ] || return 1
     printf '%s %s\n' "$key" "$tree"
-}
+)
 
 # proven_scoped_key <step> <entry>... — like proven_key, but the tree part is the git OBJECT of
 # each repo-relative entry (`.` is the whole tree) rather than the whole tree, so a step whose
 # inputs are named keys only on them (BACKLOG P3; `goh rust-scope` names a crate's). An entry that
 # does not exist is keyed as `missing`, so creating one changes the key. Same clean-tree
 # precondition and identity as proven_key; one `cat-file --batch-check` for every entry.
-proven_scoped_key() {
+proven_scoped_key() (
     local step="$1" tree objs key e; shift
+    goh_bind_hook_index
     [ "${PROVEN_ON:-1}" = 1 ] || return 1
     [ "$#" -gt 0 ] || return 1
     if _proven_native_key; then
@@ -257,7 +261,7 @@ proven_scoped_key() {
              printf '%s\n' "$objs"; proven_identity; } | hash_hex /dev/stdin)" && [ -n "$key" ] \
         || return 1
     printf '%s %s\n' "$key" "$tree"
-}
+)
 
 # proven_dir — where records live: the COMMON git dir, so every worktree of a repo (the push
 # gate's throwaway export included) sees what the main checkout proved.

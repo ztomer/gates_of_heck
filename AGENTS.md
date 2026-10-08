@@ -53,8 +53,10 @@ Details: `docs/map.md`.
 * Staged checks read the git index (`git show :path`, `crates/goh/src/blobs.rs`),
   not the worktree.
 * Git on any OTHER repo (fixture, skeleton, export) drops the hook's `GIT_*`
-  variables: `_gitutil.foreign_repo_env()` / `goh_testkit::git_command()`.
-  Contract #12 in `docs/contracts.md`.
+  variables: `goh_unbind_git` (`gates/_git_env.sh`) / `_gitutil.foreign_repo_env()`
+  / `goh_testkit::git_command()`. The hooks drop them at entry (`goh_hook_unbind`);
+  a staged reader of the index binds `goh_bind_hook_index`. Contract #12 in
+  `docs/contracts.md`.
 * Fail fast, print the failing output (that is what `_common.sh` exists for).
 * Config: all `GOH_*` keys documented in `docs/config.md` + `.gatesrc.example`.
   Adding a key without documenting it fails `test_config_schema_covers_keys`.

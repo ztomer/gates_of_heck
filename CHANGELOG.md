@@ -2,6 +2,25 @@
 
 ## Unreleased
 
+* **A commit hook's repository variables no longer reach what the gate spawns** (contract #12;
+  media_server, 2026-10-08). From a linked worktree git hands pre-commit an absolute `GIT_DIR` and
+  `GIT_INDEX_FILE`, and the stock hook passed both to `tools/gate.sh --staged` and its children: a
+  consumer test that built a scratch repo wrote `core.bare=true` into the shared config, committed
+  its scratch tree onto the worktree's branch and pushed three stashes. Every worktree commit also
+  printed "the gates ... are NOT committed" (`git status` in the HEAD export answered with the
+  consumer's index), and a consumer with a root `Cargo.toml` was refused outright: the version
+  check read ITS `HEAD:Cargo.toml` and called the binary behind. Now `gates/_git_env.sh` is the one
+  shell helper -- `goh_unbind_git` replaces seven inline `unset $(git rev-parse --local-env-vars)`
+  sites (`scripts/build-goh.sh` keeps its own: it runs from a tree with no `gates/`) -- and both hooks drop the variables at entry (`goh_hook_unbind`: `hooks/pre-commit`,
+  `gates/push_gate.sh`). The index `commit -a` / `commit <paths>` commits is not the repository's
+  own, so it is carried as `GOH_HOOK_INDEX_FILE` and bound again, only in its own repository, by
+  the staged readers (`structural.sh --staged`, `goh.sh`, `py_staged.sh`, `goh_index_view`, the
+  proven key). A repository reachable only through `GIT_DIR` is refused by name. The gates' own git
+  on their checkout drops the variables too, so the false warning and refusal are gone under the
+  OLD hook as well; the scratch-repo corruption needs the new hook (`install.sh`, which the
+  structural gate already asks an older stock hook for). Pinned by
+  `tests/test_commit_hook_git_env.py`, each test red-proven.
+
 * **`goh commit-class`: a repo's domain vocabulary is not a class.** A word in more than an eighth
   of the repo's classes (over its whole history; none below 30 classes) no longer counts toward
   "same class". ZoneWM's replay keeps its 3 right refusals and loses the wrong one, `078f137f`,

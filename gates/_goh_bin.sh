@@ -12,6 +12,11 @@
 # Sets `goh_native` (the binary, or empty) and `goh_native_why` (why it is empty, for the one line
 # the caller prints; empty when GOH_NO_NATIVE asked for Python on purpose).
 
+# Its git on the gates checkout drops a hook's repository variables (contract #12); sourced here
+# too, because a probe sources this file alone (tests/_drift_guard.py).
+# shellcheck source=gates/_git_env.sh
+. "$(dirname "${BASH_SOURCE[0]}")/_git_env.sh"
+
 goh_resolve_native() {
     goh_native=""
     goh_native_why=""
@@ -80,9 +85,9 @@ _goh_resolve_uncached() { # <gates dir>
 # untracked file under crates/, or nothing when the tree's Rust IS HEAD's.
 goh_live_delta() {
     local root="$1" diff untracked
-    diff="$( (unset ${GOH_GIT_LOCAL_VARS:-$(git rev-parse --local-env-vars 2>/dev/null)}
+    diff="$( (goh_unbind_git
               git -C "$root" diff HEAD -- crates Cargo.toml Cargo.lock rust-toolchain.toml) 2>/dev/null)"
-    untracked="$( (unset ${GOH_GIT_LOCAL_VARS:-$(git rev-parse --local-env-vars 2>/dev/null)}
+    untracked="$( (goh_unbind_git
                    cd "$root" && git ls-files -z --others --exclude-standard -- crates \
                    | xargs -0 shasum 2>/dev/null) 2>/dev/null)"
     [ -z "$diff$untracked" ] && return 0
@@ -116,8 +121,7 @@ goh_head_stamp() {
     # Captured FIRST, then joined: a revision git cannot resolve (no HEAD yet, a missing input) is
     # ECHOED to stdout, and under pipefail a failing git inside a pipe killed the gate silently.
     local out
-    # shellcheck disable=SC2046  # word-splitting git's variable list is the point
-    out="$(unset ${GOH_GIT_LOCAL_VARS:-$(git rev-parse --local-env-vars 2>/dev/null)}
+    out="$(goh_unbind_git
            git -C "$1" rev-parse HEAD:crates HEAD:Cargo.toml HEAD:Cargo.lock HEAD:rust-toolchain.toml \
                2>/dev/null)" || return 0
     printf '%s' "$out" | tr '\n' ' ' | sed 's/ $//'

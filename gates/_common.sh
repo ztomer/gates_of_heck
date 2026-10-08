@@ -321,6 +321,7 @@ goh_step_in() {
 goh_index_view() {
     local dir="$1" top phys rel snap gitdir
     GOH_INDEX_VIEW=""
+    goh_bind_hook_index  # the index a hook carried past its unbinding (gates/_git_env.sh)
     if [ -n "${GIT_WORK_TREE:-}" ]; then
         err "$GOH_NAME: GIT_WORK_TREE is set ($GIT_WORK_TREE) — it would override the index view,"
         err "  so --staged cannot judge the index. Unset it for the commit."

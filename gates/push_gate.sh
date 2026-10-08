@@ -52,6 +52,13 @@
 { # parse-guard -- bash reads this group whole before running it (tests/test_parse_guard.py)
 . "$(dirname "${BASH_SOURCE[0]}")/_from_head.sh"; goh_from_head "${BASH_SOURCE[0]}" "$@"   # run HEAD, not the tree (C4)
 set -euo pipefail
+# The hook's repository variables go first, before anything is spawned (gates/_git_env.sh, the
+# helper pre-commit uses too). Pushed from a LINKED worktree, git hands this hook
+# GIT_DIR=<main>/.git/worktrees/<name>: inherited, it points every git call in the export at the
+# PUSHING checkout, and a test that runs `git init <tmp>` re-initialises the real repository and
+# writes core.bare=true into its shared config (zinc, 2026-09-27); `git -C "$GOH" status` below
+# listed the pusher's files against the gates checkout as uncommitted gate source.
+goh_hook_unbind || exit $?
 
 GOH="${GOH_DIR:-${GOH:-$HOME/Projects/gates_of_heck}}"
 . "$GOH/tui/lib.sh"
@@ -368,12 +375,8 @@ while read -r local_ref local_sha _remote_ref _remote_sha; do
     mkdir -p "$log_root"
     log="$log_root/$(basename "$root")-$short-$(date +%Y%m%dT%H%M%S).log"
     set +e
-    # The hook's repository variables are dropped for the export. Pushed from a LINKED worktree,
-    # git hands this hook GIT_DIR=<main>/.git/worktrees/<name>: inherited, it points every git
-    # call in the export at the PUSHING checkout, and any test that runs `git init <tmp>` then
-    # re-initialises the real repository and writes core.bare=true into its shared config
-    # (zinc, 2026-09-27). The export is its own worktree; git finds it from its `.git` file.
-    # shellcheck disable=SC2046  # word-splitting git's variable list is the point
+    # No repository variable reaches the export: they were dropped at entry (goh_hook_unbind,
+    # above). The export is its own worktree; git finds it from its `.git` file.
     # GOH_CROSS_REPO_ROOT, and why the export is the wrong venue without it. The worktree holds the
     # pushed commit's TRACKED files. A metarepo whose evidence IS its sibling repositories has no
     # tracked children -- they are separate repos, not submodules -- so in here every cross-repo
@@ -387,7 +390,7 @@ while read -r local_ref local_sha _remote_ref _remote_sha; do
     # real checkout instead, and a checker reads it only for citations that name a child. The
     # isolation the worktree buys -- never certify the working tree -- is untouched, because what it
     # guards is this repo's OWN files, and those still come from the worktree.
-    (unset ${GOH_GIT_LOCAL_VARS:-$(git rev-parse --local-env-vars)} && cd "$worktree" \
+    (cd "$worktree" \
         && { [ -z "$export_build_dir" ] || export CARGO_BUILD_BUILD_DIR="$export_build_dir"; } \
         && GOH_CROSS_REPO_ROOT="$root" bash "$worktree/tools/gate.sh" --full) 2>&1 | tee "$log"
     status="${PIPESTATUS[0]}"
