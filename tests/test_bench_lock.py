@@ -171,10 +171,33 @@ def test_the_push_gate_joins(repo: Path, tmp_path: Path) -> None:
 QUIET = REPO_ROOT / "tools" / "quiet.sh"
 
 
-def _quiet(tmp_path: Path, *args: str) -> subprocess.CompletedProcess[str]:
-    env = _env(tmp_path / "lock", GOH_BENCH_DESKTOP_LOCK_DIR=str(tmp_path / "desktop.lock"))
+def _quiet(tmp_path: Path, *args: str, **extra: str) -> subprocess.CompletedProcess[str]:
+    env = _env(tmp_path / "lock", GOH_BENCH_DESKTOP_LOCK_DIR=str(tmp_path / "desktop.lock"),
+               GOH_BENCH_POLL="0.1", **extra)  # fmt: skip
     return subprocess.run(["bash", str(QUIET), *args], env=env, capture_output=True, text=True,
                           timeout=60)  # fmt: skip
+
+
+def _fake_load(tmp_path: Path, readings: list[int]) -> dict[str, str]:
+    """A load reader that plays `readings` (the last repeats) and logs, per read, whether the host
+    was held at that moment -- the queue's whole claim is that it holds nothing while it waits."""
+    seq = tmp_path / "readings"
+    seq.write_text("\n".join(map(str, readings)) + "\n")
+    log = tmp_path / "reads"
+    script = tmp_path / "load.sh"
+    script.write_text(
+        "#!/bin/bash\n"
+        f'held=free; [ -d "{tmp_path}/lock/exclusive" ] && held=held\n'
+        f'v="$(head -n 1 "{seq}")"; [ "$(wc -l < "{seq}")" -gt 1 ] && tail -n +2 "{seq}" > "{seq}.n" '
+        f'&& mv "{seq}.n" "{seq}"\n'
+        f'echo "$held $v" >> "{log}"; echo "$v"\n'
+    )
+    script.chmod(0o755)
+    return {"GOH_BENCH_LOADAVG": str(script)}
+
+
+def _reads(tmp_path: Path) -> list[str]:
+    return (tmp_path / "reads").read_text().splitlines()
 
 
 def test_quiet_runs_the_measurement_holding_the_host_and_the_desktop(tmp_path: Path) -> None:
@@ -185,8 +208,30 @@ def test_quiet_runs_the_measurement_holding_the_host_and_the_desktop(tmp_path: P
     assert "load" in r.stdout and not (lock / "exclusive").exists() and not desk.exists()
 
 
-def test_quiet_refuses_a_box_that_will_not_settle_and_names_what_is_busy(tmp_path: Path) -> None:
-    r = _quiet(tmp_path, "--max-load", "0", "--settle", "1", "--", "true")
+def test_quiet_waits_for_a_window_holding_nothing(tmp_path: Path) -> None:
+    load = _fake_load(tmp_path, [50, 50, 50, 1])
+    r = _quiet(tmp_path, "--", "true", **load)
+    assert r.returncode == 0, r.stdout + r.stderr
+    reads = _reads(tmp_path)
+    assert reads[:3] == ["free 50"] * 3, reads  # three busy reads, the host never held
+    assert any(x.startswith("held") for x in reads), reads  # then held for the run
+
+
+def test_quiet_lets_go_when_the_window_closes(tmp_path: Path) -> None:
+    # Busy for 3 s of 0.1 s reads, well past the 1 s settle (whole seconds, so up to 2 s).
+    load = _fake_load(tmp_path, [1] + [50] * 30 + [1])
+    r = _quiet(tmp_path, "--settle", "1", "--", "true", **load)
+    assert r.returncode == 0, r.stdout + r.stderr
+    reads = _reads(tmp_path)
+    first_held = next(i for i, x in enumerate(reads) if x.startswith("held"))
+    assert any(x.startswith("free") for x in reads[first_held:]), (
+        f"it kept the host held while the box was busy: {reads}"
+    )
+    assert "window closed" in r.stderr
+
+
+def test_quiet_refuses_after_its_deadline_and_names_what_is_busy(tmp_path: Path) -> None:
+    r = _quiet(tmp_path, "--max-load", "0", "--deadline", "1", "--", "true")
     assert r.returncode == 1, r.stdout + r.stderr
     assert "not quiet" in r.stderr and "%CPU" in r.stderr, r.stderr
     assert not (tmp_path / "lock" / "exclusive").exists()

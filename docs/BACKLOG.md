@@ -105,8 +105,8 @@ else waits on their numbers (owner, 2026-10-08). `[ ]` open, `[x]` done, `[~]` h
 Last before the release, by the owner's order (2026-10-08): nothing else waits on these numbers.
 Each runs under `tools/quiet.sh --` (every gate on the host held off, the desktop held, load < 4).
 Its first real run refused at load 20: ZoneWM's `xctest`, started by its own `make verify`, not by
-a goh gate, so the lock cannot hold it off. A test runner that is not a goh gate joins by sourcing
-`lib/bench_lock.sh` and calling `bench_lock_join` (ZoneWM's call, offered in 3.1).
+a goh gate, which no lock here holds off. So `quiet.sh` is a queue: it waits for a window holding
+nothing and runs when the box goes quiet by itself -- queue all three and let them run unattended.
 - [ ] 4.1 Cross-session serialization of `structural --full` (`tools/session_bench.py`, N=1/2/4/8).
       Baseline: sigma 0.45 at load 7-18, BEFORE the estate cache (`3ede8a3`) landed. Exit: sigma
       <= 0.15, or the step that holds it named by `session_bench`'s per-step inflation. Red-first:

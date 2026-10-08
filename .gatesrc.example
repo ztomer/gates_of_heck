@@ -6,7 +6,8 @@ GOH_MAX_LINES=500                 # file-length cap; unset disables the check
 # GOH_ALLOW=''                          # extra permitted characters (keep minimal)
 # GOH_BENCH_LOCK_DIR=/tmp/gates-of-heck-bench.lock  # host-wide; tools/quiet.sh holds it (tests only)
 # GOH_BENCH_MAX_HOLD=3600 GOH_BENCH_WAIT=1800       # a measurement's max hold / quiet.sh's wait
-# GOH_BENCH_DESKTOP_LOCK_DIR=                       # tests only; GOH_BENCH_JOINED is set by gates
+# GOH_BENCH_DESKTOP_LOCK_DIR= GOH_BENCH_LOADAVG=    # tests only; GOH_BENCH_JOINED is set by gates
+# GOH_BENCH_POLL=15                                 # tools/quiet.sh's seconds between load reads
 # GOH_MIN_FREE_GIB=15                  # refuse a cold push/round below this much free disk
 # GOH_ROUND_NEVER='.claude/settings.local.json'  # paths gates/round.sh never commits
 # GOH_ROUND_PREFLIGHT='make verify'                # gates/round.sh runs it before committing

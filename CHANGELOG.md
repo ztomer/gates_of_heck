@@ -5,8 +5,11 @@
 * **A quiet host on demand: `tools/quiet.sh -- CMD`** (`lib/bench_lock.sh`). Every wall-clock number
   in BACKLOG needs load < 4, and two days of them were taken at load 7-31 beside other sessions'
   gates. Every gate now registers with a host-wide lock using bash builtins only (no process on
-  the commit path); `quiet.sh` holds it, waits for running gates to finish, holds the desktop lock,
-  and runs CMD once the load is under `--max-load`, or refuses naming the busiest processes. A gate
+  the commit path). `quiet.sh` is a QUEUE: it waits for a window (load under `--max-load`)
+  holding nothing, then holds the lock -- running gates finish, new ones wait -- and the desktop,
+  re-checks, and runs CMD; a window that closes is let go and waited for again, and only after
+  `--deadline` (4 h) does it refuse, naming the busiest processes. No session is asked to do
+  anything: a measurement runs when the box goes quiet on its own. A gate
   nested in a registered gate or in the measurement, and a dead, PID-recycled or overdue holder,
   never deadlock it. Pinned by `tests/test_bench_lock.py`, each case red-proven by mutation.
 
