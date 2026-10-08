@@ -384,3 +384,28 @@ def test_staged_judges_the_commit_not_the_worktree(tmp_path):
 # The retired Python checker's `--probe` and its blinded-source calibrations went with it (Phase
 # N3). `test_a_wrong_anchor_is_red` is the same proof against the native: the anchor arm is
 # load-bearing, or the audit's wrong anchor would pass.
+
+
+def test_goh_sh_reads_the_repos_own_exclusion(tmp_path):
+    """`bash gates/goh.sh md-links` in app_updates reported the vendored crate's dead anchor
+    that app_updates' `.gatesrc` exempts and its structural gate passes (2026-10-08): two
+    verdicts on one repo, depending on the door. A direct check now reads the repo's own
+    `GOH_EXCLUDE` when no `--exclude` is given."""
+    from pathlib import Path
+
+    from conftest import hermetic_env
+
+    repo = tmp_path / "app"
+    repo.mkdir()
+    fast_init(repo, "main")
+    write(repo, ".gatesrc", "GOH_MAX_LINES=500\nGOH_EXCLUDE='^vendor/camoufox-rs/'\n")
+    write(repo, "vendor/camoufox-rs/docs/PROTOCOL.md", "See [CookieOptions](#cookieoptions).\n")
+    write(repo, "README.md", "# app\n")
+    commit_all(repo)
+    entry = Path(__file__).resolve().parents[1] / "gates" / "goh.sh"
+    env = hermetic_env(drop_git=True, GOH_BIN=str(native_goh_path()))
+    r = subprocess.run(
+        ["bash", str(entry), "md-links"], cwd=repo, capture_output=True, text=True, env=env
+    )
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert "PROTOCOL.md" not in r.stdout + r.stderr

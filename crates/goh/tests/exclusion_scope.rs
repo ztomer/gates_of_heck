@@ -124,3 +124,56 @@ fn the_secrets_scanner_takes_no_path_exemption_at_all() {
     let out = goh(&r, &["secrets", "--exclude", "^vendor/"]);
     assert_eq!(out.status.code(), Some(2), "{}", out.text());
 }
+
+#[test]
+fn a_direct_check_judges_a_repo_as_its_own_gate_does() {
+    // 3. A direct `goh <check>` ignored the repo's `.gatesrc`: in app_updates, `goh.sh md-links`
+    //    reported the vendored crate's dead anchor that its structural gate exempts, and every
+    //    sweep that calls checks directly (the R3 estate sweep, gate calibration, the empty-scope
+    //    sweep) judged the repo differently from the repo's own gate (2026-10-08).
+    let dead = "See [nothing](#no-such-anchor).\n";
+    let vendored_allow = format!("#[{}(dead_code)]\nfn f() {{}}\n", "allow");
+    let r = vendored_only(&[
+        ("README.md", "# readme\n"),
+        ("vendor/x/PROTOCOL.md", dead),
+        ("vendor/x/src/more.rs", &vendored_allow),
+        ("Cargo.toml", "[package]\nname = \"own\"\n"),
+        ("src/lib.rs", "pub fn own() {}\n"),
+    ]);
+    for args in [
+        &["md-links"][..],
+        &["no-allow"],
+        &["no-allow", "--staged"],
+        &["empty-assert"],
+    ] {
+        let out = goh(&r, args);
+        assert!(out.status.success(), "{args:?}: {}", out.text());
+        assert!(
+            !out.text().contains("vendor/x/"),
+            "{args:?}: {}",
+            out.text()
+        );
+    }
+    // An explicit `--exclude` still wins, and an empty one opts out of the declared exemption.
+    let out = goh(&r, &["md-links", "--exclude", ""]);
+    assert_eq!(out.status.code(), Some(1), "{}", out.text());
+    assert!(
+        out.text().contains("vendor/x/PROTOCOL.md"),
+        "{}",
+        out.text()
+    );
+    let out = goh(&r, &["no-allow", "--exclude", ""]);
+    assert_eq!(out.status.code(), Some(1), "{}", out.text());
+    // The AMBIENT environment is not the repo's declaration: an inherited GOH_EXCLUDE changes
+    // nothing (the hostile-environment rule of tests/test_goh_structural.py).
+    let plain =
+        repo_with(&[("README.md", "# r\n"), ("vendor/x/PROTOCOL.md", dead)]).expect("fixture");
+    let out = goh_at(
+        std::path::Path::new(env!("CARGO_BIN_EXE_goh")),
+        Some(&plain),
+        &["md-links"],
+        &[("GOH_EXCLUDE", "^vendor/")],
+    )
+    .expect("goh runs");
+    assert_eq!(out.status.code(), Some(1), "{}", out.text());
+}

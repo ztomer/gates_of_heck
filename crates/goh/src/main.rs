@@ -94,7 +94,7 @@ fn main() {
         std::process::exit(1);
     }
     let cli = Cli::parse();
-    let code = match run_ported(cli.command) {
+    let code = match run_ported(cli.command).or_else(|command| run_scanners(*command)) {
         Ok(code) => code,
         Err(command) => run_core(*command),
     };
@@ -158,19 +158,6 @@ fn run_core(command: Commands) -> i32 {
             command,
         } => stepcmd::run(&timeout, grace, &label, &command),
         Commands::Markers { staged } => commands::run_markers(staged),
-        Commands::Length {
-            max,
-            exclude,
-            staged,
-        } => commands::run_length(max, &exclude, staged),
-        Commands::Emoji {
-            exclude,
-            allow,
-            staged,
-        } => commands::run_emoji(&exclude, &allow, staged),
-        Commands::Secrets { staged } => commands::run_secrets(staged),
-        Commands::HomePaths { exclude, staged } => commands::run_home_paths(&exclude, staged),
-        Commands::NoAllow { exclude, staged } => commands::run_no_allow(&exclude, staged),
         Commands::Screen {
             paths,
             scope,
@@ -203,6 +190,49 @@ fn run_core(command: Commands) -> i32 {
     }
 }
 
+/// A direct check's exclusion: `--exclude`, else the repo's declared `GOH_EXCLUDE`
+/// (`gatesrc::declared_exclude`). An unreadable `.gatesrc` is a usage error (exit 2), never a
+/// run over an exemption nobody could read.
+fn declared(
+    flag: Option<String>,
+    root: Option<&str>,
+    which: gatesrc::Exempt,
+) -> Result<String, i32> {
+    gatesrc::declared_exclude(flag, root.map(std::path::Path::new), which).map_err(|message| {
+        eprintln!("✗ goh: {message}");
+        2
+    })
+}
+
+/// An empty pattern means "no exemption" to the checks that take an `Option`.
+fn nonempty(pattern: &str) -> Option<&str> {
+    (!pattern.is_empty()).then_some(pattern)
+}
+
+/// The path scanners (`--exclude` resolved against the repo's `.gatesrc`), or the command back.
+fn run_scanners(command: Commands) -> Result<i32, Box<Commands>> {
+    Ok(match command {
+        Commands::Length {
+            max,
+            exclude,
+            staged,
+        } => declared(exclude, None, gatesrc::Exempt::Length)
+            .map_or_else(|code| code, |x| commands::run_length(max, &x, staged)),
+        Commands::Emoji {
+            exclude,
+            allow,
+            staged,
+        } => declared(exclude, None, gatesrc::Exempt::Paths)
+            .map_or_else(|code| code, |x| commands::run_emoji(&x, &allow, staged)),
+        Commands::Secrets { staged } => commands::run_secrets(staged),
+        Commands::HomePaths { exclude, staged } => declared(exclude, None, gatesrc::Exempt::Paths)
+            .map_or_else(|code| code, |x| commands::run_home_paths(&x, staged)),
+        Commands::NoAllow { exclude, staged } => declared(exclude, None, gatesrc::Exempt::Paths)
+            .map_or_else(|code| code, |x| commands::run_no_allow(&x, staged)),
+        other => return Err(Box::new(other)),
+    })
+}
+
 /// The Phase N1 ports, or the command back for `run_core`.
 fn run_ported(command: Commands) -> Result<i32, Box<Commands>> {
     Ok(match command {
@@ -212,7 +242,8 @@ fn run_ported(command: Commands) -> Result<i32, Box<Commands>> {
             staged,
             json,
         } => provenance::run_command(&root, baseline.as_deref(), staged, json),
-        Commands::ShellLint { exclude, staged } => shell_lint::run_command(staged, &exclude),
+        Commands::ShellLint { exclude, staged } => declared(exclude, None, gatesrc::Exempt::Paths)
+            .map_or_else(|code| code, |x| shell_lint::run_command(staged, &x)),
         Commands::PythonFormatted {
             trees,
             staged,
@@ -230,7 +261,10 @@ fn run_ported(command: Commands) -> Result<i32, Box<Commands>> {
             strict,
             ratchet,
         } => deps::run_command(root.as_deref(), json, offline, strict, ratchet.as_deref()),
-        Commands::EmptyAssert { exclude, staged } => emptyassert::run_command(staged, &exclude),
+        Commands::EmptyAssert { exclude, staged } => {
+            declared(exclude, None, gatesrc::Exempt::Paths)
+                .map_or_else(|code| code, |x| emptyassert::run_command(staged, &x))
+        }
         Commands::TagVersion {
             root,
             refs_file,
@@ -247,7 +281,10 @@ fn run_ported(command: Commands) -> Result<i32, Box<Commands>> {
             exclude,
             json,
             anchors,
-        } => mdlinks::run_command(root.as_deref(), staged, exclude.as_deref(), json, anchors),
+        } => declared(exclude, root.as_deref(), gatesrc::Exempt::Paths).map_or_else(
+            |code| code,
+            |x| mdlinks::run_command(root.as_deref(), staged, nonempty(&x), json, anchors),
+        ),
         Commands::ClaimDerivation {
             parse_claims: Some(rel),
             ..
@@ -258,18 +295,30 @@ fn run_ported(command: Commands) -> Result<i32, Box<Commands>> {
             exclude,
             json,
             parse_claims: None,
-        } => claims::run_command(root.as_deref(), staged, exclude.as_deref(), json),
+        } => declared(exclude, root.as_deref(), gatesrc::Exempt::Paths).map_or_else(
+            |code| code,
+            |x| claims::run_command(root.as_deref(), staged, nonempty(&x), json),
+        ),
         Commands::KillByName {
             exclude,
             staged,
             code_lines,
-        } => killname::run_command(staged, &exclude, code_lines.as_deref()),
-        Commands::EarlyExitPipe { exclude, staged } => earlypipe::run_command(staged, &exclude),
+        } => declared(exclude, None, gatesrc::Exempt::Paths).map_or_else(
+            |code| code,
+            |x| killname::run_command(staged, &x, code_lines.as_deref()),
+        ),
+        Commands::EarlyExitPipe { exclude, staged } => {
+            declared(exclude, None, gatesrc::Exempt::Paths)
+                .map_or_else(|code| code, |x| earlypipe::run_command(staged, &x))
+        }
         Commands::UnreapedSpawn {
             exclude,
             staged,
             verdicts,
-        } => unreaped::run_command(staged, &exclude, verdicts.as_deref()),
+        } => declared(exclude, None, gatesrc::Exempt::Paths).map_or_else(
+            |code| code,
+            |x| unreaped::run_command(staged, &x, verdicts.as_deref()),
+        ),
         other => return Err(Box::new(other)),
     })
 }

@@ -141,18 +141,20 @@ pub enum Commands {
         /// Maximum lines per file.
         #[arg(long)]
         max: usize,
-        /// Regex exempting paths (search, like the Python checker).
-        #[arg(long, default_value = "")]
-        exclude: String,
+        /// Regex on repo-relative paths to skip. Unset: the repo's own `.gatesrc` `GOH_EXCLUDE`, as
+        /// its structural gate applies it; `--exclude ''` opts out.
+        #[arg(long)]
+        exclude: Option<String>,
         /// Staged files only (polices the index, like the Python checker).
         #[arg(long)]
         staged: bool,
     },
     /// Fail on disallowed emoji (native port of `check_no_emoji`).
     Emoji {
-        /// Regex exempting paths (search, like the Python checker).
-        #[arg(long, default_value = "")]
-        exclude: String,
+        /// Regex on repo-relative paths to skip. Unset: the repo's own `.gatesrc` `GOH_EXCLUDE`, as
+        /// its structural gate applies it; `--exclude ''` opts out.
+        #[arg(long)]
+        exclude: Option<String>,
         /// Extra permitted characters (spaces stripped, like the checker).
         #[arg(long, default_value = "")]
         allow: String,
@@ -169,18 +171,20 @@ pub enum Commands {
     },
     /// Fail on hard-coded home paths (native port of `check_no_home_paths`).
     HomePaths {
-        /// Regex exempting paths (search, like the Python checker).
-        #[arg(long, default_value = "")]
-        exclude: String,
+        /// Regex on repo-relative paths to skip. Unset: the repo's own `.gatesrc` `GOH_EXCLUDE`, as
+        /// its structural gate applies it; `--exclude ''` opts out.
+        #[arg(long)]
+        exclude: Option<String>,
         /// Staged files only (polices the index, like the Python checker).
         #[arg(long)]
         staged: bool,
     },
     /// Fail on `#[allow]`/`#[expect]` (native port of `check_no_allow`).
     NoAllow {
-        /// Regex exempting paths (search, like the Python checker).
-        #[arg(long, default_value = "")]
-        exclude: String,
+        /// Regex on repo-relative paths to skip. Unset: the repo's own `.gatesrc` `GOH_EXCLUDE`, as
+        /// its structural gate applies it; `--exclude ''` opts out.
+        #[arg(long)]
+        exclude: Option<String>,
         /// Staged files only (polices the index, like the Python checker).
         #[arg(long)]
         staged: bool,
@@ -216,9 +220,10 @@ pub enum Commands {
     /// Fail on a shell file that does not parse or that shellcheck errors on
     /// (native port of `check_shell_lint.sh`).
     ShellLint {
-        /// Regex on repo-relative paths to skip (`GOH_EXCLUDE`).
-        #[arg(long, default_value = "")]
-        exclude: String,
+        /// Regex on repo-relative paths to skip. Unset: the repo's own `.gatesrc` `GOH_EXCLUDE`, as
+        /// its structural gate applies it; `--exclude ''` opts out.
+        #[arg(long)]
+        exclude: Option<String>,
         /// The staged blobs, not the worktree.
         #[arg(long)]
         staged: bool,
@@ -269,9 +274,10 @@ pub enum Commands {
     /// Fail on an emptiness assertion clippy refuses, or is silent on with a
     /// message (native port of `check_no_empty_assert`).
     EmptyAssert {
-        /// Regex on repo-relative paths to skip (`GOH_EXCLUDE`).
-        #[arg(long, default_value = "")]
-        exclude: String,
+        /// Regex on repo-relative paths to skip. Unset: the repo's own `.gatesrc` `GOH_EXCLUDE`, as
+        /// its structural gate applies it; `--exclude ''` opts out.
+        #[arg(long)]
+        exclude: Option<String>,
         /// The staged blobs, not the worktree.
         #[arg(long)]
         staged: bool,
@@ -311,7 +317,8 @@ pub enum Commands {
         /// Judge the index, not the working tree.
         #[arg(long)]
         staged: bool,
-        /// Regex on repo-relative paths to exempt.
+        /// Regex on repo-relative paths to skip. Unset: the repo's own `.gatesrc` `GOH_EXCLUDE`, as
+        /// its structural gate applies it; `--exclude ''` opts out.
         #[arg(long)]
         exclude: Option<String>,
         /// Machine-readable output.
@@ -329,7 +336,8 @@ pub enum Commands {
         /// Judge the index, not the working tree.
         #[arg(long)]
         staged: bool,
-        /// Regex on repo-relative paths to exempt.
+        /// Regex on repo-relative paths to skip. Unset: the repo's own `.gatesrc` `GOH_EXCLUDE`, as
+        /// its structural gate applies it; `--exclude ''` opts out.
         #[arg(long)]
         exclude: Option<String>,
         /// Machine-readable output.
@@ -341,9 +349,10 @@ pub enum Commands {
     },
     /// Fail on a process kill by NAME (native port of `check_no_kill_by_name`).
     KillByName {
-        /// Regex on repo-relative paths to skip (`GOH_EXCLUDE`).
-        #[arg(long, default_value = "")]
-        exclude: String,
+        /// Regex on repo-relative paths to skip. Unset: the repo's own `.gatesrc` `GOH_EXCLUDE`, as
+        /// its structural gate applies it; `--exclude ''` opts out.
+        #[arg(long)]
+        exclude: Option<String>,
         /// Staged blobs (polices the index, like the Python checker).
         #[arg(long)]
         staged: bool,
@@ -354,9 +363,10 @@ pub enum Commands {
     /// Fail on an early-exit consumer (`grep -q`, `grep -m`, `head`, awk `exit`, sed `q`) reading
     /// a pipe in a script that turns pipefail on: the producer's SIGPIPE becomes the verdict.
     EarlyExitPipe {
-        /// Regex on repo-relative paths to skip (`GOH_EXCLUDE`).
-        #[arg(long, default_value = "")]
-        exclude: String,
+        /// Regex on repo-relative paths to skip. Unset: the repo's own `.gatesrc` `GOH_EXCLUDE`, as
+        /// its structural gate applies it; `--exclude ''` opts out.
+        #[arg(long)]
+        exclude: Option<String>,
         /// Staged blobs (polices the index).
         #[arg(long)]
         staged: bool,
@@ -364,9 +374,10 @@ pub enum Commands {
     /// Fail on a test spawn no guard reaps, or whose reap sits below a line
     /// that can panic (native port of `check_no_unreaped_spawn`).
     UnreapedSpawn {
-        /// Regex on repo-relative paths to skip (`GOH_EXCLUDE`).
-        #[arg(long, default_value = "")]
-        exclude: String,
+        /// Regex on repo-relative paths to skip. Unset: the repo's own `.gatesrc` `GOH_EXCLUDE`, as
+        /// its structural gate applies it; `--exclude ''` opts out.
+        #[arg(long)]
+        exclude: Option<String>,
         /// Staged blobs (polices the index, like the Python checker).
         #[arg(long)]
         staged: bool,

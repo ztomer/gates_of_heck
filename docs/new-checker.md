@@ -40,8 +40,9 @@ Helpers live in `tests/conftest.py`: `repo` fixture (throwaway git repo),
 ## 3. Implement the checker
 
 * CLI: `--staged` flag when it polices commits; `--exclude RE` when it
-  walks trees (wired from `GOH_EXCLUDE` by the calling gate, never
-  hardcoded per-repo policy in shared code) -- UNLESS it is a security
+  walks trees, as `Option<String>` resolved through `gatesrc::declared_exclude`
+  in `main.rs` (unset reads the repo's own `GOH_EXCLUDE`, so a direct call
+  judges a repo as its gate does; never hardcoded per-repo policy in shared code) -- UNLESS it is a security
   check. `GOH_EXCLUDE` exempts what is not ours to re-style; a leak is not
   a style, so a credential scanner takes no exclusion at all (`goh secrets`),
   and its one escape is a reasoned per-line marker. Add the checker's name to

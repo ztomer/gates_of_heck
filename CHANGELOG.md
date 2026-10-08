@@ -17,6 +17,16 @@
   files that read the key, so the two lists cannot drift again. Pinned tests that encoded the
   exemption (`test_exclude_agrees`, `test_exclude_skips_matching_paths`, two CLI tests) now pin
   its refusal.
+* **A direct `goh <check>` judges a repo as its own gate does.** Every subcommand with an
+  `--exclude` ignored the repo's `.gatesrc` when called directly, so `goh.sh md-links` in
+  app_updates reported a vendored crate's dead anchor that its structural gate exempts -- and
+  every sweep that calls checks directly (the R3 estate sweep, gate calibration, the empty-scope
+  sweep) judged that repo differently from the repo, refusing a gates_of_heck land on a green
+  consumer. Unset `--exclude` now reads the repo's declared `GOH_EXCLUDE`
+  (`gatesrc::declared_exclude`; the length cap's union with `GOH_LINE_EXCLUDE`), `--exclude ''`
+  opts out, and the ambient environment still changes nothing. Red-first:
+  `a_direct_check_judges_a_repo_as_its_own_gate_does`, and
+  `test_goh_sh_reads_the_repos_own_exclusion` through `gates/goh.sh` (red on main's binary).
 * **The R3 estate sweep judges a consumer's corpus with that consumer's `GOH_EXCLUDE`.** It ran
   each house check bare, so app_updates' vendored crate -- exempt under app_updates' own gate --
   carried a dead anchor that made the md-links corpus "NOT clean", and the sweep (and this repo's

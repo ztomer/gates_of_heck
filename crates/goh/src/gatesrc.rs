@@ -272,6 +272,42 @@ pub fn load(root: &Path) -> Result<Gatesrc, String> {
     from_pairs(&parse_pairs(&text))
 }
 
+/// Which exemption a direct `goh <check>` applies when no `--exclude` is given.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Exempt {
+    /// `GOH_EXCLUDE`, as every structural step but the length cap reads it.
+    Paths,
+    /// `GOH_EXCLUDE` ∪ `GOH_LINE_EXCLUDE`, the length cap's (see [`length_exclude`]).
+    Length,
+}
+
+/// The exclusion a direct `goh <check>` applies: `--exclude` when given (an empty one opts out),
+/// else the exemption the repo DECLARES in its `.gatesrc` -- the value its structural gate passes.
+///
+/// A direct check ignored the file, so `goh.sh md-links` in `app_updates` reported a vendored
+/// crate's dead anchor that its own gate exempts, and every sweep that calls checks directly
+/// judged the repo differently from the repo (2026-10-08). One door, one verdict. Never the
+/// ambient environment: an inherited `GOH_EXCLUDE` is process state the repo never chose (the
+/// hostile-environment rule, `tests/test_goh_structural.py`). `root` is the check's own `--root`
+/// when it has one, else the repo the command runs in.
+///
+/// # Errors
+/// The repo's `.gatesrc` is unreadable or carries an invalid value.
+pub fn declared_exclude(
+    flag: Option<String>,
+    root: Option<&Path>,
+    which: Exempt,
+) -> Result<String, String> {
+    if let Some(given) = flag {
+        return Ok(given);
+    }
+    let cfg = load(&root.map_or_else(config_root, Path::to_path_buf))?;
+    Ok(match which {
+        Exempt::Paths => cfg.exclude,
+        Exempt::Length => length_exclude(&cfg),
+    })
+}
+
 /// The length exemption is `GOH_EXCLUDE` ∪ `GOH_LINE_EXCLUDE`.
 #[must_use]
 pub fn length_exclude(cfg: &Gatesrc) -> String {
