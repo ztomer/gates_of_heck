@@ -57,36 +57,17 @@ QUIET box (load < 4). Landed plans are pruned to this table.
 
 Every item carries its **Baseline:**, **Exit:**, **Red-first:** and **Lies:**, and a done item
 names its commit, or `tests/test_backlog_items.py` fails. A landed item moves to the State table.
-Phases run in order; within a phase, any order. `[ ]` open, `[x]` done, `[~]` handed off.
+Phases run in order; within a phase, any order. The measurements (Phase 4) come last: nothing
+else waits on their numbers (owner, 2026-10-08). `[ ]` open, `[x]` done, `[~]` handed off.
 
-**Phase 1 — re-measure what v0.24.0 claims, on a quiet box (load < 4, recorded beside each number)**
-Each runs under `tools/quiet.sh --` (every gate on the host held off, the desktop held, load < 4).
-Its first real run refused at load 20: ZoneWM's `xctest`, started by its own `make verify`, not by
-a goh gate, so the lock cannot hold it off. A test runner that is not a goh gate joins by sourcing
-`lib/bench_lock.sh` and calling `bench_lock_join` (ZoneWM's call, offered in 4.1).
-- [ ] 1.1 Cross-session serialization of `structural --full` (`tools/session_bench.py`, N=1/2/4/8).
-      Baseline: sigma 0.45 at load 7-18, BEFORE the estate cache (`3ede8a3`) landed. Exit: sigma
-      <= 0.15, or the step that holds it named by `session_bench`'s per-step inflation. Red-first:
-      the bench on a deliberately serialized control (one `flock`ed step) reports sigma near 1, or
-      the instrument is blind. Lies: other sessions' load (record it); a warm cache measured as cold.
-- [ ] 1.2 media_server push, everything changed, warm. Baseline: 170 s at load 4-8, BEFORE the
-      incremental coverage build (`06afca4`: 173 -> 76 s on this repo). Exit: <= 90 s. Red-first:
-      the P0 instrument's per-step sum within 5% of wall on the same run. Lies: a cold sccache; a
-      crate the "everything changed" diff did not touch; media_server's own 110 s pytest step
-      (a servers item) counted as goh's.
-- [ ] 1.3 The P2 budget curve, `GOH_CI_JOBS` 1/2/4/6, this repo and routines. Baseline: 186/147/138
-      s (1/2/4, a busy box). Exit: the knee recorded, and `GOH_CI_JOBS`' default set at it.
-      Red-first: a run at jobs=1 is no faster than jobs=4, or the steps are serial somewhere.
-      Lies: one repo's knee read as every repo's.
-
-**Phase 2 — `goh requires-call`** (ZoneWM, 2026-10-08; owner: "generic tooling goes to goh")
-- [ ] 2.1 A Python parser in the binary, sized. Baseline: none in the crate today; ZoneWM's
+**Phase 1 — `goh requires-call`** (ZoneWM, 2026-10-08; owner: "generic tooling goes to goh")
+- [ ] 1.1 A Python parser in the binary, sized. Baseline: none in the crate today; ZoneWM's
       checkers use `ast`. Exit: one crate chosen (candidates: `ruff_python_parser`,
       `rustpython-parser`, `tree-sitter-python`) with its build-time and binary-size cost measured,
       `cargo audit` clean, one version in the lock. Red-first: the call sites it finds in ZoneWM's
       `tools/*.py` equal Python `ast`'s, byte for byte. Lies: a newer syntax (3.14) parsed
       differently -- test the estate's own Python, not a sample.
-- [ ] 2.2 The check: "a file that CALLS X must also CALL Y", rows in `.gatesrc`. Baseline: two
+- [ ] 1.2 The check: "a file that CALLS X must also CALL Y", rows in `.gatesrc`. Baseline: two
       repo-local ZoneWM gates of this shape (`tools/check_probe_courtesy.py`,
       `tools/check_probe_placement.py`, 170 lines, an 8-case selftest). Exit: both expressible as
       rows, the 8 cases pass native, ZoneWM's copies deletable (its owner's call). Red-first: each
@@ -95,8 +76,8 @@ a goh gate, so the lock cannot hold it off. A test runner that is not a goh gate
       gone, no longer calls X, now calls Y); zero X-callers fails the floor. Lies: `getattr` and
       star imports (named as limits, not passed).
 
-**Phase 3 — "fix the class", part 3: the clustering audit**
-- [ ] 3.1 `goh commit-class --clusters REV..`: cluster commits by Class AND touched-file family, each
+**Phase 2 — "fix the class", part 3: the clustering audit**
+- [ ] 2.1 `goh commit-class --clusters REV..`: cluster commits by Class AND touched-file family, each
       cluster a hardening candidate. Baseline: the word measure sees 6 of ZoneWM's 13 labelled
       pairs; repeats committed without trailers are seen by nothing. Exit: over ZoneWM's
       `214f0cf7..HEAD` it names its author's clusters 1-6 with at most 2 spurious clusters.
@@ -106,19 +87,40 @@ a goh gate, so the lock cannot hold it off. A test runner that is not a goh gate
       A further labelled pair (ZoneWM, 2026-10-08): `30b74237` "a capture taken after a fixed
       sleep, racing the asynchronous work whose result it captures" with `a9604cf3` -- one shared
       word, a rephrasing.
-- [ ] 3.2 Domain-frequent words do not count. Baseline: the full replay's one wrong refusal,
+- [ ] 2.2 Domain-frequent words do not count. Baseline: the full replay's one wrong refusal,
       `078f137f`, shares only "read" and "window", ZoneWM's own domain nouns. Exit: words in more
       than a set share of a repo's own classes are dropped per repo; the replay keeps its 3 right
       refusals and loses `078f137f`, and the 6 of 13 labelled pairs stay. Red-first: `078f137f`
       refused by today's rule, as the fixture. Lies: a small history, where every word is
       "frequent" -- below a minimum class count the list is empty.
 
-**Phase 4 — downstream, verified at each repo's HEAD**
-- [ ] 4.1 Every "Downstream" item below checked against its repo's current HEAD, then pruned or
+**Phase 3 — downstream, verified at each repo's HEAD**
+- [ ] 3.1 Every "Downstream" item below checked against its repo's current HEAD, then pruned or
       re-stated. Baseline: 17 items, last verified 2026-10-06. Exit: each carries the sha it was
       verified at, or is gone. Red-first: none -- coordination, no code; the sha stamp is the
       check. Lies: an item marked fixed from a session's word, not the repo's HEAD. Messages go
       out only where the owner says (servers and ztools on a release; quota, 2026-10-08).
+
+**Phase 4 — re-measure what v0.24.0 claims, on a quiet box (load < 4, recorded beside each number)**
+Last before the release, by the owner's order (2026-10-08): nothing else waits on these numbers.
+Each runs under `tools/quiet.sh --` (every gate on the host held off, the desktop held, load < 4).
+Its first real run refused at load 20: ZoneWM's `xctest`, started by its own `make verify`, not by
+a goh gate, so the lock cannot hold it off. A test runner that is not a goh gate joins by sourcing
+`lib/bench_lock.sh` and calling `bench_lock_join` (ZoneWM's call, offered in 3.1).
+- [ ] 4.1 Cross-session serialization of `structural --full` (`tools/session_bench.py`, N=1/2/4/8).
+      Baseline: sigma 0.45 at load 7-18, BEFORE the estate cache (`3ede8a3`) landed. Exit: sigma
+      <= 0.15, or the step that holds it named by `session_bench`'s per-step inflation. Red-first:
+      the bench on a deliberately serialized control (one `flock`ed step) reports sigma near 1, or
+      the instrument is blind. Lies: other sessions' load (record it); a warm cache measured as cold.
+- [ ] 4.2 media_server push, everything changed, warm. Baseline: 170 s at load 4-8, BEFORE the
+      incremental coverage build (`06afca4`: 173 -> 76 s on this repo). Exit: <= 90 s. Red-first:
+      the P0 instrument's per-step sum within 5% of wall on the same run. Lies: a cold sccache; a
+      crate the "everything changed" diff did not touch; media_server's own 110 s pytest step
+      (a servers item) counted as goh's.
+- [ ] 4.3 The P2 budget curve, `GOH_CI_JOBS` 1/2/4/6, this repo and routines. Baseline: 186/147/138
+      s (1/2/4, a busy box). Exit: the knee recorded, and `GOH_CI_JOBS`' default set at it.
+      Red-first: a run at jobs=1 is no faster than jobs=4, or the steps are serial somewhere.
+      Lies: one repo's knee read as every repo's.
 
 **Phase 5 — release**
 - [ ] 5.1 v0.25.0. Baseline: v0.24.0 (`3ab524c`). Exit: version bump, CHANGELOG `Unreleased` ->
@@ -135,12 +137,12 @@ exit number is the target column; a miss names its lever before any change lands
 |---|---|---|---|
 | this repo's suite, `-n 12 --dist loadgroup` | 94.4 s (v0.20, `-n 8`) | **52.5-53.8 s at load 11-17 (2026-10-06)**, 1987 tests, longest-first (`tests/_schedule.py`); 62-67 s before it on a quiet box | <= 60 s: **MET** |
 | media_server push, one crate changed, warm | 197 s | 183 s at load 7-12 (2026-10-06): **110 s is media_server's own pytest suite** (134 tests, run by its gate.sh outside the proven cache); 5 of 29 crates re-gated -- 3 correctly (path users), healthcheck-rs on the whole tree by design (its tests read the repo root), vpn-watchdog-rs never recorded (fixed in `d384c0d`) | <= 30 s: unreachable from here while the pytest step runs unconditionally -- a servers item (below) |
-| media_server push, everything changed, warm | 177 s (P0) | 170 s at load 4-8 (2026-10-06), before `06afca4` made the instrumented build incremental | <= 90 s: Phase 1.2 re-measures |
+| media_server push, everything changed, warm | 177 s (P0) | 170 s at load 4-8 (2026-10-06), before `06afca4` made the instrumented build incremental | <= 90 s: Phase 4.2 re-measures |
 | any consumer's pre-commit structural layer | ~1 s | media_server, one staged `.rs`: 0.22 s at load 17 (2026-10-06) | <= 0.4 s: **MET** |
 | P2 budget curve, `GOH_CI_JOBS` 1/2/4/6, this repo and routines | 186/147/138 s (1/2/4, busy) | provisional | the knee, recorded |
 
 The suite target is met; its remaining levers (fewer processes per test, `goh.sh` resolution,
-the per-step wrapper) are recorded in the CHANGELOG. Every other row is Phase 1's.
+the per-step wrapper) are recorded in the CHANGELOG. Every other row is Phase 4's.
 
 ## Open — cross-session serialization (`tools/session_bench.py`)
 
@@ -167,7 +169,7 @@ still dominates, and at N=8 even 18 ms native steps run 13x slower, i.e. the swe
 box for everything beside it. Next lever, by count: `check_estate_corpus` materialises 16 scratch
 repos per run (copy + `git init`/`config` x2/`add`/`commit` each, a pool of `len(ESTATE)` = 8
 threads, sized as if the machine were idle) and runs 24 `goh.sh` calls. A pool-cap A/B (8 vs 2
-workers) was unreadable at load 18-83. The estate cache (`3ede8a3`) has landed since; Phase 1.1
+workers) was unreadable at load 18-83. The estate cache (`3ede8a3`) has landed since; Phase 4.1
 re-measures.
 
 ## Downstream: what each consumer session needs to know
