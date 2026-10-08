@@ -49,6 +49,7 @@ pruned to this table.
 | `goh commit-class`: domain vocabulary dropped (2.2), `--clusters` (2.1), a refused git is an error | `4d9d9f9`, `c4a542e` | replay 4 -> 3 refusals, all right; clusters: 1 labelled cluster whole by words, +2 by files; 2 are paraphrase in different files, beyond words and paths |
 | Downstream verified at each repo's HEAD (3.1) | `feefd2c` + this rework | 20 items: 7 done (pruned), 3 partly, 8 open, 2 general |
 | rebase picks and `git am` patches get the marker check: `hooks/post-rewrite` (reports, names `<commit>:<path>:<line>`) + `hooks/pre-applypatch` (refuses), `goh markers --commits`; `doctor.sh` checks every stock hook | `10be7e8`, `afdf661` | git 2.56: a rebase pick runs no pre-commit/commit-msg; its first real rebase (`66e638d`) named a kept `\|\|\|\|\|\|\|` base line a hand grep missed |
+| 4.1 cross-session serialization of `structural --full` re-measured after the estate cache | `75f109c` (its pin) | sigma 0.45 -> 0.107 at N=1-8, under a hold |
 | P0-P4, C1, C3-C5 | v0.20.0-v0.22.0 | see CHANGELOG |
 
 ## Resume here (2026-10-08, after v0.24.0)
@@ -110,11 +111,16 @@ idle"; macOS counts threads blocked on Spotlight's I/O as load). The queue gets 
       `_bench_running` check keep a lost or dead mark from holding it.
 
 **Phase 4 — re-measure what v0.24.0 claims (through the Phase 3 queue, one hold each)**
-- [ ] 4.1 Cross-session serialization of `structural --full` (`tools/session_bench.py`, N=1/2/4/8).
+- [x] 4.1 Cross-session serialization of `structural --full` (`tools/session_bench.py`, N=1/2/4/8).
       Baseline: sigma 0.45 at load 7-18, BEFORE the estate cache (`3ede8a3`) landed. Exit: sigma
       <= 0.15, or the step that holds it named by `session_bench`'s per-step inflation. Red-first:
       the bench on a deliberately serialized control (one `flock`ed step) reports sigma near 1, or
       the instrument is blind. Lies: other sessions' load (the 3.3 controls); a warm cache as cold.
+      Measured 2026-10-08 18:24 at main 13880a0, under a hold, repeat 3: **sigma 0.107**, kappa
+      0.002; makespan 3.85/4.19/5.24/7.21 s at N=1/2/4/8 -- exit met. Controls 0.30/0.33 s (the
+      10% line), load 8.6-10.4 at the rows: a busier box reads MORE contention, not less. Most
+      inflated steps: no unreaped spawns x5.9, no kill by name x4.3, prose claims x4.7 (each
+      <0.4 s). The serial control's pin now bounds by the fraction the box allows (`75f109c`).
 - [ ] 4.2 media_server push, everything changed, warm. Baseline: 170 s at load 4-8, BEFORE the
       incremental coverage build (`06afca4`: 173 -> 76 s on this repo). Measured 2026-10-08
       12:47 under a hold: 208 s, controls 0.30/0.30 s -- the exit is NOT met. Five coverage
