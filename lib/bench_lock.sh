@@ -1,7 +1,7 @@
 # shellcheck shell=bash
 # bench_lock.sh -- a quiet machine on demand: a measurement holds off every goh gate on this host.
 #
-# HOUSE LIB, sourced. Every wall-clock number in docs/BACKLOG.md needs a quiet box (load < 4), and
+# HOUSE LIB, sourced. Every wall-clock number in docs/BACKLOG.md needs a quiet box (tools/quiet.sh), and
 # for two days every one was taken at load 7-31 beside other sessions' gates (2026-10-06/08). The
 # other locks here exclude something narrower: lib/desktop_lock/ the one screen, lib/tree_lock.sh
 # one checkout's build tree. This one is a READER-WRITER lock over the whole host:
@@ -12,7 +12,12 @@
 #   * a measurement takes it EXCLUSIVE (`bench_lock_exclusive`, tools/quiet.sh): `mkdir` of
 #     $BENCH_LOCK_DIR/exclusive (atomic), then it waits for every registered gate to finish.
 #     Either the gate sees the measurement and steps back, or the measurement sees the gate and
-#     waits for it: each writes its own mark BEFORE it reads the other's.
+#     waits for it: each writes its own mark BEFORE it reads the other's;
+#   * PHASE-FAIR: a gate that waits marks it in $BENCH_LOCK_DIR/waiting, and a new claim lets
+#     every gate already waiting start first. Without it a series of measurements was one hold
+#     to everyone else -- each claim followed the last release at once, and no gate queued behind
+#     run N started before run N+1 (servers, 2026-10-08). Neither side starves: the gates that
+#     arrive after the claim wait for it, and the claim waits only for those already queued.
 #
 # DEADLOCK is what the waiting side guards against, as desktop_lock.sh does:
 #   1. A gate NESTED in a joined gate (this repo's suite runs gates inside its own push) must not
@@ -23,7 +28,8 @@
 #      time recorded beside it no longer matches. Its claim is void and the next waiter reclaims.
 #   3. A holder alive but wedged: past its max hold (GOH_BENCH_MAX_HOLD, default 900 s), void.
 #      A hold blocks every session's commits, so it is short and says how long (BACKLOG 3.2):
-#      `bench_lock_hold S` re-stamps it for a run of S seconds, and a waiting gate prints its end.
+#      `bench_lock_hold S` stamps it for a run of S seconds more, and a waiting gate prints its
+#      end. The cap counts from the CLAIM: the drain and the settle block every gate too.
 #   4. A holder killed between its `mkdir` and writing its owner file: an ownerless claim older
 #      than a minute is void.
 #
@@ -110,6 +116,7 @@ bench_lock_join() {
         BENCH_LOCK_ENTRY="$gates/$$"
         printf '%s\n' "$1" >"$BENCH_LOCK_ENTRY" 2>/dev/null || {
             BENCH_LOCK_ENTRY=""
+            [ -z "$said" ] || rm -f "$BENCH_LOCK_DIR/waiting/$$"
             return 0
         }
         [ -d "$BENCH_LOCK_DIR/exclusive" ] || break
@@ -120,14 +127,36 @@ bench_lock_join() {
         _bench_nested && break
         rm -f "$BENCH_LOCK_ENTRY"
         BENCH_LOCK_ENTRY=""
-        if [ -z "$said" ]; then
+        if [ -z "$said" ]; then # queued: the next claim lets this gate in first (_bench_yield)
+            mkdir -p "$BENCH_LOCK_DIR/waiting" 2>/dev/null && chmod 1777 "$BENCH_LOCK_DIR/waiting" 2>/dev/null
+            : >"$BENCH_LOCK_DIR/waiting/$$" 2>/dev/null
             printf '· %s: waiting for a measurement to finish: %s%s\n' "$1" \
                 "$(_bench_owner_field 5 || echo 'one starting')" "$(_bench_ends)" >&2
             said=1
         fi
         sleep 2
     done
+    [ -z "$said" ] || rm -f "$BENCH_LOCK_DIR/waiting/$$"
     export GOH_BENCH_JOINED="$$"
+}
+
+# The gates already waiting when the host comes free start before a new claim takes it. Bounded:
+# a waiter re-checks every 2 s, so one still marked after 10 s is not coming.
+_bench_yield() {
+    local f pid waiters="" end
+    for f in "$BENCH_LOCK_DIR/waiting"/*; do
+        [ -e "$f" ] || continue
+        pid="${f##*/}"
+        if _bench_running "$pid"; then waiters="$waiters $pid"; else rm -f "$f"; fi
+    done
+    [ -n "$waiters" ] || return 0
+    printf '· bench lock: letting the gates already waiting start first:%s\n' "$waiters" >&2
+    end=$(($(date +%s) + 10))
+    for pid in $waiters; do
+        while [ -e "$BENCH_LOCK_DIR/waiting/$pid" ] && _bench_running "$pid" && [ "$(date +%s)" -lt "$end" ]; do
+            sleep 0.5
+        done
+    done
 }
 
 # The process runs: `kill -0` alone answers yes for a zombie, an exited gate its parent has not
@@ -159,7 +188,11 @@ bench_lock_exclusive() {
     local label="$1" deadline said=""
     deadline=$(($(date +%s) + ${GOH_BENCH_WAIT:-1800}))
     mkdir -p "$BENCH_LOCK_DIR/gates" 2>/dev/null && chmod 1777 "$BENCH_LOCK_DIR" "$BENCH_LOCK_DIR/gates" 2>/dev/null
-    until mkdir "$BENCH_LOCK_DIR/exclusive" 2>/dev/null; do
+    while :; do
+        if [ ! -d "$BENCH_LOCK_DIR/exclusive" ]; then
+            _bench_yield
+            mkdir "$BENCH_LOCK_DIR/exclusive" 2>/dev/null && break
+        fi
         if _bench_exclusive_stale; then
             rm -rf "$BENCH_LOCK_DIR/exclusive"
             continue
@@ -189,11 +222,22 @@ bench_lock_exclusive() {
     done
 }
 
-# bench_lock_hold <seconds> -- re-stamp this process's claim for a run of that long, from now.
+# Seconds since this process claimed the host.
+bench_lock_spent() {
+    local since
+    since="$(_bench_owner_field 3)" || return 1
+    printf '%s' "$(($(date +%s) - since))"
+}
+
+# bench_lock_hold <seconds> -- stamp this process's claim to end that long from now; refused
+# (status 1, the claim unchanged) when that is past the cap counted from the claim.
 bench_lock_hold() {
     [ "$BENCH_LOCK_HELD" = 1 ] && [ "$(_bench_owner_field 1)" = "$$" ] || return 1
-    printf '%s\n%s\n%s\n%s\n%s\n' "$$" "$(_bench_owner_field 2)" "$(date +%s)" "$1" \
-        "$(_bench_owner_field 5)" >"$BENCH_LOCK_DIR/exclusive/owner.new" &&
+    local spent
+    spent="$(bench_lock_spent)" || return 1
+    [ $((spent + $1)) -le "$BENCH_LOCK_MAX_HOLD" ] || return 1
+    printf '%s\n%s\n%s\n%s\n%s\n' "$$" "$(_bench_owner_field 2)" "$(_bench_owner_field 3)" \
+        "$((spent + $1))" "$(_bench_owner_field 5)" >"$BENCH_LOCK_DIR/exclusive/owner.new" &&
         mv "$BENCH_LOCK_DIR/exclusive/owner.new" "$BENCH_LOCK_DIR/exclusive/owner"
 }
 

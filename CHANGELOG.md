@@ -146,7 +146,16 @@
   the hold's label and latest end, a longer hold is refused up front -- split it -- and a run that
   outlives its hold fails, because the gates resumed under it (3.2). A gate
   nested in a registered gate or in the measurement, and a dead, PID-recycled or overdue holder,
-  never deadlock it. Pinned by `tests/test_bench_lock.py`, each case red-proven by mutation.
+  never deadlock it. The cap counts from the CLAIM, not the run -- the drain and the settle block
+  every gate too -- so a claim whose run would end past it lets go (the default `--hold` is two
+  thirds of the cap). And the lock is PHASE-FAIR: a new claim lets the gates already waiting start
+  first. Without it a series of measurements was one 25-minute hold to every other repo, each claim
+  following the last release at once, and two servers pushes timed out behind it (3.4). Pinned by `tests/test_bench_lock.py`, each case red-proven by mutation.
+
+* **`tools/session_bench.py` shows why a run failed.** A failed warm-up named its log and then
+  deleted it with the work dir, so Phase 4.1's cause was lost; a failed run now prints its log's
+  last 20 lines and keeps the dir. Its "not a quiet box" warning is quiet.sh's 8, pinned equal,
+  not the hand-picked 4 that 3.3 replaced.
 
 * **`goh early-exit-pipe`: no early-exit consumer on a pipe under pipefail** (`crates/goh/src/earlypipe/`).
   `producer | grep -q` with pipefail on is a race: the consumer exits at its first match, the

@@ -373,3 +373,47 @@ def test_the_floor_is_measured_holding_the_host(tmp_path: Path) -> None:
     assert "floor: load 7 min" in r.stdout and "control 0.41 s" in r.stdout, r.stdout
     assert all(x.startswith("held") for x in _reads(tmp_path)), _reads(tmp_path)
     assert not (tmp_path / "lock" / "exclusive").exists()
+
+
+def test_a_new_measurement_lets_the_gates_already_waiting_in_first(tmp_path: Path) -> None:
+    """Back to back, a series of measurements was one hold to everyone else: each claim followed
+    the last release at once, so no gate queued behind run N started before run N+1 (servers,
+    2026-10-08). The gates already waiting when the host comes free go first (phase-fair)."""
+    lock = tmp_path / "lock"
+    series = _bash(lock, f'bench_lock_exclusive run1 && : > "{tmp_path}/ready" && '
+                   f'while [ ! -e "{tmp_path}/go" ]; do sleep 0.1; done; bench_lock_release; '
+                   f'bench_lock_exclusive run2 && : > "{tmp_path}/second"', GOH_BENCH_WAIT="30")  # fmt: skip
+    _wait_for(tmp_path / "ready")
+    gate = _bash(lock, f'bench_lock_join gate; : > "{tmp_path}/ran"; sleep 3')
+    time.sleep(2.5)  # the gate waits behind run 1
+    (tmp_path / "go").touch()  # run 1 ends, and run 2 claims at once
+    series.wait(timeout=30)
+    gate.wait(timeout=30)
+    assert (tmp_path / "ran").exists() and (tmp_path / "second").exists()
+    assert "waiting for running gates" in series.stderr.read()  # run 2 drained the gate it let in
+    assert (tmp_path / "ran").stat().st_mtime_ns <= (tmp_path / "second").stat().st_mtime_ns
+
+
+def test_the_cap_bounds_the_whole_block_not_only_the_run(tmp_path: Path) -> None:
+    """The drain and the settle block every gate too: the first cap bounded only the run, so a
+    claim could block for its settle AND its hold. A run that would end past the cap, counted from
+    the claim, lets go instead."""
+    load = _fake_load(tmp_path, [50] * 35 + [1])
+    lock = tmp_path / "lock"
+    env = _quiet_env(tmp_path, GOH_BENCH_MAX_HOLD="6", **load)
+    hold = subprocess.Popen(
+        ["bash", str(QUIET), "--hold", "4", "--settle", "20", "--retry", "0.2", "--",
+         "sleep", "2.5"],
+        env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+    )  # fmt: skip
+    try:
+        _wait_for(lock / "exclusive" / "owner")
+        start = time.monotonic()
+        r = _run(lock, "bench_lock_join gate && echo joined", timeout=30)
+        waited = time.monotonic() - start
+        hold.wait(timeout=40)
+    finally:
+        hold.kill()
+    assert r.stdout.strip() == "joined" and waited < 5, (waited, r.stderr)
+    err = hold.stderr.read()
+    assert hold.returncode == 0 and "letting go" in err, err

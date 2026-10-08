@@ -21,9 +21,12 @@
 #   4. past --deadline seconds (14400, 4 h): REFUSE, naming the busiest processes.
 #
 # A hold blocks every session's commits, so it is SHORT and says how long (BACKLOG 3.2): CMD runs
-# for at most --hold seconds (GOH_BENCH_MAX_HOLD, 900), stamped when it starts, which a waiting
-# gate prints. Longer than the cap is refused up front -- split it -- and a run that outlives its
-# hold fails, named: the gates resumed under it, so its numbers were not taken quiet.
+# for at most --hold seconds (default two thirds of GOH_BENCH_MAX_HOLD, 900), stamped when it
+# starts, which a waiting gate prints. The cap counts from the CLAIM -- the drain and the settle
+# block every gate too -- so a claim whose run would end past it lets go at step 3 (BACKLOG 3.4).
+# Longer than the cap is refused up front -- split it -- and a run that outlives its hold fails,
+# named: the gates resumed under it, so its numbers were not taken quiet. Between two claims the
+# gates already waiting go first (lib/bench_lock.sh, phase-fair): a series is not one hold.
 #
 # Then CMD runs, with the load printed at its start and end; this exits with CMD's status. Two
 # measurements queue on the host lock. The desktop lock's own max hold (900 s, a peer's rule)
@@ -59,9 +62,12 @@ while [ $# -gt 0 ]; do
 done
 [ $# -gt 0 ] || [ -n "$floor" ] || die "quiet.sh: no command to run (usage: quiet.sh [--max-load N] [--settle S] -- CMD... | --floor)"
 
-hold="${hold:-$BENCH_LOCK_MAX_HOLD}"
+hold="${hold:-$((BENCH_LOCK_MAX_HOLD * 2 / 3))}"
 [ "$hold" -le "$BENCH_LOCK_MAX_HOLD" ] ||
     die "quiet.sh: --hold ${hold}s is past the ${BENCH_LOCK_MAX_HOLD}s every other session may wait behind (GOH_BENCH_MAX_HOLD): split the measurement"
+[ -z "$floor" ] || awk -v s="$settle" -v m="$BENCH_LOCK_MAX_HOLD" 'BEGIN { exit !(s <= m) }' ||
+    die "quiet.sh: --floor samples for --settle ${settle}s, past the ${BENCH_LOCK_MAX_HOLD}s cap (GOH_BENCH_MAX_HOLD)"
+budget=$((BENCH_LOCK_MAX_HOLD - hold)) # seconds a claim may spend draining and settling
 load1() { # the 1-minute load average
     if [ -n "${GOH_BENCH_LOADAVG:-}" ]; then
         "$GOH_BENCH_LOADAVG"
@@ -113,11 +119,15 @@ while :; do
     fi
     until below "$(load1)" "$max_load"; do                                      # 2. the box, drained
         over "$(elapsed "$t1")" "$settle" && break
+        over "$(bench_lock_spent)" "$budget" && break
         sleep "$(awk -v p="$poll" 'BEGIN { print (p < 5 ? p : 5) }')"
     done
-    below "$(load1)" "$max_load" && break
+    spent="$(bench_lock_spent)"
+    below "$(load1)" "$max_load" && bench_lock_hold "$hold" && break
     desktop_lock_release
     bench_lock_release
+    over "$spent" "$budget" &&
+        warn "quiet: the drain and settle took ${spent}s, and a ${hold}s run would block gates past the ${BENCH_LOCK_MAX_HOLD}s cap"
     if over "$(elapsed "$t0")" "$deadline"; then                                # 4. refuse
         err "the host is not quiet: no window under load $max_load in ${deadline}s, every gate held (load $(load1)); busiest:"
         busiest
@@ -127,7 +137,6 @@ while :; do
     busiest                                                                      # 3. let go
     sleep "$retry"
 done
-bench_lock_hold "$hold"
 info "quiet: load $(load1) (max $max_load), every gate held for ${hold}s -- running: $*"
 c0="$(control)" t2="$(date +%s)" rc=0
 "$@" || rc=$?
