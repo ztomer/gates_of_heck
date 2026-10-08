@@ -79,8 +79,10 @@ else waits on their numbers (owner, 2026-10-08). `[ ]` open, `[x]` done, `[~]` h
       gone, no longer calls X, now calls Y); zero X-callers fails the floor. Lies: `getattr` and
       star imports (named as limits, not passed).
 
-- [ ] 1.3 A trigger on a call's string argument, so ZoneWM's courtesy rule ("a tool that drives the
-      desktop must call `wait_for_rest`") is a row too. Baseline: its `DRIVES` regex matches
+- [x] 1.3 A trigger on a call's string argument, so ZoneWM's courtesy rule ("a tool that drives the
+      desktop must call `wait_for_rest`") is a row too (`6a26828`: `*("theme", "--id")`; over
+      ZoneWM's tools it binds 12 of the regex's 17 -- the 5 others name a verb only as text, and
+      `census_drivers.py`'s `self.cli(*self.args)` is the run-time limit). Baseline: its `DRIVES` regex matches
       `"switch-space"`, `"config-set"`, `"theme", "--id"` -- arguments, not callee names -- so
       only its long-runner half is a row today. Exit: `calls` accepts `name("literal", ...)`
       and `check_probe_courtesy.py`'s planted cases pass as rows. Red-first: a literal named
@@ -219,9 +221,9 @@ re-measures.
   per-target floors and unreadable files is answered (both refused since v0.24.0).
 - **ztools:** HEAD (`40148ae`) is RED on its own code under clippy 1.99 (72 `assert_is_empty`); its
   hooks differ textually (`install.sh --force` is ztools' call); write `GOH_EXCLUDE='^vendor/'`.
-- **ZoneWM:** `goh requires-call` (`4474822`) expresses `check_probe_placement.py` and the long-runner
-  half of `check_probe_courtesy.py` as rows (`GOH_REQUIRES_CALL`); the drives half waits on 1.3.
-  Deleting the copies is ZoneWM's owner's call.
+- **ZoneWM:** `goh requires-call` (`4474822`, `6a26828`) expresses `check_probe_placement.py` and
+  both halves of `check_probe_courtesy.py` as rows (`GOH_REQUIRES_CALL`); as rows, 5 of its 17
+  LEGITIMATE entries go stale (they name a verb only as text). Deleting the copies is its owner's call.
 - **ZoneWM:** `check_probes_pass.py` discovery stays by `check_*` NAME (`input_lock.py --probe` would
   grab the real keyboard) and names the self-proofs it does not run.
 - **Finance:** `tests/test_repos.sh:113`, `tests/test_one_plan_of_record.sh:214` write
