@@ -48,6 +48,7 @@ pruned to this table.
 | `goh requires-call` (v0.25 1.1-1.3): "a Python file that calls X calls Y", from the AST (`ruff_python_parser`), string-argument triggers | `4474822`, `6a26828` | ZoneWM's courtesy rule as a row: 12 of its regex's 17 files bound, the 5 others name a verb only as text |
 | `goh commit-class`: domain vocabulary dropped (2.2), `--clusters` (2.1), a refused git is an error | `4d9d9f9`, `c4a542e` | replay 4 -> 3 refusals, all right; clusters: 1 labelled cluster whole by words, +2 by files; 2 are paraphrase in different files, beyond words and paths |
 | Downstream verified at each repo's HEAD (3.1) | `feefd2c` + this rework | 20 items: 7 done (pruned), 3 partly, 8 open, 2 general |
+| rebase picks and `git am` patches get the marker check: `hooks/post-rewrite` (reports, names `<commit>:<path>:<line>`) + `hooks/pre-applypatch` (refuses), `goh markers --commits`; `doctor.sh` checks every stock hook | `10be7e8`, `afdf661` | git 2.56: a rebase pick runs no pre-commit/commit-msg; its first real rebase (`66e638d`) named a kept `\|\|\|\|\|\|\|` base line a hand grep missed |
 | P0-P4, C1, C3-C5 | v0.20.0-v0.22.0 | see CHANGELOG |
 
 ## Resume here (2026-10-08, after v0.24.0)
@@ -201,6 +202,8 @@ Finance's `"$root.out"`, ZeroThunder's dropped process handle.
   stock hook. At `2fb2901` (the hook-env fix) 6 of 29 matched the stock pre-commit, 23 did not;
   servers is reinstalling across the estate now -- re-check after. **A Rust toolchain is required**
   for layer 1 (`bin/goh` is the only tier).
+  After `10be7e8` a reinstall also adds `post-rewrite` and `pre-applypatch` (the conflict-marker
+  check for rebase picks and `git am`); `gate.sh --doctor` now names each stock hook a repo lacks.
 - **Callers of a retired Python checker by path** (forwarders to `goh.sh <check>` keep working):
   ZoneWM [`d2aa402b`] `tools/release_precheck.sh:35`; app_updates [`22ec4aa2`] `tools/gate.sh:35,51`;
   koffee_big [`9e375e37`] `tools/gates_lint.sh:28,30,131`; Finance/salary [`e553bf2f`] and
