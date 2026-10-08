@@ -6,7 +6,7 @@
 #   GOH_DIR=~/goh install.sh   # shared checkout lives somewhere else
 #
 # What it does, idempotently:
-#   1. copies hooks/pre-commit, pre-push and commit-msg into <repo>/.githooks/,
+#   1. copies every stock hook (each FILE in hooks/) into <repo>/.githooks/,
 #      PROTECTED: the sha256 of each installed hook is recorded in
 #      .githooks/.goh-installed/<name>.sha256, and a reinstall overwrites a
 #      hook only if its current bytes equal the stock copy OR our recorded
@@ -199,6 +199,6 @@ else
 fi
 
 ok "installed into $target (core.hooksPath → .githooks)"
-info "pre-commit runs tools/gate.sh --staged; pre-push runs tools/gate.sh --full on the pushed commit in a clean worktree"
+info "pre-commit runs tools/gate.sh --staged; pre-push runs tools/gate.sh --full on the pushed commit in a clean worktree; post-rewrite and pre-applypatch check rebase picks and am patches for conflict markers"
 exit
 } # parse-guard

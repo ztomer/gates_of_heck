@@ -135,6 +135,10 @@ pub enum Commands {
         /// Staged files only (polices the index, like the Python checker).
         #[arg(long)]
         staged: bool,
+        /// What each of these commits changed against its first parent, read from the commit:
+        /// the scan `hooks/post-rewrite` runs over a rebase's picks, which no pre-commit saw.
+        #[arg(long, num_args = 1.., conflicts_with = "staged")]
+        commits: Vec<String>,
     },
     /// Fail on source files over a line cap (native port of `check_file_length`).
     Length {

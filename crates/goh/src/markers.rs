@@ -83,6 +83,30 @@ pub fn scan_files(root: &std::path::Path, files: &[String], staged: bool) -> Vec
     bad
 }
 
+/// Scan what each of `revs` changed against its first parent, read from the commit itself.
+///
+/// A hit's path is spelled `<commit>:<path>` (the commit cut to 10), as git names a blob in a
+/// commit, so the report says which commit to fix. Returns the hits and how many commits were read.
+///
+/// # Errors
+///
+/// A rev that names no commit, or a blob git cannot produce.
+pub fn scan_commits(
+    root: &std::path::Path,
+    revs: &[String],
+) -> Result<(Vec<Violation>, usize), String> {
+    let mut wanted = Vec::new();
+    for rev in revs {
+        wanted.extend(crate::revblobs::changed(root, rev)?);
+    }
+    let mut bad = Vec::new();
+    crate::revblobs::for_each(root, &wanted, |item, blob| {
+        let short = item.commit.get(..10).unwrap_or(&item.commit);
+        bad.extend(scan_blob(&format!("{short}:{}", item.path), blob));
+    })?;
+    Ok((bad, revs.len()))
+}
+
 /// Full violation block: header plus one line per hit. Shared by the
 /// `markers` subcommand and the structural pipeline so both print one text.
 #[must_use]

@@ -47,6 +47,7 @@ pub mod pylex;
 pub mod ratchet;
 pub mod requires_call;
 pub mod requires_call_py;
+pub mod revblobs;
 pub mod rust_depinfo;
 pub mod rust_scope;
 pub mod scope;
@@ -159,7 +160,7 @@ fn run_core(command: Commands) -> i32 {
             label,
             command,
         } => stepcmd::run(&timeout, grace, &label, &command),
-        Commands::Markers { staged } => commands::run_markers(staged),
+        Commands::Markers { staged, commits } => commands::run_markers(staged, &commits),
         Commands::Screen {
             paths,
             scope,

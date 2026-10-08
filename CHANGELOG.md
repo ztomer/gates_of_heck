@@ -2,6 +2,20 @@
 
 ## Unreleased
 
+* **post-rewrite + pre-applypatch: the marker check for commits git makes without pre-commit**
+  (`hooks/post-rewrite`, `hooks/pre-applypatch`, `gates/sequencer_gate.sh`, `goh markers
+  --commits`). On 2026-10-08 a CHANGELOG.md conflict resolved during `git rebase --continue` kept
+  a diff3 base section (`||||||| parent of ...`); only the push gate caught it. Measured on git
+  2.56: a rebase pick, conflicted or clean, runs no pre-commit and no commit-msg; `git am` and
+  `rebase --apply` run only pre-applypatch, which no stock hook installed. post-rewrite now scans
+  what each rewritten commit changed (read from the commit, against its first parent) and names
+  `<commit>:<path>:<line>` -- git ignores its exit, so it reports and the push gate refuses;
+  pre-applypatch refuses the patch (`git am --continue --no-verify` skips it). Also: `doctor.sh`
+  checked a hand-kept pair of hooks, so `commit-msg` was never checked; it now checks every file in
+  `hooks/`, the list `install.sh` installs. Consumers re-run `install.sh` for the two new hooks.
+  RED FIRST: 10 of the new tests failed before; disabling the hook logic, or the root/merge
+  handling in the Rust, turns them red again.
+
 * **quiet: a drain is bounded by the budget, and a let-go names one reason** (`tools/quiet.sh`,
   `lib/bench_lock.sh`). BACKLOG 4.3 routines-j4's claim waited 579 s for two other sessions'
   pre-push gates -- every new gate blocked behind it -- then let go unmeasured, because a 600 s

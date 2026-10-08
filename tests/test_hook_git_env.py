@@ -228,6 +228,9 @@ def test_rust_test_code_spawns_git_only_through_the_testkit():
         "crates/goh/src/proven.rs": 2,
         # commit-class: `git log` of the repo being committed to / pushed, GIT_* honoured
         "crates/goh/src/commit_class.rs": 1,
+        # markers --commits: rev-parse / diff-tree + one cat-file of the repo whose rebase
+        # post-rewrite reports (GIT_* honoured)
+        "crates/goh/src/revblobs.rs": 2,
     }
     found = {}
     for path in sorted((REPO_ROOT / "crates").rglob("*.rs")):

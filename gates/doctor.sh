@@ -72,7 +72,11 @@ elif [ "$hooks_path" != ".githooks" ]; then
 else
     # shellcheck source=gates/_hash.sh
     . "$HERE/_hash.sh"
-    for h in pre-commit pre-push; do
+    # Every stock hook is a FILE in hooks/, the list install.sh installs from: a hand-kept pair here
+    # read healthy while commit-msg, post-rewrite and pre-applypatch never ran (test_doctor.py).
+    for stock in "$GOH_ROOT"/hooks/*; do
+        [ -f "$stock" ] || continue
+        h="$(basename "$stock")"
         dst="$repo/.githooks/$h"
         if [ ! -x "$dst" ]; then
             fail ".githooks/$h missing or not executable (fix: '$GOH_ROOT/install.sh $repo')"

@@ -8,11 +8,14 @@ use crate::{
     steps,
 };
 
-pub fn run_markers(staged: bool) -> i32 {
+pub fn run_markers(staged: bool, commits: &[String]) -> i32 {
     let Some(root) = gitutil::repo_root().map(PathBuf::from) else {
         eprintln!("⚠ [no_conflict_markers] not a git repo — skipping");
         return 0;
     };
+    if !commits.is_empty() {
+        return run_markers_commits(&root, commits);
+    }
     match markers::scan_root(&root, staged) {
         Err(message) => {
             eprintln!("✗ [no_conflict_markers] {message}");
@@ -25,6 +28,25 @@ pub fn run_markers(staged: bool) -> i32 {
         Ok(_) => {
             let scope = if staged { "staged" } else { "tracked" };
             println!("→ [no_conflict_markers] OK — no markers in {scope} files");
+            0
+        }
+    }
+}
+
+/// `markers --commits`: what each commit changed. A commit is never judged clean unread (exit 2).
+fn run_markers_commits(root: &std::path::Path, commits: &[String]) -> i32 {
+    match markers::scan_commits(root, commits) {
+        Err(message) => {
+            eprintln!("✗ [no_conflict_markers] {message}");
+            2
+        }
+        Ok((bad, _)) if !bad.is_empty() => {
+            eprint!("{}", markers::format_report(&bad));
+            1
+        }
+        Ok((_, read)) => {
+            let noun = if read == 1 { "commit" } else { "commits" };
+            println!("→ [no_conflict_markers] OK — no markers in {read} {noun}");
             0
         }
     }

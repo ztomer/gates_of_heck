@@ -9,6 +9,8 @@ drift gate)."""
 import subprocess
 from pathlib import Path
 
+import pytest
+
 from conftest import REPO_ROOT, git, write
 from _fast_git import fast_init  # noqa: E402
 
@@ -175,3 +177,17 @@ def test_a_hand_edited_hook_warns_but_passes(repo):
     r = run_doctor(repo)
     assert r.returncode == 0, r.stdout + r.stderr
     assert "pre-push differs from gates_of_heck's and was edited by hand" in r.stdout + r.stderr
+
+
+@pytest.mark.parametrize(
+    "name", [p.name for p in sorted((REPO_ROOT / "hooks").iterdir()) if p.is_file()]
+)
+def test_every_stock_hook_missing_from_an_install_fails_named(repo, name):
+    """install.sh installs every FILE in hooks/ (the directory is the list); doctor checked a
+    hand-kept pair, so a repo installed before commit-msg, post-rewrite or pre-applypatch existed
+    read healthy while those gates never ran there."""
+    _wire(repo)
+    (repo / ".githooks" / name).unlink()
+    r = run_doctor(repo)
+    assert r.returncode == 1, r.stdout + r.stderr
+    assert f".githooks/{name} missing" in r.stdout + r.stderr
