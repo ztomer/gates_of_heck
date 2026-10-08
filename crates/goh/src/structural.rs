@@ -2,9 +2,9 @@
 //! since Phase N3 retired `gates/structural.sh`'s Python branch.
 
 use crate::{
-    blobs, claims, credurls, deadexec, earlypipe, gatesrc, gitutil, goh_root, killname, lockver,
-    mdlinks, prefetch, provenance, pyformat, scope, shell_lint, steps, steps_delegated, steps_rust,
-    unreaped, vendored,
+    blobs, claims, credurls, deadexec, earlypipe, gatesrc, gitutil, goh_root, hookindex, killname,
+    lockver, mdlinks, prefetch, provenance, pyformat, scope, shell_lint, steps, steps_delegated,
+    steps_rust, unreaped, vendored,
 };
 
 mod trackedignored;
@@ -134,7 +134,8 @@ pub fn run(staged: bool, full: bool) -> i32 {
 }
 
 /// The shell-source steps, in order: shell lint, then two defects shellcheck 0.11.0 exits 0 on,
-/// over the same files -- a race (an early-exit pipe) and dead code (a statement after `exec`).
+/// over the same files -- a race (an early-exit pipe) and dead code (a statement after `exec`) --
+/// and contract #12's carried hook index read anywhere but `goh_bind_hook_index`.
 fn shell_steps(
     repo: &std::path::Path,
     files: &[String],
@@ -144,4 +145,5 @@ fn shell_steps(
     shell_lint::step(cfg, staged)
         .or_else(|| earlypipe::step(repo, files, cfg, staged))
         .or_else(|| deadexec::step(repo, files, cfg, staged))
+        .or_else(|| hookindex::step(repo, files, cfg, staged))
 }

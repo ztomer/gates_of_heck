@@ -385,6 +385,17 @@ pub enum Commands {
         #[arg(long)]
         staged: bool,
     },
+    /// Fail on a shell source that expands the hook's carried index (`GOH_HOOK_INDEX_FILE`,
+    /// `GOH_HOOK_GIT_DIR`) anywhere but `goh_bind_hook_index`'s definition.
+    BareHookIndex {
+        /// Regex on repo-relative paths to skip. Unset: the repo's own `.gatesrc` `GOH_EXCLUDE`, as
+        /// its structural gate applies it; `--exclude ''` opts out.
+        #[arg(long)]
+        exclude: Option<String>,
+        /// Staged blobs (polices the index).
+        #[arg(long)]
+        staged: bool,
+    },
     /// Fail on a test spawn no guard reaps, or whose reap sits below a line
     /// that can panic (native port of `check_no_unreaped_spawn`).
     UnreapedSpawn {

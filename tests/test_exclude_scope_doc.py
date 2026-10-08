@@ -22,6 +22,7 @@ CONSUMERS: dict[str, tuple[str, ...]] = {
     "crates/goh/src/shell_lint.rs": ("shell lint",),
     "crates/goh/src/earlypipe/mod.rs": ("early-exit pipe",),
     "crates/goh/src/deadexec/mod.rs": ("code after exec",),
+    "crates/goh/src/hookindex/mod.rs": ("bare hook index",),
     "crates/goh/src/killname/mod.rs": ("kill-by-name",),
     "crates/goh/src/unreaped/mod.rs": ("unreaped spawn",),
     "crates/goh/src/mdlinks.rs": ("md-links",),

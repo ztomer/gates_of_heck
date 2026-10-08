@@ -123,9 +123,13 @@ index being committed is NOT the repository's own under `commit -a` and
 `commit <paths>`; it travels as `GOH_HOOK_INDEX_FILE` with its git dir,
 and a reader of the staged tree (`structural.sh --staged`, `goh.sh`,
 `py_staged.sh`, `goh_index_view`, the proven key) binds it again with
-`goh_bind_hook_index` -- only inside that repository.
+`goh_bind_hook_index` -- only inside that repository. Nothing else reads
+the carried pair: a consumer gate that did (`GIT_INDEX_FILE="${GOH_HOOK_INDEX_FILE:-...}"`)
+bound it inside a TEST's fixture and judged the outer index (routines,
+media_server, 2026-10-08), so `goh bare-hook-index` refuses an expansion of
+either variable in any shell source but the one defining the binder.
 Pin: `tests/test_commit_hook_git_env.py`, `tests/test_hook_git_env.py`,
-`crates/goh-testkit/tests/hook_git_env.rs`.
+`crates/goh-testkit/tests/hook_git_env.rs`, `crates/goh/src/hookindex/tests.rs`.
 
 ## 13. A name is checked against the object it names, never the working tree
 

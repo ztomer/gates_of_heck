@@ -2,6 +2,24 @@
 
 ## Unreleased
 
+* **`goh bare-hook-index`: the hook's carried index is read only by `goh_bind_hook_index`**
+  (`crates/goh/src/hookindex/`). A commit hook carries the index being committed as
+  `GOH_HOOK_INDEX_FILE` beside `GOH_HOOK_GIT_DIR` (contract #12), exported, so a gate a consumer's
+  TEST runs on a fixture inherits both. routines' and media_server's tools/gate.sh read
+  `${GOH_HOOK_INDEX_FILE:-...}` bare, and under a `commit -a` a media_server test's fixture gate
+  judged media_server's index and died "unable to read 404acec" (found and fixed in both repos by
+  the servers session, routines 852b8d5). The class: an EXPANSION of either variable -- `$VAR`,
+  `${VAR...}`, in code, double quotes or an unquoted heredoc -- in any shell source but the one
+  that defines `goh_bind_hook_index()`. Mentions are not reads: comments, single quotes, quoted
+  heredocs, `\$`, `unset`, an assignment. Its own small lexer, because `earlypipe`'s mask fills
+  double-quoted text and the incident is an expansion inside double quotes. A HARD structural
+  step in every repo at both scopes; `GOH_EXCLUDE` applies. The sweep over all 25 `.gatesrc`
+  repos is clean now that both fixes are in; replayed, routines' pre-852b8d5 `tools/gate.sh` is
+  red at `:33` and its fixed blob green. RED FIRST, by mutation: no read recorded (the RED rows
+  fail), single quotes not skipped (the GREEN rows fail), the step unwired (3 tests, the pipeline
+  inventory among them), the binder exemption dropped. `tests/test_goh_structural.py` hit the
+  500-line cap; its fixture cases and verdicts moved to `tests/goh_structural_cases.py`.
+
 * **`rust_gate.sh --each-crate`: `GOH_EXCLUDE` on the manifest path, and `--list`**
   (`gates/rust_each_crate.sh`). Everywhere else `GOH_EXCLUDE` is `re.search` over a repo-relative
   FILE path; here it was `grep -vE` over the crate's bare DIRECTORY, so `'^crates/vendored-rs/'`

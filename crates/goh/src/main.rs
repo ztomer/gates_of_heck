@@ -27,6 +27,7 @@ pub mod emptyassert;
 pub mod gatesrc;
 pub mod gitutil;
 pub mod homepaths;
+pub mod hookindex;
 pub mod index_view;
 pub mod killname;
 pub mod length;
@@ -317,6 +318,10 @@ fn run_ported(command: Commands) -> Result<i32, Box<Commands>> {
         Commands::DeadAfterExec { exclude, staged } => {
             declared(exclude, None, gatesrc::Exempt::Paths)
                 .map_or_else(|code| code, |x| deadexec::run_command(staged, &x))
+        }
+        Commands::BareHookIndex { exclude, staged } => {
+            declared(exclude, None, gatesrc::Exempt::Paths)
+                .map_or_else(|code| code, |x| hookindex::run_command(staged, &x))
         }
         Commands::UnreapedSpawn {
             exclude,

@@ -27,7 +27,7 @@ case "$check" in
     emoji|markers|length|secrets|home-paths|no-allow|empty-assert|screen|lints|skills|golden|\
     deps|unreaped-spawn|version-provenance|kill-by-name|claim-derivation|md-links|lock-version|\
     tag-version|credential-urls|python-formatted|shell-lint|ceiling|commit-class|requires-call|\
-    early-exit-pipe|dead-after-exec) ;;
+    early-exit-pipe|dead-after-exec|bare-hook-index) ;;
     *) echo "✗ goh.sh: unknown check '$check'" >&2; exit 2 ;;
 esac
 
