@@ -1,7 +1,7 @@
 //! Unit tests for `requires_call` and `requires_call_py` (split out for the line cap).
 
 use super::*;
-use crate::requires_call_py::calls;
+use crate::requires_call_py::{calls, Spec};
 
 fn names(src: &str) -> Vec<(usize, String, Option<String>)> {
     calls(src)
@@ -40,8 +40,9 @@ fn a_name_in_a_string_or_a_docstring_is_not_a_call() {
 #[test]
 fn a_dotted_spec_needs_the_import_and_a_bare_one_any_receiver() {
     let sites = calls("import hashlib as h\nh.verify()\npresence.check()\n").expect("parses");
-    assert!(!sites[0].matches("window_placement.verify"));
-    assert!(sites[0].matches("hashlib.verify") && sites[1].matches("check"));
+    let spec = |s: &str| Spec::parse(s).expect("a spec");
+    assert!(!sites[0].matches(&spec("window_placement.verify")));
+    assert!(sites[0].matches(&spec("hashlib.verify")) && sites[1].matches(&spec("check")));
 }
 
 #[test]

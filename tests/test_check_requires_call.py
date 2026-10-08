@@ -138,3 +138,46 @@ def test_a_file_that_does_not_parse_is_named_not_skipped(repo: Path) -> None:
 def test_a_bad_rules_file_is_a_config_error(repo: Path) -> None:
     r = _check(_estate(repo, "[[rule]]\nname = 'x'\n", {}))
     assert r.returncode == 2 and "requires_call.toml" in r.stderr, _named(r)
+
+
+COURTESY = """
+[[rule]]
+name = "courtesy"
+why = "a tool that drives the desktop waits for the owner to rest"
+files = ["tools/*.py"]
+calls = ['*("config-set")', '*("switch-space")', '*("theme", "--id")', "relaunch"]
+must_call = ["wait_for_rest", "wait_for_rest_or_exit"]
+"""
+
+
+def test_a_trigger_on_a_calls_string_arguments(repo: Path) -> None:
+    """BACKLOG 1.3: ZoneWM's courtesy rule names ARGUMENTS (`cli("config-set", ...)`), not callees.
+    Its selftest's planted cases, plus where the verb really sits in its tools: second after the
+    CLI path, inside the argv list handed to subprocess, the two words of `theme --id` together."""
+    files = {
+        "drives.py": 'agent.cli("config-set", "--key", "x")\n',
+        "waits.py": "wait_for_rest(60)\nagent.relaunch()\n",
+        "reads.py": 'agent.cli("get", "arrangement")\n',
+        "commented.py": "# relaunch( is described here\n",
+        "second.py": 'run(opts.cli, "switch-space", "--space", "2")\n',
+        "argv.py": 'subprocess.run([agent.CLI, "switch-space", "--space", "2"])\n',
+        "pair.py": 'act(presence, "theme", "--id", LIGHT)\n',
+        "split.py": 'act("theme", presence, "--id")\n',
+        "constant.py": 'CONFIG_SET = "config-set"\n',
+        "prose.py": '"""Runs cli("config-set") once the owner rests."""\nimport os\n',
+        "keyword.py": 'Row(args=("switch-space", "--space"))\n',
+        "built.py": 'cli(f"{verb}", "--key", "x")\n',
+    }
+    out = _named(_check(_estate(repo, COURTESY, files)))
+    caught = set(re.findall(r"tools/(\w+\.py):\d+: calls .+? and never calls", out))
+    # a string that is not a call's positional argument does not trigger: a constant, a docstring,
+    # a keyword argument; nor do two literals that are not adjacent, nor one built at run time
+    assert caught == {"drives.py", "second.py", "argv.py", "pair.py"}, out
+    assert 'tools/drives.py:1: calls cli("config-set") and never calls wait_for_rest' in out, out
+
+
+def test_a_malformed_argument_trigger_is_a_config_error(repo: Path) -> None:
+    rules = COURTESY.replace("'*(\"config-set\")'", "'*(config-set)'")
+    r = _check(_estate(repo, rules, {"drives.py": 'cli("switch-space")\n'}))
+    assert r.returncode == 2 and "requires_call.toml" in r.stderr, _named(r)
+    assert "*(config-set)" in r.stderr and "nothing was checked" not in r.stderr, _named(r)

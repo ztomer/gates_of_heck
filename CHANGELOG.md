@@ -15,6 +15,11 @@
   ZoneWM's `tools/` and this repo's 457 Python files it found the same 29,973 call sites as
   Python's `ast`, in 0.10 s. It brings `syn` 2 beside the crate's `syn` 3, build-time only (its
   derive macros). ZoneWM's selftest is lifted as the test; every branch is red-proven by mutation.
+  A trigger can name a call's string ARGUMENTS -- `cli("config-set")`, or `*("theme", "--id")`
+  for any callee -- matched side by side among its positional arguments, an argv list spread in
+  place, so ZoneWM's courtesy rule ("a tool that drives the desktop waits for rest") is a row too.
+  Over ZoneWM's tools it binds 12 of the 17 files its regex did; the other 5 name a verb only as
+  text (a docstring, mutation anchors, controls' data). An argv built at run time is not seen.
 
 * **A quiet host on demand: `tools/quiet.sh -- CMD`** (`lib/bench_lock.sh`). Every wall-clock number
   in BACKLOG needs load < 4, and two days of them were taken at load 7-31 beside other sessions'

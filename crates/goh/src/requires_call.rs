@@ -17,7 +17,8 @@
 //! ```
 //!
 //! A name with a dot is `module.function`, resolved through the file's own imports (another
-//! module's `verify` is not this one's); a bare name is any call whose last name it is. Read from
+//! module's `verify` is not this one's); a bare name is any call whose last name it is; either, or
+//! `*`, may name string arguments (`*("theme", "--id")`, BACKLOG 1.3: `Spec`). Read from
 //! the AST (`requires_call_py`), because `ZoneWM`'s first regex version passed with the call
 //! deleted -- its docstring named it. An exemption goes STALE, and fails, when its file is gone,
 //! no longer calls X, or now calls Y. A rule that finds nothing to judge -- no file calls X, or no
@@ -26,7 +27,7 @@
 use std::collections::BTreeMap;
 use std::path::Path;
 
-use crate::requires_call_py::{calls, Site};
+use crate::requires_call_py::{calls, Site, Spec};
 
 /// One `[[rule]]`.
 #[derive(Debug, Clone)]
@@ -34,8 +35,8 @@ pub struct Rule {
     pub name: String,
     pub why: String,
     pub files: Vec<String>,
-    pub calls: Vec<String>,
-    pub must_call: Vec<String>,
+    pub calls: Vec<Spec>,
+    pub must_call: Vec<Spec>,
     pub exempt: BTreeMap<String, String>,
 }
 
@@ -98,10 +99,16 @@ pub fn parse_rules(text: &str) -> Result<Vec<Rule>, String> {
                     exempt.insert(file.clone(), reason.to_owned());
                 }
             }
+            let specs = |key: &str, required: bool| -> Result<Vec<Spec>, String> {
+                strings(t, key, &name, required)?
+                    .iter()
+                    .map(|s| Spec::parse(s).map_err(|e| format!("rule '{name}': {key} {e}")))
+                    .collect()
+            };
             Ok(Rule {
                 files: strings(t, "files", &name, true)?,
-                calls: strings(t, "calls", &name, false)?,
-                must_call: strings(t, "must_call", &name, true)?,
+                calls: specs("calls", false)?,
+                must_call: specs("must_call", true)?,
                 exempt,
                 why,
                 name,
@@ -145,10 +152,21 @@ pub struct Verdict {
     pub empty: bool,
 }
 
-fn first<'s>(sites: &'s [Site], specs: &[String]) -> Option<&'s Site> {
-    sites
+fn first<'s>(sites: &'s [Site], specs: &'s [Spec]) -> Option<(&'s Site, &'s Spec)> {
+    sites.iter().find_map(|s| {
+        specs
+            .iter()
+            .find(|spec| s.matches(spec))
+            .map(|spec| (s, spec))
+    })
+}
+
+fn either(specs: &[Spec]) -> String {
+    specs
         .iter()
-        .find(|s| specs.iter().any(|spec| s.matches(spec)))
+        .map(ToString::to_string)
+        .collect::<Vec<_>>()
+        .join(" or ")
 }
 
 /// Judge one rule over `files` (repo-relative path, source) -- every file the repo lists.
@@ -156,8 +174,8 @@ fn first<'s>(sites: &'s [Site], specs: &[String]) -> Option<&'s Site> {
 pub fn judge(rule: &Rule, files: &[(String, String)]) -> Verdict {
     let mut v = Verdict::default();
     let tag = format!("{}:", rule.name);
-    let wanted = rule.must_call.join(" or ");
-    let trigger = rule.calls.join(" or ");
+    let wanted = either(&rule.must_call);
+    let trigger = either(&rule.calls);
     let matched: Vec<&(String, String)> = files
         .iter()
         .filter(|(p, _)| rule.files.iter().any(|g| glob_matches(g, p)))
@@ -194,10 +212,12 @@ pub fn judge(rule: &Rule, files: &[(String, String)]) -> Verdict {
         }
         v.problems.push(hit.map_or_else(
             || format!("{tag} {path}: never calls {wanted} -- {}", rule.why),
-            |site| {
+            |(site, spec)| {
                 format!(
                     "{tag} {path}:{}: calls {} and never calls {wanted} -- {}",
-                    site.line, site.last, rule.why
+                    site.line,
+                    spec.shown(site),
+                    rule.why
                 )
             },
         ));
@@ -281,11 +301,7 @@ pub fn evaluate(root: &Path, rules_path: &str, staged: bool) -> (i32, Vec<String
             let what = if rule.calls.is_empty() {
                 format!("matches {}", rule.files.join(" "))
             } else {
-                format!(
-                    "in {} calls {}",
-                    rule.files.join(" "),
-                    rule.calls.join(" or ")
-                )
+                format!("in {} calls {}", rule.files.join(" "), either(&rule.calls))
             };
             bad.push(format!(
                 "{}: no file {what}: nothing was checked -- the pattern moved",
@@ -297,7 +313,7 @@ pub fn evaluate(root: &Path, rules_path: &str, staged: bool) -> (i32, Vec<String
                 "{}: {} file(s) bound, each calls {} ({} exempt)",
                 rule.name,
                 v.bound,
-                rule.must_call.join(" or "),
+                either(&rule.must_call),
                 rule.exempt.len()
             ));
         }
