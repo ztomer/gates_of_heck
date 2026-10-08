@@ -32,6 +32,15 @@ QUIET box (load < 4). Landed plans are pruned to this table.
 | rust coverage: one instrumented run of every target, exported once | `170f60b` | 29/29 media_server crates identical; 226 -> 173 s |
 | git's repository-binding variables asked once per process tree (`GOH_GIT_LOCAL_VARS`) | `bd3bff7` | ~1300 fewer spawns per suite run |
 | suite at `-n 12` | `83af2ac` | 74/96 s -> 67/79 s interleaved |
+| rust per-target coverage floors refused, never silently inert | `22c8d49` | -- |
+| rust coverage incremental; only the profiles reset | `06afca4` | coverage 173 -> 76 s |
+| `goh.sh` resolves the binary once per process tree | `ae8b768` | a child call 78 -> 34 ms |
+| the suite's `release` xdist group gone | `2642cbe` | -- |
+| estate corpus remembers a verified entry | `3ede8a3` | warm run 1.49 -> 0.17 s, sys 3.86 -> 0.43 s |
+| `goh canary`: local_ci's step runner native; `fast_init` everywhere | `8edb913` | -- |
+| `goh commit-class` calibrated on ZoneWM's history | `9241ecc` | 1 -> 6 of 13 same-class pairs, 2 of 1,418 false |
+| every temp in the shared dir claimable; the suite sweeps it | `cee397b` | ~1,470 stranded -> 14 |
+| C++ coverage merge bounded (`%8m`, `--input-files`), this run only | `6350c42`, `3ab524c` | -- |
 | P0-P4, C1, C3-C5 | v0.20.0-v0.22.0 | see CHANGELOG |
 
 ## Resume here (2026-10-08, after v0.24.0)
@@ -40,20 +49,68 @@ QUIET box (load < 4). Landed plans are pruned to this table.
 - Main (`~/Projects/gates_of_heck`) is fast-forwarded only after this repo's own push gate is
   green on the branch tip (`tools/gate_profile.sh .` runs it on HEAD in an export).
 - Consumers told of the tag: servers and ztools only (the owner's call, 2026-10-08, for quota).
-  ZoneWM asked to hear when v0.24.0 is out, to put its switch to the stock commit-msg hook
-  (`GOH_COMMIT_CLASS=1`) to its owner; that message waits on the owner.
+  ZoneWM was told on the owner's word (2026-10-08) and puts its switch to the stock commit-msg
+  hook (`GOH_COMMIT_CLASS=1`) to its owner. ztools had no session open: not yet told.
 
-## Next after v0.24.0
+## Roadmap to v0.25.0 — the plan of record
 
-- [ ] **`goh requires-call`** (ZoneWM, 2026-10-08; owner directive: generic tooling goes to goh).
-      "A file that CALLS X must also CALL Y", read from the AST (a docstring naming Y does not
-      count -- the regex version passed with the call deleted), the callee matched through its
-      import alias, a reasoned exemption table whose entries go STALE (fail) when the file is
-      gone, no longer calls X, or now calls Y, and a floor (zero X-callers fails: the pattern
-      moved). Configured per repo as rows (X pattern, Y `module.function` set, exemptions).
-      ZoneWM's two gates become rows: `tools/check_probe_courtesy.py`, and
-      `tools/check_probe_placement.py` (170 lines, an 8-case selftest to lift). Needs a Python
-      parser in the binary; size it first.
+Every item carries its **Baseline:**, **Exit:**, **Red-first:** and **Lies:**, and a done item
+names its commit, or `tests/test_backlog_items.py` fails. A landed item moves to the State table.
+Phases run in order; within a phase, any order. `[ ]` open, `[x]` done, `[~]` handed off.
+
+**Phase 1 — re-measure what v0.24.0 claims, on a quiet box (load < 4, recorded beside each number)**
+- [ ] 1.1 Cross-session serialization of `structural --full` (`tools/session_bench.py`, N=1/2/4/8).
+      Baseline: sigma 0.45 at load 7-18, BEFORE the estate cache (`3ede8a3`) landed. Exit: sigma
+      <= 0.15, or the step that holds it named by `session_bench`'s per-step inflation. Red-first:
+      the bench on a deliberately serialized control (one `flock`ed step) reports sigma near 1, or
+      the instrument is blind. Lies: other sessions' load (record it); a warm cache measured as cold.
+- [ ] 1.2 media_server push, everything changed, warm. Baseline: 170 s at load 4-8, BEFORE the
+      incremental coverage build (`06afca4`: 173 -> 76 s on this repo). Exit: <= 90 s. Red-first:
+      the P0 instrument's per-step sum within 5% of wall on the same run. Lies: a cold sccache; a
+      crate the "everything changed" diff did not touch; media_server's own 110 s pytest step
+      (a servers item) counted as goh's.
+- [ ] 1.3 The P2 budget curve, `GOH_CI_JOBS` 1/2/4/6, this repo and routines. Baseline: 186/147/138
+      s (1/2/4, a busy box). Exit: the knee recorded, and `GOH_CI_JOBS`' default set at it.
+      Red-first: a run at jobs=1 is no faster than jobs=4, or the steps are serial somewhere.
+      Lies: one repo's knee read as every repo's.
+
+**Phase 2 — `goh requires-call`** (ZoneWM, 2026-10-08; owner: "generic tooling goes to goh")
+- [ ] 2.1 A Python parser in the binary, sized. Baseline: none in the crate today; ZoneWM's
+      checkers use `ast`. Exit: one crate chosen (candidates: `ruff_python_parser`,
+      `rustpython-parser`, `tree-sitter-python`) with its build-time and binary-size cost measured,
+      `cargo audit` clean, one version in the lock. Red-first: the call sites it finds in ZoneWM's
+      `tools/*.py` equal Python `ast`'s, byte for byte. Lies: a newer syntax (3.14) parsed
+      differently -- test the estate's own Python, not a sample.
+- [ ] 2.2 The check: "a file that CALLS X must also CALL Y", rows in `.gatesrc`. Baseline: two
+      repo-local ZoneWM gates of this shape (`tools/check_probe_courtesy.py`,
+      `tools/check_probe_placement.py`, 170 lines, an 8-case selftest). Exit: both expressible as
+      rows, the 8 cases pass native, ZoneWM's copies deletable (its owner's call). Red-first: each
+      case red-proven -- a docstring naming Y does not satisfy; Y reached through an import alias
+      does, another module's same-named function does not; an exemption goes STALE three ways (file
+      gone, no longer calls X, now calls Y); zero X-callers fails the floor. Lies: `getattr` and
+      star imports (named as limits, not passed).
+
+**Phase 3 — "fix the class", part 3: the clustering audit**
+- [ ] 3.1 `goh commit-class --clusters REV..`: cluster commits by Class AND touched-file family, each
+      cluster a hardening candidate. Baseline: the word measure sees 6 of ZoneWM's 13 labelled
+      pairs; repeats committed without trailers are seen by nothing. Exit: over ZoneWM's
+      `214f0cf7..HEAD` it names its author's clusters 1-6 with at most 2 spurious clusters.
+      Red-first: the labelled list (`9241ecc`'s data) as the fixture, run against the current
+      rule first. Lies: a file every commit touches (a Makefile, a CHANGELOG) linking everything --
+      files touched by more than a quarter of the range do not count.
+
+**Phase 4 — downstream, verified at each repo's HEAD**
+- [ ] 4.1 Every "Downstream" item below checked against its repo's current HEAD, then pruned or
+      re-stated. Baseline: 17 items, last verified 2026-10-06. Exit: each carries the sha it was
+      verified at, or is gone. Red-first: none -- coordination, no code; the sha stamp is the
+      check. Lies: an item marked fixed from a session's word, not the repo's HEAD. Messages go
+      out only where the owner says (servers and ztools on a release; quota, 2026-10-08).
+
+**Phase 5 — release**
+- [ ] 5.1 v0.25.0. Baseline: v0.24.0 (`3ab524c`). Exit: version bump, CHANGELOG `Unreleased` ->
+      `v0.25.0`, full gate green on the tag commit, tag, push, GitHub release; servers and ztools
+      told. Red-first: `release.sh --dry-run` prints no shell error (`c9e3939`). Lies: a gate run
+      on a different commit than the one tagged.
 
 ## Open — measurements (each needs a quiet box)
 
@@ -64,20 +121,12 @@ exit number is the target column; a miss names its lever before any change lands
 |---|---|---|---|
 | this repo's suite, `-n 12 --dist loadgroup` | 94.4 s (v0.20, `-n 8`) | **52.5-53.8 s at load 11-17 (2026-10-06)**, 1987 tests, longest-first (`tests/_schedule.py`); 62-67 s before it on a quiet box | <= 60 s: **MET** |
 | media_server push, one crate changed, warm | 197 s | 183 s at load 7-12 (2026-10-06): **110 s is media_server's own pytest suite** (134 tests, run by its gate.sh outside the proven cache); 5 of 29 crates re-gated -- 3 correctly (path users), healthcheck-rs on the whole tree by design (its tests read the repo root), vpn-watchdog-rs never recorded (fixed in `d384c0d`) | <= 30 s: unreachable from here while the pytest step runs unconditionally -- a servers item (below) |
-| media_server push, everything changed, warm | 177 s (P0) | 170 s at load 4-8 (2026-10-06): coverage 269 of ~360 summed step-s (29 crates, each rebuilt instrumented from clean) | <= 90 s: lever is the coverage rebuild |
+| media_server push, everything changed, warm | 177 s (P0) | 170 s at load 4-8 (2026-10-06), before `06afca4` made the instrumented build incremental | <= 90 s: Phase 1.2 re-measures |
 | any consumer's pre-commit structural layer | ~1 s | media_server, one staged `.rs`: 0.22 s at load 17 (2026-10-06) | <= 0.4 s: **MET** |
 | P2 budget curve, `GOH_CI_JOBS` 1/2/4/6, this repo and routines | 186/147/138 s (1/2/4, busy) | provisional | the knee, recorded |
 
-It misses by ~7 s, and what is left is the suite's own contention, not waste: a nested pytest that
-takes 0.7 s alone takes 16 s inside the run (`test_conftest_scrubs_before_any_fixture_runs`) --
-process start-up under twelve workers' sys load. The lever is FEWER PROCESSES PER TEST (a test
-that runs a whole gate to check one step), not faster ones. Levers by summed time (2026-10-06): `test_rust_gate_scoped_cache.py` ~45 s and
-`test_rust_gate.py` ~28 s of real cargo, `test_claim_derivation_native_parity.py` ~21 s (each case
-runs the frozen Python reference -- the spec, not tunable), `test_proven.py` ~21 s,
-`test_swift_gate_baseline.py` ~21 s (13 s is the one real-swiftlint test). Every gate a test runs
-pays `goh.sh` resolution (31 ms from the export, 62 ms from the checkout) and per-step wrapper
-cost (now 26 ms); those are the broad levers left. On this box wall clock moved +/-25% run to run
-with other sessions' xctest, so the exit needs a quiet window; judge changes by A/B and by counts.
+The suite target is met; its remaining levers (fewer processes per test, `goh.sh` resolution,
+the per-step wrapper) are recorded in the CHANGELOG. Every other row is Phase 1's.
 
 ## Open — cross-session serialization (`tools/session_bench.py`)
 
@@ -104,57 +153,14 @@ still dominates, and at N=8 even 18 ms native steps run 13x slower, i.e. the swe
 box for everything beside it. Next lever, by count: `check_estate_corpus` materialises 16 scratch
 repos per run (copy + `git init`/`config` x2/`add`/`commit` each, a pool of `len(ESTATE)` = 8
 threads, sized as if the machine were idle) and runs 24 `goh.sh` calls. A pool-cap A/B (8 vs 2
-workers) was unreadable at load 18-83; it needs the quiet box like every row above.
-
-## Open — found 2026-10-06, each sized and ready to start
-
-Defects first (a gate that says more than it does), then levers by expected yield.
-
-1. **Rust per-target coverage floors are INERT.** `lcov_merge.py::_load_floors` reads a flat
-   `{target: floor}` file into `targets` and nothing applies it -- only `coverage_swift.py` does. A
-   rust consumer writing per-target floors is told nothing and gated on nothing (Rust rule #6, "no
-   inert config that reads like a gate"). Since `170f60b` the rust mode has ONE part, so a
-   per-target floor is not even measurable there. Exit: the rust mode REFUSES a floors file with
-   target floors (naming the key and the reason), or the feature is built with per-target parts;
-   refusing is the honest default. Red-first: a rust run with `{"covfix": 100}` over 50% coverage
-   passes today.
-3. **The media_server everything-changed push rebuilds every crate instrumented from clean**
-   (`cargo llvm-cov clean --workspace` at the start of each coverage run: 225 of ~330 summed step-s
-   are coverage). The clean exists because stale instrumented artifacts merged into a report (93.5%
-   read for 96%, routines 2026-09-21). Exit: an incremental instrumented build whose report counts
-   ONLY the current build's objects; lies: a renamed/deleted test binary's stale object, a
-   profile of a previous build. Test each before the change; target <= 90 s for the push.
-4. **Every `goh.sh` call re-resolves the binary**: 31 ms from the export, 62 ms from the checkout,
-   and under `GOH_LIVE` six git calls for the working-tree delta. One resolution per process tree
-   (an exported, validated answer -- the `GOH_GIT_LOCAL_VARS` pattern) removes most of it. Lies: a
-   binary rebuilt mid-tree, a delta that changed mid-run (the tree guard already fails a run that
-   moves the checkout). Exit: a `goh.sh` call inside a gate spawns no git (shim-counted ratchet).
-5. **The suite's last ~7 s (66.9 s quiet against 60 s).** Fewer processes per test: the heaviest
-   tests run a whole gate to check one step (`test_gate_environment.py` ~15 s,
-   `test_hook_git_env.py::test_conftest_scrubs...` 0.7 s alone / 16 s in-suite,
-   `test_rust_gate_scoped_cache.py` ~45 s of real cargo). Small, mechanical: 113 test sites `git
-   init` a fresh repo each (a shared template helper, as `repo` got: ~500 spawns); the `release`
-   xdist group's reason is gone since `31bbb81` (the hardening test rewrites a copy), so the group
-   only constrains packing -- delete it, and keep the tree guard as the proof.
-6. **`check_estate_corpus` saturates the box inside `structural --full`** (sigma 0.84 alone): 16
-   scratch repos per run, 5 git spawns each (init, config x2, add, commit -> template + `-c`
-   identity = 2), a pool of 8 threads sized as if the machine were idle, 24 `goh.sh` calls (item
-   4). Exit: the cross-session sigma <= 0.15 above, measured on a quiet box.
-7. **`lib/orphan_canary.py` still imports `dataclasses` and `argparse`** on every `local_ci.sh`
-   step; the `bounded_run.py` treatment (`7dfb65c`) applies. Small.
-
-## Open — "fix the class", part 3 (parts 1-2 shipped in v0.24.0 as `goh commit-class`)
-
-A loop-start audit: cluster recent commits by Class and touched-file family, each cluster a
-candidate hardening item -- it catches repeats committed without trailers, and the paraphrased
-repeats the word measure cannot see (7 of 13 of ZoneWM's labelled pairs). Exit: run over ZoneWM's
-`214f0cf7..HEAD`, it names clusters 1-6 of its author's list; red-first on that list.
+workers) was unreadable at load 18-83. The estate cache (`3ede8a3`) has landed since; Phase 1.1
+re-measures.
 
 ## Downstream: what each consumer session needs to know
 
 - **Every repo, after v0.24.0 (nothing to do):** rust coverage runs once per crate (identical
   reports, ~23% faster); a crate whose build reads in-repo files outside its scope is recorded
-  from its second run; the step wrapper costs half. Tell servers when it is tagged.
+  from its second run; the step wrapper costs half. Servers told 2026-10-08; ztools not yet.
 - **Every INSTALLED repo:** re-run `$GOH_DIR/install.sh <repo>` (a repo never installed, whose
   hooks another manager owns, is refused since 2026-10-06 -- zinc); `structural.sh` names a hook that is an older
   stock. **A Rust toolchain is now required** for layer 1 (`bin/goh` is the only tier;
