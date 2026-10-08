@@ -132,6 +132,27 @@ idle"; macOS counts threads blocked on Spotlight's I/O as load). The queue gets 
       s (1/2/4, a busy box). Exit: the knee recorded, and `GOH_CI_JOBS`' default set at it.
       Red-first: a run at jobs=1 is no faster than jobs=4, or the steps are serial somewhere.
       Lies: one repo's knee read as every repo's.
+      Measured 2026-10-08 under holds. gates_of_heck, every row at ONE pinned commit (`2783f0d`;
+      main moved under the unpinned rows): j1 271 s; j2 238 and 236 s; j4 236 s (a noisy 262 s
+      re-run clean); j6 noisy twice (233, 260 s). routines at `852b8d5`: j1 174, j2 162 s, j4 161
+      and j6 165 s (both just noisy). **The knee is j2 in both repos**: -13% here, -7% there,
+      nothing after. Red-first met (j1 is slower than j4). Open: the DEFAULT. `docs/config.md`
+      keeps it 1 because only a repo knows which of its steps write one file, so the knee likely
+      belongs in each repo's `.gatesrc`, not the global default -- the owner's call.
+- [ ] 4.4 A floor stated on a box that is never quiet (O41b, handed over by servers 2026-10-08 at
+      the owner's request: "there won't be a quiet box for the foreseeable future"). Baseline:
+      media_server on a loaded Mac (load 10-74): `tools/repo_tests.sh` ran ~190 subprocess-heavy
+      tests serially, 206-239 s of every push and commit -> 51 s at load 56 with xdist (servers
+      `1548344`; 21 s on .33); whole push of `1548344` 190 s at load 33-74; per-crate coverage
+      203 s summed over 28 crates (mediaops 50, healthcheck 43, mcp-host 38), musl clippy 54.5 s.
+      Exit: a per-step figure that holds within 15% across two loads at least 2x apart (CPU time
+      per step, or wall normalised by a same-run control), or a quiet second host (.33, 16 cores,
+      load 1-3; no gates_of_heck checkout yet) named as the measuring box; then per-crate coverage
+      judged for running across crates at once. Red-first: the chosen figure, taken for one fixed
+      step at two loads, moves less than wall time does, or it normalises nothing. Lies: CPU time
+      blind to a step that waits (a lock, the network); a .33 figure read as the Mac's. Not
+      needed any more: a scoped proven cache for the repo tests -- their cost was serial
+      execution, not repetition.
 
 **Phase 5 — hardening from the estate** (servers, 2026-10-08)
 - [x] 5.1 A statement after an unconditional `exec` is unreachable, and refused (`cf92969`, servers: `goh dead-after-exec`, 0 findings across 30 repos). Baseline:
