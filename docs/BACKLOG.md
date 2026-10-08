@@ -41,6 +41,7 @@ QUIET box (load < 4). Landed plans are pruned to this table.
 | `goh commit-class` calibrated on ZoneWM's history | `9241ecc` | 1 -> 6 of 13 same-class pairs, 2 of 1,418 false |
 | every temp in the shared dir claimable; the suite sweeps it | `cee397b` | ~1,470 stranded -> 14 |
 | C++ coverage merge bounded (`%8m`, `--input-files`), this run only | `6350c42`, `3ab524c` | -- |
+| `tools/quiet.sh`: a quiet host on demand (every gate held off, the desktop held, load gated) | `072bc3f`, `f0aad3b` | first real run (2026-10-08): no goh gate running, load 20 from ZoneWM's `xctest` -- refused, as designed |
 | P0-P4, C1, C3-C5 | v0.20.0-v0.22.0 | see CHANGELOG |
 
 ## Resume here (2026-10-08, after v0.24.0)
@@ -60,6 +61,9 @@ Phases run in order; within a phase, any order. `[ ]` open, `[x]` done, `[~]` ha
 
 **Phase 1 — re-measure what v0.24.0 claims, on a quiet box (load < 4, recorded beside each number)**
 Each runs under `tools/quiet.sh --` (every gate on the host held off, the desktop held, load < 4).
+Its first real run refused at load 20: ZoneWM's `xctest`, started by its own `make verify`, not by
+a goh gate, so the lock cannot hold it off. A test runner that is not a goh gate joins by sourcing
+`lib/bench_lock.sh` and calling `bench_lock_join` (ZoneWM's call, offered in 4.1).
 - [ ] 1.1 Cross-session serialization of `structural --full` (`tools/session_bench.py`, N=1/2/4/8).
       Baseline: sigma 0.45 at load 7-18, BEFORE the estate cache (`3ede8a3`) landed. Exit: sigma
       <= 0.15, or the step that holds it named by `session_bench`'s per-step inflation. Red-first:
