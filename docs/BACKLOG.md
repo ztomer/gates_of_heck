@@ -98,6 +98,15 @@ Phases run in order; within a phase, any order. `[ ]` open, `[x]` done, `[~]` ha
       Red-first: the labelled list (`9241ecc`'s data) as the fixture, run against the current
       rule first. Lies: a file every commit touches (a Makefile, a CHANGELOG) linking everything --
       files touched by more than a quarter of the range do not count.
+      A further labelled pair (ZoneWM, 2026-10-08): `30b74237` "a capture taken after a fixed
+      sleep, racing the asynchronous work whose result it captures" with `a9604cf3` -- one shared
+      word, a rephrasing.
+- [ ] 3.2 Domain-frequent words do not count. Baseline: the full replay's one wrong refusal,
+      `078f137f`, shares only "read" and "window", ZoneWM's own domain nouns. Exit: words in more
+      than a set share of a repo's own classes are dropped per repo; the replay keeps its 3 right
+      refusals and loses `078f137f`, and the 6 of 13 labelled pairs stay. Red-first: `078f137f`
+      refused by today's rule, as the fixture. Lies: a small history, where every word is
+      "frequent" -- below a minimum class count the list is empty.
 
 **Phase 4 — downstream, verified at each repo's HEAD**
 - [ ] 4.1 Every "Downstream" item below checked against its repo's current HEAD, then pruned or
