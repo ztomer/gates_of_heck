@@ -8,7 +8,7 @@
 //!
 //! * `Class:` -- the invariant that broke, as a reusable phrase -- and `Siblings:` -- the other
 //!   sites, or `none (<the search that found none>)`;
-//! * a Class sharing half its words with two or more earlier classes is a THIRD instance, and must
+//! * a Class sharing two content words with two or more earlier classes is a THIRD instance, and must
 //!   also carry `Systemic:` (the helper, gate or type that ends it) or `Filed:` (the item that
 //!   will), with substance: `none yet`, `n/a`, `tbd`, `-` are what gaming it looked like.
 //!
@@ -23,9 +23,101 @@ use std::process::Command;
 const HISTORY: &str = "-400"; // earlier commits a class is compared against
 const REPEATS: usize = 2;
 const KEYS: [&str; 4] = ["Class", "Siblings", "Systemic", "Filed"];
-const STOP: [&str; 17] = [
-    "a", "an", "the", "of", "in", "on", "is", "it", "its", "to", "and", "or", "for", "by", "not",
-    "no", "be",
+/// Words that carry no class: the prototype dropped 17; the calibration on `ZoneWM`'s 54 classes
+/// (2026-10-08) found `that`, `what`, `when`, `can` and their like were most of what unrelated
+/// classes shared, so every function word goes.
+const STOP: &[&str] = &[
+    "a",
+    "an",
+    "the",
+    "of",
+    "in",
+    "on",
+    "is",
+    "it",
+    "its",
+    "to",
+    "and",
+    "or",
+    "for",
+    "by",
+    "not",
+    "no",
+    "be",
+    "that",
+    "what",
+    "which",
+    "when",
+    "where",
+    "while",
+    "whose",
+    "who",
+    "can",
+    "cannot",
+    "one",
+    "with",
+    "from",
+    "into",
+    "inside",
+    "about",
+    "than",
+    "then",
+    "there",
+    "this",
+    "these",
+    "those",
+    "every",
+    "each",
+    "another",
+    "other",
+    "same",
+    "still",
+    "never",
+    "does",
+    "only",
+    "much",
+    "something",
+    "rather",
+    "instead",
+    "because",
+    "after",
+    "before",
+    "under",
+    "over",
+    "through",
+    "per",
+    "own",
+    "but",
+    "has",
+    "have",
+    "was",
+    "were",
+    "are",
+    "been",
+    "being",
+    "their",
+    "they",
+    "them",
+    "would",
+    "could",
+    "should",
+    "must",
+    "may",
+    "all",
+    "any",
+    "some",
+    "more",
+    "most",
+    "very",
+    "so",
+    "as",
+    "at",
+    "if",
+    "up",
+    "out",
+    "once",
+    "how",
+    "why",
 ];
 
 /// `fix:`, `perf(scope):`, `fix!:` -- never `fixup! ...` or `fixes ...`.
@@ -110,20 +202,32 @@ fn loose_trailers(lines: &[&str]) -> BTreeMap<String, String> {
     out
 }
 
+/// `recorded` and `record`, `ceilings` and `ceiling` are one word: the longest inflection off,
+/// never below a four-letter root.
+fn stem(word: &str) -> &str {
+    ["ings", "ing", "ies", "ied", "ed", "es", "s"]
+        .iter()
+        .find_map(|suffix| word.strip_suffix(suffix).filter(|root| root.len() >= 4))
+        .unwrap_or(word)
+}
+
 fn words(class: &str) -> BTreeSet<String> {
     class
         .to_lowercase()
         .split(|c: char| !c.is_ascii_alphanumeric())
         .filter(|w| w.len() > 2 && !STOP.contains(w))
-        .map(str::to_owned)
+        .map(|w| stem(w).to_owned())
         .collect()
 }
 
-/// Half the smaller class's words shared (a one-word class needs that word).
+/// Two content words shared (a one-word class needs that word). Calibrated on `ZoneWM`'s 54
+/// classes and the pairs their author labelled (2026-10-08): the prototype's "half the smaller
+/// class" matched 1 of 13 same-class pairs; this matches 6, with 2 of 1,418 other pairs and
+/// neither labelled near-miss. The other 7 are paraphrase, which no word overlap sees.
 fn same_class(a: &str, b: &str) -> bool {
     let (wa, wb) = (words(a), words(b));
     let smaller = wa.len().min(wb.len());
-    smaller > 0 && 2 * wa.intersection(&wb).count() >= smaller
+    smaller > 0 && wa.intersection(&wb).count() >= smaller.min(2)
 }
 
 fn ends_the_class(t: &BTreeMap<String, String>) -> bool {
@@ -318,49 +422,5 @@ pub fn check_range(revs: &[String], report: bool) -> i32 {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn the_subjects_it_gates() {
-        for s in ["fix: a", "perf(x): a", "fix!: a", "fix(core)!: a"] {
-            assert!(gated(s), "{s}");
-        }
-        for s in [
-            "fixup! fix: a",
-            "fixes: a",
-            "feat: a",
-            "fix(x a",
-            "docs: fix",
-        ] {
-            assert!(!gated(s), "{s}");
-        }
-    }
-
-    #[test]
-    fn the_trailer_block_is_the_last_paragraph_only() {
-        let lines = cleaned("fix: a\n\nClass: c\n\nSiblings: s\nCo-Authored-By: x\n");
-        let t = final_trailers(&lines);
-        assert!(t.contains_key("Siblings") && !t.contains_key("Class"));
-        assert_eq!(final_trailers(&cleaned("Class: subject only\n")).len(), 0);
-        assert_eq!(
-            final_trailers(&cleaned("fix: a\n\nprose line\nClass: c\n")).len(),
-            0
-        );
-        let wrapped = final_trailers(&cleaned("fix: a\n\nClass: one\n  two\n"));
-        assert_eq!(wrapped.get("Class").map(String::as_str), Some("one two"));
-    }
-
-    #[test]
-    fn similarity_is_half_the_smaller_class() {
-        assert!(same_class(
-            "lock path declared twice",
-            "a lock path declared in several files"
-        ));
-        assert!(!same_class(
-            "window built per show",
-            "a lock path declared in several files"
-        ));
-        assert!(!same_class("the of", "the of"));
-    }
-}
+#[path = "commit_class_tests.rs"]
+mod tests;

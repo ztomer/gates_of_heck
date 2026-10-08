@@ -211,18 +211,19 @@ behind the same tests the shell passes today, red-proven, one at a time:
       items stay in "Downstream" for whoever opens one. The tag notice to servers is 9.1's.
 
 **Phase 8 — the "fix the class" commit gate** (details: its own section)
-- [~] 8.1 PORTED (2026-10-06): `goh commit-class`, the stock `commit-msg` hook
+- [x] 8.1 PORTED (2026-10-06): `goh commit-class`, the stock `commit-msg` hook
       (`gates/commit_msg.sh`) and the pushed-range check in `push_gate.sh`, all under
       `GOH_COMMIT_CLASS`; ZoneWM's selftest cases plus the hook, the range and the push,
       red-proven by mutating similarity, the not-ended prefixes, the trailer placement and the
-      push wiring. Changed from the prototype, at its author's suggestion: a new commit's
-      trailers must be git's trailer block (history is still read leniently). OPEN until
-      2026-10-09: ZoneWM's real-history data (one class has repeated twice; the repeat detector
-      has never fired on a real commit) -- replay it with `goh commit-class --report --range`
-      and calibrate the 0.5 similarity before the release. Then ZoneWM drops its repo-local copy.
-      Preliminary replay (2026-10-06, `214f0cf7..HEAD`): 18 commits, 0 refused -- agreeing with
-      ZoneWM's own count; `--report` now judges history by the placement rule it was written
-      under, so a replay shows class verdicts, not 14 placement lines.
+      push wiring. A new commit's trailers must be git's trailer block (history read leniently).
+      CALIBRATED (2026-10-08) on ZoneWM's 54 classes and the pairs its author labelled: the
+      prototype's "half the smaller class's words" matched 1 of 13 same-class pairs and refused
+      none of the three third instances. Now: a function-word stoplist, light stemming, two
+      shared content words. 6 of 13 pairs, 2 of 1,418 other pairs, neither labelled near-miss;
+      the full replay (97 commits, `214f0cf7..HEAD`) refuses 5 where it refused 0 -- 3 right
+      (`f1ef8eb1`, `5aaf0b95`, `bf3c7c9f`), 1 arguable (`6081eb0f`, "per show"), 1 wrong
+      (`078f137f`, read/window). The other 7 pairs are paraphrase, which no word overlap sees.
+      Then ZoneWM drops its repo-local copy (its owner's call, after v0.24.0).
 
 **Phase 10 — ZoneWM's generic tooling, centralised** (ZoneWM, 2026-10-06, on its owner's "use
 goh whenever possible, there's a reason we're centralising")
@@ -238,7 +239,20 @@ goh whenever possible, there's a reason we're centralising")
 
 **Phase 9 — release**
 - [ ] 9.1 v0.24.0: version bump, CHANGELOG `Unreleased` -> `v0.24.0`, full gate green, tag, push,
-      GitHub release (`tools/release-kit/release.sh`); then tell servers the tag.
+      GitHub release (`tools/release-kit/release.sh`); then tell servers and ztools the tag (only
+      those two: the owner's call, 2026-10-08, to spare the quota).
+
+## Next after v0.24.0
+
+- [ ] **`goh requires-call`** (ZoneWM, 2026-10-08; owner directive: generic tooling goes to goh).
+      "A file that CALLS X must also CALL Y", read from the AST (a docstring naming Y does not
+      count -- the regex version passed with the call deleted), the callee matched through its
+      import alias, a reasoned exemption table whose entries go STALE (fail) when the file is
+      gone, no longer calls X, or now calls Y, and a floor (zero X-callers fails: the pattern
+      moved). Configured per repo as rows (X pattern, Y `module.function` set, exemptions).
+      ZoneWM's two gates become rows: `tools/check_probe_courtesy.py`, and
+      `tools/check_probe_placement.py` (170 lines, an 8-case selftest to lift). Needs a Python
+      parser in the binary; size it first.
 
 ## Open — measurements (each needs a quiet box)
 

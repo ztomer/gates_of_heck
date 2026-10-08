@@ -209,3 +209,17 @@ def test_a_replay_judges_history_by_the_rule_it_was_written_under(repo: Path) ->
     assert r.returncode == 0, r.stderr
     assert bad[:8] in r.stderr and "last paragraph" not in r.stderr, r.stderr
     assert "2 commit(s), 1 the rule refuses" in r.stdout, r.stdout
+
+
+def test_a_reworded_third_instance_is_still_the_class(repo: Path) -> None:
+    """ZoneWM's own third "ceiling recorded" class (2026-10-08): written afresh each time, so the
+    prototype's half-the-words rule saw three unrelated classes and refused none."""
+    earlier = (
+        "a ceiling recorded over a defect, which then guards the defect",
+        "a ceiling recorded under conditions the gate never judges it in",
+    )
+    third = OK_FIX.replace(
+        "a lock path declared in several files",
+        "a ceiling recorded before a fix still carries the worst round the fix removed",
+    )
+    assert _refused(_check(repo, third, *earlier), "earlier ones")

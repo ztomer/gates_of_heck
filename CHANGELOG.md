@@ -107,9 +107,15 @@
 ### 12. "Fix the class", asked where it cannot be skipped (opt-in, `GOH_COMMIT_CLASS`)
 
 * **`goh commit-class`**, ported from ZoneWM: a `fix:`/`perf:` commit carries `Class:` and
-  `Siblings:` in its trailer block; a class sharing half its words with two earlier ones carries
-  `Systemic:` or `Filed:` with substance. Run by a new stock `commit-msg` hook and again over the
-  pushed range by `push_gate.sh`, so `--no-verify` does not survive the push.
+  `Siblings:` in its trailer block; a class sharing two content words with two earlier ones
+  carries `Systemic:` or `Filed:` with substance. Run by a new stock `commit-msg` hook and again
+  over the pushed range by `push_gate.sh`, so `--no-verify` does not survive the push.
+* **Calibrated on ZoneWM's real history** (54 classes, the pairs its author labelled): the
+  prototype's "half the smaller class's words" matched 1 of 13 same-class pairs and none of the
+  three third instances, because each class is written afresh and `that`/`what` were most of what
+  pairs shared. A function-word stoplist, light stemming and two shared content words match 6,
+  with 2 false matches in 1,418. Replayed, ZoneWM's history goes from 0 refused to 5: 3 right,
+  1 arguable, 1 wrong. Paraphrase (the other 7 pairs) is beyond any word measure.
 
 ### 14. ZoneWM's generic tooling, centralised
 
