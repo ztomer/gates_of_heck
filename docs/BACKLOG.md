@@ -6,7 +6,15 @@ not ready to start: the **measured baseline** it moves, the **exit number** that
 hit can be wrong, each with a test BEFORE the cache exists). A perf change without a before/after
 from the P0 instrument does not land.
 
-## State — 2026-10-08, v0.25.0 (read first)
+## State — 2026-10-08, v0.25.1 (read first)
+
+v0.25.1 is a patch over v0.25.0: the coverage scope and every path comparison are taken from the
+filesystem instead of the caller's spelling, after a case-folded `--cov` scope silently dropped
+every child measurement on a case-insensitive box (scripts/: 8 of 8 shell suites reporting
+nothing measured, and a 0.00% number with 251 tests passing). One lesson worth carrying into the
+next phase that touches measurement: **on this box, a string comparison of a path is a
+measurement of the CALLER, not of the filesystem** — see the CHANGELOG stanza and
+`tests/test_cwd_and_py_gate.py::test_py_gate_scopes_coverage_to_the_physical_path`.
 
 v0.24.0 closed the roadmap that followed v0.23.0 (every phase, 1-10; the plan of record is in git
 history at `9241ecc`, its detail in the CHANGELOG stanza): the spawn cuts, one-run coverage, the

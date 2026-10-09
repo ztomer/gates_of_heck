@@ -1,6 +1,6 @@
 # CHANGELOG
 
-## Unreleased
+## v0.25.1 — every path comparison comes from the filesystem, not the caller's spelling _(2026-10-08)_
 
 * **The coverage scope and every path comparison are taken from the FILESYSTEM, not
   from the spelling the caller used** (`gates/py_gate.sh` `--cov`, `gates/_common.sh`
