@@ -66,12 +66,32 @@ comparison, never a quiet wall time (4.4). Landed plans are pruned to this table
 - Every Rust change runs `cargo test --workspace` before its commit (3b94809 shipped a red one).
 - Main (`~/Projects/gates_of_heck`) is fast-forwarded only by `tools/land.sh` from the branch's
   worktree: it gates the tip (`tools/gate_profile.sh .`) and merges that SHA, or nothing.
-- Consumers told of the tag: servers and ztools only (the owner's call, 2026-10-08, for quota).
-  ZoneWM was told on the owner's word (2026-10-08) and puts its switch to the stock commit-msg
-  hook (`GOH_COMMIT_CLASS=1`) to its owner. ztools had no session open: told of neither v0.24.0
-  nor v0.25.0.
+- Consumers told of a tag: servers and ztools only (the owner's call, 2026-10-08, for quota).
+  ZoneWM was told of v0.24.0 on the owner's word and puts its switch to the stock commit-msg
+  hook (`GOH_COMMIT_CLASS=1`) to its owner. **v0.25.0 was told to no one** (the owner, 2026-10-08:
+  out of quota); ztools has heard of neither v0.24.0 nor v0.25.0.
 - No measurement waits for a quiet box any more (4.4). A hold through `tools/quiet.sh` still keeps
   goh's own gates out of a run, but its load floor is not reached on this box.
+
+**Handoff, 2026-10-08 21:50 -- start here:**
+1. v0.25.0 is tagged, pushed and released at `584afba` (origin/main). The LOCAL main checkout was
+   left at `e3e5418`: uncommitted edits there that are no known session's (`gates/_common.sh`,
+   `_git_env.sh`, `_proven.sh`, `push_gate.sh`, `py_gate.sh`, `tests/_drift_guard.py`,
+   `tests/test_cwd_and_py_gate.py`; a `/bin/pwd -P` change and a SLOW entry among them) made
+   land.sh's `merge --ff-only` refuse. Ask the owner whose they are; once committed or set aside,
+   `git -C ~/Projects/gates_of_heck merge --ff-only origin/main`. Never discard them unasked.
+2. servers' `push-gate-build-dir-config` (`e782f74`, worktree `~/Projects/.wt-goh-builddir`): the
+   push gate's busy-path fallback exports CARGO_BUILD_BUILD_DIR, which outranks a repo's own
+   `.cargo/config.toml` build-dir; the fix writes `$run_dir/.cargo/config.toml` instead, and the
+   drift guard's cargo shim yields to a workspace's own build-dir. Not in v0.25.0. It edits
+   `tests/_drift_guard.py`, as `584afba` does: rebase onto `584afba`, then land through land.sh.
+3. 4.4's calibration is half done: one point at load 110-132 (below). The method, to repeat at a
+   load <= 55: a detached worktree at a fixed SHA, `scripts/build-goh.sh` and one warm-up run in
+   it, then `GOH_TIMINGS=f bin/goh step --timeout 600 --label fixed -- bash -c "cd PIN && GOH_DIR=PIN
+   ./gates/structural.sh --full"`, three times, each joined to the bench lock as a gate; compare
+   the spread of `ms` with `cpu_ms`. The pin's own goh must be built first, or the first sample
+   times a cargo build and the wrapper is too old to write `cpu_ms`.
+4. 4.3 waits on the owner: `GOH_CI_JOBS=2` per repo `.gatesrc` (recommended) or the default.
 
 ## Roadmap to v0.26.0 — the plan of record (opened at v0.25.0, 2026-10-08)
 
