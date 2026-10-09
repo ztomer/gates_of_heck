@@ -15,6 +15,7 @@ import sys
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from conftest import hermetic_env
+from timing_bounds import assert_sooner
 
 ROOT = Path(__file__).resolve().parent.parent
 BOUNDED = ROOT / "lib" / "bounded_run.py"
@@ -47,7 +48,8 @@ def test_a_step_is_timed_in_milliseconds_not_seconds(tmp_path):
     assert _bounded(_env(out), "sleep", "0.3", label="nap") == 0
     (row,) = _rows(out)
     assert row["label"] == "nap" and row["rc"] == 0 and row["tier"] == "step"
-    assert 250 <= row["ms"] < 3000, row
+    assert row["ms"] >= 250, row
+    assert_sooner(row["ms"] / 1000, 0.3, 300, "300 ms read in ms, not us")
 
 
 def test_the_exit_code_and_a_timeout_are_recorded(tmp_path):

@@ -295,12 +295,17 @@ def run_step(
     """Run `argv` under a ceiling; report the code and whatever it left running.
 
     With `GOH_TIMINGS` set, the step's wall time lands there as one JSON line
-    (lib/step_timings.py), and the child learns its parent's label.
+    (lib/step_timings.py), with the CPU its reaped tree spent (`cpu_ms`, BACKLOG 4.4: the box is
+    never quiet, so the wall measures the box too), and the child learns its parent's label.
     """
-    t0 = time.monotonic()
+    t0, cpu0 = time.monotonic(), step_timings.children_cpu_ms()
     outcome = _run_step(argv, timeout, grace, label, output)
     step_timings.record(
-        label or " ".join(argv), (time.monotonic() - t0) * 1000, outcome.code, "step"
+        label or " ".join(argv),
+        (time.monotonic() - t0) * 1000,
+        outcome.code,
+        "step",
+        cpu_ms=step_timings.children_cpu_ms() - cpu0,
     )
     return outcome
 

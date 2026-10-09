@@ -1,10 +1,12 @@
-//! The one place `gates_of_heck` calls into libc: three things safe `std` cannot do, each a single
-//! syscall with integer arguments, for `goh step` (the native step wrapper, roadmap 4C.1).
+//! The one place `gates_of_heck` calls into libc: four things safe `std` cannot do, each a single
+//! syscall, for `goh step` (the native step wrapper, roadmap 4C.1).
 //!
 //! * [`ignored_at_entry`] -- `nohup`'s contract: a signal the caller IGNORED must stay ignored, so
 //!   the wrapper must not install a handler over it, and only `sigaction` reads the disposition;
 //! * [`killpg`] -- signal a whole process group (the step's tree, reparented children included);
-//! * [`group_alive`] -- `killpg(pgid, 0)`: whether anything is left in the group.
+//! * [`group_alive`] -- `killpg(pgid, 0)`: whether anything is left in the group;
+//! * [`children_cpu_ms`] -- `getrusage(RUSAGE_CHILDREN)`: the CPU every reaped descendant spent,
+//!   so a step's own work is on record beside its wall time (BACKLOG 4.4: the box is never quiet).
 //!
 //! `unsafe` is denied everywhere else in the workspace; `tests/test_unsafe_scope.py` holds it here.
 
@@ -53,11 +55,43 @@ pub fn group_alive(pgid: i32) -> bool {
     }
 }
 
+/// User + system CPU, in milliseconds, of every child this process has reaped.
+///
+/// Each child's own reaped descendants are folded in by the kernel at each wait, so a delta
+/// around one step is that step's tree. A failed query reads as 0.
+#[must_use]
+pub fn children_cpu_ms() -> f64 {
+    let mut usage = std::mem::MaybeUninit::<libc::rusage>::zeroed();
+    // SAFETY: getrusage writes one `rusage` into `usage`, a zero-initialised value this frame owns.
+    let rc = unsafe { libc::getrusage(libc::RUSAGE_CHILDREN, usage.as_mut_ptr()) };
+    if rc != 0 {
+        return 0.0;
+    }
+    // SAFETY: getrusage returned 0, so it wrote a complete `rusage` into `usage`.
+    let usage = unsafe { usage.assume_init() };
+    let span = |t: libc::timeval| {
+        std::time::Duration::from_secs(u64::try_from(t.tv_sec).unwrap_or(0))
+            + std::time::Duration::from_micros(u64::try_from(t.tv_usec).unwrap_or(0))
+    };
+    (span(usage.ru_utime) + span(usage.ru_stime)).as_secs_f64() * 1000.0
+}
+
 #[cfg(test)]
 mod tests {
     #[test]
     fn a_default_signal_is_not_ignored_and_an_empty_group_is_not_alive() {
         assert!(!super::ignored_at_entry(libc::SIGUSR2));
         assert!(!super::group_alive(i32::MAX - 7));
+    }
+
+    #[test]
+    fn a_reaped_child_adds_its_cpu() {
+        let before = super::children_cpu_ms();
+        let status = std::process::Command::new("/bin/sh")
+            .args(["-c", "i=0; while [ $i -lt 200000 ]; do i=$((i+1)); done"])
+            .status()
+            .unwrap_or_else(|e| panic!("spawn: {e}"));
+        assert!(status.success());
+        assert!(super::children_cpu_ms() > before);
     }
 }

@@ -10,7 +10,6 @@
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::process::Command;
-use std::time::Instant;
 
 /// What a leaked pid's command line names when it is a concurrent gate run, not a leak.
 const MACHINERY: [&str; 4] = [
@@ -47,13 +46,13 @@ pub fn run(a: &Args) -> i32 {
     } else {
         a.label.clone()
     };
-    let start = Instant::now();
+    let span = crate::stepcmd::Span::begin();
     // No --log: the output goes NOWHERE, as the Python's DEVNULL -- never the caller's streams. A
     // leaked child holding an inherited pipe makes its reader wait out the leak (the trap
     // lib/bounded_run.py's `run` names).
     let out = a.log.as_deref().unwrap_or_else(|| Path::new("/dev/null"));
     let (code, left) = crate::stepcmd::bounded(&a.command, limit, a.grace, &label, Some(out));
-    crate::stepcmd::record(&label, start, code);
+    crate::stepcmd::record(&label, &span, code);
     let repo = a
         .repo
         .clone()

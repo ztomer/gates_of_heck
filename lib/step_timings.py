@@ -45,7 +45,21 @@ PARENT_ENV = "GOH_TIMINGS_PARENT"
 _MAX_LINE = 4000  # under PIPE_BUF (4096 on macOS and Linux), so an append is atomic
 
 
-def record(label: str, ms: float, rc: int, tier: str, cache: str = "") -> None:
+def children_cpu_ms() -> float:
+    """User + system CPU, in ms, of every child this process has reaped (and theirs): a delta
+    around one step is that step's tree. Untimed, 0 without loading `resource`: this is on every
+    gate step's path, like `record`."""
+    if not os.environ.get(ENV):
+        return 0.0
+    import resource
+
+    u = resource.getrusage(resource.RUSAGE_CHILDREN)
+    return (u.ru_utime + u.ru_stime) * 1000
+
+
+def record(
+    label: str, ms: float, rc: int, tier: str, cache: str = "", cpu_ms: float | None = None
+) -> None:
     """Append one step's line to $GOH_TIMINGS; a no-op when it is unset."""
     path = os.environ.get(ENV)
     if not path:
@@ -62,6 +76,8 @@ def record(label: str, ms: float, rc: int, tier: str, cache: str = "") -> None:
     }
     if cache:
         row["cache"] = cache
+    if cpu_ms is not None:
+        row["cpu_ms"] = round(cpu_ms, 1)
     import json
 
     line = (json.dumps(row, ensure_ascii=False) + "\n").encode("utf-8")[:_MAX_LINE]
@@ -107,15 +123,19 @@ def report(rows: list[dict], top: int = 15) -> str:
     for r in sorted(rows, key=lambda r: -r["ms"])[:top]:
         where = os.path.basename(r.get("cwd", "")) or "."
         hit = f" [{r['cache']}]" if r.get("cache") else ""
-        out.append(f"{r['ms'] / 1000:8.2f} s  rc={r['rc']:<3} {where:<20} {r['label']}{hit}")
+        cpu = f" {r['cpu_ms'] / 1000:7.2f} s cpu" if "cpu_ms" in r else ""
+        out.append(f"{r['ms'] / 1000:8.2f} s{cpu}  rc={r['rc']:<3} {where:<20} {r['label']}{hit}")
     from collections import defaultdict
 
     sums: dict[str, list[float]] = defaultdict(list)
+    cpus: dict[str, float] = defaultdict(float)
     for r in rows:
         sums[r["label"]].append(r["ms"])
+        cpus[r["label"]] += r.get("cpu_ms", 0.0)
     out.append(f"-- top {top} labels, summed over every run of the label --")
     for label, ms in sorted(sums.items(), key=lambda kv: -sum(kv[1]))[:top]:
-        out.append(f"{sum(ms) / 1000:8.2f} s  x{len(ms):<4} {label}")
+        cpu = f" {cpus[label] / 1000:7.2f} s cpu" if cpus[label] else ""
+        out.append(f"{sum(ms) / 1000:8.2f} s{cpu}  x{len(ms):<4} {label}")
     return "\n".join(out)
 
 

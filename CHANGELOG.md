@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+* **A timed step records its CPU beside its wall time** (`cpu_ms` in each `GOH_TIMINGS` line,
+  from `goh step` and `lib/bounded_run.py`; `goh_sys::children_cpu_ms`, `getrusage
+  (RUSAGE_CHILDREN)`). The box is never quiet (load 10-82 for days, 2026-10-08), so a step's
+  `ms` measures the box as much as the step; the CPU its reaped tree spent is its own work.
+  `lib/step_timings.py report` shows it per step and summed per label. First piece of BACKLOG
+  4.4. Pinned by known answers: a step that burns 0.4 s of CPU records at least that in both
+  tiers, a 0.6 s sleep under a quarter of its wall.
+
 * **The from-HEAD trampoline says so when a worktree's edit is not what ran** (`gates/_from_head.sh`,
   `gates/_from_head.py`). C4 runs HEAD's export of every entry point, so a checker called by path
   from a LINKED worktree with an uncommitted edit ran the old code and printed the old verdict as

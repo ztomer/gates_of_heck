@@ -12,7 +12,9 @@
 //!   signal the caller ignored at entry, which stays ignored (`nohup`'s contract; only `sigaction`
 //!   can tell, hence `goh_sys::ignored_at_entry`);
 //! * a step that exits leaving members in its group is named (`left N process(es) ...`);
-//! * with `GOH_TIMINGS` set, one JSON line, tier `step`, and the child learns its parent's label.
+//! * with `GOH_TIMINGS` set, one JSON line, tier `step`, and the child learns its parent's label;
+//!   the line carries the step tree's CPU (`cpu_ms`, from the rusage of what this wrapper reaped)
+//!   beside its wall time, because on a box that is never quiet the wall measures the box too.
 
 use std::os::unix::process::{CommandExt, ExitStatusExt};
 use std::process::{Command, ExitStatus, Stdio};
@@ -53,7 +55,7 @@ pub fn run(timeout: &str, grace: u64, label: &str, argv: &[String]) -> i32 {
     } else {
         label.to_owned()
     };
-    let start = Instant::now();
+    let span = Span::begin();
     let (code, left) = bounded(argv, limit.unsigned_abs(), grace, &label, None);
     if !left.is_empty() {
         let shown: Vec<String> = left.iter().take(20).map(ToString::to_string).collect();
@@ -63,7 +65,7 @@ pub fn run(timeout: &str, grace: u64, label: &str, argv: &[String]) -> i32 {
             shown.join(", ")
         );
     }
-    record(&label, start, code);
+    record(&label, &span, code);
     code
 }
 
@@ -225,9 +227,25 @@ const fn signal_name(sig: i32) -> &'static str {
     }
 }
 
+/// When a step began, by the wall clock and by the CPU its reaped children had spent.
+pub(crate) struct Span {
+    start: Instant,
+    cpu_ms: f64,
+}
+
+impl Span {
+    pub(crate) fn begin() -> Self {
+        Self {
+            start: Instant::now(),
+            cpu_ms: goh_sys::children_cpu_ms(),
+        }
+    }
+}
+
 /// The `GOH_TIMINGS` line, in `lib/step_timings.py`'s shape, tier `step`.
-pub(crate) fn record(label: &str, start: Instant, rc: i32) {
+pub(crate) fn record(label: &str, span: &Span, rc: i32) {
     use std::io::Write as _;
+    let cpu_ms = goh_sys::children_cpu_ms() - span.cpu_ms;
     let Some(path) = std::env::var_os("GOH_TIMINGS").filter(|p| !p.is_empty()) else {
         return;
     };
@@ -236,10 +254,11 @@ pub(crate) fn record(label: &str, start: Instant, rc: i32) {
     });
     let parent = std::env::var("GOH_TIMINGS_PARENT").unwrap_or_default();
     let cut = |s: &str| s.chars().take(300).collect::<String>();
-    let ms = (start.elapsed().as_secs_f64() * 10_000.0).round() / 10.0;
+    let tenths = |ms: f64| (ms * 10.0).round() / 10.0;
+    let ms = tenths(span.start.elapsed().as_secs_f64() * 1000.0);
     let row = serde_json::json!({
         "label": cut(label), "ms": ms, "rc": rc, "tier": "step", "parent": cut(&parent),
-        "cwd": cut(&cwd),
+        "cwd": cut(&cwd), "cpu_ms": tenths(cpu_ms),
     });
     let mut line = row.to_string();
     line.push('\n');

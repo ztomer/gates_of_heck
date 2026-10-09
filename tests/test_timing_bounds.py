@@ -11,8 +11,8 @@ from conftest import REPO_ROOT
 
 # An upper bound on an elapsed time written as a number: `elapsed < 15`, `time.time() - t0 < 5`.
 LITERAL = re.compile(
-    r"assert\b[^\n#]*?(?:\b(?:elapsed|waited|wall|dt|took)\b|(?:monotonic|time|perf_counter)\(\)"
-    r"\s*-\s*\w+)\s*<=?\s*[0-9]"
+    r"assert\b[^\n#]*?(?:\b(?:elapsed|waited|wall|dt|took)\b|\[\"(?:ms|cpu_ms)\"\]|"
+    r"(?:monotonic|time|perf_counter)\(\)\s*-\s*\w+)\s*<=?\s*[0-9]"
 )
 
 
@@ -35,6 +35,7 @@ def test_the_pattern_sees_each_shape() -> None:
         "    assert r.ok and waited < 9, (waited,)",
         "    assert time.monotonic() - t0 < 3.0",
         "    assert time.time() - t0 <= 5",
+        '    assert 250 <= row["ms"] < 3000, row',
     ):
         assert LITERAL.search(line), line
     for line in (

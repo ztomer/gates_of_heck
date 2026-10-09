@@ -12,7 +12,7 @@ import re
 
 from conftest import REPO_ROOT
 
-ALLOWED = {"crates/goh-sys/src/lib.rs": "the libc boundary: sigaction query, killpg"}
+ALLOWED = {"crates/goh-sys/src/lib.rs": "the libc boundary: sigaction query, killpg, getrusage"}
 UNSAFE = re.compile(r"\bunsafe\b")
 
 
