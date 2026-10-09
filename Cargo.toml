@@ -16,7 +16,7 @@ exit = "warn"
 # not); tests/test_unsafe_scope.py holds `unsafe` to its one file.
 
 [workspace.package]
-version = "0.24.0"
+version = "0.25.0"
 edition = "2021"
 rust-version = "1.85"
 license = "MIT"

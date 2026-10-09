@@ -2,9 +2,11 @@
 # quiet.sh [--max-load N] [--settle S] [--retry R] [--hold H] [--deadline D] [--label L] -- CMD...
 # -- measure when quiet.
 #
-# Every wall-clock number in docs/BACKLOG.md needs a quiet box (load < 4), and for two days every
-# one was taken at load 7-31 beside other sessions' gates (2026-10-08). A QUEUE, not a demand --
-# and a queue that takes its PLACE first:
+# A wall-clock number wants a quiet box, and for two days every one was taken at load 7-31 beside
+# other sessions' gates (2026-10-08). A QUEUE, not a demand -- and a queue that takes its PLACE
+# first. Since v0.25.0 the box is taken as never quiet (load 10-117): the hold still keeps goh's
+# own gates out of a run, but the load floor below is rarely met, and a per-step figure is the
+# step's `cpu_ms` (GOH_TIMINGS), not its wall (docs/BACKLOG.md 4.4):
 #
 #   1. hold the host (lib/bench_lock.sh: no new goh gate starts, the running ones finish) and the
 #      desktop (lib/desktop_lock/, which ZoneWM's probes respect). The first version waited for

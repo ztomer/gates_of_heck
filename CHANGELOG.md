@@ -1,7 +1,28 @@
 # CHANGELOG
 
-## Unreleased
+## v0.25.0 — gates that hold on a box that is never quiet _(2026-10-08)_
 
+The machine every session shares ran at load 10-117 for the whole cycle, and that shaped it.
+Measurement learned to queue (`tools/quiet.sh`, a phase-fair bench lock whose waiters hold
+nothing, every block bounded by the cap and the drain by its budget), then learned to stop
+waiting for quiet at all: a timed step now records its own CPU beside its wall time (BACKLOG
+4.4). The suite stopped refusing pushes for the box's load -- no wall-clock bound is a literal
+any more, each sits by the failure it rules out or a control timed in the same test, and the
+xdist workers share one read of the order table. Six new native checks came from defects found
+in consumer repos (`bare-hook-index`, `dead-after-exec`, `early-exit-pipe`, tracked-but-ignored,
+`checkout-credentials`, `requires-call`), and the hooks' git binding closed (contract #12).
+Measured: cross-session serialization of `structural --full`, sigma 0.45 -> 0.107; the
+`GOH_CI_JOBS` knee is 2 in this repo and routines.
+
+* **The suite holds on a loaded box** (`tests/timing_bounds.py`, `tests/_drift_guard.py`,
+  `tests/_schedule.py`). Four pushes were refused in one evening for reasons the pushed change
+  did not cause: a 60 s per-test ceiling a 15 s test crossed at load 38, session_bench's serial
+  and parallel pins (0.693 vs 0.7, 2.98 vs 3.0), and xdist refusing a run whose workers read the
+  shared durations table at different moments. The drift ceiling stretches by the run queue per
+  core; a hang guard's bound is `assert_sooner(elapsed, pass, failure)` (3x the pass x the load,
+  never past 3/4 of the failure); a discrimination times its own control; the controller reads
+  the order table once and hands it to every worker. `tests/test_timing_bounds.py` refuses a
+  literal upper bound on an elapsed time anywhere in tests/.
 * **A timed step records its CPU beside its wall time** (`cpu_ms` in each `GOH_TIMINGS` line,
   from `goh step` and `lib/bounded_run.py`; `goh_sys::children_cpu_ms`, `getrusage
   (RUSAGE_CHILDREN)`). The box is never quiet (load 10-82 for days, 2026-10-08), so a step's

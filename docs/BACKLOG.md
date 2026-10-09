@@ -6,7 +6,7 @@ not ready to start: the **measured baseline** it moves, the **exit number** that
 hit can be wrong, each with a test BEFORE the cache exists). A perf change without a before/after
 from the P0 instrument does not land.
 
-## State — 2026-10-08, v0.24.0 + Phases 1-3 of v0.25.0 (read first)
+## State — 2026-10-08, v0.25.0 (read first)
 
 v0.24.0 closed the roadmap that followed v0.23.0 (every phase, 1-10; the plan of record is in git
 history at `9241ecc`, its detail in the CHANGELOG stanza): the spawn cuts, one-run coverage, the
@@ -15,8 +15,10 @@ learned rust scope, the C2 writer hook, `tools/session_bench.py`, the suite's dr
 claimable. Box: 16 cores, 4-5 busy at idle, sys ~= user, so **spawn count, tree walks and network
 round trips are the cost metric, not CPU**. The suite runs `-n 12`. Every wall-clock number needs a
 QUIET box: through `tools/quiet.sh` (every gate held, load under 8 -- the drained floor is
-4.5-6.2, measured 2026-10-08 -- and its before/after controls within 10%). Landed plans are
-pruned to this table.
+4.5-6.2, measured 2026-10-08 -- and its before/after controls within 10%). **v0.25.0 ends that
+assumption:** the box is never quiet for the foreseeable future (the owner, 2026-10-08; load
+10-117 all evening), so a figure is a step's own work (`cpu_ms`, count) or a same-run
+comparison, never a quiet wall time (4.4). Landed plans are pruned to this table.
 
 | landed | commit | measured |
 |---|---|---|
@@ -50,77 +52,35 @@ pruned to this table.
 | Downstream verified at each repo's HEAD (3.1) | `feefd2c` + this rework | 20 items: 7 done (pruned), 3 partly, 8 open, 2 general |
 | rebase picks and `git am` patches get the marker check: `hooks/post-rewrite` (reports, names `<commit>:<path>:<line>`) + `hooks/pre-applypatch` (refuses), `goh markers --commits`; `doctor.sh` checks every stock hook | `10be7e8`, `afdf661` | git 2.56: a rebase pick runs no pre-commit/commit-msg; its first real rebase (`66e638d`) named a kept `\|\|\|\|\|\|\|` base line a hand grep missed |
 | 4.1 cross-session serialization of `structural --full` re-measured after the estate cache | `75f109c` (its pin) | sigma 0.45 -> 0.107 at N=1-8, under a hold |
+| v0.25.0 Phase 3: the measurement queue runs -- claim before waiting, short bounded holds, the quiet floor measured, a series is not one hold | `14e7113`, `9a80351`, `310cbd3`, `f69c1fe` | a 2 h starved queue -> holds taken in minutes |
+| a waiting gate holds no reader mark; a drain is bounded by its budget | `e81248e`, `10d5abf` | the drain livelock gone |
+| 4.3 `GOH_CI_JOBS` curve at one pinned commit | `946daae` | knee j2: 271 -> 237 s here, 174 -> 162 s routines; the default is still 1 (the owner's call) |
+| 5.1 `goh dead-after-exec` | `cf92969` | 0 findings across 30 repos |
+| `goh bare-hook-index` (contract #12's reader) | `2783f0d` | routines + media_server fixed in their repos |
+| the suite holds on a loaded box: no literal time bound, controls in-run, one order read | `db386fd`, `4e33f65`, `ba9a253`, `1a47f10`, `aeb5e3a` | 4 refused pushes in one evening -> 0 |
+| a timed step records its CPU (`cpu_ms`) | `e3e5418` | `structural --full`, warm, at load 110-132: wall 14.2-16.7 s, cpu 7.0-7.3 s |
 | P0-P4, C1, C3-C5 | v0.20.0-v0.22.0 | see CHANGELOG |
 
-## Resume here (2026-10-08, after v0.24.0)
+## Resume here (2026-10-08, after v0.25.0)
 
 - Every Rust change runs `cargo test --workspace` before its commit (3b94809 shipped a red one).
 - Main (`~/Projects/gates_of_heck`) is fast-forwarded only by `tools/land.sh` from the branch's
   worktree: it gates the tip (`tools/gate_profile.sh .`) and merges that SHA, or nothing.
 - Consumers told of the tag: servers and ztools only (the owner's call, 2026-10-08, for quota).
   ZoneWM was told on the owner's word (2026-10-08) and puts its switch to the stock commit-msg
-  hook (`GOH_COMMIT_CLASS=1`) to its owner. ztools had no session open: not yet told.
-- Phase 4's per-item series (12:36) was stopped at 13:31 on 3.4's finding. 4.2 is measured; 4.1
-  failed in a warm-up whose log the bench deleted (`8fc1358` keeps it now), and the gates_of_heck
-  4.3 rows ran before `a8e56e1` and timed a red gate. Both re-run after the 3.4 land.
+  hook (`GOH_COMMIT_CLASS=1`) to its owner. ztools had no session open: told of neither v0.24.0
+  nor v0.25.0.
+- No measurement waits for a quiet box any more (4.4). A hold through `tools/quiet.sh` still keeps
+  goh's own gates out of a run, but its load floor is not reached on this box.
 
-## Roadmap to v0.25.0 — the plan of record (re-phased 2026-10-08 12:00)
+## Roadmap to v0.26.0 — the plan of record (opened at v0.25.0, 2026-10-08)
 
 Every item carries its **Baseline:**, **Exit:**, **Red-first:** and **Lies:**, and a done item
 names its commit, or `tests/test_backlog_items.py` fails. A landed item moves to the State table.
-Phases run in order; within a phase, any order. `[ ]` open, `[x]` done, `[~]` handed off.
-Phases 1-2 (`goh requires-call`, the commit-class vocabulary and clusters) and the downstream
-sweep are landed (State table). **Why the re-phase:** the measurements were queued at 09:57 and in
-2 h never ran. `tools/quiet.sh` waits for load < 4 HOLDING NOTHING, so every new gate from the
-other sessions (11-12 registered at a time) starts ahead of it -- a reader-preferring queue, which
-starves its writer -- and load < 4 is under this box's own idle floor (State: "4-5 busy at
-idle"; macOS counts threads blocked on Spotlight's I/O as load). The queue gets fixed first.
+`[ ]` open, `[x]` done, `[~]` handed off. Carried from v0.25.0's Phase 4; ids kept. 4.4 comes
+first: 4.2's exit is a wall time on a box that will not be quiet, so it is restated in 4.4's
+figure once that is calibrated.
 
-**Phase 3 — a queue that runs (blocks Phase 4)**
-- [x] 3.1 `quiet.sh` takes its place before it waits (`14e7113`): claim the exclusive lock first (new gates
-      queue behind it, running ones drain), THEN judge the box. Baseline: 0 windows in 2 h at load
-      14-50 (2026-10-08 09:57-12:00), every gate overtaking it. Exit: under a fake load that is
-      high exactly while a gate is registered, the measurement runs within drain + settle, and a
-      box still busy without any gate is refused, naming its busiest processes. Red-first: that
-      fake against today's `quiet.sh` refuses at its deadline. Lies: a gate already running holds
-      its whole run -- the drain waits for it, up to `GOH_BENCH_WAIT`.
-- [x] 3.2 A hold is short and bounded (`9a80351`; the Phase 4 run disproved it: see 3.4): each measurement holds the host only for its own run and
-      queues again before the next, so other sessions' commits interleave; a hold has its
-      expected length up front, and `GOH_BENCH_MAX_HOLD` defaults to 15 min, not 60. Baseline:
-      Phase 4 queued as ONE command (all of 4.1-4.3, ~40 min); a gate waits behind a hold up to
-      its 60 min max. Exit: no hold over 15 min in the Phase 4 run; a waiting gate prints the hold's
-      label and expected end. Red-first: a gate behind an overdue hold proceeds at the cap, not
-      after it. Lies: one chunk that needs longer -- it says so and is refused, never extended.
-- [x] 3.3 The quiet criterion calibrated, not assumed (`310cbd3`; floor 4.52 min / 6.16 median
-      over 180 s drained, control 0.31 s: `--max-load` 8 -- in `docs/config.md`). With every gate drained, `quiet.sh` records
-      the load and the controls (`session_bench`'s `/usr/bin/true` x300 and CPU-bound Python)
-      before and after each run; the threshold comes from the measured floor, and a number is
-      reported with its controls. Baseline: no floor ever recorded; 4 chosen by hand. Exit: the
-      floor measured under a hold and written to `docs/config.md`; a run whose before/after
-      controls differ by > 10% is marked noisy, not reported. Red-first: a fake control that
-      doubles across a run is marked noisy. Lies: background that is not a gate (`xctest`,
-      Spotlight, a cargo build run by hand) moves inside a hold -- only the controls see it.
-- [x] 3.4 A series is not one hold (`f69c1fe`). Baseline: Phase 4's per-item series held the lock
-      25+ min in a row, and two servers pushes timed out behind it (2026-10-08 13:30): each claim
-      followed the last release at once, so no gate queued behind run N started before run N+1,
-      and the cap bounded only the run, not the drain and the 300 s settle before it. Exit: a new
-      claim lets the gates already waiting start first (phase-fair), and the cap counts from the
-      claim. Red-first: a back-to-back series in one process never let a waiting gate in; a gate
-      behind a long settle waited 6.2 s against a 5 s cap. Lies: a gate that waits marks itself
-      only once, so a waiter whose mark is lost is not yielded to -- the claim's 10 s bound and its
-      `_bench_running` check keep a lost or dead mark from holding it.
-
-**Phase 4 — re-measure what v0.24.0 claims (through the Phase 3 queue, one hold each)**
-- [x] 4.1 Cross-session serialization of `structural --full` (`tools/session_bench.py`, N=1/2/4/8).
-      Baseline: sigma 0.45 at load 7-18, BEFORE the estate cache (`3ede8a3`) landed. Exit: sigma
-      <= 0.15, or the step that holds it named by `session_bench`'s per-step inflation. Red-first:
-      the bench on a deliberately serialized control (one `flock`ed step) reports sigma near 1, or
-      the instrument is blind. Lies: other sessions' load (the 3.3 controls); a warm cache as cold.
-      Measured 2026-10-08 18:24 at main 13880a0, under a hold, repeat 3: **sigma 0.107**, kappa
-      0.002; makespan 3.85/4.19/5.24/7.21 s at N=1/2/4/8 -- exit met. Controls 0.30/0.33 s (the
-      10% line), load 8.6-10.4 at the rows: a busier box reads MORE contention, not less. Most
-      inflated steps: no unreaped spawns x5.9, no kill by name x4.3, prose claims x4.7 (each
-      <0.4 s). The serial control's pin now bounds by the fraction the box allows (`75f109c`).
 - [ ] 4.2 media_server push, everything changed, warm. Baseline: 170 s at load 4-8, BEFORE the
       incremental coverage build (`06afca4`: 173 -> 76 s on this repo). Measured 2026-10-08
       12:47 under a hold: 208 s, controls 0.30/0.30 s -- the exit is NOT met. Five coverage
@@ -152,26 +112,11 @@ idle"; macOS counts threads blocked on Spotlight's I/O as load). The queue gets 
       step at two loads, moves less than wall time does, or it normalises nothing. Lies: CPU time
       blind to a step that waits (a lock, the network); a .33 figure read as the Mac's. Not
       needed any more: a scoped proven cache for the repo tests -- their cost was serial
-      execution, not repetition.
+      execution, not repetition. Instrument landed: `cpu_ms` (`e3e5418`). First point, 2026-10-08
+      20:28, `structural --full` warm over a pinned `e3e5418`, load 110-132: wall 14.2/15.4/16.7
+      s, cpu 7.04/7.22/7.34 s (spread 23% vs 4%). The second load (<= 55) is still owed.
 
-**Phase 5 — hardening from the estate** (servers, 2026-10-08)
-- [x] 5.1 A statement after an unconditional `exec` is unreachable, and refused (`cf92969`, servers: `goh dead-after-exec`, 0 findings across 30 repos). Baseline:
-      app_updates' `tools/gate.sh` ran `exec python3 tools/check_roadmap.py --self-test` and then
-      `exec python3 tools/check_roadmap.py`: the second line never ran, so its roadmap check was
-      dead for months, and ShellCheck 0.11 does not flag it (SC2093 does not fire here). servers'
-      sweep of every `tools/gate.sh`: that one instance, fixed. Exit: a native structural step over
-      every shell source; 0 findings across the estate at HEAD. Red-first: app_updates' two-`exec`
-      form, planted. Lies: `exec >log 2>&1` (redirections only) replaces nothing and is not
-      terminal; an `exec` under `if`, `case`, `&&`/`||` is conditional; a heredoc or a string
-      naming `exec` is not a statement.
-
-**Phase 6 — release**
-- [ ] 6.1 v0.25.0. Baseline: v0.24.0 (`3ab524c`). Exit: version bump, CHANGELOG `Unreleased` ->
-      `v0.25.0`, full gate green on the tag commit, tag, push, GitHub release; servers and ztools
-      told. Red-first: `release.sh --dry-run` prints no shell error (`c9e3939`). Lies: a gate run
-      on a different commit than the one tagged.
-
-## Open — measurements (each needs a quiet box)
+## Open — measurements (wall times, taken under holds; 4.4 restates them)
 
 A measurement, not a change: the instrument is P0 (`GOH_TIMINGS`, `tools/gate_profile.sh`). The
 exit number is the target column; a miss names its lever before any change lands.
@@ -179,7 +124,7 @@ exit number is the target column; a miss names its lever before any change lands
 | what | baseline | last | target |
 |---|---|---|---|
 | this repo's suite, `-n 12 --dist loadgroup` | 94.4 s (v0.20, `-n 8`) | **52.5-53.8 s at load 11-17 (2026-10-06)**, 1987 tests, longest-first (`tests/_schedule.py`); 62-67 s before it on a quiet box | <= 60 s: **MET** |
-| media_server push, one crate changed, warm | 197 s | 183 s at load 7-12 (2026-10-06): **110 s is media_server's own pytest suite** (134 tests, run by its gate.sh outside the proven cache); 5 of 29 crates re-gated -- 3 correctly (path users), healthcheck-rs on the whole tree by design (its tests read the repo root), vpn-watchdog-rs never recorded (fixed in `d384c0d`) | <= 30 s: unreachable from here while the pytest step runs unconditionally -- a servers item (below) |
+| media_server push, one crate changed, warm | 197 s | 183 s at load 7-12 (2026-10-06): **110 s is media_server's own pytest suite** (134 tests, run by its gate.sh outside the proven cache); 5 of 29 crates re-gated -- 3 correctly (path users), healthcheck-rs on the whole tree by design (its tests read the repo root), vpn-watchdog-rs never recorded (fixed in `d384c0d`) | <= 30 s: unreachable while the pytest step runs unconditionally; servers `1548344` cut that step to 51 s at load 56 (xdist), not yet re-measured as a push |
 | media_server push, everything changed, warm | 177 s (P0) | 170 s at load 4-8 (2026-10-06), before `06afca4` made the instrumented build incremental | <= 90 s: Phase 4.2 re-measures |
 | any consumer's pre-commit structural layer | ~1 s | media_server, one staged `.rs`: 0.22 s at load 17 (2026-10-06) | <= 0.4 s: **MET** |
 | P2 budget curve, `GOH_CI_JOBS` 1/2/4/6, this repo and routines | 186/147/138 s (1/2/4, busy) | provisional | the knee, recorded |
@@ -242,10 +187,11 @@ Finance's `"$root.out"`, ZeroThunder's dropped process handle.
 - **routines** [`a4712bcc`]: `.gatesrc:26` still runs plain `cargo test --all-features --locked`
   (keep `--doc`; P1c landed in v0.21.0).
 - **ztools** [`efe364a1`]: `rust/` done; `vendor/camoufox-rs` still runs a plain `cargo test`, and
-  carries 24 `assert!(..is_empty())` (rust/ 1). `GOH_EXCLUDE='^vendor/'` is set. Not yet told of v0.24.0.
+  carries 24 `assert!(..is_empty())` (rust/ 1). `GOH_EXCLUDE='^vendor/'` is set. Not yet told of v0.24.0 or v0.25.0.
 - **servers / media_server** [`a1a1d9ac`]: `scripts/dev/check.sh` step 6 runs the pytest suite
-  (110 s) on every push outside the proven cache -- the floor under the <= 30 s one-crate target;
-  route it through a proven step. `tools/gate.sh:88` still loops crates with `xargs -P 4`: adopt
+  on every push: servers `1548344` (2026-10-08) runs it under xdist, 206-239 s -> 51 s at load
+  56, and found its cost was serial execution, not repetition, so a proven step is no longer
+  needed for it. `tools/gate.sh:88` still loops crates with `xargs -P 4`: adopt
   `rust_gate.sh --each-crate` and `GOH_RUST_LINT_CARGO=cargo-zigbuild` (v0.22.0).
 - **divoom-control** [`0ac21228`]: CI installs with `required_tools.py --layer structural --names`
   plus apt, not `--repo . --install`.
