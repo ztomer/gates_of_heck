@@ -51,13 +51,17 @@ SLOW: dict[str, float] = {  # nodeid -> its own ceiling, each with its reason
     "tests/test_goh_build_publish.py::test_a_broken_uncommitted_edit_never_reaches_the_published_binary": 600,
     # builds the working tree's goh (GOH_LIVE) into its own target dir when that is cold
     "tests/test_binary_source_identity.py::test_goh_live_runs_the_working_trees_binary_not_heads": 600,
+    # builds and gates real crates, then re-gates after an edit: 73 s alone at load 13 (2026-10-08)
+    "tests/test_rust_gate_scoped_cache.py::test_only_the_edited_crate_and_its_users_are_re_gated": 300,
 }
 
 
 def load_factor() -> float:
-    """How much slower than quiet this box runs a test: the 1-minute run queue per core, never
-    below 1. Read when the test ends, so it covers the minute the test ran in."""
-    return max(1.0, os.getloadavg()[0] / (os.cpu_count() or 1))
+    """How much slower than quiet this box runs a test: the run queue per core, never below 1.
+    Read when the test ends, as the larger of the 1- and 5-minute averages: a 197 s test that ran
+    at load 180 ended at 13 and was judged by the 1-minute figure alone (2026-10-08)."""
+    one, five, _ = os.getloadavg()
+    return max(1.0, max(one, five) / (os.cpu_count() or 1))
 
 
 _REAL_CARGO = shutil.which("cargo")

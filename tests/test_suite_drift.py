@@ -155,6 +155,8 @@ def test_the_load_factor_is_run_queue_per_core_never_below_one(monkeypatch) -> N
     assert _drift_guard.load_factor() == 38.0 / 16
     monkeypatch.setattr(os, "getloadavg", lambda: (4.0, 5.0, 6.0))
     assert _drift_guard.load_factor() == 1.0
+    monkeypatch.setattr(os, "getloadavg", lambda: (13.0, 64.0, 70.0))  # a load that fell mid-test
+    assert _drift_guard.load_factor() == 64.0 / 16
 
 
 def test_a_test_that_builds_goh_fails_and_other_cargo_passes(tmp_path: Path) -> None:
