@@ -21,8 +21,13 @@ Measured: cross-session serialization of `structural --full`, sigma 0.45 -> 0.10
   shared durations table at different moments. The drift ceiling stretches by the run queue per
   core; a hang guard's bound is `assert_sooner(elapsed, pass, failure)` (3x the pass x the load,
   never past 3/4 of the failure); a discrimination times its own control; the controller reads
-  the order table once and hands it to every worker. `tests/test_timing_bounds.py` refuses a
-  literal upper bound on an elapsed time anywhere in tests/.
+  the order table once and hands it to every worker; a give-up deadline (`wait until X, then
+  assert`) is `patience(seconds)`, stretched by the load, since waiting longer can only cost time
+  on a failure. `tests/test_timing_bounds.py` refuses a literal upper bound on an elapsed time, or
+  a deadline set by a number, anywhere in tests/.
+* **`quiet.sh` says why it lets go BEFORE it lets go.** It released the host and then printed
+  the reason, so a gate it let through could finish first and the log held a let-go with no
+  reason; v0.25.0's own release gate failed on it at load 117.
 * **A timed step records its CPU beside its wall time** (`cpu_ms` in each `GOH_TIMINGS` line,
   from `goh step` and `lib/bounded_run.py`; `goh_sys::children_cpu_ms`, `getrusage
   (RUSAGE_CHILDREN)`). The box is never quiet (load 10-82 for days, 2026-10-08), so a step's

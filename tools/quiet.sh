@@ -133,8 +133,8 @@ while :; do
     done
     spent="$(bench_lock_spent)" load="$(load1)"
     below "$load" "$max_load" && bench_lock_hold "$hold" && break
-    desktop_lock_release
-    bench_lock_release
+    # Say why BEFORE letting go: a gate let through can finish before a later warning is written,
+    # and the log then holds a let-go with no reason (the cap test, load 117, 2026-10-08).
     if over "$(elapsed "$t0")" "$deadline"; then                                # 4. refuse
         err "the host is not quiet: no window under load $max_load in ${deadline}s, every gate held (load $load); busiest:"
         busiest
@@ -146,6 +146,8 @@ while :; do
         warn "quiet: load $load with every gate drained for ${settle}s -- not goh's: letting go for ${retry}s; busiest:"
         busiest                                                                  # 3. let go
     fi
+    desktop_lock_release
+    bench_lock_release
     sleep "$retry"
 done
 info "quiet: load $(load1) (max $max_load), every gate held for ${hold}s -- running: $*"

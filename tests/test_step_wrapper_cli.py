@@ -19,7 +19,7 @@ import time
 from pathlib import Path
 
 import pytest
-from timing_bounds import assert_sooner
+from timing_bounds import assert_sooner, patience
 from conftest import REPO_ROOT, native_goh_path
 
 
@@ -72,7 +72,7 @@ def test_the_ceiling_sweep_reaches_a_grandchild(wrapper, tmp_path: Path) -> None
              f"sleep 300 & echo $! > {pid}; wait")  # fmt: skip
     assert r.returncode == 124
     grandchild = int(_wait_for(pid))
-    deadline = time.monotonic() + 5
+    deadline = time.monotonic() + patience(5)
     while _alive(grandchild) and time.monotonic() < deadline:
         time.sleep(0.05)
     try:
@@ -138,7 +138,7 @@ def test_a_signal_to_the_wrapper_sweeps_the_step(wrapper, tmp_path: Path, sig) -
         grandchild = int(_wait_for(pid))
         proc.send_signal(sig)
         proc.wait(timeout=10)
-        deadline = time.monotonic() + 5
+        deadline = time.monotonic() + patience(5)
         while _alive(grandchild) and time.monotonic() < deadline:
             time.sleep(0.05)
         assert not _alive(grandchild), f"{sig.name} left the step running"

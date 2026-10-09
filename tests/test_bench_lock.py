@@ -16,9 +16,10 @@ import pytest
 
 from bench_load_fakes import busy_for, fake_load
 from conftest import REPO_ROOT
-from timing_bounds import assert_sooner
+from timing_bounds import assert_sooner, patience
 
 LIB = REPO_ROOT / "lib" / "bench_lock.sh"
+WATCH_S = 5.0
 
 
 def _env(lock: Path, **extra: str) -> dict[str, str]:
@@ -37,7 +38,7 @@ def _run(lock: Path, script: str, timeout: float = 20, **extra: str) -> subproce
 
 
 def _wait_for(path: Path, seconds: float = 10) -> None:
-    end = time.monotonic() + seconds
+    end = time.monotonic() + patience(seconds)
     while not path.exists():
         assert time.monotonic() < end, f"{path} never appeared"
         time.sleep(0.05)
@@ -84,11 +85,11 @@ def test_a_waiting_gate_is_never_counted_as_a_running_one(tmp_path: Path) -> Non
     path = f"{shim}:{os.environ['PATH']}"
     waiters = [_bash(lock, 'bench_lock_join "py gate"', PATH=path) for _ in range(5)]
     try:
-        end = time.monotonic() + 20
+        end = time.monotonic() + patience(20)
         while len(list((lock / "waiting").glob("*")) if (lock / "waiting").is_dir() else []) < 5:
             assert time.monotonic() < end, "the gates never queued"
             time.sleep(0.05)
-        seen, end = set(), time.monotonic() + 5
+        seen, end = set(), time.monotonic() + WATCH_S  # a window watched, not a deadline
         while time.monotonic() < end:
             seen |= {p.name for p in (lock / "gates").iterdir()}
             time.sleep(0.05)

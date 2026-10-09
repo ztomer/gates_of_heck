@@ -9,6 +9,10 @@ end -- takes `failure_s`, and the bound never passes FAILURE_SHARE of it, or the
 the two apart. A test whose failure is not well clear of its pass (FAILURE_SHARE x failure_s <
 SLACK x expected_s) is a design error, refused here: lengthen the failure.
 
+A GIVE-UP deadline ("wait until X appears, then assert") has no false pass to guard against: a
+longer wait can only cost time on a failure. `patience(seconds)` stretches it by the load; a fixed
+10 s wait for a fixture's file failed a release gate at load 117 (2026-10-08).
+
 A bound that DISCRIMINATES two passes (parallel vs serial) is not this: derive it from a control
 measured in the same run (tests/test_session_bench.py, test_goh_prefetch.py).
 `tests/test_timing_bounds.py` refuses a literal upper bound on an elapsed time anywhere in tests/.
@@ -37,3 +41,8 @@ def assert_sooner(elapsed: float, expected_s: float, failure_s: float, what: str
         f"{what}: took {elapsed:.1f} s against {limit:.1f} s (a {expected_s:g} s pass x"
         f"{SLACK:g} x{load_factor():.2g} for the box's load; the failure takes {failure_s:g} s)"
     )
+
+
+def patience(seconds: float) -> float:
+    """How long a wait whose failure is "never" gives up after, on this box now."""
+    return seconds * load_factor()

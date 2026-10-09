@@ -13,6 +13,8 @@ from conftest import REPO_ROOT
 LITERAL = re.compile(
     r"assert\b[^\n#]*?(?:\b(?:elapsed|waited|wall|dt|took)\b|\[\"(?:ms|cpu_ms)\"\]|"
     r"(?:monotonic|time|perf_counter)\(\)\s*-\s*\w+)\s*<=?\s*[0-9]"
+    # ... or a deadline set by a number: `time.monotonic() + 5` (use `patience`).
+    r"|(?:monotonic|time|perf_counter)\(\)\s*\+\s*[0-9]"
 )
 
 
@@ -36,12 +38,14 @@ def test_the_pattern_sees_each_shape() -> None:
         "    assert time.monotonic() - t0 < 3.0",
         "    assert time.time() - t0 <= 5",
         '    assert 250 <= row["ms"] < 3000, row',
+        "        deadline = time.monotonic() + 5",
     ):
         assert LITERAL.search(line), line
     for line in (
         "    assert wall >= 1.2",
         "    assert elapsed < limit",
         "    assert len(x) < 3",
+        "        deadline = time.monotonic() + patience(5)",
     ):
         assert not LITERAL.search(line), line
 
@@ -56,6 +60,11 @@ def test_a_loaded_box_stretches_it_but_never_toward_the_failure(monkeypatch) -> 
     assert timing_bounds.bound(2, 60) == 24.0
     monkeypatch.setattr(timing_bounds, "load_factor", lambda: 40.0)
     assert timing_bounds.bound(2, 60) == 45.0
+
+
+def test_patience_stretches_a_give_up_deadline_by_the_load(monkeypatch) -> None:
+    monkeypatch.setattr(timing_bounds, "load_factor", lambda: 7.0)
+    assert timing_bounds.patience(10) == 70.0
 
 
 def test_a_failure_not_clear_of_its_pass_is_a_design_error() -> None:

@@ -13,6 +13,7 @@ import textwrap
 
 import pytest
 
+from timing_bounds import patience
 from conftest import REPO_ROOT as ROOT  # noqa: F401
 from conftest import git
 
@@ -368,7 +369,7 @@ def test_self_proofs_run_concurrently_and_report_in_order(tmp_path, capsys):
             import os, sys, time
             if "--probe" in sys.argv:
                 open(os.path.join({str(meet)!r}, {me!r}), "w").close()
-                deadline = time.monotonic() + 8
+                deadline = time.monotonic() + {patience(8)}
                 while not os.path.exists(os.path.join({str(meet)!r}, {other!r})):
                     if time.monotonic() > deadline:
                         sys.exit("the other probe never ran alongside this one")
