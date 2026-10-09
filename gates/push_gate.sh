@@ -350,6 +350,11 @@ while read -r local_ref local_sha _remote_ref _remote_sha; do
     # dependency cold into a new build-dir and left it behind (measured 2026-10-05: 24 dirs, 30 GB,
     # three days). A concurrent push of the same repo finds the path held by a live run and takes a
     # private one, with its cargo build-dir INSIDE the run directory so it is removed with it.
+    # That build-dir is a CONFIG FILE in the run directory, never CARGO_BUILD_BUILD_DIR: cargo ranks
+    # an environment variable above every config file, so the export silently replaced a build-dir
+    # the repo names in its own .cargo/config.toml. $run_dir/.cargo/config.toml is an ancestor of the
+    # worktree, so cargo ranks it below the repo's own config and above ~/.cargo/config.toml - it
+    # redirects exactly the user-global, path-keyed build-dir it exists to redirect.
     export_build_dir=""
     run_dir="$export_root/$(basename "$root")-$(printf '%s' "$root" | shasum -a 256 | cut -c1-12)"
     if ! mkdir "$run_dir" 2>/dev/null; then
@@ -358,7 +363,12 @@ while read -r local_ref local_sha _remote_ref _remote_sha; do
         info "pre-push: $(basename "$root")'s export path is held by a live push; using a private one (cold build)"
     fi
     run_dir="$(cd "$run_dir" && /bin/pwd -P)"
-    [ -n "$export_build_dir" ] && export_build_dir="$run_dir/.cargo-build"
+    if [ -n "$export_build_dir" ]; then
+        export_build_dir="$run_dir/.cargo-build"
+        mkdir -p "$run_dir/.cargo"
+        esc="${export_build_dir//\\/\\\\}"
+        printf '[build]\nbuild-dir = "%s"\n' "${esc//\"/\\\"}" >"$run_dir/.cargo/config.toml"
+    fi
     owner_stamp "$$" >"$run_dir/.owner"
     # Named after the repo, so a tool that reads its project's name from the directory sees the
     # real one rather than a mktemp suffix.
@@ -391,7 +401,6 @@ while read -r local_ref local_sha _remote_ref _remote_sha; do
     # isolation the worktree buys -- never certify the working tree -- is untouched, because what it
     # guards is this repo's OWN files, and those still come from the worktree.
     (cd "$worktree" \
-        && { [ -z "$export_build_dir" ] || export CARGO_BUILD_BUILD_DIR="$export_build_dir"; } \
         && GOH_CROSS_REPO_ROOT="$root" bash "$worktree/tools/gate.sh" --full) 2>&1 | tee "$log"
     status="${PIPESTATUS[0]}"
     set -e

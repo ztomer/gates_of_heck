@@ -140,24 +140,55 @@ def test_the_same_repo_exports_to_the_same_path_every_time(tmp_path):
     assert first == second, f"two pushes of one repo exported to two paths: {first} vs {second}"
 
 
-def test_a_concurrent_push_of_the_same_repo_takes_a_private_path_and_build_dir(tmp_path):
+# What the gate's cargo would ACTUALLY use, asked of cargo: the property is cargo's config
+# precedence, which a report of one environment variable cannot see.
+BUILD_DIR_GATE = GATE.replace(
+    "exit 0\n",
+    'printf "build=%s\\n" "$(cargo metadata -q --format-version 1 --no-deps'
+    ' | python3 -c \'import json,sys; print(json.load(sys.stdin)["build_directory"])\')" >> "$out"\n'
+    "exit 0\n",
+)
+
+
+def _cargo_repo(tmp_path: Path, own_build_dir: str | None = None) -> Path:
     repo = _repo(tmp_path)
-    (repo / "tools" / "gate.sh").write_text(
-        GATE.replace(
-            "exit 0\n", 'printf "build=%s\\n" "${CARGO_BUILD_BUILD_DIR:-}" >> "$out"\nexit 0\n'
-        )
-    )
-    _git(repo, "commit", "-qam", "report the build dir")
+    (repo / "tools" / "gate.sh").write_text(BUILD_DIR_GATE)
+    (repo / "Cargo.toml").write_text('[package]\nname = "x"\nversion = "1.0.0"\nedition = "2021"\n')
+    (repo / "src").mkdir()
+    (repo / "src" / "lib.rs").write_text("")
+    if own_build_dir is not None:
+        (repo / ".cargo").mkdir()
+        (repo / ".cargo" / "config.toml").write_text(f'[build]\nbuild-dir = "{own_build_dir}"\n')
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "-qm", "a cargo package whose gate reports its build dir")
+    return repo
+
+
+def _push_while_held(repo: Path, tmp_path: Path) -> tuple[Path, Path, str]:
+    """Push once to claim the stable path, hold it with a LIVE run, push again: the second push
+    takes the fallback. Returns (stable run dir, fallback run dir, the fallback's build dir)."""
     export_root = tmp_path / "exports"
-    assert _push(repo, tmp_path, export_root).returncode == 0
+    first = _push(repo, tmp_path, export_root)
+    assert first.returncode == 0, first.stdout + first.stderr
     stable = Path(_cwds(tmp_path)[0]).parent
-    # The stable path is now held by a LIVE run.
     _abandoned_run(repo, export_root, stable.name, _stamp(os.getpid()))
     got = _push(repo, tmp_path, export_root)
     assert got.returncode == 0, got.stdout + got.stderr
-    second = _cwds(tmp_path)[-1]
-    assert Path(second).parent != stable, "a live run's export path was taken"
+    fallback = Path(_cwds(tmp_path)[-1]).parent
     build = (tmp_path / "report.txt").read_text().splitlines()[-1].split("=", 1)[1]
-    assert build.startswith(str(Path(second).parent)), (
-        f"the fallback build-dir outlives its run: {build}"
-    )
+    return stable, fallback, build
+
+
+def test_a_concurrent_push_of_the_same_repo_takes_a_private_path_and_build_dir(tmp_path):
+    stable, fallback, build = _push_while_held(_cargo_repo(tmp_path), tmp_path)
+    assert fallback != stable, "a live run's export path was taken"
+    assert build.startswith(str(fallback)), f"the fallback build-dir outlives its run: {build}"
+
+
+def test_the_fallback_build_dir_never_overrides_the_repos_own(tmp_path):
+    """The fallback redirects only the build-dir the USER's ~/.cargo/config.toml keys by workspace
+    path. A repo that names its own in .cargo/config.toml keeps it: an exported
+    CARGO_BUILD_BUILD_DIR outranks every config file, so it silently replaced the repo's choice."""
+    own = str(tmp_path / "the-repos-own-build-dir")
+    _, _, build = _push_while_held(_cargo_repo(tmp_path, own_build_dir=own), tmp_path)
+    assert build == own, f"the fallback run overrode the repo's own build-dir: {build}"

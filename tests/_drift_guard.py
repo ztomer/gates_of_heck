@@ -80,9 +80,15 @@ if _REAL_CARGO:
             # read each other's dep-info.
             # The template is assigned, never a `${VAR:-default}`: its `}` would close that expansion
             # and append a stray `}` to a build dir the caller named.
+            # A workspace that names its own build-dir (a .cargo/config.toml at or above it) keeps
+            # it: the variable outranks every config file, so exporting it would replace the
+            # fixture's choice -- the defect push_gate.sh's fallback build-dir had.
+            'own_build_dir() { d="$1"; while :; do for c in "$d/.cargo/config.toml" "$d/.cargo/config"; do\n'
+            '  [ -f "$c" ] && grep -Eq "^[[:space:]]*build-dir[[:space:]]*=" "$c" && return 0; done\n'
+            '  [ "$d" = / ] && return 1; d="$(dirname "$d")"; done; }\n'
             f'case "$(cd "$dir" 2>/dev/null && pwd -P)/" in "{_ROOT.resolve()}/"*) ;; *) '
-            '[ -n "${CARGO_BUILD_BUILD_DIR:-}" ] || export '
-            f"CARGO_BUILD_BUILD_DIR='{BUILD_DIR}/{{workspace-path-hash}}' ;; esac\n"
+            '[ -n "${CARGO_BUILD_BUILD_DIR:-}" ] || own_build_dir "$(cd "$dir" 2>/dev/null && pwd -P)" '
+            f"|| export CARGO_BUILD_BUILD_DIR='{BUILD_DIR}/{{workspace-path-hash}}' ;; esac\n"
             'case " $* " in *" build "*|*" test "*|*" run "*|*" install "*) ;; '
             f'*) exec "{_REAL_CARGO}" "$@" ;; esac\n'
             f'[ -n "${{DRIFT_BUILD_OK:-}}" ] && exec "{_REAL_CARGO}" "$@"\n'
