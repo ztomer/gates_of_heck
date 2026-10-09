@@ -42,9 +42,13 @@ goh_unbind_git() {
 
 # _goh_git_phys <path> -- the physical spelling (/tmp vs /private/tmp), so two names of one file
 # compare equal. A file is resolved through its directory: index.lock may be gone a moment later.
+# `/bin/pwd -P`, not the bash builtin: this function's whole job is making two spellings of one
+# file compare EQUAL, and on a case-insensitive filesystem the builtin hands back the case the
+# caller typed (it reuses the path cached for the `cd`) rather than the one on disk, so a
+# case-variant caller and a correctly-spelled one compared unequal. /bin/pwd -P calls getcwd(3).
 _goh_git_phys() {
     local dir
-    dir="$(cd "$(dirname "$1")" 2>/dev/null && pwd -P)" || { printf '%s\n' "$1"; return 0; }
+    dir="$(cd "$(dirname "$1")" 2>/dev/null && /bin/pwd -P)" || { printf '%s\n' "$1"; return 0; }
     printf '%s/%s\n' "${dir%/}" "$(basename "$1")"
 }
 

@@ -357,7 +357,7 @@ while read -r local_ref local_sha _remote_ref _remote_sha; do
         export_build_dir="$run_dir/.cargo-build"
         info "pre-push: $(basename "$root")'s export path is held by a live push; using a private one (cold build)"
     fi
-    run_dir="$(cd "$run_dir" && pwd -P)"
+    run_dir="$(cd "$run_dir" && /bin/pwd -P)"
     [ -n "$export_build_dir" ] && export_build_dir="$run_dir/.cargo-build"
     owner_stamp "$$" >"$run_dir/.owner"
     # Named after the repo, so a tool that reads its project's name from the directory sees the

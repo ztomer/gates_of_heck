@@ -162,7 +162,7 @@ _proven_identity_slow() {
     local d seen="" files
     for d in "$PROVEN_GOH_ROOT" "${GOH_DIR:-}"; do
         [ -n "$d" ] && [ -d "$d" ] || continue
-        d="$(cd "$d" && pwd -P)"
+        d="$(cd "$d" && /bin/pwd -P)"
         case " $seen " in *" $d "*) continue ;; esac
         seen="$seen $d"
         _proven_goh_identity "$d"

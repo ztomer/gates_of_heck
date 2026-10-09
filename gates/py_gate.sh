@@ -32,7 +32,21 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 repo="${1:-$PWD}"
 cd "$repo"
 pkg_dir="${2:-$PWD}"
-pkg_dir="$(cd "$pkg_dir" && pwd)" || die "pkg_dir not found: $pkg_dir"
+# `pwd -P`, NOT `pwd`, and `/bin/pwd -P`, NOT the bash BUILTIN. coverage matches
+# `--cov=<scope>` as a STRING PREFIX against the paths it records, so a logical
+# spelling that differs in CASE from the on-disk path scopes every measured file out
+# of the report — silently, because the files are still executed. Measured 2026-10-08
+# from scripts/: a shell whose PWD said `~/projects/scripts` for the repo at
+# `~/Projects/scripts` produced `--cov=/Users/ztomer/projects/scripts`, and
+# `[run] patch = subprocess` dropped every CHILD's data with it — 8 shell suites
+# reported "ran but its children measured none of" their modules and the floor came
+# back 0.00% with 251 tests passing.
+#
+# The builtin is not enough, and that is measured too: in a shell that has just
+# `cd`-ed to a path spelled in the wrong case, bash's `pwd -P` returns THAT spelling
+# (it reuses the path it cached for the cd), while `/bin/pwd -P` calls getcwd(3) and
+# returns the one the filesystem holds. Same directory, same command, two answers.
+pkg_dir="$(cd "$pkg_dir" && /bin/pwd -P)" || die "pkg_dir not found: $pkg_dir"
 
 [ -f .gatesrc ] && . ./.gatesrc
 RUN="${GOH_PY_RUNNER:-}"

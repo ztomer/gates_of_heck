@@ -329,8 +329,17 @@ goh_index_view() {
     fi
     case "${GIT_INDEX_FILE:-/}" in /*) ;; *) export GIT_INDEX_FILE="$PWD/$GIT_INDEX_FILE" ;; esac
     case "${GIT_DIR:-/}" in /*) ;; *) export GIT_DIR="$PWD/$GIT_DIR" ;; esac
-    top="$(cd "$GOH_REPO_ROOT" && pwd -P)" || die "$GOH_NAME: cannot resolve $GOH_REPO_ROOT"
-    phys="$(cd "$dir" && pwd -P)" || die "$GOH_NAME: cannot resolve $dir"
+    # `/bin/pwd -P`, NOT the bash builtin: the two answers below are compared as
+    # STRINGS (`case "$phys/" in "$top"/*`), and a case-insensitive filesystem hands
+    # out a path in whichever case the caller spelled it. The builtin reuses the path
+    # it cached for the `cd` — so a hook that arrived with a differently-cased
+    # GOH_REPO_ROOT compared mixed-case strings, the containment test below refused a
+    # file that IS inside the repo, and `return 1` means "this dir is outside the
+    # repo" — the caller's staged check was then skipped for it. A gate that does not
+    # run is not a gate that passes. /bin/pwd -P calls getcwd(3), so both sides come
+    # back the way the filesystem spells them.
+    top="$(cd "$GOH_REPO_ROOT" && /bin/pwd -P)" || die "$GOH_NAME: cannot resolve $GOH_REPO_ROOT"
+    phys="$(cd "$dir" && /bin/pwd -P)" || die "$GOH_NAME: cannot resolve $dir"
     case "$phys/" in
         "$top"/*) ;;
         *) return 1 ;;

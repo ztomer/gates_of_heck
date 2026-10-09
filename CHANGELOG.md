@@ -1,5 +1,28 @@
 # CHANGELOG
 
+## Unreleased
+
+* **The coverage scope and every path comparison are taken from the FILESYSTEM, not
+  from the spelling the caller used** (`gates/py_gate.sh` `--cov`, `gates/_common.sh`
+  `goh_index_view`, `gates/_git_env.sh` `_goh_git_phys`, `gates/_proven.sh`,
+  `gates/push_gate.sh`). On a case-insensitive filesystem (macOS) a shell whose `PWD`
+  says `~/projects/x` for the checkout at `~/Projects/x` hands every child that
+  spelling, and coverage matches `--cov=<scope>` as a **string prefix** against the
+  paths it records — so the scope matched no measured file, every child's data was
+  dropped, and the floor read the parent's coverage alone. Measured from scripts/,
+  2026-10-08: 8 of 8 shell suites reported "ran but its children measured none of"
+  their modules and the run's own number came back **0.00% with 251 tests passing**.
+  The same shell is the reason for `/bin/pwd -P` rather than the builtin: bash reuses
+  the path it cached for the `cd`, so in one shell, for one directory, `pwd -P`
+  answered with the caller's case and `/bin/pwd -P` (getcwd(3)) with the disk's.
+  `goh_index_view` is the sharpest of the four: it compares two paths as strings and
+  `return 1` there means "this dir is outside the repo", so a mixed-case pair made
+  the pre-commit gate SKIP a staged file that is inside the repo — a gate that does
+  not run is not a gate that passes. Red-proofed by
+  `tests/test_cwd_and_py_gate.py::test_py_gate_scopes_coverage_to_the_physical_path`,
+  which reads the `--cov` argv the gate builds through the `GOH_PY_RUNNER` seam and
+  fails on the pre-fix `pwd`.
+
 ## v0.25.0 — gates that hold on a box that is never quiet _(2026-10-08)_
 
 The machine every session shares ran at load 10-117 for the whole cycle, and that shaped it.
