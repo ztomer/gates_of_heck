@@ -49,21 +49,15 @@ pkg_dir="${2:-$PWD}"
 pkg_dir="$(cd "$pkg_dir" && /bin/pwd -P)" || die "pkg_dir not found: $pkg_dir"
 
 [ -f .gatesrc ] && . ./.gatesrc
-RUN="${GOH_PY_RUNNER:-}"
-
-# Prefer a project venv over whatever is on PATH — a gate that silently used a
-# different interpreter than the project is a gate measuring the wrong thing.
-if [ -z "$RUN" ] && [ -x .venv/bin/python ]; then
-    RUN=".venv/bin/python -m"
-elif [ -z "$RUN" ]; then
-    RUN="python3 -m"
-fi
-read -r -a RUN_ARR <<<"$RUN"
+. "$HERE/_py.sh"
+goh_py_runner
 
 goh_init "python"
 goh_tree_stamp
 
 command -v python3 >/dev/null 2>&1 || die "python3 not on PATH"
+goh_py_require ruff
+goh_py_require pytest
 
 goh_step_in "$pkg_dir" "ruff check"        "${RUN_ARR[@]}" ruff check .
 goh_step_in "$pkg_dir" "ruff format check" "${RUN_ARR[@]}" ruff format --check .

@@ -14,7 +14,7 @@
 # the house rule that gates live HERE once. No pytest, no coverage: those stay at push, where the
 # whole tree is measured. Exits 0 when nothing Python is staged.
 #
-# The runner resolution is py_gate.sh's (GOH_PY_RUNNER, else .venv, else python3).
+# The runner resolution is gates/_py.sh's, shared with py_gate.sh (GOH_PY_RUNNER, else .venv, else python3).
 { # parse-guard -- bash reads this group whole before running it (tests/test_parse_guard.py)
 . "$(dirname "${BASH_SOURCE[0]}")/_from_head.sh"; goh_from_head "${BASH_SOURCE[0]}" "$@"   # run HEAD, not the tree (C4)
 set -euo pipefail
@@ -23,13 +23,8 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 repo="${1:-$PWD}"
 cd "$repo"
 [ -f .gatesrc ] && . ./.gatesrc
-RUN="${GOH_PY_RUNNER:-}"
-if [ -z "$RUN" ] && [ -x .venv/bin/python ]; then
-    RUN=".venv/bin/python -m"
-elif [ -z "$RUN" ]; then
-    RUN="python3 -m"
-fi
-read -r -a RUN_ARR <<<"$RUN"
+. "$HERE/_py.sh"
+goh_py_runner
 
 goh_init "python (staged)"
 STAGED=()
@@ -43,6 +38,7 @@ if [ "${#STAGED[@]}" -eq 0 ]; then
     goh_done
     exit 0
 fi
+goh_py_require ruff
 goh_step "ruff check (staged)"        "${RUN_ARR[@]}" ruff check "${STAGED[@]}"
 goh_step "ruff format check (staged)" "${RUN_ARR[@]}" ruff format --check "${STAGED[@]}"
 goh_done

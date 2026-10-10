@@ -30,6 +30,8 @@ CLI = ROOT / "gates" / "required_tools.py"
 # which is the point: the scan is the definition of a requirement site.
 SITES = [
     re.compile(r"\bgoh_require ([\w.-]+)"),
+    # A module the Python gates run through their interpreter (gates/_py.sh, 2026-10-10).
+    re.compile(r"\bgoh_py_require ([\w.-]+)"),
     re.compile(r"^\s*need ([\w.-]+) \"", re.M),
     re.compile(r"command -v ([\w.-]+) >/dev/null 2>&1 \|\| (?:die|\{)"),
     re.compile(r"if ! command -v ([\w.-]+) >/dev/null 2>&1; then"),
