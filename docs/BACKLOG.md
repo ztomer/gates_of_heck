@@ -174,7 +174,7 @@ its commit, or `tests/test_backlog_items.py` fails. A landed item moves to the S
       comparison in `gates/_goh_bin.sh:62-70` passes here because both sides are HEAD; a stamp is
       not a step inventory.
 
-- [ ] 1.5 Main moves only through `tools/land.sh`, and a push says so. Baseline: on 2026-10-10
+- [x] 1.5 (`7e26571`, `GOH_LANDED_ONLY=main` in this repo's `.gatesrc`) Main moves only through `tools/land.sh`, and a push says so. Baseline: on 2026-10-10
       `2cb3767` was committed in the main checkout while `pytest tests/ -x` was red, and
       `2573b86` reached main by `git merge --ff-only` from a `/tmp` branch, both past `land.sh`,
       whose rule lives only in this file and in its own header. Nothing records which tips it
