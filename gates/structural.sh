@@ -152,6 +152,34 @@ goh_require_current() {
     return 1
 }
 
+# A STEP THE TREE DECLARES AND THE BINARY LACKS IS NAMED, never silently absent (BACKLOG 1.4).
+#
+# The version and the source stamp both compare HEAD with the binary, and both pass while the tree
+# being judged declares a step HEAD has not got: on 2026-10-09 a staged run printed "all structural
+# gates passed" in 0.3 s over a tree whose new step had never run. The binary embeds the step
+# manifest it was built from (`goh structural --list-steps`); the manifest read here is the judged
+# tree's own when it is gates_of_heck, else the export's. A missing step WARNS: a commit that adds a
+# step is judged by HEAD's binary by design (C4), and refusing it would stop every step ever being
+# added -- so it is said, by name, with when it will first run.
+goh_name_missing_steps() {
+    local bin="$1" top manifest carried missing
+    top="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
+    manifest="$top/crates/goh/structural_steps.txt"
+    [ -f "$manifest" ] || manifest="$GOH_ROOT/crates/goh/structural_steps.txt"
+    [ -f "$manifest" ] || return 0
+    if ! carried="$("$bin" structural --list-steps 2>/dev/null)"; then
+        warn "$bin cannot list its steps (it predates goh structural --list-steps): which of"
+        warn "  $manifest it carries cannot be read"
+        return 0
+    fi
+    missing="$(grep -v -e '^#' -e '^[[:space:]]*$' "$manifest" \
+        | grep -vxF -f <(printf '%s\n' "$carried") || true)"
+    [ -n "$missing" ] || return 0
+    warn "these steps are declared in $manifest but NOT carried by $bin,"
+    warn "  so they have not run on this change (they run once a binary built with them judges):"
+    printf '%s\n' "$missing" | sed 's/^/    /' >&2
+}
+
 # ── The native binary is the only tier (Phase N3). ───────────────────────────
 # `goh structural` carries this whole pipeline. It was proven step for step against the Python
 # pipeline that used to follow this line, and that tier is retired: two implementations of one
@@ -192,6 +220,7 @@ if [ -z "$goh_native" ]; then
     exit 1
 fi
 goh_require_current "$goh_native" || exit 1
+goh_name_missing_steps "$goh_native"
 # Arguments were validated above; only the two accepted scopes reach here.
 if [ "$SCOPE" = "--staged" ]; then
     goh_bind_hook_index  # the index being committed, when the hook carried one (gates/_git_env.sh)

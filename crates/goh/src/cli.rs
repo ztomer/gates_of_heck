@@ -132,6 +132,9 @@ pub enum Commands {
         /// Every check (pre-push scope). Default when neither flag is given.
         #[arg(long)]
         full: bool,
+        /// Print the steps this binary carries, one per line, and run none of them.
+        #[arg(long, conflicts_with_all = ["staged", "full"])]
+        list_steps: bool,
     },
     /// Fail on merge-conflict markers (native port of `check_no_conflict_markers`).
     Markers {

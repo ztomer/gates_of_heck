@@ -138,39 +138,29 @@ INVENTORY_CASE: dict[str, bytes] = {
 # 24 the same day (`no tracked file its .gitignore ignores`), 25 (`no bare read of the hook's index`),
 # 26 (`no checkout leaves its token in git config`), 27 on 2026-10-09 (`every child process names
 # its stdin`, opt-in through `GOH_SUBPROCESS_STDIN` until the estate is seeded).
-INVENTORY = [
-    "a file that calls X calls Y",
-    "Cargo.lock matches its manifests",
-    "cap-exempt files within their ceilings",
-    "every child process names its stdin",
-    "file length <= 500",
-    "gate self-proofs still pass",
-    "gates refuse to pass over an empty tree",
-    "line-cap exemptions carry a ceiling",
-    "markdown links resolve",
-    "no bare read of the hook's index",
-    "no checkout leaves its token in git config",
-    "no committed secrets",
-    "no conflict markers",
-    "no credential in a git remote URL",
-    "no code after exec",
-    "no disallowed emoji",
-    "no early-exit pipe under pipefail",
-    "no hard-coded home paths",
-    "no process kill by name",
-    "no tracked file its .gitignore ignores",
-    "no unreaped spawns in tests",
-    "no vendored copies of house checkers",
-    "prose claims are derived",
-    "python is ruff-formatted",
-    "shell lint",
-    "skills corpus",
-    "version provenance",
-]
+MANIFEST = ROOT / "crates" / "goh" / "structural_steps.txt"
+
+
+def manifest_steps(path: Path = MANIFEST) -> list[str]:
+    """The step names a manifest declares: every line neither blank nor a `#` comment."""
+    lines = (line.strip() for line in path.read_text().splitlines())
+    return [line for line in lines if line and not line.startswith("#")]
+
+
+# The inventory is the binary's own manifest (BACKLOG 1.4): one list, which the binary embeds and
+# gates/structural.sh compares against, so a step added to the pipeline and not to the manifest
+# reds below.
+INVENTORY = manifest_steps()
+
+
+def _announced(out: str) -> list[str]:
+    """Announced steps as each labelled itself, the ceiling suffix dropped."""
+    return [s.split(" (\u2264")[0] for s in announced_steps(out)]
 
 
 def _labels(out: str) -> set[str]:
-    return {s.split(" (\u2264")[0] for s in announced_steps(out)}
+    """Announced steps by their manifest names: the length cap's number dropped too."""
+    return {"file length" if n.startswith("file length <= ") else n for n in _announced(out)}
 
 
 def test_the_whole_pipeline_runs_every_step(goh: Path, tmp_path: Path) -> None:
@@ -195,7 +185,7 @@ def test_every_announced_step_is_timed_once(goh: Path, tmp_path: Path) -> None:
     r = _run_goh(goh, repo, False, {"GOH_TIMINGS": str(out)})
     assert r.returncode == 0, r.stdout + r.stderr
     rows = [json.loads(line) for line in out.read_text().splitlines()]
-    assert sorted(row["label"] for row in rows) == sorted(_labels(r.stdout)), rows
+    assert sorted(row["label"] for row in rows) == sorted(_announced(r.stdout)), rows
 
 
 def test_a_failing_step_names_the_checker_and_the_docs(goh: Path, tmp_path: Path) -> None:

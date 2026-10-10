@@ -120,7 +120,17 @@ fn run_core(command: Commands) -> i32 {
             println!("{}", env!("GOH_SOURCE_STAMP"));
             0
         }
-        Commands::Structural { staged, full } => structural::run(staged, full),
+        Commands::Structural {
+            staged,
+            full,
+            list_steps,
+        } => {
+            if list_steps {
+                structural::list_steps()
+            } else {
+                structural::run(staged, full)
+            }
+        }
         Commands::Canary {
             repo,
             log,

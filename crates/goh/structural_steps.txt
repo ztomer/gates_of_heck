@@ -1,0 +1,27 @@
+Cargo.lock matches its manifests
+a file that calls X calls Y
+cap-exempt files within their ceilings
+every child process names its stdin
+file length
+gate self-proofs still pass
+gates refuse to pass over an empty tree
+line-cap exemptions carry a ceiling
+markdown links resolve
+no bare read of the hook's index
+no checkout leaves its token in git config
+no code after exec
+no committed secrets
+no conflict markers
+no credential in a git remote URL
+no disallowed emoji
+no early-exit pipe under pipefail
+no hard-coded home paths
+no process kill by name
+no tracked file its .gitignore ignores
+no unreaped spawns in tests
+no vendored copies of house checkers
+prose claims are derived
+python is ruff-formatted
+shell lint
+skills corpus
+version provenance

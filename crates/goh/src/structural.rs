@@ -9,6 +9,32 @@ use crate::{
 
 mod trackedignored;
 
+/// The steps this binary carries, as `structural_steps.txt` read when it was built: one stable
+/// name per line, the label each step announces (`file length` for `file length <= N`), and nothing
+/// else, so `docs/map.md` counts its lines. Embedded, so a
+/// binary built before a step existed cannot claim it: `gates/structural.sh` compares this list
+/// with the manifest of the tree it judges and names every step the binary lacks (BACKLOG 1.4).
+const STEPS: &str = include_str!("../structural_steps.txt");
+
+/// The step names in `STEPS`: every line that is neither blank nor a `#` comment.
+#[must_use]
+pub fn step_names() -> Vec<&'static str> {
+    STEPS
+        .lines()
+        .map(str::trim)
+        .filter(|l| !l.is_empty() && !l.starts_with('#'))
+        .collect()
+}
+
+/// `goh structural --list-steps`: the carried steps, one per line.
+#[must_use]
+pub fn list_steps() -> i32 {
+    for name in step_names() {
+        println!("{name}");
+    }
+    0
+}
+
 /// `goh structural`: every step, fail-fast, delegated checkers started together.
 #[must_use]
 pub fn run(staged: bool, full: bool) -> i32 {
