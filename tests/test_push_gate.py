@@ -311,3 +311,17 @@ def test_the_same_push_is_refused_without_the_config(tmp_path):
         tmp_path,
     )
     assert "NO version source" in err, err
+
+
+def test_a_main_tip_land_sh_never_recorded_is_refused_by_name(tmp_path):
+    """GOH_LANDED_ONLY=main (BACKLOG 1.5): a commit made in the main checkout, or merged past
+    tools/land.sh, is refused before the gate runs; the same tip once recorded is gated."""
+    repo = _repo(tmp_path, gatesrc="GOH_LANDED_ONLY=main\n")
+    sha = _git(repo, "rev-parse", "HEAD")
+    rc, report, out = _push(repo, sha, tmp_path)
+    assert rc != 0 and "did not come through tools/land.sh" in out, out
+    assert report == "", "the gate ran for a tip the rule refuses"
+    common = Path(_git(repo, "rev-parse", "--path-format=absolute", "--git-common-dir"))
+    (common / "goh-landed").write_text(sha + "\n")
+    rc, report, out = _push(repo, sha, tmp_path)
+    assert rc == 0 and "tracked=COMMITTED" in report, out

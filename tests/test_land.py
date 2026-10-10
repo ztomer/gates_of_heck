@@ -78,3 +78,13 @@ def test_land_refuses_to_run_in_the_main_checkout(repo: Path) -> None:
     r = subprocess.run(["bash", str(LAND)], cwd=repo, env=env, capture_output=True, text=True)
     assert r.returncode == 2 and "main checkout" in r.stderr, r.stdout + r.stderr
     assert os.path.exists(repo / ".git")
+
+
+def test_a_landed_tip_is_recorded_for_the_push_to_read(repo: Path, tmp_path: Path) -> None:
+    """The record GOH_LANDED_ONLY reads: the gated SHA, in the common git dir (BACKLOG 1.5)."""
+    wt = _worktree(repo, tmp_path)
+    tip = git(wt, "rev-parse", "HEAD").strip()
+    r = _land(wt, "true")
+    assert r.returncode == 0, r.stdout + r.stderr
+    common = git(repo, "rev-parse", "--path-format=absolute", "--git-common-dir").strip()
+    assert (Path(common) / "goh-landed").read_text().split() == [tip]

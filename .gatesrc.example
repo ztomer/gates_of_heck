@@ -14,6 +14,7 @@ GOH_MAX_LINES=500                 # file-length cap; unset disables the check
 # GOH_ROUND_PREFLIGHT='make verify'                # gates/round.sh runs it before committing
 # GOH_COMMIT_CLASS=1                    # a fix/perf commit names its Class + Siblings (trailers);
 #                                       # a third instance of a class says how it ends it
+# GOH_LANDED_ONLY=main                 # a push of main must be a tip tools/land.sh gated and merged
 # GOH_REQUIRES_CALL='tools/requires_call.toml'  # a Python file that calls X must call Y (AST)
 # GOH_SUBPROCESS_STDIN=on                       # every child process names its stdin (AST); off until the estate is seeded
 # GOH_SUBPROCESS_STDIN_MIN_CALLS=40             # the stdin scan's floor: fewer calls than this and the scan lost its subject

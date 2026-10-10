@@ -316,6 +316,27 @@ if [ -n "$commit_class" ]; then
     fi
 fi
 
+# A BRANCH THAT MOVES ONLY THROUGH tools/land.sh (GOH_LANDED_ONLY, BACKLOG 1.5). The rule lived in
+# prose, and on 2026-10-10 main moved twice without it: a commit made in the main checkout on a red
+# suite, and a `git merge --ff-only` from /tmp. land.sh records each SHA it gated and merged; a new
+# tip of the named branch that is not in that record is refused, by name, before anything runs.
+landed_only=""
+if [ -f "$root/.gatesrc" ]; then
+    landed_only="$(bash -c 'set -a; . "$1"; printf %s "${GOH_LANDED_ONLY-}"' _ \
+        "$root/.gatesrc")" || die "pre-push: cannot read $root/.gatesrc"
+fi
+if [ -n "$landed_only" ]; then
+    landed="$(git -C "$root" rev-parse --path-format=absolute --git-common-dir)/goh-landed"
+    while read -r land_ref land_sha _ land_remote; do
+        [ "$land_ref" = "refs/heads/$landed_only" ] && [ "$land_sha" != "$zero" ] || continue
+        [ "$land_sha" = "${land_remote:-}" ] && continue
+        grep -qx "$land_sha" "$landed" 2>/dev/null && continue
+        err "pre-push: $landed_only @ ${land_sha:0:8} did not come through tools/land.sh (GOH_LANDED_ONLY):" \
+            "nothing in $landed gated it -- land it from a branch worktree (tools/land.sh), then push"
+        exit 1
+    done <"$refs_file"
+fi
+
 gated=0
 # <"$refs_file", NOT stdin: `cat` above drained it, and a while-read on a spent
 # stream is a loop that never runs — a gate that silently gates nothing.
