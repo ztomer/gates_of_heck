@@ -129,7 +129,7 @@ follows: 1 unblock, 2 stop the registry lying to consumers, 3 land the stdin gat
 additive steps, 4 close the classes those sessions found, 5 then the measurements (ids kept from
 v0.25.0's Phase 4). The 2026-10-10 rebuild keeps that order and adds what the
 Claude and Antigravity sessions found: two ways main moved outside `land.sh` (1.5), the house's
-own Python behind the estate's (1.6), a status style nothing polices (4.9), and three pieces of
+a stale venv a Python gate silently prefers (1.6), a status style nothing polices (4.9), and three pieces of
 house tooling a consumer had been carrying (4.10-4.12). Every item carries **Baseline:**, **Exit:**, **Red-first:** and **Lies:**, and a done item names
 its commit, or `tests/test_backlog_items.py` fails. A landed item moves to the State table.
 `[ ]` open, `[x]` done, `[~]` handed off.
@@ -183,16 +183,18 @@ its commit, or `tests/test_backlog_items.py` fails. A landed item moves to the S
       it. Red-first: `git merge --ff-only` a branch into main and push -- refused. Lies: a record
       kept in the worktree is lost with it; keep it in the main checkout's git dir, and a record
       matched on a branch name rather than a SHA passes a moved branch.
-- [ ] 1.6 The house's Python is the estate's. Baseline: `gates/_py.sh` prefers `.venv/bin/python`;
-      this repo's `.venv` (untracked, made by uv 2026-10-05) is Python 3.13.11, and
-      `pyproject.toml` declares no `requires-python`, no `.python-version`, no lock. Every
-      consumer runs `python3 "$GOH_DIR/checks/..."`, which is 3.15.0 since 2026-10-10, so the
-      checks are tested on 3.13 and run on 3.15; the 3.15 migration checked only that imports
-      resolve. Exit: the version is declared once (`requires-python` and `.python-version`), the
-      suite runs on it, and a gate is red when the venv's interpreter is not the one consumers
-      resolve. Red-first: a 3.13 venv against a 3.15 `python3` reds. Lies: "newest" read off a
-      venv that is never rebuilt; the gate compares the two interpreters, not a string.
-
+- [ ] 1.6 A stale project venv cannot silently become the interpreter a Python gate judges with.
+      Baseline: `gates/_py.sh` prefers `.venv/bin/python` over `python3`, unconditionally. Read
+      2026-10-10: this repo's own suite never used its `.venv` (`tools/pytest.sh` runs `python3`,
+      3.15.0), and the `.venv` was an EMPTY uv venv on 3.13.11 from 2026-10-05 (moved to the
+      Trash) -- so the 2026-10-10 survey's "tested on 3.13, run on 3.15" was wrong here. The
+      class is real for consumers: a repo whose `.venv` lags `python3` has its ruff and pytest
+      steps judged on the older interpreter with no word said. Exit: `_py.sh` names the
+      interpreter and version it chose on the step line, and refuses a `.venv` whose version is
+      below `python3`'s unless the repo declares the pin (`GOH_PY_RUNNER`, or a
+      `.python-version` it commits). Red-first: a fixture repo with a 3.13 venv and a 3.15
+      `python3` reds; with the pin declared it passes. Lies: a venv built from the same minor but
+      missing the tools is a different failure (already a named refusal, `851cc70`).
 ### Phase 2 — the calibration registry stops lying to consumers
 
 - [ ] 2.1 ONE rule for "this test proves this gate", settled here and published to the estate.
