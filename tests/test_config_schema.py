@@ -10,7 +10,14 @@ from pathlib import Path
 from conftest import REPO_ROOT
 
 KEY = re.compile(r"GOH_[A-Z][A-Z_]*[A-Z_]")
-SCAN = ("gates", "checks", "lib", "tools", "hooks", "tui", "install.sh")
+SCAN = ("gates", "checks", "lib", "tools", "hooks", "tui", "install.sh", "crates", "scripts")
+
+
+def _rust_test(f: Path) -> bool:
+    """A Rust test's GOH_* strings are fixtures it plants, not keys a gate reads."""
+    return f.suffix == ".rs" and (
+        "tests" in f.parts or f.stem == "tests" or f.stem.endswith("_tests")
+    )
 
 
 def _keys_in_source() -> set[str]:
@@ -22,7 +29,7 @@ def _keys_in_source() -> set[str]:
         else:
             files = sorted(f for f in p.rglob("*") if f.is_file())
         for f in files:
-            if "__pycache__" in f.parts or f.suffix == ".sha256":
+            if "__pycache__" in f.parts or f.suffix == ".sha256" or _rust_test(f):
                 continue
             try:
                 text = f.read_text(encoding="utf-8", errors="strict")
@@ -39,7 +46,8 @@ def _keys_in_source() -> set[str]:
 
 
 def test_config_schema_covers_keys():
-    """Every GOH_* key read by gates/checks/lib/tools/hooks must appear in
+    """Every GOH_* key read by gates/checks/lib/tools/hooks/scripts -- and the Rust crates, where a
+    key read only by the binary used to ship undocumented (BACKLOG 1.3) -- must appear in
     docs/config.md (user keys with defaults, internal keys in the
     internal-only row)."""
     doc = (REPO_ROOT / "docs" / "config.md").read_text(encoding="utf-8")
