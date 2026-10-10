@@ -84,7 +84,7 @@ fix is `reclaim_build_space.sh` next to it.
 | Key | Default | Meaning |
 |---|---|---|
 | `GOH_PY_COV_MIN` | unset (runs bare `pytest`, warns) | Coverage floor %. Scoped to the package (`--cov=<pkg_dir>`), so never-imported modules count as 0%. |
-| `GOH_PY_RUNNER` | `.venv/bin/python -m` if executable, else `python3 -m` | Toolchain prefix, whitespace-split (`uv run` works; a runner path containing a space cannot be expressed — use `.venv/bin/python`). |
+| `GOH_PY_RUNNER` | `.venv/bin/python -m` if executable, else `python3 -m` | Toolchain prefix, whitespace-split (`uv run` works; a runner path containing a space cannot be expressed — use `.venv/bin/python`). The chosen interpreter is named with its version, and a `.venv` older than `python3` is refused unless this key is set or a committed `.python-version` names the venv's minor (BACKLOG 1.6). |
 
 ## Rust (`gates/rust_gate.sh`)
 
