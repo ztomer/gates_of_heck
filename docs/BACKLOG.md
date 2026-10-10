@@ -399,7 +399,7 @@ episode (4.4) is what that hand-writing costs.
       refused; with it, accepted. Lies: a trailer is checked for presence, not truth -- the exit
       also records the red run's output digest where the repo's mutation runner writes one, and
       where it cannot, the rule is a review rule and says so.
-- [ ] 4.12 The machine's locks live in one place: the GPU joins the desktop. Baseline: the GPU lock
+- [x] 4.12 (`3103441`; the consumers' half is in Downstream) The machine's locks live in one place: the GPU joins the desktop. Baseline: the GPU lock
       is ztools-only (`tools/gpu_lock.sh`, `rust/src/ztools/eval/gpu_lock.rs`,
       `/tmp/mac-osaurus-gpu.lock`, `mkdir`-atomic, owner pid + start time, a 4 h no-progress
       ceiling), and its header cites `~/projects/scripts/lib/desktop_lock.sh`, a path gone since
@@ -522,8 +522,14 @@ Finance's `"$root.out"`, ZeroThunder's dropped process handle.
   `.pth` files only in `site.getsitepackages()`, so the user-site `a1_coverage.pth` is missed
   (266 vs 267); necrohand's 5 spaCy modules run only on 3.14; Finance/zinc fails on 3.15
   (PyMuPDF imports `typing.ByteString`, and the repo makes warnings errors).
-- **ztools:** `tools/gpu_lock.sh`'s header cites a desktop-lock path that is gone; it moves here
-  in 4.12. Hooks reinstalled 2026-10-10 (`79698b2`).
+- **ztools, after `3103441`:** source `$GOH_DIR/lib/gpu_lock/gpu_lock.sh` and delete
+  `tools/gpu_lock.sh` (its header cites a desktop-lock path that is gone); point
+  `rust/tests/gpu_lock_shell_parity.rs` and `tools/tests/test_gpu_lock_shell.py` at the house
+  file, so the Rust client's parity is judged against the one bash half. Hooks reinstalled
+  2026-10-10 (`79698b2`).
+- **scripts:** `lib/test_desktop_lock.sh` (15110 bytes) is a second, drifted test of this repo's
+  `lib/desktop_lock/` (whose own is 6472): fold what it covers that ours does not into ours, then
+  delete it.
 - **ZoneWM:** `.gemini-workspace` points at `docs/GEMINI.md`, `docs/ARCHITECTURE.md` and
   `docs/CONTRIBUTING.md`, none of which exist; its census and input-lock probes hold
   `~/.zonetiler-qa.lock` but not the house desktop lock (4.12).
