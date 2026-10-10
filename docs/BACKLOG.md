@@ -381,7 +381,7 @@ episode (4.4) is what that hand-writing costs.
       at the house libs instead of defining its own. Red-first: plant `print("[ Ok  ] done")`.
       Lies: a marker inside a test fixture or a doc that quotes the forbidden style is not a use
       -- the scope is source, and the seed names each file.
-- [ ] 4.10 A fixed sleep never stands in for a readiness signal (from ZoneWM, which owns its seed).
+- [x] 4.10 (`8e00c6e`, as `goh fixed-sleep`, a command a repo's gate calls, not a structural step) A fixed sleep never stands in for a readiness signal (from ZoneWM, which owns its seed).
       Baseline: ZoneWM's `tools/` holds 155 `time.sleep(` calls across 51 files, and three times a
       sleep stood in for a signal (a capture racing its work, a harness reading a later marker on
       an earlier signal, a lock read as held after "not exited after 1 s"); its
