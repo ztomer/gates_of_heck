@@ -163,3 +163,23 @@ def test_the_cross_lint_tools_are_for_repos_that_name_zigbuild(tmp_path, gatesrc
     names = set(out.stdout.split())
     assert ({"cargo-zigbuild", "zig"} <= names) is wanted, out.stdout
     assert ({"cargo-zigbuild", "zig"} & names == set()) is (not wanted), out.stdout
+
+
+def _names_for(repo: Path, files: dict[str, str]) -> list[str]:
+    subprocess.run(["git", "init", "-q", str(repo)], check=True)
+    for rel, body in files.items():
+        (repo / rel).parent.mkdir(parents=True, exist_ok=True)
+        (repo / rel).write_text(body)
+    subprocess.run(["git", "-C", str(repo), "add", "-A"], check=True)
+    r = subprocess.run(
+        [sys.executable, str(CLI), "--repo", str(repo), "--names"], capture_output=True, text=True
+    )
+    assert r.returncode == 0, r.stderr
+    return r.stdout.split()
+
+
+def test_shellcheck_is_required_exactly_when_shell_lint_has_files(tmp_path: Path) -> None:
+    """`_tracks_shell` and `goh shell-lint`'s scope are one rule: a Python hook under `hooks/` is
+    not shell (2026-10-10), so it alone must not demand shellcheck, and a git hook still does."""
+    assert "shellcheck" not in _names_for(tmp_path / "py", {"hooks/claude/n.py": "print(1)\n"})
+    assert "shellcheck" in _names_for(tmp_path / "sh", {"hooks/pre-commit": "#!/bin/sh\n"})

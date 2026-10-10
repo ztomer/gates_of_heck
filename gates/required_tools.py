@@ -79,7 +79,12 @@ def _declared(repo: str) -> str:
 def _tracks_shell(repo: str) -> bool:
     out = subprocess.run(["git", "-C", repo, "ls-files", "-z"], capture_output=True)
     names = [n.decode("utf-8", "replace") for n in out.stdout.split(b"\0") if n]
-    return any(n.endswith(".sh") or n.startswith("hooks/") for n in names)
+    # `goh shell-lint`'s scope (`crates/goh/src/shell_lint.rs::in_scope`): a `*.sh`, or an
+    # extensionless git hook under `hooks/` -- a Python hook there is Python.
+    return any(
+        n.endswith(".sh") or (n.startswith("hooks/") and "." not in n.rsplit("/", 1)[-1])
+        for n in names
+    )
 
 
 def detect(repo: str) -> tuple[set[str], set[str]]:

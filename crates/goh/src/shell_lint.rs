@@ -36,8 +36,12 @@ fn git_z(root: &Path, args: &[&str]) -> Result<Vec<String>, String> {
         .collect())
 }
 
+/// A `*.sh` file, or an EXTENSIONLESS file under `hooks/` (a git hook is named `pre-commit`, not
+/// `pre-commit.sh`). An extension that names another language is that language: a Python hook in
+/// `hooks/claude/` was failed by `bash -n` on its first parenthesis.
 fn in_scope(f: &str, exclude: Option<&crate::pathfilter::PathFilter>) -> bool {
-    (f.as_bytes().ends_with(b".sh") || f.starts_with("hooks/"))
+    let name = f.rsplit('/').next().unwrap_or(f);
+    (f.as_bytes().ends_with(b".sh") || (f.starts_with("hooks/") && !name.contains('.')))
         && !exclude.is_some_and(|x| x.is_match(f))
 }
 

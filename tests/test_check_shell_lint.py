@@ -144,3 +144,17 @@ def test_a_listing_git_refuses_is_an_error_not_zero_files(repo):
     for args in (("--staged",), ()):
         r = run_lint(repo, *args)
         assert r.returncode != 0, (args, r.stdout + r.stderr)
+
+
+def test_a_hooks_file_in_another_language_is_not_shell(repo):
+    # `hooks/` holds extensionless git hooks, which is why the whole directory is in scope. A
+    # Python hook beside them (`hooks/claude/*.py`, 2026-10-10) is not shell: `bash -n` failed it on
+    # its first parenthesis and shellcheck refused it (SC1071), so no Python could live there.
+    write(repo, "hooks/claude/nudge.py", "#!/usr/bin/env python3\nprint(len([1]))\n")
+    write(repo, "hooks/pre-commit", "#!/usr/bin/env bash\nif [ -n x ]; then\n")
+    stage(repo, "hooks/claude/nudge.py", "hooks/pre-commit")
+    r = run_lint(repo, "--staged")
+    assert r.returncode == 1, r.stdout + r.stderr
+    out = r.stdout + r.stderr
+    assert "hooks/pre-commit" in out, out  # an extensionless hook is still judged
+    assert "nudge.py" not in out, out
