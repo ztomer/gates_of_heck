@@ -272,6 +272,84 @@ class TestDryRun:
         assert not kit["gh_log"].exists() or "create" not in kit["gh_log"].read_text()
 
 
+# ── backfill: earlier tags on origin that never got a release ───────────────
+# Tags cut by hand (bypassing this kit) stayed release-less forever and silently:
+# ztools had v3.4.0, v3.4.1 and v3.5.0 on origin with v3.3.0 still "Latest". The
+# release step closes that class for every earlier tag, not just the one cut now.
+
+EARLIER_STANZAS = "## v1.1.0\n\n- the hand-made one\n\n## v1.0.5\n\n- already released\n"
+
+
+@pytest.fixture
+def hand_tags(kit: dict) -> dict:
+    """origin carries earlier tags made by hand: v1.1.0 (stanza, no release),
+    v1.0.5 (stanza, release exists), v1.0.0 (no stanza, no release) and a
+    pre-release v1.1.0-rc1 that is not a version tag of the kit's scheme."""
+    proj = kit["proj"]
+    (proj / "CHANGELOG.md").write_text(
+        f"# CHANGELOG\n\n## {TAG}\n\n{STANZA_BODY}\n\n{EARLIER_STANZAS}", encoding="utf-8"
+    )
+    commit_all(proj)
+    for t in ("v1.0.0", "v1.0.5", "v1.1.0", "v1.1.0-rc1"):
+        sh(proj, "tag", t)
+    sh(proj, "push", "-q", "origin", "--tags")
+    (kit["gh_state"] / "rel-v1.0.5").write_text("")
+    return kit
+
+
+def gh_creates(kit: dict) -> list[str]:
+    log = kit["gh_log"]
+    lines = log.read_text().splitlines() if log.exists() else []
+    return [line for line in lines if line.startswith("gh release create ")]
+
+
+class TestBackfill:
+    def test_hand_made_earlier_tag_is_released_from_its_stanza_before_the_current(self, hand_tags):
+        r = run_release(hand_tags)
+        assert r.returncode == 0, r.stdout + r.stderr
+        creates = gh_creates(hand_tags)
+        assert [c.split()[3] for c in creates] == ["v1.1.0", TAG], creates
+        assert "--latest=false" in creates[0], "a backfill must not steal Latest"
+        assert "--latest=false" not in creates[1], "the release being cut stays Latest"
+        notes = (hand_tags["gh_state"] / "notes-v1.1.0").read_text()
+        assert "the hand-made one" in notes
+        assert "already released" not in notes and STANZA_BODY.splitlines()[0] not in notes
+        # idempotent: a second run finds the backfilled release and leaves it
+        assert run_release(hand_tags).returncode == 0
+        assert [c.split()[3] for c in gh_creates(hand_tags)].count("v1.1.0") == 1
+
+    def test_earlier_tag_with_a_release_is_left_alone(self, hand_tags):
+        r = run_release(hand_tags)
+        assert r.returncode == 0, r.stdout + r.stderr
+        created = [c.split()[3] for c in gh_creates(hand_tags)]
+        assert "v1.1.0" in created, "backfill never ran -- this test would pass vacuously"
+        assert "v1.0.5" not in created, created
+
+    def test_earlier_tag_without_a_stanza_is_warned_not_fatal(self, hand_tags):
+        r = run_release(hand_tags)
+        assert r.returncode == 0, r.stdout + r.stderr
+        out = r.stdout + r.stderr
+        warned = [line for line in out.splitlines() if "v1.0.0" in line]
+        assert warned and "stanza" in warned[0] and "⚠" in warned[0], out
+        assert not any(c.split()[3] == "v1.0.0" for c in gh_creates(hand_tags))
+        assert "v1.1.0-rc1" not in out, "a pre-release tag is not a version of the kit's scheme"
+
+    def test_dry_run_plans_each_backfill_and_creates_nothing(self, hand_tags):
+        r = run_release(hand_tags, "--dry-run")
+        assert r.returncode == 0, r.stdout + r.stderr
+        plans = [
+            line for line in r.stdout.splitlines() if "[dry-run]" in line and "v1.1.0 " in line
+        ]
+        assert plans and "--latest=false" in plans[0], r.stdout
+        assert gh_creates(hand_tags) == []
+        log = hand_tags["gh_log"]
+        assert not log.exists() or "release list" not in log.read_text(), (
+            "dry-run touched the network"
+        )
+        git_calls = hand_tags["git_log"].read_text() if hand_tags["git_log"].exists() else ""
+        assert "ls-remote" not in git_calls, "dry-run touched the network"
+
+
 # ── tap bump ─────────────────────────────────────────────────────────────────
 
 

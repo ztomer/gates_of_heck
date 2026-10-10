@@ -35,6 +35,13 @@
 #                 never pushed, so a GitHub release of it cannot be created
 #                 (pass --skip-release as well if you want that stated
 #                 explicitly instead of implied).
+#                 BACKFILL first: every EARLIER v<version> tag on origin with
+#                 no GitHub release (a tag cut by hand, bypassing this kit)
+#                 gets one from its own CHANGELOG stanza, oldest first, with
+#                 --latest=false -- so the tag cut now is created last and
+#                 stays Latest. An earlier tag with no stanza is warned about
+#                 by name, never fatal. --dry-run plans each candidate from the
+#                 LOCAL tags (no network, so "if it has no release yet").
 #   6. tap        bump a Homebrew formula/cask:
 #                 --tap ztomer/homebrew-tap --formula NAME | --cask NAME
 #                 computes sha256 of --artifact (a path or URL; default: the
@@ -130,11 +137,12 @@ if [ -n "$TAP_NAME" ] && [ -z "$TAP" ]; then
 fi
 
 TAG="v${VERSION}"
-BODY="" NOTES="" TAP_DIR="" ARCHIVE_DIR=""
+BODY="" NOTES="" BACKFILL_NOTES="" TAP_DIR="" ARCHIVE_DIR=""
 cleanup() {
   # Every branch must succeed — this trap's status becomes the script's.
   [ -z "$BODY" ] || rm -f "$BODY"
   [ -z "$NOTES" ] || rm -f "$NOTES"
+  [ -z "$BACKFILL_NOTES" ] || rm -f "$BACKFILL_NOTES"
   [ -z "$TAP_DIR" ] || rm -rf "$TAP_DIR"
   [ -z "$ARCHIVE_DIR" ] || rm -rf "$ARCHIVE_DIR"  # a build that fails exits before its own rm
   [ -z "${_SELF_COPY:-}" ] || rm -f "${_SELF_COPY}"
@@ -152,17 +160,23 @@ note_skip() {
   warn "skipped ($2)"
 }
 
-# Regex-safe version for stanza matching (dots escaped).
-VER_RE="$(printf '%s' "$VERSION" | sed 's/[.*/\[\\]/\\&/g')"
-STANZA_RE="^##+ v${VER_RE}[[:space:]]|^##+ v${VER_RE}\$|^##+ \\[${VER_RE}\\][[:space:]]|^##+ \\[${VER_RE}\\]\$"
+# Regex-safe version for stanza matching (dots escaped). Every stanza helper
+# takes the version as an argument: the release step also reads the stanzas
+# of EARLIER tags it backfills, so none of them may hard-wire $VERSION.
+ver_re() { printf '%s' "$1" | sed 's/[.*/\[\\]/\\&/g'; }
+stanza_re() { # <version> -- ERE matching that version's CHANGELOG heading
+  local r; r="$(ver_re "$1")"
+  printf '%s' "^##+ v${r}[[:space:]]|^##+ v${r}\$|^##+ \\[${r}\\][[:space:]]|^##+ \\[${r}\\]\$"
+}
+has_stanza() { [ -f CHANGELOG.md ] && grep -Eq "$(stanza_re "$1")" CHANGELOG.md; }
 
-stanza_body() {
+stanza_body() { # <version>
   # No CHANGELOG.md (or --no-changelog-check on a repo without one) means an
   # empty body — the caller falls back to the tag name as the message. The
   # awk below must not run against a missing file: under set -e its failure
   # aborted the TAG step after the changelog step had already been skipped.
   [ -f CHANGELOG.md ] || return 0
-  # VER_RE reaches awk through ENVIRON, NOT -v: -v processes backslash
+  # The regex reaches awk through ENVIRON, NOT -v: -v processes backslash
   # escapes, so the escaped dots of v1\.2\.3 arrived as bare wildcards and
   # bogus headings (## v1x2y3, ## v19283) matched the stanza. ENVIRON is
   # POSIX and hands the regex over verbatim.
@@ -171,7 +185,7 @@ stanza_body() {
   # carry ### subsections, so "###" must NOT end the body — only a heading
   # of the stanza's level (the next version) does. The old `/^##+ /` reset
   # collapsed every subsectioned body to nothing.
-  GOH_AWK_VER_RE="$VER_RE" awk '
+  GOH_AWK_VER_RE="$(ver_re "$1")" awk '
     BEGIN { pat = "^(##+) v" ENVIRON["GOH_AWK_VER_RE"] "( |$)|^(##+) \\[" ENVIRON["GOH_AWK_VER_RE"] "\\]( |$)" }
     $0 ~ pat {
       head = $0; sub(/[ \t].*$/, "", head); level = length(head)
@@ -245,7 +259,7 @@ fi
 begin "changelog" "look for a ${TAG} stanza in CHANGELOG.md"
 if [ "$CHANGELOG_CHECK" = 0 ]; then
   warn "skipped (--no-changelog-check)"
-elif grep -Eq "$STANZA_RE" CHANGELOG.md; then
+elif has_stanza "$VERSION"; then
   ok "found"
 else
   fail "CHANGELOG.md has no stanza for ${VERSION} (add '## ${TAG}' first)"
@@ -268,7 +282,7 @@ elif [ "$DRY_RUN" = 1 ]; then
   plan "git tag -a ${TAG} at $(git rev-parse --short HEAD)"
 else
   BODY="$(mktemp "${TMPDIR:-/tmp}/goh-release-body.XXXXXX")"
-  stanza_body > "$BODY"
+  stanza_body "$VERSION" > "$BODY"
   [ -s "$BODY" ] || printf '%s\n' "${TAG}" > "$BODY"
   # --cleanup=verbatim: without it git strips '#' lines from -F messages as
   # commentary, silently deleting every ### subsection of a Keep-a-changelog
@@ -289,7 +303,56 @@ else
   ok "pushed"
 fi
 
-# ── 5. GitHub release ────────────────────────────────────────────────────────
+# ── 5. GitHub release (earlier release-less tags first) ─────────────────────
+# earlier_versions: tag names or `ls-remote` lines on stdin → the X.Y[.Z] of
+# each v-tag of the kit's scheme strictly before $VERSION, oldest first.
+# Pre-release and other non-version tags (v1.2.3-rc1, nightly) never match.
+earlier_versions() {
+  GOH_AWK_VER="$VERSION" awk '
+    function key(v,  p, n) { n = split(v, p, "."); return sprintf("%09d%09d%09d", p[1], p[2], (n > 2 ? p[3] : 0)) }
+    BEGIN { cur = key(ENVIRON["GOH_AWK_VER"]) }
+    { t = $NF; sub(/^refs\/tags\//, "", t) }
+    t ~ /^v[0-9]+\.[0-9]+(\.[0-9]+)?$/ { v = substr(t, 2); k = key(v); if (k < cur) print k, v }
+  ' | sort -u | cut -d' ' -f2
+}
+
+# A tag cut by hand never passed through this step, so its release was never
+# created -- and nothing said so (ztools: three tags, "Latest" stuck at an
+# older one). Every real release closes that gap for ALL earlier tags.
+backfill_releases() {
+  local versions v refs existing missing="" made=0
+  STEP="backfill"
+  if [ "$DRY_RUN" = 1 ]; then
+    versions="$(git tag -l 'v*' | earlier_versions)"
+    for v in $versions; do
+      has_stanza "$v" || continue
+      plan "backfill: gh release create v${v} --latest=false --notes-file <v${v} stanza> \
+-- only if origin has v${v} and no GitHub release of it yet"
+    done
+    STEP="release"; return 0
+  fi
+  refs="$(git ls-remote --tags --refs origin)" || fail "git ls-remote --tags origin exited nonzero"
+  existing="$(gh release list --repo "$GH_REPO_SLUG" --limit 10000 --json tagName --jq '.[].tagName')" \
+    || fail "gh release list exited nonzero"
+  versions="$(earlier_versions <<<"$refs")"
+  for v in $versions; do
+    if grep -qxF "v${v}" <<<"$existing"; then continue; fi
+    if ! has_stanza "$v"; then missing="${missing:+${missing}, }v${v}"; continue; fi
+    BACKFILL_NOTES="${BACKFILL_NOTES:-$(mktemp "${TMPDIR:-/tmp}/goh-release-backfill.XXXXXX")}"
+    stanza_body "$v" > "$BACKFILL_NOTES"
+    [ -s "$BACKFILL_NOTES" ] || printf '%s\n' "v${v}" > "$BACKFILL_NOTES"
+    gh release create "v${v}" --title "v${v}" --notes-file "$BACKFILL_NOTES" \
+      --latest=false --verify-tag --repo "$GH_REPO_SLUG" \
+      || fail "gh release create v${v} exited nonzero"
+    ok "backfilled GitHub release v${v} (tag had none)"
+    made=$((made + 1))
+  done
+  [ -z "$missing" ] || warn "earlier tags on origin with no GitHub release and no CHANGELOG \
+stanza, not backfilled: ${missing} -- add a stanza and re-run, or release them by hand"
+  [ "$made" -gt 0 ] || [ -n "$missing" ] || info "backfill: every earlier tag on origin has a release"
+  STEP="release"
+}
+
 begin "release" "gh release create ${TAG}"
 if [ "$DO_RELEASE" = 0 ]; then
   note_skip "release (--skip-release)" "--skip-release"
@@ -304,10 +367,14 @@ elif ! command -v gh >/dev/null; then
 elif [ -z "$GH_REPO_SLUG" ]; then
   warn "skipped: origin (${ORIGIN_URL}) is not a github.com remote"
 elif [ "$DRY_RUN" = 1 ]; then
+  backfill_releases
   plan "gh release create ${TAG} --notes-file <stanza body> (repo ${GH_REPO_SLUG})"
 else
+  # Backfills first, each --latest=false: the API makes a new release Latest
+  # unless told otherwise, so the release cut NOW is created last and stays it.
+  backfill_releases
   NOTES="$(mktemp "${TMPDIR:-/tmp}/goh-release-notes.XXXXXX")"
-  stanza_body > "$NOTES"
+  stanza_body "$VERSION" > "$NOTES"
   if gh release view "$TAG" --repo "$GH_REPO_SLUG" >/dev/null 2>&1; then
     ok "GitHub release ${TAG} already exists — leaving it (idempotent)"
   else

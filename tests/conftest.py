@@ -309,6 +309,10 @@ case "$cmd" in
           esac
         done
         [ -n "$tag" ] && [ -f "$STATE/rel-$tag" ] ;;
+      list)
+        # One tag name per release, as `--json tagName --jq '.[].tagName'` prints.
+        for f in "$STATE"/rel-*; do [ -e "$f" ] && printf '%s\\n' "${f##*/rel-}"; done
+        exit 0 ;;
       create)
         tag=""; notes=""
         while [ $# -gt 0 ]; do
