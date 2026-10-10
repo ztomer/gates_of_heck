@@ -8,8 +8,10 @@
 # own gates out of a run, but the load floor below is rarely met, and a per-step figure is the
 # step's `cpu_ms` (GOH_TIMINGS), not its wall (docs/BACKLOG.md 4.4):
 #
-#   1. hold the host (lib/bench_lock.sh: no new goh gate starts, the running ones finish) and the
-#      desktop (lib/desktop_lock/, which ZoneWM's probes respect). The first version waited for
+#   1. hold the host (lib/bench_lock.sh: no new goh gate starts, the running ones finish), the
+#      desktop (lib/desktop_lock/: a UI capture in another session holds it) and the GPU
+#      (lib/gpu_lock/: a model run holds it for hours and loads the box under every wall time;
+#      a held GPU is refused by name rather than waited on). The first version waited for
 #      the load to fall HOLDING NOTHING, and on a box a dozen sessions share it waited 2 h without
 #      one window: every new gate started ahead of it (BACKLOG 3.1, a reader-preferring queue
 #      starving its writer). The drain is bounded by the budget too: one that waited 579 s for
@@ -48,6 +50,8 @@ GOH="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 # shellcheck source=lib/desktop_lock/desktop_lock.sh
 . "$GOH/lib/desktop_lock/desktop_lock.sh"
 DESKTOP_LOCK_DIR="${GOH_BENCH_DESKTOP_LOCK_DIR:-$DESKTOP_LOCK_DIR}"
+# shellcheck source=lib/gpu_lock/gpu_lock.sh
+. "$GOH/lib/gpu_lock/gpu_lock.sh"
 
 max_load=8 settle=300 retry=300 hold="" deadline=14400 label="a measurement" poll="${GOH_BENCH_POLL:-15}" floor=""
 while [ $# -gt 0 ]; do
@@ -98,7 +102,7 @@ print(f"{time.perf_counter() - t:.2f}")'
     fi
 }
 
-trap 'desktop_lock_release; bench_lock_release' EXIT
+trap 'gpu_lock_release; desktop_lock_release; bench_lock_release' EXIT
 trap 'exit 130' INT
 trap 'exit 143' TERM
 label="$label (tools/quiet.sh)"
@@ -115,6 +119,7 @@ while :; do
         continue
     fi
     desktop_lock_acquire "$label"
+    gpu_lock_acquire "$label"
     t1="$(date +%s)"
     if [ -n "$floor" ]; then # the floor: every gate drained, what is left, for --settle seconds
         samples=""
@@ -146,6 +151,7 @@ while :; do
         warn "quiet: load $load with every gate drained for ${settle}s -- not goh's: letting go for ${retry}s; busiest:"
         busiest                                                                  # 3. let go
     fi
+    gpu_lock_release
     desktop_lock_release
     bench_lock_release
     sleep "$retry"

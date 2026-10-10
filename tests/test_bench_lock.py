@@ -221,7 +221,7 @@ def _quiet_env(tmp_path: Path, **extra: str) -> dict[str, str]:
     """A private lock and desktop lock, fast polls, and a steady control (the real one times 200
     spawns, which the live box's load would move)."""
     base = {"GOH_BENCH_DESKTOP_LOCK_DIR": str(tmp_path / "desktop.lock"), "GOH_BENCH_POLL": "0.1",
-            "GOH_BENCH_CONTROL": "echo 1.0"}  # fmt: skip
+            "GOH_BENCH_CONTROL": "echo 1.0", "ZTOOLS_GPU_LOCK_DIR": str(tmp_path / "gpu.lock")}  # fmt: skip
     return _env(tmp_path / "lock", **{**base, **extra})
 
 
@@ -235,12 +235,17 @@ def _reads(tmp_path: Path) -> list[str]:
     return (tmp_path / "reads").read_text().splitlines()
 
 
-def test_quiet_runs_the_measurement_holding_the_host_and_the_desktop(tmp_path: Path) -> None:
-    lock, desk = tmp_path / "lock", tmp_path / "desktop.lock"
-    probe = f'test -f "{lock}/exclusive/owner" && test -d "{desk}" && exit 3'
+def test_quiet_runs_the_measurement_holding_the_host_the_desktop_and_the_gpu(
+    tmp_path: Path,
+) -> None:
+    lock, desk, gpu = tmp_path / "lock", tmp_path / "desktop.lock", tmp_path / "gpu.lock"
+    probe = (
+        f'test -f "{lock}/exclusive/owner" && test -d "{desk}" && test -f "{gpu}/owner" && exit 3'
+    )
     r = _quiet(tmp_path, "--max-load", "1000", "--", "bash", "-c", probe)
-    assert r.returncode == 3, r.stdout + r.stderr  # the command's own status, and it saw both
+    assert r.returncode == 3, r.stdout + r.stderr  # the command's own status, and it saw all three
     assert "load" in r.stdout and not (lock / "exclusive").exists() and not desk.exists()
+    assert not gpu.exists()
 
 
 def _gate_load(tmp_path: Path) -> dict[str, str]:
