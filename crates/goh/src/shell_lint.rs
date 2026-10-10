@@ -1,6 +1,6 @@
 //! Shell lint -- Rust port of the retired `checks/check_shell_lint.sh` (Phase N1).
 //!
-//! Every tracked `*.sh` and `hooks/*` file (at `--staged`, the staged blobs,
+//! Every tracked `*.sh`, and every extensionless `hooks/*` file (at `--staged`, the staged blobs,
 //! checked out of the index into a temp dir) must pass `bash -n`, and the
 //! syntactically clean ones must pass `shellcheck --severity=error` -- one
 //! shellcheck call for all of them. A missing shellcheck is a refusal, not a
