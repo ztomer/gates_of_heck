@@ -183,7 +183,7 @@ its commit, or `tests/test_backlog_items.py` fails. A landed item moves to the S
       it. Red-first: `git merge --ff-only` a branch into main and push -- refused. Lies: a record
       kept in the worktree is lost with it; keep it in the main checkout's git dir, and a record
       matched on a branch name rather than a SHA passes a moved branch.
-- [ ] 1.6 A stale project venv cannot silently become the interpreter a Python gate judges with.
+- [x] 1.6 (`61326f3`; `gates/_py.sh` `goh_py_venv_current`, `tests/test_py_venv_currency.py`) A stale project venv cannot silently become the interpreter a Python gate judges with.
       Baseline: `gates/_py.sh` prefers `.venv/bin/python` over `python3`, unconditionally. Read
       2026-10-10: this repo's own suite never used its `.venv` (`tools/pytest.sh` runs `python3`,
       3.15.0), and the `.venv` was an EMPTY uv venv on 3.13.11 from 2026-10-05 (moved to the
