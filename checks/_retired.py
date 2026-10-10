@@ -38,6 +38,7 @@ NATIVE = {
     "check_python_formatted": "python-formatted",
     "check_shell_lint": "shell-lint",
     "check_exclusion_has_ceiling": "ceiling",
+    "check_subprocess_stdin": "subprocess-stdin",
 }
 
 # Every retired checker's entry point stays on disk as a forwarder: a consumer calls it BY PATH,

@@ -67,6 +67,7 @@ pub mod steps;
 pub mod steps_delegated;
 pub mod steps_rust;
 pub mod structural;
+pub mod substdin;
 pub mod tagver;
 pub mod unreaped;
 pub mod vendored;
@@ -214,6 +215,14 @@ fn nonempty(pattern: &str) -> Option<&str> {
     (!pattern.is_empty()).then_some(pattern)
 }
 
+/// A direct check whose ONLY exclusion is the repo's declared `GOH_EXCLUDE`: resolve it,
+/// then run. Eight arms spelled this three-line wrapper out, which is what pushed this
+/// function past the line cap on the ninth check -- so the wrapper is the function, and the
+/// ninth check is one line instead of a copy.
+fn paths<F: FnOnce(&str) -> i32>(exclude: Option<String>, run: F) -> i32 {
+    declared(exclude, None, gatesrc::Exempt::Paths).map_or_else(|code| code, |x| run(&x))
+}
+
 /// The path scanners (`--exclude` resolved against the repo's `.gatesrc`), or the command back.
 fn run_scanners(command: Commands) -> Result<i32, Box<Commands>> {
     Ok(match command {
@@ -247,8 +256,9 @@ fn run_ported(command: Commands) -> Result<i32, Box<Commands>> {
             staged,
             json,
         } => provenance::run_command(&root, baseline.as_deref(), staged, json),
-        Commands::ShellLint { exclude, staged } => declared(exclude, None, gatesrc::Exempt::Paths)
-            .map_or_else(|code| code, |x| shell_lint::run_command(staged, &x)),
+        Commands::ShellLint { exclude, staged } => {
+            paths(exclude, |x| shell_lint::run_command(staged, x))
+        }
         Commands::PythonFormatted {
             trees,
             staged,
@@ -267,8 +277,7 @@ fn run_ported(command: Commands) -> Result<i32, Box<Commands>> {
             ratchet,
         } => deps::run_command(root.as_deref(), json, offline, strict, ratchet.as_deref()),
         Commands::EmptyAssert { exclude, staged } => {
-            declared(exclude, None, gatesrc::Exempt::Paths)
-                .map_or_else(|code| code, |x| emptyassert::run_command(staged, &x))
+            paths(exclude, |x| emptyassert::run_command(staged, x))
         }
         Commands::TagVersion {
             root,
@@ -308,31 +317,33 @@ fn run_ported(command: Commands) -> Result<i32, Box<Commands>> {
             exclude,
             staged,
             code_lines,
-        } => declared(exclude, None, gatesrc::Exempt::Paths).map_or_else(
-            |code| code,
-            |x| killname::run_command(staged, &x, code_lines.as_deref()),
-        ),
+        } => paths(exclude, |x| {
+            killname::run_command(staged, x, code_lines.as_deref())
+        }),
         Commands::EarlyExitPipe { exclude, staged } => {
-            declared(exclude, None, gatesrc::Exempt::Paths)
-                .map_or_else(|code| code, |x| earlypipe::run_command(staged, &x))
+            paths(exclude, |x| earlypipe::run_command(staged, x))
         }
         Commands::DeadAfterExec { exclude, staged } => {
-            declared(exclude, None, gatesrc::Exempt::Paths)
-                .map_or_else(|code| code, |x| deadexec::run_command(staged, &x))
+            paths(exclude, |x| deadexec::run_command(staged, x))
         }
         Commands::BareHookIndex { exclude, staged } => {
-            declared(exclude, None, gatesrc::Exempt::Paths)
-                .map_or_else(|code| code, |x| hookindex::run_command(staged, &x))
+            paths(exclude, |x| hookindex::run_command(staged, x))
         }
         Commands::CheckoutCredentials { staged } => checkoutcreds::run_command(staged),
         Commands::UnreapedSpawn {
             exclude,
             staged,
             verdicts,
-        } => declared(exclude, None, gatesrc::Exempt::Paths).map_or_else(
-            |code| code,
-            |x| unreaped::run_command(staged, &x, verdicts.as_deref()),
-        ),
+        } => paths(exclude, |x| {
+            unreaped::run_command(staged, x, verdicts.as_deref())
+        }),
+        Commands::SubprocessStdin {
+            exclude,
+            staged,
+            source,
+        } => paths(exclude, |x| {
+            substdin::run_command(staged, Some(x), source.as_deref())
+        }),
         other => return Err(Box::new(other)),
     })
 }

@@ -135,11 +135,13 @@ INVENTORY_CASE: dict[str, bytes] = {
 # 19 on 2026-10-05 (`no credential in a git remote URL`), 20 on 2026-10-06 (`no vendored copies
 # of house checkers`, R5), 21-23 on 2026-10-08 (requires-call, early-exit pipe, code after exec),
 # 24 the same day (`no tracked file its .gitignore ignores`), 25 (`no bare read of the hook's index`),
-# 26 (`no checkout leaves its token in git config`).
+# 26 (`no checkout leaves its token in git config`), 27 on 2026-10-09 (`every child process names
+# its stdin` -- always-on in every repo, not opt-in, so it is in the fully-opted-in inventory too).
 INVENTORY = [
     "a file that calls X calls Y",
     "Cargo.lock matches its manifests",
     "cap-exempt files within their ceilings",
+    "every child process names its stdin",
     "file length <= 500",
     "gate self-proofs still pass",
     "gates refuse to pass over an empty tree",

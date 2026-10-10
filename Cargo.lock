@@ -462,7 +462,7 @@ dependencies = [
 
 [[package]]
 name = "goh"
-version = "0.25.1"
+version = "0.26.0"
 dependencies = [
  "bytecount",
  "clap",
@@ -487,7 +487,7 @@ dependencies = [
 
 [[package]]
 name = "goh-golden"
-version = "0.25.1"
+version = "0.26.0"
 dependencies = [
  "num-traits",
  "png",
@@ -497,14 +497,14 @@ dependencies = [
 
 [[package]]
 name = "goh-sys"
-version = "0.25.1"
+version = "0.26.0"
 dependencies = [
  "libc",
 ]
 
 [[package]]
 name = "goh-testkit"
-version = "0.25.1"
+version = "0.26.0"
 dependencies = [
  "tempfile",
 ]

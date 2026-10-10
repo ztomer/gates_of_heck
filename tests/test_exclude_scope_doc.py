@@ -27,6 +27,7 @@ CONSUMERS: dict[str, tuple[str, ...]] = {
     "crates/goh/src/unreaped/mod.rs": ("unreaped spawn",),
     "crates/goh/src/mdlinks.rs": ("md-links",),
     "crates/goh/src/claims/mod.rs": ("claim-derivation",),
+    "crates/goh/src/substdin/mod.rs": ("subprocess-stdin",),
     "gates/rust_gate.sh": ("`#[allow]`/`#[expect]`", "emptiness asserts"),
     "gates/rust_each_crate.sh": ("`--each-crate`",),
 }

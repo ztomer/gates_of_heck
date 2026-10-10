@@ -4,7 +4,7 @@
 use crate::{
     blobs, checkoutcreds, claims, credurls, deadexec, earlypipe, gatesrc, gitutil, goh_root,
     hookindex, killname, lockver, mdlinks, prefetch, provenance, pyformat, scope, shell_lint,
-    steps, steps_delegated, steps_rust, unreaped, vendored,
+    steps, steps_delegated, steps_rust, substdin, unreaped, vendored,
 };
 
 mod trackedignored;
@@ -111,22 +111,35 @@ pub fn run(staged: bool, full: bool) -> i32 {
     if let Some(code) = unreaped::step(&cfg, staged) {
         return code;
     }
-    if let Some(code) = claims::step_gate(&cfg, staged) {
-        return code;
-    }
-    if let Some(code) = vendored::step(&repo, &files, staged) {
-        return code;
-    }
-    if let Some(code) = crate::requires_call::step(&repo, &cfg, staged) {
-        return code;
-    }
-    if let Some(code) = steps_delegated::step_full_only(&repo, &checks, staged) {
+    if let Some(code) = late_steps(&repo, &files, &checks, &cfg, staged) {
         return code;
     }
 
     println!();
     println!("✓ all structural gates passed");
     0
+}
+
+/// The last four steps, which are the ones that read the repo's own configuration and
+/// helper files rather than its source: a documented claim, a vendored copy of a house
+/// checker, the rules `GOH_REQUIRES_CALL` names, and every child process's stdin.
+///
+/// They are last because each is a finding about a file the repo CHOOSED to write, and a
+/// source-shaped defect earlier in the pipeline is the one that has to be fixed first. The
+/// group is a function so `run` stays inside the line cap rather than growing a step per
+/// release forever.
+fn late_steps(
+    repo: &std::path::Path,
+    files: &[String],
+    checks: &std::path::Path,
+    cfg: &gatesrc::Gatesrc,
+    staged: bool,
+) -> Option<i32> {
+    claims::step_gate(cfg, staged)
+        .or_else(|| vendored::step(repo, files, staged))
+        .or_else(|| crate::requires_call::step(repo, cfg, staged))
+        .or_else(|| substdin::step(cfg, files, staged))
+        .or_else(|| steps_delegated::step_full_only(repo, checks, staged))
 }
 
 /// The shell-source steps, in order: shell lint, then two defects shellcheck 0.11.0 exits 0 on,

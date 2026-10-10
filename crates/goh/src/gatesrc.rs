@@ -76,6 +76,20 @@ pub struct Gatesrc {
     pub skills_max_words: Option<String>,
     /// `goh requires-call`'s rules file, repo-relative (unset: the step does not run).
     pub requires_call: Option<String>,
+    /// `GOH_SUBPROCESS_STDIN_MIN_CALLS`: how many process calls this repo must have before
+    /// its `goh subprocess-stdin` step trusts a clean run. Unset means no floor, and the
+    /// step then reports BOTH counts (`N file(s), every one of M process call(s)`) so a
+    /// scan that lost its subject is visible in the output rather than silent. `Some`
+    /// holds the raw string because an unparseable value must be an ERROR naming the key,
+    /// never a floor of zero -- a typo that silently disables the floor is the defect the
+    /// floor exists to prevent.
+    pub stdin_min_calls: Option<String>,
+    /// `GOH_SUBPROCESS_STDIN`: `on` runs `goh subprocess-stdin` in the structural pipeline,
+    /// `off` (the default) does not. The default is off until every estate repo carries its
+    /// fix or its seeded allowlist: hooks run whatever is in this checkout, so a gate that
+    /// landed always-on would turn 17 repos red at their next commit over debt nobody had
+    /// looked at. Raw, so a value that is neither is an error naming the key.
+    pub stdin_gate: Option<String>,
 }
 
 /// Parse one right-hand side: single/double-quoted or bare with `#` comment.
@@ -201,6 +215,8 @@ pub fn from_pairs(pairs: &BTreeMap<String, String>) -> Result<Gatesrc, String> {
             .get("GOH_REQUIRES_CALL")
             .filter(|v| !v.is_empty())
             .cloned(),
+        stdin_min_calls: pairs.get("GOH_SUBPROCESS_STDIN_MIN_CALLS").cloned(),
+        stdin_gate: pairs.get("GOH_SUBPROCESS_STDIN").cloned(),
     })
 }
 
@@ -214,7 +230,7 @@ pub fn from_pairs(pairs: &BTreeMap<String, String>) -> Result<Gatesrc, String> {
 /// keys, so a step that reads one from the environment (`GOH_STEP_TIMEOUT`, and
 /// every child it spawns) sees the file's value, never an inherited one.
 /// Pinned against `docs/config.md` by `tests/test_gate_environment.py`.
-pub const PIPELINE_KEYS: [&str; 17] = [
+pub const PIPELINE_KEYS: [&str; 19] = [
     "GOH_MAX_LINES",
     "GOH_LINE_EXCLUDE",
     "GOH_LINE_BASELINE",
@@ -232,6 +248,8 @@ pub const PIPELINE_KEYS: [&str; 17] = [
     "GOH_STEP_TIMEOUT",
     "GOH_STEP_GRACE",
     "GOH_REQUIRES_CALL",
+    "GOH_SUBPROCESS_STDIN_MIN_CALLS",
+    "GOH_SUBPROCESS_STDIN",
 ];
 
 /// Make the process environment say what `root/.gatesrc` says for every

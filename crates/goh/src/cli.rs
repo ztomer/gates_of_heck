@@ -116,6 +116,20 @@ pub enum Commands {
         /// The repository root (default: `.`).
         root: Option<String>,
     },
+    /// Every child process names its stdin, from the AST. Always-on structural step.
+    SubprocessStdin {
+        /// Regex on repo-relative paths to skip. Unset: the repo's own `.gatesrc` `GOH_EXCLUDE`, as
+        /// its structural gate applies it; `--exclude ''` opts out.
+        #[arg(long)]
+        exclude: Option<String>,
+        /// Staged blobs (the index being committed).
+        #[arg(long)]
+        staged: bool,
+        /// Judge this one file from the working tree and print JSON `{path, calls, findings}`;
+        /// exit 1 when it has findings. For a repo's own verify step and the test harness.
+        #[arg(long)]
+        source: Option<String>,
+    },
     /// The proven-step cache's key, lookup and record, in-process (`gates/_proven.sh` delegates).
     Proven {
         #[command(subcommand)]

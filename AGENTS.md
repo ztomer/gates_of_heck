@@ -45,7 +45,9 @@ Details: `docs/map.md`.
 * Emoji are a failure state. Only `→ · ✓ ✗ ⚠ ↔ ↑ ↓ ← ⌘ ⌥ ⌨ ⇧ ⌃ ⏎ ⎋ ↵ ⇒ ⇄`
   plus `© ® ™` (bare forms; VS16 forms fail). Enforced by
   `goh emoji` (`crates/goh/src/emoji.rs`). See `docs/config.md` for `GOH_ALLOW`.
-* 500-line cap (`GOH_MAX_LINES`). Keep new docs/code under it.
+* 500-line cap (`GOH_MAX_LINES`) on SOURCE files only -- `crates/goh/src/length.rs`
+  `SOURCE_SUFFIXES` (plus `Makefile`/`CMakeLists.txt`/`Justfile` by name). Markdown, data
+  and lockfiles are never measured; a long doc is not a gate failure.
 * Output style: source `tui/lib.sh`, use `info/ok/err/warn/die/section/hr`.
   Never hand-roll color escapes or `[ PASS ]` markers.
 * 64-bit only; macOS is Apple silicon only, Linux x86_64 stays supported.

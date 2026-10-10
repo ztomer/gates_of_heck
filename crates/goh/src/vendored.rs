@@ -21,7 +21,7 @@ const LABEL: &str = "no vendored copies of house checkers";
 
 /// The checkers Phase N3 retired. Pinned equal to `checks/_retired.py::NATIVE` by
 /// `tests/test_vendored_copies.py`, so the two spellings cannot drift.
-pub const RETIRED: [&str; 22] = [
+pub const RETIRED: [&str; 23] = [
     "check_no_emoji",
     "check_no_conflict_markers",
     "check_file_length",
@@ -44,6 +44,7 @@ pub const RETIRED: [&str; 22] = [
     "check_python_formatted",
     "check_shell_lint",
     "check_exclusion_has_ceiling",
+    "check_subprocess_stdin",
 ];
 
 /// Every basename a house checker is shipped under.

@@ -19,7 +19,12 @@ fn goh(repo: &Repo) -> std::io::Result<Out> {
 
 #[test]
 fn the_kill_by_name_gate_runs_only_when_declared_and_goes_red_on_a_pkill() {
-    let kill = format!("import subprocess\nsubprocess.run([\"{PKILL}\", \"-f\", \"helper\"])\n");
+    // `stdin=` because `goh subprocess-stdin` is an ALWAYS-ON step and reads this fixture
+    // like any other tracked Python: it caught this call here on the day it landed, which is
+    // the gate doing its job on a repo that had been shipping the defect all along.
+    let kill = format!(
+        "import subprocess\nsubprocess.run([\"{PKILL}\", \"-f\", \"helper\"], stdin=None)\n"
+    );
     // Undeclared: the step does not run, and the kill passes untouched.
     let r = repo_with(&[
         ("README.md", "x\n"),
