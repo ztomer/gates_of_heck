@@ -162,7 +162,7 @@ its commit, or `tests/test_backlog_items.py` fails. A landed item moves to the S
       qualification. Exit: removing the key's `docs/config.md` row reds the test. Red-first: add a
       throwaway `GOH_` read under `crates/` and watch it go red. Lies: a Rust key that a shell
       script also reads is already covered; only the Rust-only case is the hole.
-- [ ] 1.4 A structural step that exists in the tree but not in the running binary is NAMED, not
+- [x] 1.4 (`c02ec73`: `crates/goh/structural_steps.txt`, embedded and listed by `goh structural --list-steps`; named as a warning, since a step-adding commit is judged by HEAD's binary by design) A structural step that exists in the tree but not in the running binary is NAMED, not
       silently absent. Baseline: `gates/structural.sh:15` runs HEAD's export (`_from_head.sh`),
       `bin/goh` is 0.25.1 against a 0.26.0 tree, `goh --help` has no `subprocess-stdin`, and
       `tools/gate.sh --staged` printed `all structural gates passed` in 0.3 s with the new step
