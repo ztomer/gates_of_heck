@@ -104,6 +104,21 @@ def test_successful_step_output_is_captured_not_streamed(repo):
     assert "QUIET-SUCCESS-SENTINEL" not in (r.stdout + r.stderr)
 
 
+def test_reported_log_dir_holds_only_regular_files(repo):
+    # The failure summary hands the operator a directory to search. A FIFO
+    # left in it (the step-completion channel) makes `grep -r` block forever
+    # on its read -- a hung command where a search was asked for.
+    gatesrc(repo, "echo boom >&2; exit 1")
+    r = run_ci(repo)
+    assert r.returncode != 0
+    line = next(l for l in (r.stdout + r.stderr).splitlines() if "full output:" in l)
+    logdir = Path(line.split("full output:", 1)[1].strip())
+    entries = list(logdir.iterdir())
+    assert entries, "the reported log dir is empty"
+    odd = [e.name for e in entries if not e.is_file()]
+    assert odd == [], f"non-regular files in the reported log dir: {odd}"
+
+
 def test_summary_counts_failures(repo):
     gatesrc(repo, "false:false:true")
     r = run_ci(repo)

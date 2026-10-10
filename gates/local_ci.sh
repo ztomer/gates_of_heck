@@ -322,6 +322,10 @@ HELD=","        # the tags of the steps running now, comma-delimited
 RUNNING=0
 mkfifo "$LOGDIR/done"
 exec 3<>"$LOGDIR/done"
+# Every write and read goes through fd 3, so the name is not needed past
+# here -- and the directory is handed to the operator to search on failure,
+# where a FIFO makes `grep -r` block forever (tests/test_local_ci.py).
+rm -f "$LOGDIR/done"
 
 _tags_free() { # _tags_free <i> -- none of step i's tags is held
     local t rest="${TAGS[$1]#,}"
