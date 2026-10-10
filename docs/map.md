@@ -182,4 +182,10 @@ Every structural checker is native since Phase N3; the Python checkers they port
 * `hooks/claude/skill_edit.sh` — a Claude Code PostToolUse hook (wired in `~/.claude/settings.json`,
   matcher `Write|Edit|MultiEdit|Bash`): an edit inside the skills corpus -- or a Bash command naming it -- runs `goh skills` at once and
   a finding is exit 2 back to the writer. Not copied by `install.sh`. Pinned by `test_claude_skill_hook.py`.
+* `hooks/claude/compact_nudge.py` — a Claude Code Stop hook: when a turn ends with the context past
+  `GOH_COMPACT_NUDGE_AT`, a `systemMessage` says `/compact` now lands on a task boundary (no hook can
+  start a compaction itself). Once per `GOH_COMPACT_NUDGE_STEP`; never blocks. Pinned by `test_claude_compact_hooks.py`.
+* `hooks/claude/compact_restore.py` — a Claude Code SessionStart hook (matcher `compact`): prints the
+  branch, uncommitted paths and recent commits from git into the context after a compaction. Pinned by
+  `test_claude_compact_hooks.py`.
 * `tui/` — style source of truth. Pinned by `test_tui_integration.py`.

@@ -204,6 +204,15 @@ Measured on media_server: `structural --full` 1.9 s -> 0.30 s warm.
 | `GOH_PROFILE_TARGET` | repo root | Absolute repo root the profilers operate on. Env override for profiling a different checkout. |
 
 ## Runtime / harness
+## Claude Code hooks (`hooks/claude/`, wired in `~/.claude/settings.json`)
+
+Read from the hook's environment (the settings file's `env`, or the shell Claude Code started in), never from `.gatesrc`.
+
+| Key | Default | Meaning |
+|---|---|---|
+| `GOH_COMPACT_NUDGE_AT` | `300000` | Tokens of main-conversation context past which `compact_nudge.py` (Stop) tells the owner, at the end of a turn, that `/compact` would land on a task boundary. Set it under the `autoCompactWindow`, or the automatic compaction comes first and the nudge never speaks. |
+| `GOH_COMPACT_NUDGE_STEP` | `50000` | Growth after a nudge before the next one: one message per step, not one per turn. A compaction re-arms it, whether the Stop saw the boundary or only the shrink. State is one file per session under `$XDG_STATE_HOME/goh/compact_nudge/` (default `~/.local/state`), pruned after seven days. |
+
 
 | Key | Default | Meaning |
 |---|---|---|
