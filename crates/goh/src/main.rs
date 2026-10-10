@@ -17,6 +17,7 @@ pub mod ceiling;
 pub mod checkoutcreds;
 pub mod claims;
 pub mod cli;
+pub mod cli_args;
 pub mod commands;
 pub mod commit_class;
 pub mod credurls;
@@ -25,6 +26,7 @@ pub mod deps;
 pub mod earlypipe;
 pub mod emoji;
 pub mod emptyassert;
+pub mod fixedsleep;
 pub mod gatesrc;
 pub mod gitutil;
 pub mod homepaths;
@@ -337,6 +339,9 @@ fn run_ported(command: Commands) -> Result<i32, Box<Commands>> {
         } => paths(exclude, |x| {
             unreaped::run_command(staged, x, verdicts.as_deref())
         }),
+        Commands::FixedSleep { exclude, seed } => {
+            paths(exclude, |x| fixedsleep::run_command(seed, x))
+        }
         Commands::SubprocessStdin {
             exclude,
             staged,
