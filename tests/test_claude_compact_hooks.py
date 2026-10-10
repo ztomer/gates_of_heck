@@ -15,6 +15,7 @@ import subprocess
 import sys
 from pathlib import Path
 
+from _fast_git import fast_init
 from conftest import REPO_ROOT, hermetic_env
 
 NUDGE = REPO_ROOT / "hooks" / "claude" / "compact_nudge.py"
@@ -167,7 +168,7 @@ def _restore(cwd: Path, source: str = "compact"):
 def test_after_a_compaction_the_repo_state_is_reread(tmp_path: Path) -> None:
     repo = tmp_path / "repo"
     repo.mkdir()
-    _git(repo, "init", "-q", "-b", "trunk")
+    fast_init(repo, "trunk")
     _git(
         repo,
         "-c",
@@ -189,7 +190,7 @@ def test_after_a_compaction_the_repo_state_is_reread(tmp_path: Path) -> None:
 def test_only_a_compaction_triggers_it(tmp_path: Path) -> None:
     repo = tmp_path / "repo"
     repo.mkdir()
-    _git(repo, "init", "-q")
+    fast_init(repo)
     r = _restore(repo, source="startup")
     assert (r.returncode, r.stdout) == (0, ""), r.stdout + r.stderr
 

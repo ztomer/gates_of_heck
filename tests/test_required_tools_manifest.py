@@ -20,6 +20,7 @@ import sys
 from pathlib import Path
 
 import pytest
+from _fast_git import fast_init
 
 ROOT = Path(__file__).resolve().parent.parent
 MANIFEST = ROOT / "gates" / "required_tools.tsv"
@@ -166,7 +167,7 @@ def test_the_cross_lint_tools_are_for_repos_that_name_zigbuild(tmp_path, gatesrc
 
 
 def _names_for(repo: Path, files: dict[str, str]) -> list[str]:
-    subprocess.run(["git", "init", "-q", str(repo)], check=True)
+    fast_init(repo)
     for rel, body in files.items():
         (repo / rel).parent.mkdir(parents=True, exist_ok=True)
         (repo / rel).write_text(body)
