@@ -154,7 +154,7 @@ its commit, or `tests/test_backlog_items.py` fails. A landed item moves to the S
       carries the check, its source dir and the tests that pin it. Red-first: delete the row and
       the wiring test reds again. Lies: `test_config_schema_covers_keys` stays green either way
       -- its `SCAN` (`tests/test_config_schema.py:13`) never looks at `crates/`.
-- [ ] 1.3 `tests/test_config_schema.py` scans `crates/`, so a key read only from Rust cannot ship
+- [x] 1.3 (`24e9608`; it also scans `scripts/`, which had three undocumented keys of its own, and skips Rust test fixtures) `tests/test_config_schema.py` scans `crates/`, so a key read only from Rust cannot ship
       undocumented. Baseline: `SCAN = ("gates","checks","lib","tools","hooks","tui","install.sh")`
       (`:13`); `GOH_SUBPROCESS_STDIN_MIN_CALLS` is read at `crates/goh/src/gatesrc.rs:212` and
       listed at `:244`, appears in no doc, and that test passes -- while `AGENTS.md:62` claims
