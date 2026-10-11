@@ -14,11 +14,11 @@ import subprocess
 
 from conftest import REPO_ROOT, git, write
 
-from _tag_version_kit import _media_shape, _refs, _sha
+from _tag_version_kit import _media_shape, _refs, _sha, origin_from
 from _fast_git import fast_init  # noqa: E402
 
 
-def _push(repo, tmp_path, *pairs, extra_env=None):
+def _push(repo, tmp_path, *pairs, extra_env=None, url="unused-url"):
     """Drive the real pre-push gate with these refs, as git would."""
     import os
 
@@ -30,7 +30,7 @@ def _push(repo, tmp_path, *pairs, extra_env=None):
         **(extra_env or {}),
     )
     return subprocess.run(
-        ["bash", str(REPO_ROOT / "gates" / "push_gate.sh"), "origin", "unused-url"],
+        ["bash", str(REPO_ROOT / "gates" / "push_gate.sh"), "origin", url],
         cwd=repo,
         env=env,
         text=True,
@@ -120,12 +120,11 @@ def test_a_branch_only_push_is_not_a_named_non_run_of_the_tag_check(tmp_path):
     # ...and on the remote, pushed long ago. A local release tag the remote LACKS is its own
     # finding now (test_tag_version_unpushed.py); this case is the version half, which judges
     # only the tags a push names.
-    remote = tmp_path / "remote.git"
-    subprocess.run(["git", "init", "-q", "--bare", str(remote)], check=True)
-    git(repo, "remote", "add", "origin", str(remote))
-    git(repo, "-c", "core.hooksPath=/dev/null", "push", "-q", "origin", "v9.9.9")
+    origin_from(repo, tmp_path / "remote.git")
 
-    r = _push(repo, tmp_path, ("refs/heads/main", _sha(repo, "HEAD")))
+    r = _push(
+        repo, tmp_path, ("refs/heads/main", _sha(repo, "HEAD")), url=str(tmp_path / "remote.git")
+    )
     assert r.returncode == 0, r.stdout + r.stderr
     assert "not applicable" in r.stdout, r.stdout
 
@@ -186,25 +185,20 @@ def test_a_tag_check_that_cannot_run_is_not_reported_as_a_mismatch(tmp_path):
 def test_the_push_gate_refuses_a_release_tag_follow_tags_left_behind(tmp_path):
     """The servers fleet, 2026-10-10: `git tag v1.10.3` (lightweight), then `git push --follow-tags`
     sent main and not the tag. The real gate is handed the remote's name, so it asks the remote."""
-    remote = tmp_path / "remote.git"
-    subprocess.run(["git", "init", "-q", "--bare", str(remote)], check=True)
     repo = tmp_path / "fleet"
     repo.mkdir()
     fast_init(repo, "main")
-    git(repo, "remote", "add", "origin", str(remote))
     write(repo, "tools/gate.sh", "#!/usr/bin/env bash\nexit 0\n")
     write(repo, "VERSION", "1.10.2\n")
     git(repo, "add", "-A")
     git(repo, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "v1.10.2")
-    git(repo, "-c", "core.hooksPath=/dev/null", "push", "-q", "origin", "main")
-    old = _sha(repo, "HEAD")
+    origin_from(repo, tmp_path / "remote.git")
     write(repo, "VERSION", "1.10.3\n")
     git(repo, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qam", "release: v1.10.3")
     git(repo, "tag", "v1.10.3")
     new = _sha(repo, "HEAD")
 
-    r = _push(repo, tmp_path, ("refs/heads/main", new))
-    del old
+    r = _push(repo, tmp_path, ("refs/heads/main", new), url=str(tmp_path / "remote.git"))
     out = r.stdout + r.stderr
     assert r.returncode != 0, out
     assert "git push origin v1.10.3" in out and "nothing pushed" in out, out

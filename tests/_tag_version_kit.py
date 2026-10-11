@@ -17,6 +17,15 @@ def _sha(repo, rev):
     return git(repo, "rev-parse", rev).strip()
 
 
+def origin_from(repo, path):
+    """`path` becomes `repo`'s origin: a bare clone of it as it is NOW (its commits and tags), the
+    way the release-kit suite makes one, so no new repo-creation site (test_suite_drift.py)."""
+    import subprocess
+
+    subprocess.run(["git", "clone", "-q", "--bare", str(repo), str(path)], check=True)
+    git(repo, "remote", "add", "origin", str(path))
+
+
 def _refs(*pairs):
     return "".join(f"{ref} {sha} {ref} {ZERO}\n" for ref, sha in pairs)
 

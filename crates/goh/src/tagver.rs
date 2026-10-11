@@ -192,7 +192,7 @@ fn run(
     root: Option<&str>,
     refs_file: Option<&str>,
     json: bool,
-    remote: Option<&str>,
+    remote: Option<crate::tagpush::Remote>,
 ) -> (i32, Vec<(bool, String)>) {
     let fail = |m: String| (2, vec![(true, format!("✗ [tag_version] {m}"))]);
     let Some(root) = root
@@ -236,13 +236,13 @@ fn run(
         Ok(v) => v,
         Err(e) => return fail(e),
     };
-    let reached = match remote.filter(|r| !r.is_empty()) {
+    let reached = match remote {
         None => None,
         Some(r) => {
-            match release_tag_re().and_then(|re| crate::tagpush::audit(&root, &lines, r, &re)) {
+            match release_tag_re().and_then(|re| crate::tagpush::audit(&root, &lines, &r, &re)) {
                 Ok((more, judged)) => {
                     findings.extend(more);
-                    Some((r, judged))
+                    Some((r.name, judged))
                 }
                 Err(e) => return fail(e),
             }
@@ -292,7 +292,7 @@ pub fn run_command(
     root: Option<&str>,
     refs_file: Option<&str>,
     json: bool,
-    remote: Option<&str>,
+    remote: Option<crate::tagpush::Remote>,
 ) -> i32 {
     let (code, lines) = run(root, refs_file, json, remote);
     for (to_err, line) in lines {
@@ -308,15 +308,20 @@ pub fn run_command(
 /// `goh tag-version`: the audit, or `--extract KIND`.
 #[must_use]
 pub fn command(a: &crate::cli::TagVersionArgs) -> i32 {
+    let remote = a
+        .remote
+        .as_deref()
+        .filter(|n| !n.is_empty())
+        .map(|name| crate::tagpush::Remote {
+            name,
+            url: a
+                .remote_url
+                .as_deref()
+                .filter(|u| !u.is_empty())
+                .unwrap_or(name),
+        });
     a.extract.as_deref().map_or_else(
-        || {
-            run_command(
-                a.root.as_deref(),
-                a.refs_file.as_deref(),
-                a.json,
-                a.remote.as_deref(),
-            )
-        },
+        || run_command(a.root.as_deref(), a.refs_file.as_deref(), a.json, remote),
         extract_command,
     )
 }

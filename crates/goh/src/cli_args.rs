@@ -38,6 +38,9 @@ pub struct TagVersionArgs {
     /// pushed branches carry must be in the push or already there.
     #[arg(long)]
     pub remote: Option<String>,
+    /// Where to ask that remote which tags it has (the hook's `$2`; default: the name).
+    #[arg(long)]
+    pub remote_url: Option<String>,
     /// Machine-readable output.
     #[arg(long)]
     pub json: bool,

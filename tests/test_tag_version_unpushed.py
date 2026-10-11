@@ -12,14 +12,12 @@ pushed must be in the push or already on the remote. A version bump with no tag 
 monitor and antiknob push the bump first and tag after CI, by design.
 """
 
-import subprocess
-
 import pytest
 
 from conftest import git, write
 from tier_kit import both_tiers, run_tiered  # noqa: F401  # both_tiers: a fixture
 
-from _tag_version_kit import ZERO, _sha
+from _tag_version_kit import ZERO, _sha, origin_from
 from _fast_git import fast_init  # noqa: E402
 
 pytestmark = pytest.mark.usefixtures("both_tiers")
@@ -39,15 +37,12 @@ def _commit(repo, version):
 
 
 def _released(tmp_path):
-    """v1.0.0 committed, tagged and pushed with its tag; v1.0.1 committed and not yet pushed."""
-    remote = tmp_path / "remote.git"
-    subprocess.run(["git", "init", "-q", "--bare", str(remote)], check=True)
+    """v1.0.0 committed, tagged and on origin with its tag; v1.0.1 committed and not yet pushed."""
     repo = tmp_path / "repo"
     fast_init(repo, "main")
-    _g(repo, "remote", "add", "origin", str(remote))
     first = _commit(repo, "1.0.0")
     _g(repo, "tag", "-a", "v1.0.0", "-m", "v1.0.0")
-    _g(repo, "push", "-q", "origin", "main", "v1.0.0")
+    origin_from(repo, tmp_path / "remote.git")
     second = _commit(repo, "1.0.1")
     return repo, first, second
 
@@ -149,3 +144,35 @@ def test_the_ok_line_says_what_the_remote_half_judged(tmp_path):
     assert (
         "1 local release tag(s) reachable from the pushed branch(es) are on origin" in r.stdout
     ), r.stdout
+
+
+def test_a_pinned_sha_push_is_judged_by_the_branch_it_moves(tmp_path):
+    """ZoneWM's `make push` is `git push v2origin <sha>:refs/heads/main`: the hook's local ref is
+    the sha itself, so the branch being moved is read from the REMOTE ref."""
+    repo, first, second = _released(tmp_path)
+    _g(repo, "tag", "v1.0.1")
+    r = _check(repo, tmp_path, [f"{second} {second} refs/heads/main {first}"])
+    out = r.stdout + r.stderr
+    assert r.returncode == 1, out
+    assert "git push origin v1.0.1" in out, out
+
+
+def test_the_remote_is_asked_at_its_url_and_named_by_its_name(tmp_path):
+    """The hook gets the remote's name ($1) and URL ($2); gate_profile.sh pushes to a made-up name
+    whose URL is the repo itself, so asking by name would refuse every profile."""
+    repo, first, second = _released(tmp_path)
+    _g(repo, "tag", "v1.0.1")
+    refs = tmp_path / "refs.txt"
+    refs.write_text(_main(second, first) + "\n")
+
+    def ask(url):
+        return run_tiered(
+            repo, "goh", "tag-version", "--refs-file", str(refs),
+            "--remote", "nowhere", "--remote-url", url,
+        )  # fmt: skip
+
+    to_origin = ask(str(tmp_path / "remote.git"))
+    assert to_origin.returncode == 1, to_origin.stdout + to_origin.stderr
+    assert "git push nowhere v1.0.1" in to_origin.stderr, to_origin.stderr
+    to_itself = ask(str(repo))
+    assert to_itself.returncode == 0, to_itself.stdout + to_itself.stderr

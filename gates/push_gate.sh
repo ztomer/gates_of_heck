@@ -170,12 +170,15 @@ tag_check_run() {
     # --remote: a local release tag the pushed branches carry must reach the remote too --
     # `--follow-tags` never sends a lightweight one (servers fleet, 2026-10-10). git always
     # names the remote; a hook run by hand without one skips that half, and only that half.
+    # It asks the remote at the URL git hands the hook ($2), never by name alone: gate_profile.sh
+    # pushes to a made-up name whose URL is the repo itself.
     bash "$tag_check" tag-version --root "$root" --refs-file "$refs_file" \
-        ${remote_name:+--remote "$remote_name"}
+        ${remote_name:+--remote "$remote_name"} ${remote_url:+--remote-url "$remote_url"}
 }
 
 zero="0000000000000000000000000000000000000000"
 remote_name="${1:-}"
+remote_url="${2:-}"
 gated_commits=" "
 log_root="${GOH_PUSH_LOGS:-$HOME/.cache/goh/push-logs}"
 keep_failed_logs=20

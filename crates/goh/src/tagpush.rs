@@ -12,6 +12,11 @@
 //! before its tag exists (monitor and antiknob tag after CI), but a local
 //! `v<semver>` tag on a commit the branch carries is a release that was named
 //! here and nowhere else. It must be in this push or already on the remote.
+//!
+//! A branch push is any line whose REMOTE ref is a branch: a pinned push
+//! (`git push origin <sha>:refs/heads/main`, the `make push` of `ZoneWM`) hands the
+//! hook a sha as its local ref. The remote is asked at the URL git hands the
+//! hook, and named by its name in the fix line.
 
 use std::collections::BTreeSet;
 use std::process::Command;
@@ -60,6 +65,12 @@ fn lines(root: &str, args: &[&str]) -> Result<Vec<String>, String> {
         .collect())
 }
 
+/// The remote a push goes to: its name (for the fix line) and where to ask it.
+pub struct Remote<'a> {
+    pub name: &'a str,
+    pub url: &'a str,
+}
+
 /// (findings, release tags judged). `Err` is a check that could not judge.
 ///
 /// # Errors
@@ -68,7 +79,7 @@ fn lines(root: &str, args: &[&str]) -> Result<Vec<String>, String> {
 pub fn audit(
     root: &str,
     refs: &[RefLine],
-    remote: &str,
+    remote: &Remote,
     tag_re: &Regex,
 ) -> Result<(Vec<String>, usize), String> {
     let pushed: BTreeSet<&str> = refs
@@ -78,14 +89,10 @@ pub fn audit(
         .collect();
     // Tag name -> the remote branch the push carries it on (for the fix line).
     let mut reachable: Vec<(String, String)> = Vec::new();
-    for r in refs
-        .iter()
-        .filter(|r| r.local_sha != ZERO_SHA && r.local_ref.starts_with("refs/heads/"))
-    {
-        let branch = r
-            .remote_ref
-            .strip_prefix("refs/heads/")
-            .unwrap_or(&r.remote_ref);
+    for r in refs.iter().filter(|r| r.local_sha != ZERO_SHA) {
+        let Some(branch) = r.remote_ref.strip_prefix("refs/heads/") else {
+            continue;
+        };
         for name in lines(root, &["tag", "--merged", &r.local_sha, "--list", "v*"])? {
             if tag_re.is_match(&format!("refs/tags/{name}"))
                 && !reachable.iter().any(|(n, _)| *n == name)
@@ -101,7 +108,8 @@ pub fn audit(
     if unsent.is_empty() {
         return Ok((Vec::new(), reachable.len()));
     }
-    let on_remote: BTreeSet<String> = lines(root, &["ls-remote", "--tags", "--refs", remote])
+    let Remote { name: remote, url } = *remote;
+    let on_remote: BTreeSet<String> = lines(root, &["ls-remote", "--tags", "--refs", url])
         .map_err(|e| format!("cannot ask {remote} which tags it has ({e})"))?
         .iter()
         .filter_map(|l| l.split_once("refs/tags/").map(|(_, n)| n.to_owned()))
