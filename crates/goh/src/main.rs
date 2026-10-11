@@ -51,6 +51,7 @@ pub mod pyformat;
 pub mod pyjson;
 pub mod pylex;
 pub mod ratchet;
+pub mod red_run;
 pub mod requires_call;
 pub mod requires_call_py;
 pub mod revblobs;
@@ -161,6 +162,7 @@ fn run_core(command: Commands) -> i32 {
             report,
             clusters,
         } => commit_class::run(file.as_deref(), &range, report, clusters),
+        Commands::RedRun { file, range } => red_run::run(file.as_deref(), &range),
         Commands::RequiresCall { rules, root } => {
             requires_call::run(rules.as_deref(), root.as_deref())
         }

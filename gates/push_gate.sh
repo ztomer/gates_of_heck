@@ -293,15 +293,18 @@ if [ -n "$min_free" ]; then
         || { err "pre-push: not enough room for the cold gate -- nothing pushed"; exit 1; }
 fi
 
-# THE COMMIT-CLASS RULE OVER THE PUSHED RANGE (GOH_COMMIT_CLASS, roadmap Phase 8). The commit-msg
-# hook asks at commit time, and `--no-verify` skips it; the push asks again, over every commit
-# the remote does not have yet. Read from .gatesrc by name, in a child, like GOH_EXPORT_KEEP.
-commit_class=""
+# THE COMMIT-MESSAGE RULES OVER THE PUSHED RANGE (GOH_COMMIT_CLASS, roadmap Phase 8; GOH_RED_RUN,
+# BACKLOG 4.11). The commit-msg hook asks at commit time, and `--no-verify` skips it; the push asks
+# again, over every commit the remote does not have yet. Read from .gatesrc by name, in a child,
+# like GOH_EXPORT_KEEP.
+commit_class="" red_run=""
 if [ -f "$root/.gatesrc" ]; then
     commit_class="$(bash -c 'set -a; . "$1"; printf %s "${GOH_COMMIT_CLASS-}"' _ \
         "$root/.gatesrc")" || die "pre-push: cannot read $root/.gatesrc"
+    red_run="$(bash -c 'set -a; . "$1"; printf %s "${GOH_RED_RUN-}"' _ \
+        "$root/.gatesrc")" || die "pre-push: cannot read $root/.gatesrc"
 fi
-if [ -n "$commit_class" ]; then
+if [ -n "$commit_class$red_run" ]; then
     class_rc=0
     while read -r class_ref class_sha _ class_remote; do
         [ -n "${class_sha:-}" ] && [ "$class_sha" != "$zero" ] || continue
@@ -317,10 +320,15 @@ if [ -n "$commit_class" ]; then
                 "${remote_name:-the remote}); the commit-msg hook judged each one"
             continue
         fi
-        (cd "$root" && bash "$tag_check" commit-class --range "${class_revs[@]}") || class_rc=1
+        if [ -n "$commit_class" ]; then
+            (cd "$root" && bash "$tag_check" commit-class --range "${class_revs[@]}") || class_rc=1
+        fi
+        if [ -n "$red_run" ]; then
+            (cd "$root" && bash "$tag_check" red-run --range "${class_revs[@]}") || class_rc=1
+        fi
     done <"$refs_file"
     if [ "$class_rc" -ne 0 ]; then
-        err "pre-push: a pushed fix does not name its class (above) -- nothing pushed"
+        err "pre-push: a pushed commit's message breaks a rule above -- nothing pushed"
         exit 1
     fi
 fi

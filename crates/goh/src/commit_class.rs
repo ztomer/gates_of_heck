@@ -51,7 +51,7 @@ fn gated(subject: &str) -> bool {
 
 /// The message as git commits it: an editor buffer's comments and everything below its scissors
 /// line dropped.
-fn cleaned(message: &str) -> Vec<&str> {
+pub(crate) fn cleaned(message: &str) -> Vec<&str> {
     message
         .lines()
         .take_while(|l| !(l.starts_with("# ") && l.contains(">8")))
@@ -62,7 +62,7 @@ fn cleaned(message: &str) -> Vec<&str> {
 
 /// git's trailer block: the last paragraph (never the subject's), when EVERY line in it is
 /// `Token: value` or a continuation. Stricter than git, so whatever passes here git reads too.
-fn final_trailers(lines: &[&str]) -> BTreeMap<String, String> {
+pub(crate) fn final_trailers(lines: &[&str]) -> BTreeMap<String, String> {
     let mut end = lines.len();
     while end > 0 && lines[end - 1].is_empty() {
         end -= 1;
@@ -212,7 +212,7 @@ pub fn refusals(
 /// # Errors
 ///
 /// git's own message when it refuses: a listing git refused is never an empty one.
-fn git(args: &[&str]) -> Result<Vec<u8>, String> {
+pub(crate) fn git(args: &[&str]) -> Result<Vec<u8>, String> {
     let out = Command::new("git")
         .args(args)
         .output()

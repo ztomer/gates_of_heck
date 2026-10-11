@@ -88,6 +88,15 @@ pub enum Commands {
         #[arg(long, requires = "range")]
         clusters: bool,
     },
+    /// A commit that adds a test names the mutation that turned it red in a `Red-run:` trailer
+    /// (`gates/commit_msg.sh`, `gates/push_gate.sh`; opt-in by `GOH_RED_RUN`).
+    RedRun {
+        /// The message file git hands a commit-msg hook.
+        file: Option<String>,
+        /// Check every commit `git rev-list <REV>...` names instead (the pushed range).
+        #[arg(long, num_args = 1.., allow_hyphen_values = true, conflicts_with = "file")]
+        range: Vec<String>,
+    },
     /// A Python file that calls X must also call Y, from the AST (opt-in by `GOH_REQUIRES_CALL`).
     RequiresCall {
         /// The rules file (default: `GOH_REQUIRES_CALL` in `.gatesrc`).
