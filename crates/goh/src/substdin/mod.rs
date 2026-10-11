@@ -39,6 +39,7 @@
 
 pub mod allow;
 pub mod calls;
+pub mod seed;
 
 use std::fmt::Write as _;
 use std::path::Path;
@@ -375,7 +376,7 @@ fn scoped(listed: &[String], exclude: &str) -> Result<Vec<String>, String> {
 /// `goh subprocess-stdin [--staged] [--exclude RE]`, or `--source PATH` to judge one file
 /// from the working tree as JSON (a repo's own verify step, and the test harness).
 #[must_use]
-pub fn run_command(staged: bool, exclude: Option<&str>, source: Option<&str>) -> i32 {
+pub fn run_command(staged: bool, exclude: Option<&str>, source: Option<&str>, reseed: bool) -> i32 {
     if let Some(path) = source {
         let text = match std::fs::read_to_string(path) {
             Ok(t) => t,
@@ -395,14 +396,14 @@ pub fn run_command(staged: bool, exclude: Option<&str>, source: Option<&str>) ->
             }
         };
     }
-    let (code, text) = run(staged, exclude).unwrap_or_else(|e| e);
+    let (code, text) = run(staged && !reseed, exclude, reseed).unwrap_or_else(|e| e);
     print!("{text}");
     code
 }
 
 /// One whole-tree run: (exit code, report). Every error path names itself; none of them
 /// reports clean.
-fn run(staged: bool, exclude: Option<&str>) -> Result<(i32, String), (i32, String)> {
+fn run(staged: bool, exclude: Option<&str>, reseed: bool) -> Result<(i32, String), (i32, String)> {
     let repo = crate::gitutil::repo_root().map_or_else(
         || std::env::current_dir().unwrap_or_default(),
         std::path::PathBuf::from,
@@ -423,6 +424,9 @@ fn run(staged: bool, exclude: Option<&str>) -> Result<(i32, String), (i32, Strin
     };
     let policy = policy(&repo, &exclude).map_err(|m| (2, format!("✗ {TAG} {m}\n")))?;
     let files = scoped(&listed, &exclude).map_err(|m| (2, format!("✗ {TAG} {m}")))?;
+    if reseed {
+        return Ok(seed::run(&repo, &listed, &files));
+    }
     let outcome = scan(&repo, &listed, &files, staged);
     Ok(report(&outcome, &repo, &listed, staged, &policy))
 }

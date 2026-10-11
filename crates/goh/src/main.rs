@@ -255,6 +255,9 @@ fn run_scanners(command: Commands) -> Result<i32, Box<Commands>> {
             .map_or_else(|code| code, |x| commands::run_home_paths(&x, staged)),
         Commands::NoAllow { exclude, staged } => declared(exclude, None, gatesrc::Exempt::Paths)
             .map_or_else(|code| code, |x| commands::run_no_allow(&x, staged)),
+        Commands::FixedSleep { exclude, seed } => {
+            paths(exclude, |x| fixedsleep::run_command(seed, x))
+        }
         other => return Err(Box::new(other)),
     })
 }
@@ -349,15 +352,13 @@ fn run_ported(command: Commands) -> Result<i32, Box<Commands>> {
         } => paths(exclude, |x| {
             unreaped::run_command(staged, x, verdicts.as_deref())
         }),
-        Commands::FixedSleep { exclude, seed } => {
-            paths(exclude, |x| fixedsleep::run_command(seed, x))
-        }
         Commands::SubprocessStdin {
             exclude,
             staged,
             source,
+            seed,
         } => paths(exclude, |x| {
-            substdin::run_command(staged, Some(x), source.as_deref())
+            substdin::run_command(staged, Some(x), source.as_deref(), seed)
         }),
         other => return Err(Box::new(other)),
     })

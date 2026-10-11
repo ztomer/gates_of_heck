@@ -1,12 +1,12 @@
 //! The ratchet allowlist for `goh subprocess-stdin`: `subprocess_stdin_allow.json` at the
 //! repo root, and `subprocess_stdin_allow.d/*.json` beside it.
 //!
-//! THIS IS A RATCHET, NOT A SUPPRESSION LIST, and the difference is the whole design. It
-//! was seeded on 2026-10-08 with every violation the estate had that day -- 511 in this
-//! repo alone -- because landing the gate un-seeded turns every repo's pre-commit red at
-//! once, and a gate that goes red in twenty places on the day it lands is a gate that gets
-//! disabled (the reason `GOH_CLAIM_DERIVATION` is opt-in). A ratchet goes the other way
-//! from then on: an entry is one somebody can DELETE as they fix their repo, and the gate
+//! THIS IS A RATCHET, NOT A SUPPRESSION LIST, and the difference is the whole design. A repo
+//! adopts the gate by SEEDING it (`goh subprocess-stdin --seed`, `seed.rs`) with every
+//! violation it has that day, each `unreviewed`, because turning the gate on un-seeded reddens
+//! every file at once, and a gate that goes red in twenty places on the day it lands is a gate
+//! that gets disabled (the reason `GOH_CLAIM_DERIVATION` is opt-in). A ratchet goes the other
+//! way from then on: an entry is one somebody can DELETE as they fix their repo, and the gate
 //! says so out loud until they do.
 //!
 //! SO WHY DOES A STALE ENTRY FAIL? Because the failure mode an allowlist exists to prevent
@@ -41,7 +41,7 @@ pub const ALLOW_FILE: &str = "subprocess_stdin_allow.json";
 
 /// The sharded form, beside it.
 ///
-/// 511 seeded entries do not fit under `GOH_MAX_LINES=500`, and the cap is a hard rule
+/// A repo's seeded entries may not fit under `GOH_MAX_LINES=500`, and the cap is a hard rule
 /// ("split, never exempt"), so a repo with more debt than one file may hold splits rather
 /// than grows past it. A repo with a handful of entries uses the single file and never
 /// creates the directory.
@@ -63,6 +63,8 @@ pub struct Entry {
     pub call: String,
     /// The call's own source line, whitespace-insensitive.
     pub line: String,
+    /// Why it may stand, as written; a reseed keeps it.
+    pub reason: String,
     /// `unreviewed` counts as debt in the passing report.
     pub unreviewed: bool,
     /// Which allowlist file carried it, so a stale entry names its own home.
@@ -110,7 +112,7 @@ fn parse(text: &str, origin: &str) -> (Vec<Entry>, Vec<String>) {
                 STATUSES.join(", ")
             ));
         }
-        let (Some(path), Some(call), Some(line), Some(_)) = fields else {
+        let (Some(path), Some(call), Some(line), Some(reason)) = fields else {
             problems.push(format!(
                 "{origin}: entry {i} needs a non-empty path, call, line and reason"
             ));
@@ -120,6 +122,7 @@ fn parse(text: &str, origin: &str) -> (Vec<Entry>, Vec<String>) {
             path,
             call,
             line,
+            reason,
             unreviewed: status.is_none_or(|s| s == "unreviewed"),
             origin: origin.to_owned(),
         });
@@ -200,22 +203,17 @@ pub fn partition(
     listed: &[String],
     root: &Path,
 ) -> (Vec<Unallowed>, usize, Vec<usize>) {
+    let hits = assign(findings, entries);
     let mut used = vec![false; entries.len()];
     let mut left = Vec::new();
     let mut allowed = 0usize;
-    for (n, (path, finding)) in findings.iter().enumerate() {
-        let hit = entries.iter().enumerate().position(|(i, e)| {
-            !used[i]
-                && e.path == *path
-                && e.call == finding.call
-                && key(&e.line) == key(&finding.text)
-        });
+    for (n, hit) in hits.iter().enumerate() {
         match hit {
             Some(i) => {
-                used[i] = true;
+                used[*i] = true;
                 allowed += 1;
             }
-            None => left.push((path.clone(), n)),
+            None => left.push((findings[n].0.clone(), n)),
         }
     }
     let stale: Vec<usize> = entries
@@ -225,6 +223,31 @@ pub fn partition(
         .map(|(i, _)| i)
         .collect();
     (left, allowed, stale)
+}
+
+/// The entry each finding uses, in order, or None: one entry, one call site, so a search skips
+/// entries an earlier finding already took. The one matching rule `partition` and a reseed share.
+#[must_use]
+pub fn assign(
+    findings: &[(String, crate::substdin::calls::Finding)],
+    entries: &[Entry],
+) -> Vec<Option<usize>> {
+    let mut used = vec![false; entries.len()];
+    findings
+        .iter()
+        .map(|(path, finding)| {
+            let hit = entries.iter().enumerate().position(|(i, e)| {
+                !used[i]
+                    && e.path == *path
+                    && e.call == finding.call
+                    && key(&e.line) == key(&finding.text)
+            });
+            if let Some(i) = hit {
+                used[i] = true;
+            }
+            hit
+        })
+        .collect()
 }
 
 /// Is an unused entry stale? See [`partition`] for the two cases and why the third is not.
@@ -262,6 +285,7 @@ mod tests {
             path: path.to_owned(),
             call: call.to_owned(),
             line: line.to_owned(),
+            reason: "r".to_owned(),
             unreviewed: true,
             origin: ALLOW_FILE.to_owned(),
         }

@@ -118,6 +118,10 @@ pub enum Commands {
         /// exit 1 when it has findings. For a repo's own verify step and the test harness.
         #[arg(long)]
         source: Option<String>,
+        /// Rewrite the allowlist from today's findings: entries still in use kept as written, new
+        /// ones `unreviewed`, stale ones dropped. Refuses over uncommitted Python.
+        #[arg(long, conflicts_with_all = ["staged", "source"])]
+        seed: bool,
     },
     /// The proven-step cache's key, lookup and record, in-process (`gates/_proven.sh` delegates).
     Proven {
