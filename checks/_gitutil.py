@@ -79,6 +79,28 @@ def scratch_git(dest: str) -> None:
     shutil.copytree(_EMPTY_GIT["git"], os.path.join(dest, ".git"))
 
 
+def is_work_tree(path) -> bool:
+    """Whether `path` is the top of a git work tree, by git's own answer.
+
+    Never `os.path.isdir(path/.git)`: in a LINKED worktree `.git` is a file naming the real git
+    dir, so that question is False there and a gate asking it inspects nothing and passes (four
+    sites in two repos, 2026-10-09). Git is asked about `path` itself under `foreign_repo_env`,
+    so a hook's GIT_DIR cannot answer for it, and the top it names is compared with `realpath` on
+    both sides, so a symlinked spelling is the same tree and a subdirectory is not the repo."""
+    if not os.path.isdir(path):
+        return False
+    out = subprocess.run(
+        ["git", "-C", str(path), "rev-parse", "--show-toplevel"],
+        stdin=subprocess.DEVNULL,
+        check=False,
+        capture_output=True,
+        text=True,
+        env=foreign_repo_env(),
+    )
+    top = out.stdout.strip()
+    return out.returncode == 0 and bool(top) and os.path.realpath(top) == os.path.realpath(path)
+
+
 def repo_root() -> str:
     out = subprocess.run(["git", "rev-parse", "--show-toplevel"], capture_output=True, text=True)
     return out.stdout.strip()
