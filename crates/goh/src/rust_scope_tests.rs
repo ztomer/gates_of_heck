@@ -103,8 +103,29 @@ fn write(root: &Path, rel: &str, text: &str) {
     std::fs::write(p, text).expect("write");
 }
 
+/// Every estate's `cargo metadata` names ONE build directory when `CARGO_TARGET_DIR` is inherited (the
+/// coverage gate sets it), so an estate test planting a dep-info file there is read by every other
+/// estate test running beside it: a scope check once reported the planted `secret.txt` of a test it
+/// shared nothing with. An estate holds this lock for its life, so they take the directory in turn.
+static BUILD_DIR: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+struct Estate {
+    dir: tempfile::TempDir,
+    _turn: std::sync::MutexGuard<'static, ()>,
+}
+
+impl Estate {
+    fn path(&self) -> &Path {
+        self.dir.path()
+    }
+}
+
 /// crates/a uses crates/b by path; a's test reads the repo's VERSION at compile time.
-fn estate() -> tempfile::TempDir {
+fn estate() -> Estate {
+    // A test that panicked holding it poisons it; the directory it guards is still usable.
+    let turn = BUILD_DIR
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
     let dir = tempfile::tempdir().expect("tempdir");
     let root = dir.path();
     let pkg = |name: &str, deps: &str| {
@@ -136,7 +157,7 @@ fn estate() -> tempfile::TempDir {
         .expect("cargo");
     assert!(lock.success());
     goh_testkit::git_in(root, &["add", "-A"]).expect("git add");
-    dir
+    Estate { dir, _turn: turn }
 }
 
 #[test]
@@ -159,6 +180,7 @@ fn the_scope_names_the_package_its_path_dep_its_config_and_what_it_includes() {
         );
     }
     assert!(!entries.contains(&".".to_owned()), "{entries:?}");
+    drop(dir); // the estate holds the build directory until the last read above
 }
 
 #[test]
@@ -205,6 +227,7 @@ fn a_dep_info_read_outside_the_scope_is_named_and_one_inside_is_not() {
     let bad = crate::rust_depinfo::depinfo_escapes(&cargo_dir, &entries).expect("depinfo");
     std::fs::remove_file(&d).ok();
     assert_eq!(bad, vec!["secret.txt".to_owned()]);
+    drop(dir); // the estate holds the build directory until the last read above
 }
 
 #[test]
@@ -217,4 +240,5 @@ fn the_command_prints_a_scope_checks_a_file_and_refuses_a_non_workspace() {
     assert_eq!(super::run_command(&cargo_dir, Some(&scope_file)), 0);
     let empty = tempfile::tempdir().expect("tempdir");
     assert_eq!(super::run_command(empty.path(), None), 2);
+    drop(dir); // the estate holds the build directory until the last read above
 }
