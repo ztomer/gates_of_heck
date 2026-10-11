@@ -424,7 +424,7 @@ episode (4.4) is what that hand-writing costs.
       for calls. Red-first: re-wrap an allowlisted claim's paragraph and it stays excused; change
       the claim's number and the entry is stale. Lies: two claims on one line share the old key;
       the span key separates them, so a seed written before it must be read as fragments.
-- [ ] 4.14 A Rust binary has no house TUI, so its status lines are hand-rolled by necessity (4.9
+- [x] 4.14 (`a74bbff`: `crates/goh-tui`, goh prints through it; red-first run: `ICON_OK="+"` printed `+ [status_markers] ...` with no code edit; the consumers' half is in Downstream) A Rust binary has no house TUI, so its status lines are hand-rolled by necessity (4.9
       found it). Baseline: `tui/lib.sh` and `tui/lib.py` read `tui/stylerc`; a Rust binary has
       nothing to read it with, so goh's own output and antiknob's 113 `[ Ok  ]`-style sites (9
       files, mostly `src/bin/`) each spell their own glyphs and colours, and `goh status-markers`
@@ -688,3 +688,7 @@ Finance's `"$root.out"`, ZeroThunder's dropped process handle.
   rest. At adoption (2026-10-11): antiknob 113 sites in 9 files (Rust `src/bin/`, `install.sh`,
   `ui/build.sh`; its Rust waits on 4.14), divoom-control 52 in 11, routines 3 in 1, ztools 3 in 1.
   ZoneWM reads 0 and adopts it with no seed.
+- **antiknob, after `a74bbff` (4.14):** its Rust `src/bin/` sites can print through `goh-tui`:
+  `goh-tui = { path = "../gates_of_heck/crates/goh-tui" }` (Cargo reads no env var in a path, so the
+  sibling checkout IS `$GOH_DIR`; its `build.rs` reads the stylerc beside it, never a copy), then
+  `goh_tui::outln!("{OK} ...")` in place of each `[ Ok  ]`, and re-seed `status-markers` smaller.
