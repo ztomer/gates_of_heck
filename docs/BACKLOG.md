@@ -415,7 +415,7 @@ episode (4.4) is what that hand-writing costs.
       Red-first: a held GPU lock makes `quiet.sh` refuse. Lies: two implementations of one lock
       file drift silently; the fixture is the only thing that holds them together.
 
-- [ ] 4.13 The claims allowlist keys on a markdown LINE, so re-wrapping a paragraph revokes an
+- [x] 4.13 (`451d711`: `Claim.span` is the key, and the allowlist is no longer read as prose) The claims allowlist keys on a markdown LINE, so re-wrapping a paragraph revokes an
       exemption (the sibling 4.8 found). Baseline: `crates/goh/src/claims/mod.rs:210` compares an
       entry's `claim` with the whole line the claim sits on (`text::Claim.text` is the line,
       `claims/text.rs:155`), whitespace collapsed; a re-wrap moves words onto or off that line.
