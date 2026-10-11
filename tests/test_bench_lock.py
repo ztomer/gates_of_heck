@@ -23,8 +23,19 @@ WATCH_S = 5.0
 
 
 def _env(lock: Path, **extra: str) -> dict[str, str]:
-    env = {k: v for k, v in os.environ.items() if not k.startswith("GOH_BENCH_")}
-    return {**env, "GOH_BENCH_LOCK_DIR": str(lock), **extra}
+    """A private bench lock, and the machine's other locks pointed beside it: a test that reached
+    the real desktop or GPU lock would hold it against another session's capture or model run."""
+    env = {
+        k: v
+        for k, v in os.environ.items()
+        if not k.startswith("GOH_BENCH_") and k != "ZTOOLS_GPU_LOCK_OWNER"
+    }
+    private = {
+        "GOH_BENCH_LOCK_DIR": str(lock),
+        "GOH_BENCH_DESKTOP_LOCK_DIR": str(lock.parent / "desktop.lock"),
+        "ZTOOLS_GPU_LOCK_DIR": str(lock.parent / "gpu.lock"),
+    }
+    return {**env, **private, **extra}
 
 
 def _bash(lock: Path, script: str, **extra: str) -> subprocess.Popen[str]:
@@ -324,9 +335,7 @@ def test_a_hold_longer_than_the_cap_is_refused_up_front(tmp_path: Path) -> None:
 
 def test_a_waiting_gate_names_the_hold_and_when_it_ends(tmp_path: Path) -> None:
     lock = tmp_path / "lock"
-    env = _env(
-        lock, GOH_BENCH_DESKTOP_LOCK_DIR=str(tmp_path / "desktop.lock"), GOH_BENCH_POLL="0.1"
-    )
+    env = _quiet_env(tmp_path)  # the steady control: the real one times 200 spawns under load
     hold = subprocess.Popen(
         ["bash", str(QUIET), "--max-load", "1000", "--hold", "30", "--label", "bench 4.1", "--",
          "bash", "-c", f': > "{tmp_path}/running"; exec sleep 3'],
@@ -357,9 +366,7 @@ def test_the_default_hold_is_fifteen_minutes() -> None:
 
 def test_a_gate_behind_an_overrunning_hold_proceeds_at_the_hold_not_the_cap(tmp_path: Path) -> None:
     lock = tmp_path / "lock"
-    env = _env(
-        lock, GOH_BENCH_DESKTOP_LOCK_DIR=str(tmp_path / "desktop.lock"), GOH_BENCH_POLL="0.1"
-    )
+    env = _quiet_env(tmp_path)  # the steady control: the real one times 200 spawns under load
     hold = subprocess.Popen(
         ["bash", str(QUIET), "--max-load", "1000", "--hold", "2", "--",
          "bash", "-c", f': > "{tmp_path}/running"; exec sleep 30'],
