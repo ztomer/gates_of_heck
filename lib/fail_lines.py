@@ -41,6 +41,9 @@ TAIL = "── tail ──"
 DEFAULT_PATTERN = r"error:|FAILED|failed|panicked at|Assertion|✗"
 # Summary lines that contain the pattern's words while reporting success.
 NOT_A_FAILURE = re.compile(r"0 failures|passed|failures \(0")
+# ...unless the same summary reports a failure: cargo's `test result: FAILED. 0 passed; 1 failed`
+# and pytest's `1 failed, 7 passed` both say "passed" (monitor, 2026-10-10).
+A_FAILURE_ANYWAY = re.compile(r"\bFAILED\b|\b[1-9]\d* (?:failed|failures?)\b")
 DIE = re.compile(r"^✗ .*?: (?P<label>.+) failed \(command: ")
 MAKE_ERROR = re.compile(r"^g?make(\[\d+\])?: \*\*\* ")
 ANSI = re.compile(r"\x1b\[[0-9;]*m")
@@ -53,7 +56,10 @@ NOTES = (LEFT_OUT, MADE, WHOLE_LOG)
 
 def _matches(lines: list[str], pattern: re.Pattern[str]) -> list[int]:
     return [
-        i for i, line in enumerate(lines) if pattern.search(line) and not NOT_A_FAILURE.search(line)
+        i
+        for i, line in enumerate(lines)
+        if pattern.search(line)
+        and (A_FAILURE_ANYWAY.search(line) or not NOT_A_FAILURE.search(line))
     ]
 
 

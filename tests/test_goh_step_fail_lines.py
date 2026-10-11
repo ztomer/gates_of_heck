@@ -151,3 +151,16 @@ def test_block_unit_edges(tmp_path, capsys):
     assert fl.main(["fail_lines.py", str(log)]) == 0
     assert "1:✗ boom" in capsys.readouterr().out
     assert fl.main(["fail_lines.py"]) == 2
+
+
+def test_a_failure_summary_that_also_counts_passes_is_still_a_failure():
+    # monitor, 2026-10-10: cargo's `test result: FAILED. 0 passed; 1 failed` was dropped as a
+    # success summary because it contains "passed", and pytest's `1 failed, 7 passed` with it.
+    # A summary is success only when it reports no failure.
+    fl = _lib()
+    cargo = fl.block("test result: FAILED. 0 passed; 1 failed; 0 ignored\n")
+    assert "1:test result: FAILED" in cargo, cargo
+    pytest = fl.block("1 failed, 7 passed in 0.03s\n")
+    assert "1:1 failed, 7 passed" in pytest, pytest
+    assert fl.block("test result: ok. 9 passed; 0 failed; 0 ignored\n") == ""
+    assert fl.block("Executed 3 tests, with 0 failures\n") == ""
