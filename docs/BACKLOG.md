@@ -278,7 +278,7 @@ episode (4.4) is what that hand-writing costs.
 
 ### Phase 4 -- the classes the 2026-10-08/09 sessions found
 
-- [ ] 4.1 One answer to "is this a repository", and one census for where a git argv may be built.
+- [x] 4.1 (`92b0946`: `_gitutil.is_work_tree` and `checks/_gitcensus.py`; the consumers' half is in Downstream) One answer to "is this a repository", and one census for where a git argv may be built.
       Baseline: `checks/_gitutil.py` exports `local_env_vars`, `foreign_repo_env`, `scratch_git`
       and NO `is_work_tree`; the shape `os.path.isdir(root/.git)` was found in FOUR places across
       two repos (one named in the brief, three found by grepping the shape), and it is False in
@@ -361,7 +361,7 @@ episode (4.4) is what that hand-writing costs.
       the SwiftLint-shaped case in a fixture must go red before the check exists. Lies: the
       trigger is a firmlinked path, not `/tmp` (a worktree at `/Users/ztomer/zt-wt-locate`
       passes), so a check that tries one prefix misses the class.
-- [ ] 4.8 The kill-by-name ratchet keys on a LINE, so a reformat reads as a policy violation.
+- [x] 4.8 (`bc5c712`: `crate::callkey`, for kill-by-name and subprocess-stdin; the claims sibling is 4.13) The kill-by-name ratchet keys on a LINE, so a reformat reads as a policy violation.
       Baseline: `crates/goh/src/killname/mod.rs:297` keys an entry on whitespace-stripped source
       text, matched at `:316`; the stale diagnostic at `:352` gives ONE message for both causes.
       Measured: necrohand's `qa_minigames.py` needed three re-keys in one afternoon as the ruff
@@ -414,6 +414,16 @@ episode (4.4) is what that hand-writing costs.
       sourcing it, `quiet.sh` holding it, its claim about ZoneWM true, and one desktop-lock test.
       Red-first: a held GPU lock makes `quiet.sh` refuse. Lies: two implementations of one lock
       file drift silently; the fixture is the only thing that holds them together.
+
+- [ ] 4.13 The claims allowlist keys on a markdown LINE, so re-wrapping a paragraph revokes an
+      exemption (the sibling 4.8 found). Baseline: `crates/goh/src/claims/mod.rs:210` compares an
+      entry's `claim` with the whole line the claim sits on (`text::Claim.text` is the line,
+      `claims/text.rs:155`), whitespace collapsed; a re-wrap moves words onto or off that line.
+      Exit: the key is the claim's own span (number, unit, target), and an entry holding the old
+      line still matches the claim inside it and is named for re-keying, as `crate::callkey` does
+      for calls. Red-first: re-wrap an allowlisted claim's paragraph and it stays excused; change
+      the claim's number and the entry is stale. Lies: two claims on one line share the old key;
+      the span key separates them, so a seed written before it must be read as fragments.
 
 ### Phase 5 -- the measurements, last (ids kept from v0.25.0's Phase 4)
 
@@ -513,6 +523,16 @@ Finance's `"$root.out"`, ZeroThunder's dropped process handle.
   house gate hold two rules for one class: both local checkers want a comment above `stdin=None`,
   the shared native check accepts any. Settle that in 3.1 or state the difference.
 - **The 17 repos in 3.3's table**, one session each: run the check, fix or `--seed`.
+- **games metarepo and four nested repos, after `92b0946` (4.1):** `tools/check_plan_refs.py:131`,
+  `tools/check_phase_exits.py:82`, `tools/check_plan_claims.py:117` and `:168` ask
+  `os.path.isdir(<repo>/.git)`, False in a linked worktree (`:168` fails OPEN: a claim in such a
+  repo reads as tracked) -- call `_gitutil.is_work_tree`. The census copies delegate to
+  `_gitcensus.census(root, sources, exempt)`: CadGoose2 `tools/git_env.py:144-224` and necrohand
+  `tools/git_env.py:152-240` (already by callee; keep their `CENSUS_EXEMPT` and shell-site lists),
+  gaf `tests/test_hook_git_env.py:132-168` (matches the ARGV, so its seam file must be exempt to
+  pass), ZeroThunder `tests/test_hook_git_env.py:228-300` (a substring per FILE: a file that calls
+  `run_git(` once is cleared of a raw call beside it). Each keeps its own floor on `read`, and
+  `stale` replaces ZeroThunder's hand ratchet.
 - **ZeroThunder, the D1 goldens work (2026-10-09):** 7 modified files and 1 new
   (`Core/AppDelegate/GoldenFrameDelivery.swift`) are UNCOMMITTED in its tree, plus a worktree at
   `/private/tmp/zt-gold`; break-probes 1 and 2 red in HeadlessTests, break 3 (the guard removed
@@ -533,8 +553,8 @@ Finance's `"$root.out"`, ZeroThunder's dropped process handle.
   `lib/desktop_lock/` (whose own is 6472): fold what it covers that ours does not into ours, then
   delete it.
 - **ZoneWM:** `.gemini-workspace` points at `docs/GEMINI.md`, `docs/ARCHITECTURE.md` and
-  `docs/CONTRIBUTING.md`, none of which exist; its census and input-lock probes hold
-  `~/.zonetiler-qa.lock` but not the house desktop lock (4.12).
+  `docs/CONTRIBUTING.md`, none of which exist; its census sittings hold the house desktop
+  and GPU locks since `90336053` (D-0260); the single probes still hold only `~/.zonetiler-qa.lock`.
 - **Every INSTALLED repo:** re-run `$GOH_DIR/install.sh <repo>` (done 2026-10-10: ztools, Finance); `structural.sh` names an older
   stock hook and ZeroThunder warns on every gate run. At `2fb2901` 6 of 29 matched the stock
   pre-commit, 23 did not; servers was reinstalling then -- re-check. **A Rust toolchain is required**
