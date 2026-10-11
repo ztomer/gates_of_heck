@@ -83,3 +83,13 @@ def test_build_output_and_vendored_trees_are_pruned(tmp_path):
     write(tmp_path, "tools/.venv/lib/x.py", 'import subprocess\nsubprocess.run(["git", "x"])\n')
     write(tmp_path, "tools/__pycache__/y.py", 'import subprocess\nsubprocess.run(["git", "y"])\n')
     assert census(tmp_path, ["tools"]).sites == []
+
+
+def test_in_a_work_tree_what_git_ignores_is_not_read(repo):
+    """The listing is git's: generated code under an ignored directory is not the repo's."""
+    write(repo, ".gitignore", "gen/\n")
+    write(repo, "tools/gen/x.py", 'import subprocess\nsubprocess.run(["git", "x"])\n')
+    write(repo, "tools/y.py", 'import subprocess\nsubprocess.run(["git", "y"])\n')
+    got = census(repo, ["tools"])
+    assert _lines(got.sites) == [("tools/y.py", 2)]
+    assert got.read == 1

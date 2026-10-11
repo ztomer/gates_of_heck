@@ -28,6 +28,8 @@ import ast
 import os
 from dataclasses import dataclass, field
 
+from _gitutil import tree_files
+
 SPAWNERS = frozenset({"run", "call", "check_call", "check_output", "Popen"})
 # A call is RAW only when it goes to subprocess itself, qualified or imported bare.
 RAW_CALLEES = frozenset({"subprocess." + n for n in SPAWNERS} | SPAWNERS)
@@ -97,26 +99,25 @@ def census(root, sources, exempt=None, prune=PRUNE) -> Census:
     declared = dict(exempt or {})
     out = Census()
     spawning = set()
-    for rel_dir in sources:
-        top = os.path.join(root, rel_dir)
-        for dirpath, dirnames, filenames in os.walk(top):
-            dirnames[:] = sorted(d for d in dirnames if d not in prune)
-            for name in sorted(filenames):
-                if not name.endswith(".py"):
-                    continue
-                path = os.path.join(dirpath, name)
-                rel = os.path.relpath(path, root)
-                try:
-                    with open(path, encoding="utf-8") as fh:
-                        sites = git_spawns(fh.read())
-                except (OSError, UnicodeDecodeError, SyntaxError, ValueError) as e:
-                    out.unreadable.append((rel, f"{type(e).__name__}: {e}"))
-                    continue
-                out.read += 1
-                if sites:
-                    spawning.add(rel)
-                if rel in declared:
-                    continue
-                out.sites.extend(Site(rel, line, src) for line, src in sites)
+    # git's own listing (tracked plus untracked-not-ignored), never a disk walk: a walk descends
+    # build output and vendored trees git already ignores. Outside a work tree (a fixture),
+    # tree_files falls back to a walk that prunes them.
+    tops = tuple(s.strip("/") + "/" for s in sources)
+    for rel in tree_files(str(root)):
+        parts = rel.split("/")
+        if not rel.endswith(".py") or not rel.startswith(tops) or prune.intersection(parts):
+            continue
+        try:
+            with open(os.path.join(root, rel), encoding="utf-8") as fh:
+                sites = git_spawns(fh.read())
+        except (OSError, UnicodeDecodeError, SyntaxError, ValueError) as e:
+            out.unreadable.append((rel, f"{type(e).__name__}: {e}"))
+            continue
+        out.read += 1
+        if sites:
+            spawning.add(rel)
+        if rel in declared:
+            continue
+        out.sites.extend(Site(rel, line, src) for line, src in sites)
     out.stale = sorted(rel for rel in declared if rel not in spawning)
     return out
