@@ -5,6 +5,11 @@
 //! FATAL and needs no network. Currency against crates.io REPORTS: a major
 //! behind fails only with `--strict`, or when `--ratchet FILE` has not
 //! triaged it; an unreachable index is said out loud, never a clean bill.
+//!
+//! "Major" is Cargo's compatibility boundary (`semver::compat_class`), so
+//! `0.3 -> 0.4` is a major. The ratchet is one triaged crate per line,
+//! `name  # why it may stand`; an entry with no reason fails, and so does an
+//! entry whose crate is no longer behind a major -- the list can only shrink.
 
 pub mod cratesio;
 pub mod semver;
@@ -104,6 +109,103 @@ fn pinned_below_graph(deps: &[Dep], lock: &Path, rel: &str) -> Vec<Finding> {
     out
 }
 
+/// The severities that fail the run without `--strict`.
+const FATAL: [&str; 4] = [
+    "pinned-below-graph",
+    "major-not-in-ratchet",
+    "ratchet-unreasoned",
+    "ratchet-stale",
+];
+
+/// One `--ratchet` line: the crate held, why, and where it is written.
+pub struct Entry {
+    name: String,
+    reason: String,
+    place: String,
+}
+
+/// The ratchet's lines: `name  # reason`; blank lines and whole-line `#` comments are skipped.
+#[must_use]
+pub fn parse_ratchet(text: &str, file: &str) -> Vec<Entry> {
+    text.lines()
+        .enumerate()
+        .filter(|(_, l)| !l.trim().is_empty() && !l.trim_start().starts_with('#'))
+        .map(|(i, l)| {
+            let (name, reason) = l.split_once('#').unwrap_or((l, ""));
+            Entry {
+                name: name.trim().to_owned(),
+                reason: reason.trim().to_owned(),
+                place: format!("{file}:{}", i + 1),
+            }
+        })
+        .collect()
+}
+
+fn ratchet_finding(severity: &'static str, e: &Entry, detail: &str) -> Finding {
+    Finding {
+        severity,
+        name: e.name.clone(),
+        detail: detail.to_owned(),
+        place: e.place.clone(),
+    }
+}
+
+/// The ratchet's own verdicts: untriaged majors, entries with no reason, and -- when every
+/// answer it needs came back -- entries whose crate is no longer behind a major.
+fn judge_ratchet(rep: &mut Report, entries: &[Entry], answered: Option<&[String]>) {
+    let mut out: Vec<Finding> = rep
+        .findings
+        .iter()
+        .filter(|f| f.severity == "major-behind" && !entries.iter().any(|e| e.name == f.name))
+        .map(|f| Finding {
+            severity: "major-not-in-ratchet",
+            name: f.name.clone(),
+            detail: format!(
+                "{}; not in the ratchet -- triage it there, or move it",
+                f.detail
+            ),
+            place: f.place.clone(),
+        })
+        .collect();
+    for e in entries.iter().filter(|e| e.reason.is_empty()) {
+        out.push(ratchet_finding(
+            "ratchet-unreasoned",
+            e,
+            "held with no reason -- write `name  # why it may stand`",
+        ));
+    }
+    match answered {
+        None => rep
+            .notes
+            .push("offline: ratchet entries not judged for staleness".to_owned()),
+        Some(answered) => {
+            for e in entries {
+                let behind = rep
+                    .findings
+                    .iter()
+                    .any(|f| f.severity == "major-behind" && f.name == e.name);
+                let unreachable = rep
+                    .notes
+                    .iter()
+                    .any(|n| n.starts_with(&format!("{}: ", e.name)));
+                if !behind && !unreachable {
+                    let why = if answered.contains(&e.name) {
+                        "no longer behind a major"
+                    } else {
+                        "not a direct dependency of this tree"
+                    };
+                    out.push(ratchet_finding(
+                        "ratchet-stale",
+                        e,
+                        &format!("{why} -- delete the entry, so the list can only shrink"),
+                    ));
+                }
+            }
+        }
+    }
+    rep.findings.extend(out);
+}
+
 fn currency(unique: &[(String, String)]) -> (Vec<Finding>, Vec<String>) {
     let names: Vec<String> = unique.iter().map(|(n, _)| n.clone()).collect();
     let answers = cratesio::latest_many(&names);
@@ -120,7 +222,7 @@ fn currency(unique: &[(String, String)]) -> (Vec<Finding>, Vec<String>) {
         if cur >= lat {
             continue;
         }
-        let major = cur.0 < lat.0;
+        let major = semver::compat_class(&cur) < semver::compat_class(&lat);
         findings.push(Finding {
             severity: if major {
                 "major-behind"
@@ -142,7 +244,7 @@ fn currency(unique: &[(String, String)]) -> (Vec<Finding>, Vec<String>) {
     (findings, notes)
 }
 
-fn run(root: &Path, offline: bool, ratchet: Option<&[String]>) -> Report {
+fn run(root: &Path, offline: bool, ratchet: Option<&[Entry]>) -> Report {
     let mut rep = Report::default();
     let manifests = tree::manifests(root);
     for manifest in &manifests {
@@ -164,6 +266,9 @@ fn run(root: &Path, offline: bool, ratchet: Option<&[String]>) -> Report {
     if offline {
         rep.notes
             .push("offline: currency not checked (arm 2 skipped)".to_owned());
+        if let Some(entries) = ratchet {
+            judge_ratchet(&mut rep, entries, None);
+        }
         return rep;
     }
     let mut unique: Vec<(String, String)> = Vec::new();
@@ -189,22 +294,9 @@ fn run(root: &Path, offline: bool, ratchet: Option<&[String]>) -> Report {
     rep.findings.extend(findings);
     rep.checked_currency = !notes.iter().any(|n| n.contains("unreachable"));
     rep.notes.extend(notes);
-    if let Some(triaged) = ratchet {
-        let untriaged: Vec<Finding> = rep
-            .findings
-            .iter()
-            .filter(|f| f.severity == "major-behind" && !triaged.contains(&f.name))
-            .map(|f| Finding {
-                severity: "major-not-in-ratchet",
-                name: f.name.clone(),
-                detail: format!(
-                    "{}; not in the ratchet -- triage it there, or move it",
-                    f.detail
-                ),
-                place: f.place.clone(),
-            })
-            .collect();
-        rep.findings.extend(untriaged);
+    if let Some(entries) = ratchet {
+        let answered: Vec<String> = unique.iter().map(|(n, _)| n.clone()).collect();
+        judge_ratchet(&mut rep, entries, Some(&answered));
     }
     rep
 }
@@ -239,7 +331,7 @@ fn report(rep: &Report, root: &Path, offline: bool, strict: bool, json: bool) ->
     let mut fatal: Vec<Finding> = rep
         .findings
         .iter()
-        .filter(|f| matches!(f.severity, "pinned-below-graph" | "major-not-in-ratchet"))
+        .filter(|f| FATAL.contains(&f.severity))
         .cloned()
         .collect();
     let (majors, minors) = (by("major-behind"), by("minor-behind"));
@@ -322,15 +414,10 @@ pub fn run_command(
                 .unwrap_or_else(|_| PathBuf::from(r))
         },
     );
-    let triaged: Option<Vec<String>> = match ratchet {
+    let triaged: Option<Vec<Entry>> = match ratchet {
         None => None,
         Some(file) => match std::fs::read_to_string(file) {
-            Ok(text) => Some(
-                text.lines()
-                    .filter(|l| !l.trim().is_empty() && !l.starts_with('#'))
-                    .map(|l| l.trim().to_owned())
-                    .collect(),
-            ),
+            Ok(text) => Some(parse_ratchet(&text, file)),
             Err(e) => {
                 eprintln!("✗ [dep_currency] cannot read the ratchet {file}: {e}");
                 return 2;

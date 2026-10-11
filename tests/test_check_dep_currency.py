@@ -19,6 +19,13 @@ What the tests pin, in the order the failures actually happened:
   `fancy-regex 0.14 -> 0.19` is the case that proves it.
 * a bare three-part requirement is a CARET requirement, not an exact one. Two
   of the probe's own expectations were wrong about this before the code was.
+* the SAME 0.x rule in the currency arm. It read "major" as the first field, so
+  `signal-hook 0.3 -> 0.4` -- a breaking move, held on purpose in monitor --
+  printed as `[drift]`, and a ratchet over majors had nothing to hold
+  (2026-10-10). Arm 1 had learned the rule; arm 2 was its unfixed sibling.
+* the ratchet is a RATCHET: an entry whose crate is no longer behind a major
+  fails until it is deleted, so the list can only shrink; and every entry says
+  why it may stand.
 """
 
 from __future__ import annotations
@@ -245,7 +252,9 @@ def _crates_io(tmp_path: Path, **latest: str) -> dict:
     return dict(os.environ, GOH_CRATES_IO_CACHE=str(cache))
 
 
-@pytest.mark.parametrize(("triaged", "want"), [("", 1), ("ureq\n", 0)])
+@pytest.mark.parametrize(
+    ("triaged", "want"), [("", 1), ("ureq  # held: a parent still needs 2\n", 0)]
+)
 def test_the_ratchet_fails_an_untriaged_major_and_passes_a_triaged_one(tmp_path, triaged, want):
     """`--ratchet FILE` is "fail on any major NOT listed in FILE". It read `f["name"]` off a
     dataclass -- a TypeError the moment a major was behind -- and the findings it meant to add
@@ -267,3 +276,107 @@ def test_the_ratchet_fails_an_untriaged_major_and_passes_a_triaged_one(tmp_path,
     assert r.returncode == want, r.stdout + r.stderr
     if want:
         assert "ureq" in r.stdout and "ratchet" in r.stdout, r.stdout
+
+
+def _currency(
+    tmp_path: Path,
+    deps: dict[str, str],
+    latest: dict[str, str],
+    ratchet: str | None = None,
+    offline: bool = False,
+):
+    """`goh deps --json` over one crate whose lock holds exactly `deps`, crates.io answering
+    `latest` through the cache seam: (exit code, the parsed report)."""
+    manifest = '[package]\nname = "x"\nversion = "0.1.0"\n\n[dependencies]\n' + "".join(
+        f'{n} = "{v}"\n' for n, v in deps.items()
+    )
+    lock = LOCK_HEADER + "".join(
+        f'[[package]]\nname = "{n}"\nversion = "{v}"\n\n' for n, v in deps.items()
+    )
+    root = repo(tmp_path / "r", manifest, lock)
+    args = [str(native_goh_path()), "deps", "--root", str(root), "--json"]
+    if ratchet is not None:
+        (tmp_path / "ratchet.txt").write_text(ratchet)
+        args += ["--ratchet", str(tmp_path / "ratchet.txt")]
+    if offline:
+        args.append("--offline")
+    r = subprocess.run(
+        args, capture_output=True, text=True, timeout=60, env=_crates_io(tmp_path, **latest)
+    )
+    assert r.returncode in (0, 1), r.stdout + r.stderr
+    return r.returncode, json.loads(r.stdout)
+
+
+@pytest.mark.parametrize(
+    ("held", "latest", "bucket"),
+    [
+        ("0.3.18", "0.4.5", "major_behind"),  # monitor's signal-hook: a breaking move
+        ("0.0.3", "0.0.4", "major_behind"),  # ^0.0.3 admits only 0.0.3
+        ("0.3.18", "0.3.20", "minor_behind"),
+        ("1.2.0", "1.3.0", "minor_behind"),
+        ("1.2.0", "2.0.0", "major_behind"),
+        ("0.9.1", "1.0.0", "major_behind"),
+    ],
+)
+def test_behind_a_major_means_behind_cargos_compatibility_boundary(tmp_path, held, latest, bucket):
+    """Cargo's breaking boundary is the leftmost NON-ZERO field: 0.3 -> 0.4 is a major move, as
+    `^0.3` refusing 0.4 says. The currency arm compared the first field only."""
+    _, doc = _currency(tmp_path, {"c": held}, {"c": latest})
+    names = {k: [f["name"] for f in doc[k]] for k in ("major_behind", "minor_behind")}
+    assert names[bucket] == ["c"], doc
+    other = "minor_behind" if bucket == "major_behind" else "major_behind"
+    assert names[other] == [], doc
+
+
+def _fatal(doc: dict) -> list[tuple[str, str]]:
+    return [(f["severity"], f["name"]) for f in doc["fatal"]]
+
+
+def test_a_triaged_major_with_its_reason_passes(tmp_path):
+    code, doc = _currency(
+        tmp_path,
+        {"sh": "0.3.18"},
+        {"sh": "0.4.5"},
+        ratchet="# held majors\nsh  # crossterm 0.29 still depends on 0.3\n",
+    )
+    assert (code, _fatal(doc)) == (0, []), doc
+
+
+def test_a_ratchet_entry_with_no_reason_fails(tmp_path):
+    """The list says what is held; the reason says why it may stand. An entry without one is the
+    allowlist nobody can re-judge."""
+    code, doc = _currency(tmp_path, {"sh": "0.3.18"}, {"sh": "0.4.5"}, ratchet="sh\n")
+    assert code == 1, doc
+    assert ("ratchet-unreasoned", "sh") in _fatal(doc), doc
+
+
+@pytest.mark.parametrize(
+    ("deps", "latest"),
+    [
+        ({"sh": "0.4.5"}, {"sh": "0.4.5"}),  # the held crate moved: the entry is done
+        ({"sh": "0.3.18"}, {"sh": "0.3.20"}),  # only drift left: nothing to hold
+        ({"other": "1.0.0"}, {"other": "1.0.0"}),  # not a dependency at all
+    ],
+)
+def test_a_stale_ratchet_entry_fails_until_it_is_deleted(tmp_path, deps, latest):
+    """A ratchet that keeps an entry after its crate catches up is a standing licence for that
+    crate to fall behind again unseen: the set could grow back, which is the one thing it is for."""
+    code, doc = _currency(
+        tmp_path, deps, latest, ratchet="sh  # crossterm 0.29 still depends on 0.3\n"
+    )
+    assert code == 1, doc
+    assert ("ratchet-stale", "sh") in _fatal(doc), doc
+
+
+def test_offline_does_not_judge_an_entry_stale_and_says_so(tmp_path):
+    """Staleness needs crates.io's answer; without it the entry is not judged, and the report says
+    so rather than calling it clean."""
+    code, doc = _currency(
+        tmp_path,
+        {"sh": "0.3.18"},
+        {"sh": "0.4.5"},
+        ratchet="sh  # crossterm 0.29 still depends on 0.3\n",
+        offline=True,
+    )
+    assert (code, _fatal(doc)) == (0, []), doc
+    assert any("ratchet" in n for n in doc["notes"]), doc

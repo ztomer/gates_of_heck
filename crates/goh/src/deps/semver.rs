@@ -64,6 +64,20 @@ pub fn newest<'a>(versions: &[&'a str]) -> Option<&'a str> {
         .map(|(_, v)| v)
 }
 
+/// Cargo's compatibility class: the leftmost NON-ZERO field and everything left of it.
+///
+/// `^held` admits exactly the versions in `held`'s class, so `0.3.18 -> 0.4.0` crosses a breaking
+/// boundary as surely as `1.9 -> 2.0` does. Reading "major" as the first field called it drift
+/// (2026-10-10) -- the 0.x rule `bounds` already knew, unlearned one module over.
+#[must_use]
+pub const fn compat_class(k: &Key) -> (u64, u64, u64) {
+    match (k.0, k.1) {
+        (0, 0) => (0, 0, k.2),
+        (0, minor) => (0, minor, 0),
+        (major, _) => (major, 0, 0),
+    }
+}
+
 /// `(lowest admitted, lowest refused above)` for one comparator.
 fn bounds(op: &str, maj: u64, mn: Option<u64>, pat: Option<u64>) -> (Option<Key>, Option<Key>) {
     let (m0, p0) = (mn.unwrap_or(0), pat.unwrap_or(0));
@@ -175,6 +189,32 @@ mod tests {
     fn build_metadata_is_ignored_and_a_prerelease_sorts_below_its_release() {
         assert_eq!(req_allows("1.1.6", "1.1.6+spec-1.1.0"), Some(true));
         assert!(super::parse_version("1.0.0-rc.1") < super::parse_version("1.0.0"));
+    }
+
+    /// `compat_class` and the caret rule are one rule: two versions share a class exactly when
+    /// `^a` admits `b` (for `b >= a`).
+    #[test]
+    fn the_compatibility_class_is_the_caret_rule() {
+        let pairs = [
+            ("0.3.18", "0.4.5"),
+            ("0.3.18", "0.3.20"),
+            ("0.0.3", "0.0.4"),
+            ("0.0.3", "0.0.3"),
+            ("0.9.1", "1.0.0"),
+            ("1.2.0", "1.3.0"),
+            ("1.2.0", "2.0.0"),
+        ];
+        for (a, b) in pairs {
+            let (ka, kb) = (
+                super::parse_version(a).unwrap_or_default(),
+                super::parse_version(b).unwrap_or_default(),
+            );
+            assert_eq!(
+                super::compat_class(&ka) == super::compat_class(&kb),
+                req_allows(&format!("^{a}"), b) == Some(true),
+                "{a} vs {b}"
+            );
+        }
     }
 
     #[test]

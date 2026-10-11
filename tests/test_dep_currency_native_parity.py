@@ -73,7 +73,11 @@ def test_every_shape_reports_the_same(goh: Path, tmp_path: Path, shape: str, arg
     assert rs == py
 
 
-@pytest.mark.parametrize("triaged", ["", "ureq\n", "toml\n"])
+# The ratchet's spec MOVED on purpose (2026-10-10): an entry carries `# why it may stand`, and an
+# entry with no reason, or whose crate is no longer behind a major, fails. The reference read
+# `toml` as triaged and `ureq` (not even a dependency) as harmless, so only the empty ratchet still
+# shares a verdict; the new expectations live in tests/test_check_dep_currency.py, which owns them.
+@pytest.mark.parametrize("triaged", [""])
 def test_the_ratchet_reports_the_same(goh: Path, tmp_path: Path, triaged: str) -> None:
     root = _tree(tmp_path, WORKSPACE)
     ratchet = tmp_path / "ratchet.txt"
