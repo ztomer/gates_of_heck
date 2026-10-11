@@ -24,7 +24,7 @@ import pytest
 # mid-run-edit test below corrupts release.sh on purpose; anything running a
 # real release at the same moment must be on this worker, after it.
 
-from timing_bounds import patience
+from timing_bounds import GiveUp
 from conftest import FAKE_GH, REPO_ROOT
 
 RELEASE = REPO_ROOT / "tools" / "release-kit" / "release.sh"
@@ -179,9 +179,9 @@ class TestSelfBuffering:
             env=release_env(kit),
         )
         try:
-            deadline = time.monotonic() + patience(30)
+            give_up = GiveUp(30)
             while not marker.exists():
-                assert time.monotonic() < deadline, "gate never started"
+                assert not give_up.passed(), "gate never started"
                 assert proc.poll() is None, "release.sh exited before the edit"
                 time.sleep(0.05)
 

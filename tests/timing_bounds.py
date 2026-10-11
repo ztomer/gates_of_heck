@@ -11,7 +11,10 @@ SLACK x expected_s) is a design error, refused here: lengthen the failure.
 
 A GIVE-UP deadline ("wait until X appears, then assert") has no false pass to guard against: a
 longer wait can only cost time on a failure. `patience(seconds)` stretches it by the load; a fixed
-10 s wait for a fixture's file failed a release gate at load 117 (2026-10-08).
+10 s wait for a fixture's file failed a release gate at load 117 (2026-10-08). Wait with `GiveUp`,
+which re-reads the load at every check: a deadline computed once (`now + patience(10)`) is
+stretched by the load when the wait BEGAN, and a push that loaded the box mid-wait failed two
+bench_lock tests that pass alone (2026-10-10).
 
 A bound that DISCRIMINATES two passes (parallel vs serial) is not this: derive it from a control
 measured in the same run (tests/test_session_bench.py, test_goh_prefetch.py).
@@ -19,6 +22,8 @@ measured in the same run (tests/test_session_bench.py, test_goh_prefetch.py).
 """
 
 from __future__ import annotations
+
+import time
 
 from _drift_guard import load_factor
 
@@ -46,3 +51,14 @@ def assert_sooner(elapsed: float, expected_s: float, failure_s: float, what: str
 def patience(seconds: float) -> float:
     """How long a wait whose failure is "never" gives up after, on this box now."""
     return seconds * load_factor()
+
+
+class GiveUp:
+    """A give-up deadline of `seconds` on a quiet box, stretched by the load at every check."""
+
+    def __init__(self, seconds: float) -> None:
+        self.seconds = seconds
+        self.start = time.monotonic()
+
+    def passed(self) -> bool:
+        return time.monotonic() - self.start >= patience(self.seconds)

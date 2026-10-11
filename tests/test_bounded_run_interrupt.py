@@ -16,7 +16,7 @@ from pathlib import Path
 
 import pytest
 
-from timing_bounds import patience
+from timing_bounds import GiveUp
 from conftest import REPO_ROOT
 
 
@@ -29,8 +29,8 @@ def _alive(pid: int) -> bool:
 
 
 def _wait_for(path: Path, seconds: float = 10) -> str:
-    deadline = time.monotonic() + seconds
-    while time.monotonic() < deadline:
+    give_up = GiveUp(seconds)
+    while not give_up.passed():
         if path.exists() and path.read_text().strip():
             return path.read_text().strip()
         time.sleep(0.05)
@@ -64,8 +64,8 @@ def test_a_signal_to_the_wrapper_reaps_the_step(tmp_path, sig):
         step = int(_wait_for(pidfile))
         wrapper.send_signal(sig)
         wrapper.wait(timeout=10)
-        deadline = time.monotonic() + patience(5)
-        while _alive(step) and time.monotonic() < deadline:
+        give_up = GiveUp(5)
+        while _alive(step) and not give_up.passed():
             time.sleep(0.05)
         why = wrapper.stderr.read().decode(errors="replace") if wrapper.stderr else ""
         assert not _alive(step), (
@@ -132,8 +132,8 @@ def test_a_term_to_a_concurrent_local_ci_reaps_every_running_step(tmp_path):
         steps_running = [int(_wait_for(p)) for p in pids]
         ci.send_signal(signal.SIGTERM)
         ci.wait(timeout=15)
-        deadline = time.monotonic() + patience(8)
-        while any(map(_alive, steps_running)) and time.monotonic() < deadline:
+        give_up = GiveUp(8)
+        while any(map(_alive, steps_running)) and not give_up.passed():
             time.sleep(0.05)
         assert not any(map(_alive, steps_running)), "TERM to local_ci left its running steps alive"
         assert ci.returncode != 0

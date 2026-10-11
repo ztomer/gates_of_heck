@@ -26,7 +26,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
 import orphan_canary as O  # noqa: E402
-from timing_bounds import patience
+from timing_bounds import GiveUp
 
 CANARY = str(Path(O.__file__))
 
@@ -226,8 +226,8 @@ def test_the_canary_never_reports_a_concurrent_gate_run(wrap, repo: Path) -> Non
         # Judge THIS canary's own pid, and only that. Judging "every pid that appeared" reads the
         # whole machine, so under the parallel suite it picked up the other workers' deliberately
         # leaked orphans and failed for a reason unrelated to what it measures.
-        deadline = time.monotonic() + patience(10)
-        while time.monotonic() < deadline and not alive(other.pid):
+        give_up = GiveUp(10)
+        while not give_up.passed() and not alive(other.pid):
             time.sleep(0.05)
         assert alive(other.pid), "the concurrent canary never started"
         concurrent = O.judge([other.pid], O.roots_for(str(repo)))

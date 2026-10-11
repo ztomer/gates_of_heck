@@ -22,7 +22,7 @@ import uuid
 
 import pytest
 
-from timing_bounds import patience
+from timing_bounds import GiveUp
 from conftest import REPO_ROOT
 
 
@@ -59,9 +59,9 @@ def _unique_marker(site: str) -> str:
 
 
 def _assert_nothing_survives(marker: str):
-    deadline = time.time() + patience(5)
+    give_up = GiveUp(5)
     survivors = None
-    while time.time() < deadline:
+    while not give_up.passed():
         r = subprocess.run(["pgrep", "-f", marker], capture_output=True, text=True)
         if r.returncode != 0:  # no match: nothing left
             return
@@ -103,8 +103,8 @@ def test_a_child_without_its_own_group_falls_back_to_direct_kill():
     proc = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(60)"])
     try:
         killtree._kill_process_group(proc)  # must not raise
-        deadline = time.time() + patience(5)
-        while proc.poll() is None and time.time() < deadline:
+        give_up = GiveUp(5)
+        while proc.poll() is None and not give_up.passed():
             time.sleep(0.05)
         assert proc.poll() is not None, "fallback p.kill() did not stop the child"
     finally:

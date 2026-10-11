@@ -13,8 +13,10 @@ from conftest import REPO_ROOT
 LITERAL = re.compile(
     r"assert\b[^\n#]*?(?:\b(?:elapsed|waited|wall|dt|took)\b|\[\"(?:ms|cpu_ms)\"\]|"
     r"(?:monotonic|time|perf_counter)\(\)\s*-\s*\w+)\s*<=?\s*[0-9]"
-    # ... or a deadline set by a number: `time.monotonic() + 5` (use `patience`).
+    # ... or a deadline set by a number: `time.monotonic() + 5` (use `GiveUp`) ...
     r"|(?:monotonic|time|perf_counter)\(\)\s*\+\s*[0-9]"
+    # ... or by the load read once, when the wait began: `time.monotonic() + patience(5)`.
+    r"|(?:monotonic|time|perf_counter)\(\)\s*\+\s*patience\("
 )
 
 
@@ -39,13 +41,15 @@ def test_the_pattern_sees_each_shape() -> None:
         "    assert time.time() - t0 <= 5",
         '    assert 250 <= row["ms"] < 3000, row',
         "        deadline = time.monotonic() + 5",
+        "        deadline = time.monotonic() + patience(5)",
+        "    deadline = time.time() + patience(5)",
     ):
         assert LITERAL.search(line), line
     for line in (
         "    assert wall >= 1.2",
         "    assert elapsed < limit",
         "    assert len(x) < 3",
-        "        deadline = time.monotonic() + patience(5)",
+        "        while _alive(pid) and not give_up.passed():",
     ):
         assert not LITERAL.search(line), line
 
@@ -70,3 +74,31 @@ def test_patience_stretches_a_give_up_deadline_by_the_load(monkeypatch) -> None:
 def test_a_failure_not_clear_of_its_pass_is_a_design_error() -> None:
     with pytest.raises(ValueError, match="lengthen"):
         timing_bounds.bound(2, 5)
+
+
+def test_a_give_up_deadline_rereads_the_load_while_it_waits(monkeypatch) -> None:
+    # 2026-10-10: a deadline read once at load 1 expired while a push loaded the box mid-wait.
+    clock = [100.0]
+    monkeypatch.setattr(timing_bounds.time, "monotonic", lambda: clock[0])
+    monkeypatch.setattr(timing_bounds, "load_factor", lambda: 1.0)
+    wait = timing_bounds.GiveUp(10)
+    clock[0] += 15
+    assert wait.passed()
+    monkeypatch.setattr(timing_bounds, "load_factor", lambda: 4.0)
+    assert not wait.passed(), "the load rose during the wait, so the wait stretched"
+
+
+def test_no_test_reaches_the_machines_locks(tmp_path_factory) -> None:
+    # conftest.py's autouse fixture moves every host lock under this run's temp root.
+    import os
+
+    from host_locks import HOST_LOCKS
+
+    root = str(tmp_path_factory.getbasetemp())
+    real = (
+        "/tmp/mac-osaurus-gpu.lock",
+        "/tmp/gates-of-heck-bench.lock",
+        "/tmp/mac-desktop-ui.lock",
+    )
+    for name in HOST_LOCKS:
+        assert os.environ[name].startswith(root) and os.environ[name] not in real, name
