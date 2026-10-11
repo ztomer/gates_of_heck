@@ -373,7 +373,7 @@ episode (4.4) is what that hand-writing costs.
       Lies: normalizing arguments is a parse, and a parse guesses about intent -- a miss must
       SAY so rather than pass.
 
-- [ ] 4.9 Hand-rolled status markers are a finding, as emoji are. Baseline: the house style is
+- [x] 4.9 (`51109d6`, as `goh status-markers`, a command a repo's gate calls like 4.10; this repo runs it in GOH_CI_STEPS; GEMINI.md now points at the house libs; ZoneWM reads 0 and four repos adopt it in Downstream) Hand-rolled status markers are a finding, as emoji are. Baseline: the house style is
       `tui/lib.sh`/`tui.lib` (`info/ok/err/warn`), and nothing polices the other direction:
       `~/.gemini/GEMINI.md` tells Antigravity to write `print_info`/`print_err` helpers printing
       `[ ==> ]`, `[ Wrn ]`, `[ Err ]`, `[ Ok  ]`, and 27 tracked files in 5 repos carry them
@@ -424,6 +424,15 @@ episode (4.4) is what that hand-writing costs.
       for calls. Red-first: re-wrap an allowlisted claim's paragraph and it stays excused; change
       the claim's number and the entry is stale. Lies: two claims on one line share the old key;
       the span key separates them, so a seed written before it must be read as fragments.
+- [ ] 4.14 A Rust binary has no house TUI, so its status lines are hand-rolled by necessity (4.9
+      found it). Baseline: `tui/lib.sh` and `tui/lib.py` read `tui/stylerc`; a Rust binary has
+      nothing to read it with, so goh's own output and antiknob's 113 `[ Ok  ]`-style sites (9
+      files, mostly `src/bin/`) each spell their own glyphs and colours, and `goh status-markers`
+      can only point them at stylerc's glyphs. Exit: a `tui` crate in this repo that parses
+      `tui/stylerc` at build time and exposes `info/ok/err/warn`, `NO_COLOR` and non-tty aware;
+      goh prints through it. Red-first: a stylerc glyph changed shows in goh's output without a
+      code edit. Lies: a crate a consumer pins by git rev is a vendored copy with extra steps --
+      the crate must be consumed from `$GOH_DIR`, as the libs are.
 
 ### Phase 5 -- the measurements, last (ids kept from v0.25.0's Phase 4)
 
@@ -674,3 +683,8 @@ Finance's `"$root.out"`, ZeroThunder's dropped process handle.
   "uncalibrated". One house pattern, once a second repo needs it.
 - The `git archive` export has no `.git`, so `structural.sh` cannot judge one (it reads the index).
   A clone is the faithful measurement; re-open only if an export ever has to be gated.
+- **antiknob, divoom-control, routines, ztools, after `51109d6` (4.9):** call
+  `$GOH_DIR/gates/goh.sh status-markers` from the repo's gate, fix what is cheap and `--seed` the
+  rest. At adoption (2026-10-11): antiknob 113 sites in 9 files (Rust `src/bin/`, `install.sh`,
+  `ui/build.sh`; its Rust waits on 4.14), divoom-control 52 in 11, routines 3 in 1, ztools 3 in 1.
+  ZoneWM reads 0 and adopts it with no seed.
