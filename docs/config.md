@@ -105,7 +105,7 @@ how a currency check becomes a gate nobody reads.
 | `GOH_DEPS_STRICT` | unset | `1` also fails on a MAJOR behind. Off by default: a major moves in its own commit by house rule, and a patch is routine, so failing on drift would be red on every honest commit. |
 | `GOH_DEPS_RATCHET` | unset | Path to a file of the crates this repo has TRIAGED as a major behind, one per line as `name  # why it may stand`. Any major-behind NOT listed fails; so does an entry with no reason, and an entry whose crate is no longer a major behind (or not a dependency at all) -- the set can only shrink. "Major" is Cargo's compatibility boundary, so `0.3 -> 0.4` counts. Offline, staleness is not judged and the report says so. |
 | `GOH_DEPS_OFFLINE` | unset | `1` skips the crates.io arm and PRINTS that it did. Absence of evidence is not a clean bill, and a check that prints "clean" because the index was unreachable converts a missing measurement into evidence. |
-| `GOH_CRATES_IO_CACHE` | `~/.cache/goh/crates-io` | Where crates.io answers are kept, one file per crate name, shared by every crate and repo; `off` asks every time. Read only by the report-only arm; an UNREACHED lookup is never cached. |
+| `GOH_CRATES_IO_CACHE` | `~/.cache/goh/crates-io` | Where crates.io answers are kept, one file per crate name, shared by every crate and repo; `off`, `0`, `false` or `no` asks every time, and so does a relative path (`crates/goh/src/cache_root.rs`). Read only by the report-only arm; an UNREACHED lookup is never cached. |
 | `GOH_CRATES_IO_TTL_S` | `21600` (6 h) | How old a cached answer may be. Under `GOH_DEPS_STRICT` / `GOH_DEPS_RATCHET`, a release newer than this can be missed for up to the TTL -- the stated price of not asking crates.io once per dependency per crate per push. |
 
 FATAL with no key set at all, and needing no network: a direct dependency
@@ -190,8 +190,8 @@ Measured on media_server: `structural --full` 1.9 s -> 0.30 s warm.
 
 | Key | Default | Meaning |
 |---|---|---|
-| `GOH_VERDICT_CACHE` | unset (on) | `0` disables it: every file is judged by the tools, nothing is recorded. |
-| `GOH_VERDICT_DIR` | `~/.cache/goh/verdicts` | Where the records live, one directory per checker. |
+| `GOH_VERDICT_CACHE` | unset (on) | `0`, `off`, `false` or `no` disables it: every file is judged by the tools, nothing is recorded. |
+| `GOH_VERDICT_DIR` | `~/.cache/goh/verdicts` | Where the records live, one directory per checker. Absolute only: a relative path would name the tree the gate runs in, so it turns the cache off. |
 
 ## Release kit (`tools/release-kit/release.sh`)
 
@@ -238,7 +238,7 @@ Read from the hook's environment (the settings file's `env`, or the shell Claude
 | `GOH_RESOLVED_BIN` | set by `gates/_goh_bin.sh` | The native binary the first resolution in a process tree chose; taken only while it is executable and `GOH_RESOLVED_FOR` matches. Not a setting -- `GOH_BIN` is the override. |
 | `GOH_PROVEN_IDENTITY_FOR` | set by `gates/_proven.sh` | The working directory, PATH, toolchain override, gates root and `GOH_LIVE` mode the exported `GOH_PROVEN_IDENTITY` answers for. Not a setting. |
 | `GOH_PROVEN_IDENTITY` | set by `gates/_proven.sh` | The run-constant half of the proven cache's identity (the gates checkout, the toolchains), asked once per process tree. Not a setting. |
-| `GOH_ESTATE_CACHE` | `~/.cache/goh/estate-corpus` | Where `check_estate_corpus.py` remembers a VERIFIED entry, keyed on every input its verdict depends on (`checks/_estate_cache.py`); `off` disables it, as `GOH_PROVEN=0` does. |
+| `GOH_ESTATE_CACHE` | `~/.cache/goh/estate-corpus` | Where `check_estate_corpus.py` remembers a VERIFIED entry, keyed on every input its verdict depends on (`checks/_estate_cache.py`); `off`, `0`, `false` or `no` disables it, as `GOH_PROVEN=0` does, and so does a relative path, which would name the tree the gate runs in. |
 | `GOH_PROFILE_PROVEN` | unset | `tools/gate_profile.sh` only: keep the proven-step cache on while profiling (default off, because a profile of cache hits measures the cache, not the work). |
 | `GOH_AWK_VER_RE` | internal | Version regex passed into the release stanza matcher. Not user config. |
 | `GOH_TREE_STAMP_FILE` | internal | The working tree's stamp taken at the first `goh_init` (`lib/tree_stamp.py`); compared in `goh_done` and on a red exit. Not user config. |

@@ -12,6 +12,7 @@
 
 pub mod blobs;
 pub mod bounded;
+pub mod cache_root;
 pub mod callkey;
 pub mod canarycmd;
 pub mod ceiling;

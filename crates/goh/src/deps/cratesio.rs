@@ -15,19 +15,12 @@ const DEFAULT_TTL_S: u64 = 6 * 3600;
 const WORKERS: usize = 8;
 
 fn cache_dir() -> Option<PathBuf> {
-    match std::env::var("GOH_CRATES_IO_CACHE")
-        .unwrap_or_default()
-        .as_str()
-    {
-        "off" => None,
-        "" => {
-            let base = std::env::var_os("XDG_CACHE_HOME")
-                .map(PathBuf::from)
-                .or_else(|| std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".cache")))?;
-            Some(base.join("goh").join("crates-io"))
-        }
-        dir => Some(PathBuf::from(dir)),
-    }
+    crate::cache_root::root("GOH_CRATES_IO_CACHE", || {
+        std::env::var_os("XDG_CACHE_HOME")
+            .map(PathBuf::from)
+            .or_else(|| std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".cache")))
+            .map(|base| base.join("goh").join("crates-io"))
+    })
 }
 
 fn ttl() -> u64 {

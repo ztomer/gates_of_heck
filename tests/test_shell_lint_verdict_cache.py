@@ -105,3 +105,21 @@ def test_the_cache_off_runs_everything(lint) -> None:
     lint()
     _, asked = lint(GOH_VERDICT_CACHE="0")
     assert asked == {"a.sh", "b.sh"}, asked
+
+
+@pytest.mark.parametrize("extra", [{"GOH_VERDICT_DIR": "rel"}, {"GOH_VERDICT_DIR": "0"}])
+def test_a_relative_verdict_dir_writes_nothing_into_the_tree(lint, repo: Path, extra) -> None:
+    """A relative cache root names whatever directory the gate runs in: the estate cache committed
+    eight verdicts under `0/` that way. It is refused, and the run lints as if uncached."""
+    first, asked = lint(**extra)
+    assert first[0] == 1 and asked == {"a.sh", "b.sh"}, first
+    assert not (repo / extra["GOH_VERDICT_DIR"]).exists()
+    _, asked = lint(**extra)
+    assert asked == {"a.sh", "b.sh"}, asked
+
+
+@pytest.mark.parametrize("word", ["0", "off", "false", "no"])
+def test_every_off_word_turns_the_verdict_cache_off(lint, word) -> None:
+    lint(GOH_VERDICT_CACHE=word)
+    _, asked = lint(GOH_VERDICT_CACHE=word)
+    assert asked == {"a.sh", "b.sh"}, asked

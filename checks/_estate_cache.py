@@ -12,8 +12,8 @@ verdict depends on, and pinned way by way in tests/test_estate_corpus_cache.py:
   every GOH_* the checkers read.
 
 Only a VERIFIED entry is recorded; "blind" and "unavailable" are asked again. A record older than
-TTL_S, or one that does not parse, is a miss. GOH_PROVEN=0 or GOH_ESTATE_CACHE=off turns it off;
-GOH_ESTATE_CACHE=<dir> moves it (default ~/.cache/goh/estate-corpus).
+TTL_S, or one that does not parse, is a miss. GOH_PROVEN=0 or GOH_ESTATE_CACHE=off (or 0, false, no) turns it off;
+GOH_ESTATE_CACHE=<absolute dir> moves it; a relative one turns it off (default ~/.cache/goh/estate-corpus).
 """
 
 from __future__ import annotations
@@ -41,9 +41,18 @@ def _verdict_free() -> tuple:
     return ()
 
 
+# The words a caller means "off" by. `GOH_ESTATE_CACHE=0` once read as the directory `0`, and a gate run
+# in this repo committed its verdicts under `0/`.
+OFF_WORDS = ("0", "off", "false", "no")
+
+
 def cache_dir() -> str | None:
-    where = os.environ.get("GOH_ESTATE_CACHE", "")
-    if where == "off" or os.environ.get("GOH_PROVEN") == "0":
+    """The cache's directory, or None when it is off. A relative path is refused (None): it names
+    whatever directory the gate happens to run in, which is a consumer's tree."""
+    where = os.environ.get("GOH_ESTATE_CACHE", "").strip()
+    if where.lower() in OFF_WORDS or os.environ.get("GOH_PROVEN") == "0":
+        return None
+    if where and not os.path.isabs(where):
         return None
     return where or os.path.join(os.path.expanduser("~"), ".cache", "goh", "estate-corpus")
 

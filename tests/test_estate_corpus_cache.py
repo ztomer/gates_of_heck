@@ -147,3 +147,23 @@ def test_an_absent_estate_is_never_a_hit(estate, tmp_path) -> None:
     estate["entry"]["root"] = str(tmp_path / "gone")
     assert _judge(estate) == "unavailable"
     assert not (tmp_path / "cache").exists() or not list((tmp_path / "cache").iterdir())
+
+
+@pytest.mark.parametrize("value", ["0", "off", "OFF", "false", "no", "0/", "cache", "./cache"])
+def test_an_off_word_or_a_relative_dir_is_never_a_cache_in_the_cwd(value, monkeypatch) -> None:
+    """`GOH_ESTATE_CACHE=0` once meant "off" to its caller and "the directory 0" to this module, and a
+    gate run in this repo committed eight verdicts under `0/`. An off word is off, and a relative
+    path is refused: it names whatever directory the gate happens to run in."""
+    import _estate_cache
+
+    monkeypatch.delenv("GOH_PROVEN", raising=False)
+    monkeypatch.setenv("GOH_ESTATE_CACHE", value)
+    assert _estate_cache.cache_dir() is None
+
+
+def test_an_absolute_cache_dir_is_kept(tmp_path: Path, monkeypatch) -> None:
+    import _estate_cache
+
+    monkeypatch.delenv("GOH_PROVEN", raising=False)
+    monkeypatch.setenv("GOH_ESTATE_CACHE", str(tmp_path / "c"))
+    assert _estate_cache.cache_dir() == str(tmp_path / "c")

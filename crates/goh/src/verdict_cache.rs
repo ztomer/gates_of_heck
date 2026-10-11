@@ -22,17 +22,16 @@ pub struct Cache {
 }
 
 impl Cache {
-    /// The cache under `<root>/<checker>/`, unless `GOH_VERDICT_CACHE=0`.
+    /// The cache under `<root>/<checker>/`, unless `GOH_VERDICT_CACHE` is an
+    /// off word or `GOH_VERDICT_DIR` is not absolute (`cache_root`).
     #[must_use]
     pub fn open(checker: &str) -> Option<Self> {
-        if std::env::var("GOH_VERDICT_CACHE").is_ok_and(|v| v.trim() == "0") {
+        if std::env::var("GOH_VERDICT_CACHE").is_ok_and(|v| crate::cache_root::is_off(&v)) {
             return None;
         }
-        let root = std::env::var_os("GOH_VERDICT_DIR")
-            .map(PathBuf::from)
-            .or_else(|| {
-                std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".cache/goh/verdicts"))
-            })?;
+        let root = crate::cache_root::root("GOH_VERDICT_DIR", || {
+            crate::cache_root::home_cache("goh/verdicts")
+        })?;
         Some(Self {
             dir: root.join(checker),
         })
