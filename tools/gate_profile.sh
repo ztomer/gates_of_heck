@@ -35,6 +35,9 @@ printf '%s @ %s: push gate exit %s in %ss (log: %s)\n' \
     "$(basename "$repo")" "${sha:0:12}" "$rc" "$(( $(date +%s) - t0 ))" "$out.log"
 python3 "$GOH/lib/step_timings.py" report "$out" "$top"
 printf 'timings: %s\n' "$out"
+# A red gate names its reason, not only its log: land.sh runs this as its gate, and a refusal that
+# printed timings and a path left the failing tests three files away (2026-10-11).
+[ "$rc" -eq 0 ] || python3 "$GOH/lib/fail_lines.py" "$out.log" >&2 || true
 (exit "$rc")
 exit
 } # parse-guard
