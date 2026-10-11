@@ -20,6 +20,7 @@
 //! for the whole process, a no-op everywhere else); and `GIT_WORK_TREE`
 //! outranks the `.git` file, so it is refused with the reason, never obeyed.
 
+use goh_tui::{ERR, STEP, WARN};
 use std::io::Write as _;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
@@ -61,7 +62,7 @@ impl IndexView {
                     snapshot: None,
                 }),
                 Err(message) => {
-                    eprintln!("✗ structural: {message} — refusing to read its working tree in its commit's place");
+                    goh_tui::eoutln!("{ERR} structural: {message} — refusing to read its working tree in its commit's place");
                     Err(Some(2))
                 }
             };
@@ -69,11 +70,11 @@ impl IndexView {
         match Self::of(repo, Path::new(dir)) {
             Ok(Some(view)) => Ok(view),
             Ok(None) => {
-                eprintln!("⚠ {dir} is outside this repo, so no part of this commit — NOT checked at --staged (--full reads it)");
+                goh_tui::eoutln!("{WARN} {dir} is outside this repo, so no part of this commit — NOT checked at --staged (--full reads it)");
                 Err(None)
             }
             Err(message) => {
-                eprintln!("✗ structural: {message} — refusing to check the working tree in the index's place");
+                goh_tui::eoutln!("{ERR} structural: {message} — refusing to check the working tree in the index's place");
                 Err(Some(2))
             }
         }
@@ -163,8 +164,8 @@ impl IndexView {
         exported?;
         std::fs::create_dir_all(&view.root)
             .map_err(|e| format!("cannot create {}: {e}", view.root.display()))?;
-        eprintln!(
-            "· {} is outside this repo: judging its last commit ({}), not its working tree",
+        goh_tui::eoutln!(
+            "{STEP} {} is outside this repo: judging its last commit ({}), not its working tree",
             dir.display(),
             String::from_utf8_lossy(&head).trim()
         );

@@ -17,6 +17,8 @@
 //! return). No tracked file relies on those as line breaks — accepted,
 //! same as the emoji and home-paths ports.
 
+use goh_tui::{ERR, OK};
+
 /// Literal suppression attributes, outer or inner. Mirrors
 /// `_ALLOW_PATTERN` — the literal tokens, never a looser regex.
 const ALLOW_PATTERN: &str = r"#!?\[(?:allow|expect)\(";
@@ -350,7 +352,7 @@ pub fn format_report(hits: &[Hit], staged: bool) -> String {
     use std::fmt::Write as _;
     let scope = if staged { "staged" } else { "tracked" };
     let mut text = format!(
-        "✗ [no_allow] {} #[allow]/#[expect] in {scope} Rust source:\n",
+        "{ERR} [no_allow] {} #[allow]/#[expect] in {scope} Rust source:\n",
         hits.len()
     );
     for hit in hits.iter().take(MAX_REPORT_HITS) {
@@ -365,14 +367,13 @@ pub fn format_report(hits: &[Hit], staged: bool) -> String {
 /// The blind-layout refusal, mirroring the reference verbatim.
 #[must_use]
 pub fn format_blind() -> String {
-    "✗ [no_allow] this repo has Rust (a Cargo.toml is tracked) and the scan matched NO compiled source. That is not a clean run -- the crate layout moved out from under src/, benches/ and build.rs.\n"
-        .to_owned()
+    format!("{ERR} [no_allow] this repo has Rust (a Cargo.toml is tracked) and the scan matched NO compiled source. That is not a clean run -- the crate layout moved out from under src/, benches/ and build.rs.\n")
 }
 
 /// The clean-pass line, mirroring the reference.
 #[must_use]
 pub fn format_ok(file_count: usize) -> String {
-    format!("✓ [no_allow] OK — {file_count} files clean\n")
+    format!("{OK} [no_allow] OK — {file_count} files clean\n")
 }
 
 #[cfg(test)]

@@ -1,0 +1,12 @@
+[package]
+name = "goh-tui"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "The house TUI for Rust: tui/stylerc's Kare glyphs and colours, read at build time"
+publish = false
+build = "build.rs"
+
+[lints]
+workspace = true

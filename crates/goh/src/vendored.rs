@@ -11,6 +11,7 @@
 //! Phase N3 retired (a copy of one of those is the most frozen of all). `gates_of_heck` itself --
 //! any checkout, worktree or export of it -- is the one tree where those files belong.
 
+use goh_tui::{ERR, WARN};
 use std::collections::BTreeSet;
 use std::fmt::Write as _;
 use std::path::Path;
@@ -93,7 +94,7 @@ pub fn step(repo: &Path, files: &[String], staged: bool) -> Option<i32> {
     if staged {
         let added = match crate::gitutil::added_files(repo) {
             Ok(added) => added,
-            Err(e) => return Some(fail(LABEL, "native", &format!("✗ {e}\n"), start)),
+            Err(e) => return Some(fail(LABEL, "native", &format!("{ERR} {e}\n"), start)),
         };
         let new = copies(&added, &names);
         if !new.is_empty() {
@@ -101,7 +102,7 @@ pub fn step(repo: &Path, files: &[String], staged: bool) -> Option<i32> {
             for path in &new {
                 let _ = writeln!(
                     report,
-                    "✗ {path}: a copy of a house checker. A vendored copy is frozen at the day it \
+                    "{ERR} {path}: a copy of a house checker. A vendored copy is frozen at the day it \
                      was copied; run the shared one instead (bash \"$GOH_DIR/gates/goh.sh\" \
                      <check>). A file of your own that only shares the name: rename it."
                 );
@@ -110,8 +111,8 @@ pub fn step(repo: &Path, files: &[String], staged: bool) -> Option<i32> {
         }
     } else {
         for path in copies(files, &names) {
-            eprintln!(
-                "⚠ {path}: a vendored copy of a house checker -- delete it and run the shared \
+            goh_tui::eoutln!(
+                "{WARN} {path}: a vendored copy of a house checker -- delete it and run the shared \
                  one (a NEW copy is refused at commit)"
             );
         }

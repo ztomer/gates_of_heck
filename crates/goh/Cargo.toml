@@ -18,6 +18,7 @@ bytecount = "0.6"
 clap = { version = "4", features = ["derive"] }
 goh-golden = { path = "../goh-golden" }
 goh-sys = { path = "../goh-sys" }
+goh-tui = { path = "../goh-tui" }
 num-traits = "0.2"
 regex = "1"
 ruff_python_ast = "0.0.16"

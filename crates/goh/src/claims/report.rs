@@ -1,5 +1,6 @@
 //! The reference's report, line for line: text (stdout and stderr apart) and `--json`.
 
+use goh_tui::{ERR, OK, WARN};
 use std::path::Path;
 
 use serde_json::Value;
@@ -135,7 +136,7 @@ pub(super) fn text(v: &Verdict, root: &Path, staged: bool) -> (i32, Vec<Line>) {
         out.push((
             false,
             format!(
-                "✓ [claim_derivation] OK — {} text file(s) scanned, 0 MARKED claims",
+                "{OK} [claim_derivation] OK — {} text file(s) scanned, 0 MARKED claims",
                 v.examined
             ),
         ));
@@ -161,7 +162,7 @@ pub(super) fn text(v: &Verdict, root: &Path, staged: bool) -> (i32, Vec<Line>) {
         out.push((
             true,
             format!(
-                "⚠ [claim_derivation]   {} of {} allowed claim(s) are 'unreviewed': seeded when the gate landed, not yet examined",
+                "{WARN} [claim_derivation]   {} of {} allowed claim(s) are 'unreviewed': seeded when the gate landed, not yet examined",
                 v.debt, v.excused
             ),
         ));
@@ -174,7 +175,7 @@ pub(super) fn text(v: &Verdict, root: &Path, staged: bool) -> (i32, Vec<Line>) {
     out.push((
         false,
         format!(
-            "✓ [claim_derivation] OK — {} text file(s), all {} marked claim(s) re-derived from the tree{tail}",
+            "{OK} [claim_derivation] OK — {} text file(s), all {} marked claim(s) re-derived from the tree{tail}",
             v.examined, v.claims
         ),
     ));
@@ -187,13 +188,13 @@ pub(super) fn text(v: &Verdict, root: &Path, staged: bool) -> (i32, Vec<Line>) {
 pub fn parse_claims_command(rel: &str) -> i32 {
     let mut text = String::new();
     if std::io::Read::read_to_string(&mut std::io::stdin(), &mut text).is_err() {
-        eprintln!("✗ [claim_derivation] stdin is not UTF-8 text");
+        goh_tui::eoutln!("{ERR} [claim_derivation] stdin is not UTF-8 text");
         return 2;
     }
     let lex = match super::text::Grammar::new() {
         Ok(lex) => lex,
         Err(e) => {
-            eprintln!("✗ [claim_derivation] {e}");
+            goh_tui::eoutln!("{ERR} [claim_derivation] {e}");
             return 2;
         }
     };

@@ -6,6 +6,7 @@
 //! shellcheck call for all of them. A missing shellcheck is a refusal, not a
 //! pass. Every spawn runs under the step ceiling (`crate::bounded`).
 
+use goh_tui::{ERR, OK};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
@@ -336,7 +337,7 @@ fn judge(files: &[(String, PathBuf)]) -> Result<(Vec<String>, Vec<String>), Stri
 fn run(staged: bool, exclude: &str) -> (i32, Lines) {
     let exclude = match crate::steps::compile_exclude(exclude) {
         Ok(x) => x,
-        Err(m) => return (2, vec![(true, format!("✗ [shell_lint] {m}"))]),
+        Err(m) => return (2, vec![(true, format!("{ERR} [shell_lint] {m}"))]),
     };
     let Some(root) = crate::gitutil::repo_root().map(PathBuf::from) else {
         return (
@@ -346,31 +347,34 @@ fn run(staged: bool, exclude: &str) -> (i32, Lines) {
     };
     let (files, tmp) = match gather(&root, staged, exclude.as_ref()) {
         Ok(got) => got,
-        Err(e) => return (2, vec![(true, format!("✗ [shell_lint] {e}"))]),
+        Err(e) => return (2, vec![(true, format!("{ERR} [shell_lint] {e}"))]),
     };
     if files.is_empty() {
         return (
             0,
             vec![(
                 false,
-                "✓ [shell_lint] OK — no shell files in scope".to_owned(),
+                format!("{OK} [shell_lint] OK — no shell files in scope"),
             )],
         );
     }
     if !crate::pyformat::on_path("shellcheck") {
-        return (1, vec![(true, "✗ [shell_lint] shellcheck is not installed, and this gate does not pass without it -- brew install shellcheck".to_owned())]);
+        return (1, vec![(true, format!("{ERR} [shell_lint] shellcheck is not installed, and this gate does not pass without it -- brew install shellcheck"))]);
     }
     let verdict = judge(&files);
     drop(tmp);
     let (fail, failed) = match verdict {
         Ok(v) => v,
-        Err(e) => return (1, vec![(true, format!("✗ [shell_lint] {e}"))]),
+        Err(e) => return (1, vec![(true, format!("{ERR} [shell_lint] {e}"))]),
     };
     let scope = if staged { "staged" } else { "tracked" };
     if !failed.is_empty() {
         let mut lines = vec![(
             true,
-            format!("✗ [shell_lint] {} file(s) failed ({scope}):", failed.len()),
+            format!(
+                "{ERR} [shell_lint] {} file(s) failed ({scope}):",
+                failed.len()
+            ),
         )];
         lines.extend(fail.into_iter().map(|f| (true, format!("  {f}"))));
         return (1, lines);
@@ -380,7 +384,7 @@ fn run(staged: bool, exclude: &str) -> (i32, Lines) {
         vec![(
             false,
             format!(
-                "✓ [shell_lint] OK — {} {scope} shell files clean",
+                "{OK} [shell_lint] OK — {} {scope} shell files clean",
                 files.len()
             ),
         )],
@@ -393,9 +397,9 @@ pub fn run_command(staged: bool, exclude: &str) -> i32 {
     let (code, lines) = run(staged, exclude);
     for (to_err, line) in lines {
         if to_err {
-            eprintln!("{line}");
+            goh_tui::eoutln(&line);
         } else {
-            println!("{line}");
+            goh_tui::outln(&line);
         }
     }
     code

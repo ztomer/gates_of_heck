@@ -10,6 +10,7 @@
 //! With `--remote`, a local release tag the pushed branches carry must be in
 //! the push or already on that remote ([`crate::tagpush`]).
 
+use goh_tui::{ERR, OK, START};
 use std::io::{IsTerminal, Read};
 use std::path::Path;
 use std::process::Command;
@@ -194,7 +195,7 @@ fn run(
     json: bool,
     remote: Option<crate::tagpush::Remote>,
 ) -> (i32, Vec<(bool, String)>) {
-    let fail = |m: String| (2, vec![(true, format!("✗ [tag_version] {m}"))]);
+    let fail = |m: String| (2, vec![(true, format!("{ERR} [tag_version] {m}"))]);
     let Some(root) = root
         .map(str::to_owned)
         .or_else(crate::gitutil::repo_root)
@@ -257,13 +258,13 @@ fn run(
     }
     let mut lines: Vec<(bool, String)> = findings
         .iter()
-        .map(|f| (true, format!("✗ [tag_version] {f}")))
+        .map(|f| (true, format!("{ERR} [tag_version] {f}")))
         .collect();
     if !findings.is_empty() {
         lines.push((
             true,
             format!(
-                "✗ --- {} finding(s): a release tag this push names or carries does not hold ---",
+                "{ERR} --- {} finding(s): a release tag this push names or carries does not hold ---",
                 findings.len()
             ),
         ));
@@ -272,16 +273,16 @@ fn run(
     let reached_line = reached.map(|(r, judged)| {
         (
             false,
-            format!("✓ [tag_version] {judged} local release tag(s) reachable from the pushed branch(es) are on {r} or in this push"),
+            format!("{OK} [tag_version] {judged} local release tag(s) reachable from the pushed branch(es) are on {r} or in this push"),
         )
     });
     let head = if examined == 0 {
         (
             false,
-            "→ [tag_version] no refs/tags/v<semver> in this push — not applicable".to_owned(),
+            format!("{START} [tag_version] no refs/tags/v<semver> in this push — not applicable"),
         )
     } else {
-        (false, format!("✓ [tag_version] OK — {examined} pushed release tag(s) match the version declared at their own commit"))
+        (false, format!("{OK} [tag_version] OK — {examined} pushed release tag(s) match the version declared at their own commit"))
     };
     (0, std::iter::once(head).chain(reached_line).collect())
 }
@@ -297,9 +298,9 @@ pub fn run_command(
     let (code, lines) = run(root, refs_file, json, remote);
     for (to_err, line) in lines {
         if to_err {
-            eprintln!("{line}");
+            goh_tui::eoutln(&line);
         } else {
-            println!("{line}");
+            goh_tui::outln(&line);
         }
     }
     code
@@ -331,14 +332,14 @@ pub fn command(a: &crate::cli::TagVersionArgs) -> i32 {
 pub fn extract_command(kind: &str) -> i32 {
     let mut text = String::new();
     if std::io::stdin().read_to_string(&mut text).is_err() {
-        eprintln!("✗ [tag_version] stdin is not UTF-8 text");
+        goh_tui::eoutln!("{ERR} [tag_version] stdin is not UTF-8 text");
         return 2;
     }
     let found = crate::versrc::Strategies::new()
         .ok()
         .and_then(|s| s.extract(kind, &text));
     let Some(found) = found else {
-        eprintln!("✗ [tag_version] no strategy {kind:?}");
+        goh_tui::eoutln!("{ERR} [tag_version] no strategy {kind:?}");
         return 2;
     };
     let rows: Vec<serde_json::Value> = found

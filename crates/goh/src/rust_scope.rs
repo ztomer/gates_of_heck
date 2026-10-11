@@ -16,6 +16,7 @@
 //!   script's `rerun-if-changed`, and names any file the build read that lies outside the scope:
 //!   the caller then records nothing. The cache checks itself.
 
+use goh_tui::ERR;
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -341,7 +342,7 @@ pub fn run_command(cargo_dir: &std::path::Path, check: Option<&std::path::Path>)
             .collect();
         return match crate::rust_depinfo::depinfo_escapes(cargo_dir, &entries) {
             Err(message) => {
-                eprintln!("✗ [rust_scope] {message}");
+                goh_tui::eoutln!("{ERR} [rust_scope] {message}");
                 2
             }
             Ok(bad) if !bad.is_empty() => {
@@ -355,7 +356,7 @@ pub fn run_command(cargo_dir: &std::path::Path, check: Option<&std::path::Path>)
     }
     match scope(cargo_dir) {
         Err(message) => {
-            eprintln!("✗ [rust_scope] {message}");
+            goh_tui::eoutln!("{ERR} [rust_scope] {message}");
             2
         }
         Ok(entries) => {

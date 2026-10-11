@@ -7,6 +7,7 @@
 //! repo or `CARGO_TARGET_DIR`, `[under <root>]`; a concurrent gate's wrapper is never a leak;
 //! `--snapshot` records the survivors as JSON for a red push; `--log` takes the step's output.
 
+use goh_tui::ERR;
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -127,8 +128,8 @@ fn emit(ours: &[String], repo: &Path) {
     if ours.is_empty() {
         return;
     }
-    println!(
-        "✗ [orphan_canary] {} process(es) outlived the run that started them:",
+    goh_tui::outln!(
+        "{ERR} [orphan_canary] {} process(es) outlived the run that started them:",
         ours.len()
     );
     for line in ours {

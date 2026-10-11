@@ -10,6 +10,7 @@
 //! flag arguments. `--staged` is accepted and ignored, exactly like the
 //! reference (the audit is whole-workspace by nature).
 
+use goh_tui::{ERR, OK, START};
 use std::fmt::Write as _;
 
 /// Workspace policy declaration. Mirrors `WORKSPACE_LINTS`.
@@ -166,23 +167,23 @@ pub fn format_report(
         return (
             false,
             String::new(),
-            "✗ [lints_optin] no Cargo.toml found under the repo — nothing scanned, refusing\n"
-                .to_owned(),
+            format!("{ERR} [lints_optin] no Cargo.toml found under the repo — nothing scanned, refusing\n"),
         );
     }
     if policy && members == 0 {
         return (
             false,
             String::new(),
-            "✗ [lints_optin] workspace declares [workspace.lints] but no member ".to_owned()
+            format!("{ERR} [lints_optin] workspace declares [workspace.lints] but no member ")
                 + "manifests exist — nothing inspected, refusing\n",
         );
     }
     if inspected == 0 {
         return (
             true,
-            "✓ [lints_optin] no workspace declares [workspace.lints] — nothing to inherit\n"
-                .to_owned(),
+            format!(
+                "{OK} [lints_optin] no workspace declares [workspace.lints] — nothing to inherit\n"
+            ),
             String::new(),
         );
     }
@@ -190,13 +191,13 @@ pub fn format_report(
         return (
             true,
             format!(
-                "✓ [lints_optin] OK — {inspected} workspace member(s) inherit the declared policy\n"
+                "{OK} [lints_optin] OK — {inspected} workspace member(s) inherit the declared policy\n"
             ),
             String::new(),
         );
     }
     let mut err = format!(
-        "✗ [lints_optin] {} crate(s) not subject to the workspace lint policy:\n",
+        "{ERR} [lints_optin] {} crate(s) not subject to the workspace lint policy:\n",
         findings.len()
     );
     for finding in findings {
@@ -205,19 +206,18 @@ pub fn format_report(
         if finding.own_table {
             let _ = writeln!(
                 err,
-                "✗     {}: has its own [lints] table but does not inherit the workspace policy ([lints] workspace = true)",
+                "{ERR}     {}: has its own [lints] table but does not inherit the workspace policy ([lints] workspace = true)",
                 finding.manifest
             );
         } else {
             let _ = writeln!(
                 err,
-                "✗     {}: no [lints] table — this crate inherits NONE of the workspace's declared lints",
+                "{ERR}     {}: no [lints] table — this crate inherits NONE of the workspace's declared lints",
                 finding.manifest
             );
         }
     }
-    let out = "→   `[workspace.lints]` is a declaration; a crate applies it with:\n→       [lints]\n→       workspace = true\n→   Without that line the crate has no findings because it is subject\n→   to no lints — which reads exactly like a clean crate.\n"
-        .to_owned();
+    let out = format!("{START}   `[workspace.lints]` is a declaration; a crate applies it with:\n{START}       [lints]\n{START}       workspace = true\n{START}   Without that line the crate has no findings because it is subject\n{START}   to no lints — which reads exactly like a clean crate.\n");
     (false, out, err)
 }
 

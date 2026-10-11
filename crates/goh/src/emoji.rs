@@ -11,6 +11,7 @@
 //! file relying on those as line breaks would number lines differently —
 //! accepted, since no tracked file does.
 
+use goh_tui::ERR;
 use std::collections::BTreeSet;
 
 /// The complete allow-list, in buckets so the policy is auditable.
@@ -265,7 +266,7 @@ pub fn format_report(hits: &[Hit], staged: bool, allow: &str) -> String {
         String::new()
     };
     format!(
-        "✗ DISALLOWED EMOJI in {} location(s) ({scope}) — only the Kare icon set and functional typographic glyphs are permitted ({}); © ® ™ are typographic signs with legal meaning, but their emoji-presentation VS16 forms fail:\n{shown}{overflow}",
+        "{ERR} DISALLOWED EMOJI in {} location(s) ({scope}) — only the Kare icon set and functional typographic glyphs are permitted ({}); © ® ™ are typographic signs with legal meaning, but their emoji-presentation VS16 forms fail:\n{shown}{overflow}",
         hits.len(),
         permit_text(allow)
     )

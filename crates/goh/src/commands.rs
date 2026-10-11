@@ -1,6 +1,7 @@
 //! Single-checker subcommands (`markers`, `length`, `emoji`, `secrets`).
 //! Extracted from `main.rs`: past the cap, the split is the fix.
 
+use goh_tui::{ERR, OK, START, WARN};
 use std::path::PathBuf;
 
 use crate::{
@@ -10,7 +11,7 @@ use crate::{
 
 pub fn run_markers(staged: bool, commits: &[String]) -> i32 {
     let Some(root) = gitutil::repo_root().map(PathBuf::from) else {
-        eprintln!("⚠ [no_conflict_markers] not a git repo — skipping");
+        goh_tui::eoutln!("{WARN} [no_conflict_markers] not a git repo — skipping");
         return 0;
     };
     if !commits.is_empty() {
@@ -18,16 +19,16 @@ pub fn run_markers(staged: bool, commits: &[String]) -> i32 {
     }
     match markers::scan_root(&root, staged) {
         Err(message) => {
-            eprintln!("✗ [no_conflict_markers] {message}");
+            goh_tui::eoutln!("{ERR} [no_conflict_markers] {message}");
             2
         }
         Ok(bad) if !bad.is_empty() => {
-            eprint!("{}", markers::format_report(&bad));
+            goh_tui::eout(&markers::format_report(&bad));
             1
         }
         Ok(_) => {
             let scope = if staged { "staged" } else { "tracked" };
-            println!("→ [no_conflict_markers] OK — no markers in {scope} files");
+            goh_tui::outln!("{START} [no_conflict_markers] OK — no markers in {scope} files");
             0
         }
     }
@@ -37,16 +38,16 @@ pub fn run_markers(staged: bool, commits: &[String]) -> i32 {
 fn run_markers_commits(root: &std::path::Path, commits: &[String]) -> i32 {
     match markers::scan_commits(root, commits) {
         Err(message) => {
-            eprintln!("✗ [no_conflict_markers] {message}");
+            goh_tui::eoutln!("{ERR} [no_conflict_markers] {message}");
             2
         }
         Ok((bad, _)) if !bad.is_empty() => {
-            eprint!("{}", markers::format_report(&bad));
+            goh_tui::eout(&markers::format_report(&bad));
             1
         }
         Ok((_, read)) => {
             let noun = if read == 1 { "commit" } else { "commits" };
-            println!("→ [no_conflict_markers] OK — no markers in {read} {noun}");
+            goh_tui::outln!("{START} [no_conflict_markers] OK — no markers in {read} {noun}");
             0
         }
     }
@@ -57,25 +58,25 @@ pub fn run_length(max: usize, exclude: &str, staged: bool) -> i32 {
     let filter = match steps::compile_exclude(exclude) {
         Ok(filter) => filter,
         Err(message) => {
-            eprintln!("✗ [file_length] {message}");
+            goh_tui::eoutln!("{ERR} [file_length] {message}");
             return 2;
         }
     };
     let Some(root) = gitutil::repo_root().map(PathBuf::from) else {
-        eprintln!("⚠ [file_length] not a git repo — skipping");
+        goh_tui::eoutln!("{WARN} [file_length] not a git repo — skipping");
         return 0;
     };
     match length::scan_root(&root, max, filter.as_ref(), staged) {
         Err(message) => {
-            eprintln!("✗ [file_length] {message}");
+            goh_tui::eoutln!("{ERR} [file_length] {message}");
             2
         }
         Ok((over, _checked)) if !over.is_empty() => {
-            eprint!("{}", length::format_report(&over, max));
+            goh_tui::eout(&length::format_report(&over, max));
             1
         }
         Ok((_, checked)) => {
-            println!("→ [file_length] OK — {checked} file(s) within {max} lines");
+            goh_tui::outln!("{START} [file_length] OK — {checked} file(s) within {max} lines");
             0
         }
     }
@@ -86,7 +87,7 @@ pub fn run_emoji(exclude: &str, allow: &str, staged: bool) -> i32 {
     let filter = match steps::compile_exclude(exclude) {
         Ok(filter) => filter,
         Err(message) => {
-            eprintln!("✗ [no_emoji] {message}");
+            goh_tui::eoutln!("{ERR} [no_emoji] {message}");
             return 2;
         }
     };
@@ -97,19 +98,19 @@ pub fn run_emoji(exclude: &str, allow: &str, staged: bool) -> i32 {
     };
     match emoji::scan_root(&root, filter.as_ref(), &extra, staged) {
         Err(message) => {
-            eprintln!("✗ [no_emoji] {message}");
+            goh_tui::eoutln!("{ERR} [no_emoji] {message}");
             2
         }
         Ok((hits, _checked)) if !hits.is_empty() => {
             // NOTE: violations go to stdout, matching the reference checker
             // (the markers/length checkers use stderr — each port mirrors
             // its own reference, not the family average).
-            print!("{}", emoji::format_report(&hits, staged, allow));
+            goh_tui::out(&emoji::format_report(&hits, staged, allow));
             1
         }
         Ok((_, checked)) => {
             let scope = if staged { "staged" } else { "tracked" };
-            println!("✓ [no_emoji] OK — {checked} {scope} files clean");
+            goh_tui::outln!("{OK} [no_emoji] OK — {checked} {scope} files clean");
             0
         }
     }
@@ -124,17 +125,17 @@ pub fn run_secrets(staged: bool) -> i32 {
     };
     match secrets::scan_root(&root, staged) {
         Err(message) => {
-            eprintln!("✗ [no_secrets] {message}");
+            goh_tui::eoutln!("{ERR} [no_secrets] {message}");
             2
         }
         // NOTE: violations go to stdout, matching the reference checker.
         Ok((bad, _checked)) if !bad.is_empty() => {
-            print!("{}", secrets::format_report(&bad, staged));
+            goh_tui::out(&secrets::format_report(&bad, staged));
             1
         }
         Ok((_, checked)) => {
             let scope = if staged { "staged" } else { "tracked" };
-            println!("✓ [no_secrets] OK — {checked} {scope} files clean");
+            goh_tui::outln!("{OK} [no_secrets] OK — {checked} {scope} files clean");
             0
         }
     }
@@ -145,7 +146,7 @@ pub fn run_home_paths(exclude: &str, staged: bool) -> i32 {
     let filter = match steps::compile_exclude(exclude) {
         Ok(filter) => filter,
         Err(message) => {
-            eprintln!("✗ [no_home_paths] {message}");
+            goh_tui::eoutln!("{ERR} [no_home_paths] {message}");
             return 2;
         }
     };
@@ -155,7 +156,7 @@ pub fn run_home_paths(exclude: &str, staged: bool) -> i32 {
     };
     match homepaths::scan_root(&root, filter.as_ref(), staged) {
         Err(message) => {
-            eprintln!("✗ [no_home_paths] {message}");
+            goh_tui::eoutln!("{ERR} [no_home_paths] {message}");
             2
         }
         Ok((hits, checked)) => report_home_paths(&hits, checked, staged),
@@ -170,17 +171,17 @@ pub fn report_home_paths(hits: &[homepaths::Hit], checked: usize, staged: bool) 
     match homepaths::classify(hits, checked, staged) {
         homepaths::ScopeVerdict::Violations => {
             // NOTE: violations go to stdout, matching the reference checker.
-            print!("{}", homepaths::format_report(hits, staged));
+            goh_tui::out(&homepaths::format_report(hits, staged));
             1
         }
         homepaths::ScopeVerdict::Clean => {
-            println!("{}", homepaths::format_ok(checked, staged));
+            goh_tui::outln(&homepaths::format_ok(checked, staged));
             0
         }
         empty => {
             // Every empty-scope line goes to stdout, exactly like the
             // reference: the refusal exits 1, the honest empty index 0.
-            print!("{}", homepaths::format_empty(empty));
+            goh_tui::out(&homepaths::format_empty(empty));
             i32::from(empty == homepaths::ScopeVerdict::NothingToCheck)
         }
     }
@@ -200,7 +201,7 @@ pub fn run_ceiling(
     let files = match gitutil::listed_files(&root, false) {
         Ok(files) => files,
         Err(message) => {
-            eprintln!("✗ [ceiling] {message}");
+            goh_tui::eoutln!("{ERR} [ceiling] {message}");
             return 2;
         }
     };
@@ -223,8 +224,8 @@ pub fn print_ceiling(
         ceiling::CheckOutcome::Skipped => {}
         ceiling::CheckOutcome::Warn(text) => eprint!("{text}"),
         ceiling::CheckOutcome::Ran { code, out, err } => {
-            print!("{out}");
-            eprint!("{err}");
+            goh_tui::out(&out);
+            goh_tui::eout(&err);
             if code != 0 {
                 return code;
             }
@@ -233,8 +234,8 @@ pub fn print_ceiling(
     match ceiling::run_ratchet(root, baseline) {
         ceiling::CheckOutcome::Skipped | ceiling::CheckOutcome::Warn(_) => 0,
         ceiling::CheckOutcome::Ran { code, out, err } => {
-            print!("{out}");
-            eprint!("{err}");
+            goh_tui::out(&out);
+            goh_tui::eout(&err);
             code
         }
     }
@@ -247,7 +248,7 @@ pub fn run_no_allow(exclude: &str, staged: bool) -> i32 {
     let filter = match steps::compile_exclude(exclude) {
         Ok(filter) => filter,
         Err(message) => {
-            eprintln!("✗ [no_allow] {message}");
+            goh_tui::eoutln!("{ERR} [no_allow] {message}");
             return 2;
         }
     };
@@ -258,13 +259,13 @@ pub fn run_no_allow(exclude: &str, staged: bool) -> i32 {
     let files = match gitutil::listed_files(&root, staged) {
         Ok(files) => files,
         Err(message) => {
-            eprintln!("✗ [no_allow] {message}");
+            goh_tui::eoutln!("{ERR} [no_allow] {message}");
             return 2;
         }
     };
     match noallow::scan_root(&root, &files, filter.as_ref(), staged) {
         Err(message) => {
-            eprintln!("✗ [no_allow] {message}");
+            goh_tui::eoutln!("{ERR} [no_allow] {message}");
             2
         }
         Ok((hits, scanned)) => {
@@ -275,15 +276,15 @@ pub fn run_no_allow(exclude: &str, staged: bool) -> i32 {
             ) {
                 noallow::ScopeVerdict::Violations => {
                     // NOTE: violations go to stdout, matching the reference.
-                    print!("{}", noallow::format_report(&hits, staged));
+                    goh_tui::out(&noallow::format_report(&hits, staged));
                     1
                 }
                 noallow::ScopeVerdict::BlindLayout => {
-                    eprint!("{}", noallow::format_blind());
+                    goh_tui::eout(&noallow::format_blind());
                     1
                 }
                 noallow::ScopeVerdict::Clean => {
-                    print!("{}", noallow::format_ok(scanned.len()));
+                    goh_tui::out(&noallow::format_ok(scanned.len()));
                     0
                 }
             }
@@ -297,7 +298,9 @@ pub fn run_no_allow(exclude: &str, staged: bool) -> i32 {
 #[must_use]
 pub fn run_screen(paths: &[String], scope: Option<&str>, staged: bool) -> i32 {
     if paths.is_empty() && scope.is_none() {
-        eprintln!("✗ [no_screen] no targets: pass paths or --scope (e.g. --scope 'tests/*')");
+        goh_tui::eoutln!(
+            "{ERR} [no_screen] no targets: pass paths or --scope (e.g. --scope 'tests/*')"
+        );
         return 2;
     }
     let Some(root) = gitutil::repo_root().map(PathBuf::from) else {
@@ -307,14 +310,14 @@ pub fn run_screen(paths: &[String], scope: Option<&str>, staged: bool) -> i32 {
     let scanner = match screen::Scanner::compile() {
         Ok(scanner) => scanner,
         Err(message) => {
-            eprintln!("✗ [no_screen] {message}");
+            goh_tui::eoutln!("{ERR} [no_screen] {message}");
             return 2;
         }
     };
     let (explicit, scoped) = match screen::collect_targets(&root, staged, paths, scope) {
         Ok(targets) => targets,
         Err(message) => {
-            eprintln!("✗ [no_screen] {message}");
+            goh_tui::eoutln!("{ERR} [no_screen] {message}");
             return 2;
         }
     };
@@ -324,7 +327,7 @@ pub fn run_screen(paths: &[String], scope: Option<&str>, staged: bool) -> i32 {
         explicit
     };
     if paths.is_empty() && targets.is_empty() {
-        eprintln!("✗ [no_screen] --scope matched no tracked files");
+        goh_tui::eoutln!("{ERR} [no_screen] --scope matched no tracked files");
         return 1;
     }
     let mut bad = Vec::new();
@@ -349,13 +352,13 @@ pub fn run_screen(paths: &[String], scope: Option<&str>, staged: bool) -> i32 {
     }
     if bad.is_empty() {
         let scope = if staged { "staged" } else { "scanned" };
-        println!(
-            "→ [no_screen] OK — {checked} test target(s) {scope}, nothing renders to the display"
+        goh_tui::outln!(
+            "{START} [no_screen] OK — {checked} test target(s) {scope}, nothing renders to the display"
         );
         return 0;
     }
-    eprintln!(
-        "✗ [no_screen] {} presentation call(s) in test targets:",
+    goh_tui::eoutln!(
+        "{ERR} [no_screen] {} presentation call(s) in test targets:",
         bad.len()
     );
     for (rel, lineno, why) in &bad {
@@ -374,11 +377,11 @@ pub fn run_lints(self_test: bool) -> i32 {
     if self_test {
         return match lints::Scanner::compile().and_then(|s| lints::self_test(&s)) {
             Ok(()) => {
-                println!("✓ [lints_optin] self-test passed");
+                goh_tui::outln!("{OK} [lints_optin] self-test passed");
                 0
             }
             Err(message) => {
-                eprintln!("✗ [lints_optin] self-test: {message}");
+                goh_tui::eoutln!("{ERR} [lints_optin] self-test: {message}");
                 1
             }
         };
@@ -390,14 +393,14 @@ pub fn run_lints(self_test: bool) -> i32 {
     let scanner = match lints::Scanner::compile() {
         Ok(scanner) => scanner,
         Err(message) => {
-            eprintln!("✗ [lints_optin] {message}");
+            goh_tui::eoutln!("{ERR} [lints_optin] {message}");
             return 2;
         }
     };
     let (findings, inspected, manifests, policy, members) = lints::audit(&scanner, &root);
     let (ok, out, err) = lints::format_report(&findings, inspected, manifests, policy, members);
-    print!("{out}");
-    eprint!("{err}");
+    goh_tui::out(&out);
+    goh_tui::eout(&err);
     i32::from(!ok)
 }
 
@@ -411,12 +414,12 @@ pub fn run_golden(a: &str, b: &str, tolerances: &str, as_json: bool) -> i32 {
     let overrides: serde_json::Value = match serde_json::from_str(tolerances) {
         Ok(value) => value,
         Err(e) => {
-            eprintln!("✗ precondition: --tolerances is not valid JSON: {e}");
+            goh_tui::eoutln!("{ERR} precondition: --tolerances is not valid JSON: {e}");
             return 2;
         }
     };
     let Some(overrides) = overrides.as_object() else {
-        eprintln!("✗ precondition: --tolerances must be a JSON object");
+        goh_tui::eoutln!("{ERR} precondition: --tolerances must be a JSON object");
         return 2;
     };
     let images = (|| {
@@ -427,21 +430,21 @@ pub fn run_golden(a: &str, b: &str, tolerances: &str, as_json: bool) -> i32 {
     let (a, b) = match images {
         Ok(pair) => pair,
         Err(message) => {
-            eprintln!("✗ precondition: {message}");
+            goh_tui::eoutln!("{ERR} precondition: {message}");
             return 2;
         }
     };
     let tol = match goh_golden::resolve_tolerances(overrides) {
         Ok(tol) => tol,
         Err(e) => {
-            eprintln!("✗ precondition: {}", e.message);
+            goh_tui::eoutln!("{ERR} precondition: {}", e.message);
             return 2;
         }
     };
     let verdict = match goh_golden::compare(&a, &b, &tol) {
         Ok(verdict) => verdict,
         Err(e) => {
-            eprintln!("✗ precondition: {}", e.message);
+            goh_tui::eoutln!("{ERR} precondition: {}", e.message);
             return 2;
         }
     };
@@ -470,7 +473,7 @@ pub fn run_skills(
     let scanner = match skills::Scanner::compile() {
         Ok(scanner) => scanner,
         Err(message) => {
-            eprintln!("✗ [skills_corpus] {message}");
+            goh_tui::eoutln!("{ERR} [skills_corpus] {message}");
             return 2;
         }
     };
@@ -491,6 +494,6 @@ pub fn run_skills(
             update: update_baseline,
         },
     );
-    print!("{}", outcome.out);
+    goh_tui::out(&outcome.out);
     outcome.code
 }

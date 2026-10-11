@@ -13,6 +13,7 @@
 
 mod report;
 
+use goh_tui::ERR;
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Write as _;
 use std::path::Path;
@@ -305,27 +306,27 @@ fn load_allow(root: &Path, staged: bool) -> (Vec<Entry>, Vec<String>) {
 fn run(staged: bool, exclude: &str) -> (i32, String) {
     let skip = match crate::steps::compile_exclude(exclude) {
         Ok(f) => f,
-        Err(m) => return (2, format!("✗ {TAG} {m}\n")),
+        Err(m) => return (2, format!("{ERR} {TAG} {m}\n")),
     };
     let rules = match Rules::new() {
         Ok(r) => r,
-        Err(m) => return (2, format!("✗ {TAG} {m}\n")),
+        Err(m) => return (2, format!("{ERR} {TAG} {m}\n")),
     };
     let Some(root) = crate::gitutil::repo_root().map(std::path::PathBuf::from) else {
-        return (2, format!("✗ {TAG} not a git repository\n"));
+        return (2, format!("{ERR} {TAG} not a git repository\n"));
     };
     let files: Vec<String> = match crate::gitutil::listed_files(&root, staged) {
         Ok(f) => f
             .into_iter()
             .filter(|f| !skip.as_ref().is_some_and(|x| x.is_match(f)))
             .collect(),
-        Err(m) => return (2, format!("✗ {TAG} {m}\n")),
+        Err(m) => return (2, format!("{ERR} {TAG} {m}\n")),
     };
     let (entries, problems) = load_allow(&root, staged);
     if !problems.is_empty() {
         let mut s = String::new();
         for p in problems {
-            let _ = writeln!(s, "✗ {TAG} {p}");
+            let _ = writeln!(s, "{ERR} {TAG} {p}");
         }
         return (1, s);
     }
@@ -350,13 +351,13 @@ pub fn run_command(staged: bool, exclude: &str, code_lines: Option<&str>) -> i32
     if let Some(rel) = code_lines {
         let mut text = String::new();
         if std::io::Read::read_to_string(&mut std::io::stdin(), &mut text).is_err() {
-            eprintln!("✗ {TAG} stdin is not UTF-8 text");
+            goh_tui::eoutln!("{ERR} {TAG} stdin is not UTF-8 text");
             return 2;
         }
         let rules = match Rules::new() {
             Ok(r) => r,
             Err(m) => {
-                eprintln!("✗ {TAG} {m}");
+                goh_tui::eoutln!("{ERR} {TAG} {m}");
                 return 2;
             }
         };
@@ -369,7 +370,7 @@ pub fn run_command(staged: bool, exclude: &str, code_lines: Option<&str>) -> i32
         return 0;
     }
     let (code, out) = run(staged, exclude);
-    print!("{out}");
+    goh_tui::out(&out);
     code
 }
 

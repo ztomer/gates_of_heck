@@ -13,6 +13,7 @@
 //! remote-URL shapes in the retired `checks/_credential_urls_probe.py` (frozen in `tests/reference_kit.py`) is the spec, and
 //! `tests/test_credential_urls_native_parity.py` runs it through both.
 
+use goh_tui::{ERR, OK, START};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
@@ -287,7 +288,7 @@ fn collect(
 
 fn report(bad: &[Value]) -> Lines {
     let mut lines = vec![
-        (false, format!("✗ {} credential(s) in git config -- the value is NOT printed;", bad.len())),
+        (false, format!("{ERR} {} credential(s) in git config -- the value is NOT printed;", bad.len())),
         (false, "  rotate it, then move it to a credential helper that reads a keychain, or an SSH remote:".to_owned()),
         (false, "    git remote set-url origin <url-without-userinfo>".to_owned()),
     ];
@@ -314,11 +315,10 @@ fn run(root: Option<&str>, json: bool) -> (i32, Lines) {
         (
             2,
             vec![
-                (true, format!("✗ [no_credential_urls] {e}")),
+                (true, format!("{ERR} [no_credential_urls] {e}")),
                 (
                     false,
-                    "→ This gate's subject is .git/config. Without one there is nothing to judge."
-                        .to_owned(),
+                    format!("{START} This gate's subject is .git/config. Without one there is nothing to judge."),
                 ),
             ],
         )
@@ -358,14 +358,14 @@ fn run(root: Option<&str>, json: bool) -> (i32, Lines) {
     });
     let prefix = format!("{}/", common.display());
     if urls.is_empty() && !values.iter().any(|(o, _, _)| o.starts_with(&prefix)) {
-        return (0, vec![(false, format!("✓ [no_credential_urls] not applicable — no remote URL here ({} global value(s) clean)", values.len()))]);
+        return (0, vec![(false, format!("{OK} [no_credential_urls] not applicable — no remote URL here ({} global value(s) clean)", values.len()))]);
     }
     (
         0,
         vec![(
             false,
             format!(
-                "✓ [no_credential_urls] OK — {} remote URL(s), {} helper/header value(s)",
+                "{OK} [no_credential_urls] OK — {} remote URL(s), {} helper/header value(s)",
                 urls.len(),
                 values.len()
             ),
@@ -389,9 +389,9 @@ pub fn run_command(root: Option<&str>, json: bool, verdict: Option<&str>) -> i32
     let (code, lines) = run(root, json);
     for (to_err, line) in lines {
         if to_err {
-            eprintln!("{line}");
+            goh_tui::eoutln(&line);
         } else {
-            println!("{line}");
+            goh_tui::outln(&line);
         }
     }
     code

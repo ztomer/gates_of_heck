@@ -7,6 +7,7 @@
 //! Out of scope: links with a scheme, protocol-relative and site-absolute
 //! ones; fenced blocks and inline code spans are not scanned.
 
+use goh_tui::{ERR, OK, START};
 use std::collections::{BTreeSet, HashMap};
 use std::path::{Path, PathBuf};
 
@@ -188,17 +189,17 @@ fn run(
             2,
             vec![(
                 true,
-                format!("✗ [md_links] not a directory: {}", root.display()),
+                format!("{ERR} [md_links] not a directory: {}", root.display()),
             )],
         );
     }
     let fences = match Fences::new() {
         Ok(f) => f,
-        Err(e) => return (2, vec![(true, format!("✗ [md_links] {e}"))]),
+        Err(e) => return (2, vec![(true, format!("{ERR} [md_links] {e}"))]),
     };
     let o = match check(&root, exclude, staged, &fences) {
         Ok(o) => o,
-        Err(e) => return (2, vec![(true, format!("✗ [md_links] {e}"))]),
+        Err(e) => return (2, vec![(true, format!("{ERR} [md_links] {e}"))]),
     };
     if json {
         let doc = serde_json::json!({
@@ -212,18 +213,18 @@ fn run(
     let mut lines: Vec<(bool, String)> = o
         .notes
         .iter()
-        .map(|n| (false, format!("→ [md_links] {n}")))
+        .map(|n| (false, format!("{START} [md_links] {n}")))
         .collect();
     lines.extend(
         o.findings
             .iter()
-            .map(|f| (true, format!("✗ [md_links] {f}"))),
+            .map(|f| (true, format!("{ERR} [md_links] {f}"))),
     );
     if !o.findings.is_empty() {
         lines.push((
             true,
             format!(
-                "✗ --- {} finding(s): a markdown link that resolves to nothing ---",
+                "{ERR} --- {} finding(s): a markdown link that resolves to nothing ---",
                 o.findings.len()
             ),
         ));
@@ -232,7 +233,7 @@ fn run(
     if o.examined == 0 {
         lines.push((
             false,
-            "→ [md_links] no markdown examined — not applicable".to_owned(),
+            format!("{START} [md_links] no markdown examined — not applicable"),
         ));
         return (0, lines);
     }
@@ -244,7 +245,7 @@ fn run(
     lines.push((
         false,
         format!(
-            "✓ [md_links] OK — {} markdown file(s), every relative link resolves to a file and an anchor{tail}",
+            "{OK} [md_links] OK — {} markdown file(s), every relative link resolves to a file and an anchor{tail}",
             o.examined
         ),
     ));
@@ -267,7 +268,7 @@ pub fn run_command(
         let fences = match Fences::new() {
             Ok(f) if std::io::Read::read_to_string(&mut std::io::stdin(), &mut text).is_ok() => f,
             _ => {
-                eprintln!("✗ [md_links] cannot read stdin or compile the grammar");
+                goh_tui::eoutln!("{ERR} [md_links] cannot read stdin or compile the grammar");
                 return 2;
             }
         };
@@ -281,9 +282,9 @@ pub fn run_command(
     let (code, lines) = run(root, staged, exclude, json);
     for (to_err, line) in lines {
         if to_err {
-            eprintln!("{line}");
+            goh_tui::eoutln(&line);
         } else {
-            println!("{line}");
+            goh_tui::outln(&line);
         }
     }
     code

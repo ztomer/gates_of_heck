@@ -17,6 +17,7 @@
 //! the gate read. HISTORY is read leniently (a `Class:` line anywhere), so classes committed before
 //! the port still count.
 
+use goh_tui::{ERR, OK};
 use std::collections::{BTreeMap, BTreeSet};
 use std::process::Command;
 
@@ -290,19 +291,19 @@ pub fn run(file: Option<&str>, range: &[String], report: bool, clusters: bool) -
 #[must_use]
 pub fn check_file(path: &str) -> i32 {
     let Ok(message) = std::fs::read_to_string(path) else {
-        eprintln!("✗ [commit_class] cannot read the message file {path}");
+        goh_tui::eoutln!("{ERR} [commit_class] cannot read the message file {path}");
         return 2;
     };
     let history = match classes_from("HEAD") {
         Ok(h) => h,
         Err(e) => {
-            eprintln!("✗ [commit_class] {e}");
+            goh_tui::eoutln!("{ERR} [commit_class] {e}");
             return 2;
         }
     };
     let why = refusals(&message, &history, &frequent(&history), true);
     for line in &why {
-        eprintln!("✗ [commit_class] commit refused: {line}");
+        goh_tui::eoutln!("{ERR} [commit_class] commit refused: {line}");
     }
     i32::from(!why.is_empty())
 }
@@ -324,7 +325,7 @@ pub fn check_range(revs: &[String], report: bool) -> i32 {
     let (commits, mut earlier) = match read {
         Ok(r) => r,
         Err(e) => {
-            eprintln!("✗ [commit_class] {e}");
+            goh_tui::eoutln!("{ERR} [commit_class] {e}");
             return 2;
         }
     };
@@ -354,11 +355,13 @@ pub fn check_range(revs: &[String], report: bool) -> i32 {
         }
     }
     if bad > 0 && !report {
-        eprintln!("✗ [commit_class] {bad} commit(s) do not end their class or name it: amend them");
+        goh_tui::eoutln!(
+            "{ERR} [commit_class] {bad} commit(s) do not end their class or name it: amend them"
+        );
         return 1;
     }
-    println!(
-        "✓ [commit_class] {} commit(s), {bad} the rule refuses",
+    goh_tui::outln!(
+        "{OK} [commit_class] {} commit(s), {bad} the rule refuses",
         commits.len()
     );
     0

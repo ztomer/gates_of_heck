@@ -1,6 +1,7 @@
 //! The kill-by-name report: which kills are excused, which entries are stale and why, and which
 //! entries matched only part of their call (`crate::callkey`).
 
+use goh_tui::{ERR, OK, WARN};
 use std::collections::BTreeSet;
 use std::fmt::Write as _;
 
@@ -56,7 +57,7 @@ pub fn report(
     if !left.is_empty() {
         let _ = writeln!(
             s,
-            "✗ {TAG} {} process kill(s) by name in {scope} code:",
+            "{ERR} {TAG} {} process kill(s) by name in {scope} code:",
             left.len()
         );
         for (rel, lineno, code, why, _) in left.iter().take(40) {
@@ -77,7 +78,7 @@ pub fn report(
     if !stale.is_empty() {
         let _ = writeln!(
             s,
-            "✗ {TAG} {} stale entr(ies) in {ALLOW_FILE}: no kill matches them any more:",
+            "{ERR} {TAG} {} stale entr(ies) in {ALLOW_FILE}: no kill matches them any more:",
             stale.len()
         );
         for e in &stale {
@@ -99,12 +100,12 @@ pub fn report(
     }
     if checked == 0 {
         if staged {
-            let _ = writeln!(s, "✓ {TAG} nothing staged — 0 code files to check");
+            let _ = writeln!(s, "{OK} {TAG} nothing staged — 0 code files to check");
             return (0, s);
         }
         let _ = writeln!(
             s,
-            "✗ {TAG} nothing to check (tracked) — refusing to report clean over zero code files"
+            "{ERR} {TAG} nothing to check (tracked) — refusing to report clean over zero code files"
         );
         return (1, s);
     }
@@ -115,7 +116,7 @@ pub fn report(
     };
     let _ = writeln!(
         s,
-        "✓ {TAG} OK — {checked} {scope} code files, no kill by name{note}"
+        "{OK} {TAG} OK — {checked} {scope} code files, no kill by name{note}"
     );
     for (e, hit) in &rekey {
         let call: String = hit
@@ -127,7 +128,7 @@ pub fn report(
             .collect();
         let _ = writeln!(
             s,
-            "⚠ {TAG}   {}:{}: the entry is part of the call; key it on the whole call: {call}",
+            "{WARN} {TAG}   {}:{}: the entry is part of the call; key it on the whole call: {call}",
             e.path, hit.1
         );
     }
@@ -135,7 +136,7 @@ pub fn report(
     if debt > 0 {
         let _ = writeln!(
             s,
-            "⚠ {TAG}   {debt} of them 'unreviewed': found when the gate was seeded, not yet decided"
+            "{WARN} {TAG}   {debt} of them 'unreviewed': found when the gate was seeded, not yet decided"
         );
     }
     (0, s)

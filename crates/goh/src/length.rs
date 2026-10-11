@@ -6,6 +6,8 @@
 //! markers scan, binary blobs are NOT skipped here — the reference counts
 //! whatever bytes a source-suffixed file holds.
 
+use goh_tui::ERR;
+
 /// Source suffixes the cap applies to. The same list as `SOURCE_SUFFIXES` in
 /// `checks/check_file_length.py`; `tests/test_goh_length_parity.py` compares the two whole.
 pub const SOURCE_SUFFIXES: &[&str] = &[
@@ -107,7 +109,7 @@ pub fn format_report(over: &[OverCap], max: usize) -> String {
         shown.push_str(&line);
     }
     format!(
-        "✗ [file_length] {} file(s) over the {max}-line cap:\n{shown}\n  Split them. If a file genuinely cannot be split (vendored or\n  generated), add it to GOH_LINE_EXCLUDE in .gatesrc — with a reason.\n",
+        "{ERR} [file_length] {} file(s) over the {max}-line cap:\n{shown}\n  Split them. If a file genuinely cannot be split (vendored or\n  generated), add it to GOH_LINE_EXCLUDE in .gatesrc — with a reason.\n",
         over.len()
     )
 }

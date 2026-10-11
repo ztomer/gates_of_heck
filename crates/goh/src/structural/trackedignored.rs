@@ -15,6 +15,7 @@
 //! A disagreement already committed is the full gate's: a pre-commit red on it would block
 //! every unrelated commit until someone fixed it.
 
+use goh_tui::ERR;
 use std::collections::BTreeSet;
 use std::path::Path;
 use std::process::Command;
@@ -129,7 +130,7 @@ fn negation(hit: &Hit) -> String {
 fn report(hits: &[Hit]) -> String {
     use std::fmt::Write as _;
     let mut text = format!(
-        "✗ [tracked_ignored] {} tracked file(s) match this repo's own .gitignore -- the rules and \
+        "{ERR} [tracked_ignored] {} tracked file(s) match this repo's own .gitignore -- the rules and \
          the tree disagree, and one of them is wrong. A file that should not be committed: \
          `git rm --cached -- <path>`. A file that should: say so under its rule with `!<path>`.\n",
         hits.len()
@@ -170,7 +171,7 @@ pub fn step(repo: &Path, files: &[String], staged: bool) -> Option<i32> {
     let start = step_report::begin(LABEL);
     let how = step_report::ported(SOURCE);
     if !staged && files.is_empty() {
-        let text = "✗ [tracked_ignored] nothing to check (no files) -- refusing to report clean over zero files\n";
+        let text = &format!("{ERR} [tracked_ignored] nothing to check (no files) -- refusing to report clean over zero files\n");
         return Some(step_report::fail(LABEL, &how, text, start));
     }
     let judged = match tracked_ignored(repo).map(|listed| in_scope(listed, files, staged)) {

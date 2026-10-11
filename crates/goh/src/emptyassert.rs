@@ -9,6 +9,7 @@
 //! is already the improvement asked for. The measured table is the crate's
 //! own test below.
 
+use goh_tui::{ERR, OK};
 use regex::Regex;
 
 use crate::noallow::Scanner as NoAllow;
@@ -174,17 +175,17 @@ fn format_args(invocation: &str) -> Vec<String> {
 pub(crate) fn run(staged: bool, exclude: &str) -> (i32, String, String) {
     let exclude = match crate::steps::compile_exclude(exclude) {
         Ok(x) => x,
-        Err(m) => return (2, String::new(), format!("✗ [no_empty_assert] {m}\n")),
+        Err(m) => return (2, String::new(), format!("{ERR} [no_empty_assert] {m}\n")),
     };
     let rules = match Rules::new() {
         Ok(r) => r,
-        Err(m) => return (2, String::new(), format!("✗ [no_empty_assert] {m}\n")),
+        Err(m) => return (2, String::new(), format!("{ERR} [no_empty_assert] {m}\n")),
     };
     let root = crate::gitutil::repo_root()
         .map_or_else(|| std::path::PathBuf::from("."), std::path::PathBuf::from);
     let listed = match crate::gitutil::listed_files(&root, staged) {
         Ok(l) => l,
-        Err(m) => return (2, String::new(), format!("✗ [no_empty_assert] {m}\n")),
+        Err(m) => return (2, String::new(), format!("{ERR} [no_empty_assert] {m}\n")),
     };
     let files: Vec<&String> = listed
         .iter()
@@ -210,7 +211,7 @@ pub(crate) fn run(staged: bool, exclude: &str) -> (i32, String, String) {
     if !hits.is_empty() {
         let scope = if staged { "staged" } else { "tracked" };
         let mut out = format!(
-            "✗ [no_empty_assert] {} emptiness assert(s) in {scope} Rust source:\n",
+            "{ERR} [no_empty_assert] {} emptiness assert(s) in {scope} Rust source:\n",
             hits.len()
         );
         for h in hits.iter().take(40) {
@@ -227,12 +228,12 @@ pub(crate) fn run(staged: bool, exclude: &str) -> (i32, String, String) {
         return (
             1,
             String::new(),
-            "✗ [no_empty_assert] this repo has Rust (a Cargo.toml is tracked) and the scan matched NO compiled source. That is not a clean run -- the crate layout moved out from under src/, benches/ and build.rs.\n".to_owned(),
+            format!("{ERR} [no_empty_assert] this repo has Rust (a Cargo.toml is tracked) and the scan matched NO compiled source. That is not a clean run -- the crate layout moved out from under src/, benches/ and build.rs.\n"),
         );
     }
     (
         0,
-        format!("✓ [no_empty_assert] OK — {} files clean\n", files.len()),
+        format!("{OK} [no_empty_assert] OK — {} files clean\n", files.len()),
         String::new(),
     )
 }
@@ -241,8 +242,8 @@ pub(crate) fn run(staged: bool, exclude: &str) -> (i32, String, String) {
 #[must_use]
 pub fn run_command(staged: bool, exclude: &str) -> i32 {
     let (code, out, err) = run(staged, exclude);
-    print!("{out}");
-    eprint!("{err}");
+    goh_tui::out(&out);
+    goh_tui::eout(&err);
     code
 }
 

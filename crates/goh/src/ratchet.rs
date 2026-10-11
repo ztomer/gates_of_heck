@@ -20,6 +20,7 @@
 //! it on every input (a trailing newline terminates, it does not begin
 //! another; empty is 0).
 
+use goh_tui::{ERR, START};
 use std::collections::BTreeMap;
 use std::fmt::Write as _;
 
@@ -319,7 +320,7 @@ pub fn format_ratchet(
 ) -> (bool, String) {
     if !cmp.rose.is_empty() || !cmp.grew.is_empty() {
         let mut text = format!(
-            "✗ [ratchet] {} ceiling(s) exceeded, {} new key(s) — shrink-only:\n",
+            "{ERR} [ratchet] {} ceiling(s) exceeded, {} new key(s) — shrink-only:\n",
             cmp.rose.len(),
             cmp.grew.len()
         );
@@ -351,7 +352,7 @@ pub fn format_ratchet(
         return (
             false,
             format!(
-                "✗ [ratchet] the baseline names {n} {entries} and the current measurement found NONE. That is a blind gate, not a clean one -- every ceiling is trivially met when there is nothing left to measure.\n  Find what stopped producing the measurement. If the entries are genuinely gone,\n  re-record the baseline in the same commit so the deletion is reviewed.\n",
+                "{ERR} [ratchet] the baseline names {n} {entries} and the current measurement found NONE. That is a blind gate, not a clean one -- every ceiling is trivially met when there is nothing left to measure.\n  Find what stopped producing the measurement. If the entries are genuinely gone,\n  re-record the baseline in the same commit so the deletion is reviewed.\n",
             ),
         );
     }
@@ -379,7 +380,7 @@ pub fn format_ratchet(
     let entries = if n == 1 { "entry" } else { "entries" };
     (
         true,
-        format!("→ [ratchet] OK — {n} {entries} within ceilings{detail}\n"),
+        format!("{START} [ratchet] OK — {n} {entries} within ceilings{detail}\n"),
     )
 }
 

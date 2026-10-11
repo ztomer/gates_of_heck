@@ -13,6 +13,7 @@ mod report;
 pub use report::parse_claims_command;
 pub mod text;
 
+use goh_tui::{ERR, START, STEP};
 use std::collections::BTreeSet;
 use std::path::Path;
 
@@ -27,13 +28,13 @@ const MAX_REPORTED: usize = 40;
 type Line = (bool, String);
 
 fn err(out: &mut Vec<Line>, m: &str) {
-    out.push((true, format!("✗ {m}")));
+    out.push((true, format!("{ERR} {m}")));
 }
 fn info(out: &mut Vec<Line>, m: &str) {
-    out.push((false, format!("→ {m}")));
+    out.push((false, format!("{START} {m}")));
 }
 fn step(out: &mut Vec<Line>, m: &str) {
-    out.push((false, format!("· {m}")));
+    out.push((false, format!("{STEP} {m}")));
 }
 
 /// Has this repo opted in, by its own `.gatesrc` (the reference's parse)?
@@ -337,12 +338,12 @@ fn run(root: Option<&str>, staged: bool, exclude: Option<&str>, json: bool) -> (
             2,
             vec![(
                 true,
-                format!("✗ [claim_derivation] not a directory: {root}"),
+                format!("{ERR} [claim_derivation] not a directory: {root}"),
             )],
         );
     }
     match check(root_path, exclude, staged) {
-        Err(e) => (2, vec![(true, format!("✗ [claim_derivation] {e}"))]),
+        Err(e) => (2, vec![(true, format!("{ERR} [claim_derivation] {e}"))]),
         Ok(v) if json => {
             let (code, text) = report::json(&v);
             (code, vec![(false, text.trim_end_matches('\n').to_owned())])
@@ -357,9 +358,9 @@ pub fn run_command(root: Option<&str>, staged: bool, exclude: Option<&str>, json
     let (code, lines) = run(root, staged, exclude, json);
     for (to_err, line) in lines {
         if to_err {
-            eprintln!("{line}");
+            goh_tui::eoutln(&line);
         } else {
-            println!("{line}");
+            goh_tui::outln(&line);
         }
     }
     code

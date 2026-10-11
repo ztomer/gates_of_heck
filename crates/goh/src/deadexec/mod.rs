@@ -18,6 +18,7 @@
 pub mod dead;
 pub mod parse;
 
+use goh_tui::{ERR, OK};
 use std::fmt::Write as _;
 use std::path::Path;
 
@@ -50,7 +51,7 @@ fn clip(s: &str) -> String {
 fn judge(root: &Path, files: &[String], exclude: &str, staged: bool) -> (i32, String, String) {
     let exclude = match crate::steps::compile_exclude(exclude) {
         Ok(x) => x,
-        Err(m) => return (2, String::new(), format!("✗ {TAG} {m}\n")),
+        Err(m) => return (2, String::new(), format!("{ERR} {TAG} {m}\n")),
     };
     let sources = crate::shellsrc::sources(root, files, exclude.as_ref(), staged);
     let scope = if staged { "staged" } else { "tracked" };
@@ -71,13 +72,13 @@ fn judge(root: &Path, files: &[String], exclude: &str, staged: bool) -> (i32, St
     }
     if n == 0 {
         let ok = format!(
-            "✓ {TAG} OK — {} {scope} shell source(s), no code after exec\n",
+            "{OK} {TAG} OK — {} {scope} shell source(s), no code after exec\n",
             sources.len()
         );
         return (0, ok, String::new());
     }
     let mut err =
-        format!("✗ {TAG} {n} statement(s) after an exec that replaced the shell ({scope}):\n");
+        format!("{ERR} {TAG} {n} statement(s) after an exec that replaced the shell ({scope}):\n");
     err.push_str(&listing);
     err.push_str(
         "    Nothing after an `exec CMD` runs in its block. Delete the dead line, or drop the\n    \
@@ -91,19 +92,19 @@ fn judge(root: &Path, files: &[String], exclude: &str, staged: bool) -> (i32, St
 #[must_use]
 pub fn run_command(staged: bool, exclude: &str) -> i32 {
     let Some(root) = crate::gitutil::repo_root().map(std::path::PathBuf::from) else {
-        eprintln!("✗ {TAG} not a git repository");
+        goh_tui::eoutln!("{ERR} {TAG} not a git repository");
         return 2;
     };
     let files = match crate::gitutil::listed_files(&root, staged) {
         Ok(f) => f,
         Err(m) => {
-            eprintln!("✗ {TAG} {m}");
+            goh_tui::eoutln!("{ERR} {TAG} {m}");
             return 2;
         }
     };
     let (code, out, err) = judge(&root, &files, exclude, staged);
-    print!("{out}");
-    eprint!("{err}");
+    goh_tui::out(&out);
+    goh_tui::eout(&err);
     code
 }
 

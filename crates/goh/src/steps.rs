@@ -3,6 +3,7 @@
 
 use crate::step_report::{begin, fail, ok};
 use crate::{emoji, gatesrc, index_view::IndexView, length, markers, secrets};
+use goh_tui::{ERR, START, WARN};
 
 pub(crate) fn compile_exclude(
     exclude: &str,
@@ -31,7 +32,7 @@ pub fn step_emoji(
     let exclude = match compile_exclude(&cfg.exclude) {
         Ok(filter) => filter,
         Err(message) => {
-            eprintln!("✗ [no_emoji] {message}");
+            goh_tui::eoutln!("{ERR} [no_emoji] {message}");
             return Some(2);
         }
     };
@@ -78,9 +79,13 @@ pub fn step_length(
     let Some(max) = cfg.max_lines else {
         // `off` is a recorded decision; only an absent key is an omission (the shell tier read it the same way).
         if cfg.line_cap_off {
-            println!("→ file-length cap off — declared in .gatesrc (GOH_MAX_LINES=off)");
+            goh_tui::outln!(
+                "{START} file-length cap off — declared in .gatesrc (GOH_MAX_LINES=off)"
+            );
         } else {
-            eprintln!("⚠ file-length cap not set — add GOH_MAX_LINES to .gatesrc to enable it");
+            goh_tui::eoutln!(
+                "{WARN} file-length cap not set — add GOH_MAX_LINES to .gatesrc to enable it"
+            );
         }
         return None;
     };
@@ -89,7 +94,7 @@ pub fn step_length(
     let filter = match compile_exclude(&union) {
         Ok(filter) => filter,
         Err(message) => {
-            eprintln!("✗ [file_length] {message}");
+            goh_tui::eoutln!("{ERR} [file_length] {message}");
             return Some(2);
         }
     };
@@ -128,7 +133,7 @@ pub fn step_ceiling(
         view_files = match crate::gitutil::listed_files(view.root(), false) {
             Ok(listed) => listed,
             Err(message) => {
-                eprintln!("✗ structural: {message}");
+                goh_tui::eoutln!("{ERR} structural: {message}");
                 return Some(2);
             }
         };
@@ -183,7 +188,7 @@ pub fn step_corpus(repo: &std::path::Path, cfg: &gatesrc::Gatesrc, staged: bool)
         .clone()
         .unwrap_or_else(|| repo.to_string_lossy().into_owned());
     if !std::path::Path::new(&root).is_dir() {
-        eprintln!("⚠ skills corpus not present at {root} — NOT checked");
+        goh_tui::eoutln!("{WARN} skills corpus not present at {root} — NOT checked");
         return None;
     }
     // At --staged, the corpus AS THE INDEX HOLDS IT (see index_view).
@@ -195,7 +200,7 @@ pub fn step_corpus(repo: &std::path::Path, cfg: &gatesrc::Gatesrc, staged: bool)
         None => crate::skills::DEFAULT_MAX_WORDS,
         Some(raw) => {
             let Ok(n) = raw.parse() else {
-                eprintln!("✗ [skills_corpus] bad GOH_SKILLS_MAX_WORDS value: {raw:?}");
+                goh_tui::eoutln!("{ERR} [skills_corpus] bad GOH_SKILLS_MAX_WORDS value: {raw:?}");
                 return Some(2);
             };
             n
@@ -269,7 +274,7 @@ pub fn step_home_paths(
     let exclude = match compile_exclude(&cfg.exclude) {
         Ok(filter) => filter,
         Err(message) => {
-            eprintln!("✗ [no_home_paths] {message}");
+            goh_tui::eoutln!("{ERR} [no_home_paths] {message}");
             return Some(2);
         }
     };

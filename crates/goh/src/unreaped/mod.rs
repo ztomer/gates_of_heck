@@ -19,6 +19,7 @@ pub mod mask;
 pub mod pysh;
 pub mod rust_rules;
 
+use goh_tui::{ERR, OK, START};
 use std::collections::BTreeMap;
 use std::fmt::Write as _;
 use std::path::Path;
@@ -183,12 +184,13 @@ pub fn scan(
 pub fn report(outcome: &Outcome) -> (i32, String) {
     let mut s = String::new();
     if outcome.examined == 0 {
-        s.push_str(
-            "✓ [no_unreaped_spawn] not applicable — this repo has no test source in scope\n",
+        let _ = writeln!(
+            s,
+            "{OK} [no_unreaped_spawn] not applicable — this repo has no test source in scope"
         );
         let _ = writeln!(
             s,
-            "→   looked for {}/, test_* / *_test names, *.bats, and #[cfg(test)]",
+            "{START}   looked for {}/, test_* / *_test names, *.bats, and #[cfg(test)]",
             TEST_DIRS.join(", ")
         );
         return (0, s);
@@ -196,11 +198,11 @@ pub fn report(outcome: &Outcome) -> (i32, String) {
     if !outcome.findings.is_empty() {
         let _ = writeln!(
             s,
-            "✗ [no_unreaped_spawn] {} unreaped spawn(s) in test sources:",
+            "{ERR} [no_unreaped_spawn] {} unreaped spawn(s) in test sources:",
             outcome.findings.len()
         );
         for hit in outcome.findings.iter().take(MAX_SHOWN) {
-            let _ = writeln!(s, "✗     {hit}");
+            let _ = writeln!(s, "{ERR}     {hit}");
         }
         for line in [
             "The only shape that survives a panic is a GUARD: wrap the Child in a ReapOnDrop whose",
@@ -211,7 +213,7 @@ pub fn report(outcome: &Outcome) -> (i32, String) {
             "nothing at all). A gate with no ceiling on its own wait is the other half: see",
             "lib/bounded_run.py and GOH_LCI_TIMEOUT / GOH_STEP_TIMEOUT.",
         ] {
-            let _ = writeln!(s, "→ {line}");
+            let _ = writeln!(s, "{START} {line}");
         }
         return (1, s);
     }
@@ -223,7 +225,7 @@ pub fn report(outcome: &Outcome) -> (i32, String) {
         .join("; ");
     let _ = write!(
         s,
-        "✓ [no_unreaped_spawn] OK — {} test file(s), every spawned child reaped on a panic",
+        "{OK} [no_unreaped_spawn] OK — {} test file(s), every spawned child reaped on a panic",
         outcome.examined
     );
     if !tail.is_empty() {
@@ -248,8 +250,8 @@ pub fn verdicts_json(found: &[Verdict]) -> String {
 
 fn run_scan(staged: bool, exclude: &str) -> Result<(i32, String), (i32, String)> {
     let filter = crate::steps::compile_exclude(exclude)
-        .map_err(|m| (2, format!("✗ [no_unreaped_spawn] {m}\n")))?;
-    let scanner = Scanner::new().map_err(|m| (2, format!("✗ [no_unreaped_spawn] {m}\n")))?;
+        .map_err(|m| (2, format!("{ERR} [no_unreaped_spawn] {m}\n")))?;
+    let scanner = Scanner::new().map_err(|m| (2, format!("{ERR} [no_unreaped_spawn] {m}\n")))?;
     let root = crate::gitutil::repo_root().map_or_else(
         || std::env::current_dir().unwrap_or_default(),
         std::path::PathBuf::from,
@@ -258,14 +260,17 @@ fn run_scan(staged: bool, exclude: &str) -> Result<(i32, String), (i32, String)>
         (
             2,
             format!(
-                "✗ [no_unreaped_spawn] {m}\n→ A git call that FAILS is not an empty tree. Fix the index, or the gate is not running.\n"
+                "{ERR} [no_unreaped_spawn] {m}\n{START} A git call that FAILS is not an empty tree. Fix the index, or the gate is not running.\n"
             ),
         )
     })?;
     let outcome = scan(&scanner, &root, &listed, staged, filter.as_ref());
     let errors = scanner.errors();
     if !errors.is_empty() {
-        return Err((2, format!("✗ [no_unreaped_spawn] {}\n", errors.join("; "))));
+        return Err((
+            2,
+            format!("{ERR} [no_unreaped_spawn] {}\n", errors.join("; ")),
+        ));
     }
     Ok(report(&outcome))
 }
@@ -277,30 +282,30 @@ pub fn run_command(staged: bool, exclude: &str, verdicts: Option<&str>) -> i32 {
     if let Some(ext) = verdicts {
         let mut text = String::new();
         if std::io::Read::read_to_string(&mut std::io::stdin(), &mut text).is_err() {
-            eprintln!("✗ [no_unreaped_spawn] stdin is not UTF-8 text");
+            goh_tui::eoutln!("{ERR} [no_unreaped_spawn] stdin is not UTF-8 text");
             return 2;
         }
         let scanner = match Scanner::new() {
             Ok(s) => s,
             Err(m) => {
-                eprintln!("✗ [no_unreaped_spawn] {m}");
+                goh_tui::eoutln!("{ERR} [no_unreaped_spawn] {m}");
                 return 2;
             }
         };
         let Some(found) = scanner.verdicts(&text, ext.trim_start_matches('.')) else {
-            eprintln!("✗ [no_unreaped_spawn] no rules for extension {ext:?}");
+            goh_tui::eoutln!("{ERR} [no_unreaped_spawn] no rules for extension {ext:?}");
             return 2;
         };
         let errors = scanner.errors();
         if !errors.is_empty() {
-            eprintln!("✗ [no_unreaped_spawn] {}", errors.join("; "));
+            goh_tui::eoutln!("{ERR} [no_unreaped_spawn] {}", errors.join("; "));
             return 2;
         }
         println!("{}", verdicts_json(&found));
         return 0;
     }
     let (code, text) = run_scan(staged, exclude).unwrap_or_else(|e| e);
-    print!("{text}");
+    goh_tui::out(&text);
     code
 }
 

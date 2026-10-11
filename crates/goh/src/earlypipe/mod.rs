@@ -32,6 +32,7 @@ pub mod lex;
 pub mod scan;
 pub mod subst;
 
+use goh_tui::{ERR, OK, WARN};
 use std::fmt::Write as _;
 use std::path::Path;
 
@@ -138,7 +139,7 @@ fn listing(hits: &[(String, Vec<Finding>)], mark: &str) -> String {
 
 fn report(hits: &[(String, Vec<Finding>)], what: &str) -> String {
     let n: usize = hits.iter().map(|h| h.1.len()).sum();
-    let mut s = format!("✗ {TAG} {n} early-exit consumer(s) reading a pipe ({what}):\n");
+    let mut s = format!("{ERR} {TAG} {n} early-exit consumer(s) reading a pipe ({what}):\n");
     s.push_str(&listing(hits, "    "));
     s.push_str(
         "    The consumer exits before EOF; the producer's next write dies of SIGPIPE (141) and\n    \
@@ -160,14 +161,14 @@ fn judge(
 ) -> (i32, String, String) {
     let exclude = match crate::steps::compile_exclude(exclude) {
         Ok(x) => x,
-        Err(m) => return (2, String::new(), format!("✗ {TAG} {m}\n")),
+        Err(m) => return (2, String::new(), format!("{ERR} {TAG} {m}\n")),
     };
     let (hits, checked) = scan_files(root, files, exclude.as_ref(), staged);
     let scope = if staged { "staged" } else { "tracked" };
     if hits.is_empty() {
         return (
             0,
-            format!("✓ {TAG} OK — {checked} {scope} shell source(s), no early-exit pipe\n"),
+            format!("{OK} {TAG} OK — {checked} {scope} shell source(s), no early-exit pipe\n"),
             String::new(),
         );
     }
@@ -177,7 +178,7 @@ fn judge(
     if staged {
         let (new, old) = split_new(root, hits);
         let note = if old > 0 {
-            format!("⚠ {TAG} {old} early-exit pipe(s) in staged files predate this commit (fix them while you are there)\n")
+            format!("{WARN} {TAG} {old} early-exit pipe(s) in staged files predate this commit (fix them while you are there)\n")
         } else {
             String::new()
         };
@@ -186,10 +187,10 @@ fn judge(
         }
         return (1, String::new(), report(&new, "NEW in this commit") + &note);
     }
-    let mut warn = listing(&hits, &format!("⚠ {TAG} "));
+    let mut warn = listing(&hits, &format!("{WARN} {TAG} "));
     let _ = writeln!(
         warn,
-        "⚠ {TAG} named, not failed: a NEW one is refused at commit; {OPT_IN}=1 fails them all"
+        "{WARN} {TAG} named, not failed: a NEW one is refused at commit; {OPT_IN}=1 fails them all"
     );
     (0, String::new(), warn)
 }
@@ -198,19 +199,19 @@ fn judge(
 #[must_use]
 pub fn run_command(staged: bool, exclude: &str) -> i32 {
     let Some(root) = crate::gitutil::repo_root().map(std::path::PathBuf::from) else {
-        eprintln!("✗ {TAG} not a git repository");
+        goh_tui::eoutln!("{ERR} {TAG} not a git repository");
         return 2;
     };
     let files = match crate::gitutil::listed_files(&root, staged) {
         Ok(f) => f,
         Err(m) => {
-            eprintln!("✗ {TAG} {m}");
+            goh_tui::eoutln!("{ERR} {TAG} {m}");
             return 2;
         }
     };
     let (code, out, err) = judge(&root, &files, exclude, staged, true);
-    print!("{out}");
-    eprint!("{err}");
+    goh_tui::out(&out);
+    goh_tui::eout(&err);
     code
 }
 
@@ -231,7 +232,7 @@ pub fn step(
     let strict = crate::gatesrc::opt_in(cfg, "GOH_NO_EARLY_EXIT_PIPE");
     match judge(repo, files, &cfg.exclude, staged, strict) {
         (0, _, warn) => {
-            eprint!("{warn}");
+            goh_tui::eout(&warn);
             crate::step_report::ok(label, start);
             None
         }

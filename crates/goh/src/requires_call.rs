@@ -24,7 +24,9 @@
 //! no longer calls X, or now calls Y. A rule that finds nothing to judge -- no file calls X, or no
 //! file matches -- is a floor (exit 2), never a pass: the pattern moved.
 
+use goh_tui::{ERR, OK};
 use std::collections::BTreeMap;
+use std::fmt::Write as _;
 use std::path::Path;
 
 use crate::requires_call_py::{calls, Site, Spec};
@@ -244,8 +246,8 @@ pub fn run(rules: Option<&str>, root: Option<&str>) -> i32 {
             .and_then(|c| c.requires_call)
     });
     let Some(rules) = rules else {
-        eprintln!(
-            "✗ [requires_call] no rules: set GOH_REQUIRES_CALL in .gatesrc, or pass --rules FILE"
+        goh_tui::eoutln!(
+            "{ERR} [requires_call] no rules: set GOH_REQUIRES_CALL in .gatesrc, or pass --rules FILE"
         );
         return 2;
     };
@@ -258,10 +260,10 @@ pub fn run(rules: Option<&str>, root: Option<&str>) -> i32 {
 pub fn check(root: &Path, rules_path: &str, staged: bool) -> i32 {
     let (code, good, bad) = evaluate(root, rules_path, staged);
     for line in &good {
-        println!("✓ [requires_call] {line}");
+        goh_tui::outln!("{OK} [requires_call] {line}");
     }
     for line in &bad {
-        eprintln!("✗ [requires_call] {line}");
+        goh_tui::eoutln!("{ERR} [requires_call] {line}");
     }
     code
 }
@@ -338,7 +340,7 @@ pub fn step(repo: &Path, cfg: &crate::gatesrc::Gatesrc, staged: bool) -> Option<
         }
         (code, _, bad) => {
             let text = bad.iter().fold(String::new(), |mut acc, l| {
-                acc.push_str("✗ [requires_call] ");
+                let _ = write!(acc, "{ERR} [requires_call] ");
                 acc.push_str(l);
                 acc.push('\n');
                 acc

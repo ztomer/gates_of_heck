@@ -17,6 +17,7 @@
 //! Entries are one JSON object per line, so a file holds `SHARD` of them under the line cap; past
 //! that the seed writes `subprocess_stdin_allow.d/seed-NN.json` shards instead of one file.
 
+use goh_tui::{ERR, OK, START};
 use std::fmt::Write as _;
 use std::path::Path;
 
@@ -129,12 +130,12 @@ fn write(root: &Path, entries: &[Seeded]) -> Result<Vec<String>, String> {
 #[must_use]
 pub fn run(root: &Path, listed: &[String], files: &[String]) -> (i32, String) {
     match crate::gitutil::uncommitted(root, &["*.py", "*.PY"]) {
-        Err(m) => return (2, format!("✗ {TAG} {m}\n")),
+        Err(m) => return (2, format!("{ERR} {TAG} {m}\n")),
         Ok(dirty) if !dirty.is_empty() => {
             return (
                 1,
                 format!(
-                    "✗ {TAG} refusing to seed over uncommitted Python ({}): commit the code first, \
+                    "{ERR} {TAG} refusing to seed over uncommitted Python ({}): commit the code first, \
                      then seed in a commit of its own, so no change is exempted by the commit that \
                      makes it\n",
                     dirty.join(", ")
@@ -147,25 +148,25 @@ pub fn run(root: &Path, listed: &[String], files: &[String]) -> (i32, String) {
     if !problems.is_empty() {
         let mut s = String::new();
         for p in &problems {
-            let _ = writeln!(s, "✗ {TAG} {p}");
+            let _ = writeln!(s, "{ERR} {TAG} {p}");
         }
-        let _ = writeln!(s, "→ fix the allowlist first: a seed over one it cannot read would lose its reviewed entries");
+        let _ = writeln!(s, "{START} fix the allowlist first: a seed over one it cannot read would lose its reviewed entries");
         return (1, s);
     }
     let outcome = super::scan(root, listed, files, false);
     if let Some((path, why)) = outcome.unreadable.first() {
         return (
             1,
-            format!("✗ {TAG} {path} is not Python this check can read: {why}\n"),
+            format!("{ERR} {TAG} {path} is not Python this check can read: {why}\n"),
         );
     }
     let (seeded, kept, added, dropped) = plan(&outcome.findings, &entries);
     match write(root, &seeded) {
-        Err(m) => (2, format!("✗ {TAG} cannot write the allowlist: {m}\n")),
+        Err(m) => (2, format!("{ERR} {TAG} cannot write the allowlist: {m}\n")),
         Ok(files) => (
             0,
             format!(
-                "✓ {TAG} seeded {}: {} entr(ies) -- {kept} kept as written, {added} new and \
+                "{OK} {TAG} seeded {}: {} entr(ies) -- {kept} kept as written, {added} new and \
                  'unreviewed', {dropped} dropped as stale; {} process call(s) seen in {} file(s)\n",
                 files.join(", "),
                 seeded.len(),

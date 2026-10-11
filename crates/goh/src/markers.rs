@@ -5,6 +5,8 @@
 //! end-of-line. `=======` alone is ordinary Markdown underlining, not a
 //! marker. Binary blobs (NUL in the shared scan window) are skipped.
 
+use goh_tui::ERR;
+
 /// One marker sighting.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Violation {
@@ -116,7 +118,7 @@ pub fn format_report(bad: &[Violation]) -> String {
         let line = format!("    {}:{}: {}\n", hit.path, hit.line_no, hit.text);
         shown.push_str(&line);
     }
-    format!("✗ [no_conflict_markers] merge conflict markers found:\n{shown}")
+    format!("{ERR} [no_conflict_markers] merge conflict markers found:\n{shown}")
 }
 
 #[cfg(test)]

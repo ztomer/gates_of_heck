@@ -7,6 +7,7 @@
 //! clean is stale; a corrupt seed is an error, never an empty seed. Written once, so a third check
 //! of this shape inherits every direction instead of re-deriving four of them.
 
+use goh_tui::{ERR, OK, START};
 use std::collections::BTreeMap;
 use std::fmt::Write as _;
 use std::path::Path;
@@ -62,7 +63,7 @@ pub fn judge<F>(
     if scanned.listed > 0 && scanned.read == 0 {
         let _ = writeln!(
             s,
-            "✗ {tag} this repo lists {} {noun} and the check read NONE of them: an exclusion \
+            "{ERR} {tag} this repo lists {} {noun} and the check read NONE of them: an exclusion \
              that removes the whole subject passes over nothing -- narrow it",
             scanned.listed
         );
@@ -70,7 +71,10 @@ pub fn judge<F>(
     }
     let mut red = false;
     for (path, why) in &scanned.unreadable {
-        let _ = writeln!(s, "✗ {tag} {path} is not a file this check can read: {why}");
+        let _ = writeln!(
+            s,
+            "{ERR} {tag} {path} is not a file this check can read: {why}"
+        );
         red = true;
     }
     for (path, sites) in &scanned.found {
@@ -78,7 +82,7 @@ pub fn judge<F>(
         if sites.len() > allowed {
             red = true;
             for f in sites {
-                let _ = writeln!(s, "✗ {tag} {path}:{}", site(f));
+                let _ = writeln!(s, "{ERR} {tag} {path}:{}", site(f));
             }
             if allowed > 0 {
                 let _ = writeln!(
@@ -95,7 +99,7 @@ pub fn judge<F>(
             red = true;
             let _ = writeln!(
                 s,
-                "✗ {tag} {path} is seeded with {allowed} and has {has}: lower the seed \
+                "{ERR} {tag} {path} is seeded with {allowed} and has {has}: lower the seed \
                  ({}), so a fixed site leaves no room for a new one",
                 spec.reseed
             );
@@ -103,12 +107,12 @@ pub fn judge<F>(
     }
     let total: usize = scanned.found.values().map(Vec::len).sum();
     if red {
-        let _ = writeln!(s, "→ {tag} read {} {noun}", scanned.read);
+        let _ = writeln!(s, "{START} {tag} read {} {noun}", scanned.read);
         return (1, s);
     }
     let _ = writeln!(
         s,
-        "✓ {tag} {}: {} {noun} read, {total} seeded",
+        "{OK} {tag} {}: {} {noun} read, {total} seeded",
         spec.clean, scanned.read
     );
     (0, s)
@@ -200,14 +204,14 @@ pub fn run<F>(
     let listed = match crate::gitutil::listed_files(&root, false) {
         Ok(l) => l,
         Err(m) => {
-            eprintln!("✗ {tag} {m}");
+            goh_tui::eoutln!("{ERR} {tag} {m}");
             return 2;
         }
     };
     let filter = match crate::steps::compile_exclude(exclude) {
         Ok(f) => f,
         Err(m) => {
-            eprintln!("✗ {tag} {m}");
+            goh_tui::eoutln!("{ERR} {tag} {m}");
             return 2;
         }
     };
@@ -222,12 +226,12 @@ pub fn run<F>(
     };
     if seed {
         if let Err(e) = std::fs::write(root.join(spec.file), seed_text(spec, &scanned)) {
-            eprintln!("✗ {tag} cannot write {}: {e}", spec.file);
+            goh_tui::eoutln!("{ERR} {tag} cannot write {}: {e}", spec.file);
             return 2;
         }
         let total: usize = scanned.found.values().map(Vec::len).sum();
-        println!(
-            "✓ {tag} seeded {}: {total} site(s) in {} file(s), of {} read",
+        goh_tui::outln!(
+            "{OK} {tag} seeded {}: {total} site(s) in {} file(s), of {} read",
             spec.file,
             scanned.found.len(),
             scanned.read
@@ -237,11 +241,11 @@ pub fn run<F>(
     let seeded = match load_seed(spec, &root) {
         Ok(s) => s,
         Err(m) => {
-            eprintln!("✗ {tag} {m}");
+            goh_tui::eoutln!("{ERR} {tag} {m}");
             return 2;
         }
     };
     let (code, text) = judge(spec, &scanned, &seeded, site);
-    print!("{text}");
+    goh_tui::out(&text);
     code
 }

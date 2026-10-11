@@ -470,6 +470,7 @@ dependencies = [
  "goh-golden",
  "goh-sys",
  "goh-testkit",
+ "goh-tui",
  "num-traits",
  "png",
  "regex",
@@ -508,6 +509,10 @@ version = "0.26.0"
 dependencies = [
  "tempfile",
 ]
+
+[[package]]
+name = "goh-tui"
+version = "0.26.0"
 
 [[package]]
 name = "hashbrown"

@@ -81,6 +81,7 @@ pub mod vendored;
 pub mod verdict_cache;
 pub mod versrc;
 
+use goh_tui::ERR;
 use std::path::PathBuf;
 
 use clap::Parser;
@@ -103,7 +104,7 @@ pub(crate) fn goh_root() -> PathBuf {
 fn main() {
     let (os, arch) = platform::current();
     if let Err(reason) = platform::check(&os, &arch) {
-        eprintln!("✗ {reason}");
+        goh_tui::eoutln!("{ERR} {reason}");
         std::process::exit(1);
     }
     let cli = Cli::parse();
@@ -207,7 +208,7 @@ fn run_core(command: Commands) -> i32 {
             baseline,
         } => commands::run_ceiling(max, &line_exclude, &unbounded, baseline.as_deref()),
         other => {
-            eprintln!("✗ goh: {other:?} has no runner");
+            goh_tui::eoutln!("{ERR} goh: {other:?} has no runner");
             2
         }
     }
@@ -222,7 +223,7 @@ fn declared(
     which: gatesrc::Exempt,
 ) -> Result<String, i32> {
     gatesrc::declared_exclude(flag, root.map(std::path::Path::new), which).map_err(|message| {
-        eprintln!("✗ goh: {message}");
+        goh_tui::eoutln!("{ERR} goh: {message}");
         2
     })
 }

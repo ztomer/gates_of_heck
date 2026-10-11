@@ -15,6 +15,7 @@ pub mod cratesio;
 pub mod semver;
 pub mod tree;
 
+use goh_tui::{ERR, OK, STEP, WARN};
 use std::fmt::Write as _;
 use std::path::{Path, PathBuf};
 
@@ -319,7 +320,7 @@ fn report(rep: &Report, root: &Path, offline: bool, strict: bool, json: bool) ->
             let doc = serde_json::json!({ "examined": 0, "not_applicable": msg, "fatal": [] });
             return (0, format!("{}\n", crate::pyjson::dumps_indent2(&doc)));
         }
-        return (0, format!("· {msg}\n"));
+        return (0, format!("{STEP} {msg}\n"));
     }
     let by = |sev: &str| {
         rep.findings
@@ -352,38 +353,41 @@ fn report(rep: &Report, root: &Path, offline: bool, strict: bool, json: bool) ->
         return (code, format!("{}\n", crate::pyjson::dumps_indent2(&doc)));
     }
     let mut s = format!(
-        "· {} manifest(s), {} direct dependency declaration(s) examined\n",
+        "{STEP} {} manifest(s), {} direct dependency declaration(s) examined\n",
         rep.manifests_seen, rep.examined
     );
     for f in &fatal {
         let _ = writeln!(
             s,
-            "✗ [{}] {}: {}  ({})",
+            "{ERR} [{}] {}: {}  ({})",
             f.severity, f.name, f.detail, f.place
         );
     }
     for f in &majors {
         let _ = writeln!(
             s,
-            "⚠ [major behind] {}: {}  ({})",
+            "{WARN} [major behind] {}: {}  ({})",
             f.name, f.detail, f.place
         );
     }
     for f in &minors {
-        let _ = writeln!(s, "· [drift] {}: {}  ({})", f.name, f.detail, f.place);
+        let _ = writeln!(s, "{STEP} [drift] {}: {}  ({})", f.name, f.detail, f.place);
     }
     let mut seen: Vec<&String> = Vec::new();
     for n in &rep.notes {
         if !seen.contains(&n) {
             seen.push(n);
-            let _ = writeln!(s, "⚠ {n}");
+            let _ = writeln!(s, "{WARN} {n}");
         }
     }
     if !rep.checked_currency && !offline {
-        s.push_str("⚠ currency NOT fully checked — this is not a clean bill\n");
+        let _ = writeln!(
+            s,
+            "{WARN} currency NOT fully checked — this is not a clean bill"
+        );
     }
     if fatal.is_empty() {
-        s.push_str("\n✓ no dependency pinned below the graph\n");
+        let _ = writeln!(s, "\n{OK} no dependency pinned below the graph");
         if !majors.is_empty() {
             let _ = writeln!(
                 s,
@@ -392,7 +396,7 @@ fn report(rep: &Report, root: &Path, offline: bool, strict: bool, json: bool) ->
             );
         }
     } else {
-        let _ = writeln!(s, "\n✗ dependency currency: {} finding(s)", fatal.len());
+        let _ = writeln!(s, "\n{ERR} dependency currency: {} finding(s)", fatal.len());
     }
     (code, s)
 }
@@ -419,13 +423,13 @@ pub fn run_command(
         Some(file) => match std::fs::read_to_string(file) {
             Ok(text) => Some(parse_ratchet(&text, file)),
             Err(e) => {
-                eprintln!("✗ [dep_currency] cannot read the ratchet {file}: {e}");
+                goh_tui::eoutln!("{ERR} [dep_currency] cannot read the ratchet {file}: {e}");
                 return 2;
             }
         },
     };
     let rep = run(&root, offline, triaged.as_deref());
     let (code, out) = report(&rep, &root, offline, strict, json);
-    print!("{out}");
+    goh_tui::out(&out);
     code
 }

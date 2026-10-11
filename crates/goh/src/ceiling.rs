@@ -7,6 +7,7 @@
 //! carries a ceiling in the ratchet baseline — an exemption from the cap
 //! is not an exemption from every bound.
 
+use goh_tui::{ERR, OK, START, WARN};
 use std::collections::BTreeSet;
 use std::fmt::Write as _;
 
@@ -107,20 +108,20 @@ pub fn format_ceiling(
 ) -> (bool, String, String) {
     if !offenders.is_empty() {
         let err = format!(
-            "✗ [ceiling] {} file(s) exempt from the cap with NO ceiling\n",
+            "{ERR} [ceiling] {} file(s) exempt from the cap with NO ceiling\n",
             offenders.len()
         );
         let mut out = String::new();
         for hit in offenders {
             let _ = writeln!(
                 out,
-                "→ {} ({} lines) is in GOH_LINE_EXCLUDE, so the {max}-line cap does not apply, and is absent from {baseline_name}, so no ratchet ceiling applies either. It can grow without limit.",
+                "{START} {} ({} lines) is in GOH_LINE_EXCLUDE, so the {max}-line cap does not apply, and is absent from {baseline_name}, so no ratchet ceiling applies either. It can grow without limit.",
                 hit.path, hit.lines
             );
         }
         let _ = writeln!(
             out,
-            "→ Fix: split it, or add '{} {}' to {baseline_name}.",
+            "{START} Fix: split it, or add '{} {}' to {baseline_name}.",
             offenders[0].lines, offenders[0].path
         );
         return (false, out, err);
@@ -128,17 +129,15 @@ pub fn format_ceiling(
     if unbounded_active && waived == 0 {
         return (
             false,
-            "→     nothing. Prune it, or fix the pattern; a waiver for material\n→     that is gone reads exactly like one that is doing its job.\n"
-                .to_owned(),
-            "✗ [ceiling] GOH_LINE_UNBOUNDED matched 0 tracked files — it waives\n".to_owned(),
+            format!("{START}     nothing. Prune it, or fix the pattern; a waiver for material\n{START}     that is gone reads exactly like one that is doing its job.\n"),
+            format!("{ERR} [ceiling] GOH_LINE_UNBOUNDED matched 0 tracked files — it waives\n"),
         );
     }
     if inspected == 0 && waived == 0 {
         return (
             false,
-            "→     list names paths that no longer exist. Prune it; an exemption for\n→     a file that is gone is indistinguishable from one that is working.\n"
-                .to_owned(),
-            "✗ [ceiling] GOH_LINE_EXCLUDE matched 0 tracked files — the exemption\n".to_owned(),
+            format!("{START}     list names paths that no longer exist. Prune it; an exemption for\n{START}     a file that is gone is indistinguishable from one that is working.\n"),
+            format!("{ERR} [ceiling] GOH_LINE_EXCLUDE matched 0 tracked files — the exemption\n"),
         );
     }
     let tail = if waived > 0 {
@@ -149,7 +148,7 @@ pub fn format_ceiling(
     (
         true,
         format!(
-            "✓ [ceiling] OK — {inspected} exempt file(s), each under the cap or carrying a ceiling{tail}\n"
+            "{OK} [ceiling] OK — {inspected} exempt file(s), each under the cap or carrying a ceiling{tail}\n"
         ),
         String::new(),
     )
@@ -199,8 +198,7 @@ pub fn run_exclusion(
             return CheckOutcome::Skipped;
         }
         return CheckOutcome::Warn(
-            "⚠ GOH_LINE_EXCLUDE is set but GOH_LINE_BASELINE is not — an exempted file\n⚠   is bounded by nothing. Point GOH_LINE_BASELINE at the ratchet baseline.\n"
-                .to_owned(),
+            format!("{WARN} GOH_LINE_EXCLUDE is set but GOH_LINE_BASELINE is not — an exempted file\n{WARN}   is bounded by nothing. Point GOH_LINE_BASELINE at the ratchet baseline.\n"),
         );
     };
     let baseline_path = root.join(baseline_name);
@@ -209,7 +207,7 @@ pub fn run_exclusion(
             code: 2,
             out: String::new(),
             err: format!(
-                "✗ [ceiling] baseline {baseline_name} not found — fix GOH_LINE_BASELINE\n"
+                "{ERR} [ceiling] baseline {baseline_name} not found — fix GOH_LINE_BASELINE\n"
             ),
         };
     }
@@ -217,8 +215,7 @@ pub fn run_exclusion(
         return CheckOutcome::Ran {
             code: 0,
             out:
-                "✓ [ceiling] OK — no GOH_LINE_EXCLUDE entries, so nothing is exempt from the cap\n"
-                    .to_owned(),
+                format!("{OK} [ceiling] OK — no GOH_LINE_EXCLUDE entries, so nothing is exempt from the cap\n"),
             err: String::new(),
         };
     }
@@ -228,7 +225,7 @@ pub fn run_exclusion(
             return CheckOutcome::Ran {
                 code: 2,
                 out: String::new(),
-                err: format!("✗ [ceiling] bad GOH_LINE_EXCLUDE regex: {e}\n"),
+                err: format!("{ERR} [ceiling] bad GOH_LINE_EXCLUDE regex: {e}\n"),
             };
         }
     };
@@ -241,7 +238,7 @@ pub fn run_exclusion(
                 return CheckOutcome::Ran {
                     code: 2,
                     out: String::new(),
-                    err: format!("✗ [ceiling] bad GOH_LINE_UNBOUNDED regex: {e}\n"),
+                    err: format!("{ERR} [ceiling] bad GOH_LINE_UNBOUNDED regex: {e}\n"),
                 };
             }
         }
@@ -282,7 +279,7 @@ pub fn run_ratchet(root: &std::path::Path, line_baseline: Option<&str>) -> Check
         Err(message) => CheckOutcome::Ran {
             code: 2,
             out: String::new(),
-            err: format!("✗ [ratchet] precondition missing: {message}\n"),
+            err: format!("{ERR} [ratchet] precondition missing: {message}\n"),
         },
         Ok(baseline) => {
             let current = measure_loc(root, &baseline);

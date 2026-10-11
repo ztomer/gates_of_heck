@@ -8,6 +8,7 @@
 //! arm 2 compares the release version a source OUTSIDE the manifests declares
 //! (`GOH_TAG_VERSION_SOURCES`) with what the members declare and lock.
 
+use goh_tui::{ERR, OK, START};
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 
@@ -382,7 +383,7 @@ fn run(root: Option<&str>, json: bool) -> (i32, Vec<(bool, String)>) {
             2,
             vec![(
                 true,
-                format!("✗ [lock_version] not a directory: {}", root.display()),
+                format!("{ERR} [lock_version] not a directory: {}", root.display()),
             )],
         );
     }
@@ -392,7 +393,7 @@ fn run(root: Option<&str>, json: bool) -> (i32, Vec<(bool, String)>) {
         .unwrap_or_else(|| crate::versrc::DEFAULT_SOURCES.join(" "));
     let (findings, examined, notes) = match audit(&root, &spec) {
         Ok(v) => v,
-        Err(e) => return (2, vec![(true, format!("✗ [lock_version] {e}"))]),
+        Err(e) => return (2, vec![(true, format!("{ERR} [lock_version] {e}"))]),
     };
     if json {
         let doc = serde_json::json!({ "findings": findings, "examined": examined, "notes": notes });
@@ -403,18 +404,18 @@ fn run(root: Option<&str>, json: bool) -> (i32, Vec<(bool, String)>) {
     }
     let mut lines: Vec<(bool, String)> = notes
         .iter()
-        .map(|n| (false, format!("→ [lock_version] {n}")))
+        .map(|n| (false, format!("{START} [lock_version] {n}")))
         .collect();
     lines.extend(
         findings
             .iter()
-            .map(|f| (true, format!("✗ [lock_version] {f}"))),
+            .map(|f| (true, format!("{ERR} [lock_version] {f}"))),
     );
     if !findings.is_empty() {
         lines.push((
             true,
             format!(
-                "✗ --- {} finding(s): Cargo.lock disagrees with the manifest ---",
+                "{ERR} --- {} finding(s): Cargo.lock disagrees with the manifest ---",
                 findings.len()
             ),
         ));
@@ -423,13 +424,13 @@ fn run(root: Option<&str>, json: bool) -> (i32, Vec<(bool, String)>) {
     if examined == 0 {
         lines.push((
             false,
-            "→ [lock_version] no workspace crate compared — not applicable".to_owned(),
+            format!("{START} [lock_version] no workspace crate compared — not applicable"),
         ));
         return (0, lines);
     }
     lines.push((
         false,
-        format!("✓ [lock_version] OK — {examined} workspace crate(s) agree between Cargo.toml and Cargo.lock"),
+        format!("{OK} [lock_version] OK — {examined} workspace crate(s) agree between Cargo.toml and Cargo.lock"),
     ));
     (0, lines)
 }
@@ -440,9 +441,9 @@ pub fn run_command(root: Option<&str>, json: bool) -> i32 {
     let (code, lines) = run(root, json);
     for (to_err, line) in lines {
         if to_err {
-            eprintln!("{line}");
+            goh_tui::eoutln(&line);
         } else {
-            println!("{line}");
+            goh_tui::outln(&line);
         }
     }
     code

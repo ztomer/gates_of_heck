@@ -6,6 +6,7 @@ use crate::{
     hookindex, killname, lockver, mdlinks, prefetch, provenance, pyformat, scope, shell_lint,
     steps, steps_delegated, steps_rust, substdin, unreaped, vendored,
 };
+use goh_tui::{ERR, OK};
 
 mod trackedignored;
 
@@ -41,7 +42,7 @@ pub fn run(staged: bool, full: bool) -> i32 {
     let scope = match scope::resolve(staged, full) {
         Ok(scope) => scope,
         Err(message) => {
-            eprintln!("✗ {message}");
+            goh_tui::eoutln!("{ERR} {message}");
             return 2;
         }
     };
@@ -51,7 +52,7 @@ pub fn run(staged: bool, full: bool) -> i32 {
     let cfg = match gatesrc::load(&repo) {
         Ok(cfg) => cfg,
         Err(message) => {
-            eprintln!("✗ structural: {message}");
+            goh_tui::eoutln!("{ERR} structural: {message}");
             return 2;
         }
     };
@@ -66,7 +67,7 @@ pub fn run(staged: bool, full: bool) -> i32 {
     let files = match gitutil::listed_files(&repo, staged) {
         Ok(files) => files,
         Err(message) => {
-            eprintln!("✗ structural: {message}");
+            goh_tui::eoutln!("{ERR} structural: {message}");
             return 2;
         }
     };
@@ -142,7 +143,7 @@ pub fn run(staged: bool, full: bool) -> i32 {
     }
 
     println!();
-    println!("✓ all structural gates passed");
+    goh_tui::outln!("{OK} all structural gates passed");
     0
 }
 

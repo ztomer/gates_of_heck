@@ -24,7 +24,7 @@ const SPEC: Spec = Spec {
     reseed: "goh status-markers --seed",
     clean: "no new hand-rolled status marker or colour escape",
     why: "hand-rolled status markers and colour escapes when this repo adopted goh \
-          status-markers; a count may only fall -- print through tui/lib.sh or tui.lib \
+          status-markers; a count may only fall -- print through tui/lib.sh, tui.lib or goh-tui \
           (gates_of_heck BACKLOG 4.9)",
 };
 
@@ -39,8 +39,9 @@ pub type Scanned = seedcount::Scanned<scan::Finding>;
 
 fn site(f: &scan::Finding) -> String {
     format!(
-        "{}: {}: print through tui/lib.sh or tui.lib (info/ok/err/warn), which owns the icons, \
-         the colours and NO_COLOR; a language with neither prints tui/stylerc's Kare glyphs",
+        "{}: {}: print through tui/lib.sh, tui.lib or (Rust) the goh-tui crate (info/ok/err/warn), \
+         which owns the icons, the colours and NO_COLOR; a language with none prints \
+         tui/stylerc's Kare glyphs",
         f.line, f.what
     )
 }

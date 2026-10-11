@@ -11,6 +11,7 @@
 //! `.gates-version-baseline.json` may only shrink, and an entry that
 //! suppresses nothing is a finding.
 
+use goh_tui::{ERR, OK, WARN};
 use std::collections::BTreeSet;
 use std::fmt::Write as _;
 use std::path::{Path, PathBuf};
@@ -357,22 +358,23 @@ pub fn report(problems: &[String], examined: usize, json: bool) -> (i32, String)
     }
     let mut s = String::new();
     for p in problems {
-        let _ = writeln!(s, "✗ [version_provenance] {p}");
+        let _ = writeln!(s, "{ERR} [version_provenance] {p}");
     }
     if !problems.is_empty() {
         let _ = writeln!(s, "--- {} finding(s) ---", problems.len());
         return (1, s);
     }
     if examined == 0 {
-        s.push_str(
-            "⚠ [version_provenance] no version-declaring source files in scope \
-             — nothing examined (not applicable)\n",
+        let _ = writeln!(
+            s,
+            "{WARN} [version_provenance] no version-declaring source files in scope \
+             — nothing examined (not applicable)"
         );
         return (0, s);
     }
     let _ = writeln!(
         s,
-        "✓ [version_provenance] all {examined} version-declaring source file(s) \
+        "{OK} [version_provenance] all {examined} version-declaring source file(s) \
          carry a commit and a build date"
     );
     (0, s)
@@ -382,8 +384,8 @@ pub fn report(problems: &[String], examined: usize, json: bool) -> (i32, String)
 #[must_use]
 pub fn run_command(root: &str, baseline: Option<&str>, staged: bool, json: bool) -> i32 {
     let (code, out, err) = run(Path::new(root), baseline, staged, json);
-    print!("{out}");
-    eprint!("{err}");
+    goh_tui::out(&out);
+    goh_tui::eout(&err);
     code
 }
 
@@ -395,7 +397,7 @@ pub fn run(root: &Path, baseline: Option<&str>, staged: bool, json: bool) -> (i3
         return (
             2,
             String::new(),
-            format!("✗ not a directory: {}\n", shown.display()),
+            format!("{ERR} not a directory: {}\n", shown.display()),
         );
     };
     let mut allow = BTreeSet::new();
@@ -406,18 +408,24 @@ pub fn run(root: &Path, baseline: Option<&str>, staged: bool, json: bool) -> (i3
                 return (
                     2,
                     String::new(),
-                    format!("✗ cannot read baseline {b}: {e}\n"),
+                    format!("{ERR} cannot read baseline {b}: {e}\n"),
                 )
             }
         }
     }
     let rules = match Rules::new() {
         Ok(r) => r,
-        Err(e) => return (2, String::new(), format!("✗ {e}\n")),
+        Err(e) => return (2, String::new(), format!("{ERR} {e}\n")),
     };
     let (problems, examined) = match check(&rules, &root, &allow, staged) {
         Ok(found) => found,
-        Err(e) => return (2, String::new(), format!("✗ [version_provenance] {e}\n")),
+        Err(e) => {
+            return (
+                2,
+                String::new(),
+                format!("{ERR} [version_provenance] {e}\n"),
+            )
+        }
     };
     let (code, out) = report(&problems, examined, json);
     (code, out, String::new())

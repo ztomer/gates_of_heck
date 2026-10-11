@@ -16,6 +16,8 @@
 //! leak; a credential in vendored code is as committed as one anywhere else. The one way past a
 //! finding is the line-level, reasoned marker above.
 
+use goh_tui::ERR;
+
 /// (kind, pattern) pairs. Mirrors `PATTERNS` in order — findings report
 /// pattern-grouped, so order is user-visible.
 pub const PATTERNS: &[(&str, &str)] = &[
@@ -171,7 +173,7 @@ pub fn format_report(bad: &[Finding], staged: bool) -> String {
         String::new()
     };
     format!(
-        "✗ DISALLOWED SECRET in {} location(s) ({scope}) — rotate the credential; revoked vectors use `secret-ok: <reason>` on the line or above:\n{shown}{overflow}",
+        "{ERR} DISALLOWED SECRET in {} location(s) ({scope}) — rotate the credential; revoked vectors use `secret-ok: <reason>` on the line or above:\n{shown}{overflow}",
         bad.len()
     )
 }

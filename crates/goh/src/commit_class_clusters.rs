@@ -11,6 +11,7 @@
 //! the ceiling of any measure of words and paths. Over the whole range it also groups repeats the
 //! author did not label, among them a class committed twice in identical words.
 
+use goh_tui::{ERR, OK, START, STEP};
 use std::collections::{BTreeMap, BTreeSet};
 
 /// Shared files that link two fixes (2 linked 25 of `ZoneWM`'s 75 classes into one group).
@@ -146,7 +147,7 @@ pub fn report(revs: &[String]) -> i32 {
     let (commits, before) = match read {
         Ok(r) => r,
         Err(e) => {
-            eprintln!("✗ [commit_class] {e}");
+            goh_tui::eoutln!("{ERR} [commit_class] {e}");
             return 2;
         }
     };
@@ -156,20 +157,20 @@ pub fn report(revs: &[String]) -> i32 {
         .collect();
     let groups = clusters(&commits, &super::frequent(&whole));
     for (n, group) in groups.iter().enumerate() {
-        println!(
-            "→ [commit_class] cluster {} ({} fixes): a hardening candidate",
+        goh_tui::outln!(
+            "{START} [commit_class] cluster {} ({} fixes): a hardening candidate",
             n + 1,
             group.len()
         );
         for &i in group {
             let c = &commits[i];
             let class = c.class.as_deref().unwrap_or("(no Class)");
-            println!("·     {} {class}", &c.sha[..c.sha.len().min(8)]);
+            goh_tui::outln!("{STEP}     {} {class}", &c.sha[..c.sha.len().min(8)]);
         }
     }
     let clustered: usize = groups.iter().map(Vec::len).sum();
-    println!(
-        "✓ [commit_class] {} commit(s), {} cluster(s) of {clustered} fix(es)",
+    goh_tui::outln!(
+        "{OK} [commit_class] {} commit(s), {} cluster(s) of {clustered} fix(es)",
         commits.len(),
         groups.len()
     );

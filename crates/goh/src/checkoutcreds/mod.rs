@@ -17,6 +17,7 @@
 
 pub mod scan;
 
+use goh_tui::{ERR, OK};
 use std::fmt::Write as _;
 use std::path::Path;
 
@@ -82,12 +83,12 @@ fn judge(root: &Path, files: &[String], staged: bool) -> (i32, String, String) {
     }
     if n == 0 {
         let ok = format!(
-            "✓ {TAG} OK — {judged} {scope} workflow/action file(s), every actions/checkout drops its token\n"
+            "{OK} {TAG} OK — {judged} {scope} workflow/action file(s), every actions/checkout drops its token\n"
         );
         return (0, ok, String::new());
     }
     let mut err =
-        format!("✗ {TAG} {n} checkout(s) that leave the job token in git config ({scope}):\n");
+        format!("{ERR} {TAG} {n} checkout(s) that leave the job token in git config ({scope}):\n");
     err.push_str(&listing);
     err.push_str(
         "    actions/checkout writes the job token into .git/config (http.<url>.extraheader) unless\n    \
@@ -105,19 +106,19 @@ fn judge(root: &Path, files: &[String], staged: bool) -> (i32, String, String) {
 #[must_use]
 pub fn run_command(staged: bool) -> i32 {
     let Some(root) = crate::gitutil::repo_root().map(std::path::PathBuf::from) else {
-        eprintln!("✗ {TAG} not a git repository");
+        goh_tui::eoutln!("{ERR} {TAG} not a git repository");
         return 2;
     };
     let files = match crate::gitutil::listed_files(&root, staged) {
         Ok(f) => f,
         Err(m) => {
-            eprintln!("✗ {TAG} {m}");
+            goh_tui::eoutln!("{ERR} {TAG} {m}");
             return 2;
         }
     };
     let (code, out, err) = judge(&root, &files, staged);
-    print!("{out}");
-    eprint!("{err}");
+    goh_tui::out(&out);
+    goh_tui::eout(&err);
     code
 }
 

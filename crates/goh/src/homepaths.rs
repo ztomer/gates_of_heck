@@ -14,6 +14,8 @@
 //! (additionally breaks on vertical tab and form feed). No tracked file
 //! relies on those as line breaks — accepted, same as the emoji port.
 
+use goh_tui::{ERR, OK};
+
 /// One home-path shape: its report name plus the unguarded match pattern.
 pub struct Shape {
     /// Report name, mirroring the reference `PATTERNS` kinds.
@@ -265,7 +267,7 @@ pub fn format_report(hits: &[Hit], staged: bool) -> String {
         String::new()
     };
     format!(
-        "✗ HARD-CODED HOME PATH in {} location(s) ({scope}) — derive it from the executable, the repo root, an env var or the bundle; a path that must stand carries `path-ok: <reason>` on the line or above:\n{shown}{overflow}",
+        "{ERR} HARD-CODED HOME PATH in {} location(s) ({scope}) — derive it from the executable, the repo root, an env var or the bundle; a path that must stand carries `path-ok: <reason>` on the line or above:\n{shown}{overflow}",
         hits.len()
     )
 }
@@ -274,7 +276,7 @@ pub fn format_report(hits: &[Hit], staged: bool) -> String {
 #[must_use]
 pub fn format_ok(checked: usize, staged: bool) -> String {
     let scope = if staged { "staged" } else { "tracked" };
-    format!("✓ [no_home_paths] OK — {checked} {scope} files clean")
+    format!("{OK} [no_home_paths] OK — {checked} {scope} files clean")
 }
 
 /// The empty-scope lines, mirroring the reference (each `print` ends the
@@ -283,11 +285,10 @@ pub fn format_ok(checked: usize, staged: bool) -> String {
 pub fn format_empty(verdict: ScopeVerdict) -> String {
     match verdict {
         ScopeVerdict::NothingStaged => {
-            "✓ [no_home_paths] nothing staged — 0 files to check\n".to_owned()
+            format!("{OK} [no_home_paths] nothing staged — 0 files to check\n")
         }
         ScopeVerdict::NothingToCheck => {
-            "✗ [no_home_paths] nothing to check (tracked) — refusing to report clean over zero files\n"
-                .to_owned()
+            format!("{ERR} [no_home_paths] nothing to check (tracked) — refusing to report clean over zero files\n")
         }
         ScopeVerdict::Violations | ScopeVerdict::Clean => String::new(),
     }

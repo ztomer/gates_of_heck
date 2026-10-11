@@ -5,6 +5,7 @@
 //! `steps.rs` when the native ports pushed it past the line cap; the steps
 //! decide, this prints.
 
+use goh_tui::{ERR, OK, STEP};
 use std::process::Command;
 use std::time::Instant;
 
@@ -57,8 +58,8 @@ fn ceiling() -> Option<u64> {
         // A typo'd ceiling must never silently leave a step UNBOUNDED, which is the defect. Named
         // and refused rather than guessed at: a wrong guess reads as a working gate.
         Some(other) => other.parse::<u64>().ok().filter(|n| *n > 0).or_else(|| {
-            eprintln!(
-                "✗ structural: GOH_STEP_TIMEOUT must be a non-negative integer of seconds \
+            goh_tui::eoutln!(
+                "{ERR} structural: GOH_STEP_TIMEOUT must be a non-negative integer of seconds \
                  (got {other:?}) — refusing to run a step with an unknown ceiling"
             );
             None
@@ -80,7 +81,7 @@ fn ceiling_suffix() -> String {
 
 /// Announce a step; returns its start time.
 pub(crate) fn begin(label: &str) -> Instant {
-    println!("· {label}{}", ceiling_suffix());
+    goh_tui::outln!("{STEP} {label}{}", ceiling_suffix());
     Instant::now()
 }
 
@@ -126,9 +127,9 @@ pub(crate) fn record_to(
 pub(crate) fn ok(label: &str, start: Instant) {
     record(label, start, 0);
     if show_time() {
-        println!("✓ {label} ({}s)", start.elapsed().as_secs());
+        goh_tui::outln!("{OK} {label} ({}s)", start.elapsed().as_secs());
     } else {
-        println!("✓ {label}");
+        goh_tui::outln!("{OK} {label}");
     }
 }
 
@@ -143,10 +144,10 @@ pub(crate) fn fail(label: &str, how: &str, report: &str, start: Instant) -> i32 
     let tail = tail_len();
     let from = lines.len().saturating_sub(tail);
     for line in &lines[from..] {
-        eprintln!("{line}");
+        goh_tui::eoutln(line);
     }
     println!();
-    eprintln!("✗ structural: {label} failed ({how})");
+    goh_tui::eoutln!("{ERR} structural: {label} failed ({how})");
     eprintln!("  → {}", docs_route());
     1
 }
