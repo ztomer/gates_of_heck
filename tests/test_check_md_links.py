@@ -409,3 +409,26 @@ def test_goh_sh_reads_the_repos_own_exclusion(tmp_path):
     )
     assert r.returncode == 0, r.stdout + r.stderr
     assert "PROTOCOL.md" not in r.stdout + r.stderr
+
+
+def test_an_exclusion_that_removes_every_markdown_file_is_red(tmp_path):
+    """Blind, not "nothing to check": every markdown file excluded is a check reading none."""
+    repo = tmp_path / "app"
+    repo.mkdir()
+    fast_init(repo, "main")
+    write(repo, "README.md", "[ok](NOTES.md)\n")
+    write(repo, "NOTES.md", "# notes\n")
+    commit_all(repo)
+    assert _run(repo).returncode == 0
+    r = _run(repo, "--exclude", r"\.md$")
+    assert r.returncode == 1, r.stdout + r.stderr
+    assert "read NONE" in r.stdout + r.stderr, r.stdout + r.stderr
+
+
+def test_a_repo_with_no_markdown_is_not_blind(tmp_path):
+    repo = tmp_path / "app"
+    repo.mkdir()
+    fast_init(repo, "main")
+    write(repo, "a.txt", "x\n")
+    commit_all(repo)
+    assert _run(repo, "--exclude", r"\.md$").returncode == 0

@@ -89,12 +89,16 @@ fn in_scope(files: &[String]) -> Vec<String> {
         .collect()
 }
 
-/// Scan the in-scope Python files. `root` reads the working tree, or the index at `staged`.
+/// Scan the Python in `files` (the listing after `GOH_EXCLUDE`); count it in `listed` (before).
+///
+/// Counted from `files`, an exclusion that removed every `.py` read as "this repo tracks no
+/// Python" and passed -- the blind case the module names. `root` reads the working tree, or the
+/// index at `staged`.
 #[must_use]
-pub fn scan(root: &Path, files: &[String], staged: bool) -> Outcome {
+pub fn scan(root: &Path, listed: &[String], files: &[String], staged: bool) -> Outcome {
     let scope = in_scope(files);
     let mut out = Outcome {
-        tracked_python: scope.len(),
+        tracked_python: in_scope(listed).len(),
         ..Outcome::default()
     };
     for rel in scope {
@@ -124,20 +128,17 @@ pub fn scan(root: &Path, files: &[String], staged: bool) -> Outcome {
 pub struct Policy {
     /// `GOH_EXCLUDE`, the pattern that took files out of scope (named in the verdict).
     pub exclude: String,
-    /// How many listed files it removed. Not printed on its own -- the "read NONE of them"
-    /// verdict is what says it -- but read by the tests, which must be able to see the
-    /// exclusion did something.
-    pub excluded: usize,
     /// `GOH_SUBPROCESS_STDIN_MIN_CALLS`.
     pub min_calls: Option<usize>,
 }
 
 impl Policy {
-    /// The policy from a loaded `.gatesrc`, against the listing it applies to. An
+    /// The policy from a loaded `.gatesrc` and the exclusion this run applies (`--exclude` when given,
+    /// so a verdict names the exclusion in effect, not the file's). An
     /// unparseable floor is an ERROR naming the key, never a floor of 0: a typo that
     /// silently disables the floor is the defect the floor exists to prevent
     /// (`GOH_STEP_TIMEOUT`'s rule).
-    fn from_cfg(cfg: &crate::gatesrc::Gatesrc, listed: &[String]) -> Result<Self, String> {
+    fn from_cfg(cfg: &crate::gatesrc::Gatesrc, exclude: &str) -> Result<Self, String> {
         let min_calls = cfg
             .stdin_min_calls
             .as_deref()
@@ -152,8 +153,7 @@ impl Policy {
                 )
             })?;
         Ok(Self {
-            exclude: cfg.exclude.clone(),
-            excluded: listed.len().saturating_sub(in_scope(listed).len()),
+            exclude: exclude.to_owned(),
             min_calls,
         })
     }
@@ -227,6 +227,16 @@ fn scope_verdict(outcome: &Outcome, staged: bool, policy: &Policy, s: &mut Strin
             s,
             "→   looked for every tracked *.py, and there are none, so there is no child \
              process here to have inherited a stdin"
+        );
+        return Some(0);
+    }
+    if staged && outcome.examined == 0 {
+        // A commit that stages only excluded Python has nothing here to judge; the full scope
+        // is where an exclusion that hides the whole subject is red.
+        let _ = writeln!(
+            s,
+            "✓ {TAG} not applicable — every staged *.py is excluded (GOH_EXCLUDE '{}')",
+            policy.exclude
         );
         return Some(0);
     }
@@ -346,8 +356,8 @@ fn stale_verdict(s: &mut String, entries: &[allow::Entry], stale: &[usize]) {
 }
 
 /// The floor and the exclusions from the repo's `.gatesrc`.
-fn policy(root: &Path, listed: &[String]) -> Result<Policy, String> {
-    Policy::from_cfg(&crate::gatesrc::load(root)?, listed)
+fn policy(root: &Path, exclude: &str) -> Result<Policy, String> {
+    Policy::from_cfg(&crate::gatesrc::load(root)?, exclude)
 }
 
 /// The files in scope, filtered by the repo's `GOH_EXCLUDE` -- the same one every other
@@ -411,9 +421,9 @@ fn run(staged: bool, exclude: Option<&str>) -> Result<(i32, String), (i32, Strin
         None => crate::gatesrc::declared_exclude(None, Some(&repo), crate::gatesrc::Exempt::Paths)
             .map_err(|m| (2, format!("✗ {TAG} {m}\n")))?,
     };
-    let policy = policy(&repo, &listed).map_err(|m| (2, format!("✗ {TAG} {m}\n")))?;
+    let policy = policy(&repo, &exclude).map_err(|m| (2, format!("✗ {TAG} {m}\n")))?;
     let files = scoped(&listed, &exclude).map_err(|m| (2, format!("✗ {TAG} {m}")))?;
-    let outcome = scan(&repo, &files, staged);
+    let outcome = scan(&repo, &listed, &files, staged);
     Ok(report(&outcome, &repo, &listed, staged, &policy))
 }
 
@@ -452,7 +462,7 @@ pub fn step(cfg: &crate::gatesrc::Gatesrc, listed: &[String], staged: bool) -> O
     if let Err(message) = on {
         return Some(fail(label, &how, &format!("✗ {TAG} {message}\n"), start));
     }
-    let policy = match Policy::from_cfg(cfg, listed) {
+    let policy = match Policy::from_cfg(cfg, &cfg.exclude) {
         Ok(policy) => policy,
         Err(message) => return Some(fail(label, &how, &format!("✗ {TAG} {message}\n"), start)),
     };
@@ -460,7 +470,8 @@ pub fn step(cfg: &crate::gatesrc::Gatesrc, listed: &[String], staged: bool) -> O
         Ok(files) => files,
         Err(message) => return Some(fail(label, &how, &format!("✗ {TAG} {message}\n"), start)),
     };
-    let (code, text) = report(&scan(&repo, &files, staged), &repo, listed, staged, &policy);
+    let outcome = scan(&repo, listed, &files, staged);
+    let (code, text) = report(&outcome, &repo, listed, staged, &policy);
     if code == 0 {
         crate::step_report::ok(label, start);
         None

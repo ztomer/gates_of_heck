@@ -26,6 +26,8 @@ pub const SEED_FILE: &str = "fixed_sleep_seed.json";
 /// The findings per file the scan read, and the files it could not parse.
 #[derive(Debug, Default)]
 pub struct Scanned {
+    /// Python files the repo lists, before any exclusion: the subject.
+    pub listed: usize,
     pub read: usize,
     pub found: BTreeMap<String, Vec<scan::Finding>>,
     pub unreadable: Vec<(String, String)>,
@@ -36,6 +38,15 @@ pub struct Scanned {
 #[must_use]
 pub fn judge(scanned: &Scanned, seed: &BTreeMap<String, usize>) -> (i32, String) {
     let mut s = String::new();
+    if scanned.listed > 0 && scanned.read == 0 {
+        let _ = writeln!(
+            s,
+            "✗ {TAG} this repo lists {} Python file(s) and the check read NONE of them: an \
+             exclusion that removes the whole subject passes over nothing -- narrow it",
+            scanned.listed
+        );
+        return (1, s);
+    }
     let mut red = false;
     for (path, why) in &scanned.unreadable {
         let _ = writeln!(s, "✗ {TAG} {path} is not Python this check can read: {why}");
@@ -133,16 +144,17 @@ pub fn seed_text(scanned: &Scanned) -> String {
     serde_json::to_string_pretty(&doc).unwrap_or_default() + "\n"
 }
 
+fn is_python(rel: &str) -> bool {
+    Path::new(rel)
+        .extension()
+        .is_some_and(|e| e.eq_ignore_ascii_case("py"))
+}
+
 /// Scan `files` (repo-relative) under `root`.
 #[must_use]
 pub fn scan_files(root: &Path, files: &[String]) -> Scanned {
     let mut out = Scanned::default();
-    let python = |f: &&String| {
-        Path::new(f)
-            .extension()
-            .is_some_and(|e| e.eq_ignore_ascii_case("py"))
-    };
-    for rel in files.iter().filter(python) {
+    for rel in files.iter().filter(|f| is_python(f)) {
         let Ok(text) = std::fs::read_to_string(root.join(rel)) else {
             continue;
         };
@@ -179,11 +191,15 @@ pub fn run_command(seed: bool, exclude: &str) -> i32 {
             return 2;
         }
     };
+    let python_listed = listed.iter().filter(|f| is_python(f)).count();
     let files: Vec<String> = listed
         .into_iter()
         .filter(|f| !filter.as_ref().is_some_and(|x| x.is_match(f)))
         .collect();
-    let scanned = scan_files(&root, &files);
+    let scanned = Scanned {
+        listed: python_listed,
+        ..scan_files(&root, &files)
+    };
     if seed {
         let text = seed_text(&scanned);
         if let Err(e) = std::fs::write(root.join(SEED_FILE), text) {

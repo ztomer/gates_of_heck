@@ -63,6 +63,7 @@ fn a_sleep_followed_by_unrelated_work_is_not_a_finding() {
 
 fn scanned(entries: &[(&str, usize)]) -> Scanned {
     let mut s = Scanned {
+        listed: 3,
         read: 3,
         ..Scanned::default()
     };
@@ -140,4 +141,22 @@ fn the_seed_round_trips_and_a_corrupt_one_is_an_error() {
     assert!(load_seed(dir.path()).is_err());
     std::fs::write(dir.path().join(SEED_FILE), "not json").unwrap_or_else(|e| panic!("{e}"));
     assert!(load_seed(dir.path()).is_err());
+}
+
+#[test]
+fn an_exclusion_that_removes_every_python_file_is_red() {
+    let blind = Scanned {
+        listed: 2,
+        read: 0,
+        ..Scanned::default()
+    };
+    let (code, text) = judge(&blind, &seed(&[]));
+    assert_eq!(code, 1);
+    assert!(text.contains("read NONE"), "{text}");
+}
+
+#[test]
+fn a_repo_with_no_python_is_not_blind() {
+    let (code, _) = judge(&Scanned::default(), &seed(&[]));
+    assert_eq!(code, 0);
 }

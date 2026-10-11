@@ -81,6 +81,7 @@ fn check(
         .into_iter()
         .filter(|f| f.to_lowercase().ends_with(".md"))
         .collect();
+    let listed = files.len();
     if let Some(e) = exclude.filter(|e| !e.is_empty()) {
         let pattern = crate::pathfilter::PathFilter::new(e)
             .map_err(|x| format!("bad --exclude regex '{e}': {x}"))?;
@@ -92,6 +93,15 @@ fn check(
         examined: files.len(),
         skipped: 0,
     };
+    // Full scope only: a commit that stages only excluded markdown has nothing to judge, but a
+    // tree whose every markdown file is excluded is a check passing over nothing.
+    if !staged && listed > 0 && files.is_empty() {
+        out.findings.push(format!(
+            "this repo lists {listed} markdown file(s) and the exclusion removed every one: \
+             the check read NONE of them -- narrow the exclusion"
+        ));
+        return Ok(out);
+    }
     if files.is_empty() {
         out.notes
             .push("no tracked markdown files in scope — nothing to check".to_owned());
