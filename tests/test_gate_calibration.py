@@ -129,6 +129,17 @@ def test_every_external_citation_names_a_prover_that_claims_the_gate():
     assert outside, "no entry cites another estate, so this test would prove nothing"
 
 
+def test_a_prover_that_answers_nothing_has_not_said_rather_than_claimed_nothing(tmp_path):
+    """A pytest module run as a script ignores `--proves` and prints nothing; that is silence, not
+    a claim to prove no gate, so a citation to it is never contradicted on the empty answer."""
+    silent = tmp_path / "test_silent.py"
+    silent.write_text("def test_x():\n    pass\n")
+    assert reader.claims(str(silent)) is None
+    speaks = tmp_path / "prover.py"
+    speaks.write_text("import sys\nif '--proves' in sys.argv:\n    print('md_links')\n")
+    assert reader.claims(str(speaks)) == {"md_links"}
+
+
 # ── a false claim goes red THROUGH THE GATE, not only through the module ──────
 
 

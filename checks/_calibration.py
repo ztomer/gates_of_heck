@@ -181,6 +181,7 @@ def claims(path: str) -> set[str] | None:
     try:
         result = subprocess.run(
             [sys.executable, path, "--proves"],
+            stdin=subprocess.DEVNULL,
             capture_output=True,
             text=True,
             timeout=60,
@@ -191,7 +192,10 @@ def claims(path: str) -> set[str] | None:
         return None
     if result.returncode != 0:
         return None
-    return {line.strip() for line in result.stdout.splitlines() if line.strip()}
+    # An EMPTY answer is a prover that did not say, never one that claims nothing: a pytest module
+    # run as a script ignores `--proves`, exits 0 and prints nothing, and that read as "proves no
+    # gate" made eight sound citations look false (BACKLOG 2.1).
+    return {line.strip() for line in result.stdout.splitlines() if line.strip()} or None
 
 
 def load(root: str) -> dict | None:
