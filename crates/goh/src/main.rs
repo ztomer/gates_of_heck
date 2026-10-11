@@ -60,10 +60,12 @@ pub mod screen;
 pub mod screen_mask;
 pub mod screen_shapes;
 pub mod secrets;
+pub mod seedcount;
 pub mod shell_lint;
 pub mod shellsrc;
 pub mod skills;
 pub mod skills_audit;
+pub mod statusmark;
 pub mod step_report;
 pub mod stepcmd;
 pub mod steps;
@@ -258,6 +260,9 @@ fn run_scanners(command: Commands) -> Result<i32, Box<Commands>> {
             .map_or_else(|code| code, |x| commands::run_no_allow(&x, staged)),
         Commands::FixedSleep { exclude, seed } => {
             paths(exclude, |x| fixedsleep::run_command(seed, x))
+        }
+        Commands::StatusMarkers { exclude, seed } => {
+            paths(exclude, |x| statusmark::run_command(seed, x))
         }
         other => return Err(Box::new(other)),
     })

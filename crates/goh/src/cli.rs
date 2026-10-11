@@ -105,6 +105,15 @@ pub enum Commands {
         #[arg(long)]
         seed: bool,
     },
+    /// A hand-rolled status marker or colour escape is a finding, as an emoji is (shrink-only seed).
+    StatusMarkers {
+        /// Regex on repo-relative paths to skip. Unset: the repo's `.gatesrc` `GOH_EXCLUDE`.
+        #[arg(long)]
+        exclude: Option<String>,
+        /// Write today's findings as `status_marker_seed.json`.
+        #[arg(long)]
+        seed: bool,
+    },
     /// Every child process names its stdin, from the AST. A structural step where
     /// `GOH_SUBPROCESS_STDIN=on`.
     SubprocessStdin {

@@ -1,0 +1,11 @@
+{
+  "why": "hand-rolled status markers and colour escapes when this repo adopted goh status-markers; a count may only fall -- print through tui/lib.sh or tui.lib (gates_of_heck BACKLOG 4.9)",
+  "files": {
+    "crates/goh/src/statusmark/tests.rs": 9,
+    "tests/test_goh_step_fail_lines.py": 1,
+    "tests/test_status_markers.py": 2,
+    "tests/test_tui_integration.py": 3,
+    "tui/lib.py": 7,
+    "tui/lib.sh": 3
+  }
+}
