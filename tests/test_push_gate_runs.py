@@ -192,3 +192,36 @@ def test_the_fallback_build_dir_never_overrides_the_repos_own(tmp_path):
     own = str(tmp_path / "the-repos-own-build-dir")
     _, _, build = _push_while_held(_cargo_repo(tmp_path, own_build_dir=own), tmp_path)
     assert build == own, f"the fallback run overrode the repo's own build-dir: {build}"
+
+
+SLEEPING_GATE = GATE.replace(
+    "[ -f fail.flag ] && exit 1\n", 'echo 200 > "$GOH_SLEEPTIME_FILE"\nexit 1\n'
+)
+
+
+def _red_push(tmp_path: Path, gate: str, sleeptime: Path) -> subprocess.CompletedProcess:
+    repo = _repo(tmp_path)
+    (repo / "tools" / "gate.sh").write_text(gate)
+    _git(repo, "commit", "-qam", "red")
+    sleeptime.write_text("100\n")
+    os.environ["GOH_SLEEPTIME_FILE"] = str(sleeptime)
+    try:
+        return _push(repo, tmp_path, tmp_path / "exports")
+    finally:
+        del os.environ["GOH_SLEEPTIME_FILE"]
+
+
+def test_a_red_run_the_machine_slept_through_names_the_sleep(tmp_path):
+    """ZoneWM 2026-10-11: two Swift rows red at the second of a dark wake, green on the awake re-run.
+    A failure the sleep caused reads exactly like a defect unless the gate says the machine slept."""
+    got = _red_push(tmp_path, SLEEPING_GATE, tmp_path / "sleeptime")
+    assert got.returncode == 1, got.stdout + got.stderr
+    assert "SLEPT during this run" in got.stderr
+
+
+def test_a_red_run_with_no_sleep_says_nothing_of_one(tmp_path):
+    got = _red_push(
+        tmp_path, GATE.replace("[ -f fail.flag ] && exit 1\n", "exit 1\n"), tmp_path / "s"
+    )
+    assert got.returncode == 1, got.stdout + got.stderr
+    assert "SLEPT" not in got.stdout + got.stderr

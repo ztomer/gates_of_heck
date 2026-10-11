@@ -21,6 +21,8 @@
 set -euo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 . "$HERE/../tui/lib.sh"
+# shellcheck source=lib/sleep_mark.sh
+. "$HERE/../lib/sleep_mark.sh"
 
 msg=""
 while [ $# -gt 0 ]; do
@@ -71,7 +73,11 @@ fi
 pre="$(setting GOH_ROUND_PREFLIGHT)"
 if [ -n "$pre" ]; then
     section "preflight (GOH_ROUND_PREFLIGHT)"
-    bash -c "$pre" || die "round stopped: the preflight failed (above) -- nothing committed"
+    slept_mark="$(goh_sleep_mark)"
+    bash -c "$pre" || {
+        goh_slept_since "$slept_mark" || true
+        die "round stopped: the preflight failed (above) -- nothing committed"
+    }
 fi
 
 section "commit (the pre-commit hook gates it)"
