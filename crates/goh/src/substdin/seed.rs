@@ -19,7 +19,6 @@
 
 use std::fmt::Write as _;
 use std::path::Path;
-use std::process::{Command, Stdio};
 
 use super::allow::{self, Entry};
 use super::calls::Finding;
@@ -97,26 +96,6 @@ pub fn file_text(entries: &[Seeded]) -> String {
     s
 }
 
-/// Uncommitted edits to tracked Python, by name; an error when git cannot say.
-fn dirty_python(root: &Path) -> Result<Vec<String>, String> {
-    let out = Command::new("git")
-        .args(["diff", "--name-only", "HEAD", "--", "*.py", "*.PY"])
-        .current_dir(root)
-        .stdin(Stdio::null())
-        .output()
-        .map_err(|e| format!("cannot run git: {e}"))?;
-    if !out.status.success() {
-        return Err(format!(
-            "git diff failed: {}",
-            String::from_utf8_lossy(&out.stderr).trim()
-        ));
-    }
-    Ok(String::from_utf8_lossy(&out.stdout)
-        .lines()
-        .map(str::to_owned)
-        .collect())
-}
-
 /// Replace every allowlist file at `root` with `entries`: one file up to `SHARD`, shards past it.
 fn write(root: &Path, entries: &[Seeded]) -> Result<Vec<String>, String> {
     let single = root.join(allow::ALLOW_FILE);
@@ -149,7 +128,7 @@ fn write(root: &Path, entries: &[Seeded]) -> Result<Vec<String>, String> {
 /// `goh subprocess-stdin --seed`, over the whole tree: (exit code, report).
 #[must_use]
 pub fn run(root: &Path, listed: &[String], files: &[String]) -> (i32, String) {
-    match dirty_python(root) {
+    match crate::gitutil::uncommitted(root, &["*.py", "*.PY"]) {
         Err(m) => return (2, format!("✗ {TAG} {m}\n")),
         Ok(dirty) if !dirty.is_empty() => {
             return (

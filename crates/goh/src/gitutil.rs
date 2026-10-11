@@ -79,6 +79,17 @@ pub fn listed_files(root: &Path, staged: bool) -> Result<Vec<String>, String> {
     }
 }
 
+/// Tracked files under `pathspecs` whose working tree differs from HEAD.
+///
+/// # Errors
+///
+/// As `listed_files`: a failing git is loud, never an empty list.
+pub fn uncommitted(root: &Path, pathspecs: &[&str]) -> Result<Vec<String>, String> {
+    let mut args = vec!["diff", "--name-only", "-z", "HEAD", "--"];
+    args.extend_from_slice(pathspecs);
+    nul_list(root, &args)
+}
+
 /// The files this commit ADDS to the index (`--diff-filter=A`): a new path, not an edit.
 ///
 /// # Errors
