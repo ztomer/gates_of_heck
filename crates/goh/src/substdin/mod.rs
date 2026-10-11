@@ -10,13 +10,13 @@
 //! terminal or another tool pipes into it (`ZeroThunder`'s md5 probe hung the games
 //! metarepo's `tools/check_claims.py`, 2026-10-05).
 //!
-//! WHY IT IS ALWAYS-ON AND NOT OPT-IN, when three of its siblings are opt-in. Those
-//! opt in because the defect is rare or the rule is arguable. This one's defect is
-//! universal, its fix is one keyword, and the whole risk of landing it is the 511 seeded
-//! exemptions rather than the gate: with the ratchet in place a NEW undeclared call is
-//! refused at the commit that adds it, which is the only scope where that is still cheap.
-//! An opt-in here would mean every repo learned the habit only after it had shipped the
-//! defect a hundred times.
+//! WHY IT IS MEANT TO BE ALWAYS-ON, when three of its siblings are opt-in. Those opt in
+//! because the defect is rare or the rule is arguable. This one's defect is universal, its
+//! fix is one keyword, and the whole risk of turning it on is a repo's existing debt rather
+//! than the gate: with a seeded ratchet (`--seed`) a NEW undeclared call is refused at the
+//! commit that adds it, which is the only scope where that is still cheap. Until every
+//! estate repo carries its seed it runs only where `GOH_SUBPROCESS_STDIN=on`; the default
+//! flips once none would go red.
 //!
 //! FOUR WAYS THIS COULD PASS WITHOUT HAVING LOOKED, and each is closed:
 //!

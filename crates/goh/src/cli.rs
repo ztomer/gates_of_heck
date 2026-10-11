@@ -105,7 +105,8 @@ pub enum Commands {
         #[arg(long)]
         seed: bool,
     },
-    /// Every child process names its stdin, from the AST. Always-on structural step.
+    /// Every child process names its stdin, from the AST. A structural step where
+    /// `GOH_SUBPROCESS_STDIN=on`.
     SubprocessStdin {
         /// Regex on repo-relative paths to skip. Unset: the repo's own `.gatesrc` `GOH_EXCLUDE`, as
         /// its structural gate applies it; `--exclude ''` opts out.

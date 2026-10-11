@@ -239,7 +239,7 @@ episode (4.4) is what that hand-writing costs.
       `tests/test_exclude_scope_doc.py` CONSUMERS lacks the module. Exit: the named tests green,
       the two files split, the step wired but not yet always-on. Red-first: each named test is
       already the red. Lies: `cargo test` green is not the suite; only the suite holds these pins.
-- [ ] 3.2 The migration path: a `--seed`, and the test tiers the port has none of. Baseline: 25
+- [x] 3.2 (`498eb9a`; `substdin/seed.rs`, `tests/test_subprocess_stdin_seed.py`, the floor's break-prove in `tests/test_subprocess_stdin_scope.py`, which found `5680a8d`) The migration path: a `--seed`, and the test tiers the port has none of. Baseline: 25
       inline Rust unit tests, ZERO pytest, zero break-probe, and no way to write an allowlist --
       `substdin/allow.rs:5` claims it "was seeded on 2026-10-08 with every violation the estate
       had that day -- 511 in this repo alone", and no `subprocess_stdin_allow.json` or
