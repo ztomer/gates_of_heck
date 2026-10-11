@@ -166,7 +166,7 @@ Every structural checker is native since Phase N3; the Python checkers they port
 | `desktop_lock/` | Machine-wide desktop mutex. | `test_desktop_lock.py` |
 | `gpu_lock/` | Machine-wide GPU mutex (bash + Python halves, one record format with ztools' Rust client; heartbeat ceiling, refuses rather than steals). Moved from ztools 2026-10-10; `tools/quiet.sh` holds it. | `test_gpu_lock.py`, `test_bench_lock.py` |
 | `bench_lock.sh` | The host held for a measurement: every gate registers (`goh_init`, `push_gate.sh`, `local_ci.sh`; bash builtins only), a measurement takes it exclusive and waits for them. A nested gate, the measurement's own, and a dead, recycled or overdue holder never deadlock it. | `test_bench_lock.py` |
-| `bench_hold.py` | `with held(label, hold_s=...)`: `bench_lock.sh` held for a Python BLOCK, in a bash child that keeps the claim until its stdin closes (a SIGKILLed caller releases). For a measurement longer than the 900 s cap, held a piece at a time so other sessions' gates run between pieces (ZoneWM's census, 2026-10-11). Raises `BenchBusy` naming the holder; `Hold.void` names a claim voided under the block. | `test_bench_hold.py` |
+| `bench_hold.py` | `with held(label, hold_s=...)`: `bench_lock.sh` held for a Python BLOCK, in a bash child that keeps the claim until its stdin closes (a SIGKILLed caller releases). For a measurement longer than the 900 s cap, held a piece at a time so other sessions' gates run between pieces (ZoneWM's census, 2026-10-11). Raises `BenchBusy` naming the holder; `Hold.void` names a claim voided under the block; `Hold.nested` a block an ancestor's hold or a running gate already covers, which claims nothing (a claim there waits on its own parent). | `test_bench_hold.py` |
 
 ## Tools
 

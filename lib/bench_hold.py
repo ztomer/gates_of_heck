@@ -18,6 +18,9 @@ Raises `BenchBusy` (naming the holder or the gates still running) before the blo
 host cannot be had within `claim_s` + `drain_s`; the caller decides whether to run unheld. A hold
 whose claim went void under it (it outlived its stamp, and a waiter reclaimed the host) is
 reported by `Hold.void` after the block, so a reading taken past its hold is not passed as quiet.
+A block whose host is ALREADY held for it -- an ancestor holds it (`tools/quiet.sh -- census`), or
+it runs inside a registered gate -- claims nothing and says so (`Hold.nested`): a claim there would
+wait on its own parent, the lock's deadlock rule 1.
 
 Pinned by tests/test_bench_hold.py.
 """
@@ -33,12 +36,14 @@ from pathlib import Path
 LIB = Path(__file__).resolve().parent / "bench_lock.sh"
 VOID = 3  # the holder's exit status when the claim was no longer its own at release
 HELD = "held"
+NESTED = "nested"  # the host is already held for this process: by an ancestor, or a gate it runs in
 
 # Claim (bounded by GOH_BENCH_WAIT), drain (bounded by $3), stamp the hold, say so, wait for EOF.
 # At release, a claim that is no longer ours went void under the block: say so and exit VOID.
 _HOLDER = f"""
 . "$1" || exit 2
 trap 'bench_lock_release' EXIT
+if _bench_nested; then echo {NESTED}; read -r _ || :; exit 0; fi
 bench_lock_exclusive "$2" "$3" || exit 1
 bench_lock_hold "$4" || {{ printf 'bench hold: a %ss hold is past the cap\\n' "$4" >&2; exit 1; }}
 echo {HELD}
@@ -56,6 +61,7 @@ class Hold:
     """What the block ran under: `void` is set after the block when the claim went void in it."""
 
     label: str
+    nested: bool = False
     void: bool = False
 
 
@@ -68,12 +74,13 @@ def held(label: str, *, hold_s: int, claim_s: int = 120, drain_s: int = 120, lib
         stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, env=env,
     )  # fmt: skip
     assert proc.stdin and proc.stdout and proc.stderr
-    if proc.stdout.readline().strip() != HELD:
+    said = proc.stdout.readline().strip()
+    if said not in (HELD, NESTED):
         proc.stdin.close()
         why = proc.stderr.read().strip()
         proc.wait()
         raise BenchBusy(why or f"the bench holder exited {proc.returncode} without holding")
-    hold = Hold(label)
+    hold = Hold(label, nested=said == NESTED)
     try:
         yield hold
     finally:

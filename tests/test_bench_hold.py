@@ -122,3 +122,29 @@ def test_a_claim_voided_inside_the_block_is_reported_and_not_released_twice(lock
         (lock / "exclusive" / "owner").write_text("1\nx\n0\n900\nthe next measurement\n")
     assert hold.void is True
     assert (lock / "exclusive" / "owner").read_text().endswith("the next measurement\n")
+
+
+def test_a_block_whose_host_an_ancestor_holds_claims_nothing(lock: Path, tmp_path: Path) -> None:
+    """`quiet.sh -- census`: the census's own claim would wait on its parent's hold."""
+    script = (
+        f"import sys; sys.path.insert(0, {str(REPO_ROOT / 'lib')!r}); import bench_hold\n"
+        f"with bench_hold.held('inner', hold_s=60, claim_s=1, drain_s=1) as h:\n"
+        f"    print('nested' if h.nested else 'claimed')\n"
+    )
+    outer = f'. "{LIB}"; bench_lock_exclusive "outer" && {sys.executable} -c "$1"'
+    r = subprocess.run(["bash", "-c", outer, "outer", script], capture_output=True, text=True,
+                       timeout=30)  # fmt: skip
+    assert r.returncode == 0 and r.stdout.strip() == "nested", r.stdout + r.stderr
+
+
+def test_a_block_inside_a_registered_gate_claims_nothing(lock: Path) -> None:
+    """A claim inside a gate would drain-wait for that gate: its own parent."""
+    script = (
+        f"import sys; sys.path.insert(0, {str(REPO_ROOT / 'lib')!r}); import bench_hold\n"
+        f"with bench_hold.held('inner', hold_s=60, claim_s=1, drain_s=1) as h:\n"
+        f"    print('nested' if h.nested else 'claimed')\n"
+    )
+    gate = f'. "{LIB}"; bench_lock_join "a gate"; unset GOH_BENCH_JOINED; {sys.executable} -c "$1"'
+    r = subprocess.run(["bash", "-c", gate, "gate", script], capture_output=True, text=True,
+                       timeout=30)  # fmt: skip
+    assert r.returncode == 0 and r.stdout.strip() == "nested", r.stdout + r.stderr
