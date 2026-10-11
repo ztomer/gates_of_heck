@@ -27,11 +27,11 @@ fn the_shipped_md5_probe_is_caught() {
     assert_eq!(got[0].why, Why::Inherits);
     assert_eq!(got[0].call, "subprocess.run");
     assert_eq!(got[0].line, 4);
-    // The allowlist is keyed on this text, so it must be the CALL's line.
-    assert!(
-        got[0].text.contains("probe = subprocess.run"),
-        "{}",
-        got[0].text
+    // The allowlist is keyed on this text, so it is the CALL itself (BACKLOG 4.8): not the line,
+    // whose assignment is not the call, and which a reflow would cut to `subprocess.run(`.
+    assert_eq!(
+        got[0].text,
+        "subprocess.run(candidate.split(), capture_output=True, text=True, check=False)"
     );
 }
 
@@ -158,7 +158,10 @@ fn two_findings_on_one_line_are_both_reported() {
     let (found, seen) = scan_source("import os\nos.system('a') or os.popen('b')\n")
         .unwrap_or_else(|e| panic!("{e}"));
     assert_eq!((found.len(), seen), (2, 2), "{found:?}");
-    // One line, so one allowlist text for two call sites -- which is why an entry
-    // permits exactly ONE call (see allow.rs).
-    assert_eq!(found[0].text, found[1].text);
+    // One line, two calls, two keys: the key is the call, not the line (BACKLOG 4.8). An
+    // entry still permits exactly ONE call (see allow.rs), for two identical calls.
+    assert_eq!(
+        [found[0].text.as_str(), found[1].text.as_str()],
+        ["os.system('a')", "os.popen('b')"]
+    );
 }

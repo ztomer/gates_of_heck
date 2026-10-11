@@ -9,7 +9,9 @@
 //! thing in two steps. Code and scripts only, comments stripped (Python:
 //! comments and bare-string statements, as `ast` + `tokenize` see them).
 //! Exemptions are a ratchet in `kill_by_name_allow.json`: one file, one exact
-//! line (whitespace-insensitive), a reason; a stale entry fails.
+//! call (whitespace-insensitive; `callkey`), a reason; a stale entry fails.
+
+mod report;
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Write as _;
@@ -196,8 +198,8 @@ fn in_scope(rel: &str, blob: &[u8]) -> bool {
     ext.is_empty() && blob.starts_with(b"#!")
 }
 
-/// One hit: (path, line, stripped code, why).
-pub type Hit = (String, usize, String, String);
+/// One hit: (path, line, stripped code, why, the Python statement it sits in).
+pub type Hit = (String, usize, String, String, Option<String>);
 
 fn scan(rules: &Rules, root: &Path, files: &[String], staged: bool) -> (Vec<Hit>, usize) {
     let mut hits = Vec::new();
@@ -214,9 +216,15 @@ fn scan(rules: &Rules, root: &Path, files: &[String], staged: bool) -> (Vec<Hit>
         }
         checked += 1;
         let text = String::from_utf8_lossy(&blob);
+        let calls = if ext_of(rel) == "py" {
+            crate::callkey::statements(&text)
+        } else {
+            None
+        };
         for (lineno, code) in rules.code_lines(rel, &text) {
             if let Some(why) = rules.finding(&code) {
-                hits.push((rel.clone(), lineno, code.trim().to_owned(), why));
+                let call = calls.as_ref().and_then(|c| c.get(&lineno).cloned());
+                hits.push((rel.clone(), lineno, code.trim().to_owned(), why, call));
             }
         }
     }
@@ -294,104 +302,6 @@ fn load_allow(root: &Path, staged: bool) -> (Vec<Entry>, Vec<String>) {
     (entries, problems)
 }
 
-fn key(line: &str) -> String {
-    line.split_whitespace().collect()
-}
-
-/// The reference's report: (exit code, stdout).
-fn report(
-    staged: bool,
-    hits: &[Hit],
-    checked: usize,
-    entries: &[Entry],
-    scanned: &BTreeSet<&str>,
-) -> (i32, String) {
-    let scope = if staged { "staged" } else { "tracked" };
-    let mut used: BTreeSet<usize> = BTreeSet::new();
-    let mut left: Vec<&Hit> = Vec::new();
-    for hit in hits {
-        let k = key(&hit.2);
-        match entries
-            .iter()
-            .position(|e| e.path == hit.0 && key(&e.line) == k)
-        {
-            Some(i) => {
-                used.insert(i);
-            }
-            None => left.push(hit),
-        }
-    }
-    let stale: Vec<&Entry> = entries
-        .iter()
-        .enumerate()
-        .filter(|(i, e)| !used.contains(i) && scanned.contains(e.path.as_str()))
-        .map(|(_, e)| e)
-        .collect();
-    let mut s = String::new();
-    if !left.is_empty() {
-        let _ = writeln!(
-            s,
-            "✗ {TAG} {} process kill(s) by name in {scope} code:",
-            left.len()
-        );
-        for (rel, lineno, code, why) in left.iter().take(40) {
-            let shown: String = code.chars().take(140).collect();
-            let _ = writeln!(s, "    {rel}:{lineno}: {shown}  ({why})");
-        }
-        s.push_str(
-            "    kill what you started: its pid, its process group (pkill -g, killpg), or the\n",
-        );
-        s.push_str(
-            "    tree below your own pid (pkill -P). A name matches processes you do not own.\n",
-        );
-        let _ = writeln!(
-            s,
-            "    A kill that must stand goes in {ALLOW_FILE} with a reason."
-        );
-    }
-    if !stale.is_empty() {
-        let _ = writeln!(
-            s,
-            "✗ {TAG} {} stale entr(ies) in {ALLOW_FILE}: the kill is gone, the exemption stayed:",
-            stale.len()
-        );
-        for e in &stale {
-            let _ = writeln!(s, "    {}: {}", e.path, e.line);
-        }
-    }
-    if !left.is_empty() || !stale.is_empty() {
-        return (1, s);
-    }
-    if checked == 0 {
-        if staged {
-            let _ = writeln!(s, "✓ {TAG} nothing staged — 0 code files to check");
-            return (0, s);
-        }
-        let _ = writeln!(
-            s,
-            "✗ {TAG} nothing to check (tracked) — refusing to report clean over zero code files"
-        );
-        return (1, s);
-    }
-    let note = if hits.is_empty() {
-        String::new()
-    } else {
-        format!(", {} allowlisted in {ALLOW_FILE}", hits.len())
-    };
-    let _ = writeln!(
-        s,
-        "✓ {TAG} OK — {checked} {scope} code files, no kill by name{note}"
-    );
-    let debt = used.iter().filter(|i| entries[**i].unreviewed).count();
-    if debt > 0 {
-        let _ = writeln!(
-            s,
-            "⚠ {TAG}   {debt} of them 'unreviewed': found when the gate was seeded, not yet decided"
-        );
-    }
-    (0, s)
-}
-
 fn run(staged: bool, exclude: &str) -> (i32, String) {
     let skip = match crate::steps::compile_exclude(exclude) {
         Ok(f) => f,
@@ -429,7 +339,7 @@ fn run(staged: bool, exclude: &str) -> (i32, String) {
             .filter(|e| !root.join(&e.path).exists())
             .map(|e| e.path.as_str()),
     );
-    report(staged, &hits, checked, &entries, &scanned)
+    report::report(staged, &hits, checked, &entries, &scanned)
 }
 
 /// `goh kill-by-name [--staged] [--exclude RE]`, or `--code-lines PATH` to

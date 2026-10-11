@@ -239,3 +239,57 @@ def test_unparseable_python_falls_back_to_the_line_scan(repo):
     stage(repo, "broken.py")
     r = run(repo, "--staged")
     assert r.returncode == 1 and "broken.py:2:" in r.stdout, r.stdout
+
+
+# BACKLOG 4.8: the key is the CALL, so a reflow cannot revoke a judgement while a deleted call
+# still does. Measured: necrohand's `qa_minigames.py` needed three re-keys in one afternoon as
+# ruff reflowed one call, and each reflow read as a policy violation plus a stale entry.
+ONE_LINE = f'import subprocess\n\nsubprocess.run(["{PK}", "-f", "MacOS/Necrohand"], check=False)\n'
+REFLOWED = (
+    "import subprocess\n\nsubprocess.run(\n"
+    f'    [\n        "{PK}",\n        "-f",\n        "MacOS/Necrohand",\n    ],\n    check=False,\n)\n'
+)
+
+
+def _kill_entry(line):
+    return {"path": "qa.py", "line": line, "reason": "the dev build", "status": "legitimate"}
+
+
+def test_a_reformatted_call_keeps_its_entry(repo):
+    write(repo, "qa.py", REFLOWED)
+    allow(repo, _kill_entry(f'subprocess.run(["{PK}", "-f", "MacOS/Necrohand"], check=False)'))
+    commit_all(repo)
+    r = run(repo)
+    assert r.returncode == 0, r.stdout
+
+
+def test_an_entry_keyed_on_one_line_of_a_reflowed_call_still_matches_the_call(repo):
+    """The estate's existing entries hold the physical line the gate printed; a fragment of the
+    call keeps matching that call wherever ruff moves it next."""
+    write(repo, "qa.py", ONE_LINE)
+    allow(repo, _kill_entry(f'"{PK}",'))
+    commit_all(repo)
+    r = run(repo)
+    assert r.returncode == 0, r.stdout
+    assert "key it on the whole call" in r.stdout and "qa.py:3" in r.stdout, r.stdout
+
+
+def test_a_deleted_call_leaves_its_entry_stale_and_says_the_kill_is_gone(repo):
+    write(repo, "qa.py", "import subprocess\n")
+    allow(repo, _kill_entry(f'subprocess.run(["{PK}", "-f", "MacOS/Necrohand"], check=False)'))
+    commit_all(repo)
+    r = run(repo)
+    assert r.returncode == 1 and "1 stale entr" in r.stdout, r.stdout
+    assert "the kill is gone" in r.stdout, r.stdout
+
+
+def test_a_changed_call_is_named_as_changed_not_as_gone(repo):
+    """The two causes of an unmatched entry get two messages: the call still kills by name but
+    reads differently (re-judge it), or no kill is left (delete the entry)."""
+    write(repo, "qa.py", ONE_LINE.replace("MacOS/Necrohand", "MacOS/Other"))
+    allow(repo, _kill_entry(f'subprocess.run(["{PK}", "-f", "MacOS/Necrohand"], check=False)'))
+    commit_all(repo)
+    r = run(repo)
+    assert r.returncode == 1, r.stdout
+    assert "qa.py still kills by name" in r.stdout, r.stdout
+    assert "the kill is gone" not in r.stdout, r.stdout

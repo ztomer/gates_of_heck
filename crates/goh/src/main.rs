@@ -12,6 +12,7 @@
 
 pub mod blobs;
 pub mod bounded;
+pub mod callkey;
 pub mod canarycmd;
 pub mod ceiling;
 pub mod checkoutcreds;

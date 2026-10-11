@@ -130,6 +130,8 @@ impl Finding {
 /// One call, before the file's import bindings resolve it.
 struct Raw {
     offset: usize,
+    /// Where the call expression ends: its text, not its first line, is the allowlist's key.
+    end: usize,
     /// `Some("sp")` for `sp.run()`, `Some("r")` for a bare `r()`; `None` for a callee
     /// that is neither (`a.b.run()`, `f()()`), which no watched binding can reach.
     path: Option<String>,
@@ -200,6 +202,7 @@ impl<'a> Visitor<'a> for Collect {
             let raw = match call.func.as_ref() {
                 Expr::Name(n) => Some(Raw {
                     offset: usize::from(expr.start()),
+                    end: usize::from(expr.end()),
                     path: Some(n.id.to_string()),
                     bare: true,
                     attr: n.id.to_string(),
@@ -211,6 +214,7 @@ impl<'a> Visitor<'a> for Collect {
                 Expr::Attribute(a) => match a.value.as_ref() {
                     Expr::Name(n) => Some(Raw {
                         offset: usize::from(expr.start()),
+                        end: usize::from(expr.end()),
                         path: Some(n.id.to_string()),
                         bare: false,
                         attr: a.attr.to_string(),
@@ -260,13 +264,15 @@ fn verdict(module: &str, name: &str) -> Option<Why> {
 }
 
 /// The text of the line `line` (1-based) occupies, trimmed.
-fn line_text(source: &str, line: usize) -> String {
+/// The call's own source, its whitespace collapsed to single spaces: the whole call however a
+/// formatter lays it out (`crate::callkey`).
+fn call_text(source: &str, start: usize, end: usize) -> String {
     source
-        .split('\n')
-        .nth(line.saturating_sub(1))
+        .get(start..end)
         .unwrap_or_default()
-        .trim()
-        .to_owned()
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
 }
 
 /// Every process call `source` makes, and which of them leave stdin undeclared.
@@ -315,7 +321,7 @@ pub fn scan_source(source: &str) -> Result<(Vec<Finding>, usize), String> {
             line,
             call: format!("{module}.{name}"),
             why,
-            text: line_text(source, line),
+            text: call_text(source, raw.offset, raw.end),
         });
     }
     Ok((found, seen))

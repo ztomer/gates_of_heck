@@ -101,3 +101,26 @@ def test_past_one_files_worth_the_seed_shards_under_the_line_cap(repo: Path) -> 
     assert len(_entries(repo)) == 450
     commit_all(repo)
     assert _gate(repo).returncode == 0
+
+
+def test_a_reflowed_call_keeps_its_seeded_entry(repo: Path) -> None:
+    """BACKLOG 4.8: the entry is the CALL. It was the line the call starts on, so `ruff format`
+    exploding a call into lines turned its key into `subprocess.run(` alone -- the seed's entry
+    went stale and the call came back red, and every reflowed call in a file shared one key."""
+    write(repo, "a.py", "import subprocess\nsubprocess.run(['ls', '-la'], cwd='x')\n")
+    commit_all(repo)
+    assert _seed(repo).returncode == 0
+    write(repo, "a.py", "import subprocess\nsubprocess.run(\n    ['ls', '-la'],\n    cwd='x',\n)\n")
+    commit_all(repo)
+    g = _gate(repo)
+    assert g.returncode == 0, g.stdout + g.stderr
+
+
+def test_a_changed_call_does_not_keep_the_entry(repo: Path) -> None:
+    write(repo, "a.py", "import subprocess\nsubprocess.run(['ls', '-la'])\n")
+    commit_all(repo)
+    assert _seed(repo).returncode == 0
+    write(repo, "a.py", "import subprocess\nsubprocess.run(\n    ['rm', '-rf', 'x'],\n)\n")
+    commit_all(repo)
+    g = _gate(repo)
+    assert g.returncode == 1 and "stale" in g.stdout, g.stdout

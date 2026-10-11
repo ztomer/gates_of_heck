@@ -61,7 +61,7 @@ pub struct Entry {
     pub path: String,
     /// The callee as the scanner resolved it, e.g. `subprocess.run`.
     pub call: String,
-    /// The call's own source line, whitespace-insensitive.
+    /// The call's source (once its first line; that still matches, see `crate::callkey`).
     pub line: String,
     /// Why it may stand, as written; a reseed keeps it.
     pub reason: String,
@@ -69,12 +69,6 @@ pub struct Entry {
     pub unreviewed: bool,
     /// Which allowlist file carried it, so a stale entry names its own home.
     pub origin: String,
-}
-
-/// Whitespace-collapsed, so a `ruff format` cannot revoke an exemption.
-#[must_use]
-pub fn key(line: &str) -> String {
-    line.split_whitespace().collect()
 }
 
 fn nonempty(value: Option<&serde_json::Value>) -> Option<String> {
@@ -240,7 +234,7 @@ pub fn assign(
                 !used[i]
                     && e.path == *path
                     && e.call == finding.call
-                    && key(&e.line) == key(&finding.text)
+                    && crate::callkey::fit(&e.line, &finding.text, Some(&finding.text)).is_some()
             });
             if let Some(i) = hit {
                 used[i] = true;
