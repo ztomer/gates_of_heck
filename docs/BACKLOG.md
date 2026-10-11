@@ -393,7 +393,7 @@ episode (4.4) is what that hand-writing costs.
       seed, shrink-only. Red-first: each of the three historical shapes planted red, the bounded
       loop clean. Lies: a sleep before a read through a helper the AST does not follow is
       invisible; the seed lists it with its reason rather than passing it silently.
-- [ ] 4.11 A new test's red run is recorded. Baseline: "prove a new test can fail" is written in
+- [x] 4.11 (`e526df9`: `goh red-run`, opt-in by `GOH_RED_RUN`; no repo has it on yet, the owner's call per repo; presence and substance, truth a review rule) A new test's red run is recorded. Baseline: "prove a new test can fail" is written in
       this repo's rules, ZoneWM's, and the global ones, and enforced nowhere; the pass cache
       records passes only. Exit: a commit that adds a test carries a `Red-run:` trailer naming the
       mutation that turned it red, checked by the stock commit-msg hook beside `goh commit-class`
