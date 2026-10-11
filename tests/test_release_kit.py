@@ -196,6 +196,15 @@ class TestSequencing:
             == sh(kit["proj"], "rev-parse", "HEAD").strip()
         )
 
+    def test_branch_and_tag_go_in_one_push(self, kit):
+        """Two pushes left a window where the branch carried a release tag the remote lacked, and
+        the pre-push gate now refuses exactly that (`goh tag-version --remote`). One push also
+        means one gate run, and a refused push leaves neither ref behind."""
+        r = run_release(kit, "--skip-release")
+        assert r.returncode == 0, r.stdout + r.stderr
+        pushes = [c for c in kit["git_log"].read_text().splitlines() if c.startswith("git push")]
+        assert pushes == [f"git push origin main {TAG}"], pushes
+
     def test_no_push_leaves_origin_untouched(self, kit):
         r = run_release(kit, "--no-push", "--skip-release")
         assert r.returncode == 0, r.stdout + r.stderr

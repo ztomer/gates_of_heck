@@ -152,6 +152,18 @@ Pin: `tests/test_check_tag_version.py` (red on the real shape, green on a
 matching pair, a dirty working tree does not rescue it, an unrelated stale tag
 does not block an unrelated push) and `tests/test_push_gate.py`.
 
+The same name has a second claim: that it is PUBLISHED. With the hook's remote
+(`--remote`, passed by `push_gate.sh`), a local `v<semver>` tag reachable from a
+pushed branch must be in that push or already on the remote, asked with one
+`git ls-remote` (a remote that cannot be asked refuses, never passes). The
+servers fleet, 2026-10-10: `git tag v1.10.3` (lightweight) and
+`git push --follow-tags`, which sends annotated tags only, so main moved and two
+hosts described themselves as `v1.10.2-2-g…`. The rule is about the tag, never
+the bump: a version may reach the branch before its tag exists (monitor and
+antiknob tag after CI). Pin: `tests/test_tag_version_unpushed.py` and
+`test_check_tag_version_push_gate.py`; `tools/release-kit/release.sh` sends the
+branch and its tag in ONE push (`tests/test_release_kit.py`).
+
 ## 14. A committed artifact that makes a claim is checked against its source
 
 `Cargo.lock` states each workspace crate's version; `Cargo.toml` asks for one.

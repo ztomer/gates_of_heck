@@ -1,5 +1,5 @@
-//! The argument types two `goh` subcommands take as a group: `goh skills`'s flags and `goh
-//! proven`'s actions. Split out of `cli.rs`, which holds the subcommand list, at the line cap.
+//! The argument types `goh` subcommands take as a group: `goh skills`'s and `goh tag-version`'s
+//! flags and `goh proven`'s actions. Split out of `cli.rs`, which holds the subcommand list, at the line cap.
 
 use clap::Subcommand;
 
@@ -23,6 +23,27 @@ pub struct SkillsArgs {
     /// Re-record today's oversized set; deliberate, never automatic.
     #[arg(long)]
     pub update_baseline: bool,
+}
+
+/// `goh tag-version` flags, grouped so the runner takes one argument.
+#[derive(Debug, clap::Args)]
+pub struct TagVersionArgs {
+    /// Repository to read (default: the cwd's repo).
+    #[arg(long)]
+    pub root: Option<String>,
+    /// File of pre-push ref lines (`-` or absent: stdin).
+    #[arg(long)]
+    pub refs_file: Option<String>,
+    /// The remote being pushed to (the hook's `$1`): a local release tag the
+    /// pushed branches carry must be in the push or already there.
+    #[arg(long)]
+    pub remote: Option<String>,
+    /// Machine-readable output.
+    #[arg(long)]
+    pub json: bool,
+    /// Print what one version-source strategy reads from stdin, as JSON.
+    #[arg(long)]
+    pub extract: Option<String>,
 }
 
 /// `goh proven` actions (gates/_proven.sh's hot path).

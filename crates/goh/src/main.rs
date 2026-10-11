@@ -73,6 +73,7 @@ pub mod steps_delegated;
 pub mod steps_rust;
 pub mod structural;
 pub mod substdin;
+pub mod tagpush;
 pub mod tagver;
 pub mod unreaped;
 pub mod vendored;
@@ -300,15 +301,7 @@ fn run_ported(command: Commands) -> Result<i32, Box<Commands>> {
         Commands::EmptyAssert { exclude, staged } => {
             paths(exclude, |x| emptyassert::run_command(staged, x))
         }
-        Commands::TagVersion {
-            root,
-            refs_file,
-            json,
-            extract,
-        } => extract.map_or_else(
-            || tagver::run_command(root.as_deref(), refs_file.as_deref(), json),
-            |kind| tagver::extract_command(&kind),
-        ),
+        Commands::TagVersion(args) => tagver::command(&args),
         Commands::LockVersion { root, json } => lockver::run_command(root.as_deref(), json),
         Commands::MdLinks {
             root,

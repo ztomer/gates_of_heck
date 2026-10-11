@@ -6,6 +6,9 @@
 //! that reports itself differently from its name. Read AT THE COMMIT (`git
 //! show <sha>:<path>`), never the working tree. A tag whose commit declares
 //! no version at all is a finding, and a glob matching nothing says so.
+//!
+//! With `--remote`, a local release tag the pushed branches carry must be in
+//! the push or already on that remote ([`crate::tagpush`]).
 
 use std::io::{IsTerminal, Read};
 use std::path::Path;
@@ -13,7 +16,7 @@ use std::process::Command;
 
 use regex::Regex;
 
-const ZERO_SHA: &str = "0000000000000000000000000000000000000000";
+pub const ZERO_SHA: &str = "0000000000000000000000000000000000000000";
 
 fn git(root: &str, args: &[&str]) -> Option<Vec<u8>> {
     let out = Command::new("git")
@@ -113,14 +116,18 @@ fn declared_at(
     (found, present)
 }
 
+/// `refs/tags/v<semver>`: what a release tag looks like, for both halves.
+fn release_tag_re() -> Result<Regex, String> {
+    Regex::new(r"^refs/tags/v(\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.]+)?)$").map_err(|e| e.to_string())
+}
+
 fn audit(
     root: &str,
     refs: &[(String, String)],
     sources: &[(String, String)],
 ) -> Result<(Vec<String>, usize), String> {
     let strategies = crate::versrc::Strategies::new()?;
-    let tag_re = Regex::new(r"^refs/tags/v(\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.]+)?)$")
-        .map_err(|e| e.to_string())?;
+    let tag_re = release_tag_re()?;
     let (mut findings, mut examined) = (Vec::new(), 0usize);
     for (r, sha) in refs {
         let Some(expected) = tag_re
@@ -181,7 +188,12 @@ fn audit(
 }
 
 /// (exit code, [(to stderr?, line)]).
-fn run(root: Option<&str>, refs_file: Option<&str>, json: bool) -> (i32, Vec<(bool, String)>) {
+fn run(
+    root: Option<&str>,
+    refs_file: Option<&str>,
+    json: bool,
+    remote: Option<&str>,
+) -> (i32, Vec<(bool, String)>) {
     let fail = |m: String| (2, vec![(true, format!("✗ [tag_version] {m}"))]);
     let Some(root) = root
         .map(str::to_owned)
@@ -215,16 +227,26 @@ fn run(root: Option<&str>, refs_file: Option<&str>, json: bool) -> (i32, Vec<(bo
             Err(e) => return fail(format!("cannot read refs file {f}: {e}")),
         },
     }
-    let refs: Vec<(String, String)> = crate::mdtext::splitlines(&text)
-        .into_iter()
-        .filter_map(|l| {
-            let mut parts = l.split_whitespace();
-            Some((parts.next()?.to_owned(), parts.next()?.to_owned()))
-        })
+    let lines = crate::tagpush::parse(&text);
+    let refs: Vec<(String, String)> = lines
+        .iter()
+        .map(|l| (l.local_ref.clone(), l.local_sha.clone()))
         .collect();
-    let (findings, examined) = match audit(&root, &refs, &sources) {
+    let (mut findings, examined) = match audit(&root, &refs, &sources) {
         Ok(v) => v,
         Err(e) => return fail(e),
+    };
+    let reached = match remote.filter(|r| !r.is_empty()) {
+        None => None,
+        Some(r) => {
+            match release_tag_re().and_then(|re| crate::tagpush::audit(&root, &lines, r, &re)) {
+                Ok((more, judged)) => {
+                    findings.extend(more);
+                    Some((r, judged))
+                }
+                Err(e) => return fail(e),
+            }
+        }
     };
     if json {
         let doc = serde_json::json!({ "findings": findings, "examined": examined });
@@ -238,25 +260,41 @@ fn run(root: Option<&str>, refs_file: Option<&str>, json: bool) -> (i32, Vec<(bo
         .map(|f| (true, format!("✗ [tag_version] {f}")))
         .collect();
     if !findings.is_empty() {
-        lines.push((true, format!("✗ --- {} finding(s): a tag you are pushing does not match what its own commit declares ---", findings.len())));
+        lines.push((
+            true,
+            format!(
+                "✗ --- {} finding(s): a release tag this push names or carries does not hold ---",
+                findings.len()
+            ),
+        ));
         return (1, lines);
     }
-    if examined == 0 {
-        return (
-            0,
-            vec![(
-                false,
-                "→ [tag_version] no refs/tags/v<semver> in this push — not applicable".to_owned(),
-            )],
-        );
-    }
-    (0, vec![(false, format!("✓ [tag_version] OK — {examined} pushed release tag(s) match the version declared at their own commit"))])
+    let reached_line = reached.map(|(r, judged)| {
+        (
+            false,
+            format!("✓ [tag_version] {judged} local release tag(s) reachable from the pushed branch(es) are on {r} or in this push"),
+        )
+    });
+    let head = if examined == 0 {
+        (
+            false,
+            "→ [tag_version] no refs/tags/v<semver> in this push — not applicable".to_owned(),
+        )
+    } else {
+        (false, format!("✓ [tag_version] OK — {examined} pushed release tag(s) match the version declared at their own commit"))
+    };
+    (0, std::iter::once(head).chain(reached_line).collect())
 }
 
-/// `goh tag-version [--root R] [--refs-file F] [--json]`.
+/// `goh tag-version [--root R] [--refs-file F] [--remote NAME] [--json]`.
 #[must_use]
-pub fn run_command(root: Option<&str>, refs_file: Option<&str>, json: bool) -> i32 {
-    let (code, lines) = run(root, refs_file, json);
+pub fn run_command(
+    root: Option<&str>,
+    refs_file: Option<&str>,
+    json: bool,
+    remote: Option<&str>,
+) -> i32 {
+    let (code, lines) = run(root, refs_file, json, remote);
     for (to_err, line) in lines {
         if to_err {
             eprintln!("{line}");
@@ -265,6 +303,22 @@ pub fn run_command(root: Option<&str>, refs_file: Option<&str>, json: bool) -> i
         }
     }
     code
+}
+
+/// `goh tag-version`: the audit, or `--extract KIND`.
+#[must_use]
+pub fn command(a: &crate::cli::TagVersionArgs) -> i32 {
+    a.extract.as_deref().map_or_else(
+        || {
+            run_command(
+                a.root.as_deref(),
+                a.refs_file.as_deref(),
+                a.json,
+                a.remote.as_deref(),
+            )
+        },
+        extract_command,
+    )
 }
 
 /// `--extract KIND`: what one strategy reads from stdin, `[[table, version], ...]`.

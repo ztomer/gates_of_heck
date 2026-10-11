@@ -167,7 +167,11 @@ tag_check_run() {
     fi
     # The native port (`goh tag-version`, Phase N1) through the one dispatcher, which
     # refuses when no binary resolves (Phase N3: the binary is the only tier).
-    bash "$tag_check" tag-version --root "$root" --refs-file "$refs_file"
+    # --remote: a local release tag the pushed branches carry must reach the remote too --
+    # `--follow-tags` never sends a lightweight one (servers fleet, 2026-10-10). git always
+    # names the remote; a hook run by hand without one skips that half, and only that half.
+    bash "$tag_check" tag-version --root "$root" --refs-file "$refs_file" \
+        ${remote_name:+--remote "$remote_name"}
 }
 
 zero="0000000000000000000000000000000000000000"
@@ -263,7 +267,7 @@ cat >"$refs_file"
 tag_rc=0
 ( tag_check_run ) || tag_rc=$?
 if [ "$tag_rc" -eq 1 ]; then
-    err "pre-push: a tag being pushed does not match the version its own commit declares — nothing pushed"
+    err "pre-push: a release tag this push names or carries does not hold (above) — nothing pushed"
     exit 1
 elif [ "$tag_rc" -ne 0 ]; then
     err "pre-push: the tag check could not run (exit $tag_rc, above) — nothing pushed"

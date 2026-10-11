@@ -298,8 +298,9 @@ if [ "$DO_PUSH" = 0 ]; then
 elif [ "$DRY_RUN" = 1 ]; then
   plan "git push origin ${BRANCH} ${TAG}"
 else
-  git push origin "$BRANCH" || fail "could not push ${BRANCH}"
-  git push origin "$TAG" || fail "could not push ${TAG}"
+  # ONE push: the pre-push gate refuses a branch that carries a local release tag the remote
+  # lacks (goh tag-version --remote), which is what the first of two pushes always was.
+  git push origin "$BRANCH" "$TAG" || fail "could not push ${BRANCH} + ${TAG}"
   ok "pushed"
 fi
 
