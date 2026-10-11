@@ -197,7 +197,7 @@ its commit, or `tests/test_backlog_items.py` fails. A landed item moves to the S
       missing the tools is a different failure (already a named refusal, `851cc70`).
 ### Phase 2 — the calibration registry stops lying to consumers
 
-- [ ] 2.1 ONE rule for "this test proves this gate", settled here and published to the estate.
+- [x] 2.1 (`752ff01`, and game_asset_factory `95907e3`, which now calls this reader instead of a copy) ONE rule for "this test proves this gate", settled here and published to the estate.
       Baseline: `~/Projects/games/game_asset_factory/tools/check_gate_calibration.py --report`
       prints 8 citation drifts against this repo -- `claim_derivation`, `lock_version`, `md_links`,
       `no_credential_urls`, `no_empty_assert`, `no_unreaped_spawn`, `tag_version`,
@@ -210,7 +210,7 @@ its commit, or `tests/test_backlog_items.py` fails. A landed item moves to the S
       prover that cannot answer is a finding that says so. Red-first: point the probe at a module
       with no `--probes` and the drift returns. Lies: silencing the estate tool instead -- two of
       its own repos read their coverage from it.
-- [ ] 2.2 The unproven-gate ratchet is back under its ceiling. Baseline: 4 unproven against a
+- [x] 2.2 (`752ff01`: three entries cite the tests that drive each gate red; the estate reads 1 unproven, its ceiling; game_asset_factory `5f0985e` canaries two more) The unproven-gate ratchet is back under its ceiling. Baseline: 4 unproven against a
       ceiling of 1 -- `check_dep_currency`, `check_python_formatted`, `check_subprocess_stdin`,
       `check_swift_coverage`; only `check_swift_coverage` carries a reason in
       `checks/gate_calibration.json`. `check_subprocess_stdin` is in the list because its forwarder
