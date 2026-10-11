@@ -357,7 +357,9 @@ hand, at hours each, and none was noticed by a gate, a test or a review of the d
   command disagrees with the gate is worse than one with no command, because it looks checked.
 * **An exemption is a ratchet.** `claim_derivation_allow.json` names the file, the claim and a reason;
   an entry matching nothing is STALE and fails, so a fixed claim takes its exemption with it; and the
-  match collapses whitespace, because an exemption a routine `ruff format` can revoke is not one.
+  key is the claim itself (its number, unit and target), whitespace collapsed, never the line it sits
+  on: an entry holding the claim, or a whole line containing it, survives a re-wrapped paragraph, and
+  a changed number is a different claim. The allowlist is never read as prose (its entries quote claims).
 * **Opt-in per repo** (`GOH_CLAIM_DERIVATION=1`), because this lands red in every repo in the estate:
   every repo in the estate has this defect, and a gate that goes red in twenty places on the day it
   lands is a gate that gets disabled. Each repo turns it on when it has marked its claims or fixed

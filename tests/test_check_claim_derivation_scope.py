@@ -68,6 +68,35 @@ def test_an_entry_whose_claim_moved_is_stale_and_fails(repo) -> None:
     assert verdict.stale[0]["claim"] == "claim: 99 lines in pkg/notes.md"
 
 
+# BACKLOG 4.13: the key is the CLAIM, not the line it sits on, so re-wrapping a paragraph keeps the
+# exemption and changing the claim's number does not.
+CLAIM = "`99` lines in `pkg/notes.md`"
+
+
+def test_a_rewrapped_paragraph_keeps_its_entry(repo) -> None:
+    root = estate(repo)
+    allow(root, f"The file holds {CLAIM} as measured on the day.")
+    doc(root, f"Measured again, the file holds {CLAIM},\nas it did on the day.")
+    verdict = judge(root)
+    assert (verdict.findings, verdict.stale, verdict.excused) == ([], [], 1), verdict
+
+
+def test_an_entry_keyed_on_the_claim_alone_matches_it_in_any_sentence(repo) -> None:
+    root = estate(repo)
+    allow(root, CLAIM)
+    doc(root, f"Whatever the sentence, it holds {CLAIM}.")
+    verdict = judge(root)
+    assert (verdict.findings, verdict.stale, verdict.excused) == ([], [], 1), verdict
+
+
+def test_a_changed_number_in_a_rewrapped_line_is_stale(repo) -> None:
+    root = estate(repo)
+    allow(root, f"The file holds {CLAIM} as measured on the day.")
+    doc(root, "The file holds `98` lines in `pkg/notes.md` as measured on the day.")
+    verdict = judge(root)
+    assert verdict.excused == 0 and len(verdict.stale) == 1, verdict
+
+
 def test_a_duplicate_entry_is_stale_because_the_first_takes_every_match(repo) -> None:
     root = estate(repo)
     prose = "claim: 99 lines in pkg/notes.md"

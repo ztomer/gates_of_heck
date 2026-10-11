@@ -18,6 +18,9 @@ pub struct Claim {
     pub name: String,
     pub line: usize,
     pub text: String,
+    /// The claim's own match within `text`: the allowlist's key, so a re-wrap that moves other
+    /// words onto or off the line cannot revoke an exemption (BACKLOG 4.13).
+    pub span: String,
     pub malformed: Option<String>,
 }
 
@@ -153,6 +156,9 @@ impl Grammar {
             name,
             line,
             text: text.to_owned(),
+            span: c
+                .get(0)
+                .map_or_else(String::new, |m| m.as_str().trim().to_owned()),
             malformed,
         })
     }

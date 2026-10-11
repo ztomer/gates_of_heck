@@ -10,6 +10,7 @@ port reads differently is stated and pinned rather than skipped: a TARGET that t
 from __future__ import annotations
 
 import json
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -108,14 +109,24 @@ def test_a_python_docstring_claim_is_read_and_a_string_literal_is_not(
     assert py[0] == 1 and py[2].count("STALE") == 3, py
 
 
+def _allowlist_unread(py: tuple) -> tuple:
+    """The spec changed on purpose (BACKLOG 4.13): the port no longer reads its own allowlist as prose
+    (each entry quotes a claim, so it read as one), and examines one file fewer than the frozen
+    reference whenever the allowlist is in scope."""
+    code, out, err = py
+    fewer = re.sub(r"(\d+) text file\(s\)", lambda m: f"{int(m[1]) - 1} text file(s)", out)
+    return code, fewer, err
+
+
 @pytest.mark.parametrize("args", [[], ["--staged"]], ids=["full", "staged"])
 def test_the_allowlist_ratchet_reads_the_same(goh: Path, repo: Path, args) -> None:
     doc(estate(repo), "claim: 9 gates in pkg/roster.py:STEPS")
     allow(repo, "claim: 9 gates in pkg/roster.py:STEPS")
-    assert both(goh, repo, *args)[1] == both(goh, repo, *args)[0]
+    py, rs = both(goh, repo, *args)
+    assert rs == (_allowlist_unread(py) if not args else py)
     allow(repo, "claim: 1 gates in pkg/roster.py:STEPS")
     py, rs = both(goh, repo, *args)
-    assert rs == py
+    assert rs == (_allowlist_unread(py) if not args else py)
 
 
 def test_staged_and_exclude_read_the_same(goh: Path, repo: Path) -> None:

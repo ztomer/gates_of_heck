@@ -207,10 +207,15 @@ fn judge(
     let mut used: BTreeSet<usize> = BTreeSet::new();
     let (mut findings, mut excused) = (Vec::new(), 0usize);
     for (rel, claim, value, detail) in scanned {
-        let k = key(&claim.text);
+        // The claim's own span, never its line: an entry naming the span, or a whole line that
+        // contains it (the form the report used to print), matches wherever the paragraph wraps,
+        // while a changed number is a different span and leaves the entry stale.
+        let k = key(&claim.span);
         let hit = entries.iter().position(|e| {
+            let entry = key(e.get("claim").and_then(Value::as_str).unwrap_or(""));
             e.get("path").and_then(Value::as_str) == Some(rel.as_str())
-                && key(e.get("claim").and_then(Value::as_str).unwrap_or("")) == k
+                && !k.is_empty()
+                && entry.contains(&k)
         });
         if let Some(i) = hit {
             used.insert(i);
@@ -271,7 +276,9 @@ fn check(root: &Path, exclude: Option<&str>, staged: bool) -> Result<Verdict, St
     let grammar = text::Grammar::new()?;
     let files: Vec<String> = crate::gitutil::listed_files(root, staged)?
         .into_iter()
-        .filter(|f| text::scannable(f) && !pattern.as_ref().is_some_and(|p| p.is_match(f)))
+        // The allowlist quotes the claims it excuses; read as prose, each entry would be a claim.
+        .filter(|f| f != ALLOW_FILE && text::scannable(f))
+        .filter(|f| !pattern.as_ref().is_some_and(|p| p.is_match(f)))
         .collect();
     if files.is_empty() {
         if staged {
