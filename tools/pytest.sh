@@ -14,10 +14,22 @@ GOH="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 # shellcheck source=/Users/ztomer/Projects/gates_of_heck/tui/lib.sh
 . "$GOH/tui/lib.sh"
 cd "$GOH"
+# shellcheck source=gates/_pytest_root.sh
+. "$GOH/gates/_pytest_root.sh"
+goh_pytest_root  # concurrent suites cannot prune each other's temp dirs; kept after a failure
+ARGS=(-q)
 if python3 -c "import xdist" 2>/dev/null; then
-    exec python3 -m pytest tests/ -q -n 12 --dist loadgroup
+    ARGS+=(-n 12 --dist loadgroup)
+else
+    warn "pytest-xdist not installed — serial suite (pip3 install pytest-xdist)"
 fi
-warn "pytest-xdist not installed — serial suite (pip3 install pytest-xdist)"
-exec python3 -m pytest tests/ -q
+rc=0
+python3 -m pytest tests/ "${ARGS[@]}" || rc=$?
+if [ "$rc" -eq 0 ]; then
+    rm -rf "$PYTEST_DEBUG_TEMPROOT"
+else
+    info "the failed run's temp root is kept: $PYTEST_DEBUG_TEMPROOT"
+fi
+(exit "$rc")
 exit
 } # parse-guard

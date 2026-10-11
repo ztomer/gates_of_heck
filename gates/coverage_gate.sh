@@ -355,6 +355,9 @@ run_py() {
     python3 -m pytest --version >/dev/null 2>&1 \
         || { err "'pytest' not installed (python3 -m pip install coverage pytest)"; exit 2; }
 
+    # shellcheck source=gates/_pytest_root.sh
+    . "$HERE/_pytest_root.sh"
+    goh_pytest_root  # a concurrent suite cannot prune this one's temp dirs
     info "coverage run -m pytest"
     # shellcheck disable=SC2086
     python3 -m coverage run --source="$PROJ" \
@@ -362,6 +365,7 @@ run_py() {
         ${IGNORE:+--omit "$IGNORE"} \
         -m pytest -q >/dev/null 2>&1 \
         || { err "tests failed while collecting coverage"; exit 1; }
+    rm -rf "$PYTEST_DEBUG_TEMPROOT"
 
     # The floor is enforced BY coverage itself (--fail-under), and echoed here
     # in house voice so every mode reports the same shape.

@@ -58,6 +58,9 @@ goh_tree_stamp
 command -v python3 >/dev/null 2>&1 || die "python3 not on PATH"
 goh_py_require ruff
 goh_py_require pytest
+# shellcheck source=gates/_pytest_root.sh
+. "$HERE/_pytest_root.sh"
+goh_pytest_root  # a concurrent suite cannot prune this one's temp dirs
 
 goh_step_in "$pkg_dir" "ruff check"        "${RUN_ARR[@]}" ruff check .
 goh_step_in "$pkg_dir" "ruff format check" "${RUN_ARR[@]}" ruff format --check .
@@ -70,6 +73,7 @@ else
     goh_step_in "$pkg_dir" "pytest" "${RUN_ARR[@]}" pytest -q
     warn "no coverage floor — set GOH_PY_COV_MIN in .gatesrc"
 fi
+rm -rf "$PYTEST_DEBUG_TEMPROOT"
 
 goh_done
 exit
