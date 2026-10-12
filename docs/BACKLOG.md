@@ -434,6 +434,83 @@ episode (4.4) is what that hand-writing costs.
       code edit. Lies: a crate a consumer pins by git rev is a vendored copy with extra steps --
       the crate must be consumed from `$GOH_DIR`, as the libs are.
 
+### Phase 6 -- the estate consolidation's findings (2026-10-12), ahead of Phase 5
+
+Reported by the 2026-10-12 roadmap-consolidation session, whose per-repo agents measured them;
+the paths and SHAs are theirs and each Baseline is to be re-read before its round. Correctness
+outranks measurement, so this phase runs before Phase 5. Two of its findings were already here:
+the Rust TUI helper is 4.14 (antiknob's 43 `[ ==> ]` sites are its consumer half, in Downstream)
+and the calibration registry is O35.
+
+- [ ] 6.1 The git-env seams live here once, and no consumer carries a copy. Baseline: necrohand
+      `tools/check_git_env.py` (`e46b8f9`) and CadGoose2 `tools/check_git_env.py` (`f0b4bb9`)
+      are hand-written copies of the empty-scope refusal, and both now fail structural with
+      "PASSED over an empty tree", so both pushes are refused; necrohand also carries a stale
+      excuse ("check_mcp_server.py is excused here but now FAILS on an empty tree"). ZeroThunder's
+      pre-push fails `tests/test_hook_git_env.py::test_the_seam_scrubs_foreign_roots_and_keeps_this_repo`
+      with `AssertionError: this suite is running under a hook's variables ['GIT_PREFIX']; nothing
+      below bites` -- its copy of the hook-env scrub does not know `GIT_PREFIX`. Exit: the
+      empty-scope refusal beside `_gitutil.foreign_repo_env()`, which itself scrubs every variable
+      git sets in a hook (`GIT_PREFIX` included, the list read from git's own docs, not typed), and
+      the three copies delegate or go. Red-first: a hook environment carrying `GIT_PREFIX` makes
+      the seam's test red until the scrub names it; an empty scope handed to the house refusal
+      reds. Lies: a scrub that lists variables by hand misses the next one git adds -- the test
+      reads git's set, so a new one reds instead of passing.
+- [ ] 6.2 A gate runs a pinned interpreter with its own import path, never the ambient `python3`.
+      Baseline: Homebrew moved `python3` to 3.15.0 on 2026-10-10 09:27; since then necrohand fails
+      `ModuleNotFoundError: spacy` and check-hemingway reports INCOMPARABLE, scripts fails 2 tests
+      because coverage's startup hook moved, and ZeroThunder's commit hook fails `No module named
+      'tui'` unless `PYTHONPATH` is set. 1.6 names the interpreter a step chose and refuses a stale
+      `.venv`; it does not stop a bare `python3` resolving to whatever Homebrew installed last.
+      Exit: one seam (`gates/_py.sh`) every gate's Python goes through: the interpreter pinned per
+      repo, `$GOH_DIR` on its path without the shell's `PYTHONPATH`, and a structural step refusing
+      a bare `python3` in a hook or gate script. Red-first: a hook that runs `python3 -c "import
+      tui"` with `PYTHONPATH` unset reds today and is green through the seam. Lies: pinning a path
+      to a Homebrew keg pins nothing (the keg moves) -- the pin is a version, checked.
+- [ ] 6.3 The credential-in-URL gate sees a variable in the userinfo. Baseline: it passed
+      `git clone "https://${TAP_TOKEN}@github.com/..."` at CadGoose
+      `.github/workflows/build_and_release.yml:154`. Exit: userinfo made of a shell or Actions
+      expansion (`${X}`, `$X`, `${{ secrets.X }}`) is a finding, in YAML as in shell. Red-first:
+      that line planted in a fixture reds. Lies: an expansion is not a literal secret, but it is
+      the secret in the URL at run time, logged by every tool that echoes its argv.
+- [ ] 6.4 `goh no-allow` reads attributes, not text. Baseline: it flags `#[allow]` inside a string
+      literal at zinc `crates/xtask/src/walk_tests.rs:28`. Exit: a match inside a string or a
+      comment is not an attribute. Red-first: that line in a fixture is clean; a real
+      `#[allow(dead_code)]` beside it is still red. Lies: a raw string holding a whole attribute
+      line is the case a lexer gets wrong -- the fixture carries one.
+- [ ] 6.5 A release refuses while CI on HEAD is red. Baseline: ztools CI has been red since
+      2026-10-10 (`.python-version` is gitignored and ci.yml reads it), and v3.6.0, v3.7.0 and
+      v3.8.0 were each tagged over it. Exit: the house release step reads the CI conclusion for
+      the commit it tags and refuses red or pending, naming the run. Red-first: a fixture remote
+      reporting a failed run for HEAD refuses the tag. Lies: a repo with no CI reads as "no runs",
+      which is not green -- it is stated as "no CI", and a repo that has CI must not read that way.
+- [ ] 6.6 A stale stock hook goes red, or replaces itself. Baseline: "pre-commit/pre-push is an
+      OLDER stock hook" prints in scripts, necrohand, apes, old_phones and Adv360 and never fails
+      anything (Downstream records 23 of 29 off-stock at `2fb2901`). Exit: an older stock hook
+      fails structural with the reinstall command, or the hook updates itself from `$GOH_DIR`
+      when it is a pure stock copy. Red-first: an older stock copy installed in a fixture reds.
+      Lies: a hook a repo has edited is not stock -- replacing it destroys the edit, so only a
+      byte-identical older stock copy is replaced, and an edited one is named.
+- [ ] 6.7 A consumer's gate that skips the house layer says so. Baseline: old_phones
+      `tools/gate.sh` never calls `structural.sh`, so emoji and line-cap are not enforced there;
+      its `preflight.sh` is 523 lines and fails the cap when run by hand. Exit: the stock hooks
+      run structural themselves (or refuse when the repo's gate did not), so no consumer gate can
+      omit it. Red-first: a fixture `gate.sh` that skips structural leaves a planted emoji red.
+      Lies: a gate that calls structural with an empty scope "ran" it -- 6.1's empty-scope
+      refusal applies.
+- [ ] 6.8 A tap bump goes through the tap's gate. Baseline: five products' release scripts push
+      homebrew-tap bumps straight to GitHub, so the tap's own gate never runs. Exit: one house
+      tap-bump step (clone, edit, the tap's gate, pinned push) the five scripts call instead.
+      Red-first: a bump that breaks the tap's formula lint is refused before the push. Lies: a
+      bump pushed by a token from CI skips local hooks by construction -- the step runs the gate
+      itself rather than relying on a hook.
+- [ ] 6.9 An early-exit pipe under pipefail refuses everywhere, not only where opted in.
+      Baseline: Finance's gate scripts hold 16 pipes the house checker warns about and passes;
+      under pipefail a `| grep -q` can turn a match into a miss. ZoneWM refuses them only through
+      `GOH_NO_EARLY_EXIT_PIPE=1`. Exit: on by default with a shrink-only per-repo seed. Red-first:
+      a planted `set -o pipefail; yes | grep -q y` in a fixture reds with no opt-in. Lies: a pipe
+      whose left side cannot outlive its reader is safe, and the seed is where that is said.
+
 ### Phase 5 -- the measurements, last (ids kept from v0.25.0's Phase 4)
 
 Correctness outranks, and no figure is worth a red gate: these move behind 1-4 because every
@@ -612,7 +689,8 @@ Finance's `"$root.out"`, ZeroThunder's dropped process handle.
   `check_focused_border_verdicts.py --probe` fails alone at that HEAD (a fill-arm assertion).
 - **Every consumer pushing by branch name over HTTPS:** `push_gate.sh` refuses a ref that moved
   while it was gated; ZoneWM's pinned `git push <remote> <sha>:<branch>` is the airtight form.
-- **O35 (servers):** a per-consumer `gate_calibration.json` registry; a feature here, unscoped.
+- **O35 (servers):** a per-consumer `gate_calibration.json` registry; a feature here, unscoped. Re-reported
+  open by the 2026-10-12 consolidation; servers carries a pointer to it.
 
 ## Known limits, stated so they are not rediscovered
 
@@ -698,3 +776,4 @@ Finance's `"$root.out"`, ZeroThunder's dropped process handle.
   `goh-tui = { path = "../gates_of_heck/crates/goh-tui" }` (Cargo reads no env var in a path, so the
   sibling checkout IS `$GOH_DIR`; its `build.rs` reads the stylerc beside it, never a copy), then
   `goh_tui::outln!("{OK} ...")` in place of each `[ Ok  ]`, and re-seed `status-markers` smaller.
+  Re-measured 2026-10-12 by the consolidation: 43 hand-rolled `[ ==> ]` prefixes left in its Rust binaries.
