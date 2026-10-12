@@ -289,48 +289,7 @@ def mk_xcrun_find_shim(bin_dir: Path, swift_path: Path) -> Path:
 # Stateful stub: `release view` succeeds iff that release was previously
 # created. Shared by test_release_kit.py and test_release_hardening.py
 # (was a 36-line verbatim duplicate in both — one copy now).
-FAKE_GH = """\
-#!/usr/bin/env bash
-STATE="${GH_STATE:?}"; LOG="${GH_LOG:?}"
-printf 'gh %s\\n' "$*" >> "$LOG"
-cmd="$1"; shift
-case "$cmd" in
-  auth) exit 0 ;;
-  api) exit 0 ;;
-  release)
-    sub="$1"; shift
-    case "$sub" in
-      view)
-        tag=""
-        while [ $# -gt 0 ]; do
-          case "$1" in
-            --repo) shift 2 ;;
-            --*) shift ;;
-            *) [ -z "$tag" ] && tag="$1"; shift ;;
-          esac
-        done
-        [ -n "$tag" ] && [ -f "$STATE/rel-$tag" ] ;;
-      list)
-        # One tag name per release, as `--json tagName --jq '.[].tagName'` prints.
-        for f in "$STATE"/rel-*; do [ -e "$f" ] && printf '%s\\n' "${f##*/rel-}"; done
-        exit 0 ;;
-      create)
-        tag=""; notes=""
-        while [ $# -gt 0 ]; do
-          case "$1" in
-            --notes-file) notes="$2"; shift 2 ;;
-            --title|--repo) shift 2 ;;
-            *) [ -z "$tag" ] && tag="$1"; shift ;;
-          esac
-        done
-        : > "$STATE/rel-$tag"
-        [ -n "$notes" ] && cp "$notes" "$STATE/notes-$tag"
-        exit 0 ;;
-      *) exit 0 ;;
-    esac ;;
-  *) exit 0 ;;
-esac
-"""
+from _fake_gh import FAKE_GH  # noqa: E402, F401  -- re-exported: the release kit's tests import it here
 
 
 def _build_goh() -> Path:

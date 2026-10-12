@@ -6,6 +6,9 @@
 #
 # Contract — steps run in this order, each skippable, every failure names its
 # step:
+#   0. ci         every CI run for HEAD (`gh run list --commit`) complete and green;
+#                 red, pending or none refuses, naming each run (ztools tagged three
+#                 releases over red CI). No workflows: "no CI", not a green.
 #   1. gate       verify the local gate-of-record is green
 #                 (--gate CMD or GOH_RELEASE_GATE; a release is only cut on a
 #                 green gate of record)
@@ -91,6 +94,7 @@ VERSION=""
 GATE_CMD="${GOH_RELEASE_GATE:-}"
 BRANCH=""            # default: current branch, resolved later
 CHANGELOG_CHECK=1
+CI_CHECK=1
 DO_PUSH=1
 DO_RELEASE=1
 DRY_RUN=0
@@ -109,6 +113,7 @@ while [ $# -gt 0 ]; do
     --gate)               GATE_CMD="${2:?}"; shift 2 ;;
     --branch)             BRANCH="${2:?}"; shift 2 ;;
     --no-changelog-check) CHANGELOG_CHECK=0; shift ;;
+    --no-ci-check)        CI_CHECK=0; shift ;;
     --no-push)            DO_PUSH=0; shift ;;
     --skip-release)       DO_RELEASE=0; shift ;;
     --dry-run)            DRY_RUN=1; shift ;;
@@ -214,6 +219,37 @@ if [ "$DRY_RUN" = 1 ]; then
   section "release plan for ${TAG} (dry-run — nothing will execute)"
 else
   section "release ${TAG} from ${BRANCH}"
+fi
+
+# ── 0. CI on the commit being tagged ─────────────────────────────────────────
+# First, because it is one read and a red answer spares the gate and every step after it.
+begin "ci" "the CI runs for HEAD"
+HEAD_SHA="$(git rev-parse HEAD)"
+if [ "$CI_CHECK" = 0 ]; then
+  warn "skipped (--no-ci-check): tagging ${HEAD_SHA:0:12} over whatever its CI says"
+elif [ -z "$(git ls-files -- '.github/workflows/*.yml' '.github/workflows/*.yaml')" ]; then
+  info "no CI: this repo tracks no .github/workflows, so there is no run to wait for (not a green)"
+elif [ "$DRY_RUN" = 1 ]; then
+  plan "gh run list --commit ${HEAD_SHA:0:12}: refuse a red, pending or missing run"
+else
+  [ -n "$GH_REPO_SLUG" ] || fail "this repo has CI workflows but origin (${ORIGIN_URL}) is not a \
+GitHub remote, so its runs cannot be read -- --no-ci-check to tag without them"
+  command -v gh >/dev/null 2>&1 || fail "gh is not installed, so the CI runs for HEAD cannot be \
+read -- install it, or --no-ci-check to tag without them"
+  CI_RUNS="$(gh run list --repo "$GH_REPO_SLUG" --commit "$HEAD_SHA" --limit 100 \
+      --json status,conclusion,name,url \
+      --jq '.[] | [.status, (.conclusion // ""), .name, .url] | @tsv')" \
+    || fail "gh run list could not read the CI runs for ${HEAD_SHA:0:12}"
+  [ -n "$CI_RUNS" ] || fail "no CI run for HEAD (${HEAD_SHA:0:12}) -- push the branch and let CI \
+finish first: a tag over no run is a tag over an unknown"
+  CI_BAD="$(awk -F'\t' '$1 != "completed" || ($2 != "success" && $2 != "skipped" && $2 != "neutral")' <<<"$CI_RUNS")"
+  if [ -n "$CI_BAD" ]; then
+    # awk, not `read`: a tab is IFS whitespace, so `read` merges a pending run's empty field.
+    while IFS= read -r line; do err "$line"; done < <(awk -F'\t' \
+      '{ printf "  %s: %s -- %s\n", $3, ($2 == "" ? $1 : $2), $4 }' <<<"$CI_BAD")
+    fail "CI on HEAD (${HEAD_SHA:0:12}) is not green (above) -- nothing tagged"
+  fi
+  ok "$(wc -l <<<"$CI_RUNS" | tr -d ' ') CI run(s) for ${HEAD_SHA:0:12}, every one green"
 fi
 
 # ── 1. gate ──────────────────────────────────────────────────────────────────
