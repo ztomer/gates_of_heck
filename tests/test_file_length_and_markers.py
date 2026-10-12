@@ -49,6 +49,19 @@ def test_staged_scope(repo):
     assert r.returncode == 1
 
 
+def test_a_commit_growing_an_over_cap_build_script_is_refused_at_commit(repo):
+    """BACKLOG 6.10: CadGoose2's CMakeLists.txt reached 1142 lines in commits the staged cap never
+    refused, because a build script with no source suffix was out of scope until b85e0af. A commit
+    that grows one already over the cap is refused at --staged, by the cap, not first at push."""
+    write(repo, "CMakeLists.txt", "x\n" * 1141)
+    commit_all(repo)
+    write(repo, "CMakeLists.txt", "x\n" * 1142)
+    stage(repo, "CMakeLists.txt")
+    r = run_check(repo, LONG, "--max", "500", "--staged")
+    assert r.returncode == 1, r.stdout + r.stderr
+    assert "CMakeLists.txt" in r.stderr and "500-line cap" in r.stderr, r.stderr
+
+
 # ---- conflict markers -------------------------------------------------------
 
 

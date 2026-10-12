@@ -516,7 +516,9 @@ and the calibration registry is O35.
       a planted `set -o pipefail; yes | grep -q y` in a fixture reds with no opt-in. Lies: a pipe
       whose left side cannot outlive its reader is safe, and the seed is where that is said.
 
-- [ ] 6.10 The line cap holds at commit, not first at push. Baseline: CadGoose2's
+- [x] 6.10 (`b85e0af`, 2026-10-05, which put build scripts with no source suffix under the cap;
+      CadGoose2's file last grew on 2026-09-23, before it. Pinned by
+      `test_a_commit_growing_an_over_cap_build_script_is_refused_at_commit`.) The line cap holds at commit, not first at push. Baseline: CadGoose2's
       `CMakeLists.txt` has been 1142 lines since 2026-09-23 and no commit refused it; only the
       full-scope pre-push did ("[file_length] 1 file(s) over the 500-line cap"), so a file that
       grows across commits passes each commit and then blocks every push. Exit: the staged
