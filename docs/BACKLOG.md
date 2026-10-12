@@ -291,7 +291,7 @@ episode (4.4) is what that hand-writing costs.
       census names the file. Lies: a census that matches ARGV rather than the CALLEE flags the
       very seam it exists to approve -- a gate that can never go green reports nothing (measured,
       CadGoose2).
-- [ ] 4.2 A child spawned INSIDE a fixture repo inherits the hook's repository, and no grep can
+- [x] 4.2 (`dde34ef`: `_gitcensus.directory_spawns`, `Census.fixture_sites`/`stale_inherit`, this tree censused by `tests/test_goh_directory_spawns.py`; the consumers' half is in Downstream) A child spawned INSIDE a fixture repo inherits the hook's repository, and no grep can
       see it. Baseline: two live instances found in one day -- gaf's
       `tools/check_gate_canary.py::run_check` and ZeroThunder's `run_in`/`emoji_rejected` -- each
       launching a HOUSE CHECK with `cwd=<fixture>`, so the argv names a checker rather than `git`
@@ -542,6 +542,12 @@ Finance's `"$root.out"`, ZeroThunder's dropped process handle.
   pass), ZeroThunder `tests/test_hook_git_env.py:228-300` (a substring per FILE: a file that calls
   `run_git(` once is cleared of a raw call beside it). Each keeps its own floor on `read`, and
   `stale` replaces ZeroThunder's hand ratchet.
+- **Every census consumer, after `dde34ef` (4.2):** `census(...)` now also returns `fixture_sites`
+  (a raw spawn with a `cwd` and the caller's environment: none, `os.environ` or a copy) and
+  `stale_inherit`; assert both empty beside `sites`, declaring with `inherit={path_or_dir: reason}`
+  only what runs in the gated repo or under a process that drops git's local variables first. The
+  shapes pinned are gaf's `run_check` and ZeroThunder's `emoji_rejected`; an `env=<name>` built
+  elsewhere is trusted, so a name built from `os.environ` is the remaining blind spot.
 - **ZeroThunder, the D1 goldens work (2026-10-09):** 7 modified files and 1 new
   (`Core/AppDelegate/GoldenFrameDelivery.swift`) are UNCOMMITTED in its tree, plus a worktree at
   `/private/tmp/zt-gold`; break-probes 1 and 2 red in HeadlessTests, break 3 (the guard removed
