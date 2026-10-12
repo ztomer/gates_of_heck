@@ -306,3 +306,26 @@ def test_help_exits_zero_without_side_effects(tmp_path):
     assert "--force" in (r.stdout + r.stderr)
     assert not target.exists()
     assert not (tmp_path / ".githooks").exists()
+
+
+def test_the_starters_install_writes_pass_goh_home_paths(repo, goh):
+    """What install.sh writes into a new repo is clean under the house's own checks. The starter
+    .gatesrc carried `~/Projects/scripts/...` in a comment, `goh home-paths` refuses a tilde checkout
+    path, and so every freshly installed repo failed the house gate on its first full run -- found
+    when the mediaremote-adapter fork's install turned goh's own estate corpus red (2026-10-12)."""
+    r = _install(repo)
+    assert r.returncode == 0, r.stdout + r.stderr
+    git(repo, "add", "-A")
+    for args in (["--staged"], []):  # as the first commit's hook sees it, then as a push does
+        out = subprocess.run(
+            [str(goh), "home-paths", *args], cwd=repo, capture_output=True, text=True
+        )
+        assert out.returncode == 0, out.stdout + out.stderr
+
+
+def test_the_example_gatesrc_passes_goh_home_paths(repo, goh):
+    """The example a repo copies from is held to the same rule as the starter."""
+    shutil.copy(REPO_ROOT / ".gatesrc.example", repo / ".gatesrc")
+    git(repo, "add", "-A")
+    out = subprocess.run([str(goh), "home-paths"], cwd=repo, capture_output=True, text=True)
+    assert out.returncode == 0, out.stdout + out.stderr

@@ -811,6 +811,12 @@ Finance's `"$root.out"`, ZeroThunder's dropped process handle.
   rest. At adoption (2026-10-11): antiknob 113 sites in 9 files (Rust `src/bin/`, `install.sh`,
   `ui/build.sh`; its Rust waits on 4.14), divoom-control 52 in 11, routines 3 in 1, ztools 3 in 1.
   ZoneWM reads 0 and adopts it with no seed.
+- **Every repo whose `.gatesrc` came from install.sh before 2026-10-12** (Adv360-Pro-ZMK, Finance,
+  antiknob, apes, games, homebrew-tap, mediaremote-adapter, old_phones, remote_dotfiles, scripts,
+  servers): the starter's disk-ceilings comment named `~/Projects/scripts/bin/disk_hygiene.sh`, which
+  `goh home-paths` refuses as a tilde checkout path. install.sh never rewrites an existing `.gatesrc`,
+  so edit the line to "the scripts repo's bin/disk_hygiene.sh" by hand. mediaremote-adapter first:
+  it is an estate-corpus root here, so its copy turns this repo's own gate red.
 - **antiknob, after `a74bbff` (4.14):** its Rust `src/bin/` sites can print through `goh-tui`:
   `goh-tui = { path = "../gates_of_heck/crates/goh-tui" }` (Cargo reads no env var in a path, so the
   sibling checkout IS `$GOH_DIR`; its `build.rs` reads the stylerc beside it, never a copy), then
