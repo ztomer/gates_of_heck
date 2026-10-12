@@ -87,6 +87,21 @@ fn the_trailer_block_is_the_last_paragraph_only() {
     assert_eq!(wrapped.get("Class").map(String::as_str), Some("one two"));
 }
 
+/// A wrapped line with no indent in the trailer paragraph keeps git from reading ANY of it; the
+/// refusal names that line rather than sending the writer "beside Co-Authored-By", where the keys
+/// already were (`ZoneWM`, 2026-10-12: a two-line `Red-run:`).
+#[test]
+fn a_non_trailer_line_in_the_last_paragraph_is_named() {
+    let message = "fix: a\n\nbody\n\nRed-run: a long line\nthat wrapped.\nClass: c\n\
+                   Siblings: none (grep -rn pattern)\nCo-Authored-By: x\n";
+    let got = refusals(message, &[], &none(), true);
+    assert_eq!(got.len(), 1, "{got:?}");
+    assert!(got[0].contains("`that wrapped.` is not"), "{got:?}");
+    let above = "fix: a\n\nClass: c\nSiblings: none (grep -rn pattern)\n\nCo-Authored-By: x\n";
+    let got = refusals(above, &[], &none(), true);
+    assert!(got.iter().any(|r| r.contains("sits above")), "{got:?}");
+}
+
 /// `ZoneWM`'s 94 commits, labelled by their author (2026-10-08): the pairs it calls one class,
 /// and the pairs that share words but are not.
 #[test]

@@ -63,6 +63,13 @@ pub(crate) fn cleaned(message: &str) -> Vec<&str> {
 /// git's trailer block: the last paragraph (never the subject's), when EVERY line in it is
 /// `Token: value` or a continuation. Stricter than git, so whatever passes here git reads too.
 pub(crate) fn final_trailers(lines: &[&str]) -> BTreeMap<String, String> {
+    last_paragraph(lines).unwrap_or_default()
+}
+
+/// The last paragraph read as a trailer block: its trailers, or the first line that keeps git from
+/// reading it as one (a wrapped line with no indent is the usual one). `Ok` and empty when there is
+/// no paragraph past the subject's.
+fn last_paragraph(lines: &[&str]) -> Result<BTreeMap<String, String>, String> {
     let mut end = lines.len();
     while end > 0 && lines[end - 1].is_empty() {
         end -= 1;
@@ -73,32 +80,63 @@ pub(crate) fn final_trailers(lines: &[&str]) -> BTreeMap<String, String> {
     }
     let mut out = BTreeMap::new();
     if start == 0 {
-        return out; // the subject paragraph is never a trailer block
+        return Ok(out); // the subject paragraph is never a trailer block
     }
     let mut last: Option<String> = None;
     for line in &lines[start..end] {
         if line.starts_with([' ', '\t']) {
             let Some(v) = last.as_ref().and_then(|k| out.get_mut(k)) else {
-                return BTreeMap::new();
+                return Err((*line).to_owned());
             };
             v.push(' ');
             v.push_str(line.trim());
             continue;
         }
         let Some((token, value)) = line.split_once(':') else {
-            return BTreeMap::new();
+            return Err((*line).to_owned());
         };
         if token.is_empty()
             || !token
                 .bytes()
                 .all(|b| b.is_ascii_alphanumeric() || b == b'-')
         {
-            return BTreeMap::new();
+            return Err((*line).to_owned());
         }
         out.insert(token.to_owned(), value.trim().to_owned());
         last = Some(token.to_owned());
     }
-    out
+    Ok(out)
+}
+
+/// The line that keeps the last paragraph from being git's trailer block, when one of `keys` sits
+/// in that paragraph: the writer put the trailer where it belongs and one line (a wrap with no
+/// indent, usually) spoils the whole block. None when the block reads, or holds none of `keys`.
+pub(crate) fn unread_block(lines: &[&str], keys: &[&str]) -> Option<String> {
+    let blocker = last_paragraph(lines).err()?;
+    let mut end = lines.len();
+    while end > 0 && lines[end - 1].is_empty() {
+        end -= 1;
+    }
+    let mut start = end;
+    while start > 0 && !lines[start - 1].is_empty() {
+        start -= 1;
+    }
+    lines[start..end]
+        .iter()
+        .any(|l| {
+            keys.iter()
+                .any(|k| l.strip_prefix(k).is_some_and(|r| r.starts_with(':')))
+        })
+        .then_some(blocker)
+}
+
+/// The refusal for `unread_block`'s line: where the fix is, not where the trailers already are.
+pub(crate) fn unread_block_refusal(line: &str) -> String {
+    format!(
+        "the last paragraph holds the trailers, but git reads it as a trailer block only when \
+         every line is `Token: value`, and `{line}` is not: join it to the line above, or move \
+         it out of the block"
+    )
 }
 
 /// The prototype's reading: a `Key:` line anywhere, the last one winning.
@@ -162,8 +200,14 @@ pub fn refusals(
         both
     };
     let mut out = Vec::new();
+    // A key IN the last paragraph that git still does not read: one line there is not a trailer.
+    // Saying "move it beside Co-Authored-By" would send the writer to where it already is.
+    let blocker = unread_block(&lines, &KEYS).filter(|_| placement);
+    if let Some(line) = &blocker {
+        out.push(unread_block_refusal(line));
+    }
     for key in KEYS {
-        if placement && !t.contains_key(key) && loose.contains_key(key) {
+        if placement && blocker.is_none() && !t.contains_key(key) && loose.contains_key(key) {
             out.push(format!(
                 "`{key}:` sits above the message's last paragraph, where git does not read \
                  trailers: move it into the trailer block, beside Co-Authored-By"

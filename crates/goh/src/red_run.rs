@@ -61,7 +61,11 @@ pub fn added_tests(diff: &str) -> Vec<String> {
 pub fn refusal(message: &str, diff: &str) -> Option<String> {
     let added = added_tests(diff);
     let first = added.first()?;
-    let trailers = final_trailers(&cleaned(message));
+    let lines = cleaned(message);
+    if let Some(line) = crate::commit_class::unread_block(&lines, &[KEY]) {
+        return Some(crate::commit_class::unread_block_refusal(&line));
+    }
+    let trailers = final_trailers(&lines);
     let claim = trailers
         .get(KEY)
         .map(|v| v.to_lowercase())

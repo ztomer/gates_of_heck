@@ -61,3 +61,14 @@ fn the_trailer_must_be_in_the_trailer_block_and_say_something() {
 fn a_commit_adding_no_test_needs_no_trailer() {
     assert_eq!(refusal("feat: x\n", ADDS_CODE), None);
 }
+
+/// A `Red-run:` that is there but unreadable -- a wrapped line spoils the block -- is named as
+/// that, not as a missing claim (`ZoneWM`, 2026-10-12).
+#[test]
+fn a_red_run_in_an_unreadable_block_names_the_blocking_line() {
+    let diff =
+        "diff --git a/tests/test_x.py b/tests/test_x.py\n+++ b/tests/test_x.py\n+def test_new():\n";
+    let message = "fix: a\n\nRed-run: a long line\nthat wrapped.\nCo-Authored-By: x\n";
+    let why = refusal(message, diff).expect("refused");
+    assert!(why.contains("`that wrapped.` is not"), "{why}");
+}
