@@ -489,14 +489,18 @@ and the calibration registry is O35.
       the commit it tags and refuses red or pending, naming the run. Red-first: a fixture remote
       reporting a failed run for HEAD refuses the tag. Lies: a repo with no CI reads as "no runs",
       which is not green -- it is stated as "no CI", and a repo that has CI must not read that way.
-- [ ] 6.6 A stale stock hook goes red, or replaces itself. Baseline: "pre-commit/pre-push is an
+- [x] 6.6 (`a03d5fb`: a byte-identical retired stock hook fails structural with `install.sh "$PWD"`;
+      nothing is rewritten in place, since `.githooks` is tracked; the consumers' half is in
+      Downstream) A stale stock hook goes red, or replaces itself. Baseline: "pre-commit/pre-push is an
       OLDER stock hook" prints in scripts, necrohand, apes, old_phones and Adv360 and never fails
       anything (Downstream records 23 of 29 off-stock at `2fb2901`). Exit: an older stock hook
       fails structural with the reinstall command, or the hook updates itself from `$GOH_DIR`
       when it is a pure stock copy. Red-first: an older stock copy installed in a fixture reds.
       Lies: a hook a repo has edited is not stock -- replacing it destroys the edit, so only a
       byte-identical older stock copy is replaced, and an edited one is named.
-- [ ] 6.7 A consumer's gate that skips the house layer says so. Baseline: old_phones
+- [x] 6.7 (`18330c7`: the stock pre-commit only delegates to `gates/commit_gate.sh`; structural.sh
+      marks its scope and tree in `GOH_STRUCTURAL_MARK`, and the commit and push gates run it
+      themselves, naming the gap, when the repo's gate passed without it) A consumer's gate that skips the house layer says so. Baseline: old_phones
       `tools/gate.sh` never calls `structural.sh`, so emoji and line-cap are not enforced there;
       its `preflight.sh` is 523 lines and fails the cap when run by hand. Exit: the stock hooks
       run structural themselves (or refuse when the repo's gate did not), so no consumer gate can
@@ -676,6 +680,15 @@ Finance's `"$root.out"`, ZeroThunder's dropped process handle.
   left with `goh early-exit-pipe --seed` and commit `early_exit_pipe_seed.json`, which may only
   fall. By owner ruling (2026-10-12) they stay red until their own sessions take them.
 - **The 17 repos in 3.3's table**, one session each: run the check, fix or `--seed`.
+- **Every consumer, after `a03d5fb` (6.6) and `18330c7` (6.7), red at its next commit until it
+  re-installs:** 6.7 retired the stock pre-commit that every repo carried, and 6.6 refuses a
+  retired one. Run `~/Projects/gates_of_heck/install.sh .` and commit `.githooks/pre-commit` and
+  `.githooks/.goh-installed/pre-commit.sha256`. Fourteen were already a version behind on
+  2026-10-12 (Adv360-Pro-ZMK, apes, games, CadGoose2, ZeroThunder, game_asset_factory, necrohand,
+  Finance/ZincTender, homebrew-tap, koffee_oss, old_phones, remote_dotfiles, scripts, sys_updater);
+  the same one command covers them. This is the last such wave for commit-time logic: the hook now
+  decides nothing. A repo whose `tools/gate.sh` skips structural (old_phones) will see the house
+  layer run after it on every commit, the gap named, until its gate calls it.
 - **antiknob and media_server, after `72e8445` (6.12), red at their next push:** RUSTSEC-2024-0449
   (unsafe-libyaml 0.2.11, unmaintained, via serde_yaml_ng) fires in antiknob's `Cargo.lock` and in
   eight media_server crate lockfiles (healthcheck-rs, lan-ip-watcher-rs and its testkit, mcp-host-rs,
