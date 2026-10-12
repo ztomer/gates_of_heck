@@ -401,6 +401,12 @@ rewritten mid-run completes as written, and the unguarded control does not).
 
 * **A missing tool FAILS, before any slow step** (`goh_require` in `gates/_common.sh`): cargo-machete,
   swiftlint and shellcheck each used to warn and exit 0, a step that never ran under a green result.
+* **Advisories are judged BITING, and never from a cache** (BACKLOG 6.12). `rust_gate.sh` runs
+  `cargo audit --deny warnings --deny unmaintained --deny unsound --deny yanked` from the workspace
+  root before the crate group, outside every proven record: the advisory database is an input no key
+  names, so yesterday's green lockfile can be today's red one. Without the deny list cargo-audit
+  exits 0 on an unmaintained crate (calibrated 2026-10-12). `check_audit_ignores.py` then refuses an
+  ignore entry with no reason and one whose advisory no longer fires.
 * **`Cargo.lock` is an input, never an output.** `rust_gate.sh` refuses a missing lockfile, runs
   `cargo metadata --locked` first, passes `--locked` to every resolving cargo call (here, in
   `rust_manifest_gate.sh` and in `coverage_gate.sh`), and ends by checking the lockfile is

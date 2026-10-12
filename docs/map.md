@@ -101,6 +101,7 @@ Every structural checker is native since Phase N3; the Python checkers they port
 
 | Script | Purpose | Test |
 |---|---|---|
+| `check_audit_ignores.py` | `rust_gate.sh`'s second advisory step: every `.cargo/audit.toml` ignore entry at the workspace root carries a `# reason` on its line and still fires against `Cargo.lock` (re-audited from a scratch directory, nothing ignored). cargo-audit accepts a stale entry silently. | `test_rust_audit.py` |
 | `check_empty_scope.py` | The `--full` sweep: runs every gate over a skeleton with no CONTENT and fails any that passes -- a gate that reports success over nothing is the class. Delegated by the native tier. | `test_gate_runtime_path.py`, the empty-tree rows of each checker's own suite |
 | `check_python_formatted.py` | Forwarder (Phase N3): execs `gates/goh.sh python-formatted` with the same arguments, for a consumer that calls it by path; imported, it raises. | `test_retired_shims.py` |
 | `check_no_emoji.py` | Forwarder (Phase N3): execs `gates/goh.sh emoji` with the same arguments, for a consumer that calls it by path; imported, it raises. | `test_retired_shims.py` |

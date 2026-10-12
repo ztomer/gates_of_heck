@@ -12,6 +12,7 @@ python	pytest	pip	python3 -m pip install pytest	gates/py_gate.sh
 python	ruff	pip	python3 -m pip install ruff	gates/py_staged.sh
 rust	cargo	system	rustup (https://rustup.rs)	gates/rust_gate.sh
 rust	cargo-machete	cargo	cargo install cargo-machete	gates/rust_gate.sh
+rust	cargo-audit	cargo	cargo install cargo-audit	gates/rust_gate.sh
 rust-cross	cargo-zigbuild	cargo	cargo install cargo-zigbuild	gates/rust_gate.sh
 rust-cross	zig	brew	brew install zig	gates/rust_gate.sh
 swift	swiftlint	brew	brew install swiftlint	gates/swift_gate.sh

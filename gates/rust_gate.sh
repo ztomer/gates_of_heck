@@ -94,6 +94,7 @@ goh_tree_stamp
 
 command -v cargo >/dev/null 2>&1 || die "cargo not on PATH"
 goh_require cargo-machete "cargo install cargo-machete"
+goh_require cargo-audit "cargo install cargo-audit"
 
 # THE LOCKFILE IS AN INPUT, NEVER AN OUTPUT. Without `--locked`, cargo re-resolves and REWRITES a
 # lockfile its manifests disagree with, then lints and tests happily: a manifest-only dependency
@@ -232,6 +233,34 @@ rust_crate_checks() {
     goh_step "dependency currency" "${_goh_cmd[@]}" deps $_deps_args
 }
 
+# KNOWN ADVISORIES (Rust rule 3, BACKLOG 6.12). OUTSIDE every proven group, on purpose: the
+# advisory database is an input no key can name -- the same Cargo.lock that passed yesterday fails
+# the day an advisory lands against it -- so a record keyed on the crate would skip the one run that
+# matters. It costs under half a second (measured 2026-10-12, fetch included); concurrent crates
+# serialise on cargo-audit's own database lock.
+#   * BITING (rule 4): `cargo audit` exits 0 on unmaintained/unsound/yanked, so the deny list is on
+#     the command line, never left to a `.cargo/audit.toml` that may sit where cargo-audit does not
+#     look (it reads only the CURRENT directory's: ztools' gate ran for a month without its file).
+#   * Run from the WORKSPACE ROOT, beside its Cargo.lock: the one place a `.cargo/audit.toml` is read
+#     from, so its ignore list is the workspace's own.
+#   * The ignore list is a RATCHET: checks/check_audit_ignores.py refuses an entry with no `# reason`
+#     and one whose advisory no longer fires, which cargo-audit accepts silently.
+# GOH_DEPS_OFFLINE=1 judges against the cached database and SAYS so, like the currency arm.
+rust_advisories() {
+    local root fetch=""
+    root="$(dirname "$lockfile")"
+    if [ "${GOH_DEPS_OFFLINE:-}" = "1" ]; then
+        fetch="--no-fetch"
+        warn "advisories judged against the CACHED database (GOH_DEPS_OFFLINE=1): a newer one may fire"
+    fi
+    # shellcheck disable=SC2086 # $fetch is one flag or none
+    goh_step_in "$root" "no known advisory (cargo audit: warnings, unmaintained, unsound, yanked)" \
+        cargo audit $fetch --file "$lockfile" \
+        --deny warnings --deny unmaintained --deny unsound --deny yanked
+    goh_step_in "$root" "every advisory exemption has its reason and still fires" \
+        python3 "$HERE/../checks/check_audit_ignores.py" --no-fetch
+}
+
 rust_repo_checks() {
     # Native first: `goh lints` carries this step (parity-pinned by
     # tests/test_goh_lints_parity.py), through gates/goh.sh — the one resolver
@@ -272,6 +301,8 @@ goh_resolve_native
 # and its refusals (an unknown check, a retired --probe) do not apply to these fixed calls.
 _goh_cmd=(bash "$HERE/goh.sh")
 [ -x "${GOH_RESOLVED_BIN:-}" ] && _goh_cmd=("$GOH_RESOLVED_BIN")
+# Advisories FIRST: half a second, and the finding that matters most should not wait on clippy.
+_group_on crate && rust_advisories
 _group_on crate && rust_proven_group crate crate rust_crate_checks
 _group_on repo && rust_proven_group repo tree rust_repo_checks
 
