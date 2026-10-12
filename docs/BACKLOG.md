@@ -527,7 +527,9 @@ and the calibration registry is O35.
       fixture commit that takes an over-cap `CMakeLists.txt` from 1141 to 1142 lines reds at
       `--staged`. Lies: re-read why the staged run missed it before fixing (a type filter, a
       baseline, or only the touched hunk) -- each is a different fix.
-- [ ] 6.11 A hook run never writes the repository it runs in. Baseline: the games metarepo's
+- [ ] 6.11 (push half: `13f11b4`, `lib/repo_writes.sh` -- the push gate refuses a run that wrote
+      the repository's `.git/config` and names a moved ref; left: the commit half, which the stock
+      pre-commit cannot reach because it execs the repo's gate) A hook run never writes the repository it runs in. Baseline: the games metarepo's
       `origin` was `https://elsewhere.invalid/x.git` from 2026-10-08 19:09 until the consolidation
       repaired it: a probe in `82802c0`'s own hook run wrote it into the REAL `.git/config`, and
       nothing compares remote URLs before and after a hook. Sibling: scripts'
@@ -657,6 +659,9 @@ Finance's `"$root.out"`, ZeroThunder's dropped process handle.
   `.github/workflows/build_and_release.yml:154` (the tap clone puts `${TAP_TOKEN}` in the URL).
   Clone without it and pass the token as `git -c http.extraheader="AUTHORIZATION: basic ..."` or
   through a credential helper reading the variable; 6.8's house tap-bump step replaces the line.
+- **scripts, after `13f11b4` (6.11):** `test_flatten_git_history.sh` writes the real
+  `backup/flatten-records` ref; the push gate now names it on every push. Build the history in a
+  scratch repository (`_gitutil.scratch_git`) instead.
 - **The 17 repos in 3.3's table**, one session each: run the check, fix or `--seed`.
 - **games metarepo and four nested repos, after `92b0946` (4.1):** `tools/check_plan_refs.py:131`,
   `tools/check_phase_exits.py:82`, `tools/check_plan_claims.py:117` and `:168` ask
