@@ -1,0 +1,8 @@
+<?xml version="1.0"?>
+<trace-query-result>
+<node xpath='//trace-toc[1]/run[1]/data[1]/table[14]'><schema name="time-profile"/>
+<row><sample-time id="1" fmt="00:00.001">1</sample-time><thread id="2" fmt="Main Thread (0x1) (App, pid: 10)"><tid id="3" fmt="0x1">1</tid><process id="4" fmt="App (10)"><pid id="5" fmt="10">10</pid></process></thread><process ref="4"/><weight id="6" fmt="1.00 ms">1000000</weight><tagged-backtrace id="7"><frame id="8" name="decode" addr="0x1"><binary id="9" name="ImageIO"/></frame><frame id="10" name="read" addr="0x2"><binary id="11" name="App"/></frame><frame id="12" name="main" addr="0x3"><binary ref="11"/></frame></tagged-backtrace></row>
+<row><sample-time id="13" fmt="00:00.002">2</sample-time><thread ref="2"/><process ref="4"/><weight ref="6"/><tagged-backtrace ref="7"/></row>
+<row><sample-time id="14" fmt="00:00.003">3</sample-time><thread id="15" fmt="worker (0x2) (App, pid: 10)"><tid id="16" fmt="0x2">2</tid><process ref="4"/></thread><process ref="4"/><weight id="17" fmt="2.00 ms">2000000</weight><tagged-backtrace id="18"><frame id="19" name="render" addr="0x4"><binary ref="11"/></frame><frame ref="12"/></tagged-backtrace></row>
+<row><sample-time id="20" fmt="00:00.004">4</sample-time><thread id="21" fmt="Main Thread (0x3) (Other, pid: 20)"><tid id="22" fmt="0x3">3</tid><process id="23" fmt="Other (20)"><pid id="24" fmt="20">20</pid></process></thread><process ref="23"/><weight id="25" fmt="5.00 ms">5000000</weight><tagged-backtrace id="26"><frame ref="8"/></tagged-backtrace></row>
+</node></trace-query-result>

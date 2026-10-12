@@ -181,7 +181,9 @@ Every structural checker is native since Phase N3; the Python checkers they port
 * `tools/session_bench.py <repo>` — how much N concurrent sessions' gates serialize on each other: one
   clone per session, makespan and speedup per N, the USL fit (sigma = serialized fraction, kappa =
   interference), every lock wait by name, and the steps that inflated most. Pinned by `test_session_bench.py`.
-* `tools/profiling/` — soak/profile harness. See its `README.md`.
+* `tools/profiling/` — soak/profile harness. See its `README.md`. `analyze_trace.sh` +
+  `xctrace_profile.py` rank any Time Profiler trace (the `time-profile` export, id/ref resolved,
+  streamed); pinned by `test_xctrace_profile.py`.
 * `install.sh` — wires `.githooks/` + starter `tools/gate.sh` / `.gatesrc`
   into a consumer repo, all-or-nothing. Pinned by `test_install.py`, `test_install_atomic.py`.
 * `retired_hooks.sha256` — digest of every stock hook ever shipped; a repo hook matching one is pristine to `install.sh`

@@ -51,11 +51,16 @@ that are invisible with a single goose.
 
 ### Analyze Existing Trace
 ```bash
-./analyze_trace.sh <trace_file.trace> [output_report.txt]
+./analyze_trace.sh <trace_file.trace> [output_report.txt] [--process NAME] [--under FRAME --tree N]
 ```
-Post-processes any existing `xctrace` `.trace` file into a ranked text hotspot
-report (sorted by self-time). Uses `xctrace export` + Python3.
-Saves report alongside the trace as `<trace>.hotspots.txt`.
+Exports the trace's `time-profile` table (the one today's `xctrace` writes) and ranks it with
+`xctrace_profile.py`: by thread, by the leaf's binary, self and inclusive time; `--process` keeps
+the processes whose name contains NAME (an `--all-processes` recording holds every one), `--under`
+the stacks through one frame, with the tree `--tree` deep below it. Any repo's trace works.
+Saves the report alongside the trace as `<trace>.hotspots.txt`. Pinned by `test_xctrace_profile.py`.
+
+Record an app that a driver relaunches (a census) with `--all-processes`, never `--attach`: the
+attached recording ends when its target exits.
 
 ### Trail Detection Test (Cyan-pixel)
 ```bash
