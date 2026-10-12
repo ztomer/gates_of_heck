@@ -457,7 +457,12 @@ and the calibration registry is O35.
       the seam's test red until the scrub names it; an empty scope handed to the house refusal
       reds. Lies: a scrub that lists variables by hand misses the next one git adds -- the test
       reads git's set, so a new one reds instead of passing.
-- [ ] 6.2 A gate runs a pinned interpreter with its own import path, never the ambient `python3`.
+- [x] 6.2 (`1c4be61`: `gates/python.sh` runs the repo's pin -- a `.venv`, else `GOH_PYTHON_VERSION` or a
+      committed `.python-version`, found by version and read back -- with `$GOH_DIR` on its path and
+      the shell's `PYTHONPATH` dropped; `gates/_py.sh`'s runner takes the same pin; the structural
+      step "no bare python in a hook or gate" (`crates/goh/src/barepy`) refuses the other way. goh's
+      own stdlib-only helpers in `gates/*.sh` still call `python3`, most with `-S`: no import of
+      theirs depends on the interpreter. The consumers' half is in Downstream) A gate runs a pinned interpreter with its own import path, never the ambient `python3`.
       Baseline: Homebrew moved `python3` to 3.15.0 on 2026-10-10 09:27; since then necrohand fails
       `ModuleNotFoundError: spacy` and check-hemingway reports INCOMPARABLE, scripts fails 2 tests
       because coverage's startup hook moved, and ZeroThunder's commit hook fails `No module named
@@ -684,6 +689,13 @@ Finance's `"$root.out"`, ZeroThunder's dropped process handle.
   left with `goh early-exit-pipe --seed` and commit `early_exit_pipe_seed.json`, which may only
   fall. By owner ruling (2026-10-12) they stay red until their own sessions take them.
 - **The 17 repos in 3.3's table**, one session each: run the check, fix or `--seed`.
+- **Eight repos, after `1c4be61` (6.2), red at the next push until their hooks and gate run Python
+  through the seam:** a bare `python3` in `.githooks/*` or `tools/gate.sh` is refused. Counted
+  2026-10-12 (calls): ZeroThunder 14, app_updates 10, Finance/salary 3, Finance/zinc-core 3,
+  games 2, monitor 2, scripts 1 (ZoneWM's one is fixed in its own tree). The fix is mechanical:
+  `python3 X` becomes `bash "$GOH/gates/python.sh" X`. A repo whose tools need a library (necrohand's
+  spacy) pins the version that has it: a committed `.python-version`, or a `.venv`, which the seam
+  prefers and checks against the pin.
 - **ztools, after `5c5868e` (6.5):** its next release through the kit refuses while its CI on
   HEAD is red (red since 2026-10-10: ci.yml reads the gitignored `.python-version`). Fix the CI;
   `--no-ci-check` exists, says so aloud, and is not the fix. sys_updater has no workflow and
