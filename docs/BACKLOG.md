@@ -509,7 +509,8 @@ and the calibration registry is O35.
       Red-first: a bump that breaks the tap's formula lint is refused before the push. Lies: a
       bump pushed by a token from CI skips local hooks by construction -- the step runs the gate
       itself rather than relying on a hook.
-- [ ] 6.9 An early-exit pipe under pipefail refuses everywhere, not only where opted in.
+- [x] 6.9 (`496b6a5`: at full scope each file is held to `early_exit_pipe_seed.json` through
+      `crate::seedcount`; the consumers' half is in Downstream) An early-exit pipe under pipefail refuses everywhere, not only where opted in.
       Baseline: Finance's gate scripts hold 16 pipes the house checker warns about and passes;
       under pipefail a `| grep -q` can turn a match into a miss. ZoneWM refuses them only through
       `GOH_NO_EARLY_EXIT_PIPE=1`. Exit: on by default with a shrink-only per-repo seed. Red-first:
@@ -662,6 +663,12 @@ Finance's `"$root.out"`, ZeroThunder's dropped process handle.
 - **scripts, after `13f11b4` (6.11):** `test_flatten_git_history.sh` writes the real
   `backup/flatten-records` ref; the push gate now names it on every push. Build the history in a
   scratch repository (`_gitutil.scratch_git`) instead.
+- **Nine repos, after `496b6a5` (6.9), red at their next push until they act:** old_phones (99
+  early-exit pipes), koffee_big (29), Finance (16), scripts (12), koffee_oss (11), apes (7),
+  CadGoose (7), remote_dotfiles (3), ztools (1), counted 2026-10-12. Fix each
+  (`out="$(producer)"; grep -q PAT <<< "$out"`, the shape every finding prints), or adopt what is
+  left with `goh early-exit-pipe --seed` and commit `early_exit_pipe_seed.json`, which may only
+  fall. By owner ruling (2026-10-12) they stay red until their own sessions take them.
 - **The 17 repos in 3.3's table**, one session each: run the check, fix or `--seed`.
 - **games metarepo and four nested repos, after `92b0946` (4.1):** `tools/check_plan_refs.py:131`,
   `tools/check_phase_exits.py:82`, `tools/check_plan_claims.py:117` and `:168` ask
