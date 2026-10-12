@@ -12,7 +12,7 @@ pub(super) const FREQUENT_SHARE: usize = 8;
 pub(super) const FREQUENT_FLOOR: usize = 30;
 /// Words that carry no class: the prototype dropped 17; the calibration on `ZoneWM`'s 54 classes
 /// (2026-10-08) found `that`, `what`, `when`, `can` and their like were most of what unrelated
-/// classes shared, so every function word goes.
+/// classes shared, so every function word goes, and the verb that says only that something ran.
 const STOP: &[&str] = &[
     "a",
     "an",
@@ -105,6 +105,11 @@ const STOP: &[&str] = &[
     "once",
     "how",
     "why",
+    // "Run" is how a class says something happened, never which: it and `work` were all that
+    // per-pixel colour work and a rule racing a notice shared (ZoneWM, 2026-10-12).
+    "run",
+    "runs",
+    "ran",
 ];
 
 /// `recorded` and `record`, `ceilings` and `ceiling` are one word: the longest inflection off,

@@ -133,6 +133,11 @@ fn calibrated_on_zonewm_shared_words_are_not_a_class() {
             "a probe's restore that does not undo what it wrote, or never runs",
             "a verdict about framing that never reads what is framed",
         ),
+        // `run` as a verb, and `work`, were all these shared (ZoneWM 3b457ec1, 2026-10-12).
+        (
+            "per-pixel colour work run on the CPU that the GPU does within a level",
+            "a \"mark what is current\" rule run when a notice is HEARD, racing the work the event caused",
+        ),
     ] {
         assert!(!same_class(a, b, &none()), "{a} / {b}");
     }
