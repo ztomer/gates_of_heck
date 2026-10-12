@@ -426,66 +426,18 @@ if [ -z "$TAP_NAME" ]; then
   info "tap: not requested — skipping"
 else
   begin "tap" "${TAP_KIND} ${TAP_NAME} in ${TAP}"
-  TAP_SUBDIR="Formula"; [ "$TAP_KIND" = "cask" ] && TAP_SUBDIR="Casks"
-
-  if [ "$DRY_RUN" = 1 ]; then
-    plan "compute sha256 of artifact, rewrite url+sha256 in ${TAP_SUBDIR}/${TAP_NAME}.rb, commit + push"
-  else
-    if [ -d "$TAP" ]; then
-      TAP_SRC="$TAP"          # local path (tests, private remotes)
-    elif grep -q '/' <<<"$TAP"; then
-      TAP_SRC="https://github.com/${TAP}"
-    else
-      fail "--tap must be ORG/REPO or a local git path (got '${TAP}')"
-    fi
-    TAP_DIR="$(mktemp -d "${TMPDIR:-/tmp}/goh-release-tap.XXXXXX")"
-    git clone -q "$TAP_SRC" "$TAP_DIR/tap" || fail "could not clone ${TAP}"
-    FORMULA_FILE="$TAP_DIR/tap/${TAP_SUBDIR}/${TAP_NAME}.rb"
-    [ -f "$FORMULA_FILE" ] || fail "not found: ${TAP_SUBDIR}/${TAP_NAME}.rb in ${TAP}"
-
-    # Artifact digest: a local file is hashed directly; a URL is downloaded
-    # to a temp file first, with curl's failure routed through fail() — under
-    # set -e a bare `curl | shasum` pipeline let shasum hash EMPTY INPUT and
-    # hand the tap the digest of nothing.
-    if [ -z "$ARTIFACT" ]; then
-      ARTIFACT="https://github.com/${GH_REPO_SLUG}/archive/refs/tags/${TAG}.tar.gz"
-      [ -n "$GH_REPO_SLUG" ] || fail "no --artifact given and origin is not github.com — cannot derive tarball URL"
-    fi
-    case "$ARTIFACT" in
-      http://*|https://*)
-        artifact_dl="$(mktemp "${TMPDIR:-/tmp}/goh-release-artifact.XXXXXX")"
-        if ! curl -fsSL "$ARTIFACT" -o "$artifact_dl"; then
-          rm -f "$artifact_dl"
-          fail "could not download artifact: ${ARTIFACT}"
-        fi
-        SHA="$(shasum -a 256 "$artifact_dl" | cut -d' ' -f1)"
-        rm -f "$artifact_dl" ;;
-      *)                 [ -f "$ARTIFACT" ] || fail "artifact not found: ${ARTIFACT}"
-                         SHA="$(shasum -a 256 "$ARTIFACT" | cut -d' ' -f1)" ;;
-    esac
-    [ -n "$SHA" ] || fail "could not compute sha256 of ${ARTIFACT}"
-
-    NEW_TAG_RE="$(printf '%s' "$TAG" | sed 's/[.*/\[\\]/\\&/g')"
-    sed -i '' \
-      -e "s#/v${NEW_TAG_RE}\.tar\.gz#/v${NEW_TAG_RE}.tar.gz#g; s#/tags/v[0-9][0-9.]*\.tar\.gz#/tags/${TAG}.tar.gz#" \
-      -e "s/sha256 \"[0-9a-fA-F]*\"/sha256 \"${SHA}\"/" \
-      "$FORMULA_FILE"
-    grep -q "sha256 \"${SHA}\"" "$FORMULA_FILE" \
-      || fail "sha256 line unchanged after sed — unexpected ${TAP_KIND} format"
-
-    if git -C "$TAP_DIR/tap" diff --quiet; then
-      ok "already at ${TAG} with this sha256 — nothing to commit (idempotent)"
-    else
-      GIT_AUTHOR_NAME="${GIT_AUTHOR_NAME:-$(git config user.name)}" \
-      GIT_AUTHOR_EMAIL="${GIT_AUTHOR_EMAIL:-$(git config user.email)}" \
-      GIT_COMMITTER_NAME="${GIT_COMMITTER_NAME:-$(git config user.name)}" \
-      GIT_COMMITTER_EMAIL="${GIT_COMMITTER_EMAIL:-$(git config user.email)}" \
-        git -C "$TAP_DIR/tap" commit -aqm "${TAP_NAME} ${TAG}" \
-        || fail "tap commit failed"
-      git -C "$TAP_DIR/tap" push -q origin HEAD || fail "tap push failed"
-      ok "committed + pushed ${TAP}/${TAP_SUBDIR}/${TAP_NAME}.rb → ${TAG}"
-    fi
+  if [ -z "$ARTIFACT" ] && [ -n "$GH_REPO_SLUG" ]; then
+    ARTIFACT="https://github.com/${GH_REPO_SLUG}/archive/refs/tags/${TAG}.tar.gz"
+  elif [ -z "$ARTIFACT" ] && [ "$DRY_RUN" = 1 ]; then
+    ARTIFACT="(no --artifact, and origin is not github.com)"
+  elif [ -z "$ARTIFACT" ]; then
+    fail "no --artifact given and origin is not github.com — cannot derive tarball URL"
   fi
+  # The house tap bump: clone, edit, the TAP's own gate, a pinned push (BACKLOG 6.8).
+  tap_args=(--tap "$TAP" "--${TAP_KIND}" "$TAP_NAME" --tag "$TAG" --artifact "$ARTIFACT")
+  [ "$DRY_RUN" = 1 ] && tap_args+=(--dry-run)
+  GOH_DIR="$GOH" bash "$GOH/tools/release-kit/tap_bump.sh" "${tap_args[@]}" \
+    || fail "the tap bump refused (above)"
 fi
 
 hr
