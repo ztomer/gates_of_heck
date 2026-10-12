@@ -483,7 +483,9 @@ and the calibration registry is O35.
       comment is not an attribute. Red-first: that line in a fixture is clean; a real
       `#[allow(dead_code)]` beside it is still red. Lies: a raw string holding a whole attribute
       line is the case a lexer gets wrong -- the fixture carries one.
-- [ ] 6.5 A release refuses while CI on HEAD is red. Baseline: ztools CI has been red since
+- [x] 6.5 (`5c5868e`: `release.sh` step 0 reads `gh run list --commit HEAD` and refuses a red,
+      pending or missing run, naming each; no tracked workflow says "no CI", never green;
+      `--no-ci-check` skips it aloud; the consumers' half is in Downstream) A release refuses while CI on HEAD is red. Baseline: ztools CI has been red since
       2026-10-10 (`.python-version` is gitignored and ci.yml reads it), and v3.6.0, v3.7.0 and
       v3.8.0 were each tagged over it. Exit: the house release step reads the CI conclusion for
       the commit it tags and refuses red or pending, naming the run. Red-first: a fixture remote
@@ -507,7 +509,9 @@ and the calibration registry is O35.
       omit it. Red-first: a fixture `gate.sh` that skips structural leaves a planted emoji red.
       Lies: a gate that calls structural with an empty scope "ran" it -- 6.1's empty-scope
       refusal applies.
-- [ ] 6.8 A tap bump goes through the tap's gate. Baseline: five products' release scripts push
+- [x] 6.8 (`bfac28b`: `tools/release-kit/tap_bump.sh` clones, rewrites, runs the tap's
+      `tools/gate.sh --full` in the clone and pushes pinned with a read-back; a red gate pushes
+      nothing; `release.sh`'s tap step calls it; the products' half is in Downstream) A tap bump goes through the tap's gate. Baseline: five products' release scripts push
       homebrew-tap bumps straight to GitHub, so the tap's own gate never runs. Exit: one house
       tap-bump step (clone, edit, the tap's gate, pinned push) the five scripts call instead.
       Red-first: a bump that breaks the tap's formula lint is refused before the push. Lies: a
@@ -680,6 +684,15 @@ Finance's `"$root.out"`, ZeroThunder's dropped process handle.
   left with `goh early-exit-pipe --seed` and commit `early_exit_pipe_seed.json`, which may only
   fall. By owner ruling (2026-10-12) they stay red until their own sessions take them.
 - **The 17 repos in 3.3's table**, one session each: run the check, fix or `--seed`.
+- **ztools, after `5c5868e` (6.5):** its next release through the kit refuses while its CI on
+  HEAD is red (red since 2026-10-10: ci.yml reads the gitignored `.python-version`). Fix the CI;
+  `--no-ci-check` exists, says so aloud, and is not the fix. sys_updater has no workflow and
+  releases with "no CI" stated.
+- **divoom-control, monitor, antiknob, CadGoose and ztools, after `bfac28b` (6.8):** each pushes
+  its homebrew-tap bump itself (`scripts/release.sh`, `release.sh`, `release.sh`,
+  `scripts/push_release.sh`, `tools/release.sh` with `tools/upgrade_tap.py`), so the tap's gate
+  never runs on it. Replace that step with `$GOH_DIR/tools/release-kit/tap_bump.sh --tap
+  ztomer/homebrew-tap --formula|--cask NAME --tag vX.Y.Z --artifact PATH|URL`.
 - **Every consumer, after `a03d5fb` (6.6) and `18330c7` (6.7), red at its next commit until it
   re-installs:** 6.7 retired the stock pre-commit that every repo carried, and 6.6 refuses a
   retired one. Run `~/Projects/gates_of_heck/install.sh .` and commit `.githooks/pre-commit` and
