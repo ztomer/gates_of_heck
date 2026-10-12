@@ -144,3 +144,15 @@ def test_a_preflight_runs_before_the_commit_and_a_red_one_stops_it(proj) -> None
     (proj / ".gatesrc").write_text("GOH_ROUND_PREFLIGHT='test -f a.txt'\n")
     r = _round(proj, "-m", "round: a", "a.txt")
     assert r.returncode == 0, r.stdout + r.stderr
+
+
+def test_a_refused_message_stops_the_round_before_the_preflight(proj) -> None:
+    """The commit-msg hook runs on the message first: a refusal costs a second, not a warm verify."""
+    (proj / ".gatesrc").write_text("GOH_ROUND_PREFLIGHT='touch preflight.ran'\n")
+    _hook(proj, "commit-msg", 'grep -q "^Class:" "$1" || { echo "no Class" >&2; exit 1; }')
+    (proj / "a.txt").write_text("a2\n")
+    r = _round(proj, "-m", "fix: a", "a.txt")
+    assert r.returncode == 1 and "commit-msg hook refused" in r.stderr, r.stdout + r.stderr
+    assert not (proj / "preflight.ran").exists(), "the preflight ran before the message was judged"
+    r = _round(proj, "-m", "fix: a\n\nClass: c", "a.txt")
+    assert r.returncode == 0 and (proj / "preflight.ran").exists(), r.stdout + r.stderr
