@@ -468,7 +468,8 @@ and the calibration registry is O35.
       a bare `python3` in a hook or gate script. Red-first: a hook that runs `python3 -c "import
       tui"` with `PYTHONPATH` unset reds today and is green through the seam. Lies: pinning a path
       to a Homebrew keg pins nothing (the keg moves) -- the pin is a version, checked.
-- [ ] 6.3 The credential-in-URL gate sees a variable in the userinfo. Baseline: it passed
+- [x] 6.3 (`4686280`: `crates/goh/src/urlexpand.rs`, read by `goh secrets`; the consumer's half is in
+      Downstream) The credential-in-URL gate sees a variable in the userinfo. Baseline: it passed
       `git clone "https://${TAP_TOKEN}@github.com/..."` at CadGoose
       `.github/workflows/build_and_release.yml:154`. Exit: userinfo made of a shell or Actions
       expansion (`${X}`, `$X`, `${{ secrets.X }}`) is a finding, in YAML as in shell. Red-first:
@@ -650,6 +651,10 @@ Finance's `"$root.out"`, ZeroThunder's dropped process handle.
   ("a vendored copy of a house checker -- delete it and run the shared one"), and its copy and the
   house gate hold two rules for one class: both local checkers want a comment above `stdin=None`,
   the shared native check accepts any. Settle that in 3.1 or state the difference.
+- **CadGoose, after `4686280` (6.3):** `goh secrets` refuses
+  `.github/workflows/build_and_release.yml:154` (the tap clone puts `${TAP_TOKEN}` in the URL).
+  Clone without it and pass the token as `git -c http.extraheader="AUTHORIZATION: basic ..."` or
+  through a credential helper reading the variable; 6.8's house tap-bump step replaces the line.
 - **The 17 repos in 3.3's table**, one session each: run the check, fix or `--seed`.
 - **games metarepo and four nested repos, after `92b0946` (4.1):** `tools/check_plan_refs.py:131`,
   `tools/check_phase_exits.py:82`, `tools/check_plan_claims.py:117` and `:168` ask
