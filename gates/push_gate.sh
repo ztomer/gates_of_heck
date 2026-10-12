@@ -66,6 +66,8 @@ GOH="${GOH_DIR:-${GOH:-$HOME/Projects/gates_of_heck}}"
 . "$GOH/lib/bench_lock.sh"
 # shellcheck source=lib/sleep_mark.sh
 . "$GOH/lib/sleep_mark.sh"
+# shellcheck source=lib/repo_writes.sh
+. "$GOH/lib/repo_writes.sh"
 bench_lock_join "pre-push" # the whole push is one registration; a measurement waits for it
 
 root="$(git rev-parse --show-toplevel)"
@@ -438,11 +440,13 @@ while read -r local_ref local_sha _remote_ref _remote_sha; do
     # real checkout instead, and a checker reads it only for citations that name a child. The
     # isolation the worktree buys -- never certify the working tree -- is untouched, because what it
     # guards is this repo's OWN files, and those still come from the worktree.
+    repo_before="$(goh_repo_snapshot "$root")"   # what the gate may not write (lib/repo_writes.sh)
     slept_mark="$(goh_sleep_mark)"
     (cd "$worktree" \
         && GOH_CROSS_REPO_ROOT="$root" bash "$worktree/tools/gate.sh" --full) 2>&1 | tee "$log"
     status="${PIPESTATUS[0]}"
     set -e
+    goh_repo_writes "$root" "$repo_before" || { err "pre-push: nothing pushed"; exit 1; }
     if [ "$status" -ne 0 ]; then
         err "pre-push: the gate failed on $short — nothing pushed"
         err "pre-push: the full gate output is kept at $log"
