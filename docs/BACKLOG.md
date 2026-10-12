@@ -541,7 +541,10 @@ and the calibration registry is O35.
       https://elsewhere.invalid/x.git` is refused and the URL is reported. Lies: a hook that
       fetches legitimately moves remote-tracking refs -- the snapshot excludes `refs/remotes`
       and says so.
-- [ ] 6.12 `cargo audit` is a step of the house Rust gate, configured to bite. Baseline: the
+- [x] 6.12 (`72e8445`: `rust_gate.sh` runs `cargo audit` with the four `--deny` classes on the
+      command line, from the workspace root, outside every proven record; `check_audit_ignores.py`
+      refuses an exemption with no reason or one that no longer fires; the consumers' half is in
+      Downstream) `cargo audit` is a step of the house Rust gate, configured to bite. Baseline: the
       games repos run no audit at all, and nothing here offers one (no `cargo audit` in `gates/`
       or `crates/goh`); game_asset_factory asked for it here so every consumer inherits it. Exit:
       a Rust-layer step running `cargo audit` with `[output] deny = ["warnings", "unmaintained",
@@ -549,7 +552,10 @@ and the calibration registry is O35.
       reason per entry and stale entries refused. Red-first: drop one ignore entry in a fixture
       and the step reds. Lies: `cargo audit` exits 0 on unmaintained/unsound without the deny
       list -- a step without it passes over exactly what it was added for.
-- [ ] 6.13 A new advisory is reported before a push, not during one. Baseline: RUSTSEC-2024-0449
+- [x] 6.13 (`3dccae2`: `scripts/estate_audit.py` audits every tracked lockfile under ~/Projects and
+      records it; `hooks/claude/estate_advisories.py` prints new advisories, a summary of standing
+      ones, and a stopped job at every session start. Scheduling it (`--install`) and wiring the
+      hook into `~/.claude/settings.json` are the owner's) A new advisory is reported before a push, not during one. Baseline: RUSTSEC-2024-0449
       (unsafe-libyaml via serde_yaml_ng) turned antiknob's and media_server's pushes red at the
       same moment with no code change -- the gate working as designed, found at the worst time.
       Exit: a scheduled estate audit (6.12's step over every Rust consumer, daily) that reports a
@@ -670,6 +676,13 @@ Finance's `"$root.out"`, ZeroThunder's dropped process handle.
   left with `goh early-exit-pipe --seed` and commit `early_exit_pipe_seed.json`, which may only
   fall. By owner ruling (2026-10-12) they stay red until their own sessions take them.
 - **The 17 repos in 3.3's table**, one session each: run the check, fix or `--seed`.
+- **antiknob and media_server, after `72e8445` (6.12), red at their next push:** RUSTSEC-2024-0449
+  (unsafe-libyaml 0.2.11, unmaintained, via serde_yaml_ng) fires in antiknob's `Cargo.lock` and in
+  eight media_server crate lockfiles (healthcheck-rs, lan-ip-watcher-rs and its testkit, mcp-host-rs,
+  mediaops-rs and its testkit, vpn-watchdog-rs, yaml-mini-rs), counted 2026-10-12. Move off
+  serde_yaml_ng, or ignore the id in the workspace root's `.cargo/audit.toml` WITH a `# reason` on
+  its line -- media_server's file sits at the repo root, where cargo-audit, run from each crate's
+  workspace root, never reads it. Every other estate lockfile the gate runs on was clean.
 - **games metarepo and four nested repos, after `92b0946` (4.1):** `tools/check_plan_refs.py:131`,
   `tools/check_phase_exits.py:82`, `tools/check_plan_claims.py:117` and `:168` ask
   `os.path.isdir(<repo>/.git)`, False in a linked worktree (`:168` fails OPEN: a claim in such a
