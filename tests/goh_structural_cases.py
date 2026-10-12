@@ -77,7 +77,7 @@ FULL_CASES: dict[str, dict[str, bytes]] = {
         ".gatesrc": b"GOH_MAX_LINES=10\nGOH_NO_EARLY_EXIT_PIPE=1\n",
         "a.sh": b'#!/bin/bash\nset -euo pipefail\nout="$(ls)"\ngrep -q x <<<"$out"\n',
     },
-    "early_exit_pipe_named": {
+    "early_exit_pipe_unseeded": {
         ".gatesrc": GATESRC,
         "a.sh": b"#!/bin/bash\nset -euo pipefail\nls | grep -q x\n",
     },
@@ -195,7 +195,7 @@ EXPECTED: dict[str, tuple[int, str | None]] = {
     "dead_exec_green": (0, None),
     "dead_exec_red": (1, "no code after exec"),
     "early_exit_pipe_green": (0, None),
-    "early_exit_pipe_named": (0, None),
+    "early_exit_pipe_unseeded": (1, "no early-exit pipe under pipefail"),
     "early_exit_pipe_red": (1, "no early-exit pipe under pipefail"),
     "emoji": (1, "no disallowed emoji"),
     "exclude_warn": (0, None),

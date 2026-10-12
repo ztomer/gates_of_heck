@@ -340,9 +340,17 @@ fn run_ported(command: Commands) -> Result<i32, Box<Commands>> {
         } => paths(exclude, |x| {
             killname::run_command(staged, x, code_lines.as_deref())
         }),
-        Commands::EarlyExitPipe { exclude, staged } => {
-            paths(exclude, |x| earlypipe::run_command(staged, x))
-        }
+        Commands::EarlyExitPipe {
+            exclude,
+            staged,
+            seed,
+        } => paths(exclude, |x| {
+            if seed {
+                earlypipe::write_seed(x)
+            } else {
+                earlypipe::run_command(staged, x)
+            }
+        }),
         Commands::DeadAfterExec { exclude, staged } => {
             paths(exclude, |x| deadexec::run_command(staged, x))
         }

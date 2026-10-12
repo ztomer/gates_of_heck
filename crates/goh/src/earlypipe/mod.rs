@@ -20,12 +20,16 @@
 //! pipefail line: a library runs under its caller's (`scan.rs`). Comments, strings and heredoc
 //! bodies are not code (`lex.rs`).
 //!
-//! WIRING (the house pattern for a class every repo has, `vendored.rs`): the structural step
-//! runs in every repo. At `--staged` it refuses a NEW finding -- one the file's HEAD blob does
-//! not already carry, so the commit that adds a racy pipe can still be changed -- and at full scope it NAMES the findings without failing, because an
-//! existing one is a migration for that repo, not a reason to turn every gate in the estate red
-//! the day this lands. `GOH_NO_EARLY_EXIT_PIPE=1` closes the ratchet: every finding fails, at
-//! both scopes. Turn it on once the tree is clean. `goh early-exit-pipe` itself is always strict.
+//! WIRING: the structural step runs in every repo, on by default (BACKLOG 6.9; it used to name
+//! existing findings at full scope without failing, and Finance carried 16 that way). At
+//! `--staged` it refuses a NEW finding -- one the file's HEAD blob does not already carry, so the
+//! commit that adds a racy pipe can still be changed. At full scope each file's findings are
+//! judged against `early_exit_pipe_seed.json`, a per-file count that may only fall
+//! (`crate::seedcount`): a file over its count is red, a file under it is red until the seed is
+//! lowered, and an unseeded finding is red. `goh early-exit-pipe --seed` writes the seed a repo
+//! adopts with, and a pipe that is safe (its producer cannot outlive the reader) is said there.
+//! `GOH_NO_EARLY_EXIT_PIPE=1` ignores the seed: every finding fails, at both scopes.
+//! `goh early-exit-pipe` itself is always strict.
 
 pub mod consumer;
 pub mod lex;
@@ -40,7 +44,41 @@ pub use crate::shellsrc::is_shell;
 pub use scan::scan_text;
 
 const TAG: &str = "[no_early_exit_pipe]";
-const OPT_IN: &str = "GOH_NO_EARLY_EXIT_PIPE";
+
+/// The seed's file name, at the repo root.
+pub const SEED_FILE: &str = "early_exit_pipe_seed.json";
+
+const SPEC: crate::seedcount::Spec = crate::seedcount::Spec {
+    tag: TAG,
+    file: SEED_FILE,
+    noun: "shell source(s)",
+    reseed: "goh early-exit-pipe --seed",
+    clean: "no early-exit pipe beyond the seed",
+    why: "early-exit consumers reading a pipe when this repo adopted the check; a count may only \
+          fall (gates_of_heck BACKLOG 6.9)",
+};
+
+fn site(f: &Finding) -> String {
+    let shown: String = f.text.chars().take(100).collect();
+    format!("{}: {shown}  ({}) -> {}", f.line, f.kind, fix_for(f.kind))
+}
+
+/// The findings as the seed's judge reads them: `listed` is every shell source before the
+/// exclusion, so an exclusion that removes them all is refused rather than passed.
+fn scanned(
+    root: &Path,
+    files: &[String],
+    exclude: Option<&crate::pathfilter::PathFilter>,
+) -> crate::seedcount::Scanned<Finding> {
+    let listed = crate::shellsrc::sources(root, files, None, false).len();
+    let (hits, read) = scan_files(root, files, exclude, false);
+    crate::seedcount::Scanned {
+        listed,
+        read,
+        found: hits.into_iter().collect(),
+        unreadable: Vec::new(),
+    }
+}
 
 /// One early-exit consumer reading a pipe whose status the script reads.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -165,7 +203,10 @@ fn judge(
     };
     let (hits, checked) = scan_files(root, files, exclude.as_ref(), staged);
     let scope = if staged { "staged" } else { "tracked" };
-    if hits.is_empty() {
+    // At full scope a seed is read even over a clean tree: an entry for a file gone clean is a
+    // seed to lower, not a pass.
+    let seeded = !staged && !strict && root.join(SEED_FILE).exists();
+    if hits.is_empty() && !seeded {
         return (
             0,
             format!("{OK} {TAG} OK — {checked} {scope} shell source(s), no early-exit pipe\n"),
@@ -175,7 +216,7 @@ fn judge(
     if strict {
         return (1, String::new(), report(&hits, scope));
     }
-    if staged {
+    if staged && !hits.is_empty() {
         let (new, old) = split_new(root, hits);
         let note = if old > 0 {
             format!("{WARN} {TAG} {old} early-exit pipe(s) in staged files predate this commit (fix them while you are there)\n")
@@ -187,12 +228,51 @@ fn judge(
         }
         return (1, String::new(), report(&new, "NEW in this commit") + &note);
     }
-    let mut warn = listing(&hits, &format!("{WARN} {TAG} "));
-    let _ = writeln!(
-        warn,
-        "{WARN} {TAG} named, not failed: a NEW one is refused at commit; {OPT_IN}=1 fails them all"
+    let seed = match crate::seedcount::load_seed(&SPEC, root) {
+        Ok(s) => s,
+        Err(m) => return (2, String::new(), format!("{ERR} {TAG} {m}\n")),
+    };
+    let (code, text) =
+        crate::seedcount::judge(&SPEC, &scanned(root, files, exclude.as_ref()), &seed, site);
+    if code == 0 {
+        (0, text, String::new())
+    } else {
+        (code, String::new(), text)
+    }
+}
+
+/// `goh early-exit-pipe --seed [--exclude RE]`: write the seed today's findings imply.
+#[must_use]
+pub fn write_seed(exclude: &str) -> i32 {
+    let Some(root) = crate::gitutil::repo_root().map(std::path::PathBuf::from) else {
+        goh_tui::eoutln!("{ERR} {TAG} not a git repository");
+        return 2;
+    };
+    let (files, filter) = match (
+        crate::gitutil::listed_files(&root, false),
+        crate::steps::compile_exclude(exclude),
+    ) {
+        (Ok(f), Ok(x)) => (f, x),
+        (Err(m), _) | (_, Err(m)) => {
+            goh_tui::eoutln!("{ERR} {TAG} {m}");
+            return 2;
+        }
+    };
+    let scan = scanned(&root, &files, filter.as_ref());
+    if let Err(e) = std::fs::write(
+        root.join(SEED_FILE),
+        crate::seedcount::seed_text(&SPEC, &scan),
+    ) {
+        goh_tui::eoutln!("{ERR} {TAG} cannot write {SEED_FILE}: {e}");
+        return 2;
+    }
+    let total: usize = scan.found.values().map(Vec::len).sum();
+    goh_tui::outln!(
+        "{OK} {TAG} seeded {SEED_FILE}: {total} site(s) in {} file(s), of {} read",
+        scan.found.len(),
+        scan.read
     );
-    (0, String::new(), warn)
+    0
 }
 
 /// `goh early-exit-pipe [--staged] [--exclude RE]`: every finding fails.

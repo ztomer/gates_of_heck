@@ -388,8 +388,12 @@ pub enum Commands {
         #[arg(long)]
         exclude: Option<String>,
         /// Staged blobs (polices the index).
-        #[arg(long)]
+        #[arg(long, conflicts_with = "seed")]
         staged: bool,
+        /// Write today's findings as `early_exit_pipe_seed.json`, the per-file counts the
+        /// structural step holds the tree to (each may only fall).
+        #[arg(long)]
+        seed: bool,
     },
     /// Fail on a statement after an `exec` that replaced the shell: it can never run.
     DeadAfterExec {

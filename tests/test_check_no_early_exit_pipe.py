@@ -144,12 +144,30 @@ def test_staged_judges_the_index_not_the_worktree(goh: Path, repo: Path) -> None
     assert _structural(goh, repo, "--staged").returncode == 0, "the commit is clean"
 
 
-def test_full_scope_names_without_failing(goh: Path, repo: Path) -> None:
+def test_an_unseeded_finding_fails_at_full_scope(goh: Path, repo: Path) -> None:
+    """BACKLOG 6.9: on by default. The step used to name these at full scope and pass, so a repo
+    carried them forever (Finance: 16)."""
     write(repo, "deploy.sh", RACY)
     commit_all(repo)
     r = _structural(goh, repo, "--full")
-    assert f"✓ {LABEL}" in r.stdout, r.stdout + r.stderr
-    assert "deploy.sh:3:" in r.stderr and "GOH_NO_EARLY_EXIT_PIPE=1" in r.stderr, r.stderr
+    assert _failed(r), r.stdout + r.stderr
+    assert "deploy.sh:3:" in r.stderr and 'grep -q PAT <<< "$out"' in r.stderr, r.stderr
+
+
+def test_the_seed_holds_what_a_repo_adopted_with_and_may_only_fall(goh: Path, repo: Path) -> None:
+    write(repo, "deploy.sh", RACY)
+    commit_all(repo)
+    seeded = run_goh(repo, "early-exit-pipe", "--seed")
+    assert seeded.returncode == 0, seeded.stdout + seeded.stderr
+    commit_all(repo, "the seed")
+    assert _structural(goh, repo, "--full").returncode == 0, "the seeded site passes"
+    write(repo, "deploy.sh", RACY + "ps | head -1\n")
+    commit_all(repo, "a second racy pipe")
+    assert _failed(_structural(goh, repo, "--full")), "a site beyond the seed fails"
+    write(repo, "deploy.sh", FIXED)
+    commit_all(repo, "fixed")
+    r = _structural(goh, repo, "--full")
+    assert _failed(r) and "lower the seed" in r.stderr, "a fixed site leaves no headroom"
 
 
 def test_the_opt_in_closes_the_ratchet(goh: Path, repo: Path) -> None:
