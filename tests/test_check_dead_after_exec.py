@@ -16,19 +16,20 @@ from pathlib import Path
 from conftest import REPO_ROOT, commit_all, git, hermetic_env, run_goh, write
 
 LABEL = "no code after exec"
-# The incident, as app_updates' tools/gate.sh carried it before 5a4b33c.
+# The incident, as app_updates' tools/gate.sh carried it before 5a4b33c -- its `python3` spelled as
+# the script's path here, since a bare interpreter in a gate is a finding of its own (6.2).
 DEAD = (
     "#!/usr/bin/env bash\nset -euo pipefail\n"
     'case "${1:-}" in\n'
     "  --full)\n"
-    "    exec python3 tools/check_roadmap.py --self-test\n"
-    "    exec python3 tools/check_roadmap.py\n"
+    "    exec ./tools/check_roadmap.py --self-test\n"
+    "    exec ./tools/check_roadmap.py\n"
     "    ;;\n"
     "esac\n"
 )
 FIXED = DEAD.replace(
-    "    exec python3 tools/check_roadmap.py --self-test",
-    "    python3 tools/check_roadmap.py --self-test",
+    "    exec ./tools/check_roadmap.py --self-test",
+    "    ./tools/check_roadmap.py --self-test",
 )
 # The house parse-guard: exec, a bare exit, the group's close. Must never fire.
 GUARD = '{ # parse-guard\nset -e\nexec bash "$0" "$@"\nexit\n} # parse-guard\n'
@@ -58,7 +59,7 @@ def test_the_command_names_the_dead_line_and_the_exec(repo: Path) -> None:
     commit_all(repo)
     r = run_goh(repo, "dead-after-exec")
     assert r.returncode == 1, r.stdout + r.stderr
-    assert "tools/gate.sh:6: exec python3 tools/check_roadmap.py " in r.stderr, r.stderr
+    assert "tools/gate.sh:6: exec ./tools/check_roadmap.py " in r.stderr, r.stderr
     assert "at line 5 replaced the shell" in r.stderr, r.stderr
 
 

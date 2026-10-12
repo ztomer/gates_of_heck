@@ -171,7 +171,8 @@ fn late_steps(
 
 /// The shell-source steps, in order: shell lint, then two defects shellcheck 0.11.0 exits 0 on,
 /// over the same files -- a race (an early-exit pipe) and dead code (a statement after `exec`) --
-/// and contract #12's carried hook index read anywhere but `goh_bind_hook_index`.
+/// contract #12's carried hook index read anywhere but `goh_bind_hook_index`, and a bare `python3`
+/// in a hook or the gate (the repo's pinned interpreter runs through `gates/python.sh`).
 fn shell_steps(
     repo: &std::path::Path,
     files: &[String],
@@ -182,6 +183,7 @@ fn shell_steps(
         .or_else(|| earlypipe::step(repo, files, cfg, staged))
         .or_else(|| deadexec::step(repo, files, cfg, staged))
         .or_else(|| hookindex::step(repo, files, cfg, staged))
+        .or_else(|| crate::barepy::step(repo, files, cfg, staged))
 }
 
 /// A credential in git config, which `step_secrets` cannot see: `.git/config` is untracked.

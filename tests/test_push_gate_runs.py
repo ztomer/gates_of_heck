@@ -145,7 +145,7 @@ def test_the_same_repo_exports_to_the_same_path_every_time(tmp_path):
 BUILD_DIR_GATE = GATE.replace(
     "exit 0\n",
     'printf "build=%s\\n" "$(cargo metadata -q --format-version 1 --no-deps'
-    ' | python3 -c \'import json,sys; print(json.load(sys.stdin)["build_directory"])\')" >> "$out"\n'
+    ' | sed -n \'s/.*"build_directory":"\\([^"]*\\)".*/\\1/p\')" >> "$out"\n'
     "exit 0\n",
 )
 

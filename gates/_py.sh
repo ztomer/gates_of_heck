@@ -20,8 +20,9 @@ goh_py_runner() {
     if [ -z "$RUN" ] && [ -x .venv/bin/python ]; then
         RUN=".venv/bin/python -m"
         goh_py_venv_current
+        goh_py_interpreter >/dev/null   # and a pinned repo's venv is the pin's version
     elif [ -z "$RUN" ]; then
-        RUN="python3 -m"
+        RUN="$(goh_py_interpreter) -m"
     fi
     read -r -a RUN_ARR <<<"$RUN"
     info "python: ${RUN% -m} ($(goh_py_minor "${RUN_ARR[0]}" || echo "version unreadable"))"
@@ -52,4 +53,48 @@ goh_py_venv_current() {
 goh_py_require() {
     "${RUN_ARR[@]}" "$1" --version >/dev/null 2>&1 \
         || die "$GOH_NAME: $1 is not available through '$RUN', and this gate does not pass without the step it runs -- python3 -m pip install $1 (into the interpreter '$RUN' names)"
+}
+
+# THE PIN (BACKLOG 6.2). Homebrew moved `python3` to 3.15 on 2026-10-10 and every gate that ran a
+# bare `python3` moved with it: necrohand lost spacy, scripts' coverage hook moved, ZeroThunder's
+# hook lost `tui`. A repo pins a VERSION -- GOH_PYTHON_VERSION, else a COMMITTED .python-version --
+# and the interpreter is found for that version and its version read back; a path to a Homebrew
+# keg would pin nothing, because the keg moves. No pin is python3, as before, said by name.
+
+# goh_py_pin: the repo's pinned version and where it came from ("3.14<TAB>.python-version"), or
+# nothing when the repo pins none.
+goh_py_pin() {
+    if [ -n "${GOH_PYTHON_VERSION:-}" ]; then
+        printf '%s\tGOH_PYTHON_VERSION\n' "$GOH_PYTHON_VERSION"
+    elif git ls-files --error-unmatch .python-version >/dev/null 2>&1; then
+        printf '%s\t.python-version\n' "$(tr -d '[:space:]' <.python-version)"
+    fi
+}
+
+# goh_py_full <python>: its major.minor.micro, or nothing and 1 when it cannot say.
+goh_py_full() {
+    "$1" -c 'import sys; print("%d.%d.%d" % sys.version_info[:3])' 2>/dev/null </dev/null
+}
+
+# goh_py_interpreter: the interpreter for this repo, on stdout -- a .venv's when there is one, else
+# the pinned version's, else python3 -- refusing a venv or an interpreter that is not the pin.
+goh_py_interpreter() {
+    local pin src py full
+    IFS=$'\t' read -r pin src < <(goh_py_pin; printf '\t\n')
+    if [ -x .venv/bin/python ]; then
+        py=.venv/bin/python
+    elif [ -n "$pin" ]; then
+        py="$(uv python find --no-project "$pin" 2>/dev/null || command -v "python$pin" || true)"
+        [ -n "$py" ] || die "$GOH_NAME: $src pins Python $pin and no interpreter of that version is installed -- uv python install $pin"
+    else
+        py="$(command -v python3)" || die "$GOH_NAME: no python3 on PATH and no pin to find one by (GOH_PYTHON_VERSION or a committed .python-version)"
+    fi
+    if [ -n "$pin" ]; then
+        full="$(goh_py_full "$py")" || die "$GOH_NAME: $py cannot say its version"
+        case "$full" in
+            "$pin" | "$pin".*) ;;
+            *) die "$GOH_NAME: $src pins Python $pin and $py is $full -- rebuild the venv (uv venv --python $pin) or move the pin" ;;
+        esac
+    fi
+    printf '%s\n' "$py"
 }

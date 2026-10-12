@@ -10,6 +10,7 @@
 
 #![deny(unsafe_code)]
 
+pub mod barepy;
 pub mod blobs;
 pub mod bounded;
 pub mod cache_root;
