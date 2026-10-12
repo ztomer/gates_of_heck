@@ -203,4 +203,14 @@ Every structural checker is native since Phase N3; the Python checkers they port
 * `hooks/claude/compact_restore.py` — a Claude Code SessionStart hook (matcher `compact`): prints the
   branch, uncommitted paths and recent commits from git into the context after a compaction. Pinned by
   `test_claude_compact_hooks.py`.
+* `hooks/claude/estate_advisories.py` — a Claude Code SessionStart hook (any source): what the last
+  `scripts/estate_audit.py` run found. Silent when that run is fresh and clean; a line per advisory
+  first seen in the last 48 h, one summary line for the standing ones, and a line saying so when the
+  state file is missing or older than 36 h -- a job that stopped reads exactly like a clean estate.
+  Pinned by `test_estate_audit.py`.
+* `scripts/estate_audit.py` — the house Rust audit (`rust_gate.sh`'s biting `cargo audit`) over every
+  tracked `Cargo.lock` under `~/Projects` (`GOH_ESTATE_ROOT`), nested repositories included, minus each
+  repo's own `GOH_EXCLUDE`, from each workspace root so its exemptions apply. Records into
+  `~/.local/state/goh/estate_audit.json` (`GOH_ESTATE_STATE`); the first run is a baseline, not news.
+  `--install` writes and loads a daily launchd job. Pinned by `test_estate_audit.py`.
 * `tui/` — style source of truth. Pinned by `test_tui_integration.py`.
