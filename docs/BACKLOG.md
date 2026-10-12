@@ -436,7 +436,8 @@ episode (4.4) is what that hand-writing costs.
 
 ### Phase 6 -- the estate consolidation's findings (2026-10-12), ahead of Phase 5
 
-Reported by the 2026-10-12 roadmap-consolidation session, whose per-repo agents measured them;
+Reported by the 2026-10-12 roadmap-consolidation session, whose per-repo agents measured them
+(6.10-6.13 from its last agents: games meta, koffee, monitor);
 the paths and SHAs are theirs and each Baseline is to be re-read before its round. Correctness
 outranks measurement, so this phase runs before Phase 5. Two of its findings were already here:
 the Rust TUI helper is 4.14 (antiknob's 43 `[ ==> ]` sites are its consumer half, in Downstream)
@@ -510,6 +511,44 @@ and the calibration registry is O35.
       `GOH_NO_EARLY_EXIT_PIPE=1`. Exit: on by default with a shrink-only per-repo seed. Red-first:
       a planted `set -o pipefail; yes | grep -q y` in a fixture reds with no opt-in. Lies: a pipe
       whose left side cannot outlive its reader is safe, and the seed is where that is said.
+
+- [ ] 6.10 The line cap holds at commit, not first at push. Baseline: CadGoose2's
+      `CMakeLists.txt` has been 1142 lines since 2026-09-23 and no commit refused it; only the
+      full-scope pre-push did ("[file_length] 1 file(s) over the 500-line cap"), so a file that
+      grows across commits passes each commit and then blocks every push. Exit: the staged
+      `file_length` judges every staged file by the same scope and types as `--full`, and a file
+      already over the cap that a commit touches is refused there, naming the cap. Red-first: a
+      fixture commit that takes an over-cap `CMakeLists.txt` from 1141 to 1142 lines reds at
+      `--staged`. Lies: re-read why the staged run missed it before fixing (a type filter, a
+      baseline, or only the touched hunk) -- each is a different fix.
+- [ ] 6.11 A hook run never writes the repository it runs in. Baseline: the games metarepo's
+      `origin` was `https://elsewhere.invalid/x.git` from 2026-10-08 19:09 until the consolidation
+      repaired it: a probe in `82802c0`'s own hook run wrote it into the REAL `.git/config`, and
+      nothing compares remote URLs before and after a hook. Sibling: scripts'
+      `test_flatten_git_history.sh` writes into the real `backup/flatten-records`. Exit: the
+      stock hooks snapshot `.git/config` (remotes included) and the ref set before the gate and
+      refuse a run that changed them, naming the key; tests run against scratch repos only (4.1,
+      4.2, 6.1). Red-first: a fixture gate that runs `git remote set-url origin
+      https://elsewhere.invalid/x.git` is refused and the URL is reported. Lies: a hook that
+      fetches legitimately moves remote-tracking refs -- the snapshot excludes `refs/remotes`
+      and says so.
+- [ ] 6.12 `cargo audit` is a step of the house Rust gate, configured to bite. Baseline: the
+      games repos run no audit at all, and nothing here offers one (no `cargo audit` in `gates/`
+      or `crates/goh`); game_asset_factory asked for it here so every consumer inherits it. Exit:
+      a Rust-layer step running `cargo audit` with `[output] deny = ["warnings", "unmaintained",
+      "unsound", "yanked"]` (and `quiet`), an ignore list that is a shrink-only ratchet with a
+      reason per entry and stale entries refused. Red-first: drop one ignore entry in a fixture
+      and the step reds. Lies: `cargo audit` exits 0 on unmaintained/unsound without the deny
+      list -- a step without it passes over exactly what it was added for.
+- [ ] 6.13 A new advisory is reported before a push, not during one. Baseline: RUSTSEC-2024-0449
+      (unsafe-libyaml via serde_yaml_ng) turned antiknob's and media_server's pushes red at the
+      same moment with no code change -- the gate working as designed, found at the worst time.
+      Exit: a scheduled estate audit (6.12's step over every Rust consumer, daily) that reports a
+      new advisory with the crates and repos it reaches, so it is fixed before the next push
+      meets it. Red-first: a fixture advisory DB with a new entry against a fixture lockfile is
+      reported by the scheduled run. Lies: a report nobody reads is the old state with extra
+      steps -- it lands where the owner already looks, and its absence (the job not running) is
+      itself reported.
 
 ### Phase 5 -- the measurements, last (ids kept from v0.25.0's Phase 4)
 
