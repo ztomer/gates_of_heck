@@ -6,11 +6,12 @@
 //! in `#[cfg_attr(…)]`. Machine-generated files carrying `@generated`
 //! within their first 40 lines are exempt; nothing else is.
 //!
-//! Comment handling mirrors `_code_portions` exactly: `//` tails and
-//! nestable `/* */` spans stripped by a left-to-right depth counter with
-//! state carried across lines, so a doc-comment MENTIONING `#[allow]` is
-//! prose, not a suppression. String literals are NOT comment-aware (same
-//! as the reference): a `//` inside a string still starts a comment.
+//! Comments and literals are read by `rustlex`, with its state carried
+//! across lines: a doc comment MENTIONING `#[allow]` is prose, and so is a
+//! string or raw string holding one (a fixture writing Rust, zinc
+//! `crates/xtask/src/walk_tests.rs:28`, 2026-10-12). The frozen reference
+//! judged a quoted `#[allow(` as a suppression; that was the defect, and the
+//! parity suite names the divergence.
 //!
 //! Line splitting follows `str::lines`; the reference uses `splitlines`
 //! (additionally breaks on vertical tab, form feed, bare carriage
@@ -32,11 +33,6 @@ const CFG_ATTR_OPEN: &str = r"#!?\[cfg_attr\(";
 /// preceding character is checked by hand — same approach as the
 /// home-paths port, zero-width guard, identical columns).
 const WRAPPED_SUPPRESSION: &str = r"(?:allow|expect)\(";
-
-/// Double-quoted string literals, blanked before the wrapped search so a
-/// mention inside a string is prose. Mirrors `_STRING_LITERAL` (raw
-/// strings are not special-cased — same as the reference).
-const STRING_LITERAL: &str = r#""(?:[^"\\]|\\.)*""#;
 
 /// Generation marker: exempts the file when found within its first 40
 /// lines, mirroring `_GENERATED_MARKER`. A mention inside a code span
@@ -63,8 +59,6 @@ pub struct Scanner {
     cfg_attr_open: regex::Regex,
     /// Wrapped suppression tokens.
     wrapped: regex::Regex,
-    /// String literals to blank.
-    string_literal: regex::Regex,
 }
 
 impl Scanner {
@@ -82,40 +76,7 @@ impl Scanner {
                 .map_err(|e| format!("built-in cfg_attr pattern failed: {e}"))?,
             wrapped: regex::Regex::new(WRAPPED_SUPPRESSION)
                 .map_err(|e| format!("built-in wrapped pattern failed: {e}"))?,
-            string_literal: regex::Regex::new(STRING_LITERAL)
-                .map_err(|e| format!("built-in string pattern failed: {e}"))?,
         })
-    }
-
-    /// Strip comments from one line, threading block-comment depth across
-    /// lines. Returns `(code_only, depth_after)`. Character-indexed, like
-    /// the reference (byte indexing would split multi-byte chars when a
-    /// comment marker lands beside one).
-    pub(crate) fn strip_line(line: &str, depth: usize) -> (String, usize) {
-        let chars: Vec<char> = line.chars().collect();
-        let mut kept = String::new();
-        let mut depth = depth;
-        let mut i = 0;
-        while i < chars.len() {
-            if depth == 0 && chars[i] == '/' && chars.get(i + 1) == Some(&'/') {
-                break;
-            }
-            if chars[i] == '/' && chars.get(i + 1) == Some(&'*') {
-                depth += 1;
-                i += 2;
-                continue;
-            }
-            if depth > 0 && chars[i] == '*' && chars.get(i + 1) == Some(&'/') {
-                depth -= 1;
-                i += 2;
-                continue;
-            }
-            if depth == 0 {
-                kept.push(chars[i]);
-            }
-            i += 1;
-        }
-        (kept, depth)
     }
 
     /// True when a wrapped token at byte `start` in `code` is a real
@@ -142,42 +103,31 @@ impl Scanner {
     /// returns to 0 on its `)]`).
     fn scan_code(&self, text: &str) -> Vec<(usize, String)> {
         let mut hits = Vec::new();
-        let mut depth = 0;
+        let mut state = crate::rustlex::LexState::Code;
         let mut in_cfg_attr: i32 = 0;
         for (idx, line) in text.split('\n').enumerate() {
             let lineno = idx + 1;
-            let (code, next_depth) = Self::strip_line(line, depth);
-            depth = next_depth;
+            let (lexed, next) = crate::rustlex::lex_line(line, state);
+            state = next;
+            // Matched against `code`, where every literal is empty, so a suppression spelled inside
+            // a string is never one; reported as `display`, the line a reader recognises.
+            let code = lexed.code;
             if self.allow.is_match(&code) {
-                hits.push((lineno, code.trim().to_owned()));
+                hits.push((lineno, lexed.display.trim().to_owned()));
                 continue;
             }
-            // The opener is looked for OUTSIDE string literals: one spelled
-            // inside a string (a fixture writing a file) opened the attribute
-            // mid-literal, its `]` stayed inside the quotes, and every later
-            // `allow(`/`expect(` line — `.expect("x")` included — was flagged
-            // (2026-09-23). A quoted one is still judged on its own line, as a
-            // quoted `#[allow(` is above; it just never carries state.
-            let literal_free_line = self.string_literal.replace_all(&code, "\"\"").into_owned();
             let opened = (in_cfg_attr == 0)
-                .then(|| self.cfg_attr_open.find(&literal_free_line))
+                .then(|| self.cfg_attr_open.find(&code))
                 .flatten();
             if opened.is_none() && in_cfg_attr == 0 {
-                if let Some(quoted) = self.cfg_attr_open.find(&code) {
-                    if self.has_wrapped(&code[quoted.start()..]) {
-                        hits.push((lineno, code.trim().to_owned()));
-                    }
-                }
                 continue;
             }
-            let literal_free = opened.map_or(literal_free_line.as_str(), |m| {
-                &literal_free_line[m.start()..]
-            });
-            if self.has_wrapped(literal_free) {
-                hits.push((lineno, code.trim().to_owned()));
+            let rest = opened.map_or(code.as_str(), |m| &code[m.start()..]);
+            if self.has_wrapped(rest) {
+                hits.push((lineno, lexed.display.trim().to_owned()));
             }
-            let opens = literal_free.chars().filter(|c| *c == '[').count();
-            let closes = literal_free.chars().filter(|c| *c == ']').count();
+            let opens = rest.chars().filter(|c| *c == '[').count();
+            let closes = rest.chars().filter(|c| *c == ']').count();
             // Bracket counts per line are tiny; saturating at MAX keeps an
             // open attribute open, which is the safe direction (a vanished
             // `[` would close the attribute early and miss suppressions).

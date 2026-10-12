@@ -7,8 +7,8 @@ fn scanner() -> Scanner {
 }
 
 // The fixtures below are BUILT, never spelled: this file is policed by
-// its own check, and a suppression written inside a string literal
-// fires (the conservative policy the reference keeps). Until 2026-09-23
+// its own check, and until 2026-10-12 a suppression written inside a
+// string literal fired (the frozen reference still does). Until 2026-09-23
 // a backticked mention of the generated marker in the module doc
 // exempted the whole file, which hid exactly these lines.
 const ALLOW: &str = "allow";
@@ -93,23 +93,52 @@ fn cfg_attr_wrapped_suppressions_fire() {
     assert_eq!(sc.scan_code("let allow_x = 1;").len(), 0);
 }
 
+/// THE CLASS (6.4): text inside a literal is not an attribute, in any
+/// literal's spelling, while a real attribute beside it is still one.
 #[test]
-fn string_mentions_do_not_fire_for_wrapped_form() {
+fn a_suppression_inside_a_literal_is_not_one() {
     let sc = scanner();
-    // The reference blanks string literals ONLY for the wrapped
-    // (`cfg_attr`) search — a literal `#[allow(` inside a string still
-    // fires there, and so does here (verified against the checker).
-    let quoted_allow = format!("let s = \"{}\";", attr(false, ALLOW, "x"));
-    assert_eq!(sc.scan_code(&quoted_allow).len(), 1);
+    let quoted = attr(false, ALLOW, "x");
+    for line in [
+        format!("let s = \"{quoted}\";"),
+        format!("let s = r#\"{quoted}\"#;"),
+        format!("let s = b\"{quoted}\";"),
+        format!("f(\"a\\\"{quoted}\");"),
+        cfg_attr("x", &format!("\"{ALLOW}(y)\"")),
+    ] {
+        assert_eq!(sc.scan_code(&line).len(), 0, "{line}");
+    }
+    let beside = format!("let s = \"{quoted}\"; {}", attr(false, ALLOW, "dead_code"));
+    assert_eq!(sc.scan_code(&beside).len(), 1, "{beside}");
+    let after_url = format!("let u = \"http://x\"; {}", attr(false, EXPECT, "y"));
     assert_eq!(
-        sc.scan_code(&cfg_attr("x", &format!("\"{ALLOW}(y)\"")))
-            .len(),
-        0
+        sc.scan_code(&after_url).len(),
+        1,
+        "a `//` in a string hid it"
     );
 }
 
-/// A `cfg_attr` spelled inside a string is judged on its own line and
-/// never carried: a later `.expect(` is not inside any attribute.
+/// A raw string holding whole attribute lines spans lines: everything up
+/// to its close is text, and the line after it is code again.
+#[test]
+fn a_raw_string_over_several_lines_is_text_to_its_close() {
+    let sc = scanner();
+    let text = format!(
+        "let fixture = r##\"\n{}\nfn f() {{}}\n{}\n\"##;\n{}\n",
+        attr(false, ALLOW, "dead_code"),
+        cfg_attr("test", &format!("{EXPECT}(x)")),
+        attr(true, ALLOW, "real"),
+    );
+    let hits = sc.scan_code(&text);
+    assert_eq!(
+        hits.iter().map(|h| h.0).collect::<Vec<_>>(),
+        vec![6],
+        "{hits:?}"
+    );
+}
+
+/// A `cfg_attr` spelled inside a string never opens one: a later
+/// `.expect(` is not inside any attribute.
 #[test]
 fn a_quoted_cfg_attr_does_not_stay_open() {
     let sc = scanner();
@@ -117,8 +146,15 @@ fn a_quoted_cfg_attr_does_not_stay_open() {
         "let s = \"{}\";\nlet v = w.{EXPECT}(\"fixture\");\n",
         cfg_attr("test", &format!("{ALLOW}(x)"))
     );
-    let hits = sc.scan_code(&text);
-    assert_eq!(hits.iter().map(|h| h.0).collect::<Vec<_>>(), vec![1]);
+    assert_eq!(sc.scan_code(&text), vec![]);
+}
+
+/// A finding quotes the line as written, literals and all.
+#[test]
+fn a_finding_quotes_the_line_with_its_literals() {
+    let sc = scanner();
+    let line = cfg_attr("target_os = \"macos\"", &format!("{EXPECT}(unsafe_code)"));
+    assert_eq!(sc.scan_code(&line), vec![(1, line.clone())]);
 }
 
 #[test]

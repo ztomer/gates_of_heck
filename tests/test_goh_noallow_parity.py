@@ -106,6 +106,11 @@ CASES: dict[str, dict[str, bytes]] = {
         "Cargo.toml": CARGO,
         "src/a.rs": rs('fn f() {\n    let s = "#[allow(x)]";\n}\n'),
     },
+    # A raw string over several lines holding whole attribute lines: text to its close.
+    "raw_string_attribute": {
+        "Cargo.toml": CARGO,
+        "src/a.rs": rs('fn f() {\n    let s = r#"\n#[allow(dead_code)]\nfn g() {}\n"#;\n}\n'),
+    },
     # A cfg_attr spelled INSIDE a string is judged on its own line and never carried: its `]`
     # inside the literal used to leave the attribute "open", flagging every later `.expect(`.
     "quoted_cfg_attr": {
@@ -143,6 +148,12 @@ CASES: dict[str, dict[str, bytes]] = {
 def test_no_allow_agrees(goh: Path, tmp_path: Path, name: str, staged: bool) -> None:
     repo = make_repo(tmp_path, CASES[name])
     args = ["--staged"] if staged else []
+    if name in LITERAL_DIVERGENCE:
+        # A deliberate divergence (2026-10-12, BACKLOG 6.4): the reference judged a suppression
+        # spelled inside a string literal as one, which flagged a test fixture writing Rust (zinc
+        # `crates/xtask/src/walk_tests.rs:28`). Text inside a literal is not an attribute.
+        assert run_goh(goh, repo, *args)[0] == 0 and run_py(repo, *args)[0] == 1, name
+        return
     if staged and name in STAGED_DIVERGENCE:
         # A deliberate divergence (2026-10-08): the reference refused a blind layout at
         # --staged too, but a staged listing is a diff, not a layout -- the same rule refused
@@ -154,6 +165,7 @@ def test_no_allow_agrees(goh: Path, tmp_path: Path, name: str, staged: bool) -> 
 
 
 STAGED_DIVERGENCE = {"outside_scope", "blind_layout"}
+LITERAL_DIVERGENCE = {"string_literal", "quoted_cfg_attr", "raw_string_attribute"}
 
 
 def test_exclude_skips_vendored_crate(goh: Path, tmp_path: Path) -> None:
@@ -185,10 +197,19 @@ def test_staged_indexes_the_violation(goh: Path, tmp_path: Path) -> None:
 def test_the_found_bugs_have_the_right_verdict(goh: Path, tmp_path: Path) -> None:
     """Parity alone cannot see a defect both sides share: these pin the VERDICT (2026-09-23)."""
     quoted = make_repo(tmp_path / "q", CASES["quoted_cfg_attr"])
-    for code, out, err in (run_py(quoted), run_goh(goh, quoted)):
-        assert code == 1, out + err
-        assert "src/a.rs:2:" in out + err, "the quoted suppression is still reported on its line"
-        assert "src/a.rs:5:" not in out + err, "a later .expect( is not inside any attribute"
+    code, out, err = run_goh(goh, quoted)
+    assert code == 0, "a suppression spelled inside a string was judged as one: " + out + err
+    beside = make_repo(
+        tmp_path / "b",
+        {
+            "Cargo.toml": CARGO,
+            "src/a.rs": rs('let s = "#[allow(x)]"; #[allow(dead_code)]\nfn f() {}\n'),
+        },
+    )
+    code, out, err = run_goh(goh, beside)
+    assert code == 1 and "src/a.rs:1:" in out + err, (
+        "a real attribute beside a quoted one was missed"
+    )
     documented = make_repo(tmp_path / "d", CASES["doc_mentions_marker"])
     for code, out, err in (run_py(documented), run_goh(goh, documented)):
         assert code == 1, "a backticked mention of the marker exempted the file"

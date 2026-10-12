@@ -12,8 +12,6 @@
 use goh_tui::{ERR, OK};
 use regex::Regex;
 
-use crate::noallow::Scanner as NoAllow;
-
 /// The compiled shapes.
 pub struct Rules {
     assert_macro: Regex,
@@ -45,10 +43,11 @@ impl Rules {
         let mut out = Vec::new();
         let (mut depth, mut start) = (0usize, 0usize);
         let mut buf: Vec<char> = Vec::new();
-        let mut comment = 0usize;
+        let mut lex = crate::rustlex::LexState::Code;
         for (n, line) in text.split('\n').enumerate() {
-            let (code, next) = NoAllow::strip_line(line, comment);
-            comment = next;
+            let (lexed, next) = crate::rustlex::lex_line(line, lex);
+            lex = next;
+            let code = lexed.display;
             let free: Vec<char> = self
                 .string_literal
                 .replace_all(&code, |c: &regex::Captures<'_>| {
