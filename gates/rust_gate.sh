@@ -247,15 +247,16 @@ rust_crate_checks() {
 #     and one whose advisory no longer fires, which cargo-audit accepts silently.
 # GOH_DEPS_OFFLINE=1 judges against the cached database and SAYS so, like the currency arm.
 rust_advisories() {
-    local root fetch=""
+    local root fetch="--fetch"
     root="$(dirname "$lockfile")"
     if [ "${GOH_DEPS_OFFLINE:-}" = "1" ]; then
         fetch="--no-fetch"
         warn "advisories judged against the CACHED database (GOH_DEPS_OFFLINE=1): a newer one may fire"
     fi
-    # shellcheck disable=SC2086 # $fetch is one flag or none
+    # goh's own copy of the database, under a read/write lock: a refresh beside a read tore the
+    # read ("unexpected start of advisory"), so no goh audit reads one being rewritten.
     goh_step_in "$root" "no known advisory (cargo audit: warnings, unmaintained, unsound, yanked)" \
-        cargo audit $fetch --file "$lockfile" \
+        python3 "$HERE/../lib/advisory_db.py" run "$fetch" -- cargo audit --file "$lockfile" \
         --deny warnings --deny unmaintained --deny unsound --deny yanked
     goh_step_in "$root" "every advisory exemption has its reason and still fires" \
         python3 "$HERE/../checks/check_audit_ignores.py" --no-fetch

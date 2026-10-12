@@ -39,6 +39,9 @@ import subprocess
 import sys
 import tempfile
 
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "lib"))
+import advisory_db
+
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from _gitutil import foreign_repo_env
 
@@ -73,9 +76,9 @@ def ignore_lines(text: str) -> list[tuple[int, str, bool]]:
 def firing(lockfile: str, fetch: bool) -> set[str]:
     """Every advisory id the lockfile triggers, nothing ignored: the audit runs from a scratch
     directory, where no `.cargo/audit.toml` is read."""
-    with tempfile.TemporaryDirectory(prefix="goh-audit.") as scratch:
+    with tempfile.TemporaryDirectory(prefix="goh-audit.") as scratch, advisory_db.held(fetch) as db:
         r = subprocess.run(
-            ["cargo", "audit", "--json", *([] if fetch else ["--no-fetch"]), "--file", lockfile],
+            ["cargo", "audit", "--json", *advisory_db.audit_args(db, fetch), "--file", lockfile],
             check=False,
             cwd=scratch,
             env=foreign_repo_env(),

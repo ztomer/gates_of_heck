@@ -34,6 +34,9 @@ from _gitutil import foreign_repo_env
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from tui.lib import info, ok, warn
 
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
+import advisory_db
+
 DENY = [
     "--deny",
     "warnings",
@@ -115,25 +118,29 @@ def lockfiles(repo: Path) -> tuple[list[Path], int]:
     return [repo / p for p in kept], len(tracked) - len(kept)
 
 
+def _run(argv: list[str], lock: Path) -> subprocess.CompletedProcess:
+    return subprocess.run(
+        argv,
+        cwd=lock.parent,
+        env=foreign_repo_env(),  # each repo's own git, never a calling hook's
+        capture_output=True,
+        text=True,
+        timeout=AUDIT_TIMEOUT_S,
+        stdin=subprocess.DEVNULL,
+        check=False,
+    )
+
+
 def audit(lock: Path, db: str | None, fetch: bool) -> tuple[list[dict], str | None]:
     """(findings, error): each finding {id, kind, crate, title}, from the lockfile's own workspace
     root so its exemptions apply."""
     argv = ["cargo", "audit", "--json", *DENY, "--file", str(lock)]
-    if db:
-        argv += ["--db", db, "--stale"]
-    if not fetch:
-        argv.append("--no-fetch")
     try:
-        r = subprocess.run(
-            argv,
-            cwd=lock.parent,
-            env=foreign_repo_env(),  # each repo's own git, never a calling hook's
-            capture_output=True,
-            text=True,
-            timeout=AUDIT_TIMEOUT_S,
-            stdin=subprocess.DEVNULL,
-            check=False,
-        )
+        if db:  # a fixture: no lock, nothing of the real database touched
+            r = _run([*argv, "--db", db, "--stale", *([] if fetch else ["--no-fetch"])], lock)
+        else:
+            with advisory_db.held(fetch) as shared:
+                r = _run([*argv, *advisory_db.audit_args(shared, fetch)], lock)
         report = json.loads(r.stdout)
     except (OSError, subprocess.TimeoutExpired) as e:
         return [], str(e)
