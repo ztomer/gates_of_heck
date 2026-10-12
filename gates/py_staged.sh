@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # py_staged.sh — the CHEAP half of py_gate.sh, at COMMIT time, on the staged .py files only.
 #
-#   1. ruff check          on staged *.py
+#   1. ruff check          on staged *.py (against per-file ceilings when GOH_PY_LINT_CEILINGS is set)
 #   2. ruff format --check on staged *.py
 #
 #   py_staged.sh                # from the repo root (a repo's tools/gate.sh calls it)
@@ -39,7 +39,13 @@ if [ "${#STAGED[@]}" -eq 0 ]; then
     exit 0
 fi
 goh_py_require ruff
-goh_step "ruff check (staged)"        "${RUN_ARR[@]}" ruff check "${STAGED[@]}"
+if [ -n "${GOH_PY_LINT_CEILINGS:-}" ]; then
+    # Debt the repo carries, counted per file, may only fall (gates/py_lint_ceiling.py, BACKLOG 4.4).
+    goh_step "ruff check under $GOH_PY_LINT_CEILINGS (staged)" \
+        python3 "$HERE/py_lint_ceiling.py" --check --ceilings "$GOH_PY_LINT_CEILINGS" --runner "$RUN" -- "${STAGED[@]}"
+else
+    goh_step "ruff check (staged)"        "${RUN_ARR[@]}" ruff check "${STAGED[@]}"
+fi
 goh_step "ruff format check (staged)" "${RUN_ARR[@]}" ruff format --check "${STAGED[@]}"
 goh_done
 exit

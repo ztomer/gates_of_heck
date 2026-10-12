@@ -87,6 +87,7 @@ fix is `reclaim_build_space.sh` next to it.
 |---|---|---|
 | `GOH_PY_COV_MIN` | unset (runs bare `pytest`, warns) | Coverage floor %. Scoped to the package (`--cov=<pkg_dir>`), so never-imported modules count as 0%. |
 | `GOH_PY_RUNNER` | `.venv/bin/python -m` if executable, else `python3 -m` | Toolchain prefix, whitespace-split (`uv run` works; a runner path containing a space cannot be expressed — use `.venv/bin/python`). The chosen interpreter is named with its version, and a `.venv` older than `python3` is refused unless this key is set or a committed `.python-version` names the venv's minor (BACKLOG 1.6). |
+| `GOH_PY_LINT_CEILINGS` | unset (every staged finding fails) | A JSON file of `{"path.py": count}`: the ruff findings each file may carry at commit (`gates/py_lint_ceiling.py`, BACKLOG 4.4). A staged file over its ceiling fails with its findings, under it fails with the number to write, and an unlisted file carries none; a ceiling raised above HEAD's, or the file missing from the commit, is a finding. Seed it with `python3 $GOH_DIR/gates/py_lint_ceiling.py --seed <path>`. `ruff format --check` stays strict. |
 
 ## Rust (`gates/rust_gate.sh`)
 
