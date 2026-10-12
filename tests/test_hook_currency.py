@@ -87,6 +87,8 @@ def test_an_older_stock_hook_is_named_with_its_fix(tmp_path, native):
     got = _structural(_repo_with_hook(tmp_path, old), native)
     text = got.stdout + got.stderr
     assert "OLDER stock hook" in text and "install.sh" in text, text
+    # BACKLOG 6.6: named AND refused -- a warning printed on every commit for weeks changed nothing.
+    assert got.returncode == 1, text
 
 
 def test_a_current_or_local_hook_is_not_named(tmp_path):
@@ -94,3 +96,4 @@ def test_a_current_or_local_hook_is_not_named(tmp_path):
         sub = tmp_path / hashlib.sha256(body).hexdigest()[:8]
         got = _structural(_repo_with_hook(sub, body), native=False)
         assert "OLDER stock hook" not in got.stdout + got.stderr
+        assert got.returncode == 0, got.stdout + got.stderr

@@ -196,19 +196,29 @@ if [ -n "$_goh_dirty" ]; then
     unset _goh_dirty
 fi
 
-# ── A hook that is an OLDER stock is named, with its fix. ─────────────────────
+# ── A hook that is an OLDER stock FAILS, with its fix (BACKLOG 6.6). ──────────
 # Hooks are COPIED by install.sh, so a stock change reaches no repo until it re-installs (14 repos
-# still gated the working tree on 2026-10-05). A retired stock hash is pristine-but-old; named
-# here, before the native exec, so both tiers say it (tests/test_hook_currency.py).
+# still gated the working tree on 2026-10-05). A retired stock hash is pristine-but-old. It used to
+# be a warning, and five repos printed it on every commit for weeks without acting (2026-10-08):
+# a gate whose own hook is stale is not running today's gate, so it refuses, before the native
+# exec, so both tiers say it (tests/test_hook_currency.py). Only a BYTE-IDENTICAL retired copy is
+# refused: a hook a repo edited is not stock, and is its own business. Nothing is rewritten here --
+# `.githooks` is tracked, and a gate that edits the tree it judges dirties the commit it is in.
 _goh_hooks="$(git config core.hooksPath 2>/dev/null || echo .githooks)"
+_goh_stale=""
 for _goh_h in pre-commit pre-push; do
     [ -f "$_goh_hooks/$_goh_h" ] || continue
     _goh_sum="$(shasum -a 256 <"$_goh_hooks/$_goh_h" | cut -d' ' -f1)"
     if grep -q "^$_goh_sum  $_goh_h" "$GOH_ROOT/retired_hooks.sha256" 2>/dev/null; then
-        warn "$_goh_hooks/$_goh_h is an OLDER stock hook; update it:  $GOH_ROOT/install.sh \"$PWD\""
+        err "$_goh_hooks/$_goh_h is an OLDER stock hook: the gate it runs is not today's"
+        _goh_stale=1
     fi
 done
-unset _goh_hooks _goh_h _goh_sum
+if [ -n "$_goh_stale" ]; then
+    err "  update the hooks, then commit them:  $GOH_ROOT/install.sh \"$PWD\""
+    exit 1
+fi
+unset _goh_hooks _goh_h _goh_sum _goh_stale
 
 # shellcheck source=gates/_goh_bin.sh
 . "$HERE/_goh_bin.sh"
