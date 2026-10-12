@@ -474,7 +474,10 @@ and the calibration registry is O35.
       expansion (`${X}`, `$X`, `${{ secrets.X }}`) is a finding, in YAML as in shell. Red-first:
       that line planted in a fixture reds. Lies: an expansion is not a literal secret, but it is
       the secret in the URL at run time, logged by every tool that echoes its argv.
-- [ ] 6.4 `goh no-allow` reads attributes, not text. Baseline: it flags `#[allow]` inside a string
+- [x] 6.4 (`20281bb`: `crates/goh/src/rustlex.rs`, one lexer with its state carried across
+      lines -- strings, raw strings at any hash count, character literals told from lifetimes,
+      nestable comments; `goh empty-assert` reads through it too)
+      `goh no-allow` reads attributes, not text. Baseline: it flags `#[allow]` inside a string
       literal at zinc `crates/xtask/src/walk_tests.rs:28`. Exit: a match inside a string or a
       comment is not an attribute. Red-first: that line in a fixture is clean; a real
       `#[allow(dead_code)]` beside it is still red. Lies: a raw string holding a whole attribute
