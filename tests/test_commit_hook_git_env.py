@@ -169,9 +169,14 @@ def test_a_worktree_commit_does_not_report_uncommitted_gates(tmp_path, hook):
     got = _commit(wt, _export_env(tmp_path, gates))
 
     text = got.stdout + got.stderr
-    assert got.returncode == 0, text
     assert "NOT committed" not in text, text
     assert "BEHIND" not in text, text
+    if hook == "previous":
+        # A retired stock hook is refused, with its fix (BACKLOG 6.6) -- and the gates' own git
+        # still drops the hook's variables on the way there, or the line above would fire.
+        assert got.returncode == 1 and "OLDER stock hook" in text, text
+        return
+    assert got.returncode == 0, text
     assert _git(main, "log", "--format=%s", "wt").splitlines() == ["ours", "one"], text
 
 

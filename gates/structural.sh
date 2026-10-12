@@ -231,6 +231,12 @@ if [ -z "$goh_native" ]; then
 fi
 goh_require_current "$goh_native" || exit 1
 goh_name_missing_steps "$goh_native"
+# THE MARK (BACKLOG 6.7): the commit and push gates read it to tell whether a repo's tools/gate.sh
+# ran this layer, and run it themselves when it did not. The scope and the tree, so a structural
+# run inside a consumer's fixture does not stand in for the repo's own.
+if [ -n "${GOH_STRUCTURAL_MARK:-}" ]; then
+    printf '%s\t%s\n' "${SCOPE:---full}" "$(git rev-parse --show-toplevel 2>/dev/null)" >>"$GOH_STRUCTURAL_MARK"
+fi
 # Arguments were validated above; only the two accepted scopes reach here.
 if [ "$SCOPE" = "--staged" ]; then
     goh_bind_hook_index  # the index being committed, when the hook carried one (gates/_git_env.sh)

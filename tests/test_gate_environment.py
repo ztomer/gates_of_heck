@@ -169,7 +169,10 @@ def test_the_push_gate_does_not_hand_the_export_gate_this_repos_gatesrc(
 
     report = tmp_path / "report.txt"
     proc = _push(repo, ROOT, tmp_path, GATE_REPORT=str(report))
-    assert proc.returncode == 0, proc.stdout + proc.stderr
+    # The export gate ran: its report is the evidence. Not the push's verdict -- this fixture's gate
+    # skips the house structural layer, so the push runs it after (BACKLOG 6.7), and these keys are
+    # names to watch for, not a configuration structural could pass on (a corpus at /somewhere/else).
+    assert report.exists(), proc.stdout + proc.stderr
     seen = dict(line.split("=", 1) for line in report.read_text().splitlines() if "=" in line)
     leaked = {k: v for k, v in seen.items() if v != "UNSET"}
     assert not leaked, f"the export gate inherited the repo's configuration: {leaked}"

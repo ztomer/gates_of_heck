@@ -442,9 +442,18 @@ while read -r local_ref local_sha _remote_ref _remote_sha; do
     # guards is this repo's OWN files, and those still come from the worktree.
     repo_before="$(goh_repo_snapshot "$root")"   # what the gate may not write (lib/repo_writes.sh)
     slept_mark="$(goh_sleep_mark)"
+    # The house structural layer runs whether or not the repo's gate calls it (BACKLOG 6.7): the
+    # gate marks what structural.sh ran, and a pass without `--full` for this tree runs it here.
+    structural_mark="$(mktemp "${TMPDIR:-/tmp}/goh-structural-mark.XXXXXX")"
     (cd "$worktree" \
-        && GOH_CROSS_REPO_ROOT="$root" bash "$worktree/tools/gate.sh" --full) 2>&1 | tee "$log"
+        && GOH_CROSS_REPO_ROOT="$root" GOH_STRUCTURAL_MARK="$structural_mark" \
+            bash "$worktree/tools/gate.sh" --full \
+        && { grep -qFx -- "--full	$(git rev-parse --show-toplevel)" "$structural_mark" || {
+                warn "pre-push: tools/gate.sh --full passed without running the house structural layer -- running it now"
+                bash "$GOH/gates/structural.sh" --full
+            }; }) 2>&1 | tee "$log"
     status="${PIPESTATUS[0]}"
+    rm -f "$structural_mark"
     set -e
     goh_repo_writes "$root" "$repo_before" || { err "pre-push: nothing pushed"; exit 1; }
     if [ "$status" -ne 0 ]; then

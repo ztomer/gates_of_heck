@@ -13,7 +13,7 @@ import os
 import shutil
 import subprocess
 
-from conftest import EMOJI_SMILE, REPO_ROOT, commit_all, git, write
+from conftest import hermetic_env, EMOJI_SMILE, REPO_ROOT, commit_all, git, write
 
 
 def _install(target, *args):
@@ -41,10 +41,13 @@ def _git_env(repo):
 
 
 def _commit(repo, *args):
+    # The hook delegates to GOH_DIR's gates: THIS tree's, never the shared checkout's, which may
+    # not have a gate file this tree's hook names yet (gates/commit_gate.sh, BACKLOG 6.7).
     return subprocess.run(
         ["git", "-C", str(repo), "-c", "user.name=t", "-c", "user.email=t", "commit", *args],
         capture_output=True,
         text=True,
+        env=hermetic_env(GOH_DIR=str(REPO_ROOT)),
     )
 
 

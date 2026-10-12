@@ -151,21 +151,15 @@ def test_guarded_refs_must_still_resolve_when_they_name_this_repo():
     assert not any(r.startswith("tools/") for r in named)
 
 
-def test_hook_checker_resolution_is_self_hostable():
-    """hooks/pre-commit must resolve its checker through a chain that ends at
-    a real file: repo-local tools/ copy (installed repos) OR this repo's
-    checks/ (delegation). A hook whose only reference cannot exist here is
-    broken for every consumer including this one."""
-    hook = REPO_ROOT / "hooks" / "pre-commit"
-    text = hook.read_text()
-    m = re.search(r"/(tools|checks)/(check_no_emoji\.py)", text)
-    assert m, "pre-commit does not reference the emoji checker at all"
-    kind, name = m.groups()
-    if kind == "tools":
-        # Legal only if the hook falls back to the shared checkout when the
-        # repo-local copy is absent AND this repo can satisfy one branch.
-        assert "GOH" in text, "hook references tools/ with no fallback to the shared checkout"
-    assert (REPO_ROOT / "checks" / name).exists()
+def test_hook_gate_resolution_is_self_hostable():
+    """Each stock hook only delegates to a gate in the shared checkout (`$GOH/gates/<gate>.sh`), so
+    a change to what a commit or push runs reaches every repo without a re-install (BACKLOG 6.7).
+    The gate it names must exist HERE, or the hook is broken for every consumer and for this repo.
+    (It used to resolve the emoji checker itself; that logic moved into commit_gate.sh.)"""
+    for hook, gate in (("pre-commit", "commit_gate.sh"), ("pre-push", "push_gate.sh")):
+        text = (REPO_ROOT / "hooks" / hook).read_text()
+        assert f"/gates/{gate}" in text and "GOH" in text, f"{hook} does not delegate to {gate}"
+        assert (REPO_ROOT / "gates" / gate).exists(), gate
 
 
 def test_install_sh_exists_and_wires_hooks():
