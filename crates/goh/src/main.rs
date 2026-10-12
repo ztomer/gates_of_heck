@@ -79,6 +79,7 @@ pub mod substdin;
 pub mod tagpush;
 pub mod tagver;
 pub mod unreaped;
+pub mod urlexpand;
 pub mod vendored;
 pub mod verdict_cache;
 pub mod versrc;

@@ -126,6 +126,7 @@ pub fn scan_files(
     staged: bool,
 ) -> Result<(Vec<Finding>, usize), String> {
     let (patterns, marker) = compile_all()?;
+    let urls = crate::urlexpand::Matcher::compile()?;
     let mut bad = Vec::new();
     let mut checked = 0;
     for path in files {
@@ -136,10 +137,19 @@ pub fn scan_files(
             continue;
         };
         checked += 1;
+        let prose = crate::urlexpand::is_prose(path);
         let mut prev: Option<&str> = None;
         for (lineno, line) in text.lines().enumerate() {
             if !is_suppressed(&marker, prev, line) {
-                for (col, kind) in findings(line, &patterns) {
+                let expanded = if prose {
+                    Vec::new()
+                } else {
+                    urls.findings(line)
+                };
+                let kinds = expanded
+                    .into_iter()
+                    .map(|col| (col, crate::urlexpand::KIND));
+                for (col, kind) in findings(line, &patterns).into_iter().chain(kinds) {
                     bad.push(Finding {
                         path: path.clone(),
                         lineno: lineno + 1,
@@ -173,8 +183,13 @@ pub fn format_report(bad: &[Finding], staged: bool) -> String {
         String::new()
     };
     format!(
-        "{ERR} DISALLOWED SECRET in {} location(s) ({scope}) — rotate the credential; revoked vectors use `secret-ok: <reason>` on the line or above:\n{shown}{overflow}",
-        bad.len()
+        "{ERR} DISALLOWED SECRET in {} location(s) ({scope}) — rotate the credential; revoked vectors use `secret-ok: <reason>` on the line or above:\n{shown}{overflow}{}",
+        bad.len(),
+        if bad.iter().any(|hit| hit.kind == crate::urlexpand::KIND) {
+            crate::urlexpand::ADVICE
+        } else {
+            ""
+        }
     )
 }
 

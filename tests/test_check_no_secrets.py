@@ -145,3 +145,19 @@ def test_credential_named_key_with_a_placeholder_passes(repo):
     stage(repo, "examples/app.toml", "tests/fixture.py", "cfg.json")
     r = run_secrets(repo, "--staged")
     assert r.returncode == 0, r.stdout + r.stderr
+
+
+def test_a_credential_expanded_into_a_url_fails_where_it_runs(repo):
+    """BACKLOG 6.3: an expansion in a URL's userinfo is the secret in the URL at run time. The same
+    line quoted in prose is the defect written down, and passes."""
+    line = 'git clone "https://${TAP' + '_TOKEN}@github.com/x/tap.git" /tmp/tap\n'
+    write(repo, ".github/workflows/release.yml", "steps:\n  - run: " + line)
+    write(repo, "docs/NOTES.md", "the workflow ran `" + line.strip() + "`\n")
+    write(repo, "tools/mirror.sh", 'git clone "ssh://${USER}@host/x"\n')
+    stage(repo, ".github/workflows/release.yml", "docs/NOTES.md", "tools/mirror.sh")
+    r = run_secrets(repo, "--staged")
+    out = r.stdout + r.stderr
+    assert r.returncode == 1, out
+    assert ".github/workflows/release.yml:2:" in out and "credential expansion in a URL" in out, out
+    assert "NOTES.md" not in out and "mirror.sh" not in out, out
+    assert "http.extraheader" in out, out
