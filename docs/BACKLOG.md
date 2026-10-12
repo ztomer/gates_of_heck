@@ -311,7 +311,7 @@ episode (4.4) is what that hand-writing costs.
       `.py` in a repo that has one -- the "read NONE of them" verdict, measured today on a
       fixture. Lies: a floor set too high reds a clean repo and gets raised; too low never fires.
       The exit is the PAIRING with the stale-allowlist check, in both directions.
-- [ ] 4.4 `gates/py_staged.sh` grows a ceiling, so lint debt is visible and shrinkable instead of
+- [x] 4.4 (`61b4a91`; `gates/py_lint_ceiling.py`, opted into with `GOH_PY_LINT_CEILINGS`, seeded by `--seed`; `ruff format --check` stays strict) `gates/py_staged.sh` grows a ceiling, so lint debt is visible and shrinkable instead of
       discovered the day someone edits the wrong file. Baseline: `py_staged.sh:46-47` runs
       `ruff check` and `ruff format --check` on staged `.py` with no baseline and no opt-out; the
       only key it honours is `GOH_PY_RUNNER`. necrohand measured 921 findings across 96 files at
