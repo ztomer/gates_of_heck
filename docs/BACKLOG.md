@@ -443,7 +443,11 @@ outranks measurement, so this phase runs before Phase 5. Two of its findings wer
 the Rust TUI helper is 4.14 (antiknob's 43 `[ ==> ]` sites are its consumer half, in Downstream)
 and the calibration registry is O35.
 
-- [ ] 6.1 The git-env seams live here once, and no consumer carries a copy. Baseline: necrohand
+- [x] 6.1 (`85d0b51`: `checks/check_git_env.py` runs `_gitcensus.census` over git's listing,
+      configured by `<gate dir>/git_env.json`, and refuses a census that read no Python, a
+      declaration with no reason and one that matches nothing; the scrub was already git's own
+      list and is now pinned for GIT_PREFIX; the consumers' half is in Downstream)
+      The git-env seams live here once, and no consumer carries a copy. Baseline: necrohand
       `tools/check_git_env.py` (`e46b8f9`) and CadGoose2 `tools/check_git_env.py` (`f0b4bb9`)
       are hand-written copies of the empty-scope refusal, and both now fail structural with
       "PASSED over an empty tree", so both pushes are refused; necrohand also carries a stale
@@ -689,6 +693,13 @@ Finance's `"$root.out"`, ZeroThunder's dropped process handle.
   left with `goh early-exit-pipe --seed` and commit `early_exit_pipe_seed.json`, which may only
   fall. By owner ruling (2026-10-12) they stay red until their own sessions take them.
 - **The 17 repos in 3.3's table**, one session each: run the check, fix or `--seed`.
+- **necrohand, CadGoose2 and ZeroThunder, after `85d0b51` (6.1):** necrohand and CadGoose2 replace
+  `tools/check_git_env.py` with `python3 "$GOH_DIR/checks/check_git_env.py"` and move
+  `git_env.SOURCES`, `CENSUS_EXEMPT` and `_SHELL_SITES` into `tools/git_env.json` (`sources`,
+  `exempt`, `shell`); their `git_env.run` seam stays. necrohand also deletes the stale
+  `check_mcp_server.py` excuse the empty-scope sweep names. ZeroThunder's
+  `tests/test_hook_git_env.py` stops typing the hook variables and takes
+  `_gitutil.local_env_vars()` (GIT_PREFIX is the one its list missed).
 - **Eight repos, after `1c4be61` (6.2), red at the next push until their hooks and gate run Python
   through the seam:** a bare `python3` in `.githooks/*` or `tools/gate.sh` is refused. Counted
   2026-10-12 (calls): ZeroThunder 14, app_updates 10, Finance/salary 3, Finance/zinc-core 3,
