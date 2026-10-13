@@ -545,9 +545,10 @@ and the calibration registry is O35.
       fixture commit that takes an over-cap `CMakeLists.txt` from 1141 to 1142 lines reds at
       `--staged`. Lies: re-read why the staged run missed it before fixing (a type filter, a
       baseline, or only the touched hunk) -- each is a different fix.
-- [ ] 6.11 (push half: `13f11b4`, `lib/repo_writes.sh` -- the push gate refuses a run that wrote
-      the repository's `.git/config` and names a moved ref; left: the commit half, which the stock
-      pre-commit cannot reach because it execs the repo's gate) A hook run never writes the repository it runs in. Baseline: the games metarepo's
+- [x] 6.11 (push half: `13f11b4`, `lib/repo_writes.sh` -- the push gate refuses a run that wrote
+      the repository's `.git/config` and names a moved ref; commit half: `8d83c85`,
+      `gates/commit_gate.sh` compares the same around the gate, pass or fail, now that the stock
+      pre-commit delegates to it instead of exec'ing the repo's gate) A hook run never writes the repository it runs in. Baseline: the games metarepo's
       `origin` was `https://elsewhere.invalid/x.git` from 2026-10-08 19:09 until the consolidation
       repaired it: a probe in `82802c0`'s own hook run wrote it into the REAL `.git/config`, and
       nothing compares remote URLs before and after a hook. Sibling: scripts'
