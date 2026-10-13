@@ -42,7 +42,7 @@ a string comparison of a path is a measurement of the CALLER, not of the filesys
 ## Roadmap to v0.27.0 — the plan of record (re-phased 2026-10-13)
 
 Ordered by what is open: correctness first (two classes the estate found that no gate closes
-yet), then the stdin campaign, whose flip waits on its sweep, then the measurements, which no
+yet), then the stdin campaign (the flip landed; the sweep is each consumer's), then the measurements, which no
 correctness item waits on. Item ids are kept from the v0.26.0 plan so commit messages that cite
 them still resolve. Every item carries **Baseline:**, **Exit:**, **Red-first:** and **Lies:**, and
 a done item names its commit, or `tests/test_backlog_items.py` fails; a landed item is pruned to
@@ -81,7 +81,8 @@ path exists (`--seed`, `498eb9a`), and a declaration is mechanical where no call
 caller's stdin (goh's 555: an AST pass placing `stdin=subprocess.DEVNULL` at each call's closing
 paren, from the `--source` JSON's line, then `ruff format`).
 
-- [ ] 3.3 The estate sweep. Baseline: MEASURED 2026-10-09 with this tree's own binary, scope
+- [~] 3.3 The estate sweep, handed off: since 3.4 (`0c93f4d`) each remaining row is red in its own
+      repo and cleared in that repo's session (Downstream). Baseline: MEASURED 2026-10-09 with this tree's own binary, scope
       `git ls-files --cached --others --exclude-standard`: 34 repos carry Python, 1361 process
       calls, **996 findings**, 17 repos exit 1. Two rows are closed (2026-10-13): gates_of_heck
       (511 then, 555 calls in 186 files when declared, `df8f9c2`: no allowlist, 614 calls read,
@@ -100,16 +101,16 @@ paren, from the `--source` JSON's line, then `ruff format`).
       only key this check reads (only media_server's removes Python: 2 vendored files, 0
       findings) and `GOH_LINE_EXCLUDE` cannot affect it at all. A seeded row is debt, not a fix:
       its `unreviewed` count is the number that must fall.
-- [ ] 3.4 The flip: `GOH_SUBPROCESS_STDIN` defaults to `on`. Baseline: default `off`; on in 2 of
-      34 repos (gates_of_heck, ZoneWM), each with a floor in `.gatesrc`; 18 have a keyless
-      `.gatesrc`; ZeroThunder still carries its own `tools/check_subprocess_stdin.py`, which the
-      vendored-copy gate already names as a copy to delete (Downstream). Exit: the step is in the
-      always-on group at both scopes, and an undeclared call is red at its author's next commit
-      in any repo. Red-first: a repo whose Python is excluded away entirely must still say it
-      read none; a fixture repo with no `GOH_SUBPROCESS_STDIN` key and one undeclared call reds.
-      Lies: flipping before 3.3 makes 15 repos' next commit red for debt nobody has looked at --
-      the order is the earlier ruling's. And `stdin=None` is legal here while two repos' local
-      checkers demand a comment above it: settle that or state the difference before the flip.
+- [x] 3.4 The flip: `GOH_SUBPROCESS_STDIN` defaults to `on` (`0c93f4d`). Baseline was default
+      `off`, on in 2 of 34 repos. Now unset or `on` runs the step at both scopes and only a written
+      `off` skips it, an opt-out a repo writes in its own file the way `stdin=None` is written at a
+      call; a typo is still exit 1 naming the key. Landed ahead of 3.3 by the owner's ruling that goh
+      ships a check and each consumer clears its own debt in its own session (2026-10-12), so the 15
+      rows left read red at their next commit (Downstream). The difference this item had to settle
+      does not exist: read 2026-10-13, ZeroThunder's local checker accepts `stdin=None` bare, as the
+      house check does, and necrohand's `git_env` wrapper tells callers to pass it bare. Red-first
+      met: `test_a_repo_that_never_wrote_the_key_is_red_at_both_scopes` and the unit switch test red
+      on the old default; an exclusion of every `.py` in a repo with no key still says it read none.
 
 ### Phase 3 — the measurements, last
 
@@ -198,13 +199,14 @@ ztools' exempt key, Finance's `"$root.out"`, ZeroThunder's dropped process handl
   here"); a value that is not a whole number refuses the whole `.gatesrc` naming the key. ZoneWM's
   `GOH_SUBPROCESS_STDIN_MIN_CALLS=110` is read exactly as before; its below-floor message now
   carries the `[subject]` tag, and a `--seed` under the floor is refused.
-- **ZeroThunder, before 3.4:** delete its own `tools/check_subprocess_stdin.py`, repoint
-  `tests/e2e/verify.py:290` + `tests/e2e/gate_tiers.py:61`. It is already a NAMED VIOLATION
-  ("a vendored copy of a house checker -- delete it and run the shared one"), and its copy and the
-  house gate hold two rules for one class: both local checkers want a comment above `stdin=None`,
-  the shared native check accepts any. 3.4 settles that or states the difference.
-- **The 15 repos left in 3.3's table**, one session each: run the check with
-  `GOH_SUBPROCESS_STDIN=on`, declare or `--seed`, set `GOH_SUBPROCESS_STDIN_MIN_CALLS`. A
+- **ZeroThunder, after 3.4 (`0c93f4d`):** delete its own `tools/check_subprocess_stdin.py`,
+  repoint `tests/e2e/verify.py:290` + `tests/e2e/gate_tiers.py:61`. It is a NAMED VIOLATION ("a
+  vendored copy of a house checker -- delete it and run the shared one"). Its rule and the house
+  rule agree: both accept `stdin=None` bare (read 2026-10-13; the earlier note that it wanted a
+  comment above it was wrong).
+- **The 15 repos left in 3.3's table, red at their next commit since `0c93f4d` (3.4)**, one
+  session each: declare or `--seed`, set `GOH_SUBPROCESS_STDIN_MIN_CALLS` (a repo that must defer
+  writes `GOH_SUBPROCESS_STDIN=off`, which is an opt-out in its own file, not a default). A
   declaration is mechanical where no call needs the caller's stdin (the method is in Phase 2's
   preamble; ZoneWM's `tools/proc.py` is a helper for the plain calls).
 - **ZeroThunder, after 4.7:** wrap the SwiftLint step in `GOH_CI_STEPS` as
