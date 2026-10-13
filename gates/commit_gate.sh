@@ -15,6 +15,13 @@
 # consumer's test suite may run structural.sh inside a fixture, which is not this repo's commit.
 #
 # Without a tools/gate.sh, structural runs alone, as it always did.
+#
+# A COMMIT'S GATE NEVER WRITES ITS REPOSITORY (BACKLOG 6.11). The games metarepo's `origin` read
+# `https://elsewhere.invalid/x.git` for days, written into the real `.git/config` by a probe in a
+# commit's own hook run. The push gate already compares; this is the commit half, which the hook could
+# not reach while it `exec`ed the gate: the config and refs are snapshotted before the gate and read
+# again after it (lib/repo_writes.sh), pass or fail, so a failing gate's write is reported too. A
+# config write refuses the commit naming the key; a moved ref is named, not refused.
 { # parse-guard -- bash reads this group whole before running it (tests/test_parse_guard.py)
 . "$(dirname "${BASH_SOURCE[0]}")/_from_head.sh"; goh_from_head "${BASH_SOURCE[0]}" "$@"   # run HEAD, not the tree (C4)
 set -euo pipefail
@@ -26,23 +33,29 @@ goh_hook_unbind || exit $?
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 . "$HERE/../tui/lib.sh"
+# shellcheck source=lib/repo_writes.sh
+. "$HERE/../lib/repo_writes.sh"
 root="$(git rev-parse --show-toplevel)"
 gate="$root/tools/gate.sh"
 structural="$HERE/structural.sh"
 
+repo_before="$(goh_repo_snapshot "$root")"   # what the gate may not write (lib/repo_writes.sh)
+status=0
 if [ ! -f "$gate" ]; then
-    exec bash "$structural" --staged
+    bash "$structural" --staged || status=$?
+else
+    mark="$(mktemp "${TMPDIR:-/tmp}/goh-structural-mark.XXXXXX")"
+    trap 'rm -f "$mark"' EXIT
+    GOH_STRUCTURAL_MARK="$mark" bash "$gate" --staged || status=$?
+    # `grep -F -x` on the whole line: the scope and the tree it ran in, as structural.sh wrote them.
+    if [ "$status" -eq 0 ] && ! grep -qFx -- "--staged	$root" "$mark"; then
+        warn "pre-commit: tools/gate.sh --staged passed without running the house structural layer"
+        warn "  (emoji, conflict markers, the line cap, secrets...) -- running it now; call"
+        warn "  \"\$GOH/gates/structural.sh\" --staged from tools/gate.sh to make this line go away"
+        bash "$structural" --staged || status=$?
+    fi
 fi
-
-mark="$(mktemp "${TMPDIR:-/tmp}/goh-structural-mark.XXXXXX")"
-trap 'rm -f "$mark"' EXIT
-GOH_STRUCTURAL_MARK="$mark" bash "$gate" --staged
-# `grep -F -x` on the whole line: the scope and the tree it ran in, as structural.sh wrote them.
-if ! grep -qFx -- "--staged	$root" "$mark"; then
-    warn "pre-commit: tools/gate.sh --staged passed without running the house structural layer"
-    warn "  (emoji, conflict markers, the line cap, secrets...) -- running it now; call"
-    warn "  \"\$GOH/gates/structural.sh\" --staged from tools/gate.sh to make this line go away"
-    bash "$structural" --staged
-fi
+goh_repo_writes "$root" "$repo_before" || { err "pre-commit: nothing committed"; exit 1; }
+[ "$status" -eq 0 ] || exit "$status"
 exit
 } # parse-guard
