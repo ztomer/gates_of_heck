@@ -133,19 +133,24 @@ cross-session serialization (its section below).
       5.90-6.18 s (+80%), cpu 6.69-6.83 s (+37%), instructions 4.79-4.85 G (+2.2%). **CPU fails
       the exit** (+37% across 10x load, +45% against the first point: under load more of the work
       runs on the efficiency cores, which spend more CPU time on it); **instructions retired
-      holds** within 3% across 10x. But `time -l` reads the goh process alone (about 1 G
-      instructions a CPU-second, where a P-core retires several), so the spawned `git`,
-      `shellcheck` and `ruff` are outside it. Next: the step timer (`goh step`,
-      `lib/bounded_run.py`, `goh_sys::children_cpu_ms`) records each step's instructions
-      INCLUDING its children (each child's `proc_pid_rusage` `ri_instructions`, read between a
-      `WNOWAIT` wait and the reap), as `instr_m` beside `cpu_ms` in `GOH_TIMINGS`. Exit: that
-      per-step figure holding within 15% across two loads at least 2x apart, for `structural
-      --full` and one Rust step; then 5.1 is restated in it and per-crate coverage judged for
-      running across crates at once. Red-first: met for the process-only count (2.2% against
-      wall's 80%); the per-step count must also move less than wall, and a step whose children
-      are left out must read lower than one that counts them. Lies: instructions are blind to a
-      step that waits (a lock, the network) -- wall beside it says so; a child reaped before it
-      is read is a silent zero; a second host's figure read as this one's.
+      holds** within 3% across 10x -- but for the goh process alone. `time -l` reads that process's
+      `rusage_info`; its 1.17 G cycles are about 0.3-0.4 s of the run's 4.95 s of CPU, so the
+      spawned `git`, `shellcheck` and `ruff` did about nine tenths of the work, and their
+      instructions are not on record: the kernel folds a reaped child's CPU time into its parent
+      (`ri_child_user_time`, `ri_child_system_time`) and its instructions into nothing (no
+      `ri_child_instructions` in `rusage_info` v4-v6, read 2026-10-13). A step's direct child can
+      be read between a `WNOWAIT` wait and its reap; its own children cannot. Next: test CPU
+      normalised by a same-run control (a fixed workload of the same kind, timed in the same run,
+      the step's CPU divided by it) at two loads at least 2x apart; instructions stay the figure
+      for the in-process native scanners, where they are exact. Exit: a per-step figure holding
+      within 15% across two loads at least 2x apart, for `structural --full` and one Rust step;
+      then 5.1 is restated in it and per-crate coverage judged for running across crates at
+      once. Red-first: met for the process-only count (2.2% against wall's 80%), and the control
+      ratio must also move less than wall and less than raw CPU (+37%). Lies: a process-only count
+      read as the step's work; a control of another kind than the step (a CPU loop does not
+      migrate the way a fork-heavy step does); instructions and CPU are both blind to a step
+      that waits (a lock, the network) -- wall beside them says so; a second host's figure read
+      as this one's.
 - [ ] 5.1 media_server push, everything changed, warm. Baseline: 170 s at load 4-8, BEFORE the
       incremental coverage build (`06afca4`: 173 -> 76 s on this repo). Measured 2026-10-08
       12:47 under a hold: 208 s, controls 0.30/0.30 s -- the exit is NOT met. Five coverage
