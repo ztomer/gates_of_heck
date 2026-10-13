@@ -34,7 +34,14 @@ def test_an_exclusion_that_removes_every_python_file_reads_none_under_a_floor(re
     _fixture(repo, f"{KEY}=2\n")
     code, out = _full(repo)
     assert code == 0, out
-    write(repo, ".gatesrc", f"GOH_MAX_LINES=500\n{KEY}=2\nGOH_EXCLUDE='\\.py$'\n")
+    # The stdin step reads the same Python and is on by default: it would go red on this blindness
+    # first and stop the pipeline before the floors are judged. Its own verdict is pinned in
+    # test_subprocess_stdin_scope.py; this test is the floor's.
+    write(
+        repo,
+        ".gatesrc",
+        f"GOH_MAX_LINES=500\n{KEY}=2\nGOH_EXCLUDE='\\.py$'\nGOH_SUBPROCESS_STDIN=off\n",
+    )
     commit_all(repo)
     code, out = _full(repo)
     assert code == 1, out

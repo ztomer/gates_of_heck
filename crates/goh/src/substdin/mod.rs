@@ -14,9 +14,11 @@
 //! because the defect is rare or the rule is arguable. This one's defect is universal, its
 //! fix is one keyword, and the whole risk of turning it on is a repo's existing debt rather
 //! than the gate: with a seeded ratchet (`--seed`) a NEW undeclared call is refused at the
-//! commit that adds it, which is the only scope where that is still cheap. Until every
-//! estate repo carries its seed it runs only where `GOH_SUBPROCESS_STDIN=on`; the default
-//! flips once none would go red.
+//! commit that adds it, which is the only scope where that is still cheap. It runs unless a
+//! repo writes `GOH_SUBPROCESS_STDIN=off`. It was opt-in until 2026-10-13 (BACKLOG 3.4); the
+//! flip landed before the estate sweep by the owner's ruling that goh ships the check and each
+//! consumer clears its own debt in its own session, so a repo that never declared reads red at
+//! its next commit rather than never.
 //!
 //! FOUR WAYS THIS COULD PASS WITHOUT HAVING LOOKED, and each is closed:
 //!
@@ -224,20 +226,21 @@ fn run(staged: bool, exclude: Option<&str>, reseed: bool) -> Result<(i32, String
     Ok(report(&outcome, &repo, &listed, staged, &policy))
 }
 
-/// Whether the step runs: `GOH_SUBPROCESS_STDIN` is `on`, or `off`/unset (the default until
-/// the estate is seeded). Anything else is an error naming the key, never a silent off: a
-/// typo that disabled the gate is the defect the gate exists to prevent.
+/// Whether the step runs: unset or `on` runs it, and only a written `off` skips it -- an
+/// opt-out is a decision in the repo's own file, the way `stdin=None` is at a call. Anything
+/// else is an error naming the key, never a silent off: a typo that disabled the gate is the
+/// defect the gate exists to prevent.
 fn enabled(raw: Option<&str>) -> Result<bool, String> {
     match raw.map_or("", str::trim) {
-        "" | "off" => Ok(false),
-        "on" => Ok(true),
+        "off" => Ok(false),
+        "" | "on" => Ok(true),
         other => Err(format!(
             "GOH_SUBPROCESS_STDIN is neither on nor off: {other:?}"
         )),
     }
 }
 
-/// The structural step, at both scopes, where `GOH_SUBPROCESS_STDIN=on`.
+/// The structural step, at both scopes, unless `GOH_SUBPROCESS_STDIN=off`.
 ///
 /// Takes the pipeline's ONE enumeration (`structural::run` shares it with every other native
 /// scanner -- `git ls-files` costs a spawn each time it is asked) rather than asking again, so

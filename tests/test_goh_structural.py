@@ -143,7 +143,7 @@ INVENTORY_CASE: dict[str, bytes] = {
 # of house checkers`, R5), 21-23 on 2026-10-08 (requires-call, early-exit pipe, code after exec),
 # 24 the same day (`no tracked file its .gitignore ignores`), 25 (`no bare read of the hook's index`),
 # 26 (`no checkout leaves its token in git config`), 27 on 2026-10-09 (`every child process names
-# its stdin`, opt-in through `GOH_SUBPROCESS_STDIN` until the estate is seeded).
+# its stdin`, on by default since 2026-10-13 unless `GOH_SUBPROCESS_STDIN=off`).
 MANIFEST = ROOT / "crates" / "goh" / "structural_steps.txt"
 
 

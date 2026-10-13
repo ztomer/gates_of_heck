@@ -82,11 +82,10 @@ pub struct Gatesrc {
     /// whole file NAMING THE KEY, never a floor of zero -- a typo that silently disables a floor
     /// is the defect the floor exists to prevent.
     pub floors: std::collections::BTreeMap<&'static str, usize>,
-    /// `GOH_SUBPROCESS_STDIN`: `on` runs `goh subprocess-stdin` in the structural pipeline,
-    /// `off` (the default) does not. The default is off until every estate repo carries its
-    /// fix or its seeded allowlist: hooks run whatever is in this checkout, so a gate that
-    /// landed always-on would turn 17 repos red at their next commit over debt nobody had
-    /// looked at. Raw, so a value that is neither is an error naming the key.
+    /// `GOH_SUBPROCESS_STDIN`: unset or `on` runs `goh subprocess-stdin` in the structural
+    /// pipeline, and only a written `off` skips it. Off by default until 2026-10-13; flipped
+    /// ahead of the estate sweep by the owner's ruling that consumers clear their own debt
+    /// (BACKLOG 3.4). Raw, so a value that is neither is an error naming the key.
     pub stdin_gate: Option<String>,
 }
 

@@ -133,20 +133,23 @@ fn an_unreadable_python_file_is_a_finding_rather_than_a_skip() {
     assert!(text.contains("could not be read"), "{text}");
 }
 
-/// The switch: off and unset skip the step, on runs it, and anything else is an error that
-/// names the key -- watched red by making the fallback arm return `Ok(false)`.
+/// The switch: unset and on run the step, only a written off skips it, and anything else is
+/// an error that names the key -- watched red by making the fallback arm return `Ok(false)`.
 #[test]
-fn the_switch_is_off_by_default_on_when_asked_and_a_typo_is_an_error() {
-    assert_eq!(enabled(None), Ok(false));
-    assert_eq!(enabled(Some("")), Ok(false));
-    assert_eq!(enabled(Some("off")), Ok(false));
+fn the_switch_is_on_by_default_off_only_when_written_and_a_typo_is_an_error() {
+    assert_eq!(enabled(None), Ok(true));
+    assert_eq!(enabled(Some("")), Ok(true));
     assert_eq!(enabled(Some(" on ")), Ok(true));
+    assert_eq!(enabled(Some("off")), Ok(false));
     let typo = enabled(Some("yes")).expect_err("a typo must not read as off");
     assert!(typo.contains("GOH_SUBPROCESS_STDIN"), "{typo}");
 }
 
 #[test]
-fn an_unset_switch_skips_the_step_without_reading_the_tree() {
-    let cfg = crate::gatesrc::Gatesrc::default();
+fn a_written_off_skips_the_step_without_reading_the_tree() {
+    let cfg = crate::gatesrc::Gatesrc {
+        stdin_gate: Some("off".to_owned()),
+        ..crate::gatesrc::Gatesrc::default()
+    };
     assert_eq!(step(&cfg, &["a.py".to_owned()], false), None);
 }
