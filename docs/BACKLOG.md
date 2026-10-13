@@ -269,7 +269,8 @@ episode (4.4) is what that hand-writing costs.
       This repo's row is closed (2026-10-13): 555 undeclared calls in 186 files (the 511 grew)
       now name `stdin=subprocess.DEVNULL`, with no allowlist -- none of them needs the caller's
       stdin; 614 calls read, 0 findings, and `.gatesrc` opts in with a floor of 550 (proved red
-      at 10000). The other 16 rows are their repos' own sessions' (Downstream).
+      at 10000). ZoneWM's row closed the same day (`c8766158`: 123 declared, floor 110 of 125). The
+      other 15 rows are their repos' own sessions' (Downstream).
 - [ ] 3.4 The flip: `GOH_SUBPROCESS_STDIN` defaults to `on`. Baseline: `GOH_SUBPROCESS_STDIN_MIN_CALLS` is set
       in 0 of 34 repos, and 18 have a keyless `.gatesrc` so they cannot express a floor at all;
       ZeroThunder still carries its own `tools/check_subprocess_stdin.py`, which the vendored-copy
@@ -697,8 +698,8 @@ Finance's `"$root.out"`, ZeroThunder's dropped process handle.
   (`out="$(producer)"; grep -q PAT <<< "$out"`, the shape every finding prints), or adopt what is
   left with `goh early-exit-pipe --seed` and commit `early_exit_pipe_seed.json`, which may only
   fall. By owner ruling (2026-10-12) they stay red until their own sessions take them.
-- **The 16 repos left in 3.3's table** (gates_of_heck's own row closed 2026-10-13), one session
-  each: run the check, fix or `--seed`. A declaration is mechanical where no call needs the
+- **The 15 repos left in 3.3's table** (gates_of_heck's own row closed 2026-10-13 in `df8f9c2`,
+  ZoneWM's in its `c8766158` with a `tools/proc.py` helper and its floor), one session each: run the check, fix or `--seed`. A declaration is mechanical where no call needs the
   caller's stdin: goh's 555 were declared `stdin=subprocess.DEVNULL` by an AST pass (each
   call's closing paren, from the `--source` JSON's line) and then `ruff format`.
 - **necrohand, CadGoose2 and ZeroThunder, after `85d0b51` (6.1):** necrohand and CadGoose2 replace
