@@ -1,5 +1,170 @@
 # CHANGELOG
 
+## v0.26.0 — the estate's classes closed at the house, so a consumer's gate stops lying _(2026-10-13)_
+
+Almost every change in this cycle (100 commits) started as a defect a consumer's session found in
+its own repo and could only work around there: a hand-copied census, a stale stock hook warned
+about for weeks, a pipe check that named findings and passed, a gate that never called the house
+layer, an advisory that turned two pushes red at once. Each class is now closed here once, so
+every repo gets the fix at runtime. The stdin gate (`goh subprocess-stdin`) lands and gets a
+migration path. It is still off by default: on 2026-10-09 it read 996 findings in 17 of 34 repos.
+This repo (555 calls in 186 files) and ZoneWM (123) have declared theirs and opted in, and the
+flip waits on the other 15 (BACKLOG 3.3, 3.4). The cost of this release falls on consumers: some
+repos go red at their next commit or push. The first section lists those changes.
+
+**Consumers: what goes red, and what to run**
+
+* **Re-install once: the stock pre-commit only delegates** (`18330c7`, `a03d5fb`). The hook used
+  to exec the repo's `tools/gate.sh` and trust it to run the house layer, and old_phones' gate
+  never did, so emoji and the line cap were not enforced there. The hook now execs
+  `gates/commit_gate.sh`. That script runs the repo's gate, then runs `structural.sh` itself when
+  the gate passed without marking this scope and tree (`GOH_STRUCTURAL_MARK`), and names the gap.
+  `push_gate.sh` does the same for `--full`. Hooks are copied by `install.sh`, so a change to
+  hook logic used to reach no repo until it re-installed: 14 repos ran a retired copy on
+  2026-10-12. A byte-identical retired stock hook now FAILS structural with `install.sh "$PWD"`
+  (it was a warning that five repos printed on every commit for weeks). Run
+  `"$GOH_DIR/install.sh" .` and commit `.githooks/`. This is the last such wave for
+  commit-time logic, since the hook no longer decides anything.
+* **`goh early-exit-pipe` is on by default, with a seed** (`496b6a5`). Before, the full scope named
+  existing findings and passed, so a repo kept them indefinitely unless it set
+  `GOH_NO_EARLY_EXIT_PIPE=1`. Now each file is held to `early_exit_pipe_seed.json` (written by
+  `--seed`; the counts may only fall), through `crate::seedcount`, which fixed-sleep and
+  status-markers share. Nine repos are red at their next push (old_phones 99, koffee_big 29,
+  Finance 16, ...).
+* **No bare `python3` in a hook or gate** (`1c4be61`, `61326f3`, `851cc70`). When Homebrew moved
+  `python3` to 3.15 on 2026-10-10, three repos broke three different ways, and no error named the
+  interpreter. `gates/python.sh` is now the one way a hook or gate runs Python. It uses a `.venv`,
+  else the pinned version (`GOH_PYTHON_VERSION`, else a committed `.python-version`, found and
+  read back), else `python3`. The house libs go on `PYTHONPATH` and the shell's `PYTHONPATH` is
+  dropped. The structural step `no bare python in a hook or gate` (`crates/goh/src/barepy`) is
+  hard at both scopes. A `.venv` older than `python3` is refused unless the repo pins it. A runner
+  that cannot run ruff or pytest is refused with its install line, where before the gate reported
+  it as a lint finding.
+* **`cargo audit` is a step of the house Rust gate** (`72e8445`, `7fa4ce9`). It runs from the
+  workspace root with the four `--deny` classes (warnings, unmaintained, unsound, yanked) on the command line, because
+  without them cargo-audit exits 0 on an unmaintained crate (calibrated on ansi_term 0.12.1). It
+  runs outside every proven record, because the advisory DB is an input no key names.
+  `checks/check_audit_ignores.py` refuses an ignore that has no `# reason` or no longer fires.
+  `lib/advisory_db.py` gives goh its own flock'd copy of the DB (`GOH_ADVISORY_DB`): a refresh
+  beside a `--no-fetch` read had torn the read. antiknob and eight media_server lockfiles are red
+  on RUSTSEC-2024-0449.
+* **A release tag a pushed branch carries must reach the remote** (`eb7e6e2`, `2ccd6ca`).
+  `--follow-tags` sends annotated tags only, so the servers fleet's lightweight `v1.10.3` stayed
+  local. Two older annotated tags had the same problem (antiknob v0.13.0, divoom-control v0.35.0).
+  `goh tag-version --remote-url` judges a push by the ref it moves (so a pinned `<sha>:main` push
+  counts) and asks the remote's URL. A remote that cannot be asked is a refusal. `release.sh`
+  pushes the branch and the tag in one push.
+* **A gate run that writes the repository's own `.git/config` is refused** (`13f11b4` push,
+  `8d83c85` commit, `lib/repo_writes.sh`). A probe inside one of its own hook runs left the games
+  metarepo's `origin` at `https://elsewhere.invalid/x.git` for days. A moved ref is named, not
+  refused, and `refs/remotes` is excluded. Scripts' `test_flatten_git_history.sh` is named on
+  every push.
+* **The stdin gate** (`f456f47`, `b1de3f5`, `498eb9a`, `4e009b3`, `5eb84b3`, `5680a8d`,
+  `df8f9c2`). Every `subprocess`/`asyncio` child a tracked `.py` starts names `stdin=` or `input=`,
+  read from the AST. The class is a child that inherits a stdin it did not ask for, and such a
+  child hangs rather than fails. The gate is opt-in through `GOH_SUBPROCESS_STDIN=on`, and any
+  other value than on/off is exit 2. `--seed` writes the allowlist a repo adopts with: kept
+  entries keep their reasons, and new ones are `unreviewed` debt counted on the passing line. A
+  seed refuses to run over uncommitted Python. `GOH_SUBPROCESS_STDIN_MIN_CALLS` sets a floor, so
+  a scan that stopped seeing calls is red. An exclusion that removes every `.py` is a blind
+  verdict, not "no Python here" (`fixed-sleep` and `md-links` had the same bug, fixed too). This
+  repo declares all 555 calls with no allowlist (614 read, floor 550, proved red at 10000).
+* **Commit-class and the round** (`b667f8d`, `2834ec4`, `836ef09`). "run" is a function word, so
+  two classes sharing only "run" and "work" no longer read as one class (ZoneWM's last 300
+  commits replay byte-identical). An unreadable trailer block now names the line that blocks it;
+  before, it said to move trailers to where they already were, and `goh red-run`'s refusal shares
+  the same helper. `gates/round.sh` judges the message before the preflight, so a refused message
+  no longer costs a twenty-minute verify.
+* **Opt-in, nothing changes until a repo sets it:** `GOH_RED_RUN` (`e526df9`, `goh red-run`: a
+  commit that adds a test carries a `Red-run:` trailer naming the mutation that turned it red,
+  checked at commit-msg and over the pushed range; presence and substance, not truth).
+  `GOH_PY_LINT_CEILINGS` (`61b4a91`, per-file ruff ceilings read from the index that may only
+  fall; `--seed`). `GOH_PY_NOQA_PARITY` (`b0571d7`, a `# noqa` a second linter ignores is a
+  finding). `GOH_LANDED_ONLY` (`7e26571`, a push refuses a tip of that branch that
+  `tools/land.sh` did not gate; this repo sets `main`). Commands a repo's gate calls:
+  `goh fixed-sleep` (`8e00c6e`, a fixed sleep standing in for a readiness signal),
+  `goh status-markers` (`51109d6`, a hand-rolled `[ Ok  ]` or `\033[`), `gates/path_invariance.py
+  -- <cmd>` (`3d1e29b`, the verdict under every spelling of the tree's path: canonical, the
+  `/var` symlink, the `/System/Volumes/Data` firmlink; it is how ZeroThunder's SwiftLint baseline
+  read 1034 violations as new), and `checks/check_git_env.py` (`85d0b51`, the house gate around
+  the git census, configured by `git_env.json`, which refuses a census that read nothing).
+* **Release kit** (`5c5868e`, `bfac28b`, `2573b86`, `e05b81c`). A release refuses while CI on
+  HEAD is red, pending or missing. ztools tagged three releases over a red CI. A repo with no
+  workflows says "no CI", and `--no-ci-check` skips the check aloud. `tap_bump.sh` is the one tap
+  step: it clones, edits, runs the tap's own `tools/gate.sh --full`, and pushes pinned with a
+  read-back. Five products' scripts had pushed past the tap's gate. Earlier hand-made tags get
+  their GitHub release backfilled from the CHANGELOG. The GitHub slug is parsed from any
+  github.com origin (with or without `.git`) and from no other.
+
+**Classes closed at the house**
+
+* **An allowlist is keyed on the thing, not a line** (`bc5c712`, `451d711`). kill-by-name and
+  subprocess-stdin keyed an entry on one line's text, so a ruff reflow revoked it: necrohand
+  re-keyed one call three times in an afternoon. `crate::callkey` is now the key. The claims
+  allowlist keys on the claim's own span, and is no longer scanned as prose.
+* **Text scanners read a literal as text** (`20281bb`). `goh no-allow` flagged `#[allow]` inside
+  a string (zinc), and a `//` inside a URL ended the line early. `crates/goh/src/rustlex.rs`
+  carries lexer state across lines (raw strings at any hash count, char literals vs lifetimes);
+  no-allow and empty-assert read through it.
+* **A credential expanded into a URL's userinfo is a secret** (`4686280`,
+  `crates/goh/src/urlexpand.rs`). It catches `https://${TAP_TOKEN}@github.com/...` in CadGoose's
+  workflow, which both secrets checks had passed.
+* **One answer to "is this a repository", one git census** (`92b0946`, `fce9921`, `dde34ef`).
+  `_gitutil.is_work_tree` asks git. `isdir(.git)` was False in every linked worktree, and one games
+  site failed open on it. `checks/_gitcensus.py` replaces four consumers' hand-written copies. It
+  matches the callee per call, reads git's listing instead of walking the disk, and names a spawn
+  run in another directory with the caller's environment (gaf's `run_check`, ZeroThunder's
+  `emoji_rejected`).
+* **A Rust binary prints through the house style** (`a74bbff`). `crates/goh-tui` reads
+  `tui/stylerc` at build time, and goh's ~400 hand-spelled glyph literals now go through it.
+  Red-first: `ICON_OK="+"` changed goh's output with no code edit.
+* **Registry and config readers** (`752ff01`, `24e9608`, `c02ec73`, `b64aa89`, `6802958`). An
+  empty `--proves` answer is "did not say", not "proves nothing": game_asset_factory's copy had
+  reported eight of this repo's citations as false, and three gates are now registered. The
+  config-key scan reads `crates/` and `scripts/` (five undocumented keys found). A step the judged
+  tree declares and the running binary lacks is named (`crates/goh/structural_steps.txt`,
+  `goh structural --list-steps`). Before, a staged run printed "all passed" over a step that never
+  ran. In deps, a 0.x minor is a major, and the ratchet shrinks: each entry needs a reason, and a
+  stale entry fails. A cache knob's `0`/`off`/`false`/`no` means off, and a relative cache root is
+  refused (`crates/goh/src/cache_root.rs`). Before, eight verdicts sat in this repo under `0/`.
+* **Smaller scope fixes** (`3966a90`, `defda7f`, `c8e8b4b`, `d98d7bd`, `d980d34`). Shell lint
+  takes an extensionless `hooks/` file as shell, but no longer a Python Claude hook. The starter
+  `.gatesrc` passes the house `home-paths` check (every fresh install used to fail it). The push
+  gate's fallback build-dir is an ancestor config file, so it no longer replaces a build-dir the
+  repo names (Cargo ranks the environment above every config). A commit that grows an over-cap
+  build script is pinned as refused at commit.
+
+**Running on a box shared by many sessions**
+
+* **Concurrent runs cannot delete each other's files** (`9c5b194`, `6460019`, `b086867`,
+  `5682ebc`). Every pytest run gets its own `PYTEST_DEBUG_TEMPROOT`: 2277 tests had errored when a
+  newer suite pruned an older suite's root. `tests/host_locks.py` gives every test private copies
+  of the machine's GPU, bench and desktop locks. `timing_bounds.GiveUp` re-reads the load at each
+  check. The rust_scope estate tests take the shared build directory in turn.
+* **Machine locks are house lib** (`3103441`, `4f68dcb`, `20f9ec7`). The GPU lock moved from
+  ztools to `lib/gpu_lock/` (sh + py, one record format with the Rust client), and `quiet.sh` holds
+  it. `lib/bench_hold.py` holds the bench lock for one Python block at a time, for runs longer than
+  the 900 s cap; a claim inside an ancestor's hold claims nothing.
+* **A red run explains itself** (`f6de0d4`, `a769336`, `31d0648`, `a78a863`, `2cb3767`). A red
+  run the machine slept through says so (`lib/sleep_mark.sh`, `GOH_SLEEPTIME_FILE`): ZoneWM's
+  suite had run in a dark wake. `fail_lines` keeps `FAILED. 0 passed; 1 failed`. A red
+  `gate_profile.sh` (the gate `land.sh` runs) prints the failure lines. local_ci's log dir no
+  longer holds the step FIFO, which had made `grep -r` hang on it.
+* **Session hooks and tools** (`925fe62`, `ffa49ca`, `3dccae2`, `ac70597`).
+  `hooks/claude/compact_nudge.py` (Stop) says `/compact` once a turn ends past 300k tokens, and
+  `compact_restore.py` prints repo state after a compaction. `scripts/estate_audit.py` audits every
+  tracked `Cargo.lock` under `~/Projects` (first run: 50 lockfiles, 16 standing advisories in 14,
+  36 s), and `hooks/claude/estate_advisories.py` reports new ones at session start. The launchd
+  install and the settings registration are the owner's. `analyze_trace.sh` reads the
+  `time-profile` table today's xctrace exports (`xctrace_profile.py`, streamed).
+* **BACKLOG** (`d4b5494`, `0ec7e5a`, `d3c927d`, `6de1984`, and the per-item closes `d2d7518`,
+  `5a45879`, `0a145f9`, `400f82a`, `ebbd904`, `07ca19b`, `c3d1ce5`, `7974a02`, `fa67834`,
+  `aafa45d`, `2cfe2cd`, `ee3e8a5`, `1439b5c`, `8c8825a`, `9005331`, `b97ffd7`, `18ca320`,
+  `6bd07d5`, `365d4a4`, `32d7c7c`, `033b678`, `a8ca5d4`, `6235164`, `11c818e`, `2bb88cf`,
+  `cb955e4`, `a74ace9`, `6522f05`). The v0.26.0 roadmap was rebuilt twice from every session that
+  worked on this repo. Its landed items are pruned to this stanza, and the open ones are re-phased
+  as the roadmap to v0.27.0.
+
 ## v0.25.1 — every path comparison comes from the filesystem, not the caller's spelling _(2026-10-08)_
 
 * **The coverage scope and every path comparison are taken from the FILESYSTEM, not

@@ -126,7 +126,7 @@ GOH_SWIFT_COLD=1                     # Wipe build artifacts before testing
 
 ## Extra Tools
 
-- `tools/release-kit/release.sh`: Checks gate and changelog, creates an annotated tag, pushes, and creates a GitHub release.
+- `tools/release-kit/release.sh`: Refuses while CI on HEAD is red, pending or missing, then checks gate and changelog, creates an annotated tag, pushes the branch and tag in one push, creates a GitHub release, and with `--tap` bumps the formula through `tap_bump.sh` (the tap's own gate, a pinned push).
 - `gates/local_ci.sh`: Runs a list of steps locally and preserves log files on failure. A step already proven on the same clean tree is skipped (see below).
 - `gates/proven.sh`: Runs one step unless it already passed on this exact tree.
 
