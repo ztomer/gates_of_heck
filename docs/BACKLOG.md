@@ -355,7 +355,7 @@ episode (4.4) is what that hand-writing costs.
       `ZeroThunder/docs/ROADMAP.md:523` still carries a `CLOSED 2026-10-01` whose stated premise
       was measured wrong, and the metarepo's claims registry holds a `plan.golden-pass` truth that
       is a function of the HOST's display state -- it went DRIFTED the moment the lid closed.
-- [ ] 4.7 A gate's verdict must not depend on where the tree is. Baseline: ZeroThunder,
+- [x] 4.7 (`3d1e29b`: `gates/path_invariance.py`, `tests/test_path_invariance.py`; ZeroThunder wires it in Downstream) A gate's verdict must not depend on where the tree is. Baseline: ZeroThunder,
       2026-10-08 -- SwiftLint 0.65.1's baseline key is `relativeDisplayPath`, a string subtraction
       of `getcwd`, and its two file-walk branches produce absolute paths that disagree under any
       firmlinked path -- 1034 recorded violations all reported as new from `/private/tmp`, 0 from
@@ -698,6 +698,10 @@ Finance's `"$root.out"`, ZeroThunder's dropped process handle.
   (`out="$(producer)"; grep -q PAT <<< "$out"`, the shape every finding prints), or adopt what is
   left with `goh early-exit-pipe --seed` and commit `early_exit_pipe_seed.json`, which may only
   fall. By owner ruling (2026-10-12) they stay red until their own sessions take them.
+- **ZeroThunder, after 4.7:** wrap the SwiftLint step in `GOH_CI_STEPS` as
+  `python3 $GOH_DIR/gates/path_invariance.py -- <the swiftlint command>`; it clones HEAD and runs it
+  from `/private/var/...`, `/var/...` and `/System/Volumes/Data/...`, so the `relativeDisplayPath`
+  baseline that read 1034 violations as new from one spelling reds there, not in a scratch run.
 - **The 15 repos left in 3.3's table** (gates_of_heck's own row closed 2026-10-13 in `df8f9c2`,
   ZoneWM's in its `c8766158` with a `tools/proc.py` helper and its floor), one session each: run the check, fix or `--seed`. A declaration is mechanical where no call needs the
   caller's stdin: goh's 555 were declared `stdin=subprocess.DEVNULL` by an AST pass (each
