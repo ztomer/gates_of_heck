@@ -127,13 +127,25 @@ cross-session serialization (its section below).
       push of `1548344` 190 s at load 33-74; per-crate coverage 203 s summed over 28 crates
       (mediaops 50, healthcheck 43, mcp-host 38), musl clippy 54.5 s. First point 2026-10-08
       20:28, warm over a pinned `e3e5418`, load 110-132: wall 14.2/15.4/16.7 s, cpu
-      7.04/7.22/7.34 s (spread 23% vs 4%). The second load (<= 55) is still owed. Exit: a
-      per-step figure holding within 15% across two loads at least 2x apart (CPU per step, or
-      wall normalised by a same-run control), or a named quiet second host (.33, 16 cores, load
-      1-3; no gates_of_heck checkout yet); then per-crate coverage judged for running across
-      crates at once. Red-first: the chosen figure, for one fixed step at two loads, moves less
-      than wall time does, or it normalises nothing. Lies: CPU time blind to a step that waits
-      (a lock, the network); a second host's figure read as this one's.
+      7.04/7.22/7.34 s (spread 23% vs 4%). Second and third points 2026-10-13, the same command
+      with that commit's own binary, `/usr/bin/time -l`, 3 runs each: load 4, wall 3.32-3.37 s,
+      cpu 4.94-4.98 s, instructions retired 4.70-4.74 G; load 37-47 (48 busy loops), wall
+      5.90-6.18 s (+80%), cpu 6.69-6.83 s (+37%), instructions 4.79-4.85 G (+2.2%). **CPU fails
+      the exit** (+37% across 10x load, +45% against the first point: under load more of the work
+      runs on the efficiency cores, which spend more CPU time on it); **instructions retired
+      holds** within 3% across 10x. But `time -l` reads the goh process alone (about 1 G
+      instructions a CPU-second, where a P-core retires several), so the spawned `git`,
+      `shellcheck` and `ruff` are outside it. Next: the step timer (`goh step`,
+      `lib/bounded_run.py`, `goh_sys::children_cpu_ms`) records each step's instructions
+      INCLUDING its children (each child's `proc_pid_rusage` `ri_instructions`, read between a
+      `WNOWAIT` wait and the reap), as `instr_m` beside `cpu_ms` in `GOH_TIMINGS`. Exit: that
+      per-step figure holding within 15% across two loads at least 2x apart, for `structural
+      --full` and one Rust step; then 5.1 is restated in it and per-crate coverage judged for
+      running across crates at once. Red-first: met for the process-only count (2.2% against
+      wall's 80%); the per-step count must also move less than wall, and a step whose children
+      are left out must read lower than one that counts them. Lies: instructions are blind to a
+      step that waits (a lock, the network) -- wall beside it says so; a child reaped before it
+      is read is a silent zero; a second host's figure read as this one's.
 - [ ] 5.1 media_server push, everything changed, warm. Baseline: 170 s at load 4-8, BEFORE the
       incremental coverage build (`06afca4`: 173 -> 76 s on this repo). Measured 2026-10-08
       12:47 under a hold: 208 s, controls 0.30/0.30 s -- the exit is NOT met. Five coverage
