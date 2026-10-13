@@ -93,13 +93,17 @@ def verdict(command: list[str], spelled: str) -> subprocess.CompletedProcess:
     )
 
 
+USAGE = "usage: path_invariance.py -- <gate command> ({root} is the tree)"
+HELP_FLAGS = ("-h", "--help")
+
+
 def main(argv: list[str]) -> int:
+    if "--" not in argv and argv[:1] and argv[0] in HELP_FLAGS:
+        print(USAGE)
+        return 0
     command = argv[argv.index("--") + 1 :] if "--" in argv else argv
     if not command:
-        print(
-            f"✗ [{NAME}] usage: path_invariance.py -- <gate command> ({{root}} is the tree)",
-            file=sys.stderr,
-        )
+        print(f"✗ [{NAME}] {USAGE}", file=sys.stderr)
         return 2
     top = subprocess.run(
         ["git", "rev-parse", "--show-toplevel"],
@@ -122,7 +126,13 @@ def main(argv: list[str]) -> int:
                 file=sys.stderr,
             )
             return 2
-        runs = [(name, verdict(command, name)) for name in names]
+        try:
+            runs = [(name, verdict(command, name)) for name in names]
+        except OSError as e:
+            # A gate that cannot start fails identically under every spelling, which would read as
+            # one verdict -- a pass for the check -- so it is named instead.
+            print(f"✗ [{NAME}] cannot run `{' '.join(command)}`: {e.strerror}", file=sys.stderr)
+            return 2
     finally:
         shutil.rmtree(scratch, ignore_errors=True)
     codes = {r.returncode for _, r in runs}

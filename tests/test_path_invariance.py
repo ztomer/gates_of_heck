@@ -97,3 +97,25 @@ def test_root_is_the_spelled_path_and_pwd_matches_it(repo):
 def test_no_command_is_a_usage_error(repo):
     r = run(repo)
     assert r.returncode == 2, r.stdout + r.stderr
+
+
+def test_help_prints_the_usage_and_exits_zero(repo):
+    for flag in ("--help", "-h"):
+        r = subprocess.run(
+            [sys.executable, str(CHECK), flag],
+            cwd=repo,
+            capture_output=True,
+            text=True,
+            check=False,
+            stdin=subprocess.DEVNULL,
+        )
+        assert r.returncode == 0, r.stdout + r.stderr
+        assert "usage: path_invariance.py -- <gate command>" in r.stdout
+        assert "Traceback" not in r.stderr
+
+
+def test_a_command_that_cannot_run_is_named_not_a_traceback(repo):
+    r = run(repo, "no-such-gate-command-anywhere")
+    assert r.returncode == 2, r.stdout + r.stderr
+    assert "cannot run `no-such-gate-command-anywhere`" in r.stderr
+    assert "Traceback" not in r.stderr
