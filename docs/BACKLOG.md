@@ -324,7 +324,7 @@ episode (4.4) is what that hand-writing costs.
       deleting the ceiling file is a finding. Red-first: add one UP031 and it reds naming the
       file; raise the ceiling and it reds. Lies: deleting the file resets the debt, and a stale-
       high ceiling proves nothing -- both are findings, which is the point.
-- [ ] 4.5 One suppression vocabulary per linter. Baseline: `# noqa: F401` silenced ruff but NOT
+- [x] 4.5 (`b0571d7`: `gates/py_noqa_parity.py`, opted into with `GOH_PY_NOQA_PARITY=pyflakes`; staged at commit, every tracked file at push) One suppression vocabulary per linter. Baseline: `# noqa: F401` silenced ruff but NOT
       necrohand's own pyflakes gate, which reported 4 unused imports in a file the sweep had just
       cleaned; the same repo's 134 stale `noqa`s were each read before removal and 9 survive. The
       house forbids `#[allow]`/`#[expect]` in Rust (`checks/check_no_allow.py`) and has no Python
@@ -771,6 +771,10 @@ Finance's `"$root.out"`, ZeroThunder's dropped process handle.
 - **ZoneWM:** `.gemini-workspace` points at `docs/GEMINI.md`, `docs/ARCHITECTURE.md` and
   `docs/CONTRIBUTING.md`, none of which exist; its census sittings hold the house desktop
   and GPU locks since `90336053` (D-0260); the single probes still hold only `~/.zonetiler-qa.lock`.
+- **necrohand and the games metarepo, after `b0571d7` (4.5):** each runs pyflakes beside ruff
+  (`tools/check_pyflakes.py`, `tools/repo_gates.sh`); set `GOH_PY_NOQA_PARITY=pyflakes` in
+  `.gatesrc`. Measured 2026-10-12, both clean (necrohand's 133 tracked `.py`, the metarepo's 13 in
+  `tools/`), so opting in turns nothing red; or drop pyflakes for ruff's F rules, one vocabulary.
 - **Every INSTALLED repo:** re-run `$GOH_DIR/install.sh <repo>` (done 2026-10-10: ztools, Finance); `structural.sh` names an older
   stock hook and ZeroThunder warns on every gate run. At `2fb2901` 6 of 29 matched the stock
   pre-commit, 23 did not; servers was reinstalling then -- re-check. **A Rust toolchain is required**
