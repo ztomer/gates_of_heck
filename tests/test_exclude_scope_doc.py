@@ -32,8 +32,9 @@ CONSUMERS: dict[str, tuple[str, ...]] = {
     "gates/rust_gate.sh": ("`#[allow]`/`#[expect]`", "emptiness asserts"),
     "gates/rust_each_crate.sh": ("`--each-crate`",),
 }
-# Where the key is defined and parsed, not applied.
-DEFINERS = {"crates/goh/src/gatesrc.rs"}
+# Where the key is defined and parsed, not applied (the parser's tests moved beside it at the
+# line cap, and they read the key the way the parser does).
+DEFINERS = {"crates/goh/src/gatesrc.rs", "crates/goh/src/gatesrc_tests.rs"}
 READS_KEY = re.compile(r"cfg\.exclude\b|length_exclude\(cfg\)|\$\{?GOH_EXCLUDE\b")
 
 

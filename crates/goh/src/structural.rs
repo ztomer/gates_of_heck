@@ -141,6 +141,11 @@ pub fn run(staged: bool, full: bool) -> i32 {
     if let Some(code) = late_steps(&repo, &files, &checks, &cfg, staged) {
         return code;
     }
+    // Last: every scanner above recorded what it read, and this judges each against its floor
+    // (full scope only), or says which scanners have none.
+    if let Some(code) = crate::subject::step(&cfg, staged) {
+        return code;
+    }
 
     println!();
     goh_tui::outln!("{OK} all structural gates passed");

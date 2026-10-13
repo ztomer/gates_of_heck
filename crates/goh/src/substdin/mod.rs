@@ -137,35 +137,21 @@ pub struct Policy {
 }
 
 impl Policy {
-    /// The policy from a loaded `.gatesrc` and the exclusion this run applies (`--exclude` when given,
-    /// so a verdict names the exclusion in effect, not the file's). An
-    /// unparseable floor is an ERROR naming the key, never a floor of 0: a typo that
-    /// silently disables the floor is the defect the floor exists to prevent
-    /// (`GOH_STEP_TIMEOUT`'s rule).
-    fn from_cfg(cfg: &crate::gatesrc::Gatesrc, exclude: &str) -> Result<Self, String> {
-        let min_calls = cfg
-            .stdin_min_calls
-            .as_deref()
-            .map(str::trim)
-            .filter(|raw| !raw.is_empty())
-            .map(str::parse::<usize>)
-            .transpose()
-            .map_err(|_| {
-                format!(
-                    "GOH_SUBPROCESS_STDIN_MIN_CALLS is not a whole number of calls: {:?}",
-                    cfg.stdin_min_calls
-                )
-            })?;
-        Ok(Self {
+    /// The policy from a loaded `.gatesrc` and the exclusion this run applies (`--exclude` when
+    /// given, so a verdict names the exclusion in effect, not the file's). The floor is
+    /// `crate::subject::SUBPROCESS_STDIN`'s, parsed when the file loads: an unparseable one
+    /// refused the whole file there, naming the key, never a floor of 0.
+    fn from_cfg(cfg: &crate::gatesrc::Gatesrc, exclude: &str) -> Self {
+        Self {
             exclude: exclude.to_owned(),
-            min_calls,
-        })
+            min_calls: crate::subject::floor(cfg, &crate::subject::SUBPROCESS_STDIN),
+        }
     }
 }
 
 /// The floor and the exclusions from the repo's `.gatesrc`.
 fn policy(root: &Path, exclude: &str) -> Result<Policy, String> {
-    Policy::from_cfg(&crate::gatesrc::load(root)?, exclude)
+    Ok(Policy::from_cfg(&crate::gatesrc::load(root)?, exclude))
 }
 
 /// The files in scope, filtered by the repo's `GOH_EXCLUDE` -- the same one every other
@@ -232,7 +218,7 @@ fn run(staged: bool, exclude: Option<&str>, reseed: bool) -> Result<(i32, String
     let policy = policy(&repo, &exclude).map_err(|m| (2, format!("{ERR} {TAG} {m}\n")))?;
     let files = scoped(&listed, &exclude).map_err(|m| (2, format!("{ERR} {TAG} {m}")))?;
     if reseed {
-        return Ok(seed::run(&repo, &listed, &files));
+        return Ok(seed::run(&repo, &listed, &files, policy.min_calls));
     }
     let outcome = scan(&repo, &listed, &files, staged);
     Ok(report(&outcome, &repo, &listed, staged, &policy))
@@ -278,17 +264,7 @@ pub fn step(cfg: &crate::gatesrc::Gatesrc, listed: &[String], staged: bool) -> O
             start,
         ));
     }
-    let policy = match Policy::from_cfg(cfg, &cfg.exclude) {
-        Ok(policy) => policy,
-        Err(message) => {
-            return Some(fail(
-                label,
-                &how,
-                &format!("{ERR} {TAG} {message}\n"),
-                start,
-            ))
-        }
-    };
+    let policy = Policy::from_cfg(cfg, &cfg.exclude);
     let files = match scoped(listed, &cfg.exclude) {
         Ok(files) => files,
         Err(message) => {
@@ -301,6 +277,7 @@ pub fn step(cfg: &crate::gatesrc::Gatesrc, listed: &[String], staged: bool) -> O
         }
     };
     let outcome = scan(&repo, listed, &files, staged);
+    crate::subject::record(&crate::subject::SUBPROCESS_STDIN, outcome.seen);
     let (code, text) = report(&outcome, &repo, listed, staged, &policy);
     if code == 0 {
         crate::step_report::ok(label, start);

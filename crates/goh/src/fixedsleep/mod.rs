@@ -32,6 +32,7 @@ const SPEC: Spec = Spec {
     clean: "no new fixed sleep stands in for a readiness signal",
     why: "fixed sleeps standing in for a readiness signal when this repo adopted goh \
           fixed-sleep; a count may only fall (gates_of_heck BACKLOG 4.10)",
+    subject: &crate::subject::FIXED_SLEEP,
 };
 
 /// The findings per file the scan read, and the files it could not parse.

@@ -26,6 +26,8 @@ pub struct Spec {
     pub clean: &'static str,
     /// The seed file's own `why`, so the file explains itself to whoever opens it.
     pub why: &'static str,
+    /// The subject's floor key (`crate::subject`), read from `.gatesrc` by [`run`].
+    pub subject: &'static crate::subject::Subject,
 }
 
 /// The findings per file the scan read, and the files it could not parse.
@@ -34,6 +36,8 @@ pub struct Scanned<F> {
     /// Subject files the repo lists, before any exclusion.
     pub listed: usize,
     pub read: usize,
+    /// The floor `.gatesrc` declares for `read` (the spec's subject key), if any.
+    pub floor: Option<usize>,
     pub found: BTreeMap<String, Vec<F>>,
     pub unreadable: Vec<(String, String)>,
 }
@@ -43,6 +47,7 @@ impl<F> Default for Scanned<F> {
         Self {
             listed: 0,
             read: 0,
+            floor: None,
             found: BTreeMap::new(),
             unreadable: Vec::new(),
         }
@@ -67,6 +72,13 @@ pub fn judge<F>(
              that removes the whole subject passes over nothing -- narrow it",
             scanned.listed
         );
+        return (1, s);
+    }
+    // Under its floor, the stale-seed verdict is withheld: a blind scan finds nothing, so every
+    // seeded file would read as fixed and the advice would be to lower the seed -- the blindness
+    // laundered into the ratchet (`crate::subject`, the pairing).
+    if let Some(text) = crate::subject::below(spec.subject, scanned.floor, scanned.read) {
+        s.push_str(&text);
         return (1, s);
     }
     let mut red = false;
@@ -186,6 +198,21 @@ pub fn scan_files<F>(
     out
 }
 
+/// Why a scan must not be written as the seed, if it must not: it read none of a subject the repo
+/// lists, or less than its floor. Either would write a blind scan's empty findings as the new debt.
+#[must_use]
+pub fn refuse_seed<F>(spec: &Spec, scanned: &Scanned<F>) -> Option<String> {
+    let tag = spec.tag;
+    if scanned.listed > 0 && scanned.read == 0 {
+        return Some(format!(
+            "{ERR} {tag} refusing to seed: the repo lists {} {} and the scan read NONE of them\n",
+            scanned.listed, spec.noun
+        ));
+    }
+    crate::subject::below(spec.subject, scanned.floor, scanned.read)
+        .map(|text| text + &format!("{ERR} {tag} refusing to seed a scan under its floor\n"))
+}
+
 /// The command over the working tree's listed files: `--seed` writes the seed, else the verdict.
 #[must_use]
 pub fn run<F>(
@@ -220,11 +247,23 @@ pub fn run<F>(
         .into_iter()
         .filter(|f| !filter.as_ref().is_some_and(|x| x.is_match(f)))
         .collect();
+    let floor = match crate::gatesrc::load(&root) {
+        Ok(cfg) => crate::subject::floor(&cfg, spec.subject),
+        Err(m) => {
+            goh_tui::eoutln!("{ERR} {tag} {m}");
+            return 2;
+        }
+    };
     let scanned = Scanned {
         listed: subject_listed,
+        floor,
         ..scan_files(&root, &files, subject, scan)
     };
     if seed {
+        if let Some(text) = refuse_seed(spec, &scanned) {
+            goh_tui::eout(&text);
+            return 1;
+        }
         if let Err(e) = std::fs::write(root.join(spec.file), seed_text(spec, &scanned)) {
             goh_tui::eoutln!("{ERR} {tag} cannot write {}: {e}", spec.file);
             return 2;

@@ -26,6 +26,7 @@ const SPEC: Spec = Spec {
     why: "hand-rolled status markers and colour escapes when this repo adopted goh \
           status-markers; a count may only fall -- print through tui/lib.sh, tui.lib or goh-tui \
           (gates_of_heck BACKLOG 4.9)",
+    subject: &crate::subject::STATUS_MARKERS,
 };
 
 /// The source languages a status line is printed from. A doc, a fixture's data or a config is

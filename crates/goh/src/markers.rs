@@ -69,20 +69,28 @@ pub fn scan_blob(path: &str, blob: &[u8]) -> Vec<Violation> {
 /// Returns a message when git lists files and fails.
 pub fn scan_root(root: &std::path::Path, staged: bool) -> Result<Vec<Violation>, String> {
     let files = crate::gitutil::listed_files(root, staged)?;
-    Ok(scan_files(root, &files, staged))
+    Ok(scan_files(root, &files, staged).0)
 }
 
-/// Scan a pre-enumerated file list: the structural pipeline lists the tree
-/// once and shares it across scanners instead of each one spawning git.
+/// Scan a pre-enumerated file list: the sightings, and how many files were read.
+///
+/// The structural pipeline lists the tree once and shares it across scanners instead of each one
+/// spawning git; the count is the scan's subject (`crate::subject::CONFLICT_MARKERS`).
 #[must_use]
-pub fn scan_files(root: &std::path::Path, files: &[String], staged: bool) -> Vec<Violation> {
+pub fn scan_files(
+    root: &std::path::Path,
+    files: &[String],
+    staged: bool,
+) -> (Vec<Violation>, usize) {
     let mut bad = Vec::new();
+    let mut read = 0;
     for path in files {
         if let Some(blob) = crate::gitutil::content_bytes(root, path, staged) {
+            read += 1;
             bad.extend(scan_blob(path, &blob));
         }
     }
-    bad
+    (bad, read)
 }
 
 /// Scan what each of `revs` changed against its first parent, read from the commit itself.

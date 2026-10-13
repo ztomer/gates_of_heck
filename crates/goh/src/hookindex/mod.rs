@@ -40,6 +40,7 @@ fn judge(root: &Path, files: &[String], exclude: &str, staged: bool) -> (i32, St
         Err(m) => return (2, String::new(), format!("{ERR} {TAG} {m}\n")),
     };
     let sources = crate::shellsrc::sources(root, files, exclude.as_ref(), staged);
+    crate::subject::record(&crate::subject::BARE_HOOK_INDEX, sources.len());
     let scope = if staged { "staged" } else { "tracked" };
     let mut listing = String::new();
     let mut n = 0usize;

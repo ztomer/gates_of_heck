@@ -160,3 +160,45 @@ fn a_repo_with_no_python_is_not_blind() {
     let (code, _) = judge(&Scanned::default(), &seed(&[]));
     assert_eq!(code, 0);
 }
+
+/// The pairing with the floor (`crate::subject`), direction 1: under its floor, a seeded file
+/// that reads clean is a scan that stopped reading, so the verdict says THAT, and never "lower
+/// the seed" -- following that advice would launder the blindness into a smaller ratchet.
+#[test]
+fn under_its_floor_a_stale_seed_is_a_blind_scan_not_a_seed_to_lower() {
+    let blind = Scanned {
+        floor: Some(4),
+        ..scanned(&[])
+    };
+    let (code, text) = judge(&blind, &seed(&[("a.py", 2)]));
+    assert_eq!(code, 1, "{text}");
+    assert!(text.contains("GOH_FIXED_SLEEP_MIN_FILES"), "{text}");
+    assert!(text.contains("floor of 4"), "{text}");
+    assert!(!text.contains("lower the seed"), "{text}");
+    assert!(crate::seedcount::refuse_seed(&super::SPEC, &blind).is_some());
+}
+
+/// Direction 2: at its floor a stale entry still fails -- the floor counts the subject whole and
+/// cannot vouch for one file's findings -- and a seed may be written.
+#[test]
+fn at_its_floor_a_stale_seed_still_fails() {
+    let read = Scanned {
+        floor: Some(3),
+        ..scanned(&[])
+    };
+    let (code, text) = judge(&read, &seed(&[("a.py", 2)]));
+    assert_eq!(code, 1, "{text}");
+    assert!(text.contains("lower the seed"), "{text}");
+    assert!(crate::seedcount::refuse_seed(&super::SPEC, &read).is_none());
+}
+
+#[test]
+fn a_seed_over_an_exclusion_that_read_nothing_is_refused() {
+    let blind = Scanned {
+        listed: 2,
+        read: 0,
+        ..Scanned::default()
+    };
+    let why = crate::seedcount::refuse_seed(&super::SPEC, &blind).unwrap_or_default();
+    assert!(why.contains("read NONE"), "{why}");
+}

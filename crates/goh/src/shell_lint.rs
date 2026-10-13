@@ -349,6 +349,7 @@ fn run(staged: bool, exclude: &str) -> (i32, Lines) {
         Ok(got) => got,
         Err(e) => return (2, vec![(true, format!("{ERR} [shell_lint] {e}"))]),
     };
+    crate::subject::record(&crate::subject::SHELL_LINT, files.len());
     if files.is_empty() {
         return (
             0,

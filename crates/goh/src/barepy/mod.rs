@@ -114,6 +114,7 @@ fn judge(root: &Path, files: &[String], exclude: &str, staged: bool) -> (i32, St
     };
     let hooks: Vec<String> = files.iter().filter(|f| in_scope(f)).cloned().collect();
     let sources = crate::shellsrc::sources(root, &hooks, exclude.as_ref(), staged);
+    crate::subject::record(&crate::subject::BARE_PYTHON, sources.len());
     let scope = if staged { "staged" } else { "tracked" };
     let mut listing = String::new();
     let mut n = 0usize;

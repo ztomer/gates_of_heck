@@ -38,6 +38,24 @@ GOH_NO_EARLY_EXIT_PIPE=1
 # red rather than clean.
 GOH_SUBPROCESS_STDIN=on
 GOH_SUBPROCESS_STDIN_MIN_CALLS=550
+
+# Every scanner's floor (BACKLOG 4.3, crates/goh/src/subject.rs): a full-scope scan that reads
+# less than this is red, because a scan that stopped reading its subject reports clean. Set at
+# about nine tenths of what each read on 2026-10-13 (in brackets), as the stdin floor above is:
+# a file or two deleted is not a red gate, a filter or parser that stopped matching is. Lower one
+# with the tree in the same commit. No workflows here, so checkout-credentials carries none.
+GOH_EMOJI_MIN_FILES=570                 # [637] text files
+GOH_CONFLICT_MARKERS_MIN_FILES=570      # [637] files
+GOH_FILE_LENGTH_MIN_FILES=520           # [582] files measured
+GOH_SECRETS_MIN_FILES=570               # [637] text files
+GOH_SHELL_LINT_MIN_FILES=60             # [70] shell files
+GOH_EARLY_EXIT_PIPE_MIN_FILES=65        # [75] shell sources
+GOH_DEAD_AFTER_EXEC_MIN_FILES=65        # [75] shell sources
+GOH_BARE_HOOK_INDEX_MIN_FILES=65        # [75] shell sources
+GOH_BARE_PYTHON_MIN_FILES=5             # [6] hook/gate scripts
+GOH_MD_LINKS_MIN_LINKS=1                # [1] markdown links -- this tree cites by path, not link
+GOH_UNREAPED_SPAWN_MIN_FILES=300        # [337] test files
+GOH_STATUS_MARKERS_MIN_FILES=510        # [568] source files (a GOH_CI_STEPS step)
 GOH_SKILLS_ROOT=$HOME/.claude/skills
 
 # COVERAGE FLOOR for crates/goh: 95, the house floor. Measured 97.91% on

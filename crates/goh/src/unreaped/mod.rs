@@ -265,6 +265,7 @@ fn run_scan(staged: bool, exclude: &str) -> Result<(i32, String), (i32, String)>
         )
     })?;
     let outcome = scan(&scanner, &root, &listed, staged, filter.as_ref());
+    crate::subject::record(&crate::subject::UNREAPED_SPAWN, outcome.examined);
     let errors = scanner.errors();
     if !errors.is_empty() {
         return Err((

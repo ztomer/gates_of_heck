@@ -2,6 +2,7 @@ Cargo.lock matches its manifests
 a file that calls X calls Y
 cap-exempt files within their ceilings
 every child process names its stdin
+every scanner read its declared subject
 file length
 gate self-proofs still pass
 gates refuse to pass over an empty tree

@@ -103,19 +103,13 @@ fn scope_verdict(outcome: &Outcome, staged: bool, policy: &Policy, s: &mut Strin
         );
         return Some(1);
     }
-    if let Some(want) = policy.min_calls {
-        if !staged && outcome.seen < want {
-            let _ = writeln!(
-                s,
-                "{ERR} {TAG} scanned {seen} process call(s) and .gatesrc declares a floor of {want}",
-                seen = outcome.seen
-            );
-            let _ = writeln!(
-                s,
-                "{START}   A scan that has stopped seeing its subject reads as clean. Find what moved \
-                 first -- the floor is GOH_SUBPROCESS_STDIN_MIN_CALLS -- or lower it with the \
-                 tree in the same commit, so the change is reviewed."
-            );
+    if !staged {
+        if let Some(text) = crate::subject::below(
+            &crate::subject::SUBPROCESS_STDIN,
+            policy.min_calls,
+            outcome.seen,
+        ) {
+            s.push_str(&text);
             return Some(1);
         }
     }

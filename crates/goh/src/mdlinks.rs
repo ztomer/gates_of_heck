@@ -44,6 +44,10 @@ struct Outcome {
     findings: Vec<String>,
     notes: Vec<String>,
     examined: usize,
+    /// Every link the grammar found in scope, judged or skipped: the subject
+    /// (`crate::subject::MD_LINKS`), because a grammar that stopped matching reads every file
+    /// and finds no link to judge.
+    links: usize,
     skipped: usize,
 }
 
@@ -92,6 +96,7 @@ fn check(
         findings: Vec::new(),
         notes: Vec::new(),
         examined: files.len(),
+        links: 0,
         skipped: 0,
     };
     // Full scope only: a commit that stages only excluded markdown has nothing to judge, but a
@@ -122,6 +127,7 @@ fn check(
         };
         let text = tree.text(rel).unwrap_or_default();
         for (number, target) in fences.links_in(&text) {
+            out.links += 1;
             if fences.skipped(&target) {
                 out.skipped += 1;
                 continue;
@@ -201,6 +207,7 @@ fn run(
         Ok(o) => o,
         Err(e) => return (2, vec![(true, format!("{ERR} [md_links] {e}"))]),
     };
+    crate::subject::record(&crate::subject::MD_LINKS, o.links);
     if json {
         let doc = serde_json::json!({
             "findings": o.findings, "notes": o.notes, "examined": o.examined, "skipped": o.skipped,

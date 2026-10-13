@@ -38,7 +38,8 @@ pub fn step_emoji(
     };
     let extra = emoji::parse_allow(&cfg.allow);
     let start = begin(label);
-    let (hits, _) = emoji::scan_files(repo, files, exclude.as_ref(), &extra, staged);
+    let (hits, read) = emoji::scan_files(repo, files, exclude.as_ref(), &extra, staged);
+    crate::subject::record(&crate::subject::EMOJI, read);
     if hits.is_empty() {
         ok(label, start);
         return None;
@@ -55,7 +56,8 @@ pub fn step_emoji(
 pub fn step_markers(repo: &std::path::Path, files: &[String], staged: bool) -> Option<i32> {
     // 2. A conflict marker that reaches a commit is a merge walked away from.
     let start = begin("no conflict markers");
-    let bad = markers::scan_files(repo, files, staged);
+    let (bad, read) = markers::scan_files(repo, files, staged);
+    crate::subject::record(&crate::subject::CONFLICT_MARKERS, read);
     if bad.is_empty() {
         ok("no conflict markers", start);
         return None;
@@ -99,7 +101,8 @@ pub fn step_length(
         }
     };
     let start = begin(&label);
-    let (over, _) = length::scan_files(repo, files, max, filter.as_ref(), staged);
+    let (over, read) = length::scan_files(repo, files, max, filter.as_ref(), staged);
+    crate::subject::record(&crate::subject::FILE_LENGTH, read);
     if over.is_empty() {
         ok(&label, start);
         return None;
@@ -237,7 +240,11 @@ pub fn step_secrets(repo: &std::path::Path, files: &[String], staged: bool) -> O
         "no committed secrets"
     };
     let start = begin(label);
-    match secrets::scan_files(repo, files, staged) {
+    let scanned = secrets::scan_files(repo, files, staged);
+    if let Ok((_, read)) = &scanned {
+        crate::subject::record(&crate::subject::SECRETS, *read);
+    }
+    match scanned {
         Err(message) => Some(fail(label, "native", &format!("{message}\n"), start)),
         Ok((bad, _)) if !bad.is_empty() => Some(fail(
             label,

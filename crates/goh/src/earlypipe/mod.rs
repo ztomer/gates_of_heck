@@ -56,6 +56,7 @@ const SPEC: crate::seedcount::Spec = crate::seedcount::Spec {
     clean: "no early-exit pipe beyond the seed",
     why: "early-exit consumers reading a pipe when this repo adopted the check; a count may only \
           fall (gates_of_heck BACKLOG 6.9)",
+    subject: &crate::subject::EARLY_EXIT_PIPE,
 };
 
 fn site(f: &Finding) -> String {
@@ -75,6 +76,7 @@ fn scanned(
     crate::seedcount::Scanned {
         listed,
         read,
+        floor: None,
         found: hits.into_iter().collect(),
         unreadable: Vec::new(),
     }
@@ -189,19 +191,22 @@ fn report(hits: &[(String, Vec<Finding>)], what: &str) -> String {
     s
 }
 
-/// The step's verdict: `(exit code, stdout text, stderr text)`.
+/// The step's verdict: `(exit code, stdout text, stderr text)`. `floor` is the repo's
+/// `GOH_EARLY_EXIT_PIPE_MIN_FILES`, which the seed's judge reads before any stale entry.
 fn judge(
     root: &Path,
     files: &[String],
     exclude: &str,
     staged: bool,
     strict: bool,
+    floor: Option<usize>,
 ) -> (i32, String, String) {
     let exclude = match crate::steps::compile_exclude(exclude) {
         Ok(x) => x,
         Err(m) => return (2, String::new(), format!("{ERR} {TAG} {m}\n")),
     };
     let (hits, checked) = scan_files(root, files, exclude.as_ref(), staged);
+    crate::subject::record(&crate::subject::EARLY_EXIT_PIPE, checked);
     let scope = if staged { "staged" } else { "tracked" };
     // At full scope a seed is read even over a clean tree: an entry for a file gone clean is a
     // seed to lower, not a pass.
@@ -232,8 +237,11 @@ fn judge(
         Ok(s) => s,
         Err(m) => return (2, String::new(), format!("{ERR} {TAG} {m}\n")),
     };
-    let (code, text) =
-        crate::seedcount::judge(&SPEC, &scanned(root, files, exclude.as_ref()), &seed, site);
+    let scan = crate::seedcount::Scanned {
+        floor,
+        ..scanned(root, files, exclude.as_ref())
+    };
+    let (code, text) = crate::seedcount::judge(&SPEC, &scan, &seed, site);
     if code == 0 {
         (0, text, String::new())
     } else {
@@ -258,7 +266,21 @@ pub fn write_seed(exclude: &str) -> i32 {
             return 2;
         }
     };
-    let scan = scanned(&root, &files, filter.as_ref());
+    let floor = match crate::gatesrc::load(&root) {
+        Ok(cfg) => crate::subject::floor(&cfg, &crate::subject::EARLY_EXIT_PIPE),
+        Err(m) => {
+            goh_tui::eoutln!("{ERR} {TAG} {m}");
+            return 2;
+        }
+    };
+    let scan = crate::seedcount::Scanned {
+        floor,
+        ..scanned(&root, &files, filter.as_ref())
+    };
+    if let Some(text) = crate::seedcount::refuse_seed(&SPEC, &scan) {
+        goh_tui::eout(&text);
+        return 1;
+    }
     if let Err(e) = std::fs::write(
         root.join(SEED_FILE),
         crate::seedcount::seed_text(&SPEC, &scan),
@@ -289,7 +311,7 @@ pub fn run_command(staged: bool, exclude: &str) -> i32 {
             return 2;
         }
     };
-    let (code, out, err) = judge(&root, &files, exclude, staged, true);
+    let (code, out, err) = judge(&root, &files, exclude, staged, true, None);
     goh_tui::out(&out);
     goh_tui::eout(&err);
     code
@@ -310,7 +332,8 @@ pub fn step(
     };
     let start = crate::step_report::begin(label);
     let strict = crate::gatesrc::opt_in(cfg, "GOH_NO_EARLY_EXIT_PIPE");
-    match judge(repo, files, &cfg.exclude, staged, strict) {
+    let floor = crate::subject::floor(cfg, &crate::subject::EARLY_EXIT_PIPE);
+    match judge(repo, files, &cfg.exclude, staged, strict, floor) {
         (0, _, warn) => {
             goh_tui::eout(&warn);
             crate::step_report::ok(label, start);

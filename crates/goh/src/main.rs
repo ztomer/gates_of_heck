@@ -76,6 +76,7 @@ pub mod steps;
 pub mod steps_delegated;
 pub mod steps_rust;
 pub mod structural;
+pub mod subject;
 pub mod substdin;
 pub mod tagpush;
 pub mod tagver;

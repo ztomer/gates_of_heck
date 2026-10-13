@@ -128,7 +128,12 @@ fn write(root: &Path, entries: &[Seeded]) -> Result<Vec<String>, String> {
 
 /// `goh subprocess-stdin --seed`, over the whole tree: (exit code, report).
 #[must_use]
-pub fn run(root: &Path, listed: &[String], files: &[String]) -> (i32, String) {
+pub fn run(
+    root: &Path,
+    listed: &[String],
+    files: &[String],
+    floor: Option<usize>,
+) -> (i32, String) {
     match crate::gitutil::uncommitted(root, &["*.py", "*.PY"]) {
         Err(m) => return (2, format!("{ERR} {TAG} {m}\n")),
         Ok(dirty) if !dirty.is_empty() => {
@@ -158,6 +163,16 @@ pub fn run(root: &Path, listed: &[String], files: &[String]) -> (i32, String) {
         return (
             1,
             format!("{ERR} {TAG} {path} is not Python this check can read: {why}\n"),
+        );
+    }
+    // The pairing with the stale check (`crate::subject`): a scan under its floor finds nothing,
+    // and seeding it would drop every entry as stale -- the blindness laundered into the ratchet.
+    if let Some(text) =
+        crate::subject::below(&crate::subject::SUBPROCESS_STDIN, floor, outcome.seen)
+    {
+        return (
+            1,
+            text + &format!("{ERR} {TAG} refusing to seed a scan under its floor\n"),
         );
     }
     let (seeded, kept, added, dropped) = plan(&outcome.findings, &entries);

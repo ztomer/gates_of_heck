@@ -81,6 +81,7 @@ fn judge(root: &Path, files: &[String], staged: bool) -> (i32, String, String) {
             );
         }
     }
+    crate::subject::record(&crate::subject::CHECKOUT_CREDENTIALS, judged);
     if n == 0 {
         let ok = format!(
             "{OK} {TAG} OK — {judged} {scope} workflow/action file(s), every actions/checkout drops its token\n"
