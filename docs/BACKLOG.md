@@ -20,7 +20,7 @@ a string comparison of a path is a measurement of the CALLER, not of the filesys
 
 ## Resume here (2026-10-13)
 
-- **Next, in order:** 4.6 (the frames-drawn invariant; 4.3 landed at `831d686`), then 3.3's remaining rows as their repos' sessions take them, 3.4's flip once 3.3's
+- **Next, in order:** Phase 1 is closed (4.3 at `831d686`, 4.6 at `f62dbb3`); 3.3's remaining rows as their repos' sessions take them, 3.4's flip once 3.3's
   table is empty, then the measurements (5.3 first, then 5.1, 5.2).
 - **Waiting on the owner, and nothing here moves them:**
   - 6.13's scheduling: `scripts/estate_audit.py --install` writes and loads the daily launchd job.
@@ -62,27 +62,16 @@ the CHANGELOG. `[ ]` open, `[x]` done, `[~]` handed off.
       the count is red). This repo sets every floor at about nine tenths of its 2026-10-13 count.
       Not covered, by what they read (named in `docs/config.md`): tracked-ignored and vendored
       (the listing itself), credential-urls, lock-version, provenance (one file each), opt-ins.
-- [ ] 4.6 The frames-drawn invariant: a harness that requests N frames reads back N.
-      Baseline: ZeroThunder, measured 2026-10-08 -- 14+ harnesses pass `--golden-frames 90`
-      (`tests/e2e/golden.py:206`, `golden_bistability_core.py:268`, and 12 more) and NOTHING
-      compares frames drawn to frames requested. The golden loop drives its frames through the
-      app's ON-SCREEN `MTKView` (`AppDelegate+GoldenReport.swift:238`, left display-linked at
-      `AppDelegate+Setup.swift:199`), so with the built-in panel on the view drops every other
-      draw -- 45 frames of 2 ticks -- and the resulting arm tracked the WindowServer display log
-      at 7 of 7 observations. `golden_bistability.py` exists and is blind to it BY ITS OWN
-      DOCSTRING: it catches a latch, and a display-paced render is a systematic half-rate,
-      deterministic within a display state. "Pin the view paused" is disproved (it delivers 45 of
-      90 frames and `golden.py` went 15/15 -> 0/15); ZeroThunder's uncommitted
-      `GoldenFrameDelivery.swift` (requested vs delivered, `exit(2)` on mismatch) is the consumer
-      prototype (Downstream). Exit: `crates/goh/src/screen.rs` (tests touching the screen) and
-      `checks/check_display_seam.py` (app source presenting outside a declared seam) grow a third
-      rule -- an offscreen render paced by an on-screen view -- and a harness that requests N
-      frames fails unless it reads N back. Red-first: a fixture rendering at half rate must red
-      on the COUNT, not on a pixel. Lies: a harness that reads back a constant is not measuring;
-      the count must come from the renderer that drew. Consumer-side, named there:
-      `ZeroThunder/docs/ROADMAP.md:523` still carries a `CLOSED 2026-10-01` whose stated premise
-      was measured wrong, and the metarepo's claims registry holds a `plan.golden-pass` truth that
-      is a function of the HOST's display state -- it went DRIFTED the moment the lid closed.
+- [x] 4.6 A render that counts frames must deliver them (`f62dbb3`). Baseline was ZeroThunder's
+      14+ harnesses passing `--golden-frames 90` through an on-screen, display-linked `MTKView`
+      that delivered 45 of 90 with the panel on, and nothing comparing the two. Now
+      `checks/_display_frames.py` is the seam gate's third rule: an `MTKView` drawn by hand routes
+      through the seam (receivers found tree-wide), and a harness handing the app `frames_flag`
+      calls `frames_helper` with the renderer's own count, a literal or the request read back
+      refused. Red-first: each of its 10 rules dropped turns the seam probe red, and the half-rate
+      fixture passes the static rule and reds on the count. `crates/goh/src/screen.rs` grew no
+      rule, by evidence: it refuses tests that reach the display, and a half-rate render reaches
+      nothing new. Read-only over ZeroThunder: 26 sites (Downstream).
 
 ### Phase 2 — the stdin campaign: the sweep, then the flip
 
@@ -227,6 +216,14 @@ ztools' exempt key, Finance's `"$root.out"`, ZeroThunder's dropped process handl
   `/private/tmp/zt-gold`; break-probes 1 and 2 red in HeadlessTests, break 3 (the guard removed
   from the loop) caught by no unit test, and the machine was in the lid-closed arm, so its 15/15
   says nothing about display independence. ZeroThunder's to land or drop; 4.6 is the house half.
+- **ZeroThunder, after `f62dbb3` (4.6), red at its next commit:** the display seam's frames rule
+  reports 26 sites, read-only on 2026-10-13: six hand draws of `metalView` (`AppDelegate+GoldenReport.swift:241`,
+  `AppDelegate+Setup.swift:206`, `DebugSocketFrameStep.swift:58`,
+  `DebugSocketServer+DragSimulation.swift:86`, `AppDelegate+CoverageExercise3.swift:46`,
+  `AppDelegate+CoverageExercise5.swift:51`) and 20 harnesses handing the app `--golden-frames`
+  with no `require_frames_drawn(requested, drawn)`. The uncommitted `GoldenFrameDelivery.swift`
+  above is the renderer's half of that count; an offscreen render loop is the hand draws' fix, and
+  an attended debugger keeps its draw with a justified `screen-ok:` marker.
 - **Nine repos, after `496b6a5` (6.9), red at their next push until they act:** old_phones (99
   early-exit pipes), koffee_big (29), Finance (16), scripts (12), koffee_oss (11), apes (7),
   CadGoose (7), remote_dotfiles (3), ztools (1), counted 2026-10-12. Fix each
