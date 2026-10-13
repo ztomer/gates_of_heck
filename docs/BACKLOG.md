@@ -139,14 +139,21 @@ cross-session serialization (its section below).
       instructions are not on record: the kernel folds a reaped child's CPU time into its parent
       (`ri_child_user_time`, `ri_child_system_time`) and its instructions into nothing (no
       `ri_child_instructions` in `rusage_info` v4-v6, read 2026-10-13). A step's direct child can
-      be read between a `WNOWAIT` wait and its reap; its own children cannot. Next: test CPU
-      normalised by a same-run control (a fixed workload of the same kind, timed in the same run,
-      the step's CPU divided by it) at two loads at least 2x apart; instructions stay the figure
-      for the in-process native scanners, where they are exact. Exit: a per-step figure holding
+      be read between a `WNOWAIT` wait and its reap; its own children cannot. **CPU normalised by a
+      same-run control of the same kind holds** (2026-10-13, the same pinned command, each run
+      bracketed by two controls): `shellcheck -x` over 40 fixed `.sh` files of that commit, the
+      step's CPU divided by the control's, 1.36-1.38 at load 9-10 and 1.41-1.42 at load 34-62
+      (+3.3%), where raw CPU moved +36% and wall +84%; a pure Python CPU loop as the control
+      did not settle (2.8-3.5 at both loads), as the Lies predicted. Next: a control cheap enough
+      to run beside a gate (this one costs 3.7 s of CPU; fewer files, re-calibrated at two loads),
+      then the Rust half with a control of its kind (a fixed warm `rustc` compile), then the
+      ratio written by the step timer beside `cpu_ms`. Instructions stay the figure for the
+      in-process native scanners, where they are exact. Exit: a per-step figure holding
       within 15% across two loads at least 2x apart, for `structural --full` and one Rust step;
       then 5.1 is restated in it and per-crate coverage judged for running across crates at
-      once. Red-first: met for the process-only count (2.2% against wall's 80%), and the control
-      ratio must also move less than wall and less than raw CPU (+37%). Lies: a process-only count
+      once. Red-first: met for `structural --full` (the shellcheck ratio +3.3% against raw CPU's
+      +36% and wall's +84%, and a control of another kind failing beside it); owed for the Rust
+      step. Lies: a process-only count
       read as the step's work; a control of another kind than the step (a CPU loop does not
       migrate the way a fork-heavy step does); instructions and CPU are both blind to a step
       that waits (a lock, the network) -- wall beside them says so; a second host's figure read
