@@ -144,16 +144,27 @@ cross-session serialization (its section below).
       bracketed by two controls): `shellcheck -x` over 40 fixed `.sh` files of that commit, the
       step's CPU divided by the control's, 1.36-1.38 at load 9-10 and 1.41-1.42 at load 34-62
       (+3.3%), where raw CPU moved +36% and wall +84%; a pure Python CPU loop as the control
-      did not settle (2.8-3.5 at both loads), as the Lies predicted. Next: a control cheap enough
-      to run beside a gate (this one costs 3.7 s of CPU; fewer files, re-calibrated at two loads),
-      then the Rust half with a control of its kind (a fixed warm `rustc` compile), then the
-      ratio written by the step timer beside `cpu_ms`. Instructions stay the figure for the
+      did not settle (2.8-3.5 at both loads), as the Lies predicted. **The cheap control holds
+      too** (2026-10-13, load 3 against 48 busy loops at load 27-61): 8 of those files, 0.42 s
+      of CPU, ratio 13.32 -> 13.44 (+0.9%) where the step's raw CPU moved +42%. **The Rust half
+      holds with a control of the step's SHAPE** (2026-10-13, `cargo clippy -p divoomd
+      --all-targets -D warnings` at a pinned divoom-control `a8a848d`, warm after a touch of its
+      root, 7.4 s of CPU over 2.7 s of wall; load 3.4 against 48 busy loops at load 34-88, an
+      idle arm after it matching the first): four copies of pinned `regex-syntax` 0.8.11's
+      single-crate clippy run AT ONCE, CPU summed (3.2 s), ratio 2.31 -> 2.10 (-8.9%); one
+      crate's `--all-targets` (two rustc at once, 1.7 s) 4.41 -> 3.60 (-18.4%); one crate alone
+      (earlier, load 18 against 46) -19%; raw CPU +15.4%, wall +333%. A control must match the
+      step's concurrency as well as its kind: a serial control loses more to the efficiency
+      cores than a step whose threads fill the performance ones. Next: the ratio written by the
+      step timer beside `cpu_ms`, each kind's control run once before a gate's steps and once
+      after (their drift voids the run's ratios, as rule 5 of a sitting does). Instructions stay the figure for the
       in-process native scanners, where they are exact. Exit: a per-step figure holding
       within 15% across two loads at least 2x apart, for `structural --full` and one Rust step;
       then 5.1 is restated in it and per-crate coverage judged for running across crates at
       once. Red-first: met for `structural --full` (the shellcheck ratio +3.3% against raw CPU's
-      +36% and wall's +84%, and a control of another kind failing beside it); owed for the Rust
-      step. Lies: a process-only count
+      +36% and wall's +84%, and a control of another kind failing beside it) and for the Rust
+      step (the four-at-once ratio -8.9% against raw CPU's +15.4%, and two serial controls of
+      its kind failing beside it). Lies: a process-only count
       read as the step's work; a control of another kind than the step (a CPU loop does not
       migrate the way a fork-heavy step does); instructions and CPU are both blind to a step
       that waits (a lock, the network) -- wall beside them says so; a second host's figure read
