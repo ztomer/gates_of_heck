@@ -74,6 +74,13 @@ from _marker_reason import is_justified  # noqa: E402
 # a doc comment explaining the rule is not a violation. The consumer's own gate never masked,
 # because a line-based skip was enough over its roots; over a whole app source tree it is not.
 from _swift_text import swift_code_only  # noqa: E402
+from _display_frames import (  # noqa: E402
+    DEFAULT_FRAMES_FLAG,
+    DEFAULT_FRAMES_HELPER,
+    check_python_frames,
+    check_swift_frames,
+    onscreen_views,
+)
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from tui.lib import err, info, ok  # noqa: E402
@@ -89,6 +96,8 @@ POLICY_KEYS = {
     "offscreen_flags",
     "markers",
     "shell_scripts",
+    "frames_flag",
+    "frames_helper",
     "note",
 }
 DEFAULTS = {
@@ -178,6 +187,11 @@ class Policy:
         self.scan = tuple(str(p) for p in raw.get("scan", ()))
         self.app_launch = re.compile(str(raw["app_launch"])) if raw.get("app_launch") else None
         self.offscreen_flags = tuple(str(f) for f in raw.get("offscreen_flags", ()))
+        self.frames_helper = str(raw.get("frames_helper", DEFAULT_FRAMES_HELPER))
+        try:
+            self.frames_flag = re.compile(str(raw.get("frames_flag", DEFAULT_FRAMES_FLAG)))
+        except re.error as exc:
+            raise ValueError(f"frames_flag is not a pattern: {exc}") from exc
         missing = [p for p in self.seam if not os.path.isfile(os.path.join(root, p))]
         if missing:
             raise ValueError(f"the policy names a seam that does not exist: {', '.join(missing)}")
@@ -343,17 +357,27 @@ def main(argv=None):
         return 2
 
     bad, checked = [], 0
+    sources = []
     for rel in targets(root, args.staged, policy):
         blob = content_bytes(root, rel, staged=args.staged)
-        if blob is None or b"\0" in blob[:8000]:
-            continue
+        if blob is not None and b"\0" not in blob[:8000]:
+            sources.append((rel, blob.decode("utf-8", "replace")))
+    # The frames rule's receivers are found tree-wide, the seam included: a view declared in the
+    # seam and drawn by hand outside it is the case the rule exists for.
+    seams = [content_bytes(root, rel, staged=False) for rel in policy.seam]
+    views = onscreen_views(
+        [text for rel, text in sources if rel.endswith(".swift")]
+        + [blob.decode("utf-8", "replace") for blob in seams if blob]
+    )
+    for rel, text in sources:
         checked += 1
-        text = blob.decode("utf-8", "replace")
         ext = os.path.splitext(rel)[1]
         if ext == ".swift":
             check_swift(rel, text, policy, bad)
+            check_swift_frames(rel, text, views, policy.silenced, bad)
         elif ext == ".py":
             check_python(rel, text, policy, bad)
+            check_python_frames(rel, text, policy.frames_flag, policy.frames_helper, bad)
         else:
             check_shell(rel, text, policy, bad)
 

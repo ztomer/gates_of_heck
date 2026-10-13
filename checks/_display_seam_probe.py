@@ -30,6 +30,7 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import check_display_seam  # noqa: E402  (the module under proof, driven not copied)
+from _display_frames import FRAMES_CASES  # noqa: E402  (the third rule's rows, kept beside it)
 from _gitutil import foreign_repo_env, scratch_git  # noqa: E402
 
 SEAM = "func present() { w.orderFrontRegardless() }\n"
@@ -174,6 +175,7 @@ LIVE_CASES = tuple(
 CASES = (
     SWIFT_CASES
     + LIVE_CASES
+    + FRAMES_CASES
     + (
         (
             "the seam itself is exempt",
