@@ -20,8 +20,7 @@ a string comparison of a path is a measurement of the CALLER, not of the filesys
 
 ## Resume here (2026-10-13)
 
-- **Next, in order:** 4.3 (every scanner declares its subject), then 4.6 (the frames-drawn
-  invariant), then 3.3's remaining rows as their repos' sessions take them, 3.4's flip once 3.3's
+- **Next, in order:** 4.6 (the frames-drawn invariant; 4.3 landed at `831d686`), then 3.3's remaining rows as their repos' sessions take them, 3.4's flip once 3.3's
   table is empty, then the measurements (5.3 first, then 5.1, 5.2).
 - **Waiting on the owner, and nothing here moves them:**
   - 6.13's scheduling: `scripts/estate_audit.py --install` writes and loads the daily launchd job.
@@ -51,23 +50,18 @@ the CHANGELOG. `[ ]` open, `[x]` done, `[~]` handed off.
 
 ### Phase 1 — correctness: the classes no gate closes yet
 
-- [ ] 4.3 Every scanner declares its subject, so a scan that stopped reading says so. Baseline:
-      the house shape exists in one scanner only: `goh subprocess-stdin`'s
-      `GOH_SUBPROCESS_STDIN_MIN_CALLS` (unset = no floor, unparseable = exit 2 naming the key),
-      set in 2 of 34 repos (gates_of_heck 550, ZoneWM 110, both 2026-10-13); 18 repos have a
-      keyless `.gatesrc` and cannot express a floor at all. The blind-scanner class was found
-      independently in four repos: an `__all__` omitting a name, a gate regex dropping gates
-      declared with a third tuple element, and a regex `ruff format` broke, which silently
-      vanished THREE gates from a calibration. `5680a8d` closed the "everything excluded" half
-      for subprocess-stdin, fixed-sleep and md-links; the "stopped seeing" half has no key
-      anywhere else (`GOH_SUBPROCESS_STDIN_MIN_CALLS` is the only floor key `crates/goh/src`
-      reads, 2026-10-13).
-      Exit: one key per scanner in that shape, every always-on scanner carries one, and a keyless
-      `.gatesrc` says so. Red-first: exclude every `.py` in a repo that has one -- the "read NONE
-      of them" verdict, measured on a fixture -- and lower a floor below a fixture's call count
-      to watch the stopped-reading verdict. Lies: a floor set too high reds a clean repo and gets
-      raised; too low never fires. The exit is the PAIRING with the stale-allowlist check, in
-      both directions.
+- [x] 4.3 Every scanner declares its subject, so a scan that stopped reading says so (`831d686`).
+      Baseline was one floor key (`GOH_SUBPROCESS_STDIN_MIN_CALLS`) and nothing for any other
+      scanner. Now 15 keys, one per scanner, in one registry (`crates/goh/src/subject.rs`): the 12
+      always-on structural scanners record what they read and the pipeline's last step judges each
+      at full scope (red under a floor, naming key, floor and count; exit 2 naming an unparseable
+      key; one advisory line `KEY=N` for every scanner with none), and `goh fixed-sleep` /
+      `goh status-markers` judge their own. The pairing: under its floor a seed's stale verdict is
+      withheld and `--seed` refuses; over it a stale entry still fails. Red-first measured on
+      fixtures (`tests/test_subject_floors.py`: every `.py` excluded reads NONE; a floor one over
+      the count is red). This repo sets every floor at about nine tenths of its 2026-10-13 count.
+      Not covered, by what they read (named in `docs/config.md`): tracked-ignored and vendored
+      (the listing itself), credential-urls, lock-version, provenance (one file each), opt-ins.
 - [ ] 4.6 The frames-drawn invariant: a harness that requests N frames reads back N.
       Baseline: ZeroThunder, measured 2026-10-08 -- 14+ harnesses pass `--golden-frames 90`
       (`tests/e2e/golden.py:206`, `golden_bistability_core.py:268`, and 12 more) and NOTHING
@@ -208,6 +202,13 @@ ztools' exempt key, Finance's `"$root.out"`, ZeroThunder's dropped process handl
   layer run after it on every commit, the gap named, until its gate calls it. A reinstall also
   adds `post-rewrite` and `pre-applypatch` (`10be7e8`); `gate.sh --doctor` names each stock hook
   a repo lacks. **A Rust toolchain is required** for layer 1 (`bin/goh` is the only tier).
+- **Every consumer, after `831d686` (4.3), one new line and nothing red:** at full scope the
+  structural gate ends with `every scanner read its declared subject` and, while the repo's
+  `.gatesrc` sets no floors, one line `[subject] N scanner(s) declare no floor ... this run read:
+  GOH_EMOJI_MIN_FILES=637 ...`. Paste each at or a little under its count (`0` declares "no floor
+  here"); a value that is not a whole number refuses the whole `.gatesrc` naming the key. ZoneWM's
+  `GOH_SUBPROCESS_STDIN_MIN_CALLS=110` is read exactly as before; its below-floor message now
+  carries the `[subject]` tag, and a `--seed` under the floor is refused.
 - **ZeroThunder, before 3.4:** delete its own `tools/check_subprocess_stdin.py`, repoint
   `tests/e2e/verify.py:290` + `tests/e2e/gate_tiers.py:61`. It is already a NAMED VIOLATION
   ("a vendored copy of a house checker -- delete it and run the shared one"), and its copy and the
