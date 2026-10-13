@@ -20,7 +20,7 @@ LIB = f'. "{REPO_ROOT}/gates/_proven.sh"; proven_settings'
 def _bash(repo: Path, script: str, **env: str) -> str:
     r = subprocess.run(
         ["bash", "-c", f"{LIB}; {script}"], cwd=repo, capture_output=True, text=True,
-        env=hermetic_env(drop_git=True, **env),
+        env=hermetic_env(drop_git=True, **env), stdin=subprocess.DEVNULL,
     )  # fmt: skip
     return r.stdout.strip()
 
@@ -102,14 +102,14 @@ def _git_shim(tmp_path: Path) -> tuple[Path, Path]:
 def _native(cwd: Path, *args: str, **env: str) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
         [str(native_goh_path()), "proven", *args], cwd=cwd, capture_output=True, text=True,
-        env=hermetic_env(drop_git=True, **env),
+        env=hermetic_env(drop_git=True, **env), stdin=subprocess.DEVNULL,
     )  # fmt: skip
 
 
 def _common_dir(cwd: Path, **env: str) -> Path:
     out = subprocess.run(
         ["git", "rev-parse", "--path-format=absolute", "--git-common-dir"], cwd=cwd,
-        capture_output=True, text=True, check=True, env=hermetic_env(drop_git=True, **env),
+        capture_output=True, text=True, check=True, env=hermetic_env(drop_git=True, **env), stdin=subprocess.DEVNULL,
     )  # fmt: skip
     return Path(out.stdout.strip()).resolve()
 
@@ -124,7 +124,7 @@ def test_a_record_lands_where_git_keeps_the_common_dir_and_a_lookup_spawns_no_gi
     (repo / "src" / "deep").mkdir()
     wt = tmp_path / "wt"
     subprocess.run(["git", "-C", str(repo), "worktree", "add", "-q", "--detach", str(wt)],
-                   check=True, env=hermetic_env(drop_git=True))  # fmt: skip
+                   check=True, env=hermetic_env(drop_git=True), stdin=subprocess.DEVNULL)  # fmt: skip
     shim, log = _git_shim(tmp_path)
     path = f"{shim}:{hermetic_env()['PATH']}"
     cases = [

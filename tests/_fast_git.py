@@ -29,7 +29,7 @@ def fast_init(repo: Path | str, branch: str | None = None) -> None:
     if (repo / ".git").exists():
         subprocess.run(
             ["git", "-C", str(repo), "init", "-q", *(["-b", branch] if branch else [])],
-            check=True, capture_output=True, env=_clean_env(),
+            check=True, capture_output=True, env=_clean_env(), stdin=subprocess.DEVNULL,
         )  # fmt: skip
         return
     key = branch or ""
@@ -39,7 +39,7 @@ def fast_init(repo: Path | str, branch: str | None = None) -> None:
         atexit.register(shutil.rmtree, seed, True)
         subprocess.run(
             ["git", "init", "-q", *(["-b", branch] if branch else []), str(seed)],
-            check=True, capture_output=True, env=_clean_env(),
+            check=True, capture_output=True, env=_clean_env(), stdin=subprocess.DEVNULL,
         )  # fmt: skip
         _TEMPLATES[key] = seed / ".git"
     shutil.copytree(_TEMPLATES[key], repo / ".git", symlinks=True)

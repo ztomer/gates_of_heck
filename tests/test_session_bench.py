@@ -36,10 +36,11 @@ def _repo(tmp_path: Path) -> Path:
     repo.mkdir()
     (repo / "README.md").write_text("x\n")
     for args in (["init", "-q"], ["add", "-A"]):
-        subprocess.run(["git", "-C", str(repo), *args], check=True)
+        subprocess.run(["git", "-C", str(repo), *args], check=True, stdin=subprocess.DEVNULL)
     subprocess.run(
         ["git", "-C", str(repo), "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "c"],
         check=True,
+        stdin=subprocess.DEVNULL,
     )
     return repo
 
@@ -51,6 +52,7 @@ def _run(tmp_path: Path, workload: str, *args: str) -> subprocess.CompletedProce
         text=True,
         env=hermetic_env(SHARED_LOCK=str(tmp_path / "shared.lock"), TMPDIR=str(tmp_path)),
         timeout=120,
+        stdin=subprocess.DEVNULL,
     )
 
 
@@ -71,6 +73,7 @@ def _bench(tmp_path: Path, workload: str, *args: str, rc: int = 0) -> dict:
         text=True,
         env=hermetic_env(SHARED_LOCK=str(tmp_path / "shared.lock")),
         timeout=120,
+        stdin=subprocess.DEVNULL,
     )
     assert r.returncode == rc, r.stdout + r.stderr
     return json.loads(out.read_text())

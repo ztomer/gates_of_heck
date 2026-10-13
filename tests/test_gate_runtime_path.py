@@ -26,6 +26,7 @@ def test_every_gate_exports_its_own_runtime_path():
         capture_output=True,
         text=True,
         check=True,
+        stdin=subprocess.DEVNULL,
     )
     assert str(REPO_ROOT) in got.stdout.split(":"), got.stdout
 
@@ -81,12 +82,13 @@ def _sweep_repo(tmp_path, excuses: dict) -> "subprocess.CompletedProcess":
         '__import__("_retired").forward("emoji", __name__)\n'
     )
     (gates / "empty_scope_allow.json").write_text(json.dumps({"legitimate": excuses}))
-    subprocess.run(["git", "init", "-q", str(repo)], check=True)
+    subprocess.run(["git", "init", "-q", str(repo)], check=True, stdin=subprocess.DEVNULL)
     return subprocess.run(
         [sys.executable, str(REPO_ROOT / "checks" / "check_empty_scope.py"), "--root", str(repo)],
         capture_output=True,
         text=True,
         timeout=120,
+        stdin=subprocess.DEVNULL,
     )
 
 

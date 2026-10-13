@@ -101,7 +101,7 @@ def test_exclude_skips_matching_paths(repo):
 
 def test_full_mode_scans_tracked_files(repo):
     write(repo, "tool.sh", "#!/usr/bin/env bash\necho hi\n")
-    subprocess.run(["git", "-C", str(repo), "add", "-A"], check=True)
+    subprocess.run(["git", "-C", str(repo), "add", "-A"], check=True, stdin=subprocess.DEVNULL)
     subprocess.run(
         [
             "git",
@@ -116,6 +116,7 @@ def test_full_mode_scans_tracked_files(repo):
             "fixture",
         ],
         check=True,
+        stdin=subprocess.DEVNULL,
     )
     r = run_lint(repo)
     assert r.returncode == 0, r.stdout + r.stderr

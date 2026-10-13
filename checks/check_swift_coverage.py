@@ -158,6 +158,7 @@ def load_xcode(dd_root: str):
             capture_output=True,
             text=True,
             timeout=120,
+            stdin=subprocess.DEVNULL,
         )
     except (OSError, subprocess.SubprocessError) as exc:
         return [], f"xcresulttool failed on {xc}: {exc}"

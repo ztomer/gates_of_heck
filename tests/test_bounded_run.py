@@ -52,7 +52,7 @@ def spawn_sleeper(seconds: int = 600) -> subprocess.Popen:
     at exec (rc=137), which makes a leak probe report "nothing survived" for a process that never
     ran. That is how the first version of this file's measurement was wrong.
     """
-    return subprocess.Popen(["/bin/sleep", str(seconds)])
+    return subprocess.Popen(["/bin/sleep", str(seconds)], stdin=subprocess.DEVNULL)
 
 
 # Every sleeper this module starts, so a FAILING test cannot leave the very orphans it is testing
@@ -275,7 +275,11 @@ def test_usage_errors_are_exit_two() -> None:
     path = Path(bounded_run.__file__)
     for argv in (["--timeout", "30"], ["--timeout", "0", "--", "true"]):
         proc = subprocess.run(
-            [sys.executable, str(path), *argv], capture_output=True, text=True, check=False
+            [sys.executable, str(path), *argv],
+            capture_output=True,
+            text=True,
+            check=False,
+            stdin=subprocess.DEVNULL,
         )
         assert proc.returncode == 2, (argv, proc.returncode, proc.stdout)
 
@@ -293,6 +297,7 @@ def test_a_bad_ceiling_is_refused_not_ignored(value: str) -> None:
         capture_output=True,
         text=True,
         check=False,
+        stdin=subprocess.DEVNULL,
     )
     assert proc.returncode == 2, (value, proc.returncode, proc.stdout, proc.stderr)
     assert value in proc.stderr, (value, proc.stderr)

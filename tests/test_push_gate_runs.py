@@ -47,13 +47,17 @@ def _push(repo: Path, tmp_path: Path, export_root: Path) -> subprocess.Completed
 
 def _stamp(pid: int) -> str:
     start = subprocess.run(
-        ["ps", "-o", "lstart=", "-p", str(pid)], capture_output=True, text=True, check=False
+        ["ps", "-o", "lstart=", "-p", str(pid)],
+        capture_output=True,
+        text=True,
+        check=False,
+        stdin=subprocess.DEVNULL,
     ).stdout
     return f"{pid} {' '.join(start.split())}\n"
 
 
 def _dead_pid() -> int:
-    proc = subprocess.Popen(["/usr/bin/true"])
+    proc = subprocess.Popen(["/usr/bin/true"], stdin=subprocess.DEVNULL)
     proc.wait()
     return proc.pid
 

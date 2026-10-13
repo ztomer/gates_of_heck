@@ -30,6 +30,14 @@ GOH_NO_KILL_BY_NAME=1
 # repo with the ratchet open (a NEW racy pipe refused at commit); this repo's tree is clean, so it
 # closes the ratchet and every finding fails.
 GOH_NO_EARLY_EXIT_PIPE=1
+
+# Every process call declares its stdin (`goh subprocess-stdin`). This repo owns the check and
+# carried half the estate's findings (511 of 996, 2026-10-09); every call now names `stdin=` or
+# `input=`, with no allowlist, so it opts in ahead of the default flip (BACKLOG 3.4). The floor is
+# the fourth vacuous pass: 614 calls were read on 2026-10-13, and a scan that stops seeing them is
+# red rather than clean.
+GOH_SUBPROCESS_STDIN=on
+GOH_SUBPROCESS_STDIN_MIN_CALLS=550
 GOH_SKILLS_ROOT=$HOME/.claude/skills
 
 # COVERAGE FLOOR for crates/goh: 95, the house floor. Measured 97.91% on

@@ -62,7 +62,9 @@ def _assert_nothing_survives(marker: str):
     give_up = GiveUp(5)
     survivors = None
     while not give_up.passed():
-        r = subprocess.run(["pgrep", "-f", marker], capture_output=True, text=True)
+        r = subprocess.run(
+            ["pgrep", "-f", marker], capture_output=True, text=True, stdin=subprocess.DEVNULL
+        )
         if r.returncode != 0:  # no match: nothing left
             return
         survivors = r.stdout
@@ -100,7 +102,9 @@ def test_a_shell_that_exited_before_the_timeout_still_has_its_group_killed():
 def test_a_child_without_its_own_group_falls_back_to_direct_kill():
     # Started WITHOUT start_new_session, the child leads no group: the group kill must degrade to
     # proc.kill(), not escape the timeout handler as a raw OSError.
-    proc = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(60)"])
+    proc = subprocess.Popen(
+        [sys.executable, "-c", "import time; time.sleep(60)"], stdin=subprocess.DEVNULL
+    )
     try:
         killtree._kill_process_group(proc)  # must not raise
         give_up = GiveUp(5)

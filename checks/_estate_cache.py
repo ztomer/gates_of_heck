@@ -78,7 +78,11 @@ def _binary(goh_dir: str) -> tuple:
     if chooser not in _RESOLVED:
         script = '. "$1/gates/_goh_bin.sh"; goh_resolve_native; printf %s "$goh_native"'
         _RESOLVED[chooser] = subprocess.run(
-            ["bash", "-c", script, "_", goh_dir], capture_output=True, text=True, check=False
+            ["bash", "-c", script, "_", goh_dir],
+            capture_output=True,
+            text=True,
+            check=False,
+            stdin=subprocess.DEVNULL,
         ).stdout.strip()
     path = _RESOLVED[chooser]
     try:

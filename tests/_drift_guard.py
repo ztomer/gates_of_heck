@@ -133,7 +133,7 @@ def prebuild_live(config) -> None:
         ["bash", "-c", 'source "$1/gates/_goh_bin.sh"; goh_live_binary "$1"; [ -n "$goh_native" ] '
          '|| [ -z "$goh_native_why" ]', "_", str(_ROOT)],
         capture_output=True, text=True, timeout=900, check=False,
-        env=dict(os.environ, DRIFT_BUILD_OK="1"),
+        env=dict(os.environ, DRIFT_BUILD_OK="1"), stdin=subprocess.DEVNULL,
     )  # fmt: skip
     if r.returncode != 0:
         raise pytest.UsageError(f"GOH_LIVE: the working tree's goh did not build:\n{r.stderr}")

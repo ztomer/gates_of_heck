@@ -70,6 +70,7 @@ def _run(repo, refs, source):
         capture_output=True,
         text=True,
         env=dict(os.environ, GOH_TAG_VERSION_SOURCES=source),
+        stdin=subprocess.DEVNULL,
     )
 
 

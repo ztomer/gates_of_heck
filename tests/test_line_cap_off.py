@@ -23,10 +23,10 @@ DECLARED = "file-length cap off — declared in .gatesrc (GOH_MAX_LINES=off)"
 
 
 def _repo(tmp_path: Path, gatesrc: str) -> Path:
-    subprocess.run(["git", "init", "-q", str(tmp_path)], check=True)
+    subprocess.run(["git", "init", "-q", str(tmp_path)], check=True, stdin=subprocess.DEVNULL)
     (tmp_path / ".gatesrc").write_text(gatesrc)
     (tmp_path / "long.py").write_text("x = 1\n" * 50)
-    subprocess.run(["git", "add", "-A"], cwd=tmp_path, check=True)
+    subprocess.run(["git", "add", "-A"], cwd=tmp_path, check=True, stdin=subprocess.DEVNULL)
     return tmp_path
 
 
@@ -38,7 +38,15 @@ def _run(tier: str, goh: Path, repo: Path) -> subprocess.CompletedProcess:
         cmd = ["bash", str(STRUCTURAL)]
     else:
         cmd = [str(goh), "structural"]
-    return subprocess.run(cmd, cwd=repo, capture_output=True, text=True, env=env, timeout=120)
+    return subprocess.run(
+        cmd,
+        cwd=repo,
+        capture_output=True,
+        text=True,
+        env=env,
+        timeout=120,
+        stdin=subprocess.DEVNULL,
+    )
 
 
 @pytest.mark.parametrize("tier", ["structural.sh", "native"])

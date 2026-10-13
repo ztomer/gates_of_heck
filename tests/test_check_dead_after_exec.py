@@ -44,6 +44,7 @@ def _structural(goh: Path, repo: Path, *args: str) -> subprocess.CompletedProces
         text=True,
         env=env,
         check=False,
+        stdin=subprocess.DEVNULL,
     )
 
 
@@ -111,6 +112,7 @@ def test_the_dispatcher_knows_the_check(repo: Path) -> None:
         text=True,
         env=hermetic_env(GOH_DIR=str(REPO_ROOT)),
         check=False,
+        stdin=subprocess.DEVNULL,
     )
     assert r.returncode == 1 and "tools/gate.sh:6:" in r.stderr, r.stdout + r.stderr
 

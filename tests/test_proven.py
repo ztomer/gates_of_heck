@@ -39,6 +39,7 @@ def _git(repo: Path, *args: str) -> str:
         capture_output=True,
         text=True,
         env=env,
+        stdin=subprocess.DEVNULL,
     ).stdout.strip()
 
 
@@ -105,6 +106,7 @@ def proven(goh: Path, repo: Path, env: dict, step: str = STEP, *opts: str):
         env=env,
         capture_output=True,
         text=True,
+        stdin=subprocess.DEVNULL,
     )
 
 
@@ -324,6 +326,7 @@ def commit(repo: Path, env: dict, *args: str) -> None:
         check=True,
         capture_output=True,
         text=True,
+        stdin=subprocess.DEVNULL,
     )
 
 
@@ -334,6 +337,7 @@ def local_ci(goh: Path, repo: Path, env: dict):
         env=env,
         capture_output=True,
         text=True,
+        stdin=subprocess.DEVNULL,
     )
 
 

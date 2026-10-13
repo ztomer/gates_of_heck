@@ -24,7 +24,11 @@ pytestmark = pytest.mark.skipif(shutil.which("ruff") is None, reason="ruff not o
 
 def run(repo):
     return subprocess.run(
-        ["/bin/bash", str(GATE), str(repo)], capture_output=True, text=True, check=False
+        ["/bin/bash", str(GATE), str(repo)],
+        capture_output=True,
+        text=True,
+        check=False,
+        stdin=subprocess.DEVNULL,
     )
 
 
@@ -110,7 +114,7 @@ def test_seed_writes_every_tracked_files_count(repo):
     out = repo / "tools" / "py_lint_ceilings.json"
     r = subprocess.run(
         ["python3", str(SEED), "--seed", str(out)], cwd=repo, capture_output=True, text=True,
-        check=False,
+        check=False, stdin=subprocess.DEVNULL,
     )  # fmt: skip
     assert r.returncode == 0, r.stdout + r.stderr
     assert json.loads(out.read_text()) == {"old.py": 2}

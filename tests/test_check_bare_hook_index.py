@@ -36,6 +36,7 @@ def _structural(goh: Path, repo: Path, *args: str) -> subprocess.CompletedProces
         text=True,
         env=hermetic_env(GOH_DIR=str(REPO_ROOT)),
         check=False,
+        stdin=subprocess.DEVNULL,
     )
 
 
@@ -91,6 +92,7 @@ def test_the_dispatcher_knows_it(repo: Path) -> None:
         text=True,
         env=hermetic_env(GOH_DIR=str(REPO_ROOT)),
         check=False,
+        stdin=subprocess.DEVNULL,
     )
     assert r.returncode == 1 and "unknown check" not in r.stderr, r.stdout + r.stderr
 

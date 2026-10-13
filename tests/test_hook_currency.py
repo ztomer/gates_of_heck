@@ -20,7 +20,11 @@ from conftest import REPO_ROOT, hermetic_env, native_goh_path
 
 def _git(*args: str) -> str:
     return subprocess.run(
-        ["git", "-C", str(REPO_ROOT), *args], capture_output=True, text=True, check=True
+        ["git", "-C", str(REPO_ROOT), *args],
+        capture_output=True,
+        text=True,
+        check=True,
+        stdin=subprocess.DEVNULL,
     ).stdout
 
 
@@ -32,6 +36,7 @@ def _shipped(name: str) -> dict[str, str]:
             ["git", "-C", str(REPO_ROOT), "cat-file", "-p", f"{commit}:hooks/{name}"],
             capture_output=True,
             check=True,
+            stdin=subprocess.DEVNULL,
         ).stdout
         out[hashlib.sha256(blob).hexdigest()] = commit
     return out
@@ -54,9 +59,14 @@ def _repo_with_hook(tmp_path, body: bytes):
     (repo / ".githooks").mkdir(parents=True)
     (repo / ".githooks" / "pre-push").write_bytes(body)
     (repo / "a.py").write_text("x = 1\n")
-    subprocess.run(["git", "init", "-q"], cwd=repo, check=True)
-    subprocess.run(["git", "config", "core.hooksPath", ".githooks"], cwd=repo, check=True)
-    subprocess.run(["git", "add", "-A"], cwd=repo, check=True)
+    subprocess.run(["git", "init", "-q"], cwd=repo, check=True, stdin=subprocess.DEVNULL)
+    subprocess.run(
+        ["git", "config", "core.hooksPath", ".githooks"],
+        cwd=repo,
+        check=True,
+        stdin=subprocess.DEVNULL,
+    )
+    subprocess.run(["git", "add", "-A"], cwd=repo, check=True, stdin=subprocess.DEVNULL)
     return repo
 
 
@@ -74,6 +84,7 @@ def _structural(repo, native: bool):
         capture_output=True,
         text=True,
         timeout=120,
+        stdin=subprocess.DEVNULL,
     )
 
 
@@ -83,6 +94,7 @@ def test_an_older_stock_hook_is_named_with_its_fix(tmp_path, native):
         ["git", "-C", str(REPO_ROOT), "cat-file", "-p", "73391f0:hooks/pre-push"],
         capture_output=True,
         check=True,
+        stdin=subprocess.DEVNULL,
     ).stdout
     got = _structural(_repo_with_hook(tmp_path, old), native)
     text = got.stdout + got.stderr

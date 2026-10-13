@@ -25,6 +25,7 @@ def _run(os_name: str, arch: str) -> subprocess.CompletedProcess[str]:
             "GOH_BUILD_ARCH": arch,
             "GOH_BUILD_GATE_ONLY": "1",
         },
+        stdin=subprocess.DEVNULL,
     )
 
 

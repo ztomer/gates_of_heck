@@ -90,6 +90,7 @@ def listed_files(repo: Path) -> list[str]:
         ["git", "-C", str(repo), "ls-files", "-z", "--cached", "--others", "--exclude-standard"],
         check=True,
         capture_output=True,
+        stdin=subprocess.DEVNULL,
     ).stdout
     return sorted(
         p

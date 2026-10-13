@@ -66,6 +66,7 @@ def git(repo: Path, *args: str) -> str:
         capture_output=True,
         text=True,
         check=True,
+        stdin=subprocess.DEVNULL,
     )
     return out.stdout
 
@@ -73,7 +74,12 @@ def git(repo: Path, *args: str) -> str:
 def git_ok(repo: Path, *args: str) -> bool:
     """Run a git command in `repo`; True iff it exited 0."""
     return (
-        subprocess.run(["git", "-C", str(repo), *args], capture_output=True, text=True).returncode
+        subprocess.run(
+            ["git", "-C", str(repo), *args],
+            capture_output=True,
+            text=True,
+            stdin=subprocess.DEVNULL,
+        ).returncode
         == 0
     )
 
@@ -149,7 +155,7 @@ def run_check(repo: Path, script: str, *args: str) -> subprocess.CompletedProces
         if script in RETIRED
         else ["python3", str(REPO_ROOT / script), *args]
     )
-    return subprocess.run(argv, cwd=repo, capture_output=True, text=True)
+    return subprocess.run(argv, cwd=repo, capture_output=True, text=True, stdin=subprocess.DEVNULL)
 
 
 def run_gate(repo: Path, gate: str, *args: str) -> subprocess.CompletedProcess:
@@ -159,6 +165,7 @@ def run_gate(repo: Path, gate: str, *args: str) -> subprocess.CompletedProcess:
         cwd=repo,
         capture_output=True,
         text=True,
+        stdin=subprocess.DEVNULL,
     )
 
 
@@ -305,7 +312,8 @@ def _build_goh() -> Path:
         ],
         capture_output=True,
         text=True,
-        env=dict(os.environ, DRIFT_BUILD_OK="1"),  # the one build tests/_drift_guard.py allows
+        env=dict(os.environ, DRIFT_BUILD_OK="1"),
+        stdin=subprocess.DEVNULL,  # the one build tests/_drift_guard.py allows
     )
     assert r.returncode == 0, f"cargo build failed:\n{r.stderr}"
     for line in r.stdout.splitlines():
@@ -422,7 +430,13 @@ def native_goh_path() -> Path:
 def run_goh(cwd: Path, *args: str, **kw) -> subprocess.CompletedProcess:
     """`goh <args>` in `cwd`, text captured -- the native tier every suite now tests."""
     return subprocess.run(
-        [str(native_goh_path()), *args], cwd=cwd, capture_output=True, text=True, **kw
+        [str(native_goh_path()), *args],
+        cwd=cwd,
+        capture_output=True,
+        text=True,
+        # A caller's own `stdin=` or `input=` wins; otherwise the child reads nothing.
+        stdin=kw.pop("stdin", None if "input" in kw else subprocess.DEVNULL),
+        **kw,
     )
 
 

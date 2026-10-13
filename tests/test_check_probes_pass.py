@@ -226,6 +226,7 @@ def test_the_gates_own_self_proof_passes():
         [sys.executable, str(ROOT / "checks" / "check_probes_pass.py"), "--probe"],
         capture_output=True,
         text=True,
+        stdin=subprocess.DEVNULL,
     )
     assert result.returncode == 0, result.stdout + result.stderr
 
@@ -292,12 +293,20 @@ def test_the_scope_test_names_the_repo_and_the_alternative(tmp_path):
 
 
 def _git_repo(path):
-    subprocess.run(["git", "init", "-q", str(path)], check=True, capture_output=True)
     subprocess.run(
-        ["git", "-C", str(path), "config", "user.email", "t@t"], check=True, capture_output=True
+        ["git", "init", "-q", str(path)], check=True, capture_output=True, stdin=subprocess.DEVNULL
     )
     subprocess.run(
-        ["git", "-C", str(path), "config", "user.name", "t"], check=True, capture_output=True
+        ["git", "-C", str(path), "config", "user.email", "t@t"],
+        check=True,
+        capture_output=True,
+        stdin=subprocess.DEVNULL,
+    )
+    subprocess.run(
+        ["git", "-C", str(path), "config", "user.name", "t"],
+        check=True,
+        capture_output=True,
+        stdin=subprocess.DEVNULL,
     )
     return path
 
@@ -322,7 +331,12 @@ def test_gate_dirs_present_but_nothing_scannable_refuses(tmp_path):
     root = _git_repo(tmp_path)
     (root / "checks").mkdir()
     (root / "README.md").write_text("# no gates\n", encoding="utf-8")
-    subprocess.run(["git", "-C", str(root), "add", "-A"], check=True, capture_output=True)
+    subprocess.run(
+        ["git", "-C", str(root), "add", "-A"],
+        check=True,
+        capture_output=True,
+        stdin=subprocess.DEVNULL,
+    )
     assert gate.main(["--root", str(root)]) == 1
 
 
@@ -333,7 +347,12 @@ def test_a_tools_dir_holding_only_other_scripts_is_nothing_to_prove(tmp_path):
     root = _git_repo(tmp_path)
     (root / "tools").mkdir()
     (root / "tools" / "gate.sh").write_text("#!/bin/sh\n", encoding="utf-8")
-    subprocess.run(["git", "-C", str(root), "add", "-A"], check=True, capture_output=True)
+    subprocess.run(
+        ["git", "-C", str(root), "add", "-A"],
+        check=True,
+        capture_output=True,
+        stdin=subprocess.DEVNULL,
+    )
     assert gate.main(["--root", str(root)]) == 0
     # ...while an ignored check_*.py beside it is the harness's shape, and refuses.
     (root / "tools" / "check_copy.py").write_text("x = 1\n", encoding="utf-8")

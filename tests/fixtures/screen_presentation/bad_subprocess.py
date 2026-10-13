@@ -1,3 +1,3 @@
 import subprocess
 
-subprocess.run(["screencapture", "-x", "/tmp/a.png"])
+subprocess.run(["screencapture", "-x", "/tmp/a.png"], stdin=subprocess.DEVNULL)

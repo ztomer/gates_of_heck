@@ -97,7 +97,7 @@ def test_no_path_is_exempt_from_the_secrets_scan(repo):
 
 def test_full_mode_scans_tracked_files(repo):
     write(repo, "leak.py", f"k = {GHP!r}\n")
-    subprocess.run(["git", "-C", str(repo), "add", "-A"], check=True)
+    subprocess.run(["git", "-C", str(repo), "add", "-A"], check=True, stdin=subprocess.DEVNULL)
     subprocess.run(
         [
             "git",
@@ -112,6 +112,7 @@ def test_full_mode_scans_tracked_files(repo):
             "fixture",
         ],
         check=True,
+        stdin=subprocess.DEVNULL,
     )
     r = run_secrets(repo)
     assert r.returncode == 1, r.stdout + r.stderr

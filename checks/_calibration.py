@@ -119,6 +119,7 @@ def committed(repo_root: str, path: str) -> bool | None:
             timeout=30,
             check=False,
             env=foreign_repo_env(),
+            stdin=subprocess.DEVNULL,
         )
     except (OSError, subprocess.SubprocessError):
         return None
@@ -139,6 +140,7 @@ def committed(repo_root: str, path: str) -> bool | None:
             timeout=30,
             check=False,
             env=foreign_repo_env(),
+            stdin=subprocess.DEVNULL,
         )
     except (OSError, subprocess.SubprocessError):
         return None

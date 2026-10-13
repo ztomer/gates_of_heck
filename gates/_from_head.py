@@ -44,6 +44,7 @@ def reexec(script: str) -> None:
         capture_output=True,
         text=True,
         check=False,
+        stdin=subprocess.DEVNULL,
     )
     if got.returncode == 2:  # the helper's own refusal (a test without GOH_LIVE): say it, stop
         sys.stderr.write(got.stderr)

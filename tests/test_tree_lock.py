@@ -39,6 +39,7 @@ def _spawn(repo: Path, secs: float) -> subprocess.Popen:
         stderr=subprocess.STDOUT,
         text=True,
         start_new_session=True,
+        stdin=subprocess.DEVNULL,
     )
 
 
@@ -96,7 +97,12 @@ def test_an_orphaned_child_still_using_the_tree_keeps_it(tmp_path):
     # LOCKED is echoed before `sleep` forks; kill only once the child exists,
     # or the test measures the fork race instead of the inherited fd.
     for _ in range(50):
-        if subprocess.run(["pgrep", "-P", str(first.pid)], capture_output=True).returncode == 0:
+        if (
+            subprocess.run(
+                ["pgrep", "-P", str(first.pid)], capture_output=True, stdin=subprocess.DEVNULL
+            ).returncode
+            == 0
+        ):
             break
         time.sleep(0.1)
     else:

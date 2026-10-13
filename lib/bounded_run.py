@@ -79,7 +79,11 @@ def _process_table() -> list[tuple[int, int, int]]:
     """
     try:
         out = subprocess.run(
-            ["ps", "-Ao", "pid=,ppid=,pgid="], capture_output=True, text=True, check=False
+            ["ps", "-Ao", "pid=,ppid=,pgid="],
+            capture_output=True,
+            text=True,
+            check=False,
+            stdin=subprocess.DEVNULL,
         )
     except (OSError, subprocess.SubprocessError):
         return []

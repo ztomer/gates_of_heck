@@ -405,7 +405,12 @@ def test_goh_sh_reads_the_repos_own_exclusion(tmp_path):
     entry = Path(__file__).resolve().parents[1] / "gates" / "goh.sh"
     env = hermetic_env(drop_git=True, GOH_BIN=str(native_goh_path()))
     r = subprocess.run(
-        ["bash", str(entry), "md-links"], cwd=repo, capture_output=True, text=True, env=env
+        ["bash", str(entry), "md-links"],
+        cwd=repo,
+        capture_output=True,
+        text=True,
+        env=env,
+        stdin=subprocess.DEVNULL,
     )
     assert r.returncode == 0, r.stdout + r.stderr
     assert "PROTOCOL.md" not in r.stdout + r.stderr

@@ -111,6 +111,7 @@ def clone(repo: Path, dest: Path) -> None:
         ["git", "clone", "-q", "--shared", str(repo), str(dest)],
         check=True,
         env=foreign_repo_env(),
+        stdin=subprocess.DEVNULL,
     )
 
 
@@ -129,6 +130,7 @@ def run_row(clones: list[Path], n: int, workload: str, logs: Path, tag: str) -> 
             stdout=handle,
             stderr=subprocess.STDOUT,
             env=env,
+            stdin=subprocess.DEVNULL,
         )
         procs.append((proc, handle, start, log, timings))
     sessions = []

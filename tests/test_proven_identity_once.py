@@ -38,7 +38,7 @@ def test_a_two_step_local_ci_asks_the_toolchain_once(tmp_path: Path, repo: Path)
     env["PATH"] = f"{shim}:{env['PATH']}"
     r = subprocess.run(
         ["bash", str(REPO_ROOT / "gates" / "local_ci.sh"), str(repo)],
-        cwd=repo, env=env, capture_output=True, text=True, timeout=120,
+        cwd=repo, env=env, capture_output=True, text=True, timeout=120, stdin=subprocess.DEVNULL,
     )  # fmt: skip
     assert r.returncode == 0, r.stdout + r.stderr
     asked = log.read_text().splitlines() if log.exists() else []
@@ -56,5 +56,12 @@ def test_an_inherited_identity_for_another_directory_is_not_taken(
     )
     env["PATH"] = f"{shim}:{env['PATH']}"
     script = f'. "{REPO_ROOT}/gates/_proven.sh"; proven_settings; proven_identity'
-    r = subprocess.run(["bash", "-c", script], cwd=repo, env=env, capture_output=True, text=True)
+    r = subprocess.run(
+        ["bash", "-c", script],
+        cwd=repo,
+        env=env,
+        capture_output=True,
+        text=True,
+        stdin=subprocess.DEVNULL,
+    )
     assert "FAKE" not in r.stdout and "tool rustc rustc" in r.stdout, r.stdout + r.stderr

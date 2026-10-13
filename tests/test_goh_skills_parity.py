@@ -26,7 +26,9 @@ FAIL_RE = re.compile(r"structural: (.+) failed")
 
 
 def _git(repo: Path, *args: str) -> None:
-    subprocess.run(["git", *args], cwd=repo, capture_output=True, check=True)
+    subprocess.run(
+        ["git", *args], cwd=repo, capture_output=True, check=True, stdin=subprocess.DEVNULL
+    )
 
 
 def skill(name: str, body: str = "Body text here.\n") -> tuple[str, str]:
@@ -50,6 +52,7 @@ def run_py(corpus: Path, *args: str) -> tuple[int, str, str]:
         ["python3", str(CHECK), "--root", str(corpus), *args],
         capture_output=True,
         text=True,
+        stdin=subprocess.DEVNULL,
     )
     return r.returncode, r.stdout, r.stderr
 
@@ -63,6 +66,7 @@ def run_goh(goh: Path, corpus: Path, *args: str) -> tuple[int, str, str]:
         capture_output=True,
         text=True,
         env=env,
+        stdin=subprocess.DEVNULL,
     )
     return r.returncode, r.stdout, r.stderr
 
@@ -159,7 +163,12 @@ def test_structural_corpus_step_agrees(goh: Path, tmp_path: Path) -> None:
         _git(repo, "add", "-A")
         env = dict(os.environ, GOH_DIR=str(ROOT))
         native = subprocess.run(
-            [str(goh), "structural", "--full"], cwd=repo, capture_output=True, text=True, env=env
+            [str(goh), "structural", "--full"],
+            cwd=repo,
+            capture_output=True,
+            text=True,
+            env=env,
+            stdin=subprocess.DEVNULL,
         )
         python = subprocess.run(
             ["bash", str(STRUCTURAL), "--full"],
@@ -167,6 +176,7 @@ def test_structural_corpus_step_agrees(goh: Path, tmp_path: Path) -> None:
             capture_output=True,
             text=True,
             env=dict(env, GOH_BIN=str(goh)),
+            stdin=subprocess.DEVNULL,
         )
         assert (native.returncode, failing_label(native.stdout, native.stderr)) == (
             python.returncode,

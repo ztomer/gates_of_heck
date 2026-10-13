@@ -39,6 +39,7 @@ def _bounded(env, *cmd: str, label: str, timeout: int = 20) -> int:
         env=env,
         capture_output=True,
         timeout=60,
+        stdin=subprocess.DEVNULL,
     ).returncode
 
 
@@ -105,7 +106,10 @@ def test_the_report_sums_one_label_across_every_place_it_ran(tmp_path):
     with out.open("a") as fh:
         fh.write('{"label": "trunc')  # a killed run's last line must not sink the report
     text = subprocess.run(
-        [sys.executable, str(TIMINGS), "report", str(out)], capture_output=True, text=True
+        [sys.executable, str(TIMINGS), "report", str(out)],
+        capture_output=True,
+        text=True,
+        stdin=subprocess.DEVNULL,
     ).stdout
     assert "13.60 s  x3    dependency currency" in text, text
     assert "3 step(s) recorded" in text, text
@@ -126,6 +130,7 @@ def test_goh_step_in_records_the_directory_it_ran_in(tmp_path):
         text=True,
         cwd=tmp_path,
         timeout=60,
+        stdin=subprocess.DEVNULL,
     )
     assert r.returncode == 0, r.stdout + r.stderr
     (row,) = _rows(out)

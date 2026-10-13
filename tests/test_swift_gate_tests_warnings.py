@@ -45,7 +45,12 @@ def _run(repo: Path, bin_dir: Path, tmp_path: Path, **extra):
     env = dict(os.environ, SWIFT_CALLS=str(tmp_path / "calls.txt"), **extra)
     env["PATH"] = f"{bin_dir}:{env['PATH']}"
     r = subprocess.run(
-        ["/bin/bash", str(SWIFT_GATE), str(repo)], cwd=repo, capture_output=True, text=True, env=env
+        ["/bin/bash", str(SWIFT_GATE), str(repo)],
+        cwd=repo,
+        capture_output=True,
+        text=True,
+        env=env,
+        stdin=subprocess.DEVNULL,
     )
     calls = (tmp_path / "calls.txt").read_text() if (tmp_path / "calls.txt").exists() else ""
     return r, calls

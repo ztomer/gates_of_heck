@@ -150,6 +150,7 @@ def _git(repo: Path, *args: str) -> None:
         check=True,
         capture_output=True,
         env=hermetic_env(drop_git=True),
+        stdin=subprocess.DEVNULL,
     )
 
 

@@ -29,7 +29,13 @@ def _resolve(bin_dir: Path, **extra_env) -> subprocess.CompletedProcess:
     env["PATH"] = str(bin_dir)
     env.update(extra_env)
     script = f'. "{TOOLCHAIN}"; goh_swift_resolve; printf "%s|%s\\n" "$SWIFT" "$SWIFT_ORIGIN"'
-    return subprocess.run(["/bin/bash", "-c", script], capture_output=True, text=True, env=env)
+    return subprocess.run(
+        ["/bin/bash", "-c", script],
+        capture_output=True,
+        text=True,
+        env=env,
+        stdin=subprocess.DEVNULL,
+    )
 
 
 def _xcrun_shim(bin_dir: Path, answers: Path | None) -> None:

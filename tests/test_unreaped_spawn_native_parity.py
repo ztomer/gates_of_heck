@@ -73,7 +73,15 @@ def test_the_table_is_not_empty() -> None:
 def _report(cmd: list[str]) -> tuple[int, str]:
     env = {k: v for k, v in os.environ.items() if k not in ("NO_COLOR", "FORCE_COLOR")}
     env["NO_COLOR"] = "1"
-    r = subprocess.run(cmd, cwd=REPO_ROOT, capture_output=True, text=True, env=env, timeout=120)
+    r = subprocess.run(
+        cmd,
+        cwd=REPO_ROOT,
+        capture_output=True,
+        text=True,
+        env=env,
+        timeout=120,
+        stdin=subprocess.DEVNULL,
+    )
     return r.returncode, r.stdout + r.stderr
 
 

@@ -62,6 +62,7 @@ def _run(gates: Path, repo: Path, tmp_path: Path, **extra: str) -> subprocess.Co
         text=True,
         env=env,
         timeout=120,
+        stdin=subprocess.DEVNULL,
     )
 
 
@@ -70,7 +71,7 @@ def test_a_direct_call_judges_with_head_and_goh_live_with_the_tree(
 ) -> None:
     (repo / "a.txt").write_text("fine\n")
     (repo / "b.txt").write_text("1\ta.txt\n")
-    subprocess.run(["git", "-C", str(repo), "add", "-A"], check=True)
+    subprocess.run(["git", "-C", str(repo), "add", "-A"], check=True, stdin=subprocess.DEVNULL)
     head = _run(dirty, repo, tmp_path)
     assert head.returncode == 0, head.stdout + head.stderr
     assert PLANT not in head.stdout + head.stderr, "an uncommitted checker edit judged a consumer"
@@ -88,10 +89,14 @@ def test_a_linked_worktree_says_its_edit_is_not_what_ran(gates: Path, repo: Path
     edit there is exactly the noise C4 removed from consumers' gates.
     """
     wt = tmp_path / "wt"
-    subprocess.run(["git", "-C", str(gates), "worktree", "add", "-q", str(wt)], check=True)
+    subprocess.run(
+        ["git", "-C", str(gates), "worktree", "add", "-q", str(wt)],
+        check=True,
+        stdin=subprocess.DEVNULL,
+    )
     (repo / "a.txt").write_text("fine\n")
     (repo / "b.txt").write_text("1\ta.txt\n")
-    subprocess.run(["git", "-C", str(repo), "add", "-A"], check=True)
+    subprocess.run(["git", "-C", str(repo), "add", "-A"], check=True, stdin=subprocess.DEVNULL)
     clean = _run(wt, repo, tmp_path)
     assert clean.returncode == 0, clean.stdout + clean.stderr
     assert NOTICE not in clean.stderr, "an unedited file ran as committed: nothing to say"

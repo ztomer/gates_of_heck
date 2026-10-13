@@ -31,7 +31,11 @@ def local_env_vars() -> tuple:
     if "GIT_DIR" in inherited:
         return tuple(inherited)
     out = subprocess.run(
-        ["git", "rev-parse", "--local-env-vars"], capture_output=True, text=True, check=True
+        ["git", "rev-parse", "--local-env-vars"],
+        capture_output=True,
+        text=True,
+        check=True,
+        stdin=subprocess.DEVNULL,
     )
     return tuple(out.stdout.split())
 
@@ -74,6 +78,7 @@ def scratch_git(dest: str) -> None:
             capture_output=True,
             check=True,
             env=foreign_repo_env(),
+            stdin=subprocess.DEVNULL,
         )
         _EMPTY_GIT["git"] = os.path.join(seed, ".git")
     shutil.copytree(_EMPTY_GIT["git"], os.path.join(dest, ".git"))
@@ -102,7 +107,12 @@ def is_work_tree(path) -> bool:
 
 
 def repo_root() -> str:
-    out = subprocess.run(["git", "rev-parse", "--show-toplevel"], capture_output=True, text=True)
+    out = subprocess.run(
+        ["git", "rev-parse", "--show-toplevel"],
+        capture_output=True,
+        text=True,
+        stdin=subprocess.DEVNULL,
+    )
     return out.stdout.strip()
 
 
@@ -134,7 +144,7 @@ def listed_files(root: str, staged: bool) -> list[str]:
         if staged
         else ["git", "-C", root, "ls-files", "-z", "--cached", "--others", "--exclude-standard"]
     )
-    out = subprocess.run(cmd, capture_output=True)
+    out = subprocess.run(cmd, capture_output=True, stdin=subprocess.DEVNULL)
     if out.returncode != 0:
         # A silent [] here is the worst possible answer: every consumer reports "0 files clean"
         # and exits 0, so a corrupt index or an unreadable object database reads exactly like a
@@ -203,6 +213,7 @@ def content_bytes(root: str, rel: str, staged: bool):
         out = subprocess.run(
             ["git", "-C", root, "show", f":{rel}"],
             capture_output=True,
+            stdin=subprocess.DEVNULL,
         )
         if out.returncode == 0:
             return out.stdout

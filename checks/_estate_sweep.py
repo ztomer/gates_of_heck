@@ -90,6 +90,7 @@ def corpus_sweep(root=None, force=False) -> bool:
         timeout=CORPUS_TIMEOUT,
         check=False,
         env=foreign_repo_env(),
+        stdin=subprocess.DEVNULL,
     )
     for line in (result.stdout + result.stderr).strip().splitlines():
         info(line)

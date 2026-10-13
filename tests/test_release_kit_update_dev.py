@@ -38,6 +38,7 @@ def run_update_dev(workdir: Path, bin_dir: Path | None, *args: str) -> subproces
         capture_output=True,
         text=True,
         env=env,
+        stdin=subprocess.DEVNULL,
     )
 
 
@@ -52,6 +53,7 @@ class TestUpdateDev:
             ["/usr/bin/xattr", "-p", "com.apple.quarantine", str(installed)],
             capture_output=True,
             text=True,
+            stdin=subprocess.DEVNULL,
         )
         assert probe.returncode != 0, "quarantine survived the install"
         assert "quarantine clear" in r.stdout

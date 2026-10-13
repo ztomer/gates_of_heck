@@ -73,9 +73,19 @@ def test_a_failing_git_raises_instead_of_reporting_an_empty_repo(tmp_path):
     sys.path.insert(0, str(REPO_ROOT / "checks"))
     from _gitutil import listed_files
 
-    subprocess.run(["git", "init", "-q", str(tmp_path)], check=True, capture_output=True)
+    subprocess.run(
+        ["git", "init", "-q", str(tmp_path)],
+        check=True,
+        capture_output=True,
+        stdin=subprocess.DEVNULL,
+    )
     (tmp_path / "a.txt").write_text("hi", encoding="utf-8")
-    subprocess.run(["git", "-C", str(tmp_path), "add", "a.txt"], check=True, capture_output=True)
+    subprocess.run(
+        ["git", "-C", str(tmp_path), "add", "a.txt"],
+        check=True,
+        capture_output=True,
+        stdin=subprocess.DEVNULL,
+    )
     (tmp_path / ".git" / "index").write_bytes(b"garbage")
 
     with pytest.raises(RuntimeError, match="ls-files failed"):

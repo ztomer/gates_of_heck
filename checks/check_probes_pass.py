@@ -212,9 +212,9 @@ def run_one(path, flag, cwd, timeout=TIMEOUT):
             capture_output=True,
             text=True,
             timeout=timeout,
-            # A probe builds its OWN fixture repos. Handed the hook's GIT_DIR, a probe's
-            # `git init <tmp>` under a linked worktree re-initialises the real repository and
-            # flips its core.bare -- so no probe, in any consumer repo, ever sees those variables.
+            stdin=subprocess.DEVNULL,
+            # A probe builds its OWN fixture repos: handed the hook's GIT_DIR, its `git init <tmp>`
+            # in a linked worktree re-inits the real repo and flips core.bare. No probe sees them.
             env=foreign_repo_env(),
         )
     except subprocess.TimeoutExpired:

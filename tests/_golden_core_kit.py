@@ -110,4 +110,5 @@ def run_cli(*args):
         capture_output=True,
         text=True,
         check=False,
+        stdin=subprocess.DEVNULL,
     )

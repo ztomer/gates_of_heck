@@ -21,7 +21,9 @@ CARGO = b'[package]\nname = "x"\nversion = "0.1.0"\nedition = "2021"\n'
 
 
 def _git(repo: Path, *args: str) -> None:
-    subprocess.run(["git", *args], cwd=repo, capture_output=True, check=True)
+    subprocess.run(
+        ["git", *args], cwd=repo, capture_output=True, check=True, stdin=subprocess.DEVNULL
+    )
 
 
 def make_repo(tmp_path: Path, files: dict[str, bytes]) -> Path:
@@ -37,7 +39,13 @@ def make_repo(tmp_path: Path, files: dict[str, bytes]) -> Path:
 
 
 def run_py(repo: Path, *args: str) -> tuple[int, str, str]:
-    r = subprocess.run(["python3", str(CHECK), *args], cwd=repo, capture_output=True, text=True)
+    r = subprocess.run(
+        ["python3", str(CHECK), *args],
+        cwd=repo,
+        capture_output=True,
+        text=True,
+        stdin=subprocess.DEVNULL,
+    )
     return r.returncode, r.stdout, r.stderr
 
 
@@ -51,6 +59,7 @@ def run_goh(goh: Path, repo: Path, *args: str) -> tuple[int, str, str]:
         capture_output=True,
         text=True,
         env=env,
+        stdin=subprocess.DEVNULL,
     )
     return r.returncode, r.stdout, r.stderr
 

@@ -48,7 +48,11 @@ def _crate(tmp: Path, *, unmaintained: bool, ignore: str | None = None) -> Path:
 
 def _check(c: Path) -> subprocess.CompletedProcess:
     return subprocess.run(
-        ["python3", str(CHECK), "--no-fetch"], cwd=c, capture_output=True, text=True
+        ["python3", str(CHECK), "--no-fetch"],
+        cwd=c,
+        capture_output=True,
+        text=True,
+        stdin=subprocess.DEVNULL,
     )
 
 

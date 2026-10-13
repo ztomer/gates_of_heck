@@ -19,7 +19,9 @@ from conftest import REPO_ROOT, hermetic_env
 
 pytestmark = pytest.mark.skipif(
     shutil.which("cargo") is None
-    or subprocess.run(["cargo", "llvm-cov", "--version"], capture_output=True).returncode,
+    or subprocess.run(
+        ["cargo", "llvm-cov", "--version"], capture_output=True, stdin=subprocess.DEVNULL
+    ).returncode,
     reason="cargo llvm-cov not available",
 )
 
@@ -35,7 +37,7 @@ def _cov(crate: Path) -> str:
     r = subprocess.run(
         ["/bin/bash", str(REPO_ROOT / "gates" / "coverage_gate.sh"), "--lang", "rust", "--floor",
          "0", str(crate)],
-        cwd=crate, capture_output=True, text=True, env=hermetic_env(), timeout=600,
+        cwd=crate, capture_output=True, text=True, env=hermetic_env(), timeout=600, stdin=subprocess.DEVNULL,
     )  # fmt: skip
     assert r.returncode == 0, r.stdout + r.stderr
     return next(ln for ln in r.stdout.splitlines() if "[coverage]" in ln).split(" (floor")[0][-40:]
@@ -49,7 +51,9 @@ def test_an_incremental_report_is_the_clean_builds(tmp_path: Path) -> None:
     (crate / "Cargo.toml").write_text(manifest)
     (crate / "src" / "lib.rs").write_text(LIB)
     (crate / "tests" / "t1.rs").write_text(CALLS_A)
-    subprocess.run(["cargo", "generate-lockfile", "-q"], cwd=crate, check=True)
+    subprocess.run(
+        ["cargo", "generate-lockfile", "-q"], cwd=crate, check=True, stdin=subprocess.DEVNULL
+    )
     assert _cov(crate).endswith("100.0% of coverable lines")
 
     (crate / "tests" / "t1.rs").write_text(CALLS_B)  # a() is no longer called by anything
@@ -57,7 +61,9 @@ def test_an_incremental_report_is_the_clean_builds(tmp_path: Path) -> None:
 
     (crate / "tests" / "t1.rs").unlink()
     (crate / "Cargo.toml").write_text(manifest.replace("0.1.0", "0.2.0"))
-    subprocess.run(["cargo", "generate-lockfile", "-q"], cwd=crate, check=True)
+    subprocess.run(
+        ["cargo", "generate-lockfile", "-q"], cwd=crate, check=True, stdin=subprocess.DEVNULL
+    )
     assert _cov(crate).endswith("66.67% of coverable lines"), "a stale binary counted"
 
     (crate / "src" / "lib.rs").write_text(LIB.replace("pub fn a() -> u32 {\n    1\n}\n\n", ""))

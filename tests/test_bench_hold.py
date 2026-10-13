@@ -55,7 +55,7 @@ def test_a_gate_started_during_the_block_waits_for_it_and_names_it(
     ran, go = tmp_path / "ran", tmp_path / "go"  # the gate starts once the block holds the host
     with subprocess.Popen(
         ["bash", "-c", f'. "{LIB}"; until [ -e "{go}" ]; do sleep 0.05; done; bench_lock_join "py gate"; : > "{ran}"'],
-        stderr=subprocess.PIPE, text=True,
+        stderr=subprocess.PIPE, text=True, stdin=subprocess.DEVNULL,
     ) as gate:  # fmt: skip
         with bench_hold.held("census: theme", hold_s=60):
             go.touch()
@@ -71,7 +71,7 @@ def test_a_gate_started_during_the_block_waits_for_it_and_names_it(
 def test_a_held_host_is_refused_by_name_before_the_block_runs(lock: Path, tmp_path: Path) -> None:
     ready = tmp_path / "ready"
     peer = subprocess.Popen(
-        ["bash", "-c", f'. "{LIB}"; bench_lock_exclusive "a peer measurement" && : > "{ready}" && exec sleep 60'],
+        ["bash", "-c", f'. "{LIB}"; bench_lock_exclusive "a peer measurement" && : > "{ready}" && exec sleep 60'], stdin=subprocess.DEVNULL,
     )  # fmt: skip
     try:
         _until(ready.exists)
@@ -103,7 +103,7 @@ def test_a_caller_killed_mid_block_releases_the_host(lock: Path, tmp_path: Path)
         f"with bench_hold.held('doomed', hold_s=60):\n"
         f"    open({str(inside)!r}, 'w').close(); time.sleep(60)\n"
     )
-    with subprocess.Popen([sys.executable, "-c", script]) as caller:
+    with subprocess.Popen([sys.executable, "-c", script], stdin=subprocess.DEVNULL) as caller:
         try:
             _until(inside.exists)
             held_then = (lock / "exclusive").exists()
@@ -117,7 +117,7 @@ def test_a_caller_killed_mid_block_releases_the_host(lock: Path, tmp_path: Path)
 def test_a_claim_voided_inside_the_block_is_reported_and_not_released_twice(lock: Path) -> None:
     with bench_hold.held("census", hold_s=60) as hold:
         # what a waiter does to an overdue hold: void it, and take the host itself
-        subprocess.run(["rm", "-rf", str(lock / "exclusive")], check=True)
+        subprocess.run(["rm", "-rf", str(lock / "exclusive")], check=True, stdin=subprocess.DEVNULL)
         (lock / "exclusive").mkdir()
         (lock / "exclusive" / "owner").write_text("1\nx\n0\n900\nthe next measurement\n")
     assert hold.void is True
@@ -133,7 +133,7 @@ def test_a_block_whose_host_an_ancestor_holds_claims_nothing(lock: Path, tmp_pat
     )
     outer = f'. "{LIB}"; bench_lock_exclusive "outer" && {sys.executable} -c "$1"'
     r = subprocess.run(["bash", "-c", outer, "outer", script], capture_output=True, text=True,
-                       timeout=30)  # fmt: skip
+                       timeout=30, stdin=subprocess.DEVNULL)  # fmt: skip
     assert r.returncode == 0 and r.stdout.strip() == "nested", r.stdout + r.stderr
 
 
@@ -146,5 +146,5 @@ def test_a_block_inside_a_registered_gate_claims_nothing(lock: Path) -> None:
     )
     gate = f'. "{LIB}"; bench_lock_join "a gate"; unset GOH_BENCH_JOINED; {sys.executable} -c "$1"'
     r = subprocess.run(["bash", "-c", gate, "gate", script], capture_output=True, text=True,
-                       timeout=30)  # fmt: skip
+                       timeout=30, stdin=subprocess.DEVNULL)  # fmt: skip
     assert r.returncode == 0 and r.stdout.strip() == "nested", r.stdout + r.stderr

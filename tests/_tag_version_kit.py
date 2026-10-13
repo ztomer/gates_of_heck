@@ -22,7 +22,9 @@ def origin_from(repo, path):
     way the release-kit suite makes one, so no new repo-creation site (test_suite_drift.py)."""
     import subprocess
 
-    subprocess.run(["git", "clone", "-q", "--bare", str(repo), str(path)], check=True)
+    subprocess.run(
+        ["git", "clone", "-q", "--bare", str(repo), str(path)], check=True, stdin=subprocess.DEVNULL
+    )
     git(repo, "remote", "add", "origin", str(path))
 
 

@@ -27,6 +27,7 @@ def _git(cwd: str, *args: str) -> str | None:
             text=True,
             timeout=GIT_TIMEOUT_S,
             check=False,
+            stdin=subprocess.DEVNULL,
         )
     except (OSError, subprocess.TimeoutExpired):
         return None

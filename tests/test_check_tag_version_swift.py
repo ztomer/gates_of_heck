@@ -70,6 +70,7 @@ def _run(repo, refs, source):
         capture_output=True,
         text=True,
         env=dict(os.environ, GOH_TAG_VERSION_SOURCES=source),
+        stdin=subprocess.DEVNULL,
     )
 
 
@@ -106,6 +107,7 @@ def test_a_swift_constant_is_a_version_source(tmp_path):
         capture_output=True,
         text=True,
         env=dict(os.environ, GOH_TAG_VERSION_SOURCES="swift:Sources/ZTCore/Version.swift"),
+        stdin=subprocess.DEVNULL,
     )
     assert configured.returncode == 0, configured.stdout + configured.stderr
 
@@ -143,6 +145,7 @@ def test_a_swift_file_that_declares_nothing_is_a_named_non_run_not_a_pass(tmp_pa
         capture_output=True,
         text=True,
         env=dict(os.environ, GOH_TAG_VERSION_SOURCES="swift:Version.swift"),
+        stdin=subprocess.DEVNULL,
     )
     assert out.returncode == 1, out.stdout + out.stderr
 
@@ -172,5 +175,6 @@ def test_two_release_numbers_in_one_swift_file_still_fail_the_gate(tmp_path):
         capture_output=True,
         text=True,
         env=dict(os.environ, GOH_TAG_VERSION_SOURCES="swift:Version.swift"),
+        stdin=subprocess.DEVNULL,
     )
     assert out.returncode == 1, out.stdout + out.stderr

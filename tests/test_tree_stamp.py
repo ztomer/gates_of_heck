@@ -20,7 +20,9 @@ STAMP = REPO_ROOT / "lib" / "tree_stamp.py"
 
 
 def git(repo, *args):
-    subprocess.run(["git", "-C", str(repo), *args], check=True, capture_output=True)
+    subprocess.run(
+        ["git", "-C", str(repo), *args], check=True, capture_output=True, stdin=subprocess.DEVNULL
+    )
 
 
 @pytest.fixture
@@ -40,6 +42,7 @@ def stamp(repo, tmp_path, action):
         [sys.executable, str(STAMP), action, str(repo), str(tmp_path / "s.json"), "--name", "demo"],
         capture_output=True,
         text=True,
+        stdin=subprocess.DEVNULL,
     )
 
 
@@ -145,7 +148,14 @@ def run_gate(repo, work, env_extra=None):
     script = repo.parent / "gate.sh"
     script.write_text(GATE.format(common=REPO_ROOT / "gates" / "_common.sh"))
     env = {**os.environ, "WORK": work, "STAMP": "1", **(env_extra or {})}
-    return subprocess.run(["bash", str(script)], cwd=repo, capture_output=True, text=True, env=env)
+    return subprocess.run(
+        ["bash", str(script)],
+        cwd=repo,
+        capture_output=True,
+        text=True,
+        env=env,
+        stdin=subprocess.DEVNULL,
+    )
 
 
 def test_a_green_gate_over_a_moving_tree_is_refused(repo):

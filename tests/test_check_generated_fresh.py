@@ -105,7 +105,10 @@ def test_default_timeout_exists():
 
     here = Path(__file__).resolve().parent.parent
     help_text = subprocess.run(
-        [sys.executable, str(here / FRESH), "--help"], capture_output=True, text=True
+        [sys.executable, str(here / FRESH), "--help"],
+        capture_output=True,
+        text=True,
+        stdin=subprocess.DEVNULL,
     ).stdout
     assert "120" in help_text, "--timeout default of 120s is not documented"
 

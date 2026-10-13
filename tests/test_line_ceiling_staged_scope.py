@@ -55,7 +55,12 @@ def _run(
 ) -> subprocess.CompletedProcess:
     cmd = ["bash", str(REPO_ROOT / "gates" / "structural.sh"), scope]
     return subprocess.run(
-        cmd, cwd=repo, capture_output=True, text=True, env=_env(runner, goh, **extra)
+        cmd,
+        cwd=repo,
+        capture_output=True,
+        text=True,
+        env=_env(runner, goh, **extra),
+        stdin=subprocess.DEVNULL,
     )
 
 
@@ -145,6 +150,7 @@ def test_both_steps_run_at_the_repo_root_from_a_subdirectory(runner, repo, goh):
             capture_output=True,
             text=True,
             env=_env(runner, goh),
+            stdin=subprocess.DEVNULL,
         )
         assert r.returncode == 1 and GREW in _out(r), (scope, _out(r))
 
@@ -183,6 +189,7 @@ def _hooked_commit(runner: str, goh: Path, repo: Path, *args: str) -> subprocess
         capture_output=True,
         text=True,
         env=_env(runner, goh),
+        stdin=subprocess.DEVNULL,
     )
 
 

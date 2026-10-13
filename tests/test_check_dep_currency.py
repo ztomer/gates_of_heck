@@ -45,7 +45,7 @@ def run(root: Path, offline: bool = True, ratchet: str | None = None) -> SimpleN
     args = [str(native_goh_path()), "deps", "--root", str(root), "--json"]
     if offline:
         args.append("--offline")
-    r = subprocess.run(args, capture_output=True, text=True, timeout=60)
+    r = subprocess.run(args, capture_output=True, text=True, timeout=60, stdin=subprocess.DEVNULL)
     assert r.returncode in (0, 1), r.stdout + r.stderr
     doc = json.loads(r.stdout)
     rows = doc.get("fatal", []) + doc.get("major_behind", []) + doc.get("minor_behind", [])
@@ -65,6 +65,7 @@ def main(root: Path) -> subprocess.CompletedProcess:
         capture_output=True,
         text=True,
         timeout=60,
+        stdin=subprocess.DEVNULL,
     )
 
 
@@ -271,6 +272,7 @@ def test_the_ratchet_fails_an_untriaged_major_and_passes_a_triaged_one(tmp_path,
         capture_output=True,
         text=True,
         env=_crates_io(tmp_path, ureq="3.4.2"),
+        stdin=subprocess.DEVNULL,
     )
     assert "Traceback" not in r.stderr, r.stderr
     assert r.returncode == want, r.stdout + r.stderr
@@ -301,7 +303,12 @@ def _currency(
     if offline:
         args.append("--offline")
     r = subprocess.run(
-        args, capture_output=True, text=True, timeout=60, env=_crates_io(tmp_path, **latest)
+        args,
+        capture_output=True,
+        text=True,
+        timeout=60,
+        env=_crates_io(tmp_path, **latest),
+        stdin=subprocess.DEVNULL,
     )
     assert r.returncode in (0, 1), r.stdout + r.stderr
     return r.returncode, json.loads(r.stdout)

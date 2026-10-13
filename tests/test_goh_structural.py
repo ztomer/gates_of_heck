@@ -28,7 +28,9 @@ FAIL_RE = re.compile(r"structural: (.+) failed")
 
 
 def _git(repo: Path, *args: str) -> None:
-    subprocess.run(["git", *args], cwd=repo, capture_output=True, check=True)
+    subprocess.run(
+        ["git", *args], cwd=repo, capture_output=True, check=True, stdin=subprocess.DEVNULL
+    )
 
 
 def make_repo(tmp_path: Path, files: dict[str, bytes]) -> Path:
@@ -56,7 +58,9 @@ def _run_bash(
     if goh is not None:
         env["GOH_BIN"] = str(goh)
     cmd = ["bash", str(STRUCTURAL), "--staged"] if staged else ["bash", str(STRUCTURAL)]
-    return subprocess.run(cmd, cwd=repo, capture_output=True, text=True, env=env)
+    return subprocess.run(
+        cmd, cwd=repo, capture_output=True, text=True, env=env, stdin=subprocess.DEVNULL
+    )
 
 
 def _run_goh(
@@ -64,7 +68,9 @@ def _run_goh(
 ) -> subprocess.CompletedProcess:
     env = hermetic_env(GOH_DIR=str(ROOT), **(extra or {}))
     cmd = [str(goh), "structural", "--staged"] if staged else [str(goh), "structural"]
-    return subprocess.run(cmd, cwd=repo, capture_output=True, text=True, env=env)
+    return subprocess.run(
+        cmd, cwd=repo, capture_output=True, text=True, env=env, stdin=subprocess.DEVNULL
+    )
 
 
 def run_goh(goh: Path, repo: Path, staged: bool) -> tuple[int, str | None]:
@@ -242,11 +248,25 @@ def test_structural_sh_execs_the_native_binary_when_told_where_it_is(goh, tmp_pa
     repo = make_repo(tmp_path, {"a.md": "ok\n".encode(), ".gatesrc": GATESRC})
 
     env = hermetic_env(GOH_BIN=str(goh), GOH_DIR=str(ROOT))
-    r = subprocess.run(["bash", str(STRUCTURAL)], cwd=repo, capture_output=True, text=True, env=env)
+    r = subprocess.run(
+        ["bash", str(STRUCTURAL)],
+        cwd=repo,
+        capture_output=True,
+        text=True,
+        env=env,
+        stdin=subprocess.DEVNULL,
+    )
     assert r.returncode == 0, r.stdout + r.stderr
     assert "goh binary not built" not in r.stderr
     env = hermetic_env(GOH_BIN="/nonexistent/goh", GOH_DIR=str(ROOT))
-    r = subprocess.run(["bash", str(STRUCTURAL)], cwd=repo, capture_output=True, text=True, env=env)
+    r = subprocess.run(
+        ["bash", str(STRUCTURAL)],
+        cwd=repo,
+        capture_output=True,
+        text=True,
+        env=env,
+        stdin=subprocess.DEVNULL,
+    )
     assert r.returncode == 1, r.stdout + r.stderr
     assert r.stderr.count("GOH_BIN=/nonexistent/goh is not an executable") == 1, r.stderr
     assert "== structural gate ==" not in r.stdout, "something ran in the binary's place"

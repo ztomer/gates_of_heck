@@ -196,6 +196,7 @@ def test_two_process_writers_lose_no_markers(tmp_path):
             stdout=sp.PIPE,
             stderr=sp.PIPE,
             text=True,
+            stdin=sp.DEVNULL,
         )
         for i in range(workers)
     ]

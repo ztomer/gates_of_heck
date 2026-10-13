@@ -63,6 +63,7 @@ def _wrap_with(
         text=True,
         check=False,
         cwd=repo,
+        stdin=subprocess.DEVNULL,
     )
 
 
@@ -115,7 +116,11 @@ def reap_tree(root: int) -> None:
     """
     children: dict[int, list[int]] = {}
     table = subprocess.run(
-        ["ps", "-Ao", "pid=,ppid="], capture_output=True, text=True, check=False
+        ["ps", "-Ao", "pid=,ppid="],
+        capture_output=True,
+        text=True,
+        check=False,
+        stdin=subprocess.DEVNULL,
     ).stdout
     for line in table.splitlines():
         parts = line.split()
@@ -221,6 +226,7 @@ def test_the_canary_never_reports_a_concurrent_gate_run(wrap, repo: Path) -> Non
         ],
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
+        stdin=subprocess.DEVNULL,
     )
     try:
         # Judge THIS canary's own pid, and only that. Judging "every pid that appeared" reads the
@@ -314,7 +320,11 @@ def test_a_green_steps_leak_gets_its_own_exit_code(wrap, repo: Path) -> None:
 )
 def test_usage_errors_are_exit_two(repo: Path, argv: list[str]) -> None:
     proc = subprocess.run(
-        [sys.executable, CANARY, *argv], capture_output=True, text=True, check=False
+        [sys.executable, CANARY, *argv],
+        capture_output=True,
+        text=True,
+        check=False,
+        stdin=subprocess.DEVNULL,
     )
     assert proc.returncode == 2, (argv, proc.returncode, proc.stdout, proc.stderr)
 
@@ -330,6 +340,7 @@ def test_a_missing_runner_is_refused_not_silently_unbounded(tmp_path: Path) -> N
         capture_output=True,
         text=True,
         check=False,
+        stdin=subprocess.DEVNULL,
     )
     assert proc.returncode == 2, proc.stdout + proc.stderr
     assert "bounded_run.py is missing" in proc.stderr, proc.stderr

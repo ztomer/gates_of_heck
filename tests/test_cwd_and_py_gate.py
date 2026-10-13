@@ -28,12 +28,13 @@ def test_structural_from_subdirectory_uses_root_gatesrc(repo):
     sub = repo / "src" / "deep"
     sub.mkdir(parents=True)
     (sub / "big.py").write_text("\n" * 20)
-    subprocess.run(["git", "-C", str(repo), "add", "-A"], check=True)
+    subprocess.run(["git", "-C", str(repo), "add", "-A"], check=True, stdin=subprocess.DEVNULL)
     r = subprocess.run(
         ["/bin/bash", str(REPO_ROOT / STRUCTURAL), "--staged"],
         cwd=sub,
         capture_output=True,
         text=True,
+        stdin=subprocess.DEVNULL,
     )
     assert r.returncode == 1
     assert "big.py" in r.stderr
@@ -46,6 +47,7 @@ def _physical(path: Path) -> str:
         capture_output=True,
         text=True,
         check=True,
+        stdin=subprocess.DEVNULL,
     ).stdout.strip()
 
 
@@ -104,6 +106,7 @@ def test_py_gate_scopes_coverage_to_the_physical_path(repo, tmp_path):
             "GOH_PY_RUNNER": str(runner),
             "GOH_PY_COV_MIN": "70",
         },
+        stdin=subprocess.DEVNULL,
     )
     assert r.returncode == 0, r.stdout + r.stderr
 
@@ -137,13 +140,16 @@ def test_py_gate_clean_package_passes(tmp_path):
     (pkg / "tests" / "test_core.py").write_text(
         "from app.core import add\n\n\ndef test_add():\n    assert add(1, 2) == 3\n"
     )
-    subprocess.run(["git", "-C", str(pkg), "init", "-q", "-b", "main"], check=True)
+    subprocess.run(
+        ["git", "-C", str(pkg), "init", "-q", "-b", "main"], check=True, stdin=subprocess.DEVNULL
+    )
 
     r = subprocess.run(
         ["/bin/bash", str(REPO_ROOT / "gates" / "py_gate.sh"), str(pkg)],
         cwd=pkg,
         capture_output=True,
         text=True,
+        stdin=subprocess.DEVNULL,
     )
     assert r.returncode == 0, r.stdout + r.stderr
     assert "all python gates passed" in r.stdout
@@ -160,13 +166,16 @@ def test_py_gate_failing_test_blocks_with_output(tmp_path):
     (pkg / "app" / "__init__.py").write_text("")
     (pkg / "tests").mkdir()
     (pkg / "tests" / "t.py").write_text("def test_x():\n    assert 1 == 2\n")
-    subprocess.run(["git", "-C", str(pkg), "init", "-q", "-b", "main"], check=True)
+    subprocess.run(
+        ["git", "-C", str(pkg), "init", "-q", "-b", "main"], check=True, stdin=subprocess.DEVNULL
+    )
 
     r = subprocess.run(
         ["/bin/bash", str(REPO_ROOT / "gates" / "py_gate.sh"), str(pkg)],
         cwd=pkg,
         capture_output=True,
         text=True,
+        stdin=subprocess.DEVNULL,
     )
     assert r.returncode != 0
     assert "assert 1 == 2" in r.stderr  # failing output printed, not buried
@@ -206,7 +215,9 @@ def test_py_gate_cov_floor_names_never_imported_modules(tmp_path):
     (pkg / "tests" / "test_core.py").write_text(
         "from app.core import add\n\n\ndef test_add():\n    assert add(1, 2) == 3\n"
     )
-    subprocess.run(["git", "-C", str(pkg), "init", "-q", "-b", "main"], check=True)
+    subprocess.run(
+        ["git", "-C", str(pkg), "init", "-q", "-b", "main"], check=True, stdin=subprocess.DEVNULL
+    )
 
     r = subprocess.run(
         ["/bin/bash", str(REPO_ROOT / "gates" / "py_gate.sh"), str(pkg)],
@@ -214,6 +225,7 @@ def test_py_gate_cov_floor_names_never_imported_modules(tmp_path):
         capture_output=True,
         text=True,
         env={**dict(__import__("os").environ), "GOH_PY_COV_MIN": "100"},
+        stdin=subprocess.DEVNULL,
     )
     assert r.returncode != 0, f"a 100% floor passed a never-imported module: {r.stdout!r}"
     assert "untested.py" in r.stdout + r.stderr, (

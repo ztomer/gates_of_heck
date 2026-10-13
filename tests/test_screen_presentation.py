@@ -198,14 +198,18 @@ def test_scope_mode_finds_violation(repo):
 
 def test_staged_scope_uses_index_content(repo):
     p = write(repo, "tests/Clean.swift", "let x = 1\n")
-    stage_it = subprocess.run(["git", "-C", str(repo), "add", "tests/Clean.swift"])
+    stage_it = subprocess.run(
+        ["git", "-C", str(repo), "add", "tests/Clean.swift"], stdin=subprocess.DEVNULL
+    )
     assert stage_it.returncode == 0
     # index holds clean content; dirtying the worktree must not matter
     p.write_text("window.makeKeyAndOrderFront(nil)\n", encoding="utf-8")
     r = run_check(repo, "checks/check_no_screen_presentation.py", "--staged", "--scope", "tests/*")
     assert r.returncode == 0, r.stderr
     # ...and staging the violation DOES fail via the same scope
-    subprocess.run(["git", "-C", str(repo), "add", "tests/Clean.swift"], check=True)
+    subprocess.run(
+        ["git", "-C", str(repo), "add", "tests/Clean.swift"], check=True, stdin=subprocess.DEVNULL
+    )
     r = run_check(repo, "checks/check_no_screen_presentation.py", "--staged", "--scope", "tests/*")
     assert r.returncode == 1
     assert "tests/Clean.swift:1" in r.stderr
@@ -354,7 +358,11 @@ def test_no_targets_is_usage_error(repo):
 
 def bash(script: str) -> subprocess.CompletedProcess:
     return subprocess.run(
-        ["/bin/bash", "-c", script], capture_output=True, text=True, env={"PATH": "/usr/bin:/bin"}
+        ["/bin/bash", "-c", script],
+        capture_output=True,
+        text=True,
+        env={"PATH": "/usr/bin:/bin"},
+        stdin=subprocess.DEVNULL,
     )
 
 

@@ -151,7 +151,9 @@ def parse(text: str, rel: str = "docs/x.md") -> list[SimpleNamespace]:
 def run_command(command: str, cwd: str) -> str:
     """Run a finding's printed re-derivation and return its stdout: the command is EXECUTED,
     never trusted."""
-    out = subprocess.run(command, shell=True, cwd=cwd, capture_output=True, text=True)
+    out = subprocess.run(
+        command, shell=True, cwd=cwd, capture_output=True, text=True, stdin=subprocess.DEVNULL
+    )
     return out.stdout.strip()
 
 

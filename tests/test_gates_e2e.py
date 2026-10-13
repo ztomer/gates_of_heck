@@ -149,6 +149,7 @@ def _run_gate_env(repo, env_extra, *args):
         capture_output=True,
         text=True,
         env=env,
+        stdin=subprocess.DEVNULL,
     )
 
 

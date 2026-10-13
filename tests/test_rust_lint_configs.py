@@ -29,7 +29,11 @@ def _installed() -> bool:
     if shutil.which("rustup") is None:
         return False
     out = subprocess.run(
-        ["rustup", "target", "list", "--installed"], capture_output=True, text=True, check=False
+        ["rustup", "target", "list", "--installed"],
+        capture_output=True,
+        text=True,
+        check=False,
+        stdin=subprocess.DEVNULL,
     )
     return TARGET in out.stdout.split()
 
@@ -55,6 +59,7 @@ def _repo(tmp_path: Path, lib: str, gatesrc: str) -> Path:
         cwd=repo / "crates" / "a",
         check=True,
         capture_output=True,
+        stdin=subprocess.DEVNULL,
     )
     _git(repo, "init", "-q")
     _git(repo, "add", "-A")
@@ -75,6 +80,7 @@ def _gate(repo: Path, path_prefix: Path | None = None) -> subprocess.CompletedPr
         env=env,
         timeout=600,
         check=False,
+        stdin=subprocess.DEVNULL,
     )
 
 

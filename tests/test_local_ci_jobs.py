@@ -34,6 +34,7 @@ def run_ci(cwd: Path, **env_extra: str):
         env=env,
         timeout=60,
         check=False,
+        stdin=subprocess.DEVNULL,
     )
     return r, time.monotonic() - t0
 
@@ -147,6 +148,7 @@ def run_cli(cwd: Path, *args: str, **env_extra: str):
         env=env,
         timeout=60,
         check=False,
+        stdin=subprocess.DEVNULL,
     )
     return r, time.monotonic() - t0
 
@@ -191,6 +193,7 @@ def test_the_environment_is_not_configuration(repo, tmp_path):
         env=env,
         timeout=60,
         check=False,
+        stdin=subprocess.DEVNULL,
     )
     wall = time.monotonic() - t0
     assert r.returncode == 0, r.stdout + r.stderr

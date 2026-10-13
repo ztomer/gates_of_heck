@@ -61,7 +61,9 @@ EXPECTED_LADDER = [
 
 
 def run_gen(*args: str) -> subprocess.CompletedProcess:
-    return subprocess.run(["python3", str(GEN_ICONS), *args], capture_output=True, text=True)
+    return subprocess.run(
+        ["python3", str(GEN_ICONS), *args], capture_output=True, text=True, stdin=subprocess.DEVNULL
+    )
 
 
 @pytest.mark.skipif(sys.platform != "darwin", reason="sips/iconutil are macOS tools")

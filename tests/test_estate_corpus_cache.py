@@ -31,7 +31,12 @@ def estate(tmp_path: Path, monkeypatch) -> dict:
     for i in range(6):
         (root / "pkg" / f"m{i}.py").write_text("".join(f"x{n} = {n}\n" for n in range(20)))
     for args in (["init", "-q"], ["add", "-A"]):
-        subprocess.run(["git", "-C", str(root), *args], check=True, capture_output=True)
+        subprocess.run(
+            ["git", "-C", str(root), *args],
+            check=True,
+            capture_output=True,
+            stdin=subprocess.DEVNULL,
+        )
     monkeypatch.setenv("GOH_ESTATE_CACHE", str(tmp_path / "cache"))
     monkeypatch.setenv("GOH_BIN", str(native_goh_path()))
     monkeypatch.setenv("GOH_DIR", str(REPO_ROOT))

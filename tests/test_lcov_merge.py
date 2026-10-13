@@ -27,6 +27,7 @@ def run_merge(parts_dir: Path, floor: str = "100"):
         [sys.executable, str(LCOV_MERGE), "--floor", floor, str(parts_dir)],
         capture_output=True,
         text=True,
+        stdin=subprocess.DEVNULL,
     )
 
 
@@ -155,6 +156,7 @@ def _floors_run(tmp_path: Path, floors: dict, *extra: str):
         ],
         capture_output=True,
         text=True,
+        stdin=subprocess.DEVNULL,
     )
 
 
@@ -193,6 +195,7 @@ def test_an_unreadable_floors_file_is_refused_not_dropped(tmp_path: Path) -> Non
         ],
         capture_output=True,
         text=True,
+        stdin=subprocess.DEVNULL,
     )
     assert r.returncode == 2, r.stdout + r.stderr
 
@@ -221,6 +224,7 @@ def test_an_exemption_may_name_its_file_relative_to_the_project(tmp_path: Path) 
         cwd=proj,
         capture_output=True,
         text=True,
+        stdin=subprocess.DEVNULL,
     )
     assert r.returncode == 0, r.stdout + r.stderr
     assert "stale" not in r.stdout + r.stderr, r.stdout + r.stderr

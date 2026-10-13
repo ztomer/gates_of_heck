@@ -78,6 +78,11 @@ def test_a_products_own_release_script_calls_the_step_directly(kit, tap):
     env = dict(os.environ, GOH_DIR=str(REPO_ROOT), GIT_AUTHOR_NAME="t", GIT_AUTHOR_EMAIL="t@t",
                GIT_COMMITTER_NAME="t", GIT_COMMITTER_EMAIL="t@t")  # fmt: skip
     r = subprocess.run(
-        ["bash", str(BUMP), *args], capture_output=True, text=True, env=env, check=False
+        ["bash", str(BUMP), *args],
+        capture_output=True,
+        text=True,
+        env=env,
+        check=False,
+        stdin=subprocess.DEVNULL,
     )
     assert r.returncode != 0 and "nothing pushed" in r.stdout + r.stderr, r.stdout + r.stderr

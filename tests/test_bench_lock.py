@@ -40,12 +40,12 @@ def _env(lock: Path, **extra: str) -> dict[str, str]:
 
 def _bash(lock: Path, script: str, **extra: str) -> subprocess.Popen[str]:
     return subprocess.Popen(["bash", "-c", f'. "{LIB}"\n{script}'], env=_env(lock, **extra),
-                            stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)  # fmt: skip
+                            stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, stdin=subprocess.DEVNULL)  # fmt: skip
 
 
 def _run(lock: Path, script: str, timeout: float = 20, **extra: str) -> subprocess.CompletedProcess:
     return subprocess.run(["bash", "-c", f'. "{LIB}"\n{script}'], env=_env(lock, **extra),
-                          capture_output=True, text=True, timeout=timeout)  # fmt: skip
+                          capture_output=True, text=True, timeout=timeout, stdin=subprocess.DEVNULL)  # fmt: skip
 
 
 def _wait_for(path: Path, seconds: float = 10) -> None:
@@ -121,7 +121,7 @@ def test_an_owner_read_as_the_claim_vanishes_is_silent(lib: str, reader: str) ->
     """`done <file 2>/dev/null` opens the file BEFORE it silences the error: a gate that read an
     owner the instant its holder released printed `No such file or directory` (2026-10-08)."""
     r = subprocess.run(["bash", "-c", f'. "{REPO_ROOT / lib}"; {reader}; echo "rc=$?"'],
-                       capture_output=True, text=True, timeout=20)  # fmt: skip
+                       capture_output=True, text=True, timeout=20, stdin=subprocess.DEVNULL)  # fmt: skip
     assert (r.stdout, r.stderr) == ("rc=1\n", "")
 
 
@@ -239,7 +239,7 @@ def _quiet_env(tmp_path: Path, **extra: str) -> dict[str, str]:
 def _quiet(tmp_path: Path, *args: str, **extra: str) -> subprocess.CompletedProcess[str]:
     env = _quiet_env(tmp_path, **extra)
     return subprocess.run(["bash", str(QUIET), *args], env=env, capture_output=True, text=True,
-                          timeout=60)  # fmt: skip
+                          timeout=60, stdin=subprocess.DEVNULL)  # fmt: skip
 
 
 def _reads(tmp_path: Path) -> list[str]:
@@ -280,7 +280,7 @@ def _gate_stream(lock: Path, running: Path) -> subprocess.Popen[str]:
             f'rm -f "{running}/$$" "$BENCH_LOCK_ENTRY"')  # fmt: skip
     loop = f"while :; do bash -c {gate!r} & sleep 0.2; done"
     return subprocess.Popen(["bash", "-c", loop], env=_env(lock), start_new_session=True,
-                            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, text=True)  # fmt: skip
+                            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, text=True, stdin=subprocess.DEVNULL)  # fmt: skip
 
 
 def test_quiet_takes_its_place_before_it_judges_the_box(tmp_path: Path) -> None:
@@ -339,7 +339,7 @@ def test_a_waiting_gate_names_the_hold_and_when_it_ends(tmp_path: Path) -> None:
     hold = subprocess.Popen(
         ["bash", str(QUIET), "--max-load", "1000", "--hold", "30", "--label", "bench 4.1", "--",
          "bash", "-c", f': > "{tmp_path}/running"; exec sleep 3'],
-        env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+        env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, stdin=subprocess.DEVNULL,
     )  # fmt: skip
     try:
         _wait_for(tmp_path / "running")
@@ -360,7 +360,7 @@ def test_a_run_that_outlives_its_hold_is_named_and_fails(tmp_path: Path) -> None
 def test_the_default_hold_is_fifteen_minutes() -> None:
     env = {k: v for k, v in os.environ.items() if not k.startswith("GOH_BENCH_")}
     r = subprocess.run(["bash", "-c", f'. "{LIB}"; echo "$BENCH_LOCK_MAX_HOLD"'], env=env,
-                       capture_output=True, text=True, timeout=10)  # fmt: skip
+                       capture_output=True, text=True, timeout=10, stdin=subprocess.DEVNULL)  # fmt: skip
     assert r.stdout.strip() == "900", r.stdout + r.stderr
 
 
@@ -370,7 +370,7 @@ def test_a_gate_behind_an_overrunning_hold_proceeds_at_the_hold_not_the_cap(tmp_
     hold = subprocess.Popen(
         ["bash", str(QUIET), "--max-load", "1000", "--hold", "2", "--",
          "bash", "-c", f': > "{tmp_path}/running"; exec sleep 30'],
-        env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+        env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, stdin=subprocess.DEVNULL,
     )  # fmt: skip
     try:
         _wait_for(tmp_path / "running")
@@ -445,7 +445,7 @@ def test_the_cap_bounds_the_whole_block_not_only_the_run(tmp_path: Path) -> None
     hold = subprocess.Popen(
         ["bash", str(QUIET), "--hold", "38", "--settle", "20", "--retry", "0.2", "--",
          "sleep", "2.5"],
-        env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+        env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, stdin=subprocess.DEVNULL,
     )  # fmt: skip
     try:
         _wait_for(lock / "exclusive" / "owner")
@@ -473,7 +473,7 @@ def test_a_drain_past_the_budget_lets_go_at_the_budget(tmp_path: Path) -> None:
     q = subprocess.Popen(
         ["bash", str(QUIET), "--max-load", "1000", "--hold", "37", "--retry", "0.5", "--", "true"],
         env=_quiet_env(tmp_path, GOH_BENCH_MAX_HOLD="40"), stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE, text=True,
+        stderr=subprocess.PIPE, text=True, stdin=subprocess.DEVNULL,
     )  # fmt: skip
     try:
         _wait_for(lock / "exclusive" / "owner")

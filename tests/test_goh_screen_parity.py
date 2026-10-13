@@ -22,7 +22,9 @@ FIXTURES = ROOT / "tests" / "fixtures" / "screen_presentation"
 
 
 def _git(repo: Path, *args: str) -> None:
-    subprocess.run(["git", *args], cwd=repo, capture_output=True, check=True)
+    subprocess.run(
+        ["git", *args], cwd=repo, capture_output=True, check=True, stdin=subprocess.DEVNULL
+    )
 
 
 def make_repo(tmp_path: Path, sub: str = "case") -> Path:
@@ -35,7 +37,13 @@ def make_repo(tmp_path: Path, sub: str = "case") -> Path:
 
 
 def run_py(repo: Path, *args: str) -> tuple[int, str, str]:
-    r = subprocess.run(["python3", str(CHECK), *args], cwd=repo, capture_output=True, text=True)
+    r = subprocess.run(
+        ["python3", str(CHECK), *args],
+        cwd=repo,
+        capture_output=True,
+        text=True,
+        stdin=subprocess.DEVNULL,
+    )
     return r.returncode, r.stdout, r.stderr
 
 
@@ -44,7 +52,12 @@ def run_goh(goh: Path, repo: Path, *args: str) -> tuple[int, str, str]:
 
     env = dict(os.environ, GOH_DIR=str(ROOT))
     r = subprocess.run(
-        [str(goh), "screen", *args], cwd=repo, capture_output=True, text=True, env=env
+        [str(goh), "screen", *args],
+        cwd=repo,
+        capture_output=True,
+        text=True,
+        env=env,
+        stdin=subprocess.DEVNULL,
     )
     return r.returncode, r.stdout, r.stderr
 

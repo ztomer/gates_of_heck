@@ -21,7 +21,12 @@ def _structural(goh: Path, repo: Path, *args: str):
 
     env = hermetic_env(GOH_DIR=str(REPO_ROOT))
     return subprocess.run(
-        [str(goh), "structural", *args], cwd=repo, capture_output=True, text=True, env=env
+        [str(goh), "structural", *args],
+        cwd=repo,
+        capture_output=True,
+        text=True,
+        env=env,
+        stdin=subprocess.DEVNULL,
     )
 
 

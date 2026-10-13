@@ -149,6 +149,7 @@ def _start_time(pid: int) -> str:
             text=True,
             timeout=10,
             check=False,
+            stdin=subprocess.DEVNULL,
         ).stdout
     except (OSError, subprocess.SubprocessError):
         return ""

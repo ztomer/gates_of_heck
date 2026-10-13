@@ -39,7 +39,12 @@ LIB = "pub fn f() -> u64 {\n    1\n}\n"
 def _git(repo: Path, *args: str) -> str:
     env = {k: v for k, v in os.environ.items() if not k.startswith("GIT_")}
     return subprocess.run(
-        ["git", "-C", str(repo), *args], check=True, capture_output=True, text=True, env=env
+        ["git", "-C", str(repo), *args],
+        check=True,
+        capture_output=True,
+        text=True,
+        env=env,
+        stdin=subprocess.DEVNULL,
     ).stdout
 
 
@@ -87,6 +92,7 @@ def estate(tmp_path: Path) -> Path:
             cwd=repo / "crates" / name,
             check=True,
             capture_output=True,
+            stdin=subprocess.DEVNULL,
         )
     fast_init(repo)
     _git(repo, "add", "-A")
@@ -104,6 +110,7 @@ def _gate(repo: Path, crate: str, **env: str) -> subprocess.CompletedProcess:
         text=True,
         env=full,
         timeout=600,
+        stdin=subprocess.DEVNULL,
     )
 
 

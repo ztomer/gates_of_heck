@@ -23,7 +23,9 @@ FAIL_RE = re.compile(r"structural: (.+) failed")
 
 
 def _git(repo: Path, *args: str) -> None:
-    subprocess.run(["git", *args], cwd=repo, capture_output=True, check=True)
+    subprocess.run(
+        ["git", *args], cwd=repo, capture_output=True, check=True, stdin=subprocess.DEVNULL
+    )
 
 
 def make_repo(tmp_path: Path, files: dict[str, str], forced: tuple[str, ...] = ()) -> Path:
@@ -43,7 +45,15 @@ def make_repo(tmp_path: Path, files: dict[str, str], forced: tuple[str, ...] = (
 def structural(goh: Path, repo: Path, staged: bool = False) -> subprocess.CompletedProcess:
     env = hermetic_env(GOH_DIR=str(ROOT))
     cmd = [str(goh), "structural", *(["--staged"] if staged else [])]
-    return subprocess.run(cmd, cwd=repo, capture_output=True, text=True, env=env, check=False)
+    return subprocess.run(
+        cmd,
+        cwd=repo,
+        capture_output=True,
+        text=True,
+        env=env,
+        check=False,
+        stdin=subprocess.DEVNULL,
+    )
 
 
 def failing(run: subprocess.CompletedProcess) -> str | None:

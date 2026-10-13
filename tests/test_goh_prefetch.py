@@ -54,8 +54,10 @@ def _repo(tmp: Path, red: bool) -> Path:
         (repo / "notes.txt").write_text("<<<<<<< " + "ours\n")
     (repo / "README.md").write_text("# fixture\n")
     env = {k: v for k, v in os.environ.items() if not k.startswith("GIT_")}
-    subprocess.run(["git", "init", "-q", str(repo)], check=True, env=env)
-    subprocess.run(["git", "-C", str(repo), "add", "-A"], check=True, env=env)
+    subprocess.run(["git", "init", "-q", str(repo)], check=True, env=env, stdin=subprocess.DEVNULL)
+    subprocess.run(
+        ["git", "-C", str(repo), "add", "-A"], check=True, env=env, stdin=subprocess.DEVNULL
+    )
     return repo
 
 
@@ -72,6 +74,7 @@ def _run(goh: Path, tmp: Path, red: bool, sleep: str):
         text=True,
         env=env,
         timeout=60,
+        stdin=subprocess.DEVNULL,
     )
     return r, time.monotonic() - t0, {p.name for p in marks.iterdir()}
 

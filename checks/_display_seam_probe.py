@@ -368,6 +368,7 @@ def _git(root, *args):
         text=True,
         check=False,
         env=foreign_repo_env(),
+        stdin=subprocess.DEVNULL,
     ).returncode
 
 

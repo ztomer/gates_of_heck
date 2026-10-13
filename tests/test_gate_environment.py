@@ -37,12 +37,17 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 def _git(repo: Path, *args: str) -> None:
-    subprocess.run(["git", *args], cwd=repo, capture_output=True, check=True)
+    subprocess.run(
+        ["git", *args], cwd=repo, capture_output=True, check=True, stdin=subprocess.DEVNULL
+    )
 
 
 def _porcelain(repo: Path) -> str:
     return subprocess.run(
-        ["git", "-C", str(repo), "status", "--porcelain"], capture_output=True, text=True
+        ["git", "-C", str(repo), "status", "--porcelain"],
+        capture_output=True,
+        text=True,
+        stdin=subprocess.DEVNULL,
     ).stdout
 
 
@@ -105,6 +110,7 @@ def test_the_pipeline_reads_its_step_ceiling_from_the_file_never_the_environment
             text=True,
             env=hermetic_env(GOH_STEP_TIMEOUT=env_value),
             timeout=60,
+            stdin=subprocess.DEVNULL,
         )
         return set(re.findall(r"\((≤\d+s|UNBOUNDED[^)]*)\)", out.stdout))
 
@@ -132,7 +138,11 @@ def _committable_repo(tmp_path: Path, gate: str) -> Path:
 def _push(repo: Path, checkout: Path, tmp_path: Path, **env: str):
     """Run the push gate over `repo`'s HEAD, as a pre-push hook is run."""
     sha = subprocess.run(
-        ["git", "-C", str(repo), "rev-parse", "HEAD"], capture_output=True, text=True, check=True
+        ["git", "-C", str(repo), "rev-parse", "HEAD"],
+        capture_output=True,
+        text=True,
+        check=True,
+        stdin=subprocess.DEVNULL,
     ).stdout.strip()
     return subprocess.run(
         ["bash", str(checkout / "gates" / "push_gate.sh"), "origin"],
@@ -216,9 +226,13 @@ def _clean_checkout_of_todays_gates(tmp_path: Path) -> Path:
         ["git", "clone", "-q", "--no-hardlinks", str(ROOT), str(checkout)],
         check=True,
         capture_output=True,
+        stdin=subprocess.DEVNULL,
     )
     work = subprocess.run(
-        ["git", "-C", str(ROOT), "diff", "HEAD", "--"], check=True, capture_output=True
+        ["git", "-C", str(ROOT), "diff", "HEAD", "--"],
+        check=True,
+        capture_output=True,
+        stdin=subprocess.DEVNULL,
     ).stdout
     if work:
         subprocess.run(["git", "-C", str(checkout), "apply", "-"], input=work, check=True)
@@ -228,6 +242,7 @@ def _clean_checkout_of_todays_gates(tmp_path: Path) -> Path:
         ["git", "-C", str(ROOT), "ls-files", "-z", "--others", "--exclude-standard"],
         check=True,
         capture_output=True,
+        stdin=subprocess.DEVNULL,
     ).stdout.split(b"\0")
     for rel in filter(None, (u.decode() for u in untracked)):
         (checkout / rel).parent.mkdir(parents=True, exist_ok=True)
@@ -269,6 +284,7 @@ def test_uncommitted_gate_source_is_named_by_every_gate_that_runs_one(tmp_path: 
             # The session's build of TODAY's tree, as the checkout is: `ROOT/bin/goh` is HEAD's
             # build (C3), so it disagreed with this checkout whenever a version bump was uncommitted.
             env=hermetic_env(GOH_DIR=str(checkout), GOH_BIN=str(native_goh_path())),
+            stdin=subprocess.DEVNULL,
         )
 
     def publish_gate() -> subprocess.CompletedProcess:
@@ -278,6 +294,7 @@ def test_uncommitted_gate_source_is_named_by_every_gate_that_runs_one(tmp_path: 
             capture_output=True,
             text=True,
             env=dict(os.environ, GOH_BUILD_PUBLISH_CHECK_ONLY="1"),
+            stdin=subprocess.DEVNULL,
         )
 
     # The push gate too gets the session's binary: without it the clone (no bin/goh) rebuilt goh

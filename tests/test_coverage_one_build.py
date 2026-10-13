@@ -83,6 +83,7 @@ def test_one_instrumented_run_of_exactly_the_declared_targets_and_one_build(tmp_
         text=True,
         env=env,
         timeout=60,
+        stdin=subprocess.DEVNULL,
     )
     assert r.returncode == 0, r.stdout + r.stderr
     runs = [
@@ -157,6 +158,7 @@ def test_a_failing_test_under_coverage_is_named_as_a_test_failure(tmp_path):
         text=True,
         env=env,
         timeout=60,
+        stdin=subprocess.DEVNULL,
     )
     assert r.returncode != 0, r.stdout + r.stderr
     assert "TESTS FAILED" in r.stderr, r.stderr

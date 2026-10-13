@@ -37,7 +37,9 @@ KEY = "GOH_PY_LINT_CEILINGS"
 
 
 def _git(*args: str) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(["git", *args], capture_output=True, text=True, check=False)
+    return subprocess.run(
+        ["git", *args], capture_output=True, text=True, check=False, stdin=subprocess.DEVNULL
+    )
 
 
 def _ceilings_at(rev: str, path: str) -> dict[str, int] | None:
@@ -59,7 +61,7 @@ def findings(runner: str, files: list[str]) -> dict[str, list[dict]]:
     if not files:
         return {}
     cmd = [*shlex.split(runner), "ruff", "check", "--output-format", "json", "--exit-zero", *files]
-    r = subprocess.run(cmd, capture_output=True, text=True, check=False)
+    r = subprocess.run(cmd, capture_output=True, text=True, check=False, stdin=subprocess.DEVNULL)
     try:
         found = json.loads(r.stdout or "[]")
     except json.JSONDecodeError:

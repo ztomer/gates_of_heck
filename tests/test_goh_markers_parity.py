@@ -19,7 +19,9 @@ CHECKER = reference_path("checks/check_no_conflict_markers.py")
 
 
 def _git(repo: Path, *args: str) -> None:
-    subprocess.run(["git", *args], cwd=repo, capture_output=True, check=True)
+    subprocess.run(
+        ["git", *args], cwd=repo, capture_output=True, check=True, stdin=subprocess.DEVNULL
+    )
 
 
 def make_repo(tmp_path: Path, files: dict[str, bytes]) -> Path:
@@ -34,13 +36,13 @@ def make_repo(tmp_path: Path, files: dict[str, bytes]) -> Path:
 
 def run_python(repo: Path, staged: bool) -> tuple[int, set[tuple[str, int]]]:
     cmd = ["python3", str(CHECKER), "--staged"] if staged else ["python3", str(CHECKER)]
-    r = subprocess.run(cmd, cwd=repo, capture_output=True, text=True)
+    r = subprocess.run(cmd, cwd=repo, capture_output=True, text=True, stdin=subprocess.DEVNULL)
     return r.returncode, _violations(r.stderr)
 
 
 def run_goh(goh: Path, repo: Path, staged: bool) -> tuple[int, set[tuple[str, int]]]:
     cmd = [str(goh), "markers", "--staged"] if staged else [str(goh), "markers"]
-    r = subprocess.run(cmd, cwd=repo, capture_output=True, text=True)
+    r = subprocess.run(cmd, cwd=repo, capture_output=True, text=True, stdin=subprocess.DEVNULL)
     return r.returncode, _violations(r.stderr)
 
 

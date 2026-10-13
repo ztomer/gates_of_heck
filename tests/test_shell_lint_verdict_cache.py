@@ -43,7 +43,12 @@ def lint(repo: Path, tmp_path: Path, goh: Path):
         env.update(PATH=f"{bindir}:{os.environ['PATH']}", GOH_VERDICT_DIR=str(tmp_path / "cache"))
         env.update(extra)
         r = subprocess.run(
-            [str(goh), "shell-lint"], cwd=repo, capture_output=True, text=True, env=env
+            [str(goh), "shell-lint"],
+            cwd=repo,
+            capture_output=True,
+            text=True,
+            env=env,
+            stdin=subprocess.DEVNULL,
         )
         asked = {Path(a).name for a in log.read_text().split() if a.endswith(".sh")}
         return (r.returncode, r.stdout, r.stderr), asked

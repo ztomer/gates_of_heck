@@ -71,7 +71,12 @@ _INIT = re.compile(r'"init"|git init')
 
 def _tracked(*specs: str) -> list[str]:
     out = subprocess.run(
-        ["git", "ls-files", "--", *specs], cwd=REPO_ROOT, capture_output=True, text=True, check=True
+        ["git", "ls-files", "--", *specs],
+        cwd=REPO_ROOT,
+        capture_output=True,
+        text=True,
+        check=True,
+        stdin=subprocess.DEVNULL,
     )
     return out.stdout.split()
 
@@ -123,7 +128,7 @@ def _planted(
     return subprocess.run(
         [sys.executable, "-m", "pytest", "-q", "-p", "no:cacheprovider", "-p", "no:xdist",
          str(tmp_path)],
-        capture_output=True, text=True, cwd=tmp_path, timeout=60, check=False,
+        capture_output=True, text=True, cwd=tmp_path, timeout=60, check=False, stdin=subprocess.DEVNULL,
     )  # fmt: skip
 
 
@@ -196,7 +201,13 @@ def test_a_throwaway_crate_builds_into_the_runs_own_build_dir(tmp_path: Path) ->
         f'[package]\nname = "{name}"\nversion = "0.0.0"\nedition = "2021"\n', encoding="utf-8"
     )
     (crate / "src" / "lib.rs").write_text("", encoding="utf-8")
-    r = subprocess.run(["cargo", "build", "-q"], cwd=crate, capture_output=True, text=True)
+    r = subprocess.run(
+        ["cargo", "build", "-q"],
+        cwd=crate,
+        capture_output=True,
+        text=True,
+        stdin=subprocess.DEVNULL,
+    )
     assert r.returncode == 0, r.stderr
     shared = Path(os.environ.get("CARGO_HOME", Path.home() / ".cargo")) / "build"
     leaked = list(shared.glob(f"*/*/debug/.fingerprint/{name}-*"))
@@ -213,6 +224,7 @@ def test_a_throwaway_crate_builds_into_the_runs_own_build_dir(tmp_path: Path) ->
         capture_output=True,
         text=True,
         env=dict(os.environ, CARGO_BUILD_BUILD_DIR=str(named)),
+        stdin=subprocess.DEVNULL,
     )
     assert r.returncode == 0, r.stderr
     assert list(named.glob(f"*/.fingerprint/{name}-*")), "a caller's own build dir was not kept"

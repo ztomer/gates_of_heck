@@ -61,7 +61,11 @@ def test_owner_file_is_three_lines_pid_start_label(lock):
         # The start time must be the whitespace-normalised ps lstart string --
         # byte-identical to what the bash half records for the same process.
         raw = subprocess.run(
-            ["ps", "-o", "lstart=", "-p", pid], capture_output=True, text=True, check=True
+            ["ps", "-o", "lstart=", "-p", pid],
+            capture_output=True,
+            text=True,
+            check=True,
+            stdin=subprocess.DEVNULL,
         ).stdout
         assert lines[1] == " ".join(raw.split()) != ""
         assert lines[2] == f"contract probe (pid {pid})"
@@ -93,7 +97,13 @@ def test_forged_peer_lock_survives_foreign_release(tmp_path):
         "m=importlib.util.module_from_spec(spec);spec.loader.exec_module(m);"
         f"m.LOCK_DIR={str(lock_dir)!r};m.release()"
     )
-    subprocess.run([sys.executable, "-c", code], check=True, capture_output=True, text=True)
+    subprocess.run(
+        [sys.executable, "-c", code],
+        check=True,
+        capture_output=True,
+        text=True,
+        stdin=subprocess.DEVNULL,
+    )
     assert (lock_dir / "owner").exists(), "a foreign process freed our lock"
 
 
@@ -126,7 +136,9 @@ def test_recycled_pid_does_not_impersonate_the_owner(lock):
 def test_live_unwedged_peer_raises_desktop_busy(lock):
     """A genuinely alive owner with matching start time must NOT be reclaimed:
     acquire raises DesktopBusy once the timeout passes."""
-    child = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(30)"])
+    child = subprocess.Popen(
+        [sys.executable, "-c", "import time; time.sleep(30)"], stdin=subprocess.DEVNULL
+    )
     try:
         lock_dir = Path(lock.LOCK_DIR)
         lock_dir.mkdir()
@@ -144,7 +156,9 @@ def test_live_unwedged_peer_raises_desktop_busy(lock):
 
 def test_wedged_but_alive_owner_reclaimed_on_age_ceiling(lock):
     """Liveness says busy forever; only MAX_HOLD frees a wedged owner."""
-    child = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(30)"])
+    child = subprocess.Popen(
+        [sys.executable, "-c", "import time; time.sleep(30)"], stdin=subprocess.DEVNULL
+    )
     try:
         lock_dir = Path(lock.LOCK_DIR)
         lock_dir.mkdir()

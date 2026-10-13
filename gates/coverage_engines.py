@@ -102,13 +102,21 @@ def run_spm(ignore_re):
     precondition("swift", "swift test --enable-code-coverage")
     precondition("xcrun", "xcrun llvm-cov reads the profdata")
     if (
-        subprocess.run(["swift", "test", "--enable-code-coverage"], capture_output=True).returncode
+        subprocess.run(
+            ["swift", "test", "--enable-code-coverage"],
+            capture_output=True,
+            stdin=subprocess.DEVNULL,
+        ).returncode
         != 0
     ):
         print("✗ [coverage] tests failed while collecting coverage", file=sys.stderr)
         sys.exit(1)
     bin_path = subprocess.run(
-        ["swift", "build", "--show-bin-path"], capture_output=True, text=True, check=True
+        ["swift", "build", "--show-bin-path"],
+        capture_output=True,
+        text=True,
+        check=True,
+        stdin=subprocess.DEVNULL,
     ).stdout.strip()
     xctest = None
     for p in glob.glob(os.path.join(bin_path, "**", "*.xctest"), recursive=True):
@@ -159,7 +167,10 @@ def xccov_report(xcresult):
     """The `xcrun xccov view --report` text for an existing xcresult."""
     precondition("xcrun", "xcrun xccov reads the xcresult")
     res = subprocess.run(
-        ["xcrun", "xccov", "view", "--report", xcresult], capture_output=True, text=True
+        ["xcrun", "xccov", "view", "--report", xcresult],
+        capture_output=True,
+        text=True,
+        stdin=subprocess.DEVNULL,
     )
     if res.returncode != 0:
         print(
@@ -198,6 +209,7 @@ def run_xcodebuild(args):
         ],
         capture_output=True,
         text=True,
+        stdin=subprocess.DEVNULL,
     )
     if run.returncode != 0:
         tail = (run.stderr or run.stdout).strip().splitlines()[-3:]

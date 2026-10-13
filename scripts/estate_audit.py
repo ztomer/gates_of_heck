@@ -111,6 +111,7 @@ def lockfiles(repo: Path) -> tuple[list[Path], int]:
         capture_output=True,
         text=True,
         check=False,
+        stdin=subprocess.DEVNULL,
     )
     tracked = [p for p in r.stdout.split("\0") if p] if r.returncode == 0 else []
     skip = excluded(repo) if tracked else (lambda _: None)
@@ -245,12 +246,14 @@ def install(state: Path) -> int:
         ["launchctl", "bootout", f"gui/{os.getuid()}", str(target)],
         capture_output=True,
         check=False,
+        stdin=subprocess.DEVNULL,
     )
     r = subprocess.run(
         ["launchctl", "bootstrap", f"gui/{os.getuid()}", str(target)],
         capture_output=True,
         text=True,
         check=False,
+        stdin=subprocess.DEVNULL,
     )
     if r.returncode != 0:
         warn(f"launchctl bootstrap {target}: {r.stderr.strip()}")

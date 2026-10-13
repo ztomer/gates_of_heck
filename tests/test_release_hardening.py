@@ -36,7 +36,13 @@ STANZA_BODY = "- Added the release kit\n- Fixed seven drifting releasers"
 
 
 def sh(repo: Path, *args: str) -> str:
-    r = subprocess.run(["git", "-C", str(repo), *args], capture_output=True, text=True, check=True)
+    r = subprocess.run(
+        ["git", "-C", str(repo), *args],
+        capture_output=True,
+        text=True,
+        check=True,
+        stdin=subprocess.DEVNULL,
+    )
     return r.stdout
 
 
@@ -68,6 +74,7 @@ def run_release(kit: dict, *args: str, version: str = VERSION) -> subprocess.Com
         capture_output=True,
         text=True,
         env=release_env(kit),
+        stdin=subprocess.DEVNULL,
     )
 
 
@@ -89,7 +96,11 @@ def kit(tmp_path: Path) -> dict:
     commit_all(proj)
 
     origin = tmp_path / "origin.git"
-    subprocess.run(["git", "clone", "-q", "--bare", str(proj), str(origin)], check=True)
+    subprocess.run(
+        ["git", "clone", "-q", "--bare", str(proj), str(origin)],
+        check=True,
+        stdin=subprocess.DEVNULL,
+    )
     add_github_origin(proj, origin)
 
     bin_dir = tmp_path / "bin"
@@ -178,6 +189,7 @@ class TestSelfBuffering:
             stderr=subprocess.PIPE,
             text=True,
             env=release_env(kit),
+            stdin=subprocess.DEVNULL,
         )
         try:
             give_up = GiveUp(30)
@@ -300,7 +312,9 @@ def _bare_tap(tmp_path: Path) -> Path:
     )
     commit_all(seed)
     bare = tmp_path / "tap.git"
-    subprocess.run(["git", "clone", "-q", "--bare", str(seed), str(bare)], check=True)
+    subprocess.run(
+        ["git", "clone", "-q", "--bare", str(seed), str(bare)], check=True, stdin=subprocess.DEVNULL
+    )
     return bare
 
 
@@ -394,6 +408,7 @@ class TestArtifactDownloadFailure:
             capture_output=True,
             text=True,
             check=True,
+            stdin=subprocess.DEVNULL,
         ).stdout
         assert hashlib.sha256(b"").hexdigest() not in content
         assert 'sha256 "0000' in content

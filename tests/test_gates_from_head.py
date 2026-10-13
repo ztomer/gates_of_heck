@@ -44,9 +44,9 @@ def dirty(gates: Path):
 def consumer(tmp_path: Path) -> Path:
     repo = tmp_path / "consumer"
     repo.mkdir()
-    subprocess.run(["git", "init", "-q", str(repo)], check=True)
+    subprocess.run(["git", "init", "-q", str(repo)], check=True, stdin=subprocess.DEVNULL)
     (repo / "README.md").write_text("# consumer\n")
-    subprocess.run(["git", "-C", str(repo), "add", "-A"], check=True)
+    subprocess.run(["git", "-C", str(repo), "add", "-A"], check=True, stdin=subprocess.DEVNULL)
     return repo
 
 
@@ -68,6 +68,7 @@ def _structural(gates: Path, repo: Path, env: dict) -> subprocess.CompletedProce
         env=env,
         timeout=120,
         check=False,
+        stdin=subprocess.DEVNULL,
     )
 
 
@@ -77,7 +78,11 @@ def test_a_consumer_runs_heads_gates_not_the_working_tree(
     r = _structural(dirty, consumer, _env(tmp_path))
     assert PLANT not in r.stderr, "an uncommitted gate edit reached a consumer's gate"
     head = subprocess.run(
-        ["git", "-C", str(dirty), "rev-parse", "HEAD"], capture_output=True, text=True, check=True
+        ["git", "-C", str(dirty), "rev-parse", "HEAD"],
+        capture_output=True,
+        text=True,
+        check=True,
+        stdin=subprocess.DEVNULL,
     ).stdout.strip()
     assert (tmp_path / "head-cache" / head / "gates" / "structural.sh").is_file()
 
@@ -98,6 +103,7 @@ def test_a_sourced_lib_is_read_from_head_too(dirty: Path, consumer: Path, tmp_pa
         env=_env(tmp_path),
         timeout=60,
         check=False,
+        stdin=subprocess.DEVNULL,
     )
     assert PLANT not in r.stderr, r.stderr
 
@@ -111,7 +117,7 @@ def test_python_imports_resolve_into_the_export(gates: Path, consumer: Path, tmp
         'goh_from_head "${BASH_SOURCE[0]}" "$@"\n'
         'python3 -c "import tui.lib, sys; print(tui.lib.__file__)"\n'
     )
-    subprocess.run(["git", "-C", str(gates), "add", "-A"], check=True)
+    subprocess.run(["git", "-C", str(gates), "add", "-A"], check=True, stdin=subprocess.DEVNULL)
     subprocess.run(
         [
             "git",
@@ -126,6 +132,7 @@ def test_python_imports_resolve_into_the_export(gates: Path, consumer: Path, tmp
             "probe",
         ],
         check=True,
+        stdin=subprocess.DEVNULL,
     )
     try:
         r = subprocess.run(
@@ -136,10 +143,15 @@ def test_python_imports_resolve_into_the_export(gates: Path, consumer: Path, tmp
             env=_env(tmp_path, PYTHONPATH=str(gates)),
             timeout=60,
             check=False,
+            stdin=subprocess.DEVNULL,
         )
         assert str(tmp_path / "head-cache") in r.stdout, r.stdout + r.stderr
     finally:
-        subprocess.run(["git", "-C", str(gates), "reset", "-q", "--hard", "HEAD~1"], check=True)
+        subprocess.run(
+            ["git", "-C", str(gates), "reset", "-q", "--hard", "HEAD~1"],
+            check=True,
+            stdin=subprocess.DEVNULL,
+        )
 
 
 def test_a_test_that_drops_goh_live_is_refused_not_silently_run_on_head(
@@ -220,6 +232,7 @@ def test_a_tool_two_levels_down_finds_the_checkout_root(gates: Path, tmp_path) -
         capture_output=True,
         text=True,
         env=_env(tmp_path),
+        stdin=subprocess.DEVNULL,
     )
     assert out.returncode == 0, out.stderr
     assert out.stdout.endswith("/tools/release-kit/release.sh"), out.stdout
@@ -248,5 +261,12 @@ def test_a_live_run_names_its_own_tree_as_goh_dir(gates: Path, tmp_path) -> None
         'printf %s "$GOH_DIR"'
     )
     env = _env(tmp_path, GOH_LIVE="1", GOH_DIR="/elsewhere")
-    r = subprocess.run(["bash", "-c", probe], capture_output=True, text=True, env=env, timeout=60)
+    r = subprocess.run(
+        ["bash", "-c", probe],
+        capture_output=True,
+        text=True,
+        env=env,
+        timeout=60,
+        stdin=subprocess.DEVNULL,
+    )
     assert r.stdout == str(gates.resolve()), r.stdout + r.stderr

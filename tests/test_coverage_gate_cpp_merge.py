@@ -63,7 +63,7 @@ def _run(tmp_path: Path, proj: Path) -> tuple[subprocess.CompletedProcess[str], 
     for k in ("GOH_COV_FLOOR_CPP", "GOH_CPP_TEST_BIN", "GOH_CPP_BUILD_DIR", "GOH_CTEST_ARGS"):
         env.pop(k, None)
     r = subprocess.run(["/bin/bash", str(COV_GATE), "--lang", "cpp", "--floor", "50", str(proj)],
-                       capture_output=True, text=True, env=env, timeout=60)  # fmt: skip
+                       capture_output=True, text=True, env=env, timeout=60, stdin=subprocess.DEVNULL)  # fmt: skip
     return r, log
 
 

@@ -26,7 +26,9 @@ LOC = CHECKS / "loc_of_baseline_files.py"
 
 
 def _git(repo: Path, *args: str) -> None:
-    subprocess.run(["git", *args], cwd=repo, capture_output=True, check=True)
+    subprocess.run(
+        ["git", *args], cwd=repo, capture_output=True, check=True, stdin=subprocess.DEVNULL
+    )
 
 
 def make_repo(tmp_path: Path, files: dict[str, bytes]) -> Path:
@@ -135,7 +137,7 @@ def run_py(repo: Path, args: list[str]) -> tuple[int, str, str]:
         cmd += ["--line-exclude", args[args.index("--line-exclude") + 1]]
     if "--unbounded" in args:
         cmd += ["--unbounded", args[args.index("--unbounded") + 1]]
-    first = subprocess.run(cmd, cwd=repo, capture_output=True, text=True)
+    first = subprocess.run(cmd, cwd=repo, capture_output=True, text=True, stdin=subprocess.DEVNULL)
     out, err, code = first.stdout, first.stderr, first.returncode
     if code == 0 and (repo / baseline).is_file():
         measure = f"python3 '{LOC}' '{baseline}'"
@@ -144,6 +146,7 @@ def run_py(repo: Path, args: list[str]) -> tuple[int, str, str]:
             cwd=repo,
             capture_output=True,
             text=True,
+            stdin=subprocess.DEVNULL,
         )
         out += second.stdout
         err += second.stderr
@@ -156,7 +159,12 @@ def run_goh(goh: Path, repo: Path, args: list[str]) -> tuple[int, str, str]:
 
     env = dict(os.environ, GOH_DIR=str(ROOT))
     r = subprocess.run(
-        [str(goh), "ceiling", *args], cwd=repo, capture_output=True, text=True, env=env
+        [str(goh), "ceiling", *args],
+        cwd=repo,
+        capture_output=True,
+        text=True,
+        env=env,
+        stdin=subprocess.DEVNULL,
     )
     return r.returncode, r.stdout, r.stderr
 

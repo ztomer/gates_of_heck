@@ -52,7 +52,11 @@ exec bash "$GOH_DIR/gates/structural.sh" --staged
 
 def _git(repo: Path, *args: str) -> str:
     return subprocess.run(
-        ["git", "-C", str(repo), *args], check=True, capture_output=True, text=True
+        ["git", "-C", str(repo), *args],
+        check=True,
+        capture_output=True,
+        text=True,
+        stdin=subprocess.DEVNULL,
     ).stdout.strip()
 
 
@@ -90,6 +94,7 @@ def _commit(wt: Path, env: dict, *args: str) -> subprocess.CompletedProcess:
         capture_output=True,
         text=True,
         timeout=120,
+        stdin=subprocess.DEVNULL,
     )
 
 
@@ -98,6 +103,7 @@ def _bare(main: Path) -> str:
         ["git", "config", "--file", str(main / ".git" / "config"), "core.bare"],
         capture_output=True,
         text=True,
+        stdin=subprocess.DEVNULL,
     ).stdout.strip()
 
 
@@ -237,7 +243,12 @@ def test_the_carried_index_never_binds_another_repository(tmp_path):
         GOH_HOOK_GIT_DIR=str(tmp_path / "elsewhere" / ".git"),
     )
     got = subprocess.run(
-        ["bash", "-c", probe], cwd=fixture, env=env, capture_output=True, text=True
+        ["bash", "-c", probe],
+        cwd=fixture,
+        env=env,
+        capture_output=True,
+        text=True,
+        stdin=subprocess.DEVNULL,
     )
     assert got.returncode == 0, got.stderr
     assert got.stdout == "unbound", got.stdout
@@ -254,7 +265,9 @@ def test_a_repository_reachable_only_through_git_dir_is_refused_by_name(tmp_path
     _git(tmp_path, "init", "-q", "--bare", str(dot))
     bound = ["git", f"--git-dir={dot}", f"--work-tree={home}", "-c", f"core.hooksPath={hooks}"]
     (home / "f.txt").write_text("f\n")
-    subprocess.run([*bound, "add", "f.txt"], check=True, capture_output=True)
+    subprocess.run(
+        [*bound, "add", "f.txt"], check=True, capture_output=True, stdin=subprocess.DEVNULL
+    )
     got = subprocess.run(
         [*bound, "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-q", "-m", "x"],
         cwd=home,
@@ -262,6 +275,7 @@ def test_a_repository_reachable_only_through_git_dir_is_refused_by_name(tmp_path
         capture_output=True,
         text=True,
         timeout=60,
+        stdin=subprocess.DEVNULL,
     )
     assert got.returncode != 0, got.stdout + got.stderr  # git reports any hook failure as 1
     assert "only through" in got.stderr and "--no-verify" in got.stderr, got.stderr

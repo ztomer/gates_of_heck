@@ -18,7 +18,12 @@ pytestmark = pytest.mark.skipif(shutil.which("ruff") is None, reason="ruff not o
 
 
 def run(repo):
-    return subprocess.run(["/bin/bash", str(GATE), str(repo)], capture_output=True, text=True)
+    return subprocess.run(
+        ["/bin/bash", str(GATE), str(repo)],
+        capture_output=True,
+        text=True,
+        stdin=subprocess.DEVNULL,
+    )
 
 
 def test_nothing_python_staged_passes(repo):

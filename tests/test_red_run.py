@@ -28,7 +28,7 @@ def _check(repo: Path, msg: str) -> subprocess.CompletedProcess[str]:
     path.write_text(msg)
     return subprocess.run(
         [str(native_goh_path()), "red-run", str(path)], cwd=repo, capture_output=True, text=True,
-        env=hermetic_env(drop_git=True),
+        env=hermetic_env(drop_git=True), stdin=subprocess.DEVNULL,
     )  # fmt: skip
 
 
@@ -53,7 +53,7 @@ def test_a_commit_that_adds_no_test_needs_none(repo: Path) -> None:
 def _range(repo: Path, *revs: str) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
         [str(native_goh_path()), "red-run", "--range", *revs], cwd=repo, capture_output=True,
-        text=True, env=hermetic_env(drop_git=True),
+        text=True, env=hermetic_env(drop_git=True), stdin=subprocess.DEVNULL,
     )  # fmt: skip
 
 
@@ -75,14 +75,14 @@ def test_a_range_git_refuses_is_an_error_not_a_pass(repo: Path) -> None:
 
 def _hooked(repo: Path, gatesrc: str) -> None:
     subprocess.run(["bash", str(REPO_ROOT / "install.sh"), str(repo)], check=True,
-                   capture_output=True, env=hermetic_env(drop_git=True, GOH_SKIP_BUILD="1"))  # fmt: skip
+                   capture_output=True, env=hermetic_env(drop_git=True, GOH_SKIP_BUILD="1"), stdin=subprocess.DEVNULL)  # fmt: skip
     (repo / ".gatesrc").write_text(gatesrc)
 
 
 def _git_commit(repo: Path, msg: str) -> subprocess.CompletedProcess[str]:
     env = hermetic_env(drop_git=True, GOH_DIR=str(REPO_ROOT), GOH_BIN=str(native_goh_path()))
     return subprocess.run(["git", "-C", str(repo), "commit", "-q", "-m", msg],
-                          capture_output=True, text=True, env=env)  # fmt: skip
+                          capture_output=True, text=True, env=env, stdin=subprocess.DEVNULL)  # fmt: skip
 
 
 def test_the_commit_msg_hook_runs_it_when_the_repo_opts_in(repo: Path) -> None:

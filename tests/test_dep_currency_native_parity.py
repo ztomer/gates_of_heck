@@ -52,7 +52,9 @@ def _env(tmp_path: Path) -> dict:
 
 
 def both(goh: Path, root: Path, env: dict, *args: str):
-    run = lambda argv: subprocess.run(argv, cwd=root, capture_output=True, text=True, env=env)  # noqa: E731
+    run = lambda argv: subprocess.run(
+        argv, cwd=root, capture_output=True, text=True, env=env, stdin=subprocess.DEVNULL
+    )  # noqa: E731
     py = run([sys.executable, str(CHECK), *args])
     rs = run([str(goh), "deps", *args])
     return (py.returncode, py.stdout, py.stderr), (rs.returncode, rs.stdout, rs.stderr)

@@ -44,6 +44,7 @@ def run(script: str, cwd: Path, path: str) -> subprocess.CompletedProcess:
         capture_output=True,
         text=True,
         timeout=120,
+        stdin=subprocess.DEVNULL,
     )
 
 
@@ -76,8 +77,8 @@ def test_shell_lint_fails_without_shellcheck(tmp_path, goh):
     repo = tmp_path / "r"
     repo.mkdir()
     (repo / "a.sh").write_text("#!/bin/bash\necho ok\n")
-    subprocess.run(["git", "init", "-q"], cwd=repo, check=True)
-    subprocess.run(["git", "add", "-A"], cwd=repo, check=True)
+    subprocess.run(["git", "init", "-q"], cwd=repo, check=True, stdin=subprocess.DEVNULL)
+    subprocess.run(["git", "add", "-A"], cwd=repo, check=True, stdin=subprocess.DEVNULL)
     env = hermetic_env()
     env["PATH"] = path_without("shellcheck", tmp_path / "bin")
     got = subprocess.run(
@@ -87,6 +88,7 @@ def test_shell_lint_fails_without_shellcheck(tmp_path, goh):
         capture_output=True,
         text=True,
         timeout=60,
+        stdin=subprocess.DEVNULL,
     )
     assert got.returncode != 0, got.stdout + got.stderr
     assert "shellcheck is not installed" in got.stdout + got.stderr, got.stdout + got.stderr
@@ -118,7 +120,7 @@ def test_py_gate_refuses_a_runner_that_cannot_import_its_tools(tmp_path, module)
     )
     got = subprocess.run(
         ["/bin/bash", str(REPO_ROOT / "gates" / "py_gate.sh"), str(pkg)],
-        cwd=pkg, env=env, capture_output=True, text=True, timeout=120,
+        cwd=pkg, env=env, capture_output=True, text=True, timeout=120, stdin=subprocess.DEVNULL,
     )  # fmt: skip
     out = got.stdout + got.stderr
     assert got.returncode != 0, out
@@ -129,14 +131,17 @@ def test_py_gate_refuses_a_runner_that_cannot_import_its_tools(tmp_path, module)
 def test_py_staged_refuses_a_runner_that_cannot_import_ruff(tmp_path, repo):
     (repo / "m.py").write_text("X = 1\n")
     subprocess.run(
-        ["git", "-C", str(repo), "add", "m.py"], check=True, env=hermetic_env(drop_git=True)
+        ["git", "-C", str(repo), "add", "m.py"],
+        check=True,
+        env=hermetic_env(drop_git=True),
+        stdin=subprocess.DEVNULL,
     )
     env = hermetic_env(
         GOH_DIR=str(REPO_ROOT), GOH_PY_RUNNER=_runner_without("ruff", tmp_path / "b")
     )
     got = subprocess.run(
         ["/bin/bash", str(REPO_ROOT / "gates" / "py_staged.sh"), str(repo)],
-        cwd=repo, env=env, capture_output=True, text=True, timeout=120,
+        cwd=repo, env=env, capture_output=True, text=True, timeout=120, stdin=subprocess.DEVNULL,
     )  # fmt: skip
     out = got.stdout + got.stderr
     assert got.returncode != 0, out

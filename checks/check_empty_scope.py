@@ -101,7 +101,13 @@ def scratch_git(*args, check=False):
     and GIT_INDEX_FILE are dropped, or `git init <skeleton>` from a linked worktree's hook
     re-initialises the REAL repository (and flips its core.bare), and the skeleton's config,
     add and commit land there too. See `_gitutil.foreign_repo_env`."""
-    return subprocess.run(["git", *args], check=check, capture_output=True, env=foreign_repo_env())
+    return subprocess.run(
+        ["git", *args],
+        check=check,
+        capture_output=True,
+        env=foreign_repo_env(),
+        stdin=subprocess.DEVNULL,
+    )
 
 
 def gate_dir(root):
@@ -263,6 +269,7 @@ def sweep(skeleton, gate_name, names, timeout=None, excused=()):
                 # Inside the skeleton, not the hook's repo: with the hook's GIT_DIR a gate's git
                 # calls would read the REAL tree, and the sweep would measure the wrong thing.
                 env=env,
+                stdin=subprocess.DEVNULL,
             )
         except subprocess.TimeoutExpired:
             unrunnable[name] = f"no verdict within {timeout}s"

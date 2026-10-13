@@ -51,7 +51,11 @@ printf 'GIT_DIR=%s\\n' "${GIT_DIR:-unset}" >> "$GATE_REPORT"
 
 def _git(repo, *args):
     return subprocess.run(
-        ["git", "-C", str(repo), *args], check=True, capture_output=True, text=True
+        ["git", "-C", str(repo), *args],
+        check=True,
+        capture_output=True,
+        text=True,
+        stdin=subprocess.DEVNULL,
     ).stdout.strip()
 
 
@@ -83,6 +87,7 @@ def _bare(main):
         ["git", "config", "--file", str(main / ".git" / "config"), "core.bare"],
         capture_output=True,
         text=True,
+        stdin=subprocess.DEVNULL,
     ).stdout.strip()
 
 
@@ -94,6 +99,7 @@ def test_the_fixture_reproduces_the_class(tmp_path):
         env=hook_env,
         check=True,
         capture_output=True,
+        stdin=subprocess.DEVNULL,
     )
     assert _bare(main) == "true", "the hazard did not reproduce: every test below is vacuous"
     assert not (tmp_path / "other" / ".git").exists()
@@ -109,6 +115,7 @@ def test_empty_scope_sweep_never_touches_the_hooks_repo(tmp_path):
         env=hook_env,
         capture_output=True,
         text=True,
+        stdin=subprocess.DEVNULL,
     )
     text = out.stdout + out.stderr
     assert _bare(main) in ("", "false"), text
@@ -126,6 +133,7 @@ def test_empty_scope_probe_never_touches_the_hooks_repo(tmp_path):
         env=hook_env,
         capture_output=True,
         text=True,
+        stdin=subprocess.DEVNULL,
     )
     assert out.returncode == 0, out.stdout + out.stderr
     assert _bare(main) in ("", "false"), out.stdout + out.stderr
@@ -140,6 +148,7 @@ def test_probes_run_without_the_hooks_variables(tmp_path):
         env=hook_env,
         capture_output=True,
         text=True,
+        stdin=subprocess.DEVNULL,
     )
     assert out.returncode == 0, out.stdout + out.stderr
     assert _bare(main) in ("", "false"), out.stdout + out.stderr
@@ -176,7 +185,10 @@ def test_the_suite_never_sees_hook_variables(tmp_path):
     leaked = [v for v in local_env_vars() if v in os.environ]
     assert not leaked, f"conftest did not scrub {leaked}"
     subprocess.run(
-        ["git", "init", "-q", str(tmp_path / "fixture")], check=True, capture_output=True
+        ["git", "init", "-q", str(tmp_path / "fixture")],
+        check=True,
+        capture_output=True,
+        stdin=subprocess.DEVNULL,
     )
     assert (tmp_path / "fixture" / ".git").is_dir()
 
@@ -200,6 +212,7 @@ def test_conftest_scrubs_before_any_fixture_runs(tmp_path):
         env=hook_env,
         capture_output=True,
         text=True,
+        stdin=subprocess.DEVNULL,
     )
     assert out.returncode == 0, out.stdout + out.stderr
     assert _bare(main) in ("", "false"), out.stdout + out.stderr

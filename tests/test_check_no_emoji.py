@@ -134,7 +134,9 @@ def test_staged_new_file_reported_relative_to_root(repo):
     nested = repo / "src"
     nested.mkdir()
     (nested / "n.md").write_text(EMOJI_SMILE + "\n", encoding="utf-8")
-    subprocess.run(["git", "-C", str(repo), "add", "src/n.md"], check=True)
+    subprocess.run(
+        ["git", "-C", str(repo), "add", "src/n.md"], check=True, stdin=subprocess.DEVNULL
+    )
     r = run_check(repo, SCRIPT, "--staged")
     assert r.returncode == 1
     assert "src/n.md" in r.stdout
@@ -218,6 +220,7 @@ def test_self_host_committed_tree_stays_clean():
         cwd=REPO_ROOT,
         capture_output=True,
         text=True,
+        stdin=subprocess.DEVNULL,
     )
     assert r.returncode == 0, r.stdout
 
@@ -234,6 +237,7 @@ def test_runs_from_subdirectory_of_target_repo(repo):
         cwd=sub,
         capture_output=True,
         text=True,
+        stdin=subprocess.DEVNULL,
     )
     assert r.returncode == 0
 

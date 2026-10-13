@@ -22,6 +22,7 @@ def run_doctor(target: Path) -> subprocess.CompletedProcess:
         ["/bin/bash", str(DOCTOR), str(target)],
         capture_output=True,
         text=True,
+        stdin=subprocess.DEVNULL,
     )
 
 
@@ -31,6 +32,7 @@ def _wire(repo: Path) -> None:
         ["/bin/bash", str(REPO_ROOT / "install.sh"), str(repo)],
         capture_output=True,
         text=True,
+        stdin=subprocess.DEVNULL,
     )
     assert r.returncode == 0, r.stdout + r.stderr
 
@@ -55,6 +57,7 @@ def test_unset_hookspath_fails_named(repo):
     subprocess.run(
         ["git", "-C", str(repo), "config", "--unset", "core.hooksPath"],
         check=True,
+        stdin=subprocess.DEVNULL,
     )
     r = run_doctor(repo)
     assert r.returncode == 1, r.stdout + r.stderr
@@ -104,6 +107,7 @@ def test_missing_python_is_named(tmp_path):
         capture_output=True,
         text=True,
         env={"PATH": str(bindir), "HOME": str(tmp_path)},
+        stdin=subprocess.DEVNULL,
     )
     assert r.returncode == 1, r.stdout + r.stderr
     assert "python3" in (r.stdout + r.stderr)
@@ -120,6 +124,7 @@ def test_gate_help_flag_prints_usage(tmp_path):
         text=True,
         cwd=tmp_path,
         env=env,
+        stdin=subprocess.DEVNULL,
     )
     assert r.returncode == 0, r.stdout + r.stderr
     combined = r.stdout + r.stderr
@@ -135,6 +140,7 @@ def test_gate_doctor_flag_delegates(repo):
         capture_output=True,
         text=True,
         check=True,
+        stdin=subprocess.DEVNULL,
     )
     env = dict(_os.environ)
     env["GOH_DIR"] = str(REPO_ROOT)
@@ -143,6 +149,7 @@ def test_gate_doctor_flag_delegates(repo):
         capture_output=True,
         text=True,
         env=env,
+        stdin=subprocess.DEVNULL,
     )
     assert r.returncode == 0, r.stdout + r.stderr
     assert "healthy" in (r.stdout + r.stderr).lower()

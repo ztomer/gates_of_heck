@@ -19,7 +19,9 @@ BASH = "/bin/bash"
 
 
 def _bash(script: str, cwd: Optional[Path] = None) -> subprocess.CompletedProcess:
-    return subprocess.run([BASH, "-c", script], cwd=cwd, capture_output=True, text=True)
+    return subprocess.run(
+        [BASH, "-c", script], cwd=cwd, capture_output=True, text=True, stdin=subprocess.DEVNULL
+    )
 
 
 def _sandbox(tmp_path: Path) -> Path:
@@ -147,6 +149,7 @@ def _under_pty(script: str) -> str:
         ["script", "-q", "/dev/null", "/bin/bash", "-c", script],
         capture_output=True,
         text=True,
+        stdin=subprocess.DEVNULL,
     )
     return r.stdout
 

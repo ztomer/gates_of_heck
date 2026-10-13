@@ -50,7 +50,15 @@ def _wait_for(path: Path, timeout: float = 15) -> str:
 
 
 def _run(wrapper, *args, **kw):
-    return subprocess.run([*wrapper, *args], capture_output=True, text=True, timeout=60, **kw)
+    return subprocess.run(
+        [*wrapper, *args],
+        capture_output=True,
+        text=True,
+        timeout=60,
+        # A caller's own `stdin=` or `input=` wins; otherwise the child reads nothing.
+        stdin=kw.pop("stdin", None if "input" in kw else subprocess.DEVNULL),
+        **kw,
+    )
 
 
 def test_the_steps_own_code_passes_through(wrapper) -> None:
@@ -131,7 +139,7 @@ def test_a_signal_to_the_wrapper_sweeps_the_step(wrapper, tmp_path: Path, sig) -
         [*wrapper, "--timeout", "60", "--grace", "1", "--", "/bin/bash", "-c",
          f"sleep 300 & echo $! > {pid}; wait"],
         stdout=subprocess.DEVNULL, stderr=subprocess.PIPE,
-        preexec_fn=lambda: signal.signal(sig, signal.SIG_DFL),
+        preexec_fn=lambda: signal.signal(sig, signal.SIG_DFL), stdin=subprocess.DEVNULL,
     )  # fmt: skip
     grandchild = None
     try:
@@ -155,7 +163,7 @@ def test_a_signal_ignored_at_entry_stays_ignored(wrapper, tmp_path: Path) -> Non
     proc = subprocess.Popen(
         [*wrapper, "--timeout", "60", "--", "/bin/bash", "-c", f"sleep 300 & echo $! > {pid}; wait"],
         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-        preexec_fn=lambda: signal.signal(signal.SIGHUP, signal.SIG_IGN),
+        preexec_fn=lambda: signal.signal(signal.SIGHUP, signal.SIG_IGN), stdin=subprocess.DEVNULL,
     )  # fmt: skip
     grandchild = None
     try:

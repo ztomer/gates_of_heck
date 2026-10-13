@@ -26,10 +26,12 @@ def _mk_repo(
     write(r, ".gatesrc", "GOH_SWIFT_MODE=xcode\nGOH_SWIFT_SCHEME=App\n")
     for p in projects:
         (r / p).mkdir()
-    subprocess.run(["git", "init", "-q"], cwd=r, check=True)
+    subprocess.run(["git", "init", "-q"], cwd=r, check=True, stdin=subprocess.DEVNULL)
     if swift_source:
         write(r, "App/Main.swift", "print(1)\n")
-        subprocess.run(["git", "add", "App/Main.swift"], cwd=r, check=True)
+        subprocess.run(
+            ["git", "add", "App/Main.swift"], cwd=r, check=True, stdin=subprocess.DEVNULL
+        )
     bin_ = tmp_path / "bin"
     bin_.mkdir()
     for name in ("swift", "xcodebuild", "swiftlint"):
@@ -54,6 +56,7 @@ def _run(repo: Path, bin_dir: Path):
         capture_output=True,
         text=True,
         env=env,
+        stdin=subprocess.DEVNULL,
     )
 
 

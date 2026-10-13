@@ -38,6 +38,7 @@ def _row(goh: Path, tier: str, tmp_path: Path, cmd: list[str]) -> dict:
         text=True,
         timeout=120,
         check=False,
+        stdin=subprocess.DEVNULL,
     )
     assert r.returncode == 0, r.stdout + r.stderr
     (row,) = [json.loads(line) for line in out.read_text().splitlines() if line.strip()]

@@ -35,7 +35,13 @@ STRAY_MEMBER = '[package]\nname = "m"\nversion = "0.1.0"\n[lints.rust]\nunsafe_c
 
 def _git(repo: Path, *args: str) -> None:
     env = {k: v for k, v in os.environ.items() if not k.startswith("GIT_")}
-    subprocess.run(["git", "-C", str(repo), *args], check=True, capture_output=True, env=env)
+    subprocess.run(
+        ["git", "-C", str(repo), *args],
+        check=True,
+        capture_output=True,
+        env=env,
+        stdin=subprocess.DEVNULL,
+    )
 
 
 @pytest.fixture
@@ -72,6 +78,7 @@ def test_dep_currency_counts_only_the_crate_git_names(planted: Path, goh) -> Non
         text=True,
         env=env,
         timeout=60,
+        stdin=subprocess.DEVNULL,
     )
     assert r.returncode == 0, r.stdout + r.stderr
     assert "1 manifest(s), none declaring a dependency" in r.stdout, r.stdout
@@ -81,7 +88,13 @@ def test_lints_optin_never_reads_the_ignored_build_tree(planted: Path, goh) -> N
     env = hermetic_env(drop_git=True)
     env["GOH_DIR"] = str(ROOT)
     r = subprocess.run(
-        [str(goh), "lints"], cwd=planted, capture_output=True, text=True, env=env, timeout=60
+        [str(goh), "lints"],
+        cwd=planted,
+        capture_output=True,
+        text=True,
+        env=env,
+        timeout=60,
+        stdin=subprocess.DEVNULL,
     )
     assert r.returncode == 0, r.stdout + r.stderr
     assert "unsafe_code" not in r.stdout + r.stderr

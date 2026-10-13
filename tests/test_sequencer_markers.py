@@ -40,7 +40,13 @@ def _env(**extra: str) -> dict[str, str]:
 
 
 def _git(repo: Path, *args: str, check: bool = True) -> subprocess.CompletedProcess:
-    r = subprocess.run(["git", "-C", str(repo), *args], capture_output=True, text=True, env=_env())
+    r = subprocess.run(
+        ["git", "-C", str(repo), *args],
+        capture_output=True,
+        text=True,
+        env=_env(),
+        stdin=subprocess.DEVNULL,
+    )
     if check and r.returncode != 0:
         raise AssertionError(f"git {' '.join(args)} failed:\n{r.stdout}{r.stderr}")
     return r

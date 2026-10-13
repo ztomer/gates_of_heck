@@ -101,6 +101,7 @@ def test_the_cli_lists_a_layer_and_prints_install_commands():
         capture_output=True,
         text=True,
         timeout=30,
+        stdin=subprocess.DEVNULL,
     )
     assert out.returncode == 0, out.stderr
     assert "cargo install --locked cargo-machete" in out.stdout
@@ -112,14 +113,15 @@ def test_repo_detection_finds_the_layers_a_repo_declares(tmp_path):
     (tmp_path / "tools").mkdir()
     (tmp_path / "tools" / "gate.sh").write_text('"$GOH/gates/rust_gate.sh" .\n')
     (tmp_path / ".gatesrc").write_text("GOH_PYTHON_FORMATTED=1\n")
-    subprocess.run(["git", "init", "-q", str(tmp_path)], check=True)
+    subprocess.run(["git", "init", "-q", str(tmp_path)], check=True, stdin=subprocess.DEVNULL)
     (tmp_path / "x.sh").write_text("true\n")
-    subprocess.run(["git", "-C", str(tmp_path), "add", "-A"], check=True)
+    subprocess.run(["git", "-C", str(tmp_path), "add", "-A"], check=True, stdin=subprocess.DEVNULL)
     out = subprocess.run(
         [sys.executable, str(CLI), "--repo", str(tmp_path)],
         capture_output=True,
         text=True,
         timeout=30,
+        stdin=subprocess.DEVNULL,
     )
     assert out.returncode == 0, out.stderr
     tools = {line.split("\t")[1] for line in out.stdout.splitlines() if line.strip()}
@@ -134,6 +136,7 @@ def test_ruff_is_only_for_repos_that_opted_into_the_format_check():
         capture_output=True,
         text=True,
         timeout=30,
+        stdin=subprocess.DEVNULL,
     )
     assert out.returncode == 0, out.stderr
     assert out.stdout.split() == ["cargo", "shellcheck"], out.stdout  # cargo builds bin/goh (N3)
@@ -141,7 +144,11 @@ def test_ruff_is_only_for_repos_that_opted_into_the_format_check():
 
 def test_an_unknown_layer_is_refused_not_ignored():
     out = subprocess.run(
-        [sys.executable, str(CLI), "--layer", "rsut"], capture_output=True, text=True, timeout=30
+        [sys.executable, str(CLI), "--layer", "rsut"],
+        capture_output=True,
+        text=True,
+        timeout=30,
+        stdin=subprocess.DEVNULL,
     )
     assert out.returncode == 2 and "rsut" in out.stderr
 
@@ -155,12 +162,13 @@ def test_the_cross_lint_tools_are_for_repos_that_name_zigbuild(tmp_path, gatesrc
     (tmp_path / "tools").mkdir()
     (tmp_path / "tools" / "gate.sh").write_text('"$GOH/gates/rust_gate.sh" .\n')
     (tmp_path / ".gatesrc").write_text(gatesrc)
-    subprocess.run(["git", "init", "-q", str(tmp_path)], check=True)
+    subprocess.run(["git", "init", "-q", str(tmp_path)], check=True, stdin=subprocess.DEVNULL)
     out = subprocess.run(
         [sys.executable, str(CLI), "--repo", str(tmp_path), "--names"],
         capture_output=True,
         text=True,
         timeout=30,
+        stdin=subprocess.DEVNULL,
     )
     assert out.returncode == 0, out.stderr
     names = set(out.stdout.split())
@@ -173,9 +181,12 @@ def _names_for(repo: Path, files: dict[str, str]) -> list[str]:
     for rel, body in files.items():
         (repo / rel).parent.mkdir(parents=True, exist_ok=True)
         (repo / rel).write_text(body)
-    subprocess.run(["git", "-C", str(repo), "add", "-A"], check=True)
+    subprocess.run(["git", "-C", str(repo), "add", "-A"], check=True, stdin=subprocess.DEVNULL)
     r = subprocess.run(
-        [sys.executable, str(CLI), "--repo", str(repo), "--names"], capture_output=True, text=True
+        [sys.executable, str(CLI), "--repo", str(repo), "--names"],
+        capture_output=True,
+        text=True,
+        stdin=subprocess.DEVNULL,
     )
     assert r.returncode == 0, r.stderr
     return r.stdout.split()

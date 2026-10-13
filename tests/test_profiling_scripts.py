@@ -50,5 +50,6 @@ def test_direct_execv_starts_the_interpreter(rel, tmp_path):
         text=True,
         env=env,
         timeout=120,
+        stdin=subprocess.DEVNULL,
     )
     assert r.returncode != 126, "found but not executable"

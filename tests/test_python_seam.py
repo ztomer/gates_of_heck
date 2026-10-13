@@ -30,6 +30,7 @@ def _seam(repo: Path, *args: str, **env: str) -> subprocess.CompletedProcess:
         text=True,
         env=run_env,
         check=False,
+        stdin=subprocess.DEVNULL,
     )
 
 
@@ -39,6 +40,7 @@ def _minor(python: str) -> str:
         capture_output=True,
         text=True,
         check=True,
+        stdin=subprocess.DEVNULL,
     ).stdout.strip()
 
 
@@ -53,6 +55,7 @@ def test_a_bare_python3_in_a_hook_cannot_import_the_house_library(repo: Path) ->
         text=True,
         env=env,
         check=False,
+        stdin=subprocess.DEVNULL,
     )
     assert r.returncode != 0 and "No module named 'tui'" in r.stderr, r.stdout + r.stderr
 
@@ -104,6 +107,7 @@ def _structural(goh: Path, repo: Path, *args: str) -> subprocess.CompletedProces
         text=True,
         env=hermetic_env(GOH_DIR=str(REPO_ROOT)),
         check=False,
+        stdin=subprocess.DEVNULL,
     )
 
 

@@ -32,7 +32,12 @@ def _run(tmp_path: Path, body: str) -> subprocess.CompletedProcess:
         {body}
     """)
     return subprocess.run(
-        ["/bin/bash", "-c", script], capture_output=True, text=True, timeout=60, check=False
+        ["/bin/bash", "-c", script],
+        capture_output=True,
+        text=True,
+        timeout=60,
+        check=False,
+        stdin=subprocess.DEVNULL,
     )
 
 

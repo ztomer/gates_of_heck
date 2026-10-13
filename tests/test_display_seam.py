@@ -38,6 +38,7 @@ def run_checker(root, *args):
         capture_output=True,
         text=True,
         check=False,
+        stdin=subprocess.DEVNULL,
     )
 
 
@@ -48,6 +49,7 @@ def _git(root, *args):
         text=True,
         check=False,
         env={k: v for k, v in os.environ.items() if not k.startswith("GIT_")},
+        stdin=subprocess.DEVNULL,
     ).returncode
 
 
@@ -79,13 +81,23 @@ def estate(tmp_path, files, policy=None):
 
 def test_the_probe_passes():
     got = subprocess.run(
-        [sys.executable, str(CHECK), "--probe"], capture_output=True, text=True, check=False
+        [sys.executable, str(CHECK), "--probe"],
+        capture_output=True,
+        text=True,
+        check=False,
+        stdin=subprocess.DEVNULL,
     )
     assert got.returncode == 0, got.stdout + got.stderr
 
 
 def test_the_marker_reason_cases_pass():
-    got = subprocess.run([sys.executable, str(MARKER)], capture_output=True, text=True, check=False)
+    got = subprocess.run(
+        [sys.executable, str(MARKER)],
+        capture_output=True,
+        text=True,
+        check=False,
+        stdin=subprocess.DEVNULL,
+    )
     assert got.returncode == 0, got.stdout + got.stderr
 
 
@@ -270,6 +282,7 @@ def test_the_probe_goes_red_when_one_rule_is_dropped(tmp_path, label, old, new):
         check=False,
         cwd=tmp_path,
         env=dict(os.environ, PYTHONPATH=str(ROOT)),
+        stdin=subprocess.DEVNULL,
     )
     assert got.returncode == 1, f"the probe stayed green without the {label} rule:\n{got.stdout}"
     assert "wrong" in got.stderr, got.stderr

@@ -99,7 +99,11 @@ def snapshot() -> dict[str, list[int]]:
     """{pid: [ppid]} for every process this user can see. One `ps`, no per-pid spawns."""
     try:
         out = subprocess.run(
-            ["ps", "-Ao", "pid=,ppid="], capture_output=True, text=True, check=False
+            ["ps", "-Ao", "pid=,ppid="],
+            capture_output=True,
+            text=True,
+            check=False,
+            stdin=subprocess.DEVNULL,
         )
     except (OSError, subprocess.SubprocessError) as exc:
         print(f"orphan_canary: cannot read the process table: {exc}", file=sys.stderr)
@@ -128,6 +132,7 @@ def describe(pids: list[str]) -> dict[str, str]:
             capture_output=True,
             text=True,
             check=False,
+            stdin=subprocess.DEVNULL,
         )
     except (OSError, subprocess.SubprocessError):
         return {}

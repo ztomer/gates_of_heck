@@ -80,6 +80,7 @@ def run_cli(*args: str) -> subprocess.CompletedProcess:
         [sys.executable, str(HELPER), *args],
         capture_output=True,
         text=True,
+        stdin=subprocess.DEVNULL,
     )
 
 
@@ -256,6 +257,7 @@ def _run_gate(proj: Path, env_extra: dict | None = None):
         capture_output=True,
         text=True,
         env=env,
+        stdin=subprocess.DEVNULL,
     )
 
 
@@ -345,6 +347,7 @@ def test_real_swiftlint_ratchet_green_then_red(tmp_path):
             ["swiftlint", "lint", "--write-baseline", ".swiftlint-baseline.json", "--quiet"],
             cwd=proj,
             capture_output=True,
+            stdin=subprocess.DEVNULL,
         )
 
     record_baseline()
@@ -354,7 +357,12 @@ def test_real_swiftlint_ratchet_green_then_red(tmp_path):
     env.pop("GOH_SWIFT_COV_MIN", None)
 
     green = subprocess.run(
-        ["/bin/bash", str(GATE), str(proj)], cwd=proj, capture_output=True, text=True, env=env
+        ["/bin/bash", str(GATE), str(proj)],
+        cwd=proj,
+        capture_output=True,
+        text=True,
+        env=env,
+        stdin=subprocess.DEVNULL,
     )
     assert green.returncode == 0, green.stdout + green.stderr
 
@@ -364,7 +372,12 @@ def test_real_swiftlint_ratchet_green_then_red(tmp_path):
     src.write_text("\n".join(lines) + "\n")
 
     red = subprocess.run(
-        ["/bin/bash", str(GATE), str(proj)], cwd=proj, capture_output=True, text=True, env=env
+        ["/bin/bash", str(GATE), str(proj)],
+        cwd=proj,
+        capture_output=True,
+        text=True,
+        env=env,
+        stdin=subprocess.DEVNULL,
     )
     assert red.returncode != 0
     combined = red.stdout + red.stderr
@@ -382,7 +395,12 @@ def test_real_swiftlint_ratchet_green_then_red(tmp_path):
         "}\n"
     )
     nudged = subprocess.run(
-        ["/bin/bash", str(GATE), str(proj)], cwd=proj, capture_output=True, text=True, env=env
+        ["/bin/bash", str(GATE), str(proj)],
+        cwd=proj,
+        capture_output=True,
+        text=True,
+        env=env,
+        stdin=subprocess.DEVNULL,
     )
     assert nudged.returncode == 0, nudged.stdout + nudged.stderr
     assert "re-record" in (nudged.stdout + nudged.stderr).lower()

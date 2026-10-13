@@ -87,7 +87,9 @@ def test_a_guarded_script_survives_being_rewritten_mid_run(tmp_path):
     def run(script: str) -> str:
         path = tmp_path / "s.sh"
         path.write_text(script)
-        proc = subprocess.Popen(["/bin/bash", str(path)], stdout=subprocess.PIPE, text=True)
+        proc = subprocess.Popen(
+            ["/bin/bash", str(path)], stdout=subprocess.PIPE, text=True, stdin=subprocess.DEVNULL
+        )
         time.sleep(0.4)
         path.write_text("#!/bin/bash\n" + later * 3)
         out, _ = proc.communicate(timeout=10)

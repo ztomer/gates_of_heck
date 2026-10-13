@@ -33,6 +33,7 @@ def run_gate(root, *args):
         capture_output=True,
         text=True,
         check=False,
+        stdin=subprocess.DEVNULL,
     )
 
 
@@ -232,6 +233,7 @@ def test_the_calibration_probe_goes_red_when_a_rule_is_dropped(tmp_path, label, 
         check=False,
         cwd=tmp_path,
         env=dict(os.environ, PYTHONPATH=str(ROOT)),
+        stdin=subprocess.DEVNULL,
     )
     assert got.returncode == 1, f"the probe stayed green without the {label} rule:\n{got.stdout}"
     assert "case(s) wrong" in got.stderr, got.stderr
@@ -250,11 +252,12 @@ def test_a_cited_test_suite_counts_only_when_the_push_gate_runs_pytest(tmp_path,
     (root / "gates" / "goh.sh").write_text("#!/bin/sh\n")
     (root / "tests" / "test_x.py").write_text("def test_x():\n    pass\n")
     (root / ".gatesrc").write_text(steps)
-    subprocess.run(["git", "init", "-q", str(root)], check=True)
-    subprocess.run(["git", "-C", str(root), "add", "-A"], check=True)
+    subprocess.run(["git", "init", "-q", str(root)], check=True, stdin=subprocess.DEVNULL)
+    subprocess.run(["git", "-C", str(root), "add", "-A"], check=True, stdin=subprocess.DEVNULL)
     subprocess.run(
         ["git", "-C", str(root), "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "c"],
         check=True,
+        stdin=subprocess.DEVNULL,
     )
     data = {"proven_by": {"no_emoji": "tests/test_x.py (native): red on a planted glyph"}}
     bad = reader.verify(str(root), data, set())

@@ -25,13 +25,16 @@ def run_gate(cwd: Path, *args: str) -> subprocess.CompletedProcess:
         text=True,
         env=hermetic_env(),
         timeout=600,
+        stdin=subprocess.DEVNULL,
     )
 
 
 pytestmark = [
     pytest.mark.skipif(
         shutil.which("cargo") is None
-        or subprocess.run(["cargo", "llvm-cov", "--version"], capture_output=True).returncode,
+        or subprocess.run(
+            ["cargo", "llvm-cov", "--version"], capture_output=True, stdin=subprocess.DEVNULL
+        ).returncode,
         reason="cargo llvm-cov not available",
     ),
 ]
@@ -56,7 +59,9 @@ def _crate(root: Path) -> Path:
         '[package]\nname = "binonly"\nversion = "0.1.0"\nedition = "2021"\n\n[workspace]\n'
     )
     (c / "src" / "main.rs").write_text(MAIN)
-    subprocess.run(["cargo", "generate-lockfile", "-q"], cwd=c, check=True)
+    subprocess.run(
+        ["cargo", "generate-lockfile", "-q"], cwd=c, check=True, stdin=subprocess.DEVNULL
+    )
     return c
 
 
@@ -109,6 +114,7 @@ def test_the_external_command_runs_in_the_callers_environment(tmp_path: Path) ->
         text=True,
         env=env,
         timeout=600,
+        stdin=subprocess.DEVNULL,
     )
     assert r.returncode == 0, r.stdout + r.stderr
     got = dict(line.split("=", 1) for line in seen.read_text().splitlines() if "=" in line)
@@ -129,11 +135,19 @@ def test_a_scrubbed_test_environment_keeps_the_profile_destination(monkeypatch, 
     monkeypatch.setenv("GOH_COVERAGE_BIN_DIR", str(tmp_path))
     monkeypatch.setenv("LLVM_PROFILE_FILE", str(tmp_path / "p-%8m.profraw"))
     r = subprocess.run(
-        ["/usr/bin/env"], env={"PATH": "/usr/bin:/bin"}, capture_output=True, text=True
+        ["/usr/bin/env"],
+        env={"PATH": "/usr/bin:/bin"},
+        capture_output=True,
+        text=True,
+        stdin=subprocess.DEVNULL,
     )
     assert f"LLVM_PROFILE_FILE={tmp_path / 'p-%8m.profraw'}" in r.stdout.splitlines(), r.stdout
     monkeypatch.delenv("GOH_COVERAGE_BIN_DIR")
     r = subprocess.run(
-        ["/usr/bin/env"], env={"PATH": "/usr/bin:/bin"}, capture_output=True, text=True
+        ["/usr/bin/env"],
+        env={"PATH": "/usr/bin:/bin"},
+        capture_output=True,
+        text=True,
+        stdin=subprocess.DEVNULL,
     )
     assert "LLVM_PROFILE_FILE" not in r.stdout, "outside a measured run an env is left as given"

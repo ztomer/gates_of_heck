@@ -31,6 +31,7 @@ def run_ci(cwd: Path, *args: str):
         capture_output=True,
         text=True,
         env=env,
+        stdin=subprocess.DEVNULL,
     )
 
 

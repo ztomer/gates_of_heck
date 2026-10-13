@@ -62,7 +62,7 @@ def test_analyze_trace_exports_the_time_profile_table_and_ranks_it(tmp_path: Pat
     env = {**os.environ, "PATH": f"{fake}:{os.environ['PATH']}"}
     r = subprocess.run(
         [str(REPO_ROOT / "tools/profiling/analyze_trace.sh"), str(trace), str(report), "--process", "App"],
-        check=False, capture_output=True, text=True, env=env, timeout=60,
+        check=False, capture_output=True, text=True, env=env, timeout=60, stdin=subprocess.DEVNULL,
     )  # fmt: skip
     assert r.returncode == 0, r.stdout + r.stderr
     assert '@schema="time-profile"' in asked.read_text()

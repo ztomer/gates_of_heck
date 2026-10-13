@@ -24,7 +24,12 @@ FIXED = HEAD + 'out="$(docker compose ps --services)"\ngrep -qxF "$svc" <<< "$ou
 def _structural(goh: Path, repo: Path, *args: str) -> subprocess.CompletedProcess:
     env = hermetic_env(GOH_DIR=str(REPO_ROOT))
     return subprocess.run(
-        [str(goh), "structural", *args], cwd=repo, capture_output=True, text=True, env=env
+        [str(goh), "structural", *args],
+        cwd=repo,
+        capture_output=True,
+        text=True,
+        env=env,
+        stdin=subprocess.DEVNULL,
     )
 
 
@@ -93,6 +98,7 @@ def test_the_dispatcher_knows_the_check(repo: Path) -> None:
         capture_output=True,
         text=True,
         env=hermetic_env(GOH_DIR=str(REPO_ROOT)),
+        stdin=subprocess.DEVNULL,
     )
     assert r.returncode == 1 and "deploy.sh:3:" in r.stderr, r.stdout + r.stderr
 

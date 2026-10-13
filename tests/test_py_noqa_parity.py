@@ -20,7 +20,10 @@ SILENCED = "import os  # noqa: F401\n"  # ruff honours it; pyflakes still report
 pytestmark = pytest.mark.skipif(
     shutil.which("ruff") is None
     or subprocess.run(
-        ["python3", "-m", "pyflakes", "--version"], capture_output=True, check=False
+        ["python3", "-m", "pyflakes", "--version"],
+        capture_output=True,
+        check=False,
+        stdin=subprocess.DEVNULL,
     ).returncode,
     reason="ruff or pyflakes not available",
 )
@@ -28,7 +31,11 @@ pytestmark = pytest.mark.skipif(
 
 def run(repo):
     return subprocess.run(
-        ["/bin/bash", str(STAGED), str(repo)], capture_output=True, text=True, check=False
+        ["/bin/bash", str(STAGED), str(repo)],
+        capture_output=True,
+        text=True,
+        check=False,
+        stdin=subprocess.DEVNULL,
     )
 
 
@@ -84,6 +91,7 @@ def test_the_push_scope_reads_every_tracked_file(repo):
         capture_output=True,
         text=True,
         check=False,
+        stdin=subprocess.DEVNULL,
     )
     out = r.stdout + r.stderr
     assert r.returncode == 1, out

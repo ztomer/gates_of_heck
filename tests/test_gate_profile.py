@@ -43,7 +43,7 @@ def _profile(tmp_path: Path, push_gate: str) -> subprocess.CompletedProcess[str]
     )
     return subprocess.run(
         ["bash", str(goh / "tools" / "gate_profile.sh"), str(repo)],
-        capture_output=True, text=True, check=False, timeout=120,
+        capture_output=True, text=True, check=False, timeout=120, stdin=subprocess.DEVNULL,
     )  # fmt: skip
 
 

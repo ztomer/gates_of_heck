@@ -30,7 +30,11 @@ GAP = "without running the house structural layer"
 
 def _git(repo: Path, *args: str) -> str:
     return subprocess.run(
-        ["git", "-C", str(repo), *args], check=True, capture_output=True, text=True
+        ["git", "-C", str(repo), *args],
+        check=True,
+        capture_output=True,
+        text=True,
+        stdin=subprocess.DEVNULL,
     ).stdout.strip()
 
 
@@ -65,6 +69,7 @@ def _commit(repo: Path, tmp_path: Path, body: str) -> subprocess.CompletedProces
         capture_output=True,
         text=True,
         timeout=120,
+        stdin=subprocess.DEVNULL,
     )
 
 

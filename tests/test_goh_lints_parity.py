@@ -24,7 +24,9 @@ OWN_TABLE = '[package]\nname = "{name}"\n\n[lints.clippy]\nall = "warn"\n'
 
 
 def _git(repo: Path, *args: str) -> None:
-    subprocess.run(["git", *args], cwd=repo, capture_output=True, check=True)
+    subprocess.run(
+        ["git", *args], cwd=repo, capture_output=True, check=True, stdin=subprocess.DEVNULL
+    )
 
 
 def make_repo(tmp_path: Path, files: dict[str, str]) -> Path:
@@ -40,7 +42,9 @@ def make_repo(tmp_path: Path, files: dict[str, str]) -> Path:
 
 
 def run_py(repo: Path) -> tuple[int, str, str]:
-    r = subprocess.run(["python3", str(CHECK)], cwd=repo, capture_output=True, text=True)
+    r = subprocess.run(
+        ["python3", str(CHECK)], cwd=repo, capture_output=True, text=True, stdin=subprocess.DEVNULL
+    )
     return r.returncode, r.stdout, r.stderr
 
 
@@ -48,7 +52,14 @@ def run_goh(goh: Path, repo: Path) -> tuple[int, str, str]:
     import os
 
     env = dict(os.environ, GOH_DIR=str(ROOT))
-    r = subprocess.run([str(goh), "lints"], cwd=repo, capture_output=True, text=True, env=env)
+    r = subprocess.run(
+        [str(goh), "lints"],
+        cwd=repo,
+        capture_output=True,
+        text=True,
+        env=env,
+        stdin=subprocess.DEVNULL,
+    )
     return r.returncode, r.stdout, r.stderr
 
 

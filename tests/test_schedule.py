@@ -88,6 +88,7 @@ def test_every_worker_sorts_by_the_controllers_one_read(tmp_path) -> None:
         env=hermetic_env(XDG_CACHE_HOME=str(tmp_path)),
         timeout=120,
         check=False,
+        stdin=subprocess.DEVNULL,
     )
     assert r.returncode == 0, r.stdout + r.stderr
     assert "8 passed" in r.stdout, r.stdout

@@ -57,6 +57,7 @@ def reference_root() -> Path:
             ["git", "-C", str(REPO_ROOT), "cat-file", "-e", f"{REFERENCE_COMMIT}^{{commit}}"],
             env=env,
             capture_output=True,
+            stdin=subprocess.DEVNULL,
         )
         if have.returncode != 0:
             raise RuntimeError(
@@ -71,6 +72,7 @@ def reference_root() -> Path:
             env=env,
             capture_output=True,
             check=True,
+            stdin=subprocess.DEVNULL,
         ).stdout
         subprocess.run(["tar", "-x", "-C", str(staging)], input=archive, check=True)
         (staging / ".complete").write_text(REFERENCE_COMMIT + "\n")

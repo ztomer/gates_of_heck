@@ -85,7 +85,7 @@ def test_a_test_git_seed_is_removed_when_its_process_exits(tmp_path: Path) -> No
         "fast_init(sys.argv[2]); fast_init(sys.argv[3], 'main')"
     )
     subprocess.run([sys.executable, "-c", code, str(REPO_ROOT / "tests"), str(tmp_path / "a"),
-                    str(tmp_path / "b")], check=True, env={**os.environ, "TMPDIR": str(tmpdir)})  # fmt: skip
+                    str(tmp_path / "b")], check=True, env={**os.environ, "TMPDIR": str(tmpdir)}, stdin=subprocess.DEVNULL)  # fmt: skip
     assert (tmp_path / "a" / ".git").is_dir() and (tmp_path / "b" / ".git").is_dir()
     assert sorted(p.name for p in tmpdir.iterdir()) == []
 
@@ -114,7 +114,7 @@ def test_the_session_start_runs_the_sweep(tmp_path: Path) -> None:
         [sys.executable, "-m", "pytest", "-q", "-p", "no:xdist", "-p", "no:randomly",
          "tests/test_temp_claimable.py::test_the_scanner_tells_claimable_from_not"],
         cwd=REPO_ROOT, capture_output=True, text=True, timeout=120,
-        env={**os.environ, "TMPDIR": str(tmp_path)}, check=False,
+        env={**os.environ, "TMPDIR": str(tmp_path)}, check=False, stdin=subprocess.DEVNULL,
     )  # fmt: skip
     assert r.returncode == 0, r.stdout[-1500:] + r.stderr[-1500:]
     assert not stale.exists()

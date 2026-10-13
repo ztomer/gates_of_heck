@@ -18,13 +18,17 @@ def compile_obj(tmp_path, name, body):
     src = tmp_path / f"{name}.c"
     src.write_text(body)
     obj = tmp_path / name
-    r = subprocess.run([cc, "-c", str(src), "-o", str(obj)], capture_output=True)
+    r = subprocess.run(
+        [cc, "-c", str(src), "-o", str(obj)], capture_output=True, stdin=subprocess.DEVNULL
+    )
     assert r.returncode == 0, r.stderr.decode()
     return obj
 
 
 def run(*args):
-    return subprocess.run(["/bin/bash", str(SCRIPT), *args], capture_output=True, text=True)
+    return subprocess.run(
+        ["/bin/bash", str(SCRIPT), *args], capture_output=True, text=True, stdin=subprocess.DEVNULL
+    )
 
 
 def test_clean_object_passes(tmp_path):

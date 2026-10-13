@@ -33,6 +33,7 @@ def check(tree: Path, **env: str) -> subprocess.CompletedProcess[str]:
             "GOH_BUILD_PUBLISH_CHECK_ONLY": "1",
             **env,
         },
+        stdin=subprocess.DEVNULL,
     )
 
 
@@ -40,7 +41,9 @@ def check(tree: Path, **env: str) -> subprocess.CompletedProcess[str]:
 def clone(tmp_path: Path) -> Path:
     tree = tmp_path / "goh"
     subprocess.run(
-        ["git", "clone", "--quiet", "--depth", "1", f"file://{ROOT}", str(tree)], check=True
+        ["git", "clone", "--quiet", "--depth", "1", f"file://{ROOT}", str(tree)],
+        check=True,
+        stdin=subprocess.DEVNULL,
     )
     shutil.copy2(
         SCRIPT, tree / "scripts" / "build-goh.sh"
@@ -72,19 +75,37 @@ def test_a_broken_uncommitted_edit_never_reaches_the_published_binary(clone: Pat
     # DRIFT_BUILD_OK: building goh is this test's subject (tests/_drift_guard.py).
     env = {"PATH": os.environ["PATH"], "HOME": os.environ.get("HOME", ""), "DRIFT_BUILD_OK": "1"}
     script = clone / "scripts" / "build-goh.sh"
-    r = subprocess.run(["bash", str(script)], capture_output=True, text=True, env=env, timeout=900)
+    r = subprocess.run(
+        ["bash", str(script)],
+        capture_output=True,
+        text=True,
+        env=env,
+        timeout=900,
+        stdin=subprocess.DEVNULL,
+    )
     assert r.returncode == 0, r.stdout + r.stderr
     assert "NOT in it" in r.stderr and "crates/goh/src/main.rs" in r.stderr, r.stderr
     stamp = subprocess.run(
-        [str(clone / "bin" / "goh"), "source-tree"], capture_output=True, text=True
+        [str(clone / "bin" / "goh"), "source-tree"],
+        capture_output=True,
+        text=True,
+        stdin=subprocess.DEVNULL,
     ).stdout.strip()
     inputs = [f"HEAD:{i}" for i in ("crates", "Cargo.toml", "Cargo.lock", "rust-toolchain.toml")]
     head = subprocess.run(
-        ["git", "-C", str(clone), "rev-parse", *inputs], capture_output=True, text=True
+        ["git", "-C", str(clone), "rev-parse", *inputs],
+        capture_output=True,
+        text=True,
+        stdin=subprocess.DEVNULL,
     ).stdout.split()
     assert stamp == " ".join(head), stamp
     again = subprocess.run(
-        ["bash", str(script), "--if-stale"], capture_output=True, text=True, env=env, timeout=120
+        ["bash", str(script), "--if-stale"],
+        capture_output=True,
+        text=True,
+        env=env,
+        timeout=120,
+        stdin=subprocess.DEVNULL,
     )
     assert again.returncode == 0 and "Building goh" not in again.stdout, again.stdout
 

@@ -421,7 +421,10 @@ def probe():
                 ("add", "-A"),
             ):
                 subprocess.run(
-                    ["git", "-C", thin, *args], capture_output=True, env=foreign_repo_env()
+                    ["git", "-C", thin, *args],
+                    capture_output=True,
+                    env=foreign_repo_env(),
+                    stdin=subprocess.DEVNULL,
                 )
             findings = []
             judge(

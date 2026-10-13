@@ -79,7 +79,11 @@ def materialise(source, files, dest):
     scratch_git(dest)  # one empty .git copied, not init + config x2 (checks/_gitutil.py)
     for args in (("add", "-A"), (*_IDENTITY, "commit", "-qm", "corpus")):
         subprocess.run(
-            ["git", "-C", dest, *args], capture_output=True, check=False, env=foreign_repo_env()
+            ["git", "-C", dest, *args],
+            capture_output=True,
+            check=False,
+            env=foreign_repo_env(),
+            stdin=subprocess.DEVNULL,
         )
 
 
@@ -93,6 +97,7 @@ def takes_exclude(checker):
         text=True,
         check=False,
         env=foreign_repo_env(),
+        stdin=subprocess.DEVNULL,
     )
     return "--exclude" in got.stdout
 
@@ -115,5 +120,6 @@ def run_checker(checker, root, args, exclude=""):
         text=True,
         check=False,
         env=foreign_repo_env(),
+        stdin=subprocess.DEVNULL,
     )
     return result.returncode, (result.stdout + result.stderr)

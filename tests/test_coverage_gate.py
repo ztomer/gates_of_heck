@@ -23,6 +23,11 @@ LOCAL_CI = REPO_ROOT / "gates" / "local_ci.sh"
 ALLOWED_GLYPHS_RE = re.compile(r"[→·✓✗⚠↔↑↓←⌘⌥⌨⇧⌃⏎⎋↵⇒⇄]")
 
 
+def _quiet(argv: list[str], **kw) -> subprocess.CompletedProcess:
+    """`argv` with its output captured as text and nothing on its stdin."""
+    return subprocess.run(argv, capture_output=True, text=True, stdin=subprocess.DEVNULL, **kw)
+
+
 def run_gate(cwd: Path, *args: str, env_extra: dict | None = None):
     env = dict(os.environ)
     env.pop("GOH_COV_FLOOR_RUST", None)
@@ -31,13 +36,7 @@ def run_gate(cwd: Path, *args: str, env_extra: dict | None = None):
     env.pop("GOH_COV_FLOOR_PY", None)
     if env_extra:
         env.update(env_extra)
-    return subprocess.run(
-        ["/bin/bash", str(COV_GATE), *args],
-        cwd=cwd,
-        capture_output=True,
-        text=True,
-        env=env,
-    )
+    return _quiet(["/bin/bash", str(COV_GATE), *args], cwd=cwd, env=env)
 
 
 @pytest.fixture
@@ -52,7 +51,7 @@ def proj(tmp_path: Path) -> Path:
 
 def test_new_gate_scripts_pass_bash_n():
     for script in (COV_GATE, LOCAL_CI):
-        r = subprocess.run(["/bin/bash", "-n", str(script)], capture_output=True, text=True)
+        r = _quiet(["/bin/bash", "-n", str(script)])
         assert r.returncode == 0, f"{script}: {r.stderr}"
 
 
@@ -172,14 +171,14 @@ def _mk_crate(root: Path, lib: str) -> Path:
     (c / "tests" / "all.rs").write_text(TEST_ALL)
     # A real crate carries its lockfile: the gate's old `clean --workspace` WROTE one here as a side
     # effect (a gate writing Cargo.lock); without it a crate with none is refused, as it should be.
-    subprocess.run(["cargo", "generate-lockfile", "-q"], cwd=c, check=True)
+    _quiet(["cargo", "generate-lockfile", "-q"], cwd=c, check=True)
     return c
 
 
 def _llvm_cov_available() -> bool:
     if shutil.which("cargo") is None:
         return False
-    return subprocess.run(["cargo", "llvm-cov", "--version"], capture_output=True).returncode == 0
+    return _quiet(["cargo", "llvm-cov", "--version"]).returncode == 0
 
 
 @pytest.mark.skipif(not _llvm_cov_available(), reason="cargo llvm-cov not available")
@@ -247,13 +246,7 @@ def _run_with_fake_cargo(tmp_path: Path, *args: str):
     env = dict(os.environ)
     env["PATH"] = f"{bin_}:/usr/bin:/bin"
     env.pop("GOH_COV_FLOOR_RUST", None)
-    return subprocess.run(
-        ["/bin/bash", str(COV_GATE), *args],
-        cwd=str(bin_),
-        capture_output=True,
-        text=True,
-        env=env,
-    )
+    return _quiet(["/bin/bash", str(COV_GATE), *args], cwd=str(bin_), env=env)
 
 
 def test_failed_export_leaving_file_behind_fails_the_gate_by_name(tmp_path):
@@ -428,13 +421,7 @@ def _run_with_path(bin_dir: Path, *args: str, env_extra: dict | None = None):
         env.pop(k, None)
     if env_extra:
         env.update(env_extra)
-    return subprocess.run(
-        ["/bin/bash", str(COV_GATE), *args],
-        cwd=str(bin_dir),
-        capture_output=True,
-        text=True,
-        env=env,
-    )
+    return _quiet(["/bin/bash", str(COV_GATE), *args], cwd=str(bin_dir), env=env)
 
 
 def test_spm_engine_below_floor_reports_raw_pct(tmp_path):
@@ -481,7 +468,7 @@ def test_xcodebuild_missing_is_a_named_precondition(tmp_path):
     # A PATH with NO xcodebuild anywhere: the helper must name it, exit 2.
     env = dict(os.environ)
     env["PATH"] = "/no/such/bin"
-    r = subprocess.run(
+    r = _quiet(
         [
             sys.executable,
             str(SWIFT_HELPER),
@@ -492,8 +479,6 @@ def test_xcodebuild_missing_is_a_named_precondition(tmp_path):
             "--proj",
             str(tmp_path),
         ],
-        capture_output=True,
-        text=True,
         env=env,
     )
     assert r.returncode == 2

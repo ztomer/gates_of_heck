@@ -16,6 +16,6 @@ def own_source_files(*specs: str) -> list[str]:
     out = subprocess.run(
         ["git", "-C", str(REPO_ROOT), "ls-files", "-z", "--cached", "--others",
          "--exclude-standard", "--", *specs],
-        capture_output=True, text=True, check=True,
+        capture_output=True, text=True, check=True, stdin=subprocess.DEVNULL,
     ).stdout  # fmt: skip
     return sorted({f for f in out.split("\0") if f and (REPO_ROOT / f).is_file()})

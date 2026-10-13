@@ -97,7 +97,9 @@ def test_zero_tracked_files_is_a_refusal_not_a_pass(tmp_path):
     """Over the tracked tree, an empty population must not read as clean."""
     bare = tmp_path / "bare"
     bare.mkdir()
-    subprocess.run(["git", "init", "-q", "-b", "main"], cwd=bare, check=True)
+    subprocess.run(
+        ["git", "init", "-q", "-b", "main"], cwd=bare, check=True, stdin=subprocess.DEVNULL
+    )
     r = run_check(bare)
     assert r.returncode != 0
     assert "refusing to report clean over zero files" in r.stdout

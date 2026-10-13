@@ -75,7 +75,11 @@ def plain(text):
 
 def repo_root():
     top = subprocess.run(
-        ["git", "rev-parse", "--show-toplevel"], capture_output=True, text=True, check=False
+        ["git", "rev-parse", "--show-toplevel"],
+        capture_output=True,
+        text=True,
+        check=False,
+        stdin=subprocess.DEVNULL,
     )
     return os.path.realpath(top.stdout.strip() if top.returncode == 0 else os.getcwd())
 
@@ -99,7 +103,14 @@ def findings(output, repo, dirs=tuple(DEFAULT_DIRS.split(","))):
 
 
 def git_lines(repo, *args):
-    done = subprocess.run(["git", *args], cwd=repo, capture_output=True, text=True, check=False)
+    done = subprocess.run(
+        ["git", *args],
+        cwd=repo,
+        capture_output=True,
+        text=True,
+        check=False,
+        stdin=subprocess.DEVNULL,
+    )
     return done.stdout.split("\0") if done.returncode == 0 else []
 
 
@@ -113,6 +124,7 @@ def changed_swift_files(repo, dirs):
             capture_output=True,
             text=True,
             check=False,
+            stdin=subprocess.DEVNULL,
         ).returncode
         == 0
     )
@@ -207,6 +219,7 @@ def main():
             text=True,
             errors="replace",
             check=False,
+            stdin=subprocess.DEVNULL,
         )
         output, status = done.stdout + done.stderr, done.returncode
         with open(log, "w", encoding="utf-8") as f:

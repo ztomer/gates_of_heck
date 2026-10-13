@@ -46,6 +46,7 @@ def estate(tmp_path: Path) -> Path:
             cwd=repo / "crates" / name,
             check=True,
             capture_output=True,
+            stdin=subprocess.DEVNULL,
         )
     _git(repo, "init", "-q")
     _git(repo, "add", "-A")
@@ -68,6 +69,7 @@ def _each(
         env=full,
         timeout=600,
         check=False,
+        stdin=subprocess.DEVNULL,
     )
 
 
@@ -129,6 +131,7 @@ def test_an_unknown_group_is_a_miswiring(estate: Path) -> None:
         env=env,
         timeout=120,
         check=False,
+        stdin=subprocess.DEVNULL,
     )
     assert r.returncode != 0 and "GOH_RUST_GROUPS='crate,lint'" in r.stderr, r.stderr
 

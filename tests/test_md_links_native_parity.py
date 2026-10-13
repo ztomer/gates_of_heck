@@ -57,7 +57,10 @@ def test_the_hard_shapes_read_the_same(goh: Path, text: str) -> None:
 
 def test_every_markdown_file_here_reads_the_same(goh: Path) -> None:
     files = subprocess.run(
-        ["git", "-C", str(REPO_ROOT), "ls-files", "*.md"], capture_output=True, text=True
+        ["git", "-C", str(REPO_ROOT), "ls-files", "*.md"],
+        capture_output=True,
+        text=True,
+        stdin=subprocess.DEVNULL,
     ).stdout.split()
     assert len(files) > 10, files
     differ = []

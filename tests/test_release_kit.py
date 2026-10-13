@@ -38,7 +38,13 @@ STANZA_BODY = "- Added the release kit\n- Fixed seven drifting releasers"
 
 
 def sh(repo: Path, *args: str) -> str:
-    r = subprocess.run(["git", "-C", str(repo), *args], capture_output=True, text=True, check=True)
+    r = subprocess.run(
+        ["git", "-C", str(repo), *args],
+        capture_output=True,
+        text=True,
+        check=True,
+        stdin=subprocess.DEVNULL,
+    )
     return r.stdout
 
 
@@ -74,7 +80,11 @@ def kit(tmp_path: Path) -> dict:
     commit_all(proj)
 
     origin = tmp_path / "origin.git"
-    subprocess.run(["git", "clone", "-q", "--bare", str(proj), str(origin)], check=True)
+    subprocess.run(
+        ["git", "clone", "-q", "--bare", str(proj), str(origin)],
+        check=True,
+        stdin=subprocess.DEVNULL,
+    )
     add_github_origin(proj, origin)
 
     bin_dir = tmp_path / "bin"
@@ -119,6 +129,7 @@ def run_release(kit: dict, *args: str, gate: str = "true") -> subprocess.Complet
         capture_output=True,
         text=True,
         env=env,
+        stdin=subprocess.DEVNULL,
     )
 
 
@@ -387,7 +398,9 @@ def tap(tmp_path: Path) -> tuple[Path, Path]:
     )
     commit_all(seed)
     bare = tmp_path / "tap.git"
-    subprocess.run(["git", "clone", "-q", "--bare", str(seed), str(bare)], check=True)
+    subprocess.run(
+        ["git", "clone", "-q", "--bare", str(seed), str(bare)], check=True, stdin=subprocess.DEVNULL
+    )
     return seed, bare
 
 
@@ -398,6 +411,7 @@ def bare_show(bare: Path, ref: str, rel: str) -> str:
         capture_output=True,
         text=True,
         check=True,
+        stdin=subprocess.DEVNULL,
     ).stdout
 
 

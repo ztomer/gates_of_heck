@@ -125,6 +125,7 @@ def _git(repo, *args):
         text=True,
         check=False,
         env=foreign_repo_env(),
+        stdin=subprocess.DEVNULL,
     ).returncode
 
 

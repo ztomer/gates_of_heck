@@ -74,6 +74,7 @@ class Seam:
             text=True,
             env={**self.env, **env},
             timeout=60,
+            stdin=subprocess.DEVNULL,
         )
         assert r.returncode in (0, 1), r.stdout + r.stderr
         return json.loads(r.stdout)

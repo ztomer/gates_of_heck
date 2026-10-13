@@ -81,6 +81,7 @@ def _run(root, refs, extra_env=None):
         text=True,
         env=env,
         check=False,
+        stdin=subprocess.DEVNULL,
     )
     return proc.returncode, proc.stdout + proc.stderr
 

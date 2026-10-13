@@ -29,7 +29,11 @@ import check_estate_corpus as sweep  # noqa: E402
 
 def run_gate(*args):
     return subprocess.run(
-        [sys.executable, str(CHECK), *args], capture_output=True, text=True, check=False
+        [sys.executable, str(CHECK), *args],
+        capture_output=True,
+        text=True,
+        check=False,
+        stdin=subprocess.DEVNULL,
     )
 
 
@@ -77,7 +81,12 @@ def test_a_corpus_below_the_floor_is_refused(tmp_path):
         ("config", "user.name", "c"),
         ("add", "-A"),
     ):
-        subprocess.run(["git", "-C", str(thin), *args], capture_output=True, check=False)
+        subprocess.run(
+            ["git", "-C", str(thin), *args],
+            capture_output=True,
+            check=False,
+            stdin=subprocess.DEVNULL,
+        )
     findings = []
     state = sweep.judge(
         {
@@ -111,7 +120,12 @@ def test_a_corpus_that_is_not_clean_is_refused(tmp_path):
         ("config", "user.name", "c"),
         ("add", "-A"),
     ):
-        subprocess.run(["git", "-C", str(noisy), *args], capture_output=True, check=False)
+        subprocess.run(
+            ["git", "-C", str(noisy), *args],
+            capture_output=True,
+            check=False,
+            stdin=subprocess.DEVNULL,
+        )
     # A file of the corpus's own making that the checker refuses whatever else happens.
     with open(noisy / "src" / "lib.rs", "a", encoding="utf-8") as handle:
         handle.write("\n// conflict marker below\n<<<<<<< HEAD\na\n=======\nb\n>>>>>>> x\n")
@@ -147,7 +161,12 @@ def test_a_path_the_consumer_exempts_is_not_judged_for_it(repo):
     for rel, text in files.items():
         (repo / rel).parent.mkdir(parents=True, exist_ok=True)
         (repo / rel).write_text(text, encoding="utf-8")
-    subprocess.run(["git", "-C", str(repo), "add", "-A"], capture_output=True, check=True)
+    subprocess.run(
+        ["git", "-C", str(repo), "add", "-A"],
+        capture_output=True,
+        check=True,
+        stdin=subprocess.DEVNULL,
+    )
     assert sweep.consumer_exclude(str(repo)) == "^A_vendor/"
     findings = []
     state = sweep.judge(

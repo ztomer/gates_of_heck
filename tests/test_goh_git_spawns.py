@@ -17,7 +17,7 @@ import pytest
 from conftest import hermetic_env
 
 REAL_GIT = subprocess.run(
-    ["sh", "-c", "command -v git"], capture_output=True, text=True
+    ["sh", "-c", "command -v git"], capture_output=True, text=True, stdin=subprocess.DEVNULL
 ).stdout.strip()
 
 
@@ -35,11 +35,16 @@ def _calls(goh: Path, tmp_path: Path, *args: str) -> Counter:
     repo.mkdir()
     (repo / "a.txt").write_text("hi\n")
     for cmd in (["init", "-q"], ["add", "-A"]):
-        subprocess.run([REAL_GIT, "-C", str(repo), *cmd], check=True)
+        subprocess.run([REAL_GIT, "-C", str(repo), *cmd], check=True, stdin=subprocess.DEVNULL)
     env = hermetic_env(drop_git=True)
     env["PATH"] = f"{shim}:{env['PATH']}"
     r = subprocess.run(
-        [str(goh), "structural", *args], cwd=repo, env=env, capture_output=True, text=True
+        [str(goh), "structural", *args],
+        cwd=repo,
+        env=env,
+        capture_output=True,
+        text=True,
+        stdin=subprocess.DEVNULL,
     )
     assert r.returncode == 0, r.stdout + r.stderr
     return Counter(
@@ -81,13 +86,23 @@ def test_rust_scope_lists_the_workspaces_sources_once(goh: Path, tmp_path: Path)
             f'[package]\nname = "{name}"\nversion = "0.1.0"\nedition = "2021"\n\n[dependencies]\n{deps}'
         )
         (repo / name / "src" / "lib.rs").write_text("pub fn f() {}\n")
-    subprocess.run(["cargo", "generate-lockfile", "-q", "--offline"], cwd=repo / "a", check=True)
-    subprocess.run([REAL_GIT, "-C", str(repo), "init", "-q"], check=True)
-    subprocess.run([REAL_GIT, "-C", str(repo), "add", "-A"], check=True)
+    subprocess.run(
+        ["cargo", "generate-lockfile", "-q", "--offline"],
+        cwd=repo / "a",
+        check=True,
+        stdin=subprocess.DEVNULL,
+    )
+    subprocess.run([REAL_GIT, "-C", str(repo), "init", "-q"], check=True, stdin=subprocess.DEVNULL)
+    subprocess.run([REAL_GIT, "-C", str(repo), "add", "-A"], check=True, stdin=subprocess.DEVNULL)
     env = hermetic_env(drop_git=True)
     env["PATH"] = f"{shim}:{env['PATH']}"
     r = subprocess.run(
-        [str(goh), "rust-scope", "a"], cwd=repo, env=env, capture_output=True, text=True
+        [str(goh), "rust-scope", "a"],
+        cwd=repo,
+        env=env,
+        capture_output=True,
+        text=True,
+        stdin=subprocess.DEVNULL,
     )
     assert r.returncode == 0 and "a" in r.stdout.split(), r.stdout + r.stderr
     listings = [ln for ln in log.read_text().splitlines() if ln.startswith("ls-files")]

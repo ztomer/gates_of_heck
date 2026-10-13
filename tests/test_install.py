@@ -21,6 +21,7 @@ def _install(target, *args):
         ["/bin/bash", str(REPO_ROOT / "install.sh"), *args, str(target)],
         capture_output=True,
         text=True,
+        stdin=subprocess.DEVNULL,
     )
 
 
@@ -48,12 +49,16 @@ def _commit(repo, *args):
         capture_output=True,
         text=True,
         env=hermetic_env(GOH_DIR=str(REPO_ROOT)),
+        stdin=subprocess.DEVNULL,
     )
 
 
 def test_install_wires_hooks_and_starters(repo):
     r = subprocess.run(
-        ["/bin/bash", str(REPO_ROOT / "install.sh"), str(repo)], capture_output=True, text=True
+        ["/bin/bash", str(REPO_ROOT / "install.sh"), str(repo)],
+        capture_output=True,
+        text=True,
+        stdin=subprocess.DEVNULL,
     )
     assert r.returncode == 0, r.stdout + r.stderr
     assert (repo / ".githooks" / "pre-commit").exists()
@@ -66,7 +71,10 @@ def test_install_wires_hooks_and_starters(repo):
 def test_install_is_idempotent(repo):
     for _ in range(2):
         r = subprocess.run(
-            ["/bin/bash", str(REPO_ROOT / "install.sh"), str(repo)], capture_output=True, text=True
+            ["/bin/bash", str(REPO_ROOT / "install.sh"), str(repo)],
+            capture_output=True,
+            text=True,
+            stdin=subprocess.DEVNULL,
         )
         assert r.returncode == 0, r.stderr
     assert "GOH_MAX_LINES" in (repo / ".gatesrc").read_text()
@@ -74,7 +82,10 @@ def test_install_is_idempotent(repo):
 
 def test_hook_blocks_violating_commit(repo):
     subprocess.run(
-        ["/bin/bash", str(REPO_ROOT / "install.sh"), str(repo)], capture_output=True, text=True
+        ["/bin/bash", str(REPO_ROOT / "install.sh"), str(repo)],
+        capture_output=True,
+        text=True,
+        stdin=subprocess.DEVNULL,
     )
     # A .py file over no cap but with an emoji; GOH_MAX_LINES unset in starter.
     (repo / "bad.py").write_text(f"x = '{EMOJI_SMILE}'\n", encoding="utf-8")
@@ -94,7 +105,10 @@ def test_pre_commit_runs_the_repo_gate_staged_layer(repo):
     a hook that bypasses it makes every such layer decorative (media_server
     2026-09-21: a Rust gate wired under --staged never ran on commit)."""
     subprocess.run(
-        ["/bin/bash", str(REPO_ROOT / "install.sh"), str(repo)], capture_output=True, text=True
+        ["/bin/bash", str(REPO_ROOT / "install.sh"), str(repo)],
+        capture_output=True,
+        text=True,
+        stdin=subprocess.DEVNULL,
     )
     gate = repo / "tools" / "gate.sh"
     text = gate.read_text().replace(
@@ -118,6 +132,7 @@ def test_pre_commit_runs_the_repo_gate_staged_layer(repo):
         capture_output=True,
         text=True,
         env={**os.environ, "GOH_TEST_FAIL_STAGED": "1"},
+        stdin=subprocess.DEVNULL,
     )
     assert r.returncode != 0, "a red staged layer let the commit through"
     assert "more.py" in git(repo, "diff", "--cached", "--name-only")
@@ -125,7 +140,10 @@ def test_pre_commit_runs_the_repo_gate_staged_layer(repo):
 
 def test_hook_passes_clean_commit(repo):
     subprocess.run(
-        ["/bin/bash", str(REPO_ROOT / "install.sh"), str(repo)], capture_output=True, text=True
+        ["/bin/bash", str(REPO_ROOT / "install.sh"), str(repo)],
+        capture_output=True,
+        text=True,
+        stdin=subprocess.DEVNULL,
     )
     write(repo, "ok.py", "x = 1  # → clean\n")
     git(repo, "add", "ok.py")
@@ -147,7 +165,10 @@ def test_self_hosted_repo_satisfies_its_own_hook(tmp_path, goh):
     # same FileNotFoundError window the goh fixture had, and untracked files from anything else
     # working in the checkout came along too.
     tracked = subprocess.run(
-        ["git", "-C", str(REPO_ROOT), "ls-files", "-z"], capture_output=True, check=True
+        ["git", "-C", str(REPO_ROOT), "ls-files", "-z"],
+        capture_output=True,
+        check=True,
+        stdin=subprocess.DEVNULL,
     ).stdout.split(b"\0")
     for rel in filter(None, (t.decode() for t in tracked)):
         src = REPO_ROOT / rel
@@ -155,9 +176,14 @@ def test_self_hosted_repo_satisfies_its_own_hook(tmp_path, goh):
             continue  # deleted in the working tree, not yet committed
         (copy / rel).parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(src, copy / rel, follow_symlinks=False)
-    subprocess.run(["git", "-C", str(copy), "init", "-q", "-b", "main"], check=True)
     subprocess.run(
-        ["/bin/bash", str(copy / "install.sh"), str(copy)], capture_output=True, text=True
+        ["git", "-C", str(copy), "init", "-q", "-b", "main"], check=True, stdin=subprocess.DEVNULL
+    )
+    subprocess.run(
+        ["/bin/bash", str(copy / "install.sh"), str(copy)],
+        capture_output=True,
+        text=True,
+        stdin=subprocess.DEVNULL,
     )
     git(copy, "add", "-A")
     # GOH_DIR points the delegation at the copy itself → true self-host.
@@ -182,6 +208,7 @@ def test_self_hosted_repo_satisfies_its_own_hook(tmp_path, goh):
             "HOME": str(tmp_path),
             "PATH": "/usr/bin:/bin:/opt/homebrew/bin",
         },
+        stdin=subprocess.DEVNULL,
     )
     assert r.returncode == 0, r.stdout + r.stderr
 
@@ -242,6 +269,7 @@ def test_a_hook_from_an_older_stock_is_pristine_not_modified(repo):
         capture_output=True,
         text=True,
         check=True,
+        stdin=subprocess.DEVNULL,
     ).stdout
     hook.write_text(old_stock)
     shutil.rmtree(repo / ".githooks" / ".goh-installed")  # no record: pre-record install
@@ -278,13 +306,18 @@ def test_recorded_hash_allows_update_after_a_stock_bump(tmp_path):
         shutil.copy2(h, src / "hooks" / h.name)
 
     repo = tmp_path / "proj"
-    subprocess.run(["git", "-C", str(repo.parent), "init", "-q", str(repo.name)], check=True)
+    subprocess.run(
+        ["git", "-C", str(repo.parent), "init", "-q", str(repo.name)],
+        check=True,
+        stdin=subprocess.DEVNULL,
+    )
 
     def install_from(source, *extra):
         return subprocess.run(
             ["/bin/bash", str(source / "install.sh"), *extra, str(repo)],
             capture_output=True,
             text=True,
+            stdin=subprocess.DEVNULL,
         )
 
     assert install_from(src).returncode == 0
@@ -304,6 +337,7 @@ def test_help_exits_zero_without_side_effects(tmp_path):
         capture_output=True,
         text=True,
         cwd=tmp_path,
+        stdin=subprocess.DEVNULL,
     )
     assert r.returncode == 0, r.stdout + r.stderr
     assert "--force" in (r.stdout + r.stderr)
@@ -321,7 +355,11 @@ def test_the_starters_install_writes_pass_goh_home_paths(repo, goh):
     git(repo, "add", "-A")
     for args in (["--staged"], []):  # as the first commit's hook sees it, then as a push does
         out = subprocess.run(
-            [str(goh), "home-paths", *args], cwd=repo, capture_output=True, text=True
+            [str(goh), "home-paths", *args],
+            cwd=repo,
+            capture_output=True,
+            text=True,
+            stdin=subprocess.DEVNULL,
         )
         assert out.returncode == 0, out.stdout + out.stderr
 
@@ -330,5 +368,7 @@ def test_the_example_gatesrc_passes_goh_home_paths(repo, goh):
     """The example a repo copies from is held to the same rule as the starter."""
     shutil.copy(REPO_ROOT / ".gatesrc.example", repo / ".gatesrc")
     git(repo, "add", "-A")
-    out = subprocess.run([str(goh), "home-paths"], cwd=repo, capture_output=True, text=True)
+    out = subprocess.run(
+        [str(goh), "home-paths"], cwd=repo, capture_output=True, text=True, stdin=subprocess.DEVNULL
+    )
     assert out.returncode == 0, out.stdout + out.stderr

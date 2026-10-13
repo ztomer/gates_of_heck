@@ -24,7 +24,7 @@ def _corpus(root: Path, git: bool) -> Path:
         (root / f"skill-{i}" / "SKILL.md").write_text(SKILL.format(i=i))
     if git:
         for args in (["init", "-q"], ["add", "-A"]):
-            subprocess.run(["git", "-C", str(root), *args], check=True)
+            subprocess.run(["git", "-C", str(root), *args], check=True, stdin=subprocess.DEVNULL)
         subprocess.run(
             [
                 "git",
@@ -39,6 +39,7 @@ def _corpus(root: Path, git: bool) -> Path:
                 "c",
             ],
             check=True,
+            stdin=subprocess.DEVNULL,
         )
     return root
 
@@ -50,8 +51,8 @@ def _repo(tmp_path: Path, corpus: Path) -> Path:
         f"GOH_MAX_LINES=500\nGOH_SKILLS_CORPUS=1\nGOH_SKILLS_ROOT={corpus}\n"
     )
     (repo / "a.py").write_text("x = 1\n")
-    subprocess.run(["git", "init", "-q", str(repo)], check=True)
-    subprocess.run(["git", "-C", str(repo), "add", "-A"], check=True)
+    subprocess.run(["git", "init", "-q", str(repo)], check=True, stdin=subprocess.DEVNULL)
+    subprocess.run(["git", "-C", str(repo), "add", "-A"], check=True, stdin=subprocess.DEVNULL)
     return repo
 
 
@@ -63,6 +64,7 @@ def _full(goh: Path, repo: Path) -> subprocess.CompletedProcess:
         text=True,
         env=hermetic_env(GOH_DIR=str(REPO_ROOT)),
         timeout=120,
+        stdin=subprocess.DEVNULL,
     )
 
 
@@ -91,6 +93,7 @@ def test_a_committed_violation_in_an_external_corpus_is_red(goh, tmp_path):
             "b",
         ],
         check=True,
+        stdin=subprocess.DEVNULL,
     )
     r = _full(goh, _repo(tmp_path, corpus))
     assert r.returncode == 1 and "structural: skills corpus failed" in r.stderr, r.stderr

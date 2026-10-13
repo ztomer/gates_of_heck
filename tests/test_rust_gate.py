@@ -45,7 +45,9 @@ LIB_UNTESTED = "pub fn untested() -> u64 {\n    42\n}\n"  # pub: no dead-code li
 
 
 def _git(crate: Path, *args: str) -> None:
-    subprocess.run(["git", *args], cwd=crate, capture_output=True, check=True)
+    subprocess.run(
+        ["git", *args], cwd=crate, capture_output=True, check=True, stdin=subprocess.DEVNULL
+    )
 
 
 def mkcrate(tmp: Path) -> Path:
@@ -56,7 +58,11 @@ def mkcrate(tmp: Path) -> Path:
     (tmp / "src" / "lib.rs").write_text("")  # a target, or cargo has no package to lock
     # A TRACKED lockfile, like every Rust repo in the estate: the gate treats it as an input.
     subprocess.run(
-        ["cargo", "generate-lockfile", "--offline"], cwd=tmp, capture_output=True, check=True
+        ["cargo", "generate-lockfile", "--offline"],
+        cwd=tmp,
+        capture_output=True,
+        check=True,
+        stdin=subprocess.DEVNULL,
     )
     fast_init(tmp)
     _git(tmp, "add", "Cargo.lock")
@@ -87,6 +93,7 @@ def run_script(script: Path, crate: Path, env: dict | None = None) -> subprocess
         capture_output=True,
         text=True,
         env={**os.environ, **(env or {})},
+        stdin=subprocess.DEVNULL,
     )
 
 
@@ -95,7 +102,9 @@ def warm_crate(tmp_path_factory):
     """One compiled crate so clippy's dependency build doesn't dominate."""
     c = mkcrate(tmp_path_factory.mktemp("warm"))
     write_lib(c, LIB_CLEAN)
-    r = subprocess.run(["cargo", "build", "-q"], cwd=c, capture_output=True)
+    r = subprocess.run(
+        ["cargo", "build", "-q"], cwd=c, capture_output=True, stdin=subprocess.DEVNULL
+    )
     assert r.returncode == 0, r.stderr.decode()[:500]
     return c
 
@@ -180,6 +189,7 @@ def test_cargo_subdir_argument_supported_by_both(tmp_path, warm_crate):
             cwd=repo,
             capture_output=True,
             text=True,
+            stdin=subprocess.DEVNULL,
         )
         assert (r.returncode == 0) is expect_ok, r.stderr
 

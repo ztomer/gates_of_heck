@@ -20,7 +20,12 @@ ENTRY = ROOT / "gates" / "goh.sh"
 def run(*args: str, **env: str) -> subprocess.CompletedProcess[str]:
     base = {k: v for k, v in os.environ.items() if k not in ("GOH_BIN", "GOH_NO_NATIVE")}
     return subprocess.run(
-        ["bash", str(ENTRY), *args], capture_output=True, text=True, cwd=ROOT, env={**base, **env}
+        ["bash", str(ENTRY), *args],
+        capture_output=True,
+        text=True,
+        cwd=ROOT,
+        env={**base, **env},
+        stdin=subprocess.DEVNULL,
     )
 
 
@@ -88,7 +93,9 @@ def test_every_dispatched_check_is_a_real_subcommand(goh: Path) -> None:
     names = re.findall(r"[a-z][a-z-]+", table.split(")")[0].split("in", 1)[1])
     assert len(names) >= 20, names
     for check in names:
-        r = subprocess.run([str(goh), check, "--help"], capture_output=True, text=True)
+        r = subprocess.run(
+            [str(goh), check, "--help"], capture_output=True, text=True, stdin=subprocess.DEVNULL
+        )
         assert r.returncode == 0, (check, r.stderr)
 
 

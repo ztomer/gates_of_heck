@@ -23,7 +23,9 @@ OK_RE = re.compile(r"OK — (\d+) file\(s\) within \d+ lines")
 
 
 def _git(repo: Path, *args: str) -> None:
-    subprocess.run(["git", *args], cwd=repo, capture_output=True, check=True)
+    subprocess.run(
+        ["git", *args], cwd=repo, capture_output=True, check=True, stdin=subprocess.DEVNULL
+    )
 
 
 def make_repo(tmp_path: Path, files: dict[str, bytes]) -> Path:
@@ -49,7 +51,13 @@ def _parse(out: str, err: str) -> tuple[list[tuple[str, int]], int | None]:
 
 
 def run_python(repo: Path, args: list[str]) -> tuple[int, list[tuple[str, int]], int | None]:
-    r = subprocess.run(["python3", str(CHECKER), *args], cwd=repo, capture_output=True, text=True)
+    r = subprocess.run(
+        ["python3", str(CHECKER), *args],
+        cwd=repo,
+        capture_output=True,
+        text=True,
+        stdin=subprocess.DEVNULL,
+    )
     over, checked = _parse(r.stdout, r.stderr)
     return r.returncode, over, checked
 
@@ -57,7 +65,13 @@ def run_python(repo: Path, args: list[str]) -> tuple[int, list[tuple[str, int]],
 def run_goh(
     goh: Path, repo: Path, args: list[str]
 ) -> tuple[int, list[tuple[str, int]], int | None]:
-    r = subprocess.run([str(goh), "length", *args], cwd=repo, capture_output=True, text=True)
+    r = subprocess.run(
+        [str(goh), "length", *args],
+        cwd=repo,
+        capture_output=True,
+        text=True,
+        stdin=subprocess.DEVNULL,
+    )
     over, checked = _parse(r.stdout, r.stderr)
     return r.returncode, over, checked
 

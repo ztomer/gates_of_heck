@@ -24,7 +24,10 @@ reference = load_reference("check_no_kill_by_name")
 
 def _py_files() -> list[str]:
     out = subprocess.run(
-        ["git", "-C", str(REPO_ROOT), "ls-files", "*.py"], capture_output=True, text=True
+        ["git", "-C", str(REPO_ROOT), "ls-files", "*.py"],
+        capture_output=True,
+        text=True,
+        stdin=subprocess.DEVNULL,
     )
     return out.stdout.split()
 

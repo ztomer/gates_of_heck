@@ -49,7 +49,11 @@ def reports(runner: str, linter: str, files: list[str]) -> list[tuple[str, int, 
     if not files:
         return []
     r = subprocess.run(
-        [*shlex.split(runner), linter, *files], capture_output=True, text=True, check=False
+        [*shlex.split(runner), linter, *files],
+        capture_output=True,
+        text=True,
+        check=False,
+        stdin=subprocess.DEVNULL,
     )
     if r.returncode not in (0, 1):
         print(
@@ -103,7 +107,11 @@ def main(argv: list[str] | None = None) -> int:
     files = a.files
     if a.all:
         listed = subprocess.run(
-            ["git", "ls-files", "--", "*.py"], capture_output=True, text=True, check=False
+            ["git", "ls-files", "--", "*.py"],
+            capture_output=True,
+            text=True,
+            check=False,
+            stdin=subprocess.DEVNULL,
         )
         files = [f for f in listed.stdout.splitlines() if f]
     bad = []

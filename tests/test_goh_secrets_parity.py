@@ -37,7 +37,9 @@ CRED_NAME = "api_" + "key"  # concatenated: a literal credential line here would
 
 
 def _git(repo: Path, *args: str) -> None:
-    subprocess.run(["git", *args], cwd=repo, capture_output=True, check=True)
+    subprocess.run(
+        ["git", *args], cwd=repo, capture_output=True, check=True, stdin=subprocess.DEVNULL
+    )
 
 
 def make_repo(tmp_path: Path, files: dict[str, bytes]) -> Path:
@@ -68,13 +70,25 @@ def _parse(out: str) -> tuple[list[tuple[str, int, int, str]], int | None]:
 
 
 def run_python(repo: Path, args: list[str]) -> tuple[int, list, int | None]:
-    r = subprocess.run(["python3", str(CHECKER), *args], cwd=repo, capture_output=True, text=True)
+    r = subprocess.run(
+        ["python3", str(CHECKER), *args],
+        cwd=repo,
+        capture_output=True,
+        text=True,
+        stdin=subprocess.DEVNULL,
+    )
     hits, checked = _parse(r.stdout)
     return r.returncode, hits, checked
 
 
 def run_goh(goh: Path, repo: Path, args: list[str]) -> tuple[int, list, int | None]:
-    r = subprocess.run([str(goh), "secrets", *args], cwd=repo, capture_output=True, text=True)
+    r = subprocess.run(
+        [str(goh), "secrets", *args],
+        cwd=repo,
+        capture_output=True,
+        text=True,
+        stdin=subprocess.DEVNULL,
+    )
     hits, checked = _parse(r.stdout)
     return r.returncode, hits, checked
 

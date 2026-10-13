@@ -39,6 +39,7 @@ def _head_tree(checkout: Path) -> str:
         capture_output=True,
         text=True,
         check=True,
+        stdin=subprocess.DEVNULL,
     ).stdout.split()
     return " ".join(out)
 
@@ -54,8 +55,8 @@ def _structural(checkout: Path, tmp_path: Path, **env: str):
     repo = tmp_path / "consumer"
     repo.mkdir(exist_ok=True)
     (repo / "a.py").write_text("x = 1\n")
-    subprocess.run(["git", "init", "-q"], cwd=repo, check=True)
-    subprocess.run(["git", "add", "-A"], cwd=repo, check=True)
+    subprocess.run(["git", "init", "-q"], cwd=repo, check=True, stdin=subprocess.DEVNULL)
+    subprocess.run(["git", "add", "-A"], cwd=repo, check=True, stdin=subprocess.DEVNULL)
     return subprocess.run(
         ["bash", str(checkout / "gates" / "structural.sh"), "--staged"],
         cwd=repo,
@@ -63,6 +64,7 @@ def _structural(checkout: Path, tmp_path: Path, **env: str):
         text=True,
         env=hermetic_env(GOH_DIR=str(checkout), **env),
         timeout=120,
+        stdin=subprocess.DEVNULL,
     )
 
 
@@ -128,13 +130,20 @@ def test_the_real_binary_reports_the_tree_it_was_built_from(goh: Path):
     """The fixture build is from this working tree: `dirty` while an input has uncommitted edits,
     else exactly HEAD's trees. Never empty, never a stale value."""
     root = Path(__file__).resolve().parent.parent
-    out = subprocess.run([str(goh), "source-tree"], capture_output=True, text=True, timeout=30)
+    out = subprocess.run(
+        [str(goh), "source-tree"],
+        capture_output=True,
+        text=True,
+        timeout=30,
+        stdin=subprocess.DEVNULL,
+    )
     assert out.returncode == 0, out.stderr
     inputs = ["crates", "Cargo.toml", "Cargo.lock", "rust-toolchain.toml"]
     dirty = subprocess.run(
         ["git", "-C", str(root), "status", "--porcelain", "--", *inputs],
         capture_output=True,
         text=True,
+        stdin=subprocess.DEVNULL,
     ).stdout.strip()
     assert out.stdout.strip() == ("dirty" if dirty else _head_tree(root)), out.stdout
 
@@ -173,6 +182,7 @@ def test_goh_live_runs_the_working_trees_binary_not_heads(tmp_path: Path) -> Non
         text=True,
         env=env,
         timeout=600,
+        stdin=subprocess.DEVNULL,
     )
     assert "LIVE-RUST-EDIT-9031" in live.stdout, live.stdout + live.stderr
     env.pop("GOH_LIVE")
@@ -187,5 +197,6 @@ def test_goh_live_runs_the_working_trees_binary_not_heads(tmp_path: Path) -> Non
         text=True,
         env=env,
         timeout=600,
+        stdin=subprocess.DEVNULL,
     )
     assert "LIVE-RUST-EDIT-9031" not in head.stdout + head.stderr

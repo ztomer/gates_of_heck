@@ -59,6 +59,7 @@ def test_a_signal_to_the_wrapper_reaps_the_step(tmp_path, sig):
         # run as a local_ci step) a background job starts with SIGINT ignored, and an ignore
         # inherited at entry is honoured -- measured, that made this test red only under local_ci.
         preexec_fn=lambda: signal.signal(sig, signal.SIG_DFL),
+        stdin=subprocess.DEVNULL,
     )
     try:
         step = int(_wait_for(pidfile))
@@ -99,6 +100,7 @@ def test_a_signal_ignored_at_entry_stays_ignored(tmp_path):
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
         preexec_fn=lambda: signal.signal(signal.SIGHUP, signal.SIG_IGN),
+        stdin=subprocess.DEVNULL,
     )
     try:
         step = int(_wait_for(pidfile))
@@ -127,6 +129,7 @@ def test_a_term_to_a_concurrent_local_ci_reaps_every_running_step(tmp_path):
         env=env,
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
+        stdin=subprocess.DEVNULL,
     )
     try:
         steps_running = [int(_wait_for(p)) for p in pids]

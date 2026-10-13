@@ -57,6 +57,7 @@ def _git(d: Path, *args: str) -> None:
         cwd=d,
         capture_output=True,
         check=True,
+        stdin=subprocess.DEVNULL,
     )
 
 
@@ -104,6 +105,7 @@ def _audit(root: Path, state: Path, db: Path) -> dict:
         capture_output=True,
         text=True,
         check=False,
+        stdin=subprocess.DEVNULL,
     )
     assert r.returncode == 0, r.stdout + r.stderr
     return json.loads(state.read_text())

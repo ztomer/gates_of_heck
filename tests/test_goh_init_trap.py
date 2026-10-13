@@ -22,7 +22,9 @@ BASH = "/bin/bash"
 
 
 def _run(script_body: str) -> subprocess.CompletedProcess:
-    return subprocess.run([BASH, "-c", script_body], capture_output=True, text=True)
+    return subprocess.run(
+        [BASH, "-c", script_body], capture_output=True, text=True, stdin=subprocess.DEVNULL
+    )
 
 
 def test_syntax_error_after_goh_init_exits_nonzero(tmp_path):

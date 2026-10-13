@@ -96,6 +96,7 @@ def test_selftest_gates_on_its_own_detection():
         cwd=REPO_ROOT,
         capture_output=True,
         text=True,
+        stdin=subprocess.DEVNULL,
     )
     assert out.returncode == 0, out.stdout + out.stderr
     assert "mis-formatted file is caught" in out.stdout + out.stderr
@@ -203,7 +204,12 @@ def test_a_hung_ruff_is_timed_out_and_its_group_killed(repo, tmp_path, goh):
     env = dict(os.environ, PATH=f"{fake}:{os.environ['PATH']}", GOH_STEP_TIMEOUT="2")
     t0 = time.monotonic()
     r = subprocess.run(
-        [str(goh), "python-formatted", "tools"], cwd=repo, capture_output=True, text=True, env=env
+        [str(goh), "python-formatted", "tools"],
+        cwd=repo,
+        capture_output=True,
+        text=True,
+        env=env,
+        stdin=subprocess.DEVNULL,
     )
     assert_sooner(time.monotonic() - t0, 3, 300, "a 2 s step ceiling over a 300 s ruff")
     assert r.returncode == 1 and "TIMED OUT after 2s" in r.stderr, r.stdout + r.stderr

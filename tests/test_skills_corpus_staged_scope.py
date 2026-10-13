@@ -55,7 +55,9 @@ def _run(
         cmd = ["bash", str(REPO_ROOT / "gates" / "structural.sh"), scope]
     else:
         cmd = [str(goh), "structural", scope]
-    return subprocess.run(cmd, cwd=repo, capture_output=True, text=True, env=env)
+    return subprocess.run(
+        cmd, cwd=repo, capture_output=True, text=True, env=env, stdin=subprocess.DEVNULL
+    )
 
 
 RUNNERS = pytest.mark.parametrize("runner", ["structural.sh", "native"])

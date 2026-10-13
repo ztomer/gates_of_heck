@@ -103,6 +103,7 @@ def sips_scale(base: Path, px: int, dest: Path) -> None:
         ["sips", "-z", str(px), str(px), str(base), "--out", str(dest)],
         capture_output=True,
         text=True,
+        stdin=subprocess.DEVNULL,
     )
     if r.returncode != 0:
         die(f"sips → {dest.name} failed: {r.stderr.strip()}")
@@ -120,6 +121,7 @@ def normalize_source(src: Path, work: Path) -> Path:
         ["sips", "-s", "format", "png", str(src), "--out", str(base)],
         capture_output=True,
         text=True,
+        stdin=subprocess.DEVNULL,
     )
     if r.returncode != 0:
         die(f"sips could not read {src}: {r.stderr.strip()}")
@@ -206,6 +208,7 @@ def main(argv: list[str] | None = None) -> int:
                 ["iconutil", "-c", "icns", str(iconset), "-o", str(icns)],
                 capture_output=True,
                 text=True,
+                stdin=subprocess.DEVNULL,
             )
             if r.returncode != 0:
                 die(f"iconutil failed: {r.stderr.strip()}")

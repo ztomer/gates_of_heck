@@ -50,8 +50,8 @@ def _structural(checkout: Path, fake: Path, tmp_path: Path):
     repo = tmp_path / "consumer"
     repo.mkdir()
     (repo / "a.py").write_text("x = 1\n")
-    subprocess.run(["git", "init", "-q"], cwd=repo, check=True)
-    subprocess.run(["git", "add", "-A"], cwd=repo, check=True)
+    subprocess.run(["git", "init", "-q"], cwd=repo, check=True, stdin=subprocess.DEVNULL)
+    subprocess.run(["git", "add", "-A"], cwd=repo, check=True, stdin=subprocess.DEVNULL)
     return subprocess.run(
         ["bash", str(checkout / "gates" / "structural.sh"), "--staged"],
         cwd=repo,
@@ -59,6 +59,7 @@ def _structural(checkout: Path, fake: Path, tmp_path: Path):
         text=True,
         env=_consumer_env(checkout, fake, tmp_path),
         timeout=120,
+        stdin=subprocess.DEVNULL,
     )
 
 
@@ -91,7 +92,7 @@ def test_under_goh_live_the_working_trees_version_is_the_one_to_match(tmp_path):
     env["GOH_LIVE"] = "1"
     repo = tmp_path / "consumer"
     repo.mkdir()
-    subprocess.run(["git", "init", "-q"], cwd=repo, check=True)
+    subprocess.run(["git", "init", "-q"], cwd=repo, check=True, stdin=subprocess.DEVNULL)
     got = subprocess.run(
         ["bash", str(checkout / "gates" / "structural.sh"), "--staged"],
         cwd=repo,
@@ -99,5 +100,6 @@ def test_under_goh_live_the_working_trees_version_is_the_one_to_match(tmp_path):
         text=True,
         env=env,
         timeout=120,
+        stdin=subprocess.DEVNULL,
     )
     assert got.returncode == 0 and "fake native structural ran" in got.stdout, got.stderr
