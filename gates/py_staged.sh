@@ -3,6 +3,7 @@
 #
 #   1. ruff check          on staged *.py (against per-file ceilings when GOH_PY_LINT_CEILINGS is set)
 #   2. ruff format --check on staged *.py
+#   3. with GOH_PY_NOQA_PARITY: no `# noqa` that a second linter the repo runs still reports
 #
 #   py_staged.sh                # from the repo root (a repo's tools/gate.sh calls it)
 #   py_staged.sh <repo>
@@ -47,6 +48,11 @@ else
     goh_step "ruff check (staged)"        "${RUN_ARR[@]}" ruff check "${STAGED[@]}"
 fi
 goh_step "ruff format check (staged)" "${RUN_ARR[@]}" ruff format --check "${STAGED[@]}"
+if [ -n "${GOH_PY_NOQA_PARITY:-}" ]; then
+    # A `# noqa` ruff honours and the second linter the repo runs ignores (gates/py_noqa_parity.py, 4.5).
+    goh_step "noqa parity with $GOH_PY_NOQA_PARITY (staged)" \
+        python3 "$HERE/py_noqa_parity.py" --linters "$GOH_PY_NOQA_PARITY" --runner "$RUN" -- "${STAGED[@]}"
+fi
 goh_done
 exit
 } # parse-guard

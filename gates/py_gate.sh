@@ -3,7 +3,8 @@
 #
 #   1. ruff check          (the project's own rule set, from pyproject.toml)
 #   2. ruff format --check
-#   3. pytest with a coverage floor
+#   3. with GOH_PY_NOQA_PARITY: no `# noqa` that a second linter the repo runs still reports
+#   4. pytest with a coverage floor
 #
 #   py_gate.sh                      # run from the repo root
 #   py_gate.sh <repo>               # run from anywhere
@@ -64,6 +65,11 @@ goh_pytest_root  # a concurrent suite cannot prune this one's temp dirs
 
 goh_step_in "$pkg_dir" "ruff check"        "${RUN_ARR[@]}" ruff check .
 goh_step_in "$pkg_dir" "ruff format check" "${RUN_ARR[@]}" ruff format --check .
+if [ -n "${GOH_PY_NOQA_PARITY:-}" ]; then
+    # A `# noqa` ruff honours and the second linter the repo runs ignores (gates/py_noqa_parity.py, 4.5).
+    goh_step_in "$pkg_dir" "noqa parity with $GOH_PY_NOQA_PARITY" \
+        python3 "$HERE/py_noqa_parity.py" --linters "$GOH_PY_NOQA_PARITY" --runner "$RUN" --all
+fi
 
 if [ -n "${GOH_PY_COV_MIN:-}" ]; then
     goh_step_in "$pkg_dir" "pytest (coverage >= ${GOH_PY_COV_MIN}%)" \
