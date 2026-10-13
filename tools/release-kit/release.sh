@@ -213,7 +213,29 @@ git rev-parse --show-toplevel >/dev/null 2>&1 \
 ORIGIN_URL="$(git remote get-url origin 2>/dev/null || true)"
 [ -n "$ORIGIN_URL" ] || warn "no 'origin' remote — push and release steps will fail or skip"
 BRANCH="${BRANCH:-$(git rev-parse --abbrev-ref HEAD)}"
-GH_REPO_SLUG="$(printf '%s' "$ORIGIN_URL" | sed -n 's#.*github.com[:/]##; s#\.git$##p')"
+# github_slug URL -- `owner/name` when URL names a github.com repository, with or without `.git`,
+# over https, ssh or scp syntax; nothing for any other URL. A sed that printed only when it stripped
+# `.git` read a GitHub origin without it as no GitHub at all (no CI check, no release), and any other
+# URL ending in `.git` -- a local bare repository, another host -- as a slug.
+github_slug() {
+  local rest
+  case "$1" in
+    https://github.com/* | http://github.com/* | https://*@github.com/* \
+      | ssh://git@github.com/* | git@github.com:*) ;;
+    *) return 0 ;;
+  esac
+  rest="${1#*github.com[:/]}"
+  rest="${rest%/}"
+  rest="${rest%.git}"
+  case "$rest" in
+    */*/* | /* | */) return 0 ;;
+    ?*/?*) printf '%s\n' "$rest" ;;
+  esac
+}
+# The URL as git uses it first; then as written, for an origin an `insteadOf` rewrites elsewhere.
+GH_REPO_SLUG="$(github_slug "$ORIGIN_URL")"
+[ -n "$GH_REPO_SLUG" ] \
+  || GH_REPO_SLUG="$(github_slug "$(git config --get remote.origin.url 2>/dev/null || true)")"
 
 if [ "$DRY_RUN" = 1 ]; then
   section "release plan for ${TAG} (dry-run — nothing will execute)"

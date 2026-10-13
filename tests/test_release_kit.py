@@ -29,6 +29,7 @@ from conftest import FAKE_GH, REPO_ROOT
 
 RELEASE = REPO_ROOT / "tools" / "release-kit" / "release.sh"
 
+GITHUB_ORIGIN = "https://github.com/t/proj.git"
 VERSION = "1.2.3"
 TAG = f"v{VERSION}"
 STANZA_BODY = "- Added the release kit\n- Fixed seven drifting releasers"
@@ -44,6 +45,13 @@ def sh(repo: Path, *args: str) -> str:
 def commit_all(repo: Path, msg: str = "fixture") -> None:
     sh(repo, "add", "-A")
     sh(repo, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-m", msg)
+
+
+def add_github_origin(proj: Path, bare: Path) -> None:
+    """origin as a GitHub URL, as a released repo's is, which git sends to the local `bare`: the kit
+    reads the slug off the URL, so a local path as origin is no GitHub at all."""
+    sh(proj, "remote", "add", "origin", GITHUB_ORIGIN)
+    sh(proj, "config", f"url.{bare}.insteadOf", GITHUB_ORIGIN)
 
 
 GIT_WRAPPER = """\
@@ -67,7 +75,7 @@ def kit(tmp_path: Path) -> dict:
 
     origin = tmp_path / "origin.git"
     subprocess.run(["git", "clone", "-q", "--bare", str(proj), str(origin)], check=True)
-    sh(proj, "remote", "add", "origin", str(origin))
+    add_github_origin(proj, origin)
 
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir()
@@ -426,3 +434,29 @@ class TestTap:
         assert r.returncode == 0, r.stdout + r.stderr
         assert "nothing to commit" in r.stdout
         assert bare_head(bare) == head_before
+
+
+# ── the GitHub slug ──────────────────────────────────────────────────────────
+# A sed that printed only when it stripped `.git` read a GitHub origin without it as no GitHub (no
+# CI check, no release), and any other URL ending in `.git` -- this kit's own local origin -- as one.
+
+
+@pytest.mark.parametrize(
+    "url, slug",
+    [
+        ("https://github.com/o/r.git", "o/r"),
+        ("https://github.com/o/r", "o/r"),
+        ("git@github.com:o/r", "o/r"),
+        ("https://gitlab.com/o/r.git", None),
+        ("/srv/git/r.git", None),
+    ],
+)
+def test_the_slug_is_read_from_any_github_origin_and_no_other(kit, url, slug):
+    sh(kit["proj"], "remote", "set-url", "origin", url)
+    r = run_release(kit, "--dry-run")
+    out = r.stdout + r.stderr
+    assert r.returncode == 0, out
+    if slug:
+        assert f"(repo {slug})" in out, out
+    else:
+        assert "is not a github.com remote" in out and "(repo " not in out, out

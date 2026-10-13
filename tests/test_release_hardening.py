@@ -26,6 +26,7 @@ import pytest
 
 from timing_bounds import GiveUp
 from conftest import FAKE_GH, REPO_ROOT
+from test_release_kit import add_github_origin
 
 RELEASE = REPO_ROOT / "tools" / "release-kit" / "release.sh"
 
@@ -89,7 +90,7 @@ def kit(tmp_path: Path) -> dict:
 
     origin = tmp_path / "origin.git"
     subprocess.run(["git", "clone", "-q", "--bare", str(proj), str(origin)], check=True)
-    sh(proj, "remote", "add", "origin", str(origin))
+    add_github_origin(proj, origin)
 
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir()
