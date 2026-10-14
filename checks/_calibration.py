@@ -37,7 +37,7 @@ import subprocess
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from _gitutil import foreign_repo_env  # noqa: E402
+from _gitutil import foreign_repo_env, listed_files  # noqa: E402
 from _retired import NATIVE  # noqa: E402
 
 # The registry, relative to the repo root.
@@ -210,6 +210,42 @@ def load(root: str) -> dict | None:
     return data if isinstance(data, dict) else None
 
 
+def checkers(root: str) -> list[str]:
+    """Every `checks/check_*.py|.sh` in the repo's git scope (tracked plus untracked-unignored), or
+    on disk when `root` is not a repository -- a checker that has not been committed yet is still
+    one that must arrive registered."""
+    try:
+        names = [n for n in listed_files(root, staged=False) if os.path.dirname(n) == "checks"]
+        names = [os.path.basename(n) for n in names]
+    except (OSError, RuntimeError):
+        try:
+            names = os.listdir(os.path.join(root, "checks"))
+        except OSError:
+            return []
+    return sorted(n for n in names if n.startswith("check_") and n.endswith((".py", ".sh")))
+
+
+def unregistered(root: str, data: dict) -> list[str]:
+    """Every checker under `checks/` that the registry does not name (BACKLOG 6.21).
+
+    A checker missing here is counted UNPROVEN by every cross-repo reader -- game_asset_factory's
+    ceiling went red on `check_audit_ignores` and `check_git_env` -- while nothing in this repo
+    noticed, because `verify` only checks the claims the file makes, never the ones it omits. So a
+    new checker arrives registered: its proof under `proven_by`, or its name and reason under
+    `known_unproven`. Either spelling of the key counts, as `gate_paths` reads them.
+    """
+    keys = set(data.get("proven_by") or {}) | set(data.get("known_unproven") or [])
+    bad = []
+    for name in checkers(root):
+        stem = os.path.splitext(name)[0]
+        if not ({stem, stem.removeprefix("check_")} & keys):
+            bad.append(
+                f"checks/{name}: a checker with no entry in {REGISTRY} -- register its proof under "
+                f"proven_by, or name it in known_unproven with its reason"
+            )
+    return bad
+
+
 def verify(root: str, data: dict, ran: set[str]) -> list[str]:
     """Every way the registry's claims fail to hold. `ran` is the set of repo-relative paths whose
     self-proof this sweep actually ran to green.
@@ -227,6 +263,7 @@ def verify(root: str, data: dict, ran: set[str]) -> list[str]:
         return ["known_unproven is not a list"]
     if not isinstance(whys, dict):
         whys = {}
+    bad += unregistered(root, data)
 
     for key in list(entries) + list(unproven):
         # (a) The key must name a gate that EXISTS. This half is estate-independent: it holds on

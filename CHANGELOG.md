@@ -1,5 +1,14 @@
 # CHANGELOG
 
+## Unreleased
+
+* **Every checker under `checks/` is in the calibration registry, and the reader refuses one that
+  is not** (6.21). `check_audit_ignores` and `check_git_env` shipped unregistered, so
+  game_asset_factory's cross-repo ratchet read "gates_of_heck: 2 unproven gate(s), ceiling 1".
+  Both are registered with proofs watched going red, as are `display_seam`, `estate_corpus` and
+  `no_screen_linkage`; `_calibration.unregistered` makes a missing key a finding of
+  `check_probes_pass`. Only a repo carrying `checks/gate_calibration.json` (this one) is affected.
+
 ## v0.27.0 — the stdin gate is on everywhere, every scanner says what it read, and a step's time holds under load _(2026-10-14)_
 
 Eighteen commits since v0.26.0. The v0.27.0 roadmap's correctness phase is closed, the stdin

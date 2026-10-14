@@ -84,6 +84,32 @@ def test_the_house_registry_holds_against_this_repo(ran_here):
     assert bad == [], bad
 
 
+def test_every_checker_under_checks_is_in_the_house_registry():
+    """6.21: a checker shipped with no registry entry is counted unproven by every cross-repo
+    reader (game_asset_factory's ceiling went red on two) while nothing here noticed."""
+    assert reader.unregistered(str(ROOT), reader.load(str(ROOT))) == []
+
+
+def test_removing_one_real_entry_is_red():
+    """Calibrated against the real file: drop one entry, and the gate names that checker."""
+    data = reader.load(str(ROOT))
+    del data["proven_by"]["git_env"]
+    bad = reader.unregistered(str(ROOT), data)
+    assert len(bad) == 1 and "check_git_env.py" in bad[0], bad
+    assert any("check_git_env.py" in line for line in reader.verify(str(ROOT), data, set()))
+
+
+def test_a_checker_missing_from_the_registry_is_red_through_the_gate(tmp_path):
+    root = estate(
+        tmp_path,
+        {"prover": PROBING, "orphan": QUIET},
+        {"proven_by": {"prover": "checks/check_prover.py --probe: red on a violation"}},
+    )
+    got = run_gate(root)
+    assert got.returncode == 1, got.stdout + got.stderr
+    assert "check_orphan.py" in got.stderr and "no entry" in got.stderr, got.stderr
+
+
 def test_the_gate_agrees_with_the_reader_on_this_repo():
     assert run_gate(ROOT).returncode == 0
 
@@ -210,6 +236,7 @@ RULES = (
     ("in-no-commit", "if in_head is False:"),
     ("prover-claims", "if claimed is not None and key not in claimed:"),
     ("contradiction", "if key in entries:"),
+    ("unregistered", 'if not ({stem, stem.removeprefix("check_")} & keys):'),
 )
 
 

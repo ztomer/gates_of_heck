@@ -3,7 +3,8 @@
 Run from `check_probes_pass.py --probe`, which is what the sweep discovers. Every way the
 calibration registry can lie is asserted red and the sound registry asserted clean: a key naming
 no gate, a citation naming no file, a citation to a proof that does not run, a prover in no
-commit, a prover that does not claim the gate, an entry that is both proven and unproven. A
+commit, a prover that does not claim the gate, an entry that is both proven and unproven, a
+checker the registry does not name. A
 checker that cannot fail is the thing this whole layer exists to prevent, and a calibration reader
 that cannot fail would be the most ironic instance of it in the repo.
 """
@@ -129,16 +130,43 @@ def _git(repo, *args):
     ).returncode
 
 
+# The gates a case's estate may hold. check_quiet declares no self-proof: a registry citing its
+# --probe is the R7 shape exactly -- the sweep cannot see it while the registry calls it proven.
+POOL = {
+    "check_prover.py": PROVES,
+    "check_sound_gate.py": PROVES,
+    "check_swift_coverage.py": PROVES,
+    "check_quiet.py": '"""No self-proof here."""\nprint("clean")\n',
+}
+
+
+def _gates(estate, names):
+    """The estate's checks/ holds exactly `names` from POOL: every case registers every checker it
+    holds, so the one case that plants an unregistered checker is the only one it can fire on."""
+    os.makedirs(os.path.join(estate, "checks"), exist_ok=True)
+    for name in POOL:
+        path = os.path.join(estate, "checks", name)
+        if os.path.exists(path):
+            os.remove(path)
+    for name in names:
+        _write(estate, os.path.join("checks", name), POOL[name])
+
+
+def _held(keys):
+    """The POOL files a case's registry keys name, in either spelling."""
+    out = []
+    for key in keys:
+        name = (key if key.startswith("check_") else f"check_{key}") + ".py"
+        if name in POOL:
+            out.append(name)
+    return out
+
+
 def _cases(estate):
     """The table cases, against a fresh estate each time."""
-    os.makedirs(os.path.join(estate, "checks"), exist_ok=True)
-    for name in ("check_prover.py", "check_sound_gate.py", "check_swift_coverage.py"):
-        _write(estate, os.path.join("checks", name), PROVES)
-    # Declares no self-proof. A registry citing its --probe is the R7 shape exactly: the sweep
-    # cannot see it (there is nothing to discover) while the registry calls it proven.
-    _write(estate, "checks/check_quiet.py", '"""No self-proof here."""\nprint("clean")\n')
     bad = 0
     for label, entries, unproven, whys, ran, want in CASES:
+        _gates(estate, _held(list(entries) + list(unproven)))
         with open(os.path.join(estate, REGISTRY), "w", encoding="utf-8") as handle:
             json.dump(
                 {"proven_by": entries, "known_unproven": list(unproven), "unproven_why": whys},
@@ -158,12 +186,24 @@ def _cases(estate):
     return bad
 
 
+def _unregistered(estate):
+    """6.21: a checker under checks/ that the registry does not name is red, by file name."""
+    _gates(estate, ["check_sound_gate.py", "check_quiet.py"])
+    with open(os.path.join(estate, REGISTRY), "w", encoding="utf-8") as handle:
+        json.dump({"proven_by": {"sound_gate": "checks/check_sound_gate.py --probe: red"}}, handle)
+    found = verify(estate, load(estate), RAN)
+    if any("check_quiet.py" in line and "no entry" in line for line in found):
+        ok("probe: a checker under checks/ with no registry entry is caught")
+        return 0
+    err(f"probe: an UNREGISTERED checker was accepted (got {found})")
+    return 1
+
+
 def _uncommitted(td):
     """A prover on disk but in NO COMMIT: the proof runs here and no clone can check it."""
     repo = os.path.join(td, "repo")
     os.makedirs(os.path.join(repo, "checks"))
-    for name in ("check_prover.py", "check_sound_gate.py", "check_quiet.py"):
-        _write(repo, os.path.join("checks", name), "print('clean')\n")
+    _write(repo, os.path.join("checks", "check_prover.py"), "print('clean')\n")
     with open(os.path.join(repo, REGISTRY), "w", encoding="utf-8") as handle:
         json.dump(
             {"proven_by": {"prover": "checks/check_prover.py --probe: red on a violation"}},
@@ -201,6 +241,7 @@ def _external(td, estate):
     os.makedirs(os.path.join(other, ".git"))
     prover = os.path.join("tools", "check_other_prover.py")
     _write(other, prover, '"""prover."""\nprint("clean")\n')
+    _gates(estate, ["check_sound_gate.py"])
     with open(os.path.join(estate, REGISTRY), "w", encoding="utf-8") as handle:
         json.dump({"proven_by": {"sound_gate": "tools/check_other_prover.py -- red"}}, handle)
     saved = (_calibration.ESTATE_ROOTS, _calibration.ESTATE_OWNERS)
@@ -234,6 +275,7 @@ def probe():
     with tempfile.TemporaryDirectory(prefix="goh-calibration.") as td:
         estate = os.path.join(td, "estate")
         bad += _cases(estate)
+        bad += _unregistered(estate)
         bad += _uncommitted(td)
         bad += _external(td, estate)
     if bad:
