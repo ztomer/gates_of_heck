@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+* **`goh lock-version` reads manifests as TOML, and a crate keeping its own version line is not
+  the release** (6.18). A line regex read `version = "1.9.0"  # ...` as no version, so
+  Finance/zinc's `zinc-payroll` read as inheriting 4.8.0 and its lock as stale; and arm 2
+  compared `VERSION` against that crate's own 1.9.0. Now the manifests and the lock go through
+  the `toml` crate, and arm 2 compares the release against the members that carry it: those
+  inheriting `[workspace.package] version`, or every member where there is none to inherit
+  (media_server's per-crate literals, still red when one is left behind). A manifest or lock
+  that is not valid TOML is now a finding naming the file (cargo could not build it either).
+  Finance/zinc reads green (26 crates).
+
 * **`goh emoji` run alone reads `GOH_ALLOW` from `.gatesrc`, as structural does** (6.17).
   Its `--allow` defaulted to nothing, so remote_dotfiles' permitted glyphs were refused alone and
   passed in the gate. The sibling, found by grepping every standalone subcommand: `goh skills`

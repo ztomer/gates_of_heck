@@ -106,12 +106,6 @@ other instruments: P0 (`GOH_TIMINGS`), `cpu_ms` (`e3e5418`), `tools/quiet.sh` an
       the default stays fail-fast. Red-first: two planted reds in a scratch repo -- the second is
       named in the output. Lies: a step whose input depends on an earlier step's fix (say which
       steps are independent).
-- [ ] 6.18 `lockver` misreads a manifest. Baseline: 2026-10-14, Finance/zinc: the `literal` /
-      `inherit` regexes in `crates/goh/src/lockver.rs` reject a trailing TOML comment, so
-      `crates/zinc-payroll/Cargo.toml:3` (`version = "1.9.0"  # ...`) reads as inheriting 4.8.0
-      and the lock as stale; its second arm compares `VERSION` against a crate that keeps its own
-      version line. Exit: both zinc cases read correctly. Red-first: the two zinc lines as
-      fixtures. Lies: a regex where a TOML parse belongs (use one).
 - [ ] 6.19 The stock `pre-push` header makes a claim about the repo. Baseline: 2026-10-14, it
       says "There is no CI behind this", false in every repo with a workflow (Adv360). Exit: the header states what the hook does, not what
       the repo lacks. Red-first: n/a (text); grep the stock hooks for claims about the repo.

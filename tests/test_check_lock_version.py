@@ -208,19 +208,27 @@ def test_inheritance_is_resolved_not_compared_literally(tmp_path):
 def _forgotten_member(repo):
     """The release bumped in every place EXCEPT one member manifest.
 
-    `VERSION` and `[workspace.package]` both say 1.79.3; `healthcheck` still
-    declares 1.79.1 and its lockfile entry agrees. So the manifest and the
-    lockfile are consistent with each other, arm 1 has nothing to say, and the
-    release claim has no gate standing in front of it.
+    media_server's layout: a `VERSION` file and crates that each carry the release number as a
+    literal, with no `[workspace.package]` to inherit from. `VERSION` and `crates/web` say
+    1.79.3; `healthcheck` still declares 1.79.1 and its lockfile entry agrees. So the manifest and
+    the lockfile are consistent with each other, arm 1 has nothing to say, and the release claim
+    has no gate standing in front of it.
+
+    (Until 6.18 this fixture also declared `[workspace.package] version = "1.79.3"`. Under a
+    workspace version, a member that writes its own literal has opted out of inheritance -- it
+    keeps its own version line, as Finance/zinc's `zinc-payroll` 1.9.0 does under 4.8.0 -- so
+    that shape no longer reads as a forgotten bump; the layout with nothing to inherit does.)
     """
     write(repo, "VERSION", "1.79.3\n")
+    write(repo, "Cargo.toml", '[workspace]\nmembers = ["crates/hc", "crates/web"]\n')
+    write(repo, "crates/hc/Cargo.toml", '[package]\nname = "healthcheck"\nversion = "1.79.1"\n')
+    write(repo, "crates/web/Cargo.toml", '[package]\nname = "web"\nversion = "1.79.3"\n')
     write(
         repo,
-        "Cargo.toml",
-        '[workspace]\nmembers = ["crates/hc"]\n\n[workspace.package]\nversion = "1.79.3"\n',
+        "Cargo.lock",
+        '[[package]]\nname = "healthcheck"\nversion = "1.79.1"\n\n'
+        '[[package]]\nname = "web"\nversion = "1.79.3"\n',
     )
-    write(repo, "crates/hc/Cargo.toml", '[package]\nname = "healthcheck"\nversion = "1.79.1"\n')
-    write(repo, "Cargo.lock", '[[package]]\nname = "healthcheck"\nversion = "1.79.1"\n')
 
 
 def test_a_release_number_bumped_in_one_place_only_is_red(tmp_path):

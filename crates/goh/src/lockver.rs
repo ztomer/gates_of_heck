@@ -12,10 +12,6 @@ use goh_tui::{ERR, OK, START};
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 
-use regex::Regex;
-
-use crate::mdtext::splitlines;
-
 /// `pathlib.Path.glob(pattern)` under `root`, sorted: hidden entries
 /// included, `**` any number of segments (a trailing one matches files too).
 fn glob(root: &Path, pattern: &str) -> Vec<PathBuf> {
@@ -95,119 +91,87 @@ fn glob(root: &Path, pattern: &str) -> Vec<PathBuf> {
     out.into_iter().collect()
 }
 
-struct Toml {
-    lock_table: Regex,
-    lock_field: Regex,
-    table: Regex,
-    key: Regex,
-    inherit: Regex,
-    literal: Regex,
-    members: Regex,
-    quoted: Regex,
+/// The manifests and the lockfile, read by a TOML parser (BACKLOG 6.18).
+///
+/// A line regex read `version = "1.9.0"  # a comment` as no version at all, so Finance/zinc's
+/// `zinc-payroll` read as INHERITING the workspace's 4.8.0 and its correct lock entry as stale.
+/// A manifest that is not TOML is a finding naming the file: cargo could not build it either.
+struct Toml;
+
+/// A manifest's `[package]`: its name, and its version line.
+struct Package {
+    name: Option<String>,
+    version: Version,
+}
+
+/// What a `[package] version` says.
+#[derive(Clone, PartialEq, Eq)]
+enum Version {
+    /// `version = "x.y.z"`: this crate's own version line.
+    Own(String),
+    /// `version.workspace = true`, or no version at all: the workspace's, when it declares one.
+    Inherited,
+}
+
+fn parse(text: &str, label: &str) -> Result<toml::Table, String> {
+    text.parse::<toml::Table>()
+        .map_err(|e| format!("{label} is not valid TOML: {}", e.message()))
+}
+
+fn string(table: Option<&toml::Value>, key: &str) -> Option<String> {
+    table
+        .and_then(|t| t.get(key))
+        .and_then(toml::Value::as_str)
+        .map(str::to_owned)
 }
 
 impl Toml {
-    fn new() -> Result<Self, String> {
-        let rx = |p: &str| Regex::new(p).map_err(|e| format!("cargo toml pattern {p:?}: {e}"));
-        Ok(Self {
-            lock_table: rx(r"^\[\[package\]\]\s*$")?,
-            lock_field: rx(r#"^(\w+)\s*=\s*"(.*)"\s*$"#)?,
-            table: rx(r"^\s*\[([A-Za-z0-9_.\-]+)\]")?,
-            key: rx(r"^\s*([A-Za-z0-9_-]+)\s*=\s*(.+?)\s*$")?,
-            inherit: rx(r"^version\s*\.\s*workspace\s*=\s*true\s*$")?,
-            literal: rx(r#"^version\s*=\s*"([^"]+)"\s*$"#)?,
-            members: rx(r"(?ms)^\s*members\s*=\s*\[([^\]]*)\]")?,
-            quoted: rx(r#""([^"]+)""#)?,
+    /// `{name: version}` for every `[[package]]` (first entry of a name wins).
+    fn parse_lock(text: &str) -> Result<BTreeMap<String, String>, String> {
+        let lock = parse(text, "Cargo.lock")?;
+        let mut out = BTreeMap::new();
+        for pkg in lock
+            .get("package")
+            .and_then(toml::Value::as_array)
+            .into_iter()
+            .flatten()
+        {
+            if let (Some(n), Some(v)) = (string(Some(pkg), "name"), string(Some(pkg), "version")) {
+                out.entry(n).or_insert(v);
+            }
+        }
+        Ok(out)
+    }
+
+    fn parse_package(text: &str, label: &str) -> Result<Package, String> {
+        let manifest = parse(text, label)?;
+        let package = manifest.get("package");
+        let version = match package.and_then(|p| p.get("version")) {
+            Some(toml::Value::String(v)) => Version::Own(v.clone()),
+            _ => Version::Inherited,
+        };
+        Ok(Package {
+            name: string(package, "name"),
+            version,
         })
     }
 
-    fn section(&self, text: &str, name: &str) -> String {
-        let mut out = Vec::new();
-        let mut inside = false;
-        for raw in splitlines(text) {
-            if let Some(h) = self.table.captures(raw).and_then(|c| c.get(1)) {
-                inside = h.as_str() == name;
-                if inside {
-                    continue;
-                }
-            }
-            if inside {
-                out.push(raw);
-            }
-        }
-        out.join("\n")
-    }
-
-    /// `{name: version}` for every `[[package]]` (first entry of a name wins).
-    fn parse_lock(&self, text: &str) -> BTreeMap<String, String> {
-        let mut out = BTreeMap::new();
-        let mut current: Option<BTreeMap<String, String>> = None;
-        for line in splitlines(text) {
-            if self.lock_table.is_match(line) {
-                current = Some(BTreeMap::new());
-                continue;
-            }
-            let Some(cur) = current.as_mut() else {
-                continue;
-            };
-            if let Some(c) = self.lock_field.captures(line) {
-                cur.insert(c[1].to_owned(), c[2].to_owned());
-                if let (Some(n), Some(v)) = (cur.get("name"), cur.get("version")) {
-                    out.entry(n.clone()).or_insert_with(|| v.clone());
-                }
-                continue;
-            }
-            if line.starts_with('[') {
-                current = None;
-            }
-        }
-        out
-    }
-
-    /// `(name, literal version)` of the `[package]` table; `None` version is
-    /// inherited (or absent).
-    fn parse_package(&self, text: &str) -> (Option<String>, Option<String>) {
-        let (mut name, mut version) = (None, None);
-        let mut table = String::new();
-        for raw in splitlines(text) {
-            if let Some(h) = self.table.captures(raw).and_then(|c| c.get(1)) {
-                h.as_str().clone_into(&mut table);
-                if table != "package" {
-                    return (name, version);
-                }
-                continue;
-            }
-            if table != "package" {
-                continue;
-            }
-            let Some(k) = self.key.captures(raw) else {
-                continue;
-            };
-            if &k[1] == "name" && name.is_none() {
-                name = Some(k[2].trim_matches('"').to_owned());
-            } else if &k[1] == "version" && version.is_none() {
-                version = if self.inherit.is_match(raw) {
-                    None
-                } else {
-                    self.literal.captures(raw).map(|c| c[1].to_owned())
-                };
-            }
-        }
-        (name, version)
-    }
-
-    fn parse_workspace(&self, text: &str) -> (Option<String>, Vec<String>) {
-        let ws = self.section(text, "workspace");
-        let members = self.members.captures(&ws).map_or_else(Vec::new, |c| {
-            self.quoted
-                .captures_iter(&c[1])
-                .map(|q| q[1].to_owned())
-                .collect()
-        });
-        let version = splitlines(&self.section(text, "workspace.package"))
+    /// `([workspace.package] version, members)`.
+    fn parse_workspace(text: &str) -> Result<(Option<String>, Vec<String>), String> {
+        let manifest = parse(text, "Cargo.toml")?;
+        let ws = manifest.get("workspace");
+        let members = ws
+            .and_then(|w| w.get("members"))
+            .and_then(toml::Value::as_array)
             .into_iter()
-            .find_map(|l| self.literal.captures(l).map(|c| c[1].to_owned()));
-        (version, members)
+            .flatten()
+            .filter_map(toml::Value::as_str)
+            .map(str::to_owned)
+            .collect();
+        Ok((
+            string(ws.and_then(|w| w.get("package")), "version"),
+            members,
+        ))
     }
 }
 
@@ -269,24 +233,32 @@ fn release_version(root: &Path, spec: &str) -> Result<Vec<(String, String)>, Str
 
 /// `(findings, examined, notes)`.
 fn audit(root: &Path, spec: &str) -> Result<(Vec<String>, usize, Vec<String>), String> {
-    let toml = Toml::new()?;
-    let (mut findings, mut notes) = (Vec::new(), Vec::new());
+    let mut notes = Vec::new();
     let lock = root.join("Cargo.lock");
     if !lock.is_file() {
         notes.push("no Cargo.lock in this repository — nothing to compare".to_owned());
-        return Ok((findings, 0, notes));
+        return Ok((Vec::new(), 0, notes));
     }
     let root_manifest = root.join("Cargo.toml");
     if !root_manifest.is_file() {
         notes.push("no Cargo.toml beside Cargo.lock — nothing to compare".to_owned());
-        return Ok((findings, 0, notes));
+        return Ok((Vec::new(), 0, notes));
     }
-    let locked = toml.parse_lock(&read(&lock));
+    let unreadable = |e: String| Ok((vec![e], 0, Vec::new()));
+    let locked = match Toml::parse_lock(&read(&lock)) {
+        Ok(l) => l,
+        Err(e) => return unreadable(e),
+    };
     let root_text = read(&root_manifest);
-    let (workspace_version, members) = toml.parse_workspace(&root_text);
+    let ((workspace_version, members), root_pkg) = match Toml::parse_workspace(&root_text)
+        .and_then(|w| Toml::parse_package(&root_text, "Cargo.toml").map(|p| (w, p)))
+    {
+        Ok(v) => v,
+        Err(e) => return unreadable(e),
+    };
     let mut manifests = member_manifests(root, &members);
-    let (root_name, root_version) = toml.parse_package(&root_text);
-    if root_name.is_some() && (root_version.is_some() || workspace_version.is_some()) {
+    let root_versioned = matches!(root_pkg.version, Version::Own(_)) || workspace_version.is_some();
+    if root_pkg.name.is_some() && root_versioned {
         manifests.insert(0, root_manifest);
     }
     if manifests.is_empty() {
@@ -294,25 +266,39 @@ fn audit(root: &Path, spec: &str) -> Result<(Vec<String>, usize, Vec<String>), S
             "this manifest declares no package and no workspace members — nothing to compare"
                 .to_owned(),
         );
-        return Ok((findings, 0, notes));
+        return Ok((Vec::new(), 0, notes));
     }
-    let mut resolved: BTreeMap<String, String> = BTreeMap::new();
+    let mut findings = Vec::new();
+    // The members whose version IS the release: those inheriting it, or, where the workspace
+    // declares no version to inherit, every member (media_server's per-crate literals). A member
+    // writing its own literal under a workspace version has opted out (6.18: zinc-payroll).
+    let mut release_members: Vec<(String, String)> = Vec::new();
     let mut stale: BTreeSet<String> = BTreeSet::new();
     let mut compared = 0usize;
     for manifest in &manifests {
         let r = rel(root, manifest);
-        let (name, version) = toml.parse_package(&read(manifest));
-        let Some(name) = name.filter(|n| !n.is_empty()) else {
+        let pkg = match Toml::parse_package(&read(manifest), &r) {
+            Ok(p) => p,
+            Err(e) => {
+                findings.push(e);
+                continue;
+            }
+        };
+        let Some(name) = pkg.name.filter(|n| !n.is_empty()) else {
             notes.push(format!("{r}: no [package] name — not compared"));
             continue;
         };
-        let Some(version) = version.or_else(|| workspace_version.clone()) else {
-            notes.push(format!(
-                "{r}: inherits a version and no [workspace.package] declares one — not compared"
-            ));
-            continue;
+        let (version, tracks_release) = match (&pkg.version, &workspace_version) {
+            (Version::Own(v), None) => (v.clone(), true),
+            (Version::Own(v), Some(_)) => (v.clone(), false),
+            (Version::Inherited, Some(w)) => (w.clone(), true),
+            (Version::Inherited, None) => {
+                notes.push(format!(
+                    "{r}: inherits a version and no [workspace.package] declares one — not compared"
+                ));
+                continue;
+            }
         };
-        resolved.insert(name.clone(), version.clone());
         compared += 1;
         match locked.get(&name) {
             None => findings.push(format!(
@@ -324,9 +310,34 @@ fn audit(root: &Path, spec: &str) -> Result<(Vec<String>, usize, Vec<String>), S
                     "{r}: {name} declares version {version} but Cargo.lock says {lv} — the lockfile is stale; cargo will rewrite it on the next build, and this commit is what gets published"
                 ));
             }
-            Some(_) => {}
+            Some(lv) => {
+                if tracks_release {
+                    release_members.push((name, lv.clone()));
+                }
+            }
         }
     }
+    release_findings(
+        root,
+        spec,
+        &release_members,
+        &stale,
+        &mut findings,
+        &mut notes,
+    )?;
+    Ok((findings, compared, notes))
+}
+
+/// Arm 2: the release number a source OUTSIDE the manifests declares, against what each member
+/// that carries the release declares and locks.
+fn release_findings(
+    root: &Path,
+    spec: &str,
+    members: &[(String, String)],
+    stale: &BTreeSet<String>,
+    findings: &mut Vec<String>,
+    notes: &mut Vec<String>,
+) -> Result<(), String> {
     let declared = release_version(root, spec)?;
     let numbers: BTreeSet<&str> = declared.iter().map(|(_, v)| v.as_str()).collect();
     if numbers.len() > 1 {
@@ -339,34 +350,28 @@ fn audit(root: &Path, spec: &str) -> Result<(Vec<String>, usize, Vec<String>), S
             numbers.len(),
             said.join(", ")
         ));
-    } else if !numbers.is_empty() {
-        let outside: Vec<&(String, String)> = declared
-            .iter()
-            .filter(|(l, _)| !l.ends_with("Cargo.toml"))
-            .collect();
-        if let Some((label, release)) = outside.first().map(|p| (&p.0, &p.1)) {
-            for manifest in &manifests {
-                let (Some(name), _) = toml.parse_package(&read(manifest)) else {
-                    continue;
-                };
-                let Some(lv) = locked.get(&name).filter(|_| resolved.contains_key(&name)) else {
-                    continue;
-                };
-                if stale.contains(&name) || lv == release {
-                    continue;
-                }
-                findings.push(format!(
-                    "{label}: the declared release version is {release} but {name} declares and locks {lv} — the release number was bumped in one place only"
-                ));
-            }
-        } else {
-            notes.push(
-                "the only declared release version is the workspace's own; nothing outside the manifests declares a release number to compare the lockfile against"
-                    .to_owned(),
-            );
-        }
+        return Ok(());
     }
-    Ok((findings, compared, notes))
+    if numbers.is_empty() {
+        return Ok(());
+    }
+    let outside = declared.iter().find(|(l, _)| !l.ends_with("Cargo.toml"));
+    let Some((label, release)) = outside else {
+        notes.push(
+            "the only declared release version is the workspace's own; nothing outside the manifests declares a release number to compare the lockfile against"
+                .to_owned(),
+        );
+        return Ok(());
+    };
+    for (name, lv) in members {
+        if stale.contains(name) || lv == release {
+            continue;
+        }
+        findings.push(format!(
+            "{label}: the declared release version is {release} but {name} declares and locks {lv} — the release number was bumped in one place only"
+        ));
+    }
+    Ok(())
 }
 
 /// (exit code, [(to stderr?, line)]).
