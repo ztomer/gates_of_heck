@@ -7,7 +7,32 @@
 
 use goh_tui::{ERR, OK, STEP};
 use std::process::Command;
+use std::sync::Mutex;
+use std::sync::OnceLock;
 use std::time::Instant;
+
+/// The labels of every step that has failed in THIS process, oldest first (BACKLOG 6.16).
+///
+/// `fail` is the one place every failing structural step passes through — the native steps call it
+/// directly and the delegated checkers reach it through `delegated` — so recording here is
+/// recording every red, without a second list for a caller to keep in step with the first. That
+/// second list is the failure mode this replaces: `run()` knows each step's exit code but not its
+/// label, so a keep-going run built from the return values alone could count its reds and not name
+/// them, which is the one thing the run exists to do.
+///
+/// `Mutex` rather than a `static mut` or an `Atomic` because the labels are `String`s read at the
+/// end of the run in order; `OnceLock` because a `const Mutex::new` is not available on the MSRV.
+fn reds() -> &'static Mutex<Vec<String>> {
+    static REDS: OnceLock<Mutex<Vec<String>>> = OnceLock::new();
+    REDS.get_or_init(|| Mutex::new(Vec::new()))
+}
+
+/// Take every red recorded so far, leaving the recorder empty.
+pub(crate) fn take_reds() -> Vec<String> {
+    reds()
+        .lock()
+        .map_or_else(|_| Vec::new(), |mut r| std::mem::take(&mut *r))
+}
 
 /// `GOH_TAIL`'s default: lines of a failing step's captured output shown
 /// (documented in `docs/config.md`, as `gates/_common.sh` sets it).
@@ -153,6 +178,11 @@ pub(crate) fn ok(label: &str, start: Instant) {
 /// failure says both WHAT ran and WHERE the rule for it is written.
 pub(crate) fn fail(label: &str, how: &str, report: &str, start: Instant) -> i32 {
     record(label, start, 1);
+    // The label is kept so a `--keep-going` run can name every red it found at the end; the
+    // fail-fast run returns on this red and never reads the recorder.
+    if let Ok(mut r) = reds().lock() {
+        r.push(label.to_owned());
+    }
     println!();
     let lines: Vec<&str> = report.lines().collect();
     let tail = tail_len();

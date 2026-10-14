@@ -155,8 +155,14 @@ pub enum Commands {
         /// Every check (pre-push scope). Default when neither flag is given.
         #[arg(long)]
         full: bool,
+        /// Run every step and report every red, instead of stopping at the first (BACKLOG 6.16).
+        /// A measurement run: one pass over a tree that is known to be dirty, where the cost is
+        /// the round trips and finding the second red costs a fix, a re-run and another fix. The
+        /// commit hook does not pass it -- one red is what a commit wants.
+        #[arg(long, requires = "full", conflicts_with_all = ["staged", "list_steps"])]
+        keep_going: bool,
         /// Print the steps this binary carries, one per line, and run none of them.
-        #[arg(long, conflicts_with_all = ["staged", "full"])]
+        #[arg(long, conflicts_with_all = ["staged", "full", "keep_going"])]
         list_steps: bool,
     },
     /// Fail on merge-conflict markers (native port of `check_no_conflict_markers`).

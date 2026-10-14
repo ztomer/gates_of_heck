@@ -2,6 +2,49 @@
 
 ## Unreleased
 
+* **A stock hook states what it does, not what the repo lacks** (6.19). The pre-push opened
+  "There is no CI behind this" -- false in every repo that has a workflow (Adv360), and the hook
+  is copied into all of them. It now says what is true of itself: a push made with `--no-verify`,
+  or from a clone without these hooks, is not gated by it.
+
+  Editing the stock bytes RETIRES them, and `structural.sh` refuses a byte-identical retired hook
+  on sight -- which would have turned every consumer red for a change none of them made. So
+  `retired_hooks.sha256` entries may now carry a `same-logic` tag: `install.sh` still upgrades
+  those bytes without `--force` (the grep is unchanged, so the entry keeps its job) and
+  `structural.sh` does not name them. Refusing is for a hook whose GATE is stale; a header is not
+  the gate.
+
+  The test greps every stock hook for a claim about the repo it is copied into, and it found a
+  second one: `commit-msg`'s "there is no rule there to run" is a true statement about the shared
+  checkout the hook delegates to. The claim list is judged per sentence, and a sentence naming
+  `$GOH` is the hook describing itself. Two mutants proved red -- a claim on the installer line,
+  and a bare claim naming nothing.
+
+* **`goh structural --full --keep-going` reports every red instead of the first** (6.16). The
+  pipeline returned at its first failing step, so a repo known to be dirty cost one fix, one
+  re-run and one more finding: seven consumer agents, up to four rounds each, every round clearing
+  a red to see the next. Under `--keep-going` every step runs, every red is named at the end, and
+  the exit is 1 if any was red. The default is still fail-fast -- the commit hook wants the first
+  red and one screen of scrollback, and 29 consumers' hooks run this at `--staged`.
+
+  Two things this had to get right, both of which cost a real decision rather than a line:
+
+  - **A REFUSAL still stops, with or without the flag.** Exit 2 is how a step says it cannot judge
+    the repo at all -- a `.gatesrc` that will not parse, an exclusion filter that will not compile.
+    Continuing past one makes every remaining step report on a configuration nobody could read,
+    which reads as a repo in far worse shape than it is. Pinned by a test whose fixture is
+    otherwise clean, so the only thing it can be measuring is the stop.
+  - **The summary must not look like a failure.** Four suites read `structural: <label> failed
+    (<how>)` to name the failing step, so the summary is `structural: 2 steps failed` with the
+    parenthetical on its own line: a summary shaped like a finding is counted as one by every
+    reader of a failure, and it is not a finding.
+
+  `structural.sh` parses its flags instead of reading `$1` as one scope, so `--full --keep-going`
+  and `--keep-going --full` are the same command -- and the pair it already refused, `--staged
+  --full`, is now refused in EITHER order rather than silently resolved by whichever came last.
+  The flag is `--full` only: at staged scope every step sees the same files, so "every red" is the
+  same answer at twice the reading cost.
+
 * **An early-exit pipe on a producer that never ends gets a bounded wait, not a capture** (6.22).
   ZeroThunder's `tail -f -n0 LOG | grep -m 1 ...` was told `out="$(producer)"; grep -m N PAT <<<
   "$out"`, which never returns. A producer that does not end (`tail -f`/`-F`/`--follow`, `yes`,

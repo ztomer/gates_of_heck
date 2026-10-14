@@ -99,17 +99,6 @@ other instruments: P0 (`GOH_TIMINGS`), `cpu_ms` (`e3e5418`), `tools/quiet.sh` an
       (keyed by path, so it reads gone and new -- say so rather than guess); a scratch clone
       registered by a test (tests use their own state dir).
 
-- [ ] 6.16 A measurement run that does not stop at the first red. Baseline: 2026-10-14, every
-      consumer's roadmap pass had to clear each red in a scratch worktree to see the next one
-      (structural stops at its first failing step), 7 agents x up to 4 rounds. Exit:
-      `structural --full --keep-going` runs every step, prints every red, exits 1 if any was red;
-      the default stays fail-fast. Red-first: two planted reds in a scratch repo -- the second is
-      named in the output. Lies: a step whose input depends on an earlier step's fix (say which
-      steps are independent).
-- [ ] 6.19 The stock `pre-push` header makes a claim about the repo. Baseline: 2026-10-14, it
-      says "There is no CI behind this", false in every repo with a workflow (Adv360). Exit: the header states what the hook does, not what
-      the repo lacks. Red-first: n/a (text); grep the stock hooks for claims about the repo.
-      Lies: a reinstall leaves the old text in repos that customised the header.
 - [ ] 6.20 `install.sh` is all-or-nothing. Baseline: 2026-10-14, CadGoose's hand-edited
       `pre-commit`/`pre-push` make it refuse, so the three hooks it simply LACKS (`commit-msg`,
       `post-rewrite`, `pre-applypatch`) are not added either; salary and zinc-core the same.

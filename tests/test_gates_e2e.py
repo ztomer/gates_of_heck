@@ -130,6 +130,31 @@ def test_extra_arguments_are_rejected(repo):
     assert "extra arguments" in (r.stdout + r.stderr)
 
 
+def test_opposite_scopes_are_rejected_in_either_order(repo):
+    """`--keep-going` made this script parse its flags instead of reading `$1` as one scope
+    (BACKLOG 6.16), and a parser that takes the LAST scope silently resolved the very pair the
+    test above refuses. The refusal is order-independent: a flag order that changes the verdict is
+    the scope guess this script's argument handling exists to remove."""
+    write(repo, "a.py", "\n")
+    stage(repo, "a.py")
+    for pair in (("--staged", "--full"), ("--full", "--staged")):
+        r = run_gate(repo, STRUCTURAL, *pair)
+        assert r.returncode == 2, f"{pair}: exit {r.returncode} ({r.stdout}{r.stderr})"
+        assert "extra arguments" in (r.stdout + r.stderr), pair
+
+
+def test_keep_going_is_refused_without_full(repo):
+    """The flag is a whole-tree measurement mode. Under `--staged` every step sees the same files,
+    so "every red" is the same answer at twice the reading cost, and the commit hook would inherit
+    it from a flag someone left in a hook."""
+    write(repo, "a.py", "\n")
+    stage(repo, "a.py")
+    r = run_gate(repo, STRUCTURAL, "--staged", "--keep-going")
+    assert r.returncode == 2, r.stdout + r.stderr
+    combined = r.stdout + r.stderr
+    assert "--keep-going" in combined and "--full" in combined
+
+
 def test_help_prints_usage(repo):
     r = run_gate(repo, STRUCTURAL, "--help")
     assert r.returncode == 0, r.stdout + r.stderr

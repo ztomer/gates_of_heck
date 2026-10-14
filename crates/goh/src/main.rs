@@ -134,12 +134,13 @@ fn run_core(command: Commands) -> i32 {
         Commands::Structural {
             staged,
             full,
+            keep_going,
             list_steps,
         } => {
             if list_steps {
                 structural::list_steps()
             } else {
-                structural::run(staged, full)
+                structural::run(staged, full, keep_going)
             }
         }
         Commands::Canary {

@@ -7,6 +7,7 @@
 #
 #   structural.sh              # whole tree
 #   structural.sh --staged     # staged files only (pre-commit scope)
+#   structural.sh --full --keep-going   # every step, every red, exit 1 if any (BACKLOG 6.16)
 #
 # Config, all optional, read from the TARGET repo's .gatesrc:
 #   GOH_MAX_LINES=500          # file-length cap; unset disables the check
@@ -23,31 +24,62 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 if [ "${1:-}" = "-h" ] || [ "${1:-}" = "--help" ]; then
     cat <<'EOF'
-usage: structural.sh [--staged | --full]
-  no argument : full-tree checks (same as --full)
-  --staged    : staged files only (pre-commit scope, fast)
-  --full      : every check (pre-push scope)
+usage: structural.sh [--staged | --full [--keep-going]]
+  no argument   : full-tree checks (same as --full)
+  --staged      : staged files only (pre-commit scope, fast)
+  --full        : every check (pre-push scope)
+  --keep-going  : with --full only — run every step and report every red instead of
+                  stopping at the first (BACKLOG 6.16). A refusal still stops.
 EOF
     exit 0
 fi
-SCOPE="${1:-}"
 
-# Strict scope argument: "" |--full|--staged are the ONLY accepted forms.
-# Anything else previously FELL THROUGH to a silent full-tree run — a typo
-# (`--stgaed`, `--staged --dry-run`) meant "check everything" without ever
-# saying so. Unknown arguments are a usage error naming the accepted forms,
-# never a scope guess.
-case "$SCOPE" in
-    ""|--full|--staged) ;;
-    *)
-        err "structural.sh: unknown argument '$SCOPE' (accepted: no argument | --full | --staged)"
-        exit 2
-        ;;
-esac
-[ $# -le 1 ] || {
-    err "structural.sh: unexpected extra arguments: $* (accepted: no argument | --full | --staged)"
+# Strict scope argument: "" |--full|--staged are the ONLY accepted forms, plus the one
+# flag that qualifies --full. Anything else previously FELL THROUGH to a silent
+# full-tree run — a typo (`--stgaed`, `--staged --dry-run`) meant "check everything"
+# without ever saying so. Unknown arguments are a usage error naming the accepted
+# forms, never a scope guess.
+#
+# The flags are PARSED, not positional: `--full --keep-going` and `--keep-going --full`
+# are the same command, and an order-sensitive parser here would make the second one
+# the "unknown argument" case while the first worked — the same silent difference
+# between a typo and a real flag that the strictness above exists to remove.
+SCOPE=""
+KEEP_GOING=0
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --full)
+            if [ "$SCOPE" = "--staged" ]; then
+                err "structural.sh: --full and --staged together are extra arguments naming"
+                err "  opposite scopes. Run one, not both."
+                exit 2
+            fi
+            SCOPE="--full"
+            ;;
+        --staged)
+            if [ "$SCOPE" = "--full" ]; then
+                err "structural.sh: --staged and --full together are extra arguments naming"
+                err "  opposite scopes. Run one, not both."
+                exit 2
+            fi
+            SCOPE="--staged"
+            ;;
+        --keep-going) KEEP_GOING=1 ;;
+        *)
+            err "structural.sh: unknown argument '$1'"
+            err "  (accepted: no argument | --full | --staged | --full --keep-going)"
+            exit 2
+            ;;
+    esac
+    shift
+done
+
+if [ "$KEEP_GOING" = 1 ] && [ "$SCOPE" != "--full" ]; then
+    err "structural.sh: --keep-going is --full only: it reports every red in a whole-tree run,"
+    err "  and a staged run's steps see the same files (the commit hook's scope). Ask for"
+    err "  --full with it, or drop it."
     exit 2
-}
+fi
 
 # ── The gate runs SOURCE, and uncommitted source is a different gate. ───────
 #
@@ -246,6 +278,9 @@ fi
 if [ "$SCOPE" = "--staged" ]; then
     goh_bind_hook_index  # the index being committed, when the hook carried one (gates/_git_env.sh)
     exec "$goh_native" structural --staged
+fi
+if [ -n "$KEEP_GOING" ]; then
+    exec "$goh_native" structural --full --keep-going
 fi
 exec "$goh_native" structural --full
 exit
