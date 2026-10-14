@@ -2,6 +2,7 @@
 """lib/step_control.py -- the controls a step's CPU is divided by (BACKLOG 5.3).
 
     GOH_TIMINGS=/tmp/t.jsonl python3 lib/step_control.py run rust   # one control row
+    python3 lib/step_control.py kinds REPO    # the controls REPO's gate needs, one per line
 
 WHY. This box is never quiet. Across a 2x load clippy's raw CPU moved +17%: under load more of the
 work runs on the efficiency cores, which spend more CPU on it. Divided by a control of its OWN kind
@@ -144,14 +145,27 @@ def run(kind: str) -> int:
     return 0
 
 
+def kinds_for(repo: Path) -> list[str]:
+    """The controls a repo's gate needs: rust when git tracks a Cargo.toml at its root or in any
+    directory (rust_each_crate.sh's rule; media_server's 29 crates have no root manifest)."""
+    listed = subprocess.run(
+        ["git", "-C", str(repo), "ls-files", "--", "Cargo.toml", "*/Cargo.toml"],
+        capture_output=True, text=True, check=False, stdin=subprocess.DEVNULL,
+    )  # fmt: skip
+    return ["rust"] if listed.returncode == 0 and listed.stdout.strip() else []
+
+
 def main(argv: list[str]) -> int:
+    if len(argv) == 2 and argv[0] == "kinds":
+        print("\n".join(kinds_for(Path(argv[1]))))
+        return 0
     if len(argv) >= 2 and argv[0] == "run" and all(k in CONTROLS for k in argv[1:]):
         for kind in argv[1:]:
             run(kind)
         return 0
     unknown = [k for k in argv[1:] if k not in CONTROLS]
     print(
-        f"usage: step_control.py run KIND... (kinds: {' '.join(CONTROLS)})"
+        f"usage: step_control.py run KIND... | kinds REPO (kinds: {' '.join(CONTROLS)})"
         + (f"; unknown: {' '.join(unknown)}" if unknown else ""),
         file=sys.stderr,
     )

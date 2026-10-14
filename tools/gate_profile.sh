@@ -29,8 +29,7 @@ out="${GOH_TIMINGS:-$(mktemp "${TMPDIR:-/tmp}/goh-timings.XXXXXX")}"
 zero=0000000000000000000000000000000000000000
 proven=0
 [ -n "${GOH_PROFILE_PROVEN:-}" ] && proven=1
-kinds=
-[ -f "$repo/Cargo.toml" ] && kinds=rust
+kinds="$(python3 "$GOH/lib/step_control.py" kinds "$repo" 2>/dev/null)"
 controls() {
     [ -n "$kinds" ] || return 0
     # shellcheck disable=SC2086 # one word per kind

@@ -14,7 +14,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-from conftest import hermetic_env
+from conftest import git, hermetic_env, write
 
 ROOT = Path(__file__).resolve().parent.parent
 LIB = ROOT / "lib"
@@ -131,6 +131,17 @@ def test_an_unknown_kind_is_a_usage_error(tmp_path: Path) -> None:
     assert r.returncode == 2 and "cobol" in r.stderr, r.stderr
 
 
+def test_a_repo_with_crates_in_subdirectories_needs_the_rust_control(repo: Path) -> None:
+    """media_server's 29 crates have no root Cargo.toml: a root-only test skipped its control."""
+    assert step_control.kinds_for(repo) == []
+    write(repo, "crates/a/Cargo.toml", "[package]\nname = 'a'\n")
+    git(repo, "add", "-A")
+    assert step_control.kinds_for(repo) == ["rust"]
+    write(repo, "Cargo.toml", "[workspace]\n")
+    git(repo, "add", "-A")
+    assert step_control.kinds_for(repo) == ["rust"]
+
+
 def test_gate_profile_brackets_the_gate_with_its_kinds_controls() -> None:
     text = (ROOT / "tools" / "gate_profile.sh").read_text()
     lines = [line.strip() for line in text.splitlines()]
@@ -140,7 +151,7 @@ def test_gate_profile_brackets_the_gate_with_its_kinds_controls() -> None:
     )
     assert 'step_control.py" run' in text, "the controls are not lib/step_control.py's"
     assert len(calls) == 2 and calls[0] < gate < calls[1], "a control before the gate and one after"
-    assert "Cargo.toml" in text, "the Rust control runs only for a repo that builds Rust"
+    assert 'step_control.py" kinds' in text, "the controls are chosen by the repo's crates"
 
 
 def test_a_step_that_runs_a_gate_takes_the_gates_kind() -> None:
