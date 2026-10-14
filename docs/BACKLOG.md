@@ -83,6 +83,22 @@ other instruments: P0 (`GOH_TIMINGS`), `cpu_ms` (`e3e5418`), `tools/quiet.sh` an
       faster than jobs=4, or steps serial somewhere (met on 2026-10-08: j1 slower than j4).
       Lies: one repo's knee read as every repo's.
 
+### Phase 2 — the estate is every consumer, not one directory
+
+- [ ] 6.14 The estate is every repo `install.sh` installed into. Baseline: MEASURED 2026-10-14:
+      `~/.claude/skills` is a consumer (hooks installed, 0.27.0) outside `~/Projects`, so 3.3's
+      table, 6.12's audit sweep and `scripts/estate_audit.py` (root `~/Projects`, line 270) never
+      read it -- and it was red on the stdin gate with 35 undeclared calls that no count carried
+      (declared in claude-skills `9618499`, floor 35 proved red at 36). Exit: `install.sh` records
+      each repo it installs into (one line per toplevel, in goh's state dir beside
+      `estate_audit.json`), and `estate_audit.py` and every estate sweep read that registry
+      unioned with `GOH_ESTATE_ROOT`; a registered path that is gone is named, not skipped.
+      Red-first: a test installs into a scratch repo outside a scratch estate root and asserts the
+      audit reads its lockfile -- red today. Lies: a repo installed before the registry existed
+      (seed it once from the `~/Projects` walk plus `~/.claude/skills`); a repo moved on disk
+      (keyed by path, so it reads gone and new -- say so rather than guess); a scratch clone
+      registered by a test (tests use their own state dir).
+
 ### Handed off — each row is its consumer's
 
 The stdin gate is on everywhere since `0c93f4d`; the sweep's method is a mechanical AST pass
@@ -92,7 +108,7 @@ then `ruff format` (goh's 555 calls), or `--seed` (`498eb9a`) for what a repo ca
 - [~] 3.3 The estate sweep, handed off: since 3.4 (`0c93f4d`) each remaining row is red in its own
       repo and cleared in that repo's session (Downstream). Baseline: MEASURED 2026-10-09 with this tree's own binary, scope
       `git ls-files --cached --others --exclude-standard`: 34 repos carry Python, 1361 process
-      calls, **996 findings**, 17 repos exit 1. Two rows are closed (2026-10-13): gates_of_heck
+      calls, **996 findings**, 17 repos exit 1. Three rows are closed: ~/.claude/skills (outside this table's scope, 6.14; 35 calls declared 2026-10-14, claude-skills `9618499`, floor 35 proved red at 36), gates_of_heck
       (511 then, 555 calls in 186 files when declared, `df8f9c2`: no allowlist, 614 calls read,
       0 findings, floor 550 proved red at 10000) and ZoneWM (118 then, its `c8766158`: 123
       declared, floor 110 of 125). **15 rows remain, 367 findings as of 2026-10-09** (re-read each
