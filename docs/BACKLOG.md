@@ -99,6 +99,45 @@ other instruments: P0 (`GOH_TIMINGS`), `cpu_ms` (`e3e5418`), `tools/quiet.sh` an
       (keyed by path, so it reads gone and new -- say so rather than guess); a scratch clone
       registered by a test (tests use their own state dir).
 
+- [ ] 6.15 `tools/release-kit/tap_bump.sh` writes a bump that points at the wrong artifact, and
+      the tap's gate passes it. Baseline: MEASURED 2026-10-14 against a scratch bare copy of
+      homebrew-tap: a cask bump moves `sha256` but leaves `version "0.41.1"` (old dmg, new
+      digest); on `multitop.rb` both agent `resource`s get the tarball's sha and keep their
+      v0.54.0 URLs. Both bumps passed the tap's gate and pushed. The fixture's URL shape matches
+      none of the tap's casks. Exit: every formula and cask in the tap, bumped in a scratch copy,
+      has version, url and sha256 moved together (resources included), proven by `brew audit`
+      or a parse of the result. Red-first: the fixture replaced by copies of the tap's real
+      `multitop.rb` and one cask -- red today. Lies: a fixture shaped to the code rather than the
+      tap; a resource whose url carries no version string.
+- [ ] 6.16 A measurement run that does not stop at the first red. Baseline: 2026-10-14, every
+      consumer's roadmap pass had to clear each red in a scratch worktree to see the next one
+      (structural stops at its first failing step), 7 agents x up to 4 rounds. Exit:
+      `structural --full --keep-going` runs every step, prints every red, exits 1 if any was red;
+      the default stays fail-fast. Red-first: two planted reds in a scratch repo -- the second is
+      named in the output. Lies: a step whose input depends on an earlier step's fix (say which
+      steps are independent).
+- [ ] 6.17 `goh emoji` run alone does not read `GOH_ALLOW` from `.gatesrc`, while structural does.
+      Baseline: 2026-10-14, remote_dotfiles' allowed glyphs flag alone and pass in the gate. Exit: one
+      config read for both entry points. Red-first: an allowed glyph in a scratch repo, `goh emoji`
+      exits 1 today. Lies: a second key read the same way (grep every standalone subcommand).
+- [ ] 6.18 `lockver` misreads a manifest. Baseline: 2026-10-14, Finance/zinc: the `literal` /
+      `inherit` regexes in `crates/goh/src/lockver.rs` reject a trailing TOML comment, so
+      `crates/zinc-payroll/Cargo.toml:3` (`version = "1.9.0"  # ...`) reads as inheriting 4.8.0
+      and the lock as stale; its second arm compares `VERSION` against a crate that keeps its own
+      version line. Exit: both zinc cases read correctly. Red-first: the two zinc lines as
+      fixtures. Lies: a regex where a TOML parse belongs (use one).
+- [ ] 6.19 The stock `pre-push` header makes a claim about the repo. Baseline: 2026-10-14, it
+      says "There is no CI behind this", false in every repo with a workflow (Adv360). Exit: the header states what the hook does, not what
+      the repo lacks. Red-first: n/a (text); grep the stock hooks for claims about the repo.
+      Lies: a reinstall leaves the old text in repos that customised the header.
+- [ ] 6.20 `install.sh` is all-or-nothing. Baseline: 2026-10-14, CadGoose's hand-edited
+      `pre-commit`/`pre-push` make it refuse, so the three hooks it simply LACKS (`commit-msg`,
+      `post-rewrite`, `pre-applypatch`) are not added either; salary and zinc-core the same.
+      Exit: a refused hook is named and left alone, the missing ones are installed, exit
+      non-zero while any refusal stands. Red-first: a scratch repo with one edited and one
+      missing hook -- the missing one is absent after install today. Lies: a partial install
+      read as a complete one (the exit code must say otherwise).
+
 ### Handed off — each row is its consumer's
 
 The stdin gate is on everywhere since `0c93f4d`; the sweep's method is a mechanical AST pass
@@ -152,6 +191,24 @@ antiknob's vendored `_gitutil.py`, antiknob's and divoom's `lock_guard.sh`, anti
 ztools' exempt key, Finance's `"$root.out"`, ZeroThunder's dropped process handle, the starter
 `.gatesrc`'s tilde-path comment (`c8e8b4b`, edited in every repo that carried it, 2026-10-12).
 
+- **Corrections from the 2026-10-14 roadmap pass (measured in each repo):** Finance/zinc runs no
+  goh structural layer (the pre-commit framework owns its hooks; `install.sh` refuses), so it is
+  UNGATED, not "red at its next commit"; wiring it reds stdin 76 of 81, 1 early-exit pipe, 3 md
+  links, 2 unreaped spawns, 3 empty-scope, 2 lockver (6.18), 12 emoji in `tests/fixtures/`. Its
+  python 3.15 run is green (1115 passed): the PyMuPDF note below is stale. Finance/salary and
+  zinc-core are ARCHIVED on GitHub: their rows are not debt anyone will clear; ZincTender was
+  removed from the estate by the owner (2026-10-14).
+  ZeroThunder carries 9 early-exit pipes in 6 files (not in 6.9's list); its `local_env_vars()`
+  prescription is already done and `/private/tmp/zt-gold` is gone. rustls 0.23.45 went red
+  estate-wide on 2026-10-14 (RUSTSEC-2026-0346..0349): `cargo update -p rustls` (0.23.46).
+  CadGoose's `CMakeLists.txt` is 295 lines since its `b377d79` (the line-cap bullet is stale), and
+  its tap push is the "Update Homebrew Cask in Tap" step of `build_and_release.yml`, not
+  `scripts/push_release.sh`. apes carries 8 undeclared stdin calls that 3.3's table never
+  counted (6.14's class). The pre-push gates a CLEAN export, so a gate that reads generated or
+  ignored output finds none: koffee_oss's `Koffee.xcodeproj` (xcodegen) and ZeroThunder's `bin/`
+  went red or skipped at the reinstall; each repo's gate must build what it reads.
+  Adv360's ruling R3 keeps `.githooks/.goh-installed/` uncommitted, against the reinstall note
+  below: a standing exception there.
 - **Every consumer, after `a03d5fb` (6.6) and `18330c7` (6.7), red at its next commit until it
   re-installs:** 6.7 retired the stock pre-commit that every repo carried, and 6.6 refuses a
   retired one. Run `"$GOH_DIR/install.sh" .` and commit `.githooks/pre-commit` and
