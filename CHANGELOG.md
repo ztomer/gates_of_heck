@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+* **A tap bump moves version, urls and digests together** (6.15). `tap_bump.sh` rewrote with two
+  blind `sed` expressions: a cask got the new digest and kept `version "0.41.1"` (the old dmg),
+  and multitop.rb's agent `resource`s got the source tarball's digest and kept their old urls; the
+  tap's gate passed both. `tools/release-kit/tap_rewrite.py` reads the file by block, moves every
+  url from the old version to the new, gives each resource its own artifact's digest
+  (`--resource NAME=PATH|URL`, else downloaded from its new url), refuses a shape it does not
+  know (a url with no version in it, a url inside `on_arm`), and reads the result back before
+  writing. Proven on copies of every formula and cask in homebrew-tap, read back by Ruby.
+
 * **Every checker under `checks/` is in the calibration registry, and the reader refuses one that
   is not** (6.21). `check_audit_ignores` and `check_git_env` shipped unregistered, so
   game_asset_factory's cross-repo ratchet read "gates_of_heck: 2 unproven gate(s), ceiling 1".

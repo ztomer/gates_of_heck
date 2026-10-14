@@ -99,16 +99,6 @@ other instruments: P0 (`GOH_TIMINGS`), `cpu_ms` (`e3e5418`), `tools/quiet.sh` an
       (keyed by path, so it reads gone and new -- say so rather than guess); a scratch clone
       registered by a test (tests use their own state dir).
 
-- [ ] 6.15 `tools/release-kit/tap_bump.sh` writes a bump that points at the wrong artifact, and
-      the tap's gate passes it. Baseline: MEASURED 2026-10-14 against a scratch bare copy of
-      homebrew-tap: a cask bump moves `sha256` but leaves `version "0.41.1"` (old dmg, new
-      digest); on `multitop.rb` both agent `resource`s get the tarball's sha and keep their
-      v0.54.0 URLs. Both bumps passed the tap's gate and pushed. The fixture's URL shape matches
-      none of the tap's casks. Exit: every formula and cask in the tap, bumped in a scratch copy,
-      has version, url and sha256 moved together (resources included), proven by `brew audit`
-      or a parse of the result. Red-first: the fixture replaced by copies of the tap's real
-      `multitop.rb` and one cask -- red today. Lies: a fixture shaped to the code rather than the
-      tap; a resource whose url carries no version string.
 - [ ] 6.16 A measurement run that does not stop at the first red. Baseline: 2026-10-14, every
       consumer's roadmap pass had to clear each red in a scratch worktree to see the next one
       (structural stops at its first failing step), 7 agents x up to 4 rounds. Exit:

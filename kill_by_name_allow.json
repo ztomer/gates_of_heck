@@ -41,6 +41,12 @@
    "line": "pgrep -x \"$PROCESS_NAME\" >/dev/null 2>&1 && pkill -x \"$PROCESS_NAME\" || true",
    "status": "unreviewed",
    "reason": "seeded 2026-09-23 when the gate landed (pkill matches by name); not yet reviewed"
+  },
+  {
+   "path": "tests/fixtures/homebrew_tap/Casks/divoom-control.rb",
+   "line": "args:       [\"-c\", \"pkill -f 'Divoom.app/Contents/Frameworks/bin/divoom' || true\"],",
+   "status": "legitimate",
+   "reason": "a byte copy of homebrew-tap's Casks/divoom-control.rb at ad99f17 (BACKLOG 6.15): data for tests/test_tap_bump_real_shapes.py, never run here; the tap owns the uninstall step it quotes"
   }
  ]
 }

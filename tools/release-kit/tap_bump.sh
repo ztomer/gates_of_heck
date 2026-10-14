@@ -4,12 +4,14 @@
 # Five products' release scripts pushed homebrew-tap bumps straight to GitHub, so the tap's gate
 # never ran: a fresh clone has no core.hooksPath, so no hook fires, and a bump pushed from CI with
 # a token skips hooks by construction. This step does not rely on a hook. It clones the tap,
-# rewrites the url tag and sha256 of Formula/NAME.rb or Casks/NAME.rb, commits, runs the tap's own
-# `tools/gate.sh --full` in the clone, and pushes the commit PINNED (`<sha>:refs/heads/<branch>`),
-# reading the remote back. A red gate pushes nothing. An unchanged formula commits nothing.
+# moves the version, every url and every sha256 of Formula/NAME.rb or Casks/NAME.rb together
+# (tap_rewrite.py: a resource gets ITS artifact's digest, from --resource or its new url; 6.15),
+# commits, runs the tap's own `tools/gate.sh --full` in the clone, and pushes the commit PINNED
+# (`<sha>:refs/heads/<branch>`), reading the remote back. A red gate pushes nothing. An unchanged
+# formula commits nothing.
 #
 #   tap_bump.sh --tap ORG/REPO|PATH (--formula NAME | --cask NAME) --tag vX.Y.Z --artifact PATH|URL
-#               [--dry-run]
+#               [--resource NAME=PATH|URL ...] [--dry-run]
 #
 # release.sh's tap step calls this; a product's own release script calls it the same way.
 { # parse-guard -- bash reads this group whole before running it (tests/test_parse_guard.py)
@@ -18,7 +20,7 @@ GOH="${GOH_DIR:-$HOME/Projects/gates_of_heck}"
 # shellcheck disable=SC1091
 source "$GOH/tui/lib.sh"
 
-TAP="" KIND="" NAME="" TAG="" ARTIFACT="" DRY_RUN=0
+TAP="" KIND="" NAME="" TAG="" ARTIFACT="" DRY_RUN=0 RESOURCES=()
 while [ $# -gt 0 ]; do
   case "$1" in
     --tap)      TAP="${2:?}"; shift 2 ;;
@@ -26,8 +28,9 @@ while [ $# -gt 0 ]; do
     --cask)     KIND="cask"; NAME="${2:?}"; shift 2 ;;
     --tag)      TAG="${2:?}"; shift 2 ;;
     --artifact) ARTIFACT="${2:?}"; shift 2 ;;
+    --resource) RESOURCES+=(--resource "${2:?}"); shift 2 ;;
     --dry-run)  DRY_RUN=1; shift ;;
-    -h|--help)  sed -n '2,14p' "$0"; exit 0 ;;
+    -h|--help)  sed -n '2,16p' "$0"; exit 0 ;;
     *) die "tap_bump: unknown argument '$1' (see --help)" ;;
   esac
 done
@@ -64,12 +67,12 @@ case "$ARTIFACT" in
     sha="$(shasum -a 256 "$ARTIFACT" | cut -d' ' -f1)" ;;
 esac
 
-tag_re="$(printf '%s' "$TAG" | sed 's/[.*/\[\\]/\\&/g')"
-sed -i '' \
-  -e "s#/${tag_re}\.tar\.gz#/${tag_re}.tar.gz#g; s#/tags/v[0-9][0-9.]*\.tar\.gz#/tags/${TAG}.tar.gz#" \
-  -e "s/sha256 \"[0-9a-fA-F]*\"/sha256 \"${sha}\"/" \
-  "$file"
-grep -q "sha256 \"${sha}\"" "$file" || die "tap_bump: the sha256 line did not change -- unexpected ${KIND} format"
+# Version, urls and digests move TOGETHER, read as the DSL they are, and the result is read back
+# before it is written: two blind sed expressions once moved a cask's digest but not its version,
+# and gave multitop's agent resources the source tarball's digest (BACKLOG 6.15).
+bash "$GOH/gates/python.sh" "$GOH/tools/release-kit/tap_rewrite.py" "$file" --tag "$TAG" \
+  --sha "$sha" ${RESOURCES[@]+"${RESOURCES[@]}"} \
+  || die "tap_bump: ${SUBDIR}/${NAME}.rb was not rewritten (above) -- nothing pushed"
 
 if git -C "$work/tap" diff --quiet; then
   ok "${NAME} is already at ${TAG} with this sha256 -- nothing to commit"
