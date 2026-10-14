@@ -61,7 +61,17 @@ git -C "$target" rev-parse --show-toplevel >/dev/null 2>&1 \
 # tests/test_install_foreign_hooks.py
 foreign=""
 current="$(git -C "$target" config core.hooksPath 2>/dev/null || true)"
-if [ -n "$current" ] && [ "$current" != ".githooks" ]; then
+# A hooksPath is ours by WHERE it points, not by how it is spelled: routines held the absolute path
+# of its own .githooks and was refused as foreign (2026-10-14). Both sides resolved physically, so
+# /var vs /private/var cannot split them; a path that does not resolve is compared as written.
+own_hooks() {
+    local p="$1" a b
+    case "$p" in /*) ;; *) p="$target/$p" ;; esac
+    a="$(cd "$p" 2>/dev/null && pwd -P)" || a="$p"
+    b="$(cd "$target/.githooks" 2>/dev/null && pwd -P)" || b="$target/.githooks"
+    [ "$a" = "$b" ]
+}
+if [ -n "$current" ] && [ "$current" != ".githooks" ] && ! own_hooks "$current"; then
     foreign="$foreign core.hooksPath=$current"
 elif [ -z "$current" ]; then
     common="$(cd "$target" && git rev-parse --path-format=absolute --git-common-dir)"

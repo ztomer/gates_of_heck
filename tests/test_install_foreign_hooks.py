@@ -72,3 +72,23 @@ def test_sample_hooks_and_our_own_install_are_not_foreign(repo: Path) -> None:
     assert _install(repo).returncode == 0  # git's *.sample hooks are inert
     r = _install(repo)  # a reinstall over our own .githooks
     assert r.returncode == 0, r.stdout + r.stderr
+
+
+def test_an_absolute_hooks_path_to_our_own_githooks_is_not_foreign(repo: Path) -> None:
+    """routines, 2026-10-14: core.hooksPath held the ABSOLUTE spelling of its own .githooks,
+    which the refusal read as another manager's and blocked the 0.27.0 reinstall. A path is
+    foreign by WHERE it points, not by how it is spelled; the take-over still rewrites it."""
+    assert _install(repo).returncode == 0
+    git(repo, "config", "core.hooksPath", str((repo / ".githooks").resolve()))
+    r = _install(repo)
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert "another manager" not in r.stderr, r.stderr
+
+
+def test_an_absolute_hooks_path_elsewhere_is_still_refused(repo: Path, tmp_path: Path) -> None:
+    other = tmp_path / "elsewhere" / ".githooks"
+    other.mkdir(parents=True)
+    git(repo, "config", "core.hooksPath", str(other))
+    r = _install(repo)
+    assert r.returncode == 1 and str(other) in r.stderr, r.stderr
+    _untouched(repo)
