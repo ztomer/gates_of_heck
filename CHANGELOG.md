@@ -26,7 +26,8 @@
   url from the old version to the new, gives each resource its own artifact's digest
   (`--resource NAME=PATH|URL`, else downloaded from its new url), refuses a shape it does not
   know (a url with no version in it, a url inside `on_arm`), and reads the result back before
-  writing. Proven on copies of every formula and cask in homebrew-tap, read back by Ruby.
+  writing. Proven on copies of every formula and cask in homebrew-tap, read back by Ruby,
+  multitop.rb (monitor's formula) among them: its three url/sha256 pairs move together.
 
 * **Every checker under `checks/` is in the calibration registry, and the reader refuses one that
   is not** (6.21). `check_audit_ignores` and `check_git_env` shipped unregistered, so

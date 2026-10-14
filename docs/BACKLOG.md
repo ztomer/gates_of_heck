@@ -118,6 +118,19 @@ other instruments: P0 (`GOH_TIMINGS`), `cpu_ms` (`e3e5418`), `tools/quiet.sh` an
       missing hook -- the missing one is absent after install today. Lies: a partial install
       read as a complete one (the exit code must say otherwise).
 
+- [ ] 6.22 The early-exit-pipe fix hangs on a producer that never ends. Baseline: MEASURED
+      2026-10-14 by the ZeroThunder fix sweep: `tests/run_profile.sh:45` and `:64` wait on
+      `tail -f -n0 LOG | grep -m 1 "Starting drag"`; the finding prints
+      `out="$(producer)"; grep -m N PAT <<< "$out"`, and `$(tail -f ...)` never returns, so
+      following the fix hangs forever (the sweep used a polling loop that also stops when the app
+      exits). Exit: for a producer that does not end (`tail -f`/`-F`/`--follow`, `yes`,
+      `log stream`, `journalctl -f`, `docker`/`kubectl logs -f`, any `--follow`), the finding
+      prints a bounded wait (poll with a deadline; kill a streamed producer) and never the capture
+      shape; a producer that ends keeps the capture. Red-first: a `tail -f` fixture asserting the
+      printed fix is not the `$(...)` capture -- red today, since every finding prints it. Lies: a
+      follow flag in a cluster (`-fn0`, `-n0 -F`); a producer behind `env`/`sudo`; a `-f` that is
+      not a follow flag elsewhere (`printf -f`: only the named producers read `-f`).
+
 ### Handed off — each row is its consumer's
 
 The stdin gate is on everywhere since `0c93f4d`; the sweep's method is a mechanical AST pass
@@ -180,7 +193,8 @@ ztools' exempt key, Finance's `"$root.out"`, ZeroThunder's dropped process handl
   removed from the estate by the owner (2026-10-14).
   ZeroThunder carries 9 early-exit pipes in 6 files (not in 6.9's list); its `local_env_vars()`
   prescription is already done and `/private/tmp/zt-gold` is gone. rustls 0.23.45 went red
-  estate-wide on 2026-10-14 (RUSTSEC-2026-0346..0349): `cargo update -p rustls` (0.23.46).
+  in EVERY Rust consumer on 2026-10-14 (RUSTSEC-2026-0346..0349; divoom-control, ztools and
+  routines among them): `cargo update -p rustls` (0.23.46) in each.
   CadGoose's `CMakeLists.txt` is 295 lines since its `b377d79` (the line-cap bullet is stale), and
   its tap push is the "Update Homebrew Cask in Tap" step of `build_and_release.yml`, not
   `scripts/push_release.sh`. apes carries 8 undeclared stdin calls that 3.3's table never
@@ -343,11 +357,12 @@ ztools' exempt key, Finance's `"$root.out"`, ZeroThunder's dropped process handl
   there -- 5 of its 17 LEGITIMATE entries would go stale as rows. Deleting them is its owner's
   call. `check_focused_border_verdicts.py --probe` failed alone at that HEAD (a fill-arm
   assertion). Its 3.3 row is closed (`c8766158`).
-- **monitor** [`b690cfc8`]: CI still runs `GOH_NO_NATIVE=1 ... structural.sh --full` (`ci.yml:67`;
-  the key is retired and ignored, `.gatesrc:44`, `ci.yml:119`) and a plain `cargo test --workspace`
-  beside the gate's. Its customised hooks are monitor's call.
+- **monitor** [`b690cfc8`]: CI runs a plain `cargo test --workspace` beside the gate's (the retired
+  `GOH_NO_NATIVE` it also carried is gone since its `cc2906a`). Its customised hooks are monitor's
+  call.
 - **routines** [`a4712bcc`]: `.gatesrc:26` still runs plain `cargo test --all-features --locked`
-  (keep `--doc`; P1c landed in v0.21.0).
+  (keep `--doc`; P1c landed in v0.21.0). New 2026-10-14: 2 emptiness asserts at
+  `tests/cli_dispatch_listing.rs:343` and `:374` (`goh empty-assert` names the shape to write).
 - **ztools** [`efe364a1`]: `rust/` done; `vendor/camoufox-rs` still runs a plain `cargo test` and
   carries 24 `assert!(..is_empty())` (rust/ 1). `GOH_EXCLUDE='^vendor/'` is set. Not told of
   v0.24.0 or v0.25.0, and 13 undeclared stdin calls (3.3).
