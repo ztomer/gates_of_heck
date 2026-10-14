@@ -10,7 +10,8 @@ use super::subst;
 use super::Finding;
 
 /// A character that ends a simple command: the next one starts after it.
-fn ends_command(m: &[char], i: usize) -> bool {
+#[must_use]
+pub fn ends_command(m: &[char], i: usize) -> bool {
     match m[i] {
         '|' | ';' | ')' | '`' | '\n' => !(m[i] == '\n' && i > 0 && m[i - 1] == '\\'),
         // `&` ends a command unless it is part of a redirection (`>&2`, `2>&1`, `&>`).
@@ -20,7 +21,8 @@ fn ends_command(m: &[char], i: usize) -> bool {
 }
 
 /// The words of the simple command starting at `i`: `(start, end)` spans, and where it ends.
-fn words_from(m: &[char], mut i: usize) -> (Vec<(usize, usize)>, usize) {
+#[must_use]
+pub fn words_from(m: &[char], mut i: usize) -> (Vec<(usize, usize)>, usize) {
     let mut words = Vec::new();
     loop {
         while i < m.len()
@@ -167,6 +169,7 @@ pub fn scan_text(src: &str) -> Vec<Finding> {
             line,
             kind,
             text: text.split_whitespace().collect::<Vec<_>>().join(" "),
+            endless: super::producer::endless_at(&m, &raw, i),
         });
     }
     found

@@ -207,3 +207,49 @@ fn every_shell_source_is_in_scope() {
         assert!(!is_shell(rel, head.as_bytes()), "{rel}");
     }
 }
+
+// ── a producer that never ends: the capture fix would hang (BACKLOG 6.22) ─────
+
+/// `ZeroThunder/tests/run_profile.sh:45` waits on `tail -f -n0 LOG | grep -m 1 "Starting drag"`.
+/// The finding is right -- grep exits, tail's next write dies of SIGPIPE, pipefail reads 141 (or,
+/// with no next write, tail outlives the script) -- but the capture fix, `out="$(tail -f ...)"`,
+/// never returns. A producer that does not end gets a bounded wait instead.
+const ENDLESS: &[&str] = &[
+    "tail -f -n0 /tmp/zerothunder_profile.log | grep -m 1 \"Starting drag\"\n",
+    "tail -fn0 a.log | grep -q ready\n",
+    "tail -n0 -F a.log | grep -q ready\n",
+    "tail --follow=name a.log | head -1\n",
+    "yes | head -5\n",
+    "log stream --predicate 'x' | grep -m1 y\n",
+    "journalctl -fu svc | grep -q up\n",
+    "journalctl --follow | grep -q up\n",
+    "docker logs --follow c | grep -m1 ready\n",
+    "kubectl logs -f pod | grep -q ready\n",
+    "v=$(tail -f a.log | grep -m1 x)\n",
+];
+
+#[test]
+fn a_producer_that_never_ends_gets_a_bounded_wait_not_a_capture() {
+    for body in ENDLESS {
+        let got = judge(body);
+        assert_eq!(got.len(), 1, "want one finding for {body:?}, got {got:?}");
+        let shown = super::site(&got[0]);
+        assert!(!shown.contains("$(producer)"), "{body:?}: {shown}");
+        assert!(shown.contains("deadline"), "{body:?}: {shown}");
+    }
+}
+
+#[test]
+fn a_producer_that_ends_keeps_the_capture_fix() {
+    for body in [
+        "tail -n 5 a.log | grep -q x\n",
+        "tail -1 a.log | grep -m1 x\n",
+        "cat a.log | grep -m1 f\n",
+        "docker logs c | grep -q ready\n",
+        "printf '%s\\n' -f | grep -q x\n",
+    ] {
+        let got = judge(body);
+        assert_eq!(got.len(), 1, "{body:?}: {got:?}");
+        assert!(super::site(&got[0]).contains("$(producer)"), "{body:?}");
+    }
+}

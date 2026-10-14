@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+* **An early-exit pipe on a producer that never ends gets a bounded wait, not a capture** (6.22).
+  ZeroThunder's `tail -f -n0 LOG | grep -m 1 ...` was told `out="$(producer)"; grep -m N PAT <<<
+  "$out"`, which never returns. A producer that does not end (`tail -f`/`-F`/`--follow`, `yes`,
+  `log stream`, `journalctl -f`, `docker`/`kubectl logs -f`, any `--follow`) now prints a
+  deadline-bounded wait; every other finding keeps the capture shape. The verdict is unchanged.
+
 * **`goh lock-version` reads manifests as TOML, and a crate keeping its own version line is not
   the release** (6.18). A line regex read `version = "1.9.0"  # ...` as no version, so
   Finance/zinc's `zinc-payroll` read as inheriting 4.8.0 and its lock as stale; and arm 2

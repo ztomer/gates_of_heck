@@ -33,6 +33,7 @@
 
 pub mod consumer;
 pub mod lex;
+pub mod producer;
 pub mod scan;
 pub mod subst;
 
@@ -61,7 +62,7 @@ const SPEC: crate::seedcount::Spec = crate::seedcount::Spec {
 
 fn site(f: &Finding) -> String {
     let shown: String = f.text.chars().take(100).collect();
-    format!("{}: {shown}  ({}) -> {}", f.line, f.kind, fix_for(f.kind))
+    format!("{}: {shown}  ({}) -> {}", f.line, f.kind, f.fix())
 }
 
 /// The findings as the seed's judge reads them: `listed` is every shell source before the
@@ -91,6 +92,21 @@ pub struct Finding {
     pub kind: &'static str,
     /// The consumer's command as written, whitespace collapsed.
     pub text: String,
+    /// The producer never ends (`tail -f`, `yes`, ...): the capture fix would hang (6.22).
+    pub endless: bool,
+}
+
+impl Finding {
+    /// The fix this finding's report prints: a bounded wait for a producer that never ends,
+    /// else the capture shape for its consumer form.
+    #[must_use]
+    pub fn fix(&self) -> &'static str {
+        if self.endless {
+            producer::BOUNDED
+        } else {
+            fix_for(self.kind)
+        }
+    }
 }
 
 /// The fix shape for one consumer form.
@@ -170,7 +186,7 @@ fn listing(hits: &[(String, Vec<Finding>)], mark: &str) -> String {
                 "{mark}{rel}:{}: {shown}  ({}) -> {}",
                 f.line,
                 f.kind,
-                fix_for(f.kind)
+                f.fix()
             );
         }
     }
@@ -186,7 +202,8 @@ fn report(hits: &[(String, Vec<Finding>)], what: &str) -> String {
          pipefail (this file's, or its caller's) makes that the pipeline's status -- a false\n    \
          that depends on load. Read the\n    \
          producer to completion first (the shape after each ->), or end the pipeline with\n    \
-         `|| true` where its status is not the verdict.\n",
+         `|| true` where its status is not the verdict. A producer that never ends (`tail -f`,\n    \
+         `yes`, a `--follow`) cannot be read to completion: wait on it with a deadline.\n",
     );
     s
 }

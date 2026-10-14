@@ -118,19 +118,6 @@ other instruments: P0 (`GOH_TIMINGS`), `cpu_ms` (`e3e5418`), `tools/quiet.sh` an
       missing hook -- the missing one is absent after install today. Lies: a partial install
       read as a complete one (the exit code must say otherwise).
 
-- [ ] 6.22 The early-exit-pipe fix hangs on a producer that never ends. Baseline: MEASURED
-      2026-10-14 by the ZeroThunder fix sweep: `tests/run_profile.sh:45` and `:64` wait on
-      `tail -f -n0 LOG | grep -m 1 "Starting drag"`; the finding prints
-      `out="$(producer)"; grep -m N PAT <<< "$out"`, and `$(tail -f ...)` never returns, so
-      following the fix hangs forever (the sweep used a polling loop that also stops when the app
-      exits). Exit: for a producer that does not end (`tail -f`/`-F`/`--follow`, `yes`,
-      `log stream`, `journalctl -f`, `docker`/`kubectl logs -f`, any `--follow`), the finding
-      prints a bounded wait (poll with a deadline; kill a streamed producer) and never the capture
-      shape; a producer that ends keeps the capture. Red-first: a `tail -f` fixture asserting the
-      printed fix is not the `$(...)` capture -- red today, since every finding prints it. Lies: a
-      follow flag in a cluster (`-fn0`, `-n0 -F`); a producer behind `env`/`sudo`; a `-f` that is
-      not a follow flag elsewhere (`printf -f`: only the named producers read `-f`).
-
 ### Handed off — each row is its consumer's
 
 The stdin gate is on everywhere since `0c93f4d`; the sweep's method is a mechanical AST pass
