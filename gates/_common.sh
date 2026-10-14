@@ -250,7 +250,14 @@ goh_step() {
             printf '%s\n\n' "── tail ──" >&2
         fi
         rm -f "$GOH_LOG.fails"
-        tail -n "${GOH_TAIL:-60}" "$GOH_LOG" >&2
+        # A cut tail says how many lines it dropped, or it reads as the whole report (old_phones'
+        # 95-site list shown as its last 59, 2026-10-14). Rust twin: step_report.rs `fail`.
+        _goh_tail="${GOH_TAIL:-60}"
+        _goh_dropped=$(( $(wc -l < "$GOH_LOG") - _goh_tail ))
+        if [ "$_goh_dropped" -gt 0 ]; then
+            printf '%s\n' "→ $_goh_dropped earlier line(s) not shown (GOH_TAIL=$_goh_tail; raise it to see them)" >&2
+        fi
+        tail -n "$_goh_tail" "$GOH_LOG" >&2
         printf '\n'
         die "$GOH_NAME: $label failed (command: $*)"
     fi

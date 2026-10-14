@@ -157,6 +157,13 @@ pub(crate) fn fail(label: &str, how: &str, report: &str, start: Instant) -> i32 
     let lines: Vec<&str> = report.lines().collect();
     let tail = tail_len();
     let from = lines.len().saturating_sub(tail);
+    if from > 0 {
+        // A cut tail that does not say so reads as the whole report: old_phones' 95-site
+        // early-exit list, shown as its last 59 lines, passed for the full count (2026-10-14).
+        goh_tui::eoutln!(
+            "{STEP} {from} earlier line(s) not shown (GOH_TAIL={tail}; raise it to see them)"
+        );
+    }
     for line in &lines[from..] {
         goh_tui::eoutln(line);
     }

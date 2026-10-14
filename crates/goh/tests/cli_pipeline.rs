@@ -70,6 +70,20 @@ fn a_failing_delegated_step_shows_its_tail_and_timing_is_optional() {
     let out = goh(&r, &["structural", "--full"], &[("GOH_TAIL", "5")]);
     assert_red(&out, "shell lint");
     assert!(out.text().contains("bad.sh"), "{}", out.text());
+    assert!(
+        !out.text().contains("not shown (GOH_TAIL"),
+        "{}",
+        out.text()
+    );
+    // A tail that drops lines says how many: old_phones' 95-site report, shown as its last 59
+    // lines, read as the whole list (2026-10-14).
+    let out = goh(&r, &["structural", "--full"], &[("GOH_TAIL", "1")]);
+    assert_red(&out, "shell lint");
+    assert!(
+        out.text().contains("not shown (GOH_TAIL=1"),
+        "{}",
+        out.text()
+    );
     let r = configured("GOH_MAX_LINES=500\n", &[("ok.md", "x\n")]);
     let out = goh(&r, &["structural", "--staged"], &[("GOH_TIME", "1")]);
     assert!(out.status.success(), "{}", out.text());

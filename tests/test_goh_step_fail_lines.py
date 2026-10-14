@@ -169,3 +169,13 @@ def test_a_failure_summary_that_also_counts_passes_is_still_a_failure():
     assert "1:1 failed, 7 passed" in pytest, pytest
     assert fl.block("test result: ok. 9 passed; 0 failed; 0 ignored\n") == ""
     assert fl.block("Executed 3 tests, with 0 failures\n") == ""
+
+
+def test_a_tail_that_drops_lines_says_how_many(tmp_path):
+    """old_phones, 2026-10-14: a 95-site report shown as its last 59 lines read as the whole list."""
+    body = "goh_step 'long check' /bin/bash -c 'seq 1 100; exit 1'"
+    long = _run(tmp_path, f"GOH_TAIL=10\n{body}")
+    assert long.returncode != 0
+    assert "90 earlier line(s) not shown (GOH_TAIL=10" in long.stderr, long.stderr
+    short = _run(tmp_path, f"GOH_TAIL=500\n{body}")
+    assert "not shown (GOH_TAIL" not in short.stderr, short.stderr
