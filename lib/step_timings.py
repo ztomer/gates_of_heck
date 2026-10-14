@@ -16,13 +16,16 @@ step already passes through, and the native tier for its in-process steps. Neste
 `bounded_run.py` hands its child `GOH_TIMINGS_PARENT=<label>`, so a `rust_gate.sh` step inside a
 `local_ci.sh` step names its parent.
 
-KIND (BACKLOG 5.3). A gate declares what its steps are (`GOH_TIMINGS_KIND`: `structural.sh` shell,
-`rust_gate.sh` rust) and every row records it. `lib/step_control.py` runs each kind's control, fixed
-pinned work, and records it as a `control` row; `tools/gate_profile.sh` runs them before the gate and
-after it. The report then divides each step's CPU by its kind's control: raw CPU moved +36% across a
-10x load on this box, the ratio +3.3%. A kind without a control on both sides is uncalibrated, and a
-control that drifted more than CONTROL_DRIFT between the two voids its kind -- the load moved under
-the run, so no ratio from it is a figure.
+KIND (BACKLOG 5.3). A gate declares what its steps are (`GOH_TIMINGS_KIND`: `structural.sh`
+native, `rust_gate.sh` rust) and every row records it. Each kind's figure is the one that held across
+a 2x load on this box (three A-B-B-A profiles of this repo's push gate, 2026-10-14):
+  rust   -- CPU over the rust control (`lib/step_control.py`, run by `tools/gate_profile.sh` before
+            the gate and after it): clippy's ratio moved +1% and +2% where its raw CPU moved +17%.
+            A kind without a control on both sides is uncalibrated, and a control that drifted more
+            than CONTROL_DRIFT between the two voids its kind: the load moved under the run.
+  native -- raw CPU (RAW_KINDS): the native tier's in-process steps moved +4% and -1%, and every
+            control tried moved more than the step did (a serial shellcheck -15%, four at once -17%),
+            so a ratio would carry the control's drift, not remove the step's.
 
 CONCURRENCY. One `os.write` of one line under `O_APPEND`, shorter than `PIPE_BUF`: concurrent
 writers (a 4-way crate fan-out) interleave whole lines, never halves. A write that fails is
@@ -52,6 +55,8 @@ ENV = "GOH_TIMINGS"
 PARENT_ENV = "GOH_TIMINGS_PARENT"
 KIND_ENV = "GOH_TIMINGS_KIND"
 CONTROL_DRIFT = 0.15  # BACKLOG 5.3's exit: a figure holds within 15%
+# Kinds whose raw CPU is the figure: no control is run or divided by.
+RAW_KINDS = {"native": "raw CPU holds across loads for in-process work (BACKLOG 5.3)"}
 _MAX_LINE = 4000  # under PIPE_BUF (4096 on macOS and Linux), so an append is atomic
 
 
@@ -169,7 +174,7 @@ def report(rows: list[dict], top: int = 15) -> str:
 
 def _gate_kinds(rows: list[dict]) -> dict[str, str]:
     """A step that runs a gate takes the gate's kind: the one kind every kinded row under it carries
-    (`./gates/structural.sh --full`, a CI step, is shell because structural.sh's steps are)."""
+    (`./gates/structural.sh --full`, a CI step, is native because structural.sh's steps are)."""
     under: dict[str, set[str]] = {}
     for r in rows:
         if r.get("kind") and not r.get("control"):
@@ -178,8 +183,9 @@ def _gate_kinds(rows: list[dict]) -> dict[str, str]:
 
 
 def calibrated(rows: list[dict]) -> str:
-    """Each kinded step's CPU over the mean of its kind's controls, or why a kind has no ratio:
-    fewer than two controls (one before the gate and one after), or a control that drifted."""
+    """Each kinded step's figure: its CPU over the mean of its kind's controls, or why a kind has no
+    ratio (fewer than two controls, one before the gate and one after, or a control that drifted);
+    a RAW_KINDS kind's raw CPU."""
     kinds: dict[str, list[dict]] = {}
     controls: dict[str, list[float]] = {}
     gate_kind = _gate_kinds(rows)
@@ -195,6 +201,11 @@ def calibrated(rows: list[dict]) -> str:
         return ""
     out = ["-- CPU over a same-kind control (BACKLOG 5.3) --"]
     for kind in sorted(set(kinds) | set(controls)):
+        if kind in RAW_KINDS:
+            out.append(f"{kind}: {RAW_KINDS[kind]}")
+            for r in sorted(kinds.get(kind, []), key=lambda r: -r["cpu_ms"]):
+                out.append(f"{r['cpu_ms'] / 1000:8.2f} s  {r['label']}")
+            continue
         ctl = controls.get(kind, [])
         if len(ctl) < 2:
             out.append(

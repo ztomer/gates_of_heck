@@ -9,10 +9,10 @@
 # line (lib/step_timings.py). Then prints the slowest steps and each label summed across every
 # place it ran -- the view that shows a 7 s step repeated in 29 crates.
 #
-# The gate is bracketed by a control of each kind its steps declare (lib/step_control.py), one
-# before and one after, so the report can divide each step's CPU by fixed work run under the same
-# load (BACKLOG 5.3): shell always, Rust when the repo builds Rust. A control that fails is noted
-# and skipped -- the instrument is never the reason a profile goes red.
+# A repo that builds Rust has its gate bracketed by the rust control (lib/step_control.py), one
+# before and one after, so the report can divide each rust step's CPU by fixed work run under the
+# same load (BACKLOG 5.3); the native tier's steps read raw. A control that fails is noted and
+# skipped -- the instrument is never the reason a profile goes red.
 #
 # The proven cache is OFF by default because the question is what the work COSTS; a profile of
 # cache hits measures the cache. Exit: the push gate's own code (the report prints either way).
@@ -29,9 +29,10 @@ out="${GOH_TIMINGS:-$(mktemp "${TMPDIR:-/tmp}/goh-timings.XXXXXX")}"
 zero=0000000000000000000000000000000000000000
 proven=0
 [ -n "${GOH_PROFILE_PROVEN:-}" ] && proven=1
-kinds=shell
-[ -f "$repo/Cargo.toml" ] && kinds="shell rust"
+kinds=
+[ -f "$repo/Cargo.toml" ] && kinds=rust
 controls() {
+    [ -n "$kinds" ] || return 0
     # shellcheck disable=SC2086 # one word per kind
     GOH_TIMINGS="$out" python3 "$GOH/lib/step_control.py" run $kinds >>"$out.controls.log" 2>&1 \
         || printf 'gate_profile: a control did not run (log: %s.controls.log)\n' "$out" >&2

@@ -1,18 +1,16 @@
 #!/usr/bin/env python3
 """lib/step_control.py -- the controls a step's CPU is divided by (BACKLOG 5.3).
 
-    GOH_TIMINGS=/tmp/t.jsonl python3 lib/step_control.py run shell [rust]   # one control row each
+    GOH_TIMINGS=/tmp/t.jsonl python3 lib/step_control.py run rust   # one control row
 
-WHY. This box is never quiet. Across a 10x load a step's raw CPU moved +36% and its wall +84%: under
-load more of the work runs on the efficiency cores, which spend more CPU on it. The same step's CPU
-divided by a control of its OWN kind, run in the same sitting, moved +3.3% (shell) and -8.9% (Rust).
-A control of another kind does not hold (a Python CPU loop read 2.8-3.5 at both loads), and nor does
-a Rust control that runs serially where the step fills the cores (-19%): the control matches the
-step's kind and its concurrency.
+WHY. This box is never quiet. Across a 2x load clippy's raw CPU moved +17%: under load more of the
+work runs on the efficiency cores, which spend more CPU on it. Divided by a control of its OWN kind
+and concurrency, run in the same sitting, it moved +1% and +2% (three A-B-B-A profiles, 2026-10-14).
+A control of another kind does not hold (a Python CPU loop read 2.8-3.5 at both loads), nor does a
+serial one where the step fills the cores (-19%). The native tier's in-process steps need none: their
+raw CPU held (+4%, -1%) where every shell control tried moved 15-17% (`step_timings.RAW_KINDS`).
 
-THE CONTROLS. Each is fixed work, pinned so two runs months apart divide by the same thing:
-  shell -- `shellcheck -x` over 8 files of this repo at SHELL_COMMIT, read from git, never the tree,
-           SHELL_COPIES copies AT ONCE (CPU summed), as the step it divides fills the cores.
+THE CONTROL. Fixed work, pinned so two runs months apart divide by the same thing:
   rust  -- `cargo clippy` of RUST_CRATE, RUST_COPIES copies AT ONCE (CPU summed), each warm after a
            touch of its root. The crate is fetched once into the cache, the first run warms it.
 
@@ -45,23 +43,8 @@ import step_timings  # noqa: E402  # beside this file
 
 ROOT = Path(__file__).resolve().parent.parent
 CACHE_ENV = "GOH_STEP_CONTROL_CACHE"
-SHELL_COMMIT = "e3e5418"
-SHELL_FILES = (
-    "checks/check_no_screen_linkage.sh",
-    "checks/check_shell_lint.sh",
-    "gates/_common.sh",
-    "gates/_coverage_rust.sh",
-    "gates/_from_head.sh",
-    "gates/_git_env.sh",
-    "gates/_goh_bin.sh",
-    "gates/_hash.sh",
-)
 RUST_CRATE = ("regex-syntax", "0.8.11")
 RUST_COPIES = 4
-# The shell control runs as many copies at once: `structural --full` is native work across the
-# cores (11.6 s of CPU over 4 s of wall), and a serial shellcheck lost more to the efficiency cores
-# under load than it did -- its ratio fell 15% between two loads where its raw CPU moved 4%.
-SHELL_COPIES = 4
 
 
 @dataclass(frozen=True)
@@ -79,29 +62,6 @@ def cache_root() -> Path:
         return Path(explicit)
     base = os.environ.get("XDG_CACHE_HOME") or str(Path.home() / ".cache")
     return Path(base) / "goh" / "step-control"
-
-
-def _shell_tree(cache: Path) -> Path:
-    """SHELL_COMMIT's checks/ and gates/, once: `-x` follows their sources, so the files need their
-    neighbours."""
-    tree = cache / "shell"
-    if (tree / SHELL_FILES[0]).is_file():
-        return tree
-    tree.mkdir(parents=True, exist_ok=True)
-    # From HEAD's export (gate_profile.sh runs from one) the files come from the live checkout it
-    # was exported from: an export is not a git repository.
-    source = os.environ.get("GOH_LIVE_ROOT") or str(ROOT)
-    archive = subprocess.run(
-        ["git", "-C", source, "archive", SHELL_COMMIT, "checks", "gates"],
-        capture_output=True, check=True, stdin=subprocess.DEVNULL,
-    )  # fmt: skip
-    subprocess.run(["tar", "-x", "-C", str(tree)], input=archive.stdout, check=True)
-    return tree
-
-
-def shell_plan(cache: Path) -> list[Run]:
-    tree = _shell_tree(cache)
-    return [Run(tree, tree, ["shellcheck", "-x", *SHELL_FILES]) for _ in range(SHELL_COPIES)]
 
 
 def _crate_source(cache: Path) -> Path:
@@ -167,7 +127,6 @@ def _run_all(plan: list[Run]) -> int:
 
 
 CONTROLS = {
-    "shell": shell_plan,
     "rust": _prepare_rust,
 }
 
