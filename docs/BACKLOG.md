@@ -141,7 +141,13 @@ cross-session serialization (its section below).
       then the house Rust gate gained a `cargo audit` step (`72e8445`, under 0.5 s measured):
       unmeasured in this push. Exit: <= 90 s wall on a profile whose rust steps read in 5.3's figure
       (CPU over the rust control, `tools/gate_profile.sh` on media_server) so a miss is the work's,
-      not the load's; per-crate coverage judged for running across crates at once. Red-first: the P0
+      not the load's; per-crate coverage judged for running across crates at once.
+      **Blocked on media_server green at its own HEAD** (read 2026-10-14 at `e1321b9`, its
+      session's to fix by the owner's ruling): its push gate refuses at once on an older stock
+      pre-commit (6.6/6.7); past that, in a scratch clone with today's hooks, on the stdin check
+      (3.4); past that, with the check deferred in the clone, on `cargo audit` in
+      `crates/yaml-mini-rs`: RUSTSEC-2024-0449, `unsafe-libyaml` 0.2.11 unmaintained. A profile
+      of a clone patched past its own reds would measure a gate media_server does not run. Red-first: the P0
       instrument's per-step sum within 5% of wall on the same run. Lies: a cold sccache; a crate
       the "everything changed" diff did not touch; media_server's own 110 s pytest step (a
       servers item) counted as goh's.
@@ -201,6 +207,11 @@ ztools' exempt key, Finance's `"$root.out"`, ZeroThunder's dropped process handl
   here"); a value that is not a whole number refuses the whole `.gatesrc` naming the key. ZoneWM's
   `GOH_SUBPROCESS_STDIN_MIN_CALLS=110` is read exactly as before; its below-floor message now
   carries the `[subject]` tag, and a `--seed` under the floor is refused.
+- **media_server, read 2026-10-14 at `e1321b9`, red at its next push on three counts:** the
+  stock hooks (the reinstall above), its stdin declaration (3.3's table), and `cargo audit` in
+  `crates/yaml-mini-rs`, which denies RUSTSEC-2024-0449 (`unsafe-libyaml` 0.2.11 unmaintained,
+  2024-03-25): replace the YAML dependency or record the advisory in the ignore ratchet with its
+  reason. 5.1 waits on all three.
 - **ZeroThunder, after 3.4 (`0c93f4d`):** delete its own `tools/check_subprocess_stdin.py`,
   repoint `tests/e2e/verify.py:290` + `tests/e2e/gate_tiers.py:61`. It is a NAMED VIOLATION ("a
   vendored copy of a house checker -- delete it and run the shared one"). Its rule and the house
