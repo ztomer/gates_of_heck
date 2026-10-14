@@ -11,7 +11,8 @@ a Rust control that runs serially where the step fills the cores (-19%): the con
 step's kind and its concurrency.
 
 THE CONTROLS. Each is fixed work, pinned so two runs months apart divide by the same thing:
-  shell -- `shellcheck -x` over 8 files of this repo at SHELL_COMMIT, read from git, never the tree.
+  shell -- `shellcheck -x` over 8 files of this repo at SHELL_COMMIT, read from git, never the tree,
+           SHELL_COPIES copies AT ONCE (CPU summed), as the step it divides fills the cores.
   rust  -- `cargo clippy` of RUST_CRATE, RUST_COPIES copies AT ONCE (CPU summed), each warm after a
            touch of its root. The crate is fetched once into the cache, the first run warms it.
 
@@ -57,6 +58,10 @@ SHELL_FILES = (
 )
 RUST_CRATE = ("regex-syntax", "0.8.11")
 RUST_COPIES = 4
+# The shell control runs as many copies at once: `structural --full` is native work across the
+# cores (11.6 s of CPU over 4 s of wall), and a serial shellcheck lost more to the efficiency cores
+# under load than it did -- its ratio fell 15% between two loads where its raw CPU moved 4%.
+SHELL_COPIES = 4
 
 
 @dataclass(frozen=True)
@@ -96,7 +101,7 @@ def _shell_tree(cache: Path) -> Path:
 
 def shell_plan(cache: Path) -> list[Run]:
     tree = _shell_tree(cache)
-    return [Run(tree, tree, ["shellcheck", "-x", *SHELL_FILES])]
+    return [Run(tree, tree, ["shellcheck", "-x", *SHELL_FILES]) for _ in range(SHELL_COPIES)]
 
 
 def _crate_source(cache: Path) -> Path:

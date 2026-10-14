@@ -9,7 +9,7 @@ import shutil
 import subprocess
 from pathlib import Path
 
-from conftest import REPO_ROOT, git
+from conftest import REPO_ROOT, git, hermetic_env
 from _fast_git import fast_init
 
 
@@ -43,6 +43,10 @@ def _profile(tmp_path: Path, push_gate: str) -> subprocess.CompletedProcess[str]
     )
     return subprocess.run(
         ["bash", str(goh / "tools" / "gate_profile.sh"), str(repo)],
+        # hermetic: under a real profile (this suite runs inside one) an inherited GOH_TIMINGS
+        # put this fixture's control rows into the outer run's file, and its shell control mean
+        # with them (5.3, goh's own push profile).
+        env=hermetic_env(),
         capture_output=True, text=True, check=False, timeout=120, stdin=subprocess.DEVNULL,
     )  # fmt: skip
 
@@ -63,3 +67,13 @@ def test_a_green_push_gate_prints_no_failure_lines(tmp_path: Path) -> None:
     r = _profile(tmp_path, "cat >/dev/null\necho 'all good'\nexit 0\n")
     assert r.returncode == 0, r.stdout + r.stderr
     assert "failure lines" not in r.stdout + r.stderr, r.stdout + r.stderr
+
+
+def test_a_profile_inside_a_profile_writes_nothing_into_the_outer_one(
+    tmp_path: Path, monkeypatch
+) -> None:
+    outer = tmp_path / "outer.jsonl"
+    monkeypatch.setenv("GOH_TIMINGS", str(outer))
+    r = _profile(tmp_path, "cat >/dev/null\nexit 0\n")
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert not outer.exists() or not outer.read_text().strip(), outer.read_text()

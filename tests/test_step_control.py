@@ -129,6 +129,15 @@ def test_the_shell_control_is_pinned_to_one_commit() -> None:
     assert len(step_control.SHELL_COMMIT) >= 7 and len(step_control.SHELL_FILES) == 8
 
 
+def test_the_shell_control_runs_four_copies_at_once(monkeypatch) -> None:
+    """A serial shellcheck's ratio for `structural --full` fell 15% between two loads where the
+    step's raw CPU moved 4%: the step is native work across the cores, so the control is too."""
+    monkeypatch.setattr(step_control, "_shell_tree", lambda cache: Path("/t"))
+    plan = step_control.shell_plan(Path("/c"))
+    assert len(plan) == step_control.SHELL_COPIES == 4
+    assert all(p.argv[:2] == ["shellcheck", "-x"] for p in plan)
+
+
 def test_the_rust_control_runs_four_copies_at_once() -> None:
     """A serial control lost -19% under load where the step lost -8.9%: the control matches the
     step's concurrency (four rustc at once), not only its kind."""
