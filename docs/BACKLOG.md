@@ -21,7 +21,7 @@ a string comparison of a path is a measurement of the CALLER, not of the filesys
 ## Resume here (2026-10-13)
 
 - **Next, in order:** Phase 1 is closed (4.3 at `831d686`, 4.6 at `f62dbb3`); 3.3's remaining rows as their repos' sessions take them, 3.4's flip once 3.3's
-  table is empty, then the measurements (5.3 first, then 5.1, 5.2).
+  table is empty, then the measurements: 5.3 closed (2026-10-14), so 5.1, then 5.2.
 - **Waiting on the owner, and nothing here moves them:**
   - 6.13's scheduling: `scripts/estate_audit.py --install` writes and loads the daily launchd job.
   - Registering `hooks/claude/estate_advisories.py` (SessionStart) in `~/.claude/settings.json`.
@@ -114,67 +114,34 @@ paren, from the `--source` JSON's line, then `ruff format`).
 
 ### Phase 3 — the measurements, last
 
-Correctness outranks, and no figure is worth a red gate. 5.3 comes first in this phase: 5.1's
-exit is a wall time on a box that will not be quiet, so it is restated in 5.3's figure once that
-is calibrated. The instruments: P0 (`GOH_TIMINGS`, `tools/gate_profile.sh`), `cpu_ms`
+Correctness outranks, and no figure is worth a red gate. 5.3 closed first: 5.1's exit is a wall
+time on a box that will not be quiet, so it is read beside 5.3's figure (a rust step's CPU over
+the rust control, a native step's raw CPU). The instruments: P0 (`GOH_TIMINGS`, `tools/gate_profile.sh`), `cpu_ms`
 (`e3e5418`), `tools/quiet.sh` and `lib/bench_hold.py` for holds, and `tools/session_bench.py` for
 cross-session serialization (its section below).
 
-- [ ] 5.3 A floor stated on a box that is never quiet (O41b, from servers 2026-10-08: "there
-      won't be a quiet box for the foreseeable future"). Baseline: media_server on a loaded Mac
-      (load 10-74): `tools/repo_tests.sh` ran ~190 subprocess-heavy tests serially, 206-239 s of
-      every push and commit -> 51 s at load 56 with xdist (servers `1548344`; 21 s on .33); whole
-      push of `1548344` 190 s at load 33-74; per-crate coverage 203 s summed over 28 crates
-      (mediaops 50, healthcheck 43, mcp-host 38), musl clippy 54.5 s. First point 2026-10-08
-      20:28, warm over a pinned `e3e5418`, load 110-132: wall 14.2/15.4/16.7 s, cpu
-      7.04/7.22/7.34 s (spread 23% vs 4%). Second and third points 2026-10-13, the same command
-      with that commit's own binary, `/usr/bin/time -l`, 3 runs each: load 4, wall 3.32-3.37 s,
-      cpu 4.94-4.98 s, instructions retired 4.70-4.74 G; load 37-47 (48 busy loops), wall
-      5.90-6.18 s (+80%), cpu 6.69-6.83 s (+37%), instructions 4.79-4.85 G (+2.2%). **CPU fails
-      the exit** (+37% across 10x load, +45% against the first point: under load more of the work
-      runs on the efficiency cores, which spend more CPU time on it); **instructions retired
-      holds** within 3% across 10x -- but for the goh process alone. `time -l` reads that process's
-      `rusage_info`; its 1.17 G cycles are about 0.3-0.4 s of the run's 4.95 s of CPU, so the
-      spawned `git`, `shellcheck` and `ruff` did about nine tenths of the work, and their
-      instructions are not on record: the kernel folds a reaped child's CPU time into its parent
-      (`ri_child_user_time`, `ri_child_system_time`) and its instructions into nothing (no
-      `ri_child_instructions` in `rusage_info` v4-v6, read 2026-10-13). A step's direct child can
-      be read between a `WNOWAIT` wait and its reap; its own children cannot. **CPU normalised by a
-      same-run control of the same kind holds** (2026-10-13, the same pinned command, each run
-      bracketed by two controls): `shellcheck -x` over 40 fixed `.sh` files of that commit, the
-      step's CPU divided by the control's, 1.36-1.38 at load 9-10 and 1.41-1.42 at load 34-62
-      (+3.3%), where raw CPU moved +36% and wall +84%; a pure Python CPU loop as the control
-      did not settle (2.8-3.5 at both loads), as the Lies predicted. **The cheap control holds
-      too** (2026-10-13, load 3 against 48 busy loops at load 27-61): 8 of those files, 0.42 s
-      of CPU, ratio 13.32 -> 13.44 (+0.9%) where the step's raw CPU moved +42%. **The Rust half
-      holds with a control of the step's SHAPE** (2026-10-13, `cargo clippy -p divoomd
-      --all-targets -D warnings` at a pinned divoom-control `a8a848d`, warm after a touch of its
-      root, 7.4 s of CPU over 2.7 s of wall; load 3.4 against 48 busy loops at load 34-88, an
-      idle arm after it matching the first): four copies of pinned `regex-syntax` 0.8.11's
-      single-crate clippy run AT ONCE, CPU summed (3.2 s), ratio 2.31 -> 2.10 (-8.9%); one
-      crate's `--all-targets` (two rustc at once, 1.7 s) 4.41 -> 3.60 (-18.4%); one crate alone
-      (earlier, load 18 against 46) -19%; raw CPU +15.4%, wall +333%. A control must match the
-      step's concurrency as well as its kind: a serial control loses more to the efficiency
-      cores than a step whose threads fill the performance ones. Next: the ratio written by the
-      step timer beside `cpu_ms`, each kind's control run once before a gate's steps and once
-      after (their drift voids the run's ratios, as rule 5 of a sitting does). Instructions stay the figure for the
-      in-process native scanners, where they are exact. Exit: a per-step figure holding
-      within 15% across two loads at least 2x apart, for `structural --full` and one Rust step;
-      then 5.1 is restated in it and per-crate coverage judged for running across crates at
-      once. Red-first: met for `structural --full` (the shellcheck ratio +3.3% against raw CPU's
-      +36% and wall's +84%, and a control of another kind failing beside it) and for the Rust
-      step (the four-at-once ratio -8.9% against raw CPU's +15.4%, and two serial controls of
-      its kind failing beside it). Lies: a process-only count
-      read as the step's work; a control of another kind than the step (a CPU loop does not
-      migrate the way a fork-heavy step does); instructions and CPU are both blind to a step
-      that waits (a lock, the network) -- wall beside them says so; a second host's figure read
-      as this one's.
+- [x] 5.3 A floor stated on a box that is never quiet (`118e900`, `b2e288d`, `f0ded9c`,
+      `3b2686a`). Each step is read by the figure that held across a 2x load, in three A-B-B-A
+      profiles of this repo's push gate (2026-10-14; idle load 10-23 against 48 busy loops at
+      35-129, every control bracket within 6%): a **rust** step's CPU over the rust control
+      (clippy of pinned `regex-syntax` 0.8.11, four copies at once, run by `tools/gate_profile.sh`
+      before the gate and after it), clippy +1% and +1.9% where its raw CPU moved +17%, the whole
+      rust gate -3.6% and -7.4%; a **native** step's raw CPU (`structural --full` +4.3% and -1.2%),
+      because every shell control tried moved more than the step did (serial -14.8%, four at once
+      -16.6%). The first figure here (raw CPU +36% at `e3e5418`) was a subprocess-heavy structural
+      the native tier has since replaced. The report prints each kind's figure, says
+      uncalibrated or void when a control is missing or drifted past 15%, and a step that runs a
+      gate takes the gate's kind. Lies it guards: a child inheriting its gate's kind (a test
+      suite's fixtures were labelled rust), a control that cannot run where the front end runs
+      it (HEAD's export is no git repository), a nested profile writing into the outer one's file.
 - [ ] 5.1 media_server push, everything changed, warm. Baseline: 170 s at load 4-8, BEFORE the
       incremental coverage build (`06afca4`: 173 -> 76 s on this repo). Measured 2026-10-08
       12:47 under a hold: 208 s, controls 0.30/0.30 s -- the exit is NOT met. Five coverage
       steps are 110 s of the step sum (11-31 s each); clippy, 8 s a crate, comes next. Since
       then the house Rust gate gained a `cargo audit` step (`72e8445`, under 0.5 s measured):
-      unmeasured in this push. Exit: <= 90 s, restated in 5.3's figure. Red-first: the P0
+      unmeasured in this push. Exit: <= 90 s wall on a profile whose rust steps read in 5.3's figure
+      (CPU over the rust control, `tools/gate_profile.sh` on media_server) so a miss is the work's,
+      not the load's; per-crate coverage judged for running across crates at once. Red-first: the P0
       instrument's per-step sum within 5% of wall on the same run. Lies: a cold sccache; a crate
       the "everything changed" diff did not touch; media_server's own 110 s pytest step (a
       servers item) counted as goh's.
