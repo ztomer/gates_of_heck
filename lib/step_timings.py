@@ -16,6 +16,14 @@ step already passes through, and the native tier for its in-process steps. Neste
 `bounded_run.py` hands its child `GOH_TIMINGS_PARENT=<label>`, so a `rust_gate.sh` step inside a
 `local_ci.sh` step names its parent.
 
+KIND (BACKLOG 5.3). A gate declares what its steps are (`GOH_TIMINGS_KIND`: `structural.sh` shell,
+`rust_gate.sh` rust) and every row records it. `lib/step_control.py` runs each kind's control, fixed
+pinned work, and records it as a `control` row; `tools/gate_profile.sh` runs them before the gate and
+after it. The report then divides each step's CPU by its kind's control: raw CPU moved +36% across a
+10x load on this box, the ratio +3.3%. A kind without a control on both sides is uncalibrated, and a
+control that drifted more than CONTROL_DRIFT between the two voids its kind -- the load moved under
+the run, so no ratio from it is a figure.
+
 CONCURRENCY. One `os.write` of one line under `O_APPEND`, shorter than `PIPE_BUF`: concurrent
 writers (a 4-way crate fan-out) interleave whole lines, never halves. A write that fails is
 dropped silently ON PURPOSE -- the instrument must never be the reason a gate goes red.
@@ -42,6 +50,8 @@ import sys
 
 ENV = "GOH_TIMINGS"
 PARENT_ENV = "GOH_TIMINGS_PARENT"
+KIND_ENV = "GOH_TIMINGS_KIND"
+CONTROL_DRIFT = 0.15  # BACKLOG 5.3's exit: a figure holds within 15%
 _MAX_LINE = 4000  # under PIPE_BUF (4096 on macOS and Linux), so an append is atomic
 
 
@@ -58,7 +68,14 @@ def children_cpu_ms() -> float:
 
 
 def record(
-    label: str, ms: float, rc: int, tier: str, cache: str = "", cpu_ms: float | None = None
+    label: str,
+    ms: float,
+    rc: int,
+    tier: str,
+    cache: str = "",
+    cpu_ms: float | None = None,
+    kind: str = "",
+    control: bool = False,
 ) -> None:
     """Append one step's line to $GOH_TIMINGS; a no-op when it is unset."""
     path = os.environ.get(ENV)
@@ -78,6 +95,11 @@ def record(
         row["cache"] = cache
     if cpu_ms is not None:
         row["cpu_ms"] = round(cpu_ms, 1)
+    kind = kind or os.environ.get(KIND_ENV, "")
+    if kind:
+        row["kind"] = kind[:40]
+    if control:
+        row["control"] = True
     import json
 
     line = (json.dumps(row, ensure_ascii=False) + "\n").encode("utf-8")[:_MAX_LINE]
@@ -136,6 +158,43 @@ def report(rows: list[dict], top: int = 15) -> str:
     for label, ms in sorted(sums.items(), key=lambda kv: -sum(kv[1]))[:top]:
         cpu = f" {cpus[label] / 1000:7.2f} s cpu" if cpus[label] else ""
         out.append(f"{sum(ms) / 1000:8.2f} s{cpu}  x{len(ms):<4} {label}")
+    section = calibrated(rows)
+    if section:
+        out.append(section)
+    return "\n".join(out)
+
+
+def calibrated(rows: list[dict]) -> str:
+    """Each kinded step's CPU over the mean of its kind's controls, or why a kind has no ratio:
+    fewer than two controls (one before the gate and one after), or a control that drifted."""
+    kinds: dict[str, list[dict]] = {}
+    controls: dict[str, list[float]] = {}
+    for r in rows:
+        kind = r.get("kind")
+        if not kind or "cpu_ms" not in r:
+            continue
+        if r.get("control"):
+            controls.setdefault(kind, []).append(r["cpu_ms"])
+        else:
+            kinds.setdefault(kind, []).append(r)
+    if not kinds and not controls:
+        return ""
+    out = ["-- CPU over a same-kind control (BACKLOG 5.3) --"]
+    for kind in sorted(set(kinds) | set(controls)):
+        ctl = controls.get(kind, [])
+        if len(ctl) < 2:
+            out.append(
+                f"{kind}: uncalibrated, {len(ctl)} control(s) -- one before and one after are needed"
+            )
+            continue
+        drift = (ctl[-1] - ctl[0]) / ctl[0] if ctl[0] else float("inf")
+        if abs(drift) > CONTROL_DRIFT:
+            out.append(f"{kind}: void, the control drifted {drift:+.1%} between the run's two ends")
+            continue
+        mean = sum(ctl) / len(ctl)
+        out.append(f"{kind}: control {mean / 1000:.2f} s cpu, control drift {drift:+.1%}")
+        for r in sorted(kinds.get(kind, []), key=lambda r: -r["cpu_ms"]):
+            out.append(f"{r['cpu_ms'] / mean:8.2f}  {r['label']}")
     return "\n".join(out)
 
 

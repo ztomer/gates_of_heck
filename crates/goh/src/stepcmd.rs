@@ -256,10 +256,17 @@ pub(crate) fn record(label: &str, span: &Span, rc: i32) {
     let cut = |s: &str| s.chars().take(300).collect::<String>();
     let tenths = |ms: f64| (ms * 10.0).round() / 10.0;
     let ms = tenths(span.start.elapsed().as_secs_f64() * 1000.0);
-    let row = serde_json::json!({
+    let mut row = serde_json::json!({
         "label": cut(label), "ms": ms, "rc": rc, "tier": "step", "parent": cut(&parent),
         "cwd": cut(&cwd), "cpu_ms": tenths(cpu_ms),
     });
+    // The gate's declared kind, so the report divides this step by its kind's control (5.3).
+    if let Some(kind) = std::env::var("GOH_TIMINGS_KIND")
+        .ok()
+        .filter(|k| !k.is_empty())
+    {
+        row["kind"] = serde_json::Value::String(kind.chars().take(40).collect());
+    }
     let mut line = row.to_string();
     line.push('\n');
     if let Ok(mut f) = std::fs::OpenOptions::new()

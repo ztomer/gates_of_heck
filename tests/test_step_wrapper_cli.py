@@ -20,7 +20,7 @@ from pathlib import Path
 
 import pytest
 from timing_bounds import GiveUp, assert_sooner
-from conftest import REPO_ROOT, native_goh_path
+from conftest import REPO_ROOT, hermetic_env, native_goh_path
 
 
 @pytest.fixture(params=["python", "native"])
@@ -124,10 +124,21 @@ def test_usage_and_a_non_positive_ceiling_are_exit_two(wrapper, args) -> None:
 
 def test_a_timed_step_writes_one_timings_line(wrapper, tmp_path: Path) -> None:
     log = tmp_path / "t.jsonl"
-    env = dict(os.environ, GOH_TIMINGS=str(log))
+    # hermetic: a gate this suite runs under exports its own GOH_TIMINGS_KIND (rust_gate.sh)
+    env = hermetic_env(GOH_TIMINGS=str(log))
     _run(wrapper, "--timeout", "30", "--label", "lbl", "--", "/bin/sh", "-c", "exit 3", env=env)
     (row,) = [json.loads(line) for line in log.read_text().splitlines()]
     assert (row["label"], row["rc"], row["tier"]) == ("lbl", 3, "step"), row
+    assert "kind" not in row, row
+
+
+def test_a_timed_step_records_its_gates_kind(wrapper, tmp_path: Path) -> None:
+    """Both writers carry the kind, or the native tier's steps read as uncalibrated (5.3)."""
+    log = tmp_path / "t.jsonl"
+    env = hermetic_env(GOH_TIMINGS=str(log), GOH_TIMINGS_KIND="rust")
+    _run(wrapper, "--timeout", "30", "--label", "lbl", "--", "/bin/sh", "-c", "exit 0", env=env)
+    (row,) = [json.loads(line) for line in log.read_text().splitlines()]
+    assert row["kind"] == "rust" and "cpu_ms" in row, row
 
 
 @pytest.mark.parametrize(

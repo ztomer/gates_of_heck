@@ -51,6 +51,8 @@
 { # parse-guard -- bash reads this group whole before running it (tests/test_parse_guard.py)
 . "$(dirname "${BASH_SOURCE[0]}")/_from_head.sh"; goh_from_head "${BASH_SOURCE[0]}" "$@"   # run HEAD, not the tree (C4)
 set -euo pipefail
+# Every step this gate times is rust work: its CPU is divided by the rust control (lib/step_control.py).
+export GOH_TIMINGS_KIND=rust
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # --each-crate: every crate of the repo, concurrently, repo-wide scans once (BACKLOG P2).

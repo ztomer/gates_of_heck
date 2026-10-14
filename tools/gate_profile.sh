@@ -9,6 +9,11 @@
 # line (lib/step_timings.py). Then prints the slowest steps and each label summed across every
 # place it ran -- the view that shows a 7 s step repeated in 29 crates.
 #
+# The gate is bracketed by a control of each kind its steps declare (lib/step_control.py), one
+# before and one after, so the report can divide each step's CPU by fixed work run under the same
+# load (BACKLOG 5.3): shell always, Rust when the repo builds Rust. A control that fails is noted
+# and skipped -- the instrument is never the reason a profile goes red.
+#
 # The proven cache is OFF by default because the question is what the work COSTS; a profile of
 # cache hits measures the cache. Exit: the push gate's own code (the report prints either way).
 { # parse-guard -- bash reads this group whole before running it (tests/test_parse_guard.py)
@@ -24,6 +29,14 @@ out="${GOH_TIMINGS:-$(mktemp "${TMPDIR:-/tmp}/goh-timings.XXXXXX")}"
 zero=0000000000000000000000000000000000000000
 proven=0
 [ -n "${GOH_PROFILE_PROVEN:-}" ] && proven=1
+kinds=shell
+[ -f "$repo/Cargo.toml" ] && kinds="shell rust"
+controls() {
+    # shellcheck disable=SC2086 # one word per kind
+    GOH_TIMINGS="$out" python3 "$GOH/lib/step_control.py" run $kinds >>"$out.controls.log" 2>&1 \
+        || printf 'gate_profile: a control did not run (log: %s.controls.log)\n' "$out" >&2
+}
+controls
 t0=$(date +%s)
 # The local ref is the SHA itself (the pinned form): push_gate.sh refuses a named ref that no longer
 # names the gated commit, and a made-up branch name names nothing at all.
@@ -31,6 +44,7 @@ printf '%s %s refs/heads/goh-profile %s\n' "$sha" "$sha" "$zero" \
     | (cd "$repo" && GOH_TIMINGS="$out" GOH_PROVEN="$proven" \
         bash "$GOH/gates/push_gate.sh" goh-profile "$repo") >"$out.log" 2>&1
 rc=$?
+controls
 printf '%s @ %s: push gate exit %s in %ss (log: %s)\n' \
     "$(basename "$repo")" "${sha:0:12}" "$rc" "$(( $(date +%s) - t0 ))" "$out.log"
 python3 "$GOH/lib/step_timings.py" report "$out" "$top"
