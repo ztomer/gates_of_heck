@@ -114,11 +114,14 @@ def record(
 
 
 def child_env(label: str) -> dict[str, str] | None:
-    """The environment for a timed step's child: the parent label set, or None to inherit."""
-    if not os.environ.get(ENV):
+    """The environment for a timed step's child: the parent label set and the gate's kind dropped
+    (it labels this gate's steps; a gate the step runs declares its own, 5.3), or None to inherit."""
+    if not os.environ.get(ENV) and KIND_ENV not in os.environ:
         return None
     env = dict(os.environ)
-    env[PARENT_ENV] = label
+    env.pop(KIND_ENV, None)
+    if os.environ.get(ENV):
+        env[PARENT_ENV] = label
     return env
 
 
@@ -164,13 +167,24 @@ def report(rows: list[dict], top: int = 15) -> str:
     return "\n".join(out)
 
 
+def _gate_kinds(rows: list[dict]) -> dict[str, str]:
+    """A step that runs a gate takes the gate's kind: the one kind every kinded row under it carries
+    (`./gates/structural.sh --full`, a CI step, is shell because structural.sh's steps are)."""
+    under: dict[str, set[str]] = {}
+    for r in rows:
+        if r.get("kind") and not r.get("control"):
+            under.setdefault(r.get("parent", ""), set()).add(r["kind"])
+    return {label: next(iter(ks)) for label, ks in under.items() if label and len(ks) == 1}
+
+
 def calibrated(rows: list[dict]) -> str:
     """Each kinded step's CPU over the mean of its kind's controls, or why a kind has no ratio:
     fewer than two controls (one before the gate and one after), or a control that drifted."""
     kinds: dict[str, list[dict]] = {}
     controls: dict[str, list[float]] = {}
+    gate_kind = _gate_kinds(rows)
     for r in rows:
-        kind = r.get("kind")
+        kind = r.get("kind") or gate_kind.get(r.get("label", ""))
         if not kind or "cpu_ms" not in r:
             continue
         if r.get("control"):

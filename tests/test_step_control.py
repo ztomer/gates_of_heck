@@ -9,6 +9,7 @@ uncalibrated, and a control that drifted between the run's two ends voids that k
 
 from __future__ import annotations
 
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -158,3 +159,38 @@ def test_gate_profile_brackets_the_gate_with_its_kinds_controls() -> None:
     assert 'step_control.py" run' in text, "the controls are not lib/step_control.py's"
     assert len(calls) == 2 and calls[0] < gate < calls[1], "a control before the gate and one after"
     assert "Cargo.toml" in text, "the Rust control runs only for a repo that builds Rust"
+
+
+def test_a_step_that_runs_a_gate_takes_the_gates_kind() -> None:
+    """`./gates/structural.sh --full` is a CI step with no kind of its own; its steps are shell."""
+    rows = [
+        _row("control:shell", 1000.0, "shell", control=True),
+        _row("control:shell", 1000.0, "shell", control=True),
+        _row("./gates/structural.sh --full", 5000.0),
+        dict(_row("emoji", 10.0, "shell"), parent="./gates/structural.sh --full"),
+        _row("mixed", 4000.0),
+        dict(_row("a", 10.0, "shell"), parent="mixed"),
+        dict(_row("b", 10.0, "rust"), parent="mixed"),
+    ]
+    text = step_timings.calibrated(rows)
+    assert "5.00  ./gates/structural.sh --full" in text, text
+    assert "mixed" not in text, "a step over two kinds took one of them"
+
+
+def test_the_controls_run_from_heads_export(tmp_path: Path) -> None:
+    """gate_profile.sh runs from HEAD's export, which is no git repository: the pinned files come
+    from the live checkout it names (GOH_LIVE_ROOT). Every control failed there on first use."""
+    export = tmp_path / "export" / "lib"
+    export.mkdir(parents=True)
+    for name in ("step_control.py", "step_timings.py"):
+        shutil.copy2(LIB / name, export / name)
+    out = tmp_path / "t.jsonl"
+    env = hermetic_env(GOH_TIMINGS=str(out), GOH_STEP_CONTROL_CACHE=str(tmp_path / "cache"))
+    env["GOH_LIVE_ROOT"] = str(ROOT)
+    r = subprocess.run(
+        [sys.executable, str(export / "step_control.py"), "run", "shell"],
+        env=env, capture_output=True, text=True, timeout=120, stdin=subprocess.DEVNULL,
+    )  # fmt: skip
+    assert r.returncode == 0, r.stdout + r.stderr
+    (row,) = step_timings.load(str(out))
+    assert row["control"] is True and row["cpu_ms"] > 0, row

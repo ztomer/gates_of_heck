@@ -83,8 +83,11 @@ def _shell_tree(cache: Path) -> Path:
     if (tree / SHELL_FILES[0]).is_file():
         return tree
     tree.mkdir(parents=True, exist_ok=True)
+    # From HEAD's export (gate_profile.sh runs from one) the files come from the live checkout it
+    # was exported from: an export is not a git repository.
+    source = os.environ.get("GOH_LIVE_ROOT") or str(ROOT)
     archive = subprocess.run(
-        ["git", "-C", str(ROOT), "archive", SHELL_COMMIT, "checks", "gates"],
+        ["git", "-C", source, "archive", SHELL_COMMIT, "checks", "gates"],
         capture_output=True, check=True, stdin=subprocess.DEVNULL,
     )  # fmt: skip
     subprocess.run(["tar", "-x", "-C", str(tree)], input=archive.stdout, check=True)

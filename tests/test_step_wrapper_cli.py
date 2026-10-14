@@ -141,6 +141,16 @@ def test_a_timed_step_records_its_gates_kind(wrapper, tmp_path: Path) -> None:
     assert row["kind"] == "rust" and "cpu_ms" in row, row
 
 
+def test_the_steps_child_does_not_inherit_the_gates_kind(wrapper, tmp_path: Path) -> None:
+    """The kind labels the gate's own steps: a child that inherited it labelled a test suite's
+    fixtures and every nested tool with the outer gate's kind (5.3, goh's own push profile)."""
+    log = tmp_path / "t.jsonl"
+    env = hermetic_env(GOH_TIMINGS=str(log), GOH_TIMINGS_KIND="rust")
+    probe = 'printf "kind=%s" "${GOH_TIMINGS_KIND-}"'
+    r = _run(wrapper, "--timeout", "30", "--label", "lbl", "--", "/bin/sh", "-c", probe, env=env)
+    assert "kind=" in r.stdout and "kind=rust" not in r.stdout, r.stdout
+
+
 @pytest.mark.parametrize(
     "sig", [signal.SIGTERM, signal.SIGINT, signal.SIGHUP], ids=lambda s: s.name
 )

@@ -96,7 +96,17 @@ fn record(label: &str, start: Instant, rc: i32) {
     let cwd = std::env::current_dir().map_or_else(|_| String::new(), |p| p.display().to_string());
     let parent = std::env::var("GOH_TIMINGS_PARENT").unwrap_or_default();
     let ms = (start.elapsed().as_secs_f64() * 10_000.0).round() / 10.0;
-    record_to(std::path::Path::new(&path), label, ms, rc, &parent, &cwd);
+    // The kind the gate declares for its own steps (`GOH_TIMINGS_KIND`, BACKLOG 5.3).
+    let kind = std::env::var("GOH_TIMINGS_KIND").unwrap_or_default();
+    record_to(
+        std::path::Path::new(&path),
+        label,
+        ms,
+        rc,
+        &parent,
+        &cwd,
+        &kind,
+    );
 }
 
 /// The write itself, environment-free so it is testable: one JSON line appended to `path`.
@@ -107,11 +117,15 @@ pub(crate) fn record_to(
     rc: i32,
     parent: &str,
     cwd: &str,
+    kind: &str,
 ) {
     use std::io::Write as _;
-    let row = serde_json::json!({
+    let mut row = serde_json::json!({
         "label": label, "ms": ms, "rc": rc, "tier": "native", "parent": parent, "cwd": cwd,
     });
+    if !kind.is_empty() {
+        row["kind"] = serde_json::Value::String(kind.chars().take(40).collect());
+    }
     let mut line = row.to_string();
     line.push('\n');
     if let Ok(mut f) = std::fs::OpenOptions::new()
@@ -306,8 +320,8 @@ mod tests {
     fn a_timing_line_is_one_whole_json_object_and_a_bad_path_is_dropped() {
         let dir = tempfile::tempdir().unwrap_or_else(|e| panic!("tempdir: {e}"));
         let path = dir.path().join("t.jsonl");
-        super::record_to(&path, "emoji", 12.5, 0, "outer", "/repo");
-        super::record_to(&path, "markers", 3.0, 1, "", "/repo");
+        super::record_to(&path, "emoji", 12.5, 0, "outer", "/repo", "shell");
+        super::record_to(&path, "markers", 3.0, 1, "", "/repo", "");
         let text = std::fs::read_to_string(&path).unwrap_or_default();
         let rows: Vec<serde_json::Value> = text
             .lines()
@@ -317,7 +331,10 @@ mod tests {
         assert_eq!(rows[0]["label"], "emoji");
         assert_eq!(rows[0]["parent"], "outer");
         assert_eq!(rows[1]["rc"], 1);
+        // The gate's kind is recorded, and a gate that declares none writes no key (5.3).
+        assert_eq!(rows[0]["kind"], "shell");
+        assert!(rows[1].get("kind").is_none(), "{text}");
         // The instrument never fails a gate: an unwritable path is silently dropped.
-        super::record_to(&dir.path().join("no/such/dir/t"), "x", 1.0, 0, "", "");
+        super::record_to(&dir.path().join("no/such/dir/t"), "x", 1.0, 0, "", "", "");
     }
 }

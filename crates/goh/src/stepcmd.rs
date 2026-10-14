@@ -114,6 +114,9 @@ pub(crate) fn bounded(
     if std::env::var_os("GOH_TIMINGS").is_some_and(|v| !v.is_empty()) {
         cmd.env("GOH_TIMINGS_PARENT", label);
     }
+    // The kind labels THIS gate's steps; a gate the step runs declares its own, and every other
+    // child (a test suite's fixtures, a tool) declares none (5.3).
+    cmd.env_remove("GOH_TIMINGS_KIND");
     // The stops are taken BEFORE the spawn: a stop between the spawn and the listener would meet the
     // default action, kill this wrapper, and leave the step running unowned. Taken first, it waits
     // in the channel and sweeps the step the moment there is one (bounded_run.py holds it the same
