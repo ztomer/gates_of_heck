@@ -1,5 +1,53 @@
 # CHANGELOG
 
+## v0.27.0 — the stdin gate is on everywhere, every scanner says what it read, and a step's time holds under load _(2026-10-14)_
+
+Eighteen commits since v0.26.0. The v0.27.0 roadmap's correctness phase is closed, the stdin
+gate flipped on ahead of the estate sweep by the owner's ruling (each consumer clears its own
+debt in its own session), and the first measurement, 5.3, closed. 5.1 is blocked on
+media_server's own reds and 5.2 is the owner's call; both carry over (BACKLOG).
+
+**Consumers: what goes red, and what to run**
+
+* **The stdin gate is on by default** (`0c93f4d`, 3.4). `GOH_SUBPROCESS_STDIN` unset now means
+  on, at both scopes; only `GOH_SUBPROCESS_STDIN=off` in the repo's own `.gatesrc` skips it. The
+  15 repos left in 3.3's table (367 findings counted 2026-10-09: media_server 88, Finance/zinc 71,
+  divoom-control 52, scripts 52, monitor 39, koffee_big 23, ztools 13, routines 8, games 6,
+  app_updates 5, old_phones 4, Finance/salary 2, Finance/zinc-core 2, CadGoose 1, sys_updater 1)
+  are red at their next commit. Declare each call's stdin, or adopt what is left with
+  `goh subprocess-stdin --seed`, then set `GOH_SUBPROCESS_STDIN_MIN_CALLS`.
+* **ZeroThunder: a render that counts frames must deliver them** (`f62dbb3`, 4.6). The display
+  seam gate's third rule refuses an `MTKView` drawn by hand outside the seam, and a harness that
+  hands the app `--golden-frames` without checking the renderer's own count. ZeroThunder's
+  harnesses passed 90 requested frames while the view delivered 45. Read-only, it reports 26
+  sites there (BACKLOG Downstream lists each).
+* **Every repo: one new advisory line, nothing red** (`831d686`, 4.3). The structural gate's last
+  step, `every scanner read its declared subject`, prints `GOH_<SCANNER>_MIN_<UNIT>=N` for each
+  scanner whose floor the repo has not set. Paste each at or a little under its count. Below a set
+  floor is red, naming the key, the floor and the count.
+
+**What changed**
+
+* **A scan that stopped reading says so** (`831d686`). Fifteen floor keys, one per scanner, in
+  one registry (`crates/goh/src/subject.rs`). Before, a scanner whose own file selection broke
+  read nothing, found nothing and passed, and only the stdin check had a floor. A seed's
+  stale-entry verdict is withheld below the floor, and `--seed` refuses there, so a blind scan
+  cannot launder itself into the ratchet.
+* **A step's time holds on a box that is never quiet** (`118e900`, `b2e288d`, `f0ded9c`,
+  `3b2686a`, `21bcce4`; 5.3). Each step records the kind of gate that ran it (`GOH_TIMINGS_KIND`).
+  `tools/gate_profile.sh` runs the rust control (clippy of pinned `regex-syntax` 0.8.11, four
+  copies at once) before and after the gate, and the timings report divides each rust step's CPU
+  by it. Across a 2x load, clippy's raw CPU moved +17% and its ratio +1% and +1.9%. Native
+  structural steps read raw CPU, which held (+4.3%, -1.2%) where every shell control tried moved
+  15-17%; the shell control was deleted. A kind missing a control reads uncalibrated, and one
+  whose control drifted past 15% reads void.
+* **Fixed along the way:** the controls could not run from HEAD's export, which is not a git
+  repository (`b2e288d`); a gate's kind leaked into its children, so a test suite's rows were
+  labelled rust (`b2e288d`); a profile inside a profile wrote into the outer one's file
+  (`f0ded9c`); a repo whose crates have no root `Cargo.toml` (media_server's 29) got no rust
+  control (`21bcce4`); `path_invariance.py --help` ran `--help` as the gate and died in a
+  traceback, and a gate command that cannot start is now a named exit 2 (`9c425ac`).
+
 ## v0.26.0 — the estate's classes closed at the house, so a consumer's gate stops lying _(2026-10-13)_
 
 Almost every change in this cycle (100 commits) started as a defect a consumer's session found in

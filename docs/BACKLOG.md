@@ -6,22 +6,25 @@ not ready to start: the **measured baseline** it moves, the **exit number** that
 hit can be wrong, each with a test BEFORE the cache exists). A perf change without a before/after
 from the P0 instrument does not land.
 
-## State — 2026-10-13, v0.26.0 released (read first)
+## State — 2026-10-14, v0.27.0 released (read first)
 
-v0.26.0 (2026-10-13) closed the v0.26.0 roadmap except the items below: Phases 1, 2, 4 (all but
-4.3 and 4.6) and 6 landed, and the stdin gate landed opt-in with this repo's own row of the sweep
-closed. What landed, with its commit and what was wrong before, is the CHANGELOG stanza; the
-landed plans themselves are in git history (this file at `6522f05`). Box: 16 cores, 4-5 busy at
-idle, sys ~= user, so **spawn count, tree walks and network round trips are the cost metric, not
-CPU**. The box is never quiet for the foreseeable future (the owner, 2026-10-08; load 10-132 seen
-since), so a figure is a step's own work (`cpu_ms`, a count) or a same-run comparison, never a
-quiet wall time (5.3). One lesson from v0.25.1 still governs any measurement work: **on this box,
-a string comparison of a path is a measurement of the CALLER, not of the filesystem**.
+v0.27.0 (2026-10-14) closed the v0.27.0 roadmap's correctness phase (4.3 every scanner declares
+its subject, 4.6 a render that counts frames must deliver them), flipped the stdin gate on by
+default (3.4), and closed the first measurement (5.3). What landed, with its commit and what was
+wrong before, is the CHANGELOG stanza; the landed items themselves are in git history (this file
+at `ab0c4dc`). Box: 16 cores, 4-5 busy at idle, sys ~= user, so **spawn count, tree walks and
+network round trips are the cost metric, not CPU**. The box is never quiet for the foreseeable
+future (the owner, 2026-10-08; load 10-132 seen since), so a figure is read by 5.3's rule: a rust
+step's CPU over the rust control, a native step's raw CPU, a count, or a same-run comparison,
+never a quiet wall time. One lesson from v0.25.1 still governs any measurement work: **on this
+box, a string comparison of a path is a measurement of the CALLER, not of the filesystem**.
 
-## Resume here (2026-10-13)
+## Resume here (2026-10-14)
 
-- **Next, in order:** Phase 1 is closed (4.3 at `831d686`, 4.6 at `f62dbb3`); 3.3's remaining rows as their repos' sessions take them, 3.4's flip once 3.3's
-  table is empty, then the measurements: 5.3 closed (2026-10-14), so 5.1, then 5.2.
+- **Nothing in this repo is ready to start.** 5.1 is blocked on media_server green at its own
+  HEAD (three reds, each media_server's session's: Downstream); 5.2 is the owner's call; 3.3's
+  rows are each consumer's. A new item enters through the plan of record below with its four
+  fields.
 - **Waiting on the owner, and nothing here moves them:**
   - 6.13's scheduling: `scripts/estate_audit.py --install` writes and loads the daily launchd job.
   - Registering `hooks/claude/estate_advisories.py` (SessionStart) in `~/.claude/settings.json`.
@@ -32,108 +35,25 @@ a string comparison of a path is a measurement of the CALLER, not of the filesys
   `cargo test --workspace` before its commit, and the suite runs before a commit to gate or test
   code.
 - **The machine is the owner's to use** (2026-10-10), apart from other sessions doing their own
-  work: a measurement may hold the desktop and the GPU for as long as it needs, and the box is
-  still never quiet, so 5.3's rule stands.
+  work: a measurement may hold the desktop and the GPU for as long as it needs.
 - Consumers told of a tag: servers and ztools only (the owner's call, 2026-10-08, for quota).
 - Owed from 2026-10-08, unchanged: servers' `push-gate-build-dir-config` verified against servers
-  (its content is here at `d98d7bd`); 5.3's second calibration point at load <= 55 (method in
-  5.3).
+  (its content is here at `d98d7bd`).
 
-## Roadmap to v0.27.0 — the plan of record (re-phased 2026-10-13)
+## Roadmap to v0.28.0 — the plan of record (re-phased 2026-10-14)
 
-Ordered by what is open: correctness first (two classes the estate found that no gate closes
-yet), then the stdin campaign (the flip landed; the sweep is each consumer's), then the measurements, which no
-correctness item waits on. Item ids are kept from the v0.26.0 plan so commit messages that cite
-them still resolve. Every item carries **Baseline:**, **Exit:**, **Red-first:** and **Lies:**, and
-a done item names its commit, or `tests/test_backlog_items.py` fails; a landed item is pruned to
-the CHANGELOG. `[ ]` open, `[x]` done, `[~]` handed off.
+Item ids are kept from earlier plans so commit messages that cite them still resolve. Every item
+carries **Baseline:**, **Exit:**, **Red-first:** and **Lies:**, and a done item names its commit,
+or `tests/test_backlog_items.py` fails; a landed item is pruned to the CHANGELOG. `[ ]` open,
+`[x]` done, `[~]` handed off.
 
-### Phase 1 — correctness: the classes no gate closes yet
+### Phase 1 — the measurements, each waiting on something outside this repo
 
-- [x] 4.3 Every scanner declares its subject, so a scan that stopped reading says so (`831d686`).
-      Baseline was one floor key (`GOH_SUBPROCESS_STDIN_MIN_CALLS`) and nothing for any other
-      scanner. Now 15 keys, one per scanner, in one registry (`crates/goh/src/subject.rs`): the 12
-      always-on structural scanners record what they read and the pipeline's last step judges each
-      at full scope (red under a floor, naming key, floor and count; exit 2 naming an unparseable
-      key; one advisory line `KEY=N` for every scanner with none), and `goh fixed-sleep` /
-      `goh status-markers` judge their own. The pairing: under its floor a seed's stale verdict is
-      withheld and `--seed` refuses; over it a stale entry still fails. Red-first measured on
-      fixtures (`tests/test_subject_floors.py`: every `.py` excluded reads NONE; a floor one over
-      the count is red). This repo sets every floor at about nine tenths of its 2026-10-13 count.
-      Not covered, by what they read (named in `docs/config.md`): tracked-ignored and vendored
-      (the listing itself), credential-urls, lock-version, provenance (one file each), opt-ins.
-- [x] 4.6 A render that counts frames must deliver them (`f62dbb3`). Baseline was ZeroThunder's
-      14+ harnesses passing `--golden-frames 90` through an on-screen, display-linked `MTKView`
-      that delivered 45 of 90 with the panel on, and nothing comparing the two. Now
-      `checks/_display_frames.py` is the seam gate's third rule: an `MTKView` drawn by hand routes
-      through the seam (receivers found tree-wide), and a harness handing the app `frames_flag`
-      calls `frames_helper` with the renderer's own count, a literal or the request read back
-      refused. Red-first: each of its 10 rules dropped turns the seam probe red, and the half-rate
-      fixture passes the static rule and reds on the count. `crates/goh/src/screen.rs` grew no
-      rule, by evidence: it refuses tests that reach the display, and a half-rate render reaches
-      nothing new. Read-only over ZeroThunder: 26 sites (Downstream).
+5.3's rule reads every figure here: a rust step's CPU over the rust control, a native step's raw
+CPU (`lib/step_timings.py report` prints both; `tools/gate_profile.sh` runs the controls). The
+other instruments: P0 (`GOH_TIMINGS`), `cpu_ms` (`e3e5418`), `tools/quiet.sh` and
+`lib/bench_hold.py` for holds, and `tools/session_bench.py` for cross-session serialization.
 
-### Phase 2 — the stdin campaign: the sweep, then the flip
-
-The ruling from the estate's sessions stands: **hooks run whatever is in this checkout, so the
-gate turns on everywhere last -- every repo gets its fix or its ratchet first.** The migration
-path exists (`--seed`, `498eb9a`), and a declaration is mechanical where no call needs the
-caller's stdin (goh's 555: an AST pass placing `stdin=subprocess.DEVNULL` at each call's closing
-paren, from the `--source` JSON's line, then `ruff format`).
-
-- [~] 3.3 The estate sweep, handed off: since 3.4 (`0c93f4d`) each remaining row is red in its own
-      repo and cleared in that repo's session (Downstream). Baseline: MEASURED 2026-10-09 with this tree's own binary, scope
-      `git ls-files --cached --others --exclude-standard`: 34 repos carry Python, 1361 process
-      calls, **996 findings**, 17 repos exit 1. Two rows are closed (2026-10-13): gates_of_heck
-      (511 then, 555 calls in 186 files when declared, `df8f9c2`: no allowlist, 614 calls read,
-      0 findings, floor 550 proved red at 10000) and ZoneWM (118 then, its `c8766158`: 123
-      declared, floor 110 of 125). **15 rows remain, 367 findings as of 2026-10-09** (re-read each
-      before its round): media_server 88, Finance/zinc 71, divoom-control 52, scripts 52,
-      monitor 39, koffee_big 23, ztools 13, routines 8, games 6, app_updates 5, old_phones 4,
-      Finance/salary 2, Finance/zinc-core 2, CadGoose 1, sys_updater 1. Already swept and clean:
-      ZeroThunder 165 calls, necrohand 76, CadGoose2 23, game_asset_factory 41. 10 estate repos
-      track no Python and exit 0 "not applicable". The debt is SPREAD (389 files carried it on
-      2026-10-09, the largest 16), so each row is a per-file exercise. Each row is its repo's own
-      session's (Downstream). Exit: every repo in that table either declares its stdin or carries
-      a seeded allowlist at or under its 2026-10-09 count, and sets a call floor. Red-first: run
-      the check in a remaining repo with `GOH_SUBPROCESS_STDIN=on` and no allowlist -- exit 1,
-      measured 2026-10-09 in all 17. Lies: an exclusion can hide the subject; `GOH_EXCLUDE` is the
-      only key this check reads (only media_server's removes Python: 2 vendored files, 0
-      findings) and `GOH_LINE_EXCLUDE` cannot affect it at all. A seeded row is debt, not a fix:
-      its `unreviewed` count is the number that must fall.
-- [x] 3.4 The flip: `GOH_SUBPROCESS_STDIN` defaults to `on` (`0c93f4d`). Baseline was default
-      `off`, on in 2 of 34 repos. Now unset or `on` runs the step at both scopes and only a written
-      `off` skips it, an opt-out a repo writes in its own file the way `stdin=None` is written at a
-      call; a typo is still exit 1 naming the key. Landed ahead of 3.3 by the owner's ruling that goh
-      ships a check and each consumer clears its own debt in its own session (2026-10-12), so the 15
-      rows left read red at their next commit (Downstream). The difference this item had to settle
-      does not exist: read 2026-10-13, ZeroThunder's local checker accepts `stdin=None` bare, as the
-      house check does, and necrohand's `git_env` wrapper tells callers to pass it bare. Red-first
-      met: `test_a_repo_that_never_wrote_the_key_is_red_at_both_scopes` and the unit switch test red
-      on the old default; an exclusion of every `.py` in a repo with no key still says it read none.
-
-### Phase 3 — the measurements, last
-
-Correctness outranks, and no figure is worth a red gate. 5.3 closed first: 5.1's exit is a wall
-time on a box that will not be quiet, so it is read beside 5.3's figure (a rust step's CPU over
-the rust control, a native step's raw CPU). The instruments: P0 (`GOH_TIMINGS`, `tools/gate_profile.sh`), `cpu_ms`
-(`e3e5418`), `tools/quiet.sh` and `lib/bench_hold.py` for holds, and `tools/session_bench.py` for
-cross-session serialization (its section below).
-
-- [x] 5.3 A floor stated on a box that is never quiet (`118e900`, `b2e288d`, `f0ded9c`,
-      `3b2686a`). Each step is read by the figure that held across a 2x load, in three A-B-B-A
-      profiles of this repo's push gate (2026-10-14; idle load 10-23 against 48 busy loops at
-      35-129, every control bracket within 6%): a **rust** step's CPU over the rust control
-      (clippy of pinned `regex-syntax` 0.8.11, four copies at once, run by `tools/gate_profile.sh`
-      before the gate and after it), clippy +1% and +1.9% where its raw CPU moved +17%, the whole
-      rust gate -3.6% and -7.4%; a **native** step's raw CPU (`structural --full` +4.3% and -1.2%),
-      because every shell control tried moved more than the step did (serial -14.8%, four at once
-      -16.6%). The first figure here (raw CPU +36% at `e3e5418`) was a subprocess-heavy structural
-      the native tier has since replaced. The report prints each kind's figure, says
-      uncalibrated or void when a control is missing or drifted past 15%, and a step that runs a
-      gate takes the gate's kind. Lies it guards: a child inheriting its gate's kind (a test
-      suite's fixtures were labelled rust), a control that cannot run where the front end runs
-      it (HEAD's export is no git repository), a nested profile writing into the outer one's file.
 - [ ] 5.1 media_server push, everything changed, warm. Baseline: 170 s at load 4-8, BEFORE the
       incremental coverage build (`06afca4`: 173 -> 76 s on this repo). Measured 2026-10-08
       12:47 under a hold: 208 s, controls 0.30/0.30 s -- the exit is NOT met. Five coverage
@@ -162,6 +82,33 @@ cross-session serialization (its section below).
       in each repo's `.gatesrc`. THE OWNER'S CALL, still open. Red-first: a run at jobs=1 no
       faster than jobs=4, or steps serial somewhere (met on 2026-10-08: j1 slower than j4).
       Lies: one repo's knee read as every repo's.
+
+### Handed off — each row is its consumer's
+
+The stdin gate is on everywhere since `0c93f4d`; the sweep's method is a mechanical AST pass
+placing `stdin=subprocess.DEVNULL` at each call's closing paren from the `--source` JSON's line,
+then `ruff format` (goh's 555 calls), or `--seed` (`498eb9a`) for what a repo cannot declare yet.
+
+- [~] 3.3 The estate sweep, handed off: since 3.4 (`0c93f4d`) each remaining row is red in its own
+      repo and cleared in that repo's session (Downstream). Baseline: MEASURED 2026-10-09 with this tree's own binary, scope
+      `git ls-files --cached --others --exclude-standard`: 34 repos carry Python, 1361 process
+      calls, **996 findings**, 17 repos exit 1. Two rows are closed (2026-10-13): gates_of_heck
+      (511 then, 555 calls in 186 files when declared, `df8f9c2`: no allowlist, 614 calls read,
+      0 findings, floor 550 proved red at 10000) and ZoneWM (118 then, its `c8766158`: 123
+      declared, floor 110 of 125). **15 rows remain, 367 findings as of 2026-10-09** (re-read each
+      before its round): media_server 88, Finance/zinc 71, divoom-control 52, scripts 52,
+      monitor 39, koffee_big 23, ztools 13, routines 8, games 6, app_updates 5, old_phones 4,
+      Finance/salary 2, Finance/zinc-core 2, CadGoose 1, sys_updater 1. Already swept and clean:
+      ZeroThunder 165 calls, necrohand 76, CadGoose2 23, game_asset_factory 41. 10 estate repos
+      track no Python and exit 0 "not applicable". The debt is SPREAD (389 files carried it on
+      2026-10-09, the largest 16), so each row is a per-file exercise. Each row is its repo's own
+      session's (Downstream). Exit: every repo in that table either declares its stdin or carries
+      a seeded allowlist at or under its 2026-10-09 count, and sets a call floor. Red-first: run
+      the check in a remaining repo with `GOH_SUBPROCESS_STDIN=on` and no allowlist -- exit 1,
+      measured 2026-10-09 in all 17. Lies: an exclusion can hide the subject; `GOH_EXCLUDE` is the
+      only key this check reads (only media_server's removes Python: 2 vendored files, 0
+      findings) and `GOH_LINE_EXCLUDE` cannot affect it at all. A seeded row is debt, not a fix:
+      its `unreviewed` count is the number that must fall.
 
 ## Open -- measurements (wall times, taken under holds; 5.3 restates them)
 
@@ -220,8 +167,8 @@ ztools' exempt key, Finance's `"$root.out"`, ZeroThunder's dropped process handl
 - **The 15 repos left in 3.3's table, red at their next commit since `0c93f4d` (3.4)**, one
   session each: declare or `--seed`, set `GOH_SUBPROCESS_STDIN_MIN_CALLS` (a repo that must defer
   writes `GOH_SUBPROCESS_STDIN=off`, which is an opt-out in its own file, not a default). A
-  declaration is mechanical where no call needs the caller's stdin (the method is in Phase 2's
-  preamble; ZoneWM's `tools/proc.py` is a helper for the plain calls).
+  declaration is mechanical where no call needs the caller's stdin (the method is in the
+  roadmap's Handed off preamble; ZoneWM's `tools/proc.py` is a helper for the plain calls).
 - **ZeroThunder, after 4.7:** wrap the SwiftLint step in `GOH_CI_STEPS` as
   `python3 $GOH_DIR/gates/path_invariance.py -- <the swiftlint command>`; it clones HEAD and runs it
   from `/private/var/...`, `/var/...` and `/System/Volumes/Data/...`, so the `relativeDisplayPath`
