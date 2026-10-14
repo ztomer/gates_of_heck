@@ -4,6 +4,10 @@
 # were refused as "locally modified" the day the stock hook changed (2026-09-21), because the
 # install record did not exist yet on hooks installed before the record did. Append, never
 # remove: a hash removed from here turns a pristine old install back into a refusal.
+#
+# An entry tagged `same-logic` retired only TEXT (a comment): the hook it names runs today's gate,
+# so install.sh still upgrades it without --force, but structural.sh does not refuse it -- turning
+# every consumer red over a comment is the cost the tag exists to avoid (BACKLOG 6.19).
 d5603f176139d3ddca9b21bc94f87fa2e7663a94d5980c5346c26ba5a46682bf  pre-commit  (73391f0, before v0.12.3)
 87c60cd19cb13dc32c581cddca2cb305f91f972aba343ada2750bc2bfc2e761a  pre-push    (73391f0, before v0.12.3)
 d3722589597101b105161fd23507dbd76f2a804b88baa55dbbffa0620b5a9cc8  pre-commit  (a15c96a, v0.12.3)
@@ -12,3 +16,4 @@ d3722589597101b105161fd23507dbd76f2a804b88baa55dbbffa0620b5a9cc8  pre-commit  (a
 1a9b14a1e276decc03a0e73e112e4f5364939e2059416f93544103c8db41211f  pre-push    (e3c829e, parse-guard)
 3f1f3dee16f195b0b6159d20c29aa5e1d98616bb5c127f22d297a971aea796ce  pre-commit  (86a9ee0, hook currency)
 70721a6361201f2cdf2d96549a80582560b422da5fb0dbe46513fd712fe59eb3  pre-commit  (2fb2901, the last that decided anything)
+ee6c434cbd6cc930f003230bb9c2ec5eb63b6c946c6046e32a5565bb53f6caab  pre-push    (86a9ee0, same-logic: 6.19 header only)

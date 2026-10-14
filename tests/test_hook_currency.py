@@ -109,3 +109,65 @@ def test_a_current_or_local_hook_is_not_named(tmp_path):
         got = _structural(_repo_with_hook(sub, body), native=False)
         assert "OLDER stock hook" not in got.stdout + got.stderr
         assert got.returncode == 0, got.stdout + got.stderr
+
+
+# ── 6.19: a stock hook states what it does, never what the repo lacks ─────────
+
+
+# A claim about the repo the hook is copied INTO, and only ever that. These read as claims about
+# the host repo wherever they appear -- `no ci` is true or false of the repo, not of the hook.
+_CLAIMS = ("no ci", "no workflow", "this repo has", "this repo lacks")
+# `there is no` is ambiguous on its own: a hook may say "there is no rule THERE to run" about the
+# shared checkout it delegates to (commit-msg does). So it is judged per sentence, and a sentence
+# naming what the hook delegates to is the hook talking about itself.
+_AMBIGUOUS = "there is no"
+_SELF = ("$goh", "goh_dir", "gates_of_heck", "gates/", "checkout", "predecessor", "older")
+
+
+def _sentences(text: str) -> list[str]:
+    import re as _re
+
+    return [s for s in _re.split(r"[.;\n]", text) if s.strip()]
+
+
+def _claims_about_the_repo(text: str) -> list[str]:
+    said = [c for c in _CLAIMS if c in text.lower()]
+    for sentence in _sentences(text):
+        low = sentence.lower()
+        if _AMBIGUOUS in low and not any(s in low for s in _SELF):
+            said.append(_AMBIGUOUS)
+    return said
+
+
+def test_no_stock_hook_makes_a_claim_about_the_repo():
+    """The stock pre-push said "There is no CI behind this", false in every repo with a workflow
+    (Adv360). A hook is copied into every repo; it can describe itself, not them."""
+    for hook in sorted((REPO_ROOT / "hooks").iterdir()):
+        if not hook.is_file():
+            continue
+        said = _claims_about_the_repo(hook.read_text(encoding="utf-8"))
+        assert not said, f"hooks/{hook.name} claims {said} about the repo it is copied into"
+
+
+def test_a_retired_hook_whose_logic_is_current_is_not_refused(tmp_path):
+    """A header-only change retires the old bytes (install.sh must upgrade them without --force),
+    but the hook it retires runs today's gate: refusing it would turn every consumer red over a
+    comment. Such an entry is marked `same-logic`, and structural lets it pass."""
+    lines = (REPO_ROOT / "retired_hooks.sha256").read_text(encoding="utf-8").splitlines()
+    same = [line.split()[0] for line in lines if "same-logic" in line and " pre-push " in line]
+    assert same, "no same-logic pre-push entry: the 6.19 header change retired nothing"
+    old = None
+    for commit in _git("log", "--format=%h", "--", "hooks/pre-push").split():
+        blob = subprocess.run(
+            ["git", "-C", str(REPO_ROOT), "cat-file", "-p", f"{commit}:hooks/pre-push"],
+            capture_output=True,
+            check=True,
+            stdin=subprocess.DEVNULL,
+        ).stdout
+        if hashlib.sha256(blob).hexdigest() in same:
+            old = blob
+            break
+    assert old is not None, "the same-logic entry names no committed pre-push"
+    got = _structural(_repo_with_hook(tmp_path, old), native=False)
+    text = got.stdout + got.stderr
+    assert "OLDER stock hook" not in text and got.returncode == 0, text

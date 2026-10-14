@@ -207,12 +207,14 @@ fi
 # exec, so both tiers say it (tests/test_hook_currency.py). Only a BYTE-IDENTICAL retired copy is
 # refused: a hook a repo edited is not stock, and is its own business. Nothing is rewritten here --
 # `.githooks` is tracked, and a gate that edits the tree it judges dirties the commit it is in.
+# An entry tagged `same-logic` retired only a comment, so its hook runs today's gate (6.19).
 _goh_hooks="$(git config core.hooksPath 2>/dev/null || echo .githooks)"
 _goh_stale=""
 for _goh_h in pre-commit pre-push; do
     [ -f "$_goh_hooks/$_goh_h" ] || continue
     _goh_sum="$(shasum -a 256 <"$_goh_hooks/$_goh_h" | cut -d' ' -f1)"
-    if grep -q "^$_goh_sum  $_goh_h" "$GOH_ROOT/retired_hooks.sha256" 2>/dev/null; then
+    if awk -v s="$_goh_sum" -v h="$_goh_h" '$1 == s && $2 == h && !/same-logic/ { f = 1 }
+            END { exit !f }' "$GOH_ROOT/retired_hooks.sha256" 2>/dev/null; then
         err "$_goh_hooks/$_goh_h is an OLDER stock hook: the gate it runs is not today's"
         _goh_stale=1
     fi
