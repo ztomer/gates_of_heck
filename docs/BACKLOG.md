@@ -106,10 +106,6 @@ other instruments: P0 (`GOH_TIMINGS`), `cpu_ms` (`e3e5418`), `tools/quiet.sh` an
       the default stays fail-fast. Red-first: two planted reds in a scratch repo -- the second is
       named in the output. Lies: a step whose input depends on an earlier step's fix (say which
       steps are independent).
-- [ ] 6.17 `goh emoji` run alone does not read `GOH_ALLOW` from `.gatesrc`, while structural does.
-      Baseline: 2026-10-14, remote_dotfiles' allowed glyphs flag alone and pass in the gate. Exit: one
-      config read for both entry points. Red-first: an allowed glyph in a scratch repo, `goh emoji`
-      exits 1 today. Lies: a second key read the same way (grep every standalone subcommand).
 - [ ] 6.18 `lockver` misreads a manifest. Baseline: 2026-10-14, Finance/zinc: the `literal` /
       `inherit` regexes in `crates/goh/src/lockver.rs` reject a trailing TOML comment, so
       `crates/zinc-payroll/Cargo.toml:3` (`version = "1.9.0"  # ...`) reads as inheriting 4.8.0

@@ -188,9 +188,10 @@ pub enum Commands {
         /// its structural gate applies it; `--exclude ''` opts out.
         #[arg(long)]
         exclude: Option<String>,
-        /// Extra permitted characters (spaces stripped, like the checker).
-        #[arg(long, default_value = "")]
-        allow: String,
+        /// Extra permitted characters (spaces stripped, like the checker). Unset: the repo's own
+        /// `.gatesrc` `GOH_ALLOW`, as its structural gate applies it; `--allow ''` opts out.
+        #[arg(long)]
+        allow: Option<String>,
         /// Staged files only (polices the index, like the Python checker).
         #[arg(long)]
         staged: bool,

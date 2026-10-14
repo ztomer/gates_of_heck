@@ -310,6 +310,9 @@ pub enum Exempt {
     Paths,
     /// `GOH_EXCLUDE` ∪ `GOH_LINE_EXCLUDE`, the length cap's (see [`length_exclude`]).
     Length,
+    /// `GOH_ALLOW`, the extra glyphs the emoji scan permits: a direct `goh emoji` defaulted its
+    /// `--allow` to nothing and refused what the repo's structural gate passed (BACKLOG 6.17).
+    Glyphs,
 }
 
 /// The exclusion a direct `goh <check>` applies: `--exclude` when given (an empty one opts out),
@@ -336,7 +339,24 @@ pub fn declared_exclude(
     Ok(match which {
         Exempt::Paths => cfg.exclude,
         Exempt::Length => length_exclude(&cfg),
+        Exempt::Glyphs => cfg.allow,
     })
+}
+
+/// The skills corpus's word ceiling: `GOH_SKILLS_MAX_WORDS`, else the built-in one.
+///
+/// Read here for both entry points -- a direct `goh skills` ignored the key its structural step
+/// honoured (BACKLOG 6.17, the sibling of `GOH_ALLOW`).
+///
+/// # Errors
+/// The key is set to something that is not a whole number.
+pub fn skills_max_words(cfg: &Gatesrc) -> Result<usize, String> {
+    cfg.skills_max_words
+        .as_ref()
+        .map_or(Ok(crate::skills::DEFAULT_MAX_WORDS), |raw| {
+            raw.parse()
+                .map_err(|_| format!("bad GOH_SKILLS_MAX_WORDS value: {raw:?}"))
+        })
 }
 
 /// The length exemption is `GOH_EXCLUDE` ∪ `GOH_LINE_EXCLUDE`.

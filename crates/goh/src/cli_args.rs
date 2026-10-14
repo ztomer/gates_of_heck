@@ -11,9 +11,10 @@ pub struct SkillsArgs {
     /// Corpus root (default: the current directory, like the checker).
     #[arg(long, default_value = ".")]
     pub root: String,
-    /// Word ceiling for new skills.
-    #[arg(long, default_value_t = skills::DEFAULT_MAX_WORDS)]
-    pub max_words: usize,
+    /// Word ceiling for new skills. Unset: the repo's own `.gatesrc` `GOH_SKILLS_MAX_WORDS`, as
+    /// its structural gate applies it, else the built-in ceiling.
+    #[arg(long)]
+    pub max_words: Option<usize>,
     /// Floor on the skill count (scope guard).
     #[arg(long, default_value_t = skills::DEFAULT_MIN_SKILLS)]
     pub min_skills: usize,

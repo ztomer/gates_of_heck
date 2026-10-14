@@ -194,13 +194,7 @@ fn run_core(command: Commands) -> i32 {
             staged,
         } => commands::run_screen(&paths, scope.as_deref(), staged),
         Commands::Lints { self_test } => commands::run_lints(self_test),
-        Commands::Skills(args) => commands::run_skills(
-            &args.root,
-            args.max_words,
-            args.min_skills,
-            args.baseline.as_deref(),
-            args.update_baseline,
-        ),
+        Commands::Skills(args) => run_skills(&args),
         Commands::Golden {
             a,
             b,
@@ -215,6 +209,28 @@ fn run_core(command: Commands) -> i32 {
         } => commands::run_ceiling(max, &line_exclude, &unbounded, baseline.as_deref()),
         other => {
             goh_tui::eoutln!("{ERR} goh: {other:?} has no runner");
+            2
+        }
+    }
+}
+
+/// `goh skills`, its word ceiling from `--max-words`, else the repo's `.gatesrc` as structural
+/// reads it (`gatesrc::skills_max_words`, BACKLOG 6.17).
+fn run_skills(args: &cli_args::SkillsArgs) -> i32 {
+    let max_words = args.max_words.map_or_else(
+        || gatesrc::load(&gatesrc::config_root()).and_then(|c| gatesrc::skills_max_words(&c)),
+        Ok,
+    );
+    match max_words {
+        Ok(max_words) => commands::run_skills(
+            &args.root,
+            max_words,
+            args.min_skills,
+            args.baseline.as_deref(),
+            args.update_baseline,
+        ),
+        Err(message) => {
+            goh_tui::eoutln!("{ERR} goh: {message}");
             2
         }
     }
@@ -261,7 +277,8 @@ fn run_scanners(command: Commands) -> Result<i32, Box<Commands>> {
             allow,
             staged,
         } => declared(exclude, None, gatesrc::Exempt::Paths)
-            .map_or_else(|code| code, |x| commands::run_emoji(&x, &allow, staged)),
+            .and_then(|x| declared(allow, None, gatesrc::Exempt::Glyphs).map(|g| (x, g)))
+            .map_or_else(|code| code, |(x, g)| commands::run_emoji(&x, &g, staged)),
         Commands::Secrets { staged } => commands::run_secrets(staged),
         Commands::HomePaths { exclude, staged } => declared(exclude, None, gatesrc::Exempt::Paths)
             .map_or_else(|code| code, |x| commands::run_home_paths(&x, staged)),

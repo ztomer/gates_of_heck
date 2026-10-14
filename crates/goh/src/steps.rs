@@ -199,14 +199,11 @@ pub fn step_corpus(repo: &std::path::Path, cfg: &gatesrc::Gatesrc, staged: bool)
         Ok(view) => view,
         Err(outcome) => return outcome,
     };
-    let max_words = match &cfg.skills_max_words {
-        None => crate::skills::DEFAULT_MAX_WORDS,
-        Some(raw) => {
-            let Ok(n) = raw.parse() else {
-                goh_tui::eoutln!("{ERR} [skills_corpus] bad GOH_SKILLS_MAX_WORDS value: {raw:?}");
-                return Some(2);
-            };
-            n
+    let max_words = match gatesrc::skills_max_words(cfg) {
+        Ok(n) => n,
+        Err(message) => {
+            goh_tui::eoutln!("{ERR} [skills_corpus] {message}");
+            return Some(2);
         }
     };
     let start = begin(label);

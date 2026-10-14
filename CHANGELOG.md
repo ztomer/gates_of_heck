@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+* **`goh emoji` run alone reads `GOH_ALLOW` from `.gatesrc`, as structural does** (6.17).
+  Its `--allow` defaulted to nothing, so remote_dotfiles' permitted glyphs were refused alone and
+  passed in the gate. The sibling, found by grepping every standalone subcommand: `goh skills`
+  ignored `GOH_SKILLS_MAX_WORDS`. Both now read the key through the one `gatesrc` path the
+  structural step uses (`Exempt::Glyphs`, `gatesrc::skills_max_words`); an explicit flag still
+  wins, and `--allow ''` opts out.
+
 * **A tap bump moves version, urls and digests together** (6.15). `tap_bump.sh` rewrote with two
   blind `sed` expressions: a cask got the new digest and kept `version "0.41.1"` (the old dmg),
   and multitop.rb's agent `resource`s got the source tarball's digest and kept their old urls; the
