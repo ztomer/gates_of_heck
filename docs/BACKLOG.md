@@ -6,7 +6,9 @@ not ready to start: the **measured baseline** it moves, the **exit number** that
 hit can be wrong, each with a test BEFORE the cache exists). A perf change without a before/after
 from the P0 instrument does not land.
 
-## State — 2026-10-14, v0.27.0 released (read first)
+## State — 2026-10-14, v0.28.0 released (read first)
+
+v0.28.0 (2026-10-14) closed 6.15-6.22: the stock hooks state what they do rather than what a repo lacks (6.19), `structural` grew `--keep-going` (6.16), `emoji` reads GOH_ALLOW from .gatesrc on its own (6.17), `lock-version` reads manifests as TOML (6.18), a tap bump moves version, urls and digests together (6.15), every checker is in the calibration registry (6.21), and a producer that never ends gets a bounded wait instead of a capture (6.22). The stanza carries each in full; the commits are in git history. The one consumer-visible default: `goh structural` now stops at its first red unless `--keep-going` is passed, so a repo scripting that step needs the flag if it wants every red.
 
 v0.27.0 (2026-10-14) closed the v0.27.0 roadmap's correctness phase (4.3 every scanner declares
 its subject, 4.6 a render that counts frames must deliver them), flipped the stdin gate on by

@@ -1,6 +1,16 @@
 # CHANGELOG
 
-## Unreleased
+## v0.28.0 — one red at a time is now opt-in, a stock hook stops claiming what a repo does not, and a producer that never ends gets a bounded wait _(2026-10-14)_
+
+Nine commits since v0.27.0. One default a consumer depends on CHANGED, so it goes first:
+`goh structural` now STOPS at its first red unless asked not to, and
+`structural --full --keep-going` runs every step and names each failure. It was added because
+the first-red default hides work: on `scripts`, three reds sat behind one, and finding them
+meant clearing one at a time in a scratch worktree.
+
+The summary line deliberately does NOT read `structural: N steps failed (<how>)`, because four
+suites in the estate parse that shape to name a failing step. A keep-going flag that broke
+their parsers would have been a worse defect than the one it fixed.
 
 * **A stock hook states what it does, not what the repo lacks** (6.19). The pre-push opened
   "There is no CI behind this" -- false in every repo that has a workflow (Adv360), and the hook
