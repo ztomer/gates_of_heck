@@ -137,6 +137,20 @@ other instruments: P0 (`GOH_TIMINGS`), `cpu_ms` (`e3e5418`), `tools/quiet.sh` an
       non-zero while any refusal stands. Red-first: a scratch repo with one edited and one
       missing hook -- the missing one is absent after install today. Lies: a partial install
       read as a complete one (the exit code must say otherwise).
+- [ ] 6.21 A checker ships with no entry in its own calibration registry, and nothing here sees
+      it. Baseline: MEASURED 2026-10-14: `checks/check_audit_ignores.py` (6.12) and
+      `checks/check_git_env.py` (6.1) landed with no key in `checks/gate_calibration.json`, so
+      game_asset_factory's cross-repo ratchet (`test_gate_probes[check_gate_calibration]`) reads
+      "gates_of_heck: 2 unproven gate(s), ceiling 1" and its canary goes red; three more checkers
+      (`display_seam`, `estate_corpus`, `no_screen_linkage`) are unregistered and pass there only
+      on a grepped marker. `_calibration.verify` checks the claims the file MAKES, never the ones
+      it omits. Exit: every `checks/check_*` is a key in `proven_by` (its proof watched going red)
+      or `known_unproven` (with its reason), and the registry reader refuses a checker it does not
+      name. Red-first: a test over the real registry with one entry removed names that checker --
+      red today because the reader has no such rule; and the reader's own probe goes red when the
+      rule is dropped. Lies: a registration whose proof was never broken (calibrate each); a
+      checker outside git scope (read the scope, not the directory); a fixture estate that
+      registers only what its case cites (each case registers every checker it holds).
 
 ### Handed off — each row is its consumer's
 
