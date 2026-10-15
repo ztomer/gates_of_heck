@@ -1,5 +1,40 @@
 # CHANGELOG
 
+## v0.28.1 — the Swift coverage gate can measure an xcresult again, and it excludes test code _(2026-10-15)_
+
+Found from the outside, by `koffee_oss` trying to set the coverage floor its own roadmap
+has asked for since 2026-10-14 and never could.
+
+* **`check_swift_coverage.py --xcode` was unrunnable.** It read coverage by asking
+  `xcrun xcresulttool get --format json` and walking the object tree for every numeric
+  `coveredLines`/`lineCount` pair. Xcode now refuses exactly that call without `--legacy`:
+  *"This command is deprecated and will be removed in a future release"* (measured 2026-10-15,
+  Xcode 26). So the mode exited 2 with "cannot measure coverage" — which is not a red that
+  invites a fix but an infrastructure error every consumer reads as *coverage is broken here,
+  nevermind*. No Swift repo in the estate had `GOH_SWIFT_COV_MIN` set. Now we know why:
+  setting one went red on a perfectly healthy tree.
+
+  The mode now reads `xcrun xccov view --report --json`, the supported reader, and keeps the
+  object walk as a `--legacy` fallback for an xcresult `xccov` cannot read. When both readers
+  fail the message names both, so the next reader is not left guessing which tool broke.
+
+* **The xcode path never applied the shared scope rule.** `lib/swift_coverage_scope.py`
+  exists precisely because a test file is ~100% covered by definition — it is the thing doing
+  the running — so counting it means every test added raises coverage twice, once for the code
+  it exercises and once for itself, and a floor set on that number can be met by writing tests
+  that assert nothing. The SPM path had this since 2026-09-07; the xcode path had none of it.
+  Measured on `koffee_oss`: counting the `.xctest` bundle put the package at **60.2%** when
+  the app itself is **40.4%**. A floor set on the first number is a floor on the test suite.
+
+  Records are now **one per target** rather than per file, because a floors key names a
+  target — per-file records would make every source file its own one-file "target", which is
+  a floors file nobody could write.
+
+  Proof, on a real xcresult rather than a fixture: floor 40 passes at 40.4%, floor 60 fails
+  naming `Koffee.app`, and a floors file that names the (now excluded) `Koffee.xctest` is a
+  hard error naming the known targets — which is the existing "a floor that matches nothing
+  cannot fail" rule doing its job on a target the exclusion removed.
+
 ## v0.28.0 — one red at a time is now opt-in, a stock hook stops claiming what a repo does not, and a producer that never ends gets a bounded wait _(2026-10-14)_
 
 Nine commits since v0.27.0. One default a consumer depends on CHANGED, so it goes first:

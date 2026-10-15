@@ -255,3 +255,166 @@ def test_test_sources_do_not_count(repo):
     # reads the real 10/100 = 10% and fails.
     assert r.returncode == 1, "a test source was counted toward coverage"
     assert "10.0%" in r.stderr
+
+
+# --- xccov: the reader the xcode mode actually uses now ------------------------
+#
+# The mode used to walk `xcresulttool get --format json`. Xcode now REFUSES
+# that without `--legacy` ("deprecated and will be removed in a future
+# release", measured 2026-10-15, Xcode 26), so the whole step exited 2 and no
+# Swift repo in the estate could set a coverage floor -- setting one went red
+# on a healthy tree. xccov is the supported reader.
+#
+# Two properties have to hold or the number is a statement about the wrong
+# thing, and both were measured on koffee_oss, where the old shapes disagree:
+# ONE RECORD PER TARGET (a floors key names a target, so per-file records
+# would make every source file its own one-file "target"), and TEST CODE OUT
+# OF THE DENOMINATOR (a test file is ~100% covered by definition -- it is the
+# thing doing the running -- so counting it means every test added raises
+# coverage twice and a floor can be met by tests that assert nothing).
+
+XCCOV_JSON = {
+    "targets": [
+        {
+            "name": "Koffee.app",
+            "files": [
+                {"path": "/r/Koffee/A.swift", "coveredLines": 30, "executableLines": 100},
+                {"path": "/r/Koffee/B.swift", "coveredLines": 10, "executableLines": 100},
+            ],
+        },
+        {
+            "name": "Koffee.xctest",
+            "files": [
+                {
+                    "path": "/r/KoffeeTests/FooTests.swift",
+                    "coveredLines": 400,
+                    "executableLines": 400,
+                }
+            ],
+        },
+    ]
+}
+
+
+def test_xccov_yields_one_record_per_target():
+    assert cov._xccov_records(XCCOV_JSON) == [("Koffee.app", 40, 200)]
+
+
+def test_xccov_test_bundle_does_not_inflate_the_number():
+    # Counting the test bundle: 440/600 = 73.3%. The app alone: 40/200 = 20%.
+    # This is the gap the SPM path closed on 2026-09-07 and the xcode path
+    # never applied at all -- on koffee_oss it read 60.2% for an app at 40.4%.
+    with_tests = [
+        (
+            t["name"],
+            sum(f["coveredLines"] for f in t["files"]),
+            sum(f["executableLines"] for f in t["files"]),
+        )
+        for t in XCCOV_JSON["targets"]
+    ]
+    assert 100 * sum(c for _, c, _ in with_tests) / sum(t for _, _, t in with_tests) > 70
+    assert cov.aggregate(cov._xccov_records(XCCOV_JSON))[0] == 20.0
+
+
+def test_xccov_applies_the_shared_scope_rule_to_a_non_test_target():
+    # The `.xctest` suffix is the xcode signal, but a test file can also sit
+    # inside an ordinary target. lib/swift_coverage_scope.py already has that
+    # rule; this asserts the xcode path asks it rather than keeping its own.
+    payload = {
+        "targets": [
+            {
+                "name": "App",
+                "files": [
+                    {"path": "/r/Sources/App/A.swift", "coveredLines": 1, "executableLines": 1},
+                    {
+                        "path": "/r/Tests/AppTests/A.swift",
+                        "coveredLines": 99,
+                        "executableLines": 99,
+                    },
+                    {
+                        "path": "/r/.build/out/DerivedSources/B.swift",
+                        "coveredLines": 50,
+                        "executableLines": 50,
+                    },
+                ],
+            }
+        ]
+    }
+    assert cov._xccov_records(payload) == [("App", 1, 1)]
+
+
+def test_xccov_bools_are_not_ints():
+    # bool is an int subclass; True must not count as one line.
+    payload = {
+        "targets": [
+            {
+                "name": "App",
+                "files": [{"path": "/r/A.swift", "coveredLines": True, "executableLines": True}],
+            }
+        ]
+    }
+    assert cov._xccov_records(payload) == []
+
+
+def test_xccov_target_with_no_executable_lines_is_dropped():
+    # LiquidContainer measured 0/0 on koffee_oss. Keeping it would add a
+    # 0.0% entry to the report and a name to the floors error message for a
+    # target that has nothing to cover.
+    payload = {"targets": [{"name": "Empty", "files": []}]}
+    assert cov._xccov_records(payload) == []
+
+
+class _FakeRun:
+    """Records argv; answers per-tool from canned stdout/returncode."""
+
+    def __init__(self, answers):
+        self.answers = answers
+        self.calls = []
+
+    def __call__(self, argv, **kw):
+        self.calls.append(argv)
+        key = "xccov" if "xccov" in argv else "xcresulttool"
+        code, out = self.answers.get(key, (1, ""))
+        return type("R", (), {"returncode": code, "stdout": out, "stderr": "boom"})()
+
+
+def _patch_xcode(monkeypatch, answers, xc="/dd/Logs/Test/T.xcresult"):
+    fake = _FakeRun(answers)
+    monkeypatch.setattr(cov, "newest_xcresult", lambda dd: xc)
+    monkeypatch.setattr(cov.subprocess, "run", fake)
+    return fake
+
+
+def test_load_xcode_prefers_xccov_and_never_calls_the_deprecated_reader(monkeypatch):
+    fake = _patch_xcode(monkeypatch, {"xccov": (0, json.dumps(XCCOV_JSON))})
+    recs, why = cov.load_xcode("/dd")
+    assert (recs, why) == ([("Koffee.app", 40, 200)], None)
+    assert fake.calls[0][:4] == ["xcrun", "xccov", "view", "--report"]
+
+
+def test_load_xcode_falls_back_to_the_object_walk_with_legacy(monkeypatch):
+    # An xcresult xccov cannot read must still measure, not refuse.
+    fake = _patch_xcode(
+        monkeypatch,
+        {
+            "xccov": (1, ""),
+            "xcresulttool": (0, json.dumps({"a": {"coveredLines": 5, "lineCount": 10}})),
+        },
+    )
+    recs, why = cov.load_xcode("/dd")
+    assert why is None and ("?", 5, 10) in recs
+    assert "--legacy" in fake.calls[1]
+
+
+def test_load_xcode_names_both_reasons_when_both_readers_fail(monkeypatch):
+    # Otherwise the next reader cannot tell which tool broke, and the obvious
+    # guess ("coverage is 0") is the wrong one.
+    _patch_xcode(monkeypatch, {"xccov": (1, ""), "xcresulttool": (64, "")})
+    recs, why = cov.load_xcode("/dd")
+    assert recs == []
+    assert "xccov exited 1" in why and "xcresulttool exited 64" in why
+
+
+def test_load_xcode_still_refuses_a_missing_result_bundle():
+    recs, why = cov.load_xcode("/nowhere")
+    assert recs == [] and "no *.xcresult" in why

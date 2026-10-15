@@ -18,10 +18,13 @@ SPM   reads the codecov JSON written by `swift test --enable-code-coverage`
       payload" on antiknob).
 
 xcode reads the newest `*.xcresult` under the pinned derived-data tree
-      (.build/xcode-dd, which swift_gate.sh passes via -derivedDataPath),
-      asks `xcrun xcresulttool get --format json`, and walks the tree for
-      every object carrying numeric coveredLines/lineCount pairs — the
-      per-target coverage records.
+      (.build/xcode-dd, which swift_gate.sh passes via -derivedDataPath)
+      with `xcrun xccov view --report --json`, taking ONE record per target
+      and excluding test code — the same rule the SPM path applies, from
+      lib/swift_coverage_scope.py. It used to ask `xcrun xcresulttool get
+      --format json` and walk the object tree instead; Xcode now refuses
+      that without `--legacy`, so the mode is unrunnable without the
+      fallback path below. Measured 2026-10-15.
 
 Honesty rules (house rule #9): a MISSING payload is exit 2 with a named
 reason — it must never masquerade as "0% coverage" or as success. Only an
@@ -63,6 +66,7 @@ DEFAULT_DD = ".build/xcode-dd"
 # coverage on the same tree.
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "lib"))
 from swift_coverage_scope import EXCLUDED_MARKERS as _EXCLUDED_MARKERS  # noqa: E402
+from swift_coverage_scope import is_code_under_test  # noqa: E402
 
 
 def _spm_file_lines(f: dict):
@@ -147,34 +151,134 @@ def newest_xcresult(dd_root: str):
     return max(candidates, key=os.path.getmtime) if candidates else None
 
 
+def _xccov_records(payload):
+    """[(target, covered, total)] from `xccov view --report --json`.
+
+    ONE RECORD PER TARGET, not per file. A floors key names a target, and
+    `per_target` buckets a record by the first path segment — feed it files
+    and every source file becomes its own one-file "target", which is a
+    floors file nobody could write.
+
+    Two exclusions, and they are the SAME rule the SPM path already applies
+    (lib/swift_coverage_scope.py), not a second opinion about what coverage
+    means:
+
+      * a test bundle (`.xctest`) is dropped outright, and
+      * files the shared scope rule calls not-code-under-test are skipped.
+
+    The test exclusion is the one with teeth. A test file is ~100% covered by
+    definition — it is the thing doing the running — so counting it means
+    every test added raises coverage twice, once for the code it exercises
+    and once for itself, and a floor set on that number can be met by
+    writing tests that assert nothing. Measured on koffee_oss 2026-10-15:
+    counting the xctest bundle put the package at 60.2% when the app itself
+    is 40.4%. The SPM path had this fixed since 2026-09-07; the xcode path
+    never applied the shared rule at all.
+    """
+    out = []
+    for target in payload.get("targets") or []:
+        name = target.get("name")
+        if not isinstance(name, str) or not name or name.endswith(".xctest"):
+            continue
+        covered = total = 0
+        for f in target.get("files") or []:
+            if not isinstance(f, dict):
+                continue
+            path = f.get("path") or ""
+            if path and not is_code_under_test(path):
+                continue
+            c, t = f.get("coveredLines"), f.get("executableLines")
+            # bool is an int subclass in Python; a True must not count.
+            if isinstance(c, int) and not isinstance(c, bool):
+                covered += c
+            if isinstance(t, int) and not isinstance(t, bool):
+                total += t
+        if total > 0:
+            out.append((name, covered, total))
+    return out
+
+
+def _run_xccov(xc: str):
+    """([(target, cov, tot)], reason). Exactly one of the two is meaningful."""
+    try:
+        out = subprocess.run(
+            ["xcrun", "xccov", "view", "--report", "--json", xc],
+            capture_output=True,
+            text=True,
+            timeout=300,
+            stdin=subprocess.DEVNULL,
+        )
+    except (OSError, subprocess.SubprocessError) as exc:
+        return [], f"xccov failed on {os.path.basename(xc)}: {exc}"
+    if out.returncode != 0:
+        return [], f"xccov exited {out.returncode}: {out.stderr.strip()[:200]}"
+    try:
+        payload = json.loads(out.stdout)
+    except ValueError as exc:
+        return [], f"xccov output was not JSON ({exc})"
+    return _xccov_records(payload), None
+
+
 def load_xcode(dd_root: str):
-    """[(name, cov, tot)] from the newest xcresult; ([], reason) on trouble."""
+    """[(name, cov, tot)] from the newest xcresult; ([], reason) on trouble.
+
+    xccov FIRST. The reader this replaced walked the xcresulttool object
+    tree with `xcrun xcresulttool get --format json`, and Xcode now REFUSES
+    that without `--legacy`: "This command is deprecated and will be removed
+    in a future release" (measured 2026-10-15, Xcode 26). That made the
+    whole step unrunnable -- exit 2, "cannot measure coverage" -- which is
+    not a loud red that invites a fix but an infrastructure error every repo
+    reads as "coverage is broken here, nevermind". No Swift repo in the
+    estate had a coverage floor set, and now we know why: setting one went
+    red on a healthy tree.
+
+    The xcresulttool walk stays as a FALLBACK, with `--legacy`, for an
+    xcresult xccov cannot read. When both readers fail the message names
+    both, so the next reader is not left guessing which tool broke.
+    """
     xc = newest_xcresult(dd_root)
     if xc is None:
         return [], f"no *.xcresult under {dd_root}/Logs/Test"
+
+    records, why = _run_xccov(xc)
+    if records:
+        return records, None
+
     try:
         out = subprocess.run(
-            ["xcrun", "xcresulttool", "get", "--path", xc, "--format", "json"],
+            [
+                "xcrun",
+                "xcresulttool",
+                "get",
+                "--legacy",
+                "--path",
+                xc,
+                "--format",
+                "json",
+            ],
             capture_output=True,
             text=True,
             timeout=120,
             stdin=subprocess.DEVNULL,
         )
     except (OSError, subprocess.SubprocessError) as exc:
-        return [], f"xcresulttool failed on {xc}: {exc}"
+        return [], f"{why}; xcresulttool failed on {xc}: {exc}"
     if out.returncode != 0:
-        return [], f"xcresulttool exited {out.returncode} on {xc}: {out.stderr.strip()[:200]}"
+        return [], (
+            f"{why}; xcresulttool exited {out.returncode} on {xc}: {out.stderr.strip()[:200]}"
+        )
     try:
         payload = json.loads(out.stdout)
     except ValueError as exc:
-        return [], f"xcresulttool output was not JSON ({exc})"
-    records = [r for r in _xcresult_records(payload) if r[2] > 0]
-    if not records:
+        return [], f"{why}; xcresulttool output was not JSON ({exc})"
+    fallback = [r for r in _xcresult_records(payload) if r[2] > 0]
+    if not fallback:
         return (
             [],
-            f"no coveredLines/lineCount records recognized in {xc} (unsupported Xcode format?)",
+            f"{why}; no coveredLines/lineCount records recognized in "
+            f"{os.path.basename(xc)} (unsupported Xcode format?)",
         )
-    return records, None
+    return fallback, None
 
 
 # ---- main -------------------------------------------------------------------
