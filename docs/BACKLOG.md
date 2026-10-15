@@ -12,6 +12,18 @@ v0.28.1 (2026-10-15) is one fix, found from the outside: the Swift coverage gate
 an xcresult at all, so no Swift repo could set a floor (`koffee_oss` asked for one since
 2026-10-14). The CHANGELOG stanza carries it in full.
 
+**Reported from a consumer, per a roadmap item that said to report rather than paper over:**
+`koffee_oss` Phase 1 G2 asked for tracked Xcode build output to be removed and then, in the
+absence of a house check, for the gap to be reported here. Six files under `DerivedDataTests/`
+had come in with the history flatten. They are untracked and ignored on that side now. There is
+**no "no tracked build output" check here** — only `version-provenance`, which is a different
+question. The obvious local substitute is a `.gitignore` check, and it is a poor one: it cannot
+see a file that is already tracked, which is the only case that matters. The real check walks
+`git ls-files` for build-output shapes (`.o`, `.dSYM`, `DerivedData`, `target/`, `__pycache__`,
+`node_modules`, `*.xcactivitylog`) — the same reachability question `check_empty_scope.py` asks
+of a gate's own scope. It belongs here because every consumer inherits it, and because
+`koffee_oss` is unlikely to be the last one to find a flattened history under its build output.
+
 **And a defect in this repo's own PUSH path, found while landing it, still open — read this
 before you trust a green `tools/gate_profile.sh` to mean the push will pass.**
 
