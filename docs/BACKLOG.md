@@ -103,13 +103,11 @@ other instruments: P0 (`GOH_TIMINGS`), `cpu_ms` (`e3e5418`), `tools/quiet.sh` an
       (keyed by path, so it reads gone and new -- say so rather than guess); a scratch clone
       registered by a test (tests use their own state dir).
 
-- [ ] 6.20 `install.sh` is all-or-nothing. Baseline: 2026-10-14, CadGoose's hand-edited
-      `pre-commit`/`pre-push` make it refuse, so the three hooks it simply LACKS (`commit-msg`,
-      `post-rewrite`, `pre-applypatch`) are not added either; salary and zinc-core the same.
-      Exit: a refused hook is named and left alone, the missing ones are installed, exit
-      non-zero while any refusal stands. Red-first: a scratch repo with one edited and one
-      missing hook -- the missing one is absent after install today. Lies: a partial install
-      read as a complete one (the exit code must say otherwise).
+6.20 and 6.19 are among the eight v0.28.0 closed above; 6.20's fix is `install.sh`'s refusal
+split by what may refuse — a locally modified hook is refused ALONE (named, left byte-for-byte,
+every other hook still installed, exit non-zero) while another manager owning the hooks still
+refuses the whole run and writes nothing. Its two cases in `tests/test_install_atomic.py` were
+seen red against the pre-fix script.
 
 ### Handed off — each row is its consumer's
 

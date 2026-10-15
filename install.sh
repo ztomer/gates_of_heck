@@ -15,10 +15,17 @@
 #   2. git config core.hooksPath .githooks
 #   3. writes starter tools/gate.sh and .gatesrc if absent (never overwrites)
 #
-# ALL-OR-NOTHING: every refusal and a failed bin/goh build come before the first
-# write; an install completes or leaves the target untouched. It REFUSES hooks
-# another manager owns (.git/hooks, another core.hooksPath, pre-commit config):
-# core.hooksPath would silently stop them. --replace-hooks takes them over.
+# A LOCALLY MODIFIED hook is refused by name and left exactly as it is; every OTHER
+# hook still installs. Refusing the whole run instead left CadGoose, salary and
+# zinc-core with no commit-msg, post-rewrite or pre-applypatch at all (2026-10-14) --
+# a repo pays for one hand-edited hook with every gate it never asked for. The exit
+# code is still non-zero while a refusal stands, so a partial install is never
+# reported as a complete one.
+#
+# WHAT IS STILL ALL-OR-NOTHING: hooks another manager owns (.git/hooks, another
+# core.hooksPath, pre-commit config) refuse the whole run and write nothing --
+# core.hooksPath would silently stop them. --replace-hooks takes them over. A failed
+# bin/goh build also writes nothing: it is the last step that can die.
 #
 # It does NOT copy the checkers: hooks delegate to this checkout at runtime,
 # so a fix here reaches every installed repo with zero re-install steps.
@@ -126,13 +133,18 @@ for stock in "$HERE"/hooks/*; do
     fi
     install_hooks+=("$h")
 done
+# A refusal is reported now but does NOT end the run: the hooks that are not refused install
+# below. Recording what stands here is what lets the tail say "installed these, refused that"
+# rather than leaving a half-install to be discovered later.
+refusals_stand=0
 if [ "${#refused[@]}" -gt 0 ]; then
+    refusals_stand=1
     for h in "${refused[@]}"; do
         err "install: $hooks_dir/$h differs from both the stock hook and our install record"
     done
-    err "  it looks locally modified — refusing to overwrite it; nothing written"
+    err "  it looks locally modified — it is left exactly as it is"
     err "  pass --force to replace it with the stock hook anyway"
-    exit 1
+    err "  every OTHER hook still installs; this install is incomplete and exits non-zero"
 fi
 
 # The native structural binary. gates/structural.sh execs bin/goh when it is
@@ -228,5 +240,16 @@ fi
 
 ok "installed into $target (core.hooksPath → .githooks)"
 info "pre-commit runs tools/gate.sh --staged; pre-push runs tools/gate.sh --full on the pushed commit in a clean worktree; post-rewrite and pre-applypatch check rebase picks and am patches for conflict markers"
+
+if [ "$refusals_stand" -ne 0 ]; then
+    # The one thing this must never do is look complete. Everything the refusal spared was
+    # installed; everything it stopped is still the repo's own; and the exit code says the
+    # install did not finish, so a caller that checks it is not told a lie.
+    if [ "${#install_hooks[@]}" -gt 0 ]; then
+        info "installed anyway: ${install_hooks[*]}"
+    fi
+    err "install: INCOMPLETE — ${#refused[@]} hook(s) left as the repo has them: ${refused[*]}"
+    exit 1
+fi
 exit
 } # parse-guard
