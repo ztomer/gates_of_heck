@@ -8,7 +8,7 @@ from the P0 instrument does not land.
 
 ## State — 2026-10-14, v0.28.0 released (read first)
 
-v0.28.0 (2026-10-14) closed 6.15-6.22: the stock hooks state what they do rather than what a repo lacks (6.19), `structural` grew `--keep-going` (6.16), `emoji` reads GOH_ALLOW from .gatesrc on its own (6.17), `lock-version` reads manifests as TOML (6.18), a tap bump moves version, urls and digests together (6.15), every checker is in the calibration registry (6.21), and a producer that never ends gets a bounded wait instead of a capture (6.22). The stanza carries each in full; the commits are in git history. The one consumer-visible default: `goh structural` now stops at its first red unless `--keep-going` is passed, so a repo scripting that step needs the flag if it wants every red.
+v0.28.0 (2026-10-14) closed 6.15-6.19 and 6.21-6.22 — **6.20 is still open**, see its row: the stock hooks state what they do rather than what a repo lacks (6.19), `structural` grew `--keep-going` (6.16), `emoji` reads GOH_ALLOW from .gatesrc on its own (6.17), `lock-version` reads manifests as TOML (6.18), a tap bump moves version, urls and digests together (6.15), every checker is in the calibration registry (6.21), and a producer that never ends gets a bounded wait instead of a capture (6.22). The stanza carries each in full; the commits are in git history. The one consumer-visible default: `goh structural` now stops at its first red unless `--keep-going` is passed, so a repo scripting that step needs the flag if it wants every red.
 
 v0.27.0 (2026-10-14) closed the v0.27.0 roadmap's correctness phase (4.3 every scanner declares
 its subject, 4.6 a render that counts frames must deliver them), flipped the stdin gate on by
@@ -24,9 +24,11 @@ box, a string comparison of a path is a measurement of the CALLER, not of the fi
 ## Resume here (2026-10-14)
 
 - **Nothing in this repo is ready to start.** 5.1 is blocked on media_server green at its own
-  HEAD (three reds, each media_server's session's: Downstream); 5.2 is the owner's call; 3.3's
-  rows are each consumer's. A new item enters through the plan of record below with its four
-  fields.
+  HEAD (three reds, each owned by media_server itself and tracked in `servers/media_server`'s
+  plan: Downstream); 5.2 is the owner's call; 3.3's rows are each owned by the repo they sit in,
+  which clears them in its own Phase 0. **Ownership is a repo, never a session** — a session is
+  deleted and takes the pointer with it; the repo's roadmap is what survives. A new item enters
+  through the plan of record below with its four fields.
 - **Waiting on the owner, and nothing here moves them:**
   - 6.13's scheduling: `scripts/estate_audit.py --install` writes and loads the daily launchd job.
   - Registering `hooks/claude/estate_advisories.py` (SessionStart) in `~/.claude/settings.json`.
@@ -64,8 +66,8 @@ other instruments: P0 (`GOH_TIMINGS`), `cpu_ms` (`e3e5418`), `tools/quiet.sh` an
       unmeasured in this push. Exit: <= 90 s wall on a profile whose rust steps read in 5.3's figure
       (CPU over the rust control, `tools/gate_profile.sh` on media_server) so a miss is the work's,
       not the load's; per-crate coverage judged for running across crates at once.
-      **Blocked on media_server green at its own HEAD** (read 2026-10-14 at `e1321b9`, its
-      session's to fix by the owner's ruling): its push gate refuses at once on an older stock
+      **Blocked on media_server green at its own HEAD** (read 2026-10-14 at `e1321b9`, owned by
+      media_server itself by the owner's ruling, and tracked in the `servers` plan, not here): its push gate refuses at once on an older stock
       pre-commit (6.6/6.7); past that, in a scratch clone with today's hooks, on the stdin check
       (3.4); past that, with the check deferred in the clone, on `cargo audit` in
       `crates/yaml-mini-rs`: RUSTSEC-2024-0449, `unsafe-libyaml` 0.2.11 unmaintained. A profile
@@ -116,7 +118,8 @@ placing `stdin=subprocess.DEVNULL` at each call's closing paren from the `--sour
 then `ruff format` (goh's 555 calls), or `--seed` (`498eb9a`) for what a repo cannot declare yet.
 
 - [~] 3.3 The estate sweep, handed off: since 3.4 (`0c93f4d`) each remaining row is red in its own
-      repo and cleared in that repo's session (Downstream). Baseline: MEASURED 2026-10-09 with this tree's own binary, scope
+      repo and cleared by that repo, in its own Phase 0 (Downstream). Each row below names the
+      repo that owns it, so the sweep survives the deletion of any session. Baseline: MEASURED 2026-10-09 with this tree's own binary, scope
       `git ls-files --cached --others --exclude-standard`: 34 repos carry Python, 1361 process
       calls, **996 findings**, 17 repos exit 1. Three rows are closed: ~/.claude/skills (outside this table's scope, 6.14; 35 calls declared 2026-10-14, claude-skills `9618499`, floor 35 proved red at 36), gates_of_heck
       (511 then, 555 calls in 186 files when declared, `df8f9c2`: no allowlist, 614 calls read,
@@ -236,7 +239,7 @@ ztools' exempt key, Finance's `"$root.out"`, ZeroThunder's dropped process handl
   CadGoose (7), remote_dotfiles (3), ztools (1), counted 2026-10-12. Fix each
   (`out="$(producer)"; grep -q PAT <<< "$out"`, the shape every finding prints), or adopt what is
   left with `goh early-exit-pipe --seed` and commit `early_exit_pipe_seed.json`, which may only
-  fall. By owner ruling (2026-10-12) they stay red until their own sessions take them.
+  fall. By owner ruling (2026-10-12) they stay red until that repo's own Phase 0 takes them.
 - **Eight repos, after `1c4be61` (6.2), red at the next push until their hooks and gate run Python
   through the seam:** a bare `python3` in `.githooks/*` or `tools/gate.sh` is refused. Counted
   2026-10-12 (calls): ZeroThunder 14, app_updates 10, Finance/salary 3, Finance/zinc-core 3,
