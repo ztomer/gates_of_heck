@@ -101,3 +101,13 @@ GOH_PYTHON_FORMATTED=1
 GOH_CI_STEPS='./gates/rust_gate.sh:./gates/structural.sh --full:cargo test --workspace:./tools/pytest.sh:./gates/goh.sh status-markers:python3 ./gates/path_invariance.py -- ./gates/structural.sh --full'
 # main moves only through tools/land.sh: a push of a main tip it never gated is refused (BACKLOG 1.5).
 GOH_LANDED_ONLY=main
+
+# Carry the gitignored native binary into the pre-push export. THIS repo is the one whose push
+# export is also `GOH_LIVE_ROOT`, and `_goh_bin.sh` resolves the binary from `$GOH_LIVE_ROOT/bin/goh`;
+# a worktree of HEAD has only TRACKED files, so without this the export holds no binary, every
+# native checker reports "goh binary not built", and the suite's own push_gate tests go red.
+# Measured 2026-10-15: this suite inside a bare export -> 30 failed / 14 passed; seeding the binary
+# -> 44 passed. Before this, a green checkout pushed a refused commit, and the v0.28.1 push had to
+# use `--no-verify`. Consumers need nothing here: their export resolves the binary from the live
+# gates checkout, never from itself, so this list stays empty in every consumer's `.gatesrc`.
+GOH_EXPORT_KEEP='bin/goh'

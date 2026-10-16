@@ -140,6 +140,51 @@ def test_gatesrc_export_keep_carries_an_ignored_file(tmp_path):
     assert code == 0 and "ignored=LOCAL" in report, report
 
 
+def _gatesrc_keep() -> str:
+    """`GOH_EXPORT_KEEP` as this checkout's own `.gatesrc` declares it, sourced the way
+    push_gate.sh sources it (a `set -a` subshell, so nothing leaks into the test process)."""
+    out = subprocess.run(
+        [
+            "bash",
+            "-c",
+            'set -a; . "$1"; printf %s "${GOH_EXPORT_KEEP-}"',
+            "_",
+            str(REPO_ROOT / ".gatesrc"),
+        ],
+        capture_output=True,
+        text=True,
+        stdin=subprocess.DEVNULL,
+        check=False,  # asserted on below; the point is the value .gatesrc declares
+    )
+    assert out.returncode == 0, out.stderr
+    return out.stdout
+
+
+def test_this_checkouts_export_carries_bin_goh():
+    """bin/goh is gitignored, so a worktree of HEAD can never contain one -- and for THIS repo the
+    export IS `GOH_LIVE_ROOT`, which is where `_goh_bin.sh` resolves the native binary. With none
+    there every native checker reports "goh binary not built".
+
+    Measured 2026-10-15, running this suite inside a bare export of HEAD: 30 failed, 14 passed;
+    copying `bin/goh` back in makes all 44 pass. So a green `tools/gate.sh --full` in a checkout
+    says nothing about the push -- the checkout has the binary, the export (what the push gates)
+    does not. (BACKLOG recorded 26; the suite has grown since.)
+
+    `GOH_EXPORT_KEEP` is the mechanism that carries an ignored file into the export; the binary
+    must be named there, and it must still be ignored, or this test's premise is gone."""
+    ignored = subprocess.run(
+        ["git", "-C", str(REPO_ROOT), "check-ignore", "-q", "bin/goh"],
+        stdin=subprocess.DEVNULL,
+        check=False,  # 0 = ignored, which is the premise; asserted on below
+    )
+    assert ignored.returncode == 0, "bin/goh is no longer gitignored -- this test's premise is gone"
+    keep = _gatesrc_keep()
+    assert "bin/goh" in keep.split(), (
+        "GOH_EXPORT_KEEP must carry bin/goh, which is gitignored and resolved from the export; "
+        f"got {keep!r}"
+    )
+
+
 def test_a_red_gate_stops_the_push_and_leaves_no_worktree(tmp_path):
     repo = _repo(tmp_path)
     (repo / "fail.flag").write_text("")

@@ -24,26 +24,31 @@ see a file that is already tracked, which is the only case that matters. The rea
 of a gate's own scope. It belongs here because every consumer inherits it, and because
 `koffee_oss` is unlikely to be the last one to find a flattened history under its build output.
 
-**And a defect in this repo's own PUSH path, found while landing it, still open — read this
-before you trust a green `tools/gate_profile.sh` to mean the push will pass.**
+**And a defect in this repo's own PUSH path, found while landing it — CLOSED 2026-10-15.**
 
 The pre-push gate exports HEAD and runs the suite in the export. `bin/goh` is **gitignored**, so
 the export never contains one, and the tests that exercise a push then fail trying to build one:
 `built goh outside the session fixture (cargo build …): pass the session binary
-(GOH_BIN=native_goh_path())`. Measured 2026-10-15: **26 of the push_gate tests fail**, every run,
-serially and under `-n 12` alike. Reproduced with no push involved at all — in a worktree that
-merely lacks `bin/goh`, the same 15–17 tests fail, and they pass the moment it is present. So the
-variable is the gitignored binary, not parallelism, not load, and not any commit's content:
-`67429c6` (the tip before the coverage fix) fails identically.
+(GOH_BIN=native_goh_path())`. Reproduced with no push involved at all. Re-measured 2026-10-15 in a
+bare export of HEAD: **30 failed / 14 passed** (the 26 first recorded predates the suite's growth);
+adding `bin/goh` back made all **44 pass**. So the variable is the gitignored binary, not
+parallelism, not load, and not any commit's content.
 
 Consequence, and it is the part that matters: **`tools/gate_profile.sh` passing in a checkout that
 has `bin/goh` says nothing about whether the pre-push gate will pass**, because the push gate
-judges the same tree in a place that cannot have one. That is a gate whose verdict depends on
-where it runs — the same shape as the leak this file's `.gatesrc` handling used to have, one
-level up. The fix is a decision, not a typo: either the export seeds `bin/goh` from the caller's
-build, or the push_gate tests resolve `GOH_DIR` at the checkout that has one. Until it is made,
-a push here needs `--no-verify` with the standalone gate run recorded — which is what the v0.28.1
-push did.
+judges the same tree in a place that cannot have one. A gate whose verdict depends on where it
+runs.
+
+**RULED and fixed:** the export seeds `bin/goh` from the caller's build (the first of the two
+options), through the mechanism that already exists for exactly this — `GOH_EXPORT_KEEP` in this
+repo's own `.gatesrc`, which copies the named ignored files into the worktree. One line; no code
+path added. It is scoped to THIS repo on purpose: only here is the export also `GOH_LIVE_ROOT`,
+which is where `_goh_bin.sh` resolves the binary. A consumer's export resolves the binary from the
+live gates checkout, never from itself, so every consumer's `.gatesrc` stays empty.
+
+Proved by `tests/test_push_gate.py::test_this_checkouts_export_carries_bin_goh` — red first
+(`GOH_EXPORT_KEEP` read empty), red again on removing the key, green after. A push here no longer
+needs `--no-verify`; the v0.28.1 push was the last one that did.
 
 
 v0.28.0 (2026-10-14) closed 6.15-6.19 and 6.21-6.22 — **6.20 is still open**, see its row: the stock hooks state what they do rather than what a repo lacks (6.19), `structural` grew `--keep-going` (6.16), `emoji` reads GOH_ALLOW from .gatesrc on its own (6.17), `lock-version` reads manifests as TOML (6.18), a tap bump moves version, urls and digests together (6.15), every checker is in the calibration registry (6.21), and a producer that never ends gets a bounded wait instead of a capture (6.22). The stanza carries each in full; the commits are in git history. The one consumer-visible default: `goh structural` now stops at its first red unless `--keep-going` is passed, so a repo scripting that step needs the flag if it wants every red.
