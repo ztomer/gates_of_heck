@@ -116,10 +116,21 @@ def main(argv: list[str]) -> int:
         print(f"✗ [{NAME}] not inside a git checkout: {top.stderr.strip()}", file=sys.stderr)
         return 2
     scratch = tempfile.mkdtemp(prefix="goh-path-invariance.")
+    home_cache = os.path.expanduser("~/.cache/goh")
+    home_scratch = None
     try:
         tree = os.path.join(os.path.realpath(scratch), "tree")
         head = clone_head(top.stdout.strip(), tree)
         names = spellings(tree)
+        if not os.path.realpath(home_cache).startswith("/private/"):
+            try:
+                os.makedirs(home_cache, exist_ok=True)
+                home_scratch = tempfile.mkdtemp(prefix="goh-path-invariance.", dir=home_cache)
+                home_tree = os.path.join(os.path.realpath(home_scratch), "tree")
+                clone_head(top.stdout.strip(), home_tree)
+                names.append(home_tree)
+            except OSError:
+                pass
         if len(names) < 2:
             print(
                 f"✗ [{NAME}] this host spells {tree} one way only, so nothing was compared",
@@ -135,6 +146,8 @@ def main(argv: list[str]) -> int:
             return 2
     finally:
         shutil.rmtree(scratch, ignore_errors=True)
+        if home_scratch:
+            shutil.rmtree(home_scratch, ignore_errors=True)
     codes = {r.returncode for _, r in runs}
     shown = " ".join(command)
     if len(codes) == 1:
