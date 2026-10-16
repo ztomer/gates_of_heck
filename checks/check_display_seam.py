@@ -91,6 +91,7 @@ POLICY_KEYS = {
     "exclude",
     "exclude_why",
     "live_helper",
+    "ingress_helper",
     "shell_guard",
     "app_launch",
     "offscreen_flags",
@@ -102,6 +103,7 @@ POLICY_KEYS = {
 }
 DEFAULTS = {
     "live_helper": "require_live_screen",
+    "ingress_helper": "",
     "shell_guard": "GOH_HEADLESS",
     "markers": ["screen-ok:"],
     "shell_scripts": True,
@@ -170,6 +172,7 @@ class Policy:
             raise ValueError(f"unknown policy key(s): {', '.join(unknown)}")
         self.note = str(raw.get("note", ""))
         self.live_helper = str(raw.get("live_helper", DEFAULTS["live_helper"]))
+        self.ingress_helper = str(raw.get("ingress_helper", DEFAULTS["ingress_helper"]))
         self.shell_guard = str(raw.get("shell_guard", DEFAULTS["shell_guard"]))
         self.markers = tuple(str(m) for m in raw.get("markers", DEFAULTS["markers"]))
         self.shell_scripts = bool(raw.get("shell_scripts", DEFAULTS["shell_scripts"]))
@@ -244,7 +247,11 @@ def _launches_app(text, policy):
 
 
 def check_python(rel, text, policy, out):
-    helper = re.escape(policy.live_helper)
+    helper = (
+        f"(?:{re.escape(policy.live_helper)}|{re.escape(policy.ingress_helper)})"
+        if policy.ingress_helper
+        else re.escape(policy.live_helper)
+    )
     lines = scan_lines(text)
     call = re.search(LIVE_CALL.format(helper=helper), text, re.M)
     if call:
@@ -362,6 +369,7 @@ def main(argv=None):
         return 2
 
     bad, checked = [], 0
+    live_count, ingress_count = 0, 0
     sources = []
     for rel in targets(root, args.staged, policy):
         blob = content_bytes(root, rel, staged=args.staged)
@@ -383,6 +391,16 @@ def main(argv=None):
         elif ext == ".py":
             check_python(rel, text, policy, bad)
             check_python_frames(rel, text, policy.frames_flag, policy.frames_helper, bad)
+            if policy.live_helper:
+                live_count += len(
+                    re.findall(LIVE_CALL.format(helper=re.escape(policy.live_helper)), text, re.M)
+                )
+            if policy.ingress_helper:
+                ingress_count += len(
+                    re.findall(
+                        LIVE_CALL.format(helper=re.escape(policy.ingress_helper)), text, re.M
+                    )
+                )
         else:
             check_shell(rel, text, policy, bad)
 
@@ -413,7 +431,14 @@ def main(argv=None):
         # scrollback.
         ok("[no_display_seam] nothing staged — the index holds no source to examine")
         return 0
-    ok(f"[no_display_seam] OK — {checked} file(s), nothing reaches the display outside the seam")
+    census = (
+        f" ({live_count} live test, {ingress_count} ingress)"
+        if (live_count or ingress_count)
+        else ""
+    )
+    ok(
+        f"[no_display_seam] OK — {checked} file(s), nothing reaches the display outside the seam{census}"
+    )
     return 0
 
 
