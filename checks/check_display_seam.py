@@ -237,6 +237,12 @@ def check_swift(rel, text, policy, out):
             return
 
 
+def _launches_app(text, policy):
+    return bool(policy.app_launch and policy.app_launch.search(text)) and not any(
+        flag in text for flag in policy.offscreen_flags
+    )
+
+
 def check_python(rel, text, policy, out):
     helper = re.escape(policy.live_helper)
     lines = scan_lines(text)
@@ -265,9 +271,7 @@ def check_python(rel, text, policy, out):
                 )
                 return
         return  # a declared harness is the point of the helper, not a violation
-    launches = bool(policy.app_launch and policy.app_launch.search(text)) and not any(
-        flag in text for flag in policy.offscreen_flags
-    )
+    launches = _launches_app(text, policy)
     for i, line in enumerate(lines):
         stripped = line.strip()
         if stripped.startswith(COMMENTS[".py"]):
@@ -291,13 +295,14 @@ def check_shell(rel, text, policy, out):
     lines = scan_lines(text)
     if policy.shell_guard in text:
         return
+    launches = _launches_app(text, policy)
     for i, line in enumerate(lines):
         stripped = line.strip()
         if not stripped or stripped.startswith(COMMENTS[".sh"]):
             continue
         if policy.silenced(lines, i):
             continue
-        if LIVE_SCREEN.search(line):
+        if LIVE_SCREEN.search(line) or (launches and policy.app_launch.search(line)):
             out.append(
                 (
                     rel,

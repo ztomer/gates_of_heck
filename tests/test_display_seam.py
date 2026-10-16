@@ -248,6 +248,11 @@ RULES = (
         "and not any(\n        flag in text for flag in policy.offscreen_flags\n    )",
         "and False and not any(\n        flag in text for flag in policy.offscreen_flags\n    )",
     ),
+    (
+        "shell-app-launch",
+        "if LIVE_SCREEN.search(line) or (launches and policy.app_launch.search(line)):",
+        "if LIVE_SCREEN.search(line):",
+    ),
     ("unknown-key-refused", "if unknown:", "if False:"),
     (
         "exclusion-why-refused",

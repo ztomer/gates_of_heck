@@ -323,6 +323,15 @@ CASES = (
             0,
         ),
         (
+            "Shell: launching the APP BINARY with no offscreen guard or flag is refused",
+            {
+                "Core/DisplayPolicy.swift": SEAM,
+                "tests/run_app.sh": f"#!/bin/bash\n./{APP} --profile\n",
+            },
+            {"app_launch": APP.replace("/", "\\/").replace(".", "\\.")},
+            1,
+        ),
+        (
             "an excluded file is exempt",
             {
                 "Core/DisplayPolicy.swift": SEAM,
