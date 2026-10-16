@@ -14,6 +14,8 @@ consumer's CI can find out.
 
 from __future__ import annotations
 
+import importlib.util
+import os
 import re
 import subprocess
 import sys
@@ -104,8 +106,95 @@ def test_the_cli_lists_a_layer_and_prints_install_commands():
         stdin=subprocess.DEVNULL,
     )
     assert out.returncode == 0, out.stderr
-    assert "cargo install --locked cargo-machete" in out.stdout
+    # The cargo tools go through a presence guard -- see
+    # test_the_cargo_install_survives_a_binary_that_already_exists for why. brew is a plain
+    # install: it is already idempotent.
+    assert "cargo-machete" in out.stdout and "cargo install --locked" in out.stdout
     assert "brew install swiftlint" in out.stdout
+
+
+def _install_lines(rows: list[dict]) -> list[str]:
+    """`install_lines` for a hand-made selection -- so a test can name ONE tool and not depend on
+    what happens to be on PATH. Loaded by path: the CLI is a script, not a package module."""
+    spec = importlib.util.spec_from_file_location("required_tools_under_test", CLI)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return [ln for ln in mod.install_lines(rows) if ln.strip() and not ln.startswith("#")]
+
+
+def test_the_cargo_install_survives_a_binary_that_already_exists(tmp_path):
+    """`cargo install` REFUSES a binary it did not record, and a CI cache restores exactly that.
+
+    `taiki-e/install-action` writes `~/.cargo/bin/<tool>` with no `.crates.toml` record, and
+    `Swatinem/rust-cache` caches `~/.cargo/bin`, so a tool that was once installed another way is
+    a bare binary the next `cargo install` will not overwrite: `error: binary `cargo-audit`
+    already exists in destination`, exit 101. Measured on ztools' CI 2026-10-14..16 -- and because
+    the workflow runs the manifest's commands under `set -euo pipefail`, every gate step after the
+    install was skipped, for two days, without the gate ever running.
+
+    The manifest's contract is PRESENCE (the tools a gate refuses without), so "already on PATH"
+    is a satisfied requirement, whatever put it there. Proved with fakes rather than on a runner:
+    a `cargo` stub that fails the way the real one does, and a `cargo-audit` stub already on PATH.
+
+    Both directions, because a guard that skips is only evidence if the same command FAILS when
+    there is nothing to skip.
+    """
+    cmds = _install_lines(
+        [
+            {
+                "layer": "rust",
+                "tool": "cargo-audit",
+                "kind": "cargo",
+                "install": "cargo install cargo-audit",
+                "site": "tests/fake",
+            }
+        ]
+    )
+    assert cmds, "a cargo row must emit an install command"
+    script = "\n".join(cmds)
+
+    bindir = tmp_path / "bin"
+    bindir.mkdir()
+    stub = bindir / "cargo-audit"
+    stub.write_text("#!/bin/sh\nexit 0\n")
+    stub.chmod(0o755)
+    # Cargo refuses to install over a binary it has no record of -- the real failure, verbatim.
+    (bindir / "cargo").write_text(
+        "#!/bin/sh\n"
+        'for a in "$@"; do\n'
+        '  [ "$a" = install ] && { echo \'error: binary `cargo-audit` already exists in'
+        " destination' >&2; exit 101; }\n"
+        "done\n"
+        "exit 0\n"
+    )
+    (bindir / "cargo").chmod(0o755)
+    # A minimal PATH -- NOT the machine's: the real cargo-audit may be installed here, and the
+    # "absent" direction below would then find it and prove nothing.
+    env = dict(os.environ, PATH=f"{bindir}:/usr/bin:/bin")
+
+    def run() -> subprocess.CompletedProcess:
+        return subprocess.run(
+            ["bash", "-eu", "-c", script],
+            capture_output=True,
+            text=True,
+            env=env,
+            stdin=subprocess.DEVNULL,
+            timeout=30,
+            check=False,
+        )
+
+    present = run()
+    assert present.returncode == 0, (
+        "the emitted install is not idempotent: a tool already on PATH made it fail, which is the "
+        f"failure that stopped every later CI step\n{present.stderr}"
+    )
+
+    stub.unlink()
+    absent = run()
+    assert absent.returncode != 0, (
+        "with nothing on PATH the install must actually RUN and fail -- otherwise the guard "
+        "above proved nothing"
+    )
 
 
 def test_repo_detection_finds_the_layers_a_repo_declares(tmp_path):

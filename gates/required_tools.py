@@ -131,7 +131,26 @@ def install_lines(selected: list[dict]) -> list[str]:
         "cargo": "cargo install --locked",
         "pip": "python3 -m pip install",
     }
-    return [f"{prefix[k]} {' '.join(v)}" for k, v in groups.items() if v] + lines
+    out = []
+    if groups["brew"]:
+        out.append(f"{prefix['brew']} {' '.join(groups['brew'])}")
+    if groups["cargo"]:
+        # A cargo tool already on PATH is DONE, whatever put it there. `cargo install` REFUSES a
+        # binary it did not record -- `error: binary `cargo-audit` already exists in destination`,
+        # exit 101 -- and that is exactly what a CI cache restores: taiki-e/install-action writes
+        # ~/.cargo/bin/<tool> with no `.crates.toml`, and Swatinem/rust-cache caches ~/.cargo/bin.
+        # Measured 2026-10-14..16: ztools' CI runs these commands under `set -euo pipefail`, so
+        # every step after the install was skipped and its gate never ran. This manifest's
+        # contract is PRESENCE (the tools a gate REFUSES without), so presence is the check --
+        # per tool, because one bare binary must not decide the others' installs.
+        names = " ".join(groups["cargo"])
+        out.append(
+            "for t in " + names + '; do command -v "$t" >/dev/null 2>&1'
+            ' || cargo install --locked "$t"; done'
+        )
+    if groups["pip"]:
+        out.append(f"{prefix['pip']} {' '.join(groups['pip'])}")
+    return out + lines
 
 
 def main(argv: list[str] | None = None) -> int:
