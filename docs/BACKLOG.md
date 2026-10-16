@@ -68,7 +68,7 @@ box, a string comparison of a path is a measurement of the CALLER, not of the fi
 
 - **Nothing in this repo is ready to start.** 5.1 is blocked on media_server green at its own
   HEAD (three reds, each owned by media_server itself and tracked in `servers/media_server`'s
-  plan: Downstream); 5.2 is the owner's call; 3.3's rows are each owned by the repo they sit in,
+  plan: Downstream); 3.3's rows are each owned by the repo they sit in,
   which clears them in its own Phase 0. **Ownership is a repo, never a session** — a session is
   deleted and takes the pointer with it; the repo's roadmap is what survives. A new item enters
   through the plan of record below with its four fields.
@@ -76,7 +76,6 @@ box, a string comparison of a path is a measurement of the CALLER, not of the fi
   - 6.13's scheduling: `scripts/estate_audit.py --install` writes and loads the daily launchd job.
   - Registering `hooks/claude/estate_advisories.py` (SessionStart) in `~/.claude/settings.json`.
   - `GOH_RED_RUN` turned on, per repo: no repo has it on yet (`e526df9`).
-  - 5.2's `GOH_CI_JOBS` default: `GOH_CI_JOBS=2` per repo, or the default left at 1.
 - **Main moves only through `tools/land.sh`**, and since `7e26571` this repo's push refuses a
   `main` tip land.sh did not gate (`GOH_LANDED_ONLY=main`). Every Rust change runs
   `cargo test --workspace` before its commit, and the suite runs before a commit to gate or test
@@ -118,18 +117,6 @@ other instruments: P0 (`GOH_TIMINGS`), `cpu_ms` (`e3e5418`), `tools/quiet.sh` an
       instrument's per-step sum within 5% of wall on the same run. Lies: a cold sccache; a crate
       the "everything changed" diff did not touch; media_server's own 110 s pytest step (a
       servers item) counted as goh's.
-- [ ] 5.2 The P2 budget curve, `GOH_CI_JOBS`, this repo and routines. Baseline: 186/147/138 s
-      (1/2/4, a busy box). Measured 2026-10-08 under holds, every gates_of_heck row at ONE pinned
-      commit (`2783f0d`): j1 271 s; j2 238 and 236 s; j4 236 s (a noisy 262 s re-run clean); j6
-      noisy twice (233, 260 s). routines at `852b8d5`: j1 174, j2 162 s, j4 161 and j6 165 s.
-      **THE KNEE IS j2 in both repos**: -13% here, -7% there, nothing after. This repo's
-      `GOH_CI_STEPS` has since gained `status-markers` and the path-invariance run (27 s), so the
-      curve is unmeasured at HEAD. Exit: the default set at the knee -- `docs/config.md` keeps it
-      1 because only a repo knows which of its steps write one file, so the knee likely belongs
-      in each repo's `.gatesrc`. THE OWNER'S CALL, still open. Red-first: a run at jobs=1 no
-      faster than jobs=4, or steps serial somewhere (met on 2026-10-08: j1 slower than j4).
-      Lies: one repo's knee read as every repo's.
-
 ### Phase 2 — the estate is every consumer, not one directory
 
 - [ ] 6.14 The estate is every repo `install.sh` installed into. Baseline: MEASURED 2026-10-14:
@@ -191,7 +178,7 @@ CHANGELOG.
 |---|---|---|---|
 | media_server push, one crate changed, warm | 197 s | 183 s at load 7-12 (2026-10-06): **110 s is media_server's own pytest suite** (134 tests, run by its gate.sh outside the proven cache); 5 of 29 crates re-gated -- 3 correctly (path users), healthcheck-rs on the whole tree by design (its tests read the repo root), vpn-watchdog-rs never recorded (fixed in `d384c0d`) | <= 30 s: unreachable while the pytest step runs unconditionally; servers `1548344` cut that step to 51 s at load 56 (xdist), not yet re-measured as a push |
 | media_server push, everything changed, warm | 177 s (P0) | 208 s under a hold (2026-10-08, after `06afca4`) | <= 90 s: 5.1 |
-| P2 budget curve, `GOH_CI_JOBS` 1/2/4/6, this repo and routines | 186/147/138 s (1/2/4, busy) | knee j2 in both (2026-10-08) | the default: 5.2, the owner's call |
+| P2 budget curve, `GOH_CI_JOBS` 1/2/4, this repo and routines | 186/147/138 s (1/2/4, busy; knee read at j2 in both, 2026-10-08) | **210 / 176 / 158 s** here at `98848cf` and **77 / 51 / 46 s** in routines at `c9a893f` (jobs 1/2/4, warm, 2026-10-16, `GOH_PROVEN=0` so no step could be skipped; two sweeps agreeing within 3 s at 2 and 4). routines also measured COLD at 150 / 51 / 46 s: a first push pays one-time builds (`make test` 44 s cold against 3 s warm) | met: `GOH_CI_JOBS=2` in each repo's `.gatesrc` -- j2 takes 65% of the saving here and 84% there. This row moves into the CHANGELOG with the next release |
 
 ## Watch — cross-session serialization (`tools/session_bench.py`)
 
