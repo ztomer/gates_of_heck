@@ -6,9 +6,10 @@ not ready to start: the **measured baseline** it moves, the **exit number** that
 hit can be wrong, each with a test BEFORE the cache exists). A perf change without a before/after
 from the P0 instrument does not land.
 
-## State — 2026-10-17, v0.29.1 released (read first)
+## State — 2026-10-17, v0.29.2 released (read first)
 
-v0.29.1 is one fix, found by landing v0.29.0: a gate takes the binary built from the commit it
+v0.29.2 closes 5.1: media_server's push gate is 83 s (was 122 s), because rust coverage keeps its
+instrumented build outside the push worktree. v0.29.1 is one fix, found by landing v0.29.0: a gate takes the binary built from the commit it
 pinned (a stamp-keyed store, `bin/by-stamp/`), so a goh land no longer turns every consumer push in
 flight red with a false "BEHIND". v0.29.0 adds `goh tap-writes` (no direct write to a Homebrew tap; CHANGELOG), and is the first tag
 to carry v0.28.1's fix, which was written up but never tagged. v0.28.1 (2026-10-15) is one fix, found from the outside: the Swift coverage gate could not read
@@ -69,9 +70,7 @@ box, a string comparison of a path is a measurement of the CALLER, not of the fi
 
 ## Resume here (2026-10-14)
 
-- **Nothing in this repo is ready to start.** 5.1 is blocked on media_server green at its own
-  HEAD (three reds, each owned by media_server itself and tracked in `servers/media_server`'s
-  plan: Downstream); 3.3's rows are each owned by the repo they sit in,
+- **Nothing in this repo is ready to start.** 5.1 was met on 2026-10-17 (v0.29.2, 83 s); 3.3's rows are each owned by the repo they sit in,
   which clears them in its own Phase 0. **Ownership is a repo, never a session** — a session is
   deleted and takes the pointer with it; the repo's roadmap is what survives. A new item enters
   through the plan of record below with its four fields.
@@ -103,23 +102,17 @@ CPU (`lib/step_timings.py report` prints both; `tools/gate_profile.sh` runs the 
 other instruments: P0 (`GOH_TIMINGS`), `cpu_ms` (`e3e5418`), `tools/quiet.sh` and
 `lib/bench_hold.py` for holds, and `tools/session_bench.py` for cross-session serialization.
 
-- [ ] 5.1 media_server push, everything changed, warm. Baseline: 170 s at load 4-8, BEFORE the
-      incremental coverage build (`06afca4`: 173 -> 76 s on this repo). Measured 2026-10-08
-      12:47 under a hold: 208 s, controls 0.30/0.30 s -- the exit is NOT met. Five coverage
-      steps are 110 s of the step sum (11-31 s each); clippy, 8 s a crate, comes next. Since
-      then the house Rust gate gained a `cargo audit` step (`72e8445`, under 0.5 s measured):
-      unmeasured in this push. Exit: <= 90 s wall on a profile whose rust steps read in 5.3's figure
-      (CPU over the rust control, `tools/gate_profile.sh` on media_server) so a miss is the work's,
-      not the load's; per-crate coverage judged for running across crates at once.
-      **Blocked on media_server green at its own HEAD** (read 2026-10-14 at `e1321b9`, owned by
-      media_server itself by the owner's ruling, and tracked in the `servers` plan, not here): its push gate refuses at once on an older stock
-      pre-commit (6.6/6.7); past that, in a scratch clone with today's hooks, on the stdin check
-      (3.4); past that, with the check deferred in the clone, on `cargo audit` in
-      `crates/yaml-mini-rs`: RUSTSEC-2024-0449, `unsafe-libyaml` 0.2.11 unmaintained. A profile
-      of a clone patched past its own reds would measure a gate media_server does not run. Red-first: the P0
-      instrument's per-step sum within 5% of wall on the same run. Lies: a cold sccache; a crate
-      the "everything changed" diff did not touch; media_server's own 110 s pytest step (a
-      servers item) counted as goh's.
+- [x] 5.1 media_server push, everything changed, warm -- **MET 2026-10-17 (v0.29.2): 83 s**, control
+      drift +2.7% (valid by 5.3), load ~42, against 122 s on the same commit an hour before. The
+      instrumented build lived in `$PROJ/target/llvm-cov`, inside the push worktree that is deleted
+      after every push, so every crate's coverage built its dependencies cold on every push while
+      clippy (cargo's own build dir, keyed on the same stable worktree path) stayed warm. The build
+      dir now lives in `$GOH_COV_CACHE/<path key>/build`; coverage CPU across the 28 crates 393 s ->
+      216 s (112 -> 68 control units). The first push after a cache is empty pays the old cost once
+      (109 s measured). The media_server reds this item waited on cleared at `fce7d32`. Next
+      candidates, if 90 s ever slips: the 28 cross clippy runs (72 s wall, 42 s CPU -- contention,
+      not work) and coverage's sys time (test spawns).
+
 ### Phase 2 — the estate is every consumer, not one directory
 
 - [ ] 6.14 The estate is every repo `install.sh` installed into. Baseline: MEASURED 2026-10-14:

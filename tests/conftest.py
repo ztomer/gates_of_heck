@@ -4,12 +4,14 @@ Every disallowed glyph in this suite is built with chr(0x...) — never as a
 literal — so the suite cannot trip gates_of_heck's own emoji gate.
 """
 
+import atexit
 import fcntl
 import json
 import os
 import shutil
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 import pytest
@@ -122,6 +124,10 @@ def repo(tmp_path: Path, _repo_template: Path) -> Path:
     return r
 
 
+_SUITE_COV_CACHE = tempfile.mkdtemp(prefix="goh-suite-cov-cache.")
+atexit.register(shutil.rmtree, _SUITE_COV_CACHE, True)
+
+
 def hermetic_env(drop_git: bool = False, **overrides: str) -> dict[str, str]:
     """A child environment with NO inherited `GOH_*` but `GOH_LIVE` (and, with `drop_git`, no
     `GIT_*`): every step's opt-in is a `GOH_*` PRESENCE test, so an inherited value adds a step the
@@ -129,6 +135,9 @@ def hermetic_env(drop_git: bool = False, **overrides: str) -> dict[str, str]:
     definition: eleven files carried this filter inline, and two had grown their own copy."""
     drop = ("GOH_", "GIT_") if drop_git else ("GOH_",)
     env = {k: v for k, v in os.environ.items() if not k.startswith(drop) or k == "GOH_LIVE"}
+    # The rust coverage build dir is keyed on a project's path (gates/_coverage_rust.sh): a fixture
+    # in a fresh tmp dir would leave one never-reused build per test in the user's cache.
+    env["GOH_COV_CACHE"] = _SUITE_COV_CACHE
     env.update(overrides)
     return env
 

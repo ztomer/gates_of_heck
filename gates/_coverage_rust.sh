@@ -28,8 +28,24 @@ run_rust() {
     CALLER_CARGO_ENV="$(for v in CARGO_TARGET_DIR CARGO_BUILD_BUILD_DIR RUSTC_WRAPPER CARGO_INCREMENTAL; do
         if [ -n "${!v+x}" ]; then printf 'export %s=%q\n' "$v" "${!v}"; else printf 'unset %s\n' "$v"; fi
     done)"
+    # THE BUILD DIR OUTSIDE THE TREE, keyed on the tree's path (BACKLOG 5.1). Both dirs were
+    # `$PROJ/target/llvm-cov`, and the push gate runs in a worktree it deletes after every push: every
+    # crate's instrumented build began cold on every push, its registry dependencies included, while
+    # clippy (cargo's own build dir, keyed on the same stable worktree path) stayed warm. mediaops-rs,
+    # a push-shaped re-checkout: 40.7 s of CPU cold, 19.2 s with the build dir kept, the same report.
+    # The TARGET dir stays in the tree: it holds the binaries a test runs, and media_server's find
+    # their repo by walking up from their own path (`env_mini::exe_root`); out of the tree, two of
+    # mediaops' CLI tests failed. Per-project isolation (above) holds -- the key is the project's
+    # physical path. Pruned like the HEAD exports (gates/_head_cache.py): a week unused, or past the
+    # newest 200 and idle for an hour.
+    COV_CACHE="${GOH_COV_CACHE:-${XDG_CACHE_HOME:-$HOME/.cache}/goh/llvm-cov}"
+    COV_KEY="$(pwd -P | shasum -a 256 | cut -c1-16)"
+    mkdir -p "$COV_CACHE/$COV_KEY"
+    : >"$COV_CACHE/$COV_KEY/.goh-used"
+    python3 -S -c 'import sys; sys.path.insert(0, sys.argv[1]); import _head_cache; _head_cache.prune(sys.argv[2], sys.argv[3], keep=200)' \
+        "$(dirname "${BASH_SOURCE[0]}")" "$COV_CACHE" "$COV_KEY" 2>/dev/null || true
     export CARGO_TARGET_DIR="$PROJ/target/llvm-cov"
-    export CARGO_BUILD_BUILD_DIR="$CARGO_TARGET_DIR"
+    export CARGO_BUILD_BUILD_DIR="$COV_CACHE/$COV_KEY/build"
     export RUSTC_WRAPPER=""
     export CARGO_INCREMENTAL=0
     # The PROFILES are reset, the BUILD is not. `clean --workspace` rebuilt every member
@@ -66,7 +82,7 @@ run_rust() {
         info "exporting $label"
         if (
             export CARGO_TARGET_DIR="$PROJ/target/llvm-cov-external"
-            export CARGO_BUILD_BUILD_DIR="$CARGO_TARGET_DIR"
+            export CARGO_BUILD_BUILD_DIR="$COV_CACHE/$COV_KEY/external"
             showenv="$(cargo llvm-cov show-env --sh 2>/dev/null)" || exit 1
             eval "$showenv"
             cargo llvm-cov clean --profraw-only >/dev/null 2>&1 || true

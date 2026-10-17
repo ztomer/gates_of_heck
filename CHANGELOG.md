@@ -1,5 +1,31 @@
 # CHANGELOG
 
+## v0.29.2 — rust coverage keeps its build across pushes _(2026-10-17)_
+
+Patch bump: one performance fix (BACKLOG 5.1, now met). Nothing for a consumer to change. The first
+push after upgrading pays the old cost once, while the cache fills.
+
+* **media_server's push gate: 122 s -> 83 s.** Profiled on `fce7d32` with `tools/gate_profile.sh`
+  (BACKLOG 5.3: CPU over a rust control, drift +2.7% on the measuring run, load ~42). Coverage
+  was 218 s of summed step wall and 393 s of CPU across 28 crates. Its instrumented build lived in
+  `$PROJ/target/llvm-cov`, and the push gate runs in a worktree it deletes after every push, so
+  every crate rebuilt its dependencies instrumented on every push. Clippy, building into cargo's
+  own build dir keyed on the same stable worktree path, stayed warm. The coverage BUILD dir now
+  lives in `$GOH_COV_CACHE/<sha256 of the project path>/build` (default `~/.cache/goh/llvm-cov`),
+  so a recreated worktree at the same path reuses it. Coverage CPU went from 393 s to 216 s (112
+  to 68 control units). The report is identical: mediaops-rs reads 96.52%, 12463/12912 lines,
+  cold and warm.
+* **The TARGET dir stays in the tree.** Moving both dirs out failed two of mediaops' CLI tests:
+  media_server's binaries find their repo by walking up from their own path
+  (`env_mini::exe_root`), and the test binaries are run from the target dir.
+* Pruned like the HEAD exports (`gates/_head_cache.py`): a week unused, or past the newest 200 and
+  idle for an hour. The suite gets a cache of its own (`hermetic_env` sets `GOH_COV_CACHE`), so
+  fixture crates in tmp dirs never land in the user's.
+* Pinned by `test_a_recreated_tree_reuses_its_dependencies_build`: delete the tree and recreate it
+  at the same path, and a dependency outside it is not compiled again, with the same report. It is
+  red on the old script. `test_coverage_build_never_shares_the_build_dir` now pins the new
+  isolation: the build dir is the gate's own per-project dir, never cargo's machine-wide one.
+
 ## v0.29.1 — a gate runs the binary of the commit it pinned _(2026-10-17)_
 
 Patch bump: one fix, found by landing v0.29.0. Nothing for a consumer to change.

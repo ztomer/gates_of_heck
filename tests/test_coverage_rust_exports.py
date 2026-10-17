@@ -19,6 +19,7 @@ failed against pre-fix code (three-field names parsed as "end,mame", so FNDA
 never matched and nothing was forgiven).
 """
 
+import hashlib
 import json
 import os
 import subprocess
@@ -329,7 +330,10 @@ def test_coverage_build_never_shares_the_build_dir(tmp_path):
     gate then merged stale instrumented binaries from the previous source
     into the report: lines past the end of the current file, all "uncovered",
     and a 96% tree read 93.5% (routines, 2026-09-21). Every build-driving
-    cargo call must see the build-dir pinned to the gate's own target dir."""
+    cargo call must see the build-dir pinned to the gate's OWN directory for
+    this project: since 2026-10-17 that is `$GOH_COV_CACHE/<path key>/build`,
+    outside the tree so a recreated push worktree keeps it (BACKLOG 5.1), and
+    the target dir stays in the tree."""
     proj = setup_fixture(
         tmp_path,
         {
@@ -343,11 +347,16 @@ def test_coverage_build_never_shares_the_build_dir(tmp_path):
         tmp_path / "bin",
         tmp_path / "meta.json",
         tmp_path / "canned-parts",
-        extra_env={"CARGO_STUB_ENVLOG": str(envlog), "CARGO_BUILD_BUILD_DIR": "/shared/build"},
+        extra_env={
+            "CARGO_STUB_ENVLOG": str(envlog),
+            "CARGO_BUILD_BUILD_DIR": "/shared/build",
+            "GOH_COV_CACHE": str(tmp_path / "cov-cache"),
+        },
     )
     assert r.returncode == 0, r.stdout + r.stderr
     calls = envlog.read_text().splitlines()
     assert calls, "the stub saw no cargo calls"
-    isolated = str(proj / "target" / "llvm-cov")
+    key = hashlib.sha256(str(proj.resolve()).encode() + b"\n").hexdigest()[:16]
+    own = tmp_path.resolve() / "cov-cache" / key / "build"
     for call in calls:
-        assert call == f"target={isolated} build={isolated}", call
+        assert call == f"target={proj / 'target' / 'llvm-cov'} build={own}", call

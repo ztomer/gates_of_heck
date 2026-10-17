@@ -68,3 +68,53 @@ def test_an_incremental_report_is_the_clean_builds(tmp_path: Path) -> None:
 
     (crate / "src" / "lib.rs").write_text(LIB.replace("pub fn a() -> u32 {\n    1\n}\n\n", ""))
     assert _cov(crate).endswith("100.0% of coverable lines"), "removed code was still measured"
+
+
+def test_a_recreated_tree_reuses_its_dependencies_build(tmp_path: Path) -> None:
+    """The push gate's shape: its worktree is deleted after every push and recreated at the same
+    path for the next. The instrumented build lived inside it, so every push rebuilt every crate's
+    dependencies instrumented (media_server, 2026-10-17: 28 crates, ~393 s of coverage CPU per
+    push). Now the build dir is keyed on the path and kept outside the tree: a dependency outside
+    the recreated tree (as a registry crate is) is not compiled again, and the report is the same."""
+    (tmp_path / "base" / "src").mkdir(parents=True)
+    (tmp_path / "base" / "Cargo.toml").write_text(
+        '[package]\nname = "base"\nversion = "0.1.0"\nedition = "2021"\n\n[workspace]\n'
+    )
+    (tmp_path / "base" / "src" / "lib.rs").write_text("pub fn one() -> u32 {\n    1\n}\n")
+    cache = tmp_path / "cov-cache"
+
+    def tree() -> Path:
+        crate = tmp_path / "run" / "proj"
+        (crate / "src").mkdir(parents=True)
+        (crate / "Cargo.toml").write_text(
+            '[package]\nname = "proj"\nversion = "0.1.0"\nedition = "2021"\n\n[workspace]\n\n'
+            '[dependencies]\nbase = { path = "../../base" }\n'
+        )
+        (crate / "src" / "lib.rs").write_text(
+            "pub fn two() -> u32 {\n    base::one() + 1\n}\n\n"
+            "#[cfg(test)]\nmod t {\n    #[test]\n    fn two() {\n        assert_eq!(super::two(), 2);\n    }\n}\n"
+        )
+        subprocess.run(
+            ["cargo", "generate-lockfile", "-q"], cwd=crate, check=True, stdin=subprocess.DEVNULL
+        )
+        return crate
+
+    def cov(crate: Path) -> tuple[str, str]:
+        r = subprocess.run(
+            ["/bin/bash", str(REPO_ROOT / "gates" / "coverage_gate.sh"), "--lang", "rust",
+             "--floor", "0", str(crate)],
+            cwd=crate, capture_output=True, text=True, timeout=600, stdin=subprocess.DEVNULL,
+            env=hermetic_env(GOH_COV_CACHE=str(cache)), check=False,
+        )  # fmt: skip
+        assert r.returncode == 0, r.stdout + r.stderr
+        log = (crate / "target" / "llvm-cov" / "lcov-parts" / "part-workspace.info.log").read_text()
+        line = next(ln for ln in r.stdout.splitlines() if "[coverage]" in ln)
+        return line.split(" (floor")[0][-40:], log
+
+    first, log = cov(tree())
+    assert "Compiling base" in log, "the first build compiles the dependency: no baseline"
+    shutil.rmtree(tmp_path / "run")  # the push gate removes its worktree
+    second, log = cov(tree())
+    assert "Compiling proj" in log, log  # the recreated tree is rebuilt, as it must be
+    assert "Compiling base" not in log, f"the dependency was rebuilt for a recreated tree:\n{log}"
+    assert second == first
