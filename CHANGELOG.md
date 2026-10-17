@@ -1,5 +1,17 @@
 # CHANGELOG
 
+## v0.31.1 — a stable push export names the checkout it serves _(2026-10-17)_
+
+Patch bump: one new file per stable export, no new refusal.
+
+* **The build reclaimer could not tell a warm push build dir from an orphan.** A stable export
+  (`<export root>/<repo>-<hash>`) is rewritten every push, so its cargo build dir looked like any
+  leaf whose sources had vanished, and the scripts repo's 30-minute pressure job (scripts 1.7.0,
+  category `cargo-orphan-build-dirs`) evicted monitor's and sys_updater's live push builds. The
+  gate now writes `<run dir>.source` holding the checkout's real path; the reclaimer keeps a build
+  dir whose export names a checkout that still exists. `reap_dead_runs` deletes a marker whose
+  checkout is gone, so markers do not accumulate. Both tests were red before the change.
+
 ## v0.31.0 — a container image is pinned to one build, never a moving tag _(2026-10-17)_
 
 Minor bump: a new hard gate in every repo. The estate was made green before it landed (the

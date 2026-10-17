@@ -45,6 +45,12 @@ def _push(repo: Path, tmp_path: Path, export_root: Path) -> subprocess.Completed
     )
 
 
+def _run_litter(export_root: Path) -> list[Path]:
+    """What a run left in the export root, beyond the `<run dir>.source` marker that names a
+    stable export's checkout and outlives every run by design."""
+    return [p for p in export_root.iterdir() if p.suffix != ".source"]
+
+
 def _stamp(pid: int) -> str:
     start = subprocess.run(
         ["ps", "-o", "lstart=", "-p", str(pid)],
@@ -78,7 +84,7 @@ def test_what_a_gate_writes_beside_its_tree_is_removed_and_named(tmp_path):
     export_root = tmp_path / "exports"
     got = _push(repo, tmp_path, export_root)
     assert got.returncode == 0, got.stdout + got.stderr
-    assert not list(export_root.iterdir()), f"the run left: {list(export_root.rglob('*'))}"
+    assert _run_litter(export_root) == [], f"the run left: {list(export_root.rglob('*'))}"
     assert "outside its tree" in got.stdout + got.stderr and "repo.out" in got.stdout + got.stderr
 
 
@@ -90,7 +96,7 @@ def test_a_red_run_leaves_no_run_directory(tmp_path):
     export_root = tmp_path / "exports"
     got = _push(repo, tmp_path, export_root)
     assert got.returncode == 1, got.stdout + got.stderr
-    assert not list(export_root.iterdir()), list(export_root.rglob("*"))
+    assert _run_litter(export_root) == [], list(export_root.rglob("*"))
 
 
 def test_a_run_whose_owner_is_dead_is_reaped_by_the_next(tmp_path):
@@ -142,6 +148,39 @@ def test_the_same_repo_exports_to_the_same_path_every_time(tmp_path):
         assert got.returncode == 0, got.stdout + got.stderr
     first, second = _cwds(tmp_path)
     assert first == second, f"two pushes of one repo exported to two paths: {first} vs {second}"
+
+
+def test_the_stable_export_names_the_checkout_it_serves(tmp_path):
+    """The export is deleted after every push and recreated at the same path for the next, so the
+    build dir keyed on that path is warm on purpose. A build-dir reclaimer that evicts a workspace
+    whose sources are gone (scripts' cargo-orphan-build-dirs) cannot tell this export from a dead
+    worktree by its path, and evicted it: a cold push every time (2026-10-17). `<run dir>.source`
+    names the checkout; while it exists, so does the workspace, between pushes."""
+    repo = _repo(tmp_path)
+    export_root = tmp_path / "exports"
+    got = _push(repo, tmp_path, export_root)
+    assert got.returncode == 0, got.stdout + got.stderr
+    run_dir = Path(_cwds(tmp_path)[0]).parent
+    assert not run_dir.exists(), "the export outlived its push"
+    marker = Path(f"{run_dir}.source")
+    assert marker.is_file(), (
+        f"no {marker.name} beside the export root: {sorted(export_root.iterdir())}"
+    )
+    assert Path(marker.read_text().strip()).resolve() == repo.resolve()
+
+
+def test_a_marker_whose_checkout_is_gone_is_pruned(tmp_path):
+    """One marker per checkout ever pushed would grow forever; the next push prunes those whose
+    checkout no longer exists, and keeps the rest."""
+    repo = _repo(tmp_path)
+    export_root = tmp_path / "exports"
+    export_root.mkdir()
+    (export_root / "gone-000000000000.source").write_text(f"{tmp_path / 'deleted-worktree'}\n")
+    (export_root / "kept-111111111111.source").write_text(f"{repo}\n")
+    got = _push(repo, tmp_path, export_root)
+    assert got.returncode == 0, got.stdout + got.stderr
+    names = {p.name for p in export_root.iterdir()}
+    assert "gone-000000000000.source" not in names and "kept-111111111111.source" in names, names
 
 
 # What the gate's cargo would ACTUALLY use, asked of cargo: the property is cargo's config

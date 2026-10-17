@@ -121,7 +121,8 @@ def test_the_worktree_root_is_overridable(tmp_path):
     assert proc.returncode == 0, proc.stdout + proc.stderr
     cwd = (tmp_path / "r.txt").read_text().split("cwd=")[1].strip()
     assert cwd.startswith(os.path.realpath(root)), cwd
-    assert not any(root.iterdir()), "the worktree was not removed"
+    left = [p for p in root.iterdir() if p.suffix != ".source"]  # the stable path's identity stays
+    assert not left, f"the worktree was not removed: {left}"
 
 
 def test_ignored_files_are_absent_unless_kept(tmp_path):

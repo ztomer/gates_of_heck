@@ -68,6 +68,8 @@ GOH="${GOH_DIR:-${GOH:-$HOME/Projects/gates_of_heck}}"
 . "$GOH/lib/sleep_mark.sh"
 # shellcheck source=lib/repo_writes.sh
 . "$GOH/lib/repo_writes.sh"
+# shellcheck source=lib/push_runs.sh
+. "$GOH/lib/push_runs.sh"
 bench_lock_join "pre-push" # the whole push is one registration; a measurement waits for it
 
 root="$(git rev-parse --show-toplevel)"
@@ -191,11 +193,6 @@ run_dir=""
 refs_file=""
 export_root="${GOH_PUSH_WORKTREES:-$HOME/.cache/goh/push}"
 
-# `<pid> <start time>`: the identity of a live process. A pid alone is reused; the pair is not.
-owner_stamp() {
-    printf '%s %s\n' "$1" "$(ps -o lstart= -p "$1" 2>/dev/null | tr -s ' ' | sed 's/^ //;s/ $//')"
-}
-
 cleanup_run() {
     if [ -n "$worktree" ] && [ -d "$worktree" ]; then
         git -C "$root" worktree remove --force "$worktree" >/dev/null 2>&1 || rm -rf "$worktree"
@@ -222,21 +219,7 @@ trap 'cleanup; exit 129' HUP
 trap 'cleanup; exit 130' INT
 trap 'cleanup; exit 143' TERM
 
-# Reap what killed runs left: a run directory whose owner is not alive. Only directories carrying an
-# `.owner` are judged; anything else in the root is not this layout's to delete.
-reap_dead_runs() {
-    local dir pid
-    for dir in "$export_root"/*/; do
-        [ -f "$dir.owner" ] || continue
-        read -r pid _ <"$dir.owner" || continue
-        if [ "$(owner_stamp "$pid")" = "$(cat "$dir.owner")" ] && kill -0 "$pid" 2>/dev/null; then
-            continue
-        fi
-        info "pre-push: removing a run left by a killed gate: ${dir%/}"
-        rm -rf "$dir"
-    done
-}
-[ -d "$export_root" ] && reap_dead_runs
+[ -d "$export_root" ] && reap_dead_runs "$export_root"
 git -C "$root" worktree prune >/dev/null 2>&1 || true
 
 # THE REFS ARE READ ONCE, HERE. git hands a pre-push hook its refs on stdin, and
@@ -403,6 +386,11 @@ while read -r local_ref local_sha _remote_ref _remote_sha; do
         info "pre-push: $(basename "$root")'s export path is held by a live push; using a private one (cold build)"
     fi
     run_dir="$(cd "$run_dir" && /bin/pwd -P)"
+    # The stable export is recreated here for every push, so the build dir keyed on its path is warm
+    # on purpose. Name the checkout it serves beside it: a reclaimer that evicts build dirs whose
+    # sources are gone keeps this one while the checkout exists (scripts' reclaim_build_root.py;
+    # tests/test_push_gate_runs.py). The private fallback's build dir dies with its run: no marker.
+    [ -n "$export_build_dir" ] || printf '%s\n' "$(cd "$root" && /bin/pwd -P)" >"$run_dir.source"
     if [ -n "$export_build_dir" ]; then
         export_build_dir="$run_dir/.cargo-build"
         mkdir -p "$run_dir/.cargo"
