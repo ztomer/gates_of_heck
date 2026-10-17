@@ -1,5 +1,20 @@
 # CHANGELOG
 
+## v0.30.0 — a git command that discards uncommitted work is refused _(2026-10-17)_
+
+Minor bump: one new Claude Code hook. Wire it once in `~/.claude/settings.json` (PreToolUse, matcher
+`Bash`, command `python3 "${GOH_DIR:-$HOME/Projects/gates_of_heck}/hooks/claude/discard_guard.py"`).
+
+* **`hooks/claude/discard_guard.py`.** `git checkout -- <file>`, `git restore`, `git reset --hard`,
+  a forced checkout or switch, and `git clean -f` throw away worktree changes no reflog keeps. The
+  calibration loop (break, watch red, restore) reaches for the first, and on a file holding other
+  uncommitted work it destroyed that work twice in one CadGoose session, with the lesson already
+  written in two skills. The hook refuses such a command when its scope holds uncommitted changes,
+  names the files, and says how to proceed; `# discard-ok: <reason>` in the command marks a
+  deliberate discard. It follows `cd`, `git -C` and `git -c`, sees every spelling in
+  `tests/test_claude_discard_guard.py`, and lets a command it cannot parse run unjudged. 14
+  refusal cases go red with the guard disabled.
+
 ## v0.29.3 — a previous build's coverage binaries never count _(2026-10-17)_
 
 Patch bump: one correctness fix to v0.29.2. Nothing for a consumer to change; the first run after

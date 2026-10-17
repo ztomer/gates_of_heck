@@ -220,6 +220,8 @@ Measured on media_server: `structural --full` 1.9 s -> 0.30 s warm.
 
 Read from the hook's environment (the settings file's `env`, or the shell Claude Code started in), never from `.gatesrc`.
 
+`discard_guard.py` (PreToolUse, matcher `Bash`) takes no key: it refuses a git command that would discard uncommitted work, and `# discard-ok: <reason>` in the command is its only escape.
+
 | Key | Default | Meaning |
 |---|---|---|
 | `GOH_COMPACT_NUDGE_AT` | `300000` | Tokens of main-conversation context past which `compact_nudge.py` (Stop) tells the owner, at the end of a turn, that `/compact` would land on a task boundary. Set it under the `autoCompactWindow`, or the automatic compaction comes first and the nudge never speaks. |
