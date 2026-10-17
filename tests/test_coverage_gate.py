@@ -15,6 +15,7 @@ from pathlib import Path
 
 import pytest
 
+from cov_fakes import SHOW_ENV_FLOW
 from conftest import REPO_ROOT, llvm_cov_shim
 
 COV_GATE = REPO_ROOT / "gates" / "coverage_gate.sh"
@@ -205,10 +206,14 @@ def test_rust_end_to_end_green_then_red(tmp_path):
 # marker (written ONLY on exit 0), so a failed export that leaves a file
 # behind must fail the gate BY NAME.
 
-FAKE_CARGO = """\
+FAKE_CARGO = (
+    """\
 #!/bin/bash
-# Fake cargo: metadata declares one package with a lib target; every lcov
-# export WRITES its output file then exits 1 (the fail-after-create shape).
+# Fake cargo: metadata declares one package with a lib target; the lcov
+# report WRITES its output file then exits 1 (the fail-after-create shape).
+"""
+    + SHOW_ENV_FLOW
+    + """\
 case "$1 $2" in
   "llvm-cov --version") exit 0 ;;
   "llvm-cov clean")     exit 0 ;;
@@ -234,6 +239,7 @@ JSON
 esac
 exit 0
 """
+)
 
 
 def _run_with_fake_cargo(tmp_path: Path, *args: str):

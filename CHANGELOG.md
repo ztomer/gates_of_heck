@@ -1,5 +1,24 @@
 # CHANGELOG
 
+## v0.29.3 — a previous build's coverage binaries never count _(2026-10-17)_
+
+Patch bump: one correctness fix to v0.29.2. Nothing for a consumer to change; the first run after
+upgrading builds once into the new layout.
+
+* **A kept build dir held old binaries, and the report read them.** cargo-llvm-cov exports from
+  every executable of a workspace member's name in the build dir, whatever its metadata hash.
+  v0.29.2 kept that dir across runs (5.1), so a member whose hash changed (a version bump, an
+  edition, a dependency) left its old instrumented binaries beside the new ones, carrying the old
+  source. sys_updater, after its edition and dependency moves: 96.44% read 92.32%, with misses at
+  `config.rs:287-465` in a 290-line file. The rust mode now runs cargo-llvm-cov's `show-env` flow
+  (the same instrumented environment its one-shot mode sets) as build, prune, run, report.
+  `gates/_cov_prune.py` deletes every member-named binary the build's own artifact list does not
+  name, under exactly the directories the report reads, and refuses when the build is elsewhere.
+  The external part (`--external`) prunes the same way. A current bin's deps copy is kept by
+  identity with its uplifted file, so nothing relinks.
+* `test_a_binary_of_another_build_never_counts` bumps a version and removes code in one step. It
+  read 60.0% before the fix and reads it again with the prune disabled.
+
 ## v0.29.2 — rust coverage keeps its build across pushes _(2026-10-17)_
 
 Patch bump: one performance fix (BACKLOG 5.1, now met). Nothing for a consumer to change. The first

@@ -54,10 +54,7 @@ run_rust() {
     # build's objects: a deleted test target, another metadata hash (a version bump) and removed
     # code each read exactly as after a clean build, and a previous run's profile -- which WOULD
     # carry a dropped call forward -- is removed here (tests/test_coverage_incremental.py).
-    cargo llvm-cov clean --profraw-only >/dev/null 2>&1 || {
-        err "could not clear the previous run's profiles -- its counts would be this run's"
-        exit 1
-    }
+    # (The clearing runs in the show-env environment below, where this run's profiles land.)
 
     # ONE RUN, ONE EXPORT. The rust mode exported one lcov part PER TEST TARGET (`--no-clean`, the
     # profile reset between targets) and unioned them. The phantom misses that design was credited
@@ -86,7 +83,9 @@ run_rust() {
             showenv="$(cargo llvm-cov show-env --sh 2>/dev/null)" || exit 1
             eval "$showenv"
             cargo llvm-cov clean --profraw-only >/dev/null 2>&1 || true
-            cargo build --locked --bins >"$part.log" 2>&1 || exit 1
+            cargo build --locked --bins --message-format=json-render-diagnostics \
+                >"$part.json" 2>"$part.log" || exit 1
+            python3 "$GOH_ROOT/gates/_cov_prune.py" "$part.json" >>"$part.log" 2>&1 || exit 1
             bins="$CARGO_TARGET_DIR/debug" profile="${LLVM_PROFILE_FILE/-%p/}"
             (
                 for v in $(printf '%s\n' "$showenv" | sed -n 's/^export \([A-Za-z_][A-Za-z0-9_]*\)=.*/\1/p'); do
@@ -147,11 +146,26 @@ PYEOF
         info "exporting every target in one instrumented run: $(cut -f1,3 "$METAF" | tr '\t\n' ': ' | sed 's/: / /g')"
         # Completeness marker: written ONLY on cargo-llvm-cov exit 0. A failing run that leaves a
         # stale or partial file behind must not pass as measured data -- the marker is the proof.
+        # BUILD, PRUNE, RUN, REPORT -- cargo-llvm-cov's show-env flow, the same instrumented
+        # environment its one-shot mode sets (both are `set_env`), split so the build can be asked
+        # what it produced. The build dir outlives a build (above), and the report reads EVERY
+        # binary of a member's name it finds there, a previous build's included: _cov_prune.py
+        # deletes the binaries cargo's own artifact list does not name
+        # (tests/test_coverage_incremental.py::test_a_binary_of_another_build_never_counts).
         # shellcheck disable=SC2086  # KINDS is a list of flags
-        if cargo llvm-cov --locked --no-clean --workspace $KINDS --all-features \
-                ${IGNORE:+--ignore-filename-regex "$IGNORE"} \
-                --lcov --output-path "$WORKSPACE_PART" \
-                >"$WORKSPACE_PART.log" 2>&1; then
+        if (
+            eval "$(cargo llvm-cov show-env --sh 2>/dev/null)" && [ -n "${LLVM_PROFILE_FILE:-}" ] || exit 1
+            cargo llvm-cov clean --profraw-only || {
+                echo "could not clear the previous run's profiles -- its counts would be this run's"
+                exit 1
+            }
+            cargo test --no-run --locked --workspace $KINDS --all-features \
+                --message-format=json-render-diagnostics >"$WORKSPACE_PART.json" || exit 1
+            python3 "$GOH_ROOT/gates/_cov_prune.py" "$WORKSPACE_PART.json" || exit 1
+            cargo test --locked --workspace $KINDS --all-features || exit 1
+            cargo llvm-cov report ${IGNORE:+--ignore-filename-regex "$IGNORE"} \
+                --lcov --output-path "$WORKSPACE_PART"
+        ) >"$WORKSPACE_PART.log" 2>&1; then
             : >"$WORKSPACE_PART.ok"
         else
             export_failed "the workspace's targets" "$WORKSPACE_PART.log"

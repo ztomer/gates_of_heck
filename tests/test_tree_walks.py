@@ -124,6 +124,7 @@ WALK_ALLOWED = {
     "checks/check_empty_scope.py": "builds the empty skeleton's directory shape, pruned",
     "checks/check_tests_registered.py": "no shared gate runs it (BACKLOG); pruned walk",
     "gates/coverage_engines.py": "finds .xctest bundles IN the build dir, on purpose",
+    "gates/_cov_prune.py": "walks the cargo build dirs the coverage report reads, on purpose",
     "gates/coverage_markers.py": "swift coverage markers under the project's own sources",
 }
 WALK = re.compile(r"\brglob\(|\bos\.walk\(|glob\([^)]*\*\*")

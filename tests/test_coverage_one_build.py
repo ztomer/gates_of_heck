@@ -9,6 +9,7 @@ import os
 import stat
 import subprocess
 
+from cov_fakes import SHOW_ENV_FLOW
 from conftest import llvm_cov_shim
 from test_coverage_gate import COV_GATE
 
@@ -20,7 +21,8 @@ from test_coverage_gate import COV_GATE
 # crates: identical merged reports, 226 -> 173 s). The fake models the profile leak that made the
 # per-target resets necessary; with one run there is nothing to carry.
 
-LEAKY_CARGO = """\
+LEAKY_CARGO = (
+    """\
 #!/bin/bash
 state="$FAKE_STATE"
 echo "$*" >> "$state.calls"
@@ -31,35 +33,37 @@ case "$1" in
  {"name":"a","kind":["test"]},{"name":"b","kind":["test"]}]}]}
 JSON
     exit 0 ;;
+esac
+case " $* " in *" --no-run "*) echo build >> "$state.builds" ;; esac
+"""
+    + SHOW_ENV_FLOW
+    + """\
+case "$1" in
   llvm-cov)
     case "$2" in
       --version) exit 0 ;;
-      clean)
-        case "$*" in
-          *--profraw-only*) rm -f "$state.profile" ;;
-          *) rm -f "$state.profile" "$state.built" ;;
-        esac
-        exit 0 ;;
+      clean) rm -f "$state.profile"; exit 0 ;;
     esac
-    case "$*" in *--no-clean*) ;; *) rm -f "$state.built" "$state.profile" ;; esac
-    [ -f "$state.built" ] || echo build >> "$state.builds"
-    touch "$state.built"
-    out=""; prev=""; me="lib"
+    out=""; prev=""
     for a in "$@"; do
       [ "$prev" = "--output-path" ] && out="$a"
-      [ "$prev" = "--test" ] && me="$a"
       prev="$a"
     done
-    echo "$me" >> "$state.profile"
     {
       echo "SF:$PWD/src/lib.rs"
       while read -r t; do echo "DA:1,1"; echo "# ran $t"; done < "$state.profile"
       echo "LF:1"; echo "LH:1"; echo "end_of_record"
     } > "$out"
     exit 0 ;;
+  test)
+    me="lib"; prev=""
+    for a in "$@"; do [ "$prev" = "--test" ] && me="$a"; prev="$a"; done
+    echo "$me" >> "$state.profile"
+    exit 0 ;;
 esac
 exit 0
 """
+)
 
 
 def test_one_instrumented_run_of_exactly_the_declared_targets_and_one_build(tmp_path):
@@ -86,16 +90,15 @@ def test_one_instrumented_run_of_exactly_the_declared_targets_and_one_build(tmp_
         stdin=subprocess.DEVNULL,
     )
     assert r.returncode == 0, r.stdout + r.stderr
-    runs = [
-        c.split()
-        for c in (tmp_path / "state.calls").read_text().splitlines()
-        if c.startswith("llvm-cov") and "--output-path" in c
-    ]
+    calls = (tmp_path / "state.calls").read_text().splitlines()
+    runs = [c.split() for c in calls if c.startswith("test ") and "--no-run" not in c]
     assert len(runs) == 1, runs  # ONE instrumented run, not one per target
     run = runs[0]
     # exactly the declared kinds: a lib and tests here, no bin; never examples or benches
     assert "--lib" in run and "--tests" in run and "--bins" not in run, run
     assert not {"--all-targets", "--examples", "--benches"} & set(run), run
+    reports = [c for c in calls if c.startswith("llvm-cov report") and "--output-path" in c]
+    assert len(reports) == 1, reports  # ONE export
     part = proj / "target" / "llvm-cov" / "lcov-parts" / "part-workspace.info"
     ran = [ln[6:] for ln in part.read_text().splitlines() if ln.startswith("# ran")]
     assert ran == ["lib"], ran  # the fake's one profile: a single run, nothing carried in
@@ -108,14 +111,21 @@ def test_one_instrumented_run_of_exactly_the_declared_targets_and_one_build(tmp_
 # gate red AND says which test -- "export failed" names a mechanism, not a defect, and reads like a
 # tooling problem someone will retry.
 
-FAILING_TEST_CARGO = """\
+FAILING_TEST_CARGO = (
+    """\
 #!/bin/bash
 case "$1" in
   metadata)
     echo '{"packages":[{"name":"ft","targets":[{"name":"ft","kind":["lib"]}]}]}'
     exit 0 ;;
+esac
+"""
+    + SHOW_ENV_FLOW
+    + """\
+case "$1" in
   llvm-cov)
-    case "$2" in --version|clean) exit 0 ;; esac
+    exit 0 ;;
+  test)
     cat <<'OUT'
 running 2 tests
 test tests::fine ... ok
@@ -137,6 +147,7 @@ OUT
 esac
 exit 0
 """
+)
 
 
 def test_a_failing_test_under_coverage_is_named_as_a_test_failure(tmp_path):

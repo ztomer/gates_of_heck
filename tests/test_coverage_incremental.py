@@ -70,6 +70,32 @@ def test_an_incremental_report_is_the_clean_builds(tmp_path: Path) -> None:
     assert _cov(crate).endswith("100.0% of coverable lines"), "removed code was still measured"
 
 
+def test_a_binary_of_another_build_never_counts(tmp_path: Path) -> None:
+    """The build dir outlives a build (5.1), so a member whose metadata hash changed (a version
+    bump, an edition, a dependency) leaves its old instrumented binaries beside the new ones, and
+    cargo-llvm-cov exports from EVERY executable of a member's name it finds there. Those carry the
+    old source: removed code reads uncovered, at line numbers the current file may not have
+    (sys_updater, 2026-10-17: 96.44% read 92.32%, misses at config.rs:287-465 of a 290-line file).
+    Bump and remove at once: the old binary holds `a`, the current tree does not."""
+    crate = tmp_path / "stale"
+    (crate / "src").mkdir(parents=True)
+    manifest = '[package]\nname = "stale"\nversion = "0.1.0"\nedition = "2021"\n\n[workspace]\n'
+    (crate / "Cargo.toml").write_text(manifest)
+    tests_a = "    #[test]\n    fn aa() {\n        assert_eq!(super::a(), 1);\n    }\n"
+    (crate / "src" / "lib.rs").write_text(LIB.replace("mod t {\n", "mod t {\n" + tests_a))
+    subprocess.run(
+        ["cargo", "generate-lockfile", "-q"], cwd=crate, check=True, stdin=subprocess.DEVNULL
+    )
+    assert _cov(crate).endswith("100.0% of coverable lines")
+
+    (crate / "Cargo.toml").write_text(manifest.replace("0.1.0", "0.2.0"))
+    (crate / "src" / "lib.rs").write_text(LIB.replace("pub fn a() -> u32 {\n    1\n}\n\n", ""))
+    subprocess.run(
+        ["cargo", "generate-lockfile", "-q"], cwd=crate, check=True, stdin=subprocess.DEVNULL
+    )
+    assert _cov(crate).endswith("100.0% of coverable lines"), "a stale build's binary counted"
+
+
 def test_a_recreated_tree_reuses_its_dependencies_build(tmp_path: Path) -> None:
     """The push gate's shape: its worktree is deleted after every push and recreated at the same
     path for the next. The instrumented build lived inside it, so every push rebuilt every crate's

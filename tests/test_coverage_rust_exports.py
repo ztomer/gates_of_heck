@@ -25,17 +25,24 @@ import os
 import subprocess
 from pathlib import Path
 
+from cov_fakes import SHOW_ENV_FLOW
 from conftest import REPO_ROOT
 
 COV_GATE = REPO_ROOT / "gates" / "coverage_gate.sh"
 
-CARGO_STUB = """#!/bin/bash
+CARGO_STUB = (
+    """#!/bin/bash
 # Stubbed cargo: canned `metadata` JSON + canned per-target lcov exports.
 if [ "$1" = "metadata" ]; then cat "${CARGO_STUB_META:?}"; exit 0; fi
 # Every build-driving call records where cargo was told to build.
 echo "target=${CARGO_TARGET_DIR:-} build=${CARGO_BUILD_BUILD_DIR:-}" \
   >> "${CARGO_STUB_ENVLOG:-/dev/null}"
 if [ "$1 $2" = "llvm-cov clean" ]; then exit 0; fi
+"""
+    + SHOW_ENV_FLOW
+    + """\
+# The run: a dropped run fails here, before any report exists.
+if [ "$1" = "test" ]; then [ -z "${CARGO_STUB_DROP:-}" ]; exit; fi
 tname=""; out=""; prev=""
 for a in "$@"; do
   case "$prev" in
@@ -59,6 +66,7 @@ fi
 cp "$src" "$out"
 exit 0
 """
+)
 
 META = {
     "packages": [
