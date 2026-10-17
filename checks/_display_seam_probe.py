@@ -31,6 +31,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import check_display_seam  # noqa: E402  (the module under proof, driven not copied)
 from _display_frames import FRAMES_CASES  # noqa: E402  (the third rule's rows, kept beside it)
+from _display_seam_tiers import TIER_CASES  # noqa: E402  (the declared-harness tiers' rows)
 from _gitutil import foreign_repo_env, scratch_git  # noqa: E402
 
 SEAM = "func present() { w.orderFrontRegardless() }\n"
@@ -175,6 +176,7 @@ LIVE_CASES = tuple(
 CASES = (
     SWIFT_CASES
     + LIVE_CASES
+    + TIER_CASES
     + FRAMES_CASES
     + (
         (
@@ -253,33 +255,6 @@ CASES = (
             {
                 "Core/DisplayPolicy.swift": SEAM,
                 "tests/prose.py": '"""Callers declare the live tier with require_live_screen, so fine."""\nimport subprocess\nsubprocess.run(["screencapture", "-x", "a.png"])\n',
-            },
-            {},
-            1,
-        ),
-        (
-            "a declared live-tier harness with a real reason is accepted",
-            {
-                "Core/DisplayPolicy.swift": SEAM,
-                "tests/live.py": 'from p import require_live_screen\nrequire_live_screen("x.py", "drives the real compositor via SkyLight")\nimport subprocess\nsubprocess.run(["screencapture", "-x", "a.png"])\n',
-            },
-            {"scan": ["tests"]},
-            0,
-        ),
-        (
-            "a live declaration with NO reason is a violation",
-            {
-                "Core/DisplayPolicy.swift": SEAM,
-                "tests/live.py": 'from p import require_live_screen\nrequire_live_screen("x.py")\nimport subprocess\nsubprocess.run(["screencapture", "-x", "a.png"])\n',
-            },
-            {},
-            1,
-        ),
-        (
-            "a PLACEHOLDER live reason is a violation",
-            {
-                "Core/DisplayPolicy.swift": SEAM,
-                "tests/live.py": 'from p import require_live_screen\nrequire_live_screen("x.py", "needs the real screen")\n',
             },
             {},
             1,

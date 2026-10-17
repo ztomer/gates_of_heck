@@ -135,6 +135,7 @@ def test_the_probe_goes_red_when_one_frames_rule_is_dropped(tmp_path, label, old
         "_marker_reason.py",
         "_gitutil.py",
         "_swift_text.py",
+        "_display_seam_tiers.py",
     ):
         (work / name).write_text((CHECKS / name).read_text(encoding="utf-8"), "utf-8")
     got = subprocess.run(

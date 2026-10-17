@@ -32,6 +32,10 @@ THE THREE RULES, and each one has a shape its author did not imagine first:
           The EXECUTOR may sit on an earlier line than the command, because a multi-line
           `subprocess.run([...])` is what `ruff format` emits and what the repo's own harnesses
           are written as.
+          A policy may name a SECOND tier, `ingress_helper` (default "", so no consumer inherits
+          it): a harness that drives the real INPUT session rather than the screen declares itself
+          by calling that helper instead, held to the same call-not-mention and real-reason rules.
+          The OK line counts each tier's declarations, so a tier quietly growing is visible.
 
   SHELL   Every tracked shell script, wherever it lives. A legacy `run_*.sh` is one `bash` away
           from painting the desktop during a CI run, so the script references the offscreen guard
@@ -262,7 +266,7 @@ def check_python(rel, text, policy, out):
                 (
                     rel,
                     text.count("\n", 0, call.start()) + 1,
-                    f"{policy.live_helper}() with no `why` reason",
+                    f"{re.sub(r'[\s(]', '', call.group(0))}() with no `why` reason",
                 )
             )
             return
@@ -424,6 +428,10 @@ def main(argv=None):
         )
         if policy.live_helper:
             info(f"  A harness that needs the real screen calls {policy.live_helper}(NAME, WHY).")
+        if policy.ingress_helper:
+            info(
+                f"  One that drives the real input session calls {policy.ingress_helper}(NAME, WHY)."
+            )
         return 1
     if checked == 0:
         # Named, not "OK — 0 files". A step that did not run prints what a step that passed

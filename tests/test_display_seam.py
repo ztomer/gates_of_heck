@@ -182,6 +182,72 @@ def test_staged_policies_the_index_not_the_worktree(tmp_path):
     assert run_checker(root, "--policy", "policy.json").returncode == 0
 
 
+# ── the second tier: a harness that drives the real INPUT session, not the screen ──
+#
+# `ingress_helper` (8e44a2d, from ZeroThunder 1.9) lets a policy name a second declaration a
+# harness may call instead of `live_helper`. It is opt-in: the default is "", and an unnamed tier
+# must buy nothing, or every consumer would inherit an exemption it never asked for.
+
+INGRESS = "require_live_session"
+
+
+def harness(helper, why="posts real key events through the login session's input stream"):
+    """A Python harness that executes a live command under a declaration by `helper`."""
+    return (
+        f"from p import {helper}\n"
+        f'{helper}("h.py", "{why}")\n'
+        "import subprocess\n"
+        'subprocess.run(["cliclick", "c:1,2"])\n'
+    )
+
+
+def test_an_ingress_harness_is_accepted_when_the_policy_names_the_helper(tmp_path):
+    root = estate(tmp_path, {"tests/ing.py": harness(INGRESS)}, {"ingress_helper": INGRESS})
+    got = run_checker(root, "--policy", "policy.json")
+    assert got.returncode == 0, got.stdout + got.stderr
+
+
+@pytest.mark.parametrize("policy", [{}, {"ingress_helper": ""}], ids=["omitted", "empty"])
+def test_the_same_ingress_harness_is_refused_when_the_policy_names_no_ingress_helper(
+    tmp_path, policy
+):
+    """The default is "". A policy that never named the second tier gets the first tier's rule:
+    the ingress call is just a function call, and the live command under it is undeclared."""
+    root = estate(tmp_path, {"tests/ing.py": harness(INGRESS)}, policy)
+    got = run_checker(root, "--policy", "policy.json")
+    assert got.returncode == 1, got.stdout + got.stderr
+    assert "tests/ing.py:4: live-screen harness without require_live_screen()" in got.stderr
+
+
+def test_the_census_counts_live_and_ingress_declarations_separately(tmp_path):
+    files = {
+        "tests/live.py": harness("require_live_screen", "drives the real compositor via SkyLight"),
+        "tests/ing_a.py": harness(INGRESS),
+        "tests/ing_b.py": harness(INGRESS),
+    }
+    root = estate(tmp_path, files, {"ingress_helper": INGRESS})
+    got = run_checker(root, "--policy", "policy.json")
+    assert got.returncode == 0, got.stdout + got.stderr
+    assert "(1 live test, 2 ingress)" in got.stdout, got.stdout
+
+
+def test_a_run_with_no_declared_harness_prints_no_census(tmp_path):
+    root = estate(tmp_path, {"Core/quiet.swift": "func f() {}\n"}, {"ingress_helper": INGRESS})
+    got = run_checker(root, "--policy", "policy.json")
+    assert got.returncode == 0, got.stdout + got.stderr
+    assert "live test" not in got.stdout and "ingress" not in got.stdout, got.stdout
+
+
+def test_an_ingress_declaration_with_no_reason_names_the_helper_it_called(tmp_path):
+    """The finding names the call the author wrote. It named `live_helper` unconditionally, which
+    sent the reader of an ingress harness looking for a call that is not in the file."""
+    body = f'from p import {INGRESS}\n{INGRESS}("h.py")\n'
+    root = estate(tmp_path, {"tests/ing.py": body}, {"ingress_helper": INGRESS})
+    got = run_checker(root, "--policy", "policy.json")
+    assert got.returncode == 1, got.stdout + got.stderr
+    assert f"tests/ing.py:2: {INGRESS}() with no `why` reason" in got.stderr, got.stderr
+
+
 # ── the calibration: drop one rule, watch the probe's own row for it go red ────
 
 RULES = (
@@ -253,6 +319,21 @@ RULES = (
         "if LIVE_SCREEN.search(line) or (launches and policy.app_launch.search(line)):",
         "if LIVE_SCREEN.search(line):",
     ),
+    (
+        "ingress-tier-honoured",
+        "if policy.ingress_helper\n        else re.escape(policy.live_helper)",
+        "if False\n        else re.escape(policy.live_helper)",
+    ),
+    (
+        "ingress-tier-opt-in",
+        '"ingress_helper": "",',
+        '"ingress_helper": "require_live_session",',
+    ),
+    (
+        "ingress-no-empty-alternative",
+        "if policy.ingress_helper\n        else re.escape(policy.live_helper)",
+        "if True\n        else re.escape(policy.live_helper)",
+    ),
     ("unknown-key-refused", "if unknown:", "if False:"),
     (
         "exclusion-why-refused",
@@ -279,6 +360,7 @@ def test_the_probe_goes_red_when_one_rule_is_dropped(tmp_path, label, old, new):
         "_gitutil.py",
         "_swift_text.py",
         "_display_frames.py",
+        "_display_seam_tiers.py",
     ):
         (work / name).write_text((ROOT / "checks" / name).read_text(encoding="utf-8"), "utf-8")
     got = subprocess.run(
