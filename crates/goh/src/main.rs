@@ -80,6 +80,7 @@ pub mod subject;
 pub mod substdin;
 pub mod tagpush;
 pub mod tagver;
+pub mod tapwrite;
 pub mod unreaped;
 pub mod urlexpand;
 pub mod vendored;
@@ -378,6 +379,7 @@ fn run_ported(command: Commands) -> Result<i32, Box<Commands>> {
             paths(exclude, |x| hookindex::run_command(staged, x))
         }
         Commands::CheckoutCredentials { staged } => checkoutcreds::run_command(staged),
+        Commands::TapWrites { staged } => tapwrite::run_command(staged),
         Commands::UnreapedSpawn {
             exclude,
             staged,

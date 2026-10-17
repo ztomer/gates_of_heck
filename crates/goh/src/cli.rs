@@ -432,6 +432,15 @@ pub enum Commands {
         #[arg(long)]
         staged: bool,
     },
+    /// Fail on a script, Makefile or workflow that writes a `homebrew-*` repo directly: a
+    /// contents-API write (`gh api` / `curl`) or a push from a clone of the tap, which skips the
+    /// tap's own gate. The house route is `tools/release-kit/tap_bump.sh`; the one escape is
+    /// `# tap-write-ok: <reason>`. No `--exclude`: a gate bypass takes no path exemption.
+    TapWrites {
+        /// Staged blobs (polices the index).
+        #[arg(long)]
+        staged: bool,
+    },
     /// Fail on a test spawn no guard reaps, or whose reap sits below a line
     /// that can panic (native port of `check_no_unreaped_spawn`).
     UnreapedSpawn {

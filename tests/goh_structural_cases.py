@@ -90,6 +90,22 @@ FULL_CASES: dict[str, dict[str, bytes]] = {
         "a.sh": b'#!/bin/sh\nGIT_INDEX_FILE="${GOH_HOOK_INDEX_FILE:-x}" git diff --cached\n',
     },
     "hook_index_green": {".gatesrc": GATESRC, "a.sh": b"#!/bin/sh\nunset GOH_HOOK_INDEX_FILE\n"},
+    # tap-writes, a hard gate in every repo: a push from a clone of the tap fails; the gated bump
+    # passes. The tap's name is split so this file is not itself a finding under the gate.
+    "tap_write_red": {
+        ".gatesrc": GATESRC,
+        ".github/workflows/r.yml": (
+            b"jobs:\n  a:\n    steps:\n      - run: |\n          git clone https://github.com/o/home"
+            b"brew-tap.git t\n          git -C t push\n"
+        ),
+    },
+    "tap_write_green": {
+        ".gatesrc": GATESRC,
+        ".github/workflows/r.yml": (
+            b"jobs:\n  a:\n    steps:\n      - run: tools/release-kit/tap_bump.sh --tap o/home"
+            b"brew-tap --cask x --tag v1 --artifact x.dmg\n"
+        ),
+    },
     # checkout-credentials, a hard gate in every repo: a default checkout fails; `false` passes.
     "checkout_token_red": {
         ".gatesrc": GATESRC,
@@ -189,6 +205,8 @@ EXPECTED: dict[str, tuple[int, str | None]] = {
     "claim_red": (1, "prose claims are derived"),
     "requires_call_green": (0, None),
     "requires_call_red": (1, "a file that calls X calls Y"),
+    "tap_write_green": (0, None),
+    "tap_write_red": (1, "no direct write to a Homebrew tap"),
     "checkout_token_green": (0, None),
     "checkout_token_red": (1, "no checkout leaves its token in git config"),
     "clean": (0, None),

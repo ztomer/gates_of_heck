@@ -11,6 +11,7 @@ markdown links resolve
 no bare read of the hook's index
 no bare python in a hook or gate
 no checkout leaves its token in git config
+no direct write to a Homebrew tap
 no code after exec
 no committed secrets
 no conflict markers

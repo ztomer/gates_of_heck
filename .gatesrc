@@ -53,6 +53,7 @@ GOH_EARLY_EXIT_PIPE_MIN_FILES=65        # [75] shell sources
 GOH_DEAD_AFTER_EXEC_MIN_FILES=65        # [75] shell sources
 GOH_BARE_HOOK_INDEX_MIN_FILES=65        # [75] shell sources
 GOH_BARE_PYTHON_MIN_FILES=5             # [6] hook/gate scripts
+GOH_TAP_WRITES_MIN_FILES=370            # [414] script/workflow files (2026-10-17)
 GOH_MD_LINKS_MIN_LINKS=1                # [1] markdown links -- this tree cites by path, not link
 GOH_UNREAPED_SPAWN_MIN_FILES=300        # [337] test files
 GOH_STATUS_MARKERS_MIN_FILES=510        # [568] source files (a GOH_CI_STEPS step)

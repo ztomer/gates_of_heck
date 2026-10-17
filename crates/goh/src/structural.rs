@@ -4,7 +4,7 @@
 use crate::{
     blobs, checkoutcreds, claims, credurls, deadexec, earlypipe, gatesrc, gitutil, goh_root,
     hookindex, killname, lockver, mdlinks, prefetch, provenance, pyformat, scope, shell_lint,
-    steps, steps_delegated, steps_rust, substdin, unreaped, vendored,
+    steps, steps_delegated, steps_rust, substdin, tapwrite, unreaped, vendored,
 };
 use goh_tui::{ERR, OK};
 
@@ -266,13 +266,18 @@ fn first_stop<const N: usize>(outcomes: [Option<i32>; N], tally: &Tally) -> Opti
 /// having to know they are related. Then the commonest way a token GETS there: `actions/checkout`
 /// persists the job token as `http.*.extraheader` unless its step sets
 /// `persist-credentials: false`. The first step finds it in CI, after the checkout ran; the second
-/// finds it in the workflow, at the commit.
+/// finds it in the workflow, at the commit. Last, the token's commonest use in a release: writing
+/// a Homebrew tap around the tap's own gate (`goh tap-writes`).
 fn git_config_steps(
     repo: &std::path::Path,
     files: &[String],
     staged: bool,
     tally: &Tally,
 ) -> Option<i32> {
-    let steps = [credurls::step(), checkoutcreds::step(repo, files, staged)];
+    let steps = [
+        credurls::step(),
+        checkoutcreds::step(repo, files, staged),
+        tapwrite::step(repo, files, staged),
+    ];
     first_stop(steps, tally)
 }

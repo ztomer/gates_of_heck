@@ -83,3 +83,13 @@ def test_the_checkout_credentials_scan_cannot_take_a_path_exemption() -> None:
         text = f.read_text(encoding="utf-8")
         assert "PathFilter" not in text and "compile_exclude" not in text, f
         assert not READS_KEY.search(text), f
+
+
+def test_the_tap_write_scan_cannot_take_a_path_exemption() -> None:
+    """A write around the tap's gate is a bypass, not a style: its one escape is the reasoned
+    `tap-write-ok:` marker on the line, never a path pattern."""
+    assert "nor the tap-write scan" in _row()
+    for f in (SRC / "tapwrite").glob("*.rs"):
+        text = f.read_text(encoding="utf-8")
+        assert "PathFilter" not in text and "compile_exclude" not in text, f
+        assert not READS_KEY.search(text), f

@@ -1,5 +1,38 @@
 # CHANGELOG
 
+## v0.29.0 — a Homebrew tap is bumped through its own gate _(2026-10-17)_
+
+Minor bump: a new hard gate in every repo. It is green across the estate today (32 repos swept
+at the commit that adds it), so no consumer goes red on upgrade; it exists so none goes back.
+
+* **`goh tap-writes`, a structural step in every repo: no direct write to a Homebrew tap.**
+  `tools/release-kit/tap_bump.sh` (6.8) clones the tap, rewrites version, urls and digests
+  together, runs the TAP's own `tools/gate.sh --full`, and pushes the commit pinned -- a red tap
+  gate pushes nothing. Until 2026-10-17 three of the five producers went around it: antiknob
+  and monitor PUT the formula through the GitHub contents API, and CadGoose's release workflow
+  cloned the tap with a PAT and pushed from the clone. The tap's gate never judged those bumps,
+  and monitor v0.49.0 shipped stale agent urls that way. All five now call `tap_bump.sh`
+  (homebrew-tap T2.1); this step keeps a sixth from coming back.
+
+  Red: `gh api` to `repos/<owner>/homebrew-<name>/contents/` with a non-GET method, or with
+  fields and no method (which `gh` sends as a POST); `curl` there with a write method or a body;
+  and a `git push` after a `git clone` / `gh repo clone` of a `homebrew-*` repo in the same file.
+  Scripts (`sh bash zsh ksh py mk`, a shebang file, `Makefile`, `Justfile`) and workflows are
+  read. The tap usually arrives through a variable, so a simple assignment naming it
+  (`TAP="ztomer/homebrew-tap"`, Python `TAP = "..."`) is substituted into `$TAP`, `${TAP}`,
+  `${TAP:-...}` and an f-string's `{TAP}` first. Proven on the real pre-migration files from git:
+  antiknob's `release.sh:114`, monitor's `release.sh:165` and CadGoose's workflow (push at 173,
+  clone at 160) are each named at their line; the table in `tapwrite/tests.rs` went red on both
+  incident rows when substitution and push detection were each broken. The one escape is
+  `# tap-write-ok: <reason>` on the line or in the comment lines directly above it; an empty
+  reason and a marker with no write under it are findings. No path exemption, like
+  `goh checkout-credentials`. Floor key `GOH_TAP_WRITES_MIN_FILES` (this repo: 370, read 414;
+  proven red at 415). Lies, stated in `docs/map.md`: a Python call whose arguments span lines
+  is read line by line.
+
+* **v0.28.1 was never tagged.** Its stanza below (the Swift coverage gate reading xcresults
+  through `xccov`) ships in this release.
+
 ## v0.28.1 — the Swift coverage gate can measure an xcresult again, and it excludes test code _(2026-10-15)_
 
 Found from the outside, by `koffee_oss` trying to set the coverage floor its own roadmap

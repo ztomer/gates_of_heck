@@ -103,6 +103,11 @@ pub const CHECKOUT_CREDENTIALS: Subject = Subject {
     unit: "workflow/action file(s)",
     scanner: "no checkout leaves its token in git config",
 };
+pub const TAP_WRITES: Subject = Subject {
+    key: "GOH_TAP_WRITES_MIN_FILES",
+    unit: "script/workflow file(s)",
+    scanner: "no direct write to a Homebrew tap",
+};
 pub const MD_LINKS: Subject = Subject {
     key: "GOH_MD_LINKS_MIN_LINKS",
     unit: "markdown link(s)",
@@ -130,7 +135,7 @@ pub const STATUS_MARKERS: Subject = Subject {
 };
 
 /// Every scanner with a subject, spelled once: the keys `.gatesrc` may hold a floor in.
-pub const ALL: [&Subject; 15] = [
+pub const ALL: [&Subject; 16] = [
     &EMOJI,
     &CONFLICT_MARKERS,
     &FILE_LENGTH,
@@ -141,6 +146,7 @@ pub const ALL: [&Subject; 15] = [
     &BARE_HOOK_INDEX,
     &BARE_PYTHON,
     &CHECKOUT_CREDENTIALS,
+    &TAP_WRITES,
     &MD_LINKS,
     &UNREAPED_SPAWN,
     &SUBPROCESS_STDIN,

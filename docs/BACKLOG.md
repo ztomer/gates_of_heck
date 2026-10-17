@@ -6,9 +6,10 @@ not ready to start: the **measured baseline** it moves, the **exit number** that
 hit can be wrong, each with a test BEFORE the cache exists). A perf change without a before/after
 from the P0 instrument does not land.
 
-## State — 2026-10-14, v0.28.0 released (read first)
+## State — 2026-10-17, v0.29.0 released (read first)
 
-v0.28.1 (2026-10-15) is one fix, found from the outside: the Swift coverage gate could not read
+v0.29.0 adds `goh tap-writes` (no direct write to a Homebrew tap; CHANGELOG), and is the first tag
+to carry v0.28.1's fix, which was written up but never tagged. v0.28.1 (2026-10-15) is one fix, found from the outside: the Swift coverage gate could not read
 an xcresult at all, so no Swift repo could set a floor (`koffee_oss` asked for one since
 2026-10-14). The CHANGELOG stanza carries it in full.
 
