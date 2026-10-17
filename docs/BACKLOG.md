@@ -6,9 +6,11 @@ not ready to start: the **measured baseline** it moves, the **exit number** that
 hit can be wrong, each with a test BEFORE the cache exists). A perf change without a before/after
 from the P0 instrument does not land.
 
-## State — 2026-10-17, v0.29.0 released (read first)
+## State — 2026-10-17, v0.29.1 released (read first)
 
-v0.29.0 adds `goh tap-writes` (no direct write to a Homebrew tap; CHANGELOG), and is the first tag
+v0.29.1 is one fix, found by landing v0.29.0: a gate takes the binary built from the commit it
+pinned (a stamp-keyed store, `bin/by-stamp/`), so a goh land no longer turns every consumer push in
+flight red with a false "BEHIND". v0.29.0 adds `goh tap-writes` (no direct write to a Homebrew tap; CHANGELOG), and is the first tag
 to carry v0.28.1's fix, which was written up but never tagged. v0.28.1 (2026-10-15) is one fix, found from the outside: the Swift coverage gate could not read
 an xcresult at all, so no Swift repo could set a floor (`koffee_oss` asked for one since
 2026-10-14). The CHANGELOG stanza carries it in full.

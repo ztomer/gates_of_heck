@@ -9,3 +9,6 @@ __pycache__/
 
 # The native binary install.sh builds here; never committed.
 /bin/goh
+# ...and every build by its source stamp, which a gate takes for the commit it pinned
+# (gates/_goh_bin.sh).
+/bin/by-stamp/

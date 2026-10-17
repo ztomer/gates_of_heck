@@ -82,6 +82,18 @@ def test_a_committed_version_the_binary_is_behind_is_refused(tmp_path):
     assert "BEHIND" in got.stdout + got.stderr and "99.0.0" in got.stdout + got.stderr
 
 
+def test_a_binary_ahead_of_the_source_is_refused_and_called_ahead(tmp_path):
+    """2026-10-17: a land rebuilt bin/goh (0.29.0) under a gate pinned to the commit before
+    (0.28.1), and the refusal said "BEHIND" -- sending the reader after a rebuild that was never
+    missing. Still refused (the binary is not this source's build), but named the right way."""
+    checkout = _clean_checkout_of_todays_gates(tmp_path)
+    fake = _fake_goh(tmp_path, "99.0.0")
+    got = _structural(checkout, fake, tmp_path)
+    text = got.stdout + got.stderr
+    assert got.returncode != 0, text
+    assert "is AHEAD of the source" in text and "BEHIND" not in text, text
+
+
 def test_under_goh_live_the_working_trees_version_is_the_one_to_match(tmp_path):
     """GOH_LIVE runs the working tree -- its gates and its binary -- so a version bump that is not
     committed yet is the version the binary must report: matched there, it passed; held to HEAD,

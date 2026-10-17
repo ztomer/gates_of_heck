@@ -1,5 +1,36 @@
 # CHANGELOG
 
+## v0.29.1 — a gate runs the binary of the commit it pinned _(2026-10-17)_
+
+Patch bump: one fix, found by landing v0.29.0. Nothing for a consumer to change.
+
+* **A goh land no longer turns every consumer push in flight red.** v0.29.0 landed while
+  divoom-control's and monitor's pushes were mid-suite. Each push had pinned its gate source to
+  the export of 8e44a2d (0.28.1, C4). The land moved the live checkout on, and the next
+  resolution rebuilt `bin/goh` for the new HEAD (0.29.0, C3). divoom's nested `gate.sh --full`
+  then judged the export's 0.28.1 manifest against the live 0.29.0 binary, and the push was
+  refused: "the goh binary serving this gate is BEHIND the source". The two halves answered to
+  different commits: the source to the export's, the binary to whatever HEAD was by then. Every
+  build now also lands in a store keyed by its source stamp, `bin/by-stamp/<sha1 of the
+  stamp>/goh`. `gates/_goh_bin.sh` answers with the store's copy for the commit the gate pinned
+  (the export's `.goh-head`, or HEAD from the checkout itself):
+  * a current `bin/goh` is adopted into the store;
+  * a commit the checkout has moved past is built there by the new `scripts/build-goh.sh --rev`,
+    which never touches `bin/goh` and keeps its own build export so HEAD's stays warm;
+  * the answer a parent hands its children (`GOH_RESOLVED_*`) now names the pin, and points at
+    an immutable copy rather than a path a land rewrites.
+
+  The store is pruned by the export cache's policy (`gates/_head_cache.py`, `keep=4`; one used
+  within the hour never goes). Pinned by `tests/test_binary_pinned_to_export.py`: four cases,
+  all red on the old resolver, the first with the incident's exact message. Three
+  `test_binary_source_identity.py` stand-ins now empty the store first: the fixture's own commit
+  builds into it, and the store outranks a `bin/goh` planted afterwards.
+* **The refusal says which way it is wrong.** It read "BEHIND" about a binary that was ahead,
+  which sends a reader after a rebuild that was never missing. The two versions now decide the
+  word ("is BEHIND", "is AHEAD of", or "is not the build of" when the binary reports nothing).
+  `test_a_binary_ahead_of_the_source_is_refused_and_called_ahead`, calibrated red against the old
+  word.
+
 ## v0.29.0 — a Homebrew tap is bumped through its own gate _(2026-10-17)_
 
 Minor bump: a new hard gate in every repo. It is green across the estate today (32 repos swept

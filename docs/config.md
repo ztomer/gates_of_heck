@@ -8,7 +8,7 @@ Single schema. CLI flags beat env/.gatesrc where both exist. Unset means
 
 | Key | Default | Meaning |
 |---|---|---|
-| `GOH_BIN` | unset | Explicit path to the native `goh` binary. Set-but-missing is reported once and the gate REFUSES (there is no other tier since Phase N3); unset resolves `bin/goh` then `goh` on `PATH`. |
+| `GOH_BIN` | unset | Explicit path to the native `goh` binary. Set-but-missing is reported once and the gate REFUSES (there is no other tier since Phase N3); unset resolves the build of the commit the gate runs from (`bin/by-stamp/<sha1 of its source stamp>/goh`: a current `bin/goh` is adopted there, a commit the checkout has moved past is built there with `build-goh.sh --rev`), then `goh` on `PATH`. |
 | `GOH_NO_NATIVE` | unset | **Retired** (Phase N3). It selected the Python checkers, which are gone; a run that sets it is told so and runs the binary. Drop it from CI. |
 | `GOH_SKIP_BUILD` | unset | For `install.sh`: install hooks without building `bin/goh`. |
 | `GOH_MAX_LINES` | unset (check skipped + warn) | File-length cap. Set `500` in every repo. `off` records a deliberate no-cap (an info line instead of the warning) for a repo whose files are long by design; say why in a comment beside it. |
@@ -274,4 +274,4 @@ immutable export of its HEAD (`gates/_from_head.sh`).
 | `GOH_LIVE` | unset (consumers run HEAD) | `1` runs the gates from the shared checkout's WORKING TREE. Unset, every entry point (`structural.sh`, `rust_gate.sh`, `push_gate.sh`, ...) and sourced lib (`_common.sh`, `tui/lib.sh`) re-runs itself from an immutable export of the checkout's HEAD (`gates/_from_head.sh`, C4), so an uncommitted edit to gate source cannot judge any consumer's commit. Set it to develop the gates; this repo's suite sets it (`tests/conftest.py`), and a gate started under pytest without it refuses. The native binary follows: see `GOH_LIVE_TARGET_DIR`. |
 | `GOH_HEAD_CACHE` | `~/.cache/goh/head` | Where the HEAD exports live, one immutable directory per commit; exports of other commits untouched for 7 days are pruned. |
 | `GOH_LIVE_TARGET_DIR` | `<checkout>/target/goh-live` | Under `GOH_LIVE`, when the working tree's Rust (crates/, Cargo.toml, Cargo.lock, rust-toolchain.toml) differs from HEAD, `_goh_bin.sh` builds THAT `goh` here, once per diff, and runs it -- `bin/goh` is HEAD's (C3) and would answer for code the run is not testing. |
-| `GOH_LIVE_ROOT` | internal (Not a setting) | Set by `_from_head.sh` for the export's children: the live checkout, where `bin/goh` (not in git) is found. Not user config. |
+| `GOH_LIVE_ROOT` | internal (Not a setting) | Set by `_from_head.sh` for the export's children: the live checkout, where `bin/goh` and its stamp-keyed store `bin/by-stamp/` (not in git) are found. Not user config. |

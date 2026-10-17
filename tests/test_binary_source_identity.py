@@ -12,11 +12,18 @@ caller uses -- compares it to HEAD's. A bin/goh that does not match is REBUILT f
 checkers run and the line says so. An explicit GOH_BIN stays trusted, as documented.
 """
 
+import shutil
 import subprocess
 from pathlib import Path
 
 from test_gate_environment import _clean_checkout_of_todays_gates
 from conftest import native_goh_path, hermetic_env
+
+
+def _no_store(checkout: Path) -> None:
+    """Empty the stamp-keyed store (gates/_goh_bin.sh), which outranks bin/goh: the fixture's own
+    commit builds goh into it, so a stand-in planted at bin/goh would never be asked."""
+    shutil.rmtree(checkout / "bin" / "by-stamp", ignore_errors=True)
 
 
 def _fake(path: Path, version: str, tree: str | None) -> Path:
@@ -86,6 +93,7 @@ def _fake_builder(checkout: Path, version: str, stamp: str, ok: bool = True) -> 
 
 def test_a_binary_built_from_heads_source_serves_the_gate(tmp_path):
     checkout = _clean_checkout_of_todays_gates(tmp_path)
+    _no_store(checkout)
     _fake(checkout / "bin" / "goh", _version(checkout), _head_tree(checkout))
     calls = _fake_builder(checkout, _version(checkout), _head_tree(checkout))
     got = _structural(checkout, tmp_path)
@@ -96,6 +104,7 @@ def test_a_binary_built_from_heads_source_serves_the_gate(tmp_path):
 def test_a_stale_dirty_or_unstamped_binary_is_rebuilt_from_head_and_used(tmp_path):
     checkout = _clean_checkout_of_todays_gates(tmp_path)
     for tree in ("0000 0000 0000 0000", "dirty", None):  # None: built before stamps existed
+        _no_store(checkout)
         _fake(checkout / "bin" / "goh", _version(checkout), tree)
         calls = _fake_builder(checkout, _version(checkout), _head_tree(checkout))
         got = _structural(checkout, tmp_path)
@@ -108,6 +117,7 @@ def test_a_failed_rebuild_refuses_and_says_so(tmp_path):
     """A stale binary whose rebuild fails is neither run (it is not HEAD's) nor replaced by the
     Python checkers (retired, Phase N3): the gate refuses, naming the build failure."""
     checkout = _clean_checkout_of_todays_gates(tmp_path)
+    _no_store(checkout)
     _fake(checkout / "bin" / "goh", _version(checkout), "0000 0000 0000 0000")
     _fake_builder(checkout, _version(checkout), _head_tree(checkout), ok=False)
     got = _structural(checkout, tmp_path)

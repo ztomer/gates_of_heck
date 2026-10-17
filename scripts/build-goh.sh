@@ -60,19 +60,47 @@ fi
 # Uncommitted checks/ / gates/ / lib/ / tui/ are not this script's to judge any more: the binary
 # carries none of them, and structural.sh + push_gate.sh name them at the moment they run.
 #   --if-stale   build only when bin/goh's stamp differs from HEAD's (the resolver's call)
+#   --rev SHA    build that commit into the store only, never bin/goh: the resolver's call for a
+#                gate pinned to a commit the live checkout has moved past (gates/_goh_bin.sh)
+# Every build also lands in the store, `bin/by-stamp/<sha1 of its stamp>/goh`, which is what the
+# resolver answers with: a gate gets the build of the commit it pinned, whatever bin/goh is by then.
 INPUTS=(crates Cargo.toml Cargo.lock rust-toolchain.toml)
 IF_STALE=""
-[[ "${1:-}" == "--if-stale" ]] && IF_STALE=1
+REV="HEAD"
+case "${1:-}" in
+  --if-stale) IF_STALE=1 ;;
+  --rev)
+    REV="${2:-}"
+    [[ -n "${REV}" ]] || { echo "✗ build-goh: --rev needs a commit" >&2; exit 2; }
+    ;;
+esac
 # shellcheck disable=SC2046  # word-splitting git's variable list is the point
 git_here() { (unset ${GOH_GIT_LOCAL_VARS:-$(git rev-parse --local-env-vars 2>/dev/null)}; git -C "${PROJECT_ROOT}" "$@"); }
 # Captured first: git ECHOES a revision it cannot resolve (no HEAD yet), which must read as empty.
-head_stamp() { local out; out="$(git_here rev-parse "${INPUTS[@]/#/HEAD:}" 2>/dev/null)" || return 0
+head_stamp() { local out; out="$(git_here rev-parse "${INPUTS[@]/#/${REV}:}" 2>/dev/null)" || return 0
   printf '%s' "${out}" | tr '\n' ' ' | sed 's/ $//'; }
 
 STAMP="$(head_stamp)"
 if [[ -n "${GOH_BUILD_PUBLISH_CHECK_ONLY:-}" ]]; then
   echo "publish ok${STAMP:+ (the committed source at HEAD)}"
   exit 0
+fi
+# A --rev of the commit HEAD already is: an ordinary build (bin/goh too).
+if [[ "${REV}" != "HEAD" && "$(git_here rev-parse -q --verify "${REV}^{commit}" 2>/dev/null)" \
+      == "$(git_here rev-parse -q --verify HEAD 2>/dev/null)" ]]; then
+  REV="HEAD"
+fi
+if [[ "${REV}" != "HEAD" && -z "${STAMP}" ]]; then
+  echo "✗ build-goh: ${REV} is not a commit of this checkout with goh's build inputs" >&2
+  exit 2
+fi
+# The store needs a stamp to key on: a tree that is not a checkout (a tarball) has none, builds
+# bin/goh alone, and never reads the resolver (which such a tree need not even carry).
+STORED=""
+if [[ -n "${STAMP}" ]]; then
+  # shellcheck source=gates/_goh_bin.sh
+  . "${PROJECT_ROOT}/gates/_goh_bin.sh"
+  STORED="$(goh_store_path "${PROJECT_ROOT}" "${STAMP}")"
 fi
 
 current() { [[ -n "${STAMP}" && -x "${PROJECT_ROOT}/bin/goh" \
@@ -101,24 +129,31 @@ trap 'rm -rf "${LOCK}"' EXIT
 if [[ -n "${IF_STALE}" ]] && current; then
   exit 0   # another hook rebuilt it while this one waited
 fi
+if [[ "${REV}" != "HEAD" && "$(goh_stamp_of "${STORED}")" == "${STAMP}" ]]; then
+  exit 0   # another gate pinned to the same commit built it while this one waited
+fi
 
 if [[ -n "${STAMP}" ]]; then
   # A STABLE export path, updated in place: `read-tree -u` rewrites only files that changed, so
   # cargo's fingerprints stay warm and a one-file change rebuilds one crate, not the workspace.
+  # A --rev build has its own export, so it never churns HEAD's warm one.
   cache="${XDG_CACHE_HOME:-${HOME}/.cache}/goh/build/$(printf %s "${PROJECT_ROOT}" | cksum | cut -d' ' -f1)"
+  [[ "${REV}" == "HEAD" ]] || cache="${cache}-rev"
   mkdir -p "${cache}/src"
   # shellcheck disable=SC2046  # word-splitting git's variable list is the point
   (unset ${GOH_GIT_LOCAL_VARS:-$(git rev-parse --local-env-vars 2>/dev/null)}
-   GIT_INDEX_FILE="${cache}/index" git -C "${PROJECT_ROOT}" --work-tree="${cache}/src" read-tree --reset -u HEAD)
+   GIT_INDEX_FILE="${cache}/index" git -C "${PROJECT_ROOT}" --work-tree="${cache}/src" read-tree --reset -u "${REV}")
   SRC="${cache}/src"
-  dirty="$(git_here status --porcelain --untracked-files=normal -- "${INPUTS[@]}" || true)"
-  [[ -z "${dirty}" ]] || echo "· building HEAD; these uncommitted edits are NOT in it (try them: cargo build --release -p goh, then GOH_BIN=<that binary>):" >&2
-  [[ -z "${dirty}" ]] || echo "${dirty}" | sed 's/^/    /' >&2
+  if [[ "${REV}" == "HEAD" ]]; then
+    dirty="$(git_here status --porcelain --untracked-files=normal -- "${INPUTS[@]}" || true)"
+    [[ -z "${dirty}" ]] || echo "· building HEAD; these uncommitted edits are NOT in it (try them: cargo build --release -p goh, then GOH_BIN=<that binary>):" >&2
+    [[ -z "${dirty}" ]] || echo "${dirty}" | sed 's/^/    /' >&2
+  fi
 else
   SRC="${PROJECT_ROOT}"   # not a git checkout (a tarball): build what is here, stamped `unknown`
 fi
 
-echo "Building goh for ${OS}/${ARCH} from ${STAMP:+HEAD }source…"
+echo "Building goh for ${OS}/${ARCH} from ${STAMP:+${REV} }source…"
 GOH_SOURCE_STAMP="${STAMP:-unknown}" cargo build --release --quiet --locked \
   --manifest-path "${SRC}/Cargo.toml" -p goh
 
@@ -132,11 +167,20 @@ if [[ ! -x "${BIN}" ]]; then
   echo "✗ release binary not found at ${BIN}" >&2
   exit 1
 fi
+WANT="$(grep -m1 '^version = ' "${SRC}/Cargo.toml" | cut -d'"' -f2)"
+if [[ "${REV}" != "HEAD" ]]; then
+  goh_store_adopt "${BIN}" "${STORED}"
+  if [[ "$(goh_stamp_of "${STORED}")" != "${STAMP}" ]]; then
+    echo "✗ the store's build of ${REV} is not stamped with its source: $(goh_stamp_of "${STORED}")" >&2
+    exit 1
+  fi
+  echo "✓ goh for ${REV:0:7} ready in the store ($("${STORED}" --version | awk '{print $NF}'))"
+  exit 0
+fi
 cp "${BIN}" "${PROJECT_ROOT}/bin/.goh.$$"
 mv "${PROJECT_ROOT}/bin/.goh.$$" "${PROJECT_ROOT}/bin/goh"
 
 # The binary that landed is the one HEAD describes: its version and its source stamp.
-WANT="$(grep -m1 '^version = ' "${SRC}/Cargo.toml" | cut -d'"' -f2)"
 GOT="$("${PROJECT_ROOT}/bin/goh" --version | awk '{print $NF}')"
 if [[ "${GOT}" != "${WANT}" ]]; then
   echo "✗ bin/goh reports ${GOT}, Cargo.toml says ${WANT}" >&2
@@ -146,6 +190,7 @@ if [[ -n "${STAMP}" ]] && ! current; then
   echo "✗ bin/goh's source stamp is not HEAD's: $("${PROJECT_ROOT}/bin/goh" source-tree)" >&2
   exit 1
 fi
+[[ -z "${STAMP}" ]] || goh_store_adopt "${PROJECT_ROOT}/bin/goh" "${STORED}"
 echo "✓ bin/goh ready (${GOT})"
 exit
 } # parse-guard

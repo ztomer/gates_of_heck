@@ -9,6 +9,9 @@ export used within the hour may have a gate running from it right now, and is ne
 Measured before the bound: 55 exports, 226 MB (2026-10-06). Pinned by
 tests/test_head_export_prune.py.
 
+The binary store (`bin/by-stamp/`, gates/_goh_bin.sh) is pruned by the same policy with a smaller
+`keep`: one directory per build, the same `.goh-used` stamp, and one used within the hour never goes.
+
 A LIBRARY, not an entry point: it is part of the C4 mechanism itself (the export it prunes is
 what every other entry point re-runs from), so `_from_head.sh` imports it and calls `prune`.
 """
@@ -17,7 +20,6 @@ from __future__ import annotations
 
 import os
 import shutil
-import sys
 import time
 
 KEEP = 20  # the current export and the 19 most recently used others
@@ -36,7 +38,7 @@ def last_use(path: str) -> float:
     return os.stat(path).st_mtime
 
 
-def prune(cache: str, current: str, now: float | None = None) -> list[str]:
+def prune(cache: str, current: str, now: float | None = None, keep: int = KEEP) -> list[str]:
     """Remove what the policy above says; return what went."""
     now = time.time() if now is None else now
     exports, leftovers = [], []
@@ -51,7 +53,7 @@ def prune(cache: str, current: str, now: float | None = None) -> list[str]:
     gone = []
     for rank, (used, path) in enumerate(exports, start=2):  # the current export is rank 1
         idle = now - used
-        if idle > TTL_DAYS * 86400 or (rank > KEEP and idle > IN_USE_S):
+        if idle > TTL_DAYS * 86400 or (rank > keep and idle > IN_USE_S):
             shutil.rmtree(path, ignore_errors=True)
             gone.append(path)
     for path in leftovers:

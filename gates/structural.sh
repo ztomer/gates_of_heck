@@ -180,7 +180,15 @@ goh_require_current() {
     if [ -n "$want" ] && [ "$got" = "$want" ]; then
         return 0
     fi
-    err "the goh binary serving this gate is BEHIND the source: $bin reports ${got:-nothing},"
+    # Said as it is: on 2026-10-17 this read "BEHIND" about a binary that was AHEAD (a land had
+    # rebuilt bin/goh under a gate pinned to the commit before), and the fix went looking for a
+    # missing rebuild. The two numbers decide the word.
+    local rel="is not the build of" first
+    if [ -n "$got" ]; then
+        first="$(printf '%s\n%s\n' "$got" "$want" | sort -V)"
+        if [ "${first%%$'\n'*}" = "$got" ]; then rel="is BEHIND"; else rel="is AHEAD of"; fi
+    fi
+    err "the goh binary serving this gate $rel the source: $bin reports ${got:-nothing},"
     err "  $manifest declares $want $where. A step added since that build is NOT running, and"
     err "  a step that does not run prints exactly what a step that passes prints."
     err "  Rebuild it:  $GOH_ROOT/scripts/build-goh.sh    (or ./install.sh, which calls it)"
