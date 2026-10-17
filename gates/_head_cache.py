@@ -11,6 +11,13 @@ tests/test_head_export_prune.py.
 
 The binary store (`bin/by-stamp/`, gates/_goh_bin.sh) is pruned by the same policy with a smaller
 `keep`: one directory per build, the same `.goh-used` stamp, and one used within the hour never goes.
+So are build-goh.sh's per-root source exports (`~/.cache/goh/build/`, keep 20) and the rust coverage
+build cache (`~/.cache/goh/llvm-cov/`, keep 200 and a byte budget).
+
+A count bounds entries, not bytes. The coverage cache held 334 entries and 11 GiB, every one inside
+its week, and build-goh's exports were never pruned at all: 675 entries, 8.7 GiB, one per HEAD
+export goh had ever been built from (2026-10-17, the day the disk filled). `max_bytes` evicts the
+least recently used past the budget, under the same rule: one used within the hour never goes.
 
 A LIBRARY, not an entry point: it is part of the C4 mechanism itself (the export it prunes is
 what every other entry point re-runs from), so `_from_head.sh` imports it and calls `prune`.
@@ -38,7 +45,25 @@ def last_use(path: str) -> float:
     return os.stat(path).st_mtime
 
 
-def prune(cache: str, current: str, now: float | None = None, keep: int = KEEP) -> list[str]:
+def tree_bytes(path: str) -> int:
+    """Bytes on disk under `path` (allocated blocks, links not followed)."""
+    total = 0
+    for dirpath, _dirnames, filenames in os.walk(path):
+        for name in filenames:
+            try:
+                total += os.lstat(os.path.join(dirpath, name)).st_blocks * 512
+            except OSError:
+                continue
+    return total
+
+
+def prune(
+    cache: str,
+    current: str,
+    now: float | None = None,
+    keep: int = KEEP,
+    max_bytes: int | None = None,
+) -> list[str]:
     """Remove what the policy above says; return what went."""
     now = time.time() if now is None else now
     exports, leftovers = [], []
@@ -60,4 +85,22 @@ def prune(cache: str, current: str, now: float | None = None, keep: int = KEEP) 
         if now - os.stat(path).st_mtime > BUILD_LEFTOVER_S:
             shutil.rmtree(path, ignore_errors=True)
             gone.append(path)
+    if max_bytes is not None:
+        gone += _over_budget(
+            cache, current, [e for e in exports if e[1] not in gone], now, max_bytes
+        )
+    return gone
+
+
+def _over_budget(cache: str, current: str, exports, now: float, max_bytes: int) -> list[str]:
+    """Least recently used first, until the cache fits `max_bytes`; never one used within the hour."""
+    sizes = {path: tree_bytes(path) for _used, path in exports}
+    total = sum(sizes.values()) + tree_bytes(os.path.join(cache, current))
+    gone = []
+    for used, path in reversed(exports):  # least recently used first
+        if total <= max_bytes or now - used <= IN_USE_S:
+            break  # the rest were used more recently still
+        shutil.rmtree(path, ignore_errors=True)
+        gone.append(path)
+        total -= sizes[path]
     return gone

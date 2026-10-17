@@ -122,3 +122,26 @@ def test_a_tree_that_is_not_a_checkout_publishes(tmp_path: Path) -> None:
     shutil.copy2(SCRIPT, tree / "scripts" / "build-goh.sh")
     r = check(tree, GIT_CEILING_DIRECTORIES=str(tmp_path))
     assert r.returncode == 0, r.stderr
+
+
+def test_the_per_root_export_cache_is_pruned(clone: Path, tmp_path: Path) -> None:
+    """One export per root goh was ever built from, every HEAD export among them, and nothing
+    pruned them: 675 entries, 8.7 GiB (2026-10-17). A build prunes like the HEAD exports."""
+    import time
+
+    xdg = tmp_path / "xdg"
+    store = xdg / "goh" / "build"
+    then = time.time() - 2 * 3600
+    for i in range(25):
+        old = store / f"{1000 + i}"
+        (old / "src").mkdir(parents=True)
+        os.utime(old, (then - i, then - i))  # before the stamp: the dir's own mtime is its last use
+    fake = tmp_path / "bin"
+    fake.mkdir()
+    (fake / "cargo").write_text("#!/bin/sh\nexit 0\n")  # the prune is under test, not the build
+    (fake / "cargo").chmod(0o755)
+    check(clone, GOH_BUILD_PUBLISH_CHECK_ONLY="", XDG_CACHE_HOME=str(xdg),
+          PATH=f"{fake}:{os.environ['PATH']}")  # fmt: skip
+    left = sorted(p.name for p in store.iterdir())
+    assert len(left) == 20, left  # this build's export + the 19 most recently used
+    assert {f"{1000 + i}" for i in range(19)} <= set(left), left

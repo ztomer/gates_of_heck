@@ -36,14 +36,15 @@ run_rust() {
     # The TARGET dir stays in the tree: it holds the binaries a test runs, and media_server's find
     # their repo by walking up from their own path (`env_mini::exe_root`); out of the tree, two of
     # mediaops' CLI tests failed. Per-project isolation (above) holds -- the key is the project's
-    # physical path. Pruned like the HEAD exports (gates/_head_cache.py): a week unused, or past the
-    # newest 200 and idle for an hour.
+    # physical path. Pruned like the HEAD exports (gates/_head_cache.py): a week unused, past the
+    # newest 200, or past GOH_COV_CACHE_MAX_GIB (default 8; 0 = no byte budget) -- each only once
+    # idle for an hour.
     COV_CACHE="${GOH_COV_CACHE:-${XDG_CACHE_HOME:-$HOME/.cache}/goh/llvm-cov}"
     COV_KEY="$(pwd -P | shasum -a 256 | cut -c1-16)"
     mkdir -p "$COV_CACHE/$COV_KEY"
     : >"$COV_CACHE/$COV_KEY/.goh-used"
-    python3 -S -c 'import sys; sys.path.insert(0, sys.argv[1]); import _head_cache; _head_cache.prune(sys.argv[2], sys.argv[3], keep=200)' \
-        "$(dirname "${BASH_SOURCE[0]}")" "$COV_CACHE" "$COV_KEY" 2>/dev/null || true
+    python3 -S -c 'import sys; sys.path.insert(0, sys.argv[1]); import _head_cache; gib = float(sys.argv[4]); _head_cache.prune(sys.argv[2], sys.argv[3], keep=200, max_bytes=int(gib * 2**30) if gib > 0 else None)' \
+        "$(dirname "${BASH_SOURCE[0]}")" "$COV_CACHE" "$COV_KEY" "${GOH_COV_CACHE_MAX_GIB:-8}" 2>/dev/null || true
     export CARGO_TARGET_DIR="$PROJ/target/llvm-cov"
     export CARGO_BUILD_BUILD_DIR="$COV_CACHE/$COV_KEY/build"
     export RUSTC_WRAPPER=""

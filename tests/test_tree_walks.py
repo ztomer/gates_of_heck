@@ -125,6 +125,7 @@ WALK_ALLOWED = {
     "checks/check_tests_registered.py": "no shared gate runs it (BACKLOG); pruned walk",
     "gates/coverage_engines.py": "finds .xctest bundles IN the build dir, on purpose",
     "gates/_cov_prune.py": "walks the cargo build dirs the coverage report reads, on purpose",
+    "gates/_head_cache.py": "sizes its own cache entries for the byte budget, on purpose",
     "gates/coverage_markers.py": "swift coverage markers under the project's own sources",
 }
 WALK = re.compile(r"\brglob\(|\bos\.walk\(|glob\([^)]*\*\*")

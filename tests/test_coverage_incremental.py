@@ -144,3 +144,36 @@ def test_a_recreated_tree_reuses_its_dependencies_build(tmp_path: Path) -> None:
     assert "Compiling proj" in log, log  # the recreated tree is rebuilt, as it must be
     assert "Compiling base" not in log, f"the dependency was rebuilt for a recreated tree:\n{log}"
     assert second == first
+
+
+def test_the_build_cache_keeps_to_its_byte_budget(tmp_path: Path) -> None:
+    """The cache counted entries, never bytes: 334 builds inside their week held 11 GiB. A run
+    past GOH_COV_CACHE_MAX_GIB evicts the least recently used idle build, never its own."""
+    import os
+    import time
+
+    cache = tmp_path / "cov-cache"
+    stale = cache / "0123456789abcdef"
+    stale.mkdir(parents=True)
+    (stale / "blob").write_bytes(b"\1" * (2 << 20))
+    (stale / ".goh-used").write_text("")
+    os.utime(stale / ".goh-used", (time.time() - 7200,) * 2)
+    crate = tmp_path / "proj"
+    (crate / "src").mkdir(parents=True)
+    (crate / "Cargo.toml").write_text(
+        '[package]\nname = "proj"\nversion = "0.1.0"\nedition = "2021"\n\n[workspace]\n'
+    )
+    (crate / "src" / "lib.rs").write_text(LIB)
+    subprocess.run(
+        ["cargo", "generate-lockfile", "-q"], cwd=crate, check=True, stdin=subprocess.DEVNULL
+    )
+    r = subprocess.run(
+        ["/bin/bash", str(REPO_ROOT / "gates" / "coverage_gate.sh"), "--lang", "rust",
+         "--floor", "0", str(crate)],
+        cwd=crate, capture_output=True, text=True, timeout=600, stdin=subprocess.DEVNULL,
+        env=hermetic_env(GOH_COV_CACHE=str(cache), GOH_COV_CACHE_MAX_GIB="0.001"), check=False,
+    )  # fmt: skip
+    assert r.returncode == 0, r.stdout + r.stderr
+    left = {p.name for p in cache.iterdir()}
+    assert stale.name not in left, f"the idle build past the budget stayed: {left}"
+    assert len(left) == 1, f"the run's own build went: {left}"

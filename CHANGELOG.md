@@ -1,5 +1,20 @@
 # CHANGELOG
 
+## v0.31.2 — goh's own caches are bounded in bytes _(2026-10-17)_
+
+Patch bump: two caches prune harder; one new key, `GOH_COV_CACHE_MAX_GIB` (default 8).
+
+* **The rust coverage build cache counted entries, never bytes.** `~/.cache/goh/llvm-cov` held
+  334 builds and 11 GiB, every one inside its week and under the count of 200. `_head_cache.prune`
+  takes a `max_bytes` budget: past it, the least recently used builds idle for an hour go until the
+  cache fits. The coverage gate passes `GOH_COV_CACHE_MAX_GIB`.
+* **build-goh.sh's per-root source exports were never pruned.** `~/.cache/goh/build` keyed one
+  export on every root goh was ever built from -- every HEAD export among them -- and held 675
+  entries, 8.7 GiB. Each build now stamps its export and prunes the rest like the HEAD exports: a
+  week unused, or past the newest 20 and idle an hour.
+
+Five new tests; each went red with its rule removed.
+
 ## v0.31.1 — a stable push export names the checkout it serves _(2026-10-17)_
 
 Patch bump: one new file per stable export, no new refusal.

@@ -75,3 +75,46 @@ def test_an_export_used_within_the_hour_is_never_pruned(gates, consumer, tmp_pat
         _fake(cache, f"hot{i:02d}", 10 * 60)
     _structural(gates, consumer, _env(tmp_path))
     assert len(_exports(cache)) == 26, "an export used ten minutes ago was pruned"
+
+
+def _prune(cache: Path, current: str, **kw) -> list[str]:
+    import sys
+
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "gates"))
+    import _head_cache
+
+    return _head_cache.prune(str(cache), current, **kw)
+
+
+def _sized(cache: Path, name: str, used_ago: float, mib: int) -> Path:
+    d = _fake(cache, name, used_ago)
+    (d / "blob").write_bytes(b"\1" * (mib << 20))
+    os.utime(d / ".goh-used", (time.time() - used_ago,) * 2)
+    return d
+
+
+def test_past_the_byte_budget_the_least_recently_used_go(tmp_path) -> None:
+    """A count bounds entries, not bytes: 334 coverage builds inside their week held 11 GiB."""
+    cache = tmp_path / "cov"
+    _sized(cache, "cur", 0, 1)
+    for i in range(5):
+        _sized(cache, f"b{i}", (2 + i) * HOUR, 1)  # b0 most recently used
+    _prune(cache, "cur", keep=200, max_bytes=(3 << 20) + (512 << 10))
+    assert _exports(cache) == {"cur", "b0", "b1"}, sorted(_exports(cache))
+
+
+def test_the_byte_budget_never_takes_one_used_within_the_hour(tmp_path) -> None:
+    cache = tmp_path / "cov"
+    _sized(cache, "cur", 0, 1)
+    for i in range(3):
+        _sized(cache, f"hot{i}", 10 * 60, 1)
+    _prune(cache, "cur", keep=200, max_bytes=1)
+    assert _exports(cache) == {"cur", "hot0", "hot1", "hot2"}, sorted(_exports(cache))
+
+
+def test_without_a_budget_bytes_are_not_counted(tmp_path) -> None:
+    cache = tmp_path / "cov"
+    for i in range(3):
+        _sized(cache, f"b{i}", (2 + i) * HOUR, 1)
+    _prune(cache, "b0", keep=200)
+    assert len(_exports(cache)) == 3

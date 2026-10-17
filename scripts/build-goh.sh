@@ -140,6 +140,11 @@ if [[ -n "${STAMP}" ]]; then
   cache="${XDG_CACHE_HOME:-${HOME}/.cache}/goh/build/$(printf %s "${PROJECT_ROOT}" | cksum | cut -d' ' -f1)"
   [[ "${REV}" == "HEAD" ]] || cache="${cache}-rev"
   mkdir -p "${cache}/src"
+  # One export per root ever built from -- every HEAD export among them -- so prune them like the
+  # HEAD exports (gates/_head_cache.py): a week unused, or past the newest 20 and idle an hour.
+  : >"${cache}/.goh-used"
+  python3 -S -c 'import sys; sys.path.insert(0, sys.argv[1]); import _head_cache; _head_cache.prune(sys.argv[2], sys.argv[3])' \
+    "${PROJECT_ROOT}/gates" "$(dirname "${cache}")" "$(basename "${cache}")" 2>/dev/null || true
   # shellcheck disable=SC2046  # word-splitting git's variable list is the point
   (unset ${GOH_GIT_LOCAL_VARS:-$(git rev-parse --local-env-vars 2>/dev/null)}
    GIT_INDEX_FILE="${cache}/index" git -C "${PROJECT_ROOT}" --work-tree="${cache}/src" read-tree --reset -u "${REV}")
