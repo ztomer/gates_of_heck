@@ -1,5 +1,19 @@
 # CHANGELOG
 
+## v0.30.1 — the display-seam gate sees a read of the real session's input state _(2026-10-17)_
+
+Patch bump: the gate refuses more. A consumer whose app source calls `CGEventSource` for live
+session state now gets a finding until that read moves into its input seam (or carries a reasoned
+`input-ok:` marker).
+
+* **`checks/check_display_seam.py` missed `CGEventSource`.** It refused `NSEvent.mouseLocation`
+  and the event taps, but not `CGEventSource.secondsSinceLastEventType` / `keyState` /
+  `buttonState` / `flagsState` / `counterForEventType` (nor their C spellings) -- the same read of
+  the person's input session by another API. ZeroThunder's IdleWatcher made that read in its unit
+  process, so its idle verdict and its line coverage depended on whether someone was at the
+  keyboard (ZeroThunder ROADMAP 1.4). Three probe rows and one calibration row added; each probe
+  row was red before the rule.
+
 ## v0.30.0 — a git command that discards uncommitted work is refused _(2026-10-17)_
 
 Minor bump: one new Claude Code hook. Wire it once in `~/.claude/settings.json` (PreToolUse, matcher

@@ -257,6 +257,11 @@ RULES = (
         'r"|NSEventX"',
     ),
     (
+        "swift-session-input",
+        'r"|CGEventSource\\.(secondsSinceLastEventType|keyState|buttonState|flagsState|counterForEventType)\\s*\\("',
+        'r"|CGEventSourceX"',
+    ),
+    (
         "swift-tap-family",
         'r"|CGEvent\\.tapCreate\\s*\\(|CGEvent\\.post\\s*\\(|CGEventPost\\s*\\("',
         'r"|CGEventX"',

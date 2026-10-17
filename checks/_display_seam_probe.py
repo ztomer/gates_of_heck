@@ -62,6 +62,12 @@ SWIFT_SHAPES = (
     ("opening a system pane", 'NSWorkspace.shared.open(URL(string: "x")!)'),
     ("reading the real pointer", "NSEvent.mouseLocation"),
     ("reading the button state", "NSEvent.pressedMouseButtons"),
+    (
+        "reading the session's idle time",
+        "CGEventSource.secondsSinceLastEventType(.combinedSessionState, eventType: .keyDown)",
+    ),
+    ("reading the session's key state", "CGEventSource.keyState(.combinedSessionState, key: 0)"),
+    ("the C idle-time read", "CGEventSourceSecondsSinceLastEventType(state, type)"),
     ("a global event tap", "NSEvent.addGlobalMonitorForEvents(matching: .mouseMoved) { _ in }"),
     ("a local event tap", "NSEvent.addLocalMonitorForEvents(matching: .keyDown) { _ in }"),
     ("CGEvent.tapCreate", "CGEvent.tapCreate(tap: .cgEventTap)"),

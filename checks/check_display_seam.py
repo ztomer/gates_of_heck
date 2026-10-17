@@ -127,6 +127,11 @@ SWIFT_PRESENTATION = (
     # INPUT is the same problem as presentation.
     r"|NSEvent\.mouseLocation|NSEvent\.pressedMouseButtons"
     r"|NSEvent\.add(Global|Local)MonitorForEvents\s*\("
+    # Reading the real SESSION's input state is the same read by another API: IdleWatcher asked
+    # `CGEventSource` how long the person had been idle, ran in a unit process, and its coverage
+    # (and its idle verdict) depended on whether someone was at the keyboard (ZeroThunder 1.4).
+    r"|CGEventSource\.(secondsSinceLastEventType|keyState|buttonState|flagsState|counterForEventType)\s*\("
+    r"|CGEventSource(SecondsSinceLastEventType|KeyState|ButtonState|FlagsState|CounterForEventType)\s*\("
     # `CGEvent(` is NOT here: constructing a CGEvent to inject into the app's OWN handler
     # chain is what a unit test for an event tap does, and the consumer's gate has always
     # allowed it. What reaches the user's input stream is a POST or a TAP, named as such.
