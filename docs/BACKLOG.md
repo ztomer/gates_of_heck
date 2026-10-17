@@ -6,8 +6,10 @@ not ready to start: the **measured baseline** it moves, the **exit number** that
 hit can be wrong, each with a test BEFORE the cache exists). A perf change without a before/after
 from the P0 instrument does not land.
 
-## State — 2026-10-17, v0.29.2 released (read first)
+## State — 2026-10-17, v0.31.0 released (read first)
 
+v0.31.0 adds `goh moving-tags` (no container image on a moving tag; CHANGELOG), Adv360-Pro-ZMK
+P0.2c. v0.30.0 added the Claude Code discard guard.
 v0.29.2 closes 5.1: media_server's push gate is 83 s (was 122 s), because rust coverage keeps its
 instrumented build outside the push worktree. v0.29.1 is one fix, found by landing v0.29.0: a gate takes the binary built from the commit it
 pinned (a stamp-keyed store, `bin/by-stamp/`), so a goh land no longer turns every consumer push in
@@ -412,6 +414,18 @@ ztools' exempt key, Finance's `"$root.out"`, ZeroThunder's dropped process handl
   types are reported `unjudgeable`, counted and named, never failed on.
 - A kill inside a conditional (`if cond { child.kill(); }`) is accepted. Cost unknown; needs a
   corpus. Rust, Python, shell only: no `.swift`/`.ts`/`.go` test spawns in the estate today.
+
+### `goh moving-tags`
+
+- **Shell and Makefiles are not read** (decision, `movingtag/mod.rs`): a flag grammar where
+  `-v a:b` has the shape of `name:tag`, references in variables, built names that look pulled.
+  Known un-policed floats at v0.31.0: monitor `build.sh:96` runs `rust:alpine` (a channel) and
+  `tools/lint_linux.sh:19` `rust:1-bookworm`; media_server `scripts/dev/linux_test.sh:21` `rust:1`.
+- **A version-shaped tag is not judged for coarseness**: `alpine:3`, `postgres:18-alpine` and
+  `recyclarr:8` float across rebuilds and pass. Re-open with a per-repo opt-in that demands a
+  digest everywhere, if one is wanted.
+- **A Helm values `repository:`/`tag:` pair is not joined**, and a templated `image:` is counted
+  unreadable (apes: 13 of 25 references).
 
 ### The C2 writer hook and the commit gate
 

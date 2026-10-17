@@ -1,9 +1,20 @@
-//! The argument types `goh` subcommands take as a group: `goh skills`'s and `goh tag-version`'s
-//! flags and `goh proven`'s actions. Split out of `cli.rs`, which holds the subcommand list, at the line cap.
+//! The argument types `goh` subcommands take as a group.
+//!
+//! `goh skills`'s and `goh tag-version`'s flags, the lone `--staged` of the no-exemption checks,
+//! and `goh proven`'s actions. Split out of `cli.rs`, which holds the subcommand list, at the line
+//! cap.
 
 use clap::Subcommand;
 
 use crate::skills;
+
+/// The one flag of a check that polices commits and takes no path exemption.
+#[derive(Debug, clap::Args)]
+pub struct StagedArgs {
+    /// Staged blobs (polices the index).
+    #[arg(long)]
+    pub staged: bool,
+}
 
 /// `goh skills` flags, grouped so the runner takes one argument.
 #[derive(Debug, clap::Args)]

@@ -108,6 +108,11 @@ pub const TAP_WRITES: Subject = Subject {
     unit: "script/workflow file(s)",
     scanner: "no direct write to a Homebrew tap",
 };
+pub const MOVING_TAGS: Subject = Subject {
+    key: "GOH_MOVING_TAGS_MIN_REFS",
+    unit: "image reference(s)",
+    scanner: "no container image on a moving tag",
+};
 pub const MD_LINKS: Subject = Subject {
     key: "GOH_MD_LINKS_MIN_LINKS",
     unit: "markdown link(s)",
@@ -135,7 +140,7 @@ pub const STATUS_MARKERS: Subject = Subject {
 };
 
 /// Every scanner with a subject, spelled once: the keys `.gatesrc` may hold a floor in.
-pub const ALL: [&Subject; 16] = [
+pub const ALL: [&Subject; 17] = [
     &EMOJI,
     &CONFLICT_MARKERS,
     &FILE_LENGTH,
@@ -147,6 +152,7 @@ pub const ALL: [&Subject; 16] = [
     &BARE_PYTHON,
     &CHECKOUT_CREDENTIALS,
     &TAP_WRITES,
+    &MOVING_TAGS,
     &MD_LINKS,
     &UNREAPED_SPAWN,
     &SUBPROCESS_STDIN,

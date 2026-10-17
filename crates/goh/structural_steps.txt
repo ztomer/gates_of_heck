@@ -15,6 +15,7 @@ no direct write to a Homebrew tap
 no code after exec
 no committed secrets
 no conflict markers
+no container image on a moving tag
 no credential in a git remote URL
 no disallowed emoji
 no early-exit pipe under pipefail

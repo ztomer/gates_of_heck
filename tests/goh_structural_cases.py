@@ -106,6 +106,17 @@ FULL_CASES: dict[str, dict[str, bytes]] = {
             b"brew-tap --cask x --tag v1 --artifact x.dmg\n"
         ),
     },
+    # moving-tags, a hard gate in every repo: an image on `:stable` fails; tag plus digest passes.
+    "moving_tag_red": {
+        ".gatesrc": GATESRC,
+        "Dockerfile": b"FROM zmkfirmware/zmk-build-arm:stable\n",
+    },
+    "moving_tag_green": {
+        ".gatesrc": GATESRC,
+        "Dockerfile": b"FROM zmkfirmware/zmk-build-arm:3.5-branch-20250930@sha256:"
+        + b"a" * 64
+        + b"\n",
+    },
     # checkout-credentials, a hard gate in every repo: a default checkout fails; `false` passes.
     "checkout_token_red": {
         ".gatesrc": GATESRC,
@@ -207,6 +218,8 @@ EXPECTED: dict[str, tuple[int, str | None]] = {
     "requires_call_red": (1, "a file that calls X calls Y"),
     "tap_write_green": (0, None),
     "tap_write_red": (1, "no direct write to a Homebrew tap"),
+    "moving_tag_green": (0, None),
+    "moving_tag_red": (1, "no container image on a moving tag"),
     "checkout_token_green": (0, None),
     "checkout_token_red": (1, "no checkout leaves its token in git config"),
     "clean": (0, None),

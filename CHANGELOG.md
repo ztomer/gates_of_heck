@@ -1,5 +1,45 @@
 # CHANGELOG
 
+## v0.31.0 — a container image is pinned to one build, never a moving tag _(2026-10-17)_
+
+Minor bump: a new hard gate in every repo. The estate was made green before it landed (the
+fleet's floating images carry the reasoned escape; apes's four bases are pinned), so a consumer
+that is green today stays green on upgrade.
+
+* **`goh moving-tags`, a structural step in every repo: no container image on a moving tag.**
+  The house rule says "latest" means the newest RELEASE, never a moving tag; until now nothing
+  enforced it. Adv360-Pro-ZMK found the cost (P0.2c): its Dockerfile and both CI jobs read
+  `zmkfirmware/zmk-build-arm:stable`, so a CI run and a local build could use different
+  toolchains with nothing in any diff saying so. Read: a Dockerfile/Containerfile `FROM` and
+  `COPY --from=` (`ARG` defaults substituted; stage names, stage indexes and `scratch` are not
+  pulls), and every `*.yml`/`*.yaml` through the YAML parser -- `image:` (compose, workflow
+  `container.image` and `services.*.image`, Kubernetes), a workflow's `container:`, and any
+  `uses: docker://`. Every YAML file, not a filename list, because media_server keeps its compose
+  files in `compose/*.yml`. Compose's `${VAR:-default}` is judged by its default.
+  Passes: a digest (`@sha256:...`, whatever the tag says), or a tag naming one build. Red: no tag
+  (implicit `latest`); a tag with no digit (`latest`, `stable`, `alpine`, `bookworm`: a channel,
+  never a release, so no word list has to be complete); a digit-bearing tag that spells a channel
+  word as a part (`3.5-branch`, `v2-latest`, `1.2-dev`) with no date, full `x.y.z` or commit id
+  beside it. Not a reference: `image:` beside `build:` (compose names what it builds), a path,
+  URL, picture, or an action's local `Dockerfile`; a YAML file the parser refuses (a Helm
+  template) is read line by line for `image:`, and a templated value is counted as unreadable,
+  not judged. The one escape is `# moving-tag-ok: <reason>` on the line or the comment lines
+  directly above; an empty reason and a marker with no moving image under it are findings. No
+  path exemption. Floor key `GOH_MOVING_TAGS_MIN_REFS` (references read; this repo declares 0).
+  Calibrated: each of eight mutations (no-digit rule, digest, date exemption, `build:` sibling,
+  template fallback, `ARG` substitution, stage alias, marker-above) turns the tables in
+  `movingtag/tests.rs` red; removing the step turns three pytest cases red.
+  NOT read, by decision: shell scripts and Makefiles. There an image is an argument placed by a
+  CLI's flag grammar, `-v "$d:/v"` and `-p 80:80` have the shape of `name:tag`, references live
+  in variables, and a name a script BUILDS looks like one it pulls; a line read would invent
+  findings or miss most. Not judged: how coarse a version-shaped tag is (`alpine:3` passes).
+  Estate sweep at this commit: 40 findings in media_server, 4 in storage-server, 1 in
+  server-template (all escaped citing servers DECISIONS #9 -- the fleet floats by owner ruling),
+  4 in apes (pinned by digest); every other repo had none.
+
+* **`CheckoutCredentials`, `TapWrites` and `MovingTags` share one `StagedArgs`** (`cli_args.rs`),
+  which keeps `cli.rs` under the line cap with a third no-exemption check added.
+
 ## v0.30.1 — the display-seam gate sees a read of the real session's input state _(2026-10-17)_
 
 Patch bump: the gate refuses more. A consumer whose app source calls `CGEventSource` for live

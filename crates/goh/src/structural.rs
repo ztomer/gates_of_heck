@@ -3,8 +3,8 @@
 
 use crate::{
     blobs, checkoutcreds, claims, credurls, deadexec, earlypipe, gatesrc, gitutil, goh_root,
-    hookindex, killname, lockver, mdlinks, prefetch, provenance, pyformat, scope, shell_lint,
-    steps, steps_delegated, steps_rust, substdin, tapwrite, unreaped, vendored,
+    hookindex, killname, lockver, mdlinks, movingtag, prefetch, provenance, pyformat, scope,
+    shell_lint, steps, steps_delegated, steps_rust, substdin, tapwrite, unreaped, vendored,
 };
 use goh_tui::{ERR, OK};
 
@@ -169,6 +169,8 @@ pub fn run(staged: bool, full: bool, keep_going: bool) -> i32 {
     step!(shell_steps(&repo, &files, &cfg, staged, &tally));
     step!(steps::step_secrets(&repo, &files, staged));
     step!(git_config_steps(&repo, &files, staged, &tally));
+    // What a build or a deploy pulls: a container image pinned to one build, never a moving tag.
+    step!(movingtag::step(&repo, &files, staged));
     step!(steps::step_home_paths(&repo, &files, &cfg, staged));
     // A tracked file the repo's own `.gitignore` matches; beside the home-path step because both
     // find a file in the tree that one machine's state put there.

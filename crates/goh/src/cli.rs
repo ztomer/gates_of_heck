@@ -5,7 +5,7 @@ use std::path::PathBuf;
 
 use clap::{Parser, Subcommand};
 
-pub use crate::cli_args::{ProvenAction, SkillsArgs, TagVersionArgs};
+pub use crate::cli_args::{ProvenAction, SkillsArgs, StagedArgs, TagVersionArgs};
 
 #[derive(Debug, Parser)]
 #[command(name = "goh", about = "Static structural gates", version)]
@@ -427,20 +427,17 @@ pub enum Commands {
     /// in `.git/config`: `persist-credentials` not the literal `false`, and no
     /// `# persist-credentials-ok: <reason>` on the step. No `--exclude`: a credential check takes no
     /// path exemption (`goh secrets`).
-    CheckoutCredentials {
-        /// Staged blobs (polices the index).
-        #[arg(long)]
-        staged: bool,
-    },
+    CheckoutCredentials(StagedArgs),
     /// Fail on a script, Makefile or workflow that writes a `homebrew-*` repo directly: a
     /// contents-API write (`gh api` / `curl`) or a push from a clone of the tap, which skips the
     /// tap's own gate. The house route is `tools/release-kit/tap_bump.sh`; the one escape is
     /// `# tap-write-ok: <reason>`. No `--exclude`: a gate bypass takes no path exemption.
-    TapWrites {
-        /// Staged blobs (polices the index).
-        #[arg(long)]
-        staged: bool,
-    },
+    TapWrites(StagedArgs),
+    /// Fail on a container image on a moving tag (`:latest`, `:stable`, `:main`, no tag): a
+    /// Dockerfile `FROM`/`COPY --from=`, a YAML `image:`, a workflow `container:` or
+    /// `uses: docker://`. A digest or a release tag passes; the one escape is
+    /// `# moving-tag-ok: <reason>`. No `--exclude`: what a build pulls is not a style.
+    MovingTags(StagedArgs),
     /// Fail on a test spawn no guard reaps, or whose reap sits below a line
     /// that can panic (native port of `check_no_unreaped_spawn`).
     UnreapedSpawn {

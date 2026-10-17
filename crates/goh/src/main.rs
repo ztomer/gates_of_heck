@@ -42,6 +42,7 @@ pub mod lockver;
 pub mod markers;
 pub mod mdlinks;
 pub mod mdtext;
+pub mod movingtag;
 pub mod noallow;
 pub mod pathfilter;
 pub mod platform;
@@ -378,8 +379,9 @@ fn run_ported(command: Commands) -> Result<i32, Box<Commands>> {
         Commands::BareHookIndex { exclude, staged } => {
             paths(exclude, |x| hookindex::run_command(staged, x))
         }
-        Commands::CheckoutCredentials { staged } => checkoutcreds::run_command(staged),
-        Commands::TapWrites { staged } => tapwrite::run_command(staged),
+        Commands::CheckoutCredentials(a) => checkoutcreds::run_command(a.staged),
+        Commands::TapWrites(a) => tapwrite::run_command(a.staged),
+        Commands::MovingTags(a) => movingtag::run_command(a.staged),
         Commands::UnreapedSpawn {
             exclude,
             staged,
