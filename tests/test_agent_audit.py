@@ -31,7 +31,8 @@ class Ledger:
         self.path, self.lines, self.n = path, [], 0
 
     def spawn(self, choice: str, *, status: str | None = "landed", tokens: int = 100_000,
-              session: str = "s", desc: str | None = None, tags: list[str] | None = None) -> None:  # fmt: skip
+              session: str = "s", desc: str | None = None, tags: list[str] | None = None,
+              usage: dict[str, int] | None = None) -> None:  # fmt: skip
         model, effort = choice.split("@")
         self.n += 1
         tid = f"toolu_{self.n}"
@@ -43,7 +44,8 @@ class Ledger:
         })  # fmt: skip
         if status is not None:
             self.lines.append({"event": "outcome", "session_id": session, "tool_use_id": tid,
-                               "status": status, "tokens": {"total": tokens}})  # fmt: skip
+                               "status": status,
+                               "tokens": usage or {"total": tokens}})  # fmt: skip
 
     def write(self) -> Path:
         self.path.write_text("".join(json.dumps(x) + "\n" for x in self.lines))
@@ -153,3 +155,79 @@ def test_a_torn_line_is_skipped_and_counted(tmp_path: Path) -> None:
     with path.open("a") as f:
         f.write('{"event": "spawn", "trunc\n')
     assert _json(path)["unreadable_lines"] == 1
+
+
+# --- the verdict: does the cheap tier still pay for itself? ----------------------------------------
+#
+# Cheap first and escalate on a miss costs c + r*o per item; Opus from the start costs o. So the
+# cheap tier holds while its redo rate r < 1 - c/o, with c and o the mean cost per attempt from the
+# ledger's own tokens at the rules file's prices (o: the escalation class, opus@high). Output is a
+# list of PROPOSED rule changes with their numbers; the audit never writes the rules file.
+
+CHEAP_USE = {"input": 0, "output": 10_000, "cache_creation": 0, "cache_read": 1_000_000}  # $0.20
+OPUS_USE = {"input": 0, "output": 20_000, "cache_creation": 0, "cache_read": 2_000_000}  # $0.80
+
+
+def _priced(led: Ledger, redo: int, opus_n: int = 20) -> None:
+    for i in range(20):
+        led.spawn("sonnet@high", status="failed" if i < redo else "landed", usage=CHEAP_USE)
+    for _ in range(opus_n):
+        led.spawn("opus@high", usage=OPUS_USE, tags=["research"])
+
+
+def test_a_cheap_class_under_its_break_even_redo_rate_holds(tmp_path: Path) -> None:
+    led = Ledger(tmp_path / "l.jsonl")
+    _priced(led, redo=3)
+    report = _json(led.write())
+    v = report["verdicts"]["sonnet@high"]
+    assert v["n"] == 20 and v["redo"] == 3
+    assert round(v["cost"], 4) == 0.2 and round(v["opus_cost"], 4) == 0.8
+    assert round(v["break_even"], 4) == 0.75 and v["holds"] is True
+    assert report["proposals"] == []
+
+
+def test_a_cheap_class_over_its_break_even_redo_rate_is_proposed_not_applied(
+    tmp_path: Path,
+) -> None:
+    led = Ledger(tmp_path / "l.jsonl")
+    _priced(led, redo=16)
+    rules = tmp_path / "rules.json"
+    rules.write_bytes((REPO_ROOT / "hooks" / "claude" / "model_choice.json").read_bytes())
+    before = rules.read_bytes()
+    r = subprocess.run(
+        [sys.executable, str(AUDIT), "--ledger", str(led.write()), "--json"],
+        capture_output=True, text=True, timeout=30, stdin=subprocess.DEVNULL, check=False,
+        env=hermetic_env(NO_COLOR="1", GOH_MODEL_CHOICE=str(rules)),
+    )  # fmt: skip
+    report = json.loads(r.stdout)
+    assert report["verdicts"]["sonnet@high"]["holds"] is False
+    (proposal,) = report["proposals"]
+    for needle in ("sonnet@high", "80%", "75%", "$0.200", "$0.800", "n=20"):
+        assert needle in proposal, (needle, proposal)
+    assert rules.read_bytes() == before  # proposed, never applied
+
+
+def test_no_verdict_until_the_escalation_class_has_enough_outcomes_too(tmp_path: Path) -> None:
+    led = Ledger(tmp_path / "l.jsonl")
+    _priced(led, redo=16, opus_n=19)
+    report = _json(led.write())
+    assert report["verdicts"]["sonnet@high"]["holds"] is None and report["proposals"] == []
+
+
+def test_a_silent_failure_is_a_redo(tmp_path: Path) -> None:
+    """A `landed` whose sha GitHub does not have is a cheap choice that failed, quietly."""
+    sys.path.insert(0, str(REPO_ROOT / "scripts"))
+    sys.path.insert(0, str(REPO_ROOT / "lib"))
+    import agent_audit
+    import landed_verify
+
+    led = Ledger(tmp_path / "l.jsonl")
+    _priced(led, redo=0)
+    records = agent_audit.read(led.write())[0]
+    first = next(r for r in records if r["event"] == "spawn")
+    key = (first["session_id"], first["tool_use_id"])
+    silent = {key: landed_verify.Verdict("silent-failure", ["abc1234"], "not on o/r main")}
+    report = agent_audit.audit(records, agent_audit.model_choice.load(), 20, silent)
+    under = report["under"]["sonnet@high"]
+    assert under["redo"] == 1 and under["flagged"][0]["why"] == "silent-failure"
+    assert len(report["verification"]["silent_failure"]) == 1

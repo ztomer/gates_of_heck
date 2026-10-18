@@ -29,6 +29,9 @@ from conftest import REPO_ROOT, hermetic_env
 GUARD = REPO_ROOT / "hooks" / "claude" / "agent_guard.py"
 sys.path.insert(0, str(GUARD.parent))
 import agent_guard
+import model_choice
+
+RULES = model_choice.load()
 
 CONTRACT = agent_guard.CONTRACT
 
@@ -104,7 +107,7 @@ def test_a_spawn_naming_no_model_or_no_effort_is_refused_with_the_table(
     assert _ledger(tmp_path) == []  # a refused spawn is not a spawn
 
 
-@pytest.mark.parametrize("agent_type", sorted(agent_guard.MODEL_EXEMPT))
+@pytest.mark.parametrize("agent_type", sorted(RULES.exempt))
 def test_an_exempt_agent_type_runs_without_a_choice_and_without_the_contract(
     tmp_path: Path, agent_type: str
 ) -> None:
@@ -116,7 +119,7 @@ def test_an_exempt_agent_type_runs_without_a_choice_and_without_the_contract(
 
 
 def test_the_exempt_list_is_the_read_only_and_fork_types() -> None:
-    assert agent_guard.MODEL_EXEMPT == {"Explore", "claude-code-guide", "statusline-setup", "fork"}
+    assert RULES.exempt == {"Explore", "claude-code-guide", "statusline-setup", "fork"}
 
 
 # --- rule 2: the declared choice ------------------------------------------------------------------
@@ -144,12 +147,18 @@ def test_the_exempt_list_is_the_read_only_and_fork_types() -> None:
 def test_a_declared_choice_the_table_accepts_runs_with_the_contract(
     tmp_path: Path, model: str, effort: str, because: str
 ) -> None:
-    alias = agent_guard.family(model)
+    alias = agent_guard.family(model, RULES)
     prompt = f"Do the thing.\nModel-choice: {alias}@{effort} because {because}"
     ti = dict(BRIEF, model=model, effort=effort, prompt=prompt)
     new = _allowed(_run(_spawn(ti), tmp_path))
-    assert new == dict(ti, prompt=new["prompt"])  # only the prompt changes
-    assert new["prompt"].startswith(prompt) and new["prompt"].rstrip().endswith(CONTRACT)
+    routed = {"model": new["model"], "effort": new["effort"]}
+    assert new == dict(ti, prompt=new["prompt"], **routed)  # only the prompt, or the tier, changes
+    assert new["prompt"].rstrip().endswith(CONTRACT)
+    if routed == {"model": model, "effort": effort}:
+        assert new["prompt"].startswith(prompt)
+    else:  # exploration moved a cheap-tier spawn to the other cheap tier (its own suite pins it)
+        cheap = RULES.classes("cheap")
+        assert f"{alias}@{effort}" in cheap and f"{new['model']}@{new['effort']}" in cheap
 
 
 @pytest.mark.parametrize(
@@ -219,12 +228,14 @@ def test_another_tool_is_not_touched(tmp_path: Path) -> None:
 
 
 def test_an_allowed_spawn_is_one_ledger_line_with_its_choice(tmp_path: Path) -> None:
-    _run(_spawn(dict(GOOD, model="claude-sonnet-5-5")), tmp_path)
+    prompt = BRIEF["prompt"] + "\nModel-choice: opus@high because research"
+    _run(_spawn(dict(BRIEF, model="claude-opus-5-5", effort="high", prompt=prompt)), tmp_path)
     (line,) = _ledger(tmp_path)
     assert line["event"] == "spawn"
     assert line["session_id"] == "s-1" and line["tool_use_id"] == "toolu_A"
-    assert line["model"] == "sonnet" and line["model_id"] == "claude-sonnet-5-5"
-    assert line["effort"] == "high" and line["tags"] == ["checkable", "known-fix"]
+    assert line["model"] == "opus" and line["model_id"] == "claude-opus-5-5"
+    assert line["effort"] == "high" and line["tags"] == ["research"]
+    assert line["declared"] == "opus@high" and line["explored"] is False
     assert line["exempt"] is False and line["description"] == "fix it"
     assert line["first_line"] == "Fix the leak in foo.rs."
     assert len(line["prompt_sha"]) == 64 and line["time"]
@@ -289,6 +300,7 @@ def test_a_finished_agent_records_its_tokens_and_status(tmp_path: Path) -> None:
     assert line["tokens"] == {"input": 30, "output": 300, "cache_creation": 3000,
                               "cache_read": 11000, "total": 14330}  # fmt: skip
     assert line["tokens_settled"] is True
+    assert line["report"] == report  # the audit checks a landed report's shas against the remote
 
 
 @pytest.mark.parametrize(

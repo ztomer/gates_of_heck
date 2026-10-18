@@ -1,0 +1,141 @@
+{
+  "_doc": "THE subagent model-choice rules, and the facts they rest on. hooks/claude/agent_guard.py enforces `tiers`, `exempt_agent_types` and `exploration`; scripts/agent_audit.py prices the ledger with `facts.price.*` and judges with `verdict`; scripts/model_choice_watch.py re-checks every fact's `check` against its source each week and marks the facts that no longer match (and the tiers resting on them) `re-research` in its findings. Nothing else restates these values (tests/test_model_choice_rules.py). Every value here is the OWNER's: the audit and the watch PROPOSE changes with their numbers, and nothing writes this file but a person (owner ruling 2026-10-18). The decision and its evidence: ~/.claude/skills/agent-fanout/references/model-choice-decision.md.",
+  "proven_on": {
+    "claude_code": "2.1.292",
+    "date": "2026-10-18",
+    "what": "agent_guard live: a deny is permissionDecision deny + reason; updatedInput alone replaces the tool input; `effort` arrives in tool_input; SubagentStop fires before the closing transcript entry"
+  },
+  "facts": {
+    "claude_code.version": {
+      "value": "2.1.292",
+      "measured": "2026-10-18",
+      "source": "claude --version",
+      "check": {"kind": "claude_version"}
+    },
+    "agent.models": {
+      "value": ["sonnet", "opus", "haiku", "fable"],
+      "measured": "2026-10-18",
+      "source": "the Agent tool's input schema in the Claude Code binary (`model:` enum)",
+      "check": {"kind": "agent_enum", "field": "model"}
+    },
+    "agent.efforts": {
+      "value": ["low", "medium", "high", "xhigh", "max"],
+      "measured": "2026-10-18",
+      "source": "the Agent tool's input schema in the Claude Code binary (`effort:` enum)",
+      "check": {"kind": "agent_enum", "field": "effort"}
+    },
+    "claude_code.default_effort": {
+      "value": {"opus": "medium", "sonnet": "medium", "haiku": "medium"},
+      "measured": "2026-10-18",
+      "source": "https://code.claude.com/docs/en/model-config",
+      "check": {"kind": "contains", "url": "https://code.claude.com/docs/en/model-config.md",
+                "text": ["except that Opus 5.5, Sonnet 5.5, and Haiku 5.5 default to `medium`"]}
+    },
+    "price.opus": {
+      "value": {"input": 4, "cache_write_5m": 5, "cache_write_1h": 8, "cache_read": 0.2, "output": 20},
+      "unit": "USD per MTok",
+      "measured": "2026-10-18",
+      "source": "https://platform.claude.com/docs/en/about-claude/pricing",
+      "check": {"kind": "price_row", "url": "https://platform.claude.com/docs/en/about-claude/pricing.md",
+                "label": "Claude Opus 5.5"}
+    },
+    "price.sonnet": {
+      "value": {"input": 2, "cache_write_5m": 2.5, "cache_write_1h": 4, "cache_read": 0.1, "output": 10},
+      "unit": "USD per MTok",
+      "measured": "2026-10-18",
+      "source": "https://platform.claude.com/docs/en/about-claude/pricing",
+      "check": {"kind": "price_row", "url": "https://platform.claude.com/docs/en/about-claude/pricing.md",
+                "label": "Claude Sonnet 5.5"}
+    },
+    "price.haiku": {
+      "value": {"input": 0.1, "cache_write_5m": 0.125, "cache_write_1h": 0.2, "cache_read": 0.01, "output": 0.5},
+      "unit": "USD per MTok, prompts up to 100K (over it: 5x)",
+      "measured": "2026-10-18",
+      "source": "https://platform.claude.com/docs/en/about-claude/pricing",
+      "check": {"kind": "price_row", "url": "https://platform.claude.com/docs/en/about-claude/pricing.md",
+                "label": "Claude Haiku 5.5 (for prompts up to 100,000 tokens)"}
+    },
+    "price.fable": {
+      "value": {"input": 10, "cache_write_5m": 12.5, "cache_write_1h": 20, "cache_read": 0.25, "output": 50},
+      "unit": "USD per MTok",
+      "measured": "2026-10-18",
+      "source": "https://platform.claude.com/docs/en/about-claude/pricing",
+      "check": {"kind": "price_row", "url": "https://platform.claude.com/docs/en/about-claude/pricing.md",
+                "label": "Claude Fable 5.1"}
+    },
+    "bench.repo_tasks": {
+      "value": {"opus@low": [74.8, 0.35], "opus@medium": [86.6, 0.84], "sonnet@medium": [62.7, 0.16],
+                "sonnet@high": [77.8, 0.33]},
+      "unit": "[% of attempts solved, USD per attempt], Anthropic's 370 internal agentic-coding tasks",
+      "measured": "2026-10-18",
+      "source": "https://platform.claude.com/docs/en/about-claude/models/optimizing-for-cost-and-intelligence",
+      "check": {"kind": "contains",
+                "url": "https://platform.claude.com/docs/en/about-claude/models/optimizing-for-cost-and-intelligence.md",
+                "text": ["solved 74.8% of attempts at `low` for $0.35 USD per attempt, 86.6% at `medium` for $0.84 USD",
+                         "scored 77.8% at its default, `high`, for $0.33 USD per attempt",
+                         "at `medium`, it scored 62.7% for $0.16 USD"]}
+    },
+    "bench.escalation": {
+      "value": {"low then high": [97, 0.17], "all at high": [95.3, 0.29]},
+      "unit": "[% solved, USD per task], SWE-bench Pro subset, Opus 5.5",
+      "measured": "2026-10-18",
+      "source": "https://platform.claude.com/docs/en/about-claude/models/optimizing-for-cost-and-intelligence",
+      "check": {"kind": "contains",
+                "url": "https://platform.claude.com/docs/en/about-claude/models/optimizing-for-cost-and-intelligence.md",
+                "text": ["| `low`, failures re-run at `high` | About 97% | About $0.17 USD |",
+                         "| Everything at `high` | 95.3% | $0.29 USD |"]}
+    }
+  },
+  "tiers": {
+    "sonnet@high": {"tier": "cheap", "need": "all", "tags": ["checkable", "known-fix"],
+                    "rests_on": ["price.sonnet", "bench.repo_tasks", "claude_code.default_effort"]},
+    "opus@low": {"tier": "cheap", "need": "all", "tags": ["checkable", "known-fix"],
+                 "rests_on": ["price.opus", "bench.repo_tasks", "bench.escalation"]},
+    "opus@medium": {"tier": "opus", "need": "any",
+                    "tags": ["unknown-root-cause", "design-ui", "cross-module", "audit-review", "research",
+                             "security", "multi-session", "unchecked"],
+                    "rests_on": ["price.opus", "bench.repo_tasks"]},
+    "opus@high": {"tier": "opus", "need": "any",
+                  "tags": ["unknown-root-cause", "design-ui", "cross-module", "audit-review", "research",
+                           "security", "multi-session", "unchecked"],
+                  "rests_on": ["price.opus", "bench.escalation"]},
+    "opus@xhigh": {"tier": "escalation", "need": "all", "tags": ["escalation"],
+                   "rests_on": ["price.opus"]},
+    "haiku@low": {"tier": "lookup", "need": "all", "tags": ["read-only"], "rests_on": ["price.haiku"]},
+    "haiku@medium": {"tier": "lookup", "need": "all", "tags": ["read-only"], "rests_on": ["price.haiku"]},
+    "fable@*": {"tier": "owner", "need": "all", "tags": ["owner-asked"], "rests_on": ["price.fable"]},
+    "*@max": {"tier": "owner", "need": "all", "tags": ["owner-asked"], "rests_on": ["agent.efforts"]},
+    "sonnet@low": {"tier": "never",
+                   "why": "Claude Code's medium is Sonnet's measured weak spot (62.7% vs 77.8% at high)",
+                   "rests_on": ["claude_code.default_effort", "bench.repo_tasks"]},
+    "sonnet@medium": {"tier": "never",
+                      "why": "Claude Code's medium is Sonnet's measured weak spot (62.7% vs 77.8% at high)",
+                      "rests_on": ["claude_code.default_effort", "bench.repo_tasks"]},
+    "sonnet@xhigh": {"tier": "never", "why": "Sonnet at xhigh/max costs more than Opus for less",
+                     "rests_on": ["price.sonnet", "price.opus"]}
+  },
+  "exempt_agent_types": {
+    "value": ["Explore", "claude-code-guide", "statusline-setup", "fork"],
+    "why": "read-only lookups and meta agents, and `fork`, which ignores `model`: none lands commits, so they need no model and get no contract; their spawns are still ledgered"
+  },
+  "exploration": {
+    "cheap_alternation": {
+      "enabled": true,
+      "between": ["sonnet@high", "opus@low"],
+      "decided": "owner 2026-10-18 (goh model-choice improvement loop, item 3): a checkable + known-fix spawn runs on whichever cheap tier the parity of its prompt's sha picks, so the two are compared on the same kind of work"
+    },
+    "opus_to_cheap": {
+      "enabled": false,
+      "fraction": 0.1,
+      "from": ["opus@medium"],
+      "requires_tags": ["checkable"],
+      "refuses_tags": ["unchecked"],
+      "decided": "OWNER DECISION PENDING (2026-10-18): default OFF. When on, this fraction of opus@medium spawns that declare `checkable` (and not `unchecked`) run on the cheap tier instead; escalation bounds the cost. A spawn without a mechanical check is never routed down, on or off."
+    }
+  },
+  "verdict": {
+    "min_n": 20,
+    "escalation_class": "opus@high",
+    "rule": "a cheap class holds while its redo rate < 1 - (its cost per attempt / the escalation class's cost per attempt); cost = the ledger's tokens x facts.price.<model>"
+  }
+}

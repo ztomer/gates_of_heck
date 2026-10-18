@@ -1,5 +1,43 @@
 # CHANGELOG
 
+## v0.35.0 — the model-choice rule keeps itself current, and proposes its own changes _(2026-10-18)_
+
+Minor bump: a rules file, an exploration router, a silent-failure check and a weekly watch; the hook
+refuses nothing it did not refuse before. Owner (2026-10-18): "continually improve this approach,
+otherwise we might get stuck with outdated rules" -- and rule changes are the owner's, never applied.
+
+* **`hooks/claude/model_choice.json`: one rules file, with the facts it rests on.** The tier table,
+  exempt agent types, exploration and `min_n` moved out of `agent_guard.py`; beside them, each fact the
+  table rests on (prices per alias, Claude Code's default efforts, the Agent tool's `model`/`effort`
+  enums, the Claude Code version it was proven on, two benchmark sets) carries its measured date, its
+  source URL and how it is re-checked, and each tier names the facts it rests on. `model_choice.py` is
+  its one reader; a test refuses any tier, price or version literal in the hook or the audit. A rules
+  file that cannot be read fails the hook OPEN with a warning.
+* **Bounded exploration in `agent_guard.py`.** A spawn declared on a cheap tier runs on the cheap tier
+  its prompt sha's parity picks (sonnet@high or opus@low), deterministically, with `explored: true`,
+  `declared` and `route` on its ledger line. `exploration.opus_to_cheap` (1 in 10 checkable
+  opus@medium spawns) is built and OFF -- an owner decision, recorded as such in the file. Nothing
+  without the `checkable` tag is routed down, whatever the file says (a guard in code, tested with the
+  file's own requirement removed).
+* **`scripts/agent_audit.py` checks `landed`.** The outcome line now keeps the report; every landed
+  report's shas are found in the estate's repos and checked with gh (`lib/landed_verify.py`): on the
+  default branch, CI concluded success on the sha or on the first run containing it. A mismatch, or a
+  claimed sha no repo has, is `silent-failure` and counts as a redo; gh missing, the network down or
+  `--offline` is `unverified`, never a pass. Only `verified` is cached.
+* **Verdict arithmetic.** Per cheap class with n >= `min_n`: it holds while redo < 1 - c/o, c and o the
+  mean USD per attempt of the class and of the escalation class (opus@high), priced from the ledger's
+  tokens and the rules file. A class that breaks it is printed as a PROPOSED change with its numbers.
+* **`scripts/model_choice_watch.py`, weekly (launchd, Monday 09:30).** Re-checks each fact against its
+  source -- price rows on the pricing page, sentences on the model-config and cost pages, the Agent
+  enums read from the Claude Code binary, `claude --version` -- and marks a changed fact and its tiers
+  `re-research`; an unreadable source is `unverified`. On a new Claude Code version it re-runs the hook's
+  live proof once (one haiku `claude -p`, budget-capped). Red when sessions spawned agents for N days
+  but none reached the ledger, or when settings.json's goh hooks differ from `registrations.json`.
+  Writes `~/.cache/goh/model-choice-findings.md` and prints one line. Red->green: every check was shown
+  red by a mutant (25 mutants, all killed); live, the docs answered Python's default User-Agent with 403
+  and every web fact read `unverified` until the request named itself; the live proof passed on the
+  hook and failed with `GOH_DIR` on an empty directory.
+
 ## v0.34.1 — a subagent's tokens are read after its transcript catches up _(2026-10-18)_
 
 Patch bump: the ledger's token counts become whole; nothing refuses more.
