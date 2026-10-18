@@ -217,6 +217,10 @@ Every structural checker is native since Phase N3; the Python checkers they port
 * `hooks/claude/skill_edit.sh` — a Claude Code PostToolUse hook (wired in `~/.claude/settings.json`,
   matcher `Write|Edit|MultiEdit|Bash`): an edit inside the skills corpus -- or a Bash command naming it -- runs `goh skills` at once and
   a finding is exit 2 back to the writer. Not copied by `install.sh`. Pinned by `test_claude_skill_hook.py`.
+* `hooks/claude/agent_guard.py` — a Claude Code PreToolUse hook (matcher `Agent|Task`) and SubagentStop
+  hook: a spawn naming no model is denied with the choice criteria; an allowed one gets the report
+  contract (`Status:` first) appended once, and a line in `~/.cache/goh/agent-spawns.jsonl`, which
+  SubagentStop completes with tokens and status. Fails open. Pinned by `test_claude_agent_guard.py`.
 * `hooks/claude/compact_nudge.py` — a Claude Code Stop hook: when a turn ends with the context past
   `GOH_COMPACT_NUDGE_AT`, a `systemMessage` says `/compact` now lands on a task boundary (no hook can
   start a compaction itself). Once per `GOH_COMPACT_NUDGE_STEP`; never blocks. Pinned by `test_claude_compact_hooks.py`.

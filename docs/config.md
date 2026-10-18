@@ -225,6 +225,8 @@ Read from the hook's environment (the settings file's `env`, or the shell Claude
 
 `discard_guard.py` (PreToolUse, matcher `Bash`) takes no key: it refuses a git command that would discard uncommitted work, and `# discard-ok: <reason>` in the command is its only escape.
 
+`agent_guard.py` (PreToolUse, matcher `Agent|Task`; and SubagentStop) takes no key of its own: it refuses a subagent spawn naming no model, appends the report contract to the prompt of every spawn it allows, and records each spawn and its outcome (tokens, `Status:`) in `$XDG_CACHE_HOME/goh/agent-spawns.jsonl` (default `~/.cache`). `MODEL_EXEMPT` in the hook names the agent types it leaves alone.
+
 | Key | Default | Meaning |
 |---|---|---|
 | `GOH_COMPACT_NUDGE_AT` | `300000` | Tokens of main-conversation context past which `compact_nudge.py` (Stop) tells the owner, at the end of a turn, that `/compact` would land on a task boundary. Set it under the `autoCompactWindow`, or the automatic compaction comes first and the nudge never speaks. |
