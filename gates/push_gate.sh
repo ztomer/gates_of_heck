@@ -70,6 +70,8 @@ GOH="${GOH_DIR:-${GOH:-$HOME/Projects/gates_of_heck}}"
 . "$GOH/lib/repo_writes.sh"
 # shellcheck source=lib/push_runs.sh
 . "$GOH/lib/push_runs.sh"
+# shellcheck source=lib/gate_slot.sh
+. "$GOH/lib/gate_slot.sh"
 bench_lock_join "pre-push" # the whole push is one registration; a measurement waits for it
 
 root="$(git rev-parse --show-toplevel)"
@@ -213,6 +215,7 @@ cleanup() {
     cleanup_run
     [ -n "$refs_file" ] && rm -f "$refs_file"
     if [ -n "$BENCH_LOCK_ENTRY" ]; then rm -f "$BENCH_LOCK_ENTRY"; fi
+    gate_slot_release
 }
 trap cleanup EXIT
 trap 'cleanup; exit 129' HUP
@@ -367,6 +370,12 @@ while read -r local_ref local_sha _remote_ref _remote_sha; do
     # THERE). The cause is inside SwiftLint's path relativisation; the fix that holds without
     # theory is to gate where the tools were calibrated: a directory beside the user's checkouts.
     # `pwd -P` besides, so a symlinked component can never be the difference.
+    # A MACHINE-WIDE SLOT before the heavy work (lib/gate_slot.sh). Several sessions pushing at once
+    # had no limit: zinc's gate was killed mid-test and games' Release rebuild ran out its 900 s step
+    # limit at a load average of 49.6 (2026-10-18) -- failures of the box, not of the change. Taken
+    # once per push, before the export, and held to exit; every step ceiling starts inside the gate,
+    # so the wait is reported here and charged to no step.
+    [ -n "${slot_asked:-}" ] || { gate_slot_acquire "$(basename "$root")"; slot_asked=1; }
     mkdir -p "$export_root"
     # A STABLE path per repo, claimed with an atomic mkdir. ~/.cargo/config.toml keys the build
     # directory by `{workspace-path-hash}`, so a random export path meant every push built every

@@ -462,7 +462,7 @@ dependencies = [
 
 [[package]]
 name = "goh"
-version = "0.35.1"
+version = "0.36.0"
 dependencies = [
  "bytecount",
  "clap",
@@ -488,7 +488,7 @@ dependencies = [
 
 [[package]]
 name = "goh-golden"
-version = "0.35.1"
+version = "0.36.0"
 dependencies = [
  "num-traits",
  "png",
@@ -498,21 +498,21 @@ dependencies = [
 
 [[package]]
 name = "goh-sys"
-version = "0.35.1"
+version = "0.36.0"
 dependencies = [
  "libc",
 ]
 
 [[package]]
 name = "goh-testkit"
-version = "0.35.1"
+version = "0.36.0"
 dependencies = [
  "tempfile",
 ]
 
 [[package]]
 name = "goh-tui"
-version = "0.35.1"
+version = "0.36.0"
 
 [[package]]
 name = "hashbrown"

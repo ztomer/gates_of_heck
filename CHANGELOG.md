@@ -1,5 +1,32 @@
 # CHANGELOG
 
+## v0.36.0 — a machine-wide limit on concurrent push gates _(2026-10-18)_
+
+Minor bump: a push now waits for a gate slot when the machine is full. Several sessions pushed at once
+with nothing limiting them, and two pushes failed on load, not on their changes: zinc's gate was
+killed mid-test (exit 144), and games' Release rebuild built 240 of 814 objects inside a 900 s step
+limit while the 15-minute load average was 49.6.
+
+* **Gate slots (`lib/gate_slot.sh`, `lib/gate_slot.py`).** A counting semaphore of `GOH_GATE_SLOTS`
+  flock'd files under `~/.cache/goh/slots` (`GOH_GATE_SLOT_DIR`); the default is one slot per four
+  cores, at least one (4 on a 16-core box), and `0` turns it off. `push_gate.sh` takes one before its
+  export and holds it to exit. The lock is held by a Python process that ends with the gate's shell
+  and is TERMed by its cleanup: a SIGKILLed gate frees its slot through the kernel, and a daemon the
+  gate started cannot inherit it.
+* **A waiting gate says who it waits for.** Each holder's repo, pid and start time, again every 30 s
+  with how long it has waited, then `gate slot k/N taken after Ns waiting`.
+* **The wait spends no step's budget.** Every step ceiling starts inside the gate, after the slot;
+  the wait is reported on its own line.
+* **No deadlock when gates nest.** A gate holding a slot exports `GOH_GATE_SLOT`; a gate under it
+  (a metarepo running a child's push gate, `land.sh` -> push gate) takes none. With the variable
+  stripped (a hermetic test env) it is found by ancestry; a value naming a non-ancestor is ignored.
+* **`hermetic_env` keeps the private machine locks.** It dropped every `GOH_*` but `GOH_LIVE`, so a
+  hermetic child reached the REAL bench lock; the host-lock directories are kept now.
+
+Red first, each one: no slot (11 of 11 tests), a slot too many, a holder that ignores its shell's
+death, no nested check, no ancestry fallback, a non-ancestor honoured, holders unnamed, the wait
+charged to the step (`TIMED OUT after 2s`), and `hermetic_env` dropping the lock dirs.
+
 ## v0.35.1 — the silent-failure check reads goh and ZoneWM right _(2026-10-18)_
 
 Patch bump: two false `unverified` verdicts found by running `lib/landed_verify.py` on real shas.

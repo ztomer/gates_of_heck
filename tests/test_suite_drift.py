@@ -64,6 +64,9 @@ GIT_INIT_SITES = {
 CPU_COUNT_POOLS = {
     "checks/_ordered_pool.py": 1,
     "checks/check_probes_pass.py": 1,
+    # Not a pool: the default COUNT of machine-wide gate slots (one gate per four cores), which
+    # bounds the gates and so every pool they run.
+    "lib/gate_slot.py": 1,
 }
 
 _INIT = re.compile(r'"init"|git init')
