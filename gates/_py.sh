@@ -80,7 +80,9 @@ goh_py_full() {
 # the pinned version's, else python3 -- refusing a venv or an interpreter that is not the pin.
 goh_py_interpreter() {
     local pin src py full
-    IFS=$'\t' read -r pin src < <(goh_py_pin; printf '\t\n')
+    # Captured whole, then read: a producer still writing after `read` took its line wrote into a
+    # closed pipe and printed `write error: Broken pipe` under a SIGPIPE-ignoring ancestor.
+    IFS=$'\t' read -r pin src <<<"$(goh_py_pin)"
     if [ -x .venv/bin/python ]; then
         py=.venv/bin/python
     elif [ -n "$pin" ]; then

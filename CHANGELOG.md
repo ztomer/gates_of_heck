@@ -1,5 +1,15 @@
 # CHANGELOG
 
+## v0.31.5 — reading the Python pin never writes into a closed pipe _(2026-10-18)_
+
+Patch bump: one stray stderr line gone, nothing refuses more.
+
+* **`goh_py_interpreter` printed `printf: write error: Broken pipe` mid-gate** (app_updates
+  pre-commit). It read the pin with `read < <(goh_py_pin; printf '\t\n')`: `read` took one line and
+  the pipe closed, and the trailing `printf` wrote into it -- an error message under any ancestor
+  that ignores SIGPIPE, intermittent because it raced. The pin is now captured whole and read from
+  a here-string. The test lingers the pin source under an ignored SIGPIPE, red without the fix.
+
 ## v0.31.4 — a stable push export names its build dirs _(2026-10-17)_
 
 Patch bump: the push marker gains lines, nothing refuses more.

@@ -86,3 +86,28 @@ def test_a_current_venv_is_used_and_named(repo: Path) -> None:
 def test_a_newer_venv_is_not_stale(repo: Path) -> None:
     r = _resolve(repo, "4.0", "3.15")
     assert r.returncode == 0, r.stderr
+
+
+def test_reading_the_pin_never_writes_into_a_closed_pipe(repo: Path) -> None:
+    """`read` took one line from `<(goh_py_pin; printf '\\t\\n')` and closed the pipe; the trailing
+    printf then wrote into it and printed `printf: write error: Broken pipe` mid-gate (app_updates
+    pre-commit, 2026-10-18). Intermittent in life, so the pin source lingers here to make it certain."""
+    write(repo, ".python-version", "3.13\n")
+    stage(repo, ".python-version")
+    bindir = repo.parent / f"bin-{repo.name}"
+    _fake_python(bindir / "python3", "3.13")
+    _fake_python(repo / ".venv" / "bin" / "python", "3.13")
+    script = (  # an ancestor that ignores SIGPIPE is what turns the write into a printed error
+        f'trap "" PIPE; . "{TUI}"; GOH_NAME=test; . "{PY_SH}"; '
+        'eval "orig_$(declare -f goh_py_pin)"; '
+        "goh_py_pin() { orig_goh_py_pin; sleep 0.3; }; "
+        "goh_py_interpreter >/dev/null"
+    )
+    full = {k: v for k, v in os.environ.items() if k != "GOH_PY_RUNNER"}
+    full["PATH"] = f"{bindir}:{os.environ['PATH']}"
+    r = subprocess.run(
+        ["/bin/bash", "-c", script], cwd=repo, capture_output=True, text=True, env=full,
+        check=False, stdin=subprocess.DEVNULL,
+    )  # fmt: skip
+    assert r.returncode == 0, r.stderr
+    assert "Broken pipe" not in r.stderr and "write error" not in r.stderr, r.stderr
