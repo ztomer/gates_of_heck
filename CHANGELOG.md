@@ -1,5 +1,18 @@
 # CHANGELOG
 
+## v0.38.0 — a push runs the steps a repo declares, whatever its gate calls _(2026-10-18)_
+
+Minor bump: a push gate can now run a repo's `GOH_CI_STEPS` itself. homebrew-tap's `tools/gate.sh
+--full` ran the structural layer alone, so the tap's consistency and `brew style` checks sat in its
+`.gatesrc` and ran nowhere from the day they were declared (found closing CadGoose G0.18);
+divoom-control had the same hole until its R71 P0.1.
+
+* **The declared-steps mark.** `push_gate.sh` sets `GOH_CI_STEPS_MARK` around the repo's gate;
+  `local_ci.sh` appends the tree whose `.gatesrc` steps it ran. A gate that passed without marking
+  this tree gets `local_ci.sh` run over the export after it, and the gap is named. The same shape
+  as the structural mark (BACKLOG 6.7); a `local_ci` run in another tree does not count.
+* Pinned by `tests/test_push_gate_ci_steps.py` (red on 3 of 5 before the change).
+
 ## v0.37.0 — every full-gate entry point takes the gate slot _(2026-10-18)_
 
 Minor bump: a hand-run full gate now waits for a gate slot when the machine is full. v0.36.0 took the

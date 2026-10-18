@@ -187,6 +187,13 @@ _add() { # _add <source> <cmd>
     ALL_STEPS="${ALL_STEPS}${ALL_STEPS:+
 }$1	$2"
 }
+# THE MARK: push_gate.sh reads it to tell whether the repo's tools/gate.sh ran the steps its
+# .gatesrc declares, and runs them itself when it did not (tests/test_push_gate_ci_steps.py).
+# The tree, so a local_ci run inside some other repo does not stand in for this one's.
+if [ -n "$SRC_GATESRC" ] && [ -n "${GOH_CI_STEPS_MARK:-}" ]; then
+    printf '%s\n' "$(git -C "$ROOT" rev-parse --show-toplevel 2>/dev/null || printf '%s' "$ROOT")" \
+        >>"$GOH_CI_STEPS_MARK"
+fi
 if [ -n "$SRC_GATESRC" ]; then
     _rest="$SRC_GATESRC"
     while [ -n "$_rest" ]; do
