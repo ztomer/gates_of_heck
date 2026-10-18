@@ -218,9 +218,13 @@ Every structural checker is native since Phase N3; the Python checkers they port
   matcher `Write|Edit|MultiEdit|Bash`): an edit inside the skills corpus -- or a Bash command naming it -- runs `goh skills` at once and
   a finding is exit 2 back to the writer. Not copied by `install.sh`. Pinned by `test_claude_skill_hook.py`.
 * `hooks/claude/agent_guard.py` — a Claude Code PreToolUse hook (matcher `Agent|Task`) and SubagentStop
-  hook: a spawn naming no model is denied with the choice criteria; an allowed one gets the report
-  contract (`Status:` first) appended once, and a line in `~/.cache/goh/agent-spawns.jsonl`, which
+  hook: a spawn must name model AND effort and declare them (`Model-choice: <model>@<effort> because
+  <tags>`) as `CHOICE_RULES` accepts, else it is denied with the table; an allowed one gets the report
+  contract (`Status:` first) appended once and a line in `~/.cache/goh/agent-spawns.jsonl`, which
   SubagentStop completes with tokens and status. Fails open. Pinned by `test_claude_agent_guard.py`.
+* `hooks/claude/registrations.json` — the goh hook entries for `~/.claude/settings.json` as they should be
+  registered; a python one ends `|| exit 1` (python3 exits 2 on a missing script, and exit 2 blocks).
+  Pinned by `test_claude_hook_registrations.py`.
 * `hooks/claude/compact_nudge.py` — a Claude Code Stop hook: when a turn ends with the context past
   `GOH_COMPACT_NUDGE_AT`, a `systemMessage` says `/compact` now lands on a task boundary (no hook can
   start a compaction itself). Once per `GOH_COMPACT_NUDGE_STEP`; never blocks. Pinned by `test_claude_compact_hooks.py`.
@@ -232,6 +236,9 @@ Every structural checker is native since Phase N3; the Python checkers they port
   first seen in the last 48 h, one summary line for the standing ones, and a line saying so when the
   state file is missing or older than 36 h -- a job that stopped reads exactly like a clean estate.
   Pinned by `test_estate_audit.py`.
+* `scripts/agent_audit.py` — reads agent_guard's spawn ledger: UNDER (a sonnet@high/opus@low spawn that
+  ended blocked/failed or was escalated) and OVER (an opus@medium+ spawn that landed under the median
+  tokens of landed cheap-tier spawns); no verdict below 20 outcomes. Pinned by `test_agent_audit.py`.
 * `scripts/estate_audit.py` — the house Rust audit (`rust_gate.sh`'s biting `cargo audit`) over every
   tracked `Cargo.lock` under `~/Projects` (`GOH_ESTATE_ROOT`), nested repositories included, minus each
   repo's own `GOH_EXCLUDE`, from each workspace root so its exemptions apply. Records into

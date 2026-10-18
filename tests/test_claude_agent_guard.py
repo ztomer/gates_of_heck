@@ -61,28 +61,51 @@ BRIEF = {"description": "fix it", "prompt": "Fix the leak in foo.rs.\nRed test: 
          "subagent_type": "general-purpose"}  # fmt: skip
 
 
-# --- rule 1: a spawn names its model ---------------------------------------------------------
+# --- rule 1: a spawn names its model AND its effort ------------------------------------------
 
 
-@pytest.mark.parametrize("model", [None, "", "   "])
-@pytest.mark.parametrize("tool_name", ["Agent", "Task"])
-def test_a_spawn_naming_no_model_is_refused_with_the_criteria(
-    tmp_path: Path, model: str | None, tool_name: str
-) -> None:
-    ti = dict(BRIEF) | ({} if model is None else {"model": model})
-    out = _run(_spawn(ti, tool_name), tmp_path)
+DECL = "Model-choice: sonnet@high because checkable, known-fix"
+GOOD = dict(BRIEF, model="sonnet", effort="high", prompt=BRIEF["prompt"] + "\n" + DECL)
+
+
+def _reason(out: dict[str, Any] | None) -> str:
+    assert out is not None, "the spawn was allowed"
+    hso = out["hookSpecificOutput"]
+    assert hso.get("permissionDecision") == "deny", hso
+    return hso["permissionDecisionReason"]
+
+
+def _allowed(out: dict[str, Any] | None) -> dict[str, Any]:
     assert out is not None
     hso = out["hookSpecificOutput"]
-    assert hso["permissionDecision"] == "deny", hso
-    reason = hso["permissionDecisionReason"]
-    for needle in ("pass model explicitly", "Sonnet only when ALL", "Opus when ANY",
-                   "red test", "unknown root cause", "multi-session"):  # fmt: skip
+    assert "permissionDecision" not in hso, hso.get("permissionDecisionReason")
+    return hso["updatedInput"]
+
+
+@pytest.mark.parametrize(
+    "drop",
+    [{"model": None}, {"effort": None}, {"model": "", "effort": ""}, {"model": "  "},
+     {"effort": " "}],
+)  # fmt: skip
+@pytest.mark.parametrize("tool_name", ["Agent", "Task"])
+def test_a_spawn_naming_no_model_or_no_effort_is_refused_with_the_table(
+    tmp_path: Path, drop: dict[str, str | None], tool_name: str
+) -> None:
+    ti = dict(GOOD) | {k: v for k, v in drop.items() if v is not None}
+    for k in [k for k, v in drop.items() if v is None]:
+        del ti[k]
+    reason = _reason(_run(_spawn(ti, tool_name), tmp_path))
+    missing = "model" if "model" in drop else "effort"
+    assert f"names no {missing}" in reason, reason
+    for needle in ("sonnet@high, opus@low", "checkable + known-fix", "opus@xhigh", "read-only",
+                   "owner-asked", "never: sonnet@low, sonnet@medium, sonnet@xhigh"):  # fmt: skip
         assert needle in reason, (needle, reason)
+    assert len(reason.splitlines()) <= 10, reason  # the table in a few lines
     assert _ledger(tmp_path) == []  # a refused spawn is not a spawn
 
 
 @pytest.mark.parametrize("agent_type", sorted(agent_guard.MODEL_EXEMPT))
-def test_an_exempt_agent_type_runs_without_a_model_and_without_the_contract(
+def test_an_exempt_agent_type_runs_without_a_choice_and_without_the_contract(
     tmp_path: Path, agent_type: str
 ) -> None:
     out = _run(_spawn(dict(BRIEF, subagent_type=agent_type)), tmp_path)
@@ -96,21 +119,81 @@ def test_the_exempt_list_is_the_read_only_and_fork_types() -> None:
     assert agent_guard.MODEL_EXEMPT == {"Explore", "claude-code-guide", "statusline-setup", "fork"}
 
 
+# --- rule 2: the declared choice ------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("model", "effort", "because"),
+    [
+        ("sonnet", "high", "checkable, known-fix"),
+        ("opus", "low", "known-fix checkable"),
+        ("opus", "medium", "unknown-root-cause"),
+        ("opus", "high", "design-ui, security"),
+        ("opus", "high", "research"),
+        ("opus", "medium", "unchecked"),
+        ("opus", "xhigh", "escalation"),
+        ("haiku", "low", "read-only"),
+        ("haiku", "medium", "read-only"),
+        ("fable", "high", "owner-asked"),
+        ("opus", "max", "owner-asked"),
+        ("sonnet", "max", "owner-asked"),
+        ("claude-opus-5-5", "medium", "audit-review"),  # a full id maps to its alias
+        ("claude-sonnet-5-5[1m]", "high", "checkable, known-fix"),
+    ],
+)
+def test_a_declared_choice_the_table_accepts_runs_with_the_contract(
+    tmp_path: Path, model: str, effort: str, because: str
+) -> None:
+    alias = agent_guard.family(model)
+    prompt = f"Do the thing.\nModel-choice: {alias}@{effort} because {because}"
+    ti = dict(BRIEF, model=model, effort=effort, prompt=prompt)
+    new = _allowed(_run(_spawn(ti), tmp_path))
+    assert new == dict(ti, prompt=new["prompt"])  # only the prompt changes
+    assert new["prompt"].startswith(prompt) and new["prompt"].rstrip().endswith(CONTRACT)
+
+
+@pytest.mark.parametrize(
+    ("model", "effort", "line", "needle"),
+    [
+        ("sonnet", "high", None, "no `Model-choice:` line"),
+        ("sonnet", "high", "Model-choice: sonnet@high because checkable, easy", "unknown tag"),
+        ("sonnet", "high", "Model-choice: sonnet@high because checkable", "needs all of"),
+        ("opus", "low", "Model-choice: opus@low because known-fix", "needs all of"),
+        ("opus", "medium", "Model-choice: opus@medium because checkable", "needs one of"),
+        ("opus", "xhigh", "Model-choice: opus@xhigh because security", "needs all of"),
+        ("haiku", "low", "Model-choice: haiku@low because checkable, known-fix", "needs all of"),
+        ("fable", "high", "Model-choice: fable@high because research", "needs all of"),
+        ("opus", "max", "Model-choice: opus@max because escalation", "needs all of"),
+        ("sonnet", "high", "Model-choice: opus@high because research", "disagrees"),
+        ("opus", "high", "Model-choice: opus@medium because research", "disagrees"),
+        ("sonnet", "medium", "Model-choice: sonnet@medium because checkable, known-fix", "62.7%"),
+        ("sonnet", "low", "Model-choice: sonnet@low because checkable, known-fix", "62.7%"),
+        ("sonnet", "xhigh", "Model-choice: sonnet@xhigh because escalation", "costs more"),
+        ("haiku", "high", "Model-choice: haiku@high because read-only", "not in the table"),
+        ("gpt-5", "high", "Model-choice: gpt-5@high because research", "unknown model"),
+        ("opus", "warm", "Model-choice: opus@warm because research", "unknown effort"),
+    ],
+)
+def test_a_choice_the_table_does_not_accept_is_refused(
+    tmp_path: Path, model: str, effort: str, line: str | None, needle: str
+) -> None:
+    prompt = "Do the thing." + (f"\n{line}" if line else "")
+    reason = _reason(_run(_spawn(dict(BRIEF, model=model, effort=effort, prompt=prompt)), tmp_path))
+    assert needle in reason, reason
+    assert "Model-choice: <model>@<effort> because <tags>" in reason, reason
+
+
+def test_two_declared_lines_that_disagree_are_refused(tmp_path: Path) -> None:
+    prompt = f"{DECL}\nlater:\nModel-choice: opus@high because research"
+    out = _run(_spawn(dict(GOOD, prompt=prompt)), tmp_path)
+    assert "disagree" in _reason(out)
+
+
+def test_the_same_line_twice_is_one_declaration(tmp_path: Path) -> None:
+    _allowed(_run(_spawn(dict(GOOD, prompt=f"{DECL}\n...\n{DECL}")), tmp_path))
+
+
 # --- rule 3: the report contract ----------------------------------------------------------------
-
-
-def test_a_spawn_naming_a_model_carries_the_contract(tmp_path: Path) -> None:
-    out = _run(_spawn(dict(BRIEF, model="sonnet")), tmp_path)
-    assert out is not None
-    hso = out["hookSpecificOutput"]
-    assert hso["hookEventName"] == "PreToolUse"
-    # updatedInput alone takes effect in 2.1.292 (proven live); no permissionDecision, so the
-    # hook never widens what the permission system would have allowed.
-    assert "permissionDecision" not in hso, hso
-    new = hso["updatedInput"]
-    assert new["prompt"].startswith(BRIEF["prompt"])
-    assert new["prompt"].rstrip().endswith(CONTRACT)
-    assert new == dict(BRIEF, model="sonnet", prompt=new["prompt"])  # nothing else changes
 
 
 def test_the_contract_opens_with_a_machine_readable_status_line() -> None:
@@ -119,8 +202,9 @@ def test_the_contract_opens_with_a_machine_readable_status_line() -> None:
 
 
 def test_a_respawn_does_not_double_the_contract(tmp_path: Path) -> None:
-    once = BRIEF["prompt"] + "\n\n" + CONTRACT
-    out = _run(_spawn(dict(BRIEF, prompt=once, model="opus")), tmp_path)
+    once = GOOD["prompt"] + "\n\n" + CONTRACT
+    out = _run(_spawn(dict(GOOD, prompt=once)), tmp_path)
+    assert out is None or "permissionDecision" not in out.get("hookSpecificOutput", {}), out
     prompt = (out or {}).get("hookSpecificOutput", {}).get("updatedInput", {}).get("prompt", once)
     assert prompt.count(CONTRACT) == 1, prompt
 
@@ -134,24 +218,24 @@ def test_another_tool_is_not_touched(tmp_path: Path) -> None:
 # --- the ledger ---------------------------------------------------------------------------------
 
 
-def test_an_allowed_spawn_is_one_ledger_line(tmp_path: Path) -> None:
-    _run(_spawn(dict(BRIEF, model="sonnet")), tmp_path)
+def test_an_allowed_spawn_is_one_ledger_line_with_its_choice(tmp_path: Path) -> None:
+    _run(_spawn(dict(GOOD, model="claude-sonnet-5-5")), tmp_path)
     (line,) = _ledger(tmp_path)
     assert line["event"] == "spawn"
     assert line["session_id"] == "s-1" and line["tool_use_id"] == "toolu_A"
-    assert line["model"] == "sonnet" and line["exempt"] is False
+    assert line["model"] == "sonnet" and line["model_id"] == "claude-sonnet-5-5"
+    assert line["effort"] == "high" and line["tags"] == ["checkable", "known-fix"]
+    assert line["exempt"] is False and line["description"] == "fix it"
     assert line["first_line"] == "Fix the leak in foo.rs."
     assert len(line["prompt_sha"]) == 64 and line["time"]
-    assert line["tags"] == []  # the declared-choice vocabulary is not yet decided
 
 
 def test_a_ledger_that_cannot_be_written_never_blocks_the_spawn(tmp_path: Path) -> None:
     blocker = tmp_path / "not-a-dir"
     blocker.write_text("a file where the cache directory should be\n")
-    out = _run(_spawn(dict(BRIEF, model="sonnet")), blocker)
-    assert out is not None
-    assert out["hookSpecificOutput"]["updatedInput"]["prompt"].rstrip().endswith(CONTRACT)
-    assert "ledger" in out.get("systemMessage", ""), out
+    out = _run(_spawn(GOOD), blocker)
+    assert _allowed(out)["prompt"].rstrip().endswith(CONTRACT)
+    assert out is not None and "ledger" in out.get("systemMessage", ""), out
 
 
 def _transcript(tmp_path: Path, agent_id: str, usages: list[tuple[str, dict[str, int]]]) -> Path:

@@ -1,0 +1,45 @@
+{
+  "_doc": "The goh Claude Code hook entries for ~/.claude/settings.json, as they should be registered (docs/config.md, tests/test_claude_hook_registrations.py). A python hook ends `|| exit 1`: python3 exits 2 on a missing script, and exit 2 from a PreToolUse or Stop hook BLOCKS -- every tool call, or every stop. Mapped to 1 it is a visible, non-blocking hook error. Never register a hook that uses exit 2 on purpose (skill_edit.sh) this way: bash on a missing file exits 127.",
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "command": "python3 \"${GOH_DIR:-$HOME/Projects/gates_of_heck}/hooks/claude/discard_guard.py\" || exit 1",
+        "timeout": 15
+      },
+      {
+        "matcher": "Agent|Task",
+        "command": "python3 \"${GOH_DIR:-$HOME/Projects/gates_of_heck}/hooks/claude/agent_guard.py\" || exit 1",
+        "timeout": 15
+      }
+    ],
+    "SubagentStop": [
+      {
+        "matcher": null,
+        "command": "python3 \"${GOH_DIR:-$HOME/Projects/gates_of_heck}/hooks/claude/agent_guard.py\" || exit 1",
+        "timeout": 15
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit|MultiEdit|Bash",
+        "command": "bash \"${GOH_DIR:-$HOME/Projects/gates_of_heck}/hooks/claude/skill_edit.sh\"",
+        "timeout": 30
+      }
+    ],
+    "Stop": [
+      {
+        "matcher": null,
+        "command": "python3 \"${GOH_DIR:-$HOME/Projects/gates_of_heck}/hooks/claude/compact_nudge.py\" || exit 1",
+        "timeout": 10
+      }
+    ],
+    "SessionStart": [
+      {
+        "matcher": "compact",
+        "command": "python3 \"${GOH_DIR:-$HOME/Projects/gates_of_heck}/hooks/claude/compact_restore.py\" || exit 1",
+        "timeout": 15
+      }
+    ]
+  }
+}
