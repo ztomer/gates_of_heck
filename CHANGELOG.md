@@ -1,5 +1,21 @@
 # CHANGELOG
 
+## v0.31.3 — a lint finding that shrank is the same debt, smaller _(2026-10-17)_
+
+Patch bump: one false refusal removed; no new key.
+
+* **The swift lint ratchet refused the shrink it exists for.** The baseline key includes the
+  reason string, and a count-bearing reason embeds the count, so a grandfathered
+  `complexity is 27` that became 26 read as a NEW violation. ZeroThunder hit it extracting a
+  function out of its 178-line `draw()`: the build failed twice, and the only way through was
+  hand-editing the baseline. `swift_lint_baseline.py` now pairs a leftover live violation with a
+  leftover baselined one of the same file, rule and wording (numbers masked) when every number is
+  no larger. It passes with a nudge naming `27 -> 26`. A larger number stays new, and the refusal
+  names what it grew from. Exact matches are spent first, so an improvement never takes the entry
+  an exact copy needs.
+
+Six new tests. Each of the five matching rules was removed once and its test went red.
+
 ## v0.31.2 — goh's own caches are bounded in bytes _(2026-10-17)_
 
 Patch bump: two caches prune harder; one new key, `GOH_COV_CACHE_MAX_GIB` (default 8).

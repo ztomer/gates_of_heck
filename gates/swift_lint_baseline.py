@@ -23,6 +23,19 @@ Probed, not assumed (each row verified by mutating a real tree):
 So the key is (normalized file, rule id, reason), compared as MULTISETS: two
 identical violations in one file are tolerated iff the baseline lists two.
 
+An IMPROVED count is the same debt, smaller. swiftlint's own --baseline
+treats "currently complexity is 26" against a baselined 27 as NEW, so the
+ratchet refused exactly the shrink it exists for (ZeroThunder 2026-10-17:
+extracting a function out of a grandfathered draw() failed the build twice,
+and the only way through was hand-editing the baseline). Here, after exact
+matches are spent, a leftover live violation pairs with a leftover baselined
+one of the same file and rule whose reason has the same WORDS (numbers
+masked) and whose every number is >= the live one. It passes, with a
+re-record nudge naming old -> new. A larger number in any position stays
+new, and the message names the baselined value it grew from. Every rule
+swiftlint ships with a count in its reason is an upper bound, so "smaller"
+means "better"; a raised limit is a larger number and stays new.
+
 Path normalization. SwiftLint's JSON reporter emits ABSOLUTE paths;
 `--write-baseline` records paths relative to the invocation directory with
 the leading "/" STRIPPED (yes — "var/folders/...", probed 2026-08-25), and
@@ -52,9 +65,11 @@ if __name__ == "__main__":  # C4: run HEAD's copy, not the shared working tree (
 import argparse
 import json
 import os
+import re
 import sys
 from collections import Counter
 from pathlib import Path
+from typing import NamedTuple
 
 FILE_URL_SCHEME = "file://"
 
@@ -104,19 +119,66 @@ def match_key(violation: dict, root: Path) -> tuple[str, str, str]:
     return (normalize_path(file_raw, root), rule, violation.get("reason", ""))
 
 
-def reconcile(
-    baseline_entries: list, live_violations: list, root: Path
-) -> tuple[list[dict], list[dict]]:
-    """Return (new, stale). `new` must be empty for the gate to pass."""
+NUMBER = re.compile(r"\d+(?:\.\d+)?")
+
+
+def reason_shape(reason: str) -> tuple[str, tuple[float, ...]]:
+    """("...complexity is #", (10.0, 27.0)): the words, and the numbers in order."""
+    return NUMBER.sub("#", reason), tuple(float(n) for n in NUMBER.findall(reason))
+
+
+class Reconciliation(NamedTuple):
+    new: list[dict]  # must be empty for the gate to pass
+    stale: list[tuple[str, str, str]]  # baselined keys that no longer occur
+    improved: list[tuple[dict, str]]  # (live violation, the baselined reason it shrank from)
+    grew_from: dict[int, str]  # id(new violation) -> the baselined reason it grew from
+
+
+def reconcile(baseline_entries: list, live_violations: list, root: Path) -> Reconciliation:
+    """Exact matches first, then improvements; see the module docstring."""
     tolerated = Counter(match_key(violation_of(e), root) for e in baseline_entries)
-    fresh: list[dict] = []
+    unmatched: list[dict] = []
     for v in live_violations:
         k = match_key(v, root)
         if tolerated[k] > 0:
             tolerated[k] -= 1
         else:
+            unmatched.append(v)
+
+    def candidates(k: tuple[str, str, str]) -> list[tuple[str, str, str]]:
+        words, _ = reason_shape(k[2])
+        return [
+            b for b in tolerated.elements() if b[:2] == k[:2] and reason_shape(b[2])[0] == words
+        ]
+
+    fresh: list[dict] = []
+    improved: list[tuple[dict, str]] = []
+    grew_from: dict[int, str] = {}
+    for v in unmatched:
+        k = match_key(v, root)
+        nums = reason_shape(k[2])[1]
+        same_words = candidates(k)
+        fits = [b for b in same_words if all(n <= m for n, m in zip(nums, reason_shape(b[2])[1]))]
+        if fits:
+            # The tightest fit, so a looser entry stays free for a later, larger violation.
+            best = min(fits, key=lambda b: reason_shape(b[2])[1])
+            tolerated[best] -= 1
+            improved.append((v, best[2]))
+        else:
             fresh.append(v)
-    return fresh, list(tolerated.elements())
+            if same_words:
+                grew_from[id(v)] = min(same_words, key=lambda b: reason_shape(b[2])[1])[2]
+    return Reconciliation(fresh, list(tolerated.elements()), improved, grew_from)
+
+
+def describe_change(old_reason: str, new_reason: str) -> str:
+    """'27 -> 26' for each number that moved."""
+    old, new = reason_shape(old_reason)[1], reason_shape(new_reason)[1]
+    return ", ".join(f"{_num(a)} -> {_num(b)}" for a, b in zip(old, new) if a != b)
+
+
+def _num(x: float) -> str:
+    return str(int(x)) if x.is_integer() else str(x)
 
 
 def load_json_list(path: Path, what: str, swiftlint_rc: int = 0) -> list:
@@ -165,20 +227,36 @@ def main() -> int:
         )
 
     root = args.root.resolve()
-    fresh, stale = reconcile(baseline, report, root)
+    got = reconcile(baseline, report, root)
 
-    if fresh:
+    if got.new:
         print("\u2717 swift gate: NEW lint violation(s) not in the baseline:")
-        for v in sorted(describe_new(v) for v in fresh):
-            print(f"  {v}")
-        print(f"  {len(fresh)} new (baseline tolerates {sum(1 for _ in baseline)} listed)")
+        lines = []
+        for v in got.new:
+            line = describe_new(v)
+            if id(v) in got.grew_from:
+                line += f"  (grew: {describe_change(got.grew_from[id(v)], v.get('reason', ''))})"
+            lines.append(line)
+        for line in sorted(lines):
+            print(f"  {line}")
+        print(f"  {len(got.new)} new (baseline tolerates {sum(1 for _ in baseline)} listed)")
         return 1
 
-    if stale:
+    if got.improved:
         print(
-            f"\u26a0 {len(stale)} baselined violation(s) no longer occur —",
+            f"\u26a0 {len(got.improved)} baselined violation(s) shrank —",
+            "re-record the baseline to lock the gain in (never grow it):",
+        )
+        for v, was in sorted(got.improved, key=lambda p: describe_new(p[0])):
+            print(f"  {describe_new(v)}  ({describe_change(was, v.get('reason', ''))})")
+
+    if got.stale:
+        print(
+            f"\u26a0 {len(got.stale)} baselined violation(s) no longer occur —",
             "re-record the baseline to shrink it (never grow it)",
         )
+
+    if got.improved or got.stale:
         return 0
 
     if baseline or report:

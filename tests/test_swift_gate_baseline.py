@@ -197,6 +197,94 @@ def test_vanished_entry_is_a_nudge_not_a_failure(root):
     assert "\u26a0" in out and "re-record" in out.lower()
 
 
+# ── a count-bearing finding that IMPROVED is the same debt, smaller ──────────
+#
+# Earned on ZeroThunder (2026-10-17): extracting a pure function out of a
+# grandfathered 178-line, complexity-27 `draw()` made it 170 lines and 26, and
+# swiftlint's native --baseline refused both as NEW violations, because the
+# reason string embeds the count. A ratchet meant to shrink debt refused the
+# shrink; the only way through was hand-editing the baseline.
+
+COMPLEXITY_27 = "Function should have complexity 10 or less; currently complexity is 27"
+COMPLEXITY_26 = "Function should have complexity 10 or less; currently complexity is 26"
+COMPLEXITY_28 = "Function should have complexity 10 or less; currently complexity is 28"
+
+
+def _baseline_with(
+    reason: str, rule: str = "cyclomatic_complexity", file: str = "Sources/Sample.swift"
+):
+    entry = json.loads(json.dumps(BASELINE_ENTRY))
+    entry["violation"].update(reason=reason, ruleIdentifier=rule)
+    entry["violation"]["location"]["file"] = file
+    return entry
+
+
+def test_improved_count_is_tolerated_with_a_re_record_nudge(root):
+    b = write_baseline(root, [_baseline_with(COMPLEXITY_27)])
+    r = write_report(
+        root, [_report_entry(live_path(root), 9, "cyclomatic_complexity", COMPLEXITY_26)]
+    )
+    got = run_cli("--baseline", str(b), "--report", str(r), "--root", str(root))
+    out = got.stdout + got.stderr
+    assert got.returncode == 0, out
+    assert "27 -> 26" in out and "re-record" in out.lower(), out
+
+
+def test_worsened_count_still_fails_naming_both_values(root):
+    b = write_baseline(root, [_baseline_with(COMPLEXITY_27)])
+    r = write_report(
+        root, [_report_entry(live_path(root), 9, "cyclomatic_complexity", COMPLEXITY_28)]
+    )
+    got = run_cli("--baseline", str(b), "--report", str(r), "--root", str(root))
+    out = got.stdout + got.stderr
+    assert got.returncode == 1, out
+    assert COMPLEXITY_28 in out and "27" in out, "a regression names what it grew from"
+
+
+def test_improvement_does_not_cross_rule_or_file(root):
+    m = _load_helper()
+    for other in (
+        _baseline_with(COMPLEXITY_27, rule="function_body_length"),
+        _baseline_with(COMPLEXITY_27, file="Sources/Other.swift"),
+    ):
+        live = [_report_entry(live_path(root), 9, "cyclomatic_complexity", COMPLEXITY_26)]
+        got = m.reconcile([other], live, root)
+        assert got.new == live, f"a smaller count in another rule/file is a new finding: {other}"
+
+
+def test_improvement_respects_the_multiset(root):
+    # One baselined 27 tolerates ONE improved 26; a second copy is new.
+    m = _load_helper()
+    live = [
+        _report_entry(live_path(root), n, "cyclomatic_complexity", COMPLEXITY_26) for n in (9, 40)
+    ]
+    got = m.reconcile([_baseline_with(COMPLEXITY_27)], live, root)
+    assert len(got.new) == 1 and len(got.improved) == 1
+
+
+def test_an_exact_match_is_never_spent_on_an_improvement(root):
+    # Baseline {27, 26}; live {26, 26}: the exact 26 pairs with the 26, the other with the 27.
+    # Greedy improvement-first would spend the 26 entry and leave nothing for the exact copy.
+    m = _load_helper()
+    live = [
+        _report_entry(live_path(root), n, "cyclomatic_complexity", COMPLEXITY_26) for n in (9, 40)
+    ]
+    got = m.reconcile([_baseline_with(COMPLEXITY_26), _baseline_with(COMPLEXITY_27)], live, root)
+    assert got.new == [] and len(got.improved) == 1 and got.stale == []
+
+
+def test_a_changed_limit_is_not_an_improvement(root):
+    # Every number must be <= its baselined counterpart and the words must match: a reason whose
+    # LIMIT moved ("or less" threshold) with a smaller count is still a different finding.
+    m = _load_helper()
+    other_words = "Function should have complexity 10 or fewer; currently complexity is 26"
+    live = [_report_entry(live_path(root), 9, "cyclomatic_complexity", other_words)]
+    assert m.reconcile([_baseline_with(COMPLEXITY_27)], live, root).new == live
+    raised_limit = "Function should have complexity 12 or less; currently complexity is 26"
+    live = [_report_entry(live_path(root), 9, "cyclomatic_complexity", raised_limit)]
+    assert m.reconcile([_baseline_with(COMPLEXITY_27)], live, root).new == live
+
+
 def test_empty_everything_is_clean(root):
     b = write_baseline(root, [])
     r = write_report(root, [])
