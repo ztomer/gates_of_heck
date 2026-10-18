@@ -1,5 +1,17 @@
 # CHANGELOG
 
+## v0.34.1 — a subagent's tokens are read after its transcript catches up _(2026-10-18)_
+
+Patch bump: the ledger's token counts become whole; nothing refuses more.
+
+* **The first live outcome recorded 6 output tokens for a 166-token answer.** SubagentStop fires
+  before the agent's closing entry reaches its transcript (2.1.292, probed: the hook saw only the
+  thinking entry, the text entry landed within 2 s, written beside the hook). `agent_guard.py`
+  now re-reads the transcript until the report's own text is in it (at most 5 s), records
+  `tokens_settled`, and counts each message at its LARGEST usage -- a streamed message carries a
+  growing usage on every entry, so the first one undercounts. Red without the change: a closing
+  entry appended 0.3 s late was missed; a growing message counted at its first entry.
+
 ## v0.34.0 — a subagent spawn names its model and effort, and is ledgered _(2026-10-18)_
 
 Minor bump: a new Claude Code hook that refuses spawns; nothing in any repo's gate refuses more.

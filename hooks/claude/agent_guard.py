@@ -33,6 +33,7 @@ import json
 import os
 import re
 import sys
+import time
 from pathlib import Path
 from typing import Any
 
@@ -226,25 +227,66 @@ def on_spawn(event: dict[str, Any]) -> dict[str, Any] | None:
     return out or None
 
 
-def _usage(transcript: Path) -> dict[str, int] | None:
-    """Tokens the agent spent: usage summed over its assistant messages, each message ONCE (a
-    message streamed as several transcript entries repeats its usage on every entry)."""
-    try:
-        text = transcript.read_text(encoding="utf-8")
-    except OSError:
-        return None
-    seen: dict[str, dict[str, Any]] = {}
+# How long SubagentStop waits for the agent's closing entry to reach its transcript. The event
+# fires BEFORE that entry is written (live, 2.1.292: the hook saw only the thinking entry; the text
+# entry, with most of the output tokens, landed within 2 s), and the write runs beside the hook.
+SETTLE_S = 5.0
+
+
+def _entries(text: str) -> list[dict[str, Any]]:
+    out = []
     for raw in text.splitlines():
         try:
             entry = json.loads(raw)
         except ValueError:
             continue
-        msg = entry.get("message") if isinstance(entry, dict) else None
-        if isinstance(msg, dict) and isinstance(msg.get("usage"), dict):
-            seen[str(msg.get("id") or len(seen))] = msg["usage"]
+        if isinstance(entry, dict) and isinstance(entry.get("message"), dict):
+            out.append(entry["message"])
+    return out
+
+
+def _has_report(text: str, report: str) -> bool:
+    want = report.strip()
+    return any(
+        isinstance(c, dict) and c.get("type") == "text" and str(c.get("text", "")).strip() == want
+        for msg in _entries(text)
+        if isinstance(msg.get("content"), list)
+        for c in msg["content"]
+    )
+
+
+def settled_transcript(
+    path: Path, report: str, deadline_s: float = SETTLE_S
+) -> tuple[str | None, bool]:
+    """(the transcript's text, whether it holds the agent's closing report). Reads until the report
+    is there or the deadline passes: the transcript lags the event (SETTLE_S)."""
+    end = time.monotonic() + deadline_s
+    while True:
+        try:
+            text = path.read_text(encoding="utf-8")
+        except OSError:
+            return None, False
+        if not report.strip() or _has_report(text, report):
+            return text, True
+        if time.monotonic() >= end:
+            return text, False
+        time.sleep(0.05)  # the next pass re-reads the transcript: a poll, not a guess
+
+
+def usage(text: str) -> dict[str, int]:
+    """Tokens the agent spent: usage summed over its assistant messages, each message ONCE and at
+    its largest (a message streamed as several entries carries its usage on each, growing)."""
     keys = {"input": "input_tokens", "output": "output_tokens",
             "cache_creation": "cache_creation_input_tokens", "cache_read": "cache_read_input_tokens"}  # fmt: skip
-    tokens = {k: sum(int(u.get(v) or 0) for u in seen.values()) for k, v in keys.items()}
+    per: dict[str, dict[str, int]] = {}
+    for i, msg in enumerate(_entries(text)):
+        u = msg.get("usage")
+        if not isinstance(u, dict):
+            continue
+        cur = per.setdefault(str(msg.get("id") or f"#{i}"), dict.fromkeys(keys, 0))
+        for k, v in keys.items():
+            cur[k] = max(cur[k], int(u.get(v) or 0))
+    tokens = {k: sum(m[k] for m in per.values()) for k in keys}
     tokens["total"] = sum(tokens.values())
     return tokens
 
@@ -267,12 +309,14 @@ def on_stop(event: dict[str, Any]) -> str | None:
         except (OSError, ValueError, AttributeError):
             tool_use_id = None
     report = event.get("last_assistant_message")
+    report = report if isinstance(report, str) else ""
+    text, settled = settled_transcript(transcript, report) if transcript else (None, False)
     return _append({
         "event": "outcome", "time": _now(), "session_id": event.get("session_id"),
         "tool_use_id": tool_use_id, "agent_id": event.get("agent_id"),
         "agent_type": event.get("agent_type"),
-        "status": _status(report if isinstance(report, str) else ""),
-        "tokens": _usage(transcript) if transcript is not None else None,
+        "status": _status(report), "tokens": usage(text) if text is not None else None,
+        "tokens_settled": settled,
     })  # fmt: skip
 
 

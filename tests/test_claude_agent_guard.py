@@ -238,11 +238,22 @@ def test_a_ledger_that_cannot_be_written_never_blocks_the_spawn(tmp_path: Path) 
     assert out is not None and "ledger" in out.get("systemMessage", ""), out
 
 
-def _transcript(tmp_path: Path, agent_id: str, usages: list[tuple[str, dict[str, int]]]) -> Path:
+def _transcript(
+    tmp_path: Path,
+    agent_id: str,
+    usages: list[tuple[str, dict[str, int]]],
+    final: str | None = None,
+) -> Path:
+    """An agent transcript: the brief, assistant entries carrying `usages`, and -- when `final` is
+    given -- the closing entry whose text is the agent's report (what SubagentStop waits for)."""
     sub = tmp_path / "proj" / "subagents"
     sub.mkdir(parents=True)
     lines = [{"type": "user", "message": {"role": "user", "content": "the brief"}}]
     lines += [{"type": "assistant", "message": {"id": mid, "usage": u}} for mid, u in usages]
+    if final is not None:
+        lines.append({"type": "assistant", "message": {
+            "id": "m-final", "content": [{"type": "text", "text": final}],
+            "usage": {"input_tokens": 0, "output_tokens": 0}}})  # fmt: skip
     path = sub / f"agent-{agent_id}.jsonl"
     path.write_text("".join(json.dumps(ln) + "\n" for ln in lines))
     (sub / f"agent-{agent_id}.meta.json").write_text(
@@ -264,15 +275,20 @@ def test_a_finished_agent_records_its_tokens_and_status(tmp_path: Path) -> None:
           "cache_read_input_tokens": 5000}  # fmt: skip
     u2 = {"input_tokens": 20, "output_tokens": 200, "cache_creation_input_tokens": 2000,
           "cache_read_input_tokens": 6000}  # fmt: skip
-    # A message streamed as several transcript entries repeats its usage; it counts once.
-    path = _transcript(tmp_path, "a1", [("m1", u1), ("m1", u1), ("m2", u2)])
+    # A message streamed as several transcript entries carries its usage on each, growing as it
+    # streams (live, 2.1.292: output 6 on the thinking entry, 166 on the text): it counts once,
+    # at its largest.
+    early = dict(u1, output_tokens=6)
+    report = "Status: landed\nabc1234 fix the leak"
+    path = _transcript(tmp_path, "a1", [("m1", early), ("m1", u1), ("m2", u2)], final=report)
     cache = tmp_path / "cache"
-    assert _run(_stop(path, "Status: landed\nabc1234 fix the leak"), cache) is None
+    assert _run(_stop(path, report), cache) is None
     (line,) = _ledger(cache)
     assert line["event"] == "outcome" and line["status"] == "landed"
     assert line["tool_use_id"] == "toolu_A" and line["agent_id"] == "a1"
     assert line["tokens"] == {"input": 30, "output": 300, "cache_creation": 3000,
                               "cache_read": 11000, "total": 14330}  # fmt: skip
+    assert line["tokens_settled"] is True
 
 
 @pytest.mark.parametrize(
@@ -287,7 +303,7 @@ def test_a_finished_agent_records_its_tokens_and_status(tmp_path: Path) -> None:
     ],
 )
 def test_status_is_read_from_the_first_line_only(tmp_path: Path, last: str, status: str) -> None:
-    path = _transcript(tmp_path, "a1", [])
+    path = _transcript(tmp_path, "a1", [], final=last)
     _run(_stop(path, last), tmp_path / "cache")
     assert _ledger(tmp_path / "cache")[0]["status"] == status
 
@@ -296,6 +312,31 @@ def test_an_outcome_without_a_transcript_is_still_recorded(tmp_path: Path) -> No
     assert _run(_stop(tmp_path / "gone.jsonl", "Status: landed"), tmp_path) is None
     (line,) = _ledger(tmp_path)
     assert line["status"] == "landed" and line["tokens"] is None and line["tool_use_id"] is None
+
+
+def test_the_outcome_waits_for_the_transcript_to_catch_up(tmp_path: Path) -> None:
+    """SubagentStop fires BEFORE the agent's closing entry reaches its transcript (live, 2.1.292:
+    the hook saw only the thinking entry; the text entry landed within 2 s), so a hook that reads
+    at once records a fraction of the tokens. It reads until the report's own text is there."""
+    import threading
+
+    report = "Status: answered\n4"
+    path = _transcript(tmp_path, "a1", [("m1", {"input_tokens": 1, "output_tokens": 5})])
+    closing = {"type": "assistant", "message": {"id": "m1", "content": [{"type": "text",
+               "text": report}], "usage": {"input_tokens": 1, "output_tokens": 200}}}  # fmt: skip
+    late = threading.Timer(0.3, lambda: path.open("a").write(json.dumps(closing) + "\n"))
+    late.start()
+    try:
+        text, settled = agent_guard.settled_transcript(path, report, deadline_s=5.0)
+    finally:
+        late.join()
+    assert settled and agent_guard.usage(text)["output"] == 200
+
+
+def test_a_transcript_that_never_catches_up_is_recorded_as_unsettled(tmp_path: Path) -> None:
+    path = _transcript(tmp_path, "a1", [("m1", {"input_tokens": 1, "output_tokens": 5})])
+    text, settled = agent_guard.settled_transcript(path, "Status: landed", deadline_s=0.2)
+    assert not settled and agent_guard.usage(text)["output"] == 5
 
 
 # --- fail open ----------------------------------------------------------------------------------
