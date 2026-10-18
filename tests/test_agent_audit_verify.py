@@ -164,3 +164,19 @@ def test_offline_never_calls_gh_and_never_passes(estate: dict[str, Any]) -> None
 def test_a_landed_report_without_shas_is_counted_not_judged(estate: dict[str, Any]) -> None:
     v = _audit(estate, "Status: landed\nnothing to commit; CI run 18234567890 green", {})
     assert v["no_shas"] == 1 and v["verified"] == 0 and v["silent_failure"] == []
+
+
+def test_a_repo_without_github_ci_is_verified_by_being_on_its_branch(
+    estate: dict[str, Any],
+) -> None:
+    """goh has no workflows: its pre-push gate is its CI, and a sha on main got through it."""
+    sha = estate["new"]
+    gh = _on_main(sha) | _runs(sha, "") | {"repos/o/r1/actions/workflows": {"out": "0\n"}}
+    assert _audit(estate, f"Status: landed\n{sha[:9]} fix", gh)["verified"] == 1
+
+
+def test_a_github_remote_not_named_origin_is_still_found(estate: dict[str, Any]) -> None:
+    repo, sha = estate["root"] / "r1", estate["new"]
+    _git(repo, "remote", "rename", "origin", "v2origin")  # ZoneWM's shape
+    gh = _on_main(sha) | _runs(sha, "7\tCI\tcompleted\tsuccess\n")
+    assert _audit(estate, f"Status: landed\n{sha[:9]} fix", gh)["verified"] == 1

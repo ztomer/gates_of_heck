@@ -12,7 +12,8 @@ published evidence finds 45-76% of agent failures look like success. For each la
 3. Each head among them (a sha no other named sha descends from) needs CI that concluded success:
    the runs for that sha, else the earliest run on the default branch whose head contains it (a
    push of several commits runs CI on the newest only). A failed latest run per workflow is
-   `silent-failure`; a run still going, or none yet, is `unverified`.
+   `silent-failure`; a run still going, or none yet, is `unverified`. A repo with no GitHub
+   workflow at all (goh itself) has its pre-push gate as its CI: on the branch is enough.
 
 Offline-safe: gh missing, the network down, or `offline=True` makes the outcome `unverified` --
 never a pass. Only an explicit HTTP 404/422 from GitHub counts as "the remote does not have it".
@@ -71,9 +72,15 @@ def _is_ancestor(repo: Path, a: str, b: str) -> bool:
 
 
 def _slug(repo: Path) -> str | None:
-    url = _run(["git", "-C", str(repo), "remote", "get-url", "origin"]).stdout.strip()
-    m = GITHUB.search(url)
-    return f"{m.group(1)}/{m.group(2)}" if m else None
+    """`owner/name` of the repo's GitHub remote: `origin` when it is on GitHub, else the first that
+    is (ZoneWM's is `v2origin`)."""
+    found: dict[str, str] = {}
+    for line in _run(["git", "-C", str(repo), "remote", "-v"]).stdout.splitlines():
+        parts = line.split()
+        m = GITHUB.search(parts[1]) if len(parts) >= 2 else None
+        if m:
+            found.setdefault(parts[0], f"{m.group(1)}/{m.group(2)}")
+    return found.get("origin") or next(iter(found.values()), None)
 
 
 class Gh:
@@ -127,6 +134,9 @@ def _ci(gh: Gh, slug: str, branch: str, repo: Path, head: str) -> tuple[str, str
             if len(r) >= 5 and r[0].isdigit() and _is_ancestor(repo, head, r[2])
         )  # fmt: skip
         if not cover:
+            flows = (gh.api(f"repos/{slug}/actions/workflows", ".total_count") or "").strip()
+            if flows == "0":  # no GitHub CI: the pre-push gate is the CI, and the push got through
+                return "verified", ""
             return "unverified", f"{slug}: no CI run covers {where} yet"
         first = cover[0][1]
         rows = [[r[0], r[1], r[3], r[4]] for r in (ln.split("\t") for ln in later.splitlines())

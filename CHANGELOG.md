@@ -1,5 +1,16 @@
 # CHANGELOG
 
+## v0.35.1 — the silent-failure check reads goh and ZoneWM right _(2026-10-18)_
+
+Patch bump: two false `unverified` verdicts found by running `lib/landed_verify.py` on real shas.
+
+* **A repo with no GitHub workflow is verified by being on its branch.** goh has none: its pre-push
+  gate is its CI, so every landed goh sha read "no CI run covers it yet" forever. When no run covers a
+  sha and `actions/workflows` counts 0, a sha on the default branch is `verified`.
+* **The GitHub remote is found by URL, not by the name `origin`.** ZoneWM's is `v2origin`, so its
+  shas read "origin is not on GitHub"; live, its stopped-before-landing `81241cb8` now reads
+  `silent-failure: not on ztomer/ZoneWM main`. Both red without the change.
+
 ## v0.35.0 — the model-choice rule keeps itself current, and proposes its own changes _(2026-10-18)_
 
 Minor bump: a rules file, an exploration router, a silent-failure check and a weekly watch; the hook
