@@ -317,7 +317,11 @@ _stop() {
     for ((i = 1; i <= n; i++)); do
         [ "${STATE[i]:-}" = running ] && kill -TERM "${WRAP[i]:-}" 2>/dev/null
     done
-    wait
+    # The steps' wrappers by pid, never a bare `wait`: the gate slot's holder is a background job
+    # of this shell too, and lives until gate_slot_release -- a bare wait waited on it forever.
+    for ((i = 1; i <= n; i++)); do
+        [ -n "${WRAP[i]:-}" ] && wait "${WRAP[i]}" 2>/dev/null
+    done
     FAILED=$((FAILED + 1))
     err "local_ci: stopped by $1 -- every running step was stopped with it"
     exit "$2"
