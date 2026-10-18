@@ -1,5 +1,31 @@
 # CHANGELOG
 
+## v0.34.0 — a subagent spawn names its model and effort, and is ledgered _(2026-10-18)_
+
+Minor bump: a new Claude Code hook that refuses spawns; nothing in any repo's gate refuses more.
+
+* **`hooks/claude/agent_guard.py` (PreToolUse `Agent|Task`, SubagentStop).** Subagents spend most of
+  the tokens, and a choice left unnamed inherits the session's model at Claude Code's `medium` --
+  Sonnet's measured weak spot (62.7% vs 77.8% at `high`). A non-exempt spawn must name `model` AND
+  `effort` and declare them in its prompt as `Model-choice: <model>@<effort> because <tags>`, which
+  the one `CHOICE_RULES` table must accept (the researched rule:
+  `~/.claude/skills/agent-fanout/references/model-choice-decision.md`); the deny prints the table.
+  An allowed spawn gets the report contract appended once (`Status: landed|blocked|failed|answered`
+  first). `Explore`, `claude-code-guide`, `statusline-setup` and `fork` are exempt. Output shape
+  proven live on 2.1.292: deny = `permissionDecision: "deny"` + reason; `updatedInput` alone takes
+  effect, so no `allow` is sent and permissions are untouched. Fails open on bad input.
+* **The spawn ledger and `scripts/agent_audit.py`.** Each allowed spawn is a line in
+  `~/.cache/goh/agent-spawns.jsonl`; SubagentStop adds its outcome (tokens summed once per message
+  from the agent's transcript, linked by the `toolUseId` in `agent-<id>.meta.json`, and the
+  report's `Status:`). The audit flags UNDER (a sonnet@high/opus@low spawn that ended
+  blocked/failed or was escalated) and OVER (an opus@medium+ spawn that landed under the median
+  tokens of landed cheap-tier spawns), and gives no verdict below 20 outcomes. A prompt-phrase
+  contradiction check was researched and dropped: the description predicts failure poorly.
+* **`hooks/claude/registrations.json`: a missing hook script never blocks every call.** `python3`
+  exits 2 on a missing script, and exit 2 from PreToolUse or Stop blocks; a python entry ends
+  `|| exit 1`, a visible non-blocking hook error. The test runs every entry against an empty
+  `GOH_DIR` (the bare form: exit 2, red).
+
 ## v0.33.0 — CI and the local gate are held to the same scripts _(2026-10-18)_
 
 Minor bump: a new opt-in check, nothing existing refuses more.
