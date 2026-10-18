@@ -268,3 +268,18 @@ def test_a_red_run_with_no_sleep_says_nothing_of_one(tmp_path):
     )
     assert got.returncode == 1, got.stdout + got.stderr
     assert "SLEPT" not in got.stdout + got.stderr
+
+
+def test_the_stable_export_names_its_build_dirs_as_cargo_does(tmp_path):
+    """Between pushes the export does not exist, and cargo cannot say which build dir a missing
+    path keys -- it canonicalises the manifest. So a reclaimer could not tell the export's warm
+    build dir from an orphan, and its ceiling evicted every one an hour after its push
+    (2026-10-17). The gate asks cargo while the export exists and records it in the marker."""
+    repo = _cargo_repo(tmp_path)
+    export_root = tmp_path / "exports"
+    got = _push(repo, tmp_path, export_root)
+    assert got.returncode == 0, got.stdout + got.stderr
+    used = (tmp_path / "report.txt").read_text().splitlines()[-1].split("=", 1)[1]
+    run_dir = Path(_cwds(tmp_path)[0]).parent
+    lines = Path(f"{run_dir}.source").read_text().splitlines()
+    assert f"build-dir {used}" in lines[1:], (used, lines)

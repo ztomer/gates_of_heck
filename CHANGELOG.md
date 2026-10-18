@@ -1,5 +1,16 @@
 # CHANGELOG
 
+## v0.31.4 — a stable push export names its build dirs _(2026-10-17)_
+
+Patch bump: the push marker gains lines, nothing refuses more.
+
+* **A reclaimer could not tell a push export's warm build dir from an orphan.** Between pushes
+  the export does not exist, and cargo cannot say which build dir a missing path keys (it
+  canonicalises the manifest), so scripts' build-root ceiling evicted every export's build dir an
+  hour after its push. The gate now asks cargo while the export exists
+  (`gates/_push_build_dirs.py`: tracked manifests, members skipped, each call bounded) and appends
+  one `build-dir <path>` line per workspace to `<run dir>.source`. Red without the wiring.
+
 ## v0.31.3 — a lint finding that shrank is the same debt, smaller _(2026-10-17)_
 
 Patch bump: one false refusal removed; no new key.
