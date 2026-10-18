@@ -1,5 +1,28 @@
 # CHANGELOG
 
+## v0.33.0 — CI and the local gate are held to the same scripts _(2026-10-18)_
+
+Minor bump: a new opt-in check, nothing existing refuses more.
+
+* **`checks/check_ci_local_parity.py`: every repo script CI runs, the local pre-push gate runs
+  too.** Lifted from CadGoose (ROADMAP G0.16), where a push passed all 12 local steps and went red
+  in CI's Coverage Gate: the gate was in CI and not in `GOH_CI_STEPS`. A local gate weaker than CI
+  is a gate that lets you push red (engineering rule #17). It reads every `run:` in
+  `.github/workflows/*.yml` and composite actions, every `GOH_CI_STEPS` step (the `.gatesrc`
+  sourced as the runner reads it, split on `:`), and names a `scripts/` or `tools/` script only CI
+  names. A consumer adds `python3 $GOH_DIR/checks/check_ci_local_parity.py` to `GOH_CI_STEPS`.
+* **Three keys, all optional:** `GOH_CI_PARITY_EXEMPT` (`path: reason` lines; a ratchet, red when
+  an entry CI stopped running or the local gate now runs), `GOH_CI_PARITY_MIN_SCRIPTS` (the
+  scan's floor, default 1: a scan that stopped finding CI's scripts is red, not clean) and
+  `GOH_CI_PARITY_DIRS` (default `scripts tools`). No workflows, no `GOH_CI_STEPS` or a reasonless
+  exemption is exit 2, never a pass. `--list` names CI's scripts; `--probe` proves the gate red on
+  a CI-only script, both stale-exemption directions, a thin scan and no CI.
+* **Beyond the CadGoose original:** composite actions are read, the repo config is read by
+  sourcing (a multi-line or `$VAR` value no longer needs the one-line `GOH_CI_STEPS=` form), and
+  the environment's own `GOH_*` values are dropped (the environment is not configuration).
+* **Left open:** CadGoose still carries its own copy (`tools/check_ci_local_parity.py`); switching
+  it to this one, with its exemption and floor moved into `.gatesrc`, is that repo's commit.
+
 ## v0.32.0 — the Python coverage floor counts every repo file _(2026-10-18)_
 
 Minor bump: the floor now refuses what it could not see. Consumers re-measured first (below).
