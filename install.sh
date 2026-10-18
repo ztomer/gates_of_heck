@@ -205,6 +205,12 @@ esac
 
 case "${1:-}" in
   --full)
+    # The machine-wide gate slot (one helper, in goh): a full gate waits its turn beside every
+    # other on this machine, and reuses its push gate's slot when nested in one.
+    . "$GOH/tui/lib.sh"
+    . "$GOH/lib/gate_slot.sh"
+    trap gate_slot_release EXIT
+    gate_slot_acquire "$(basename "$PWD")"
     # Add per-language layers for what this repo actually contains:
     #   "$GOH/gates/rust_gate.sh"  .
     #   "$GOH/gates/py_gate.sh"    .

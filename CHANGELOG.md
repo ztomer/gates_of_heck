@@ -1,5 +1,22 @@
 # CHANGELOG
 
+## v0.37.0 — every full-gate entry point takes the gate slot _(2026-10-18)_
+
+Minor bump: a hand-run full gate now waits for a gate slot when the machine is full. v0.36.0 took the
+slot in `push_gate.sh` alone, so `tools/gate.sh --full` run directly and a round's warm preflight
+still raced every push on the machine.
+
+* **`gates/local_ci.sh` takes the slot** before its first step: it is the full gate's one runner, the
+  thing every `gate.sh --full` execs, so goh's own gate and every consumer declaring
+  `GOH_CI_STEPS` wait their turn. Inside a push gate it takes none (the ancestry rule), so
+  push gate -> `gate.sh --full` holds one slot, not two.
+* **`gates/round.sh`** takes it for `GOH_ROUND_PREFLIGHT` and holds it to the round's end; the push
+  below runs nested in it.
+* **The starter `tools/gate.sh`** that `install.sh` writes takes it for `--full` through the same
+  `lib/gate_slot.sh`. Existing consumer copies are not rewritten (install never overwrites): a
+  consumer whose `--full` does not exec `local_ci.sh` still runs outside a slot when hand-run.
+* `lib/gate_slot.sh` resolves its helper beside itself, not from the caller's `$GOH`.
+
 ## v0.36.0 — a machine-wide limit on concurrent push gates _(2026-10-18)_
 
 Minor bump: a push now waits for a gate slot when the machine is full. Several sessions pushed at once

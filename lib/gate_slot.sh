@@ -1,7 +1,9 @@
 # shellcheck shell=bash
 # gate_slot.sh -- a machine-wide limit on how many gates run their heavy steps at once.
 #
-# HOUSE LIB, sourced by gates/push_gate.sh after tui/lib.sh. The mechanism, the incident and the
+# HOUSE LIB, sourced by EVERY full-gate entry point after tui/lib.sh (or info/ok/err defined):
+# gates/push_gate.sh, gates/local_ci.sh (what every `gate.sh --full` execs), gates/round.sh's
+# preflight, and the starter tools/gate.sh install.sh writes. The mechanism, the incident and the
 # nesting rule are in lib/gate_slot.py's header; this is the shell's half:
 #
 #     gate_slot_acquire <repo name>   # blocks until a slot is free; announces the wait and its end
@@ -18,11 +20,12 @@
 # GOH_STEP_TIMEOUT) belongs to a step the gate starts AFTER this returns, so a wait can never spend
 # a step's budget. Pinned by tests/test_gate_slot.py.
 
+GATE_SLOT_HELPER="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/gate_slot.py" # beside this file
 GATE_SLOT_PID="" # the holder process (lib/gate_slot.py hold); gate_slot_release ends it
 
 gate_slot_acquire() {
     local repo="${1:-gate}" n="${GOH_GATE_SLOTS-}" dir="${GOH_GATE_SLOT_DIR:-$HOME/.cache/goh/slots}"
-    local helper="$GOH/lib/gate_slot.py" fifo line idx total waited path
+    local helper="$GATE_SLOT_HELPER" fifo line idx total waited path
     case "$n" in
         "") ;;
         0) info "gate slots: off (GOH_GATE_SLOTS=0) -- this gate runs beside any number of others"

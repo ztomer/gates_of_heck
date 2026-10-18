@@ -23,6 +23,9 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 . "$HERE/../tui/lib.sh"
 # shellcheck source=lib/sleep_mark.sh
 . "$HERE/../lib/sleep_mark.sh"
+# shellcheck source=lib/gate_slot.sh
+. "$HERE/../lib/gate_slot.sh"
+trap gate_slot_release EXIT
 
 msg=""
 while [ $# -gt 0 ]; do
@@ -88,6 +91,9 @@ fi
 pre="$(setting GOH_ROUND_PREFLIGHT)"
 if [ -n "$pre" ]; then
     section "preflight (GOH_ROUND_PREFLIGHT)"
+    # A warm verify is a full gate's load: it takes the machine-wide slot, held to the round's end,
+    # so the push gate below runs nested in it and takes no second one (lib/gate_slot.sh).
+    gate_slot_acquire "$(basename "$root")"
     slept_mark="$(goh_sleep_mark)"
     bash -c "$pre" || {
         goh_slept_since "$slept_mark" || true

@@ -340,3 +340,94 @@ def test_a_hermetic_child_keeps_the_private_machine_locks():
     env = hermetic_env(drop_git=True)
     for name in HOST_LOCKS:
         assert env.get(name) == os.environ[name], name
+
+
+# EVERY FULL-GATE ENTRY POINT TAKES THE SLOT (v0.37.0). v0.36.0 took it in push_gate.sh alone, so a
+# `tools/gate.sh --full` run by hand, or a round's warm preflight, still ran beside every push on the
+# machine. The slot is taken by the full gate's ONE runner (gates/local_ci.sh, which every
+# `gate.sh --full` execs) and by the starter gate.sh install.sh writes; nested runs reuse the
+# ancestor's slot by the rule above.
+LOCAL_CI = REPO_ROOT / "gates" / "local_ci.sh"
+
+
+def _local_ci(tmp_path: Path, name: str, env: dict[str, str], step: str) -> Gate:
+    """A direct full gate (what `gate.sh --full` execs), driven through the Gate harness."""
+    g = Gate.__new__(Gate)
+    g.name, g.release, g.log = name, tmp_path / f"release-{name}", tmp_path / f"{name}.out"
+    work = tmp_path / f"work-{name}"
+    work.mkdir()
+    with open(g.log, "w") as out:
+        g.proc = subprocess.Popen(
+            ["bash", str(LOCAL_CI), "--step", step, "."],
+            cwd=work,
+            stdout=out,
+            stderr=subprocess.STDOUT,
+            env=env,
+            start_new_session=True,
+            stdin=subprocess.DEVNULL,
+        )
+    return g
+
+
+def test_n_plus_one_direct_full_gates_on_n_slots_one_waits(tmp_path):
+    env = _env(tmp_path, 1)
+    first = _local_ci(
+        tmp_path,
+        "first",
+        env,
+        f'echo RAN-first; while [ ! -f "{tmp_path}/release-first" ]; do sleep 0.05; done',
+    )
+    try:
+        first.wait_for("gate slot 1/1 taken")
+        second = _local_ci(tmp_path, "second", env, "echo RAN-second")
+        second.wait_for("all 1 gate slots are held")
+        time.sleep(0.5)
+        assert second.proc.poll() is None, second.out()
+        first.release.touch()
+        assert first.proc.wait(timeout=60) == 0, first.out()
+        assert second.proc.wait(timeout=60) == 0, second.out()
+        assert "taken after" in second.out(), second.out()
+    finally:
+        first.kill()
+
+
+def test_a_push_gate_running_gate_sh_full_takes_one_slot_not_two(tmp_path):
+    """push_gate -> tools/gate.sh --full -> local_ci, on ONE slot: the inner run reuses it."""
+    env = _env(tmp_path, 1)
+    repo = _repo(tmp_path)
+    (repo / "tools" / "gate.sh").write_text(
+        '#!/usr/bin/env bash\nexec "$GOH_DIR/gates/local_ci.sh" --steps-only --step "true" .\n'
+    )
+    _git(repo, "commit", "-qam", "a full gate through local_ci")
+    log = tmp_path / "push.log"
+    push = _push_proc(repo, tmp_path, env, log)
+    try:
+        assert push.wait(timeout=120) == 0, log.read_text()
+        text = log.read_text()
+        assert text.count("gate slot 1/1 taken") == 1, text
+        assert "inside a gate that holds slot-0" in text, text
+    finally:
+        try:
+            os.killpg(push.pid, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
+
+
+def test_the_starter_gate_sh_takes_the_slot_for_full_only():
+    install = (REPO_ROOT / "install.sh").read_text()
+    starter = install[install.index("<<'GATE'") : install.index("\nGATE\n")]
+    assert '. "$GOH/lib/gate_slot.sh"' in starter, "the starter gate.sh runs --full outside a slot"
+    take = starter.index("gate_slot_acquire")
+    assert starter.rindex("--full)", 0, take) > starter.index("--doctor)"), (
+        "slot not scoped to --full"
+    )
+    assert "trap gate_slot_release EXIT" in starter
+
+
+def test_the_round_preflight_runs_inside_a_slot():
+    round_sh = (REPO_ROOT / "gates" / "round.sh").read_text()
+    pre = round_sh.index('bash -c "$pre"')
+    assert round_sh.rindex("gate_slot_acquire", 0, pre) > round_sh.index(
+        'pre="$(setting GOH_ROUND_PREFLIGHT)"'
+    )
+    assert "gate_slot_release" in round_sh

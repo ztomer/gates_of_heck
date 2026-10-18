@@ -54,6 +54,8 @@ die() { err "local_ci: $*"; exit "${2:-2}"; }
 . "$HERE/_goh_bin.sh"
 # shellcheck source=lib/bench_lock.sh
 . "$GOH_ROOT/lib/bench_lock.sh"
+# shellcheck source=lib/gate_slot.sh
+. "$GOH_ROOT/lib/gate_slot.sh"
 bench_lock_join "local ci" # a measurement (tools/quiet.sh) waits for this run to finish
 # Resolved ONCE, exported: every step runs under `goh canary` (below), and any gate a step runs
 # (rust_gate, structural) takes the same answer instead of resolving again.
@@ -175,6 +177,7 @@ cleanup() {
         rm -rf "$LOGDIR" || true
     fi
     if [ -n "$BENCH_LOCK_ENTRY" ]; then rm -f "$BENCH_LOCK_ENTRY"; fi
+    gate_slot_release
 }
 trap cleanup EXIT
 
@@ -222,6 +225,11 @@ EOF
     ok "dry-run: nothing executed"
     exit 0
 fi
+
+# THE MACHINE-WIDE GATE SLOT (lib/gate_slot.sh), before any step: this is the full gate's one
+# runner, so `gate.sh --full` run by hand waits its turn like a push does. Inside a push gate (or any
+# gate holding a slot) it takes none. Every step ceiling starts after this returns.
+gate_slot_acquire "$(basename "$ROOT")"
 
 # A red run KEEPS its logs (the failure names them), so they were unbounded: 619 in one temp dir
 # (ZoneWM, 2026-10-06). Kept now: the newest 20, and anything touched within the hour -- a live
