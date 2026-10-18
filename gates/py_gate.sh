@@ -22,7 +22,12 @@
 #
 # The coverage step scopes --cov to <pkg_dir> explicitly. Bare `--cov` is a
 # vacuous floor: it only measures what pytest imported, so a never-imported
-# 0%-covered module is invisible to even GOH_PY_COV_MIN=100.
+# 0%-covered module is invisible to even GOH_PY_COV_MIN=100. The scope alone
+# is not enough either: coverage discovers unexecuted files only inside
+# PACKAGES, so a script in a plain directory stayed invisible until a test first
+# imported it, and that test then LOWERED the total (ZeroThunder, 2026-10-18:
+# 67.03% against 68 with no test failing). The floor is therefore decided by
+# gates/py_cov_floor.py over every file the repo holds, the repo's omit honoured.
 { # parse-guard -- bash reads this group whole before running it (tests/test_parse_guard.py)
 . "$(dirname "${BASH_SOURCE[0]}")/_from_head.sh"; goh_from_head "${BASH_SOURCE[0]}" "$@"   # run HEAD, not the tree (C4)
 set -euo pipefail
@@ -72,9 +77,19 @@ if [ -n "${GOH_PY_NOQA_PARITY:-}" ]; then
 fi
 
 if [ -n "${GOH_PY_COV_MIN:-}" ]; then
-    goh_step_in "$pkg_dir" "pytest (coverage >= ${GOH_PY_COV_MIN}%)" \
-        "${RUN_ARR[@]}" pytest -q --cov="$pkg_dir" --cov-report=term-missing \
-        --cov-fail-under="${GOH_PY_COV_MIN}"
+    # pytest measures; the floor is py_cov_floor's, under the repo's own interpreter (its coverage
+    # reads the repo's config). A runner ending in `-m` takes a module; `uv run` and kin take
+    # `python -m`. PYTHONPATH carries goh for the helper and for tui.lib.
+    if [ "${RUN_ARR[${#RUN_ARR[@]}-1]}" = "-m" ]; then
+        PYMOD=("${RUN_ARR[@]}")
+    else
+        PYMOD=("${RUN_ARR[@]}" python -m)
+    fi
+    goh_step_in "$pkg_dir" "pytest (measuring coverage)" \
+        "${RUN_ARR[@]}" pytest -q --cov="$pkg_dir" --cov-report=
+    goh_step_in "$pkg_dir" "coverage >= ${GOH_PY_COV_MIN}% over every repo file" \
+        env PYTHONPATH="$HERE/..:$HERE${PYTHONPATH:+:$PYTHONPATH}" \
+        "${PYMOD[@]}" py_cov_floor "${GOH_PY_COV_MIN}"
 else
     goh_step_in "$pkg_dir" "pytest" "${RUN_ARR[@]}" pytest -q
     warn "no coverage floor — set GOH_PY_COV_MIN in .gatesrc"

@@ -1,5 +1,28 @@
 # CHANGELOG
 
+## v0.32.0 — the Python coverage floor counts every repo file _(2026-10-18)_
+
+Minor bump: the floor now refuses what it could not see. Consumers re-measured first (below).
+
+* **A test that imported an untested module LOWERED the coverage total.** coverage discovers
+  unexecuted files only inside PACKAGES, so a script in a plain directory (`tools/`,
+  ZeroThunder's `asset_factory/creatures/`) did not exist for `--cov=<pkg_dir>` until a test first
+  imported it. ZeroThunder's push read 67.03% against 68 with no test failing: its first test of
+  `grade_shrub_native.py` pulled 347 never-measured statements in. `include_namespace_packages`
+  over-corrects (it counts `.venv/`, `build/`, `node_modules/`). `gates/py_cov_floor.py` now
+  decides the floor over the repo's own files (`git ls-files --cached --others
+  --exclude-standard`, run with a foreign-repo env), touching each unseen one into the data at 0%
+  and letting coverage's own report, the repo's omit/include and fail-under decide; it names
+  every such file. `py_gate.sh` runs pytest to measure, then the helper under the repo's own
+  interpreter. Red without the change: a 100% floor passed a script no test imports. Omit and
+  include are honoured (each shown red on a mutant).
+* **Consumers, re-measured on the new definition before this landed:** scripts 74% (floor 70,
+  unchanged), game_asset_factory 96.36% (floor 95, unchanged; no unseen files), CadGoose2 9.76%
+  (77.81% before: ~40 host-runnable `tools/` scripts were invisible; floor 77 -> 9 with the
+  reason in its `.gatesrc`, `e9a2bd0`), ZeroThunder 26.65% (70.36% before: ~135 host-runnable
+  modules pytest never imports, many run by its verify.py as gates; its 17 Blender-only scripts
+  omitted by name; floor 70 -> 26).
+
 ## v0.31.5 — reading the Python pin never writes into a closed pipe _(2026-10-18)_
 
 Patch bump: one stray stderr line gone, nothing refuses more.

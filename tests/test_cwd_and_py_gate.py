@@ -11,6 +11,7 @@ from pathlib import Path
 
 import pytest
 
+from _fast_git import fast_init
 from conftest import REPO_ROOT, commit_all, run_gate, write
 
 STRUCTURAL = "gates/structural.sh"
@@ -231,3 +232,76 @@ def test_py_gate_cov_floor_names_never_imported_modules(tmp_path):
     assert "untested.py" in r.stdout + r.stderr, (
         "the gate must NAME the unmeasured module, not just miss the floor"
     )
+
+
+def _scripts_repo(tmp_path: Path, *, omit: str = "") -> Path:
+    """A repo whose code lives in a NON-package directory (`tools/`, no `__init__.py`), the shape of
+    ZeroThunder's `asset_factory/creatures/`: one script a test loads by path, one nothing loads."""
+    pkg = tmp_path / "scripts_repo"
+    (pkg / "tools").mkdir(parents=True)
+    (pkg / "pyproject.toml").write_text(
+        '[project]\nname = "s"\nversion = "0"\n'
+        "[tool.ruff]\nline-length = 100\n"
+        '[tool.pytest.ini_options]\naddopts = ""\n' + omit
+    )
+    (pkg / "tools" / "used.py").write_text('def used() -> int:\n    """Used."""\n    return 1\n')
+    (pkg / "tools" / "unseen.py").write_text(
+        'def unseen(a: int) -> int:\n    """Never loaded by any test."""\n    b = a + 1\n    return b\n'
+    )
+    # Untracked AND ignored: a virtualenv is not the repo's code and must never join the total.
+    (pkg / ".venv" / "lib").mkdir(parents=True)
+    (pkg / ".venv" / "lib" / "dep.py").write_text("def dep():\n    return 1\n")
+    (pkg / ".gitignore").write_text(".venv/\n")
+    (pkg / "tests").mkdir()
+    (pkg / "tests" / "test_used.py").write_text(
+        "import sys\nfrom pathlib import Path\n\n"
+        'sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "tools"))\n\n'
+        "import used\n\n\ndef test_used():\n    assert used.used() == 1\n"
+    )
+    fast_init(pkg, "main")
+    subprocess.run(["git", "-C", str(pkg), "add", "-A"], check=True, stdin=subprocess.DEVNULL)
+    return pkg
+
+
+def _gate(pkg: Path, floor: str) -> subprocess.CompletedProcess:
+    return subprocess.run(
+        ["/bin/bash", str(REPO_ROOT / "gates" / "py_gate.sh"), str(pkg)],
+        cwd=pkg,
+        capture_output=True,
+        text=True,
+        env={**dict(__import__("os").environ), "GOH_PY_COV_MIN": floor},
+        stdin=subprocess.DEVNULL,
+        check=False,
+    )
+
+
+@pytest.mark.skipif(not pytest_cov_available(), reason="pytest-cov not installed")
+def test_py_gate_counts_a_script_no_test_imports_outside_a_package(tmp_path):
+    """coverage discovers unexecuted files only inside PACKAGES, so a script in a plain directory
+    did not exist until a test first imported it -- and that test then LOWERED the total: ZeroThunder
+    read 67.03% against a 68 floor with no test failing, because its first test of
+    `grade_shrub_native.py` pulled 347 never-measured statements in (2026-10-18). Adding a test
+    turned the gate red; leaving a module untested kept it invisible. The denominator is every
+    tracked (or new, unignored) .py file, honoured omit and all."""
+    r = _gate(_scripts_repo(tmp_path), "100")
+    out = r.stdout + r.stderr
+    assert r.returncode != 0, f"a 100% floor passed a script no test imports:\n{out}"
+    assert "unseen.py" in out, f"the gate must NAME the never-imported script:\n{out}"
+    assert "dep.py" not in out, f"an ignored virtualenv joined the total:\n{out}"
+
+
+@pytest.mark.skipif(not pytest_cov_available(), reason="pytest-cov not installed")
+def test_py_gate_honours_the_repos_omit_for_never_imported_scripts(tmp_path):
+    """A repo states what cannot run on the host (Blender scripts, say) in its own omit list; the
+    gate must not count those back in."""
+    omit = '[tool.coverage.run]\nomit = ["tools/unseen.py"]\n'
+    r = _gate(_scripts_repo(tmp_path, omit=omit), "100")
+    assert r.returncode == 0, r.stdout + r.stderr
+
+
+@pytest.mark.skipif(not pytest_cov_available(), reason="pytest-cov not installed")
+def test_py_gate_honours_the_repos_include_for_never_imported_scripts(tmp_path):
+    """A repo that measures only `include` patterns is judged over those patterns alone."""
+    include = '[tool.coverage.run]\ninclude = ["tools/used.py", "tests/*"]\n'
+    r = _gate(_scripts_repo(tmp_path, omit=include), "100")
+    assert r.returncode == 0, r.stdout + r.stderr
