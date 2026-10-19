@@ -121,6 +121,7 @@ def test_outside_git_the_walk_still_prunes_the_build_tree(tmp_path: Path) -> Non
 WALK_ALLOWED = {
     "checks/_gitutil.py": "the fallback walk itself, pruned, for trees git cannot name",
     "checks/_empty_scope_probe.py": "fixture source text for the empty-tree probe",
+    "checks/_canary_cases.py": "fixture source text a canary case plants, never run here",
     "checks/check_empty_scope.py": "builds the empty skeleton's directory shape, pruned",
     "checks/check_tests_registered.py": "no shared gate runs it (BACKLOG); pruned walk",
     "gates/coverage_engines.py": "finds .xctest bundles IN the build dir, on purpose",
