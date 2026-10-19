@@ -168,7 +168,14 @@ CHANGELOG.
 |---|---|---|---|
 | media_server push, one crate changed, warm | 197 s | 183 s at load 7-12 (2026-10-06): **110 s is media_server's own pytest suite** (134 tests, run by its gate.sh outside the proven cache); 5 of 29 crates re-gated -- 3 correctly (path users), healthcheck-rs on the whole tree by design (its tests read the repo root), vpn-watchdog-rs never recorded (fixed in `d384c0d`) | <= 30 s: unreachable while the pytest step runs unconditionally; servers `1548344` cut that step to 51 s at load 56 (xdist), not yet re-measured as a push |
 | media_server push, everything changed, warm | 177 s (P0) | 208 s under a hold (2026-10-08, after `06afca4`) | <= 90 s: 5.1 |
-| P2 budget curve, `GOH_CI_JOBS` 1/2/4, this repo and routines | 186/147/138 s (1/2/4, busy; knee read at j2 in both, 2026-10-08) | **210 / 176 / 158 s** here at `98848cf` and **77 / 51 / 46 s** in routines at `c9a893f` (jobs 1/2/4, warm, 2026-10-16, `GOH_PROVEN=0` so no step could be skipped; two sweeps agreeing within 3 s at 2 and 4). routines also measured COLD at 150 / 51 / 46 s: a first push pays one-time builds (`make test` 44 s cold against 3 s warm) | met: `GOH_CI_JOBS=2` in each repo's `.gatesrc` -- j2 takes 65% of the saving here and 84% there. This row moves into the CHANGELOG with the next release |
+
+The P2 budget curve (`GOH_CI_JOBS` 1/2/4, this repo and routines) is MET and moved into the
+CHANGELOG with v0.42.0: **210 / 176 / 158 s** here at `98848cf` and **77 / 51 / 46 s** in routines
+at `c9a893f` (jobs 1/2/4, warm, 2026-10-16, `GOH_PROVEN=0` so no step could be skipped; two
+sweeps agreeing within 3 s at 2 and 4), against a 186/147/138 s baseline (busy; knee read at j2
+in both, 2026-10-08). routines also measured COLD at 150 / 51 / 46 s: a first push pays one-time
+builds (`make test` 44 s cold against 3 s warm). `GOH_CI_JOBS=2` is set in each repo's
+`.gatesrc` -- j2 takes 65% of the saving here and 84% there.
 
 ## Watch — cross-session serialization (`tools/session_bench.py`)
 

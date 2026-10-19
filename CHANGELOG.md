@@ -28,6 +28,13 @@ and it was red on the stdin gate with 35 undeclared calls that no count carried.
   scratch directory, and `hermetic_env` keeps that key (it names a file, not a step).
 * Pinned by `tests/test_estate_registry.py` -- red before the change (the audit read 0 lockfiles
   of the outside repo, and the state file carried no `problems` key at all).
+* BACKLOG 3.3's rows are unchanged and still each repo's own. The P2 budget curve row moves from
+  BACKLOG.md's measurements table into this file, met: `GOH_CI_JOBS=2` in each repo's `.gatesrc`,
+  **210 / 176 / 158 s** here at `98848cf` and **77 / 51 / 46 s** in routines at `c9a893f` (jobs
+  1/2/4, warm, 2026-10-16, `GOH_PROVEN=0` so no step could be skipped; two sweeps agreeing within
+  3 s at 2 and 4) against a 186/147/138 s baseline (busy; knee read at j2 in both, 2026-10-08);
+  routines also measured COLD at 150 / 51 / 46 s -- a first push pays one-time builds (`make test`
+  44 s cold against 3 s warm). j2 takes 65% of the saving here and 84% there.
 
 ## v0.41.0 — a shared gate lands with its canary case _(2026-10-19)_
 
