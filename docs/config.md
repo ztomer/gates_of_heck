@@ -217,12 +217,6 @@ Measured on media_server: `structural --full` 1.9 s -> 0.30 s warm.
 | `GOH_RELEASE_GATE` | unset (required) | Gate command a release must pass (`--gate CMD` flag beats it). |
 | `GOH_RELEASE_BUFFERED` | internal | Self-buffering sentinel set at startup; unset after snapshot so nested invocations stay hermetic. Do not set by hand. |
 
-## Profiling (`tools/profiling/`)
-
-| Key | Default | Meaning |
-|---|---|---|
-| `GOH_PROFILE_TARGET` | repo root | Absolute repo root the profilers operate on. Env override for profiling a different checkout. |
-
 ## Claude Code hooks (`hooks/claude/`, wired in `~/.claude/settings.json`)
 
 Read from the hook's environment (the settings file's `env`, or the shell Claude Code started in), never from `.gatesrc`.

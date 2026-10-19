@@ -1,5 +1,20 @@
 # CHANGELOG
 
+## v0.40.0 — `tools/profiling/` is the generic trace ranker only _(2026-10-19)_
+
+Minor bump: eleven scripts and `_target_root.sh` (with its `GOH_PROFILE_TARGET` key) leave the
+suite. They were CadGoose's soak/trail/profile harness, canonized here while CadGoose and CadGoose2
+carried byte-identical copies; CadGoose2 is gone, so they were one repo's scripts in the house suite,
+and two defects in them (the trail test waited on the MCP socket, which the app binds only with MCP
+on, and a failing test skipped restoring the hidden desktop) were one consumer's to fix. They are
+back in `CadGoose/tools/profiling/` (CadGoose `046f6ce`), fixed there and pinned by its
+`tests/profiling/test_run_trail_test.sh`.
+
+* `analyze_trace.sh` + `xctrace_profile.py` stay: they rank any repo's trace (`test_xctrace_profile.py`).
+* `tests/test_profiling_generic.py` pins the directory to those files and refuses one naming
+  CadGoose (red on both tests before the move). `test_profiling_scripts.py` went with the scripts;
+  a banner above a shebang, the class it caught, is shell lint's SC2148 in the consumer's gate.
+
 ## v0.39.0 — a consumer's own `tools/gate.sh --full` holds the gate slot _(2026-10-18)_
 
 Minor bump: closes the gap v0.37.0 named. The ~15 consumer `tools/gate.sh` copies written before
