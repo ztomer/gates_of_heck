@@ -265,6 +265,18 @@ if [ -n "$_goh_stale" ]; then
 fi
 unset _goh_hooks _goh_h _goh_sum _goh_stale
 
+# ── A consumer's `tools/gate.sh --full` takes the gate slot HERE (lib/gate_slot.sh, v0.39.0). ──
+# The consumer copies written before v0.37.0 run this script first and then their own heavy layers,
+# and never exec local_ci.sh: hand-run, they raced every push on the machine. install.sh never
+# rewrites a gate.sh, so the one goh file they all call carries it: run as a gate.sh's child, this
+# takes the slot FOR that gate.sh, held until it ends. --staged (the commit hook) takes none; a
+# gate already inside a slot (push gate, local_ci, the starter gate.sh) reuses it.
+if [ "$SCOPE" = "--full" ]; then
+    # shellcheck source=lib/gate_slot.sh
+    . "$GOH_ROOT/lib/gate_slot.sh"
+    gate_slot_acquire_for_caller "$(basename "$(git rev-parse --show-toplevel 2>/dev/null || pwd)")"
+fi
+
 # shellcheck source=gates/_goh_bin.sh
 . "$HERE/_goh_bin.sh"
 goh_resolve_native

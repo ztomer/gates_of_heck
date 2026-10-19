@@ -95,7 +95,7 @@ class Gate:
     def kill(self) -> None:
         try:
             os.killpg(self.proc.pid, signal.SIGKILL)
-        except ProcessLookupError:
+        except (ProcessLookupError, PermissionError):  # macOS: EPERM for a group already reaped
             pass
         self.proc.wait(timeout=30)
 

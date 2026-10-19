@@ -4,6 +4,7 @@
     lib/gate_slot.py default                       # the default N on this machine
     lib/gate_slot.py nested --dir D                # exit 0 (and say so) inside a gate holding a slot
     lib/gate_slot.py hold --dir D [--slots N] --owner PID --repo NAME --handshake FIFO [--poll S]
+                          [--for-caller]   # the owner is the caller's caller, not this process's parent
 
 THE INCIDENT (2026-10-18). Every repo's pre-push runs goh's push gate, and several sessions pushed at
 once with nothing limiting them. Two pushes failed on load, not on their changes: zinc's gate was
@@ -36,7 +37,17 @@ ancestry contains the recorded owner of ANY held slot in the same directory is n
 variable naming a pid that is not an ancestor (exported by hand, inherited by a detached process)
 is ignored: it never bypasses the semaphore.
 
-Pinned by tests/test_gate_slot.py.
+HELD FOR THE CALLER (v0.39.0). The ~15 consumer `tools/gate.sh` copies written before v0.37.0 never
+call a goh runner that takes the slot; what they all call is `structural.sh "$@"`, as a CHILD,
+before their own heavy layers. So structural.sh --full takes the slot on behalf of its parent
+gate.sh (`gate_slot_acquire_for_caller`): `--for-caller` makes the owner a process that is NOT this
+holder's parent, and the holder outlives structural.sh. Its end is then the OWNER's exit, watched by
+the kernel (kqueue NOTE_EXIT on macOS, a pidfd on Linux) -- an event bound to that process at
+registration, which no later reuse of its pid can fake -- and the owner must still be in this
+process's ancestry once it is watched, so a gate.sh that died before the watch began is never
+mistaken for a live one.
+
+Pinned by tests/test_gate_slot.py and tests/test_gate_slot_consumer.py.
 """
 
 from __future__ import annotations
@@ -55,6 +66,7 @@ if __name__ == "__main__":  # C4: run HEAD's copy, not the shared working tree (
 import argparse
 import fcntl
 import os
+import select
 import subprocess
 import sys
 import time
@@ -167,7 +179,9 @@ def nested(directory: str) -> str | None:
     return None
 
 
-def acquire(directory: str, slots: int, poll: float, owner: int) -> tuple[int, int, float]:
+def acquire(
+    directory: str, slots: int, poll: float, owner: int, watch: OwnerWatch | None = None
+) -> tuple[int, int, float]:
     """(slot index, fd holding it, seconds waited). Says who holds the slots while it waits."""
     start = time.monotonic()
     next_report = 0.0
@@ -188,7 +202,7 @@ def acquire(directory: str, slots: int, poll: float, owner: int) -> tuple[int, i
             for i in range(slots):
                 step(describe(slot_path(directory, i), now))
             next_report += REPORT_EVERY_S
-        if not _alive(owner):
+        if not (watch.alive() if watch else _alive(owner)):
             sys.exit(3)
         time.sleep(poll)
 
@@ -203,13 +217,50 @@ def _alive(pid: int) -> bool:
     return True
 
 
+class OwnerWatch:
+    """Whether `pid` -- the process alive when this was made -- has exited, by a kernel event."""
+
+    def __init__(self, pid: int) -> None:
+        self.pid = pid
+        self._kq = None
+        self._pidfd = -1
+        if hasattr(select, "kqueue"):
+            self._kq = select.kqueue()
+            ev = select.kevent(
+                pid,
+                filter=select.KQ_FILTER_PROC,
+                flags=select.KQ_EV_ADD | select.KQ_EV_ONESHOT,
+                fflags=select.KQ_NOTE_EXIT,
+            )
+            self._kq.control([ev], 0, 0)  # ProcessLookupError: the owner is already gone
+        elif hasattr(os, "pidfd_open"):
+            self._pidfd = os.pidfd_open(pid)
+
+    def alive(self, wait: float = 0.0) -> bool:
+        """False once the owner exited; blocks up to `wait` seconds for that."""
+        if self._kq is not None:
+            return not self._kq.control(None, 1, wait)
+        if self._pidfd >= 0:
+            return not select.select([self._pidfd], [], [], wait)[0]
+        time.sleep(wait)  # no kernel watch on this platform: the pid poll, reuse and all
+        return _alive(self.pid)
+
+
 def hold(args: argparse.Namespace) -> int:
     start_parent = os.getppid()
+    watch: OwnerWatch | None = None
+    if args.for_caller:
+        try:
+            watch = OwnerWatch(args.owner)
+        except ProcessLookupError:
+            return 3
+        if args.owner not in ancestors():  # it died, and its pid was reused, before the watch
+            return 3
     os.makedirs(args.dir, exist_ok=True)
     # The handshake first: the shell is reading it, and polls this process's liveness meanwhile.
     shake = os.open(args.handshake, os.O_WRONLY)
     slots = args.slots if args.slots else default_slots()
-    idx, fd, waited = acquire(args.dir, slots, args.poll, args.owner)
+    idx, fd, waited = acquire(args.dir, slots, args.poll, args.owner, watch)
     os.ftruncate(fd, 0)
     os.lseek(fd, 0, os.SEEK_SET)
     os.write(fd, f"{args.owner}\t{args.repo}\t{time.time():.0f}\n".encode())
@@ -220,6 +271,10 @@ def hold(args: argparse.Namespace) -> int:
     devnull = os.open(os.devnull, os.O_RDWR)
     for n in (0, 1, 2):
         os.dup2(devnull, n)
+    if watch is not None:
+        while watch.alive(wait=60.0):  # the parent (structural.sh) ending is expected here
+            pass
+        return 0
     while os.getppid() == start_parent and _alive(args.owner):
         time.sleep(args.poll)
     return 0
@@ -238,6 +293,7 @@ def main(argv: list[str]) -> int:
     h.add_argument("--repo", required=True)
     h.add_argument("--handshake", required=True)
     h.add_argument("--poll", type=float, default=0.5)
+    h.add_argument("--for-caller", action="store_true")
     args = ap.parse_args(argv)
     if args.cmd == "default":
         print(default_slots())

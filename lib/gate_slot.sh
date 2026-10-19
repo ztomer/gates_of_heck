@@ -8,6 +8,10 @@
 #
 #     gate_slot_acquire <repo name>   # blocks until a slot is free; announces the wait and its end
 #     gate_slot_release               # the caller's cleanup calls it on every exit path
+#     gate_slot_acquire_for_caller <repo name>
+#         # structural.sh --full: when its PARENT is a `tools/gate.sh`, take the slot FOR that
+#         # gate.sh, held until it ends (the consumer copies that predate the slot all call
+#         # structural.sh first, and nothing else of goh's); otherwise take none
 #
 # GOH_GATE_SLOTS=N   how many gates at once (default: one per four cores, at least one;
 #                    `python3 lib/gate_slot.py default` prints it). `0` turns the limit off.
@@ -24,8 +28,27 @@ GATE_SLOT_HELPER="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/gate_slot.py" # 
 GATE_SLOT_PID="" # the holder process (lib/gate_slot.py hold); gate_slot_release ends it
 
 gate_slot_acquire() {
-    local repo="${1:-gate}" n="${GOH_GATE_SLOTS-}" dir="${GOH_GATE_SLOT_DIR:-$HOME/.cache/goh/slots}"
-    local helper="$GATE_SLOT_HELPER" fifo line idx total waited path
+    _gate_slot_take "${1:-gate}" "$$" ""
+}
+
+# A full gate's entry is the consumer's own tools/gate.sh, and this shell is its child: the slot
+# must outlive this shell and end with the gate.sh. Anything else calling structural.sh --full (a
+# terminal, a CI step, a gate runner already holding a slot) is not a gate.sh to hold one for --
+# a slot held "for" an interactive shell would be held until the terminal closed.
+gate_slot_acquire_for_caller() {
+    local caller="$PPID" cmd
+    cmd="$(ps -o command= -p "$caller" 2>/dev/null || true)"
+    case " $cmd " in
+        *" tools/gate.sh "* | *"/tools/gate.sh "*) ;;
+        *) return 0 ;;
+    esac
+    _gate_slot_take "${1:-gate}" "$caller" --for-caller
+}
+
+_gate_slot_take() { # <repo> <owner pid> <"" | --for-caller>
+    local repo="$1" owner="$2" mode="$3" n="${GOH_GATE_SLOTS-}"
+    local dir="${GOH_GATE_SLOT_DIR:-$HOME/.cache/goh/slots}"
+    local helper="$GATE_SLOT_HELPER" fifo line idx total waited path pid
     case "$n" in
         "") ;;
         0) info "gate slots: off (GOH_GATE_SLOTS=0) -- this gate runs beside any number of others"
@@ -40,28 +63,35 @@ gate_slot_acquire() {
     fi
     fifo="$(mktemp -u "${TMPDIR:-/tmp}/goh-gate-slot.XXXXXX")"
     mkfifo "$fifo"
-    python3 -S "$helper" hold --dir "$dir" ${n:+--slots "$n"} --owner "$$" --repo "$repo" \
-        --handshake "$fifo" </dev/null &
-    GATE_SLOT_PID=$!
+    python3 -S "$helper" hold --dir "$dir" ${n:+--slots "$n"} --owner "$owner" --repo "$repo" \
+        --handshake "$fifo" ${mode:+"$mode"} </dev/null &
+    pid=$!
     # Read-write, so the open never blocks and a holder that died before writing cannot hang this
     # shell: the read times out, and the holder's liveness is asked between reads.
     exec 7<>"$fifo"
     while ! read -r -t 1 idx total waited path <&7; do
-        if ! kill -0 "$GATE_SLOT_PID" 2>/dev/null; then
+        if ! kill -0 "$pid" 2>/dev/null; then
             exec 7<&-
             rm -f "$fifo"
-            GATE_SLOT_PID=""
             err "gate slot: the slot holder (lib/gate_slot.py) exited without a slot"
             exit 1
         fi
     done
     exec 7<&-
     rm -f "$fifo"
-    export GOH_GATE_SLOT="$path $$"
+    export GOH_GATE_SLOT="$path $owner"
+    local whose="(GOH_GATE_SLOTS)"
+    if [ -n "$mode" ]; then
+        # Never this shell's to release: the holder ends with the gate.sh it was taken for.
+        whose="for tools/gate.sh (pid $owner), held until it ends"
+    else
+        GATE_SLOT_PID="$pid"
+    fi
     if [ "$waited" -gt 0 ]; then
         ok "gate slot $((idx + 1))/$total taken after ${waited}s waiting -- the step limits count from here"
+        [ -z "$mode" ] || info "  $whose"
     else
-        info "gate slot $((idx + 1))/$total taken (GOH_GATE_SLOTS)"
+        info "gate slot $((idx + 1))/$total taken $whose"
     fi
 }
 

@@ -1,5 +1,25 @@
 # CHANGELOG
 
+## v0.39.0 — a consumer's own `tools/gate.sh --full` holds the gate slot _(2026-10-18)_
+
+Minor bump: closes the gap v0.37.0 named. The ~15 consumer `tools/gate.sh` copies written before
+the slot (Finance, ZoneWM, divoom-control, games, servers, ...) run `structural.sh "$@"` and then
+their own layers, and never exec `local_ci.sh`: hand-run `--full`, they took no slot and raced every
+push on the machine. install.sh never rewrites a gate.sh, so the one goh file they all already call
+carries the fix -- no consumer edit.
+
+* **`structural.sh --full` takes the slot for its caller** (`gate_slot_acquire_for_caller`): when
+  its parent is a `tools/gate.sh`, the holder is taken on that gate.sh's behalf and lives until IT
+  exits, not until structural.sh does. `lib/gate_slot.py hold --for-caller` watches the owner by a
+  kernel exit event (kqueue `NOTE_EXIT` on macOS, a pidfd on Linux), so a reused pid cannot keep a
+  slot, and requires the owner in its ancestry once watched.
+* `--staged` (the commit hook) and a bare `structural.sh --full` outside a gate.sh take none; a
+  gate.sh already in a slot (push gate, starter gate.sh) or running `local_ci.sh` after it reuses
+  the one slot; a daemon the gate leaves behind does not hold it (the holder is still the Python
+  process, spawning nothing).
+* Pinned by `tests/test_gate_slot_consumer.py` (red on 3 of 5 before the change; the two that
+  passed are the must-not-take guards).
+
 ## v0.38.0 — a push runs the steps a repo declares, whatever its gate calls _(2026-10-18)_
 
 Minor bump: a push gate can now run a repo's `GOH_CI_STEPS` itself. homebrew-tap's `tools/gate.sh
