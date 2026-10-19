@@ -244,6 +244,45 @@ SRC
     info "wrote .gatesrc"
 fi
 
+# THE ESTATE REGISTRY (BACKLOG 6.14). `install.sh` wires goh into whatever repository it is
+# pointed at, and one of the estate's consumers lives OUTSIDE the estate root (~/.claude/skills),
+# so the estate cannot be a directory any more: it is a registry, one line per repo, in goh's own
+# state directory beside estate_audit.json. Every estate sweep reads the registry UNIONED with
+# the directory it walks, and a registered path that is gone is named, never skipped.
+#
+# The directory is resolved the way lib/estate_registry.py resolves it -- ONE definition, two
+# languages, pinned by tests/test_estate_registry.py: the parent of GOH_ESTATE_STATE when it
+# names a file, else $XDG_STATE_HOME/goh, else ~/.local/state/goh.
+estate_state_dir() {
+    local dir
+    if [ -n "${GOH_ESTATE_STATE:-}" ]; then
+        dir="$(dirname "$GOH_ESTATE_STATE")"
+    elif [ -n "${XDG_STATE_HOME:-}" ]; then
+        dir="$XDG_STATE_HOME/goh"
+    else
+        dir="$HOME/.local/state/goh"
+    fi
+    mkdir -p "$dir" 2>/dev/null || true
+    (cd "$dir" 2>/dev/null && pwd -P) || dir
+}
+
+toplevel="$(git -C "$target" rev-parse --show-toplevel 2>/dev/null || true)"
+if [ -n "$toplevel" ]; then
+    # Physical, so /var and /private/var are ONE path: a registry that holds both spellings of
+    # one repo reads as two repos, and the audit would audit it twice.
+    toplevel="$(cd "$toplevel" && pwd -P)"
+    registry="$(estate_state_dir)/installed_repos"
+    if grep -Fxq "$toplevel" "$registry" 2>/dev/null; then
+        info "estate registry already holds $toplevel ($registry)"
+    elif printf '%s\n' "$toplevel" >>"$registry" 2>/dev/null; then
+        info "recorded $toplevel in the estate registry ($registry)"
+    else
+        # A registry that could not be written is a NAMED gap: the estate sweep would not read
+        # this repo, and an install that says nothing about it looks like an estate without it.
+        warn "could not record $toplevel in the estate registry ($registry) -- the estate sweeps will not read this repo"
+    fi
+fi
+
 ok "installed into $target (core.hooksPath → .githooks)"
 info "pre-commit runs tools/gate.sh --staged; pre-push runs tools/gate.sh --full on the pushed commit in a clean worktree; post-rewrite and pre-applypatch check rebase picks and am patches for conflict markers"
 

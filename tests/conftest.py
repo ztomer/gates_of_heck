@@ -128,15 +128,24 @@ _SUITE_COV_CACHE = tempfile.mkdtemp(prefix="goh-suite-cov-cache.")
 atexit.register(shutil.rmtree, _SUITE_COV_CACHE, True)
 
 
+@pytest.fixture(scope="session", autouse=True)
+def _suite_estate_state(tmp_path_factory) -> None:
+    """The estate's state file, for the whole suite, in a scratch directory (BACKLOG 6.14)."""
+    d = tmp_path_factory.mktemp("goh-estate-state")
+    os.environ["GOH_ESTATE_STATE"] = str(d / "estate_audit.json")
+
+
 def hermetic_env(drop_git: bool = False, **overrides: str) -> dict[str, str]:
     """A child environment with NO inherited `GOH_*` but `GOH_LIVE` (and, with `drop_git`, no
     `GIT_*`): every step's opt-in is a `GOH_*` PRESENCE test, so an inherited value adds a step the
     test never declared -- which is how `push_gate.sh`'s `set -a` reached a whole suite. ONE
-    definition: eleven files carried this filter inline, and two had grown their own copy."""
+    definition: eleven files carried this filter inline, and two had grown their own copy.
+    `GOH_ESTATE_STATE` is KEPT: it names a file, not a step (BACKLOG 6.14)."""
     drop = ("GOH_", "GIT_") if drop_git else ("GOH_",)
-    # GOH_LIVE, and the machine locks' private copies (host_locks.py): a lock directory is not an
-    # opt-in, and dropping it sent every hermetic child to the REAL bench lock and gate slots.
-    keep = ("GOH_LIVE", *HOST_LOCKS)
+    # GOH_LIVE, GOH_ESTATE_STATE (a LOCATION, not an opt-in) and the machine locks' private copies
+    # (host_locks.py): a lock directory is not an opt-in, and dropping it sent every hermetic child
+    # to the REAL bench lock and gate slots.
+    keep = ("GOH_LIVE", "GOH_ESTATE_STATE", *HOST_LOCKS)
     env = {k: v for k, v in os.environ.items() if not k.startswith(drop) or k in keep}
     # The rust coverage build dir is keyed on a project's path (gates/_coverage_rust.sh): a fixture
     # in a fresh tmp dir would leave one never-reused build per test in the user's cache.

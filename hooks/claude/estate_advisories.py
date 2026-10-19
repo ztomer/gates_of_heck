@@ -75,6 +75,10 @@ def report(state: Path, now: dt.datetime) -> list[str]:
         )
     for e in data.get("errors", []):
         lines.append(f"  not audited: {e}")
+    # A registered path that is gone (BACKLOG 6.14): a consumer that left the estate, named
+    # here because the owner reads this at the start of every session.
+    for p in data.get("problems", []):
+        lines.append(f"  estate registry: {p}")
     if len(lines) > MAX_LINES:
         lines = [
             *lines[: MAX_LINES - 1],

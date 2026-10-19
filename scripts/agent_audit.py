@@ -46,6 +46,7 @@ from tui.lib import info, ok, section, warn
 
 sys.path.insert(0, str(ROOT / "hooks" / "claude"))
 sys.path.insert(0, str(ROOT / "lib"))
+import estate_registry
 import landed_verify
 import model_choice
 from agent_guard import ledger_path
@@ -95,7 +96,10 @@ def verify_landed(
     except (OSError, ValueError):
         cache = {}
     before = len(cache)
-    repos = landed_verify.git_repos(root)
+    # The estate is the walked root UNIONED with the registry (BACKLOG 6.14): a repo goh was
+    # installed into outside the root is a repo a landed sha can be in, and a sha nobody can
+    # find reads as unverified -- which is the same shape as a silent failure.
+    repos = sorted(set(landed_verify.git_repos(root)) | set(estate_registry.existing()))
     out: dict[Key, landed_verify.Verdict] = {}
     for rec in records:
         if rec.get("event") != "outcome" or rec.get("status") != "landed":

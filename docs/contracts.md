@@ -441,3 +441,20 @@ that adds the gate, and an entry naming a gate that is gone is stale.
 
 Pin: `tests/test_canary.py` (every case run both ways; a new uncased gate, a blind fixture and a
 noisy gate each red).
+
+## 23. The estate is a registry, and a path that is gone is named
+
+`install.sh` records every repo it installs into -- one line per toplevel, in goh's own state
+directory beside the estate audit's state file (`installed_repos`). Every estate sweep reads that
+registry UNIONED with the directory it walks (`GOH_ESTATE_ROOT`), never one or the other: a
+consumer `install.sh` wired goh into outside the root is in the estate, and the estate is where
+the audit sweeps look.
+
+A registered path that is GONE is named -- in the sweep's output, in the state file it records,
+and in the session hook that reads that file back -- never dropped in silence. The registry is
+keyed by PATH, so a repository that moved on disk is a gone path AND a new one, and the owner is
+told both rather than left to guess which repository stopped being audited.
+
+Pin: `tests/test_estate_registry.py` (an install outside the root is audited; a gone path is
+named; a moved repo is a gone path and a new one; the seed is additive; the machine's registry is
+never a test's).

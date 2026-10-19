@@ -1,5 +1,34 @@
 # CHANGELOG
 
+## v0.42.0 — the estate is every repo `install.sh` installed into _(2026-10-19)_
+
+Minor bump: closes BACKLOG 6.14. The estate was a DIRECTORY (`~/Projects`, walked three levels
+deep), and `install.sh` wires goh into whatever repository it is pointed at -- so a consumer
+outside that directory (`~/.claude/skills`, which carries the house hooks) was in the estate and
+in no count: the audit sweep, `scripts/estate_audit.py` and BACKLOG 3.3's table never read it,
+and it was red on the stdin gate with 35 undeclared calls that no count carried.
+
+* **The registry.** `install.sh` records the toplevel it installed into -- one line per repo, in
+  goh's own state directory beside `estate_audit.json` (`installed_repos`). The path is physical,
+  so `/var` and `/private/var` are one repo and not two. The directory is resolved the way
+  `lib/estate_registry.py` resolves it: the parent of `GOH_ESTATE_STATE` when that names a file,
+  else `$XDG_STATE_HOME/goh`, else `~/.local/state/goh`.
+* **Every estate sweep reads the registry UNIONED with `GOH_ESTATE_ROOT`**, never one or the
+  other: `scripts/estate_audit.py` (the advisory sweep) audits a repo outside the root, and
+  `scripts/agent_audit.py` (the landed-sha sweep) FINDS a sha in one -- a sha nobody can find
+  reads as a silent failure, which is the same shape as a real one.
+* **A registered path that is GONE is named**, never skipped: the audit prints it, records it in
+  the state file, and the session hook reads it back at the start of every session. The registry
+  is keyed by PATH, so a repo that moved on disk is a gone path AND a new one -- the owner is
+  told both, and nobody guesses which repository went missing.
+* **The one-time seed**: `python3 scripts/estate_registry.py seed` registers the `~/Projects`
+  walk plus `~/.claude/skills`, so a repo installed before the registry existed is in the estate
+  on the first run. Additive and idempotent; `list` says what is registered and what is gone.
+* **A test never writes the machine's registry**: the suite points `GOH_ESTATE_STATE` at a
+  scratch directory, and `hermetic_env` keeps that key (it names a file, not a step).
+* Pinned by `tests/test_estate_registry.py` -- red before the change (the audit read 0 lockfiles
+  of the outside repo, and the state file carried no `problems` key at all).
+
 ## v0.41.0 — a shared gate lands with its canary case _(2026-10-19)_
 
 Minor bump: the gate canary's fixtures and runner move here from game_asset_factory, and a new

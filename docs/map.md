@@ -169,6 +169,7 @@ Every structural checker is native since Phase N3; the Python checkers they port
 | `swift_coverage_scope.py` | What counts as "the code under test" in a Swift coverage measurement -- ONE definition both measurement paths import. | `test_coverage_swift_scope.py` |
 | `tree_stamp.py` | Did the working tree move while a gate ran over it? A stamp taken before and after; a gate certifying bytes that changed under it says so (ZoneWM 2c.9). | `test_tree_stamp.py` |
 | `landed_verify.py` | Is a subagent's `landed` true? The report's shas located in the estate's repos, then each on its GitHub default branch and CI concluded success on it (or on the first run that contains it). A mismatch is `silent-failure`; gh missing, the network down or offline is `unverified`, never a pass. Read by `scripts/agent_audit.py`. | `test_agent_audit_verify.py` |
+| `estate_registry.py` | The estate is every repo `install.sh` installed into, not one directory (BACKLOG 6.14): the registry `install.sh` writes beside the audit's state file, the walk of the estate root, and the UNION of the two -- a registered path that is gone is named, never skipped. `~/.claude/skills` is a consumer outside `~/Projects` and no sweep read it. | `test_estate_registry.py` |
 | `advisory_db.py` | The advisory database every goh `cargo audit` reads -- goh's own copy (`GOH_ADVISORY_DB`, default `~/.cache/goh/advisory-db`, seeded from `~/.cargo/advisory-db`), which nothing outside goh writes -- held under a flock on `<db>.goh-lock`: shared to read (`--no-fetch`), exclusive to refresh. A refresh beside a read tore the read ("unexpected start of advisory", 2026-10-12). `run --fetch\|--no-fetch -- cargo audit ...` for the shell gate; `held()` and `audit_args()` for the Python callers. | `test_advisory_db.py` |
 | `bounded_run.py` | Run one command under a wall-clock CEILING, in its OWN process group, and sweep the whole subtree on expiry (TERM, grace, KILL) — then print `TIMED OUT after Ns` and return 124 with the surviving pids named. It WAITS rather than polls (a 0.2 s poll charged every step of every gate up to 200 ms) and samples the process table once at exit. The group discipline is the measured part: `gates/local_ci.sh`'s old sweep was `pkill -P "$pid"`, DIRECT children only, which against `bash -c 'sleep 400 & wait'` left 2 grandchildren ALIVE — i.e. the mechanism meant to unstick a hung step left running exactly the orphans that make the NEXT step hang. `lib/killtree.py` already knew the answer for the Python callers; this exposes it to the shell gates. | `test_bounded_run.py` |
 | `fail_lines.py` | The failure block `goh_step` prints before a red step's tail: only lines ATTRIBUTABLE to the sub-step that failed. A nested goh_step's own dump is quoted alone (the innermost, named) and the other matching lines are COUNTED, never listed -- a red `make verify-clean` had listed a calibration plant's quoted `✗` row, from a recipe that exited 0, as its failure (ZoneWM H2, BACKLOG C5). An unframed log (one `make` over many recipes) says so, and puts make's own `*** [target] Error N` first. | `test_goh_step_fail_lines.py` |
@@ -263,7 +264,13 @@ Every structural checker is native since Phase N3; the Python checkers they port
   and prints one line. `--install` loads the weekly launchd job. Pinned by `test_model_choice_watch.py`.
 * `scripts/estate_audit.py` — the house Rust audit (`rust_gate.sh`'s biting `cargo audit`) over every
   tracked `Cargo.lock` under `~/Projects` (`GOH_ESTATE_ROOT`), nested repositories included, minus each
-  repo's own `GOH_EXCLUDE`, from each workspace root so its exemptions apply. Records into
+  repo's own `GOH_EXCLUDE`, from each workspace root so its exemptions apply. The estate is that walk
+  UNIONED with the registry (`lib/estate_registry.py`), so a consumer outside the root is audited too,
+  and a registered path that is gone is named. Records into
   `~/.local/state/goh/estate_audit.json` (`GOH_ESTATE_STATE`); the first run is a baseline, not news.
   `--install` writes and loads a daily launchd job. Pinned by `test_estate_audit.py`.
+* `scripts/estate_registry.py` — the estate's registry, read and seeded (BACKLOG 6.14): `list` says what
+  `install.sh` recorded and which of those paths is gone, `seed` registers the estate root's walk plus
+  the consumer outside it (`~/.claude/skills`) once, `record` adds one repo. Additive and idempotent.
+  Pinned by `test_estate_registry.py`.
 * `tui/` — style source of truth. Pinned by `test_tui_integration.py`.

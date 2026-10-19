@@ -9,10 +9,15 @@ state file. hooks/claude/estate_advisories.py reads that file at the start of ev
 session -- where the owner already looks -- and says so when the file is missing or old, because
 a job that stopped running reads exactly like a clean estate.
 
+The estate is the root UNIONED with the registry `install.sh` writes (BACKLOG 6.14): a consumer
+that lives outside the root (`~/.claude/skills`) is audited too, and a registered path that is
+gone is named, never skipped.
+
     python3 scripts/estate_audit.py                 # audit ~/Projects, record, print
     python3 scripts/estate_audit.py --install       # write the daily launchd job (macOS)
 
-GOH_ESTATE_ROOT and GOH_ESTATE_STATE override the root and the state file.
+GOH_ESTATE_ROOT and GOH_ESTATE_STATE override the root and the state file; the registry lives in
+the state file's directory.
 """
 
 from __future__ import annotations
@@ -36,6 +41,7 @@ from tui.lib import info, ok, warn
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
 import advisory_db
+import estate_registry
 
 DENY = [
     "--deny",
@@ -47,38 +53,24 @@ DENY = [
     "--deny",
     "yanked",
 ]
-REPO_DEPTH = 3  # ~/Projects/<repo>, ~/Projects/<group>/<repo>: servers/media_server, games/*
-SKIP_DIRS = {"node_modules", "target", ".build", ".venv", "venv"}
+REPO_DEPTH = estate_registry.REPO_DEPTH  # ~/Projects/<repo>, ~/Projects/<group>/<repo>
 AUDIT_TIMEOUT_S = 300  # cargo-audit's own database lock waits up to 300 s
 LABEL = "com.ztomer.goh-estate-audit"
 RUN_HOUR = 9
 
 
 def default_state() -> Path:
-    env = os.environ.get("GOH_ESTATE_STATE")
-    base = Path(os.environ.get("XDG_STATE_HOME", Path.home() / ".local" / "state"))
-    return Path(env) if env else base / "goh" / "estate_audit.json"
+    """Where the last run is recorded. `GOH_ESTATE_STATE` names the file, and its DIRECTORY
+    holds the estate registry (BACKLOG 6.14): the audit and the registry live together, so a test
+    that names its own state file gets its own registry."""
+    return estate_registry.state_file()
 
 
 def repos(root: Path) -> list[Path]:
     """Every git work tree at most REPO_DEPTH below the root, nested ones included: a repository
     inside another's tree (servers/media_server) is not tracked by its parent, so the walk goes on
     below a repository rather than stopping at it."""
-    found, frontier = [], [(root, 0)]
-    while frontier:
-        d, depth = frontier.pop()
-        if (d / ".git").exists():
-            found.append(d)
-        if depth == REPO_DEPTH:
-            continue
-        try:
-            kids = [k for k in d.iterdir() if k.is_dir() and not k.is_symlink()]
-        except OSError:
-            continue
-        frontier += [
-            (k, depth + 1) for k in kids if k.name not in SKIP_DIRS and not k.name.startswith(".")
-        ]
-    return sorted(found)
+    return estate_registry.walk_repos(root, estate_registry.REPO_DEPTH)
 
 
 def excluded(repo: Path) -> Callable[[str], object]:
@@ -165,6 +157,16 @@ def _finding(entry: dict, kind: str) -> dict:
     }
 
 
+def _where(lock: Path, root: Path) -> str:
+    """The lockfile's name in the report: relative to the estate root when it is under it, and its
+    OWN path when it is not. A repo outside the root is in the estate (BACKLOG 6.14), and naming
+    it by a path relative to a root it does not live under would name nothing."""
+    try:
+        return str(lock.relative_to(root))
+    except ValueError:
+        return str(lock)
+
+
 def run(root: Path, state: Path, db: str | None, fetch: bool) -> dict:
     # The FIRST run has nothing to compare with: what it finds is the standing estate, not news, so
     # its findings carry no first_seen and the session hook does not call them NEW.
@@ -177,13 +179,16 @@ def run(root: Path, state: Path, db: str | None, fetch: bool) -> dict:
     now = dt.datetime.now(dt.UTC).isoformat(timespec="seconds")
     advisories: dict[str, dict] = {}
     errors, audited, set_aside = [], 0, 0
-    for repo in repos(root):
+    # The estate is the walk UNIONED with the registry (BACKLOG 6.14): a repo `install.sh` wired
+    # goh into outside the root is a consumer, and a registered path that is gone is named.
+    estate, problems = estate_registry.union(repos(root), estate_registry.registry_path(state))
+    for repo in estate:
         locks, aside = lockfiles(repo)
         set_aside += aside
         for lock in locks:
             audited += 1
             found, error = audit(lock, db, fetch)
-            where = str(lock.relative_to(root))
+            where = _where(lock, root)
             if error:
                 errors.append(f"{where}: {error}")
             for f in found:
@@ -210,6 +215,8 @@ def run(root: Path, state: Path, db: str | None, fetch: bool) -> dict:
         "excluded": set_aside,
         "advisories": advisories,
         "errors": errors,
+        "registry": str(estate_registry.registry_path(state)),
+        "problems": problems,
     }
     state.parent.mkdir(parents=True, exist_ok=True)
     with tempfile.NamedTemporaryFile("w", dir=state.parent, delete=False, suffix=".tmp") as f:
@@ -285,6 +292,10 @@ def main() -> int:
         warn(f"{aid} ({a['kind']}) {', '.join(a['crates'])}: {', '.join(a['lockfiles'])}")
     for e in result["errors"]:
         warn(f"not audited: {e}")
+    # A registered path that is gone is NAMED (BACKLOG 6.14): a consumer that left the estate
+    # must be visible, not a line quietly dropped from the count.
+    for p in result["problems"]:
+        warn(f"estate registry: {p}")
     if not result["advisories"] and not result["errors"]:
         ok("no advisory fires anywhere in the estate")
     return 0
