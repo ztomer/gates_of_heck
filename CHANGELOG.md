@@ -1,5 +1,23 @@
 # CHANGELOG
 
+## v0.41.0 — a shared gate lands with its canary case _(2026-10-19)_
+
+Minor bump: the gate canary's fixtures and runner move here from game_asset_factory, and a new
+`checks/check_*` without a case is refused by this repo's own suite (contract 22).
+
+* `checks/_canary_cases.py` (the 28 cases and 8 `UNCOVERED` reasons, moved verbatim from GAF's
+  `tools/canary_cases.py`) and `checks/_canary.py` (`build_repo`, `run_check`, `run_case`,
+  `uncanaried`). GAF's table demanded a case for every gate here, so each new gate turned GAF's
+  next unrelated push red until someone there wrote it -- at least eight times from 2026-10-01,
+  the last `check_ci_local_parity.py` (v0.33.0, GAF `bde863d`). A registry in another repo from
+  the set it enumerates can only agree with it after the fact.
+* `tests/test_canary.py` runs every case both ways and checks coverage both ways (an uncased gate,
+  and a case or exemption naming a gate that is gone). Proved red by three applied mutants: a new
+  `check_zz_new_gate.py` with no case, `uncanaried` reporting nothing, and `run_case` passing a
+  gate that did not bite.
+* GAF's `tools/check_gate_canary.py` imports both instead of keeping a copy, and stays the prover
+  `checks/gate_calibration.json` cites.
+
 ## v0.40.0 — `tools/profiling/` is the generic trace ranker only _(2026-10-19)_
 
 Minor bump: eleven scripts and `_target_root.sh` (with its `GOH_PROFILE_TARGET` key) leave the

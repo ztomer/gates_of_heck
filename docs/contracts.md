@@ -429,3 +429,15 @@ tree; each run first reaps run directories whose owner is dead (a SIGKILL leaves
 and 24 orphaned cargo build-dirs (30 GB).
 
 Pin: `tests/test_push_gate_runs.py`.
+
+## 22. A shared gate lands with its canary case, in the same commit
+
+Every installed `checks/check_*` is driven by a case in `checks/_canary_cases.py` -- red over a
+tree that violates it, green over a clean one -- or named in its `UNCOVERED` with the reason a map
+of files cannot drive it. The table lived in game_asset_factory until 2026-10-19 and demanded the
+same thing from there, so each new gate turned GAF's next unrelated push red until someone wrote
+its case (at least eight times from 2026-10-01). Beside the gates, the case is part of the change
+that adds the gate, and an entry naming a gate that is gone is stale.
+
+Pin: `tests/test_canary.py` (every case run both ways; a new uncased gate, a blind fixture and a
+noisy gate each red).
