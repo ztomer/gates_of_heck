@@ -56,3 +56,27 @@ def test_a_gate_that_writes_nothing_says_nothing(tmp_path):
     out = r.stdout + r.stderr
     assert r.returncode == 0, out
     assert "own .git/config" not in out and "moved refs" not in out, out
+
+
+def test_a_branch_deleted_during_the_gate_takes_its_tracking_keys_unrefused(tmp_path):
+    # Another session deleting a tracked branch while a long gate runs removes its
+    # `branch.<name>.*` keys with the ref (a goh land on 2026-10-19 was refused for
+    # branch.early-exit-pipe.{remote,merge}). They belong to the ref's lifecycle, so they
+    # are named with it, like a moved ref, not refused as a gate's write.
+    repo = _gating(tmp_path, "branch -D stale")
+    _git(repo, "branch", "stale")
+    _git(repo, "config", "branch.stale.remote", "origin")
+    _git(repo, "config", "branch.stale.merge", "refs/heads/stale")
+    r = _push(repo, tmp_path, "refs/heads/main")
+    out = r.stdout + r.stderr
+    assert r.returncode == 0, out
+    assert "own .git/config" not in out, out
+    assert "refs/heads/stale" in out and "branch.stale.remote" in out, out
+
+
+def test_a_tracking_key_written_for_a_branch_that_did_not_move_is_refused(tmp_path):
+    repo = _gating(tmp_path, "config branch.main.remote elsewhere")
+    r = _push(repo, tmp_path, "refs/heads/main")
+    out = r.stdout + r.stderr
+    assert r.returncode != 0, out
+    assert "own .git/config" in out and "branch.main.remote=elsewhere" in out, out

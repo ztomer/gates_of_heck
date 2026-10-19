@@ -14,6 +14,12 @@ back in `CadGoose/tools/profiling/` (CadGoose `046f6ce`), fixed there and pinned
 * `tests/test_profiling_generic.py` pins the directory to those files and refuses one naming
   CadGoose (red on both tests before the move). `test_profiling_scripts.py` went with the scripts;
   a banner above a shebang, the class it caught, is shell lint's SC2148 in the consumer's gate.
+* **A concurrent branch delete no longer refuses a push.** Landing this release, the push gate
+  refused because another session deleted `early-exit-pipe` mid-gate, taking its
+  `branch.early-exit-pipe.{remote,merge}` keys with it, and `lib/repo_writes.sh` read that as the
+  gate writing `.git/config`. A branch's tracking keys now go with its ref: named when
+  `refs/heads/<name>` appeared or vanished, still refused when the ref did not move. Pinned by two
+  new cases in `tests/test_push_gate_repo_writes.py` (red on the delete case before).
 
 ## v0.39.0 — a consumer's own `tools/gate.sh --full` holds the gate slot _(2026-10-18)_
 
