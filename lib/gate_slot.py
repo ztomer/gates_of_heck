@@ -135,7 +135,21 @@ def describe(path: str, now: float) -> str:
 
 
 def ancestors() -> set[int]:
-    """This process's ancestry, from one `ps` listing (a spawn per level costs a process each)."""
+    """This process's ancestry, from one `ps` listing (a spawn per level costs a process each).
+
+    PID 1 IS IN THE SET, and that is not a detail: in a container the `tools/gate.sh` that holds
+    the slot IS the container's init process (bash execs its last command), and every process in
+    the namespace is inside it. The walk used to stop BEFORE 1, so on Linux the holder refused
+    the watch -- "the owner is not an ancestor" -- the shell reported "the slot holder exited
+    without a slot", and the consumer's own gate.sh FAILED. It is the defect the pidfd branch
+    carried while it had never run: found by running it, in a container, on 2026-10-20.
+
+    A slot record holds the OWNER's pid, never the holder's, and the owner is a gate.sh -- never
+    pid 1 on a host (there it is launchd, which starts no gate). So a record naming pid 1 can only
+    be a container's own gate, and every process in that container really is inside it: reading
+    it as "nested" is right, and it is what keeps a nested gate from waiting for a slot its own
+    parent holds.
+    """
     out = subprocess.run(
         ["ps", "-axo", "pid=,ppid="],
         capture_output=True,
@@ -150,7 +164,7 @@ def ancestors() -> set[int]:
             parent[int(parts[0])] = int(parts[1])
     seen: set[int] = set()
     pid = os.getppid()
-    while pid > 1 and pid not in seen:
+    while pid > 0 and pid not in seen:
         seen.add(pid)
         pid = parent.get(pid, 0)
     return seen
@@ -218,10 +232,18 @@ def _alive(pid: int) -> bool:
 
 
 class OwnerWatch:
-    """Whether `pid` -- the process alive when this was made -- has exited, by a kernel event."""
+    """Whether `pid` -- the process alive when this was made -- has exited, by a kernel event.
+
+    The mechanism is NAMED (`mechanism`), and the holder REPORTS it, because a branch that has
+    never run is the one that is wrong: `kqueue` on macOS, a pidfd on Linux, and the pid poll
+    only where the kernel has neither. v0.39.0 shipped the pidfd branch without ever running it
+    (this repo's suite is macOS), so it is now proved on Linux -- in a container, on the branch
+    the code takes -- rather than assumed.
+    """
 
     def __init__(self, pid: int) -> None:
         self.pid = pid
+        self.mechanism = "poll"
         self._kq = None
         self._pidfd = -1
         if hasattr(select, "kqueue"):
@@ -233,17 +255,52 @@ class OwnerWatch:
                 fflags=select.KQ_NOTE_EXIT,
             )
             self._kq.control([ev], 0, 0)  # ProcessLookupError: the owner is already gone
+            self.mechanism = "kqueue"
         elif hasattr(os, "pidfd_open"):
-            self._pidfd = os.pidfd_open(pid)
+            try:
+                self._pidfd = os.pidfd_open(pid)
+            except OSError:
+                # A kernel WITHOUT pidfd (Linux before 5.3) answers ENOSYS, and that is an OSError,
+                # not the ProcessLookupError that means "the owner is already gone". Unhandled, it
+                # killed the holder -- and a holder that dies frees the slot, so the gate's own
+                # limit silently stopped limiting. The poll is slower and can be fooled by a
+                # reused pid; a named fallback beats an exception.
+                self._pidfd = -1
+            else:
+                self.mechanism = "pidfd"
+
+    def _pidfd_readable(self, wait: float) -> bool:
+        """Whether the pidfd says the owner exited, waiting up to `wait` seconds.
+
+        poll(2), not select(2): select() refuses a file descriptor at or above FD_SETSIZE (1024),
+        and a pidfd is a plain fd -- a holder that had opened a thousand files would have taken
+        the ValueError, and the watch would have died where the fallback was never reached.
+        """
+        poller = select.poll()
+        poller.register(self._pidfd, select.POLLIN)
+        return bool(poller.poll(int(wait * 1000)))
 
     def alive(self, wait: float = 0.0) -> bool:
         """False once the owner exited; blocks up to `wait` seconds for that."""
         if self._kq is not None:
             return not self._kq.control(None, 1, wait)
         if self._pidfd >= 0:
-            return not select.select([self._pidfd], [], [], wait)[0]
+            return not self._pidfd_readable(wait)
         time.sleep(wait)  # no kernel watch on this platform: the pid poll, reuse and all
         return _alive(self.pid)
+
+
+def watch_mechanism() -> str:
+    """The mechanism this platform's `OwnerWatch` takes: `kqueue`, `pidfd` or `poll`.
+
+    What the branch is on THIS host, asked without making a watch: the proof that the Linux
+    branch is the one that runs, and not a claim about it.
+    """
+    if hasattr(select, "kqueue"):
+        return "kqueue"
+    if hasattr(os, "pidfd_open"):
+        return "pidfd"
+    return "poll"
 
 
 def hold(args: argparse.Namespace) -> int:
@@ -264,7 +321,11 @@ def hold(args: argparse.Namespace) -> int:
     os.ftruncate(fd, 0)
     os.lseek(fd, 0, os.SEEK_SET)
     os.write(fd, f"{args.owner}\t{args.repo}\t{time.time():.0f}\n".encode())
-    os.write(shake, f"{idx} {slots} {waited:.0f} {slot_path(args.dir, idx)}\n".encode())
+    # The mechanism goes in the handshake, so the shell can say WHICH watch took the slot: the
+    # kernel event on macOS (kqueue), the pidfd on Linux, the poll where the kernel has neither.
+    # A branch that cannot be seen cannot be proved to have run.
+    mechanism = watch.mechanism if watch is not None else "poll"
+    os.write(shake, f"{idx} {slots} {waited:.0f} {slot_path(args.dir, idx)} {mechanism}\n".encode())
     os.close(shake)
     # Hold nothing of the caller's open past here: a pipe this process kept would make whoever reads
     # the gate's output wait for the slot's release instead of the gate's end.

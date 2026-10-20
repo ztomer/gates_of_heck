@@ -48,7 +48,7 @@ gate_slot_acquire_for_caller() {
 _gate_slot_take() { # <repo> <owner pid> <"" | --for-caller>
     local repo="$1" owner="$2" mode="$3" n="${GOH_GATE_SLOTS-}"
     local dir="${GOH_GATE_SLOT_DIR:-$HOME/.cache/goh/slots}"
-    local helper="$GATE_SLOT_HELPER" fifo line idx total waited path pid
+    local helper="$GATE_SLOT_HELPER" fifo line idx total waited path pid mech
     case "$n" in
         "") ;;
         0) info "gate slots: off (GOH_GATE_SLOTS=0) -- this gate runs beside any number of others"
@@ -69,7 +69,7 @@ _gate_slot_take() { # <repo> <owner pid> <"" | --for-caller>
     # Read-write, so the open never blocks and a holder that died before writing cannot hang this
     # shell: the read times out, and the holder's liveness is asked between reads.
     exec 7<>"$fifo"
-    while ! read -r -t 1 idx total waited path <&7; do
+    while ! read -r -t 1 idx total waited path mech <&7; do
         if ! kill -0 "$pid" 2>/dev/null; then
             exec 7<&-
             rm -f "$fifo"
@@ -79,6 +79,10 @@ _gate_slot_take() { # <repo> <owner pid> <"" | --for-caller>
     done
     exec 7<&-
     rm -f "$fifo"
+    # WHICH watch took the slot: the kernel event (kqueue on macOS, a pidfd on Linux) or the pid
+    # poll where the kernel has neither. Named, because a watch that cannot be seen cannot be
+    # proved to have run -- the Linux pidfd branch shipped in v0.39.0 without ever being run.
+    [ -n "$mech" ] || mech="poll"
     export GOH_GATE_SLOT="$path $owner"
     local whose="(GOH_GATE_SLOTS)"
     if [ -n "$mode" ]; then
@@ -93,6 +97,7 @@ _gate_slot_take() { # <repo> <owner pid> <"" | --for-caller>
     else
         info "gate slot $((idx + 1))/$total taken $whose"
     fi
+    info "  owner watch: $mech"
 }
 
 gate_slot_release() {
