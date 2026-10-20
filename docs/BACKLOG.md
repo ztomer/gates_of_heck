@@ -6,9 +6,9 @@ not ready to start: the **measured baseline** it moves, the **exit number** that
 hit can be wrong, each with a test BEFORE the cache exists). A perf change without a before/after
 from the P0 instrument does not land.
 
-## State — 2026-10-20, v0.43.0 (read first)
+## State — 2026-10-20, v0.44.0 (read first)
 
-v0.43.0 closes the plan of record's Phase 3 (7.1, 7.2, 7.3): the Linux `pidfd` branch of
+v0.44.0 closes the plan of record's Phase 3 (7.1, 7.2, 7.3): the Linux `pidfd` branch of
 the gate slot holder is PROVED on Linux (and three defects it carried are closed), the
 proven cache honours the ARTIFACTS a step declares, and the empty-tree sweep collects the
 SHELL gates. The CHANGELOG stanza carries each in full.
@@ -169,7 +169,7 @@ Each item was reported from a consumer's own roadmap and carried the four fields
 started. None of them is a consumer's to fix: the class is in the gate layer, and the layer is
 here.
 
-- [ ] 7.1 The Linux `pidfd` branch of the gate slot holder (v0.39.0) had never run. **Baseline:**
+- [x] 7.1 (`ee9a510`) The Linux `pidfd` branch of the gate slot holder (v0.39.0) had never run. **Baseline:**
       v0.39.0 shipped `lib/gate_slot.py`'s owner watch -- kqueue NOTE_EXIT on macOS, a pidfd on
       Linux -- and the pidfd branch had NEVER been taken: this repo's suite is macOS (`select`
       has `kqueue` there), no consumer ran the Linux path, and nothing said so. **Exit:** the
@@ -187,7 +187,7 @@ here.
       own gate.sh FAILED with "the slot holder exited without a slot". A pid-1 record must read
       as "nested", or a nested gate waits for a slot its own parent holds.
 
-- [ ] 7.2 The proven cache could skip a BUILD whose artifact a later step consumes (divoom-control,
+- [x] 7.2 (`1c2f9a6`) The proven cache could skip a BUILD whose artifact a later step consumes (divoom-control,
       2026-10-20). **Baseline:** the pre-push gate runs in a FRESH worktree; the build step had
       been proven on the same commit by an earlier push attempt, so it was SKIPPED, so it left no
       binary behind, and the consuming step failed with "divoomd (Rust daemon) binary not found"
@@ -204,7 +204,7 @@ here.
       step that consumes a build from another commit -- the consumed artifact's bytes changed, so
       the consumer's proof is void.
 
-- [ ] 7.3 The empty-tree sweep collected only `check_*.py`, so a `check_*.sh` gate was never swept
+- [x] 7.3 (`24f5214`) The empty-tree sweep collected only `check_*.py`, so a `check_*.sh` gate was never swept
       over an empty tree (Adv360-Pro-ZMK). **Baseline:** the sweep ran every PYTHON gate over a
       skeleton with no content and failed any that reported compliance; the shell half was never
       collected, so Adv360's `check_keymap_build.sh` and `check_upstream_drift.sh` -- both with

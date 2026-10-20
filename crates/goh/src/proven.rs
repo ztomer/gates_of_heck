@@ -362,10 +362,12 @@ pub fn record(
             return 2;
         }
         let Some(hash) = file_hash(path) else {
-            eprintln!("proven: the step declares the artifact '{path}' ({kind}) and it is not there");
+            eprintln!(
+                "proven: the step declares the artifact '{path}' ({kind}) and it is not there"
+            );
             return 2;
         };
-        lines.push_str(&format!("{kind} {path} {hash}\n"));
+        let _ = writeln!(lines, "{kind} {path} {hash}");
     }
     let Some(dir) = dir() else {
         return 1;
