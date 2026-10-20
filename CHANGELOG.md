@@ -46,6 +46,72 @@ the tiers differ in WHERE the files are read from, not in how many of them there
 * Contract 17 now says what the step proves, what it costs and what it no longer does. Cargo goes
   0.42.0 -> 0.43.0 across the workspace.
 
+## v0.44.0 — the pidfd branch, the artifacts a step declares, and the shell gates _(2026-10-20)_
+
+Minor bump: three defects from the consumers' own roadmaps, all in the gate layer, all found by
+running the branch that had never run.
+
+* **The Linux `pidfd` branch of the gate slot holder is PROVED, and it was BROKEN.**
+  `lib/gate_slot.py`'s owner watch -- the kernel event that ends a consumer's `tools/gate.sh`
+  slot -- takes kqueue on macOS and a pidfd on Linux. The pidfd branch shipped in v0.39.0 and had
+  never run: this repo's suite is macOS, no consumer ran the Linux path, and nothing said so. Run
+  in a container on 2026-10-20, it failed three ways:
+  * a kernel WITHOUT pidfd (Linux before 5.3) answers ENOSYS -- an OSError, not the
+    ProcessLookupError that means "the owner is already gone". Unhandled, it killed the holder,
+    and a holder that dies FREES the slot: the machine-wide limit silently stopped limiting.
+    The poll is now the named fallback.
+  * select(2) refuses a descriptor at or above FD_SETSIZE (1024), and a pidfd is a plain
+    descriptor: the watch died with a ValueError where the fallback was never reached. It is
+    poll(2) now, which has no such limit.
+  * the ancestry walk stopped BEFORE pid 1 -- and in a container the consumer's `tools/gate.sh`
+    IS the container's init process (bash execs its last command). The holder refused the watch,
+    the shell said "the slot holder exited without a slot", and the consumer's own gate.sh
+    FAILED. Every container, every consumer.
+  The mechanism is now NAMED and reported: the holder's handshake carries it and the gate says
+  `owner watch: pidfd` (or `kqueue`, or `poll`). A branch that cannot be seen cannot be proved to
+  have run. Pinned by `tests/test_gate_slot_linux.py` -- red before the change, and green in a
+  container on Linux (7 passed) with the poll fallback refused by an assertion.
+* **The proven cache honours the ARTIFACTS a step declares.** The cache remembered "this step
+  exited 0" and read that as "the artifact a later step needs is there". divoom-control measured
+  it on 2026-10-20: the pre-push gate runs in a FRESH worktree, the build step had been proven on
+  the same commit by an earlier push attempt, so it was SKIPPED, so it left no binary behind, and
+  the step that consumes it failed with "divoomd (Rust daemon) binary not found" -- a reason that
+  has nothing to do with the tree. A step now declares what it produces and what it consumes:
+
+      [produces=target/debug/divoomd] cargo build -p divoomd --locked
+      [consumes=target/debug/divoomd] python3 tools/check_built_binaries.py
+
+  A record is written only when every declared artifact is THERE (a build that "succeeded" and
+  produced nothing is not a proof of anything -- the step is RED), and a hit is only a hit while
+  every declared artifact is still there, UNCHANGED (a missing one is the fresh worktree; a
+  changed one is another build). The declaration is part of the step string, so it is part of the
+  key: a record written before the declaration existed can never be found. The bash half and the
+  native half (`goh proven`) agree byte for byte, artifact lines included. Pinned by
+  `tests/test_proven_artifacts.py` (9 cases, all red before the change).
+* **The empty-tree sweep collects the SHELL gates.** It ran every `check_*.py` over a skeleton
+  with no content and failed any that reported compliance -- and never read a `check_*.sh`, so
+  Adv360-Pro-ZMK's `check_keymap_build.sh` and `check_upstream_drift.sh` (both with probes) were
+  never swept, and a shell gate could pass over an empty subject with nothing in the estate to
+  say so. The sweep collects both, runs a shell gate with bash, reads the shell's own usage shape
+  (exit 2 and a usage line) as "never looked" rather than as a healthy refusal, and names the
+  shell FORWARDERS (a Phase N3 forwarder execs the dispatcher; swept as a gate it fails for want
+  of it). Pinned by `tests/test_gate_runtime_path.py` and by the probe's two shell cases, which
+  calibrate it on a scratch repo.
+* **A ruling, not a change: the browser suite's UI timing under parallel workers is the
+  consumer's.** A test whose verdict depends on wall-clock timing, exercised in parallel with
+  other instances of itself -- three different UI-timing tests failed in three runs of divoom's
+  browser suite at 8 and at 4 workers. goh's layer runs that suite as ONE step and runs the
+  steps SERIALLY (divoom sets no `GOH_CI_JOBS`), and goh's own Python layer runs pytest with no
+  `-n`; the parallelism is the consumer's own `-n 8`. The fix is theirs (push the suite serially,
+  as CI does, or wait on a state rather than a timer). BACKLOG.md's "Known limits" carries the
+  ruling, the measurement, and what goh does contribute (the load).
+* `gates/_steps.sh` (new): the step list's bracket prefix -- the resource tags and the artifact
+  declarations -- parsed out of `gates/local_ci.sh`, which the declarations took over the
+  500-line cap. The cap is a split, never an exemption.
+* Docs: `docs/BACKLOG.md`'s plan of record carries Phase 3 (7.1, 7.2, 7.3) with their baselines,
+  exits, red-first proofs and the ways each can lie; `docs/map.md` carries the new and changed
+  entries.
+
 ## v0.42.0 — the estate is every repo `install.sh` installed into _(2026-10-19)_
 
 Minor bump: closes BACKLOG 6.14. The estate was a DIRECTORY (`~/Projects`, walked three levels

@@ -6,7 +6,13 @@ not ready to start: the **measured baseline** it moves, the **exit number** that
 hit can be wrong, each with a test BEFORE the cache exists). A perf change without a before/after
 from the P0 instrument does not land.
 
-## State — 2026-10-17, v0.31.0 released (read first)
+## State — 2026-10-20, v0.43.0 (read first)
+
+v0.43.0 closes the plan of record's Phase 3 (7.1, 7.2, 7.3): the Linux `pidfd` branch of
+the gate slot holder is PROVED on Linux (and three defects it carried are closed), the
+proven cache honours the ARTIFACTS a step declares, and the empty-tree sweep collects the
+SHELL gates. The CHANGELOG stanza carries each in full.
+
 
 v0.31.0 adds `goh moving-tags` (no container image on a moving tag; CHANGELOG), Adv360-Pro-ZMK
 P0.2c. v0.30.0 added the Claude Code discard guard.
@@ -90,7 +96,7 @@ box, a string comparison of a path is a measurement of the CALLER, not of the fi
 - Owed from 2026-10-08, unchanged: servers' `push-gate-build-dir-config` verified against servers
   (its content is here at `d98d7bd`).
 
-## Roadmap to v0.28.0 — the plan of record (re-phased 2026-10-14)
+## Roadmap to v0.43.0 — the plan of record (re-phased 2026-10-20)
 
 Item ids are kept from earlier plans so commit messages that cite them still resolve. Every item
 carries **Baseline:**, **Exit:**, **Red-first:** and **Lies:**, and a done item names its commit,
@@ -156,6 +162,65 @@ then `ruff format` (goh's 555 calls), or `--seed` (`498eb9a`) for what a repo ca
       only key this check reads (only media_server's removes Python: 2 vendored files, 0
       findings) and `GOH_LINE_EXCLUDE` cannot affect it at all. A seeded row is debt, not a fix:
       its `unreviewed` count is the number that must fall.
+
+### Phase 3 — four reports from the consumers (2026-10-20)
+
+Each item was reported from a consumer's own roadmap and carried the four fields before it was
+started. None of them is a consumer's to fix: the class is in the gate layer, and the layer is
+here.
+
+- [ ] 7.1 The Linux `pidfd` branch of the gate slot holder (v0.39.0) had never run. **Baseline:**
+      v0.39.0 shipped `lib/gate_slot.py`'s owner watch -- kqueue NOTE_EXIT on macOS, a pidfd on
+      Linux -- and the pidfd branch had NEVER been taken: this repo's suite is macOS (`select`
+      has `kqueue` there), no consumer ran the Linux path, and nothing said so. **Exit:** the
+      branch is PROVED on Linux (a container run reports the pidfd watch and not the pid poll),
+      and the three defects it carried are closed. **Red-first:**
+      `tests/test_gate_slot_linux.py` -- 4 cases red before the change, and the 5 Linux-only ones
+      green in the container (`docker run ... pytest tests/test_gate_slot_linux.py`: 7 passed).
+      **Lies:** (a) a kernel WITHOUT pidfd (Linux before 5.3) answers ENOSYS, an OSError -- not
+      the ProcessLookupError that means "the owner is already gone"; unhandled it killed the
+      holder, and a holder that dies FREES the slot, so the machine-wide limit silently stopped
+      limiting; (b) select(2) refuses a descriptor at or above FD_SETSIZE (1024) and a pidfd is a
+      plain descriptor, so the watch died where the fallback was never reached; (c) the owner can
+      be pid 1 -- in a container the consumer's `tools/gate.sh` IS the container's init process --
+      and the ancestry walk stopped BEFORE 1, so the holder refused the watch and the consumer's
+      own gate.sh FAILED with "the slot holder exited without a slot". A pid-1 record must read
+      as "nested", or a nested gate waits for a slot its own parent holds.
+
+- [ ] 7.2 The proven cache could skip a BUILD whose artifact a later step consumes (divoom-control,
+      2026-10-20). **Baseline:** the pre-push gate runs in a FRESH worktree; the build step had
+      been proven on the same commit by an earlier push attempt, so it was SKIPPED, so it left no
+      binary behind, and the consuming step failed with "divoomd (Rust daemon) binary not found"
+      -- a reason that has nothing to do with the tree. The cache read "the step exited 0" as
+      "the artifact a later step needs is there". **Exit:** a step DECLARES what it produces and
+      consumes (`[produces=...]`/`[consumes=...]` in the step string, `gates/_steps.sh` parses it),
+      a record is written only when every declared artifact is THERE, and a hit is only a hit
+      while every declared artifact is still there, unchanged -- the bash half and the native
+      half (`goh proven`) agreeing byte for byte. **Red-first:**
+      `tests/test_proven_artifacts.py` (9 cases, all red before the change) and the two new
+      cases in `tests/test_proven_native.py`. **Lies:** (a) a build that "succeeded" and produced
+      no artifact -- the step is RED and nothing is recorded; (b) a stamp that matches a STALE
+      artifact -- the BYTES are what the proof names, so a changed artifact voids the hit; (c) a
+      step that consumes a build from another commit -- the consumed artifact's bytes changed, so
+      the consumer's proof is void.
+
+- [ ] 7.3 The empty-tree sweep collected only `check_*.py`, so a `check_*.sh` gate was never swept
+      over an empty tree (Adv360-Pro-ZMK). **Baseline:** the sweep ran every PYTHON gate over a
+      skeleton with no content and failed any that reported compliance; the shell half was never
+      collected, so Adv360's `check_keymap_build.sh` and `check_upstream_drift.sh` -- both with
+      probes -- were never read, and a shell gate could pass over an empty subject with nothing in
+      the estate to say so. **Exit:** the sweep collects `check_*.sh` too, runs a shell gate with
+      bash, reads the shell's own usage shape (exit 2 and a usage line) as "never looked" rather
+      than as a healthy refusal, and skips the shell FORWARDERS by name (a Phase N3 forwarder
+      execs the dispatcher; swept as a gate it fails for want of it). **Red-first:** the four new
+      cases in `tests/test_gate_runtime_path.py` (all red before the change) and the two shell
+      cases in `checks/_empty_scope_probe.py`, which CALIBRATE it on a scratch repo: a shell gate
+      that passes over nothing is caught, and one with the guard is not. **Lies:** (a) a shell
+      gate that PASSES over an empty tree -- caught, the sweep is red; (b) a shell forwarder --
+      named and skipped, never swept; (c) a shell gate that demands an argument -- reported as
+      never having looked and excused in `checks/empty_scope_allow.json` with the reason (this
+      repo's own `check_no_screen_linkage.sh` audits a BUILT test binary, which an empty tree has
+      none of).
 
 ## Open -- measurements (wall times, taken under holds; 5.3 restates them)
 
@@ -386,6 +451,30 @@ ztools' exempt key, Finance's `"$root.out"`, ZeroThunder's dropped process handl
   Re-reported open by the 2026-10-12 consolidation; servers carries a pointer to it.
 
 ## Known limits, stated so they are not rediscovered
+
+### The browser suite's UI timing under parallel workers
+
+**The class:** a test whose verdict depends on WALL-CLOCK TIMING, exercised in parallel with other
+instances of itself. divoom-control measured it on 2026-10-20: three different UI-timing tests
+failed in three runs of the browser suite at 8 workers and at 4 -- the bench drag's
+`bounding_box()` came back None, the gallery never overflowed inside its wait, and the gallery tab
+was "not stable" for a 2 s click. Each passes alone, and in a fresh worktree.
+
+**RULED: not goh's to fix, and here is the measurement that says so.** goh's layer runs that suite
+as ONE step among the consumer's 31, and it runs them SERIALLY: divoom's `.gatesrc` sets no
+`GOH_CI_JOBS`, so `gates/local_ci.sh`'s scheduler starts one step at a time, and goh's own Python
+layer (`gates/py_gate.sh`) runs `pytest -q` with no `-n` at all. The parallelism is the consumer's
+own: `scripts/browser_e2e.sh` runs `pytest -n "$DIVOOM_BROWSER_WORKERS"` (8 by default; CI passes
+0, serial, on its 3-core runner). So the fix is the consumer's, and it is already written down
+there: push the suite SERIALLY in the local gate the way CI runs it, or make the three assertions
+wait on a STATE (the element's state) rather than on a timer.
+
+**What goh contributes, stated so it is not mistaken for the cause:** the LOAD. The gate slot
+allows one gate per four cores (four at once on a 16-core box), and each of those gates may run
+its own eight browsers -- 32 browsers on one box, and a timing assertion that assumed an idle
+machine. That is the house's own lesson (`gates/push_gate.sh`'s header: "a step ceiling measured
+on a quiet box is a lie on a box running five cold gates") applied one level down: the ceiling is
+bounded, the timing assumption is the consumer's.
 
 ### The stdin gate, as ported
 
