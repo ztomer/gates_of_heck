@@ -110,13 +110,23 @@ def scratch_git(*args, check=False):
     )
 
 
+# A gate is a `check_*.py` OR a `check_*.sh`. The shell half is the SAME class: Adv360-Pro-ZMK's
+# `check_keymap_build.sh` and `check_upstream_drift.sh` are gates with probes, and the sweep read
+# only the Python half, so a shell gate could report success over a tree with no content and
+# nothing in the estate would ever say so.
+GATE_SUFFIXES = (".py", ".sh")
+
+
+def _is_gate(name):
+    """Whether `name` is a gate file this sweep collects."""
+    return name.startswith("check_") and name.endswith(GATE_SUFFIXES)
+
+
 def gate_dir(root):
     """The directory this repo keeps its gates in, or None."""
     for name in GATE_DIRS:
         path = os.path.join(root, name)
-        if os.path.isdir(path) and any(
-            e.startswith("check_") and e.endswith(".py") for e in os.listdir(path)
-        ):
+        if os.path.isdir(path) and any(_is_gate(e) for e in os.listdir(path)):
             return path
     return None
 
@@ -232,6 +242,27 @@ def _runtime_env():
     return env
 
 
+def _gate_argv(skeleton, gate_name, name):
+    """How a gate is run: a Python gate with THIS interpreter, a shell gate with bash."""
+    path = os.path.join(skeleton, gate_name, name)
+    if name.endswith(".sh"):
+        return ["bash", path]
+    return [sys.executable, path]
+
+
+def _is_shell_usage_error(name, result):
+    """A shell gate that DEMANDS an argument: exit 2 and a usage line.
+
+    argparse's shape (`usage:` AND `error:`) is the Python one; a shell gate prints `usage:` and
+    exits 2, which is the shell's own convention for a usage error. Without this, a shell gate
+    that never looked scored as a healthy refusal -- the exact mistake the Python shape was fixed
+    for, one language over.
+    """
+    if not name.endswith(".sh") or result.returncode != 2:
+        return False
+    return "usage:" in (result.stdout + result.stderr).lower()
+
+
 def sweep(skeleton, gate_name, names, timeout=None, excused=()):
     """(blind, unrunnable) over the empty tree.
 
@@ -260,7 +291,7 @@ def sweep(skeleton, gate_name, names, timeout=None, excused=()):
     for name in names:
         try:
             result = subprocess.run(
-                [sys.executable, os.path.join(skeleton, gate_name, name)],
+                _gate_argv(skeleton, gate_name, name),
                 cwd=skeleton,
                 capture_output=True,
                 text=True,
@@ -300,7 +331,7 @@ def sweep(skeleton, gate_name, names, timeout=None, excused=()):
                 continue  # a named non-run, not a pass
             lines = [ln for ln in text.splitlines() if ln.strip()]
             blind[name] = lines[-1].strip()[:100] if lines else "(no output)"
-        elif is_usage_error(result.stdout + result.stderr):
+        elif is_usage_error(result.stdout + result.stderr) or _is_shell_usage_error(name, result):
             # A gate that DEMANDS an argument did not refuse to report compliance — it never got
             # to look. Scored as a pass it is worse than a blind gate, because it is silent AND
             # looks deliberate: `check_display_seam.py` exits 2 with argparse's usage line when
@@ -314,26 +345,47 @@ def sweep(skeleton, gate_name, names, timeout=None, excused=()):
 FORWARDER = re.compile(r'^__import__\("_retired"\)\.forward\(', re.M)
 
 
+def _is_shell_forwarder(text):
+    """A shell forwarder: its whole body is ONE exec of the dispatcher (`gates/goh.sh`).
+
+    Phase N3 retired the Python checkers and kept a forwarder per retired checker, so a consumer
+    calling the file by path keeps working; `checks/check_shell_lint.sh` is the same shape in
+    shell. A gate that merely RUNS the dispatcher as one of its checks is not a forwarder -- its
+    body is longer than one line, and it is swept like any other gate.
+    """
+    body = []
+    for line in text.splitlines():
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#"):
+            continue
+        # The parse-guard braces and the `exit` after the exec are structure, not steps.
+        if stripped in ("{", "}", "exit") or stripped.startswith(("{ #", "} #")):
+            continue
+        body.append(stripped)
+    return len(body) == 1 and body[0].startswith("exec ") and "gates/goh.sh" in body[0]
+
+
 def forwarders(gates):
     """The retired checkers' entry points (Phase N3): three lines that exec `goh.sh <check>`. Not
     gates of this repo -- the native check's empty-tree refusal is pinned by its own suite -- so
     they are named and skipped, never swept as a Python gate that cannot find its dispatcher."""
     out = []
     for e in sorted(os.listdir(gates)):
-        if e.startswith("check_") and e.endswith(".py"):
-            with open(os.path.join(gates, e), encoding="utf-8", errors="replace") as fh:
-                if FORWARDER.search(fh.read()):
-                    out.append(e)
+        if not _is_gate(e):
+            continue
+        with open(os.path.join(gates, e), encoding="utf-8", errors="replace") as fh:
+            text = fh.read()
+        if e.endswith(".py"):
+            if FORWARDER.search(text):
+                out.append(e)
+        elif _is_shell_forwarder(text):
+            out.append(e)
     return out
 
 
 def gate_names(gates):
     skip = set(forwarders(gates))
-    return sorted(
-        e
-        for e in os.listdir(gates)
-        if e.startswith("check_") and e.endswith(".py") and e != SELF and e not in skip
-    )
+    return sorted(e for e in os.listdir(gates) if _is_gate(e) and e != SELF and e not in skip)
 
 
 def main(argv=None):
@@ -350,7 +402,7 @@ def main(argv=None):
     root = args.root or repo_root()
     gates = gate_dir(root)
     if gates is None:
-        info("no check_*.py gates in this repo; nothing to sweep")
+        info("no check_*.py or check_*.sh gates in this repo; nothing to sweep")
         return 0
 
     names = gate_names(gates)

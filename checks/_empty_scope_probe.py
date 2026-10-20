@@ -80,6 +80,27 @@ def probe():
             "print('foreign-host: not applicable on this OS (nothing to sign here)')\n"
             "sys.exit(0)\n",
         )
+        # THE SHELL HALF of the class. A `check_*.sh` gate is a gate: the sweep read only
+        # `check_*.py`, so Adv360-Pro-ZMK's `check_keymap_build.sh` and `check_upstream_drift.sh`
+        # -- both with probes -- were never swept, and a shell gate could report success over a
+        # tree with no content with nothing in the estate to say so. This one is the class exactly:
+        # it counts what it finds and reports success either way.
+        gate(
+            "check_shell_blind.sh",
+            "#!/usr/bin/env bash\n"
+            "n=$(find Sources -type f | wc -l | tr -d ' ')\n"
+            'echo "ok $n files clean"\n'
+            "exit 0\n",
+        )
+        # Same scan, with the guard.
+        gate(
+            "check_shell_guarded.sh",
+            "#!/usr/bin/env bash\n"
+            "n=$(find Sources -type f | wc -l | tr -d ' ')\n"
+            "if [ \"$n\" = 0 ]; then echo 'x scanned nothing'; exit 1; fi\n"
+            'echo "ok $n files clean"\n'
+            "exit 0\n",
+        )
 
         names = gate_names(tools)
         with tempfile.TemporaryDirectory(prefix="goh-empty-scope.") as work:
@@ -89,11 +110,23 @@ def probe():
         cases = [
             (
                 "all gates are discovered",
-                ["check_blind.py", "check_foreign_host.py", "check_guarded.py"],
+                [
+                    "check_blind.py",
+                    "check_foreign_host.py",
+                    "check_guarded.py",
+                    "check_shell_blind.sh",
+                    "check_shell_guarded.sh",
+                ],
                 names,
             ),
             ("the unguarded gate is caught passing over nothing", True, "check_blind.py" in blind),
             ("the guarded gate is not", False, "check_guarded.py" in blind),
+            (
+                "the unguarded SHELL gate is caught passing over nothing",
+                True,
+                "check_shell_blind.sh" in blind,
+            ),
+            ("the guarded shell gate is not", False, "check_shell_guarded.sh" in blind),
             ("a named not-applicable skip is not a pass", False, "check_foreign_host.py" in blind),
             ("the sweep goes red", 1, main(["--root", root])),
         ]
@@ -104,10 +137,16 @@ def probe():
             else:
                 ok(f"probe: {label}")
 
-        # Excused: the sweep must go quiet.
+        # Excused: the sweep must go quiet. Both blind fixtures are excused -- the shell one
+        # included, or this case would be testing the shell gate instead of the excuse.
         with open(os.path.join(tools, ALLOW_FILE), "w", encoding="utf-8") as handle:
             json.dump(
-                {"known_blind": {"check_blind.py": "a fixture, excused to prove the list works"}},
+                {
+                    "known_blind": {
+                        "check_blind.py": "a fixture, excused to prove the list works",
+                        "check_shell_blind.sh": "a fixture, excused to prove the list works",
+                    }
+                },
                 handle,
             )
         if main(["--root", root]) != 0:
@@ -120,7 +159,10 @@ def probe():
         with open(os.path.join(tools, ALLOW_FILE), "w", encoding="utf-8") as handle:
             json.dump(
                 {
-                    "known_blind": {"check_blind.py": "still blind"},
+                    "known_blind": {
+                        "check_blind.py": "still blind",
+                        "check_shell_blind.sh": "still blind",
+                    },
                     "legitimate": {"check_guarded.py": "excused, but it was fixed"},
                 },
                 handle,

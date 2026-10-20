@@ -108,3 +108,75 @@ def test_an_excuse_naming_no_gate_is_a_finding(tmp_path):
     got = _sweep_repo(tmp_path, {"check_gone.py": "it used to be here"})
     assert got.returncode == 1, got.stdout + got.stderr
     assert "check_gone.py is excused here but names no gate" in got.stderr, got.stderr
+
+
+# THE SHELL HALF OF THE CLASS (Adv360-Pro-ZMK, 2026-10-20). The sweep collected `check_*.py` and
+# nothing else, so a repo's `check_*.sh` gates -- Adv360's `check_keymap_build.sh` and
+# `check_upstream_drift.sh`, both with probes -- were never swept: a shell gate could report
+# success over a tree with no content and nothing in the estate would ever say so.
+
+
+def test_a_shell_gate_is_swept_and_one_that_passes_over_nothing_is_caught(tmp_path):
+    (tmp_path / "Sources").mkdir()
+    gates = tmp_path / "checks"
+    gates.mkdir()
+    (gates / "check_blind.sh").write_text(
+        "#!/usr/bin/env bash\n"
+        "n=$(find Sources -type f | wc -l | tr -d ' ')\n"
+        'echo "ok $n files clean"\n'
+        "exit 0\n"
+    )
+    (gates / "check_guarded.sh").write_text(
+        "#!/usr/bin/env bash\n"
+        "n=$(find Sources -type f | wc -l | tr -d ' ')\n"
+        'if [ "$n" = 0 ]; then echo "x scanned nothing"; exit 1; fi\n'
+        "exit 0\n"
+    )
+    blind, unrunnable = check_empty_scope.sweep(
+        str(tmp_path), "checks", ["check_blind.sh", "check_guarded.sh"]
+    )
+    assert "check_blind.sh" in blind, (blind, unrunnable)
+    assert "check_guarded.sh" not in blind, (blind, unrunnable)
+
+
+def test_a_repo_whose_gates_are_all_shell_is_still_swept(tmp_path):
+    """The gate DIRECTORY is found by what it holds: a repo with no Python gate at all was not
+    swept, so its shell gates were not either."""
+    repo = tmp_path / "repo"
+    (repo / "tools").mkdir(parents=True)
+    (repo / "tools" / "check_blind.sh").write_text("#!/usr/bin/env bash\necho 'ok 0 files clean'\n")
+    assert check_empty_scope.gate_dir(str(repo)) == str(repo / "tools")
+    assert check_empty_scope.gate_names(str(repo / "tools")) == ["check_blind.sh"]
+
+
+def test_a_shell_gate_that_demands_an_argument_is_never_scored_as_a_pass(tmp_path):
+    """The Python shape is argparse's (`usage:` AND `error:`); a shell gate prints `usage:` and
+    exits 2. Scored as a refusal it landed in the healthy column having looked at nothing."""
+    gates = tmp_path / "checks"
+    gates.mkdir()
+    (gates / "check_demanding.sh").write_text(
+        '#!/usr/bin/env bash\necho "usage: check_demanding.sh <built-binary>" >&2\nexit 2\n'
+    )
+    blind, unrunnable = check_empty_scope.sweep(str(tmp_path), "checks", ["check_demanding.sh"])
+    assert "check_demanding.sh" not in blind, blind
+    # The reason names the SHELL's own usage line: run by python3 the same file died with a
+    # SyntaxError, which the Python shape also matched -- for the wrong reason, and by accident.
+    assert "check_demanding.sh <built-binary>" in unrunnable["check_demanding.sh"], unrunnable
+
+
+def test_a_shell_forwarder_is_named_and_not_swept(tmp_path):
+    """Phase N3 kept a forwarder per retired checker so a consumer calling the file by path keeps
+    working; `checks/check_shell_lint.sh` is the shell one. Swept as a gate it would fail in the
+    skeleton for want of its dispatcher -- a verdict about the sweep, not about the check."""
+    gates = tmp_path / "checks"
+    gates.mkdir()
+    (gates / "check_shell_lint.sh").write_text(
+        "#!/usr/bin/env bash\n"
+        "{ # parse-guard -- bash reads this group whole before running it\n"
+        'exec bash "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../gates/goh.sh" shell-lint "$@"\n'
+        "exit\n"
+        "} # parse-guard\n"
+    )
+    (gates / "check_real.sh").write_text("#!/usr/bin/env bash\necho 'x scanned nothing'\nexit 1\n")
+    assert check_empty_scope.forwarders(str(gates)) == ["check_shell_lint.sh"]
+    assert check_empty_scope.gate_names(str(gates)) == ["check_real.sh"]
