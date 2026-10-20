@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.ztomer.goh-load-reap</string>
+
+    <!-- The load backstop (2026-10-20). A load experiment's spinners are registered in the load
+         registry (GOH_LOAD_DIR, default ~/.cache/goh/load) by $GOH_DIR/tools/load.py, which kills
+         them on the way out. A trap cannot catch an orphan: the tool itself was SIGKILLed, three
+         times in one day, and the spinners were re-parented to launchd and burned a core each for
+         hours (24 of them for 3h12m, load average 206). So the machine reads the registry every
+         minute and kills the pids in it whose parent is 1. A spinner with a LIVE parent is an
+         experiment in progress and is left alone; nothing is ever killed by name. -->
+    <key>ProgramArguments</key>
+    <array>
+        <string>/bin/bash</string>
+        <string>-c</string>
+        <!-- path-ok: launchd execs this with no shell and no environment, so an absolute path is the only form it can use. The guard is quiet until the gates checkout carries the reaper (this repo), so a job installed before the branch lands says nothing every minute instead of failing every minute. -->
+        <string>p=/Users/ztomer/Projects/gates_of_heck/tools/load_reap.sh; [ -x "$p" ] || exit 0; exec "$p"</string>
+    </array>
+
+    <key>StartInterval</key>
+    <integer>60</integer>
+
+    <key>RunAtLoad</key>
+    <true/>
+
+    <key>WorkingDirectory</key>
+    <!-- path-ok: the gates checkout, so the job resolves the house interpreter and the HEAD export cache. -->
+    <string>/Users/ztomer/Projects/gates_of_heck</string>
+
+    <key>LowPriorityIO</key>
+    <true/>
+
+    <key>StandardOutPath</key>
+    <!-- path-ok: launchd opens this file itself and does not expand `~`, so the path must be absolute. -->
+    <string>/Users/ztomer/Library/Logs/goh-load-reap.log</string>
+    <key>StandardErrorPath</key>
+    <!-- path-ok: as StandardOutPath -- same file, same reason. -->
+    <string>/Users/ztomer/Library/Logs/goh-load-reap.log</string>
+
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+        <key>NO_COLOR</key><string>1</string>
+    </dict>
+</dict>
+</plist>

@@ -187,6 +187,8 @@ Every structural checker is native since Phase N3; the Python checkers they port
 | `eval_transport.py` | Grader/model-agnostic eval transport. | `test_eval_transport.py`, `test_eval_transport_sweep.py` |
 | `headless_env.sh` | `GOH_HEADLESS=1` contract; `headless_require_live` exits 3 when enforced. | `test_screen_presentation.py` |
 | `killtree.py` | Kill whole process groups on timeout. | `test_killtree.py` |
+| `load_registry.py` | The load registry: the record of who owns which spinner, and the facts a reaper needs (a pid is not an identity -- the process's START TIME is recorded with it, so a reused pid is dropped, never killed; a pid's PARENT is the orphan signal: 1 means the kernel re-parented it to launchd). One JSON file per experiment in the load directory (`GOH_LOAD_DIR`), taken with an exclusive create so two experiments never share a slot. | `test_load_reap.py`, `test_load_tool.py` |
+| `load_reap.py` | The backstop: kill the spinners whose owner is gone, and NOTHING else. A registered orphan (ppid 1) is killed; a spinner with a LIVE parent is an experiment in progress and is kept; a pid whose start time no longer matches the record is dropped, not killed; a process no registry names was never ours. Kills by PID, never by name. | `test_load_reap.py` |
 | `desktop_lock/` | Machine-wide desktop mutex. | `test_desktop_lock.py` |
 | `gpu_lock/` | Machine-wide GPU mutex (bash + Python halves, one record format with ztools' Rust client; heartbeat ceiling, refuses rather than steals). Moved from ztools 2026-10-10; `tools/quiet.sh` holds it. | `test_gpu_lock.py`, `test_bench_lock.py` |
 | `bench_lock.sh` | The host held for a measurement: every gate registers (`goh_init`, `push_gate.sh`, `local_ci.sh`; bash builtins only), a measurement takes it exclusive and waits for them. A nested gate, the measurement's own, and a dead, recycled or overdue holder never deadlock it. | `test_bench_lock.py` |
@@ -199,6 +201,22 @@ Every structural checker is native since Phase N3; the Python checkers they port
 
 * `tools/gate.sh` — this repo's own gate entry (layer 1 + parallel pytest
   on `--full`: `-n 12 --dist loadgroup`, serial fallback without xdist).
+* `tools/load.py [N -- CMD...]` — the ONE way to make load on this machine, and it reaps itself.
+  It takes the registry slot (`GOH_LOAD_DIR`, default `~/.cache/goh/load`), refusing a second
+  experiment while one holds it; starts N spinners, REGISTERING each one (pid + start time)
+  BEFORE it is allowed to burn (a spinner waits on a release pipe, and exits if the pipe closes
+  first, so one that was never released never spins); runs the command under the load; kills
+  exactly the spinners it registered on the way out (EXIT/TERM/INT/HUP), VERIFIES that none
+  survived, and drops the registry. It also watches for its OWN owner dying and cleans up then.
+  `--status` says who holds the slot; `--reap` clears a slot whose owner is gone. Pinned by
+  `test_load_tool.py`.
+* `tools/load_reap.py` / `tools/load_reap.sh` — the backstop: the minute job that reads the load
+  registry and kills the pids in it whose parent is 1 (`lib/load_reap.py`). The shell wrapper
+  re-runs itself from an export of HEAD (C4), so an unattended job never runs an uncommitted
+  edit. Pinned by `test_load_reap.py`.
+* `tools/install_load_reap.sh [install|remove|check]` — installs the launchd job
+  (`launchagents/com.ztomer.goh-load-reap.plist`) into `~/Library/LaunchAgents`, idempotently;
+  `remove` DELETES it (the house deletes, it does not trash).
 * `tools/release-kit/` — `release.sh` (CI on HEAD → gate → stanza → tag → push → release → tap),
   `tap_bump.sh` (the house tap bump: clone, edit, the TAP's own `tools/gate.sh --full`, a pinned
   push read back; `release.sh` calls it, and so may a product's own release script),

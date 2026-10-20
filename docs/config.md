@@ -235,6 +235,7 @@ Read from the hook's environment (the settings file's `env`, or the shell Claude
 | Key | Default | Meaning |
 |---|---|---|
 | `GOH_DIR` | `~/Projects/gates_of_heck` | Location of this shared checkout. Hooks and gates resolve checkers through it; that is how one fix reaches every repo. |
+| `GOH_LOAD_DIR` | `~/.cache/goh/load` | Where the load registry lives: `tools/load.py` writes it there, and the launchd backstop (`com.ztomer.goh-load-reap`, every 60 s) reads it and kills the spinners whose owner is gone. It also holds the release pipes a spinner waits on, so the directory is the load experiment's whole state. Point it elsewhere only to isolate a test. |
 | `GOH_HEADLESS` | unset (policy off) | `1` (or truthy) enforces offscreen policy; `"" 0 false no off` mean off. Forward with `env $(headless_env)`. Unset with `env -u GOH_HEADLESS` for deliberate live runs. See `docs/harnesses.md`. |
 | `GOH_HEADLESS_REFUSAL_EXIT` | `3` | Exit code of `headless_require_live` refusals (distinct from 1 = ran and failed). |
 | `GOH_TAIL` | `60` (gates) / `30` (local_ci) | Lines of captured log printed on step failure. |
