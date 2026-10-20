@@ -37,7 +37,7 @@
     <!-- path-ok: launchd opens this file itself and does not expand `~`, so the path must be absolute. -->
     <string>/Users/ztomer/Library/Logs/goh-load-reap.log</string>
     <key>StandardErrorPath</key>
-    <!-- path-ok: as StandardOutPath -- same file, same reason. -->
+    <!-- path-ok: the same file as StandardOutPath, for the same reason. -->
     <string>/Users/ztomer/Library/Logs/goh-load-reap.log</string>
 
     <key>EnvironmentVariables</key>
