@@ -68,6 +68,47 @@ def test_a_record_by_either_is_found_by_the_other(repo: Path) -> None:
         assert hit.endswith("HIT") and "writer" in hit, (writer, reader, hit)
 
 
+def test_the_artifacts_are_part_of_the_record_on_both_sides(repo: Path) -> None:
+    """The DECLARED artifacts are in the record, and both halves read them: a record written by
+    one side is found by the other, and neither finds it once the artifact is gone.
+
+    The artifact is the whole point (divoom-control, 2026-10-20): the cache read "the step ran"
+    as "the artifact a later step needs is there".
+    """
+    _repo(repo)
+    write(repo, ".gitignore", "build/\n")
+    commit_all(repo)
+    (repo / "build").mkdir()
+    (repo / "build" / "app.bin").write_text("built\n")
+    step = "[produces=build/app.bin] build it"
+    for writer, reader in ((False, True), (True, False)):
+        wenv = {"GOH_RESOLVED_BIN": str(native_goh_path()) if writer else ""}
+        renv = {"GOH_RESOLVED_BIN": str(native_goh_path()) if reader else ""}
+        key, tree = _bash(repo, f'proven_key "{step}"', **wenv).split()
+        _bash(repo, f'proven_record {key} {tree} "{step}" writer', **wenv)
+        rec = (repo / ".git" / "goh-proven" / key).read_text()
+        assert "produces build/app.bin" in rec, rec
+        hit = _bash(repo, f'proven_lookup {key} "{step}" && echo HIT', **renv)
+        assert hit.endswith("HIT"), (writer, reader, hit)
+        # The artifact is gone (the push gate's fresh worktree): the proof is void on BOTH sides.
+        (repo / "build" / "app.bin").unlink()
+        miss = _bash(repo, f'proven_lookup {key} "{step}" && echo HIT || echo MISS', **renv)
+        assert miss.endswith("MISS"), (writer, reader, miss)
+        (repo / "build" / "app.bin").write_text("built\n")
+
+
+def test_the_native_half_refuses_a_record_whose_artifact_is_missing(repo: Path) -> None:
+    """A step that declares an artifact and does not produce it is exit 2, and nothing is
+    recorded: the native half says so as loudly as the bash one."""
+    _repo(repo)
+    write(repo, ".gitignore", "build/\n")
+    commit_all(repo)
+    r = _native(repo, "record", "k1", "T", "[produces=build/app.bin] build it", "lbl", "600")
+    assert r.returncode == 2, (r.stdout, r.stderr)
+    assert "build/app.bin" in r.stderr, r.stderr
+    assert not (repo / ".git" / "goh-proven" / "k1").exists()
+
+
 def test_a_dirty_tree_has_no_key_on_either_side(repo: Path) -> None:
     _repo(repo)
     (repo / "src" / "lib.rs").write_text("pub fn g() {}\n")

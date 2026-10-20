@@ -50,6 +50,8 @@ command -v _lib_info >/dev/null 2>&1 && {
 die() { err "local_ci: $*"; exit "${2:-2}"; }
 # shellcheck source=gates/_proven.sh
 . "$HERE/_proven.sh"
+# shellcheck source=gates/_steps.sh
+. "$HERE/_steps.sh"
 # shellcheck source=gates/_goh_bin.sh
 . "$HERE/_goh_bin.sh"
 # shellcheck source=lib/bench_lock.sh
@@ -303,12 +305,7 @@ while IFS="	" read -r src cmd; do
     [ -n "$cmd" ] || continue
     n=$((n + 1))
     SRC[n]="$src"; CMD[n]="$cmd"; STATE[n]=pending; TAGS[n]=""
-    case "$cmd" in
-        "["*"] "*) _t="${cmd%%] *}"; TAGS[n]=",${_t#[},"
-                   case "${TAGS[n]}" in *[!A-Za-z0-9_.=/,-]*) die "step $n: a tag holds letters, digits and _.=/- only (got '[${_t#[}]')" ;; esac
-                   RUN[n]="${cmd#*] }" ;;
-        *) RUN[n]="$cmd" ;;
-    esac
+    parse_step_prefix "$n" "$cmd"
 done <<EOF
 $ALL_STEPS
 EOF
@@ -406,16 +403,29 @@ _report() { # _report <i>
         PROVEN_SKIPPED=$((PROVEN_SKIPPED + 1))
         return 0
     fi
+    _rec=0
     if [ "$rc" -eq 0 ] && [ -n "${PKEY[i]}" ]; then
         # Recorded only if the tree (and the gates) did not move while it ran.
         if [ "$(proven_key "$cmd" </dev/null)" = "${PKEY[i]} ${PTREE[i]}" ]; then
-            proven_record "${PKEY[i]}" "${PTREE[i]}" "$cmd" "local_ci" </dev/null \
-                || warn "[$i/$_n] could not write the proven record"
+            proven_record "${PKEY[i]}" "${PTREE[i]}" "$cmd" "local_ci" </dev/null || _rec=$?
+            if [ "$_rec" -ne 0 ] && [ "$_rec" -ne 2 ]; then
+                warn "[$i/$_n] could not write the proven record"
+            fi
         else
             step "the tree or the gates moved while the step ran — not recorded as proven"
         fi
     fi
-    if [ "$rc" -eq 0 ]; then
+    if [ "$_rec" -eq 2 ]; then
+        # The step DECLARED an artifact and it is not there (named above): a step that succeeded
+        # without the artifact it produces, or consumes, proves nothing -- and the cache must not
+        # remember it, or the NEXT run skips it and leaves the same hole.
+        err "[$i/$_n] FAILED: $cmd"
+        err "  the step declares an artifact and it is not there (named above): a step that"
+        err "  succeeded without it is not a proof, and nothing is remembered about it"
+        FAILED=$((FAILED + 1))
+        FAILED_NAMES="$FAILED_NAMES
+  $cmd (declared artifact missing)"
+    elif [ "$rc" -eq 0 ]; then
         ok "[$i/$_n] $cmd"
     elif [ "$rc" -eq 125 ]; then
         # The step was GREEN and something it spawned outlived it. Named separately, and with its own

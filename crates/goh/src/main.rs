@@ -182,7 +182,8 @@ fn run_core(command: Commands) -> i32 {
                 step,
                 label,
                 ttl,
-            } => proven::record(&key, &tree, &step, &label, ttl),
+                artifacts,
+            } => proven::record(&key, &tree, &step, &label, ttl, &artifacts),
         },
         Commands::Step {
             timeout,

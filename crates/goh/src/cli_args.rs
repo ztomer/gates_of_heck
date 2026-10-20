@@ -69,11 +69,15 @@ pub enum ProvenAction {
     /// `AGE LABEL` when a record of KEY, made for STEP, is younger than TTL seconds.
     Lookup { key: String, step: String, ttl: u64 },
     /// Record KEY for STEP (its TREE, by LABEL), then prune what is older than TTL seconds.
+    /// The ARTIFACTS the step declares, as `KIND:PATH` (KIND is `produces` or `consumes`): a
+    /// declared artifact that is not there is exit 2, and a record names the ones that are, so a
+    /// hit is only a hit while they are still there, unchanged.
     Record {
         key: String,
         tree: String,
         step: String,
         label: String,
         ttl: u64,
+        artifacts: Vec<String>,
     },
 }

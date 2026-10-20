@@ -294,6 +294,7 @@ proven_lookup() {
     now="$(proven_now)"
     age=$((now - epoch))
     [ "$age" -ge 0 ] && [ "$age" -lt "$PROVEN_TTL" ] || return 1
+    proven_artifacts_present "$f" || return 1
     printf '%s %s\n' "$(proven_age "$age")" "${by:-unknown}"
     return 0
 }
@@ -307,19 +308,175 @@ proven_age() {
     fi
 }
 
+# ── THE ARTIFACTS A STEP DECLARES ───────────────────────────────────────────────────────────────
+#
+# THE CLASS (divoom-control, 2026-10-20). The cache remembered "this step exited 0" and read that
+# as "the artifact a later step needs is there". The pre-push gate runs in a FRESH worktree: the
+# build step was proven on the same commit by an earlier push attempt, so it was SKIPPED, so it
+# left no binary behind, and the step that consumes it failed with "binary not found" -- a reason
+# that has nothing to do with the tree.
+#
+# THE DECLARATION rides in the step string's bracket prefix, so it travels with the step and cannot
+# drift from it:
+#
+#     [produces=target/debug/divoomd] cargo build -p divoomd --locked
+#     [consumes=target/debug/divoomd] python3 tools/check_built_binaries.py
+#
+# `produces=` is what the step CREATES; `consumes=` is what it READS. Several paths are separated
+# by `+` (a comma separates the items in the prefix). Paths are repo-relative.
+#
+# THE RULES. A record may only be written when every declared artifact is THERE (a build that
+# "succeeded" and produced nothing is not a proof of anything), and a hit is only a hit while
+# every declared artifact is still there, UNCHANGED (a missing one is the fresh worktree; a
+# changed one is a different build). The declaration is part of the step string, so it is part of
+# the key: a record written before the declaration existed can never be found.
+
+# proven_decl <step> — the declared artifacts, one per line: "<produces|consumes> <path>".
+# Pure parameter expansion: no spawn, and bash 3.2 safe.
+proven_decl() {
+    local step="$1" head rest item kind paths path
+    case "$step" in
+        "["*"] "*) head="${step%%]*}" ;;
+        *) return 0 ;;
+    esac
+    head="${head#[}"
+    rest="$head"
+    while [ -n "$rest" ]; do
+        item="${rest%%,*}"
+        if [ "$item" = "$rest" ]; then rest=""; else rest="${rest#*,}"; fi
+        case "$item" in
+            produces=*|consumes=*) ;;
+            *) continue ;;
+        esac
+        kind="${item%%=*}"
+        paths="${item#*=}"
+        while [ -n "$paths" ]; do
+            path="${paths%%+*}"
+            if [ "$path" = "$paths" ]; then paths=""; else paths="${paths#*+}"; fi
+            [ -n "$path" ] && printf '%s %s\n' "$kind" "$path"
+        done
+    done
+}
+
+# proven_decl_valid <step> — 0 when every declaration in the prefix is one of the two kinds.
+# An unknown key is REFUSED, not ignored: a typo in a declaration is a gate that silently checks
+# nothing, which is the class this file exists for.
+proven_decl_valid() {
+    local step="$1" head rest item kind paths path
+    case "$step" in
+        "["*"] "*) head="${step%%]*}" ;;
+        *) return 0 ;;
+    esac
+    head="${head#[}"
+    rest="$head"
+    while [ -n "$rest" ]; do
+        item="${rest%%,*}"
+        if [ "$item" = "$rest" ]; then rest=""; else rest="${rest#*,}"; fi
+        case "$item" in
+            *=*) ;;
+            *) continue ;;
+        esac
+        kind="${item%%=*}"
+        case "$kind" in
+            produces|consumes) ;;
+            *) return 1 ;;
+        esac
+        paths="${item#*=}"
+        while [ -n "$paths" ]; do
+            path="${paths%%+*}"
+            if [ "$path" = "$paths" ]; then paths=""; else paths="${paths#*+}"; fi
+            case "$path" in
+                ""|*" "*|*"$(printf '\t')"*) return 1 ;;
+            esac
+        done
+    done
+    return 0
+}
+
+# proven_artifact_hash <path> — the sha256 of a file's bytes; 1 when it cannot be read. The record
+# and the lookup must agree on it, and the native half hashes the same way (sha256).
+proven_artifact_hash() {
+    local path="$1" out
+    [ -f "$path" ] || return 1
+    out="$(hash_hex "$path")" || return 1
+    [ -n "$out" ] || return 1
+    printf '%s\n' "$out"
+}
+
+# proven_artifacts_present <record file> — 0 when every artifact the proof was about is still
+# there and unchanged. A MISSING one and a CHANGED one both void the proof.
+proven_artifacts_present() {
+    local f="$1" line kind rest path want got
+    [ -f "$f" ] || return 1
+    while IFS= read -r line; do
+        case "$line" in
+            "produces "*|"consumes "*) ;;
+            *) continue ;;
+        esac
+        kind="${line%% *}"
+        rest="${line#* }"
+        path="${rest%% *}"
+        want="${rest#* }"
+        got="$(proven_artifact_hash "$path")" || return 1
+        [ "$got" = "$want" ] || return 1
+    done <"$f"
+    return 0
+}
+
+# proven_error <message> — the tui's err when the caller has one (every caller does), and the
+# same shape on stderr when it does not.
+proven_error() {
+    if command -v err >/dev/null 2>&1; then
+        err "$*"
+    else
+        printf '✗ %s\n' "$*" >&2
+    fi
+}
+
 # proven_record <key> <tree> <step> <label> — write the record atomically, then prune expired ones.
+# Exit 2: the step DECLARED an artifact and it is not there — a step that succeeded without the
+# artifact it produces (or consumes) proves nothing, and the cache must not remember it.
 proven_record() {
-    local dir tmp now f epoch line
+    local dir tmp now f epoch line kind path hash
+    local decl="" spec=""
+    if ! proven_decl_valid "$3"; then
+        proven_error "proven: a declaration in '$3' is not produces=/consumes=, or names a path with a space in it"
+        return 2
+    fi
+    decl="$(proven_decl "$3")"
+    while IFS= read -r line; do
+        [ -n "$line" ] || continue
+        kind="${line%% *}"
+        path="${line#* }"
+        if ! hash="$(proven_artifact_hash "$path")"; then
+            proven_error "proven: the step declares the artifact '$path' ($kind) and it is not there"
+            return 2
+        fi
+        spec="$spec ${kind}:${path}"
+    done <<EOF
+$decl
+EOF
     if [ -x "${GOH_RESOLVED_BIN:-}" ]; then
-        "$GOH_RESOLVED_BIN" proven record "$1" "$2" "$3" "$4" "${PROVEN_TTL:-86400}"
+        "$GOH_RESOLVED_BIN" proven record "$1" "$2" "$3" "$4" "${PROVEN_TTL:-86400}" $spec
         return
     fi
     dir="$(proven_dir)" || return 1
     mkdir -p "$dir" || return 1
     now="$(proven_now)"
     tmp="$(mktemp "$dir/.tmp.XXXXXX")" || return 1
-    if ! { printf 'epoch=%s\nlabel=%s\ntree=%s\nstep=%s\n' "$now" "$4" "$2" "$3" >"$tmp" \
-            && mv -f "$tmp" "$dir/$1"; }; then
+    {
+        printf 'epoch=%s\nlabel=%s\ntree=%s\nstep=%s\n' "$now" "$4" "$2" "$3"
+        while IFS= read -r line; do
+            [ -n "$line" ] || continue
+            kind="${line%% *}"
+            path="${line#* }"
+            hash="$(proven_artifact_hash "$path")" || hash=""
+            printf '%s %s %s\n' "$kind" "$path" "$hash"
+        done <<EOF
+$decl
+EOF
+    } >"$tmp" || { rm -f "$tmp"; return 1; }
+    if ! mv -f "$tmp" "$dir/$1"; then
         rm -f "$tmp"
         return 1
     fi

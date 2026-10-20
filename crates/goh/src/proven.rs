@@ -63,7 +63,12 @@ fn identity() -> Option<Vec<u8>> {
 }
 
 fn hex(bytes: &[u8]) -> String {
-    let digest = Sha256::digest(bytes);
+    hex_digest(&Sha256::digest(bytes))
+}
+
+/// The hex of a digest ALREADY computed. `hex(digest)` would digest it AGAIN, and a record
+/// written by the bash half (one sha256 of the bytes) would never match the native half's.
+fn hex_digest(digest: &[u8]) -> String {
     let mut s = String::with_capacity(64);
     for b in digest {
         let _ = write!(s, "{b:02x}");
@@ -217,6 +222,10 @@ fn age(s: u64) -> String {
 
 /// `goh proven lookup KEY STEP TTL`: `AGE LABEL` and exit 0 for a record of this key made for this
 /// exact step and younger than TTL seconds; exit 1 otherwise.
+///
+/// The ARTIFACTS the step declared are part of the proof: a record is only a hit while every one of
+/// them is still there, unchanged. A missing one (the push gate's fresh worktree, where the build
+/// step was skipped and left no binary) and a changed one (a different build) both void it.
 #[must_use]
 pub fn lookup(key: &str, step: &str, ttl: u64) -> i32 {
     let Some(text) = dir().and_then(|d| std::fs::read_to_string(d.join(key)).ok()) else {
@@ -244,6 +253,9 @@ pub fn lookup(key: &str, step: &str, ttl: u64) -> i32 {
     let Some(seconds) = now().checked_sub(epoch).filter(|s| *s < ttl) else {
         return 1;
     };
+    if !artifacts_present(&text) {
+        return 1;
+    }
     println!(
         "{} {}",
         age(seconds),
@@ -252,10 +264,109 @@ pub fn lookup(key: &str, step: &str, ttl: u64) -> i32 {
     0
 }
 
-/// `goh proven record KEY TREE STEP LABEL TTL`: the record, written atomically, then every expired
-/// or unreadable record pruned.
+/// The sha256 of a file's bytes, or None when it cannot be read. The same digest the bash half
+/// writes (`hash_hex`), so a record either side writes is the other's.
+fn file_hash(path: &str) -> Option<String> {
+    use std::io::Read as _;
+    let mut file = std::fs::File::open(path).ok()?;
+    let mut hasher = Sha256::new();
+    let mut buf = vec![0u8; 64 * 1024];
+    loop {
+        let n = file.read(&mut buf).ok()?;
+        if n == 0 {
+            break;
+        }
+        hasher.update(&buf[..n]);
+    }
+    let digest = hasher.finalize();
+    Some(hex_digest(digest.as_slice()))
+}
+
+/// Whether every artifact a record names is still there, unchanged.
+fn artifacts_present(text: &str) -> bool {
+    for line in text.lines() {
+        let Some((kind, rest)) = line.split_once(' ') else {
+            continue;
+        };
+        if !matches!(kind, "produces" | "consumes") {
+            continue;
+        }
+        let Some((path, want)) = rest.split_once(' ') else {
+            return false;
+        };
+        match file_hash(path) {
+            Some(got) if got == want => {}
+            _ => return false,
+        }
+    }
+    true
+}
+
+/// The artifacts a step DECLARES in its bracket prefix: `[produces=a+b,consumes=c] cmd`.
+///
+/// The same grammar the bash half reads (gates/_proven.sh's `proven_decl`), so the native
+/// `goh proven record` is honest when it is called on its own: the step string names the
+/// artifacts, and the record names them too.
+fn declared_artifacts(step: &str) -> Vec<String> {
+    let Some(rest) = step.strip_prefix('[') else {
+        return Vec::new();
+    };
+    let Some((head, _)) = rest.split_once("] ") else {
+        return Vec::new();
+    };
+    let mut out = Vec::new();
+    for item in head.split(',') {
+        let Some((kind, paths)) = item.split_once('=') else {
+            continue;
+        };
+        if !matches!(kind, "produces" | "consumes") {
+            continue;
+        }
+        for path in paths.split('+') {
+            if !path.is_empty() {
+                out.push(format!("{kind}:{path}"));
+            }
+        }
+    }
+    out
+}
+
+/// `goh proven record KEY TREE STEP LABEL TTL [KIND:PATH ...]`: the record, written atomically,
+/// then every expired or unreadable record pruned.
+///
+/// KIND is `produces` or `consumes`: what the step created, or what it read. A declared artifact
+/// that is NOT THERE is exit 2 — a step that succeeded without the artifact it produces (or
+/// consumes) proves nothing, and the cache must not remember it.
 #[must_use]
-pub fn record(key: &str, tree: &str, step: &str, label: &str, ttl: u64) -> i32 {
+pub fn record(
+    key: &str,
+    tree: &str,
+    step: &str,
+    label: &str,
+    ttl: u64,
+    artifacts: &[String],
+) -> i32 {
+    let declared: Vec<String> = if artifacts.is_empty() {
+        declared_artifacts(step)
+    } else {
+        artifacts.to_vec()
+    };
+    let mut lines = String::new();
+    for spec in &declared {
+        let Some((kind, path)) = spec.split_once(':') else {
+            eprintln!("proven: '{spec}' is not KIND:PATH (produces: and consumes: are the two)");
+            return 2;
+        };
+        if !matches!(kind, "produces" | "consumes") || path.is_empty() {
+            eprintln!("proven: '{spec}' is not KIND:PATH (produces: and consumes: are the two)");
+            return 2;
+        }
+        let Some(hash) = file_hash(path) else {
+            eprintln!("proven: the step declares the artifact '{path}' ({kind}) and it is not there");
+            return 2;
+        };
+        lines.push_str(&format!("{kind} {path} {hash}\n"));
+    }
     let Some(dir) = dir() else {
         return 1;
     };
@@ -264,7 +375,7 @@ pub fn record(key: &str, tree: &str, step: &str, label: &str, ttl: u64) -> i32 {
     }
     let now = now();
     let tmp = dir.join(format!(".tmp.{}", std::process::id()));
-    let body = format!("epoch={now}\nlabel={label}\ntree={tree}\nstep={step}\n");
+    let body = format!("epoch={now}\nlabel={label}\ntree={tree}\nstep={step}\n{lines}");
     if std::fs::write(&tmp, body).is_err() || std::fs::rename(&tmp, dir.join(key)).is_err() {
         let _ = std::fs::remove_file(&tmp);
         return 1;

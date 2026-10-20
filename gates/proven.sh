@@ -62,6 +62,13 @@ done
 [ $# -eq 1 ] || die "proven: expected exactly one step string (got $#) -- quote it" 2
 step_cmd="$1"
 [ -n "$step_cmd" ] || die "proven: the step string is empty" 2
+# The step string may carry a bracket prefix (the artifact declarations, gates/_proven.sh). The
+# KEY is the whole string -- the declaration is part of what is being proved -- but the COMMAND
+# that runs is what is after the prefix, exactly as local_ci.sh runs it.
+run_cmd="$step_cmd"
+case "$run_cmd" in
+    "["*"] "*) run_cmd="${run_cmd#*] }" ;;
+esac
 
 top="$(git rev-parse --show-toplevel 2>/dev/null || true)"
 if [ -n "$top" ] && [ -f "$top/.gatesrc" ]; then
@@ -69,12 +76,17 @@ if [ -n "$top" ] && [ -f "$top/.gatesrc" ]; then
     . "$top/.gatesrc"
 fi
 proven_settings || exit 2
+# The ARTIFACT DECLARATION (gates/_proven.sh): a typo in it is a gate that silently checks
+# nothing, so it is refused BEFORE the step runs, not after.
+if ! proven_decl_valid "$step_cmd"; then
+    die "proven: a declaration in the step string is not produces=/consumes=, or names a path with a space in it" 2
+fi
 
 run_it() {
     if [ -n "$log" ]; then
-        bash -c "$step_cmd" >"$log" 2>&1 </dev/null
+        bash -c "$run_cmd" >"$log" 2>&1 </dev/null
     else
-        bash -c "$step_cmd"
+        bash -c "$run_cmd"
     fi
 }
 
@@ -96,7 +108,15 @@ set -e
 if [ "$rc" -eq 0 ] && [ -n "$key" ]; then
     after="$(proven_key "$step_cmd" </dev/null || true)"
     if [ "$after" = "$key $tree" ]; then
-        proven_record "$key" "$tree" "$step_cmd" "$label" || warn "proven: could not write the record"
+        rec=0
+        proven_record "$key" "$tree" "$step_cmd" "$label" || rec=$?
+        if [ "$rec" -eq 2 ]; then
+            # The step DECLARED an artifact and it is not there: a step that succeeded without it
+            # proves nothing, and the cache must not remember it.
+            err "$label: the step declares an artifact and it is not there (named above)"
+            exit 2
+        fi
+        [ "$rec" -eq 0 ] || warn "proven: could not write the record"
     else
         step "$label: the tree or the gates moved while the step ran — not recorded as proven"
     fi
