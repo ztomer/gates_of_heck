@@ -1,5 +1,51 @@
 # CHANGELOG
 
+## v0.43.0 — the scope of a step whose subject is the tree is the tree _(2026-10-20)_
+
+Minor bump: `goh unreaped-spawn` read the files the COMMIT brings, and a guard is a CROSS-FILE
+contract -- one `tests/common/` defines it and every other test file relies on it -- so a scope of
+"the files this commit touches" could not see that contract in either direction. `routines` found
+both halves on 2026-10-20 (b961bb0). The scope is now the repository's TEST SCOPE at both tiers;
+the tiers differ in WHERE the files are read from, not in how many of them there are.
+
+* **The scope is the TREE.** `--staged` reads the INDEX (the tree the commit produces), full scope
+  reads the WORKTREE. A staged check still measures the index and never the worktree (contract 3),
+  and the step's subject is the tree the commit produces -- not the diff that produces it.
+* **It proves now what it did not before: a commit that BREAKS a shared guard is red.** The
+  mutation is the proof -- empty the `Drop` impl in `tests/common/mod.rs`, stage ONLY that file,
+  and the step names the file that relies on the guard:
+  `✗ [no_unreaped_spawn] 1 unreaped spawn(s) in test sources:` /
+  `✗ tests/test_uses.rs:9: unreaped-spawn: a Child that is never kill()ed or wait()ed: measured
+  LIVE ORPHAN`, rc 1. At commit scope this was GREEN: the files that rely on the guard were not in
+  scope either, so the tree leaked and the gate passed it.
+* **And the other half: a commit that USES a correct shared guard is green.** Stage only the file
+  that uses the guard and the step reads `✓ [no_unreaped_spawn] OK -- 2 test file(s), every spawned
+  child reaped on a panic`, rc 0. Before, the guard was invisible to the file that used it, so the
+  wrap looked like a bare `Child` -- a red on correct code, in the exact files the guard was written
+  for. `routines` worked around it by giving three of its test files a guard of their own; the
+  workaround is not the fix, because the guard the step could not see is still the guard the tree
+  has.
+* **The "not applicable" it used to print on every ordinary commit.** At commit scope the step
+  printed `not applicable -- this repo has no test source in scope` whenever a commit staged no
+  test file, in a repo full of them. That phrase is the empty-scope sweep's signal for a DECLARED
+  non-run (`checks/check_empty_scope.py`), so the step was declaring a non-run on every ordinary
+  commit. It now prints it only when the repository really has no test sources -- which is what the
+  phrase says.
+* **What it costs.** 0.07 s over 363 test files here, 0.10 s over 420 in `media_server` (measured
+  2026-10-20, the built binary, `--staged`; full scope is the same read from the worktree). The
+  index's blobs arrive in ONE `git cat-file --batch` rather than one `git show` per file, and a
+  prefetch no longer re-reads a blob it already holds (`blobs::holds`).
+* **What it no longer does.** It no longer judges only the commit's files: a finding in a file the
+  commit does not touch is now a finding, because the leak it names is in the tree the commit
+  produces -- which is the tree the step is about.
+* Pinned by `tests/test_check_no_unreaped_spawn_scope.py` (three new cases) and
+  `tests/test_unreaped_spawn_native_parity.py` -- red before the change. The frozen reference read
+  the DIFF at `--staged`, so the parity suite now compares the port's staged scope with the
+  reference's FULL scope over the same tree (a clean checkout's index IS its committed tree); the
+  whole-tree byte-identity at full scope is unchanged.
+* Contract 17 now says what the step proves, what it costs and what it no longer does. Cargo goes
+  0.42.0 -> 0.43.0 across the workspace.
+
 ## v0.42.0 — the estate is every repo `install.sh` installed into _(2026-10-19)_
 
 Minor bump: closes BACKLOG 6.14. The estate was a DIRECTORY (`~/Projects`, walked three levels
