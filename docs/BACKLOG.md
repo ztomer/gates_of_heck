@@ -32,8 +32,9 @@ is **CLOSED** at v0.44.0 — `checks/check_tracked_build_output.py` walks `git l
 build-output shapes (`.o`, `.dSYM`, `DerivedData`, `target/`, `__pycache__`, `node_modules`,
 `*.xcactivitylog`, and the bundles) and names every tracked file that is one; a repository that
 tracks nothing is REFUSED rather than passed. It is in `checks/`, not in the structural layer,
-and the reason is measured: over the estate on 2026-10-20 **one repo of fifteen** (`old_phones`,
-3 files) carries a tracked build output, so a HARD structural gate would land red in that
+and the reason is measured: over the estate on 2026-10-20 **one repo of twenty-two** (the
+repositories with a `.git` under `~/Projects`; `old_phones`, 3 files) carries a tracked build
+output, so a HARD structural gate would land red in that
 consumer's next push — and a gate that lands red in a consumer needs that consumer's seed, which
 is a write in another repository. Making it structural, with `old_phones`' seed, is the OWNER'S
 call (see 7.4).
@@ -226,7 +227,7 @@ here.
 
 - [ ] 7.4 The "no tracked build output" check (koffee_oss, 2026-10-19) -- the CHECK landed at
       v0.44.0; what is left is the DECISION about where it runs. **Baseline:** the ask was in the
-      State section above; the estate measurement on 2026-10-20: **1 repo of 15** carries a
+      State section above; the estate measurement on 2026-10-20: **1 repo of 22** carries a
       tracked build output (`old_phones`, 3 files), so a hard structural step lands red in that
       consumer's next push. **Exit:** the owner decides (a) the check stays in `checks/` and every
       consumer adopts it in its own gate, or (b) it becomes a structural step with
