@@ -25,6 +25,7 @@ import time
 from pathlib import Path
 
 import pytest
+import timing_bounds
 
 from conftest import REPO_ROOT
 
@@ -100,8 +101,9 @@ def _run(args: list[str], timeout: int = 60) -> subprocess.CompletedProcess[str]
 
 
 def _wait_for(predicate, seconds: float = 10.0) -> bool:
-    deadline = time.monotonic() + seconds
-    while time.monotonic() < deadline:
+    """Wait for the predicate, giving up on the box's own patience (the house's deadline)."""
+    give_up = timing_bounds.GiveUp(seconds)
+    while not give_up.passed():
         if predicate():
             return True
         time.sleep(0.05)

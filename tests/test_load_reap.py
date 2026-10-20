@@ -26,6 +26,7 @@ import time
 from pathlib import Path
 
 import pytest
+import timing_bounds
 
 from conftest import REPO_ROOT
 
@@ -96,8 +97,8 @@ def _orphan() -> int:
     )  # fmt: skip
     pid = int(helper.stdout.strip())
     _SPAWNED.append(pid)
-    deadline = time.monotonic() + 10
-    while time.monotonic() < deadline and reg.pid_ppid(pid) != 1:
+    give_up = timing_bounds.GiveUp(10)
+    while not give_up.passed() and reg.pid_ppid(pid) != 1:
         time.sleep(0.05)
     return pid
 
