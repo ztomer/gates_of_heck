@@ -62,6 +62,21 @@ running the branch that had never run.
 * `gates/_steps.sh` (new): the step list's bracket prefix -- the resource tags and the artifact
   declarations -- parsed out of `gates/local_ci.sh`, which the declarations took over the
   500-line cap. The cap is a split, never an exemption.
+* **A tracked build output is named.** `checks/check_tracked_build_output.py` walks `git ls-files`
+  and names every TRACKED file that looks like build output: a directory a build writes into
+  (`target/`, `DerivedData/`, `__pycache__/`, `node_modules/`, `.build/`, `.venv/`), a compiled file
+  (`.o .obj .a .so .dylib .dll .pyc .pyo .class .xcactivitylog`), or a bundle (`.dSYM`, `.app`,
+  `.ipa`). The `.gitignore` check cannot see this: it cannot see a file that is ALREADY tracked,
+  which is the only case that matters -- and it is the check koffee_oss asked for on 2026-10-19
+  (six files under `DerivedDataTests/`, in with a history flatten). A build directory that is
+  merely ON DISK is left to `.gitignore` (and to the tracked-ignored step), and a repository that
+  tracks NOTHING is REFUSED rather than passed. It is in `checks/`, not in the structural layer,
+  and the reason is measured: over the estate on 2026-10-20 **one repo of fifteen**
+  (`old_phones`, 3 files) carries a tracked build output, so a hard structural gate would land red
+  in that consumer's next push -- and a gate that lands red in a consumer needs that consumer's
+  seed, which is a write in another repository. BACKLOG.md's item 7.4 carries the decision that is
+  left, with the measurement. Pinned by `tests/test_check_tracked_build_output.py` (six cases) and
+  by the canary case in `checks/_canary_cases.py`; registered in `checks/gate_calibration.json`.
 * Docs: `docs/BACKLOG.md`'s plan of record carries Phase 3 (7.1, 7.2, 7.3) with their baselines,
   exits, red-first proofs and the ways each can lie; `docs/map.md` carries the new and changed
   entries.

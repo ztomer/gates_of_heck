@@ -27,14 +27,16 @@ an xcresult at all, so no Swift repo could set a floor (`koffee_oss` asked for o
 **Reported from a consumer, per a roadmap item that said to report rather than paper over:**
 `koffee_oss` Phase 1 G2 asked for tracked Xcode build output to be removed and then, in the
 absence of a house check, for the gap to be reported here. Six files under `DerivedDataTests/`
-had come in with the history flatten. They are untracked and ignored on that side now. There is
-**no "no tracked build output" check here** — only `version-provenance`, which is a different
-question. The obvious local substitute is a `.gitignore` check, and it is a poor one: it cannot
-see a file that is already tracked, which is the only case that matters. The real check walks
-`git ls-files` for build-output shapes (`.o`, `.dSYM`, `DerivedData`, `target/`, `__pycache__`,
-`node_modules`, `*.xcactivitylog`) — the same reachability question `check_empty_scope.py` asks
-of a gate's own scope. It belongs here because every consumer inherits it, and because
-`koffee_oss` is unlikely to be the last one to find a flattened history under its build output.
+had come in with the history flatten. They are untracked and ignored on that side now. The check
+is **CLOSED** at v0.44.0 — `checks/check_tracked_build_output.py` walks `git ls-files` for the
+build-output shapes (`.o`, `.dSYM`, `DerivedData`, `target/`, `__pycache__`, `node_modules`,
+`*.xcactivitylog`, and the bundles) and names every tracked file that is one; a repository that
+tracks nothing is REFUSED rather than passed. It is in `checks/`, not in the structural layer,
+and the reason is measured: over the estate on 2026-10-20 **one repo of fifteen** (`old_phones`,
+3 files) carries a tracked build output, so a HARD structural gate would land red in that
+consumer's next push — and a gate that lands red in a consumer needs that consumer's seed, which
+is a write in another repository. Making it structural, with `old_phones`' seed, is the OWNER'S
+call (see 7.4).
 
 **And a defect in this repo's own PUSH path, found while landing it — CLOSED 2026-10-15.**
 
@@ -221,6 +223,20 @@ here.
       never having looked and excused in `checks/empty_scope_allow.json` with the reason (this
       repo's own `check_no_screen_linkage.sh` audits a BUILT test binary, which an empty tree has
       none of).
+
+- [ ] 7.4 The "no tracked build output" check (koffee_oss, 2026-10-19) -- the CHECK landed at
+      v0.44.0; what is left is the DECISION about where it runs. **Baseline:** the ask was in the
+      State section above; the estate measurement on 2026-10-20: **1 repo of 15** carries a
+      tracked build output (`old_phones`, 3 files), so a hard structural step lands red in that
+      consumer's next push. **Exit:** the owner decides (a) the check stays in `checks/` and every
+      consumer adopts it in its own gate, or (b) it becomes a structural step with
+      `old_phones`' seed file -- a write in another repo, which is the owner's to make. **Red-first:**
+      `tests/test_check_tracked_build_output.py` (6 cases, red before the checker) and the canary
+      case. **Lies:** (a) a build output that is only ON DISK is `.gitignore`'s business, not this
+      gate's -- the tracked-ignored step owns that half; (b) a repository that tracks NOTHING is
+      refused by the gate, never passed; (c) a FILE named `target.md` is a document and not a build
+      directory -- the shape is a path SEGMENT.
+
 
 ## Open -- measurements (wall times, taken under holds; 5.3 restates them)
 
