@@ -416,6 +416,13 @@ CASES = [
             ".gatesrc": "GOH_CI_STEPS='bash scripts/a.sh'\n",
         },
     ),
+    (
+        "a tracked build output is refused",
+        "check_tracked_build_output.py",
+        [],
+        {"target/debug/app": "binary\n"},
+        {"src/main.rs": "fn main() {}\n"},
+    ),
 ]
 
 # Gates this cannot fixture, with the reason. Each is a claim someone can challenge, which is the

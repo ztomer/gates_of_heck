@@ -58,7 +58,8 @@
     "swift_warnings": "game_asset_factory/tools/check_gate_canary.py -- a warning in our sources fails, a dependency's does not: red on a violation, green on a clean tree",
     "tag_version": "tests/test_check_tag_version.py (the native `goh tag-version`, run by this repo's push gate): a pushed v<semver> tag whose commit declares another version is red; red on media_server's real 2026-10-01 shape (tag v1.79.3, commit declaring 1.79.1), green on a matching pair, and a tag with no version source is a finding",
     "tests_registered": "game_asset_factory/tools/check_gate_canary.py -- every test is registered: red on a violation, green on a clean tree",
-    "version_provenance": "tests/test_check_version_provenance.py (the native `goh version-provenance`, run by this repo's push gate): red on a version with no commit and no date; a version declared in src/lib.rs is REACHED rather than read as not-applicable; an opaque clause field whose build script never asks about the working tree is red; a baseline entry naming a file the checker never reads is a FINDING; green on a truthful version"
+    "version_provenance": "tests/test_check_version_provenance.py (the native `goh version-provenance`, run by this repo's push gate): red on a version with no commit and no date; a version declared in src/lib.rs is REACHED rather than read as not-applicable; an opaque clause field whose build script never asks about the working tree is red; a baseline entry naming a file the checker never reads is a FINDING; green on a truthful version",
+    "tracked_build_output": "tests/test_check_tracked_build_output.py (run by this repo's push gate): a tracked build output is red and names the file and the shape, a clean tree is green, a repository that tracks nothing is REFUSED rather than passed, and a build output that is only on disk is left to .gitignore. Calibrated 2026-10-20"
   },
   "known_unproven": [
     "check_swift_coverage"
