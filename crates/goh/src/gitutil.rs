@@ -79,6 +79,27 @@ pub fn listed_files(root: &Path, staged: bool) -> Result<Vec<String>, String> {
     }
 }
 
+/// The INDEX's tracked files: the tree a commit WOULD PRODUCE.
+///
+/// The staged list above is the DIFF -- the files a commit CHANGES. This is the
+/// tree it produces, which is what a checker whose subject is the TREE reads at
+/// `--staged`: an unstaged edit is not in the index, so it neither blocks a clean
+/// commit nor is judged as if it were committed. `crates/goh/src/index_view.rs`
+/// exports this same tree as a directory for the checkers that want a path.
+///
+/// # Errors
+///
+/// Returns a message when git answers and fails (a corrupt index reads like
+/// a spotless repo if this were silent — it must be loud instead).
+pub fn index_files(root: &Path) -> Result<Vec<String>, String> {
+    let mut files = nul_list(root, &["ls-files", "-z", "--cached"])?;
+    // A conflicted path is in the index once per stage; the same file read twice
+    // is the same finding twice, so the list carries each path once.
+    files.sort_unstable();
+    files.dedup();
+    Ok(files)
+}
+
 /// Tracked files under `pathspecs` whose working tree differs from HEAD.
 ///
 /// # Errors

@@ -17,7 +17,7 @@ from pathlib import Path
 
 import pytest
 
-from conftest import REPO_ROOT
+from conftest import REPO_ROOT, commit_all, write
 
 from reference_kit import load_reference, reference_path  # noqa: E402
 
@@ -70,12 +70,12 @@ def test_the_table_is_not_empty() -> None:
     assert len(ROWS) >= 55, len(ROWS)
 
 
-def _report(cmd: list[str]) -> tuple[int, str]:
+def _report(cmd: list[str], cwd: Path | None = None) -> tuple[int, str]:
     env = {k: v for k, v in os.environ.items() if k not in ("NO_COLOR", "FORCE_COLOR")}
     env["NO_COLOR"] = "1"
     r = subprocess.run(
         cmd,
-        cwd=REPO_ROOT,
+        cwd=cwd or REPO_ROOT,
         capture_output=True,
         text=True,
         env=env,
@@ -85,8 +85,52 @@ def _report(cmd: list[str]) -> tuple[int, str]:
     return r.returncode, r.stdout + r.stderr
 
 
-@pytest.mark.parametrize("scope", [[], ["--staged"]], ids=["full", "staged"])
-def test_this_repositorys_report_is_byte_identical(goh: Path, scope: list[str]) -> None:
-    py = _report([sys.executable, str(reference_path("checks/check_no_unreaped_spawn.py")), *scope])
-    rs = _report([str(goh), "unreaped-spawn", *scope])
+def test_this_repositorys_full_report_is_byte_identical(goh: Path) -> None:
+    """The whole-tree report over this repository, the largest real corpus the suite owns, read
+    through the frozen reference and through the port, byte for byte."""
+    py = _report([sys.executable, str(reference_path("checks/check_no_unreaped_spawn.py"))])
+    rs = _report([str(goh), "unreaped-spawn"])
+    assert rs == py
+
+
+def test_the_staged_scope_is_the_tree_the_commit_produces(goh: Path, repo: Path) -> None:
+    """`--staged` reads the INDEX, and the index is the TREE the commit produces -- not the diff
+    the commit carries.
+
+    The reference read the diff (`git diff --cached --name-only`) at `--staged`, so its staged
+    report and the port's staged report cannot be compared over a tree: the port's scope is the
+    index's whole test scope, because a guard is a CROSS-FILE contract and a diff cannot show it
+    (`crates/goh/src/unreaped/scope.rs`). What CAN be compared, and is the property that matters,
+    is the port's staged scope against the reference's FULL scope over the same tree: a clean
+    checkout's index is its committed tree, so the two must read the same tree and say the same
+    thing about it.
+
+    Red before the change: the port's staged scope was the diff, and the diff of a clean checkout
+    is empty -- "not applicable" against a tree of three test files.
+    """
+    write(
+        repo,
+        "tests/common/mod.rs",
+        "use std::process::Child;\n\npub struct ReapOnDrop(pub Child);\n\n"
+        "impl Drop for ReapOnDrop {\n    fn drop(&mut self) {\n"
+        "        let _ = self.0.kill();\n        let _ = self.0.wait();\n    }\n}\n",
+    )
+    write(
+        repo,
+        "tests/test_uses.rs",
+        "mod common;\n\nuse std::process::Command;\n\nuse common::ReapOnDrop;\n\n"
+        "#[test]\nfn t() {\n"
+        '    let mut child = ReapOnDrop(Command::new("x").spawn().expect("runs"));\n'
+        "    assert!(child.0.id() > 0);\n}\n",
+    )
+    write(
+        repo,
+        "tests/test_guarded.py",
+        "import subprocess\n\n\ndef test_x():\n    with subprocess.Popen(['x']) as proc:\n"
+        "        assert proc is not None\n",
+    )
+    commit_all(repo)
+
+    py = _report([sys.executable, str(reference_path("checks/check_no_unreaped_spawn.py"))], repo)
+    rs = _report([str(goh), "unreaped-spawn", "--staged"], repo)
     assert rs == py

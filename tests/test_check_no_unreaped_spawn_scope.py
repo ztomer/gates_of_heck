@@ -92,6 +92,120 @@ def test_exclude_is_honoured(repo: Path) -> None:
     assert findings(repo).returncode == 1
 
 
+# ── the crate's SCOPE: a guard is a CROSS-FILE contract ────────────────────────
+
+# The shape `routines` has: `tests/lifecycle_support/mod.rs` defines the guard ONCE,
+# and the test files that use it live beside it (commit b961bb0, 2026-10-20). The
+# estate test in `test_no_unreaped_spawn_estate.py` pins this shape at FULL scope; the
+# two below are its STAGED twin, and the scope they pin is the one the step read wrongly.
+SHARED_GUARD = """\
+use std::process::Child;
+
+/// A child that is stopped AND collected even when the test PANICS.
+pub struct ReapOnDrop(pub Child);
+
+impl Drop for ReapOnDrop {
+    fn drop(&mut self) {
+        let _ = self.0.kill();
+        let _ = self.0.wait();
+    }
+}
+"""
+
+# The same guard, emptied: the type still CLAIMS to clean up on unwind, and does not.
+BROKEN_GUARD = """\
+use std::process::Child;
+
+/// A child that is stopped AND collected even when the test PANICS.
+pub struct ReapOnDrop(pub Child);
+
+impl Drop for ReapOnDrop {
+    fn drop(&mut self) {
+        let _ = &self.0;
+    }
+}
+"""
+
+# The file that RELIES on the guard: correct code, in every respect.
+GUARD_USER = """\
+mod common;
+
+use std::process::Command;
+
+use common::ReapOnDrop;
+
+#[test]
+fn t() {
+    let mut child = ReapOnDrop(Command::new("x").spawn().expect("runs"));
+    assert!(child.0.id() > 0, "panics; the guard reaps on unwind");
+}
+"""
+
+
+def test_a_shared_guard_is_protection_to_the_file_the_commit_brings(repo: Path) -> None:
+    """A guard defined ONCE in `tests/common/` protects every file that uses it, and the step must
+    SEE it when the commit brings the user and not the guard.
+
+    The false positive this pins: the step read the guard types from the files the commit brings,
+    so the shared guard was invisible and the wrap looked like a bare `Child` -- a red on correct
+    code, in the exact files the guard was written for. `routines` hit it on 2026-10-20 and
+    worked around it by giving three of its test files a guard of their own (b961bb0), which is
+    the workaround, not the fix: the guard the step cannot see is still the guard the tree has.
+    """
+    write(repo, "tests/common/mod.rs", SHARED_GUARD)
+    write(repo, "tests/test_uses.rs", GUARD_USER)
+    commit_all(repo)
+    # The commit brings the USER. The guard's own file is untouched by it.
+    write(repo, "tests/test_uses.rs", GUARD_USER + "\n// the commit touches this file\n")
+    git(repo, "add", "tests/test_uses.rs")
+    got = findings(repo, "--staged")
+    out = got.stdout + got.stderr
+    assert got.returncode == 0, f"a shared guard was invisible to the file that uses it:\n{out}"
+
+
+def test_a_commit_that_breaks_a_shared_guard_is_red(repo: Path) -> None:
+    """The other direction, and the one that decides the scope: a commit that touches NOTHING but
+    the guard's own file must still be refused when it breaks the guard.
+
+    The step read the files the commit brings, so the files that RELY on the guard were not in
+    scope -- and the tree leaked while the gate passed it. That is the shape a gate must not
+    have: it measures the COMMIT, and the commit is not where the leak is.
+    """
+    write(repo, "tests/common/mod.rs", SHARED_GUARD)
+    write(repo, "tests/test_uses.rs", GUARD_USER)
+    commit_all(repo)
+    # The commit breaks the guard and changes nothing else.
+    write(repo, "tests/common/mod.rs", BROKEN_GUARD)
+    git(repo, "add", "tests/common/mod.rs")
+    got = findings(repo, "--staged")
+    out = got.stdout + got.stderr
+    assert got.returncode == 1, f"a broken shared guard was accepted:\n{out}"
+    assert "tests/test_uses.rs:" in out, f"the leak was not named where it happens:\n{out}"
+
+
+def test_the_staged_scope_reads_the_index_and_not_the_worktree(repo: Path) -> None:
+    """The widened scope must still read the INDEX: an unstaged edit is not part of the commit, so
+    it must not be judged -- and must not block a clean commit either.
+
+    The discrimination is the worktree-only reading: it judges the unstaged edit (red here) and
+    it misses the staged one (green). Both halves are the same edit, so only the index answers
+    both questions.
+    """
+    clean = "import subprocess\n\n\ndef test_x():\n    assert True\n"
+    dirty = 'import subprocess\n\n\ndef test_x():\n    p = subprocess.Popen(["x"])\n'
+    write(repo, "tests/test_a.py", clean)
+    commit_all(repo)
+    write(repo, "tests/test_a.py", dirty)
+    got = findings(repo, "--staged")
+    assert got.returncode == 0, f"an unstaged edit was judged at --staged:\n{got.stdout}"
+    assert findings(repo).returncode == 1, "the worktree edit did not land, so that proves nothing"
+    # ...and the staged version of the same file IS judged.
+    git(repo, "add", "tests/test_a.py")
+    got = findings(repo, "--staged")
+    assert got.returncode == 1, f"the staged violation passed:\n{got.stdout}\n{got.stderr}"
+    assert "tests/test_a.py:" in got.stdout + got.stderr
+
+
 # The retired Python checker's `--probe` and its crate-scope memo tests (`_spawn_rust`'s
 # single-slot memo, and `--fresh-derivations` to prove it changed no verdict) went with it in
 # Phase N3. The native port derives a crate's facts once per crate by construction.

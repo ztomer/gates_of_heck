@@ -18,8 +18,10 @@
 //!   * below the floor: red, naming the key, the floor and the count read ("read NONE" when the
 //!     count is zero, which is what an exclusion covering the whole subject looks like).
 //!
-//! FULL SCOPE ONLY. At `--staged` a scanner reads the files this commit brings, so a floor would
-//! refuse every small commit for its own size; the scanners still record, and nothing judges.
+//! FULL SCOPE ONLY. At `--staged` a scanner reads the files this commit brings -- except a
+//! scanner whose subject is the TREE (the unreaped-spawn scan reads the whole test scope, because
+//! a guard is a cross-file contract) -- so a floor would refuse every small commit for its own
+//! size; the scanners still record, and nothing judges.
 //!
 //! THE PAIRING with a seed or allowlist's stale-entry check, in both directions. A stale entry (a
 //! seeded finding that is gone) is how a scan that stopped seeing FINDINGS shows; a floor is how a

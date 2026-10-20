@@ -330,10 +330,25 @@ killed. Four separate rules came out of it, and each answers a different questio
 * **A leak is reported by the run that made it.** `lib/orphan_canary.py` diffs the process table
   either side of every step. The ceiling cannot see this case: the step exits 0 and the orphan
   outlives it, which is why the leak was silent for a day.
+* **The scope is the TREE, because a guard is a CROSS-FILE contract.** `goh unreaped-spawn`'s
+  subject is the repository's test scope, at both tiers: `--staged` reads the INDEX (the tree the
+  commit produces) and full scope reads the WORKTREE. A scope of "the files this commit brings"
+  could not see the contract in either direction, and both halves were found in the estate on
+  2026-10-20: a file that USES a shared guard was reported as an unreaped spawn (the guard was
+  invisible, so the wrap looked like a bare `Child` — `routines` gave three of its test files a
+  guard of their own to get past it, which is the workaround, not the fix), and a commit that
+  BROKE a shared guard was green (the files that rely on it were not in scope, so the tree leaked
+  and the gate passed it). The cost is a whole-tree read at commit time, measured 2026-10-20:
+  363 test files in 0.07 s here, 420 in 0.16 s in `media_server`, the index's blobs fetched in
+  one `git cat-file --batch`. What it no longer does: judge only the commit's files — a finding in
+  a file the commit does not touch is a finding, because the leak it names is in the tree the
+  commit produces.
 
 Pin: `tests/test_check_no_unreaped_spawn.py` (the incident quoted from `media_server@052772a`, red
 on the real pre-fix file and green on the same file after its fix, run against the native through
-`tests/unreaped_spawn_table*.py`), `tests/test_bounded_run.py` (the grandchild case, and a passing step passes
+`tests/unreaped_spawn_table*.py`), `tests/test_check_no_unreaped_spawn_scope.py` (the scope: a
+shared guard is protection to the file the commit brings, a commit that breaks one is red, and the
+staged scope reads the index and not the worktree), `tests/test_bounded_run.py` (the grandchild case, and a passing step passes
 through untouched), `tests/test_orphan_canary.py` (the incident's shape is red, a clean step is
 silent, another program's process is counted and never failed on), and
 `checks/check_estate_corpus.py`'s `no_unreaped_spawn` entry (the incident planted inside 611 real

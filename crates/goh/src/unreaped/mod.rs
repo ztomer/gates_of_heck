@@ -8,16 +8,31 @@
 //! reference's docstring and `tests/unreaped_spawn_table*.py`;
 //! `tests/test_unreaped_spawn_native_parity.py` runs every row through both.
 //!
-//! Scope: test sources only (test directories, test file names, `.bats`, and
-//! any file carrying `#[cfg(test)]`, judged per `#[cfg(test)]` region). A
-//! guard defined once in a crate's `tests/common/` protects every test file,
-//! so guard types are gathered over every test-source Rust file first.
+//! SCOPE: the repository's TEST SOURCES -- test directories, test file names,
+//! `.bats`, and any file carrying `#[cfg(test)]`, judged per `#[cfg(test)]`
+//! region -- at BOTH tiers. The tiers differ in WHERE the files are read from,
+//! not in how many of them there are: `--staged` reads the INDEX (the tree the
+//! commit produces), full scope reads the WORKTREE.
+//!
+//! WHY the whole test scope and not the files the commit brings: a guard is a
+//! CROSS-FILE contract. One `tests/common/` defines it and the other test files
+//! rely on it, and a scope of "the files this commit touches" could not see that
+//! contract in either direction -- it reported a file that USES a shared guard
+//! as an unreaped spawn (the guard was invisible), and it passed a commit that
+//! BROKE a shared guard (the files that rely on it were not in scope, so the
+//! tree leaked and the gate passed it). The cost is a whole-tree read at commit
+//! time; see [`scope`] for the measurement.
+//!
+//! WHAT IT NO LONGER DOES: judge only the commit's files. A finding in a file
+//! the commit does not touch is now a finding, because the leak it names is in
+//! the tree the commit produces -- which is the tree the step is about.
 
 pub mod guard;
 pub mod lex;
 pub mod mask;
 pub mod pysh;
 pub mod rust_rules;
+pub mod scope;
 
 use goh_tui::{ERR, OK, START};
 use std::collections::BTreeMap;
@@ -121,6 +136,14 @@ fn ext_of(rel: &str) -> &str {
     }
 }
 
+/// The extensions the scan reads. Everything else is not a source it can judge.
+const SOURCE_EXTS: [&str; 4] = ["rs", "py", "sh", "bash"];
+
+/// Whether this path is a source the scan can read at all.
+fn is_candidate(rel: &str) -> bool {
+    SOURCE_EXTS.contains(&ext_of(rel))
+}
+
 /// What a scan found.
 #[derive(Default)]
 pub struct Outcome {
@@ -130,6 +153,12 @@ pub struct Outcome {
 }
 
 /// Scan every listed path that is a test source.
+///
+/// The listed paths are the SCOPE (`scope::files`): the whole test scope at both
+/// tiers, read from the index at `--staged` and from the worktree at full scope.
+/// The crate-scope facts below are derived from the SAME set, so a guard defined
+/// in one test file is protection in every other one -- which is the whole point
+/// of the scope, and what a scope of "the files this commit brings" could not do.
 #[must_use]
 pub fn scan(
     scanner: &Scanner,
@@ -141,7 +170,7 @@ pub fn scan(
     let mut sources: Vec<(&str, &str, String)> = Vec::new();
     for rel in paths {
         let ext = ext_of(rel);
-        if !matches!(ext, "rs" | "py" | "sh" | "bash") || exclude.is_some_and(|x| x.is_match(rel)) {
+        if !is_candidate(rel) || exclude.is_some_and(|x| x.is_match(rel)) {
             continue;
         }
         let Some(blob) = crate::gitutil::content_bytes(root, rel, staged) else {
@@ -256,7 +285,11 @@ fn run_scan(staged: bool, exclude: &str) -> Result<(i32, String), (i32, String)>
         || std::env::current_dir().unwrap_or_default(),
         std::path::PathBuf::from,
     );
-    let listed = crate::gitutil::listed_files(&root, staged).map_err(|m| {
+    // The SCOPE: the whole test scope, read from the index at `--staged` and
+    // from the worktree at full scope (see `scope`). The index's blobs are
+    // fetched in one batch first, so the wider scope costs one process rather
+    // than one per file.
+    let listed = scope::files(&root, staged).map_err(|m| {
         (
             2,
             format!(
@@ -264,6 +297,7 @@ fn run_scan(staged: bool, exclude: &str) -> Result<(i32, String), (i32, String)>
             ),
         )
     })?;
+    scope::prefetch_index_blobs(&root, &listed, staged);
     let outcome = scan(&scanner, &root, &listed, staged, filter.as_ref());
     crate::subject::record(&crate::subject::UNREAPED_SPAWN, outcome.examined);
     let errors = scanner.errors();

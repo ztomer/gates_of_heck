@@ -46,6 +46,20 @@ pub fn cached(root: &Path, rel: &str) -> Option<Vec<u8>> {
     map.get(&(root.to_path_buf(), rel.to_owned())).cloned()
 }
 
+/// Whether this run already holds the index blob of `rel`.
+///
+/// The prefetch is asked for more than once in a run -- the structural pipeline
+/// prefetches the files the commit brings, and a scanner whose scope is the TREE
+/// prefetches the index's whole tree -- and the second request must not read the
+/// same bytes again (`git show` per file is what this module exists to remove).
+#[must_use]
+pub fn holds(root: &Path, rel: &str) -> bool {
+    let Ok(map) = cache().lock() else {
+        return false;
+    };
+    map.contains_key(&(root.to_path_buf(), rel.to_owned()))
+}
+
 /// Read the index blob of every path in `paths` through one
 /// `git cat-file --batch`.
 ///
@@ -53,7 +67,10 @@ pub fn cached(root: &Path, rel: &str) -> Option<Vec<u8>> {
 /// way later, so a failure here costs speed, never correctness.
 #[must_use]
 pub fn prefetch_staged(root: &Path, paths: &[String]) -> usize {
-    let wanted: Vec<&String> = paths.iter().filter(|p| !p.contains('\n')).collect();
+    let wanted: Vec<&String> = paths
+        .iter()
+        .filter(|p| !p.contains('\n') && !holds(root, p))
+        .collect();
     if wanted.is_empty() {
         return 0;
     }
@@ -158,5 +175,11 @@ mod tests {
         );
         assert_eq!(cached(repo, "nope.txt"), None);
         assert_eq!(cached(repo, "odd\nname"), None);
+        // A second request for the same paths reads nothing: the bytes are
+        // already here, and a re-read is the per-file `git show` this module
+        // exists to remove.
+        assert_eq!(prefetch_staged(repo, &paths), 0);
+        assert!(holds(repo, "a.txt"));
+        assert!(!holds(repo, "nope.txt"));
     }
 }
