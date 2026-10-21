@@ -514,6 +514,9 @@ intermediate state to read. The two halves of the TUI are pinned to render the s
 the guarantee does not depend on which half a writer uses.
 
 Pin: `tests/test_tui_report.py` (the two halves agree byte for byte; each writes the report
-once), `tests/test_gate_slot_race.py` (the reader never sees a half-written report, the
-writer's own stream says the report was one write, and the probe is shown to still catch the
-old two-write shape -- an instrument that cannot fail proves nothing).
+once; the report renders exactly what the two writes it replaces rendered),
+`tests/test_gate_slot_race.py` (the reader never sees a half-written report, the writer's own
+stream says the report was one write, and the probe is shown to still catch the old two-write
+shape -- an instrument that cannot fail proves nothing), and `tests/test_report_writes.py` (the
+WRITER-side ratchet: an info write immediately followed by a step write is a report in two
+pieces, by the house's own definition of `step`, and there are none in this tree).

@@ -72,9 +72,14 @@ def _env(tree: Path) -> dict[str, str]:
 
 
 def _python_report(tree: Path, *details: str) -> bytes:
-    code = "import sys; from tui.lib import report; report(*sys.argv[1:])"
+    return _python_run(
+        tree, "import sys; from tui.lib import report; report(*sys.argv[1:])\n", HEADER, *details
+    )
+
+
+def _python_run(tree: Path, code: str, *args: str) -> bytes:
     r = subprocess.run(
-        [sys.executable, "-c", code, HEADER, *details],
+        [sys.executable, "-c", code, *args],
         cwd=tree,
         env=_env(tree),
         capture_output=True,
@@ -86,9 +91,13 @@ def _python_report(tree: Path, *details: str) -> bytes:
 
 
 def _shell_report(tree: Path, *details: str) -> bytes:
-    script = f'. "{tree / "tui" / "lib.sh"}"; report "$@"'
+    return _shell_run(tree, '. "$0/tui/lib.sh"; report "$@"\n', HEADER, *details)
+
+
+def _shell_run(tree: Path, body: str, *args: str) -> bytes:
+    script = f'. "{tree / "tui" / "lib.sh"}"\n' + body
     r = subprocess.run(
-        ["bash", "-c", script, "bash", HEADER, *details],
+        ["bash", "-c", script, "bash", *args],
         cwd=tree,
         env=_env(tree),
         capture_output=True,
@@ -109,6 +118,36 @@ def test_the_report_is_the_header_and_the_details_in_the_house_shape(tmp_path):
     tree = _sandbox(tmp_path)
     assert _python_report(tree, *DETAILS).decode("utf-8") == EXPECTED
     assert _shell_report(tree, *DETAILS).decode("utf-8") == EXPECTED
+
+
+def test_the_report_renders_exactly_what_the_two_writes_it_replaces_rendered(tmp_path):
+    """The two writes were `info(header)` and `step(detail)` each; the report is those same
+    bytes, in one write. A writer converted to `report` therefore prints what it printed."""
+    tree = _sandbox(tmp_path)
+    py_two = _python_run(
+        tree,
+        "from tui.lib import info, step; import sys\n"
+        "h, ds = sys.argv[1], sys.argv[2:]\n"
+        "info(h)\n"
+        "[step(d) for d in ds]\n",
+        HEADER,
+        *DETAILS,
+    )
+    py_one = _python_run(
+        tree,
+        "from tui.lib import report; import sys; report(*sys.argv[1:])\n",
+        HEADER,
+        *DETAILS,
+    )
+    assert py_one == py_two
+    sh_two = _shell_run(
+        tree,
+        'info "$1"; shift; for d in "$@"; do step "$d"; done\n',
+        HEADER,
+        *DETAILS,
+    )
+    sh_one = _shell_run(tree, 'report "$@"\n', HEADER, *DETAILS)
+    assert sh_one == sh_two
 
 
 def test_a_detail_stays_data_in_both_halves(tmp_path):

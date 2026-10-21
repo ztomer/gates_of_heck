@@ -174,8 +174,8 @@ desktop_lock_acquire() {
             continue
         fi
         if [[ $announced -eq 0 ]]; then
-            info "the desktop is held by $( _desktop_lock_owner_label )"
-            step "waiting up to ${DESKTOP_LOCK_TIMEOUT}s rather than clicking into its windows"
+            report "the desktop is held by $( _desktop_lock_owner_label )" \
+                "waiting up to ${DESKTOP_LOCK_TIMEOUT}s rather than clicking into its windows"
             announced=1
         fi
         if [[ $waited -ge $DESKTOP_LOCK_TIMEOUT ]]; then

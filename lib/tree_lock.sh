@@ -50,8 +50,8 @@ tree_lock_acquire() {
         # (desktop_lock.sh has the story) and a lock message is not worth a
         # dependency on which one this shell got.
         IFS= read -r holder < "$lock" 2>/dev/null || true
-        info "the build tree is held by ${holder:-another gate}"
-        step "waiting for it rather than wiping .build under its tests"
+        report "the build tree is held by ${holder:-another gate}" \
+            "waiting for it rather than wiping .build under its tests"
         python3 -c 'import fcntl; fcntl.flock(9, fcntl.LOCK_EX)'
         ok "build tree acquired"
     fi

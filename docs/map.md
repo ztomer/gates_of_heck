@@ -307,4 +307,5 @@ Every structural checker is native since Phase N3; the Python checkers they port
 * `tui/` — style source of truth. `report` writes a header and its details in ONE write (E59): a
   report written in pieces can be READ in pieces, and a reader cannot know the writer's write
   order. The two halves (`lib.py`, `lib.sh`) are pinned to render the same bytes, and each is
-  pinned to write it once. Pinned by `test_tui_integration.py` and `test_tui_report.py`.
+  pinned to write it once. No writer in this tree writes a report in two pieces
+  (`tests/test_report_writes.py`). Pinned by `test_tui_integration.py` and `test_tui_report.py`.
