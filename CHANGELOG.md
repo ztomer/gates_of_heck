@@ -1,5 +1,64 @@
 # CHANGELOG
 
+## v0.47.0 — a spinner is refused at every level, and a commit pin is a pin the house can name _(2026-10-21)_
+
+Minor bump: the spinner class is closed at three levels (the tool boundary, the commit, the
+machine), and the house's pin vocabulary learns the commit.
+
+* **THE CLASS, MEASURED.** At 13:00 on 2026-10-21 there were **24 orphaned spinners burning
+  ~4 cores each** — `/bin/zsh /private/var/.../opencode/load.sh`, 78 minutes of CPU apiece,
+  4h38m old, `ppid 1`, their owner long dead. The script was a hand-written file:
+  `for i in $(seq 1 24); do (while :; do :; done) & done`. Three holes, each closed at its own
+  level.
+
+* **HOLE 1 — THE GUARD ONLY SAW COMMANDS.** The Claude Code guard refused a Bash command that
+  spawns a backgrounded busy loop, and could not see a FILE that contains one — which is the
+  natural way to smuggle it in. The guard now reads the WRITE path too (`Bash|Write|Edit|MultiEdit`):
+  a file whose CODE runs a backgrounded busy loop is refused, with the same way forward
+  (`tools/load.py`) and the same escape (`# load-ok: <reason>`, in the file). TEXT is not CODE: a
+  loop inside a string, a heredoc body or a comment is text, so the writer of a fixture that
+  plants the form is not refused by it, and a file that is not a shell script is not judged at
+  all. `tests/test_claude_load_guard.py` (RED before: the guard allowed a file that runs a
+  spinner; GREEN after).
+
+* **HOLE 2 — THE BACKSTOP KNEW ONE SHAPE.** The backstop killed REGISTERED orphans and the house's
+  own spinner shape, matched WHOLE, and left all twenty-four hand-rolled ones alone — correctly,
+  by its own narrow rule. It now asks a shape it can NAME without owning it: an ORPHAN (parent 1)
+  that has BURNED a core (its CPU time is over the floor) and is STILL burning (the CPU time grew
+  between two samples) on a busy loop (the code a shell runs contains one). Four questions, and
+  none alone is enough: a live parent, a sleeper, a worker that has finished, and a process that
+  is not a shell are all left alone. That question needs a name lookup, so it is the SECOND
+  RECORDED EXEMPTION in `kill_by_name_allow.json`, with the lookup and the kill on ONE line; a
+  stale exemption and a broadened call are RED (`tests/test_load_orphan_exemption.py`).
+
+* **HOLE 3 — THE HOUSE OWNED NO CHECK FOR THE FILES.** A repository could carry a hand-rolled
+  backgrounded busy loop and no gate would say so. `goh busy-loop` is now a structural step in
+  every repo: the scope is the TRACKED set (the index at `--staged`) and among it the shell
+  sources, and the scope is PRINTED on every run. The floor `GOH_BUSY_LOOP_MIN_FILES` makes a
+  scope that stopped being read red rather than clean. No path exemption: a busy loop is not a
+  style, and the one escape is the reasoned per-line marker.
+  `tests/test_check_busy_loop.py` (RED before, GREEN after).
+
+* **THE SUITE'S OWN FIXTURES ARE BOUNDED.** A negative control that spins forever is a leak
+  waiting for the next killed run, so every fixture that spins is bounded by its own clock, and
+  `tests/test_load_reap.py` proves it: a run that is SIGKILLed leaves no process of its own
+  behind it.
+
+* **ONE DEFINITION OF THE SHAPE** (`lib/busyloop.py`), shared by the guard, the check and the
+  backstop: a rule the guard applies and the check does not is two rules.
+
+* **A COMMIT PIN IS A PIN THE HOUSE CAN NAME.** `goh moving-tags` now judges a tag that IS a
+  commit id as its own verdict — the other pin nothing can move, beside the digest — and the run
+  says which pin each reference carries. The house names the two apart because a gate that cannot
+  EXPRESS a pin cannot accept one: Adv360-Pro-ZMK's base-pin row (P1.3) is blocked on its own
+  gate being able to say "this is pinned to a commit", and the branch that said it was
+  unreachable — the check went red before it got there. **What the house does not do is rule which
+  pin a repository must use:** a commit pin cannot move, so a build is reproducible, but it does
+  not follow its upstream either — every upstream fix waits for someone to move the pin, while a
+  branch follows its upstream and can move under the build. That is the owner's ruling.
+  `tests/test_check_moving_tags.py` (RED before: the run could not tell a pin that can never move
+  from one that can; GREEN after).
+
 ## v0.46.0 — every tracked JavaScript source parses _(2026-10-21)_
 
 Minor bump: a new structural gate for the repositories that carry JavaScript, with two engines, an

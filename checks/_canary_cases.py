@@ -22,6 +22,7 @@ proven -- see {root} in _canary.build_repo for why a fixture may need its own ro
 
 # The JavaScript cases, split out when this table reached the 500-line cap. The
 # import is explicit so a reader sees that the list continues, not that it ends.
+import _canary_cases_busy  # noqa: E402
 import _canary_cases_js  # noqa: E402
 
 EMOJI = chr(0x1F680)
@@ -430,6 +431,9 @@ CASES = [
     # The JavaScript cases live in `_canary_cases_js.py`: this table had reached the
     # 500-line cap, and the list is still ONE list (the import below splices them in).
     *_canary_cases_js.CASES,
+    # The busy-loop cases live in `_canary_cases_busy.py`, for the same reason: the table is at
+    # its cap, and the list is still ONE list.
+    *_canary_cases_busy.CASES,
 ]
 
 # Gates this cannot fixture, with the reason. Each is a claim someone can challenge, which is the

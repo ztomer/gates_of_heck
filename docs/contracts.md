@@ -551,3 +551,38 @@ Pin: `tests/test_check_js_syntax.py` (a template that is not JavaScript on its o
 template whose substituted form does not parse is red; a malformed hole is still judged; the scope
 is printed; a module source under the fallback is refused rather than passed), and
 `checks/_canary_cases.py` (the two canary cases: a stray backtick, and a broken template).
+
+## 26. The house has ONE way to make load, and a spinner is refused at every level
+
+A backgrounded busy loop has NOTHING to reap it. When the shell that owns it is killed, the
+spinner is re-parented to launchd (ppid 1) and keeps burning a core for hours: twenty-four of
+them, four cores each, seventy-eight minutes of CPU apiece, four and a half hours old, on
+2026-10-21 -- hand-written, in a file, and invisible to every level the house had.
+
+So the class is closed at three levels, and the rule behind them is ONE definition
+(`lib/busyloop.py`): a busy loop is a `while`/`until` whose body is nothing but `:`/`true`/`false`;
+TEXT is not CODE (a loop inside a string, a heredoc body or a comment is text, and
+`echo 'while :; do :; done'` writes a loop, it does not run one); a loop RUNS when the line
+carrying it also carries a background operator.
+
+  * THE TOOL BOUNDARY. The Claude Code guard (matcher `Bash|Write|Edit|MultiEdit`) refuses a
+    COMMAND and a FILE that run one, and names `tools/load.py` -- the one way to make load, which
+    registers its spinners, kills exactly those, and reaps itself -- with `# load-ok: <reason>`
+    as the one escape.
+  * THE COMMIT. A tracked shell file that runs one is refused by `goh busy-loop`, in every repo,
+    at both scopes, with no path exemption (a busy loop is not a style) and a floor
+    (`GOH_BUSY_LOOP_MIN_FILES`) so a scope that stopped being read is red rather than clean.
+  * THE MACHINE. The minute job kills an ORPHAN that has BURNED a core on a busy loop --
+    whoever wrote it -- and asks four questions before it touches anything: the parent is 1, the
+    CPU time is over the floor, the CPU time is STILL growing, and the code a shell runs contains
+    the loop. That last question needs a name lookup, so it is the SECOND RECORDED EXEMPTION in
+    `kill_by_name_allow.json`, with the lookup and the kill on ONE line, and a stale or broadened
+    exemption is RED.
+
+And the bound that makes the suite safe to kill: every fixture that spins is bounded by its own
+clock, so a run that is SIGKILLed leaves no process of its own behind it.
+
+Pin: `tests/test_claude_load_guard.py` (the command and the file), `tests/test_check_busy_loop.py`
+(the check, both ways), `tests/test_load_reap.py` (the four questions, the negative controls, and
+the killed-run bound), `tests/test_load_orphan_exemption.py` (both exemptions, stale and
+broadened).
