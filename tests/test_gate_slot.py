@@ -120,17 +120,34 @@ def test_n_plus_one_gates_on_n_slots_one_waits_until_a_holder_ends(tmp_path):
             g.kill()
 
 
+def holder_line(waiter: Gate, repo: str, pid: int, today: str) -> str:
+    """The line of the wait report that names the holder -- WAITED FOR, not searched for.
+
+    The report is TWO writes (the header, then the holder's line: `tui/lib.py`'s `info()` and
+    `step()` are separate flushed prints), so a reader that waits for the header can read the
+    file between them and treat a half-written report as final. That was E39: a flake, not a
+    test. The needle here carries every substring the caller asserts on, so the text the wait
+    returns is the text the assertions read -- the reader cannot see a state it then treats as
+    final, because the state it sees already carries what it needs.
+    """
+    needle = f"slot-0: {repo} (pid {pid}, since {today}"
+    text = waiter.wait_for(needle)
+    return next(ln for ln in text.splitlines() if needle in ln)
+
+
 def test_the_wait_names_each_holder_and_its_end_says_how_long(tmp_path):
     env = _env(tmp_path, 1)
     holder = Gate(tmp_path, "zinc-like", env)
     try:
         holder.wait_for("TAKEN")
         waiter = Gate(tmp_path, "games-like", env, body="true")
-        text = waiter.wait_for("all 1 gate slots are held")
-        line = next(ln for ln in text.splitlines() if "slot-0" in ln)
+        # The date the holder stamped when it took the slot, read as close to the stamp as
+        # the test can: the needle carries it, so the wait cannot miss it.
+        today = time.strftime("%Y-%m-%d")
+        line = holder_line(waiter, "zinc-like", holder.proc.pid, today)
         assert "zinc-like" in line, line  # the repo
         assert f"pid {holder.proc.pid}" in line, line  # the holder's shell
-        assert "since " + time.strftime("%Y-%m-%d") in line, line  # since when
+        assert "since " + today in line, line  # since when
         time.sleep(1.2)
         holder.finish()
         done = waiter.wait_for("DONE")
