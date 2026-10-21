@@ -144,6 +144,22 @@ The stdin gate is on everywhere since `0c93f4d`; the sweep's method is a mechani
 placing `stdin=subprocess.DEVNULL` at each call's closing paren from the `--source` JSON's line,
 then `ruff format` (goh's 555 calls), or `--seed` (`498eb9a`) for what a repo cannot declare yet.
 
+- [ ] Adv360-Pro-ZMK P1.3 (the CONSUMER's step, not this repo's): the base-pin row is blocked on
+      ITS OWN gate being able to express a commit pin. The house can now NAME one — `goh
+      moving-tags` judges a commit id as its own verdict, beside the digest (v0.47.0), because a
+      gate that cannot EXPRESS a pin cannot accept one — but the consumer's `tools/check_zmk_base.py`
+      still REFUSES a sha revision: `problems()` reads the Zephyr line out of the revision NAME
+      (`adv360-z3.5-2`), so a sha is "a revision that names no Zephyr line" and the check goes red
+      BEFORE `report()`'s commit-pin branch can run. That branch is DEAD CODE today, and it
+      contradicts the docstring beside it. The change belongs in the consumer's repo: accept a sha
+      revision, and read the line from the resolved manifest. Baseline: MEASURED 2026-10-20 in the
+      consumer's repo (its ROADMAP P1.3 carries the numbers). Exit: the consumer's gate is green on
+      a sha pin and red on a mismatch. Red-first: the consumer's `tools/check_probe_bite.py` proves
+      each shape. Policy: the house does NOT rule sha-or-branch (a commit pin cannot move, so a
+      build is reproducible, but it does not follow its upstream; a branch follows its upstream and
+      can move under the build) — the OWNER rules, and the gate only has to be able to say which
+      one it is.
+
 - [~] 3.3 The estate sweep, handed off: since 3.4 (`0c93f4d`) each remaining row is red in its own
       repo and cleared by that repo, in its own Phase 0 (Downstream). Each row below names the
       repo that owns it, so the sweep survives the deletion of any session. Baseline: MEASURED 2026-10-09 with this tree's own binary, scope
