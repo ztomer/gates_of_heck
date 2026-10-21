@@ -1,7 +1,7 @@
 """tui/lib.py — Kare TUI output primitives (vendored from ~/projects/scripts/_lib.py).
 
 Import from a repo script (add the repo root or tui/ to sys.path first):
-    from tui.lib import info, ok, err, warn, die, hr, section
+    from tui.lib import info, step, ok, err, warn, die, hr, section, report
 
 Self-contained: reads tui/stylerc (repo source of truth), no machine dependency.
 Icons: → · ✓ ✗ ⚠   Colors: restrained, NO_COLOR + non-tty aware (degrades to plain text).
@@ -67,6 +67,52 @@ def step(message: str) -> None:
     unused — the config key was read and thrown away.
     """
     print(f"{_C_DIM}{ICON_STEP} {message}{_C_RESET}", flush=True)
+
+
+def _write_once(text: str) -> None:
+    """Write `text` to stdout in ONE write(2), then flush.
+
+    The text layer would split a multi-line report at every newline when stdout is a
+    terminal (line buffering), so the bytes go to the byte layer: one write, one flush.
+    The text layer is flushed FIRST, so anything it still holds is not reordered after
+    the report -- a reader that saw the report would see the earlier lines first.
+    """
+    stream = sys.stdout
+    buffer = getattr(stream, "buffer", None)
+    if buffer is None:  # a text-only stream (io.StringIO): one write is all it takes
+        stream.write(text)
+        stream.flush()
+        return
+    stream.flush()
+    buffer.write(text.encode("utf-8"))
+    buffer.flush()
+
+
+def report(header: str, *details: str) -> None:
+    """A header and its details, in ONE write, so a reader cannot see half of it.
+
+    E59 (2026-10-21). The gate-slot wait report was a header write and then a write per
+    holder, so a reader that waited for the header could read the file BETWEEN the writes
+    and treat a half-written report as final: the window was 56 us, and a reader polling
+    every millisecond landed in it (1 of 20 trials against the real writer, 20 of 20
+    against the instrumented one). The fix is not a rule for the READER -- the soundness
+    of a wait depends on the writer's write ORDER, which a reader cannot know -- but a
+    report that is written ONCE: the intermediate state does not exist, so there is
+    nothing to read.
+
+    The details are rendered as `step` lines (the house's sub-item shape) and the header
+    as an `info` line, so the report looks exactly like the two writes it replaces.
+
+    The write is atomic while the report fits in a pipe's buffer (PIPE_BUF is 512 on macOS
+    and 4096 on Linux): keep reports short, or a reader can still see half of one.
+
+    The shell half is `tui/lib.sh`'s `report`, and the two are pinned to render the same
+    bytes by tests/test_tui_report.py.
+    """
+    lines = [f"{_C_GRAY}{ICON_START}{_C_RESET} {_C_DIM}{header}{_C_RESET}"]
+    lines += [f"{_C_DIM}{ICON_STEP} {d}{_C_RESET}" for d in details]
+    text = "\n".join(lines) + "\n"
+    _write_once(text)
 
 
 def ok(message: str) -> None:

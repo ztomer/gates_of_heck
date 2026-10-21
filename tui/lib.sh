@@ -54,6 +54,28 @@ _tui_ok()   { printf '%s\n' "${C_GREEN}${ICON_OK}${C_RESET} $1"; }
 _tui_err()  { printf '%s\n' "${C_RED}${ICON_ERR}${C_RESET} $1" >&2; }
 _tui_warn() { printf '%s\n' "${C_YELLOW}${ICON_WARN}${C_RESET} $1" >&2; }
 
+# A header and its details, in ONE printf, so a reader cannot see half of it.
+# E59 (2026-10-21): the gate-slot wait report was a header write and then a write per
+# holder, and a reader that waited for the header could read the file between the writes
+# and treat a half-written report as final. The fix is not a rule for the READER -- the
+# soundness of a wait depends on the writer's write ORDER, which a reader cannot know --
+# but a report written ONCE: the intermediate state does not exist, so there is nothing to
+# read. The details are rendered as `step` lines and the header as an `info` line, so the
+# report looks exactly like the two writes it replaces.
+#
+# ONE printf, and the whole report in one argument: a pipe takes it in one write while it
+# fits in the pipe's buffer (PIPE_BUF is 512 on macOS and 4096 on Linux). A terminal is
+# line buffered and splits it at the newlines -- and a terminal has no reader to race.
+_tui_report() {
+  local header="${1:-}" detail out
+  shift || true
+  out="${C_GRAY}${ICON_START}${C_RESET} ${C_DIM}${header}${C_RESET}"
+  for detail in "$@"; do
+    out+=$'\n'"${C_DIM}${ICON_STEP} ${detail}${C_RESET}"
+  done
+  printf '%s\n' "$out"
+}
+
 info()  { _tui_info "$1"; }
 step()  { _tui_step "$1"; }   # a sub-item under an info line
 ok()    { _tui_ok "$1"; }
@@ -61,6 +83,7 @@ err()   { _tui_err "$1"; }
 warn()  { _tui_warn "$1"; }
 die()   { err "$1"; exit "${2:-1}"; }
 bold()  { printf '%s\n' "${C_BOLD}$1${C_RESET}"; }
+report() { _tui_report "$@"; }  # a header and its details, in ONE write
 
 # Private aliases: gates/_common.sh overlays its fallbacks onto the public
 # names unconditionally, then re-overlays from these _lib_* names when present.
