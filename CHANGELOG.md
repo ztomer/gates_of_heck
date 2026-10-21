@@ -1,5 +1,53 @@
 # CHANGELOG
 
+## v0.45.0 — a report is ONE write, so a reader cannot see it in pieces _(2026-10-21)_
+
+* **The race was the WRITER's, and it is closed there.**
+  `lib/gate_slot.py` printed a header and then formatted the holder's line
+  from the slot record BETWEEN the two writes, so a reader could see a
+  state that was not final. Measured AT THE WRITER, the window was 89 us
+  median (63-207 us) on this box -- the plan's 56 us was a quieter box --
+  and the instrumented writer caught it **20 times out of 20** with 734
+  sightings. It is now **0 sightings, 0 failures of 20**, and the probe
+  prints `one write: N of N` because there is no gap left to measure.
+
+* **The primitive: one write, in BOTH halves of the TUI.**
+  `tui/lib.py::report(header, *details)` and `tui/lib.sh::report` render
+  the header exactly as `info` rendered it and each detail exactly as
+  `step` rendered it -- so a converted writer prints the SAME bytes, now
+  atomically. The Python half writes to the byte layer (the text layer
+  would split on newlines); the shell half issues one `printf` with the
+  whole report as its argument. Six tests pin that the two halves agree
+  BYTE-FOR-BYTE, and they run against a copy of `tui/` with no `gates/`
+  beside it and `PYTHONPATH` overridden, so the re-exec cannot answer
+  with HEAD's copy.
+
+* **The class gate: on the writer side, and it bites.**
+  The house's own vocabulary settles the shape: `step` is a sub-item
+  under an info line, so an info write immediately followed by a step
+  write IS a report -- in two pieces -- and the ORDER is visible in the
+  writer. Two sites in this tree were converted (`lib/tree_lock.sh`,
+  `lib/desktop_lock/desktop_lock.sh`), both byte-identical in output, and
+  `tests/test_report_writes.py` is the ratchet: an AST pass over the
+  python sources and a line pass over the shell sources, zero findings,
+  plus a PLANTED violation proving the ratchet bites.
+
+* **What it is not, said plainly.** The ratchet is not a proof: it sees
+  *adjacent* info->step writes, and a write through a helper, or two
+  writes with a statement between them, are beyond it. The guarantee is
+  the primitive -- one write, so the intermediate state does not exist --
+  plus the instrumented writer. And the guarantee is bounded by the
+  transport: one write is atomic only while the report fits a pipe's
+  buffer (`PIPE_BUF` is 512 on macOS, 4096 on Linux; the wait report is
+  about 200 B), while a terminal is line-buffered and splits the shell
+  half at the newlines -- and a terminal has no reader to race.
+
+* **One sibling site left on purpose.** `lib/gate_slot.sh` prints `ok "gate
+  slot N/M taken ..."` and then `info "  owner watch: ..."`. That first
+  line is a STATUS MARKER, not a header with details, and converting it
+  would lose the green on every gate's "taken" line. No reader waits on
+  the second line today.
+
 ## v0.44.0 — the pidfd branch, the artifacts a step declares, the shell gates, and the load backstop _(2026-10-20)_
 
 Minor bump: three defects from the consumers' own roadmaps, all in the gate layer, all found by
