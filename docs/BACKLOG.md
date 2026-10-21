@@ -158,7 +158,10 @@ then `ruff format` (goh's 555 calls), or `--seed` (`498eb9a`) for what a repo ca
       each shape. Policy: the house does NOT rule sha-or-branch (a commit pin cannot move, so a
       build is reproducible, but it does not follow its upstream; a branch follows its upstream and
       can move under the build) — the OWNER rules, and the gate only has to be able to say which
-      one it is.
+      one it is. Lies: a revision NAME that merely looks like a sha (a branch called `d93499bb`)
+      passes a name-based test and names no commit; a sha no repository has is a pin of nothing;
+      a line read from the WORKING tree instead of from the pinned commit names a Zephyr the build
+      never used; and a resolution that fails must be NAMED, never a silent green.
 
 - [~] 3.3 The estate sweep, handed off: since 3.4 (`0c93f4d`) each remaining row is red in its own
       repo and cleared by that repo, in its own Phase 0 (Downstream). Each row below names the
