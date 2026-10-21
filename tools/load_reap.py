@@ -14,12 +14,20 @@ pruned with that directory, and its spinner is left burning a core with nothing 
 of them, orphaned by a pytest that died, 2026-10-20). So the job also recognises the house's own
 spinner shape -- EXACTLY that shape, orphaned only -- and stops those.
 
-It kills by PID: from its own registry, or from the house's own spinner shape when the registry is
-gone. The shape lookup is the RECORDED EXEMPTION in `kill_by_name_allow.json` (the house forbids
-killing by name, `goh kill-by-name`): the lookup and the kill sit on one line, so the rule sees
-it, and every candidate is matched exactly before it is touched. A spinner with a LIVE parent is
-an experiment in progress and is left alone; a process that is not the house's shape was never
-ours.
+And a spinner need not be the house's at all (2026-10-21): twenty-four hand-rolled ones were
+found burning four cores each, four and a half hours old, their owner long dead, and the
+backstop knew only ONE command line -- so it left all of them alone. So the job asks one more
+question, and it is the second RECORDED EXEMPTION: is this process an ORPHAN (parent 1) that has
+BURNED a core (its CPU time is over the floor and still growing) on a busy loop (the code a
+shell runs contains one)? Four questions, and none of them alone is enough -- a live parent, a
+sleeper, a worker that has finished, and a program that is not a shell are all left alone.
+
+It kills by PID: from its own registry, from the house's own spinner shape when the registry is
+gone, or from a process whose shape is a busy loop burning a core. The shape lookups are the
+RECORDED EXEMPTIONS in `kill_by_name_allow.json` (the house forbids killing by name,
+`goh kill-by-name`): the lookup and the kill sit on one line, so the rule sees it, and every
+candidate is read back and matched before it is touched. A spinner with a LIVE parent is an
+experiment in progress and is left alone; a process that is not burning a loop was never ours.
 """
 
 from __future__ import annotations
@@ -51,6 +59,12 @@ def main(argv: list[str]) -> int:
     orphans = load_reap.reap_orphans()
     report.killed.extend(orphans.killed)
     report.failed.extend(orphans.failed)
+    # The third shape (2026-10-21): an orphaned process BURNING a core on a busy loop, whose
+    # command line is not the house's own -- the hand-rolled spinners of that day, twenty-four of
+    # them, four cores each. Named by its shape, killed by its pid, and recorded as an exemption.
+    burning = load_reap.reap_burning_orphans()
+    report.killed.extend(burning.killed)
+    report.failed.extend(burning.failed)
     if report.killed or report.removed:
         killed = " ".join(str(pid) for pid in report.killed)
         print(
