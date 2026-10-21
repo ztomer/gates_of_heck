@@ -191,6 +191,16 @@ FULL_CASES: dict[str, dict[str, bytes]] = {
         ".gatesrc": CLAIM_SRC,
         "doc.md": b"# t\n\nclaim: 3 lines in doc.md\n",
     },
+    # busy-loop, a hard gate in every repo: a tracked shell file that runs a backgrounded busy
+    # loop fails; a file that only quotes the form passes.
+    "busy_loop_red": {
+        ".gatesrc": GATESRC,
+        "load.sh": b"#!/bin/sh\nfor i in $(seq 1 24); do (while :; do :; done) & done\n",
+    },
+    "busy_loop_green": {
+        ".gatesrc": GATESRC,
+        "load.sh": b"#!/bin/sh\necho 'while :; do :; done'\n",
+    },
     # `goh requires-call`, opt-in by naming its rules file: a tool that relaunches must judge.
     "requires_call_red": {
         ".gatesrc": GATESRC + b"GOH_REQUIRES_CALL='rc.toml'\n",
@@ -214,6 +224,8 @@ EXPECTED: dict[str, tuple[int, str | None]] = {
     "ceiling_over": (1, "cap-exempt files within their ceilings"),
     "claim_green": (0, None),
     "claim_red": (1, "prose claims are derived"),
+    "busy_loop_green": (0, None),
+    "busy_loop_red": (1, "no backgrounded busy loop in a tracked file"),
     "requires_call_green": (0, None),
     "requires_call_red": (1, "a file that calls X calls Y"),
     "tap_write_green": (0, None),

@@ -175,6 +175,12 @@ pub enum Commands {
         #[arg(long, num_args = 1.., conflicts_with = "staged")]
         commits: Vec<String>,
     },
+    /// Fail on a tracked shell file that runs a backgrounded busy loop.
+    BusyLoop {
+        /// Staged files only (polices the index, like the Python checker).
+        #[arg(long)]
+        staged: bool,
+    },
     /// Fail on source files over a line cap (native port of `check_file_length`).
     Length {
         /// Maximum lines per file.

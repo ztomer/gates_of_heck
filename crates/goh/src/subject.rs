@@ -145,9 +145,14 @@ pub const JS_SYNTAX: Subject = Subject {
     unit: "JavaScript file(s)",
     scanner: "every tracked JavaScript source parses",
 };
+pub const BUSY_LOOP: Subject = Subject {
+    key: "GOH_BUSY_LOOP_MIN_FILES",
+    unit: "shell source(s)",
+    scanner: "no backgrounded busy loop in a tracked file",
+};
 
 /// Every scanner with a subject, spelled once: the keys `.gatesrc` may hold a floor in.
-pub const ALL: [&Subject; 18] = [
+pub const ALL: [&Subject; 19] = [
     &EMOJI,
     &CONFLICT_MARKERS,
     &FILE_LENGTH,
@@ -166,6 +171,7 @@ pub const ALL: [&Subject; 18] = [
     &FIXED_SLEEP,
     &STATUS_MARKERS,
     &JS_SYNTAX,
+    &BUSY_LOOP,
 ];
 
 /// Every floor `.gatesrc` declares, parsed. Absent and empty keys are absent; a value that is not

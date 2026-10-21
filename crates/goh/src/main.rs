@@ -13,6 +13,7 @@
 pub mod barepy;
 pub mod blobs;
 pub mod bounded;
+pub mod busyloop;
 pub mod cache_root;
 pub mod callkey;
 pub mod canarycmd;
@@ -193,6 +194,7 @@ fn run_core(command: Commands) -> i32 {
             command,
         } => stepcmd::run(&timeout, grace, &label, &command),
         Commands::Markers { staged, commits } => commands::run_markers(staged, &commits),
+        Commands::BusyLoop { staged } => commands::run_busy_loop(staged),
         Commands::Screen {
             paths,
             scope,

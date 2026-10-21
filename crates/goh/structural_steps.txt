@@ -9,6 +9,7 @@ gate self-proofs still pass
 gates refuse to pass over an empty tree
 line-cap exemptions carry a ceiling
 markdown links resolve
+no backgrounded busy loop in a tracked file
 no bare read of the hook's index
 no bare python in a hook or gate
 no checkout leaves its token in git config

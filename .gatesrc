@@ -56,6 +56,7 @@ GOH_CONFLICT_MARKERS_MIN_FILES=570      # [637] files
 GOH_FILE_LENGTH_MIN_FILES=520           # [582] files measured
 GOH_SECRETS_MIN_FILES=570               # [637] text files
 GOH_SHELL_LINT_MIN_FILES=60             # [70] shell files
+GOH_BUSY_LOOP_MIN_FILES=60              # [68] shell sources the busy-loop check reads
 GOH_EARLY_EXIT_PIPE_MIN_FILES=65        # [75] shell sources
 GOH_DEAD_AFTER_EXEC_MIN_FILES=65        # [75] shell sources
 GOH_BARE_HOOK_INDEX_MIN_FILES=65        # [75] shell sources
