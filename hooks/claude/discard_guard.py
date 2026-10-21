@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""A Claude Code PreToolUse hook (Bash): refuse the two commands that cost the estate most.
+"""A Claude Code PreToolUse hook: refuse the three things that cost the estate most.
 
 THE DISCARD (v0.30.0). `git checkout -- <file>`, `git restore <file>`, `git reset --hard`, `git
 checkout -f` and `git clean -f` discard worktree changes that no reflog keeps. The calibration loop
@@ -19,9 +19,25 @@ times in one day, each blamed on "other agents". The house has ONE way to make l
 out, and leaves a registry a launchd backstop reads when even that cannot run. A deliberate
 background busy loop says so in the command: `# load-ok: <reason>`.
 
+THE LOAD, IN A FILE (2026-10-21). The guard above saw COMMANDS only, and a command is not how the
+loop usually arrives: at 13:00 on 2026-10-21 there were twenty-four orphaned spinners burning four
+cores each -- `/bin/zsh /private/var/.../opencode/load.sh`, 78 minutes of CPU apiece, four and a
+half hours old, parent 1, their owner long dead -- and the script was a hand-written FILE:
+
+    for i in $(seq 1 24); do (while :; do :; done) & done
+
+So the guard reads the WRITE path too: a file whose CODE runs a backgrounded busy loop is refused,
+with the same way forward (`tools/load.py`) and the same escape (`# load-ok: <reason>`, in the
+file, on the line or on the comment lines directly above it).
+
 It judges only what it can parse. A command it cannot split runs, unjudged: the guard must never
 be the thing that breaks an ordinary command. A pattern inside a string or a heredoc is TEXT, not
-code, so it is not a finding: `echo 'while :; do :; done'` writes a loop, it does not run one.
+code, so it is not a finding: `echo 'while :; do :; done'` writes a loop, it does not run one. And
+a FILE that is not a shell script is not judged at all: the shape is a shell construct.
+
+THE SHAPE IS ONE DEFINITION (`lib/busyloop.py`), shared with the backstop that kills orphaned
+spinners and with the house check that refuses a tracked file carrying one: a rule the guard
+applies and the check does not is two rules.
 """
 
 from __future__ import annotations
@@ -33,15 +49,55 @@ import shlex
 import subprocess
 import sys
 
+# The house's ONE definition of the spinner's shape. It sits beside the guard, so the import is
+# local; a missing one must not turn the guard into a wall, so it fails OPEN and says so.
+_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, os.path.join(_ROOT, "lib"))
+try:
+    import busyloop
+except ImportError:  # the shared rule is not there: the guard judges what it can
+    busyloop = None
+    print(
+        "· discard guard: lib/busyloop.py is not there -- the load rule is not applied",
+        file=sys.stderr,
+    )
+
 ESCAPE = re.compile(r"#\s*discard-ok:\s*\S")
 LOAD_ESCAPE = re.compile(r"#\s*load-ok:\s*\S")
 SEPARATORS = {"&&", "||", ";", "|", "&"}
 
-# A loop whose body is nothing but `:` (or `true`): the spinner shape. The body of a loop that
-# sleeps, waits or does work is not a spinner, so it is not a finding.
-BUSY_LOOP = re.compile(
-    r"\b(?:while|until)\s+(?::|true|false)\s*;?\s*do\s*(?::|true|false)?\s*;?\s*done\b"
+# The refusal a command earns: the way forward, and the one escape.
+LOAD_REASON = (
+    "This command spawns a busy loop with nothing to reap it (`while :; do :; done &`). "
+    "When the shell that owns it is killed, the spinner is re-parented to launchd and keeps "
+    "burning a core for hours: 24 of them for 3h12m at a load average of 206, then 12 for "
+    "26m, then 8 for 28m inside the gates themselves, three times in one day, each blamed on "
+    '"other agents". Make the load the house way, which reaps itself: '
+    '`python3 "$GOH_DIR/tools/load.py" 8 -- <your command>` -- it registers the pids it '
+    "starts, kills exactly those on the way out, refuses a second experiment while one holds "
+    "the slot, and a launchd backstop kills any orphan that outlives its owner. To background "
+    "a busy loop on purpose, add `# load-ok: <reason>` to the command."
 )
+
+
+def _new_text(tool_input: dict) -> str:
+    """The text a WRITE introduces: the file's content, or what an edit adds.
+
+    An edit's whole file is not in the event -- only the text it adds -- so that is what is
+    judged: the loop a write introduces is the one the write's text carries.
+    """
+    content = tool_input.get("content")
+    if isinstance(content, str):
+        return content
+    new_string = tool_input.get("new_string")
+    if isinstance(new_string, str):
+        return new_string
+    edits = tool_input.get("edits")
+    if isinstance(edits, list):
+        return "\n".join(
+            str(edit.get("new_string", "")) for edit in edits if isinstance(edit, dict)
+        )
+    return ""
 
 
 def _segments(command: str) -> list[list[str]]:
@@ -153,110 +209,6 @@ def judge(command: str, cwd: str) -> str | None:
     return None
 
 
-def _blank(out: list[str], start: int, end: int) -> None:
-    for index in range(start, min(end, len(out))):
-        if out[index] != "\n":
-            out[index] = " "
-
-
-def _end_of_double(command: str, start: int) -> int:
-    index = start + 1
-    while index < len(command):
-        if command[index] == "\\":
-            index += 2
-            continue
-        if command[index] == '"':
-            return index + 1
-        index += 1
-    return len(command)
-
-
-def _mask_heredoc(command: str, out: list[str], start: int) -> int:
-    """Blank a heredoc's body: the text after `<<WORD` until the line that ends it.
-
-    A heredoc that plants the raw form in a fixture is TEXT: the guard must not refuse the writer
-    of a test that proves the guard refuses it.
-    """
-    index = start + 2
-    if index < len(command) and command[index] == "-":
-        index += 1
-    quote = ""
-    if index < len(command) and command[index] in "'\"":
-        quote = command[index]
-        index += 1
-    begin = index
-    while index < len(command) and command[index] not in " \t\n;&|<>()":
-        index += 1
-    delimiter = command[begin:index]
-    if quote and index < len(command) and command[index] == quote:
-        index += 1
-    if not delimiter:
-        return index
-    line_end = command.find("\n", index)
-    if line_end < 0:
-        return len(command)
-    body = line_end + 1
-    while body <= len(command):
-        line_end = command.find("\n", body)
-        stop = len(command) if line_end < 0 else line_end
-        _blank(out, body, stop)
-        if command[body:stop].strip() == delimiter:
-            return stop
-        if line_end < 0:
-            return len(command)
-        body = line_end + 1
-    return len(command)
-
-
-def _mask_quoted(command: str) -> str:
-    """The command with quoted text and heredoc bodies blanked.
-
-    A pattern inside a string is TEXT, not code. The length is unchanged, so a match keeps the
-    offset it had in the command.
-    """
-    out = list(command)
-    index = 0
-    length = len(command)
-    while index < length:
-        char = command[index]
-        if char == "\\":
-            index += 2
-            continue
-        if char == "'":
-            end = command.find("'", index + 1)
-            end = length if end < 0 else end + 1
-            _blank(out, index, end)
-            index = end
-            continue
-        if char == '"':
-            end = _end_of_double(command, index)
-            _blank(out, index, end)
-            index = end
-            continue
-        if command.startswith("<<", index):
-            index = _mask_heredoc(command, out, index)
-            continue
-        index += 1
-    return "".join(out)
-
-
-def _backgrounded(code: str) -> bool:
-    """Is there a background operator in the code?
-
-    `&&` is a conjunction and `>&` is a redirect: neither starts a background job, and both are
-    common enough that reading them as one would refuse ordinary commands.
-    """
-    for index, char in enumerate(code):
-        if char != "&":
-            continue
-        before = code[index - 1] if index else ""
-        after = code[index + 1] if index + 1 < len(code) else ""
-        if before in ("&", ">") or after == "&":
-            continue
-        return True
-    return False
-
-
 def judge_load(command: str) -> str | None:
     """The refusal reason for a command that spawns a busy loop, or None when it runs.
 
@@ -265,21 +217,40 @@ def judge_load(command: str) -> str | None:
     """
     if LOAD_ESCAPE.search(command):
         return None
-    code = _mask_quoted(command)
-    if not BUSY_LOOP.search(code):
+    if busyloop is None or not busyloop.spins(command):
         return None
-    if not _backgrounded(code):
+    return LOAD_REASON
+
+
+def judge_file(path: str, content: str) -> str | None:
+    """The refusal reason for a file that runs a backgrounded busy loop, or None.
+
+    The FILE is the natural way to smuggle the loop in: the guard that saw only commands let
+    twenty-four spinners through on 2026-10-21, and the loop arrived in a file.
+
+    A file that is not a shell script is not judged: the shape is a shell construct, and a rule
+    that reads a Python file's text for shell loops refuses the fixture that plants the form.
+    """
+    if busyloop is None:
         return None
+    if not busyloop.is_shell(path, content):
+        return None
+    lines = busyloop.unexcused(content)
+    if not lines:
+        return None
+    where = ", ".join(str(line) for line in lines[:6])
     return (
-        "This command spawns a busy loop with nothing to reap it (`while :; do :; done &`). "
-        "When the shell that owns it is killed, the spinner is re-parented to launchd and keeps "
-        "burning a core for hours: 24 of them for 3h12m at a load average of 206, then 12 for "
-        "26m, then 8 for 28m inside the gates themselves, three times in one day, each blamed on "
-        '"other agents". Make the load the house way, which reaps itself: '
-        '`python3 "$GOH_DIR/tools/load.py" 8 -- <your command>` -- it registers the pids it '
-        "starts, kills exactly those on the way out, refuses a second experiment while one holds "
-        "the slot, and a launchd backstop kills any orphan that outlives its owner. To background "
-        "a busy loop on purpose, add `# load-ok: <reason>` to the command."
+        f"{path}: {where}: this file runs a busy loop with nothing to reap it "
+        "(`while :; do :; done &`). When the shell that owns it is killed, the spinner is "
+        "re-parented to launchd and keeps burning a core for hours: 24 of them for 3h12m at a "
+        "load average of 206, then 12 for 26m, then 8 for 28m inside the gates themselves, three "
+        'times in one day, each blamed on "other agents" -- and on 2026-10-21 twenty-four of them '
+        "were found that way, four cores each, four and a half hours old. Make the load the house "
+        'way, which reaps itself: `python3 "$GOH_DIR/tools/load.py" 8 -- <your command>` -- it '
+        "registers the pids it starts, kills exactly those on the way out, refuses a second "
+        "experiment while one holds the slot, and a launchd backstop kills any orphan that "
+        "outlives its owner. To background a busy loop on purpose, put `# load-ok: <reason>` on "
+        "the line (or on the comment lines directly above it)."
     )
 
 
@@ -288,8 +259,13 @@ def main() -> int:
         event = json.load(sys.stdin)
     except ValueError:
         return 0
-    command = (event.get("tool_input") or {}).get("command") or ""
-    reason = judge(command, event.get("cwd") or os.getcwd()) or judge_load(command)
+    tool = event.get("tool_name") or ""
+    tool_input = event.get("tool_input") or {}
+    if tool in ("Write", "Edit", "MultiEdit"):
+        reason = judge_file(tool_input.get("file_path") or "", _new_text(tool_input))
+    else:
+        command = tool_input.get("command") or ""
+        reason = judge(command, event.get("cwd") or os.getcwd()) or judge_load(command)
     if reason:
         json.dump(
             {"hookSpecificOutput": {"hookEventName": "PreToolUse",

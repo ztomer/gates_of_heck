@@ -51,9 +51,10 @@ BUSY_LOOP = re.compile(
 
 # The shells whose files this shape is read in. A file that is not one of these is not judged:
 # the shape is a SHELL construct, and a rule that reads a Python file's text for shell loops
-# would refuse a fixture that merely PLANTS the form.
-SHELL_SUFFIXES = (".sh", ".bash", ".zsh", ".ksh", ".dash", ".ash")
-SHELL_SHEBANGS = ("sh", "bash", "zsh", "ksh", "dash", "ash")
+# would refuse a fixture that merely PLANTS the form. The same list the native tier uses
+# (`crate::shellsrc`), so the two tiers judge the same file the same way.
+SHELL_SUFFIXES = (".sh", ".sh.tmpl", ".bash", ".zsh")
+SHELL_SHEBANGS = ("sh", "bash", "zsh", "ksh", "dash")
 
 
 def _blank(out: list[str], start: int, end: int) -> None:
@@ -220,3 +221,73 @@ def is_shell(path: str, text: str) -> bool:
         words = words[1:]
     name = words[0].rsplit("/", 1)[-1]
     return name in SHELL_SHEBANGS
+
+
+# The per-line escape: `# load-ok: <reason>`, on the line or on the comment lines above it.
+MARKER = "load-ok:"
+
+
+def marker_reason(line: str) -> str | None:
+    """The reason on this line's marker, or None when the line has no marker.
+
+    A marker is a COMMENT: the text before the `#` is not part of it, so a line that merely
+    mentions `load-ok:` in code is not an escape.
+    """
+    hash_at = line.find("#")
+    if hash_at < 0:
+        return None
+    at = line[hash_at:].find(MARKER)
+    if at < 0:
+        return None
+    return line[hash_at + at + len(MARKER) :].strip()
+
+
+def markers(text: str) -> list[tuple[int, str]]:
+    """Every marker in this text: `(line, reason)`."""
+    out = []
+    for index, line in enumerate(text.split("\n"), start=1):
+        reason = marker_reason(line)
+        if reason is not None:
+            out.append((index, reason))
+    return out
+
+
+def excusing_marker(text: str, line: int) -> int | None:
+    """The line of the marker that excuses the finding at `line`, or None.
+
+    The marker may be on the line itself, or on the comment lines DIRECTLY above it -- the house's
+    convention for a per-line escape (`goh secrets`, `goh moving-tags`). A marker further up,
+    past a line of code, is a marker about something else.
+    """
+    lines = text.split("\n")
+    own = lines[line - 1] if 0 < line <= len(lines) else ""
+    reason = marker_reason(own)
+    if reason is not None:
+        return line if reason else None
+    index = line
+    while index >= 2:
+        current = lines[index - 2].strip()
+        if not current.startswith("#"):
+            return None
+        reason = marker_reason(current)
+        if reason is not None:
+            return (index - 1) if reason else None
+        index -= 1
+    return None
+
+
+def unexcused(text: str) -> list[int]:
+    """The lines of the busy loops this text runs that NO marker excuses.
+
+    The guard's question and the check's: a loop that runs and nothing excuses is the leak.
+    """
+    out = []
+    code = mask(text)
+    for match in BUSY_LOOP.finditer(code):
+        start, end = _line_of(code, match.start())
+        if not _background_in(code[start:end]):
+            continue
+        number = text[: match.start()].count("\n") + 1
+        if excusing_marker(text, number) is None:
+            out.append(number)
+    return out

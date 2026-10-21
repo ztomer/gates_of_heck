@@ -12,6 +12,17 @@ So the Claude Code Bash guard refuses a command that spawns a backgrounded busy 
 The narrowness matters as much as the refusal: a busy loop inside a string or a heredoc is TEXT
 (the writer of a fixture that proves the guard refuses it must not be refused by it), a foreground
 busy loop dies with the shell that runs it, and `# load-ok: <reason>` is the one escape.
+
+THE SAME CLASS, IN A FILE (2026-10-21). The Bash guard sees COMMANDS only, and at 13:00 on
+2026-10-21 twenty-four orphaned spinners were burning four cores each --
+`/bin/zsh /private/var/.../opencode/load.sh`, 78 minutes of CPU apiece, four and a half hours
+old, parent 1, their owner long dead -- and the script was a hand-written FILE:
+
+    for i in $(seq 1 24); do (while :; do :; done) & done
+
+A file is the natural way to smuggle the loop in, so the guard reads the WRITE path too: a file
+whose CODE runs a backgrounded busy loop is refused, with the same way forward and the same
+escape. A file that is not a shell script is not judged at all: the shape is a shell construct.
 """
 
 from __future__ import annotations
@@ -27,12 +38,19 @@ from conftest import REPO_ROOT
 
 GUARD = REPO_ROOT / "hooks" / "claude" / "discard_guard.py"
 
+SPINNER = "while :; do :; done &"
+
 
 def _decide(command: str, cwd: Path) -> str | None:
-    """The guard's verdict: its refusal reason, or None when it lets the command run."""
+    """The guard's verdict on a Bash command: its refusal reason, or None when it lets it run."""
+    return _decide_event({"tool_name": "Bash", "tool_input": {"command": command}, "cwd": str(cwd)})
+
+
+def _decide_event(event: dict) -> str | None:
+    """The guard's verdict on any tool event: its refusal reason, or None when it lets it run."""
     result = subprocess.run(
         [sys.executable, str(GUARD)],
-        input=json.dumps({"tool_name": "Bash", "tool_input": {"command": command}, "cwd": str(cwd)}),
+        input=json.dumps(event),
         capture_output=True,
         text=True,
         timeout=30,
@@ -111,3 +129,102 @@ def test_load_ok_is_the_one_escape(tmp_path: Path) -> None:
     reason = _decide("while :; do :; done & # load-ok: measuring the queue", tmp_path)
     assert reason is None
     assert _decide("while :; do :; done & # load-ok:", tmp_path) is not None
+
+
+# ── the same class, in a FILE ─────────────────────────────────────────────────────────────
+
+
+def _write(path: str, content: str) -> dict:
+    """The event a Write carries."""
+    return {"tool_name": "Write", "tool_input": {"file_path": path, "content": content}}
+
+
+def test_a_file_that_runs_a_backgrounded_busy_loop_is_refused(tmp_path: Path) -> None:
+    """THE CLASS, IN A FILE. The file is the natural way to smuggle the loop in, and the guard
+    reads the write path: twenty-four spinners were found on 2026-10-21 that way."""
+    reason = _decide_event(
+        _write("load.sh", f"#!/bin/sh\nfor i in $(seq 1 24); do ({SPINNER}) & done\n")
+    )
+    assert reason is not None, "the guard allowed a file that runs a spinner"
+    assert "tools/load.py" in reason, reason
+    assert "load.sh" in reason, reason
+
+
+def test_the_file_refusal_names_the_way_and_the_escape(tmp_path: Path) -> None:
+    """A refusal is a way forward, not a wall."""
+    reason = _decide_event(_write("load.sh", f"#!/bin/sh\n{SPINNER}\n"))
+    assert reason is not None
+    assert 'python3 "$GOH_DIR/tools/load.py"' in reason, reason
+    assert "load-ok" in reason, reason
+
+
+def test_a_file_that_only_quotes_the_loop_is_allowed(tmp_path: Path) -> None:
+    """TEXT is not CODE: `echo 'while :; do :; done'` writes a loop, it does not run one."""
+    assert _decide_event(_write("load.sh", "#!/bin/sh\necho 'while :; do :; done'\n")) is None
+    assert _decide_event(_write("load.sh", "#!/bin/sh\n# while :; do :; done &\n")) is None
+
+
+def test_a_file_that_is_not_shell_is_not_judged(tmp_path: Path) -> None:
+    """The shape is a shell construct: a Python file that carries it is not a spinner."""
+    assert _decide_event(_write("tool.py", f"SPIN = '{SPINNER}'\n")) is None
+    assert _decide_event(_write("NOTES.md", f"`{SPINNER}`\n")) is None
+
+
+def test_a_foreground_loop_in_a_file_is_allowed(tmp_path: Path) -> None:
+    """A foreground loop hangs the shell that runs it: a different defect."""
+    assert _decide_event(_write("load.sh", "#!/bin/sh\nwhile :; do :; done\n")) is None
+
+
+def test_the_marker_in_the_file_is_the_escape(tmp_path: Path) -> None:
+    """A deliberate background busy loop says so, in the file."""
+    assert (
+        _decide_event(
+            _write("load.sh", f"#!/bin/sh\n# load-ok: measuring the queue on purpose\n{SPINNER}\n")
+        )
+        is None
+    )
+    assert _decide_event(_write("load.sh", f"#!/bin/sh\n# load-ok:\n{SPINNER}\n")) is not None
+
+
+def test_an_edit_that_adds_the_loop_is_refused(tmp_path: Path) -> None:
+    """The event carries the text the edit ADDS, which is where the loop arrives."""
+    reason = _decide_event(
+        {
+            "tool_name": "Edit",
+            "tool_input": {
+                "file_path": "load.sh",
+                "old_string": "echo hello",
+                "new_string": SPINNER,
+            },
+        }
+    )
+    assert reason is not None, "the guard allowed an edit that adds a spinner"
+    assert "tools/load.py" in reason, reason
+
+
+def test_a_multi_edit_that_adds_the_loop_is_refused(tmp_path: Path) -> None:
+    """Same for the edit list a MultiEdit carries."""
+    reason = _decide_event(
+        {
+            "tool_name": "MultiEdit",
+            "tool_input": {
+                "file_path": "load.sh",
+                "edits": [
+                    {"old_string": "echo hello", "new_string": "echo hi"},
+                    {"old_string": "echo hi", "new_string": SPINNER},
+                ],
+            },
+        }
+    )
+    assert reason is not None, "the guard allowed a multi-edit that adds a spinner"
+    assert "tools/load.py" in reason, reason
+
+
+def test_the_house_tool_itself_may_be_written(tmp_path: Path) -> None:
+    """The way the refusal names must be writable: a guard that refuses it closes every door."""
+    assert (
+        _decide_event(
+            _write("run.sh", '#!/bin/sh\npython3 "$GOH_DIR/tools/load.py" 8 -- ./my_test.sh\n')
+        )
+        is None
+    )

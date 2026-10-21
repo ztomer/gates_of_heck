@@ -3,7 +3,7 @@
   "hooks": {
     "PreToolUse": [
       {
-        "matcher": "Bash",
+        "matcher": "Bash|Write|Edit|MultiEdit",
         "command": "python3 \"${GOH_DIR:-$HOME/Projects/gates_of_heck}/hooks/claude/discard_guard.py\" || exit 1",
         "timeout": 15
       },
