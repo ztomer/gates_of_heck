@@ -343,6 +343,24 @@ killed. Four separate rules came out of it, and each answers a different questio
   one `git cat-file --batch`. What it no longer does: judge only the commit's files — a finding in
   a file the commit does not touch is a finding, because the leak it names is in the tree the
   commit produces.
+* **A spinner is OWNED, and the owner is reaped (2026-10-20, the load class).** The house's load
+  tool was right about itself and the suite that tested it was not: the tool registers every
+  spinner it starts and kills exactly those on the way out, but the TEST killed the TOOL with
+  SIGKILL, so the tool's cleanup never ran, and its spinners were re-parented to launchd and left
+  burning a core each — eight of them, orphaned by a pytest that died, about an hour of CPU
+  apiece. Two rules came out of it:
+  * the OWNER of a process is responsible for it, and a test that FAILS owns it too: the failure
+    path is the one that never reaches the cleanup. The suite's owner is `tests/load_kit.py`, and
+    its last act proves that nothing the suite started outlived it — the check that went RED on
+    the suite of that day, and that names the directory (so the test) a leak was left in.
+  * a RECORD can VANISH: the registry of an experiment that ran in a temporary directory is
+    pruned with that directory, so the registry cannot reach every orphan. The backstop has a
+    second way to one — the house's own spinner shape, matched WHOLE, orphaned only, and only
+    while the owner the release pipe names is gone. That question needs a name lookup, which is
+    the RECORDED EXEMPTION in `kill_by_name_allow.json`: the lookup and the kill sit on ONE line
+    so the rule sees them, and the entry's narrowness is pinned by
+    `tests/test_load_orphan_exemption.py` — a stale entry, a broadened call, or an entry re-keyed
+    to a broadened call is RED.
 
 Pin: `tests/test_check_no_unreaped_spawn.py` (the incident quoted from `media_server@052772a`, red
 on the real pre-fix file and green on the same file after its fix, run against the native through
@@ -350,8 +368,14 @@ on the real pre-fix file and green on the same file after its fix, run against t
 shared guard is protection to the file the commit brings, a commit that breaks one is red, and the
 staged scope reads the index and not the worktree), `tests/test_bounded_run.py` (the grandchild case, and a passing step passes
 through untouched), `tests/test_orphan_canary.py` (the incident's shape is red, a clean step is
-silent, another program's process is counted and never failed on), and
-`checks/check_estate_corpus.py`'s `no_unreaped_spawn` entry (the incident planted inside 611 real
+silent, another program's process is counted and never failed on),
+`tests/test_load_tool.py` (the load class: the owner reaps on the failure path, and the leak
+check is shown a real leak so it cannot go quiet), `tests/test_load_reap.py` (the whole chain: a
+leak the registry cannot name is cleaned by the minute job, and the negative controls -- a live
+parent, a live owner, another shape, a command line that only looks like the shape -- are left
+alone), `tests/test_load_orphan_exemption.py` (the recorded exemption: the house's own rule is
+green with the entry and red without it, a stale entry is red, and a broadened call is red),
+and `checks/check_estate_corpus.py`'s `no_unreaped_spawn` entry (the incident planted inside 611 real
 files from media_server).
 
 ## 18. A number in prose is re-derived from the tree, and only a MARKED one

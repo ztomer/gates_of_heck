@@ -1,10 +1,36 @@
 # CHANGELOG
 
-## v0.44.0 — the pidfd branch, the artifacts a step declares, and the shell gates _(2026-10-20)_
+## v0.44.0 — the pidfd branch, the artifacts a step declares, the shell gates, and the load backstop _(2026-10-20)_
 
 Minor bump: three defects from the consumers' own roadmaps, all in the gate layer, all found by
-running the branch that had never run.
+running the branch that had never run, and one defect in this repo's own suite, found by the load
+spinners it left behind.
 
+* **The load backstop has a SECOND shape, and the suite that tested it was the leak.**
+  `tools/load.py` was right about itself: it registers every spinner it starts and kills exactly
+  those on the way out. The TEST that started it killed the TOOL with SIGKILL, so the tool's own
+  cleanup never ran, and its spinners were re-parented to launchd and left burning a core each --
+  eight of them, orphaned by a pytest that died, about an hour of CPU apiece, found at 17:40 on
+  2026-10-20. Two shapes of the class, and each needed a different answer:
+  * **the OWNER of a process is responsible for it, and a test that FAILS owns it too**: the
+    failure path is the one that never reaches the cleanup. The suite's owner is now
+    `tests/load_kit.py` -- it stops the tool FIRST (so the tool's own cleanup runs), then reads
+    the registry for the spinners a SIGKILLed tool left behind, and its last act proves that
+    nothing the suite started outlived it. The check is shown a real leak before it is trusted,
+    and it names the directory -- so the test -- a leak was left in.
+  * **a RECORD can VANISH**: the registry of an experiment that ran in a temporary directory is
+    pruned with that directory, so the registry cannot reach every orphan. The backstop now has a
+    second way to one -- the house's own spinner shape, matched WHOLE (a prefix or a mention is
+    somebody else's process), orphaned only, and only while the owner the release pipe names is
+    gone. That question needs a name lookup, which is the RECORDED EXEMPTION in
+    `kill_by_name_allow.json`: the lookup and the kill sit on ONE line, so the house's
+    kill-by-name rule sees them instead of a rewrite hiding them, and the entry's narrowness is
+    pinned by `tests/test_load_orphan_exemption.py` -- a stale entry, a broadened call, or an
+    entry re-keyed to a broadened call is RED.
+
+  Pinned by `tests/test_load_tool.py`, `tests/test_load_reap.py` (the whole chain -- a leak the
+  registry cannot name is cleaned by the minute job, and the negative controls are left alone) and
+  `tests/test_load_orphan_exemption.py`.
 * **The Linux `pidfd` branch of the gate slot holder is PROVED, and it was BROKEN.**
   `lib/gate_slot.py`'s owner watch -- the kernel event that ends a consumer's `tools/gate.sh`
   slot -- takes kqueue on macOS and a pidfd on Linux. The pidfd branch shipped in v0.39.0 and had

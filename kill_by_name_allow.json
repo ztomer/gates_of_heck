@@ -11,6 +11,12 @@
    "line": "args:       [\"-c\", \"pkill -f 'Divoom.app/Contents/Frameworks/bin/divoom' || true\"],",
    "status": "legitimate",
    "reason": "a byte copy of homebrew-tap's Casks/divoom-control.rb at ad99f17 (BACKLOG 6.15): data for tests/test_tap_bump_real_shapes.py, never run here; the tap owns the uninstall step it quotes"
+  },
+  {
+   "path": "lib/load_reap.py",
+   "line": "outcomes = [(pid, kill(pid)) for pid in our_orphans(pgrep(ORPHAN_PATTERN))]",
+   "status": "legitimate",
+   "reason": "the backstop's second shape (2026-10-20): a spinner whose registry was pruned with the temporary directory that held it is orphaned with nothing naming it, and the registry cannot reach it. So the backstop asks the ONE shape the house spawns -- load_registry.SPINNER_COMMAND, matched EXACTLY, orphaned only (parent 1), and only while the owner its release pipe names is gone (load_reap.our_orphans). The lookup and the kill are on ONE line so this rule sees them instead of a rewrite hiding them; pinned by tests/test_load_orphan_exemption.py, which is red if the shape is broadened or the exemption goes stale"
   }
  ]
 }

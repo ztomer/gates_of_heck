@@ -37,6 +37,10 @@ sys.path.insert(0, str(REPO_ROOT / "checks"))
 from _gitutil import local_env_vars  # noqa: E402
 from host_locks import HOST_LOCKS, no_test_reaches_a_host_lock  # noqa: F401  (an autouse fixture)
 
+# The suite's leak check (an autouse session fixture): the OWNER of a process is responsible for
+# it, so the session proves that nothing it started outlived it.
+from load_kit import suite_leak_check  # noqa: E402,F401  (an autouse fixture)
+
 for _name in local_env_vars():
     os.environ.pop(_name, None)
 

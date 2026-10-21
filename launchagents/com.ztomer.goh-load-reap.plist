@@ -11,7 +11,17 @@
          times in one day, and the spinners were re-parented to launchd and burned a core each for
          hours (24 of them for 3h12m, load average 206). So the machine reads the registry every
          minute and kills the pids in it whose parent is 1. A spinner with a LIVE parent is an
-         experiment in progress and is left alone; nothing is ever killed by name. -->
+         experiment in progress and is left alone; nothing is ever killed by name.
+
+         THE SECOND SHAPE (later the same day). A record can VANISH: the registry of an
+         experiment that ran in a temporary directory is pruned with that directory, and its
+         spinner is left burning a core with nothing naming it -- eight of them, orphaned by a
+         pytest that died, about an hour of CPU apiece. So the job also recognises the house's
+         own spinner shape -- EXACTLY that shape, orphaned only, and only while the owner its
+         release pipe names is gone. That needs a name lookup, which is the RECORDED EXEMPTION in
+         kill_by_name_allow.json (the house forbids killing by name): the lookup and the kill sit
+         on one line, so the rule sees them, and every candidate is matched exactly before it is
+         touched. -->
     <key>ProgramArguments</key>
     <array>
         <string>/bin/bash</string>

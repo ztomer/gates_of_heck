@@ -23,6 +23,14 @@ WHAT MAY BE TOUCHED. Exactly the pids this file names, and only those whose pare
 spinner with a LIVE parent is an experiment in progress, and a spinner nobody registered was never
 ours to kill. Nothing is ever matched BY NAME -- a name is not an owner, and the house forbids
 killing by name (`goh kill-by-name`).
+
+THE SPINNER'S SHAPE. A spinner is started as `/bin/sh -c SPINNER_COMMAND`, and that command is
+ONE definition here, because the backstop has to recognise an orphan whose registry is gone (the
+registry of an experiment that ran in a temporary directory is pruned with that directory, and the
+orphan is left burning a core with nothing naming it). Recognition is EXACT: the whole command
+line has to equal the shape, character for character, and the parent has to be 1. A name that
+matches a process the caller does not own is the mistake the house forbids, so the shape is
+pinned, not a pattern.
 """
 
 from __future__ import annotations
@@ -30,6 +38,7 @@ from __future__ import annotations
 import contextlib
 import json
 import os
+import re
 import subprocess
 import tempfile
 from pathlib import Path
@@ -37,6 +46,80 @@ from pathlib import Path
 REGISTRY_NAME = "registry.json"
 VERSION = 1
 DEFAULT_PARTS = (".cache", "goh", "load")
+
+# The command a spinner runs: it waits for its release byte on the pipe, and burns a core only
+# after the byte arrives. `{fifo}` is the release pipe.
+SPINNER_COMMAND = 'read _ < "{fifo}" || exit 0; while :; do :; done'
+
+# The name of a release pipe: the pid of the tool that made it, and the spinner's index. The
+# owner is in the NAME, so a pipe names the process that has to release it.
+RELEASE_NAME = "release-{owner}-{index}.fifo"
+
+
+def release_name(owner: int, index: int) -> str:
+    """The name of a release pipe, for the tool that owns it and the spinner it is for."""
+    return RELEASE_NAME.format(owner=owner, index=index)
+
+
+def _release_pattern() -> str:
+    """The release-pipe name as a pattern: the numbers are digits, everything else is literal.
+
+    A POSIX ERE, not a Python regex: `pgrep -f` compiles it with regcomp, which knows no `\\d`
+    and reads `\\-` as an escaped hyphen it cannot place. So the digits are `[0-9]+` and the
+    hyphen is left bare.
+    """
+    parts = []
+    for chunk in re.split(r"(\{owner\}|\{index\})", RELEASE_NAME):
+        if chunk in ("{owner}", "{index}"):
+            parts.append("[0-9]+")
+        else:
+            parts.append(chunk.replace(".", r"\."))
+    return "".join(parts)
+
+
+# The pattern a FINDER looks for. It is a finder, not a filter: it says which command lines are
+# worth reading, and every one of them is read back and matched exactly before it is touched.
+RELEASE_PATTERN = _release_pattern()
+
+
+def spinner_command(fifo: Path | str) -> str:
+    """The command a spinner runs, for the pipe that releases it."""
+    return SPINNER_COMMAND.format(fifo=fifo)
+
+
+def _shape_pattern() -> re.Pattern[str]:
+    """The house's spinner shape as a pattern, derived from SPINNER_COMMAND (one definition).
+
+    The WHOLE command line, anchored at both ends: a shape that matched a PREFIX would match a
+    process that merely starts the same way, and one that matched a SUBSTRING would match a
+    process that merely mentions it. Both are somebody else's process.
+    """
+    head, _, tail = SPINNER_COMMAND.partition("{fifo}")
+    return re.compile(
+        r"^/bin/sh -c " + re.escape(head) + r"(?P<fifo>[^\"]+)" + re.escape(tail) + r"$"
+    )
+
+
+SHAPE = _shape_pattern()
+
+# The tail of a release pipe's path: the numbers are the owner's pid and the spinner's index.
+PIPE_TAIL = re.compile(r"release-(?P<owner>[0-9]+)-(?P<index>[0-9]+)\.fifo$")
+
+
+def spinner_shape(command: str) -> tuple[str, int] | None:
+    """The release pipe and the owner it names, when a command line IS the house's spinner.
+
+    None for anything else: a different loop, a different pipe, a different word. The match is
+    exact, so nothing that is not ours can be recognised as ours.
+    """
+    match = SHAPE.match(command)
+    if match is None:
+        return None
+    pipe = match.group("fifo")
+    tail = PIPE_TAIL.search(pipe)
+    if tail is None:
+        return None
+    return pipe, int(tail.group("owner"))
 
 
 def load_dir() -> Path:

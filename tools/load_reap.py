@@ -9,9 +9,17 @@ its own owner dying and does the same then. What it cannot do is run at all when
 runs this: a launchd job (`com.ztomer.goh-load-reap`) every minute, reading the registry the tool
 wrote, killing the pids in it whose parent is 1, and dropping the entries that are gone.
 
-It kills by PID, from its own registry, and never by name: a name is not an owner, and the house
-forbids killing by name (`goh kill-by-name`). A spinner with a LIVE parent is an experiment in
-progress and is left alone; a process no registry names was never ours.
+A registry can VANISH, though: the registry of an experiment that ran in a temporary directory is
+pruned with that directory, and its spinner is left burning a core with nothing naming it (eight
+of them, orphaned by a pytest that died, 2026-10-20). So the job also recognises the house's own
+spinner shape -- EXACTLY that shape, orphaned only -- and stops those.
+
+It kills by PID: from its own registry, or from the house's own spinner shape when the registry is
+gone. The shape lookup is the RECORDED EXEMPTION in `kill_by_name_allow.json` (the house forbids
+killing by name, `goh kill-by-name`): the lookup and the kill sit on one line, so the rule sees
+it, and every candidate is matched exactly before it is touched. A spinner with a LIVE parent is
+an experiment in progress and is left alone; a process that is not the house's shape was never
+ours.
 """
 
 from __future__ import annotations
@@ -35,9 +43,14 @@ def main(argv: list[str]) -> int:
     parser.add_argument("--dir", default=None, help="the load directory (default GOH_LOAD_DIR)")
     opts = parser.parse_args(argv)
     directory = Path(opts.dir).expanduser() if opts.dir else reg.load_dir()
-    if not directory.is_dir():
-        return 0  # no experiment has ever run here; nothing to reap
-    report = load_reap.reap_all(directory)
+    report = load_reap.Report()
+    if directory.is_dir():
+        report = load_reap.reap_all(directory)
+    # The registry is one way to an orphan; the house's own shape is the other, and it does not
+    # need a directory to be searched.
+    orphans = load_reap.reap_orphans()
+    report.killed.extend(orphans.killed)
+    report.failed.extend(orphans.failed)
     if report.killed or report.removed:
         killed = " ".join(str(pid) for pid in report.killed)
         print(

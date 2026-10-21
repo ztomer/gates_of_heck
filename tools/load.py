@@ -180,15 +180,20 @@ class Experiment:
     def start(self) -> None:
         """Start the spinners, registering each one BEFORE it is allowed to burn."""
         for index in range(self.count):
-            fifo = self.directory / f"release-{os.getpid()}-{index}.fifo"
+            # The pipe's NAME carries the owner (this process's pid), and it is the house's ONE
+            # definition of that name (load_registry.release_name): the backstop reads the owner
+            # out of it when the registry is gone, so the two have to agree by construction.
+            fifo = self.directory / reg.release_name(os.getpid(), index)
             reg.remove(fifo)
             os.mkfifo(fifo)
             self.fifos.append(fifo)
             proc = subprocess.Popen(
                 # The spinner waits for its release byte on the FIFO, and exits if the pipe
                 # closes first: a spinner that was never released never spins. Once released it
-                # burns a core exactly like the raw form the guard refuses.
-                ["/bin/sh", "-c", f'read _ < "{fifo}" || exit 0; while :; do :; done'],
+                # burns a core exactly like the raw form the guard refuses. The shape is the
+                # house's ONE definition (load_registry.SPINNER_COMMAND), because the backstop
+                # has to recognise an orphan whose registry is gone.
+                ["/bin/sh", "-c", reg.spinner_command(fifo)],
                 stdin=subprocess.DEVNULL,
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
