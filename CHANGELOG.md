@@ -1,5 +1,49 @@
 # CHANGELOG
 
+## v0.46.0 — every tracked JavaScript source parses _(2026-10-21)_
+
+Minor bump: a new structural gate for the repositories that carry JavaScript, with two engines, an
+explicit template rule, and a floor that says when the scope stopped being read.
+
+* **THE GATE: `goh js-syntax`.** Every JavaScript source the repository TRACKS (`.js`, `.mjs`,
+  `.cjs`) must parse. The scope is the tracked set -- `git ls-files` -- never the working tree, and
+  every path the vendor and build list took out of it is NAMED in the report, because an
+  exclusion can hide the subject and a silent scope reads like a clean tree. Opt-in per
+  repository: `GOH_JS_SYNTAX=on`.
+
+* **TWO ENGINES, and the fallback needs nothing installed.** `node --check` where node is
+  installed: it parses without running, and it reads a module's goal from the file and the nearest
+  `package.json`. macOS's `JavaScriptCore` (`jsc`, through `new Function`, which builds a function
+  from the source WITHOUT running it) where node is not. The fallback catches the same stray
+  backtick the primary engine catches, on a planted file, with no node on PATH -- proven in
+  `tests/test_check_js_syntax.py`. `osascript -l JavaScript` was MEASURED and not used: it runs
+  the script and reports a failure in its output while exiting 0, so a caller has to read its prose
+  to learn whether the parse failed, where `jsc` exits 3 on an uncaught exception. Same engine,
+  one that can be asked a question.
+
+* **THE TEMPLATE RULE: a template is judged by its SUBSTITUTED form.** A template is not valid
+  JavaScript on its own -- `const timeout = ${TIMEOUT};` does not parse -- so excluding it would
+  hide the subject, which is the reason the gate exists. Each placeholder the tree's own
+  convention defines (`${NAME}`, `@NAME@`) is replaced with a neutral expression (`0`), and the
+  RESULT is parsed. The substitution is narrow on purpose: a hole holding an EXPRESSION
+  (`${window.TIMEOUT}`) is left alone and is still judged, and so is a malformed hole -- so no
+  defect can hide behind a placeholder.
+
+* **A SOURCE THE ENGINE CANNOT READ IS REFUSED, NEVER PASSED.** `JavaScriptCore` parses a classic
+  script only: parsing a module there means RUNNING it, and a gate does not run the repository's
+  code. Such a source is named as unmeasured (exit 2), and `node --check` reads it.
+
+* **THE FLOOR.** `GOH_JS_SYNTAX_MIN_FILES` is how many tracked JavaScript files a full-scope scan
+  must read before a clean run is trusted: a scope that shrank -- a renamed directory, a new
+  vendor rule -- is red rather than clean.
+
+* **THE PROOF.** `tests/test_check_js_syntax.py` (the prover the calibration registry cites, so the
+  estate's count of unproven gates does not grow): red on a planted syntax error under BOTH
+  engines, red on a template whose substituted form does not parse, green on a template that is NOT
+  JavaScript on its own, green on a clean tree, red when the floor is above the real count, and a
+  refusal -- not a false red -- on a module source under the fallback. `checks/_canary_cases.py`
+  carries the two canary cases, so the gate lands with its proof in the same commit (contract 22).
+
 ## v0.45.0 — a report is ONE write, so a reader cannot see it in pieces _(2026-10-21)_
 
 * **The race was the WRITER's, and it is closed there.**

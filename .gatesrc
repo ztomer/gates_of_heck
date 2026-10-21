@@ -39,6 +39,13 @@ GOH_NO_EARLY_EXIT_PIPE=1
 GOH_SUBPROCESS_STDIN=on
 GOH_SUBPROCESS_STDIN_MIN_CALLS=550
 
+# Every tracked JavaScript source parses (`goh js-syntax`). This tree holds no JavaScript, so the
+# step says "not applicable" here -- and says it, rather than passing silently, which is the point
+# of the key: a repository that DOES carry JavaScript writes `on` and gets the check. The two
+# engines are `node --check` and macOS's JavaScriptCore; the second one needs nothing installed.
+# No floor here: there is no subject to floor (0 files is the whole of it).
+GOH_JS_SYNTAX=on
+
 # Every scanner's floor (BACKLOG 4.3, crates/goh/src/subject.rs): a full-scope scan that reads
 # less than this is red, because a scan that stopped reading its subject reports clean. Set at
 # about nine tenths of what each read on 2026-10-13 (in brackets), as the stdin floor above is:

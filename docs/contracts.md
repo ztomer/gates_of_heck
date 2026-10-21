@@ -520,3 +520,34 @@ stream says the report was one write, and the probe is shown to still catch the 
 shape -- an instrument that cannot fail proves nothing), and `tests/test_report_writes.py` (the
 WRITER-side ratchet: an info write immediately followed by a step write is a report in two
 pieces, by the house's own definition of `step`, and there are none in this tree).
+
+## 25. A template is judged by its SUBSTITUTED form, and a scope is stated, not implied
+
+A file that is not JavaScript on its own -- a template, carrying placeholders whose values are
+filled in later -- has exactly two honest readings: judge the file as it stands (and refuse every
+template), or judge the file with its placeholders filled in. EXCLUDING it is the third reading
+and it is the one that hides the subject: an excluded template is never parsed, so a broken
+skeleton -- an unbalanced brace, a stray backtick -- is a defect nobody sees, and the gate exists
+because that defect is invisible everywhere else.
+
+So the placeholders are substituted with a NEUTRAL EXPRESSION and the RESULT is parsed. The
+substitution is narrow on purpose: only the placeholders the tree's own convention defines
+(`${NAME}`, `@NAME@`), because a name is always a valid expression and so nothing can hide behind
+it. A hole holding an EXPRESSION (`${window.TIMEOUT}`) is left alone -- it is JavaScript, and the
+parse still judges it -- and a malformed hole is left alone too, so the parse fails on it.
+
+Two more rules ride with it, and both are about the SCOPE rather than the subject:
+
+  * THE SCOPE IS STATED. Every run prints how many files it measured, what shape their paths had,
+    and every path the vendor and build list took out of the scope. A gate that measured nothing
+    and a gate that measured everything and found nothing wrong print the same word otherwise, and
+    an exclusion can hide the subject.
+  * A SOURCE THE ENGINE CANNOT READ IS REFUSED, NEVER PASSED. The fallback engine parses a classic
+    script only, because parsing a module there means RUNNING it, and a gate does not run the
+    repository's code. Such a source is named as unmeasured (exit 2), and the engine that can
+    read it without running it -- `node --check` -- reads both goals.
+
+Pin: `tests/test_check_js_syntax.py` (a template that is not JavaScript on its own passes; a
+template whose substituted form does not parse is red; a malformed hole is still judged; the scope
+is printed; a module source under the fallback is refused rather than passed), and
+`checks/_canary_cases.py` (the two canary cases: a stray backtick, and a broken template).

@@ -140,9 +140,14 @@ pub const STATUS_MARKERS: Subject = Subject {
     unit: "source file(s)",
     scanner: "goh status-markers",
 };
+pub const JS_SYNTAX: Subject = Subject {
+    key: "GOH_JS_SYNTAX_MIN_FILES",
+    unit: "JavaScript file(s)",
+    scanner: "every tracked JavaScript source parses",
+};
 
 /// Every scanner with a subject, spelled once: the keys `.gatesrc` may hold a floor in.
-pub const ALL: [&Subject; 17] = [
+pub const ALL: [&Subject; 18] = [
     &EMOJI,
     &CONFLICT_MARKERS,
     &FILE_LENGTH,
@@ -160,6 +165,7 @@ pub const ALL: [&Subject; 17] = [
     &SUBPROCESS_STDIN,
     &FIXED_SLEEP,
     &STATUS_MARKERS,
+    &JS_SYNTAX,
 ];
 
 /// Every floor `.gatesrc` declares, parsed. Absent and empty keys are absent; a value that is not

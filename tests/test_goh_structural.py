@@ -122,10 +122,11 @@ INVENTORY_CASE: dict[str, bytes] = {
         b"GOH_PYTHON_FORMATTED=1\nGOH_CLAIM_DERIVATION=1\nGOH_NO_EARLY_EXIT_PIPE=1\n"
         b"GOH_LINE_EXCLUDE='big.py'\n"
         b"GOH_LINE_BASELINE='base.txt'\nGOH_REQUIRES_CALL='rc.toml'\n"
-        b"GOH_SUBPROCESS_STDIN=on\n"
+        b"GOH_SUBPROCESS_STDIN=on\nGOH_JS_SYNTAX=on\n"
     ),
     "rc.toml": b'[[rule]]\nname = "b"\nwhy = "y"\nfiles = ["b.py"]\nmust_call = ["print"]\n',
     "b.py": b"print(1)\n",
+    "app.js": b"const a = 1;\n",
     ".gates-version-baseline.json": b"[]\n",
     "base.txt": b"600\tbig.py\n",
     "big.py": b"".join(b"# %d\n" % i for i in range(600)),

@@ -35,6 +35,7 @@ pub mod gitutil;
 pub mod homepaths;
 pub mod hookindex;
 pub mod index_view;
+pub mod jssyntax;
 pub mod killname;
 pub mod length;
 pub mod lints;
@@ -198,6 +199,7 @@ fn run_core(command: Commands) -> i32 {
             staged,
         } => commands::run_screen(&paths, scope.as_deref(), staged),
         Commands::Lints { self_test } => commands::run_lints(self_test),
+        Commands::JsSyntax => jssyntax::command::run_command(),
         Commands::Skills(args) => run_skills(&args),
         Commands::Golden {
             a,

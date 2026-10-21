@@ -18,6 +18,8 @@ GOH_MAX_LINES=500                 # file-length cap; unset disables the check
 # GOH_REQUIRES_CALL='tools/requires_call.toml'  # a Python file that calls X must call Y (AST)
 # GOH_SUBPROCESS_STDIN=on                       # every child process names its stdin (AST); off until the estate is seeded
 # GOH_SUBPROCESS_STDIN_MIN_CALLS=40             # the stdin scan's floor: fewer calls than this and the scan lost its subject
+# GOH_JS_SYNTAX=on                              # every tracked JavaScript source (.js/.mjs/.cjs) parses; node --check, or macOS's JavaScriptCore where node is not installed
+# GOH_JS_SYNTAX_MIN_FILES=40                    # the JavaScript scan's floor: fewer files than this and the scan lost its subject
 # GOH_MOVING_TAGS_MIN_REFS=3                    # the moving-tag scan's floor: container image references it must read
 # GOH_CLAIM_DERIVATION=1                # re-derive MARKED numbers in prose from the
 #   tree: `N` lines in `path`, `N` tests in `path`, `N` gates in `path:NAME`,

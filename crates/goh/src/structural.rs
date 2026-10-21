@@ -176,6 +176,10 @@ pub fn run(staged: bool, full: bool, keep_going: bool) -> i32 {
     // find a file in the tree that one machine's state put there.
     step!(trackedignored::step(&repo, &files, staged));
     step!(steps_rust::step(&repo, &files, &cfg, staged));
+    // The JavaScript this repository tracks parses, when this repository asked for it
+    // (`GOH_JS_SYNTAX=on`). Opt-in, because most of the estate tracks no JavaScript at all,
+    // and a gate with no subject would say "not applicable" on every push forever.
+    step!(crate::jssyntax::command::step(&cfg));
     step!(provenance::step(&repo, staged));
     step!(mdlinks::step(&cfg, staged));
     step!(lockver::step());

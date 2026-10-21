@@ -87,6 +87,12 @@ pub struct Gatesrc {
     /// ahead of the estate sweep by the owner's ruling that consumers clear their own debt
     /// (BACKLOG 3.4). Raw, so a value that is neither is an error naming the key.
     pub stdin_gate: Option<String>,
+    /// `GOH_JS_SYNTAX`: unset or `off` leaves the JavaScript parse gate off, and only a written
+    /// `on` runs `goh js-syntax` in the structural pipeline. Raw, so a value that is neither is
+    /// an error naming the key -- a typo that disabled the gate would be the defect the gate
+    /// exists to prevent. Opt-in because most repositories in the estate track no JavaScript at
+    /// all, and a gate with no subject is a gate that has to say "not applicable" forever.
+    pub js_syntax_gate: Option<String>,
 }
 
 /// Parse one right-hand side: single/double-quoted or bare with `#` comment.
@@ -215,6 +221,7 @@ pub fn from_pairs(pairs: &BTreeMap<String, String>) -> Result<Gatesrc, String> {
             .cloned(),
         floors: crate::subject::parse_floors(pairs)?,
         stdin_gate: pairs.get("GOH_SUBPROCESS_STDIN").cloned(),
+        js_syntax_gate: pairs.get("GOH_JS_SYNTAX").cloned(),
     })
 }
 
@@ -228,7 +235,7 @@ pub fn from_pairs(pairs: &BTreeMap<String, String>) -> Result<Gatesrc, String> {
 /// keys, so a step that reads one from the environment (`GOH_STEP_TIMEOUT`, and
 /// every child it spawns) sees the file's value, never an inherited one.
 /// Pinned against `docs/config.md` by `tests/test_gate_environment.py`.
-pub const PIPELINE_KEYS: [&str; 35] = [
+pub const PIPELINE_KEYS: [&str; 37] = [
     "GOH_MAX_LINES",
     "GOH_LINE_EXCLUDE",
     "GOH_LINE_BASELINE",
@@ -265,6 +272,8 @@ pub const PIPELINE_KEYS: [&str; 35] = [
     "GOH_UNREAPED_SPAWN_MIN_FILES",
     "GOH_FIXED_SLEEP_MIN_FILES",
     "GOH_STATUS_MARKERS_MIN_FILES",
+    "GOH_JS_SYNTAX",
+    "GOH_JS_SYNTAX_MIN_FILES",
 ];
 
 /// Make the process environment say what `root/.gatesrc` says for every

@@ -374,6 +374,10 @@ pub enum Commands {
         #[arg(long, value_name = "PATH")]
         parse_claims: Option<String>,
     },
+    /// Fail on a tracked JavaScript source that does not parse (native port of
+    /// `check_js_syntax`). `node --check` where node is installed, `JavaScriptCore`
+    /// where it is not; a template is judged by its substituted form.
+    JsSyntax,
     /// Fail on a process kill by NAME (native port of `check_no_kill_by_name`).
     KillByName {
         /// Regex on repo-relative paths to skip. Unset: the repo's own `.gatesrc` `GOH_EXCLUDE`, as

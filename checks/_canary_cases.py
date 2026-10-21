@@ -20,6 +20,10 @@ pass, or the gate is noisy. One direction alone is the failure mode that lets a 
 proven -- see {root} in _canary.build_repo for why a fixture may need its own root spelled out.
 """
 
+# The JavaScript cases, split out when this table reached the 500-line cap. The
+# import is explicit so a reader sees that the list continues, not that it ends.
+import _canary_cases_js  # noqa: E402
+
 EMOJI = chr(0x1F680)
 CONFLICT = "<<<<<<< HEAD\nours\n=======\ntheirs\n>>>>>>> branch\n"
 # An AWS access key ID SHAPE -- the gate matches `AKIA` + 16 upper/digits, and an
@@ -423,6 +427,9 @@ CASES = [
         {"target/debug/app": "binary\n"},
         {"src/main.rs": "fn main() {}\n"},
     ),
+    # The JavaScript cases live in `_canary_cases_js.py`: this table had reached the
+    # 500-line cap, and the list is still ONE list (the import below splices them in).
+    *_canary_cases_js.CASES,
 ]
 
 # Gates this cannot fixture, with the reason. Each is a claim someone can challenge, which is the
