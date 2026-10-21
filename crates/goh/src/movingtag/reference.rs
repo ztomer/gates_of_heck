@@ -13,11 +13,13 @@
 //!     `v2-latest`, `1.2-dev`) is that channel of a release line, unless another part names one
 //!     build: a date (`nightly-2025-01-01`, `-20250930025731`), a full `x.y.z` version
 //!     (`1.2.3-dev`) or a commit id (`dev-a1b2c3d`).
+//!   * a tag that IS a commit id is the pin nothing can move, beside the digest: `:f93290b3ab1a`
+//!     names one build, and nobody can re-point it (THE COMMIT PIN, 2026-10-21).
 //!
 //! NOT judged: how coarse a version-shaped tag is. `alpine:3`, `postgres:18-alpine` and
 //! `ubuntu:24.04` all float across rebuilds, but telling a release line from a release needs the
 //! project's own versioning scheme, and the house rule asks for a NAMED released version, which
-//! these are; the only pin nothing can move is the digest.
+//! these are; the only pins nothing can move are the digest and the commit id.
 
 use std::collections::BTreeMap;
 
@@ -41,6 +43,8 @@ pub enum Verdict {
     Unreadable,
     /// `@<algorithm>:<hex>`: immovable.
     Digest,
+    /// A commit id: the other immovable pin. Nothing can re-point a build's own commit.
+    Commit,
     /// A tag that names one build.
     Released,
     /// No tag: whatever `latest` points at.
@@ -100,6 +104,18 @@ fn is_commit(part: &str) -> bool {
         && part.bytes().any(|b| b.is_ascii_alphabetic())
 }
 
+/// Is this tag a commit id -- the pin nothing can move, beside the digest?
+///
+/// A tag that IS a commit id names one build, and nobody can re-point it: the maintainer would
+/// have to rebuild the image under a different commit to move the tag. The house names the two
+/// immovable pins apart (the digest and the commit), because a consumer's own gate has to be
+/// ABLE to say "this is pinned to a commit" -- Adv360-Pro-ZMK's base-pin row (P1.3) is blocked on
+/// exactly that, and a gate that cannot express the pin cannot accept one.
+#[must_use]
+pub fn is_commit_id(tag: &str) -> bool {
+    is_commit(tag)
+}
+
 /// Whether `tag` is a pointer someone moves rather than the name of one build.
 #[must_use]
 pub fn is_moving_tag(tag: &str) -> bool {
@@ -144,6 +160,7 @@ pub fn verdict(raw: &str) -> Verdict {
         None if prefix.is_empty() && repo.eq_ignore_ascii_case("scratch") => Verdict::NotAReference,
         None => Verdict::NoTag,
         Some(t) if is_moving_tag(t) => Verdict::Moving(t.to_owned()),
+        Some(t) if is_commit_id(t) => Verdict::Commit,
         Some(_) => Verdict::Released,
     }
 }

@@ -60,6 +60,8 @@ pub struct Scan {
     pub refs: usize,
     /// Pinned by digest.
     pub digests: usize,
+    /// Pinned by a commit id: the other pin nothing can move.
+    pub commits: usize,
     /// Moving, and exempted with a reason.
     pub exempt: usize,
     /// Carried by a variable or template this check cannot resolve.
@@ -129,6 +131,11 @@ pub fn scan(rel: &str, text: &str) -> Scan {
             Verdict::Digest => {
                 out.refs += 1;
                 out.digests += 1;
+                continue;
+            }
+            Verdict::Commit => {
+                out.refs += 1;
+                out.commits += 1;
                 continue;
             }
             Verdict::Released => {

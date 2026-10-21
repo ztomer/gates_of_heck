@@ -78,6 +78,20 @@ fn a_reference_is_judged_by_its_digest_then_its_last_component() {
             Verdict::Digest,
         ),
         (&format!("alpine@{DIGEST}"), Verdict::Digest),
+        // A commit id is the OTHER pin nothing can move, and the house names it apart: a gate
+        // that cannot express the pin cannot accept one (Adv360-Pro-ZMK P1.3).
+        ("alpine:f93290b3ab1a", Verdict::Commit),
+        (
+            "ghcr.io/owner/tool:d93499bb877f2711989e6cbbe1feed9e9a792ca3",
+            Verdict::Commit,
+        ),
+        // A tag that CARRIES a commit id is a release, not a commit pin: the tag names more than
+        // the commit (a version, a date, a build), and the maintainer can re-point it.
+        ("alpine:3.20.3-f93290b3ab1a", Verdict::Released),
+        // Not a commit id: letters without digits is a channel, and digits without letters is a
+        // version-shaped tag.
+        ("alpine:abc", Verdict::Moving("abc".into())),
+        ("alpine:1234567", Verdict::Released),
         ("scratch", Verdict::NotAReference),
         ("", Verdict::NotAReference),
         ("${IMAGE}", Verdict::Unreadable),
@@ -252,11 +266,18 @@ fn digests_releases_unreadables_and_reasoned_exemptions_are_green() {
 fn the_scan_counts_its_subject_and_says_what_it_could_not_read() {
     let s = scan(
         "compose.yml",
-        "services:\n  a:\n    image: ${IMG}\n  b:\n    image: nginx@sha256:840526f03c19c286b614d5cb97b11242ae19e468fc2ef2f095f6cf0465fa1c5b\n  c:\n    image: n:latest # moving-tag-ok: r\n  d:\n    image: n:1.2.3\n",
+        "services:\n  a:\n    image: ${IMG}\n  b:\n    image: nginx@sha256:840526f03c19c286b614d5cb97b11242ae19e468fc2ef2f095f6cf0465fa1c5b\n  c:\n    image: n:latest # moving-tag-ok: r\n  d:\n    image: n:1.2.3\n  e:\n    image: n:f93290b3ab1a\n",
     );
     assert_eq!(
-        (s.refs, s.unreadable, s.digests, s.exempt, s.unparsed),
-        (4, 1, 1, 1, false)
+        (
+            s.refs,
+            s.unreadable,
+            s.digests,
+            s.commits,
+            s.exempt,
+            s.unparsed
+        ),
+        (5, 1, 1, 1, 1, false)
     );
     assert!(scan("t.yaml", "{{- x }}\nimage: a:1\n").unparsed);
 }

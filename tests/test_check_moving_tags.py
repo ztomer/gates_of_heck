@@ -71,6 +71,33 @@ def test_the_pinned_tree_passes_and_says_what_it_read(repo: Path) -> None:
     assert "2 image reference(s): 2 pinned by digest" in r.stdout, r.stdout
 
 
+def test_a_commit_pin_is_green_and_the_run_says_which_pin_it_is(repo: Path) -> None:
+    """THE COMMIT PIN (2026-10-21). A tag that IS a commit id names one build, and nobody can
+    re-point it: the other pin nothing can move, beside the digest.
+
+    The house names the two apart, because a gate that cannot EXPRESS a pin cannot accept one --
+    Adv360-Pro-ZMK's base-pin row (P1.3) is blocked on its own gate being able to say "this is
+    pinned to a commit", and its branch that said it was unreachable: the check went red before it
+    got there. So the run says which pin each reference carries.
+    """
+    write(repo, "Dockerfile", "FROM zmkfirmware/zmk-build-arm:f93290b3ab1a\n")
+    commit_all(repo)
+    r = run_goh(repo, "moving-tags")
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert "1 pinned by commit" in r.stdout, r.stdout
+
+
+def test_a_tag_that_carries_a_commit_id_is_a_release_not_a_commit_pin(repo: Path) -> None:
+    """A tag that names MORE than the commit (a version, a date, a build) can be re-pointed: it
+    is a release, and the house says so."""
+    write(repo, "Dockerfile", "FROM zmkfirmware/zmk-build-arm:3.5.0-f93290b3ab1a\n")
+    commit_all(repo)
+    r = run_goh(repo, "moving-tags")
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert "1 pinned by commit" not in r.stdout, r.stdout
+    assert "1 image reference(s)" in r.stdout, r.stdout
+
+
 def test_no_tag_is_latest(repo: Path) -> None:
     write(repo, "compose/media.yml", "services:\n  cal:\n    image: ghcr.io/linuxserver/calibre\n")
     commit_all(repo)

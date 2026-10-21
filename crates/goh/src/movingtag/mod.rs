@@ -20,6 +20,16 @@
 //! `goh tap-writes`: what a build pulls is not a style a path can be exempt from, vendored or
 //! not; the one escape is the reasoned per-reference `# moving-tag-ok: <reason>` (the home-server
 //! fleet floats its images by owner ruling, servers DECISIONS #9, and says so on each image).
+//!
+//! THE TWO PINS NOTHING CAN MOVE (2026-10-21). A digest and a commit id. The house names them
+//! apart, because a gate that cannot EXPRESS a pin cannot accept one: Adv360-Pro-ZMK's base-pin
+//! row (P1.3) is blocked on its own gate being able to say "this is pinned to a commit", and the
+//! branch that said it was unreachable -- the check went red before it got there. So
+//! `reference.rs` judges a commit id as its own verdict, and the report names it. What the house
+//! does NOT do is rule which pin a repository must use: a commit pin cannot move, so a build is
+//! reproducible, but it does not follow its upstream either -- every upstream fix waits for
+//! someone to move the pin, and a branch follows its upstream and can move under the build. That
+//! is the owner's ruling, not the gate's.
 
 pub mod dockerfile;
 pub mod reference;
@@ -55,6 +65,7 @@ fn describe(p: &Problem) -> String {
 struct Tally {
     refs: usize,
     digests: usize,
+    commits: usize,
     exempt: usize,
     unreadable: usize,
     unparsed: Vec<String>,
@@ -63,9 +74,9 @@ struct Tally {
 impl Tally {
     fn summary(&self) -> String {
         let mut s = format!(
-            "{} image reference(s): {} pinned by digest, {} exempted with a reason, {} carried by a \
-             variable it cannot resolve",
-            self.refs, self.digests, self.exempt, self.unreadable
+            "{} image reference(s): {} pinned by digest, {} pinned by commit, {} exempted with a \
+             reason, {} carried by a variable it cannot resolve",
+            self.refs, self.digests, self.commits, self.exempt, self.unreadable
         );
         if let Some(first) = self.unparsed.first() {
             let more = self.unparsed.len() - 1;
@@ -99,6 +110,7 @@ fn judge(root: &Path, files: &[String], staged: bool) -> (i32, String, String) {
         let s = scan::scan(rel, &text);
         tally.refs += s.refs;
         tally.digests += s.digests;
+        tally.commits += s.commits;
         tally.exempt += s.exempt;
         tally.unreadable += s.unreadable;
         if s.unparsed {
@@ -123,6 +135,13 @@ fn judge(root: &Path, files: &[String], staged: bool) -> (i32, String, String) {
          A digest pins whatever the tag says; a tag alone must name a release, not a channel.\n    \
          An image that must float says why: `# moving-tag-ok: <reason>` on the line or in the\n    \
          comment lines directly above it.\n",
+    );
+    err.push_str(
+        "    A COMMIT PIN is the other pin nothing can move: `:f93290b3ab1a` names one build, and\n    \
+         nobody can re-point it. What it does not do is follow its upstream: every upstream fix\n    \
+         waits for someone to move the pin, and a build that floats waits for nobody. The house\n    \
+         names the two apart and does NOT rule which one a repository must use -- the owner\n    \
+         does.\n",
     );
     (1, String::new(), err)
 }
