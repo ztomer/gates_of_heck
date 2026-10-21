@@ -1,26 +1,39 @@
 """The kit behind the gate-slot race probe: the instrumented writer, and the trial that reads it.
 
     tools/gate_slot_race_probe.py     # the measurement (this kit, with a CLI)
-    tests/test_gate_slot.py            # the regression test (this kit, with an assertion)
+    tests/test_gate_slot_race.py      # the regression test (this kit, with an assertion)
 
-WHY IT EXISTS (E39, 2026-10-20). The gate-slot wait report is TWO writes: `lib/gate_slot.py`
-prints the header ("all N gate slots are held") and then, for each slot, the line that names its
-holder ("slot-0: repo (pid, since)"). A reader that polls the output and waits for the HEADER
-can read the file in the window between the two writes, and see a state that does not yet carry
-the line it is about to assert on. A test that waits for the header and then requires the
-holder's line is a flake: it passes until a poll lands in that window.
+WHY IT EXISTS (E39, 2026-10-21). The gate-slot wait report was TWO writes: `lib/gate_slot.py`
+printed the header ("all N gate slots are held") and then, for each slot, the line that names
+its holder ("slot-0: repo (pid, since)"). A reader that polls the output and waits for the
+HEADER can read the file in the window between the two writes, and see a state that does not
+yet carry the line it is about to assert on. A test that waits for the header and then
+requires the holder's line is a flake: it passes until a poll lands in that window.
 
-THE WINDOW IS REAL AND SMALL. Measured on a quiet box (2026-10-21): ~50 us between the two
+THE WINDOW IS REAL AND SMALL. Measured on a quiet box (2026-10-21): ~56 us between the two
 writes (the holder's line is formatted from the slot record, a file read, between them). At the
 suite's 50 ms poll interval that is a flake; under load the writer can be descheduled inside the
 window and it is a failure. The box's own words: "a race that cannot be red-proven is not
 fixable in a release".
 
 THE INSTRUMENTED WRITER. `instrumented_copy()` builds a COPY of lib/ and tui/ whose writer
-pauses between the two writes (and stamps when each happened). The working tree is never
+pauses before its writes (and stamps when each happened). The working tree is never
 touched. With the pause the window is wide enough to be caught EVERY time instead of once in a
 while -- which is how the race is proved DETERMINISTICALLY, and how the fixed reading is proved
 to be independent of where the writer's writes fall.
+
+WHERE THE PAUSE GOES, AND WHY IT MOVED (E59, 2026-10-21). The pause was a patch on the
+writer's own body -- between the header's print and the holder line's print. The writer no
+longer HAS two prints: the report is ONE write (`tui/lib.py`'s `report`, and `tui/lib.sh`'s),
+so the window a reader can land in is not between two of the writer's writes but between
+"nothing yet" and "the whole report". The pause therefore moved INTO the TUI's write
+primitives: every write the instrumented writer makes waits first. In the OLD shape that
+widens the window between the header and the holder line (the reader sees the header alone);
+in the NEW shape it widens the window before the whole report lands (the reader sees nothing
+and then everything). The difference between the two shapes is therefore measured, not assumed.
+
+`shape="legacy"` puts the writer BACK to the two-write shape, so the probe can be SHOWN to
+still catch it. An instrument that cannot fail proves nothing: that arm is the calibration.
 """
 
 from __future__ import annotations
@@ -47,31 +60,57 @@ while [ ! -f "{release}" ]; do sleep 0.05; done
 echo "DONE"
 """
 
-# The seam the probe pauses at: the holder lines are printed after the header, one print()
-# each, so a reader can land between them.
-PAUSE_SEAM = """            for i in range(slots):
+# THE WRITER'S TWO SHAPES. The one-write shape is E59's fix: the report is one `report(...)`
+# call, so the intermediate state does not exist. The two-write shape is what it was, and
+# what the probe is shown to catch.
+FIXED_IMPORT = "from tui.lib import report\n"
+LEGACY_IMPORT = "from tui.lib import info, step\n"
+FIXED_CALL = """            details = [describe(slot_path(directory, i), now) for i in range(slots)]
+            report(header, *details)
+"""
+# The holder line's own write: the two-write shape's second write. It is what the probe
+# looks for to recognise that shape -- in the tree as it is, and in the shape the probe
+# restores (the restored one writes the same line, under the header it already has).
+LEGACY_STEP = "                step(describe(slot_path(directory, i), now))\n"
+LEGACY_CALL = """            info(header)
+            for i in range(slots):
                 step(describe(slot_path(directory, i), now))
 """
-PAUSE_PATCH = (
-    """            time.sleep(float(os.environ.get("GOH_PROBE_PAUSE_S", "0") or 0))
-"""
-    + PAUSE_SEAM
-)
 
-# The seam the probe measures: the two writes, stamped from inside the print primitives, so
-# the measurement does not add I/O to the window it measures.
+# The seams the probe instruments, in tui/lib.py: every WRITE the writer makes waits first,
+# and every write is stamped. The pause is in the TUI, not in the writer, so it applies to
+# whichever shape the writer has.
 TUI_IMPORT_SEAM = "import os\nimport sys\n"
 TUI_IMPORT_PATCH = "import atexit\nimport os\nimport signal\nimport sys\nimport time\n"
 TUI_INFO_SEAM = """def info(message: str) -> None:
     print(f"{_C_GRAY}{ICON_START}{_C_RESET} {_C_DIM}{message}{_C_RESET}", flush=True)
 """
-TUI_INFO_PATCH = TUI_INFO_SEAM + '    _probe_mark("info", message)\n'
+TUI_INFO_PATCH = """def info(message: str) -> None:
+    _probe_pause()
+    print(f"{_C_GRAY}{ICON_START}{_C_RESET} {_C_DIM}{message}{_C_RESET}", flush=True)
+    _probe_mark("info", message)
+"""
 TUI_STEP_SEAM = """    print(f"{_C_DIM}{ICON_STEP} {message}{_C_RESET}", flush=True)
 """
-TUI_STEP_PATCH = TUI_STEP_SEAM + '    _probe_mark("step", message)\n'
+TUI_STEP_PATCH = """    _probe_pause()
+    print(f"{_C_DIM}{ICON_STEP} {message}{_C_RESET}", flush=True)
+    _probe_mark("step", message)
+"""
+TUI_REPORT_SEAM = """    _write_once(text)
+"""
+TUI_REPORT_PATCH = """    _probe_pause()
+    _write_once(text)
+    _probe_mark("report", text)
+"""
 TUI_STAMP_TAIL = '''
 
 _PROBE_MARKS: list[tuple[str, float, str]] = []
+
+
+def _probe_pause() -> None:
+    """The probe's seam: the writer waits here, so the window a reader can land in is wide
+    enough to be caught EVERY time instead of once in a while."""
+    time.sleep(float(os.environ.get("GOH_PROBE_PAUSE_S", "0") or 0))
 
 
 def _probe_mark(kind: str, message: str) -> None:
@@ -85,7 +124,10 @@ def _probe_dump() -> None:
         return
     with open(f"{path}.{os.getpid()}", "a", encoding="utf-8") as f:
         for kind, at, message in _PROBE_MARKS:
-            f.write(f"{kind}\\t{at:.9f}\\t{message}\\n")
+            # One record per line: a message with newlines in it (a whole report) is written
+            # flat, so the reader of the stamps sees the record, not half of it.
+            flat = message.replace("\\n", " ").replace("\\t", " ")
+            f.write(f"{kind}\\t{at:.9f}\\t{flat}\\n")
 
 
 def _probe_dumped_exit(signum, frame):
@@ -99,8 +141,8 @@ signal.signal(signal.SIGTERM, _probe_dumped_exit)
 '''
 
 
-def instrumented_copy(root: Path, dest: Path, pause: float = 0.0) -> Path:
-    """A copy of lib/ and tui/ that stamps the writer's writes (and can pause between them).
+def instrumented_copy(root: Path, dest: Path, pause: float = 0.0, shape: str = "tree") -> Path:
+    """A copy of lib/ and tui/ that stamps the writer's writes (and can pause before them).
 
     The working tree is never touched: the copy is what runs. The stamp says when each write
     happened; the pause makes the window wide enough to be caught every time instead of once
@@ -108,18 +150,37 @@ def instrumented_copy(root: Path, dest: Path, pause: float = 0.0) -> Path:
 
     The copy has no gates/ beside it, so the C4 re-exec (`gates/_from_head.py`) does not fire
     and the copy's own writer is the one that runs.
+
+    `shape` says which writer the copy runs:
+
+      "tree"    the tree as it is (the probe's default: measure what is there);
+      "fixed"   the tree MUST be the one-write shape -- a tree back to two writes is refused
+                 here, loudly, because the instrument would otherwise measure a writer that is
+                 not the one under test;
+      "legacy"  the tree is put BACK to the two-write shape, so the probe can be shown to
+                 still catch it. An instrument that cannot fail proves nothing.
     """
     for name in ("lib", "tui"):
-        shutil.copytree(root / name, dest / name)
+        shutil.copytree(root / name, dest / name, ignore=shutil.ignore_patterns("__pycache__"))
     helper = dest / "lib" / "gate_slot.py"
     text = helper.read_text(encoding="utf-8")
-    if pause > 0:
-        if PAUSE_SEAM not in text:
+    fixed = FIXED_IMPORT in text and FIXED_CALL in text
+    legacy = LEGACY_IMPORT in text and LEGACY_STEP in text
+    if shape == "fixed" and not fixed:
+        raise RuntimeError(
+            "the probe cannot instrument this tree: lib/gate_slot.py is not the one-write"
+            f" shape (looked for {FIXED_IMPORT!r} and {FIXED_CALL!r}). The report must be"
+            " written once, so the intermediate state does not exist"
+        )
+    if shape == "legacy":
+        if fixed:
+            text = text.replace(FIXED_IMPORT, LEGACY_IMPORT, 1).replace(FIXED_CALL, LEGACY_CALL, 1)
+        elif not legacy:
             raise RuntimeError(
-                "the probe cannot instrument this tree: lib/gate_slot.py no longer prints the"
-                f" holder lines where the probe expects them (looked for {PAUSE_SEAM!r})"
+                "the probe cannot instrument this tree: lib/gate_slot.py is neither the"
+                f" one-write shape nor the two-write shape (looked for {FIXED_IMPORT!r}"
+                f" and {LEGACY_IMPORT!r})"
             )
-        text = text.replace(PAUSE_SEAM, PAUSE_PATCH, 1)
     helper.write_text(text, encoding="utf-8")
 
     tui = dest / "tui" / "lib.py"
@@ -128,12 +189,37 @@ def instrumented_copy(root: Path, dest: Path, pause: float = 0.0) -> Path:
         (TUI_IMPORT_SEAM, TUI_IMPORT_PATCH),
         (TUI_INFO_SEAM, TUI_INFO_PATCH),
         (TUI_STEP_SEAM, TUI_STEP_PATCH),
+        (TUI_REPORT_SEAM, TUI_REPORT_PATCH),
     ):
         if seam not in text:
             raise RuntimeError(f"the probe cannot instrument this tree: tui/lib.py has no {seam!r}")
         text = text.replace(seam, patch, 1)
     tui.write_text(text + TUI_STAMP_TAIL, encoding="utf-8")
     return dest
+
+
+def _marks_in(path: Path) -> list[tuple[str, float, str]]:
+    try:
+        lines = path.read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return []
+    out = []
+    for ln in lines:
+        parts = ln.split("\t", 2)
+        if len(parts) == 3:
+            try:
+                out.append((parts[0], float(parts[1]), parts[2]))
+            except ValueError:
+                continue
+    return out
+
+
+def marks_of(stamps: Path) -> list[tuple[str, float, str]]:
+    """Every write the instrumented writer made, in order, across every process it ran."""
+    out: list[tuple[str, float, str]] = []
+    for path in sorted(stamps.parent.glob(stamps.name + "*")):
+        out.extend(_marks_in(path))
+    return out
 
 
 def window_of(stamps: Path) -> list[float]:
@@ -145,19 +231,31 @@ def window_of(stamps: Path) -> list[float]:
     """
     out: list[float] = []
     for path in sorted(stamps.parent.glob(stamps.name + "*")):
-        try:
-            lines = path.read_text(encoding="utf-8").splitlines()
-        except OSError:
-            continue
-        marks = [ln.split("\t", 2) for ln in lines if ln.count("\t") >= 2]
+        marks = _marks_in(path)
         for i, (kind, at, message) in enumerate(marks):
             if kind != "info" or not message.startswith(HEADER):
                 continue
             for kind2, at2, _ in marks[i + 1 :]:
                 if kind2 == "step":
-                    out.append((float(at2) - float(at)) * 1e6)
+                    out.append((at2 - at) * 1e6)
                     break
     return out
+
+
+def one_write(stamps: Path) -> bool:
+    """Whether the header and the holder's line arrived in ONE write.
+
+    E59's invariant, read off the writer's own stream: the state that carries the header
+    already carries the line, so a reader cannot see a report that is not final. In the
+    two-write shape there is no `report` mark at all -- the two writes are an `info` and a
+    `step` -- so this is False there, which is the point: the probe can tell the shapes apart
+    from the writer's side, not only from the reader's luck.
+    """
+    for path in sorted(stamps.parent.glob(stamps.name + "*")):
+        for kind, _at, message in _marks_in(path):
+            if kind == "report" and HEADER in message and HOLDER_LINE in message:
+                return True
+    return False
 
 
 class Trial:

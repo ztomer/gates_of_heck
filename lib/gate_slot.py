@@ -18,6 +18,15 @@ holder hands the next caller a fresh, unlocked inode). The lock is the flock, ne
 content is the holder's record (`pid<TAB>repo<TAB>epoch`), written after the lock is taken, read only
 for the wait message.
 
+THE WAIT REPORT IS ONE WRITE (E59, 2026-10-21). The report that names the holders was TWO writes
+-- the header, then a line per holder -- so a reader that waited for the header could read the
+file BETWEEN them and treat a half-written report as final: the window was 56 us, and a reader
+polling every millisecond landed in it (1 of 20 trials against the real writer, 20 of 20 against
+the instrumented one). It is ONE write now (`tui.lib`'s `report`), so the intermediate state
+does not exist. The rule that could have prevented it on the READER's side was measured and
+DELETED in E39: the soundness of a wait depends on the writer's write ORDER, which a reader
+cannot know. Pinned by tests/test_gate_slot_race.py.
+
 THE HOLDER IS THIS PROCESS, not the gate's shell. A flock on a shell fd is inherited by everything
 the gate starts, and a gate starts daemons (sccache's server outlives the build that spawned it): an
 inherited fd would keep the slot held after the gate is gone, until every slot leaked and every push
@@ -73,7 +82,7 @@ import time
 
 if __name__ == "__main__":
     sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
-from tui.lib import info, step
+from tui.lib import report
 
 REPORT_EVERY_S = 30.0
 
@@ -208,13 +217,14 @@ def acquire(
         if waited >= next_report:
             now = time.time()
             if next_report == 0.0:
-                info(
-                    f"all {slots} gate slots are held -- waiting for one (GOH_GATE_SLOTS={slots}, {directory}):"
+                header = (
+                    f"all {slots} gate slots are held -- waiting for one "
+                    f"(GOH_GATE_SLOTS={slots}, {directory}):"
                 )
             else:
-                info(f"waited {_ago(waited)} for a gate slot; still held:")
-            for i in range(slots):
-                step(describe(slot_path(directory, i), now))
+                header = f"waited {_ago(waited)} for a gate slot; still held:"
+            details = [describe(slot_path(directory, i), now) for i in range(slots)]
+            report(header, *details)
             next_report += REPORT_EVERY_S
         if not (watch.alive() if watch else _alive(owner)):
             sys.exit(3)

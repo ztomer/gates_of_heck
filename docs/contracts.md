@@ -497,3 +497,23 @@ told both rather than left to guess which repository stopped being audited.
 Pin: `tests/test_estate_registry.py` (an install outside the root is audited; a gone path is
 named; a moved repo is a gone path and a new one; the seed is additive; the machine's registry is
 never a test's).
+
+## 24. A report is ONE write, so the intermediate state does not exist
+
+A writer that prints a header and then its details in two writes leaves a state that is not
+final, and a reader can land in it: the gate-slot wait report was two writes, the window between
+them was 56 us, and a reader polling every millisecond read a half-written report as final
+(1 of 20 trials against the real writer, 20 of 20 against the instrumented one).
+
+No rule on the READER's side can prevent that, because the soundness of a wait depends on the
+writer's write ORDER, which a reader cannot know -- the static rule was written, measured and
+DELETED in E39 (it flagged two SAFE sites in this suite). So the writer's report goes through
+`tui/lib.py`'s and `tui/lib.sh`'s `report`, which writes the header and its details in ONE
+write(2)/printf: the state that carries the header already carries the details, so there is no
+intermediate state to read. The two halves of the TUI are pinned to render the same bytes, so
+the guarantee does not depend on which half a writer uses.
+
+Pin: `tests/test_tui_report.py` (the two halves agree byte for byte; each writes the report
+once), `tests/test_gate_slot_race.py` (the reader never sees a half-written report, the
+writer's own stream says the report was one write, and the probe is shown to still catch the
+old two-write shape -- an instrument that cannot fail proves nothing).
