@@ -34,18 +34,6 @@ pub fn run_markers(staged: bool, commits: &[String]) -> i32 {
     }
 }
 
-/// `goh busy-loop`: a tracked shell file that runs a backgrounded busy loop.
-///
-/// No path exclusion: a busy loop is not a style, it is a leak, and the one escape is the
-/// reasoned per-line marker (`# load-ok: <reason>`), like `goh secrets`.
-pub fn run_busy_loop(staged: bool) -> i32 {
-    let Some(root) = gitutil::repo_root().map(PathBuf::from) else {
-        goh_tui::eoutln!("{WARN} [busy_loop] not a git repo — skipping");
-        return 0;
-    };
-    crate::busyloop::run(&root, None, staged)
-}
-
 /// `markers --commits`: what each commit changed. A commit is never judged clean unread (exit 2).
 fn run_markers_commits(root: &std::path::Path, commits: &[String]) -> i32 {
     match markers::scan_commits(root, commits) {

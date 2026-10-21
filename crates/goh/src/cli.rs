@@ -175,12 +175,9 @@ pub enum Commands {
         #[arg(long, num_args = 1.., conflicts_with = "staged")]
         commits: Vec<String>,
     },
-    /// Fail on a tracked shell file that runs a backgrounded busy loop.
-    BusyLoop {
-        /// Staged files only (polices the index, like the Python checker).
-        #[arg(long)]
-        staged: bool,
-    },
+    /// Fail on a tracked shell file that runs a backgrounded busy loop (the house has ONE way to
+    /// make load: `tools/load.py`). No `--exclude`: a busy loop is not a style.
+    BusyLoop(StagedArgs),
     /// Fail on source files over a line cap (native port of `check_file_length`).
     Length {
         /// Maximum lines per file.
@@ -445,11 +442,10 @@ pub enum Commands {
     TapWrites(StagedArgs),
     /// Fail on a container image on a moving tag (`:latest`, `:stable`, `:main`, no tag): a
     /// Dockerfile `FROM`/`COPY --from=`, a YAML `image:`, a workflow `container:` or
-    /// `uses: docker://`. A digest or a release tag passes; the one escape is
+    /// `uses: docker://`. A digest, a release tag or a commit id passes; the one escape is
     /// `# moving-tag-ok: <reason>`. No `--exclude`: what a build pulls is not a style.
     MovingTags(StagedArgs),
-    /// Fail on a test spawn no guard reaps, or whose reap sits below a line
-    /// that can panic (native port of `check_no_unreaped_spawn`).
+    /// Fail on a test spawn no guard reaps, or whose reap sits below a line that can panic.
     UnreapedSpawn {
         /// Regex on repo-relative paths to skip. Unset: the repo's own `.gatesrc` `GOH_EXCLUDE`, as
         /// its structural gate applies it; `--exclude ''` opts out.
@@ -469,8 +465,7 @@ pub enum Commands {
         #[arg(long)]
         self_test: bool,
     },
-    /// Audit an agent skills corpus (native port of
-    /// `check_skills_corpus`).
+    /// Audit an agent skills corpus (native port of `check_skills_corpus`).
     Skills(SkillsArgs),
     /// Compare two images within tolerances (native `lib/golden_core`
     /// metrics: no rendering, no blessing).

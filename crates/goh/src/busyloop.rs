@@ -314,6 +314,19 @@ pub fn run(root: &Path, exclude: Option<&crate::pathfilter::PathFilter>, staged:
     1
 }
 
+/// `goh busy-loop [--staged]`: the check on its own, over the tracked files or the index.
+///
+/// No path exclusion: a busy loop is not a style, it is a leak, and the one escape is the
+/// reasoned per-line marker (`# load-ok: <reason>`), like `goh secrets`.
+#[must_use]
+pub fn run_command(staged: bool) -> i32 {
+    let Some(root) = crate::gitutil::repo_root().map(std::path::PathBuf::from) else {
+        goh_tui::eoutln!("{ERR} [busy_loop] not a git repository");
+        return 2;
+    };
+    run(&root, None, staged)
+}
+
 /// The structural step: the same check, over the files the pipeline already listed.
 #[must_use]
 pub fn step(repo: &Path, files: &[String], staged: bool) -> Option<i32> {

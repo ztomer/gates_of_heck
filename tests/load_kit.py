@@ -47,7 +47,7 @@ import timing_bounds
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "lib"))
 
-import load_registry as reg  # noqa: E402
+import load_registry as reg
 
 TOOL = ROOT / "tools" / "load.py"
 GRACE_S = 5.0
@@ -58,7 +58,7 @@ SPINNERS = re.compile(r"spinner\(s\) started: ((?:\d+[ ]?)+)")
 # Every child this suite owns, every pid it owns (with the process's START TIME, because a pid
 # is not an identity), and every directory it ran one in: the suite owns them all, and the
 # session's last act is to prove that none of them outlived the suite.
-_OWNED: list["Owned"] = []
+_OWNED: list[Owned] = []
 _OWNED_PIDS: list[tuple[int, str]] = []
 _DIRECTORIES: list[Path] = []
 
@@ -176,6 +176,38 @@ def kill_pid(pid: int, start: str = "") -> bool:
             return True
         time.sleep(0.02)
     return not alive(pid)
+
+
+def orphan(command: list[str] | None = None) -> int:
+    """A process whose parent is gone, so the kernel re-parented it to launchd (ppid 1).
+
+    The command line is the one asked for, so the SHAPE of a process can be chosen: the house's
+    own spinner shape, a hand-rolled one, or something that only looks like it. The helper that
+    starts it EXITS, so the child is orphaned -- which is the state the backstop has to judge.
+
+    The suite owns the pid it returns (`own_pid`), so a test that fails still reaps it.
+    """
+    argv = command if command is not None else ["/bin/sh", "-c", "sleep 300"]
+    helper = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            "import subprocess,sys;"
+            "p=subprocess.Popen(sys.argv[1:], stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,"
+            "stderr=subprocess.DEVNULL, start_new_session=True);"
+            "print(p.pid)",
+            *argv,
+        ],
+        capture_output=True,
+        text=True,
+        stdin=subprocess.DEVNULL,
+        timeout=30,
+        check=True,
+    )  # fmt: skip
+    pid = int(helper.stdout.strip())
+    own_pid(pid)
+    assert wait_until(lambda: reg.pid_ppid(pid) == 1), "the fixture did not become an orphan"
+    return pid
 
 
 def wait_until(predicate, seconds: float = 20.0) -> bool:

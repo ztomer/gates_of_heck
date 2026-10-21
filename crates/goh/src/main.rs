@@ -194,7 +194,7 @@ fn run_core(command: Commands) -> i32 {
             command,
         } => stepcmd::run(&timeout, grace, &label, &command),
         Commands::Markers { staged, commits } => commands::run_markers(staged, &commits),
-        Commands::BusyLoop { staged } => commands::run_busy_loop(staged),
+        Commands::BusyLoop(args) => busyloop::run_command(args.staged),
         Commands::Screen {
             paths,
             scope,
