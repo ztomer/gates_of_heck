@@ -29,6 +29,10 @@ pub fn format_report(outcome: &Outcome) -> String {
         );
     }
     let _ = writeln!(out, "{TAG} engine: {}", outcome.engine);
+    let goals = goal_text(outcome);
+    if !goals.is_empty() {
+        let _ = writeln!(out, "{TAG} goals: {goals}");
+    }
     if outcome.findings.is_empty() && outcome.unmeasured.is_empty() {
         let _ = write!(out, "{TAG} OK — {} file(s) parsed clean", outcome.judged);
         if outcome.templates > 0 {
@@ -69,6 +73,30 @@ fn shape_text(scope: &Scope) -> String {
         .map(|(name, count)| format!("{name} ({count})"))
         .collect::<Vec<_>>()
         .join(", ")
+}
+
+/// The goal each source was judged with, as one line.
+///
+/// The classic script is counted and not listed -- it is the goal almost every source has, and
+/// a list of forty-three paths is a list nobody reads. The other two are LISTED, because a
+/// source judged with the module goal is a judgment a reader has to be able to see: a `.mjs`
+/// file is a module whatever it carries, and a reader who did not know that would not know what
+/// the run measured.
+fn goal_text(outcome: &Outcome) -> String {
+    let mut parts: Vec<String> = Vec::new();
+    for (goal, paths) in &outcome.by_goal {
+        if *goal == super::goal::Goal::Classic {
+            parts.push(format!("{} {}", goal.label(), paths.len()));
+        } else {
+            parts.push(format!(
+                "{} {} ({})",
+                goal.label(),
+                paths.len(),
+                paths.join(", ")
+            ));
+        }
+    }
+    parts.join("; ")
 }
 
 /// The report for a repository with no JavaScript at all.

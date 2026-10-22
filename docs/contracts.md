@@ -545,7 +545,8 @@ Two more rules ride with it, and both are about the SCOPE rather than the subjec
   * A SOURCE THE ENGINE CANNOT READ IS REFUSED, NEVER PASSED. The fallback engine parses a classic
     script only, because parsing a module there means RUNNING it, and a gate does not run the
     repository's code. Such a source is named as unmeasured (exit 2), and the engine that can
-    read it without running it -- `node --check` -- reads both goals.
+    read it without running it -- node, with `node --check` on a `.mjs` file -- reads the module
+    goal.
 
 Pin: `tests/test_check_js_syntax.py` (a template that is not JavaScript on its own passes; a
 template whose substituted form does not parse is red; a malformed hole is still judged; the scope
@@ -586,3 +587,54 @@ Pin: `tests/test_claude_load_guard.py` (the command and the file), `tests/test_c
 (the check, both ways), `tests/test_load_reap.py` (the four questions, the negative controls, and
 the killed-run bound), `tests/test_load_orphan_exemption.py` (both exemptions, stale and
 broadened).
+
+## 27. A JavaScript source is judged with the BROWSER'S goal, and the goal is named before the engine
+
+A parser is asked "is this source valid?" only once it has been told what KIND of source it is,
+and the goals disagree. A top-level `return` is a syntax error in a browser's classic script and
+an ordinary statement in CommonJS; a top-level `await` is a syntax error in a classic script and
+legal at the top level of a module. So a gate that does not name its goal is a gate whose answer
+depends on which engine it happened to ask -- and the engines disagree.
+
+The house's JavaScript gate asked node the way node is usually asked: `node --check`, which
+parses a `.js` file with the goal node reads off the nearest `package.json`. That goal is
+CommonJS or MODULE, and it ACCEPTS a top-level `return`. The browser REFUSES it. So the gate was
+GREEN on a file no page can load, and the page that loads it renders empty: the failure mode of
+the gate was INVERTED for exactly the case the estate cares about. (Found by a consumer,
+2026-10-21: `divoom-control` built its own checker against the browser's goal for the same
+reason, and its own reading of the goal is the one the house now takes.)
+
+So the goal is named FIRST, and it is the browser's:
+
+  * A `.js` file is a CLASSIC SCRIPT -- what a browser's `<script src>` is. A top-level `return`,
+    a top-level `await`, `import` and `export` are all refused in it.
+  * A `.mjs` file is a MODULE -- what a browser's `<script type="module">` is, and what node's
+    ESM is. `import`, `export` and a top-level `await` are legal in it; a top-level `return` is
+    not.
+  * A `.cjs` file is COMMONJS -- node's, and no browser's. A top-level `return` is legal in it.
+
+THE GOAL COMES FROM THE NAME, NOT FROM THE TEXT. A browser's goal is decided by the HTML that
+loads the file, and the HTML is not in the repository the gate reads, so a file cannot know how a
+page loads it. The NAME is the one thing in a file that every loader agrees with. Sniffing the
+text instead would be a guess with a bad failure direction: a file whose REGEX holds the word
+`import` would be called a module, and would then be judged with the goal that ALLOWS a top-level
+`await` -- the very defect this contract closes. The name is a fact; the text is a guess. The cost
+is stated rather than hidden: a repository that keeps a module in a `.js` file is told to rename
+it to `.mjs`.
+
+THE ENGINE ORDER IS THE HOUSE'S, AND IT IS PROVENANCE, NOT PREFERENCE. node is the PRIMARY
+engine, because it reaches the browser's goals EXACTLY and runs nothing: `vm.Script` IS the
+classic-script goal, `vm.compileFunction` is the CommonJS goal, and `node --check` on a `.mjs`
+file is the module goal. macOS's `JavaScriptCore` is the FALLBACK, because it is in the operating
+system and a machine with nothing installed still has a parser -- and it reaches the classic goal
+in TWO probes, because `new Function` builds a function BODY, which may `return` at its top level
+where a classic script may not. A source the fallback cannot judge is REFUSED (exit 2), never
+passed: when its first probe says the source is fine and its second (a class static block, where a
+`return` is illegal) says it is not, the difference is either a top-level `return` or a
+strict-mode-only construct, and the engine's own words tell the two apart.
+
+Pin: `tests/test_check_js_syntax.py` (a top-level `return` and a top-level `await` are red under
+node AND under the `JavaScriptCore` fallback that reads the same files with no node installed; a
+`.js` file carrying module syntax is red, because a browser loads a `.js` file with `<script
+src>`; a `.mjs` file is green and is named in the report as a module; a `.cjs` file with a
+top-level `return` is green, because that is node's CommonJS; the clean tree is green).

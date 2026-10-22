@@ -378,8 +378,8 @@ pub enum Commands {
         parse_claims: Option<String>,
     },
     /// Fail on a tracked JavaScript source that does not parse (native port of
-    /// `check_js_syntax`). `node --check` where node is installed, `JavaScriptCore`
-    /// where it is not; a template is judged by its substituted form.
+    /// `check_js_syntax`). The goal is the BROWSER'S: `.js` is a classic script, `.mjs` a
+    /// module, `.cjs` node's `CommonJS`; a template is judged by its substituted form.
     JsSyntax,
     /// Fail on a process kill by NAME (native port of `check_no_kill_by_name`).
     KillByName {

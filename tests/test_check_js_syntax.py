@@ -8,10 +8,19 @@ repository's own tracked sources, and it names the file and the line.
 WHAT IS PROVEN HERE, in both directions, because a gate that cannot fail is not
 a gate:
 
-  * RED on a planted syntax error -- under `node --check` AND under the
-    `JavaScriptCore` fallback that reads the same file with no node installed
-    at all (the fallback is the engine a machine with nothing installed has,
-    so it has to bite on its own).
+  * RED on a planted syntax error -- under node AND under the `JavaScriptCore`
+    fallback that reads the same file with no node installed at all (the
+    fallback is the engine a machine with nothing installed has, so it has to
+    bite on its own).
+  * RED on a TOP-LEVEL `return` and on a TOP-LEVEL `await`, under both engines:
+    the goal is the BROWSER'S classic script, and `node --check` -- which read
+    the CommonJS goal -- accepted both. A gate that asks node the way node is
+    usually asked is green on a file no page can load.
+  * RED on a `.js` file that carries module syntax: a browser loads a `.js`
+    file with `<script src>`, and a module is named `.mjs`.
+  * GREEN on a `.mjs` file (a module, whatever it carries), with the report
+    NAMING the goal it was judged with, and GREEN on a `.cjs` file with a
+    top-level `return` (node's CommonJS, which no browser loads).
   * RED on a template whose SUBSTITUTED form does not parse: a template is
     not JavaScript on its own, and the rule substitutes its placeholders with a
     neutral expression and parses THAT. A template whose skeleton is broken is
@@ -49,6 +58,13 @@ TEMPLATE = "const timeout = ${TIMEOUT};\nconsole.log(timeout);\n"
 BROKEN_TEMPLATE = "const timeout = ${A} ${B};\n"
 # An ES module: `node --check` reads it, the fallback cannot.
 MODULE = "import fs from 'node:fs';\nexport const x = 1;\n"
+# A TOP-LEVEL `return`: valid CommonJS, and INVALID in a browser's classic
+# script, which is what a `<script src>` is. `node --check` reads the CommonJS
+# goal and ACCEPTS it, so a gate that judges the goal with `node --check` is
+# green on a file the browser refuses to load -- and the page renders empty.
+TOP_LEVEL_RETURN = "return 1;\n"
+# A top-level `await`: the same shape, and legal in a MODULE only.
+TOP_LEVEL_AWAIT = "const answer = await fetch('/answer');\n"
 
 JSC = Path("/System/Library/Frameworks/JavaScriptCore.framework/Versions/A/Helpers/jsc")
 
@@ -79,6 +95,64 @@ def test_a_clean_tree_is_green(repo: Path) -> None:
     result = run_goh(repo, "js-syntax")
     assert result.returncode == 0, result.stdout + result.stderr
     assert "OK" in result.stdout, result.stdout
+
+
+def test_a_top_level_return_is_red(repo: Path) -> None:
+    """A browser's classic script REFUSES a top-level `return` -- the file never
+    loads, and the page that loads it renders empty. `node --check` reads the
+    CommonJS goal and accepts it, so the goal is the whole failure mode of an
+    engine that parses a file the way node does."""
+    _js_repo(repo, {"web/ret.js": TOP_LEVEL_RETURN})
+    result = run_goh(repo, "js-syntax")
+    assert result.returncode == 1, result.stdout + result.stderr
+    assert "web/ret.js" in result.stdout, result.stdout
+
+
+def test_a_top_level_await_is_red(repo: Path) -> None:
+    """The same shape as the return: a top-level `await` is legal in a module
+    and illegal in a classic script, so a classic source carrying one never
+    loads."""
+    _js_repo(repo, {"web/await.js": TOP_LEVEL_AWAIT})
+    result = run_goh(repo, "js-syntax")
+    assert result.returncode == 1, result.stdout + result.stderr
+    assert "web/await.js" in result.stdout, result.stdout
+
+
+def test_a_javascript_file_that_is_really_a_module_is_red(repo: Path) -> None:
+    """A browser loads a `.js` file with `<script src>` -- a CLASSIC SCRIPT --
+    and that goal refuses `import`. A module is named `.mjs`."""
+    _js_repo(repo, {"web/eslint.config.js": MODULE})
+    result = run_goh(repo, "js-syntax")
+    assert result.returncode == 1, result.stdout + result.stderr
+    assert "web/eslint.config.js" in result.stdout, result.stdout
+
+
+def test_a_module_is_green_and_the_report_names_it(repo: Path) -> None:
+    """A `.mjs` file is a module whatever it carries, and the report says so:
+    the goal a source was judged with is a judgment a reader has to see."""
+    _js_repo(repo, {"web/mod.mjs": MODULE})
+    result = run_goh(repo, "js-syntax")
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "module 1 (web/mod.mjs)" in result.stdout, result.stdout
+
+
+def test_a_commonjs_file_may_return_at_the_top_level(repo: Path) -> None:
+    """A `.cjs` file is node's CommonJS, and no browser loads it -- so a
+    top-level `return`, which the CommonJS goal allows, is green there."""
+    _js_repo(repo, {"web/legacy.cjs": TOP_LEVEL_RETURN})
+    result = run_goh(repo, "js-syntax")
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "CommonJS 1 (web/legacy.cjs)" in result.stdout, result.stdout
+
+
+@pytest.mark.skipif(not JSC.exists(), reason="macOS's JavaScriptCore helper is not here")
+def test_the_fallback_also_refuses_a_top_level_return(repo: Path) -> None:
+    """The fallback is the engine a machine with no node has, so it has to reach
+    the SAME goal: a top-level `return` is red under it too."""
+    _js_repo(repo, {"web/ret.js": TOP_LEVEL_RETURN})
+    result = run_goh(repo, "js-syntax", env=_no_node_env())
+    assert result.returncode == 1, result.stdout + result.stderr
+    assert "web/ret.js" in result.stdout, result.stdout
 
 
 def test_the_scope_is_stated_not_implied(repo: Path) -> None:

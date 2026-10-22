@@ -1,40 +1,53 @@
 //! `goh js-syntax` -- every JavaScript source this repository tracks PARSES.
 //!
-//! THE SUBJECT. The JavaScript files `git ls-files` lists: `.js`, `.mjs` and
-//! `.cjs`. Not the working tree (an untracked file is not the repository yet),
-//! and not vendored or built output (which the scope names, so the exclusion
-//! cannot hide the subject -- see `Scope::shape`).
+//! THE SUBJECT. The JavaScript files `git ls-files` lists: `.js`, `.mjs` and `.cjs`. Not the
+//! working tree (an untracked file is not the repository yet), and not vendored or built output
+//! (which the scope names, so the exclusion cannot hide the subject -- see `Scope::shape`).
 //!
-//! THE SCOPE IS STATED, NOT IMPLIED. A reader is told how many files were
-//! measured and what shape they had, because a gate that quietly measures
-//! nothing and a gate that measured everything and found nothing wrong print
-//! the same word. See `report` for what every run prints.
+//! THE GOAL IS THE BROWSER'S, and it comes before the engine. A parser is asked "is this source
+//! valid?" only once it has been told what KIND of source it is, and the goals disagree: a
+//! top-level `return` is a syntax error in a browser's classic script and an ordinary statement
+//! in `CommonJS`, and a top-level `await` is a syntax error in a classic script and legal in a
+//! module. A gate that does not name its goal is a gate whose answer depends on which engine it
+//! happened to ask -- and the engines disagree. So the goal is decided FIRST, by the file's
+//! NAME, and the engine is asked that goal's question. See `goal`.
 //!
-//! TWO ENGINES, AND WHY. `node --check` parses without running, and knows a
-//! module from a script by itself. `JavaScriptCore`, through the `jsc` helper
-//! macOS ships, is the fallback for a machine with no node at all: it parses
-//! through `new Function`, which builds a function from the source WITHOUT
-//! RUNNING IT. See `engines` for what each can and cannot measure.
+//! TWO ENGINES, AND THE ORDER IS THE HOUSE'S. node is the PRIMARY engine: it reaches the
+//! browser's goals exactly and runs nothing (`vm.Script` IS the classic-script goal,
+//! `vm.compileFunction` is the `CommonJS` goal, `node --check` on a `.mjs` file is the module
+//! goal). macOS's `JavaScriptCore` is the FALLBACK, for a machine with no node at all: it is in
+//! the operating system, and it reaches the classic-script goal in two probes. See `engines` for
+//! what each can and cannot measure, and for the hole this gate had: `node --check` parses a
+//! `.js` file with the `CommonJS` goal, which ACCEPTS a top-level `return` that a browser
+//! REFUSES -- so the gate was green on a file no page can load.
 //!
-//! THE TEMPLATE RULE, in one line: a template is judged by its SUBSTITUTED
-//! form, and its placeholders are the ones the tree's own convention defines.
-//! See `template` for why a template is not excluded (that hides the subject)
-//! and why the substitution is narrow (a wide one would hide a defect).
+//! THE SCOPE IS STATED, NOT IMPLIED. A reader is told how many files were measured and what
+//! shape they had, because a gate that quietly measures nothing and a gate that measured
+//! everything and found nothing wrong print the same word. See `report` for what every run
+//! prints.
 //!
-//! WHAT A CLEAN RUN SAYS. The scope, the engine, the count, and the templates
-//! that were judged by their substituted form. What a red run says: every
-//! violation as `file:line: why`, and every source the engine could not
-//! measure, with the reason it could not.
+//! THE TEMPLATE RULE, in one line: a template is judged by its SUBSTITUTED form, and its
+//! placeholders are the ones the tree's own convention defines. See `template` for why a
+//! template is not excluded (that hides the subject) and why the substitution is narrow (a wide
+//! one would hide a defect).
+//!
+//! WHAT A CLEAN RUN SAYS. The scope, the engine, the goal each source was judged with, the
+//! count, and the templates that were judged by their substituted form. What a red run says:
+//! every violation as `file:line: why`, and every source the engine could not measure, with the
+//! reason it could not.
 
 pub mod command;
 pub mod engines;
+pub mod goal;
+pub mod jsc;
+pub mod node;
 pub mod report;
-pub mod scan;
 pub mod template;
 
 use std::path::{Path, PathBuf};
 
 use engines::{Check, Verdict};
+use goal::Goal;
 
 /// The tag every line this check prints carries.
 const TAG: &str = "[js_syntax]";
@@ -44,10 +57,9 @@ pub const EXTENSIONS: [&str; 3] = ["js", "mjs", "cjs"];
 
 /// Path segments that mean "not our source": vendored code, or built output.
 ///
-/// A SEGMENT, never a substring: `src/build_tools.js` is source, and
-/// `build/tools.js` is not. Every path this list takes out of the scope is
-/// named in the report, so an exclusion that hid a real file is visible rather
-/// than silent.
+/// A SEGMENT, never a substring: `src/build_tools.js` is source, and `build/tools.js` is not.
+/// Every path this list takes out of the scope is named in the report, so an exclusion that hid
+/// a real file is visible rather than silent.
 pub const EXCLUDED_SEGMENTS: [&str; 10] = [
     "node_modules",
     "vendor",
@@ -65,9 +77,11 @@ pub const EXCLUDED_SEGMENTS: [&str; 10] = [
 #[derive(Debug, Clone)]
 pub struct Subject {
     /// The repo-relative path.
-    path: String,
+    pub path: String,
     /// Is this a template, by the tree's own naming convention?
-    template: bool,
+    pub template: bool,
+    /// The goal this source is judged with.
+    pub goal: Goal,
 }
 
 /// What the check measured.
@@ -127,15 +141,20 @@ pub struct Outcome {
     pub findings: Vec<Finding>,
     /// The sources the engine could not measure, and why.
     pub unmeasured: Vec<(String, String)>,
+    /// The goal each source was judged with, and the sources that carry it.
+    ///
+    /// The classic script is the goal almost every source has, so it is counted and not listed;
+    /// the others are listed, because a source judged with the module goal is a judgment a
+    /// reader has to be able to see.
+    pub by_goal: Vec<(Goal, Vec<String>)>,
 }
 
 /// The temporary files a run made, and their removal.
 ///
-/// A template is judged by its SUBSTITUTED form, so the engine reads a file
-/// that is not the repository's file. It is written BESIDE the original -- the
-/// same directory, so the nearest `package.json` is the one the original would
-/// have been judged against -- under a name no tool collects, and it is removed
-/// when the run ends, however the run ends.
+/// A template is judged by its SUBSTITUTED form, so the engine reads a file that is not the
+/// repository's file. It is written BESIDE the original -- the same directory, so the nearest
+/// `package.json` is the one the original would have been judged against -- under a name no
+/// tool collects, and it is removed when the run ends, however the run ends.
 #[derive(Debug, Default)]
 struct Temps(Vec<PathBuf>);
 
@@ -163,6 +182,7 @@ pub fn scope(tracked: &[String]) -> Scope {
         out.files.push(Subject {
             path: path.clone(),
             template: template::is_template(path),
+            goal: goal::goal_for(path),
         });
     }
     out
@@ -187,8 +207,8 @@ fn excluded(path: &str) -> bool {
 ///
 /// # Errors
 ///
-/// Returns a message when the repository cannot be read, or when the engine
-/// cannot be run: a gate that cannot parse is a gate that cannot judge.
+/// Returns a message when the repository cannot be read, or when the engine cannot be run: a
+/// gate that cannot parse is a gate that cannot judge.
 pub fn run(root: &Path) -> Result<Outcome, String> {
     let Some(engine) = engines::discover() else {
         return Err(
@@ -222,17 +242,6 @@ pub fn run(root: &Path) -> Result<Outcome, String> {
             continue;
         }
         let text = String::from_utf8_lossy(&bytes).into_owned();
-        if !engine.measures_modules() && scan::is_module(&text) {
-            // The engine cannot read this goal without running the module, and
-            // a gate does not run the repository's code. Named, never passed.
-            outcome.unmeasured.push((
-                file.path.clone(),
-                "this engine parses a classic script only: a module source is read by \
-                 `node --check`, which parses it without running it"
-                    .to_owned(),
-            ));
-            continue;
-        }
         let judged = if file.template {
             outcome.templates += 1;
             template::substitute(&text).text
@@ -256,6 +265,7 @@ pub fn run(root: &Path) -> Result<Outcome, String> {
         checks.push(Check {
             path: file.path.clone(),
             check_path,
+            goal: file.goal,
         });
     }
 
@@ -268,7 +278,7 @@ pub fn run(root: &Path) -> Result<Outcome, String> {
                 let reason = if template::is_template(&check.path) {
                     format!("the substituted form does not parse: {message}")
                 } else {
-                    format!("does not parse: {message}")
+                    format!("does not parse as a {}: {message}", check.goal.label())
                 };
                 outcome.findings.push(Finding {
                     path: check.path.clone(),
@@ -281,16 +291,33 @@ pub fn run(root: &Path) -> Result<Outcome, String> {
             }
         }
     }
+    outcome.by_goal = by_goal(&checks);
     Ok(outcome)
+}
+
+/// The goal each source was judged with, and the sources that carry it.
+///
+/// The classic script is the goal almost every source has, so it is counted and not listed; the
+/// others are listed, because a source judged with another goal is a judgment a reader has to
+/// be able to see.
+fn by_goal(checks: &[Check]) -> Vec<(Goal, Vec<String>)> {
+    let mut out: Vec<(Goal, Vec<String>)> = Vec::new();
+    for check in checks {
+        match out.iter_mut().find(|(goal, _)| *goal == check.goal) {
+            Some((_, paths)) => paths.push(check.path.clone()),
+            None => out.push((check.goal, vec![check.path.clone()])),
+        }
+    }
+    out
 }
 
 /// Write a template's substituted form beside the original, and say where.
 ///
 /// # Errors
 ///
-/// Returns a message when the file could not be written: a template whose
-/// substituted form could not be handed to the engine is a source that was not
-/// measured, and it says so rather than passing.
+/// Returns a message when the file could not be written: a template whose substituted form
+/// could not be handed to the engine is a source that was not measured, and it says so rather
+/// than passing.
 fn write_temp(root: &Path, rel: &str, index: usize, text: &str) -> Result<PathBuf, String> {
     let original = root.join(rel);
     let extension = original
@@ -305,7 +332,7 @@ fn write_temp(root: &Path, rel: &str, index: usize, text: &str) -> Result<PathBu
 
 #[cfg(test)]
 mod tests {
-    use super::{excluded, is_javascript, scope, Scope};
+    use super::{excluded, is_javascript, scope, Goal, Scope};
 
     #[test]
     fn the_extensions_are_the_javascript_ones() {
@@ -341,6 +368,18 @@ mod tests {
         assert_eq!(scope.excluded, vec!["node_modules/p/b.js".to_owned()]);
         assert_eq!(scope.files.len(), 2);
         assert_eq!(scope.shape(), vec![("web".to_owned(), 2)]);
+    }
+
+    #[test]
+    fn the_scope_carries_the_goal_each_source_is_judged_with() {
+        let tracked = vec![
+            "web/a.js".to_owned(),
+            "web/mod.mjs".to_owned(),
+            "web/legacy.cjs".to_owned(),
+        ];
+        let scope = scope(&tracked);
+        let goals: Vec<Goal> = scope.files.iter().map(|f| f.goal).collect();
+        assert_eq!(goals, vec![Goal::Classic, Goal::Module, Goal::CommonJs]);
     }
 
     #[test]

@@ -1,5 +1,66 @@
 # CHANGELOG
 
+## v0.48.0 — the JavaScript gate judges the BROWSER'S goal, and its failure mode was inverted _(2026-10-22)_
+
+Minor bump: the JavaScript parse gate no longer asks node the way node is usually asked, and the
+goal it judges with is named before the engine that judges it.
+
+* **THE DEFECT, FOUND BY A CONSUMER (2026-10-21).** `goh js-syntax` asked node with `node
+  --check`, which parses a `.js` file with the goal node reads off the nearest `package.json` --
+  CommonJS or MODULE. That goal ACCEPTS a top-level `return`, a top-level `await` and `import`,
+  and a browser's classic `<script>` REFUSES all three. So the gate was GREEN on a file the
+  browser cannot load, and the page that loads it renders empty: the gate's failure mode was
+  INVERTED for exactly the case the estate cares about. `divoom-control` built its own checker
+  against the browser's goal for the same reason; the house now takes that goal.
+
+* **THE GOAL IS THE BROWSER'S, AND IT IS NAMED BEFORE THE ENGINE.** A parser is asked "is this
+  source valid?" only once it has been told what KIND of source it is, and the goals disagree. So
+  the goal comes first, and it is the browser's: a `.js` file is a CLASSIC SCRIPT (what a
+  `<script src>` is, and the goal that refuses a top-level `return`, a top-level `await`,
+  `import` and `export`), a `.mjs` file is a MODULE (what a `<script type="module">` is, where
+  `import`, `export` and a top-level `await` are legal), and a `.cjs` file is node's COMMONJS,
+  which no browser loads and where a top-level `return` is legal.
+
+* **THE GOAL COMES FROM THE NAME, NOT FROM THE TEXT.** A browser's goal is decided by the HTML
+  that loads the file, and the HTML is not in the repository the gate reads, so a file cannot know
+  how a page loads it. The NAME is the one thing in a file that every loader agrees with; sniffing
+  the text instead would be a guess with a bad failure direction, because a file whose REGEX holds
+  the word `import` would be called a module and then judged with the goal that ALLOWS a top-level
+  `await`. The name is a fact; the text is a guess. THE COST, stated rather than hidden: a
+  repository that keeps a module in a `.js` file is told to rename it to `.mjs` -- `apes` has two
+  (`apps/bff-api/eslint.config.js` and `apps/web/eslint.config.js`), and ESLint 9 reads
+  `eslint.config.mjs` as readily as `eslint.config.js`.
+
+* **THE ENGINE ORDER IS PROVENANCE, NOT PREFERENCE.** node is the PRIMARY engine, because it
+  reaches the browser's goals EXACTLY and runs nothing: `vm.Script` IS the classic-script goal
+  (measured: it refuses a top-level `return`, a top-level `await`, an `import` and an `export`),
+  `vm.compileFunction` is the CommonJS goal, and `node --check` on a `.mjs` file is the module
+  goal. macOS's `JavaScriptCore` is the FALLBACK, because it is in the operating system and a
+  machine with nothing installed still has a parser -- and it reaches the classic goal in TWO
+  probes, because `new Function` builds a function BODY, and a function body may `return` at its
+  top level where a classic script may not (measured: `new Function("return 1;")` is ACCEPTED).
+  The second probe puts the same source in a CLASS STATIC BLOCK, where a `return` is illegal. A
+  source the fallback cannot judge is REFUSED (exit 2), never passed: when its first probe says
+  the source is fine and its second says it is not, the difference is either a top-level `return`
+  or a strict-mode-only construct, and the engine's own words tell the two apart.
+
+* **THE TEMPLATE RULE, UNCHANGED.** A template is judged by its SUBSTITUTED form: each
+  placeholder the tree's own convention defines (`${NAME}`, `@NAME@`) is replaced with a neutral
+  expression (`0`) and the RESULT is parsed, because excluding a template hides the subject. A
+  hole holding an EXPRESSION is left alone, and so is a malformed hole -- no defect hides behind a
+  placeholder.
+
+* **THE PROOF.** `tests/test_check_js_syntax.py` (the prover the calibration registry cites, so the
+  estate's count of unproven gates does not grow): a top-level `return` and a top-level `await`
+  are RED under node AND under the `JavaScriptCore` fallback that reads the same files with no
+  node installed; a `.js` file carrying module syntax is red; a `.mjs` file is green and is NAMED
+  in the report as a module; a `.cjs` file with a top-level `return` is green; a template whose
+  substituted form does not parse is red; a template that is NOT JavaScript on its own is green;
+  a clean tree is green; a source the engine cannot read is refused rather than passed; and a
+  floor above the real count is red. The three goal cases were RED before this change and are
+  GREEN after it -- the planted `return 1` was the house's own blind spot, and it is now the
+  house's own proof.
+
 ## v0.47.0 — a spinner is refused at every level, and a commit pin is a pin the house can name _(2026-10-21)_
 
 Minor bump: the spinner class is closed at three levels (the tool boundary, the commit, the
