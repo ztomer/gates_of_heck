@@ -146,7 +146,7 @@ goh_live_delta() {
               git -C "$root" diff HEAD -- crates Cargo.toml Cargo.lock rust-toolchain.toml) 2>/dev/null)"
     untracked="$( (goh_unbind_git
                    cd "$root" && git ls-files -z --others --exclude-standard -- crates \
-                   | xargs -0 shasum 2>/dev/null) 2>/dev/null)"
+                   | xargs -0 -r shasum 2>/dev/null) 2>/dev/null)"
     [ -z "$diff$untracked" ] && return 0
     printf '%s\n%s' "$diff" "$untracked" | shasum | cut -d' ' -f1
 }

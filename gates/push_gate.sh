@@ -469,7 +469,7 @@ while read -r local_ref local_sha _remote_ref _remote_sha; do
         err "pre-push: the full gate output is kept at $log"
         goh_slept_since "$slept_mark" || true
         # Bounded: the newest failures are evidence, the rest is clutter.
-        find "$log_root" -name '*.log' -type f -print0 | xargs -0 ls -t | tail -n "+$((keep_failed_logs + 1))" \
+        find "$log_root" -name '*.log' -type f -print0 | xargs -0 -r ls -t | tail -n "+$((keep_failed_logs + 1))" \
             | while IFS= read -r old; do rm -f "$old"; done
         exit 1
     fi

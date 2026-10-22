@@ -210,3 +210,23 @@ def test_goh_live_runs_the_working_trees_binary_not_heads(tmp_path: Path) -> Non
         stdin=subprocess.DEVNULL,
     )
     assert "LIVE-RUST-EDIT-9031" not in head.stdout + head.stderr
+
+
+def test_goh_live_delta_empty_on_clean_checkout_with_no_untracked_files(tmp_path: Path) -> None:
+    """goh_live_delta returns empty on a clean checkout; GNU xargs on empty input without -r
+    would execute shasum on stdin and produce a false delta (Linux container defect)."""
+    from test_gate_environment import _clean_checkout_of_todays_gates
+
+    gates = _clean_checkout_of_todays_gates(tmp_path)
+    res = subprocess.run(
+        [
+            "bash",
+            "-c",
+            f". '{gates}/gates/_git_env.sh'; . '{gates}/gates/_goh_bin.sh'; goh_live_delta '{gates}'",
+        ],
+        capture_output=True,
+        text=True,
+        stdin=subprocess.DEVNULL,
+    )
+    assert res.returncode == 0, res.stderr
+    assert res.stdout.strip() == "", f"expected empty delta, got: {res.stdout!r}"
