@@ -170,9 +170,9 @@ then `ruff format` (goh's 555 calls), or `--seed` (`498eb9a`) for what a repo ca
       calls, **996 findings**, 17 repos exit 1. Three rows are closed: ~/.claude/skills (outside this table's scope, 6.14; 35 calls declared 2026-10-14, claude-skills `9618499`, floor 35 proved red at 36), gates_of_heck
       (511 then, 555 calls in 186 files when declared, `df8f9c2`: no allowlist, 614 calls read,
       0 findings, floor 550 proved red at 10000) and ZoneWM (118 then, its `c8766158`: 123
-      declared, floor 110 of 125). **15 rows remain, 367 findings as of 2026-10-09** (re-read each
-      before its round): media_server 88, Finance/zinc 71, divoom-control 52, scripts 52,
-      monitor 39, koffee_big 23, ztools 13, routines 8, games 6, app_updates 5, old_phones 4,
+      declared, floor 110 of 125). **12 rows remain, 232 findings as of 2026-10-09** (re-read each
+      before its round): Finance/zinc 71, divoom-control 52, scripts 52,
+      koffee_big 23, ztools 13, games 6, app_updates 5, old_phones 4,
       Finance/salary 2, Finance/zinc-core 2, CadGoose 1, sys_updater 1. Already swept and clean:
       ZeroThunder 165 calls, necrohand 76, CadGoose2 23, game_asset_factory 41. 10 estate repos
       track no Python and exit 0 "not applicable". The debt is SPREAD (389 files carried it on
@@ -328,17 +328,12 @@ ztools' exempt key, Finance's `"$root.out"`, ZeroThunder's dropped process handl
   here"); a value that is not a whole number refuses the whole `.gatesrc` naming the key. ZoneWM's
   `GOH_SUBPROCESS_STDIN_MIN_CALLS=110` is read exactly as before; its below-floor message now
   carries the `[subject]` tag, and a `--seed` under the floor is refused.
-- **media_server, read 2026-10-14 at `e1321b9`, red at its next push on three counts:** the
-  stock hooks (the reinstall above), its stdin declaration (3.3's table), and `cargo audit` in
+- **media_server, read 2026-10-14 at `e1321b9`, red at its next push on two counts:** the
+  stock hooks (the reinstall above) and `cargo audit` in
   `crates/yaml-mini-rs`, which denies RUSTSEC-2024-0449 (`unsafe-libyaml` 0.2.11 unmaintained,
   2024-03-25): replace the YAML dependency or record the advisory in the ignore ratchet with its
-  reason. 5.1 waits on all three.
-- **ZeroThunder, after 3.4 (`0c93f4d`):** delete its own `tools/check_subprocess_stdin.py`,
-  repoint `tests/e2e/verify.py:290` + `tests/e2e/gate_tiers.py:61`. It is a NAMED VIOLATION ("a
-  vendored copy of a house checker -- delete it and run the shared one"). Its rule and the house
-  rule agree: both accept `stdin=None` bare (read 2026-10-13; the earlier note that it wanted a
-  comment above it was wrong).
-- **The 15 repos left in 3.3's table, red at their next commit since `0c93f4d` (3.4)**, one
+  reason. 5.1 waits on both.
+- **The 12 repos left in 3.3's table, red at their next commit since `0c93f4d` (3.4)**, one
   session each: declare or `--seed`, set `GOH_SUBPROCESS_STDIN_MIN_CALLS` (a repo that must defer
   writes `GOH_SUBPROCESS_STDIN=off`, which is an opt-out in its own file, not a default). A
   declaration is mechanical where no call needs the caller's stdin (the method is in the
@@ -352,24 +347,16 @@ ztools' exempt key, Finance's `"$root.out"`, ZeroThunder's dropped process handl
   `/private/tmp/zt-gold`; break-probes 1 and 2 red in HeadlessTests, break 3 (the guard removed
   from the loop) caught by no unit test, and the machine was in the lid-closed arm, so its 15/15
   says nothing about display independence. ZeroThunder's to land or drop; 4.6 is the house half.
-- **ZeroThunder, after `f62dbb3` (4.6), red at its next commit:** the display seam's frames rule
-  reports 26 sites, read-only on 2026-10-13: six hand draws of `metalView` (`AppDelegate+GoldenReport.swift:241`,
-  `AppDelegate+Setup.swift:206`, `DebugSocketFrameStep.swift:58`,
-  `DebugSocketServer+DragSimulation.swift:86`, `AppDelegate+CoverageExercise3.swift:46`,
-  `AppDelegate+CoverageExercise5.swift:51`) and 20 harnesses handing the app `--golden-frames`
-  with no `require_frames_drawn(requested, drawn)`. The uncommitted `GoldenFrameDelivery.swift`
-  above is the renderer's half of that count; an offscreen render loop is the hand draws' fix, and
-  an attended debugger keeps its draw with a justified `screen-ok:` marker.
-- **Nine repos, after `496b6a5` (6.9), red at their next push until they act:** old_phones (99
-  early-exit pipes), koffee_big (29), Finance (16), scripts (12), koffee_oss (11), apes (7),
-  CadGoose (7), remote_dotfiles (3), ztools (1), counted 2026-10-12. Fix each
+- **Seven repos, after `496b6a5` (6.9), red at their next push until they act:** koffee_big (29),
+  scripts (12), koffee_oss (11), apes (7), CadGoose (7), remote_dotfiles (3), ztools (1), counted
+  2026-10-12. Fix each
   (`out="$(producer)"; grep -q PAT <<< "$out"`, the shape every finding prints), or adopt what is
   left with `goh early-exit-pipe --seed` and commit `early_exit_pipe_seed.json`, which may only
   fall. By owner ruling (2026-10-12) they stay red until that repo's own Phase 0 takes them.
-- **Eight repos, after `1c4be61` (6.2), red at the next push until their hooks and gate run Python
+- **Five repos, after `1c4be61` (6.2), red at the next push until their hooks and gate run Python
   through the seam:** a bare `python3` in `.githooks/*` or `tools/gate.sh` is refused. Counted
-  2026-10-12 (calls): ZeroThunder 14, app_updates 10, Finance/salary 3, Finance/zinc-core 3,
-  games 2, monitor 2, scripts 1 (ZoneWM's one is fixed in its own tree). The fix is mechanical:
+  2026-10-12 (calls): Finance/salary 3, Finance/zinc-core 3, games 2, monitor 2, scripts 1
+  (ZoneWM's one is fixed in its own tree). The fix is mechanical:
   `python3 X` becomes `bash "$GOH/gates/python.sh" X`. A repo whose tools need a library (necrohand's
   spacy) pins the version that has it: a committed `.python-version`, or a `.venv`, which the seam
   prefers and checks against the pin.
@@ -384,9 +371,6 @@ ztools' exempt key, Finance's `"$root.out"`, ZeroThunder's dropped process handl
   `.github/workflows/build_and_release.yml:154` (the tap clone puts `${TAP_TOKEN}` in the URL).
   Clone without it and pass the token as `git -c http.extraheader="AUTHORIZATION: basic ..."` or
   through a credential helper reading the variable; 6.8's house tap-bump step replaces the line.
-- **scripts, after `13f11b4` (6.11):** `test_flatten_git_history.sh` writes the real
-  `backup/flatten-records` ref; the push and commit gates name it on every run. Build the history
-  in a scratch repository (`_gitutil.scratch_git`) instead.
 - **necrohand, CadGoose2 and ZeroThunder, after `85d0b51` (6.1):** necrohand and CadGoose2 replace
   `tools/check_git_env.py` with `python3 "$GOH_DIR/checks/check_git_env.py"` and move
   `git_env.SOURCES`, `CENSUS_EXEMPT` and `_SHELL_SITES` into `tools/git_env.json` (`sources`,
@@ -425,10 +409,7 @@ ztools' exempt key, Finance's `"$root.out"`, ZeroThunder's dropped process handl
   `goh_tui::outln!("{OK} ...")` in place of each `[ Ok  ]`, and re-seed `status-markers` smaller.
   Re-measured 2026-10-12 by the consolidation: 43 hand-rolled `[ ==> ]` prefixes left in its Rust
   binaries.
-- **ztools, after `5c5868e` (6.5):** its next release through the kit refuses while its CI on
-  HEAD is red (red since 2026-10-10: ci.yml reads the gitignored `.python-version`). Fix the CI;
-  `--no-ci-check` exists, says so aloud, and is not the fix. sys_updater has no workflow and
-  releases with "no CI" stated.
+- **sys_updater, after `5c5868e` (6.5):** has no workflow and releases with "no CI" stated.
 - **divoom-control, monitor, antiknob, CadGoose and ztools, after `bfac28b` (6.8):** each pushes
   its homebrew-tap bump itself (`scripts/release.sh`, `release.sh`, `release.sh`,
   `scripts/push_release.sh`, `tools/release.sh` with `tools/upgrade_tap.py`), so the tap's gate
@@ -477,8 +458,7 @@ ztools' exempt key, Finance's `"$root.out"`, ZeroThunder's dropped process handl
   (`1548344` cut it 206-239 s -> 51 s at load 56 under xdist, and found the cost was serial
   execution rather than repetition, so a scoped proven cache for the repo tests is no longer
   needed); `tools/gate.sh:88` still loops crates with `xargs -P 4`: adopt `rust_gate.sh
-  --each-crate` and `GOH_RUST_LINT_CARGO=cargo-zigbuild` (v0.22.0). 88 undeclared stdin calls
-  (3.3).
+  --each-crate` and `GOH_RUST_LINT_CARGO=cargo-zigbuild` (v0.22.0).
 - **divoom-control** [`0ac21228`]: CI installs with `required_tools.py --layer structural --names`
   plus apt, not `--repo . --install`.
 - **Every consumer pushing by branch name over HTTPS:** `push_gate.sh` refuses a ref that moved
