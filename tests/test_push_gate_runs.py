@@ -283,3 +283,60 @@ def test_the_stable_export_names_its_build_dirs_as_cargo_does(tmp_path):
     run_dir = Path(_cwds(tmp_path)[0]).parent
     lines = Path(f"{run_dir}.source").read_text().splitlines()
     assert f"build-dir {used}" in lines[1:], (used, lines)
+
+
+# ── the gates_of_heck sibling ─────────────────────────────────────────────────────────────────
+# antiknob, 2026-10-24: `goh-tui = { path = "../gates_of_heck/crates/goh-tui" }` resolves beside the
+# checkout, and the export (<export root>/<repo>-<hash>/<repo>) has nothing beside its tree, so the
+# push died on "no matching package named `goh-tui`". The consumer's workaround -- a link made in its
+# own tools/gate.sh -- was then named here as "wrote outside its tree".
+
+SIBLING_GATE = GATE.replace(
+    "exit 0\n",
+    'printf "sibling=%s\\n" "$(readlink ../gates_of_heck || echo NONE)" >> "$out"\n'
+    'printf "tui=%s\\n" "$([ -d ../gates_of_heck/crates/goh-tui ] && echo found || echo MISSING)" >> "$out"\n'
+    "exit 0\n",
+)
+TUI_DEP = '[dependencies]\ngoh-tui = { path = "../gates_of_heck/crates/goh-tui" }\n'
+
+
+def _sibling_repo(tmp_path: Path, cargo: str | None, gate: str = SIBLING_GATE) -> Path:
+    repo = _repo(tmp_path)
+    (repo / "tools" / "gate.sh").write_text(gate)
+    if cargo is not None:
+        (repo / "Cargo.toml").write_text('[package]\nname = "c"\nversion = "0.1.0"\n' + cargo)
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "-qm", "sibling fixture")
+    return repo
+
+
+def _report(tmp_path: Path) -> dict[str, str]:
+    lines = (tmp_path / "report.txt").read_text().splitlines()
+    return dict(line.split("=", 1) for line in lines)
+
+
+def test_a_consumer_that_declares_the_goh_sibling_gets_it_in_the_export(tmp_path):
+    repo = _sibling_repo(tmp_path, TUI_DEP)
+    got = _push(repo, tmp_path, tmp_path / "exports")
+    assert got.returncode == 0, got.stdout + got.stderr
+    seen = _report(tmp_path)
+    assert seen["sibling"] == str(REPO_ROOT) and seen["tui"] == "found", seen
+    assert "outside its tree" not in got.stdout + got.stderr, got.stdout + got.stderr
+    assert _run_litter(tmp_path / "exports") == []
+
+
+def test_a_consumer_that_does_not_declare_it_gets_no_sibling(tmp_path):
+    repo = _sibling_repo(tmp_path, '[dependencies]\nserde = "1"\n')
+    got = _push(repo, tmp_path, tmp_path / "exports")
+    assert got.returncode == 0, got.stdout + got.stderr
+    assert _report(tmp_path)["sibling"] == "NONE", _report(tmp_path)
+
+
+def test_a_sibling_the_gate_makes_itself_is_still_named_as_litter(tmp_path):
+    """The exemption is for the run's own link only: any other thing a gate writes beside its tree
+    is still named, so the workaround stays visible if a consumer keeps it for another name."""
+    gate = GATE.replace("exit 0\n", 'ln -s /tmp "../other_sibling"\nexit 0\n')
+    repo = _sibling_repo(tmp_path, TUI_DEP, gate)
+    got = _push(repo, tmp_path, tmp_path / "exports")
+    assert got.returncode == 0, got.stdout + got.stderr
+    assert "outside its tree (removed): other_sibling" in got.stdout + got.stderr
