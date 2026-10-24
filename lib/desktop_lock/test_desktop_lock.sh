@@ -15,7 +15,7 @@ source desktop_lock.sh
 
 PASS=0
 FAIL=0
-TMP="$(mktemp -d "${TMPDIR:-/tmp}/desktop-lock-test.XXXXXX")"
+TMP="$(mktemp -d "${TMPDIR:-/tmp}/goh-desktop-lock-test.XXXXXX")"
 trap 'rm -rf "$TMP"' EXIT
 check() {
     if [[ "$2" == "$3" ]]; then ok "$1"; PASS=$((PASS + 1))
