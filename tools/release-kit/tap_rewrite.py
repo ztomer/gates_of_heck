@@ -44,7 +44,10 @@ class Shape(Exception):
     """A shape this rewriter does not know. Refused by name, never guessed."""
 
 
-HEREDOC = re.compile(r"<<[~-]?([A-Z_][A-Z0-9_]*)")
+# A heredoc opener: `<<TAG`, `<<~TAG`, `<<-TAG`, and the same with the tag QUOTED (`<<~'TAG'`,
+# `<<-"TAG"`): a quoted tag is a heredoc whose body is raw text, and a shell script is exactly what
+# a cask embeds that way (divoom-control's uninstall script). Group 1/2/3 = bare/single/double.
+HEREDOC = re.compile(r"""<<[~-]?(?:([A-Z_][A-Z0-9_]*)|'([^'\n]+)'|"([^"\n]+)")""")
 KEYWORD = re.compile(r"^(?:if|unless|case|while|until|begin|for)\b")
 
 
@@ -83,7 +86,7 @@ def scan(lines: list[str]) -> dict:
         stripped = code.strip()
         doc = HEREDOC.search(code)
         if doc:
-            heredoc = doc.group(1)
+            heredoc = next(g for g in doc.groups() if g)
         res = RESOURCE.match(code)
         field = FIELD.match(code)
         if res and stack in (["class"], ["cask"]):

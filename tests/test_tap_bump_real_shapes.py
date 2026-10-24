@@ -6,7 +6,8 @@ the source tarball's digest and kept their v0.54.0 URLs. Both passed the tap's g
 fixture's URL shape (a hard-coded tag on a cask with no `version`) matched none of the tap's casks,
 so it could not see either.
 
-The fixtures under tests/fixtures/homebrew_tap/ are COPIES of homebrew-tap at `ad99f17`. The
+The fixtures under tests/fixtures/homebrew_tap/ are COPIES of homebrew-tap at `ad99f17` (divoom-control.rb refreshed from
+`e2901e7`: its quoted-tag heredoc). The
 result is read back by RUBY, not by the rewriter's own reader: each file is evaluated against a
 recording stub of the Homebrew DSL, so `url "...v#{version}..."` interpolates the way brew would,
 and a resource's `sha256` is the one inside its own block. A reader shared with the rewriter would
@@ -257,3 +258,41 @@ def test_the_fixtures_are_the_taps_real_files():
         "Formula/multitop.rb",
         "Formula/ztools.rb",
     ]
+
+
+@pytest.mark.parametrize(
+    "opener",
+    [
+        "<<~'STOP'",
+        '<<~"STOP"',
+        "<<-'STOP'",
+        '<<-"STOP"',
+        "<<'STOP'",
+        "<<~STOP",
+        "<<-STOP",
+        "<<STOP",
+    ],
+)
+def test_every_heredoc_opener_hides_its_body_from_the_block_scan(opener):
+    """A heredoc body is text, whatever the quoting of its tag: a cask embeds a shell script this
+    way, and its `if`/`for` lines must not read as Ruby blocks (divoom-control, 2026-10-24)."""
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location(
+        "tap_rewrite", REPO_ROOT / "tools" / "release-kit" / "tap_rewrite.py"
+    )
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    cask = [
+        'cask "x" do',
+        '  version "1.0.0"',
+        '  sha256 "aa"',
+        '  url "https://e/v#{version}/x.dmg"',
+        f"  script = {opener}",
+        '    if [ -z "$x" ]; then',
+        "      for f in *; do echo $f; done",
+        "    STOPPED",
+        "  STOP",
+        "end",
+    ]
+    assert mod.scan(cask)["top"] == {"version": 1, "sha256": 2, "url": 3}
