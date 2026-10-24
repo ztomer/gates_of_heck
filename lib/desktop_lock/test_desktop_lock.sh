@@ -15,6 +15,8 @@ source desktop_lock.sh
 
 PASS=0
 FAIL=0
+TMP="$(mktemp -d "${TMPDIR:-/tmp}/desktop-lock-test.XXXXXX")"
+trap 'rm -rf "$TMP"' EXIT
 check() {
     if [[ "$2" == "$3" ]]; then ok "$1"; PASS=$((PASS + 1))
     else err "$1 -- expected '$3', got '$2'"; FAIL=$((FAIL + 1)); fi
@@ -48,7 +50,33 @@ assert_held_by() {  # assert_held_by <pid>
 
 rm -rf "$DESKTOP_LOCK_DIR"
 
+# Run a command with a WALL CLOCK on it. Without this, a lock that regressed to spinning on a
+# directory it cannot clear would hang the suite instead of going red. Returns 124 when it fired.
+run_bounded() {  # run_bounded <seconds> <command...>
+    local secs="$1"; shift
+    "$@" & local p=$! i=0
+    while kill -0 "$p" 2>/dev/null && (( i < secs * 10 )); do sleep 0.1; i=$((i + 1)); done
+    if kill -0 "$p" 2>/dev/null; then
+        kill -9 "$p" 2>/dev/null; wait "$p" 2>/dev/null
+        return 124
+    fi
+    wait "$p"
+}
+
+# One taker, in its own process, with the environment the caller sets for it.
+take() {  # take <label>   -> prints GOT when it acquired; the exit code is acquire's
+    bash -c "
+        source '${GOH_DIR:-$GOH_ROOT}/tui/lib.sh'; source '$PWD/desktop_lock.sh'
+        desktop_lock_acquire '$1' && echo GOT
+    " 2>&1
+}
+
 section "desktop lock"
+
+# 0. THE PATH IS THE HOUSE ONE. Every other project on this Mac takes this lock at this path, so a
+#    move here does not break one tool -- it silently removes the exclusion between every pair of
+#    them. Pinned because it is the one assertion that fails the moment anyone edits a string.
+check "the lock lives at the house-wide path" "$DESKTOP_LOCK_DIR" "/tmp/mac-desktop-ui.lock"
 
 # 1. MUTUAL EXCLUSION. The lock must actually be held against a second taker.
 PID="$(holder 30)"; sleep 1; assert_held_by "$PID"
@@ -57,6 +85,21 @@ bash -c "
     DESKTOP_LOCK_TIMEOUT=2 desktop_lock_acquire 'intruder'
 " >/dev/null 2>&1
 check "a second acquire is refused while a live peer holds it" "$?" "1"
+
+# 1b. ... and the refusal quotes the ceiling the ENVIRONMENT asked for, not the module default.
+#     DESKTOP_LOCK_TIMEOUT is read as ${DESKTOP_LOCK_TIMEOUT:-300}; were it ignored the message
+#     would say 300 and the case above would still pass with the wrong default in place.
+OUT="$(DESKTOP_LOCK_TIMEOUT=2 take 'intruder')"
+check "the wait bound comes from the environment, not the default" \
+    "$(grep -c 'after 2s' <<<"$OUT")" "1"
+
+# 1c. The same seam for the AGE ceiling. The holder is live and its start time matches, so with
+#     any real ceiling this is refused (case 1). At 0 the ceiling is already passed, so the wedge
+#     defence fires and takes the lock from a perfectly live holder.
+OUT="$(DESKTOP_LOCK_TIMEOUT=2 DESKTOP_LOCK_MAX_HOLD=0 run_bounded 20 take 'age ceiling from env')"
+check "the age ceiling comes from the environment too" "$(grep -c GOT <<<"$OUT")" "1"
+kill -9 "$PID" 2>/dev/null; wait "$PID" 2>/dev/null
+rm -rf "$DESKTOP_LOCK_DIR"
 
 # 2. SIGKILL -- the case a trap cannot cover. Must reclaim, not wait.
 kill -9 "$PID" 2>/dev/null; wait "$PID" 2>/dev/null
@@ -78,6 +121,16 @@ OUT="$(DESKTOP_LOCK_TIMEOUT=5 bash -c "
     DESKTOP_LOCK_TIMEOUT=5 desktop_lock_acquire 'after reuse' && echo GOT
 " 2>&1)"
 check "a recycled PID does not impersonate the owner" "$(grep -c GOT <<<"$OUT")" "1"
+rm -rf "$DESKTOP_LOCK_DIR"
+
+# 3b. A TRUNCATED owner record is not a stale one. This shell is alive and owns the number in
+#     field 1; the start-time and label lines were never written. Reading that as stale would
+#     delete a lock a live peer is sitting in -- the one outcome the lock exists to prevent --
+#     and reading it as held is bounded by the age ceiling, which case 4 proves fires.
+mkdir -p "$DESKTOP_LOCK_DIR"
+printf '%s\n' "$$" > "$DESKTOP_LOCK_DIR/owner"
+DESKTOP_LOCK_TIMEOUT=2 take 'truncated record' >/dev/null 2>&1
+check "a truncated owner record with a live pid is not stolen" "$?" "1"
 rm -rf "$DESKTOP_LOCK_DIR"
 
 # 4. WEDGED BUT ALIVE. Liveness says "busy" forever; only the age ceiling frees
@@ -131,6 +184,18 @@ bash -c "
 " >/dev/null 2>&1
 check "a release does not delete a lock whose owner cannot be read" \
     "$([[ -d "$DESKTOP_LOCK_DIR" ]] && echo held || echo freed)" "held"
+rm -rf "$DESKTOP_LOCK_DIR"
+
+# 5d. A STALE lock directory is reclaimed even when it holds something besides its owner record.
+#     Clearing it must not mean "unlink owner, then rmdir", which silently does nothing for any
+#     other content: the reclaim is then a no-op, the next mkdir fails again, and acquire prints
+#     "stale desktop lock" forever. run_bounded turns that hang into a red assertion (124, not 0).
+mkdir -p "$DESKTOP_LOCK_DIR"
+printf '999999\nThu Jan  1 00:00:00 1970\ndead owner\n' > "$DESKTOP_LOCK_DIR/owner"
+touch "$DESKTOP_LOCK_DIR/.DS_Store"
+DESKTOP_LOCK_TIMEOUT=5 run_bounded 20 take 'extra content' >"$TMP/extra.txt" 2>&1
+check "a stale lock holding extra content is reclaimed" "$?" "0"
+check "  and it took the lock rather than spinning" "$(grep -c GOT "$TMP/extra.txt")" "1"
 rm -rf "$DESKTOP_LOCK_DIR"
 
 # 6. THE TRAP. Normal exit must leave nothing behind.
