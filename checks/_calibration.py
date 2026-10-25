@@ -30,6 +30,8 @@ one file -- the house registry -- and holds it to the estate.
 
 from __future__ import annotations
 
+import ast
+import hashlib
 import json
 import os
 import re
@@ -173,16 +175,73 @@ def owner_of(path: str) -> str:
     return "the estate that owns it"
 
 
-def claims(path: str) -> set[str] | None:
-    """The registry keys a prover says it substantiates, or None when it does not say.
+# What a line of a `--proves` answer must look like: one registry key. A prover that ignored the
+# flag and ran its full path prints a build log or a summary, and none of that is a key.
+PROVES_KEY = re.compile(r"^[A-Za-z0-9_][A-Za-z0-9_.-]*$")
+PROVES_FLAG = "--proves"
+
+
+def dispatches_proves(path: str) -> str | None:
+    """Why `path` must not be asked `--proves`, or None when its CODE dispatches on the flag.
+
+    Read without running it (G1b(a), 2026-10-24): routines' check_tabs_contract, before its
+    b774d20, had no `--proves`; asked, it ignored the flag and ran its FULL path -- a cargo build
+    and the real binary -- and its rc-0 stdout became the claim set. Running a prover to find out
+    whether it answers is exactly the run that must not happen, so the question is asked of its
+    source: the literal `--proves` has to appear as CODE (an argv comparison, an `add_argument`),
+    never only as a docstring or a comment, which are prose about a flag rather than a dispatch.
+    """
+    if not path.endswith(".py"):
+        return f"{path} is not a Python prover; --proves is asked of Python provers only"
+    try:
+        with open(path, encoding="utf-8") as handle:
+            tree = ast.parse(handle.read(), filename=path)
+    except (OSError, SyntaxError, ValueError) as error:
+        return f"{path} cannot be read as Python ({error})"
+    prose: set[int] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Expr) and isinstance(node.value, ast.Constant):
+            prose.add(id(node.value))
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Constant) and node.value == PROVES_FLAG and id(node) not in prose:
+            return None
+    return (
+        f"{path} does not dispatch on --proves (the flag is nowhere in its code), so it was not "
+        f"run: asking it would run its full path and read whatever it prints as a claim"
+    )
+
+
+# Answers already asked for in this process, keyed by the prover's CONTENT as well as its path:
+# a prover rewritten in place (the calibration probe does exactly that) is a different prover.
+_ANSWERS: dict[tuple[str, bytes], tuple[set[str] | None, str | None]] = {}
+
+
+def claims_answer(path: str) -> tuple[set[str] | None, str | None]:
+    """The registry keys a prover says it substantiates, or None and the reason it did not say.
 
     Asked of the prover with `--proves` rather than inferred from its filename: a name-matcher
     cannot see that a gate is proven by a composed-gate assertion rather than a case over it, so it
-    would report a sound citation as a defect.
+    would report a sound citation as a defect. But asked ONLY of a prover whose code dispatches on
+    the flag (`dispatches_proves`), and its answer is a claim only in the recognisable form -- one
+    registry key per line -- so a prover that ran something else is never read as a claim set.
     """
     try:
+        with open(path, "rb") as handle:
+            key = (path, hashlib.sha256(handle.read()).digest())
+    except OSError:
+        return _ask(path)
+    if key not in _ANSWERS:
+        _ANSWERS[key] = _ask(path)
+    return _ANSWERS[key]
+
+
+def _ask(path: str) -> tuple[set[str] | None, str | None]:
+    refusal = dispatches_proves(path)
+    if refusal is not None:
+        return None, refusal
+    try:
         result = subprocess.run(
-            [sys.executable, path, "--proves"],
+            [sys.executable, path, PROVES_FLAG],
             stdin=subprocess.DEVNULL,
             capture_output=True,
             text=True,
@@ -190,14 +249,28 @@ def claims(path: str) -> set[str] | None:
             check=False,
             env=foreign_repo_env(),
         )
-    except (OSError, subprocess.SubprocessError):
-        return None
+    except (OSError, subprocess.SubprocessError) as error:
+        return None, f"{path} could not be asked --proves ({error})"
     if result.returncode != 0:
-        return None
+        return None, f"{path} answered --proves with exit {result.returncode}"
+    lines = [line.strip() for line in result.stdout.splitlines() if line.strip()]
     # An EMPTY answer is a prover that did not say, never one that claims nothing: a pytest module
     # run as a script ignores `--proves`, exits 0 and prints nothing, and that read as "proves no
     # gate" made eight sound citations look false (BACKLOG 2.1).
-    return {line.strip() for line in result.stdout.splitlines() if line.strip()} or None
+    if not lines:
+        return None, f"{path} printed nothing for --proves"
+    stray = next((line for line in lines if not PROVES_KEY.match(line)), None)
+    if stray is not None:
+        return None, (
+            f"{path} answered --proves with a line that is not a registry key ({stray[:60]!r}): "
+            f"an answer is one key per line, and anything else is output, not a claim"
+        )
+    return set(lines), None
+
+
+def claims(path: str) -> set[str] | None:
+    """The registry keys a prover says it substantiates, or None when it does not say."""
+    return claims_answer(path)[0]
 
 
 def load(root: str) -> dict | None:
@@ -339,6 +412,7 @@ def external_note(root: str, data: dict) -> list[str]:
     rather than assumed.
     """
     by_owner: dict[str, list[str]] = {}
+    silent: dict[str, tuple[list[str], str]] = {}
     for key, why in sorted(data.get("proven_by", {}).items()):
         if not isinstance(why, str):
             continue
@@ -353,10 +427,24 @@ def external_note(root: str, data: dict) -> list[str]:
             continue  # inside this repo, verified above
         if committed(os.path.dirname(os.path.dirname(path)), path) is False:
             continue  # already a finding
-        by_owner.setdefault(owner_of(path), []).append(key)
-    return [
+        # The sentence below says the prover LISTS the key, so the prover is asked: a note that
+        # asserted it without asking was a claim this gate never checked.
+        claimed, reason = claims_answer(path)
+        if claimed is None:
+            silent.setdefault(owner_of(path), ([], reason or "no answer"))[0].append(key)
+            continue
+        if key in claimed:
+            by_owner.setdefault(owner_of(path), []).append(key)
+    lines = [
         f"{len(keys)} entr{'y' if len(keys) == 1 else 'ies'} cite {owner} -- committed there, and "
         f"it lists each of them among what it proves ({', '.join(keys[:4])}"
         f"{', ...' if len(keys) > 4 else ''})"
         for owner, keys in sorted(by_owner.items())
     ]
+    lines += [
+        f"{len(keys)} entr{'y' if len(keys) == 1 else 'ies'} cite {owner} -- committed there, but it "
+        f"did not answer --proves, so none of them is checked ({', '.join(keys[:4])}"
+        f"{', ...' if len(keys) > 4 else ''}): {reason}"
+        for owner, (keys, reason) in sorted(silent.items())
+    ]
+    return lines

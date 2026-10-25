@@ -240,7 +240,13 @@ def _external(td, estate):
     os.makedirs(os.path.join(other, "tools"))
     os.makedirs(os.path.join(other, ".git"))
     prover = os.path.join("tools", "check_other_prover.py")
-    _write(other, prover, '"""prover."""\nprint("clean")\n')
+    # It ANSWERS --proves, with a different gate: a prover that ignored the flag would be a prover
+    # that was never asked (G1b(a)), not one that claims nothing.
+    _write(
+        other,
+        prover,
+        '"""prover."""\nimport sys\nif "--proves" in sys.argv:\n    print("other_gate")\n',
+    )
     _gates(estate, ["check_sound_gate.py"])
     with open(os.path.join(estate, REGISTRY), "w", encoding="utf-8") as handle:
         json.dump({"proven_by": {"sound_gate": "tools/check_other_prover.py -- red"}}, handle)
@@ -265,6 +271,17 @@ def _external(td, estate):
             bad += 1
         else:
             ok("probe: a sound external citation passes")
+        # G1b(a): a prover whose code does not dispatch on --proves is never RUN to ask it --
+        # routines' check_tabs_contract ran a cargo build and the real binary that way, and its
+        # rc-0 output became the claim set.
+        marker = os.path.join(td, "full_path_ran")
+        _write(other, prover, f'"""--proves in prose only."""\nopen({marker!r}, "w").close()\n')
+        claimed, reason = _calibration.claims_answer(os.path.join(other, prover))
+        if claimed is None and not os.path.exists(marker) and reason and "dispatch" in reason:
+            ok("probe: a prover that ignores --proves is not run, and the reason is named")
+        else:
+            err(f"probe: a prover that ignores --proves was run or read ({claimed}, {reason})")
+            bad += 1
     finally:
         _calibration.ESTATE_ROOTS, _calibration.ESTATE_OWNERS = saved
     return bad

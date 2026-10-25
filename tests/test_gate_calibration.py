@@ -167,6 +167,78 @@ def test_a_prover_that_answers_nothing_has_not_said_rather_than_claimed_nothing(
     assert reader.claims(str(speaks)) == {"md_links"}
 
 
+def test_a_prover_that_does_not_dispatch_on_proves_is_never_run(tmp_path):
+    """G1b(a), 2026-10-24. routines' check_tabs_contract (before its b774d20) had no `--proves`:
+    asked for its claims, it ignored the flag and ran its FULL path -- a cargo build and the real
+    binary -- and its rc-0 stdout became the claim set. A prover that does not dispatch on the flag
+    in its CODE is not asked at all, and the refusal says why."""
+    marker = tmp_path / "full_path_ran"
+    ignores = tmp_path / "check_ignores.py"
+    ignores.write_text(
+        '"""Run me with --proves to list my gates."""  # the flag in prose is not a dispatch\n'
+        f"open({str(marker)!r}, 'w').write('built')\n"
+        "print('check_ignores')\n"
+    )
+    claimed, reason = reader.claims_answer(str(ignores))
+    assert claimed is None
+    assert not marker.exists(), (
+        "the prover's full path ran: --proves was asked of a prover that ignores it"
+    )
+    assert reason and "does not dispatch on --proves" in reason, reason
+    assert reader.claims(str(ignores)) is None
+
+
+def test_an_answer_that_is_not_a_list_of_keys_is_not_a_claim(tmp_path):
+    """A prover that dispatches but answers in prose (a build log, a summary) has not stated a
+    claim set; its lines are refused rather than read as registry keys."""
+    chatty = tmp_path / "check_chatty.py"
+    chatty.write_text(
+        "import sys\n"
+        "if '--proves' in sys.argv:\n"
+        "    print('Compiling routines v0.4.0')\n"
+        "    print('ok: 3 checks passed')\n"
+    )
+    claimed, reason = reader.claims_answer(str(chatty))
+    assert claimed is None
+    assert reason and "not a registry key" in reason, reason
+
+
+def test_the_external_note_does_not_claim_what_a_silent_prover_never_said(tmp_path, monkeypatch):
+    """The note said every external prover "lists each of them among what it proves" without
+    asking any of them: a sentence the gate never checked. A prover that did not answer is named
+    as one that did not, with its reason."""
+    outside = tmp_path / "elsewhere"
+    outside.mkdir()
+    silent = outside / "check_gate_canary.py"
+    silent.write_text("print('a full run')\n")
+    subprocess.run(["git", "init", "-q", str(outside)], check=True, stdin=subprocess.DEVNULL)
+    subprocess.run(["git", "-C", str(outside), "add", "."], check=True, stdin=subprocess.DEVNULL)
+    subprocess.run(
+        [
+            "git",
+            "-C",
+            str(outside),
+            "-c",
+            "user.name=t",
+            "-c",
+            "user.email=t@t",
+            "commit",
+            "-qm",
+            "x",
+        ],
+        check=True,
+        stdin=subprocess.DEVNULL,
+    )
+    root = tmp_path / "repo"
+    root.mkdir()
+    monkeypatch.setattr(reader, "resolves_to", lambda _root, _cited: str(silent))
+    monkeypatch.setattr(reader, "owner_of", lambda _path: "elsewhere/check_gate_canary.py")
+    data = {"proven_by": {"md_links": "check_gate_canary.py -- a case over it"}}
+    note = " ".join(reader.external_note(str(root), data))
+    assert "lists each of them" not in note, note
+    assert "did not answer --proves" in note and "md_links" in note, note
+
+
 # ── a false claim goes red THROUGH THE GATE, not only through the module ──────
 
 

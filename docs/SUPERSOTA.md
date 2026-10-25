@@ -250,7 +250,12 @@ each of them a way the registry has lied or could:
   sweep from 11 self-proofs to 10 and left the gate GREEN; the registry reader
   fails that tree;
 * **a prover outside this repo lists the key among what it proves** (`--proves`),
-  and its estate is named in the output rather than assumed.
+  and its estate is named in the output rather than assumed. The prover is asked
+  only when its CODE dispatches on the flag (read from its source, never by running
+  it), and its answer is a claim only as one registry key per line: routines'
+  `check_tabs_contract` before its `b774d20` ignored the flag, ran a cargo build and
+  the real binary, and its rc-0 output became the claim set (G1b(a), 2026-10-25). A
+  prover that does not answer is named as one that did not, with the reason.
 
 **Not checked here, and said so rather than implied.** The 18 canary citations
 are verified for the two things this repo *can* see (committed; claimed) — the
