@@ -209,12 +209,15 @@ ESTATE = (
         "checker": "home-paths",
         "root": "~/Projects/mediaremote-adapter",
         "scope": (".",),
-        "ext": ".m",
+        "ext": ".swift",
         "plant": "\ncd /Users/someone/Projects/thing && ./build\n",
         "args": (),
         "why": "the one repo in this estate clean under this gate today, which is exactly what an "
         "attributable corpus needs. Measured, not assumed: eight other candidate repos are red "
-        "under it before any plant lands.",
+        "under it before any plant lands. The plant lands in Swift since 2026-10-24: the repo "
+        "became a Swift package over a VENDORED Objective-C core, every tracked .m is under "
+        "`Vendor/`, which its GOH_EXCLUDE exempts, and the corpus went blind ('no tracked .m "
+        "file') on the extension rather than on the gate.",
     },
     {
         "checker": "claim-derivation",
