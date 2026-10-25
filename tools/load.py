@@ -2,6 +2,7 @@
 """The ONE way to make load on this machine -- and it reaps itself.
 
     tools/load.py 8 -- ./my_test.sh        # eight spinners, the command, then no spinner
+    tools/load.py --max 2h 8 -- ./long.sh  # the same, with a longer deadline than the default
     tools/load.py --status                 # who holds the slot
     tools/load.py --reap                   # clear a slot whose owner is gone
 
@@ -26,6 +27,18 @@ WHAT THIS TOOL DOES, IN THE ORDER THAT MATTERS.
      and kills the pids whose parent is 1. That is the case a trap cannot cover -- this process
      SIGKILLed, so nothing here ran.
 
+  6. It is BOUNDED by its own clock (G1c, 2026-10-25). `load.py 32 -- taskpolicy -b loop.sh` -- a
+     starvation proof wrapping `swift test` three times -- ran 10h14m at load average ~154: the
+     background-priority test starved under 32 spinners on 16 cores and hung, and nothing ended
+     it. So a deadline is ALWAYS in force (DEFAULT_MAX_S unless `--max` names another), and on
+     expiry the command's whole tree -- its process group, and every descendant, including one
+     that left the group -- and every spinner are killed, and the tool exits EXIT_DEADLINE naming
+     the deadline. And more spinners than cores is refused unless `--oversubscribe` says it is
+     meant: N > ncpu starves the thing under test, which is how a proof becomes a hang.
+
+The command runs in a process group of its own, so the group can be killed whole; a command that
+reads from the terminal is therefore not supported (a background group that reads a tty stops).
+
 A spinner is released only AFTER it is registered: it waits on a FIFO for a release byte, and if
 the pipe closes first (this process died before releasing it) the read fails and the spinner exits
 without ever having burned a core.
@@ -34,6 +47,7 @@ without ever having burned a core.
 from __future__ import annotations
 
 import argparse
+import math
 import os
 import signal
 import subprocess
@@ -50,6 +64,9 @@ import load_reap  # noqa: E402
 
 EXIT_BUSY = 3  # the slot is taken
 EXIT_LEAK = 70  # a spinner outlived the cleanup: the experiment's verdict is not trustworthy
+EXIT_DEADLINE = 124  # the deadline expired (the number `timeout(1)` uses)
+DEFAULT_MAX_S = 1800.0  # the deadline when none is named: 30 minutes
+UNITS = {"s": 1.0, "m": 60.0, "h": 3600.0}
 GRACE_S = 2.0
 RELEASE_S = 5.0  # how long a spinner may wait for its release byte
 
@@ -62,8 +79,106 @@ def _parse(argv: list[str]) -> argparse.Namespace:
     parser.add_argument("--dir", default=None, help="the load directory (default GOH_LOAD_DIR)")
     parser.add_argument("--status", action="store_true", help="print who holds the slot")
     parser.add_argument("--reap", action="store_true", help="kill the orphans a dead owner left")
+    parser.add_argument(
+        "--max",
+        default=None,
+        help=f"the deadline: seconds, or 90m / 2h (default {DEFAULT_MAX_S:g}s); on expiry the "
+        "command and the spinners are killed and the tool exits 124",
+    )
+    parser.add_argument(
+        "--oversubscribe",
+        action="store_true",
+        help="allow more spinners than cores (refused without it)",
+    )
     parser.add_argument("rest", nargs=argparse.REMAINDER, help="N -- COMMAND [ARG...]")
     return parser.parse_args(argv)
+
+
+def parse_duration(text: str) -> float:
+    """A deadline in seconds from `45`, `30s`, `90m` or `2h`; anything that bounds nothing raises."""
+    raw = text.strip().lower()
+    scale = 1.0
+    if raw and raw[-1] in UNITS:
+        scale = UNITS[raw[-1]]
+        raw = raw[:-1]
+    try:
+        value = float(raw) * scale
+    except ValueError:
+        raise ValueError(f"--max {text!r} is not a duration (seconds, or 90m / 2h)") from None
+    if not math.isfinite(value) or value <= 0:
+        raise ValueError(f"--max {text!r} bounds nothing: a deadline is a positive, finite time")
+    return value
+
+
+def cpu_count() -> int:
+    """The cores spinners compete for. GOH_LOAD_NCPU is the seam that tests both directions."""
+    seam = os.environ.get("GOH_LOAD_NCPU", "").strip()
+    if seam:
+        return max(1, int(seam))
+    return os.cpu_count() or 1
+
+
+def _descendants(root: int) -> list[int]:
+    """Every live descendant of `root`, read from the process table (children before none)."""
+    try:
+        listing = subprocess.run(
+            ["ps", "-ax", "-o", "pid=,ppid="],
+            capture_output=True,
+            text=True,
+            stdin=subprocess.DEVNULL,
+            timeout=10,
+            check=False,
+        ).stdout
+    except (OSError, subprocess.TimeoutExpired):
+        return []
+    children: dict[int, list[int]] = {}
+    for line in listing.splitlines():
+        parts = line.split()
+        if len(parts) == 2 and parts[0].isdigit() and parts[1].isdigit():
+            children.setdefault(int(parts[1]), []).append(int(parts[0]))
+    found: list[int] = []
+    frontier = [root]
+    while frontier:
+        pid = frontier.pop()
+        for child in children.get(pid, []):
+            if child not in found:
+                found.append(child)
+                frontier.append(child)
+    return found
+
+
+def _signal_tree(group: int, pids: list[int], number: int) -> None:
+    try:
+        os.killpg(group, number)
+    except (ProcessLookupError, PermissionError, OSError):
+        pass
+    for pid in pids:
+        try:
+            os.kill(pid, number)
+        except (ProcessLookupError, PermissionError, OSError):
+            pass
+
+
+def kill_tree(proc: subprocess.Popen) -> None:
+    """Kill the command's whole tree: its process group, and every descendant -- one that left
+    the group with a session of its own too -- snapshotted BEFORE anything dies, because a child
+    whose parent is killed is re-parented to launchd and is no longer anyone's descendant."""
+    tree = [(pid, reg.pid_start(pid) or "") for pid in _descendants(proc.pid)]
+    pids = [pid for pid, _start in tree]
+    _signal_tree(proc.pid, [proc.pid, *pids], signal.SIGTERM)
+    give_up = time.monotonic() + GRACE_S
+    while time.monotonic() < give_up:
+        if proc.poll() is not None and not any(reg.pid_alive(pid) for pid in pids):
+            break
+        time.sleep(0.05)
+    # The pid is checked against the start time it had: a number the kernel handed to somebody
+    # else in the meantime is not ours to kill.
+    same = [pid for pid, start in tree if not start or reg.pid_start(pid) == start]
+    _signal_tree(proc.pid, same, signal.SIGKILL)
+    try:
+        proc.wait(timeout=GRACE_S)
+    except subprocess.TimeoutExpired:
+        pass
 
 
 def _directory(opts: argparse.Namespace) -> Path:
@@ -129,10 +244,14 @@ def _stop(procs: list[subprocess.Popen]) -> list[int]:
 class Experiment:
     """One load experiment: the spinners, the registry, and the ways it can end."""
 
-    def __init__(self, directory: Path, count: int, command: list[str]) -> None:
+    def __init__(
+        self, directory: Path, count: int, command: list[str], max_s: float = DEFAULT_MAX_S
+    ) -> None:
         self.directory = directory
         self.count = count
         self.command = command
+        self.max_s = max_s
+        self.child: subprocess.Popen | None = None
         self.registry = reg.registry_path(directory)
         self.procs: list[subprocess.Popen] = []
         self.fifos: list[Path] = []
@@ -144,11 +263,14 @@ class Experiment:
         taken = reg.registry_files(self.directory)
         if taken:
             raise FileExistsError(str(taken[0]))
+        now = time.time()
         self.data = {
             "version": reg.VERSION,
             "owner_pid": os.getpid(),
             "owner_start": reg.pid_start(os.getpid()) or "",
-            "started_at": time.time(),
+            "started_at": now,
+            "max_s": self.max_s,
+            "deadline_at": now + self.max_s,
             "command": list(self.command),
             "pids": [],
         }
@@ -206,6 +328,13 @@ class Experiment:
         pids = " ".join(str(proc.pid) for proc in self.procs)
         print(f"load: {len(self.procs)} spinner(s) started: {pids}", flush=True)
 
+    def abort(self) -> list[int]:
+        """The experiment is cut short (deadline, signal, a dead owner): the command's tree goes
+        too, because a command left running is the 10h14m run all over again."""
+        if self.child is not None and not self.done:
+            kill_tree(self.child)
+        return self.finish()
+
     def finish(self) -> list[int]:
         """Kill the spinners, verify, and drop the registry unless one survived."""
         if self.done:
@@ -227,13 +356,13 @@ def _watch_parent(experiment: Experiment, parent: int) -> None:
     while True:
         time.sleep(0.25)
         if os.getppid() != parent:
-            experiment.finish()
+            experiment.abort()
             os._exit(0)
 
 
 def _install_handlers(experiment: Experiment) -> None:
     def handler(number: int, _frame: object) -> None:
-        experiment.finish()
+        experiment.abort()
         os._exit(128 + number)
 
     for number in (signal.SIGTERM, signal.SIGINT, signal.SIGHUP):
@@ -267,8 +396,21 @@ def main(argv: list[str]) -> int:
     if count < 0:
         print("load: N must not be negative", file=sys.stderr)
         return 2
+    try:
+        max_s = DEFAULT_MAX_S if opts.max is None else parse_duration(opts.max)
+    except ValueError as error:
+        print(f"load: {error}", file=sys.stderr)
+        return 2
+    cores = cpu_count()
+    if count > cores and not opts.oversubscribe:
+        print(
+            f"load: {count} spinners on {cores} core(s) starves the command under test (a starved "
+            "test hangs, and a hang is not a measurement); pass --oversubscribe if that is meant",
+            file=sys.stderr,
+        )
+        return 2
 
-    experiment = Experiment(directory, count, command)
+    experiment = Experiment(directory, count, command, max_s)
     try:
         experiment.claim()
     except FileExistsError as error:
@@ -303,14 +445,28 @@ def main(argv: list[str]) -> int:
         print(f"load: cannot start the spinners: {error}", file=sys.stderr)
         return 2
     try:
-        completed = subprocess.run(command, stdin=None)
-        status = completed.returncode
+        # A group of its own, so the deadline can kill the command whole.
+        experiment.child = subprocess.Popen(command, stdin=None, process_group=0)
     except FileNotFoundError:
         experiment.finish()
         print(f"load: no such command: {command[0]}", file=sys.stderr)
         return 127
+    try:
+        status = experiment.child.wait(
+            timeout=max(0.0, experiment.data["deadline_at"] - time.time())
+        )
+    except subprocess.TimeoutExpired:
+        survivors = experiment.abort()
+        print(
+            f"load: deadline of {max_s:g}s expired: the command (pid {experiment.child.pid}), its "
+            f"process tree and the spinners were killed; pass --max to give it longer",
+            file=sys.stderr,
+        )
+        if survivors:
+            print(f"load: {len(survivors)} spinner(s) outlived the cleanup", file=sys.stderr)
+        return EXIT_DEADLINE
     except KeyboardInterrupt:
-        experiment.finish()
+        experiment.abort()
         return 130
     survivors = experiment.finish()
     if survivors:

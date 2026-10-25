@@ -28,6 +28,7 @@ import os
 import re
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 import pytest
@@ -205,3 +206,127 @@ def test_the_tool_refuses_a_raw_backgrounded_busy_loop_at_the_tool_boundary(tmp_
     reason = out["permissionDecisionReason"]
     assert "tools/load.py" in reason, reason
     assert "load-ok" in reason, reason
+
+
+# THE WALL CLOCK (G1c, 2026-10-25). `load.py 32 -- taskpolicy -b loop.sh` -- a ZoneWM starvation
+# proof wrapping `swift test` three times -- ran 10h14m at load average ~154: the background-
+# priority test starved under 32 spinners on 16 cores and hung, and nothing in the tool ended it.
+# A load experiment is bounded by its own clock: a deadline is always in force (a bounded default,
+# `--max` to extend it), and on expiry the command's whole process tree and every spinner are
+# killed and the tool exits non-zero NAMING the timeout. And 32 spinners on 16 cores is refused
+# unless `--oversubscribe` says it is meant.
+
+
+def test_a_command_that_never_ends_is_reaped_by_the_deadline(tmp_path: Path) -> None:
+    """The 10h14m run: the command never ends, so the DEADLINE ends it -- the command, its
+    children (one in its group, one that left the group with a session of its own), and every
+    spinner -- and the tool says it was the deadline."""
+    in_group = tmp_path / "in_group.pid"
+    escaped = tmp_path / "escaped.pid"
+    script = (
+        "import subprocess, sys, time\n"
+        f"child = subprocess.Popen(['/bin/sleep', '300'], start_new_session=True, stdin=subprocess.DEVNULL)\n"
+        f"open({str(escaped)!r}, 'w').write(str(child.pid))\n"
+        "time.sleep(300)\n"
+    )
+    command = f'/bin/sleep 300 & echo $! > "{in_group}"; {sys.executable} -c "$0"; wait'
+    started = time.monotonic()
+    result = _run(
+        ["--dir", str(tmp_path), "--max", "3", "2", "--", "/bin/sh", "-c", command, script],
+        timeout=120,
+    )
+    elapsed = time.monotonic() - started
+    # The suite OWNS the command's children before it judges anything: a test that fails here
+    # must not leave them behind (load_kit reaps every owned pid, pass or fail).
+    children: dict[str, int] = {}
+    for record in (in_group, escaped):
+        if load_kit.wait_until(record.exists, seconds=5):
+            pid = int(record.read_text(encoding="utf-8").strip())
+            children[record.name] = pid
+            if reg.pid_start(pid):  # a pid with no process under it is not owned: it may be reused
+                load_kit.own_pid(pid)
+    assert result.returncode == 124, (result.returncode, result.stdout, result.stderr)
+    assert "deadline" in result.stderr and "3s" in result.stderr, result.stderr
+    timing_bounds.assert_sooner(elapsed, 8.0, 300.0, "the deadline reaped the command")
+    for pid in _spinner_pids(result.stdout):
+        assert not load_kit.alive(pid), f"spinner {pid} outlived the deadline"
+    assert sorted(children) == ["escaped.pid", "in_group.pid"], children
+    for name, pid in children.items():
+        assert load_kit.wait_until(lambda pid=pid: not load_kit.alive(pid)), (
+            f"the command's child {pid} ({name}) outlived the deadline"
+        )
+    assert not list(tmp_path.glob("*.json")), "the registry outlived the deadline"
+
+
+def test_a_deadline_is_in_force_without_being_asked_for(tmp_path: Path) -> None:
+    """No unbounded experiment: without `--max` the registry still carries a finite deadline,
+    and it is the tool's bounded default."""
+    sys.path.insert(0, str(REPO_ROOT / "tools"))
+    import load as tool_module  # noqa: PLC0415
+
+    assert 0 < tool_module.DEFAULT_MAX_S <= 3600, tool_module.DEFAULT_MAX_S
+    with load_kit.owned(tmp_path, 1, ["/bin/sh", "-c", "sleep 30"]) as tool:
+        tool.wait_for_spinners()
+        data = reg.read(reg.registry_path(tmp_path)) or {}
+        assert data.get("max_s") == tool_module.DEFAULT_MAX_S, data
+        assert data.get("deadline_at", 0) > data.get("started_at", 0), data
+
+
+@pytest.mark.parametrize("value", ["0", "-5", "inf", "nan", "soon"])
+def test_a_deadline_that_bounds_nothing_is_refused(tmp_path: Path, value: str) -> None:
+    """`--max 0`, a negative, an infinity or a word: none of them is a deadline."""
+    result = _run(["--dir", str(tmp_path), "--max", value, "1", "--", "/bin/sh", "-c", "true"])
+    assert result.returncode == 2, (result.returncode, result.stdout, result.stderr)
+    assert "--max" in result.stderr, result.stderr
+    assert "spinner(s) started" not in result.stdout, result.stdout
+
+
+def test_the_deadline_accepts_minutes_and_hours(tmp_path: Path) -> None:
+    """`--max 90m` and `--max 2h` read as what they say."""
+    sys.path.insert(0, str(REPO_ROOT / "tools"))
+    import load as tool_module  # noqa: PLC0415
+
+    assert tool_module.parse_duration("45") == 45.0
+    assert tool_module.parse_duration("90m") == 5400.0
+    assert tool_module.parse_duration("2h") == 7200.0
+    assert tool_module.parse_duration("30s") == 30.0
+
+
+def _with_cpus(count: int) -> dict[str, str]:
+    return {**os.environ, "GOH_LOAD_NCPU": str(count)}
+
+
+def test_more_spinners_than_cores_is_refused(tmp_path: Path) -> None:
+    """32 spinners on 16 cores starves the very thing under test; it is refused unless asked
+    for by name. (`GOH_LOAD_NCPU` is the seam: both directions are testable on one machine.)"""
+    result = subprocess.run(
+        [sys.executable, str(TOOL), "--dir", str(tmp_path), "3", "--", "/bin/sh", "-c", "true"],
+        capture_output=True,
+        text=True,
+        stdin=subprocess.DEVNULL,
+        timeout=timing_bounds.patience(60),
+        check=False,
+        env=_with_cpus(2),
+    )  # fmt: skip
+    assert result.returncode == 2, (result.returncode, result.stdout, result.stderr)
+    assert "--oversubscribe" in result.stderr and "2 core" in result.stderr, result.stderr
+    assert "spinner(s) started" not in result.stdout, result.stdout
+
+
+@pytest.mark.parametrize(("count", "flags"), [(2, []), (3, ["--oversubscribe"])])
+def test_spinners_within_the_cores_or_named_oversubscription_run(
+    tmp_path: Path, count: int, flags: list[str]
+) -> None:
+    """The accept direction: N up to the cores runs, and N above them runs when it is named."""
+    result = subprocess.run(
+        [sys.executable, str(TOOL), "--dir", str(tmp_path), *flags, str(count), "--",
+         "/bin/sh", "-c", "true"],
+        capture_output=True,
+        text=True,
+        stdin=subprocess.DEVNULL,
+        timeout=timing_bounds.patience(60),
+        check=False,
+        env=_with_cpus(2),
+    )  # fmt: skip
+    assert result.returncode == 0, (result.returncode, result.stdout, result.stderr)
+    assert len(_spinner_pids(result.stdout)) == count, result.stdout

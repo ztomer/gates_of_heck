@@ -213,6 +213,11 @@ Every structural checker is native since Phase N3; the Python checkers they port
   first, so one that was never released never spins); runs the command under the load; kills
   exactly the spinners it registered on the way out (EXIT/TERM/INT/HUP), VERIFIES that none
   survived, and drops the registry. It also watches for its OWN owner dying and cleans up then.
+  It is BOUNDED by its own clock (G1c): a deadline is always in force (30 min unless `--max 90m`
+  / `--max 2h` names another), and on expiry the command's whole tree (its process group, and
+  every descendant, one that left the group too) and every spinner are killed and it exits 124
+  naming the deadline; a signal or a dead owner kills the command's tree as well. N above the
+  core count is refused unless `--oversubscribe` is passed (`GOH_LOAD_NCPU` is the test seam).
   `--status` says who holds the slot; `--reap` clears a slot whose owner is gone. Pinned by
   `test_load_tool.py`.
 * `tools/load_reap.py` / `tools/load_reap.sh` — the backstop: the minute job that reads the load
