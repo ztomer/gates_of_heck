@@ -160,15 +160,44 @@ proven_identity() {
     _proven_identity_live
 }
 
-_proven_identity_slow() {
-    local d seen="" files
-    for d in "$PROVEN_GOH_ROOT" "${GOH_DIR:-}"; do
+# _proven_goh_roots — the gates checkouts the identity names, canonical, one per line, once each.
+_proven_goh_roots() {
+    local d seen=""
+    for d in "${PROVEN_GOH_ROOT:-}" "${GOH_DIR:-}"; do
         [ -n "$d" ] && [ -d "$d" ] || continue
         d="$(cd "$d" && /bin/pwd -P)"
         case " $seen " in *" $d "*) continue ;; esac
         seen="$seen $d"
-        _proven_goh_identity "$d"
+        printf '%s\n' "$d"
     done
+}
+
+# proven_keyed_roots — the roots whose CONTENT the identity carries, `:`-separated: a git checkout
+# (its HEAD, diff and untracked files) or a head export (`$GOH_HEAD_CACHE/<sha>`, whose path names
+# the commit it holds). `goh rust-scope` leaves a path dependency inside one to the identity
+# (GOH_PROVEN_KEYED_ROOTS; antiknob's `../gates_of_heck/crates/goh-tui`, R3.13). A plain
+# directory is keyed by its path alone, so a dependency inside it is NOT keyed and is not named.
+proven_keyed_roots() {
+    local d out="" cache
+    cache="${GOH_HEAD_CACHE:-${XDG_CACHE_HOME:-$HOME/.cache}/goh/head}"
+    [ -d "$cache" ] && cache="$(cd "$cache" && /bin/pwd -P)"
+    while IFS= read -r d; do
+        [ -n "$d" ] || continue
+        if _proven_goh_git "$d" rev-parse --show-toplevel >/dev/null 2>&1; then
+            d="$(_proven_goh_git "$d" rev-parse --show-toplevel)"
+        else
+            case "$d" in "$cache"/*) ;; *) continue ;; esac
+        fi
+        out="${out:+$out:}$d"
+    done < <(_proven_goh_roots)
+    printf '%s\n' "$out"
+}
+
+_proven_identity_slow() {
+    local d files
+    while IFS= read -r d; do
+        [ -n "$d" ] && _proven_goh_identity "$d"
+    done < <(_proven_goh_roots)
     # Toolchains, for the languages the repo tracks. `swift --version` alone costs ~0.7 s and
     # the key is computed twice per step, so a repo with no Swift does not pay for Swift's.
     files="$(git ls-files 2>/dev/null)"

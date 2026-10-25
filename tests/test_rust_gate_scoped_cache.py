@@ -256,3 +256,32 @@ def test_goh_proven_0_runs_everything(estate: Path) -> None:
     assert _gate(estate, "c").returncode == 0
     off = _gate(estate, "c", GOH_PROVEN="0")
     assert not _skipped(off, "crate") and not _skipped(off, "repo"), off.stdout
+
+
+def test_a_path_dependency_in_the_gates_checkout_keeps_the_crate_cache_on(estate: Path) -> None:
+    """antiknob (R3.13): `goh-tui = { path = "../gates_of_heck/crates/goh-tui" }` lies outside the
+    repository, so `goh rust-scope` refused and the per-crate cache was OFF on every push. The gates
+    checkout's HEAD, diff and untracked files are already in every proven key, so a dependency
+    inside it is keyed: the crate's second run is a hit."""
+    gates = Path(os.environ["SCOPED_CACHE_GATES"])
+    _crate(
+        estate,
+        "d",
+        deps=f'goh-tui = {{ path = "{gates / "crates" / "goh-tui"}" }}\n',
+        lib="pub fn t() -> usize {\n    goh_tui::OK.len()\n}\n",
+    )
+    subprocess.run(
+        ["cargo", "generate-lockfile", "--offline"],
+        cwd=estate / "crates" / "d",
+        check=True,
+        capture_output=True,
+        stdin=subprocess.DEVNULL,
+    )
+    _git(estate, "add", "-A")
+    first = _gate(estate, "d")
+    assert first.returncode == 0, first.stdout + first.stderr
+    assert "per-crate proven cache off" not in first.stdout + first.stderr, (
+        first.stdout + first.stderr
+    )
+    again = _gate(estate, "d")
+    assert _skipped(again, "crate"), again.stdout + again.stderr

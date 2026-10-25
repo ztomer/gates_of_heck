@@ -65,3 +65,42 @@ def test_an_inherited_identity_for_another_directory_is_not_taken(
         stdin=subprocess.DEVNULL,
     )
     assert "FAKE" not in r.stdout and "tool rustc rustc" in r.stdout, r.stdout + r.stderr
+
+
+# ── R3.13: the roots the identity KEYS, named for `goh rust-scope` (antiknob) ────────────────────
+
+
+def _keyed_roots(tmp_path, gates_root, goh_dir, head_cache):
+
+    script = (
+        f'. "{REPO_ROOT}/gates/_proven.sh"; PROVEN_GOH_ROOT="$1"; GOH_DIR="$2"; '
+        'GOH_HEAD_CACHE="$3"; proven_keyed_roots'
+    )
+    out = subprocess.run(
+        ["bash", "-c", script, "probe", str(gates_root), str(goh_dir), str(head_cache)],
+        capture_output=True,
+        text=True,
+        stdin=subprocess.DEVNULL,
+        timeout=60,
+        check=False,
+    )
+    return out.stdout.strip(), out.stderr
+
+
+def test_a_git_checkout_and_a_head_export_are_keyed_and_a_bare_directory_is_not(tmp_path):
+    """A path dependency may be left to the identity only where the identity carries its CONTENT:
+    a git checkout (HEAD, diff, untracked files) or a head export (its path names the commit).
+    A plain directory is keyed by its PATH alone, so a dependency inside it is not keyed at all."""
+
+    checkout = tmp_path / "checkout"
+    checkout.mkdir()
+    subprocess.run(["git", "init", "-q", str(checkout)], check=True, stdin=subprocess.DEVNULL)
+    head_cache = tmp_path / "head"
+    export = head_cache / ("a" * 40)
+    export.mkdir(parents=True)
+    bare = tmp_path / "bare"
+    bare.mkdir()
+    roots, err = _keyed_roots(tmp_path, checkout, export, head_cache)
+    assert roots.split(":") == [str(checkout.resolve()), str(export.resolve())], (roots, err)
+    roots, err = _keyed_roots(tmp_path, checkout, bare, head_cache)
+    assert roots.split(":") == [str(checkout.resolve())], (roots, err)

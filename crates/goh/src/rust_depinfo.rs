@@ -93,6 +93,20 @@ pub(crate) fn depinfo_paths(file: &Path, text: &str) -> Vec<PathBuf> {
 ///
 /// When cargo or git cannot answer.
 pub fn depinfo_escapes(cargo_dir: &Path, entries: &[String]) -> Result<Vec<String>, String> {
+    depinfo_escapes_keyed(cargo_dir, entries, &crate::rust_scope::keyed_roots())
+}
+
+/// [`depinfo_escapes`], with the keyed roots named: a file read inside one is keyed by the proven
+/// identity, so it is not an escape.
+///
+/// # Errors
+///
+/// As [`depinfo_escapes`].
+pub fn depinfo_escapes_keyed(
+    cargo_dir: &Path,
+    entries: &[String],
+    keyed: &[PathBuf],
+) -> Result<Vec<String>, String> {
     let root = repo_root(cargo_dir)?;
     let meta = metadata(cargo_dir, true)?;
     let build = meta["build_directory"]
@@ -148,6 +162,7 @@ pub fn depinfo_escapes(cargo_dir: &Path, entries: &[String]) -> Result<Vec<Strin
                 Some(r) => {
                     bad.insert(r);
                 }
+                None if crate::rust_scope::under_keyed(&dep, keyed) => {}
                 None => {
                     bad.insert(s.into_owned());
                 }

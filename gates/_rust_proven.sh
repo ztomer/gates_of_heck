@@ -45,6 +45,10 @@ _rust_scope_init() {
         return 0
     fi
     local f
+    # A path dependency inside a checkout the identity already keys (the gates checkout: antiknob's
+    # goh-tui, R3.13) is left to the identity rather than refusing the whole scope.
+    GOH_PROVEN_KEYED_ROOTS="$(proven_keyed_roots)"
+    export GOH_PROVEN_KEYED_ROOTS
     f="$(mktemp "${TMPDIR:-/tmp}/goh-rust-scope.XXXXXX")"
     goh_cleanup_add "$f" "$f.err"  # it was never removed: ~4,700 leaked (ZoneWM, 2026-10-06)
     if "$goh_native" rust-scope "$cargo_dir" >"$f" 2>"$f.err" && [ -s "$f" ]; then

@@ -239,14 +239,49 @@ fn tracked_rs(root: &Path, dirs: &[&str]) -> Vec<PathBuf> {
 ///
 /// When the scope cannot be named: cargo or git failed, or a path dependency lies outside the repo.
 pub fn scope(cargo_dir: &Path) -> Result<Vec<String>, String> {
+    scope_keyed(cargo_dir, &keyed_roots())
+}
+
+/// The roots the caller's proven identity already keys.
+///
+/// Read from `GOH_PROVEN_KEYED_ROOTS` (`:`-separated, set by `gates/_rust_proven.sh` from
+/// `proven_keyed_roots`): a path dependency inside one is keyed by that identity, not by this
+/// repo's git (antiknob's `../gates_of_heck/crates/goh-tui`).
+#[must_use]
+pub fn keyed_roots() -> Vec<PathBuf> {
+    std::env::var("GOH_PROVEN_KEYED_ROOTS")
+        .unwrap_or_default()
+        .split(':')
+        .filter(|d| !d.is_empty())
+        .filter_map(|d| std::fs::canonicalize(d).ok())
+        .collect()
+}
+
+/// True when `path` (canonicalised) lies inside one of `roots`.
+#[must_use]
+pub fn under_keyed(path: &Path, roots: &[PathBuf]) -> bool {
+    let path = std::fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
+    roots.iter().any(|r| path.starts_with(r))
+}
+
+/// [`scope`], with the keyed roots named rather than read from the environment.
+///
+/// # Errors
+///
+/// As [`scope`]: a path dependency outside the repo and outside every keyed root is refused.
+pub fn scope_keyed(cargo_dir: &Path, keyed: &[PathBuf]) -> Result<Vec<String>, String> {
     let root = repo_root(cargo_dir)?;
     let meta = metadata(cargo_dir, false)?;
     let mut entries = BTreeSet::new();
     let mut dirs = Vec::new();
     for pkg in local_packages(&meta) {
+        if rel(&root, &pkg).is_none() && under_keyed(&pkg, keyed) {
+            continue; // keyed by the proven identity (the gates checkout), not by this repo's git
+        }
         let r = rel(&root, &pkg).ok_or_else(|| {
             format!(
-                "{} is outside the repository: git cannot key it",
+                "{} is outside the repository and inside no checkout the proven identity keys: \
+                 git cannot key it",
                 pkg.display()
             )
         })?;

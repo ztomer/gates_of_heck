@@ -242,3 +242,99 @@ fn the_command_prints_a_scope_checks_a_file_and_refuses_a_non_workspace() {
     assert_eq!(super::run_command(empty.path(), None), 2);
     drop(dir); // the estate holds the build directory until the last read above
 }
+
+// ── R3.13: a path dependency in a checkout the proven identity already keys (antiknob) ──────────
+//
+// antiknob depends on `../gates_of_heck/crates/goh-tui`. git cannot key a path outside the
+// repository, so `scope` failed and the per-crate cache was off for every antiknob push. But that
+// path lies inside the gates checkout, whose HEAD, diff and untracked files are already in every
+// proven key (`_proven_goh_identity`): it is keyed, just not by this repo's git. A root the caller
+// names as KEYED is therefore left out of the scope, and nothing else outside the repo is.
+
+/// An estate whose crate `a` also depends on a crate in a second, outside directory.
+fn estate_with_outside_dep() -> (Estate, tempfile::TempDir) {
+    let dir = estate();
+    let outside = tempfile::tempdir().expect("tempdir");
+    write(
+        outside.path(),
+        "crates/goh-tui/Cargo.toml",
+        "[package]\nname = \"goh-tui\"\nversion = \"0.1.0\"\nedition = \"2021\"\n",
+    );
+    write(
+        outside.path(),
+        "crates/goh-tui/src/lib.rs",
+        "pub fn t() {}\n",
+    );
+    let dep = outside.path().join("crates/goh-tui");
+    write(
+        dir.path(),
+        "crates/a/Cargo.toml",
+        &format!(
+            "[package]\nname = \"a\"\nversion = \"0.1.0\"\nedition = \"2021\"\n\n[dependencies]\nb = {{ path = \"../b\" }}\ngoh-tui = {{ path = \"{}\" }}\n",
+            dep.display()
+        ),
+    );
+    let lock = std::process::Command::new("cargo")
+        .args(["generate-lockfile", "--offline"])
+        .current_dir(dir.path().join("crates/a"))
+        .status()
+        .expect("cargo");
+    assert!(lock.success());
+    goh_testkit::git_in(dir.path(), &["add", "-A"]).expect("git add");
+    (dir, outside)
+}
+
+#[test]
+fn an_outside_path_dep_in_no_keyed_root_still_refuses_the_scope() {
+    let (dir, _outside) = estate_with_outside_dep();
+    let err = super::scope_keyed(&dir.path().join("crates/a"), &[]).expect_err("an outside dep");
+    assert!(err.contains("outside the repository"), "{err}");
+}
+
+#[test]
+fn an_outside_path_dep_inside_a_keyed_root_is_left_to_the_identity() {
+    let (dir, outside) = estate_with_outside_dep();
+    let keyed = vec![std::fs::canonicalize(outside.path()).expect("canonical")];
+    let entries = super::scope_keyed(&dir.path().join("crates/a"), &keyed).expect("scope");
+    assert!(entries.iter().any(|e| e == "crates/a"), "{entries:?}");
+    assert!(
+        !entries.iter().any(|e| e.contains("goh-tui")),
+        "{entries:?}"
+    );
+    assert!(!entries.contains(&".".to_owned()), "{entries:?}");
+    drop(dir);
+}
+
+#[test]
+fn a_dep_info_read_inside_a_keyed_root_is_not_an_escape_and_one_beside_it_is() {
+    let (dir, outside) = estate_with_outside_dep();
+    let cargo_dir = dir.path().join("crates/a");
+    let meta = super::metadata(&cargo_dir, true).expect("metadata");
+    let build = PathBuf::from(
+        meta["build_directory"]
+            .as_str()
+            .or_else(|| meta["target_directory"].as_str())
+            .expect("a build directory"),
+    );
+    let deps = build.join("debug").join("deps");
+    std::fs::create_dir_all(&deps).expect("mkdir deps");
+    let keyed_root = std::fs::canonicalize(outside.path()).expect("canonical");
+    let beside = keyed_root.with_file_name("not-keyed.txt");
+    let d = deps.join("a-4567.d");
+    std::fs::write(
+        &d,
+        format!(
+            "{}: {} {}\n",
+            d.display(),
+            keyed_root.join("crates/goh-tui/src/lib.rs").display(),
+            beside.display()
+        ),
+    )
+    .expect("write .d");
+    let entries = vec!["crates/a".to_owned(), "crates/b".to_owned()];
+    let bad = crate::rust_depinfo::depinfo_escapes_keyed(&cargo_dir, &entries, &[keyed_root])
+        .expect("depinfo");
+    std::fs::remove_file(&d).ok();
+    assert_eq!(bad, vec![beside.to_string_lossy().into_owned()]);
+    drop(dir);
+}
