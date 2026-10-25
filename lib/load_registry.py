@@ -31,19 +31,40 @@ orphan is left burning a core with nothing naming it). Recognition is EXACT: the
 line has to equal the shape, character for character, and the parent has to be 1. A name that
 matches a process the caller does not own is the mistake the house forbids, so the shape is
 pinned, not a pattern.
+
+ONE LOCK (2026-10-25). The registry has two writers -- the tool rewrites it once per spinner and
+removes it when it is done; the backstop reads, prunes and writes it back -- and neither held a
+lock. A backstop pass that read mid-start and wrote afterwards left a registry naming fewer
+spinners than were burning (8 of 16, then 2 of 16, each time the owner's deadline hit), and one
+that read before the tool removed the file brought a dead experiment's slot back. So every
+mutation of the load directory -- `write`, `create`, `remove` -- takes the directory's lock
+itself, and a read-modify-write holds `locked()` across its re-read and its write. The lock is
+the default, not a habit: a writer cannot mutate the registry without it.
 """
 
 from __future__ import annotations
 
 import contextlib
+import fcntl
 import json
 import os
 import re
 import subprocess
 import tempfile
+import threading
+import time
+from collections.abc import Callable, Iterator
 from pathlib import Path
 
 REGISTRY_NAME = "registry.json"
+# The lock every mutation of the load directory takes. Not `*.json`, so `registry_files` never
+# mistakes it for a registry, and never removed: unlinking a lock file another process has open is
+# how two holders end up locking two different files.
+LOCK_NAME = ".registry.lock"
+# How long a writer waits for the lock. A hold is a re-read and a write -- milliseconds -- so a
+# minute is a holder that is wedged, and that is an error to name, not a wait to sit in forever.
+LOCK_WAIT_S = 60.0
+LOCK_POLL_S = 0.01
 VERSION = 1
 DEFAULT_PARTS = (".cache", "goh", "load")
 
@@ -146,6 +167,60 @@ def registry_files(directory: Path | None = None) -> list[Path]:
     return sorted(p for p in where.glob("*.json") if p.is_file())
 
 
+class _Held:
+    """One process's hold on one directory's lock: re-entrant across the frames of one thread."""
+
+    def __init__(self) -> None:
+        self.guard = threading.RLock()
+        self.fd = -1
+
+
+_HELD: dict[str, _Held] = {}
+_HELD_GUARD = threading.Lock()
+
+
+def _flock(fd: int, where: Path) -> None:
+    give_up = time.monotonic() + LOCK_WAIT_S
+    while True:
+        try:
+            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            return
+        except BlockingIOError:
+            if time.monotonic() > give_up:
+                raise TimeoutError(
+                    f"the load registry lock {where} was held for {LOCK_WAIT_S:g}s: its holder is wedged"
+                ) from None
+            time.sleep(LOCK_POLL_S)
+
+
+@contextlib.contextmanager
+def locked(directory: Path | None = None) -> Iterator[None]:
+    """Hold the load directory's lock: every mutation of a registry in it runs inside.
+
+    Between processes it is an flock; within one it is RE-ENTRANT, because the tool's cleanup runs
+    from a signal handler that can arrive while the same thread is inside a write -- and a second
+    flock on a second descriptor would wait on its own process forever. The descriptor is recorded
+    BEFORE it is locked and forgotten AFTER it is closed, so a handler that interrupts the lock's
+    own bookkeeping proceeds without the lock rather than deadlocking on it: a hang is worse than
+    the race.
+    """
+    where = (directory or load_dir()) / LOCK_NAME
+    where.parent.mkdir(parents=True, exist_ok=True)
+    with _HELD_GUARD:
+        held = _HELD.setdefault(str(where), _Held())
+    with held.guard:
+        if held.fd >= 0:
+            yield
+            return
+        held.fd = os.open(where, os.O_RDWR | os.O_CREAT | os.O_CLOEXEC, 0o600)
+        try:
+            _flock(held.fd, where)
+            yield
+        finally:
+            os.close(held.fd)  # closing the descriptor releases the lock
+            held.fd = -1
+
+
 def read(path: Path) -> dict | None:
     """The registry's contents, or None when it is unreadable (never half a record)."""
     try:
@@ -161,8 +236,12 @@ def _dump(data: dict) -> str:
 
 
 def write(path: Path, data: dict) -> None:
-    """Rewrite the registry whole: a reader never sees half a record."""
-    path.parent.mkdir(parents=True, exist_ok=True)
+    """Rewrite the registry whole, under the lock: a reader never sees half a record."""
+    with locked(path.parent):
+        _write(path, data)
+
+
+def _write(path: Path, data: dict) -> None:
     handle, tmp = tempfile.mkstemp(dir=str(path.parent), prefix=".registry-", suffix=".tmp")
     try:
         with os.fdopen(handle, "w", encoding="utf-8") as out:
@@ -180,7 +259,11 @@ def create(path: Path, data: dict) -> None:
     The content is written FIRST and linked into place, so the file is never seen empty and the
     refusal is the link's own (EEXIST), not a check that another process can race.
     """
-    path.parent.mkdir(parents=True, exist_ok=True)
+    with locked(path.parent):
+        _create(path, data)
+
+
+def _create(path: Path, data: dict) -> None:
     handle, tmp = tempfile.mkstemp(dir=str(path.parent), prefix=".registry-", suffix=".tmp")
     try:
         with os.fdopen(handle, "w", encoding="utf-8") as out:
@@ -192,9 +275,69 @@ def create(path: Path, data: dict) -> None:
 
 
 def remove(path: Path) -> None:
-    """Drop the registry: the experiment is over and nothing is left behind."""
-    with contextlib.suppress(OSError):
+    """Drop a file of the load directory, under the lock: the experiment is over."""
+    if not path.parent.is_dir():
+        return
+    with locked(path.parent), contextlib.suppress(OSError):
         path.unlink()
+
+
+def entry_pid(entry: object) -> int | None:
+    """The pid a registry entry names, or None for an entry that names nothing usable."""
+    if not isinstance(entry, dict):
+        return None
+    try:
+        pid = int(entry.get("pid", 0))
+    except (TypeError, ValueError):
+        return None
+    return pid if pid > 0 else None
+
+
+def owner_gone(data: dict) -> bool:
+    """Is the experiment's owner gone? Its pid is dead, or now names a process started later."""
+    try:
+        owner = int(data.get("owner_pid", 0))
+    except (TypeError, ValueError):
+        return True
+    if owner <= 0 or pid_gone(owner):
+        return True
+    recorded = data.get("owner_start")
+    return bool(recorded) and pid_start(owner) != recorded
+
+
+def settle(
+    path: Path, gone: set[tuple[int, str]], before_write: Callable[[], None] | None = None
+) -> bool:
+    """Apply a prune to what the registry holds NOW, and report whether it was removed.
+
+    The backstop decides what is gone from a read a kill ago (seconds), so it does not write that
+    read back: it re-reads under the lock and drops exactly the entries it judged -- `(pid,
+    start)`, as recorded -- keeping every one the tool registered since. A registry that vanished
+    in the meantime stays gone (the tool finished), and one that names no spinner is removed only
+    when its owner is gone too: a live owner between `claim` and its first spinner still holds
+    the slot. `before_write` is the seam that pauses between the re-read and the write.
+    """
+    with locked(path.parent):
+        data = read(path)
+        if data is None:
+            return False
+        entries = data.get("pids") if isinstance(data.get("pids"), list) else []
+        kept = [
+            entry
+            for entry in entries
+            if entry_pid(entry) is not None
+            and (entry_pid(entry), entry.get("start", "")) not in gone
+        ]
+        if before_write is not None:
+            before_write()
+        if not kept and owner_gone(data):
+            with contextlib.suppress(OSError):
+                path.unlink()
+            return True
+        if kept != entries:
+            data["pids"] = kept
+            _write(path, data)
+        return False
 
 
 def _ps(pid: int, spec: str) -> str:

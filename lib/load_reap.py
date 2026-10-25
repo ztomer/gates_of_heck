@@ -57,6 +57,7 @@ import os
 import signal
 import subprocess
 import time
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -398,47 +399,50 @@ def reap_burning_orphans(min_cpu_s: float = BURN_CPU_S) -> Report:
     return report
 
 
-def reap_registry(path: Path) -> Report:
-    """One registry: kill its orphans, drop what is gone, and keep the rest."""
+def reap_registry(
+    path: Path,
+    after_kill: Callable[[], None] | None = None,
+    before_write: Callable[[], None] | None = None,
+) -> Report:
+    """One registry: kill its orphans, drop what is gone, and keep the rest.
+
+    Two phases, because the registry has another writer (the tool, registering and finishing).
+    The kills are slow -- seconds per pid -- so they run OUTSIDE the lock, from a plain read; the
+    prune then runs INSIDE it, on a re-read (`reg.settle`), so a spinner the tool registered
+    meanwhile is kept and a registry it removed meanwhile is not brought back. `after_kill` and
+    `before_write` are the seams that pause either side of the lock.
+    """
     report = Report()
     data = reg.read(path)
     if data is None:
         return report
     entries = data.get("pids")
-    if not isinstance(entries, list):
-        entries = []
-    survivors: list[dict] = []
-    for entry in entries:
-        if not isinstance(entry, dict):
+    gone: set[tuple[int, str]] = set()
+    for entry in entries if isinstance(entries, list) else []:
+        pid = reg.entry_pid(entry)
+        if pid is None:
             continue
-        try:
-            pid = int(entry.get("pid", 0))
-        except (TypeError, ValueError):
-            continue
-        if pid <= 0:
-            continue
+        recorded = entry.get("start", "")
         if reg.pid_gone(pid):
             report.dropped.append(pid)
+            gone.add((pid, recorded))
             continue
-        recorded = entry.get("start")
         current = reg.pid_start(pid)
         if recorded and current and recorded != current:
             report.dropped.append(pid)  # the pid was reused: not the process we registered
+            gone.add((pid, recorded))
             continue
         if reg.pid_ppid(pid) == 1:
             if kill(pid):
                 report.killed.append(pid)
+                gone.add((pid, recorded))
             else:
                 report.failed.append(pid)
-                survivors.append(entry)
             continue
         report.kept.append(pid)  # a live parent: an experiment in progress
-        survivors.append(entry)
-    if survivors:
-        data["pids"] = survivors
-        reg.write(path, data)
-    else:
-        reg.remove(path)
+    if after_kill is not None:
+        after_kill()
+    if reg.settle(path, gone, before_write):
         report.removed.append(str(path))
     return report
 

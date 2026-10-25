@@ -97,6 +97,12 @@ def _spinner(fifo: Path, command: list[str] | None = None, release: bool = True)
     return pid
 
 
+# The owner of an experiment that is over: the pid is this process, the start time is not, so the
+# owner the record names is gone -- the state an orphan's registry is in. A live owner keeps its
+# slot even when no spinner is left (tests/test_load_registry_lock.py).
+GONE_OWNER_START = "Tue Jan  1 00:00:00 1990"
+
+
 def _register(directory: Path, entries: list[dict]) -> Path:
     path = reg.registry_path(directory)
     reg.write(
@@ -104,7 +110,7 @@ def _register(directory: Path, entries: list[dict]) -> Path:
         {
             "version": reg.VERSION,
             "owner_pid": os.getpid(),
-            "owner_start": reg.pid_start(os.getpid()) or "",
+            "owner_start": GONE_OWNER_START,
             "started_at": time.time(),
             "command": ["fixture"],
             "pids": entries,

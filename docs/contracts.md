@@ -361,6 +361,15 @@ killed. Four separate rules came out of it, and each answers a different questio
     so the rule sees them, and the entry's narrowness is pinned by
     `tests/test_load_orphan_exemption.py` — a stale entry, a broadened call, or an entry re-keyed
     to a broadened call is RED.
+  * a RECORD with two writers is written under ONE lock (2026-10-25). The tool rewrites the
+    registry once per spinner and removes it when it is done; the backstop read, pruned and wrote
+    it back with no lock. A pass that read mid-start and wrote afterwards left the registry naming
+    fewer spinners than were burning (8 of 16, then 2 of 16, after `load.py --max` deadlines), and
+    one that read before `finish()` brought a dead experiment's slot back. Every mutation of the
+    load directory now takes the directory's flock itself (the lock is the default, not a habit);
+    the backstop's kills run outside it and its prune inside it, on a re-read; and a registry
+    naming no spinner is removed only when its owner is gone -- the slot is held exactly while its
+    owner lives.
 
 Pin: `tests/test_check_no_unreaped_spawn.py` (the incident quoted from `media_server@052772a`, red
 on the real pre-fix file and green on the same file after its fix, run against the native through
@@ -375,6 +384,9 @@ leak the registry cannot name is cleaned by the minute job, and the negative con
 parent, a live owner, another shape, a command line that only looks like the shape -- are left
 alone), `tests/test_load_orphan_exemption.py` (the recorded exemption: the house's own rule is
 green with the entry and red without it, a stale entry is red, and a broadened call is red),
+`tests/test_load_registry_lock.py` (both races, each paused at both sides of the lock with the
+backstop in a process of its own: a pass under the lock makes the tool WAIT, a pass that is only
+killing does not, and neither loses a spinner or resurrects a slot; a live owner keeps its slot),
 and `checks/check_estate_corpus.py`'s `no_unreaped_spawn` entry (the incident planted inside 611 real
 files from media_server).
 
