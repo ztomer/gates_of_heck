@@ -17,13 +17,16 @@ The negative controls are RESHAPED so they do not collide with the broader rule 
 itself spins is now a process the rule would catch: a live parent, a near miss that SLEEPS
 instead of spinning, a command line that only MENTIONS the shape, and a process that has not
 burned yet. And every fixture is BOUNDED: a control that spins forever is a leak waiting for the
-next killed run, so each one stops on its own clock.
+next killed run, so each one stops on its own CPU budget.
 """
 
 from __future__ import annotations
 
+import os
+import signal
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 import load_kit
@@ -37,18 +40,27 @@ import load_registry as reg
 #
 # Every fixture here is BOUNDED: a control that spins forever is a leak waiting for the next
 # killed run, and the point of these tests is that the suite can be SIGKILLed without leaving a
-# core burning behind it. The spinner stops on its own clock.
+# core burning behind it. The spinner stops on its own CPU budget.
 
-# A bounded spinner: it burns a core, and its own timer stops it. The bound is what makes the
-# suite safe to SIGKILL.
-BOUNDED_SPINNER = """#!/bin/sh
-(sleep 6; kill -TERM $$) &
+# A bounded spinner: it burns a core, and the kernel stops it (SIGXCPU) once it has burned
+# SPINNER_CPU_S of its OWN CPU. The bound is what makes the suite safe to SIGKILL, and it is in
+# the quantity the tests wait for: a wall-clock timer (`sleep 6; kill`) ran out on a starved box
+# before the spinner had burned FLOOR_S, and a dead pid reads as no CPU -- "the fixture never
+# burned a core" in goh's coverage run (push of 0057e76, 2026-10-25). A CPU budget cannot expire
+# before the floor is reached, however long the box makes it wait, and it caps what a leaked
+# spinner can ever burn.
+SPINNER_CPU_S = 5
+BOUNDED_SPINNER = f"""#!/bin/sh
+ulimit -t {SPINNER_CPU_S}
 while :; do :; done
 """
 
 # A near miss: a loop that does work, so it is not a spinner at all.
+# It is bounded by a COUNT of its sleeps: it burns no CPU, so a CPU budget would never end it, and
+# an unbounded one outlived the run load.py killed at its deadline by half an hour (2026-10-25).
 SLEEPER = """#!/bin/sh
-while true; do sleep 1; done
+i=0
+while [ $i -lt 120 ]; do sleep 1; i=$((i + 1)); done
 """
 
 # A prefix of the shape: the loop is MENTIONED, not run, and the work it does is real.
@@ -62,6 +74,9 @@ while [ $i -lt 400000 ]; do i=$((i + 1)); done
 # BURN_CPU_S); a test cannot burn a minute of CPU, so the floor is a parameter and the test
 # asks the same four questions with a floor a fixture can reach.
 FLOOR_S = 0.3
+# How long the starved-spinner test holds its spinner off the CPU: past the 6 s wall-clock timer
+# the fixture once had, which is the starvation that timer could not survive.
+STARVED_S = 8
 
 
 def _script(tmp_path: Path, body: str, name: str = "spin.sh") -> Path:
@@ -115,6 +130,23 @@ def test_the_backstop_leaves_a_spinner_with_a_live_parent_alone(tmp_path: Path) 
         report = load_reap.reap_burning_orphans(min_cpu_s=FLOOR_S)
         assert pid not in report.killed, report
         assert load_kit.alive(pid), "the backstop killed a spinner whose parent was alive"
+
+
+def test_a_starved_spinner_still_reaches_the_floor(tmp_path: Path) -> None:
+    """THE FIXTURE'S BOUND (push of 0057e76, 2026-10-25). A box can hold the spinner off the CPU
+    for as long as it likes -- here, stopped outright for longer than the wall-clock timer it once
+    had -- and the spinner must still be alive to burn FLOOR_S when it is let go: its bound is its
+    own CPU, which a stopped or starved process does not spend."""
+    script = _script(tmp_path, BOUNDED_SPINNER)
+    with load_kit.owning(["/bin/sh", str(script)]) as child:
+        pid = child.proc.pid
+        # Stopped once it SPINS: its loop, and any timer started before it, are running.
+        assert load_kit.wait_until(lambda: _cpu_of(pid) > 0), "the fixture never started spinning"
+        os.kill(pid, signal.SIGSTOP)
+        time.sleep(STARVED_S)
+        os.kill(pid, signal.SIGCONT)
+        assert load_kit.wait_until(lambda: _burning(pid)), "a starved spinner never burned a core"
+        assert SPINNER_CPU_S > FLOOR_S * 10, "the budget must leave the floor far behind"
 
 
 def test_the_backstop_leaves_a_near_miss_that_sleeps_alone(tmp_path: Path) -> None:
