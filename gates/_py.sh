@@ -70,8 +70,14 @@ goh_py_runner_pinned() {
 # goh_py_export_lost_venv: in a push export (GOH_CROSS_REPO_ROOT names the source checkout), refuse
 # when the source judges with a .venv this export of tracked files lacks and nothing tracked says
 # how to rebuild it: the push gate would otherwise judge the commit with a different interpreter.
+# Only an export OF that source (a worktree sharing its git common dir) is judged: the value is
+# inherited by every fixture repo goh's own suite gates inside its push, and goh's .venv refused
+# them all (push of 1ee22aa, 2026-10-25).
 goh_py_export_lost_venv() {
     [ -n "${GOH_CROSS_REPO_ROOT:-}" ] && [ -x "$GOH_CROSS_REPO_ROOT/.venv/bin/python" ] || return 0
+    [ "$(git rev-parse --path-format=absolute --git-common-dir 2>/dev/null)" \
+        = "$(git -C "$GOH_CROSS_REPO_ROOT" rev-parse --path-format=absolute --git-common-dir 2>/dev/null)" ] \
+        || return 0
     die "$GOH_NAME: the source checkout's Python gate runs in its .venv, which this push export of tracked files does not have, so the push gate would judge with another interpreter -- commit a uv.lock (the gates then run uv run --frozen everywhere), or set GOH_PY_RUNNER to a runner that builds the toolchain"
 }
 

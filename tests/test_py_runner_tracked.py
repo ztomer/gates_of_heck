@@ -19,7 +19,7 @@ import os
 import subprocess
 from pathlib import Path
 
-from conftest import REPO_ROOT, stage, write
+from conftest import REPO_ROOT, commit_all, git, stage, write
 
 PY_SH = REPO_ROOT / "gates" / "_py.sh"
 TUI = REPO_ROOT / "tui" / "lib.sh"
@@ -113,12 +113,32 @@ def test_uv_resolving_another_version_than_the_pin_is_refused(repo: Path) -> Non
     assert "3.14" in r.stderr and "3.15" in r.stderr
 
 
+def _export(source: Path, tmp_path: Path) -> Path:
+    """A push export of `source`: a worktree of its pushed commit, as push_gate.sh makes one."""
+    write(source, ".gitignore", ".venv/\n")  # as in every real repo: the export lacks it
+    commit_all(source)
+    export = tmp_path / "export"
+    git(source, "worktree", "add", "-q", "--detach", str(export))
+    return export
+
+
 def test_an_export_that_lost_its_venv_is_refused_with_the_fix(repo: Path, tmp_path: Path) -> None:
-    source = tmp_path / "source"
-    _venv(source)
-    r = _resolve(repo, env={"GOH_CROSS_REPO_ROOT": str(source)})
+    _venv(repo)
+    export = _export(repo, tmp_path)
+    r = _resolve(export, env={"GOH_CROSS_REPO_ROOT": str(repo)})
     assert r.returncode != 0, r.stdout
     assert ".venv" in r.stderr and "uv.lock" in r.stderr and "GOH_PY_RUNNER" in r.stderr
+
+
+def test_an_inherited_source_that_is_another_repo_decides_nothing(
+    repo: Path, tmp_path: Path
+) -> None:
+    # The outer push gate's value reaches every fixture repo goh's own suite gates; a fixture is
+    # not an export of goh's checkout, so goh's .venv must not refuse it (push of 1ee22aa).
+    other = tmp_path / "other"
+    _venv(other)
+    r = _resolve(repo, env={"GOH_CROSS_REPO_ROOT": str(other)})
+    assert r.returncode == 0, r.stderr
 
 
 def test_an_export_whose_source_had_no_venv_is_judged_as_before(repo: Path, tmp_path: Path) -> None:
@@ -129,9 +149,9 @@ def test_an_export_whose_source_had_no_venv_is_judged_as_before(repo: Path, tmp_
 
 
 def test_an_export_with_a_lock_needs_no_venv(repo: Path, tmp_path: Path) -> None:
-    source = tmp_path / "source"
-    _venv(source)
+    _venv(repo)
     _lock(repo)
-    r = _resolve(repo, env={"GOH_CROSS_REPO_ROOT": str(source)})
+    export = _export(repo, tmp_path)
+    r = _resolve(export, env={"GOH_CROSS_REPO_ROOT": str(repo)})
     assert r.returncode == 0, r.stderr
     assert "RUN=uv run --frozen" in r.stdout
