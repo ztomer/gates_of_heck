@@ -7,7 +7,13 @@ printf 'gh %s\\n' "$*" >> "$LOG"
 cmd="$1"; shift
 case "$cmd" in
   auth) exit 0 ;;
-  api) exit 0 ;;
+  api)
+    # `api repos/OWNER/NAME/actions/permissions --jq .enabled`: what a test planted in
+    # $STATE/actions_enabled ("true"/"false"); nothing planted, nothing printed (an unreadable API).
+    case "$1" in
+      */actions/permissions) [ -f "$STATE/actions_enabled" ] && cat "$STATE/actions_enabled" ;;
+    esac
+    exit 0 ;;
   run)
     # `run list`: the runs a test planted in $STATE/runs.tsv, already in the release kit's
     # `--jq` shape (status, conclusion, name, url, tab-separated); none planted, none listed.

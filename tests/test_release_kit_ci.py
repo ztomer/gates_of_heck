@@ -68,3 +68,31 @@ def test_the_skip_is_said_aloud(kit):
     r = run_release(_with_ci(kit, RED), "--no-ci-check")
     out = r.stdout + r.stderr
     assert r.returncode == 0 and "skipped (--no-ci-check)" in out, out
+
+
+# ── R3.13: Actions DISABLED is said, not waited on (sys_updater, 2026-10) ─────────────────────────
+#
+# sys_updater tracks workflows and has GitHub Actions disabled: no run ever comes, so the kit
+# refused "no CI run for HEAD" and the release went out with --no-ci-check -- a skip that also
+# skips every repo where the run is genuinely missing. The kit asks the API instead
+# (`repos/OWNER/NAME/actions/permissions`), and a disabled repo is "no CI", which is not a green.
+
+
+def test_actions_disabled_is_named_and_the_tag_is_made(kit):
+    _with_ci(kit, None)
+    (kit["gh_state"] / "actions_enabled").write_text("false\n")
+    r = run_release(kit)
+    out = r.stdout + r.stderr
+    assert r.returncode == 0, out
+    assert "GitHub Actions is disabled" in out and "not a green" in out, out
+    assert "no CI run for HEAD" not in out, out
+    assert _tagged(kit)
+
+
+def test_actions_enabled_with_no_run_still_refuses(kit):
+    _with_ci(kit, None)
+    (kit["gh_state"] / "actions_enabled").write_text("true\n")
+    r = run_release(kit)
+    out = r.stdout + r.stderr
+    assert r.returncode != 0 and "no CI run for HEAD" in out, out
+    assert not _tagged(kit)
