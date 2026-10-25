@@ -61,6 +61,7 @@ pub mod requires_call_py;
 pub mod revblobs;
 pub mod rust_depinfo;
 pub mod rust_scope;
+pub mod rustfmt_staged;
 pub mod rustlex;
 pub mod scope;
 pub mod screen;

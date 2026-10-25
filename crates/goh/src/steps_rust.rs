@@ -1,5 +1,6 @@
 //! The cheap Rust source policies at COMMIT time: no `#[allow]`/`#[expect]`, no emptiness asserts,
-//! over the STAGED `.rs` files.
+//! and the release gate's `cargo fmt --check` (G1e, `crate::rustfmt_staged`), over the STAGED
+//! `.rs` files.
 //!
 //! Both ran only in `rust_gate.sh`, at push. A commit with `assert!(x.is_empty())` passed the
 //! pre-commit and was refused minutes later by the push (2026-10-06) -- a commit gate weaker than
@@ -32,14 +33,27 @@ pub fn step(
             return Some(fail(label, "native", &format!("{message}\n"), start));
         }
     };
-    if !files.iter().any(|f| {
-        f.as_bytes().ends_with(b".rs")
-            && noallow::is_compiled_src(f)
-            && !exclude.as_ref().is_some_and(|x| x.is_match(f))
-    }) {
+    let rust: Vec<&String> = files
+        .iter()
+        .filter(|f| {
+            f.as_bytes().ends_with(b".rs") && !exclude.as_ref().is_some_and(|x| x.is_match(f))
+        })
+        .collect();
+    if rust.is_empty() {
         return None;
     }
     let start = begin(label);
+    // Shape first, over EVERY staged `.rs` (tests, examples and build scripts included): the
+    // release gate's `cargo fmt --all -- --check` judges them all (app_updates c0d3a57).
+    match crate::rustfmt_staged::check(repo, &rust) {
+        Err(message) => return Some(fail(label, "native", &format!("{message}\n"), start)),
+        Ok(Some(report)) => return Some(fail(label, "native", &report, start)),
+        Ok(None) => {}
+    }
+    if !rust.iter().any(|f| noallow::is_compiled_src(f)) {
+        ok(label, start);
+        return None;
+    }
     match noallow::scan_root(repo, files, exclude.as_ref(), true) {
         Err(message) => return Some(fail(label, "native", &format!("{message}\n"), start)),
         Ok((hits, _)) if !hits.is_empty() => {
