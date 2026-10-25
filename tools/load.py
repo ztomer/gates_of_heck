@@ -110,7 +110,7 @@ def parse_duration(text: str) -> float:
     return value
 
 
-def cpu_count() -> int:
+def cores() -> int:
     """The cores spinners compete for. GOH_LOAD_NCPU is the seam that tests both directions."""
     seam = os.environ.get("GOH_LOAD_NCPU", "").strip()
     if seam:
@@ -401,10 +401,10 @@ def main(argv: list[str]) -> int:
     except ValueError as error:
         print(f"load: {error}", file=sys.stderr)
         return 2
-    cores = cpu_count()
-    if count > cores and not opts.oversubscribe:
+    ncpu = cores()
+    if count > ncpu and not opts.oversubscribe:
         print(
-            f"load: {count} spinners on {cores} core(s) starves the command under test (a starved "
+            f"load: {count} spinners on {ncpu} core(s) starves the command under test (a starved "
             "test hangs, and a hang is not a measurement); pass --oversubscribe if that is meant",
             file=sys.stderr,
         )

@@ -15,6 +15,7 @@ import subprocess
 from pathlib import Path
 
 import pytest
+from _fast_git import fast_init
 from conftest import REPO_ROOT, commit_all, hermetic_env, write
 
 pytestmark = pytest.mark.skipif(shutil.which("rustc") is None, reason="rustc not installed")
@@ -94,7 +95,7 @@ def test_a_git_checkout_and_a_head_export_are_keyed_and_a_bare_directory_is_not(
 
     checkout = tmp_path / "checkout"
     checkout.mkdir()
-    subprocess.run(["git", "init", "-q", str(checkout)], check=True, stdin=subprocess.DEVNULL)
+    fast_init(checkout)
     head_cache = tmp_path / "head"
     export = head_cache / ("a" * 40)
     export.mkdir(parents=True)

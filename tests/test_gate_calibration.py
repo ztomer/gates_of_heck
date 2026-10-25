@@ -17,6 +17,7 @@ import sys
 
 import pytest
 
+from _fast_git import fast_init
 from conftest import REPO_ROOT as ROOT
 
 sys.path.insert(0, str(ROOT / "checks"))
@@ -211,7 +212,7 @@ def test_the_external_note_does_not_claim_what_a_silent_prover_never_said(tmp_pa
     outside.mkdir()
     silent = outside / "check_gate_canary.py"
     silent.write_text("print('a full run')\n")
-    subprocess.run(["git", "init", "-q", str(outside)], check=True, stdin=subprocess.DEVNULL)
+    fast_init(outside)
     subprocess.run(["git", "-C", str(outside), "add", "."], check=True, stdin=subprocess.DEVNULL)
     subprocess.run(
         [

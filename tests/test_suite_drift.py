@@ -67,6 +67,8 @@ CPU_COUNT_POOLS = {
     # Not a pool: the default COUNT of machine-wide gate slots (one gate per four cores), which
     # bounds the gates and so every pool they run.
     "lib/gate_slot.py": 1,
+    # Not a pool: the core count load.py REFUSES more spinners than (G1c), without --oversubscribe.
+    "tools/load.py": 1,
 }
 
 _INIT = re.compile(r'"init"|git init')
