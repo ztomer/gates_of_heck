@@ -164,3 +164,101 @@ def test_a_declaration_alongside_the_resource_tags_is_honoured(goh, repo, env):
     assert r.returncode == 1, r.stdout + r.stderr
     assert "build/app.bin" in r.stdout + r.stderr, r.stdout + r.stderr
     assert "not a declaration" not in r.stdout + r.stderr, r.stdout + r.stderr
+
+
+# ── G1b(b): a BUILD that declares nothing is never skipped (2026-10-25) ─────────────────────────
+#
+# The declaration (7.2) closed the class only for a step that carries one, and the consumer the
+# class was found in never wrote it: divoom-control's GOH_CI_STEPS still read
+# `cargo build -p divoomd --locked:...:./scripts/browser_e2e.sh` with no `[produces=]`. A fix that
+# holds only when somebody remembers to declare is the disciplinary kind. So the right state is
+# the DEFAULT: a step whose command is a build tool's build, and that declares no `produces=`, is
+# never looked up -- its artifact is its point, and a verdict cache cannot know where that went.
+
+
+def _fake_cargo(tmp_path: Path, run_env: dict) -> dict:
+    bin_dir = tmp_path / "fakebin"
+    bin_dir.mkdir(exist_ok=True)
+    cargo = bin_dir / "cargo"
+    cargo.write_text(
+        '#!/bin/sh\necho ran >> "$COUNT"\nmkdir -p build\nprintf built > build/app.bin\n'
+    )
+    cargo.chmod(0o755)
+    return {**run_env, "PATH": f"{bin_dir}{os.pathsep}{run_env.get('PATH', '')}"}
+
+
+def test_an_undeclared_build_is_never_skipped_so_its_consumer_does_not_fail(
+    goh, repo, env, tmp_path
+):
+    """divoom's shape, undeclared: the build was proven on this tree, the fresh worktree has no
+    binary, and the consumer would fail for a reason that has nothing to do with the tree."""
+    run_env = _fake_cargo(tmp_path, env)
+    build, consume = "cargo build -p app --locked", "test -f build/app.bin"
+    first = _local_ci(goh, repo, run_env, build, consume)
+    assert first.returncode == 0, first.stdout + first.stderr
+    (repo / "build" / "app.bin").unlink()  # the fresh worktree: the binary is not there
+    second = _local_ci(goh, repo, run_env, build, consume)
+    assert second.returncode == 0, second.stdout + second.stderr
+    assert runs(run_env) == 2, "the undeclared build was skipped, so the consumer had no artifact"
+
+
+def test_an_undeclared_build_is_never_skipped_at_the_hook(goh, repo, env, tmp_path):
+    """The same rule in the hook's CLI (gates/proven.sh): one implementation, both callers."""
+    run_env = _fake_cargo(tmp_path, env)
+    for _ in range(2):
+        r = proven(goh, repo, run_env, "CARGO_TERM_COLOR=never cargo build --release")
+        assert r.returncode == 0, r.stdout + r.stderr
+    assert runs(run_env) == 2, "an undeclared build was skipped"
+
+
+def test_a_declared_build_and_a_non_build_still_hit(goh, repo, env, tmp_path):
+    """The accept direction: a build that DECLARES its artifact is cached under 7.2's rules, and a
+    step that is not a build (`cargo test`, `cargo build-plan-check`, a checker) still hits."""
+    run_env = _fake_cargo(tmp_path, env)
+    for step in ("[produces=build/app.bin] cargo build -p app", "cargo test --locked"):
+        for _ in range(2):
+            r = proven(goh, repo, run_env, step)
+            assert r.returncode == 0, r.stdout + r.stderr
+    assert runs(run_env) == 2, "a declared build or a non-build step was not cached"
+
+
+def test_the_build_classifier_reads_the_command_not_a_word_in_it(goh):
+    """Which commands are builds: the tool's own build verb, after env assignments; never a word
+    that merely appears later (a path, an argument, an echo)."""
+    probe = (
+        f'. "{goh}/gates/_proven.sh"; for s in "$@"; do '
+        'if proven_undeclared_build "$s"; then echo "B $s"; else echo "- $s"; fi; done'
+    )
+    steps = [
+        "cargo build -p divoomd --locked",
+        "RUSTFLAGS=-Dwarnings cargo build",
+        "cargo b",
+        "swift build -c release",
+        "xcodebuild -scheme App build",
+        "go build ./...",
+        "cargo test --locked",
+        "cargo clippy --all-targets",
+        "echo cargo build",
+        "python3 tools/check_built_binaries.py",
+        "[produces=target/debug/x] cargo build",
+        "[consumes=target/debug/x] cargo build",
+    ]
+    out = subprocess.run(
+        ["bash", "-c", probe, "probe", *steps],
+        capture_output=True,
+        text=True,
+        stdin=subprocess.DEVNULL,
+        timeout=60,
+        check=False,
+    )  # fmt: skip
+    verdict = dict(line.split(" ", 1)[::-1] for line in out.stdout.splitlines())
+    builds = {s for s, v in verdict.items() if v == "B"}
+    assert builds == {
+        "cargo build -p divoomd --locked",
+        "RUSTFLAGS=-Dwarnings cargo build",
+        "cargo b",
+        "swift build -c release",
+        "xcodebuild -scheme App build",
+        "go build ./...",
+        "[consumes=target/debug/x] cargo build",
+    }, (out.stdout, out.stderr)

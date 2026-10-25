@@ -15,6 +15,8 @@
 . "$(dirname "${BASH_SOURCE[0]}")/_hash.sh"
 # shellcheck source=gates/_git_env.sh
 . "$(dirname "${BASH_SOURCE[0]}")/_git_env.sh"
+# shellcheck source=gates/_proven_artifacts.sh
+. "$(dirname "${BASH_SOURCE[0]}")/_proven_artifacts.sh"
 PROVEN_GOH_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 
 # Environment variables whose values change what a gate step concludes, keyed by default. The
@@ -275,6 +277,7 @@ proven_dir() {
 # for this exact step string; prints "<age> <label>" (age human-readable, label the recorder's).
 proven_lookup() {
     local dir f epoch="" by="" step="" line now age
+    proven_undeclared_build "$2" && return 1  # its artifact is its point: never skipped
     if [ -x "${GOH_RESOLVED_BIN:-}" ]; then
         "$GOH_RESOLVED_BIN" proven lookup "$1" "$2" "${PROVEN_TTL:-86400}"
         return
@@ -306,121 +309,6 @@ proven_age() {
     elif [ "$s" -lt 3600 ]; then printf '%sm\n' "$((s / 60))"
     else printf '%sh%02dm\n' "$((s / 3600))" "$(((s % 3600) / 60))"
     fi
-}
-
-# ── THE ARTIFACTS A STEP DECLARES ───────────────────────────────────────────────────────────────
-#
-# THE CLASS (divoom-control, 2026-10-20). The cache remembered "this step exited 0" and read that
-# as "the artifact a later step needs is there". The pre-push gate runs in a FRESH worktree: the
-# build step was proven on the same commit by an earlier push attempt, so it was SKIPPED, so it
-# left no binary behind, and the step that consumes it failed with "binary not found" -- a reason
-# that has nothing to do with the tree.
-#
-# THE DECLARATION rides in the step string's bracket prefix, so it travels with the step and cannot
-# drift from it:
-#
-#     [produces=target/debug/divoomd] cargo build -p divoomd --locked
-#     [consumes=target/debug/divoomd] python3 tools/check_built_binaries.py
-#
-# `produces=` is what the step CREATES; `consumes=` is what it READS. Several paths are separated
-# by `+` (a comma separates the items in the prefix). Paths are repo-relative.
-#
-# THE RULES. A record may only be written when every declared artifact is THERE (a build that
-# "succeeded" and produced nothing is not a proof of anything), and a hit is only a hit while
-# every declared artifact is still there, UNCHANGED (a missing one is the fresh worktree; a
-# changed one is a different build). The declaration is part of the step string, so it is part of
-# the key: a record written before the declaration existed can never be found.
-
-# proven_decl <step> — the declared artifacts, one per line: "<produces|consumes> <path>".
-# Pure parameter expansion: no spawn, and bash 3.2 safe.
-proven_decl() {
-    local step="$1" head rest item kind paths path
-    case "$step" in
-        "["*"] "*) head="${step%%]*}" ;;
-        *) return 0 ;;
-    esac
-    head="${head#[}"
-    rest="$head"
-    while [ -n "$rest" ]; do
-        item="${rest%%,*}"
-        if [ "$item" = "$rest" ]; then rest=""; else rest="${rest#*,}"; fi
-        case "$item" in
-            produces=*|consumes=*) ;;
-            *) continue ;;
-        esac
-        kind="${item%%=*}"
-        paths="${item#*=}"
-        while [ -n "$paths" ]; do
-            path="${paths%%+*}"
-            if [ "$path" = "$paths" ]; then paths=""; else paths="${paths#*+}"; fi
-            [ -n "$path" ] && printf '%s %s\n' "$kind" "$path"
-        done
-    done
-}
-
-# proven_decl_valid <step> — 0 when every declaration in the prefix is one of the two kinds.
-# An unknown key is REFUSED, not ignored: a typo in a declaration is a gate that silently checks
-# nothing, which is the class this file exists for.
-proven_decl_valid() {
-    local step="$1" head rest item kind paths path
-    case "$step" in
-        "["*"] "*) head="${step%%]*}" ;;
-        *) return 0 ;;
-    esac
-    head="${head#[}"
-    rest="$head"
-    while [ -n "$rest" ]; do
-        item="${rest%%,*}"
-        if [ "$item" = "$rest" ]; then rest=""; else rest="${rest#*,}"; fi
-        case "$item" in
-            *=*) ;;
-            *) continue ;;
-        esac
-        kind="${item%%=*}"
-        case "$kind" in
-            produces|consumes) ;;
-            *) return 1 ;;
-        esac
-        paths="${item#*=}"
-        while [ -n "$paths" ]; do
-            path="${paths%%+*}"
-            if [ "$path" = "$paths" ]; then paths=""; else paths="${paths#*+}"; fi
-            case "$path" in
-                ""|*" "*|*"$(printf '\t')"*) return 1 ;;
-            esac
-        done
-    done
-    return 0
-}
-
-# proven_artifact_hash <path> — the sha256 of a file's bytes; 1 when it cannot be read. The record
-# and the lookup must agree on it, and the native half hashes the same way (sha256).
-proven_artifact_hash() {
-    local path="$1" out
-    [ -f "$path" ] || return 1
-    out="$(hash_hex "$path")" || return 1
-    [ -n "$out" ] || return 1
-    printf '%s\n' "$out"
-}
-
-# proven_artifacts_present <record file> — 0 when every artifact the proof was about is still
-# there and unchanged. A MISSING one and a CHANGED one both void the proof.
-proven_artifacts_present() {
-    local f="$1" line kind rest path want got
-    [ -f "$f" ] || return 1
-    while IFS= read -r line; do
-        case "$line" in
-            "produces "*|"consumes "*) ;;
-            *) continue ;;
-        esac
-        kind="${line%% *}"
-        rest="${line#* }"
-        path="${rest%% *}"
-        want="${rest#* }"
-        got="$(proven_artifact_hash "$path")" || return 1
-        [ "$got" = "$want" ] || return 1
-    done <"$f"
-    return 0
 }
 
 # proven_error <message> — the tui's err when the caller has one (every caller does), and the
