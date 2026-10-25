@@ -1,5 +1,40 @@
 # CHANGELOG
 
+## v0.49.1 — the load backstop keeps its record and survives the load it exists for _(2026-10-25)_
+
+Patch bump: five fixes, no new knob. Two of them change what a consumer's gate refuses (the py
+runner); the rest are the load tool's backstop and its tests.
+
+* **The load registry is written under ONE lock (`9d793bf`).** `tools/load.py` rewrote
+  `registry.json` once per spinner and the minute backstop read, pruned and wrote it back, with no
+  lock: twice on 2026-10-25 a `load.py --max ... 16` deadline left a stale registry naming the
+  dead owner and only 8, then 2, of its 16 spinners (a lost update), and a pass that read before
+  `finish()` could bring a dead slot back ("holds an experiment"). Every mutation of the load
+  directory now takes an flock on `.registry.lock` itself; the backstop kills outside the lock and
+  prunes inside it, on a re-read. Sibling: a registry naming no spinner was removed even while
+  its owner lived, freeing a slot a second experiment could take; now only when the owner is
+  gone. Consumer-visible: the load directory holds `.registry.lock`.
+
+* **The backstop survives a slow `pgrep`/`ps` (`03a22fb`).** Its launchd log held eleven passes
+  that died on `TimeoutExpired` (nine `pgrep` at 10 s, two `ps -ax` at 30 s), each taking the
+  shapes after it down, on the loaded machine the backstop is for. A timed-out lookup now blinds
+  one shape for one pass and says so (exit 0); a timed-out per-pid read is unknown and never a
+  reason to kill, drop an entry or call an owner gone; each shape runs alone, and any other fault
+  is reported after the rest ran (exit 1).
+
+* **The py gates' runner is decided by tracked state (`1ee22aa`, `0057e76`).** `.venv/bin/python`
+  was chosen when it existed, so a commit was judged by the project's venv and its push export
+  (no `.venv`, it is gitignored) by system `python3` (token-pool: "No module named 'mcp'" at push
+  only). A tracked `uv.lock` now makes the runner `uv run --frozen`, ahead of a `.venv`; without a
+  lock, a push export whose source judges with a `.venv` is refused with the fix named, and only
+  an export OF that source (same git common dir) is judged so. `GOH_PY_RUNNER` still wins.
+  Consumer-visible: a repo with a tracked `uv.lock` needs `uv` on PATH; a repo with a `.venv` and
+  no lock is refused at push until it commits a lock or sets `GOH_PY_RUNNER`.
+
+* **The load-burning fixture is bounded by its own CPU (`525ef6c`).** A 6 s wall-clock timer ended
+  the spinner fixture before a starved box let it burn its floor; `ulimit -t 5` bounds it in the
+  quantity the tests wait for, and the sleeper fixture is bounded too.
+
 ## v0.49.0 — a load experiment has a wall clock, and four gates stop trusting what they were told _(2026-10-25)_
 
 Minor bump: `tools/load.py` refuses two things it used to run (N above the core count, and no
