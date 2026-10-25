@@ -257,6 +257,7 @@ class Experiment:
         self.fifos: list[Path] = []
         self.data: dict = {}
         self.done = False
+        self.lock = threading.RLock()
 
     def claim(self) -> None:
         """Take the slot, refusing one that is taken."""
@@ -336,19 +337,27 @@ class Experiment:
         return self.finish()
 
     def finish(self) -> list[int]:
-        """Kill the spinners, verify, and drop the registry unless one survived."""
-        if self.done:
-            return []
-        self.done = True
-        survivors = _stop(self.procs)
-        for fifo in self.fifos:
-            reg.remove(fifo)
-        if survivors:
-            self.data["pids"] = [{"pid": pid, "start": ""} for pid in survivors]
-            reg.write(self.registry, self.data)
-        else:
-            reg.remove(self.registry)
-        return survivors
+        """Kill the spinners, verify, and drop the registry unless one survived.
+
+        ONE cleanup, and a second caller WAITS for it (2026-10-25): the owner-watch thread and the
+        main thread can both arrive here -- the watch aborts the command, the main thread wakes on
+        its death -- and a second caller that returned at once on `done` went on to `os._exit`,
+        killing the first one's cleanup half-way. A re-entrant lock, because a signal handler runs
+        on the main thread and may arrive while the main thread is already inside.
+        """
+        with self.lock:
+            if self.done:
+                return []
+            self.done = True
+            survivors = _stop(self.procs)
+            for fifo in self.fifos:
+                reg.remove(fifo)
+            if survivors:
+                self.data["pids"] = [{"pid": pid, "start": ""} for pid in survivors]
+                reg.write(self.registry, self.data)
+            else:
+                reg.remove(self.registry)
+            return survivors
 
 
 def _watch_parent(experiment: Experiment, parent: int) -> None:

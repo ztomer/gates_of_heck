@@ -330,3 +330,32 @@ def test_spinners_within_the_cores_or_named_oversubscription_run(
     )  # fmt: skip
     assert result.returncode == 0, (result.returncode, result.stdout, result.stderr)
     assert len(_spinner_pids(result.stdout)) == count, result.stdout
+
+
+def test_a_second_finish_waits_for_the_first_to_complete(tmp_path: Path, monkeypatch) -> None:
+    """THE RACE THE DEADLINE BROUGHT (2026-10-25, the land gate). The owner-watch thread aborts
+    (kills the command's tree), the main thread wakes on the dead command and starts `finish`,
+    and the watch thread's own `finish` saw `done` and returned at once -- straight into
+    `os._exit`, killing the main thread's cleanup half-way: the registry outlived its owner. A
+    second `finish` must wait for the first to complete, so whoever exits, exits after it."""
+    import threading
+
+    sys.path.insert(0, str(REPO_ROOT / "tools"))
+    import load as tool_module
+
+    experiment = tool_module.Experiment(tmp_path, 0, ["true"])
+    experiment.claim()
+    first_started = threading.Event()
+
+    def slow_stop(_procs):
+        first_started.set()
+        time.sleep(0.5)
+        return []
+
+    monkeypatch.setattr(tool_module, "_stop", slow_stop)
+    worker = threading.Thread(target=experiment.finish)
+    worker.start()
+    assert first_started.wait(timeout=10)
+    experiment.finish()  # the second caller: it must not return before the first is done
+    assert not reg.registry_path(tmp_path).exists(), "the second finish returned mid-cleanup"
+    worker.join(timeout=10)
