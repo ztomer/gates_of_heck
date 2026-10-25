@@ -8,6 +8,8 @@ from the P0 instrument does not land.
 
 ## State — 2026-10-20, v0.44.0 (read first)
 
+v0.49.0 (2026-10-25) carries the estate roadmap's goh lane (G1c, G1e, G1b(a)(b), R3.13 two of three); the CHANGELOG stanza has each with its commit. G1b(c) and R3.13's sys_updater pin are ruled not goh's there, with the evidence.
+
 v0.44.0 closes the plan of record's Phase 3 (7.1, 7.2, 7.3): the Linux `pidfd` branch of
 the gate slot holder is PROVED on Linux (and three defects it carried are closed), the
 proven cache honours the ARTIFACTS a step declares, and the empty-tree sweep collects the

@@ -1,5 +1,68 @@
 # CHANGELOG
 
+## v0.49.0 — a load experiment has a wall clock, and four gates stop trusting what they were told _(2026-10-25)_
+
+Minor bump: `tools/load.py` refuses two things it used to run (N above the core count, and no
+deadline is no longer possible), and the commit gate judges Rust shape.
+
+* **`tools/load.py` is bounded by its own clock (G1c, `9770e4e`).** `load.py 32 -- taskpolicy -b
+  loop.sh` (a ZoneWM starvation proof wrapping `swift test` three times) ran 10h14m at load
+  average ~154 on 2026-10-24/25: the background-priority test starved under 32 spinners on 16
+  cores and hung, and nothing ended it. A deadline is now always in force (30 min, `--max 90m` /
+  `--max 2h` to extend); the command runs in a process group of its own, and on expiry its whole
+  tree -- the group, and every descendant snapshotted before anything dies, one that left the
+  group too -- and every spinner are killed and the tool exits **124** naming the deadline. A
+  signal or a dead owner kills the command's tree as well (before, SIGTERM to the tool left the
+  command running). **N > ncpu is refused** unless `--oversubscribe` (`GOH_LOAD_NCPU` is the test
+  seam). Consumer-visible: a script calling `load.py 32` on 16 cores now exits 2 until it says
+  `--oversubscribe`, and an experiment longer than 30 min needs `--max`.
+
+* **The commit gate runs the release gate's `cargo fmt --check` (G1e, `70d7251`).** app_updates
+  `c0d3a57`: the commit hook passed a test file the release gate's `cargo fmt --all -- --check`
+  refused. Every staged `.rs` in a package -- tests, examples, build scripts -- is now judged by
+  rustfmt the way cargo fmt judges it: the STAGED blob, the package's edition (workspace-inherited
+  too), the nearest `rustfmt.toml`, from the repo root. Measured first: `rustfmt --check` reading
+  stdin prints the diff and EXITS 0 (rustfmt 1.10.0), so the step compares `--emit stdout` with
+  the blob byte for byte. Consumer-visible: a commit staging misformatted Rust is now red at
+  commit, not at release.
+
+* **`--proves` is asked only of a prover that dispatches on it (G1b(a), `8155f4b`).** The
+  calibration reader ran `<prover> --proves` blind; a prover that ignored the flag ran its full
+  path (routines' `check_tabs_contract` before its `b774d20`: a cargo build and the real binary)
+  and its rc-0 stdout became the claim set. The source is read first (the flag as CODE, never in
+  prose), and an answer is a claim only as one registry key per line. The external note no longer
+  says a prover "lists each of them" without asking it.
+
+* **A BUILD that declares no artifact is never skipped (G1b(b), `9eb80d3`).** 7.2 made the proven
+  cache honour `[produces=]`, and divoom-control -- where the class was found -- never declared
+  one. A step whose command is a build tool's build verb and declares nothing is now never looked
+  up; `[produces=PATH]` is what makes a build cacheable. The artifact half of the cache moved to
+  `gates/_proven_artifacts.sh`. Consumer-visible: an undeclared `cargo build` / `swift build` step
+  runs on every gate.
+
+* **The release kit says "Actions disabled" instead of waiting (R3.13, `1fb6e09`).** sys_updater has
+  workflows and Actions off, so "no CI run for HEAD" refused forever and the release went out with
+  `--no-ci-check`. The ci step reads `repos/OWNER/NAME/actions/permissions`; `enabled=false` is "no
+  CI (not a green)", anything else is the run check as before.
+
+* **A path dependency in the gates checkout keeps the per-crate cache on (R3.13, `fd0ac22`).**
+  antiknob's `goh-tui = { path = "../gates_of_heck/crates/goh-tui" }` lies outside its repo, so
+  `goh rust-scope` refused and the cache was off on every run. The gates checkout's HEAD, diff and
+  untracked files are already in every proven key; `GOH_PROVEN_KEYED_ROOTS` (from
+  `proven_keyed_roots`: a git checkout, or a head export) lets rust-scope and the dep-info check
+  leave a dependency inside one to that identity. Anything else outside the repo still refuses.
+
+* **The estate corpus plants home-paths in Swift (`b7bca0b`).** mediaremote-adapter became a Swift
+  package over a VENDORED Objective-C core on 2026-10-24, so every tracked `.m` sits under its
+  excluded `Vendor/` and the sweep went blind ("no tracked .m file").
+
+* **Not goh's, with the evidence.** The browser-suite UI-timing class (G1b(c)) stays the
+  consumer's: goh runs divoom's 31 steps serially (no `GOH_CI_JOBS`) and `py_gate.sh` runs pytest
+  without `-n`; the parallelism is `scripts/browser_e2e.sh`'s own default of 8 workers, recorded in
+  divoom-control `docs/ROADMAP.md:841` (BACKLOG "Known limits"). sys_updater's harness pin drifting
+  on every goh move is that repo's stated design (its ROADMAP: "the pin is a VERSION, and the
+  harness moving is what makes the gate red"); naming a release tag instead is the owner's call.
+
 ## v0.48.0 — the JavaScript gate judges the BROWSER'S goal, and its failure mode was inverted _(2026-10-22)_
 
 Minor bump: the JavaScript parse gate no longer asks node the way node is usually asked, and the
