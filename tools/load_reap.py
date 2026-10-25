@@ -51,32 +51,54 @@ def main(argv: list[str]) -> int:
     parser.add_argument("--dir", default=None, help="the load directory (default GOH_LOAD_DIR)")
     opts = parser.parse_args(argv)
     directory = Path(opts.dir).expanduser() if opts.dir else reg.load_dir()
+    shapes = [
+        # The registry is one way to an orphan; the house's own shape is the other, and it does
+        # not need a directory to be searched.
+        (
+            "registry",
+            lambda: load_reap.reap_all(directory) if directory.is_dir() else load_reap.Report(),
+        ),
+        ("the house's spinner shape", load_reap.reap_orphans),
+        # The third shape (2026-10-21): an orphaned process BURNING a core on a busy loop, whose
+        # command line is not the house's own -- the hand-rolled spinners of that day,
+        # twenty-four of them, four cores each. Named by its shape, killed by its pid, and
+        # recorded as an exemption.
+        ("burning orphans", load_reap.reap_burning_orphans),
+    ]
+    # Each shape runs ALONE (2026-10-25): one that dies must not take the others with it. Eleven
+    # passes died on a lookup's timeout, on the loaded machine the backstop is for; a timeout is
+    # now a stated blind spot (Report.blind), and any other fault is reported after the rest ran.
     report = load_reap.Report()
-    if directory.is_dir():
-        report = load_reap.reap_all(directory)
-    # The registry is one way to an orphan; the house's own shape is the other, and it does not
-    # need a directory to be searched.
-    orphans = load_reap.reap_orphans()
-    report.killed.extend(orphans.killed)
-    report.failed.extend(orphans.failed)
-    # The third shape (2026-10-21): an orphaned process BURNING a core on a busy loop, whose
-    # command line is not the house's own -- the hand-rolled spinners of that day, twenty-four of
-    # them, four cores each. Named by its shape, killed by its pid, and recorded as an exemption.
-    burning = load_reap.reap_burning_orphans()
-    report.killed.extend(burning.killed)
-    report.failed.extend(burning.failed)
+    faults: list[str] = []
+    for name, shape in shapes:
+        try:
+            one = shape()
+        except load_reap.Blind as blind:
+            report.blind.append(f"{name}: {blind}")
+            continue
+        except Exception as error:  # reported below, and the job exits 1
+            faults.append(f"{name}: {type(error).__name__}: {error}")
+            continue
+        report.killed.extend(one.killed)
+        report.failed.extend(one.failed)
+        report.removed.extend(one.removed)
+        report.blind.extend(one.blind)
     if report.killed or report.removed:
         killed = " ".join(str(pid) for pid in report.killed)
         print(
             f"load-reap: killed {killed or 'nothing'}; removed {len(report.removed)} registry file(s)"
         )
+    for blind in report.blind:
+        print(f"load-reap: not searched this pass -- {blind}; the next pass asks again")
     if report.failed:
         print(
             f"load-reap: {len(report.failed)} spinner(s) survived: "
             f"{' '.join(str(pid) for pid in report.failed)}",
             file=sys.stderr,
         )
-    return 0
+    for fault in faults:
+        print(f"load-reap: {fault}", file=sys.stderr)
+    return 1 if faults else 0
 
 
 if __name__ == "__main__":

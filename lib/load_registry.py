@@ -302,7 +302,8 @@ def owner_gone(data: dict) -> bool:
     if owner <= 0 or pid_gone(owner):
         return True
     recorded = data.get("owner_start")
-    return bool(recorded) and pid_start(owner) != recorded
+    current = pid_start(owner)  # None is unknown, not gone: the pid is alive
+    return bool(recorded) and current is not None and current != recorded
 
 
 def settle(
@@ -341,14 +342,23 @@ def settle(
 
 
 def _ps(pid: int, spec: str) -> str:
-    result = subprocess.run(
-        ["ps", "-o", spec, "-p", str(pid)],
-        capture_output=True,
-        text=True,
-        stdin=subprocess.DEVNULL,
-        timeout=10,
-        check=False,
-    )  # fmt: skip
+    """One field of one process, or "" when it cannot be read -- gone, or `ps` too slow to answer.
+
+    "" is UNKNOWN, and every caller reads it that way: an unknown is never a reason to kill, to
+    drop an entry, or to call an owner gone. A loaded machine makes `ps` slow, and the backstop is
+    needed most on a loaded machine (2026-10-25: eleven passes died on a lookup's timeout).
+    """
+    try:
+        result = subprocess.run(
+            ["ps", "-o", spec, "-p", str(pid)],
+            capture_output=True,
+            text=True,
+            stdin=subprocess.DEVNULL,
+            timeout=10,
+            check=False,
+        )  # fmt: skip
+    except (OSError, subprocess.TimeoutExpired):
+        return ""
     return result.stdout.strip() if result.returncode == 0 else ""
 
 

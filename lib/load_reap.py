@@ -97,6 +97,34 @@ SHELLS = ("sh", "bash", "zsh", "ksh", "dash")
 SCRIPT_BYTES = 65536
 
 
+class Blind(Exception):
+    """A lookup the machine could not answer in time: one shape is not searched this pass.
+
+    THE CLASS (2026-10-25): eleven passes died on a lookup's timeout -- nine on `pgrep`, two on
+    `ps -ax` -- and each took the shapes after it down too, on the loaded machine the backstop is
+    for. A slow lookup is a STATUS: the pass says which shape it could not search, runs the rest,
+    and the next pass asks again a minute later. The minute job catches it per shape.
+    """
+
+
+def _ask(argv: list[str], timeout: float) -> str:
+    """What a lookup printed, or Blind when it could not run or did not answer in time."""
+    try:
+        result = subprocess.run(
+            argv,
+            capture_output=True,
+            text=True,
+            stdin=subprocess.DEVNULL,
+            timeout=timeout,
+            check=False,
+        )
+    except subprocess.TimeoutExpired:
+        raise Blind(f"`{' '.join(argv[:2])}` timed out after {timeout:g}s") from None
+    except OSError as error:
+        raise Blind(f"`{argv[0]}` could not run: {error}") from None
+    return result.stdout
+
+
 @dataclass
 class Report:
     """What one sweep did, in the words the job's log needs."""
@@ -107,6 +135,7 @@ class Report:
     failed: list[int] = field(default_factory=list)
     removed: list[str] = field(default_factory=list)
     swept: list[str] = field(default_factory=list)
+    blind: list[str] = field(default_factory=list)
 
     @property
     def touched(self) -> int:
@@ -149,28 +178,18 @@ def pgrep(pattern: str) -> list[int]:
     What comes back is a CANDIDATE list, never a verdict: every candidate is read back and
     matched against the house's own shape, exactly, before anything is touched.
     """
-    result = subprocess.run(
-        ["pgrep", "-f", pattern],
-        capture_output=True,
-        text=True,
-        stdin=subprocess.DEVNULL,
-        timeout=10,
-        check=False,
-    )
-    return [int(part) for part in result.stdout.split() if part.isdigit()]
+    out = _ask(["pgrep", "-f", pattern], timeout=10)
+    return [int(part) for part in out.split() if part.isdigit()]
 
 
 def _process(pid: int) -> tuple[int, str] | None:
-    """The parent and the WHOLE command line of a pid, or None when it cannot be read."""
-    result = subprocess.run(
-        ["ps", "-ww", "-o", "ppid=,command=", "-p", str(pid)],
-        capture_output=True,
-        text=True,
-        stdin=subprocess.DEVNULL,
-        timeout=10,
-        check=False,
-    )
-    parts = result.stdout.strip().split(None, 1)
+    """The parent and the WHOLE command line of a pid, or None when it cannot be read -- gone, or
+    `ps` too slow to answer. None is unknown, and an unknown candidate is left alone."""
+    try:
+        out = _ask(["ps", "-ww", "-o", "ppid=,command=", "-p", str(pid)], timeout=10)
+    except Blind:
+        return None
+    parts = out.strip().split(None, 1)
     if len(parts) != 2:
         return None
     try:
@@ -259,16 +278,9 @@ def _table() -> dict[int, tuple[int, float, str]]:
     One call for the whole machine: a sweep that spawned a `ps` per candidate would be slower
     than the interval it runs at, and a slow sweep is a sweep that overlaps itself.
     """
-    result = subprocess.run(
-        ["ps", "-ax", "-o", "pid=,ppid=,cputime=,command="],
-        capture_output=True,
-        text=True,
-        stdin=subprocess.DEVNULL,
-        timeout=30,
-        check=False,
-    )  # fmt: skip
+    listing = _ask(["ps", "-ax", "-o", "pid=,ppid=,cputime=,command="], timeout=30)
     out: dict[int, tuple[int, float, str]] = {}
-    for line in result.stdout.splitlines():
+    for line in listing.splitlines():
         parts = line.strip().split(None, 3)
         if len(parts) < 4:
             continue
