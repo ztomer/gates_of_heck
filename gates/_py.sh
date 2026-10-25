@@ -15,17 +15,64 @@
 # (BACKLOG 1.6). So the choice is named with its version, and a venv older than python3 is refused
 # unless the repo declares that pin: GOH_PY_RUNNER, or a COMMITTED .python-version naming the
 # venv's minor. An untracked .python-version is one machine's state, not the repo's declaration.
+#
+# TRACKED STATE FIRST. A `.venv` is gitignored, so the push gate's clean export of the pushed commit
+# never has one: the same commit was judged by the venv at commit and by python3 at push, and the
+# push gate died in pytest collection on `No module named 'mcp'` (token-pool, 2026-10-25). A
+# TRACKED uv.lock therefore makes the runner `uv run --frozen`, which builds the toolchain from the
+# lock identically in a working copy, a push export and a fresh clone -- ahead of a present .venv,
+# so both gates take the same road. Without a lock, an export whose source checkout judged with a
+# .venv is refused (goh_py_export_lost_venv) rather than silently judged by another interpreter.
 goh_py_runner() {
     RUN="${GOH_PY_RUNNER:-}"
-    if [ -z "$RUN" ] && [ -x .venv/bin/python ]; then
+    if [ -z "$RUN" ] && git ls-files --error-unmatch uv.lock >/dev/null 2>&1; then
+        command -v uv >/dev/null 2>&1 \
+            || die "$GOH_NAME: this repo tracks uv.lock, so its gate toolchain is built by uv (uv run --frozen), and uv is not on PATH -- brew install uv, or set GOH_PY_RUNNER"
+        RUN="uv run --frozen${GOH_PYTHON_VERSION:+ --python $GOH_PYTHON_VERSION}"  # uv reads .python-version itself
+        read -r -a RUN_ARR <<<"$RUN"
+        goh_py_runner_pinned
+    elif [ -z "$RUN" ] && [ -x .venv/bin/python ]; then
         RUN=".venv/bin/python -m"
         goh_py_venv_current
         goh_py_interpreter >/dev/null   # and a pinned repo's venv is the pin's version
     elif [ -z "$RUN" ]; then
+        goh_py_export_lost_venv
         RUN="$(goh_py_interpreter) -m"
     fi
     read -r -a RUN_ARR <<<"$RUN"
-    info "python: ${RUN% -m} ($(goh_py_minor "${RUN_ARR[0]}" || echo "version unreadable"))"
+    info "python: ${RUN% -m} ($(goh_py_run_version 2 || echo "version unreadable"))"
+}
+
+# goh_py_run_version <n>: the first <n> fields of the version the RUNNER runs (2: 3.15, 3: 3.15.1);
+# nothing and 1 when it cannot say. A runner ending in `-m` names its interpreter first; any other
+# (uv run) runs `python` itself.
+goh_py_run_version() {
+    local code="import sys; print('.'.join(map(str, sys.version_info[:$1])))"
+    if [ "${RUN_ARR[${#RUN_ARR[@]}-1]}" = "-m" ]; then
+        "${RUN_ARR[0]}" -c "$code" 2>/dev/null </dev/null
+    else
+        "${RUN_ARR[@]}" python -c "$code" 2>/dev/null </dev/null
+    fi
+}
+
+# goh_py_runner_pinned: refuse a uv runner whose interpreter is not the repo's pin.
+goh_py_runner_pinned() {
+    local pin src full
+    IFS=$'\t' read -r pin src <<<"$(goh_py_pin)"
+    [ -n "$pin" ] || return 0
+    full="$(goh_py_run_version 3)" || die "$GOH_NAME: '$RUN' cannot say its Python version"
+    case "$full" in
+        "$pin" | "$pin".*) ;;
+        *) die "$GOH_NAME: $src pins Python $pin and '$RUN' runs $full -- uv python install $pin, or move the pin" ;;
+    esac
+}
+
+# goh_py_export_lost_venv: in a push export (GOH_CROSS_REPO_ROOT names the source checkout), refuse
+# when the source judges with a .venv this export of tracked files lacks and nothing tracked says
+# how to rebuild it: the push gate would otherwise judge the commit with a different interpreter.
+goh_py_export_lost_venv() {
+    [ -n "${GOH_CROSS_REPO_ROOT:-}" ] && [ -x "$GOH_CROSS_REPO_ROOT/.venv/bin/python" ] || return 0
+    die "$GOH_NAME: the source checkout's Python gate runs in its .venv, which this push export of tracked files does not have, so the push gate would judge with another interpreter -- commit a uv.lock (the gates then run uv run --frozen everywhere), or set GOH_PY_RUNNER to a runner that builds the toolchain"
 }
 
 # goh_py_minor <python>: its major.minor, or nothing and 1 when it cannot say.
