@@ -35,7 +35,7 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 # using git's own list via the one helper the checkers share. Pinned by test_hook_git_env.py.
 sys.path.insert(0, str(REPO_ROOT / "checks"))
 from _gitutil import local_env_vars  # noqa: E402
-from host_locks import HOST_LOCKS, no_test_reaches_a_host_lock  # noqa: F401  (an autouse fixture)
+from host_locks import no_test_reaches_a_host_lock, scrubbed  # noqa: F401  (an autouse fixture)
 
 # The suite's leak check (an autouse session fixture): the OWNER of a process is responsible for
 # it, so the session proves that nothing it started outlived it.
@@ -147,10 +147,9 @@ def hermetic_env(drop_git: bool = False, **overrides: str) -> dict[str, str]:
     `GOH_ESTATE_STATE` is KEPT: it names a file, not a step (BACKLOG 6.14)."""
     drop = ("GOH_", "GIT_") if drop_git else ("GOH_",)
     # GOH_LIVE, GOH_ESTATE_STATE (a LOCATION, not an opt-in) and the machine locks' private copies
-    # (host_locks.py): a lock directory is not an opt-in, and dropping it sent every hermetic child
+    # (host_locks.py, PRIVATE_ROOTS: the locks and the push caches): a location is not an opt-in, and dropping it sent every hermetic child
     # to the REAL bench lock and gate slots.
-    keep = ("GOH_LIVE", "GOH_ESTATE_STATE", *HOST_LOCKS)
-    env = {k: v for k, v in os.environ.items() if not k.startswith(drop) or k in keep}
+    env = scrubbed(os.environ, drop, keep=("GOH_LIVE", "GOH_ESTATE_STATE"))
     # The rust coverage build dir is keyed on a project's path (gates/_coverage_rust.sh): a fixture
     # in a fresh tmp dir would leave one never-reused build per test in the user's cache.
     env["GOH_COV_CACHE"] = _SUITE_COV_CACHE

@@ -188,7 +188,7 @@ tag_check_run() {
 zero="0000000000000000000000000000000000000000"
 remote_name="${1:-}"
 remote_url="${2:-}"
-gated_commits=" "
+gated_commits=" "; push_roots_private_under_suite  # never the user's caches under goh's suite (G11)
 log_root="${GOH_PUSH_LOGS:-$HOME/.cache/goh/push-logs}"
 keep_failed_logs=20
 worktree=""

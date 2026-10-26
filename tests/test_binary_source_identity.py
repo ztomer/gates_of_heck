@@ -18,6 +18,7 @@ from pathlib import Path
 
 from test_gate_environment import _clean_checkout_of_todays_gates
 from conftest import native_goh_path, hermetic_env
+from host_locks import scrubbed  # the one env scrub: it keeps the private roots
 
 
 def _no_store(checkout: Path) -> None:
@@ -189,7 +190,7 @@ def test_goh_live_runs_the_working_trees_binary_not_heads(tmp_path: Path) -> Non
     )
     assert after != before, "the plant found nothing to replace: the test would prove nothing"
     cli.write_text(after)
-    env = {k: v for k, v in os.environ.items() if not k.startswith(("GOH_", "PYTEST_"))}
+    env = scrubbed(os.environ, ("GOH_", "PYTEST_"))
     env.update(
         GOH_LIVE="1",
         GOH_LIVE_TARGET_DIR=str(Path(__file__).resolve().parents[1] / "target" / "goh-live-test"),

@@ -17,6 +17,7 @@ import pytest
 
 from conftest import REPO_ROOT
 from test_gate_environment import _clean_checkout_of_todays_gates
+from host_locks import scrubbed  # the one env scrub: it keeps the private roots
 
 PLANT = "LIVE-PYTHON-CHECKER-EDIT-7714"
 NOTICE = "running HEAD's copy"
@@ -53,7 +54,7 @@ def dirty(gates: Path):
 
 
 def _run(gates: Path, repo: Path, tmp_path: Path, **extra: str) -> subprocess.CompletedProcess:
-    env = {k: v for k, v in os.environ.items() if not k.startswith(("GOH_", "GIT_", "PYTEST_"))}
+    env = scrubbed(os.environ, ("GOH_", "GIT_", "PYTEST_"))
     env.update(GOH_HEAD_CACHE=str(tmp_path / "head-cache"), **extra)
     return subprocess.run(
         ["python3", str(gates / "checks" / "loc_of_baseline_files.py"), "b.txt"],

@@ -21,6 +21,7 @@ import pytest
 from conftest import REPO_ROOT, hermetic_env, native_goh_path
 
 from test_gate_environment import _clean_checkout_of_todays_gates
+from host_locks import scrubbed  # the one env scrub: it keeps the private roots
 
 PLANT = "LIVE-WORKING-TREE-EDIT-5521"
 
@@ -51,7 +52,7 @@ def consumer(tmp_path: Path) -> Path:
 
 
 def _env(tmp_path: Path, **extra: str) -> dict:
-    env = {k: v for k, v in os.environ.items() if not k.startswith(("GOH_", "GIT_", "PYTEST_"))}
+    env = scrubbed(os.environ, ("GOH_", "GIT_", "PYTEST_"))
     env["GOH_HEAD_CACHE"] = str(tmp_path / "head-cache")
     # No bin/goh rebuild in a scratch clone (a cargo build per test): name the session binary.
     env["GOH_BIN"] = str(native_goh_path())

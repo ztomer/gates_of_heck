@@ -24,6 +24,7 @@ from pathlib import Path
 
 from test_binary_source_identity import _fake, _head_tree, _no_store, _version, private_store
 from test_gate_environment import _clean_checkout_of_todays_gates
+from host_locks import scrubbed  # the one env scrub: it keeps the private roots
 
 STORE = Path("bin") / "by-stamp"
 
@@ -100,7 +101,7 @@ class Land:
         `repo` (the suite's template consumer) with one file staged."""
         (repo / "a.py").write_text("x = 1\n")
         _git(repo, "add", "a.py")
-        env = {k: v for k, v in os.environ.items() if not k.startswith(("GOH_", "PYTEST_"))}
+        env = scrubbed(os.environ, ("GOH_", "PYTEST_"))
         env.pop("GATES_OF_HECK_SUITE", None)
         env.update(
             GOH_DIR=str(self.export),
@@ -161,7 +162,7 @@ def test_the_live_head_gate_answers_with_the_stores_copy(tmp_path: Path) -> None
     _no_store(checkout)
     stamp = _head_tree(checkout)
     _fake(checkout / "bin" / "goh", _version(checkout), stamp)
-    env = {k: v for k, v in os.environ.items() if not k.startswith(("GOH_", "PYTEST_"))}
+    env = scrubbed(os.environ, ("GOH_", "PYTEST_"))
     env["GOH_LIVE"] = "1"
     env["GOH_BIN_STORE"] = str(private_store(checkout))
     got = subprocess.run(
