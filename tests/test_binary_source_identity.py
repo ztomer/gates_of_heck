@@ -240,3 +240,41 @@ def test_goh_live_delta_empty_on_clean_checkout_with_no_untracked_files(tmp_path
     )
     assert res.returncode == 0, res.stderr
     assert res.stdout.strip() == "", f"expected empty delta, got: {res.stdout!r}"
+
+
+def test_goh_live_delta_moves_with_head_so_a_stale_live_build_cannot_answer(tmp_path: Path) -> None:
+    """G2c: the live build (target/goh-live) was keyed on the DIFF against HEAD alone, so the same
+    uncommitted edit over a NEWER HEAD hashed to the same key and the old binary answered for the new
+    source (target/goh-live/release/goh reported 0.50.0 while the gates resolved 0.51.0). The key
+    carries the source HEAD's Rust inputs are, so a moved HEAD is a different key: a rebuild."""
+    from _fast_git import fast_init
+
+    repo = tmp_path / "r"
+    (repo / "crates").mkdir(parents=True)
+    (repo / "crates" / "lib.rs").write_text("pub fn a() {}\n")
+    for name in ("Cargo.toml", "Cargo.lock", "rust-toolchain.toml"):  # the stamp's inputs
+        (repo / name).write_text("")
+    fast_init(repo)
+
+    def git(*args: str) -> None:
+        subprocess.run(
+            ["git", "-c", "user.email=t@t", "-c", "user.name=t", *args],
+            cwd=repo, check=True, capture_output=True, stdin=subprocess.DEVNULL,
+        )  # fmt: skip
+
+    def delta() -> str:
+        here = Path(__file__).resolve().parents[1]
+        return subprocess.run(
+            ["bash", "-c", f". '{here}/gates/_goh_bin.sh'; goh_live_delta '{repo}'"],
+            capture_output=True, text=True, check=True, stdin=subprocess.DEVNULL,
+        ).stdout.strip()  # fmt: skip
+
+    git("add", "-A")
+    git("commit", "-qm", "one")
+    (repo / "crates" / "wip.rs").write_text("pub fn wip() {}\n")  # the same edit, untracked
+    first = delta()
+    assert first, "an untracked crate file is a delta"
+    (repo / "crates" / "lib.rs").write_text("pub fn b() {}\n")
+    git("add", "crates/lib.rs")
+    git("commit", "-qm", "two")  # HEAD's Rust moved; the uncommitted edit did not
+    assert delta() != first, "a live build keyed on the diff alone answers for HEAD's old source"

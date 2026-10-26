@@ -182,17 +182,21 @@ goh_store_prune() { # <store> <current key> [keep, default 4]
         "$(dirname "${BASH_SOURCE[0]}")" "$1" "$2" "${3:-4}" 2>/dev/null || true
 }
 
-# The working tree's Rust inputs as they differ from HEAD: a hash of the diff and of every
-# untracked file under crates/, or nothing when the tree's Rust IS HEAD's.
+# The working tree's Rust inputs as they differ from HEAD: a hash of HEAD's Rust stamp, the diff
+# and every untracked file under crates/, or nothing when the tree's Rust IS HEAD's. The stamp is in
+# the key because the diff alone is not the source: the same edit over a newer HEAD hashed the same,
+# and target/goh-live's old binary answered for the new source (0.50.0 under 0.51.0, G2c).
 goh_live_delta() {
-    local root="$1" diff untracked
+    local root="$1" diff untracked stamp
     diff="$( (goh_unbind_git
               git -C "$root" diff HEAD -- crates Cargo.toml Cargo.lock rust-toolchain.toml) 2>/dev/null)"
     untracked="$( (goh_unbind_git
                    cd "$root" && git ls-files -z --others --exclude-standard -- crates \
                    | xargs -0 -r shasum 2>/dev/null) 2>/dev/null)"
     [ -z "$diff$untracked" ] && return 0
-    printf '%s\n%s' "$diff" "$untracked" | shasum | cut -d' ' -f1
+    stamp="$(goh_stamp_at "$root" HEAD)"
+    [ -n "$stamp" ] || stamp="$( (goh_unbind_git; git -C "$root" rev-parse -q --verify HEAD) 2>/dev/null)"
+    printf '%s\n%s\n%s' "$stamp" "$diff" "$untracked" | shasum | cut -d' ' -f1
 }
 
 # Under GOH_LIVE with the tree's Rust ahead of HEAD: build THAT goh (once per delta) and use it.
