@@ -26,6 +26,7 @@ from conftest import REPO_ROOT, hermetic_env
 
 GUARD = REPO_ROOT / "hooks" / "claude" / "agent_guard.py"
 RULES_FILE = GUARD.with_name("model_choice.json")
+POOL = "Pool: unfit because the fix needs this repo's files and its test run"
 
 
 def _run(tool_input: dict[str, Any], cache: Path, rules: Path = RULES_FILE) -> dict[str, Any]:
@@ -50,7 +51,7 @@ def _last_spawn(cache: Path) -> dict[str, Any]:
 def _prompt(decl: str, want: int, mod: int = 2, shift: int = 0) -> str:
     """A prompt carrying `decl` whose sha256, shifted right by `shift` bits, is `want` mod `mod`."""
     for i in range(100_000):
-        p = f"Fix the leak in foo.rs (variant {i}).\nRed test: t_leak.\nModel-choice: {decl}"
+        p = f"Fix the leak in foo.rs (variant {i}).\nRed test: t_leak.\nModel-choice: {decl}\n{POOL}"
         if (int(hashlib.sha256(p.encode()).hexdigest(), 16) >> shift) % mod == want:
             return p
     raise AssertionError("no prompt found")

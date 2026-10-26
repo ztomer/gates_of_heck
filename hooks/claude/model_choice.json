@@ -118,6 +118,12 @@
     "value": ["Explore", "claude-code-guide", "statusline-setup", "fork"],
     "why": "read-only lookups and meta agents, and `fork`, which ignores `model`: none lands commits, so they need no model and get no contract; their spawns are still ledgered"
   },
+  "pool_first": {
+    "tiers": ["cheap", "lookup"],
+    "tool": "mcp__pool__ask",
+    "task_class": {"cheap": "checkable_edit", "lookup": "bulk_read"},
+    "decided": "owner 2026-10-25: read-only bulk work and checkable edits go through token-pool's `ask` (~/Projects/token-pool: free Zen, agy and Gemini quota) BEFORE a Claude subagent is spawned for them. A spawn on these tiers says which in its prompt: `Pool: tried <what ask returned>` (escalate_to_caller, a failed proof) or `Pool: unfit because <reason>` (the work needs this repo's files or tools, which pool's backends never see: they get the prompt alone). The ledger keeps the line, so a habit of `unfit` shows up as data."
+  },
   "exploration": {
     "cheap_alternation": {
       "enabled": true,

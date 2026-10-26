@@ -2,7 +2,7 @@
 """A Claude Code hook on subagent spawns: name the model, carry the report contract, keep a ledger.
 
 Subagents spend most of the tokens, so economy is set where a session delegates (owner ruling
-2026-10-18, `~/.claude/CLAUDE.md` "Delegation is where the tokens go"). Its rules 1 and 3 were kept
+2026-10-18, `~/.claude/CLAUDE.md` "Delegation is where the tokens go"). Its rules 1, 3 and 4 were kept
 by hand; this hook keeps them structurally (tests/test_claude_agent_guard.py):
 
 * PreToolUse, matcher `Agent|Task`: a spawn must name its `model` AND `effort` (an unnamed one
@@ -13,6 +13,9 @@ by hand; this hook keeps them structurally (tests/test_claude_agent_guard.py):
   Anything else is refused with the table in the reason, so the caller fixes it in one try. A
   spawn it allows gets the report contract appended to its prompt (once: a respawn carrying it is
   left alone). Agent types where the choice does not matter (`exempt_agent_types`) are exempt.
+* Free pools first (the rules file's `pool_first`, CLAUDE.md delegation rule 4): a spawn on a cheap
+  or lookup tier must say in its prompt that token-pool's `ask` was tried (`Pool: tried <...>`) or
+  why it cannot do the work (`Pool: unfit because <...>`); the ledger keeps the line as `pool`.
 * Bounded exploration (the rules file's `exploration`): a spawn declared on a cheap tier runs on
   the cheap tier its prompt sha's parity picks, and -- only when the owner turns it on -- a fixed
   fraction of checkable spawns in the classes `opus_to_cheap.from` names runs on the cheap tier. Either is an
@@ -60,6 +63,31 @@ REPORT_CAP = 4000  # characters of the report kept on the outcome line (the audi
 DECLARED = re.compile(r"^([ \t>*-]*)Model-choice:[ \t]*(\S+?)@(\S+)[ \t]+because[ \t]+(.*?)[ \t]*$",
                       re.MULTILINE)  # fmt: skip
 FORMAT = "`Model-choice: <model>@<effort> because <tags>`"
+POOL_LINE = re.compile(r"^[ \t>*-]*Pool:[ \t]*(tried|unfit[ \t]+because)\b[ \t]*(.*?)[ \t]*$",
+                       re.MULTILINE)  # fmt: skip
+
+
+def judge_pool(declared: str, prompt: str, rules: model_choice.Rules) -> tuple[str | None, Any]:
+    """(refusal reason or None, what the `Pool:` line said) for a spawn the table accepted.
+
+    Cheap and lookup work goes to the free pools first (the rules file's `pool_first`): the
+    prompt says it tried them, or why they cannot do this work. Other tiers need no line."""
+    task_class = rules.pool_class(*declared.split("@"))
+    found = [(said.split()[0], why) for said, why in POOL_LINE.findall(prompt) if why]
+    if task_class is None:
+        return None, None
+    if found:
+        said, why = found[0]
+        return None, {"said": said, "why": why}
+    tool = rules.pool_first["tool"]
+    return (
+        f"Refused: {declared} work goes to the free pools first ({tool}, owner ruling in "
+        f'{rules.path.name} `pool_first`). Call {tool}(task_class="{task_class}", prompt=..., '
+        f"check=... or schema=...) and spawn only if it does not return an accepted answer; then "
+        f"add `Pool: tried <what it returned>` to this prompt. When the work needs this repo's "
+        f"files or tools (pool's backends get the prompt alone), add `Pool: unfit because "
+        f"<reason>` instead."
+    ), None
 
 
 def family(model: str, rules: model_choice.Rules) -> str | None:
@@ -180,6 +208,13 @@ def on_spawn(event: dict[str, Any]) -> dict[str, Any] | None:
     out: dict[str, Any] = {}
     final, new_input = prompt, dict(tool_input)
     declared = f"{info['model']}@{info['effort']}"
+    pool = None
+    if not exempt:
+        why, pool = judge_pool(declared, prompt, rules)
+        if why:
+            return {"hookSpecificOutput": {"hookEventName": "PreToolUse",
+                                           "permissionDecision": "deny",
+                                           "permissionDecisionReason": why}}  # fmt: skip
     route = None
     if not exempt:
         route = rules.route(declared, info["tags"], hashlib.sha256(prompt.encode()).hexdigest())
@@ -199,7 +234,7 @@ def on_spawn(event: dict[str, Any]) -> dict[str, Any] | None:
         "model_id": new_input.get("model") or None, "effort": info["effort"], "tags": info["tags"],
         "subagent_type": agent_type, "exempt": exempt, "description": tool_input.get("description"),
         "declared": None if exempt else declared, "explored": route is not None,
-        "route": route[1] if route else None,
+        "route": route[1] if route else None, "pool": pool,
         "prompt_sha": hashlib.sha256(final.encode()).hexdigest(), "first_line": _first_line(prompt),
     })  # fmt: skip
     if warning:

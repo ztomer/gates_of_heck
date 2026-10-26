@@ -86,7 +86,7 @@ def _guard(event: dict[str, Any], cache: Path, rules: Path) -> dict[str, Any] | 
 
 
 def _event(model: str, effort: str, decl: str) -> dict[str, Any]:
-    prompt = f"Fix it.\nModel-choice: {decl}"
+    prompt = f"Fix it.\nModel-choice: {decl}\nPool: unfit because it needs the repo's tools"
     return {"session_id": "s", "hook_event_name": "PreToolUse", "tool_name": "Agent",
             "tool_use_id": "t", "tool_input": {"description": "d", "prompt": prompt,
                                                "model": model, "effort": effort}}  # fmt: skip
@@ -111,3 +111,13 @@ def test_the_hook_fails_open_when_the_rules_file_cannot_be_read(tmp_path: Path) 
     assert out is not None
     assert "permissionDecision" not in out.get("hookSpecificOutput", {}), out
     assert "rules" in out["systemMessage"]
+
+
+def test_pool_first_names_real_tiers_and_a_task_class_for_each() -> None:
+    """Owner ruling 2026-10-25: cheap and lookup work goes to token-pool's `ask` before a Claude
+    subagent. The rules file says which tiers that is and which pool class each maps to."""
+    pool = RULES["pool_first"]
+    tiers = {v["tier"] for v in RULES["tiers"].values()}
+    assert pool["tiers"] and set(pool["tiers"]) <= tiers - {"never"}
+    assert set(pool["task_class"]) == set(pool["tiers"])
+    assert pool["tool"].startswith("mcp__") and pool["decided"]

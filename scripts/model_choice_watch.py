@@ -65,7 +65,8 @@ calls, one after the other, and then reply with the word done.
 2. description "{PROOF_DESC}", subagent_type "general-purpose", model "haiku", effort "low",
    and this prompt, exactly:
 There is no work to do: reply following the report contract below.
-Model-choice: haiku@low because read-only"""
+Model-choice: haiku@low because read-only
+Pool: unfit because this checks the spawn hook itself"""
 ENUM = {
     "model": rb"model:[\w$]+\((\[[^\]]*\])\)\.optional\(\)\.describe\(.Optional model override",
     "effort": rb"effort:[\w$]+\(([\w$]+|\[[^\]]*\])\)\.optional\(\)\.describe\(.Reasoning effort",

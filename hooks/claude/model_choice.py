@@ -41,6 +41,7 @@ class Rules:
         self.efforts: tuple[str, ...] = tuple(self.facts["agent.efforts"]["value"])
         self.exempt = frozenset(data["exempt_agent_types"]["value"])
         self.exploration: dict[str, Any] = data.get("exploration", {})
+        self.pool_first: dict[str, Any] = data.get("pool_first") or {}
         self.verdict: dict[str, Any] = data["verdict"]
         self.tags = frozenset(
             t for v in self.tiers.values() if v["tier"] != "never" for t in v["tags"]
@@ -51,6 +52,13 @@ class Rules:
             if key in self.tiers:
                 return self.tiers[key]
         return None
+
+    def pool_class(self, fam: str, effort: str) -> str | None:
+        """The token-pool task class this spawn's work goes to first, else None (not pool work)."""
+        rule = self.rule(fam, effort)
+        if rule is None or rule["tier"] not in (self.pool_first.get("tiers") or []):
+            return None
+        return self.pool_first["task_class"][rule["tier"]]
 
     def classes(self, *tiers: str) -> list[str]:
         """The concrete `model@effort` keys whose tier is one of `tiers` (wildcards left out)."""

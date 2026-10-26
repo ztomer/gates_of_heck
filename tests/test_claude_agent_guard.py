@@ -68,7 +68,8 @@ BRIEF = {"description": "fix it", "prompt": "Fix the leak in foo.rs.\nRed test: 
 
 
 DECL = "Model-choice: sonnet@high because checkable, known-fix"
-GOOD = dict(BRIEF, model="sonnet", effort="high", prompt=BRIEF["prompt"] + "\n" + DECL)
+POOL = "Pool: unfit because the fix needs this repo's files and its test run"
+GOOD = dict(BRIEF, model="sonnet", effort="high", prompt=f"{BRIEF['prompt']}\n{DECL}\n{POOL}")
 
 
 def _reason(out: dict[str, Any] | None) -> str:
@@ -148,7 +149,7 @@ def test_a_declared_choice_the_table_accepts_runs_with_the_contract(
     tmp_path: Path, model: str, effort: str, because: str
 ) -> None:
     alias = agent_guard.family(model, RULES)
-    prompt = f"Do the thing.\nModel-choice: {alias}@{effort} because {because}"
+    prompt = f"Do the thing.\nModel-choice: {alias}@{effort} because {because}\n{POOL}"
     ti = dict(BRIEF, model=model, effort=effort, prompt=prompt)
     new = _allowed(_run(_spawn(ti), tmp_path))
     routed = {"model": new["model"], "effort": new["effort"]}
@@ -199,7 +200,7 @@ def test_two_declared_lines_that_disagree_are_refused(tmp_path: Path) -> None:
 
 
 def test_the_same_line_twice_is_one_declaration(tmp_path: Path) -> None:
-    _allowed(_run(_spawn(dict(GOOD, prompt=f"{DECL}\n...\n{DECL}")), tmp_path))
+    _allowed(_run(_spawn(dict(GOOD, prompt=f"{DECL}\n...\n{DECL}\n{POOL}")), tmp_path))
 
 
 # --- rule 3: the report contract ----------------------------------------------------------------
@@ -374,3 +375,71 @@ def test_a_transcript_that_never_catches_up_is_recorded_as_unsettled(tmp_path: P
 def test_malformed_input_never_blocks_a_spawn(tmp_path: Path, raw: str) -> None:
     out = _run(None, tmp_path, raw=raw)
     assert out is None or out.get("hookSpecificOutput", {}).get("permissionDecision") != "deny"
+
+
+# --- rule 4: cheap and lookup work goes to the free pools first (owner ruling 2026-10-25) ------
+
+
+POOL_CLASSES = RULES.classes(*RULES.data["pool_first"]["tiers"])
+TAGS = {"cheap": "checkable, known-fix", "lookup": "read-only"}
+
+
+def _pool_spawn(cls: str, pool_line: str | None) -> dict[str, Any]:
+    alias, effort = cls.split("@")
+    tags = TAGS[RULES.tiers[cls]["tier"]]
+    prompt = f"Do the thing.\nModel-choice: {cls} because {tags}" + (
+        f"\n{pool_line}" if pool_line is not None else ""
+    )
+    return dict(BRIEF, model=alias, effort=effort, prompt=prompt)
+
+
+def test_pool_first_covers_the_cheap_and_lookup_classes() -> None:
+    assert sorted(POOL_CLASSES) == sorted(RULES.classes("cheap", "lookup")), POOL_CLASSES
+
+
+@pytest.mark.parametrize("cls", POOL_CLASSES)
+@pytest.mark.parametrize("line", [None, "Pool: tried", "Pool: unfit", "Pool: unfit because ",
+                                  "Pool: maybe later"])  # fmt: skip
+def test_a_cheap_or_lookup_spawn_that_skipped_the_pool_is_refused_with_the_way_there(
+    tmp_path: Path, cls: str, line: str | None
+) -> None:
+    reason = _reason(_run(_spawn(_pool_spawn(cls, line)), tmp_path))
+    pool = RULES.data["pool_first"]
+    assert pool["tool"] in reason, reason
+    assert pool["task_class"][RULES.tiers[cls]["tier"]] in reason, reason
+    for form in ("Pool: tried <", "Pool: unfit because <"):
+        assert form in reason, (form, reason)
+    assert _ledger(tmp_path) == []
+
+
+@pytest.mark.parametrize("cls", POOL_CLASSES)
+@pytest.mark.parametrize(
+    ("line", "said"),
+    [("Pool: tried escalate_to_caller", "tried"),
+     ("- Pool: unfit because it edits this repo and runs its tests", "unfit")],
+)  # fmt: skip
+def test_a_spawn_that_declares_the_pool_runs_and_the_ledger_keeps_what_it_said(
+    tmp_path: Path, cls: str, line: str, said: str
+) -> None:
+    _allowed(_run(_spawn(_pool_spawn(cls, line)), tmp_path))
+    (rec,) = _ledger(tmp_path)
+    assert rec["pool"]["said"] == said and rec["pool"]["why"], rec
+
+
+def test_opus_tier_work_needs_no_pool_line(tmp_path: Path) -> None:
+    prompt = "Find the root cause.\nModel-choice: opus@high because unknown-root-cause"
+    _allowed(_run(_spawn(dict(BRIEF, model="opus", effort="high", prompt=prompt)), tmp_path))
+    (rec,) = _ledger(tmp_path)
+    assert rec["pool"] is None
+
+
+def test_the_weekly_live_proof_prompt_passes_the_guard(tmp_path: Path) -> None:
+    """The watch's live proof spawns one agent the guard must ALLOW; a rule the proof's prompt
+    does not satisfy turns the weekly proof red for a reason that is not the hook's."""
+    sys.path.insert(0, str(REPO_ROOT / "scripts"))
+    import model_choice_watch as watch
+
+    prompt = watch.PROOF_PROMPT.split("this prompt, exactly:\n", 1)[1]
+    ti = {"description": watch.PROOF_DESC, "prompt": prompt, "subagent_type": "general-purpose",
+          "model": "haiku", "effort": "low"}  # fmt: skip
+    _allowed(_run(_spawn(ti), tmp_path))

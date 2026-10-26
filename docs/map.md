@@ -277,7 +277,9 @@ Every structural checker is native since Phase N3; the Python checkers they port
 * `hooks/claude/agent_guard.py` — a Claude Code PreToolUse hook (matcher `Agent|Task`) and SubagentStop
   hook: a spawn must name model AND effort and declare them (`Model-choice: <model>@<effort> because
   <tags>`) as the rules file's `tiers` accept, else it is denied with the table; an allowed one gets the
-  report contract (`Status:` first) appended once and a line in `~/.cache/goh/agent-spawns.jsonl`, which
+  report contract (`Status:` first) appended once and a line in `~/.cache/goh/agent-spawns.jsonl`
+  (a cheap or lookup spawn must also carry `Pool: tried <...>` or `Pool: unfit because <...>`: the
+  rules file's `pool_first`, token-pool's `ask` before a Claude subagent), which
   SubagentStop completes with tokens, status and the report. Bounded exploration: a cheap-tier spawn runs
   on the cheap tier its prompt sha's parity picks (`explored: true`); the opus->cheap fraction is off
   until the owner turns it on, and nothing without `checkable` is ever routed down. Fails open. Pinned by
