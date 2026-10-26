@@ -29,10 +29,10 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-import check_display_seam  # noqa: E402  (the module under proof, driven not copied)
-from _display_frames import FRAMES_CASES  # noqa: E402  (the third rule's rows, kept beside it)
-from _display_seam_tiers import TIER_CASES  # noqa: E402  (the declared-harness tiers' rows)
-from _gitutil import foreign_repo_env, scratch_git  # noqa: E402
+import check_display_seam
+from _display_frames import FRAMES_CASES
+from _display_seam_tiers import TIER_CASES
+from _gitutil import foreign_repo_env, scratch_git
 
 SEAM = "func present() { w.orderFrontRegardless() }\n"
 # A file that is none of the gate's business, present in every fixture so that "clean" means

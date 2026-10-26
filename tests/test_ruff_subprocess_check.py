@@ -3,7 +3,8 @@
 `subprocess.run` without `check=` is ambiguous: a reader cannot tell "the exit code is judged below"
 from "a failure is silently ignored". 325 calls here left it unsaid, and the repo's own gate never
 ran `ruff check`, so nothing said so; the rule was only red under ruff's defaults, which no step used.
-pyproject.toml now selects PLW1510 for THIS repo and GOH_CI_STEPS runs `ruff check .`. Consumers keep
+pyproject.toml runs ruff's DEFAULT rule set for THIS repo (G17: it was PLW1510 alone, while ~600
+findings under the defaults went unseen) and GOH_CI_STEPS runs `ruff check .`. Consumers keep
 their own rule sets (the shared py_gate.sh runs the project's configuration), so this does not turn
 any of them red.
 """
@@ -16,13 +17,12 @@ import subprocess
 import tomllib
 
 import pytest
-
 from conftest import REPO_ROOT
 
 pytestmark = pytest.mark.skipif(shutil.which("ruff") is None, reason="ruff not installed")
 
-BAD = "import subprocess\nsubprocess.run(['true'], stdin=subprocess.DEVNULL)\n"
-GOOD = "import subprocess\nsubprocess.run(['true'], stdin=subprocess.DEVNULL, check=False)\n"
+BAD = "import subprocess\n\nsubprocess.run(['true'], stdin=subprocess.DEVNULL)\n"
+GOOD = "import subprocess\n\nsubprocess.run(['true'], stdin=subprocess.DEVNULL, check=False)\n"
 
 
 def _ruff(*args: str) -> subprocess.CompletedProcess[str]:
@@ -35,9 +35,29 @@ def _ruff(*args: str) -> subprocess.CompletedProcess[str]:
     )
 
 
-def test_the_repo_config_selects_the_rule() -> None:
+def test_the_repo_config_follows_ruffs_defaults() -> None:
+    """A `select` key narrows (or replaces) the defaults: this repo names none, so the set is
+    ruff's own, and a rule it adds in a release is a finding here, not a surprise elsewhere."""
     cfg = tomllib.loads((REPO_ROOT / "pyproject.toml").read_text(encoding="utf-8"))
-    assert "PLW1510" in cfg["tool"]["ruff"]["lint"]["select"]
+    assert "select" not in cfg["tool"]["ruff"]["lint"]
+
+
+PLANTED = {
+    "an unused import": ("import os\n", "F401"),
+    "an unsorted import block": ("import sys\nimport os\n\nprint(os, sys)\n", "I001"),
+    "a stale noqa": ("x = 1  # noqa: F401\n", "RUF100"),
+    "a redefinition of an unused name": ("def f(): ...\n\n\ndef f(): ...\n", "F811"),
+}
+
+
+@pytest.mark.parametrize("name", PLANTED)
+def test_a_default_rule_bites_a_planted_defect(tmp_path, name: str) -> None:
+    """The defaults are ON, not merely not-unselected: each class that was invisible bites."""
+    source, code = PLANTED[name]
+    f = tmp_path / "planted.py"
+    f.write_text(source, encoding="utf-8")
+    r = _ruff("--config", str(REPO_ROOT / "pyproject.toml"), str(f))
+    assert r.returncode == 1 and code in r.stdout, (name, r.stdout + r.stderr)
 
 
 def test_the_configured_rule_bites_a_call_without_check(tmp_path) -> None:
@@ -57,7 +77,7 @@ def test_an_explicit_check_passes(tmp_path) -> None:
 
 def test_the_push_gate_runs_ruff_check() -> None:
     gatesrc = (REPO_ROOT / ".gatesrc").read_text(encoding="utf-8")
-    steps = re.search(r"^GOH_CI_STEPS='(.+)'$", gatesrc, re.M)
+    steps = re.search(r"^GOH_CI_STEPS='(.+)'$", gatesrc, re.MULTILINE)
     assert steps, "GOH_CI_STEPS is not set"
     assert "ruff check ." in [s.strip() for s in steps.group(1).split(":")]
 

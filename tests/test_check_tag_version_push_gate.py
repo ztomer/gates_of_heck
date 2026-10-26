@@ -12,10 +12,9 @@ running, so both are pinned here rather than inferred from the checker's unit ca
 
 import subprocess
 
-from conftest import REPO_ROOT, git, write
-
+from _fast_git import fast_init
 from _tag_version_kit import _media_shape, _refs, _sha, origin_from
-from _fast_git import fast_init  # noqa: E402
+from conftest import REPO_ROOT, git, write
 
 
 def _push(repo, tmp_path, *pairs, extra_env=None, url="unused-url"):

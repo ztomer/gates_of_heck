@@ -60,9 +60,9 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "lib"))
 
-import load_priority  # noqa: E402
-import load_registry as reg  # noqa: E402
-import load_reap  # noqa: E402
+import load_priority
+import load_reap
+import load_registry as reg
 
 EXIT_BUSY = 3  # the slot is taken
 EXIT_LEAK = 70  # a spinner outlived the cleanup: the experiment's verdict is not trustworthy

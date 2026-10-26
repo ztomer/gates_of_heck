@@ -14,7 +14,6 @@ import subprocess
 import sys
 
 import pytest
-
 from conftest import REPO_ROOT, git, write
 from tier_kit import both_tiers, run_tiered  # noqa: F401  # both_tiers: a fixture
 
@@ -27,8 +26,8 @@ def run_check(repo, script, *args):
 
 
 sys.path.insert(0, str(REPO_ROOT / "checks"))
-from _tag_version_kit import extract  # noqa: E402
-from _fast_git import fast_init  # noqa: E402
+from _fast_git import fast_init
+from _tag_version_kit import extract
 
 CHECKER = "checks/check_tag_version.py"
 ZERO = "0" * 40

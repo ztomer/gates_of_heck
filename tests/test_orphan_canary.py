@@ -14,18 +14,18 @@ A canary's only product is being right about the case it exists for, so both of 
 here rather than notes.
 """
 
-from pathlib import Path
 import json
 import os
 import signal
 import subprocess
 import sys
 import time
+from pathlib import Path
 
 import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
-import orphan_canary as O  # noqa: E402
+import orphan_canary as O
 from timing_bounds import GiveUp
 
 CANARY = str(Path(O.__file__))

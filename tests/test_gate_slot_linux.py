@@ -35,7 +35,7 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 HELPER = REPO_ROOT / "lib" / "gate_slot.py"
 
 sys.path.insert(0, str(REPO_ROOT / "lib"))
-import gate_slot  # noqa: E402
+import gate_slot
 
 linux_only = pytest.mark.skipif(
     sys.platform != "linux", reason="the pidfd branch is Linux's; macOS takes the kqueue branch"
@@ -227,7 +227,9 @@ def test_the_pidfd_watch_survives_a_descriptor_select_would_refuse():
 def test_the_poll_fallback_still_notices_the_owner_going_away(monkeypatch):
     """The fallback is not only reached: it works. A watch that cannot see the owner go would
     hold the slot until the machine was rebooted."""
-    with _a_kernel_with_no_event(monkeypatch):
+    # Nested on purpose (SIM117 is waived below): the unreaped-spawn scan reads a Popen on the line of its
+    # own `with`, and a parenthesised multi-line `with (...)` puts it on a continuation line.
+    with _a_kernel_with_no_event(monkeypatch):  # noqa: SIM117
         with subprocess.Popen(["sleep", "0.2"], stdin=subprocess.DEVNULL) as child:
             watch = gate_slot.OwnerWatch(child.pid)
             assert watch.mechanism == "poll"

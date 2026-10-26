@@ -12,13 +12,11 @@ import sys
 import textwrap
 
 import pytest
-
+from conftest import REPO_ROOT as ROOT, git
 from timing_bounds import patience
-from conftest import REPO_ROOT as ROOT  # noqa: F401
-from conftest import git
 
 sys.path.insert(0, str(ROOT / "checks"))
-import check_probes_pass as gate  # noqa: E402
+import check_probes_pass as gate
 
 PASSING = """
     import sys
@@ -139,7 +137,7 @@ def test_a_broken_shell_probe_fails_the_gate(tmp_path):
     probes, _total = gate.discover(root)
     assert probes, "the liar must be discovered"
     passed, detail = gate.run_one(probes[0][0], probes[0][1], cwd=root)
-    assert passed, f"a bash probe that exits 0 passes; the FAILURE case is a non-zero exit"
+    assert passed, "a bash probe that exits 0 passes; the FAILURE case is a non-zero exit"
 
     (tmp_path / "tools" / "check_liar.sh").write_text(
         "#!/usr/bin/env bash\n"

@@ -13,7 +13,6 @@ import subprocess
 from pathlib import Path
 
 import pytest
-
 from conftest import REPO_ROOT, hermetic_env
 
 

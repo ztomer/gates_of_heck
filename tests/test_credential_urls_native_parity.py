@@ -15,10 +15,8 @@ import sys
 from pathlib import Path
 
 import pytest
-
-from conftest import REPO_ROOT, git
-
-from reference_kit import reference_path, load_reference  # noqa: E402
+from conftest import git
+from reference_kit import load_reference, reference_path
 
 _probe = load_reference("_credential_urls_probe")
 _ref = load_reference("check_no_credential_urls")
@@ -67,7 +65,7 @@ def both(goh: Path, repo: Path, *args: str):
         env=env,
         stdin=subprocess.DEVNULL,
         check=False,
-    )  # noqa: E731
+    )
     py = run([sys.executable, str(CHECK), *args])
     rs = run([str(goh), "credential-urls", *args])
     return (py.returncode, py.stdout, py.stderr), (rs.returncode, rs.stdout, rs.stderr)

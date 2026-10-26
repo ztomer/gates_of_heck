@@ -11,14 +11,11 @@ from __future__ import annotations
 
 import json
 import subprocess
-import sys
 from pathlib import Path
 
 import pytest
-
 from conftest import REPO_ROOT
-
-from reference_kit import load_reference  # noqa: E402
+from reference_kit import load_reference
 
 _md = load_reference("_md_text")
 anchors, links_in = _md.anchors, _md.links_in

@@ -43,7 +43,7 @@ import re
 PLACEHOLDER = re.compile(
     r"^[\s:—-]*(tbd|todo|n/?a|because|obvious|fine|ok|okay|yes|no|see above|why not|needed"
     r"|required|intentional|deliberate|on purpose|by design)\b\.?\s*$",
-    re.I,
+    re.IGNORECASE,
 )
 
 SEPARATOR = re.compile(r"^[\s:—\-]+")

@@ -25,8 +25,8 @@ import os
 import subprocess
 from pathlib import Path
 
-from cov_fakes import SHOW_ENV_FLOW
 from conftest import REPO_ROOT
+from cov_fakes import SHOW_ENV_FLOW
 
 COV_GATE = REPO_ROOT / "gates" / "coverage_gate.sh"
 

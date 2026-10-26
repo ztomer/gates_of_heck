@@ -16,13 +16,12 @@ import subprocess
 import sys
 
 import pytest
-
 from _fast_git import fast_init
 from conftest import REPO_ROOT as ROOT
 
 sys.path.insert(0, str(ROOT / "checks"))
-import _calibration as reader  # noqa: E402
-import check_probes_pass as gate  # noqa: E402
+import _calibration as reader
+import check_probes_pass as gate
 
 CHECK = ROOT / "checks" / "check_probes_pass.py"
 

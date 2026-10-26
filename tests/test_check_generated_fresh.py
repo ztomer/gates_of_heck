@@ -7,8 +7,8 @@ each listed artifact at the same relative path beneath it.
 
 import time
 
-from timing_bounds import assert_sooner
 from conftest import commit_all, run_check, write
+from timing_bounds import assert_sooner
 
 FRESH = "checks/check_generated_fresh.py"
 

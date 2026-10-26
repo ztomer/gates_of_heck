@@ -20,8 +20,8 @@ ROOT = Path(__file__).resolve().parent.parent
 LIB = ROOT / "lib"
 sys.path.insert(0, str(LIB))
 
-import step_control  # noqa: E402
-import step_timings  # noqa: E402
+import step_control
+import step_timings
 
 
 def _row(label: str, cpu_ms: float, kind: str = "", control: bool = False) -> dict:

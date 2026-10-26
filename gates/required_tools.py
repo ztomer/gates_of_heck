@@ -66,7 +66,14 @@ def rows() -> list[dict]:
             if line.strip() and not line.startswith("#"):
                 layer, tool, kind, install, site, floor = line.rstrip("\n").split("\t")
                 out.append(
-                    dict(layer=layer, tool=tool, kind=kind, install=install, site=site, floor=floor)
+                    {
+                        "layer": layer,
+                        "tool": tool,
+                        "kind": kind,
+                        "install": install,
+                        "site": site,
+                        "floor": floor,
+                    }
                 )
     return out
 
@@ -120,14 +127,14 @@ def detect(repo: str) -> tuple[set[str], set[str]]:
             layers.add(layer)
     for lang in re.findall(r"coverage_gate\.sh[^\n]*--lang[ =](\w+)", text):
         layers.add(f"coverage-{lang}")
-    if "rust" in layers and re.search(r"^\s*(export\s+)?GOH_COV_FLOOR", text, re.M):
+    if "rust" in layers and re.search(r"^\s*(export\s+)?GOH_COV_FLOOR", text, re.MULTILINE):
         layers.add("coverage-rust")  # rust_gate.sh runs the coverage step itself
     structural = set()
     if _tracks_shell(repo):
         structural.add("shellcheck")
-    if re.search(r"^\s*(export\s+)?GOH_PYTHON_FORMATTED=\S", text, re.M):
+    if re.search(r"^\s*(export\s+)?GOH_PYTHON_FORMATTED=\S", text, re.MULTILINE):
         layers.add("python-format")
-    if re.search(r"^\s*(export\s+)?GOH_RUST_LINT_CARGO=['\"]?cargo-zigbuild", text, re.M):
+    if re.search(r"^\s*(export\s+)?GOH_RUST_LINT_CARGO=['\"]?cargo-zigbuild", text, re.MULTILINE):
         layers.add("rust-cross")  # the --target lint configs run through cargo-zigbuild
     return layers, structural
 

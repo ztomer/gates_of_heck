@@ -71,8 +71,9 @@ def floor_cmp(pct, floor):
 def load_floors_config(path):
     """Load floors JSON. Supports wrapper {"targets":{}} or flat {tgt:floor}."""
     try:
-        raw = json.load(open(path, encoding="utf-8"))
-    except Exception as exc:
+        with open(path, encoding="utf-8") as handle:
+            raw = json.load(handle)
+    except (OSError, ValueError) as exc:
         print(f"✗ [coverage] cannot read floors file {path}: {exc}", file=sys.stderr)
         sys.exit(2)
     if not isinstance(raw, dict):
@@ -99,15 +100,7 @@ def load_floors_config(path):
 _HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(_HERE, "..", "lib"))
 sys.path.insert(0, _HERE)
-from swift_coverage_scope import is_code_under_test  # noqa: E402
-from coverage_markers import (  # noqa: E402
-    TEST_DIR,
-    adjust_coverage,
-    check_marker_ceiling,
-    find_exclusions,
-    parse_markers,
-)
-from coverage_engines import (  # noqa: E402
+from coverage_engines import (
     bundle_executables,
     parse_xccov_report,
     pick_binary,
@@ -115,6 +108,17 @@ from coverage_engines import (  # noqa: E402
     run_xcodebuild,
     xccov_report,
 )
+from coverage_markers import (
+    TEST_DIR,
+    adjust_coverage,
+    check_marker_ceiling,
+    find_exclusions,
+    parse_markers,
+)
+from swift_coverage_scope import is_code_under_test
+
+# Imported for the tests, which load this file and drive these by name (see the module docstring).
+__all__ = ["TEST_DIR", "adjust_coverage", "bundle_executables", "parse_markers", "pick_binary"]
 
 
 def llvm_cov_line_counts(binary, profdata, path):

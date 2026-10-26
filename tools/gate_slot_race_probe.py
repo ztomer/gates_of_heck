@@ -58,7 +58,7 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO_ROOT / "checks"))
 
-from _gate_slot_probe import (  # noqa: E402
+from _gate_slot_probe import (
     Trial,
     instrumented_copy,
     marks_of,
@@ -118,7 +118,7 @@ def main(argv: list[str]) -> int:
             one_writes += 1 if one_write(trial.stamps) else 0
             marked += 1 if marks_of(trial.stamps) else 0
 
-        print(f"writer:    {'instrumented, pause %.3f s' % pause if pause else 'the real one'}")
+        print(f"writer:    {f'instrumented, pause {pause:.3f} s' if pause else 'the real one'}")
         if shape != "tree":
             print(f"shape:     {shape}")
         print(f"poll:      {poll * 1000:.3f} ms")

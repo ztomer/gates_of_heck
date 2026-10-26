@@ -15,7 +15,7 @@ import sys
 from conftest import REPO_ROOT
 
 sys.path.insert(0, str(REPO_ROOT / "checks"))
-import check_empty_scope  # noqa: E402
+import check_empty_scope
 
 
 def test_every_gate_exports_its_own_runtime_path():

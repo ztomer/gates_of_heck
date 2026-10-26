@@ -18,9 +18,9 @@ import subprocess
 from pathlib import Path
 
 import pytest
+from _fast_git import fast_init
 from conftest import hermetic_env
-from _fast_git import fast_init  # noqa: E402
-from goh_structural_cases import EXPECTED, FULL_CASES, GATESRC  # noqa: E402
+from goh_structural_cases import EXPECTED, FULL_CASES, GATESRC
 
 ROOT = Path(__file__).resolve().parents[1]
 STRUCTURAL = ROOT / "gates" / "structural.sh"
@@ -218,7 +218,8 @@ def test_a_failing_step_names_the_checker_and_the_docs(goh: Path, tmp_path: Path
     the docs page that documents the gate.
     """
     repo = make_repo(tmp_path, FULL_CASES["md_link_red"])
-    out = (lambda r: r.stdout + r.stderr)(_run_goh(goh, repo, False))
+    result = _run_goh(goh, repo, False)
+    out = result.stdout + result.stderr
     assert str(ROOT / "crates" / "goh" / "src" / "mdlinks.rs") in out, out
     assert str(ROOT / "docs" / "map.md") in out and str(ROOT / "docs" / "config.md") in out, out
 
@@ -258,7 +259,7 @@ def test_structural_sh_execs_the_native_binary_when_told_where_it_is(goh, tmp_pa
     """The hooks call structural.sh, which execs the binary it is told about. A pointer at
     nothing is reported once and REFUSED: the Python tier it used to fall back to is retired
     (Phase N3), and running anything else would be a different gate, unannounced."""
-    repo = make_repo(tmp_path, {"a.md": "ok\n".encode(), ".gatesrc": GATESRC})
+    repo = make_repo(tmp_path, {"a.md": b"ok\n", ".gatesrc": GATESRC})
 
     env = hermetic_env(GOH_BIN=str(goh), GOH_DIR=str(ROOT))
     r = subprocess.run(

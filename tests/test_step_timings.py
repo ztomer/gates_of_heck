@@ -9,11 +9,11 @@ summed across crates, must survive concurrent writers, and must never change a g
 from __future__ import annotations
 
 import json
-import os
 import subprocess
 import sys
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
+
 from conftest import hermetic_env
 from timing_bounds import assert_sooner
 

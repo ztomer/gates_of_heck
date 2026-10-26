@@ -15,9 +15,7 @@ import tempfile
 from pathlib import Path
 
 import pytest
-
 import suite_home  # noqa: F401  (FIRST: the suite's own HOME, before anything reads it)
-
 
 # THE SUITE TESTS THE TREE IT IS IN. Consumers run the gates from an export of HEAD (C4,
 # gates/_from_head.sh); this suite exists to judge the change under test, so it asks for the working
@@ -36,12 +34,12 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 # config and no checkout works (zinc, 2026-09-27). Dropped at import, before any fixture runs,
 # using git's own list via the one helper the checkers share. Pinned by test_hook_git_env.py.
 sys.path.insert(0, str(REPO_ROOT / "checks"))
-from _gitutil import local_env_vars  # noqa: E402
+from _gitutil import local_env_vars
 from host_locks import no_test_reaches_a_host_lock, scrubbed  # noqa: F401  (an autouse fixture)
 
 # The suite's leak check (an autouse session fixture): the OWNER of a process is responsible for
 # it, so the session proves that nothing it started outlived it.
-from load_kit import suite_leak_check  # noqa: E402,F401  (an autouse fixture)
+from load_kit import suite_leak_check  # noqa: F401  (an autouse fixture)
 
 for _name in local_env_vars():
     os.environ.pop(_name, None)
@@ -154,11 +152,11 @@ def hermetic_env(drop_git: bool = False, **overrides: str) -> dict[str, str]:
 # A retired checker's path -> the native check that replaced it (Phase N3): `run_check` gives a
 # suite what a consumer calling that path gets -- the native check, same arguments. The table is
 # `checks/_retired.py::NATIVE`, the one spelling.
-from _retired import NATIVE as _NATIVE  # noqa: E402
-from _tree_guard import pytest_sessionfinish, pytest_sessionstart  # noqa: E402, F401
-import _drift_guard  # noqa: E402
-import _schedule  # noqa: E402
-from _drift_guard import pytest_runtest_makereport  # noqa: E402, F401
+import _drift_guard
+import _schedule
+from _drift_guard import pytest_runtest_makereport  # noqa: F401
+from _retired import NATIVE as _NATIVE
+from _tree_guard import pytest_sessionfinish, pytest_sessionstart  # noqa: F401
 
 RETIRED = {
     f"checks/{stem}.{'sh' if check == 'shell-lint' else 'py'}": check
@@ -315,7 +313,7 @@ def mk_xcrun_find_shim(bin_dir: Path, swift_path: Path) -> Path:
 # Stateful stub: `release view` succeeds iff that release was previously
 # created. Shared by test_release_kit.py and test_release_hardening.py
 # (was a 36-line verbatim duplicate in both — one copy now).
-from _fake_gh import FAKE_GH  # noqa: E402, F401  -- re-exported: the release kit's tests import it here
+from _fake_gh import FAKE_GH  # noqa: F401  -- re-exported: the release kit's tests import it here
 
 
 def _build_goh() -> Path:

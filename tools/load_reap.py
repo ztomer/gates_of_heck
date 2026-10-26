@@ -39,8 +39,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "lib"))
 
-import load_registry as reg  # noqa: E402
-import load_reap  # noqa: E402
+import load_reap
+import load_registry as reg
 
 
 def main(argv: list[str]) -> int:
@@ -80,7 +80,7 @@ def main(argv: list[str]) -> int:
         except load_reap.Blind as blind:
             report.blind.append(f"{name}: {blind}")
             continue
-        except Exception as error:  # reported below, and the job exits 1
+        except Exception as error:  # noqa: BLE001 - one shape faulting must not hide the others: reported below, exit 1
             faults.append(f"{name}: {type(error).__name__}: {error}")
             continue
         report.killed.extend(one.killed)

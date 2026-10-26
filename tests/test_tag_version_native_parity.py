@@ -10,14 +10,10 @@ from __future__ import annotations
 import importlib
 import json
 import subprocess
-import sys
 from pathlib import Path
 
 import pytest
-
-from conftest import REPO_ROOT
-
-from reference_kit import load_reference  # noqa: E402
+from reference_kit import load_reference
 
 sources = load_reference("_version_sources")
 

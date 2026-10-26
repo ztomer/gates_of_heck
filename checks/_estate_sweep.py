@@ -49,10 +49,10 @@ import subprocess
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from _gitutil import foreign_repo_env  # noqa: E402
+from _gitutil import foreign_repo_env
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from tui.lib import info  # noqa: E402
+from tui.lib import info
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 REPO = os.path.dirname(HERE)

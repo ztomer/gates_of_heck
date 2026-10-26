@@ -7,7 +7,7 @@ import time
 from conftest import REPO_ROOT
 
 sys.path.insert(0, str(REPO_ROOT / "checks"))
-from _ordered_pool import in_order  # noqa: E402
+from _ordered_pool import in_order
 
 
 def test_items_run_at_once_and_report_in_item_order(capsys):

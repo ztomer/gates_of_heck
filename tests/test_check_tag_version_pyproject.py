@@ -17,7 +17,7 @@ import pytest
 from conftest import REPO_ROOT
 
 sys.path.insert(0, str(REPO_ROOT / "checks"))
-from _tag_version_kit import extract  # noqa: E402
+from _tag_version_kit import extract
 
 PEP621 = """[project]
 name = "thing"

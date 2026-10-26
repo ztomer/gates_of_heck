@@ -21,7 +21,6 @@ import subprocess
 from pathlib import Path
 
 import pytest
-
 from _fast_git import fast_init
 from conftest import EMOJI_SMILE, REPO_ROOT, hermetic_env, native_goh_path
 from test_gate_environment import _clean_checkout_of_todays_gates

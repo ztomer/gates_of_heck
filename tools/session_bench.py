@@ -49,8 +49,9 @@ GOH = HERE.parent
 sys.path.insert(0, str(GOH))
 sys.path.insert(0, str(GOH / "checks"))
 
-from _gitutil import foreign_repo_env  # noqa: E402
-from tui.lib import err, info, ok, warn  # noqa: E402
+from _gitutil import foreign_repo_env
+
+from tui.lib import err, info, ok, warn
 
 DEFAULT_WORKLOAD = f'bash "{GOH}/gates/structural.sh" --full'
 # tools/quiet.sh's --max-load: this box's floor with every gate drained is 4.5 min / 6.2 median

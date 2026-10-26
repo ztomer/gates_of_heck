@@ -13,8 +13,8 @@ import subprocess
 from pathlib import Path
 
 import pytest
-from reference_kit import reference_path  # noqa: E402
-from _fast_git import fast_init  # noqa: E402
+from _fast_git import fast_init
+from reference_kit import reference_path
 
 ROOT = Path(__file__).resolve().parents[1]
 CHECKER = reference_path("checks/check_no_emoji.py")
@@ -136,7 +136,7 @@ def test_allow_agrees(goh: Path, tmp_path: Path) -> None:
 
 
 def test_exclude_agrees(goh: Path, tmp_path: Path) -> None:
-    repo = make_repo(tmp_path, {"vendor/e.py": f"{PARTY}\n".encode(), "src/ok.py": "ok\n".encode()})
+    repo = make_repo(tmp_path, {"vendor/e.py": f"{PARTY}\n".encode(), "src/ok.py": b"ok\n"})
     assert (
         run_goh(goh, repo, ["--exclude", "vendor/"])
         == run_python(repo, ["--exclude", "vendor/"])

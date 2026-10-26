@@ -14,7 +14,6 @@ import subprocess
 from pathlib import Path
 
 import pytest
-
 from conftest import REPO_ROOT, stage, write
 from test_rust_gate import CURRENT, clone, warm_crate  # noqa: F401  # warm_crate is a fixture
 

@@ -104,8 +104,9 @@ def _load_floors(path):
     import json
 
     try:
-        raw = json.load(open(path, encoding="utf-8"))
-    except Exception as exc:
+        with open(path, encoding="utf-8") as handle:
+            raw = json.load(handle)
+    except (OSError, ValueError) as exc:
         # REFUSED, not dropped: this returned None and the run went on to pass on --floor alone,
         # its per-file check silently gone (ztools wrote _note strings instead of comments for
         # exactly this reason, 2026-10-05).
@@ -263,12 +264,11 @@ def merge(parts, floor, include_re="", floors_json=None, marker_ceiling=None):
         try:
             import json as _jm
 
-            max_forgiven = int(
-                _jm.load(open(marker_ceiling, encoding="utf-8"))["max_forgiven_lines"]
-            )
+            with open(marker_ceiling, encoding="utf-8") as handle:
+                max_forgiven = int(_jm.load(handle)["max_forgiven_lines"])
             if 0 < max_forgiven:
                 print(f"→ [coverage] forgiveness 0 < ceiling {max_forgiven} — lower it.")
-        except Exception as exc:
+        except (OSError, ValueError, KeyError, TypeError) as exc:
             print(f"✗ [coverage] cannot read ceiling {marker_ceiling}: {exc}", file=sys.stderr)
             return 2
     if floor is None and floors is not None:

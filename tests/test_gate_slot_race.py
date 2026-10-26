@@ -51,7 +51,7 @@ def test_the_report_is_one_write_and_the_reader_cannot_see_it_in_pieces(tmp_path
         work.mkdir()
         trial = Trial(instrumented, work, poll=0.001, holder_name="zinc-like", pause=PAUSE_S)
         try:
-            polls, seen, failed, failed_fixed = trial.run()
+            _polls, seen, failed, failed_fixed = trial.run()
         finally:
             trial.close()
         sightings += seen

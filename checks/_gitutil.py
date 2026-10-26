@@ -152,8 +152,8 @@ def listed_files(root: str, staged: bool) -> list[str]:
         # spotless repo. Callers guard the "not a git repo" case themselves via repo_root(); this
         # is git ANSWERING and failing, which nothing was distinguishing from an empty tree.
         raise RuntimeError(
-            "git %s failed (exit %d): %s"
-            % (cmd[3], out.returncode, out.stderr.decode("utf-8", "replace").strip()[:200])
+            f"git {cmd[3]} failed (exit {out.returncode}): "
+            f"{out.stderr.decode('utf-8', 'replace').strip()[:200]}"
         )
     return [n.decode("utf-8", "replace") for n in out.stdout.split(b"\0") if n]
 

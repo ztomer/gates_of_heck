@@ -53,6 +53,7 @@ import sys
 import tempfile
 
 DEFAULT_DIRS = "Sources,Tests"
+DEFAULT_DIR_NAMES = tuple(DEFAULT_DIRS.split(","))
 LOG_NAME = "swift-build-warnings.log"
 # The diagnostic groups that are runtime traps under Swift 6 dynamic actor isolation (D-0016).
 TRAP_GROUPS = {
@@ -89,7 +90,7 @@ def ours(path, repo, dirs):
     return any(real.startswith(os.path.join(repo, d) + os.sep) for d in dirs)
 
 
-def findings(output, repo, dirs=tuple(DEFAULT_DIRS.split(","))):
+def findings(output, repo, dirs=DEFAULT_DIR_NAMES):
     """Every warning in our sources, once each: (location, message, group or None)."""
     seen = {}
     for raw in output.splitlines():
@@ -157,7 +158,7 @@ def selftest():
     elsewhere = "/elsewhere/Sources/C.swift:1:1: warning: not this repo"
     note = f"   {esc}[0;36m|{esc}[0;0m  `- {esc}[1;33mwarning: {esc}[1;39mrepeated in the snippet{esc}[0;0m"
     got = findings(
-        "\n".join([hyperlinked, coloured, plain_dep, dependency, elsewhere, note]),
+        f"{hyperlinked}\n{coloured}\n{plain_dep}\n{dependency}\n{elsewhere}\n{note}",
         repo,
         ("Sources", "Tests"),
     )

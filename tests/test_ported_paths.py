@@ -12,7 +12,7 @@ import re
 
 from conftest import REPO_ROOT
 
-CALL = re.compile(r'ported\(\s*"([^"]+)",?\s*\)', re.S)
+CALL = re.compile(r'ported\(\s*"([^"]+)",?\s*\)', re.DOTALL)
 
 
 def test_every_ported_call_names_a_real_source() -> None:

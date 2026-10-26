@@ -18,7 +18,6 @@ import sys
 from pathlib import Path
 
 import pytest
-
 from conftest import REPO_ROOT, mk_fake_swift_toolchain
 
 SWIFT_HELPER = REPO_ROOT / "gates" / "coverage_swift.py"
@@ -47,7 +46,7 @@ def _root(root: Path) -> Path:
 def test_pick_binary_chooses_mtime_nearest_not_glob_order(tmp_path):
     mod = _load_helper()
     root = _root(tmp_path / "a")
-    bin_ = mk_fake_swift_toolchain(root, second_config=True)
+    mk_fake_swift_toolchain(root, second_config=True)
     profdata = root / PROFDATA
     dbg = root / DD_BINARIES["Debug"]
     rel = root / DD_BINARIES["Release"]
@@ -59,7 +58,7 @@ def test_pick_binary_chooses_mtime_nearest_not_glob_order(tmp_path):
 def test_pick_binary_ambiguity_is_named_exit_2(tmp_path):
     mod = _load_helper()
     root = _root(tmp_path / "b")
-    bin_ = mk_fake_swift_toolchain(root, second_config=True)
+    mk_fake_swift_toolchain(root, second_config=True)
     profdata = root / PROFDATA
     rel = root / DD_BINARIES["Release"]
     twin = root / DD_BINARIES["Debug"]

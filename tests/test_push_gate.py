@@ -9,7 +9,8 @@ something else.
 import os
 import subprocess
 from pathlib import Path
-from _fast_git import fast_init  # noqa: E402
+
+from _fast_git import fast_init
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 PUSH_GATE = REPO_ROOT / "gates" / "push_gate.sh"
@@ -284,7 +285,7 @@ def test_a_new_commit_is_still_gated_when_the_remote_has_its_parent(tmp_path):
     _git(repo, "add", "fail.flag")
     _git(repo, "commit", "-q", "-m", "new and broken")
     sha = _git(repo, "rev-parse", "HEAD")
-    code, report, out = _push_lines(
+    code, report, _out = _push_lines(
         repo, f"refs/heads/main {sha} refs/heads/main {'0' * 40}\n", tmp_path
     )
     assert code != 0, "a new broken commit passed the gate"
@@ -322,7 +323,7 @@ def test_a_gatesrc_key_reaches_a_python_checker(tmp_path):
     sha = _git(repo, "rev-parse", "HEAD").strip()
     _git(repo, "tag", "v1.4.0")
 
-    code, out, err = _push_lines(
+    _code, out, err = _push_lines(
         repo,
         f"refs/tags/v1.4.0 {sha} refs/tags/v1.4.0 {'0' * 40}\n",
         tmp_path,

@@ -16,15 +16,15 @@ import time
 from pathlib import Path
 
 import pytest
-
-from conftest import REPO_ROOT
-from reference_kit import reference_path  # noqa: E402
+from reference_kit import reference_path
 
 CHECK = reference_path("checks/check_dep_currency.py")
 PIN = (
     '[package]\nname = "x"\nversion = "0.1.0"\n\n[dependencies]\nureq = "2"\nserde = "1.0.100"\n',
-    'version = 3\n\n[[package]]\nname = "ureq"\nversion = "2.12.1"\n\n'
-    '[[package]]\nname = "ureq"\nversion = "3.4.2"\n\n[[package]]\nname = "serde"\nversion = "1.0.100"\n',
+    (
+        'version = 3\n\n[[package]]\nname = "ureq"\nversion = "2.12.1"\n\n'
+        '[[package]]\nname = "ureq"\nversion = "3.4.2"\n\n[[package]]\nname = "serde"\nversion = "1.0.100"\n'
+    ),
 )
 WORKSPACE = {
     "Cargo.toml": '[workspace]\nmembers = ["m"]\n\n[workspace.dependencies]\ntoml = "0.8"\n',
@@ -60,7 +60,7 @@ def both(goh: Path, root: Path, env: dict, *args: str):
         env=env,
         stdin=subprocess.DEVNULL,
         check=False,
-    )  # noqa: E731
+    )
     py = run([sys.executable, str(CHECK), *args])
     rs = run([str(goh), "deps", *args])
     return (py.returncode, py.stdout, py.stderr), (rs.returncode, rs.stdout, rs.stderr)

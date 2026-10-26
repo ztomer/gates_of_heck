@@ -19,7 +19,7 @@ FIELDS = ("Baseline:", "Exit:", "Red-first:", "Lies:")
 
 def _roadmap() -> str:
     text = (REPO_ROOT / "docs" / "BACKLOG.md").read_text(encoding="utf-8")
-    m = re.search(r"^## Roadmap to v\d+\.\d+\.\d+.*?$(.*?)(?=^## )", text, re.M | re.S)
+    m = re.search(r"^## Roadmap to v\d+\.\d+\.\d+.*?$(.*?)(?=^## )", text, re.MULTILINE | re.DOTALL)
     assert m, "BACKLOG.md has no `## Roadmap to vX.Y.Z` section: there is no plan of record"
     return m.group(1)
 

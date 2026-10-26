@@ -6,7 +6,10 @@ checker's spec is a measured table, not a docstring -- so they are kept where ad
 one-line edit and cannot accidentally disturb the code that runs them.
 """
 
-from unreaped_spawn_table_rust import RUST  # noqa: E402
+from unreaped_spawn_table_rust import RUST
+
+# RUST lives in its own file (the 500-line cap); the parity test imports every table from here.
+__all__ = ["PYTHON", "PYTHON_EXTRA", "RUST", "SHELL"]
 
 PYTHON = [
     (
@@ -79,8 +82,10 @@ SHELL = [
     ),
     (
         "a trap whose cleanup kills the recorded pid",
-        '#!/usr/bin/env bash\npid="\ncleanup() { [ -n "$pid" ] && kill "$pid" 2>/dev/null || true; }\n'
-        'trap cleanup EXIT\n"$BIN" --serve &\npid=$!\n',
+        (
+            '#!/usr/bin/env bash\npid="\ncleanup() { [ -n "$pid" ] && kill "$pid" 2>/dev/null || true; }\n'
+            'trap cleanup EXIT\n"$BIN" --serve &\npid=$!\n'
+        ),
         False,
     ),
     (

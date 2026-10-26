@@ -34,7 +34,7 @@ SITES = [
     re.compile(r"\bgoh_require ([\w.-]+)"),
     # A module the Python gates run through their interpreter (gates/_py.sh, 2026-10-10).
     re.compile(r"\bgoh_py_require ([\w.-]+)"),
-    re.compile(r"^\s*need ([\w.-]+) \"", re.M),
+    re.compile(r"^\s*need ([\w.-]+) \"", re.MULTILINE),
     re.compile(r"command -v ([\w.-]+) >/dev/null 2>&1 \|\| (?:die|\{)"),
     re.compile(r"if ! command -v ([\w.-]+) >/dev/null 2>&1; then"),
     re.compile(r"if not shutil\.which\(\"([\w.-]+)\"\)"),
@@ -54,7 +54,7 @@ def _manifest() -> list[dict]:
         if not line.strip() or line.startswith("#"):
             continue
         layer, tool, kind, install, site, _floor = line.split("\t")
-        rows.append(dict(layer=layer, tool=tool, kind=kind, install=install, site=site))
+        rows.append({"layer": layer, "tool": tool, "kind": kind, "install": install, "site": site})
     return rows
 
 

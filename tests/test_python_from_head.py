@@ -14,16 +14,15 @@ import subprocess
 from pathlib import Path
 
 import pytest
-
 from conftest import REPO_ROOT
-from test_gate_environment import _clean_checkout_of_todays_gates
 from host_locks import scrubbed  # the one env scrub: it keeps the private roots
+from test_gate_environment import _clean_checkout_of_todays_gates
 
 PLANT = "LIVE-PYTHON-CHECKER-EDIT-7714"
 NOTICE = "running HEAD's copy"
 STANZA = re.compile(
     r'^if __name__ == "__main__":.*\n(?:    .*\n|\n)*?\s+__import__\("_from_head"\)\.reexec\(__file__\)',
-    re.M,
+    re.MULTILINE,
 )
 
 

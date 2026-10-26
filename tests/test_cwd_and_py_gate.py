@@ -10,9 +10,8 @@ import subprocess
 from pathlib import Path
 
 import pytest
-
 from _fast_git import fast_init
-from conftest import REPO_ROOT, commit_all, run_gate, write
+from conftest import REPO_ROOT, write
 
 STRUCTURAL = "gates/structural.sh"
 

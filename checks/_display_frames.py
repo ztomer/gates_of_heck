@@ -68,8 +68,10 @@ def check_swift_frames(rel, text, views, silenced, out):
                 (
                     rel,
                     i + 1,
-                    "draws an on-screen MTKView by hand: its frames are paced by the display, "
-                    "so render offscreen through the seam",
+                    (
+                        "draws an on-screen MTKView by hand: its frames are paced by the display, "
+                        "so render offscreen through the seam"
+                    ),
                 )
             )
             return
@@ -118,8 +120,10 @@ def check_python_frames(rel, text, flag, helper, out):
             (
                 rel,
                 request.lineno,
-                f"requests frames ({request.value}) and never reads the count back: "
-                f"call {helper}(requested, drawn)",
+                (
+                    f"requests frames ({request.value}) and never reads the count back: "
+                    f"call {helper}(requested, drawn)"
+                ),
             )
         )
         return
@@ -134,8 +138,10 @@ def check_python_frames(rel, text, flag, helper, out):
                 (
                     rel,
                     call.lineno,
-                    f"{helper}() reads back a constant: the drawn count must come from the "
-                    f"renderer that drew",
+                    (
+                        f"{helper}() reads back a constant: the drawn count must come from the "
+                        f"renderer that drew"
+                    ),
                 )
             )
             return

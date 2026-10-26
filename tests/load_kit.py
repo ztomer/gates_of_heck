@@ -192,10 +192,10 @@ def orphan(command: list[str] | None = None) -> int:
         [
             sys.executable,
             "-c",
-            "import subprocess,sys;"
+            ("import subprocess,sys;"
             "p=subprocess.Popen(sys.argv[1:], stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,"
             "stderr=subprocess.DEVNULL, start_new_session=True);"
-            "print(p.pid)",
+            "print(p.pid)"),
             *argv,
         ],
         capture_output=True,

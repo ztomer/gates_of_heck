@@ -16,10 +16,9 @@ import sys
 from pathlib import Path
 
 import pytest
-
 from claim_kit import allow, doc, estate
-from conftest import REPO_ROOT, commit_all, stage, write
-from reference_kit import reference_path  # noqa: E402
+from conftest import commit_all, stage, write
+from reference_kit import reference_path
 
 CHECK = reference_path("checks/check_claim_derivation.py")
 

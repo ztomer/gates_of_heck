@@ -21,20 +21,17 @@ import tempfile
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.environ.get("GOH_DIR", os.path.expanduser("~/Projects/gates_of_heck")))
 
-from _empty_scope_usage import is_usage_error  # noqa: E402,F401
-from _gitutil import foreign_repo_env  # noqa: E402,F401
-from tui.lib import err, info, ok  # noqa: E402
-
-from check_empty_scope import (  # noqa: E402
-    main,
-    scratch_git,
+from _empty_scope_usage import is_usage_error  # noqa: F401
+from _gitutil import foreign_repo_env  # noqa: F401
+from check_empty_scope import (
     ALLOW_FILE,
-    NOT_APPLICABLE,
     allowed,
     build_skeleton,
     err,
     gate_names,
+    main,
     ok,
+    scratch_git,
     sweep,
 )
 
@@ -105,7 +102,7 @@ def probe():
         names = gate_names(tools)
         with tempfile.TemporaryDirectory(prefix="goh-empty-scope.") as work:
             skeleton = build_skeleton(root, tools, os.path.join(work, "s"))
-            blind, unrunnable = sweep(skeleton, "tools", names)
+            blind, _unrunnable = sweep(skeleton, "tools", names)
 
         cases = [
             (

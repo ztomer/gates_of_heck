@@ -5,13 +5,11 @@ after a red gate, a commit of nothing, a push refused for a disk that read as an
 `git commit` taking whatever else was already staged (the hole ZoneWM's own version named).
 """
 
-import os
 import shutil
 import subprocess
 from pathlib import Path
 
 import pytest
-
 from _fast_git import fast_init
 from conftest import REPO_ROOT, hermetic_env
 

@@ -32,7 +32,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
-from tui.lib import err, info, ok, step  # noqa: E402
+from tui.lib import err, info, ok, step
 
 DEFAULT_OWNER = "ztomer"
 ARTIFACT_DAYS = 14
@@ -92,7 +92,7 @@ def pages(path: str, key: str, timeout: float) -> list[dict]:
 
 
 def ts(value: str) -> dt.datetime:
-    return dt.datetime.fromisoformat(value.replace("Z", "+00:00"))
+    return dt.datetime.fromisoformat(value)
 
 
 # ---- the policy: pure, so every case is a one-line test ------------------------------------------

@@ -15,7 +15,6 @@ import subprocess
 from pathlib import Path
 
 import pytest
-
 from conftest import git, write
 
 pytestmark = pytest.mark.skipif(shutil.which("shellcheck") is None, reason="needs shellcheck")
@@ -77,7 +76,7 @@ def test_an_edited_file_is_judged_again_and_only_it(lint, repo: Path) -> None:
 
 
 def test_a_shellcheckrc_shellcheck_would_read_rejudges_everything(lint, repo: Path) -> None:
-    cold, _ = lint()
+    _cold, _ = lint()
     write(repo, ".shellcheckrc", "disable=SC2068\n")
     after, asked = lint()
     assert asked == {"a.sh", "b.sh"}, asked

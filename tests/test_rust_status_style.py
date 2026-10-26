@@ -16,8 +16,8 @@ import re
 from conftest import REPO_ROOT
 
 GLYPH_LINE = re.compile(r"(?:^|\\n)[→·✓✗⚠] ")
-LITERAL = re.compile(r'(?<![r#\w])"((?:\\.|[^"\\])*)"', re.S)
-TEST_MODULE = re.compile(r"^#\[cfg\(test\)\]\s*\n\s*mod ", re.M)
+LITERAL = re.compile(r'(?<![r#\w])"((?:\\.|[^"\\])*)"', re.DOTALL)
+TEST_MODULE = re.compile(r"^#\[cfg\(test\)\]\s*\n\s*mod ", re.MULTILINE)
 THE_CRATE = "crates/goh-tui/"
 
 

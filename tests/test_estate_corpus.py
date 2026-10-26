@@ -18,13 +18,12 @@ import subprocess
 import sys
 
 import pytest
-
 from conftest import REPO_ROOT as ROOT
 
 CHECK = ROOT / "checks" / "check_estate_corpus.py"
 
 sys.path.insert(0, str(ROOT / "checks"))
-import check_estate_corpus as sweep  # noqa: E402
+import check_estate_corpus as sweep
 
 
 def run_gate(*args):

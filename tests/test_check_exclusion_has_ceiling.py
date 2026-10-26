@@ -163,6 +163,7 @@ def test_structural_enforces_the_ceilings_it_requires(repo):
     """A file exempt from the cap with a recorded ceiling: growing past the
     ceiling fails the STRUCTURAL gate itself, without any per-repo wiring."""
     import subprocess
+
     from conftest import REPO_ROOT
 
     path = _repo(repo, lines=600, in_baseline=True)
@@ -213,6 +214,7 @@ def test_a_sentinel_only_baseline_ratchets_to_a_pass(repo):
     check runs (divoom-control's shape). The ratchet must pass over it, not
     abort on empty input."""
     import subprocess
+
     from conftest import REPO_ROOT
 
     write(repo, "src/small.rs", "// ok\n")

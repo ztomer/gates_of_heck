@@ -50,7 +50,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "lib"))
-from killtree import run_captured  # noqa: E402
+from killtree import run_captured
 
 
 class PreconditionError(Exception):
@@ -213,8 +213,8 @@ def main() -> int:
         )
         return 2
 
-    grew = sorted((k for k in current if k not in baseline and not args.allow_new_keys))
-    rose = sorted((k for k in baseline if k in current and current[k] > baseline[k]))
+    grew = sorted(k for k in current if k not in baseline and not args.allow_new_keys)
+    rose = sorted(k for k in baseline if k in current and current[k] > baseline[k])
     shrank = {
         k: (baseline[k], current[k]) for k in baseline & current.keys() if current[k] < baseline[k]
     }

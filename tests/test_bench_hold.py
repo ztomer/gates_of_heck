@@ -15,12 +15,11 @@ import time
 from pathlib import Path
 
 import pytest
-
 from conftest import REPO_ROOT
 from timing_bounds import GiveUp
 
 sys.path.insert(0, str(REPO_ROOT / "lib"))
-import bench_hold  # noqa: E402
+import bench_hold
 
 LIB = REPO_ROOT / "lib" / "bench_lock.sh"
 
@@ -76,9 +75,11 @@ def test_a_held_host_is_refused_by_name_before_the_block_runs(lock: Path, tmp_pa
     try:
         _until(ready.exists)
         entered = False
-        with pytest.raises(bench_hold.BenchBusy, match="a peer measurement"):
-            with bench_hold.held("census", hold_s=60, claim_s=1, drain_s=1):
-                entered = True
+        with (
+            pytest.raises(bench_hold.BenchBusy, match="a peer measurement"),
+            bench_hold.held("census", hold_s=60, claim_s=1, drain_s=1),
+        ):
+            entered = True
         assert not entered
         assert "a peer measurement" in (lock / "exclusive" / "owner").read_text()
     finally:
@@ -90,9 +91,11 @@ def test_a_hold_past_the_cap_is_refused_and_leaves_no_claim(
     lock: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setenv("GOH_BENCH_MAX_HOLD", "30")
-    with pytest.raises(bench_hold.BenchBusy, match="past the cap"):
-        with bench_hold.held("census", hold_s=60):
-            pass
+    with (
+        pytest.raises(bench_hold.BenchBusy, match="past the cap"),
+        bench_hold.held("census", hold_s=60),
+    ):
+        pass
     assert not (lock / "exclusive").exists()
 
 

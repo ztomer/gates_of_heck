@@ -23,7 +23,6 @@ import subprocess
 from pathlib import Path
 
 import pytest
-
 from conftest import REPO_ROOT, commit_all, git, stage, write
 
 BASELINE = ".gates_loc_baseline.txt"

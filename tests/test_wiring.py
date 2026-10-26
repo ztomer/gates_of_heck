@@ -16,8 +16,6 @@ THIS repo's checks/, gates/ or hooks/ must resolve here.
 import re
 from pathlib import Path
 
-import pytest
-
 from conftest import REPO_ROOT
 
 REF = re.compile(
@@ -127,17 +125,7 @@ def test_guarded_refs_must_still_resolve_when_they_name_this_repo():
     pre-fix wiring tests passed it; now it is red."""
     synthetic = (
         "synthetic-gate.sh",
-        "\n".join(
-            [
-                "#!/usr/bin/env bash",
-                # Same-line forms ONLY: the old scanner skipped any line carrying
-                # goh_optional_step / an existence guard, so these were invisible.
-                'goh_optional_step "opt" "$CHECKS/does_not_exist.py" python3 "$CHECKS/does_not_exist.py"',
-                '[ -f "$CHECKS/guarded_missing.py" ] && python3 "$CHECKS/guarded_missing.py"',
-                "# tools/ stays exempt: target-repo-local",
-                'goh_optional_step "local" tools/local_check.py true',
-            ]
-        )
+        '#!/usr/bin/env bash\ngoh_optional_step "opt" "$CHECKS/does_not_exist.py" python3 "$CHECKS/does_not_exist.py"\n[ -f "$CHECKS/guarded_missing.py" ] && python3 "$CHECKS/guarded_missing.py"\n# tools/ stays exempt: target-repo-local\ngoh_optional_step "local" tools/local_check.py true'
         + "\n",
     )
     missing = _missing(_referenced_scripts(files=[synthetic]))
@@ -197,7 +185,7 @@ def test_every_row_in_the_map_names_a_file_that_exists():
     stale = []
     for heading, base in sections.items():
         body = text.split(f"## {heading}", 1)[1].split("\n## ", 1)[0]
-        for name in _re.findall(r"^\| `([^`/]+\.(?:py|sh|tsv|json))`", body, _re.M):
+        for name in _re.findall(r"^\| `([^`/]+\.(?:py|sh|tsv|json))`", body, _re.MULTILINE):
             if not (REPO_ROOT / base / name).exists():
                 stale.append(f"{base}/{name}")
     assert not stale, f"docs/map.md rows for files that do not exist: {stale}"

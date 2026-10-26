@@ -18,9 +18,8 @@ import subprocess
 from pathlib import Path
 
 import pytest
-
-from test_rust_gate_scoped_cache import _crate, _git, _native, gates  # noqa: F401  # fixtures
 from conftest import hermetic_env
+from test_rust_gate_scoped_cache import _crate, _git, _native, gates  # noqa: F401  # fixtures
 
 TARGET = "x86_64-unknown-linux-musl"
 

@@ -18,7 +18,6 @@ import sys
 from pathlib import Path
 
 import pytest
-
 from _fast_git import fast_init
 from conftest import REPO_ROOT, hermetic_env
 

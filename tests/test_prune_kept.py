@@ -8,7 +8,7 @@ import time
 from conftest import REPO_ROOT
 
 sys.path.insert(0, str(REPO_ROOT / "lib"))
-from prune_kept import prune  # noqa: E402
+from prune_kept import prune
 
 
 def test_the_newest_and_the_recent_are_kept_and_nothing_else_is_touched(tmp_path) -> None:

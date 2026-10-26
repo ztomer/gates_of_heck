@@ -15,7 +15,6 @@ agree by construction.
 from pathlib import Path
 
 import pytest
-
 from conftest import commit_all, write
 from unreaped_kit import findings, unreaped_tier  # noqa: F401  # unreaped_tier: a fixture
 
@@ -248,19 +247,25 @@ fn it_runs_once() {
             "a spawn whose Child is dropped and never killed: measured LIVE ORPHAN",
         ),
         (
-            'let mut c = Command::new("x").spawn().expect("runs");\nassert!(ok);\n'
-            "c.kill();\nlet _ = c.wait();\n",
+            (
+                'let mut c = Command::new("x").spawn().expect("runs");\nassert!(ok);\n'
+                "c.kill();\nlet _ = c.wait();\n"
+            ),
             "the incident's ordering, in miniature",
         ),
         (
-            'let mut c = Command::new("x").spawn().expect("runs");\n'
-            'let p = read(&mut c).unwrap_or_else(|| panic!("no port"));\n'
-            'assert_ne!(p, 0, "a real port");\nc.kill();\nlet _ = c.wait();\n',
+            (
+                'let mut c = Command::new("x").spawn().expect("runs");\n'
+                'let p = read(&mut c).unwrap_or_else(|| panic!("no port"));\n'
+                'assert_ne!(p, 0, "a real port");\nc.kill();\nlet _ = c.wait();\n'
+            ),
             "the incident's real triggers: an unwrap_or_else(panic) AND an assert above the pair",
         ),
         (
-            'let mut c = Command::new("x").spawn().expect("runs");\n'
-            "let p = read(&mut c)?;\nc.kill();\nlet _ = c.wait();\n",
+            (
+                'let mut c = Command::new("x").spawn().expect("runs");\n'
+                "let p = read(&mut c)?;\nc.kill();\nlet _ = c.wait();\n"
+            ),
             "an early `?` above the pair skips the reap exactly as a panic does",
         ),
     ],
@@ -284,13 +289,17 @@ def test_rust_findings(repo: Path, body: str, why: str) -> None:
         ('let out = Command::new("x").output().expect("runs");\n', "output() reaps (measured)"),
         ('let st = Command::new("x").status().expect("runs");\n', "status() reaps (measured)"),
         (
-            'let mut c = Command::new("x").spawn().expect("runs");\n'
-            "let _ = c.kill();\nlet _ = c.wait();\n",
+            (
+                'let mut c = Command::new("x").spawn().expect("runs");\n'
+                "let _ = c.kill();\nlet _ = c.wait();\n"
+            ),
             "explicit kill+wait with nothing panicking between",
         ),
         (
-            'let mut c = Command::new("x").spawn().expect("runs");\n'
-            'c.kill();\nassert!(ok, "the child is already dead here");\n',
+            (
+                'let mut c = Command::new("x").spawn().expect("runs");\n'
+                'c.kill();\nassert!(ok, "the child is already dead here");\n'
+            ),
             "kill() with no wait() is NOT this gate: a zombie cannot hold a lock or outlive the run",
         ),
     ],
@@ -385,8 +394,10 @@ fn t() {
             "no `with`, no wait: measured LIVE ORPHAN",
         ),
         (
-            'def test_x():\n    with subprocess.Popen(["x"]) as proc:\n'
-            "        assert proc is not None\n",
+            (
+                'def test_x():\n    with subprocess.Popen(["x"]) as proc:\n'
+                "        assert proc is not None\n"
+            ),
             False,
             "a context manager IS the guard",
         ),

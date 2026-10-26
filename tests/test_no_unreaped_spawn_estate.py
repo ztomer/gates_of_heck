@@ -11,7 +11,6 @@ fixture cannot express, and the failure they guard is a FALSE ALARM on correct c
 """
 
 import pytest
-
 from conftest import Path, commit_all, write
 from unreaped_kit import findings, unreaped_tier  # noqa: F401  # unreaped_tier: a fixture
 

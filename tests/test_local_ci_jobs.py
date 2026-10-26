@@ -15,9 +15,8 @@ import time
 from pathlib import Path
 
 import pytest
-
-from timing_bounds import assert_sooner
 from conftest import REPO_ROOT
+from timing_bounds import assert_sooner
 
 LOCAL_CI = REPO_ROOT / "gates" / "local_ci.sh"
 
@@ -86,7 +85,7 @@ def test_default_is_serial(repo):
 
 def test_steps_sharing_a_tag_never_overlap(repo):
     # Each step holds a mkdir lock for its whole run; an overlap makes the second mkdir fail.
-    hold = "mkdir {d}/lock || exit 7; sleep 0.4; rmdir {d}/lock".format(d=repo)
+    hold = f"mkdir {repo}/lock || exit 7; sleep 0.4; rmdir {repo}/lock"
     steps(
         repo, f"[db] {hold}", f"[db] {hold}", f"[db] {hold}", "sleep 0.1", extra="GOH_CI_JOBS=4\n"
     )

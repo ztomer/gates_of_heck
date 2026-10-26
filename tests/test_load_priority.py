@@ -24,12 +24,11 @@ from pathlib import Path
 
 import pytest
 import timing_bounds
-
 from conftest import REPO_ROOT
 
 sys.path.insert(0, str(REPO_ROOT / "lib"))
 
-import load_priority  # noqa: E402
+import load_priority
 
 TOOL = REPO_ROOT / "tools" / "load.py"
 GUARD = REPO_ROOT / "hooks" / "claude" / "discard_guard.py"

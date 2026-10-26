@@ -16,7 +16,6 @@ import os
 import sys
 
 import pytest
-
 from _eval_transport_kit import (
     REPO_ROOT,
     _mk_state,
@@ -92,7 +91,6 @@ def test_truncated_run_looks_truncated(tmp_path):
 
 
 def test_run_loop_runs_pending_units_and_marks_done(tmp_path, fake_api):
-    t = et.EvalTransport(base_url=fake_api)
     st = _mk_state(tmp_path)
     st.start(["m-alpha"], ["t1", "t2"])
     ran = []
@@ -201,7 +199,7 @@ def test_two_process_writers_lose_no_markers(tmp_path):
         for i in range(workers)
     ]
     for p in procs:
-        out, errout = p.communicate(timeout=120)
+        _out, errout = p.communicate(timeout=120)
         assert p.returncode == 0, f"worker died: {errout}"
 
     fresh = et.SweepState(path)  # a NEW process reads what landed on disk

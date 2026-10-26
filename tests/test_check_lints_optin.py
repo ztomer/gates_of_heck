@@ -8,7 +8,6 @@ and the third -- the biggest, the one uploaded to every monitored host -- had no
 """
 
 import pytest
-
 from conftest import commit_all, write
 from tier_kit import both_tiers, run_tiered  # noqa: F401  # both_tiers: a fixture
 

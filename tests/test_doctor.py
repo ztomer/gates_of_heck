@@ -10,9 +10,8 @@ import subprocess
 from pathlib import Path
 
 import pytest
-
-from conftest import REPO_ROOT, git, write
-from _fast_git import fast_init  # noqa: E402
+from _fast_git import fast_init
+from conftest import REPO_ROOT, write
 
 DOCTOR = REPO_ROOT / "gates" / "doctor.sh"
 
@@ -94,8 +93,8 @@ def test_non_repo_dir_fails_named(tmp_path):
 def test_missing_python_is_named(tmp_path):
     # A bin dir with git but WITHOUT python3: exercises the load-bearing
     # check without touching the machine.
-    import shutil as _shutil
     import os as _os
+    import shutil as _shutil
 
     target = tmp_path / "proj"
     target.mkdir()

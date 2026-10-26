@@ -48,13 +48,13 @@ import hashlib
 import os
 import shlex
 import shutil
-import subprocess  # noqa: F401 — TimeoutExpired contract of killtree.run_captured
+import subprocess
 import sys
 import tempfile
 from pathlib import Path
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "lib"))
-from killtree import run_captured  # noqa: E402
+from killtree import run_captured
 
 
 def _sha256(path: Path) -> str:
@@ -136,8 +136,10 @@ def main() -> int:
             stale.append(
                 (
                     art,
-                    f"stale — committed {_sha256(committed)[:12]} vs generated "
-                    f"{_sha256(produced)[:12]}",
+                    (
+                        f"stale — committed {_sha256(committed)[:12]} vs generated "
+                        f"{_sha256(produced)[:12]}"
+                    ),
                 )
             )
 

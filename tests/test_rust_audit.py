@@ -16,7 +16,6 @@ import subprocess
 from pathlib import Path
 
 import pytest
-
 from conftest import REPO_ROOT
 from test_rust_gate import CURRENT, _git, mkcrate, run_script
 

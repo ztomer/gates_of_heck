@@ -12,9 +12,8 @@ import sys
 import textwrap
 
 import pytest
-
+from _fast_git import fast_init
 from conftest import REPO_ROOT
-from _fast_git import fast_init  # noqa: E402
 
 STAMP = REPO_ROOT / "lib" / "tree_stamp.py"
 

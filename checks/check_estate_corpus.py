@@ -67,11 +67,9 @@ import tempfile
 import time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from _ordered_pool import in_order  # noqa: E402
-import _estate_cache  # noqa: E402
-from _gitutil import foreign_repo_env  # noqa: E402
-import _estate_corpus_io  # noqa: E402
-from _estate_corpus_io import (  # noqa: E402,F401  (re-exported: tests and probe call them here)
+import _estate_cache
+import _estate_corpus_io
+from _estate_corpus_io import (  # noqa: F401  (re-exported: tests and probe call them here)
     consumer_exclude,
     corpus_files,
     materialise,
@@ -79,9 +77,11 @@ from _estate_corpus_io import (  # noqa: E402,F401  (re-exported: tests and prob
     run_checker,
     takes_exclude,
 )
+from _gitutil import foreign_repo_env
+from _ordered_pool import in_order
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from tui.lib import err, info, ok, warn  # noqa: E402
+from tui.lib import err, info, ok, warn
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 # The gates checkout whose `goh.sh` runs the native checks: GOH_DIR when the caller says (a copy of
@@ -266,9 +266,8 @@ def judge(entry, bad):
         err(f"{entry['checker']}: no tracked {entry['ext']} file under that corpus to plant into")
         bad.append(entry["checker"])
         return "blind"
-    existing = sum(
-        1 for _ in open(os.path.join(source, target), encoding="utf-8", errors="replace")
-    )
+    with open(os.path.join(source, target), encoding="utf-8", errors="replace") as handle:
+        existing = sum(1 for _ in handle)
     if existing < MIN_TARGET_LINES:
         err(
             f"{entry['checker']}: the plant would land in {target}, which holds {existing} line(s) "

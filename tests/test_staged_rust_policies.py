@@ -7,8 +7,6 @@ structural layer runs them over the STAGED `.rs` files: only what the commit tou
 with old violations is not made red by an unrelated commit.
 """
 
-import subprocess
-
 from conftest import commit_all, run_gate, stage, write
 
 ALLOW = "#[" + "allow(dead_code)]\nfn f() {}\n"

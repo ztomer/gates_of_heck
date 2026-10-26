@@ -17,9 +17,8 @@ import time
 from pathlib import Path
 
 import pytest
-
+from _fast_git import fast_init
 from conftest import REPO_ROOT
-from _fast_git import fast_init  # noqa: E402
 
 GIT_VARS = (
     "GIT_DIR",

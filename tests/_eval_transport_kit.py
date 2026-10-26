@@ -13,6 +13,7 @@ import sys
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from typing import ClassVar
 
 import pytest
 
@@ -20,8 +21,7 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 
 sys.path.insert(0, str(REPO_ROOT))
 
-from lib import eval_transport as et  # noqa: E402
-
+from lib import eval_transport as et
 
 # ---- fake OpenAI-compatible endpoint ----------------------------------------
 
@@ -30,13 +30,13 @@ class _FakeAPI(BaseHTTPRequestHandler):
     """Canned /v1/models + /v1/chat/completions. Behaviour knobs are class
     attrs so each test can rewire the endpoint without a new server."""
 
-    models = ["m-alpha", "m-beta"]
+    models: ClassVar[list] = ["m-alpha", "m-beta"]
     # content returned for chat completions; may be a str or a callable
     # (request_body_dict) -> str
-    content_factory = lambda body: json.dumps({"echo": body["model"]})  # noqa: E731
+    content_factory = lambda body: json.dumps({"echo": body["model"]})
     http_status = 200
-    requests: list = []  # every parsed POST body lands here
-    last_headers: dict = {}  # request headers of the last POST
+    requests: ClassVar[list] = []  # every parsed POST body lands here
+    last_headers: ClassVar[dict] = {}  # request headers of the last POST
 
     def log_message(self, *a):  # silence the test runner
         pass

@@ -9,7 +9,6 @@ import shutil
 import subprocess
 
 import pytest
-
 from conftest import REPO_ROOT, stage, write
 
 GATE = REPO_ROOT / "gates" / "py_staged.sh"

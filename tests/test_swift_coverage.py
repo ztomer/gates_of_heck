@@ -4,8 +4,6 @@ mode's tree-walk is tested at the parse level."""
 
 import importlib.util
 import json
-import sys
-from pathlib import Path
 
 from conftest import REPO_ROOT, run_check
 

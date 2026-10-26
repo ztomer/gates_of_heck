@@ -14,14 +14,13 @@ import subprocess
 import sys
 
 import pytest
-
 from conftest import REPO_ROOT as ROOT
 
 CHECKS = ROOT / "checks"
 FRAMES = CHECKS / "_display_frames.py"
 sys.path.insert(0, str(CHECKS))
 
-import _display_frames  # noqa: E402
+import _display_frames
 
 
 def findings_for_python(text, flag=_display_frames.DEFAULT_FRAMES_FLAG):
@@ -79,8 +78,10 @@ def test_a_harness_with_no_read_back_names_the_line_of_its_request():
         (
             "h.py",
             3,
-            "requests frames (--golden-frames) and never reads the count back: "
-            "call require_frames_drawn(requested, drawn)",
+            (
+                "requests frames (--golden-frames) and never reads the count back: "
+                "call require_frames_drawn(requested, drawn)"
+            ),
         )
     ]
 

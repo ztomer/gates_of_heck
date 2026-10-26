@@ -13,12 +13,10 @@ monitor and antiknob push the bump first and tag after CI, by design.
 """
 
 import pytest
-
+from _fast_git import fast_init
+from _tag_version_kit import ZERO, _sha, origin_from
 from conftest import git, write
 from tier_kit import both_tiers, run_tiered  # noqa: F401  # both_tiers: a fixture
-
-from _tag_version_kit import ZERO, _sha, origin_from
-from _fast_git import fast_init  # noqa: E402
 
 pytestmark = pytest.mark.usefixtures("both_tiers")
 
@@ -96,7 +94,7 @@ def test_a_bump_pushed_before_its_tag_exists_is_green(tmp_path):
 
 def test_an_old_release_tag_the_remote_never_got_is_red_on_the_next_push(tmp_path):
     """antiknob v0.13.0's shape: annotated, on a commit the remote has held for weeks."""
-    repo, first, second = _released(tmp_path)
+    repo, _first, second = _released(tmp_path)
     _g(repo, "push", "-q", "origin", "main")
     _g(repo, "tag", "-a", "v1.0.1", "-m", "v1.0.1")  # tagged after main went up, never pushed
     third = _commit(repo, "1.0.2")

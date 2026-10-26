@@ -19,9 +19,8 @@ from pathlib import Path
 
 import pytest
 from conftest import REPO_ROOT, hermetic_env, native_goh_path
-
-from test_gate_environment import _clean_checkout_of_todays_gates
 from host_locks import scrubbed  # the one env scrub: it keeps the private roots
+from test_gate_environment import _clean_checkout_of_todays_gates
 
 PLANT = "LIVE-WORKING-TREE-EDIT-5521"
 
@@ -225,8 +224,10 @@ def test_a_tool_two_levels_down_finds_the_checkout_root(gates: Path, tmp_path) -
         [
             "bash",
             "-c",
-            '. "$1/gates/_from_head.sh"; _goh_head_dir "$1/tools/release-kit/release.sh" '
-            '&& printf %s "$_goh_copy"',
+            (
+                '. "$1/gates/_from_head.sh"; _goh_head_dir "$1/tools/release-kit/release.sh" '
+                '&& printf %s "$_goh_copy"'
+            ),
             "_",
             str(gates),
         ],
@@ -281,8 +282,10 @@ def _front(start: str, new: str) -> str:
         [
             "bash",
             "-c",
-            f'. "{REPO_ROOT}/gates/_from_head.sh"; PYTHONPATH="$1"; goh_path_front PYTHONPATH "$2"; '
-            'printf %s "$PYTHONPATH"',
+            (
+                f'. "{REPO_ROOT}/gates/_from_head.sh"; PYTHONPATH="$1"; goh_path_front PYTHONPATH "$2"; '
+                'printf %s "$PYTHONPATH"'
+            ),
             "_",
             start,
             new,
@@ -319,8 +322,10 @@ def test_entering_the_gates_again_does_not_grow_pythonpath() -> None:
         [
             "bash",
             "-c",
-            f'cd "{REPO_ROOT}"; . gates/_common.sh; first="$PYTHONPATH"; . gates/_common.sh; '
-            '. gates/_common.sh; [ "$PYTHONPATH" = "$first" ] || { echo "grew: $PYTHONPATH"; exit 1; }',
+            (
+                f'cd "{REPO_ROOT}"; . gates/_common.sh; first="$PYTHONPATH"; . gates/_common.sh; '
+                '. gates/_common.sh; [ "$PYTHONPATH" = "$first" ] || { echo "grew: $PYTHONPATH"; exit 1; }'
+            ),
         ],
         capture_output=True,
         text=True,

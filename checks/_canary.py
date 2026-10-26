@@ -20,8 +20,8 @@ import sys
 from dataclasses import dataclass, field
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from _canary_cases import CASES, UNCOVERED  # noqa: E402
-from _gitutil import foreign_repo_env, scratch_git  # noqa: E402
+from _canary_cases import CASES, UNCOVERED
+from _gitutil import foreign_repo_env, scratch_git
 
 CHECKS = os.path.dirname(os.path.abspath(__file__))
 

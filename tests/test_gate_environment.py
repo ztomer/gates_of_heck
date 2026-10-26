@@ -29,9 +29,9 @@ import re
 import shutil
 import subprocess
 from pathlib import Path
-from conftest import hermetic_env, native_goh_path
-from _fast_git import fast_init  # noqa: E402
 
+from _fast_git import fast_init
+from conftest import hermetic_env, native_goh_path
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -61,13 +61,18 @@ def _porcelain(repo: Path) -> str:
 # not read from an ambient environment by any structural step. Dropping it is therefore both safe
 # and required -- and required rather than merely tidy, because the value names a REAL checkout, so
 # an inherited one would silently point a gate at somebody else's tree.
-NOT_PIPELINE_CONFIG = set(
-    "GOH_BIN GOH_NO_NATIVE GOH_SKIP_BUILD "
-    "GOH_EXPORT_KEEP GOH_PUSH_WORKTREES GOH_PUSH_LOGS GOH_TAG_VERSION_SOURCES "
-    "GOH_CROSS_REPO_ROOT".split()
-)
+NOT_PIPELINE_CONFIG = {
+    "GOH_BIN",
+    "GOH_NO_NATIVE",
+    "GOH_SKIP_BUILD",
+    "GOH_EXPORT_KEEP",
+    "GOH_PUSH_WORKTREES",
+    "GOH_PUSH_LOGS",
+    "GOH_TAG_VERSION_SOURCES",
+    "GOH_CROSS_REPO_ROOT",
+}
 
-DROP_LIST_RE = re.compile(r"pub const PIPELINE_KEYS: \[&str; \d+\] = \[(.*?)\];", re.S)
+DROP_LIST_RE = re.compile(r"pub const PIPELINE_KEYS: \[&str; \d+\] = \[(.*?)\];", re.DOTALL)
 
 
 def test_every_documented_structural_key_is_dropped_from_the_environment() -> None:

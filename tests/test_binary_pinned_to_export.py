@@ -22,9 +22,9 @@ import os
 import subprocess
 from pathlib import Path
 
+from host_locks import scrubbed  # the one env scrub: it keeps the private roots
 from test_binary_source_identity import _fake, _head_tree, _no_store, _version, private_store
 from test_gate_environment import _clean_checkout_of_todays_gates
-from host_locks import scrubbed  # the one env scrub: it keeps the private roots
 
 STORE = Path("bin") / "by-stamp"
 

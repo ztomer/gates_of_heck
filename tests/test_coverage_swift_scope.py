@@ -20,9 +20,7 @@ confidently about the wrong thing:
 """
 
 import importlib.util
-import os
 import sys
-from pathlib import Path
 
 from conftest import REPO_ROOT
 

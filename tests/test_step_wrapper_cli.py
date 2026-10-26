@@ -19,8 +19,8 @@ import time
 from pathlib import Path
 
 import pytest
-from timing_bounds import GiveUp, assert_sooner
 from conftest import REPO_ROOT, hermetic_env, native_goh_path
+from timing_bounds import GiveUp, assert_sooner
 
 
 @pytest.fixture(params=["python", "native"])
@@ -161,7 +161,7 @@ def test_a_signal_to_the_wrapper_sweeps_the_step(wrapper, tmp_path: Path, sig) -
         [*wrapper, "--timeout", "60", "--grace", "1", "--", "/bin/bash", "-c",
          f"sleep 300 & echo $! > {pid}; wait"],
         stdout=subprocess.DEVNULL, stderr=subprocess.PIPE,
-        preexec_fn=lambda: signal.signal(sig, signal.SIG_DFL), stdin=subprocess.DEVNULL,
+        preexec_fn=lambda: signal.signal(sig, signal.SIG_DFL), stdin=subprocess.DEVNULL,  # noqa: PLW1509 - Popen has no argument for one signal disposition; the test forks while single-threaded
     )  # fmt: skip
     grandchild = None
     try:
@@ -185,7 +185,7 @@ def test_a_signal_ignored_at_entry_stays_ignored(wrapper, tmp_path: Path) -> Non
     proc = subprocess.Popen(
         [*wrapper, "--timeout", "60", "--", "/bin/bash", "-c", f"sleep 300 & echo $! > {pid}; wait"],
         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-        preexec_fn=lambda: signal.signal(signal.SIGHUP, signal.SIG_IGN), stdin=subprocess.DEVNULL,
+        preexec_fn=lambda: signal.signal(signal.SIGHUP, signal.SIG_IGN), stdin=subprocess.DEVNULL,  # noqa: PLW1509 - Popen has no argument for one signal disposition; the test forks while single-threaded
     )  # fmt: skip
     grandchild = None
     try:

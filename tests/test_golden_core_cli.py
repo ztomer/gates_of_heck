@@ -14,9 +14,8 @@ import json
 import struct
 
 import pytest
-from conftest import REPO_ROOT
-
 from _golden_core_kit import corrupt_png, make_png, plain, run_cli  # noqa: F401
+from conftest import REPO_ROOT
 
 
 def test_cli_corrupt_png_exits_2_named(tmp_path):

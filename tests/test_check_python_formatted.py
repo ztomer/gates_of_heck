@@ -20,9 +20,9 @@ import sys
 from pathlib import Path
 
 import pytest
-from timing_bounds import assert_sooner
 from conftest import REPO_ROOT, commit_all, stage, write
 from tier_kit import both_tiers, run_tiered  # noqa: F401  # both_tiers: a fixture
+from timing_bounds import assert_sooner
 
 CHECK = "checks/check_python_formatted.py"
 

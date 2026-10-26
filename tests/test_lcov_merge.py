@@ -39,7 +39,7 @@ def write_part(parts_dir: Path, name: str, text: str, bom: bool = False):
 
 
 def part(fn_line=1, fn_name="_Za", fnda=5, das=((1, 1), (2, 1))):
-    rows = [f"SF:src/lib.rs", f"FN:{fn_line},{fn_name}", f"FNDA:{fnda},{fn_name}"]
+    rows = ["SF:src/lib.rs", f"FN:{fn_line},{fn_name}", f"FNDA:{fnda},{fn_name}"]
     rows += [f"DA:{ln},{cnt}" for ln, cnt in das]
     rows.append("end_of_record")
     return "\n".join(rows) + "\n"

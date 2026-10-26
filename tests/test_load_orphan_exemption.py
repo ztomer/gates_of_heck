@@ -44,13 +44,12 @@ import sys
 from pathlib import Path
 
 import pytest
-
 from conftest import REPO_ROOT, commit_all, run_goh, write
 
 sys.path.insert(0, str(REPO_ROOT / "lib"))
 
-import load_registry as reg  # noqa: E402
-import load_reap  # noqa: E402
+import load_reap
+import load_registry as reg
 
 ALLOW_FILE = REPO_ROOT / "kill_by_name_allow.json"
 LIBRARY = REPO_ROOT / "lib" / "load_reap.py"

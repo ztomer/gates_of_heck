@@ -10,12 +10,12 @@ import subprocess
 
 from conftest import (
     CHECK_MARK_BUTTON,
-    commit_all,
     DOUBLE_ARROW,
     EMOJI_SMILE,
     KEYCAP_COMBINE,
     REPO_ROOT,
     VS16,
+    commit_all,
     git,
     run_check,
     stage,
@@ -126,7 +126,7 @@ def test_failure_message_permits_exactly_the_allow_list(repo):
     commit_all(repo)
     r = run_check(repo, SCRIPT)
     assert r.returncode == 1
-    for glyph in "→ ✓ ✗ ⚠ ↔ ↑ ↓ ← ⌘ ⌥ ⌨".split():
+    for glyph in ["→", "✓", "✗", "⚠", "↔", "↑", "↓", "←", "⌘", "⌥", "⌨"]:
         assert glyph in r.stdout, f"failure message omits allowed glyph {glyph!r}"
 
 

@@ -1,12 +1,10 @@
 """Strictest convergence: include filter, per-target floors, marker ceiling."""
 
+import importlib.util
 import json
 import sys
-from pathlib import Path
 
-import importlib.util
-
-from conftest import REPO_ROOT, mk_fake_swift_toolchain
+from conftest import REPO_ROOT
 
 SWIFT_HELPER = REPO_ROOT / "gates" / "coverage_swift.py"
 LCOV_MERGE = REPO_ROOT / "gates" / "lcov_merge.py"

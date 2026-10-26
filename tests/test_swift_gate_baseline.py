@@ -24,7 +24,6 @@ import sys
 from pathlib import Path
 
 import pytest
-
 from conftest import REPO_ROOT, mk_xcrun_find_shim
 
 GATE = REPO_ROOT / "gates" / "swift_gate.sh"
@@ -138,7 +137,7 @@ def test_match_key_ignores_line_column_and_severity_but_not_reason(root):
     moved = dict(base, line=99, character=40)
     errored = dict(base, severity="error")
     drifted = dict(base, reason="has 150")
-    k = lambda v: m.match_key(v, root)  # noqa: E731
+    k = lambda v: m.match_key(v, root)
     assert k(base) == k(moved), "code motion must not orphan the baseline"
     assert k(base) == k(errored), "severity flip must not orphan the baseline"
     assert k(base) != k(drifted), "a changed reason is a different violation"

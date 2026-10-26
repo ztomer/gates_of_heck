@@ -7,7 +7,7 @@ from __future__ import annotations
 import subprocess
 from pathlib import Path
 
-import _fake_cargo  # noqa: E402
+import _fake_cargo
 
 
 def _cargo(bin_dir: Path, *argv: str) -> subprocess.CompletedProcess:

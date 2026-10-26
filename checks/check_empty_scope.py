@@ -44,8 +44,6 @@ if __name__ == "__main__":  # C4: run HEAD's copy, not the shared working tree (
     del _sys.path[0]
 
 import argparse
-import contextlib
-import io
 import json
 import os
 import re
@@ -55,11 +53,11 @@ import sys
 import tempfile
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from _empty_scope_usage import first_error_line, is_usage_error  # noqa: E402
-from _gitutil import foreign_repo_env, repo_root  # noqa: E402
+from _empty_scope_usage import first_error_line, is_usage_error
+from _gitutil import foreign_repo_env, repo_root
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from tui.lib import err, info, ok, warn  # noqa: E402
+from tui.lib import err, info, ok, warn
 
 GATE_DIRS = ("tools", "checks")
 ALLOW_FILE = "empty_scope_allow.json"
@@ -193,8 +191,8 @@ def build_skeleton(root, gates, workdir):
     info_dir = os.path.join(workdir, ".git", "info")
     os.makedirs(info_dir, exist_ok=True)
     with open(os.path.join(info_dir, "exclude"), "a", encoding="utf-8") as fh:
-        fh.write("/%s/\n" % os.path.basename(gates))
-    scratch_git("-C", workdir, "add", "-A", "--", ":!%s" % os.path.basename(gates))
+        fh.write(f"/{os.path.basename(gates)}/\n")
+    scratch_git("-C", workdir, "add", "-A", "--", f":!{os.path.basename(gates)}")
     scratch_git("-C", workdir, "commit", "-qm", "skeleton", "--allow-empty")
     return workdir
 
@@ -309,7 +307,7 @@ def sweep(skeleton, gate_name, names, timeout=None, excused=()):
             unrunnable[name] = f"could not run: {exc}"
             continue
         if "Traceback (most recent call last)" in result.stderr and re.search(
-            r"^(ModuleNotFoundError|ImportError):", result.stderr, re.M
+            r"^(ModuleNotFoundError|ImportError):", result.stderr, re.MULTILINE
         ):
             # The SWEEP could not run it: an import its copy cannot resolve is the skeleton's defect,
             # and with no PYTHONPATH every checker died that way, each exit 1 scored as a refusal.
@@ -342,7 +340,7 @@ def sweep(skeleton, gate_name, names, timeout=None, excused=()):
 
 
 # A line that IS the forward, not a mention of it (this file names it, and is a gate).
-FORWARDER = re.compile(r'^__import__\("_retired"\)\.forward\(', re.M)
+FORWARDER = re.compile(r'^__import__\("_retired"\)\.forward\(', re.MULTILINE)
 
 
 def _is_shell_forwarder(text):

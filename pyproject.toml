@@ -18,19 +18,38 @@
 # for.
 line-length = 100
 
-# The linter: ONE rule, selected by name, and `ruff check .` is a GOH_CI_STEPS step (G16). Under
-# ruff's defaults this tree reports 900+ findings that nothing runs, so the full default set is
-# not turned on; a rule is selected here only once the tree is clean under it and a step enforces
-# it. PLW1510 (`subprocess.run` without `check=`) was 325 calls that left a failing child's
-# meaning unsaid; every one now says `check=False` (the caller reads the return code) or
-# `check=True`. Other repos keep their own rule sets: the shared py_gate.sh runs the project's.
+# The linter: ruff's DEFAULT rule set, with no `select` here (G17, 2026-10-26). It was ONE rule
+# (PLW1510) while the tree reported 600-900 findings under the defaults that no step ran, so a
+# redefined name, an unused import, a stale `noqa` and an unsorted import block all passed. The tree
+# is clean under the defaults now and `ruff check .` is a GOH_CI_STEPS step, so a new finding is red.
+# This is goh's OWN configuration: the shared consumer gate (py_gate.sh) runs each project's own
+# rule set. Naming a rule here narrows or widens the defaults; leaving the key out follows ruff.
 [tool.ruff.lint]
-select = ["PLW1510"]
 
 # Fixtures are DATA that checkers are run against (tests/test_screen_presentation.py reads these
 # three for what they do not say); rewriting them to satisfy the linter changes the test's subject.
+#
+# F811 (redefined-while-unused) is off in the files that share a pytest FIXTURE by importing it
+# (`from test_proven import repo, goh  # noqa: F401`) and then take it as a test parameter, which
+# F811 reads as the parameter redefining an unused import: 90 findings, every one of that shape,
+# none a shadowed test. What F811 is for in a test file -- a second `def test_x` replacing the
+# first, which then never runs -- is checked WITHOUT the exemption, tree-wide, by
+# tests/test_no_shadowed_defs.py. The fixtures themselves belong in a conftest or a kit module
+# once a second module needs them; moving them is a separate change.
 [tool.ruff.lint.per-file-ignores]
-"tests/fixtures/**" = ["PLW1510"]
+"tests/fixtures/**" = ["ALL"]
+"tests/test_eval_transport.py" = ["F811"]
+"tests/test_eval_transport_sweep.py" = ["F811"]
+"tests/test_golden_core.py" = ["F811"]
+"tests/test_golden_core_cli.py" = ["F811"]
+"tests/test_head_export_prune.py" = ["F811"]
+"tests/test_proven_artifacts.py" = ["F811"]
+"tests/test_release_kit_ci.py" = ["F811"]
+"tests/test_release_kit_tap.py" = ["F811"]
+
+# `from m import a as b, c` stays one statement: splitting it added a line to a file at the 500-line cap.
+[tool.ruff.lint.isort]
+combine-as-imports = true
 
 # The formatter.
 [tool.ruff.format]

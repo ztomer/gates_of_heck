@@ -9,8 +9,8 @@ import shutil
 import subprocess
 from pathlib import Path
 
-from conftest import REPO_ROOT, git, hermetic_env
 from _fast_git import fast_init
+from conftest import REPO_ROOT, git, hermetic_env
 
 
 def _goh_copy(tmp_path: Path, push_gate: str) -> Path:

@@ -13,7 +13,7 @@ import os
 import shutil
 import subprocess
 
-from conftest import hermetic_env, EMOJI_SMILE, REPO_ROOT, commit_all, git, write
+from conftest import EMOJI_SMILE, REPO_ROOT, git, hermetic_env, write
 
 
 def _install(target, *args):

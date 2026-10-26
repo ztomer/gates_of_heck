@@ -71,23 +71,23 @@ import re
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from _gitutil import content_bytes, listed_files, repo_root  # noqa: E402
-from _marker_reason import is_justified  # noqa: E402
-
-# `swift_code_only` blanks Swift comments AND string literals while preserving line count 1:1, so
-# a doc comment explaining the rule is not a violation. The consumer's own gate never masked,
-# because a line-based skip was enough over its roots; over a whole app source tree it is not.
-from _swift_text import swift_code_only  # noqa: E402
-from _display_frames import (  # noqa: E402
+from _display_frames import (
     DEFAULT_FRAMES_FLAG,
     DEFAULT_FRAMES_HELPER,
     check_python_frames,
     check_swift_frames,
     onscreen_views,
 )
+from _gitutil import content_bytes, listed_files, repo_root
+from _marker_reason import is_justified
+
+# `swift_code_only` blanks Swift comments AND string literals while preserving line count 1:1, so
+# a doc comment explaining the rule is not a violation. The consumer's own gate never masked,
+# because a line-based skip was enough over its roots; over a whole app source tree it is not.
+from _swift_text import swift_code_only
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from tui.lib import err, info, ok  # noqa: E402
+from tui.lib import err, info, ok
 
 POLICY_KEYS = {
     "scan",
@@ -163,7 +163,7 @@ LIVE_CALL = r"^\s*{helper}\s*\("
 STR = r"\"(?:[^\"\\]|\\.)*\"|'(?:[^'\\]|\\.)*'"
 LIVE_WHY = r"{helper}\s*\(\s*(?P<name>" + STR + r")\s*,\s*(?P<why>" + STR + r")"
 PLACEHOLDER_WHY = re.compile(
-    r"^[\"']?\s*(needs? the (real )?screen|live|tbd|todo|n/?a|because)\b", re.I
+    r"^[\"']?\s*(needs? the (real )?screen|live|tbd|todo|n/?a|because)\b", re.IGNORECASE
 )
 MIN_WHY_CHARS = 25
 
@@ -192,7 +192,7 @@ class Policy:
         # "tests/e2e/cleanup.py is exempt" is not reviewable and "artifact cleanup only" is.
         whys = raw.get("exclude_why", {})
         if not isinstance(whys, dict):
-            raise ValueError("exclude_why must be an object of path -> reason")
+            raise ValueError("exclude_why must be an object of path -> reason")  # noqa: TRY004 - callers catch ValueError for a malformed config
         unsaid = [p for p in self.exclude if not str(whys.get(p, "")).strip()]
         if unsaid:
             raise ValueError(f"excluded with no reason in exclude_why: {', '.join(unsaid)}")
@@ -262,10 +262,10 @@ def check_python(rel, text, policy, out):
         else re.escape(policy.live_helper)
     )
     lines = scan_lines(text)
-    call = re.search(LIVE_CALL.format(helper=helper), text, re.M)
+    call = re.search(LIVE_CALL.format(helper=helper), text, re.MULTILINE)
     if call:
         # Declared live — but the declaration has to carry a real justification.
-        whys = list(re.finditer(LIVE_WHY.format(helper=helper), text, re.S))
+        whys = list(re.finditer(LIVE_WHY.format(helper=helper), text, re.DOTALL))
         if not whys:
             out.append(
                 (
@@ -402,19 +402,23 @@ def main(argv=None):
             check_python_frames(rel, text, policy.frames_flag, policy.frames_helper, bad)
             if policy.live_helper:
                 live_count += len(
-                    re.findall(LIVE_CALL.format(helper=re.escape(policy.live_helper)), text, re.M)
+                    re.findall(
+                        LIVE_CALL.format(helper=re.escape(policy.live_helper)), text, re.MULTILINE
+                    )
                 )
             if policy.ingress_helper:
                 ingress_count += len(
                     re.findall(
-                        LIVE_CALL.format(helper=re.escape(policy.ingress_helper)), text, re.M
+                        LIVE_CALL.format(helper=re.escape(policy.ingress_helper)),
+                        text,
+                        re.MULTILINE,
                     )
                 )
         else:
             check_shell(rel, text, policy, bad)
 
     if checked == 0 and not args.staged:
-        err(f"[no_display_seam] examined ZERO files — refusing to report a pass for nothing")
+        err("[no_display_seam] examined ZERO files — refusing to report a pass for nothing")
         info(
             f"The policy's `scan` roots matched no tracked source: {', '.join(policy.scan) or '(whole tree)'}"
         )

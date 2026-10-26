@@ -22,9 +22,9 @@ proven -- see {root} in _canary.build_repo for why a fixture may need its own ro
 
 # The JavaScript cases, split out when this table reached the 500-line cap. The
 # import is explicit so a reader sees that the list continues, not that it ends.
-import _canary_cases_busy  # noqa: E402
-import _canary_cases_js  # noqa: E402
-import _canary_cases_spawn  # noqa: E402
+import _canary_cases_busy
+import _canary_cases_js
+import _canary_cases_spawn
 
 EMOJI = chr(0x1F680)
 CONFLICT = "<<<<<<< HEAD\nours\n=======\ntheirs\n>>>>>>> branch\n"

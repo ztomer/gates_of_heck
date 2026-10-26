@@ -18,19 +18,19 @@ measuring a process that never existed. Every helper here therefore works from P
 created.
 """
 
-from pathlib import Path
 import contextlib
 import os
-import signal
 import re
+import signal
 import subprocess
 import sys
 import time
+from pathlib import Path
 
 import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
-import bounded_run  # noqa: E402
+import bounded_run
 from timing_bounds import assert_sooner
 
 
@@ -319,7 +319,7 @@ def test_local_ci_runs_its_steps_through_this_helper() -> None:
     )
     # ...and the old sweep is gone from the CODE. It survives in a comment that records the
     # measurement, which is the right place for it; what must not come back is the command.
-    assert not re.search(r"^[^#]*pkill -(?:TERM |KILL )?-P", source, re.M), (
+    assert not re.search(r"^[^#]*pkill -(?:TERM |KILL )?-P", source, re.MULTILINE), (
         "the direct-children-only sweep is back in the runner"
     )
 

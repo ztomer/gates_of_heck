@@ -7,7 +7,7 @@ import sys
 from conftest import REPO_ROOT
 
 sys.path.insert(0, str(REPO_ROOT / "lib"))
-from preflight_disk import GIB, shortfall  # noqa: E402
+from preflight_disk import GIB, shortfall
 
 TOOL = REPO_ROOT / "lib" / "preflight_disk.py"
 

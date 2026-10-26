@@ -8,7 +8,6 @@ dialect's look-around (`fancy-regex`).
 """
 
 import pytest
-
 from conftest import EMOJI_SMILE, commit_all, run_goh, write
 
 TO_VENDOR = "^(?!vendor/)"

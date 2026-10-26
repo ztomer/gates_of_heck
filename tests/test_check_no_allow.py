@@ -2,7 +2,7 @@
 exemption window (docstring says "first 40 lines"; HEAD implements 2000 chars;
 Phase 3 aligns the code to the docstring)."""
 
-from conftest import commit_all, run_check, stage, write
+from conftest import commit_all, run_check, stage
 
 SCRIPT = "checks/check_no_allow.py"
 

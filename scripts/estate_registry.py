@@ -28,10 +28,10 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "lib"))
-import estate_registry  # noqa: E402
+import estate_registry
 
 sys.path.insert(0, str(ROOT))
-from tui.lib import info, ok, warn  # noqa: E402
+from tui.lib import info, ok, warn
 
 DEFAULT_EXTRA = Path.home() / ".claude" / "skills"
 

@@ -40,7 +40,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-import step_timings  # noqa: E402  # beside this file
+import step_timings  # beside this file
 
 ROOT = Path(__file__).resolve().parent.parent
 CACHE_ENV = "GOH_STEP_CONTROL_CACHE"
@@ -121,7 +121,7 @@ def _run_all(plan: list[Run]) -> int:
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
             stdin=subprocess.DEVNULL,
-        )  # fmt: skip
+        )
         for r in plan
     ]
     return max(p.wait() for p in procs)

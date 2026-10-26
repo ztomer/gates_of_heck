@@ -20,8 +20,8 @@ import sys
 from pathlib import Path
 
 import pytest
+from _fast_git import fast_init
 from conftest import hermetic_env
-from _fast_git import fast_init  # noqa: E402
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "checks"))

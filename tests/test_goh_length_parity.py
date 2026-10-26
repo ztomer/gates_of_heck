@@ -13,8 +13,8 @@ import subprocess
 from pathlib import Path
 
 import pytest
-from reference_kit import load_reference, reference_path  # noqa: E402
-from _fast_git import fast_init  # noqa: E402
+from _fast_git import fast_init
+from reference_kit import load_reference, reference_path
 
 ROOT = Path(__file__).resolve().parents[1]
 CHECKER = reference_path("checks/check_file_length.py")
@@ -156,7 +156,7 @@ def test_build_scripts_are_capped_in_both_tiers(goh: Path, tmp_path: Path) -> No
 
 def _rust_strings(name: str) -> list[str]:
     src = (ROOT / "crates" / "goh" / "src" / "length.rs").read_text(encoding="utf-8")
-    body = re.search(rf"pub const {name}: &\[&str\] = &\[(.*?)\];", src, re.S)
+    body = re.search(rf"pub const {name}: &\[&str\] = &\[(.*?)\];", src, re.DOTALL)
     assert body, f"length.rs no longer declares {name}"
     return re.findall(r'"([^"]*)"', body.group(1))
 

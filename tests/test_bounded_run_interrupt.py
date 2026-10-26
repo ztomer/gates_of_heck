@@ -15,9 +15,8 @@ import time
 from pathlib import Path
 
 import pytest
-
-from timing_bounds import GiveUp
 from conftest import REPO_ROOT
+from timing_bounds import GiveUp
 
 
 def _alive(pid: int) -> bool:
@@ -58,7 +57,7 @@ def test_a_signal_to_the_wrapper_reaps_the_step(tmp_path, sig):
         # The signal's disposition is the TEST's to set: under a non-job-control shell (this suite
         # run as a local_ci step) a background job starts with SIGINT ignored, and an ignore
         # inherited at entry is honoured -- measured, that made this test red only under local_ci.
-        preexec_fn=lambda: signal.signal(sig, signal.SIG_DFL),
+        preexec_fn=lambda: signal.signal(sig, signal.SIG_DFL),  # noqa: PLW1509 - Popen has no argument for one signal disposition; the test forks while single-threaded
         stdin=subprocess.DEVNULL,
     )
     try:
@@ -99,7 +98,7 @@ def test_a_signal_ignored_at_entry_stays_ignored(tmp_path):
         ],
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
-        preexec_fn=lambda: signal.signal(signal.SIGHUP, signal.SIG_IGN),
+        preexec_fn=lambda: signal.signal(signal.SIGHUP, signal.SIG_IGN),  # noqa: PLW1509 - Popen has no argument for one signal disposition; the test forks while single-threaded
         stdin=subprocess.DEVNULL,
     )
     try:

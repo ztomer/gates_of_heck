@@ -138,8 +138,8 @@ def prebuild_live(config, root: Path | None = None) -> None:
     if hasattr(config, "workerinput") or not os.environ.get("GOH_LIVE"):
         return  # a worker: the controller already did it
     r = subprocess.run(
-        ["bash", "-c", 'source "$1/gates/_goh_bin.sh"; goh_resolve_native; [ -n "$goh_native" ] '
-         '|| { echo "$goh_native_why" >&2; false; }', "_", str(root or _ROOT)],
+        ["bash", "-c", ('source "$1/gates/_goh_bin.sh"; goh_resolve_native; [ -n "$goh_native" ] '
+         '|| { echo "$goh_native_why" >&2; false; }'), "_", str(root or _ROOT)],
         capture_output=True, text=True, timeout=900, check=False,
         env=dict(os.environ, DRIFT_BUILD_OK="1"), stdin=subprocess.DEVNULL,
     )  # fmt: skip

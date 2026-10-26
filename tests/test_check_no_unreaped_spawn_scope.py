@@ -10,9 +10,8 @@ nothing.
 from pathlib import Path
 
 import pytest
-from unreaped_kit import findings, unreaped_tier  # noqa: F401  # unreaped_tier: a fixture
-
 from conftest import commit_all, git, write
+from unreaped_kit import findings, unreaped_tier  # noqa: F401  # unreaped_tier: a fixture
 
 pytestmark = pytest.mark.usefixtures("unreaped_tier")
 

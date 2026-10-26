@@ -20,9 +20,8 @@ import subprocess
 import sys
 
 import pytest
-
+from _fast_git import fast_init
 from conftest import REPO_ROOT as ROOT
-from _fast_git import fast_init  # noqa: E402
 
 CHECK = ROOT / "checks" / "check_display_seam.py"
 PROBE = ROOT / "checks" / "_display_seam_probe.py"

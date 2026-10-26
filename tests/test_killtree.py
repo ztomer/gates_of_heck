@@ -21,9 +21,8 @@ import time
 import uuid
 
 import pytest
-
-from timing_bounds import GiveUp
 from conftest import REPO_ROOT
+from timing_bounds import GiveUp
 
 
 def _load(name, relpath):

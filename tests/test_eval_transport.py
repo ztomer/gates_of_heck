@@ -11,13 +11,11 @@ are talking to the same server definition.
 """
 
 import json
-import sys
 import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 import pytest
-
 from _eval_transport_kit import (
     _FakeAPI,
     _rewire,  # noqa: F401  (autouse: rewinds the fake endpoint between tests)

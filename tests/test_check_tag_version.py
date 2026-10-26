@@ -20,7 +20,6 @@ files too.
 import subprocess
 
 import pytest
-
 from conftest import REPO_ROOT, git, write
 from tier_kit import both_tiers, run_tiered  # noqa: F401  # both_tiers: a fixture
 
@@ -32,8 +31,8 @@ def run_check(repo, script, *args):
     return run_tiered(repo, script, "tag-version", *args)
 
 
+from _fast_git import fast_init
 from _tag_version_kit import CHECKER, ZERO, _media_shape, _refs, _sha, extract, push_tag
-from _fast_git import fast_init  # noqa: E402
 
 # ── the incident, reproduced ──────────────────────────────────────────────────
 

@@ -17,7 +17,7 @@ import pytest
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "checks"))
-from _retired import NATIVE, SHIMS  # noqa: E402
+from _retired import NATIVE, SHIMS
 
 PAIRS = [(stem, NATIVE[stem]) for stem in SHIMS]
 

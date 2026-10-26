@@ -26,7 +26,7 @@ def _listed() -> set[str]:
 
 def test_every_internal_key_is_on_the_list() -> None:
     doc = (REPO_ROOT / "docs" / "config.md").read_text()
-    internal = set(re.findall(r"^\| `(GOH_[A-Z_]+)` \|[^\n]*Not a setting", doc, re.M))
+    internal = set(re.findall(r"^\| `(GOH_[A-Z_]+)` \|[^\n]*Not a setting", doc, re.MULTILINE))
     assert internal and internal <= _listed(), sorted(internal - _listed())
 
 

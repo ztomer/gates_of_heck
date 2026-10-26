@@ -59,7 +59,7 @@ def test_python_takes_a_valid_inherited_list_and_refuses_an_invalid_one() -> Non
         f"import sys; sys.path.insert(0, {str(REPO_ROOT / 'checks')!r}); "
         "import _gitutil; print(' '.join(_gitutil.local_env_vars()))"
     )
-    run = lambda value: subprocess.run(  # noqa: E731
+    run = lambda value: subprocess.run(
         [sys.executable, "-c", probe],
         capture_output=True,
         text=True,

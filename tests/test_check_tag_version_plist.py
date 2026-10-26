@@ -24,8 +24,8 @@ import sys
 from conftest import REPO_ROOT, git, write
 
 sys.path.insert(0, str(REPO_ROOT / "checks"))
-from _tag_version_kit import extract  # noqa: E402
-from _fast_git import fast_init  # noqa: E402
+from _fast_git import fast_init
+from _tag_version_kit import extract
 
 PLIST = """<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">

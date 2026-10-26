@@ -44,13 +44,13 @@ import subprocess
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from _calibration import external_note, load as load_registry, verify  # noqa: E402
-from _estate_sweep import CORPUS_TIMEOUT, corpus_sweep, estate_in_scope  # noqa: E402,F401
-from _gitutil import foreign_repo_env, listed_files, repo_root  # noqa: E402
-from _tree_stamp import stamp, tree_changed  # noqa: E402
+from _calibration import external_note, load as load_registry, verify
+from _estate_sweep import CORPUS_TIMEOUT, corpus_sweep, estate_in_scope  # noqa: F401
+from _gitutil import foreign_repo_env, listed_files, repo_root
+from _tree_stamp import stamp, tree_changed
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from tui.lib import err, info, ok, warn  # noqa: E402
+from tui.lib import err, info, ok, warn
 
 # Directories a repo keeps its gates in. Both, because gates_of_heck uses checks/ and every
 # consuming repo uses tools/.
@@ -117,7 +117,7 @@ def discover(root, dirs=GATE_DIRS):
     """
     try:
         scoped = set(listed_files(root, staged=False))
-    except Exception:
+    except Exception:  # noqa: BLE001 - any failure of git means: not a scoped tree, fall back
         scoped = None
     found, total = [], 0
     for name in dirs:
@@ -148,7 +148,7 @@ def undeclared(root, dirs=GATE_DIRS):
     """
     try:
         scoped = sorted(listed_files(root, staged=False))
-    except Exception:
+    except Exception:  # noqa: BLE001 - any failure of git means: not a scoped tree, fall back
         # Not a git tree: the same fallback `discover` takes, so the two never disagree on scope.
         scoped = sorted(
             f"{name}/{entry}"
@@ -239,7 +239,7 @@ def blind(root, dirs=GATE_DIRS):
     """
     try:
         scoped = set(listed_files(root, staged=False))
-    except Exception:
+    except Exception:  # noqa: BLE001 - any failure of git means: not a scoped tree, fall back
         return any(os.path.isdir(os.path.join(root, name)) for name in dirs)
     for name in dirs:
         directory = os.path.join(root, name)

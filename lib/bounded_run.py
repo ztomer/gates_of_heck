@@ -51,8 +51,8 @@ import sys
 import time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-import killtree  # noqa: E402  # beside this file
-import step_timings  # noqa: E402  # beside this file; run as a script AND imported by orphan_canary
+import killtree  # beside this file
+import step_timings  # beside this file; run as a script AND imported by orphan_canary
 
 # GNU timeout's exit code for "the ceiling expired". `gates/local_ci.sh` already prints
 # "TIMED OUT" on 124 and keeps the log; a different number would be a different contract in two
@@ -342,7 +342,7 @@ def _run_step(
     previous = _trap_stops(stops)
     try:
         try:
-            proc = subprocess.Popen(  # noqa: S603  # argv, never a shell string: the caller's words
+            proc = subprocess.Popen(  # argv, never a shell string: the caller's words
                 argv,
                 stdin=subprocess.DEVNULL,
                 stdout=stream,

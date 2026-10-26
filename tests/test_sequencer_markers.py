@@ -19,7 +19,6 @@ import subprocess
 from pathlib import Path
 
 import pytest
-
 from _fast_git import fast_init
 from conftest import REPO_ROOT, hermetic_env, native_goh_path, run_goh
 

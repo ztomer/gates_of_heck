@@ -27,10 +27,8 @@ from __future__ import annotations
 import json
 
 import pytest
-from claim_kit import allow, allow_raw, doc, estate, findings, write
-from claim_kit import verdict as judge
+from claim_kit import allow, allow_raw, doc, estate, findings, verdict as judge, write
 from conftest import REPO_ROOT, commit_all, run_goh, stage
-
 
 # ── the allowlist ratchet ────────────────────────────────────────────────────
 

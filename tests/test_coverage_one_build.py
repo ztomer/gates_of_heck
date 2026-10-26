@@ -9,8 +9,8 @@ import os
 import stat
 import subprocess
 
-from cov_fakes import SHOW_ENV_FLOW
 from conftest import llvm_cov_shim
+from cov_fakes import SHOW_ENV_FLOW
 from test_coverage_gate import COV_GATE
 
 # ── one build, N profiles (BACKLOG P1d) ──────────────────────────────────────

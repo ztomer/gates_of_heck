@@ -13,11 +13,10 @@ import time
 from pathlib import Path
 
 import pytest
-
 from bench_load_fakes import busy_for, fake_load
 from conftest import REPO_ROOT
-from timing_bounds import GiveUp, assert_sooner
 from host_locks import scrubbed  # the one env scrub: it keeps the private roots
+from timing_bounds import GiveUp, assert_sooner
 
 LIB = REPO_ROOT / "lib" / "bench_lock.sh"
 WATCH_S = 5.0

@@ -51,7 +51,7 @@ def test_an_inherited_identity_for_another_directory_is_not_taken(
 ) -> None:
     write(repo, "src/lib.rs", "pub fn f() {}\n")
     commit_all(repo)
-    shim, log = _shimmed_rustc(tmp_path)
+    shim, _log = _shimmed_rustc(tmp_path)
     env = hermetic_env(
         drop_git=True, GOH_PROVEN_IDENTITY_FOR="/elsewhere|x", GOH_PROVEN_IDENTITY="tool rustc FAKE"
     )

@@ -30,9 +30,10 @@ import tempfile
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-import _calibration  # noqa: E402
-from _calibration import REGISTRY, foreign_repo_env, load, verify  # noqa: E402
-from tui.lib import err, ok  # noqa: E402
+import _calibration
+from _calibration import REGISTRY, foreign_repo_env, load, verify
+
+from tui.lib import err, ok
 
 PROVES = 'import sys\nif "--probe" in sys.argv:\n    print("clean")\nsys.exit(0)\n'
 RAN = {"checks/check_prover.py", "checks/check_sound_gate.py"}

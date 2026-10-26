@@ -412,10 +412,14 @@ def run():
 # FINDING, so this row goes RED only while the scanner is still in sync. Branch on `r` and it turns
 # clean, which is the desync arriving through the door that looks like a fix.
 PYTHON_RAW_QUOTE_CALIBRATION = (
-    "a raw literal ending in an escaped quote is ONE string (CPython escapes it; rustc will not even "
-    "compile it), so the `\\` must arm the escape state — a finding here PROVES the scanner is in "
-    "sync",
-    'import subprocess\nX = r"a\\""\ndef test_x():\n    proc = subprocess.Popen(["x"])\n'
-    "    assert proc is not None\n",
+    (
+        "a raw literal ending in an escaped quote is ONE string (CPython escapes it; rustc will not even "
+        "compile it), so the `\\` must arm the escape state — a finding here PROVES the scanner is in "
+        "sync"
+    ),
+    (
+        'import subprocess\nX = r"a\\""\ndef test_x():\n    proc = subprocess.Popen(["x"])\n'
+        "    assert proc is not None\n"
+    ),
     True,
 )

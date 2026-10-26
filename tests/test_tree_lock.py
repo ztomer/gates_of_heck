@@ -12,6 +12,7 @@ import signal
 import subprocess
 import time
 from pathlib import Path
+
 from timing_bounds import assert_sooner
 
 REPO_ROOT = Path(__file__).resolve().parent.parent

@@ -27,7 +27,7 @@ ACTION = ROOT / ".github" / "actions" / "goh-floors"
 FLOORS = ACTION / "floors.sh"
 SUMS = ACTION / "shellcheck.sha256"
 sys.path.insert(0, str(ROOT / "gates"))
-import required_tools  # noqa: E402
+import required_tools
 
 FLOOR = required_tools.floors()
 

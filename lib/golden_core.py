@@ -425,7 +425,7 @@ def main(argv=None):
     try:
         overrides = json.loads(args.tolerances)
         if not isinstance(overrides, dict):
-            raise ValueError("must be a JSON object")
+            raise ValueError("must be a JSON object")  # noqa: TRY004 - callers catch ValueError for a malformed config
         img_a, img_b = load_rgb(args.a), load_rgb(args.b)
         result = compare(img_a, img_b, overrides)
     except PreconditionError as exc:

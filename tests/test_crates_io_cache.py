@@ -133,7 +133,7 @@ def test_cache_off_asks_every_time(seam: Seam) -> None:
 def test_a_hostile_name_cannot_escape_the_cache_dir(seam: Seam) -> None:
     """A manifest key is any TOML string; one that walks out of the cache directory is asked, never
     written to disk under that name."""
-    seam.answer(**{"x": "9.9.9"})
+    seam.answer(x="9.9.9")
     root = seam.repo("../../x")
     seam.deps(root)
     seam.deps(root)

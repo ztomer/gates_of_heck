@@ -10,11 +10,9 @@ a hook that is an older stock, with the command that fixes it.
 """
 
 import hashlib
-import os
 import subprocess
 
 import pytest
-
 from conftest import REPO_ROOT, hermetic_env, native_goh_path
 
 

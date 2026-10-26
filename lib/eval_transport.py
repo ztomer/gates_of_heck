@@ -321,7 +321,7 @@ class SweepState:
         directory = os.path.dirname(lock_path)
         if directory:
             os.makedirs(directory, exist_ok=True)
-        fh = open(lock_path, "a+")
+        fh = open(lock_path, "a+")  # noqa: SIM115 - the handle is owned by the returned _Flock
         return _Flock(fh)
 
     def _read(self) -> dict:

@@ -41,7 +41,7 @@ def test_exclude_regex(repo):
 
 
 def test_staged_scope(repo):
-    p = write(repo, "b.py", "\n" * 12)
+    write(repo, "b.py", "\n" * 12)
     stage(repo, "b.py")
     # index has the big file; shrinking the worktree copy must not matter once
     # the class fix lands (index-truth); before that this documents behavior.

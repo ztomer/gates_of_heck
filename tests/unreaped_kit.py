@@ -6,11 +6,13 @@ the checker is invoked cannot land in two of the three files. The tier machinery
 the parity of the measured table is `tests/test_unreaped_spawn_native_parity.py`.
 """
 
-from pathlib import Path
 import subprocess
+from pathlib import Path
 
-from tier_kit import both_tiers as unreaped_tier  # noqa: F401  # re-exported fixture
-from tier_kit import run_tiered
+from tier_kit import (
+    both_tiers as unreaped_tier,  # noqa: F401  # re-exported fixture
+    run_tiered,
+)
 
 CHECK = "checks/check_no_unreaped_spawn.py"
 

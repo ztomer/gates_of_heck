@@ -41,10 +41,10 @@ import subprocess
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from _gitutil import foreign_repo_env, repo_root  # noqa: E402
+from _gitutil import foreign_repo_env, repo_root
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from tui.lib import err, ok  # noqa: E402
+from tui.lib import err, ok
 
 # A directory a build writes into.
 DIR_SEGMENTS = (

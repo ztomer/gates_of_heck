@@ -17,7 +17,6 @@ import json
 import sys
 
 import pytest
-
 from conftest import REPO_ROOT
 
 

@@ -17,13 +17,13 @@ import sys
 from conftest import REPO_ROOT
 
 sys.path.insert(0, str(REPO_ROOT / "checks"))
-import _calibration  # noqa: E402
+import _calibration
 
 GATESRC = (REPO_ROOT / ".gatesrc").read_text(encoding="utf-8")
 
 
 def _key(name: str) -> str:
-    m = re.search(rf"^{name}=(.+)$", GATESRC, re.M)
+    m = re.search(rf"^{name}=(.+)$", GATESRC, re.MULTILINE)
     assert m, f"{name} is not set in .gatesrc"
     return m.group(1)
 

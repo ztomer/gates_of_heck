@@ -12,7 +12,6 @@ with no case is refused HERE, and a case that does not bite is refused here too.
 import os
 
 import pytest
-
 from _canary import CHECKS, run_case, uncanaried
 from _canary_cases import CASES, EMOJI, UNCOVERED
 

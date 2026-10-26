@@ -10,7 +10,6 @@ test below is one way a hit could be wrong.
 
 from __future__ import annotations
 
-import os
 import subprocess
 import sys
 from pathlib import Path
@@ -19,7 +18,7 @@ import pytest
 from conftest import REPO_ROOT, native_goh_path
 
 sys.path.insert(0, str(REPO_ROOT / "checks"))
-import check_estate_corpus as sweep  # noqa: E402
+import check_estate_corpus as sweep
 
 PLANT = "\n<<<<<<< HEAD\nlet value = 1\n=======\nlet value = 2\n>>>>>>> feature\n"
 
@@ -118,7 +117,7 @@ def test_a_different_entry_is_a_miss(estate) -> None:
 def test_the_checkers_own_source_is_in_the_key() -> None:
     from _estate_cache import identity
 
-    base = dict(source=b"a", env={}, binary=("goh", 1, 2))
+    base = {"source": b"a", "env": {}, "binary": ("goh", 1, 2)}
     assert identity(**base) != identity(**{**base, "source": b"b"})
 
 

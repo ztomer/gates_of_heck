@@ -65,8 +65,7 @@ DEFAULT_DD = ".build/xcode-dd"
 # exclusion at all until 2026-09-07 and so reported more than double the
 # coverage on the same tree.
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "lib"))
-from swift_coverage_scope import EXCLUDED_MARKERS as _EXCLUDED_MARKERS  # noqa: E402
-from swift_coverage_scope import is_code_under_test  # noqa: E402
+from swift_coverage_scope import EXCLUDED_MARKERS as _EXCLUDED_MARKERS, is_code_under_test
 
 
 def _spm_file_lines(f: dict):
@@ -277,8 +276,10 @@ def load_xcode(dd_root: str):
     if not fallback:
         return (
             [],
-            f"{why}; no coveredLines/lineCount records recognized in "
-            f"{os.path.basename(xc)} (unsupported Xcode format?)",
+            (
+                f"{why}; no coveredLines/lineCount records recognized in "
+                f"{os.path.basename(xc)} (unsupported Xcode format?)"
+            ),
         )
     return fallback, None
 
@@ -351,7 +352,7 @@ def load_floors(path: str):
     try:
         with open(path, encoding="utf-8") as fh:
             raw = json.load(fh)
-    except Exception as exc:
+    except (OSError, ValueError) as exc:
         print(f"✗ [swift_cov] cannot read floors file {path}: {exc}", file=sys.stderr)
         raise SystemExit(2)
     if not isinstance(raw, dict):

@@ -20,7 +20,6 @@ that was silently optional, and it is what the `+dirty` marker and the
 import json
 
 import pytest
-
 from conftest import commit_all, git, write
 from tier_kit import both_tiers, run_tiered  # noqa: F401  # both_tiers: a fixture
 

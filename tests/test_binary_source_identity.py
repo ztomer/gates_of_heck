@@ -16,9 +16,9 @@ import shutil
 import subprocess
 from pathlib import Path
 
-from test_gate_environment import _clean_checkout_of_todays_gates
-from conftest import native_goh_path, hermetic_env
+from conftest import hermetic_env, native_goh_path
 from host_locks import scrubbed  # the one env scrub: it keeps the private roots
+from test_gate_environment import _clean_checkout_of_todays_gates
 
 
 def _no_store(checkout: Path) -> None:

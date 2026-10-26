@@ -14,9 +14,8 @@ import subprocess
 from pathlib import Path
 
 import pytest
-
-from cov_fakes import SHOW_ENV_FLOW
 from conftest import REPO_ROOT, llvm_cov_shim
+from cov_fakes import SHOW_ENV_FLOW
 
 COV_GATE = REPO_ROOT / "gates" / "coverage_gate.sh"
 LOCAL_CI = REPO_ROOT / "gates" / "local_ci.sh"
@@ -309,7 +308,6 @@ def test_ok_marker_absent_even_though_part_file_exists(tmp_path):
 # on REAL output captured from xcodebuild/llvm-cov on this machine).
 
 import importlib.util
-import json
 import stat
 import sys
 
@@ -422,7 +420,6 @@ def test_xccov_report_parse_matches_live_format():
 # in conftest.py, shared with tests/test_coverage_swift_selection.py.
 
 from conftest import mk_fake_swift_toolchain
-
 
 PROJ_DIR = lambda root: root / "proj"
 

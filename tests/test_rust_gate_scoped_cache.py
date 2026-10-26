@@ -19,10 +19,10 @@ import shutil
 import subprocess
 from pathlib import Path
 
+import _fake_cargo
 import pytest
+from _fast_git import fast_init
 from conftest import hermetic_env
-from _fast_git import fast_init  # noqa: E402
-import _fake_cargo  # noqa: E402
 
 ROOT = Path(__file__).resolve().parent.parent
 

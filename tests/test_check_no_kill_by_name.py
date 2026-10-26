@@ -17,7 +17,6 @@ import subprocess
 from pathlib import Path
 
 import pytest
-
 from conftest import commit_all, stage, write
 from tier_kit import both_tiers, run_tiered  # noqa: F401  # both_tiers: a fixture
 

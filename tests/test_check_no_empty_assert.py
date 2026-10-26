@@ -9,7 +9,6 @@ carry as much weight as the dirty ones — a checker that flagged
 """
 
 import pytest
-
 from conftest import commit_all, stage, write
 from tier_kit import both_tiers, run_tiered  # noqa: F401  # both_tiers: a fixture
 

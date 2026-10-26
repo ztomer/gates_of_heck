@@ -12,12 +12,10 @@ from __future__ import annotations
 
 import json
 import subprocess
-import sys
 from pathlib import Path
 
 from conftest import REPO_ROOT
-
-from reference_kit import load_reference  # noqa: E402
+from reference_kit import load_reference
 
 reference = load_reference("check_no_kill_by_name")
 

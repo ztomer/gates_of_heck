@@ -17,7 +17,6 @@ import zlib
 from pathlib import Path
 
 import pytest
-
 from conftest import REPO_ROOT
 
 GEN_ICONS = REPO_ROOT / "tools" / "release-kit" / "gen_app_icons.py"

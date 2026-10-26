@@ -35,9 +35,6 @@ def _keys_in_source() -> set[str]:
                 text = f.read_text(encoding="utf-8", errors="strict")
             except (UnicodeDecodeError, OSError):
                 continue
-            if f.suffix not in (".sh", ".py", "") and f.name != "install.sh":
-                if ".sh" not in f.name and ".py" not in f.name and "/" not in str(f):
-                    pass
             for m in KEY.finditer(text):
                 if f.suffix in (".pyc",):
                     continue

@@ -10,6 +10,7 @@ from __future__ import annotations
 import os
 
 from _gitutil import tree_files
+
 from tui.lib import err, info
 
 

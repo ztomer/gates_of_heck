@@ -18,7 +18,7 @@ import pytest
 from conftest import REPO_ROOT
 
 sys.path.insert(0, str(REPO_ROOT / "lib"))
-import golden_core  # noqa: E402
+import golden_core
 
 LIB = REPO_ROOT / "lib" / "golden_core.py"
 

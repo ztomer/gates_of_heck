@@ -31,15 +31,14 @@ import sys
 import time
 from pathlib import Path
 
+import load_kit
 import pytest
 import timing_bounds
-
-import load_kit
 from conftest import REPO_ROOT
 
 sys.path.insert(0, str(REPO_ROOT / "lib"))
 
-import load_registry as reg  # noqa: E402
+import load_registry as reg
 
 TOOL = REPO_ROOT / "tools" / "load.py"
 REAPER = REPO_ROOT / "tools" / "load_reap.py"
@@ -180,10 +179,12 @@ def test_a_failing_test_inside_the_owner_leaves_nothing_behind(tmp_path: Path) -
     """THE FAILURE PATH (2026-10-20). A test that dies in the middle never reaches its own
     cleanup, so the OWNER has to do it: the eight orphans of that day were a pytest that died
     between starting the tool and recording what it had started."""
-    with pytest.raises(RuntimeError):
-        with load_kit.owned(tmp_path, 2, ["/bin/sh", "-c", "sleep 30"]) as tool:
-            tool.wait_for_spinners()
-            raise RuntimeError("the test failed")
+    with (
+        pytest.raises(RuntimeError),
+        load_kit.owned(tmp_path, 2, ["/bin/sh", "-c", "sleep 30"]) as tool,
+    ):
+        tool.wait_for_spinners()
+        raise RuntimeError("the test failed")
     assert not load_kit.leaked_spinners(), "the failed test left spinners running"
 
 
@@ -262,7 +263,7 @@ def test_a_deadline_is_in_force_without_being_asked_for(tmp_path: Path) -> None:
     """No unbounded experiment: without `--max` the registry still carries a finite deadline,
     and it is the tool's bounded default."""
     sys.path.insert(0, str(REPO_ROOT / "tools"))
-    import load as tool_module  # noqa: PLC0415
+    import load as tool_module
 
     assert 0 < tool_module.DEFAULT_MAX_S <= 3600, tool_module.DEFAULT_MAX_S
     with load_kit.owned(tmp_path, 1, ["/bin/sh", "-c", "sleep 30"]) as tool:
@@ -284,7 +285,7 @@ def test_a_deadline_that_bounds_nothing_is_refused(tmp_path: Path, value: str) -
 def test_the_deadline_accepts_minutes_and_hours(tmp_path: Path) -> None:
     """`--max 90m` and `--max 2h` read as what they say."""
     sys.path.insert(0, str(REPO_ROOT / "tools"))
-    import load as tool_module  # noqa: PLC0415
+    import load as tool_module
 
     assert tool_module.parse_duration("45") == 45.0
     assert tool_module.parse_duration("90m") == 5400.0

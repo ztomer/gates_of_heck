@@ -23,7 +23,6 @@ import struct
 import zlib
 
 import pytest
-
 from _golden_core_kit import (
     HAVE_PIL,
     corrupt_png,
@@ -302,13 +301,17 @@ def test_fuzz_bitflips_never_traceback_and_stay_byte_exact(tmp_path):
         # Zero-wrong-pixel property: whatever decodes must match Pillow's
         # decode of the same bytes, exactly.
         try:
-            from PIL import Image as PILImage
             import io
 
+            from PIL import Image as PILImage
+
             ref = PILImage.open(io.BytesIO(bytes(data))).convert("RGB")
+        except Exception:  # noqa: BLE001 - Pillow is absent or cannot read it either
+            ref = None
+        # The assert sits OUTSIDE the try: inside it, `except Exception` swallowed the
+        # AssertionError and this cross-check could never fail.
+        if ref is not None:
             assert decoded.pixels == ref.tobytes(), f"flip {i}: wrong pixels"
-        except Exception:
-            pass  # Pillow cannot read it either — nothing to cross-check
 
 
 def test_resolve_tolerances_rejects_nonfinite_naming_key_and_value():

@@ -64,7 +64,6 @@ if __name__ == "__main__":  # C4: run HEAD's copy, not the shared working tree (
 
 import argparse
 import json
-import os
 import re
 import sys
 from collections import Counter
@@ -99,7 +98,7 @@ def normalize_path(raw: str, root: Path) -> str:
     are resolved through symlinks first — swiftlint writes paths under /var
     where the checkout may sit at /private/var (probed 2026-08-25).
     """
-    s = raw[len(FILE_URL_SCHEME) :] if raw.startswith(FILE_URL_SCHEME) else raw
+    s = raw.removeprefix(FILE_URL_SCHEME)
     p = Path(s)
     rr = Path(root).resolve()
     if not p.is_absolute():

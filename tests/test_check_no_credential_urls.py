@@ -17,9 +17,11 @@ planted — the table in the checker's docstring is that measurement, and `--pro
 """
 
 import pytest
-
-from conftest import REPO_ROOT as ROOT  # noqa: F401
-from conftest import git, run_check
+from conftest import (
+    REPO_ROOT as ROOT,  # noqa: F401
+    git,
+    run_check,
+)
 from tier_kit import both_tiers, run_tiered  # noqa: F401  # both_tiers: a fixture
 
 CHECK = "checks/check_no_credential_urls.py"

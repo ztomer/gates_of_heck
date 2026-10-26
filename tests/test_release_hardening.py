@@ -19,14 +19,13 @@ import time
 from pathlib import Path
 
 import pytest
+from conftest import FAKE_GH, REPO_ROOT
+from test_release_kit import add_github_origin
 
 # Same xdist group as test_release_kit.py (see its comment): the
 # mid-run-edit test below corrupts release.sh on purpose; anything running a
 # real release at the same moment must be on this worker, after it.
-
 from timing_bounds import GiveUp
-from conftest import FAKE_GH, REPO_ROOT
-from test_release_kit import add_github_origin
 
 RELEASE = REPO_ROOT / "tools" / "release-kit" / "release.sh"
 

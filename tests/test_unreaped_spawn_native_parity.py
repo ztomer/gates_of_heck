@@ -16,13 +16,10 @@ import sys
 from pathlib import Path
 
 import pytest
-
 from conftest import REPO_ROOT, commit_all, write
-
-from reference_kit import load_reference, reference_path  # noqa: E402
-
-from unreaped_spawn_table import PYTHON, PYTHON_EXTRA, RUST, SHELL  # noqa: E402
-from unreaped_spawn_table_regressions import (  # noqa: E402
+from reference_kit import load_reference, reference_path
+from unreaped_spawn_table import PYTHON, PYTHON_EXTRA, RUST, SHELL
+from unreaped_spawn_table_regressions import (
     PYTHON_RAW_QUOTE_CALIBRATION,
     PYTHON_REGRESSIONS,
     RUST_REGRESSIONS,

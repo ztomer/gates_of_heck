@@ -14,9 +14,8 @@ import time
 from pathlib import Path
 
 import pytest
-
-from timing_bounds import assert_sooner
 from conftest import REPO_ROOT
+from timing_bounds import assert_sooner
 
 LOCAL_CI = REPO_ROOT / "gates" / "local_ci.sh"
 

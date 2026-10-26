@@ -238,11 +238,13 @@ def test_a_killed_test_run_leaves_no_process_of_its_own_behind(tmp_path: Path) -
         [
             sys.executable,
             "-c",
-            "import subprocess,sys,time;"
-            "p=subprocess.Popen(sys.argv[1:-1], stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,"
-            "stderr=subprocess.DEVNULL, start_new_session=True);"
-            "open(sys.argv[-1],'w').write(str(p.pid));"
-            "time.sleep(300)",
+            (
+                "import subprocess,sys,time;"
+                "p=subprocess.Popen(sys.argv[1:-1], stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,"
+                "stderr=subprocess.DEVNULL, start_new_session=True);"
+                "open(sys.argv[-1],'w').write(str(p.pid));"
+                "time.sleep(300)"
+            ),
             "/bin/sh",
             str(script),
             str(out),

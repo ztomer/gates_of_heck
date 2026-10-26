@@ -34,7 +34,7 @@ from conftest import REPO_ROOT, commit_all, run_goh, stage, write
 
 sys.path.insert(0, str(REPO_ROOT / "lib"))
 
-import busyloop  # noqa: E402
+import busyloop
 
 SPINNER = "while :; do :; done &"
 SLEEPER = "while true; do sleep 1; done &"

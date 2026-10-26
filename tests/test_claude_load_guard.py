@@ -33,7 +33,6 @@ import sys
 from pathlib import Path
 
 import pytest
-
 from conftest import REPO_ROOT
 
 GUARD = REPO_ROOT / "hooks" / "claude" / "discard_guard.py"

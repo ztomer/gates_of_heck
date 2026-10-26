@@ -211,11 +211,14 @@ def test_the_backstop_kills_by_pid_and_never_by_name(tmp_path: Path) -> None:
         text = source.read_text(encoding="utf-8")
         tree = ast.parse(text)
         for node in ast.walk(tree):
-            if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute):
-                if node.func.attr == "kill":
-                    assert isinstance(node.func.value, ast.Name) and node.func.value.id == "os", (
-                        f"{source.name} kills through {node.func.attr}"
-                    )
+            if (
+                isinstance(node, ast.Call)
+                and isinstance(node.func, ast.Attribute)
+                and node.func.attr == "kill"
+            ):
+                assert isinstance(node.func.value, ast.Name) and node.func.value.id == "os", (
+                    f"{source.name} kills through {node.func.attr}"
+                )
     tree = ast.parse(LIBRARY.read_text(encoding="utf-8"))
     lookups = [
         node

@@ -39,8 +39,8 @@ import subprocess
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from _gitutil import foreign_repo_env, listed_files  # noqa: E402
-from _retired import NATIVE  # noqa: E402
+from _gitutil import foreign_repo_env, listed_files
+from _retired import NATIVE
 
 # The registry, relative to the repo root.
 REGISTRY = os.path.join("checks", "gate_calibration.json")
@@ -103,7 +103,7 @@ def runs_pytest(root: str) -> bool:
             text = handle.read()
     except OSError:
         return False
-    steps = re.search(r"^GOH_CI_STEPS=(.+)$", text, re.M)
+    steps = re.search(r"^GOH_CI_STEPS=(.+)$", text, re.MULTILINE)
     if not steps:
         return False
     if "pytest" in steps.group(1):
@@ -111,8 +111,8 @@ def runs_pytest(root: str) -> bool:
     # The suite run ONCE, inside the Rust gate's coverage group (G2e): a pytest suite named as the
     # external command of a coverage floor IS the push gate's test run -- a failing test is a
     # missing coverage part, and the step is red (tests/test_coverage_external.py).
-    external = re.search(r"^GOH_COV_RUST_EXTERNAL=(.+)$", text, re.M)
-    floor = re.search(r"^GOH_COV_(FLOOR_RUST|FLOORS_JSON)=\S", text, re.M)
+    external = re.search(r"^GOH_COV_RUST_EXTERNAL=(.+)$", text, re.MULTILINE)
+    floor = re.search(r"^GOH_COV_(FLOOR_RUST|FLOORS_JSON)=\S", text, re.MULTILINE)
     return bool(
         "rust_gate.sh" in steps.group(1) and external and "pytest" in external.group(1) and floor
     )

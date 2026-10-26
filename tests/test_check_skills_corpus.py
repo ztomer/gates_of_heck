@@ -19,7 +19,6 @@ not report a clean corpus over nothing).
 import json
 
 import pytest
-
 from conftest import run_check, write
 
 SCRIPT = "checks/check_skills_corpus.py"

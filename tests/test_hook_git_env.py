@@ -21,7 +21,7 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO_ROOT / "checks"))
-from _gitutil import local_env_vars  # noqa: E402
+from _gitutil import local_env_vars
 
 CHILD_FLAG = "GOH_HOOK_ENV_CHILD"
 

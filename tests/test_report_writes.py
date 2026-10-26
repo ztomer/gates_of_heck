@@ -32,6 +32,7 @@ lib/desktop_lock/desktop_lock.sh). The conversion is byte-identical: `report` re
 from __future__ import annotations
 
 import ast
+import itertools
 import re
 from pathlib import Path
 
@@ -70,7 +71,7 @@ def _python_findings(path: Path) -> list[str]:
     out: list[str] = []
     for node in ast.walk(tree):
         for body in _bodies(node):
-            for first, second in zip(body, body[1:]):
+            for first, second in itertools.pairwise(body):
                 if _called(first) == "info" and _called(second) == "step":
                     out.append(f"{path}:{first.lineno}")
     return out

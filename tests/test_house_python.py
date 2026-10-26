@@ -22,7 +22,7 @@ import pytest
 ROOT = Path(__file__).resolve().parent.parent
 RESOLVER = ROOT / "lib" / "house_python.sh"
 sys.path.insert(0, str(ROOT / "gates"))
-import required_tools  # noqa: E402
+import required_tools
 
 FLOOR = required_tools.floors()["python3"]
 
@@ -130,4 +130,6 @@ def test_a_gate_on_a_machine_with_only_an_older_python_fails_before_any_step(
 
 
 def test_this_suite_runs_on_the_house_interpreter() -> None:
-    assert required_tools.at_least("%d.%d" % sys.version_info[:2], FLOOR), sys.version
+    assert required_tools.at_least(f"{sys.version_info[0]}.{sys.version_info[1]}", FLOOR), (
+        sys.version
+    )

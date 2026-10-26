@@ -20,12 +20,14 @@ import json
 import subprocess
 
 import pytest
-
-from conftest import commit_all, git, write
+from _fast_git import fast_init
+from conftest import (
+    commit_all,
+    git,
+    native_goh_path,
+    write,
+)
 from tier_kit import both_tiers, run_tiered  # noqa: F401  # both_tiers: a fixture
-
-from conftest import native_goh_path  # noqa: E402
-from _fast_git import fast_init  # noqa: E402
 
 
 def anchors(text: str) -> set[str]:

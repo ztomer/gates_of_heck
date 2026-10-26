@@ -11,8 +11,8 @@ import subprocess
 from pathlib import Path
 
 import pytest
-from reference_kit import reference_path  # noqa: E402
-from _fast_git import fast_init  # noqa: E402
+from _fast_git import fast_init
+from reference_kit import reference_path
 
 ROOT = Path(__file__).resolve().parents[1]
 CHECK = reference_path("checks/check_no_home_paths.py")

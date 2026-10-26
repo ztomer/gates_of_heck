@@ -92,8 +92,9 @@ def check_marker_ceiling(forgiven, ceiling_path):
     if not ceiling_path or not os.path.exists(ceiling_path):
         return 0
     try:
-        max_forgiven = int(json.load(open(ceiling_path, encoding="utf-8"))["max_forgiven_lines"])
-    except Exception as exc:
+        with open(ceiling_path, encoding="utf-8") as handle:
+            max_forgiven = int(json.load(handle)["max_forgiven_lines"])
+    except (OSError, ValueError, KeyError, TypeError) as exc:
         print(f"✗ [coverage] cannot read ceiling {ceiling_path}: {exc}", file=sys.stderr)
         sys.exit(2)
     if forgiven > max_forgiven:

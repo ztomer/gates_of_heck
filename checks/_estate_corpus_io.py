@@ -19,7 +19,7 @@ import subprocess
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from _gitutil import foreign_repo_env, listed_files, scratch_git  # noqa: E402
+from _gitutil import foreign_repo_env, listed_files, scratch_git
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 # The gates checkout whose `goh.sh` runs the native checks: GOH_DIR when the caller says (a copy of

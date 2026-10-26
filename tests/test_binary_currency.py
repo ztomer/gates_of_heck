@@ -10,8 +10,8 @@ already named, by path, by its own warning; it must not also stop the estate.
 import subprocess
 from pathlib import Path
 
-from test_gate_environment import _clean_checkout_of_todays_gates, _git
 from conftest import hermetic_env
+from test_gate_environment import _clean_checkout_of_todays_gates, _git
 
 
 def _fake_goh(tmp_path: Path, version: str) -> Path:
