@@ -32,14 +32,12 @@ DIRTY = [
     'assert!(Style::load_zstyle(&dir.join("missing")).is_empty());',
     'assert!(load("a").is_empty(), "no rows");',
     "assert!(v.ok()?.is_empty());",
-    "assert!(!v.is_empty());",
     "assert!(v.len() == 0);",
     "assert!(0 == v.len());",
     "assert!(v.len() > 0);",
     "debug_assert!(v.is_empty());",
-    # The two rows clippy does NOT report, and the reason this checker exists.
+    # The row clippy does NOT report, and the reason this checker exists.
     'assert!(v.is_empty(), "with a message");',
-    'assert!(!v.is_empty(), "msg");',
     "assert!(s\n    .as_bytes()\n    .is_empty());",
     'assert!(s.as_bytes().is_empty(),\n    "split message");',
     # Trailing arguments that are NOT interpolations still fail, and so does a
@@ -51,6 +49,22 @@ DIRTY = [
 ]
 
 CLEAN = [
+    # A NEGATED emptiness test is a real assertion, with or without a message: when it fails the
+    # value is empty, so there is nothing for `assert_ne!(v.len(), 0)` to show. It is also the
+    # spelling clippy's `len_zero` asks for in place of `v.len() > 0`. zinc's
+    # compute_memo_tests.rs:220 was rewritten to `assert_ne!` to get past this gate (G18).
+    "assert!(!v.is_empty());",
+    'assert!(!v.is_empty(), "msg");',
+    'assert!(!found.is_empty(), "this archive holds no notice, so the equality is vacuous");',
+    'assert!(!s.as_bytes().is_empty(), "a, b; (c)");',
+    "assert!(!Vec::<u8>::new().is_empty());",
+    'assert!(!f(&[1, 2]).is_empty(), "msg");',
+    "assert!(!v.is_none());",
+    # Two things compared, or two lengths summed: not ONE postfix receiver, and clippy is silent.
+    "assert!(a.is_empty() == b.is_empty());",
+    'assert!(a.is_empty() != b.is_empty(), "msg");',
+    "assert!(a.len() + b.len() > 0);",
+    "assert!(0 < a.len() + b.len());",
     # clippy's own suggestions, and the honest way to say "not empty".
     "assert_eq!(v.len(), 0);",
     "assert_ne!(v.len(), 0);",
