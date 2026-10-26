@@ -1,5 +1,33 @@
 # CHANGELOG
 
+## v0.52.0 — the release gate reuses the push, a fresh worktree gates green, and shellcheck has a floor the gate enforces _(2026-10-26)_
+
+Minor bump: `goh shell-lint` refuses a shellcheck it used to pass, and dependency majors moved.
+
+* **The release gate reuses the push gate's proof of the same tree (G2c).** `tools/gate.sh --full`
+  in the release kit re-ran all 5 steps right after the push gate proved them on the identical tree
+  (measured: 177 s after a 279 s push). The proven key hashed the BYTES of `bin/goh`, which this
+  repo's `.gatesrc` carried into the export (`GOH_EXPORT_KEEP`): the push copied a binary built
+  before the commit, the resolver replaced it with HEAD's build, and the release run keyed on other
+  bytes. The carry is gone -- the export resolves goh from the shared stamp store (G2e) -- so the key
+  is the tree again. A different tree still runs (`tests/test_proven.py`).
+
+* **A fresh worktree's suite is green.** In a checkout whose `bin/goh` was not HEAD's build, the first
+  gate a test spawned had to build goh, which the drift guard refuses: 9 tests of
+  `tests/test_rust_gate.py` failed in every new worktree (the `~/.cache` path was a correlation). The
+  suite's controller now resolves exactly what the gates will (`goh_resolve_native`), once, before a
+  worker starts.
+
+* **`goh shell-lint` enforces shellcheck's floor (0.11.0) itself**, naming it, instead of leaving it
+  to `required_tools.py --check`. A newer shellcheck stays green.
+
+* **A stale live build cannot answer for the current source.** `target/goh-live` (GOH_LIVE with an
+  uncommitted Rust edit) was keyed on the diff alone, so the same edit over a newer HEAD reused the
+  old binary (it reported 0.50.0 under 0.51.0). The key now carries HEAD's Rust stamp.
+
+* **Dependencies at their newest releases**: 29 compatible updates; majors each in their own commit --
+  fancy-regex 0.20, saphyr 0.3, the ruff_python_* family 0.0.19. `cargo audit` green.
+
 ## v0.51.0 — the house interpreter is found one way, python3's floor is 3.15, and the gate runs its suite once _(2026-10-26)_
 
 Minor bump: new seams (`GOH_PY`, `lib/house_python.sh`; `GOH_BIN_STORE`) and a raised floor a
