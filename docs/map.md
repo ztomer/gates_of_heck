@@ -206,6 +206,13 @@ Every structural checker is native since Phase N3; the Python checkers they port
 
 ## Tools
 
+* `.github/actions/goh-floors` (`action.yml` + `floors.sh` + `shellcheck.sha256`) — the ONE way a
+  CI runner meets goh's tool floors (G7): reads python3's and shellcheck's floors from
+  `gates/required_tools.tsv`, installs the Python floor (setup-python) and a shellcheck at or above its
+  floor (the runner's, else a checksum-verified release), then asks goh's own judges
+  (`lib/house_python.sh`, `required_tools.py --check`), which fail naming the floor. Consumers
+  `uses: ./goh/.github/actions/goh-floors` (goh checked out into the workspace) or
+  `ztomer/gates_of_heck/.github/actions/goh-floors@main` with `goh-dir`. `test_goh_floors_action.py`.
 * `tools/gate.sh` — this repo's own gate entry (layer 1 + parallel pytest
   on `--full`: `-n 12 --dist loadgroup`, serial fallback without xdist).
 * `tools/load.py [N -- CMD...]` — the ONE way to make load on this machine, and it reaps itself.

@@ -1,0 +1,53 @@
+# goh-floors -- the ONE way a CI runner meets gates_of_heck's tool floors (G7, 2026-10-26).
+#
+# The floors are read from gates/required_tools.tsv of the goh this action serves, never restated,
+# so a floor raised in goh is raised in every CI that runs this. It installs the Python floor
+# (actions/setup-python, the newest patch of that floor) and a shellcheck at or above its floor
+# (the runner's own when it is new enough, else a checksum-verified release), then asks goh's own
+# judges, which fail naming the floor. Use it right after goh is checked out:
+#
+#   - uses: ./goh/.github/actions/goh-floors          # goh checked out into the workspace
+#   - uses: ztomer/gates_of_heck/.github/actions/goh-floors@main
+#     with: { goh-dir: "${{ env.GOH_DIR }}" }          # goh cloned elsewhere: judge THAT copy's floors
+name: goh-floors
+description: Meet gates_of_heck's tool floors (python3, shellcheck) from its own floor table.
+inputs:
+  goh-dir:
+    description: The gates_of_heck checkout whose floors to meet; default, the one this action is in.
+    required: false
+    default: ""
+outputs:
+  python-version:
+    description: The Python floor that was installed.
+    value: ${{ steps.floors.outputs.python }}
+runs:
+  using: composite
+  steps:
+    - id: floors
+      shell: bash
+      env:
+        GOH_FLOORS_DIR: ${{ inputs.goh-dir }}
+      run: |
+        set -euo pipefail
+        goh="${GOH_FLOORS_DIR:-$GITHUB_ACTION_PATH/../../..}"
+        goh="$(cd "$goh" && pwd)"
+        echo "goh=$goh" >> "$GITHUB_OUTPUT"
+        echo "python=$(bash "$goh/.github/actions/goh-floors/floors.sh" floor python3)" >> "$GITHUB_OUTPUT"
+    - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+      with:
+        python-version: ${{ steps.floors.outputs.python }}
+    - shell: bash
+      env:
+        GOH_FLOORS_GOH: ${{ steps.floors.outputs.goh }}
+      run: |
+        set -euo pipefail
+        bin="$RUNNER_TEMP/goh-floors/bin"
+        bash "$GOH_FLOORS_GOH/.github/actions/goh-floors/floors.sh" shellcheck "$bin"
+        echo "$bin" >> "$GITHUB_PATH"
+    - shell: bash
+      env:
+        GOH_FLOORS_GOH: ${{ steps.floors.outputs.goh }}
+      run: |
+        set -euo pipefail
+        export PATH="$RUNNER_TEMP/goh-floors/bin:$PATH"
+        bash "$GOH_FLOORS_GOH/.github/actions/goh-floors/floors.sh" verify

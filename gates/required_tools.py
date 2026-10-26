@@ -25,6 +25,8 @@ and the step passes having installed nothing):
     grep -v '^#' <<<"$cmds" | bash -eux
 
 On a runner without brew (ubuntu-latest), use `--names` and the runner's own package manager.
+The FLOORS a runner's own packages miss (GitHub's runners ship python 3.12 and shellcheck 0.9) are
+met by the goh-floors action (.github/actions/goh-floors), which reads them from this table.
 `ruff` is its own layer (`python-format`): only repos that set GOH_PYTHON_FORMATTED need it;
 `cargo-zigbuild` + `zig` are `rust-cross`, for repos that set GOH_RUST_LINT_CARGO=cargo-zigbuild.
 
