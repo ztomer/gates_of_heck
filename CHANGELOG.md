@@ -1,5 +1,24 @@
 # CHANGELOG
 
+## v0.54.0 — CI meets goh's floors one way, read from goh's own table _(2026-10-26)_
+
+Minor bump: a new consumer-facing composite action, `.github/actions/goh-floors`.
+
+* **The goh-floors action (G7).** goh raised python3 to 3.15 (G2d) and shellcheck to 0.11.0 (G2c);
+  GitHub's runners ship 3.12.3 and 0.9.0, and every consumer whose CI runs goh's gates went red or
+  would on its next push (divoom-control run 40291804362: `rust-core` on the Python floor,
+  `no-emoji` on the shellcheck floor). Each workflow chose its own Python and shellcheck, so each
+  floor bump was a sweep of every consumer. The action reads both floors from
+  `gates/required_tools.tsv` of the goh it serves (its own, or `goh-dir`), installs the Python floor
+  (setup-python v7.1.0, SHA-pinned) and a shellcheck at or above its floor -- the runner's when new
+  enough, else a release verified against `shellcheck.sha256` -- and then asks goh's own judges
+  (`lib/house_python.sh`, `required_tools.py --check`), which fail naming the floor. Platforms other
+  than Linux x86_64/aarch64 and macOS on Apple silicon are refused, never a fallback; a shellcheck
+  floor raised past every recorded release is refused until its checksum is recorded
+  (`tests/test_goh_floors_action.py`, 17: below-floor red naming it, at-floor green, both ways).
+  Consumers: `uses: ./<goh checkout>/.github/actions/goh-floors`, or, for a clone outside the
+  workspace, `ztomer/gates_of_heck/.github/actions/goh-floors@<sha> # v0.54.0` with `goh-dir`.
+
 ## v0.53.0 — the recorded fake cargo can answer red, and the push after a landing reuses the landing's proof _(2026-10-26)_
 
 Minor bump: `tools/land.sh` now gives its gate `GOH_PROFILE_PROVEN=1` (unless set).
