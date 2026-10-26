@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.ztomer.goh-actions-sweep</string>
+
+    <!-- The Actions-storage sweep (G14, 2026-10-26). GitHub keeps every workflow artifact for 90
+         days and every cache until it is evicted, and the owner's repos had 501 stale artifacts
+         (909 MB) and 87 stale caches (99 MB) nobody had asked for. scripts/actions_sweep.py
+         deletes artifacts older than 14 days and caches off the default branch or unused for 7
+         days, skips archived repos, and sets each repo's artifact-and-log retention to 14 days
+         when it is higher -- so a repo created tomorrow is covered without anyone remembering.
+         Daily at 04:15, plus once when loaded (RunAtLoad), so an install proves itself and a
+         machine that was asleep at 04:15 still sweeps at its next login. The wrapper runs the
+         COMMITTED code (an export of HEAD) with --apply and logs only what it did. -->
+    <key>ProgramArguments</key>
+    <array>
+        <string>/bin/bash</string>
+        <string>-c</string>
+        <!-- path-ok: launchd execs this with no shell and no environment, so an absolute path is the only form it can use. The guard is quiet until the gates checkout carries the sweep (this repo), so a job installed before the branch lands says nothing instead of failing. -->
+        <string>p=/Users/ztomer/Projects/gates_of_heck/tools/actions_sweep.sh; [ -x "$p" ] || exit 0; exec "$p"</string>
+    </array>
+
+    <key>StartCalendarInterval</key>
+    <dict>
+        <key>Hour</key><integer>4</integer>
+        <key>Minute</key><integer>15</integer>
+    </dict>
+
+    <key>RunAtLoad</key>
+    <true/>
+
+    <key>WorkingDirectory</key>
+    <!-- path-ok: the gates checkout, so the job resolves the house interpreter and the HEAD export cache. -->
+    <string>/Users/ztomer/Projects/gates_of_heck</string>
+
+    <key>LowPriorityIO</key>
+    <true/>
+
+    <key>StandardOutPath</key>
+    <!-- path-ok: launchd opens this file itself and does not expand `~`, so the path must be absolute. -->
+    <string>/Users/ztomer/Library/Logs/goh-actions-sweep.log</string>
+    <key>StandardErrorPath</key>
+    <!-- path-ok: the same file as StandardOutPath, for the same reason. -->
+    <string>/Users/ztomer/Library/Logs/goh-actions-sweep.log</string>
+
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+        <key>NO_COLOR</key><string>1</string>
+    </dict>
+</dict>
+</plist>

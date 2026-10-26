@@ -241,9 +241,17 @@ Every structural checker is native since Phase N3; the Python checkers they port
   command line, so it left every one alone) (`lib/load_reap.py`). The shell wrapper
   re-runs itself from an export of HEAD (C4), so an unattended job never runs an uncommitted
   edit. Pinned by `test_load_reap.py`.
-* `tools/install_load_reap.sh [install|remove|check]` — installs the launchd job
-  (`launchagents/com.ztomer.goh-load-reap.plist`) into `~/Library/LaunchAgents`, idempotently;
-  `remove` DELETES it (the house deletes, it does not trash).
+* `tools/install_launchagent.sh LABEL [install|remove|check]` — the ONE installer for a repo-owned launchd job
+  (`launchagents/LABEL.plist` copied into `~/Library/LaunchAgents`, idempotently; `check` compares content and names
+  drift; `remove` DELETES it, the house deletes, it does not trash). `tools/install_load_reap.sh` and
+  `tools/install_actions_sweep.sh` are one-line callers naming their job. Pinned by `test_install_launchagent.py`.
+* `scripts/actions_sweep.py` / `tools/actions_sweep.sh` (G14, 2026-10-26) — GitHub Actions storage cleans itself: for every
+  non-archived repo of the owner, artifacts older than 14 days go, caches go when off the default branch or unused for more
+  than 7 days (a default-branch cache in use stays), and artifact-and-log retention is set to 14 days when higher, so a new
+  repo is covered too. Dry run unless `--apply`; every gh call is bounded (`--timeout`); one repo's failure is reported, the
+  rest still run, and the exit is 1. The daily launchd job `com.ztomer.goh-actions-sweep` (04:15 and at load; wrapper runs
+  an export of HEAD with `--apply`; log `~/Library/Logs/goh-actions-sweep.log`, only what it did) is installed by
+  `tools/install_actions_sweep.sh`. Pinned by `test_actions_sweep.py`.
 * `tools/release-kit/` — `release.sh` (CI on HEAD → gate → stanza → tag → push → release → tap),
   `tap_bump.sh` (the house tap bump: clone, edit, the TAP's own `tools/gate.sh --full`, a pinned
   push read back; `release.sh` calls it, and so may a product's own release script),
