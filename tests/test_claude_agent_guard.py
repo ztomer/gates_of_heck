@@ -443,3 +443,34 @@ def test_the_weekly_live_proof_prompt_passes_the_guard(tmp_path: Path) -> None:
     ti = {"description": watch.PROOF_DESC, "prompt": prompt, "subagent_type": "general-purpose",
           "model": "haiku", "effort": "low"}  # fmt: skip
     _allowed(_run(_spawn(ti), tmp_path))
+
+
+def test_the_contract_asks_for_the_faults_seen_line() -> None:
+    assert "`Faults seen: <each fault you noticed but did not fix" in CONTRACT
+    assert "';'-separated" in CONTRACT and "or none>`" in CONTRACT
+
+
+def test_faults_none_is_an_empty_list() -> None:
+    assert agent_guard.faults("Status: landed\nFaults seen: none") == []
+
+
+def test_faults_several_are_split_on_semicolons() -> None:
+    report = "Status: landed\nabc1234 x\nFaults seen: WARN disk on .33 health; /srv/t not g+w (.90)"
+    assert agent_guard.faults(report) == ["WARN disk on .33 health", "/srv/t not g+w (.90)"]
+
+
+def test_faults_missing_line_is_null_not_none() -> None:
+    assert agent_guard.faults("Status: landed\nall good") is None
+
+
+def test_the_outcome_record_carries_faults(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path))
+    agent_guard.on_stop(
+        {
+            "session_id": "s",
+            "agent_id": "a",
+            "last_assistant_message": "Status: answered\nFaults seen: red CI on x",
+        }
+    )
+    rec = json.loads(agent_guard.ledger_path().read_text().splitlines()[-1])
+    assert rec["faults"] == ["red CI on x"]

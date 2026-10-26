@@ -54,8 +54,14 @@ SPAWN_TOOLS = {"Agent", "Task"}  # `Task` is the tool's legacy name
 CONTRACT = (
     "Report contract: your final report is at most 15 lines. Its first line is "
     "`Status: landed|blocked|failed|answered`; then commits (sha + one line each), CI run id + "
-    "conclusion, red->green proof in one sentence, what is left open in one line. No narrative."
+    "conclusion, red->green proof in one sentence, what is left open in one line, then `Faults seen: <each fault you noticed but did not fix "
+    "(pre-existing WARN, error, red check, stale state), ';'-separated, each with where it is; "
+    "or none>`. No narrative."
 )
+FAULTS_LINE = re.compile(
+    r"^[ \t>*-]*Faults[ \t]+seen:[ \t]*(.*?)[ \t]*$", re.IGNORECASE | re.MULTILINE
+)
+NO_FAULTS = {"none", "none.", "-", "n/a"}
 STATUSES = ("landed", "blocked", "failed", "answered")
 STATUS_LINE = re.compile(r"\s*status:\s*(\w+)\s*$", re.IGNORECASE)
 REPORT_CAP = 4000  # characters of the report kept on the outcome line (the audit reads its shas)
@@ -322,6 +328,18 @@ def _status(report: str) -> str:
     return word if word in STATUSES else "unreported"
 
 
+def faults(report: str) -> list[str] | None:
+    """The report's `Faults seen:` line as a list: [] for none, None when the line is absent
+    (not stated, which is not the same claim as none)."""
+    m = FAULTS_LINE.search(report)
+    if m is None:
+        return None
+    body = m.group(1).strip().strip("`").strip()
+    if body.lower() in NO_FAULTS or not body:
+        return []
+    return [f.strip() for f in body.split(";") if f.strip()]
+
+
 def on_stop(event: dict[str, Any]) -> str | None:
     """Record a finished subagent's outcome; the ledger warning, if any. Never blocks the stop."""
     raw_path = event.get("agent_transcript_path")
@@ -341,6 +359,7 @@ def on_stop(event: dict[str, Any]) -> str | None:
         "tool_use_id": tool_use_id, "agent_id": event.get("agent_id"),
         "agent_type": event.get("agent_type"),
         "status": _status(report), "report": report[:REPORT_CAP] or None,
+        "faults": faults(report),
         "tokens": usage(text) if text is not None else None,
         "tokens_settled": settled,
     })  # fmt: skip

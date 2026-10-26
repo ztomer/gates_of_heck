@@ -312,6 +312,21 @@ def run(ledger: Path, root: Path, offline: bool, min_n: int | None = None) -> di
     return audit(records, rules, n, landed) | {"unreadable_lines": bad, "min_n": n}
 
 
+def fault_rows(records: list[dict[str, Any]], since: str | None) -> list[dict[str, Any]]:
+    """One row per outcome that stated faults: what a coordinator files. Old rows (no `faults`
+    key) and `none` both list nothing."""
+    rows = []
+    for rec in records:
+        found = rec.get("faults") if rec.get("event") == "outcome" else None
+        if not found or (since and str(rec.get("time") or "") < since):
+            continue
+        sha = landed_verify.SHA_WORD.search(rec.get("report") or "")
+        rows.append({"agent_id": rec.get("agent_id"), "session_id": rec.get("session_id"),
+                     "time": rec.get("time"), "first_sha": sha.group(0) if sha else None,
+                     "faults": list(found)})  # fmt: skip
+    return rows
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--ledger", type=Path, default=None, help="default: the hook's ledger")
@@ -321,8 +336,27 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--offline", action="store_true", help="never ask GitHub: shas unverified")
     ap.add_argument("--json", action="store_true", help="machine-readable report")
     ap.add_argument("--min-n", type=int, default=None, help="outcomes a verdict needs (rules file)")
+    ap.add_argument("--faults", action="store_true", help="list the faults agents reported seeing")
+    ap.add_argument(
+        "--since", default=None, help="with --faults: outcomes at or after this ISO time"
+    )
     args = ap.parse_args(argv)
     path = args.ledger or ledger_path()
+    if args.faults:
+        rows = fault_rows(read(path)[0], args.since) if path.exists() else []
+        if args.json:
+            json.dump(rows, sys.stdout, indent=1)
+            print()
+            return 0
+        if not rows:
+            ok("no faults reported")
+        for r in rows:
+            section(
+                f"{r['time']}  agent {r['agent_id']}  session {r['session_id']}  {r['first_sha'] or '-'}"
+            )
+            for f in r["faults"]:
+                info(f)
+        return 0
     report = run(path, args.root, args.offline, args.min_n)
     if report is None:
         info(f"no spawn ledger at {path} yet: agent_guard writes it on the first spawn")

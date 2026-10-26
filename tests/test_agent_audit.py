@@ -231,3 +231,32 @@ def test_a_silent_failure_is_a_redo(tmp_path: Path) -> None:
     under = report["under"]["sonnet@high"]
     assert under["redo"] == 1 and under["flagged"][0]["why"] == "silent-failure"
     assert len(report["verification"]["silent_failure"]) == 1
+
+
+def test_faults_lists_each_outcome_that_saw_one(tmp_path: Path) -> None:
+    led = tmp_path / "l.jsonl"
+    rows = [
+        {"event": "outcome", "time": "2026-10-20T00:00:00+00:00", "agent_id": "old", "report": "x"},
+        {"event": "outcome", "time": "2026-10-21T00:00:00+00:00", "agent_id": "n", "faults": []},
+        {
+            "event": "outcome",
+            "time": "2026-10-22T00:00:00+00:00",
+            "agent_id": "a1",
+            "session_id": "s1",
+            "report": "Status: landed\nfe071cc one\nFaults seen: W1; W2",
+            "faults": ["W1", "W2"],
+        },
+        {
+            "event": "outcome",
+            "time": "2026-10-19T00:00:00+00:00",
+            "agent_id": "early",
+            "faults": ["E"],
+        },
+    ]
+    led.write_text("".join(json.dumps(x) + "\n" for x in rows))
+    r = _audit(led, "--faults", "--since", "2026-10-20", "--json")
+    assert r.returncode == 0, r.stderr
+    assert json.loads(r.stdout) == [{"agent_id": "a1", "session_id": "s1",
+                                     "time": "2026-10-22T00:00:00+00:00", "first_sha": "fe071cc",
+                                     "faults": ["W1", "W2"]}]  # fmt: skip
+    assert "W2" in _audit(led, "--faults").stdout
