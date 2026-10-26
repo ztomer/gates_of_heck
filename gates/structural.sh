@@ -299,8 +299,24 @@ if [ "$SCOPE" = "--staged" ]; then
     goh_bind_hook_index  # the index being committed, when the hook carried one (gates/_git_env.sh)
     exec "$goh_native" structural --staged
 fi
-if [ -n "$KEEP_GOING" ]; then
-    exec "$goh_native" structural --full --keep-going
+# ── AN MCP SERVER IS JUDGED ON THE WIRE (checks/check_mcp_wire.py, queue MCP.G). ──────────────
+# The opt-in is the key alone: a repo whose .gatesrc names GOH_MCP_SERVERS gets its servers started,
+# spoken to and reaped here, at --full only (a commit never starts a server). Read from the repo's
+# own file, never the environment (the environment is not configuration). --keep-going carries the
+# red past the native steps; otherwise it fails fast like every step.
+_goh_mcp_rc=0
+_goh_mcp_top="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
+if (unset GOH_MCP_SERVERS; cd "$_goh_mcp_top" && [ -f .gatesrc ] && . ./.gatesrc >/dev/null 2>&1 \
+        && [ -n "${GOH_MCP_SERVERS:-}" ]); then
+    section "MCP servers on the wire (GOH_MCP_SERVERS)"
+    "$GOH_PY" "$GOH_ROOT/checks/check_mcp_wire.py" "$_goh_mcp_top" || _goh_mcp_rc=$?
+    [ "$_goh_mcp_rc" -eq 0 ] || [ "$KEEP_GOING" = 1 ] || exit "$_goh_mcp_rc"
+fi
+# `= 1`, never `-n`: KEEP_GOING is 0 or 1, both non-empty, so `-n` sent EVERY --full run down the
+# keep-going path and the fail-fast default was never in force (tests/test_check_mcp_wire.py).
+if [ "$KEEP_GOING" = 1 ]; then
+    "$goh_native" structural --full --keep-going || exit $?
+    exit "$_goh_mcp_rc"
 fi
 exec "$goh_native" structural --full
 exit

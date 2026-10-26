@@ -24,6 +24,7 @@ proven -- see {root} in _canary.build_repo for why a fixture may need its own ro
 # import is explicit so a reader sees that the list continues, not that it ends.
 import _canary_cases_busy  # noqa: E402
 import _canary_cases_js  # noqa: E402
+import _canary_cases_spawn  # noqa: E402
 
 EMOJI = chr(0x1F680)
 CONFLICT = "<<<<<<< HEAD\nours\n=======\ntheirs\n>>>>>>> branch\n"
@@ -163,14 +164,6 @@ CASES = [
         ["--baseline", "base.json", "--current", "cur.json"],
         {"base.json": '{"a": 5}', "cur.json": '{"a": 9}'},
         {"base.json": '{"a": 5}', "cur.json": '{"a": 3}'},
-    ),
-    # The generator writes into a sandbox dir handed to it as $1 (the out-dir contract).
-    (
-        "generated artifacts are fresh",
-        "check_generated_fresh.py",
-        ["--generator", "sh gen.sh", "out.txt"],
-        {"gen.sh": 'mkdir -p "$1"\necho generated > "$1/out.txt"\n', "out.txt": "stale\n"},
-        {"gen.sh": 'mkdir -p "$1"\necho generated > "$1/out.txt"\n', "out.txt": "generated\n"},
     ),
     # ⚠ THE "scratch disk ceiling" CASE WAS DELETED, NOT FIXED, and the reason is a MOVE.
     # `gates_of_heck` commit eed6ffa -- "move the disk watch out of this repo, not just out of the
@@ -434,6 +427,8 @@ CASES = [
     # The busy-loop cases live in `_canary_cases_busy.py`, for the same reason: the table is at
     # its cap, and the list is still ONE list.
     *_canary_cases_busy.CASES,
+    # Gates that RUN a program the repo names (a generator, an MCP server): `_canary_cases_spawn.py`.
+    *_canary_cases_spawn.CASES,
 ]
 
 # Gates this cannot fixture, with the reason. Each is a claim someone can challenge, which is the

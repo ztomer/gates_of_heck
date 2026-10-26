@@ -56,6 +56,10 @@ GOH_MAX_LINES=500                 # file-length cap; unset disables the check
 # CI parity (checks/check_ci_local_parity.py, run it as a GOH_CI_STEPS step): every repo script CI runs, the local gate runs
 # GOH_CI_PARITY_MIN_SCRIPTS=9       # the scan's floor: CI scripts it must find (default 1)
 # GOH_CI_PARITY_EXEMPT='scripts/create_bundle.sh: packaging only CI publishes'   # one `path: reason` per line
+# MCP wire gate (checks/check_mcp_wire.py, run by structural.sh --full when set): newest protocol, stated effects
+# GOH_MCP_SERVERS='cargo run --quiet --bin myapp -- mcp --home "$GOH_MCP_SCRATCH"'   # one stdio command per line
+# GOH_MCP_UNSTRUCTURED='describe: its reply is prose'   # one `tool: reason` per line; a ratchet
+# GOH_MCP_TIMEOUT=300               # seconds per server, start (build) to its last tools/list page
 # GOH_RUST_JOBS=4                   # crates at once under rust_gate.sh --each-crate
 # GOH_CI_JOBS=4                     # run that many steps at once (default 1); '[tag] cmd' steps sharing a tag never overlap
 # GOH_RELEASE_GATE='./tools/gate.sh --full'
