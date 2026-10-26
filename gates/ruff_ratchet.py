@@ -42,7 +42,9 @@ if __name__ == "__main__":  # C4: run HEAD's copy, not the shared working tree (
     del _sys.path[0]
 
 import argparse
+import contextlib
 import json
+import os
 import re
 import shlex
 import subprocess
@@ -92,8 +94,13 @@ def rule_of(finding: dict) -> str:
 
 def where(finding: dict) -> str:
     loc = finding.get("location") or {}
+    name = str(finding.get("filename", "?"))
+    with contextlib.suppress(
+        ValueError
+    ):  # ruff reports absolute paths; the reader wants the repo's
+        name = os.path.relpath(name) if os.path.isabs(name) else name
     return (
-        f"{finding.get('filename', '?')}:{loc.get('row', '?')}:{loc.get('column', '?')}: "
+        f"{name}:{loc.get('row', '?')}:{loc.get('column', '?')}: "
         f"{rule_of(finding)} {finding.get('message', '')}"
     )
 

@@ -50,7 +50,7 @@ def test_a_rule_over_its_count_is_red_and_names_the_findings(tree, capsys):
     assert rr.main([]) == 1
     err = capsys.readouterr().err
     assert "F401: 2 finding(s) against a count of 1" in err
-    assert "a.py:1:8: F401" in err and "a.py:2:8: F401" in err
+    assert " a.py:1:8: F401" in err and " a.py:2:8: F401" in err  # repo-relative
 
 
 def test_a_rule_with_findings_and_no_count_is_red(tree, capsys):
