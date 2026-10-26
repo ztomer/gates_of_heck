@@ -30,12 +30,13 @@ So the guard reads the WRITE path too: a file whose CODE runs a backgrounded bus
 with the same way forward (`tools/load.py`) and the same escape (`# load-ok: <reason>`, in the
 file, on the line or on the comment lines directly above it).
 
-THE BUSY-WAIT (G16, 2026-10-26), COMMANDS ONLY. A `while`/`until` of ANY condition whose body does
+THE BUSY-WAIT (G16, 2026-10-26), A `while`/`until` of ANY condition whose body does
 nothing (`until [ -f ready ]; do :; done`) is refused too, foreground or background: it re-tests the
 condition as fast as the CPU allows, pinning a core and hanging the shell, with no orphan needed. An
 agent ran one and the spinner-shaped rule above let it through (its condition was not `:`). The way
 forward is a loop that sleeps, run through Monitor; `tools/load.py` for deliberate load; the escape is
-`# load-ok: <reason>`. Files are not judged for this shape yet (`lib/busyloop.py`'s `waits`).
+`# load-ok: <reason>`. G17 (same day): the WRITE path judges the shape too, so a script that
+busy-waits is refused when it is written, and the tracked-file check judges it at the commit.
 
 It judges only what it can parse. A command it cannot split runs, unjudged: the guard must never
 be the thing that breaks an ordinary command. A pattern inside a string or a heredoc is TEXT, not
@@ -94,13 +95,13 @@ LOAD_REASON = (
 )
 
 WAIT_REASON = (
-    "This command busy-waits (`until <cond>; do :; done`): the condition is re-tested as fast "
+    "This busy-waits (`until <cond>; do :; done`): the condition is re-tested as fast "
     "as the CPU allows, so it pins a core until the condition holds -- forever, if it never "
     "does -- and hangs the shell meanwhile. Wait the house way: a loop that sleeps "
     "(`until <cond>; do sleep 2; done`), run through the Monitor tool (or with the Bash tool's "
     "run_in_background) so the wait does not block you. For deliberate load, use "
     '`python3 "$GOH_DIR/tools/load.py" 8 -- <your command>`, which reaps itself. To busy-wait '
-    "on purpose, add `# load-ok: <reason>` to the command."
+    "on purpose, add `# load-ok: <reason>` to the line (or to the comment lines directly above it)."
 )
 
 
@@ -279,7 +280,7 @@ def judge_priority(command: str) -> str | None:
 
 
 def judge_file(path: str, content: str) -> str | None:
-    """The refusal reason for a file that runs a backgrounded busy loop, or None.
+    """The refusal reason for a file that runs a backgrounded busy loop or a busy-wait, or None.
 
     The FILE is the natural way to smuggle the loop in: the guard that saw only commands let
     twenty-four spinners through on 2026-10-21, and the loop arrived in a file.
@@ -291,9 +292,13 @@ def judge_file(path: str, content: str) -> str | None:
         return None
     if not busyloop.is_shell(path, content):
         return None
-    lines = busyloop.unexcused(content)
+    lines = busyloop.unexcused_spinners(content)
     if not lines:
-        return None
+        waits = busyloop.unexcused_waits(content)
+        if not waits:
+            return None
+        where = ", ".join(str(line) for line in waits[:6])
+        return f"{path}: {where}: {WAIT_REASON}"
     where = ", ".join(str(line) for line in lines[:6])
     return (
         f"{path}: {where}: this file runs a busy loop with nothing to reap it "

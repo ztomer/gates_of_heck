@@ -1,0 +1,6 @@
+{
+  "_comment": "THE SHAPE, ONE definition (G17). lib/busyloop.py loads it with Python's re; crates/goh/src/busyloop.rs include_str!s it and compiles it with fancy-regex (the same syntax for these patterns). A pattern edited here changes the guard, the tracked-file check and the backstop together; neither language carries a copy.",
+  "busy_loop": "\\b(?:while|until)\\s+(?::|true|false)\\s*;?\\s*do\\s*(?::|true|false)?\\s*;?\\s*done\\b",
+  "busy_wait": "\\b(?:while|until)\\b(?P<cond>(?:(?!\\bdo\\b|\\bdone\\b)[^\\n])*?)(?:;|\\n)\\s*do\\b\\s*(?::|true|false)?\\s*;?\\s*done\\b",
+  "read_condition": "^\\s*(?:[A-Za-z_]\\w*=\\S*\\s+)*read\\b"
+}

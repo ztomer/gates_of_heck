@@ -174,9 +174,12 @@ def test_a_file_that_is_not_shell_is_not_judged(tmp_path: Path) -> None:
     assert _decide_event(_write("NOTES.md", f"`{SPINNER}`\n")) is None
 
 
-def test_a_foreground_loop_in_a_file_is_allowed(tmp_path: Path) -> None:
-    """A foreground loop hangs the shell that runs it: a different defect."""
-    assert _decide_event(_write("load.sh", "#!/bin/sh\nwhile :; do :; done\n")) is None
+def test_a_foreground_loop_in_a_file_is_the_busy_wait_class(tmp_path: Path) -> None:
+    """A foreground loop is not the ORPHAN leak, but it pins a core and hangs the shell that runs
+    it: the busy-wait class (G17), judged in a FILE as it is in a command."""
+    reason = _decide_event(_write("load.sh", "#!/bin/sh\nwhile :; do :; done\n"))
+    assert reason is not None, "a file whose code busy-waits was allowed"
+    assert BUSY_WAIT_MARK in reason, reason
 
 
 def test_the_marker_in_the_file_is_the_escape(tmp_path: Path) -> None:
@@ -286,3 +289,74 @@ def test_a_wait_that_waits_or_is_only_text_is_allowed(command: str, tmp_path: Pa
 def test_load_ok_excuses_a_busy_wait(tmp_path: Path) -> None:
     assert _decide("until [ -f x ]; do :; done  # load-ok: probing a 1ms race", tmp_path) is None
     assert _decide("until [ -f x ]; do :; done  # load-ok:", tmp_path) is not None
+
+
+# ── the BUSY-WAIT, in a FILE (G17, 2026-10-26) ────────────────────────────────────────────────
+#
+# G16 taught the COMMAND path the busy-wait shape and said "files are not judged for this shape
+# yet". A busy-wait in a script that is then RUN is the same wrong loop one write earlier, so the
+# Write/Edit path judges the same shape (lib/busyloop.py, ONE definition).
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        "until [ -f /tmp/ready ]; do :; done",
+        "while ! test -f /tmp/ready; do true; done",
+        "until [ -f /tmp/ready ]\ndo\n  :\ndone",
+        "until a; b; do :; done",
+        "cd x && until [ -f ready ]; do : ; done && echo ok",
+    ],
+)
+def test_a_file_that_busy_waits_is_refused_with_the_way_to_wait(body: str, tmp_path: Path) -> None:
+    reason = _decide_event(_write("wait.sh", f"#!/bin/sh\n{body}\n"))
+    assert reason is not None, f"the guard allowed a file that busy-waits: {body!r}"
+    assert BUSY_WAIT_MARK in reason, reason
+    assert "wait.sh" in reason, reason
+    assert "Monitor" in reason, reason
+    assert "sleep" in reason, reason
+    assert "load-ok" in reason, reason
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        "until [ -f /tmp/ready ]; do sleep 1; done",
+        "until [ -f /tmp/ready ]; do :; sleep 0.2; done",
+        "while read -r line; do :; done < input.txt",
+        "echo 'until [ -f x ]; do :; done'",
+        "# until [ -f x ]; do :; done",
+        "cat > fixture.sh <<'EOF'\nuntil [ -f x ]; do :; done\nEOF",
+        "for f in a b; do :; done",
+    ],
+)
+def test_a_file_that_waits_or_only_quotes_the_wait_is_allowed(body: str, tmp_path: Path) -> None:
+    assert _decide_event(_write("wait.sh", f"#!/bin/sh\n{body}\n")) is None, body
+
+
+def test_a_busy_wait_in_a_file_that_is_not_shell_is_not_judged(tmp_path: Path) -> None:
+    assert _decide_event(_write("tool.py", "CMD = 'until [ -f x ]; do :; done'\n")) is None
+
+
+def test_the_marker_in_the_file_excuses_a_busy_wait(tmp_path: Path) -> None:
+    body = "until [ -f x ]; do :; done"
+    assert (
+        _decide_event(_write("wait.sh", f"#!/bin/sh\n# load-ok: probing a 1ms race\n{body}\n"))
+        is None
+    )
+    assert _decide_event(_write("wait.sh", f"#!/bin/sh\n# load-ok:\n{body}\n")) is not None
+
+
+def test_an_edit_that_adds_a_busy_wait_is_refused(tmp_path: Path) -> None:
+    reason = _decide_event(
+        {
+            "tool_name": "Edit",
+            "tool_input": {
+                "file_path": "wait.sh",
+                "old_string": "echo hello",
+                "new_string": "until [ -f x ]; do :; done",
+            },
+        }
+    )
+    assert reason is not None, "the guard allowed an edit that adds a busy-wait"
+    assert BUSY_WAIT_MARK in reason, reason

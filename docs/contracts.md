@@ -578,11 +578,18 @@ TEXT is not CODE (a loop inside a string, a heredoc body or a comment is text, a
 `echo 'while :; do :; done'` writes a loop, it does not run one); a loop RUNS when the line
 carrying it also carries a background operator.
 
+The busy-WAIT (G16/G17) is the same class one step wider: a `while`/`until` of ANY condition whose
+body does nothing (`until [ -f ready ]; do :; done`) pins a core and hangs the shell with no orphan
+needed, so it is refused foreground or background (a `read` condition drains its input and is
+exempt). The patterns of both shapes live in ONE file, `lib/busyloop_shapes.json`: Python loads it
+with `re`, the native check `include_str!`s it and compiles it with fancy-regex, so neither
+language carries a copy (`test_the_shape_has_one_definition`).
+
   * THE TOOL BOUNDARY. The Claude Code guard (matcher `Bash|Write|Edit|MultiEdit`) refuses a
-    COMMAND and a FILE that run one, and names `tools/load.py` -- the one way to make load, which
+    COMMAND and a FILE that run one (a spinner or a busy-wait), and names `tools/load.py` -- the one way to make load, which
     registers its spinners, kills exactly those, and reaps itself -- with `# load-ok: <reason>`
     as the one escape.
-  * THE COMMIT. A tracked shell file that runs one is refused by `goh busy-loop`, in every repo,
+  * THE COMMIT. A tracked shell file that runs one (either shape) is refused by `goh busy-loop`, in every repo,
     at both scopes, with no path exemption (a busy loop is not a style) and a floor
     (`GOH_BUSY_LOOP_MIN_FILES`) so a scope that stopped being read is red rather than clean.
   * THE MACHINE. The minute job kills an ORPHAN that has BURNED a core on a busy loop --

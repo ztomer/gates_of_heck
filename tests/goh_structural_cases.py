@@ -225,7 +225,7 @@ EXPECTED: dict[str, tuple[int, str | None]] = {
     "claim_green": (0, None),
     "claim_red": (1, "prose claims are derived"),
     "busy_loop_green": (0, None),
-    "busy_loop_red": (1, "no backgrounded busy loop in a tracked file"),
+    "busy_loop_red": (1, "no busy loop or busy-wait in a tracked file"),
     "requires_call_green": (0, None),
     "requires_call_red": (1, "a file that calls X calls Y"),
     "tap_write_green": (0, None),

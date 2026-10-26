@@ -148,7 +148,7 @@ pub const JS_SYNTAX: Subject = Subject {
 pub const BUSY_LOOP: Subject = Subject {
     key: "GOH_BUSY_LOOP_MIN_FILES",
     unit: "shell source(s)",
-    scanner: "no backgrounded busy loop in a tracked file",
+    scanner: "no busy loop or busy-wait in a tracked file",
 };
 
 /// Every scanner with a subject, spelled once: the keys `.gatesrc` may hold a floor in.

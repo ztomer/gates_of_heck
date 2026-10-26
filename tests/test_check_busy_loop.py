@@ -86,8 +86,13 @@ def test_a_clean_tree_is_green_and_prints_its_scope(repo: Path) -> None:
         "# while :; do :; done &",
         # A loop that does work: it is not a spinner.
         SLEEPER,
-        # A foreground busy loop hangs the shell that runs it, which is a different defect.
-        "while :; do :; done",
+        # A loop that waits (sleeps, or drains its input) is not a busy-wait.
+        "until [ -f ready ]; do sleep 1; done",
+        "while read -r line; do :; done < input.txt",
+        # TEXT: the busy-wait shape, quoted / in a heredoc / in a comment.
+        "echo 'until [ -f x ]; do :; done'",
+        "cat > other.sh <<'EOF'\nuntil [ -f x ]; do :; done\nEOF",
+        "# until [ -f x ]; do :; done",
     ],
 )
 def test_text_is_not_code(repo: Path, body: str) -> None:
@@ -146,11 +151,98 @@ def test_the_python_rule_and_the_rust_rule_agree(repo: Path) -> None:
         ("#!/bin/sh\necho 'while :; do :; done'\n", False),
         ("#!/bin/sh\n# while :; do :; done &\n", False),
         ("#!/bin/sh\nwhile true; do sleep 1; done &\n", False),
-        ("#!/bin/sh\nwhile :; do :; done\n", False),
+        # A foreground busy loop is no orphan, but it is a busy-wait (G17): a finding.
+        ("#!/bin/sh\nwhile :; do :; done\n", True),
     ]
     for body, spins in cases:
         write(repo, "load.sh", body)
         commit_all(repo)
-        assert busyloop.spins(body) is spins, body
+        assert (len(busyloop.unexcused(body)) > 0) is spins, body
         result = run_goh(repo, "busy-loop")
         assert (result.returncode == 1) is spins, (body, result.stdout)
+
+
+# ── the BUSY-WAIT (G17, 2026-10-26): a loop that re-tests a condition with no pause ───────────
+#
+# G16 refused `until <cond>; do :; done` at the tool boundary and left the tracked-file check on
+# the spinner shape alone. A script that busy-waits is the same defect committed, so the check
+# judges the one shape (lib/busyloop.py's BUSY_WAIT, read by this binary from the same file).
+
+WAITERS = [
+    "until [ -f ready ]; do :; done",
+    "while ! test -f ready; do true; done",
+    "until [ -f ready ]\ndo\n  :\ndone",
+    "until a; b; do :; done",
+    "while :; do :; done",
+    "cd x && until [ -f ready ]; do : ; done && echo ok",
+]
+
+
+@pytest.mark.parametrize("body", WAITERS)
+def test_a_tracked_file_that_busy_waits_is_refused(repo: Path, body: str) -> None:
+    _shell(repo, body)
+    result = run_goh(repo, "busy-loop")
+    assert result.returncode == 1, (body, result.stdout + result.stderr)
+    assert "load.sh:" in result.stdout, result.stdout
+    assert "busy-wait" in result.stdout, result.stdout
+    assert "sleep" in result.stdout, result.stdout
+    assert 'python3 "$GOH_DIR/tools/load.py"' in result.stdout, result.stdout
+
+
+def test_a_busy_wait_is_reported_once_per_line(repo: Path) -> None:
+    """`while :; do :; done &` is both shapes; it is one line and one finding."""
+    _shell(repo, SPINNER)
+    result = run_goh(repo, "busy-loop")
+    assert result.returncode == 1
+    assert "1 finding(s)" in result.stdout, result.stdout
+
+
+def test_the_marker_excuses_a_busy_wait_and_a_stale_one_is_a_finding(repo: Path) -> None:
+    _shell(repo, "# load-ok: probing a 1ms race\nuntil [ -f ready ]; do :; done")
+    assert run_goh(repo, "busy-loop").returncode == 0
+    _shell(repo, "# load-ok:\nuntil [ -f ready ]; do :; done")
+    assert run_goh(repo, "busy-loop").returncode == 1
+    _shell(repo, "# load-ok: the wait is gone\nuntil [ -f ready ]; do sleep 1; done")
+    assert run_goh(repo, "busy-loop").returncode == 1
+
+
+def test_the_busy_wait_is_judged_at_staged(repo: Path) -> None:
+    write(repo, "load.sh", "#!/bin/sh\nuntil [ -f ready ]; do :; done\n")
+    stage(repo, "load.sh")
+    write(repo, "load.sh", "#!/bin/sh\necho clean\n")
+    result = run_goh(repo, "busy-loop", "--staged")
+    assert result.returncode == 1, result.stdout + result.stderr
+
+
+def test_the_python_rule_and_the_rust_rule_agree_on_the_busy_wait(repo: Path) -> None:
+    """The guard (Python) and this check (Rust) judge the same file the same way."""
+    cases = [(f"#!/bin/sh\n{body}\n", True) for body in WAITERS] + [
+        ("#!/bin/sh\nuntil [ -f ready ]; do sleep 1; done\n", False),
+        ("#!/bin/sh\nwhile IFS= read -r l; do :; done < f\n", False),
+        ("#!/bin/sh\necho 'until [ -f x ]; do :; done'\n", False),
+        ("#!/bin/sh\nwhile a; do b; done; until c; do :; done\n", True),
+        ("#!/bin/sh\nfor f in a b; do :; done\n", False),
+        # Non-ASCII text before the loop: the line is counted in the masked text, not by bytes.
+        ("#!/bin/sh\necho 'é — ü'\nuntil [ -f r ]; do :; done\n", True),
+    ]
+    for body, waits in cases:
+        write(repo, "load.sh", body)
+        commit_all(repo)
+        assert (len(busyloop.unexcused(body)) > 0) is waits, body
+        result = run_goh(repo, "busy-loop")
+        assert (result.returncode == 1) is waits, (body, result.stdout)
+
+
+def test_the_shape_has_one_definition() -> None:
+    """The three paths read ONE file. The Rust twin carries no pattern of its own: it includes
+    the file Python loads, and the patterns in it are the ones `lib/busyloop.py` exposes."""
+    import json
+
+    shapes = json.loads((REPO_ROOT / "lib" / "busyloop_shapes.json").read_text())
+    assert busyloop.BUSY_LOOP.pattern == shapes["busy_loop"]
+    assert busyloop.BUSY_WAIT.pattern == shapes["busy_wait"]
+    assert busyloop.READ_CONDITION.pattern == shapes["read_condition"]
+    rust = (REPO_ROOT / "crates" / "goh" / "src" / "busyloop.rs").read_text()
+    assert 'include_str!("../../../lib/busyloop_shapes.json")' in rust
+    code = "\n".join(line for line in rust.splitlines() if not line.lstrip().startswith("//"))
+    assert "while|until" not in code, "the Rust twin carries a second copy of the shape"

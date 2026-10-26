@@ -34,6 +34,11 @@ The three levels that use this, and what each asks of it:
   * the backstop (`lib/load_reap.py`) asks a different question of the same shape: is this
     ORPHANED process burning a core on a loop like this one?
 
+THE BUSY-WAIT (G16/G17, 2026-10-26) is the same class one step wider: a `while`/`until` of ANY
+condition whose body does nothing (`until [ -f ready ]; do :; done`). It pins a core and hangs the
+shell with no orphan needed, so it is wrong foreground or background. All three levels judge it
+too: the guard for a command and for a file, and the check for a tracked file.
+
 One definition, so the three cannot drift: a rule the guard applies and the check does not is
 two rules, and the house has been bitten by exactly that (a checker that is written but not
 wired is still gate source).
@@ -41,13 +46,19 @@ wired is still gate source).
 
 from __future__ import annotations
 
+import json
 import re
+from pathlib import Path
+
+# THE PATTERNS live in `busyloop_shapes.json`, beside this file: ONE definition, read here with
+# Python's `re` and by `crates/goh/src/busyloop.rs` (the tracked-file check) through `include_str!`
+# and fancy-regex. Neither language carries a copy, so the guard, the check and the backstop cannot
+# drift (G17, 2026-10-26: the busy-wait shape had been added to the Python half only).
+_SHAPES = json.loads((Path(__file__).resolve().parent / "busyloop_shapes.json").read_text())
 
 # A loop whose body is nothing but `:` (or `true`/`false`): the spinner shape. The body of a loop
 # that sleeps, waits or does work is not a spinner, so it is not a finding.
-BUSY_LOOP = re.compile(
-    r"\b(?:while|until)\s+(?::|true|false)\s*;?\s*do\s*(?::|true|false)?\s*;?\s*done\b"
-)
+BUSY_LOOP = re.compile(_SHAPES["busy_loop"])
 
 # THE BUSY-WAIT (G16, 2026-10-26): a `while`/`until` of ANY condition whose body does nothing --
 # `until [ -f ready ]; do :; done`. It re-tests the condition as fast as the CPU allows, so it pins
@@ -56,11 +67,8 @@ BUSY_LOOP = re.compile(
 # `:`/`true` and which only leaks when backgrounded). The condition may not contain a `do`/`done`
 # keyword (a wider reach would pair one loop's head with another loop's body), and a `read`
 # condition is exempt: `while read -r l; do :; done < f` blocks on its input and drains it.
-BUSY_WAIT = re.compile(
-    r"\b(?:while|until)\b(?P<cond>(?:(?!\bdo\b|\bdone\b)[^\n])*?)(?:;|\n)\s*do\b"
-    r"\s*(?::|true|false)?\s*;?\s*done\b"
-)
-READ_CONDITION = re.compile(r"^\s*(?:[A-Za-z_]\w*=\S*\s+)*read\b")
+BUSY_WAIT = re.compile(_SHAPES["busy_wait"])
+READ_CONDITION = re.compile(_SHAPES["read_condition"])
 
 # The shells whose files this shape is read in. A file that is not one of these is not judged:
 # the shape is a SHELL construct, and a rule that reads a Python file's text for shell loops
@@ -305,18 +313,32 @@ def excusing_marker(text: str, line: int) -> int | None:
     return None
 
 
-def unexcused(text: str) -> list[int]:
-    """The lines of the busy loops this text runs that NO marker excuses.
+def _line_numbers(text: str, matches: list[re.Match[str]]) -> set[int]:
+    return {text[: match.start()].count("\n") + 1 for match in matches}
 
-    The guard's question and the check's: a loop that runs and nothing excuses is the leak.
-    """
-    out = []
+
+def unexcused_spinners(text: str) -> list[int]:
+    """The lines of the BACKGROUNDED busy loops this text runs that NO marker excuses."""
     code = mask(text)
+    found = set()
     for match in BUSY_LOOP.finditer(code):
         start, end = _line_of(code, match.start())
-        if not _background_in(code[start:end]):
-            continue
-        number = text[: match.start()].count("\n") + 1
-        if excusing_marker(text, number) is None:
-            out.append(number)
-    return out
+        if _background_in(code[start:end]):
+            found |= _line_numbers(text, [match])
+    return [line for line in sorted(found) if excusing_marker(text, line) is None]
+
+
+def unexcused_waits(text: str) -> list[int]:
+    """The lines of the busy-WAITS this text runs that NO marker excuses (G17), foreground or not."""
+    found = _line_numbers(text, busy_waits(text))
+    return [line for line in sorted(found) if excusing_marker(text, line) is None]
+
+
+def unexcused(text: str) -> list[int]:
+    """The lines of the busy loops and busy-waits this text runs that NO marker excuses.
+
+    The check's question and the guard's for a FILE: a loop that runs and nothing excuses is the
+    leak (a backgrounded spinner) or the pinned core (a busy-wait, foreground or not). A line
+    carrying both shapes (`while :; do :; done &` is both) is one finding.
+    """
+    return sorted(set(unexcused_spinners(text)) | set(unexcused_waits(text)))

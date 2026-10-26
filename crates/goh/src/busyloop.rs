@@ -1,4 +1,4 @@
-//! A tracked file that RUNS a backgrounded busy loop -- the house has ONE way to make load.
+//! A tracked file that RUNS a backgrounded busy loop or a busy-wait -- the house has ONE way to make load.
 //!
 //! THE CLASS (2026-10-21). The house had three ways to make load and one way to make a LEAK:
 //! `tools/load.py` (registers its spinners, kills exactly those, and reaps itself), a launchd
@@ -21,6 +21,19 @@
 //! shell that runs it (a different defect), while a backgrounded one outlives it, re-parented to
 //! launchd, burning a core for hours.
 //!
+//! THE BUSY-WAIT (G17, 2026-10-26). The same class one step wider: a `while`/`until` of ANY
+//! condition whose body does nothing (`until [ -f ready ]; do :; done`). It re-tests the condition
+//! as fast as the CPU allows, pinning a core until the condition holds and hanging the shell, with
+//! no orphan needed -- so it is a finding foreground or background, `read` drains excepted
+//! (`while read -r l; do :; done < f` blocks on its input). G16 taught the Claude Code guard this
+//! shape for commands; the guard's Write/Edit path and this check judge it too.
+//!
+//! ONE SHAPE, not two copies. The patterns live in `lib/busyloop_shapes.json`, which
+//! `lib/busyloop.py` loads with Python's `re` and this module `include_str!`s and compiles with
+//! fancy-regex (the busy-wait pattern needs a lookahead the plain `regex` crate refuses). A pattern
+//! changed there changes the guard, this check and the backstop together
+//! (`tests/test_check_busy_loop.py::test_the_shape_has_one_definition`).
+//!
 //! THE WAY. `python3 "$GOH_DIR/tools/load.py" N -- <command>` -- the one way to make load, which
 //! registers the pids it starts, kills exactly those on the way out, refuses a second experiment
 //! while one holds the slot, and leaves a registry a launchd backstop reads when even that cannot
@@ -40,20 +53,26 @@
 //! busy loop is not a style, so `GOH_EXCLUDE` does not reach it -- the one escape is the reasoned
 //! per-line marker, like `goh secrets`'.
 
+use fancy_regex::Regex;
 use goh_tui::{ERR, OK};
-use regex::Regex;
 use std::fmt::Write as _;
 use std::path::Path;
 
-/// The shape of a busy loop: a `while`/`until` whose body is nothing but `:`/`true`/`false`.
-pub const SHAPE: &str =
-    r"\b(?:while|until)\s+(?::|true|false)\s*;?\s*do\s*(?::|true|false)?\s*;?\s*done\b";
+/// The shapes, as `lib/busyloop_shapes.json` spells them: the ONE definition both languages read.
+const SHAPES: &str = include_str!("../../../lib/busyloop_shapes.json");
 
 /// The per-line escape: `# load-ok: <reason>`, on the line or on the comment lines above it.
 pub const MARKER: &str = "load-ok:";
 
 /// The house's way to make load, named in every refusal.
 pub const THE_WAY: &str = r#"python3 "$GOH_DIR/tools/load.py" 8 -- <command>"#;
+
+/// Why a backgrounded spinner is a finding.
+const WHY_SPINNER: &str = "a backgrounded busy loop has nothing to reap it";
+
+/// Why a busy-wait is a finding.
+const WHY_WAIT: &str =
+    "a busy-wait pins a core and hangs the shell: it re-tests its condition with no pause";
 
 /// One finding: the line, and the line's text.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -69,14 +88,27 @@ pub struct Finding {
 /// The compiled rules.
 pub struct Rules {
     loop_re: Regex,
+    wait_re: Regex,
+    read_re: Regex,
 }
 
 impl Rules {
     /// # Errors
-    /// A built-in pattern that does not compile (a bug).
+    /// The shared shape file does not parse, or a pattern in it does not compile (a bug).
     pub fn new() -> Result<Self, String> {
+        let shapes: serde_json::Value = serde_json::from_str(SHAPES)
+            .map_err(|e| format!("lib/busyloop_shapes.json does not parse: {e}"))?;
+        let compile = |key: &str| -> Result<Regex, String> {
+            let pattern = shapes
+                .get(key)
+                .and_then(serde_json::Value::as_str)
+                .ok_or_else(|| format!("lib/busyloop_shapes.json has no `{key}` pattern"))?;
+            Regex::new(pattern).map_err(|e| format!("busy-loop pattern {key} {pattern:?}: {e}"))
+        };
         Ok(Self {
-            loop_re: Regex::new(SHAPE).map_err(|e| format!("busy-loop pattern {SHAPE:?}: {e}"))?,
+            loop_re: compile("busy_loop")?,
+            wait_re: compile("busy_wait")?,
+            read_re: compile("read_condition")?,
         })
     }
 }
@@ -108,27 +140,58 @@ fn line_of(text: &str, offset: usize) -> (usize, usize) {
     (start, end)
 }
 
+/// The 1-based line of `offset` in the masked text (the mask keeps every newline).
+fn number_of(masked: &str, offset: usize) -> usize {
+    masked[..offset].matches('\n').count() + 1
+}
+
+/// The text's CODE: strings filled, comments and heredoc bodies blanked, through the house's own
+/// shell mask (`earlypipe::lex::mask_top`), so a loop inside any of them is text and is not judged.
+fn code_of(text: &str) -> String {
+    let (masked, _top) = crate::earlypipe::lex::mask_top(text);
+    masked.into_iter().collect()
+}
+
 /// The busy loops this text RUNS: in code, and backgrounded.
-///
-/// The code is read through the house's own shell mask (`earlypipe::lex::mask_top`), so a loop
-/// inside a string, a heredoc body or a comment is text and is not judged.
 #[must_use]
 pub fn spinning(text: &str, rules: &Rules) -> Vec<Finding> {
-    let (masked, _top) = crate::earlypipe::lex::mask_top(text);
-    let masked: String = masked.into_iter().collect();
+    let masked = code_of(text);
     let mut out = Vec::new();
-    for found in rules.loop_re.find_iter(&masked) {
+    for found in rules.loop_re.find_iter(&masked).flatten() {
         let (start, end) = line_of(&masked, found.start());
-        let line = &masked[start..end];
-        if !backgrounded(line) {
+        if !backgrounded(&masked[start..end]) {
             continue;
         }
-        let number = text[..found.start()].matches('\n').count() + 1;
+        let number = number_of(&masked, found.start());
         let raw = text.lines().nth(number - 1).unwrap_or("").trim().to_owned();
         out.push(Finding {
             line: number,
             text: raw,
-            why: "a backgrounded busy loop has nothing to reap it",
+            why: WHY_SPINNER,
+        });
+    }
+    out
+}
+
+/// The busy-waits this text RUNS (G17): in code, of any condition, foreground or background.
+/// A `read` condition drains its input rather than spinning and is not one.
+#[must_use]
+pub fn waiting(text: &str, rules: &Rules) -> Vec<Finding> {
+    let masked = code_of(text);
+    let mut out = Vec::new();
+    for caps in rules.wait_re.captures_iter(&masked).flatten() {
+        let (Some(whole), Some(cond)) = (caps.get(0), caps.name("cond")) else {
+            continue;
+        };
+        if rules.read_re.is_match(cond.as_str()).unwrap_or(false) {
+            continue;
+        }
+        let number = number_of(&masked, whole.start());
+        let raw = text.lines().nth(number - 1).unwrap_or("").trim().to_owned();
+        out.push(Finding {
+            line: number,
+            text: raw,
+            why: WHY_WAIT,
         });
     }
     out
@@ -194,10 +257,17 @@ pub fn excusing_marker(text: &str, line: usize) -> Option<usize> {
 }
 
 /// Every finding in one shell source: the loops it runs, and the markers that excuse nothing.
+///
+/// A line carrying both shapes (`while :; do :; done &` is both) is ONE finding, the spinner's.
 #[must_use]
 pub fn findings(text: &str, rules: &Rules) -> Vec<Finding> {
     let mut out = Vec::new();
-    let loops = spinning(text, rules);
+    let mut loops = spinning(text, rules);
+    for wait in waiting(text, rules) {
+        if !loops.iter().any(|found| found.line == wait.line) {
+            loops.push(wait);
+        }
+    }
     let mut used: Vec<usize> = Vec::new();
     for finding in &loops {
         match excusing_marker(text, finding.line) {
@@ -222,7 +292,8 @@ pub fn findings(text: &str, rules: &Rules) -> Vec<Finding> {
             out.push(Finding {
                 line,
                 text: text_of_line,
-                why: "`load-ok` excuses nothing: no backgrounded busy loop is under it",
+                why:
+                    "`load-ok` excuses nothing: no backgrounded busy loop or busy-wait is under it",
             });
         }
     }
@@ -277,7 +348,13 @@ pub fn format_report(hits: &[(String, Finding)], read: usize, staged: bool) -> S
     );
     let _ = writeln!(
         out,
-        "    A deliberate background busy loop says so on the line (or on the comment lines directly\n    \
+        "    A busy-wait (`until <cond>; do :; done`) re-tests its condition as fast as the CPU allows, so\n    \
+         it pins a core until the condition holds -- forever, if it never does -- and hangs the shell\n    \
+         meanwhile. Wait the house way: a loop that sleeps (`until <cond>; do sleep 2; done`)."
+    );
+    let _ = writeln!(
+        out,
+        "    A deliberate busy loop or busy-wait says so on the line (or on the comment lines directly\n    \
          above it): `# load-ok: <reason>`."
     );
     out
@@ -287,7 +364,7 @@ pub fn format_report(hits: &[(String, Finding)], read: usize, staged: bool) -> S
 #[must_use]
 pub fn format_ok(read: usize, staged: bool) -> String {
     let scope = if staged { "staged" } else { "tracked" };
-    format!("no backgrounded busy loop in the {scope} files ({read} shell source(s) read)")
+    format!("no busy loop or busy-wait in the {scope} files ({read} shell source(s) read)")
 }
 
 /// `goh busy-loop`: the check on its own, over the tracked files or the index.
@@ -330,7 +407,7 @@ pub fn run_command(staged: bool) -> i32 {
 /// The structural step: the same check, over the files the pipeline already listed.
 #[must_use]
 pub fn step(repo: &Path, files: &[String], staged: bool) -> Option<i32> {
-    const LABEL: &str = "no backgrounded busy loop in a tracked file";
+    const LABEL: &str = "no busy loop or busy-wait in a tracked file";
     let start = crate::step_report::begin(LABEL);
     let (hits, read) = scan(repo, files, None, staged);
     crate::subject::record(&crate::subject::BUSY_LOOP, read);

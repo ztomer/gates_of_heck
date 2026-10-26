@@ -21,4 +21,11 @@ CASES = [
         {"load.sh": "#!/bin/sh\nfor i in $(seq 1 24); do (while :; do :; done) & done\n"},
         {"load.sh": "#!/bin/sh\necho 'while :; do :; done'\n"},
     ),
+    (
+        "a tracked shell file that busy-waits is refused",
+        "check_busy_loop.py",
+        [],
+        {"wait.sh": "#!/bin/sh\nuntil [ -f /tmp/ready ]; do :; done\n"},
+        {"wait.sh": "#!/bin/sh\nuntil [ -f /tmp/ready ]; do sleep 1; done\n"},
+    ),
 ]
