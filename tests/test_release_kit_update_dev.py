@@ -77,3 +77,30 @@ class TestUpdateDev:
         (bin_dir / "open").chmod(0o755)
         r = run_update_dev(tmp_path, bin_dir)
         assert r.returncode == 0, r.stdout + r.stderr
+
+    def test_ditto_that_copies_nothing_is_not_reported_installed(self, tmp_path):
+        """The claim is read back (G15/G16): `ditto` exiting 0 is not proof the copy is there."""
+        bin_dir = tmp_path / "fakeditto"
+        bin_dir.mkdir()
+        (bin_dir / "ditto").write_text("#!/usr/bin/env bash\nexit 0\n")  # a no-op that succeeds
+        (bin_dir / "ditto").chmod(0o755)
+        r = run_update_dev(tmp_path, bin_dir)
+        assert r.returncode != 0, r.stdout + r.stderr
+        assert "installed" not in r.stdout, r.stdout
+        assert "differs from" in r.stdout + r.stderr
+
+    def test_ditto_that_copies_something_else_is_not_reported_installed(self, tmp_path):
+        bin_dir = tmp_path / "fakeditto"
+        bin_dir.mkdir()
+        (bin_dir / "ditto").write_text(
+            '#!/usr/bin/env bash\nmkdir -p "$2/Contents/MacOS"\necho stale > "$2/Contents/MacOS/Demo"\n'
+        )
+        (bin_dir / "ditto").chmod(0o755)
+        r = run_update_dev(tmp_path, bin_dir)
+        assert r.returncode != 0, r.stdout + r.stderr
+        assert "installed" not in r.stdout, r.stdout
+
+    def test_a_real_install_reports_installed_after_the_read_back(self, tmp_path):
+        r = run_update_dev(tmp_path, None)
+        assert r.returncode == 0, r.stdout + r.stderr
+        assert f"installed {tmp_path / 'dest' / 'Demo.app'}" in r.stdout

@@ -11,7 +11,8 @@
 #                     test the build you just replaced. Quit gracefully
 #                     (osascript), then pkill as fallback.
 #   3. install        replace $DEST_DIR/$APP_NAME (ditto — preserves signature,
-#                     symlinks and metadata a plain cp can mangle)
+#                     symlinks and metadata a plain cp can mangle), then READ IT
+#                     BACK: the destination must equal the source (diff -r)
 #   4. de-quarantine  /usr/bin/xattr BY ABSOLUTE PATH: Homebrew's python xattr
 #                     shadows it and does not implement -r; bare `xattr -dr`
 #                     printed usage and reported success with quarantine still
@@ -95,6 +96,10 @@ else
 fi
 mkdir -p "$DEST_DIR"
 ditto "$APP_PATH" "$DEST" || die "could not write to $DEST_DIR (try sudo, or set DEST_DIR)"
+# Read the destination back (G16): `ditto` exiting 0 is not the copy being there. Compared BEFORE
+# the xattr and signing steps change the installed bundle, symlinks as links (--no-dereference).
+[ -d "$DEST" ] && diff -rq --no-dereference "$APP_PATH" "$DEST" >/dev/null 2>&1 \
+  || die "update_dev: $DEST differs from $APP_PATH after ditto -- nothing installed"
 
 # ── 4. clear Gatekeeper xattrs — then PROVE it took ──────────────────────────
 XATTR=/usr/bin/xattr
