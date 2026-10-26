@@ -92,6 +92,31 @@ def test_tools_list_exposes_name_description_schema():
     assert tools["echo"]["inputSchema"]["required"] == ["message"]
 
 
+def test_tools_list_carries_annotations_only_when_declared():
+    # MCP tool annotations (readOnlyHint / destructiveHint ...) are how a client learns a tool
+    # deletes data BEFORE it calls it. Declared ones are listed verbatim; a tool that declares none
+    # lists none, so every existing server's tools/list stays byte-identical.
+    s = _server()
+
+    @s.tool(
+        description="Wipes the store.",
+        schema={"type": "object", "properties": {}},
+        annotations={"readOnlyHint": False, "destructiveHint": True},
+    )
+    def wipe() -> str:
+        return "wiped"
+
+    @s.tool_from_function(description="Reads the store.", annotations={"readOnlyHint": True})
+    def peek() -> str:
+        return "peeked"
+
+    resp = s.handle_message({"jsonrpc": "2.0", "id": 2, "method": "tools/list"})
+    tools = {t["name"]: t for t in resp["result"]["tools"]}
+    assert tools["wipe"]["annotations"] == {"readOnlyHint": False, "destructiveHint": True}
+    assert tools["peek"]["annotations"] == {"readOnlyHint": True}
+    assert "annotations" not in tools["echo"]
+
+
 def test_tool_call_returns_text_content():
     resp = _server().handle_message(
         {

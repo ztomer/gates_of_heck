@@ -123,11 +123,15 @@ class McpServer:
 
     # -- registration -------------------------------------------------------
 
-    def tool(self, description: str, schema: dict) -> Callable:
+    def tool(self, description: str, schema: dict, annotations: dict | None = None) -> Callable:
         """Register a handler under its own function name.
 
         @server.tool(description="...", schema={...inputSchema...})
         def echo(message): ...
+
+        `annotations` is the MCP tool-annotations object (readOnlyHint, destructiveHint,
+        idempotentHint, openWorldHint): how a client learns a tool deletes data before calling it.
+        Listed verbatim by tools/list when given, absent when not.
         """
 
         def register(fn: Callable) -> Callable:
@@ -141,6 +145,8 @@ class McpServer:
                 "inputSchema": schema,
                 "handler": fn,
             }
+            if annotations is not None:
+                self._tools[name]["annotations"] = annotations
             return fn
 
         return register
@@ -151,6 +157,7 @@ class McpServer:
         *,
         description: str | None = None,
         schema: dict | None = None,
+        annotations: dict | None = None,
     ) -> Callable:
         """Register a tool from a plain function, inferring inputSchema.
 
@@ -215,6 +222,8 @@ class McpServer:
                 "inputSchema": input_schema,
                 "handler": func,
             }
+            if annotations is not None:
+                self._tools[name]["annotations"] = annotations
             return func
 
         if fn is not None:
@@ -222,10 +231,17 @@ class McpServer:
         return _register
 
     def tools_list(self) -> list[dict]:
-        return [
-            {"name": name, "description": spec["description"], "inputSchema": spec["inputSchema"]}
-            for name, spec in self._tools.items()
-        ]
+        listed = []
+        for name, spec in self._tools.items():
+            entry = {
+                "name": name,
+                "description": spec["description"],
+                "inputSchema": spec["inputSchema"],
+            }
+            if "annotations" in spec:
+                entry["annotations"] = spec["annotations"]
+            listed.append(entry)
+        return listed
 
     # -- dispatch -----------------------------------------------------------
 
