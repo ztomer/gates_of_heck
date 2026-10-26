@@ -1,8 +1,38 @@
 # CHANGELOG
 
-## v0.51.0 — the house interpreter is found one way, and python3's floor is 3.15 _(2026-10-25)_
+## v0.51.0 — the house interpreter is found one way, python3's floor is 3.15, and the gate runs its suite once _(2026-10-26)_
 
-Minor bump: a new seam (`GOH_PY`, `lib/house_python.sh`) and a raised floor a consumer can fail.
+Minor bump: new seams (`GOH_PY`, `lib/house_python.sh`; `GOH_BIN_STORE`) and a raised floor a
+consumer can fail.
+
+* **The pre-push gate runs the suite ONCE (G2e).** Owner: "an hour for self test is a bit much".
+  Measured at 3a63301 with `GOH_PROVEN=0`: 317 s, and the suite ran TWICE side by side -- as its own
+  step (196 s) and inside `rust_gate.sh`'s coverage group over the instrumented binary
+  (`GOH_COV_RUST_EXTERNAL`, 207 s). That run is the same suite and is red when a test fails (the
+  baseline proved it on the test below), so the step is gone, and `cargo test --workspace` became
+  `--doc`: the coverage group already runs every lib, bin and test target with `--all-features`.
+  `checks/_calibration.py`'s `runs_pytest()` counts the coverage route, so a cited test is still a
+  proof that runs on every push. Pinned by `tests/test_suite_runs_once.py`.
+
+* **goh is built once per SOURCE, machine-wide.** Every gates root a gate makes (a worktree, its C4
+  export, `path_invariance.py`'s clone, a test's clean checkout) started with an empty
+  `bin/by-stamp/` store, and one gate run built the same source five times. `gates/_goh_bin.sh`
+  now reads a shared store keyed by the source stamp (`GOH_BIN_STORE`, default
+  `~/.cache/goh/by-stamp`) before building, and every build lands there too. A binary is taken only
+  if it reports the stamp it is filed under (`tests/test_binary_store_shared.py`).
+
+* **One suite per checkout.** `tools/pytest.sh` takes a lock (a symlink to its pid in the
+  checkout's own git dir) and refuses a second top-level run, naming the holder; a dead holder's
+  lock is reaped (`tests/test_suite_lock.py`).
+
+* **A recorded fake cargo for the crate cache's scoping tests** (`tests/_fake_cargo.py`): metadata
+  from the real cargo, compiles recorded and green. The dep-info tests stay on real cargo as the
+  end-to-end proof. Measured and NOT kept: a 6-slot cap on cargo-heavy tests was slower in both
+  orders (150 vs 115 s, 170 vs 144 s), because the longest-first schedule left capped workers idle.
+
+* **G2d's own red test, fixed.** `GOH_PY` and `GOH_PY_OK` were exported and on no list, so
+  `test_every_key_the_gates_export_is_verdict_free` failed at 3a63301. `GOH_PY` is keyed (another
+  interpreter can judge differently); `GOH_PY_OK` is verdict-free.
 
 * **python3's floor is 3.15, and v0.50.0's 3.9 is REVERSED (G2d).** G2b floored python3 at 3.9 as
   "PROVEN: goh's own suite drives the gates on /usr/bin/python3 3.9.6, green". That recorded an
