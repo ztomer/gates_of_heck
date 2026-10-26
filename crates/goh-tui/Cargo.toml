@@ -1,6 +1,12 @@
 [package]
 name = "goh-tui"
-version.workspace = true
+# goh-tui's OWN version line, never the workspace's (queue G8). Repos consume this crate by path
+# (antiknob: `../gates_of_heck/crates/goh-tui`) and their Cargo.lock records this number, so while
+# it inherited goh's release version every goh release staled every consumer's lock and its
+# `--locked` gate. Move it ONLY when the crate's API or dependencies move; each consumer then
+# refreshes its lock deliberately. Never equal to goh's release number, so a release's
+# find-and-replace cannot move it (tests/test_goh_tui_version_line.py pins both).
+version = "0.1.0"
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
