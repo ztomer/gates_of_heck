@@ -50,7 +50,9 @@ GOH_JS_SYNTAX=on
 # less than this is red, because a scan that stopped reading its subject reports clean. Set at
 # about nine tenths of what each read on 2026-10-13 (in brackets), as the stdin floor above is:
 # a file or two deleted is not a red gate, a filter or parser that stopped matching is. Lower one
-# with the tree in the same commit. No workflows here, so checkout-credentials carries none.
+# with the tree in the same commit. checkout-credentials reads ONE file here (the composite action
+# .github/actions/goh-floors/action.yml; the repo has no workflows), so its floor is 1 -- the
+# whole subject, not nine tenths of it: a scan that reads that file and no longer sees it is red.
 GOH_EMOJI_MIN_FILES=570                 # [637] text files
 GOH_CONFLICT_MARKERS_MIN_FILES=570      # [637] files
 GOH_FILE_LENGTH_MIN_FILES=520           # [582] files measured
@@ -64,6 +66,7 @@ GOH_BARE_PYTHON_MIN_FILES=5             # [6] hook/gate scripts
 GOH_TAP_WRITES_MIN_FILES=370            # [414] script/workflow files (2026-10-17)
 GOH_MOVING_TAGS_MIN_REFS=0              # [0] image references -- this tree builds and pulls no image
 GOH_MD_LINKS_MIN_LINKS=1                # [1] markdown links -- this tree cites by path, not link
+GOH_CHECKOUT_CREDENTIALS_MIN_FILES=1    # [1] workflow/action files (2026-10-26)
 GOH_UNREAPED_SPAWN_MIN_FILES=300        # [337] test files
 GOH_STATUS_MARKERS_MIN_FILES=510        # [568] source files (a GOH_CI_STEPS step)
 GOH_SKILLS_ROOT=$HOME/.claude/skills

@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from conftest import commit_all, run_goh, stage, write
+from conftest import REPO_ROOT, commit_all, run_goh, stage, write
 
 TEST_SRC = "def test_one():\n    assert 1 + 1 == 2\n"
 KEY = "GOH_UNREAPED_SPAWN_MIN_FILES"
@@ -90,3 +90,32 @@ def test_a_commit_is_never_judged_against_a_floor(repo: Path) -> None:
     r = run_goh(repo, "structural", "--staged")
     assert r.returncode == 0, r.stdout + r.stderr
     assert "declared subject" not in r.stdout, r.stdout
+
+
+# Scanners that do not RUN against this tree, so there is no read count to floor: the pre-push
+# advisory names only scanners that ran. Each reason is a fact about `.gatesrc`, and an entry whose
+# scanner starts running here (its floor then belongs in `.gatesrc`) is itself a failure.
+NO_SUBJECT_HERE = {
+    "GOH_JS_SYNTAX_MIN_FILES": "GOH_JS_SYNTAX=on, but the tree tracks no JavaScript: 0 files to floor",
+    "GOH_FIXED_SLEEP_MIN_FILES": "goh fixed-sleep is opt-in and not switched on here",
+}
+
+
+def test_this_repo_declares_a_floor_for_every_scanner_that_runs_here() -> None:
+    """The pre-push advisory "N scanner(s) declare no floor" was live in goh itself for
+    `GOH_CHECKOUT_CREDENTIALS_MIN_FILES` (G17): a repo that owns the floors declares every one it
+    runs. Every key the binary can judge (subject.rs) is a key `.gatesrc` sets, bar the scanners
+    that read nothing here."""
+    import re
+
+    source = (REPO_ROOT / "crates" / "goh" / "src" / "subject.rs").read_text()
+    keys = set(re.findall(r'key: "(GOH_\w+_MIN_\w+)"', source))
+    declared = set(
+        re.findall(r"^(GOH_\w+_MIN_\w+)=\d+", (REPO_ROOT / ".gatesrc").read_text(), re.MULTILINE)
+    )
+    assert keys, "no scanner subject found in subject.rs: the parse stopped matching"
+    missing = keys - declared - set(NO_SUBJECT_HERE)
+    assert not missing, f".gatesrc declares no floor for {sorted(missing)}"
+    stale = set(NO_SUBJECT_HERE) & declared
+    assert not stale, f"{sorted(stale)} now declare a floor: drop them from NO_SUBJECT_HERE"
+    assert set(NO_SUBJECT_HERE) <= keys, "NO_SUBJECT_HERE names a key no scanner has"
