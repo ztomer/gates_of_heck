@@ -108,6 +108,7 @@ def test_the_cli_lists_a_layer_and_prints_install_commands():
         text=True,
         timeout=30,
         stdin=subprocess.DEVNULL,
+        check=False,
     )
     assert out.returncode == 0, out.stderr
     # The cargo tools go through a presence guard -- see
@@ -215,6 +216,7 @@ def test_repo_detection_finds_the_layers_a_repo_declares(tmp_path):
         text=True,
         timeout=30,
         stdin=subprocess.DEVNULL,
+        check=False,
     )
     assert out.returncode == 0, out.stderr
     tools = {line.split("\t")[1] for line in out.stdout.splitlines() if line.strip()}
@@ -230,6 +232,7 @@ def test_ruff_is_only_for_repos_that_opted_into_the_format_check():
         text=True,
         timeout=30,
         stdin=subprocess.DEVNULL,
+        check=False,
     )
     assert out.returncode == 0, out.stderr
     assert out.stdout.split() == ["cargo", "shellcheck"], out.stdout  # cargo builds bin/goh (N3)
@@ -242,6 +245,7 @@ def test_an_unknown_layer_is_refused_not_ignored():
         text=True,
         timeout=30,
         stdin=subprocess.DEVNULL,
+        check=False,
     )
     assert out.returncode == 2 and "rsut" in out.stderr
 
@@ -262,6 +266,7 @@ def test_the_cross_lint_tools_are_for_repos_that_name_zigbuild(tmp_path, gatesrc
         text=True,
         timeout=30,
         stdin=subprocess.DEVNULL,
+        check=False,
     )
     assert out.returncode == 0, out.stderr
     names = set(out.stdout.split())
@@ -280,6 +285,7 @@ def _names_for(repo: Path, files: dict[str, str]) -> list[str]:
         capture_output=True,
         text=True,
         stdin=subprocess.DEVNULL,
+        check=False,
     )
     assert r.returncode == 0, r.stderr
     return r.stdout.split()

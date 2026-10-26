@@ -61,6 +61,7 @@ def _run(
         text=True,
         env=_env(runner, goh, **extra),
         stdin=subprocess.DEVNULL,
+        check=False,
     )
 
 
@@ -151,6 +152,7 @@ def test_both_steps_run_at_the_repo_root_from_a_subdirectory(runner, repo, goh):
             text=True,
             env=_env(runner, goh),
             stdin=subprocess.DEVNULL,
+            check=False,
         )
         assert r.returncode == 1 and GREW in _out(r), (scope, _out(r))
 
@@ -190,6 +192,7 @@ def _hooked_commit(runner: str, goh: Path, repo: Path, *args: str) -> subprocess
         text=True,
         env=_env(runner, goh),
         stdin=subprocess.DEVNULL,
+        check=False,
     )
 
 

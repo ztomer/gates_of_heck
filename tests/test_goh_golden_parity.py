@@ -149,7 +149,9 @@ def make_pair_numpy(tmp_path: Path, name: str, w: int, h: int, seed: int):
 
 
 def run(cmd: list[str], env: dict | None = None) -> tuple[int, dict | None, str]:
-    r = subprocess.run(cmd, capture_output=True, text=True, env=env, stdin=subprocess.DEVNULL)
+    r = subprocess.run(
+        cmd, capture_output=True, text=True, env=env, stdin=subprocess.DEVNULL, check=False
+    )
     return r.returncode, (json.loads(r.stdout) if r.stdout.strip() else None), r.stderr
 
 

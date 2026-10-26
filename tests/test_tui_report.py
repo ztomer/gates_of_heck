@@ -85,6 +85,7 @@ def _python_run(tree: Path, code: str, *args: str) -> bytes:
         capture_output=True,
         stdin=subprocess.DEVNULL,
         timeout=60,
+        check=False,
     )
     assert r.returncode == 0, r.stderr.decode("utf-8", "replace")
     return r.stdout
@@ -103,6 +104,7 @@ def _shell_run(tree: Path, body: str, *args: str) -> bytes:
         capture_output=True,
         stdin=subprocess.DEVNULL,
         timeout=60,
+        check=False,
     )
     assert r.returncode == 0, r.stderr.decode("utf-8", "replace")
     return r.stdout
@@ -208,6 +210,7 @@ def test_the_shell_half_issues_one_printf(tmp_path):
         capture_output=True,
         stdin=subprocess.DEVNULL,
         timeout=60,
+        check=False,
     )
     assert r.returncode == 0, r.stderr.decode("utf-8", "replace")
     calls = log.read_text().splitlines()

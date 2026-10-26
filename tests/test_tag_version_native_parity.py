@@ -59,7 +59,11 @@ def test_every_strategy_reads_every_fixture_the_same(goh: Path, kind: str) -> No
     for text in TEXTS:
         want = [list(x) for x in sources.STRATEGIES[kind](text)]
         r = subprocess.run(
-            [str(goh), "tag-version", "--extract", kind], input=text, capture_output=True, text=True
+            [str(goh), "tag-version", "--extract", kind],
+            input=text,
+            capture_output=True,
+            text=True,
+            check=False,
         )
         assert r.returncode == 0, r.stderr
         assert json.loads(r.stdout) == want, (kind, text[:80])

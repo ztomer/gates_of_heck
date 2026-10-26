@@ -59,7 +59,13 @@ def _run_bash(
         env["GOH_BIN"] = str(goh)
     cmd = ["bash", str(STRUCTURAL), "--staged"] if staged else ["bash", str(STRUCTURAL)]
     return subprocess.run(
-        cmd, cwd=repo, capture_output=True, text=True, env=env, stdin=subprocess.DEVNULL
+        cmd,
+        cwd=repo,
+        capture_output=True,
+        text=True,
+        env=env,
+        stdin=subprocess.DEVNULL,
+        check=False,
     )
 
 
@@ -69,7 +75,13 @@ def _run_goh(
     env = hermetic_env(GOH_DIR=str(ROOT), **(extra or {}))
     cmd = [str(goh), "structural", "--staged"] if staged else [str(goh), "structural"]
     return subprocess.run(
-        cmd, cwd=repo, capture_output=True, text=True, env=env, stdin=subprocess.DEVNULL
+        cmd,
+        cwd=repo,
+        capture_output=True,
+        text=True,
+        env=env,
+        stdin=subprocess.DEVNULL,
+        check=False,
     )
 
 
@@ -256,6 +268,7 @@ def test_structural_sh_execs_the_native_binary_when_told_where_it_is(goh, tmp_pa
         text=True,
         env=env,
         stdin=subprocess.DEVNULL,
+        check=False,
     )
     assert r.returncode == 0, r.stdout + r.stderr
     assert "goh binary not built" not in r.stderr
@@ -267,6 +280,7 @@ def test_structural_sh_execs_the_native_binary_when_told_where_it_is(goh, tmp_pa
         text=True,
         env=env,
         stdin=subprocess.DEVNULL,
+        check=False,
     )
     assert r.returncode == 1, r.stdout + r.stderr
     assert r.stderr.count("GOH_BIN=/nonexistent/goh is not an executable") == 1, r.stderr

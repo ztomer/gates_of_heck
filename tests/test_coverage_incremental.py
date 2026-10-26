@@ -20,7 +20,10 @@ from conftest import REPO_ROOT, hermetic_env
 pytestmark = pytest.mark.skipif(
     shutil.which("cargo") is None
     or subprocess.run(
-        ["cargo", "llvm-cov", "--version"], capture_output=True, stdin=subprocess.DEVNULL
+        ["cargo", "llvm-cov", "--version"],
+        capture_output=True,
+        stdin=subprocess.DEVNULL,
+        check=False,
     ).returncode,
     reason="cargo llvm-cov not available",
 )
@@ -37,7 +40,7 @@ def _cov(crate: Path) -> str:
     r = subprocess.run(
         ["/bin/bash", str(REPO_ROOT / "gates" / "coverage_gate.sh"), "--lang", "rust", "--floor",
          "0", str(crate)],
-        cwd=crate, capture_output=True, text=True, env=hermetic_env(), timeout=600, stdin=subprocess.DEVNULL,
+        cwd=crate, capture_output=True, text=True, env=hermetic_env(), timeout=600, stdin=subprocess.DEVNULL, check=False,
     )  # fmt: skip
     assert r.returncode == 0, r.stdout + r.stderr
     return next(ln for ln in r.stdout.splitlines() if "[coverage]" in ln).split(" (floor")[0][-40:]

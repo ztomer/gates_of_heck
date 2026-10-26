@@ -160,6 +160,7 @@ def test_gates_bash_include_and_floors_json_flags_accepted(tmp_path):
         capture_output=True,
         text=True,
         stdin=subprocess.DEVNULL,
+        check=False,
     )
     assert "unknown option" not in (r.stdout + r.stderr)
     r2 = subprocess.run(
@@ -175,6 +176,7 @@ def test_gates_bash_include_and_floors_json_flags_accepted(tmp_path):
         capture_output=True,
         text=True,
         stdin=subprocess.DEVNULL,
+        check=False,
     )
     assert r2.returncode == 2
     assert "floors file not found" in (r2.stdout + r2.stderr)
@@ -189,6 +191,7 @@ def test_coverage_swift_requires_one_floor_declaration(tmp_path):
         capture_output=True,
         text=True,
         stdin=subprocess.DEVNULL,
+        check=False,
     )
     assert r.returncode == 2
     assert "no coverage floor" in (r.stderr + r.stdout).lower()

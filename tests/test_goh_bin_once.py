@@ -16,7 +16,11 @@ from pathlib import Path
 from conftest import REPO_ROOT, hermetic_env
 
 REAL_GIT = subprocess.run(
-    ["sh", "-c", "command -v git"], capture_output=True, text=True, stdin=subprocess.DEVNULL
+    ["sh", "-c", "command -v git"],
+    capture_output=True,
+    text=True,
+    stdin=subprocess.DEVNULL,
+    check=False,
 ).stdout.strip()
 # A gate's shape: `_from_head.sh` first (it exports git's binding variables once), then a resolution.
 PARENT = (
@@ -46,6 +50,7 @@ def test_a_goh_sh_child_takes_its_parents_resolution(tmp_path: Path) -> None:
         capture_output=True,
         text=True,
         stdin=subprocess.DEVNULL,
+        check=False,
     )
     assert r.returncode == 0, r.stdout + r.stderr
     callers = [ln.split(" :: ")[0].split() for ln in log.read_text().splitlines()]
@@ -71,6 +76,7 @@ def test_an_answer_whose_binary_is_gone_is_asked_again(tmp_path: Path) -> None:
         capture_output=True,
         text=True,
         stdin=subprocess.DEVNULL,
+        check=False,
     )
     assert r.stdout and "no-such-goh" not in r.stdout, r.stdout + r.stderr
 
@@ -91,6 +97,7 @@ def test_an_answer_for_another_gates_root_is_not_taken(tmp_path: Path) -> None:
         capture_output=True,
         text=True,
         stdin=subprocess.DEVNULL,
+        check=False,
     )
     assert r.stdout and str(fake) != r.stdout, r.stdout + r.stderr
 
@@ -121,7 +128,7 @@ def test_rust_gate_runs_its_native_steps_without_the_dispatcher(tmp_path: Path) 
     env["PATH"] = f"{shim}:{env['PATH']}"
     r = subprocess.run(
         ["/bin/bash", str(REPO_ROOT / "gates" / "rust_gate.sh"), str(crate)],
-        cwd=crate, env=env, capture_output=True, text=True, timeout=300, stdin=subprocess.DEVNULL,
+        cwd=crate, env=env, capture_output=True, text=True, timeout=300, stdin=subprocess.DEVNULL, check=False,
     )  # fmt: skip
     assert r.returncode == 0, r.stdout + r.stderr
     dispatched = [ln for ln in log.read_text().splitlines() if "/goh.sh " in f"{ln} "]

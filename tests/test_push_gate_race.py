@@ -40,6 +40,7 @@ def _push(repo: Path, tmp_path: Path, local_ref: str) -> subprocess.CompletedPro
         input=f"{local_ref} {sha} refs/heads/main {'0' * 40}\n",
         capture_output=True,
         timeout=60,
+        check=False,
     )
 
 

@@ -36,6 +36,7 @@ def _push(repo, tmp_path, *pairs, extra_env=None, url="unused-url"):
         text=True,
         input=_refs(*pairs),
         capture_output=True,
+        check=False,
     )
 
 

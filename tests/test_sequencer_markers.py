@@ -46,6 +46,7 @@ def _git(repo: Path, *args: str, check: bool = True) -> subprocess.CompletedProc
         text=True,
         env=_env(),
         stdin=subprocess.DEVNULL,
+        check=False,
     )
     if check and r.returncode != 0:
         raise AssertionError(f"git {' '.join(args)} failed:\n{r.stdout}{r.stderr}")

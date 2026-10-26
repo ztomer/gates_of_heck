@@ -60,6 +60,7 @@ def _install(goh: Path, target: Path, **env: str) -> subprocess.CompletedProcess
         text=True,
         env=hermetic_env(GOH_SKIP_BUILD="1", **env),
         stdin=subprocess.DEVNULL,
+        check=False,
     )
 
 
@@ -186,6 +187,7 @@ def test_a_failed_build_leaves_the_target_untouched(repo, goh_with_failing_build
         text=True,
         env=hermetic_env(PATH=path),
         stdin=subprocess.DEVNULL,
+        check=False,
     )
     assert r.returncode != 0, r.stdout + r.stderr
     assert "build" in r.stdout + r.stderr

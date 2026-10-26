@@ -41,6 +41,7 @@ def _native_verdict(goh: Path, url: str):
         capture_output=True,
         text=True,
         stdin=subprocess.DEVNULL,
+        check=False,
     )
     return json.loads(r.stdout)
 
@@ -59,7 +60,13 @@ def _sealed() -> dict[str, str]:
 def both(goh: Path, repo: Path, *args: str):
     env = _sealed()
     run = lambda argv: subprocess.run(
-        argv, cwd=repo, capture_output=True, text=True, env=env, stdin=subprocess.DEVNULL
+        argv,
+        cwd=repo,
+        capture_output=True,
+        text=True,
+        env=env,
+        stdin=subprocess.DEVNULL,
+        check=False,
     )  # noqa: E731
     py = run([sys.executable, str(CHECK), *args])
     rs = run([str(goh), "credential-urls", *args])

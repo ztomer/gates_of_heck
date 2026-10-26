@@ -58,6 +58,7 @@ def reference_root() -> Path:
             env=env,
             capture_output=True,
             stdin=subprocess.DEVNULL,
+            check=False,
         )
         if have.returncode != 0:
             raise RuntimeError(

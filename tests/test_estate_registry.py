@@ -61,6 +61,7 @@ def _install(target: Path, state: Path) -> subprocess.CompletedProcess:
         text=True,
         env=hermetic_env(GOH_SKIP_BUILD="1", GOH_ESTATE_STATE=str(state)),
         stdin=subprocess.DEVNULL,
+        check=False,
     )
 
 

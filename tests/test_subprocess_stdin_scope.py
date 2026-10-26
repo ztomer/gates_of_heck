@@ -63,6 +63,7 @@ def _structural(goh: Path, repo: Path, *args: str) -> subprocess.CompletedProces
         text=True,
         env=hermetic_env(GOH_DIR=str(REPO_ROOT)),
         stdin=subprocess.DEVNULL,
+        check=False,
     )
 
 

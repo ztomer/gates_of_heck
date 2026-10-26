@@ -60,6 +60,7 @@ def _structural(checkout: Path, fake: Path, tmp_path: Path):
         env=_consumer_env(checkout, fake, tmp_path),
         timeout=120,
         stdin=subprocess.DEVNULL,
+        check=False,
     )
 
 
@@ -113,5 +114,6 @@ def test_under_goh_live_the_working_trees_version_is_the_one_to_match(tmp_path):
         env=env,
         timeout=120,
         stdin=subprocess.DEVNULL,
+        check=False,
     )
     assert got.returncode == 0 and "fake native structural ran" in got.stdout, got.stderr

@@ -88,6 +88,7 @@ def _bare(main):
         capture_output=True,
         text=True,
         stdin=subprocess.DEVNULL,
+        check=False,
     ).stdout.strip()
 
 
@@ -116,6 +117,7 @@ def test_empty_scope_sweep_never_touches_the_hooks_repo(tmp_path):
         capture_output=True,
         text=True,
         stdin=subprocess.DEVNULL,
+        check=False,
     )
     text = out.stdout + out.stderr
     assert _bare(main) in ("", "false"), text
@@ -134,6 +136,7 @@ def test_empty_scope_probe_never_touches_the_hooks_repo(tmp_path):
         capture_output=True,
         text=True,
         stdin=subprocess.DEVNULL,
+        check=False,
     )
     assert out.returncode == 0, out.stdout + out.stderr
     assert _bare(main) in ("", "false"), out.stdout + out.stderr
@@ -149,6 +152,7 @@ def test_probes_run_without_the_hooks_variables(tmp_path):
         capture_output=True,
         text=True,
         stdin=subprocess.DEVNULL,
+        check=False,
     )
     assert out.returncode == 0, out.stdout + out.stderr
     assert _bare(main) in ("", "false"), out.stdout + out.stderr
@@ -171,6 +175,7 @@ def test_push_gate_runs_the_export_without_the_pushers_git_dir(tmp_path):
         text=True,
         capture_output=True,
         input=f"refs/heads/wt {sha} refs/heads/wt {'0' * 40}\n",
+        check=False,
     )
     seen = report.read_text() if report.exists() else ""
     assert out.returncode == 0, out.stdout + out.stderr
@@ -213,6 +218,7 @@ def test_conftest_scrubs_before_any_fixture_runs(tmp_path):
         capture_output=True,
         text=True,
         stdin=subprocess.DEVNULL,
+        check=False,
     )
     assert out.returncode == 0, out.stdout + out.stderr
     assert _bare(main) in ("", "false"), out.stdout + out.stderr

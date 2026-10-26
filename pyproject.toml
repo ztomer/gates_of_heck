@@ -18,9 +18,16 @@
 # for.
 line-length = 100
 
-# The formatter only. Linting is a separate decision with a separate gate, and
-# this file does not pretend otherwise: enabling a ruleset nobody has run would
-# produce a red tree on day one and an ignored check after that.
+# The linter: ONE rule, selected by name, and `ruff check .` is a GOH_CI_STEPS step (G16). Under
+# ruff's defaults this tree reports 900+ findings that nothing runs, so the full default set is
+# not turned on; a rule is selected here only once the tree is clean under it and a step enforces
+# it. PLW1510 (`subprocess.run` without `check=`) was 325 calls that left a failing child's
+# meaning unsaid; every one now says `check=False` (the caller reads the return code) or
+# `check=True`. Other repos keep their own rule sets: the shared py_gate.sh runs the project's.
+[tool.ruff.lint]
+select = ["PLW1510"]
+
+# The formatter.
 [tool.ruff.format]
 # Preserve the blank-line conventions the existing files already use.
 docstring-code-format = false

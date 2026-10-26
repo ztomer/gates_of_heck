@@ -28,6 +28,7 @@ def _py_files() -> list[str]:
         capture_output=True,
         text=True,
         stdin=subprocess.DEVNULL,
+        check=False,
     )
     return out.stdout.split()
 
@@ -45,6 +46,7 @@ def test_every_python_file_here_yields_the_same_code_lines(goh: Path) -> None:
             capture_output=True,
             text=True,
             timeout=30,
+            check=False,
         )
         if json.loads(r.stdout) != want:
             differ.append(rel)
@@ -60,5 +62,6 @@ def test_an_untokenizable_file_falls_back_on_both(goh: Path) -> None:
         input=text,
         capture_output=True,
         text=True,
+        check=False,
     )
     assert json.loads(r.stdout) == want

@@ -112,6 +112,7 @@ def repo_root() -> str:
         capture_output=True,
         text=True,
         stdin=subprocess.DEVNULL,
+        check=False,
     )
     return out.stdout.strip()
 
@@ -144,7 +145,7 @@ def listed_files(root: str, staged: bool) -> list[str]:
         if staged
         else ["git", "-C", root, "ls-files", "-z", "--cached", "--others", "--exclude-standard"]
     )
-    out = subprocess.run(cmd, capture_output=True, stdin=subprocess.DEVNULL)
+    out = subprocess.run(cmd, capture_output=True, stdin=subprocess.DEVNULL, check=False)
     if out.returncode != 0:
         # A silent [] here is the worst possible answer: every consumer reports "0 files clean"
         # and exits 0, so a corrupt index or an unreadable object database reads exactly like a
@@ -214,6 +215,7 @@ def content_bytes(root: str, rel: str, staged: bool) -> bytes | None:
             ["git", "-C", root, "show", f":{rel}"],
             capture_output=True,
             stdin=subprocess.DEVNULL,
+            check=False,
         )
         if out.returncode == 0:
             return out.stdout

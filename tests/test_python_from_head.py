@@ -64,6 +64,7 @@ def _run(gates: Path, repo: Path, tmp_path: Path, **extra: str) -> subprocess.Co
         env=env,
         timeout=120,
         stdin=subprocess.DEVNULL,
+        check=False,
     )
 
 

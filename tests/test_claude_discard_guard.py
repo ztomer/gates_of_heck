@@ -48,7 +48,7 @@ def _decide(command: str, cwd: Path) -> str | None:
     r = subprocess.run(
         [sys.executable, str(GUARD)],
         input=json.dumps({"tool_name": "Bash", "tool_input": {"command": command}, "cwd": str(cwd)}),
-        capture_output=True, text=True, env=hermetic_env(drop_git=True), timeout=30,
+        capture_output=True, text=True, env=hermetic_env(drop_git=True), timeout=30, check=False,
     )  # fmt: skip
     assert r.returncode == 0, r.stderr
     if not r.stdout.strip():

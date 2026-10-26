@@ -36,6 +36,7 @@ def test_structural_from_subdirectory_uses_root_gatesrc(repo):
         capture_output=True,
         text=True,
         stdin=subprocess.DEVNULL,
+        check=False,
     )
     assert r.returncode == 1
     assert "big.py" in r.stderr
@@ -108,6 +109,7 @@ def test_py_gate_scopes_coverage_to_the_physical_path(repo, tmp_path):
             "GOH_PY_COV_MIN": "70",
         },
         stdin=subprocess.DEVNULL,
+        check=False,
     )
     assert r.returncode == 0, r.stdout + r.stderr
 
@@ -151,6 +153,7 @@ def test_py_gate_clean_package_passes(tmp_path):
         capture_output=True,
         text=True,
         stdin=subprocess.DEVNULL,
+        check=False,
     )
     assert r.returncode == 0, r.stdout + r.stderr
     assert "all python gates passed" in r.stdout
@@ -177,6 +180,7 @@ def test_py_gate_failing_test_blocks_with_output(tmp_path):
         capture_output=True,
         text=True,
         stdin=subprocess.DEVNULL,
+        check=False,
     )
     assert r.returncode != 0
     assert "assert 1 == 2" in r.stderr  # failing output printed, not buried
@@ -227,6 +231,7 @@ def test_py_gate_cov_floor_names_never_imported_modules(tmp_path):
         text=True,
         env={**dict(__import__("os").environ), "GOH_PY_COV_MIN": "100"},
         stdin=subprocess.DEVNULL,
+        check=False,
     )
     assert r.returncode != 0, f"a 100% floor passed a never-imported module: {r.stdout!r}"
     assert "untested.py" in r.stdout + r.stderr, (

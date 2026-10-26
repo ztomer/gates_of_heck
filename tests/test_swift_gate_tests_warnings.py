@@ -51,6 +51,7 @@ def _run(repo: Path, bin_dir: Path, tmp_path: Path, **extra):
         text=True,
         env=env,
         stdin=subprocess.DEVNULL,
+        check=False,
     )
     calls = (tmp_path / "calls.txt").read_text() if (tmp_path / "calls.txt").exists() else ""
     return r, calls

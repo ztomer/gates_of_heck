@@ -57,6 +57,7 @@ def _run(wrapper, *args, **kw):
         timeout=60,
         # A caller's own `stdin=` or `input=` wins; otherwise the child reads nothing.
         stdin=kw.pop("stdin", None if "input" in kw else subprocess.DEVNULL),
+        check=kw.pop("check", False),
         **kw,
     )
 

@@ -57,6 +57,7 @@ def run_python(repo: Path, args: list[str]) -> tuple[int, list[tuple[str, int]],
         capture_output=True,
         text=True,
         stdin=subprocess.DEVNULL,
+        check=False,
     )
     over, checked = _parse(r.stdout, r.stderr)
     return r.returncode, over, checked
@@ -71,6 +72,7 @@ def run_goh(
         capture_output=True,
         text=True,
         stdin=subprocess.DEVNULL,
+        check=False,
     )
     over, checked = _parse(r.stdout, r.stderr)
     return r.returncode, over, checked

@@ -175,6 +175,7 @@ def _run_gate_env(repo, env_extra, *args):
         text=True,
         env=env,
         stdin=subprocess.DEVNULL,
+        check=False,
     )
 
 

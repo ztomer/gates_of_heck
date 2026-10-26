@@ -57,6 +57,7 @@ def _run(repo: Path, bin_dir: Path):
         text=True,
         env=env,
         stdin=subprocess.DEVNULL,
+        check=False,
     )
 
 

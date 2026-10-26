@@ -34,7 +34,7 @@ def _check(repo: Path, msg: str, *history: str) -> subprocess.CompletedProcess[s
     path.write_text(msg)
     return subprocess.run(
         [str(native_goh_path()), "commit-class", str(path)], cwd=repo, capture_output=True,
-        text=True, env=hermetic_env(drop_git=True), stdin=subprocess.DEVNULL,
+        text=True, env=hermetic_env(drop_git=True), stdin=subprocess.DEVNULL, check=False,
     )  # fmt: skip
 
 
@@ -119,7 +119,7 @@ def test_the_editor_buffer_comments_and_scissors_are_ignored(repo: Path) -> None
 def _range(repo: Path, rev: str) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
         [str(native_goh_path()), "commit-class", "--range", rev], cwd=repo, capture_output=True,
-        text=True, env=hermetic_env(drop_git=True), stdin=subprocess.DEVNULL,
+        text=True, env=hermetic_env(drop_git=True), stdin=subprocess.DEVNULL, check=False,
     )  # fmt: skip
 
 
@@ -160,7 +160,7 @@ def _hooked(repo: Path, gatesrc: str) -> None:
 def _git_commit(repo: Path, msg: str) -> subprocess.CompletedProcess[str]:
     env = hermetic_env(drop_git=True, GOH_DIR=str(REPO_ROOT), GOH_BIN=str(native_goh_path()))
     return subprocess.run(["git", "-C", str(repo), "commit", "-q", "--allow-empty", "-m", msg],
-                          capture_output=True, text=True, env=env, stdin=subprocess.DEVNULL)  # fmt: skip
+                          capture_output=True, text=True, env=env, stdin=subprocess.DEVNULL, check=False)  # fmt: skip
 
 
 def test_the_commit_msg_hook_runs_it_when_the_repo_opts_in(repo: Path) -> None:
@@ -189,7 +189,7 @@ def _push_over(tmp_path: Path, gatesrc: str) -> subprocess.CompletedProcess[str]
                        GOH_PUSH_LOGS=str(tmp_path / "push-logs"))  # fmt: skip
     return subprocess.run(
         ["bash", str(PUSH_GATE), "origin", "unused-url"], cwd=proj, env=env, text=True,
-        input=f"refs/heads/main {tip} refs/heads/main {base}\n", capture_output=True,
+        input=f"refs/heads/main {tip} refs/heads/main {base}\n", capture_output=True, check=False,
     )  # fmt: skip
 
 
@@ -213,7 +213,7 @@ def test_a_replay_judges_history_by_the_rule_it_was_written_under(repo: Path) ->
     bad = _commit(repo, "fix: no trailers at all")
     r = subprocess.run(
         [str(native_goh_path()), "commit-class", "--report", "--range", f"{base}..HEAD"],
-        cwd=repo, capture_output=True, text=True, env=hermetic_env(drop_git=True), stdin=subprocess.DEVNULL,
+        cwd=repo, capture_output=True, text=True, env=hermetic_env(drop_git=True), stdin=subprocess.DEVNULL, check=False,
     )  # fmt: skip
     assert r.returncode == 0, r.stderr
     assert bad[:8] in r.stderr and "last paragraph" not in r.stderr, r.stderr
@@ -246,7 +246,7 @@ def _touch(repo: Path, msg: str, *files: str) -> str:
 def _clusters(repo: Path, rev: str) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
         [str(native_goh_path()), "commit-class", "--clusters", "--range", rev], cwd=repo,
-        capture_output=True, text=True, env=hermetic_env(drop_git=True), stdin=subprocess.DEVNULL,
+        capture_output=True, text=True, env=hermetic_env(drop_git=True), stdin=subprocess.DEVNULL, check=False,
     )  # fmt: skip
 
 

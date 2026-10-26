@@ -12,7 +12,11 @@ import _fake_cargo  # noqa: E402
 
 def _cargo(bin_dir: Path, *argv: str) -> subprocess.CompletedProcess:
     return subprocess.run(
-        [str(bin_dir / "cargo"), *argv], capture_output=True, text=True, stdin=subprocess.DEVNULL
+        [str(bin_dir / "cargo"), *argv],
+        capture_output=True,
+        text=True,
+        stdin=subprocess.DEVNULL,
+        check=False,
     )
 
 

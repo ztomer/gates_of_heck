@@ -39,6 +39,7 @@ def run_update_dev(workdir: Path, bin_dir: Path | None, *args: str) -> subproces
         text=True,
         env=env,
         stdin=subprocess.DEVNULL,
+        check=False,
     )
 
 
@@ -54,6 +55,7 @@ class TestUpdateDev:
             capture_output=True,
             text=True,
             stdin=subprocess.DEVNULL,
+            check=False,
         )
         assert probe.returncode != 0, "quarantine survived the install"
         assert "quarantine clear" in r.stdout

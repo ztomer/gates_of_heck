@@ -65,7 +65,7 @@ def _run(*args: str, path: str, **extra: str) -> subprocess.CompletedProcess:
     env.update(PATH=path, NO_COLOR="1", **extra)
     return subprocess.run(
         ["bash", str(FLOORS), *args],
-        capture_output=True, text=True, env=env, stdin=subprocess.DEVNULL, timeout=120,
+        capture_output=True, text=True, env=env, stdin=subprocess.DEVNULL, timeout=120, check=False,
     )  # fmt: skip
 
 

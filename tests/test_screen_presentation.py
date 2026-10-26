@@ -199,7 +199,7 @@ def test_scope_mode_finds_violation(repo):
 def test_staged_scope_uses_index_content(repo):
     p = write(repo, "tests/Clean.swift", "let x = 1\n")
     stage_it = subprocess.run(
-        ["git", "-C", str(repo), "add", "tests/Clean.swift"], stdin=subprocess.DEVNULL
+        ["git", "-C", str(repo), "add", "tests/Clean.swift"], stdin=subprocess.DEVNULL, check=False
     )
     assert stage_it.returncode == 0
     # index holds clean content; dirtying the worktree must not matter
@@ -363,6 +363,7 @@ def bash(script: str) -> subprocess.CompletedProcess:
         text=True,
         env={"PATH": "/usr/bin:/bin"},
         stdin=subprocess.DEVNULL,
+        check=False,
     )
 
 

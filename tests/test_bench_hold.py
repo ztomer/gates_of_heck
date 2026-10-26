@@ -133,7 +133,7 @@ def test_a_block_whose_host_an_ancestor_holds_claims_nothing(lock: Path, tmp_pat
     )
     outer = f'. "{LIB}"; bench_lock_exclusive "outer" && {sys.executable} -c "$1"'
     r = subprocess.run(["bash", "-c", outer, "outer", script], capture_output=True, text=True,
-                       timeout=30, stdin=subprocess.DEVNULL)  # fmt: skip
+                       timeout=30, stdin=subprocess.DEVNULL, check=False)  # fmt: skip
     assert r.returncode == 0 and r.stdout.strip() == "nested", r.stdout + r.stderr
 
 
@@ -146,5 +146,5 @@ def test_a_block_inside_a_registered_gate_claims_nothing(lock: Path) -> None:
     )
     gate = f'. "{LIB}"; bench_lock_join "a gate"; unset GOH_BENCH_JOINED; {sys.executable} -c "$1"'
     r = subprocess.run(["bash", "-c", gate, "gate", script], capture_output=True, text=True,
-                       timeout=30, stdin=subprocess.DEVNULL)  # fmt: skip
+                       timeout=30, stdin=subprocess.DEVNULL, check=False)  # fmt: skip
     assert r.returncode == 0 and r.stdout.strip() == "nested", r.stdout + r.stderr

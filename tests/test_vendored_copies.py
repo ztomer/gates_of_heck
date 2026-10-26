@@ -27,6 +27,7 @@ def _structural(goh: Path, repo: Path, *args: str):
         text=True,
         env=env,
         stdin=subprocess.DEVNULL,
+        check=False,
     )
 
 

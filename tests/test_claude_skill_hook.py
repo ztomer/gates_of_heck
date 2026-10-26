@@ -39,6 +39,7 @@ def _fire(goh: Path, corpus: Path, edited: Path, tool: str = "Edit"):
         text=True,
         env=hermetic_env(GOH_BIN=str(goh), GOH_SKILLS_ROOT=str(corpus)),
         timeout=60,
+        check=False,
     )
 
 
@@ -85,6 +86,7 @@ def test_an_event_with_no_file_is_ignored(goh: Path, tmp_path: Path) -> None:
         text=True,
         env=hermetic_env(GOH_BIN=str(goh), GOH_SKILLS_ROOT=str(corpus)),
         timeout=60,
+        check=False,
     )
     assert (r.returncode, r.stderr) == (0, ""), r.stderr
 
@@ -114,6 +116,7 @@ def _fire_bash(goh: Path, corpus: Path, command: str):
         text=True,
         env=hermetic_env(GOH_BIN=str(goh), GOH_SKILLS_ROOT=str(corpus)),
         timeout=60,
+        check=False,
     )
 
 

@@ -42,7 +42,7 @@ def _bash(lock: Path, script: str, **extra: str) -> subprocess.Popen[str]:
 
 def _run(lock: Path, script: str, timeout: float = 20, **extra: str) -> subprocess.CompletedProcess:
     return subprocess.run(["bash", "-c", f'. "{LIB}"\n{script}'], env=_env(lock, **extra),
-                          capture_output=True, text=True, timeout=timeout, stdin=subprocess.DEVNULL)  # fmt: skip
+                          capture_output=True, text=True, timeout=timeout, stdin=subprocess.DEVNULL, check=False)  # fmt: skip
 
 
 def _wait_for(path: Path, seconds: float = 10) -> None:
@@ -118,7 +118,7 @@ def test_an_owner_read_as_the_claim_vanishes_is_silent(lib: str, reader: str) ->
     """`done <file 2>/dev/null` opens the file BEFORE it silences the error: a gate that read an
     owner the instant its holder released printed `No such file or directory` (2026-10-08)."""
     r = subprocess.run(["bash", "-c", f'. "{REPO_ROOT / lib}"; {reader}; echo "rc=$?"'],
-                       capture_output=True, text=True, timeout=20, stdin=subprocess.DEVNULL)  # fmt: skip
+                       capture_output=True, text=True, timeout=20, stdin=subprocess.DEVNULL, check=False)  # fmt: skip
     assert (r.stdout, r.stderr) == ("rc=1\n", "")
 
 
@@ -236,7 +236,7 @@ def _quiet_env(tmp_path: Path, **extra: str) -> dict[str, str]:
 def _quiet(tmp_path: Path, *args: str, **extra: str) -> subprocess.CompletedProcess[str]:
     env = _quiet_env(tmp_path, **extra)
     return subprocess.run(["bash", str(QUIET), *args], env=env, capture_output=True, text=True,
-                          timeout=60, stdin=subprocess.DEVNULL)  # fmt: skip
+                          timeout=60, stdin=subprocess.DEVNULL, check=False)  # fmt: skip
 
 
 def _reads(tmp_path: Path) -> list[str]:
@@ -357,7 +357,7 @@ def test_a_run_that_outlives_its_hold_is_named_and_fails(tmp_path: Path) -> None
 def test_the_default_hold_is_fifteen_minutes() -> None:
     env = scrubbed(os.environ, ("GOH_BENCH_",))
     r = subprocess.run(["bash", "-c", f'. "{LIB}"; echo "$BENCH_LOCK_MAX_HOLD"'], env=env,
-                       capture_output=True, text=True, timeout=10, stdin=subprocess.DEVNULL)  # fmt: skip
+                       capture_output=True, text=True, timeout=10, stdin=subprocess.DEVNULL, check=False)  # fmt: skip
     assert r.stdout.strip() == "900", r.stdout + r.stderr
 
 

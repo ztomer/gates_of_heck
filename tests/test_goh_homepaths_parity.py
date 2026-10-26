@@ -43,6 +43,7 @@ def run_py(repo: Path, *args: str) -> tuple[int, str, str]:
         capture_output=True,
         text=True,
         stdin=subprocess.DEVNULL,
+        check=False,
     )
     return r.returncode, r.stdout, r.stderr
 
@@ -58,6 +59,7 @@ def run_goh(goh: Path, repo: Path, *args: str) -> tuple[int, str, str]:
         text=True,
         env=env,
         stdin=subprocess.DEVNULL,
+        check=False,
     )
     return r.returncode, r.stdout, r.stderr
 

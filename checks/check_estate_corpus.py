@@ -428,6 +428,7 @@ def probe():
                     capture_output=True,
                     env=foreign_repo_env(),
                     stdin=subprocess.DEVNULL,
+                    check=False,
                 )
             findings = []
             judge(

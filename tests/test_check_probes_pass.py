@@ -227,6 +227,7 @@ def test_the_gates_own_self_proof_passes():
         capture_output=True,
         text=True,
         stdin=subprocess.DEVNULL,
+        check=False,
     )
     assert result.returncode == 0, result.stdout + result.stderr
 

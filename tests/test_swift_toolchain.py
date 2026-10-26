@@ -35,6 +35,7 @@ def _resolve(bin_dir: Path, **extra_env) -> subprocess.CompletedProcess:
         text=True,
         env=env,
         stdin=subprocess.DEVNULL,
+        check=False,
     )
 
 

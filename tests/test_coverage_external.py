@@ -26,6 +26,7 @@ def run_gate(cwd: Path, *args: str) -> subprocess.CompletedProcess:
         env=hermetic_env(),
         timeout=600,
         stdin=subprocess.DEVNULL,
+        check=False,
     )
 
 
@@ -33,7 +34,10 @@ pytestmark = [
     pytest.mark.skipif(
         shutil.which("cargo") is None
         or subprocess.run(
-            ["cargo", "llvm-cov", "--version"], capture_output=True, stdin=subprocess.DEVNULL
+            ["cargo", "llvm-cov", "--version"],
+            capture_output=True,
+            stdin=subprocess.DEVNULL,
+            check=False,
         ).returncode,
         reason="cargo llvm-cov not available",
     ),
@@ -115,6 +119,7 @@ def test_the_external_command_runs_in_the_callers_environment(tmp_path: Path) ->
         env=env,
         timeout=600,
         stdin=subprocess.DEVNULL,
+        check=False,
     )
     assert r.returncode == 0, r.stdout + r.stderr
     got = dict(line.split("=", 1) for line in seen.read_text().splitlines() if "=" in line)
@@ -140,6 +145,7 @@ def test_a_scrubbed_test_environment_keeps_the_profile_destination(monkeypatch, 
         capture_output=True,
         text=True,
         stdin=subprocess.DEVNULL,
+        check=False,
     )
     assert f"LLVM_PROFILE_FILE={tmp_path / 'p-%8m.profraw'}" in r.stdout.splitlines(), r.stdout
     monkeypatch.delenv("GOH_COVERAGE_BIN_DIR")
@@ -149,5 +155,6 @@ def test_a_scrubbed_test_environment_keeps_the_profile_destination(monkeypatch, 
         capture_output=True,
         text=True,
         stdin=subprocess.DEVNULL,
+        check=False,
     )
     assert "LLVM_PROFILE_FILE" not in r.stdout, "outside a measured run an env is left as given"

@@ -20,7 +20,12 @@ BASH = "/bin/bash"
 
 def _bash(script: str, cwd: Optional[Path] = None) -> subprocess.CompletedProcess:
     return subprocess.run(
-        [BASH, "-c", script], cwd=cwd, capture_output=True, text=True, stdin=subprocess.DEVNULL
+        [BASH, "-c", script],
+        cwd=cwd,
+        capture_output=True,
+        text=True,
+        stdin=subprocess.DEVNULL,
+        check=False,
     )
 
 
@@ -150,6 +155,7 @@ def _under_pty(script: str) -> str:
         capture_output=True,
         text=True,
         stdin=subprocess.DEVNULL,
+        check=False,
     )
     return r.stdout
 

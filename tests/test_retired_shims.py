@@ -34,6 +34,7 @@ def test_a_shim_runs_its_native_check_with_the_arguments_given(stem, check, tmp_
         env={"PATH": "/usr/bin:/bin", "GOH_BIN": str(fake), "GOH_LIVE": "1"},
         timeout=60,
         stdin=subprocess.DEVNULL,
+        check=False,
     )
     assert r.stdout.strip() == f"native {check} --staged x y", r.stdout + r.stderr
     assert r.returncode == 3, "the native exit code is the shim's exit code"
@@ -63,6 +64,7 @@ def test_importing_a_shim_is_a_clear_error_never_an_exec(stem, check) -> None:
         text=True,
         timeout=60,
         stdin=subprocess.DEVNULL,
+        check=False,
     )
     assert r.returncode == 1 and f"run `goh {check}`" in r.stderr, r.stdout + r.stderr
 
@@ -95,7 +97,7 @@ def test_the_shell_lint_forwarder_runs_its_native_check(tmp_path) -> None:
     r = subprocess.run(
         ["bash", str(ROOT / "checks" / "check_shell_lint.sh"), "--staged"],
         capture_output=True, text=True, timeout=60,
-        env={"PATH": "/usr/bin:/bin", "GOH_BIN": str(fake), "GOH_LIVE": "1"}, stdin=subprocess.DEVNULL,
+        env={"PATH": "/usr/bin:/bin", "GOH_BIN": str(fake), "GOH_LIVE": "1"}, stdin=subprocess.DEVNULL, check=False,
     )  # fmt: skip
     assert r.stdout.strip() == "native shell-lint --staged", r.stdout + r.stderr
     assert r.returncode == 3

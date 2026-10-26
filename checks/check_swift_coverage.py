@@ -207,6 +207,7 @@ def _run_xccov(xc: str):
             text=True,
             timeout=300,
             stdin=subprocess.DEVNULL,
+            check=False,
         )
     except (OSError, subprocess.SubprocessError) as exc:
         return [], f"xccov failed on {os.path.basename(xc)}: {exc}"
@@ -260,6 +261,7 @@ def load_xcode(dd_root: str):
             text=True,
             timeout=120,
             stdin=subprocess.DEVNULL,
+            check=False,
         )
     except (OSError, subprocess.SubprocessError) as exc:
         return [], f"{why}; xcresulttool failed on {xc}: {exc}"

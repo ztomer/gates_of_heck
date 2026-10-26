@@ -234,6 +234,7 @@ def test_a_tool_two_levels_down_finds_the_checkout_root(gates: Path, tmp_path) -
         text=True,
         env=_env(tmp_path),
         stdin=subprocess.DEVNULL,
+        check=False,
     )
     assert out.returncode == 0, out.stderr
     assert out.stdout.endswith("/tools/release-kit/release.sh"), out.stdout
@@ -269,6 +270,7 @@ def test_a_live_run_names_its_own_tree_as_goh_dir(gates: Path, tmp_path) -> None
         env=env,
         timeout=60,
         stdin=subprocess.DEVNULL,
+        check=False,
     )
     assert r.stdout == str(gates.resolve()), r.stdout + r.stderr
 
@@ -324,5 +326,6 @@ def test_entering_the_gates_again_does_not_grow_pythonpath() -> None:
         text=True,
         env=hermetic_env(GOH_LIVE="1"),
         stdin=subprocess.DEVNULL,
+        check=False,
     )
     assert r.returncode == 0, r.stdout + r.stderr

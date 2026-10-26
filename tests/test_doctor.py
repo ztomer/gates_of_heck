@@ -23,6 +23,7 @@ def run_doctor(target: Path) -> subprocess.CompletedProcess:
         capture_output=True,
         text=True,
         stdin=subprocess.DEVNULL,
+        check=False,
     )
 
 
@@ -33,6 +34,7 @@ def _wire(repo: Path) -> None:
         capture_output=True,
         text=True,
         stdin=subprocess.DEVNULL,
+        check=False,
     )
     assert r.returncode == 0, r.stdout + r.stderr
 
@@ -109,6 +111,7 @@ def test_missing_python_is_named(tmp_path):
         # The house resolver also searches the release install dirs (G2d); confine it to bindir.
         env={"PATH": str(bindir), "HOME": str(tmp_path), "GOH_PY_SEARCH": str(bindir)},
         stdin=subprocess.DEVNULL,
+        check=False,
     )
     assert r.returncode == 1, r.stdout + r.stderr
     assert "python3" in (r.stdout + r.stderr)
@@ -126,6 +129,7 @@ def test_gate_help_flag_prints_usage(tmp_path):
         cwd=tmp_path,
         env=env,
         stdin=subprocess.DEVNULL,
+        check=False,
     )
     assert r.returncode == 0, r.stdout + r.stderr
     combined = r.stdout + r.stderr
@@ -151,6 +155,7 @@ def test_gate_doctor_flag_delegates(repo):
         text=True,
         env=env,
         stdin=subprocess.DEVNULL,
+        check=False,
     )
     assert r.returncode == 0, r.stdout + r.stderr
     assert "healthy" in (r.stdout + r.stderr).lower()

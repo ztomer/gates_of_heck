@@ -48,6 +48,7 @@ def _porcelain(repo: Path) -> str:
         capture_output=True,
         text=True,
         stdin=subprocess.DEVNULL,
+        check=False,
     ).stdout
 
 
@@ -111,6 +112,7 @@ def test_the_pipeline_reads_its_step_ceiling_from_the_file_never_the_environment
             env=hermetic_env(GOH_STEP_TIMEOUT=env_value),
             timeout=60,
             stdin=subprocess.DEVNULL,
+            check=False,
         )
         return set(re.findall(r"\((≤\d+s|UNBOUNDED[^)]*)\)", out.stdout))
 
@@ -151,6 +153,7 @@ def _push(repo: Path, checkout: Path, tmp_path: Path, **env: str):
         text=True,
         input=f"refs/heads/main {sha} refs/heads/main {'0' * 40}\n",
         capture_output=True,
+        check=False,
     )
 
 
@@ -285,6 +288,7 @@ def test_uncommitted_gate_source_is_named_by_every_gate_that_runs_one(tmp_path: 
             # build (C3), so it disagreed with this checkout whenever a version bump was uncommitted.
             env=hermetic_env(GOH_DIR=str(checkout), GOH_BIN=str(native_goh_path())),
             stdin=subprocess.DEVNULL,
+            check=False,
         )
 
     def publish_gate() -> subprocess.CompletedProcess:
@@ -295,6 +299,7 @@ def test_uncommitted_gate_source_is_named_by_every_gate_that_runs_one(tmp_path: 
             text=True,
             env=dict(os.environ, GOH_BUILD_PUBLISH_CHECK_ONLY="1"),
             stdin=subprocess.DEVNULL,
+            check=False,
         )
 
     # The push gate too gets the session's binary: without it the clone (no bin/goh) rebuilt goh

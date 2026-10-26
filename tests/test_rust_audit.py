@@ -53,6 +53,7 @@ def _check(c: Path) -> subprocess.CompletedProcess:
         capture_output=True,
         text=True,
         stdin=subprocess.DEVNULL,
+        check=False,
     )
 
 

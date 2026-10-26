@@ -106,6 +106,7 @@ def run_spm(ignore_re):
             ["swift", "test", "--enable-code-coverage"],
             capture_output=True,
             stdin=subprocess.DEVNULL,
+            check=False,
         ).returncode
         != 0
     ):
@@ -171,6 +172,7 @@ def xccov_report(xcresult):
         capture_output=True,
         text=True,
         stdin=subprocess.DEVNULL,
+        check=False,
     )
     if res.returncode != 0:
         print(
@@ -210,6 +212,7 @@ def run_xcodebuild(args):
         capture_output=True,
         text=True,
         stdin=subprocess.DEVNULL,
+        check=False,
     )
     if run.returncode != 0:
         tail = (run.stderr or run.stdout).strip().splitlines()[-3:]

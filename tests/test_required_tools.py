@@ -45,6 +45,7 @@ def run(script: str, cwd: Path, path: str) -> subprocess.CompletedProcess:
         text=True,
         timeout=120,
         stdin=subprocess.DEVNULL,
+        check=False,
     )
 
 
@@ -89,6 +90,7 @@ def test_shell_lint_fails_without_shellcheck(tmp_path, goh):
         text=True,
         timeout=60,
         stdin=subprocess.DEVNULL,
+        check=False,
     )
     assert got.returncode != 0, got.stdout + got.stderr
     assert "shellcheck is not installed" in got.stdout + got.stderr, got.stdout + got.stderr
@@ -120,7 +122,7 @@ def test_py_gate_refuses_a_runner_that_cannot_import_its_tools(tmp_path, module)
     )
     got = subprocess.run(
         ["/bin/bash", str(REPO_ROOT / "gates" / "py_gate.sh"), str(pkg)],
-        cwd=pkg, env=env, capture_output=True, text=True, timeout=120, stdin=subprocess.DEVNULL,
+        cwd=pkg, env=env, capture_output=True, text=True, timeout=120, stdin=subprocess.DEVNULL, check=False,
     )  # fmt: skip
     out = got.stdout + got.stderr
     assert got.returncode != 0, out
@@ -141,7 +143,7 @@ def test_py_staged_refuses_a_runner_that_cannot_import_ruff(tmp_path, repo):
     )
     got = subprocess.run(
         ["/bin/bash", str(REPO_ROOT / "gates" / "py_staged.sh"), str(repo)],
-        cwd=repo, env=env, capture_output=True, text=True, timeout=120, stdin=subprocess.DEVNULL,
+        cwd=repo, env=env, capture_output=True, text=True, timeout=120, stdin=subprocess.DEVNULL, check=False,
     )  # fmt: skip
     out = got.stdout + got.stderr
     assert got.returncode != 0, out

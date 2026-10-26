@@ -36,13 +36,17 @@ def make_repo(tmp_path: Path, files: dict[str, bytes]) -> Path:
 
 def run_python(repo: Path, staged: bool) -> tuple[int, set[tuple[str, int]]]:
     cmd = ["python3", str(CHECKER), "--staged"] if staged else ["python3", str(CHECKER)]
-    r = subprocess.run(cmd, cwd=repo, capture_output=True, text=True, stdin=subprocess.DEVNULL)
+    r = subprocess.run(
+        cmd, cwd=repo, capture_output=True, text=True, stdin=subprocess.DEVNULL, check=False
+    )
     return r.returncode, _violations(r.stderr)
 
 
 def run_goh(goh: Path, repo: Path, staged: bool) -> tuple[int, set[tuple[str, int]]]:
     cmd = [str(goh), "markers", "--staged"] if staged else [str(goh), "markers"]
-    r = subprocess.run(cmd, cwd=repo, capture_output=True, text=True, stdin=subprocess.DEVNULL)
+    r = subprocess.run(
+        cmd, cwd=repo, capture_output=True, text=True, stdin=subprocess.DEVNULL, check=False
+    )
     return r.returncode, _violations(r.stderr)
 
 

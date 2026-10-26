@@ -23,6 +23,7 @@ def run(repo):
         capture_output=True,
         text=True,
         stdin=subprocess.DEVNULL,
+        check=False,
     )
 
 

@@ -71,6 +71,7 @@ def _run(repo, refs, source):
         text=True,
         env=dict(os.environ, GOH_TAG_VERSION_SOURCES=source),
         stdin=subprocess.DEVNULL,
+        check=False,
     )
 
 

@@ -34,6 +34,7 @@ def check(tree: Path, **env: str) -> subprocess.CompletedProcess[str]:
             **env,
         },
         stdin=subprocess.DEVNULL,
+        check=False,
     )
 
 
@@ -82,6 +83,7 @@ def test_a_broken_uncommitted_edit_never_reaches_the_published_binary(clone: Pat
         env=env,
         timeout=900,
         stdin=subprocess.DEVNULL,
+        check=False,
     )
     assert r.returncode == 0, r.stdout + r.stderr
     assert "NOT in it" in r.stderr and "crates/goh/src/main.rs" in r.stderr, r.stderr
@@ -90,6 +92,7 @@ def test_a_broken_uncommitted_edit_never_reaches_the_published_binary(clone: Pat
         capture_output=True,
         text=True,
         stdin=subprocess.DEVNULL,
+        check=False,
     ).stdout.strip()
     inputs = [f"HEAD:{i}" for i in ("crates", "Cargo.toml", "Cargo.lock", "rust-toolchain.toml")]
     head = subprocess.run(
@@ -97,6 +100,7 @@ def test_a_broken_uncommitted_edit_never_reaches_the_published_binary(clone: Pat
         capture_output=True,
         text=True,
         stdin=subprocess.DEVNULL,
+        check=False,
     ).stdout.split()
     assert stamp == " ".join(head), stamp
     again = subprocess.run(
@@ -106,6 +110,7 @@ def test_a_broken_uncommitted_edit_never_reaches_the_published_binary(clone: Pat
         env=env,
         timeout=120,
         stdin=subprocess.DEVNULL,
+        check=False,
     )
     assert again.returncode == 0 and "Building goh" not in again.stdout, again.stdout
 

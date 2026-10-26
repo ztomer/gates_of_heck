@@ -43,7 +43,7 @@ def proj(tmp_path: Path) -> Path:
 
 def _round(p: Path, *args: str) -> subprocess.CompletedProcess[str]:
     return subprocess.run(["bash", str(ROUND), *args], cwd=p, capture_output=True, text=True,
-                          env=hermetic_env(drop_git=True, GOH_DIR=str(REPO_ROOT)), stdin=subprocess.DEVNULL)  # fmt: skip
+                          env=hermetic_env(drop_git=True, GOH_DIR=str(REPO_ROOT)), stdin=subprocess.DEVNULL, check=False)  # fmt: skip
 
 
 def _hook(p: Path, name: str, body: str) -> None:

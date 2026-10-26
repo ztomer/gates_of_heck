@@ -62,7 +62,11 @@ EXPECTED_LADDER = [
 
 def run_gen(*args: str) -> subprocess.CompletedProcess:
     return subprocess.run(
-        ["python3", str(GEN_ICONS), *args], capture_output=True, text=True, stdin=subprocess.DEVNULL
+        ["python3", str(GEN_ICONS), *args],
+        capture_output=True,
+        text=True,
+        stdin=subprocess.DEVNULL,
+        check=False,
     )
 
 

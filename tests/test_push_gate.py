@@ -72,6 +72,7 @@ def _push(repo: Path, sha: str, tmp_path: Path) -> tuple[int, str, str]:
         text=True,
         input=f"refs/heads/main {sha} refs/heads/main {'0' * 40}\n",
         capture_output=True,
+        check=False,
     )
     return proc.returncode, report.read_text() if report.exists() else "", proc.stdout + proc.stderr
 
@@ -117,6 +118,7 @@ def test_the_worktree_root_is_overridable(tmp_path):
         text=True,
         input=f"refs/heads/main {sha} refs/heads/main {'0' * 40}\n",
         capture_output=True,
+        check=False,
     )
     assert proc.returncode == 0, proc.stdout + proc.stderr
     cwd = (tmp_path / "r.txt").read_text().split("cwd=")[1].strip()
@@ -233,6 +235,7 @@ def _push_lines(
         text=True,
         input=lines,
         capture_output=True,
+        check=False,
     )
     return proc.returncode, report.read_text() if report.exists() else "", proc.stdout + proc.stderr
 

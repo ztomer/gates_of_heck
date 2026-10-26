@@ -41,5 +41,11 @@ def run_tiered(
         raise RuntimeError("run_tiered needs the both_tiers fixture (pytestmark usefixtures)")
     argv = [str(_TIER["goh"]), subcommand, *args]
     return subprocess.run(
-        argv, cwd=repo, capture_output=True, text=True, env=env, stdin=subprocess.DEVNULL
+        argv,
+        cwd=repo,
+        capture_output=True,
+        text=True,
+        env=env,
+        stdin=subprocess.DEVNULL,
+        check=False,
     )

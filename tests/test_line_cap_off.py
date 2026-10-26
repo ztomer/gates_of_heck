@@ -46,6 +46,7 @@ def _run(tier: str, goh: Path, repo: Path) -> subprocess.CompletedProcess:
         env=env,
         timeout=120,
         stdin=subprocess.DEVNULL,
+        check=False,
     )
 
 

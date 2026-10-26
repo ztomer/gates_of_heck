@@ -130,6 +130,7 @@ def run_release(kit: dict, *args: str, gate: str = "true") -> subprocess.Complet
         text=True,
         env=env,
         stdin=subprocess.DEVNULL,
+        check=False,
     )
 
 

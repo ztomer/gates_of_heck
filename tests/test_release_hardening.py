@@ -75,6 +75,7 @@ def run_release(kit: dict, *args: str, version: str = VERSION) -> subprocess.Com
         text=True,
         env=release_env(kit),
         stdin=subprocess.DEVNULL,
+        check=False,
     )
 
 

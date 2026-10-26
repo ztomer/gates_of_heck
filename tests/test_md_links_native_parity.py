@@ -40,7 +40,12 @@ SHAPES = [
 
 def native(goh: Path, text: str) -> dict:
     r = subprocess.run(
-        [str(goh), "md-links", "--anchors"], input=text, capture_output=True, text=True, timeout=30
+        [str(goh), "md-links", "--anchors"],
+        input=text,
+        capture_output=True,
+        text=True,
+        timeout=30,
+        check=False,
     )
     assert r.returncode == 0, r.stderr
     return json.loads(r.stdout)
@@ -61,6 +66,7 @@ def test_every_markdown_file_here_reads_the_same(goh: Path) -> None:
         capture_output=True,
         text=True,
         stdin=subprocess.DEVNULL,
+        check=False,
     ).stdout.split()
     assert len(files) > 10, files
     differ = []

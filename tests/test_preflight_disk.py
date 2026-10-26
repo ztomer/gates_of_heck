@@ -26,17 +26,20 @@ def test_the_command_refuses_a_need_no_volume_has_and_rejects_nonsense(tmp_path)
         capture_output=True,
         text=True,
         stdin=subprocess.DEVNULL,
+        check=False,
     )
     assert r.returncode == 1 and "GiB free" in r.stderr, r.stderr
     assert (
         subprocess.run(
-            [sys.executable, str(TOOL), str(tmp_path), "0"], stdin=subprocess.DEVNULL
+            [sys.executable, str(TOOL), str(tmp_path), "0"], stdin=subprocess.DEVNULL, check=False
         ).returncode
         == 0
     )
     assert (
         subprocess.run(
-            [sys.executable, str(TOOL), str(tmp_path), "lots"], stdin=subprocess.DEVNULL
+            [sys.executable, str(TOOL), str(tmp_path), "lots"],
+            stdin=subprocess.DEVNULL,
+            check=False,
         ).returncode
         == 2
     )

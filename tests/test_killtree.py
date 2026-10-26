@@ -61,7 +61,11 @@ def _assert_nothing_survives(marker: str):
     survivors = None
     while not give_up.passed():
         r = subprocess.run(
-            ["pgrep", "-f", marker], capture_output=True, text=True, stdin=subprocess.DEVNULL
+            ["pgrep", "-f", marker],
+            capture_output=True,
+            text=True,
+            stdin=subprocess.DEVNULL,
+            check=False,
         )
         if r.returncode != 0:  # no match: nothing left
             return

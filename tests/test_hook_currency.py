@@ -85,6 +85,7 @@ def _structural(repo, native: bool):
         text=True,
         timeout=120,
         stdin=subprocess.DEVNULL,
+        check=False,
     )
 
 

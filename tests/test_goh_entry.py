@@ -26,6 +26,7 @@ def run(*args: str, **env: str) -> subprocess.CompletedProcess[str]:
         cwd=ROOT,
         env={**base, **env},
         stdin=subprocess.DEVNULL,
+        check=False,
     )
 
 
@@ -94,7 +95,11 @@ def test_every_dispatched_check_is_a_real_subcommand(goh: Path) -> None:
     assert len(names) >= 20, names
     for check in names:
         r = subprocess.run(
-            [str(goh), check, "--help"], capture_output=True, text=True, stdin=subprocess.DEVNULL
+            [str(goh), check, "--help"],
+            capture_output=True,
+            text=True,
+            stdin=subprocess.DEVNULL,
+            check=False,
         )
         assert r.returncode == 0, (check, r.stderr)
 

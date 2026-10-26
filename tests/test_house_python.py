@@ -50,6 +50,7 @@ def _resolve(**extra: str) -> subprocess.CompletedProcess:
         text=True,
         timeout=30,
         stdin=subprocess.DEVNULL,
+        check=False,
     )
 
 
@@ -68,6 +69,7 @@ def test_a_reduced_path_still_finds_the_house_interpreter() -> None:
         text=True,
         timeout=30,
         stdin=subprocess.DEVNULL,
+        check=False,
     ).stdout.strip()
     assert required_tools.at_least(version, FLOOR), (py, version)
     assert py != "/usr/bin/python3"
@@ -120,6 +122,7 @@ def test_a_gate_on_a_machine_with_only_an_older_python_fails_before_any_step(
         text=True,
         timeout=60,
         stdin=subprocess.DEVNULL,
+        check=False,
     )
     assert done.returncode != 0, done.stdout
     assert f"the house Python is {FLOOR} or newer" in done.stderr

@@ -68,6 +68,7 @@ def _stop(tmp: Path, transcript: Path, session: str = "s1", **env: str):
         text=True,
         env=hermetic_env(XDG_STATE_HOME=str(tmp / "state"), **env),
         timeout=30,
+        check=False,
     )
     assert r.returncode == 0, r.stderr
     return json.loads(r.stdout)["systemMessage"] if r.stdout.strip() else None
@@ -163,6 +164,7 @@ def _restore(cwd: Path, source: str = "compact"):
         text=True,
         env=hermetic_env(drop_git=True),
         timeout=30,
+        check=False,
     )
 
 

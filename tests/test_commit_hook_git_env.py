@@ -95,6 +95,7 @@ def _commit(wt: Path, env: dict, *args: str) -> subprocess.CompletedProcess:
         text=True,
         timeout=120,
         stdin=subprocess.DEVNULL,
+        check=False,
     )
 
 
@@ -104,6 +105,7 @@ def _bare(main: Path) -> str:
         capture_output=True,
         text=True,
         stdin=subprocess.DEVNULL,
+        check=False,
     ).stdout.strip()
 
 
@@ -249,6 +251,7 @@ def test_the_carried_index_never_binds_another_repository(tmp_path):
         capture_output=True,
         text=True,
         stdin=subprocess.DEVNULL,
+        check=False,
     )
     assert got.returncode == 0, got.stderr
     assert got.stdout == "unbound", got.stdout
@@ -276,6 +279,7 @@ def test_a_repository_reachable_only_through_git_dir_is_refused_by_name(tmp_path
         text=True,
         timeout=60,
         stdin=subprocess.DEVNULL,
+        check=False,
     )
     assert got.returncode != 0, got.stdout + got.stderr  # git reports any hook failure as 1
     assert "only through" in got.stderr and "--no-verify" in got.stderr, got.stderr

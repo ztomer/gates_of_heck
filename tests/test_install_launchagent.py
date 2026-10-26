@@ -53,6 +53,7 @@ def _run(script, mode, dest):
             "HOME": str(dest),
             "LAUNCHAGENTS_DIR": str(dest / "LA"),
         },
+        check=False,
     )
 
 

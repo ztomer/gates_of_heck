@@ -57,7 +57,13 @@ PROSE = [
 
 def _run(argv: list[str], repo: Path) -> tuple[int, str, str]:
     r = subprocess.run(
-        argv, cwd=repo, capture_output=True, text=True, timeout=60, stdin=subprocess.DEVNULL
+        argv,
+        cwd=repo,
+        capture_output=True,
+        text=True,
+        timeout=60,
+        stdin=subprocess.DEVNULL,
+        check=False,
     )
     return r.returncode, r.stdout, r.stderr
 

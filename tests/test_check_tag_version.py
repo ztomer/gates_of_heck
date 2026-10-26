@@ -350,6 +350,7 @@ def test_sources_come_from_gatesrc(tmp_path):
         text=True,
         env=dict(os.environ, GOH_TAG_VERSION_SOURCES="file:MarketingVersion.txt"),
         stdin=subprocess.DEVNULL,
+        check=False,
     )
     assert configured.returncode == 0, configured.stdout + configured.stderr
 

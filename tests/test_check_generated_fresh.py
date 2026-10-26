@@ -109,6 +109,7 @@ def test_default_timeout_exists():
         capture_output=True,
         text=True,
         stdin=subprocess.DEVNULL,
+        check=False,
     ).stdout
     assert "120" in help_text, "--timeout default of 120s is not documented"
 

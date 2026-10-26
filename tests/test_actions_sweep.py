@@ -70,6 +70,7 @@ class Sweep:
             text=True,
             stdin=subprocess.DEVNULL,
             timeout=timeout,
+            check=False,
         )
 
     def calls(self, verb):
@@ -188,5 +189,6 @@ def test_cannot_list_repos_is_a_failure(sweep):
         text=True,
         stdin=subprocess.DEVNULL,
         timeout=30,
+        check=False,
     )
     assert p.returncode == 1 and "cannot list" in p.stderr

@@ -53,6 +53,7 @@ def _run(tmp_path: Path, workload: str, *args: str) -> subprocess.CompletedProce
         env=hermetic_env(SHARED_LOCK=str(tmp_path / "shared.lock"), TMPDIR=str(tmp_path)),
         timeout=120,
         stdin=subprocess.DEVNULL,
+        check=False,
     )
 
 
@@ -74,6 +75,7 @@ def _bench(tmp_path: Path, workload: str, *args: str, rc: int = 0) -> dict:
         env=hermetic_env(SHARED_LOCK=str(tmp_path / "shared.lock")),
         timeout=120,
         stdin=subprocess.DEVNULL,
+        check=False,
     )
     assert r.returncode == rc, r.stdout + r.stderr
     return json.loads(out.read_text())

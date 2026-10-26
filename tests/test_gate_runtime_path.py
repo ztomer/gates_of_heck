@@ -89,6 +89,7 @@ def _sweep_repo(tmp_path, excuses: dict) -> "subprocess.CompletedProcess":
         text=True,
         timeout=120,
         stdin=subprocess.DEVNULL,
+        check=False,
     )
 
 

@@ -123,6 +123,7 @@ def _gate(repo: Path, crate: str, **env: str) -> subprocess.CompletedProcess:
         env=full,
         timeout=600,
         stdin=subprocess.DEVNULL,
+        check=False,
     )
 
 

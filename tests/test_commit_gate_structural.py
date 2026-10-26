@@ -70,6 +70,7 @@ def _commit(repo: Path, tmp_path: Path, body: str) -> subprocess.CompletedProces
         text=True,
         timeout=120,
         stdin=subprocess.DEVNULL,
+        check=False,
     )
 
 

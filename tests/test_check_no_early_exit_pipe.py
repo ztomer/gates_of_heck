@@ -30,6 +30,7 @@ def _structural(goh: Path, repo: Path, *args: str) -> subprocess.CompletedProces
         text=True,
         env=env,
         stdin=subprocess.DEVNULL,
+        check=False,
     )
 
 
@@ -99,6 +100,7 @@ def test_the_dispatcher_knows_the_check(repo: Path) -> None:
         text=True,
         env=hermetic_env(GOH_DIR=str(REPO_ROOT)),
         stdin=subprocess.DEVNULL,
+        check=False,
     )
     assert r.returncode == 1 and "deploy.sh:3:" in r.stderr, r.stdout + r.stderr
 

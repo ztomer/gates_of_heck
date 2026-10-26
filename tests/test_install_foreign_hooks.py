@@ -17,7 +17,7 @@ from conftest import REPO_ROOT, git, hermetic_env
 def _install(target: Path, *args: str) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
         ["/bin/bash", str(REPO_ROOT / "install.sh"), *args, str(target)],
-        capture_output=True, text=True, env=hermetic_env(drop_git=True, GOH_SKIP_BUILD="1"), stdin=subprocess.DEVNULL,
+        capture_output=True, text=True, env=hermetic_env(drop_git=True, GOH_SKIP_BUILD="1"), stdin=subprocess.DEVNULL, check=False,
     )  # fmt: skip
 
 
@@ -28,7 +28,7 @@ def _untouched(repo: Path) -> None:
 
 def _hooks_path(repo: Path) -> str:
     r = subprocess.run(["git", "-C", str(repo), "config", "core.hooksPath"],
-                       capture_output=True, text=True, stdin=subprocess.DEVNULL)  # fmt: skip
+                       capture_output=True, text=True, stdin=subprocess.DEVNULL, check=False)  # fmt: skip
     return r.stdout.strip()
 
 

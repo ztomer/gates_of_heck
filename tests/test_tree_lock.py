@@ -99,7 +99,10 @@ def test_an_orphaned_child_still_using_the_tree_keeps_it(tmp_path):
     for _ in range(50):
         if (
             subprocess.run(
-                ["pgrep", "-P", str(first.pid)], capture_output=True, stdin=subprocess.DEVNULL
+                ["pgrep", "-P", str(first.pid)],
+                capture_output=True,
+                stdin=subprocess.DEVNULL,
+                check=False,
             ).returncode
             == 0
         ):

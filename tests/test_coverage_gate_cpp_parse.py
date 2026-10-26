@@ -77,6 +77,7 @@ def test_cpp_line_percent_extraction_picks_lines_out_of_a_real_summary():
         input=json.dumps(summary),
         capture_output=True,
         text=True,
+        check=False,
     )
     assert r.returncode == 0, r.stderr
     assert r.stdout.strip() == "71.21", (
@@ -99,5 +100,6 @@ def test_cpp_line_percent_extraction_stays_quiet_on_junk():
             input=junk,
             capture_output=True,
             text=True,
+            check=False,
         )
         assert r.stdout.strip() == "", f"{junk!r} produced {r.stdout!r}"

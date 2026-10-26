@@ -221,6 +221,7 @@ def test_self_host_committed_tree_stays_clean():
         capture_output=True,
         text=True,
         stdin=subprocess.DEVNULL,
+        check=False,
     )
     assert r.returncode == 0, r.stdout
 
@@ -238,6 +239,7 @@ def test_runs_from_subdirectory_of_target_repo(repo):
         capture_output=True,
         text=True,
         stdin=subprocess.DEVNULL,
+        check=False,
     )
     assert r.returncode == 0
 

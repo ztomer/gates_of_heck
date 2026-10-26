@@ -43,7 +43,12 @@ def make_repo(tmp_path: Path, files: dict[str, str]) -> Path:
 
 def run_py(repo: Path) -> tuple[int, str, str]:
     r = subprocess.run(
-        ["python3", str(CHECK)], cwd=repo, capture_output=True, text=True, stdin=subprocess.DEVNULL
+        ["python3", str(CHECK)],
+        cwd=repo,
+        capture_output=True,
+        text=True,
+        stdin=subprocess.DEVNULL,
+        check=False,
     )
     return r.returncode, r.stdout, r.stderr
 
@@ -59,6 +64,7 @@ def run_goh(goh: Path, repo: Path) -> tuple[int, str, str]:
         text=True,
         env=env,
         stdin=subprocess.DEVNULL,
+        check=False,
     )
     return r.returncode, r.stdout, r.stderr
 

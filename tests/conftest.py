@@ -81,15 +81,7 @@ def git(repo: Path, *args: str) -> str:
 
 def git_ok(repo: Path, *args: str) -> bool:
     """Run a git command in `repo`; True iff it exited 0."""
-    return (
-        subprocess.run(
-            ["git", "-C", str(repo), *args],
-            capture_output=True,
-            text=True,
-            stdin=subprocess.DEVNULL,
-        ).returncode
-        == 0
-    )
+    return _capture(["git", "-C", str(repo), *args], None).returncode == 0
 
 
 def write(repo: Path, rel: str, content: str) -> Path:
@@ -174,6 +166,13 @@ RETIRED = {
 }
 
 
+def _capture(argv: list[str], cwd: Path | None) -> subprocess.CompletedProcess:
+    """`argv` in `cwd`, output as text, nothing on stdin, the exit code left to the caller."""
+    return subprocess.run(
+        argv, cwd=cwd, capture_output=True, text=True, stdin=subprocess.DEVNULL, check=False
+    )
+
+
 def run_check(repo: Path, script: str, *args: str) -> subprocess.CompletedProcess:
     """Run a checker from this repo against `repo` (cwd=repo); a retired one runs its native."""
     argv = (
@@ -181,18 +180,12 @@ def run_check(repo: Path, script: str, *args: str) -> subprocess.CompletedProces
         if script in RETIRED
         else ["python3", str(REPO_ROOT / script), *args]
     )
-    return subprocess.run(argv, cwd=repo, capture_output=True, text=True, stdin=subprocess.DEVNULL)
+    return _capture(argv, repo)
 
 
 def run_gate(repo: Path, gate: str, *args: str) -> subprocess.CompletedProcess:
     """Run one of this repo's gate scripts against `repo` (bash, cwd=repo)."""
-    return subprocess.run(
-        ["/bin/bash", str(REPO_ROOT / gate), *args],
-        cwd=repo,
-        capture_output=True,
-        text=True,
-        stdin=subprocess.DEVNULL,
-    )
+    return _capture(["/bin/bash", str(REPO_ROOT / gate), *args], repo)
 
 
 # ── fake swift coverage toolchain ────────────────────────────────────────────
@@ -340,6 +333,7 @@ def _build_goh() -> Path:
         text=True,
         env=dict(os.environ, DRIFT_BUILD_OK="1"),
         stdin=subprocess.DEVNULL,  # the one build tests/_drift_guard.py allows
+        check=False,
     )
     assert r.returncode == 0, f"cargo build failed:\n{r.stderr}"
     for line in r.stdout.splitlines():
@@ -462,6 +456,7 @@ def run_goh(cwd: Path, *args: str, **kw) -> subprocess.CompletedProcess:
         text=True,
         # A caller's own `stdin=` or `input=` wins; otherwise the child reads nothing.
         stdin=kw.pop("stdin", None if "input" in kw else subprocess.DEVNULL),
+        check=kw.pop("check", False),
         **kw,
     )
 

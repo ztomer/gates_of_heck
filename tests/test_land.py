@@ -30,7 +30,7 @@ def _worktree(repo: Path, tmp_path: Path) -> Path:
 def _land(wt: Path, gate: str) -> subprocess.CompletedProcess[str]:
     env = hermetic_env(drop_git=True, GOH_LAND_GATE=gate)
     return subprocess.run(["bash", str(LAND)], cwd=wt, env=env, capture_output=True, text=True,
-                          timeout=60, stdin=subprocess.DEVNULL)  # fmt: skip
+                          timeout=60, stdin=subprocess.DEVNULL, check=False)  # fmt: skip
 
 
 def _main(repo: Path) -> str:
@@ -82,6 +82,7 @@ def test_land_refuses_to_run_in_the_main_checkout(repo: Path) -> None:
         capture_output=True,
         text=True,
         stdin=subprocess.DEVNULL,
+        check=False,
     )
     assert r.returncode == 2 and "main checkout" in r.stderr, r.stdout + r.stderr
     assert os.path.exists(repo / ".git")

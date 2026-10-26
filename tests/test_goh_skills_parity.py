@@ -53,6 +53,7 @@ def run_py(corpus: Path, *args: str) -> tuple[int, str, str]:
         capture_output=True,
         text=True,
         stdin=subprocess.DEVNULL,
+        check=False,
     )
     return r.returncode, r.stdout, r.stderr
 
@@ -67,6 +68,7 @@ def run_goh(goh: Path, corpus: Path, *args: str) -> tuple[int, str, str]:
         text=True,
         env=env,
         stdin=subprocess.DEVNULL,
+        check=False,
     )
     return r.returncode, r.stdout, r.stderr
 
@@ -169,6 +171,7 @@ def test_structural_corpus_step_agrees(goh: Path, tmp_path: Path) -> None:
             text=True,
             env=env,
             stdin=subprocess.DEVNULL,
+            check=False,
         )
         python = subprocess.run(
             ["bash", str(STRUCTURAL), "--full"],
@@ -177,6 +180,7 @@ def test_structural_corpus_step_agrees(goh: Path, tmp_path: Path) -> None:
             text=True,
             env=dict(env, GOH_BIN=str(goh)),
             stdin=subprocess.DEVNULL,
+            check=False,
         )
         assert (native.returncode, failing_label(native.stdout, native.stderr)) == (
             python.returncode,

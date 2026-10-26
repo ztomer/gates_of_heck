@@ -111,6 +111,7 @@ def proven(goh: Path, repo: Path, env: dict, step: str = STEP, *opts: str):
         capture_output=True,
         text=True,
         stdin=subprocess.DEVNULL,
+        check=False,
     )
 
 
@@ -342,6 +343,7 @@ def local_ci(goh: Path, repo: Path, env: dict):
         capture_output=True,
         text=True,
         stdin=subprocess.DEVNULL,
+        check=False,
     )
 
 
@@ -394,6 +396,7 @@ def test_the_push_gate_worktree_sees_what_the_checkout_proved(goh, hooked, env, 
         input=f"refs/heads/main {sha} refs/heads/main {'0' * 40}\n",
         capture_output=True,
         text=True,
+        check=False,
     )
     assert r.returncode == 0, r.stdout + r.stderr
     assert runs(env) == 1, "the push gate's clean worktree re-ran a proven step"
@@ -437,6 +440,7 @@ def _push(goh: Path, repo: Path, env: dict, tmp_path: Path, sha: str):
         input=f"refs/heads/main {sha} refs/heads/main {'0' * 40}\n",
         capture_output=True,
         text=True,
+        check=False,
     )
 
 
@@ -463,6 +467,7 @@ def test_land_leaves_a_proof_the_push_that_follows_reuses(goh, hooked, env, tmp_
         capture_output=True,
         text=True,
         stdin=subprocess.DEVNULL,
+        check=False,
     )
     assert landed.returncode == 0, landed.stdout + landed.stderr
     assert _git(hooked, "rev-parse", "HEAD") == tip

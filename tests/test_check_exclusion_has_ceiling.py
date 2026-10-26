@@ -186,6 +186,7 @@ def test_structural_enforces_the_ceilings_it_requires(repo):
                 text=True,
                 env={**os.environ, **env},
                 stdin=subprocess.DEVNULL,
+                check=False,
             )
             out.append((r.returncode, r.stdout + r.stderr))
         assert len(out) == 1, out
@@ -225,6 +226,7 @@ def test_a_sentinel_only_baseline_ratchets_to_a_pass(repo):
         capture_output=True,
         text=True,
         stdin=subprocess.DEVNULL,
+        check=False,
     )
     assert r.returncode == 0, r.stdout + r.stderr
     assert "within their ceilings" in r.stdout + r.stderr

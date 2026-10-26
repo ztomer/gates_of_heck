@@ -117,6 +117,7 @@ def run_script(script: Path, crate: Path, env: dict | None = None) -> subprocess
         text=True,
         env={**os.environ, **(env or {})},
         stdin=subprocess.DEVNULL,
+        check=False,
     )
 
 
@@ -126,7 +127,7 @@ def warm_crate(tmp_path_factory):
     c = mkcrate(tmp_path_factory.mktemp("warm"))
     write_lib(c, LIB_CLEAN)
     r = subprocess.run(
-        ["cargo", "build", "-q"], cwd=c, capture_output=True, stdin=subprocess.DEVNULL
+        ["cargo", "build", "-q"], cwd=c, capture_output=True, stdin=subprocess.DEVNULL, check=False
     )
     assert r.returncode == 0, r.stderr.decode()[:500]
     return c
@@ -180,6 +181,7 @@ def test_real_cargo_end_to_end(tmp_path, warm_crate):
         capture_output=True,
         text=True,
         stdin=subprocess.DEVNULL,
+        check=False,
     )
     assert fmt.returncode != 0 and FMT_MARKER in fmt.stdout + fmt.stderr
 
@@ -265,6 +267,7 @@ def test_cargo_subdir_argument_supported_by_both(tmp_path, fake):
             capture_output=True,
             text=True,
             stdin=subprocess.DEVNULL,
+            check=False,
         )
         assert r.returncode == 0, r.stderr
         for sub in ("fmt", "clippy"):

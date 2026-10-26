@@ -56,7 +56,13 @@ def _run(
     else:
         cmd = [str(goh), "structural", scope]
     return subprocess.run(
-        cmd, cwd=repo, capture_output=True, text=True, env=env, stdin=subprocess.DEVNULL
+        cmd,
+        cwd=repo,
+        capture_output=True,
+        text=True,
+        env=env,
+        stdin=subprocess.DEVNULL,
+        check=False,
     )
 
 

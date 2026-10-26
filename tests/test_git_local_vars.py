@@ -26,7 +26,11 @@ GITS = subprocess.run(
     stdin=subprocess.DEVNULL,
 ).stdout.split()
 REAL_GIT = subprocess.run(
-    ["sh", "-c", "command -v git"], capture_output=True, text=True, stdin=subprocess.DEVNULL
+    ["sh", "-c", "command -v git"],
+    capture_output=True,
+    text=True,
+    stdin=subprocess.DEVNULL,
+    check=False,
 ).stdout.strip()
 
 
@@ -37,6 +41,7 @@ def _sourced(env: dict) -> list[str]:
         text=True,
         env=env,
         stdin=subprocess.DEVNULL,
+        check=False,
     )
     return r.stdout.split()
 
@@ -60,6 +65,7 @@ def test_python_takes_a_valid_inherited_list_and_refuses_an_invalid_one() -> Non
         text=True,
         env=hermetic_env(GOH_GIT_LOCAL_VARS=value),
         stdin=subprocess.DEVNULL,
+        check=False,
     ).stdout.split()
     assert run("GIT_DIR GIT_SENTINEL") == ["GIT_DIR", "GIT_SENTINEL"]  # taken, not re-asked
     assert run("NOT_A_GIT_VAR") == GITS
@@ -78,6 +84,7 @@ def test_a_goh_sh_call_asks_git_for_the_list_at_most_once(goh: Path, tmp_path: P
         capture_output=True,
         env=env,
         stdin=subprocess.DEVNULL,
+        check=False,
     )
     calls = Counter(log.read_text().splitlines()) if log.exists() else Counter()
     assert calls["rev-parse --local-env-vars"] <= 1, calls

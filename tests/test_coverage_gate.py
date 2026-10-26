@@ -26,7 +26,14 @@ ALLOWED_GLYPHS_RE = re.compile(r"[→·✓✗⚠↔↑↓←⌘⌥⌨⇧⌃⏎�
 
 def _quiet(argv: list[str], **kw) -> subprocess.CompletedProcess:
     """`argv` with its output captured as text and nothing on its stdin."""
-    return subprocess.run(argv, capture_output=True, text=True, stdin=subprocess.DEVNULL, **kw)
+    return subprocess.run(
+        argv,
+        capture_output=True,
+        text=True,
+        stdin=subprocess.DEVNULL,
+        check=kw.pop("check", False),
+        **kw,
+    )
 
 
 def run_gate(cwd: Path, *args: str, env_extra: dict | None = None):

@@ -51,6 +51,7 @@ def _local_ci(goh_dir: Path, repo_dir: Path, run_env: dict, *steps: str):
         text=True,
         stdin=subprocess.DEVNULL,
         timeout=300,
+        check=False,
     )
 
 

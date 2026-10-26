@@ -17,7 +17,11 @@ import pytest
 from conftest import hermetic_env
 
 REAL_GIT = subprocess.run(
-    ["sh", "-c", "command -v git"], capture_output=True, text=True, stdin=subprocess.DEVNULL
+    ["sh", "-c", "command -v git"],
+    capture_output=True,
+    text=True,
+    stdin=subprocess.DEVNULL,
+    check=False,
 ).stdout.strip()
 
 
@@ -45,6 +49,7 @@ def _calls(goh: Path, tmp_path: Path, *args: str) -> Counter:
         capture_output=True,
         text=True,
         stdin=subprocess.DEVNULL,
+        check=False,
     )
     assert r.returncode == 0, r.stdout + r.stderr
     return Counter(
@@ -103,6 +108,7 @@ def test_rust_scope_lists_the_workspaces_sources_once(goh: Path, tmp_path: Path)
         capture_output=True,
         text=True,
         stdin=subprocess.DEVNULL,
+        check=False,
     )
     assert r.returncode == 0 and "a" in r.stdout.split(), r.stdout + r.stderr
     listings = [ln for ln in log.read_text().splitlines() if ln.startswith("ls-files")]

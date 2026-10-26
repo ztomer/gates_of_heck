@@ -29,7 +29,7 @@ def test_a_gate_whose_name_has_a_space_removes_its_log(repo, tmp_path) -> None:
     write(repo, "a.py", "x = 1\n")
     stage(repo, "a.py")
     subprocess.run(["bash", str(REPO_ROOT / "gates" / "py_staged.sh"), "."], cwd=repo,
-                   capture_output=True, text=True, env={**os.environ, "TMPDIR": str(tmpdir)}, stdin=subprocess.DEVNULL)  # fmt: skip
+                   capture_output=True, text=True, env={**os.environ, "TMPDIR": str(tmpdir)}, stdin=subprocess.DEVNULL, check=False)  # fmt: skip
     assert _left(tmpdir) == []
 
 
@@ -39,7 +39,7 @@ def test_the_rust_gate_removes_its_scope_file(tmp_path, warm_crate) -> None:  # 
     tmpdir.mkdir()
     c = clone(warm_crate, tmp_path / "crate")
     r = subprocess.run(["/bin/bash", str(CURRENT), str(c)], cwd=c, capture_output=True,
-                       text=True, env={**os.environ, "TMPDIR": str(tmpdir)}, stdin=subprocess.DEVNULL)  # fmt: skip
+                       text=True, env={**os.environ, "TMPDIR": str(tmpdir)}, stdin=subprocess.DEVNULL, check=False)  # fmt: skip
     assert r.returncode == 0, r.stdout + r.stderr
     assert [n for n in _left(tmpdir) if n.startswith("goh")] == []
 
@@ -50,6 +50,6 @@ def test_structural_full_leaves_nothing_in_tmpdir(tmp_path) -> None:
     tmpdir.mkdir()
     r = subprocess.run(["bash", str(REPO_ROOT / "gates" / "structural.sh"), "--full"],
                        cwd=REPO_ROOT, capture_output=True, text=True, timeout=600,
-                       env={**os.environ, "TMPDIR": str(tmpdir) + "/"}, stdin=subprocess.DEVNULL)  # fmt: skip
+                       env={**os.environ, "TMPDIR": str(tmpdir) + "/"}, stdin=subprocess.DEVNULL, check=False)  # fmt: skip
     assert r.returncode == 0, r.stdout[-2000:] + r.stderr[-2000:]
     assert _left(tmpdir) == []

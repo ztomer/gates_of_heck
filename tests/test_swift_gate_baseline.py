@@ -81,6 +81,7 @@ def run_cli(*args: str) -> subprocess.CompletedProcess:
         capture_output=True,
         text=True,
         stdin=subprocess.DEVNULL,
+        check=False,
     )
 
 
@@ -332,13 +333,7 @@ def _mk_fake_swift(bin_dir: Path) -> None:
     mk_xcrun_find_shim(bin_dir, bin_dir / "swift")
 
 
-def _run_gate(proj: Path, env_extra: dict | None = None):
-    env = dict(os.environ)
-    env.pop("GOH_SWIFT_LINT_BASELINE", None)
-    env["GOH_SWIFT_COLD"] = "0"
-    env.pop("GOH_SWIFT_COV_MIN", None)
-    if env_extra:
-        env.update(env_extra)
+def _gate_in(proj: Path, env: dict) -> subprocess.CompletedProcess:
     return subprocess.run(
         ["/bin/bash", str(GATE), str(proj)],
         cwd=proj,
@@ -346,7 +341,18 @@ def _run_gate(proj: Path, env_extra: dict | None = None):
         text=True,
         env=env,
         stdin=subprocess.DEVNULL,
+        check=False,
     )
+
+
+def _run_gate(proj: Path, env_extra: dict | None = None):
+    env = dict(os.environ)
+    env.pop("GOH_SWIFT_LINT_BASELINE", None)
+    env["GOH_SWIFT_COLD"] = "0"
+    env.pop("GOH_SWIFT_COV_MIN", None)
+    if env_extra:
+        env.update(env_extra)
+    return _gate_in(proj, env)
 
 
 @pytest.fixture
@@ -436,6 +442,7 @@ def test_real_swiftlint_ratchet_green_then_red(tmp_path):
             cwd=proj,
             capture_output=True,
             stdin=subprocess.DEVNULL,
+            check=False,
         )
 
     record_baseline()
@@ -444,14 +451,7 @@ def test_real_swiftlint_ratchet_green_then_red(tmp_path):
     env["GOH_SWIFT_LINT_BASELINE"] = str(proj / ".swiftlint-baseline.json")
     env.pop("GOH_SWIFT_COV_MIN", None)
 
-    green = subprocess.run(
-        ["/bin/bash", str(GATE), str(proj)],
-        cwd=proj,
-        capture_output=True,
-        text=True,
-        env=env,
-        stdin=subprocess.DEVNULL,
-    )
+    green = _gate_in(proj, env)
     assert green.returncode == 0, green.stdout + green.stderr
 
     src = proj / "Sources" / "Sample.swift"
@@ -459,14 +459,7 @@ def test_real_swiftlint_ratchet_green_then_red(tmp_path):
     lines.append('let ccc = "' + "c" * 150 + '"')  # a brand-new violation
     src.write_text("\n".join(lines) + "\n")
 
-    red = subprocess.run(
-        ["/bin/bash", str(GATE), str(proj)],
-        cwd=proj,
-        capture_output=True,
-        text=True,
-        env=env,
-        stdin=subprocess.DEVNULL,
-    )
+    red = _gate_in(proj, env)
     assert red.returncode != 0
     combined = red.stdout + red.stderr
     # The new violation sits on the appended last line (1-based).
@@ -482,14 +475,7 @@ def test_real_swiftlint_ratchet_green_then_red(tmp_path):
         "    return (aaa, bbb)\n"
         "}\n"
     )
-    nudged = subprocess.run(
-        ["/bin/bash", str(GATE), str(proj)],
-        cwd=proj,
-        capture_output=True,
-        text=True,
-        env=env,
-        stdin=subprocess.DEVNULL,
-    )
+    nudged = _gate_in(proj, env)
     assert nudged.returncode == 0, nudged.stdout + nudged.stderr
     assert "re-record" in (nudged.stdout + nudged.stderr).lower()
 

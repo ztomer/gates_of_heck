@@ -19,7 +19,10 @@ def compile_obj(tmp_path, name, body):
     src.write_text(body)
     obj = tmp_path / name
     r = subprocess.run(
-        [cc, "-c", str(src), "-o", str(obj)], capture_output=True, stdin=subprocess.DEVNULL
+        [cc, "-c", str(src), "-o", str(obj)],
+        capture_output=True,
+        stdin=subprocess.DEVNULL,
+        check=False,
     )
     assert r.returncode == 0, r.stderr.decode()
     return obj
@@ -27,7 +30,11 @@ def compile_obj(tmp_path, name, body):
 
 def run(*args):
     return subprocess.run(
-        ["/bin/bash", str(SCRIPT), *args], capture_output=True, text=True, stdin=subprocess.DEVNULL
+        ["/bin/bash", str(SCRIPT), *args],
+        capture_output=True,
+        text=True,
+        stdin=subprocess.DEVNULL,
+        check=False,
     )
 
 

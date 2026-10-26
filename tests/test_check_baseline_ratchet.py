@@ -323,4 +323,5 @@ def _run(base, cur) -> int:
         capture_output=True,
         text=True,
         stdin=subprocess.DEVNULL,
+        check=False,
     ).returncode

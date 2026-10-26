@@ -22,6 +22,7 @@ def _install(target, *args):
         capture_output=True,
         text=True,
         stdin=subprocess.DEVNULL,
+        check=False,
     )
 
 
@@ -50,6 +51,7 @@ def _commit(repo, *args):
         text=True,
         env=hermetic_env(GOH_DIR=str(REPO_ROOT)),
         stdin=subprocess.DEVNULL,
+        check=False,
     )
 
 
@@ -59,6 +61,7 @@ def test_install_wires_hooks_and_starters(repo):
         capture_output=True,
         text=True,
         stdin=subprocess.DEVNULL,
+        check=False,
     )
     assert r.returncode == 0, r.stdout + r.stderr
     assert (repo / ".githooks" / "pre-commit").exists()
@@ -75,6 +78,7 @@ def test_install_is_idempotent(repo):
             capture_output=True,
             text=True,
             stdin=subprocess.DEVNULL,
+            check=False,
         )
         assert r.returncode == 0, r.stderr
     assert "GOH_MAX_LINES" in (repo / ".gatesrc").read_text()
@@ -86,6 +90,7 @@ def test_hook_blocks_violating_commit(repo):
         capture_output=True,
         text=True,
         stdin=subprocess.DEVNULL,
+        check=False,
     )
     # A .py file over no cap but with an emoji; GOH_MAX_LINES unset in starter.
     (repo / "bad.py").write_text(f"x = '{EMOJI_SMILE}'\n", encoding="utf-8")
@@ -109,6 +114,7 @@ def test_pre_commit_runs_the_repo_gate_staged_layer(repo):
         capture_output=True,
         text=True,
         stdin=subprocess.DEVNULL,
+        check=False,
     )
     gate = repo / "tools" / "gate.sh"
     text = gate.read_text().replace(
@@ -133,6 +139,7 @@ def test_pre_commit_runs_the_repo_gate_staged_layer(repo):
         text=True,
         env={**os.environ, "GOH_TEST_FAIL_STAGED": "1"},
         stdin=subprocess.DEVNULL,
+        check=False,
     )
     assert r.returncode != 0, "a red staged layer let the commit through"
     assert "more.py" in git(repo, "diff", "--cached", "--name-only")
@@ -144,6 +151,7 @@ def test_hook_passes_clean_commit(repo):
         capture_output=True,
         text=True,
         stdin=subprocess.DEVNULL,
+        check=False,
     )
     write(repo, "ok.py", "x = 1  # → clean\n")
     git(repo, "add", "ok.py")
@@ -184,6 +192,7 @@ def test_self_hosted_repo_satisfies_its_own_hook(tmp_path, goh):
         capture_output=True,
         text=True,
         stdin=subprocess.DEVNULL,
+        check=False,
     )
     git(copy, "add", "-A")
     # GOH_DIR points the delegation at the copy itself → true self-host.
@@ -209,6 +218,7 @@ def test_self_hosted_repo_satisfies_its_own_hook(tmp_path, goh):
             "PATH": "/usr/bin:/bin:/opt/homebrew/bin",
         },
         stdin=subprocess.DEVNULL,
+        check=False,
     )
     assert r.returncode == 0, r.stdout + r.stderr
 
@@ -318,6 +328,7 @@ def test_recorded_hash_allows_update_after_a_stock_bump(tmp_path):
             capture_output=True,
             text=True,
             stdin=subprocess.DEVNULL,
+            check=False,
         )
 
     assert install_from(src).returncode == 0
@@ -338,6 +349,7 @@ def test_help_exits_zero_without_side_effects(tmp_path):
         text=True,
         cwd=tmp_path,
         stdin=subprocess.DEVNULL,
+        check=False,
     )
     assert r.returncode == 0, r.stdout + r.stderr
     assert "--force" in (r.stdout + r.stderr)
@@ -360,6 +372,7 @@ def test_the_starters_install_writes_pass_goh_home_paths(repo, goh):
             capture_output=True,
             text=True,
             stdin=subprocess.DEVNULL,
+            check=False,
         )
         assert out.returncode == 0, out.stdout + out.stderr
 
@@ -369,6 +382,11 @@ def test_the_example_gatesrc_passes_goh_home_paths(repo, goh):
     shutil.copy(REPO_ROOT / ".gatesrc.example", repo / ".gatesrc")
     git(repo, "add", "-A")
     out = subprocess.run(
-        [str(goh), "home-paths"], cwd=repo, capture_output=True, text=True, stdin=subprocess.DEVNULL
+        [str(goh), "home-paths"],
+        cwd=repo,
+        capture_output=True,
+        text=True,
+        stdin=subprocess.DEVNULL,
+        check=False,
     )
     assert out.returncode == 0, out.stdout + out.stderr

@@ -212,6 +212,7 @@ def test_a_throwaway_crate_builds_into_the_runs_own_build_dir(tmp_path: Path) ->
         capture_output=True,
         text=True,
         stdin=subprocess.DEVNULL,
+        check=False,
     )
     assert r.returncode == 0, r.stderr
     shared = Path(os.environ.get("CARGO_HOME", Path.home() / ".cargo")) / "build"
@@ -230,6 +231,7 @@ def test_a_throwaway_crate_builds_into_the_runs_own_build_dir(tmp_path: Path) ->
         text=True,
         env=dict(os.environ, CARGO_BUILD_BUILD_DIR=str(named)),
         stdin=subprocess.DEVNULL,
+        check=False,
     )
     assert r.returncode == 0, r.stderr
     assert list(named.glob(f"*/.fingerprint/{name}-*")), "a caller's own build dir was not kept"

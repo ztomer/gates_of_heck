@@ -43,6 +43,7 @@ def stamp(repo, tmp_path, action):
         capture_output=True,
         text=True,
         stdin=subprocess.DEVNULL,
+        check=False,
     )
 
 
@@ -155,6 +156,7 @@ def run_gate(repo, work, env_extra=None):
         text=True,
         env=env,
         stdin=subprocess.DEVNULL,
+        check=False,
     )
 
 

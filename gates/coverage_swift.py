@@ -268,7 +268,7 @@ def process(
     cmd = ["xcrun", "llvm-cov", "export", "-summary-only", binary, f"-instr-profile={profdata}"]
     if ignore_re:
         cmd.append(f"-ignore-filename-regex={ignore_re}")
-    res = subprocess.run(cmd, capture_output=True, text=True, stdin=subprocess.DEVNULL)
+    res = subprocess.run(cmd, capture_output=True, text=True, stdin=subprocess.DEVNULL, check=False)
     if res.returncode != 0:
         # Say what actually happened. This used to claim the JSON could not
         # be parsed, when llvm-cov had not produced any -- so a wrong binary

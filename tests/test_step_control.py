@@ -126,7 +126,7 @@ def test_an_unknown_kind_is_a_usage_error(tmp_path: Path) -> None:
     env.update(GOH_TIMINGS=str(tmp_path / "t.jsonl"), GOH_STEP_CONTROL_CACHE=str(tmp_path / "c"))
     r = subprocess.run(
         [sys.executable, str(LIB / "step_control.py"), "run", "cobol"],
-        env=env, capture_output=True, text=True, timeout=60, stdin=subprocess.DEVNULL,
+        env=env, capture_output=True, text=True, timeout=60, stdin=subprocess.DEVNULL, check=False,
     )  # fmt: skip
     assert r.returncode == 2 and "cobol" in r.stderr, r.stderr
 

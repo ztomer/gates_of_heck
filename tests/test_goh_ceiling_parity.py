@@ -137,7 +137,9 @@ def run_py(repo: Path, args: list[str]) -> tuple[int, str, str]:
         cmd += ["--line-exclude", args[args.index("--line-exclude") + 1]]
     if "--unbounded" in args:
         cmd += ["--unbounded", args[args.index("--unbounded") + 1]]
-    first = subprocess.run(cmd, cwd=repo, capture_output=True, text=True, stdin=subprocess.DEVNULL)
+    first = subprocess.run(
+        cmd, cwd=repo, capture_output=True, text=True, stdin=subprocess.DEVNULL, check=False
+    )
     out, err, code = first.stdout, first.stderr, first.returncode
     if code == 0 and (repo / baseline).is_file():
         measure = f"python3 '{LOC}' '{baseline}'"
@@ -147,6 +149,7 @@ def run_py(repo: Path, args: list[str]) -> tuple[int, str, str]:
             capture_output=True,
             text=True,
             stdin=subprocess.DEVNULL,
+            check=False,
         )
         out += second.stdout
         err += second.stderr
@@ -165,6 +168,7 @@ def run_goh(goh: Path, repo: Path, args: list[str]) -> tuple[int, str, str]:
         text=True,
         env=env,
         stdin=subprocess.DEVNULL,
+        check=False,
     )
     return r.returncode, r.stdout, r.stderr
 

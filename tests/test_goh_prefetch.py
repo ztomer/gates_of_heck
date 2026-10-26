@@ -75,6 +75,7 @@ def _run(goh: Path, tmp: Path, red: bool, sleep: str):
         env=env,
         timeout=60,
         stdin=subprocess.DEVNULL,
+        check=False,
     )
     return r, time.monotonic() - t0, {p.name for p in marks.iterdir()}
 

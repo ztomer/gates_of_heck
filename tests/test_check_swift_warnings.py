@@ -23,6 +23,7 @@ def run_check(repo: Path, *args: str) -> subprocess.CompletedProcess:
         capture_output=True,
         text=True,
         stdin=subprocess.DEVNULL,
+        check=False,
     )
 
 

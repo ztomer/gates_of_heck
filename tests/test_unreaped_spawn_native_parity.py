@@ -50,6 +50,7 @@ def native(goh: Path, source: str, ext: str) -> list[list]:
         capture_output=True,
         text=True,
         timeout=30,
+        check=False,
     )
     assert r.returncode == 0, r.stderr
     return json.loads(r.stdout)
@@ -81,6 +82,7 @@ def _report(cmd: list[str], cwd: Path | None = None) -> tuple[int, str]:
         env=env,
         timeout=120,
         stdin=subprocess.DEVNULL,
+        check=False,
     )
     return r.returncode, r.stdout + r.stderr
 

@@ -44,7 +44,7 @@ EXPORTED_AND_KEYED = {
 def test_every_key_the_gates_export_is_verdict_free() -> None:
     out = subprocess.run(["git", "-C", str(REPO_ROOT), "grep", "-ohE", r"export +GOH_[A-Z0-9_]+",
                           "--", "gates", "lib", "tools", "hooks"],
-                         capture_output=True, text=True, env=hermetic_env(drop_git=True), stdin=subprocess.DEVNULL).stdout  # fmt: skip
+                         capture_output=True, text=True, env=hermetic_env(drop_git=True), stdin=subprocess.DEVNULL, check=False).stdout  # fmt: skip
     exported = {w.split()[-1] for w in out.split("\n") if w}
     assert exported, "found no exported GOH_ key: the pattern moved"
     stray = sorted(exported - _listed() - set(EXPORTED_AND_KEYED))
@@ -64,7 +64,7 @@ def test_the_config_hash_ignores_verdict_free_keys(tmp_path) -> None:
         r = subprocess.run(
             ["bash", "-c", f'. "{REPO_ROOT}/gates/_hash.sh"; goh_config_hash'],
             cwd=tmp_path, capture_output=True, text=True,
-            env=hermetic_env(**{"GOH_MAX_LINES": "500", **env}), stdin=subprocess.DEVNULL,
+            env=hermetic_env(**{"GOH_MAX_LINES": "500", **env}), stdin=subprocess.DEVNULL, check=False,
         )  # fmt: skip
         assert r.stdout.strip(), r.stderr
         return r.stdout

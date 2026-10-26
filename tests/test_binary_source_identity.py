@@ -83,6 +83,7 @@ def _structural(checkout: Path, tmp_path: Path, **env: str):
         ),
         timeout=120,
         stdin=subprocess.DEVNULL,
+        check=False,
     )
 
 
@@ -157,6 +158,7 @@ def test_the_real_binary_reports_the_tree_it_was_built_from(goh: Path):
         text=True,
         timeout=30,
         stdin=subprocess.DEVNULL,
+        check=False,
     )
     assert out.returncode == 0, out.stderr
     inputs = ["crates", "Cargo.toml", "Cargo.lock", "rust-toolchain.toml"]
@@ -165,6 +167,7 @@ def test_the_real_binary_reports_the_tree_it_was_built_from(goh: Path):
         capture_output=True,
         text=True,
         stdin=subprocess.DEVNULL,
+        check=False,
     ).stdout.strip()
     assert out.stdout.strip() == ("dirty" if dirty else _head_tree(root)), out.stdout
 
@@ -204,6 +207,7 @@ def test_goh_live_runs_the_working_trees_binary_not_heads(tmp_path: Path) -> Non
         env=env,
         timeout=600,
         stdin=subprocess.DEVNULL,
+        check=False,
     )
     assert "LIVE-RUST-EDIT-9031" in live.stdout, live.stdout + live.stderr
     env.pop("GOH_LIVE")
@@ -219,6 +223,7 @@ def test_goh_live_runs_the_working_trees_binary_not_heads(tmp_path: Path) -> Non
         env=env,
         timeout=600,
         stdin=subprocess.DEVNULL,
+        check=False,
     )
     assert "LIVE-RUST-EDIT-9031" not in head.stdout + head.stderr
 
@@ -238,6 +243,7 @@ def test_goh_live_delta_empty_on_clean_checkout_with_no_untracked_files(tmp_path
         capture_output=True,
         text=True,
         stdin=subprocess.DEVNULL,
+        check=False,
     )
     assert res.returncode == 0, res.stderr
     assert res.stdout.strip() == "", f"expected empty delta, got: {res.stdout!r}"

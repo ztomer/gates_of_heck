@@ -49,6 +49,7 @@ def lint(repo: Path, tmp_path: Path, goh: Path):
             text=True,
             env=env,
             stdin=subprocess.DEVNULL,
+            check=False,
         )
         asked = {Path(a).name for a in log.read_text().split() if a.endswith(".sh")}
         return (r.returncode, r.stdout, r.stderr), asked

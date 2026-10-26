@@ -147,6 +147,7 @@ def run_rust_gate(
         text=True,
         env=env,
         stdin=subprocess.DEVNULL,
+        check=False,
     )
 
 
@@ -320,6 +321,7 @@ def test_cpp_ctest_failure_is_a_hard_fail_naming_itself(tmp_path):
         text=True,
         env=env,
         stdin=subprocess.DEVNULL,
+        check=False,
     )
     assert r.returncode == 1, r.stdout + r.stderr
     combined = r.stdout + r.stderr

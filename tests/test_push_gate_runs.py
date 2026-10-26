@@ -42,6 +42,7 @@ def _push(repo: Path, tmp_path: Path, export_root: Path) -> subprocess.Completed
         input=f"refs/heads/main {sha} refs/heads/main {'0' * 40}\n",
         capture_output=True,
         timeout=60,
+        check=False,
     )
 
 

@@ -28,7 +28,7 @@ def _check(repo: Path, msg: str) -> subprocess.CompletedProcess[str]:
     path.write_text(msg)
     return subprocess.run(
         [str(native_goh_path()), "red-run", str(path)], cwd=repo, capture_output=True, text=True,
-        env=hermetic_env(drop_git=True), stdin=subprocess.DEVNULL,
+        env=hermetic_env(drop_git=True), stdin=subprocess.DEVNULL, check=False,
     )  # fmt: skip
 
 
@@ -53,7 +53,7 @@ def test_a_commit_that_adds_no_test_needs_none(repo: Path) -> None:
 def _range(repo: Path, *revs: str) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
         [str(native_goh_path()), "red-run", "--range", *revs], cwd=repo, capture_output=True,
-        text=True, env=hermetic_env(drop_git=True), stdin=subprocess.DEVNULL,
+        text=True, env=hermetic_env(drop_git=True), stdin=subprocess.DEVNULL, check=False,
     )  # fmt: skip
 
 
@@ -82,7 +82,7 @@ def _hooked(repo: Path, gatesrc: str) -> None:
 def _git_commit(repo: Path, msg: str) -> subprocess.CompletedProcess[str]:
     env = hermetic_env(drop_git=True, GOH_DIR=str(REPO_ROOT), GOH_BIN=str(native_goh_path()))
     return subprocess.run(["git", "-C", str(repo), "commit", "-q", "-m", msg],
-                          capture_output=True, text=True, env=env, stdin=subprocess.DEVNULL)  # fmt: skip
+                          capture_output=True, text=True, env=env, stdin=subprocess.DEVNULL, check=False)  # fmt: skip
 
 
 def test_the_commit_msg_hook_runs_it_when_the_repo_opts_in(repo: Path) -> None:
@@ -119,7 +119,7 @@ def test_the_push_asks_again_so_no_verify_does_not_survive_it(tmp_path: Path) ->
                        GOH_PUSH_LOGS=str(tmp_path / "push-logs"))  # fmt: skip
     r = subprocess.run(
         ["bash", str(PUSH_GATE), "origin", "unused-url"], cwd=proj, env=env, text=True,
-        input=f"refs/heads/main {tip} refs/heads/main {base}\n", capture_output=True,
+        input=f"refs/heads/main {tip} refs/heads/main {base}\n", capture_output=True, check=False,
     )  # fmt: skip
     assert r.returncode == 1, r.stdout + r.stderr
     assert "Red-run:" in r.stderr and "nothing pushed" in r.stderr, r.stderr

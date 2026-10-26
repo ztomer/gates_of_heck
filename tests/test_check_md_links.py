@@ -36,6 +36,7 @@ def anchors(text: str) -> set[str]:
         capture_output=True,
         text=True,
         timeout=30,
+        check=False,
     )
     assert r.returncode == 0, r.stderr
     return set(json.loads(r.stdout)["anchors"])
@@ -411,6 +412,7 @@ def test_goh_sh_reads_the_repos_own_exclusion(tmp_path):
         text=True,
         env=env,
         stdin=subprocess.DEVNULL,
+        check=False,
     )
     assert r.returncode == 0, r.stdout + r.stderr
     assert "PROTOCOL.md" not in r.stdout + r.stderr

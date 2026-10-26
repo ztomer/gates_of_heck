@@ -82,6 +82,7 @@ def _run_gate(bin_dir: Path, *args: str):
         text=True,
         env=env,
         stdin=subprocess.DEVNULL,
+        check=False,
     )
 
 
@@ -115,6 +116,7 @@ def test_xcodebuild_engine_pairs_fresh_release_binary(tmp_path):
             "GOH_COV_DD": env_dd,
         },
         stdin=subprocess.DEVNULL,
+        check=False,
     )
     assert r.returncode == 0, r.stdout + r.stderr
     assert "50." in r.stdout + r.stderr
@@ -146,6 +148,7 @@ def test_uncaught_exception_exits_2_naming_error_not_below_floor(tmp_path):
         text=True,
         env={**dict(os.environ), "PATH": f"{bin_}:/usr/bin:/bin"},
         stdin=subprocess.DEVNULL,
+        check=False,
     )
     assert r.returncode == 2, (r.returncode, r.stdout, r.stderr)
     combined = r.stdout + r.stderr

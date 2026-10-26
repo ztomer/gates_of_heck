@@ -213,9 +213,9 @@ def run_one(path, flag, cwd, timeout=TIMEOUT):
             text=True,
             timeout=timeout,
             stdin=subprocess.DEVNULL,
-            # A probe builds its OWN fixture repos: handed the hook's GIT_DIR, its `git init <tmp>`
-            # in a linked worktree re-inits the real repo and flips core.bare. No probe sees them.
+            # A probe builds its OWN fixture repos; the hook's GIT_DIR would re-init the real one.
             env=foreign_repo_env(),
+            check=False,
         )
     except subprocess.TimeoutExpired:
         return False, f"timed out after {timeout}s"

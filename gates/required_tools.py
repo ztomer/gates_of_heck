@@ -91,7 +91,10 @@ def _declared(repo: str) -> str:
 
 def _tracks_shell(repo: str) -> bool:
     out = subprocess.run(
-        ["git", "-C", repo, "ls-files", "-z"], capture_output=True, stdin=subprocess.DEVNULL
+        ["git", "-C", repo, "ls-files", "-z"],
+        capture_output=True,
+        stdin=subprocess.DEVNULL,
+        check=False,
     )
     names = [n.decode("utf-8", "replace") for n in out.stdout.split(b"\0") if n]
     # `goh shell-lint`'s scope (`crates/goh/src/shell_lint.rs::in_scope`): a `*.sh`, or an
@@ -218,7 +221,12 @@ def judge(row: dict, found_text: str | None = None) -> str | None:
             return None
         try:
             done = subprocess.run(
-                probe, capture_output=True, text=True, timeout=60, stdin=subprocess.DEVNULL
+                probe,
+                capture_output=True,
+                text=True,
+                timeout=60,
+                stdin=subprocess.DEVNULL,
+                check=False,
             )
         except (OSError, subprocess.TimeoutExpired) as error:
             return f"{tool}: its version cannot be read ({error}); the floor is {floor}"

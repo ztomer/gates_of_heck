@@ -79,6 +79,7 @@ def test_dep_currency_counts_only_the_crate_git_names(planted: Path, goh) -> Non
         env=env,
         timeout=60,
         stdin=subprocess.DEVNULL,
+        check=False,
     )
     assert r.returncode == 0, r.stdout + r.stderr
     assert "1 manifest(s), none declaring a dependency" in r.stdout, r.stdout
@@ -95,6 +96,7 @@ def test_lints_optin_never_reads_the_ignored_build_tree(planted: Path, goh) -> N
         env=env,
         timeout=60,
         stdin=subprocess.DEVNULL,
+        check=False,
     )
     assert r.returncode == 0, r.stdout + r.stderr
     assert "unsafe_code" not in r.stdout + r.stderr

@@ -20,7 +20,7 @@ LIB = f'. "{REPO_ROOT}/gates/_proven.sh"; proven_settings'
 def _bash(repo: Path, script: str, **env: str) -> str:
     r = subprocess.run(
         ["bash", "-c", f"{LIB}; {script}"], cwd=repo, capture_output=True, text=True,
-        env=hermetic_env(drop_git=True, **env), stdin=subprocess.DEVNULL,
+        env=hermetic_env(drop_git=True, **env), stdin=subprocess.DEVNULL, check=False,
     )  # fmt: skip
     return r.stdout.strip()
 
@@ -143,7 +143,7 @@ def _git_shim(tmp_path: Path) -> tuple[Path, Path]:
 def _native(cwd: Path, *args: str, **env: str) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
         [str(native_goh_path()), "proven", *args], cwd=cwd, capture_output=True, text=True,
-        env=hermetic_env(drop_git=True, **env), stdin=subprocess.DEVNULL,
+        env=hermetic_env(drop_git=True, **env), stdin=subprocess.DEVNULL, check=False,
     )  # fmt: skip
 
 

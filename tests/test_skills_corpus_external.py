@@ -65,6 +65,7 @@ def _full(goh: Path, repo: Path) -> subprocess.CompletedProcess:
         env=hermetic_env(GOH_DIR=str(REPO_ROOT)),
         timeout=120,
         stdin=subprocess.DEVNULL,
+        check=False,
     )
 
 

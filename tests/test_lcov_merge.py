@@ -28,6 +28,7 @@ def run_merge(parts_dir: Path, floor: str = "100"):
         capture_output=True,
         text=True,
         stdin=subprocess.DEVNULL,
+        check=False,
     )
 
 
@@ -157,6 +158,7 @@ def _floors_run(tmp_path: Path, floors: dict, *extra: str):
         capture_output=True,
         text=True,
         stdin=subprocess.DEVNULL,
+        check=False,
     )
 
 
@@ -196,6 +198,7 @@ def test_an_unreadable_floors_file_is_refused_not_dropped(tmp_path: Path) -> Non
         capture_output=True,
         text=True,
         stdin=subprocess.DEVNULL,
+        check=False,
     )
     assert r.returncode == 2, r.stdout + r.stderr
 
@@ -225,6 +228,7 @@ def test_an_exemption_may_name_its_file_relative_to_the_project(tmp_path: Path) 
         capture_output=True,
         text=True,
         stdin=subprocess.DEVNULL,
+        check=False,
     )
     assert r.returncode == 0, r.stdout + r.stderr
     assert "stale" not in r.stdout + r.stderr, r.stdout + r.stderr
