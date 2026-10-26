@@ -84,12 +84,28 @@ def _report(cmd: list[str], cwd: Path | None = None) -> tuple[int, str]:
     return r.returncode, r.stdout + r.stderr
 
 
+# The ONE place the port deliberately departs from the frozen reference (G18): a parenthesised
+# multi-line `with (open(..) as f, subprocess.Popen(..) as p):` puts the Popen on a continuation line,
+# which the reference read as a bare spawn (a false `reap-after-panic`). The port reads the whole
+# `with` statement. This repository's own tests/test_gate_slot_linux.py is written in that form, so
+# the byte-for-byte comparison leaves that one file out and the departure is asserted separately.
+_FIXED_SINCE_THE_REFERENCE = "^tests/test_gate_slot_linux\\.py$"
+
+
 def test_this_repositorys_full_report_is_byte_identical(goh: Path) -> None:
     """The whole-tree report over this repository, the largest real corpus the suite owns, read
     through the frozen reference and through the port, byte for byte."""
-    py = _report([sys.executable, str(reference_path("checks/check_no_unreaped_spawn.py"))])
-    rs = _report([str(goh), "unreaped-spawn"])
+    skip = ["--exclude", _FIXED_SINCE_THE_REFERENCE]
+    py = _report([sys.executable, str(reference_path("checks/check_no_unreaped_spawn.py")), *skip])
+    rs = _report([str(goh), "unreaped-spawn", *skip])
     assert rs == py
+
+
+def test_the_port_reads_a_multiline_with_as_the_context_manager_it_is(goh: Path) -> None:
+    """The departure from the reference, on the real file that needed it: the whole-tree report is
+    clean WITH tests/test_gate_slot_linux.py in scope (the reference flags its line 232)."""
+    code, out = _report([str(goh), "unreaped-spawn"])
+    assert code == 0, out
 
 
 def test_the_staged_scope_is_the_tree_the_commit_produces(goh: Path, repo: Path) -> None:

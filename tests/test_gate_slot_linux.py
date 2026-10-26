@@ -227,12 +227,12 @@ def test_the_pidfd_watch_survives_a_descriptor_select_would_refuse():
 def test_the_poll_fallback_still_notices_the_owner_going_away(monkeypatch):
     """The fallback is not only reached: it works. A watch that cannot see the owner go would
     hold the slot until the machine was rebooted."""
-    # Nested on purpose (SIM117 is waived below): the unreaped-spawn scan reads a Popen on the line of its
-    # own `with`, and a parenthesised multi-line `with (...)` puts it on a continuation line.
-    with _a_kernel_with_no_event(monkeypatch):  # noqa: SIM117
-        with subprocess.Popen(["sleep", "0.2"], stdin=subprocess.DEVNULL) as child:
-            watch = gate_slot.OwnerWatch(child.pid)
-            assert watch.mechanism == "poll"
-            time.sleep(0.5)
-            child.wait(timeout=10)
-            assert watch.alive(wait=0.1) is False
+    with (
+        _a_kernel_with_no_event(monkeypatch),
+        subprocess.Popen(["sleep", "0.2"], stdin=subprocess.DEVNULL) as child,
+    ):
+        watch = gate_slot.OwnerWatch(child.pid)
+        assert watch.mechanism == "poll"
+        time.sleep(0.5)
+        child.wait(timeout=10)
+        assert watch.alive(wait=0.1) is False
