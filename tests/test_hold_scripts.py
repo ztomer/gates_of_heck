@@ -147,3 +147,31 @@ def test_unarchive_lifts_the_legacy_archived_key(clone: Path, gh: dict[str, str]
         text=True, stdin=subprocess.DEVNULL, check=False,
     )  # fmt: skip
     assert out.returncode == 1 and _writable(clone / "README.md")
+
+
+def _lying_gh(tmp_path: Path, gh: dict[str, str]) -> dict[str, str]:
+    """A gh whose archive/unarchive exit 0 and change nothing (G15: success claimed over no state)."""
+    lie = tmp_path / "lying-gh"
+    lie.write_text(FAKE_GH.replace('echo true > "$GH_STATE/$(slug "$3")"', ":")
+                   .replace('echo false > "$GH_STATE/$(slug "$3")"', ":"))  # fmt: skip
+    lie.chmod(0o755)
+    return {**gh, "GOH_GH": str(lie)}
+
+
+def test_archive_that_changed_nothing_on_github_is_not_reported_archived(
+    clone: Path, gh: dict[str, str], tmp_path: Path
+) -> None:
+    r = _sh("archive_repo.sh", str(clone), env=_lying_gh(tmp_path, gh))
+    assert r.returncode != 0 and "archived ztomer/apes" not in r.stdout, r.stdout + r.stderr
+    assert "still not archived" in r.stderr and not _held(clone)
+
+
+def test_unarchive_that_changed_nothing_on_github_is_not_reported_unarchived(
+    clone: Path, gh: dict[str, str], tmp_path: Path
+) -> None:
+    (Path(gh["GH_STATE"]) / "ztomer_apes").write_text("true\n")
+    git(clone, "config", "--local", "goh.hold", "2026-10-26: archived -- lift: x")
+    env = {**_lying_gh(tmp_path, gh), "GOH_HOLD_INTERACTIVE": "1"}
+    r = _sh("unarchive_repo.sh", str(clone), env=env, stdin="y\n")
+    assert r.returncode != 0 and "unarchived ztomer/apes on GitHub" not in r.stdout, r.stdout
+    assert "still archived" in r.stderr

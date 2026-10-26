@@ -33,6 +33,9 @@ fi
 for k in goh.hold goh.holdReadOnly goh.archived; do
     git -C "$root" config --local --unset-all "$k" 2>/dev/null || true
 done
+if "$GOH_PY" -S "$GOH/lib/repo_hold.py" show "$root" >/dev/null 2>&1; then
+    die "release_hold.sh: $root is still on hold after the keys were unset -- not lifted"
+fi
 ok "$root: hold lifted (${value})"
 exit
 } # parse-guard

@@ -283,7 +283,17 @@ if [ -n "$toplevel" ]; then
     fi
 fi
 
-ok "installed into $target (core.hooksPath → .githooks)"
+# The claim is checked against the repo before it is made (G15): every hook this run installed is
+# there, executable and byte-equal to the stock one, and git will actually read .githooks.
+for h in ${install_hooks[@]+"${install_hooks[@]}"}; do
+    [ -x "$hooks_dir/$h" ] && [ "$(hash_hex "$hooks_dir/$h")" = "$(hash_hex "$HERE/hooks/$h")" ] \
+        || die "install: $hooks_dir/$h is not the executable stock hook after the install"
+done
+[ "$(git -C "$target" config core.hooksPath 2>/dev/null || true)" = ".githooks" ] \
+    || die "install: core.hooksPath is not .githooks after the install -- git would not run the hooks"
+if [ "$refusals_stand" -eq 0 ]; then
+    ok "installed into $target (core.hooksPath → .githooks)"
+fi
 info "pre-commit runs tools/gate.sh --staged; pre-push runs tools/gate.sh --full on the pushed commit in a clean worktree; post-rewrite and pre-applypatch check rebase picks and am patches for conflict markers"
 
 if [ "$refusals_stand" -ne 0 ]; then

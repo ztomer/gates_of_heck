@@ -52,6 +52,9 @@ if [ "$(goh_gh_archived "$slug")" = "true" ]; then
     info "$slug is already archived on GitHub"
 else
     "${GOH_GH:-gh}" repo archive "$slug" --yes
+    # The state, not the exit code (G15): GitHub is asked again before anything is claimed or held.
+    [ "$(goh_gh_archived "$slug")" = "true" ] \
+        || die "archive_repo.sh: gh repo archive returned, but $slug is still not archived on GitHub -- nothing held"
     ok "archived $slug on GitHub"
 fi
 reason="archived on GitHub as $slug${why:+: $why}; unarchive it there first"

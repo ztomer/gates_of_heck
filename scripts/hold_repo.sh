@@ -48,6 +48,9 @@ if [ -n "$readonly_" ]; then
     git -C "$root" config --local goh.holdReadOnly true
     chmod -R a-w "$root"
 fi
+# Read the hold back through the reader every gate uses (G15): "on hold" is what it reports.
+"$GOH_PY" -S "$GOH/lib/repo_hold.py" show "$root" >/dev/null \
+    || die "hold_repo.sh: $root is not on hold after the write -- the hold was not recorded"
 ok "$root is on hold${readonly_:+ and read-only}"
 step "why: $reason"
 step "lift it: $lift"

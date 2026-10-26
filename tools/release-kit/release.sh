@@ -371,6 +371,13 @@ else
   # ONE push: the pre-push gate refuses a branch that carries a local release tag the remote
   # lacks (goh tag-version --remote), which is what the first of two pushes always was.
   git push origin "$BRANCH" "$TAG" || fail "could not push ${BRANCH} + ${TAG}"
+  # origin is read back before "pushed" is said (G15): a push can return 0 over a remote that did not move.
+  remote_head="$(git ls-remote origin "refs/heads/${BRANCH}" | cut -f1)" || fail "git ls-remote origin exited nonzero"
+  remote_tag="$(git ls-remote origin "refs/tags/${TAG}" | cut -f1)" || fail "git ls-remote origin exited nonzero"
+  [ "$remote_head" = "$(git rev-parse HEAD)" ] \
+    || fail "origin/${BRANCH} is ${remote_head:-missing}, not $(git rev-parse HEAD), after a push that returned 0 -- not pushed"
+  [ "$remote_tag" = "$(git rev-parse "refs/tags/${TAG}")" ] \
+    || fail "origin has ${TAG} at ${remote_tag:-nothing}, not $(git rev-parse "refs/tags/${TAG}"), after a push that returned 0 -- not pushed"
   ok "pushed"
 fi
 
@@ -415,6 +422,8 @@ backfill_releases() {
     gh release create "v${v}" --title "v${v}" --notes-file "$BACKFILL_NOTES" \
       --latest=false --verify-tag --repo "$GH_REPO_SLUG" \
       || fail "gh release create v${v} exited nonzero"
+    gh release view "v${v}" --repo "$GH_REPO_SLUG" >/dev/null 2>&1 \
+      || fail "gh release create v${v} returned, but the release cannot be found -- not backfilled"
     ok "backfilled GitHub release v${v} (tag had none)"
     made=$((made + 1))
   done
@@ -451,6 +460,8 @@ else
   else
     gh release create "$TAG" --title "$TAG" --notes-file "$NOTES" \
       --repo "$GH_REPO_SLUG" || fail "gh release create exited nonzero"
+    gh release view "$TAG" --repo "$GH_REPO_SLUG" >/dev/null 2>&1 \
+      || fail "gh release create returned, but GitHub release ${TAG} cannot be found -- not created"
     ok "created"
   fi
 fi

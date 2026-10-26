@@ -26,7 +26,11 @@ if [ "$(goh_gh_archived "$slug")" = "true" ]; then
         answer=""
         read -r answer || true
         case "$answer" in
-            y|Y|yes) "${GOH_GH:-gh}" repo unarchive "$slug" --yes; ok "unarchived $slug on GitHub" ;;
+            y|Y|yes)
+                "${GOH_GH:-gh}" repo unarchive "$slug" --yes
+                [ "$(goh_gh_archived "$slug")" = "false" ] \
+                    || die "unarchive_repo.sh: gh repo unarchive returned, but $slug is still archived on GitHub -- the hold stays"
+                ok "unarchived $slug on GitHub" ;;
             *) die "unarchive_repo.sh: $slug stays archived, and so does $root" ;;
         esac
     else

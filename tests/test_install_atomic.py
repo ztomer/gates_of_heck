@@ -88,6 +88,9 @@ def test_a_customised_hook_is_refused_alone_while_every_other_hook_installs(repo
         "an install that left a hook alone must say it did not finish -- "
         "this is the 'partial install read as complete' lie"
     )
+    assert "installed into" not in r.stdout + r.stderr, (
+        "G15: an install that left a hook alone printed the success line before INCOMPLETE"
+    )
     assert custom.read_text() == "#!/bin/bash\n# monitor's own gate\nexit 0\n", (
         "the refused hook was overwritten"
     )

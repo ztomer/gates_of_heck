@@ -46,14 +46,22 @@ install)
     if [ -z "${LAUNCHAGENTS_DIR:-}" ]; then
         launchctl bootout "gui/$(id -u)/$label" 2>/dev/null || true
         launchctl bootstrap "gui/$(id -u)" "$dest"
+        # The state, not the exit code (G15): launchd is asked whether the job is loaded.
+        launchctl print "gui/$(id -u)/$label" >/dev/null 2>&1 \
+            || die "$label: bootstrap returned, but launchd has the job not loaded -- not installed"
     fi
+    [ "$(as_json "$src")" = "$(as_json "$dest")" ] || die "$label: $dest is not the repo's plist after the copy -- not installed"
     ok "$label: installed ($dest)"
     ;;
 remove)
     if [ -z "${LAUNCHAGENTS_DIR:-}" ]; then
         launchctl bootout "gui/$(id -u)/$label" 2>/dev/null || true
+        if launchctl print "gui/$(id -u)/$label" >/dev/null 2>&1; then
+            die "$label: bootout returned, but launchd has the job still loaded -- not removed"
+        fi
     fi
     rm -f "$dest"
+    [ ! -e "$dest" ] || die "$label: $dest is still there after the remove -- not removed"
     ok "$label: removed ($dest deleted)"
     ;;
 check)

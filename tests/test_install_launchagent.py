@@ -24,8 +24,7 @@ JOBS = {
 
 
 def _plist(label):
-    """The plist as plutil reads it (the load-reap plist's comments hold a double hyphen, which
-    plutil forgives and a strict XML parser does not)."""
+    """The plist as plutil reads it (tests/test_plists_strict.py holds them to a strict parser)."""
     out = subprocess.run(
         [
             "plutil",
@@ -87,3 +86,39 @@ def test_the_sweep_job_is_daily_applies_and_logs_where_the_proof_reads():
     assert "tools/actions_sweep.sh" in data["ProgramArguments"][2]
     wrapper = (TOOLS / "actions_sweep.sh").read_text()
     assert "--apply" in wrapper and "scripts/actions_sweep.py" in wrapper
+
+
+def _with_fake_launchctl(tmp_path, mode, loaded):
+    """The REAL path (no LAUNCHAGENTS_DIR) with a launchctl whose bootstrap/bootout exit 0 and whose
+    `print` says whether the job is loaded -- a bootstrap that returned 0 over nothing (G15)."""
+    fake = tmp_path / "bin"
+    fake.mkdir()
+    ctl = fake / "launchctl"
+    ctl.write_text(f'#!/bin/sh\n[ "$1" = print ] && exit {0 if loaded else 1}\nexit 0\n')
+    ctl.chmod(0o755)
+    return subprocess.run(
+        ["/bin/bash", str(TOOLS / "install_load_reap.sh"), mode],
+        check=False,
+        capture_output=True,
+        text=True,
+        stdin=subprocess.DEVNULL,
+        env={"PATH": f"{fake}:/usr/bin:/bin", "HOME": str(tmp_path)},
+    )
+
+
+def test_an_install_launchd_never_loaded_is_not_reported_installed(tmp_path):
+    r = _with_fake_launchctl(tmp_path, "install", loaded=False)
+    assert r.returncode != 0 and "installed" not in r.stdout, r.stdout + r.stderr
+    assert "not loaded" in r.stderr
+
+
+def test_a_remove_that_left_the_job_loaded_is_not_reported_removed(tmp_path):
+    r = _with_fake_launchctl(tmp_path, "remove", loaded=True)
+    assert r.returncode != 0 and "removed" not in r.stdout, r.stdout + r.stderr
+    assert "still loaded" in r.stderr
+
+
+def test_a_loaded_install_and_an_unloaded_remove_still_succeed(tmp_path):
+    assert _with_fake_launchctl(tmp_path, "install", loaded=True).returncode == 0
+    (tmp_path / "bin").rename(tmp_path / "bin2")
+    assert _with_fake_launchctl(tmp_path, "remove", loaded=False).returncode == 0
