@@ -35,6 +35,7 @@ WHAT THIS TOOL DOES, IN THE ORDER THAT MATTERS.
      that left the group -- and every spinner are killed, and the tool exits EXIT_DEADLINE naming
      the deadline. And more spinners than cores is refused unless `--oversubscribe` says it is
      meant: N > ncpu starves the thing under test, which is how a proof becomes a hang.
+  7. It REFUSES a command at background priority, which N spinners starve (lib/load_priority.py).
 
 The command runs in a process group of its own, so the group can be killed whole; a command that
 reads from the terminal is therefore not supported (a background group that reads a tty stops).
@@ -59,6 +60,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "lib"))
 
+import load_priority  # noqa: E402
 import load_registry as reg  # noqa: E402
 import load_reap  # noqa: E402
 
@@ -90,6 +92,7 @@ def _parse(argv: list[str]) -> argparse.Namespace:
         action="store_true",
         help="allow more spinners than cores (refused without it)",
     )
+    parser.add_argument(load_priority.ESCAPE_FLAG, metavar="REASON", help=load_priority.HELP)
     parser.add_argument("rest", nargs=argparse.REMAINDER, help="N -- COMMAND [ARG...]")
     return parser.parse_args(argv)
 
@@ -417,6 +420,9 @@ def main(argv: list[str]) -> int:
             "test hangs, and a hang is not a measurement); pass --oversubscribe if that is meant",
             file=sys.stderr,
         )
+        return 2
+    if starved := load_priority.preflight(count, command, opts.background_ok):
+        print(f"load: {starved}", file=sys.stderr)
         return 2
 
     experiment = Experiment(directory, count, command, max_s)

@@ -62,6 +62,13 @@ except ImportError:  # the shared rule is not there: the guard judges what it ca
         file=sys.stderr,
     )
 
+# The house's ONE definition of "background priority" (G1f), shared with tools/load.py, which
+# refuses the same command line when it runs; the guard refuses it before a tool call is spent.
+try:
+    import load_priority
+except ImportError:
+    load_priority = None
+
 ESCAPE = re.compile(r"#\s*discard-ok:\s*\S")
 LOAD_ESCAPE = re.compile(r"#\s*load-ok:\s*\S")
 SEPARATORS = {"&&", "||", ";", "|", "&"}
@@ -222,6 +229,25 @@ def judge_load(command: str) -> str | None:
     return LOAD_REASON
 
 
+def judge_priority(command: str) -> str | None:
+    """The refusal for a `tools/load.py` command line whose wrapped command runs at background
+    priority (`load.py 32 -- taskpolicy -b loop.sh`, the 10h14m run of 2026-10-25), or None."""
+    if load_priority is None:
+        return None
+    try:
+        segs = _segments(command)
+    except ValueError:
+        return None
+    for seg in segs:
+        for index, tok in enumerate(seg):
+            if os.path.basename(tok) == "load.py":
+                reason = load_priority.judge_invocation(seg[index + 1 :])
+                if reason:
+                    return f"`tools/load.py`: {reason}"
+                break
+    return None
+
+
 def judge_file(path: str, content: str) -> str | None:
     """The refusal reason for a file that runs a backgrounded busy loop, or None.
 
@@ -265,7 +291,11 @@ def main() -> int:
         reason = judge_file(tool_input.get("file_path") or "", _new_text(tool_input))
     else:
         command = tool_input.get("command") or ""
-        reason = judge(command, event.get("cwd") or os.getcwd()) or judge_load(command)
+        reason = (
+            judge(command, event.get("cwd") or os.getcwd())
+            or judge_load(command)
+            or judge_priority(command)
+        )
     if reason:
         json.dump(
             {"hookSpecificOutput": {"hookEventName": "PreToolUse",
