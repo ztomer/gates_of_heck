@@ -20,10 +20,12 @@ import importlib.util
 import os
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 import load_kit
 import pytest
+import timing_bounds
 from conftest import REPO_ROOT
 
 sys.path.insert(0, str(REPO_ROOT / "lib"))
@@ -46,7 +48,14 @@ def _job():
     return module
 
 
-def _slow(monkeypatch, *, pgrep: bool = False, table: bool = False, per_pid: bool = False) -> None:
+def _slow(
+    monkeypatch,
+    *,
+    pgrep: bool = False,
+    table: bool = False,
+    per_pid: bool = False,
+    parent: bool = False,
+) -> None:
     """Make the named lookups time out, the way a loaded machine makes them; leave the rest real."""
     real = subprocess.run
 
@@ -55,6 +64,7 @@ def _slow(monkeypatch, *, pgrep: bool = False, table: bool = False, per_pid: boo
             (pgrep and argv[0] == "pgrep")
             or (table and argv[:2] == ["ps", "-ax"])
             or (per_pid and argv[0] == "ps" and "-p" in argv)
+            or (parent and argv[0] == "ps" and "ppid=" in argv)
         )
         if slow:
             raise subprocess.TimeoutExpired(argv, kwargs.get("timeout", 0))
@@ -147,3 +157,44 @@ def test_a_shape_that_crashes_does_not_take_the_others_with_it(
     assert job.main(["--dir", str(tmp_path)]) == 1
     assert ran, "the burning shape never ran after the house shape crashed"
     assert "a shape that broke" in capsys.readouterr().err
+
+
+def _release(fifo: Path) -> None:
+    """Hand a spinner its byte, once its reader is there (the load tool's own release)."""
+    give_up = timing_bounds.GiveUp(timing_bounds.patience(5))
+    while not give_up.passed():
+        try:
+            handle = os.open(fifo, os.O_WRONLY | os.O_NONBLOCK)
+        except OSError:
+            time.sleep(0.01)
+            continue
+        os.write(handle, b"\n")
+        os.close(handle)
+        return
+
+
+def test_a_record_is_settled_after_every_shape_has_killed(tmp_path, monkeypatch) -> None:
+    """The push gate of v0.49.1 (2026-10-25): a SIGKILLed tool's registry outlived its spinners.
+    Under load the registry pass could not read a spinner's parent (unknown, so kept), and the
+    house-shape sweep that ran AFTER it killed the spinner -- so the record named a dead pid for
+    another pass, and the next experiment was refused for a minute. The record is settled last,
+    once every shape in the pass has acted."""
+    fifo = tmp_path / reg.release_name(999999, 0)  # the owner the pipe names is gone
+    os.mkfifo(fifo)
+    pid = load_kit.orphan(["/bin/sh", "-c", reg.spinner_command(fifo)])
+    _release(fifo)
+    reg.write(
+        reg.registry_path(tmp_path),
+        {
+            "version": reg.VERSION,
+            "owner_pid": 999999,
+            "owner_start": GONE_OWNER_START,
+            "pids": [{"pid": pid, "start": reg.pid_start(pid) or ""}],
+        },
+    )
+    job = _job()
+    _slow(monkeypatch, parent=True)
+    assert job.main(["--dir", str(tmp_path)]) == 0
+    monkeypatch.undo()
+    assert load_kit.wait_until(lambda: not load_kit.alive(pid)), "the orphan outlived the pass"
+    assert not reg.registry_path(tmp_path).exists(), "the record outlived the spinner it named"

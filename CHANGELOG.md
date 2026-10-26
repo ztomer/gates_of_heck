@@ -20,7 +20,9 @@ runner); the rest are the load tool's backstop and its tests.
   shapes after it down, on the loaded machine the backstop is for. A timed-out lookup now blinds
   one shape for one pass and says so (exit 0); a timed-out per-pid read is unknown and never a
   reason to kill, drop an entry or call an owner gone; each shape runs alone, and any other fault
-  is reported after the rest ran (exit 1).
+  is reported after the rest ran (exit 1). And the record is settled LAST, once every shape has
+  acted: this release's first push gate caught a registry outliving its spinners, because a slow
+  parent read kept an entry that the house-shape sweep, running after it, then killed.
 
 * **The py gates' runner is decided by tracked state (`1ee22aa`, `0057e76`).** `.venv/bin/python`
   was chosen when it existed, so a commit was judged by the project's venv and its push export

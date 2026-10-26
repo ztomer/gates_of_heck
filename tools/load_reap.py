@@ -52,18 +52,22 @@ def main(argv: list[str]) -> int:
     opts = parser.parse_args(argv)
     directory = Path(opts.dir).expanduser() if opts.dir else reg.load_dir()
     shapes = [
-        # The registry is one way to an orphan; the house's own shape is the other, and it does
-        # not need a directory to be searched.
-        (
-            "registry",
-            lambda: load_reap.reap_all(directory) if directory.is_dir() else load_reap.Report(),
-        ),
+        # The house's own shape does not need a directory to be searched: the registry is one way
+        # to an orphan, and this is the other.
         ("the house's spinner shape", load_reap.reap_orphans),
         # The third shape (2026-10-21): an orphaned process BURNING a core on a busy loop, whose
         # command line is not the house's own -- the hand-rolled spinners of that day,
         # twenty-four of them, four cores each. Named by its shape, killed by its pid, and
         # recorded as an exemption.
         ("burning orphans", load_reap.reap_burning_orphans),
+        # The RECORD is settled LAST (2026-10-25), once every shape in the pass has acted: a
+        # spinner whose parent the registry pass could not read is kept (unknown), and a shape
+        # that ran after it killed it -- so the record named a dead pid for another pass, and the
+        # next experiment was refused for a minute (the push gate of v0.49.1).
+        (
+            "registry",
+            lambda: load_reap.reap_all(directory) if directory.is_dir() else load_reap.Report(),
+        ),
     ]
     # Each shape runs ALONE (2026-10-25): one that dies must not take the others with it. Eleven
     # passes died on a lookup's timeout, on the loaded machine the backstop is for; a timeout is
