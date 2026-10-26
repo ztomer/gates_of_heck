@@ -182,7 +182,19 @@ class Session:
             self.proc.stdin.write(json.dumps(message).encode() + b"\n")
             self.proc.stdin.flush()
         except (BrokenPipeError, OSError) as e:
-            raise WireError(f"the server closed its stdin ({e}){self.tail()}") from e
+            # A server that EXITED closed its stdin too, and which one a writer meets first is a
+            # race: under load the exit landed before the request was written, and the verdict
+            # flipped from "exited (status 3)" to "closed its stdin" (G17c, a red land). The exit
+            # is the fact; the broken pipe is how it was noticed. A server still alive that closed
+            # its stdin is the other fact, and says so.
+            try:
+                code = self.proc.wait(timeout=2)
+            except subprocess.TimeoutExpired:
+                raise WireError(f"the server closed its stdin ({e}){self.tail()}") from e
+            what = message.get("method", "the conversation")
+            raise WireError(
+                f"the server exited (status {code}) before answering {what}{self.tail()}"
+            ) from e
 
     def request(self, method: str, params: dict) -> dict:
         """Send one request; return its response (result or error), answering anything the server

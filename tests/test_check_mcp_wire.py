@@ -15,6 +15,7 @@ import subprocess
 import sys
 import time
 
+import pytest
 from conftest import REPO_ROOT, write
 
 CHECK = REPO_ROOT / "checks" / "check_mcp_wire.py"
@@ -229,6 +230,19 @@ def test_a_server_that_does_not_start_is_red_with_its_stderr(repo):
         "wire: the server exited (status 3) before answering server/discover",
         "no-such-server-here",
     )
+
+
+def test_a_server_that_exited_before_the_write_is_named_as_exited(tmp_path):
+    """The race the test above lost under load, made certain: the server is gone before the
+    request is written, so the write meets a broken pipe -- and the verdict is still the exit."""
+    session = mw.Session("exit 3", tmp_path, 20)
+    try:
+        session.proc.wait(timeout=10)
+        with pytest.raises(mw.WireError) as raised:
+            session.request("server/discover", {})
+        assert "the server exited (status 3) before answering server/discover" in str(raised.value)
+    finally:
+        session.close()
 
 
 def test_the_server_runs_with_a_scratch_home_and_never_the_owners(repo, tmp_path):
