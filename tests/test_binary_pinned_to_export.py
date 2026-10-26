@@ -22,7 +22,7 @@ import os
 import subprocess
 from pathlib import Path
 
-from test_binary_source_identity import _fake, _head_tree, _no_store, _version
+from test_binary_source_identity import _fake, _head_tree, _no_store, _version, private_store
 from test_gate_environment import _clean_checkout_of_todays_gates
 
 STORE = Path("bin") / "by-stamp"
@@ -106,6 +106,7 @@ class Land:
             GOH_DIR=str(self.export),
             GOH_LIVE_ROOT=str(self.checkout),
             GOH_HEAD_CACHE=str(self.export.parent),
+            GOH_BIN_STORE=str(private_store(self.checkout)),
             **extra,
         )
         return subprocess.run(
@@ -162,6 +163,7 @@ def test_the_live_head_gate_answers_with_the_stores_copy(tmp_path: Path) -> None
     _fake(checkout / "bin" / "goh", _version(checkout), stamp)
     env = {k: v for k, v in os.environ.items() if not k.startswith(("GOH_", "PYTEST_"))}
     env["GOH_LIVE"] = "1"
+    env["GOH_BIN_STORE"] = str(private_store(checkout))
     got = subprocess.run(
         [
             "bash",

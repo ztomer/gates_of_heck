@@ -339,9 +339,23 @@ def test_the_calibration_probe_goes_red_when_a_rule_is_dropped(tmp_path, label, 
     assert "case(s) wrong" in got.stderr, got.stderr
 
 
+_COV_ROUTE = (
+    "GOH_CI_STEPS='./gates/rust_gate.sh:make lint'\nGOH_COV_FLOOR_RUST=95\n"
+    "GOH_COV_RUST_EXTERNAL='GOH_TEST_BIN=\"$GOH_COVERAGE_BIN_DIR/goh\" ./tools/pytest.sh'\n"
+)
+
+
 @pytest.mark.parametrize(
     ("steps", "red"),
-    [("GOH_CI_STEPS='make test'\n", True), ("GOH_CI_STEPS='./tools/pytest.sh'\n", False)],
+    [
+        ("GOH_CI_STEPS='make test'\n", True),
+        ("GOH_CI_STEPS='./tools/pytest.sh'\n", False),
+        # The suite run once, as the Rust coverage group's external command (G2e) -- this repo's.
+        (_COV_ROUTE, False),
+        # ...and not when no floor arms that group, or when the gate that runs it is not a step.
+        (_COV_ROUTE.replace("GOH_COV_FLOOR_RUST=95\n", ""), True),
+        (_COV_ROUTE.replace("./gates/rust_gate.sh:", ""), True),
+    ],
 )
 def test_a_cited_test_suite_counts_only_when_the_push_gate_runs_pytest(tmp_path, steps, red):
     """A test file is a proof only if something RUNS it on every push; one that merely exists is a

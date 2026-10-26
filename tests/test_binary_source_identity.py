@@ -22,8 +22,16 @@ from conftest import native_goh_path, hermetic_env
 
 def _no_store(checkout: Path) -> None:
     """Empty the stamp-keyed store (gates/_goh_bin.sh), which outranks bin/goh: the fixture's own
-    commit builds goh into it, so a stand-in planted at bin/goh would never be asked."""
+    commit builds goh into it, so a stand-in planted at bin/goh would never be asked. The shared
+    store every root reads (G2e) is the checkout's own here too: `private_store(checkout)`."""
     shutil.rmtree(checkout / "bin" / "by-stamp", ignore_errors=True)
+    shutil.rmtree(private_store(checkout), ignore_errors=True)
+
+
+def private_store(checkout: Path) -> Path:
+    """The machine-wide store (GOH_BIN_STORE) a test of the store must not share: the real one
+    holds today's build, which would answer for the clean checkout and hide the path under test."""
+    return checkout.parent / "shared-bin-store"
 
 
 def _fake(path: Path, version: str, tree: str | None) -> Path:
@@ -69,7 +77,9 @@ def _structural(checkout: Path, tmp_path: Path, **env: str):
         cwd=repo,
         capture_output=True,
         text=True,
-        env=hermetic_env(GOH_DIR=str(checkout), **env),
+        env=hermetic_env(
+            **{"GOH_DIR": str(checkout), "GOH_BIN_STORE": str(private_store(checkout)), **env}
+        ),
         timeout=120,
         stdin=subprocess.DEVNULL,
     )

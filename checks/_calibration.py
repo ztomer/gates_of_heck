@@ -104,7 +104,18 @@ def runs_pytest(root: str) -> bool:
     except OSError:
         return False
     steps = re.search(r"^GOH_CI_STEPS=(.+)$", text, re.M)
-    return bool(steps and "pytest" in steps.group(1))
+    if not steps:
+        return False
+    if "pytest" in steps.group(1):
+        return True
+    # The suite run ONCE, inside the Rust gate's coverage group (G2e): a pytest suite named as the
+    # external command of a coverage floor IS the push gate's test run -- a failing test is a
+    # missing coverage part, and the step is red (tests/test_coverage_external.py).
+    external = re.search(r"^GOH_COV_RUST_EXTERNAL=(.+)$", text, re.M)
+    floor = re.search(r"^GOH_COV_(FLOOR_RUST|FLOORS_JSON)=\S", text, re.M)
+    return bool(
+        "rust_gate.sh" in steps.group(1) and external and "pytest" in external.group(1) and floor
+    )
 
 
 def committed(repo_root: str, path: str) -> bool | None:

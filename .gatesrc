@@ -95,7 +95,8 @@ GOH_CLAIM_DERIVATION=1
 # copy of the advisory database -- a second, bare `cargo audit` step here refreshed the shared
 # one under the test suite's reads and tore them, 2026-10-12), the structural gates over itself,
 # cargo test, and the pytest suite (which is what stands between a gate bug and every consumer;
-# parallel under xdist with --dist loadgroup, see docs/contracts.md).
+# parallel under xdist with --dist loadgroup, see docs/contracts.md) -- the last two inside the
+# Rust gate's coverage group, once (below).
 export GOH_DIR="${GOH_DIR:-$HOME/Projects/gates_of_heck}"
 # Python shape, decided by a DECLARED rule set: pyproject.toml pins ruff's
 # line-length to 100 (matching rustfmt.toml). Opt-in for every repo; this
@@ -108,7 +109,15 @@ GOH_PYTHON_FORMATTED=1
 # the v0.22.0 push ran that export's tests, outside any git repo (tests/test_gates_from_head.py).
 # The structural gate gives one verdict however the tree's path is spelled (gates/path_invariance.py):
 # the push gate runs it from a scratch export under /var/folders, which is also /private/var/folders.
-GOH_CI_STEPS='./gates/rust_gate.sh:./gates/structural.sh --full:cargo test --workspace:./tools/pytest.sh:./gates/goh.sh status-markers:"$GOH_PY" ./gates/path_invariance.py -- ./gates/structural.sh --full'
+# THE SUITE RUNS ONCE PER GATE (G2e, 2026-10-25). It ran TWICE side by side: as its own step, and
+# inside rust_gate.sh's coverage group over the instrumented binary (GOH_COV_RUST_EXTERNAL above),
+# which is the same suite, the same tests, judged the same way -- a failing test there is a missing
+# coverage part and a red step (tests/test_coverage_external.py). So that run IS the suite step,
+# and `cargo test --workspace` likewise: the coverage group runs every lib, bin and test target of
+# the workspace with --all-features, which leaves only doctests, run here on their own (`--doc`).
+# checks/_calibration.py's runs_pytest() counts the coverage route, so a test cited as a proof is
+# still a proof that runs on every push (tests/test_suite_runs_once.py pins the list's shape).
+GOH_CI_STEPS='./gates/rust_gate.sh:./gates/structural.sh --full:cargo test --workspace --doc --locked:./gates/goh.sh status-markers:"$GOH_PY" ./gates/path_invariance.py -- ./gates/structural.sh --full'
 # How many of those steps run at once. Serial is the default because only a repo can say which of
 # its steps write the same file, so each candidate here was CLOSED rather than assumed (measured
 # 2026-10-16):
@@ -117,20 +126,20 @@ GOH_CI_STEPS='./gates/rust_gate.sh:./gates/structural.sh --full:cargo test --wor
 #     waits for readers and readers wait for it. The 2026-10-12 tear came from a SECOND, BARE
 #     `cargo audit` step here, which is no longer in the list above; every audit this list still
 #     runs goes through that seam, so none of them can tear another.
-#   * `crates/goh/target`: cargo locks it itself, so rust_gate.sh, `cargo test --workspace` and the
-#     coverage sub-step serialise on it by themselves, with no tag to declare.
+#   * `crates/goh/target`: cargo locks it itself, so rust_gate.sh, `cargo test --workspace --doc`
+#     and the coverage sub-step serialise on it by themselves, with no tag to declare.
 #   * the two `./gates/structural.sh --full` runs: the second is path_invariance.py's, and it
 #     clones HEAD into its own `tempfile.mkdtemp()` and runs there, never in this tree.
-#   * THE PYTEST SUITE RUNS TWICE AT ONCE: step 4, and again over the instrumented binary inside
-#     rust_gate.sh's coverage sub-step (`GOH_COV_RUST_EXTERNAL` above). Both drive the same suite
-#     over per-test fixture repos in $TMPDIR and the export cache, whose files are renamed into
-#     place whole and never rewritten.
 # Measured with GOH_PROVEN=0 (so no step could be skipped) and GOH_TIMINGS on, twice, at HEAD:
 # 210 s serial, 176 s at 2, 158 s at 4, green throughout, and the 176/158 pair reproduced within
 # 3 s in both sweeps. A serial arm measured at 243 s is NOT used -- the box still carried unrelated
 # load for it. 2 is the knee: it takes 65% of the saving, and 4 buys 10% more for twice the peak
 # load. Note the steps themselves get SLOWER under concurrency and the wall is still lower: the
-# pytest suite runs 85 s alone and 142 s beside the twin this list gives it.
+# pytest suite runs 85 s alone and 142 s beside the twin this list gave it.
+# Re-measured for G2e (2026-10-25, GOH_PROVEN=0, at 3a63301): 317 s, rust_gate.sh 269 s beside
+# the other five steps' 302 s, of which the twin suite was 196 s. With the suite once, rust_gate.sh
+# carries it and is the long pole; every other step together runs beside it, so 2 still suffices --
+# a third slot would have nothing to start.
 GOH_CI_JOBS=2
 # main moves only through tools/land.sh: a push of a main tip it never gated is refused (BACKLOG 1.5).
 GOH_LANDED_ONLY=main

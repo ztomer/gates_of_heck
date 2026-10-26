@@ -22,6 +22,7 @@ from pathlib import Path
 import pytest
 from conftest import hermetic_env
 from _fast_git import fast_init  # noqa: E402
+import _fake_cargo  # noqa: E402
 
 ROOT = Path(__file__).resolve().parent.parent
 
@@ -99,10 +100,21 @@ def estate(tmp_path: Path) -> Path:
     return repo
 
 
+@pytest.fixture
+def fake_cargo(tmp_path: Path, monkeypatch) -> Path:
+    """The recorded fake (tests/_fake_cargo.py) for a test of the cache's SCOPING: what it keys and
+    re-gates is decided by cargo's metadata, never by a compile. Returns the call log."""
+    bin_dir, log = _fake_cargo.install(tmp_path / "fake-cargo")
+    monkeypatch.setenv("SCOPED_CACHE_FAKE_CARGO", str(bin_dir))
+    return log
+
+
 def _gate(repo: Path, crate: str, **env: str) -> subprocess.CompletedProcess:
     full = hermetic_env(drop_git=True)
     gates = Path(os.environ["SCOPED_CACHE_GATES"])
     full.update(GOH_DIR=str(gates), GOH_BIN=os.environ["SCOPED_CACHE_GOH"], **env)
+    if fake := os.environ.get("SCOPED_CACHE_FAKE_CARGO"):
+        full["PATH"] = f"{fake}:{full['PATH']}"
     return subprocess.run(
         ["bash", str(gates / "gates" / "rust_gate.sh"), str(repo), str(repo / "crates" / crate)],
         cwd=repo,
@@ -124,7 +136,7 @@ def _edit(repo: Path, rel: str, text: str) -> None:
     _git(repo, "add", "-A")
 
 
-def test_only_the_edited_crate_and_its_users_are_re_gated(estate: Path) -> None:
+def test_only_the_edited_crate_and_its_users_are_re_gated(estate: Path, fake_cargo: Path) -> None:
     for name in ("a", "b", "c"):
         first = _gate(estate, name)
         assert first.returncode == 0, first.stdout + first.stderr
@@ -140,6 +152,9 @@ def test_only_the_edited_crate_and_its_users_are_re_gated(estate: Path) -> None:
     assert all(r.returncode == 0 for r in after.values()), {
         n: r.stdout + r.stderr for n, r in after.items() if r.returncode
     }
+    # The record says what RAN, not only what the gate printed: clippy, once per gated crate.
+    linted = [Path(d).name for d in _fake_cargo.calls(fake_cargo, "clippy")]
+    assert linted == ["a", "b", "c", "a", "b"], linted
     assert not _skipped(after["b"], "crate"), "the edited crate was not re-gated"
     assert not _skipped(after["a"], "crate"), (
         "a user of the edited path dependency was not re-gated"
@@ -148,7 +163,7 @@ def test_only_the_edited_crate_and_its_users_are_re_gated(estate: Path) -> None:
 
 
 def test_an_edit_outside_every_crate_re_gates_no_crate_but_shared_config_re_gates_all(
-    estate: Path,
+    estate: Path, fake_cargo: Path
 ) -> None:
     assert _gate(estate, "c").returncode == 0
     _edit(estate, "README.md", "more prose\n")
@@ -161,7 +176,9 @@ def test_an_edit_outside_every_crate_re_gates_no_crate_but_shared_config_re_gate
     assert not _skipped(config, "crate"), "a new clippy.toml above the crate did not re-gate it"
 
 
-def test_a_resolvable_reach_outside_the_crate_keys_on_exactly_that_file(estate: Path) -> None:
+def test_a_resolvable_reach_outside_the_crate_keys_on_exactly_that_file(
+    estate: Path, fake_cargo: Path
+) -> None:
     """A test reading `../shared/fixture.json` (relative to its package) is keyed on that file:
     editing it re-gates the crate, a README edit does not. Measured 2026-10-05: every media_server
     crate has include_str!("../../../VERSION"), and keying them on the whole tree for it made the
@@ -176,7 +193,9 @@ def test_a_resolvable_reach_outside_the_crate_keys_on_exactly_that_file(estate: 
     assert not _skipped(_gate(estate, "c"), "crate"), "editing the file it reads did not re-gate"
 
 
-def test_an_unnameable_reach_keys_the_crate_on_the_whole_tree(estate: Path) -> None:
+def test_an_unnameable_reach_keys_the_crate_on_the_whole_tree(
+    estate: Path, fake_cargo: Path
+) -> None:
     _edit(
         estate,
         "crates/c/src/lib.rs",
@@ -252,7 +271,7 @@ def test_a_read_outside_the_repository_is_never_learned_or_recorded(
         assert not _skipped(again, "crate"), "a record was written for a build that read outside"
 
 
-def test_goh_proven_0_runs_everything(estate: Path) -> None:
+def test_goh_proven_0_runs_everything(estate: Path, fake_cargo: Path) -> None:
     assert _gate(estate, "c").returncode == 0
     off = _gate(estate, "c", GOH_PROVEN="0")
     assert not _skipped(off, "crate") and not _skipped(off, "repo"), off.stdout

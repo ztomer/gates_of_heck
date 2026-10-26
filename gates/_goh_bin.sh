@@ -87,6 +87,16 @@ _goh_resolve_uncached() { # <gates dir> [<pinned commit>]
         return 0
     fi
     stored="$(goh_store_path "$here/.." "$want")"
+    # ONE BUILD PER SOURCE, MACHINE-WIDE (G2e). The stamp is the content of every build input, so
+    # a build of it from ANY root is this one -- and every root a gate creates (a worktree, the C4
+    # export, path_invariance.py's clone, a suite's clean checkouts) began with an empty store and
+    # built goh again: ~5 release builds per gate run of one source, measured 2026-10-25. The
+    # shared store is read before building, and whatever lands here lands there too.
+    [ "$(goh_stamp_of "$stored")" = "$want" ] || goh_store_take_shared "$want" "$stored"
+    if [ "$(goh_stamp_of "$stored")" = "$want" ] && [ "$pin" = "$head" ] \
+        && [ "$(goh_stamp_of "$here/../bin/goh")" != "$want" ]; then
+        _goh_place "$stored" "$here/../bin/goh"   # bin/goh still follows HEAD (C3), unbuilt
+    fi
     if [ "$(goh_stamp_of "$stored")" != "$want" ]; then
         if [ "$pin" = "$head" ]; then
             # bin/goh is OURS to rebuild: built from other source than HEAD's (or before stamps
@@ -123,21 +133,53 @@ goh_store_path() {
     printf '%s/bin/by-stamp/%s/goh' "$1" "$(printf %s "$2" | shasum | cut -c1-40)"
 }
 
-# goh_store_adopt <binary> <store path> -- copy a current bin/goh into the store, whole: staged
-# beside it and renamed, so a reader never sees half a binary. Prunes the store when it adds one.
+# goh_shared_store_path <stamp> -- the machine-wide store every root shares (G2e):
+# `$GOH_BIN_STORE/<sha1 of the stamp>/goh`, default `~/.cache/goh/by-stamp`. A test that needs an
+# empty store names its own (tests/test_binary_source_identity.py).
+goh_shared_store_path() {
+    printf '%s/%s/goh' "${GOH_BIN_STORE:-${XDG_CACHE_HOME:-$HOME/.cache}/goh/by-stamp}" \
+        "$(printf %s "$1" | shasum | cut -c1-40)"
+}
+
+# _goh_place <binary> <dest> -- a whole copy: staged beside <dest> and renamed, so a reader (or a
+# hook executing the old one) never sees half a binary.
+_goh_place() {
+    mkdir -p "$(dirname "$2")" && cp "$1" "$2.$$.staging" && mv "$2.$$.staging" "$2"
+}
+
+# goh_store_take_shared <stamp> <store path> -- the shared store's build of <stamp> into this root's
+# store, when it has one that still says it was built from <stamp>.
+goh_store_take_shared() {
+    local shared
+    shared="$(goh_shared_store_path "$1")"
+    [ "$(goh_stamp_of "$shared")" = "$1" ] || return 0
+    : > "$(dirname "$shared")/.goh-used" 2>/dev/null || true
+    _goh_place "$shared" "$2" 2>/dev/null || return 0
+    : > "$(dirname "$2")/.goh-used"
+}
+
+# goh_store_adopt <binary> <store path> -- copy a current bin/goh into the store, whole, and into
+# the shared store under the stamp it reports. Prunes each store it adds to.
 goh_store_adopt() {
-    local dir
+    local dir stamp shared
     dir="$(dirname "$2")"
-    mkdir -p "$dir" && cp "$1" "$dir/.goh.$$" && mv "$dir/.goh.$$" "$2" || return 0
+    _goh_place "$1" "$2" || return 0
     : > "$dir/.goh-used"
     goh_store_prune "$(dirname "$dir")" "$(basename "$dir")"
+    stamp="$(goh_stamp_of "$2")"
+    case "$stamp" in ""|dirty|unknown) return 0 ;; esac
+    shared="$(goh_shared_store_path "$stamp")"
+    [ "$(goh_stamp_of "$shared")" = "$stamp" ] && return 0
+    _goh_place "$2" "$shared" 2>/dev/null || return 0
+    : > "$(dirname "$shared")/.goh-used"
+    goh_store_prune "$(dirname "$(dirname "$shared")")" "$(basename "$(dirname "$shared")")" 8
 }
 
 # goh_store_prune <store> <current key> -- the export cache's policy (gates/_head_cache.py), with a
 # smaller keep: a binary is ~8 MB, and one used within the hour is never removed.
-goh_store_prune() {
-    "$GOH_PY" -S -c 'import sys; sys.path.insert(0, sys.argv[1]); import _head_cache; _head_cache.prune(sys.argv[2], sys.argv[3], keep=4)' \
-        "$(dirname "${BASH_SOURCE[0]}")" "$1" "$2" 2>/dev/null || true
+goh_store_prune() { # <store> <current key> [keep, default 4]
+    "$GOH_PY" -S -c 'import sys; sys.path.insert(0, sys.argv[1]); import _head_cache; _head_cache.prune(sys.argv[2], sys.argv[3], keep=int(sys.argv[4]))' \
+        "$(dirname "${BASH_SOURCE[0]}")" "$1" "$2" "${3:-4}" 2>/dev/null || true
 }
 
 # The working tree's Rust inputs as they differ from HEAD: a hash of the diff and of every
