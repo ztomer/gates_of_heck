@@ -25,8 +25,10 @@
 set -euo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 GOH="$(cd "$HERE/../../.." && pwd)"
+# GOH_TUI_BOOTSTRAP: this copy of the TUI, never the trampoline to HEAD's export -- that sources
+# lib/house_python.sh, which refuses the below-floor Python this script runs on (tui/lib.sh).
 # shellcheck source=tui/lib.sh
-. "$GOH/tui/lib.sh"
+GOH_TUI_BOOTSTRAP=1 . "$GOH/tui/lib.sh"
 TSV="${GOH_FLOORS_TSV:-$GOH/gates/required_tools.tsv}"
 SUMS="${GOH_FLOORS_SUMS:-$HERE/shellcheck.sha256}"
 URL="${GOH_FLOORS_URL:-https://github.com/koalaman/shellcheck/releases/download}"

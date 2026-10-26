@@ -6,7 +6,12 @@
 # Consumers load HEAD's copy of this file, never the shared working tree (C4, gates/_from_head.sh).
 # (A copy of this file outside a gates checkout -- vendored, against the house rule -- has no
 # gates/ beside it, and loads itself.)
-if [ -f "$(dirname "${BASH_SOURCE[0]}")/../gates/_from_head.sh" ]; then
+# GOH_TUI_BOOTSTRAP=1 (set, never exported, by a script that runs BEFORE the house Python exists --
+# .github/actions/goh-floors/floors.sh, whose job is to install it): load THIS copy. The trampoline
+# sources lib/house_python.sh, which refuses a machine below the python3 floor, so without this the
+# script that meets the floor could not print a line on the runner that needs it (goh G7: every
+# GitHub runner, 2026-10-26). The checkout such a script runs from is a CI checkout of one commit.
+if [ -z "${GOH_TUI_BOOTSTRAP:-}" ] && [ -f "$(dirname "${BASH_SOURCE[0]}")/../gates/_from_head.sh" ]; then
     . "$(dirname "${BASH_SOURCE[0]}")/../gates/_from_head.sh" && goh_from_head_lib "${BASH_SOURCE[0]}" && return 0
 fi
 

@@ -17,6 +17,7 @@ import os
 import subprocess
 import sys
 import tarfile
+import tempfile
 from pathlib import Path
 
 import pytest
@@ -51,6 +52,11 @@ def _python(directory: Path, version: str) -> Path:
 
 
 def _run(*args: str, path: str, **extra: str) -> subprocess.CompletedProcess:
+    """floors.sh as a runner meets it: the newest Python there is BELOW the floor (GitHub's 3.12.3,
+    planted), unless a test names one. This machine's /opt/homebrew 3.15 hid exactly that: the TUI
+    library's trampoline refused the runner's Python, and floors.sh died before printing a floor
+    (Adv360 run 40304098540)."""
+    extra.setdefault("GOH_PY_SEARCH", str(_python(Path(_RUNNER_PY.name), "3.12.3").parent))
     env = {
         k: v
         for k, v in os.environ.items()
@@ -87,6 +93,7 @@ def _sums(tmp: Path, rows: list[tuple[str, str, str]]) -> Path:
 
 
 BASE_PATH = "/usr/bin:/bin"
+_RUNNER_PY = tempfile.TemporaryDirectory(prefix="goh-floors-runner-py.")
 
 
 def test_the_floors_come_from_the_table_not_a_copy() -> None:
@@ -210,3 +217,12 @@ def test_verify_is_green_at_the_floors(tmp_path: Path) -> None:
                 GOH_PY=sys.executable)  # fmt: skip
     assert done.returncode == 0, done.stderr
     assert "meet goh's floors" in done.stdout
+
+
+def test_a_failed_floor_read_fails_its_step() -> None:
+    """A `$(...)` inside an echo's argument is invisible to `set -e`: the step that read the floor
+    went green with an empty one, and setup-python then installed nothing (Adv360 run 40304098540).
+    Every command substitution in the action is captured into a variable first."""
+    for n, line in enumerate((ACTION / "action.yml").read_text().splitlines(), 1):
+        if line.strip().startswith("echo") and "$(" in line:
+            raise AssertionError(f"action.yml:{n}: a $(...) inside an echo: {line.strip()}")

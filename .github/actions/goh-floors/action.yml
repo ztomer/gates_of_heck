@@ -32,7 +32,10 @@ runs:
         goh="${GOH_FLOORS_DIR:-$GITHUB_ACTION_PATH/../../..}"
         goh="$(cd "$goh" && pwd)"
         echo "goh=$goh" >> "$GITHUB_OUTPUT"
-        echo "python=$(bash "$goh/.github/actions/goh-floors/floors.sh" floor python3)" >> "$GITHUB_OUTPUT"
+        # Captured first, never inside the echo: a failed $(...) in an argument is not seen by
+        # `set -e`, and the step went green with an empty floor (goh G7, Adv360 run 40304098540).
+        python="$(bash "$goh/.github/actions/goh-floors/floors.sh" floor python3)"
+        echo "python=$python" >> "$GITHUB_OUTPUT"
     - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
       with:
         python-version: ${{ steps.floors.outputs.python }}
