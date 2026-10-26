@@ -38,11 +38,12 @@ fi
 tip="$(git rev-parse HEAD)"
 branch="$(git rev-parse --abbrev-ref HEAD)"
 gate="${GOH_LAND_GATE:-tools/gate_profile.sh .}"
-export GOH_PROFILE_PROVEN="${GOH_PROFILE_PROVEN-1}"
 
 section "land $branch @ ${tip:0:8} -> $main"
 info "gate: $gate"
-if ! bash -c "$gate"; then
+# In the gate's environment only, never exported: an exported GOH_ key is gate bookkeeping and must be
+# verdict-free (tests/test_verdict_free_keys.py), and this one is one process's setting.
+if ! GOH_PROFILE_PROVEN="${GOH_PROFILE_PROVEN-1}" bash -c "$gate"; then
     err "land.sh: the gate failed on ${tip:0:8} -- nothing landed"
     exit 1
 fi
