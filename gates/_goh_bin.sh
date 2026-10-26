@@ -170,6 +170,8 @@ goh_store_adopt() {
     case "$stamp" in ""|dirty|unknown) return 0 ;; esac
     shared="$(goh_shared_store_path "$stamp")"
     [ "$(goh_stamp_of "$shared")" = "$stamp" ] && return 0
+    . "$(dirname "${BASH_SOURCE[0]}")/../lib/suite_cache_guard.sh"
+    goh_suite_cache_ok "$shared" "the shared goh store" || exit 2
     _goh_place "$2" "$shared" 2>/dev/null || return 0
     : > "$(dirname "$shared")/.goh-used"
     goh_store_prune "$(dirname "$(dirname "$shared")")" "$(basename "$(dirname "$shared")")" 8

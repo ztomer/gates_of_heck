@@ -61,13 +61,3 @@ run_litter() {
     printf '%s' "$out"
 }
 
-# THIS suite never writes the user's push logs or worktrees (G11, 2026-10-26: a test ran the push
-# gate with its GOH_* scrubbed and left a zero-byte `repo-<sha>-<time>.log` in the real log root at
-# every suite run). Under goh's own pytest (the marker is not GOH_-prefixed, so no env scrub drops
-# it) a run that names no private roots is refused, naming the test, before it writes anything.
-push_roots_private_under_suite() {
-    if [ -n "${PYTEST_CURRENT_TEST:-}" ] && [ -n "${GATES_OF_HECK_SUITE:-}" ] \
-        && { [ -z "${GOH_PUSH_LOGS:-}" ] || [ -z "${GOH_PUSH_WORKTREES:-}" ]; }; then
-        die "pre-push: started by goh's suite ($PYTEST_CURRENT_TEST) with no GOH_PUSH_LOGS/GOH_PUSH_WORKTREES -- it would write the real ~/.cache/goh; keep them (tests/host_locks.py)"
-    fi
-}

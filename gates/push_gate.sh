@@ -69,7 +69,7 @@ GOH="${GOH_DIR:-${GOH:-$HOME/Projects/gates_of_heck}}"
 # shellcheck source=lib/repo_writes.sh
 . "$GOH/lib/repo_writes.sh"
 # shellcheck source=lib/push_runs.sh
-. "$GOH/lib/push_runs.sh"
+. "$GOH/lib/push_runs.sh"; . "$GOH/lib/suite_cache_guard.sh"
 # shellcheck source=lib/gate_slot.sh
 . "$GOH/lib/gate_slot.sh"
 bench_lock_join "pre-push" # the whole push is one registration; a measurement waits for it
@@ -188,13 +188,13 @@ tag_check_run() {
 zero="0000000000000000000000000000000000000000"
 remote_name="${1:-}"
 remote_url="${2:-}"
-gated_commits=" "; push_roots_private_under_suite  # never the user's caches under goh's suite (G11)
+gated_commits=" "
 log_root="${GOH_PUSH_LOGS:-$HOME/.cache/goh/push-logs}"
 keep_failed_logs=20
 worktree=""
 run_dir=""
 refs_file=""
-export_root="${GOH_PUSH_WORKTREES:-$HOME/.cache/goh/push}"
+export_root="${GOH_PUSH_WORKTREES:-$HOME/.cache/goh/push}"; goh_suite_cache_ok "$log_root" "the push log" && goh_suite_cache_ok "$export_root" "the push worktree" || exit 2
 
 cleanup_run() {
     if [ -n "$worktree" ] && [ -d "$worktree" ]; then

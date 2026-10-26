@@ -140,7 +140,17 @@ def judge_choice(
 
 def ledger_path() -> Path:
     base = os.environ.get("XDG_CACHE_HOME") or str(Path.home() / ".cache")
-    return Path(base) / "goh" / "agent-spawns.jsonl"
+    path = Path(base) / "goh" / "agent-spawns.jsonl"
+    # Under goh's own suite a ledger row in the USER's cache corrupts the model-choice audit (G12):
+    # refused loudly (not an OSError, so _append does not swallow it). lib/suite_cache_guard.sh.
+    real = os.environ.get("GATES_OF_HECK_SUITE_REAL_HOME")
+    if real:  # set by goh's tests/suite_home.py alone
+        user = f"{real}/.cache/goh/"
+        if f"{path}/".startswith(user) and not str(path).startswith(f"{user}suite/"):
+            raise RuntimeError(
+                f"agent_guard under goh's suite would write the user's ledger: {path}"
+            )
+    return path
 
 
 def _append(record: dict[str, Any]) -> str | None:

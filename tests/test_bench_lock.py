@@ -17,6 +17,7 @@ import pytest
 from bench_load_fakes import busy_for, fake_load
 from conftest import REPO_ROOT
 from timing_bounds import GiveUp, assert_sooner
+from host_locks import scrubbed  # the one env scrub: it keeps the private roots
 
 LIB = REPO_ROOT / "lib" / "bench_lock.sh"
 WATCH_S = 5.0
@@ -25,11 +26,7 @@ WATCH_S = 5.0
 def _env(lock: Path, **extra: str) -> dict[str, str]:
     """A private bench lock, and the machine's other locks pointed beside it: a test that reached
     the real desktop or GPU lock would hold it against another session's capture or model run."""
-    env = {
-        k: v
-        for k, v in os.environ.items()
-        if not k.startswith("GOH_BENCH_") and k != "ZTOOLS_GPU_LOCK_OWNER"
-    }
+    env = scrubbed(os.environ, ("GOH_BENCH_", "ZTOOLS_GPU_LOCK_OWNER"))
     private = {
         "GOH_BENCH_LOCK_DIR": str(lock),
         "GOH_BENCH_DESKTOP_LOCK_DIR": str(lock.parent / "desktop.lock"),
@@ -358,7 +355,7 @@ def test_a_run_that_outlives_its_hold_is_named_and_fails(tmp_path: Path) -> None
 
 
 def test_the_default_hold_is_fifteen_minutes() -> None:
-    env = {k: v for k, v in os.environ.items() if not k.startswith("GOH_BENCH_")}
+    env = scrubbed(os.environ, ("GOH_BENCH_",))
     r = subprocess.run(["bash", "-c", f'. "{LIB}"; echo "$BENCH_LOCK_MAX_HOLD"'], env=env,
                        capture_output=True, text=True, timeout=10, stdin=subprocess.DEVNULL)  # fmt: skip
     assert r.stdout.strip() == "900", r.stdout + r.stderr

@@ -76,6 +76,8 @@ _goh_head_dir() {
         || return 1
     cache="${GOH_HEAD_CACHE:-${XDG_CACHE_HOME:-$HOME/.cache}/goh/head}"
     dest="$cache/$head"
+    . "$(dirname "${BASH_SOURCE[0]}")/../lib/suite_cache_guard.sh"
+    goh_suite_cache_ok "$cache" "the head export cache" || exit 2
     if [ ! -f "$dest/.goh-head" ]; then
         mkdir -p "$cache" && tmp="$(mktemp -d "$cache/.build.XXXXXX")" || return 1
         if ! (goh_unbind_git; git -C "$root" archive "$head") \

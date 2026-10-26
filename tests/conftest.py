@@ -16,6 +16,8 @@ from pathlib import Path
 
 import pytest
 
+import suite_home  # noqa: F401  (FIRST: the suite's own HOME, before anything reads it)
+
 
 # THE SUITE TESTS THE TREE IT IS IN. Consumers run the gates from an export of HEAD (C4,
 # gates/_from_head.sh); this suite exists to judge the change under test, so it asks for the working
