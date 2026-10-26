@@ -1,5 +1,28 @@
 # CHANGELOG
 
+## v0.55.0 — a repo ON HOLD refuses every change, and says why and how to lift it _(2026-10-26)_
+
+Minor bump: new consumer-facing scripts (`scripts/hold_repo.sh`, `release_hold.sh`,
+`archive_repo.sh`, `unarchive_repo.sh`) and a new Claude Code hook (`hooks/claude/hold_guard.py`,
+register it from `hooks/claude/registrations.json`).
+
+* **The hold.** ztomer/apes was archived on GitHub and its clone kept read-only (`chmod -R a-w`,
+  `goh.archived`); a write then failed with a bare EACCES naming neither the reason nor the way out,
+  and the reflex on EACCES is `chmod u+w`, which undoes the layer. A HOLD is one key in a repo's
+  local git config, `goh.hold` = `<date>: <why> -- lift: <command>` (`goh.archived` is read as one).
+  `lib/repo_hold.py` reads it by parsing the config (worktrees' `commondir`, enclosing repos), never
+  by running git. The git gates refuse commit, merge (commit-msg), `git am` (pre-applypatch) and push
+  in a held repo at runtime -- no re-install. `hold_guard.py` denies Edit/Write/MultiEdit/NotebookEdit
+  inside one and every Bash command that would change one (writing git verbs, file verbs,
+  redirections, chmod/chown/chflags, recursively on an ancestor too, and `release_hold.sh`: a hold is
+  the owner's to lift), naming the reason and the lift; read-only commands run.
+* **Archive as one use.** `archive_repo.sh` refuses unless nothing exists only in the clone (clean
+  tree, no stash, every branch on the owner's remote), archives the remote under the OWNER's account
+  -- never an upstream someone else owns -- and holds the clone read-only; `unarchive_repo.sh` lifts
+  it only once GitHub says it is live (offering `gh repo unarchive` only on a terminal). Seams:
+  `GOH_GH`, `GOH_GH_USER`, `GOH_HOLD_INTERACTIVE` (`tests/test_hold_scripts.py`,
+  `test_hold_gates.py`, `test_repo_hold.py`: 75, each layer proven red once).
+
 ## v0.54.1 — goh-floors runs on the runner it exists for _(2026-10-26)_
 
 * **floors.sh printed nothing on a below-floor runner, and its step went green (G7).** Its first
