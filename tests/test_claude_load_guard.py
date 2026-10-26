@@ -39,6 +39,7 @@ from conftest import REPO_ROOT
 GUARD = REPO_ROOT / "hooks" / "claude" / "discard_guard.py"
 
 SPINNER = "while :; do :; done &"
+BUSY_WAIT_MARK = "busy-waits"  # the refusal names the form it refused
 
 
 def _decide(command: str, cwd: Path) -> str | None:
@@ -109,8 +110,11 @@ def test_a_heredoc_that_plants_the_raw_form_is_allowed(tmp_path: Path) -> None:
 
 
 def test_a_foreground_busy_loop_is_not_the_leak_class(tmp_path: Path) -> None:
-    """A foreground loop dies with the shell that runs it; the leak is the BACKGROUNDED one."""
-    assert _decide("while :; do :; done", tmp_path) is None
+    """A foreground loop is not the ORPHAN leak (it dies with its shell), so the refusal it gets
+    is the busy-wait one below, not the spinner's: no `tools/load.py` leak story."""
+    reason = _decide("while :; do :; done", tmp_path)
+    assert reason is not None, "a foreground busy loop pins a core and hangs the shell"
+    assert BUSY_WAIT_MARK in reason, reason
 
 
 def test_a_background_job_that_is_not_a_spinner_is_allowed(tmp_path: Path) -> None:
@@ -121,7 +125,7 @@ def test_a_background_job_that_is_not_a_spinner_is_allowed(tmp_path: Path) -> No
 def test_a_conjunction_is_not_a_background_operator(tmp_path: Path) -> None:
     """`&&` is a conjunction, not a background job: reading it as one would refuse half the
     ordinary commands a shell runs."""
-    assert _decide("while :; do :; done && true", tmp_path) is None
+    assert _decide("while :; do sleep 1; break; done && true", tmp_path) is None
 
 
 def test_load_ok_is_the_one_escape(tmp_path: Path) -> None:
@@ -228,3 +232,57 @@ def test_the_house_tool_itself_may_be_written(tmp_path: Path) -> None:
         )
         is None
     )
+
+
+# ── the BUSY-WAIT: a loop that re-tests a condition with no pause (G16, 2026-10-26) ───────────
+#
+# An agent's Bash call ran `until <cond>; do :; done` in the FOREGROUND. It pinned a core until the
+# condition came true (or forever) and was killed within seconds; the guard let it through because
+# the spinner shape needed the CONDITION to be `:`/`true` and the loop to be backgrounded. A wait
+# that does no waiting is its own class: it needs no background operator and any condition.
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "until [ -f /tmp/ready ]; do :; done",
+        "until pgrep -x foo >/dev/null 2>&1; do :; done",
+        "while ! test -f /tmp/ready; do true; done",
+        "until curl -sf localhost:1/health; do :; done; echo up",
+        "until [ -f /tmp/ready ]\ndo\n  :\ndone",
+        "until a; b; do :; done",
+        "until [ -f /tmp/ready ]; do :; done &",
+        "cd x && until [ -f ready ]; do : ; done && echo ok",
+    ],
+)
+def test_a_busy_wait_is_refused_with_the_way_to_wait(command: str, tmp_path: Path) -> None:
+    reason = _decide(command, tmp_path)
+    assert reason is not None, f"the guard allowed a busy-wait: {command!r}"
+    assert BUSY_WAIT_MARK in reason, reason
+    assert "Monitor" in reason, reason
+    assert "sleep" in reason, reason
+    assert 'python3 "$GOH_DIR/tools/load.py"' in reason, reason
+    assert "load-ok" in reason, reason
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "until [ -f /tmp/ready ]; do sleep 1; done",
+        "until [ -f /tmp/ready ]; do :; sleep 0.2; done",
+        "while read -r line; do :; done < input.txt",
+        "while IFS= read -r line; do :; done < input.txt",
+        "echo 'until [ -f x ]; do :; done'",
+        'echo "until [ -f x ]; do :; done"',
+        "# until [ -f x ]; do :; done\necho hi",
+        "cat > fixture.sh <<'EOF'\nuntil [ -f x ]; do :; done\nEOF",
+        "for f in a b; do :; done",
+    ],
+)
+def test_a_wait_that_waits_or_is_only_text_is_allowed(command: str, tmp_path: Path) -> None:
+    assert _decide(command, tmp_path) is None, command
+
+
+def test_load_ok_excuses_a_busy_wait(tmp_path: Path) -> None:
+    assert _decide("until [ -f x ]; do :; done  # load-ok: probing a 1ms race", tmp_path) is None
+    assert _decide("until [ -f x ]; do :; done  # load-ok:", tmp_path) is not None

@@ -49,6 +49,19 @@ BUSY_LOOP = re.compile(
     r"\b(?:while|until)\s+(?::|true|false)\s*;?\s*do\s*(?::|true|false)?\s*;?\s*done\b"
 )
 
+# THE BUSY-WAIT (G16, 2026-10-26): a `while`/`until` of ANY condition whose body does nothing --
+# `until [ -f ready ]; do :; done`. It re-tests the condition as fast as the CPU allows, so it pins
+# a core until the condition holds (forever, if it never does) and hangs the shell meanwhile. It
+# needs no background operator to be wrong, which is why it is not BUSY_LOOP (whose condition is
+# `:`/`true` and which only leaks when backgrounded). The condition may not contain a `do`/`done`
+# keyword (a wider reach would pair one loop's head with another loop's body), and a `read`
+# condition is exempt: `while read -r l; do :; done < f` blocks on its input and drains it.
+BUSY_WAIT = re.compile(
+    r"\b(?:while|until)\b(?P<cond>(?:(?!\bdo\b|\bdone\b)[^\n])*?)(?:;|\n)\s*do\b"
+    r"\s*(?::|true|false)?\s*;?\s*done\b"
+)
+READ_CONDITION = re.compile(r"^\s*(?:[A-Za-z_]\w*=\S*\s+)*read\b")
+
 # The shells whose files this shape is read in. A file that is not one of these is not judged:
 # the shape is a SHELL construct, and a rule that reads a Python file's text for shell loops
 # would refuse a fixture that merely PLANTS the form. The same list the native tier uses
@@ -200,6 +213,22 @@ def spins(text: str) -> bool:
         if _background_in(code[start:end]):
             return True
     return False
+
+
+def busy_waits(text: str) -> list[re.Match[str]]:
+    """Every busy-wait in the CODE of this text (quoted spans, heredoc bodies and comments are
+    masked out first), foreground or background, `read` drains excepted."""
+    return [
+        match
+        for match in BUSY_WAIT.finditer(mask(text))
+        if not READ_CONDITION.match(match.group("cond"))
+    ]
+
+
+def waits(text: str) -> bool:
+    """Does this text RUN a busy-wait? The tool-boundary guard's question for a COMMAND: the
+    loop need not be backgrounded, because it is wrong on its own (a pinned core, a hung shell)."""
+    return bool(busy_waits(text))
 
 
 def is_shell(path: str, text: str) -> bool:
