@@ -5,6 +5,14 @@ A2 (parity proof before cutover): old and new must agree on the exit-code
 class for every scenario — clean, dirty fmt, clippy warning, #[allow]
 present, and checker-absent. Output wording may differ (the new gate uses
 the shared _common.sh contract); behavior may not.
+
+G2f: the PLUMBING tests -- exit class, that the tool's own output reaches the user, what runs where,
+the lockfile and coverage-mode refusals -- ride the recorded fake cargo (tests/_fake_cargo.py), with
+a RED answer planted where the scenario is a failing tool. What the gate does with a tool's answer
+does not depend on a compile, and 25 s of real clippy over one-line crates was the file's whole
+cost. Two things stay on REAL cargo, on purpose: `test_real_cargo_end_to_end` (the one red-and-green
+proof of this gate, which also checks the planted text against what the real tools print, so the
+recorded answers cannot drift) and the coverage pair (llvm-cov numbers have no recording).
 """
 
 import os
@@ -16,6 +24,7 @@ import pytest
 
 from conftest import REPO_ROOT
 from _fast_git import fast_init  # noqa: E402
+import _fake_cargo  # noqa: E402
 
 LEGACY = REPO_ROOT / "tests" / "fixtures" / "rust_gate_legacy.sh"
 CURRENT = REPO_ROOT / "gates" / "rust_gate.sh"
@@ -26,7 +35,9 @@ pytestmark = pytest.mark.skipif(shutil.which("cargo") is None, reason="cargo not
 CARGO_TOML = '[package]\nname = "parity"\nversion = "0.1.0"\nedition = "2021"\n'
 LIB_CLEAN = "pub fn add(a: u64, b: u64) -> u64 {\n    a + b\n}\n"
 LIB_DIRTY = "pub fn add(a: u64,b: u64) -> u64 {\n    a + b  }\n"
-LIB_WARN = "pub fn f() -> u64 { let x = 1u64; x }\n"  # unused-var-ish lint bait
+# rustfmt-clean, so a red verdict is CLIPPY's (let_and_return): the one-line spelling this used to be
+# failed `cargo fmt` first, and the "clippy" tests were fmt tests that passed for the wrong reason.
+LIB_WARN = "pub fn f() -> u64 {\n    let x = 1u64;\n    x\n}\n"
 LIB_ALLOW = "#[allow(dead_code)]\npub fn dead() {}\n"
 LIB_TESTED = (
     "pub fn add(a: u64, b: u64) -> u64 {\n    a + b\n}\n"
@@ -42,6 +53,18 @@ LIB_TESTED = (
     "}\n"
 )
 LIB_UNTESTED = "pub fn untested() -> u64 {\n    42\n}\n"  # pub: no dead-code lint, 0% coverage
+
+# What the real tools printed for LIB_DIRTY / LIB_WARN (rustc 1.99, 2026-10-26), planted into the fake
+# for the scenarios below. The MARKERS are what the tests read; `test_real_cargo_end_to_end` asserts
+# the real tools still print them.
+FMT_MARKER, CLIPPY_MARKER = "Diff in", "warning"
+FMT_RED = "Diff in /tmp/parity/src/lib.rs:1:\n-pub fn add(a: u64,b: u64) -> u64 {\n+pub fn add(a: u64, b: u64) -> u64 {\n"
+CLIPPY_RED = (
+    "error: returning the result of a `let` binding from a block\n"
+    " --> src/lib.rs:1:35\n"
+    "error: could not compile `parity` (lib) due to 1 previous error\n"
+    "warning: build failed, waiting for other jobs to finish...\n"
+)
 
 
 def _git(crate: Path, *args: str) -> None:
@@ -117,52 +140,94 @@ def clone(warm: Path, dest: Path) -> Path:
     return c
 
 
-def test_clean_crate_both_pass(tmp_path, warm_crate):
+@pytest.fixture
+def fake(tmp_path, monkeypatch) -> Path:
+    """The recorded fake cargo first on PATH; returns the directory `_fake_cargo.plant_red` takes."""
+    where = tmp_path / "fake-cargo"
+    bin_dir, _ = _fake_cargo.install(where)
+    monkeypatch.setenv("PATH", f"{bin_dir}{os.pathsep}{os.environ['PATH']}")
+    return where
+
+
+def fresh(tmp: Path, body: str = LIB_CLEAN) -> Path:
+    """A crate for a faked test: no compile, so no warm copy to clone."""
+    c = mkcrate(tmp)
+    write_lib(c, body)
+    return c
+
+
+def test_real_cargo_end_to_end(tmp_path, warm_crate):
+    """THE one red-and-green proof of this gate on REAL cargo (everything else here is recorded):
+    a clean crate passes both scripts, and a real clippy finding fails both. It also pins the
+    recorded answers the faked tests plant: the real tools still print the markers they read."""
     c = clone(warm_crate, tmp_path / "clean")
     assert run_script(LEGACY, c).returncode == 0
     assert run_script(CURRENT, c).returncode == 0
-
-
-def test_dirty_fmt_both_fail_and_show_output(tmp_path, warm_crate):
-    c = clone(warm_crate, tmp_path / "fmt")
-    write_lib(c, LIB_DIRTY)
-    old = run_script(LEGACY, c)
-    new = run_script(CURRENT, c)
-    assert old.returncode != 0 and new.returncode != 0
-    # Contract property 2 in BOTH: failing tool output is printed.
-    assert "Diff in" in old.stderr or "Diff in" in old.stdout
-    assert "Diff in" in new.stderr or "Diff in" in new.stdout
-
-
-def test_clippy_warning_both_fail(tmp_path, warm_crate):
     c = clone(warm_crate, tmp_path / "clippy")
     write_lib(c, LIB_WARN)
     old = run_script(LEGACY, c)
     new = run_script(CURRENT, c)
     assert old.returncode != 0 and new.returncode != 0
-    assert "warning" in (old.stderr + old.stdout).lower()
-    assert "warning" in (new.stderr + new.stdout).lower()
+    assert CLIPPY_MARKER in (old.stderr + old.stdout).lower()
+    assert CLIPPY_MARKER in (new.stderr + new.stdout).lower()
+    # The recorded text is what a real tool says: the planted answers carry the markers the faked
+    # tests read, and the real fmt (cheap: no compile) and clippy still print them.
+    assert FMT_MARKER in FMT_RED and CLIPPY_MARKER in CLIPPY_RED.lower()
+    write_lib(c, LIB_DIRTY)
+    fmt = subprocess.run(
+        ["cargo", "fmt", "--all", "--", "--check"],
+        cwd=c,
+        capture_output=True,
+        text=True,
+        stdin=subprocess.DEVNULL,
+    )
+    assert fmt.returncode != 0 and FMT_MARKER in fmt.stdout + fmt.stderr
 
 
-def test_allow_attr_fails_when_checker_installed(tmp_path, warm_crate):
+def test_clean_crate_both_pass(tmp_path, fake):
+    c = fresh(tmp_path / "clean")
+    assert run_script(LEGACY, c).returncode == 0
+    assert run_script(CURRENT, c).returncode == 0
+
+
+def test_dirty_fmt_both_fail_and_show_output(tmp_path, fake):
+    c = fresh(tmp_path / "fmt", LIB_DIRTY)
+    _fake_cargo.plant_red(fake, "fmt", FMT_RED, code=1, stream="stdout")
+    old = run_script(LEGACY, c)
+    new = run_script(CURRENT, c)
+    assert old.returncode != 0 and new.returncode != 0
+    # Contract property 2 in BOTH: failing tool output is printed.
+    assert FMT_MARKER in old.stderr or FMT_MARKER in old.stdout
+    assert FMT_MARKER in new.stderr or FMT_MARKER in new.stdout
+
+
+def test_clippy_warning_both_fail(tmp_path, fake):
+    c = fresh(tmp_path / "clippy", LIB_WARN)
+    _fake_cargo.plant_red(fake, "clippy", CLIPPY_RED, code=101)
+    old = run_script(LEGACY, c)
+    new = run_script(CURRENT, c)
+    assert old.returncode != 0 and new.returncode != 0
+    assert CLIPPY_MARKER in (old.stderr + old.stdout).lower()
+    assert CLIPPY_MARKER in (new.stderr + new.stdout).lower()
+
+
+def test_allow_attr_fails_when_checker_installed(tmp_path, fake):
     # LEGACY needed a repo-local copy of the checker; CURRENT runs the house
     # one regardless.
-    c = clone(warm_crate, tmp_path / "allow-old")
-    write_lib(c, LIB_ALLOW)
+    c = fresh(tmp_path / "allow-old", LIB_ALLOW)
     (c / "tools").mkdir()
     shutil.copy(CHECKER, c / "tools" / "check_no_allow.py")
     assert run_script(LEGACY, c).returncode != 0
-    c = clone(warm_crate, tmp_path / "allow-new")
-    write_lib(c, LIB_ALLOW)
+    c = fresh(tmp_path / "allow-new", LIB_ALLOW)
     r = run_script(CURRENT, c)
     assert r.returncode != 0
     assert "no #[allow]" in r.stdout + r.stderr
 
 
-def test_no_allow_is_never_skipped_for_want_of_a_local_copy(tmp_path, warm_crate):
+def test_no_allow_is_never_skipped_for_want_of_a_local_copy(tmp_path, fake):
     # LEGACY warned and skipped without tools/check_no_allow.py — which is how
     # every repo without a vendored copy went unchecked. CURRENT never skips.
-    c = clone(warm_crate, tmp_path / "nochecker")
+    c = fresh(tmp_path / "nochecker")
     old = run_script(LEGACY, c)
     new = run_script(CURRENT, c)
     assert old.returncode == 0 and new.returncode == 0
@@ -171,19 +236,29 @@ def test_no_allow_is_never_skipped_for_want_of_a_local_copy(tmp_path, warm_crate
     assert "no #[allow]" in new.stdout + new.stderr
 
 
-def test_cargo_subdir_argument_supported_by_both(tmp_path, warm_crate):
+def test_cargo_subdir_argument_supported_by_both(tmp_path, fake):
     # <repo> <cargo_dir> form: fmt/clippy run in the subdir, checker at root.
     # The git repo is the OUTER dir here (the real shape: one repo, a crate in
     # a subdir); the checker runs from the repo root and finds the crate.
     repo = tmp_path / "subdir-repo"
     repo.mkdir()
     inner = repo / "crates" / "parity"
-    inner.mkdir(parents=True)
+    (inner / "src").mkdir(parents=True)
     (inner / "Cargo.toml").write_text(CARGO_TOML)
-    shutil.copytree(warm_crate / "src", inner / "src")
+    (inner / "src" / "lib.rs").write_text(LIB_CLEAN)
+    # The real shape: a TRACKED lockfile. (The legacy script's unlocked clippy used to write it, and
+    # the current gate, run second, found what the first had made.)
+    subprocess.run(
+        ["cargo", "generate-lockfile", "--offline"],
+        cwd=inner,
+        capture_output=True,
+        check=True,
+        stdin=subprocess.DEVNULL,
+    )
     fast_init(repo)
     _git(repo, "add", "-A")
-    for script, expect_ok in ((LEGACY, True), (CURRENT, True)):
+    _, log = _fake_cargo.install(fake)  # the fixture's own fake, for its call log
+    for script in (LEGACY, CURRENT):
         r = subprocess.run(
             ["/bin/bash", str(script), str(repo), str(inner)],
             cwd=repo,
@@ -191,14 +266,18 @@ def test_cargo_subdir_argument_supported_by_both(tmp_path, warm_crate):
             text=True,
             stdin=subprocess.DEVNULL,
         )
-        assert (r.returncode == 0) is expect_ok, r.stderr
+        assert r.returncode == 0, r.stderr
+        for sub in ("fmt", "clippy"):
+            where = {Path(d).resolve() for d in _fake_cargo.calls(log, sub)}
+            assert where == {inner.resolve()}, f"{script.name}: cargo {sub} ran in {where}"
+        log.unlink()
 
 
 # ── coverage floor (current gate only; the legacy fork predates it) ──────────
 
 
-def test_no_floor_warns_and_skips_coverage(tmp_path, warm_crate):
-    c = clone(warm_crate, tmp_path / "nocovfloor")
+def test_no_floor_warns_and_skips_coverage(tmp_path, fake):
+    c = fresh(tmp_path / "nocovfloor")
     r = run_script(CURRENT, c)
     assert r.returncode == 0, r.stdout + r.stderr
     assert "no coverage floor" in (r.stdout + r.stderr).lower()
@@ -234,9 +313,8 @@ def test_floor_set_fails_when_uncovered(tmp_path, warm_crate):
 # the floor defers it at commit time - by NAME, never by silence.
 
 
-def test_deferred_coverage_is_named_and_not_run(tmp_path, warm_crate):
-    c = clone(warm_crate, tmp_path / "covdefer")
-    write_lib(c, LIB_UNTESTED)
+def test_deferred_coverage_is_named_and_not_run(tmp_path, fake):
+    c = fresh(tmp_path / "covdefer", LIB_UNTESTED)
     (c / ".gatesrc").write_text("GOH_COV_FLOOR_RUST=80\n")
     r = run_script(CURRENT, c, {"GOH_RUST_COVERAGE": "defer"})
     combined = r.stdout + r.stderr
@@ -244,9 +322,8 @@ def test_deferred_coverage_is_named_and_not_run(tmp_path, warm_crate):
     assert "coverage deferred" in combined.lower(), combined
 
 
-def test_an_unknown_coverage_mode_fails(tmp_path, warm_crate):
-    c = clone(warm_crate, tmp_path / "covmode")
-    write_lib(c, LIB_TESTED)
+def test_an_unknown_coverage_mode_fails(tmp_path, fake):
+    c = fresh(tmp_path / "covmode", LIB_TESTED)
     (c / ".gatesrc").write_text("GOH_COV_FLOOR_RUST=50\n")
     r = run_script(CURRENT, c, {"GOH_RUST_COVERAGE": "skip"})
     assert r.returncode != 0, r.stdout + r.stderr
@@ -260,8 +337,8 @@ def test_an_unknown_coverage_mode_fails(tmp_path, warm_crate):
 # the gate every Rust repo runs is where the class closes.
 
 
-def test_a_stale_lockfile_fails_the_gate_and_is_not_rewritten(tmp_path, warm_crate):
-    c = clone(warm_crate, tmp_path / "stale")
+def test_a_stale_lockfile_fails_the_gate_and_is_not_rewritten(tmp_path, fake):
+    c = fresh(tmp_path / "stale")
     # A manifest change the lockfile does not record: the package's version moved.
     (c / "Cargo.toml").write_text(CARGO_TOML.replace('version = "0.1.0"', 'version = "0.2.0"'))
     before = (c / "Cargo.lock").read_bytes()
@@ -271,8 +348,8 @@ def test_a_stale_lockfile_fails_the_gate_and_is_not_rewritten(tmp_path, warm_cra
     assert (c / "Cargo.lock").read_bytes() == before, "the gate rewrote the lockfile it was judging"
 
 
-def test_a_missing_lockfile_is_refused_not_generated(tmp_path, warm_crate):
-    c = clone(warm_crate, tmp_path / "nolock")
+def test_a_missing_lockfile_is_refused_not_generated(tmp_path, fake):
+    c = fresh(tmp_path / "nolock")
     _git(c, "rm", "-q", "Cargo.lock")
     got = run_script(CURRENT, c)
     assert got.returncode != 0 and "Cargo.lock" in got.stdout + got.stderr, got.stdout + got.stderr

@@ -8,6 +8,13 @@ were. So those subcommands are recorded, one line each, and answer green; everyt
 real cargo. Measured 2026-10-25: tests/test_rust_gate_scoped_cache.py spent 179 s of the suite's
 2075 test-seconds in real compiles of three one-line crates.
 
+A RED answer is planted, never inferred (G2f): `plant_red(where, "clippy", output, code=101)` makes
+every later `cargo clippy` print the recorded output and exit with that code. A test of a gate's
+REPORTING of a failing step (its exit class, that the tool's own output reaches the user) plants
+the answer the real tool gave and reads what the gate did with it; the recorded text is checked
+against the real tool in the one real-cargo end-to-end test of that gate, so the fake cannot drift
+from the tool it stands for.
+
 What the fake cannot see is what a real compiler READ (dep-info, `*.d`), so the tests of THAT --
 a build reading outside its scope, a path dependency's own tests, a keyed gates root -- stay on
 real cargo: they are the end-to-end proof that the cache trusts the compiler's own record.
@@ -29,17 +36,36 @@ def install(where: Path) -> tuple[Path, Path]:
     bin_dir = where / "bin"
     bin_dir.mkdir(parents=True, exist_ok=True)
     log = where / "cargo.calls"
+    red = where / "red"
     fake = bin_dir / "cargo"
     fake.write_text(
         "#!/bin/bash\n"
         f'case "$1" in {"|".join(RECORDED)})\n'
         f'    printf \'%s\\t%s\\n\' "$PWD" "$*" >> "{log}"\n'
+        f'    if [ -f "{red}/$1.code" ]; then\n'
+        f'        [ -f "{red}/$1.stdout" ] && cat "{red}/$1.stdout"\n'
+        f'        [ -f "{red}/$1.stderr" ] && cat "{red}/$1.stderr" >&2\n'
+        f'        exit "$(cat "{red}/$1.code")"\n'
+        "    fi\n"
         "    exit 0 ;;\n"
         "esac\n"
         f'exec "{REAL_CARGO}" "$@"\n'
     )
     fake.chmod(0o755)
     return bin_dir, log
+
+
+def plant_red(where: Path, sub: str, output: str, code: int = 1, stream: str = "stderr") -> None:
+    """Make every later `cargo <sub>` fail with `code`, printing the recorded `output` on `stream`.
+
+    `where` is the directory given to `install`. Planting is by SUBCOMMAND (the fake never reads
+    the crate), so a test plants the fault its scenario stands for and nothing else."""
+    assert sub in RECORDED, f"only a recorded subcommand can be planted red: {sub}"
+    assert stream in ("stdout", "stderr"), stream
+    red = where / "red"
+    red.mkdir(parents=True, exist_ok=True)
+    (red / f"{sub}.{stream}").write_text(output)
+    (red / f"{sub}.code").write_text(f"{code}\n")
 
 
 def calls(log: Path, sub: str) -> list[str]:
