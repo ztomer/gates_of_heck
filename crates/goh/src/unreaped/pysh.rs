@@ -120,12 +120,50 @@ fn py_exits_but_hands_off(lex: &Lex, lines: &[&str], j: usize) -> bool {
         .any(|n| lex.found(&format!(r"\b{}\b", regex::escape(n.as_str())), lines[j]))
 }
 
+/// The bracket depth each line STARTS at (strings and comments are already blanked): a line that
+/// starts inside a bracket continues a statement begun above it.
+fn py_depths(lines: &[&str]) -> Vec<isize> {
+    let mut depth = 0isize;
+    lines
+        .iter()
+        .map(|line| {
+            let at = depth;
+            for c in line.chars() {
+                match c {
+                    '(' | '[' | '{' => depth += 1,
+                    ')' | ']' | '}' => depth = (depth - 1).max(0),
+                    _ => {}
+                }
+            }
+            at
+        })
+        .collect()
+}
+
+/// Is line `i` inside a `with` HEADER -- on its own line, or on a continuation line of a
+/// parenthesised or backslash-continued one (`with (\n open(..) as f,\n Popen(..) as p,\n):`)?
+/// The Popen there is a context manager exactly as on the single-line form: `__exit__` reaps it.
+fn py_in_with_header(lex: &Lex, lines: &[&str], depths: &[isize], i: usize) -> bool {
+    if lex.py_with.is_match(lines[i]) {
+        return true;
+    }
+    let mut start = i;
+    while start > 0 && (depths[start] > 0 || lines[start - 1].trim_end().ends_with('\\')) {
+        start -= 1;
+    }
+    start != i
+        && lex
+            .cached(r"^\s*(?:async\s+)?with\b")
+            .is_some_and(|w| w.is_match(lines[start]))
+}
+
 #[must_use]
 pub fn python_findings(lex: &Lex, masked: &str) -> Vec<Verdict> {
     let lines: Vec<&str> = masked.split('\n').collect();
+    let depths = py_depths(&lines);
     let mut out = Vec::new();
     for (i, line) in lines.iter().enumerate() {
-        if !lex.py_popen(line) || lex.py_with.is_match(line) {
+        if !lex.py_popen(line) || py_in_with_header(lex, &lines, &depths, i) {
             continue;
         }
         let end = py_block(&lines, i);

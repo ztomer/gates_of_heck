@@ -406,6 +406,42 @@ fn t() {
             False,
             "an explicit wait, with nothing raising between",
         ),
+        (
+            (
+                "def test_x():\n    with (\n        open('log') as log,\n"
+                '        subprocess.Popen(["x"], stdout=log) as proc,\n    ):\n'
+                "        assert proc is not None\n"
+            ),
+            False,
+            "a PARENTHESISED multi-line `with`: the Popen sits on a continuation line of it",
+        ),
+        (
+            (
+                "def test_x():\n    with open('log') as log, \\\n"
+                '            subprocess.Popen(["x"], stdout=log) as proc:\n'
+                "        assert proc is not None\n"
+            ),
+            False,
+            "a backslash-continued `with`: same statement, second physical line",
+        ),
+        (
+            (
+                "def test_x():\n    with (\n        open('log') as log,\n"
+                '        subprocess.Popen(["x"], stdout=log) as proc,\n    ):\n'
+                "        assert proc is not None\n"
+                '    other = subprocess.Popen(["y"])\n    assert other is not None\n'
+            ),
+            True,
+            "the multi-line `with` exempts ITS Popen, not a bare one after it",
+        ),
+        (
+            (
+                "def test_x():\n    procs = run_all(\n"
+                '        subprocess.Popen(["x"]),\n    )\n    assert procs\n'
+            ),
+            True,
+            "a Popen inside a multi-line call that is not a `with` is still unreaped",
+        ),
     ],
 )
 def test_python_popen_dispositions(repo: Path, body: str, want_finding: bool, why: str) -> None:
