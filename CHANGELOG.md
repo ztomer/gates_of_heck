@@ -1,5 +1,18 @@
 # CHANGELOG
 
+## v0.54.1 — goh-floors runs on the runner it exists for _(2026-10-26)_
+
+* **floors.sh printed nothing on a below-floor runner, and its step went green (G7).** Its first
+  CI run (Adv360-Pro-ZMK run 40304098540, ubuntu-26.04, python 3.14.4) died before reading a floor:
+  `tui/lib.sh` trampolines to HEAD's export through `gates/_from_head.sh`, which sources
+  `lib/house_python.sh`, which refuses a machine below the python3 floor -- the very state the
+  action exists to leave. `GOH_TUI_BOOTSTRAP=1` (set, never exported, by floors.sh) loads the TUI's
+  own copy. And the step that read the floor ran it inside an `echo` argument, where `set -e`
+  never sees a failed `$(...)`, so it went green with an empty floor; it is captured first now.
+  The suite missed both because this machine's `/opt/homebrew` 3.15 was always found: its
+  floors.sh runs now plant the runner's 3.12.3 as the newest Python (13 tests red without the seam),
+  and `test_a_failed_floor_read_fails_its_step` refuses a `$(...)` inside an echo in the action.
+
 ## v0.54.0 — CI meets goh's floors one way, read from goh's own table _(2026-10-26)_
 
 Minor bump: a new consumer-facing composite action, `.github/actions/goh-floors`.
