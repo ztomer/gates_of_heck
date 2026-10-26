@@ -15,9 +15,9 @@
 
          THE SECOND SHAPE (later the same day). A record can VANISH: the registry of an
          experiment that ran in a temporary directory is pruned with that directory, and its
-         spinner is left burning a core with nothing naming it -- eight of them, orphaned by a
+         spinner is left burning a core with nothing naming it - eight of them, orphaned by a
          pytest that died, about an hour of CPU apiece. So the job also recognises the house's
-         own spinner shape -- EXACTLY that shape, orphaned only, and only while the owner its
+         own spinner shape - EXACTLY that shape, orphaned only, and only while the owner its
          release pipe names is gone. That needs a name lookup, which is the RECORDED EXEMPTION in
          kill_by_name_allow.json (the house forbids killing by name): the lookup and the kill sit
          on one line, so the rule sees them, and every candidate is matched exactly before it is
@@ -28,7 +28,7 @@
          second shape knew only ONE command line, so it left every one of them alone. So the job
          asks a shape it can NAME without owning it: an ORPHAN (parent 1) that has BURNED a core
          (its CPU time is over the floor) and is STILL burning, on a busy loop (the code a shell
-         runs contains one). Four questions, and none of them alone is enough -- a live parent, a
+         runs contains one). Four questions, and none of them alone is enough - a live parent, a
          sleeper, a worker that has finished, and a program that is not a shell are all left
          alone. That needs a name lookup too, so it is the SECOND RECORDED EXEMPTION, with the
          same shape: the lookup and the kill on one line, and every candidate read back and asked

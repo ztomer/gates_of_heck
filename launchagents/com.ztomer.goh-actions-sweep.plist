@@ -10,10 +10,10 @@
          (909 MB) and 87 stale caches (99 MB) nobody had asked for. scripts/actions_sweep.py
          deletes artifacts older than 14 days and caches off the default branch or unused for 7
          days, skips archived repos, and sets each repo's artifact-and-log retention to 14 days
-         when it is higher -- so a repo created tomorrow is covered without anyone remembering.
+         when it is higher - so a repo created tomorrow is covered without anyone remembering.
          Daily at 04:15, plus once when loaded (RunAtLoad), so an install proves itself and a
          machine that was asleep at 04:15 still sweeps at its next login. The wrapper runs the
-         COMMITTED code (an export of HEAD) with --apply and logs only what it did. -->
+         COMMITTED code (an export of HEAD) with the apply flag and logs only what it did. -->
     <key>ProgramArguments</key>
     <array>
         <string>/bin/bash</string>
