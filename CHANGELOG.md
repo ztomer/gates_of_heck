@@ -2,7 +2,7 @@
 
 ## v0.53.0 — the recorded fake cargo can answer red, and the push after a landing reuses the landing's proof _(2026-10-26)_
 
-Minor bump: `tools/land.sh` now exports `GOH_PROFILE_PROVEN=1` to its gate (unless set).
+Minor bump: `tools/land.sh` now gives its gate `GOH_PROFILE_PROVEN=1` (unless set).
 
 * **The recorded fake cargo answers RED (G2f).** `tests/_fake_cargo.py` only ever answered green;
   `plant_red(where, sub, output, code, stream)` makes a recorded subcommand fail with an exit code and
@@ -21,6 +21,14 @@ Minor bump: `tools/land.sh` now exports `GOH_PROFILE_PROVEN=1` to its gate (unle
   over the identical tree. land now turns the cache on for its gate; the push finds the records in
   the common git dir. A tree that moved after landing still runs
   (`tests/test_proven.py::test_land_leaves_a_proof_the_push_that_follows_reuses`).
+
+* **PYTHONPATH no longer grows one copy per nested gate (G2f).** The first real landing still re-ran
+  the push: `PYTHONPATH` is part of every proven-step key, and `_from_head.sh` and `_common.sh`
+  prepended the export without looking first, so the chain land.sh -> gate_profile.sh -> push gate ->
+  the export's own gates carried it four times where a hook's push carried it once -- the same tree,
+  two keys. `goh_path_front` puts the directory first and only once; the identity dump of a
+  landing-style and a push-style run of one commit is now line for line equal
+  (`tests/test_gates_from_head.py`, red on the old prepends).
 
 ## v0.52.0 — the release gate reuses the push, a fresh worktree gates green, and shellcheck has a floor the gate enforces _(2026-10-26)_
 

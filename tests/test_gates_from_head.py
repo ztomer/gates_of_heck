@@ -18,7 +18,7 @@ import subprocess
 from pathlib import Path
 
 import pytest
-from conftest import native_goh_path
+from conftest import REPO_ROOT, hermetic_env, native_goh_path
 
 from test_gate_environment import _clean_checkout_of_todays_gates
 
@@ -270,3 +270,58 @@ def test_a_live_run_names_its_own_tree_as_goh_dir(gates: Path, tmp_path) -> None
         stdin=subprocess.DEVNULL,
     )
     assert r.stdout == str(gates.resolve()), r.stdout + r.stderr
+
+
+def _front(start: str, new: str) -> str:
+    """goh_path_front's answer for PYTHONPATH=<start> and <new>."""
+    r = subprocess.run(
+        [
+            "bash",
+            "-c",
+            f'. "{REPO_ROOT}/gates/_from_head.sh"; PYTHONPATH="$1"; goh_path_front PYTHONPATH "$2"; '
+            'printf %s "$PYTHONPATH"',
+            "_",
+            start,
+            new,
+        ],
+        capture_output=True,
+        text=True,
+        check=True,
+        env=hermetic_env(),
+        stdin=subprocess.DEVNULL,
+    )
+    return r.stdout
+
+
+def test_goh_path_front_puts_the_dir_first_and_only_once() -> None:
+    """G2f: a prepend that does not look first grew PYTHONPATH by one copy per nested gate entry, and
+    PYTHONPATH is part of every proven-step key -- the push that followed a landing keyed the same
+    tree differently and re-ran the whole gate."""
+    assert _front("", "/e") == "/e"
+    assert _front("/a:/b", "/e") == "/e:/a:/b"
+    assert _front("/e", "/e") == "/e"
+    assert _front("/e:/e:/e:/a", "/e") == "/e:/a"
+    assert _front("/a:/e:/b:/e", "/e") == "/e:/a:/b"
+    assert _front("/a:/e/sub:/b", "/e") == "/e:/a:/e/sub:/b", (
+        "a path that merely starts with it stays"
+    )
+    assert _front("/a", "/odd [dir]*") == "/odd [dir]*:/a", "the dir is a literal, never a pattern"
+
+
+def test_entering_the_gates_again_does_not_grow_pythonpath() -> None:
+    """The class, through the real prepends: every gate sources _common.sh, and a gate that runs a
+    gate (the push gate's export runs the repo's gates, which source it again) must leave
+    PYTHONPATH as one entry's, not one copy per level."""
+    r = subprocess.run(
+        [
+            "bash",
+            "-c",
+            f'cd "{REPO_ROOT}"; . gates/_common.sh; first="$PYTHONPATH"; . gates/_common.sh; '
+            '. gates/_common.sh; [ "$PYTHONPATH" = "$first" ] || { echo "grew: $PYTHONPATH"; exit 1; }',
+        ],
+        capture_output=True,
+        text=True,
+        env=hermetic_env(GOH_LIVE="1"),
+        stdin=subprocess.DEVNULL,
+    )
+    assert r.returncode == 0, r.stdout + r.stderr

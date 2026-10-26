@@ -36,6 +36,19 @@
 # shellcheck source=lib/house_python.sh
 . "${BASH_SOURCE[0]%/*}/../lib/house_python.sh" || exit 1   # GOH_PY: the house interpreter, never PATH's first python3 (G2d)
 
+# goh_path_front <VAR> <dir> -- export VAR with <dir> FIRST and nowhere else (G2f). A prepend that
+# does not look first grows by one copy per nested gate entry, and PYTHONPATH is part of every
+# proven-step key: the chain land.sh -> gate_profile.sh -> push gate -> its export's gates carried
+# the export FOUR times, a push from a hook carried it once, and the same tree keyed differently --
+# the push re-ran the 168 s the landing had just proven. (bash 3.2: no associative arrays.)
+goh_path_front() {
+    local rest=":${!1:-}:"
+    while [[ "$rest" == *":$2:"* ]]; do rest="${rest//":$2:"/:}"; done
+    rest="${rest#:}"; rest="${rest%:}"
+    printf -v "$1" '%s' "$2${rest:+:$rest}"
+    export "${1?}"
+}
+
 _goh_head_dir() {
     local here root rel head cache dest tmp
     _goh_copy=""
@@ -93,7 +106,8 @@ _goh_head_dir() {
         echo "⚠ gates_of_heck: ${rel#/} has an uncommitted edit in this worktree -- running HEAD's" \
             "copy (${head:0:7}); GOH_LIVE=1 runs the edit" >&2
     fi
-    export GOH_LIVE_ROOT="$root" GOH_DIR="$dest" PYTHONPATH="$dest${PYTHONPATH:+:$PYTHONPATH}"
+    export GOH_LIVE_ROOT="$root" GOH_DIR="$dest"
+    goh_path_front PYTHONPATH "$dest"
     _goh_copy="$dest$rel"
 }
 
