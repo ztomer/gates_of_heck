@@ -96,9 +96,9 @@ def test_a_git_am_patch_is_refused(tmp_path: Path) -> None:
 
 def test_a_push_is_refused(tmp_path: Path) -> None:
     repo = _consumer(tmp_path)
-    bare = tmp_path / "remote.git"
-    subprocess.run(["git", "init", "-q", "--bare", str(bare)], check=True, stdin=subprocess.DEVNULL)
-    _git(repo, "remote", "add", "origin", str(bare))
+    remote = tmp_path / "remote"
+    fast_init(remote, "trunk")
+    _git(repo, "remote", "add", "origin", str(remote))
     _hold(repo)
-    _refused(_run(repo, "push", "-q", "origin", "main"), "pre-push")
-    assert not _git(bare, "for-each-ref"), "the push reached the remote"
+    _refused(_run(repo, "push", "-q", "origin", "main:refs/heads/incoming"), "pre-push")
+    assert not _git(remote, "for-each-ref"), "the push reached the remote"

@@ -16,6 +16,7 @@ import sys
 from pathlib import Path
 
 import pytest
+from _fast_git import fast_init
 from conftest import REPO_ROOT, git
 
 sys.path.insert(0, str(REPO_ROOT / "lib"))
@@ -80,7 +81,7 @@ def test_a_linked_worktree_reads_the_shared_config(repo: Path, tmp_path: Path) -
 def test_a_nested_repo_inside_a_held_one_is_inside_the_hold(repo: Path) -> None:
     inner = repo / "vendor" / "inner"
     inner.mkdir(parents=True)
-    git(inner, "init", "-q")
+    fast_init(inner)
     _hold(repo)
     hold = repo_hold.find_hold(str(inner / "x"))
     assert hold is not None and hold.root == str(repo)
