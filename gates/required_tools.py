@@ -6,6 +6,14 @@
     gates/required_tools.py --layer rust --layer swift --install
 
     gates/required_tools.py --repo . --names      # bare tool names, for any package manager
+    gates/required_tools.py --repo . --check      # red for a tool missing or below its FLOOR
+    gates/required_tools.py --check --tool zig    # one tool (what goh_require asks)
+    gates/required_tools.py --floors              # tool<TAB>floor, for a consumer's own record
+
+FLOORS (G2b). The manifest's `floor` column is the OLDEST version a gate accepts -- a floor, never
+a pin: a newer tool is green, always. `--check` is red, by name and with both versions, for a tool
+that is missing, below its floor, or present with a floor but no readable version. `--found TEXT`
+judges a version the CALLER read (a module through the gate's own runner).
 
 For a CI workflow: `brew install $(...)` from a hand-kept list drifts the day a gate gains a
 requirement -- antiknob's first CI run went red on v0.20.0 for exactly that (shellcheck). Install
@@ -41,6 +49,7 @@ if __name__ == "__main__":  # C4: run HEAD's copy, not the shared working tree (
 import argparse
 import os
 import re
+import shutil
 import subprocess
 import sys
 
@@ -53,8 +62,10 @@ def rows() -> list[dict]:
     with open(MANIFEST, encoding="utf-8") as fh:
         for line in fh:
             if line.strip() and not line.startswith("#"):
-                layer, tool, kind, install, site = line.rstrip("\n").split("\t")
-                out.append(dict(layer=layer, tool=tool, kind=kind, install=install, site=site))
+                layer, tool, kind, install, site, floor = line.rstrip("\n").split("\t")
+                out.append(
+                    dict(layer=layer, tool=tool, kind=kind, install=install, site=site, floor=floor)
+                )
     return out
 
 
@@ -153,6 +164,87 @@ def install_lines(selected: list[dict]) -> list[str]:
     return out + lines
 
 
+# How each tool reports its version, where `<tool> --version` is not it (measured 2026-10-25):
+# `zig --version` is a usage error, `cargo-llvm-cov --version` wants its subcommand first, and the
+# Python modules are asked through the house interpreter seam, the one the gates run.
+PROBES = {
+    "zig": ["zig", "version"],
+    "swiftlint": ["swiftlint", "version"],
+    "cargo-llvm-cov": ["cargo-llvm-cov", "llvm-cov", "--version"],
+    "python3": ["bash", os.path.join(HERE, "python.sh"), "-V"],
+}
+VERSION = re.compile(r"\d+(?:\.\d+)+")
+
+
+def floors() -> dict[str, str]:
+    """tool -> floor, for every tool that has one."""
+    return {r["tool"]: r["floor"] for r in rows() if r["floor"] != "-"}
+
+
+def _probe(row: dict) -> list[str]:
+    if row["tool"] in PROBES:
+        return PROBES[row["tool"]]
+    if row["kind"] == "pip":
+        return ["bash", os.path.join(HERE, "python.sh"), "-m", row["tool"], "--version"]
+    return [row["tool"], "--version"]
+
+
+def version_in(text: str) -> str | None:
+    match = VERSION.search(text)
+    return match.group(0) if match else None
+
+
+def at_least(found: str, floor: str) -> bool:
+    """found >= floor, numerically, field by field ("0.6.24" >= "0.6.9"; "1.0" >= "0.99.1")."""
+
+    def key(text: str) -> list[int]:
+        return [int(part) for part in text.split(".")]
+
+    a, b = key(found), key(floor)
+    width = max(len(a), len(b))
+    return a + [0] * (width - len(a)) >= b + [0] * (width - len(b))
+
+
+def judge(row: dict, found_text: str | None = None) -> str | None:
+    """Why `row`'s tool fails its requirement, or None when it is present and at its floor."""
+    tool, floor = row["tool"], row["floor"]
+    if found_text is None:
+        probe = _probe(row)
+        if probe[0] != "bash" and not shutil.which(probe[0]):
+            return f"{tool} is not installed -- {row['install']}"
+        if floor == "-":
+            return None
+        try:
+            done = subprocess.run(
+                probe, capture_output=True, text=True, timeout=60, stdin=subprocess.DEVNULL
+            )
+        except (OSError, subprocess.TimeoutExpired) as error:
+            return f"{tool}: its version cannot be read ({error}); the floor is {floor}"
+        found_text = done.stdout + "\n" + done.stderr
+    if floor == "-":
+        return None
+    found = version_in(found_text)
+    if found is None:
+        return f"{tool}: present, but reports no version the floor ({floor}) can be read against"
+    if not at_least(found, floor):
+        return (
+            f"{tool}: this machine has {found}, the floor is {floor} -- update it ({row['install']}; "
+            "the floor's reason is in gates/required_tools.tsv)"
+        )
+    return None
+
+
+def check(selected: list[dict], found_text: str | None = None) -> int:
+    failures: list[str] = []
+    for row in {r["tool"]: r for r in selected}.values():
+        reason = judge(row, found_text)
+        if reason:
+            failures.append(reason)
+    for reason in failures:
+        print(f"required_tools: {reason}", file=sys.stderr)
+    return 1 if failures else 0
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
@@ -161,8 +253,22 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--repo", default=None)
     ap.add_argument("--install", action="store_true")
     ap.add_argument("--names", action="store_true", help="bare tool names, one per line")
+    ap.add_argument("--check", action="store_true", help="red for a tool missing or below floor")
+    ap.add_argument("--tool", action="append", default=[], help="judge this tool (any layer)")
+    ap.add_argument("--found", default=None, help="the version text the caller read (--check)")
+    ap.add_argument("--floors", action="store_true", help="tool<TAB>floor for every floor")
     args = ap.parse_args(argv)
     table = rows()
+    if args.floors:
+        print("\n".join(f"{tool}\t{floor}" for tool, floor in floors().items()))
+        return 0
+    if args.tool:
+        unknown = sorted(set(args.tool) - {r["tool"] for r in table})
+        if unknown:
+            print(f"required_tools: no manifest row names {', '.join(unknown)}", file=sys.stderr)
+            return 2
+        if args.check:
+            return check([r for r in table if r["tool"] in args.tool], args.found)
     known = {r["layer"] for r in table}
     bad = [layer for layer in args.layer if layer not in known]
     if bad:
@@ -181,6 +287,8 @@ def main(argv: list[str] | None = None) -> int:
         for r in table
         if r["layer"] == "structural" and (r["tool"] in structural or "structural" in args.layer)
     ]
+    if args.check:
+        return check(selected)
     if args.names:
         print("\n".join(dict.fromkeys(r["tool"] for r in selected)))
     elif args.install:

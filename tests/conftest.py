@@ -491,8 +491,8 @@ def _never_publish_the_live_goh():
 
 
 def llvm_cov_shim(bin_: Path) -> None:
-    """The gate requires `cargo-llvm-cov` on PATH up front (gates/required_tools.tsv); the fake
-    `cargo` above answers its subcommand, so the binary only has to exist."""
+    """The gate requires `cargo-llvm-cov` on PATH up front, at its floor (required_tools.tsv); the
+    fake `cargo` above answers its subcommand, so the binary only has to report a version."""
     shim = bin_ / "cargo-llvm-cov"
-    shim.write_text("#!/bin/bash\nexit 0\n")
+    shim.write_text('#!/bin/bash\necho "cargo-llvm-cov 99.0.0"\n')
     shim.chmod(shim.stat().st_mode | _stat.S_IEXEC)

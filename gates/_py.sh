@@ -103,9 +103,12 @@ goh_py_venv_current() {
 }
 
 # goh_py_require <module>: refuse unless the runner can run <module> (`<runner> <module> --version`).
+# Its version, read through the SAME runner, is judged against the module's floor (G2b).
 goh_py_require() {
-    "${RUN_ARR[@]}" "$1" --version >/dev/null 2>&1 \
+    local version
+    version="$("${RUN_ARR[@]}" "$1" --version 2>&1 </dev/null)" \
         || die "$GOH_NAME: $1 is not available through '$RUN', and this gate does not pass without the step it runs -- python3 -m pip install $1 (into the interpreter '$RUN' names)"
+    goh_require_floor "$1" "$version"
 }
 
 # THE PIN (BACKLOG 6.2). Homebrew moved `python3` to 3.15 on 2026-10-10 and every gate that ran a

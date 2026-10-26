@@ -2,29 +2,55 @@
 # Consumers install from this (gates/required_tools.py --repo . --install), never from a copy:
 # a copied list drifts the day a gate gains a requirement (antiknob CI, 2026-10-05).
 # tests/test_required_tools_manifest.py pins it to the code in both directions.
-# Columns (TAB-separated): layer, tool, kind (brew|cargo|pip|system), install, site.
-structural	cargo	system	rustup (https://rustup.rs)	scripts/build-goh.sh
-structural	shellcheck	brew	brew install shellcheck	crates/goh/src/shell_lint.rs
-python-format	ruff	brew	brew install ruff	crates/goh/src/pyformat.rs
-python	python3	system	a python3 on PATH	gates/py_gate.sh
-python	ruff	pip	python3 -m pip install ruff	gates/py_gate.sh
-python	pytest	pip	python3 -m pip install pytest	gates/py_gate.sh
-python	ruff	pip	python3 -m pip install ruff	gates/py_staged.sh
-rust	cargo	system	rustup (https://rustup.rs)	gates/rust_gate.sh
-rust	cargo-machete	cargo	cargo install cargo-machete	gates/rust_gate.sh
-rust	cargo-audit	cargo	cargo install cargo-audit	gates/rust_gate.sh
-rust	rustfmt	system	rustup component add rustfmt	crates/goh/src/rustfmt_staged.rs
-rust-cross	cargo-zigbuild	cargo	cargo install cargo-zigbuild	gates/rust_gate.sh
-rust-cross	zig	brew	brew install zig	gates/rust_gate.sh
-swift	swiftlint	brew	brew install swiftlint	gates/swift_gate.sh
-coverage-rust	cargo	system	rustup (https://rustup.rs)	gates/_coverage_rust.sh
-coverage-rust	cargo-llvm-cov	cargo	cargo install cargo-llvm-cov	gates/_coverage_rust.sh
-coverage-rust	python3	system	a python3 on PATH	gates/_coverage_rust.sh
-coverage-cpp	cmake	brew	brew install cmake	gates/coverage_gate.sh
-coverage-cpp	ctest	brew	brew install cmake	gates/coverage_gate.sh
-coverage-cpp	xcrun	system	xcode-select --install	gates/coverage_gate.sh
-coverage-cpp	python3	system	a python3 on PATH	gates/coverage_gate.sh
-coverage-py	python3	system	a python3 on PATH	gates/coverage_gate.sh
-coverage-py	coverage	pip	python3 -m pip install coverage	gates/coverage_gate.sh
-coverage-py	pytest	pip	python3 -m pip install pytest	gates/coverage_gate.sh
-screen-linkage	nm	system	xcode-select --install	checks/check_no_screen_linkage.sh
+# Columns (TAB-separated): layer, tool, kind (brew|cargo|pip|system), install, site, floor.
+#
+# FLOOR, NEVER A PIN (G2b, 2026-10-25). `floor` is the OLDEST version a gate accepts; `-` is none
+# (presence alone). A tool NEWER than its floor is green, always: the house runs the newest
+# release of every layer, and an equality pin turned sys_updater's gate red on every goh release
+# and toolchain update (owner: "why pin goh by version? The whole idea is to have ever improving
+# qa gates"). goh_require / need / goh_py_require refuse a tool below it, by name, with both
+# versions. One tool, one floor, on every row it has. Seeded from sys_updater's gate-floors.env
+# (R3.29). Each floor's kind -- HARD (a feature below it does not exist) or PROVEN (the oldest
+# version run green; lower it the day an older one is run green) -- and its reason:
+#   python3 3.9          PROVEN: goh's own suite drives the gates on /usr/bin/python3 3.9.6 (macOS's), green
+#                        (2026-10-25). sys_updater's seed said 3.14 as "the oldest installed"; 3.9.6, 3.11,
+#                        3.12 and 3.13 were installed, and its tools/tests ran green on every one (50 passed),
+#                        so the seed was too high. A repo's OWN code pins its interpreter (.python-version /
+#                        GOH_PYTHON_VERSION), not this floor.
+#   pytest 9.1.1         PROVEN: run green under 3.14 and 3.15.
+#   zig 0.17.0           PROVEN: the C compiler cargo-zigbuild gives the musl lint configs.
+#   shellcheck 0.11.0    PROVEN, and what goh shell_lint is calibrated against (two defects it
+#                        exits 0 on are handled by goh, not by it).
+#   cargo-machete 0.7.0  HARD: before it, ignored files (target/) were searched -- slow, and false
+#                        "unused dependency" reports from generated sources.
+#   cargo-audit 0.21.0   HARD: where version-4 Cargo.lock support landed (--deny unsound/yanked
+#                        are older: 0.17.5 / 0.17.4).
+#   cargo-zigbuild 0.24.0  PROVEN: cross-lints the two musl targets.
+#   cargo-llvm-cov 0.6.24  HARD: `clean --profraw-only` is 0.6.12, and 0.6.24 fixed its
+#                        "removes too many files" bug.
+# A floor moves DOWN only with evidence and UP only in the commit whose code starts needing it.
+structural	cargo	system	rustup (https://rustup.rs)	scripts/build-goh.sh	-
+structural	shellcheck	brew	brew install shellcheck	crates/goh/src/shell_lint.rs	0.11.0
+python-format	ruff	brew	brew install ruff	crates/goh/src/pyformat.rs	-
+python	python3	system	a python3 on PATH	gates/py_gate.sh	3.9
+python	ruff	pip	python3 -m pip install ruff	gates/py_gate.sh	-
+python	pytest	pip	python3 -m pip install pytest	gates/py_gate.sh	9.1.1
+python	ruff	pip	python3 -m pip install ruff	gates/py_staged.sh	-
+rust	cargo	system	rustup (https://rustup.rs)	gates/rust_gate.sh	-
+rust	cargo-machete	cargo	cargo install cargo-machete	gates/rust_gate.sh	0.7.0
+rust	cargo-audit	cargo	cargo install cargo-audit	gates/rust_gate.sh	0.21.0
+rust	rustfmt	system	rustup component add rustfmt	crates/goh/src/rustfmt_staged.rs	-
+rust-cross	cargo-zigbuild	cargo	cargo install cargo-zigbuild	gates/rust_gate.sh	0.24.0
+rust-cross	zig	brew	brew install zig	gates/rust_gate.sh	0.17.0
+swift	swiftlint	brew	brew install swiftlint	gates/swift_gate.sh	-
+coverage-rust	cargo	system	rustup (https://rustup.rs)	gates/_coverage_rust.sh	-
+coverage-rust	cargo-llvm-cov	cargo	cargo install cargo-llvm-cov	gates/_coverage_rust.sh	0.6.24
+coverage-rust	python3	system	a python3 on PATH	gates/_coverage_rust.sh	3.9
+coverage-cpp	cmake	brew	brew install cmake	gates/coverage_gate.sh	-
+coverage-cpp	ctest	brew	brew install cmake	gates/coverage_gate.sh	-
+coverage-cpp	xcrun	system	xcode-select --install	gates/coverage_gate.sh	-
+coverage-cpp	python3	system	a python3 on PATH	gates/coverage_gate.sh	3.9
+coverage-py	python3	system	a python3 on PATH	gates/coverage_gate.sh	3.9
+coverage-py	coverage	pip	python3 -m pip install coverage	gates/coverage_gate.sh	-
+coverage-py	pytest	pip	python3 -m pip install pytest	gates/coverage_gate.sh	9.1.1
+screen-linkage	nm	system	xcode-select --install	checks/check_no_screen_linkage.sh	-

@@ -50,7 +50,7 @@ def _manifest() -> list[dict]:
     for line in MANIFEST.read_text().splitlines():
         if not line.strip() or line.startswith("#"):
             continue
-        layer, tool, kind, install, site = line.split("\t")
+        layer, tool, kind, install, site, _floor = line.split("\t")
         rows.append(dict(layer=layer, tool=tool, kind=kind, install=install, site=site))
     return rows
 

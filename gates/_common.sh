@@ -272,9 +272,20 @@ goh_step() {
 # A gate whose tool is missing FAILS, before any slow step runs. It used to warn and carry on
 # green ("cargo-machete not installed -- NOT checked", "swiftlint not installed -- lint gate
 # skipped"): a step that did not run, under a passing result (tests/test_required_tools.py).
+# Present is not enough (G2b): a tool below its FLOOR (gates/required_tools.tsv) fails too, named,
+# with both versions. A floor, never a pin -- a newer tool is green.
 goh_require() {
     command -v "$1" >/dev/null 2>&1 \
         || die "$GOH_NAME: $1 is not installed, and this gate does not pass without the step it runs -- $2"
+    goh_require_floor "$1"
+}
+
+# goh_require_floor <tool> [<version text the caller read>]
+goh_require_floor() {
+    local why
+    if ! why="$(python3 "$GOH_ROOT/gates/required_tools.py" --check --tool "$1" ${2:+--found "$2"} 2>&1 </dev/null)"; then
+        die "$GOH_NAME: ${why#required_tools: }"
+    fi
 }
 
 # goh_optional_step <label> <file-that-must-exist> <command...>

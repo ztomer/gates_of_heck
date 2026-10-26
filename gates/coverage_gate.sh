@@ -224,11 +224,16 @@ floor_cmp() {
     ok "line coverage $_pct% (floor $FLOOR%)"
 }
 
-need() { # need <cmd> <what-it-is-for>
+need() { # need <cmd> <what-it-is-for>; a tool below its floor (required_tools.tsv) fails too
+    local why
     command -v "$1" >/dev/null 2>&1 || {
         err "coverage_gate: '$1' not found on PATH — required for the $LANG_ mode ($2)"
         exit 2
     }
+    if ! why="$(python3 "$(dirname "${BASH_SOURCE[0]}")/required_tools.py" --check --tool "$1" 2>&1 </dev/null)"; then
+        err "coverage_gate: ${why#required_tools: }"
+        exit 2
+    fi
 }
 
 # ── rust: run_rust lives in _coverage_rust.sh (line cap) ────────────────────
