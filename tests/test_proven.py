@@ -54,6 +54,10 @@ def goh(tmp_path: Path) -> Path:
     for part in ("gates", "checks"):
         shutil.copytree(REPO_ROOT / part, d / part, ignore=shutil.ignore_patterns("__pycache__"))
     shutil.copytree(REPO_ROOT / "tui", d / "tui", ignore=shutil.ignore_patterns("__pycache__"))
+    (
+        d / "tools"
+    ).mkdir()  # the profile land.sh gates with (test_land_leaves_a_proof_the_push_reuses)
+    shutil.copy2(REPO_ROOT / "tools" / "gate_profile.sh", d / "tools" / "gate_profile.sh")
     # `lib/` because `local_ci.sh` runs every step through `lib/bounded_run.py` — the per-step
     # CEILING and the whole-subtree sweep. A fixture that assembles an incomplete checkout gets a
     # correct "No such file" refusal about a tree the test itself built wrong, which is the same
@@ -419,4 +423,56 @@ def test_goh_own_gatesrc_keys_no_build_state_so_the_release_gate_reuses_the_push
     (repo / "src.txt").write_text("two\n")
     _git(repo, "commit", "-qam", "two")
     proven(goh, repo, env)
+    assert runs(env) == 2, "a different tree must run"
+
+
+def _push(goh: Path, repo: Path, env: dict, tmp_path: Path, sha: str):
+    penv = dict(
+        env, GOH_PUSH_WORKTREES=str(tmp_path / "push"), GOH_PUSH_LOGS=str(tmp_path / "push-logs")
+    )
+    return subprocess.run(
+        ["bash", str(goh / "gates" / "push_gate.sh")],
+        cwd=repo,
+        env=penv,
+        input=f"refs/heads/main {sha} refs/heads/main {'0' * 40}\n",
+        capture_output=True,
+        text=True,
+    )
+
+
+def test_land_leaves_a_proof_the_push_that_follows_reuses(goh, hooked, env, tmp_path):
+    """G2f: `land.sh` gated the tip with `tools/gate_profile.sh`, whose proven-step cache is OFF by
+    default (a profile of cache hits measures the cache), so the push that followed re-ran 168 s of
+    gate over the SAME tree. Landing wants the verdict, not the timings: its gate proves with the
+    cache on, and the push after the fast-forward finds what it recorded.
+
+    Both ways: the landed tree is a hit at the push; a tree that moved after landing runs."""
+    wt = tmp_path / "wt"
+    _git(hooked, "worktree", "add", "-q", "-b", "feature", str(wt))
+    (wt / "src.txt").write_text("two\n")
+    _git(wt, "commit", "-qam", "two", "--no-verify")  # no hook: land's gate is the only recorder
+    tip = _git(wt, "rev-parse", "HEAD")
+    lenv = dict(env, GOH_LIVE="1", GOH_LAND_GATE=f"bash {goh}/tools/gate_profile.sh .")
+    lenv.update(
+        GOH_PUSH_WORKTREES=str(tmp_path / "push"), GOH_PUSH_LOGS=str(tmp_path / "push-logs")
+    )
+    landed = subprocess.run(
+        ["bash", str(REPO_ROOT / "tools" / "land.sh")],
+        cwd=wt,
+        env=lenv,
+        capture_output=True,
+        text=True,
+        stdin=subprocess.DEVNULL,
+    )
+    assert landed.returncode == 0, landed.stdout + landed.stderr
+    assert _git(hooked, "rev-parse", "HEAD") == tip
+    assert runs(env) == 1, "land's gate did not run the step once"
+    pushed = _push(goh, hooked, env, tmp_path, tip)
+    assert pushed.returncode == 0, pushed.stdout + pushed.stderr
+    assert runs(env) == 1, "the push re-ran a step land's gate had just proven on this tree"
+    assert "proven" in pushed.stdout, pushed.stdout
+    (hooked / "src.txt").write_text("three\n")
+    _git(hooked, "commit", "-qam", "three", "--no-verify")
+    again = _push(goh, hooked, env, tmp_path, _git(hooked, "rev-parse", "HEAD"))
+    assert again.returncode == 0, again.stdout + again.stderr
     assert runs(env) == 2, "a different tree must run"

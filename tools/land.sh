@@ -13,6 +13,12 @@
 #      `--ff-only` -- never the branch name, which may have moved -- and a main that moved on is
 #      named: rebase onto it and land again.
 #
+# The gate proves WITH the proven-step cache on (G2f, GOH_PROFILE_PROVEN): gate_profile.sh keeps it
+# off by default because a profile of cache hits measures the cache, but landing wants the verdict,
+# and the push that follows the fast-forward is the same tree -- it reuses what this gate recorded
+# instead of re-running 168 s of it (tests/test_proven.py, both directions). A caller that set
+# GOH_PROFILE_PROVEN keeps its value.
+#
 # Nothing is pushed. The gated SHA is recorded in the common git dir (`goh-landed`), which a repo
 # that sets GOH_LANDED_ONLY=<branch> has its push read: a tip that did not come through here is
 # refused (BACKLOG 1.5). Pinned by tests/test_land.py.
@@ -32,6 +38,7 @@ fi
 tip="$(git rev-parse HEAD)"
 branch="$(git rev-parse --abbrev-ref HEAD)"
 gate="${GOH_LAND_GATE:-tools/gate_profile.sh .}"
+export GOH_PROFILE_PROVEN="${GOH_PROFILE_PROVEN-1}"
 
 section "land $branch @ ${tip:0:8} -> $main"
 info "gate: $gate"
