@@ -104,7 +104,7 @@ GOH_TREE_CHECKED=""
 goh_tree_stamp() {
     [ -z "$GOH_TREE_STAMP_FILE" ] && [ -n "$GOH_GIT_ROOT" ] || return 0
     GOH_TREE_STAMP_FILE="$(mktemp "${TMPDIR:-/tmp}/goh-stamp.XXXXXX")"
-    python3 "$GOH_ROOT/lib/tree_stamp.py" take "$GOH_GIT_ROOT" "$GOH_TREE_STAMP_FILE" \
+    "$GOH_PY" "$GOH_ROOT/lib/tree_stamp.py" take "$GOH_GIT_ROOT" "$GOH_TREE_STAMP_FILE" \
         || die "$GOH_NAME: cannot stamp the tree at $GOH_GIT_ROOT"
 }
 
@@ -113,7 +113,7 @@ goh_tree_stamp() {
 goh_tree_check() {
     [ -n "$GOH_TREE_STAMP_FILE" ] || return 0
     GOH_TREE_CHECKED=1
-    python3 "$GOH_ROOT/lib/tree_stamp.py" check "$GOH_GIT_ROOT" "$GOH_TREE_STAMP_FILE" --name "$GOH_NAME"
+    "$GOH_PY" "$GOH_ROOT/lib/tree_stamp.py" check "$GOH_GIT_ROOT" "$GOH_TREE_STAMP_FILE" --name "$GOH_NAME"
 }
 
 # goh_init <gate-name>
@@ -209,7 +209,7 @@ goh_step() {
         step "$label (≤${_goh_limit}s)"
         # The native wrapper (`goh step`, one exec) when this gate already resolved the binary --
         # its CLI contract is the Python's (tests/test_step_wrapper_cli.py) -- else the Python.
-        local _goh_wrap=(python3 -S "$GOH_ROOT/lib/bounded_run.py")
+        local _goh_wrap=("$GOH_PY" -S "$GOH_ROOT/lib/bounded_run.py")
         [ -x "${GOH_RESOLVED_BIN:-}" ] && _goh_wrap=("$GOH_RESOLVED_BIN" step)
         if "${_goh_wrap[@]}" --timeout "$_goh_limit" \
                 --grace "${GOH_STEP_GRACE:-5}" --label "$label" -- "$@" >"$GOH_LOG" 2>&1; then
@@ -244,7 +244,7 @@ goh_step() {
         # Only lines ATTRIBUTABLE to the sub-step that failed: a passing sibling's `✗` (a
         # calibration plant's quoted row) is left out and counted, and an unframed log says it is
         # one (ZoneWM H2, BACKLOG C5; lib/fail_lines.py).
-        if python3 "$GOH_ROOT/lib/fail_lines.py" "$GOH_LOG" > "$GOH_LOG.fails" \
+        if "$GOH_PY" "$GOH_ROOT/lib/fail_lines.py" "$GOH_LOG" > "$GOH_LOG.fails" \
             && [ -s "$GOH_LOG.fails" ]; then
             cat "$GOH_LOG.fails" >&2
             printf '%s\n\n' "── tail ──" >&2
@@ -283,7 +283,7 @@ goh_require() {
 # goh_require_floor <tool> [<version text the caller read>]
 goh_require_floor() {
     local why
-    if ! why="$(python3 "$GOH_ROOT/gates/required_tools.py" --check --tool "$1" ${2:+--found "$2"} 2>&1 </dev/null)"; then
+    if ! why="$("$GOH_PY" "$GOH_ROOT/gates/required_tools.py" --check --tool "$1" ${2:+--found "$2"} 2>&1 </dev/null)"; then
         die "$GOH_NAME: ${why#required_tools: }"
     fi
 }

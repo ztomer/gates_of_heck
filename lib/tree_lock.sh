@@ -38,13 +38,15 @@ TREE_LOCK_FD=9
 
 # A peer's pid is written into the file for the wait message only; the lock
 # itself is the flock, never the content.
+# shellcheck source=lib/house_python.sh
+. "${BASH_SOURCE[0]%/*}/house_python.sh" || exit 1   # GOH_PY: the house interpreter, never PATH's first python3 (G2d)
 tree_lock_acquire() {
     local repo="${1:?repo}" label="${2:-gate}" lock
     lock="$repo/.goh-tree.lock"
     # Bash cannot `exec {var}>` into a variable fd portably across 3.2 (macOS's
     # /bin/bash); fd 9 is fixed and documented above.
     exec 9>>"$lock"
-    if ! python3 -c 'import fcntl; fcntl.flock(9, fcntl.LOCK_EX | fcntl.LOCK_NB)' 2>/dev/null; then
+    if ! "$GOH_PY" -c 'import fcntl; fcntl.flock(9, fcntl.LOCK_EX | fcntl.LOCK_NB)' 2>/dev/null; then
         local holder=""
         # Pure bash on purpose: sed/head/tr are rewritten under some sessions
         # (desktop_lock.sh has the story) and a lock message is not worth a
@@ -52,7 +54,7 @@ tree_lock_acquire() {
         IFS= read -r holder < "$lock" 2>/dev/null || true
         report "the build tree is held by ${holder:-another gate}" \
             "waiting for it rather than wiping .build under its tests"
-        python3 -c 'import fcntl; fcntl.flock(9, fcntl.LOCK_EX)'
+        "$GOH_PY" -c 'import fcntl; fcntl.flock(9, fcntl.LOCK_EX)'
         ok "build tree acquired"
     fi
     # Truncate-and-write our own identity for the next waiter's message. The

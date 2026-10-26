@@ -94,7 +94,7 @@ control() {
     if [ -n "${GOH_BENCH_CONTROL:-}" ]; then
         bash -c "$GOH_BENCH_CONTROL"
     else
-        python3 -c 'import subprocess, time
+        "$GOH_PY" -c 'import subprocess, time
 t = time.perf_counter()
 for _ in range(200):
     subprocess.run(["/usr/bin/true"])

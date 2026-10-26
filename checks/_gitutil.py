@@ -201,14 +201,14 @@ def cargo_manifests(root, skip=()) -> list:
     )
 
 
-def content_bytes(root: str, rel: str, staged: bool):
+def content_bytes(root: str, rel: str, staged: bool) -> bytes | None:
     """The bytes this check should police: the index blob when staged, the
     worktree otherwise. None means 'nothing to police' (deleted/binary-unreadable
     is the caller's call — this returns raw bytes either way when present).
 
-    No PEP 604 unions in annotations here on purpose: hooks resolve whatever
-    `python3` is on PATH (often the OS-bundled 3.9), and `bytes | None`
-    evaluates at def time there."""
+    The checkers run on the house interpreter (lib/house_python.sh, at or above
+    the python3 floor in gates/required_tools.tsv), never PATH's first python3:
+    the OS-bundled 3.9 this annotation was once withheld for is refused (G2d)."""
     if staged:
         out = subprocess.run(
             ["git", "-C", root, "show", f":{rel}"],

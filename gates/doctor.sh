@@ -118,10 +118,12 @@ fi
 
 # 6. Toolchains, informational. python3 is load-bearing for layer 1;
 # language toolchains matter only to the gates that use them.
-if command -v python3 >/dev/null 2>&1; then
-    ok "python3 present ($(python3 --version 2>&1))"
+# _from_head.sh sources lib/house_python.sh, which refuses a machine whose newest python3 is below
+# the floor, naming it; this names it again for a shell where that source could not run.
+if [ -n "${GOH_PY:-}" ]; then
+    ok "house python: $GOH_PY ($("$GOH_PY" --version 2>&1))"
 else
-    fail "python3 not on PATH — layer 1 checkers cannot run"
+    fail "no house python3 -- layer 1 checkers cannot run: $(bash "$HERE/../lib/house_python.sh" 2>&1)"
 fi
 for t in cargo swift; do
     if command -v "$t" >/dev/null 2>&1; then

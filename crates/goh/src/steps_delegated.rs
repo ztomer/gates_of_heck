@@ -26,11 +26,25 @@ pub fn step_full_only(
     if staged {
         return None;
     }
+    // The house interpreter (G2d), never PATH's first python3; its refusal fails the step by name.
+    let py = match crate::house_python::path() {
+        Ok(py) => py,
+        Err(why) => {
+            let label = "gates refuse to pass over an empty tree";
+            let start = crate::step_report::begin(label);
+            return Some(crate::step_report::fail(
+                label,
+                "lib/house_python.sh",
+                &why,
+                start,
+            ));
+        }
+    };
     let empty_code = delegated(
         checks,
         repo,
         "gates refuse to pass over an empty tree",
-        "python3",
+        &py,
         &["check_empty_scope.py".to_owned()],
     );
     if empty_code != 0 {
@@ -40,7 +54,7 @@ pub fn step_full_only(
         checks,
         repo,
         "gate self-proofs still pass",
-        "python3",
+        &py,
         &["check_probes_pass.py".to_owned()],
     );
     if probes_code != 0 {

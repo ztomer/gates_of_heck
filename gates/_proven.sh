@@ -15,6 +15,8 @@
 . "$(dirname "${BASH_SOURCE[0]}")/_hash.sh"
 # shellcheck source=gates/_git_env.sh
 . "$(dirname "${BASH_SOURCE[0]}")/_git_env.sh"
+# shellcheck source=lib/house_python.sh
+. "${BASH_SOURCE[0]%/*}/../lib/house_python.sh" || exit 1   # GOH_PY: the house interpreter, never PATH's first python3 (G2d)
 # shellcheck source=gates/_proven_artifacts.sh
 . "$(dirname "${BASH_SOURCE[0]}")/_proven_artifacts.sh"
 PROVEN_GOH_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
@@ -208,7 +210,7 @@ _proven_identity_slow() {
         _proven_tool cargo cargo -V
     fi
     if grep -Eq '\.py$|(^|/)pyproject\.toml$' <<<"$files"; then
-        _proven_tool python3 python3 -V
+        _proven_tool python3 "$GOH_PY" -V
     fi
     if grep -Eq '\.swift$|(^|/)Package\.swift$|\.xcodeproj/' <<<"$files"; then
         _proven_tool swift swift --version

@@ -61,7 +61,6 @@ goh_py_runner
 goh_init "python"
 goh_tree_stamp
 
-command -v python3 >/dev/null 2>&1 || die "python3 not on PATH"
 goh_py_require ruff
 goh_py_require pytest
 # shellcheck source=gates/_pytest_root.sh
@@ -73,7 +72,7 @@ goh_step_in "$pkg_dir" "ruff format check" "${RUN_ARR[@]}" ruff format --check .
 if [ -n "${GOH_PY_NOQA_PARITY:-}" ]; then
     # A `# noqa` ruff honours and the second linter the repo runs ignores (gates/py_noqa_parity.py, 4.5).
     goh_step_in "$pkg_dir" "noqa parity with $GOH_PY_NOQA_PARITY" \
-        python3 "$HERE/py_noqa_parity.py" --linters "$GOH_PY_NOQA_PARITY" --runner "$RUN" --all
+        "$GOH_PY" "$HERE/py_noqa_parity.py" --linters "$GOH_PY_NOQA_PARITY" --runner "$RUN" --all
 fi
 
 if [ -n "${GOH_PY_COV_MIN:-}" ]; then

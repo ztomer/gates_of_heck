@@ -8,6 +8,9 @@
 # missing tool, with no install line (2026-10-10, Homebrew python3 3.14 -> 3.15). Each tool is
 # probed before any step runs, and a missing one is a named refusal (gates/required_tools.tsv).
 
+# shellcheck source=lib/house_python.sh
+. "${BASH_SOURCE[0]%/*}/../lib/house_python.sh" || exit 1   # GOH_PY: the house interpreter, never PATH's first python3 (G2d)
+
 # goh_py_runner: set RUN (a string, for messages) and RUN_ARR (argv) from GOH_PY_RUNNER, else a
 # project .venv, else python3. Prefer the venv over PATH: a gate on a different interpreter than
 # the project is measuring the wrong thing. But a venv is a snapshot of whichever python3 built it,
@@ -86,12 +89,12 @@ goh_py_minor() {
     "$1" -c 'import sys; print("%d.%d" % sys.version_info[:2])' 2>/dev/null </dev/null
 }
 
-# goh_py_venv_current: refuse a .venv whose minor is below python3's unless the repo pins it.
+# goh_py_venv_current: refuse a .venv whose minor is below the house python's unless the repo pins it.
 goh_py_venv_current() {
     local venv sys pin
     venv="$(goh_py_minor .venv/bin/python)" \
         || die "$GOH_NAME: .venv/bin/python cannot say its version -- rebuild the venv (uv venv) or set GOH_PY_RUNNER"
-    sys="$(goh_py_minor python3)" || return 0   # no python3 to compare with: the venv is all there is
+    sys="$(goh_py_minor "$GOH_PY")" || return 0   # the house interpreter cannot say: the venv is all there is
     if (( ${venv%%.*} > ${sys%%.*} || (${venv%%.*} == ${sys%%.*} && ${venv#*.} >= ${sys#*.}) )); then
         return 0
     fi
@@ -99,7 +102,7 @@ goh_py_venv_current() {
         pin="$(tr -d '[:space:]' <.python-version)"
         case "$pin" in "$venv" | "$venv".*) return 0 ;; esac
     fi
-    die "$GOH_NAME: .venv is Python $venv and python3 is $sys -- the gate would judge on the older one unsaid. Rebuild it (uv venv --python $sys), or declare the pin: commit a .python-version reading $venv, or set GOH_PY_RUNNER"
+    die "$GOH_NAME: .venv is Python $venv and the house python ($GOH_PY) is $sys -- the gate would judge on the older one unsaid. Rebuild it (uv venv --python $sys), or declare the pin: commit a .python-version reading $venv, or set GOH_PY_RUNNER"
 }
 
 # goh_py_require <module>: refuse unless the runner can run <module> (`<runner> <module> --version`).
@@ -145,7 +148,7 @@ goh_py_interpreter() {
         py="$(uv python find --no-project "$pin" 2>/dev/null || command -v "python$pin" || true)"
         [ -n "$py" ] || die "$GOH_NAME: $src pins Python $pin and no interpreter of that version is installed -- uv python install $pin"
     else
-        py="$(command -v python3)" || die "$GOH_NAME: no python3 on PATH and no pin to find one by (GOH_PYTHON_VERSION or a committed .python-version)"
+        py="$GOH_PY"   # the house interpreter (lib/house_python.sh), never PATH's first python3
     fi
     if [ -n "$pin" ]; then
         full="$(goh_py_full "$py")" || die "$GOH_NAME: $py cannot say its version"

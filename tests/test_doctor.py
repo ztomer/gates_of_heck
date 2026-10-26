@@ -106,7 +106,8 @@ def test_missing_python_is_named(tmp_path):
         ["/bin/bash", str(DOCTOR), str(target)],
         capture_output=True,
         text=True,
-        env={"PATH": str(bindir), "HOME": str(tmp_path)},
+        # The house resolver also searches the release install dirs (G2d); confine it to bindir.
+        env={"PATH": str(bindir), "HOME": str(tmp_path), "GOH_PY_SEARCH": str(bindir)},
         stdin=subprocess.DEVNULL,
     )
     assert r.returncode == 1, r.stdout + r.stderr

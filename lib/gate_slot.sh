@@ -24,6 +24,8 @@
 # GOH_STEP_TIMEOUT) belongs to a step the gate starts AFTER this returns, so a wait can never spend
 # a step's budget. Pinned by tests/test_gate_slot.py.
 
+# shellcheck source=lib/house_python.sh
+. "${BASH_SOURCE[0]%/*}/house_python.sh" || exit 1   # GOH_PY: the house interpreter, never PATH's first python3 (G2d)
 GATE_SLOT_HELPER="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/gate_slot.py" # beside this file
 GATE_SLOT_PID="" # the holder process (lib/gate_slot.py hold); gate_slot_release ends it
 
@@ -57,13 +59,13 @@ _gate_slot_take() { # <repo> <owner pid> <"" | --for-caller>
                   exit 2 ;;
     esac
     mkdir -p "$dir"
-    if line="$(python3 -S "$helper" nested --dir "$dir")"; then
+    if line="$("$GOH_PY" -S "$helper" nested --dir "$dir")"; then
         info "gate slot: inside a gate that holds $line -- not taking another"
         return 0
     fi
     fifo="$(mktemp -u "${TMPDIR:-/tmp}/goh-gate-slot.XXXXXX")"
     mkfifo "$fifo"
-    python3 -S "$helper" hold --dir "$dir" ${n:+--slots "$n"} --owner "$owner" --repo "$repo" \
+    "$GOH_PY" -S "$helper" hold --dir "$dir" ${n:+--slots "$n"} --owner "$owner" --repo "$repo" \
         --handshake "$fifo" ${mode:+"$mode"} </dev/null &
     pid=$!
     # Read-write, so the open never blocks and a holder that died before writing cannot hang this

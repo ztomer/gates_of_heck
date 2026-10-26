@@ -33,6 +33,8 @@
 # that drops them, goh_unbind_git. This file is sourced first by every gate, so every gate has both.
 # shellcheck source=gates/_git_env.sh
 . "$(dirname "${BASH_SOURCE[0]}")/_git_env.sh"
+# shellcheck source=lib/house_python.sh
+. "${BASH_SOURCE[0]%/*}/../lib/house_python.sh" || exit 1   # GOH_PY: the house interpreter, never PATH's first python3 (G2d)
 
 _goh_head_dir() {
     local here root rel head cache dest tmp
@@ -72,10 +74,10 @@ _goh_head_dir() {
         printf '%s\n' "$head" > "$tmp/.goh-head"
         : > "$tmp/.goh-used"  # the last-use stamp, made before the rename (gates/_head_cache.py)
         # rename(2), whole: fails if another hook won the race, and theirs is the same commit.
-        python3 -c 'import os, sys; os.rename(sys.argv[1], sys.argv[2])' "$tmp" "$dest" 2>/dev/null \
+        "$GOH_PY" -c 'import os, sys; os.rename(sys.argv[1], sys.argv[2])' "$tmp" "$dest" 2>/dev/null \
             || rm -rf "$tmp"
         # A NEW export prunes the others by LAST USE (gates/_head_cache.py); the current never goes.
-        python3 -S -c 'import sys; sys.path.insert(0, sys.argv[1]); import _head_cache; _head_cache.prune(sys.argv[2], sys.argv[3])' \
+        "$GOH_PY" -S -c 'import sys; sys.path.insert(0, sys.argv[1]); import _head_cache; _head_cache.prune(sys.argv[2], sys.argv[3])' \
             "$(dirname "${BASH_SOURCE[0]}")" "$cache" "$head" 2>/dev/null || true
     fi
     # This use, stamped: a truncate of the export's own empty `.goh-used` -- no spawn, and the

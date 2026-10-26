@@ -61,7 +61,7 @@ done
 
 need="$(setting GOH_MIN_FREE_GIB)"
 if [ -n "$need" ]; then
-    python3 -S "$HERE/../lib/preflight_disk.py" . "$need" || die "round stopped: free space first"
+    "$GOH_PY" -S "$HERE/../lib/preflight_disk.py" . "$need" || die "round stopped: free space first"
 fi
 
 if [ -n "$(setting GOH_PYTHON_FORMATTED)" ]; then

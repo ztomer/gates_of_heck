@@ -31,7 +31,9 @@ def _resolve(repo: Path, venv: str | None, system: str, env: dict[str, str] | No
         _fake_python(repo / ".venv" / "bin" / "python", venv)
     script = f'. "{TUI}"; GOH_NAME=test; . "{PY_SH}"; goh_py_runner; echo "RUN=$RUN"'
     full = {k: v for k, v in os.environ.items() if k != "GOH_PY_RUNNER"}
-    full.update({"PATH": f"{bindir}:{os.environ['PATH']}", **(env or {})})
+    # The fake is the house interpreter through its seam (G2d), resolved: PATH order picks nothing.
+    house = str(bindir / "python3")
+    full.update({"GOH_PY": house, "GOH_PY_OK": house, **(env or {})})
     return subprocess.run(
         ["/bin/bash", "-c", script],
         cwd=repo,
@@ -104,7 +106,7 @@ def test_reading_the_pin_never_writes_into_a_closed_pipe(repo: Path) -> None:
         "goh_py_interpreter >/dev/null"
     )
     full = {k: v for k, v in os.environ.items() if k != "GOH_PY_RUNNER"}
-    full["PATH"] = f"{bindir}:{os.environ['PATH']}"
+    full.update(GOH_PY=str(bindir / "python3"), GOH_PY_OK=str(bindir / "python3"))
     r = subprocess.run(
         ["/bin/bash", "-c", script], cwd=repo, capture_output=True, text=True, env=full,
         check=False, stdin=subprocess.DEVNULL,

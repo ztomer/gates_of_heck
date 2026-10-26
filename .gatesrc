@@ -108,7 +108,7 @@ GOH_PYTHON_FORMATTED=1
 # the v0.22.0 push ran that export's tests, outside any git repo (tests/test_gates_from_head.py).
 # The structural gate gives one verdict however the tree's path is spelled (gates/path_invariance.py):
 # the push gate runs it from a scratch export under /var/folders, which is also /private/var/folders.
-GOH_CI_STEPS='./gates/rust_gate.sh:./gates/structural.sh --full:cargo test --workspace:./tools/pytest.sh:./gates/goh.sh status-markers:python3 ./gates/path_invariance.py -- ./gates/structural.sh --full'
+GOH_CI_STEPS='./gates/rust_gate.sh:./gates/structural.sh --full:cargo test --workspace:./tools/pytest.sh:./gates/goh.sh status-markers:"$GOH_PY" ./gates/path_invariance.py -- ./gates/structural.sh --full'
 # How many of those steps run at once. Serial is the default because only a repo can say which of
 # its steps write the same file, so each candidate here was CLOSED rather than assumed (measured
 # 2026-10-16):

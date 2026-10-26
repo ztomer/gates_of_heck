@@ -9,13 +9,15 @@
 # runs nothing. A finding is exit 2 with the report on stderr: Claude Code hands stderr of an
 # exit-2 PostToolUse hook back to the writer, so the fix lands in the same turn.
 set -uo pipefail
+# shellcheck source=lib/house_python.sh
+. "${BASH_SOURCE[0]%/*}/../../lib/house_python.sh" || exit 1   # GOH_PY: the house interpreter, never PATH's first python3 (G2d)
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 root="${GOH_SKILLS_ROOT:-$HOME/.claude/skills}"
 # The fast path, builtins only: this hook runs after EVERY Bash and Write in every session, and an
 # event that does not even name the corpus's directory exits here, before any Python starts.
 IFS= read -r -d '' event || true
 case "$event" in *"$(basename "$root")"*) ;; *) exit 0 ;; esac
-inside="$(printf '%s' "$event" | python3 -c '
+inside="$(printf '%s' "$event" | "$GOH_PY" -c '
 import json, os, sys
 try:
     tool_input = json.load(sys.stdin).get("tool_input", {})

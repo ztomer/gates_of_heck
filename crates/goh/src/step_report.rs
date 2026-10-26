@@ -308,9 +308,16 @@ pub(crate) fn run_child(
     let me = std::env::current_exe()
         .ok()
         .filter(|p| p.file_name().is_some_and(|n| n == "goh"));
+    let python = match me {
+        Some(_) => String::new(),
+        None => match crate::house_python::path() {
+            Ok(py) => py,
+            Err(why) => return (SPAWN_FAILED, why),
+        },
+    };
     let mut cmd = me.map_or_else(
         || {
-            let mut c = Command::new("python3");
+            let mut c = Command::new(&python);
             c.arg("-S").arg(&runner);
             c
         },

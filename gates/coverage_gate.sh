@@ -230,7 +230,7 @@ need() { # need <cmd> <what-it-is-for>; a tool below its floor (required_tools.t
         err "coverage_gate: '$1' not found on PATH — required for the $LANG_ mode ($2)"
         exit 2
     }
-    if ! why="$(python3 "$(dirname "${BASH_SOURCE[0]}")/required_tools.py" --check --tool "$1" 2>&1 </dev/null)"; then
+    if ! why="$("$GOH_PY" "$(dirname "${BASH_SOURCE[0]}")/required_tools.py" --check --tool "$1" 2>&1 </dev/null)"; then
         err "coverage_gate: ${why#required_tools: }"
         exit 2
     fi
@@ -252,7 +252,7 @@ run_swift() {
     if [ -n "$IGNORE" ]; then _SWIFT_ARGS+=(--ignore "$IGNORE"); fi
     if [ -n "$INCLUDE" ]; then _SWIFT_ARGS+=(--include "$INCLUDE"); fi
     if [ -n "$MARKER_CEILING" ]; then _SWIFT_ARGS+=(--marker-ceiling "$MARKER_CEILING"); fi
-    python3 "$GOH_ROOT/gates/coverage_swift.py" "${_SWIFT_ARGS[@]}" \
+    "$GOH_PY" "$GOH_ROOT/gates/coverage_swift.py" "${_SWIFT_ARGS[@]}" \
         || exit $?
 }
 
@@ -318,7 +318,7 @@ run_cpp() {
     if [ -n "$INCLUDE" ]; then
         pct=$(xcrun llvm-cov export "$bin" -instr-profile="$profdata" \
             ${IGNORE:+-ignore-filename-regex "$IGNORE"} 2>/dev/null \
-            | python3 -c '
+            | "$GOH_PY" -c '
 import json,os,re,sys
 inc=os.environ.get("GOH_COV_INCLUDE_RE","") or (sys.argv[1] if len(sys.argv)>1 else "")
 pat=re.compile(inc) if inc else None
@@ -341,7 +341,7 @@ if tot: print("%.2f"%(100.0*cov/tot))
     else
         pct=$(xcrun llvm-cov export "$bin" -instr-profile="$profdata" \
             ${IGNORE:+-ignore-filename-regex "$IGNORE"} -summary-only 2>/dev/null \
-            | python3 -c 'import json,sys
+            | "$GOH_PY" -c 'import json,sys
 try: print("%.2f"%json.load(sys.stdin)["data"][0]["totals"]["lines"]["percent"])
 except Exception: pass') || true
     fi
@@ -355,17 +355,17 @@ except Exception: pass') || true
 run_py() {
     cd "$PROJ"
     need python3 "coverage + pytest"
-    python3 -m coverage --version >/dev/null 2>&1 \
-        || { err "'coverage' not installed (python3 -m pip install coverage pytest)"; exit 2; }
-    python3 -m pytest --version >/dev/null 2>&1 \
-        || { err "'pytest' not installed (python3 -m pip install coverage pytest)"; exit 2; }
+    "$GOH_PY" -m coverage --version >/dev/null 2>&1 \
+        || { err "'coverage' not installed ($GOH_PY -m pip install coverage pytest)"; exit 2; }
+    "$GOH_PY" -m pytest --version >/dev/null 2>&1 \
+        || { err "'pytest' not installed ($GOH_PY -m pip install coverage pytest)"; exit 2; }
 
     # shellcheck source=gates/_pytest_root.sh
     . "$HERE/_pytest_root.sh"
     goh_pytest_root  # a concurrent suite cannot prune this one's temp dirs
     info "coverage run -m pytest"
     # shellcheck disable=SC2086
-    python3 -m coverage run --source="$PROJ" \
+    "$GOH_PY" -m coverage run --source="$PROJ" \
         ${INCLUDE:+--include "$INCLUDE"} \
         ${IGNORE:+--omit "$IGNORE"} \
         -m pytest -q >/dev/null 2>&1 \
@@ -374,13 +374,13 @@ run_py() {
 
     # The floor is enforced BY coverage itself (--fail-under), and echoed here
     # in house voice so every mode reports the same shape.
-    if python3 -m coverage report --fail-under="$FLOOR" >/dev/null 2>&1; then
-        pct=$(python3 -m coverage report | tail -1 | awk '{print $NF}' | tr -d '%')
+    if "$GOH_PY" -m coverage report --fail-under="$FLOOR" >/dev/null 2>&1; then
+        pct=$("$GOH_PY" -m coverage report | tail -1 | awk '{print $NF}' | tr -d '%')
         floor_cmp "$pct"
     else
-        pct=$(python3 -m coverage report | tail -1 | awk '{print $NF}' | tr -d '%')
+        pct=$("$GOH_PY" -m coverage report | tail -1 | awk '{print $NF}' | tr -d '%')
         err "line coverage ${pct:-unknown}% is below the $FLOOR% floor"
-        python3 -m coverage report --show-missing >&2 || true
+        "$GOH_PY" -m coverage report --show-missing >&2 || true
         exit 1
     fi
 }

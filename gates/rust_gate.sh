@@ -258,10 +258,10 @@ rust_advisories() {
     # goh's own copy of the database, under a read/write lock: a refresh beside a read tore the
     # read ("unexpected start of advisory"), so no goh audit reads one being rewritten.
     goh_step_in "$root" "no known advisory (cargo audit: warnings, unmaintained, unsound, yanked)" \
-        python3 "$HERE/../lib/advisory_db.py" run "$fetch" -- cargo audit --file "$lockfile" \
+        "$GOH_PY" "$HERE/../lib/advisory_db.py" run "$fetch" -- cargo audit --file "$lockfile" \
         --deny warnings --deny unmaintained --deny unsound --deny yanked
     goh_step_in "$root" "every advisory exemption has its reason and still fires" \
-        python3 "$HERE/../checks/check_audit_ignores.py" --no-fetch
+        "$GOH_PY" "$HERE/../checks/check_audit_ignores.py" --no-fetch
 }
 
 rust_repo_checks() {

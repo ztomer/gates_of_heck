@@ -5,9 +5,10 @@ OLDEST version each may be. A floor, never a pin: the house runs the newest rele
 ("why pin goh by version? The whole idea is to have ever improving qa gates", owner, 2026-10-25),
 so a tool NEWER than its floor is green, always, and only a missing tool or one OLDER than its
 floor is red. The floors were seeded from sys_updater's `tools/gate-floors.env` (R3.29), which
-carried each one's reason; the reasons now sit above the rows in the manifest. One seed was
-corrected on evidence: python3 3.14 was "the oldest installed", and 3.9.6 was installed and runs
-both this suite's gates and sys_updater's tests green.
+carried each one's reason; the reasons now sit above the rows in the manifest. python3's seed
+(3.14) was once lowered to 3.9 on "evidence" that this suite's gates ran green on /usr/bin/python3
+3.9.6 -- an accident of a reduced PATH, not a decision -- and is now 3.15, the house interpreter's
+floor (G2d; tests/test_house_python.py).
 
 The enforcement is goh's existing requirement check, `goh_require` (and `need` in the coverage
 gate, `goh_py_require` for a module the Python gates run): present is no longer enough, it must be
@@ -56,7 +57,7 @@ def _cli(args: list[str], env: dict[str, str] | None = None) -> subprocess.Compl
 
 
 SEED = {
-    "python3": "3.9",
+    "python3": "3.15",
     "pytest": "9.1.1",
     "zig": "0.17.0",
     "shellcheck": "0.11.0",

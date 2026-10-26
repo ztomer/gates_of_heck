@@ -83,7 +83,7 @@ swift_lint_with_baseline() {
     report="$(mktemp "${TMPDIR:-/tmp}/goh-swiftlint-report.XXXXXX")"
     step "swiftlint --strict (baseline: $(basename "$GOH_SWIFT_LINT_BASELINE"))"
     swiftlint lint --strict --quiet --reporter json >"$report" || rc=$?
-    if ! python3 "$HERE/swift_lint_baseline.py" \
+    if ! "$GOH_PY" "$HERE/swift_lint_baseline.py" \
             --baseline "$GOH_SWIFT_LINT_BASELINE" \
             --report "$report" --root "$PWD" \
             --swiftlint-rc "$rc"; then
@@ -135,7 +135,7 @@ case "$MODE" in
             _cov_args+=(--floors-json "$GOH_SWIFT_COV_FLOORS")
         fi
         goh_step "coverage >= ${GOH_SWIFT_COV_MIN}%${GOH_SWIFT_COV_FLOORS:+ + per-target floors}" \
-            python3 "$HERE/../checks/check_swift_coverage.py" "${_cov_args[@]}"
+            "$GOH_PY" "$HERE/../checks/check_swift_coverage.py" "${_cov_args[@]}"
     else
         goh_step "test" "$SWIFT" test
         warn "no coverage floor — set GOH_SWIFT_COV_MIN in .gatesrc"
@@ -177,7 +177,7 @@ case "$MODE" in
     warn_dirs="${GOH_SWIFT_WARN_DIRS:-$(git ls-files '*.swift' | awk -F/ 'NF > 1 { print $1 }' | sort -u | paste -sd, -)}"
     [ -n "$warn_dirs" ] || die "no first-party Swift dirs to judge for warnings; set GOH_SWIFT_WARN_DIRS"
     goh_step "no compiler warnings in $warn_dirs" \
-        python3 "$HERE/../checks/check_swift_warnings.py" --log "$xcode_log" --dirs "$warn_dirs"
+        "$GOH_PY" "$HERE/../checks/check_swift_warnings.py" --log "$xcode_log" --dirs "$warn_dirs"
     if [ -n "${GOH_SWIFT_COV_MIN:-}" ]; then
         _cov_args=(--min "$GOH_SWIFT_COV_MIN" --xcode --dd "$dd")
         if [ -n "${GOH_SWIFT_COV_FLOORS:-}" ]; then
@@ -186,7 +186,7 @@ case "$MODE" in
             _cov_args+=(--floors-json "$GOH_SWIFT_COV_FLOORS")
         fi
         goh_step "coverage >= ${GOH_SWIFT_COV_MIN}%${GOH_SWIFT_COV_FLOORS:+ + per-target floors}" \
-            python3 "$HERE/../checks/check_swift_coverage.py" "${_cov_args[@]}"
+            "$GOH_PY" "$HERE/../checks/check_swift_coverage.py" "${_cov_args[@]}"
     fi
     ;;
   *) die "unknown GOH_SWIFT_MODE: $MODE (want spm or xcode)" ;;

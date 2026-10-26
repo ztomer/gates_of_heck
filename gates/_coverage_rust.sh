@@ -43,7 +43,7 @@ run_rust() {
     COV_KEY="$(pwd -P | shasum -a 256 | cut -c1-16)"
     mkdir -p "$COV_CACHE/$COV_KEY"
     : >"$COV_CACHE/$COV_KEY/.goh-used"
-    python3 -S -c 'import sys; sys.path.insert(0, sys.argv[1]); import _head_cache; gib = float(sys.argv[4]); _head_cache.prune(sys.argv[2], sys.argv[3], keep=200, max_bytes=int(gib * 2**30) if gib > 0 else None)' \
+    "$GOH_PY" -S -c 'import sys; sys.path.insert(0, sys.argv[1]); import _head_cache; gib = float(sys.argv[4]); _head_cache.prune(sys.argv[2], sys.argv[3], keep=200, max_bytes=int(gib * 2**30) if gib > 0 else None)' \
         "$(dirname "${BASH_SOURCE[0]}")" "$COV_CACHE" "$COV_KEY" "${GOH_COV_CACHE_MAX_GIB:-8}" 2>/dev/null || true
     export CARGO_TARGET_DIR="$PROJ/target/llvm-cov"
     export CARGO_BUILD_BUILD_DIR="$COV_CACHE/$COV_KEY/build"
@@ -86,7 +86,7 @@ run_rust() {
             cargo llvm-cov clean --profraw-only >/dev/null 2>&1 || true
             cargo build --locked --bins --message-format=json-render-diagnostics \
                 >"$part.json" 2>"$part.log" || exit 1
-            python3 "$GOH_ROOT/gates/_cov_prune.py" "$part.json" >>"$part.log" 2>&1 || exit 1
+            "$GOH_PY" "$GOH_ROOT/gates/_cov_prune.py" "$part.json" >>"$part.log" 2>&1 || exit 1
             bins="$CARGO_TARGET_DIR/debug" profile="${LLVM_PROFILE_FILE/-%p/}"
             (
                 for v in $(printf '%s\n' "$showenv" | sed -n 's/^export \([A-Za-z_][A-Za-z0-9_]*\)=.*/\1/p'); do
@@ -116,7 +116,7 @@ run_rust() {
     # produced `--test main` for every one of them.)
     info "enumerating workspace packages/targets via cargo metadata"
     METAF="$CARGO_TARGET_DIR/targets.tsv"
-    python3 - >"$METAF" <<'PYEOF'
+    "$GOH_PY" - >"$METAF" <<'PYEOF'
 import json
 import subprocess
 
@@ -162,7 +162,7 @@ PYEOF
             }
             cargo test --no-run --locked --workspace $KINDS --all-features \
                 --message-format=json-render-diagnostics >"$WORKSPACE_PART.json" || exit 1
-            python3 "$GOH_ROOT/gates/_cov_prune.py" "$WORKSPACE_PART.json" || exit 1
+            "$GOH_PY" "$GOH_ROOT/gates/_cov_prune.py" "$WORKSPACE_PART.json" || exit 1
             cargo test --locked --workspace $KINDS --all-features || exit 1
             cargo llvm-cov report ${IGNORE:+--ignore-filename-regex "$IGNORE"} \
                 --lcov --output-path "$WORKSPACE_PART"
@@ -203,5 +203,5 @@ PYEOF
     if [ -n "$FLOORS_JSON" ]; then _MERGE_ARGS+=(--floors-json "$FLOORS_JSON"); fi
     if [ -n "$INCLUDE" ]; then _MERGE_ARGS+=(--include "$INCLUDE"); fi
     if [ -n "$MARKER_CEILING" ]; then _MERGE_ARGS+=(--marker-ceiling "$MARKER_CEILING"); fi
-    python3 "$GOH_ROOT/gates/lcov_merge.py" "${_MERGE_ARGS[@]}" "$PARTS"
+    "$GOH_PY" "$GOH_ROOT/gates/lcov_merge.py" "${_MERGE_ARGS[@]}" "$PARTS"
 }

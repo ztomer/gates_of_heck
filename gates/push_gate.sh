@@ -275,7 +275,7 @@ if [ -f "$root/.gatesrc" ]; then
 fi
 if [ -n "$min_free" ]; then
     mkdir -p "$export_root"
-    python3 -S "$GOH/lib/preflight_disk.py" "$export_root" "$min_free" \
+    "$GOH_PY" -S "$GOH/lib/preflight_disk.py" "$export_root" "$min_free" \
         || { err "pre-push: not enough room for the cold gate -- nothing pushed"; exit 1; }
 fi
 
@@ -412,7 +412,7 @@ while read -r local_ref local_sha _remote_ref _remote_sha; do
     git -C "$root" worktree add --detach --quiet "$worktree" "$commit"
     export_goh_sibling "$worktree" "$run_dir"   # the gates_of_heck sibling a path dependency names (lib/push_runs.sh)
     # ...and the build dirs cargo keys on the export, asked while it exists (gates/_push_build_dirs.py).
-    [ -n "$export_build_dir" ] || python3 -S "$GOH/gates/_push_build_dirs.py" "$worktree" 2>/dev/null |
+    [ -n "$export_build_dir" ] || "$GOH_PY" -S "$GOH/gates/_push_build_dirs.py" "$worktree" 2>/dev/null |
         sed 's/^/build-dir /' >>"$run_dir.source" || true
     for f in $GOH_EXPORT_KEEP; do
         if [ -e "$root/$f" ]; then

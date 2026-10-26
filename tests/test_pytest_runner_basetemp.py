@@ -29,7 +29,11 @@ def _run(tmp_path: Path, exit_code: int):
         f"exit {exit_code}\n"
     )
     stub.chmod(stub.stat().st_mode | stat.S_IXUSR)
-    env = {**os.environ, "PATH": f"{bin_dir}{os.pathsep}{os.environ['PATH']}"}
+    # The stub is the house interpreter through ITS seam (lib/house_python.sh, G2d): first on PATH
+    # it is never asked, and the runner ran the REAL suite inside this test -- recursively, 33
+    # nested suites deep, until the machine stalled (2026-10-25). GOH_PY_OK marks it resolved.
+    env = {**os.environ, "GOH_PY": str(stub), "GOH_PY_OK": str(stub),
+           "GATES_OF_HECK_SUITE_NESTED_OK": "1"}  # fmt: skip
     done = subprocess.run(
         ["bash", str(REPO_ROOT / "tools" / "pytest.sh")],
         env=env,
@@ -71,3 +75,21 @@ def test_every_script_that_starts_pytest_takes_a_private_root():
     assert {"tools/pytest.sh", "gates/py_gate.sh", "gates/coverage_gate.sh"} <= set(runners), (
         runners
     )
+
+
+def test_the_runner_refuses_to_start_inside_a_running_suite(tmp_path):
+    """The recursion guard (G2d): with no explicit nested-ok, a runner inside a suite refuses, and
+    never reaches pytest -- the stub records nothing."""
+    stub = tmp_path / "python3"
+    marker = tmp_path / "ran"
+    stub.write_text(f'#!/bin/bash\nif [ "$1" = -c ]; then exit 0; fi\ntouch "{marker}"\n')
+    stub.chmod(0o755)
+    env = {k: v for k, v in os.environ.items() if k != "GATES_OF_HECK_SUITE_NESTED_OK"}
+    env.update(GOH_PY=str(stub), GOH_PY_OK=str(stub), GATES_OF_HECK_SUITE_RUNNER="4242")
+    done = subprocess.run(
+        ["bash", str(REPO_ROOT / "tools" / "pytest.sh")],
+        env=env, stdin=subprocess.DEVNULL, capture_output=True, text=True, check=False,
+    )  # fmt: skip
+    assert done.returncode == 2, done.stdout + done.stderr
+    assert "inside a running goh suite" in done.stderr
+    assert not marker.exists()

@@ -143,8 +143,11 @@ if [[ -n "${STAMP}" ]]; then
   # One export per root ever built from -- every HEAD export among them -- so prune them like the
   # HEAD exports (gates/_head_cache.py): a week unused, or past the newest 20 and idle an hour.
   : >"${cache}/.goh-used"
-  python3 -S -c 'import sys; sys.path.insert(0, sys.argv[1]); import _head_cache; _head_cache.prune(sys.argv[2], sys.argv[3])' \
-    "${PROJECT_ROOT}/gates" "$(dirname "${cache}")" "$(basename "${cache}")" 2>/dev/null || true
+  # The house interpreter (lib/house_python.sh, G2d), never PATH's first python3. Best-effort here.
+  # shellcheck source=lib/house_python.sh
+  { . "${PROJECT_ROOT}/lib/house_python.sh" \
+      && "${GOH_PY}" -S -c 'import sys; sys.path.insert(0, sys.argv[1]); import _head_cache; _head_cache.prune(sys.argv[2], sys.argv[3])' \
+        "${PROJECT_ROOT}/gates" "$(dirname "${cache}")" "$(basename "${cache}")"; } 2>/dev/null || true
   # shellcheck disable=SC2046  # word-splitting git's variable list is the point
   (unset ${GOH_GIT_LOCAL_VARS:-$(git rev-parse --local-env-vars 2>/dev/null)}
    GIT_INDEX_FILE="${cache}/index" git -C "${PROJECT_ROOT}" --work-tree="${cache}/src" read-tree --reset -u "${REV}")
@@ -165,8 +168,10 @@ GOH_SOURCE_STAMP="${STAMP:-unknown}" cargo build --release --quiet --locked \
 # Place the binary where gates/structural.sh looks first (bin/goh, gitignored).
 # Stage + mv: a hook executing the old binary right now keeps its inode; the
 # new one lands atomically.
+# shellcheck source=lib/house_python.sh
+[[ -n "${GOH_PY:-}" && "${GOH_PY}" == "${GOH_PY_OK:-}" ]] || . "${PROJECT_ROOT}/lib/house_python.sh"
 TARGET_DIR="$(cargo metadata --format-version 1 --no-deps --manifest-path "${SRC}/Cargo.toml" \
-    | python3 -c 'import json,sys; print(json.load(sys.stdin)["target_directory"])')"
+    | "${GOH_PY}" -c 'import json,sys; print(json.load(sys.stdin)["target_directory"])')"
 BIN="${TARGET_DIR}/release/goh"
 if [[ ! -x "${BIN}" ]]; then
   echo "✗ release binary not found at ${BIN}" >&2

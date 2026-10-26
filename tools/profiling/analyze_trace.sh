@@ -10,6 +10,8 @@
 # Report: <trace>.hotspots.txt unless named. Requires xcrun xctrace (Xcode) and python3.
 
 set -euo pipefail
+# shellcheck source=lib/house_python.sh
+. "${BASH_SOURCE[0]%/*}/../../lib/house_python.sh" || exit 1   # GOH_PY: the house interpreter, never PATH's first python3 (G2d)
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 # shellcheck source=tui/lib.sh
 . "$HERE/../../tui/lib.sh"
@@ -28,7 +30,7 @@ xcrun xctrace export --input "$TRACE_FILE" --output "$XML" \
     || die "xctrace export failed: open the trace in Instruments (open \"$TRACE_FILE\")"
 
 info "ranking"
-if ! python3 "$HERE/xctrace_profile.py" "$XML" "$@" > "$REPORT"; then
+if ! "$GOH_PY" "$HERE/xctrace_profile.py" "$XML" "$@" > "$REPORT"; then
     cat "$REPORT"
     die "no samples matched in $XML"
 fi

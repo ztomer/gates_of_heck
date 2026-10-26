@@ -96,3 +96,58 @@ fn the_stock_hooks_every_consumer_copies_run_no_bare_python() {
         );
     }
 }
+
+/// Every shell source of goh's OWN under `dir`, recursively: `*.sh`, and an extensionless file
+/// whose first line is a shell shebang (a hook).
+fn goh_shell_sources(dir: &std::path::Path, out: &mut Vec<std::path::PathBuf>) {
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.is_dir() {
+            goh_shell_sources(&path, out);
+        } else if path.extension().is_some_and(|e| e == "sh")
+            || (path.extension().is_none()
+                && std::fs::read_to_string(&path).is_ok_and(|t| {
+                    t.starts_with("#!") && t.lines().next().is_some_and(|l| l.contains("sh"))
+                }))
+        {
+            out.push(path);
+        }
+    }
+}
+
+/// THE CLASS (G2d): goh's own scripts run the house interpreter, `"$GOH_PY"` (`lib/house_python.sh`),
+/// never a bare `python3` -- PATH's first, which under a reduced PATH is macOS's 3.9.6. The suite's
+/// gates ran there for months unseen, and a floor was set from it. One sweep, every goh script.
+#[test]
+fn goh_own_scripts_run_the_house_interpreter_never_a_bare_python() {
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let mut files = Vec::new();
+    for dir in [
+        "gates", "lib", "tools", "hooks", "scripts", "checks", "bin", "tui",
+    ] {
+        goh_shell_sources(&root.join(dir), &mut files);
+    }
+    files.push(root.join("install.sh"));
+    assert!(
+        files.len() > 40,
+        "the sweep found only {} shell sources",
+        files.len()
+    );
+    let mut findings = Vec::new();
+    for path in &files {
+        let Ok(text) = std::fs::read_to_string(path) else {
+            continue;
+        };
+        for (line, name) in scan_text(&text) {
+            findings.push(format!("{}:{line}: {name}", path.display()));
+        }
+    }
+    assert!(
+        findings.is_empty(),
+        "bare python in goh's own scripts:\n{}",
+        findings.join("\n")
+    );
+}

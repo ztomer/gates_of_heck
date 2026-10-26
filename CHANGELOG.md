@@ -1,5 +1,42 @@
 # CHANGELOG
 
+## v0.51.0 — the house interpreter is found one way, and python3's floor is 3.15 _(2026-10-25)_
+
+Minor bump: a new seam (`GOH_PY`, `lib/house_python.sh`) and a raised floor a consumer can fail.
+
+* **python3's floor is 3.15, and v0.50.0's 3.9 is REVERSED (G2d).** G2b floored python3 at 3.9 as
+  "PROVEN: goh's own suite drives the gates on /usr/bin/python3 3.9.6, green". That recorded an
+  accident: dozens of this suite's tests hand a gate `PATH=/usr/bin:/bin`, every goh script ran a
+  bare `python3`, so the gates under test ran on macOS's 3.9.6 (EOL since 2025-10) while pytest
+  itself ran on 3.15. Owner, asked whether the tests should be on 3.9 rather than 3.15: no. Every
+  python3 row of `required_tools.tsv` now floors at 3.15, with the reversal's reason above it.
+
+* **The house interpreter, ONE resolver (`lib/house_python.sh`).** Sourced by `_from_head.sh` (so
+  by every gate) and by every goh script that runs Python, it exports `GOH_PY`: the NEWEST
+  `python3`/`python3.N` on PATH or in a release's install dirs (Homebrew on both platforms,
+  `~/.local/bin`), whatever the PATH order, judged against the tsv's python3 floor. A machine whose
+  newest is below it is refused before any step runs, naming the floor, what was found and the fix
+  (`brew install python`, or `GOH_PY=<path>`). Seams: `GOH_PY` names one exactly (still judged),
+  `GOH_PY_SEARCH` restricts the search. The native binary asks the same resolver
+  (`house_python.rs`) for its delegated checkers. `gates/python.sh`'s no-pin branch and the venv
+  freshness check use it instead of `command -v python3`; the suite runner (`tools/pytest.sh`) and
+  `GOH_CI_STEPS` too. Pinned by `tests/test_house_python.py` (a fake 3.9 through either seam, and
+  the real `/usr/bin/python3` alone, are refused by name; the newest wins in either PATH order)
+  and a Rust class sweep: no bare python at command position in any goh shell source.
+
+* **The suite runner refuses to start inside a running suite.** The move exposed every test that
+  intercepted a goh script with a stub `python3` first on PATH: the resolver does not take PATH's
+  first, so `tests/test_pytest_runner_basetemp.py` ran the REAL suite inside itself -- 33 nested
+  suites, ~590 processes, load ~229, killed by hand (2026-10-25). The stubs now go through the seam
+  (`GOH_PY`), and `tools/pytest.sh` marks its run (`GATES_OF_HECK_SUITE_RUNNER`) and refuses a
+  nested one unless `GATES_OF_HECK_SUITE_NESTED_OK=1` says it is meant, so a stub that stops
+  intercepting is a named refusal, never a recursion.
+
+* Consumer-visible: a gate on a machine with no python3 >= 3.15 now fails at entry. A repo pinned
+  below 3.15 (`.python-version`) fails the python3 floor; every pinned repo on this machine is 3.15.
+  `checks/_gitutil.py` drops its 3.9-only annotation workaround. An empty, stale 3.14 `.venv` in
+  the goh checkout (untracked) was deleted: `gates/python.sh` resolved to it inside goh.
+
 ## v0.50.0 — a load experiment refuses a command it would starve, and required tools have floors _(2026-10-25)_
 
 Minor bump: a new escape flag on `tools/load.py`, a new column in `gates/required_tools.tsv`, and a

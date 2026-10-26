@@ -35,6 +35,7 @@ pub mod gatesrc;
 pub mod gitutil;
 pub mod homepaths;
 pub mod hookindex;
+pub mod house_python;
 pub mod index_view;
 pub mod jssyntax;
 pub mod killname;

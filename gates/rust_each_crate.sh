@@ -58,7 +58,7 @@ manifests="$(git ls-files -- 'Cargo.toml' '*/Cargo.toml' \
     | sort -n | cut -f2- \
     | awk -F '\t' '{ for (k in kept) if (kept[k] == "." || index($1, kept[k] "/") == 1) next; kept[NR] = $1; print }')"
 [ -n "$manifests" ] || die "no tracked Cargo.toml in $repo -- nothing for --each-crate to gate"
-crates="$(GOH_EXCLUDE="${GOH_EXCLUDE:-}" python3 -S -c '
+crates="$(GOH_EXCLUDE="${GOH_EXCLUDE:-}" "$GOH_PY" -S -c '
 import os, re, sys
 pattern = os.environ["GOH_EXCLUDE"]
 try:

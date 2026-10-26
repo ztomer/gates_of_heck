@@ -43,7 +43,10 @@ def _resolve(repo: Path, *, uv: str | None = "3.15", env: dict[str, str] | None 
     full = {k: v for k, v in os.environ.items()
             if k not in {"GOH_PY_RUNNER", "GOH_PYTHON_VERSION", "GOH_CROSS_REPO_ROOT"}}  # fmt: skip
     # Only the fake bin and the system dirs: a real uv elsewhere on PATH must not answer for it.
-    full.update({"PATH": f"{bindir}:/usr/bin:/bin", **(env or {})})
+    house = str(bindir / "python3")  # the house interpreter through its seam (G2d), resolved
+    full.update(
+        {"PATH": f"{bindir}:/usr/bin:/bin", "GOH_PY": house, "GOH_PY_OK": house, **(env or {})}
+    )
     return subprocess.run(
         ["/bin/bash", "-c", script], cwd=repo, capture_output=True, text=True, env=full,
         check=False, stdin=subprocess.DEVNULL,

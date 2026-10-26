@@ -243,11 +243,11 @@ gate_slot_acquire "$(basename "$ROOT")"
 # A red run KEEPS its logs (the failure names them), so they were unbounded: 619 in one temp dir
 # (ZoneWM, 2026-10-06). Kept now: the newest 20, and anything touched within the hour -- a live
 # run's dir is written as it runs, so a concurrent run is never pruned.
-python3 -S "$GOH_ROOT/lib/prune_kept.py" "${TMPDIR:-/tmp}" goh-local-ci. 2>/dev/null || true
+"$GOH_PY" -S "$GOH_ROOT/lib/prune_kept.py" "${TMPDIR:-/tmp}" goh-local-ci. 2>/dev/null || true
 # The backstop for what a KILLED run could not remove (a trap does not run on SIGKILL): any of our
 # own `goh-*` entries untouched for 12 hours. Every gate's own files are removed at its exit
 # (goh_cleanup_add, tests/test_gate_temp_leaks.py); this bounds the rest.
-python3 -S "$GOH_ROOT/lib/prune_kept.py" "${TMPDIR:-/tmp}" --backstop 2>/dev/null || true
+"$GOH_PY" -S "$GOH_ROOT/lib/prune_kept.py" "${TMPDIR:-/tmp}" --backstop 2>/dev/null || true
 LOGDIR=$(mktemp -d "${TMPDIR:-/tmp}/goh-local-ci.XXXXXX")
 FAILED=0
 FAILED_NAMES=""
@@ -281,7 +281,7 @@ run_step() {
     if [ -x "${GOH_RESOLVED_BIN:-}" ]; then
         exec "$GOH_RESOLVED_BIN" canary "${args[@]}" -- bash -c "$cmd" </dev/null
     fi
-    exec python3 -S "$GOH_ROOT/lib/orphan_canary.py" wrap "${args[@]}" -- bash -c "$cmd" </dev/null
+    exec "$GOH_PY" -S "$GOH_ROOT/lib/orphan_canary.py" wrap "${args[@]}" -- bash -c "$cmd" </dev/null
 }
 
 # THE SCHEDULER (BACKLOG P2). GOH_CI_JOBS=N runs up to N steps at once; unset is 1, i.e. serial,
@@ -363,7 +363,7 @@ _start() {
             read -r age by <<<"$hit"
             HIT[i]="$age $by"; STATE[i]=done; RC[i]=0
             [ -z "${GOH_TIMINGS:-}" ] \
-                || python3 "$GOH_ROOT/lib/step_timings.py" record "${CMD[i]}" 0 0 step hit </dev/null
+                || "$GOH_PY" "$GOH_ROOT/lib/step_timings.py" record "${CMD[i]}" 0 0 step hit </dev/null
             return 0
         fi
     fi

@@ -26,6 +26,8 @@
 # too, because a probe sources this file alone (tests/_drift_guard.py).
 # shellcheck source=gates/_git_env.sh
 . "$(dirname "${BASH_SOURCE[0]}")/_git_env.sh"
+# shellcheck source=lib/house_python.sh
+. "${BASH_SOURCE[0]%/*}/../lib/house_python.sh" || exit 1   # GOH_PY: the house interpreter, never PATH's first python3 (G2d)
 
 goh_resolve_native() {
     goh_native=""
@@ -134,7 +136,7 @@ goh_store_adopt() {
 # goh_store_prune <store> <current key> -- the export cache's policy (gates/_head_cache.py), with a
 # smaller keep: a binary is ~8 MB, and one used within the hour is never removed.
 goh_store_prune() {
-    python3 -S -c 'import sys; sys.path.insert(0, sys.argv[1]); import _head_cache; _head_cache.prune(sys.argv[2], sys.argv[3], keep=4)' \
+    "$GOH_PY" -S -c 'import sys; sys.path.insert(0, sys.argv[1]); import _head_cache; _head_cache.prune(sys.argv[2], sys.argv[3], keep=4)' \
         "$(dirname "${BASH_SOURCE[0]}")" "$1" "$2" 2>/dev/null || true
 }
 

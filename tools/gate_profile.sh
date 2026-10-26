@@ -29,11 +29,11 @@ out="${GOH_TIMINGS:-$(mktemp "${TMPDIR:-/tmp}/goh-timings.XXXXXX")}"
 zero=0000000000000000000000000000000000000000
 proven=0
 [ -n "${GOH_PROFILE_PROVEN:-}" ] && proven=1
-kinds="$(python3 "$GOH/lib/step_control.py" kinds "$repo" 2>/dev/null)"
+kinds="$("$GOH_PY" "$GOH/lib/step_control.py" kinds "$repo" 2>/dev/null)"
 controls() {
     [ -n "$kinds" ] || return 0
     # shellcheck disable=SC2086 # one word per kind
-    GOH_TIMINGS="$out" python3 "$GOH/lib/step_control.py" run $kinds >>"$out.controls.log" 2>&1 \
+    GOH_TIMINGS="$out" "$GOH_PY" "$GOH/lib/step_control.py" run $kinds >>"$out.controls.log" 2>&1 \
         || printf 'gate_profile: a control did not run (log: %s.controls.log)\n' "$out" >&2
 }
 controls
@@ -47,11 +47,11 @@ rc=$?
 controls
 printf '%s @ %s: push gate exit %s in %ss (log: %s)\n' \
     "$(basename "$repo")" "${sha:0:12}" "$rc" "$(( $(date +%s) - t0 ))" "$out.log"
-python3 "$GOH/lib/step_timings.py" report "$out" "$top"
+"$GOH_PY" "$GOH/lib/step_timings.py" report "$out" "$top"
 printf 'timings: %s\n' "$out"
 # A red gate names its reason, not only its log: land.sh runs this as its gate, and a refusal that
 # printed timings and a path left the failing tests three files away (2026-10-11).
-[ "$rc" -eq 0 ] || python3 "$GOH/lib/fail_lines.py" "$out.log" >&2 || true
+[ "$rc" -eq 0 ] || "$GOH_PY" "$GOH/lib/fail_lines.py" "$out.log" >&2 || true
 (exit "$rc")
 exit
 } # parse-guard

@@ -18,7 +18,8 @@ def _goh_copy(tmp_path: Path, push_gate: str) -> Path:
     push gate replaced."""
     goh = tmp_path / "goh"
     for rel in ("tools/gate_profile.sh", "gates/_from_head.sh", "gates/_git_env.sh",
-                "lib/step_timings.py", "lib/step_control.py", "lib/fail_lines.py"):  # fmt: skip
+                "lib/step_timings.py", "lib/step_control.py", "lib/fail_lines.py",
+                "lib/house_python.sh", "gates/required_tools.tsv"):  # fmt: skip
         (goh / rel).parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(REPO_ROOT / rel, goh / rel)
     (goh / "gates" / "push_gate.sh").write_text(push_gate)

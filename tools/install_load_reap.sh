@@ -13,6 +13,8 @@
 # names.
 { # parse-guard -- bash reads this group whole before running it (tests/test_parse_guard.py)
 set -euo pipefail
+# shellcheck source=lib/house_python.sh
+. "${BASH_SOURCE[0]%/*}/../lib/house_python.sh" || exit 1   # GOH_PY: the house interpreter, never PATH's first python3 (G2d)
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="$(cd "$HERE/.." && pwd)"
 if [ -f "$ROOT/tui/lib.sh" ]; then
@@ -30,7 +32,7 @@ dest_dir="${LAUNCHAGENTS_DIR:-$HOME/Library/LaunchAgents}"
 dest="$dest_dir/$(basename "$src")"
 mode="${1:-install}"
 
-as_json() { plutil -convert json -o - "$1" 2>/dev/null | python3 -c 'import json,sys; print(json.dumps(json.load(sys.stdin), sort_keys=True))'; }
+as_json() { plutil -convert json -o - "$1" 2>/dev/null | "$GOH_PY" -c 'import json,sys; print(json.dumps(json.load(sys.stdin), sort_keys=True))'; }
 
 case "$mode" in
 install)

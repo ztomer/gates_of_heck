@@ -43,7 +43,7 @@ goh_py_require ruff
 if [ -n "${GOH_PY_LINT_CEILINGS:-}" ]; then
     # Debt the repo carries, counted per file, may only fall (gates/py_lint_ceiling.py, BACKLOG 4.4).
     goh_step "ruff check under $GOH_PY_LINT_CEILINGS (staged)" \
-        python3 "$HERE/py_lint_ceiling.py" --check --ceilings "$GOH_PY_LINT_CEILINGS" --runner "$RUN" -- "${STAGED[@]}"
+        "$GOH_PY" "$HERE/py_lint_ceiling.py" --check --ceilings "$GOH_PY_LINT_CEILINGS" --runner "$RUN" -- "${STAGED[@]}"
 else
     goh_step "ruff check (staged)"        "${RUN_ARR[@]}" ruff check "${STAGED[@]}"
 fi
@@ -51,7 +51,7 @@ goh_step "ruff format check (staged)" "${RUN_ARR[@]}" ruff format --check "${STA
 if [ -n "${GOH_PY_NOQA_PARITY:-}" ]; then
     # A `# noqa` ruff honours and the second linter the repo runs ignores (gates/py_noqa_parity.py, 4.5).
     goh_step "noqa parity with $GOH_PY_NOQA_PARITY (staged)" \
-        python3 "$HERE/py_noqa_parity.py" --linters "$GOH_PY_NOQA_PARITY" --runner "$RUN" -- "${STAGED[@]}"
+        "$GOH_PY" "$HERE/py_noqa_parity.py" --linters "$GOH_PY_NOQA_PARITY" --runner "$RUN" -- "${STAGED[@]}"
 fi
 goh_done
 exit

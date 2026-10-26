@@ -38,7 +38,10 @@ SITES = [
     re.compile(r"command -v ([\w.-]+) >/dev/null 2>&1 \|\| (?:die|\{)"),
     re.compile(r"if ! command -v ([\w.-]+) >/dev/null 2>&1; then"),
     re.compile(r"if not shutil\.which\(\"([\w.-]+)\"\)"),
-    re.compile(r"python3 -m ([\w.-]+) --version >/dev/null 2>&1 \\\s*\n\s*\|\|"),
+    re.compile(r"(?:python3|\"\$GOH_PY\") -m ([\w.-]+) --version >/dev/null 2>&1 \\\s*\n\s*\|\|"),
+    # The house interpreter (lib/house_python.sh, G2d): every gate sources it, and it refuses a
+    # machine whose newest python3 is below the manifest's floor -- read off this exact row shape.
+    re.compile(r'\$2 == "(python3)" && \$6 != "-"'),
     re.compile(r"cargo ([\w-]+) --version >/dev/null 2>&1 \\\s*\n\s*\|\|"),
     # The native ports (Phase N1) refuse through one helper, `pyformat::on_path("tool")`.
     re.compile(r"\bon_path\(\"([\w.-]+)\"\)"),
@@ -62,6 +65,7 @@ def _scanned() -> set[tuple[str, str]]:
         ("checks", "*.sh"),
         ("checks", "*.py"),
         ("scripts", "*.sh"),
+        ("lib", "*.sh"),
         ("crates/goh/src", "**/*.rs"),
     ):
         for path in sorted((ROOT / base).glob(pattern)):
