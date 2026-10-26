@@ -322,9 +322,7 @@ def test_py_gate_refuses_a_subprocess_run_without_check(tmp_path):
         '[project]\nname = "z"\nversion = "0"\n[tool.ruff.lint]\nselect = ["F"]\n'
     )
     (pkg / "tool.py").write_text("import subprocess\n\nsubprocess.run(['true'])\n")
-    subprocess.run(
-        ["git", "-C", str(pkg), "init", "-q", "-b", "main"], check=True, stdin=subprocess.DEVNULL
-    )
+    fast_init(pkg)
     r = subprocess.run(
         ["/bin/bash", str(REPO_ROOT / "gates" / "py_gate.sh"), str(pkg)],
         cwd=pkg,
