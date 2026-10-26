@@ -37,6 +37,7 @@ def test_every_internal_key_is_on_the_list() -> None:
 EXPORTED_AND_KEYED = {
     "GOH_DIR": "the gates checkout that judges: a different one can judge differently",
     "GOH_RELEASE_BUFFERED": "release.sh's own self-copy; no gate runs under it",
+    "GOH_PY": "the house interpreter every Python helper runs on: another can judge differently",
 }
 
 
