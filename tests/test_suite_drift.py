@@ -233,3 +233,25 @@ def test_a_throwaway_crate_builds_into_the_runs_own_build_dir(tmp_path: Path) ->
     )
     assert r.returncode == 0, r.stderr
     assert list(named.glob(f"*/.fingerprint/{name}-*")), "a caller's own build dir was not kept"
+
+
+def test_the_controller_resolves_the_binary_every_gate_will_ask_for(tmp_path):
+    """G2c: a checkout whose bin/goh is not HEAD's build (a fresh worktree, a commit whose crates
+    moved) made the FIRST gate a test spawned build goh -- and the drift guard refuses a build behind
+    the session's back, so every gate step that runs goh failed (9 of test_rust_gate.py, in any new
+    worktree). The controller resolves what the gates resolve, once, before a worker starts: the
+    working tree's build under GOH_LIVE with a Rust delta, otherwise HEAD's."""
+    gates = tmp_path / "gates"
+    gates.mkdir()
+    called = tmp_path / "resolved"
+    # No Rust delta (goh_live_binary does not apply), and bin/goh is not HEAD's build.
+    (gates / "_goh_bin.sh").write_text(
+        "goh_live_binary() { return 1; }\n"
+        f'goh_resolve_native() {{ : > "{called}"; goh_native=/bin/true; goh_native_why=""; }}\n'
+    )
+
+    class _Config:  # the controller: no workerinput
+        pass
+
+    _drift_guard.prebuild_live(_Config(), root=tmp_path)
+    assert called.exists(), "the controller left the first gate to build goh behind the session"

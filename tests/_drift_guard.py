@@ -125,15 +125,23 @@ def pytest_runtest_makereport(item, call):
         )
 
 
-def prebuild_live(config) -> None:
-    """Under GOH_LIVE, the working tree's goh -- built once, here, if its Rust differs from HEAD."""
+def prebuild_live(config, root: Path | None = None) -> None:
+    """The goh every gate a test spawns will resolve -- built once, here, in the controller.
+
+    Under GOH_LIVE with the working tree's Rust ahead of HEAD that is the tree's build
+    (`goh_live_binary`); otherwise HEAD's (bin/goh, or the store). Only the first half used to be
+    done here, so a checkout whose bin/goh was not HEAD's build -- every fresh worktree, every commit
+    whose crates moved -- left the FIRST gate a test ran to build it, which the cargo shim refuses:
+    9 tests of test_rust_gate.py failed in any new worktree (G2c). `goh_resolve_native` is the one
+    resolver the gates call, so the controller asks exactly what they will.
+    """
     if hasattr(config, "workerinput") or not os.environ.get("GOH_LIVE"):
         return  # a worker: the controller already did it
     r = subprocess.run(
-        ["bash", "-c", 'source "$1/gates/_goh_bin.sh"; goh_live_binary "$1"; [ -n "$goh_native" ] '
-         '|| [ -z "$goh_native_why" ]', "_", str(_ROOT)],
+        ["bash", "-c", 'source "$1/gates/_goh_bin.sh"; goh_resolve_native; [ -n "$goh_native" ] '
+         '|| { echo "$goh_native_why" >&2; false; }', "_", str(root or _ROOT)],
         capture_output=True, text=True, timeout=900, check=False,
         env=dict(os.environ, DRIFT_BUILD_OK="1"), stdin=subprocess.DEVNULL,
     )  # fmt: skip
     if r.returncode != 0:
-        raise pytest.UsageError(f"GOH_LIVE: the working tree's goh did not build:\n{r.stderr}")
+        raise pytest.UsageError(f"the goh the gates resolve did not build:\n{r.stderr}")
