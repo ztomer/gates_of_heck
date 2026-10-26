@@ -1,5 +1,26 @@
 # CHANGELOG
 
+## v0.56.0 — an MCP server in any language is judged on the wire _(2026-10-26)_
+
+Minor bump: a new consumer-facing gate (`checks/check_mcp_wire.py`) and three `.gatesrc` keys
+(`GOH_MCP_SERVERS`, `GOH_MCP_UNSTRUCTURED`, `GOH_MCP_TIMEOUT`); `lib/mcp_scaffold.py` and
+`lib/mcp_schema.py` are deleted.
+
+* **The MCP wire gate (queue MCP.G).** A repo opts in by naming each server's stdio start command
+  in `GOH_MCP_SERVERS`; `structural.sh --full` then starts it (own session, a scratch
+  `GOH_MCP_SCRATCH` home), asks `server/discover` with the newest version in `_meta` (falling back
+  to `initialize`), lists every tool and calls none. Red, each by name: a negotiated version older
+  than `NEWEST_PROTOCOL` (2026-07-28, the one place goh spells it); `annotations` that do not
+  state readOnlyHint and destructiveHint; a destructive tool listed by default; no `outputSchema`
+  of type object, unless `GOH_MCP_UNSTRUCTURED` names the tool with a reason (a ratchet). A silent
+  server is red at its timeout, and the whole process group and every descendant are reaped,
+  pass or fail. Live on 2026-10-26: antiknob green; routines, monitor's agent, divoomd and zinc
+  red on annotations and outputSchema.
+* **`structural.sh --full` was never fail-fast.** `[ -n "$KEEP_GOING" ]` held for `0` too, so
+  every run went down the `--keep-going` path; it reads `= 1` now (pinned by two independent reds).
+* **The MCP scaffold is gone** with its last user (koffee_big 3ecb8c6); no repo under ~/Projects
+  imports it.
+
 ## v0.55.0 — a repo ON HOLD refuses every change, and says why and how to lift it _(2026-10-26)_
 
 Minor bump: new consumer-facing scripts (`scripts/hold_repo.sh`, `release_hold.sh`,
