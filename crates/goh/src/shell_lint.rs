@@ -158,6 +158,52 @@ impl Verdict {
     }
 }
 
+/// The OLDEST shellcheck this gate accepts: `gates/required_tools.tsv`'s floor, the version the
+/// gate is calibrated against (`tests/test_check_shell_lint.py` pins the two equal). Enforced HERE,
+/// not only by `required_tools.py --check`: a too-old shellcheck passed this gate (G2c).
+const SHELLCHECK_FLOOR: &str = "0.11.0";
+
+/// `1.2.3` as numbers, for comparison; `None` when it is not a dotted version.
+fn version_parts(v: &str) -> Option<Vec<u64>> {
+    v.split('.').map(|p| p.parse::<u64>().ok()).collect()
+}
+
+/// `have >= floor` as dotted versions (`0.11` is `0.11.0`); an unreadable one is not.
+fn newer_or_equal(have: &str, floor: &str) -> bool {
+    let (Some(mut h), Some(mut f)) = (version_parts(have), version_parts(floor)) else {
+        return false;
+    };
+    let n = h.len().max(f.len());
+    h.resize(n, 0);
+    f.resize(n, 0);
+    h >= f
+}
+
+/// The `version: X.Y.Z` line of `shellcheck --version`.
+fn reported_version(text: &str) -> Option<&str> {
+    text.lines()
+        .find_map(|l| l.strip_prefix("version:"))
+        .map(str::trim)
+}
+
+/// `Ok` when PATH's shellcheck is at or above the floor; the refusal, naming both, otherwise.
+fn at_floor() -> Result<(), String> {
+    let ran = bounded(Command::new("shellcheck").arg("--version"))
+        .map_err(|e| format!("shellcheck --version: {e}"))?;
+    let text = String::from_utf8_lossy(&ran.stdout);
+    let Some(have) = reported_version(&text) else {
+        return Err(format!(
+            "shellcheck --version reported no version, and this gate needs {SHELLCHECK_FLOOR} or newer"
+        ));
+    };
+    if newer_or_equal(have, SHELLCHECK_FLOOR) {
+        return Ok(());
+    }
+    Err(format!(
+        "shellcheck {have} is below this gate's floor {SHELLCHECK_FLOOR} -- brew upgrade shellcheck"
+    ))
+}
+
 /// The first executable named `tool` on `PATH` -- the one `Command` runs.
 fn which(tool: &str) -> Option<PathBuf> {
     std::env::split_paths(&std::env::var_os("PATH")?)
@@ -361,6 +407,9 @@ fn run(staged: bool, exclude: &str) -> (i32, Lines) {
     }
     if !crate::pyformat::on_path("shellcheck") {
         return (1, vec![(true, format!("{ERR} [shell_lint] shellcheck is not installed, and this gate does not pass without it -- brew install shellcheck"))]);
+    }
+    if let Err(why) = at_floor() {
+        return (1, vec![(true, format!("{ERR} [shell_lint] {why}"))]);
     }
     let verdict = judge(&files);
     drop(tmp);

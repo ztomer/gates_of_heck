@@ -159,3 +159,48 @@ def test_a_hooks_file_in_another_language_is_not_shell(repo):
     out = r.stdout + r.stderr
     assert "hooks/pre-commit" in out, out  # an extensionless hook is still judged
     assert "nudge.py" not in out, out
+
+
+def _fake_shellcheck(tmp: Path, version: str) -> dict:
+    """A `shellcheck` first on PATH that reports `version` and finds nothing: the floor is the only
+    thing that can fail the clean script below."""
+    bin_ = tmp / "fake-sc"
+    bin_.mkdir(parents=True, exist_ok=True)
+    sc = bin_ / "shellcheck"
+    sc.write_text(
+        "#!/bin/bash\n"
+        f'[ "${{1:-}}" = --version ] && {{ printf "ShellCheck\\nversion: {version}\\n"; exit 0; }}\n'
+        "exit 0\n"
+    )
+    sc.chmod(0o755)
+    return {"PATH": f"{bin_}{os.pathsep}{os.environ['PATH']}"}
+
+
+def test_a_shellcheck_below_its_floor_is_refused_naming_the_floor(repo, tmp_path):
+    """G2c: the floor (gates/required_tools.tsv) was enforced only by `required_tools.py --check`,
+    so a too-old shellcheck passed `shell_lint` itself. The gate refuses it and names the floor; a
+    newer one is green (a floor, never a pin)."""
+    write(repo, "ok.sh", "#!/usr/bin/env bash\necho hi\n")
+    stage(repo, "ok.sh")
+    old = run_lint(repo, "--staged", env=_fake_shellcheck(tmp_path / "old", "0.10.0"))
+    assert old.returncode == 1, old.stdout + old.stderr
+    assert "0.10.0" in old.stderr and "floor 0.11.0" in old.stderr, old.stdout + old.stderr
+    new = run_lint(repo, "--staged", env=_fake_shellcheck(tmp_path / "new", "99.0.0"))
+    assert new.returncode == 0, new.stdout + new.stderr
+
+
+def test_the_gate_floor_is_the_manifest_floor():
+    """One fact: the floor shell_lint.rs refuses below is the one required_tools.tsv publishes."""
+    import re
+
+    from conftest import REPO_ROOT
+
+    rows = [
+        line.split("\t")
+        for line in (REPO_ROOT / "gates" / "required_tools.tsv").read_text().splitlines()
+        if line and not line.startswith("#")
+    ]
+    tsv = {r[5] for r in rows if r[1] == "shellcheck"}
+    src = (REPO_ROOT / "crates" / "goh" / "src" / "shell_lint.rs").read_text()
+    const = re.findall(r'const SHELLCHECK_FLOOR: &str = "([^"]+)";', src)
+    assert const and tsv == set(const), (tsv, const)
