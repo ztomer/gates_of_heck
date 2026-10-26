@@ -1,5 +1,27 @@
 # CHANGELOG
 
+## v0.53.0 — the recorded fake cargo can answer red, and the push after a landing reuses the landing's proof _(2026-10-26)_
+
+Minor bump: `tools/land.sh` now exports `GOH_PROFILE_PROVEN=1` to its gate (unless set).
+
+* **The recorded fake cargo answers RED (G2f).** `tests/_fake_cargo.py` only ever answered green;
+  `plant_red(where, sub, output, code, stream)` makes a recorded subcommand fail with an exit code and
+  recorded output, so a gate's reporting of a failing tool is testable without the tool. Twelve of
+  `tests/test_rust_gate.py`'s plumbing tests moved to it (real compile/scan cargo calls per file run
+  65 -> 28); `test_real_cargo_end_to_end` is the file's one real red-and-green proof and pins that
+  the real fmt and clippy still print what the planted answers carry. Each moved test goes red when
+  its step is broken (fmt, clippy, no-allow, `--locked`). Wall clock barely moved (24 s -> 22 s idle):
+  with sccache warm the file's cost is the gate's own process spawns, not cargo.
+
+* **A "clippy" test that tested rustfmt.** `LIB_WARN` was one line, so `cargo fmt` failed it before
+  clippy ran and the test passed for the wrong reason; it is rustfmt-clean now.
+
+* **`land.sh` leaves a proof the push reuses (G2f).** Its gate, `tools/gate_profile.sh`, keeps the
+  proven-step cache off by default, so the push after the fast-forward re-ran the whole gate (168 s)
+  over the identical tree. land now turns the cache on for its gate; the push finds the records in
+  the common git dir. A tree that moved after landing still runs
+  (`tests/test_proven.py::test_land_leaves_a_proof_the_push_that_follows_reuses`).
+
 ## v0.52.0 — the release gate reuses the push, a fresh worktree gates green, and shellcheck has a floor the gate enforces _(2026-10-26)_
 
 Minor bump: `goh shell-lint` refuses a shellcheck it used to pass, and dependency majors moved.
