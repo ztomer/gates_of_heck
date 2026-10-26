@@ -21,9 +21,9 @@ goh-sys = { path = "../goh-sys" }
 goh-tui = { path = "../goh-tui" }
 num-traits = "0.2"
 regex = "1"
-ruff_python_ast = "0.0.16"
-ruff_python_parser = "0.0.16"
-ruff_text_size = "0.0.16"
+ruff_python_ast = "0.0.19"
+ruff_python_parser = "0.0.19"
+ruff_text_size = "0.0.19"
 # YAML for `goh checkout-credentials`: a workflow's structure (block scalars, flow maps, anchors)
 # decides which `uses:` is a step, and a line scan guesses at it. No encoding_rs: input is UTF-8.
 saphyr = { version = "0.3.1", default-features = false }
