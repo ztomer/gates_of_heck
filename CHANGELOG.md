@@ -1,5 +1,30 @@
 # CHANGELOG
 
+## v0.50.0 — a load experiment refuses a command it would starve, and required tools have floors _(2026-10-25)_
+
+Minor bump: a new escape flag on `tools/load.py`, a new column in `gates/required_tools.tsv`, and a
+requirement check that now refuses a tool below its floor.
+
+* **`tools/load.py` refuses a command at background priority (G1f, `a71d344`).** `load.py 32 --
+  taskpolicy -b loop.sh` ran 10h14m, and a `taskpolicy -b python3 -m pytest` under 16 spinners
+  was killed by its deadline: under N normal-priority spinners such a command gets a core only
+  when one is idle, so it is starved by construction. `taskpolicy -b` / `-c
+  background|utility|maintenance`, `nice`/`renice` >= 10 and `chrt --idle`, after
+  env/sudo/nohup/timeout-style prefixes and inside `sh -c`, are refused before any spinner starts,
+  naming why and the way out; `--background-ok <reason>` is the escape (an empty reason excuses
+  nothing). The Claude Code Bash guard refuses the same `load.py` command line at the tool
+  boundary. One definition, `lib/load_priority.py`.
+
+* **Required tools have FLOORS, never pins (G2b, `a755fe7`).** `required_tools.tsv` gains a
+  `floor` column (seeded from sys_updater's `tools/gate-floors.env`, each floor's HARD/PROVEN
+  reason above the rows): `goh_require`, the coverage gate's `need` and `goh_py_require` refuse a
+  tool below its floor by name with both versions; a newer tool is green, always.
+  `required_tools.py --check` judges a repo's layers, `--floors` publishes the table.
+  Consumer-visible: a gate now fails on zig < 0.17.0, cargo-machete < 0.7.0, cargo-audit < 0.21.0,
+  cargo-zigbuild < 0.24.0, cargo-llvm-cov < 0.6.24, pytest < 9.1.1 or python3 < 3.9 (the seed said
+  3.14; 3.9.6 runs these gates and sys_updater's tests green, so the floor is 3.9). A fake tool
+  in a consumer's tests must now report a version.
+
 ## v0.49.1 — the load backstop keeps its record and survives the load it exists for _(2026-10-25)_
 
 Patch bump: five fixes, no new knob. Two of them change what a consumer's gate refuses (the py
