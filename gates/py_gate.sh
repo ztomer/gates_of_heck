@@ -67,7 +67,10 @@ goh_py_require pytest
 . "$HERE/_pytest_root.sh"
 goh_pytest_root  # a concurrent suite cannot prune this one's temp dirs
 
-goh_step_in "$pkg_dir" "ruff check"        "${RUN_ARR[@]}" ruff check .
+# PLW1510 is the house floor on top of the project's own rule set (G17b, 2026-10-26): a
+# `subprocess.run` must say what a failing child does (`check=True` stops the caller,
+# `check=False` says the exit code is judged below). Rolled out to every consumer first.
+goh_step_in "$pkg_dir" "ruff check"        "${RUN_ARR[@]}" ruff check --extend-select PLW1510 .
 goh_step_in "$pkg_dir" "ruff format check" "${RUN_ARR[@]}" ruff format --check .
 if [ -n "${GOH_PY_NOQA_PARITY:-}" ]; then
     # A `# noqa` ruff honours and the second linter the repo runs ignores (gates/py_noqa_parity.py, 4.5).

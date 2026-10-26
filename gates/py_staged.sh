@@ -45,7 +45,7 @@ if [ -n "${GOH_PY_LINT_CEILINGS:-}" ]; then
     goh_step "ruff check under $GOH_PY_LINT_CEILINGS (staged)" \
         "$GOH_PY" "$HERE/py_lint_ceiling.py" --check --ceilings "$GOH_PY_LINT_CEILINGS" --runner "$RUN" -- "${STAGED[@]}"
 else
-    goh_step "ruff check (staged)"        "${RUN_ARR[@]}" ruff check "${STAGED[@]}"
+    goh_step "ruff check (staged)"        "${RUN_ARR[@]}" ruff check --extend-select PLW1510 "${STAGED[@]}"  # the house floor (G17b, py_gate.sh)
 fi
 goh_step "ruff format check (staged)" "${RUN_ARR[@]}" ruff format --check "${STAGED[@]}"
 if [ -n "${GOH_PY_NOQA_PARITY:-}" ]; then

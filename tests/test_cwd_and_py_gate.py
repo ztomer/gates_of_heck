@@ -309,3 +309,29 @@ def test_py_gate_honours_the_repos_include_for_never_imported_scripts(tmp_path):
     include = '[tool.coverage.run]\ninclude = ["tools/used.py", "tests/*"]\n'
     r = _gate(_scripts_repo(tmp_path, omit=include), "100")
     assert r.returncode == 0, r.stdout + r.stderr
+
+
+@pytestmark_py
+def test_py_gate_refuses_a_subprocess_run_without_check(tmp_path):
+    """PLW1510 is the house's floor in EVERY consumer, whatever its own rule set (G17b): a
+    `subprocess.run` that does not say what a failing child does is red, even under a config
+    that selects nothing but pyflakes."""
+    pkg = tmp_path / "proj_check"
+    pkg.mkdir()
+    (pkg / "pyproject.toml").write_text(
+        '[project]\nname = "z"\nversion = "0"\n[tool.ruff.lint]\nselect = ["F"]\n'
+    )
+    (pkg / "tool.py").write_text("import subprocess\n\nsubprocess.run(['true'])\n")
+    subprocess.run(
+        ["git", "-C", str(pkg), "init", "-q", "-b", "main"], check=True, stdin=subprocess.DEVNULL
+    )
+    r = subprocess.run(
+        ["/bin/bash", str(REPO_ROOT / "gates" / "py_gate.sh"), str(pkg)],
+        cwd=pkg,
+        capture_output=True,
+        text=True,
+        stdin=subprocess.DEVNULL,
+        check=False,
+    )
+    assert r.returncode != 0, r.stdout + r.stderr
+    assert "PLW1510" in r.stdout + r.stderr
