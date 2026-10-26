@@ -87,9 +87,9 @@ pub struct Finding {
 
 /// The compiled rules.
 pub struct Rules {
-    loop_re: Regex,
-    wait_re: Regex,
-    read_re: Regex,
+    spinner: Regex,
+    waiter: Regex,
+    drain: Regex,
 }
 
 impl Rules {
@@ -106,9 +106,9 @@ impl Rules {
             Regex::new(pattern).map_err(|e| format!("busy-loop pattern {key} {pattern:?}: {e}"))
         };
         Ok(Self {
-            loop_re: compile("busy_loop")?,
-            wait_re: compile("busy_wait")?,
-            read_re: compile("read_condition")?,
+            spinner: compile("busy_loop")?,
+            waiter: compile("busy_wait")?,
+            drain: compile("read_condition")?,
         })
     }
 }
@@ -157,7 +157,7 @@ fn code_of(text: &str) -> String {
 pub fn spinning(text: &str, rules: &Rules) -> Vec<Finding> {
     let masked = code_of(text);
     let mut out = Vec::new();
-    for found in rules.loop_re.find_iter(&masked).flatten() {
+    for found in rules.spinner.find_iter(&masked).flatten() {
         let (start, end) = line_of(&masked, found.start());
         if !backgrounded(&masked[start..end]) {
             continue;
@@ -179,11 +179,11 @@ pub fn spinning(text: &str, rules: &Rules) -> Vec<Finding> {
 pub fn waiting(text: &str, rules: &Rules) -> Vec<Finding> {
     let masked = code_of(text);
     let mut out = Vec::new();
-    for caps in rules.wait_re.captures_iter(&masked).flatten() {
+    for caps in rules.waiter.captures_iter(&masked).flatten() {
         let (Some(whole), Some(cond)) = (caps.get(0), caps.name("cond")) else {
             continue;
         };
-        if rules.read_re.is_match(cond.as_str()).unwrap_or(false) {
+        if rules.drain.is_match(cond.as_str()).unwrap_or(false) {
             continue;
         }
         let number = number_of(&masked, whole.start());
