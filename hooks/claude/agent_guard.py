@@ -334,8 +334,10 @@ def faults(report: str) -> list[str] | None:
     m = FAULTS_LINE.search(report)
     if m is None:
         return None
-    body = m.group(1).strip().strip("`").strip()
-    if body.lower() in NO_FAULTS or not body:
+    body = m.group(1).strip()
+    # Backticks are looked through ONLY to recognise a wrapped `none`; a fault is recorded as
+    # written, so a leading backtick on the first one is part of it.
+    if body.strip("`").strip().lower() in NO_FAULTS or not body:
         return []
     return [f.strip() for f in body.split(";") if f.strip()]
 

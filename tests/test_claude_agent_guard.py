@@ -459,6 +459,17 @@ def test_faults_several_are_split_on_semicolons() -> None:
     assert agent_guard.faults(report) == ["WARN disk on .33 health", "/srv/t not g+w (.90)"]
 
 
+def test_faults_are_recorded_exactly_as_written() -> None:
+    """G15: a leading backtick was stripped from the first fault (only whitespace is trimmed)."""
+    report = "Faults seen: `tools/land.sh` printed landed; second `one`\n"
+    assert agent_guard.faults(report) == ["`tools/land.sh` printed landed", "second `one`"]
+    assert agent_guard.faults("Faults seen:   `x` at y  ") == ["`x` at y"]
+
+
+def test_faults_a_backticked_none_is_still_none() -> None:
+    assert agent_guard.faults("Faults seen: `none`") == []
+
+
 def test_faults_missing_line_is_null_not_none() -> None:
     assert agent_guard.faults("Status: landed\nall good") is None
 
