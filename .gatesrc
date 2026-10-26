@@ -144,12 +144,11 @@ GOH_CI_JOBS=2
 # main moves only through tools/land.sh: a push of a main tip it never gated is refused (BACKLOG 1.5).
 GOH_LANDED_ONLY=main
 
-# Carry the gitignored native binary into the pre-push export. THIS repo is the one whose push
-# export is also `GOH_LIVE_ROOT`, and `_goh_bin.sh` resolves the binary from `$GOH_LIVE_ROOT/bin/goh`;
-# a worktree of HEAD has only TRACKED files, so without this the export holds no binary, every
-# native checker reports "goh binary not built", and the suite's own push_gate tests go red.
-# Measured 2026-10-15: this suite inside a bare export -> 30 failed / 14 passed; seeding the binary
-# -> 44 passed. Before this, a green checkout pushed a refused commit, and the v0.28.1 push had to
-# use `--no-verify`. Consumers need nothing here: their export resolves the binary from the live
-# gates checkout, never from itself, so this list stays empty in every consumer's `.gatesrc`.
-GOH_EXPORT_KEEP='bin/goh'
+# NO GOH_EXPORT_KEEP (G2c). bin/goh was carried into the pre-push export (2026-10-15) because the
+# export held no binary and every native checker said "goh binary not built". That need is gone at
+# its root: the export's resolver takes HEAD's build from the stamp-keyed store every checkout
+# shares (G2e), and the suite's controller resolves it before a worker starts (tests/_drift_guard.py
+# prebuild_live). And the carry was a defect of its own: a kept file's BYTES key the proven cache,
+# so the push keyed on a bin/goh built before the commit and the release gate, after the resolver
+# replaced it, keyed on HEAD's -- the same tree, a different key, a 3-minute re-run
+# (tests/test_proven.py: ..._so_the_release_gate_reuses_the_push).

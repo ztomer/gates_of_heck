@@ -394,3 +394,29 @@ def test_the_push_gate_worktree_sees_what_the_checkout_proved(goh, hooked, env, 
     assert r.returncode == 0, r.stdout + r.stderr
     assert runs(env) == 1, "the push gate's clean worktree re-ran a proven step"
     assert "by pre-commit" in r.stdout
+
+
+def test_goh_own_gatesrc_keys_no_build_state_so_the_release_gate_reuses_the_push(goh, repo, env):
+    """G2c: the release kit's gate (`tools/gate.sh --full`, ~3 min) re-ran every step the push gate
+    had just proven on the SAME tree. The key carried the bytes of `bin/goh`, which this repo's
+    .gatesrc named in GOH_EXPORT_KEEP: the push copied a bin/goh built before the commit, the gates
+    replaced it with HEAD's build, and the release run hashed different bytes. A binary the resolver
+    rebuilds from the tree is build STATE, not an input; the tree already keys it.
+
+    Both ways: the same tree after the binary moved is a hit; a different tree runs."""
+    (repo / ".gitignore").write_text("build/\nbin/\n")
+    (repo / ".gatesrc").write_text((REPO_ROOT / ".gatesrc").read_text())
+    _git(repo, "add", ".gitignore", ".gatesrc")
+    _git(repo, "commit", "-q", "-m", "goh's own gatesrc")
+    (repo / "bin").mkdir()
+    (repo / "bin" / "goh").write_bytes(b"the build the push copied in")
+    first = proven(goh, repo, env, STEP, "--label", "local_ci")
+    assert first.returncode == 0, first.stdout + first.stderr
+    (repo / "bin" / "goh").write_bytes(b"HEAD's build, placed by the resolver")
+    second = proven(goh, repo, env)
+    assert runs(env) == 1, "the same tree re-ran because a rebuilt binary changed the key"
+    assert "proven on this tree" in second.stdout, second.stdout + second.stderr
+    (repo / "src.txt").write_text("two\n")
+    _git(repo, "commit", "-qam", "two")
+    proven(goh, repo, env)
+    assert runs(env) == 2, "a different tree must run"
