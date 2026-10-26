@@ -27,6 +27,11 @@ line-length = 100
 [tool.ruff.lint]
 select = ["PLW1510"]
 
+# Fixtures are DATA that checkers are run against (tests/test_screen_presentation.py reads these
+# three for what they do not say); rewriting them to satisfy the linter changes the test's subject.
+[tool.ruff.lint.per-file-ignores]
+"tests/fixtures/**" = ["PLW1510"]
+
 # The formatter.
 [tool.ruff.format]
 # Preserve the blank-line conventions the existing files already use.

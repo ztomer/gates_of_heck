@@ -60,3 +60,10 @@ def test_the_push_gate_runs_ruff_check() -> None:
     steps = re.search(r"^GOH_CI_STEPS='(.+)'$", gatesrc, re.M)
     assert steps, "GOH_CI_STEPS is not set"
     assert "ruff check ." in [s.strip() for s in steps.group(1).split(":")]
+
+
+def test_fixtures_are_data_and_stay_as_written() -> None:
+    """tests/fixtures hold sources that checkers are run AGAINST; the rule must not rewrite them
+    (an edit there changed `test_py_marker_exempts`'s subject, red on the first push of G16)."""
+    r = _ruff("--config", str(REPO_ROOT / "pyproject.toml"), str(REPO_ROOT / "tests" / "fixtures"))
+    assert r.returncode == 0, r.stdout + r.stderr
