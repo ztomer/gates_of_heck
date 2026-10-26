@@ -88,8 +88,12 @@ def repo(tmp_path: Path) -> Path:
 
 @pytest.fixture
 def env(tmp_path: Path, goh: Path, native_goh: Path) -> dict:
+    # No GOH_PROVEN* (the cache under test) and no GOH_LAND* (the land running THIS suite: its
+    # GOH_LAND_EXPECT made the land under test refuse a range it was never meant to judge).
     e = {
-        k: v for k, v in os.environ.items() if k not in GIT_VARS and not k.startswith("GOH_PROVEN")
+        k: v
+        for k, v in os.environ.items()
+        if k not in GIT_VARS and not k.startswith(("GOH_PROVEN", "GOH_LAND"))
     }
     e["GOH_DIR"] = str(goh)
     # The copy holds no `bin/goh`, and since Phase N3 there is no Python tier to answer in its
