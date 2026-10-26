@@ -19,6 +19,8 @@ set -euo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=tui/lib.sh
 . "$HERE/../tui/lib.sh"
+# shellcheck source=lib/repo_hold.sh
+. "$HERE/../lib/repo_hold.sh"
 
 hook="${1:-}"
 case "$hook" in
@@ -39,6 +41,7 @@ case "$hook" in
         fi
         exit "$rc" ;;
     pre-applypatch)
+        goh_refuse_held "$(git rev-parse --show-toplevel)" "pre-applypatch: this patch" || exit 1
         rc=0
         bash "$HERE/goh.sh" markers --staged || rc=$?
         if [ "$rc" -eq 1 ]; then

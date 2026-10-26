@@ -8,6 +8,11 @@
         "timeout": 15
       },
       {
+        "matcher": "Bash|Write|Edit|MultiEdit|NotebookEdit",
+        "command": "python3 \"${GOH_DIR:-$HOME/Projects/gates_of_heck}/hooks/claude/hold_guard.py\" || exit 1",
+        "timeout": 15
+      },
+      {
         "matcher": "Agent|Task",
         "command": "python3 \"${GOH_DIR:-$HOME/Projects/gates_of_heck}/hooks/claude/agent_guard.py\" || exit 1",
         "timeout": 15

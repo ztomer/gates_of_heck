@@ -75,6 +75,7 @@ GOH="${GOH_DIR:-${GOH:-$HOME/Projects/gates_of_heck}}"
 bench_lock_join "pre-push" # the whole push is one registration; a measurement waits for it
 
 root="$(git rev-parse --show-toplevel)"
+"$GOH_PY" -S "$GOH/lib/repo_hold.py" check "$root" --action "pre-push: this push" || exit 1  # held: no push
 gate="$root/tools/gate.sh"
 [ -f "$gate" ] || die "pre-push: $root/tools/gate.sh missing — run '$GOH/install.sh $root'"
 tag_check="$GOH/gates/goh.sh"

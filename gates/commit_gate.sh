@@ -36,6 +36,9 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=lib/repo_writes.sh
 . "$HERE/../lib/repo_writes.sh"
 root="$(git rev-parse --show-toplevel)"
+# shellcheck source=lib/repo_hold.sh
+. "$HERE/../lib/repo_hold.sh"
+goh_refuse_held "$root" "pre-commit: this commit" || exit 1   # a held repo is not committed to
 gate="$root/tools/gate.sh"
 structural="$HERE/structural.sh"
 

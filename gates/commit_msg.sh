@@ -10,6 +10,10 @@
 set -euo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 root="$(git rev-parse --show-toplevel)"
+# A held repo takes no commit; commit-msg is also the hook a MERGE commit runs (lib/repo_hold.sh).
+# shellcheck source=lib/repo_hold.sh
+. "$HERE/../lib/repo_hold.sh"
+goh_refuse_held "$root" "commit-msg: this commit (or merge)" || exit 1
 class_on="" red_on=""
 if [ -f "$root/.gatesrc" ]; then
     # Read in a CHILD, by name: .gatesrc's other keys never reach the check (push_gate.sh's rule).
