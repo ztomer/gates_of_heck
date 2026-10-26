@@ -95,3 +95,64 @@ def test_a_landed_tip_is_recorded_for_the_push_to_read(repo: Path, tmp_path: Pat
     assert r.returncode == 0, r.stdout + r.stderr
     common = git(repo, "rev-parse", "--path-format=absolute", "--git-common-dir").strip()
     assert (Path(common) / "goh-landed").read_text().split() == [tip]
+
+
+def _refused_commit_worktree(repo: Path, tmp_path: Path) -> Path:
+    """A worktree whose commit a pre-commit hook REFUSED: the tip is still the base commit."""
+    wt = tmp_path / "wt"
+    git(repo, "worktree", "add", "-q", "-b", "feature", str(wt))
+    hooks = (
+        Path(git(wt, "rev-parse", "--path-format=absolute", "--git-common-dir").strip()) / "hooks"
+    )
+    hooks.mkdir(exist_ok=True)
+    hook = hooks / "pre-commit"
+    hook.write_text("#!/bin/sh\necho refused >&2\nexit 1\n")
+    hook.chmod(0o755)
+    (wt / "f.txt").write_text("feature\n")
+    git(wt, "add", "f.txt")
+    r = subprocess.run(["git", "commit", "-q", "-m", "feature"], check=False, cwd=wt, capture_output=True,
+                       text=True, env=hermetic_env(drop_git=True), stdin=subprocess.DEVNULL)  # fmt: skip
+    assert r.returncode != 0, "the hook must refuse the commit"
+    hook.unlink()
+    return wt
+
+
+def test_a_refused_commit_does_not_print_landed(repo: Path, tmp_path: Path) -> None:
+    """G15: a pre-commit hook refused the commit, the tip was still the base, and land.sh said
+    'landed' and exited 0 -- a false green in the one landing path. Nothing landed, so it says so."""
+    wt = _refused_commit_worktree(repo, tmp_path)
+    before = _main(repo)
+    r = _land(wt, "true")
+    assert r.returncode != 0, r.stdout + r.stderr
+    assert "landed" not in r.stdout.replace("nothing landed", ""), r.stdout
+    assert "nothing landed" in r.stderr, r.stderr
+    assert _main(repo) == before
+
+
+def test_a_tip_equal_to_main_lands_nothing_and_says_so(repo: Path, tmp_path: Path) -> None:
+    wt = tmp_path / "wt"
+    git(repo, "worktree", "add", "-q", "-b", "feature", str(wt))
+    r = _land(wt, "true")
+    assert r.returncode != 0 and "nothing to land" in r.stderr, r.stdout + r.stderr
+
+
+def test_uncommitted_tracked_changes_land_nothing(repo: Path, tmp_path: Path) -> None:
+    """The gate judges the working tree; a tree that is not the tip is a verdict on something else."""
+    wt = _worktree(repo, tmp_path)
+    (wt / "f.txt").write_text("edited, not committed\n")
+    before = _main(repo)
+    r = _land(wt, "true")
+    assert r.returncode != 0 and "uncommitted" in r.stderr, r.stdout + r.stderr
+    assert _main(repo) == before
+
+
+def test_the_intended_change_must_be_in_what_landed(repo: Path, tmp_path: Path) -> None:
+    wt = _worktree(repo, tmp_path)
+    env = hermetic_env(drop_git=True, GOH_LAND_GATE="true", GOH_LAND_EXPECT="f.txt missing.txt")
+    r = subprocess.run(["bash", str(LAND)], check=False, cwd=wt, env=env, capture_output=True, text=True,
+                       timeout=60, stdin=subprocess.DEVNULL)  # fmt: skip
+    assert r.returncode != 0 and "missing.txt" in r.stderr, r.stdout + r.stderr
+    env["GOH_LAND_EXPECT"] = "f.txt"
+    r = subprocess.run(["bash", str(LAND)], check=False, cwd=wt, env=env, capture_output=True, text=True,
+                       timeout=60, stdin=subprocess.DEVNULL)  # fmt: skip
+    assert r.returncode == 0, r.stdout + r.stderr
