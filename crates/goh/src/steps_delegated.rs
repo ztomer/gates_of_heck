@@ -19,8 +19,9 @@ use crate::step_report::delegated;
 /// The label a no-tracked-build-output step announces; the same line is in `structural_steps.txt`.
 const BUILD_OUTPUT_LABEL: &str = "no tracked build output";
 
-/// `checks/check_tracked_build_output.py`: a tracked file that is a build's output (OW.29, BACKLOG
-/// 7.4). Both scopes, like the tracked-ignored step beside it: the whole tree at full, and at
+/// `checks/check_tracked_build_output.py`: a tracked file that is a build's output (OW.29).
+///
+/// BACKLOG 7.4. Both scopes, like the tracked-ignored step beside it: the whole tree at full, and at
 /// `--staged` only what the commit adds or changes, read from the index (`--staged` to the
 /// checker), because a red on a file committed long ago would block every unrelated commit.
 ///
