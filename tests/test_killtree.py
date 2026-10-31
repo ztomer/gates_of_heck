@@ -36,7 +36,7 @@ killtree = _load("killtree_under_test", "lib/killtree.py")
 fresh = _load("fresh_under_test", "checks/check_generated_fresh.py")
 ratchet = _load("ratchet_under_test", "checks/check_baseline_ratchet.py")
 sys.path.insert(0, str(REPO_ROOT))
-from lib import mcp_scaffold as mc  # noqa: E402
+from lib import mcp_scaffold as mc
 
 
 def _orphan_step(marker: str) -> str:

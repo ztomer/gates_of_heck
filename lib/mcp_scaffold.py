@@ -40,9 +40,10 @@ if __name__ == "__main__":  # C4: run HEAD's copy, not the shared working tree (
 import inspect
 import json
 import math
-import subprocess  # noqa: F401 — TimeoutExpired contract of killtree.run_captured
+import subprocess
 import sys
-from typing import Callable, get_type_hints
+from collections.abc import Callable
+from typing import get_type_hints
 
 try:
     from .killtree import run_captured
@@ -88,22 +89,14 @@ def _sanitize_id(msg_id):
 try:
     from .mcp_schema import (
         _PY_TYPE_TO_JSON as _PY_TYPE_TO_JSON,  # noqa: PLC0414 — re-exported
-    )
-    from .mcp_schema import (
         _check_type as _check_type,  # noqa: PLC0414 — re-exported
-    )
-    from .mcp_schema import (
         _python_type_to_json_schema,
         _validate_args,
     )
 except ImportError:  # run as a script: script dir is on sys.path
     from mcp_schema import (
         _PY_TYPE_TO_JSON as _PY_TYPE_TO_JSON,  # noqa: PLC0414 — re-exported
-    )
-    from mcp_schema import (
         _check_type as _check_type,  # noqa: PLC0414 — re-exported
-    )
-    from mcp_schema import (
         _python_type_to_json_schema,
         _validate_args,
     )
@@ -189,7 +182,7 @@ class McpServer:
             else:
                 try:
                     hints = get_type_hints(func)
-                except Exception:
+                except (NameError, TypeError, AttributeError):  # an unresolvable annotation
                     hints = {}
                 sig = inspect.signature(func)
                 properties: dict = {}
@@ -206,7 +199,7 @@ class McpServer:
                     else:
                         try:
                             prop = _python_type_to_json_schema(ann)
-                        except Exception:
+                        except TypeError:  # an unhashable annotation
                             prop = {"type": "string"}
                     properties[pname] = prop
                     if param.default is inspect.Parameter.empty:

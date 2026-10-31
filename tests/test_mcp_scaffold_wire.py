@@ -14,9 +14,7 @@ import subprocess
 import sys
 
 import pytest
-
 from _mcp_scaffold_kit import REPO_ROOT, SERVER, mc
-
 
 # ---- a subprocess whose tool result cannot be serialized at all ----------------
 

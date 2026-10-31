@@ -10,7 +10,6 @@ import json
 import sys
 
 import pytest
-
 from _mcp_scaffold_kit import mc
 
 

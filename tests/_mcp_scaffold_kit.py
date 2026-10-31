@@ -13,4 +13,6 @@ SERVER = REPO_ROOT / "lib" / "mcp_scaffold.py"
 
 sys.path.insert(0, str(REPO_ROOT))
 
-from lib import mcp_scaffold as mc  # noqa: E402
+from lib import mcp_scaffold as mc
+
+__all__ = ["REPO_ROOT", "SERVER", "mc"]
