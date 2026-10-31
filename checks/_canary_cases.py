@@ -418,8 +418,9 @@ CASES = [
         "a tracked build output is refused",
         "check_tracked_build_output.py",
         [],
-        {"target/debug/app": "binary\n"},
-        {"src/main.rs": "fn main() {}\n"},
+        # `.obj` names an object file AND a text mesh (ZeroThunder, OW.29): the bytes decide.
+        {"target/debug/app": "binary\n", "build/main.obj": "\x64\x86\x03\x00.text\x00"},
+        {"src/main.rs": "fn main() {}\n", "assets/ship.obj": "# mesh\nv 0 0 0\nf 1 1 1\n"},
     ),
     # The JavaScript cases live in `_canary_cases_js.py`: this table had reached the
     # 500-line cap, and the list is still ONE list (the import below splices them in).

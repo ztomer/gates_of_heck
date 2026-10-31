@@ -1,5 +1,25 @@
 # CHANGELOG
 
+## Unreleased -- a tracked build output is a structural step, and a text `.obj` is not one
+
+* **`no tracked build output` is a structural step (owner ruling OW.29, BACKLOG 7.4 closed).**
+  `gates/structural.sh` (the stock pre-commit gate every consumer runs) now runs
+  `checks/check_tracked_build_output.py` through the native pipeline
+  (`steps_delegated::step_tracked_build_output`, beside the tracked-ignored step; 33 -> 34 steps in
+  `structural_steps.txt`). Both scopes: the whole tree at `--full`, and at `--staged` only what the
+  commit adds or changes, read from the index (`--staged` is new on the checker), so a file
+  committed long ago never blocks an unrelated commit. Estate run on 2026-10-31 from every
+  installed repo (skipping `references/`, `vendor/`, `tools/`, playground): all green.
+* **The false positive, fixed as a class.** ZeroThunder tracks 244 `assets/meshes/*.obj` Wavefront
+  meshes (plain text, source assets) and the check refused all of them as "a compiled file": `.obj`
+  is also a compiler's object-file extension. An extension that names BOTH a binary build product
+  and a text format (`AMBIGUOUS_SUFFIXES`, today `.obj`) is now decided by CONTENT: an object-file
+  magic number (ELF, Mach-O, COFF, archive) or a NUL byte is a compiled file, a text file is not.
+  An extension with no text form (`.o`, `.so`, `.class`) and a build directory are still decided
+  by name. The blobs are read from the index by one `git cat-file --batch`, not one spawn each.
+  Pinned both ways by `tests/test_check_tracked_build_output.py`, the canary case, and the
+  structural cases in `tests/test_goh_structural.py`.
+
 ## v0.56.0 — an MCP server in any language is judged on the wire _(2026-10-26)_
 
 Minor bump: a new consumer-facing gate (`checks/check_mcp_wire.py`) and three `.gatesrc` keys

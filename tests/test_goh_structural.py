@@ -249,6 +249,23 @@ def test_staged_python_format_agrees(goh: Path, tmp_path: Path, staged_bytes, ex
     assert (r.returncode, _failing(r.stdout, r.stderr)) == expected
 
 
+@pytest.mark.parametrize(
+    ("case", "expected"),
+    [
+        ("build_output_red", (1, "no tracked build output")),
+        ("build_output_mesh_green", (0, None)),
+    ],
+)
+def test_staged_tracked_build_output_step_is_at_commit_scope_too(
+    goh: Path, tmp_path: Path, case: str, expected
+) -> None:
+    """OW.29: the step runs in the stock pre-commit gate, and announces itself there."""
+    repo = make_repo(tmp_path, FULL_CASES[case])
+    r = _run_goh(goh, repo, staged=True)
+    assert "no tracked build output" in _announced(r.stdout + r.stderr), r.stdout
+    assert (r.returncode, _failing(r.stdout, r.stderr)) == expected, r.stdout + r.stderr
+
+
 def test_staged_ignores_unstaged_dirt(goh: Path, tmp_path: Path) -> None:
     repo = make_repo(tmp_path, {".gatesrc": GATESRC, "a.py": b"x = 1\n"})
     (repo / "a.py").write_bytes(b"x = 1\n<<<<<<< ours\n")

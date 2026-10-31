@@ -44,6 +44,18 @@ FULL_CASES: dict[str, dict[str, bytes]] = {
         ".gatesrc": b"GOH_MAX_LINES=10\nGOH_NO_HOME_PATHS=1\n",
         "NOTES.md": b"run from ~/Projects/x\n",
     },
+    # The tracked-build-output step (OW.29): a tracked object file is red, and a tracked Wavefront
+    # mesh -- the same `.obj` extension, text content -- is green.
+    "build_output_red": {
+        ".gatesrc": GATESRC,
+        "build/main.obj": b"\x64\x86\x03\x00.text\x00",
+        "a.py": b"x = 1\n",
+    },
+    "build_output_mesh_green": {
+        ".gatesrc": GATESRC,
+        "assets/ship.obj": b"# mesh\nv 0 0 0\nf 1 1 1\n",
+        "a.py": b"x = 1\n",
+    },
     "home_path_green": {
         ".gatesrc": b"GOH_MAX_LINES=10\nGOH_NO_HOME_PATHS=1\n",
         "NOTES.md": b"run from the repo root\n",
@@ -245,6 +257,8 @@ EXPECTED: dict[str, tuple[int, str | None]] = {
     "hook_index_green": (0, None),
     "hook_index_red": (1, "no bare read of the hook's index"),
     "home_path_green": (0, None),
+    "build_output_red": (1, "no tracked build output"),
+    "build_output_mesh_green": (0, None),
     "home_path_red": (1, "no hard-coded home paths"),
     "kill_by_name_green": (0, None),
     "kill_by_name_red": (1, "no process kill by name"),

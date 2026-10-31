@@ -143,6 +143,7 @@ pub fn run(staged: bool, full: bool, keep_going: bool) -> i32 {
     // `_drain` joins any still running on every return path below, the red ones included.
     let _drain = prefetch::Drain;
     let specs = prefetch::collect(|| {
+        let _ = steps_delegated::step_tracked_build_output(&repo, &checks, staged);
         let _ = steps_delegated::step_full_only(&repo, &checks, staged);
     });
     prefetch::start(specs, &checks, &repo);
@@ -179,6 +180,11 @@ pub fn run(staged: bool, full: bool, keep_going: bool) -> i32 {
     // A tracked file the repo's own `.gitignore` matches; beside the home-path step because both
     // find a file in the tree that one machine's state put there.
     step!(trackedignored::step(&repo, &files, staged));
+    // Beside it: a tracked file that is a build's OUTPUT (owner ruling OW.29, BACKLOG 7.4). Both
+    // are a file in the tree that should not be, and the same staged-scope rule applies.
+    step!(steps_delegated::step_tracked_build_output(
+        &repo, &checks, staged
+    ));
     step!(steps_rust::step(&repo, &files, &cfg, staged));
     // The JavaScript this repository tracks parses, when this repository asked for it
     // (`GOH_JS_SYNTAX=on`). Opt-in, because most of the estate tracks no JavaScript at all,

@@ -23,6 +23,7 @@ no disallowed emoji
 no early-exit pipe under pipefail
 no hard-coded home paths
 no process kill by name
+no tracked build output
 no tracked file its .gitignore ignores
 no unreaped spawns in tests
 no vendored copies of house checkers
