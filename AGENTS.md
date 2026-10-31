@@ -26,7 +26,7 @@ Pre-push runs `tools/gate.sh --full`. Escape hatch: `git commit --no-verify`.
   dispatched by `gates/goh.sh`). The Python checkers are retired (Phase N3).
 * `checks/` — the remaining Python gate-side tools, a forwarder per retired checker
   (`_retired.py`), the calibration registry, the `--full` sweeps.
-* `lib/` — shared libs: `golden_core.py`,
+* `lib/` — shared libs: `golden_core.py`, `mcp_scaffold.py`,
   `eval_transport.py`, `headless_env.sh`, `killtree.py`, `desktop_lock/`, `gpu_lock/`.
 * `tui/` — output style source of truth (`stylerc`, `lib.sh`, `lib.py`).
 * `tools/` — `gate.sh` (this repo's own gate entry), `release-kit/`, `profiling/`.

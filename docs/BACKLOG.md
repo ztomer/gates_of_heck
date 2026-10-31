@@ -375,6 +375,13 @@ ztools' exempt key, Finance's `"$root.out"`, ZeroThunder's dropped process handl
   `.github/workflows/build_and_release.yml:154` (the tap clone puts `${TAP_TOKEN}` in the URL).
   Clone without it and pass the token as `git -c http.extraheader="AUTHORIZATION: basic ..."` or
   through a credential helper reading the variable; 6.8's house tap-bump step replaces the line.
+- **ZeroThunder's MCP server, before `lib/mcp_scaffold.py` goes again (2026-10-31):** `82c095c`
+  deleted the scaffold "with its last user", but `ZeroThunder/tools/zerothunder_mcp_server.py`
+  still imports it (`from mcp_scaffold import McpServer, serve`), so ZeroThunder's push gate went red
+  on `tests/test_mcp_server.py` (`No module named 'mcp_scaffold'`) the day it landed. The proof grep
+  missed `~/Projects/games/*`. Restored by reverting `82c095c`; the scaffold is deleted again only
+  once ZeroThunder's tools move to `app-mcp-bridge` (OW.61, the `rust-mcp-rmcp` skill's bridge
+  pattern) -- re-run the user grep over every git work tree under `~/Projects`, at any depth, first.
 - **necrohand, CadGoose2 and ZeroThunder, after `85d0b51` (6.1):** necrohand and CadGoose2 replace
   `tools/check_git_env.py` with `python3 "$GOH_DIR/checks/check_git_env.py"` and move
   `git_env.SOURCES`, `CENSUS_EXEMPT` and `_SHELL_SITES` into `tools/git_env.json` (`sources`,

@@ -35,6 +35,8 @@ def _load(name, relpath):
 killtree = _load("killtree_under_test", "lib/killtree.py")
 fresh = _load("fresh_under_test", "checks/check_generated_fresh.py")
 ratchet = _load("ratchet_under_test", "checks/check_baseline_ratchet.py")
+sys.path.insert(0, str(REPO_ROOT))
+from lib import mcp_scaffold as mc  # noqa: E402
 
 
 def _orphan_step(marker: str) -> str:
@@ -131,10 +133,17 @@ def test_run_captured_feeds_stdin_and_captures_both_pipes():
     assert out.stdout.strip() == "PAYLOAD" and out.stderr == "E"
 
 
-# ---- site 1: check_generated_fresh.generate -----------------------------------
-# (The first site was mcp_scaffold.run_subprocess; the scaffold was deleted in v0.56.0 with its
-# last user, koffee_big's Python MCP, and an MCP server is now judged on the wire by
-# checks/check_mcp_wire.py, which reaps its server's whole group itself.)
+# ---- site 1: mcp_scaffold.run_subprocess --------------------------------------
+
+
+def test_mcp_run_subprocess_leaves_no_orphans_on_timeout():
+    marker = _unique_marker("MCP")
+    with pytest.raises(mc.SubprocessTimeout):
+        mc.run_subprocess(["/bin/bash", "-c", _orphan_step(marker)], timeout=1)
+    _assert_nothing_survives(marker)
+
+
+# ---- site 2: check_generated_fresh.generate -----------------------------------
 
 
 def test_generated_fresh_generate_leaves_no_orphans_on_timeout(tmp_path):
@@ -144,7 +153,7 @@ def test_generated_fresh_generate_leaves_no_orphans_on_timeout(tmp_path):
     _assert_nothing_survives(marker)
 
 
-# ---- site 2: check_baseline_ratchet.load_current -------------------------------
+# ---- site 3: check_baseline_ratchet.load_current -------------------------------
 
 
 def test_ratchet_load_current_leaves_no_orphans_on_timeout():
