@@ -145,6 +145,11 @@ def hermetic_env(drop_git: bool = False, **overrides: str) -> dict[str, str]:
     # The rust coverage build dir is keyed on a project's path (gates/_coverage_rust.sh): a fixture
     # in a fresh tmp dir would leave one never-reused build per test in the user's cache.
     env["GOH_COV_CACHE"] = _SUITE_COV_CACHE
+    # GOH_DIR is a LOCATION too, and it must be THIS checkout: without it the binary falls back to
+    # ~/Projects/gates_of_heck, so a worktree's suite judged MAIN's checkers, not the branch's -- a
+    # new delegated step went red before landing and an edit to an old one was never tested at all
+    # (D.GOH1, 2026-10-31).
+    env["GOH_DIR"] = str(REPO_ROOT)
     env.update(overrides)
     return env
 
