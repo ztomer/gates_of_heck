@@ -151,3 +151,72 @@ fn goh_own_scripts_run_the_house_interpreter_never_a_bare_python() {
         findings.join("\n")
     );
 }
+
+/// A fixture tree (no git: a full-scope read is the worktree) holding `files` as shell scripts.
+fn tree(files: &[(&str, &str)]) -> tempfile::TempDir {
+    let dir = tempfile::tempdir().unwrap_or_else(|e| panic!("tempdir: {e}"));
+    for (rel, body) in files {
+        let path = dir.path().join(rel);
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent).unwrap_or_else(|e| panic!("{e}"));
+        }
+        std::fs::write(&path, body).unwrap_or_else(|e| panic!("{e}"));
+    }
+    dir
+}
+
+const SCRIPT: &str = "#!/bin/bash\npython3 tests/e2e/verify.py\n";
+
+/// `GOH_BARE_PYTHON_SCOPE` (`ZeroThunder` OW.42, owner ruling 2026-10-31 "widen + fix"): a repo whose
+/// local CI and build scripts run Python names them, and they are judged exactly as a hook is.
+/// The default scope is unchanged without the key -- the same file outside it is not read.
+#[test]
+fn a_declared_scope_widens_what_is_judged() {
+    let dir = tree(&[
+        ("ci_local.sh", SCRIPT),
+        ("tools/run.sh", SCRIPT),
+        ("other.sh", SCRIPT),
+    ]);
+    let files: Vec<String> = ["ci_local.sh", "tools/run.sh", "other.sh"]
+        .iter()
+        .map(|s| (*s).to_owned())
+        .collect();
+
+    let (code, out, _) = super::judge(dir.path(), &files, "", "", false);
+    assert_eq!(
+        code, 0,
+        "no key: none of these is a hook or the gate ({out})"
+    );
+    assert!(out.contains("0 tracked"), "no key reads nothing: {out}");
+
+    let scope = r"^(ci_local\.sh|tools/[^/]*\.sh)$";
+    let (code, _, err) = super::judge(dir.path(), &files, "", scope, false);
+    assert_eq!(code, 1, "the declared scope is judged");
+    assert!(err.contains("ci_local.sh:2: python3"), "{err}");
+    assert!(err.contains("tools/run.sh:2: python3"), "{err}");
+    assert!(
+        !err.contains("other.sh"),
+        "outside the declared scope: {err}"
+    );
+}
+
+#[test]
+fn the_declared_scope_still_yields_to_goh_exclude() {
+    let dir = tree(&[("ci_local.sh", SCRIPT)]);
+    let files = vec!["ci_local.sh".to_owned()];
+    let (code, _, _) = super::judge(dir.path(), &files, "^ci_local", "^ci_local", false);
+    assert_eq!(
+        code, 0,
+        "GOH_EXCLUDE wins over a scope that names the same file"
+    );
+}
+
+/// A pattern that is not a regex must refuse the step, naming the KEY -- never read as "no
+/// widening", which would be the silent narrowing this key exists to undo.
+#[test]
+fn a_bad_scope_regex_is_refused_naming_the_key() {
+    let dir = tree(&[]);
+    let (code, _, err) = super::judge(dir.path(), &[], "", "(", false);
+    assert_eq!(code, 2, "{err}");
+    assert!(err.contains("GOH_BARE_PYTHON_SCOPE"), "{err}");
+}

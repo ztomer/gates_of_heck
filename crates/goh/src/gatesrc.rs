@@ -93,6 +93,9 @@ pub struct Gatesrc {
     /// exists to prevent. Opt-in because most repositories in the estate track no JavaScript at
     /// all, and a gate with no subject is a gate that has to say "not applicable" forever.
     pub js_syntax_gate: Option<String>,
+    /// `GOH_BARE_PYTHON_SCOPE`: a regex on repo-relative paths ADDED to the bare-python step's
+    /// scope (the hooks and `tools/gate.sh`). Empty: the default scope alone.
+    pub bare_python_scope: String,
 }
 
 /// Parse one right-hand side: single/double-quoted or bare with `#` comment.
@@ -222,6 +225,7 @@ pub fn from_pairs(pairs: &BTreeMap<String, String>) -> Result<Gatesrc, String> {
         floors: crate::subject::parse_floors(pairs)?,
         stdin_gate: pairs.get("GOH_SUBPROCESS_STDIN").cloned(),
         js_syntax_gate: pairs.get("GOH_JS_SYNTAX").cloned(),
+        bare_python_scope: get("GOH_BARE_PYTHON_SCOPE"),
     })
 }
 
@@ -235,7 +239,7 @@ pub fn from_pairs(pairs: &BTreeMap<String, String>) -> Result<Gatesrc, String> {
 /// keys, so a step that reads one from the environment (`GOH_STEP_TIMEOUT`, and
 /// every child it spawns) sees the file's value, never an inherited one.
 /// Pinned against `docs/config.md` by `tests/test_gate_environment.py`.
-pub const PIPELINE_KEYS: [&str; 38] = [
+pub const PIPELINE_KEYS: [&str; 39] = [
     "GOH_MAX_LINES",
     "GOH_LINE_EXCLUDE",
     "GOH_LINE_BASELINE",
@@ -265,6 +269,7 @@ pub const PIPELINE_KEYS: [&str; 38] = [
     "GOH_DEAD_AFTER_EXEC_MIN_FILES",
     "GOH_BARE_HOOK_INDEX_MIN_FILES",
     "GOH_BARE_PYTHON_MIN_FILES",
+    "GOH_BARE_PYTHON_SCOPE",
     "GOH_CHECKOUT_CREDENTIALS_MIN_FILES",
     "GOH_TAP_WRITES_MIN_FILES",
     "GOH_MOVING_TAGS_MIN_REFS",

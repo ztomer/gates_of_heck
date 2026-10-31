@@ -13,6 +13,9 @@
 //! `/usr/bin/python3`) is not ambient and not a finding; nor is the name as an argument
 //! (`command -v python3`, `need python3 "..."`).
 //!
+//! Widened per repo by `GOH_BARE_PYTHON_SCOPE` (a path regex, `docs/config.md`): a repo's local CI
+//! and build scripts are the same class, and only the repo knows which they are.
+//!
 //! WIRING: a structural step in every repo, a hard gate at both scopes. The fix is mechanical
 //! (`python3 X` becomes `bash "$GOH/gates/python.sh" X`), and the class broke three repos in a day.
 
@@ -107,12 +110,39 @@ pub fn scan_text(src: &str) -> Vec<(usize, String)> {
 }
 
 /// The verdict over `files`: `(exit code, stdout, stderr)`.
-fn judge(root: &Path, files: &[String], exclude: &str, staged: bool) -> (i32, String, String) {
+///
+/// `scope` is the repo's `GOH_BARE_PYTHON_SCOPE`: a regex on repo-relative paths ADDED to the
+/// hooks and the gate. Local CI and build scripts are the same class as a hook -- a person or a
+/// gate runs them, and a bare `python3` there is Homebrew's last link all the same -- but which
+/// of a repo's scripts those are is the repo's to say, so the default stays the files every repo
+/// has. `GOH_EXCLUDE` still wins: a vendored script is not re-styled because a scope names it.
+fn judge(
+    root: &Path,
+    files: &[String],
+    exclude: &str,
+    scope: &str,
+    staged: bool,
+) -> (i32, String, String) {
     let exclude = match crate::steps::compile_exclude(exclude) {
         Ok(x) => x,
         Err(m) => return (2, String::new(), format!("{ERR} {TAG} {m}\n")),
     };
-    let hooks: Vec<String> = files.iter().filter(|f| in_scope(f)).cloned().collect();
+    let widened = if scope.is_empty() {
+        None
+    } else {
+        match crate::pathfilter::PathFilter::new(scope) {
+            Ok(x) => Some(x),
+            Err(e) => {
+                let m = format!("bad GOH_BARE_PYTHON_SCOPE regex '{scope}': {e}");
+                return (2, String::new(), format!("{ERR} {TAG} {m}\n"));
+            }
+        }
+    };
+    let hooks: Vec<String> = files
+        .iter()
+        .filter(|f| in_scope(f) || widened.as_ref().is_some_and(|w| w.is_match(f)))
+        .cloned()
+        .collect();
     let sources = crate::shellsrc::sources(root, &hooks, exclude.as_ref(), staged);
     crate::subject::record(&crate::subject::BARE_PYTHON, sources.len());
     let scope = if staged { "staged" } else { "tracked" };
@@ -157,7 +187,7 @@ pub fn step(
         "no bare python in a hook or gate"
     };
     let start = crate::step_report::begin(label);
-    match judge(repo, files, &cfg.exclude, staged) {
+    match judge(repo, files, &cfg.exclude, &cfg.bare_python_scope, staged) {
         (0, _, _) => {
             crate::step_report::ok(label, start);
             None
