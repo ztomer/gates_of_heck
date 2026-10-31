@@ -24,8 +24,10 @@ from conftest import hermetic_env
 
 ROOT = Path(__file__).resolve().parent.parent
 # The checkers the native tier still delegates (Phase N1 ports the rest): the two --full-only
-# sweeps. The red step is a NATIVE one (a planted conflict marker), which runs while they do.
+# sweeps and the tracked-build-output step (OW.29, both scopes). The red step is a NATIVE one (a
+# planted conflict marker), which runs while they do.
 DELEGATED = [
+    "check_tracked_build_output.py",
     "check_empty_scope.py",
     "check_probes_pass.py",
 ]

@@ -35,13 +35,11 @@ had come in with the history flatten. They are untracked and ignored on that sid
 is **CLOSED** at v0.44.0 — `checks/check_tracked_build_output.py` walks `git ls-files` for the
 build-output shapes (`.o`, `.dSYM`, `DerivedData`, `target/`, `__pycache__`, `node_modules`,
 `*.xcactivitylog`, and the bundles) and names every tracked file that is one; a repository that
-tracks nothing is REFUSED rather than passed. It is in `checks/`, not in the structural layer,
-and the reason is measured: over the estate on 2026-10-20 **one repo of twenty-two** (the
-repositories with a `.git` under `~/Projects`; `old_phones`, 3 files) carries a tracked build
-output, so a HARD structural gate would land red in that
-consumer's next push — and a gate that lands red in a consumer needs that consumer's seed, which
-is a write in another repository. Making it structural, with `old_phones`' seed, is the OWNER'S
-call (see 7.4).
+tracks nothing is REFUSED rather than passed. It was in `checks/`, not in the structural layer,
+and the reason was measured: over the estate on 2026-10-20 **one repo of twenty-two** (the
+repositories with a `.git` under `~/Projects`; `old_phones`, 3 files) carried a tracked build
+output. Making it structural was the OWNER'S call (7.4), and on 2026-10-31 (OW.29) the owner
+ruled for the structural step; `old_phones` is green by now, so no seed was needed.
 
 **And a defect in this repo's own PUSH path, found while landing it — CLOSED 2026-10-15.**
 
@@ -248,18 +246,31 @@ here.
       repo's own `check_no_screen_linkage.sh` audits a BUILT test binary, which an empty tree has
       none of).
 
-- [ ] 7.4 The "no tracked build output" check (koffee_oss, 2026-10-19) -- the CHECK landed at
-      v0.44.0; what is left is the DECISION about where it runs. **Baseline:** the ask was in the
-      State section above; the estate measurement on 2026-10-20: **1 repo of 22** carries a
-      tracked build output (`old_phones`, 3 files), so a hard structural step lands red in that
-      consumer's next push. **Exit:** the owner decides (a) the check stays in `checks/` and every
-      consumer adopts it in its own gate, or (b) it becomes a structural step with
-      `old_phones`' seed file -- a write in another repo, which is the owner's to make. **Red-first:**
-      `tests/test_check_tracked_build_output.py` (6 cases, red before the checker) and the canary
-      case. **Lies:** (a) a build output that is only ON DISK is `.gitignore`'s business, not this
-      gate's -- the tracked-ignored step owns that half; (b) a repository that tracks NOTHING is
-      refused by the gate, never passed; (c) a FILE named `target.md` is a document and not a build
-      directory -- the shape is a path SEGMENT.
+- [x] 7.4 (`327e0ae`) The "no tracked build output" check (koffee_oss, 2026-10-19) -- the CHECK landed at
+      v0.44.0; the DECISION is **CLOSED 2026-10-31** (owner ruling OW.29, option b): it is a
+      STRUCTURAL step, "no tracked build output", run by `gates/structural.sh` in every repo
+      (`crates/goh/src/steps_delegated.rs::step_tracked_build_output`, label in
+      `crates/goh/structural_steps.txt`), at both scopes: the whole tree at `--full`, and at
+      `--staged` only what the commit adds or changes, read from the index, so an old red never
+      blocks an unrelated commit. **Baseline:** the ask was in the State section above; the estate
+      measurement on 2026-10-20 was 1 repo of 22 (`old_phones`, 3 files), and on 2026-10-31 the
+      estate run found one false positive instead: ZeroThunder's 244 tracked
+      `assets/meshes/*.obj` Wavefront meshes, refused as "a compiled file" because `.obj` is also
+      a compiler's object-file extension. **Fix, the CLASS:** an extension that names both a
+      binary build product and a text format (`AMBIGUOUS_SUFFIXES`, today `.obj`) is decided by
+      CONTENT (an object-file magic number or a NUL byte), never by name alone; an extension with
+      no text form (`.o`, `.so`, `.class`) and a path inside a build directory are still decided
+      by name. **Exit (met):** the checker run from every installed repo (skipping `references/`,
+      `vendor/`, `tools/`, playground, scratch) is green in all 34 that exist, ZeroThunder
+      included (1912 tracked files, 244 meshes). **Red-first:** `tests/test_check_tracked_build_output.py`
+      (the mesh passes; COFF, ELF and Mach-O `.obj` are refused; `--staged` reads the index; red
+      before the change), the canary case, and `tests/test_goh_structural.py` (red and green
+      cases at both scopes; the whole-pipeline inventory). **Lies:** (a) a build output that is
+      only ON DISK is `.gitignore`'s business, not this gate's -- the tracked-ignored step owns
+      that half; (b) a repository that tracks NOTHING is refused by the gate, never passed (a
+      commit that stages nothing is not that, and passes); (c) a FILE named `target.md` is a
+      document and not a build directory -- the shape is a path SEGMENT; (d) an empty `x.obj`
+      is not an object file.
 
 
 ## Open -- measurements (wall times, taken under holds; 5.3 restates them)
