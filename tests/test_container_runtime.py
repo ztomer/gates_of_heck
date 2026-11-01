@@ -304,3 +304,16 @@ def test_a_runtime_someone_elses_container_is_on_is_not_stopped(tmp_path: Path) 
     assert "colima start" in calls
     assert "colima stop" not in calls, calls
     assert "other containers" in res.stdout + res.stderr
+
+
+def test_down_without_this_process_holding_a_lease_touches_nothing(tmp_path: Path) -> None:
+    # Consumers set the EXIT trap before up, so down runs when up never did
+    # (a cache hit, an early exit) or failed; a leftover marker must not make
+    # that down stop the runtime.
+    _setup_fakes(tmp_path, docker_up=True)
+    state = tmp_path / "state"
+    state.mkdir()
+    (state / "started_by_goh").write_text("")
+    res = _run(tmp_path, "goh_container_runtime_down")
+    assert res.returncode == 0, res.stderr
+    assert "colima stop" not in (tmp_path / "calls.log").read_text()

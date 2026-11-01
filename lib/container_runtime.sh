@@ -115,6 +115,10 @@ goh_container_runtime_down() {
     local state_dir="${GOH_CONTAINER_STATE:-$HOME/.cache/goh/container_runtime}"
     local leases_dir="$state_dir/leases"
 
+    # No lease of this process's own: up never ran or failed, and a down it
+    # never earned touches nothing (consumers trap down before calling up).
+    [ -f "$leases_dir/$$" ] || return 0
+
     _goh_container_lock_acquire
 
     rm -f "$leases_dir/$$" </dev/null 2>/dev/null || true
