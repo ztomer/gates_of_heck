@@ -355,10 +355,11 @@ _tags_free() { # _tags_free <i> -- none of step i's tags is held
 # _start <i> -- a proven hit is done at once; anything else is launched in the background.
 _start() {
     local i="$1" pair hit age by
-    PKEY[i]="" PTREE[i]=""
+    PKEY[i]="" PTREE[i]="" PLIVE[i]=""
     [ "$LIVE" -eq 1 ] && info "[$i/$_n] (${SRC[i]}) ${CMD[i]}"
     if pair="$(proven_key "${CMD[i]}" </dev/null)"; then
         read -r "PKEY[i]" "PTREE[i]" <<<"$pair"
+        PLIVE[i]="$(_proven_identity_live </dev/null)"
         if hit="$(proven_lookup "${PKEY[i]}" "${CMD[i]}")"; then
             read -r age by <<<"$hit"
             HIT[i]="$age $by"; STATE[i]=done; RC[i]=0
@@ -412,7 +413,7 @@ _report() { # _report <i>
                 warn "[$i/$_n] could not write the proven record"
             fi
         else
-            step "the tree or the gates moved while the step ran — not recorded as proven"
+            step "$(proven_what_moved "${PTREE[i]}" "${PLIVE[i]}" </dev/null) moved while the step ran — not recorded as proven"
         fi
     fi
     if [ "$_rec" -eq 2 ]; then

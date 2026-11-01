@@ -269,6 +269,35 @@ proven_key() (
     printf '%s %s\n' "$key" "$tree"
 )
 
+# proven_what_moved <tree-before> <live-before> — WHICH part of a step's key moved while it ran,
+# as one phrase for the "moved while the step ran" line. That line used to say "the tree or the
+# gates", which sent the reader to the wrong place: on divoom-control (2026-11-01) six pre-push
+# steps said it on a tree nobody touched, because each had rebuilt `target/debug/divoomd`, a file
+# GOH_EXPORT_KEEP names, so the key (which reads a kept file's content) moved under the step
+# itself. <live-before> is `_proven_identity_live`'s output taken with the first key.
+proven_what_moved() (
+    local before_tree="$1" before_live="$2" now_tree now_live names
+    goh_bind_hook_index
+    if ! now_tree="$(proven_tree)" || [ -z "$now_tree" ]; then
+        printf 'the working tree (an unstaged edit or an untracked file appeared)\n'
+        return 0
+    fi
+    if [ "$now_tree" != "$before_tree" ]; then
+        printf 'the tree (%s → %s)\n' "${before_tree:0:12}" "${now_tree:0:12}"
+        return 0
+    fi
+    now_live="$(_proven_identity_live)"
+    if [ "$now_live" != "$before_live" ]; then
+        names="$(diff <(printf '%s\n' "$before_live") <(printf '%s\n' "$now_live") \
+            | awk '$1 == ">" && $2 == "keep" { print "kept file " $3 }
+                   $1 == ">" && $2 == "env" { n = $3; sub(/=.*/, "", n); print "env " n }' \
+            | LC_ALL=C sort -u | paste -sd, - | sed 's/,/, /g')"
+        printf '%s (a step rewrote an input of its own key)\n' "${names:-a kept input}"
+        return 0
+    fi
+    printf "the gates' identity (the gates_of_heck checkout or a toolchain)\n"
+)
+
 # proven_scoped_key <step> <entry>... — like proven_key, but the tree part is the git OBJECT of
 # each repo-relative entry (`.` is the whole tree) rather than the whole tree, so a step whose
 # inputs are named keys only on them (BACKLOG P3; `goh rust-scope` names a crate's). An entry that

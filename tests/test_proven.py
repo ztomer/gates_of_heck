@@ -231,6 +231,7 @@ def test_a_tree_that_moved_during_the_step_is_not_recorded(goh, repo, env):
     r = proven(goh, repo, env, step)
     assert r.returncode == 0
     assert "moved while the step ran" in r.stdout
+    assert "the tree (" in r.stdout, "the line names WHAT moved"
     assert records(repo) == []
 
 

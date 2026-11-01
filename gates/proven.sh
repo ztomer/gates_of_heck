@@ -90,9 +90,10 @@ run_it() {
     fi
 }
 
-key="" tree=""
+key="" tree="" live=""
 if pair="$(proven_key "$step_cmd" </dev/null)"; then
     read -r key tree <<<"$pair"
+    live="$(_proven_identity_live </dev/null)"
     if hit="$(proven_lookup "$key" "$step_cmd")"; then
         read -r age by <<<"$hit"
         [ -z "$log" ] || : >"$log"
@@ -118,7 +119,7 @@ if [ "$rc" -eq 0 ] && [ -n "$key" ]; then
         fi
         [ "$rec" -eq 0 ] || warn "proven: could not write the record"
     else
-        step "$label: the tree or the gates moved while the step ran — not recorded as proven"
+        step "$label: $(proven_what_moved "$tree" "$live" </dev/null) moved while the step ran — not recorded as proven"
     fi
 fi
 exit "$rc"

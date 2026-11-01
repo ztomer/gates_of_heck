@@ -1,5 +1,17 @@
 # CHANGELOG
 
+## Unreleased
+
+* **The "moved while the step ran" line names what moved.** It said "the tree or the gates" for
+  every cause; on divoom-control (2026-11-01) six pre-push steps said it on a tree nobody touched.
+  Measured: each step rebuilt `target/debug/divoomd`, which that repo's `GOH_EXPORT_KEEP` names,
+  and the key reads a kept file's content, so a step that rewrites one moves its own key (same
+  tree, the BLE and BLE-free builds: three different keys). Not recording stays right; blaming
+  the tree or the gates sent the reader to the wrong place. `proven_what_moved`
+  (`gates/_proven.sh`) is the one answer for `proven.sh` and `local_ci.sh`: the working tree
+  (now dirty), the tree (before → after), a kept file or env knob by name, or the gates'
+  identity. Pinned by `tests/test_proven_moved.py` (both runners; red before).
+
 ## v0.57.2 -- the estate audit says what the push would do; scratch repos leave the registry
 
 * **The estate audit's verdict is the push's, read from the repo's gate (queue GOH.EA2).** It ran
