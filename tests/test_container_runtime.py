@@ -317,3 +317,72 @@ def test_down_without_this_process_holding_a_lease_touches_nothing(tmp_path: Pat
     res = _run(tmp_path, "goh_container_runtime_down")
     assert res.returncode == 0, res.stderr
     assert "colima stop" not in (tmp_path / "calls.log").read_text()
+
+
+def _daemonizing_colima(tmp_path: Path) -> Path:
+    """A colima whose `start` leaves a long-lived child behind, as the real one does
+    (`colima daemon`, `limactl hostagent`), recording which of the shell's fds it got."""
+    bin_dir = tmp_path / "bin"
+    status_file = tmp_path / "docker_status"
+    pid_file = tmp_path / "daemon.pid"
+    (bin_dir / "colima").write_text(f"""#!/usr/bin/env bash
+echo "colima $*" >> "{tmp_path}/calls.log"
+if [ "$1" = "start" ]; then
+    echo "up" > "{status_file}"
+    # The daemon detaches its stdio, and keeps every other fd it was handed.
+    ( for fd in 8 9; do [ -e /dev/fd/$fd ] && echo "$fd"; done > "{tmp_path}/daemon_fds"
+      exec sleep 60 ) </dev/null >/dev/null 2>&1 &
+    echo $! > "{pid_file}"
+elif [ "$1" = "stop" ]; then
+    echo "down" > "{status_file}"
+    kill "$(cat "{pid_file}")" 2>/dev/null
+fi
+exit 0
+""")
+    return pid_file
+
+
+def _reap(pid_file: Path) -> None:
+    if pid_file.exists():
+        try:
+            os.kill(int(pid_file.read_text().strip()), 9)
+        except (ProcessLookupError, ValueError):
+            pass
+
+
+def test_the_daemon_colima_leaves_behind_does_not_hold_the_lock(tmp_path: Path) -> None:
+    # 2026-11-01: `colima start` ran under the lock, so `colima daemon` and
+    # limactl inherited fd 8 and held the flock for the VM's whole life; the
+    # same process's own down then blocked on it until the gate's 900 s kill
+    # (monitor tools/lint_linux.sh, clippy clean in 28 s).
+    _setup_fakes(tmp_path, docker_up=False)
+    pid_file = _daemonizing_colima(tmp_path)
+    try:
+        res = _run(
+            tmp_path,
+            'goh_container_runtime_up "gate" || exit 1\ngoh_container_runtime_down',
+            timeout=15,
+        )
+        assert res.returncode == 0, res.stderr
+        assert "colima stop" in (tmp_path / "calls.log").read_text()
+        assert (tmp_path / "daemon_fds").read_text().split() == []
+    finally:
+        _reap(pid_file)
+
+
+def test_the_daemon_does_not_inherit_a_callers_tree_lock(tmp_path: Path) -> None:
+    # tree_lock.sh holds fd 9 for a whole gate run; a runtime started inside one
+    # must not pin it past the gate.
+    _setup_fakes(tmp_path, docker_up=False)
+    pid_file = _daemonizing_colima(tmp_path)
+    try:
+        res = _run(
+            tmp_path,
+            f'exec 9>>"{tmp_path}/tree.lock"\ngoh_container_runtime_up "gate" || exit 1\n'
+            "trap - EXIT",
+            timeout=15,
+        )
+        assert res.returncode == 0, res.stderr
+        assert (tmp_path / "daemon_fds").read_text().split() == []
+    finally:
+        _reap(pid_file)

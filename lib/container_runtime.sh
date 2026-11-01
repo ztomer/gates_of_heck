@@ -95,7 +95,12 @@ goh_container_runtime_up() {
 
         local start_log="$state_dir/colima_start.log"
         info "starting container runtime ($colima start)"
-        if ! "$colima" start </dev/null >"$start_log" 2>&1 || ! "$docker" info </dev/null >/dev/null 2>&1; then
+        # `colima start` leaves daemons behind (`colima daemon`, `limactl hostagent`)
+        # that keep every fd they are handed for the VM's whole life. Handed fd 8,
+        # they held this lock forever, and the same process's own down blocked on
+        # it until its gate was killed (2026-11-01); handed a caller's tree_lock
+        # fd 9, they would pin the tree. So the start gets neither.
+        if ! "$colima" start </dev/null >"$start_log" 2>&1 8>&- 9>&- || ! "$docker" info </dev/null >/dev/null 2>&1; then
             _goh_container_lock_release
             err "container runtime: colima start failed (log: $start_log)"
             return 1
