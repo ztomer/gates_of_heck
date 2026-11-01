@@ -47,8 +47,11 @@ def _repo_at(path: Path, crate: str = "goh-fixture-crate") -> Path:
     """A git repository with one tracked Cargo.lock, holding the planted crate."""
     path.mkdir(parents=True)
     (path / "Cargo.lock").write_text(LOCK.format(name=crate, zeros="0" * 64))
+    # Its push audits that lock (the estate audit reads the gate: test_estate_gate_coverage.py);
+    # install.sh never overwrites a .gatesrc.
+    (path / ".gatesrc").write_text("GOH_CI_STEPS='\"$GOH_DIR/gates/rust_gate.sh\"'\n")
     fast_init(path, "main")
-    _git(path, "add", "Cargo.lock")
+    _git(path, "add", "Cargo.lock", ".gatesrc")
     _git(path, "commit", "-qm", "lock")
     return path
 

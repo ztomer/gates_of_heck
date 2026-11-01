@@ -179,6 +179,7 @@ Every structural checker is native since Phase N3; the Python checkers they port
 | `tree_stamp.py` | Did the working tree move while a gate ran over it? A stamp taken before and after; a gate certifying bytes that changed under it says so (ZoneWM 2c.9). | `test_tree_stamp.py` |
 | `landed_verify.py` | Is a subagent's `landed` true? The report's shas located in the estate's repos, then each on its GitHub default branch and CI concluded success on it (or on the first run that contains it). A mismatch is `silent-failure`; gh missing, the network down or offline is `unverified`, never a pass. Read by `scripts/agent_audit.py`. | `test_agent_audit_verify.py` |
 | `repo_hold.py` | THE HOLD: is this path inside a repo whose local git config carries `goh.hold` (or the legacy `goh.archived`)? Parsed, never asked of git (the Claude guard runs on every tool call); worktrees' `commondir` and enclosing repos followed; `holds_below` for a recursive verb on an ancestor, bounded. `check`/`show` CLI for the gates (`lib/repo_hold.sh`: commit, commit-msg, pre-applypatch, push refuse a held repo). | `test_repo_hold.py`, `test_hold_gates.py` |
+| `gate_coverage.py` | Which tracked `Cargo.lock` a repo's PUSH gate audits, and with which tool, READ from the gate: `GOH_CI_STEPS`, `tools/gate.sh`, `.pre-commit-config.yaml`, `.githooks/pre-push` and every tracked script or Makefile they name. `rust_gate.sh [repo [dir]]` / `--each-crate` (asked of `--list`), `cargo audit [--file]` and `cargo deny ... check [advisories]`, in the directory a literal `cd` gives them; a target behind a shell variable is UNRESOLVED, never guessed (queue GOH.EA2). | `test_estate_gate_coverage.py` |
 | `estate_registry.py` | The estate is every repo `install.sh` installed into, not one directory (BACKLOG 6.14): the registry `install.sh` writes beside the audit's state file, the walk of the estate root, and the UNION of the two -- a registered path that is gone is named, never skipped. `~/.claude/skills` is a consumer outside `~/Projects` and no sweep read it. | `test_estate_registry.py` |
 | `advisory_db.py` | The advisory database every goh `cargo audit` reads -- goh's own copy (`GOH_ADVISORY_DB`, default `~/.cache/goh/advisory-db`, seeded from `~/.cargo/advisory-db`), which nothing outside goh writes -- held under a flock on `<db>.goh-lock`: shared to read (`--no-fetch`), exclusive to refresh. A refresh beside a read tore the read ("unexpected start of advisory", 2026-10-12). `run --fetch\|--no-fetch -- cargo audit ...` for the shell gate; `held()` and `audit_args()` for the Python callers. | `test_advisory_db.py` |
 | `bounded_run.py` | Run one command under a wall-clock CEILING, in its OWN process group, and sweep the whole subtree on expiry (TERM, grace, KILL) — then print `TIMED OUT after Ns` and return 124 with the surviving pids named. It WAITS rather than polls (a 0.2 s poll charged every step of every gate up to 200 ms) and samples the process table once at exit. The group discipline is the measured part: `gates/local_ci.sh`'s old sweep was `pkill -P "$pid"`, DIRECT children only, which against `bash -c 'sleep 400 & wait'` left 2 grandchildren ALIVE — i.e. the mechanism meant to unstick a hung step left running exactly the orphans that make the NEXT step hang. `lib/killtree.py` already knew the answer for the Python callers; this exposes it to the shell gates. | `test_bounded_run.py` |
@@ -325,7 +326,8 @@ Every structural checker is native since Phase N3; the Python checkers they port
   `test_claude_compact_hooks.py`.
 * `hooks/claude/estate_advisories.py` — a Claude Code SessionStart hook (any source): what the last
   `scripts/estate_audit.py` run found. Silent when that run is fresh and clean; a line per advisory
-  first seen in the last 48 h, one summary line for the standing ones, and a line saying so when the
+  first seen in the last 48 h, one summary line for the standing ones, one for the locks no gate step
+  audits (NOT AUDITED AT PUSH) and one for those it cannot read, and a line saying so when the
   state file is missing or older than 36 h -- a job that stopped reads exactly like a clean estate.
   Pinned by `test_estate_audit.py`.
 * `hooks/claude/hold_guard.py` — a Claude Code PreToolUse hook (matcher `Bash|Write|Edit|MultiEdit|NotebookEdit`):
@@ -355,7 +357,11 @@ Every structural checker is native since Phase N3; the Python checkers they port
   UNIONED with the registry (`lib/estate_registry.py`), so a consumer outside the root is audited too,
   and a registered path that is gone is named. Records into
   `~/.local/state/goh/estate_audit.json` (`GOH_ESTATE_STATE`); the first run is a baseline, not news.
-  `--install` writes and loads a daily launchd job. Pinned by `test_estate_audit.py`.
+  `--install` writes and loads a daily launchd job. The verdict is the PUSH's (`lib/gate_coverage.py`):
+  a lock a gate step audits is judged by that step's tool and policy (cargo-audit with its
+  `.cargo/audit.toml`, cargo-deny RUN with its `deny.toml`); a lock no step audits is `unaudited`
+  ("not audited at push"), never red; one a step goh cannot read might cover is `undetermined`.
+  Pinned by `test_estate_audit.py` and `test_estate_gate_coverage.py`.
 * `scripts/estate_registry.py` — the estate's registry, read and seeded (BACKLOG 6.14): `list` says what
   `install.sh` recorded and which of those paths is gone, `seed` registers the estate root's walk plus
   the consumer outside it (`~/.claude/skills`) once, `record` adds one repo. Additive and idempotent.

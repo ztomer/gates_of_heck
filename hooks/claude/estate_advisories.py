@@ -84,6 +84,26 @@ def report(state: Path, now: dt.datetime) -> list[str]:
             f" gate runs there and no push of theirs is red): {', '.join(ungated[:MAX_REPOS])}"
             f"{', ...' if len(ungated) > MAX_REPOS else ''}"
         )
+    # A lock no gate step of its repo audits is NOT red at the next push -- the push never looks
+    # at it -- and that is the finding: an ungated lock (lib/gate_coverage.py). What fires there
+    # is said too, because nobody else will see it.
+    unaudited = data.get("unaudited", {})
+    if unaudited:
+        firing = sorted({i for ids in unaudited.values() for i in ids})
+        lines.append(
+            f"goh estate audit: {len(unaudited)} tracked lockfile(s) NOT AUDITED AT PUSH (no gate"
+            f" step of their repo audits them): {', '.join(sorted(unaudited)[:MAX_REPOS])}"
+            f"{', ...' if len(unaudited) > MAX_REPOS else ''}"
+            + (f"; {len(firing)} advisory(ies) fire there unseen" if firing else "")
+        )
+    undetermined = data.get("undetermined", {})
+    if undetermined:
+        lines.append(
+            f"goh estate audit: {len(undetermined)} lockfile(s) whose push-time audit goh cannot"
+            f" read (a gate step names its target through a shell variable):"
+            f" {', '.join(sorted(undetermined)[:MAX_REPOS])}"
+            f"{', ...' if len(undetermined) > MAX_REPOS else ''}"
+        )
     for e in data.get("errors", []):
         lines.append(f"  not audited: {e}")
     # A registered path that is gone (BACKLOG 6.14): a consumer that left the estate, named

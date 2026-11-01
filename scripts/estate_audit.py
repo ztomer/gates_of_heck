@@ -14,6 +14,13 @@ third-party clone kept for reference or vendoring has none, no push of its is re
 file names every repo set aside for that (`ungated`) so a house repo that lost its `.gatesrc` is
 visible instead of silently unaudited.
 
+The verdict is the one the repo's PUSH would reach (queue GOH.EA2): `lib/gate_coverage.py` reads
+which locks the repo's gate audits and with which tool. A lock a step audits is judged by that
+step -- cargo-audit with its `.cargo/audit.toml` and deny flags, cargo-deny RUN with its own
+`deny.toml` -- and is the only kind called red. A tracked lock no step audits is `unaudited`, "not
+audited at push" (its push is never red; the gap is the finding), and one a step goh cannot read
+might audit is `undetermined`.
+
 The estate is the root UNIONED with the registry `install.sh` writes (BACKLOG 6.14): a consumer
 that lives outside the root (`~/.claude/skills`) is audited too, and a registered path that is
 gone is named, never skipped.
@@ -32,6 +39,7 @@ import datetime as dt
 import json
 import os
 import re
+import shlex
 import subprocess
 import sys
 import tempfile
@@ -47,6 +55,7 @@ from tui.lib import info, ok, warn
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
 import advisory_db
 import estate_registry
+import gate_coverage
 
 DENY = [
     "--deny",
@@ -125,10 +134,10 @@ def lockfiles(repo: Path) -> tuple[list[Path], int]:
     return [repo / p for p in kept], len(tracked) - len(kept)
 
 
-def _run(argv: list[str], lock: Path) -> subprocess.CompletedProcess:
+def _run(argv: list[str], cwd: Path) -> subprocess.CompletedProcess:
     return subprocess.run(
         argv,
-        cwd=lock.parent,
+        cwd=cwd,
         env=foreign_repo_env(),  # each repo's own git, never a calling hook's
         capture_output=True,
         text=True,
@@ -138,16 +147,19 @@ def _run(argv: list[str], lock: Path) -> subprocess.CompletedProcess:
     )
 
 
-def audit(lock: Path, db: str | None, fetch: bool) -> tuple[list[dict], str | None]:
-    """(findings, error): each finding {id, kind, crate, title}, from the lockfile's own workspace
-    root so its exemptions apply."""
+def audit(
+    lock: Path, db: str | None, fetch: bool, cwd: Path | None = None
+) -> tuple[list[dict], str | None]:
+    """(findings, error): each finding {id, kind, crate, title}, every kind cargo-audit reports,
+    run from `cwd` (default: the lockfile's own workspace root) so ITS `.cargo/audit.toml` applies."""
     argv = ["cargo", "audit", "--json", *DENY, "--file", str(lock)]
+    where = cwd or lock.parent
     try:
         if db:  # a fixture: no lock, nothing of the real database touched
-            r = _run([*argv, "--db", db, "--stale", *([] if fetch else ["--no-fetch"])], lock)
+            r = _run([*argv, "--db", db, "--stale", *([] if fetch else ["--no-fetch"])], where)
         else:
             with advisory_db.held(fetch) as shared:
-                r = _run([*argv, *advisory_db.audit_args(shared, fetch)], lock)
+                r = _run([*argv, *advisory_db.audit_args(shared, fetch)], where)
         report = json.loads(r.stdout)
     except (OSError, subprocess.TimeoutExpired) as e:
         return [], str(e)
@@ -159,6 +171,64 @@ def audit(lock: Path, db: str | None, fetch: bool) -> tuple[list[dict], str | No
     for kind, warnings in report.get("warnings", {}).items():
         found += [_finding(w, kind) for w in warnings if w.get("advisory")]
     return found, None
+
+
+def deny(
+    repo: Path, a: gate_coverage.Audit, cargo_deny: list[str], fetch: bool
+) -> tuple[list[dict], str | None]:
+    """(the findings that FAIL the repo's own cargo-deny step, error): cargo-deny is RUN with the
+    step's own arguments from the step's directory, so its `deny.toml` -- ignore list, graph
+    targets, what it calls unmaintained -- decides, never an imitation of it. Only an error-severity
+    advisory diagnostic fails the step; a note (an ignored advisory) does not."""
+    argv = [*cargo_deny, "--format", "json", *([] if fetch else ["--offline"]), *a.args]
+    try:
+        r = _run(argv, repo / a.cwd)
+    except (OSError, subprocess.TimeoutExpired) as e:
+        return [], str(e)
+    found, summary = [], False
+    for line in r.stderr.splitlines() + r.stdout.splitlines():
+        try:
+            d = json.loads(line)
+        except ValueError:
+            continue
+        if not isinstance(d, dict):
+            continue
+        summary = summary or d.get("type") == "summary"
+        f = d.get("fields") or {}
+        adv = f.get("advisory")
+        if d.get("type") != "diagnostic" or f.get("severity") != "error" or not adv:
+            continue
+        krate = (f.get("graphs") or [{}])[0].get("Krate") or {}
+        found.append(
+            {
+                "id": adv.get("id", "?"),
+                "kind": f.get("code", "advisory"),
+                "crate": f"{krate.get('name', adv.get('package', '?'))} {krate.get('version', '')}".strip(),
+                "title": adv.get("title", f.get("message", "")),
+            }
+        )
+    if not summary and r.returncode != 0:
+        return found, (r.stderr.strip().splitlines() or [f"cargo deny exit {r.returncode}"])[-1]
+    return found, None
+
+
+def push_findings(
+    repo: Path, audits: list, db: str | None, fetch: bool, cargo_deny: list[str]
+) -> tuple[list[dict], list[str]]:
+    """What the repo's push would fail on, for one lockfile: every step that audits it, each judged
+    the way that step judges (a step failing is a red push, so the steps UNION)."""
+    found, errors = [], []
+    for a in audits:
+        if a.tool == "cargo-deny":
+            got, error = deny(repo, a, cargo_deny, fetch)
+        else:
+            kinds = gate_coverage.denied_kinds(repo, a)
+            got, error = audit(repo / a.lock, db, fetch, repo / a.cwd)
+            got = [f for f in got if f["kind"] == "vulnerability" or f["kind"] in kinds]
+        if error:
+            errors.append(f"{a.tool}: {error}")
+        found += [f for f in got if f not in found]
+    return found, errors
 
 
 def _finding(entry: dict, kind: str) -> dict:
@@ -181,7 +251,15 @@ def _where(lock: Path, root: Path) -> str:
         return str(lock)
 
 
-def run(root: Path, state: Path, db: str | None, fetch: bool) -> dict:
+def _firing(lock: Path, db: str | None, fetch: bool) -> tuple[list[str], str | None]:
+    """The advisories that fire against a lock no push audits, with the house deny flags."""
+    found, error = audit(lock, db, fetch)
+    return sorted({f["id"] for f in found}), error
+
+
+def run(
+    root: Path, state: Path, db: str | None, fetch: bool, cargo_deny: list[str] | None = None
+) -> dict:
     # The FIRST run has nothing to compare with: what it finds is the standing estate, not news, so
     # its findings carry no first_seen and the session hook does not call them NEW.
     previous, baseline = {}, not state.exists()
@@ -190,9 +268,12 @@ def run(root: Path, state: Path, db: str | None, fetch: bool) -> dict:
             previous = json.loads(state.read_text()).get("advisories", {})
         except (OSError, ValueError):
             previous = {}
+    cargo_deny = cargo_deny or ["cargo", "deny"]
     now = dt.datetime.now(dt.UTC).isoformat(timespec="seconds")
     advisories: dict[str, dict] = {}
     errors, audited, set_aside, ungated = [], 0, 0, []
+    unaudited: dict[str, list[str]] = {}
+    undetermined: dict[str, dict] = {}
     # The estate is the walk UNIONED with the registry (BACKLOG 6.14): a repo `install.sh` wired
     # goh into outside the root is a consumer, and a registered path that is gone is named.
     estate, problems = estate_registry.union(repos(root), estate_registry.registry_path(state))
@@ -204,12 +285,28 @@ def run(root: Path, state: Path, db: str | None, fetch: bool) -> dict:
             continue
         locks, aside = lockfiles(repo)
         set_aside += aside
+        # What the repo's PUSH audits, read from its gate (lib/gate_coverage.py): the verdict is
+        # the one that push would reach, under the tool and the policy the push uses.
+        cov = gate_coverage.coverage(repo, foreign_repo_env()) if locks else None
         for lock in locks:
-            audited += 1
-            found, error = audit(lock, db, fetch)
+            rel = lock.relative_to(repo).as_posix()
             where = _where(lock, root)
-            if error:
-                errors.append(f"{where}: {error}")
+            steps = [a for a in cov.audits if a.lock == rel] if cov else []
+            if not steps:
+                # No gate step audits it: never "red at next push" -- the push never looks. NAMED
+                # as the gap it is, with what fires there unseen; `undetermined` when a step goh
+                # cannot read (a shell-variable target) might be the one that does.
+                ids, error = _firing(lock, db, fetch)
+                if error:
+                    errors.append(f"{where}: {error}")
+                if cov and cov.unresolved:
+                    undetermined[where] = {"firing": ids, "unread": cov.unresolved[:3]}
+                else:
+                    unaudited[where] = ids
+                continue
+            audited += 1
+            found, errs = push_findings(repo, steps, db, fetch, cargo_deny)
+            errors += [f"{where}: {e}" for e in errs]
             for f in found:
                 a = advisories.setdefault(
                     f["id"],
@@ -234,6 +331,8 @@ def run(root: Path, state: Path, db: str | None, fetch: bool) -> dict:
         "excluded": set_aside,
         "ungated": sorted(ungated),
         "advisories": advisories,
+        "unaudited": unaudited,
+        "undetermined": undetermined,
         "errors": errors,
         "registry": str(estate_registry.registry_path(state)),
         "problems": problems,
@@ -299,11 +398,18 @@ def main() -> int:
     ap.add_argument("--state", type=Path, default=default_state())
     ap.add_argument("--db", help="advisory database path (a fixture, in tests)")
     ap.add_argument("--no-fetch", action="store_true", help="judge against the cached database")
+    ap.add_argument(
+        "--cargo-deny",
+        default="cargo deny",
+        help="the cargo-deny command a repo's `cargo deny` step runs (a fixture, in tests)",
+    )
     ap.add_argument("--install", action="store_true", help="write and load the daily launchd job")
     args = ap.parse_args()
     if args.install:
         return install(args.state)
-    result = run(args.root.resolve(), args.state, args.db, not args.no_fetch)
+    result = run(
+        args.root.resolve(), args.state, args.db, not args.no_fetch, shlex.split(args.cargo_deny)
+    )
     info(
         f"{result['lockfiles']} lockfile(s) under {result['root']}, {result['excluded']} set aside"
         f" by their repo's GOH_EXCLUDE, {len(result['ungated'])} repo(s) set aside for no .gatesrc"
@@ -311,6 +417,16 @@ def main() -> int:
     )
     for aid, a in sorted(result["advisories"].items()):
         warn(f"{aid} ({a['kind']}) {', '.join(a['crates'])}: {', '.join(a['lockfiles'])}")
+    for where, ids in sorted(result["unaudited"].items()):
+        warn(
+            f"NOT AUDITED AT PUSH (no gate step of its repo audits it): {where}"
+            + (f" -- {', '.join(ids)} fire there" if ids else "")
+        )
+    for where, u in sorted(result["undetermined"].items()):
+        warn(
+            f"push audit not readable: {where} ({'; '.join(u['unread'])})"
+            + (f" -- {', '.join(u['firing'])} fire there" if u["firing"] else "")
+        )
     for e in result["errors"]:
         warn(f"not audited: {e}")
     # A registered path that is gone is NAMED (BACKLOG 6.14): a consumer that left the estate

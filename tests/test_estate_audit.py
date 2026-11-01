@@ -51,6 +51,11 @@ checksum = "{zeros}"
 """
 
 
+GATED = """# the house gate runs here
+GOH_CI_STEPS='"$GOH_DIR/gates/rust_gate.sh"'
+"""
+
+
 def _git(d: Path, *args: str) -> None:
     subprocess.run(
         ["git", "-c", "user.email=t@t", "-c", "user.name=t", *args],
@@ -69,7 +74,10 @@ def _repo(root: Path, name: str, crate: str, *, gated: bool = True) -> Path:
     fast_init(d)
     (d / "Cargo.lock").write_text(LOCK.format(name=crate, zeros="0" * 64))
     if gated:
-        (d / ".gatesrc").write_text("# the house gate runs here\n")
+        # The house gate runs here, and its push audits the root lock (rust_gate.sh, no args): the
+        # estate audit reads that from the gate, so a fixture whose gate audits nothing would be
+        # "not audited at push", not red (tests/test_estate_gate_coverage.py).
+        (d / ".gatesrc").write_text(GATED)
     _git(d, "add", "-A")
     _git(d, "commit", "-qm", "lock")
     return d
@@ -180,7 +188,7 @@ def test_a_tree_the_repo_excludes_is_set_aside(tmp_path, estate):
     hit = estate / "hit"
     (hit / "vendor" / "x").mkdir(parents=True)
     (hit / "vendor" / "x" / "Cargo.lock").write_text((hit / "Cargo.lock").read_text())
-    (hit / ".gatesrc").write_text("export GOH_EXCLUDE='^vendor/'\n")
+    (hit / ".gatesrc").write_text(GATED + "export GOH_EXCLUDE='^vendor/'\n")
     _git(hit, "add", "-A")
     _git(hit, "commit", "-qm", "vendored")
     found = _audit(estate, tmp_path / "state.json", _db(tmp_path, planted=True))
