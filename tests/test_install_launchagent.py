@@ -71,6 +71,17 @@ def test_install_check_drift_remove(tmp_path, script, label):
     assert not plist.exists()
 
 
+@pytest.mark.parametrize(("script", "label"), JOBS.items())
+def test_a_comment_only_edit_to_the_installed_copy_is_drift(tmp_path, script, label):
+    """A comment is not inert in a plist: `--` inside one makes the file malformed XML, and a
+    check comparing plutil's JSON read it as current (2026-10-31, the sweep's installed copy)."""
+    plist = tmp_path / "LA" / f"{label}.plist"
+    assert _run(script, "install", tmp_path).returncode == 0
+    plist.write_text(plist.read_text().replace("<plist", "<!-- run with --apply -->\n<plist", 1))
+    drift = _run(script, "check", tmp_path)
+    assert drift.returncode == 1 and "differs" in drift.stderr
+
+
 @pytest.mark.parametrize("label", JOBS.values())
 def test_every_job_plist_is_valid_and_labelled(label):
     data = _plist(label)

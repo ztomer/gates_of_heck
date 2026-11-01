@@ -4,8 +4,9 @@
 # The plist lives in this repo (launchagents/LABEL.plist) and is COPIED into ~/Library/LaunchAgents,
 # because a plist that exists only in the repo protects nobody: the copies drifted before
 # (2026-10-04, two installed plists still named deleted scripts and failed every night saying
-# nothing). `check` compares CONTENT (plutil JSON, so a comment-only difference is not drift) and
-# exits 1 naming the drift. `remove` DELETES the installed copy -- the house deletes, it does not
+# nothing). `check` compares BYTES and exits 1 naming the drift: `install` copies bytes, and a
+# comment is not inert in a plist (`--` inside one is malformed XML that plutil forgives and a
+# plutil-JSON comparison read as current, 2026-10-31). `remove` DELETES the installed copy -- the house deletes, it does not
 # trash.
 #
 # ONE installer for every repo-owned job (G14): tools/install_load_reap.sh and
@@ -35,8 +36,6 @@ dest_dir="${LAUNCHAGENTS_DIR:-$HOME/Library/LaunchAgents}"
 dest="$dest_dir/$label.plist"
 mode="${2:-install}"
 
-as_json() { plutil -convert json -o - "$1" 2>/dev/null | "$GOH_PY" -c 'import json,sys; print(json.dumps(json.load(sys.stdin), sort_keys=True))'; }
-
 case "$mode" in
 install)
     [ -f "$src" ] || die "$src is missing: the job has no plist to install"
@@ -50,7 +49,7 @@ install)
         launchctl print "gui/$(id -u)/$label" >/dev/null 2>&1 \
             || die "$label: bootstrap returned, but launchd has the job not loaded -- not installed"
     fi
-    [ "$(as_json "$src")" = "$(as_json "$dest")" ] || die "$label: $dest is not the repo's plist after the copy -- not installed"
+    cmp -s "$src" "$dest" || die "$label: $dest is not the repo's plist after the copy -- not installed"
     ok "$label: installed ($dest)"
     ;;
 remove)
@@ -69,8 +68,8 @@ check)
         err "$label: not installed"
         exit 1
     fi
-    if [ "$(as_json "$src")" != "$(as_json "$dest")" ]; then
-        err "$label: the installed copy differs from the repo's"
+    if ! cmp -s "$src" "$dest"; then
+        err "$label: the installed copy differs from the repo's (reinstall: install_launchagent.sh $label)"
         exit 1
     fi
     ok "$label: installed and current"

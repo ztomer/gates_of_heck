@@ -49,7 +49,8 @@ from _estate_sweep import CORPUS_TIMEOUT, corpus_sweep, estate_in_scope  # noqa:
 from _gitutil import foreign_repo_env, listed_files, repo_root
 from _tree_stamp import stamp, tree_changed
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+HOUSE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, HOUSE)
 from tui.lib import err, info, ok, warn
 
 # Directories a repo keeps its gates in. Both, because gates_of_heck uses checks/ and every
@@ -181,23 +182,22 @@ def _report_undeclared(root, show=5):
     )
 
 
-def _interpreter(path):
-    """How to invoke this gate. Python runs under the running interpreter; anything else under the
-    interpreter its SHEBANG names, falling back to bash.
+REPO_PYTHON = ["bash", os.path.join(HOUSE, "gates", "python.sh")]
 
-    The shebang rather than the extension, because a `check_*.sh` with a python shebang is a real
-    thing in this estate and running it under bash produces a syntax error that reads like a
-    broken probe. A missing shebang on a .sh is bash by convention and by what the file is named.
-    """
+
+def _interpreter(path):
+    """How to invoke this gate: Python (by extension or SHEBANG -- bash reads a python `check_*.sh`
+    as a broken probe) under the REPO's interpreter, since a probe imports the repo's dependencies
+    (necrohand 2026-10-31: `No module named 'PIL'`); zsh by shebang; anything else bash."""
     if path.endswith(".py"):
-        return [sys.executable]
+        return REPO_PYTHON
     try:
         with open(path, "rb") as handle:
             first = handle.readline().decode("utf-8", "replace").strip()
     except OSError:
         return ["bash"]
     if first.startswith("#!") and "python" in first:
-        return [sys.executable]
+        return REPO_PYTHON
     if first.startswith("#!") and "zsh" in first:
         return ["zsh"]
     return ["bash"]

@@ -439,3 +439,27 @@ def test_a_probe_that_changes_the_tree_it_was_given_is_named(tmp_path, capsys, r
     text = out.out + out.err
     assert "tools/check_reads.py" in text and "check_plants.py --probe changes" in text, text
     assert "check_reads.py --probe changes" not in text, text
+
+
+def test_a_python_self_proof_runs_under_the_repos_own_interpreter(tmp_path):
+    """A repo's probe imports the repo's dependencies, which live in ITS .venv, not in the house
+    interpreter: necrohand's check_parity.py --probe died `No module named 'PIL'` at a push on
+    2026-10-31 while its own gate, through gates/python.sh, ran it green."""
+    subprocess.run(
+        [sys.executable, "-m", "venv", "--without-pip", str(tmp_path / ".venv")],
+        check=True,
+        stdin=subprocess.DEVNULL,
+    )
+    root = _tree(
+        tmp_path,
+        {
+            "check_venv.py": (
+                "import sys\nif '--probe' in sys.argv:\n"
+                "    raise SystemExit(0 if sys.prefix.endswith('.venv') else 3)\n"
+            ),
+        },
+    )
+    probes, _total = gate.discover(root)
+    assert probes
+    passed, detail = gate.run_one(probes[0][0], probes[0][1], cwd=root)
+    assert passed, detail
