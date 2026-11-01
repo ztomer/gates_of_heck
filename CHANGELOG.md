@@ -1,5 +1,25 @@
 # CHANGELOG
 
+## v0.57.1 -- the estate audit audits only repos the house gate runs in
+
+* **A vendored clone's advisories are no longer reported as a red push (queue GOH.ES1).**
+  `scripts/estate_audit.py` walked every nested git work tree and audited each tracked
+  `Cargo.lock`, and the SessionStart hook told every session "the next push of <lock> is red". Ten
+  nested repos have no `.gatesrc` (third-party clones kept for reference or vendoring:
+  `divoom-control/references/*`, `old_phones/tools/{penumbra,jz8,mtksrc}`,
+  `routines/vendor/camoufox-rs{,-local}`, `playground/*`), three carry a lock, and no house gate
+  runs in any of them: no push of theirs is red, and what a vendored path dependency adds to a house
+  build is already in the consumer's own audited lock. A work tree is now audited only with a
+  `.gatesrc` at its root (`install.sh` writes one into every house repo; "ignored by the enclosing
+  repo" is no discriminator, `servers/media_server` is ignored by `servers/` and is a house repo),
+  and registry entries follow the same rule. Every repo set aside for that is NAMED in the state
+  file (`ungated`, beside `excluded`) and the hook prints one line with the count and the reason, so
+  a house repo that lost its `.gatesrc` reads as set aside, not as a clean estate. Pinned by
+  `test_an_ungated_repo_is_not_reported_red_and_is_named`,
+  `test_a_repo_that_lost_its_gatesrc_drops_out_visibly`,
+  `test_a_registered_repo_outside_the_root_follows_the_same_rule` and
+  `test_the_session_hook_says_how_many_were_set_aside_and_why`.
+
 ## v0.57.0 -- a tracked build output is a structural step, and a text `.obj` is not one
 
 * **Self-proofs run under the repo's own Python; a launchagent check compares bytes.** Two checks
