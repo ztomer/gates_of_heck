@@ -245,6 +245,29 @@ def test_a_server_that_exited_before_the_write_is_named_as_exited(tmp_path):
         session.close()
 
 
+def test_a_server_whose_stdout_closes_before_it_exits_is_named_with_its_status(tmp_path):
+    """The race test_a_server_that_does_not_start_is_red_with_its_stderr lost ("status None"): the
+    reader sees EOF on stdout BEFORE the process can be reaped, and the verdict polled once. Made
+    certain here -- stdout closes a second before the exit -- and the status is still the exit's."""
+    session = mw.Session("exec 1>&-; sleep 1; exit 3", tmp_path, 20)
+    try:
+        with pytest.raises(mw.WireError) as raised:
+            session.request("server/discover", {})
+        assert "the server exited (status 3) before answering server/discover" in str(raised.value)
+    finally:
+        session.close()
+
+
+def test_a_server_that_closes_stdout_and_lives_on_is_named_at_the_deadline(tmp_path):
+    session = mw.Session("exec 1>&-; exec sleep 30", tmp_path, 2)
+    try:
+        with pytest.raises(mw.WireError) as raised:
+            session.request("server/discover", {})
+        assert "closed its stdout and did not exit within 2s" in str(raised.value), raised.value
+    finally:
+        session.close()
+
+
 def test_the_server_runs_with_a_scratch_home_and_never_the_owners(repo, tmp_path):
     seen = tmp_path / "seen"
     line = server_line(tmp_path, "home")

@@ -187,14 +187,23 @@ class Session:
             # flipped from "exited (status 3)" to "closed its stdin" (G17c, a red land). The exit
             # is the fact; the broken pipe is how it was noticed. A server still alive that closed
             # its stdin is the other fact, and says so.
-            try:
-                code = self.proc.wait(timeout=2)
-            except subprocess.TimeoutExpired:
-                raise WireError(f"the server closed its stdin ({e}){self.tail()}") from e
             what = message.get("method", "the conversation")
-            raise WireError(
-                f"the server exited (status {code}) before answering {what}{self.tail()}"
-            ) from e
+            raise WireError(self._gone(what, f"closed its stdin ({e})")) from e
+
+    def _gone(self, what: str, closed: str = "closed its stdout") -> str:
+        """The verdict once a pipe says the server is gone: its EXIT STATUS, waited for until the
+        session's own deadline. EOF on stdout (or a broken stdin) comes BEFORE the process can be
+        reaped, so one poll() at that moment read "status None" under load -- the pipe is how the
+        exit was noticed, not the exit. A server still alive at the deadline closed its pipe and
+        lives on, and says so."""
+        try:
+            code = self.proc.wait(timeout=max(self.deadline - time.monotonic(), 0.0))
+        except subprocess.TimeoutExpired:
+            return (
+                f"the server {closed} and did not exit within {self.timeout}s,"
+                f" before answering {what}{self.tail()}"
+            )
+        return f"the server exited (status {code}) before answering {what}{self.tail()}"
 
     def request(self, method: str, params: dict) -> dict:
         """Send one request; return its response (result or error), answering anything the server
@@ -211,10 +220,7 @@ class Session:
             except queue.Empty:
                 continue
             if line is None:
-                code = self.proc.poll()
-                raise WireError(
-                    f"the server exited (status {code}) before answering {method}{self.tail()}"
-                )
+                raise WireError(self._gone(method))
             try:
                 msg = json.loads(line)
             except ValueError:
