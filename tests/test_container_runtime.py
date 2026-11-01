@@ -208,16 +208,12 @@ goh_container_runtime_down || exit 2
 
 
 def test_stale_lease_does_not_hold_colima_up(tmp_path: Path) -> None:
+    # A lease whose pid is dead is never counted: colima this run started is
+    # stopped at its down even though a dead gate's lease file is still there.
     _setup_fakes(tmp_path, docker_up=False)
-    state = tmp_path / "state"
-    leases = state / "leases"
+    leases = tmp_path / "state" / "leases"
     leases.mkdir(parents=True, exist_ok=True)
-    # Plant a marker and a stale lease with a dead PID (e.g. 999999)
-    (state / "started_by_goh").write_text("")
     (leases / "999999").write_text("stale_proc")
-
-    # Set docker up since colima was theoretically started
-    (tmp_path / "docker_status").write_text("up")
 
     script = """
 goh_container_runtime_up "live_proc" || exit 1
@@ -228,8 +224,9 @@ goh_container_runtime_down || exit 3
     assert res.returncode == 0, f"stdout: {res.stdout}, stderr: {res.stderr}"
 
     log = (tmp_path / "calls.log").read_text()
+    assert "colima start" in log
     assert "colima stop" in log
-    assert not (state / "started_by_goh").exists()
+    assert not (tmp_path / "state" / "started_by_goh").exists()
     assert not (leases / "999999").exists()
 
 
@@ -260,3 +257,31 @@ def test_no_colima_binary_returns_nonzero_never_skips(tmp_path: Path) -> None:
     assert "skip" not in res.stdout.lower()
     assert not (state / "started_by_goh").exists()
     assert not (state / "leases").exists() or not list((state / "leases").iterdir())
+
+
+def test_a_marker_left_by_a_killed_gate_never_stops_a_runtime_goh_cannot_prove(
+    tmp_path: Path,
+) -> None:
+    # A gate that started colima and was SIGKILLed leaves the marker behind; if
+    # the runtime is up with no live lease, goh cannot prove it started it.
+    _setup_fakes(tmp_path, docker_up=True)
+    state = tmp_path / "state"
+    state.mkdir()
+    (state / "started_by_goh").write_text("")
+    res = _run(tmp_path, 'goh_container_runtime_up "gate"\ngoh_container_runtime_down')
+    assert res.returncode == 0, res.stderr
+    calls = (tmp_path / "calls.log").read_text()
+    assert "colima stop" not in calls, calls
+
+
+def test_a_lock_held_by_a_killed_process_does_not_wedge_the_next(tmp_path: Path) -> None:
+    _setup_fakes(tmp_path, docker_up=True)
+    holder = _spawn(
+        tmp_path,
+        f'_goh_container_lock_acquire\n: > "{tmp_path}/held"\nsleep 30',
+    )
+    _wait_for(tmp_path / "held")
+    holder.kill()
+    holder.wait(timeout=5)
+    res = _run(tmp_path, 'goh_container_runtime_up "next"\ngoh_container_runtime_down', timeout=10)
+    assert res.returncode == 0, res.stderr

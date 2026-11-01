@@ -22,41 +22,21 @@ DOCKER="${DOCKER:-docker}"
 COLIMA="${COLIMA:-colima}"
 GOH_CONTAINER_STATE="${GOH_CONTAINER_STATE:-$HOME/.cache/goh/container_runtime}"
 
+# The lock is tree_lock.sh's idiom (a kernel flock the shell holds on an fd,
+# released on ANY exit, SIGKILL included, so there is no stale state to judge),
+# on fd 8: a consumer may already hold tree_lock's fd 9 in the same shell.
+# shellcheck source=lib/house_python.sh
+. "${BASH_SOURCE[0]%/*}/house_python.sh" || return 1
+
 _goh_container_lock_acquire() {
     local state_dir="${GOH_CONTAINER_STATE:-$HOME/.cache/goh/container_runtime}"
-    local lock_dir="$state_dir/lock"
-    mkdir -p "$state_dir" </dev/null 2>/dev/null || true
-    while ! mkdir "$lock_dir" </dev/null 2>/dev/null; do
-        local pid=""
-        if [ -f "$lock_dir/owner" ]; then
-            read -r pid < "$lock_dir/owner" 2>/dev/null || true
-        fi
-        if [ -n "$pid" ]; then
-            if ! kill -0 "$pid" </dev/null 2>/dev/null; then
-                rm -rf "$lock_dir" </dev/null 2>/dev/null || true
-                continue
-            fi
-        else
-            if [ -n "$(find "$lock_dir" -maxdepth 0 -mmin +1 </dev/null 2>/dev/null)" ]; then
-                rm -rf "$lock_dir" </dev/null 2>/dev/null || true
-                continue
-            fi
-        fi
-        sleep 0.05 </dev/null 2>/dev/null || sleep 1 </dev/null 2>/dev/null
-    done
-    printf '%s\n' "$$" > "$lock_dir/owner"
+    mkdir -p "$state_dir" </dev/null
+    exec 8>>"$state_dir/lock"
+    "$GOH_PY" -c 'import fcntl; fcntl.flock(8, fcntl.LOCK_EX)' </dev/null
 }
 
 _goh_container_lock_release() {
-    local state_dir="${GOH_CONTAINER_STATE:-$HOME/.cache/goh/container_runtime}"
-    local lock_dir="$state_dir/lock"
-    local pid=""
-    if [ -f "$lock_dir/owner" ]; then
-        read -r pid < "$lock_dir/owner" 2>/dev/null || true
-    fi
-    if [ "$pid" = "$$" ]; then
-        rm -rf "$lock_dir" </dev/null 2>/dev/null || true
-    fi
+    exec 8>&-
 }
 
 _goh_container_live_leases() {
@@ -95,9 +75,17 @@ goh_container_runtime_up() {
 
     _goh_container_lock_acquire
 
-    _goh_container_live_leases >/dev/null
+    local live
+    live="$(_goh_container_live_leases)"
 
-    if ! "$docker" info </dev/null >/dev/null 2>&1; then
+    if "$docker" info </dev/null >/dev/null 2>&1; then
+        # Docker answers and no live lease holds it: whoever started it, goh
+        # cannot prove it was goh (a marker left by a killed gate is not proof),
+        # so it is never goh's to stop.
+        if [ "$live" -eq 0 ]; then
+            rm -f "$state_dir/started_by_goh" </dev/null 2>/dev/null || true
+        fi
+    else
         if ! command -v "$colima" </dev/null >/dev/null 2>&1; then
             _goh_container_lock_release
             err "container runtime: docker is down and no colima to start ($colima)"
