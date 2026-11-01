@@ -272,7 +272,19 @@ if [ -n "$toplevel" ]; then
     # one repo reads as two repos, and the audit would audit it twice.
     toplevel="$(cd "$toplevel" && pwd -P)"
     registry="$(estate_state_dir)/installed_repos"
-    if grep -Fxq "$toplevel" "$registry" 2>/dev/null; then
+    # A SCRATCH repo (under the temp directory) is never the machine's estate: a gate that vends a
+    # repo into `mktemp -d` and installs goh into it (server-template's repo_gates.sh) put 76 gone
+    # tmp.*/{boxa,pib} paths into the real registry, each a "registered but gone" problem at every
+    # session start. Such a repo is recorded only into a registry the caller NAMED
+    # (GOH_ESTATE_STATE), which is how a test asks for one (tests/test_estate_registry.py).
+    scratch=""
+    for t in "${TMPDIR:-/tmp}" /tmp; do
+        t="$(cd "$t" 2>/dev/null && pwd -P)" || continue
+        case "$toplevel/" in "${t%/}/"*) scratch="$t" ;; esac
+    done
+    if [ -n "$scratch" ] && [ -z "${GOH_ESTATE_STATE:-}" ]; then
+        info "not recording $toplevel in the estate registry: it is a scratch repo under $scratch (GOH_ESTATE_STATE names a registry that takes one)"
+    elif grep -Fxq "$toplevel" "$registry" 2>/dev/null; then
         info "estate registry already holds $toplevel ($registry)"
     elif printf '%s\n' "$toplevel" >>"$registry" 2>/dev/null; then
         info "recorded $toplevel in the estate registry ($registry)"

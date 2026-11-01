@@ -250,6 +250,32 @@ def test_a_test_never_writes_the_machines_registry(tmp_path: Path) -> None:
         assert str(repo.resolve()) not in machine.read_text(encoding="utf-8").splitlines()
 
 
+def test_a_scratch_repo_is_never_recorded_in_the_machines_registry(tmp_path: Path) -> None:
+    """The writer that filled the real registry with 76 gone tmp.*/{boxa,pib} paths: a gate in
+    ANOTHER repo (server-template's repo_gates.sh) vends into `mktemp -d` and runs install.sh with
+    no state file named, so the default registry -- the machine's -- took every scratch clone. A
+    repo under the temp directory is recorded only into a registry the caller names."""
+    home = tmp_path / "home"
+    home.mkdir()
+    repo = _repo_at(tmp_path / "scratch")
+    env = hermetic_env(GOH_SKIP_BUILD="1", HOME=str(home))
+    env.pop("GOH_ESTATE_STATE", None)
+    env.pop("XDG_STATE_HOME", None)
+    r = subprocess.run(
+        ["/bin/bash", str(REPO_ROOT / "install.sh"), str(repo)],
+        capture_output=True,
+        text=True,
+        env=env,
+        stdin=subprocess.DEVNULL,
+        check=False,
+    )
+    assert r.returncode == 0, r.stdout + r.stderr
+    machine = home / ".local" / "state" / "goh" / "installed_repos"
+    lines = machine.read_text(encoding="utf-8").splitlines() if machine.exists() else []
+    assert str(repo.resolve()) not in lines, lines
+    assert "scratch repo" in r.stdout + r.stderr, r.stdout + r.stderr
+
+
 def test_the_agent_audit_finds_a_sha_in_a_registered_repo_outside_the_root(tmp_path: Path) -> None:
     """The other estate sweep: `scripts/agent_audit.py` looks for a landed sha in the repos under
     the estate root. A repo goh was installed into outside that root is a repo a sha can be in,

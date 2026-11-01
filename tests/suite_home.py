@@ -64,8 +64,13 @@ def _enter() -> None:
             (home / rel).parent.mkdir(parents=True, exist_ok=True)
             (home / rel).symlink_to(real / rel)
     os.environ[MARKER] = REAL_HOME
+    # The user's XDG_STATE_HOME, kept by name so real_state_guard.py can watch it; the suite's own
+    # state (goh's estate registry, the compact-nudge state) lives in the suite home instead.
+    if os.environ.get("XDG_STATE_HOME"):
+        os.environ["GATES_OF_HECK_SUITE_REAL_XDG_STATE_HOME"] = os.environ["XDG_STATE_HOME"]
     os.environ["HOME"] = str(home)
     os.environ["XDG_CACHE_HOME"] = str(home / ".cache")
+    os.environ["XDG_STATE_HOME"] = str(home / ".local" / "state")
 
 
 _enter()
