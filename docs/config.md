@@ -63,6 +63,7 @@ Single schema. CLI flags beat env/.gatesrc where both exist. Unset means
 | `GOH_BENCH_DESKTOP_LOCK_DIR` | (the desktop lock's own) | Where `tools/quiet.sh` takes the desktop lock; tests only. |
 | `GOH_BENCH_LOADAVG` | (the host's) | A command `tools/quiet.sh` runs to read the 1-minute load instead of `sysctl`/`/proc`; tests only. |
 | `GOH_BENCH_CONTROL` | 200 spawns of `/usr/bin/true`, timed | A command printing seconds that `tools/quiet.sh` runs before and after each measurement; a run whose control moves > 10% is noisy and fails. Tests only (a steady fake). The real control read 0.31 s on this box with every gate drained (2026-10-08). |
+| `GOH_CONTAINER_STATE` | `~/.cache/goh/container_runtime` | State directory for the container runtime manager (`lib/container_runtime.sh`): leases, mkdir-lock, and the start marker. Machine-wide on purpose; set it only to isolate a test. |
 
 `tools/quiet.sh --max-load` defaults to **8**: this box's floor, measured with `quiet.sh --floor`
 (every gate drained for 180 s, 2026-10-08), is load 4.5 min / 6.2 median -- Spotlight,
