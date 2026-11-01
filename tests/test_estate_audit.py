@@ -61,12 +61,16 @@ def _git(d: Path, *args: str) -> None:
     )
 
 
-def _repo(root: Path, name: str, crate: str) -> Path:
+def _repo(root: Path, name: str, crate: str, *, gated: bool = True) -> Path:
+    """A repo with one tracked lock. `gated` writes the `.gatesrc` install.sh writes into every
+    house repo: it is what says the house gate runs there, and the estate audit reads it."""
     d = root / name
     d.mkdir(parents=True)
     fast_init(d)
     (d / "Cargo.lock").write_text(LOCK.format(name=crate, zeros="0" * 64))
-    _git(d, "add", "Cargo.lock")
+    if gated:
+        (d / ".gatesrc").write_text("# the house gate runs here\n")
+    _git(d, "add", "-A")
     _git(d, "commit", "-qm", "lock")
     return d
 
@@ -203,3 +207,64 @@ def test_a_job_that_stopped_is_reported_as_stale(tmp_path):
     old = (dt.datetime.now(dt.UTC) - dt.timedelta(hours=40)).isoformat(timespec="seconds")
     state.write_text(json.dumps({"ran_at": old, "advisories": {}, "errors": []}))
     assert "STALE" in _hook(state)
+
+
+def _ungated(root: Path) -> Path:
+    """A third-party clone kept for reference or vendoring: a lock with the advisory, and no
+    `.gatesrc`, so no house gate has ever run in it."""
+    return _repo(root / "references", "vendored-clone", "goh-fixture-crate", gated=False)
+
+
+def test_an_ungated_repo_is_not_reported_red_and_is_named(tmp_path, estate):
+    """No house gate runs in a repo without a `.gatesrc`, so no push of its lockfile is red and
+    the session hook must not say it is. It is NAMED, not silently dropped: a house repo that lost
+    its `.gatesrc` would otherwise be unaudited and look clean."""
+    _ungated(estate)
+    state = tmp_path / "state.json"
+    found = _audit(estate, state, _db(tmp_path, planted=True))
+    assert found["advisories"][PLANTED]["lockfiles"] == [
+        "group/clean/nested/Cargo.lock",
+        "hit/Cargo.lock",
+    ], found
+    assert found["lockfiles"] == 3, found
+    assert found["ungated"] == ["references/vendored-clone"], found
+    out = _hook(state)
+    assert "vendored-clone/Cargo.lock" not in out, out
+
+
+def test_a_repo_that_lost_its_gatesrc_drops_out_visibly(tmp_path, estate):
+    """The same repo, gated then not: reported while gated, named as ungated once it is not."""
+    state, db = tmp_path / "state.json", _db(tmp_path, planted=True)
+    assert "hit/Cargo.lock" in _audit(estate, state, db)["advisories"][PLANTED]["lockfiles"]
+    (estate / "hit" / ".gatesrc").unlink()
+    found = _audit(estate, state, db)
+    assert "hit/Cargo.lock" not in found["advisories"][PLANTED]["lockfiles"], found
+    assert found["ungated"] == ["hit"], found
+
+
+def test_a_registered_repo_outside_the_root_follows_the_same_rule(tmp_path, estate):
+    outside = tmp_path / "elsewhere"
+    gated = _repo(outside, "gated", "goh-fixture-crate")
+    bare = _repo(outside, "bare", "goh-fixture-crate", gated=False)
+    state = tmp_path / "state.json"
+    (tmp_path / "installed_repos").write_text(f"{gated.resolve()}\n{bare.resolve()}\n")
+    found = _audit(estate, state, _db(tmp_path, planted=True))
+    assert str(gated.resolve() / "Cargo.lock") in found["advisories"][PLANTED]["lockfiles"], found
+    assert str(bare.resolve()) in found["ungated"], found
+    assert str(bare.resolve() / "Cargo.lock") not in found["advisories"][PLANTED]["lockfiles"]
+
+
+def test_the_session_hook_says_how_many_were_set_aside_and_why(tmp_path, estate):
+    _ungated(estate)
+    state = tmp_path / "state.json"
+    _audit(estate, state, _db(tmp_path, planted=False))
+    lines = [x for x in _hook(state).splitlines() if "ungated" in x]
+    assert len(lines) == 1, lines
+    assert "1 repo" in lines[0] and ".gatesrc" in lines[0], lines
+    assert "references/vendored-clone" in lines[0], lines
+
+
+def test_the_session_hook_is_silent_about_ungated_when_there_are_none(tmp_path, estate):
+    state = tmp_path / "state.json"
+    _audit(estate, state, _db(tmp_path, planted=False))
+    assert _hook(state) == ""

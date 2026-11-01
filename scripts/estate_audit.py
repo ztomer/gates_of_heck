@@ -9,6 +9,11 @@ state file. hooks/claude/estate_advisories.py reads that file at the start of ev
 session -- where the owner already looks -- and says so when the file is missing or old, because
 a job that stopped running reads exactly like a clean estate.
 
+Only repos the house gate runs in are audited: a work tree with a `.gatesrc` at its root. A
+third-party clone kept for reference or vendoring has none, no push of its is red, and the state
+file names every repo set aside for that (`ungated`) so a house repo that lost its `.gatesrc` is
+visible instead of silently unaudited.
+
 The estate is the root UNIONED with the registry `install.sh` writes (BACKLOG 6.14): a consumer
 that lives outside the root (`~/.claude/skills`) is audited too, and a registered path that is
 gone is named, never skipped.
@@ -71,6 +76,15 @@ def repos(root: Path) -> list[Path]:
     inside another's tree (servers/media_server) is not tracked by its parent, so the walk goes on
     below a repository rather than stopping at it."""
     return estate_registry.walk_repos(root, estate_registry.REPO_DEPTH)
+
+
+def gated(repo: Path) -> bool:
+    """Whether the house gate runs in this repo: `install.sh` writes a `.gatesrc` into every one it
+    wires goh into, so a work tree without one is a third-party clone kept for reference or
+    vendoring. No push of its is red, and what a vendored path dependency contributes to a house
+    build is already in the CONSUMER's own lock, which is audited. (The enclosing repo's ignore
+    list is no discriminator: servers/media_server is ignored by servers/ and is a house repo.)"""
+    return (repo / ".gatesrc").is_file()
 
 
 def excluded(repo: Path) -> Callable[[str], object]:
@@ -178,11 +192,16 @@ def run(root: Path, state: Path, db: str | None, fetch: bool) -> dict:
             previous = {}
     now = dt.datetime.now(dt.UTC).isoformat(timespec="seconds")
     advisories: dict[str, dict] = {}
-    errors, audited, set_aside = [], 0, 0
+    errors, audited, set_aside, ungated = [], 0, 0, []
     # The estate is the walk UNIONED with the registry (BACKLOG 6.14): a repo `install.sh` wired
     # goh into outside the root is a consumer, and a registered path that is gone is named.
     estate, problems = estate_registry.union(repos(root), estate_registry.registry_path(state))
     for repo in estate:
+        if not gated(repo):
+            # NAMED, not dropped: a house repo that lost its .gatesrc must read as set aside, not
+            # as an estate that happens to be clean.
+            ungated.append(_where(repo, root))
+            continue
         locks, aside = lockfiles(repo)
         set_aside += aside
         for lock in locks:
@@ -213,6 +232,7 @@ def run(root: Path, state: Path, db: str | None, fetch: bool) -> dict:
         "root": str(root),
         "lockfiles": audited,
         "excluded": set_aside,
+        "ungated": sorted(ungated),
         "advisories": advisories,
         "errors": errors,
         "registry": str(estate_registry.registry_path(state)),
@@ -286,7 +306,8 @@ def main() -> int:
     result = run(args.root.resolve(), args.state, args.db, not args.no_fetch)
     info(
         f"{result['lockfiles']} lockfile(s) under {result['root']}, {result['excluded']} set aside"
-        f" by their repo's GOH_EXCLUDE -> {args.state}"
+        f" by their repo's GOH_EXCLUDE, {len(result['ungated'])} repo(s) set aside for no .gatesrc"
+        f" -> {args.state}"
     )
     for aid, a in sorted(result["advisories"].items()):
         warn(f"{aid} ({a['kind']}) {', '.join(a['crates'])}: {', '.join(a['lockfiles'])}")

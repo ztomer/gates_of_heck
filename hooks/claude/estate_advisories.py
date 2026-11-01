@@ -6,7 +6,8 @@ estate. A report nobody reads is the old state with extra steps, so this puts it
 already looks: SessionStart stdout is added to every session's context. It prints NOTHING when the
 latest run is fresh and clean, one line per firing advisory otherwise, and -- because a job that
 stopped running reads exactly like a clean estate -- says so when the state file is missing or
-older than STALE_AFTER_H (tests/test_estate_audit.py).
+older than STALE_AFTER_H (tests/test_estate_audit.py). It names, in one line, the repos the audit set
+aside for having no `.gatesrc`.
 """
 
 from __future__ import annotations
@@ -72,6 +73,16 @@ def report(state: Path, now: dt.datetime) -> list[str]:
             f"goh estate audit: {len(standing)} standing advisory(ies) in {len(repos)} lockfile(s)"
             f" ({', '.join(repos[:MAX_REPOS])}{', ...' if len(repos) > MAX_REPOS else ''});"
             f" `python3 {SCRIPT} --no-fetch` lists them"
+        )
+    # A repo with no .gatesrc is not gated, so none of its pushes is red and the audit set it
+    # aside (scripts/estate_audit.py); one line says how many and why, so a house repo that lost
+    # its .gatesrc is visible rather than silently unaudited.
+    ungated = data.get("ungated", [])
+    if ungated:
+        lines.append(
+            f"goh estate audit: {len(ungated)} repo(s) set aside as ungated (no .gatesrc, so no house"
+            f" gate runs there and no push of theirs is red): {', '.join(ungated[:MAX_REPOS])}"
+            f"{', ...' if len(ungated) > MAX_REPOS else ''}"
         )
     for e in data.get("errors", []):
         lines.append(f"  not audited: {e}")
