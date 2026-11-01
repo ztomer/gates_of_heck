@@ -25,6 +25,21 @@ fn the_pass_fail_style_is_found() {
     );
 }
 
+/// The note marker antiknob's `install.sh` and `probe.rs` printed through every gate run until
+/// 2026-11-01 (`echo "[ --- ] The daemon is not running"`): the dash run was never a spelling
+/// the finder knew, so "no hand-rolled marker" held over files that carried them. A markdown
+/// rule or a bare `---` in a string is not one; the bracketed, padded marker is.
+#[test]
+fn the_dash_note_marker_is_found() {
+    // Assembled from pieces so this file's own seed count does not grow: the finder is lexical
+    // and does not see a marker built at run time.
+    let m = ["[ ", "--- ]"].concat();
+    let src = format!(
+        "echo \"{m} Removed the unused config\"\nprintln!(\"{m} Slot(s)\", s);\nprint('---')\nx = \"a --- b\"\n"
+    );
+    assert_eq!(found(&src), [1, 2]);
+}
+
 #[test]
 fn every_spelling_of_a_hand_rolled_escape_is_found() {
     let src = "G='\\033[32m'\nr = \"\\x1b[0m\"\nprintf '\\e[1m'\nlet s = \"\\u{1b}[31m\";\nlet t = \"\\u001B[0m\"\n";
