@@ -3,7 +3,8 @@
 #
 # HOUSE LIB, sourced. Ensures docker is answering before tests or build steps run.
 # If docker is down, colima is started and reference-counted leases track active gates.
-# When the last lease releases, colima is stopped if and only if goh started it.
+# When the last lease releases, colima is stopped if and only if goh started it
+# and no other container is running on it (owner ruling OW.27).
 #
 # Usage:
 #   . "$GOH_DIR/lib/container_runtime.sh"
@@ -122,6 +123,13 @@ goh_container_runtime_down() {
     live="$(_goh_container_live_leases)"
 
     if [ "$live" -eq 0 ] && [ -f "$state_dir/started_by_goh" ]; then
+        # Owner ruling OW.27: never under anyone else's running container.
+        if [ -n "$("${DOCKER:-docker}" ps -q </dev/null 2>/dev/null)" ]; then
+            warn "container runtime: leaving $colima running: other containers are on it"
+            rm -f "$state_dir/started_by_goh" </dev/null 2>/dev/null || true
+            _goh_container_lock_release
+            return 0
+        fi
         info "stopping container runtime ($colima stop)"
         "$colima" stop </dev/null >/dev/null 2>&1 || true
         rm -f "$state_dir/started_by_goh" </dev/null 2>/dev/null || true

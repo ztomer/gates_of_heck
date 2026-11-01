@@ -31,6 +31,10 @@ def _setup_fakes(tmp_path: Path, *, docker_up: bool = False) -> None:
 status_file="{status_file}"
 log_file="{calls_log}"
 echo "docker $*" >> "$log_file"
+if [ "$1" = "ps" ]; then
+    [ -f "{tmp_path}/busy" ] && echo abc123
+    exit 0
+fi
 if [ "$1" = "info" ]; then
     if [ -f "$status_file" ] && [ "$(cat "$status_file")" = "up" ]; then
         exit 0
@@ -285,3 +289,18 @@ def test_a_lock_held_by_a_killed_process_does_not_wedge_the_next(tmp_path: Path)
     holder.wait(timeout=5)
     res = _run(tmp_path, 'goh_container_runtime_up "next"\ngoh_container_runtime_down', timeout=10)
     assert res.returncode == 0, res.stderr
+
+
+def test_a_runtime_someone_elses_container_is_on_is_not_stopped(tmp_path: Path) -> None:
+    # Owner ruling OW.27 (2026-10-31): never stop the runtime while anyone
+    # else's container is running on it, even when goh started it.
+    _setup_fakes(tmp_path, docker_up=False)
+    res = _run(
+        tmp_path,
+        f'goh_container_runtime_up "gate"\n: > "{tmp_path}/busy"\ngoh_container_runtime_down',
+    )
+    assert res.returncode == 0, res.stderr
+    calls = (tmp_path / "calls.log").read_text()
+    assert "colima start" in calls
+    assert "colima stop" not in calls, calls
+    assert "other containers" in res.stdout + res.stderr
