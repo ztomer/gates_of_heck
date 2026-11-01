@@ -246,7 +246,9 @@ rust_crate_checks() {
 #   * EVERY TRACKED LOCK OF THE REPO, not only the one beside this manifest (queue GOH.EA2): a
 #     second workspace in the repo (monitor's fuzz/, media_server's testkits, koffee_big's core)
 #     was audited only by a hand-written step per lock, through a shell variable the estate audit
-#     cannot read. Which locks, and from which directory each is audited, is ONE rule,
+#     cannot read. A lock gitignored beside a tracked manifest (a library crate's) counts too: the
+#     step runs once, so it must not see only the crate it was named for. Which locks, and from
+#     which directory each is audited, is ONE rule,
 #     lib/rust_locks.py, which gate_coverage.py and check_audit_ignores.py ask too.
 #   * Each lock runs from the nearest directory at or above it holding a `.cargo/audit.toml` (its
 #     own when none does): cargo-audit reads that file from its CURRENT directory and nowhere else,

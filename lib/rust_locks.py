@@ -6,8 +6,9 @@ app -- hand-wrote one audit step per extra lock, each naming its target through 
 the estate audit cannot read (`cd "$rust_core" && cargo audit`, `cargo audit -f "$crate/..."`).
 So the gate audits EVERY tracked lock of the repo, and this module is the one rule for which:
 
-* THE LOCKS: `git ls-files` of `Cargo.lock` and `*/Cargo.lock` under the repo directory, plus the
-  lock of the workspace the gate was pointed at (it is certified whether or not it is tracked yet).
+* THE LOCKS: `git ls-files` of `Cargo.lock` and `*/Cargo.lock` under the repo directory, the lock on
+  disk beside every tracked `Cargo.toml` (a library crate gitignores its own), plus the lock of the
+  workspace the gate was pointed at (it is certified whether or not it is tracked yet).
 * THE CONFIG: cargo-audit reads `.cargo/audit.toml` from its CURRENT directory and nowhere else, so
   where it runs decides which ignore list applies. A lock is audited from the nearest directory at
   or above it, inside the repo, that holds a `.cargo/audit.toml` -- cargo's own config lookup --
@@ -44,10 +45,12 @@ from pathlib import Path, PurePosixPath
 CONFIG = PurePosixPath(".cargo") / "audit.toml"
 
 
-def tracked_locks(repo: Path) -> list[str]:
-    """Repo-relative tracked lockfiles under `repo` (empty outside a git checkout)."""
+def _ls_files(repo: Path, name: str) -> list[str]:
+    """Repo-relative tracked files called `name` under `repo` (empty outside a git checkout).
+    The inherited environment on purpose: this IS the repository being gated, and a hook's carried
+    index (gates/_git_env.sh `goh_bind_hook_index`) names the tree being committed."""
     r = subprocess.run(
-        ["git", "ls-files", "-z", "--", "Cargo.lock", "*/Cargo.lock"],
+        ["git", "ls-files", "-z", "--", name, f"*/{name}"],
         cwd=repo,
         capture_output=True,
         text=True,
@@ -55,6 +58,16 @@ def tracked_locks(repo: Path) -> list[str]:
         stdin=subprocess.DEVNULL,
     )
     return sorted(p for p in r.stdout.split("\0") if p) if r.returncode == 0 else []
+
+
+def tracked_locks(repo: Path) -> list[str]:
+    """The repo's locks: every tracked Cargo.lock, and the Cargo.lock on disk beside every tracked
+    Cargo.toml. A library crate gitignores its lock, and the gate still builds and judges it: before
+    the advisory step ran once per repo, each crate's run audited the lock beside its manifest, so
+    `--each-crate` audits that lock for every crate, not only for the one its repo step names."""
+    beside = (str(PurePosixPath(m).parent / "Cargo.lock") for m in _ls_files(repo, "Cargo.toml"))
+    found = {lk for lk in beside if (repo / lk).is_file()}
+    return sorted(found.union(_ls_files(repo, "Cargo.lock")))
 
 
 def config_dir(lock: str, has_config: Callable[[str], bool]) -> str:
