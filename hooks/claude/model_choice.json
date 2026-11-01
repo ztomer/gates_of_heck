@@ -119,10 +119,10 @@
     "why": "read-only lookups and meta agents, and `fork`, which ignores `model`: none lands commits, so they need no model and get no contract; their spawns are still ledgered"
   },
   "pool_first": {
-    "tiers": ["cheap", "lookup"],
+    "tiers": ["cheap", "lookup", "opus", "escalation", "owner"],
     "tool": "mcp__pool__ask",
-    "task_class": {"cheap": "checkable_edit", "lookup": "bulk_read"},
-    "decided": "owner 2026-10-25: read-only bulk work and checkable edits go through token-pool's `ask` (~/Projects/token-pool: free Zen, agy and Gemini quota) BEFORE a Claude subagent is spawned for them. A spawn on these tiers says which in its prompt: `Pool: tried <what ask returned>` (escalate_to_caller, a failed proof) or `Pool: unfit because <reason>` (the work needs this repo's files or tools, which pool's backends never see: they get the prompt alone). The ledger keeps the line, so a habit of `unfit` shows up as data."
+    "task_class": {"cheap": "checkable_edit", "lookup": "bulk_read", "opus": "hard", "escalation": "hard", "owner": "hard"},
+    "decided": "owner 2026-10-25: read-only bulk work and checkable edits go through token-pool's `ask` (~/Projects/token-pool: free Zen, agy and Gemini quota) BEFORE a Claude subagent is spawned for them. A spawn on these tiers says which in its prompt: `Pool: tried <what ask returned>` (escalate_to_caller, a failed proof) or `Pool: unfit because <reason>` (the work needs this repo's tools: it edits, builds or runs tests, which pool's backends never do: they get the prompt and the `files` the pool inlines, nothing else). The ledger keeps the line, so a habit of `unfit` shows up as data. Owner 2026-11-01, widening it to EVERY tier a spawn may take, opus included: \"Next time don't wait for me to prompt you to use agy\". A review, an audit or a root-cause read that agy could answer from the files went to Opus because opus tiers needed no line; now every spawn weighs the pool (the opus tiers' class is `hard`, or `second_opinion` for a read-only review)."
   },
   "exploration": {
     "cheap_alternation": {

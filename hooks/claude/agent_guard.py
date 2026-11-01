@@ -13,9 +13,10 @@ by hand; this hook keeps them structurally (tests/test_claude_agent_guard.py):
   Anything else is refused with the table in the reason, so the caller fixes it in one try. A
   spawn it allows gets the report contract appended to its prompt (once: a respawn carrying it is
   left alone). Agent types where the choice does not matter (`exempt_agent_types`) are exempt.
-* Free pools first (the rules file's `pool_first`, CLAUDE.md delegation rule 4): a spawn on a cheap
-  or lookup tier must say in its prompt that token-pool's `ask` was tried (`Pool: tried <...>`) or
-  why it cannot do the work (`Pool: unfit because <...>`); the ledger keeps the line as `pool`.
+* Free pools first (the rules file's `pool_first`, CLAUDE.md delegation rule 4): a spawn on any
+  tier it names (every tier but `never`, opus included since owner ruling 2026-11-01) must say in
+  its prompt that token-pool's `ask` was tried (`Pool: tried <...>`) or why it cannot do the work
+  (`Pool: unfit because <...>`); the ledger keeps the line as `pool`.
 * Bounded exploration (the rules file's `exploration`): a spawn declared on a cheap tier runs on
   the cheap tier its prompt sha's parity picks, and -- only when the owner turns it on -- a fixed
   fraction of checkable spawns in the classes `opus_to_cheap.from` names runs on the cheap tier. Either is an
@@ -76,8 +77,8 @@ POOL_LINE = re.compile(r"^[ \t>*-]*Pool:[ \t]*(tried|unfit[ \t]+because)\b[ \t]*
 def judge_pool(declared: str, prompt: str, rules: model_choice.Rules) -> tuple[str | None, Any]:
     """(refusal reason or None, what the `Pool:` line said) for a spawn the table accepted.
 
-    Cheap and lookup work goes to the free pools first (the rules file's `pool_first`): the
-    prompt says it tried them, or why they cannot do this work. Other tiers need no line."""
+    Work on a tier `pool_first` names (every tier a spawn may take) goes to the free pools first:
+    the prompt says it tried them, or why they cannot do this work."""
     task_class = rules.pool_class(*declared.split("@"))
     found = [(said.split()[0], why) for said, why in POOL_LINE.findall(prompt) if why]
     if task_class is None:
@@ -89,10 +90,10 @@ def judge_pool(declared: str, prompt: str, rules: model_choice.Rules) -> tuple[s
     return (
         f"Refused: {declared} work goes to the free pools first ({tool}, owner ruling in "
         f'{rules.path.name} `pool_first`). Call {tool}(task_class="{task_class}", prompt=..., '
-        f"check=... or schema=...) and spawn only if it does not return an accepted answer; then "
-        f"add `Pool: tried <what it returned>` to this prompt. When the work needs this repo's "
-        f"files or tools (pool's backends get the prompt alone), add `Pool: unfit because "
-        f"<reason>` instead."
+        f"files=[...], check=... or schema=...) and spawn only if it does not return an accepted "
+        f"answer; then add `Pool: tried <what it returned>` to this prompt. When the work needs "
+        f"this repo's tools (it edits, builds or runs tests; pool's backends get the prompt and "
+        f"the inlined files alone), add `Pool: unfit because <reason>` instead."
     ), None
 
 

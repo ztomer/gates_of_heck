@@ -114,10 +114,11 @@ def test_the_hook_fails_open_when_the_rules_file_cannot_be_read(tmp_path: Path) 
 
 
 def test_pool_first_names_real_tiers_and_a_task_class_for_each() -> None:
-    """Owner ruling 2026-10-25: cheap and lookup work goes to token-pool's `ask` before a Claude
-    subagent. The rules file says which tiers that is and which pool class each maps to."""
+    """Owner rulings 2026-10-25 and 2026-11-01: every spawn weighs token-pool's `ask` before a
+    Claude subagent. The rules file says which tiers that is and which pool class each maps to."""
     pool = RULES["pool_first"]
     tiers = {v["tier"] for v in RULES["tiers"].values()}
-    assert pool["tiers"] and set(pool["tiers"]) <= tiers - {"never"}
+    assert set(pool["tiers"]) == tiers - {"never"}, "every tier a spawn may take weighs the pool"
+    assert "don't wait for me to prompt you to use agy" in pool["decided"]
     assert set(pool["task_class"]) == set(pool["tiers"])
     assert pool["tool"].startswith("mcp__") and pool["decided"]

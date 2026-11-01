@@ -229,7 +229,7 @@ def test_another_tool_is_not_touched(tmp_path: Path) -> None:
 
 
 def test_an_allowed_spawn_is_one_ledger_line_with_its_choice(tmp_path: Path) -> None:
-    prompt = BRIEF["prompt"] + "\nModel-choice: opus@high because research"
+    prompt = BRIEF["prompt"] + "\nModel-choice: opus@high because research\n" + POOL
     _run(_spawn(dict(BRIEF, model="claude-opus-5-5", effort="high", prompt=prompt)), tmp_path)
     (line,) = _ledger(tmp_path)
     assert line["event"] == "spawn"
@@ -377,11 +377,12 @@ def test_malformed_input_never_blocks_a_spawn(tmp_path: Path, raw: str) -> None:
     assert out is None or out.get("hookSpecificOutput", {}).get("permissionDecision") != "deny"
 
 
-# --- rule 4: cheap and lookup work goes to the free pools first (owner ruling 2026-10-25) ------
+# --- rule 4: every spawn weighs the free pools first (owner rulings 2026-10-25, 2026-11-01) -----
 
 
 POOL_CLASSES = RULES.classes(*RULES.data["pool_first"]["tiers"])
-TAGS = {"cheap": "checkable, known-fix", "lookup": "read-only"}
+TAGS = {"cheap": "checkable, known-fix", "lookup": "read-only", "opus": "unknown-root-cause",
+        "escalation": "escalation"}  # fmt: skip
 
 
 def _pool_spawn(cls: str, pool_line: str | None) -> dict[str, Any]:
@@ -393,14 +394,18 @@ def _pool_spawn(cls: str, pool_line: str | None) -> dict[str, Any]:
     return dict(BRIEF, model=alias, effort=effort, prompt=prompt)
 
 
-def test_pool_first_covers_the_cheap_and_lookup_classes() -> None:
-    assert sorted(POOL_CLASSES) == sorted(RULES.classes("cheap", "lookup")), POOL_CLASSES
+def test_pool_first_covers_every_tier_a_spawn_may_take() -> None:
+    # Owner 2026-11-01: "Next time don't wait for me to prompt you to use agy". Opus tiers too.
+    spendable = {v["tier"] for v in RULES.tiers.values()} - {"never"}
+    assert set(RULES.data["pool_first"]["tiers"]) == spendable
+    assert sorted(POOL_CLASSES) == sorted(RULES.classes(*spendable)), POOL_CLASSES
+    assert {"opus@medium", "opus@high", "opus@xhigh"} <= set(POOL_CLASSES)
 
 
 @pytest.mark.parametrize("cls", POOL_CLASSES)
 @pytest.mark.parametrize("line", [None, "Pool: tried", "Pool: unfit", "Pool: unfit because ",
                                   "Pool: maybe later"])  # fmt: skip
-def test_a_cheap_or_lookup_spawn_that_skipped_the_pool_is_refused_with_the_way_there(
+def test_a_spawn_that_skipped_the_pool_is_refused_with_the_way_there(
     tmp_path: Path, cls: str, line: str | None
 ) -> None:
     reason = _reason(_run(_spawn(_pool_spawn(cls, line)), tmp_path))
@@ -426,11 +431,13 @@ def test_a_spawn_that_declares_the_pool_runs_and_the_ledger_keeps_what_it_said(
     assert rec["pool"]["said"] == said and rec["pool"]["why"], rec
 
 
-def test_opus_tier_work_needs_no_pool_line(tmp_path: Path) -> None:
+def test_opus_tier_work_without_a_pool_line_is_refused(tmp_path: Path) -> None:
+    # It was exempt until 2026-11-01; a review that agy could have answered went to Opus.
     prompt = "Find the root cause.\nModel-choice: opus@high because unknown-root-cause"
-    _allowed(_run(_spawn(dict(BRIEF, model="opus", effort="high", prompt=prompt)), tmp_path))
-    (rec,) = _ledger(tmp_path)
-    assert rec["pool"] is None
+    reason = _reason(
+        _run(_spawn(dict(BRIEF, model="opus", effort="high", prompt=prompt)), tmp_path)
+    )
+    assert "Pool: tried <" in reason and RULES.data["pool_first"]["task_class"]["opus"] in reason
 
 
 def test_the_weekly_live_proof_prompt_passes_the_guard(tmp_path: Path) -> None:

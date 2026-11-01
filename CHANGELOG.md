@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+* **Every spawn weighs the free pools, opus tiers included (owner ruling 2026-11-01: "Next time
+  don't wait for me to prompt you to use agy").** `model_choice.json` `pool_first.tiers` was
+  `["cheap", "lookup"]`, so a review, an audit or a root-cause read that agy could answer from
+  the files went straight to Opus with no `Pool:` line. It now names every tier a spawn may take
+  (`cheap`, `lookup`, `opus`, `escalation`, `owner`; the opus ones map to token-pool's `hard`
+  class), and `agent_guard.py` refuses any of them without `Pool: tried <...>` or `Pool: unfit
+  because <...>`. The refusal names `files=[...]`: token-pool's `ask` now reads and inlines the
+  caller's files, so "needs this repo's files" is no longer a reason; "needs its tools" is.
+  Calibrated: `pool_first.tiers` set back to cheap and lookup turns
+  `test_opus_tier_work_without_a_pool_line_is_refused` red. Pinned by
+  `tests/test_claude_agent_guard.py`, `tests/test_model_choice_rules.py`.
 * **`rust_gate.sh` audits every tracked lock of the repo, not only the one beside its manifest
   (queue GOH.EA2).** A second workspace (monitor's `fuzz/`, media_server's crates and testkits,
   koffee_big's core beside an app) was audited only by a hand-written step per lock, through a
