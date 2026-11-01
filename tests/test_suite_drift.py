@@ -237,6 +237,36 @@ def test_a_throwaway_crate_builds_into_the_runs_own_build_dir(tmp_path: Path) ->
     assert list(named.glob(f"*/.fingerprint/{name}-*")), "a caller's own build dir was not kept"
 
 
+def test_a_workspace_under_home_is_not_mistaken_for_one_naming_its_build_dir() -> None:
+    """The shim keeps a workspace's OWN build-dir (a `.cargo/config.toml` at or above it), and it
+    walked up into `$HOME/.cargo/config.toml` -- the user's GLOBAL config, which keys `build-dir` by
+    `{workspace-path-hash}` in the shared root -- for any workspace under HOME. build-goh.sh's
+    export lives under HOME (`$HOME/.cache/goh/build/<root>/src`), so the publish test built goh
+    cold into the shared root on every run, in a leaf no run removes (GOH.EA2 item 2)."""
+    import shutil
+    import tempfile
+
+    if shutil.which("cargo") is None:
+        return
+    ws = Path(tempfile.mkdtemp(prefix="ws.", dir=Path.home() / ".cache"))
+    try:
+        (ws / "src").mkdir()
+        (ws / "Cargo.toml").write_text(
+            '[package]\nname = "w"\nversion = "0.0.0"\nedition = "2021"\n'
+        )
+        (ws / "src" / "lib.rs").write_text("")
+        env = {"PATH": os.environ["PATH"], "HOME": os.environ["HOME"], "DRIFT_BUILD_OK": "1"}
+        meta = subprocess.run(
+            ["cargo", "build", "--message-format", "json", "-q"],
+            cwd=ws, capture_output=True, text=True, env=env, check=False, stdin=subprocess.DEVNULL,
+        )  # fmt: skip
+        assert meta.returncode == 0, meta.stderr
+        built = [ln for ln in meta.stdout.splitlines() if '"filenames"' in ln]
+        assert built and all(_drift_guard.BUILD_DIR in ln for ln in built), built
+    finally:
+        shutil.rmtree(ws, ignore_errors=True)
+
+
 def test_the_controller_resolves_the_binary_every_gate_will_ask_for(tmp_path):
     """G2c: a checkout whose bin/goh is not HEAD's build (a fresh worktree, a commit whose crates
     moved) made the FIRST gate a test spawned build goh -- and the drift guard refuses a build behind

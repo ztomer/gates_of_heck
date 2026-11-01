@@ -113,3 +113,36 @@ def test_agent_guard_refuses_the_users_spawn_ledger(tmp_path: Path) -> None:
                           timeout=60, check=False, stdin=subprocess.DEVNULL)  # fmt: skip
     assert proc.returncode != 0 and "user's ledger" in proc.stderr, proc.stdout + proc.stderr
     assert not (real / ".cache" / "goh" / "agent-spawns.jsonl").exists()
+
+
+# The toolchain a scrubbed environment reaches (queue GOH.EA2, item 2). The suite keeps CARGO_HOME,
+# RUSTUP_HOME and SCCACHE_DIR by NAME, but a test that hands its child only `PATH` and `HOME`
+# drops the names, and rustup, cargo and sccache fall back to their defaults under HOME -- the
+# suite's throwaway home. There rustup found no toolchain and INSTALLED stable into it on every run
+# (a download and a cold sccache compiler inside a timed test), and the first land of GOH.EA2 went
+# red in test_a_broken_uncommitted_edit_never_reaches_the_published_binary: sccache exit 254 and
+# "could not parse/generate dep info" from a compiler born seconds before. So each kept variable's
+# default under HOME is a link to the same place: the scrubbed child gets the suite's toolchain.
+def test_a_scrubbed_environment_reaches_the_kept_toolchain_and_caches() -> None:
+    from suite_home import HOME_DEFAULTS
+
+    home = Path(os.path.expanduser("~"))
+    for name, rel in HOME_DEFAULTS.items():
+        kept = os.environ.get(name)
+        if not kept:
+            continue
+        assert os.path.realpath(home / rel) == os.path.realpath(kept), (name, rel)
+
+
+def test_rustup_under_a_scrubbed_environment_installs_nothing() -> None:
+    if (
+        not os.environ.get("RUSTUP_HOME")
+        or subprocess.run(
+            ["which", "rustup"], capture_output=True, check=False, stdin=subprocess.DEVNULL
+        ).returncode
+    ):
+        return
+    env = {"PATH": os.environ["PATH"], "HOME": os.environ["HOME"]}
+    said = subprocess.run(["rustup", "show", "home"], capture_output=True, text=True, env=env,
+                          check=True, stdin=subprocess.DEVNULL).stdout.strip()  # fmt: skip
+    assert os.path.realpath(said) == os.path.realpath(os.environ["RUSTUP_HOME"]), said

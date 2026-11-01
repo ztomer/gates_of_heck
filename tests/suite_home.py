@@ -18,6 +18,14 @@ caches (SCCACHE_DIR, UV_CACHE_DIR -- build caches, not goh's), and a MINIMAL git
 things the gates READ from the user's home by design, linked in by name: the estate the calibration
 and corpus checks survey (~/Projects), the skills the structural gate reads (~/.claude/skills), and
 cargo's shared advisory database (~/.cargo). Nothing else of the real home is reachable.
+
+A KEPT VARIABLE'S DEFAULT IS THE SAME PLACE (HOME_DEFAULTS). A test that hands its child only `PATH`
+and `HOME` drops RUSTUP_HOME and SCCACHE_DIR with everything else, and rustup and sccache fall back
+to their defaults under HOME -- this throwaway home. There rustup found no toolchain and INSTALLED
+stable into it on every run: a download and a brand-new compiler for sccache to hash inside a timed
+build, which turned GOH.EA2's first land red (sccache exit 254, "could not parse/generate dep
+info"; test_goh_build_publish.py). So each kept variable's default path under HOME links to what
+the variable names, and a scrubbed child reaches the same toolchain and caches as an unscrubbed one.
 """
 
 from __future__ import annotations
@@ -33,6 +41,13 @@ REAL_HOME = os.path.realpath(os.path.expanduser("~"))
 MARKER = "GATES_OF_HECK_SUITE_REAL_HOME"  # not GOH_-prefixed: no env scrub drops it
 
 READ = ("Projects", ".claude/skills", ".cargo")
+# Where each kept variable's tool looks under HOME when the variable is unset.
+HOME_DEFAULTS = {
+    "CARGO_HOME": ".cargo",
+    "RUSTUP_HOME": ".rustup",
+    "SCCACHE_DIR": "Library/Caches/Mozilla.sccache",
+    "UV_CACHE_DIR": ".cache/uv",
+}
 
 GITCONFIG = "[user]\n\tname = goh suite\n\temail = suite@goh.test\n[init]\n\tdefaultBranch = main\n"
 
@@ -63,6 +78,11 @@ def _enter() -> None:
         if (real / rel).exists():
             (home / rel).parent.mkdir(parents=True, exist_ok=True)
             (home / rel).symlink_to(real / rel)
+    for name, rel in HOME_DEFAULTS.items():
+        kept = os.environ.get(name)
+        if kept and Path(kept).exists() and not os.path.lexists(home / rel):
+            (home / rel).parent.mkdir(parents=True, exist_ok=True)
+            (home / rel).symlink_to(kept)
     os.environ[MARKER] = REAL_HOME
     # The user's XDG_STATE_HOME, kept by name so real_state_guard.py can watch it; the suite's own
     # state (goh's estate registry, the compact-nudge state) lives in the suite home instead.
