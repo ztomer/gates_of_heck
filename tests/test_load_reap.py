@@ -301,15 +301,23 @@ def test_the_backstop_leaves_a_process_of_another_shape_alone(tmp_path: Path) ->
     assert load_kit.alive(pid), "the backstop killed a process that is not the house's shape"
 
 
+# Every fixture here that spins is BOUNDED by its own clock (GOH.LEAK1): a SIGKILLed owner
+# cannot clean up, so a loop that spins forever leaves an orphan burning a core.
+FIXTURE_BOUND_S = 3
+BOUNDED_LOOP = (
+    f"end=$(( $(date +%s) + {FIXTURE_BOUND_S} )); while [ $(date +%s) -lt $end ]; do :; done"
+)
+
+
 @pytest.mark.parametrize(
     "command,reads",
     [
         # A PREFIX of the shape, with more after it. It reads the pipe, so it is released.
-        ('read _ < "{fifo}" || exit 0; while :; do :; done; echo and more', True),
+        (f'read _ < "{{fifo}}" || exit 0; {BOUNDED_LOOP}; echo and more', True),
         # The shape MENTIONED, not run. It never opens the pipe, so nothing releases it.
-        ('while :; do :; done; echo "read _ < {fifo} || exit 0"', False),
+        (f'{BOUNDED_LOOP}; echo "read _ < {{fifo}} || exit 0"', False),
         # The shape without its quotes. It reads the pipe, so it is released.
-        ("read _ < {fifo} || exit 0; while :; do :; done", True),
+        (f"read _ < {{fifo}} || exit 0; {BOUNDED_LOOP}", True),
     ],
 )
 def test_the_backstop_leaves_a_command_line_that_only_looks_like_the_shape_alone(
@@ -323,6 +331,55 @@ def test_the_backstop_leaves_a_command_line_that_only_looks_like_the_shape_alone
     report = load_reap.reap_orphans()
     assert pid not in report.killed, report
     assert load_kit.alive(pid), "the backstop killed a process that only looks like the shape"
+
+
+def test_a_killed_test_run_leaves_no_spinner_of_the_fixture_behind(tmp_path: Path) -> None:
+    """THE BOUND (GOH.LEAK1). A test run that is SIGKILLed cannot clean up -- that is how the three
+    helpers behind test_the_backstop_leaves_a_com{1,2,3} were orphaned on 2026-10-31 -- so every
+    fixture that spins is bounded by its own clock. The fixture's spinner is started, its owner is
+    SIGKILLed, and the spinner exits on its own after the bound."""
+    fifo = tmp_path / "release-999999-0.fifo"
+    os.mkfifo(fifo)
+    out = tmp_path / "pid.txt"
+    command = f'read _ < "{fifo}" || exit 0; {BOUNDED_LOOP}; echo and more'
+    owner = subprocess.Popen(
+        [
+            sys.executable,
+            "-c",
+            (
+                "import subprocess,sys,time;"
+                "p=subprocess.Popen(sys.argv[1:-1], stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,"
+                "stderr=subprocess.DEVNULL, start_new_session=True);"
+                "open(sys.argv[-1],'w').write(str(p.pid));"
+                "time.sleep(300)"
+            ),
+            "/bin/sh",
+            "-c",
+            command,
+            str(out),
+        ],
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+    try:
+        assert load_kit.wait_until(lambda: out.exists() and out.read_text().strip()), (
+            "the runner never started its spinner"
+        )
+        spinner = int(out.read_text().strip())
+        _release(fifo)
+        assert load_kit.alive(spinner)
+        owner.kill()  # SIGKILL: owner cannot clean up
+        owner.wait(timeout=timing_bounds.patience(5))
+        assert load_kit.wait_until(lambda: not load_kit.alive(spinner), seconds=6.0), (
+            "the fixture's spinner outlived its bound"
+        )
+    finally:
+        if out.exists() and out.read_text().strip():
+            load_kit.own_pid(int(out.read_text().strip()))
+            load_kit.kill_pid(int(out.read_text().strip()))
+        owner.kill()
+        owner.wait()
 
 
 def test_the_minute_job_cleans_a_leak_the_registry_cannot_name(tmp_path: Path) -> None:

@@ -2,6 +2,12 @@
 
 ## Unreleased -- a tracked build output is a structural step, and a text `.obj` is not one
 
+* **Every spinner fixture is bounded by its own clock (queue GOH.LEAK1).** Stopping a test run on
+  2026-10-31 left 3 orphaned `while :; do :; done` shells (ppid 1) from the fixtures behind
+  `test_the_backstop_leaves_a_com{1,2,3}`. The house rule requires every fixture that spins to be
+  bounded by its own clock, so a SIGKILLed owner cannot leave a core burning. The loop now checks its
+  deadline and exits on its own, proved by `test_a_killed_test_run_leaves_no_spinner_of_the_fixture_behind`
+  which SIGKILLs the owner and asserts the spinner terminates cleanly within the bound.
 * **`no tracked build output` is a structural step (owner ruling OW.29, BACKLOG 7.4 closed).**
   `gates/structural.sh` (the stock pre-commit gate every consumer runs) now runs
   `checks/check_tracked_build_output.py` through the native pipeline
