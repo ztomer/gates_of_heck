@@ -1,6 +1,18 @@
 # CHANGELOG
 
-## Unreleased -- a tracked build output is a structural step, and a text `.obj` is not one
+## v0.57.0 -- a tracked build output is a structural step, and a text `.obj` is not one
+
+* **Self-proofs run under the repo's own Python; a launchagent check compares bytes.** Two checks
+  read their subject through a lenient instrument. `check_probes_pass` ran every Python self-proof
+  under the house interpreter, which has none of a repo's dependencies: necrohand's
+  `check_parity.py --probe` died `No module named 'PIL'` at a push, green under the repo's own
+  gate. Python probes now run through `gates/python.sh` (the repo's `.venv`, `uv.lock` or pin).
+  `install_launchagent.sh check` compared plutil's JSON, so a comment-only edit read as current,
+  and a comment is not inert in a plist: the installed actions-sweep copy still carried `--apply`
+  in a comment (malformed XML, fixed in the repo by G15 but never reinstalled). `check` and the
+  post-install proof now compare bytes. Pinned by
+  `test_a_python_self_proof_runs_under_the_repos_own_interpreter` and
+  `test_a_comment_only_edit_to_the_installed_copy_is_drift`.
 
 * **`goh red-run` judges pushed commits by their parent's `.gatesrc` (queue GOH.RR1).**
   The push gate evaluated every commit in the pushed range against the working tree's `.gatesrc`.
