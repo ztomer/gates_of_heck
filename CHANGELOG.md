@@ -2,6 +2,14 @@
 
 ## Unreleased -- a tracked build output is a structural step, and a text `.obj` is not one
 
+* **`goh red-run` judges pushed commits by their parent's `.gatesrc` (queue GOH.RR1).**
+  The push gate evaluated every commit in the pushed range against the working tree's `.gatesrc`.
+  Turning `GOH_RED_RUN` on in a commit placed above older unpushed commits refused those older
+  commits made before the rule was enabled (seen 2026-11-01 in divoom-control and koffee_big).
+  `check_range` now inspects each commit's parent (`git show <sha>^:.gatesrc`); a commit is judged
+  only if its parent opted into `GOH_RED_RUN` (no `.gatesrc` at the parent means off). Pinned both
+  directions by `tests/test_red_run.py`: a switch commit on top of an older test-adding commit is
+  not judged, while a commit made after the switch without a trailer is refused.
 * **Every spinner fixture is bounded by its own clock (queue GOH.LEAK1).** Stopping a test run on
   2026-10-31 left 3 orphaned `while :; do :; done` shells (ppid 1) from the fixtures behind
   `test_the_backstop_leaves_a_com{1,2,3}`. The house rule requires every fixture that spins to be

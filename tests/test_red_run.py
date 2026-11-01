@@ -58,6 +58,9 @@ def _range(repo: Path, *revs: str) -> subprocess.CompletedProcess[str]:
 
 
 def test_a_range_reads_each_commit_against_its_own_diff(repo: Path) -> None:
+    (repo / ".gatesrc").write_text("GOH_RED_RUN=1\n")
+    git(repo, "add", ".gatesrc")
+    git(repo, "commit", "-q", "--no-verify", "-m", "chore: opt into red-run")
     base = git(repo, "rev-parse", "HEAD").strip()
     _staged(repo, A_TEST)
     git(repo, "commit", "-q", "--no-verify", "-m", NAMED)
@@ -71,6 +74,38 @@ def test_a_range_reads_each_commit_against_its_own_diff(repo: Path) -> None:
 def test_a_range_git_refuses_is_an_error_not_a_pass(repo: Path) -> None:
     r = _range(repo, "no-such-rev..HEAD")
     assert r.returncode == 2 and "no-such-rev" in r.stderr, r.stdout + r.stderr
+
+
+def test_a_switch_commit_above_an_older_test_commit_does_not_judge_the_older_commit(
+    repo: Path,
+) -> None:
+    """A commit that turns GOH_RED_RUN on must not refuse older unpushed commits (GOH.RR1)."""
+    base = git(repo, "rev-parse", "HEAD").strip()
+    _staged(repo, A_TEST)
+    git(repo, "commit", "-q", "--no-verify", "-m", "feat: older unproven")
+    (repo / ".gatesrc").write_text("GOH_RED_RUN=1\n")
+    git(repo, "add", ".gatesrc")
+    git(repo, "commit", "-q", "--no-verify", "-m", "feat: turn on red-run")
+    r = _range(repo, f"{base}..HEAD")
+    assert r.returncode == 0, r.stdout + r.stderr
+
+
+def test_a_test_adding_commit_after_the_switch_without_a_trailer_is_refused(
+    repo: Path,
+) -> None:
+    """A commit after the switch commit has a parent with GOH_RED_RUN=1, so it is refused (GOH.RR1)."""
+    base = git(repo, "rev-parse", "HEAD").strip()
+    _staged(repo, A_TEST)
+    git(repo, "commit", "-q", "--no-verify", "-m", "feat: older unproven")
+    (repo / ".gatesrc").write_text("GOH_RED_RUN=1\n")
+    git(repo, "add", ".gatesrc")
+    git(repo, "commit", "-q", "--no-verify", "-m", "feat: turn on red-run")
+    _staged(repo, A_TEST, "tests/test_after.py")
+    git(repo, "commit", "-q", "--no-verify", "-m", "feat: newer unproven")
+    r = _range(repo, f"{base}..HEAD")
+    assert r.returncode == 1, r.stdout + r.stderr
+    assert "tests/test_after.py" in r.stderr, r.stderr
+    assert "tests/test_new.py" not in r.stderr, r.stderr
 
 
 def _hooked(repo: Path, gatesrc: str) -> None:

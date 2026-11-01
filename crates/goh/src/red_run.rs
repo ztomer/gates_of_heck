@@ -120,6 +120,21 @@ pub fn check_file(path: &str) -> i32 {
     })
 }
 
+/// Does the commit's parent have `.gatesrc` with `GOH_RED_RUN` enabled?
+///
+/// A commit placed above older unpushed commits must not refuse those older commits, which were
+/// made before the rule was enabled (BACKLOG / GOH.RR1). No `.gatesrc` at the parent means off.
+fn parent_opts_in(sha: &str) -> bool {
+    let spec = format!("{sha}^:.gatesrc");
+    let Ok(content) = git(&["show", &spec]) else {
+        return false;
+    };
+    let pairs = crate::gatesrc::parse_pairs(&content);
+    pairs
+        .get("GOH_RED_RUN")
+        .is_some_and(|v| !v.is_empty() && v != "0")
+}
+
 /// `goh red-run --range REV...`: every commit the range names, each against its own diff.
 #[must_use]
 pub fn check_range(revs: &[String]) -> i32 {
@@ -134,6 +149,9 @@ pub fn check_range(revs: &[String]) -> i32 {
     };
     let mut refused = 0;
     for sha in shas.lines() {
+        if !parent_opts_in(sha) {
+            continue;
+        }
         let read = git(&["log", "-1", "--format=%B", sha]).and_then(|m| {
             git(&[
                 "show",
