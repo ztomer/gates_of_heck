@@ -12,15 +12,17 @@ push runs: the repo's `.gatesrc` `GOH_CI_STEPS` (local_ci.sh, run from the repo 
 `tools/gate.sh` (what goh's pre-push hook runs), `.pre-commit-config.yaml` and `.githooks/pre-push`,
 and every tracked script or Makefile those name, transitively. In that text an audit is one of:
 
-* `rust_gate.sh [repo [cargo_dir]]` -- cargo-audit, biting, from the workspace root of cargo_dir
-  (its `.cargo/audit.toml` applies); `rust_gate.sh --each-crate [repo]` -- the same for every crate
-  `rust_gate.sh --each-crate --list` names (asked of it, so its rule is not copied here);
+* `rust_gate.sh [repo [cargo_dir]]` and `rust_gate.sh --each-crate [repo]` -- cargo-audit, biting,
+  on EVERY tracked lock under repo, each from the directory `lib/rust_locks.py` names (the nearest
+  `.cargo/audit.toml` at or above it): the gate's own rule, imported, so it is not copied here.
+  cargo_dir picks the crate that is linted, not the locks that are audited, so a variable there
+  (`rust_gate.sh . "$crate"`) is readable. A `GOH_RUST_GROUPS` without `repo` audits nothing;
 * `cargo audit [--file X]` -- cargo-audit on X, else on the Cargo.lock in its directory;
 * `cargo deny [--manifest-path X] ... check [advisories ...]` -- cargo-deny, whose `deny.toml`
   (ignore list, graph targets, what it calls unmaintained) decides, so it is RUN, not imitated.
 
 A command's directory is the repo root, or the literal `cd X` before it on the same line. A target
-that goh cannot read -- a shell variable (`cd "$rust_core"`, `rust_gate.sh . "$crate"`) -- is
+that goh cannot read -- a shell variable (`cd "$rust_core"`, `cargo audit -f "$crate/Cargo.lock"`) -- is
 UNRESOLVED: a lock no resolved step covers is then `undetermined`, never called unaudited on a guess.
 Pinned by tests/test_estate_gate_coverage.py.
 """
@@ -30,12 +32,14 @@ from __future__ import annotations
 import re
 import shlex
 import subprocess
+import sys
 import tomllib
 from dataclasses import dataclass, field
 from pathlib import Path, PurePosixPath
 
-GOH = Path(__file__).resolve().parent.parent
-RUST_GATE = GOH / "gates" / "rust_gate.sh"
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import rust_locks  # the gate's own rule for which locks it audits
+
 ENTRIES = ("tools/gate.sh", ".pre-commit-config.yaml", ".githooks/pre-push")
 SCRIPT_SUFFIXES = {".sh", ".bash", ".mk", ".yaml", ".yml"}
 SCRIPT_NAMES = {"Makefile", "makefile", "GNUmakefile", "Justfile", "justfile"}
@@ -194,8 +198,8 @@ class _Reader:
         for i, w in enumerate(words):
             if w.endswith("rust_gate.sh"):
                 groups = [e.split("=", 1)[1] for e in env if e.startswith("GOH_RUST_GROUPS=")]
-                if groups and "crate" not in groups[-1].split(","):
-                    return  # the advisory step is in the crate group (rust_gate.sh)
+                if groups and "repo" not in groups[-1].split(","):
+                    return  # the advisory step is in the repo group (rust_gate.sh)
                 self.rust_gate(said, words[i + 1 :], cwd)
                 return
             if w == "cargo" and words[i + 1 : i + 2] == ["audit"]:
@@ -207,42 +211,22 @@ class _Reader:
 
     def rust_gate(self, said: str, args: list[str], cwd) -> None:
         if args[:1] == ["--each-crate"]:
-            rest = args[1:]
-            if "--list" in rest:
+            args = args[1:]
+            if "--list" in args:
                 return  # a listing runs nothing
-            repo_arg = rest[0] if rest else "."
-            if cwd is None or _unreadable(repo_arg):
-                self.cov.unresolved.append(said)
-                return
-            self.each_crate(said, _join(cwd, repo_arg))
-            return
-        a = args[0] if args else "."
-        b = args[1] if len(args) > 1 else "."
-        if cwd is None or _unreadable(a) or _unreadable(b):
+        repo_arg = args[0] if args else "."
+        if cwd is None or _unreadable(repo_arg):
             self.cov.unresolved.append(said)
             return
-        root = _join(cwd, a)
-        lock = self.lock_for(_join(root, b))
-        if lock:
-            self.add(Audit("cargo-audit", str(PurePosixPath(lock).parent), lock, ("warnings",)))
-
-    def each_crate(self, said: str, repo_dir: str) -> None:
-        r = subprocess.run(
-            ["bash", str(RUST_GATE), "--each-crate", "--list", "."],
-            cwd=self.repo / repo_dir,
-            env=self.env,
-            capture_output=True,
-            text=True,
-            check=False,
-            stdin=subprocess.DEVNULL,
-        )
-        if r.returncode != 0:
-            self.cov.unresolved.append(f"{said} (--each-crate --list failed)")
+        root = _join(cwd, repo_arg)
+        if not root:
+            self.cov.unresolved.append(said)
             return
-        for d in r.stdout.split():
-            lock = self.lock_for(_join(repo_dir, d))
-            if lock:
-                self.add(Audit("cargo-audit", str(PurePosixPath(lock).parent), lock, ("warnings",)))
+        pre = "" if root == "." else root + "/"
+        under = [lk[len(pre) :] for lk in sorted(self.locks) if lk.startswith(pre)]
+        base = self.repo / root
+        for cfg, lock in rust_locks.plan(under, rust_locks.on_disk(base)):
+            self.add(Audit("cargo-audit", _join(root, cfg), _join(root, lock), ("warnings",)))
 
     def cargo_audit(self, said: str, args: list[str], cwd) -> None:
         if args[:1] and args[0] in ("fix", "bin"):

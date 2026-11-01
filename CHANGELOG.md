@@ -2,6 +2,30 @@
 
 ## Unreleased
 
+* **`rust_gate.sh` audits every tracked lock of the repo, not only the one beside its manifest
+  (queue GOH.EA2).** A second workspace (monitor's `fuzz/`, media_server's crates and testkits,
+  koffee_big's core beside an app) was audited only by a hand-written step per lock, through a
+  shell variable the estate audit could not read: four locks were "undetermined". Which locks,
+  and from which directory each is audited, is one rule, `lib/rust_locks.py`: every tracked
+  `Cargo.lock` under the repo, each from the nearest `.cargo/audit.toml` at or above it (a root
+  policy governs the locks below; a nested one its own). The advisory step moved to the REPO
+  group, so `--each-crate` runs it once. `check_audit_ignores.py --repo` holds each config to the
+  locks it governs: an entry is stale only when it fires against none. `gate_coverage.py` models
+  `rust_gate.sh` by the same rule, so `rust_gate.sh . "$crate"` is readable. Calibrated: a root
+  ignore removed turns the gate red on the sub-lock it held. Pinned by `tests/test_rust_audit.py`,
+  `tests/test_rust_locks.py`, `tests/test_estate_gate_coverage.py`.
+* **A scrubbed test environment reaches the suite's toolchain, not a fresh install.**
+  `test_a_broken_uncommitted_edit_never_reaches_the_published_binary` hands its build only `PATH`
+  and `HOME`, so rustup found no toolchain in the suite's throwaway home and INSTALLED stable there
+  on every run (watched: `home.*/.rustup/toolchains/stable-aarch64-apple-darwin` appeared), and
+  sccache met a compiler born seconds before: GOH.EA2's first land went red with sccache exit 254
+  and "could not parse/generate dep info". `tests/suite_home.py` now links each kept variable's
+  default under HOME (`.rustup`, sccache's cache dir, uv's) to what the variable names. Its
+  sibling: the drift guard's cargo shim took `$HOME/.cargo/config.toml` (the user's GLOBAL config)
+  for a workspace's own build-dir, so every workspace under HOME -- build-goh's export -- built cold
+  into the shared root; CARGO_HOME's config is skipped now. The test ran 108 s, now 66 s for its
+  file. Pinned by `tests/test_suite_cache_isolation.py` and `tests/test_suite_drift.py`.
+
 * **The "moved while the step ran" line names what moved.** It said "the tree or the gates" for
   every cause; on divoom-control (2026-11-01) six pre-push steps said it on a tree nobody touched.
   Measured: each step rebuilt `target/debug/divoomd`, which that repo's `GOH_EXPORT_KEEP` names,

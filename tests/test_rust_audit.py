@@ -93,3 +93,71 @@ def test_a_tree_without_a_lockfile_is_refused_not_passed(tmp_path):
     """Its subject is the workspace's Cargo.lock: with none, it judged nothing (check_empty_scope)."""
     r = _check(tmp_path)
     assert r.returncode == 1 and "nothing to judge" in r.stderr, r.stdout + r.stderr
+
+
+# ── every tracked lock, not only the one beside the manifest (queue GOH.EA2) ────────────────
+# monitor's fuzz/, media_server's 31 crates and testkits, koffee_big's core beside an app: each a
+# lock of its own workspace, which the gate never read, so each repo hand-wrote an audit step per
+# lock through a shell variable the estate audit cannot read.
+
+LOCK_ONLY = "# hand-written: cargo-audit reads the lock alone\nversion = 4\n" + ANSI_TERM
+REASONED = f'"{UNMAINTAINED}",  # ansi_term, until 2027'
+
+
+def _nested(tmp: Path, *, root_ignore: str | None = None, sub_ignore: str | None = None) -> Path:
+    """A clean root workspace, and `fuzz/Cargo.lock` -- its own workspace -- carrying ansi_term."""
+    c = _crate(tmp, unmaintained=False, ignore=root_ignore)
+    (c / "fuzz").mkdir()
+    (c / "fuzz" / "Cargo.lock").write_text(LOCK_ONLY)
+    if sub_ignore is not None:
+        (c / "fuzz" / ".cargo").mkdir()
+        (c / "fuzz" / ".cargo" / "audit.toml").write_text(
+            f"[advisories]\nignore = [\n    {sub_ignore}\n]\n"
+        )
+    _git(c, "add", "-A")
+    return c
+
+
+def test_a_lock_of_another_workspace_in_the_repo_is_audited(tmp_path):
+    r = run_script(CURRENT, _nested(tmp_path), OFFLINE)
+    out = r.stdout + r.stderr
+    assert r.returncode != 0, out
+    assert "✗ rust: no known advisory in fuzz/Cargo.lock" in out and UNMAINTAINED in out, out
+
+
+def test_a_nested_lock_is_judged_by_its_own_audit_toml(tmp_path):
+    """monitor's shape: fuzz/.cargo/audit.toml holds what fires there, and still ratchets."""
+    r = run_script(CURRENT, _nested(tmp_path, sub_ignore=REASONED), OFFLINE)
+    out = r.stdout + r.stderr
+    assert "✓ no known advisory in fuzz/Cargo.lock" in out, out
+    assert "no longer fires" not in out, out
+
+
+def test_a_root_audit_toml_governs_the_locks_below_it(tmp_path):
+    """media_server's shape: one policy at the root for every crate. Its entry fires against a
+    lock below it, not the root's own, so it is NOT stale; removing it turns the gate red."""
+    c = _nested(tmp_path, root_ignore=REASONED)
+    r = run_script(CURRENT, c, OFFLINE)
+    out = r.stdout + r.stderr
+    assert "✓ no known advisory in fuzz/Cargo.lock" in out, out
+    assert "no longer fires" not in out, out
+    # calibration: the ignored advisory's entry removed, the same lock is red
+    (c / ".cargo" / "audit.toml").write_text("[advisories]\nignore = []\n")
+    r = run_script(CURRENT, c, OFFLINE)
+    out = r.stdout + r.stderr
+    assert r.returncode != 0 and "✗ rust: no known advisory in fuzz/Cargo.lock" in out, out
+
+
+def test_a_shared_exemption_firing_against_no_governed_lock_is_stale(tmp_path):
+    c = _nested(tmp_path, root_ignore='"RUSTSEC-2020-0071",  # time, until 2027')
+    (c / "fuzz" / "Cargo.lock").write_text("version = 4\n")
+    _git(c, "add", "-A")
+    r = subprocess.run(
+        ["python3", str(CHECK), "--no-fetch", "--repo", str(c)],
+        cwd=c,
+        capture_output=True,
+        text=True,
+        stdin=subprocess.DEVNULL,
+        check=False,
+    )
+    assert r.returncode == 1 and "RUSTSEC-2020-0071 no longer fires" in r.stderr, r.stderr

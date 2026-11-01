@@ -13,9 +13,14 @@ place cargo-audit reads it -- and refuses:
     directory, where no `audit.toml` is read and so nothing is ignored, and an id that is not
     among its findings is stale.
 
-    python3 checks/check_audit_ignores.py [--no-fetch]   # from the workspace root
+    python3 checks/check_audit_ignores.py [--no-fetch]                # from the workspace root
+    python3 checks/check_audit_ignores.py --no-fetch --repo R [--lock L] # from a config's directory
 
-rust_gate.sh passes --no-fetch: its own audit step fetched the database a moment before.
+rust_gate.sh passes --no-fetch: its own audit step fetched the database a moment before. It audits
+EVERY tracked lock of the repo (lib/rust_locks.py), and one `.cargo/audit.toml` may judge several
+(media_server's root config governs 31): with `--repo`, the locks are the ones `rust_locks` says
+are audited from this directory, and an entry is stale only when it fires against NONE of them.
+`--lock` adds the workspace lock the gate was pointed at, when git does not track it yet.
 """
 
 from __future__ import annotations
@@ -38,9 +43,11 @@ import re
 import subprocess
 import sys
 import tempfile
+from pathlib import Path
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "lib"))
 import advisory_db
+import rust_locks
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from _gitutil import foreign_repo_env
@@ -73,9 +80,18 @@ def ignore_lines(text: str) -> list[tuple[int, str, bool]]:
     return out
 
 
+def firing_any(locks: list[str], fetch: bool) -> set[str]:
+    """Every advisory id any of `locks` triggers: the first read may fetch, the rest read it."""
+    ids: set[str] = set()
+    for i, lock in enumerate(locks):
+        ids |= firing(lock, fetch=fetch and i == 0)
+    return ids
+
+
 def firing(lockfile: str, fetch: bool) -> set[str]:
     """Every advisory id the lockfile triggers, nothing ignored: the audit runs from a scratch
     directory, where no `.cargo/audit.toml` is read."""
+    lockfile = os.path.abspath(lockfile)
     with tempfile.TemporaryDirectory(prefix="goh-audit.") as scratch, advisory_db.held(fetch) as db:
         r = subprocess.run(
             ["cargo", "audit", "--json", *advisory_db.audit_args(db, fetch), "--file", lockfile],
@@ -115,9 +131,23 @@ def lockfile() -> str | None:
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n", 1)[0])
     ap.add_argument("--no-fetch", action="store_true", help="judge against the cached database")
+    ap.add_argument("--repo", help="judge against every lock rust_locks audits from this dir")
+    ap.add_argument("--lock", help="with --repo: the gate's own workspace lock, tracked or not")
     args = ap.parse_args()
-    lock = lockfile()
-    if lock is None:
+    if args.repo:
+        repo = Path(args.repo).resolve()
+        cfg = Path.cwd().resolve().relative_to(repo).as_posix() or "."
+        locks = [str(repo / lk) for lk in rust_locks.governed(repo, cfg, args.lock)]
+        what = (
+            ", ".join(os.path.relpath(lk) for lk in locks)
+            if len(locks) <= 3
+            else f"any of the {len(locks)} locks it governs"
+        )
+    else:
+        lock = lockfile()
+        locks = [lock] if lock else []
+        what = "Cargo.lock"
+    if not locks:
         err(
             f"[audit_ignores] no Cargo workspace with a Cargo.lock at {os.getcwd()}: nothing to judge"
         )
@@ -134,12 +164,12 @@ def main() -> int:
         f"{CONFIG}:{n}: {aid} has no `# reason` on its line" for n, aid, why in entries if not why
     ]
     try:
-        live = firing(lock, fetch=not args.no_fetch)
+        live = firing_any(locks, fetch=not args.no_fetch)
     except RuntimeError as e:
         err(f"[audit_ignores] could not read which advisories fire: {e}")
         return 1
     bad += [
-        f"{CONFIG}:{n}: {aid} no longer fires against Cargo.lock -- delete the entry"
+        f"{CONFIG}:{n}: {aid} no longer fires against {what} -- delete the entry"
         for n, aid, _ in entries
         if aid not in live
     ]

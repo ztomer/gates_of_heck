@@ -243,25 +243,47 @@ rust_crate_checks() {
 #   * BITING (rule 4): `cargo audit` exits 0 on unmaintained/unsound/yanked, so the deny list is on
 #     the command line, never left to a `.cargo/audit.toml` that may sit where cargo-audit does not
 #     look (it reads only the CURRENT directory's: ztools' gate ran for a month without its file).
-#   * Run from the WORKSPACE ROOT, beside its Cargo.lock: the one place a `.cargo/audit.toml` is read
-#     from, so its ignore list is the workspace's own.
+#   * EVERY TRACKED LOCK OF THE REPO, not only the one beside this manifest (queue GOH.EA2): a
+#     second workspace in the repo (monitor's fuzz/, media_server's testkits, koffee_big's core)
+#     was audited only by a hand-written step per lock, through a shell variable the estate audit
+#     cannot read. Which locks, and from which directory each is audited, is ONE rule,
+#     lib/rust_locks.py, which gate_coverage.py and check_audit_ignores.py ask too.
+#   * Each lock runs from the nearest directory at or above it holding a `.cargo/audit.toml` (its
+#     own when none does): cargo-audit reads that file from its CURRENT directory and nowhere else,
+#     so where it runs decides the ignore list. A root policy governs the locks below it.
+#   * The REPO group, not the crate group: it reads the whole repo, so --each-crate runs it once
+#     (its repo step), not once per crate. Still never cached by the proven record (below).
 #   * The ignore list is a RATCHET: checks/check_audit_ignores.py refuses an entry with no `# reason`
 #     and one whose advisory no longer fires, which cargo-audit accepts silently.
 # GOH_DEPS_OFFLINE=1 judges against the cached database and SAYS so, like the currency arm.
 rust_advisories() {
-    local root fetch="--fetch"
-    root="$(dirname "$lockfile")"
+    local plan cfg lock fetch="--fetch" ratchets="" top
+    top="$(pwd)"
     if [ "${GOH_DEPS_OFFLINE:-}" = "1" ]; then
         fetch="--no-fetch"
         warn "advisories judged against the CACHED database (GOH_DEPS_OFFLINE=1): a newer one may fire"
     fi
+    plan="$("$GOH_PY" "$HERE/../lib/rust_locks.py" plan "$top" "$lockfile")" \
+        || die "[rust] could not list the repo's Cargo.lock files (above)"
     # goh's own copy of the database, under a read/write lock: a refresh beside a read tore the
-    # read ("unexpected start of advisory"), so no goh audit reads one being rewritten.
-    goh_step_in "$root" "no known advisory (cargo audit: warnings, unmaintained, unsound, yanked)" \
-        "$GOH_PY" "$HERE/../lib/advisory_db.py" run "$fetch" -- cargo audit --file "$lockfile" \
-        --deny warnings --deny unmaintained --deny unsound --deny yanked
-    goh_step_in "$root" "every advisory exemption has its reason and still fires" \
-        "$GOH_PY" "$HERE/../checks/check_audit_ignores.py" --no-fetch
+    # read ("unexpected start of advisory"), so no goh audit reads one being rewritten. The first
+    # audit fetches it; the rest read that copy (a fetch per lock was 18 of media_server's 21 s).
+    while IFS="$(printf '\t')" read -r cfg lock; do
+        goh_step_in "$top/$cfg" "no known advisory in $lock (cargo audit: warnings, unmaintained, unsound, yanked)" \
+            "$GOH_PY" "$HERE/../lib/advisory_db.py" run "$fetch" -- cargo audit --file "$top/$lock" \
+            --deny warnings --deny unmaintained --deny unsound --deny yanked
+        fetch="--no-fetch"
+        if [ -f "$top/$cfg/.cargo/audit.toml" ]; then
+            case "$ratchets" in *"|$cfg|"*) ;; *) ratchets="$ratchets|$cfg|" ;; esac
+        fi
+    done <<<"$plan"
+    # One ratchet per config, judged against every lock it governs (an entry is stale only when it
+    # fires against none of them). No config: nothing is exempted, so nothing to ratchet.
+    while IFS="|" read -r -d "|" cfg; do
+        [ -n "$cfg" ] || continue
+        goh_step_in "$top/$cfg" "every advisory exemption in $cfg/.cargo/audit.toml has its reason and still fires" \
+            "$GOH_PY" "$HERE/../checks/check_audit_ignores.py" --no-fetch --repo "$top" --lock "$lockfile"
+    done <<<"$ratchets|"
 }
 
 rust_repo_checks() {
@@ -305,7 +327,7 @@ goh_resolve_native
 _goh_cmd=(bash "$HERE/goh.sh")
 [ -x "${GOH_RESOLVED_BIN:-}" ] && _goh_cmd=("$GOH_RESOLVED_BIN")
 # Advisories FIRST: half a second, and the finding that matters most should not wait on clippy.
-_group_on crate && rust_advisories
+_group_on repo && rust_advisories
 _group_on crate && rust_proven_group crate crate rust_crate_checks
 _group_on repo && rust_proven_group repo tree rust_repo_checks
 

@@ -60,11 +60,11 @@ def _run(root: Path, state: Path, db: Path, *extra: str) -> dict:
 
 @needs_audit
 def test_a_lock_no_gate_step_audits_is_named_not_audited_never_red(tmp_path):
-    """monitor/fuzz: its own workspace, audited by no step. The push is not red for it -- the push
-    never looks -- and the gap is the finding, with what fires there unseen."""
+    """A second workspace whose repo audits only its root lock by hand. The push is not red for it
+    -- the push never looks -- and the gap is the finding, with what fires there unseen."""
     root = tmp_path / "Projects"
-    repo = _repo(root, "mon", "goh-other-crate")
-    _add(repo, {"fuzz/Cargo.lock": _lock()})
+    repo = _repo(root, "mon", "goh-other-crate", gated=False)
+    _add(repo, {".gatesrc": "GOH_CI_STEPS='cargo audit'\n", "fuzz/Cargo.lock": _lock()})
     state = tmp_path / "state.json"
     found = _run(root, state, _db(tmp_path, planted=True))
     assert found["advisories"] == {}, found
@@ -73,6 +73,18 @@ def test_a_lock_no_gate_step_audits_is_named_not_audited_never_red(tmp_path):
     out = _hook(state)
     assert "NOT AUDITED AT PUSH" in out and "mon/fuzz/Cargo.lock" in out, out
     assert "is red" not in out and "standing" not in out, out
+
+
+@needs_audit
+def test_the_house_gate_audits_a_second_workspace_so_its_push_is_red(tmp_path):
+    """monitor/fuzz since GOH.EA2: rust_gate.sh audits every tracked lock, so the same lock is no
+    gap -- its next push is red, and the audit says so."""
+    root = tmp_path / "Projects"
+    repo = _repo(root, "mon", "goh-other-crate")
+    _add(repo, {"fuzz/Cargo.lock": _lock()})
+    found = _run(root, tmp_path / "state.json", _db(tmp_path, planted=True))
+    assert found["unaudited"] == {} and found["undetermined"] == {}, found
+    assert "mon/fuzz/Cargo.lock" in json.dumps(found["advisories"]), found
 
 
 def _fake_deny(tmp: Path, verdict: str) -> Path:
@@ -156,32 +168,53 @@ def _gate_repo(tmp_path: Path, files: dict[str, str]) -> Path:
     return repo
 
 
-def test_rust_gate_sh_audits_the_workspace_of_its_cargo_dir(tmp_path):
+def test_rust_gate_sh_audits_every_tracked_lock_from_its_config(tmp_path):
+    """rust_gate.sh audits every tracked lock of its repo (lib/rust_locks.py), each from the nearest
+    `.cargo/audit.toml` at or above it: the reader asks the same rule, and copies none of it."""
     repo = _gate_repo(
         tmp_path,
         {
             ".gatesrc": "GOH_CI_STEPS='\"$GOH_DIR/gates/rust_gate.sh\" . rust/core'\n",
             "rust/Cargo.lock": _lock(),
+            "rust/.cargo/audit.toml": "[advisories]\nignore = []\n",
             "fuzz/Cargo.lock": _lock(),
         },
     )
     cov = _covered(repo)
-    assert cov.covered() == {"rust/Cargo.lock"}, cov
-    assert cov.audits[0].cwd == "rust" and cov.unresolved == [], cov
+    assert cov.covered() == {"Cargo.lock", "rust/Cargo.lock", "fuzz/Cargo.lock"}, cov
+    by = {a.lock: a.cwd for a in cov.audits}
+    assert by == {"Cargo.lock": ".", "rust/Cargo.lock": "rust", "fuzz/Cargo.lock": "fuzz"}, cov
+    assert cov.unresolved == [], cov
 
 
-def test_a_step_outside_the_crate_group_and_a_listing_audit_nothing(tmp_path):
+def test_a_cargo_dir_named_through_a_variable_still_audits_the_repo(tmp_path):
+    """media_server's --staged shape, `rust_gate.sh . "$crate"`: the variable names which crate is
+    LINTED, not which locks are audited -- every tracked one is, whatever the crate."""
+    repo = _gate_repo(
+        tmp_path,
+        {"tools/gate.sh": '"$GOH/gates/rust_gate.sh" . "$crate"\n', "sub/Cargo.lock": _lock()},
+    )
+    cov = _covered(repo)
+    assert cov.covered() == {"Cargo.lock", "sub/Cargo.lock"} and cov.unresolved == [], cov
+
+
+def test_a_step_outside_the_repo_group_and_a_listing_audit_nothing(tmp_path):
     repo = _gate_repo(
         tmp_path,
         {
             "tools/gate.sh": "# rust_gate.sh . would audit; a comment does not\n"
-            "GOH_RUST_GROUPS=repo rust_gate.sh .\n"
+            "GOH_RUST_GROUPS=crate,coverage rust_gate.sh .\n"
             "rust_gate.sh --each-crate --list .\n"
             "cargo deny check bans licenses\n"
             'echo "cargo audit is a string here"\n',
         },
     )
     assert _covered(repo).covered() == set()
+
+
+def test_the_repo_group_audits(tmp_path):
+    repo = _gate_repo(tmp_path, {"tools/gate.sh": "GOH_RUST_GROUPS=repo rust_gate.sh .\n"})
+    assert _covered(repo).covered() == {"Cargo.lock"}
 
 
 def test_cargo_audit_and_cargo_deny_name_their_lock(tmp_path):
@@ -203,22 +236,25 @@ def test_cargo_audit_and_cargo_deny_name_their_lock(tmp_path):
     assert by["sub/Cargo.lock"].cwd == "sub", cov
 
 
-def test_each_crate_is_asked_of_rust_gate_sh(tmp_path):
+def test_each_crate_audits_every_lock_testkits_included(tmp_path):
     manifest = '[package]\nname = "{n}"\nversion = "0.1.0"\nedition = "2021"\n'
     repo = _gate_repo(
         tmp_path,
         {
             "tools/gate.sh": '"$GOH/gates/rust_gate.sh" --each-crate .\n',
+            ".cargo/audit.toml": "[advisories]\nignore = []\n",
             "crates/a/Cargo.toml": manifest.format(n="a"),
             "crates/a/Cargo.lock": _lock(),
             "crates/a/src/lib.rs": "",
-            # a crate's testkit is its crate's business to --each-crate, so its own lock is not
-            # audited by the push: exactly media_server's testkits.
+            # a testkit is its crate's business to --each-crate, but its lock is the repo's to
+            # audit: exactly media_server's testkits, which only a hand-written step audited.
             "crates/a/testkit/Cargo.toml": manifest.format(n="t"),
             "crates/a/testkit/Cargo.lock": _lock(),
         },
     )
-    assert _covered(repo).covered() == {"crates/a/Cargo.lock"}
+    cov = _covered(repo)
+    assert cov.covered() == {"Cargo.lock", "crates/a/Cargo.lock", "crates/a/testkit/Cargo.lock"}
+    assert {a.cwd for a in cov.audits} == {"."}, cov  # the root policy governs them all
 
 
 def test_audit_toml_output_deny_is_honoured(tmp_path):
