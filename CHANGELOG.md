@@ -1,5 +1,31 @@
 # CHANGELOG
 
+## v0.57.2 -- the estate audit says what the push would do; scratch repos leave the registry
+
+* **The estate audit's verdict is the push's, read from the repo's gate (queue GOH.EA2).** It ran
+  biting cargo-audit on every tracked `Cargo.lock` and the session hook said "the next push of
+  <lock> is red". `Finance/zinc` gates with cargo-deny, whose `deny.toml` ignores
+  RUSTSEC-2024-0370 and whose graph targets leave glib (RUSTSEC-2024-0429) out: its push is red for
+  neither. `monitor/fuzz/Cargo.lock` is a workspace no gate step audits: the claim was false and hid
+  the gap. `lib/gate_coverage.py` now reads `GOH_CI_STEPS`, `tools/gate.sh`,
+  `.pre-commit-config.yaml`, `.githooks/pre-push` and every tracked script or Makefile they name,
+  for `rust_gate.sh` (and `--each-crate`, asked of `--list`), `cargo audit [--file]` and
+  `cargo deny ... check [advisories]`. A lock a step audits is judged by that step (cargo-audit with
+  its deny flags and `.cargo/audit.toml`; cargo-deny RUN with its `deny.toml`); a lock no step
+  audits is `unaudited`, printed as NOT AUDITED AT PUSH with what fires there; one a
+  shell-variable step might cover is `undetermined`. On the real estate: zinc reports
+  RUSTSEC-2026-0414 only, monitor/fuzz is not audited at push, and koffee_big plus three
+  media_server testkit locks are undetermined. Pinned by `tests/test_estate_gate_coverage.py`.
+* **A scratch repo never enters the machine's estate registry.** server-template's
+  `tools/repo_gates.sh` vends into `mktemp -d` and runs `install.sh` there, and each run added two
+  gone `tmp.*/{boxa,pib}` paths to `~/.local/state/goh/installed_repos` (76 of 122 lines). A
+  toplevel under the temp directory is now recorded only into a registry the caller names
+  (`GOH_ESTATE_STATE`). The suite gets its own `XDG_STATE_HOME`, and an autouse session fixture
+  (`tests/real_state_guard.py`) fails a run that adds a scratch path to the real goh state.
+* **check_mcp_wire: a gone server's status is waited for, not polled once.** Stdout EOF comes
+  before the process can be reaped, so the verdict once read "status None"; `Session._gone()` waits
+  to the session deadline (50/50 green under 8-spinner load).
+
 ## v0.57.1 -- the estate audit audits only repos the house gate runs in
 
 * **A vendored clone's advisories are no longer reported as a red push (queue GOH.ES1).**
