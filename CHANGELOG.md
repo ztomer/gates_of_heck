@@ -1,5 +1,28 @@
 # CHANGELOG
 
+## Unreleased
+
+* **The shell lint judges warnings, and holds the debt in a ratchet (GOH.SHSEV, 2026-11-02).**
+  `goh shell-lint` ran `shellcheck --severity=error`, so an unused variable, a `cd` with no
+  `|| exit` or an unquoted `$(...)` never reached any repo's gate. It now runs at
+  `GOH_SHELL_LINT_SEVERITY` (default `warning`; `error` is the written opt-out, `info` and `style`
+  are available). An error still fails outright. Below it, findings are held by
+  `shell_lint_seed.json`, a per-`file#SCnnnn` count that may only fall: over its count is red with
+  its sites, under it is red until `goh shell-lint --seed` lowers it, a stale entry (file or code
+  gone clean, file gone) is red, a corrupt seed is an error. Infos are out of default scope,
+  measured over the estate: 411 of 498 findings at info and above (86 warnings, 1 error), mostly
+  SC2016, SC2086, SC2015 (the house `A && B || C` idiom) and 107 SC1091, which reads differently
+  from the staged temp checkout than from the worktree. A repo with warnings reads red at its next shell commit
+  until it runs `goh shell-lint --seed` (or writes `GOH_SHELL_LINT_SEVERITY=error`); this repo's
+  22 are seeded. The verdict cache key moved to v3 and carries the severity. shellcheck now runs
+  ONCE PER FILE: given several files it follows a `source` of another file in the batch, so a
+  script read SC2128 beside its library and SC2154 alone, and an exact seed flapped between the full
+  tree and a staged subset (this repo's own seed read 26 in a batch and 22 file by file).
+  `tests/test_check_shell_lint.py` (a planted SC2034 red at both scopes; seeded, over, new-code,
+  stale-finding, stale-file, staged scoping, error unseedable, `--seed` both ways, corrupt seed,
+  severity opt-out/info/refusal, cache keyed on severity); calibrated: 6 of them red with the
+  default put back to `error`.
+
 ## v0.57.3 -- a step that prints ✗ and exits 0 is red; the load reaper logs when, which and why
 
 * **A step that prints `✗` and exits 0 is red (GOH.XEXIT, 2026-11-02).** In the house TUI contract

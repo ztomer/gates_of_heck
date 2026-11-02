@@ -2,9 +2,11 @@
 //!
 //! Every tracked `*.sh`, and every extensionless `hooks/*` file (at `--staged`, the staged blobs,
 //! checked out of the index into a temp dir) must pass `bash -n`, and the
-//! syntactically clean ones must pass `shellcheck --severity=error` -- one
-//! shellcheck call for all of them. A missing shellcheck is a refusal, not a
-//! pass. Every spawn runs under the step ceiling (`crate::bounded`).
+//! syntactically clean ones must pass shellcheck -- one shellcheck call for all of them. An
+//! ERROR always fails. Below it, down to `.gatesrc`'s `GOH_SHELL_LINT_SEVERITY` (default
+//! `warning`), a finding is debt held by `shell_lint_seed.json` (`crate::shell_lint_seed`): it
+//! may only fall, and a stale entry fails. A missing shellcheck is a refusal, not a pass. Every
+//! spawn runs under the step ceiling (`crate::bounded`).
 
 use goh_tui::{ERR, OK};
 use std::path::{Path, PathBuf};
@@ -163,40 +165,17 @@ impl Verdict {
 /// not only by `required_tools.py --check`: a too-old shellcheck passed this gate (G2c).
 const SHELLCHECK_FLOOR: &str = "0.11.0";
 
-/// `1.2.3` as numbers, for comparison; `None` when it is not a dotted version.
-fn version_parts(v: &str) -> Option<Vec<u64>> {
-    v.split('.').map(|p| p.parse::<u64>().ok()).collect()
-}
-
-/// `have >= floor` as dotted versions (`0.11` is `0.11.0`); an unreadable one is not.
-fn newer_or_equal(have: &str, floor: &str) -> bool {
-    let (Some(mut h), Some(mut f)) = (version_parts(have), version_parts(floor)) else {
-        return false;
-    };
-    let n = h.len().max(f.len());
-    h.resize(n, 0);
-    f.resize(n, 0);
-    h >= f
-}
-
-/// The `version: X.Y.Z` line of `shellcheck --version`.
-fn reported_version(text: &str) -> Option<&str> {
-    text.lines()
-        .find_map(|l| l.strip_prefix("version:"))
-        .map(str::trim)
-}
-
 /// `Ok` when PATH's shellcheck is at or above the floor; the refusal, naming both, otherwise.
 fn at_floor() -> Result<(), String> {
     let ran = bounded(Command::new("shellcheck").arg("--version"))
         .map_err(|e| format!("shellcheck --version: {e}"))?;
     let text = String::from_utf8_lossy(&ran.stdout);
-    let Some(have) = reported_version(&text) else {
+    let Some(have) = crate::shellcheck_version::reported_version(&text) else {
         return Err(format!(
             "shellcheck --version reported no version, and this gate needs {SHELLCHECK_FLOOR} or newer"
         ));
     };
-    if newer_or_equal(have, SHELLCHECK_FLOOR) {
+    if crate::shellcheck_version::newer_or_equal(have, SHELLCHECK_FLOOR) {
         return Ok(());
     }
     Err(format!(
@@ -213,7 +192,7 @@ fn which(tool: &str) -> Option<PathBuf> {
 
 /// Everything a verdict depends on besides the file: both tools' identities,
 /// the flags, `SHELLCHECK_OPTS`, and the user-level rc files.
-fn tools_key() -> String {
+fn tools_key(severity: &str) -> String {
     let id = |t: &str| {
         which(t).map_or_else(
             || format!("{t}:-"),
@@ -226,7 +205,7 @@ fn tools_key() -> String {
     let xdg =
         std::env::var_os("XDG_CONFIG_HOME").map_or_else(|| home.join(".config"), PathBuf::from);
     format!(
-        "shell-lint v1|{}|{}|--severity=error --format=gcc|opts={}|{}|{}",
+        "shell-lint v3|{}|{}|--severity={severity} --format=gcc|opts={}|{}|{}",
         id("bash"),
         id("shellcheck"),
         std::env::var("SHELLCHECK_OPTS").unwrap_or_default(),
@@ -264,7 +243,10 @@ fn dir_rc_key(src: &Path, memo: &mut std::collections::HashMap<PathBuf, String>)
 }
 
 /// `bash -n` and shellcheck for the files no record covers; the verdicts, in order.
-fn check_misses(misses: &[&(String, PathBuf)]) -> Result<(Vec<Verdict>, bool), String> {
+fn check_misses(
+    misses: &[&(String, PathBuf)],
+    severity: &str,
+) -> Result<(Vec<Verdict>, bool), String> {
     let mut out: Vec<Verdict> = vec![Verdict::default(); misses.len()];
     let mut clean: Vec<usize> = Vec::new();
     for (i, entry) in misses.iter().enumerate() {
@@ -284,41 +266,55 @@ fn check_misses(misses: &[&(String, PathBuf)]) -> Result<(Vec<Verdict>, bool), S
     if clean.is_empty() {
         return Ok((out, true));
     }
-    let mut cmd = Command::new("shellcheck");
-    cmd.args(["--severity=error", "--format=gcc"])
-        .args(clean.iter().map(|i| &misses[*i].1));
-    let ran = bounded(&mut cmd).map_err(|e| format!("shellcheck: {e}"))?;
-    let mut text = String::from_utf8_lossy(&ran.stdout).into_owned();
-    text.push_str(&String::from_utf8_lossy(&ran.stderr));
-    let text = text.trim_end_matches('\n');
+    // ONE shellcheck per file. Given several files at once, shellcheck follows a `source` of
+    // another file in the batch, so a finding (SC2128, SC2154, SC2034 ...) depended on which
+    // files shared the call: the full tree and a staged subset read the same script
+    // differently, and a seed that must be exact flapped between them (GOH.SHSEV).
     let mut attributable = true;
-    if !text.is_empty() {
-        'line: for line in text.split('\n') {
-            for &i in &clean {
-                let src = misses[i].1.to_string_lossy();
-                if line.starts_with(&format!("{src}:")) {
-                    let mut shown = line.to_owned();
-                    for (disp, other) in misses.iter().map(|m| (&m.0, &m.1)) {
-                        shown = shown.replace(&*other.to_string_lossy(), disp);
-                    }
-                    out[i].lines.push(shown);
-                    continue 'line;
-                }
+    for &i in &clean {
+        let mut cmd = Command::new("shellcheck");
+        cmd.arg(format!("--severity={severity}"))
+            .arg("--format=gcc")
+            .arg(&misses[i].1);
+        let ran = bounded(&mut cmd).map_err(|e| format!("shellcheck: {e}"))?;
+        let mut text = String::from_utf8_lossy(&ran.stdout).into_owned();
+        text.push_str(&String::from_utf8_lossy(&ran.stderr));
+        let src = misses[i].1.to_string_lossy();
+        for line in text
+            .trim_end_matches('\n')
+            .split('\n')
+            .filter(|l| !l.is_empty())
+        {
+            if line.starts_with(&format!("{src}:")) {
+                out[i].lines.push(line.replace(&*src, &misses[i].0));
+            } else {
+                // A line no file owns (a tool error): a verdict that cannot be attributed
+                // cannot be reused, so this run records nothing.
+                attributable = false;
+                out[i].lines.push(line.to_owned());
             }
-            // A line no file owns (a tool error): reported on the first clean file, and this
-            // run records nothing -- a verdict that cannot be attributed cannot be reused.
-            attributable = false;
-            out[clean[0]].lines.push(line.to_owned());
         }
     }
     Ok((out, attributable))
 }
 
+/// What the tools said: the lines that always fail (a syntax error, a shellcheck ERROR, a tool
+/// error) and the findings below error, grouped `file#code` for the seed.
+#[derive(Default)]
+struct Judged {
+    fail: Vec<String>,
+    failed: Vec<String>,
+    found: std::collections::BTreeMap<String, Vec<crate::shell_lint_seed::Finding>>,
+}
+
 /// Every file's verdict, from the cache where a record's key matches, from the
 /// tools otherwise: `(failure lines, files that failed)` in the reference's order.
-fn judge(files: &[(String, PathBuf)]) -> Result<(Vec<String>, Vec<String>), String> {
+fn judge(files: &[(String, PathBuf)], severity: &str) -> Result<Judged, String> {
     let cache = crate::verdict_cache::Cache::open("shell-lint");
-    let tools = cache.as_ref().map(|_| tools_key()).unwrap_or_default();
+    let tools = cache
+        .as_ref()
+        .map(|_| tools_key(severity))
+        .unwrap_or_default();
     let mut memo = std::collections::HashMap::new();
     let keys: Vec<Option<String>> = files
         .iter()
@@ -347,7 +343,7 @@ fn judge(files: &[(String, PathBuf)]) -> Result<(Vec<String>, Vec<String>), Stri
         .collect();
     if !misses.is_empty() {
         let entries: Vec<&(String, PathBuf)> = misses.iter().map(|i| &files[*i]).collect();
-        let (fresh, attributable) = check_misses(&entries)?;
+        let (fresh, attributable) = check_misses(&entries, severity)?;
         for (i, v) in misses.iter().zip(fresh) {
             if let (Some(c), Some(k), true) = (cache.as_ref(), keys[*i].as_ref(), attributable) {
                 c.put(k, &v.to_json());
@@ -359,28 +355,35 @@ fn judge(files: &[(String, PathBuf)]) -> Result<(Vec<String>, Vec<String>), Stri
         .into_iter()
         .map(Option::unwrap_or_default)
         .collect();
-    let (mut fail, mut failed): (Vec<String>, Vec<String>) = (Vec::new(), Vec::new());
-    let mut mark = |name: &str| {
+    let mut out = Judged::default();
+    let mark = |failed: &mut Vec<String>, name: &str| {
         if !failed.iter().any(|f| f == name) {
             failed.push(name.to_owned());
         }
     };
     for v in &verdicts {
         if let Some(line) = &v.syntax {
-            fail.push(line.clone());
-            mark(line.split(": bash -n:").next().unwrap_or(line));
+            out.fail.push(line.clone());
+            mark(
+                &mut out.failed,
+                line.split(": bash -n:").next().unwrap_or(line),
+            );
         }
     }
-    for v in &verdicts {
+    for ((disp, _), v) in files.iter().zip(&verdicts) {
         for line in &v.lines {
-            fail.push(line.clone());
-            mark(line.split(':').next().unwrap_or(line));
+            if let Some((rest, code)) = crate::shell_lint_seed::finding_of(line, disp) {
+                crate::shell_lint_seed::add(&mut out.found, disp, code, rest);
+            } else {
+                out.fail.push(line.clone());
+                mark(&mut out.failed, line.split(':').next().unwrap_or(line));
+            }
         }
     }
-    Ok((fail, failed))
+    Ok(out)
 }
 
-fn run(staged: bool, exclude: &str) -> (i32, Lines) {
+fn run(staged: bool, exclude: &str, seed: bool) -> (i32, Lines) {
     let exclude = match crate::steps::compile_exclude(exclude) {
         Ok(x) => x,
         Err(m) => return (2, vec![(true, format!("{ERR} [shell_lint] {m}"))]),
@@ -391,12 +394,16 @@ fn run(staged: bool, exclude: &str) -> (i32, Lines) {
             vec![(false, "[shell_lint] not a git repo — skipping".to_owned())],
         );
     };
+    let severity = match crate::shell_lint_seed::severity(&root) {
+        Ok(s) => s,
+        Err(m) => return (2, vec![(true, format!("{ERR} [shell_lint] {m}"))]),
+    };
     let (files, tmp) = match gather(&root, staged, exclude.as_ref()) {
         Ok(got) => got,
         Err(e) => return (2, vec![(true, format!("{ERR} [shell_lint] {e}"))]),
     };
     crate::subject::record(&crate::subject::SHELL_LINT, files.len());
-    if files.is_empty() {
+    if files.is_empty() && !seed {
         return (
             0,
             vec![(
@@ -411,40 +418,32 @@ fn run(staged: bool, exclude: &str) -> (i32, Lines) {
     if let Err(why) = at_floor() {
         return (1, vec![(true, format!("{ERR} [shell_lint] {why}"))]);
     }
-    let verdict = judge(&files);
+    let verdict = judge(&files, severity);
     drop(tmp);
-    let (fail, failed) = match verdict {
+    let judged = match verdict {
         Ok(v) => v,
         Err(e) => return (1, vec![(true, format!("{ERR} [shell_lint] {e}"))]),
     };
     let scope = if staged { "staged" } else { "tracked" };
-    if !failed.is_empty() {
+    if !judged.failed.is_empty() {
         let mut lines = vec![(
             true,
             format!(
                 "{ERR} [shell_lint] {} file(s) failed ({scope}):",
-                failed.len()
+                judged.failed.len()
             ),
         )];
-        lines.extend(fail.into_iter().map(|f| (true, format!("  {f}"))));
+        lines.extend(judged.fail.into_iter().map(|f| (true, format!("  {f}"))));
         return (1, lines);
     }
-    (
-        0,
-        vec![(
-            false,
-            format!(
-                "{OK} [shell_lint] OK — {} {scope} shell files clean",
-                files.len()
-            ),
-        )],
-    )
+    let paths: Vec<String> = files.iter().map(|(d, _)| d.clone()).collect();
+    crate::shell_lint_seed::conclude(&root, &paths, judged.found, staged, seed)
 }
 
-/// `goh shell-lint [--staged] [--exclude RE]`.
+/// `goh shell-lint [--staged] [--seed] [--exclude RE]`.
 #[must_use]
-pub fn run_command(staged: bool, exclude: &str) -> i32 {
-    let (code, lines) = run(staged, exclude);
+pub fn run_command(staged: bool, exclude: &str, seed: bool) -> i32 {
+    let (code, lines) = run(staged, exclude, seed);
     for (to_err, line) in lines {
         if to_err {
             goh_tui::eoutln(&line);
@@ -464,7 +463,7 @@ pub fn step(cfg: &crate::gatesrc::Gatesrc, staged: bool) -> Option<i32> {
         "shell lint"
     };
     let start = crate::step_report::begin(label);
-    match run(staged, &cfg.exclude) {
+    match run(staged, &cfg.exclude, false) {
         (0, _) => {
             crate::step_report::ok(label, start);
             None

@@ -1,0 +1,17 @@
+{
+  "why": "shellcheck findings below error severity when this repo adopted the ratcheted shell lint, per file#code; a count may only fall (gates_of_heck GOH.SHSEV)",
+  "files": {
+    "gates/_common.sh#SC2154": 1,
+    "gates/_goh_bin.sh#SC2034": 1,
+    "gates/_rust_proven.sh#SC2154": 1,
+    "gates/_steps.sh#SC2034": 2,
+    "gates/local_ci.sh#SC1010": 3,
+    "gates/local_ci.sh#SC2164": 1,
+    "gates/python.sh#SC2034": 1,
+    "gates/swift_toolchain.sh#SC2034": 2,
+    "lib/container_runtime.sh#SC2217": 7,
+    "lib/desktop_lock/test_desktop_lock.sh#SC2164": 1,
+    "lib/gpu_lock/gpu_lock.sh#SC2034": 1,
+    "lib/tree_lock.sh#SC2034": 1
+  }
+}

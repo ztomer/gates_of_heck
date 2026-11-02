@@ -83,15 +83,15 @@ FULL_CASES: dict[str, dict[str, bytes]] = {
     # scope and the fixed shape passes; ratchet open it is named, not failed (`_named`).
     "early_exit_pipe_red": {
         ".gatesrc": b"GOH_MAX_LINES=10\nGOH_NO_EARLY_EXIT_PIPE=1\n",
-        "a.sh": b"#!/bin/bash\nset -euo pipefail\nls | grep -q x\n",
+        "a.sh": b"#!/bin/bash\nset -euo pipefail\nprintf x | grep -q x\n",
     },
     "early_exit_pipe_green": {
         ".gatesrc": b"GOH_MAX_LINES=10\nGOH_NO_EARLY_EXIT_PIPE=1\n",
-        "a.sh": b'#!/bin/bash\nset -euo pipefail\nout="$(ls)"\ngrep -q x <<<"$out"\n',
+        "a.sh": b'#!/bin/bash\nset -euo pipefail\nout="$(printf x)"\ngrep -q x <<<"$out"\n',
     },
     "early_exit_pipe_unseeded": {
         ".gatesrc": GATESRC,
-        "a.sh": b"#!/bin/bash\nset -euo pipefail\nls | grep -q x\n",
+        "a.sh": b"#!/bin/bash\nset -euo pipefail\nprintf x | grep -q x\n",
     },
     # dead-after-exec, a hard gate in every repo: code after `exec CMD` fails; the parse-guard passes.
     "dead_exec_red": {".gatesrc": GATESRC, "a.sh": b"#!/bin/sh\nexec true\necho never\n"},
@@ -207,7 +207,7 @@ FULL_CASES: dict[str, dict[str, bytes]] = {
     # loop fails; a file that only quotes the form passes.
     "busy_loop_red": {
         ".gatesrc": GATESRC,
-        "load.sh": b"#!/bin/sh\nfor i in $(seq 1 24); do (while :; do :; done) & done\n",
+        "load.sh": b"#!/bin/sh\nfor _ in $(seq 1 24); do (while :; do :; done) & done\n",
     },
     "busy_loop_green": {
         ".gatesrc": GATESRC,

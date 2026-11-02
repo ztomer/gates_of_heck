@@ -203,3 +203,207 @@ def test_the_gate_floor_is_the_manifest_floor():
     src = (REPO_ROOT / "crates" / "goh" / "src" / "shell_lint.rs").read_text()
     const = re.findall(r'const SHELLCHECK_FLOOR: &str = "([^"]+)";', src)
     assert const and tsv == set(const), (tsv, const)
+
+
+# ---- GOH.SHSEV: the gate judges warnings, and holds the debt in a ratchet ----
+
+WARN = "#!/usr/bin/env bash\nunused=1\necho hi\n"  # SC2034 (warning): bash -n accepts it
+WARN2 = "#!/usr/bin/env bash\nunused=1\nalso_unused=2\necho hi\n"  # two SC2034
+NOTE = "#!/usr/bin/env bash\necho '$HOME'\n"  # SC2016 (info)
+SEED = "shell_lint_seed.json"
+
+
+def _commit_all(repo: Path) -> None:
+    subprocess.run(["git", "-C", str(repo), "add", "-A"], check=True, stdin=subprocess.DEVNULL)
+    subprocess.run(
+        ["git", "-C", str(repo), "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "f"],
+        check=True,
+        stdin=subprocess.DEVNULL,
+    )
+
+
+def test_a_planted_warning_is_red_at_staged_scope(repo):
+    # The gate ran --severity=error, so an unused variable never reached any repo. SC2034 is a
+    # WARNING: this is the red-first proof that the gate now reads that far.
+    write(repo, "warn.sh", WARN)
+    stage(repo, "warn.sh")
+    r = run_lint(repo, "--staged")
+    out = r.stdout + r.stderr
+    assert r.returncode == 1, out
+    assert "warn.sh#SC2034" in out and "SC2034" in out, out
+
+
+def test_a_planted_warning_is_red_at_full_scope(repo):
+    write(repo, "warn.sh", WARN)
+    _commit_all(repo)
+    r = run_lint(repo)
+    assert r.returncode == 1, r.stdout + r.stderr
+    assert "warn.sh#SC2034" in r.stdout + r.stderr
+
+
+def test_a_seeded_warning_passes_and_the_report_says_how_many_are_held(repo):
+    write(repo, "warn.sh", WARN)
+    import json
+
+    write(repo, SEED, json.dumps({"why": "t", "files": {"warn.sh#SC2034": 1}}))
+    _commit_all(repo)
+    r = run_lint(repo)
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert "1 seeded below error" in r.stdout, r.stdout
+
+
+def test_a_finding_over_its_seeded_count_is_red_with_its_sites(repo):
+    import json
+
+    write(repo, "warn.sh", WARN2)
+    write(repo, SEED, json.dumps({"why": "t", "files": {"warn.sh#SC2034": 1}}))
+    _commit_all(repo)
+    r = run_lint(repo)
+    out = r.stdout + r.stderr
+    assert r.returncode == 1, out
+    assert "seeded with 1; it has 2" in out, out
+
+
+def test_a_new_code_in_a_seeded_file_is_red(repo):
+    # The key carries the CODE: fixing the SC2034 must not leave room for an SC2164 in the file.
+    import json
+
+    write(repo, "mix.sh", "#!/usr/bin/env bash\nunused=1\ncd /tmp\necho hi\n")
+    write(repo, SEED, json.dumps({"why": "t", "files": {"mix.sh#SC2034": 1}}))
+    _commit_all(repo)
+    r = run_lint(repo)
+    out = r.stdout + r.stderr
+    assert r.returncode == 1, out
+    assert "mix.sh#SC2164" in out, out
+
+
+def test_a_stale_seed_entry_fails_when_the_finding_was_fixed(repo):
+    # The ratchet property: an entry whose finding is gone is red until the seed is lowered, so a
+    # fixed site cannot leave headroom for a new one.
+    import json
+
+    write(repo, "warn.sh", "#!/usr/bin/env bash\necho hi\n")
+    write(repo, SEED, json.dumps({"why": "t", "files": {"warn.sh#SC2034": 1}}))
+    _commit_all(repo)
+    r = run_lint(repo)
+    out = r.stdout + r.stderr
+    assert r.returncode == 1, out
+    assert "warn.sh#SC2034 is seeded with 1 and has 0" in out, out
+    assert "goh shell-lint --seed" in out, out
+
+
+def test_a_stale_seed_entry_fails_when_the_file_is_gone(repo):
+    import json
+
+    write(repo, "ok.sh", "#!/usr/bin/env bash\necho hi\n")
+    write(repo, SEED, json.dumps({"why": "t", "files": {"deleted.sh#SC2034": 2}}))
+    _commit_all(repo)
+    r = run_lint(repo)
+    assert r.returncode == 1, r.stdout + r.stderr
+    assert "deleted.sh#SC2034 is seeded with 2 and has 0" in r.stdout + r.stderr
+
+
+def test_staged_scope_ignores_entries_for_files_the_commit_does_not_bring(repo):
+    import json
+
+    write(repo, "untouched.sh", WARN)
+    write(repo, SEED, json.dumps({"why": "t", "files": {"untouched.sh#SC2034": 1}}))
+    _commit_all(repo)
+    write(repo, "new.sh", "#!/usr/bin/env bash\necho hi\n")
+    stage(repo, "new.sh")
+    r = run_lint(repo, "--staged")
+    assert r.returncode == 0, r.stdout + r.stderr
+
+
+def test_an_error_cannot_be_seeded(repo):
+    import json
+
+    write(repo, "noshebang.sh", "echo hi\n")  # SC2148, an ERROR
+    write(repo, SEED, json.dumps({"why": "t", "files": {"noshebang.sh#SC2148": 1}}))
+    _commit_all(repo)
+    r = run_lint(repo)
+    assert r.returncode == 1, r.stdout + r.stderr
+    assert "SC2148" in r.stdout + r.stderr
+
+
+def test_seed_writes_today_and_then_the_tree_is_green(repo):
+    write(repo, "warn.sh", WARN2)
+    _commit_all(repo)
+    seeded = run_lint(repo, "--seed")
+    assert seeded.returncode == 0, seeded.stdout + seeded.stderr
+    import json
+
+    doc = json.loads((repo / SEED).read_text())
+    assert doc["files"] == {"warn.sh#SC2034": 2}, doc
+    _commit_all(repo)
+    again = run_lint(repo)
+    assert again.returncode == 0, again.stdout + again.stderr
+
+
+def test_seed_refuses_to_write_over_an_error(repo):
+    write(repo, "noshebang.sh", "echo hi\n")
+    _commit_all(repo)
+    r = run_lint(repo, "--seed")
+    assert r.returncode == 1, r.stdout + r.stderr
+    assert not (repo / SEED).exists()
+
+
+def test_a_corrupt_seed_is_an_error_never_an_empty_seed(repo):
+    write(repo, "warn.sh", WARN)
+    write(repo, SEED, "{ not json")
+    _commit_all(repo)
+    r = run_lint(repo)
+    assert r.returncode != 0, r.stdout + r.stderr
+    assert SEED in r.stdout + r.stderr
+
+
+def test_severity_error_is_a_written_opt_out(repo):
+    write(repo, ".gatesrc", "GOH_SHELL_LINT_SEVERITY=error\n")
+    write(repo, "warn.sh", WARN)
+    stage(repo, "warn.sh")
+    r = run_lint(repo, "--staged")
+    assert r.returncode == 0, r.stdout + r.stderr
+
+
+def test_severity_info_judges_notes_too(repo):
+    write(repo, "note.sh", NOTE)
+    stage(repo, "note.sh")
+    assert run_lint(repo, "--staged").returncode == 0  # an info is below the default
+    write(repo, ".gatesrc", "GOH_SHELL_LINT_SEVERITY=info\n")
+    r = run_lint(repo, "--staged")
+    assert r.returncode == 1, r.stdout + r.stderr
+    assert "note.sh#SC2016" in r.stdout + r.stderr
+
+
+def test_a_severity_shellcheck_has_no_such_level_for_is_refused_naming_the_key(repo):
+    write(repo, ".gatesrc", "GOH_SHELL_LINT_SEVERITY=warn\n")
+    write(repo, "ok.sh", "#!/usr/bin/env bash\necho hi\n")
+    stage(repo, "ok.sh")
+    r = run_lint(repo, "--staged")
+    assert r.returncode == 2, r.stdout + r.stderr
+    assert "GOH_SHELL_LINT_SEVERITY" in r.stdout + r.stderr
+
+
+def test_the_verdict_cache_is_keyed_on_the_severity(repo, tmp_path):
+    # A clean verdict recorded at `error` must not answer for `warning`: same file, same bytes.
+    env = dict(os.environ, GOH_VERDICT_DIR=str(tmp_path / "cache"))
+    write(repo, ".gatesrc", "GOH_SHELL_LINT_SEVERITY=error\n")
+    write(repo, "warn.sh", WARN)
+    stage(repo, "warn.sh")
+    assert run_lint(repo, "--staged", env=env).returncode == 0
+    write(repo, ".gatesrc", "GOH_SHELL_LINT_SEVERITY=warning\n")
+    assert run_lint(repo, "--staged", env=env).returncode == 1
+
+
+def test_a_files_findings_do_not_depend_on_which_files_share_the_run(repo):
+    # shellcheck given several files follows a `source` of another file in the batch, so a.sh read
+    # SC2128 beside b.sh and SC2154 alone: the full tree and a staged subset disagreed, and a seed
+    # that must be exact (a stale entry fails) flapped between them. One shellcheck per file.
+    write(repo, "b.sh", "#!/usr/bin/env bash\narr=(1 2)\n")
+    write(repo, "a.sh", "#!/usr/bin/env bash\n# shellcheck source=b.sh\n. ./b.sh\necho $arr\n")
+    _commit_all(repo)
+    both = run_lint(repo)
+    alone = run_lint(repo, "--exclude", r"^b\.sh$")
+    for r in (both, alone):
+        out = r.stdout + r.stderr
+        assert "a.sh#SC2154" in out and "SC2128" not in out, out

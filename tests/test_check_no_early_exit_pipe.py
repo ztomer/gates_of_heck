@@ -16,7 +16,9 @@ from pathlib import Path
 from conftest import REPO_ROOT, commit_all, git, hermetic_env, run_goh, write
 
 LABEL = "no early-exit pipe under pipefail"
-HEAD = "#!/usr/bin/env bash\nset -euo pipefail\n"
+# The `: "${svc:=web}"` line assigns the names the fixtures read, so the SHELL LINT (which now judges
+# warnings, GOH.SHSEV) has nothing to say about a fixture that is about a pipe.
+HEAD = '#!/usr/bin/env bash\nset -euo pipefail; : "${svc:=web}" "${service:=web}"\n'
 RACY = HEAD + 'docker compose ps --services | grep -qxF "$svc"\n'
 FIXED = HEAD + 'out="$(docker compose ps --services)"\ngrep -qxF "$svc" <<< "$out"\n'
 

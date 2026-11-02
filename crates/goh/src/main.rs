@@ -71,6 +71,8 @@ pub mod screen_shapes;
 pub mod secrets;
 pub mod seedcount;
 pub mod shell_lint;
+pub mod shell_lint_seed;
+pub mod shellcheck_version;
 pub mod shellsrc;
 pub mod skills;
 pub mod skills_audit;
@@ -297,6 +299,11 @@ fn run_scanners(command: Commands) -> Result<i32, Box<Commands>> {
         Commands::FixedSleep { exclude, seed } => {
             paths(exclude, |x| fixedsleep::run_command(seed, x))
         }
+        Commands::ShellLint {
+            exclude,
+            staged,
+            seed,
+        } => paths(exclude, |x| shell_lint::run_command(staged, x, seed)),
         Commands::StatusMarkers { exclude, seed } => {
             paths(exclude, |x| statusmark::run_command(seed, x))
         }
@@ -313,9 +320,6 @@ fn run_ported(command: Commands) -> Result<i32, Box<Commands>> {
             staged,
             json,
         } => provenance::run_command(&root, baseline.as_deref(), staged, json),
-        Commands::ShellLint { exclude, staged } => {
-            paths(exclude, |x| shell_lint::run_command(staged, x))
-        }
         Commands::PythonFormatted {
             trees,
             staged,

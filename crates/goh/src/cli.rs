@@ -260,19 +260,19 @@ pub enum Commands {
         #[arg(long)]
         json: bool,
     },
-    /// Fail on a shell file that does not parse or that shellcheck errors on
-    /// (native port of `check_shell_lint.sh`).
+    /// Fail on a shell file that does not parse, errors in shellcheck, or exceeds its seed.
     ShellLint {
-        /// Regex on repo-relative paths to skip. Unset: the repo's own `.gatesrc` `GOH_EXCLUDE`, as
-        /// its structural gate applies it; `--exclude ''` opts out.
+        /// Regex on paths to skip. Unset: the repo's `.gatesrc` `GOH_EXCLUDE`; `''` opts out.
         #[arg(long)]
         exclude: Option<String>,
         /// The staged blobs, not the worktree.
         #[arg(long)]
         staged: bool,
+        /// Write today's findings as `shell_lint_seed.json`.
+        #[arg(long)]
+        seed: bool,
     },
-    /// Fail when the repo's Python is not ruff-formatted (native port of
-    /// `check_python_formatted`).
+    /// Fail when the repo's Python is not ruff-formatted.
     PythonFormatted {
         /// Trees to check (default: the repo).
         trees: Vec<String>,
