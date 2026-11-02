@@ -17,6 +17,36 @@
    "line": "outcomes = [(pid, kill(pid)) for pid in burning_orphans(pgrep(CANDIDATE_PATTERN), min_cpu_s)]",
    "status": "legitimate",
    "reason": "the backstop's third shape (2026-10-21): twenty-four hand-rolled spinners burned four cores each for four and a half hours, and the backstop knew only the house's own command line, so it left every one of them alone. So the backstop asks a shape it can NAME without owning it: an ORPHAN (parent 1) that has BURNED a core (CPU time over the floor and still growing) on a busy loop (the code a shell runs contains one) -- load_reap.burning_orphans. The lookup is a CANDIDATE list and nothing more: every candidate is read back and asked the four questions, and a live parent, a sleeper, a worker that finished, and a process that is not a shell are all left alone. The lookup and the kill are on ONE line so this rule sees them instead of a rewrite hiding them; pinned by tests/test_load_orphan_exemption.py, which is red if a question is dropped, if the floor is lowered, or if the exemption goes stale"
+  },
+  {
+   "path": "lib/self_match.py",
+   "line": "_PROG = re.compile(r\"(?<![\\w./-])(?P<prog>pgrep|pkill|e?grep|fgrep|rg)\\b\")",
+   "status": "legitimate",
+   "reason": "the rule that REFUSES a wait loop whose pgrep/pkill-0 condition matches its own shell (2026-11-01) names these programs to READ a command's text; nothing here starts, signals or kills a process -- the match is on the word in a command line it parses, pinned by tests/test_self_match_wait.py"
+  },
+  {
+   "path": "lib/self_match.py",
+   "line": "if prog in (\"pgrep\", \"pkill\"):",
+   "status": "legitimate",
+   "reason": "reads the parsed argv of a pgrep/pkill-0 condition to judge it; kills nothing (lib/self_match.py judges text only)"
+  },
+  {
+   "path": "lib/self_match.py",
+   "line": "if prog == \"pkill\" and \"0\" not in flags:",
+   "status": "legitimate",
+   "reason": "reads the parsed argv of a pkill-0 condition (signal 0 tests existence, it kills nothing) to judge the wait; lib/self_match.py judges text only"
+  },
+  {
+   "path": "tests/test_self_match_wait.py",
+   "line": "'until ! pkill -0 -f \"git push\"; do sleep 3; done',",
+   "status": "legitimate",
+   "reason": "a fixture STRING the guard must refuse (a wait on pkill -0 that matches its own shell); never run -- the test feeds it to the guard as text"
+  },
+  {
+   "path": "tests/test_self_match_wait.py",
+   "line": "'pid=$(pgrep -f \"[g]it push\"); while kill -0 \"$pid\" 2>/dev/null; do sleep 3; done',",
+   "status": "legitimate",
+   "reason": "a fixture STRING the guard must ACCEPT (bracket trick feeding kill -0 on a pid); never run -- the test feeds it to the guard as text"
   }
  ]
 }

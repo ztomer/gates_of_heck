@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+* **The Bash guard refuses a wait that matches its own shell (2026-11-01).** Three agent background
+  shells ran `until ! pgrep -f "git push origin main"; do sleep 30; done` for 8-9 hours: `pgrep -f`
+  tests every process's full command line except its own, and the waiting shell's command line
+  holds the pattern, so the wait could never end (the coordinator killed them by hand). The class:
+  a wait on "no process matching P" must not itself match P. `lib/self_match.py`, wired into
+  `hooks/claude/discard_guard.py`, refuses a `while`/`until` whose condition is `pgrep -f`,
+  `pkill -0 -f` or `ps | grep` on a pattern that regex-matches the command's own text, and names
+  the ways out (wait on the PID with `kill -0`, the bracket trick, `wait`). Text is not code
+  (heredoc, string, comment); a `sh -c '<script>'` is judged as a command; `# pgrep-ok: <reason>`
+  is the escape. Calibrated: with the rule unwired, 16 of `tests/test_self_match_wait.py`'s cases
+  go red. Recorded in the `unattended-campaign` skill.
 * **Every spawn weighs the free pools, opus tiers included (owner ruling 2026-11-01: "Next time
   don't wait for me to prompt you to use agy").** `model_choice.json` `pool_first.tiers` was
   `["cheap", "lookup"]`, so a review, an audit or a root-cause read that agy could answer from

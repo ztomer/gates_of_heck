@@ -38,6 +38,14 @@ forward is a loop that sleeps, run through Monitor; `tools/load.py` for delibera
 `# load-ok: <reason>`. G17 (same day): the WRITE path judges the shape too, so a script that
 busy-waits is refused when it is written, and the tracked-file check judges it at the commit.
 
+THE SELF-MATCHING WAIT (2026-11-01). `until ! pgrep -f "git push origin main"; do sleep 30; done`
+can never end: `pgrep -f` matches the FULL command line of every process but itself, and the
+waiting shell's own command line (`zsh -c '... pgrep -f "git push origin main" ...'`) holds the
+pattern. Three background shells ran one for 8-9 hours. A `while`/`until` whose condition is
+`pgrep -f`, `pkill -0 -f` or `ps | grep` on a pattern that matches the command's own text is
+refused, with the ways out: wait on the PID, the bracket trick, `wait`. The escape is
+`# pgrep-ok: <reason>`. The rule is `lib/self_match.py`.
+
 It judges only what it can parse. A command it cannot split runs, unjudged: the guard must never
 be the thing that breaks an ordinary command. A pattern inside a string or a heredoc is TEXT, not
 code, so it is not a finding: `echo 'while :; do :; done'` writes a loop, it does not run one. And
@@ -76,6 +84,12 @@ try:
     import load_priority
 except ImportError:
     load_priority = None
+
+# The self-matching wait (2026-11-01), the same way: a missing rule fails open.
+try:
+    import self_match
+except ImportError:
+    self_match = None
 
 ESCAPE = re.compile(r"#\s*discard-ok:\s*\S")
 LOAD_ESCAPE = re.compile(r"#\s*load-ok:\s*\S")
@@ -260,6 +274,14 @@ def judge_wait(command: str) -> str | None:
     return WAIT_REASON
 
 
+def judge_self_match(command: str) -> str | None:
+    """The refusal for a wait loop whose `pgrep -f` / `ps | grep` condition matches the waiting
+    shell's own command line, so it can never end (2026-11-01), or None. `# pgrep-ok: <reason>`."""
+    if self_match is None:
+        return None
+    return self_match.judge(command)
+
+
 def judge_priority(command: str) -> str | None:
     """The refusal for a `tools/load.py` command line whose wrapped command runs at background
     priority (`load.py 32 -- taskpolicy -b loop.sh`, the 10h14m run of 2026-10-25), or None."""
@@ -330,6 +352,7 @@ def main() -> int:
             judge(command, event.get("cwd") or os.getcwd())
             or judge_load(command)
             or judge_wait(command)
+            or judge_self_match(command)
             or judge_priority(command)
         )
     if reason:
