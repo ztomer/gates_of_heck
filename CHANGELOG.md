@@ -1,6 +1,6 @@
 # CHANGELOG
 
-## Unreleased
+## v0.57.4 -- the shell lint judges warnings, and holds the debt in a ratchet
 
 * **The shell lint judges warnings, and holds the debt in a ratchet (GOH.SHSEV, 2026-11-02).**
   `goh shell-lint` ran `shellcheck --severity=error`, so an unused variable, a `cd` with no
