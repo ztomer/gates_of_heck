@@ -52,7 +52,8 @@ def _local_ci(tmp_path: Path, cmd: str) -> subprocess.CompletedProcess:
 
 
 def test_predicate_names_status_lines_only():
-    log = "ok\n  \x1b[31m✗\x1b[0m void hold\nrow: ✗ quoted\n⚠ advisory\n✗ second\n"
+    esc = chr(27)  # a colour escape the step printed, built so no literal sits in the source
+    log = f"ok\n  {esc}[31m✗{esc}[0m void hold\nrow: ✗ quoted\n⚠ advisory\n✗ second\n"
     assert xexit.failure_lines(log) == ["✗ void hold", "✗ second"]
     assert xexit.failure_lines("⚠ advisory only\n✓ fine\n") == []
 

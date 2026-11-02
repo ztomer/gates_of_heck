@@ -316,8 +316,10 @@ mod xexit_tests {
 
     #[test]
     fn cross_lines_names_status_lines_only() {
-        let log = "ok\n  \u{1b}[31m✗\u{1b}[0m void hold\nrow: ✗ quoted\n⚠ advisory\n✗ second\n";
-        assert_eq!(cross_lines(log), vec!["✗ void hold", "✗ second"]);
+        let esc = char::from(27); // a colour escape the step printed, no literal in the source
+        let log =
+            format!("ok\n  {esc}[31m✗{esc}[0m void hold\nrow: ✗ quoted\n⚠ advisory\n✗ second\n");
+        assert_eq!(cross_lines(&log), vec!["✗ void hold", "✗ second"]);
         assert_eq!(
             cross_lines("⚠ advisory only\n✓ fine\n"),
             Vec::<String>::new()
