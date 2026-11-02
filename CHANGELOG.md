@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+* **`tools/load.py` refuses to starve another session's gate (GOH.LOADX, 2026-11-02).** It refused a
+  second load experiment and nothing else: on 2026-11-01 a divoom repro ran 15 spinners twice (load
+  average 137 on 16 cores) while zinc's pre-push gate, which fails past 30 min, was running. The
+  machine already had the registry: every gate joins `lib/bench_lock.sh`'s `gates/` by pid; the
+  entry now carries the stage and the repo, and `gates/commit_gate.sh` joins as `pre-commit` (the
+  pre-push already joined). `lib/gates_in_flight.py` is its one reader -- a dead pid, a recycled
+  one and the caller's own ancestors are not gates, and dead entries are pruned -- and `load.py`
+  refuses with each live gate named (repo, stage, pid, elapsed), exit 75; `--wait` starts once the
+  machine is clear (bounded by `--max`), `--despite-gate` overrides. The Bash guard's load message
+  says so. Calibrated: 7 of `tests/test_load_gate_inflight.py`'s 9 tests were red before the
+  change, and the other two (recycled pid, own ancestor) go red with their checks removed.
 * **The stock commit-msg hook runs the repo's own message layer, `tools/commit_msg.sh` (2026-11-01).**
   A repo with a message rule of its own had nowhere to put it but a hand-edited hook, which a
   reinstall overwrites and `doctor` reports as drift: the Finance metarepo needed every commit

@@ -6,8 +6,8 @@
 # other locks here exclude something narrower: lib/desktop_lock/ the one screen, lib/tree_lock.sh
 # one checkout's build tree. This one is a READER-WRITER lock over the whole host:
 #
-#   * every gate JOINS (goh_init, push_gate.sh, local_ci.sh): a file named by its pid in
-#     $BENCH_LOCK_DIR/gates, written with bash builtins only -- no process spawned on the path
+#   * every gate JOINS (goh_init, commit_gate.sh, push_gate.sh, local_ci.sh): a file named by its
+#     pid in $BENCH_LOCK_DIR/gates (its stage, then its repo), written with bash builtins only -- no process spawned on the path
 #     every commit takes -- and then a look for a measurement. One that finds a measurement
 #     waits with NO file there: registered, a waiter is a running gate to the drain;
 #   * a measurement takes it EXCLUSIVE (`bench_lock_exclusive`, tools/quiet.sh): `mkdir` of
@@ -38,7 +38,10 @@
 # per-user and per-session under some harnesses, which would give each caller a private lock. The
 # name does not start `goh-`, so the temp sweep (lib/prune_kept.py --backstop) never claims it.
 #
-# Pinned by tests/test_bench_lock.py.
+# The same gates/ directory is the machine's "gate in flight" registry: tools/load.py reads it
+# (lib/gates_in_flight.py, the one reader) and refuses to starve a live gate (GOH.LOADX).
+#
+# Pinned by tests/test_bench_lock.py and tests/test_load_gate_inflight.py.
 
 BENCH_LOCK_DIR="${GOH_BENCH_LOCK_DIR:-/tmp/gates-of-heck-bench.lock}"
 BENCH_LOCK_MAX_HOLD="${GOH_BENCH_MAX_HOLD:-900}"
@@ -137,7 +140,9 @@ bench_lock_join() {
             fi
         fi
         BENCH_LOCK_ENTRY="$gates/$$"
-        printf '%s\n' "$1" >"$BENCH_LOCK_ENTRY" 2>/dev/null || {
+        # Line 1 the stage, line 2 the repo ($PWD: a hook runs at its worktree's top, and it is a
+        # builtin): lib/gates_in_flight.py names both when tools/load.py refuses to starve it.
+        printf '%s\n%s\n' "$1" "$PWD" >"$BENCH_LOCK_ENTRY" 2>/dev/null || {
             BENCH_LOCK_ENTRY=""
             [ -z "$said" ] || rm -f "$BENCH_LOCK_DIR/waiting/$$"
             return 0

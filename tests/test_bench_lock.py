@@ -61,10 +61,14 @@ def _hold(lock: Path, tmp_path: Path) -> subprocess.Popen[str]:
 def test_a_gate_joins_with_no_process_spawned(tmp_path: Path) -> None:
     lock = tmp_path / "lock"
     (lock / "gates").mkdir(parents=True)
-    r = _run(lock, 'PATH=/nonexistent; bench_lock_join "py gate"; echo "$BENCH_LOCK_ENTRY"')
+    r = _run(
+        lock,
+        f'cd "{tmp_path}"; PATH=/nonexistent; bench_lock_join "py gate"; echo "$BENCH_LOCK_ENTRY"',
+    )
     assert r.returncode == 0, r.stderr
     entry = Path(r.stdout.strip())
-    assert entry.parent == lock / "gates" and entry.read_text() == "py gate\n"
+    # The stage, then the repo it gates: what tools/load.py names when it refuses (GOH.LOADX).
+    assert entry.parent == lock / "gates" and entry.read_text() == f"py gate\n{tmp_path}\n"
 
 
 def test_a_gate_waits_while_a_measurement_holds_and_runs_when_it_ends(tmp_path: Path) -> None:

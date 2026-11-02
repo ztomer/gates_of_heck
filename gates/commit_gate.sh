@@ -41,6 +41,14 @@ root="$(git rev-parse --show-toplevel)"
 goh_refuse_held "$root" "pre-commit: this commit" || exit 1   # a held repo is not committed to
 gate="$root/tools/gate.sh"
 structural="$HERE/structural.sh"
+# shellcheck source=lib/bench_lock.sh
+. "$HERE/../lib/bench_lock.sh"
+# The whole commit is ONE registration (nested gates see GOH_BENCH_JOINED): a measurement waits for
+# it, and tools/load.py will not starve it (lib/gates_in_flight.py, GOH.LOADX). A hook that dies
+# leaves its file; the pid it names is dead, and every reader ignores and prunes it.
+bench_lock_join "pre-commit"
+mark=""
+trap 'rm -f ${mark:+"$mark"} ${BENCH_LOCK_ENTRY:+"$BENCH_LOCK_ENTRY"}' EXIT
 
 repo_before="$(goh_repo_snapshot "$root")"   # what the gate may not write (lib/repo_writes.sh)
 status=0
@@ -48,7 +56,6 @@ if [ ! -f "$gate" ]; then
     bash "$structural" --staged || status=$?
 else
     mark="$(mktemp "${TMPDIR:-/tmp}/goh-structural-mark.XXXXXX")"
-    trap 'rm -f "$mark"' EXIT
     GOH_STRUCTURAL_MARK="$mark" bash "$gate" --staged || status=$?
     # `grep -F -x` on the whole line: the scope and the tree it ran in, as structural.sh wrote them.
     if [ "$status" -eq 0 ] && ! grep -qFx -- "--staged	$root" "$mark"; then

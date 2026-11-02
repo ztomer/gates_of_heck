@@ -104,7 +104,10 @@ LOAD_REASON = (
     '"other agents". Make the load the house way, which reaps itself: '
     '`python3 "$GOH_DIR/tools/load.py" 8 -- <your command>` -- it registers the pids it '
     "starts, kills exactly those on the way out, refuses a second experiment while one holds "
-    "the slot, and a launchd backstop kills any orphan that outlives its owner. To background "
+    "the slot, refuses to starve another session's gate in flight (it names it; `--wait` starts "
+    "once it is clear, `--despite-gate` overrides), and a launchd backstop kills any orphan that "
+    "outlives its owner. To simulate a slow CI runner, throttle the process under test (e.g. "
+    "Chromium CPU throttling over CDP), not the shared machine. To background "
     "a busy loop on purpose, add `# load-ok: <reason>` to the command."
 )
 
@@ -331,7 +334,8 @@ def judge_file(path: str, content: str) -> str | None:
         "were found that way, four cores each, four and a half hours old. Make the load the house "
         'way, which reaps itself: `python3 "$GOH_DIR/tools/load.py" 8 -- <your command>` -- it '
         "registers the pids it starts, kills exactly those on the way out, refuses a second "
-        "experiment while one holds the slot, and a launchd backstop kills any orphan that "
+        "experiment while one holds the slot, refuses to starve another session's gate in flight "
+        "(`--wait` / `--despite-gate`), and a launchd backstop kills any orphan that "
         "outlives its owner. To background a busy loop on purpose, put `# load-ok: <reason>` on "
         "the line (or on the comment lines directly above it)."
     )

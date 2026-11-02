@@ -311,9 +311,25 @@ class Owned:
 class Tool(Owned):
     """The load tool, and the spinners it starts: both of them are the suite's to reap."""
 
-    def __init__(self, directory: Path, count: int, command: list[str], **kwargs) -> None:
+    def __init__(
+        self,
+        directory: Path,
+        count: int,
+        command: list[str],
+        options: tuple[str, ...] = (),
+        **kwargs,
+    ) -> None:
         super().__init__(
-            [sys.executable, str(TOOL), "--dir", str(directory), str(count), "--", *command],
+            [
+                sys.executable,
+                str(TOOL),
+                "--dir",
+                str(directory),
+                *options,
+                str(count),
+                "--",
+                *command,
+            ],
             log=directory / "tool.out",
             **kwargs,
         )
@@ -332,9 +348,10 @@ def owning(argv: list[str], log: Path | None = None, **kwargs):
 
 
 @contextlib.contextmanager
-def owned(directory: Path, count: int, command: list[str], **kwargs):
-    """The load tool, and the reaping of it: a test that FAILS inside here still leaves nothing."""
-    tool = Tool(directory, count, command, **kwargs)
+def owned(directory: Path, count: int, command: list[str], options: tuple[str, ...] = (), **kwargs):
+    """The load tool, and the reaping of it: a test that FAILS inside here still leaves nothing.
+    `options` are the tool's own flags (`--wait`, `--max 60`), placed before N."""
+    tool = Tool(directory, count, command, options, **kwargs)
     try:
         yield tool
     finally:

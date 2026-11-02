@@ -36,6 +36,8 @@ WHAT THIS TOOL DOES, IN THE ORDER THAT MATTERS.
      the deadline. And more spinners than cores is refused unless `--oversubscribe` says it is
      meant: N > ncpu starves the thing under test, which is how a proof becomes a hang.
   7. It REFUSES a command at background priority, which N spinners starve (lib/load_priority.py).
+  8. It REFUSES to starve a GATE in flight (lib/gates_in_flight.py), naming it, exit EXIT_GATE:
+     `--wait` (at most --max; then the deadline starts) and `--despite-gate` are the ways on.
 
 The command runs in a process group of its own, so the group can be killed whole; a command that
 reads from the terminal is therefore not supported (a background group that reads a tty stops).
@@ -60,11 +62,13 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "lib"))
 
+import gates_in_flight
 import load_priority
 import load_reap
 import load_registry as reg
 
 EXIT_BUSY = 3  # the slot is taken
+EXIT_GATE = 75  # another session's gate is in flight (EX_TEMPFAIL: try again when it is done)
 EXIT_LEAK = 70  # a spinner outlived the cleanup: the experiment's verdict is not trustworthy
 EXIT_DEADLINE = 124  # the deadline expired (the number `timeout(1)` uses)
 DEFAULT_MAX_S = 1800.0  # the deadline when none is named: 30 minutes
@@ -81,17 +85,10 @@ def _parse(argv: list[str]) -> argparse.Namespace:
     parser.add_argument("--dir", default=None, help="the load directory (default GOH_LOAD_DIR)")
     parser.add_argument("--status", action="store_true", help="print who holds the slot")
     parser.add_argument("--reap", action="store_true", help="kill the orphans a dead owner left")
-    parser.add_argument(
-        "--max",
-        default=None,
-        help=f"the deadline: seconds, or 90m / 2h (default {DEFAULT_MAX_S:g}s); on expiry the "
-        "command and the spinners are killed and the tool exits 124",
-    )
-    parser.add_argument(
-        "--oversubscribe",
-        action="store_true",
-        help="allow more spinners than cores (refused without it)",
-    )
+    parser.add_argument("--max", help=f"deadline: 45, 90m, 2h (default {DEFAULT_MAX_S:g}s)")
+    parser.add_argument("--oversubscribe", action="store_true", help="allow N > cores")
+    parser.add_argument("--wait", action="store_true", help="wait (to --max) for gates in flight")
+    parser.add_argument("--despite-gate", action="store_true", help="load beside a gate in flight")
     parser.add_argument(load_priority.ESCAPE_FLAG, metavar="REASON", help=load_priority.HELP)
     parser.add_argument("rest", nargs=argparse.REMAINDER, help="N -- COMMAND [ARG...]")
     return parser.parse_args(argv)
@@ -425,6 +422,9 @@ def main(argv: list[str]) -> int:
         print(f"load: {starved}", file=sys.stderr)
         return 2
 
+    if count and not opts.despite_gate and (busy := gates_in_flight.hold_off(opts.wait, max_s)):
+        print(gates_in_flight.refusal(busy, count, opts.wait), file=sys.stderr)
+        return EXIT_GATE
     experiment = Experiment(directory, count, command, max_s)
     try:
         experiment.claim()

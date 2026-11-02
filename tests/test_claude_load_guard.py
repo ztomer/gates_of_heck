@@ -137,6 +137,17 @@ def test_load_ok_is_the_one_escape(tmp_path: Path) -> None:
 # ── the same class, in a FILE ─────────────────────────────────────────────────────────────
 
 
+def test_both_refusals_say_the_tool_will_not_starve_a_gate(tmp_path: Path) -> None:
+    """GOH.LOADX: the way forward says what it refuses, and the two ways past that refusal."""
+    for reason in (
+        _decide("while :; do :; done &", tmp_path),
+        _decide_event(_write("load.sh", f"#!/bin/sh\n{SPINNER}\n")),
+    ):
+        assert reason is not None
+        assert "gate in flight" in reason and "--despite-gate" in reason, reason
+        assert "--wait" in reason, reason
+
+
 def _write(path: str, content: str) -> dict:
     """The event a Write carries."""
     return {"tool_name": "Write", "tool_input": {"file_path": path, "content": content}}
