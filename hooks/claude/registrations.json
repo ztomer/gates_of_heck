@@ -3,12 +3,12 @@
   "hooks": {
     "PreToolUse": [
       {
-        "matcher": "Bash|Write|Edit|MultiEdit",
+        "matcher": "Bash|Monitor|Write|Edit|MultiEdit",
         "command": "python3 \"${GOH_DIR:-$HOME/Projects/gates_of_heck}/hooks/claude/discard_guard.py\" || exit 1",
         "timeout": 15
       },
       {
-        "matcher": "Bash|Write|Edit|MultiEdit|NotebookEdit",
+        "matcher": "Bash|Monitor|Write|Edit|MultiEdit|NotebookEdit",
         "command": "python3 \"${GOH_DIR:-$HOME/Projects/gates_of_heck}/hooks/claude/hold_guard.py\" || exit 1",
         "timeout": 15
       },
@@ -27,7 +27,7 @@
     ],
     "PostToolUse": [
       {
-        "matcher": "Write|Edit|MultiEdit|Bash",
+        "matcher": "Write|Edit|MultiEdit|Bash|Monitor",
         "command": "bash \"${GOH_DIR:-$HOME/Projects/gates_of_heck}/hooks/claude/skill_edit.sh\"",
         "timeout": 30
       }

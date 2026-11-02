@@ -4,7 +4,7 @@
 # a file in it is written (C2, writer-time half; tests/test_claude_skill_hook.py).
 #
 # `goh skills` gates the corpus at commit and push, which is sessions after the writer broke it.
-# Wired in ~/.claude/settings.json (matcher Write|Edit|MultiEdit|Bash); reads the event on stdin. An
+# Wired in ~/.claude/settings.json (matcher Write|Edit|MultiEdit|Bash|Monitor); reads the event on stdin. An
 # edit outside the corpus ($GOH_SKILLS_ROOT, default ~/.claude/skills) costs one python3 call and
 # runs nothing. A finding is exit 2 with the report on stderr: Claude Code hands stderr of an
 # exit-2 PostToolUse hook back to the writer, so the fix lands in the same turn.

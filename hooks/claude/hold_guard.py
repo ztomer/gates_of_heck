@@ -35,6 +35,10 @@ try:
 except ImportError:  # the shared reader is not there: fail OPEN, and say so
     repo_hold = None
     print("· hold guard: lib/repo_hold.py is not there -- holds are not enforced", file=sys.stderr)
+try:  # the tools whose input holds a shell command: ONE list, `lib/shell_tools.py`
+    from shell_tools import COMMAND_FIELD, SHELL_TOOLS
+except ImportError:
+    SHELL_TOOLS, COMMAND_FIELD = ("Bash",), "command"
 
 # git verbs that change the repository (or its worktree) whatever their arguments.
 GIT_WRITES = {
@@ -246,8 +250,8 @@ def main() -> int:
     if tool in ("Write", "Edit", "MultiEdit", "NotebookEdit"):
         path = tool_input.get("file_path") or tool_input.get("notebook_path") or ""
         reason = judge_path(path, tool, cwd)
-    elif tool == "Bash":
-        reason = judge_command(tool_input.get("command") or "", cwd)
+    elif tool in SHELL_TOOLS:
+        reason = judge_command(tool_input.get(COMMAND_FIELD) or "", cwd)
     else:
         reason = None
     if reason:

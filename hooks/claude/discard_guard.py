@@ -91,6 +91,12 @@ try:
 except ImportError:
     self_match = None
 
+# The tools whose input holds a shell command (Bash, Monitor): ONE list, `lib/shell_tools.py`.
+try:
+    from shell_tools import COMMAND_FIELD, SHELL_TOOLS
+except ImportError:  # no list: judge Bash alone, as before it existed
+    SHELL_TOOLS, COMMAND_FIELD = ("Bash",), "command"
+
 ESCAPE = re.compile(r"#\s*discard-ok:\s*\S")
 LOAD_ESCAPE = re.compile(r"#\s*load-ok:\s*\S")
 SEPARATORS = {"&&", "||", ";", "|", "&"}
@@ -350,8 +356,8 @@ def main() -> int:
     tool_input = event.get("tool_input") or {}
     if tool in ("Write", "Edit", "MultiEdit"):
         reason = judge_file(tool_input.get("file_path") or "", _new_text(tool_input))
-    else:
-        command = tool_input.get("command") or ""
+    elif tool in SHELL_TOOLS:
+        command = tool_input.get(COMMAND_FIELD) or ""
         reason = (
             judge(command, event.get("cwd") or os.getcwd())
             or judge_load(command)
@@ -359,6 +365,8 @@ def main() -> int:
             or judge_self_match(command)
             or judge_priority(command)
         )
+    else:
+        reason = None
     if reason:
         json.dump(
             {"hookSpecificOutput": {"hookEventName": "PreToolUse",

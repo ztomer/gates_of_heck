@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+* **The Claude Code command guards judge Monitor like Bash (GOH.MONGUARD, 2026-11-02).** They were
+  registered on `Bash` and nothing else, but Monitor runs a shell command too (field `command`,
+  read from the session transcripts' logged calls), and a ZoneWM agent's first Monitor wait was the
+  self-matching `until ! pgrep -f ...` the Bash guard exists to refuse. `lib/shell_tools.py` is now
+  the ONE list of tools whose input holds a shell command (`Bash`, `Monitor`); `discard_guard.py`
+  (discard, busy loop, busy-wait, self-matching wait, load priority) and `hold_guard.py` judge any
+  of them and no other tool, and `registrations.json` adds `Monitor` to the matcher of both and of
+  the `skill_edit.sh` PostToolUse hook. `~/.claude/settings.json` needs the same three matchers (the
+  weekly `model_choice_watch.py` drift check names them if not). Calibrated: 7 of
+  `tests/test_monitor_guard.py` were red with Monitor off the list, and 3 with the registrations
+  unchanged.
 * **A green step that rewrites a path `GOH_EXPORT_KEEP` keeps is named, on a ratchet (GOH.KEEP1,
   2026-11-02).** The proven key hashes every kept file, so a step that writes one moves its own key
   and is never recorded -- silently, every run (divoom's six daemon rebuilds, P1.14/P1.17; the only
