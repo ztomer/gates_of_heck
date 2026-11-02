@@ -3,7 +3,8 @@
 # message, when the repo opts in with GOH_COMMIT_CLASS in its .gatesrc (roadmap Phase 8), and
 # `goh red-run` when it opts in with GOH_RED_RUN (BACKLOG 4.11). A fix or perf commit names its
 # Class and Siblings in its trailer block; a third instance of a class says how this one ends it; a
-# commit that adds a test names the mutation that turned it red. `git commit --no-verify` skips
+# commit that adds a test names the mutation that turned it red. The repo's own message layer,
+# tools/commit_msg.sh, runs last when it exists. `git commit --no-verify` skips
 # this, and push_gate.sh asks again over the pushed range, so the skip does not survive the push.
 { # parse-guard -- bash reads this group whole before running it (tests/test_parse_guard.py)
 . "$(dirname "${BASH_SOURCE[0]}")/_from_head.sh"; goh_from_head "${BASH_SOURCE[0]}" "$@"   # run HEAD, not the tree (C4)
@@ -25,6 +26,11 @@ fi
 rc=0
 [ -z "$class_on" ] || bash "$HERE/goh.sh" commit-class "$1" || rc=1
 [ -z "$red_on" ] || bash "$HERE/goh.sh" red-run "$1" || rc=1
+# The repo's own message layer, as tools/gate.sh is its tree layer: a repo whose messages carry a
+# rule of its own (Finance reads each one for a real figure or name) puts it in tools/commit_msg.sh,
+# and the stock hook runs it -- never a hand-edited hook, which a reinstall overwrites and doctor
+# reports as drift. Absent, nothing runs; present and red, the commit is refused.
+[ ! -f "$root/tools/commit_msg.sh" ] || bash "$root/tools/commit_msg.sh" "$1" || rc=1
 [ "$rc" -eq 0 ]   # under set -e a refusal exits 1 here; the bare exit below is the parse guard's
 exit
 } # parse-guard

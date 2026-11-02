@@ -158,3 +158,17 @@ def test_the_push_asks_again_so_no_verify_does_not_survive_it(tmp_path: Path) ->
     )  # fmt: skip
     assert r.returncode == 1, r.stdout + r.stderr
     assert "Red-run:" in r.stderr and "nothing pushed" in r.stderr, r.stderr
+
+
+def test_the_commit_msg_hook_runs_the_repos_own_message_layer(repo: Path) -> None:
+    """tools/commit_msg.sh is the repo's message layer, as tools/gate.sh is its tree layer."""
+    _hooked(repo, "")
+    layer = repo / "tools" / "commit_msg.sh"
+    layer.parent.mkdir(parents=True, exist_ok=True)
+    layer.write_text(
+        '#!/usr/bin/env bash\n! grep -q FORBIDDEN "$1" || { echo "layer: no" >&2; exit 1; }\n'
+    )
+    _staged(repo, "x = 1\n", "src/x.py")
+    r = _git_commit(repo, "feat: FORBIDDEN word")
+    assert r.returncode != 0 and "layer: no" in r.stderr, r.stderr
+    assert _git_commit(repo, "feat: an ordinary word").returncode == 0

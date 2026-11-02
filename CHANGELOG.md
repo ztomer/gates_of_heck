@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+* **The stock commit-msg hook runs the repo's own message layer, `tools/commit_msg.sh` (2026-11-01).**
+  A repo with a message rule of its own had nowhere to put it but a hand-edited hook, which a
+  reinstall overwrites and `doctor` reports as drift: the Finance metarepo needed every commit
+  message read for a real figure or name (zinc's detectors, through their `--repo` seam), and the
+  stock hook ran only `commit-class` and `red-run`. `gates/commit_msg.sh` now runs
+  `tools/commit_msg.sh <message-file>` when the file exists, as the pre-commit hook runs
+  `tools/gate.sh`; absent, nothing changes. Calibrated: with the line removed,
+  `test_the_commit_msg_hook_runs_the_repos_own_message_layer` goes red.
 * **The Bash guard refuses a wait that matches its own shell (2026-11-01).** Three agent background
   shells ran `until ! pgrep -f "git push origin main"; do sleep 30; done` for 8-9 hours: `pgrep -f`
   tests every process's full command line except its own, and the waiting shell's command line
