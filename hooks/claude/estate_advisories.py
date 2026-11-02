@@ -8,6 +8,12 @@ latest run is fresh and clean, one line per firing advisory otherwise, and -- be
 stopped running reads exactly like a clean estate -- says so when the state file is missing or
 older than STALE_AFTER_H (tests/test_estate_audit.py). It names, in one line, the repos the audit set
 aside for having no `.gatesrc`.
+
+The state is a day old by design, and a lock can move on in that day (GOH.EA3: zinc's pulldown-cmark
+0.13.4 -> 0.13.6 landed after the run, and this hook still said the next push was red). So before
+any lock is called red, the lock is RE-READ as it is now: one that no longer carries any crate
+version the run named is said to be "fixed since the run", never red. A lock that is gone or will
+not parse proves nothing, so it keeps the run's verdict -- it is never reported fixed.
 """
 
 from __future__ import annotations
@@ -16,6 +22,7 @@ import datetime as dt
 import json
 import os
 import sys
+import tomllib
 from pathlib import Path
 
 STALE_AFTER_H = 36  # a daily job, plus a missed run's grace
@@ -38,6 +45,32 @@ def _age_h(stamp: str, now: dt.datetime) -> float | None:
         return None
 
 
+def _carries(lock: Path, crates: list[str]) -> bool:
+    """Whether `lock` still holds any of `crates` ("name version", as the run recorded them).
+    True when the lock cannot be read: only a lock read and found clean is evidence of a fix."""
+    try:
+        pkgs = tomllib.loads(lock.read_text()).get("package", [])
+    except (OSError, ValueError):
+        return True
+    have = {f"{p.get('name')} {p.get('version')}" for p in pkgs if isinstance(p, dict)}
+    return not crates or any(c in have for c in crates)
+
+
+def _recheck(advisories: dict, root: str | None) -> tuple[dict, list[tuple[str, list[str]]]]:
+    """(the advisories with each lock re-read now, [(id, locks fixed since the run)]). A lock is
+    named relative to the run's estate root, or by its own path when it lives outside it."""
+    still, fixed = {}, []
+    base = Path(root) if root else Path.cwd()
+    for aid, a in advisories.items():
+        locks = a.get("lockfiles", [])
+        gone = [lf for lf in locks if not _carries(base / lf, a.get("crates", []))]
+        if gone:
+            fixed.append((aid, gone))
+        if len(gone) < len(locks):
+            still[aid] = {**a, "lockfiles": [lf for lf in locks if lf not in gone]}
+    return still, fixed
+
+
 def report(state: Path, now: dt.datetime) -> list[str]:
     if not state.exists():
         return [
@@ -55,7 +88,7 @@ def report(state: Path, now: dt.datetime) -> list[str]:
             f"goh estate audit is STALE (last run {ran}): the scheduled job is not running; "
             f"`python3 {SCRIPT} --install`."
         )
-    advisories = data.get("advisories", {})
+    advisories, fixed = _recheck(data.get("advisories", {}), data.get("root"))
     new, standing = [], []
     for aid, a in sorted(advisories.items()):
         seen = _age_h(a.get("first_seen"), now)
@@ -64,6 +97,11 @@ def report(state: Path, now: dt.datetime) -> list[str]:
         lines.append(
             f"goh estate audit: NEW {aid} ({a.get('kind')}) {', '.join(a.get('crates', []))}"
             f" -- the next push of {', '.join(a.get('lockfiles', []))} is red"
+        )
+    for aid, gone in fixed:
+        lines.append(
+            f"goh estate audit: {aid} fixed since the run ({data.get('ran_at')}) in"
+            f" {', '.join(gone)}: the lock no longer carries the named version"
         )
     if standing:
         repos = sorted(

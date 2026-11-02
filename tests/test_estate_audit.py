@@ -276,3 +276,42 @@ def test_the_session_hook_is_silent_about_ungated_when_there_are_none(tmp_path, 
     state = tmp_path / "state.json"
     _audit(estate, state, _db(tmp_path, planted=False))
     assert _hook(state) == ""
+
+
+def _fixed_since(state: Path, estate: Path, *, new: bool) -> None:
+    """The run named the planted crate in hit/Cargo.lock; then the lock moved on (GOH.EA3): zinc's
+    pulldown-cmark 0.13.4 -> 0.13.6 landed after the daily run, and the hook still said red."""
+    if new:
+        data = json.loads(state.read_text())
+        data["advisories"][PLANTED]["first_seen"] = dt.datetime.now(dt.UTC).isoformat()
+        state.write_text(json.dumps(data))
+    lock = estate / "hit" / "Cargo.lock"
+    lock.write_text(lock.read_text().replace('version = "1.0.0"', 'version = "1.0.1"'))
+
+
+@pytest.mark.parametrize("new", [True, False], ids=["new", "standing"])
+def test_a_lock_fixed_since_the_run_is_not_reported_red(tmp_path, estate, new):
+    state = tmp_path / "state.json"
+    _audit(estate, state, _db(tmp_path, planted=True))
+    _fixed_since(state, estate, new=new)
+    out = _hook(state)
+    red = [x for x in out.splitlines() if "hit/Cargo.lock" in x and "fixed since the run" not in x]
+    assert red == [], out
+    assert "fixed since the run" in out and "hit/Cargo.lock" in out, out
+    # The lock that still carries the version is still reported.
+    assert "NEW" in out if new else "1 standing advisory(ies) in 1 lockfile(s)" in out, out
+    if new:
+        assert "group/clean/nested/Cargo.lock is red" in out, out
+
+
+def test_a_lock_that_cannot_be_reread_is_never_reported_fixed(tmp_path, estate):
+    state = tmp_path / "state.json"
+    _audit(estate, state, _db(tmp_path, planted=True))
+    data = json.loads(state.read_text())
+    data["advisories"][PLANTED]["first_seen"] = dt.datetime.now(dt.UTC).isoformat()
+    state.write_text(json.dumps(data))
+    (estate / "hit" / "Cargo.lock").unlink()
+    (estate / "group" / "clean" / "nested" / "Cargo.lock").write_text("[[package\nnot toml")
+    out = _hook(state)
+    assert "fixed since the run" not in out, out
+    assert "hit/Cargo.lock" in out and "group/clean/nested/Cargo.lock" in out, out
