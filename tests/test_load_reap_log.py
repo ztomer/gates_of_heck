@@ -31,6 +31,7 @@ sys.path.insert(0, str(REPO_ROOT / "lib"))
 
 import load_reap
 import load_reap_log
+import load_reap_report
 import load_registry as reg
 
 REAPER = REPO_ROOT / "tools" / "load_reap.py"
@@ -97,7 +98,7 @@ def test_the_house_shape_sweep_names_its_rule_and_the_command(
     report = load_reap.reap_orphans()
     mine = [k for k in report.kills if k.pid == pid]
     assert mine, report
-    assert mine[0].rule == load_reap.RULE_HOUSE == "house-shape"
+    assert mine[0].rule == load_reap_report.RULE_HOUSE == "house-shape"
     assert str(fifo) in mine[0].command
 
 
@@ -110,13 +111,13 @@ def test_the_hand_rolled_sweep_names_its_rule_and_the_command(tmp_path: Path) ->
     report = load_reap.reap_burning_orphans(min_cpu_s=0.3)
     mine = [k for k in report.kills if k.pid == pid]
     assert mine, report
-    assert mine[0].rule == load_reap.RULE_HAND == "hand-rolled-shape"
+    assert mine[0].rule == load_reap_report.RULE_HAND == "hand-rolled-shape"
     assert str(script) in mine[0].command
 
 
 def test_a_kill_line_is_one_stamped_line_with_a_truncated_command() -> None:
     long = "/bin/sh -c " + "x" * 5000 + "\nsecond line"
-    kill = load_reap.Kill(pid=4242, rule=load_reap.RULE_REGISTRY, command=long)
+    kill = load_reap_report.Kill(pid=4242, rule=load_reap_report.RULE_REGISTRY, command=long)
     line = load_reap_log.kill_line(kill)
     assert "\n" not in line
     assert re.match(rf"^{ISO_UTC} .*pid=4242.*rule=registry", line), line
