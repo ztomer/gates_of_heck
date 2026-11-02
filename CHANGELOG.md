@@ -1,6 +1,6 @@
 # CHANGELOG
 
-## Unreleased
+## v0.57.3 -- a step that prints ✗ and exits 0 is red; the load reaper logs when, which and why
 
 * **A step that prints `✗` and exits 0 is red (GOH.XEXIT, 2026-11-02).** In the house TUI contract
   `✗` means failure and `⚠` advisory, but a gate step's exit code alone decided: ZoneWM's
