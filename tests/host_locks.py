@@ -59,3 +59,6 @@ def no_test_reaches_a_host_lock(tmp_path_factory, monkeypatch):
     monkeypatch.delenv("ZTOOLS_GPU_LOCK_OWNER", raising=False)
     # A slot the suite's own push holds is not one a fixture gate is inside (lib/gate_slot.py).
     monkeypatch.delenv("GOH_GATE_SLOT", raising=False)
+    # Nor is the bench lock's join marker: inherited from the suite's own push, it made every
+    # `bench_lock_join` a fixture ran a silent no-op that registered nothing (GOH.LOADX).
+    monkeypatch.delenv("GOH_BENCH_JOINED", raising=False)
