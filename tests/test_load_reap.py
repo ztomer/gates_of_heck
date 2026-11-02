@@ -254,13 +254,43 @@ def test_the_backstop_kills_by_pid_and_never_by_name(tmp_path: Path) -> None:
 # ── the second shape: the orphan no registry names ───────────────────────────
 
 
-def test_the_backstop_kills_an_orphan_no_registry_names(tmp_path: Path) -> None:
+def _the_machines_backstop_fires(tmp_path: Path) -> None:
+    """The launchd minute job (or another checkout's suite) sweeping the machine, NOW: the sweep
+    is global, and nothing in this suite orders it against a test's own (GOH.FLAKE1). Fired here,
+    in the window between a fixture's birth and the test's sweep, so the interleaving that lost the
+    race once under load is run on every pass instead of once a minute by chance."""
+    empty = tmp_path / "no-registry"
+    empty.mkdir()
+    result = subprocess.run(
+        [sys.executable, str(REAPER), "--dir", str(empty)],
+        capture_output=True,
+        text=True,
+        stdin=subprocess.DEVNULL,
+        timeout=timing_bounds.patience(60),
+        check=False,
+    )  # fmt: skip
+    assert result.returncode == 0, result.stderr
+
+
+def test_the_backstop_kills_an_orphan_no_registry_names(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """THE CLASS (2026-10-20). The tool was SIGKILLed, so its registry went with the temporary
     directory that held it, and its spinners were left burning a core each with nothing naming
-    them. The backstop finds them by the house's own shape -- exactly that shape, orphaned only."""
-    fifo = tmp_path / "release-999999-0.fifo"
+    them. The backstop finds them by the house's own shape -- exactly that shape, orphaned only.
+
+    The fixture's pipe names THIS process as its owner, which is alive, so every other sweeper on
+    the machine (the minute job, another checkout's suite) leaves it alone; only the sweep under
+    test is told that owner is gone (GOH.FLAKE1). A fixture naming a dead owner was fair game for
+    them all, and under load the minute job took it first. The owner question itself is pinned in
+    tests/test_load_orphan_exemption.py; this test pins the real lookup, read-back and kill."""
+    me, alive = os.getpid(), reg.pid_alive
+    fifo = tmp_path / f"release-{me}-0.fifo"
     pid = _spinner(fifo)
     assert reg.pid_ppid(pid) == 1, "the fixture did not become an orphan"
+    _the_machines_backstop_fires(tmp_path)
+    assert load_kit.alive(pid), "another sweeper took a fixture whose owner is alive"
+    monkeypatch.setattr(reg, "pid_alive", lambda p: p != me and alive(p))
     report = load_reap.reap_orphans()
     assert pid in report.killed, report
     assert not load_kit.alive(pid), "the orphan outlived the backstop"
