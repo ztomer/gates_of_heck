@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+* **goh widens a hook matcher only for a group that is all goh's (GOH.SHAREDGRP, 2026-11-02).** A
+  settings.json hook group's matcher belongs to the whole group, and GOH.MONGUARD's hand edit added
+  `Monitor` to one that also held `rtk hook claude`, so rtk began rewriting Monitor commands (its
+  `updatedInput` carries only `command`, which can drop Monitor's other fields). Nothing in the repo
+  applied `registrations.json` to settings.json; now `scripts/apply_claude_hooks.py` does, and a goh
+  hook that shares a group with a foreign hook (or a goh hook wanting another matcher) is split into
+  its own group before its matcher is widened, the foreign group left byte for byte. Backs up, writes
+  atomically, idempotent; `--dry-run` / `--check`. Also registers `estate_advisories.py` (SessionStart)
+  in `registrations.json`, where `~/.claude/settings.json` already had it, so the weekly drift check
+  reads green. Calibrated: 4 of `tests/test_apply_claude_hooks.py` red with the split removed.
 * **The Claude Code command guards judge Monitor like Bash (GOH.MONGUARD, 2026-11-02).** They were
   registered on `Bash` and nothing else, but Monitor runs a shell command too (field `command`,
   read from the session transcripts' logged calls), and a ZoneWM agent's first Monitor wait was the

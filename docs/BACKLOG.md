@@ -89,7 +89,6 @@ box, a string comparison of a path is a measurement of the CALLER, not of the fi
   through the plan of record below with its four fields.
 - **Waiting on the owner, and nothing here moves them:**
   - 6.13's scheduling: `scripts/estate_audit.py --install` writes and loads the daily launchd job.
-  - Registering `hooks/claude/estate_advisories.py` (SessionStart) in `~/.claude/settings.json`.
   - `GOH_RED_RUN` turned on, per repo: no repo has it on yet (`e526df9`).
 - **Main moves only through `tools/land.sh`**, and since `7e26571` this repo's push refuses a
   `main` tip land.sh did not gate (`GOH_LANDED_ONLY=main`). Every Rust change runs

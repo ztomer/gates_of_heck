@@ -1,5 +1,5 @@
 {
-  "_doc": "The goh Claude Code hook entries for ~/.claude/settings.json, as they should be registered (docs/config.md, tests/test_claude_hook_registrations.py). A python hook ends `|| exit 1`: python3 exits 2 on a missing script, and exit 2 from a PreToolUse or Stop hook BLOCKS -- every tool call, or every stop. Mapped to 1 it is a visible, non-blocking hook error. Never register a hook that uses exit 2 on purpose (skill_edit.sh) this way: bash on a missing file exits 127.",
+  "_doc": "The goh Claude Code hook entries for ~/.claude/settings.json, as they should be registered (docs/config.md, tests/test_claude_hook_registrations.py). A python hook ends `|| exit 1`: python3 exits 2 on a missing script, and exit 2 from a PreToolUse or Stop hook BLOCKS -- every tool call, or every stop. Mapped to 1 it is a visible, non-blocking hook error. Never register a hook that uses exit 2 on purpose (skill_edit.sh) this way: bash on a missing file exits 127. A SessionStart advisory (estate_advisories.py) ends `|| true` instead: SessionStart cannot block and a missing script should be silent there. `scripts/apply_claude_hooks.py` writes these into settings.json: it creates or widens only a group whose hooks are all goh's, and splits a goh hook out of a group shared with a foreign one first.",
   "hooks": {
     "PreToolUse": [
       {
@@ -44,6 +44,11 @@
         "matcher": "compact",
         "command": "python3 \"${GOH_DIR:-$HOME/Projects/gates_of_heck}/hooks/claude/compact_restore.py\" || exit 1",
         "timeout": 15
+      },
+      {
+        "matcher": null,
+        "command": "python3 \"${GOH_DIR:-$HOME/Projects/gates_of_heck}/hooks/claude/estate_advisories.py\" || true",
+        "timeout": 10
       }
     ]
   }

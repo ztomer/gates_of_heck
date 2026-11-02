@@ -50,6 +50,7 @@ from tui.lib import ok, warn
 sys.path.insert(0, str(ROOT / "hooks" / "claude"))
 sys.path.insert(0, str(ROOT / "scripts"))
 import agent_audit
+import apply_claude_hooks
 import model_choice
 from agent_guard import STATUSES, ledger_path
 
@@ -267,7 +268,7 @@ def settings_drift(settings: Path, registrations: Path) -> dict[str, Any]:
         for g in groups or []:
             for h in g.get("hooks") or []:
                 cmd = str(h.get("command", ""))
-                if "hooks/claude/" in cmd and ("GOH_DIR" in cmd or "gates_of_heck" in cmd):
+                if apply_claude_hooks.is_goh(cmd):  # the installer's own notion of "goh's"
                     have.add(key(ev, g.get("matcher"), h))
     missing, extra = sorted(want - have), sorted(have - want)
     return {"red": bool(missing or extra), "missing": missing, "extra": extra,
