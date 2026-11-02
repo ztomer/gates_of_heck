@@ -9,6 +9,8 @@
 . "$(dirname "${BASH_SOURCE[0]}")/../gates/_from_head.sh"; goh_from_head "${BASH_SOURCE[0]}" "$@"   # run HEAD, not the tree (C4)
 set -euo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-exec bash "$HERE/../gates/python.sh" "$HERE/load_reap.py" "$@"
+# The log launchd hands this job (the plist's StandardOutPath) is bounded by the job itself: it
+# moves the file to <file>.1 once past its cap (GOH.REAPLOG).
+exec bash "$HERE/../gates/python.sh" "$HERE/load_reap.py" --log-path "${HOME:-/nonexistent}/Library/Logs/goh-load-reap.log" "$@"
 exit
 } # parse-guard

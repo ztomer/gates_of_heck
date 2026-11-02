@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+* **The load reaper's log says when, which, what and why (GOH.REAPLOG, 2026-11-02).**
+  `~/Library/Logs/goh-load-reap.log` held `load-reap: killed 43333; ...` with no time, so a backstop
+  kill could not be matched to the moment a test or gate lost its process (found chasing
+  GOH.FLAKE1). Every line `tools/load_reap.py` writes now starts with an ISO-8601 UTC timestamp, and
+  each kill is its own line: `pid=`, `rule=` (`registry`, `house-shape` or `hand-rolled-shape`) and
+  `cmd=` (read before the kill, one line, 120 characters). A pass that kills and removes nothing
+  writes nothing, and the log is bounded: past 256 KiB (`--max-log-bytes`) the job moves it to
+  `<log>.1`. The exempted `outcomes = [(pid, kill(pid)) ...]` lines are unchanged (the pid carries
+  its command as an `int` subclass). `tests/test_load_reap_log.py`; calibrated: 1 to 2 of its 6 red
+  per field dropped.
 * **goh widens a hook matcher only for a group that is all goh's (GOH.SHAREDGRP, 2026-11-02).** A
   settings.json hook group's matcher belongs to the whole group, and GOH.MONGUARD's hand edit added
   `Monitor` to one that also held `rtk hook claude`, so rtk began rewriting Monitor commands (its

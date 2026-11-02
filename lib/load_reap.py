@@ -58,11 +58,18 @@ import signal
 import subprocess
 import time
 from collections.abc import Callable
-from dataclasses import dataclass, field
 from pathlib import Path
 
 import busyloop
 import load_registry as reg
+from load_reap_report import (
+    RULE_HAND,
+    RULE_HOUSE,
+    RULE_REGISTRY,
+    Report,
+    Seen,
+    record,
+)
 
 GRACE_S = 2.0
 POLL_S = 0.05
@@ -123,29 +130,6 @@ def _ask(argv: list[str], timeout: float) -> str:
     except OSError as error:
         raise Blind(f"`{argv[0]}` could not run: {error}") from None
     return result.stdout
-
-
-@dataclass
-class Report:
-    """What one sweep did, in the words the job's log needs."""
-
-    killed: list[int] = field(default_factory=list)
-    kept: list[int] = field(default_factory=list)
-    dropped: list[int] = field(default_factory=list)
-    failed: list[int] = field(default_factory=list)
-    removed: list[str] = field(default_factory=list)
-    swept: list[str] = field(default_factory=list)
-    blind: list[str] = field(default_factory=list)
-
-    @property
-    def touched(self) -> int:
-        return len(self.killed) + len(self.kept) + len(self.dropped) + len(self.failed)
-
-    def summary(self) -> str:
-        return (
-            f"killed {len(self.killed)}, kept {len(self.kept)}, dropped {len(self.dropped)}, "
-            f"failed {len(self.failed)}, registries removed {len(self.removed)}"
-        )
 
 
 def kill(pid: int, grace: float = GRACE_S) -> bool:
@@ -222,7 +206,7 @@ def our_orphans(candidates: list[int]) -> list[int]:
         _pipe, owner = shape
         if reg.pid_alive(owner):
             continue
-        ours.append(pid)
+        ours.append(Seen(pid, command))
     return ours
 
 
@@ -239,8 +223,7 @@ def reap_orphans() -> Report:
     """
     report = Report()
     outcomes = [(pid, kill(pid)) for pid in our_orphans(pgrep(ORPHAN_PATTERN))]
-    for pid, gone in outcomes:
-        (report.killed if gone else report.failed).append(pid)
+    record(outcomes, RULE_HOUSE, report)
     return report
 
 
@@ -376,7 +359,7 @@ def burning_orphans(candidates: list[int], min_cpu_s: float = BURN_CPU_S) -> lis
             continue
         if not busyloop.has_busy_loop(code):
             continue
-        burning.append((pid, cpu))
+        burning.append((Seen(pid, command), cpu))
     if not burning:
         return []
     time.sleep(SAMPLE_S)
@@ -406,8 +389,7 @@ def reap_burning_orphans(min_cpu_s: float = BURN_CPU_S) -> Report:
     """
     report = Report()
     outcomes = [(pid, kill(pid)) for pid in burning_orphans(pgrep(CANDIDATE_PATTERN), min_cpu_s)]
-    for pid, gone in outcomes:
-        (report.killed if gone else report.failed).append(pid)
+    record(outcomes, RULE_HAND, report)
     return report
 
 
@@ -445,11 +427,12 @@ def reap_registry(
             gone.add((pid, recorded))
             continue
         if reg.pid_ppid(pid) == 1:
-            if kill(pid):
-                report.killed.append(pid)
+            info = _process(pid)  # read BEFORE the kill: the log names what it ran
+            seen = Seen(pid, info[1] if info else "?")
+            outcome = [(seen, kill(pid))]
+            record(outcome, RULE_REGISTRY, report)
+            if outcome[0][1]:
                 gone.add((pid, recorded))
-            else:
-                report.failed.append(pid)
             continue
         report.kept.append(pid)  # a live parent: an experiment in progress
     if after_kill is not None:
@@ -487,6 +470,7 @@ def reap_all(directory: Path | None = None) -> Report:
     for path in reg.registry_files(directory):
         one = reap_registry(path)
         total.killed.extend(one.killed)
+        total.kills.extend(one.kills)
         total.kept.extend(one.kept)
         total.dropped.extend(one.dropped)
         total.failed.extend(one.failed)

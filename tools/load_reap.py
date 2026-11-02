@@ -40,6 +40,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "lib"))
 
 import load_reap
+import load_reap_log as log
 import load_registry as reg
 
 
@@ -49,6 +50,14 @@ def main(argv: list[str]) -> int:
         description="kill the load spinners whose owner is gone",
     )
     parser.add_argument("--dir", default=None, help="the load directory (default GOH_LOAD_DIR)")
+    parser.add_argument(
+        "--log-path",
+        default=None,
+        help="the file launchd sends this job's output to: moved to <file>.1 once past the cap",
+    )
+    parser.add_argument(
+        "--max-log-bytes", type=int, default=log.MAX_LOG_BYTES, help="the log's cap in bytes"
+    )
     opts = parser.parse_args(argv)
     directory = Path(opts.dir).expanduser() if opts.dir else reg.load_dir()
     shapes = [
@@ -84,24 +93,27 @@ def main(argv: list[str]) -> int:
             faults.append(f"{name}: {type(error).__name__}: {error}")
             continue
         report.killed.extend(one.killed)
+        report.kills.extend(one.kills)
         report.failed.extend(one.failed)
         report.removed.extend(one.removed)
         report.blind.extend(one.blind)
-    if report.killed or report.removed:
-        killed = " ".join(str(pid) for pid in report.killed)
-        print(
-            f"load-reap: killed {killed or 'nothing'}; removed {len(report.removed)} registry file(s)"
-        )
+    # EVERY line is stamped, and a kill line says who, what and why (GOH.REAPLOG): a pass that
+    # kills and removes nothing writes nothing, so the log does not grow once a minute for no reason.
+    for kill in report.kills:
+        print(log.kill_line(kill))
+    if report.removed:
+        print(log.line(f"removed {len(report.removed)} registry file(s)"))
     for blind in report.blind:
-        print(f"load-reap: not searched this pass -- {blind}; the next pass asks again")
+        print(log.line(f"not searched this pass -- {blind}; the next pass asks again"))
     if report.failed:
-        print(
-            f"load-reap: {len(report.failed)} spinner(s) survived: "
-            f"{' '.join(str(pid) for pid in report.failed)}",
-            file=sys.stderr,
-        )
+        survivors = " ".join(str(pid) for pid in report.failed)
+        print(log.line(f"{len(report.failed)} spinner(s) survived: {survivors}"), file=sys.stderr)
     for fault in faults:
-        print(f"load-reap: {fault}", file=sys.stderr)
+        print(log.line(fault), file=sys.stderr)
+    sys.stdout.flush()
+    sys.stderr.flush()
+    if opts.log_path:
+        log.rotate(Path(opts.log_path).expanduser(), opts.max_log_bytes)
     return 1 if faults else 0
 
 
