@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+* **A step that prints `✗` and exits 0 is red (GOH.XEXIT, 2026-11-02).** In the house TUI contract
+  `✗` means failure and `⚠` advisory, but a gate step's exit code alone decided: ZoneWM's
+  census_bench void hold and three render selftests printed `✗` at exit 0 and passed (fixed there in
+  ZoneWM 06ee510e, with nothing checking the class). `lib/xexit.py` is the ONE predicate -- a line
+  whose first visible character, after indentation and colour escapes, is `✗`; a `✗` quoted
+  mid-line is text -- and `goh_step`, `local_ci.sh`'s step report and the Rust tier's delegated
+  steps (`step_report.rs` `cross_lines`, its twin) each refuse a step that printed one at exit 0,
+  quoting the lines. `test_goh_step_fail_lines.py`'s plant now quotes its `✗` mid-line, since a
+  status `✗` at exit 0 is exactly what this refuses. `tests/test_xexit.py`; calibrated: 4 of its 5
+  red against a stub predicate, the Rust twin red with `starts_with` loosened to `contains`.
 * **The load reaper's log says when, which, what and why (GOH.REAPLOG, 2026-11-02).**
   `~/Library/Logs/goh-load-reap.log` held `load-reap: killed 43333; ...` with no time, so a backstop
   kill could not be matched to the moment a test or gate lost its process (found chasing

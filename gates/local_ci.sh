@@ -404,7 +404,7 @@ _report() { # _report <i>
         PROVEN_SKIPPED=$((PROVEN_SKIPPED + 1))
         return 0
     fi
-    _rec=0
+    _rec=0; [ "$rc" -ne 0 ] || "$GOH_PY" -S "$GOH_ROOT/lib/xexit.py" --say "[$i/$_n]" "$logf" </dev/null || { rc=1; RC[i]=1; }  # ✗ at exit 0 is red (GOH.XEXIT)
     if [ "$rc" -eq 0 ] && [ -n "${PKEY[i]}" ]; then
         # Recorded only if the tree and the gates did not move, and the kept-rewrite ratchet is green.
         _moved=0; [ "$(proven_key "$cmd" </dev/null)" = "${PKEY[i]} ${PTREE[i]}" ] || _moved=1

@@ -20,7 +20,7 @@ from pathlib import Path
 
 from conftest import REPO_ROOT
 
-PLANT = "✗ PLANTED-ROW quoted by a calibration plant"
+PLANT = "row: ✗ PLANTED-ROW quoted by a calibration plant"  # quoted mid-line: a status ✗ at exit 0 is red (GOH.XEXIT)
 REAL = "✗ REAL-FAILURE-7781"
 
 

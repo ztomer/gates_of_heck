@@ -259,11 +259,69 @@ pub(crate) fn delegated(
     let start = begin(label);
     let (code, out) = crate::prefetch::take(program, args)
         .unwrap_or_else(|| run_child(program, args, checks, repo));
-    if code == 0 {
+    let crosses = if code == 0 {
+        cross_lines(&out)
+    } else {
+        Vec::new()
+    };
+    if code == 0 && crosses.is_empty() {
         ok(label, start);
         0
+    } else if code == 0 {
+        // Words and exit code disagree: in the house contract the `✗` wins (GOH.XEXIT).
+        let report = format!(
+            "{out}\n{}\n{ERR} {label} printed the ✗ line(s) above and exited 0 -- exit nonzero, \
+             or say ⚠ if it is an advisory (GOH.XEXIT)\n",
+            crosses.join("\n")
+        );
+        fail(label, &command_line(program, args, checks), &report, start)
     } else {
         fail(label, &command_line(program, args, checks), &out, start)
+    }
+}
+
+/// Each `✗` STATUS line in a step's output: first visible character, after indentation and
+/// colour escapes, is `✗`. The twin of `lib/xexit.py` `failure_lines` (GOH.XEXIT); a `✗` quoted
+/// mid-line is text, not a verdict.
+#[must_use]
+pub(crate) fn cross_lines(text: &str) -> Vec<String> {
+    text.lines()
+        .map(strip_ansi)
+        .map(|l| l.trim().to_owned())
+        .filter(|l| l.starts_with('✗'))
+        .collect()
+}
+
+fn strip_ansi(line: &str) -> String {
+    let mut out = String::with_capacity(line.len());
+    let mut chars = line.chars().peekable();
+    while let Some(c) = chars.next() {
+        if c == '\u{1b}' && chars.peek() == Some(&'[') {
+            chars.next();
+            for d in chars.by_ref() {
+                if ('@'..='~').contains(&d) {
+                    break;
+                }
+            }
+        } else {
+            out.push(c);
+        }
+    }
+    out
+}
+
+#[cfg(test)]
+mod xexit_tests {
+    use super::cross_lines;
+
+    #[test]
+    fn cross_lines_names_status_lines_only() {
+        let log = "ok\n  \u{1b}[31m✗\u{1b}[0m void hold\nrow: ✗ quoted\n⚠ advisory\n✗ second\n";
+        assert_eq!(cross_lines(log), vec!["✗ void hold", "✗ second"]);
+        assert_eq!(
+            cross_lines("⚠ advisory only\n✓ fine\n"),
+            Vec::<String>::new()
+        );
     }
 }
 
