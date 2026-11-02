@@ -298,6 +298,50 @@ proven_what_moved() (
     printf "the gates' identity (the gates_of_heck checkout or a toolchain)\n"
 )
 
+# _proven_kept_lines <entry> <live> — the `keep` lines of <live> that belong to one kept entry.
+_proven_kept_lines() {
+    awk -v f="$1" '$1 == "keep" && ($2 == f || index($2, f "/") == 1)' <<<"$2"
+}
+
+# proven_kept_rewritten <live-before> — the GOH_EXPORT_KEEP entries (as the list spells them) whose
+# content moved since <live-before> (`_proven_identity_live`'s output at the first key), one per line.
+proven_kept_rewritten() (
+    local before="$1" now f
+    goh_bind_hook_index
+    [ -n "${GOH_EXPORT_KEEP:-}" ] || return 0
+    now="$(_proven_identity_live)"
+    [ "$now" != "$before" ] || return 0
+    for f in $GOH_EXPORT_KEEP; do
+        f="${f%/}"
+        [ "$(_proven_kept_lines "$f" "$before")" = "$(_proven_kept_lines "$f" "$now")" ] \
+            || printf '%s\n' "$f"
+    done
+)
+
+# proven_kept_check <step> <live-before> <moved:0|1> — the GOH.KEEP1 verdict on a GREEN step: a kept
+# path it rewrote is named (a warning when the repo's kept_rewrite_allow.json carries it, red when
+# not), and an allowlist entry for this step that it did not rewrite is red (lib/kept_rewrite.py).
+# <step> is what the allowlist matches: the step string, or rust_gate's group label. Returns 0
+# green, non-zero red. Nothing is spawned unless something moved or the repo has an allowlist.
+proven_kept_check() {
+    local step="$1" before="$2" moved="$3" top allow rewrote="" out rc=0 kind msg
+    top="$(git rev-parse --show-toplevel 2>/dev/null)" || return 0
+    allow="$top/kept_rewrite_allow.json"
+    [ "$moved" = 1 ] && rewrote="$(proven_kept_rewritten "$before" </dev/null)"
+    [ -n "$rewrote" ] || [ -f "$allow" ] || return 0
+    out="$("$GOH_PY" -S "$PROVEN_GOH_ROOT/lib/kept_rewrite.py" --allow "$allow" \
+        --repo "$(basename "$top")" --step "$step" --keep "${GOH_EXPORT_KEEP:-}" \
+        --rewrote "$rewrote" </dev/null)" || rc=$?
+    while read -r kind msg; do
+        case "$kind" in
+            warn) if command -v warn >/dev/null 2>&1; then warn "kept-rewrite: $msg"
+                  else printf '⚠ kept-rewrite: %s\n' "$msg" >&2; fi ;;
+            err) proven_error "kept-rewrite: $msg" ;;
+        esac
+    done <<<"$out"
+    return "$rc"
+}
+
 # proven_scoped_key <step> <entry>... — like proven_key, but the tree part is the git OBJECT of
 # each repo-relative entry (`.` is the whole tree) rather than the whole tree, so a step whose
 # inputs are named keys only on them (BACKLOG P3; `goh rust-scope` names a crate's). An entry that

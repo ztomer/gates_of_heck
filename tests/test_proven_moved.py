@@ -20,7 +20,9 @@ def test_a_kept_file_the_step_rewrote_is_named_not_called_the_tree(goh, repo, en
     keep = dict(env, GOH_EXPORT_KEEP="build/out.bin")
     step = 'echo ran >> "$COUNT"; echo rebuilt > build/out.bin'
     r = proven(goh, repo, keep, step)
-    assert r.returncode == 0, r.stdout + r.stderr
+    # Red since GOH.KEEP1: an unlisted rewrite of a kept path is a new instance of the class
+    # (tests/test_kept_rewrite.py); the "what moved" line is still printed first.
+    assert r.returncode == 1, r.stdout + r.stderr
     assert "moved while the step ran" in r.stdout
     assert "kept file build/out.bin" in r.stdout, r.stdout
     assert "the tree (" not in r.stdout and "the tree or the gates" not in r.stdout, r.stdout
@@ -38,7 +40,7 @@ def test_local_ci_names_the_kept_file_a_step_rewrote(goh, hooked, env):
     _git(hooked, "add", "-A")
     _git(hooked, "commit", "-q", "-m", "keep", "--no-verify")
     r = local_ci(goh, hooked, dict(env, GOH_EXPORT_KEEP="build/out.bin"))
-    assert r.returncode == 0, r.stdout + r.stderr
+    assert r.returncode == 1, r.stdout + r.stderr  # red since GOH.KEEP1 (test_kept_rewrite.py)
     assert "kept file build/out.bin" in r.stdout and "moved while the step ran" in r.stdout, (
         r.stdout
     )

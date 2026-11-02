@@ -108,7 +108,13 @@ rc=$?
 set -e
 if [ "$rc" -eq 0 ] && [ -n "$key" ]; then
     after="$(proven_key "$step_cmd" </dev/null || true)"
-    if [ "$after" = "$key $tree" ]; then
+    moved=0; [ "$after" = "$key $tree" ] || moved=1
+    [ "$moved" = 0 ] \
+        || step "$label: $(proven_what_moved "$tree" "$live" </dev/null) moved while the step ran — not recorded as proven"
+    # GOH.KEEP1: a kept path the step rewrote is NAMED, and red unless the repo's ratchet carries
+    # it; a ratchet entry for this step that it did not rewrite is red too. Red records nothing.
+    proven_kept_check "$step_cmd" "$live" "$moved" || exit 1
+    if [ "$moved" = 0 ]; then
         rec=0
         proven_record "$key" "$tree" "$step_cmd" "$label" || rec=$?
         if [ "$rec" -eq 2 ]; then
@@ -118,8 +124,6 @@ if [ "$rc" -eq 0 ] && [ -n "$key" ]; then
             exit 2
         fi
         [ "$rec" -eq 0 ] || warn "proven: could not write the record"
-    else
-        step "$label: $(proven_what_moved "$tree" "$live" </dev/null) moved while the step ran — not recorded as proven"
     fi
 fi
 exit "$rc"

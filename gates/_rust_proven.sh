@@ -106,11 +106,12 @@ _rust_key() { # <mode> <step>
 
 # rust_proven_group <group> <crate|tree> <function> -- run the function's steps unless proven.
 rust_proven_group() {
-    local group="$1" mode="$2" fn="$3" step pair="" pkey="" ptree="" hit age by escaped
+    local group="$1" mode="$2" fn="$3" step pair="" pkey="" ptree="" hit age by escaped live="" moved=0
     [ "$mode" = crate ] && _rust_scope_init
     step="$(_rust_step "$group")"
     if pair="$(_rust_key "$mode" "$step" </dev/null)"; then
         read -r pkey ptree <<<"$pair"
+        live="$(_proven_identity_live </dev/null)"
         if hit="$(proven_lookup "$pkey" "$step")"; then
             read -r age by <<<"$hit"
             ok "[rust] $group checks: proven on these inputs $age ago by $by -- skipped"
@@ -119,6 +120,12 @@ rust_proven_group() {
     fi
     "$fn"
     [ -n "$pkey" ] || return 0
+    # GOH.KEEP1: a kept path the group rewrote is NAMED, and red unless the repo's ratchet carries
+    # it. The ratchet names the group by this label, not by the step string, which carries a hash.
+    [ "$(_rust_key "$mode" "$step" </dev/null)" = "$pkey $ptree" ] || moved=1
+    local where="${cargo_dir#"$PWD"/}"
+    [ "$group" = repo ] && where="(repo)"
+    proven_kept_check "rust_gate $group $where" "$live" "$moved" || return 1
     if [ "$mode" = crate ]; then
         if ! escaped="$("$goh_native" rust-scope "$cargo_dir" --check-depinfo "$RUST_SCOPE_FILE" 2>&1)"; then
             # shellcheck disable=SC2086  # one path per line, no spaces: rust-scope prints paths
@@ -132,8 +139,8 @@ rust_proven_group() {
             return 0
         fi
     fi
-    if [ "$(_rust_key "$mode" "$step" </dev/null)" != "$pkey $ptree" ]; then
-        info "[rust] $group checks: the inputs moved while they ran -- not recorded"
+    if [ "$moved" = 1 ]; then
+        info "[rust] $group checks: $(proven_what_moved "$ptree" "$live" </dev/null) moved while they ran -- not recorded"
         return 0
     fi
     proven_record "$pkey" "$ptree" "$step" "rust_gate" </dev/null \

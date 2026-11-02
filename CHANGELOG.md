@@ -2,6 +2,18 @@
 
 ## Unreleased
 
+* **A green step that rewrites a path `GOH_EXPORT_KEEP` keeps is named, on a ratchet (GOH.KEEP1,
+  2026-11-02).** The proven key hashes every kept file, so a step that writes one moves its own key
+  and is never recorded -- silently, every run (divoom's six daemon rebuilds, P1.14/P1.17; the only
+  trace was an info line). All three runners -- `gates/proven.sh`, `gates/local_ci.sh` and
+  `rust_gate.sh`'s proven groups -- now ask `lib/kept_rewrite.py` after a green step: a rewrite the
+  repo's tracked `kept_rewrite_allow.json` carries (step string, or `rust_gate <group> <crate>`;
+  path; reason) is a warning naming repo, step and path; one it does not carry is red; an entry whose
+  step ran green without the rewrite, or whose path is no longer kept, is red. Nothing is spawned
+  unless a kept file moved or the repo has the file. Seeded empty: a survey of the four consumers that
+  keep a path (koffee_big, ZoneWM, game_asset_factory, necrohand) found no proven-cached step that
+  rewrites one. Calibrated: `tests/test_kept_rewrite.py`, the two kept-file tests in
+  `test_proven_moved.py` and the rust group test were red (10 of them) with the runners' wiring removed.
 * **`tools/load.py` refuses to starve another session's gate (GOH.LOADX, 2026-11-02).** It refused a
   second load experiment and nothing else: on 2026-11-01 a divoom repro ran 15 spinners twice (load
   average 137 on 16 cores) while zinc's pre-push gate, which fails past 30 min, was running. The

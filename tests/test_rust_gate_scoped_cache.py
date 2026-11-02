@@ -305,3 +305,40 @@ def test_a_path_dependency_in_the_gates_checkout_keeps_the_crate_cache_on(estate
     )
     again = _gate(estate, "d")
     assert _skipped(again, "crate"), again.stdout + again.stderr
+
+
+def _rewriting_cargo(tmp_path: Path, fake_bin: Path, kept: Path, monkeypatch) -> None:
+    """The fake cargo behind a wrapper whose clippy also appends to a kept file (GOH.KEEP1)."""
+    wrap = tmp_path / "rewriting-cargo"
+    wrap.mkdir()
+    (wrap / "cargo").write_text(
+        f'#!/bin/bash\n[ "$1" = clippy ] && echo rebuilt >> "{kept}"\nexec "{fake_bin}/cargo" "$@"\n'
+    )
+    (wrap / "cargo").chmod(0o755)
+    monkeypatch.setenv("SCOPED_CACHE_FAKE_CARGO", str(wrap))
+
+
+@pytest.mark.parametrize("listed", [False, True])
+def test_a_group_that_rewrites_a_kept_path_is_named(
+    estate: Path, fake_cargo: Path, tmp_path: Path, monkeypatch, listed: bool
+) -> None:
+    """GOH.KEEP1 in rust_gate's groups: the ratchet names the group by its label, not its step
+    string (which carries a config hash). Unlisted is red; listed is a warning; neither records."""
+    (estate / "build").mkdir()
+    (estate / "build" / "out.bin").write_text("before\n")
+    (estate / ".gitignore").write_text("target/\n.build/\nbuild/\n")
+    (estate / ".gatesrc").write_text("GOH_DEPS_OFFLINE=1\nGOH_EXPORT_KEEP='build/out.bin'\n")
+    if listed:
+        (estate / "kept_rewrite_allow.json").write_text(
+            '{"entries": [{"step": "rust_gate crate crates/c", "path": "build/out.bin",'
+            ' "reason": "the fixture clippy rebuilds it"}]}'
+        )
+    _git(estate, "add", "-A")
+    _rewriting_cargo(
+        tmp_path, Path(fake_cargo).parent / "bin", estate / "build" / "out.bin", monkeypatch
+    )
+    r = _gate(estate, "c")
+    out = r.stdout + r.stderr
+    assert "step 'rust_gate crate crates/c' rewrote kept path 'build/out.bin'" in out, out
+    assert (r.returncode == 0) == listed, out
+    assert not _skipped(_gate(estate, "c"), "crate"), "a group that rewrote a kept path recorded"

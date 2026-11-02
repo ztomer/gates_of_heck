@@ -406,17 +406,20 @@ _report() { # _report <i>
     fi
     _rec=0
     if [ "$rc" -eq 0 ] && [ -n "${PKEY[i]}" ]; then
-        # Recorded only if the tree (and the gates) did not move while it ran.
-        if [ "$(proven_key "$cmd" </dev/null)" = "${PKEY[i]} ${PTREE[i]}" ]; then
+        # Recorded only if the tree and the gates did not move, and the kept-rewrite ratchet is green.
+        _moved=0; [ "$(proven_key "$cmd" </dev/null)" = "${PKEY[i]} ${PTREE[i]}" ] || _moved=1
+        [ "$_moved" = 0 ] || step "$(proven_what_moved "${PTREE[i]}" "${PLIVE[i]}" </dev/null) moved while the step ran — not recorded as proven"
+        if ! proven_kept_check "$cmd" "${PLIVE[i]}" "$_moved" </dev/null; then _rec=3  # GOH.KEEP1
+        elif [ "$_moved" = 0 ]; then
             proven_record "${PKEY[i]}" "${PTREE[i]}" "$cmd" "local_ci" </dev/null || _rec=$?
-            if [ "$_rec" -ne 0 ] && [ "$_rec" -ne 2 ]; then
-                warn "[$i/$_n] could not write the proven record"
-            fi
-        else
-            step "$(proven_what_moved "${PTREE[i]}" "${PLIVE[i]}" </dev/null) moved while the step ran — not recorded as proven"
+            [ "$_rec" -eq 0 ] || [ "$_rec" -eq 2 ] || warn "[$i/$_n] could not write the proven record"
         fi
     fi
-    if [ "$_rec" -eq 2 ]; then
+    if [ "$_rec" -eq 3 ]; then  # green, and the kept-rewrite ratchet is red (named above)
+        err "[$i/$_n] FAILED: $cmd"; FAILED=$((FAILED + 1))
+        FAILED_NAMES="$FAILED_NAMES
+  $cmd (kept-rewrite)"
+    elif [ "$_rec" -eq 2 ]; then
         # The step DECLARED an artifact and it is not there (named above): a step that succeeded
         # without the artifact it produces, or consumes, proves nothing -- and the cache must not
         # remember it, or the NEXT run skips it and leaves the same hole.
