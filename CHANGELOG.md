@@ -1,6 +1,6 @@
 # CHANGELOG
 
-## Unreleased
+## v0.58.0 -- a goh change that turns a consumer red is refused before it lands
 
 * **A goh change that turns a consumer red is refused before it lands (GOH.CANARY, 2026-11-07).**
   v0.57.4 made the shell lint judge warnings and seeded only the repos that round touched, and every
