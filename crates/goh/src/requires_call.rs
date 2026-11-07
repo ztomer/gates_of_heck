@@ -240,11 +240,16 @@ pub fn judge(rule: &Rule, files: &[(String, String)]) -> Verdict {
 #[must_use]
 pub fn run(rules: Option<&str>, root: Option<&str>) -> i32 {
     let root = Path::new(root.unwrap_or("."));
-    let rules = rules.map(str::to_owned).or_else(|| {
-        crate::gatesrc::load(root)
-            .ok()
-            .and_then(|c| c.requires_call)
-    });
+    let rules = match rules {
+        Some(r) => Some(r.to_owned()),
+        None => match crate::gatesrc::load(root) {
+            Ok(c) => c.requires_call,
+            Err(m) => {
+                goh_tui::eoutln!("{ERR} [requires_call] {m}");
+                return 2;
+            }
+        },
+    };
     let Some(rules) = rules else {
         goh_tui::eoutln!(
             "{ERR} [requires_call] no rules: set GOH_REQUIRES_CALL in .gatesrc, or pass --rules FILE"

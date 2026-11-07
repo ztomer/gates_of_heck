@@ -68,6 +68,32 @@ pub fn severity(root: &Path) -> Result<&'static str, String> {
         })
 }
 
+/// What a run reads before it lints: `(severity, floor)`, the floor `None` at `--staged`.
+///
+/// # Errors
+///
+/// `--staged --seed` (the seed is repo-wide; the staged blobs are a subset, so the seed they wrote
+/// dropped every file the commit does not touch), a malformed `.gatesrc` (named by its key, never
+/// read as "no floor"), or a severity shellcheck has no level for.
+pub fn config(
+    root: &Path,
+    staged: bool,
+    seed: bool,
+) -> Result<(&'static str, Option<usize>), String> {
+    if staged && seed {
+        return Err(
+            "--staged --seed is refused: the seed is repo-wide and the staged blobs are a \
+                    subset -- run `goh shell-lint --seed` over the tracked tree"
+                .to_owned(),
+        );
+    }
+    let cfg = crate::gatesrc::load(root)?;
+    let floor = (!staged)
+        .then(|| crate::subject::floor(&cfg, &crate::subject::SHELL_LINT))
+        .flatten();
+    Ok((severity(root)?, floor))
+}
+
 /// A shellcheck line for `display`, split: `(rest after the path, code)` when it is a finding
 /// BELOW error that names its code; `None` for an error, a tool error, or a line another file owns.
 #[must_use]
@@ -136,6 +162,8 @@ pub fn judge(
 
 /// The verdict once nothing always-fatal stands: write the seed (`seed`), or judge `found`
 /// against it. `(exit code, (to stderr, line))`, in the shape the gate prints.
+///
+/// `floor` is the caller's, read from a `.gatesrc` it refused when malformed (`None` at `--staged`).
 #[must_use]
 pub fn conclude(
     root: &Path,
@@ -143,15 +171,9 @@ pub fn conclude(
     found: BTreeMap<String, Vec<Finding>>,
     staged: bool,
     seed: bool,
+    floor: Option<usize>,
 ) -> (i32, Vec<(bool, String)>) {
     use goh_tui::{ERR, OK};
-    let floor = if staged {
-        None
-    } else {
-        crate::gatesrc::load(root)
-            .ok()
-            .and_then(|c| crate::subject::floor(&c, &crate::subject::SHELL_LINT))
-    };
     if seed {
         return match write_seed(root, paths.len(), found, floor) {
             Ok(text) => (0, vec![(false, format!("{OK} [shell_lint] {text}"))]),

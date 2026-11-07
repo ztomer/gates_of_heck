@@ -181,3 +181,13 @@ def test_a_malformed_argument_trigger_is_a_config_error(repo: Path) -> None:
     r = _check(_estate(repo, rules, {"drives.py": 'cli("switch-space")\n'}))
     assert r.returncode == 2 and "requires_call.toml" in r.stderr, _named(r)
     assert "*(config-set)" in r.stderr and "nothing was checked" not in r.stderr, _named(r)
+
+
+def test_a_malformed_gatesrc_is_named_not_read_as_no_rules(repo: Path) -> None:
+    """GOH.REV2 sibling of finding 2: `.ok()` turned a malformed .gatesrc into "no rules"."""
+    _estate(repo)
+    (repo / ".gatesrc").write_text(
+        "GOH_REQUIRES_CALL=requires_call.toml\nGOH_SHELL_LINT_MIN_FILES=lots\n"
+    )
+    r = run_goh(repo, "requires-call", ".")
+    assert r.returncode == 2 and "GOH_SHELL_LINT_MIN_FILES" in r.stderr, _named(r)

@@ -337,3 +337,37 @@ def test_the_agent_audit_finds_a_sha_in_a_registered_repo_outside_the_root(tmp_p
     v = json.loads(r.stdout)["verification"]
     assert v["silent_failure"] == [], v
     assert len(v["unverified"]) == 1, v
+
+
+def test_a_gone_entry_names_the_command_that_removes_it_and_that_command_does(
+    tmp_path: Path,
+) -> None:
+    """GOH.REV2: `registered but gone` named the path and nothing that removes it, and no command
+    did -- a repo deleted on purpose (apes) was flagged on every run until somebody hand-edited the
+    state file. Leaving the estate stays a DECISION (no auto-prune): the message names `forget`,
+    `forget` removes exactly that line, and it refuses a path that is still a repository."""
+    state = tmp_path / "state" / "estate_audit.json"
+    registry = tmp_path / "state" / "installed_repos"
+    registry.parent.mkdir(parents=True)
+    keep, gone = _repo_at(tmp_path / "keep"), tmp_path / "gone"
+    registry.write_text(f"{keep}\n{gone}\n")
+    sys.path.insert(0, str(REPO_ROOT / "lib"))
+    import estate_registry
+
+    _, problems = estate_registry.union([], registry)
+    assert any("forget" in p and str(gone) in p for p in problems), problems
+
+    def cli(*a: str) -> subprocess.CompletedProcess:
+        return subprocess.run(
+            [sys.executable, str(REGISTRY_CLI), *a, "--state", str(state)],
+            capture_output=True,
+            text=True,
+            check=False,
+            stdin=subprocess.DEVNULL,
+        )
+
+    refused = cli("forget", str(keep))
+    assert refused.returncode == 2, refused.stdout + refused.stderr
+    assert cli("forget", str(gone)).returncode == 0
+    assert registry.read_text() == f"{keep}\n"
+    assert cli("forget", str(gone)).returncode == 1  # not registered: named, not silent

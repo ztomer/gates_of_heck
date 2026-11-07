@@ -9,6 +9,7 @@ reading a smaller estate than the machine has.
     python3 scripts/estate_registry.py list                # what is registered, and what is gone
     python3 scripts/estate_registry.py seed                # once: the ~/Projects walk plus ~/.claude/skills
     python3 scripts/estate_registry.py record /path/to/repo
+    python3 scripts/estate_registry.py forget /path/to/gone   # a repo that left the estate on purpose
 
 `--root` names the directory to walk (the estate root, `GOH_ESTATE_ROOT`), `--extra` names a
 repo to add beside it (`~/.claude/skills` is the one that lives outside the estate root), and
@@ -31,7 +32,7 @@ sys.path.insert(0, str(ROOT / "lib"))
 import estate_registry
 
 sys.path.insert(0, str(ROOT))
-from tui.lib import info, ok, warn
+from tui.lib import err, info, ok, warn
 
 DEFAULT_EXTRA = Path.home() / ".claude" / "skills"
 
@@ -61,6 +62,10 @@ def main(argv: list[str] | None = None) -> int:
     p_record.add_argument("path", type=Path)
     p_record.add_argument("--state", type=Path, default=estate_registry.state_file())
 
+    p_forget = sub.add_parser("forget", help="remove a repo that left the estate on purpose")
+    p_forget.add_argument("path", type=Path)
+    p_forget.add_argument("--state", type=Path, default=estate_registry.state_file())
+
     args = ap.parse_args(argv)
     registry = estate_registry.registry_path(args.state)
 
@@ -89,6 +94,17 @@ def main(argv: list[str] | None = None) -> int:
         else:
             info(f"already registered: {target}")
         return 0
+
+    if args.command == "forget":
+        target = Path(args.path).expanduser()
+        if (target / ".git").exists():
+            err(f"{target} is still a git repository -- the estate keeps it; nothing removed")
+            return 2
+        if estate_registry.forget(target, registry):
+            ok(f"forgot {target}")
+            return 0
+        err(f"not registered: {target} (in {registry})")
+        return 1
 
     return 2
 

@@ -125,6 +125,27 @@ def record(path: Path, registry: Path | None = None) -> bool:
     return True
 
 
+def forget(path: Path, registry: Path | None = None) -> bool:
+    """Remove the line for `path`; False when it was not registered.
+
+    Leaving the estate is a decision somebody makes (the module docstring), so nothing prunes a
+    gone path by itself: this is the one way to make it, named by the "registered but gone"
+    message. Every other line is kept byte for byte, comments included.
+    """
+    p = Path(registry) if registry is not None else registry_path()
+    target = Path(path).expanduser()
+    if not p.exists():
+        return False
+    lines = p.read_text(encoding="utf-8", errors="replace").splitlines(keepends=True)
+    kept = [ln for ln in lines if Path(ln.strip()).expanduser() != target or not ln.strip()]
+    if len(kept) == len(lines):
+        return False
+    tmp = p.with_name(p.name + ".tmp")
+    tmp.write_text("".join(kept), encoding="utf-8")
+    os.replace(tmp, p)
+    return True
+
+
 def walk_repos(root: Path, depth: int = REPO_DEPTH) -> list[Path]:
     """Every git work tree at most `depth` below the root, nested ones included: a repository
     inside another's tree (servers/media_server) is not tracked by its parent, so the walk goes on
@@ -172,7 +193,10 @@ def union(walked: Iterable[Path], registry: Path | None = None) -> tuple[list[Pa
         problems.append(f"registry line is not an absolute path: {line}")
     for r in repos:
         if not r.exists():
-            problems.append(f"registered but gone: {r}")
+            problems.append(
+                f"registered but gone: {r} -- if it left the estate on purpose: "
+                f"python3 $GOH_DIR/scripts/estate_registry.py forget {r}"
+            )
         elif not (r / ".git").exists():
             problems.append(f"registered but not a git repository: {r}")
         else:

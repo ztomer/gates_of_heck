@@ -1,5 +1,26 @@
 # CHANGELOG
 
+## Unreleased
+
+* **The shell lint's seed is judged over an empty scope, and `--staged --seed` is refused
+  (GOH.REV2, 2026-11-07).** Four findings of a review of GOH.SHSEV. (1) With no shell file left in
+  scope (all deleted, or all excluded) `goh shell-lint` returned OK before the seed was read, so an
+  entry for a gone script never failed stale and a `GOH_SHELL_LINT_MIN_FILES` floor was never
+  judged; a full run now always reaches the seed and the floor (a staged run with nothing staged is
+  still OK). (2) The floor was read with `gatesrc::load(..).ok()`, so a malformed `.gatesrc` meant
+  "no floor"; it is now exit 2 naming the key -- and the sibling in `goh requires-call`, which
+  reported "no rules", too. (3) `--staged --seed` wrote the repo-wide seed from the staged subset,
+  dropping every file the commit did not touch: refused, exit 2, nothing written (the staged blobs
+  and the tree read the same script differently, so seeding "from the full tree" under `--staged`
+  would be a different command wearing the flag). (4) The corrupt-seed test asserted `!= 0`, which a
+  seed read as empty also passes (its unseeded warning is exit 1); it asserts exit 2 and "not JSON".
+  What a consumer should re-check: a repo whose `shell_lint_seed.json` names only scripts it no
+  longer has now fails stale -- `goh shell-lint --seed`.
+* **A registered-but-gone estate entry names the command that removes it.**
+  `scripts/estate_registry.py forget PATH` removes one registry line (refused while PATH is still a
+  git repository); `registered but gone` now names it. Nothing prunes by itself: leaving the estate
+  stays a decision.
+
 ## v0.58.0 -- a goh change that turns a consumer red is refused before it lands
 
 * **A goh change that turns a consumer red is refused before it lands (GOH.CANARY, 2026-11-07).**

@@ -394,8 +394,8 @@ fn run(staged: bool, exclude: &str, seed: bool) -> (i32, Lines) {
             vec![(false, "[shell_lint] not a git repo — skipping".to_owned())],
         );
     };
-    let severity = match crate::shell_lint_seed::severity(&root) {
-        Ok(s) => s,
+    let (severity, floor) = match crate::shell_lint_seed::config(&root, staged, seed) {
+        Ok(got) => got,
         Err(m) => return (2, vec![(true, format!("{ERR} [shell_lint] {m}"))]),
     };
     let (files, tmp) = match gather(&root, staged, exclude.as_ref()) {
@@ -403,7 +403,13 @@ fn run(staged: bool, exclude: &str, seed: bool) -> (i32, Lines) {
         Err(e) => return (2, vec![(true, format!("{ERR} [shell_lint] {e}"))]),
     };
     crate::subject::record(&crate::subject::SHELL_LINT, files.len());
-    if files.is_empty() && !seed {
+    // Over an empty scope only a staged run is done: a full run still owes the seed its stale
+    // entries and the floor its verdict (GOH.REV2), and neither needs shellcheck.
+    if files.is_empty() && !staged {
+        let none = std::collections::BTreeMap::new();
+        return crate::shell_lint_seed::conclude(&root, &[], none, false, seed, floor);
+    }
+    if files.is_empty() {
         return (
             0,
             vec![(
@@ -437,7 +443,7 @@ fn run(staged: bool, exclude: &str, seed: bool) -> (i32, Lines) {
         return (1, lines);
     }
     let paths: Vec<String> = files.iter().map(|(d, _)| d.clone()).collect();
-    crate::shell_lint_seed::conclude(&root, &paths, judged.found, staged, seed)
+    crate::shell_lint_seed::conclude(&root, &paths, judged.found, staged, seed, floor)
 }
 
 /// `goh shell-lint [--staged] [--seed] [--exclude RE]`.

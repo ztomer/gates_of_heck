@@ -353,8 +353,76 @@ def test_a_corrupt_seed_is_an_error_never_an_empty_seed(repo):
     write(repo, SEED, "{ not json")
     _commit_all(repo)
     r = run_lint(repo)
+    # == 2 and "not JSON", as test_fixed_sleep's sibling: `!= 0` also passed a corrupt seed read
+    # as EMPTY, whose unseeded SC2034 is exit 1 (GOH.REV2 finding 4).
+    assert r.returncode == 2 and "not JSON" in r.stderr, r.stdout + r.stderr
+    assert SEED in r.stderr
+
+
+def test_a_corrupt_seed_is_an_error_even_with_no_findings(repo):
+    """The seed is read even when the tree is clean -- else the corrupt file is only found the
+    day a finding appears."""
+    write(repo, "ok.sh", "#!/usr/bin/env bash\necho hi\n")
+    write(repo, SEED, "{ not json")
+    _commit_all(repo)
+    r = run_lint(repo)
+    assert r.returncode == 2 and "not JSON" in r.stderr, r.stdout + r.stderr
+
+
+def test_a_seed_whose_files_are_all_gone_is_stale(repo):
+    """Finding 1: with no shell file left in scope the gate returned OK before the seed was read,
+    so an entry for a deleted script never failed stale."""
+    write(repo, "warn.sh", WARN)
+    _commit_all(repo)
+    assert run_lint(repo, "--seed").returncode == 0
+    (repo / "warn.sh").unlink()
+    _commit_all(repo)
+    r = run_lint(repo)
+    assert r.returncode == 1, r.stdout + r.stderr
+    assert "warn.sh#SC2034" in r.stdout + r.stderr
+
+
+def test_a_seed_whose_files_are_all_excluded_is_stale(repo):
+    write(repo, "warn.sh", WARN)
+    _commit_all(repo)
+    assert run_lint(repo, "--seed").returncode == 0
+    _commit_all(repo)
+    r = run_lint(repo, "--exclude", "warn")
+    assert r.returncode == 1, r.stdout + r.stderr
+
+
+def test_a_floor_is_judged_when_no_shell_file_is_in_scope(repo):
+    """Finding 1: GOH_SHELL_LINT_MIN_FILES was never judged over an empty scope -- exactly the
+    scan that stopped reading its subject the floor exists to catch."""
+    write(repo, ".gatesrc", "GOH_SHELL_LINT_MIN_FILES=1\n")
+    write(repo, "a.py", "x = 1\n")
+    _commit_all(repo)
+    r = run_lint(repo)
     assert r.returncode != 0, r.stdout + r.stderr
-    assert SEED in r.stdout + r.stderr
+    assert "GOH_SHELL_LINT_MIN_FILES" in r.stdout + r.stderr
+
+
+def test_a_malformed_gatesrc_is_exit_2_naming_the_key(repo):
+    """Finding 2: `.ok()` read a malformed .gatesrc as 'no floor'."""
+    write(repo, ".gatesrc", "GOH_SHELL_LINT_MIN_FILES=lots\n")
+    write(repo, "ok.sh", "#!/usr/bin/env bash\necho hi\n")
+    _commit_all(repo)
+    r = run_lint(repo)
+    assert r.returncode == 2, r.stdout + r.stderr
+    assert "GOH_SHELL_LINT_MIN_FILES" in r.stderr
+
+
+def test_staged_seed_is_refused_naming_why(repo):
+    """Finding 3: `--staged --seed` wrote the repo-wide seed from the staged subset, dropping
+    every entry for a file the commit does not touch. Refused, exit 2, and nothing written."""
+    write(repo, "warn.sh", WARN)
+    _commit_all(repo)
+    write(repo, "other.sh", WARN2)
+    stage(repo, "other.sh")
+    r = run_lint(repo, "--staged", "--seed")
+    assert r.returncode == 2, r.stdout + r.stderr
+    assert "--staged" in r.stderr and "--seed" in r.stderr
+    assert not (repo / SEED).exists()
 
 
 def test_severity_error_is_a_written_opt_out(repo):
