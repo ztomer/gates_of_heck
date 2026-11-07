@@ -1,5 +1,19 @@
 # CHANGELOG
 
+## v0.59.1 -- the format gate runs the repo's pinned ruff; a failure names the files that failed
+
+* **`GOH_PYTHON_FORMATTED` runs the repo's ruff, by the Python gates' runner rule (GOH.RUFFPIN,
+  2026-11-07).** `goh python-formatted` ran whatever `ruff` was first on PATH, so its verdict depended
+  on the shell it was launched from while `gates/_py.sh` judged the same tree with the pin. It now takes
+  `goh_py_runner_choose`'s choice: `GOH_PY_RUNNER`, else a tracked `uv.lock` runs
+  `uv run --frozen ruff`, else a `.venv` runs `.venv/bin/python -m ruff`, else PATH. A tracked lock with
+  no `uv` is a named refusal, never PATH's ruff.
+* **A failing `goh_step` names the command, not every file it was handed.** `py_staged.sh --all` ended
+  with a `failed (command: ...)` line listing every tracked `.py` beside the one drifted file; a
+  trailing run of existing-path arguments is now summarized as `<N paths>`.
+* **The v0.5.1 and v0.17.1 stanzas are backfilled**, so the release kit's "tag with no stanza" warning
+  stops and both tags get a GitHub release.
+
 ## v0.59.0 -- py_staged --all: the whole-tree ruff for a repo with no pytest suite
 
 * **`gates/py_staged.sh --all [repo]` runs the commit-time ruff over every tracked `.py`
