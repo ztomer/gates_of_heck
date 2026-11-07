@@ -115,3 +115,23 @@ def test_all_over_no_tracked_python_is_red_not_clean(repo):
     r = run_all(repo)
     assert r.returncode != 0
     assert "no tracked .py" in r.stdout + r.stderr
+
+
+# A failing step's output names the files that FAILED, not every file the command was handed
+# (GOH.RUFFPIN item 2). `goh_step` ended its failure with `failed (command: <argv>)`, and for a
+# whole-tree run the argv is every tracked .py: one drifted file among 150 produced a 150-path line
+# that looked like 150 findings.
+
+
+def test_all_names_only_the_failing_files(repo):
+    for i in range(6):
+        write(repo, f"tools/clean_{i}.py", "x = 1\n")
+    write(repo, "tools/drift.py", "x   =   1\n")
+    stage(repo, "tools")
+    commit_all(repo)
+    r = run_all(repo)
+    out = r.stdout + r.stderr
+    assert r.returncode != 0
+    assert "tools/drift.py" in out or "drift.py" in out, out
+    assert "clean_" not in out, f"a file that passed was named in the failure:\n{out}"
+    assert "ruff format --check" in out, "the command is still named, only its file list is not"

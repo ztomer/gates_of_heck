@@ -186,6 +186,24 @@ goh_step_timeout() {
     esac
 }
 
+# goh_cmd_brief <command...> -- the command as a failure line names it: the argv, with a trailing run
+# of two or more arguments that are existing paths summarized as `<N paths>`. A whole-tree step is
+# handed every tracked file (`ruff format --check` over 150 .py), and `failed (command: ...)` listed
+# all 150 beside the one that failed -- the line read as 150 findings, and the findings were ruff's
+# own output above it (GOH.RUFFPIN). The first two words are never summarized (`python3 script.py a
+# b` keeps its script); a single path stays, since it is its own run. Bash 3.2-safe.
+goh_cmd_brief() {
+    local -a args=("$@")
+    local n=$# i=$# first
+    while [ "$i" -gt 2 ] && [ -e "${args[$((i - 1))]}" ]; do i=$((i - 1)); done
+    first=$i
+    if [ $((n - first)) -lt 2 ]; then
+        printf '%s' "$*"
+    else
+        printf '%s <%d paths>' "${args[*]:0:first}" $((n - first))
+    fi
+}
+
 # goh_step <label> <command...>
 # Runs the command with output captured. On failure: dump the tail, then exit.
 # GOH_TIME=1 appends per-step elapsed whole seconds to the ok line — the
@@ -259,12 +277,12 @@ goh_step() {
         fi
         tail -n "$_goh_tail" "$GOH_LOG" >&2
         printf '\n'
-        die "$GOH_NAME: $label failed (command: $*)"
+        die "$GOH_NAME: $label failed (command: $(goh_cmd_brief "$@"))"
     fi
     # Exit 0 is green only when the step did not SAY it failed: a `✗` status line at exit 0 is a
     # step whose words and exit code disagree, and in the house contract the `✗` wins (GOH.XEXIT,
     # lib/xexit.py; an advisory says `⚠`).
-    "$GOH_PY" -S "$GOH_ROOT/lib/xexit.py" --say "$label" "$GOH_LOG" || die "$GOH_NAME: $label failed (command: $*)"
+    "$GOH_PY" -S "$GOH_ROOT/lib/xexit.py" --say "$label" "$GOH_LOG" || die "$GOH_NAME: $label failed (command: $(goh_cmd_brief "$@"))"
     if [ -n "${GOH_TIME:-}" ]; then
         ok "$label ($(( $(date +%s) - _goh_t0 ))s)"
     else
