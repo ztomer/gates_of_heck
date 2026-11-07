@@ -72,3 +72,36 @@ fn a_red_run_in_an_unreadable_block_names_the_blocking_line() {
     let why = refusal(message, diff).expect("refused");
     assert!(why.contains("`that wrapped.` is not"), "{why}");
 }
+
+/// `app_updates` de40622 (GOH.REDRUN): a Rust test renamed in place, so the diff ADDS only its `fn`
+/// line and keeps `#[test]` as context. At `-U0` the attribute was never seen and the commit,
+/// whose `Red-run:` sat in the body rather than the trailer block, was accepted.
+const RENAMES_A_RUST_TEST: &str = concat!(
+    "+++ b/crates/core/src/deps_tests.rs\n",
+    "@@ -40,2 +40,2 @@\n",
+    " #[test]\n",
+    "-fn the_old_name() {\n",
+    "+fn the_browser_fetch_types_no_answer_into_the_installer() {\n",
+);
+
+const DE40622_SHAPE: &str = "fix(deps): x\n\nbody\n\nRed-run: the old fetch script fails the \
+test\n\nCo-Authored-By: C <c@x>\n";
+
+#[test]
+fn a_test_fn_under_a_context_attribute_is_an_added_test() {
+    assert_eq!(
+        added_tests(RENAMES_A_RUST_TEST),
+        vec!["crates/core/src/deps_tests.rs: fn the_browser_fetch_types_no_answer_into_the_installer() {"]
+    );
+    let added_attr = "+++ b/a.rs\n@@ -1 +1,2 @@\n+#[test]\n+fn t() {}\n";
+    assert_eq!(added_tests(added_attr).len(), 1, "one test, not two");
+    let under_inline = "+++ b/a.rs\n@@ -1 +1 @@\n #[inline]\n+fn f() {}\n";
+    assert_eq!(added_tests(under_inline), Vec::<String>::new());
+}
+
+#[test]
+fn red_run_in_the_body_is_refused_and_in_the_trailer_block_passes() {
+    assert!(refusal(DE40622_SHAPE, RENAMES_A_RUST_TEST).is_some());
+    let in_block = "fix: x\n\nbody\n\nRed-run: the old fetch fails it\nCo-Authored-By: C <c@x>\n";
+    assert_eq!(refusal(in_block, RENAMES_A_RUST_TEST), None);
+}

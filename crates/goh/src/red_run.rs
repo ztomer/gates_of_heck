@@ -39,18 +39,36 @@ pub fn declares_test(path: &str, line: &str) -> bool {
     }
 }
 
+/// Whether `line` declares the item an attribute line above it marks (`fn`, `func`).
+fn declares_item(line: &str) -> bool {
+    let t = line.trim_start();
+    let t = t.strip_prefix("pub ").unwrap_or(t);
+    let t = t.strip_prefix("async ").unwrap_or(t);
+    t.starts_with("fn ") || t.starts_with("func ")
+}
+
 /// Every test declaration a unified diff ADDS, as `path: line`, in diff order.
 #[must_use]
 pub fn added_tests(diff: &str) -> Vec<String> {
     let mut path = String::new();
     let mut out = Vec::new();
+    // A test whose attribute (`#[test]`, `@Test`) is unchanged CONTEXT and whose declaration line
+    // is added -- a test renamed in place -- is an added test too (app_updates de40622). The diff
+    // is read at `-U1` so that context line is there to see.
+    let mut context_attr = false;
     for line in diff.lines() {
         if let Some(p) = line.strip_prefix("+++ ") {
             p.strip_prefix("b/").unwrap_or(p).clone_into(&mut path);
+            context_attr = false;
         } else if let Some(added) = line.strip_prefix('+') {
-            if declares_test(&path, added) {
+            if declares_test(&path, added) || (context_attr && declares_item(added)) {
                 out.push(format!("{path}: {}", added.trim()));
             }
+            context_attr = false;
+        } else if let Some(kept) = line.strip_prefix(' ') {
+            context_attr = declares_test(&path, kept);
+        } else if !line.starts_with('-') {
+            context_attr = false;
         }
     }
     out
@@ -107,7 +125,7 @@ pub fn check_file(path: &str) -> i32 {
         goh_tui::eoutln!("{ERR} {TAG} cannot read the message file {path}");
         return 2;
     };
-    let diff = match git(&["diff", "--cached", "-U0", "--no-color", "--no-ext-diff"]) {
+    let diff = match git(&["diff", "--cached", "-U1", "--no-color", "--no-ext-diff"]) {
         Ok(d) => d,
         Err(e) => {
             goh_tui::eoutln!("{ERR} {TAG} {e}");
@@ -156,7 +174,7 @@ pub fn check_range(revs: &[String]) -> i32 {
             git(&[
                 "show",
                 "--format=",
-                "-U0",
+                "-U1",
                 "--no-color",
                 "--no-ext-diff",
                 sha,
