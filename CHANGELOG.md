@@ -1,6 +1,6 @@
 # CHANGELOG
 
-## Unreleased
+## v0.58.3 -- python.sh builds from a tracked uv.lock; red-run sees a renamed Rust test
 
 * **`gates/python.sh` runs Python by the gates' one runner rule (GOH.PYSEAM, 2026-11-07).** Every
   hook's Python and the structural self-proofs went through python.sh, which took a `.venv` else a
