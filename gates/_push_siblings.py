@@ -14,10 +14,24 @@ usage: _push_siblings.py <export tree>     prints one sibling name per line
 
 from __future__ import annotations
 
+if __name__ == "__main__":  # C4: run HEAD's copy, not the shared working tree (gates/_from_head.py)
+    import os as _os
+    import sys as _sys
+
+    _sys.path.insert(0, _os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "..", "gates"))
+    try:
+        __import__("_from_head").reexec(__file__)
+    except ModuleNotFoundError:  # a copy outside any checkout: nothing to re-run from
+        pass
+    del _sys.path[0]
+
 import os
 import re
 import subprocess
 import sys
+
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "checks"))
+from _gitutil import foreign_repo_env
 
 PATTERNS = {
     "Cargo.toml": re.compile(r'\bpath\s*=\s*"([^"]+)"'),
@@ -28,6 +42,7 @@ PATTERNS = {
 def siblings(tree: str) -> list[str]:
     listed = subprocess.run(
         ["git", "-C", tree, "ls-files", "-z", "--", *(f"**/{n}" for n in PATTERNS), *PATTERNS],
+        env=foreign_repo_env(),  # the export is not the repo the hook runs for
         stdin=subprocess.DEVNULL,
         capture_output=True,
         text=True,
@@ -45,9 +60,9 @@ def siblings(tree: str) -> list[str]:
             continue
         for found in pattern.findall(text):
             parts = os.path.normpath(os.path.join(os.path.dirname(rel), found)).split(os.sep)
-            if len(parts) >= 2 and parts[0] == ".." and parts[1] not in ("", "..", "."):
-                if parts[1] not in names:
-                    names.append(parts[1])
+            outside = len(parts) >= 2 and parts[0] == ".." and parts[1] not in ("", "..", ".")
+            if outside and parts[1] not in names:
+                names.append(parts[1])
     return names
 
 
