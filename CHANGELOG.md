@@ -11,6 +11,18 @@
   directory (gates_of_heck to `$GOH`, any other to the checkout beside the real one, none when it is
   not checked out) and records it in `.siblings`, which `run_litter` reads instead of a name.
 
+## v0.59.2 -- Swift coverage measures the package, not its path dependencies; the push export carries every sibling
+
+* **A SwiftPM path dependency is no longer counted as the package (GOH.SWIFTCOV, 2026-11-07).**
+  `.package(path:)` compiles the other package into the test binary with coverage on, and the scope
+  counted its files: token-pool's widget read 39.3% over 17 files, 12 of them ZoneWM's SpaceBarKit.
+  For a tree with a `Package.swift`, `lib/swift_coverage_scope.py` now confines the denominator to the
+  package's own non-test targets, read from `swift package describe --type json`; both measurement
+  paths (`checks/check_swift_coverage.py`, `gates/coverage_swift.py`) apply it, and a manifest that
+  cannot be described exits 2. An Xcode tree keeps the marker rule.
+* **The push export carries every sibling a tracked manifest names**, not only gates_of_heck, and
+  `_push_siblings.py` runs HEAD's copy and reads the export with a foreign-repo git env.
+
 ## v0.59.1 -- the format gate runs the repo's pinned ruff; a failure names the files that failed
 
 * **`GOH_PYTHON_FORMATTED` runs the repo's ruff, by the Python gates' runner rule (GOH.RUFFPIN,
