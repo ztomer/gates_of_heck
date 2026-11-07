@@ -6,7 +6,8 @@
 # A bare `python3` in a hook is whichever interpreter Homebrew installed last, with whatever
 # PYTHONPATH the shell that made the commit happened to export. On 2026-10-10 Homebrew moved
 # python3 to 3.15 and three repos' gates broke three ways at once, none of them naming the
-# interpreter. This runs the repo's PINNED interpreter (gates/_py.sh: a .venv, else the version
+# interpreter. This runs the repo's PINNED interpreter by the gates' one rule (gates/_py.sh: GOH_PY_RUNNER,
+# else `uv run --frozen` over a tracked uv.lock, else a .venv, else the version
 # GOH_PYTHON_VERSION or a committed .python-version names, found and read back, else python3), with
 # the house libraries on its path and the shell's PYTHONPATH dropped -- so `import tui` works in
 # every hook without an export in ~/.zshrc, and a hook run from a GUI client behaves as one run
@@ -18,7 +19,14 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 . "$HERE/../tui/lib.sh"
 . "$HERE/_py.sh"
 GOH_NAME="python"
-py="$(goh_py_interpreter)"
-exec env -u PYTHONHOME PYTHONPATH="$(cd "$HERE/.." && pwd)" "$py" "$@"
+goh_py_runner_choose   # the gates' own runner rule: GOH_PY_RUNNER, a tracked uv.lock, a .venv, the pin (GOH.PYSEAM)
+# A runner ending in `-m` runs a module; a script or `-c` wants it dropped. Any other (uv run)
+# runs `python` after it.
+if [ "${RUN_ARR[${#RUN_ARR[@]}-1]}" = "-m" ]; then
+    py=("${RUN_ARR[@]:0:${#RUN_ARR[@]}-1}")
+else
+    py=("${RUN_ARR[@]}" python)
+fi
+exec env -u PYTHONHOME PYTHONPATH="$(cd "$HERE/.." && pwd)" "${py[@]}" "$@"
 exit
 } # parse-guard

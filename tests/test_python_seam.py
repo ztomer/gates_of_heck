@@ -134,3 +134,30 @@ def test_an_existing_bare_python3_fails_at_full_scope(goh: Path, repo: Path) -> 
     commit_all(repo, "an old bare python3")
     r = _structural(goh, repo, "--full")
     assert r.returncode == 1 and ".githooks/pre-push:2: python3" in r.stderr, r.stdout + r.stderr
+
+
+def test_a_tracked_uv_lock_runs_the_seam_through_uv_like_the_gates(
+    repo: Path, tmp_path: Path
+) -> None:
+    """GOH.PYSEAM: one runner rule. `gates/_py.sh`'s goh_py_runner builds from a tracked uv.lock
+    (`uv run --frozen`), and python.sh -- which runs every hook's and the self-proofs' Python --
+    took a .venv else a bare interpreter, so a repo on a tracked lock whose .venv was gone failed
+    its structural self-proofs on a missing numpy (necrohand, 2026-11-07)."""
+    write(repo, "uv.lock", "version = 1\n")
+    commit_all(repo)
+    bindir = tmp_path / "fakebin"
+    bindir.mkdir()
+    log = tmp_path / "uv.log"
+    uv = bindir / "uv"
+    uv.write_text(
+        "#!/bin/bash\n"
+        f'echo "$*" >>"{log}"\n'
+        'while [ $# -gt 0 ] && [ "$1" != python ]; do shift; done; shift\n'
+        'VIA=uv exec python3 "$@"\n'
+    )
+    uv.chmod(0o755)
+    env = hermetic_env()
+    r = _seam(repo, "-c", "import os; print('via', os.environ.get('VIA'))",
+              PATH=f"{bindir}:{env['PATH']}")  # fmt: skip
+    assert r.returncode == 0 and "via uv" in r.stdout, r.stdout + r.stderr
+    assert "run --frozen" in log.read_text(), log.read_text()

@@ -1,5 +1,21 @@
 # CHANGELOG
 
+## Unreleased
+
+* **`gates/python.sh` runs Python by the gates' one runner rule (GOH.PYSEAM, 2026-11-07).** Every
+  hook's Python and the structural self-proofs went through python.sh, which took a `.venv` else a
+  bare interpreter, while the Python gates (`goh_py_runner`) build from a tracked `uv.lock` with
+  `uv run --frozen`. A repo on a tracked lock whose `.venv` was gone failed "gate self-proofs still
+  pass" on a missing numpy (necrohand, worked around in its 0cf13cf). python.sh now takes
+  `goh_py_runner_choose`, the same choice said nothing: GOH_PY_RUNNER, a tracked uv.lock, a .venv
+  (pin checked first, then its age), the pin, the house python.
+* **`goh red-run` sees a Rust test renamed in place (GOH.REDRUN, 2026-11-07).** app_updates
+  `de40622` renamed a test, so its diff added only the `fn` line under an unchanged `#[test]`; at
+  `-U0` no test was seen and its `Red-run:`, in the body rather than the trailer block, was never
+  judged. The diff is now read at `-U1`, and an added `fn`/`func` under a context test attribute is
+  an added test. The trailer reading itself already matched `git interpret-trailers --parse` on
+  both de40622 and eedc679.
+
 ## v0.58.2 -- goh commit-class stops calling two common words a class
 
 * **`goh commit-class` no longer calls two common words a class (GOH.CLASSMATCH, 2026-11-07).** ZoneWM's

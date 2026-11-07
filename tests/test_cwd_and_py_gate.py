@@ -94,7 +94,12 @@ def test_py_gate_scopes_coverage_to_the_physical_path(repo, tmp_path):
     # (gates/py_gate.sh splits it into argv), so the stub sees the EXACT argv the gate
     # built, `pytest -q --cov=... ` included, without PATH games that `python3 -m` bypasses.
     runner = stub_dir / "runner.sh"
-    runner.write_text(f'#!/bin/bash\nprintf "%s\\n" "$*" >> "{argv_log}"\n')
+    # It answers `--version` as a real pytest would: the floor is read through the SAME runner
+    # (gates/python.sh takes GOH_PY_RUNNER too, GOH.PYSEAM), so a stub silent there has no pytest.
+    runner.write_text(
+        f'#!/bin/bash\nprintf "%s\\n" "$*" >> "{argv_log}"\n'
+        'case "$*" in *--version*) echo "pytest 99.0.0" ;; esac\n'
+    )
     runner.chmod(0o755)
 
     r = subprocess.run(

@@ -27,6 +27,16 @@
 # so both gates take the same road. Without a lock, an export whose source checkout judged with a
 # .venv is refused (goh_py_export_lost_venv) rather than silently judged by another interpreter.
 goh_py_runner() {
+    goh_py_runner_choose
+    info "python: ${RUN% -m} ($(goh_py_run_version 2 || echo "version unreadable"))"
+}
+
+# goh_py_runner_choose: goh_py_runner's choice, said nothing. gates/python.sh -- every hook's and
+# the self-proofs' Python -- takes the SAME choice (GOH.PYSEAM): it once took a .venv else a bare
+# interpreter, so a repo on a tracked uv.lock whose .venv was gone failed its structural self-proofs
+# on a missing numpy while its gates, through this runner, built from the lock (necrohand,
+# 2026-11-07).
+goh_py_runner_choose() {
     RUN="${GOH_PY_RUNNER:-}"
     if [ -z "$RUN" ] && git ls-files --error-unmatch uv.lock >/dev/null 2>&1; then
         command -v uv >/dev/null 2>&1 \
@@ -36,14 +46,13 @@ goh_py_runner() {
         goh_py_runner_pinned
     elif [ -z "$RUN" ] && [ -x .venv/bin/python ]; then
         RUN=".venv/bin/python -m"
+        goh_py_interpreter >/dev/null   # a pinned repo's venv is the pin's version, said first
         goh_py_venv_current
-        goh_py_interpreter >/dev/null   # and a pinned repo's venv is the pin's version
     elif [ -z "$RUN" ]; then
         goh_py_export_lost_venv
         RUN="$(goh_py_interpreter) -m"
     fi
     read -r -a RUN_ARR <<<"$RUN"
-    info "python: ${RUN% -m} ($(goh_py_run_version 2 || echo "version unreadable"))"
 }
 
 # goh_py_run_version <n>: the first <n> fields of the version the RUNNER runs (2: 3.15, 3: 3.15.1);
