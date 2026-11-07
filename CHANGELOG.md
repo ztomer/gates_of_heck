@@ -1,5 +1,12 @@
 # CHANGELOG
 
+## v0.58.4 -- the ✗ verdict's two twins split output lines alike
+
+* **`lib/xexit.py` and `step_report.rs` `cross_lines` end a line at `\n` or `\r` and nowhere else
+  (GOH.XEXIT2, 2026-11-07).** Python's `str.splitlines()` broke on `\r` while Rust's `str::lines()`
+  did not, so a progress line `...\r✗ x` was red through goh_step and green as a delegated Rust
+  step. One shared fixture, `tests/fixtures/xexit/cases.json`, is read by both test suites.
+
 ## v0.58.3 -- python.sh builds from a tracked uv.lock; red-run sees a renamed Rust test
 
 * **`gates/python.sh` runs Python by the gates' one runner rule (GOH.PYSEAM, 2026-11-07).** Every
