@@ -140,3 +140,98 @@ def test_both_measurement_paths_share_one_scope_definition():
             f"{name} has re-grown a local copy of the exclusion list; "
             "that is how the two drifted apart in the first place"
         )
+
+
+# ---- a path dependency is not the package (GOH.SWIFTCOV, 2026-11-07) -------
+#
+# token-pool's widget read 39.3% over 17 files, 12 of them ZoneWM's SpaceBarKit,
+# compiled into the test binary by `.package(path:)`. Its files sit at an
+# ordinary absolute path no marker excludes, so the scope counted the kit.
+
+import json as _json
+import os as _os
+import shutil as _shutil
+import subprocess as _subprocess
+
+import pytest as _pytest
+
+
+def _write_path_dep_fixture(tmp_path):
+    """App (one library + one test target) depending on ../Kit by path."""
+    kit = tmp_path / "Kit"
+    (kit / "Sources" / "Kit").mkdir(parents=True)
+    (kit / "Sources" / "Kit" / "Kit.swift").write_text("public func kit() -> Int { 1 }\n")
+    (kit / "Package.swift").write_text(
+        "// swift-tools-version:5.9\nimport PackageDescription\n"
+        'let package = Package(name: "Kit", products: [.library(name: "Kit", targets: ["Kit"])],\n'
+        '    targets: [.target(name: "Kit")])\n'
+    )
+    app = tmp_path / "App"
+    (app / "Sources" / "Core").mkdir(parents=True)
+    (app / "Tests" / "CoreTests").mkdir(parents=True)
+    (app / "Sources" / "Core" / "Core.swift").write_text(
+        "import Kit\npublic func core() -> Int { kit() }\n"
+    )
+    (app / "Tests" / "CoreTests" / "CoreTests.swift").write_text("import Core\n")
+    (app / "Package.swift").write_text(
+        "// swift-tools-version:5.9\nimport PackageDescription\n"
+        'let package = Package(name: "App", dependencies: [.package(path: "../Kit")],\n'
+        '    targets: [.target(name: "Core", dependencies: [.product(name: "Kit", package: "Kit")]),\n'
+        '              .testTarget(name: "CoreTests", dependencies: ["Core"])])\n'
+    )
+    own = str(app / "Sources" / "Core" / "Core.swift")
+    dep = str(kit / "Sources" / "Kit" / "Kit.swift")
+    return app, own, dep
+
+
+def _codecov(app, own, dep):
+    """A SwiftPM codecov payload where the dependency dwarfs the package."""
+    files = [
+        {"filename": own, "summary": {"lines": {"count": 10, "covered": 10}}},
+        {"filename": dep, "summary": {"lines": {"count": 90, "covered": 0}}},
+    ]
+    out = app / ".build" / "arm64-apple-macosx" / "debug" / "codecov"
+    out.mkdir(parents=True)
+    (out / "App.json").write_text(_json.dumps({"data": [{"files": files}]}))
+
+
+@_pytest.mark.skipif(not _shutil.which("swift"), reason="needs a Swift toolchain")
+def test_a_path_dependency_is_not_counted_as_the_package(tmp_path):
+    app, own, dep = _write_path_dep_fixture(tmp_path)
+    _codecov(app, own, dep)
+    res = _subprocess.run(
+        ["python3", str(REPO_ROOT / "checks" / "check_swift_coverage.py"), "--min", "50"],
+        cwd=app,
+        stdin=_subprocess.DEVNULL,
+        capture_output=True,
+        text=True,
+        check=False,
+        env={**_os.environ, "NO_COLOR": "1"},
+    )
+    # Own code is 10/10; counting the kit would read 10% over 2 files and fail.
+    assert res.returncode == 0, res.stdout + res.stderr
+    assert "100.0%" in res.stdout and "(1 file(s))" in res.stdout, res.stdout
+
+
+def test_the_scope_is_the_manifests_non_test_targets(tmp_path):
+    app, own, dep = _write_path_dep_fixture(tmp_path)
+    described = _json.dumps(
+        {
+            "path": str(app),
+            "targets": [
+                {"name": "Core", "type": "library", "path": "Sources/Core"},
+                {"name": "CoreTests", "type": "test", "path": "Tests/CoreTests"},
+            ],
+        }
+    )
+    roots = SCOPE.own_source_roots(str(app), describe=lambda _d: described)
+    assert SCOPE.is_code_under_test(own, roots)
+    assert not SCOPE.is_code_under_test(dep, roots)
+    assert not SCOPE.is_code_under_test(str(app / "Tests" / "CoreTests" / "CoreTests.swift"), roots)
+
+
+def test_no_manifest_keeps_the_marker_rule_and_a_bad_one_refuses(tmp_path):
+    assert SCOPE.own_source_roots(str(tmp_path)) is None
+    (tmp_path / "Package.swift").write_text("broken")
+    with _pytest.raises(SCOPE.ScopeError):
+        SCOPE.own_source_roots(str(tmp_path), describe=lambda _d: "not json")

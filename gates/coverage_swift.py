@@ -115,7 +115,7 @@ from coverage_markers import (
     find_exclusions,
     parse_markers,
 )
-from swift_coverage_scope import is_code_under_test
+from swift_coverage_scope import ScopeError, is_code_under_test, own_source_roots
 
 # Imported for the tests, which load this file and drive these by name (see the module docstring).
 __all__ = ["TEST_DIR", "adjust_coverage", "bundle_executables", "parse_markers", "pick_binary"]
@@ -155,7 +155,7 @@ def unmatched_target(tgt, per):
     return tot == 0
 
 
-def measured_files(files):
+def measured_files(files, roots=None):
     """The llvm-cov file records that belong in the denominator.
 
     A named function rather than an inline comprehension so a test can call
@@ -168,8 +168,11 @@ def measured_files(files):
 
     The scope rule is shared with checks/check_swift_coverage.py so the two
     measurement paths cannot drift apart again.
+
+    `roots` confines it to the package's own targets (own_source_roots), so a
+    path dependency compiled into the same binary is not counted as the package.
     """
-    return [f for f in files if is_code_under_test(f.get("filename", ""))]
+    return [f for f in files if is_code_under_test(f.get("filename", ""), roots)]
 
 
 def xcresult_verdict(
@@ -286,7 +289,12 @@ def process(
             print(f"    {line}", file=sys.stderr)
         sys.exit(1)
     data = json.loads(res.stdout)["data"][0]
-    files = measured_files(data.get("files", []))
+    try:
+        roots = own_source_roots(proj)
+    except ScopeError as exc:
+        print(f"✗ [coverage] {exc}", file=sys.stderr)
+        sys.exit(2)
+    files = measured_files(data.get("files", []), roots)
     if include_re:
         try:
             pat = re.compile(include_re)

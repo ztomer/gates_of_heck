@@ -65,7 +65,7 @@ DEFAULT_DD = ".build/xcode-dd"
 # exclusion at all until 2026-09-07 and so reported more than double the
 # coverage on the same tree.
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "lib"))
-from swift_coverage_scope import EXCLUDED_MARKERS as _EXCLUDED_MARKERS, is_code_under_test
+from swift_coverage_scope import ScopeError, is_code_under_test, own_source_roots
 
 
 def _spm_file_lines(f: dict):
@@ -82,12 +82,16 @@ def _spm_file_lines(f: dict):
     return int(f.get("covered_lines", 0) or 0), int(f.get("total_lines", 0) or 0)
 
 
-def _spm_files(payload: dict):
-    """Yield (filename, covered, total) from one SPM codecov JSON dict."""
+def _spm_files(payload: dict, roots=None):
+    """Yield (filename, covered, total) from one SPM codecov JSON dict.
+
+    `roots` (own_source_roots) keeps only the package's own targets, so a path
+    dependency compiled into the test binary is not measured as the package.
+    """
     for dataset in payload.get("data", []):
         for f in dataset.get("files", []):
             name = f.get("filename") or f.get("name") or "?"
-            if any(marker in name for marker in _EXCLUDED_MARKERS):
+            if not is_code_under_test(name, roots):
                 continue
             covered, total = _spm_file_lines(f)
             if total > 0:
@@ -132,14 +136,14 @@ def aggregate(records):
 # ---- payload loading --------------------------------------------------------
 
 
-def load_spm(patterns):
+def load_spm(patterns, roots=None):
     """[(name, cov, tot)] across every codecov JSON matching any pattern."""
     records: list[tuple[str, int, int]] = []
     paths = sorted({p for pat in patterns for p in glob.glob(pat)})
     for p in paths:
         try:
             with open(p, encoding="utf-8") as fh:
-                records.extend(_spm_files(json.load(fh)))
+                records.extend(_spm_files(json.load(fh), roots))
         except (OSError, ValueError) as exc:
             print(f"⚠ [swift_cov] unreadable codecov payload {p}: {exc}", file=sys.stderr)
     return records, paths
@@ -428,7 +432,12 @@ def main() -> int:
         records, why = load_xcode(args.dd)
     else:
         spm_globs = args.spm_globs or list(DEFAULT_SPM_GLOBS)
-        records, paths = load_spm(spm_globs)
+        try:
+            roots = own_source_roots(os.getcwd())
+        except ScopeError as exc:
+            print(f"✗ [swift_cov] {exc}", file=sys.stderr)
+            return 2
+        records, paths = load_spm(spm_globs, roots)
         if paths and not records:
             # Payloads exist but none yielded measurable files (unreadable
             # JSON, or every entry has total_lines 0). Refuse with the count
