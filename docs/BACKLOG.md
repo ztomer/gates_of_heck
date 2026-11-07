@@ -282,7 +282,7 @@ CHANGELOG.
 | what | baseline | last | target |
 |---|---|---|---|
 | media_server push, one crate changed, warm | 197 s | 183 s at load 7-12 (2026-10-06): **110 s is media_server's own pytest suite** (134 tests, run by its gate.sh outside the proven cache); 5 of 29 crates re-gated -- 3 correctly (path users), healthcheck-rs on the whole tree by design (its tests read the repo root), vpn-watchdog-rs never recorded (fixed in `d384c0d`) | <= 30 s: unreachable while the pytest step runs unconditionally; servers `1548344` cut that step to 51 s at load 56 (xdist), not yet re-measured as a push |
-| media_server push, everything changed, warm | 177 s (P0) | 208 s under a hold (2026-10-08, after `06afca4`) | <= 90 s: 5.1 |
+| media_server push, everything changed, warm | 177 s (P0) | **83 s, MET 2026-10-17** (v0.29.2, row 5.1 above; was 208 s under a hold on 2026-10-08, after `06afca4`) | <= 90 s: 5.1, met |
 
 The P2 budget curve (`GOH_CI_JOBS` 1/2/4, this repo and routines) is MET and moved into the
 CHANGELOG with v0.42.0: **210 / 176 / 158 s** here at `98848cf` and **77 / 51 / 46 s** in routines
@@ -346,7 +346,8 @@ ztools' exempt key, Finance's `"$root.out"`, ZeroThunder's dropped process handl
   stock hooks (the reinstall above) and `cargo audit` in
   `crates/yaml-mini-rs`, which denies RUSTSEC-2024-0449 (`unsafe-libyaml` 0.2.11 unmaintained,
   2024-03-25): replace the YAML dependency or record the advisory in the ignore ratchet with its
-  reason. 5.1 waits on both.
+  reason. (5.1 no longer waits on them: it was met 2026-10-17, v0.29.2, 83 s; media_server has pushed
+  green since, v1.109.3 on 2026-11-07.)
 - **The 12 repos left in 3.3's table, red at their next commit since `0c93f4d` (3.4)**, one
   session each: declare or `--seed`, set `GOH_SUBPROCESS_STDIN_MIN_CALLS` (a repo that must defer
   writes `GOH_SUBPROCESS_STDIN=off`, which is an opt-out in its own file, not a default). A
