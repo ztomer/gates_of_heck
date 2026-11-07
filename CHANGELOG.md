@@ -2947,6 +2947,29 @@ Files: `checks/check_no_unreaped_spawn.py`, `_spawn_mask.py`, `_spawn_lex.py`, `
 `_spawn_guard_attr.py`, `_spawn_reap.py`, `_spawn_py_sh.py` (replacing `_spawn_shapes.py`),
 `_unreaped_spawn_probe.py`, `_unreaped_spawn_table_regressions.py`, `tests/test_no_unreaped_spawn_estate.py`.
 
+## v0.17.1 — the desktop lock's two halves agree, and a message that prints the value passes the empty-assert gate _(2026-10-04)_
+
+Backfilled 2026-11-07 (GOH.RUFFPIN) from `git log v0.17.0..v0.17.1`: the tag was cut by hand with no
+stanza, so it had no GitHub release. The tag message is unchanged.
+
+* **The version that matches the kill-by-name fix (`0e371c3`).** `check_no_kill_by_name` seeing
+  `/usr/bin/pkill`, `bin/pkill` and `./pkill` is already described under v0.17.0 ("The kill-by-name gate
+  was blind to `/usr/bin/pkill`"); this release commit only moved `Cargo.toml` to 0.17.1, because
+  `tag_version` refuses a tag that does not match what its own commit declares.
+* **The desktop lock's bash half no longer releases a lock it no longer owned, and its Python half no
+  longer spins forever** (`bdef79e`, found by porting a repo-local copy's fixes back). `desktop_lock_release`
+  checked only `DESKTOP_LOCK_HELD`, so a process judged expired, whose peer had reclaimed the desktop,
+  deleted the peer's lock from its EXIT trap; it now checks the owner, as the Python half did. And
+  `desktop_lock._force_remove` unlinked `owner` then `rmdir`'d, a no-op for a lock directory holding
+  anything else, so `acquire()` looped printing `stale desktop lock`; it is now `shutil.rmtree`, with a
+  loud error instead of a spin. A truncated owner record reads as STALE in both halves. The on-disk
+  format is unchanged.
+* **`check_no_empty_assert` exempts a message that already prints the value** (`5809a09`):
+  `assert!(v.is_empty(), "left {v:?} over")` is the improvement the gate asks for, and it was flagging it.
+* **Two numbers in the v0.17.0 notes are marked inherited, not measured** (`659e816`): the release gate
+  ran the suite once, so "1316 passed, four runs out of four" is the 2026-10-03 measurement, and
+  monitor's clippy 1.99 redness is monitor's own claim.
+
 ## v0.17.0 — an unreaped child can never again be invisible, and every wait is bounded _(2026-10-04)_
 
 `media_server`'s `archive_torznab` test spawned the real binary with `--bind
@@ -4202,6 +4225,29 @@ MCP scaffold & eval transport:
   helper. Server-death crash class closed and JSON-RPC conformance pinned.
 - `lib/eval_transport.py`: Ollama environment variable aliasing (`OLLAMA_API_BASE` /
   `OLLAMA_HOST`, `OLLAMA_MODEL`) as fallbacks behind EVAL / OPENAI keys.
+
+## v0.5.1 — mcp_scaffold cannot be killed by wire input, SweepState is locked, a chat call has a deadline _(2026-08-26)_
+
+Backfilled 2026-11-07 (GOH.RUFFPIN) from `git log v0.5.0..v0.5.1` and the tag message: the tag was cut by
+hand with no stanza, so it had no GitHub release. The tag message is unchanged.
+
+* **`mcp_scaffold`: no wire input can kill the serve loop** (`e918778`). An unhashable tool name, non-dict
+  params or non-string arguments are spec-shaped `-32600`/`-32602` errors; `serve()` reads bytes and decodes
+  per line, so invalid UTF-8 is a `PARSE_ERROR` like malformed syntax instead of poisoning the stream.
+  JSON-RPC conformance is pinned: a batch array is refused naming batch support absent, a present `id`
+  (even null) is a request answered with a null id, and NaN/Infinity ids are sanitized to null.
+* **`eval_transport`: `SweepState` takes a `flock`** on a companion `.lock` file, so concurrent
+  read-modify-write no longer loses markers (160 of 160 survive two processes, 15 of 400 before). A corrupt
+  state file raises a named `SweepStateCorrupt`; discarding it is explicit (`on_corrupt='discard'`). Keys
+  are `%`-escaped so `('a|b','c')` and `('a','b|c')` cannot collide.
+* **`EvalTransport._request` has a whole-call deadline** across connect, send and receive: per-operation
+  socket timeouts let a slow-drip body stretch a 1 s timeout to 15.6 s.
+* **`structural.sh` takes a strict scope argument** (`''`, `--full` or `--staged`); a typo was a silent
+  full-tree run and is now a named exit 2. The `coverage_gate` rust-mode `.ok`-marker completeness is
+  pinned by regression tests.
+* **`local_ci` keeps a failing run's logs and says where they are** (`1b82a31`): the log directory was
+  deleted on exit, taking with it the shuffled gtest seed a failure needs to be reproduced (CadGoose2). A
+  passing run still leaves nothing.
 
 ## v0.5.0 — second adversarial pass _(2026-08-25)_
 
