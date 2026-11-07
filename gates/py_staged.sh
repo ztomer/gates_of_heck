@@ -7,6 +7,16 @@
 #
 #   py_staged.sh                # from the repo root (a repo's tools/gate.sh calls it)
 #   py_staged.sh <repo>
+#   py_staged.sh --all [<repo>] # the same checks over EVERY tracked .py (minus GOH_EXCLUDE)
+#
+# --all IS THE PUSH HALF for a repo with no pytest suite, which therefore never runs py_gate.sh
+# (GOH.PYALL, 2026-11-07). The staged scope judges only what a commit touches, so a verdict that
+# changes WITHOUT an edit -- a ruff bump whose formatter or rule set moved -- reaches files nobody
+# stages and no gate ever reads them: eleven necrohand tools/*.py sat unformatted under ruff 0.17
+# with every gate green, because "the push gate measures the whole tree" was true only for repos
+# whose push ran py_gate.sh. --all reads git's list, not ruff's discovery, so a ruff `exclude`
+# cannot hide a tracked first-party file; a tree with no tracked .py is red (nothing to judge is
+# a lost subject, not a clean run).
 #
 # Rule 14 (a local gate weaker than the next one up lets you commit red and find out at push):
 # two repos each spent a round of fix-up commits on findings the PUSH gate reported one at a
@@ -21,36 +31,66 @@
 set -euo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 . "$HERE/_common.sh"
+scope=staged
+if [ "${1:-}" = "--all" ]; then
+    scope=all
+    shift
+fi
 repo="${1:-$PWD}"
 cd "$repo"
 [ -f .gatesrc ] && . ./.gatesrc
 . "$HERE/_py.sh"
 goh_py_runner
 
-goh_init "python (staged)"
 STAGED=()
-while IFS= read -r f; do
-    [ -n "$f" ] && STAGED+=("$f")
-done < <( (goh_bind_hook_index  # the index being committed (gates/_git_env.sh); ruff gets none
-          git diff --cached --name-only --diff-filter=ACM -- '*.py') 2>/dev/null || true)
-# macOS ships bash 3.2: no mapfile, and "${arr[@]}" on an empty array trips `set -u` there.
-if [ "${#STAGED[@]}" -eq 0 ]; then
-    info "no staged .py files"
-    goh_done
-    exit 0
+if [ "$scope" = all ]; then
+    goh_init "python (every tracked .py)"
+    # GOH_EXCLUDE means what it means to every other check: `re.search` over a repo-relative path.
+    listing="$(git ls-files -- '*.py')" || die "--all: git ls-files failed in $repo"
+    kept="$(GOH_EXCLUDE="${GOH_EXCLUDE:-}" "$GOH_PY" -S -c '
+import os, re, sys
+pattern = os.environ["GOH_EXCLUDE"]
+try:
+    rx = re.compile(pattern) if pattern else None
+except re.error as e:
+    sys.exit(f"GOH_EXCLUDE={pattern!r} is not a regex: {e}")
+for line in sys.stdin.read().splitlines():
+    if line and not (rx and rx.search(line)):
+        print(line)
+' <<<"$listing")" || die "--all could not apply GOH_EXCLUDE (above)"
+    while IFS= read -r f; do
+        [ -n "$f" ] && STAGED+=("$f")
+    done <<<"$kept"
+    if [ "${#STAGED[@]}" -eq 0 ]; then
+        err "--all: no tracked .py in $repo${GOH_EXCLUDE:+ outside GOH_EXCLUDE='$GOH_EXCLUDE'} -- a whole-tree check of nothing is not a clean run"
+        exit 1
+    fi
+    info "${#STAGED[@]} tracked .py files"
+else
+    goh_init "python (staged)"
+    while IFS= read -r f; do
+        [ -n "$f" ] && STAGED+=("$f")
+    done < <( (goh_bind_hook_index  # the index being committed (gates/_git_env.sh); ruff gets none
+              git diff --cached --name-only --diff-filter=ACM -- '*.py') 2>/dev/null || true)
+    # macOS ships bash 3.2: no mapfile, and "${arr[@]}" on an empty array trips `set -u` there.
+    if [ "${#STAGED[@]}" -eq 0 ]; then
+        info "no staged .py files"
+        goh_done
+        exit 0
+    fi
 fi
 goh_py_require ruff
 if [ -n "${GOH_PY_LINT_CEILINGS:-}" ]; then
     # Debt the repo carries, counted per file, may only fall (gates/py_lint_ceiling.py, BACKLOG 4.4).
-    goh_step "ruff check under $GOH_PY_LINT_CEILINGS (staged)" \
+    goh_step "ruff check under $GOH_PY_LINT_CEILINGS ($scope)" \
         "$GOH_PY" "$HERE/py_lint_ceiling.py" --check --ceilings "$GOH_PY_LINT_CEILINGS" --runner "$RUN" -- "${STAGED[@]}"
 else
-    goh_step "ruff check (staged)"        "${RUN_ARR[@]}" ruff check --extend-select PLW1510 "${STAGED[@]}"  # the house floor (G17b, py_gate.sh)
+    goh_step "ruff check ($scope)"        "${RUN_ARR[@]}" ruff check --extend-select PLW1510 "${STAGED[@]}"  # the house floor (G17b, py_gate.sh)
 fi
-goh_step "ruff format check (staged)" "${RUN_ARR[@]}" ruff format --check "${STAGED[@]}"
+goh_step "ruff format check ($scope)" "${RUN_ARR[@]}" ruff format --check "${STAGED[@]}"
 if [ -n "${GOH_PY_NOQA_PARITY:-}" ]; then
     # A `# noqa` ruff honours and the second linter the repo runs ignores (gates/py_noqa_parity.py, 4.5).
-    goh_step "noqa parity with $GOH_PY_NOQA_PARITY (staged)" \
+    goh_step "noqa parity with $GOH_PY_NOQA_PARITY ($scope)" \
         "$GOH_PY" "$HERE/py_noqa_parity.py" --linters "$GOH_PY_NOQA_PARITY" --runner "$RUN" -- "${STAGED[@]}"
 fi
 goh_done

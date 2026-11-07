@@ -90,7 +90,7 @@ GOH="${GOH_DIR:-${GOH:-$HOME/Projects/gates_of_heck}}"
 case "${1:-}" in
   --full)
     "$GOH/gates/rust_gate.sh" . crates/
-    "$GOH/gates/py_gate.sh"   .
+    "$GOH/gates/py_gate.sh"   .   # no pytest suite? `py_staged.sh --all .` instead: ruff over every tracked .py
     # ./tools/repo_gates.sh   # Layer 3
     ;;
 esac
