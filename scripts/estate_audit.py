@@ -42,7 +42,6 @@ import re
 import shlex
 import subprocess
 import sys
-import tempfile
 from collections.abc import Callable
 from pathlib import Path
 
@@ -71,6 +70,8 @@ REPO_DEPTH = estate_registry.REPO_DEPTH  # ~/Projects/<repo>, ~/Projects/<group>
 AUDIT_TIMEOUT_S = 300  # cargo-audit's own database lock waits up to 300 s
 LABEL = "com.ztomer.goh-estate-audit"
 RUN_HOUR = 9
+# Keys another writer owns in the same state file (scripts/release_canary.py).
+KEPT_KEYS = ("release_canary",)
 
 
 def default_state() -> Path:
@@ -261,13 +262,15 @@ def run(
     root: Path, state: Path, db: str | None, fetch: bool, cargo_deny: list[str] | None = None
 ) -> dict:
     # The FIRST run has nothing to compare with: what it finds is the standing estate, not news, so
-    # its findings carry no first_seen and the session hook does not call them NEW.
-    previous, baseline = {}, not state.exists()
-    if not baseline:
-        try:
-            previous = json.loads(state.read_text()).get("advisories", {})
-        except (OSError, ValueError):
-            previous = {}
+    # its findings carry no first_seen and the session hook does not call them NEW. "First" is the
+    # first AUDIT, not the file's first write: the release canary records into this file too
+    # (scripts/release_canary.py), and a file it made holds no audit to compare with.
+    try:
+        old = json.loads(state.read_text())
+    except (OSError, ValueError):
+        old = {}
+    baseline = not isinstance(old, dict) or "ran_at" not in old
+    previous = {} if baseline else old.get("advisories", {})
     cargo_deny = cargo_deny or ["cargo", "deny"]
     now = dt.datetime.now(dt.UTC).isoformat(timespec="seconds")
     advisories: dict[str, dict] = {}
@@ -337,10 +340,11 @@ def run(
         "registry": str(estate_registry.registry_path(state)),
         "problems": problems,
     }
-    state.parent.mkdir(parents=True, exist_ok=True)
-    with tempfile.NamedTemporaryFile("w", dir=state.parent, delete=False, suffix=".tmp") as f:
-        json.dump(result, f, indent=2, sort_keys=True)
-    os.replace(f.name, state)
+    # The audit owns its keys and nothing else: the release canary's record in the same file is
+    # kept (lib/estate_registry.py update_state), so the daily run never erases a refusal.
+    estate_registry.update_state(
+        state, lambda o: {**{k: v for k, v in o.items() if k in KEPT_KEYS}, **result}
+    )
     return result
 
 

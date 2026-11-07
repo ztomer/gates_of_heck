@@ -1,5 +1,34 @@
 # CHANGELOG
 
+## Unreleased
+
+* **A goh change that turns a consumer red is refused before it lands (GOH.CANARY, 2026-11-07).**
+  v0.57.4 made the shell lint judge warnings and seeded only the repos that round touched, and every
+  consumer runs this checkout's HEAD at its next push: koffee_big, scripts, CadGoose2,
+  game_asset_factory, necrohand, ZeroThunder, adguard_server and storage-server refused every push
+  for five days. `scripts/release_canary.py`, now the last step of this repo's own gate (so
+  `tools/land.sh` runs it before main moves, and the push again), replays `goh structural --full
+  --keep-going` of the last release (the newest `v*` tag before HEAD) and of HEAD over a clean clone
+  of every gated consumer in the estate registry and compares the verdicts step by step. Which gates
+  changed is read from what they do, not from a list: a step green under the release and red under
+  HEAD REFUSES, naming the repo, the step and its seed (`goh shell-lint --seed`,
+  `goh early-exit-pipe --seed`, `goh subprocess-stdin --seed`) or fix; a step red on both sides is
+  named as that repo's own debt. Fail closed: a consumer it cannot judge, or an empty estate, refuses.
+  A range that changes only docs, tests or prose sweeps nothing. The result is recorded as
+  `release_canary` in `~/.local/state/goh/estate_audit.json`, and the SessionStart hook
+  (`hooks/claude/estate_advisories.py`) says a refusal until a run clears it; the daily estate audit
+  now keeps that key instead of rewriting the file whole (`lib/estate_registry.py` `update_state`,
+  under a lock), and counts its first run as the first AUDIT, not the file's first write. Over the
+  real estate today (v0.57.3 against HEAD, 33 consumers, 72 s): clear, since the eight were seeded on
+  2026-11-07. What a consumer should re-check: nothing; a goh landing can now be refused over a
+  consumer's state, and the refusal names the command to run in that consumer.
+  `tests/test_release_canary.py` replays v0.57.4's change over a fixture estate (the base side is the
+  binary over a shellcheck that judges errors only, v0.57.3's `--severity=error`): an unseeded
+  consumer with an SC2034 warning is refused by name with `goh shell-lint --seed`, and clears once
+  the seed is committed (an uncommitted seed does not). The same replay with the stored v0.57.3 and
+  v0.57.4 binaries refuses and clears the same way. Calibrated: with every red counted as already
+  red, 4 of its tests go red; with the audit not keeping the key, or the hook not reading it, 2.
+
 ## v0.57.4 -- the shell lint judges warnings, and holds the debt in a ratchet
 
 * **The shell lint judges warnings, and holds the debt in a ratchet (GOH.SHSEV, 2026-11-02).**

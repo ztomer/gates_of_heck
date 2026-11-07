@@ -28,8 +28,11 @@ gets its own registry, and the machine's registry is never a test's business.
 
 from __future__ import annotations
 
+import fcntl
+import json
 import os
-from collections.abc import Iterable
+import tempfile
+from collections.abc import Callable, Iterable
 from pathlib import Path
 
 REGISTRY_NAME = "installed_repos"
@@ -45,6 +48,32 @@ def state_file() -> Path:
         return Path(env).expanduser()
     base = os.environ.get("XDG_STATE_HOME") or str(Path.home() / ".local" / "state")
     return Path(base).expanduser() / "goh" / "estate_audit.json"
+
+
+def update_state(state: Path, change: Callable[[dict], dict]) -> dict:
+    """Rewrite the estate state file through `change(old) -> new`, whole and under a lock.
+
+    TWO writers share the one file the SessionStart hook reads: the daily audit
+    (`scripts/estate_audit.py`) and the release canary (`scripts/release_canary.py`), each owning
+    its own keys. A writer that dumped its own result over the file erased the other's -- so each
+    reads what is there, keeps what is not its own, and replaces the file atomically while it
+    holds `<state>.lock`. A file that cannot be read is treated as empty, never as a crash.
+    """
+    state = Path(state)
+    state.parent.mkdir(parents=True, exist_ok=True)
+    with open(state.with_name(state.name + ".lock"), "w", encoding="utf-8") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)  # released when the file closes
+        try:
+            old = json.loads(state.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            old = {}
+        new = change(old if isinstance(old, dict) else {})
+        with tempfile.NamedTemporaryFile(
+            "w", dir=state.parent, delete=False, suffix=".tmp", encoding="utf-8"
+        ) as f:
+            json.dump(new, f, indent=2, sort_keys=True)
+        os.replace(f.name, state)
+    return new
 
 
 def registry_path(state: Path | None = None) -> Path:

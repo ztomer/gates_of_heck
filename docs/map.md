@@ -181,7 +181,7 @@ Every structural checker is native since Phase N3; the Python checkers they port
 | `repo_hold.py` | THE HOLD: is this path inside a repo whose local git config carries `goh.hold` (or the legacy `goh.archived`)? Parsed, never asked of git (the Claude guard runs on every tool call); worktrees' `commondir` and enclosing repos followed; `holds_below` for a recursive verb on an ancestor, bounded. `check`/`show` CLI for the gates (`lib/repo_hold.sh`: commit, commit-msg, pre-applypatch, push refuse a held repo). | `test_repo_hold.py`, `test_hold_gates.py` |
 | `rust_locks.py` | The ONE rule for which locks `rust_gate.sh` audits: every tracked `Cargo.lock` under the repo (plus the gate's own workspace lock), each from the nearest directory at or above it holding a `.cargo/audit.toml` (cargo-audit reads only its cwd's), else its own. Asked by `rust_gate.sh` (`plan`), `check_audit_ignores.py` (`governed`) and `gate_coverage.py` (queue GOH.EA2). | `test_rust_locks.py`, `test_rust_audit.py` |
 | `gate_coverage.py` | Which tracked `Cargo.lock` a repo's PUSH gate audits, and with which tool, READ from the gate: `GOH_CI_STEPS`, `tools/gate.sh`, `.pre-commit-config.yaml`, `.githooks/pre-push` and every tracked script or Makefile they name. `rust_gate.sh [repo [dir]]` / `--each-crate` (every tracked lock under repo, by `rust_locks.py`, so a variable `dir` is readable), `cargo audit [--file]` and `cargo deny ... check [advisories]`, in the directory a literal `cd` gives them; a target behind a shell variable is UNRESOLVED, never guessed (queue GOH.EA2). | `test_estate_gate_coverage.py` |
-| `estate_registry.py` | The estate is every repo `install.sh` installed into, not one directory (BACKLOG 6.14): the registry `install.sh` writes beside the audit's state file, the walk of the estate root, and the UNION of the two -- a registered path that is gone is named, never skipped. `~/.claude/skills` is a consumer outside `~/Projects` and no sweep read it. | `test_estate_registry.py` |
+| `estate_registry.py` | The estate is every repo `install.sh` installed into, not one directory (BACKLOG 6.14): the registry `install.sh` writes beside the audit's state file, the walk of the estate root, and the UNION of the two -- a registered path that is gone is named, never skipped. `~/.claude/skills` is a consumer outside `~/Projects` and no sweep read it. `update_state` rewrites the estate state file whole under a lock, keeping every key the writer does not own (the daily audit and the release canary share it). | `test_estate_registry.py`, `test_release_canary.py` |
 | `advisory_db.py` | The advisory database every goh `cargo audit` reads -- goh's own copy (`GOH_ADVISORY_DB`, default `~/.cache/goh/advisory-db`, seeded from `~/.cargo/advisory-db`), which nothing outside goh writes -- held under a flock on `<db>.goh-lock`: shared to read (`--no-fetch`), exclusive to refresh. A refresh beside a read tore the read ("unexpected start of advisory", 2026-10-12). `run --fetch\|--no-fetch -- cargo audit ...` for the shell gate; `held()` and `audit_args()` for the Python callers. | `test_advisory_db.py` |
 | `bounded_run.py` | Run one command under a wall-clock CEILING, in its OWN process group, and sweep the whole subtree on expiry (TERM, grace, KILL) — then print `TIMED OUT after Ns` and return 124 with the surviving pids named. It WAITS rather than polls (a 0.2 s poll charged every step of every gate up to 200 ms) and samples the process table once at exit. The group discipline is the measured part: `gates/local_ci.sh`'s old sweep was `pkill -P "$pid"`, DIRECT children only, which against `bash -c 'sleep 400 & wait'` left 2 grandchildren ALIVE — i.e. the mechanism meant to unstick a hung step left running exactly the orphans that make the NEXT step hang. `lib/killtree.py` already knew the answer for the Python callers; this exposes it to the shell gates. | `test_bounded_run.py` |
 | `fail_lines.py` | The failure block `goh_step` prints before a red step's tail: only lines ATTRIBUTABLE to the sub-step that failed. A nested goh_step's own dump is quoted alone (the innermost, named) and the other matching lines are COUNTED, never listed -- a red `make verify-clean` had listed a calibration plant's quoted `✗` row, from a recipe that exited 0, as its failure (ZoneWM H2, BACKLOG C5). An unframed log (one `make` over many recipes) says so, and puts make's own `*** [target] Error N` first. | `test_goh_step_fail_lines.py` |
@@ -348,7 +348,9 @@ Every structural checker is native since Phase N3; the Python checkers they port
   first seen in the last 48 h, one summary line for the standing ones, one for the locks no gate step
   audits (NOT AUDITED AT PUSH) and one for those it cannot read, and a line saying so when the
   state file is missing or older than 36 h -- a job that stopped reads exactly like a clean estate.
-  Pinned by `test_estate_audit.py`.
+  It also says what the last `scripts/release_canary.py` run found: a refusal (each consumer, step and
+  seed), what it could not judge, and consumers red under the last release too.
+  Pinned by `test_estate_audit.py` and `test_release_canary.py`.
 * `hooks/claude/hold_guard.py` — a Claude Code PreToolUse hook (matcher `Bash|Monitor|Write|Edit|MultiEdit|NotebookEdit`):
   nothing inside a held repo (`lib/repo_hold.py`) changes -- edits, writing git verbs, file verbs, redirections,
   chmod/chflags (so the read-only layer cannot be undone), `release_hold.sh` -- and the denial names the hold's
@@ -381,6 +383,19 @@ Every structural checker is native since Phase N3; the Python checkers they port
   `.cargo/audit.toml`, cargo-deny RUN with its `deny.toml`); a lock no step audits is `unaudited`
   ("not audited at push"), never red; one a step goh cannot read might cover is `undetermined`.
   Pinned by `test_estate_audit.py` and `test_estate_gate_coverage.py`.
+* `scripts/release_canary.py` — the release canary (GOH.CANARY), the last step of this repo's
+  GOH_CI_STEPS, so `tools/land.sh` runs it before main moves (consumers run main's HEAD at their next
+  push, so landing IS the release to them) and the push runs it again. It replays `goh structural
+  --full --keep-going` of the LAST RELEASE (the newest `v*` tag before HEAD; its binary from the store
+  or `build-goh.sh --rev`, its gates from an export carrying `.goh-head`) and of HEAD over a clean
+  clone of every gated consumer in the estate (registry unioned with the walk, gates_of_heck itself
+  excluded) and compares the verdicts step by step: a step green under the release and red under
+  HEAD REFUSES, naming the repo, the step and its seed (`goh shell-lint --seed` and the other
+  ratchets) or fix; a step red on both sides is named as the consumer's own debt. Fail closed: a
+  consumer it cannot judge, or an estate with no consumer, refuses. A range that changes only
+  docs, tests or prose sweeps nothing. Records `release_canary` in the estate state file, which the
+  daily audit keeps (`lib/estate_registry.py` `update_state`, one lock, each writer its own keys).
+  Pinned by `test_release_canary.py` (v0.57.4's shell-lint change replayed over a fixture estate).
 * `scripts/estate_registry.py` — the estate's registry, read and seeded (BACKLOG 6.14): `list` says what
   `install.sh` recorded and which of those paths is gone, `seed` registers the estate root's walk plus
   the consumer outside it (`~/.claude/skills`) once, `record` adds one repo. Additive and idempotent.

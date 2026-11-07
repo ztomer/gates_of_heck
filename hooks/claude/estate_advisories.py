@@ -7,7 +7,9 @@ already looks: SessionStart stdout is added to every session's context. It print
 latest run is fresh and clean, one line per firing advisory otherwise, and -- because a job that
 stopped running reads exactly like a clean estate -- says so when the state file is missing or
 older than STALE_AFTER_H (tests/test_estate_audit.py). It names, in one line, the repos the audit set
-aside for having no `.gatesrc`.
+aside for having no `.gatesrc`. And it says what the last RELEASE CANARY found (GOH.CANARY,
+scripts/release_canary.py): a goh change that turns a consumer red at push, refused at land and
+named here, by repo and the seed it needs, until a run clears it (tests/test_release_canary.py).
 
 The state is a day old by design, and a lock can move on in that day (GOH.EA3: zinc's pulldown-cmark
 0.13.4 -> 0.13.6 landed after the run, and this hook still said the next push was red). So before
@@ -71,6 +73,38 @@ def _recheck(advisories: dict, root: str | None) -> tuple[dict, list[tuple[str, 
     return still, fixed
 
 
+def _canary(rec: dict) -> list[str]:
+    """What the last release canary found (scripts/release_canary.py): a goh change that turns a
+    consumer red at push is refused at land, and the refusal is said here until a run clears it."""
+    lines, when = [], f"{rec.get('head', 'HEAD')} over {rec.get('base', '?')}, {rec.get('ran_at')}"
+    turned = rec.get("turned_red") or {}
+    if turned:
+        named = [
+            f"{repo} ({f['step']}: {f['remedy']})"
+            for repo, flips in sorted(turned.items())
+            for f in flips
+        ]
+        lines.append(
+            f"goh release canary REFUSED ({when}): it turns {len(turned)} consumer(s) red at push"
+            f" -- {'; '.join(named[:MAX_REPOS])}{'; ...' if len(named) > MAX_REPOS else ''}"
+        )
+    errors = rec.get("errors") or []
+    if errors:
+        lines.append(
+            f"goh release canary could not judge ({when}): {'; '.join(errors[:3])}"
+            f"{'; ...' if len(errors) > 3 else ''}"
+        )
+    already = rec.get("already_red") or {}
+    if already:
+        named = [f"{repo} ({', '.join(steps)})" for repo, steps in sorted(already.items())]
+        lines.append(
+            f"goh release canary: {len(already)} consumer(s) red at push under the last release"
+            f" too (their own debt): {', '.join(named[:MAX_REPOS])}"
+            f"{', ...' if len(named) > MAX_REPOS else ''}"
+        )
+    return lines
+
+
 def report(state: Path, now: dt.datetime) -> list[str]:
     if not state.exists():
         return [
@@ -88,6 +122,7 @@ def report(state: Path, now: dt.datetime) -> list[str]:
             f"goh estate audit is STALE (last run {ran}): the scheduled job is not running; "
             f"`python3 {SCRIPT} --install`."
         )
+    lines += _canary(data.get("release_canary") or {})
     advisories, fixed = _recheck(data.get("advisories", {}), data.get("root"))
     new, standing = [], []
     for aid, a in sorted(advisories.items()):
