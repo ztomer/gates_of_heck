@@ -34,9 +34,16 @@ CROSS = "✗"
 _ANSI = re.compile(r"\x1b\[[0-9;?]*[ -/]*[@-~]")
 
 
+_LINE_BREAK = re.compile(r"\r\n?|\n")
+
+
 def failure_lines(text: str) -> list[str]:
+    # A line ends at `\n` or `\r` and nowhere else (GOH.XEXIT2): a terminal shows the text after a
+    # `\r`, so a progress line's last segment is its own status line. Not `str.splitlines()`, which
+    # also breaks on VT, FF, U+2028 and friends that the Rust twin does not; tests/fixtures/xexit
+    # pins the twins to one answer.
     out = []
-    for raw in text.splitlines():
+    for raw in _LINE_BREAK.split(text):
         line = _ANSI.sub("", raw).strip()
         if line.startswith(CROSS):
             out.append(line)

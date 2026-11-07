@@ -282,10 +282,12 @@ pub(crate) fn delegated(
 
 /// Each `✗` STATUS line in a step's output: first visible character, after indentation and
 /// colour escapes, is `✗`. The twin of `lib/xexit.py` `failure_lines` (GOH.XEXIT); a `✗` quoted
-/// mid-line is text, not a verdict.
+/// mid-line is text, not a verdict. A line ends at `\n` or `\r` and nowhere else (GOH.XEXIT2): a
+/// terminal shows the text after a `\r`, so a progress line's last segment is its own status line;
+/// `str::lines()` kept it glued to the progress. `tests/fixtures/xexit` pins the twins to one answer.
 #[must_use]
 pub(crate) fn cross_lines(text: &str) -> Vec<String> {
-    text.lines()
+    text.split(['\n', '\r'])
         .map(strip_ansi)
         .map(|l| l.trim().to_owned())
         .filter(|l| l.starts_with('✗'))
@@ -324,6 +326,29 @@ mod xexit_tests {
             cross_lines("⚠ advisory only\n✓ fine\n"),
             Vec::<String>::new()
         );
+    }
+
+    #[test]
+    fn cross_lines_judges_a_cr_progress_line_by_its_last_segment() {
+        assert_eq!(cross_lines("...\r✗ x"), vec!["✗ x"]);
+    }
+
+    /// ONE fixture, read here and by `tests/test_xexit.py` (GOH.XEXIT2): the twins split alike.
+    #[test]
+    fn cross_lines_agrees_with_the_shared_fixture() {
+        let raw = include_str!("../../../tests/fixtures/xexit/cases.json");
+        let cases: Vec<serde_json::Value> = serde_json::from_str(raw).expect("fixture parses");
+        assert_ne!(cases.len(), 0);
+        for case in &cases {
+            let text = case["text"].as_str().expect("text");
+            let want: Vec<String> = case["crosses"]
+                .as_array()
+                .expect("crosses")
+                .iter()
+                .map(|v| v.as_str().expect("cross").to_owned())
+                .collect();
+            assert_eq!(cross_lines(text), want, "{}", case["name"]);
+        }
     }
 }
 

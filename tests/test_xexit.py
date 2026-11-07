@@ -78,3 +78,18 @@ def test_local_ci_refuses_cross_at_exit_zero(tmp_path):
 def test_local_ci_passes_advisory(tmp_path):
     r = _local_ci(tmp_path, "echo '⚠ advisory'; true")
     assert r.returncode == 0, r.stdout + r.stderr
+
+
+def test_cr_progress_line_is_judged_by_its_last_segment():
+    # a terminal shows the text after the last `\r`; a progress line ending in a `✗` is a status line
+    assert xexit.failure_lines("...\r✗ x") == ["✗ x"]
+
+
+def test_python_and_rust_twins_agree_on_the_shared_fixture():
+    # ONE fixture, read here and by step_report.rs `xexit_tests` (GOH.XEXIT2): the twins split alike
+    import json
+
+    cases = json.loads((REPO_ROOT / "tests/fixtures/xexit/cases.json").read_text(encoding="utf-8"))
+    assert cases
+    for case in cases:
+        assert xexit.failure_lines(case["text"]) == case["crosses"], case["name"]

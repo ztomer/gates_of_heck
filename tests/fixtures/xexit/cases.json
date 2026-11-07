@@ -1,0 +1,12 @@
+[
+  {"name": "progress line rewritten by CR", "text": "building 10%\rbuilding 90%\r✗ x\n", "crosses": ["✗ x"]},
+  {"name": "CR progress, final line unterminated", "text": "...\r✗ x", "crosses": ["✗ x"]},
+  {"name": "CR overwrites a cross", "text": "✗ stale\r✓ fine\n", "crosses": ["✗ stale"]},
+  {"name": "CRLF line endings", "text": "ok\r\n✗ one\r\n  ✗ two\r\n", "crosses": ["✗ one", "✗ two"]},
+  {"name": "bare LF", "text": "ok\n✗ a\nrow: ✗ quoted\n⚠ advisory\n", "crosses": ["✗ a"]},
+  {"name": "trailing line without newline", "text": "ok\n✗ last", "crosses": ["✗ last"]},
+  {"name": "colour escape before the cross", "text": "\u001b[31m✗\u001b[0m red\n", "crosses": ["✗ red"]},
+  {"name": "only LF and CR break a line (not U+2028 or VT)", "text": "a\u2028✗ x\nb\u000b✗ y\n", "crosses": []},
+  {"name": "empty output", "text": "", "crosses": []},
+  {"name": "only blank lines", "text": "\n\r\n\r", "crosses": []}
+]
