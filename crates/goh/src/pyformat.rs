@@ -31,19 +31,6 @@ fn setting(root: &Path, key: &str) -> Option<String> {
         .filter(|v| !v.trim().is_empty())
 }
 
-/// Is `rel` tracked by git (`git ls-files --error-unmatch`)? A gitignored file is one machine's
-/// state, not the repo's declaration.
-fn tracked(root: &Path, rel: &str) -> bool {
-    Command::new("git")
-        .args(["ls-files", "--error-unmatch", "--", rel])
-        .current_dir(root)
-        .stdin(std::process::Stdio::null())
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .status()
-        .is_ok_and(|s| s.success())
-}
-
 /// The ruff this repo means, by `goh_py_runner_choose`'s order. An `Err` is a named refusal: a
 /// repo that declares a toolchain it cannot run is not judged by some other ruff.
 fn choose_runner(root: &Path) -> Result<Runner, String> {
@@ -52,7 +39,7 @@ fn choose_runner(root: &Path) -> Result<Runner, String> {
         argv.push("ruff".to_owned());
         return Ok(argv);
     }
-    if tracked(root, "uv.lock") {
+    if crate::gitutil::is_tracked(root, "uv.lock") {
         if !on_path("uv") {
             return Err("this repo tracks uv.lock, so its ruff is built by uv (`uv run --frozen`), and uv is not on PATH -- brew install uv, or set GOH_PY_RUNNER. The ruff on PATH is not the repo's pin, so it is not asked".to_owned());
         }

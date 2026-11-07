@@ -46,6 +46,22 @@ pub fn repo_root() -> Option<String> {
     top
 }
 
+/// Is `rel` tracked (`git ls-files --error-unmatch`)?
+///
+/// A gitignored file is one machine's state, not the repo's declaration. The hook's
+/// `GIT_INDEX_FILE` is honoured, so in a pre-commit hook this asks about the tree being committed.
+#[must_use]
+pub fn is_tracked(root: &Path, rel: &str) -> bool {
+    Command::new("git")
+        .args(["ls-files", "--error-unmatch", "--", rel])
+        .current_dir(root)
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status()
+        .is_ok_and(|s| s.success())
+}
+
 /// Repo-root-relative file list.
 ///
 /// Full mode lists the WORKTREE — everything tracked plus every untracked
