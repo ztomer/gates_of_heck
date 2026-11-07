@@ -1,5 +1,15 @@
 # CHANGELOG
 
+## v0.59.0 -- py_staged --all: the whole-tree ruff for a repo with no pytest suite
+
+* **`gates/py_staged.sh --all [repo]` runs the commit-time ruff over every tracked `.py`
+  (GOH.PYALL, 2026-11-07).** A repo with no pytest suite never runs `py_gate.sh`, so nothing at
+  push ever ran ruff over the whole tree, and a ruff bump's new verdicts landed only on files
+  someone happened to stage: eleven necrohand `tools/*.py` sat unformatted under ruff 0.17 with
+  every gate green. `--all` reads git's list (minus `GOH_EXCLUDE`, so a ruff `exclude` cannot
+  hide first-party code), runs ruff check, ruff format check and noqa parity over it, and is red
+  on a tree with no tracked `.py`. Such a repo calls it from its push layer.
+
 ## v0.58.4 -- the ✗ verdict's two twins split output lines alike
 
 * **`lib/xexit.py` and `step_report.rs` `cross_lines` end a line at `\n` or `\r` and nowhere else
