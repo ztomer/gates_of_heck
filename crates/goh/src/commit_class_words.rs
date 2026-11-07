@@ -149,12 +149,24 @@ pub(super) fn frequent(classes: &[String]) -> BTreeSet<String> {
         .collect()
 }
 
-/// Two content words shared (a one-word class needs that word), the repo's `vocabulary` aside. Calibrated on `ZoneWM`'s 54
+/// Of the smaller class's content words, a match needs at least one in `SHARE`. Two words are
+/// evidence of a class in a six-word phrase and chance in a fifteen-word one: `ZoneWM`'s `54b348de`
+/// (ZW.REV2, 2026-11-07) shared `hold`+`narrower` with a nine-word class and `form`+`value` with an
+/// eighteen-word one, and was refused as their third instance. A rarity weight cannot see that --
+/// `narrower` and `form` are each in ONE class of the registry, so they outweigh the words a true
+/// restatement shares (measured over `ZoneWM`'s 207 classes) -- but length can. Of its 326 matching
+/// pairs, 33 fall under a quarter, every one two common words in a smaller class of 9 to 11; the
+/// thinnest overlap among the pairs kept is 2 of 7.
+pub(super) const SHARE: usize = 4;
+
+/// Two content words shared (a one-word class needs that word), the repo's `vocabulary` aside, and
+/// at least a `SHARE`th of the smaller class's words. The two-word floor was calibrated on `ZoneWM`'s 54
 /// classes and the pairs their author labelled (2026-10-08): the prototype's "half the smaller
 /// class" matched 1 of 13 same-class pairs; this matches 6, with 2 of 1,418 other pairs and
 /// neither labelled near-miss. The other 7 are paraphrase, which no word overlap sees.
 pub(super) fn same_class(a: &str, b: &str, vocabulary: &BTreeSet<String>) -> bool {
     let (wa, wb) = (&words(a) - vocabulary, &words(b) - vocabulary);
     let smaller = wa.len().min(wb.len());
-    smaller > 0 && wa.intersection(&wb).count() >= smaller.min(2)
+    let shared = wa.intersection(&wb).count();
+    smaller > 0 && shared >= smaller.min(2) && shared * SHARE >= smaller
 }

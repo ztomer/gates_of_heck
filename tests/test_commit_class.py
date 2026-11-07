@@ -96,6 +96,26 @@ def test_unrelated_classes_do_not_count(repo: Path) -> None:
     assert _check(repo, OK_FIX, "window built per show", "timer never idles").returncode == 0
 
 
+def test_two_common_words_in_a_long_class_are_not_a_third_instance(repo: Path) -> None:
+    """ZW.REV2: a class of fifteen content words shared `hold`+`narrower` with one earlier class and
+    `form`+`value` with another, and was refused as their third instance."""
+    long = (
+        "a guard that judges a value by its printed form, or catches a narrower base than the "
+        "failures it holds, lets the shape it did not expect straight through"
+    )
+    msg = OK_FIX.replace("a lock path declared in several files", long)
+    earlier = (
+        "a fixed-width column narrower than the text it holds clips it mid-glyph",
+        (
+            "a settings row draws prose, a value or a width the system does not have - a caption "
+            "that restates its control, a slider value the strip is not using, a fixed-width grid "
+            "wider than the Form column"
+        ),
+    )
+    r = _check(repo, msg, *earlier)
+    assert r.returncode == 0, r.stderr
+
+
 def test_trailers_above_the_last_paragraph_are_named_not_read(repo: Path) -> None:
     """git reads trailers only in the last paragraph; `Class:` above a Co-Authored-By block is
     invisible to `%(trailers)`. Refused, saying where to move it."""

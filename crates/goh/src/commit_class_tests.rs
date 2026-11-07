@@ -173,3 +173,53 @@ fn similarity_is_two_shared_content_words() {
     ));
     assert!(!same_class("the of", "the of", &n));
 }
+
+/// ZW.REV2 (2026-11-07): `ZoneWM`'s `54b348de` was refused as "the instance after 2 earlier ones" on
+/// `hold`+`narrower` (a fixed-width column) and `form`+`value` (a settings row) -- two common words
+/// in a fifteen-word class. A rarity weight cannot see it: `narrower` and `form` are in ONE class of
+/// the registry each, so they weigh MORE than the words true restatements share.
+const REFUSED: &str =
+    "a guard that judges a value by its printed form, or catches a narrower base \
+    than the failures it holds, lets the shape it did not expect straight through";
+const COLUMN: &str = "a fixed-width column narrower than the text it holds clips it mid-glyph";
+const SETTINGS_ROW: &str = "a settings row draws prose, a value or a width the system does not \
+    have - a caption that restates its control, a slider value the strip is not using, a \
+    fixed-width grid wider than the Form column";
+
+#[test]
+fn two_common_words_in_a_long_class_are_not_a_class() {
+    let n = none();
+    assert!(!same_class(REFUSED, COLUMN, &n), "hold, narrower: 2 of 9");
+    assert!(
+        !same_class(REFUSED, SETTINGS_ROW, &n),
+        "form, value: 2 of 15"
+    );
+    let message = format!("fix: x\n\nClass: {REFUSED}\nSiblings: none (grep -rn the pattern)\n");
+    let earlier = [COLUMN.to_owned(), SETTINGS_ROW.to_owned()];
+    assert_eq!(refusals(&message, &earlier, &n, true), Vec::<String>::new());
+}
+
+/// The other direction: `ZoneWM`'s own restatements, none of them labelled -- the registry's
+/// near-duplicates. A share high enough to refuse the pair above must not lose these.
+#[test]
+fn restatements_in_the_registry_still_match() {
+    let n = none();
+    for (a, b) in [
+        // 5 of 7 words.
+        (
+            "a fixed sleep stands in for a readiness signal from a spawned process",
+            "a fixed sleep stands in for a readiness signal, so a slow-but-ready thing reads as not ready",
+        ),
+        // 2 of 7: the thinnest overlap a real restatement has in the registry (a quarter of the smaller class).
+        (
+            "a fixed sleep stands in for a readiness signal from a spawned process",
+            "a capture taken after a fixed sleep, racing the asynchronous work whose result it captures",
+        ),
+        (
+            "a test needs two asks to overlap and races a fixture's decode time for it",
+            "a test needs two asks to overlap and races a fixture's decode time for it",
+        ),
+    ] {
+        assert!(same_class(a, b, &n), "{a} / {b}");
+    }
+}

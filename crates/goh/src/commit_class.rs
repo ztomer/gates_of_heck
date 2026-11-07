@@ -8,7 +8,8 @@
 //!
 //! * `Class:` -- the invariant that broke, as a reusable phrase -- and `Siblings:` -- the other
 //!   sites, or `none (<the search that found none>)`;
-//! * a Class sharing two content words with two or more earlier classes is a THIRD instance, and must
+//! * a Class sharing two content words (and a quarter of the smaller class's) with two or more
+//!   earlier classes is a THIRD instance, and must
 //!   also carry `Systemic:` (the helper, gate or type that ends it) or `Filed:` (the item that
 //!   will), with substance: `none yet`, `n/a`, `tbd`, `-` are what gaming it looked like.
 //!

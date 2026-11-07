@@ -1,5 +1,22 @@
 # CHANGELOG
 
+## Unreleased
+
+* **`goh commit-class` no longer calls two common words a class (GOH.CLASSMATCH, 2026-11-07).** ZoneWM's
+  `54b348de` (ZW.REV2) was refused as "the instance after 2 earlier ones": a fifteen-word Class
+  shared `hold`+`narrower` with a fixed-width-column class and `form`+`value` with a settings-row
+  class, and two shared content words was the whole test. The test now also needs a quarter of the
+  SMALLER class's content words (`shared * 4 >= smaller`; two words still decide a class of eight or
+  fewer). A rarity weight was tried on the registry first and cannot do this: `narrower` and `form`
+  are each in ONE of ZoneWM's 207 classes, so they weigh more than the words true restatements
+  share. Length does: over that registry 326 pairs matched and 33 fall under a quarter, each two
+  common words in a smaller class of 9 to 11 (none a restatement); the thinnest kept pair is a real
+  one at 2 of 7. The commit gate's verdict over every repo with `Class:` history (ZoneWM 1,186
+  commits, goh 737, nine others) is unchanged; the refused phrase now passes against ZoneWM's
+  history. Tests: `two_common_words_in_a_long_class_are_not_a_class` and
+  `restatements_in_the_registry_still_match` (commit_class_tests.rs), one end to end in
+  tests/test_commit_class.py.
+
 ## v0.58.1 -- the shell lint judges its seed over an empty scope
 
 * **The shell lint's seed is judged over an empty scope, and `--staged --seed` is refused
