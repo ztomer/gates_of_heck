@@ -1,5 +1,16 @@
 # CHANGELOG
 
+## Unreleased
+
+* **The push export carries EVERY sibling a tracked manifest names, not only gates_of_heck
+  (2026-11-07).** token-pool's widget depends on `.package(path: "../../ZoneWM/Packages/SpaceBarKit")`
+  from a nested `widget/Package.swift`, and its push died in the export on "the package at
+  .../ZoneWM/Packages/SpaceBarKit cannot be accessed": the gates_of_heck link (antiknob, 2026-10-24)
+  was one instance of the class. `gates/_push_siblings.py` reads every tracked `Cargo.toml` and
+  `Package.swift` for a path that leaves the checkout; `export_siblings` links each one into the run
+  directory (gates_of_heck to `$GOH`, any other to the checkout beside the real one, none when it is
+  not checked out) and records it in `.siblings`, which `run_litter` reads instead of a name.
+
 ## v0.59.1 -- the format gate runs the repo's pinned ruff; a failure names the files that failed
 
 * **`GOH_PYTHON_FORMATTED` runs the repo's ruff, by the Python gates' runner rule (GOH.RUFFPIN,

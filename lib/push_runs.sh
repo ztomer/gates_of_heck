@@ -29,33 +29,43 @@ reap_dead_runs() {
     done
 }
 
-# THE gates_of_heck SIBLING. A Rust consumer whose Cargo.toml has a path dependency on
-# ../gates_of_heck/crates/goh-tui (the house TUI, BACKLOG 4.14) resolves it BESIDE its checkout, and
-# beside the export -- <export root>/<repo>-<hash>/ -- there is nothing but the tree. Cargo reads no
-# environment variable in a path, so antiknob's push died on "no matching package named `goh-tui`"
-# (2026-10-24) before its own gate.sh could act, and the link its gate.sh made as a workaround was
-# then named here as the gate writing outside its tree. So the export provides the sibling itself,
-# as a link to $GOH, for exactly the consumers whose TRACKED Cargo.toml names it ($1 = the export's
-# tree, $2 = the run directory). An existing entry is never replaced.
-export_goh_sibling() {
-    local tree="$1" run_dir="$2"
-    if [ -e "$run_dir/gates_of_heck" ] || [ -L "$run_dir/gates_of_heck" ]; then return 0; fi
-    git -C "$tree" grep -qEI -e 'path[[:space:]]*=[[:space:]]*"(\.\./)+gates_of_heck(/|")' \
-        -- ':(glob)**/Cargo.toml' || return 0
-    ln -s "$GOH" "$run_dir/gates_of_heck"
-    info "pre-push: the export carries a gates_of_heck sibling (a Cargo.toml path dependency names it)"
+# THE SIBLINGS. A path dependency that leaves the checkout resolves BESIDE it, and beside the
+# export -- <export root>/<repo>-<hash>/ -- there is nothing but the tree. A Rust consumer's
+# `../gates_of_heck/crates/goh-tui` (the house TUI, BACKLOG 4.14) died there on "no matching
+# package named `goh-tui`" (antiknob, 2026-10-24), and the link its own gate.sh made as a
+# workaround was then named as the gate writing outside its tree; token-pool's widget
+# (`.package(path: "../../ZoneWM/Packages/SpaceBarKit")`, 2026-11-07) died the same way. So the
+# export provides every sibling a TRACKED Cargo.toml or Package.swift names (gates/_push_siblings.py),
+# as a link: gates_of_heck to $GOH, any other to the checkout of that name beside the real one, when
+# there is one ($1 = the export's tree, $2 = the run directory, $3 = the real checkout). Each link
+# is recorded in $2/.siblings so `run_litter` knows it for the run's own. An existing entry is never
+# replaced; a sibling that is not checked out gets no link, and the build says what is missing.
+export_siblings() {
+    local tree="$1" run_dir="$2" root="$3" name target
+    while IFS= read -r name; do
+        [ -n "$name" ] || continue
+        if [ -e "$run_dir/$name" ] || [ -L "$run_dir/$name" ]; then continue; fi
+        if [ "$name" = gates_of_heck ]; then target="$GOH"; else target="$(dirname "$root")/$name"; fi
+        [ -d "$target" ] || continue
+        ln -s "$target" "$run_dir/$name"
+        printf '%s\t%s\n' "$name" "$target" >>"$run_dir/.siblings"
+        info "pre-push: the export carries the sibling $name (a tracked manifest's path dependency names it)"
+    done < <("$GOH_PY" -S "$GOH/gates/_push_siblings.py" "$tree")
 }
 
 # What a gate left in run directory $1 beyond the run's own entries: the owner stamp, the private
-# build dir, the tree ($2), and the gates_of_heck link export_goh_sibling made. NAMED, not swept
+# build dir, the tree ($2), and the sibling links export_siblings made (and recorded). NAMED, not swept
 # silently -- the defect is the consumer's. Any other thing under that name is still named.
 run_litter() {
     local run_dir="$1" worktree="$2" name out=""
     while IFS= read -r name; do
         case "$name" in
-            .owner | .cargo-build | "$(basename "$worktree")") continue ;;
-            gates_of_heck) [ "$(readlink "$run_dir/$name")" = "$GOH" ] && continue ;;
+            .owner | .cargo-build | .siblings | "$(basename "$worktree")") continue ;;
         esac
+        if [ -L "$run_dir/$name" ] && [ -f "$run_dir/.siblings" ] &&
+            grep -qxF "$name"$'\t'"$(readlink "$run_dir/$name")" "$run_dir/.siblings"; then
+            continue
+        fi
         out="$out$name "
     done < <(ls -A "$run_dir")
     printf '%s' "$out"

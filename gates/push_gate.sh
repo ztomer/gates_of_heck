@@ -411,7 +411,7 @@ while read -r local_ref local_sha _remote_ref _remote_sha; do
     worktree="$run_dir/$(basename "$root")"
     section "pre-push: gating $local_ref @ $short in a clean worktree"
     git -C "$root" worktree add --detach --quiet "$worktree" "$commit"
-    export_goh_sibling "$worktree" "$run_dir"   # the gates_of_heck sibling a path dependency names (lib/push_runs.sh)
+    export_siblings "$worktree" "$run_dir" "$root"   # every sibling a tracked manifest's path dependency names (lib/push_runs.sh)
     # ...and the build dirs cargo keys on the export, asked while it exists (gates/_push_build_dirs.py).
     [ -n "$export_build_dir" ] || "$GOH_PY" -S "$GOH/gates/_push_build_dirs.py" "$worktree" 2>/dev/null |
         sed 's/^/build-dir /' >>"$run_dir.source" || true

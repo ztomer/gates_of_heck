@@ -341,3 +341,48 @@ def test_a_sibling_the_gate_makes_itself_is_still_named_as_litter(tmp_path):
     got = _push(repo, tmp_path, tmp_path / "exports")
     assert got.returncode == 0, got.stdout + got.stderr
     assert "outside its tree (removed): other_sibling" in got.stdout + got.stderr
+
+
+# ── any sibling a tracked manifest names ─────────────────────────────────────────────────────────
+# token-pool, 2026-11-07: widget/Package.swift depends on `.package(path: "../../ZoneWM/Packages/
+# SpaceBarKit")`, the house widget kit in the ZoneWM checkout beside it, and the export has nothing
+# beside its tree, so the push died on "the package at .../ZoneWM/Packages/SpaceBarKit cannot be
+# accessed". The gates_of_heck link above was ONE instance of the class: a path dependency from
+# any tracked manifest (Cargo.toml or Package.swift, at any depth) on a sibling checkout.
+
+KIT_GATE = GATE.replace(
+    "exit 0\n",
+    'printf "sibling=%s\\n" "$(readlink ../Kit || echo NONE)" >> "$out"\n'
+    'printf "kit=%s\\n" "$([ -d ../Kit/Packages/K ] && echo found || echo MISSING)" >> "$out"\n'
+    "exit 0\n",
+)
+SWIFT_DEP = 'import PackageDescription\nlet package = Package(name: "W", dependencies: [\n    .package(path: "../../Kit/Packages/K")\n])\n'
+
+
+def _swift_sibling_repo(tmp_path: Path) -> Path:
+    repo = _repo(tmp_path)
+    (repo / "tools" / "gate.sh").write_text(KIT_GATE)
+    (repo / "widget").mkdir()
+    (repo / "widget" / "Package.swift").write_text(SWIFT_DEP)
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "-qm", "swift sibling fixture")
+    return repo
+
+
+def test_a_sibling_checkout_a_nested_package_swift_names_is_in_the_export(tmp_path):
+    repo = _swift_sibling_repo(tmp_path)
+    kit = tmp_path / "Kit"
+    (kit / "Packages" / "K").mkdir(parents=True)
+    got = _push(repo, tmp_path, tmp_path / "exports")
+    assert got.returncode == 0, got.stdout + got.stderr
+    seen = _report(tmp_path)
+    assert seen["sibling"] == str(kit) and seen["kit"] == "found", seen
+    assert "outside its tree" not in got.stdout + got.stderr, got.stdout + got.stderr
+    assert _run_litter(tmp_path / "exports") == []
+
+
+def test_a_named_sibling_that_is_not_checked_out_gets_no_link(tmp_path):
+    repo = _swift_sibling_repo(tmp_path)
+    got = _push(repo, tmp_path, tmp_path / "exports")
+    assert got.returncode == 0, got.stdout + got.stderr
+    assert _report(tmp_path)["sibling"] == "NONE", _report(tmp_path)
