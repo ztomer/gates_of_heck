@@ -61,7 +61,14 @@ def _porcelain(repo: Path) -> str:
 # not read from an ambient environment by any structural step. Dropping it is therefore both safe
 # and required -- and required rather than merely tidy, because the value names a REAL checkout, so
 # an inherited one would silently point a gate at somebody else's tree.
+#
+# GOH_PY_RUNNER and GOH_PYTHON_VERSION are the Python gates' runner choice (gates/_py.sh): the
+# environment IS an accepted source for them (a caller names its toolchain), and a `.gatesrc` value
+# overrides it. `pyformat.rs` reads them the same way (GOH.RUFFPIN), so dropping the inherited value
+# would make `goh python-formatted` pick a different ruff than the shell gates of the same repo.
 NOT_PIPELINE_CONFIG = {
+    "GOH_PY_RUNNER",
+    "GOH_PYTHON_VERSION",
     "GOH_BIN",
     "GOH_NO_NATIVE",
     "GOH_SKIP_BUILD",

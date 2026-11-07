@@ -14,6 +14,7 @@ the settings file that applies is the one at the repo root — a formatter whose
 verdict depends on the directory it was launched from is not a gate.
 """
 
+import os
 import shutil
 import subprocess
 import sys
@@ -225,3 +226,126 @@ def test_a_hung_ruff_is_timed_out_and_its_group_killed(repo, tmp_path, goh):
     if alive:
         os.kill(pid, 9)
     assert not alive, "ruff's own child survived: the group was not killed"
+
+
+# ── which ruff: the repo's pinned one, by the Python gates' own runner rule (GOH.RUFFPIN) ────────
+# `goh python-formatted` ran whatever `ruff` was first on PATH, so the verdict depended on the shell
+# it was launched from while gates/_py.sh (`goh_py_runner_choose`) judged the same tree with the
+# repo's pin: a tracked uv.lock runs `uv run --frozen ruff`, a .venv runs its own, else PATH.
+# Every test puts a PATH ruff that is RED beside a pinned one that is GREEN (or the reverse), so a
+# gate that took the wrong ruff gives the wrong verdict -- the two can never agree by accident.
+
+
+def _fake(path: Path, body: str) -> Path:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("#!/bin/sh\n" + body)
+    path.chmod(0o755)
+    return path
+
+
+def _with_path_ruff(tmp_path, *, verdict: int) -> tuple[dict[str, str], Path]:
+    """An env whose first PATH ruff exits `verdict`, and the log every fake appends its argv to."""
+    log = tmp_path / "argv.log"
+    _fake(tmp_path / "pathbin" / "ruff", f'echo "PATH-RUFF $*" >> "{log}"\nexit {verdict}\n')
+    env = dict(os.environ, PATH=f"{tmp_path / 'pathbin'}:{os.environ['PATH']}")
+    for k in ("GOH_PY_RUNNER", "GOH_PYTHON_VERSION"):
+        env.pop(k, None)
+    return env, log
+
+
+def test_a_tracked_uv_lock_runs_the_pinned_ruff_not_the_one_on_path(repo, tmp_path):
+    env, log = _with_path_ruff(tmp_path, verdict=1)  # PATH's ruff would call every file bad
+    _fake(tmp_path / "pathbin" / "uv", f'echo "UV $*" >> "{log}"\nexit 0\n')
+    write(repo, "tools/good.py", GOOD)
+    write(repo, "uv.lock", "version = 1\n")
+    stage(repo, "uv.lock")
+    commit_all(repo)
+    r = run_tiered(repo, CHECK, "python-formatted", "tools", env=env)
+    assert r.returncode == 0, r.stdout + r.stderr
+    argv = log.read_text()
+    assert "UV run --frozen ruff format --check" in argv and "PATH-RUFF" not in argv, argv
+
+
+def test_the_pinned_ruff_is_the_one_that_fails_when_it_is_the_one_that_disagrees(repo, tmp_path):
+    env, log = _with_path_ruff(tmp_path, verdict=0)  # PATH's ruff would pass everything
+    _fake(tmp_path / "pathbin" / "uv", f'echo "UV $*" >> "{log}"\necho "would reformat"\nexit 1\n')
+    write(repo, "tools/good.py", GOOD)
+    write(repo, "uv.lock", "version = 1\n")
+    stage(repo, "uv.lock")
+    commit_all(repo)
+    r = run_tiered(repo, CHECK, "python-formatted", "tools", env=env)
+    assert r.returncode == 1, r.stdout + r.stderr
+    assert "PATH-RUFF" not in log.read_text()
+
+
+def test_staged_runs_the_pinned_ruff_too(repo, tmp_path):
+    env, log = _with_path_ruff(tmp_path, verdict=1)
+    _fake(tmp_path / "pathbin" / "uv", f'echo "UV $*" >> "{log}"\ncat > /dev/null\nexit 0\n')
+    write(repo, "uv.lock", "version = 1\n")
+    stage(repo, "uv.lock")
+    commit_all(repo)
+    write(repo, "tools/a.py", GOOD)
+    stage(repo, "tools/a.py")
+    r = run_tiered(repo, CHECK, "python-formatted", "--staged", env=env)
+    assert r.returncode == 0, r.stdout + r.stderr
+    argv = log.read_text()
+    assert "UV run --frozen ruff format --check" in argv and "PATH-RUFF" not in argv, argv
+
+
+def test_a_venv_runs_its_own_ruff_when_no_lock_is_tracked(repo, tmp_path):
+    env, log = _with_path_ruff(tmp_path, verdict=1)
+    _fake(repo / ".venv" / "bin" / "python", f'echo "VENV $*" >> "{log}"\nexit 0\n')
+    write(repo, "tools/good.py", GOOD)
+    r = run_tiered(repo, CHECK, "python-formatted", "tools", env=env)
+    assert r.returncode == 0, r.stdout + r.stderr
+    argv = log.read_text()
+    assert "VENV -m ruff format --check" in argv and "PATH-RUFF" not in argv, argv
+
+
+def test_a_tracked_lock_outranks_a_venv(repo, tmp_path):
+    env, log = _with_path_ruff(tmp_path, verdict=1)
+    _fake(repo / ".venv" / "bin" / "python", f'echo "VENV $*" >> "{log}"\nexit 1\n')
+    _fake(tmp_path / "pathbin" / "uv", f'echo "UV $*" >> "{log}"\nexit 0\n')
+    write(repo, "tools/good.py", GOOD)
+    write(repo, "uv.lock", "version = 1\n")
+    stage(repo, "uv.lock")
+    commit_all(repo)
+    r = run_tiered(repo, CHECK, "python-formatted", "tools", env=env)
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert "VENV" not in log.read_text()
+
+
+def test_goh_py_runner_names_the_ruff_and_the_python_version_reaches_uv(repo, tmp_path):
+    env, log = _with_path_ruff(tmp_path, verdict=1)
+    _fake(tmp_path / "pathbin" / "uv", f'echo "UV $*" >> "{log}"\nexit 0\n')
+    write(repo, "tools/good.py", GOOD)
+    write(repo, "uv.lock", "version = 1\n")
+    stage(repo, "uv.lock")
+    commit_all(repo)
+    pinned = run_tiered(
+        repo, CHECK, "python-formatted", "tools", env=dict(env, GOH_PYTHON_VERSION="3.14")
+    )
+    assert pinned.returncode == 0, pinned.stdout + pinned.stderr
+    assert "UV run --frozen --python 3.14 ruff format" in log.read_text()
+    runner = _fake(tmp_path / "myrunner", f'echo "RUNNER $*" >> "{log}"\nexit 0\n')
+    named = run_tiered(
+        repo, CHECK, "python-formatted", "tools", env=dict(env, GOH_PY_RUNNER=str(runner))
+    )
+    assert named.returncode == 0, named.stdout + named.stderr
+    assert "RUNNER ruff format --check" in log.read_text()
+
+
+def test_a_tracked_lock_with_no_uv_is_a_named_refusal_not_the_path_ruff(repo, tmp_path):
+    env, log = _with_path_ruff(tmp_path, verdict=0)
+    write(repo, "tools/good.py", GOOD)
+    write(repo, "uv.lock", "version = 1\n")
+    stage(repo, "uv.lock")
+    commit_all(repo)
+    narrow = tmp_path / "narrow"
+    narrow.mkdir()
+    (narrow / "git").symlink_to(shutil.which("git"))
+    (narrow / "ruff").symlink_to(tmp_path / "pathbin" / "ruff")
+    r = run_tiered(repo, CHECK, "python-formatted", "tools", env=dict(env, PATH=str(narrow)))
+    assert r.returncode == 1, r.stdout + r.stderr
+    assert "uv.lock" in r.stdout + r.stderr and "uv" in r.stdout + r.stderr
+    assert not log.exists() or "PATH-RUFF" not in log.read_text()

@@ -6,6 +6,11 @@
 //! each staged blob through `--stdin-filename`, concurrently, reformatting
 //! nothing. A missing ruff is a missing gate, not a pass. Every ruff runs
 //! under the step ceiling (`crate::bounded`).
+//!
+//! WHICH ruff is the Python gates' rule (`gates/_py.sh` `goh_py_runner_choose`), not whatever is
+//! first on `PATH` (GOH.RUFFPIN): `GOH_PY_RUNNER` names the runner, else a tracked `uv.lock` runs
+//! `uv run --frozen ruff`, else a `.venv` runs its own (`.venv/bin/python -m ruff`), else `PATH`.
+//! A verdict that depends on the shell it was launched from is not a gate.
 
 use goh_tui::{ERR, OK, START};
 use std::path::{Path, PathBuf};
@@ -13,9 +18,77 @@ use std::process::Command;
 
 type Lines = Vec<(bool, String)>;
 
-fn ruff(root: &Path, args: &[&str], input: Option<Vec<u8>>) -> Result<(i32, String), String> {
-    let mut cmd = Command::new("ruff");
-    cmd.args(["format", "--check"]).args(args).current_dir(root);
+/// The argv that runs ruff: a program and the words before `format`.
+type Runner = Vec<String>;
+
+/// `key` as the repo declares it: its `.gatesrc` (which the shell gates source), else the environment.
+fn setting(root: &Path, key: &str) -> Option<String> {
+    let declared = std::fs::read_to_string(root.join(".gatesrc"))
+        .ok()
+        .and_then(|t| crate::gatesrc::parse_pairs(&t).get(key).cloned());
+    declared
+        .or_else(|| std::env::var(key).ok())
+        .filter(|v| !v.trim().is_empty())
+}
+
+/// Is `rel` tracked by git (`git ls-files --error-unmatch`)? A gitignored file is one machine's
+/// state, not the repo's declaration.
+fn tracked(root: &Path, rel: &str) -> bool {
+    Command::new("git")
+        .args(["ls-files", "--error-unmatch", "--", rel])
+        .current_dir(root)
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status()
+        .is_ok_and(|s| s.success())
+}
+
+/// The ruff this repo means, by `goh_py_runner_choose`'s order. An `Err` is a named refusal: a
+/// repo that declares a toolchain it cannot run is not judged by some other ruff.
+fn choose_runner(root: &Path) -> Result<Runner, String> {
+    if let Some(named) = setting(root, "GOH_PY_RUNNER") {
+        let mut argv: Runner = named.split_whitespace().map(str::to_owned).collect();
+        argv.push("ruff".to_owned());
+        return Ok(argv);
+    }
+    if tracked(root, "uv.lock") {
+        if !on_path("uv") {
+            return Err("this repo tracks uv.lock, so its ruff is built by uv (`uv run --frozen`), and uv is not on PATH -- brew install uv, or set GOH_PY_RUNNER. The ruff on PATH is not the repo's pin, so it is not asked".to_owned());
+        }
+        let mut argv: Runner = ["uv", "run", "--frozen"].map(str::to_owned).to_vec();
+        if let Some(version) = setting(root, "GOH_PYTHON_VERSION") {
+            argv.extend(["--python".to_owned(), version]);
+        }
+        argv.push("ruff".to_owned());
+        return Ok(argv);
+    }
+    let venv = root.join(".venv/bin/python");
+    if is_executable(&venv) {
+        return Ok(vec![
+            venv.to_string_lossy().into_owned(),
+            "-m".to_owned(),
+            "ruff".to_owned(),
+        ]);
+    }
+    if !on_path("ruff") {
+        return Err("ruff is not installed, so nothing can check the shape of the Python here — `brew install ruff` (or `uv tool install ruff`). A missing formatter is a missing gate, not a pass.".to_owned());
+    }
+    Ok(vec!["ruff".to_owned()])
+}
+
+fn ruff(
+    root: &Path,
+    runner: &[String],
+    args: &[&str],
+    input: Option<Vec<u8>>,
+) -> Result<(i32, String), String> {
+    let (program, lead) = runner.split_first().ok_or("no ruff runner chosen")?;
+    let mut cmd = Command::new(program);
+    cmd.args(lead)
+        .args(["format", "--check"])
+        .args(args)
+        .current_dir(root);
     let ran = crate::bounded::run(&mut cmd, input, crate::bounded::step_ceiling())
         .map_err(|e| format!("cannot start ruff: {e}"))?;
     if ran.timed_out {
@@ -29,17 +102,16 @@ fn ruff(root: &Path, args: &[&str], input: Option<Vec<u8>>) -> Result<(i32, Stri
     Ok((ran.code.unwrap_or(1), text.trim().to_owned()))
 }
 
+fn is_executable(p: &Path) -> bool {
+    p.is_file()
+        && std::fs::metadata(p)
+            .is_ok_and(|m| std::os::unix::fs::PermissionsExt::mode(&m.permissions()) & 0o111 != 0)
+}
+
 /// Is `tool` an executable on `PATH` (`shutil.which`)?
 pub(crate) fn on_path(tool: &str) -> bool {
-    std::env::var_os("PATH").is_some_and(|paths| {
-        std::env::split_paths(&paths).any(|d| {
-            let p = d.join(tool);
-            p.is_file()
-                && std::fs::metadata(&p).is_ok_and(|m| {
-                    std::os::unix::fs::PermissionsExt::mode(&m.permissions()) & 0o111 != 0
-                })
-        })
-    })
+    std::env::var_os("PATH")
+        .is_some_and(|paths| std::env::split_paths(&paths).any(|d| is_executable(&d.join(tool))))
 }
 
 fn root() -> PathBuf {
@@ -53,19 +125,20 @@ fn root() -> PathBuf {
 /// `(rel, ruff's exit code, its output)` for one staged blob.
 type Judged = (String, i32, String);
 
-fn judge_blob(root: &Path, rel: &str) -> Result<Option<Judged>, String> {
+fn judge_blob(root: &Path, runner: &[String], rel: &str) -> Result<Option<Judged>, String> {
     let Some(blob) = crate::gitutil::content_bytes(root, rel, true) else {
         return Ok(None);
     };
     let (code, text) = ruff(
         root,
+        runner,
         &["--force-exclude", "--stdin-filename", rel, "-"],
         Some(blob),
     )?;
     Ok(Some((rel.to_owned(), code, text)))
 }
 
-fn staged(root: &Path) -> Result<Lines, String> {
+fn staged(root: &Path, runner: &[String]) -> Result<Lines, String> {
     let paths: Vec<String> = crate::gitutil::listed_files(root, true)?
         .into_iter()
         .filter(|f| f.as_bytes().ends_with(b".py"))
@@ -78,7 +151,7 @@ fn staged(root: &Path) -> Result<Lines, String> {
             handles.push(scope.spawn(move || {
                 chunk
                     .iter()
-                    .map(|rel| judge_blob(root, rel))
+                    .map(|rel| judge_blob(root, runner, rel))
                     .collect::<Vec<_>>()
             }));
         }
@@ -133,7 +206,7 @@ fn staged(root: &Path) -> Result<Lines, String> {
     Ok(out)
 }
 
-fn full(root: &Path, trees: &[String]) -> Result<(i32, Lines), String> {
+fn full(root: &Path, runner: &[String], trees: &[String]) -> Result<(i32, Lines), String> {
     let first = trees.first().map_or(".", String::as_str);
     let prefix = if first == "." || first.is_empty() {
         String::new()
@@ -149,7 +222,7 @@ fn full(root: &Path, trees: &[String]) -> Result<(i32, Lines), String> {
         return Ok((0, vec![(false, format!("{START} not applicable: no Python files under {named} -- nothing for the formatter to have an opinion about"))]));
     }
     let args: Vec<&str> = trees.iter().map(String::as_str).collect();
-    let (code, text) = ruff(root, &args, None)?;
+    let (code, text) = ruff(root, runner, &args, None)?;
     if code != 0 {
         let mut out: Lines = text
             .lines()
@@ -168,19 +241,20 @@ fn full(root: &Path, trees: &[String]) -> Result<(i32, Lines), String> {
 }
 
 fn run(trees: &[String], staged_scope: bool) -> (i32, Lines) {
-    if !on_path("ruff") {
-        return (1, vec![(true, format!("{ERR} ruff is not installed, so nothing can check the shape of the Python here — `brew install ruff` (or `uv tool install ruff`). A missing formatter is a missing gate, not a pass."))]);
-    }
     let root = root();
+    let runner = match choose_runner(&root) {
+        Ok(r) => r,
+        Err(e) => return (1, vec![(true, format!("{ERR} {e}"))]),
+    };
     let trees: Vec<String> = if trees.is_empty() {
         vec![".".to_owned()]
     } else {
         trees.to_vec()
     };
     let result = if staged_scope {
-        staged(&root).map(|lines| (i32::from(lines.iter().any(|(e, _)| *e)), lines))
+        staged(&root, &runner).map(|lines| (i32::from(lines.iter().any(|(e, _)| *e)), lines))
     } else {
-        full(&root, &trees)
+        full(&root, &runner, &trees)
     };
     result.unwrap_or_else(|e| (1, vec![(true, format!("{ERR} {e}"))]))
 }
@@ -188,15 +262,19 @@ fn run(trees: &[String], staged_scope: bool) -> (i32, Lines) {
 /// `--selftest`: a mis-formatted file must be refused and a formatted one passed. Both sit in a
 /// temp directory OUTSIDE the tree, so the repo's own excludes cannot decide the answer.
 fn selftest() -> (i32, Lines) {
-    if !on_path("ruff") {
-        return (
-            1,
-            vec![(
-                true,
-                format!("{ERR} selftest: ruff is not installed, so there is no gate to prove"),
-            )],
-        );
-    }
+    let root = root();
+    let runner = match choose_runner(&root) {
+        Ok(r) => r,
+        Err(e) => {
+            return (
+                1,
+                vec![(
+                    true,
+                    format!("{ERR} selftest: {e} -- so there is no gate to prove"),
+                )],
+            );
+        }
+    };
     let dir = std::env::temp_dir().join(format!("goh-pyformat-selftest-{}", std::process::id()));
     let planted = std::fs::create_dir_all(&dir)
         .and_then(|()| std::fs::write(dir.join("bad.py"), "x = {  'a':1,'b':2 }\n"))
@@ -204,9 +282,12 @@ fn selftest() -> (i32, Lines) {
     let verdicts = planted
         .map_err(|e| format!("cannot plant the fixture: {e}"))
         .and_then(|()| {
+            // From the repo (its runner resolves there), naming files by absolute path: ruff reads
+            // the settings that sit beside a FILE, so the repo's own excludes still cannot decide.
+            let (bad, good) = (dir.join("bad.py"), dir.join("good.py"));
             Ok((
-                ruff(&dir, &["bad.py"], None)?,
-                ruff(&dir, &["good.py"], None)?,
+                ruff(&root, &runner, &[&bad.to_string_lossy()], None)?,
+                ruff(&root, &runner, &[&good.to_string_lossy()], None)?,
             ))
         });
     let _ = std::fs::remove_dir_all(&dir);

@@ -37,6 +37,7 @@
 structural	cargo	system	rustup (https://rustup.rs)	scripts/build-goh.sh	-
 structural	shellcheck	brew	brew install shellcheck	crates/goh/src/shell_lint.rs	0.11.0
 python-format	ruff	brew	brew install ruff	crates/goh/src/pyformat.rs	-
+python-format	uv	brew	brew install uv	crates/goh/src/pyformat.rs	-
 python	python3	system	the house interpreter (lib/house_python.sh): brew install python	lib/house_python.sh	3.15
 python	ruff	pip	python3 -m pip install ruff	gates/py_gate.sh	-
 python	pytest	pip	python3 -m pip install pytest	gates/py_gate.sh	9.1.1
