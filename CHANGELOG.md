@@ -1,6 +1,6 @@
 # CHANGELOG
 
-## Unreleased
+## v0.58.1 -- the shell lint judges its seed over an empty scope
 
 * **The shell lint's seed is judged over an empty scope, and `--staged --seed` is refused
   (GOH.REV2, 2026-11-07).** Four findings of a review of GOH.SHSEV. (1) With no shell file left in
