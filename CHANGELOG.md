@@ -1,6 +1,6 @@
 # CHANGELOG
 
-## Unreleased
+## v0.58.2 -- goh commit-class stops calling two common words a class
 
 * **`goh commit-class` no longer calls two common words a class (GOH.CLASSMATCH, 2026-11-07).** ZoneWM's
   `54b348de` (ZW.REV2) was refused as "the instance after 2 earlier ones": a fifteen-word Class
