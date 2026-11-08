@@ -24,7 +24,9 @@
 #                     (GOH.APPSTATE: Routines.app was left STOPPED by three kit installs on
 #                     2026-11-07/08), and seen running again before it says so. --no-launch
 #                     keeps it stopped; --launch / UPDATE_DEV_LAUNCH=1 launches one that was
-#                     not running.
+#                     not running. A copy already running is never opened again: `open` on a
+#                     running app is a reopen, which shows its window (RT.LAUNCHDASH). This step
+#                     is the ONE launch path -- callers pass --launch, never `open` after it.
 #
 # Per-repo overrides — put these in a tiny wrapper script or .envrc:
 #   APP_NAME    required   e.g. "Necrohand.app"
@@ -94,6 +96,15 @@ if pgrep -x "$PROCESS_NAME" >/dev/null 2>&1; then
     sleep 0.3
   done
   if pgrep -x "$PROCESS_NAME" >/dev/null 2>&1; then pkill -x "$PROCESS_NAME" || true; fi
+  for _ in 1 2 3 4 5 6 7 8 9 10; do
+    pgrep -x "$PROCESS_NAME" >/dev/null 2>&1 || break
+    sleep 0.3
+  done
+  # A copy still up is neither replaced (it keeps serving the old binary) nor opened again later
+  # (an `open` of a running app is a reopen, step 6).
+  if pgrep -x "$PROCESS_NAME" >/dev/null 2>&1; then
+    die "${PROCESS_NAME} would not quit, gracefully or by signal -- nothing installed"
+  fi
 fi
 
 # ── 3. replace the installed copy ────────────────────────────────────────────
@@ -142,6 +153,13 @@ fi
 
 ok "installed $DEST"
 if [ "$LAUNCH" = 1 ] || { [ "$WAS_RUNNING" = 1 ] && [ "$NO_LAUNCH" = 0 ]; }; then
+  if pgrep -x "$PROCESS_NAME" >/dev/null 2>&1; then
+    # Never `open` a running copy: macOS sends it a reopen event, and an app answers a reopen with
+    # its window (RT.LAUNCHDASH: Routines.app showed the dashboard nobody had open). This step is
+    # the ONE launch path; a caller that opens the app again after it reintroduces that reopen.
+    ok "${PROCESS_NAME} is already running (not opened again: that would be a reopen)"
+    exit
+  fi
   if [ "$WAS_RUNNING" = 1 ]; then info "relaunching ${PROCESS_NAME} (it was running before the install)"; else info "launching"; fi
   open "$DEST" || die "open $DEST failed -- ${PROCESS_NAME} is NOT running"
   # Seen running before it is said (G15): `open` returning is not the app being up.

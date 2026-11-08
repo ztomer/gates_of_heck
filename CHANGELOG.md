@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+* **The release kit's launch step never opens a copy that is already running (RT.LAUNCHDASH).**
+  `open` on a running app is not a launch: macOS sends it a reopen event, and Routines.app answers
+  a reopen with its 1240x960 dashboard. On 2026-11-08 `routines/install.sh --launch` opened the copy
+  `update_dev.sh` had just relaunched, and the dashboard nobody had open appeared. The launch step
+  now says "already running" and opens nothing, and a copy that survives the quit and `pkill` stops
+  the install (it was replaced under the live copy and opened again). Both directions pinned in
+  `tests/test_release_kit_update_dev.py::TestNeverAReopen`.
+
 ## v0.68.0 -- an idle coordinator's dead subagent reaches the owner
 
 * **An idle coordinator's dead subagent reaches the owner (GOH.STALLNOTIFY).** Probed on Claude

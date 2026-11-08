@@ -118,6 +118,9 @@ FAKES = {
 FAKES["pkill"] = FAKES["osascript"]  # a fake on PATH: removes the marker, kills nothing
 
 
+QUITTERS = [name for name in FAKES if name not in ("pgrep", "open")]
+
+
 def _world(tmp_path: Path, running: bool) -> Path:
     bin_dir = tmp_path / "fakes"
     bin_dir.mkdir()
@@ -161,3 +164,32 @@ class TestPutBackAsItWas:
     def test_launch_and_no_launch_together_are_refused(self, tmp_path):
         r = run_update_dev(tmp_path, _world(tmp_path, running=False), "--launch", "--no-launch")
         assert r.returncode != 0 and "contradict" in r.stdout + r.stderr
+
+
+class TestNeverAReopen:
+    """`open` on a copy that is ALREADY running is not a launch: macOS sends that app a reopen event,
+    and an app answers a reopen with its window (Routines.app shows its 1240x960 dashboard). The kit
+    is the one launch path (RT.LAUNCHDASH, 2026-11-08: `install.sh --launch` opened the copy the kit
+    had just relaunched, and the dashboard nobody had open appeared), so it never opens a running copy.
+    """
+
+    def test_a_copy_that_came_up_during_the_install_is_not_reopened(self, tmp_path):
+        bin_dir = _world(tmp_path, running=False)
+        # Something else (a login item, the agent's app-state restore) starts it mid-install.
+        (bin_dir / "codesign").write_text('#!/usr/bin/env bash\ntouch "$STATE/running"\nexit 0\n')
+        (bin_dir / "codesign").chmod(0o755)
+        r = run_update_dev(tmp_path, bin_dir, "--launch")
+        assert r.returncode == 0, r.stdout + r.stderr
+        assert _opened(tmp_path) == [], "a running copy was opened again: that is a reopen"
+        assert "already running" in r.stdout
+
+    def test_a_copy_that_will_not_quit_is_neither_replaced_nor_reopened(self, tmp_path):
+        bin_dir = _world(tmp_path, running=True)
+        for name in QUITTERS:  # a copy that survives the graceful quit and the signal
+            (bin_dir / name).write_text("#!/usr/bin/env bash\nexit 0\n")
+            (bin_dir / name).chmod(0o755)
+        r = run_update_dev(tmp_path, bin_dir)
+        assert r.returncode != 0, r.stdout + r.stderr
+        assert _opened(tmp_path) == []
+        assert "would not quit" in r.stdout + r.stderr
+        assert not (tmp_path / "dest" / "Demo.app").exists(), "replaced under a live copy"
