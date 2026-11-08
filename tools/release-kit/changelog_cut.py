@@ -139,6 +139,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--title")
     ap.add_argument("--file", default="CHANGELOG.md")
     a = ap.parse_args(argv)
+    a.version = a.version.removeprefix("v")  # the tag spelling; stanzas are written `## v<version>`
     path = Path(a.file)
     try:
         lines = path.read_text(encoding="utf-8").splitlines()

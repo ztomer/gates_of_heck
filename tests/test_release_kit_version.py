@@ -121,6 +121,16 @@ def test_cut_moves_unreleased_into_the_new_stanza(tmp_path):
     assert _cut(log, "cut", "--version", "1.3.0", "--title", "x").returncode == 1
 
 
+def test_a_v_prefixed_version_is_the_same_version(tmp_path):
+    """`--version v1.2.0` is the tag spelling of 1.2.0: it cut a traceback, not a stanza."""
+    log = tmp_path / "CHANGELOG.md"
+    log.write_text("# C\n\n## Unreleased\n\n* new thing\n")
+    r = _cut(log, "cut", "--version", "v1.2.0", "--title", "t")
+    assert r.returncode == 0 and "Traceback" not in r.stderr, r.stderr
+    assert "\n## v1.2.0 -- t\n" in log.read_text()
+    assert _cut(log, "check", "--version", "v1.2.0").returncode == 0
+
+
 def test_cut_refuses_an_entry_an_earlier_stanza_holds(tmp_path):
     log = tmp_path / "CHANGELOG.md"
     before = "# C\n\n## Unreleased\n\n* old\n\n## v1.1.0\n\n* old\n"
