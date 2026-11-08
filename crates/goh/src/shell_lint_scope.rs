@@ -149,9 +149,10 @@ pub fn named_sources(text: &str) -> Vec<String> {
     out
 }
 
-/// The repo-relative paths a shell file at `rel` may read as a source: each name
-/// [`named_sources`] finds, both as written (shellcheck's CWD, the repo root) and against the
-/// script's own directory (`--source-path=SCRIPTDIR`, GOH.REL2), `..` resolved.
+/// The repo-relative paths a shell file at `rel` may read as a source.
+///
+/// Each name [`named_sources`] finds, both as written (shellcheck's CWD, the repo root) and against
+/// the script's own directory (`--source-path=SCRIPTDIR`, GOH.REL2), `..` resolved.
 #[must_use]
 pub fn sources_of(rel: &str, text: &str) -> Vec<String> {
     let dir = rel.rsplit_once('/').map_or("", |(d, _)| d);
