@@ -126,9 +126,12 @@ meta = json.loads(subprocess.run(
 # A bin target's unit tests are a coverage source too: a bin-only crate
 # (no lib) has ALL its unit tests there, and until 2026-09-14 this loop
 # never exported them, so such a crate read as "no coverable lines".
+# A lib's kind is its crate-type list when the manifest declares one (["rlib", "cdylib"]),
+# never "lib" then -- and an FFI crate whose tests are all unit tests read the same way.
+LIB_KINDS = {"lib", "rlib", "dylib", "cdylib", "staticlib", "proc-macro"}
 for p in meta["packages"]:
     for t in p["targets"]:
-        if "lib" in t["kind"]:
+        if LIB_KINDS & set(t["kind"]):
             print(f"{p['name']}\tlib\t")
         elif "bin" in t["kind"]:
             print(f"{p['name']}\tbin\t{t['name']}")

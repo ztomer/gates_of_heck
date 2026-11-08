@@ -370,3 +370,28 @@ def test_coverage_build_never_shares_the_build_dir(tmp_path):
     own = tmp_path.resolve() / "cov-cache" / key / "build"
     for call in calls:
         assert call == f"target={proj / 'target' / 'llvm-cov'} build={own}", call
+
+
+# ── D: a lib declared with crate-type is still a lib ────────────────────────
+# `crate-type = ["rlib", "cdylib"]` makes cargo metadata report the lib target's
+# kind as ["rlib", "cdylib"], never "lib": the enumeration skipped it, the run
+# selected no kind, and a crate whose every test is a unit test read as "no
+# coverable lines" (koffee_big's bigkoff-core, KB.HYG3, 2026-11-07).
+
+
+def test_a_crate_type_lib_is_enumerated_as_a_lib(tmp_path):
+    for kinds in (["rlib", "cdylib"], ["cdylib"], ["staticlib"], ["dylib"], ["proc-macro"]):
+        case = tmp_path / "-".join(kinds)
+        case.mkdir()
+        meta = {
+            "packages": [
+                {
+                    "name": "covfix",
+                    "version": "0.1.0",
+                    "targets": [{"name": "covfix", "kind": kinds}],
+                }
+            ]
+        }
+        proj = setup_fixture(case, {"lib.info": build_part(1, "_Za", 5, FULL_COVER)}, meta=meta)
+        r = run_rust_gate(proj, case / "bin", case / "meta.json", case / "canned-parts")
+        assert r.returncode == 0, (kinds, r.stdout + r.stderr)

@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+* **A lib declared with `crate-type` is measured by the Rust coverage gate (2026-11-07).** cargo
+  metadata reports such a lib's kind as its crate-type list (`["rlib", "cdylib"]`), never `"lib"`, so
+  `gates/_coverage_rust.sh` enumerated nothing for koffee_big's bigkoff-core, selected no target kind,
+  and exited "no coverable lines" over a crate whose tests are all unit tests. Every lib kind (`lib`, `rlib`,
+  `dylib`, `cdylib`, `staticlib`, `proc-macro`) now enumerates as a lib.
 * **The push export carries EVERY sibling a tracked manifest names, not only gates_of_heck
   (2026-11-07).** token-pool's widget depends on `.package(path: "../../ZoneWM/Packages/SpaceBarKit")`
   from a nested `widget/Package.swift`, and its push died in the export on "the package at
