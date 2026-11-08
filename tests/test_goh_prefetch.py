@@ -44,6 +44,8 @@ def _fake_goh_dir(tmp: Path) -> Path:
     (root / "checks").mkdir(parents=True)
     (root / "lib").symlink_to(ROOT / "lib")
     (root / "docs").symlink_to(ROOT / "docs")
+    # The house TUI: the vendored-copies step refuses a GOH_DIR without it (GOH.VENDOR).
+    (root / "tui").symlink_to(ROOT / "tui")
     for name in DELEGATED:
         (root / "checks" / name).write_text(PY_STUB)
     return root
