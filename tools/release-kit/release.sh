@@ -319,7 +319,7 @@ elif has_stanza "$VERSION"; then
   # that still holds entries, or a stanza repeating an earlier one's entry, is refused (GOH.REL2:
   # goh's Unreleased carried twelve entries v0.60.0-v0.63.0 had shipped). changelog_cut.py cut
   # makes the stanza FROM Unreleased.
-  python3 "$GOH/tools/release-kit/changelog_cut.py" check --version "$VERSION" --file CHANGELOG.md \
+  bash "$GOH/gates/python.sh" "$GOH/tools/release-kit/changelog_cut.py" check --version "$VERSION" --file CHANGELOG.md \
     || fail "CHANGELOG.md does not hold for ${TAG} (above) -- run tools/release-kit/changelog_cut.py cut --version ${VERSION} --title ... and commit; nothing tagged"
   ok "found; Unreleased is empty and no entry repeats an earlier stanza"
 else
