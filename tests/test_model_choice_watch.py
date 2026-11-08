@@ -93,6 +93,9 @@ class World:
                 if e["matcher"] is not None:
                     group["matcher"] = e["matcher"]
                 self.settings["hooks"].setdefault(event, []).append(group)
+        for k, v in REGS.get("settings", {}).items():  # the managed plain settings, as applied
+            if not k.startswith("_"):
+                self.settings[k] = dict(v) if isinstance(v, dict) else v
         self.ledger: list[dict[str, Any]] = []
         self.transcript: list[dict[str, Any]] = []
 

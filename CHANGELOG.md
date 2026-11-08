@@ -2,6 +2,18 @@
 
 ## Unreleased
 
+* **The Read cap and the subagent cache TTL are goh-managed settings, chosen by measurement
+  (GOH.READCAP, GOH.CACHETTL).** `hooks/claude/registrations.json` gains `settings`, which
+  `scripts/apply_claude_hooks.py` writes into `~/.claude/settings.json` (`env` merged var by var,
+  nothing else touched) and `--check` / `model_choice_watch.py` read as drift; they were hand-placed.
+  `CLAUDE_CODE_FILE_READ_MAX_OUTPUT_TOKENS=12000` is Claude Code's own Read cap, so no hook: a whole
+  file over it comes back as a `PARTIAL view` page, a ranged read over it is refused (probed live).
+  12000 sits in the gap of the measured whole-file Read distribution (15 under 3k, 10 from 13.5k to
+  62k). `subagentPromptCacheTtl` goes back to `5m`: 1h did reach subagents and cut the share of cache
+  writes made after a >5 min gap from 49.1% to 8.6%, but cost 3.5% MORE on the same turns.
+  `scripts/claude_cache_probe.py` re-takes both measurements; numbers and method in docs/config.md.
+  Red first: 5 of `test_apply_claude_hooks.py` failed before the apply step knew `settings`.
+
 ## v0.72.0 -- one roadmap of open entries, held by goh roadmap in every repo
 
 * **A command that prints a stack's resolved secrets is refused at the tool boundary

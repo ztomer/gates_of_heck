@@ -22,6 +22,11 @@ temp file and `os.replace`, and only when something would change. `--dry-run` pr
 GOH.LEANAGENT (2026-11-08): it also installs goh's lean subagent types, `hooks/claude/agents/*.md`,
 into `~/.claude/agents/` (`--agents-dir`), byte for byte; `--check` counts a missing or differing
 one as drift. Only a file named like one of goh's is written; any other agent file is left alone.
+
+GOH.READCAP / GOH.CACHETTL (2026-11-08): `registrations.json`'s `settings` holds the plain Claude
+Code settings goh manages (`env` vars merged one by one, top-level keys set); every other key and
+env var is the owner's and is never touched. Why each value is what it is, measured:
+docs/config.md "Managed Claude Code settings".
 """
 
 from __future__ import annotations
@@ -94,7 +99,32 @@ def apply(settings: dict[str, Any], regs: dict[str, Any]) -> tuple[dict[str, Any
         groups = out.setdefault("hooks", {}).setdefault(event, [])
         for entry in entries:
             _place(groups, event, entry, wanted, notes)
+    _settle(out, regs.get("settings") or {}, notes)
     return out, notes
+
+
+def managed_settings(regs: dict[str, Any]) -> dict[str, Any]:
+    """`registrations.json`'s plain settings as dotted keys (`env.X`, `subagentPromptCacheTtl`)."""
+    flat: dict[str, Any] = {}
+    for key, value in (regs.get("settings") or {}).items():
+        if key.startswith("_"):
+            continue
+        if key == "env":
+            flat.update({f"env.{k}": v for k, v in value.items()})
+        else:
+            flat[key] = value
+    return flat
+
+
+def _settle(out: dict[str, Any], managed: dict[str, Any], notes: list[str]) -> None:
+    """Put each managed plain setting in place; `env` is merged var by var, never replaced."""
+    for dotted, value in managed_settings({"settings": managed}).items():
+        parent, key = (
+            (out.setdefault("env", {}), dotted[4:]) if dotted.startswith("env.") else (out, dotted)
+        )
+        if parent.get(key) != value:
+            parent[key] = value
+            notes.append(f"set {dotted}")
 
 
 def _find(groups: list[dict[str, Any]], script: str | None) -> tuple[int, int] | None:
@@ -207,6 +237,8 @@ def apply_hooks(args: argparse.Namespace) -> int:
         settings = json.loads(raw)
         if not isinstance(settings, dict) or not isinstance(settings.get("hooks", {}), dict):
             raise TypeError("top level and `hooks` must be objects")
+        if not isinstance(settings.get("env", {}), dict):
+            raise TypeError("`env` must be an object")
         for ev, groups in (settings.get("hooks") or {}).items():
             if not isinstance(groups, list):
                 raise TypeError(f"hooks.{ev} must be a list")
@@ -215,7 +247,7 @@ def apply_hooks(args: argparse.Namespace) -> int:
         return 2
     new, notes = apply(settings, regs)
     if not notes:
-        ok(f"{path}: goh's hooks are as registered")
+        ok(f"{path}: goh's hooks and managed settings are as registered")
         return 0
     diff = "".join(difflib.unified_diff(raw.splitlines(True), _dump(new).splitlines(True),
                                         str(path), f"{path} (applied)"))  # fmt: skip

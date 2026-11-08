@@ -363,7 +363,10 @@ Every structural checker is native since Phase N3; the Python checkers they port
   prints the diff, `--check` exits 1 on drift). Creates or widens only a group whose hooks are ALL goh's;
   a goh hook in a group with a foreign hook (`rtk hook claude`) is split out first and the foreign
   group's matcher is untouched. Backs up first, writes through a temp file, idempotent. `is_goh` is
-  the ownership test `model_choice_watch.py`'s drift check shares. Pinned by `test_apply_claude_hooks.py`.
+  the ownership test `model_choice_watch.py`'s drift check shares. Also writes `registrations.json`'s `settings` (the managed plain settings: `env` merged var by var, keys set; docs/config.md). Pinned by `test_apply_claude_hooks.py`.
+* `scripts/claude_cache_probe.py {reads|ttl} --cut ISO` — the measurement the managed read cap and
+  subagent cache TTL are chosen by: Read result sizes per candidate cap, and each TTL's cost on the same
+  subagent turns. Pinned by `test_claude_cache_probe.py`.
 * `hooks/claude/compact_nudge.py` — a Claude Code Stop hook: when a turn ends with the context past
   `GOH_COMPACT_NUDGE_AT`, a `systemMessage` says `/compact` now lands on a task boundary (no hook can
   start a compaction itself). Once per `GOH_COMPACT_NUDGE_STEP`; never blocks. Pinned by `test_claude_compact_hooks.py`.

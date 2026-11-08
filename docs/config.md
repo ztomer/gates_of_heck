@@ -255,6 +255,20 @@ Read from the hook's environment (the settings file's `env`, or the shell Claude
 | `GOH_COMPACT_NUDGE_AT` | `300000` | Tokens of main-conversation context past which `compact_nudge.py` (Stop) tells the owner, at the end of a turn, that `/compact` would land on a task boundary. Set it under the `autoCompactWindow`, or the automatic compaction comes first and the nudge never speaks. |
 | `GOH_COMPACT_NUDGE_STEP` | `50000` | Growth after a nudge before the next one: one message per step, not one per turn. A compaction re-arms it, whether the Stop saw the boundary or only the shrink. State is one file per session under `$XDG_STATE_HOME/goh/compact_nudge/` (default `~/.local/state`), pruned after seven days. |
 
+## Managed Claude Code settings (`hooks/claude/registrations.json` `settings`, GOH.READCAP, GOH.CACHETTL)
+
+`scripts/apply_claude_hooks.py` writes these into `~/.claude/settings.json` beside the hooks (`env`
+merged var by var; no other key or env var is touched); `--check` and the weekly
+`model_choice_watch.py` read a hand change as drift. Each value is a measurement, re-taken with
+`python3 scripts/claude_cache_probe.py {reads|ttl} --cut <ISO time the value landed> [--days N]`
+over `~/.claude/projects/**/subagents/**/*.jsonl`. Measured 2026-11-08 (Claude Code 2.1.311), cut
+17:06:26Z (when the coordinator hand-placed both), before = the 7 days (reads) / 1 day (ttl) prior.
+
+| Setting | Value | Why (measured) |
+|---|---|---|
+| `env.CLAUDE_CODE_FILE_READ_MAX_OUTPUT_TOKENS` | `12000` | Claude Code's own Read cap (tools-reference.md#large-files; default 25,000): a whole file over it comes back as its first page with a `PARTIAL view` notice naming the next `offset`/`limit`, and a ranged read over it is refused with an error naming `offset`/`limit` or Grep. Probed live in a session started after the change: a 134 KB file (63,907 tokens) came back as lines 1-319 with `PARTIAL view ... (63907 tokens, cap 12000)`; `offset 1 limit 1500` (47,997 tokens) was refused; `offset 1990 limit 5` passed. So no hook. Distribution of the 26 whole-file text Reads before (tokens = chars / 2.34, the ratio measured from 24 turns that held one large result): 15 under 3k, then a gap from 8.3k to 13.5k, then 10 from 13.5k to 62k (the ROADMAP/CHANGELOG class). 12000 sits in that gap: it cuts 14 of 38 text reads (whole and ranged) and 41.6% of their tokens, where the 25k default cut 3 and 14%. After: 0 whole-file reads over 12k. The cap does not bound images (86 of 124 Reads before were screenshots, counted apart) and `allow_large: true` (used 9 times before, 0 after) opts a read out. |
+| `subagentPromptCacheTtl` | `5m` | The 1h TTL was tried (hand-placed 1h at the cut) and is not kept: after the cut, subagent writes were 6,050,577 at 1h and 1,956 at 5m (so the setting does reach subagents), and the share of cache writes made right after a >5 min gap fell from 49.1% (105 gap turns of 9,733) to 8.6% (20 of 2,159). But the cost, in API price units (read 0.1, 5m write 1.25, 1h write 2, output 5), ROSE: on the after turns, 1h cost 49.88M units against 48.21M for 5m on the same turns, +3.5% (the 2x write rate on every write outweighs 20 avoided misses at a 5.9k shared prefix now that agents are lean). On the before turns (heavier agents, 36k shared prefix) 1h would have been 1.8% cheaper. Keep it only while the probe reads 1h cheaper; re-run it after any change in agent size or idle waits. |
+
 ## Runtime / harness
 
 | Key | Default | Meaning |

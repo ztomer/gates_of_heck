@@ -264,3 +264,64 @@ def test_the_lean_types_name_their_tools_and_no_mcp_server_but_the_pool_and_the_
         text = (AGENT_SRC / f"{name}.md").read_text()
         (desc,) = [ln for ln in text.split("---")[1].splitlines() if ln.startswith("description:")]
         assert len(desc) <= 200, desc
+
+
+# --- GOH.READCAP / GOH.CACHETTL: the plain settings goh manages (not hooks) ---------------------
+
+
+REAL_REGS = json.loads((REPO_ROOT / "hooks" / "claude" / "registrations.json").read_text())
+CAP = "CLAUDE_CODE_FILE_READ_MAX_OUTPUT_TOKENS"
+
+
+def _managed(env: dict | None = None, **top: object) -> dict:
+    return {"hooks": {}, "settings": {"_doc": "x", **({"env": env} if env else {}), **top}}
+
+
+def test_a_managed_setting_is_written_and_every_other_key_and_env_var_is_left_alone() -> None:
+    settings = {"model": "opus", "env": {"OWNER_VAR": "keep"}, "theme": "dark"}
+    out, notes = ach.apply(settings, _managed({CAP: "12000"}, subagentPromptCacheTtl="5m"))
+    assert out == {"model": "opus", "theme": "dark", "subagentPromptCacheTtl": "5m",
+                   "env": {"OWNER_VAR": "keep", CAP: "12000"}}  # fmt: skip
+    assert sorted(notes) == [f"set env.{CAP}", "set subagentPromptCacheTtl"]
+    assert "_doc" not in out  # the registration's own comment is never written
+
+
+def test_a_hand_changed_managed_setting_is_drift_the_apply_step_puts_back() -> None:
+    regs = _managed({CAP: "12000"}, subagentPromptCacheTtl="5m")
+    good, _ = ach.apply({}, regs)
+    assert ach.apply(good, regs) == (good, [])  # idempotent
+    hand = {**good, "subagentPromptCacheTtl": "1h", "env": {CAP: "25000"}}
+    out, notes = ach.apply(hand, regs)
+    assert out == good and len(notes) == 2
+
+
+def test_the_cli_check_reads_a_managed_setting_drift(tmp_path: Path) -> None:
+    s = tmp_path / "settings.json"
+    applied, _ = ach.apply({}, REAL_REGS)
+    s.write_text(json.dumps(applied))
+    assert _run(s, "--check").returncode == 0
+    s.write_text(json.dumps({**applied, "env": {CAP: "99999"}}))
+    r = _run(s, "--check")
+    assert r.returncode == 1 and CAP in r.stdout
+
+
+def test_the_drift_watch_reads_a_managed_setting_drift_too(tmp_path: Path) -> None:
+    import model_choice_watch
+
+    applied, _ = ach.apply({}, REAL_REGS)
+    s = tmp_path / "settings.json"
+    s.write_text(json.dumps({**applied, "subagentPromptCacheTtl": "bogus"}))
+    reg = REPO_ROOT / "hooks" / "claude" / "registrations.json"
+    drift = model_choice_watch.settings_drift(s, reg)
+    assert drift["red"] and any("subagentPromptCacheTtl" in m for m in drift["missing"]), drift
+    assert any('"bogus"' in e for e in drift["extra"]), drift  # the value it found is named
+    s.write_text(json.dumps(applied))
+    assert model_choice_watch.settings_drift(s, reg)["red"] is False
+
+
+def test_the_real_registrations_carry_the_measured_read_cap_and_cache_ttl() -> None:
+    """The values and their measurements: docs/config.md "Managed Claude Code settings" (2026-11-08)."""
+    managed = REAL_REGS["settings"]
+    assert managed["env"] == {CAP: "12000"}
+    assert managed["subagentPromptCacheTtl"] == "5m"  # 1h measured +3.5% dearer: docs
+    assert set(managed) == {"_doc", "env", "subagentPromptCacheTtl"}

@@ -257,8 +257,11 @@ def settings_drift(settings: Path, registrations: Path) -> dict[str, Any]:
     def key(event: str, matcher: Any, hook: dict[str, Any]) -> str:
         return f"{event} [{matcher or '*'}] {hook.get('command')} (timeout {hook.get('timeout')})"
 
-    regs = json.loads(registrations.read_text(encoding="utf-8"))["hooks"]
+    full = json.loads(registrations.read_text(encoding="utf-8"))
+    regs = full["hooks"]
     want = {key(ev, e.get("matcher"), e) for ev, es in regs.items() for e in es}
+    managed = apply_claude_hooks.managed_settings(full)  # GOH.READCAP / GOH.CACHETTL
+    want |= {f"setting {k} = {json.dumps(v)}" for k, v in managed.items()}
     try:
         data = json.loads(settings.read_text(encoding="utf-8"))
     except (OSError, ValueError) as e:
@@ -270,6 +273,11 @@ def settings_drift(settings: Path, registrations: Path) -> dict[str, Any]:
                 cmd = str(h.get("command", ""))
                 if apply_claude_hooks.is_goh(cmd):  # the installer's own notion of "goh's"
                     have.add(key(ev, g.get("matcher"), h))
+    env = data.get("env") if isinstance(data.get("env"), dict) else {}
+    for k in managed:
+        here = env.get(k[4:], None) if k.startswith("env.") else data.get(k, None)
+        if here is not None:
+            have.add(f"setting {k} = {json.dumps(here)}")
     missing, extra = sorted(want - have), sorted(have - want)
     return {"red": bool(missing or extra), "missing": missing, "extra": extra,
             "detail": f"{len(missing)} missing, {len(extra)} not in registrations.json"}  # fmt: skip
