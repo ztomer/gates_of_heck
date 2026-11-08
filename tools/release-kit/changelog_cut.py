@@ -6,8 +6,9 @@ v0.63.0: each release wrote a SHORT stanza by hand and left the long entries whe
 Unreleased claimed as unreleased what four tags had shipped. At a tagged commit nothing is
 unreleased -- the tag ships the whole tree -- so:
 
-* `cut --version X --title T`: moves Unreleased's body into a new `## vX -- T` stanza directly
-  under the (now empty) Unreleased heading. Refused when the stanza exists, when Unreleased is
+* `cut --version X [--title T]`: moves Unreleased's body into a new `## vX -- T` stanza (`## vX`
+  without a title) directly under the (now empty) Unreleased heading. release.sh runs it itself
+  when HEAD has no stanza for X and Unreleased holds entries (GOH.CUTAUTO). Refused when the stanza exists, when Unreleased is
   empty (nothing to release), or when a moved entry repeats one an earlier stanza already holds.
 * `check --version X`: what release.sh's changelog step asks of the commit being tagged -- the
   stanza for X exists, Unreleased (if the file keeps one) is EMPTY, and no entry of X's stanza
@@ -16,7 +17,7 @@ unreleased -- the tag ships the whole tree -- so:
 An entry is a top-level list item (`* ` or `- ` at column 0) with its continuation lines, compared
 with whitespace collapsed. Headings: `## Unreleased` / `## [Unreleased]`, `## vX...` / `## [X]...`.
 
-    changelog_cut.py cut   --version 1.2.3 --title "what it ships" [--file CHANGELOG.md]
+    changelog_cut.py cut   --version 1.2.3 [--title "what it ships"] [--file CHANGELOG.md]
     changelog_cut.py check --version 1.2.3 [--file CHANGELOG.md]
 """
 
@@ -109,7 +110,7 @@ def check(lines: list[str], version: str) -> list[str]:
     return findings
 
 
-def cut(lines: list[str], version: str, title: str) -> tuple[list[str] | None, list[str]]:
+def cut(lines: list[str], version: str, title: str | None) -> tuple[list[str] | None, list[str]]:
     secs = sections(lines)
     if any(s.version == version for s in secs):
         return None, [f"a stanza for {version} already exists"]
@@ -124,7 +125,8 @@ def cut(lines: list[str], version: str, title: str) -> tuple[list[str] | None, l
     if not moved:
         return None, ["Unreleased is empty: nothing to release"]
     head = "#" * unrel.level
-    new = [*lines[: unrel.start + 1], "", f"{head} v{version} -- {title}", "", *moved, ""]
+    heading = f"{head} v{version} -- {title}" if title else f"{head} v{version}"
+    new = [*lines[: unrel.start + 1], "", heading, "", *moved, ""]
     new += lines[unrel.end :]
     dups = duplicates(new, sections(new), version)
     if dups:
@@ -151,9 +153,6 @@ def main(argv: list[str] | None = None) -> int:
         for f in findings:
             print(f"✗ changelog: {f}", file=sys.stderr)
         return 1 if findings else 0
-    if not a.title:
-        print("✗ changelog_cut: cut needs --title", file=sys.stderr)
-        return 2
     new, findings = cut(lines, a.version, a.title)
     for f in findings:
         print(f"✗ changelog_cut: {f}", file=sys.stderr)

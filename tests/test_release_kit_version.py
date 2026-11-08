@@ -168,3 +168,55 @@ def test_a_malformed_floor_is_refused(hand_tags):
     _floor(hand_tags, "two-point-two")
     r = run_release(hand_tags, "--dry-run")
     assert r.returncode != 0 and "GOH_RELEASE_BACKFILL_FLOOR" in r.stderr, r.stdout + r.stderr
+
+
+# --- the kit cuts the stanza itself (GOH.CUTAUTO) -------------------------------------------
+# divoom-control, token-pool and ztools held committed Unreleased entries and no stanza; v0.64.0
+# refused each one's next release and told the human to run the cut. A step the kit can do itself
+# is not a refusal: with no stanza for the version and entries in Unreleased, the kit cuts.
+
+
+def _unreleased_only(kit: dict, subject: str) -> None:
+    log = "# C\n\n## Unreleased\n\n* the new thing\n  continued\n\n## v1.1.0\n\n- older\n"
+    (kit["proj"] / "CHANGELOG.md").write_text(log)
+    commit_all(kit["proj"], subject)
+
+
+def test_unreleased_entries_and_no_stanza_release_in_one_run(kit):
+    _unreleased_only(kit, f"chore: version {VERSION}")
+    r = run_release(kit)
+    assert r.returncode == 0, r.stdout + r.stderr
+    text = (kit["proj"] / "CHANGELOG.md").read_text()
+    assert f"## Unreleased\n\n## {TAG}\n\n* the new thing\n  continued\n" in text, text
+    assert _tagged(kit) and TAG in _origin_tags(kit)
+    # The stanza is made INSIDE the version commit (amended, never pushed before), and the tag
+    # names that commit, which carries the stanza.
+    assert sh(kit["proj"], "log", "-1", "--format=%s").strip() == f"chore: version {VERSION}"
+    assert "## v1.2.3" in sh(kit["proj"], "show", f"{TAG}:CHANGELOG.md")
+    assert sh(kit["proj"], "status", "--porcelain").strip() == ""
+
+
+def test_a_head_that_is_not_the_version_commit_gets_its_own_changelog_commit(kit):
+    _unreleased_only(kit, "feat: something")
+    r = run_release(kit)
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert sh(kit["proj"], "log", "-1", "--format=%s").strip() == f"chore: changelog {TAG}"
+    assert sh(kit["proj"], "log", "-2", "--format=%s").splitlines()[1] == "feat: something"
+
+
+def test_the_dry_run_plans_the_cut_and_writes_nothing(kit):
+    _unreleased_only(kit, f"chore: version {VERSION}")
+    before = sh(kit["proj"], "rev-parse", "HEAD")
+    r = run_release(kit, "--dry-run")
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert "changelog_cut" in r.stdout and sh(kit["proj"], "rev-parse", "HEAD") == before
+    assert "## v1.2.3" not in (kit["proj"] / "CHANGELOG.md").read_text()
+
+
+def test_a_cut_that_would_repeat_an_earlier_entry_is_refused(kit):
+    log = "# C\n\n## Unreleased\n\n- older\n\n## v1.1.0\n\n- older\n"
+    (kit["proj"] / "CHANGELOG.md").write_text(log)
+    commit_all(kit["proj"], f"chore: version {VERSION}")
+    r = run_release(kit)
+    assert r.returncode != 0 and "already in v1.1.0" in r.stderr, r.stdout + r.stderr
+    assert not _tagged(kit) and (kit["proj"] / "CHANGELOG.md").read_text() == log

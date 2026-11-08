@@ -33,7 +33,9 @@
 #                 The stanza body becomes the tag message and release notes,
 #                 so docs and releases cannot disagree. Unreleased must be EMPTY at the
 #                 tagged commit and no entry may repeat an earlier stanza's
-#                 (changelog_cut.py check; `cut` makes the stanza from Unreleased).
+#                 (changelog_cut.py check). With no stanza and entries under Unreleased,
+#                 step 0b cuts it FROM Unreleased itself (into an unpushed
+#                 "chore: version X" HEAD, else as "chore: changelog vX").
 #   3. tag        create annotated tag vX.Y.Z if absent — idempotent: an
 #                 existing tag is left alone, never moved or re-created
 #   4. push       push branch + tag to origin (--no-push to skip)
@@ -105,6 +107,7 @@ CI_CHECK=1
 DO_PUSH=1
 DO_RELEASE=1
 DRY_RUN=0
+CUT_PLANNED=0        # set by step 0b in a dry run: the stanza it would cut
 TAP=""
 TAP_KIND=""          # formula | cask
 TAP_NAME=""
@@ -254,6 +257,8 @@ fi
 # shellcheck source=tools/release-kit/version_step.sh
 source "$GOH/tools/release-kit/version_step.sh"
 release_version_step
+# ── 0b. the stanza is cut from Unreleased by the kit, not refused (GOH.CUTAUTO) ──
+release_changelog_cut || { _cut_rc=$?; [ "$_cut_rc" -eq 3 ] || exit "$_cut_rc"; CUT_PLANNED=1; }
 
 # ── 0. CI on the commit being tagged ─────────────────────────────────────────
 # First, because a red answer spares the gate and every step after it. An unpushed HEAD is pushed
@@ -314,6 +319,8 @@ fi
 begin "changelog" "look for a ${TAG} stanza in CHANGELOG.md"
 if [ "$CHANGELOG_CHECK" = 0 ]; then
   warn "skipped (--no-changelog-check)"
+elif [ "${CUT_PLANNED:-0}" = 1 ]; then
+  plan "the ${TAG} stanza is the one step 0b cuts from Unreleased (changelog_cut.py check runs on it)"
 elif has_stanza "$VERSION"; then
   # The tag ships the whole tree, so at this commit nothing is unreleased: an Unreleased section
   # that still holds entries, or a stanza repeating an earlier one's entry, is refused (GOH.REL2:

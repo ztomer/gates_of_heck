@@ -2,9 +2,9 @@
  "entries": [
   {
    "path": "tools/release-kit/update_dev.sh",
-   "line": "pgrep -x \"$PROCESS_NAME\" >/dev/null 2>&1 && pkill -x \"$PROCESS_NAME\" || true",
-   "status": "unreviewed",
-   "reason": "seeded 2026-09-23 when the gate landed (pkill matches by name); not yet reviewed"
+   "line": "if pgrep -x \"$PROCESS_NAME\" >/dev/null 2>&1; then pkill -x \"$PROCESS_NAME\" || true; fi",
+   "status": "legitimate",
+   "reason": "reviewed 2026-11-08 (GOH.CUTAUTO): the FALLBACK after the graceful 'tell application APP to quit', which is itself by name, so the pair targets the same thing; -x matches the exact process name of the app being replaced (PROCESS_NAME, default the bundle's base name), never a substring or command line, and LaunchServices runs one instance per bundle. A pid would have to be read by that same name lookup, so it narrows nothing; the one wider case -- a same-named copy run from another path -- is the copy being superseded too. Pinned by tests/test_release_kit_update_dev.py"
   },
   {
    "path": "tests/test_release_kit_update_dev.py",

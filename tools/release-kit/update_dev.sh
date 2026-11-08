@@ -93,7 +93,7 @@ if pgrep -x "$PROCESS_NAME" >/dev/null 2>&1; then
     pgrep -x "$PROCESS_NAME" >/dev/null 2>&1 || break
     sleep 0.3
   done
-  pgrep -x "$PROCESS_NAME" >/dev/null 2>&1 && pkill -x "$PROCESS_NAME" || true
+  if pgrep -x "$PROCESS_NAME" >/dev/null 2>&1; then pkill -x "$PROCESS_NAME" || true; fi
 fi
 
 # ── 3. replace the installed copy ────────────────────────────────────────────
@@ -107,8 +107,9 @@ mkdir -p "$DEST_DIR"
 ditto "$APP_PATH" "$DEST" || die "could not write to $DEST_DIR (try sudo, or set DEST_DIR)"
 # Read the destination back (G16): `ditto` exiting 0 is not the copy being there. Compared BEFORE
 # the xattr and signing steps change the installed bundle, symlinks as links (--no-dereference).
-[ -d "$DEST" ] && diff -rq --no-dereference "$APP_PATH" "$DEST" >/dev/null 2>&1 \
-  || die "update_dev: $DEST differs from $APP_PATH after ditto -- nothing installed"
+if ! { [ -d "$DEST" ] && diff -rq --no-dereference "$APP_PATH" "$DEST" >/dev/null 2>&1; }; then
+  die "update_dev: $DEST differs from $APP_PATH after ditto -- nothing installed"
+fi
 
 # ── 4. clear Gatekeeper xattrs — then PROVE it took ──────────────────────────
 XATTR=/usr/bin/xattr
@@ -131,8 +132,11 @@ if command -v codesign >/dev/null 2>&1; then
     step "existing signature is valid — keeping it"
   else
     step "ad-hoc signing"
-    codesign --force --deep --sign - "$DEST" >/dev/null 2>&1 \
-      && ok "signed" || warn "ad-hoc signing failed; the app should still launch"
+    if codesign --force --deep --sign - "$DEST" >/dev/null 2>&1; then
+      ok "signed"
+    else
+      warn "ad-hoc signing failed; the app should still launch"
+    fi
   fi
 fi
 

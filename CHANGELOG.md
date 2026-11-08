@@ -6,6 +6,21 @@
   `StopIteration` traceback (the stanza heading is `## v<version>`, so the lookup was `vv0.110.5`);
   a leading `v` is now dropped in both `cut` and `check`. Found cutting routines v0.110.5.
 
+* **The release kit cuts the stanza from Unreleased itself instead of refusing (GOH.CUTAUTO).**
+  Since v0.64.0 `release.sh` refused any release whose CHANGELOG held committed Unreleased entries
+  and told the human to run `changelog_cut.py cut`; divoom-control, token-pool and ztools all held
+  some, so each one's next release would have been refused for a step the kit can do. New step 0b
+  (`release_changelog_cut`, `tools/release-kit/version_step.sh`): with no stanza for the version and
+  entries under Unreleased, the kit runs `changelog_cut.py cut --version V` and amends the stanza
+  INTO an unpushed `chore: version V` HEAD (every wrapper's bump commit), else commits it as
+  `chore: changelog vV`; before CI and the gate, so both judge the tree that is tagged. `--title` is
+  now optional (`## vV`). Refusals left: an entry repeating an earlier stanza's, a HEAD that does
+  not declare the version, and a hand-written stanza with Unreleased still holding entries.
+* **`update_dev.sh`'s exact-name `pkill` reviewed; SC2015 infos fixed.** The kill_by_name_allow
+  entry was `unreviewed`: it is the fallback after the by-name graceful quit, `-x` on the replaced
+  app's exact process name, and a pid would come from the same name lookup -- recorded
+  `legitimate` with that reason. Two `A && B || C` lines (lines 110, 135) are now `if` blocks.
+
 ## v0.64.0 -- agents put the owner's apps back; a tag names a commit that IS the release; shellcheck follows script-relative sources
 
 * **agent_guard puts the owner's login-item apps back after an agent (GOH.APPSTATE).** Routines.app

@@ -50,3 +50,47 @@ release_backfill_floor() {
     fail "GOH_RELEASE_BACKFILL_FLOOR must look like v1.2.3 or 1.2 (got '$BACKFILL_FLOOR')"
   fi
 }
+
+# release_changelog_cut (GOH.CUTAUTO): step 0b. v0.64.0 refused every release whose CHANGELOG still
+# held committed Unreleased entries and told the human to run changelog_cut.py -- divoom-control,
+# token-pool and ztools all held some, so each one's next release would have been refused for a step
+# the kit can do itself. With no stanza for VERSION and entries under Unreleased, the kit cuts the
+# stanza FROM Unreleased and commits it: amended INTO HEAD when HEAD is the wrappers' unpushed
+# "chore: version V" commit (so the version commit carries its own stanza), else as its own
+# "chore: changelog vV" commit. It runs before CI and the gate, so both see the tree that is tagged.
+# A cut that would repeat an earlier stanza's entry is refused by changelog_cut.py, nothing written.
+release_changelog_cut() {
+  local _ccut _csubj
+  [ "$CHANGELOG_CHECK" = 1 ] && [ -f CHANGELOG.md ] || return 0
+  has_stanza "$VERSION" && return 0
+  _ccut="$(mktemp "${TMPDIR:-/tmp}/goh-release-cut.XXXXXX")"
+  cp CHANGELOG.md "$_ccut" || fail "cannot copy CHANGELOG.md"
+  if ! bash "$GOH/gates/python.sh" "$GOH/tools/release-kit/changelog_cut.py" cut --version "$VERSION" \
+      --file "$_ccut" >/dev/null 2>"$_ccut.err"; then
+    if grep -q "Unreleased is empty\|no Unreleased section" "$_ccut.err"; then
+      rm -f "$_ccut" "$_ccut.err"
+      return 0  # nothing to cut: the changelog step names the missing stanza
+    fi
+    begin "changelog-cut" "make the ${TAG} stanza from Unreleased"
+    cat "$_ccut.err" >&2
+    rm -f "$_ccut" "$_ccut.err"
+    fail "the ${TAG} stanza cannot be cut from Unreleased (above) -- nothing written, pushed or tagged"
+  fi
+  rm -f "$_ccut.err"
+  begin "changelog-cut" "make the ${TAG} stanza from Unreleased"
+  _csubj="$(git log -1 --format=%s)"
+  if [ "$DRY_RUN" = 1 ]; then
+    rm -f "$_ccut"
+    plan "changelog_cut.py cut --version ${VERSION}, committed into HEAD ('${_csubj}') or as 'chore: changelog ${TAG}'"
+    return 3  # the caller notes a PLANNED stanza, which the dry run's changelog step stands on
+  fi
+  mv "$_ccut" CHANGELOG.md || fail "cannot write CHANGELOG.md"
+  git add CHANGELOG.md || fail "git add CHANGELOG.md exited nonzero"
+  if [ "$_csubj" = "chore: version ${VERSION}" ] && [ -z "$(git branch -r --contains HEAD 2>/dev/null)" ]; then
+    git commit -q --amend --no-edit || fail "amending the stanza into '${_csubj}' exited nonzero"
+    ok "${TAG} stanza cut from Unreleased into $(git rev-parse --short HEAD) ('${_csubj}')"
+  else
+    git commit -q -m "chore: changelog ${TAG}" || fail "committing the ${TAG} stanza exited nonzero"
+    ok "${TAG} stanza cut from Unreleased as $(git rev-parse --short HEAD)"
+  fi
+}
