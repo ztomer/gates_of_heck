@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## v0.76.0 -- goh ship: a private repo lands with no agent watching
+
 * **`goh ship`: a private repo lands with no agent watching (GOH.SHIP, owner 2026-11-08).** An agent's
   work in a private repo ends at "committed, local gate green, goh ship started"; `goh ship`
   (`tools/ship.py`) then runs, detached, push through the pre-push gate -> the repo's release kit
