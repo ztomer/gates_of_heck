@@ -89,7 +89,7 @@ def _event(model: str, effort: str, decl: str) -> dict[str, Any]:
     prompt = f"Fix it.\nModel-choice: {decl}\nPool: unfit because it needs the repo's tools"
     return {"session_id": "s", "hook_event_name": "PreToolUse", "tool_name": "Agent",
             "tool_use_id": "t", "tool_input": {"description": "d", "prompt": prompt,
-                                               "model": model, "effort": effort}}  # fmt: skip
+                                               "model": model, "effort": effort, "subagent_type": "repo-worker"}}  # fmt: skip
 
 
 def test_the_hook_judges_by_the_rules_file_it_is_given(tmp_path: Path) -> None:

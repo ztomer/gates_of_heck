@@ -139,6 +139,14 @@
       "decided": "OWNER DECISION PENDING (2026-10-18): default OFF. When on, this fraction of opus@medium spawns that declare `checkable` (and not `unchecked`) run on the cheap tier instead; escalation bounds the cost. A spawn without a mechanical check is never routed down, on or off."
     }
   },
+  "lean_types": {
+    "from": ["general-purpose", "claude"],
+    "to": "repo-worker",
+    "ui": "repo-worker-ui",
+    "read_only_tiers": ["lookup"],
+    "measured": "2026-11-08 (GOH.LEANAGENT): median first-turn context of a general-purpose agent 70.6k tokens, of which ~65k is fixed preamble (every MCP server's tool names, the deferred-tool and agent-type lists); repo-worker lists its tools, so only CLAUDE.md, the skills list and its own tools load",
+    "decided": "owner 2026-11-08 (queue GOH.LEANAGENT): a write spawn of a `from` type is refused with the lean type to use (`to`, or `ui` for on-screen QA); a read-only lookup (`read_only_tiers`) is not steered. Escape: `Agent-type: <the type> because <reason>` in the prompt, kept on the ledger as `agent_type_escape`. The types are installed by scripts/apply_claude_hooks.py from hooks/claude/agents/."
+  },
   "verdict": {
     "min_n": 20,
     "escalation_class": "opus@high",

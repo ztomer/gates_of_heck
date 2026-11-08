@@ -58,7 +58,7 @@ def _prompt(decl: str, want: int, mod: int = 2, shift: int = 0) -> str:
 
 
 def _spawn(model: str, effort: str, prompt: str) -> dict[str, Any]:
-    return {"description": "fix it", "prompt": prompt, "subagent_type": "general-purpose",
+    return {"description": "fix it", "prompt": prompt, "subagent_type": "repo-worker",
             "model": model, "effort": effort}  # fmt: skip
 
 

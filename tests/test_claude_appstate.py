@@ -42,7 +42,7 @@ printf '%s\\n' "$1/Contents/MacOS/main" >> "$WORLD/procs"
 
 PROMPT = ("Run the UI tests.\nModel-choice: sonnet@high because checkable, known-fix\n"
           "Pool: unfit because it runs the app")  # fmt: skip
-SPAWN_INPUT = {"description": "ui tests", "prompt": PROMPT, "subagent_type": "general-purpose",
+SPAWN_INPUT = {"description": "ui tests", "prompt": PROMPT, "subagent_type": "repo-worker-ui",
                "model": "sonnet", "effort": "high"}  # fmt: skip
 
 

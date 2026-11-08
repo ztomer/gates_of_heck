@@ -12,12 +12,16 @@ goh hook that wants another matcher) is SPLIT out into its own group, placed rig
 one, and the old group keeps its matcher byte for byte. A shared group whose matcher already fits is
 left alone. Foreign groups and hooks are never edited. Idempotent: a second run changes nothing.
 
-    scripts/apply_claude_hooks.py [--settings PATH] [--dry-run | --check]
+    scripts/apply_claude_hooks.py [--settings PATH] [--agents-dir DIR] [--dry-run | --check]
 
 Writes ~/.claude/settings.json by default, after a `settings.json.goh-bak-<time>` copy, through a
 temp file and `os.replace`, and only when something would change. `--dry-run` prints the diff;
 `--check` prints it and exits 1 when settings.json is not as registrations.json says (the weekly
 `model_choice_watch.py` reads the same drift). Pinned by tests/test_apply_claude_hooks.py.
+
+GOH.LEANAGENT (2026-11-08): it also installs goh's lean subagent types, `hooks/claude/agents/*.md`,
+into `~/.claude/agents/` (`--agents-dir`), byte for byte; `--check` counts a missing or differing
+one as drift. Only a file named like one of goh's is written; any other agent file is left alone.
 """
 
 from __future__ import annotations
@@ -41,6 +45,8 @@ from tui.lib import err, info, ok
 
 REGISTRATIONS = ROOT / "hooks" / "claude" / "registrations.json"
 DEFAULT_SETTINGS = Path.home() / ".claude" / "settings.json"
+AGENT_SOURCES = ROOT / "hooks" / "claude" / "agents"
+DEFAULT_AGENTS = Path.home() / ".claude" / "agents"
 SCRIPT = re.compile(r"hooks/claude/([\w.]+)")
 
 
@@ -144,16 +150,56 @@ def _write(path: Path, text: str) -> None:
     os.replace(tmp, path)
 
 
+def agent_drift(sources: Path, dest: Path) -> list[Path]:
+    """goh's agent definitions whose installed copy under `dest` is missing or differs."""
+    out = []
+    for src in sorted(sources.glob("*.md")):
+        dst = dest / src.name
+        if not dst.exists() or dst.read_bytes() != src.read_bytes():
+            out.append(src)
+    return out
+
+
+def apply_agents(sources: Path, dest: Path, check: bool, dry_run: bool) -> int:
+    """Install goh's agent types; 0 when they are in place (or were written), 1 on drift in --check."""
+    drift = agent_drift(sources, dest)
+    if not drift:
+        ok(f"{dest}: goh's agent types are installed")
+        return 0
+    for src in drift:
+        info(f"agent {src.stem}: {'differs' if (dest / src.name).exists() else 'missing'}")
+    if check:
+        return 1
+    if dry_run:
+        return 0
+    dest.mkdir(parents=True, exist_ok=True)
+    for src in drift:
+        _write(dest / src.name, src.read_text(encoding="utf-8"))
+    if agent_drift(sources, dest):
+        err(f"{dest} still differs after the write")
+        return 1
+    ok(f"{dest}: {len(drift)} agent type(s) written")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--settings", type=Path, default=DEFAULT_SETTINGS)
     ap.add_argument("--registrations", type=Path, default=REGISTRATIONS)
+    ap.add_argument("--agents-dir", type=Path, default=DEFAULT_AGENTS)
+    ap.add_argument("--agent-sources", type=Path, default=AGENT_SOURCES, help=argparse.SUPPRESS)
     mode = ap.add_mutually_exclusive_group()
     mode.add_argument("--dry-run", action="store_true", help="print the diff, write nothing")
     mode.add_argument(
         "--check", action="store_true", help="print the diff; exit 1 if it is not empty"
     )
     args = ap.parse_args(argv)
+    hooks_rc = apply_hooks(args)
+    agents_rc = apply_agents(args.agent_sources, args.agents_dir, args.check, args.dry_run)
+    return hooks_rc or agents_rc
+
+
+def apply_hooks(args: argparse.Namespace) -> int:
     path: Path = args.settings
     regs = json.loads(args.registrations.read_text(encoding="utf-8"))
     raw = path.read_text(encoding="utf-8") if path.exists() else "{}\n"

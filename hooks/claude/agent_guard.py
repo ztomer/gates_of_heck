@@ -17,6 +17,11 @@ by hand; this hook keeps them structurally (tests/test_claude_agent_guard.py):
   tier it names (every tier but `never`, opus included since owner ruling 2026-11-01) must say in
   its prompt that token-pool's `ask` was tried (`Pool: tried <...>`) or why it cannot do the work
   (`Pool: unfit because <...>`); the ledger keeps the line as `pool`.
+* Lean agent types (the rules file's `lean_types`, GOH.LEANAGENT): a write spawn of a heavy type
+  (`general-purpose`, whose first turn is ~70k tokens of MCP tool names and lists it never uses)
+  is refused with the lean type goh installs (`repo-worker`, or `repo-worker-ui` for on-screen
+  QA); `Agent-type: <type> because <reason>` in the prompt is the stated escape. A read-only
+  lookup is not steered.
 * Bounded exploration (the rules file's `exploration`): a spawn declared on a cheap tier runs on
   the cheap tier its prompt sha's parity picks, and -- only when the owner turns it on -- a fixed
   fraction of checkable spawns in the classes `opus_to_cheap.from` names runs on the cheap tier. Either is an
@@ -98,6 +103,33 @@ def judge_pool(declared: str, prompt: str, rules: model_choice.Rules) -> tuple[s
         f"answer; then add `Pool: tried <what it returned>` to this prompt. When the work needs "
         f"this repo's tools (it edits, builds or runs tests; pool's backends get the prompt and "
         f"the inlined files alone), add `Pool: unfit because <reason>` instead."
+    ), None
+
+
+TYPE_ESCAPE = re.compile(r"^[ \t>*-]*Agent-type:[ \t]*(\S+)[ \t]+because[ \t]+(\S.*?)[ \t]*$",
+                         re.MULTILINE)  # fmt: skip
+
+
+def judge_type(agent_type: str, declared: str, prompt: str,
+               rules: model_choice.Rules) -> tuple[str | None, str | None]:  # fmt: skip
+    """(refusal reason or None, the stated escape's reason) for a spawn the table accepted."""
+    lean = rules.lean
+    if agent_type not in (lean.get("from") or []):
+        return None, None
+    rule = rules.rule(*declared.split("@"))
+    if rule is not None and rule["tier"] in (lean.get("read_only_tiers") or []):
+        return None, None
+    why = next((w for t, w in TYPE_ESCAPE.findall(prompt) if t == agent_type), None)
+    if why:
+        return None, why
+    return (
+        f"Refused: a write spawn of {agent_type} carries ~70.6k tokens of fixed preamble every turn "
+        f"(every MCP server's tools and lists it never uses; measured 2026-11-08, "
+        f'{rules.path.name} `lean_types`). Spawn subagent_type "{lean["to"]}" instead, or '
+        f'"{lean["ui"]}" when the work needs on-screen QA (computer-use, browser, simulator). '
+        f"If this session cannot see that type (it started before `python3 "
+        f"scripts/apply_claude_hooks.py` installed it), add `Agent-type: {agent_type} because "
+        f"<reason>` to the prompt."
     ), None
 
 
@@ -236,6 +268,13 @@ def on_spawn(event: dict[str, Any]) -> dict[str, Any] | None:
             return {"hookSpecificOutput": {"hookEventName": "PreToolUse",
                                            "permissionDecision": "deny",
                                            "permissionDecisionReason": why}}  # fmt: skip
+    escape = None
+    if not exempt:
+        why, escape = judge_type(agent_type, declared, prompt, rules)
+        if why:
+            return {"hookSpecificOutput": {"hookEventName": "PreToolUse",
+                                           "permissionDecision": "deny",
+                                           "permissionDecisionReason": why}}  # fmt: skip
     route = None
     if not exempt:
         route = rules.route(declared, info["tags"], hashlib.sha256(prompt.encode()).hexdigest())
@@ -255,7 +294,7 @@ def on_spawn(event: dict[str, Any]) -> dict[str, Any] | None:
         "model_id": new_input.get("model") or None, "effort": info["effort"], "tags": info["tags"],
         "subagent_type": agent_type, "exempt": exempt, "description": tool_input.get("description"),
         "declared": None if exempt else declared, "explored": route is not None,
-        "route": route[1] if route else None, "pool": pool,
+        "route": route[1] if route else None, "pool": pool, "agent_type_escape": escape,
         "prompt_sha": hashlib.sha256(final.encode()).hexdigest(), "first_line": _first_line(prompt),
         "apps": appstate.snapshot(event.get("tool_use_id")),
     })  # fmt: skip

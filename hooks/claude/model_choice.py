@@ -42,6 +42,7 @@ class Rules:
         self.exempt = frozenset(data["exempt_agent_types"]["value"])
         self.exploration: dict[str, Any] = data.get("exploration", {})
         self.pool_first: dict[str, Any] = data.get("pool_first") or {}
+        self.lean: dict[str, Any] = data.get("lean_types") or {}
         self.verdict: dict[str, Any] = data["verdict"]
         self.tags = frozenset(
             t for v in self.tiers.values() if v["tier"] != "never" for t in v["tags"]

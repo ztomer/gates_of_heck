@@ -60,8 +60,9 @@ def _ledger(cache: Path) -> list[dict[str, Any]]:
     return [json.loads(ln) for ln in path.read_text().splitlines()] if path.exists() else []
 
 
+# A write spawn's type is the lean one goh installs (GOH.LEANAGENT; general-purpose is steered there).
 BRIEF = {"description": "fix it", "prompt": "Fix the leak in foo.rs.\nRed test: t_leak.",
-         "subagent_type": "general-purpose"}  # fmt: skip
+         "subagent_type": "repo-worker"}  # fmt: skip
 
 
 # --- rule 1: a spawn names its model AND its effort ------------------------------------------

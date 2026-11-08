@@ -205,3 +205,62 @@ def test_the_real_registrations_never_ask_to_share_a_group(event: str) -> None:
     out, _ = ach.apply(settings, regs)
     rtk = next(g for g in _groups(out, event) if any(h["command"] == RTK for h in g["hooks"]))
     assert rtk == {"matcher": NARROW, "hooks": [_hook(RTK, None)]}
+
+
+# --- GOH.LEANAGENT: the lean subagent types goh installs into ~/.claude/agents ------------------
+
+
+AGENT_SRC = REPO_ROOT / "hooks" / "claude" / "agents"
+
+
+def _apply(tmp_path: Path, *extra: str) -> subprocess.CompletedProcess[str]:
+    settings = tmp_path / "settings.json"
+    if not settings.exists():
+        settings.write_text("{}\n")
+    return subprocess.run(
+        [sys.executable, str(SCRIPT), "--settings", str(settings),
+         "--agents-dir", str(tmp_path / "agents"), *extra],
+        capture_output=True, text=True, env=hermetic_env(), timeout=60, check=False,
+        stdin=subprocess.DEVNULL,
+    )  # fmt: skip
+
+
+def test_the_lean_agent_types_are_installed_by_the_apply_step_and_check_reads_their_drift(
+    tmp_path: Path,
+) -> None:
+    sources = sorted(p.name for p in AGENT_SRC.glob("*.md"))
+    assert sources == ["repo-worker-ui.md", "repo-worker.md"]
+    assert _apply(tmp_path, "--check").returncode == 1  # nothing installed yet: drift
+    r = _apply(tmp_path)
+    assert r.returncode == 0, r.stdout + r.stderr
+    for name in sources:
+        assert (tmp_path / "agents" / name).read_text() == (AGENT_SRC / name).read_text()
+    assert _apply(tmp_path, "--check").returncode == 0  # idempotent: in place, no drift
+    (tmp_path / "agents" / "repo-worker.md").write_text("hand edited\n")
+    assert _apply(tmp_path, "--check").returncode == 1  # a hand edit is drift
+
+
+def test_the_apply_step_never_touches_a_foreign_agent_file(tmp_path: Path) -> None:
+    (tmp_path / "agents").mkdir()
+    foreign = tmp_path / "agents" / "mine.md"
+    foreign.write_text("---\nname: mine\n---\nmine\n")
+    assert _apply(tmp_path).returncode == 0
+    assert foreign.read_text() == "---\nname: mine\n---\nmine\n"
+
+
+def test_the_lean_types_name_their_tools_and_no_mcp_server_but_the_pool_and_the_ui_ones() -> None:
+    def tools(name: str) -> list[str]:
+        text = (AGENT_SRC / f"{name}.md").read_text()
+        head = text.split("---")[1]
+        assert f"name: {name}\n" in head
+        (line,) = [ln for ln in head.splitlines() if ln.startswith("tools:")]
+        return [t.strip() for t in line.removeprefix("tools:").split(",")]
+
+    base = ["Bash", "Read", "Edit", "Write", "Grep", "Glob", "Skill", "mcp__pool__ask"]
+    assert tools("repo-worker") == base
+    ui = ["mcp__computer-use", "mcp__Claude_Browser", "mcp__Claude_Code_iOS_Simulator"]
+    assert tools("repo-worker-ui") == base + ui
+    for name in ("repo-worker", "repo-worker-ui"):  # descriptions are context in every session
+        text = (AGENT_SRC / f"{name}.md").read_text()
+        (desc,) = [ln for ln in text.split("---")[1].splitlines() if ln.startswith("description:")]
+        assert len(desc) <= 200, desc

@@ -2,6 +2,21 @@
 
 ## Unreleased
 
+* **A write spawn goes to a lean agent type, not general-purpose (GOH.LEANAGENT).** Over 118
+  general-purpose subagents on 2026-11-08, 69% of agent cost was cache reads, and the median
+  first turn was 70.6k tokens: every connected MCP server's tool names, the deferred-tool and
+  agent-type lists, re-read on every turn. goh now ships two subagent types,
+  `hooks/claude/agents/repo-worker.md` (Bash, Read, Edit, Write, Grep, Glob, Skill and token-pool's
+  `mcp__pool__ask`) and `repo-worker-ui.md` (adds computer-use, the in-app browser and the iOS
+  simulator), installed into `~/.claude/agents/` by `scripts/apply_claude_hooks.py` (`--check`
+  counts their drift). `agent_guard.py` refuses a write spawn of `general-purpose` or `claude` with
+  the lean type to use (`model_choice.json` `lean_types`); `Agent-type: <type> because <reason>` is
+  the stated escape, kept on the ledger. Read-only lookups are not steered. Measured from real
+  headless spawns (Claude Code 2.1.311): first turn general-purpose 47.5k, repo-worker 29.7k
+  (CLAUDE.md, the skills list and its own tools still load; MCP server instructions still arrive
+  on the second turn for every type). Pinned by `tests/test_claude_agent_guard.py` and
+  `tests/test_apply_claude_hooks.py`.
+
 ## v0.70.0 -- the release kit pushes origin's default branch, never the branch it was cut from
 
 * **The release kit pushes the release to origin's default branch, never to the branch it was cut

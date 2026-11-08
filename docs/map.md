@@ -357,7 +357,7 @@ Every structural checker is native since Phase N3; the Python checkers they port
 * `hooks/claude/registrations.json` — the goh hook entries for `~/.claude/settings.json` as they should be
   registered; a python one ends `|| exit 1` (python3 exits 2 on a missing script, and exit 2 blocks).
   Pinned by `test_claude_hook_registrations.py`.
-* `scripts/apply_claude_hooks.py` — writes `registrations.json` into `~/.claude/settings.json` (`--dry-run`
+* `scripts/apply_claude_hooks.py` — writes `registrations.json` into `~/.claude/settings.json` (`--dry-run` Also installs `hooks/claude/agents/*.md` (the lean subagent types `repo-worker`, `repo-worker-ui`) into `~/.claude/agents/` (`--agents-dir`); `--check` counts their drift.
   prints the diff, `--check` exits 1 on drift). Creates or widens only a group whose hooks are ALL goh's;
   a goh hook in a group with a foreign hook (`rtk hook claude`) is split out first and the foreign
   group's matcher is untouched. Backs up first, writes through a temp file, idempotent. `is_goh` is
