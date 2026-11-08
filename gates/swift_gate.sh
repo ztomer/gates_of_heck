@@ -53,6 +53,8 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 repo="${1:-$PWD}"
 cd "$repo"
+# The gated repo's own config, unknown when this script is linted (GOH.SHX):
+# shellcheck source=/dev/null
 [ -f .gatesrc ] && . ./.gatesrc
 
 MODE="${GOH_SWIFT_MODE:-}"

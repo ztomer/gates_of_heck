@@ -362,7 +362,7 @@ _start() {
         PLIVE[i]="$(_proven_identity_live </dev/null)"
         if hit="$(proven_lookup "${PKEY[i]}" "${CMD[i]}")"; then
             read -r age by <<<"$hit"
-            HIT[i]="$age $by"; STATE[i]=done; RC[i]=0
+            HIT[i]="$age $by"; STATE[i]=done; RC[i]=0; proven_hit_marks "${CMD[i]}" "$ROOT"
             [ -z "${GOH_TIMINGS:-}" ] \
                 || "$GOH_PY" "$GOH_ROOT/lib/step_timings.py" record "${CMD[i]}" 0 0 step hit </dev/null
             return 0

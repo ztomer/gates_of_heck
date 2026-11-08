@@ -2,6 +2,26 @@
 
 ## Unreleased
 
+* **The shell lint follows what a script sources (`shellcheck -x`, GOH.SHX, 2026-11-07).**
+  `shellcheck -x tools/release-kit/release.sh` named SC2178/SC2128 (a name a sourced library uses as
+  an array, reused as a string) while `goh shell-lint` passed it: since GOH.SHSEV split the batched
+  call into one shellcheck per file, no call followed a `source`, so no finding that needs a sourced
+  file could reach any repo -- and `test_a_files_findings_do_not_depend_on_which_files_share_the_run`
+  pinned the blind verdict (a false SC2154, no SC2128). Each file is now judged with `-x` in the tree
+  its sources resolve in: the repo root at `--full`, a checkout of the INDEX at `--staged` (every
+  tracked shell file and every tracked file one names as a source), so a staged script reads its
+  library as committed. The verdict cache key covers every file the script may read (by name, over-
+  approximated, transitively; `crates/goh/src/shell_lint_scope.rs`). In goh: release.sh's `missing`
+  is `no_stanza`; the gates that source the GATED repo's `.gatesrc` say `source=/dev/null` (its
+  content is unknown when the gate is linted -- goh's own `.gatesrc` lent rust_gate.sh an SC2090);
+  two `source=` directives naming `/Users/ztomer/...` are repo-relative. Consumers that newly go red
+  are named by the release canary.
+* **A proven structural step marks its tree for the push gate (GOH.SHX, 2026-11-07).** Every push of
+  a tree `tools/land.sh` had proven warned "tools/gate.sh --full passed without running the house
+  structural layer" and ran it again: the `./gates/structural.sh --full` step was a proven-cache hit,
+  structural.sh never ran, so it never wrote `GOH_STRUCTURAL_MARK`. A hit now leaves the mark the
+  skipped run would have (`proven_hit_marks`, `gates/_proven.sh`), for a step that IS a structural
+  run of this tree only (`tests/test_proven_structural_mark.py`).
 * **The release kit pushes HEAD for its CI and waits for it, instead of refusing (GOH.RELCI,
   2026-11-07).** A wrapper commits "chore: version X" and calls the kit with that commit unpushed,
   so on any repo with GitHub Actions on, step 0 found no run and refused "no CI run for HEAD": the

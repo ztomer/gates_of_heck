@@ -38,6 +38,8 @@ if [ "${1:-}" = "--all" ]; then
 fi
 repo="${1:-$PWD}"
 cd "$repo"
+# The gated repo's own config, unknown when this script is linted (GOH.SHX):
+# shellcheck source=/dev/null
 [ -f .gatesrc ] && . ./.gatesrc
 . "$HERE/_py.sh"
 goh_py_runner

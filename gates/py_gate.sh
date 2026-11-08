@@ -54,6 +54,8 @@ pkg_dir="${2:-$PWD}"
 # returns the one the filesystem holds. Same directory, same command, two answers.
 pkg_dir="$(cd "$pkg_dir" && /bin/pwd -P)" || die "pkg_dir not found: $pkg_dir"
 
+# The gated repo's own config, unknown when this script is linted (GOH.SHX):
+# shellcheck source=/dev/null
 [ -f .gatesrc ] && . ./.gatesrc
 . "$HERE/_py.sh"
 goh_py_runner

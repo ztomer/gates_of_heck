@@ -40,7 +40,7 @@
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# shellcheck source=/Users/ztomer/Projects/gates_of_heck/gates/_common.sh
+# shellcheck source=gates/_common.sh
 . "$HERE/_common.sh"
 
 cd "${1:-$PWD}"

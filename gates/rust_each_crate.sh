@@ -39,6 +39,8 @@ repo="${1:-$PWD}"
 cd "$repo"
 repo="$(pwd)"
 unset GOH_RUST_JOBS GOH_EXCLUDE 2>/dev/null || true
+# The gated repo's own config, unknown when this script is linted (GOH.SHX):
+# shellcheck source=/dev/null
 [ -f .gatesrc ] && . ./.gatesrc
 
 case "${GOH_RUST_JOBS:-4}" in

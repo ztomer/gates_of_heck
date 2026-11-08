@@ -13,7 +13,7 @@ set -euo pipefail
 # shellcheck source=lib/house_python.sh
 . "${BASH_SOURCE[0]%/*}/../lib/house_python.sh" || exit 1   # GOH_PY: the house interpreter, never PATH's first python3 (G2d)
 GOH="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
-# shellcheck source=/Users/ztomer/Projects/gates_of_heck/tui/lib.sh
+# shellcheck source=tui/lib.sh
 . "$GOH/tui/lib.sh"
 cd "$GOH"
 # shellcheck source=gates/_pytest_root.sh

@@ -482,3 +482,18 @@ EOF
     done
     return 0
 }
+
+# proven_hit_marks <cmd> <root> -- a hit leaves the GOH_STRUCTURAL_MARK its skipped structural.sh
+# run would have, or the push gate warned the layer never ran and ran it again (GOH.SHX,
+# tests/test_proven_structural_mark.py). A step running it in another tree is not this tree's.
+proven_hit_marks() {
+    [ -n "${GOH_STRUCTURAL_MARK:-}" ] || return 0
+    local words w scope="--full"
+    read -r -a words <<<"${1//\"/}"
+    [ "${words[0]:-}" != bash ] || words=("${words[@]:1}")
+    case "${words[0]:-}" in structural.sh | */structural.sh) ;; *) return 0 ;; esac
+    for w in "${words[@]:1}"; do
+        case "$w" in --full | --keep-going) ;; --staged) scope="--staged" ;; *) return 0 ;; esac
+    done
+    printf '%s\t%s\n' "$scope" "$(git -C "$2" rev-parse --show-toplevel 2>/dev/null)" >>"$GOH_STRUCTURAL_MARK"
+}

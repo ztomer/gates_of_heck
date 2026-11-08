@@ -239,7 +239,7 @@ def test_rust_test_code_spawns_git_only_through_the_testkit():
         # credential-urls: `git config` / `rev-parse` of THIS repo, the hook's GIT_* honoured
         "crates/goh/src/credurls/mod.rs": 1,
         # shell-lint: ls-files / diff --cached / checkout-index of THIS repo, GIT_* honoured
-        "crates/goh/src/shell_lint.rs": 2,
+        "crates/goh/src/shell_lint_scope.rs": 2,
         # tag-version: rev-parse / ls-tree / show of the repo being PUSHED, GIT_* honoured
         "crates/goh/src/tagver.rs": 1,
         # tag-version --remote: tag --merged / ls-remote / rev-parse / cat-file of the repo being

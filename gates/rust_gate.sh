@@ -89,6 +89,8 @@ unset GOH_COV_FLOOR_RUST GOH_COV_RUST_EXTERNAL GOH_RUST_LINT_CONFIGS GOH_RUST_LI
       GOH_CROSS_REPO_ROOT GOH_PYTHON_FORMATTED GOH_SKILLS_CORPUS \
       GOH_STEP_TIMEOUT GOH_STEP_GRACE GOH_LCI_TIMEOUT 2>/dev/null || true
 
+# The gated repo's own config, unknown when this script is linted (GOH.SHX):
+# shellcheck source=/dev/null
 [ -f .gatesrc ] && . ./.gatesrc
 
 goh_init "rust"

@@ -365,7 +365,7 @@ earlier_versions() {
 # created -- and nothing said so (ztools: three tags, "Latest" stuck at an
 # older one). Every real release closes that gap for ALL earlier tags.
 backfill_releases() {
-  local versions v refs existing missing="" made=0
+  local versions v refs existing no_stanza="" made=0
   STEP="backfill"
   if [ "$DRY_RUN" = 1 ]; then
     versions="$(git tag -l 'v*' | earlier_versions)"
@@ -382,7 +382,7 @@ backfill_releases() {
   versions="$(earlier_versions <<<"$refs")"
   for v in $versions; do
     if grep -qxF "v${v}" <<<"$existing"; then continue; fi
-    if ! has_stanza "$v"; then missing="${missing:+${missing}, }v${v}"; continue; fi
+    if ! has_stanza "$v"; then no_stanza="${no_stanza:+${no_stanza}, }v${v}"; continue; fi
     BACKFILL_NOTES="${BACKFILL_NOTES:-$(mktemp "${TMPDIR:-/tmp}/goh-release-backfill.XXXXXX")}"
     stanza_body "$v" > "$BACKFILL_NOTES"
     [ -s "$BACKFILL_NOTES" ] || printf '%s\n' "v${v}" > "$BACKFILL_NOTES"
@@ -394,9 +394,9 @@ backfill_releases() {
     ok "backfilled GitHub release v${v} (tag had none)"
     made=$((made + 1))
   done
-  [ -z "$missing" ] || warn "earlier tags on origin with no GitHub release and no CHANGELOG \
-stanza, not backfilled: ${missing} -- add a stanza and re-run, or release them by hand"
-  [ "$made" -gt 0 ] || [ -n "$missing" ] || info "backfill: every earlier tag on origin has a release"
+  [ -z "$no_stanza" ] || warn "earlier tags on origin with no GitHub release and no CHANGELOG \
+stanza, not backfilled: ${no_stanza} -- add a stanza and re-run, or release them by hand"
+  [ "$made" -gt 0 ] || [ -n "$no_stanza" ] || info "backfill: every earlier tag on origin has a release"
   STEP="release"
 }
 

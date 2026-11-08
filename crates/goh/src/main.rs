@@ -71,6 +71,7 @@ pub mod screen_shapes;
 pub mod secrets;
 pub mod seedcount;
 pub mod shell_lint;
+pub mod shell_lint_scope;
 pub mod shell_lint_seed;
 pub mod shellcheck_version;
 pub mod shellsrc;

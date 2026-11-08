@@ -466,7 +466,11 @@ def test_the_verdict_cache_is_keyed_on_the_severity(repo, tmp_path):
 def test_a_files_findings_do_not_depend_on_which_files_share_the_run(repo):
     # shellcheck given several files follows a `source` of another file in the batch, so a.sh read
     # SC2128 beside b.sh and SC2154 alone: the full tree and a staged subset disagreed, and a seed
-    # that must be exact (a stale entry fails) flapped between them. One shellcheck per file.
+    # that must be exact (a stale entry fails) flapped between them. One shellcheck per file --
+    # and WITH `-x` (GOH.SHX): this pinned SC2154 ("arr is referenced but not assigned", false:
+    # b.sh assigns it) and the absence of SC2128 (true: `$arr` is an array), which is the blind
+    # verdict that let release.sh's SC2178/SC2128 pass. Following the source gives the true one,
+    # and gives it however the files share the run.
     write(repo, "b.sh", "#!/usr/bin/env bash\narr=(1 2)\n")
     write(repo, "a.sh", "#!/usr/bin/env bash\n# shellcheck source=b.sh\n. ./b.sh\necho $arr\n")
     _commit_all(repo)
@@ -474,4 +478,4 @@ def test_a_files_findings_do_not_depend_on_which_files_share_the_run(repo):
     alone = run_lint(repo, "--exclude", r"^b\.sh$")
     for r in (both, alone):
         out = r.stdout + r.stderr
-        assert "a.sh#SC2154" in out and "SC2128" not in out, out
+        assert "a.sh#SC2128" in out and "SC2154" not in out, out
