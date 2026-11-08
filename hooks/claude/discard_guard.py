@@ -85,6 +85,12 @@ try:
 except ImportError:
     load_priority = None
 
+# The machine-wide-lock rule (GOH.LOADLOCK), the same way: a missing rule fails open.
+try:
+    import load_locks
+except ImportError:
+    load_locks = None
+
 # The self-matching wait (2026-11-01), the same way: a missing rule fails open.
 try:
     import self_match
@@ -294,7 +300,8 @@ def judge_self_match(command: str) -> str | None:
 def judge_priority(command: str) -> str | None:
     """The refusal for a `tools/load.py` command line whose wrapped command runs at background
     priority (`load.py 32 -- taskpolicy -b loop.sh`, the 10h14m run of 2026-10-25), or None."""
-    if load_priority is None:
+    judges = [rule.judge_invocation for rule in (load_priority, load_locks) if rule is not None]
+    if not judges:
         return None
     try:
         segs = _segments(command)
@@ -303,9 +310,10 @@ def judge_priority(command: str) -> str | None:
     for seg in segs:
         for index, tok in enumerate(seg):
             if os.path.basename(tok) == "load.py":
-                reason = load_priority.judge_invocation(seg[index + 1 :])
-                if reason:
-                    return f"`tools/load.py`: {reason}"
+                # All of them: fixing one refusal only to meet the next is a second round trip.
+                reasons = [r for judge in judges if (r := judge(seg[index + 1 :]))]
+                if reasons:
+                    return "`tools/load.py`: " + " ALSO: ".join(reasons)
                 break
     return None
 

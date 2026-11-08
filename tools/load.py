@@ -15,29 +15,26 @@ kept burning a core each for hours -- 24 for 3h12m (load average 206), then 12 f
 WHAT THIS TOOL DOES, IN THE ORDER THAT MATTERS.
 
   1. It REFUSES to start while another experiment holds the slot (one registry file, created
-     with O_EXCL semantics): two load experiments at once measure a machine that is twice as
-     busy, and neither can be told from the other afterwards.
+     with O_EXCL semantics): two load experiments at once measure a machine twice as busy.
   2. It REGISTERS every spinner it starts -- the pid, and the process's start time, because a
      pid alone is not an identity -- in that registry, BEFORE the spinner is allowed to burn.
   3. It REAPS on the way out: EXIT, TERM, INT and HUP all kill exactly the pids it registered,
      and it VERIFIES afterwards that none of them is alive.
-  4. It REAPS ITSELF when its own owner dies: a watchdog notices that the parent is gone (the
-     shell that ran it was killed) and cleans up, so the common leak cannot happen at all.
+  4. It REAPS ITSELF when its own owner dies: a watchdog notices that the parent is gone.
   5. It is BACKED BY a registry, not by a memory: a launchd job reads the registry every minute
-     and kills the pids whose parent is 1. That is the case a trap cannot cover -- this process
-     SIGKILLed, so nothing here ran.
-
-  6. It is BOUNDED by its own clock (G1c, 2026-10-25). `load.py 32 -- taskpolicy -b loop.sh` -- a
-     starvation proof wrapping `swift test` three times -- ran 10h14m at load average ~154: the
-     background-priority test starved under 32 spinners on 16 cores and hung, and nothing ended
-     it. So a deadline is ALWAYS in force (DEFAULT_MAX_S unless `--max` names another), and on
-     expiry the command's whole tree -- its process group, and every descendant, including one
-     that left the group -- and every spinner are killed, and the tool exits EXIT_DEADLINE naming
-     the deadline. And more spinners than cores is refused unless `--oversubscribe` says it is
-     meant: N > ncpu starves the thing under test, which is how a proof becomes a hang.
+     and kills the pids whose parent is 1 -- the case a trap cannot cover (this process SIGKILLed).
+  6. It is BOUNDED by its own clock (G1c, 2026-10-25): `load.py 32 -- taskpolicy -b loop.sh` ran
+     10h14m at load ~154, the starved test hung and nothing ended it. A deadline is ALWAYS in force
+     (DEFAULT_MAX_S unless `--max`); on expiry the command's whole tree and every spinner are
+     killed and the tool exits EXIT_DEADLINE. More spinners than cores is refused unless
+     `--oversubscribe` says it is meant: N > ncpu starves the thing under test.
   7. It REFUSES a command at background priority, which N spinners starve (lib/load_priority.py).
   8. It REFUSES to starve a GATE in flight (lib/gates_in_flight.py), naming it, exit EXIT_GATE:
      `--wait` (at most --max; then the deadline starts) and `--despite-gate` are the ways on.
+  9. It REFUSES a build tool that takes a MACHINE-WIDE lock (lib/load_locks.py, GOH.LOADLOCK,
+     2026-11-08): a starved `cargo test` held ~/.cargo/.package-cache for 21 minutes and stalled
+     nine other agents. Build first (`cargo test --no-run`), put only the binary under load;
+     `--shared-lock-ok <reason>` is the escape.
 
 The command runs in a process group of its own, so the group can be killed whole; a command that
 reads from the terminal is therefore not supported (a background group that reads a tty stops).
@@ -63,6 +60,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "lib"))
 
 import gates_in_flight
+import load_locks
 import load_priority
 import load_reap
 import load_registry as reg
@@ -90,6 +88,7 @@ def _parse(argv: list[str]) -> argparse.Namespace:
     parser.add_argument("--wait", action="store_true", help="wait (to --max) for gates in flight")
     parser.add_argument("--despite-gate", action="store_true", help="load beside a gate in flight")
     parser.add_argument(load_priority.ESCAPE_FLAG, metavar="REASON", help=load_priority.HELP)
+    parser.add_argument(load_locks.ESCAPE_FLAG, metavar="REASON", help=load_locks.HELP)
     parser.add_argument("rest", nargs=argparse.REMAINDER, help="N -- COMMAND [ARG...]")
     return parser.parse_args(argv)
 
@@ -418,8 +417,9 @@ def main(argv: list[str]) -> int:
             file=sys.stderr,
         )
         return 2
-    if starved := load_priority.preflight(count, command, opts.background_ok):
-        print(f"load: {starved}", file=sys.stderr)
+    if refused := load_locks.refusals(count, command, opts.background_ok, opts.shared_lock_ok):
+        for why in refused:
+            print(f"load: {why}", file=sys.stderr)
         return 2
 
     if count and not opts.despite_gate and (busy := gates_in_flight.hold_off(opts.wait, max_s)):

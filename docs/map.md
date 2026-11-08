@@ -209,6 +209,7 @@ Every structural checker is native since Phase N3; the Python checkers they port
 | `self_match.py` | A wait loop whose condition matches ITS OWN shell, and so never ends (2026-11-01: three background shells ran `until ! pgrep -f "git push origin main"; do sleep 30; done` for 8-9 hours -- `pgrep -f` skips itself, never the parent whose command line holds the pattern). The Bash guard refuses a `while`/`until` whose condition is `pgrep -f`, `pkill -0 -f` or `ps \| grep` on a pattern that regex-matches the command's own text (so the bracket trick passes by itself), reading quoted spans, heredoc bodies and comments as TEXT (`busyloop.mask`) and a `sh -c '<script>'` string as a command; a `grep -v` that drops the shell's line is accepted. Ways out named in the refusal: wait on the PID, the bracket trick, `wait`. The escape is `# pgrep-ok: <reason>`. | `test_self_match_wait.py` |
 | `shell_tools.py` | The ONE list of Claude Code tools whose input holds a shell command (`Bash`, `Monitor`; the field is `command`): the command guards (`discard_guard.py`, `hold_guard.py`) judge each exactly as Bash and `registrations.json` registers each command judge on every member. A shell-running tool missing here is a tool the guards never see. | `test_monitor_guard.py` |
 | `load_priority.py` | Is a command run at BACKGROUND priority? ONE answer for `tools/load.py` and the Bash guard (G1f, 2026-10-25: `load.py 32 -- taskpolicy -b loop.sh` ran 10h14m, and a `taskpolicy -b` pytest under 16 spinners was killed by its deadline). Such a command under N normal-priority spinners gets a core only when one is idle, and the spinners exist so that none is: starved by construction. It names `taskpolicy -b` / `-c background|utility|maintenance`, `nice` and `renice` at `NICE_FLOOR` (10) or more in every spelling, and `chrt --idle`, found after the prefixes that run their operand (`env`, `sudo`, `nohup`, `time`, `timeout`, `caffeinate`, ...) and inside a shell's `-c` script. The escape is `--background-ok <reason>`; an empty reason excuses nothing. | `test_load_priority.py` |
+| `load_locks.py` | Does a command take a MACHINE-WIDE lock? ONE answer for `tools/load.py` and the Bash guard (GOH.LOADLOCK, 2026-11-08: `load.py 32 -- taskpolicy -b cargo test` starved cargo to 0.36 s of CPU in 21 min, but cargo had first taken `~/.cargo/.package-cache`, and nine other agents' cargo runs waited on it). A load experiment over a build tool that acquires shared locks (cargo build/test/run/check/clippy/metadata/bench/nextest, xcodebuild, swift build/test/run, gradle, go build/test, npm/pnpm install) is refused before any spinner starts, looked for through `load_priority.operands` (taskpolicy, nice, env, timeout, caffeinate, `sh -c`). The way forward: build first (`cargo test --no-run`), put only the prebuilt binary under load. The escape is `--shared-lock-ok <reason>`; an empty reason excuses nothing. | `test_load_locks.py` |
 | `desktop_lock/` | Machine-wide desktop mutex. | `test_desktop_lock.py` |
 | `gpu_lock/` | Machine-wide GPU mutex (bash + Python halves, one record format with ztools' Rust client; heartbeat ceiling, refuses rather than steals). Moved from ztools 2026-10-10; `tools/quiet.sh` holds it. | `test_gpu_lock.py`, `test_bench_lock.py` |
 | `bench_lock.sh` | The host held for a measurement: every gate registers (`goh_init`, `commit_gate.sh`, `push_gate.sh`, `local_ci.sh`; bash builtins only; the entry holds its stage and repo), a measurement takes it exclusive and waits for them. A nested gate, the measurement's own, and a dead, recycled or overdue holder never deadlock it. | `test_bench_lock.py` |
@@ -245,7 +246,9 @@ Every structural checker is native since Phase N3; the Python checkers they port
   A command run at BACKGROUND priority (G1f: `taskpolicy -b`, a QoS clamp, `nice`/`renice` >= 10,
   `chrt --idle`, after env/sudo-style prefixes and inside `sh -c`) is refused before any spinner
   starts: N spinners starve it by construction (`lib/load_priority.py`); `--background-ok
-  <reason>` is the escape. It refuses (exit 75) while another session's GATE is in flight
+  <reason>` is the escape. A build tool that takes a machine-wide lock (cargo, xcodebuild, swift,
+  gradle, go, npm/pnpm install: `lib/load_locks.py`, GOH.LOADLOCK) is refused the same way; build
+  first, put only the prebuilt binary under load; `--shared-lock-ok <reason>` is the escape. It refuses (exit 75) while another session's GATE is in flight
   (`lib/gates_in_flight.py`, GOH.LOADX), naming repo, stage, pid and elapsed; `--wait` starts once
   none is left (at most `--max`), `--despite-gate` overrides, and its own ancestor gate does not
   count. To simulate a slow CI runner, throttle the process under test (Chromium CPU throttling
@@ -317,10 +320,10 @@ Every structural checker is native since Phase N3; the Python checkers they port
   hand-written script the Bash-only guard could not see. The shape is the house's ONE definition
   (`lib/busyloop.py`), shared with the check and the backstop. It also refuses a `tools/load.py`
   command line whose wrapped command runs at background priority (G1f, `lib/load_priority.py`,
-  the definition the tool shares), and a wait loop whose `pgrep -f` / `ps | grep` condition matches
+  the definition the tool shares) or takes a machine-wide build lock (`lib/load_locks.py`), and a wait loop whose `pgrep -f` / `ps | grep` condition matches
   its own shell and so never ends (`# pgrep-ok: <reason>` is the escape, `lib/self_match.py`). Pinned
   by `test_claude_discard_guard.py`, `test_claude_load_guard.py`, `test_load_priority.py`,
-  `test_self_match_wait.py`.
+  `test_load_locks.py`, `test_self_match_wait.py`.
 * `hooks/claude/agent_guard.py` — a Claude Code PreToolUse hook (matcher `Agent|Task`) and SubagentStop
   hook: a spawn must name model AND effort and declare them (`Model-choice: <model>@<effort> because
   <tags>`) as the rules file's `tiers` accept, else it is denied with the table; an allowed one gets the

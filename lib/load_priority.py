@@ -221,6 +221,43 @@ def _shell_script(argv: list[str]) -> str | None:
     return None
 
 
+def operands(argv: list[str], depth: int = 0) -> list[list[str]]:
+    """The real commands `argv` runs, looked through every wrapper `background_wrapper` knows.
+
+    `taskpolicy -b nice env FOO=1 cargo test` is one command: `cargo test`. A shell's `-c` script
+    contributes each of its simple commands. `lib/load_locks.py` judges these (the machine-wide
+    locks a build tool takes), so it sees the same command the scheduler runs.
+    """
+    found: list[list[str]] = []
+    while argv and depth < 16:
+        depth += 1
+        name = _base(argv[0])
+        if ASSIGNMENT.match(argv[0]):
+            argv = argv[1:]
+        elif name == "env":
+            argv = _skip_env(argv)
+        elif name in ("sudo", "doas"):
+            argv = _skip_sudo(argv)
+        elif name in ("nohup", "time", "command", "exec", "caffeinate", "stdbuf", "xcrun"):
+            argv = _skip_flags(argv)
+        elif name in ("timeout", "gtimeout"):
+            argv = _skip_timeout(argv)
+        elif name == "taskpolicy":
+            argv = _taskpolicy(argv)[1]
+        elif name == "nice":
+            argv = _nice(argv)[1]
+        elif name == "chrt":
+            argv = _chrt(argv)[1]
+        elif name in SHELLS:
+            script = _shell_script(argv)
+            for seg in segments(script) if script is not None else []:
+                found.extend(operands(seg, depth))
+            return found
+        else:
+            return [*found, argv]
+    return found
+
+
 def refusal(count: int, wrapper: str) -> str:
     """Why a load experiment over a background-priority command is refused, and the way out."""
     return (
@@ -246,35 +283,42 @@ def preflight(count: int, command: list[str], reason: str | None) -> str | None:
     return None
 
 
-def judge_invocation(tokens: list[str]) -> str | None:
-    """The refusal for a `load.py` argv (what follows the script), or None.
+VALUE_FLAGS = ("--dir", "--max", ESCAPE_FLAG, "--shared-lock-ok")
 
-    Read the way the tool reads it: options, then N, then `--`, then the command. A command line
-    the guard cannot read is the tool's to refuse, not the guard's.
-    """
+
+def split_invocation(tokens: list[str]) -> tuple[dict[str, bool], int | None, list[str]]:
+    """A `load.py` argv (what follows the script) read the way the tool reads it: options, then N,
+    then `--`, then the command. Returns the escapes given WITH a reason (flag -> True), N (None
+    when unreadable) and the command. A command line the guard cannot read is the tool's to
+    refuse, not the guard's."""
     rest = list(tokens)
-    escaped = False
+    escapes: dict[str, bool] = {}
     while rest and rest[0].startswith("--") and rest[0] != "--":
         flag = rest[0]
-        if flag == ESCAPE_FLAG:
-            escaped = len(rest) > 1 and bool(rest[1].strip())
-            rest = rest[2:]
-        elif flag.startswith(ESCAPE_FLAG + "="):
-            escaped = bool(flag.split("=", 1)[1].strip())
+        name, eq, inline = flag.partition("=")
+        if eq and name in VALUE_FLAGS:
+            escapes[name] = bool(inline.strip())
             rest = rest[1:]
-        elif flag in ("--dir", "--max"):
+        elif flag in VALUE_FLAGS:
+            escapes[flag] = len(rest) > 1 and bool(rest[1].strip())
             rest = rest[2:]
         else:
             rest = rest[1:]
     if rest and rest[0] == "--":
         rest = rest[1:]
     if not rest:
-        return None
+        return escapes, None, []
     count = _int(rest[0])
     command = rest[1:]
     if command and command[0] == "--":
         command = command[1:]
-    if escaped or not count or count <= 0 or not command:
+    return escapes, count, command
+
+
+def judge_invocation(tokens: list[str]) -> str | None:
+    """The refusal for a `load.py` argv (what follows the script), or None."""
+    escapes, count, command = split_invocation(tokens)
+    if escapes.get(ESCAPE_FLAG) or not count or count <= 0 or not command:
         return None
     wrapper = background_wrapper(command)
     return refusal(count, wrapper) if wrapper else None

@@ -2,6 +2,24 @@
 
 ## Unreleased
 
+* **A load experiment refuses a build tool that takes a machine-wide lock (GOH.LOADLOCK).** On
+  2026-11-08 `load.py --max 25m --oversubscribe 32 -- taskpolicy -b cargo test -q -p taxes-cli
+  --test app_check` starved cargo to 0.36 s of CPU in 21 minutes, but cargo had first taken
+  `~/.cargo/.package-cache`, and nine other agents' cargo runs across the machine waited on that
+  lock for 15-20 minutes (the holder in read_manifest, the waiters in CacheLocker::lock_exclusive).
+  The class: a load experiment whose command takes a machine-wide lock under starvation becomes a
+  fleet-wide stall. `tools/load.py` now refuses, before any spinner starts, a build tool that
+  acquires shared locks (cargo build/test/run/check/clippy/metadata/bench/nextest and the rest of
+  its network and index commands, xcodebuild, swift build/test/run, gradle, go build/test,
+  npm/pnpm/yarn/bun install), found through the wrappers (`taskpolicy`, `nice`, `env`, `timeout`,
+  `caffeinate`, `xcrun`, `sh -c`) by `lib/load_priority.operands`. The refusal names the way
+  forward -- build first (`cargo test --no-run` prints the test binary), put only the prebuilt
+  binary under load.py -- and `--shared-lock-ok <reason>` is the one escape (an empty reason
+  excuses nothing). The Bash guard refuses the same `load.py` command line at the tool boundary,
+  and a command that is both background-priority and lock-taking gets both refusals at once. The
+  definition is `lib/load_locks.py`; `load_priority.judge_invocation` now reads the command line
+  through a shared `split_invocation`. Pinned by `tests/test_load_locks.py`.
+
 * **The release kit's launch step never opens a copy that is already running (RT.LAUNCHDASH).**
   `open` on a running app is not a launch: macOS sends it a reopen event, and Routines.app answers
   a reopen with its 1240x960 dashboard. On 2026-11-08 `routines/install.sh --launch` opened the copy
