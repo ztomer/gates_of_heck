@@ -271,12 +271,15 @@ Every structural checker is native since Phase N3; the Python checkers they port
   rest still run, and the exit is 1. The daily launchd job `com.ztomer.goh-actions-sweep` (04:15 and at load; wrapper runs
   an export of HEAD with `--apply`; log `~/Library/Logs/goh-actions-sweep.log`, only what it did) is installed by
   `tools/install_actions_sweep.sh`. Pinned by `test_actions_sweep.py`.
-* `tools/release-kit/` — `release.sh` (CI on HEAD → gate → stanza → tag → push → release → tap;
+* `tools/release-kit/` — `release.sh` (HEAD declares the version → CI on HEAD → gate → stanza (Unreleased
+  empty, no repeated entry: `changelog_cut.py check`) → tag → push → release (backfill above
+  `GOH_RELEASE_BACKFILL_FLOOR`) → tap;
   step 0 is `ci_step.sh`: an unpushed HEAD is pushed through the gated push, then its runs are
   watched under `GOH_RELEASE_CI_WAIT`),
   `tap_bump.sh` (the house tap bump: clone, edit, the TAP's own `tools/gate.sh --full`, a pinned
   push read back; `release.sh` calls it, and so may a product's own release script),
-  `gen_app_icons.py`, `update_dev.sh`. Pinned by `test_release_kit.py` (+ `test_release_kit_ci.py`,
+  `version_step.sh` (step 0a and the backfill floor, sourced), `changelog_cut.py` (`cut` makes the new stanza FROM Unreleased; `check` is release.sh's), `gen_app_icons.py`,
+  `update_dev.sh`. Pinned by `test_release_kit.py` (+ `test_release_kit_version.py`, `test_release_kit_ci.py`,
   `test_release_kit_tap.py`, `test_release_hardening.py`).
 * `tools/land.sh` — from a worktree: gate the branch tip (`GOH_LAND_GATE`, default `tools/gate_profile.sh .`), then fast-forward the main checkout to THAT SHA; a red gate, a tip that moved while gated, or a main that moved on lands nothing. Nothing is pushed. Pinned by `test_land.py`.
 * `tools/quiet.sh [--max-load N] [--settle S] [--retry R] [--hold H] [--deadline D] -- CMD...` — a measurement QUEUED for a quiet host that takes its PLACE first: it holds every goh gate off (`lib/bench_lock.sh`: new gates wait, running ones drain), the desktop and the GPU (`lib/gpu_lock/`; a GPU another session holds is refused by name, not waited on), waits up to S seconds (300) for the 1-minute load under N (8, from the measured floor), and, if the box is still busy with what goh cannot hold, lets go for R seconds (300) naming the busiest processes, and claims again; it refuses after D seconds (4 h). CMD holds the host for at most H seconds (`GOH_BENCH_MAX_HOLD`, 900), which a waiting gate prints; a longer hold is refused, and a run that outlives its hold fails, named (BACKLOG 3.2). Waiting holding nothing starved it (BACKLOG 3.1). Pinned by `test_bench_lock.py`.

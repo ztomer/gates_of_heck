@@ -20,7 +20,11 @@
 #                     instead of assuming.
 #   5. sign           ad-hoc codesign when available (keeps macOS from
 #                     re-flagging the bundle after the copy)
-#   6. launch         only with --launch / UPDATE_DEV_LAUNCH=1
+#   6. launch         the app is put back as it was: a copy step 2 quit is relaunched
+#                     (GOH.APPSTATE: Routines.app was left STOPPED by three kit installs on
+#                     2026-11-07/08), and seen running again before it says so. --no-launch
+#                     keeps it stopped; --launch / UPDATE_DEV_LAUNCH=1 launches one that was
+#                     not running.
 #
 # Per-repo overrides — put these in a tiny wrapper script or .envrc:
 #   APP_NAME    required   e.g. "Necrohand.app"
@@ -38,7 +42,7 @@
 #
 # Usage:
 #   APP_NAME=Demo.app BUILD_CMD="make build" APP_PATH=build/Demo.app \
-#     tools/release-kit/update_dev.sh [--launch]
+#     tools/release-kit/update_dev.sh [--launch | --no-launch]
 { # parse-guard -- bash reads this group whole before running it (tests/test_parse_guard.py)
 . "$(dirname "${BASH_SOURCE[0]}")/../../gates/_from_head.sh"; goh_from_head "${BASH_SOURCE[0]}" "$@"   # run HEAD, not the tree (C4)
 set -euo pipefail
@@ -52,14 +56,18 @@ BUILD_CMD="${BUILD_CMD:-}"
 APP_PATH="${APP_PATH:-}"
 DEST_DIR="${UPDATE_DEV_DEST:-${DEST_DIR:-/Applications}}"
 LAUNCH=0
+NO_LAUNCH=0
+WAS_RUNNING=0
 
 for arg in "$@"; do
   case "$arg" in
     --launch|-l) LAUNCH=1 ;;
-    *) die "unknown option: $arg (supported: --launch)" ;;
+    --no-launch) NO_LAUNCH=1 ;;
+    *) die "unknown option: $arg (supported: --launch, --no-launch)" ;;
   esac
 done
 [ "${UPDATE_DEV_LAUNCH:-0}" = "1" ] && LAUNCH=1
+[ "$LAUNCH" = 1 ] && [ "$NO_LAUNCH" = 1 ] && die "--launch and --no-launch contradict each other"
 
 [ -n "$APP_NAME" ] || die "APP_NAME is required (e.g. APP_NAME=Demo.app)"
 [ -n "$BUILD_CMD" ] || die "BUILD_CMD is required (e.g. BUILD_CMD='./build.sh')"
@@ -78,7 +86,8 @@ bash -c "$BUILD_CMD" || die "build failed (${BUILD_CMD})"
 
 # ── 2. quit any running copy first ───────────────────────────────────────────
 if pgrep -x "$PROCESS_NAME" >/dev/null 2>&1; then
-  info "quitting the running ${PROCESS_NAME}"
+  WAS_RUNNING=1  # step 6 puts it back unless --no-launch
+  info "quitting the running ${PROCESS_NAME} (relaunched after the install)"
   osascript -e "tell application \"${APP_BASE}\" to quit" >/dev/null 2>&1 || true
   for _ in 1 2 3 4 5 6 7 8 9 10; do
     pgrep -x "$PROCESS_NAME" >/dev/null 2>&1 || break
@@ -128,10 +137,21 @@ if command -v codesign >/dev/null 2>&1; then
 fi
 
 ok "installed $DEST"
-if [ "$LAUNCH" = 1 ]; then
-  info "launching"
-  open "$DEST"
-  ok "launched"
+if [ "$LAUNCH" = 1 ] || { [ "$WAS_RUNNING" = 1 ] && [ "$NO_LAUNCH" = 0 ]; }; then
+  if [ "$WAS_RUNNING" = 1 ]; then info "relaunching ${PROCESS_NAME} (it was running before the install)"; else info "launching"; fi
+  open "$DEST" || die "open $DEST failed -- ${PROCESS_NAME} is NOT running"
+  # Seen running before it is said (G15): `open` returning is not the app being up.
+  for _ in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15; do
+    pgrep -x "$PROCESS_NAME" >/dev/null 2>&1 && break
+    sleep 0.2
+  done
+  if pgrep -x "$PROCESS_NAME" >/dev/null 2>&1; then
+    ok "${PROCESS_NAME} is running"
+  else
+    warn "opened $DEST, but no ${PROCESS_NAME} process showed up within 3 s"
+  fi
+elif [ "$WAS_RUNNING" = 1 ]; then
+  warn "${PROCESS_NAME} was running and is now STOPPED (--no-launch): open $DEST"
 else
   info "launch it with: open $DEST   (or re-run with --launch)"
 fi

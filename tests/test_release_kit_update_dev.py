@@ -104,3 +104,60 @@ class TestUpdateDev:
         r = run_update_dev(tmp_path, None)
         assert r.returncode == 0, r.stdout + r.stderr
         assert f"installed {tmp_path / 'dest' / 'Demo.app'}" in r.stdout
+
+
+# A world in files for the running copy (GOH.APPSTATE): `pgrep` answers from a marker, the graceful
+# quit and `pkill` remove it, `open` logs and puts it back. Nothing real is quit or launched.
+FAKES = {
+    "pgrep": '[ -e "$STATE/running" ]\n',
+    "osascript": 'rm -f "$STATE/running"\n',
+    "open": 'printf "%s\\n" "$*" >> "$STATE/open.log"; touch "$STATE/running"\n',
+}
+
+
+FAKES["pkill"] = FAKES["osascript"]  # a fake on PATH: removes the marker, kills nothing
+
+
+def _world(tmp_path: Path, running: bool) -> Path:
+    bin_dir = tmp_path / "fakes"
+    bin_dir.mkdir()
+    for name, body in FAKES.items():
+        (bin_dir / name).write_text("#!/usr/bin/env bash\n" + body)
+        (bin_dir / name).chmod(0o755)
+    os.environ["STATE"] = str(tmp_path)
+    if running:
+        (tmp_path / "running").write_text("")
+    return bin_dir
+
+
+def _opened(tmp_path: Path) -> list[str]:
+    log = tmp_path / "open.log"
+    return log.read_text().splitlines() if log.exists() else []
+
+
+class TestPutBackAsItWas:
+    def test_a_copy_that_was_running_is_relaunched_after_the_install(self, tmp_path):
+        r = run_update_dev(tmp_path, _world(tmp_path, running=True))
+        assert r.returncode == 0, r.stdout + r.stderr
+        assert _opened(tmp_path) == [str(tmp_path / "dest" / "Demo.app")]
+        assert (tmp_path / "running").exists() and "Demo is running" in r.stdout
+
+    def test_a_copy_that_was_not_running_stays_stopped(self, tmp_path):
+        r = run_update_dev(tmp_path, _world(tmp_path, running=False))
+        assert r.returncode == 0, r.stdout + r.stderr
+        assert _opened(tmp_path) == []
+
+    def test_no_launch_keeps_a_quit_copy_stopped_and_says_so(self, tmp_path):
+        r = run_update_dev(tmp_path, _world(tmp_path, running=True), "--no-launch")
+        assert r.returncode == 0, r.stdout + r.stderr
+        assert _opened(tmp_path) == [] and not (tmp_path / "running").exists()
+        assert "STOPPED" in r.stdout + r.stderr
+
+    def test_launch_still_starts_a_copy_that_was_not_running(self, tmp_path):
+        r = run_update_dev(tmp_path, _world(tmp_path, running=False), "--launch")
+        assert r.returncode == 0, r.stdout + r.stderr
+        assert len(_opened(tmp_path)) == 1
+
+    def test_launch_and_no_launch_together_are_refused(self, tmp_path):
+        r = run_update_dev(tmp_path, _world(tmp_path, running=False), "--launch", "--no-launch")
+        assert r.returncode != 0 and "contradict" in r.stdout + r.stderr

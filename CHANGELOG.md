@@ -2,97 +2,32 @@
 
 ## Unreleased
 
-* **A vendored copy of a house file is known by its content, and refused at both scopes
-  (`no vendored copies of house files`, GOH.VENDOR, 2026-11-08).** The step refused only a NEW file
-  NAMED like a house checker, and named an existing one at full scope; nothing refused a copy of
-  `tui/lib.sh`, `tui/lib.py` or `tui/stylerc`, and divoom-control carried all three, already drifted,
-  until its `8e05425`. A file is now a copy when its name is a house checker's OR it holds at least
-  40 % and 8 of a house file's distinctive lines (whitespace collapsed, 12+ characters) -- the TUI
-  files and every `checks/*` script -- so a renamed or edited copy is still one. Calibrated over the
-  44-repo estate: divoom's drifted copies held 64-100 %, no consumer's own file more than 14 %. Full
-  scope REFUSES now (the house rule is never vendor, and the estate held no copy when the grace
-  ended); a staged edit to a copy is judged too. A `GOH_DIR` without the house TUI is a refusal,
-  never a scan against nothing. divoom's own `tests/test_no_vendored_tui.py` goes; goh covers it.
-* **`goh installed-version` reads every tracked `.md` that is not dated history, with a floor
-  (`GOH_INSTALLED_VERSION_MIN_FILES`).** It read only plans while koffee's own copy read every
-  `.md`; a README or AGENTS.md stating what is installed rots the same way. Dated history -- a
-  CHANGELOG/HISTORY/DECISIONS/NEWS name, a numbered `D-`/`ADR-` record, a `decisions/`, `adr/`,
-  `changelog/`, `releases/` or `release-notes/` directory -- is still not read. The estate's only
-  hits outside plans were such history (ZoneWM's decision records, ztools' CHANGELOG), so no repo
-  went red; koffee's copy of the rule is dropped. The step's count is its subject, floored like
-  every scanner's (it was the one structural scanner with none).
-* **shellcheck follows this tree's `$(dirname "${BASH_SOURCE[0]}")/...` sources** (`.shellcheckrc`:
-  `source-path=SCRIPTDIR`). release.sh:69 and 30-odd more were linted without the file they source
-  (SC1091, an info no severity judges); following them cleared one false SC2034 from the shell-lint
-  seed. `test_shellcheck_follows_every_source_in_this_tree` pins it.
-* **The staged shell lint reads the repo's tracked `.shellcheckrc` files.** Its index checkout held
-  the shell files and what they name, not the rc beside them, so a rule the rc set held at `--full`
-  and vanished at commit (`test_a_tracked_shellcheckrc_is_read_at_both_scopes`).
-
-* **A plan that keeps the installed version by hand is refused, in every repo (`goh
-  installed-version`, GOH.INSTLINE, 2026-11-07).** A "Shipped and installed: vX" line is true the
-  day it is written and false at the next release: koffee's FEATURE_PLAN said v2.12.1 build 36 while
-  the Mac ran 2.13.0 build 40, and app_updates, sys_updater and ztools carried the same line. The
-  rule was koffee's own citation gate's (`ff18e06`); it is now a structural step every repo runs at
-  both scopes, `installed` within 20 characters of a `vN.N`, `build N` or `versionCode N`, over a
-  PLAN -- a tracked `.md` named with a ROADMAP, PLAN, BACKLOG or TODO word. A CHANGELOG or decision
-  record is dated history and is not read. The three consumer lines now point at the releases page.
-* **The shell lint refuses an absolute `# shellcheck source=` path, and collects a `$VAR/`-named
-  source (GOH.SHX2, 2026-11-07).** Twenty-six directives in nine consumers named
-  `/Users/ztomer/Projects/gates_of_heck/tui/lib.sh`: shellcheck read one machine's file, outside the
-  tree, the staged checkout and the verdict's key. A directive names a repo-relative path or
-  `/dev/null` with its reason; the consumers' now say `/dev/null` (goh lints its own library).
-  shellcheck follows `. "$D/conf"` with the variable stripped, but the lint collected only literal
-  paths, so a non-shell file named that way was missing from the staged checkout and the cache key:
-  it is collected now (the key's version moves to v5). goh's own gates no longer follow goh's
-  `.gatesrc` under `-x`: push_gate.sh and structural.sh say `source=/dev/null`, and local_ci.sh's
-  `disable=SC1091` (which silenced the note and followed the file anyway) is `source=/dev/null` too.
-* **A repo declares its release gate in `.gatesrc` (`GOH_RELEASE_GATE`, GOH.SHX2).** release.sh
-  reads it by name in a child when neither `--gate` nor the environment gives one; goh declares
-  `tools/gate.sh --full`, so a bare release of goh is gated instead of refused.
-
-* **The shell lint follows what a script sources (`shellcheck -x`, GOH.SHX, 2026-11-07).**
-  `shellcheck -x tools/release-kit/release.sh` named SC2178/SC2128 (a name a sourced library uses as
-  an array, reused as a string) while `goh shell-lint` passed it: since GOH.SHSEV split the batched
-  call into one shellcheck per file, no call followed a `source`, so no finding that needs a sourced
-  file could reach any repo -- and `test_a_files_findings_do_not_depend_on_which_files_share_the_run`
-  pinned the blind verdict (a false SC2154, no SC2128). Each file is now judged with `-x` in the tree
-  its sources resolve in: the repo root at `--full`, a checkout of the INDEX at `--staged` (every
-  tracked shell file and every tracked file one names as a source), so a staged script reads its
-  library as committed. The verdict cache key covers every file the script may read (by name, over-
-  approximated, transitively; `crates/goh/src/shell_lint_scope.rs`). In goh: release.sh's `missing`
-  is `no_stanza`; the gates that source the GATED repo's `.gatesrc` say `source=/dev/null` (its
-  content is unknown when the gate is linted -- goh's own `.gatesrc` lent rust_gate.sh an SC2090);
-  two `source=` directives naming `/Users/ztomer/...` are repo-relative. Consumers that newly go red
-  are named by the release canary.
-* **A proven structural step marks its tree for the push gate (GOH.SHX, 2026-11-07).** Every push of
-  a tree `tools/land.sh` had proven warned "tools/gate.sh --full passed without running the house
-  structural layer" and ran it again: the `./gates/structural.sh --full` step was a proven-cache hit,
-  structural.sh never ran, so it never wrote `GOH_STRUCTURAL_MARK`. A hit now leaves the mark the
-  skipped run would have (`proven_hit_marks`, `gates/_proven.sh`), for a step that IS a structural
-  run of this tree only (`tests/test_proven_structural_mark.py`).
-* **The release kit pushes HEAD for its CI and waits for it, instead of refusing (GOH.RELCI,
-  2026-11-07).** A wrapper commits "chore: version X" and calls the kit with that commit unpushed,
-  so on any repo with GitHub Actions on, step 0 found no run and refused "no CI run for HEAD": the
-  ztools v3.12.2 release needed a hand push, a wait and a re-run. Step 0 (now
-  `tools/release-kit/ci_step.sh`) pushes the branch through the normal gated push when origin lacks
-  HEAD, then watches its runs: a red run refuses at once, a pending or missing one at the deadline
-  (`GOH_RELEASE_CI_WAIT`, default 1800 s; `GOH_RELEASE_CI_POLL`, 20 s), and only all-green tags.
-  `--no-push` with an unpushed HEAD refuses by name; Actions disabled is still "no CI", with no early
-  push; the dry run plans the push and the wait.
-* **A lib declared with `crate-type` is measured by the Rust coverage gate (2026-11-07).** cargo
-  metadata reports such a lib's kind as its crate-type list (`["rlib", "cdylib"]`), never `"lib"`, so
-  `gates/_coverage_rust.sh` enumerated nothing for koffee_big's bigkoff-core, selected no target kind,
-  and exited "no coverable lines" over a crate whose tests are all unit tests. Every lib kind (`lib`, `rlib`,
-  `dylib`, `cdylib`, `staticlib`, `proc-macro`) now enumerates as a lib.
-* **The push export carries EVERY sibling a tracked manifest names, not only gates_of_heck
-  (2026-11-07).** token-pool's widget depends on `.package(path: "../../ZoneWM/Packages/SpaceBarKit")`
-  from a nested `widget/Package.swift`, and its push died in the export on "the package at
-  .../ZoneWM/Packages/SpaceBarKit cannot be accessed": the gates_of_heck link (antiknob, 2026-10-24)
-  was one instance of the class. `gates/_push_siblings.py` reads every tracked `Cargo.toml` and
-  `Package.swift` for a path that leaves the checkout; `export_siblings` links each one into the run
-  directory (gates_of_heck to `$GOH`, any other to the checkout beside the real one, none when it is
-  not checked out) and records it in `.siblings`, which `run_litter` reads instead of a name.
+* **agent_guard puts the owner's login-item apps back after an agent (GOH.APPSTATE).** Routines.app
+  was left not running after agents' UI tests and Osaurus.app was found down (2026-11-07/08).
+  `hooks/claude/appstate.py` records at every spawn which login-item apps run (System Events'
+  `path of every login item` against `ps -axww -o comm=`); at SubagentStop each one running before
+  and not after is relaunched (`open -g -a`), counted once seen running, and named on the ledger's
+  outcome line (`apps`) and in a message to the session. Seams for the item list, the process table
+  and the launcher; under goh's suite no default runs.
+* **`update_dev.sh` relaunches a copy it quit (GOH.APPSTATE root cause).** Step 2 quit the running
+  app and relaunched only with `--launch`, so every kit install of a running app (Routines.app,
+  three times) left it STOPPED. A copy that was running is relaunched and seen running; `--no-launch`
+  keeps it stopped and says so; `--launch` still starts one that was not running.
+* **release.sh refuses a HEAD that does not declare the version, before anything (GOH.REL2).**
+  v0.63.0 was tagged on the changelog commit, before the Cargo.toml bump; the pre-push tag check
+  refused it only after the tag existed. Step 0a asks the same `goh tag-version` first.
+* **At the tagged commit, Unreleased is empty and no entry repeats an earlier stanza
+  (`changelog_cut.py`, GOH.REL2).** goh's Unreleased carried twelve entries v0.60.0-v0.63.0 had
+  shipped (now cleaned). `changelog_cut.py cut` makes the new stanza FROM Unreleased; `check` is
+  release.sh's changelog step. divoom-control and token-pool hold Unreleased entries today: their
+  next release cuts them.
+* **`GOH_RELEASE_BACKFILL_FLOOR` bounds the GitHub-release backfill (ZT.CHLOG).** ztools warned at
+  every release about 56 pre-v2.2.0 tags its CHANGELOG deliberately excludes; tags below the floor
+  are neither backfilled nor warned about, live or `--dry-run`.
+* **The shell lint passes `--source-path=SCRIPTDIR` in every repo (GOH.REL2).** Measured first over
+  the 37 estate repos with shell files: 0 new findings; gone are SC1091 notes and three false
+  SC2034s, whose seeds koffee_big (bbe7897) and media_server (f77b5503) dropped. A source named
+  relative to the script, or led by `$(dirname ...)`, is collected for the staged checkout.
 
 ## v0.63.0 -- a vendored copy is known by its content; installed-version reads every non-history doc
 

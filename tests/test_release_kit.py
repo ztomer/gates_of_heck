@@ -76,6 +76,8 @@ def kit(tmp_path: Path) -> dict:
         f"# CHANGELOG\n\n## {TAG}\n\n{STANZA_BODY}\n\n## v1.1.0\n\n- older\n",
         encoding="utf-8",
     )
+    # The commit being tagged declares its version, as the tag check requires (GOH.REL2).
+    (proj / "VERSION").write_text(f"{VERSION}\n", encoding="utf-8")
     commit_all(proj)
 
     origin = tmp_path / "origin.git"

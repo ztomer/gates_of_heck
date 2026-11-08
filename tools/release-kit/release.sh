@@ -6,6 +6,8 @@
 #
 # Contract — steps run in this order, each skippable, every failure names its
 # step:
+#   0a. version   HEAD declares --version (`goh tag-version` over the tag that would be
+#                 pushed, .gatesrc in its environment): never tag before the bump commit.
 #   0. ci         every CI run for HEAD (`gh run list --commit`) complete and green (GitHub
 #                 Actions DISABLED for the repo, read from its actions/permissions, is "no CI");
 #                 HEAD not on origin/BRANCH is PUSHED first (the gated push) so CI runs on it,
@@ -29,7 +31,9 @@
 #   2. changelog  verify CHANGELOG.md has a stanza headed by --version
 #                 (## vX.Y.Z or ## [X.Y.Z]); --no-changelog-check to skip.
 #                 The stanza body becomes the tag message and release notes,
-#                 so docs and releases cannot disagree.
+#                 so docs and releases cannot disagree. Unreleased must be EMPTY at the
+#                 tagged commit and no entry may repeat an earlier stanza's
+#                 (changelog_cut.py check; `cut` makes the stanza from Unreleased).
 #   3. tag        create annotated tag vX.Y.Z if absent — idempotent: an
 #                 existing tag is left alone, never moved or re-created
 #   4. push       push branch + tag to origin (--no-push to skip)
@@ -126,7 +130,7 @@ while [ $# -gt 0 ]; do
     --artifact)           ARTIFACT="${2:?}"; shift 2 ;;
     --archive-build)      ARCHIVE_BUILD="${2:?}"; shift 2 ;;
     --verify)             VERIFY_CMD="${2:?}"; shift 2 ;;
-    -h|--help)            sed -n '2,47p' "$0"; exit 0 ;;
+    -h|--help)            sed -n '2,69p' "$0"; exit 0 ;;
     *) die_usage ;;
   esac
 done
@@ -246,6 +250,11 @@ else
   section "release ${TAG} from ${BRANCH}"
 fi
 
+# ── 0a. HEAD declares the version being tagged (tools/release-kit/version_step.sh) ──
+# shellcheck source=tools/release-kit/version_step.sh
+source "$GOH/tools/release-kit/version_step.sh"
+release_version_step
+
 # ── 0. CI on the commit being tagged ─────────────────────────────────────────
 # First, because a red answer spares the gate and every step after it. An unpushed HEAD is pushed
 # (gated) and its runs watched under a deadline: tools/release-kit/ci_step.sh.
@@ -263,6 +272,7 @@ if [ -z "$GATE_CMD" ] && [ -f "$_top/.gatesrc" ]; then
   GATE_CMD="$(cd "$_top" && bash -c 'unset GOH_RELEASE_GATE; . ./.gatesrc >/dev/null 2>&1 </dev/null; printf %s "${GOH_RELEASE_GATE-}"')" \
     || fail "cannot read $_top/.gatesrc"
 fi
+release_backfill_floor  # GOH_RELEASE_BACKFILL_FLOOR -> BACKFILL_FLOOR (version_step.sh)
 [ -n "$GATE_CMD" ] || fail "no gate configured — pass --gate CMD, set GOH_RELEASE_GATE, or declare GOH_RELEASE_GATE in .gatesrc"
 if [ "$DRY_RUN" = 1 ]; then
   plan "run gate: ${GATE_CMD}"
@@ -305,9 +315,15 @@ begin "changelog" "look for a ${TAG} stanza in CHANGELOG.md"
 if [ "$CHANGELOG_CHECK" = 0 ]; then
   warn "skipped (--no-changelog-check)"
 elif has_stanza "$VERSION"; then
-  ok "found"
+  # The tag ships the whole tree, so at this commit nothing is unreleased: an Unreleased section
+  # that still holds entries, or a stanza repeating an earlier one's entry, is refused (GOH.REL2:
+  # goh's Unreleased carried twelve entries v0.60.0-v0.63.0 had shipped). changelog_cut.py cut
+  # makes the stanza FROM Unreleased.
+  python3 "$GOH/tools/release-kit/changelog_cut.py" check --version "$VERSION" --file CHANGELOG.md \
+    || fail "CHANGELOG.md does not hold for ${TAG} (above) -- run tools/release-kit/changelog_cut.py cut --version ${VERSION} --title ... and commit; nothing tagged"
+  ok "found; Unreleased is empty and no entry repeats an earlier stanza"
 else
-  fail "CHANGELOG.md has no stanza for ${VERSION} (add '## ${TAG}' first)"
+  fail "CHANGELOG.md has no stanza for ${VERSION} (add '## ${TAG}' first, or: tools/release-kit/changelog_cut.py cut --version ${VERSION} --title ...)"
 fi
 
 # ── 3. annotated tag (idempotent, but NEVER stale) ───────────────────────────
@@ -360,12 +376,15 @@ fi
 # earlier_versions: tag names or `ls-remote` lines on stdin → the X.Y[.Z] of
 # each v-tag of the kit's scheme strictly before $VERSION, oldest first.
 # Pre-release and other non-version tags (v1.2.3-rc1, nightly) never match.
+# A repo whose CHANGELOG deliberately starts at some version (ztools: 56 tags before v2.2.0 that
+# its preamble excludes) declares GOH_RELEASE_BACKFILL_FLOOR=vX.Y.Z in .gatesrc: tags below it are
+# never backfilled nor warned about, in the live loop and the dry-run plan alike (BACKFILL_FLOOR).
 earlier_versions() {
-  GOH_AWK_VER="$VERSION" awk '
+  GOH_AWK_VER="$VERSION" GOH_AWK_FLOOR="${BACKFILL_FLOOR#v}" awk '
     function key(v,  p, n) { n = split(v, p, "."); return sprintf("%09d%09d%09d", p[1], p[2], (n > 2 ? p[3] : 0)) }
-    BEGIN { cur = key(ENVIRON["GOH_AWK_VER"]) }
+    BEGIN { cur = key(ENVIRON["GOH_AWK_VER"]); floor = ENVIRON["GOH_AWK_FLOOR"]; low = (floor == "" ? "" : key(floor)) }
     { t = $NF; sub(/^refs\/tags\//, "", t) }
-    t ~ /^v[0-9]+\.[0-9]+(\.[0-9]+)?$/ { v = substr(t, 2); k = key(v); if (k < cur) print k, v }
+    t ~ /^v[0-9]+\.[0-9]+(\.[0-9]+)?$/ { v = substr(t, 2); k = key(v); if (k < cur && (low == "" || k >= low)) print k, v }
   ' | sort -u | cut -d' ' -f2
 }
 

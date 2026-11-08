@@ -229,6 +229,7 @@ Measured on media_server: `structural --full` 1.9 s -> 0.30 s warm.
 | Key | Default | Meaning |
 |---|---|---|
 | `GOH_RELEASE_GATE` | unset (required) | Gate command a release must pass: declared in `.gatesrc`, or exported (`--gate CMD` beats both, the environment beats `.gatesrc`). |
+| `GOH_RELEASE_BACKFILL_FLOOR` | unset (no floor) | The oldest tag the release step backfills a GitHub release for (`v2.2.0` or `2.2`): an earlier tag is neither backfilled nor warned about, in the live loop and the `--dry-run` plan alike. For a repo whose CHANGELOG deliberately starts at some version (ztools: 56 pre-v2.2.0 tags). Declared in `.gatesrc` (read by name in a child) or exported; a value that is not a version is refused. |
 | `GOH_RELEASE_CI_WAIT` | `1800` | Seconds step 0 watches the CI runs for HEAD (after pushing an unpushed HEAD) before refusing a pending or missing run; a red run refuses at once. `0` looks once. |
 | `GOH_RELEASE_CI_POLL` | `20` | Seconds between looks while that watch waits. |
 | `GOH_RELEASE_BUFFERED` | internal | Self-buffering sentinel set at startup; unset after snapshot so nested invocations stay hermetic. Do not set by hand. |
