@@ -94,6 +94,18 @@
   directory (gates_of_heck to `$GOH`, any other to the checkout beside the real one, none when it is
   not checked out) and records it in `.siblings`, which `run_litter` reads instead of a name.
 
+## v0.63.0 -- a vendored copy is known by its content; installed-version reads every non-history doc
+
+* **`no vendored copies of house files` (GOH.VENDOR).** A copy of `tui/lib.sh`, `tui/lib.py`,
+  `tui/stylerc` or a `checks/*` script is known by its name or by its content (40 % and 8 of the
+  house file's distinctive lines), so a renamed or edited copy is caught, and it is refused at both
+  scopes. No consumer carried one (divoom-control's went in 8e05425); divoom's own
+  `tests/test_no_vendored_tui.py` is dropped.
+* **`goh installed-version` reads every tracked `.md` but dated history, floored by
+  `GOH_INSTALLED_VERSION_MIN_FILES`.** No consumer turned red; koffee_big dropped its own copy.
+* **shellcheck follows goh's `$(dirname ...)` sources (`.shellcheckrc`), and the staged shell lint
+  reads tracked `.shellcheckrc` files.** release.sh:69's SC1091 is gone.
+
 ## v0.62.0 -- the shell lint refuses absolute source= paths; plans keep no installed version
 
 * **`goh installed-version` (GOH.INSTLINE).** A plan (ROADMAP/PLAN/BACKLOG/TODO `.md`) stating the
