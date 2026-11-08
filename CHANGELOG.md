@@ -67,6 +67,20 @@
   directory (gates_of_heck to `$GOH`, any other to the checkout beside the real one, none when it is
   not checked out) and records it in `.siblings`, which `run_litter` reads instead of a name.
 
+## v0.62.0 -- the shell lint refuses absolute source= paths; plans keep no installed version
+
+* **`goh installed-version` (GOH.INSTLINE).** A plan (ROADMAP/PLAN/BACKLOG/TODO `.md`) stating the
+  installed version is red in every repo, at both scopes -- koffee's rule (`ff18e06`) moved into the
+  house. Consumers fixed before this landed: app_updates (8a0f218), sys_updater (752d968), ztools
+  (21e45fd).
+* **The shell lint refuses an absolute `# shellcheck source=` path and collects `$VAR/` sources
+  (GOH.SHX2).** Consumers fixed before this landed: ZoneWM (6ae2c99e), app_updates (0ac3782),
+  CadGoose2 (f4b68a8), divoom-control (2ca744d), koffee_big (e49dc33), monitor (9a48687), necrohand
+  (c5f4827), routines (371b551), sys_updater (4bc0726). goh's gates no longer follow goh's own
+  `.gatesrc` under `-x`.
+* **A repo declares its release gate in `.gatesrc` (`GOH_RELEASE_GATE`).** goh's is
+  `tools/gate.sh --full`, so a bare goh release is gated.
+
 ## v0.61.0 -- the shell lint follows what a script sources; a proven structural step marks its tree
 
 * **The shell lint runs `shellcheck -x` (GOH.SHX, 2026-11-07).** A finding that needs a sourced
