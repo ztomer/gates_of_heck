@@ -38,7 +38,7 @@
 #                 stanza) into an unpushed "chore: version X" HEAD, else "chore: changelog vX".
 #   3. tag        create annotated tag vX.Y.Z if absent — idempotent: an
 #                 existing tag is left alone, never moved or re-created
-#   4. push       push branch + tag to origin (--no-push to skip)
+#   4. push       push origin's DEFAULT branch + tag, from any branch (branch_step.sh); --no-push skips
 #   5. release    gh release create with the stanza body as notes — only when
 #                 gh exists AND origin is a github.com remote; skipped with a
 #                 stated reason otherwise; --skip-release to skip always.
@@ -101,7 +101,7 @@ source "$GOH/tui/lib.sh"
 
 VERSION=""
 GATE_CMD="${GOH_RELEASE_GATE:-}"
-BRANCH=""            # default: current branch, resolved later
+BRANCH=""            # --branch NAME; default: origin's default branch (branch_step.sh)
 CHANGELOG_CHECK=1; TITLE=""
 CI_CHECK=1
 DO_PUSH=1
@@ -223,7 +223,6 @@ git rev-parse --show-toplevel >/dev/null 2>&1 \
 [ -f CHANGELOG.md ] || warn "no CHANGELOG.md in $(pwd) — the changelog step will fail"
 ORIGIN_URL="$(git remote get-url origin 2>/dev/null || true)"
 [ -n "$ORIGIN_URL" ] || warn "no 'origin' remote — push and release steps will fail or skip"
-BRANCH="${BRANCH:-$(git rev-parse --abbrev-ref HEAD)}"
 # github_slug URL -- `owner/name` when URL names a github.com repository, with or without `.git`,
 # over https, ssh or scp syntax; nothing for any other URL. A sed that printed only when it stripped
 # `.git` read a GitHub origin without it as no GitHub at all (no CI check, no release), and any other
@@ -248,10 +247,13 @@ GH_REPO_SLUG="$(github_slug "$ORIGIN_URL")"
 [ -n "$GH_REPO_SLUG" ] \
   || GH_REPO_SLUG="$(github_slug "$(git config --get remote.origin.url 2>/dev/null || true)")"
 
+# shellcheck source=tools/release-kit/branch_step.sh
+source "$GOH/tools/release-kit/branch_step.sh"
+release_branch_step
 if [ "$DRY_RUN" = 1 ]; then
   section "release plan for ${TAG} (dry-run — nothing will execute)"
 else
-  section "release ${TAG} from ${BRANCH}"
+  section "release ${TAG} to ${BRANCH}"
 fi
 
 # ── 0a. HEAD declares the version being tagged (tools/release-kit/version_step.sh) ──
@@ -365,11 +367,11 @@ begin "push" "branch ${BRANCH} + ${TAG} to origin"
 if [ "$DO_PUSH" = 0 ]; then
   note_skip "push (--no-push)" "--no-push"
 elif [ "$DRY_RUN" = 1 ]; then
-  plan "git push origin ${BRANCH} ${TAG}"
+  plan "git push origin ${PUSH_REFSPEC} ${TAG}"
 else
   # ONE push: the pre-push gate refuses a branch that carries a local release tag the remote
   # lacks (goh tag-version --remote), which is what the first of two pushes always was.
-  git push origin "$BRANCH" "$TAG" || fail "could not push ${BRANCH} + ${TAG}"
+  git push origin "$PUSH_REFSPEC" "$TAG" || fail "could not push ${BRANCH} + ${TAG}"
   # origin is read back before "pushed" is said (G15): a push can return 0 over a remote that did not move.
   remote_head="$(git ls-remote origin "refs/heads/${BRANCH}" | cut -f1)" || fail "git ls-remote origin exited nonzero"
   remote_tag="$(git ls-remote origin "refs/tags/${TAG}" | cut -f1)" || fail "git ls-remote origin exited nonzero"

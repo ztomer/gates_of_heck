@@ -2,6 +2,22 @@
 
 ## Unreleased
 
+* **The release kit pushes the release to origin's default branch, never to the branch it was cut
+  from (GOH.RELBRANCH).** On 2026-11-08 goh's `release.sh`, run from a `tools/land.sh` worktree,
+  pushed `$BRANCH` -- the current branch, `goh-loadlock` -- to origin: a stray branch on the remote,
+  main left behind, main pushed by hand and the branch deleted by hand. The class: a release step
+  that names the branch it publishes from the checkout it happens to run in. `release.sh` and the
+  CI step now resolve origin's default branch (`origin/HEAD`, else `git ls-remote --symref`; a dry
+  run reads the last fetch) in the new `tools/release-kit/branch_step.sh`. On the default branch
+  the push is what it was; on any other branch it is `HEAD:refs/heads/<default>`, and only when HEAD
+  descends from origin's default branch -- else the release refuses before the gate and the tag,
+  naming the rebase (`tools/land.sh`) as the way forward. `--branch NAME` still pushes NAME as
+  itself. Every other consumer was checked: ztools, app_updates and sys_updater reach the kit
+  (fixed here); monitor and routines push `main` explicitly, ZoneWM and koffee refuse a non-main
+  branch, and divoom, CadGoose, antiknob and app-mcp-bridge push the tag only. Pinned by
+  `tests/test_release_kit_branch.py` (a worktree on a feature branch: main moved, tag on HEAD, no
+  stray head; a diverged branch refused; origin's default read, not assumed; --branch unchanged).
+
 ## v0.69.0 -- a load experiment refuses a build tool that takes a machine-wide lock; the release kit never reopens a running app
 
 * **A load experiment refuses a build tool that takes a machine-wide lock (GOH.LOADLOCK).** On

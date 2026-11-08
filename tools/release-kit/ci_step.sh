@@ -51,7 +51,7 @@ ci_push_head() {
 (${remote_head:-missing}) and --no-push forbids pushing it, so no CI can run on it -- push it \
 first, or --no-ci-check"
   info "HEAD ${HEAD_SHA:0:12} is not on origin/${BRANCH}: pushing it so CI runs on it"
-  git push origin "$BRANCH" || fail "could not push ${BRANCH} for its CI run"
+  git push origin "$PUSH_REFSPEC" || fail "could not push ${BRANCH} for its CI run"
   remote_head="$(git ls-remote origin "refs/heads/${BRANCH}" | cut -f1)" \
     || fail "git ls-remote origin exited nonzero"
   [ "$remote_head" = "$HEAD_SHA" ] || fail "origin/${BRANCH} is ${remote_head:-missing}, not \
@@ -110,7 +110,7 @@ release_ci_step() { # <ci_check: 1, or 0 for --no-ci-check>
     elif [ "$DO_PUSH" = 0 ]; then
       plan "refuse if origin/${BRANCH} is not HEAD: --no-push forbids pushing it for its CI"
     else
-      plan "git push origin ${BRANCH} (the gated push) if origin lacks ${HEAD_SHA:0:12}, so CI runs on it"
+      plan "git push origin ${PUSH_REFSPEC} (the gated push) if origin lacks ${HEAD_SHA:0:12}, so CI runs on it"
     fi
     plan "gh run list --commit ${HEAD_SHA:0:12}: wait up to ${CI_WAIT}s (GOH_RELEASE_CI_WAIT) for \
 every run to finish green; refuse a red at once, pending or missing at the deadline"
