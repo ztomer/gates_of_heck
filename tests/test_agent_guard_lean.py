@@ -12,8 +12,17 @@ from pathlib import Path
 
 import pytest
 from conftest import REPO_ROOT
-from test_claude_agent_guard import (BRIEF, GOOD, POOL, RULES, _allowed, _ledger, _reason, _run,
-                                     _spawn)  # fmt: skip
+from test_claude_agent_guard import (
+    BRIEF,
+    GOOD,
+    POOL,
+    RULES,
+    _allowed,
+    _ledger,
+    _reason,
+    _run,
+    _spawn,
+)
 
 LEAN = RULES.lean
 
