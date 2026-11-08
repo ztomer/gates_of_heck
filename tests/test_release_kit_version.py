@@ -220,3 +220,30 @@ def test_a_cut_that_would_repeat_an_earlier_entry_is_refused(kit):
     r = run_release(kit)
     assert r.returncode != 0 and "already in v1.1.0" in r.stderr, r.stdout + r.stderr
     assert not _tagged(kit) and (kit["proj"] / "CHANGELOG.md").read_text() == log
+
+
+def test_cut_follows_the_repos_dated_em_dash_heading_style(tmp_path):
+    """routines and ztools head stanzas `## vX — title _(YYYY-MM-DD)_`; a cut in `--` style broke
+    the shape every earlier stanza holds (ztools' heading gate reads it)."""
+    import datetime
+
+    log = tmp_path / "CHANGELOG.md"
+    log.write_text("# C\n\n## Unreleased\n\n* new\n\n## v1.1.0 — old _(2026-01-01)_\n\n* old\n")
+    r = _cut(log, "cut", "--version", "1.2.0", "--title", "the new thing")
+    assert r.returncode == 0, r.stderr
+    today = datetime.date.today().isoformat()
+    assert f"\n## v1.2.0 — the new thing _({today})_\n" in log.read_text(), log.read_text()
+
+
+def test_cut_follows_the_repos_double_hyphen_style(tmp_path):
+    log = tmp_path / "CHANGELOG.md"
+    log.write_text("# C\n\n## Unreleased\n\n* new\n\n## v1.1.0 -- old\n\n* old\n")
+    assert _cut(log, "cut", "--version", "1.2.0", "--title", "t").returncode == 0
+    assert "\n## v1.2.0 -- t\n" in log.read_text()
+
+
+def test_cut_without_a_title_writes_the_bare_heading_in_any_style(tmp_path):
+    log = tmp_path / "CHANGELOG.md"
+    log.write_text("# C\n\n## Unreleased\n\n* new\n\n## v1.1.0 — old _(2026-01-01)_\n\n* old\n")
+    assert _cut(log, "cut", "--version", "1.2.0").returncode == 0
+    assert "\n## v1.2.0\n" in log.read_text()

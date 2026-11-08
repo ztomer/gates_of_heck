@@ -14,7 +14,8 @@
   entries under Unreleased, the kit runs `changelog_cut.py cut --version V` and amends the stanza
   INTO an unpushed `chore: version V` HEAD (every wrapper's bump commit), else commits it as
   `chore: changelog vV`; before CI and the gate, so both judge the tree that is tagged. `--title` is
-  now optional (`## vV`). Refusals left: an entry repeating an earlier stanza's, a HEAD that does
+  now optional (`## vV`), and a titled cut follows the file's own heading style (` — ` and a
+  ` _(YYYY-MM-DD)_` date, as routines and ztools write them, when its newest stanza has them). Refusals left: an entry repeating an earlier stanza's, a HEAD that does
   not declare the version, and a hand-written stanza with Unreleased still holding entries.
 * **`update_dev.sh`'s exact-name `pkill` reviewed; SC2015 infos fixed.** The kill_by_name_allow
   entry was `unreviewed`: it is the fallback after the by-name graceful quit, `-x` on the replaced

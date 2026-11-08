@@ -6,8 +6,9 @@ v0.63.0: each release wrote a SHORT stanza by hand and left the long entries whe
 Unreleased claimed as unreleased what four tags had shipped. At a tagged commit nothing is
 unreleased -- the tag ships the whole tree -- so:
 
-* `cut --version X [--title T]`: moves Unreleased's body into a new `## vX -- T` stanza (`## vX`
-  without a title) directly under the (now empty) Unreleased heading. release.sh runs it itself
+* `cut --version X [--title T]`: moves Unreleased's body into a new `## vX -- T` stanza, in the
+  file's own heading style (` — ` and a ` _(YYYY-MM-DD)_` date when its newest stanza has them;
+  `## vX` without a title) directly under the (now empty) Unreleased heading. release.sh runs it itself
   when HEAD has no stanza for X and Unreleased holds entries (GOH.CUTAUTO). Refused when the stanza exists, when Unreleased is
   empty (nothing to release), or when a moved entry repeats one an earlier stanza already holds.
 * `check --version X`: what release.sh's changelog step asks of the commit being tagged -- the
@@ -24,6 +25,7 @@ with whitespace collapsed. Headings: `## Unreleased` / `## [Unreleased]`, `## vX
 from __future__ import annotations
 
 import argparse
+import datetime
 import re
 import sys
 from pathlib import Path
@@ -110,6 +112,20 @@ def check(lines: list[str], version: str) -> list[str]:
     return findings
 
 
+DATED_TAIL = re.compile(r"\s_\(\d{4}-\d{2}-\d{2}\)_$")
+
+
+def heading_style(secs: list[Section]) -> tuple[str, bool]:
+    """The separator and date convention of the newest titled version stanza: routines and ztools
+    write `## vX — title _(YYYY-MM-DD)_`, goh `## vX -- title`. A cut follows the file it joins."""
+    for s in secs:
+        if s.version and len(s.title.split(maxsplit=1)) > 1:
+            rest = s.title.split(maxsplit=1)[1]
+            sep = "—" if rest.startswith("— ") else "--"
+            return sep, bool(DATED_TAIL.search(s.title))
+    return "--", False
+
+
 def cut(lines: list[str], version: str, title: str | None) -> tuple[list[str] | None, list[str]]:
     secs = sections(lines)
     if any(s.version == version for s in secs):
@@ -125,7 +141,9 @@ def cut(lines: list[str], version: str, title: str | None) -> tuple[list[str] | 
     if not moved:
         return None, ["Unreleased is empty: nothing to release"]
     head = "#" * unrel.level
-    heading = f"{head} v{version} -- {title}" if title else f"{head} v{version}"
+    sep, dated = heading_style(secs)
+    stamp = f" _({datetime.date.today().isoformat()})_" if dated else ""
+    heading = f"{head} v{version} {sep} {title}{stamp}" if title else f"{head} v{version}"
     new = [*lines[: unrel.start + 1], "", heading, "", *moved, ""]
     new += lines[unrel.end :]
     dups = duplicates(new, sections(new), version)
