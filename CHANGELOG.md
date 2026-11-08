@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## v0.68.0 -- an idle coordinator's dead subagent reaches the owner
+
 * **An idle coordinator's dead subagent reaches the owner (GOH.STALLNOTIFY).** Probed on Claude
   Code 2.1.317 in the desktop app's stream-json mode with every hook event logged: a
   task-notification (a shell job or a subagent finishing) and a ScheduleWakeup each fire the
