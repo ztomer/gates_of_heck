@@ -96,23 +96,82 @@ fn tree_path(p: &str) -> Option<String> {
         .then(|| rest.to_owned())
 }
 
+/// A source argument led by ONE command substitution -- the house idiom
+/// `"$(dirname "${BASH_SOURCE[0]}")/lib.sh"` -- which shellcheck follows with the substitution
+/// stripped (from its working directory, or the script's under `--source-path=SCRIPTDIR`): the rest.
+fn subst_led(arg: &str) -> Option<String> {
+    let body = arg.strip_prefix('"').unwrap_or(arg).strip_prefix("$(")?;
+    let mut depth = 1usize;
+    let mut close = None;
+    for (i, c) in body.char_indices() {
+        match c {
+            '(' => depth += 1,
+            ')' => {
+                depth -= 1;
+                if depth == 0 {
+                    close = Some(i);
+                    break;
+                }
+            }
+            _ => {}
+        }
+    }
+    let rest = body[close? + 1..]
+        .trim_start_matches('"')
+        .strip_prefix('/')?;
+    let end = rest
+        .find(|c: char| c.is_whitespace() || c == ';' || c == '|' || c == '&')
+        .unwrap_or(rest.len());
+    tree_path(&rest[..end])
+}
+
 /// The repo-relative paths a shell text names as a source it reads.
 ///
 /// A `# shellcheck source=` directive, or a `source`/`.` path that is literal or led by one
-/// variable ([`tree_path`]). `/dev/null` and absolute paths name nothing in the tree.
+/// variable ([`tree_path`]) or one command substitution ([`subst_led`]). `/dev/null` and absolute
+/// paths name nothing in the tree.
 #[must_use]
 pub fn named_sources(text: &str) -> Vec<String> {
     let mut out = Vec::new();
     for line in text.lines() {
         let t = line.trim_start();
         let path = if t.starts_with('#') {
-            directive_path(t)
+            directive_path(t).and_then(tree_path)
         } else {
             t.strip_prefix("source ")
                 .or_else(|| t.strip_prefix(". "))
-                .and_then(|r| r.split_whitespace().next())
+                .and_then(|r| {
+                    subst_led(r.trim_start()).or_else(|| tree_path(r.split_whitespace().next()?))
+                })
         };
-        out.extend(path.and_then(tree_path));
+        out.extend(path);
+    }
+    out
+}
+
+/// The repo-relative paths a shell file at `rel` may read as a source: each name
+/// [`named_sources`] finds, both as written (shellcheck's CWD, the repo root) and against the
+/// script's own directory (`--source-path=SCRIPTDIR`, GOH.REL2), `..` resolved.
+#[must_use]
+pub fn sources_of(rel: &str, text: &str) -> Vec<String> {
+    let dir = rel.rsplit_once('/').map_or("", |(d, _)| d);
+    let mut out = Vec::new();
+    for name in named_sources(text) {
+        if !dir.is_empty() {
+            let mut parts: Vec<&str> = dir.split('/').collect();
+            let mut ok = true;
+            for seg in name.split('/') {
+                match seg {
+                    "" | "." => {}
+                    ".." => ok &= parts.pop().is_some(),
+                    s => parts.push(s),
+                }
+            }
+            if ok && !parts.is_empty() {
+                out.push(parts.join("/"));
+            }
+        }
+        out.push(name);
     }
     out
 }
@@ -237,8 +296,8 @@ pub fn gather(
     // (goh's `source-path=SCRIPTDIR` held at `--full` and vanished at commit, GOH.VENDOR).
     let named: BTreeSet<String> = shells
         .iter()
-        .filter_map(|f| std::fs::read_to_string(base.join(f)).ok())
-        .flat_map(|t| named_sources(&t))
+        .filter_map(|f| Some(sources_of(f, &std::fs::read_to_string(base.join(f)).ok()?)))
+        .flatten()
         .collect();
     let extra: Vec<&String> = tracked
         .iter()
@@ -281,8 +340,8 @@ impl Deps {
             }
         }
         let named: BTreeSet<String> = texts
-            .values()
-            .flat_map(|b| named_sources(&String::from_utf8_lossy(b)))
+            .iter()
+            .flat_map(|(f, b)| sources_of(f, &String::from_utf8_lossy(b)))
             .collect();
         for f in tracked.iter().filter(|f| named.contains(*f)) {
             if texts.contains_key(f) {
@@ -345,7 +404,27 @@ mod tests {
                     # shellcheck source=/dev/null\nsource /etc/x\necho . x\n";
         assert_eq!(
             named_sources(text),
-            vec!["lib/a.sh", "b.sh", "c.sh", "d.sh", ".gatesrc"]
+            vec!["lib/a.sh", "b.sh", "c.sh", "d.sh", ".gatesrc", "f"]
+        );
+    }
+
+    #[test]
+    fn a_dirname_led_source_is_read_with_the_substitution_stripped() {
+        let text = ". \"$(dirname \"${BASH_SOURCE[0]}\")/lib.conf\"\n\
+                    source \"$(cd \"$(dirname \"$0\")\" && pwd)\"/../x.sh || exit 1\n";
+        assert_eq!(named_sources(text), vec!["lib.conf", "../x.sh"]);
+    }
+
+    #[test]
+    fn sources_of_resolves_against_the_root_and_the_scripts_own_directory() {
+        let text = ". ./a.sh\n. \"$(dirname \"$0\")/../lib/b.conf\"\n";
+        assert_eq!(
+            super::sources_of("tools/x/run.sh", text),
+            vec!["tools/x/a.sh", "a.sh", "tools/lib/b.conf", "../lib/b.conf"]
+        );
+        assert_eq!(
+            super::sources_of("run.sh", ". ../up.sh\n"),
+            vec!["../up.sh"]
         );
     }
 

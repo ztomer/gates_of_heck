@@ -98,7 +98,7 @@ fn tools_key(severity: &str) -> String {
     let xdg =
         std::env::var_os("XDG_CONFIG_HOME").map_or_else(|| home.join(".config"), PathBuf::from);
     format!(
-        "shell-lint v5|{}|{}|-x --severity={severity} --format=gcc|opts={}|{}|{}",
+        "shell-lint v6|{}|{}|-x --source-path=SCRIPTDIR --severity={severity} --format=gcc|opts={}|{}|{}",
         id("bash"),
         id("shellcheck"),
         std::env::var("SHELLCHECK_OPTS").unwrap_or_default(),
@@ -168,8 +168,13 @@ fn check_misses(
     let mut attributable = true;
     for &i in &clean {
         let mut cmd = Command::new("shellcheck");
+        // `--source-path=SCRIPTDIR` in every repo (GOH.REL2): the house idiom names a library
+        // relative to the script (`$(dirname "${BASH_SOURCE[0]}")/lib.sh`), which shellcheck
+        // otherwise resolves against the CWD and silently does not follow. Measured over the
+        // estate before it went in: 0 new findings in 37 consumers.
         cmd.current_dir(base)
             .arg("-x")
+            .arg("--source-path=SCRIPTDIR")
             .arg(format!("--severity={severity}"))
             .arg("--format=gcc")
             .arg(&misses[i].1);

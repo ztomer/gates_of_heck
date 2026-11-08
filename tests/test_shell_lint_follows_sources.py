@@ -90,10 +90,33 @@ def test_a_cached_verdict_is_not_reused_once_a_sourced_file_moves(repo, tmp_path
 
 
 # The house idiom: a source named relative to the script, which shellcheck resolves against the CWD
-# unless a tracked `.shellcheckrc` says `source-path=SCRIPTDIR`.
+# unless told `--source-path=SCRIPTDIR`.
 MAIN_DIRNAME = MAIN.replace(
     "# shellcheck source=lib.sh\n. ./lib.sh", '. "$(dirname "${BASH_SOURCE[0]}")/lib.sh"'
 )
+# The same, through a library whose name is not `*.sh` (a `.conf`): it is in no shell checkout by
+# its extension, so the staged scope must collect it as a source named relative to the script.
+MAIN_CONF = MAIN.replace("# shellcheck source=lib.sh\n. ./lib.sh", '. "$(dirname "$0")/lib.conf"')
+
+
+@pytest.mark.parametrize("scope", ["--full", "--staged"])
+@pytest.mark.parametrize(
+    ("main", "lib"), [(MAIN_DIRNAME, "lib.sh"), (MAIN_CONF, "lib.conf")], ids=["sh", "conf"]
+)
+def test_a_source_named_relative_to_the_script_is_followed_in_every_repo(repo, scope, main, lib):
+    """Every repo, no rc (GOH.REL2): the lint passes `--source-path=SCRIPTDIR`, so a library a
+    script names relative to itself is followed -- measured over the estate first: 0 new findings
+    in 37 consumers, and false SC2034s gone in koffee_big and media_server."""
+    write(repo, f"tools/{lib}", LIB_ARRAY)
+    write(repo, "tools/main.sh", main)
+    if scope == "--full":
+        commit_all(repo)
+        rc, out = _lint(repo)
+    else:
+        stage(repo, f"tools/{lib}", "tools/main.sh")
+        rc, out = _lint(repo, "--staged")
+    assert rc == 1, out
+    assert "tools/main.sh#SC2178" in out, out
 
 
 @pytest.mark.parametrize("scope", ["--full", "--staged"])
@@ -105,8 +128,8 @@ def test_a_tracked_shellcheckrc_is_read_at_both_scopes(repo, scope):
     write(repo, "tools/main.sh", MAIN_DIRNAME)
     commit_all(repo)
     rc, out = _lint(repo)
-    assert rc == 0, "without the rc the source is not followed, so the array is unseen: " + out
-    write(repo, ".shellcheckrc", "source-path=SCRIPTDIR\n")
+    assert rc == 1 and "tools/main.sh#SC2178" in out, out
+    write(repo, ".shellcheckrc", "disable=SC2178,SC2128\n")
     if scope == "--full":
         commit_all(repo)
         rc, out = _lint(repo)
@@ -114,8 +137,7 @@ def test_a_tracked_shellcheckrc_is_read_at_both_scopes(repo, scope):
         write(repo, "tools/main.sh", MAIN_DIRNAME + "# touched\n")
         stage(repo, ".shellcheckrc", "tools/main.sh")
         rc, out = _lint(repo, "--staged")
-    assert rc == 1, out
-    assert "tools/main.sh#SC2178" in out, out
+    assert rc == 0, "the rc's rule is read: " + out
 
 
 def test_shellcheck_follows_every_source_in_this_tree():
