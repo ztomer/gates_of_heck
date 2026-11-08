@@ -25,6 +25,9 @@ by hand; this hook keeps them structurally (tests/test_claude_agent_guard.py):
 * Every allowed spawn is one line in `$XDG_CACHE_HOME/goh/agent-spawns.jsonl`; SubagentStop adds
   the outcome line -- tokens summed from the agent's transcript, the report's `Status:` and the
   report itself (the audit checks its shas) -- so a wrong choice either way is visible as data.
+* The owner's apps are put back (GOH.APPSTATE, `appstate.py`): the spawn line records which
+  login-item apps were running; at SubagentStop any of them no longer running is relaunched and
+  named on the outcome line (`apps`) and in a message to the session.
 
 Output shape, proven live on the Claude Code version the rules file's `proven_on` names: a refusal
 is `hookSpecificOutput`
@@ -48,6 +51,7 @@ import time
 from pathlib import Path
 from typing import Any
 
+import appstate  # the owner's login-item apps, put back after an agent (GOH.APPSTATE)
 import model_choice  # the rules file's one reader, beside this script
 
 SPAWN_TOOLS = {"Agent", "Task"}  # `Task` is the tool's legacy name
@@ -253,6 +257,7 @@ def on_spawn(event: dict[str, Any]) -> dict[str, Any] | None:
         "declared": None if exempt else declared, "explored": route is not None,
         "route": route[1] if route else None, "pool": pool,
         "prompt_sha": hashlib.sha256(final.encode()).hexdigest(), "first_line": _first_line(prompt),
+        "apps": appstate.snapshot(event.get("tool_use_id")),
     })  # fmt: skip
     if warning:
         out["systemMessage"] = warning
@@ -343,8 +348,9 @@ def faults(report: str) -> list[str] | None:
     return [f.strip() for f in body.split(";") if f.strip()]
 
 
-def on_stop(event: dict[str, Any]) -> str | None:
-    """Record a finished subagent's outcome; the ledger warning, if any. Never blocks the stop."""
+def on_stop(event: dict[str, Any]) -> list[str]:
+    """Record a finished subagent's outcome, putting back the login-item apps it left not running;
+    the messages for the session (apps relaunched, a ledger not written). Never blocks the stop."""
     raw_path = event.get("agent_transcript_path")
     transcript = Path(raw_path) if isinstance(raw_path, str) and raw_path else None
     tool_use_id = None
@@ -354,18 +360,20 @@ def on_stop(event: dict[str, Any]) -> str | None:
             tool_use_id = json.loads(meta.read_text(encoding="utf-8")).get("toolUseId")
         except (OSError, ValueError, AttributeError):
             tool_use_id = None
+    apps = appstate.restore(tool_use_id)  # first: a relaunch must not wait on the transcript
     report = event.get("last_assistant_message")
     report = report if isinstance(report, str) else ""
     text, settled = settled_transcript(transcript, report) if transcript else (None, False)
-    return _append({
+    warning = _append({
         "event": "outcome", "time": _now(), "session_id": event.get("session_id"),
         "tool_use_id": tool_use_id, "agent_id": event.get("agent_id"),
         "agent_type": event.get("agent_type"),
         "status": _status(report), "report": report[:REPORT_CAP] or None,
         "faults": faults(report),
         "tokens": usage(text) if text is not None else None,
-        "tokens_settled": settled,
+        "tokens_settled": settled, "apps": apps,
     })  # fmt: skip
+    return [m for m in (appstate.describe(apps), warning) if m]
 
 
 def main() -> int:
@@ -379,9 +387,9 @@ def main() -> int:
             if out:
                 json.dump(out, sys.stdout)
         elif name == "SubagentStop":
-            warning = on_stop(event)
-            if warning:
-                print(warning, file=sys.stderr)
+            messages = on_stop(event)
+            if messages:
+                json.dump({"systemMessage": " ".join(messages)}, sys.stdout)
     except Exception as e:  # noqa: BLE001 -- fail OPEN: a guard bug must never block every spawn
         print(f"agent_guard: input not judged ({e!r})", file=sys.stderr)
     return 0

@@ -328,6 +328,9 @@ Every structural checker is native since Phase N3; the Python checkers they port
   on the cheap tier its prompt sha's parity picks (`explored: true`); the opus->cheap fraction is off
   until the owner turns it on, and nothing without `checkable` is ever routed down. Fails open. Pinned by
   `test_claude_agent_guard.py`, `test_agent_guard_exploration.py`.
+* `hooks/claude/appstate.py` — the owner's login-item apps, snapshotted at each spawn by `agent_guard.py` and
+  relaunched at SubagentStop when the agent left one not running (GOH.APPSTATE); seams for the item list, the
+  process table and the launcher; inert under goh's suite without them. Pinned by `test_claude_appstate.py`.
 * `hooks/claude/model_choice.json` — THE model-choice rules: the tier table, the exempt agent types,
   exploration, the verdict's `min_n`, and the facts they rest on (prices, Claude Code default efforts,
   the Agent tool's aliases and efforts, the Claude Code version), each with its measured date, source
