@@ -8,6 +8,14 @@ use clap::Subcommand;
 
 use crate::skills;
 
+/// A subcommand that hands every argument to one of goh's Python entry points (`goh agent-stalls`,
+/// `goh ship`), its flags included.
+#[derive(Debug, clap::Args)]
+pub struct PassArgs {
+    #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
+    pub args: Vec<String>,
+}
+
 /// The one flag of a check that polices commits and takes no path exemption.
 #[derive(Debug, clap::Args)]
 pub struct StagedArgs {

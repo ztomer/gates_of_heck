@@ -131,27 +131,25 @@ fn main() {
     std::process::exit(code);
 }
 
-/// `goh agent-stalls`: the house interpreter on `hooks/claude/agent_stalls.py`, its exit code
-/// passed through (GOH.STALLAGENT). One implementation: the coordinator's hook runs the same file.
-fn agent_stalls(args: &[String]) -> i32 {
+/// `goh agent-stalls` and `goh ship`: the house interpreter on one of goh's Python entry points,
+/// its exit code passed through (GOH.STALLAGENT, GOH.SHIP). One implementation each: the
+/// coordinator's hook runs the same `agent_stalls.py`, and `tools/ship.py` is the pipeline.
+fn house_script(name: &str, rel: &str, args: &[String]) -> i32 {
     let py = match house_python::path() {
         Ok(py) => py,
         Err(why) => {
-            goh_tui::eoutln!("{ERR} goh agent-stalls: {why}");
+            goh_tui::eoutln!("{ERR} goh {name}: {why}");
             return 2;
         }
     };
-    let script = goh_root().join("hooks/claude/agent_stalls.py");
+    let script = goh_root().join(rel);
     std::process::Command::new(py)
         .arg(&script)
         .args(args)
         .status()
         .map_or_else(
             |e| {
-                goh_tui::eoutln!(
-                    "{ERR} goh agent-stalls: cannot run {}: {e}",
-                    script.display()
-                );
+                goh_tui::eoutln!("{ERR} goh {name}: cannot run {}: {e}", script.display());
                 2
             },
             |s| s.code().unwrap_or(2),
@@ -165,7 +163,10 @@ fn run_core(command: Commands) -> i32 {
             cargo_dir,
             check_depinfo,
         } => rust_scope::run_command(&cargo_dir, check_depinfo.as_deref()),
-        Commands::AgentStalls { args } => agent_stalls(&args),
+        Commands::AgentStalls(a) => {
+            house_script("agent-stalls", "hooks/claude/agent_stalls.py", &a.args)
+        }
+        Commands::Ship(a) => house_script("ship", "tools/ship.py", &a.args),
         Commands::SourceTree => {
             println!("{}", env!("GOH_SOURCE_STAMP"));
             0

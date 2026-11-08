@@ -6,7 +6,7 @@ use std::path::PathBuf;
 use clap::{Parser, Subcommand};
 
 pub use crate::cli_args::{
-    ExcludeStagedArgs, ProvenAction, RoadmapArgs, SkillsArgs, StagedArgs, TagVersionArgs,
+    ExcludeStagedArgs, PassArgs, ProvenAction, RoadmapArgs, SkillsArgs, StagedArgs, TagVersionArgs,
 };
 
 #[derive(Debug, Parser)]
@@ -48,10 +48,11 @@ pub enum Commands {
     },
     /// List each live subagent idle past a threshold while it waits on its own background work
     /// (`hooks/claude/agent_stalls.py`; its flags pass through). Exit 1 when any is stalled.
-    AgentStalls {
-        #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
-        args: Vec<String>,
-    },
+    AgentStalls(PassArgs),
+    /// Land a committed, locally green HEAD with no agent watching: push through the pre-push
+    /// gate, the repo's release kit, install, the `loopctl verify` card, then `loopctl done`
+    /// (`tools/ship.py`, GOH.SHIP; its flags pass through). Detached unless `--wait`.
+    Ship(PassArgs),
     /// Run a step under a ceiling and report what it left running (the native
     /// `lib/orphan_canary.py wrap`).
     Canary {

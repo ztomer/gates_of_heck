@@ -47,3 +47,35 @@ def test_a_spawn_asking_the_agent_to_wait_on_ci_is_refused(tmp_path: Path, ask: 
 )
 def test_a_spawn_that_does_not_ask_for_ci_runs(tmp_path: Path, clean: str) -> None:
     _allowed(_run(_spawn(dict(GOOD, prompt=f"Do it.\n{clean}\n{DECL}\n{POOL}")), tmp_path))
+
+
+def test_the_contract_hands_off_at_goh_ship_started_for_private_repos() -> None:
+    """GOH.SHIP (2026-11-08): a private repo's agent ends at "committed, local gate green, goh ship
+    started"; a public repo's keeps standard workflows and ends at push and tag (CI.PUBLIC)."""
+    assert "goh ship" in CONTRACT and "started" in CONTRACT
+    assert "pushed" in CONTRACT and "tagged" in CONTRACT
+
+
+@pytest.mark.parametrize(
+    "ask",
+    [
+        "Run goh ship --wait and report each step.",
+        "Wait for goh ship to finish, then report.",
+        "Watch the ship until it lands.",
+        "Poll goh ship --status until it is done.",
+    ],
+)
+def test_a_spawn_asking_the_agent_to_wait_on_its_ship_is_refused(tmp_path: Path, ask: str) -> None:
+    reason = _reason(_run(_spawn(dict(GOOD, prompt=f"Do it.\n{ask}\n{DECL}\n{POOL}")), tmp_path))
+    assert "goh ship" in reason, reason
+
+
+@pytest.mark.parametrize(
+    "clean",
+    [
+        "Commit, run the local gate, then start goh ship --item X.Y and stop.",
+        "Report the goh ship result path.",
+    ],
+)
+def test_a_spawn_that_starts_goh_ship_and_stops_runs(tmp_path: Path, clean: str) -> None:
+    _allowed(_run(_spawn(dict(GOOD, prompt=f"Do it.\n{clean}\n{DECL}\n{POOL}")), tmp_path))

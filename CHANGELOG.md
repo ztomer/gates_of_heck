@@ -2,6 +2,23 @@
 
 ## Unreleased
 
+* **`goh ship`: a private repo lands with no agent watching (GOH.SHIP, owner 2026-11-08).** An agent's
+  work in a private repo ends at "committed, local gate green, goh ship started"; `goh ship`
+  (`tools/ship.py`) then runs, detached, push through the pre-push gate -> the repo's release kit
+  (`.gatesrc` `GOH_SHIP_RELEASE`, with the version from `--version`, `--bump`, or release-please's
+  conventional-commit rule since the newest tag) -> install (`GOH_SHIP_INSTALL`) -> the `loopctl
+  verify` card -> `loopctl done ID --shipped RESULT`, which records the item through done's own gates.
+  One result JSON (`~/.local/state/goh/ship/<repo>/`), a ✓/✗ mark per step; a failed step is named
+  with the last 40 lines of its log, all a resumed agent needs. Each step is bounded
+  (`GOH_SHIP_TIMEOUT`, default 3600 s) by `lib/bounded_run.py`, whose group kill leaves nothing
+  running: with a plain child kill the hung-step test found four `sleep`s at PPID=1, with it none.
+  A repo that tags releases and declares no release command is refused before anything starts.
+  The appended report contract and both `repo-worker` definitions hand off at `goh ship` started
+  (public repos keep push and tag), and a write spawn asking its agent to run `goh ship --wait` or to
+  wait for, watch or poll the ship is refused like one asking it to watch CI. Red first:
+  `tests/test_ship.py` (15) failed with no `tools/ship.py`; the guard's ship cases failed before the
+  refusal existed.
+
 ## v0.75.0 -- agents end at push: the report contract asks for push and tag, and a CI-watching spawn is refused
 
 * **Agents end at push and never watch CI (GOH.ENDATPUSH, owner ruling 2026-11-08).** The report

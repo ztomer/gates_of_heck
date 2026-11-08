@@ -272,6 +272,9 @@ def test_both_workers_end_at_push_and_never_watch_ci() -> None:
         body = (AGENT_SRC / f"{name}.md").read_text().split("---", 2)[2]
         assert "ends once your push (and tag, if the task releases) lands" in body, name
         assert "never wait for, watch or poll CI" in body, name
+        # GOH.SHIP: a private repo's hand-off is earlier, at `goh ship` started, never watched
+        assert "goh ship" in body and "started" in body, name
+        assert "never wait for, watch or poll CI or the ship" in body, name
 
 
 # --- GOH.READCAP / GOH.CACHETTL: the plain settings goh manages (not hooks) ---------------------

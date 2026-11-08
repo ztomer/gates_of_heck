@@ -63,8 +63,9 @@ SPAWN_TOOLS = {"Agent", "Task"}  # `Task` is the tool's legacy name
 
 CONTRACT = (
     "Report contract: your final report is at most 15 lines. Its first line is "
-    "`Status: landed|blocked|failed|answered`; then commits (sha + one line each) and whether they are pushed "
-    "and tagged, red->green proof in one sentence, what is left open in one line, then `Faults seen: <each fault you noticed but did not fix "
+    "`Status: landed|blocked|failed|answered`; then commits (sha + one line each) and how they left you: "
+    "`goh ship` started with its result path (private repos), or pushed and tagged (public repos), "
+    "red->green proof in one sentence, what is left open in one line, then `Faults seen: <each fault you noticed but did not fix "
     "(pre-existing WARN, error, red check, stale state), ';'-separated, each with where it is; "
     "or none>`. No narrative."
 )
@@ -80,6 +81,22 @@ CI_ASK = re.compile(
     r"|\bCI\s+(?:run\s+id|verdict|conclusion|result)s?\b",
     re.IGNORECASE,
 )
+# GOH.SHIP (2026-11-08): a private repo's agent hands off at "goh ship started"; the pipeline it
+# started (push, release, install, verify card, `loopctl done`) is watched by no turn. A sentence
+# asking the agent to run it in the foreground (`goh ship --wait`) or to wait for, watch or poll it
+# is the same spend in a new place, and refuses the spawn the same way.
+SHIP_ASK = re.compile(
+    r"\bgoh\s+ship\b[^.;\n]*--wait\b"
+    r"|\b(?:wait(?:s|ing)?\s+(?:for|on)|watch(?:es|ing)?|poll(?:s|ing)?)\s+(?:the\s+)?"
+    r"(?:goh\s+)?ship\b",
+    re.IGNORECASE,
+)
+SHIP_REFUSAL = (
+    "Refused: this spawn asks the agent to run goh ship in the foreground or to wait for, watch or "
+    "poll it ({ask!r}). A private repo's agent ends at \"committed, local gate green, goh ship "
+    'started" (GOH.SHIP): the pipeline records the item through `loopctl done`, and a failure comes '
+    "back to the coordinator as the result's failing step and log tail."
+)
 CI_NEGATED = re.compile(r"\b(?:never|not|don't|no|without|leave|ignore)\b", re.IGNORECASE)
 CI_REFUSAL = (
     "Refused: this spawn asks the agent to wait for, watch or poll CI, or to report a CI run id or "
@@ -91,10 +108,13 @@ CI_REFUSAL = (
 def judge_ci(prompt: str) -> str | None:
     """The refusal for a prompt that asks its agent to wait on CI, or None."""
     body = prompt.replace(CONTRACT, "")
-    for sentence in re.split(r"[.;:\n]+", body):
-        m = CI_ASK.search(sentence)
-        if m and not CI_NEGATED.search(sentence):
+    for sentence in re.split(r"(?:[.;:](?:\s|$)|\n)+", body):
+        if CI_NEGATED.search(sentence):
+            continue
+        if m := CI_ASK.search(sentence):
             return CI_REFUSAL.format(ask=m.group(0))
+        if m := SHIP_ASK.search(sentence):
+            return SHIP_REFUSAL.format(ask=m.group(0))
     return None
 
 

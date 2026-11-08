@@ -236,6 +236,22 @@ Measured on media_server: `structural --full` 1.9 s -> 0.30 s warm.
 | `GOH_RELEASE_CI_POLL` | `20` | Seconds between looks while that watch waits. |
 | `GOH_RELEASE_BUFFERED` | internal | Self-buffering sentinel set at startup; unset after snapshot so nested invocations stay hermetic. Do not set by hand. |
 
+## Ship (`goh ship`, `tools/ship.py`, GOH.SHIP)
+
+The local landing pipeline an agent hands off to (private repos; public ones keep standard GitHub
+workflows, CI.PUBLIC): push through the pre-push gate -> the repo's release kit -> install -> the
+`loopctl verify` card -> `loopctl done ID --shipped RESULT`, detached and bounded, one result JSON.
+
+| Key | Default | Meaning |
+|---|---|---|
+| `GOH_SHIP_RELEASE` | unset | The repo's release command, run with `GOH_SHIP_VERSION` exported and `{version}` substituted (`tools/release.sh {version}`). Required when the repo tags releases (a `vX.Y.Z` tag exists): `goh ship` refuses before starting without it. Skipped when HEAD already carries a version tag. The environment (even empty) beats `.gatesrc`. |
+| `GOH_SHIP_INSTALL` | unset (step skipped, said) | The install command after the release; unset when the release kit installs (a `--verify` that runs the installer) or nothing installs. |
+| `GOH_SHIP_TIMEOUT` | `3600` | Seconds each step may run before its whole process group is TERM'd then KILL'd (`lib/bounded_run.py`); the step is `timed_out` in the result. |
+| `GOH_SHIP_DIR` | `~/.local/state/goh/ship` | Where results go: `<dir>/<repo>/<UTC stamp>-<sha8>.json`, with `.log` (the worker's marks) and `.<step>.log` beside it; `--out` names one. |
+| `GOH_LOOPCTL` | `~/Projects/.loop/tools/loopctl.py` | The coordinator's `loopctl`, which the verify and done steps run (a test seam). The repo is named to it relative to `LOOPCTL_ROOT`, else `~/Projects`. |
+| `GOH_SHIP_VERSION` | set by `goh ship` | Exported to every step: the version the release step cuts (`--version`, `--bump`, else release-please's rule over the conventional commits since the newest tag). Never set by hand. |
+| `GOH_SHIP_RESULT` | set by `goh ship` | Exported to every step: the result JSON's path. Never set by hand. |
+
 ## Claude Code hooks (`hooks/claude/`, wired in `~/.claude/settings.json`)
 
 Read from the hook's environment (the settings file's `env`, or the shell Claude Code started in), never from `.gatesrc`.
