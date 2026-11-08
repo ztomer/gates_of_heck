@@ -46,6 +46,14 @@ pattern. Three background shells ran one for 8-9 hours. A `while`/`until` whose 
 refused, with the ways out: wait on the PID, the bracket trick, `wait`. The escape is
 `# pgrep-ok: <reason>`. The rule is `lib/self_match.py`.
 
+THE SECRET RENDER (SRV.NTFYROTATE, 2026-11-08). `docker compose config` prints `.env` interpolated
+into the definitions, and an agent's `docker compose config | grep | sed <redact>`, sent to `.33`
+in an ssh heredoc, echoed both ntfy password hashes into its transcript (compose re-escapes `$` as
+`$$`, so the redaction never matched); both passwords and the token were rotated. A compose
+`config` that renders values, and a `docker inspect` with no narrow `--format`, are refused -- in
+the command and in the code it hands to `ssh` or a shell. The escape is `# secrets-ok: <reason>`.
+The rule is `lib/secret_render.py`.
+
 It judges only what it can parse. A command it cannot split runs, unjudged: the guard must never
 be the thing that breaks an ordinary command. A pattern inside a string or a heredoc is TEXT, not
 code, so it is not a finding: `echo 'while :; do :; done'` writes a loop, it does not run one. And
@@ -96,6 +104,12 @@ try:
     import self_match
 except ImportError:
     self_match = None
+
+# The secret render (SRV.NTFYROTATE, 2026-11-08), the same way: a missing rule fails open.
+try:
+    import secret_render
+except ImportError:
+    secret_render = None
 
 # The tools whose input holds a shell command (Bash, Monitor): ONE list, `lib/shell_tools.py`.
 try:
@@ -297,6 +311,15 @@ def judge_self_match(command: str) -> str | None:
     return self_match.judge(command)
 
 
+def judge_secret_render(command: str) -> str | None:
+    """The refusal for a command that prints a stack's resolved secrets (`docker compose config`,
+    an unformatted `docker inspect`), in the command or in the code it hands to ssh or a shell
+    (SRV.NTFYROTATE, 2026-11-08), or None. `# secrets-ok: <reason>`."""
+    if secret_render is None:
+        return None
+    return secret_render.judge(command)
+
+
 def judge_priority(command: str) -> str | None:
     """The refusal for a `tools/load.py` command line whose wrapped command runs at background
     priority (`load.py 32 -- taskpolicy -b loop.sh`, the 10h14m run of 2026-10-25), or None."""
@@ -371,6 +394,7 @@ def main() -> int:
             or judge_load(command)
             or judge_wait(command)
             or judge_self_match(command)
+            or judge_secret_render(command)
             or judge_priority(command)
         )
     else:

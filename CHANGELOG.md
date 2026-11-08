@@ -2,6 +2,21 @@
 
 ## Unreleased
 
+* **A command that prints a stack's resolved secrets is refused at the tool boundary
+  (SRV.NTFYROTATE).** During SRV.NTFY an agent sent `docker compose config | grep | sed <redact>`
+  to `.33` in an ssh heredoc; compose interpolates `.env` (and inlines every `env_file:`) into
+  what it prints and re-escapes `$` as `$$`, so the redaction never matched and both ntfy password
+  hashes reached the transcript; both passwords and the token were rotated. The Bash guard
+  (`hooks/claude/discard_guard.py`, rule `lib/secret_render.py`) now refuses a compose `config`
+  that renders values and a `docker inspect` with no narrow `--format`, in the command AND in the
+  code it hands to `ssh` or a shell (a quoted script, a heredoc body); prose (a commit message, an
+  `echo`, a heredoc written to a file) is not judged. Allowed: `--no-interpolate`, `--services`,
+  `--images`, `--volumes`, `--networks`, `--profiles`, `--variables`, `--hash`, `-q`. The allow
+  list is calibrated against REAL compose over a fixture with planted `.env`/`env_file` values
+  (`tests/test_secret_render_guard.py`; the refused forms are shown to print them, so the fixture
+  is not blind). Escape: `# secrets-ok: <reason>`. Red first: all 25 refusal cases failed
+  with the rule unwired.
+
 * **A repo's roadmap is one live plan, and a gate holds it there (GOH.ROADMAPGATE).** The
   2026-11-08 audit of every repo's roadmap found completed rows left in place, duplicate plan files
   and entries the umbrella queue had already closed; the owner's rework (*"rework, rephase, harden
