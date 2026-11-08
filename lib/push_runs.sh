@@ -53,15 +53,27 @@ export_siblings() {
     done < <("$GOH_PY" -S "$GOH/gates/_push_siblings.py" "$tree")
 }
 
+# private_cargo_config RUN_DIR BUILD_DIR: the private run's cargo config (see push_gate.sh): redirects the
+# user-global, path-keyed build-dir into the run. The kit's own entry, so it is RECORDED for run_litter.
+private_cargo_config() {
+    local esc="${2//\\/\\\\}"
+    mkdir -p "$1/.cargo"
+    printf '[build]\nbuild-dir = "%s"\n' "${esc//\"/\\\"}" >"$1/.cargo/config.toml"
+    printf '.cargo\n' >>"$1/.kit-wrote"
+}
+
 # What a gate left in run directory $1 beyond the run's own entries: the owner stamp, the private
-# build dir, the tree ($2), and the sibling links export_siblings made (and recorded). NAMED, not swept
-# silently -- the defect is the consumer's. Any other thing under that name is still named.
+# build dir, the tree ($2), the sibling links export_siblings made (and recorded), and every name the
+# kit RECORDED in `.kit-wrote` as its own (the private run's `.cargo/config.toml` was reported to
+# ztools as its gate's litter, 2026-11-08). NAMED, not swept silently -- the defect is the consumer's.
+# Any other thing under that name is still named: the exemption is the record, not the name.
 run_litter() {
     local run_dir="$1" worktree="$2" name out=""
     while IFS= read -r name; do
         case "$name" in
-            .owner | .cargo-build | .siblings | "$(basename "$worktree")") continue ;;
+            .owner | .cargo-build | .siblings | .kit-wrote | "$(basename "$worktree")") continue ;;
         esac
+        if [ -f "$run_dir/.kit-wrote" ] && grep -qxF "$name" "$run_dir/.kit-wrote"; then continue; fi
         if [ -L "$run_dir/$name" ] && [ -f "$run_dir/.siblings" ] &&
             grep -qxF "$name"$'\t'"$(readlink "$run_dir/$name")" "$run_dir/.siblings"; then
             continue

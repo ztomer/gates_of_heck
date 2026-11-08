@@ -229,6 +229,33 @@ def test_a_concurrent_push_of_the_same_repo_takes_a_private_path_and_build_dir(t
     assert build.startswith(str(fallback)), f"the fallback build-dir outlives its run: {build}"
 
 
+def test_the_fallback_runs_own_cargo_config_is_not_named_as_litter(tmp_path):
+    """ztools' release, 2026-11-08: 'the gate wrote outside its tree (removed): .cargo'. The gate
+    wrote nothing -- the KIT writes `<run dir>/.cargo/config.toml` in the private fallback, and the
+    litter report knew `.cargo-build` and the owner stamp but not that file, so it blamed the
+    consumer for the kit's own entry. What the kit writes it records (`.kit-wrote`), and the report
+    skips exactly the recorded names: a gate's own `.cargo` beside its tree is still named."""
+    repo = _cargo_repo(tmp_path)
+    export_root = tmp_path / "exports"
+    first = _push(repo, tmp_path, export_root)
+    assert first.returncode == 0, first.stdout + first.stderr
+    stable = Path(_cwds(tmp_path)[0]).parent
+    _abandoned_run(repo, export_root, stable.name, _stamp(os.getpid()))
+    got = _push(repo, tmp_path, export_root)
+    assert got.returncode == 0, got.stdout + got.stderr
+    assert "outside its tree" not in got.stdout + got.stderr, got.stdout + got.stderr
+
+
+def test_a_cargo_dir_the_gate_itself_writes_beside_its_tree_is_still_named(tmp_path):
+    gate = BUILD_DIR_GATE.replace("exit 0\n", "mkdir -p ../.cargo\nexit 0\n")
+    repo = _cargo_repo(tmp_path)
+    (repo / "tools" / "gate.sh").write_text(gate)
+    _git(repo, "commit", "-qam", "a gate that writes a .cargo beside its tree")
+    got = _push(repo, tmp_path, tmp_path / "exports")
+    assert got.returncode == 0, got.stdout + got.stderr
+    assert "outside its tree" in got.stdout + got.stderr and ".cargo" in got.stdout + got.stderr
+
+
 def test_the_fallback_build_dir_never_overrides_the_repos_own(tmp_path):
     """The fallback redirects only the build-dir the USER's ~/.cargo/config.toml keys by workspace
     path. A repo that names its own in .cargo/config.toml keeps it: an exported

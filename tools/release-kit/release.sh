@@ -33,9 +33,9 @@
 #                 The stanza body becomes the tag message and release notes,
 #                 so docs and releases cannot disagree. Unreleased must be EMPTY at the
 #                 tagged commit and no entry may repeat an earlier stanza's
-#                 (changelog_cut.py check). With no stanza and entries under Unreleased,
-#                 step 0b cuts it FROM Unreleased itself (into an unpushed
-#                 "chore: version X" HEAD, else as "chore: changelog vX").
+#                 (changelog_cut.py check). Entries under Unreleased: step 0b cuts them
+#                 itself (--title TEXT, else the first entry's clause; or merged into a hand
+#                 stanza) into an unpushed "chore: version X" HEAD, else "chore: changelog vX".
 #   3. tag        create annotated tag vX.Y.Z if absent — idempotent: an
 #                 existing tag is left alone, never moved or re-created
 #   4. push       push branch + tag to origin (--no-push to skip)
@@ -102,7 +102,7 @@ source "$GOH/tui/lib.sh"
 VERSION=""
 GATE_CMD="${GOH_RELEASE_GATE:-}"
 BRANCH=""            # default: current branch, resolved later
-CHANGELOG_CHECK=1
+CHANGELOG_CHECK=1; TITLE=""
 CI_CHECK=1
 DO_PUSH=1
 DO_RELEASE=1
@@ -123,6 +123,7 @@ while [ $# -gt 0 ]; do
     --gate)               GATE_CMD="${2:?}"; shift 2 ;;
     --branch)             BRANCH="${2:?}"; shift 2 ;;
     --no-changelog-check) CHANGELOG_CHECK=0; shift ;;
+    --title)              TITLE="${2:?}"; shift 2 ;;
     --no-ci-check)        CI_CHECK=0; shift ;;
     --no-push)            DO_PUSH=0; shift ;;
     --skip-release)       DO_RELEASE=0; shift ;;
@@ -320,7 +321,7 @@ begin "changelog" "look for a ${TAG} stanza in CHANGELOG.md"
 if [ "$CHANGELOG_CHECK" = 0 ]; then
   warn "skipped (--no-changelog-check)"
 elif [ "${CUT_PLANNED:-0}" = 1 ]; then
-  plan "the ${TAG} stanza is the one step 0b cuts from Unreleased (changelog_cut.py check runs on it)"
+  plan "the ${TAG} stanza is the one step 0b makes from Unreleased (changelog_cut.py check runs on it)"
 elif has_stanza "$VERSION"; then
   # The tag ships the whole tree, so at this commit nothing is unreleased: an Unreleased section
   # that still holds entries, or a stanza repeating an earlier one's entry, is refused (GOH.REL2:

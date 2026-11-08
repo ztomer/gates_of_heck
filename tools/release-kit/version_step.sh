@@ -62,11 +62,10 @@ release_backfill_floor() {
 release_changelog_cut() {
   local _ccut _csubj
   [ "$CHANGELOG_CHECK" = 1 ] && [ -f CHANGELOG.md ] || return 0
-  has_stanza "$VERSION" && return 0
   _ccut="$(mktemp "${TMPDIR:-/tmp}/goh-release-cut.XXXXXX")"
   cp CHANGELOG.md "$_ccut" || fail "cannot copy CHANGELOG.md"
   if ! bash "$GOH/gates/python.sh" "$GOH/tools/release-kit/changelog_cut.py" cut --version "$VERSION" \
-      --file "$_ccut" >/dev/null 2>"$_ccut.err"; then
+      ${TITLE:+--title "$TITLE"} --file "$_ccut" >/dev/null 2>"$_ccut.err"; then
     if grep -q "Unreleased is empty\|no Unreleased section" "$_ccut.err"; then
       rm -f "$_ccut" "$_ccut.err"
       return 0  # nothing to cut: the changelog step names the missing stanza

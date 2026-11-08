@@ -27,8 +27,9 @@ def _worktree(repo: Path, tmp_path: Path) -> Path:
     return wt
 
 
-def _land(wt: Path, gate: str) -> subprocess.CompletedProcess[str]:
-    env = hermetic_env(drop_git=True, GOH_LAND_GATE=gate)
+def _land(wt: Path, gate: str | None) -> subprocess.CompletedProcess[str]:
+    """land.sh from `wt`; `gate` None leaves GOH_LAND_GATE unset, so land.sh chooses the gate."""
+    env = hermetic_env(drop_git=True, **({} if gate is None else {"GOH_LAND_GATE": gate}))
     return subprocess.run(["bash", str(LAND)], cwd=wt, env=env, capture_output=True, text=True,
                           timeout=60, stdin=subprocess.DEVNULL, check=False)  # fmt: skip
 
@@ -157,3 +158,49 @@ def test_the_intended_change_must_be_in_what_landed(repo: Path, tmp_path: Path) 
     r = subprocess.run(["bash", str(LAND)], check=False, cwd=wt, env=env, capture_output=True, text=True,
                        timeout=60, stdin=subprocess.DEVNULL)  # fmt: skip
     assert r.returncode == 0, r.stdout + r.stderr
+
+
+def _declare_gate(wt: Path, line: str) -> None:
+    (wt / ".gatesrc").write_text(line + "\n")
+    git(wt, "add", ".gatesrc")
+    git(wt, "commit", "-q", "--no-verify", "-m", "declare the gate")
+
+
+def test_the_gate_a_repo_declares_in_gatesrc_is_the_one_that_runs(
+    repo: Path, tmp_path: Path
+) -> None:
+    """GOH.CUTTITLE: the default was the relative `tools/gate_profile.sh .`, a file only
+    gates_of_heck has, so in any other repo (ztools) land.sh found no gate until one was passed by
+    hand. The repo declares its gate once, in .gatesrc, as it declares GOH_RELEASE_GATE."""
+    wt = _worktree(repo, tmp_path)
+    _declare_gate(wt, "GOH_LAND_GATE='echo declared > ran.txt'")
+    tip = git(wt, "rev-parse", "HEAD").strip()
+    r = _land(wt, None)
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert (wt / "ran.txt").read_text() == "declared\n" and _main(repo) == tip
+
+
+def test_a_red_declared_gate_lands_nothing(repo: Path, tmp_path: Path) -> None:
+    wt = _worktree(repo, tmp_path)
+    _declare_gate(wt, "GOH_LAND_GATE=false")
+    before = _main(repo)
+    r = _land(wt, None)
+    assert r.returncode != 0 and "gate failed" in r.stderr, r.stdout + r.stderr
+    assert _main(repo) == before
+
+
+def test_the_environment_gate_beats_the_declared_one(repo: Path, tmp_path: Path) -> None:
+    wt = _worktree(repo, tmp_path)
+    _declare_gate(wt, "GOH_LAND_GATE=false")
+    r = _land(wt, "true")
+    assert r.returncode == 0, r.stdout + r.stderr
+
+
+def test_with_no_declared_gate_the_kits_profile_runs_by_path(repo: Path, tmp_path: Path) -> None:
+    """The fallback is the kit's gate_profile.sh by ABSOLUTE path -- a repo that is not
+    gates_of_heck has no tools/gate_profile.sh of its own, and the gate must not be 'not found'."""
+    wt = _worktree(repo, tmp_path)
+    assert not (wt / "tools" / "gate_profile.sh").exists()
+    r = _land(wt, None)
+    assert f"gate: {REPO_ROOT}/tools/gate_profile.sh ." in r.stdout, r.stdout + r.stderr
+    assert "No such file" not in r.stdout + r.stderr, r.stdout + r.stderr

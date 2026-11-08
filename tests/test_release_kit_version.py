@@ -82,12 +82,13 @@ def _changelog(kit: dict, text: str) -> None:
     commit_all(kit["proj"], "changelog")
 
 
-def test_an_unreleased_section_still_holding_entries_is_refused(kit):
-    _changelog(kit, f"# C\n\n## Unreleased\n\n* shipped long ago\n\n## {TAG}\n\n{STANZA_BODY}\n")
-    r = run_release(kit)
-    assert r.returncode != 0, r.stdout + r.stderr
-    assert "step 'changelog' failed" in r.stderr and "Unreleased" in r.stderr, r.stderr
-    assert not _tagged(kit)
+def test_the_check_refuses_an_unreleased_section_still_holding_entries(tmp_path):
+    """release.sh MERGES such entries into the stanza first (tests/test_changelog_cut.py); the
+    check is what holds when nothing did, so it still names them."""
+    log = tmp_path / "CHANGELOG.md"
+    log.write_text(f"# C\n\n## Unreleased\n\n* shipped long ago\n\n## {TAG}\n\n{STANZA_BODY}\n")
+    r = _cut(log, "check", "--version", VERSION)
+    assert r.returncode == 1 and "Unreleased" in r.stderr and "still holds" in r.stderr, r.stderr
 
 
 def test_an_empty_unreleased_section_tags(kit):
@@ -240,10 +241,3 @@ def test_cut_follows_the_repos_double_hyphen_style(tmp_path):
     log.write_text("# C\n\n## Unreleased\n\n* new\n\n## v1.1.0 -- old\n\n* old\n")
     assert _cut(log, "cut", "--version", "1.2.0", "--title", "t").returncode == 0
     assert "\n## v1.2.0 -- t\n" in log.read_text()
-
-
-def test_cut_without_a_title_writes_the_bare_heading_in_any_style(tmp_path):
-    log = tmp_path / "CHANGELOG.md"
-    log.write_text("# C\n\n## Unreleased\n\n* new\n\n## v1.1.0 — old _(2026-01-01)_\n\n* old\n")
-    assert _cut(log, "cut", "--version", "1.2.0").returncode == 0
-    assert "\n## v1.2.0\n" in log.read_text()

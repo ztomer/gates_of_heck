@@ -7,13 +7,16 @@ Unreleased claimed as unreleased what four tags had shipped. At a tagged commit 
 unreleased -- the tag ships the whole tree -- so:
 
 * `cut --version X [--title T]`: moves Unreleased's body into a new `## vX -- T` stanza, in the
-  file's own heading style (` — ` and a ` _(YYYY-MM-DD)_` date when its newest stanza has them;
-  `## vX` without a title) directly under the (now empty) Unreleased heading. release.sh runs it itself
-  when HEAD has no stanza for X and Unreleased holds entries (GOH.CUTAUTO). Refused when the stanza exists, when Unreleased is
-  empty (nothing to release), or when a moved entry repeats one an earlier stanza already holds.
+  file's own heading style (` — ` and a ` _(YYYY-MM-DD)_` day when the stanzas carry them) directly
+  under the (now empty) Unreleased heading. The title is T, else the first entry's first clause; a
+  file whose stanzas carry no title gets a bare `## vX`. Every Unreleased section is folded in and
+  ONE heading is left. When a stanza for X already exists (written by hand), Unreleased's entries
+  are merged into it, by sub-heading, and an entry it already holds is not repeated (GOH.CUTTITLE).
+  release.sh runs it itself whenever Unreleased holds entries (GOH.CUTAUTO). Refused when
+  Unreleased is empty (nothing to release) or when a moved entry repeats one an earlier stanza holds.
 * `check --version X`: what release.sh's changelog step asks of the commit being tagged -- the
-  stanza for X exists, Unreleased (if the file keeps one) is EMPTY, and no entry of X's stanza
-  repeats an entry of an earlier stanza. Exit 1 names each finding.
+  stanza for X exists, Unreleased (if the file keeps one) is ONE section and EMPTY, and no entry of
+  X's stanza repeats an entry of an earlier stanza. Exit 1 names each finding.
 
 An entry is a top-level list item (`* ` or `- ` at column 0) with its continuation lines, compared
 with whitespace collapsed. Headings: `## Unreleased` / `## [Unreleased]`, `## vX...` / `## [X]...`.
@@ -100,6 +103,12 @@ def check(lines: list[str], version: str) -> list[str]:
     findings: list[str] = []
     if not any(s.version == version for s in secs):
         return [f"no stanza for {version} (## v{version} ...)"]
+    n_unrel = sum(1 for s in secs if s.unreleased)
+    if n_unrel > 1:
+        findings.append(
+            f"the Unreleased heading appears twice or more ({n_unrel}): it is ONE section -- run "
+            f"changelog_cut.py cut, which folds them into the stanza and leaves one heading"
+        )
     for s in secs:
         held = [ln for ln in body(lines, s) if ln.strip()]
         if s.unreleased and held:
@@ -113,39 +122,153 @@ def check(lines: list[str], version: str) -> list[str]:
 
 
 DATED_TAIL = re.compile(r"\s_\(\d{4}-\d{2}-\d{2}\)_$")
+STYLE_WINDOW = 5  # how many of the newest titled stanzas say whether the file dates its headings
 
 
-def heading_style(secs: list[Section]) -> tuple[str, bool]:
-    """The separator and date convention of the newest titled version stanza: routines and ztools
-    write `## vX — title _(YYYY-MM-DD)_`, goh `## vX -- title`. A cut follows the file it joins."""
-    for s in secs:
-        if s.version and len(s.title.split(maxsplit=1)) > 1:
-            rest = s.title.split(maxsplit=1)[1]
-            sep = "—" if rest.startswith("— ") else "--"
-            return sep, bool(DATED_TAIL.search(s.title))
-    return "--", False
+def heading_style(secs: list[Section]) -> tuple[bool, str, bool]:
+    """(titled, separator, dated) of the file's version headings: routines and ztools write
+    `## vX — title _(YYYY-MM-DD)_`, goh `## vX -- title`. A cut follows the file it joins. The day
+    is the house heading's, so ANY of the newest few titled stanzas carrying one makes the file
+    dated: a hand-written `## vX -- title` without it is a lapse, not a change of style."""
+    titled = [s for s in secs if s.version and len(s.title.split(maxsplit=1)) > 1]
+    if not titled:
+        return False, "--", False
+    dated = [s for s in titled[:STYLE_WINDOW] if DATED_TAIL.search(s.title)]
+    ref = (dated or titled)[0].title.split(maxsplit=1)[1]
+    return True, ("—" if ref.startswith("— ") else "--"), bool(dated)
+
+
+TITLE_STOP = re.compile(r"\s\(|:\s|\.\s|;\s|\s--\s|\s—\s|\.$")
+TITLE_MAX = 90
+
+
+def derive_title(first_entry: str) -> str:
+    """A heading's title from an entry: its first clause, house-lowercase, at most TITLE_MAX."""
+    text = re.sub(r"^\*\*[^*]+\*\*:?\s*", "", first_entry).strip()
+    m = TITLE_STOP.search(text)
+    clause = (text[: m.start()] if m else text).strip()
+    if len(clause) > TITLE_MAX:
+        clause = clause[:TITLE_MAX].rsplit(" ", 1)[0]
+        if clause.count("`") % 2:  # never leave a code span open
+            clause = clause[: clause.rfind("`")]
+    if clause[:2].isalpha() and clause[1:2].islower():  # "The x" -> "the x"; "ZT.X" stays
+        clause = clause[:1].lower() + clause[1:]
+    return clause.rstrip(" ,;:")
+
+
+def _strip_edges(ls: list[str]) -> list[str]:
+    while ls and not ls[0].strip():
+        ls = ls[1:]
+    while ls and not ls[-1].strip():
+        ls = ls[:-1]
+    return ls
+
+
+def _rstrip(ls: list[str]) -> list[str]:
+    while ls and not ls[-1].strip():
+        ls = ls[:-1]
+    return ls
+
+
+def _split_subs(ls: list[str], level: int) -> tuple[list[str], list[tuple[str, list[str]]]]:
+    """A body as (preamble, [(sub-heading line, its lines)]) at heading level `level`."""
+    pre: list[str] = []
+    subs: list[tuple[str, list[str]]] = []
+    for line in ls:
+        m = HEADING.match(line)
+        if m and len(m.group(1)) == level:
+            subs.append((line, []))
+        elif subs:
+            subs[-1][1].append(line)
+        else:
+            pre.append(line)
+    # A sub-heading keeps the blank (or none) its author put after it; only its tail is trimmed.
+    return _strip_edges(pre), [(h, _rstrip(b)) for h, b in subs]
+
+
+def _drop_held(ls: list[str], held: set[str]) -> list[str]:
+    """`ls` without the top-level entries (with their continuation lines) whose text is in `held`."""
+    groups: list[list[str]] = []
+    for line in ls:
+        if (
+            line.startswith(("* ", "- "))
+            or not groups
+            or not (
+                line.startswith((" ", "\t"))
+                and line.strip()
+                and groups[-1][0].startswith(("* ", "- "))
+            )
+        ):
+            groups.append([line])
+        else:
+            groups[-1].append(line)
+    return [
+        ln
+        for g in groups
+        if not (g[0].startswith(("* ", "- ")) and entries(g)[0] in held)
+        for ln in g
+    ]
+
+
+def merge_into_stanza(base: list[str], st: Section, moved: list[str]) -> list[str]:
+    """`base` with `moved` merged into the hand-written stanza `st`: same-named sub-headings are
+    appended to, new ones added after, and an entry the stanza already holds is not repeated."""
+    sub_level = st.level + 1
+    own = body(base, st)
+    pre, subs = _split_subs(own, sub_level)
+    mpre, msubs = _split_subs(_drop_held(moved, set(entries(own))), sub_level)
+    pre = _strip_edges([*pre, *mpre]) if not (pre and mpre) else [*pre, *mpre]
+    for head, mbody in msubs:
+        name = head.lstrip("#").strip().lower()
+        for k, (h, b) in enumerate(subs):
+            if h.lstrip("#").strip().lower() == name:
+                subs[k] = (h, [*b, *_strip_edges(mbody)])
+                break
+        else:
+            subs.append((head, mbody))
+    block: list[str] = [""]
+    if pre:
+        block += [*pre, ""]
+    for h, b in subs:
+        block += [h, *b, ""]
+    return [*base[: st.start + 1], *block, *base[st.end :]]
 
 
 def cut(lines: list[str], version: str, title: str | None) -> tuple[list[str] | None, list[str]]:
     secs = sections(lines)
-    if any(s.version == version for s in secs):
-        return None, [f"a stanza for {version} already exists"]
-    unrel = next((s for s in secs if s.unreleased), None)
-    if unrel is None:
+    unrels = [s for s in secs if s.unreleased]
+    if not unrels:
         return None, ["no Unreleased section to cut from"]
-    moved = body(lines, unrel)
-    while moved and not moved[0].strip():
-        moved = moved[1:]
-    while moved and not moved[-1].strip():
-        moved = moved[:-1]
-    if not moved:
+    moved: list[str] = []
+    for u in unrels:
+        part = _strip_edges(body(lines, u))
+        if part:
+            moved += ([""] if moved else []) + part
+    first = unrels[0]
+    if not moved and not (len(unrels) > 1 and any(s.version == version for s in secs)):
         return None, ["Unreleased is empty: nothing to release"]
-    head = "#" * unrel.level
-    sep, dated = heading_style(secs)
-    stamp = f" _({datetime.date.today().isoformat()})_" if dated else ""
-    heading = f"{head} v{version} {sep} {title}{stamp}" if title else f"{head} v{version}"
-    new = [*lines[: unrel.start + 1], "", heading, "", *moved, ""]
-    new += lines[unrel.end :]
+    # One Unreleased heading, emptied: the other Unreleased sections' lines go with their headings.
+    gone = {i for u in unrels[1:] for i in range(u.start, u.end)}
+    base: list[str] = []
+    head_at = 0
+    for i, line in enumerate(lines):
+        if i in gone or first.start < i < first.end:
+            continue
+        base.append(line)
+        if i == first.start:
+            head_at = len(base) - 1
+            base.append("")
+    exists = next((s for s in sections(base) if s.version == version), None)
+    if exists is not None:
+        new = merge_into_stanza(base, exists, moved) if moved else base
+    else:
+        titled, sep, dated = heading_style(secs)
+        head = "#" * first.level
+        if title is None and titled:
+            title = derive_title((entries(moved) or [""])[0])
+        stamp = f" _({datetime.date.today().isoformat()})_" if dated else ""
+        heading = f"{head} v{version} {sep} {title}{stamp}" if title else f"{head} v{version}"
+        new = [*base[: head_at + 2], heading, "", *moved, "", *base[head_at + 2 :]]
     dups = duplicates(new, sections(new), version)
     if dups:
         return None, [f"duplicate entry: {d}" for d in dups]
@@ -177,7 +300,7 @@ def main(argv: list[str] | None = None) -> int:
     if new is None:
         return 1
     path.write_text("\n".join(new) + "\n", encoding="utf-8")
-    print(f"✓ {path}: Unreleased is now the v{a.version} stanza")
+    print(f"✓ {path}: Unreleased is now the v{a.version} stanza (one heading)")
     return 0
 
 

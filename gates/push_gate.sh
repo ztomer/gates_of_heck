@@ -400,9 +400,7 @@ while read -r local_ref local_sha _remote_ref _remote_sha; do
     [ -n "$export_build_dir" ] || printf '%s\n' "$(cd "$root" && /bin/pwd -P)" >"$run_dir.source"
     if [ -n "$export_build_dir" ]; then
         export_build_dir="$run_dir/.cargo-build"
-        mkdir -p "$run_dir/.cargo"
-        esc="${export_build_dir//\\/\\\\}"
-        printf '[build]\nbuild-dir = "%s"\n' "${esc//\"/\\\"}" >"$run_dir/.cargo/config.toml"
+        private_cargo_config "$run_dir" "$export_build_dir"
     fi
     owner_stamp "$$" >"$run_dir/.owner"
     # Named after the repo, so a tool that reads its project's name from the directory sees the

@@ -2,6 +2,28 @@
 
 ## Unreleased
 
+* **A kit cut writes the house heading, folds every Unreleased section into one, and merges into a
+  hand-written stanza (GOH.CUTTITLE).** `release.sh` passed no title, so in repos whose headings
+  are `## vX — title _(YYYY-MM-DD)_` (routines, ztools) the cut wrote a bare `## vX`. Now the title
+  is `--title`, else the first Unreleased entry's first clause, and the day is the release day;
+  the dated style is kept when any of the newest five titled stanzas carries a day (ztools'
+  hand-written `## vX -- title` pair no longer unlearns it); a file with no titled stanza still
+  gets a bare heading. ztools v3.13.2: a second `## Unreleased` heading (typed under the empty one
+  a cut leaves) made the cut read the EMPTY first section and decline; `cut` now folds every
+  Unreleased section into the stanza and leaves exactly one heading, and `check` refuses a second.
+  A hand-written stanza next to entries still under Unreleased is no longer refused: they are
+  merged into it by sub-heading, an entry it already holds is not repeated. Pinned by
+  `tests/test_changelog_cut.py`.
+* **`land.sh` uses the repo's declared gate.** Its default was the relative
+  `tools/gate_profile.sh .`, a file only gates_of_heck has: in ztools it did not exist and an
+  agent passed `GOH_LAND_GATE` by hand. The gate is now the environment's `GOH_LAND_GATE`, else
+  the one `.gatesrc` declares, else the kit's own `gate_profile.sh .` by path.
+* **The push gate no longer blames a gate for the kit's own `.cargo`.** A push taking the private
+  export path (its stable path held by a live run) writes `<run dir>/.cargo/config.toml` to
+  redirect cargo's build-dir, and the litter report named it: "the gate wrote outside its tree
+  (removed): .cargo" in a ztools release. What the kit writes it records (`.kit-wrote`) and the
+  report skips exactly those names.
+
 ## v0.65.0 -- the release kit cuts the stanza from Unreleased itself; a cut follows the file's heading style
 
 * **`changelog_cut.py` takes the tag spelling of a version.** `--version v0.110.5` died with a

@@ -2,11 +2,15 @@
 # land.sh -- from a worktree: gate the branch tip, then fast-forward the main checkout to THAT sha.
 #
 # The house workflow lands a branch only after its own push gate is green on the tip
-# (`tools/gate_profile.sh .`). Done by hand it was `gate; merge`, and on 2026-10-08 a `;` where
+# (the kit's `tools/gate_profile.sh .`, by path). Done by hand it was `gate; merge`, and on 2026-10-08 a `;` where
 # `&&` belonged moved main onto a red gate run (engineering rule #3: gates are structural, not
 # disciplinary). So the two are one command:
 #
-#   1. the tip is read once, and the gate (GOH_LAND_GATE, default `tools/gate_profile.sh .`) runs;
+#   1. the tip is read once, and the gate runs: GOH_LAND_GATE from the environment, else the one the
+#      repo DECLARES in its .gatesrc (read by name in a child, like GOH_RELEASE_GATE), else the kit's
+#      gate_profile.sh over the repo (its push gate, which reads that same .gatesrc). The default
+#      was the relative `tools/gate_profile.sh .`, which only gates_of_heck has: in ztools it did
+#      not exist and an agent had to pass GOH_LAND_GATE by hand (GOH.CUTTITLE);
 #   2. a red gate lands nothing; a tip that moved while it was gated lands nothing (the gate
 #      judged a different commit);
 #   3. the main checkout (the first `git worktree list` entry) merges the GATED SHA with
@@ -41,7 +45,12 @@ if [ "$(cd "$here" && pwd -P)" = "$(cd "$main" && pwd -P)" ]; then
 fi
 tip="$(git rev-parse HEAD)"
 branch="$(git rev-parse --abbrev-ref HEAD)"
-gate="${GOH_LAND_GATE:-tools/gate_profile.sh .}"
+gate="${GOH_LAND_GATE:-}"
+if [ -z "$gate" ] && [ -f "$here/.gatesrc" ]; then
+    gate="$(cd "$here" && bash -c 'unset GOH_LAND_GATE; . ./.gatesrc >/dev/null 2>&1 </dev/null; printf %s "${GOH_LAND_GATE-}"')" \
+        || { err "land.sh: cannot read $here/.gatesrc"; exit 2; }
+fi
+[ -n "$gate" ] || gate="$GOH/tools/gate_profile.sh ."
 
 section "land $branch @ ${tip:0:8} -> $main"
 # Refuse BEFORE the gate what could never land (G15): a pre-commit hook that refused the commit left
