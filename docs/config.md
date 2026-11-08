@@ -229,6 +229,8 @@ Measured on media_server: `structural --full` 1.9 s -> 0.30 s warm.
 | Key | Default | Meaning |
 |---|---|---|
 | `GOH_RELEASE_GATE` | unset (required) | Gate command a release must pass (`--gate CMD` flag beats it). |
+| `GOH_RELEASE_CI_WAIT` | `1800` | Seconds step 0 watches the CI runs for HEAD (after pushing an unpushed HEAD) before refusing a pending or missing run; a red run refuses at once. `0` looks once. |
+| `GOH_RELEASE_CI_POLL` | `20` | Seconds between looks while that watch waits. |
 | `GOH_RELEASE_BUFFERED` | internal | Self-buffering sentinel set at startup; unset after snapshot so nested invocations stay hermetic. Do not set by hand. |
 
 ## Claude Code hooks (`hooks/claude/`, wired in `~/.claude/settings.json`)

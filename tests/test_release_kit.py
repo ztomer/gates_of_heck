@@ -105,7 +105,9 @@ def kit(tmp_path: Path) -> dict:
     }
 
 
-def run_release(kit: dict, *args: str, gate: str = "true") -> subprocess.CompletedProcess:
+def run_release(
+    kit: dict, *args: str, gate: str = "true", env_extra: dict | None = None
+) -> subprocess.CompletedProcess:
     env = dict(os.environ)
     env["GOH_DIR"] = str(REPO_ROOT)
     env["PATH"] = f"{kit['bin']}:{env['PATH']}"
@@ -122,6 +124,9 @@ def run_release(kit: dict, *args: str, gate: str = "true") -> subprocess.Complet
     )
     for k in ("GOH_RELEASE_GATE", "GOH_RELEASE_BUFFERED"):
         env.pop(k, None)
+    # The CI watch looks once and never sleeps unless a test asks for a wait (test_release_kit_ci.py).
+    env.update({"GOH_RELEASE_CI_WAIT": "0", "GOH_RELEASE_CI_POLL": "0"})
+    env.update(env_extra or {})
     return subprocess.run(
         ["/bin/bash", str(RELEASE), "--version", VERSION, "--gate", gate, *args],
         cwd=kit["proj"],

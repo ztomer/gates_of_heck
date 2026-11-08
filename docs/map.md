@@ -270,7 +270,9 @@ Every structural checker is native since Phase N3; the Python checkers they port
   rest still run, and the exit is 1. The daily launchd job `com.ztomer.goh-actions-sweep` (04:15 and at load; wrapper runs
   an export of HEAD with `--apply`; log `~/Library/Logs/goh-actions-sweep.log`, only what it did) is installed by
   `tools/install_actions_sweep.sh`. Pinned by `test_actions_sweep.py`.
-* `tools/release-kit/` — `release.sh` (CI on HEAD → gate → stanza → tag → push → release → tap),
+* `tools/release-kit/` — `release.sh` (CI on HEAD → gate → stanza → tag → push → release → tap;
+  step 0 is `ci_step.sh`: an unpushed HEAD is pushed through the gated push, then its runs are
+  watched under `GOH_RELEASE_CI_WAIT`),
   `tap_bump.sh` (the house tap bump: clone, edit, the TAP's own `tools/gate.sh --full`, a pinned
   push read back; `release.sh` calls it, and so may a product's own release script),
   `gen_app_icons.py`, `update_dev.sh`. Pinned by `test_release_kit.py` (+ `test_release_kit_ci.py`,

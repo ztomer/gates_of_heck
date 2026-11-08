@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+* **The release kit pushes HEAD for its CI and waits for it, instead of refusing (GOH.RELCI,
+  2026-11-07).** A wrapper commits "chore: version X" and calls the kit with that commit unpushed,
+  so on any repo with GitHub Actions on, step 0 found no run and refused "no CI run for HEAD": the
+  ztools v3.12.2 release needed a hand push, a wait and a re-run. Step 0 (now
+  `tools/release-kit/ci_step.sh`) pushes the branch through the normal gated push when origin lacks
+  HEAD, then watches its runs: a red run refuses at once, a pending or missing one at the deadline
+  (`GOH_RELEASE_CI_WAIT`, default 1800 s; `GOH_RELEASE_CI_POLL`, 20 s), and only all-green tags.
+  `--no-push` with an unpushed HEAD refuses by name; Actions disabled is still "no CI", with no early
+  push; the dry run plans the push and the wait.
 * **A lib declared with `crate-type` is measured by the Rust coverage gate (2026-11-07).** cargo
   metadata reports such a lib's kind as its crate-type list (`["rlib", "cdylib"]`), never `"lib"`, so
   `gates/_coverage_rust.sh` enumerated nothing for koffee_big's bigkoff-core, selected no target kind,
