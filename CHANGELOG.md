@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## v0.65.0 -- the release kit cuts the stanza from Unreleased itself; a cut follows the file's heading style
+
 * **`changelog_cut.py` takes the tag spelling of a version.** `--version v0.110.5` died with a
   `StopIteration` traceback (the stanza heading is `## v<version>`, so the lookup was `vv0.110.5`);
   a leading `v` is now dropped in both `cut` and `check`. Found cutting routines v0.110.5.
