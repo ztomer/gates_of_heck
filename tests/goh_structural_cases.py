@@ -213,6 +213,16 @@ FULL_CASES: dict[str, dict[str, bytes]] = {
         ".gatesrc": GATESRC,
         "load.sh": b"#!/bin/sh\necho 'while :; do :; done'\n",
     },
+    # `goh roadmap`, every repo, once a roadmap is declared: a completed entry left in the plan is
+    # red; the reworked shape (an id and a `Done when:` per open entry) is green.
+    "roadmap_red": {
+        ".gatesrc": GATESRC + b"GOH_ROADMAP=ROADMAP.md\n",
+        "ROADMAP.md": b"# Roadmap\n\n## Phase 1\n\n- **X1 old.** DONE\n  Done when: never.\n",
+    },
+    "roadmap_green": {
+        ".gatesrc": GATESRC + b"GOH_ROADMAP=ROADMAP.md\n",
+        "ROADMAP.md": b"# Roadmap\n\nWhat shipped is in git.\n\n## Phase 1\n\n- **X1 new.**\n  Done when: a test.\n",
+    },
     # `goh requires-call`, opt-in by naming its rules file: a tool that relaunches must judge.
     "requires_call_red": {
         ".gatesrc": GATESRC + b"GOH_REQUIRES_CALL='rc.toml'\n",
@@ -238,6 +248,8 @@ EXPECTED: dict[str, tuple[int, str | None]] = {
     "claim_red": (1, "prose claims are derived"),
     "busy_loop_green": (0, None),
     "busy_loop_red": (1, "no busy loop or busy-wait in a tracked file"),
+    "roadmap_green": (0, None),
+    "roadmap_red": (1, "one roadmap, open entries only"),
     "requires_call_green": (0, None),
     "requires_call_red": (1, "a file that calls X calls Y"),
     "tap_write_green": (0, None),

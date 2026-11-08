@@ -140,7 +140,7 @@ impl Fences {
 /// `CODE_SPAN.sub(spaces, line)`: `` (`+)(?:(?!\1).)*?\1 ``. The opening run
 /// is greedy and gives back backticks when no closer of its length follows;
 /// the closer is the FIRST run of exactly that many backticks' worth.
-fn blank_code_spans(line: &str) -> String {
+pub(crate) fn blank_code_spans(line: &str) -> String {
     let c: Vec<char> = line.chars().collect();
     let mut out = String::with_capacity(line.len());
     let mut i = 0usize;

@@ -61,6 +61,7 @@ pub mod red_run;
 pub mod requires_call;
 pub mod requires_call_py;
 pub mod revblobs;
+pub mod roadmap;
 pub mod rust_depinfo;
 pub mod rust_scope;
 pub mod rustfmt_staged;
@@ -420,6 +421,7 @@ fn run_ported(command: Commands) -> Result<i32, Box<Commands>> {
         Commands::TapWrites(a) => tapwrite::run_command(a.staged),
         Commands::MovingTags(a) => movingtag::run_command(a.staged),
         Commands::InstalledVersion(a) => instline::run_command(a.staged),
+        Commands::Roadmap(a) => roadmap::run_command(a.staged, a.seed, a.queue.as_deref()),
         Commands::UnreapedSpawn {
             exclude,
             staged,

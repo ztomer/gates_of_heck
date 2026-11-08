@@ -6,7 +6,7 @@ use std::path::PathBuf;
 use clap::{Parser, Subcommand};
 
 pub use crate::cli_args::{
-    ExcludeStagedArgs, ProvenAction, SkillsArgs, StagedArgs, TagVersionArgs,
+    ExcludeStagedArgs, ProvenAction, RoadmapArgs, SkillsArgs, StagedArgs, TagVersionArgs,
 };
 
 #[derive(Debug, Parser)]
@@ -439,6 +439,8 @@ pub enum Commands {
     MovingTags(StagedArgs),
     /// Fail on a plan (ROADMAP/PLAN/BACKLOG/TODO `.md`) stating the installed version (it rots).
     InstalledVersion(StagedArgs),
+    /// One roadmap (`GOH_ROADMAP`) of open entries, each with an id and a `Done when:`.
+    Roadmap(RoadmapArgs),
     /// Fail on a test spawn no guard reaps, or whose reap sits below a line that can panic.
     UnreapedSpawn {
         /// Regex on repo-relative paths to skip. Unset: the repo's own `.gatesrc` `GOH_EXCLUDE`, as

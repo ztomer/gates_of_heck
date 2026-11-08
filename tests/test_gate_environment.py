@@ -66,7 +66,12 @@ def _porcelain(repo: Path) -> str:
 # environment IS an accepted source for them (a caller names its toolchain), and a `.gatesrc` value
 # overrides it. `pyformat.rs` reads them the same way (GOH.RUFFPIN), so dropping the inherited value
 # would make `goh python-formatted` pick a different ruff than the shell gates of the same repo.
+#
+# GOH_ROADMAP_QUEUE is a LOCATION seam (`goh roadmap`'s umbrella queue file), not a repo's choice:
+# the environment IS its source -- a test names a fixture queue, a machine without the umbrella
+# names none -- and dropping it would send every fixture to the real queue.
 NOT_PIPELINE_CONFIG = {
+    "GOH_ROADMAP_QUEUE",
     "GOH_PY_RUNNER",
     "GOH_PYTHON_VERSION",
     "GOH_BIN",

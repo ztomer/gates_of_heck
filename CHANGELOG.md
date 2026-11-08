@@ -2,6 +2,23 @@
 
 ## Unreleased
 
+* **A repo's roadmap is one live plan, and a gate holds it there (GOH.ROADMAPGATE).** The
+  2026-11-08 audit of every repo's roadmap found completed rows left in place, duplicate plan files
+  and entries the umbrella queue had already closed; the owner's rework (*"rework, rephase, harden
+  the roadmaps"*) fixed the instances, and `goh roadmap`, a structural step in every repo, is the
+  class. `.gatesrc` names the one file (`GOH_ROADMAP`, or `none`); any other plan file is a
+  finding; no entry may be marked completed (an id-carrying heading, list item or table row with
+  `DONE`/`shipped`/`closed`/`✓`/`~~`/`[x]`, or a row whose status position opens with one -- prose
+  that says "what shipped is in CHANGELOG.md" is not an entry); every open entry under a `Phase`
+  heading opens with an id and carries `Done when:`, with a stray `Done when:` a finding so the
+  entry grammar cannot go blind in silence; and a `(queue: <ID>)` whose umbrella item is done is a
+  finding (ZoneWM's advisory `check_stale_backlog.py`, generalised; the queue path is a seam,
+  `GOH_ROADMAP_QUEUE`, and a machine without it gets the rule NOT JUDGED with the reason). Today's
+  findings are a shrink-only ratchet, `roadmap_seed.json`: over, under and stale are red, and the
+  seed may not rise against HEAD's. goh seeds its own `docs/BACKLOG.md`. Pinned by
+  `tests/test_check_roadmap.py` (each rule planted once and red, the prose fixture green beside
+  it) and `roadmap/tests.rs`.
+
 ## v0.71.0 -- a write spawn goes to a lean agent type, not general-purpose
 
 * **A write spawn goes to a lean agent type, not general-purpose (GOH.LEANAGENT).** Over 118

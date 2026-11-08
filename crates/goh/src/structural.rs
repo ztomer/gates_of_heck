@@ -194,6 +194,8 @@ pub fn run(staged: bool, full: bool, keep_going: bool) -> i32 {
     step!(mdlinks::step(&cfg, staged));
     // A plan that says what is installed: true the day it was written, false at the next release.
     step!(crate::instline::step(&repo, &files, staged));
+    // The plan itself: one file, open entries only, each with an id and a `Done when:`.
+    step!(crate::roadmap::step(&repo, &files, &cfg, staged));
     step!(lockver::step());
     step!(pyformat::step(&cfg, staged));
     step!(killname::step(&cfg, staged));

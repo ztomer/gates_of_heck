@@ -93,3 +93,17 @@ pub enum ProvenAction {
         artifacts: Vec<String>,
     },
 }
+
+/// `goh roadmap`: the one roadmap's rules, against its shrink-only seed.
+#[derive(Debug, clap::Args)]
+pub struct RoadmapArgs {
+    /// Judge the index (the tree a commit would produce).
+    #[arg(long)]
+    pub staged: bool,
+    /// Write today's findings as `roadmap_seed.json` (refused if any count would rise).
+    #[arg(long, conflicts_with = "staged")]
+    pub seed: bool,
+    /// The umbrella queue file (default: `GOH_ROADMAP_QUEUE`, else `~/Projects/.loop/queue.json`).
+    #[arg(long)]
+    pub queue: Option<String>,
+}

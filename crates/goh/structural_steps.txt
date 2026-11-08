@@ -28,6 +28,7 @@ no tracked build output
 no tracked file its .gitignore ignores
 no unreaped spawns in tests
 no vendored copies of house files
+one roadmap, open entries only
 prose claims are derived
 python is ruff-formatted
 shell lint

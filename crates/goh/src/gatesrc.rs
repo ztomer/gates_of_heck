@@ -96,6 +96,9 @@ pub struct Gatesrc {
     /// `GOH_BARE_PYTHON_SCOPE`: a regex on repo-relative paths ADDED to the bare-python step's
     /// scope (the hooks and `tools/gate.sh`). Empty: the default scope alone.
     pub bare_python_scope: String,
+    /// `GOH_ROADMAP`: the one roadmap file, repo-relative, or `none` (`goh roadmap`). Unset: the
+    /// roadmap step judges nothing and says so.
+    pub roadmap: Option<String>,
 }
 
 /// Parse one right-hand side: single/double-quoted or bare with `#` comment.
@@ -226,6 +229,7 @@ pub fn from_pairs(pairs: &BTreeMap<String, String>) -> Result<Gatesrc, String> {
         stdin_gate: pairs.get("GOH_SUBPROCESS_STDIN").cloned(),
         js_syntax_gate: pairs.get("GOH_JS_SYNTAX").cloned(),
         bare_python_scope: get("GOH_BARE_PYTHON_SCOPE"),
+        roadmap: pairs.get("GOH_ROADMAP").filter(|v| !v.is_empty()).cloned(),
     })
 }
 
@@ -239,7 +243,7 @@ pub fn from_pairs(pairs: &BTreeMap<String, String>) -> Result<Gatesrc, String> {
 /// keys, so a step that reads one from the environment (`GOH_STEP_TIMEOUT`, and
 /// every child it spawns) sees the file's value, never an inherited one.
 /// Pinned against `docs/config.md` by `tests/test_gate_environment.py`.
-pub const PIPELINE_KEYS: [&str; 41] = [
+pub const PIPELINE_KEYS: [&str; 42] = [
     "GOH_MAX_LINES",
     "GOH_LINE_EXCLUDE",
     "GOH_LINE_BASELINE",
@@ -282,6 +286,7 @@ pub const PIPELINE_KEYS: [&str; 41] = [
     "GOH_JS_SYNTAX_MIN_FILES",
     "GOH_BUSY_LOOP_MIN_FILES",
     "GOH_INSTALLED_VERSION_MIN_FILES",
+    "GOH_ROADMAP",
 ];
 
 /// Make the process environment say what `root/.gatesrc` says for every
