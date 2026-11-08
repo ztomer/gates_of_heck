@@ -25,6 +25,14 @@
   directory (gates_of_heck to `$GOH`, any other to the checkout beside the real one, none when it is
   not checked out) and records it in `.siblings`, which `run_litter` reads instead of a name.
 
+## v0.60.0 -- the release kit pushes HEAD for its CI and waits for it; a crate-type lib is a lib
+
+* **The release kit no longer refuses an unpushed HEAD (GOH.RELCI, 2026-11-07).** Step 0
+  (`tools/release-kit/ci_step.sh`) pushes the branch through the gated push when origin lacks HEAD,
+  then watches its CI runs: red refuses at once, pending or missing at `GOH_RELEASE_CI_WAIT`
+  (1800 s), all green tags. A wrapper's "chore: version X" commit releases in one pass.
+* **A lib declared with `crate-type` is measured by the Rust coverage gate (KB.HYG3).**
+
 ## v0.59.2 -- Swift coverage measures the package, not its path dependencies; the push export carries every sibling
 
 * **A SwiftPM path dependency is no longer counted as the package (GOH.SWIFTCOV, 2026-11-07).**
