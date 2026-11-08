@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## v0.67.0 -- goh agent-stalls names a subagent idle on background work that never notified
+
 * **A subagent idle on background work that never notified is named, not discovered
   (GOH.STALLAGENT).** On 2026-11-08 KB.LIGHT2 ended its turn "waiting for the completion
   notification" of a test run that hung, and sat 48 minutes until the owner asked why only one
