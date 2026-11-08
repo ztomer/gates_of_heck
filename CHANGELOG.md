@@ -45,6 +45,17 @@
   directory (gates_of_heck to `$GOH`, any other to the checkout beside the real one, none when it is
   not checked out) and records it in `.siblings`, which `run_litter` reads instead of a name.
 
+## v0.61.0 -- the shell lint follows what a script sources; a proven structural step marks its tree
+
+* **The shell lint runs `shellcheck -x` (GOH.SHX, 2026-11-07).** A finding that needs a sourced
+  file (SC2178/SC2128/SC2154 ...) now reaches every repo; each file is judged in the tree its
+  sources resolve in (the root at `--full`, an index checkout at `--staged`), and the verdict cache
+  key covers what it sources. Consumers fixed before this landed: divoom-control (e0d11e4), scripts
+  (72bcc68).
+* **A proven structural step marks its tree (GOH.SHX).** The push gate no longer warns that
+  `tools/gate.sh --full` skipped the house structural layer and runs it twice when the step was a
+  proven-cache hit.
+
 ## v0.60.0 -- the release kit pushes HEAD for its CI and waits for it; a crate-type lib is a lib
 
 * **The release kit no longer refuses an unpushed HEAD (GOH.RELCI, 2026-11-07).** Step 0
