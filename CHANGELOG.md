@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## v0.70.0 -- the release kit pushes origin's default branch, never the branch it was cut from
+
 * **The release kit pushes the release to origin's default branch, never to the branch it was cut
   from (GOH.RELBRANCH).** On 2026-11-08 goh's `release.sh`, run from a `tools/land.sh` worktree,
   pushed `$BRANCH` -- the current branch, `goh-loadlock` -- to origin: a stray branch on the remote,
