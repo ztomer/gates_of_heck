@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## v0.74.0 -- the weekly watch measures agent spend and checks each efficiency change against its prediction
+
 * **The weekly watch measures what agents spend, and checks each efficiency change against its
   prediction (GOH.SPENDWATCH).** `scripts/model_choice_watch.py` (still the one weekly job) gains a
   SPEND section from `scripts/spend_watch.py`: per week, over the subagent transcripts, cost-unit
