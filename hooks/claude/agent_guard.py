@@ -63,11 +63,41 @@ SPAWN_TOOLS = {"Agent", "Task"}  # `Task` is the tool's legacy name
 
 CONTRACT = (
     "Report contract: your final report is at most 15 lines. Its first line is "
-    "`Status: landed|blocked|failed|answered`; then commits (sha + one line each), CI run id + "
-    "conclusion, red->green proof in one sentence, what is left open in one line, then `Faults seen: <each fault you noticed but did not fix "
+    "`Status: landed|blocked|failed|answered`; then commits (sha + one line each) and whether they are pushed "
+    "and tagged, red->green proof in one sentence, what is left open in one line, then `Faults seen: <each fault you noticed but did not fix "
     "(pre-existing WARN, error, red check, stale state), ';'-separated, each with where it is; "
     "or none>`. No narrative."
 )
+# Agents end at push (owner ruling 2026-11-08, GOH.ENDATPUSH): CI on the landed HEAD is the
+# coordinator's `loopctl done` gate, and agents that waited on it spent 54% of their context after
+# the first push (GOH.SPENDWATCH). A sentence asking to wait for/watch/poll CI, run `gh run
+# watch|view`, or report a CI run id/verdict/conclusion refuses the spawn; one that negates it
+# ("do not watch CI") is the ruling itself and passes, and "run ./release.sh" (a release script
+# that waits for CI before tagging is cutting the release) names no CI and passes.
+CI_ASK = re.compile(
+    r"\b(?:wait(?:s|ing)?\s+(?:for|on)|watch(?:es|ing)?|poll(?:s|ing)?)\s+(?:the\s+)?CI\b"
+    r"|\bgh\s+run\s+(?:watch|view)\b"
+    r"|\bCI\s+(?:run\s+id|verdict|conclusion|result)s?\b",
+    re.IGNORECASE,
+)
+CI_NEGATED = re.compile(r"\b(?:never|not|don't|no|without|leave|ignore)\b", re.IGNORECASE)
+CI_REFUSAL = (
+    "Refused: this spawn asks the agent to wait for, watch or poll CI, or to report a CI run id or "
+    "verdict ({ask!r}). Agents end at push (owner ruling 2026-11-08): CI on the landed HEAD is the "
+    "coordinator's `loopctl done` gate. Ask for the commits and whether they are pushed and tagged."
+)
+
+
+def judge_ci(prompt: str) -> str | None:
+    """The refusal for a prompt that asks its agent to wait on CI, or None."""
+    body = prompt.replace(CONTRACT, "")
+    for sentence in re.split(r"[.;:\n]+", body):
+        m = CI_ASK.search(sentence)
+        if m and not CI_NEGATED.search(sentence):
+            return CI_REFUSAL.format(ask=m.group(0))
+    return None
+
+
 FAULTS_LINE = re.compile(
     r"^[ \t>*-]*Faults[ \t]+seen:[ \t]*(.*?)[ \t]*$", re.IGNORECASE | re.MULTILINE
 )
@@ -268,6 +298,10 @@ def on_spawn(event: dict[str, Any]) -> dict[str, Any] | None:
             return {"hookSpecificOutput": {"hookEventName": "PreToolUse",
                                            "permissionDecision": "deny",
                                            "permissionDecisionReason": why}}  # fmt: skip
+    if not exempt and (why := judge_ci(prompt)):
+        return {"hookSpecificOutput": {"hookEventName": "PreToolUse",
+                                       "permissionDecision": "deny",
+                                       "permissionDecisionReason": why}}  # fmt: skip
     escape = None
     if not exempt:
         why, escape = judge_type(agent_type, declared, prompt, rules)

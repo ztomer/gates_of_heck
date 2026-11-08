@@ -266,6 +266,14 @@ def test_the_lean_types_name_their_tools_and_no_mcp_server_but_the_pool_and_the_
         assert len(desc) <= 200, desc
 
 
+def test_both_workers_end_at_push_and_never_watch_ci() -> None:
+    """GOH.ENDATPUSH (owner ruling 2026-11-08): CI is the coordinator's `loopctl done` gate."""
+    for name in ("repo-worker", "repo-worker-ui"):
+        body = (AGENT_SRC / f"{name}.md").read_text().split("---", 2)[2]
+        assert "ends once your push (and tag, if the task releases) lands" in body, name
+        assert "never wait for, watch or poll CI" in body, name
+
+
 # --- GOH.READCAP / GOH.CACHETTL: the plain settings goh manages (not hooks) ---------------------
 
 

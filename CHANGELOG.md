@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+* **Agents end at push and never watch CI (GOH.ENDATPUSH, owner ruling 2026-11-08).** The report
+  contract `hooks/claude/agent_guard.py` appends to every write spawn asks for the commits and whether
+  they are pushed and tagged, no longer a CI run id and conclusion (54% of agent context was spent after
+  the first push, GOH.SPENDWATCH). A write spawn whose prompt asks its agent to wait for, watch or poll
+  CI (`gh run watch|view`) or to report a CI run id or verdict is refused, naming CI as the
+  coordinator's `loopctl done` gate; a sentence that negates it, and `run ./release.sh`, pass. Both
+  `repo-worker` definitions say the worker ends once its push (and tag) lands.
+
 ## v0.74.0 -- the weekly watch measures agent spend and checks each efficiency change against its prediction
 
 * **The weekly watch measures what agents spend, and checks each efficiency change against its
