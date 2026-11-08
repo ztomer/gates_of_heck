@@ -217,6 +217,12 @@ def command(res: dict, name: str) -> tuple[str | None, str]:
     return f"{py} {lc} done {shlex.quote(res['item'])} --shipped {shlex.quote(res['result'])}", ""
 
 
+def unbound_env() -> dict[str, str]:
+    """This environment without git's repository bindings: a step runs in the shipped repo, never in
+    whatever repository a hook that started `goh ship` had bound (contract #12)."""
+    return {k: v for k, v in os.environ.items() if k not in GIT_BINDINGS}
+
+
 def run_steps(res: dict) -> int:
     """Run the pipeline in this process; one mark per step; 0 shipped, 1 a step failed."""
     os.chdir(res["repo"])
@@ -288,9 +294,9 @@ def start(args: argparse.Namespace) -> int:
         return worker(res["result"])
     log = Path(res["result"]).with_suffix(".log")
     with log.open("ab") as out:
-        subprocess.Popen([sys.executable, str(Path(__file__).resolve()), "--worker", res["result"]],
-                         cwd=res["repo"], stdin=subprocess.DEVNULL, stdout=out, stderr=out,
-                         start_new_session=True, close_fds=True)  # fmt: skip
+        worker_argv = [sys.executable, str(Path(__file__).resolve()), "--worker", res["result"]]
+        subprocess.Popen(worker_argv, cwd=res["repo"], env=unbound_env(), stdin=subprocess.DEVNULL,
+                         stdout=out, stderr=out, start_new_session=True, close_fds=True)  # fmt: skip
     info(f"goh ship started: {res['result']}")
     return 0
 

@@ -20,6 +20,7 @@ from pathlib import Path
 
 import pytest
 from conftest import REPO_ROOT, git, hermetic_env, run_goh
+from timing_bounds import GiveUp, assert_sooner
 
 SHIP = REPO_ROOT / "tools" / "ship.py"
 # The fake loopctl: every call appended to $FAKE_LOOPCTL_LOG; `verify` exits $FAKE_VERIFY_RC.
@@ -37,8 +38,7 @@ if sys.argv[1] == "verify":
 def shipped(repo: Path, tmp_path: Path) -> Path:
     """`repo` with a bare `origin` it tracks, tagged v1.0.0 and pushed, then one commit on top."""
     remote = tmp_path / "remote.git"
-    subprocess.run(["git", "init", "-q", "--bare", "-b", "main", str(remote)], check=True,
-                   stdin=subprocess.DEVNULL, capture_output=True)  # fmt: skip
+    git(repo, "clone", "-q", "--bare", str(repo), str(remote))
     git(repo, "remote", "add", "origin", str(remote))
     git(repo, "tag", "v1.0.0")
     git(repo, "push", "-q", "-u", "origin", "main", "v1.0.0")
@@ -139,7 +139,8 @@ def test_the_bound_kills_a_hung_step_and_its_whole_group_leaving_no_orphan(shipp
     hung = f"{marker} & {marker} & ( {marker} & wait ) & wait"
     t0 = time.monotonic()
     r = _ship(shipped, tmp_path, "--wait", GOH_SHIP_RELEASE=hung, GOH_SHIP_TIMEOUT="2")
-    assert time.monotonic() - t0 < 60
+    # the pass: the 2 s bound, then up to the 5 s grace; the failure: the sleeps run out (731 s)
+    assert_sooner(time.monotonic() - t0, 8, 731, "a hung step under a 2 s bound")
     assert r.returncode == 1, r.stdout + r.stderr
     res = _result(tmp_path)
     assert res["failed_step"] == "release"
@@ -150,13 +151,14 @@ def test_the_bound_kills_a_hung_step_and_its_whole_group_leaving_no_orphan(shipp
 
 def test_started_detached_it_returns_at_once_and_the_worker_finishes_alone(shipped, tmp_path):
     t0 = time.monotonic()
-    r = _ship(shipped, tmp_path, "--item", "X.ONE", GOH_SHIP_INSTALL="sleep 2")
+    r = _ship(shipped, tmp_path, "--item", "X.ONE", GOH_SHIP_INSTALL="sleep 8")
     assert r.returncode == 0, r.stdout + r.stderr
-    assert time.monotonic() - t0 < 10
+    # the pass: plan and spawn; the failure: a start that ran the pipeline, its 8 s install included
+    assert_sooner(time.monotonic() - t0, 1.5, 8, "goh ship's detached start")
     assert "goh ship started" in r.stdout
     assert str(tmp_path / "ship.json") in r.stdout
-    deadline = time.monotonic() + 90
-    while time.monotonic() < deadline and _result(tmp_path)["status"] == "running":
+    give_up = GiveUp(90)
+    while not give_up.passed() and _result(tmp_path)["status"] == "running":
         time.sleep(0.5)
     res = _result(tmp_path)
     assert res["status"] == "ok", res
