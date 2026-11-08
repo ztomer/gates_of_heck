@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## v0.69.0 -- a load experiment refuses a build tool that takes a machine-wide lock; the release kit never reopens a running app
+
 * **A load experiment refuses a build tool that takes a machine-wide lock (GOH.LOADLOCK).** On
   2026-11-08 `load.py --max 25m --oversubscribe 32 -- taskpolicy -b cargo test -q -p taxes-cli
   --test app_check` starved cargo to 0.36 s of CPU in 21 minutes, but cargo had first taken
