@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## v0.71.0 -- a write spawn goes to a lean agent type, not general-purpose
+
 * **A write spawn goes to a lean agent type, not general-purpose (GOH.LEANAGENT).** Over 118
   general-purpose subagents on 2026-11-08, 69% of agent cost was cache reads, and the median
   first turn was 70.6k tokens: every connected MCP server's tool names, the deferred-tool and
