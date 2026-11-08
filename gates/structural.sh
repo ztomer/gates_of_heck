@@ -306,6 +306,8 @@ fi
 # red past the native steps; otherwise it fails fast like every step.
 _goh_mcp_rc=0
 _goh_mcp_top="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
+# The gated repo's own config, unknown when this script is linted (GOH.SHX2):
+# shellcheck source=/dev/null
 if (unset GOH_MCP_SERVERS; cd "$_goh_mcp_top" && [ -f .gatesrc ] && . ./.gatesrc >/dev/null 2>&1 \
         && [ -n "${GOH_MCP_SERVERS:-}" ]); then
     section "MCP servers on the wire (GOH_MCP_SERVERS)"

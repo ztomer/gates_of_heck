@@ -5,7 +5,9 @@ use std::path::PathBuf;
 
 use clap::{Parser, Subcommand};
 
-pub use crate::cli_args::{ProvenAction, SkillsArgs, StagedArgs, TagVersionArgs};
+pub use crate::cli_args::{
+    ExcludeStagedArgs, ProvenAction, SkillsArgs, StagedArgs, TagVersionArgs,
+};
 
 #[derive(Debug, Parser)]
 #[command(name = "goh", about = "Static structural gates", version)]
@@ -410,26 +412,10 @@ pub enum Commands {
         seed: bool,
     },
     /// Fail on a statement after an `exec` that replaced the shell: it can never run.
-    DeadAfterExec {
-        /// Regex on repo-relative paths to skip. Unset: the repo's own `.gatesrc` `GOH_EXCLUDE`, as
-        /// its structural gate applies it; `--exclude ''` opts out.
-        #[arg(long)]
-        exclude: Option<String>,
-        /// Staged blobs (polices the index).
-        #[arg(long)]
-        staged: bool,
-    },
+    DeadAfterExec(ExcludeStagedArgs),
     /// Fail on a shell source that expands the hook's carried index (`GOH_HOOK_INDEX_FILE`,
     /// `GOH_HOOK_GIT_DIR`) anywhere but `goh_bind_hook_index`'s definition.
-    BareHookIndex {
-        /// Regex on repo-relative paths to skip. Unset: the repo's own `.gatesrc` `GOH_EXCLUDE`, as
-        /// its structural gate applies it; `--exclude ''` opts out.
-        #[arg(long)]
-        exclude: Option<String>,
-        /// Staged blobs (polices the index).
-        #[arg(long)]
-        staged: bool,
-    },
+    BareHookIndex(ExcludeStagedArgs),
     /// Fail on an `actions/checkout` step (workflow or composite action) that leaves the job token
     /// in `.git/config`: `persist-credentials` not the literal `false`, and no
     /// `# persist-credentials-ok: <reason>` on the step. No `--exclude`: a credential check takes no
@@ -445,6 +431,8 @@ pub enum Commands {
     /// `uses: docker://`. A digest, a release tag or a commit id passes; the one escape is
     /// `# moving-tag-ok: <reason>`. No `--exclude`: what a build pulls is not a style.
     MovingTags(StagedArgs),
+    /// Fail on a plan (ROADMAP/PLAN/BACKLOG/TODO `.md`) stating the installed version (it rots).
+    InstalledVersion(StagedArgs),
     /// Fail on a test spawn no guard reaps, or whose reap sits below a line that can panic.
     UnreapedSpawn {
         /// Regex on repo-relative paths to skip. Unset: the repo's own `.gatesrc` `GOH_EXCLUDE`, as

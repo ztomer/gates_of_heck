@@ -106,7 +106,7 @@ def kit(tmp_path: Path) -> dict:
 
 
 def run_release(
-    kit: dict, *args: str, gate: str = "true", env_extra: dict | None = None
+    kit: dict, *args: str, gate: str | None = "true", env_extra: dict | None = None
 ) -> subprocess.CompletedProcess:
     env = dict(os.environ)
     env["GOH_DIR"] = str(REPO_ROOT)
@@ -128,7 +128,14 @@ def run_release(
     env.update({"GOH_RELEASE_CI_WAIT": "0", "GOH_RELEASE_CI_POLL": "0"})
     env.update(env_extra or {})
     return subprocess.run(
-        ["/bin/bash", str(RELEASE), "--version", VERSION, "--gate", gate, *args],
+        [
+            "/bin/bash",
+            str(RELEASE),
+            "--version",
+            VERSION,
+            *(["--gate", gate] if gate else []),
+            *args,
+        ],
         cwd=kit["proj"],
         capture_output=True,
         text=True,

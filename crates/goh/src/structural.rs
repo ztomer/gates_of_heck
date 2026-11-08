@@ -192,6 +192,8 @@ pub fn run(staged: bool, full: bool, keep_going: bool) -> i32 {
     step!(crate::jssyntax::command::step(&cfg));
     step!(provenance::step(&repo, staged));
     step!(mdlinks::step(&cfg, staged));
+    // A plan that says what is installed: true the day it was written, false at the next release.
+    step!(crate::instline::step(&repo, &files, staged));
     step!(lockver::step());
     step!(pyformat::step(&cfg, staged));
     step!(killname::step(&cfg, staged));

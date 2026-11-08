@@ -161,3 +161,6 @@ GOH_LANDED_ONLY=main
 # so the push keyed on a bin/goh built before the commit and the release gate, after the resolver
 # replaced it, keyed on HEAD's -- the same tree, a different key, a 3-minute re-run
 # (tests/test_proven.py: ..._so_the_release_gate_reuses_the_push).
+# What `tools/release-kit/release.sh` runs before it tags, when no --gate is passed (GOH.SHX2):
+# goh's own full gate, so a bare release of goh is gated rather than refused.
+GOH_RELEASE_GATE="tools/gate.sh --full"

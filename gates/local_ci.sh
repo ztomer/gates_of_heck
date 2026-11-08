@@ -121,7 +121,7 @@ ROOT="$(pwd)"
 # how a caller says what it means.
 unset GOH_CI_STEPS GOH_CI_JOBS 2>/dev/null || true
 if [ -f "$ROOT/.gatesrc" ]; then
-    # shellcheck disable=SC1091
+    # shellcheck source=/dev/null # the gated repo's config, unknown when this is linted (GOH.SHX2)
     . "$ROOT/.gatesrc"
 fi
 

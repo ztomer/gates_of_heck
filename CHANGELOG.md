@@ -2,6 +2,28 @@
 
 ## Unreleased
 
+* **A plan that keeps the installed version by hand is refused, in every repo (`goh
+  installed-version`, GOH.INSTLINE, 2026-11-07).** A "Shipped and installed: vX" line is true the
+  day it is written and false at the next release: koffee's FEATURE_PLAN said v2.12.1 build 36 while
+  the Mac ran 2.13.0 build 40, and app_updates, sys_updater and ztools carried the same line. The
+  rule was koffee's own citation gate's (`ff18e06`); it is now a structural step every repo runs at
+  both scopes, `installed` within 20 characters of a `vN.N`, `build N` or `versionCode N`, over a
+  PLAN -- a tracked `.md` named with a ROADMAP, PLAN, BACKLOG or TODO word. A CHANGELOG or decision
+  record is dated history and is not read. The three consumer lines now point at the releases page.
+* **The shell lint refuses an absolute `# shellcheck source=` path, and collects a `$VAR/`-named
+  source (GOH.SHX2, 2026-11-07).** Twenty-six directives in nine consumers named
+  `/Users/ztomer/Projects/gates_of_heck/tui/lib.sh`: shellcheck read one machine's file, outside the
+  tree, the staged checkout and the verdict's key. A directive names a repo-relative path or
+  `/dev/null` with its reason; the consumers' now say `/dev/null` (goh lints its own library).
+  shellcheck follows `. "$D/conf"` with the variable stripped, but the lint collected only literal
+  paths, so a non-shell file named that way was missing from the staged checkout and the cache key:
+  it is collected now (the key's version moves to v5). goh's own gates no longer follow goh's
+  `.gatesrc` under `-x`: push_gate.sh and structural.sh say `source=/dev/null`, and local_ci.sh's
+  `disable=SC1091` (which silenced the note and followed the file anyway) is `source=/dev/null` too.
+* **A repo declares its release gate in `.gatesrc` (`GOH_RELEASE_GATE`, GOH.SHX2).** release.sh
+  reads it by name in a child when neither `--gate` nor the environment gives one; goh declares
+  `tools/gate.sh --full`, so a bare release of goh is gated instead of refused.
+
 * **The shell lint follows what a script sources (`shellcheck -x`, GOH.SHX, 2026-11-07).**
   `shellcheck -x tools/release-kit/release.sh` named SC2178/SC2128 (a name a sourced library uses as
   an array, reused as a string) while `goh shell-lint` passed it: since GOH.SHSEV split the batched

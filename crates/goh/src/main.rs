@@ -37,6 +37,7 @@ pub mod homepaths;
 pub mod hookindex;
 pub mod house_python;
 pub mod index_view;
+pub mod instline;
 pub mod jssyntax;
 pub mod killname;
 pub mod length;
@@ -385,15 +386,12 @@ fn run_ported(command: Commands) -> Result<i32, Box<Commands>> {
                 earlypipe::run_command(staged, x)
             }
         }),
-        Commands::DeadAfterExec { exclude, staged } => {
-            paths(exclude, |x| deadexec::run_command(staged, x))
-        }
-        Commands::BareHookIndex { exclude, staged } => {
-            paths(exclude, |x| hookindex::run_command(staged, x))
-        }
+        Commands::DeadAfterExec(a) => paths(a.exclude, |x| deadexec::run_command(a.staged, x)),
+        Commands::BareHookIndex(a) => paths(a.exclude, |x| hookindex::run_command(a.staged, x)),
         Commands::CheckoutCredentials(a) => checkoutcreds::run_command(a.staged),
         Commands::TapWrites(a) => tapwrite::run_command(a.staged),
         Commands::MovingTags(a) => movingtag::run_command(a.staged),
+        Commands::InstalledVersion(a) => instline::run_command(a.staged),
         Commands::UnreapedSpawn {
             exclude,
             staged,

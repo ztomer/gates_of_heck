@@ -79,11 +79,10 @@ root="$(git rev-parse --show-toplevel)"
 gate="$root/tools/gate.sh"
 [ -f "$gate" ] || die "pre-push: $root/tools/gate.sh missing — run '$GOH/install.sh $root'"
 tag_check="$GOH/gates/goh.sh"
-# Named, not a shell error: without this the refusal below reads
-# "No such file or directory: …/goh.sh", which names a path the reader has no
-# way to act on. It is fail-closed either way — an absent gate is not a pass —
-# and a broken shared checkout is the one case where refusing to push cannot be
-# the answer.
+# Named, not a shell error: without this the refusal below reads "No such file or directory:
+# …/goh.sh", which names a path the reader has no way to act on. It is fail-closed either way — an
+# absent gate is not a pass — and a broken shared checkout is the one case where refusing to push
+# cannot be the answer.
 [ -f "$tag_check" ] || die "pre-push: $tag_check missing from the gates checkout at $GOH — nothing pushed"
 
 # CLOSED BY C4 (gates/_from_head.sh): this script, and every gate it runs, now runs from an export
@@ -447,6 +446,7 @@ while read -r local_ref local_sha _remote_ref _remote_sha; do
     # tests/test_push_gate_ci_steps.py): structural.sh and local_ci.sh mark the tree they ran for.
     structural_mark="$(mktemp "${TMPDIR:-/tmp}/goh-structural-mark.XXXXXX")"
     steps_mark="$(mktemp "${TMPDIR:-/tmp}/goh-ci-steps-mark.XXXXXX")"
+    # shellcheck source=/dev/null # the .gatesrc below is the gated repo's, unknown at lint (GOH.SHX2)
     (cd "$worktree" \
         && GOH_CROSS_REPO_ROOT="$root" GOH_STRUCTURAL_MARK="$structural_mark" \
             GOH_CI_STEPS_MARK="$steps_mark" bash "$worktree/tools/gate.sh" --full \

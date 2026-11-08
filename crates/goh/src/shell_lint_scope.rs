@@ -63,36 +63,73 @@ pub fn in_scope(f: &str, exclude: Option<&crate::pathfilter::PathFilter>) -> boo
         && !exclude.is_some_and(|x| x.is_match(f))
 }
 
+/// The path a `# shellcheck source=` directive on this (trimmed) line names, if it is one.
+fn directive_path(t: &str) -> Option<&str> {
+    t.strip_prefix('#')?
+        .trim_start()
+        .strip_prefix("shellcheck")?
+        .split_whitespace()
+        .find_map(|w| w.strip_prefix("source="))
+}
+
+/// A source path's spelling in the tree shellcheck runs in: a literal path, or one led by ONE
+/// variable (`$D/conf`, `${D}/conf`), which shellcheck follows with the variable stripped, from its
+/// working directory (GOH.SHX2: a `.gatesrc` named only that way was never collected).
+fn tree_path(p: &str) -> Option<String> {
+    let p: String = p.chars().filter(|c| *c != '"' && *c != '\'').collect();
+    let ident = |s: &str| !s.is_empty() && s.chars().all(|c| c.is_ascii_alphanumeric() || c == '_');
+    let rest = if let Some(r) = p.strip_prefix("${") {
+        let close = r.find('}')?;
+        ident(&r[..close]).then_some(())?;
+        r[close + 1..].strip_prefix('/')?
+    } else if let Some(r) = p.strip_prefix('$') {
+        let end = r
+            .find(|c: char| !(c.is_ascii_alphanumeric() || c == '_'))
+            .unwrap_or(r.len());
+        ident(&r[..end]).then_some(())?;
+        r[end..].strip_prefix('/')?
+    } else {
+        p.as_str()
+    };
+    let rest = rest.trim_start_matches("./");
+    (!rest.is_empty() && !rest.starts_with('/') && !rest.contains('$') && !rest.contains('`'))
+        .then(|| rest.to_owned())
+}
+
 /// The repo-relative paths a shell text names as a source it reads.
 ///
-/// A `# shellcheck source=` directive, or a literal `source`/`.` path with no expansion in it. `/dev/null` and absolute
-/// paths name nothing in the tree.
+/// A `# shellcheck source=` directive, or a `source`/`.` path that is literal or led by one
+/// variable ([`tree_path`]). `/dev/null` and absolute paths name nothing in the tree.
 #[must_use]
 pub fn named_sources(text: &str) -> Vec<String> {
     let mut out = Vec::new();
     for line in text.lines() {
         let t = line.trim_start();
-        let path = t.strip_prefix('#').map_or_else(
-            || {
-                t.strip_prefix("source ")
-                    .or_else(|| t.strip_prefix(". "))
-                    .and_then(|r| r.split_whitespace().next())
-            },
-            |rest| {
-                rest.trim_start()
-                    .strip_prefix("shellcheck")
-                    .and_then(|r| r.split_whitespace().find_map(|w| w.strip_prefix("source=")))
-            },
-        );
-        let Some(p) = path.map(|p| p.trim_matches(|c| c == '"' || c == '\'')) else {
-            continue;
+        let path = if t.starts_with('#') {
+            directive_path(t)
+        } else {
+            t.strip_prefix("source ")
+                .or_else(|| t.strip_prefix(". "))
+                .and_then(|r| r.split_whitespace().next())
         };
-        if p.is_empty() || p.starts_with('/') || p.contains('$') || p.contains('`') {
-            continue;
-        }
-        out.push(p.trim_start_matches("./").to_owned());
+        out.extend(path.and_then(tree_path));
     }
     out
+}
+
+/// Each `# shellcheck source=` directive naming an ABSOLUTE path other than `/dev/null`.
+///
+/// `(line number, path)`. shellcheck reads that one machine's file: outside the tree, the staged
+/// checkout and the verdict's key, and on every other machine nothing at all (GOH.SHX2).
+#[must_use]
+pub fn absolute_directives(text: &str) -> Vec<(usize, String)> {
+    text.lines()
+        .enumerate()
+        .filter_map(|(i, line)| {
+            let p = directive_path(line.trim_start())?.trim_matches(|c| c == '"' || c == '\'');
+            (p.starts_with('/') && p != "/dev/null").then(|| (i + 1, p.to_owned()))
+        })
+        .collect()
 }
 
 /// A temp dir removed when dropped.
@@ -296,9 +333,23 @@ mod tests {
     use super::named_sources;
 
     #[test]
-    fn named_sources_reads_directives_and_literal_paths_only() {
+    fn named_sources_reads_directives_literal_and_var_led_paths() {
         let text = "# shellcheck source=lib/a.sh\n. ./b.sh\nsource \"c.sh\"\n\
-                    . \"$HERE/d.sh\"\n# shellcheck source=/dev/null\nsource /etc/x\necho . x\n";
-        assert_eq!(named_sources(text), vec!["lib/a.sh", "b.sh", "c.sh"]);
+                    . \"$HERE/d.sh\"\n. \"${ROOT}\"/.gatesrc\n. \"$A/$B/e\"\n. \"$(x)/f\"\n\
+                    # shellcheck source=/dev/null\nsource /etc/x\necho . x\n";
+        assert_eq!(
+            named_sources(text),
+            vec!["lib/a.sh", "b.sh", "c.sh", "d.sh", ".gatesrc"]
+        );
+    }
+
+    #[test]
+    fn absolute_directives_name_every_machine_path_but_dev_null() {
+        let text = "# shellcheck source=/Users/x/lib.sh\n# shellcheck source=/dev/null\n\
+                    # shellcheck source=lib.sh\n  # shellcheck disable=SC1 source=\"/opt/y\"\n";
+        assert_eq!(
+            super::absolute_directives(text),
+            vec![(1, "/Users/x/lib.sh".to_owned()), (4, "/opt/y".to_owned())]
+        );
     }
 }

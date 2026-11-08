@@ -98,7 +98,7 @@ fn tools_key(severity: &str) -> String {
     let xdg =
         std::env::var_os("XDG_CONFIG_HOME").map_or_else(|| home.join(".config"), PathBuf::from);
     format!(
-        "shell-lint v4|{}|{}|-x --severity={severity} --format=gcc|opts={}|{}|{}",
+        "shell-lint v5|{}|{}|-x --severity={severity} --format=gcc|opts={}|{}|{}",
         id("bash"),
         id("shellcheck"),
         std::env::var("SHELLCHECK_OPTS").unwrap_or_default(),
@@ -265,6 +265,18 @@ fn judge(scope: &crate::shell_lint_scope::Scope, severity: &str) -> Result<Judge
                 &mut out.failed,
                 line.split(": bash -n:").next().unwrap_or(line),
             );
+        }
+    }
+    // Read every run, never cached: the directive is about the file, not shellcheck's verdict.
+    for (disp, src) in files {
+        let text = std::fs::read_to_string(src).unwrap_or_default();
+        for (n, p) in crate::shell_lint_scope::absolute_directives(&text) {
+            out.fail.push(format!(
+                "{disp}:{n}: shellcheck source={p} is an absolute path -- shellcheck reads one \
+                 machine's file, outside the tree and the verdict's key; name it repo-relative, \
+                 or source=/dev/null with the reason beside it"
+            ));
+            mark(&mut out.failed, disp);
         }
     }
     for ((disp, _), v) in files.iter().zip(&verdicts) {

@@ -16,6 +16,18 @@ pub struct StagedArgs {
     pub staged: bool,
 }
 
+/// A check that polices commits and takes the repo's path exemption.
+#[derive(Debug, clap::Args)]
+pub struct ExcludeStagedArgs {
+    /// Regex on repo-relative paths to skip. Unset: the repo's own `.gatesrc` `GOH_EXCLUDE`, as
+    /// its structural gate applies it; `--exclude ''` opts out.
+    #[arg(long)]
+    pub exclude: Option<String>,
+    /// Staged blobs (polices the index).
+    #[arg(long)]
+    pub staged: bool,
+}
+
 /// `goh skills` flags, grouped so the runner takes one argument.
 #[derive(Debug, clap::Args)]
 pub struct SkillsArgs {
