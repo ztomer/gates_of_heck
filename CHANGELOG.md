@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+* **A subagent idle on background work that never notified is named, not discovered
+  (GOH.STALLAGENT).** On 2026-11-08 KB.LIGHT2 ended its turn "waiting for the completion
+  notification" of a test run that hung, and sat 48 minutes until the owner asked why only one
+  agent was running. `goh agent-stalls` (`hooks/claude/agent_stalls.py`) lists each unfinished,
+  uninterrupted subagent whose transcript has been still for 20 minutes, with its last words and
+  each un-notified background job, alive (the pids holding its `.output`) or gone, and exits 1;
+  registered as the coordinator's UserPromptSubmit hook, it puts that list in front of the
+  coordinator and the owner on the next prompt. Replayed on KB.LIGHT2's transcript cut at 09:30 it
+  names the agent, "idle 42m, waiting", and its three pending jobs.
+
 ## v0.66.0 -- a kit cut writes the house heading, one Unreleased, merges into a hand stanza; land.sh uses the declared gate; no .cargo litter
 
 * **A kit cut writes the house heading, folds every Unreleased section into one, and merges into a

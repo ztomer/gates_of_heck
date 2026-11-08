@@ -331,6 +331,13 @@ Every structural checker is native since Phase N3; the Python checkers they port
   on the cheap tier its prompt sha's parity picks (`explored: true`); the opus->cheap fraction is off
   until the owner turns it on, and nothing without `checkable` is ever routed down. Fails open. Pinned by
   `test_claude_agent_guard.py`, `test_agent_guard_exploration.py`.
+* `hooks/claude/agent_stalls.py` — `goh agent-stalls` and the coordinator's UserPromptSubmit hook
+  (`--hook`): each live subagent (meta not `finished`, not interrupted) whose transcript has not been
+  written for `GOH_AGENT_STALL_MINUTES` (20), with what it last said and each background job it
+  launched and was never notified about, alive (the pids `lsof` finds holding the job's `.output`) or
+  gone. The hook reads only the event's own session's `subagents/` and speaks to the coordinator
+  (`additionalContext`) and the owner (`systemMessage`); exit 1 from the command when any is stalled
+  (GOH.STALLAGENT). Never signals a process. Pinned by `test_agent_stalls.py`.
 * `hooks/claude/appstate.py` — the owner's login-item apps, snapshotted at each spawn by `agent_guard.py` and
   relaunched at SubagentStop when the agent left one not running (GOH.APPSTATE); seams for the item list, the
   process table and the launcher; inert under goh's suite without them. Pinned by `test_claude_appstate.py`.

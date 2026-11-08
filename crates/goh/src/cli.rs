@@ -46,6 +46,12 @@ pub enum Commands {
         #[arg(last = true)]
         command: Vec<String>,
     },
+    /// List each live subagent idle past a threshold while it waits on its own background work
+    /// (`hooks/claude/agent_stalls.py`; its flags pass through). Exit 1 when any is stalled.
+    AgentStalls {
+        #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
+        args: Vec<String>,
+    },
     /// Run a step under a ceiling and report what it left running (the native
     /// `lib/orphan_canary.py wrap`).
     Canary {

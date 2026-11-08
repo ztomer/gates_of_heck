@@ -50,6 +50,13 @@
         "command": "python3 \"${GOH_DIR:-$HOME/Projects/gates_of_heck}/hooks/claude/estate_advisories.py\" || true",
         "timeout": 10
       }
+    ],
+    "UserPromptSubmit": [
+      {
+        "matcher": null,
+        "command": "python3 \"${GOH_DIR:-$HOME/Projects/gates_of_heck}/hooks/claude/agent_stalls.py\" --hook || exit 1",
+        "timeout": 15
+      }
     ]
   }
 }

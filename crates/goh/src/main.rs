@@ -130,6 +130,33 @@ fn main() {
     std::process::exit(code);
 }
 
+/// `goh agent-stalls`: the house interpreter on `hooks/claude/agent_stalls.py`, its exit code
+/// passed through (GOH.STALLAGENT). One implementation: the coordinator's hook runs the same file.
+fn agent_stalls(args: &[String]) -> i32 {
+    let py = match house_python::path() {
+        Ok(py) => py,
+        Err(why) => {
+            goh_tui::eoutln!("{ERR} goh agent-stalls: {why}");
+            return 2;
+        }
+    };
+    let script = goh_root().join("hooks/claude/agent_stalls.py");
+    std::process::Command::new(py)
+        .arg(&script)
+        .args(args)
+        .status()
+        .map_or_else(
+            |e| {
+                goh_tui::eoutln!(
+                    "{ERR} goh agent-stalls: cannot run {}: {e}",
+                    script.display()
+                );
+                2
+            },
+            |s| s.code().unwrap_or(2),
+        )
+}
+
 /// The commands that are not Phase N1 ports.
 fn run_core(command: Commands) -> i32 {
     match command {
@@ -137,6 +164,7 @@ fn run_core(command: Commands) -> i32 {
             cargo_dir,
             check_depinfo,
         } => rust_scope::run_command(&cargo_dir, check_depinfo.as_deref()),
+        Commands::AgentStalls { args } => agent_stalls(&args),
         Commands::SourceTree => {
             println!("{}", env!("GOH_SOURCE_STAMP"));
             0
