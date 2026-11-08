@@ -123,7 +123,9 @@ class World:
             [sys.executable, str(WATCH), "--claude", str(claude), "--settings",
              str(t / "settings.json"), "--ledger", str(t / "ledger.jsonl"), "--projects",
              str(t / "projects"), "--findings", str(t / "findings.md"), "--state",
-             str(t / "state.json"), "--root", str(t), "--offline-audit", *args],
+             str(t / "state.json"), "--root", str(t), "--offline-audit",
+             "--queue", str(t / "queue.json"), "--loopctl", "", "--ccusage", "",
+             "--claude-md", str(t / "CLAUDE.md"), *args],
             capture_output=True, text=True, timeout=60, stdin=subprocess.DEVNULL, check=False,
             env=hermetic_env(NO_COLOR="1", GOH_MODEL_CHOICE=str(t / "rules.json"),
                              XDG_CACHE_HOME=str(t / "cache")),
@@ -150,7 +152,12 @@ def test_sources_that_still_say_what_the_rules_say_are_all_ok(world: World) -> N
     assert r.returncode == 0, r.stdout + r.stderr
     assert {f["status"] for f in _facts(world).values()} == {"ok"}, world.state()["facts"]
     summary = [ln for ln in r.stdout.splitlines() if ln.strip()]
-    assert len(summary) == 1 and "0 re-research" in summary[0] and "findings.md" in summary[0]
+    # the spend table (GOH.SPENDWATCH) then ONE summary line, last
+    assert (
+        summary[0].startswith("## Spend")
+        and sum("model-choice watch:" in ln for ln in summary) == 1
+    )
+    assert "0 re-research" in summary[-1] and "findings.md" in summary[-1]
     assert "# Model-choice findings" in world.findings()
     assert not (world.tmp / "bin" / "proof-ran").exists()  # no version change: no tokens
 
@@ -297,3 +304,16 @@ def test_the_fetch_names_itself(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(model_choice_watch.urllib.request, "urlopen", urlopen)
     assert model_choice_watch._fetch("https://example.invalid/x.md", {}) == "page"
     assert seen == [model_choice_watch.USER_AGENT]
+
+
+def test_the_watch_prints_and_writes_the_spend_section(world: World) -> None:
+    """GOH.SPENDWATCH: the one weekly job carries the spend metrics, with deltas, and never files
+    into a queue it was not given (`--loopctl ''`)."""
+    r = world.run()
+    assert (
+        "## Spend" in r.stdout
+        and "| metric | week before | this week | delta | verdict |" in r.stdout
+    )
+    assert "## Spend" in world.findings() and "Reader vs ccusage: unverified" in world.findings()
+    spend = world.state()["spend"]
+    assert spend["filed"] == [] and set(spend["delta"]) >= {"first_turn_write", "post_push_share"}

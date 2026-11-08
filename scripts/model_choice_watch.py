@@ -16,9 +16,15 @@ outdated rules". Weekly (launchd), spending no tokens unless Claude Code itself 
    (the hook fell off), and when ~/.claude/settings.json's goh hook entries differ from
    `hooks/claude/registrations.json` (nothing else enforces that).
 4. AUDIT: `scripts/agent_audit.py` over the ledger -- silent failures and proposed rule changes.
+5. SPEND: `scripts/spend_watch.py` -- what subagents spent this week against the week before (cost
+   shares, first-turn context, post-push share, idle-gap cache writes, Read bytes, repeated calls),
+   calibrated against ccusage; a worse week, and a landed efficiency item that regressed against its
+   `predicted`, are filed through the loop's `loopctl file`; agents' unfiled `Faults seen` are listed
+   as candidate items (GOH.SPENDWATCH).
 
 Everything lands in ONE findings file (default `$XDG_CACHE_HOME/goh/model-choice-findings.md`,
-the path the umbrella roadmap's owner-decision row names) and a one-line summary is printed.
+the path the umbrella roadmap's owner-decision row names); the spend table and then a one-line
+summary are printed.
 Nothing here writes the rules file: changes are proposed, the owner makes them.
 
     python3 scripts/model_choice_watch.py             # run now
@@ -52,9 +58,11 @@ sys.path.insert(0, str(ROOT / "scripts"))
 import agent_audit
 import apply_claude_hooks
 import model_choice
+import spend_watch
 from agent_guard import STATUSES, ledger_path
 
 LABEL = "com.ztomer.goh-model-choice-watch"
+LOOP = Path.home() / "Projects" / ".loop"
 USER_AGENT = "goh-model-choice-watch/1"
 WEEKDAY, HOUR = 1, 9  # Monday 09:30
 SPAWN_TOOLS = ('"name":"Agent"', '"name":"Task"')
@@ -330,6 +338,19 @@ def _findings(state: dict[str, Any], summary: str) -> str:
                   ""]  # fmt: skip
         lines += [f"- silent-failure: {s['time']} {s['class']} {s['first_line']}: {s['why']}"
                   for s in v["silent_failure"]]  # fmt: skip
+    spend = state.get("spend")
+    if spend:
+        lines += [
+            "",
+            *spend_watch.render(spend),
+            "",
+            "### Fault candidates (no queue item carries them)",
+            "",
+        ]
+        cands = state.get("fault_candidates") or []
+        lines += [f"- {json.dumps(c, ensure_ascii=False)}" for c in cands[:30]] or ["- none"]
+        if len(cands) > 30:
+            lines.append(f"- ... {len(cands) - 30} more in {state.get('candidates_file')}")
     return "\n".join(lines) + "\n"
 
 
@@ -385,6 +406,17 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--offline-audit", action="store_true", help="the audit asks GitHub nothing")
     ap.add_argument("--no-live-proof", action="store_true", help="never spend tokens")
     ap.add_argument("--install", action="store_true", help="write and load the weekly launchd job")
+    ap.add_argument(
+        "--queue", type=Path, default=LOOP / "queue.json", help="the loop's queue (read)"
+    )
+    loopctl = LOOP / "tools" / "loopctl.py"
+    ap.add_argument("--loopctl", default=str(loopctl) if loopctl.exists() else "",
+                    help="files spend regressions; '' files nothing")  # fmt: skip
+    ap.add_argument(
+        "--ccusage", default=spend_watch.CCUSAGE, help="calibrates the reader; '' skips"
+    )
+    ap.add_argument("--claude-md", type=Path, default=Path.home() / ".claude" / "CLAUDE.md")
+    ap.add_argument("--no-spend", action="store_true", help="skip the SPEND section")
     args = ap.parse_args(argv)
     if args.install:
         return install()
@@ -414,6 +446,23 @@ def main(argv: list[str] | None = None) -> int:
         "settings": settings_drift(args.settings, ROOT / "hooks" / "claude" / "registrations.json"),
         "audit": agent_audit.run(args.ledger, args.root, args.offline_audit),
     }  # fmt: skip
+    if not args.no_spend:
+        state["spend"] = spend_watch.run(
+            projects=args.projects, now=dt.datetime.now(dt.UTC), queue=args.queue,
+            loopctl=Path(args.loopctl) if args.loopctl else None, ccusage=args.ccusage or None,
+            claude_md=args.claude_md, prior=prior.get("spend") or {}, repos=args.root)  # fmt: skip
+        since = (prior.get("spend") or {}).get("ran_at")
+        rows = (
+            agent_audit.fault_rows(agent_audit.read(args.ledger)[0], since)
+            if args.ledger.exists()
+            else []
+        )
+        try:
+            items = json.loads(args.queue.read_text(encoding="utf-8")).get("items", [])
+        except (OSError, ValueError):
+            items = []
+        state["fault_candidates"] = spend_watch.fault_candidates(rows, items)
+        state["candidates_file"] = str(args.findings.with_name("fault-candidates.jsonl"))
     red = (
         state["canary"]["red"]
         or state["settings"]["red"]
@@ -429,6 +478,12 @@ def main(argv: list[str] | None = None) -> int:
                        (args.findings, _findings(state, summary))):  # fmt: skip
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(text, encoding="utf-8")
+    if state.get("spend"):
+        cands = state["fault_candidates"]
+        Path(state["candidates_file"]).write_text(
+            "".join(json.dumps(c, ensure_ascii=False) + "\n" for c in cands), encoding="utf-8"
+        )
+        sys.stdout.write("\n".join(spend_watch.render(state["spend"])) + "\n")
     print(summary)
     return 1 if red else 0
 

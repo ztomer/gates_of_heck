@@ -400,8 +400,20 @@ Every structural checker is native since Phase N3; the Python checkers they port
   source (pricing/model-config pages, the binary's Agent enums, `claude --version`) and marks a changed
   one and its tiers `re-research`; on a new Claude Code version re-runs the hook's live proof once (one
   capped haiku `claude -p`); a canary goes red when spawns stopped reaching the ledger or settings.json's
-  goh hooks differ from `registrations.json`; runs the audit. Writes `~/.cache/goh/model-choice-findings.md`
-  and prints one line. `--install` loads the weekly launchd job. Pinned by `test_model_choice_watch.py`.
+  goh hooks differ from `registrations.json`; runs the audit and the SPEND section
+  (`scripts/spend_watch.py`). Writes `~/.cache/goh/model-choice-findings.md` (and
+  `fault-candidates.jsonl` beside it), prints the spend table and one summary line. `--install` loads
+  the weekly launchd job. Pinned by `test_model_choice_watch.py`.
+* `scripts/spend_watch.py` — the weekly watch's SPEND section (GOH.SPENDWATCH): per week, from the
+  subagent transcripts (read by `claude_cache_probe.api_turns`, one usage per `message.id`), cost-unit
+  shares, first-turn context per agent type and of write agents, context share from the first
+  push/release on by turn kind, idle-gap cache writes, Read bytes and share, repeated calls, turns per
+  agent, CLAUDE.md bytes; deltas against the week before. ccusage (`npx -y ccusage@20.0.48`, MIT)
+  calibrates the reader each run (token totals over the window's whole UTC days must agree). A worse
+  week, and a landed `EC` item whose `metric` is a `METRICS` label and whose measurement is no better
+  than its `predicted` baseline, are filed with `loopctl --queue <the queue it read> file`; the verdict
+  (confirmed/short/regressed) is set as the item's `spend_check` 7 days after it landed. Agents'
+  unfiled `Faults seen` become candidate items (listed, not filed). Pinned by `test_spend_watch.py`.
 * `scripts/estate_audit.py` — the house Rust audit (`rust_gate.sh`'s biting `cargo audit`) over every
   tracked `Cargo.lock` under `~/Projects` (`GOH_ESTATE_ROOT`), nested repositories included, minus each
   repo's own `GOH_EXCLUDE`, from each workspace root so its exemptions apply. The estate is that walk

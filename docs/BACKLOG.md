@@ -136,54 +136,9 @@ public (owner, 2026-11-08: "Yes, public repos").
 
 ## Phase 4 — agent spend: measure, configure, then automate
 
-Why fourth: MCPINSTR is configuration with a measured prediction (READCAP and CACHETTL shipped in v0.73.0);
-SPENDWATCH is the instrument that checks all predictions, so it follows them; SHIP is the largest
-and needs the loop controller's records.
+Why fourth: SHIP is the largest and needs the loop controller's records; the spend watch (shipped)
+measures it against its prediction.
 
-- **CC.MCPINSTR** (queue: CC.MCPINSTR) Claude Code injects every MCP server's instructions into allowlisted
-  subagent types that list no tool from that server (measured by GOH.LEANAGENT), so a lean agent still
-  carries all connectors' instructions. In order: a documented per-agent server exclusion
-  (`sub-agents.md`, `mcp.md`); else `CLAUDE_CODE_MAX_MCP_DESCRIPTION_LENGTH` globally; else an upstream
-  report via `/feedback` with the measurement.
-  *Measured 2026-11-08* (the `mcp_instructions_delta` attachment, `addedBlocks`, in
-  `~/.claude/projects/*/*/subagents/*.jsonl`, by `agentType` in the `.meta.json`): repo-worker n=32 and
-  repo-worker-ui n=5, median 11,570 bytes (11,536 chars, ~2.9k tokens; 11,962 rendered): computer-use
-  6,167 chars, Blender 4,120 (already cut at the 4,096 default), superlogical 967, pool 282. Only pool is
-  in repo-worker's `tools`. general-purpose n=127, median 15,668. So the block is ~10% of the 29.7k first
-  turn: even a full exclusion lands near 26.8k, not under 24k; the 24k figure below was wrong.
-  *Option 1:* the docs name no exclusion of a server's INSTRUCTIONS per agent. `disallowedTools: mcp__*`
-  and `mcpServers` are documented for tools and connections only (`sub-agents.md`, "Scope MCP servers to
-  a subagent": `mcpServers` adds servers, it does not narrow); `deniedMcpServers` is global. Whether either
-  also drops instructions is undocumented, so it is probed, not shipped (an untested `disallowedTools` in
-  repo-worker would be inert config that reads like a gate): `probe-mcpinstr-{base,deny,scope}` in
-  `~/.claude/agents/` (temporary, outside goh). If `deny` or `scope` shows no Blender/superlogical/
-  computer-use block, repo-worker gets that field (red-first test in `tests/test_apply_claude_hooks.py`)
-  and repo-worker-ui keeps computer-use.
-  *Option 2, rejected:* computer-use (Claude Desktop's in-process server) is not cut at 4,096 (6,167
-  chars), so a lower `CLAUDE_CODE_MAX_MCP_DESCRIPTION_LENGTH` saves only Blender and superlogical: 3,096
-  chars (~770 tokens) at 1,024, 2,072 at 2,048. The same number also cuts every upfront tool description,
-  and `mcp__pool__ask`'s, which carries the routing table, already stops at 4,096; any value under 4,096
-  cuts more of it, in the coordinator too. A correctness loss for ~2-6% of a lean first turn.
-  *Option 3, upstream report text (NOT filed; awaits the owner's go-ahead, posting is outward):*
-  "Subagent types with a `tools` allowlist still receive every connected MCP server's instructions
-  (`mcp_instructions_delta`) on their first turn, including servers none of whose tools are in the list.
-  Measured over 37 allowlisted subagents (2026-11-08): 11,536 chars (~2.9k tokens) per agent, of which
-  11,254 belong to servers the agent cannot call (computer-use 6,167, Blender 4,120, superlogical 967).
-  Expected: instructions follow tool availability, or a documented per-agent way to exclude a server's
-  instructions (e.g. honour `disallowedTools: mcp__<server>` or treat `mcpServers` as exclusive)."
-  **Done when:** MCP instructions in a lean agent are measured before and after with the chosen option
-  (first-turn context of a repo-worker agent, 29.7k today, near 26.8k if an exclusion exists), or an
-  upstream report is filed with the numbers.
-- **GOH.SPENDWATCH** (queue: GOH.SPENDWATCH) The 2026-11-08 spend measurement was ad-hoc python over
-  `~/.claude/projects/*/subagents/*.jsonl`. Make it the instrument: extend
-  `scripts/model_choice_watch.py` (the one weekly watch; no second job) with a SPEND section per week,
-  consuming OpenTelemetry (`monitoring-usage.md`) or ccusage rather than a hand parser, with
-  week-over-week deltas, and compare every landed efficiency item's measured change to its `predicted`.
-  Depends on LOOP.CTL, which the queue records as complete.
-  **Done when:** goh released; the weekly watch prints the spend metrics with deltas; a planted regression
-  files a queue item; a landed efficiency item is checked against its prediction; the 2026-11-08 figures
-  (69/20/11 cost shares; 70.6k vs 29.7k first turn) reproduce within 2 percentage points at zero model
-  tokens per run.
 - **GOH.SHIP** (queue: GOH.SHIP) Build `goh ship`: a detached, time-bounded landing pipeline (push through
   the pre-push gate, the repo's release kit, install, the loopctl verify card) that writes one result JSON
   and posts a pass/fail line per step; the agent's contract ends at "committed, local gate green, goh ship

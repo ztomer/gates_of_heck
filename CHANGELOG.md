@@ -2,6 +2,22 @@
 
 ## Unreleased
 
+* **The weekly watch measures what agents spend, and checks each efficiency change against its
+  prediction (GOH.SPENDWATCH).** `scripts/model_choice_watch.py` (still the one weekly job) gains a
+  SPEND section from `scripts/spend_watch.py`: per week, over the subagent transcripts, cost-unit
+  shares, median first-turn context per agent type and of write agents, the context share spent from
+  the first push/release on (by turn kind), cache writes after a >5 min idle gap, Read bytes and their
+  share, repeated calls and turns per agent, each with its delta against the week before, printed and
+  written to the findings file. ccusage 20.0.48 calibrates the transcript reader every run (it agreed
+  to the token on 2026-11-02..07); OpenTelemetry was not used because it records nothing from before it
+  is turned on and nothing of what a turn did. A metric worse than the week before, and a landed queue
+  item whose measured change is no better than its `predicted` baseline, are filed through `loopctl`
+  (always naming the queue the watch read); each landed item's verdict, confirmed/short/regressed, is
+  set as its `spend_check` once it has a week of data. Agents' unfiled `Faults seen` become candidate
+  items. Reproduced on 2026-11-08 from 197 agents: cost shares 67/21/11 (hand 69/20/11), general-purpose
+  first turn 70.6k. Red first: `test_spend_watch.py` failed to import, and `test_model_choice_watch.py`
+  on the new arguments.
+
 ## v0.73.0 -- the Read cap and subagent cache TTL are goh-managed, chosen by measurement
 
 * **The Read cap and the subagent cache TTL are goh-managed settings, chosen by measurement
