@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## v0.73.0 -- the Read cap and subagent cache TTL are goh-managed, chosen by measurement
+
 * **The Read cap and the subagent cache TTL are goh-managed settings, chosen by measurement
   (GOH.READCAP, GOH.CACHETTL).** `hooks/claude/registrations.json` gains `settings`, which
   `scripts/apply_claude_hooks.py` writes into `~/.claude/settings.json` (`env` merged var by var,
