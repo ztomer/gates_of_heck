@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## v0.64.0 -- agents put the owner's apps back; a tag names a commit that IS the release; shellcheck follows script-relative sources
+
 * **agent_guard puts the owner's login-item apps back after an agent (GOH.APPSTATE).** Routines.app
   was left not running after agents' UI tests and Osaurus.app was found down (2026-11-07/08).
   `hooks/claude/appstate.py` records at every spawn which login-item apps run (System Events'
