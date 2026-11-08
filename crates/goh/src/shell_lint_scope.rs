@@ -231,7 +231,10 @@ pub fn gather(
     let base = tmp.0.join("index");
     let prefix = format!("{}/", base.display());
     checkout_index(root, &prefix, &shells);
-    // The non-shell files a shell file names as a source (a `.gatesrc`), read from the index too.
+    // The non-shell files a shell file names as a source (a `.gatesrc`), read from the index too,
+    // and every tracked `.shellcheckrc`: shellcheck reads the one beside a script and its parents',
+    // and a staged checkout without them judged a commit by rules the full scan does not use
+    // (goh's `source-path=SCRIPTDIR` held at `--full` and vanished at commit, GOH.VENDOR).
     let named: BTreeSet<String> = shells
         .iter()
         .filter_map(|f| std::fs::read_to_string(base.join(f)).ok())
@@ -239,7 +242,10 @@ pub fn gather(
         .collect();
     let extra: Vec<&String> = tracked
         .iter()
-        .filter(|f| !in_scope(f, None) && named.contains(*f))
+        .filter(|f| {
+            !in_scope(f, None)
+                && (named.contains(*f) || f.rsplit('/').next() == Some(".shellcheckrc"))
+        })
         .collect();
     checkout_index(root, &prefix, &extra);
     let files = picked

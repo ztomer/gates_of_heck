@@ -1,0 +1,3 @@
+# Resolve a `. "$(dirname "${BASH_SOURCE[0]}")/x.sh"` source against the script's own directory,
+# so shellcheck FOLLOWS it (SC1091) instead of looking under the cwd. GOH.VENDOR, 2026-11-08.
+source-path=SCRIPTDIR

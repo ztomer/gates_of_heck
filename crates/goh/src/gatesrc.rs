@@ -239,7 +239,7 @@ pub fn from_pairs(pairs: &BTreeMap<String, String>) -> Result<Gatesrc, String> {
 /// keys, so a step that reads one from the environment (`GOH_STEP_TIMEOUT`, and
 /// every child it spawns) sees the file's value, never an inherited one.
 /// Pinned against `docs/config.md` by `tests/test_gate_environment.py`.
-pub const PIPELINE_KEYS: [&str; 40] = [
+pub const PIPELINE_KEYS: [&str; 41] = [
     "GOH_MAX_LINES",
     "GOH_LINE_EXCLUDE",
     "GOH_LINE_BASELINE",
@@ -281,6 +281,7 @@ pub const PIPELINE_KEYS: [&str; 40] = [
     "GOH_JS_SYNTAX",
     "GOH_JS_SYNTAX_MIN_FILES",
     "GOH_BUSY_LOOP_MIN_FILES",
+    "GOH_INSTALLED_VERSION_MIN_FILES",
 ];
 
 /// Make the process environment say what `root/.gatesrc` says for every

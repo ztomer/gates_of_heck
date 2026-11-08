@@ -9,7 +9,7 @@ gate self-proofs still pass
 gates refuse to pass over an empty tree
 line-cap exemptions carry a ceiling
 markdown links resolve
-no plan keeps the installed version by hand
+no doc keeps the installed version by hand
 no bare read of the hook's index
 no bare python in a hook or gate
 no busy loop or busy-wait in a tracked file
@@ -27,7 +27,7 @@ no process kill by name
 no tracked build output
 no tracked file its .gitignore ignores
 no unreaped spawns in tests
-no vendored copies of house checkers
+no vendored copies of house files
 prose claims are derived
 python is ruff-formatted
 shell lint

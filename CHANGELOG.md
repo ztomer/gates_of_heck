@@ -2,6 +2,33 @@
 
 ## Unreleased
 
+* **A vendored copy of a house file is known by its content, and refused at both scopes
+  (`no vendored copies of house files`, GOH.VENDOR, 2026-11-08).** The step refused only a NEW file
+  NAMED like a house checker, and named an existing one at full scope; nothing refused a copy of
+  `tui/lib.sh`, `tui/lib.py` or `tui/stylerc`, and divoom-control carried all three, already drifted,
+  until its `8e05425`. A file is now a copy when its name is a house checker's OR it holds at least
+  40 % and 8 of a house file's distinctive lines (whitespace collapsed, 12+ characters) -- the TUI
+  files and every `checks/*` script -- so a renamed or edited copy is still one. Calibrated over the
+  44-repo estate: divoom's drifted copies held 64-100 %, no consumer's own file more than 14 %. Full
+  scope REFUSES now (the house rule is never vendor, and the estate held no copy when the grace
+  ended); a staged edit to a copy is judged too. A `GOH_DIR` without the house TUI is a refusal,
+  never a scan against nothing. divoom's own `tests/test_no_vendored_tui.py` goes; goh covers it.
+* **`goh installed-version` reads every tracked `.md` that is not dated history, with a floor
+  (`GOH_INSTALLED_VERSION_MIN_FILES`).** It read only plans while koffee's own copy read every
+  `.md`; a README or AGENTS.md stating what is installed rots the same way. Dated history -- a
+  CHANGELOG/HISTORY/DECISIONS/NEWS name, a numbered `D-`/`ADR-` record, a `decisions/`, `adr/`,
+  `changelog/`, `releases/` or `release-notes/` directory -- is still not read. The estate's only
+  hits outside plans were such history (ZoneWM's decision records, ztools' CHANGELOG), so no repo
+  went red; koffee's copy of the rule is dropped. The step's count is its subject, floored like
+  every scanner's (it was the one structural scanner with none).
+* **shellcheck follows this tree's `$(dirname "${BASH_SOURCE[0]}")/...` sources** (`.shellcheckrc`:
+  `source-path=SCRIPTDIR`). release.sh:69 and 30-odd more were linted without the file they source
+  (SC1091, an info no severity judges); following them cleared one false SC2034 from the shell-lint
+  seed. `test_shellcheck_follows_every_source_in_this_tree` pins it.
+* **The staged shell lint reads the repo's tracked `.shellcheckrc` files.** Its index checkout held
+  the shell files and what they name, not the rc beside them, so a rule the rc set held at `--full`
+  and vanished at commit (`test_a_tracked_shellcheckrc_is_read_at_both_scopes`).
+
 * **A plan that keeps the installed version by hand is refused, in every repo (`goh
   installed-version`, GOH.INSTLINE, 2026-11-07).** A "Shipped and installed: vX" line is true the
   day it is written and false at the next release: koffee's FEATURE_PLAN said v2.12.1 build 36 while

@@ -69,6 +69,7 @@ GOH_MD_LINKS_MIN_LINKS=1                # [1] markdown links -- this tree cites 
 GOH_CHECKOUT_CREDENTIALS_MIN_FILES=1    # [1] workflow/action files (2026-10-26)
 GOH_UNREAPED_SPAWN_MIN_FILES=300        # [337] test files
 GOH_STATUS_MARKERS_MIN_FILES=510        # [568] source files (a GOH_CI_STEPS step)
+GOH_INSTALLED_VERSION_MIN_FILES=10      # [11] Markdown files that are not dated history (2026-11-08)
 GOH_SKILLS_ROOT=$HOME/.claude/skills
 
 # COVERAGE FLOOR for crates/goh: 95, the house floor. Measured 97.91% on

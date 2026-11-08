@@ -87,3 +87,63 @@ def test_a_cached_verdict_is_not_reused_once_a_sourced_file_moves(repo, tmp_path
     rc, out = _lint(repo, cache=cache)
     assert rc == 1, out
     assert "main.sh#SC2178" in out, out
+
+
+# The house idiom: a source named relative to the script, which shellcheck resolves against the CWD
+# unless a tracked `.shellcheckrc` says `source-path=SCRIPTDIR`.
+MAIN_DIRNAME = MAIN.replace(
+    "# shellcheck source=lib.sh\n. ./lib.sh", '. "$(dirname "${BASH_SOURCE[0]}")/lib.sh"'
+)
+
+
+@pytest.mark.parametrize("scope", ["--full", "--staged"])
+def test_a_tracked_shellcheckrc_is_read_at_both_scopes(repo, scope):
+    """The staged checkout held the shell files and what they name, not the repo's `.shellcheckrc`:
+    a rule goh's own rc set held at `--full` and vanished at commit, where gates/python.sh's
+    `GOH_NAME` (used by the library it sources) read as SC2034 unused again (GOH.VENDOR)."""
+    write(repo, "tools/lib.sh", LIB_ARRAY)
+    write(repo, "tools/main.sh", MAIN_DIRNAME)
+    commit_all(repo)
+    rc, out = _lint(repo)
+    assert rc == 0, "without the rc the source is not followed, so the array is unseen: " + out
+    write(repo, ".shellcheckrc", "source-path=SCRIPTDIR\n")
+    if scope == "--full":
+        commit_all(repo)
+        rc, out = _lint(repo)
+    else:
+        write(repo, "tools/main.sh", MAIN_DIRNAME + "# touched\n")
+        stage(repo, ".shellcheckrc", "tools/main.sh")
+        rc, out = _lint(repo, "--staged")
+    assert rc == 1, out
+    assert "tools/main.sh#SC2178" in out, out
+
+
+def test_shellcheck_follows_every_source_in_this_tree():
+    """`-x` follows only a source it can find. This tree sources its libraries the house way,
+    `. "$(dirname "${BASH_SOURCE[0]}")/../gates/_from_head.sh"`, which shellcheck resolves against
+    the CWD unless told otherwise -- so release.sh, land.sh and 30-odd more were linted without the
+    file they source (SC1091, an info no severity judges). `.shellcheckrc`'s
+    `source-path=SCRIPTDIR` resolves it against the script's own directory; this pins that every
+    tracked shell file here has its sources followed (GOH.VENDOR)."""
+    import subprocess
+
+    from conftest import REPO_ROOT
+
+    listed = subprocess.run(
+        ["git", "-C", str(REPO_ROOT), "ls-files", "*.sh"],
+        capture_output=True,
+        text=True,
+        check=True,
+        stdin=subprocess.DEVNULL,
+    ).stdout.split()
+    assert len(listed) > 50, listed
+    r = subprocess.run(
+        ["shellcheck", "-x", "--include=SC1091", "--format=gcc", *listed],
+        cwd=REPO_ROOT,
+        capture_output=True,
+        text=True,
+        check=False,
+        stdin=subprocess.DEVNULL,
+        env={k: v for k, v in os.environ.items() if k != "SHELLCHECK_OPTS"},
+    )
+    assert "SC1091" not in r.stdout, r.stdout

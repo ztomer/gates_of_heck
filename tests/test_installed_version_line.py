@@ -6,9 +6,11 @@ koffee_big ff18e06), and app_updates, sys_updater and ztools each carried a "Shi
 vX" line. What a machine runs is read from the machine; a release is recorded by its tag. The rule
 moved from koffee's own citation gate into the house, so every repo runs one copy of it.
 
-Its subject is a PLAN -- a tracked Markdown file whose name has a ROADMAP, PLAN, BACKLOG or TODO
-word. A CHANGELOG or a decision record is dated history: "the installed v0.43.1 bundle" there is
-evidence of what was true that day, and it stays true.
+Its subject is every tracked Markdown file but DATED HISTORY (GOH.VENDOR, 2026-11-08: it read only
+plans until then, while koffee's own copy read every `.md` -- a README or AGENTS.md that says what is
+installed rots the same way). A CHANGELOG or a decision record is history: "the installed v0.43.1
+bundle" there is evidence of what was true that day, and it stays true. Measured over the 44-repo
+estate that day: every hit outside a plan was in a CHANGELOG or a `docs/decisions/D-*` record.
 """
 
 from __future__ import annotations
@@ -25,8 +27,19 @@ PLANTED = (
 
 
 @pytest.mark.parametrize("line", PLANTED)
-@pytest.mark.parametrize("name", ["ROADMAP.md", "FEATURE_PLAN.md", "docs/BACKLOG.md", "todo.md"])
-def test_a_hand_kept_installed_version_in_a_plan_is_red(repo, name, line):
+@pytest.mark.parametrize(
+    "name",
+    [
+        "ROADMAP.md",
+        "FEATURE_PLAN.md",
+        "docs/BACKLOG.md",
+        "todo.md",
+        "README.md",
+        "AGENTS.md",
+        "docs/EXPLANATION.md",
+    ],
+)
+def test_a_hand_kept_installed_version_in_a_doc_is_red(repo, name, line):
     write(repo, name, f"# Plan\n\n{line}\n")
     commit_all(repo)
     r = run_goh(repo, "installed-version")
@@ -56,7 +69,12 @@ def test_it_is_a_structural_step_every_repo_runs(repo):
         ("ROADMAP.md", "Releases: https://github.com/o/r/releases (the tag is the record)"),
         ("CHANGELOG.md", "- Verified in the installed app (v0.43.1 bundle)"),
         ("docs/decisions/D-0248.md", "the installed v2.77.0 build 135 carried a dylib"),
-        ("EXPLANATION.md", "the installed v2.77.0"),
+        ("docs/D-0247-the-focus-border.md", "Live, the installed v2.77.0: vmmap listed one"),
+        ("docs/adr/0003-signing.md", "the installed v1.2 bundle was ad-hoc signed"),
+        ("HISTORY.md", "- the installed v0.9 bundle"),
+        ("DECISIONS.md", "#9: the installed v2.1 build 3 floated"),
+        ("release-notes/v1.2.md", "the installed v1.1 is replaced"),
+        ("README.md", "the installed app reads its own Info.plist"),
     ],
 )
 def test_history_and_versionless_lines_pass(repo, name, line):
@@ -64,3 +82,14 @@ def test_history_and_versionless_lines_pass(repo, name, line):
     commit_all(repo)
     r = run_goh(repo, "installed-version")
     assert r.returncode == 0, r.stdout + r.stderr
+
+
+def test_the_subject_has_a_floor(repo):
+    """A scan that stopped reading Markdown reads as clean: its count is floored like every scanner's."""
+    write(repo, "README.md", "# Doc\n")
+    write(repo, ".gatesrc", "GOH_INSTALLED_VERSION_MIN_FILES=5\n")
+    commit_all(repo)
+    r = run_goh(repo, "structural", "--full", "--keep-going")
+    out = r.stdout + r.stderr
+    assert r.returncode != 0, out
+    assert "GOH_INSTALLED_VERSION_MIN_FILES" in out and "declares a floor of 5" in out, out

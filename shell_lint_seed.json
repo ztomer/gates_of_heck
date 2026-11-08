@@ -7,7 +7,6 @@
     "gates/_steps.sh#SC2034": 2,
     "gates/local_ci.sh#SC1010": 3,
     "gates/local_ci.sh#SC2164": 1,
-    "gates/python.sh#SC2034": 1,
     "gates/swift_toolchain.sh#SC2034": 2,
     "lib/container_runtime.sh#SC2217": 7,
     "lib/desktop_lock/test_desktop_lock.sh#SC2164": 1,
