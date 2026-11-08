@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## v0.72.0 -- one roadmap of open entries, held by goh roadmap in every repo
+
 * **A command that prints a stack's resolved secrets is refused at the tool boundary
   (SRV.NTFYROTATE).** During SRV.NTFY an agent sent `docker compose config | grep | sed <redact>`
   to `.33` in an ssh heredoc; compose interpolates `.env` (and inlines every `env_file:`) into
