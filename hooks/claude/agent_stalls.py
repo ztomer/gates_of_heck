@@ -31,9 +31,30 @@ Exit 1 when any is stalled, 0 when none, 2 on a bad argument.
 and, when one is stalled, puts the list in front of the coordinator (`additionalContext`) and the
 owner (`systemMessage`). It never blocks a prompt and is silent on anything it cannot read.
 
+WHEN THE HOOK FIRES, probed on 2026-11-08 against the desktop app's Claude Code 2.1.317 in its
+own mode (`--input-format stream-json`), with every hook event logged (GOH.STALLNOTIFY): a
+task-notification delivered to an IDLE coordinator fires UserPromptSubmit, its `prompt` the
+`<task-notification>` text -- for a background shell job finishing and for a background subagent
+finishing (SubagentStop fires first, in the subagent); a ScheduleWakeup firing fires
+UserPromptSubmit too, its `prompt` the wakeup's. TaskCompleted, TeammateIdle and Notification did
+not fire on any of them. So the coordinator sees a stall on its next wake of any kind, and the hook
+needs nothing more. The gap is a coordinator that never wakes: no owner prompt, no wakeup, and every
+agent it waits on stalled, so no notification is coming.
+
+`--notify` closes that gap for the OWNER: the launchd job com.ztomer.goh-agent-stalls runs it every
+five minutes, a one-shot pass that exits (no daemon). Across every session it finds each stall whose
+pending jobs are ALL gone -- idle past the threshold, waiting on background work no live process
+can still complete, so nothing will ever notify it (a stall with a live job may be a long build and
+wakes when it ends; one with no job at all is "in a tool call", which the hook names). Each such
+stall is posted as a macOS notification ONCE: the state file (`--state`, default
+`~/.cache/goh/agent-stalls-notified.json`) maps an agent id to the transcript write the owner was
+told about, holds only the stalls of the latest pass, and a stall that moves and stalls again is
+told again. The log is stamped and bounded (moved to `.1` past 256 KiB, lib/load_reap_log.py).
+
 Seams: `now` (the clock), the subagents directories, and `holders` (the process table) are
-arguments of `stalls()`; the CLI takes `--now`, `--projects` and `--subagents`. Nothing here ever
-signals a process. Pinned by tests/test_agent_stalls.py.
+arguments of `stalls()`; `notify` (the poster) and the state path are arguments of `notify_new()`;
+the CLI takes `--now`, `--projects`, `--subagents` and `--state`. Nothing here ever signals a
+process. Pinned by tests/test_agent_stalls.py.
 """
 
 from __future__ import annotations
@@ -54,6 +75,7 @@ DEFAULT_MAX_AGE_HOURS = 24
 TAIL_BYTES = 1 << 16
 LSOF_TIMEOUT_S = 5
 LAST_SAID_CHARS = 160
+NOTIFY_TIMEOUT_S = 10
 
 LAUNCH = re.compile(
     r"(?:running in background with ID|moved to the background \(ID): (\w+)\)?.*?"
@@ -296,6 +318,56 @@ def hook(event_text: str, now: float, holders: Holders = lsof_holders) -> str | 
     })  # fmt: skip
 
 
+def dead_waits(found: list[Stall]) -> list[Stall]:
+    """The stalls nothing will ever wake: every pending job gone, and at least one pending."""
+    return [s for s in found if s.jobs and not any(j.pids for j in s.jobs)]
+
+
+def osascript_notify(title: str, body: str) -> None:
+    """Post a macOS notification. The text goes in as argv, never spliced into the script."""
+    script = ["on run argv", "display notification (item 2 of argv) with title (item 1 of argv)",
+              "end run"]  # fmt: skip
+    argv = ["osascript", *(a for line in script for a in ("-e", line)), title, body]
+    try:
+        subprocess.run(argv, capture_output=True, timeout=NOTIFY_TIMEOUT_S, check=False,
+                       stdin=subprocess.DEVNULL)  # fmt: skip
+    except (OSError, subprocess.TimeoutExpired):
+        return
+
+
+def default_state() -> Path:
+    return (
+        Path(os.environ.get("XDG_CACHE_HOME") or Path.home() / ".cache")
+        / "goh"
+        / ("agent-stalls-notified.json")
+    )
+
+
+def notify_new(
+    found: list[Stall], now: float, state: Path,
+    notify: Callable[[str, str], None] = osascript_notify,
+) -> list[Stall]:  # fmt: skip
+    """Post each dead wait the owner has not been told of; the state keeps only this pass's."""
+    try:
+        told = json.loads(state.read_text())
+    except (OSError, ValueError):
+        told = {}
+    told = told if isinstance(told, dict) else {}
+    fresh: list[Stall] = []
+    keep: dict[str, int] = {}
+    for s in dead_waits(found):
+        wrote = round(now - s.idle_s)  # the transcript's last write: the stall's identity
+        keep[s.agent_id] = wrote
+        if told.get(s.agent_id) != wrote:
+            notify(f"Subagent stalled {int(s.idle_s // 60)}m", s.line())
+            fresh.append(s)
+    state.parent.mkdir(parents=True, exist_ok=True)
+    tmp = state.with_name(state.name + ".tmp")
+    tmp.write_text(json.dumps(keep))
+    os.replace(tmp, state)
+    return fresh
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(prog="goh agent-stalls", description=__doc__.splitlines()[0])
     ap.add_argument("--minutes", type=float, default=None, help="idle threshold (default 20)")
@@ -305,6 +377,9 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--now", type=float, default=None, help="the clock, epoch seconds (a seam)")
     ap.add_argument("--json", action="store_true")
     ap.add_argument("--hook", action="store_true", help="run as the UserPromptSubmit hook")
+    ap.add_argument("--notify", action="store_true", help="tell the owner of new dead waits")
+    ap.add_argument("--state", type=Path, default=None, help="--notify's record of what it told")
+    ap.add_argument("--log-path", type=Path, default=None, help="--notify's log, bounded")
     args = ap.parse_args(argv)
     now = time.time() if args.now is None else args.now
     if args.hook:
@@ -319,6 +394,16 @@ def main(argv: list[str] | None = None) -> int:
     minutes = _minutes_env() if args.minutes is None else args.minutes
     dirs = args.subagents or all_subagent_dirs(args.projects or default_projects())
     found = stalls(dirs, now, minutes, args.max_age_hours)
+    if args.notify:  # the launchd pass: a notice per new dead wait, a line per notice, exit 0
+        sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "lib"))
+        import load_reap_log as log  # the stamped, bounded log the minute job writes too
+
+        for s in notify_new(found, now, args.state or default_state()):
+            print(f"{log.stamp()} agent-stalls: notified {s.line()}")
+        sys.stdout.flush()
+        if args.log_path:
+            log.rotate(args.log_path.expanduser())
+        return 0
     if args.json:
         print(json.dumps([s.__dict__ | {"jobs": [j.__dict__ for j in s.jobs]} for s in found]))
     elif found:

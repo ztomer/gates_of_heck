@@ -262,8 +262,8 @@ Every structural checker is native since Phase N3; the Python checkers they port
   edit. Pinned by `test_load_reap.py`.
 * `tools/install_launchagent.sh LABEL [install|remove|check]` — the ONE installer for a repo-owned launchd job
   (`launchagents/LABEL.plist` copied into `~/Library/LaunchAgents`, idempotently; `check` compares content and names
-  drift; `remove` DELETES it, the house deletes, it does not trash). `tools/install_load_reap.sh` and
-  `tools/install_actions_sweep.sh` are one-line callers naming their job. Pinned by `test_install_launchagent.py`.
+  drift; `remove` DELETES it, the house deletes, it does not trash). `tools/install_load_reap.sh`,
+  `tools/install_actions_sweep.sh` and `tools/install_agent_stalls.sh` are one-line callers naming their job. Pinned by `test_install_launchagent.py`.
 * `scripts/actions_sweep.py` / `tools/actions_sweep.sh` (G14, 2026-10-26) — GitHub Actions storage cleans itself: for every
   non-archived repo of the owner, artifacts older than 14 days go, caches go when off the default branch or unused for more
   than 7 days (a default-branch cache in use stays), and artifact-and-log retention is set to 14 days when higher, so a new
@@ -337,7 +337,12 @@ Every structural checker is native since Phase N3; the Python checkers they port
   launched and was never notified about, alive (the pids `lsof` finds holding the job's `.output`) or
   gone. The hook reads only the event's own session's `subagents/` and speaks to the coordinator
   (`additionalContext`) and the owner (`systemMessage`); exit 1 from the command when any is stalled
-  (GOH.STALLAGENT). Never signals a process. Pinned by `test_agent_stalls.py`.
+  (GOH.STALLAGENT). Probed on 2026-11-08 (Claude Code 2.1.317, stream-json): a task-notification and a
+  ScheduleWakeup each fire the coordinator's UserPromptSubmit, so any wake shows a stall. `--notify` is
+  the pass `tools/agent_stalls_notify.sh` runs every five minutes from launchd
+  (`com.ztomer.goh-agent-stalls`, a one-shot pass, no daemon): it posts one macOS notification per stall
+  whose every pending job is gone (nothing will ever wake it), once per stall (`--state`), to a stamped,
+  bounded log (GOH.STALLNOTIFY). Never signals a process. Pinned by `test_agent_stalls.py`.
 * `hooks/claude/appstate.py` — the owner's login-item apps, snapshotted at each spawn by `agent_guard.py` and
   relaunched at SubagentStop when the agent left one not running (GOH.APPSTATE); seams for the item list, the
   process table and the launcher; inert under goh's suite without them. Pinned by `test_claude_appstate.py`.

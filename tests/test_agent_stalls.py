@@ -202,3 +202,103 @@ def test_goh_agent_stalls_names_an_interpreter_it_cannot_run(tmp_path: Path) -> 
     gone = str(tmp_path / "no-python")
     r = run_goh(tmp_path, "agent-stalls", env=hermetic_env(GOH_PY=gone, GOH_PY_OK=gone))
     assert r.returncode == 2 and "cannot run" in r.stderr
+
+
+# --- GOH.STALLNOTIFY: the idle coordinator. Probed 2026-11-08 on Claude Code 2.1.317 (stream-json,
+# the desktop app's mode): a task-notification (shell job or subagent) and a ScheduleWakeup each
+# fire the coordinator's UserPromptSubmit with that text as `prompt`. The two prompts below are the
+# shapes the probe logged; the hook must not care which kind of prompt woke it.
+TASK_PROMPT = (
+    "<task-notification>\n<task-id>a59402c9a73cb0fc7</task-id>\n<tool-use-id>toolu_0</tool-use-id>"
+    "\n<status>completed</status>\n</task-notification>"
+)
+
+
+@pytest.mark.parametrize("prompt", [TASK_PROMPT, "WOKE"], ids=["task-notification", "wakeup"])
+def test_the_hook_names_a_stall_on_a_wake_that_is_not_the_owner_typing(
+    tmp_path: Path, prompt: str
+) -> None:
+    session = tmp_path / "proj" / "sess"
+    _waiting(session / "subagents", idle_min=48)
+    event = {"hook_event_name": "UserPromptSubmit", "prompt": prompt,
+             "transcript_path": str(session.with_suffix(".jsonl"))}  # fmt: skip
+    out = json.loads(st.hook(json.dumps(event), NOW, holders=_none) or "{}")
+    assert "Q.x1 [x1] idle 48m, waiting" in out["hookSpecificOutput"]["additionalContext"]
+
+
+def _gone_and_alive(d: Path) -> None:
+    _waiting(d)  # x1: its one pending job, btwo, is gone
+    _agent(d, "x2", [_launch("bthree", d / "bthree.output"), _assistant("waiting")], 40)
+    _agent(d, "x3", [_assistant("Running the suite.", "tool_use")], 45)  # no job: a hung call
+
+
+def test_a_dead_wait_is_a_stall_whose_every_pending_job_is_gone(tmp_path: Path) -> None:
+    d = tmp_path / "subagents"
+    _gone_and_alive(d)
+    alive = str(d / "bthree.output")
+    found = st.stalls([d], NOW, holders=lambda ps: {alive: [9]} if alive in ps else {})
+    assert sorted(s.agent_id for s in found) == ["x1", "x2", "x3"]
+    assert [s.agent_id for s in st.dead_waits(found)] == ["x1"]
+
+
+def test_notify_tells_the_owner_once_then_again_when_the_stall_is_a_new_one(tmp_path: Path) -> None:
+    d, state = tmp_path / "subagents", tmp_path / "state" / "told.json"
+    t = _waiting(d)
+    told: list[tuple[str, str]] = []
+
+    def post(title: str, body: str) -> None:
+        told.append((title, body))
+
+    found = st.stalls([d], NOW, holders=_none)
+    assert [s.agent_id for s in st.notify_new(found, NOW, state, post)] == ["x1"]
+    assert told[0][0] == "Subagent stalled 30m" and "btwo gone" in told[0][1]
+    later = NOW + 300  # the next pass: the same stall, five minutes staler -- not told again
+    assert st.notify_new(st.stalls([d], later, holders=_none), later, state, post) == []
+    assert len(told) == 1
+    os.utime(t, (NOW + 60, NOW + 60))  # it moved, then stalled again: a new stall
+    again = NOW + 60 + 25 * 60
+    assert len(st.notify_new(st.stalls([d], again, holders=_none), again, state, post)) == 1
+    assert len(told) == 2
+
+
+def test_notify_state_holds_only_the_latest_pass(tmp_path: Path) -> None:
+    d, state = tmp_path / "subagents", tmp_path / "told.json"
+    _waiting(d)
+    st.notify_new(st.stalls([d], NOW, holders=_none), NOW, state, lambda _t, _b: None)
+    assert list(json.loads(state.read_text())) == ["x1"]
+    st.notify_new([], NOW, state, lambda _t, _b: None)  # it finished: its entry goes
+    assert json.loads(state.read_text()) == {}
+
+
+def test_the_notify_pass_posts_through_osascript_argv_and_logs_a_stamped_line(
+    tmp_path: Path,
+) -> None:
+    """The CLI pass end to end, with a fake `osascript` first on PATH recording its argv."""
+    d, fake = tmp_path / "subagents", tmp_path / "bin"
+    _waiting(d)
+    fake.mkdir()
+    rec = tmp_path / "argv"
+    (fake / "osascript").write_text(f'#!/bin/sh\nprintf "%s\\n" "$@" >> "{rec}"\n')
+    (fake / "osascript").chmod(0o755)
+    env = hermetic_env(PATH=f"{fake}:/usr/bin:/bin:/usr/sbin")
+    args = [sys.executable, str(SCRIPT), "--notify", "--subagents", str(d), "--now", str(NOW),
+            "--state", str(tmp_path / "told.json"), "--log-path", str(tmp_path / "x.log")]  # fmt: skip
+    r = subprocess.run(args, capture_output=True, text=True, timeout=30, env=env, check=False, stdin=subprocess.DEVNULL)  # fmt: skip
+    assert r.returncode == 0, r.stderr
+    assert " agent-stalls: notified Q.x1 [x1] idle 30m" in r.stdout
+    argv = rec.read_text().splitlines()
+    assert argv[-2:][0] == "Subagent stalled 30m" and "btwo gone" in argv[-1]
+    again = subprocess.run(args, capture_output=True, text=True, timeout=30, env=env, check=False, stdin=subprocess.DEVNULL)  # fmt: skip
+    assert (again.returncode, again.stdout) == (0, "")  # told once
+
+
+def test_the_launchd_job_runs_the_notify_pass_every_five_minutes() -> None:
+    import plistlib
+
+    plist = plistlib.loads(
+        (REPO_ROOT / "launchagents" / "com.ztomer.goh-agent-stalls.plist").read_bytes()
+    )
+    assert plist["StartInterval"] == 300 and plist["RunAtLoad"] is True
+    assert "/tools/agent_stalls_notify.sh;" in plist["ProgramArguments"][-1]
+    job = (REPO_ROOT / "tools" / "agent_stalls_notify.sh").read_text()
+    assert 'agent_stalls.py" --notify' in job and "goh_from_head" in job

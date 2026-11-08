@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.ztomer.goh-agent-stalls</string>
+
+    <!-- The idle coordinator's stall notice (GOH.STALLNOTIFY, 2026-11-08). A coordinator wakes on
+         a task-notification, a ScheduleWakeup or an owner prompt, and each one fires the
+         UserPromptSubmit hook that names its stalled subagents (probed on Claude Code 2.1.317).
+         A coordinator whose every agent is stalled on background jobs that are gone never wakes,
+         so nothing names them. Every five minutes this pass reads every session's subagents and
+         posts ONE macOS notification per such stall; the next prompt shows it to the coordinator
+         too. A one-shot pass that exits: no daemon, nothing to reap, and it never signals a
+         process. -->
+    <key>ProgramArguments</key>
+    <array>
+        <string>/bin/bash</string>
+        <string>-c</string>
+        <!-- path-ok: launchd execs this with no shell and no environment, so an absolute path is the only form it can use. The guard is quiet until the gates checkout carries the job's script. -->
+        <string>p=/Users/ztomer/Projects/gates_of_heck/tools/agent_stalls_notify.sh; [ -x "$p" ] || exit 0; exec "$p"</string>
+    </array>
+
+    <key>StartInterval</key>
+    <integer>300</integer>
+
+    <key>RunAtLoad</key>
+    <true/>
+
+    <key>WorkingDirectory</key>
+    <!-- path-ok: the gates checkout, so the job resolves the house interpreter and the HEAD export cache. -->
+    <string>/Users/ztomer/Projects/gates_of_heck</string>
+
+    <key>LowPriorityIO</key>
+    <true/>
+
+    <key>StandardOutPath</key>
+    <!-- path-ok: launchd opens this file itself and does not expand `~`, so the path must be absolute. -->
+    <string>/Users/ztomer/Library/Logs/goh-agent-stalls.log</string>
+    <key>StandardErrorPath</key>
+    <!-- path-ok: the same file as StandardOutPath, for the same reason. -->
+    <string>/Users/ztomer/Library/Logs/goh-agent-stalls.log</string>
+
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+        <key>NO_COLOR</key><string>1</string>
+    </dict>
+</dict>
+</plist>

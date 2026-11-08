@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+* **An idle coordinator's dead subagent reaches the owner (GOH.STALLNOTIFY).** Probed on Claude
+  Code 2.1.317 in the desktop app's stream-json mode with every hook event logged: a
+  task-notification (a shell job or a subagent finishing) and a ScheduleWakeup each fire the
+  coordinator's UserPromptSubmit, so the v0.67.0 hook already names a stall on any wake. What no
+  hook can see is a coordinator that never wakes because every agent it waits on is stalled. `goh
+  agent-stalls --notify` posts one macOS notification per stall whose every pending job is gone,
+  once per stall; the launchd job `com.ztomer.goh-agent-stalls` (`tools/install_agent_stalls.sh`)
+  runs it every five minutes as a one-shot pass, logging to a stamped, bounded file. Pinned by
+  `tests/test_agent_stalls.py`.
+
 ## v0.67.0 -- goh agent-stalls names a subagent idle on background work that never notified
 
 * **A subagent idle on background work that never notified is named, not discovered
