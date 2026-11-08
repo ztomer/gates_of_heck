@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## v0.66.0 -- a kit cut writes the house heading, one Unreleased, merges into a hand stanza; land.sh uses the declared gate; no .cargo litter
+
 * **A kit cut writes the house heading, folds every Unreleased section into one, and merges into a
   hand-written stanza (GOH.CUTTITLE).** `release.sh` passed no title, so in repos whose headings
   are `## vX — title _(YYYY-MM-DD)_` (routines, ztools) the cut wrote a bare `## vX`. Now the title
