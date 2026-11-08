@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## v0.75.0 -- agents end at push: the report contract asks for push and tag, and a CI-watching spawn is refused
+
 * **Agents end at push and never watch CI (GOH.ENDATPUSH, owner ruling 2026-11-08).** The report
   contract `hooks/claude/agent_guard.py` appends to every write spawn asks for the commits and whether
   they are pushed and tagged, no longer a CI run id and conclusion (54% of agent context was spent after
