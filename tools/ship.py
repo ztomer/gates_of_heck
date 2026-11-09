@@ -256,7 +256,8 @@ def ci_wait(result: str) -> int:
         left = end - time.monotonic()
         argv = [sys.executable, res["loopctl"], "ci", sha, "--repo", slug, "--wait", "--timeout",
                 str(max(1, int(left)))]  # fmt: skip
-        code = subprocess.run(argv, cwd=repo, stdin=subprocess.DEVNULL, check=False).returncode
+        code = subprocess.run(argv, cwd=repo, env=unbound_env(), stdin=subprocess.DEVNULL,
+                              check=False).returncode  # fmt: skip
         if code in (CI_GREEN, CI_NONE):
             return 0
         if code not in (CI_PENDING, CI_THROTTLED):

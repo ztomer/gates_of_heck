@@ -11,12 +11,12 @@ pub const STORE_CI_REFUSED_FROM: u64 = 1_794_787_200;
 
 /// Matches a workflow line that brings goh into a run: `repository: o/gates_of_heck` (a checkout),
 /// `github.com/o/gates_of_heck` (a clone), `uses: o/gates_of_heck/...` (its actions).
-const GOH_IN_CI: &str = r"(?:github\.com[/:]|repository:\s*|uses:\s*)[\w.-]+/gates_of_heck\b";
+const CI_RUNS_GOH: &str = r"(?:github\.com[/:]|repository:\s*|uses:\s*)[\w.-]+/gates_of_heck\b";
 
 /// The workflow under `repo/.github/workflows` that runs goh, if any (its file name).
 #[must_use]
 pub fn goh_workflow(repo: &Path) -> Option<String> {
-    let re = regex::Regex::new(GOH_IN_CI).ok()?;
+    let re = regex::Regex::new(CI_RUNS_GOH).ok()?;
     let mut files: Vec<PathBuf> = std::fs::read_dir(repo.join(".github").join("workflows"))
         .ok()?
         .filter_map(|e| e.ok().map(|e| e.path()))
