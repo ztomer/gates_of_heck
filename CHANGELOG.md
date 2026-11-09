@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## v0.91.0 -- a crates.io release alone never turns a repository red
+
 * **A crates.io release alone no longer turns a repository red (GOH.CRATESDRIFT, D-0001).**
   `goh crates-behind` reds a behind `Cargo.lock` entry only when the change locked it (its name and
   version are not in the base's lock: an added crate or a downgrade) and a newer compatible release
