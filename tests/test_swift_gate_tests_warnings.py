@@ -10,6 +10,7 @@ import os
 import subprocess
 from pathlib import Path
 
+from _fast_git import fast_init
 from conftest import REPO_ROOT, mk_xcrun_find_shim, write
 
 SWIFT_GATE = REPO_ROOT / "gates" / "swift_gate.sh"
@@ -25,7 +26,8 @@ fi
 # What swift 6.4 really does with a Swift 6 isolation warning under -warnings-as-errors (probed
 # 2026-11-09 on token-pool's pre-fix LoginItemTests shape): prints it, coloured, and exits 0.
 if [ "$1" = build ] && [ -n "${WARN_AT:-}" ]; then
-    printf '%s:46:9: \033[1;33mwarning: \033[1;39mmain actor-isolated property '"'"'defaults'"'"' can not be mutated from a nonisolated context\033[0;0m\n' "$WARN_AT"
+    e=$(printf '\x1b')
+    printf '%s:46:9: %s[1;33mwarning: %s[1;39mmain actor-isolated property defaults can not be mutated from a nonisolated context%s[0;0m\n' "$WARN_AT" "$e" "$e" "$e"
     echo "Build complete! (1.00s)"
 fi
 exit 0
@@ -101,7 +103,7 @@ def test_a_dependency_warning_stays_green(tmp_path):
 def test_a_package_in_a_subdirectory_judges_its_own_sources(tmp_path):
     top = tmp_path / "top"
     top.mkdir()
-    subprocess.run(["git", "init", "-q", str(top)], check=True, stdin=subprocess.DEVNULL)
+    fast_init(top)
     repo, bin_ = _repo(tmp_path)
     pkg = top / "widget"
     repo.rename(pkg)
