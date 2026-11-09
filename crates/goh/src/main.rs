@@ -25,6 +25,7 @@ pub mod cli;
 pub mod cli_args;
 pub mod commands;
 pub mod commit_class;
+pub mod crates_behind;
 pub mod credurls;
 pub mod deadexec;
 pub mod deps;
@@ -366,13 +367,14 @@ fn run_ported(command: Commands) -> Result<i32, Box<Commands>> {
             json,
             verdict,
         } => credurls::run_command(root.as_deref(), json, verdict.as_deref()),
-        Commands::Deps {
-            root,
-            json,
-            offline,
-            strict,
-            ratchet,
-        } => deps::run_command(root.as_deref(), json, offline, strict, ratchet.as_deref()),
+        Commands::Deps(a) => deps::run_command(
+            a.root.as_deref(),
+            a.json,
+            a.offline,
+            a.strict,
+            a.ratchet.as_deref(),
+        ),
+        Commands::CratesBehind(a) => crates_behind::run_command(&a),
         Commands::EmptyAssert { exclude, staged } => {
             paths(exclude, |x| emptyassert::run_command(staged, x))
         }

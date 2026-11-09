@@ -118,3 +118,43 @@ pub struct RoadmapArgs {
     #[arg(long)]
     pub queue: Option<String>,
 }
+
+/// `goh deps` flags.
+#[derive(Debug, clap::Args)]
+pub struct DepsArgs {
+    /// Repository to read (default: cwd).
+    #[arg(long)]
+    pub root: Option<String>,
+    /// Machine-readable output.
+    #[arg(long)]
+    pub json: bool,
+    /// Skip the network arm, and say so.
+    #[arg(long)]
+    pub offline: bool,
+    /// Also fail on a major behind.
+    #[arg(long)]
+    pub strict: bool,
+    /// Fail on any major not listed in this file.
+    #[arg(long)]
+    pub ratchet: Option<String>,
+}
+
+/// `goh crates-behind` flags.
+#[derive(Debug, clap::Args)]
+pub struct CratesBehindArgs {
+    /// Repository to judge (default: the enclosing one).
+    #[arg(long)]
+    pub root: Option<String>,
+    /// A `Cargo.lock` to judge, repo-relative or absolute; repeatable (default: `<root>/Cargo.lock`).
+    #[arg(long = "lock")]
+    pub locks: Vec<String>,
+    /// Judge nothing against the registry, and say so (`GOH_DEPS_OFFLINE=1`).
+    #[arg(long)]
+    pub offline: bool,
+    /// Seconds each cargo call may take before the lock is skipped as unreachable.
+    #[arg(long, default_value_t = crate::crates_behind::DEFAULT_TIMEOUT_SECS)]
+    pub timeout: u64,
+    /// The cargo to run (a test seam; the gate never passes it).
+    #[arg(long, default_value = "cargo", hide = true)]
+    pub cargo: String,
+}

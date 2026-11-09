@@ -74,6 +74,10 @@ SLOW: dict[tuple[str, str], str] = {
         "rust_gate.sh",
         "every advisory exemption in $cfg/.cargo/audit.toml has its reason and still fires",
     ): "lockfile",
+    (
+        "rust_gate.sh",
+        "every Cargo.lock at its newest compatible releases (cargo update --dry-run)",
+    ): "registry read",
     ("rust_gate.sh", "lint policy is inherited"): "manifest",
     ("rust_gate.sh", "coverage (floor ${GOH_COV_FLOOR_RUST}%)"): _W,
     ("rust_gate.sh", "coverage (per-target floors)"): _W,

@@ -31,6 +31,9 @@
 #      same lint. Runs first because it reads a few dozen files and reports the
 #      offending lines, where clippy needs the crate to compile and reports at
 #      the end -- so the price of a violation is the violation, not the repo.
+#   3b. goh crates-behind -- every tracked Cargo.lock at its newest compatible releases: a lock
+#      `cargo update --dry-run` would move fails, naming the crates (estate seed
+#      crates_behind_seed.json); an unreachable index is a stated skip; duplicate majors warn.
 #   4. coverage floor, when stated (GOH_COV_FLOOR_RUST or GOH_COV_FLOORS_JSON
 #      in .gatesrc) — via gates/coverage_gate.sh, with the floor passed as
 #      explicit argv (.gatesrc values are shell variables, NOT exported, so
@@ -261,7 +264,7 @@ rust_crate_checks() {
 #     and one whose advisory no longer fires, which cargo-audit accepts silently.
 # GOH_DEPS_OFFLINE=1 judges against the cached database and SAYS so, like the currency arm.
 rust_advisories() {
-    local plan cfg lock fetch="--fetch" ratchets="" top
+    local plan cfg lock fetch="--fetch" ratchets="" top behind_args=""
     top="$(pwd)"
     if [ "${GOH_DEPS_OFFLINE:-}" = "1" ]; then
         fetch="--no-fetch"
@@ -277,6 +280,7 @@ rust_advisories() {
             "$GOH_PY" "$HERE/../lib/advisory_db.py" run "$fetch" -- cargo audit --file "$top/$lock" \
             --deny warnings --deny unmaintained --deny unsound --deny yanked
         fetch="--no-fetch"
+        behind_args="$behind_args --lock $lock"
         if [ -f "$top/$cfg/.cargo/audit.toml" ]; then
             case "$ratchets" in *"|$cfg|"*) ;; *) ratchets="$ratchets|$cfg|" ;; esac
         fi
@@ -288,6 +292,19 @@ rust_advisories() {
         goh_step_in "$top/$cfg" "every advisory exemption in $cfg/.cargo/audit.toml has its reason and still fires" \
             "$GOH_PY" "$HERE/../checks/check_audit_ignores.py" --no-fetch --repo "$top" --lock "$lockfile"
     done <<<"$ratchets|"
+    # EVERY LOCK AT ITS NEWEST COMPATIBLE RELEASES (house Rust rule 2, GOH.CRATESBEHIND):
+    # `cargo update --dry-run` per lock, bounded, writing nothing; a lock it would move fails with
+    # the crates named, against the estate seed (crates_behind_seed.json). An unreachable index is
+    # a stated skip, never a pass; duplicate majors (`cargo tree -d`) warn. Outside the proven
+    # groups like the advisories: the registry is an input no key names.
+    [ "${GOH_DEPS_OFFLINE:-}" = "1" ] && behind_args="$behind_args --offline"
+    # shellcheck disable=SC2086 # deliberate word-splitting: this IS the argv list (repo-relative locks)
+    goh_step "every Cargo.lock at its newest compatible releases (cargo update --dry-run)" \
+        "${_goh_cmd[@]}" crates-behind --root "$top" $behind_args
+    # A passing step's log is not shown, and here its advisories ARE the report: a lock skipped
+    # (offline, index unreachable -- never a silent pass), a seeded lock still behind, a duplicate
+    # major. The `⚠` lines are surfaced; the ok line above stays the verdict.
+    grep '⚠' "$GOH_LOG" >&2 || true
 }
 
 rust_repo_checks() {

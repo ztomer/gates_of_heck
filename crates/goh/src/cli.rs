@@ -6,7 +6,8 @@ use std::path::PathBuf;
 use clap::{Parser, Subcommand};
 
 pub use crate::cli_args::{
-    ExcludeStagedArgs, PassArgs, ProvenAction, RoadmapArgs, SkillsArgs, StagedArgs, TagVersionArgs,
+    CratesBehindArgs, DepsArgs, ExcludeStagedArgs, PassArgs, ProvenAction, RoadmapArgs, SkillsArgs,
+    StagedArgs, TagVersionArgs,
 };
 
 #[derive(Debug, Parser)]
@@ -305,23 +306,9 @@ pub enum Commands {
     },
     /// Dependency currency: a pin below the graph fails; crates.io drift reports
     /// (native port of `check_dep_currency`).
-    Deps {
-        /// Repository to read (default: cwd).
-        #[arg(long)]
-        root: Option<String>,
-        /// Machine-readable output.
-        #[arg(long)]
-        json: bool,
-        /// Skip the network arm, and say so.
-        #[arg(long)]
-        offline: bool,
-        /// Also fail on a major behind.
-        #[arg(long)]
-        strict: bool,
-        /// Fail on any major not listed in this file.
-        #[arg(long)]
-        ratchet: Option<String>,
-    },
+    Deps(DepsArgs),
+    /// Fail when `cargo update --dry-run` would move a lock to newer compatible releases.
+    CratesBehind(CratesBehindArgs),
     /// Fail on an emptiness assertion clippy refuses, or is silent on with a
     /// message (native port of `check_no_empty_assert`).
     EmptyAssert {
