@@ -26,6 +26,12 @@
   store's `private_names.txt`, which no tree holds, and a machine without it says `not judged` on a
   warning line. Published history is not rewritten. Red first: a planted name in a staged file
   was refused (exit 1), and the step's own first draft, whose doc comment named the metarepo.
+* **The step-ceiling test judges the step's end, not the wall clock (GOH.TIMEOUTFLAKE).**
+  `test_step_timeout_kills_hung_step` bounded local_ci.sh's whole run, start-up included, by a
+  load-derived limit; in the GOH.SEEDPRIVATE land gate it took ~33 s with the ceiling working
+  against a bound near 30 s. It now asserts what a missing ceiling changes: the step never wrote
+  `finished`, its shell is gone, the run says TIMED OUT. Calibrated red with the ceiling off;
+  60 of 60 green beside 12 load.py spinners.
 * **A subagent's direct `gh` CI read is named (GOH.GHDOOR).** The repo-worker definitions say CI is
   read only through `loopctl.py ci <full-sha> --repo OWNER/NAME [--wait]` (exit 75: throttled, not
   a failure), never `gh run list/view/watch` or `gh api .../actions`; agent_guard's SubagentStop

@@ -10,12 +10,10 @@ Contract pinned here:
 
 import os
 import subprocess
-import time
 from pathlib import Path
 
 import pytest
 from conftest import REPO_ROOT
-from timing_bounds import assert_sooner
 
 LOCAL_CI = REPO_ROOT / "gates" / "local_ci.sh"
 
@@ -207,17 +205,24 @@ def test_unknown_flag_rejected(repo):
 
 
 def test_step_timeout_kills_hung_step(repo, monkeypatch):
-    # Without the feature this test costs 60s and PASSES (sleep exits 0) —
-    # red-proofed that way against the pre-timeout local_ci.sh.
+    # The discriminator is the STEP'S OWN END, never the wall clock (GOH.TIMEOUTFLAKE). A step
+    # whose ceiling never fired runs to its end, writes `finished` and exits 0; one that was killed
+    # at its ceiling wrote nothing after the sleep and its shell is gone. The elapsed-time bound
+    # this test carried (`assert_sooner(dt, 3, 60)`) timed local_ci.sh's whole start-up as well as
+    # the step: in the GOH.SEEDPRIVATE land gate the run took ~33 s with the ceiling working (the
+    # test's temp dir at 02:14:53, the next test's at 02:15:26) against a bound the lagging load
+    # average had set near 30 s. local_ci's start-up is not the property under test.
     monkeypatch.setenv("GOH_LCI_TIMEOUT", "2")
-    gatesrc(repo, "sleep 60")
-    t0 = time.time()
+    pid, finished = repo / "step.pid", repo / "finished"
+    gatesrc(repo, f"echo $$ > {pid}; sleep 60; touch {finished}")
     r = run_ci(repo)
-    dt = time.time() - t0
-    assert r.returncode == 1, r.stdout + r.stderr  # accumulator exit, not 124
     combined = r.stdout + r.stderr
-    assert "TIMED OUT" in combined and "GOH_LCI_TIMEOUT" in combined
-    assert_sooner(dt, 3, 60, "a 2 s step timeout over a 60 s step")
+    assert r.returncode == 1, combined  # accumulator exit, not 124
+    assert "TIMED OUT" in combined and "GOH_LCI_TIMEOUT" in combined, combined
+    assert not finished.exists(), "the step ran to its end: the ceiling never fired\n" + combined
+    if pid.exists():  # a ceiling that fired before the shell started leaves no pid to ask about
+        with pytest.raises(ProcessLookupError):
+            os.kill(int(pid.read_text()), 0)
 
 
 def test_invalid_timeout_is_usage_error(repo, monkeypatch):
