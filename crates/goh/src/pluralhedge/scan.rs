@@ -51,10 +51,10 @@ pub fn literal_spans(line: &str, lang: Lang) -> Vec<(usize, usize)> {
             }
         } else if c == '"' || (c == '\'' && lang == Lang::Hash) {
             open = Some((c, i + 1));
-        } else if lang == Lang::Hash && c == '#' && (prev.is_whitespace() || i == 0) {
-            break;
-        } else if lang == Lang::Slash && c == '/' && line[i + 1..].starts_with('/') {
-            break;
+        } else if (lang == Lang::Hash && c == '#' && (prev.is_whitespace() || i == 0))
+            || (lang == Lang::Slash && c == '/' && line[i + 1..].starts_with('/'))
+        {
+            break; // a comment starts: nothing after it is a string
         }
         prev = c;
     }
