@@ -294,8 +294,8 @@ rust_advisories() {
     done <<<"$ratchets|"
     # EVERY LOCK AT ITS NEWEST COMPATIBLE RELEASES (house Rust rule 2, GOH.CRATESBEHIND):
     # `cargo update --dry-run` per lock, bounded, writing nothing; a lock it would move fails with
-    # the crates named, against the estate seed (crates_behind_seed.json). An unreachable index is
-    # a stated skip, never a pass; duplicate majors (`cargo tree -d`) warn. Outside the proven
+    # the crates named, against the estate seed (the repo's own crates_behind_seed.json or the
+    # private store, GOH.SEEDPRIVATE). An unreachable index is a stated skip, never a pass; duplicate majors (`cargo tree -d`) warn. Outside the proven
     # groups like the advisories: the registry is an input no key names.
     [ "${GOH_DEPS_OFFLINE:-}" = "1" ] && behind_args="$behind_args --offline"
     # shellcheck disable=SC2086 # deliberate word-splitting: this IS the argv list (repo-relative locks)

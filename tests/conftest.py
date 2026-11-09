@@ -151,6 +151,8 @@ def hermetic_env(drop_git: bool = False, **overrides: str) -> dict[str, str]:
     # new delegated step went red before landing and an edit to an old one was never tested at all
     # (D.GOH1, 2026-10-31).
     env["GOH_DIR"] = str(REPO_ROOT)
+    # The owner's private seed store is never a test's (GOH.SEEDPRIVATE): a child reads none.
+    env["GOH_SEED_DIR"] = str(Path(tempfile.gettempdir()) / "goh-suite-no-seed-store")
     env.update(overrides)
     return env
 

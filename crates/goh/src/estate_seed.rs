@@ -2,31 +2,64 @@
 //!
 //! A new house check sweeps the estate first (`lib/estate_registry.py` `existing()`), and the sites
 //! it finds in consumer repositories are fixed there, one queue item each -- never from
-//! `gates_of_heck`. Until then each is seeded in a JSON file at the `gates_of_heck` root (read from
-//! `$GOH_DIR`), keyed by the repository's ROOT COMMIT and the file: a seeded file at or under its
-//! count WARNS, over it is red, and an entry a full run finds clean or lower is named to delete or
-//! lower (a warn: the consumer that fixed it cannot edit this file in the same commit). An unseeded
-//! finding is red. "Done" is an empty `entries`.
+//! `gates_of_heck`. Until then each is SEEDED, keyed by the repository's ROOT COMMIT and the file: a
+//! seeded file at or under its count WARNS, over it is red, unseeded is red, and an entry a full
+//! run finds clean is STALE and red (its repository deletes it with the fix). "Done" is no entry.
+//!
+//! WHERE AN ENTRY LIVES (GOH.SEEDPRIVATE, 2026-11-09). `gates_of_heck` is public, and its seeds
+//! once held every consumer's entries: `crates_behind_seed.json` published `Finance/zinc`. Now a
+//! repository's entries have two homes, read together, one key:
+//!
+//! * its OWN tracked seed file, `<repo>/<kind file>` -- versioned, reviewed, and in every clone, so
+//!   a GitHub runner judges what the machine judges. Every entry there must carry THAT
+//!   repository's root commit: an entry naming another root is refused, so no tree (goh's least of
+//!   all) can carry another repository's facts. A shallow clone cannot know its root, so there the
+//!   file's entries are taken as its own (the full clone that committed them was judged);
+//! * the owner's PRIVATE store, `$GOH_SEED_DIR/<kind file>`, else `$XDG_STATE_HOME/goh/seeds/`,
+//!   else `~/.local/state/goh/seeds/` -- in no tree at all, for a repository gated only on this
+//!   machine, or a clone that is not ours to commit to (a vendored or upstream tree).
+//!
+//! An entry in both homes is refused: one fact in one place.
 //!
 //! WHY THE ROOT COMMIT. The directory name was `goh bare-hook-index`'s first key, and the release
 //! canary judges each consumer in a clone named `tree`: the seeded repo read as unseeded and the
 //! land was refused. A root commit is the same in every clone, worktree and move of a repository
 //! (`repo` in an entry is a label for the reader, never matched).
 //!
-//! One implementation for every seeded check (`hookindex`, `relquiet`, `mktempport`, `changelog`):
-//! the first copy of this lived in `hookindex/seed.rs`, and a second copy is how one of them would
-//! have kept the directory-name key.
+//! One implementation for every seeded check (`hookindex`, `relquiet`, `mktempport`, `changelog`,
+//! `crates_behind`): the first copy of this lived in `hookindex/seed.rs`, and a second copy is how
+//! one of them would have kept the directory-name key.
 
 use std::collections::BTreeMap;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
-/// `(root commit, path) -> count` as seeded.
-pub type Seed = BTreeMap<(String, String), usize>;
+/// One seeded count, and which home holds it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Held {
+    /// How many findings the entry allows.
+    pub count: usize,
+    /// In the private store (`store_dir`), not the repository's own tracked file.
+    pub stored: bool,
+}
 
-/// One seeded check: its seed file at the `gates_of_heck` root, and the noun its count counts.
+impl Held {
+    /// An entry from the repository's own tracked seed file.
+    #[must_use]
+    pub const fn tracked(count: usize) -> Self {
+        Self {
+            count,
+            stored: false,
+        }
+    }
+}
+
+/// `(root commit, path) -> what is seeded`.
+pub type Seed = BTreeMap<(String, String), Held>;
+
+/// One seeded check: its seed file's name, and the noun its count counts.
 #[derive(Debug, Clone, Copy)]
 pub struct Kind {
-    /// The file name, at the `gates_of_heck` root.
+    /// The file name, at a repository's root and in the private store.
     pub file: &'static str,
     /// What one counted finding is, singular (`read`, `site`, `finding`).
     pub unit: &'static str,
@@ -34,19 +67,46 @@ pub struct Kind {
     pub name: &'static str,
 }
 
-/// Read `kind`'s seed at `goh`. A missing file is an empty seed; a corrupt one is an error.
-///
-/// # Errors
-///
-/// A message naming the file when it is not the JSON this module reads.
-pub fn load(goh: &Path, kind: Kind) -> Result<Seed, String> {
-    let path = goh.join(kind.file);
-    let Ok(text) = std::fs::read_to_string(&path) else {
-        return Ok(Seed::new());
+/// The private store: `GOH_SEED_DIR`, else `$XDG_STATE_HOME/goh/seeds`, else
+/// `$HOME/.local/state/goh/seeds` (the estate state's own directory, `lib/estate_registry.py`).
+#[must_use]
+pub fn store_dir() -> Option<PathBuf> {
+    let set = |k: &str| {
+        std::env::var_os(k)
+            .filter(|v| !v.is_empty())
+            .map(PathBuf::from)
+    };
+    if let Some(d) = set("GOH_SEED_DIR") {
+        return Some(d);
+    }
+    let base = set("XDG_STATE_HOME").or_else(|| set("HOME").map(|h| h.join(".local/state")))?;
+    Some(base.join("goh").join("seeds"))
+}
+
+/// Where `held` is to be edited, for a note.
+fn home(kind: Kind, held: Held) -> String {
+    match store_dir() {
+        Some(d) if held.stored => d.join(kind.file).display().to_string(),
+        _ => kind.file.to_string(),
+    }
+}
+
+/// One entry as a file spells it.
+struct Raw {
+    root: String,
+    repo: String,
+    path: String,
+    count: usize,
+}
+
+/// The entries of the seed file at `path`. A missing file holds none; a corrupt one is an error.
+fn parse(path: &Path, kind: Kind) -> Result<Vec<Raw>, String> {
+    let Ok(text) = std::fs::read_to_string(path) else {
+        return Ok(Vec::new());
     };
     let bad = |why: &str| format!("{} is not a {}: {why}", path.display(), kind.name);
     let v: serde_json::Value = serde_json::from_str(&text).map_err(|e| bad(&e.to_string()))?;
-    let mut seed = Seed::new();
+    let mut out = Vec::new();
     for e in v
         .get("entries")
         .and_then(serde_json::Value::as_array)
@@ -65,7 +125,79 @@ pub fn load(goh: &Path, kind: Kind) -> Result<Seed, String> {
             return Err(bad(&format!("{repo} {file} has no reason")));
         }
         let count = usize::try_from(count).map_err(|e| bad(&e.to_string()))?;
-        seed.insert((root.to_string(), file.to_string()), count);
+        out.push(Raw {
+            root: root.to_string(),
+            repo: repo.to_string(),
+            path: file.to_string(),
+            count,
+        });
+    }
+    Ok(out)
+}
+
+/// `kind`'s seed for the repository at `repo`: its own tracked file and the private store.
+///
+/// # Errors
+///
+/// A corrupt file; a tracked entry naming another repository's root; one entry in both homes.
+pub fn load(repo: &Path, kind: Kind) -> Result<Seed, String> {
+    load_from(repo, store_dir().as_deref(), kind)
+}
+
+/// `load` with the store named (`None`: no store), so a test never reads the machine's.
+///
+/// # Errors
+///
+/// As `load`.
+pub fn load_from(repo: &Path, store: Option<&Path>, kind: Kind) -> Result<Seed, String> {
+    let mut seed = Seed::new();
+    let tracked = parse(&repo.join(kind.file), kind)?;
+    if !tracked.is_empty() {
+        let own = crate::gitutil::root_commit(repo).unwrap_or_default();
+        let shallow = crate::gitutil::is_shallow(repo);
+        for e in tracked {
+            if !shallow && e.root != own {
+                let to = store.map_or_else(
+                    || "the private store".to_string(),
+                    |d| d.join(kind.file).display().to_string(),
+                );
+                return Err(format!(
+                    "{} holds an entry for another repository ({} {}, root {}; this one's is {}): \
+                     an entry about a repository lives in THAT repository's own {}, or in {to}, \
+                     never in this tree (GOH.SEEDPRIVATE)",
+                    kind.file,
+                    e.repo,
+                    e.path,
+                    e.root,
+                    if own.is_empty() { "unknown" } else { &own },
+                    kind.file
+                ));
+            }
+            let root = if shallow { own.clone() } else { e.root };
+            seed.insert((root, e.path), Held::tracked(e.count));
+        }
+    }
+    if let Some(dir) = store {
+        let file = dir.join(kind.file);
+        for e in parse(&file, kind)? {
+            let key = (e.root, e.path);
+            if seed.contains_key(&key) {
+                return Err(format!(
+                    "{} {} is seeded in both {} and {}: one fact in one place -- delete one",
+                    e.repo,
+                    key.1,
+                    kind.file,
+                    file.display()
+                ));
+            }
+            seed.insert(
+                key,
+                Held {
+                    count: e.count,
+                    stored: true,
+                },
+            );
+        }
     }
     Ok(seed)
 }
@@ -75,13 +207,15 @@ pub fn load(goh: &Path, kind: Kind) -> Result<Seed, String> {
 pub struct Verdict {
     /// Unseeded, or over the seed: red.
     pub red: Vec<String>,
-    /// Seeded files at their count, and entries to lower or delete: `(path, note)`, warnings.
+    /// Seeded files at or under their count: `(path, note)`, warnings.
     pub warn: Vec<(String, String)>,
+    /// Entries a full run found nothing for: `(path, note)`, red -- a ratchet holds only what is
+    /// still there, and the repository that fixed the site deletes its own entry with the fix.
+    pub stale: Vec<(String, String)>,
 }
 
 /// Judge `found` (`path -> number of findings`) in the repo whose identity is `repo` against
-/// `seed`. `full`: every file in scope was read, so an entry with fewer findings than seeded is
-/// stale.
+/// `seed`. `full`: every file in scope was read, so an entry with no finding left is stale.
 #[must_use]
 pub fn judge(
     repo: &str,
@@ -91,14 +225,17 @@ pub fn judge(
     kind: Kind,
 ) -> Verdict {
     let mut v = Verdict::default();
-    let (file, unit) = (kind.file, kind.unit);
+    let unit = kind.unit;
     for (path, n) in found {
         match seed.get(&(repo.to_string(), path.clone())) {
             None => v.red.push(path.clone()),
-            Some(s) if n > s => v.red.push(path.clone()),
-            Some(s) if n < s => {
-                let note =
-                    format!("{n} {unit}(s), seeded {s} -- lower its entry in $GOH_DIR/{file}");
+            Some(s) if *n > s.count => v.red.push(path.clone()),
+            Some(s) if *n < s.count => {
+                let note = format!(
+                    "{n} {unit}(s), seeded {} -- lower its entry in {}",
+                    s.count,
+                    home(kind, *s)
+                );
                 v.warn.push((path.clone(), note));
             }
             Some(_) => v
@@ -107,13 +244,13 @@ pub fn judge(
         }
     }
     if full {
-        for ((r, path), _) in seed.range((repo.to_string(), String::new())..) {
+        for ((r, path), s) in seed.range((repo.to_string(), String::new())..) {
             if r != repo {
                 break;
             }
             if !found.contains_key(path) {
-                let note = format!("no {unit} left -- delete its entry from $GOH_DIR/{file}");
-                v.warn.push((path.clone(), note));
+                let note = format!("no {unit} left -- delete its entry from {}", home(kind, *s));
+                v.stale.push((path.clone(), note));
             }
         }
     }
@@ -186,7 +323,7 @@ pub fn verdict(
             );
         }
     }
-    if v.red.is_empty() {
+    if v.red.is_empty() && v.stale.is_empty() {
         // A pass over seeded sites is not the clean pass: it says the seed is what passed.
         let ok = if v.warn.is_empty() {
             format!("{OK} {} OK — {}\n", r.tag, r.ok)
@@ -200,17 +337,41 @@ pub fn verdict(
         };
         return (0, ok, warns);
     }
-    let n: usize = v.red.iter().map(|p| sites[p].len()).sum();
-    let scope = if staged { "staged" } else { "tracked" };
     let mut err = warns;
-    let _ = writeln!(err, "{ERR} {} {n} {} ({scope}):", r.tag, r.what);
-    for p in &v.red {
-        for line in &sites[p] {
-            let _ = writeln!(err, "{line}");
+    if !v.red.is_empty() {
+        let n: usize = v.red.iter().map(|p| sites[p].len()).sum();
+        let scope = if staged { "staged" } else { "tracked" };
+        let _ = writeln!(err, "{ERR} {} {n} {} ({scope}):", r.tag, r.what);
+        for p in &v.red {
+            for line in &sites[p] {
+                let _ = writeln!(err, "{line}");
+            }
         }
+        err.push_str(r.fix);
     }
-    err.push_str(r.fix);
+    err.push_str(&stale_report(r.tag, r.item, &v.stale));
     (1, String::new(), err)
+}
+
+/// The red lines for `stale` entries (empty when there are none): a seed that outlives its sites is
+/// headroom for the defect to come back.
+#[must_use]
+pub fn stale_report(tag: &str, item: &str, stale: &[(String, String)]) -> String {
+    use std::fmt::Write as _;
+    let mut out = String::new();
+    if stale.is_empty() {
+        return out;
+    }
+    let _ = writeln!(
+        out,
+        "{} {tag} {} stale {item} seed entr(ies): a ratchet holds only what is still there:",
+        goh_tui::ERR,
+        stale.len()
+    );
+    for (path, note) in stale {
+        let _ = writeln!(out, "    {path}: {note}");
+    }
+    out
 }
 
 /// A seeded check as a structural step: its warnings on a pass, its report on a red.
@@ -252,73 +413,4 @@ pub fn clip(s: &str) -> String {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    const K: Kind = Kind {
-        file: "x_seed.json",
-        unit: "site",
-        name: "x seed",
-    };
-
-    fn seed(entries: &[(&str, &str, usize)]) -> Seed {
-        entries
-            .iter()
-            .map(|(r, p, n)| ((r.to_string(), p.to_string()), *n))
-            .collect()
-    }
-
-    fn found(entries: &[(&str, usize)]) -> BTreeMap<String, usize> {
-        entries.iter().map(|(p, n)| (p.to_string(), *n)).collect()
-    }
-
-    #[test]
-    fn unseeded_and_over_are_red_at_and_under_warn() {
-        let s = seed(&[("r", "a.sh", 1), ("r", "b.sh", 2), ("r", "c.sh", 2)]);
-        let v = judge(
-            "r",
-            &found(&[("a.sh", 1), ("b.sh", 3), ("c.sh", 1), ("d.sh", 1)]),
-            &s,
-            false,
-            K,
-        );
-        assert_eq!(v.red, vec!["b.sh".to_string(), "d.sh".to_string()]);
-        assert_eq!(v.warn.len(), 2, "{:?}", v.warn);
-        assert!(v.warn[1].1.contains("lower its entry"), "{:?}", v.warn);
-    }
-
-    #[test]
-    fn a_full_run_names_a_stale_entry_and_another_repos_entry_is_not_this_ones() {
-        let s = seed(&[("r", "gone.sh", 1), ("q", "a.sh", 1)]);
-        let v = judge("r", &found(&[("a.sh", 1)]), &s, true, K);
-        assert_eq!(v.red, vec!["a.sh".to_string()]);
-        assert_eq!(v.warn.len(), 1);
-        assert!(v.warn[0]
-            .1
-            .contains("delete its entry from $GOH_DIR/x_seed.json"));
-        let staged = judge("r", &found(&[]), &s, false, K);
-        assert_eq!(
-            staged.warn,
-            Vec::<(String, String)>::new(),
-            "a staged run reads too little to call an entry stale"
-        );
-    }
-
-    #[test]
-    fn an_entry_without_a_reason_is_refused() {
-        let dir = std::env::temp_dir().join(format!("goh-estate-seed-{}", std::process::id()));
-        std::fs::create_dir_all(&dir).expect("mkdir");
-        std::fs::write(
-            dir.join(K.file),
-            r#"{"entries":[{"root":"r","repo":"x","path":"a.sh","count":1,"reason":""}]}"#,
-        )
-        .expect("write");
-        let e = load(&dir, K).expect_err("no reason is refused");
-        assert!(
-            e.contains("is not a x seed") && e.contains("has no reason"),
-            "{e}"
-        );
-        std::fs::remove_dir_all(&dir).expect("rm");
-        assert_eq!(load(&dir, K).expect("missing is empty"), Seed::new());
-    }
-}
+mod tests;

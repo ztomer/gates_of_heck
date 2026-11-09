@@ -311,7 +311,7 @@ fn judge_lock(root: &Path, lock: &str, a: &crate::cli::CratesBehindArgs, offline
 
 /// The whole verdict: `(exit code, stdout, stderr)`.
 fn verdict(root: &Path, judged: &[Judged]) -> (i32, String, String) {
-    let seed = match estate_seed::load(&crate::goh_root(), KIND) {
+    let seed = match estate_seed::load(root, KIND) {
         Ok(s) => s,
         Err(m) => return (2, String::new(), format!("{ERR} {TAG} {m}\n")),
     };

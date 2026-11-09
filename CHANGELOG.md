@@ -2,6 +2,22 @@
 
 ## Unreleased
 
+* **No repository's seed entries in another's tree; goh's public tree holds only its own (GOH.SEEDPRIVATE).**
+  gates_of_heck is public, and its estate seeds held every consumer's entries --
+  `crates_behind_seed.json` published `Finance/zinc` and its count. An estate seed
+  (`crates/goh/src/estate_seed.rs`: changelog-tags, crates-behind, mktemp-portable, release-quiet,
+  bare-hook-index) is now read from the JUDGED repository's own tracked `<kind>_seed.json` plus the
+  owner's private store (`GOH_SEED_DIR`, else `~/.local/state/goh/seeds`), one key (root commit,
+  path). A tracked entry naming another repository's root is refused (a shallow clone takes its own
+  file's entries as its own); one entry in both homes is refused. The ratchet is the same from
+  either home, with one tightening: a stale entry (its file found clean by a full run) is now RED,
+  since the repository that fixed the site can delete its own entry in the same commit. goh keeps
+  only its own changelog entry; the other 36 consumer entries moved -- 5 into the three
+  consumers that committed them (antiknob, app-mcp-bridge, divoom-control), 28 into the private
+  store, 3 found stale and dropped. Red first: six tests in `tests/test_estate_seed_home.py` (a
+  planted `Finance/zinc` root in a tracked seed was accepted; the store was never read; goh's tree
+  named ten consumers' changelogs).
+
 ## v0.87.0 -- a passing step's warnings are shown; a staged .py is linted from the index; one fault is one row
 
 * **A passing step's `⚠` lines are printed: goh_step (GOH.STEPWARN).** The log of a green step is

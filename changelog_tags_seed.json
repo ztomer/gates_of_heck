@@ -1,82 +1,12 @@
 {
- "why": "goh changelog-tags: the whole changelog against the v* tags -- an orphan heading tail, a tag with no heading, a heading no tag names, the current version exempt (GOH.CHANGELOGALL, lifted from zinc tools/check_changelog_tags.py, 2026-11-08). Keyed by root commit; a seeded changelog WARNS at or under its count, over it or unseeded is red. Each repo restores or adds its headings (a pre-changelog tag may be named in a stanza), then its entry is deleted here: done is an empty list.",
+ "why": "goh changelog-tags: the whole changelog against the v* tags -- an orphan heading tail, a tag with no heading, a heading no tag names, the current version exempt (GOH.CHANGELOGALL, 2026-11-08). THIS repository's own entries only, keyed by its root commit: an entry about another repository lives in that repository's own changelog_tags_seed.json or in the owner's private store ($GOH_SEED_DIR, else ~/.local/state/goh/seeds), never here, and one naming another root is refused (GOH.SEEDPRIVATE). At or under its count warns; over it, unseeded, or stale is red. Done is an empty list.",
  "entries": [
-  {
-   "root": "af6334179af5ccd614bfb7a9e52b2b78ab910cfb",
-   "repo": "CadGoose",
-   "path": "docs/CHANGELOG.md",
-   "count": 40,
-   "reason": "unreviewed: 40 finding(s): 40 tag(s) with no heading"
-  },
-  {
-   "root": "2c38a900f0889dba4410c49e41c67eacf8bd1cc2",
-   "repo": "app_updates",
-   "path": "CHANGELOG.md",
-   "count": 70,
-   "reason": "unreviewed: 70 finding(s): 69 tag(s) with no heading, 1 heading(s) no tag names"
-  },
-  {
-   "root": "474da023a227f6568de70d887cdcdddd9a35f013",
-   "repo": "divoom-control",
-   "path": "CHANGELOG.md",
-   "count": 18,
-   "reason": "unreviewed: 18 finding(s): 2 tag(s) with no heading, 16 heading(s) no tag names"
-  },
-  {
-   "root": "a6524b7392999722e33af222ea34dc68310b2b2a",
-   "repo": "games/CadGoose2",
-   "path": "docs/CHANGELOG.md",
-   "count": 9,
-   "reason": "unreviewed: 9 finding(s): 6 tag(s) with no heading, 3 heading(s) no tag names"
-  },
-  {
-   "root": "ca9157883c70291787266c8d6944508ae62309d5",
-   "repo": "games/game_asset_factory",
-   "path": "CHANGELOG.md",
-   "count": 4,
-   "reason": "unreviewed: 4 finding(s): 4 tag(s) with no heading"
-  },
   {
    "root": "73391f04f5f2b92ab9813c62e6cecdce919d2d86",
    "repo": "gates_of_heck",
    "path": "CHANGELOG.md",
    "count": 24,
    "reason": "unreviewed: 24 finding(s): 1 tag(s) with no heading, 23 heading(s) no tag names"
-  },
-  {
-   "root": "5e77cfc6b85ee7389c12e391d44f08597049ec82",
-   "repo": "koffee_oss",
-   "path": "CHANGELOG.md",
-   "count": 24,
-   "reason": "unreviewed: 24 finding(s): 24 tag(s) with no heading"
-  },
-  {
-   "root": "b39e3e8b286e7408139f584cfbb781ddc02ab8af",
-   "repo": "monitor",
-   "path": "CHANGELOG.md",
-   "count": 22,
-   "reason": "unreviewed: 22 finding(s): 21 tag(s) with no heading, 1 heading(s) no tag names"
-  },
-  {
-   "root": "075f4b351c015ca451741879c7691324cc961a9b",
-   "repo": "routines",
-   "path": "CHANGELOG.md",
-   "count": 16,
-   "reason": "unreviewed: 16 finding(s): 13 tag(s) with no heading, 3 heading(s) no tag names"
-  },
-  {
-   "root": "6004cf2951c669d1a2b21afc93d64597f7c80e2b",
-   "repo": "sys_updater",
-   "path": "CHANGELOG.md",
-   "count": 10,
-   "reason": "unreviewed: 10 finding(s): 10 tag(s) with no heading"
-  },
-  {
-   "root": "6cbea9cb883dbc361e4bff645f4ed3cdcdbe6942",
-   "repo": "ztools",
-   "path": "CHANGELOG.md",
-   "count": 68,
-   "reason": "unreviewed: 68 finding(s): 68 tag(s) with no heading"
   }
  ]
 }

@@ -181,7 +181,8 @@ def test_a_private_index_the_script_chose_is_not_the_hooks(repo: Path) -> None:
 
 
 def _seeded_goh(tmp: Path, root: str, count: int) -> Path:
-    goh = tmp / "goh"
+    """A private seed store (GOH_SEED_DIR) holding the fixture's entry (GOH.SEEDPRIVATE)."""
+    goh = tmp / "seeds"
     goh.mkdir()
     entry = {"root": root, "repo": "fixture", "path": "tools/gate.sh", "count": count}
     seed = {"why": "a test's", "entries": [{**entry, "reason": "unreviewed: a test's"}]}
@@ -190,7 +191,7 @@ def _seeded_goh(tmp: Path, root: str, count: int) -> Path:
 
 
 def _under(goh: Path, repo: Path) -> subprocess.CompletedProcess:
-    return run_goh(repo, "bare-hook-index", env=hermetic_env(GOH_DIR=str(goh)))
+    return run_goh(repo, "bare-hook-index", env=hermetic_env(GOH_SEED_DIR=str(goh)))
 
 
 def test_the_estate_seed_warns_by_root_commit_in_any_clone(repo: Path, tmp_path: Path) -> None:
@@ -224,4 +225,5 @@ def test_a_seeded_file_gone_clean_says_to_delete_its_entry(repo: Path, tmp_path:
     commit_all(repo)
     goh = _seeded_goh(tmp_path, git(repo, "rev-list", "--max-parents=0", "HEAD").strip(), 1)
     r = _under(goh, repo)
-    assert r.returncode == 0 and "delete its entry" in r.stderr, r.stdout + r.stderr
+    # Stale is red: the repository that fixed the site deletes its own entry (GOH.SEEDPRIVATE).
+    assert r.returncode == 1 and "delete its entry" in r.stderr, r.stdout + r.stderr

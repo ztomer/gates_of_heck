@@ -306,6 +306,19 @@ pub fn root_commit(root: &Path) -> Option<String> {
         .map(str::to_string)
 }
 
+/// Is the clone at `root` shallow? Its root commit is then the shallow boundary, not the true one.
+#[must_use]
+pub fn is_shallow(root: &Path) -> bool {
+    Command::new("git")
+        .arg("-C")
+        .arg(root)
+        .args(["rev-parse", "--is-shallow-repository"])
+        .stdin(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .output()
+        .is_ok_and(|o| o.status.success() && o.stdout.trim_ascii() == b"true")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

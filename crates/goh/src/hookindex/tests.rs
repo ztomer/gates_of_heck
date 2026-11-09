@@ -93,7 +93,7 @@ fn the_binder_is_recognised_by_its_definition_not_a_call() {
 
 mod index_reads {
     use super::super::index::{hook_run, unbound_reads};
-    use super::super::seed::{judge, Seed};
+    use super::super::seed::{judge, Held, Seed};
     use std::collections::BTreeMap;
 
     /// `(script, the lines of its unbound index reads)`.
@@ -171,15 +171,20 @@ mod index_reads {
     #[test]
     fn the_seed_warns_at_its_count_and_never_hides_more() {
         let mut seed = Seed::new();
-        seed.insert(("r".into(), "a.sh".into()), 2);
-        seed.insert(("r".into(), "gone.sh".into()), 1);
-        seed.insert(("s".into(), "a.sh".into()), 1);
+        seed.insert(("r".into(), "a.sh".into()), Held::tracked(2));
+        seed.insert(("r".into(), "gone.sh".into()), Held::tracked(1));
+        seed.insert(("s".into(), "a.sh".into()), Held::tracked(1));
         let found = |n: usize| BTreeMap::from([("a.sh".to_string(), n)]);
         let at = judge("r", &found(2), &seed, true);
         assert_eq!(at.red, Vec::<String>::new());
         assert_eq!(
             at.warn.iter().map(|w| w.0.as_str()).collect::<Vec<_>>(),
-            ["a.sh", "gone.sh"]
+            ["a.sh"]
+        );
+        assert_eq!(
+            at.stale.iter().map(|w| w.0.as_str()).collect::<Vec<_>>(),
+            ["gone.sh"],
+            "a full run calls an entry with no read left stale"
         );
         assert_eq!(judge("r", &found(3), &seed, false).red, ["a.sh"]);
         assert!(judge("r", &found(1), &seed, false).warn[0]
@@ -187,13 +192,15 @@ mod index_reads {
             .contains("lower"));
         assert_eq!(judge("q", &found(1), &seed, true).red, ["a.sh"]);
         // A staged run reads only what changed: a seeded file it did not read is not stale.
-        assert_eq!(judge("r", &BTreeMap::new(), &seed, false).warn, vec![]);
+        assert_eq!(judge("r", &BTreeMap::new(), &seed, false).stale, vec![]);
     }
 
     #[test]
     fn the_checked_in_seed_loads() {
         let goh = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
-        let seed = super::super::seed::load(&goh).expect("hook_index_seed.json loads");
+        // The tree's own seed, never the machine's private store (`load_from` with no store).
+        let seed = crate::estate_seed::load_from(&goh, None, super::super::seed::KIND)
+            .expect("hook_index_seed.json loads");
         assert!(seed.keys().all(|(r, p)| !r.is_empty() && !p.is_empty()));
     }
 }

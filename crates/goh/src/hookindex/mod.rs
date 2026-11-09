@@ -153,7 +153,8 @@ fn judge(
             let _ = writeln!(warns, "{}", site(rel, r));
         }
     }
-    if n == 0 && m == 0 {
+    let stale = crate::estate_seed::stale_report(TAG, "GOH.BAREINDEX", &verdict.stale);
+    if n == 0 && m == 0 && stale.is_empty() {
         let ok = format!(
             "{OK} {TAG} OK — {} {scope} shell source(s), the hook's index read only by goh_bind_hook_index\n",
             sources.len()
@@ -177,12 +178,13 @@ fn judge(
         err.push_str(&index_listing);
         err.push_str(INDEX_FIX);
     }
+    err.push_str(&stale);
     (1, String::new(), err)
 }
 
-/// The estate seed from `$GOH_DIR`, or the report a corrupt one makes.
-fn estate_seed() -> Result<seed::Seed, String> {
-    seed::load(&crate::goh_root()).map_err(|m| format!("{ERR} {TAG} {m}\n"))
+/// The estate seed for the repository at `repo`, or the report a corrupt or foreign one makes.
+fn estate_seed(repo: &Path) -> Result<seed::Seed, String> {
+    seed::load(repo).map_err(|m| format!("{ERR} {TAG} {m}\n"))
 }
 
 /// `goh bare-hook-index [--staged] [--exclude RE]`.
@@ -199,7 +201,7 @@ pub fn run_command(staged: bool, exclude: &str) -> i32 {
             return 2;
         }
     };
-    let (code, out, err) = match estate_seed() {
+    let (code, out, err) = match estate_seed(&root) {
         Ok(seed) => judge(&root, &files, exclude, staged, &seed),
         Err(m) => (2, String::new(), m),
     };
@@ -222,7 +224,7 @@ pub fn step(
         "no bare read of the hook's index"
     };
     let start = crate::step_report::begin(label);
-    let verdict = match estate_seed() {
+    let verdict = match estate_seed(repo) {
         Ok(seed) => judge(repo, files, &cfg.exclude, staged, &seed),
         Err(m) => (2, String::new(), m),
     };
