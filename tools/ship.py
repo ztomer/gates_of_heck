@@ -15,8 +15,11 @@ every agent's context (GOH.SPENDWATCH). Here it is a pipeline no turn watches:
              that tags and declares none is refused before anything starts
     install  `.gatesrc` GOH_SHIP_INSTALL; skipped (said) when undeclared: a release kit that installs
              (sys_updater's --verify) or a repo that installs nothing needs no step
-    verify   `loopctl verify REPO`, the claim card (GOH_LOOPCTL; REPO relative to LOOPCTL_ROOT or
-             ~/Projects); skipped without loopctl and without --item
+    verify   first, when the remote is GitHub's, the CI verdict on HEAD through the throttle-aware
+             door (`loopctl ci SHA --repo OWNER/NAME --wait`): queued or running is PENDING and
+             waited on, within the ship's bound; red, or still pending at the bound, fails here
+             (GOH.SHIPCIWAIT). Then `loopctl verify REPO`, the claim card (GOH_LOOPCTL; REPO
+             relative to LOOPCTL_ROOT or ~/Projects); skipped without loopctl and without --item
     done     with --item: `loopctl done ID --shipped RESULT`, which records the item from this
              result and the card through done's own gates (CI on what landed), so no agent turn
 
@@ -55,6 +58,12 @@ import gitrun
 from tui.lib import err, info, ok, step
 
 STEPS = ("push", "release", "install", "verify", "done")
+# `loopctl ci`'s exits (.loop tools/loopci.py): green, red or unread, pending, no verdict exists
+# (Actions off, no workflows), throttled; 2 is a refused call.
+CI_GREEN, CI_RED, CI_PENDING, CI_NONE, CI_THROTTLED = 0, 1, 3, 4, 75
+CI_POLL = 60  # between two waits that came back pending (the door's own bound, or a throttle)
+CI_MARGIN = 60  # of the verify step's bound, kept for the card after the wait
+GITHUB = re.compile(r"github\.com[:/]([\w.-]+/[\w.-]+?)(?:\.git)?/?$")
 TAIL = 40
 GRACE = 5
 DEFAULT_TIMEOUT = 3600
@@ -211,10 +220,55 @@ def command(res: dict, name: str) -> tuple[str | None, str]:
     if name == "verify":
         if not have and not res["item"]:
             return None, f"no loopctl at {res['loopctl']} and no --item"
-        return f"{py} {lc} verify {shlex.quote(res['name'])}", ""
+        card = f"{py} {lc} verify {shlex.quote(res['name'])}"
+        wait = f"{py} {shlex.quote(str(Path(__file__).resolve()))} --ci-wait {shlex.quote(res['result'])}"
+        return f"{wait} && {card}", ""
     if not res["item"]:
         return None, "no --item to record"
     return f"{py} {lc} done {shlex.quote(res['item'])} --shipped {shlex.quote(res['result'])}", ""
+
+
+def github_slug(repo: Path, remote: str) -> str:
+    """OWNER/NAME of REMOTE when it is GitHub's (its fetch URL), else ""."""
+    m = GITHUB.search(git(repo, "remote", "get-url", remote))
+    return m.group(1) if m else ""
+
+
+def ci_wait(result: str) -> int:
+    """Wait on HEAD's CI verdict before the card: 0 green or no verdict exists, 1 red or the bound.
+
+    A queued or running CI is pending, never red: the ship that read loopci's one queued run 1.6 s
+    after its push failed although CI went green minutes later (GOH.SHIPCIWAIT, run 42577152924).
+    The wait is the door's (`loopctl ci --wait`), which polls through the shared cache and sleeps
+    through a throttle; a wait that comes back pending (the door's own cap, a throttle past it) is
+    asked again until the verify step's bound, less CI_MARGIN for the card."""
+    res = json.loads(Path(result).read_text(encoding="utf-8"))
+    repo = Path(res["repo"])
+    slug = github_slug(repo, res["remote"])
+    if not slug:
+        step("CI: the remote is not GitHub's; no CI verdict to wait on")
+        return 0
+    sha = git(repo, "rev-parse", "HEAD")
+    poll = float(os.environ.get("GOH_SHIP_CI_POLL") or CI_POLL)
+    start = time.monotonic()
+    end = start + max(1.0, res["timeout_s"] - CI_MARGIN)
+    while True:
+        left = end - time.monotonic()
+        argv = [sys.executable, res["loopctl"], "ci", sha, "--repo", slug, "--wait", "--timeout",
+                str(max(1, int(left)))]  # fmt: skip
+        code = subprocess.run(argv, cwd=repo, stdin=subprocess.DEVNULL, check=False).returncode
+        if code in (CI_GREEN, CI_NONE):
+            return 0
+        if code not in (CI_PENDING, CI_THROTTLED):
+            what = "CI red" if code == CI_RED else f"loopctl ci failed (exit {code})"
+            err(f"{what} for {sha[:8]} on {slug}: the ship stops at verify")
+            return 1
+        left = end - time.monotonic()
+        if left <= 0:
+            err(f"CI still pending for {sha[:8]} on {slug} after {time.monotonic() - start:.0f}s, "
+                "the ship's bound (GOH_SHIP_TIMEOUT): not red, not green")  # fmt: skip
+            return 1
+        time.sleep(min(poll, left))
 
 
 def unbound_env() -> dict[str, str]:
@@ -336,7 +390,10 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--out", help="the result JSON (default ~/.local/state/goh/ship/REPO/...)")
     ap.add_argument("--status", metavar="RESULT", help="print a result's marks")
     ap.add_argument("--worker", metavar="RESULT", help=argparse.SUPPRESS)
+    ap.add_argument("--ci-wait", metavar="RESULT", help=argparse.SUPPRESS)
     args = ap.parse_args(argv)
+    if args.ci_wait:
+        return ci_wait(args.ci_wait)
     if args.worker:
         return worker(args.worker)
     if args.status:

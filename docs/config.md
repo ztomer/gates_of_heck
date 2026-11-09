@@ -245,12 +245,16 @@ Measured on media_server: `structural --full` 1.9 s -> 0.30 s warm.
 The local landing pipeline an agent hands off to (private repos; public ones keep standard GitHub
 workflows, CI.PUBLIC): push through the pre-push gate -> the repo's release kit -> install -> the
 `loopctl verify` card -> `loopctl done ID --shipped RESULT`, detached and bounded, one result JSON.
+On a GitHub remote the verify step first waits on HEAD's CI verdict through `loopctl ci SHA --repo
+OWNER/NAME --wait`: queued or running is pending, never red; red, or still pending at the step's
+bound, fails the ship at verify (GOH.SHIPCIWAIT).
 
 | Key | Default | Meaning |
 |---|---|---|
 | `GOH_SHIP_RELEASE` | unset | The repo's release command, run with `GOH_SHIP_VERSION` exported and `{version}` substituted (`tools/release.sh {version}`). Required when the repo tags releases (a `vX.Y.Z` tag exists): `goh ship` refuses before starting without it. Skipped when HEAD already carries a version tag. The environment (even empty) beats `.gatesrc`. |
 | `GOH_SHIP_INSTALL` | unset (step skipped, said) | The install command after the release; unset when the release kit installs (a `--verify` that runs the installer) or nothing installs. |
 | `GOH_SHIP_TIMEOUT` | `3600` | Seconds each step may run before its whole process group is TERM'd then KILL'd (`lib/bounded_run.py`); the step is `timed_out` in the result. |
+| `GOH_SHIP_CI_POLL` | `60` | Seconds between two CI waits that came back pending (the door's own cap, or a throttle past it), within the verify step's bound less 60 s for the card. A test seam. |
 | `GOH_SHIP_DIR` | `~/.local/state/goh/ship` | Where results go: `<dir>/<repo>/<UTC stamp>-<sha8>.json`, with `.log` (the worker's marks) and `.<step>.log` beside it; `--out` names one. |
 | `GOH_LOOPCTL` | `~/Projects/.loop/tools/loopctl.py` | The coordinator's `loopctl`, which the verify and done steps run (a test seam). The repo is named to it relative to `LOOPCTL_ROOT`, else `~/Projects`. |
 | `GOH_SHIP_VERSION` | set by `goh ship` | Exported to every step: the version the release step cuts (`--version`, `--bump`, else release-please's rule over the conventional commits since the newest tag). Never set by hand. |

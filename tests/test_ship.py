@@ -31,6 +31,14 @@ with open(os.environ["FAKE_LOOPCTL_LOG"], "a") as f:
 if sys.argv[1] == "verify":
     print("fake card line 1")
     sys.exit(int(os.environ.get("FAKE_VERIFY_RC", "0")))
+if sys.argv[1] == "ci":  # $FAKE_CI: the verdicts in order (the last repeats), counted in $FAKE_CI_N
+    states = os.environ["FAKE_CI"].split(",")
+    n_file = os.environ["FAKE_CI_N"]
+    n = int(open(n_file).read()) if os.path.exists(n_file) else 0
+    open(n_file, "w").write(str(n + 1))
+    state = states[min(n, len(states) - 1)]
+    print(f"CI {state}: fake verdict {n + 1}")
+    sys.exit({"green": 0, "red": 1, "pending": 3, "none": 4, "throttled": 75}[state])
 """
 
 
@@ -211,3 +219,62 @@ def test_goh_ship_runs_this_file_and_passes_its_exit_code(shipped, tmp_path):
     assert _result(tmp_path)["status"] == "ok"
     r = run_goh(shipped, "ship", "--status", str(tmp_path / "nope.json"), env=_env(tmp_path))
     assert r.returncode == 2 and "nope.json" in r.stderr
+
+
+def _on_github(repo: Path) -> None:
+    """The remote READS as GitHub's (o/n), so the ship asks for a CI verdict; pushes still go to
+    the local bare clone."""
+    bare = git(repo, "remote", "get-url", "origin").strip()
+    git(repo, "remote", "set-url", "origin", "https://github.com/o/n.git")
+    git(repo, "remote", "set-url", "--push", "origin", bare)
+
+
+def _ci_calls(tmp_path: Path) -> list[list[str]]:
+    return [c for c in _calls(tmp_path) if c[0] == "ci"]
+
+
+def _ci_env(tmp_path: Path, verdicts: str) -> dict[str, str]:
+    return {"FAKE_CI": verdicts, "FAKE_CI_N": str(tmp_path / "ci.n"), "GOH_SHIP_CI_POLL": "0"}
+
+
+def test_a_queued_ci_verdict_is_pending_and_the_ship_waits_for_green(shipped, tmp_path):
+    """GOH.SHIPCIWAIT: verify ran 1.6 s after the push, read loopci's one queued run as red and
+    failed a ship whose CI went green minutes later. Queued is pending: the ship waits on it."""
+    _on_github(shipped)
+    r = _ship(shipped, tmp_path, "--wait", "--item", "X.ONE",
+              **_ci_env(tmp_path, "pending,pending,green"))  # fmt: skip
+    assert r.returncode == 0, r.stdout + r.stderr
+    res = _result(tmp_path)
+    assert res["status"] == "ok", res
+    ci = _ci_calls(tmp_path)
+    assert len(ci) == 3, ci
+    head = git(shipped, "rev-parse", "HEAD").strip()
+    assert ci[0][:4] == ["ci", head, "--repo", "o/n"] and "--wait" in ci[0], ci[0]
+    calls = _calls(tmp_path)
+    assert calls.index(ci[-1]) < calls.index(["verify", res["name"]]), "verify before green"
+
+
+def test_a_red_ci_verdict_fails_the_ship_at_verify(shipped, tmp_path):
+    _on_github(shipped)
+    r = _ship(shipped, tmp_path, "--wait", "--item", "X.ONE", **_ci_env(tmp_path, "red"))
+    assert r.returncode == 1, r.stdout + r.stderr
+    res = _result(tmp_path)
+    assert res["failed_step"] == "verify", res
+    assert any("CI red" in ln for ln in res["tail"]), res["tail"]
+    assert not [c for c in _calls(tmp_path) if c[0] == "verify"], "verify ran on a red CI"
+    assert ["done", "X.ONE", "--shipped", str(tmp_path / "ship.json")] not in _calls(tmp_path)
+
+
+def test_a_verdict_still_pending_at_the_bound_fails_at_verify_naming_it(shipped, tmp_path):
+    _on_github(shipped)
+    r = _ship(shipped, tmp_path, "--wait", GOH_SHIP_TIMEOUT="3", **_ci_env(tmp_path, "pending"))
+    assert r.returncode == 1, r.stdout + r.stderr
+    res = _result(tmp_path)
+    assert res["failed_step"] == "verify", res
+    assert any("still pending" in ln for ln in res["tail"]), res["tail"]
+
+
+def test_no_github_remote_asks_for_no_ci_verdict(shipped, tmp_path):
+    r = _ship(shipped, tmp_path, "--wait", **_ci_env(tmp_path, "red"))
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert _ci_calls(tmp_path) == []
