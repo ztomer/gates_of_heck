@@ -156,15 +156,12 @@ pub fn cutoff(root: &Path, rel: &str) -> u64 {
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map_or(0, |d| d.as_secs());
-    let clean = Command::new("git")
-        .arg("-C")
-        .arg(root)
-        .args(["diff", "--quiet", "HEAD", "--", rel])
-        .stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .status()
-        .is_ok_and(|s| s.success());
+    // Not a lock taken for a read (tests/test_git_deadline_class.py): `--no-optional-locks`.
+    let clean = git(
+        root,
+        &["--no-optional-locks", "diff", "--quiet", "HEAD", "--", rel],
+    )
+    .is_some();
     if !clean {
         return now;
     }

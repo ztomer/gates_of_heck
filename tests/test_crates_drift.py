@@ -17,6 +17,7 @@ import os
 import subprocess
 from pathlib import Path
 
+from _fast_git import fast_init
 from conftest import git, hermetic_env, run_goh
 
 # A commit made at this instant; releases are dated either side of it.
@@ -50,8 +51,7 @@ def _commit(repo: Path, msg: str, when: str = COMMITTED) -> str:
 
 def _repo(tmp: Path, base_lock: str) -> tuple[Path, str]:
     repo = tmp / "fx"
-    repo.mkdir()
-    git(repo, "init", "-q", "-b", "main")
+    fast_init(repo, "main")
     (repo / "Cargo.lock").write_text(base_lock)
     (repo / "README.md").write_text("fixture\n")
     return repo, _commit(repo, "base")

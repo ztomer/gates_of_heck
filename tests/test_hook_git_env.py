@@ -251,6 +251,9 @@ def test_rust_test_code_spawns_git_only_through_the_testkit():
         "crates/goh/src/proven.rs": 2,
         # commit-class: `git log` of the repo being committed to / pushed, GIT_* honoured
         "crates/goh/src/commit_class.rs": 1,
+        # crates-behind's base: rev-parse / merge-base / show / diff / log of the repo being
+        # gated, GIT_* honoured (in a hook it is that repo's)
+        "crates/goh/src/crates_change.rs": 1,
         # markers --commits: rev-parse / diff-tree + one cat-file of the repo whose rebase
         # post-rewrite reports (GIT_* honoured)
         "crates/goh/src/revblobs.rs": 2,
