@@ -383,6 +383,41 @@ def _status(report: str) -> str:
     return word if word in STATUSES else "unreported"
 
 
+_OPENERS = {"(": ")", "[": "]"}
+
+
+def _split_top_level(body: str) -> list[str]:
+    """`body` split on ';' outside (), [], double quotes, backticks and single quotes (GOH.FAULTSPLIT).
+
+    A fault is one claim: "(only in my side run; the land gate passed)" is not two. A single quote
+    opens or closes a span only at a word edge, so an apostrophe ("doesn't") is text. A line that
+    ends with a span still open (an agent dropped a closer) falls back to the plain split: a stray
+    opener must never merge faults or lose one. Text the ledger already holds is never re-split
+    (rows carry their `faults` list), so existing fault keys are untouched.
+    """
+    parts: list[str] = []
+    start = 0
+    stack: list[str] = []  # the closers awaited, innermost last
+    quote = ""  # the quote char of the open span, else ""
+    for i, ch in enumerate(body):
+        if quote:
+            if ch == quote and (ch != "'" or not body[i + 1 : i + 2].isalnum()):
+                quote = ""
+        elif ch in '"`' or (ch == "'" and not body[i - 1 : i].isalnum()):
+            quote = ch
+        elif ch in _OPENERS:
+            stack.append(_OPENERS[ch])
+        elif stack and ch == stack[-1]:
+            stack.pop()
+        elif ch == ";" and not stack:
+            parts.append(body[start:i])
+            start = i + 1
+    if quote or stack:
+        return body.split(";")
+    parts.append(body[start:])
+    return parts
+
+
 def faults(report: str) -> list[str] | None:
     """The report's `Faults seen:` line as a list: [] for none, None when the line is absent
     (not stated, which is not the same claim as none)."""
@@ -394,7 +429,7 @@ def faults(report: str) -> list[str] | None:
     # written, so a leading backtick on the first one is part of it.
     if body.strip("`").strip().lower() in NO_FAULTS or not body:
         return []
-    return [f.strip() for f in body.split(";") if f.strip()]
+    return [f.strip() for f in _split_top_level(body) if f.strip()]
 
 
 def on_stop(event: dict[str, Any]) -> list[str]:

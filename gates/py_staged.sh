@@ -84,6 +84,26 @@ else
     fi
 fi
 goh_py_require ruff
+if [ "$scope" = staged ]; then
+    # THE INDEX, NOT THE WORKING TREE (GOH.PYSTAGEDINDEX). The names above come from the index being
+    # committed, but ruff was handed the working tree's paths, so it judged bytes the commit does
+    # not carry: a staged failure whose fix was only unstaged passed, and a clean staged file with a
+    # failing unstaged edit was refused. The staged files are linted from goh_index_view's export of
+    # the index (the hook's carried temporary index included, gates/_git_env.sh), the way a
+    # structural check is. The runner is resolved above in the checkout; a .venv-relative one is made
+    # absolute, since the view holds tracked files only.
+    case "${RUN_ARR[0]}" in
+        /*) ;;
+        */*) RUN_ARR[0]="$PWD/${RUN_ARR[0]#./}"; RUN="${RUN_ARR[*]}" ;;
+    esac
+    case "$RUN" in "uv run"*) export UV_PROJECT_ENVIRONMENT="${UV_PROJECT_ENVIRONMENT:-$PWD/.venv}" ;; esac
+    checkout="$PWD"
+    GOH_REPO_ROOT="${GOH_REPO_ROOT:-$(git rev-parse --show-toplevel)}"
+    goh_index_view .
+    goh_unbind_git  # goh_index_view bound the hook index for itself; a step's own git is not the commit's
+    [ -n "$GOH_INDEX_VIEW" ] && [ -d "$GOH_INDEX_VIEW" ] || die "$GOH_NAME: no index view to lint"
+    cd "$GOH_INDEX_VIEW"
+fi
 if [ -n "${GOH_PY_LINT_CEILINGS:-}" ]; then
     # Debt the repo carries, counted per file, may only fall (gates/py_lint_ceiling.py, BACKLOG 4.4).
     goh_step "ruff check under $GOH_PY_LINT_CEILINGS ($scope)" \
@@ -97,6 +117,7 @@ if [ -n "${GOH_PY_NOQA_PARITY:-}" ]; then
     goh_step "noqa parity with $GOH_PY_NOQA_PARITY ($scope)" \
         "$GOH_PY" "$HERE/py_noqa_parity.py" --linters "$GOH_PY_NOQA_PARITY" --runner "$RUN" -- "${STAGED[@]}"
 fi
+[ "$scope" != staged ] || cd "$checkout"
 goh_done
 exit
 } # parse-guard

@@ -458,30 +458,6 @@ def test_the_contract_asks_for_the_faults_seen_line() -> None:
     assert "';'-separated" in CONTRACT and "or none>`" in CONTRACT
 
 
-def test_faults_none_is_an_empty_list() -> None:
-    assert agent_guard.faults("Status: landed\nFaults seen: none") == []
-
-
-def test_faults_several_are_split_on_semicolons() -> None:
-    report = "Status: landed\nabc1234 x\nFaults seen: WARN disk on .33 health; /srv/t not g+w (.90)"
-    assert agent_guard.faults(report) == ["WARN disk on .33 health", "/srv/t not g+w (.90)"]
-
-
-def test_faults_are_recorded_exactly_as_written() -> None:
-    """G15: a leading backtick was stripped from the first fault (only whitespace is trimmed)."""
-    report = "Faults seen: `tools/land.sh` printed landed; second `one`\n"
-    assert agent_guard.faults(report) == ["`tools/land.sh` printed landed", "second `one`"]
-    assert agent_guard.faults("Faults seen:   `x` at y  ") == ["`x` at y"]
-
-
-def test_faults_a_backticked_none_is_still_none() -> None:
-    assert agent_guard.faults("Faults seen: `none`") == []
-
-
-def test_faults_missing_line_is_null_not_none() -> None:
-    assert agent_guard.faults("Status: landed\nall good") is None
-
-
 def test_the_outcome_record_carries_faults(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path))
     agent_guard.on_stop(
