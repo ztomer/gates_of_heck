@@ -79,3 +79,61 @@ def test_a_spawn_asking_the_agent_to_wait_on_its_ship_is_refused(tmp_path: Path,
 )
 def test_a_spawn_that_starts_goh_ship_and_stops_runs(tmp_path: Path, clean: str) -> None:
     _allowed(_run(_spawn(dict(GOOD, prompt=f"Do it.\n{clean}\n{DECL}\n{POOL}")), tmp_path))
+
+
+# GOH.CIJUDGEFP (2026-11-08): the judge reads a REQUEST aimed at the agent, not a keyword. A sentence
+# that merely describes the check passes (the first live use refused the coordinator's own prompt
+# describing it), and a negating word elsewhere in a sentence no longer excuses a real request.
+@pytest.mark.parametrize(
+    "describing",
+    [
+        "its judge_ci refuses a spawn that asks an agent to watch CI",
+        "The guard refuses a prompt that asks the agent to wait for CI to go green.",
+        "A spawn that says to poll CI until the run completes is refused by the judge.",
+        "The judge refuses a report that names the CI run id and its conclusion.",
+        "The refusal for a prompt that asks to watch the ship names the ruling.",
+    ],
+)
+def test_a_sentence_that_only_describes_the_check_runs(tmp_path: Path, describing: str) -> None:
+    _allowed(_run(_spawn(dict(GOOD, prompt=f"Do it.\n{describing}\n{DECL}\n{POOL}")), tmp_path))
+
+
+@pytest.mark.parametrize(
+    "ask",
+    [
+        "Leave out nothing: report the CI run id.",
+        "Leave out nothing, report the CI run id.",
+        "Report the CI run id, no other detail is needed.",
+        "Do not skip anything, wait for CI to go green.",
+        "Never stop early; wait for CI.",
+        "Push, then wait for CI; do not ask me anything.",
+        "Do not report early and watch CI until it finishes.",
+        "You must wait for CI before reporting.",
+        "Please poll CI until the run completes.",
+        "Once pushed, report the CI verdict.",
+        "Your report must include the CI run id.",
+        "Tell the agent to watch CI.",
+        "Do not guess. Run goh ship --wait and report each step.",
+        "No excuses, wait for goh ship to finish.",
+    ],
+)
+def test_a_real_ci_request_with_a_negating_word_elsewhere_is_refused(
+    tmp_path: Path, ask: str
+) -> None:
+    reason = _reason(_run(_spawn(dict(GOOD, prompt=f"Do it.\n{ask}\n{DECL}\n{POOL}")), tmp_path))
+    assert "Refused" in reason, reason
+
+
+@pytest.mark.parametrize(
+    "clean",
+    [
+        "Do not watch, poll or wait for CI.",
+        "Never wait for, watch or poll CI.",
+        "Do not watch CI and do not poll it.",
+        "Please do not wait for CI.",
+        "You must not report the CI run id.",
+        "Stop at push without waiting for CI.",
+    ],
+)
+def test_a_negated_request_still_runs(tmp_path: Path, clean: str) -> None:
+    _allowed(_run(_spawn(dict(GOOD, prompt=f"Do it.\n{clean}\n{DECL}\n{POOL}")), tmp_path))

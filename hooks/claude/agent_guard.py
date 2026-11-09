@@ -58,6 +58,7 @@ from typing import Any
 
 import appstate  # the owner's login-item apps, put back after an agent (GOH.APPSTATE)
 import model_choice  # the rules file's one reader, beside this script
+from ci_judge import judge_ci as _judge_ci  # the CI-watching judge, beside this script
 
 SPAWN_TOOLS = {"Agent", "Task"}  # `Task` is the tool's legacy name
 
@@ -69,55 +70,6 @@ CONTRACT = (
     "(pre-existing WARN, error, red check, stale state), ';'-separated, each with where it is; "
     "or none>`. No narrative."
 )
-# Agents end at push (owner ruling 2026-11-08, GOH.ENDATPUSH): CI on the landed HEAD is the
-# coordinator's `loopctl done` gate, and agents that waited on it spent 54% of their context after
-# the first push (GOH.SPENDWATCH). A sentence asking to wait for/watch/poll CI, run `gh run
-# watch|view`, or report a CI run id/verdict/conclusion refuses the spawn; one that negates it
-# ("do not watch CI") is the ruling itself and passes, and "run ./release.sh" (a release script
-# that waits for CI before tagging is cutting the release) names no CI and passes.
-CI_ASK = re.compile(
-    r"\b(?:wait(?:s|ing)?\s+(?:for|on)|watch(?:es|ing)?|poll(?:s|ing)?)\s+(?:the\s+)?CI\b"
-    r"|\bgh\s+run\s+(?:watch|view)\b"
-    r"|\bCI\s+(?:run\s+id|verdict|conclusion|result)s?\b",
-    re.IGNORECASE,
-)
-# GOH.SHIP (2026-11-08): a private repo's agent hands off at "goh ship started"; the pipeline it
-# started (push, release, install, verify card, `loopctl done`) is watched by no turn. A sentence
-# asking the agent to run it in the foreground (`goh ship --wait`) or to wait for, watch or poll it
-# is the same spend in a new place, and refuses the spawn the same way.
-SHIP_ASK = re.compile(
-    r"\bgoh\s+ship\b[^.;\n]*--wait\b"
-    r"|\b(?:wait(?:s|ing)?\s+(?:for|on)|watch(?:es|ing)?|poll(?:s|ing)?)\s+(?:the\s+)?"
-    r"(?:goh\s+)?ship\b",
-    re.IGNORECASE,
-)
-SHIP_REFUSAL = (
-    "Refused: this spawn asks the agent to run goh ship in the foreground or to wait for, watch or "
-    "poll it ({ask!r}). A private repo's agent ends at \"committed, local gate green, goh ship "
-    'started" (GOH.SHIP): the pipeline records the item through `loopctl done`, and a failure comes '
-    "back to the coordinator as the result's failing step and log tail."
-)
-CI_NEGATED = re.compile(r"\b(?:never|not|don't|no|without|leave|ignore)\b", re.IGNORECASE)
-CI_REFUSAL = (
-    "Refused: this spawn asks the agent to wait for, watch or poll CI, or to report a CI run id or "
-    "verdict ({ask!r}). Agents end at push (owner ruling 2026-11-08): CI on the landed HEAD is the "
-    "coordinator's `loopctl done` gate. Ask for the commits and whether they are pushed and tagged."
-)
-
-
-def judge_ci(prompt: str) -> str | None:
-    """The refusal for a prompt that asks its agent to wait on CI, or None."""
-    body = prompt.replace(CONTRACT, "")
-    for sentence in re.split(r"(?:[.;:](?:\s|$)|\n)+", body):
-        if CI_NEGATED.search(sentence):
-            continue
-        if m := CI_ASK.search(sentence):
-            return CI_REFUSAL.format(ask=m.group(0))
-        if m := SHIP_ASK.search(sentence):
-            return SHIP_REFUSAL.format(ask=m.group(0))
-    return None
-
-
 FAULTS_LINE = re.compile(
     r"^[ \t>*-]*Faults[ \t]+seen:[ \t]*(.*?)[ \t]*$", re.IGNORECASE | re.MULTILINE
 )
@@ -318,7 +270,7 @@ def on_spawn(event: dict[str, Any]) -> dict[str, Any] | None:
             return {"hookSpecificOutput": {"hookEventName": "PreToolUse",
                                            "permissionDecision": "deny",
                                            "permissionDecisionReason": why}}  # fmt: skip
-    if not exempt and (why := judge_ci(prompt)):
+    if not exempt and (why := _judge_ci(prompt, CONTRACT)):
         return {"hookSpecificOutput": {"hookEventName": "PreToolUse",
                                        "permissionDecision": "deny",
                                        "permissionDecisionReason": why}}  # fmt: skip

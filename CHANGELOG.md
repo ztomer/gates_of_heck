@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+* **The CI-watching judge reads requests, not keywords (GOH.CIJUDGEFP).** `judge_ci` in
+  `hooks/claude/agent_guard.py` refused a coordinator prompt that only described the check ("a spawn
+  that asks an agent to watch CI") and excused a real request on a negating word elsewhere in its
+  sentence ("leave out nothing, report the CI run id"). It now cuts the prompt into clauses and refuses
+  a clause only when it OPENS with the ask (an imperative, behind "please", "then", "you must", "once
+  pushed"); a negation covers the clause it opens, and carries only across a bare verb list ("do not
+  watch, poll or wait for CI"). Red first: `tests/test_agent_guard_ci.py` failed 10 of the new cases
+  (5 describing sentences refused, 5 requests with a negator elsewhere let through).
+
 ## v0.81.0 -- the commit layer runs the push layer's fast checks (ruff, swiftlint) in every repo
 
 * **The commit layer runs every fast check the push layer runs (GOH.STAGEDPARITY, rule 17).**
