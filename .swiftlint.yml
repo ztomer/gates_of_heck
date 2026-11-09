@@ -1,0 +1,5 @@
+# gates_of_heck has no Swift of its own: every tracked .swift is a checker's test fixture, written
+# to be judged by that checker (tests/fixtures/screen_presentation), not by swiftlint. The commit
+# layer's swiftlint twin (gates/swift_staged.sh, --force-exclude) reads this.
+excluded:
+  - tests/fixtures

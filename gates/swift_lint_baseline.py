@@ -211,6 +211,12 @@ def main() -> int:
     ap.add_argument(
         "--swiftlint-rc", type=int, default=0, help="swiftlint's own exit status (diagnostics only)"
     )
+    ap.add_argument(
+        "--scope",
+        nargs="+",
+        default=None,
+        help="the files linted (a staged run): baselined entries for other files are not judged",
+    )
     args = ap.parse_args()
 
     if not args.baseline.exists():
@@ -226,6 +232,11 @@ def main() -> int:
         )
 
     root = args.root.resolve()
+    if args.scope is not None:
+        # gates/swift_staged.sh lints only what a commit stages: the rest of the baseline did not
+        # vanish, it was not read, and a "no longer occur" count over it would be a false nudge.
+        scope = {normalize_path(str(root / f), root) for f in args.scope}
+        baseline = [v for v in baseline if match_key(v, root)[0] in scope]
     got = reconcile(baseline, report, root)
 
     if got.new:

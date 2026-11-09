@@ -22,6 +22,14 @@
 # not reach while it `exec`ed the gate: the config and refs are snapshotted before the gate and read
 # again after it (lib/repo_writes.sh), pass or fail, so a failing gate's write is reported too. A
 # config write refuses the commit naming the key; a moved ref is named, not refused.
+#
+# THE PUSH'S FAST CHECKS RUN HERE TOO (GOH.STAGEDPARITY, rule 17). The push ran ruff and
+# `swiftlint --strict`, the commit ran only what each repo's gate.sh remembered, and in nine repos
+# that was neither: a commit went in green and its push was refused (koffee_big KB.GATEPARITY,
+# 8f415fd). So every repo whose index holds a .py runs gates/py_staged.sh, and every one holding a
+# .swift runs gates/swift_staged.sh, after its gate passes -- unless that gate already ran the twin
+# for this tree (GOH_STAGED_TWIN_MARK, the way GOH_STRUCTURAL_MARK works). Which push checks need a
+# twin is decided by tests/test_staged_parity.py, which is red on a fast push step with none.
 { # parse-guard -- bash reads this group whole before running it (tests/test_parse_guard.py)
 . "$(dirname "${BASH_SOURCE[0]}")/_from_head.sh"; goh_from_head "${BASH_SOURCE[0]}" "$@"   # run HEAD, not the tree (C4)
 set -euo pipefail
@@ -51,7 +59,14 @@ structural="$HERE/structural.sh"
 # leaves its file; the pid it names is dead, and every reader ignores and prunes it.
 bench_lock_join "pre-commit"
 mark=""
-trap 'rm -f ${mark:+"$mark"} ${BENCH_LOCK_ENTRY:+"$BENCH_LOCK_ENTRY"}' EXIT
+twins="$(mktemp "${TMPDIR:-/tmp}/goh-staged-twins.XXXXXX")"
+trap 'rm -f "$twins" ${mark:+"$mark"} ${BENCH_LOCK_ENTRY:+"$BENCH_LOCK_ENTRY"}' EXIT
+root_phys="$(cd "$root" && pwd -P)"
+# twin_due <name> <glob>: the index being committed holds a <glob> file, and no gate ran <name> here.
+twin_due() {
+    grep -qFx -- "$1	$root_phys" "$twins" && return 1
+    [ -n "$( (goh_bind_hook_index; cd "$root" && git ls-files -- "$2" | head -n 1) 2>/dev/null)" ]
+}
 
 repo_before="$(goh_repo_snapshot "$root")"   # what the gate may not write (lib/repo_writes.sh)
 status=0
@@ -59,7 +74,7 @@ if [ ! -f "$gate" ]; then
     bash "$structural" --staged || status=$?
 else
     mark="$(mktemp "${TMPDIR:-/tmp}/goh-structural-mark.XXXXXX")"
-    GOH_STRUCTURAL_MARK="$mark" bash "$gate" --staged || status=$?
+    GOH_STRUCTURAL_MARK="$mark" GOH_STAGED_TWIN_MARK="$twins" bash "$gate" --staged || status=$?
     # `grep -F -x` on the whole line: the scope and the tree it ran in, as structural.sh wrote them.
     if [ "$status" -eq 0 ] && ! grep -qFx -- "--staged	$root" "$mark"; then
         warn "pre-commit: tools/gate.sh --staged passed without running the house structural layer"
@@ -67,6 +82,12 @@ else
         warn "  \"\$GOH/gates/structural.sh\" --staged from tools/gate.sh to make this line go away"
         bash "$structural" --staged || status=$?
     fi
+fi
+if [ "$status" -eq 0 ] && twin_due py_staged '*.py'; then
+    bash "$HERE/py_staged.sh" "$root" || status=$?
+fi
+if [ "$status" -eq 0 ] && twin_due swift_staged '*.swift'; then
+    bash "$HERE/swift_staged.sh" "$root" || status=$?
 fi
 goh_repo_writes "$root" "$repo_before" || { err "pre-commit: nothing committed"; exit 1; }
 [ "$status" -eq 0 ] || exit "$status"

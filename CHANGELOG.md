@@ -2,6 +2,23 @@
 
 ## Unreleased
 
+* **The commit layer runs every fast check the push layer runs (GOH.STAGEDPARITY, rule 17).**
+  koffee_big's KB.GATEPARITY (`8f415fd`) found it in nine repos: the push ran `ruff` and
+  `swiftlint --strict`, the commit ran only what each repo's `gate.sh --staged` remembered, so a green
+  commit had its push refused. New `gates/swift_staged.sh`: `swiftlint lint --strict --force-exclude`
+  on staged `.swift`, each file from its nearest `.swiftlint.yml` directory (as `swift_gate.sh ./ui`
+  runs), under that directory's `GOH_SWIFT_LINT_BASELINE` through the same reconciler, now given
+  `--scope` so a staged run does not call the unread baseline "vanished"; an all-excluded commit is
+  green (swiftlint 0.65.1 has no zero-files flag). `gates/commit_gate.sh` runs `py_staged.sh` for
+  every repo whose index holds a `.py` and `swift_staged.sh` for every one holding a `.swift`, after
+  its gate passes, unless that gate already ran the twin for this tree (`GOH_STAGED_TWIN_MARK`). Red
+  first: `tests/test_staged_parity.py` classifies every `goh_step` of `py_gate.sh`, `swift_gate.sh` and
+  `rust_gate.sh` as FAST (its twin must carry the step and `commit_gate.sh` must run it), OPEN or SLOW,
+  and is red on an unclassified step, a missing twin, a twin the commit gate never runs and a stale
+  entry; on the tree before it named `swift_gate.sh: fast step 'swiftlint --strict' has no staged twin:
+  gates/swift_staged.sh is missing` and three `commit_gate.sh never runs gates/py_staged.sh`. OPEN, with
+  reasons: Rust `fmt`, `no-allow` and `empty-assert` have no staged twin yet.
+
 ## v0.80.0 -- no git process is SIGKILLed at a deadline or reads under an optional lock; a commit on main outside land.sh is refused
 
 * **A git process stopped at a deadline strands no lock, and a git reader takes none (GOH.GITKILL);

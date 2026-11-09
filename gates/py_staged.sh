@@ -70,6 +70,8 @@ for line in sys.stdin.read().splitlines():
     info "${#STAGED[@]} tracked .py files"
 else
     goh_init "python (staged)"
+    # commit_gate.sh runs this twin itself unless the repo's gate already did, for THIS tree.
+    [ -z "${GOH_STAGED_TWIN_MARK:-}" ] || printf 'py_staged\t%s\n' "$(pwd -P)" >>"$GOH_STAGED_TWIN_MARK"
     while IFS= read -r f; do
         [ -n "$f" ] && STAGED+=("$f")
     done < <( (goh_bind_hook_index  # the index being committed (gates/_git_env.sh); ruff gets none
