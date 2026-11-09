@@ -189,7 +189,7 @@ def test_the_died_line_summarizes_a_long_file_argument_list(tmp_path):
         files.append(name)
     r = _run(tmp_path, f'goh_step "check" /bin/bash -c "exit 1" -- {" ".join(files)}')
     assert r.returncode != 0
-    died = [ln for ln in r.stderr.splitlines() if "failed (command:" in ln]
+    died = [ln for ln in r.stderr.splitlines() if "command:" in ln and " failed (" in ln]
     assert len(died) == 1, r.stderr
     assert "a_one.txt" not in died[0] and "d_four.txt" not in died[0], died[0]
     assert "4 paths" in died[0] and "/bin/bash -c" in died[0], died[0]
@@ -198,5 +198,5 @@ def test_the_died_line_summarizes_a_long_file_argument_list(tmp_path):
 def test_the_died_line_keeps_a_command_with_one_path_whole(tmp_path):
     (tmp_path / "only.txt").write_text("x\n")
     r = _run(tmp_path, 'goh_step "check" /bin/bash -c "exit 1" -- only.txt')
-    died = [ln for ln in r.stderr.splitlines() if "failed (command:" in ln]
+    died = [ln for ln in r.stderr.splitlines() if "command:" in ln and " failed (" in ln]
     assert "only.txt" in died[0], died[0]

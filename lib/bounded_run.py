@@ -378,7 +378,7 @@ def _run_step(
             # The common case, asked in ONE syscall: nothing is left in the group, so there is
             # nothing to name and no `ps` of the whole machine to read (2026-10-06: 15.7 ms per step
             # over 1141 processes -- kernel work of the kind that serializes across sessions).
-            return Outcome(code=proc.returncode or 0, descendants=[], timed_out=False)
+            return Outcome(code=_shell_code(proc.returncode), descendants=[], timed_out=False)
         table = _process_table()
         left = [
             p for p in (group_members(pgid, table) if pgid is not None else []) if p != proc.pid
@@ -391,7 +391,7 @@ def _run_step(
                 + ", ".join(str(p) for p in left[:20]),
                 file=sys.stderr,
             )
-        return Outcome(code=proc.returncode or 0, descendants=left, timed_out=timed_out)
+        return Outcome(code=_shell_code(proc.returncode), descendants=left, timed_out=timed_out)
     except _Stopped as stop:
         stops.holding = True  # a second stop must not abandon this sweep
         if proc is not None:
@@ -410,6 +410,17 @@ def _run_step(
         _restore(previous)
         if merged:
             stream.close()
+
+
+def _shell_code(returncode: int | None) -> int:
+    """A child ended by signal N as the shell reports it, 128+N (the Rust twin, stepcmd.rs, agrees).
+
+    Popen says -N, and `sys.exit(-9)` is status 247, which names no signal at all: token-pool's
+    SIGKILLed `swift test` could not be told from an exit code (GOH.GATEHONEST,
+    tests/test_step_exit_reason.py)."""
+    if returncode is None:
+        return 0
+    return 128 - returncode if returncode < 0 else returncode
 
 
 def run(argv: list[str], timeout: int, grace: float, label: str, output=None) -> int:

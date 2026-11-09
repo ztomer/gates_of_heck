@@ -38,7 +38,7 @@ for _tui in "${GOH_GIT_ROOT:-}/tui/lib.sh" tui/lib.sh "$GOH_ROOT/tui/lib.sh"; do
     # shellcheck disable=SC1090  # vendored lib resolved at runtime, as _common.sh
     [ -n "$_tui" ] && [ -f "$_tui" ] && . "$_tui" && break
 done
-unset _tui; . "$GOH_ROOT/tui/plural.sh"  # counted/plural_noun: goh's own, whatever lib came first
+unset _tui; . "$GOH_ROOT/tui/plural.sh"; . "$GOH_ROOT/lib/exit_reason.sh"  # counted/plural_noun: goh's own; goh_exit_reason
 info() { printf '→ %s\n' "$*"; }
 ok() { printf '✓ %s\n' "$*"; }
 warn() { printf '⚠ %s\n' "$*" >&2; }
@@ -442,7 +442,7 @@ _report() { # _report <i>
         FAILED_NAMES="$FAILED_NAMES
   $cmd (orphans)"
     elif [ "$rc" -eq 124 ]; then
-        err "[$i/$_n] TIMED OUT after ${LCI_LIMIT}s: $cmd"
+        err "[$i/$_n] TIMED OUT after ${LCI_LIMIT}s (exit 124): $cmd"
         warn "  The ceiling is GOH_LCI_TIMEOUT (default ${GOH_LCI_TIMEOUT:-900}s). A step that needs"
         warn "  longer must say so in .gatesrc — an unbounded step cannot be told apart from a hang."
         warn "--- output (tail ${GOH_TAIL:-30}; full log kept, path below) ---"
@@ -451,12 +451,12 @@ _report() { # _report <i>
         FAILED_NAMES="$FAILED_NAMES
   $cmd (timeout)"
     else
-        err "[$i/$_n] FAILED: $cmd"
+        err "[$i/$_n] FAILED ($(goh_exit_reason "$rc")): $cmd"
         warn "--- output (tail ${GOH_TAIL:-30}; full log kept, path below) ---"
         tail -n "${GOH_TAIL:-30}" "$logf" >&2
         FAILED=$((FAILED + 1))
         FAILED_NAMES="$FAILED_NAMES
-  $cmd"
+  $cmd ($(goh_exit_reason "$rc"))"
     fi
 }
 

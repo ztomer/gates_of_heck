@@ -45,6 +45,9 @@ unset _goh_tui
 # shellcheck source=tui/plural.sh
 . "$GOH_ROOT/tui/plural.sh"  # counted/plural_noun: goh's own, whatever lib.sh was sourced above
 # shellcheck source=lib/bench_lock.sh
+# shellcheck source=lib/exit_reason.sh
+. "$GOH_ROOT/lib/exit_reason.sh"  # goh_exit_reason: a failed step's line names how it ended
+# shellcheck source=lib/bench_lock.sh
 . "$GOH_ROOT/lib/bench_lock.sh"  # a measurement holds off every gate on the host (goh_init)
 
 # Fallbacks for every helper we use. Defined unconditionally, then overridden
@@ -285,12 +288,12 @@ goh_step() {
         fi
         tail -n "$_goh_tail" "$GOH_LOG" >&2
         printf '\n'
-        die "$GOH_NAME: $label failed (command: $(goh_cmd_brief "$@"))"
+        die "$GOH_NAME: $label failed ($(goh_exit_reason "$_goh_rc" "$_goh_limit"); command: $(goh_cmd_brief "$@"))"
     fi
     # Exit 0 is green only when the step did not SAY it failed: a `✗` status line at exit 0 is a
     # step whose words and exit code disagree, and in the house contract the `✗` wins (GOH.XEXIT,
     # lib/xexit.py; an advisory says `⚠`).
-    "$GOH_PY" -S "$GOH_ROOT/lib/xexit.py" --say "$label" "$GOH_LOG" || die "$GOH_NAME: $label failed (command: $(goh_cmd_brief "$@"))"
+    "$GOH_PY" -S "$GOH_ROOT/lib/xexit.py" --say "$label" "$GOH_LOG" || die "$GOH_NAME: $label failed (exit 0 under a ✗ status line; command: $(goh_cmd_brief "$@"))"
     if [ -n "${GOH_TIME:-}" ]; then
         ok "$label ($(( $(date +%s) - _goh_t0 ))s)"
     else
