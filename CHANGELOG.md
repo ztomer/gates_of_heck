@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## v0.81.0 -- the commit layer runs the push layer's fast checks (ruff, swiftlint) in every repo
+
 * **The commit layer runs every fast check the push layer runs (GOH.STAGEDPARITY, rule 17).**
   koffee_big's KB.GATEPARITY (`8f415fd`) found it in nine repos: the push ran `ruff` and
   `swiftlint --strict`, the commit ran only what each repo's `gate.sh --staged` remembered, so a green
