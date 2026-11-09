@@ -297,6 +297,7 @@ over `~/.claude/projects/**/subagents/**/*.jsonl`. Measured 2026-11-08 (Claude C
 | `GOH_HEADLESS_REFUSAL_EXIT` | `3` | Exit code of `headless_require_live` refusals (distinct from 1 = ran and failed). |
 | `GOH_TAIL` | `60` (gates) / `30` (local_ci) | Lines of captured log printed on step failure. |
 | `GOH_FAIL_PATTERN` | `error:\|FAILED\|failed\|panicked at\|Assertion\|✗` | On step failure, the grep whose hits are printed BEFORE the tail — the failing cases a long suite buried above it. |
+| `GOH_WARN_LINES` | `20` | Most `⚠` status lines a PASSING step prints after its ok line; the rest is counted (GOH.STEPWARN). |
 | `GOH_FAIL_LINES` | `40` | How many of those hits are printed. |
 | `GOH_TIME` | unset | When set (any value), `goh_step` appends per-step elapsed whole seconds to its ok line. Off by default. |
 | `GOH_TIMINGS` | unset | A file path. Every bounded step of both structural tiers, every `goh_step`, and every `local_ci.sh` step (and its proven-cache hits, marked `"cache": "hit"`) appends ONE JSON line: `label`, `ms`, `rc`, `tier`, `parent`, `cwd` (`lib/step_timings.py`), and for a wrapped step (`goh step`, `lib/bounded_run.py`) `cpu_ms`: the user + system CPU of the tree it reaped, the step's own work on a box whose load also sets `ms`. Whole lines under `O_APPEND`, so concurrent gates share one file. A failed write is dropped: the instrument never changes a verdict. Steps run with `GOH_STEP_TIMEOUT=0` (unbounded) are not timed. Report: `python3 lib/step_timings.py report FILE`; front end: `tools/gate_profile.sh <repo>`. |

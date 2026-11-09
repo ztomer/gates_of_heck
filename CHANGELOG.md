@@ -2,6 +2,26 @@
 
 ## Unreleased
 
+## v0.87.0 -- a passing step's warnings are shown; a staged .py is linted from the index; one fault is one row
+
+* **A passing step's `⚠` lines are printed: goh_step (GOH.STEPWARN).** The log of a green step is
+  deleted unread, so an advisory it printed (a lock skipped, "NOT a clean bill") reached nobody, and
+  crates-behind kept a private `grep '⚠'` after its own step. goh_step now follows the ok line with
+  the step's `⚠` status lines (first visible character, like the `✗` rule; a quoted mid-line `⚠` is
+  text), at most `GOH_WARN_LINES` (default 20) with the cut counted. The crates-behind grep is gone.
+  Red first: a green step's `⚠ lock skipped` line never reached the gate's output.
+* **`py_staged.sh` lints the index being committed (GOH.PYSTAGEDINDEX).** It took its file names
+  from the index but handed ruff the working tree's bytes: a staged `import os` / `x  =  1` whose
+  fix was only unstaged passed (rc 0), and a clean staged file with a failing unstaged edit was
+  refused. The staged scope now runs from `goh_index_view`'s export (the hook's carried temporary
+  index included); the staged file set is unchanged. Red first, three tests: both directions and a
+  carried `GOH_HOOK_INDEX_FILE`.
+* **`Faults seen:` splits on top-level `;` only (GOH.FAULTSPLIT).** A `;` inside `()`, `[]`, quotes
+  or backticks no longer cuts one fault into fragments the loop triaged separately (the two real
+  lines of 2026-11-09 each became two rows). An apostrophe ("doesn't") is text; a line with an
+  unclosed span falls back to the plain split. Rows already in the ledger carry their `faults` list
+  as stored and are never re-split, so their fault keys (a hash of the text) are unchanged.
+
 ## v0.86.0 -- a Cargo.lock behind its newest compatible releases fails the push
 
 * **Every Cargo.lock at its newest compatible releases: `goh crates-behind` (GOH.CRATESBEHIND).**
