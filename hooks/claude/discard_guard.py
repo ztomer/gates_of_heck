@@ -111,6 +111,12 @@ try:
 except ImportError:
     secret_render = None
 
+# The by-name kill of a shared command (GOH.PKILLNAME, 2026-11-08), the same way: fails open.
+try:
+    import name_kill
+except ImportError:
+    name_kill = None
+
 # The tools whose input holds a shell command (Bash, Monitor): ONE list, `lib/shell_tools.py`.
 try:
     from shell_tools import COMMAND_FIELD, SHELL_TOOLS
@@ -320,6 +326,15 @@ def judge_secret_render(command: str) -> str | None:
     return secret_render.judge(command)
 
 
+def judge_name_kill(command: str) -> str | None:
+    """The refusal for a by-name kill whose pattern reaches a command other sessions run (gate.sh,
+    cargo, pytest, load.py, xcodebuild), naming the owned-pid route (GOH.PKILLNAME), or None.
+    `# kill-ok: <reason>`."""
+    if name_kill is None:
+        return None
+    return name_kill.judge(command)
+
+
 def judge_priority(command: str) -> str | None:
     """The refusal for a `tools/load.py` command line whose wrapped command runs at background
     priority (`load.py 32 -- taskpolicy -b loop.sh`, the 10h14m run of 2026-10-25), or None."""
@@ -395,6 +410,7 @@ def main() -> int:
             or judge_wait(command)
             or judge_self_match(command)
             or judge_secret_render(command)
+            or judge_name_kill(command)
             or judge_priority(command)
         )
     else:

@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import copy
 import json
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -246,6 +247,35 @@ def test_the_apply_step_never_touches_a_foreign_agent_file(tmp_path: Path) -> No
     foreign.write_text("---\nname: mine\n---\nmine\n")
     assert _apply(tmp_path).returncode == 0
     assert foreign.read_text() == "---\nname: mine\n---\nmine\n"
+
+
+def test_an_agent_type_goh_retires_is_removed_by_apply_and_a_foreign_one_is_left(
+    tmp_path: Path,
+) -> None:
+    """GOH.AGENTRETIRE (2026-11-08): the apply step records what it installed in a manifest, and an
+    agent type goh no longer ships is removed -- only that, only when it is still goh's bytes."""
+    src = tmp_path / "src"
+    shutil.copytree(AGENT_SRC, src)
+    (src / "retiring.md").write_text("---\nname: retiring\n---\nold\n")
+    (src / "edited.md").write_text("---\nname: edited\n---\nold\n")
+    agents = tmp_path / "agents"
+    agents.mkdir()
+    foreign = agents / "mine.md"
+    foreign.write_text("mine\n")
+    assert _apply(tmp_path, "--agent-sources", str(src)).returncode == 0
+    assert (agents / "retiring.md").exists()
+    (src / "retiring.md").unlink()
+    (src / "edited.md").unlink()
+    (agents / "edited.md").write_text("the owner's edit\n")
+    assert _apply(tmp_path, "--agent-sources", str(src), "--check").returncode == 1  # drift
+    r = _apply(tmp_path, "--agent-sources", str(src))
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert not (agents / "retiring.md").exists()
+    assert "retiring" in r.stdout
+    assert (agents / "edited.md").read_text() == "the owner's edit\n"  # no longer goh's bytes
+    assert foreign.read_text() == "mine\n"
+    assert (agents / "repo-worker.md").exists()
+    assert _apply(tmp_path, "--agent-sources", str(src), "--check").returncode == 0
 
 
 def test_the_lean_types_name_their_tools_and_no_mcp_server_but_the_pool_and_the_ui_ones() -> None:

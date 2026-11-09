@@ -2,6 +2,21 @@
 
 ## Unreleased
 
+* **The Bash guard refuses a by-name kill of a shared command (GOH.PKILLNAME); `goh skills <path>`
+  takes the corpus root positionally (GOH.SKILLSPATH); the apply step removes an agent type goh
+  retired (GOH.AGENTRETIRE).** (a) On 2026-11-08 a pattern kill of `tools/gate.sh --full` stopped two
+  other sessions' gates. `lib/name_kill.py`, wired into `hooks/claude/discard_guard.py`, refuses a
+  pattern kill, an all-of-a-name kill, or a pgrep/pidof feeding `kill`, whose pattern reaches
+  gate.sh, gate_profile.sh, land.sh, cargo, pytest, load.py or xcodebuild, naming the owned-pid route
+  (`$!`, `-P <pid>`, `load.py`); a numeric pid, a job, a scoped kill or quoted text runs; escape
+  `# kill-ok: <reason>`. Red first: `tests/test_name_kill_guard.py`. (b) `goh skills PATH` is the
+  same as `--root PATH` (both is a usage error); red first:
+  `skills_takes_the_corpus_root_as_a_positional_path` (`crates/goh/tests/cli_skills_path.rs`). (c) `scripts/apply_claude_hooks.py` records
+  what it installed in `~/.claude/agents/.goh-installed.json` and removes a type goh no longer ships
+  when the file still holds goh's bytes; an edited one is left with a warning, a foreign one is never
+  touched, and `--check` counts a removable one as drift. Red first:
+  `test_an_agent_type_goh_retires_is_removed_by_apply_and_a_foreign_one_is_left`.
+
 ## v0.78.0 -- agent-stalls reports a finished agent whose job died; the installer takes another repo's plist
 
 * **`goh agent-stalls` reports a finished agent that stopped to wait on a job that died; the retired

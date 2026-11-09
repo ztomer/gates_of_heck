@@ -39,6 +39,9 @@ pub struct ExcludeStagedArgs {
 /// `goh skills` flags, grouped so the runner takes one argument.
 #[derive(Debug, clap::Args)]
 pub struct SkillsArgs {
+    /// Corpus root, as a path (`goh skills ~/.claude/skills`); the same as `--root`.
+    #[arg(value_name = "PATH", conflicts_with = "root")]
+    pub path: Option<String>,
     /// Corpus root (default: the current directory, like the checker).
     #[arg(long, default_value = ".")]
     pub root: String,

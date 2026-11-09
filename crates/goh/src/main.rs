@@ -267,7 +267,7 @@ fn run_skills(args: &cli_args::SkillsArgs) -> i32 {
     );
     match max_words {
         Ok(max_words) => commands::run_skills(
-            &args.root,
+            args.path.as_deref().unwrap_or(&args.root),
             max_words,
             args.min_skills,
             args.baseline.as_deref(),

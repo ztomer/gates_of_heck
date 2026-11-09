@@ -22,6 +22,9 @@ temp file and `os.replace`, and only when something would change. `--dry-run` pr
 GOH.LEANAGENT (2026-11-08): it also installs goh's lean subagent types, `hooks/claude/agents/*.md`,
 into `~/.claude/agents/` (`--agents-dir`), byte for byte; `--check` counts a missing or differing
 one as drift. Only a file named like one of goh's is written; any other agent file is left alone.
+GOH.AGENTRETIRE (2026-11-08): what it wrote is recorded in `<agents-dir>/.goh-installed.json` (name ->
+sha256), and a type goh no longer ships is removed -- only when the manifest names it and the file
+still holds goh's bytes; an edited one is left (warned), a foreign one is never read.
 
 GOH.READCAP / GOH.CACHETTL (2026-11-08): `registrations.json`'s `settings` holds the plain Claude
 Code settings goh manages (`env` vars merged one by one, top-level keys set); every other key and
@@ -35,6 +38,7 @@ import argparse
 import copy
 import datetime as dt
 import difflib
+import hashlib
 import json
 import os
 import re
@@ -46,7 +50,7 @@ from typing import Any
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
-from tui.lib import err, info, ok
+from tui.lib import err, info, ok, warn
 
 REGISTRATIONS = ROOT / "hooks" / "claude" / "registrations.json"
 DEFAULT_SETTINGS = Path.home() / ".claude" / "settings.json"
@@ -190,25 +194,70 @@ def agent_drift(sources: Path, dest: Path) -> list[Path]:
     return out
 
 
+MANIFEST = ".goh-installed.json"
+
+
+def _sha(path: Path) -> str:
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def _manifest(dest: Path) -> dict[str, str]:
+    """What goh installed into `dest`: file name -> sha256 of the bytes it wrote (GOH.AGENTRETIRE)."""
+    try:
+        data = json.loads((dest / MANIFEST).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    got = data.get("installed") if isinstance(data, dict) else None
+    return {str(k): str(v) for k, v in got.items()} if isinstance(got, dict) else {}
+
+
+def retired_agents(sources: Path, dest: Path) -> tuple[list[str], list[str]]:
+    """(removable, kept): agent files goh installed and no longer ships. Removable when the file
+    still holds the bytes goh wrote; kept (the owner's now) when it was edited since."""
+    shipped = {p.name for p in sources.glob("*.md")}
+    removable, kept = [], []
+    for name, sha in sorted(_manifest(dest).items()):
+        path = dest / name
+        if name in shipped or not path.is_file():
+            continue
+        (removable if _sha(path) == sha else kept).append(name)
+    return removable, kept
+
+
 def apply_agents(sources: Path, dest: Path, check: bool, dry_run: bool) -> int:
-    """Install goh's agent types; 0 when they are in place (or were written), 1 on drift in --check."""
+    """Install goh's agent types and remove the ones it retired; 0 when in place (or written), 1 on
+    drift in --check. Only files the manifest says goh wrote are ever removed."""
     drift = agent_drift(sources, dest)
-    if not drift:
-        ok(f"{dest}: goh's agent types are installed")
-        return 0
+    removable, kept = retired_agents(sources, dest)
+    for name in kept:
+        warn(
+            f"agent {Path(name).stem}: retired by goh but edited since -- left in place, now yours"
+        )
     for src in drift:
         info(f"agent {src.stem}: {'differs' if (dest / src.name).exists() else 'missing'}")
+    for name in removable:
+        info(
+            f"agent {Path(name).stem}: retired by goh -- {'to remove' if check or dry_run else 'removed'}"
+        )
     if check:
-        return 1
+        return 1 if drift or removable else 0
     if dry_run:
         return 0
     dest.mkdir(parents=True, exist_ok=True)
     for src in drift:
         _write(dest / src.name, src.read_text(encoding="utf-8"))
-    if agent_drift(sources, dest):
+    for name in removable:
+        (dest / name).unlink()
+    installed = {p.name: _sha(p) for p in sorted(sources.glob("*.md"))}
+    if _manifest(dest) != installed:
+        _write(dest / MANIFEST, json.dumps({"installed": installed}, indent=2) + "\n")
+    if agent_drift(sources, dest) or retired_agents(sources, dest)[0]:
         err(f"{dest} still differs after the write")
         return 1
-    ok(f"{dest}: {len(drift)} agent type(s) written")
+    if drift or removable:
+        ok(f"{dest}: {len(drift)} agent type(s) written, {len(removable)} retired one(s) removed")
+    else:
+        ok(f"{dest}: goh's agent types are installed")
     return 0
 
 
