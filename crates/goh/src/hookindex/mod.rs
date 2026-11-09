@@ -122,7 +122,7 @@ fn judge(
     let repo = if counts.is_empty() && (staged || seed.is_empty()) {
         String::new()
     } else {
-        seed::identity(root).unwrap_or_default()
+        crate::gitutil::root_commit(root).unwrap_or_default()
     };
     let verdict = seed::judge(&repo, &counts, seed, !staged);
     let site = |rel: &str, r: &index::IndexRead| {

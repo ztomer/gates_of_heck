@@ -12,6 +12,7 @@ import subprocess
 import sys
 from pathlib import Path
 
+from _fast_git import fast_init
 from conftest import REPO_ROOT, git
 
 HOOK = REPO_ROOT / "hooks" / "claude" / "estate_advisories.py"
@@ -49,8 +50,7 @@ def _hook(state: Path) -> str:
 
 def test_a_repo_ahead_is_named_and_one_level_or_without_upstream_is_not(tmp_path: Path) -> None:
     seed = tmp_path / "seed"
-    seed.mkdir()
-    git(seed, "init", "-q", "-b", "main")
+    fast_init(seed, "main")
     _commit(seed, "a")
     origin = tmp_path / "origin.git"
     subprocess.run(
@@ -63,8 +63,7 @@ def test_a_repo_ahead_is_named_and_one_level_or_without_upstream_is_not(tmp_path
     _commit(ahead, "b")
     level = _clone(origin, tmp_path / "level")
     loose = tmp_path / "loose"  # commits, and no upstream to be ahead of
-    loose.mkdir()
-    git(loose, "init", "-q", "-b", "main")
+    fast_init(loose, "main")
     _commit(loose, "c")
     state = tmp_path / "state" / "estate_audit.json"
     state.parent.mkdir()

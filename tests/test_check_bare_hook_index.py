@@ -174,7 +174,7 @@ def test_a_private_index_the_script_chose_is_not_the_hooks(repo: Path) -> None:
     write(
         repo,
         "tools/gate.sh",
-        '#!/usr/bin/env bash\nidx="$(mktemp)"\ntree="$(GIT_INDEX_FILE="$idx" git write-tree)"\n',
+        '#!/usr/bin/env bash\nidx="$(mktemp "${TMPDIR:-/tmp}/goh-idx.XXXXXX")"\ntree="$(GIT_INDEX_FILE="$idx" git write-tree)"\n',
     )
     commit_all(repo)
     assert run_goh(repo, "bare-hook-index").returncode == 0

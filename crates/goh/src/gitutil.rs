@@ -282,6 +282,30 @@ pub const BINARY_SCAN_WINDOW: usize = 8000;
 /// definition so every report truncates identically.
 pub const MAX_REPORT_HITS: usize = 200;
 
+/// A repository's stable identity across clones, worktrees and moves: its root commit.
+///
+/// The least, when history has several; `None` before the first commit.
+#[must_use]
+pub fn root_commit(root: &Path) -> Option<String> {
+    let out = Command::new("git")
+        .arg("-C")
+        .arg(root)
+        .args(["rev-list", "--max-parents=0", "HEAD"])
+        .stdin(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .output()
+        .ok()?;
+    if !out.status.success() {
+        return None;
+    }
+    String::from_utf8_lossy(&out.stdout)
+        .lines()
+        .map(str::trim)
+        .filter(|l| !l.is_empty())
+        .min()
+        .map(str::to_string)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

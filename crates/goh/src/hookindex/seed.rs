@@ -67,29 +67,6 @@ pub struct Verdict {
     pub warn: Vec<(String, String)>,
 }
 
-/// The repository's stable identity: its root commit (the least, when history has several), or
-/// `None` before its first commit -- which no seed names, so every read there is red.
-#[must_use]
-pub fn identity(root: &Path) -> Option<String> {
-    let out = std::process::Command::new("git")
-        .arg("-C")
-        .arg(root)
-        .args(["rev-list", "--max-parents=0", "HEAD"])
-        .stdin(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .output()
-        .ok()?;
-    if !out.status.success() {
-        return None;
-    }
-    String::from_utf8_lossy(&out.stdout)
-        .lines()
-        .map(str::trim)
-        .filter(|l| !l.is_empty())
-        .min()
-        .map(str::to_string)
-}
-
 /// Judge `found` (`path -> number of reads`) in the repo whose identity is `repo` against `seed`. `full`: every hook-run
 /// file was read, so an entry with fewer reads than seeded is stale.
 #[must_use]

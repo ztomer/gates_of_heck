@@ -38,6 +38,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "lib"))
 import estate_registry  # the registry, beside the audit's state file
+import gitrun  # git under a deadline that never strands an index.lock
 
 STALE_AFTER_H = 36  # a daily job, plus a missed run's grace
 NEW_WITHIN_H = 48
@@ -123,16 +124,11 @@ def _ahead(repo: Path) -> int:
     """Commits on HEAD its upstream lacks, as git knows it locally; 0 with no upstream, or when git
     does not answer in time. The hook's own git variables are dropped: the repo is named by path."""
     env = {k: v for k, v in os.environ.items() if not k.startswith("GIT_")}
-    env["GIT_OPTIONAL_LOCKS"] = "0"
     try:
-        r = subprocess.run(
-            ["git", "-C", str(repo), "rev-list", "--count", "@{upstream}..HEAD"],
-            capture_output=True,
-            text=True,
+        r = gitrun.run_reader(
+            ["-C", str(repo), "rev-list", "--count", "@{upstream}..HEAD"],
             timeout=AHEAD_TIMEOUT_S,
             env=env,
-            stdin=subprocess.DEVNULL,
-            check=False,
         )
     except (OSError, subprocess.TimeoutExpired):
         return 0
