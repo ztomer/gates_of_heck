@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## v0.82.0 -- the CI-watching spawn judge reads requests, not keywords
+
 * **The CI-watching judge reads requests, not keywords (GOH.CIJUDGEFP).** `judge_ci` in
   `hooks/claude/agent_guard.py` refused a coordinator prompt that only described the check ("a spawn
   that asks an agent to watch CI") and excused a real request on a negating word elsewhere in its
