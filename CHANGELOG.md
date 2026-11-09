@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## v0.89.0 -- a hedged plural in a string is a finding; a public tree names no private repository
+
 * **A hedged plural in a string is a structural finding: `goh plural-hedge` (GOH.PLURALHEDGE).**
   `0 open entr(ies)`, `4 step(s)`, `2 finding(s)` never decided which number they meant. A count
   now meets its noun in the tui lib -- `counted`/`noun` (`tui.lib`), `counted`/`plural_noun`
