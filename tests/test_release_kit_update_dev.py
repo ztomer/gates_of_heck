@@ -193,3 +193,56 @@ class TestNeverAReopen:
         assert _opened(tmp_path) == []
         assert "would not quit" in r.stdout + r.stderr
         assert not (tmp_path / "dest" / "Demo.app").exists(), "replaced under a live copy"
+
+
+class TestInstallEverythingThenLaunch:
+    """RT.INSTALLORDER (2026-11-08): `open` failed with -600 after the kit replaced Routines.app, and
+    routines' install.sh died before its CLI step -- app new, CLI old. The caller's other artifacts
+    now land BEFORE the launch step (AFTER_INSTALL_CMD), and a failed `open` is retried once after
+    lsregister, then reported by name."""
+
+    def _failing_open(self, bin_dir: Path, tmp_path: Path, fails: int) -> None:
+        (bin_dir / "open").write_text(
+            "#!/usr/bin/env bash\n"
+            'n=$(cat "$STATE/opens" 2>/dev/null || echo 0); n=$((n+1)); echo "$n" > "$STATE/opens"\n'
+            f'[ "$n" -le {fails} ] && exit 1\n'
+            'touch "$STATE/running"\n'
+        )
+        lsreg = bin_dir / "lsregister"
+        lsreg.write_text('#!/usr/bin/env bash\nprintf "%s\\n" "$*" >> "$STATE/lsreg.log"\n')
+        lsreg.chmod(0o755)
+        os.environ["LSREGISTER"] = str(lsreg)
+        os.environ["AFTER_INSTALL_CMD"] = (
+            f'test -d "{tmp_path}/dest/Demo.app" && touch "{tmp_path}/companion"'
+        )
+
+    def teardown_method(self, _m):
+        os.environ.pop("LSREGISTER", None)
+        os.environ.pop("AFTER_INSTALL_CMD", None)
+
+    def test_a_launch_that_fails_twice_is_named_and_leaves_everything_installed(self, tmp_path):
+        bin_dir = _world(tmp_path, running=True)
+        self._failing_open(bin_dir, tmp_path, fails=2)
+        r = run_update_dev(tmp_path, bin_dir)
+        assert r.returncode == 4, r.stdout + r.stderr
+        assert "relaunch failed" in r.stdout + r.stderr
+        assert (tmp_path / "companion").exists(), "the companion artifact was not installed first"
+        assert (
+            tmp_path / "lsreg.log"
+        ).read_text().strip() == f"-f {tmp_path / 'dest' / 'Demo.app'}"
+        assert (tmp_path / "opens").read_text().strip() == "2"
+
+    def test_a_launch_that_fails_once_is_retried_after_lsregister(self, tmp_path):
+        bin_dir = _world(tmp_path, running=True)
+        self._failing_open(bin_dir, tmp_path, fails=1)
+        r = run_update_dev(tmp_path, bin_dir)
+        assert r.returncode == 0, r.stdout + r.stderr
+        assert (tmp_path / "companion").exists() and (tmp_path / "running").exists()
+        assert (tmp_path / "lsreg.log").exists()
+
+    def test_a_failing_companion_install_launches_nothing(self, tmp_path):
+        bin_dir = _world(tmp_path, running=True)
+        os.environ["AFTER_INSTALL_CMD"] = "exit 9"
+        r = run_update_dev(tmp_path, bin_dir)
+        assert r.returncode != 0 and "companion install failed" in r.stdout + r.stderr
+        assert _opened(tmp_path) == []

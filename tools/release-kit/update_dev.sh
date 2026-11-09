@@ -41,6 +41,15 @@
 #                            pgrep -x on the bundle name never matched, so the
 #                            quit-before-replace step silently no-oped).
 #   LAUNCH        optional   UPDATE_DEV_LAUNCH=1 same as --launch
+#   AFTER_INSTALL_CMD optional shell string run after the app is installed and BEFORE the launch
+#                            step: a caller's other artifacts (routines' CLI) land before anything
+#                            can fail at launch, so a failed launch never leaves the app new and
+#                            the rest old (RT.INSTALLORDER, 2026-11-08: `open` -600 killed
+#                            routines' install.sh between the app and its CLI). Failing, it is
+#                            reported and nothing is launched.
+#   LSREGISTER    optional   lsregister path (test seam); a failed `open` re-registers the bundle
+#                            with LaunchServices and is retried ONCE, then fails as
+#                            "relaunch failed" (exit 4) with every artifact already installed.
 #
 # Usage:
 #   APP_NAME=Demo.app BUILD_CMD="make build" APP_PATH=build/Demo.app \
@@ -152,6 +161,10 @@ if command -v codesign >/dev/null 2>&1; then
 fi
 
 ok "installed $DEST"
+if [ -n "${AFTER_INSTALL_CMD:-}" ]; then
+  info "installing the companion artifacts: ${AFTER_INSTALL_CMD}"
+  bash -c "$AFTER_INSTALL_CMD" || die "companion install failed (${AFTER_INSTALL_CMD}) -- nothing launched"
+fi
 if [ "$LAUNCH" = 1 ] || { [ "$WAS_RUNNING" = 1 ] && [ "$NO_LAUNCH" = 0 ]; }; then
   if pgrep -x "$PROCESS_NAME" >/dev/null 2>&1; then
     # Never `open` a running copy: macOS sends it a reopen event, and an app answers a reopen with
@@ -161,7 +174,17 @@ if [ "$LAUNCH" = 1 ] || { [ "$WAS_RUNNING" = 1 ] && [ "$NO_LAUNCH" = 0 ]; }; the
     exit
   fi
   if [ "$WAS_RUNNING" = 1 ]; then info "relaunching ${PROCESS_NAME} (it was running before the install)"; else info "launching"; fi
-  open "$DEST" || die "open $DEST failed -- ${PROCESS_NAME} is NOT running"
+  if ! open "$DEST"; then
+    # LaunchServices may not have registered the new bundle yet (`open` -600, 2026-11-08):
+    # register it, then try once more. Every artifact is installed by now either way.
+    LSREG="${LSREGISTER:-/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister}"
+    warn "open $DEST failed -- registering it with LaunchServices and retrying once"
+    "$LSREG" -f "$DEST" >/dev/null 2>&1 || warn "lsregister -f $DEST failed"
+    if ! open "$DEST"; then
+      err "relaunch failed: open $DEST failed twice -- ${PROCESS_NAME} is NOT running (every artifact is installed; open it by hand)"
+      exit 4
+    fi
+  fi
   # Seen running before it is said (G15): `open` returning is not the app being up.
   for _ in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15; do
     pgrep -x "$PROCESS_NAME" >/dev/null 2>&1 && break
