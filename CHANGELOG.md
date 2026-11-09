@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## v0.83.0 -- a gate that reads an index unbound is named; SessionStart names unpushed repos
+
 * **A hook-run script that reads an index without binding the hook's is named (GOH.BAREINDEX).**
   `.loop`'s tools/gate.sh ran a plain `git diff --cached`; under `git commit -- queue.json` the
   hook commits a temporary index it carries only as `GOH_HOOK_INDEX_FILE`, so the gate read the
