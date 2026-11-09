@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## v0.90.1 -- goh ship --help shows its own usage; a ship result names the landed commit; the bump is git-cliff's
+
 * **`goh ship --help` prints ship.py's own usage (GOH.SHIPADOPT).** The pass-through subcommands
   (`goh ship`, `goh agent-stalls`) turn clap's help flag off, so `--help`/`-h` reach the script.
 * **A ship result names the landed commit.** `sha` is HEAD after the release step (a kit that
