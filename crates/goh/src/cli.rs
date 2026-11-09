@@ -53,8 +53,7 @@ pub enum Commands {
     /// gate, the repo's release kit, install, the `loopctl verify` card, then `loopctl done`
     /// (`tools/ship.py`, GOH.SHIP; its flags pass through). Detached unless `--wait`.
     Ship(PassArgs),
-    /// Run a step under a ceiling and report what it left running (the native
-    /// `lib/orphan_canary.py wrap`).
+    /// Run a step under a ceiling; report what it left running (`lib/orphan_canary.py wrap`).
     Canary {
         /// The repo, for attributing a leaked process by its path (default: cwd).
         #[arg(long)]
@@ -423,10 +422,14 @@ pub enum Commands {
     /// Fail on a shell source that expands the hook's carried index (`GOH_HOOK_INDEX_FILE`,
     /// `GOH_HOOK_GIT_DIR`) anywhere but `goh_bind_hook_index`'s definition.
     BareHookIndex(ExcludeStagedArgs),
-    /// Fail on an `actions/checkout` step (workflow or composite action) that leaves the job token
-    /// in `.git/config`: `persist-credentials` not the literal `false`, and no
-    /// `# persist-credentials-ok: <reason>` on the step. No `--exclude`: a credential check takes no
-    /// path exemption (`goh secrets`).
+    /// Fail on a release script's gate/test/install step that sends its stdout to /dev/null.
+    ReleaseQuiet(ExcludeStagedArgs),
+    /// Fail on `mktemp -t NAME` with no X in NAME (BSD-only; GNU refuses it).
+    MktempPortable(ExcludeStagedArgs),
+    /// Fail when the whole changelog and the `v*` tags disagree (GOH.CHANGELOGALL).
+    ChangelogTags(StagedArgs),
+    /// Fail on an `actions/checkout` step that leaves the job token in `.git/config`:
+    /// `persist-credentials` not `false`, no `# persist-credentials-ok: <reason>`. No `--exclude`.
     CheckoutCredentials(StagedArgs),
     /// Fail on a script, Makefile or workflow that writes a `homebrew-*` repo directly: a
     /// contents-API write (`gh api` / `curl`) or a push from a clone of the tap, which skips the

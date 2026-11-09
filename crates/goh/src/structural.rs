@@ -242,6 +242,7 @@ fn late_steps(
         vendored::step(repo, files, staged),
         crate::requires_call::step(repo, cfg, staged),
         substdin::step(cfg, files, staged),
+        crate::changelog_tags::step(repo, staged),
         steps_delegated::step_full_only(repo, checks, staged),
     ];
     first_stop(steps, tally)
@@ -263,6 +264,8 @@ fn shell_steps(
         earlypipe::step(repo, files, cfg, staged),
         deadexec::step(repo, files, cfg, staged),
         hookindex::step(repo, files, cfg, staged),
+        crate::relquiet::step(repo, files, cfg, staged),
+        crate::mktempport::step(repo, files, cfg, staged),
         crate::barepy::step(repo, files, cfg, staged),
     ];
     first_stop(steps, tally)

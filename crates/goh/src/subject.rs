@@ -95,6 +95,16 @@ pub const BARE_HOOK_INDEX: Subject = Subject {
     unit: "shell source(s)",
     scanner: "no bare read of the hook's index",
 };
+pub const RELEASE_QUIET: Subject = Subject {
+    key: "GOH_RELEASE_QUIET_MIN_FILES",
+    unit: "release script(s)",
+    scanner: "no release step hides its output",
+};
+pub const MKTEMP_PORTABLE: Subject = Subject {
+    key: "GOH_MKTEMP_PORTABLE_MIN_FILES",
+    unit: "shell source(s)",
+    scanner: "no BSD-only mktemp -t",
+};
 pub const BARE_PYTHON: Subject = Subject {
     key: "GOH_BARE_PYTHON_MIN_FILES",
     unit: "hook/gate script(s)",
@@ -157,7 +167,7 @@ pub const BUSY_LOOP: Subject = Subject {
 };
 
 /// Every scanner with a subject, spelled once: the keys `.gatesrc` may hold a floor in.
-pub const ALL: [&Subject; 20] = [
+pub const ALL: [&Subject; 22] = [
     &EMOJI,
     &CONFLICT_MARKERS,
     &FILE_LENGTH,
@@ -166,6 +176,8 @@ pub const ALL: [&Subject; 20] = [
     &EARLY_EXIT_PIPE,
     &DEAD_AFTER_EXEC,
     &BARE_HOOK_INDEX,
+    &RELEASE_QUIET,
+    &MKTEMP_PORTABLE,
     &BARE_PYTHON,
     &CHECKOUT_CREDENTIALS,
     &TAP_WRITES,

@@ -18,6 +18,7 @@ pub mod cache_root;
 pub mod callkey;
 pub mod canarycmd;
 pub mod ceiling;
+pub mod changelog_tags;
 pub mod checkoutcreds;
 pub mod claims;
 pub mod cli;
@@ -30,6 +31,7 @@ pub mod deps;
 pub mod earlypipe;
 pub mod emoji;
 pub mod emptyassert;
+pub mod estate_seed;
 pub mod fixedsleep;
 pub mod gatesrc;
 pub mod gitutil;
@@ -46,6 +48,7 @@ pub mod lockver;
 pub mod markers;
 pub mod mdlinks;
 pub mod mdtext;
+pub mod mktempport;
 pub mod movingtag;
 pub mod noallow;
 pub mod pathfilter;
@@ -58,6 +61,7 @@ pub mod pyjson;
 pub mod pylex;
 pub mod ratchet;
 pub mod red_run;
+pub mod relquiet;
 pub mod requires_call;
 pub mod requires_call_py;
 pub mod revblobs;
@@ -418,6 +422,9 @@ fn run_ported(command: Commands) -> Result<i32, Box<Commands>> {
         }),
         Commands::DeadAfterExec(a) => paths(a.exclude, |x| deadexec::run_command(a.staged, x)),
         Commands::BareHookIndex(a) => paths(a.exclude, |x| hookindex::run_command(a.staged, x)),
+        Commands::ReleaseQuiet(a) => paths(a.exclude, |x| relquiet::run_command(a.staged, x)),
+        Commands::MktempPortable(a) => paths(a.exclude, |x| mktempport::run_command(a.staged, x)),
+        Commands::ChangelogTags(a) => changelog_tags::run_command(a.staged),
         Commands::CheckoutCredentials(a) => checkoutcreds::run_command(a.staged),
         Commands::TapWrites(a) => tapwrite::run_command(a.staged),
         Commands::MovingTags(a) => movingtag::run_command(a.staged),

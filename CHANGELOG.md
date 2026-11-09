@@ -2,6 +2,33 @@
 
 ## Unreleased
 
+* **A release step that can fail never hides its output: `goh release-quiet` (GOH.RELHIDE).**
+  monitor's v0.69.2 release stopped at "cargo test failed -- nothing tagged" with the test output
+  sent to /dev/null (fixed there in 2a0a3ce with `step()`). A structural step in every repo now
+  reads each release-named shell script and fails a gate, test, install or verify step (a script
+  named so, `make`, `cargo test|clippy|install`, `brew fetch`, `pytest`, ...) whose STDOUT goes to
+  /dev/null, including one inside a `VERIFY='...'` string; a presence probe is not a step, and
+  `# release-quiet-ok: <reason>` is the escape. The estate sweep found 8 sites in 6 repos (antiknob,
+  app_updates, game_asset_factory, routines, sys_updater, ztools), seeded in
+  `release_quiet_seed.json`. Red first: the planted estate lines went unfound with the redirect
+  reader disabled.
+* **`mktemp -t NAME` with no X is refused: `goh mktemp-portable` (GOH.MKTEMPPORT).** BSD appends
+  its own suffix; GNU refuses the template ("too few X's"), so a Mac-written script fails on Linux
+  CI. A structural step over every shell source names the portable form
+  `mktemp "${TMPDIR:-/tmp}/NAME.XXXXXX"`. 7 sites in 3 repos (CadGoose2, necrohand,
+  mediaremote-adapter) seeded in `mktemp_port_seed.json`. Red first on monitor's old
+  `mktemp -t "release-step"` line.
+* **The whole changelog agrees with the tags: `goh changelog-tags` (GOH.CHANGELOGALL).** Lifted
+  from zinc's `tools/check_changelog_tags.py` (ZN.CLHEAD): an orphan heading tail, a `v*` tag with
+  no heading, a heading at or above the first tag that no tag names; the current version (the
+  `VERSION` file, else the newest heading above every tag) is exempt. A structural step in every
+  repo with a `CHANGELOG.md` or `docs/CHANGELOG.md`. 305 findings in 11 changelogs (goh's own
+  included: versions bumped and never tagged) seeded in `changelog_tags_seed.json`. Red first on a
+  planted orphan tail and a planted tag with no heading.
+* **One estate-seed ratchet: `crates/goh/src/estate_seed.rs`.** The root-commit-keyed seed that
+  `goh bare-hook-index` carried alone now serves all four seeded checks; a seeded pass says the seed
+  is what passed, and lists at most five sites per file.
+
 ## v0.84.0 -- a stopped agent is finished, never alive; a loose scratchpad write is named
 
 * **One stopped-agent rule: `hooks/claude/agent_stop.py` `stop_marker()` (LOOP.LINGERSTOP).**
