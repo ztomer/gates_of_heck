@@ -285,8 +285,42 @@ pub const MAX_REPORT_HITS: usize = 200;
 /// A repository's stable identity across clones, worktrees and moves: its root commit.
 ///
 /// The least, when history has several; `None` before the first commit.
+///
+/// An EXPORT of HEAD (`gates/_from_head.sh`: a `git archive`, `.goh-head` at its top) has no
+/// history, and asking git there found no root -- or, under a cache inside some other repository,
+/// that repository's. goh's own hooks run HEAD's goh from one, and every root-keyed seed entry read
+/// as another repository's (GOH.HOOKSEED; ad80028 was committed with `GOH_LIVE=1`). An export
+/// answers from the `.goh-root` the export wrote, else from the live checkout it was cut from
+/// (`GOH_LIVE_ROOT`), never from git in the export.
 #[must_use]
 pub fn root_commit(root: &Path) -> Option<String> {
+    if root.join(".goh-head").is_file() {
+        let live = std::env::var_os("GOH_LIVE_ROOT").map(std::path::PathBuf::from);
+        return export_root(root, live.as_deref());
+    }
+    git_root_commit(root)
+}
+
+/// The root commit an export at `export` names: its `.goh-root` (the least line), else the root
+/// of `live`, the checkout it was cut from, when that is a git checkout and not an export itself.
+#[must_use]
+pub fn export_root(export: &Path, live: Option<&Path>) -> Option<String> {
+    if let Ok(text) = std::fs::read_to_string(export.join(".goh-root")) {
+        return least_line(&text);
+    }
+    let live = live.filter(|l| l.join(".git").exists() && !l.join(".goh-head").exists())?;
+    git_root_commit(live)
+}
+
+fn least_line(text: &str) -> Option<String> {
+    text.lines()
+        .map(str::trim)
+        .filter(|l| !l.is_empty())
+        .min()
+        .map(str::to_string)
+}
+
+fn git_root_commit(root: &Path) -> Option<String> {
     let out = Command::new("git")
         .arg("-C")
         .arg(root)
@@ -298,12 +332,7 @@ pub fn root_commit(root: &Path) -> Option<String> {
     if !out.status.success() {
         return None;
     }
-    String::from_utf8_lossy(&out.stdout)
-        .lines()
-        .map(str::trim)
-        .filter(|l| !l.is_empty())
-        .min()
-        .map(str::to_string)
+    least_line(&String::from_utf8_lossy(&out.stdout))
 }
 
 /// Is the clone at `root` shallow? Its root commit is then the shallow boundary, not the true one.
@@ -322,6 +351,31 @@ pub fn is_shallow(root: &Path) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn an_export_answers_its_root_from_what_it_wrote_never_from_git() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        std::fs::write(dir.path().join(".goh-head"), "f00\n").expect("head");
+        assert_eq!(
+            export_root(dir.path(), None),
+            None,
+            "no .goh-root, no live checkout"
+        );
+        std::fs::write(dir.path().join(".goh-root"), "bbb\naaa\n").expect("root");
+        assert_eq!(root_commit(dir.path()).as_deref(), Some("aaa"));
+    }
+
+    #[test]
+    fn an_export_without_its_root_asks_the_live_checkout_it_came_from() {
+        let live = goh_testkit::repo_with(&[("a", "1\n")]).expect("fixture");
+        live.git(&["commit", "-qm", "root"]).expect("commit");
+        let want = git_root_commit(live.path()).expect("the live root");
+        let export = tempfile::tempdir().expect("tempdir");
+        std::fs::write(export.path().join(".goh-head"), "f00\n").expect("head");
+        assert_eq!(export_root(export.path(), Some(live.path())), Some(want));
+        // an export is never asked for another export's root
+        assert_eq!(export_root(export.path(), Some(export.path())), None);
+    }
 
     #[test]
     fn line_count_terminator_is_not_a_line() {

@@ -87,6 +87,10 @@ _goh_head_dir() {
             return 1
         fi
         printf '%s\n' "$head" > "$tmp/.goh-head"
+        # The export's history root (GOH.HOOKSEED): an archive has no history, and goh's root-keyed
+        # seeds asked of it found no root (gitutil::root_commit reads this in an export).
+        (goh_unbind_git; git -C "$root" rev-list --max-parents=0 "$head") > "$tmp/.goh-root" 2>/dev/null \
+            || rm -f "$tmp/.goh-root"
         : > "$tmp/.goh-used"  # the last-use stamp, made before the rename (gates/_head_cache.py)
         # rename(2), whole: fails if another hook won the race, and theirs is the same commit.
         "$GOH_PY" -c 'import os, sys; os.rename(sys.argv[1], sys.argv[2])' "$tmp" "$dest" 2>/dev/null \

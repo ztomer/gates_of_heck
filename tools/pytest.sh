@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# The gates_of_heck test suite: parallel under pytest-xdist when installed.
+# The gates_of_heck test suite: parallel under pytest-xdist when installed. Arguments go to pytest
+# (`tools/pytest.sh -k ship`, `tools/pytest.sh tests/test_ship.py`); none runs all of tests/.
 # --dist loadgroup: unmarked tests spread by load; files sharing an
 # xdist_group marker stay on ONE worker -- for SHARED state only. The release
 # tests' group went 2026-10-06: test_release_hardening.py rewrites a copy of
@@ -55,8 +56,15 @@ if "$GOH_PY" -c "import xdist" 2>/dev/null; then
 else
     warn "pytest-xdist not installed — serial suite (pip3 install pytest-xdist)"
 fi
+# The caller's arguments reach pytest (GOH.HOOKSEED): `tools/pytest.sh -k plural` selects, and
+# `tools/pytest.sh tests/test_ship.py` runs that file. They were dropped, and every narrowed run was
+# the whole suite. tests/ is the target unless an argument names a path of its own (`file::node`).
+TARGET=(tests/)
+for a in "$@"; do
+    [ -e "${a%%::*}" ] && { TARGET=(); break; }
+done
 rc=0
-"$GOH_PY" -m pytest tests/ "${ARGS[@]}" || rc=$?
+"$GOH_PY" -m pytest ${TARGET[@]+"${TARGET[@]}"} "${ARGS[@]}" "$@" || rc=$?
 if [ "$rc" -eq 0 ]; then
     rm -rf "$PYTEST_DEBUG_TEMPROOT"
 else
