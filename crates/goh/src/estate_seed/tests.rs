@@ -65,7 +65,7 @@ fn a_full_run_calls_a_stale_entry_red_and_another_repos_entry_is_not_this_ones()
         "a staged run reads too little to call an entry stale"
     );
     let report = stale_report("[x]", "GOH.X", &v.stale);
-    assert!(report.contains("1 stale GOH.X seed entr(ies)") && report.contains("gone.sh"));
+    assert!(report.contains("1 stale GOH.X seed entry") && report.contains("gone.sh"));
     assert_eq!(stale_report("[x]", "GOH.X", &[]), "");
 }
 
@@ -118,6 +118,24 @@ fn the_store_holds_any_repositorys_entry_and_one_entry_in_both_homes_is_refused(
     r.write(K.file, &entry(&own, 2)).expect("write");
     let e = load_from(r.path(), Some(store.path()), K).expect_err("both homes is refused");
     assert!(e.contains("seeded in both"), "{e}");
+}
+
+#[test]
+fn two_clones_of_one_repository_in_the_store_name_the_store_alone() {
+    let (r, own) = committed();
+    let store = tempfile::tempdir().expect("tmp");
+    let one = format!(r#"{{"root":"{own}","repo":"v/a","path":"a.sh","count":1,"reason":"r"}}"#);
+    let two = one.replace("v/a", "v/a-local");
+    std::fs::write(
+        store.path().join(K.file),
+        format!(r#"{{"entries":[{one},{two}]}}"#),
+    )
+    .expect("write");
+    let e = load_from(r.path(), Some(store.path()), K).expect_err("one key twice is refused");
+    assert!(
+        e.contains("seeded twice in") && !e.contains("in both"),
+        "{e}"
+    );
 }
 
 #[test]

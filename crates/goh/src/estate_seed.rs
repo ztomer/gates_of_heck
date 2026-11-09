@@ -7,7 +7,7 @@
 //! run finds clean is STALE and red (its repository deletes it with the fix). "Done" is no entry.
 //!
 //! WHERE AN ENTRY LIVES (GOH.SEEDPRIVATE, 2026-11-09). `gates_of_heck` is public, and its seeds
-//! once held every consumer's entries: `crates_behind_seed.json` published `Finance/zinc`. Now a
+//! once held every consumer's entries: `crates_behind_seed.json` published a private consumer's nested Cargo workspace. Now a
 //! repository's entries have two homes, read together, one key:
 //!
 //! * its OWN tracked seed file, `<repo>/<kind file>` -- versioned, reviewed, and in every clone, so
@@ -179,13 +179,17 @@ pub fn load_from(repo: &Path, store: Option<&Path>, kind: Kind) -> Result<Seed, 
         let file = dir.join(kind.file);
         for e in parse(&file, kind)? {
             let key = (e.root, e.path);
-            if seed.contains_key(&key) {
+            if let Some(held) = seed.get(&key) {
+                // Two entries in the store itself are two clones of one repository (the same root):
+                // naming the tracked file there sent the reader to a file that held neither.
+                let both = if held.stored {
+                    format!("twice in {}", file.display())
+                } else {
+                    format!("in both {} and {}", kind.file, file.display())
+                };
                 return Err(format!(
-                    "{} {} is seeded in both {} and {}: one fact in one place -- delete one",
-                    e.repo,
-                    key.1,
-                    kind.file,
-                    file.display()
+                    "{} {} is seeded {both}: one fact in one place -- delete one",
+                    e.repo, key.1
                 ));
             }
             seed.insert(

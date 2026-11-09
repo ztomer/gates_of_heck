@@ -1,6 +1,6 @@
 """`goh plural-hedge` end to end (GOH.PLURALHEDGE): a planted `"{n} step(s) ran"` is red, a counted
 message and a comment are clean, and a site seeded in the estate seed (keyed by the repo's root
-commit, read from `$GOH_DIR`) warns instead -- the CLI tier beside `pluralhedge/tests.rs`."""
+commit, read from the judged repo's own file or the private store, never `$GOH_DIR`) warns instead -- the CLI tier beside `pluralhedge/tests.rs`."""
 
 from __future__ import annotations
 
@@ -31,15 +31,15 @@ def _repo(tmp_path: Path, files: dict[str, str]) -> Path:
     return repo
 
 
-def _run(goh: Path, repo: Path, goh_dir: Path) -> subprocess.CompletedProcess[str]:
-    env = hermetic_env(drop_git=True, GOH_DIR=str(goh_dir))
+def _run(goh: Path, repo: Path, store: Path) -> subprocess.CompletedProcess[str]:
+    env = hermetic_env(drop_git=True, GOH_SEED_DIR=str(store))
     return subprocess.run([str(goh), "plural-hedge"], cwd=repo, stdin=subprocess.DEVNULL,
                           capture_output=True, text=True, env=env, check=False)  # fmt: skip
 
 
 def test_a_planted_hedge_is_red_and_a_seeded_one_warns(goh: Path, tmp_path: Path) -> None:
     repo = _repo(tmp_path, {"a.py": PLANTED, "b.py": HOUSE, "run": SHELL})
-    seedless = tmp_path / "goh"
+    seedless = tmp_path / "store"
     seedless.mkdir()
     red = _run(goh, repo, seedless)
     assert red.returncode == 1, red.stdout + red.stderr
@@ -53,6 +53,13 @@ def test_a_planted_hedge_is_red_and_a_seeded_one_warns(goh: Path, tmp_path: Path
     seeded = _run(goh, repo, seedless)
     assert seeded.returncode == 0, seeded.stdout + seeded.stderr
     assert "seeded" in seeded.stderr and "a.py" in seeded.stderr, seeded.stderr
+    # The same entries in the repo's own tracked file, the home of a repo gated on a runner.
+    (seedless / "plural_hedge_seed.json").rename(repo / "plural_hedge_seed.json")
+    _git(repo, "add", "plural_hedge_seed.json")
+    _git(repo, "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-qm", "seed", "--no-verify")
+    tracked = _run(goh, repo, seedless)
+    assert tracked.returncode == 0, tracked.stdout + tracked.stderr
+    assert "seeded" in tracked.stderr and "run" in tracked.stderr, tracked.stderr
 
 
 def test_a_clean_repo_passes(goh: Path, tmp_path: Path) -> None:
