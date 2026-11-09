@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## v0.88.0 -- no repository's seed entries in another's tree; goh's public tree holds only its own
+
 * **No repository's seed entries in another's tree; goh's public tree holds only its own (GOH.SEEDPRIVATE).**
   gates_of_heck is public, and its estate seeds held every consumer's entries --
   `crates_behind_seed.json` published `Finance/zinc` and its count. An estate seed
@@ -17,6 +19,9 @@
   store, 3 found stale and dropped. Red first: six tests in `tests/test_estate_seed_home.py` (a
   planted `Finance/zinc` root in a tracked seed was accepted; the store was never read; goh's tree
   named ten consumers' changelogs).
+* **A clone with no `v*` tag calls no changelog seed entry stale.** A CI checkout fetches no tags,
+  so changelog-tags compared nothing; that run is partial now (over-count and unseeded still
+  judge). It was red in goh's own fresh shallow clone with no store.
 
 ## v0.87.0 -- a passing step's warnings are shown; a staged .py is linted from the index; one fault is one row
 
