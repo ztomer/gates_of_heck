@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## v0.80.0 -- no git process is SIGKILLed at a deadline or reads under an optional lock; a commit on main outside land.sh is refused
+
 * **A git process stopped at a deadline strands no lock, and a git reader takes none (GOH.GITKILL);
   a commit on a landed-only branch outside `land.sh` is refused (GOH.LANDONLY).** (a) The class,
   found in `.loop` (`4e82af6`, `7ae11d8`): `subprocess.run(["git", ..], timeout=)` SIGKILLs git alone,
