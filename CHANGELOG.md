@@ -2,6 +2,27 @@
 
 ## Unreleased
 
+## v0.90.0 -- goh ship waits on a queued CI; goh-floors survives a download outage; a store entry CI cannot read is refused
+
+* **`goh ship` treats a queued or running CI as pending, not red (GOH.SHIPCIWAIT).** On a GitHub
+  remote the verify step first waits on HEAD's verdict through `loopctl ci SHA --repo OWNER/NAME
+  --wait`, asked again after a pending wait until the step's bound less 60 s; green or no verdict
+  goes on to `loopctl verify`, red or still pending at the bound fails the ship at verify.
+  `GOH_SHIP_CI_POLL` paces the re-asks.
+* **goh-floors retries the shellcheck download and caches the verified tarball
+  (GOH.FLOORSRETRY).** Bounded attempts with a doubling pause (`GOH_FLOORS_ATTEMPTS`,
+  `GOH_FLOORS_BACKOFF`); actions/cache v6.1.0 keyed by `floors.sh cache-key` (version, platform,
+  sha256), re-verified on every use; an exhausted retry names the download as INFRASTRUCTURE, not
+  the repository.
+* **A private-store seed entry for a repository whose CI runs goh is refused, naming it
+  (GOH.STORECI).** A workflow that checks out, clones or uses `<owner>/gates_of_heck` cannot read
+  the store; its entries belong in its own tracked file. A warning until 2026-11-16
+  (`STORE_CI_REFUSED_FROM`), while the entries standing today move.
+* **goh's own hook resolves the real root from HEAD's export (GOH.HOOKSEED).** The export writes
+  `.goh-root`, and `gitutil::root_commit` answers an export from it (else from `GOH_LIVE_ROOT`),
+  never from git in an archive with no history. `tools/pytest.sh` hands its arguments to pytest
+  (`-k` selects; a named file replaces `tests/`).
+
 ## v0.89.0 -- a hedged plural in a string is a finding; a public tree names no private repository
 
 * **A hedged plural in a string is a structural finding: `goh plural-hedge` (GOH.PLURALHEDGE).**
