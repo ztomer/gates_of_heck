@@ -140,3 +140,18 @@ fn a_shallow_clone_takes_its_own_files_entries_as_its_own() {
     let s = load_from(&clone, None, K).expect("its own file is its own");
     assert!(s.contains_key(&(head, "a.sh".to_string())), "{s:?}");
 }
+
+#[test]
+fn a_repository_with_no_commit_yet_takes_its_own_files_entries_as_its_own() {
+    let r = goh_testkit::repo_with(&[("a.sh", "true\n")]).expect("fixture");
+    r.write(
+        K.file,
+        &entry("73391f04f5f2b92ab9813c62e6cecdce919d2d86", 1),
+    )
+    .expect("write");
+    let s = load_from(r.path(), None, K).expect("no root to compare: its own");
+    assert!(
+        s.contains_key(&(String::new(), "a.sh".to_string())),
+        "{s:?}"
+    );
+}

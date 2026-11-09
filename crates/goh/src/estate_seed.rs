@@ -13,8 +13,9 @@
 //! * its OWN tracked seed file, `<repo>/<kind file>` -- versioned, reviewed, and in every clone, so
 //!   a GitHub runner judges what the machine judges. Every entry there must carry THAT
 //!   repository's root commit: an entry naming another root is refused, so no tree (goh's least of
-//!   all) can carry another repository's facts. A shallow clone cannot know its root, so there the
-//!   file's entries are taken as its own (the full clone that committed them was judged);
+//!   all) can carry another repository's facts. A shallow clone cannot know its root, nor a first
+//!   commit in progress, so there the file's entries are taken as its own (the full clone that
+//!   committed them, or the next commit, is judged);
 //! * the owner's PRIVATE store, `$GOH_SEED_DIR/<kind file>`, else `$XDG_STATE_HOME/goh/seeds/`,
 //!   else `~/.local/state/goh/seeds/` -- in no tree at all, for a repository gated only on this
 //!   machine, or a clone that is not ours to commit to (a vendored or upstream tree).
@@ -154,9 +155,11 @@ pub fn load_from(repo: &Path, store: Option<&Path>, kind: Kind) -> Result<Seed, 
     let tracked = parse(&repo.join(kind.file), kind)?;
     if !tracked.is_empty() {
         let own = crate::gitutil::root_commit(repo).unwrap_or_default();
-        let shallow = crate::gitutil::is_shallow(repo);
+        // Unverifiable, so the file's entries are taken as its own: a shallow clone (its root is the
+        // shallow boundary), or a repository's first commit in progress (it has no root yet).
+        let unverifiable = own.is_empty() || crate::gitutil::is_shallow(repo);
         for e in tracked {
-            if !shallow && e.root != own {
+            if !unverifiable && e.root != own {
                 let to = store.map_or_else(
                     || "the private store".to_string(),
                     |d| d.join(kind.file).display().to_string(),
@@ -165,15 +168,10 @@ pub fn load_from(repo: &Path, store: Option<&Path>, kind: Kind) -> Result<Seed, 
                     "{} holds an entry for another repository ({} {}, root {}; this one's is {}): \
                      an entry about a repository lives in THAT repository's own {}, or in {to}, \
                      never in this tree (GOH.SEEDPRIVATE)",
-                    kind.file,
-                    e.repo,
-                    e.path,
-                    e.root,
-                    if own.is_empty() { "unknown" } else { &own },
-                    kind.file
+                    kind.file, e.repo, e.path, e.root, own, kind.file
                 ));
             }
-            let root = if shallow { own.clone() } else { e.root };
+            let root = if unverifiable { own.clone() } else { e.root };
             seed.insert((root, e.path), Held::tracked(e.count));
         }
     }
