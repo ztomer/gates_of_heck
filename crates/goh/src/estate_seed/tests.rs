@@ -173,3 +173,67 @@ fn a_repository_with_no_commit_yet_takes_its_own_files_entries_as_its_own() {
         "{s:?}"
     );
 }
+
+const GOH_WORKFLOW: &str = "jobs:\n  gate:\n    steps:\n      - uses: actions/checkout@v6\n        with:\n          repository: ztomer/gates_of_heck\n          path: .goh\n";
+
+/// A committed repo with `workflow` (if any) as its CI, and a store holding one entry for it.
+fn store_ci_case(workflow: Option<&str>) -> (goh_testkit::Repo, tempfile::TempDir) {
+    let (r, own) = committed();
+    if let Some(w) = workflow {
+        r.write(".github/workflows/ci.yml", w).expect("workflow");
+    }
+    let store = tempfile::tempdir().expect("tmp");
+    std::fs::write(store.path().join(K.file), entry(&own, 1)).expect("write");
+    (r, store)
+}
+
+#[test]
+fn a_store_only_entry_for_a_repository_whose_ci_runs_goh_is_refused_naming_it() {
+    let (r, store) = store_ci_case(Some(GOH_WORKFLOW));
+    let e = load_at(r.path(), Some(store.path()), K, STORE_CI_REFUSED_FROM)
+        .expect_err("a store entry its CI cannot read is refused");
+    let name = r
+        .path()
+        .file_name()
+        .expect("name")
+        .to_string_lossy()
+        .into_owned();
+    assert!(
+        e.contains(&name) && e.contains("runs goh in GitHub CI"),
+        "{e}"
+    );
+    assert!(e.contains("ci.yml") && e.contains("GOH.STORECI"), "{e}");
+    // before the day it is refused it warns, and the repository stays green
+    let s = load_at(r.path(), Some(store.path()), K, STORE_CI_REFUSED_FROM - 1)
+        .expect("a warning until the day");
+    assert_eq!(s.len(), 1);
+}
+
+#[test]
+fn a_store_entry_for_a_repository_without_goh_in_its_ci_is_accepted() {
+    for workflow in [
+        None,
+        Some("jobs:\n  build:\n    steps:\n      - run: make\n"),
+        // naming goh in a comment is not running it (servers/media_server's ci.yml does)
+        Some("# refused by the gates_of_heck structural gate\n# repository: ztomer/gates_of_heck\njobs: {}\n"),
+    ] {
+        let (r, store) = store_ci_case(workflow);
+        let s = load_at(r.path(), Some(store.path()), K, STORE_CI_REFUSED_FROM)
+            .unwrap_or_else(|e| panic!("{workflow:?}: {e}"));
+        assert_eq!(s.len(), 1, "{workflow:?}");
+    }
+}
+
+#[test]
+fn every_way_a_workflow_brings_goh_in_is_seen() {
+    for line in [
+        "          repository: ztomer/gates_of_heck",
+        "          git clone --depth 1 https://github.com/ztomer/gates_of_heck \"$GOH_DIR\"",
+        "        uses: ztomer/gates_of_heck/.github/actions/goh-floors@274ce50e # v0.54.1",
+    ] {
+        let r =
+            goh_testkit::repo_with(&[(".github/workflows/w.yaml", &format!("jobs:\n{line}\n"))])
+                .expect("fixture");
+        assert_eq!(goh_workflow(r.path()).as_deref(), Some("w.yaml"), "{line}");
+    }
+}

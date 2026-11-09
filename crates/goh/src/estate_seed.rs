@@ -22,6 +22,15 @@
 //!
 //! An entry in both homes is refused: one fact in one place.
 //!
+//! A STORE ENTRY FOR A REPOSITORY WHOSE CI RUNS GOH IS REFUSED (GOH.STORECI, 2026-11-09). A GitHub
+//! runner cannot read the private store, so such an entry passes on this machine and goes red on
+//! the repository's next push -- the trap GOH.SEEDPRIVATE and GOH.PLURALHEDGE both fell into in one
+//! day. A repository runs goh in CI when a workflow under `.github/workflows` checks out, clones or
+//! uses `<owner>/gates_of_heck` (a comment naming it does not count). Its entries live in its own
+//! tracked file. Until `STORE_CI_REFUSED_FROM` (2026-11-16) the refusal is a WARNING naming the
+//! repository and the store: the entries still standing on the day it landed (EST.HEDGESEEDS was
+//! moving them into each repository's tracked file) keep their repositories green while they move.
+//!
 //! WHY THE ROOT COMMIT. The directory name was `goh bare-hook-index`'s first key, and the release
 //! canary judges each consumer in a clone named `tree`: the seeded repo read as unseeded and the
 //! land was refused. A root commit is the same in every clone, worktree and move of a repository
@@ -140,7 +149,8 @@ fn parse(path: &Path, kind: Kind) -> Result<Vec<Raw>, String> {
 ///
 /// # Errors
 ///
-/// A corrupt file; a tracked entry naming another repository's root; one entry in both homes.
+/// A corrupt file; a tracked entry naming another repository's root; one entry in both homes; a
+/// store entry for a repository whose CI runs goh (from `STORE_CI_REFUSED_FROM`; a warning before).
 pub fn load(repo: &Path, kind: Kind) -> Result<Seed, String> {
     load_from(repo, store_dir().as_deref(), kind)
 }
@@ -151,6 +161,19 @@ pub fn load(repo: &Path, kind: Kind) -> Result<Seed, String> {
 ///
 /// As `load`.
 pub fn load_from(repo: &Path, store: Option<&Path>, kind: Kind) -> Result<Seed, String> {
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| d.as_secs());
+    load_at(repo, store, kind, now)
+}
+
+/// `load_from` at the time `now` (seconds since the epoch), which decides whether a store entry for
+/// a repository whose CI runs goh warns or is refused.
+///
+/// # Errors
+///
+/// As `load`.
+pub fn load_at(repo: &Path, store: Option<&Path>, kind: Kind, now: u64) -> Result<Seed, String> {
     let mut seed = Seed::new();
     let tracked = parse(&repo.join(kind.file), kind)?;
     if !tracked.is_empty() {
@@ -177,7 +200,11 @@ pub fn load_from(repo: &Path, store: Option<&Path>, kind: Kind) -> Result<Seed, 
     }
     if let Some(dir) = store {
         let file = dir.join(kind.file);
-        for e in parse(&file, kind)? {
+        let stored = parse(&file, kind)?;
+        if !stored.is_empty() {
+            store_ci::refuse(repo, &file, &stored, now)?;
+        }
+        for e in stored {
             let key = (e.root, e.path);
             if let Some(held) = seed.get(&key) {
                 // Two entries in the store itself are two clones of one repository (the same root):
@@ -417,6 +444,9 @@ pub fn clip(s: &str) -> String {
     }
     out
 }
+
+mod store_ci;
+pub use store_ci::{goh_workflow, STORE_CI_REFUSED_FROM};
 
 #[cfg(test)]
 mod tests;
