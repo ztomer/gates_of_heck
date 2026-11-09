@@ -64,6 +64,7 @@ proven_now() {
 # a step would test are then no tree git can name, so there is nothing a later run could match.
 proven_tree() {
     local st line
+    goh_bind_hook_index  # every caller binds too; a helper that reads the index binds itself
     st="$(git --no-optional-locks status --porcelain=v1 --untracked-files=all 2>/dev/null)" \
         || return 1
     while IFS= read -r line; do

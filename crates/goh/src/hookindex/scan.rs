@@ -108,44 +108,51 @@ fn heredoc_at(text: &[char], i: usize) -> Option<(Heredoc, usize)> {
     ))
 }
 
-/// Every expansion of a carried variable in `src`, in order.
+/// `src` with what the shell does not run as code blanked to spaces.
+///
+/// Newlines are kept, so a char's index and line survive: comments always; with `literals`, also single-quoted spans, quoted
+/// heredoc bodies and escaped characters (`\$X` is not an expansion). Without `literals` a
+/// command inside quotes stays visible: `bash -c '... git diff --cached'` still runs it.
 #[must_use]
-pub fn reads(src: &str) -> Vec<Read> {
+pub fn mask(src: &str, literals: bool) -> Vec<char> {
     let text: Vec<char> = src.chars().collect();
-    let mut out = Vec::new();
+    let mut out = text.clone();
     let mut state = State::Code;
     let mut pending: Vec<Heredoc> = Vec::new();
-    let mut line = 1usize;
     let mut i = 0usize;
     while i < text.len() {
         let c = text[i];
         if c == '\n' {
-            line += 1;
             if state == State::Comment {
                 state = State::Code;
             }
             i += 1;
             if state == State::Code && !pending.is_empty() {
-                i = bodies(&text, i, &mut pending, &mut line, &mut out);
+                i = bodies(&text, &mut out, i, &mut pending, literals);
             }
             continue;
         }
         match state {
-            State::Comment => {}
+            State::Comment => out[i] = ' ',
             State::Single => {
+                if literals {
+                    out[i] = ' ';
+                }
                 if c == '\'' {
                     state = State::Code;
                 }
             }
             State::Code | State::Double => {
                 if c == '\\' {
-                    i += 1; // the next char is literal; a newline after it still counts below
+                    if literals {
+                        out[i] = ' ';
+                    }
+                    i += 1; // the next char is literal; a newline after it still counts above
                     if text.get(i) == Some(&'\n') {
                         continue;
                     }
-                } else if c == '$' {
-                    if let Some(var) = expanded(&text, i) {
-                        out.push(Read { line, var });
+                    if literals && i < text.len() {
+                        out[i] = ' ';
                     }
                 } else if c == '"' {
                     state = if state == State::Code {
@@ -156,8 +163,16 @@ pub fn reads(src: &str) -> Vec<Read> {
                 } else if state == State::Code {
                     if c == '\'' {
                         state = State::Single;
-                    } else if c == '#' && starts_word(i.checked_sub(1).map(|p| text[p])) {
+                        if literals {
+                            out[i] = ' ';
+                        }
+                    } else if c == '#'
+                        && starts_word(i.checked_sub(1).map(|p| text[p]))
+                        && !(i >= 2 && text[i - 1] == '{' && text[i - 2] == '$')
+                    {
+                        // `${#X}` is a length, not a comment.
                         state = State::Comment;
+                        out[i] = ' ';
                     } else if c == '<'
                         && text.get(i + 1) == Some(&'<')
                         && text.get(i + 2) != Some(&'<')
@@ -176,14 +191,33 @@ pub fn reads(src: &str) -> Vec<Read> {
     out
 }
 
-/// Read the pending heredoc bodies starting at `i` (the line after their operators): an unquoted
-/// body's expansions count, a quoted one's do not. Returns where code resumes.
+/// Every expansion of a carried variable in `src`, in order.
+#[must_use]
+pub fn reads(src: &str) -> Vec<Read> {
+    let text = mask(src, true);
+    let mut out = Vec::new();
+    let mut line = 1usize;
+    for (i, c) in text.iter().enumerate() {
+        if *c == '\n' {
+            line += 1;
+        } else if *c == '$' {
+            if let Some(var) = expanded(&text, i) {
+                out.push(Read { line, var });
+            }
+        }
+    }
+    out
+}
+
+/// Mask the pending heredoc bodies starting at `i` (the line after their operators): with
+/// `literals`, a quoted body is blanked whole and an unquoted one's escaped characters. Returns
+/// where code resumes.
 fn bodies(
     text: &[char],
+    out: &mut [char],
     mut i: usize,
     pending: &mut Vec<Heredoc>,
-    line: &mut usize,
-    out: &mut Vec<Read>,
+    literals: bool,
 ) -> usize {
     for doc in pending.drain(..) {
         while i < text.len() {
@@ -193,23 +227,22 @@ fn bodies(
                 .map_or(text.len(), |n| i + n);
             let body_line: String = text[i..end].iter().collect();
             let done = body_line.trim() == doc.tag;
-            if !done && !doc.quoted {
+            if !done && literals {
                 let mut j = i;
                 while j < end {
-                    if text[j] == '\\' {
-                        j += 1;
-                    } else if text[j] == '$' {
-                        if let Some(var) = expanded(text, j) {
-                            out.push(Read { line: *line, var });
+                    if doc.quoted {
+                        out[j] = ' ';
+                    } else if text[j] == '\\' {
+                        out[j] = ' ';
+                        if j + 1 < end {
+                            out[j + 1] = ' ';
                         }
+                        j += 1;
                     }
                     j += 1;
                 }
             }
             i = (end + 1).min(text.len());
-            if end < text.len() {
-                *line += 1;
-            }
             if done {
                 break;
             }

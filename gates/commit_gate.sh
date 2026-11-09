@@ -62,10 +62,12 @@ mark=""
 twins="$(mktemp "${TMPDIR:-/tmp}/goh-staged-twins.XXXXXX")"
 trap 'rm -f "$twins" ${mark:+"$mark"} ${BENCH_LOCK_ENTRY:+"$BENCH_LOCK_ENTRY"}' EXIT
 root_phys="$(cd "$root" && pwd -P)"
-# twin_due <name> <glob>: the index being committed holds a <glob> file, and no gate ran <name> here.
+# twin_due <name> <glob>: the commit adds or changes a <glob> file, and no gate ran <name> here. The
+# STAGED set, not `git ls-files` (every tracked file): a data-only commit in a Python repo re-ran
+# ruff over nothing it changed (GOH.BAREINDEX).
 twin_due() {
     grep -qFx -- "$1	$root_phys" "$twins" && return 1
-    [ -n "$( (goh_bind_hook_index; cd "$root" && git ls-files -- "$2" | head -n 1) 2>/dev/null)" ]
+    [ -n "$( (goh_bind_hook_index; cd "$root" && git diff --cached --name-only --diff-filter=ACM -- "$2" | head -n 1) 2>/dev/null)" ]
 }
 
 repo_before="$(goh_repo_snapshot "$root")"   # what the gate may not write (lib/repo_writes.sh)

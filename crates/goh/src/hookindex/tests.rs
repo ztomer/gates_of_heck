@@ -90,3 +90,110 @@ fn the_binder_is_recognised_by_its_definition_not_a_call() {
         assert!(!defines_binder(src), "{src:?}");
     }
 }
+
+mod index_reads {
+    use super::super::index::{hook_run, unbound_reads};
+    use super::super::seed::{judge, Seed};
+    use std::collections::BTreeMap;
+
+    /// `(script, the lines of its unbound index reads)`.
+    const TABLE: &[(&str, &[usize])] = &[
+        // .loop's tools/gate.sh before 50ff65b.
+        ("staged=\"$(git diff --cached --name-only)\"\n", &[1]),
+        ("git -C \"$root\" diff-index --cached HEAD\n", &[1]),
+        ("git --no-pager -c a=b diff --staged\n", &[1]),
+        ("git show \":queue.json\" | jq .\n", &[1]),
+        ("git ls-files --stage\ngit ls-files -zs\n", &[1, 2]),
+        ("t=`git write-tree`\n", &[1]),
+        // A continuation is one command, named at its first line.
+        ("git diff \\\n  --cached\n", &[1]),
+        // Bound: earlier in the file, or earlier on the line.
+        ("goh_bind_hook_index\ngit diff --cached\n", &[]),
+        ("x=\"$( (goh_bind_hook_index; git diff --cached) )\"\n", &[]),
+        ("GIT_INDEX_FILE=\"$i\" git write-tree\n", &[]),
+        // A bind AFTER the read binds nothing before it.
+        (
+            "git write-tree\ngoh_bind_hook_index\ngit write-tree\n",
+            &[1],
+        ),
+        // Not index reads.
+        (
+            "git diff --name-only HEAD\ngit show HEAD:a\ngit ls-files -- '*.py'\n",
+            &[],
+        ),
+        ("# git diff --cached\necho done # git write-tree\n", &[]),
+        ("echo git; diff --cached a b\n", &[]),
+    ];
+
+    #[test]
+    fn every_unbound_read_is_named_on_its_line() {
+        for (src, want) in TABLE {
+            let got: Vec<usize> = unbound_reads(src).iter().map(|r| r.line).collect();
+            assert_eq!(&got, want, "{src:?}");
+        }
+    }
+
+    fn src(p: &str, t: &str) -> (String, String) {
+        (p.to_string(), t.to_string())
+    }
+
+    #[test]
+    fn hook_run_is_what_the_hook_reaches() {
+        let sources = vec![
+            src(
+                "tools/gate.sh",
+                "\"$(dirname \"$0\")/run_gates.sh\"\n. \"$here/lib/x.sh\"\n",
+            ),
+            src("tools/run_gates.sh", ". \"$root/gates/common.sh\"\n"),
+            src("tools/lib/x.sh", "true\n"),
+            src("gates/common.sh", "true\n"),
+            src("tools/other_gates.sh", "true\n"),
+            src("release.sh", "bash tools/run_gates.sh\n"),
+            src(
+                "tools/unnamed.sh",
+                "# tools/gate.sh names me only in a comment\n",
+            ),
+        ];
+        let reached: Vec<String> = hook_run(&sources).into_iter().collect();
+        assert_eq!(
+            reached,
+            [
+                "gates/common.sh",
+                "tools/gate.sh",
+                "tools/lib/x.sh",
+                "tools/run_gates.sh"
+            ]
+        );
+        let none = vec![src("release.sh", "git write-tree\n")];
+        assert_eq!(hook_run(&none).len(), 0);
+    }
+
+    #[test]
+    fn the_seed_warns_at_its_count_and_never_hides_more() {
+        let mut seed = Seed::new();
+        seed.insert(("r".into(), "a.sh".into()), 2);
+        seed.insert(("r".into(), "gone.sh".into()), 1);
+        seed.insert(("s".into(), "a.sh".into()), 1);
+        let found = |n: usize| BTreeMap::from([("a.sh".to_string(), n)]);
+        let at = judge("r", &found(2), &seed, true);
+        assert_eq!(at.red, Vec::<String>::new());
+        assert_eq!(
+            at.warn.iter().map(|w| w.0.as_str()).collect::<Vec<_>>(),
+            ["a.sh", "gone.sh"]
+        );
+        assert_eq!(judge("r", &found(3), &seed, false).red, ["a.sh"]);
+        assert!(judge("r", &found(1), &seed, false).warn[0]
+            .1
+            .contains("lower"));
+        assert_eq!(judge("q", &found(1), &seed, true).red, ["a.sh"]);
+        // A staged run reads only what changed: a seeded file it did not read is not stale.
+        assert_eq!(judge("r", &BTreeMap::new(), &seed, false).warn, vec![]);
+    }
+
+    #[test]
+    fn the_checked_in_seed_loads() {
+        let goh = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+        let seed = super::super::seed::load(&goh).expect("hook_index_seed.json loads");
+        assert!(seed.keys().all(|(r, p)| !r.is_empty() && !p.is_empty()));
+    }
+}

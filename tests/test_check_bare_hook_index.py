@@ -105,3 +105,85 @@ def test_the_structural_step_fails_at_both_scopes(goh: Path, repo: Path) -> None
     commit_all(repo)
     full = _structural(goh, repo, "--full")
     assert full.returncode == 1 and f"structural: {LABEL}" in full.stderr, full.stderr
+
+
+# GOH.BAREINDEX: an index read that never binds the hook's index. .loop's tools/gate.sh before
+# 50ff65b: under `git commit -- queue.json` the hook commits a TEMPORARY index, a plain
+# `git diff --cached` read the repository's own, and the queue gate never ran.
+PLAIN = '#!/usr/bin/env bash\nset -euo pipefail\nstaged="$(git diff --cached --name-only)"\n'
+# .loop's line after it.
+LOOP_BOUND = (
+    "#!/usr/bin/env bash\nset -euo pipefail\n"
+    '. "$GOH/gates/_git_env.sh"\n'
+    'staged="$( (goh_bind_hook_index; git diff --cached --name-only) )"\n'
+)
+INDEX_LABEL = "index read(s) in a hook-run script that never binds the hook's index"
+
+
+def test_a_plain_index_read_in_the_gate_is_red_at_its_line(repo: Path) -> None:
+    write(repo, "tools/gate.sh", PLAIN)
+    commit_all(repo)
+    r = run_goh(repo, "bare-hook-index")
+    assert r.returncode == 1, r.stdout + r.stderr
+    assert INDEX_LABEL in r.stderr and "tools/gate.sh:3:" in r.stderr, r.stderr
+    assert "git diff --cached without goh_bind_hook_index" in r.stderr, r.stderr
+
+
+def test_the_same_read_bound_is_green(repo: Path) -> None:
+    write(repo, "tools/gate.sh", LOOP_BOUND)
+    commit_all(repo)
+    r = run_goh(repo, "bare-hook-index")
+    assert r.returncode == 0, r.stdout + r.stderr
+
+
+def test_a_script_the_gate_runs_is_hook_run_and_one_it_does_not_is_not(repo: Path) -> None:
+    """koffee_big's shape: tools/gate.sh runs `"$(dirname "$0")/run_gates.sh"`, which reads the
+    index. A release script nothing in the hook names is judged by nobody."""
+    write(repo, "tools/gate.sh", '#!/usr/bin/env bash\n"$(dirname "$0")/run_gates.sh" "$@"\n')
+    write(repo, "tools/run_gates.sh", "#!/usr/bin/env bash\ngit show :queue.json >/dev/null\n")
+    write(repo, "release.sh", "#!/usr/bin/env bash\ngit diff --cached --quiet || exit 1\n")
+    commit_all(repo)
+    r = run_goh(repo, "bare-hook-index")
+    assert r.returncode == 1 and "tools/run_gates.sh:2:" in r.stderr, r.stdout + r.stderr
+    assert "release.sh" not in r.stderr, r.stderr
+
+
+def test_every_index_read_shape_is_named(repo: Path) -> None:
+    write(
+        repo,
+        "tools/gate.sh",
+        "#!/usr/bin/env bash\n"
+        "git -C . diff --staged --quiet\n"
+        "git show ':a.json'\n"
+        "git ls-files -sz\n"
+        "git write-tree\n"
+        "git ls-files --others  # lists, reads no stage\n"
+        "# git diff --cached in a comment\n",
+    )
+    commit_all(repo)
+    r = run_goh(repo, "bare-hook-index")
+    for line in ("tools/gate.sh:2:", "tools/gate.sh:3:", "tools/gate.sh:4:", "tools/gate.sh:5:"):
+        assert line in r.stderr, r.stderr
+    assert "tools/gate.sh:6:" not in r.stderr and "tools/gate.sh:7:" not in r.stderr, r.stderr
+    assert "4 index read(s)" in r.stderr, r.stderr
+
+
+def test_a_private_index_the_script_chose_is_not_the_hooks(repo: Path) -> None:
+    """ZoneWM's release_precheck.sh shape: GIT_INDEX_FILE names a copy it made on purpose."""
+    write(
+        repo,
+        "tools/gate.sh",
+        '#!/usr/bin/env bash\nidx="$(mktemp)"\ntree="$(GIT_INDEX_FILE="$idx" git write-tree)"\n',
+    )
+    commit_all(repo)
+    assert run_goh(repo, "bare-hook-index").returncode == 0
+
+
+def test_the_estate_seed_warns_and_does_not_hide(repo: Path) -> None:
+    """The seed is keyed by the repository's directory name; this fixture's is not in it, so the
+    same read that warns in a seeded repo is red here -- never a silent pass."""
+    seed = (REPO_ROOT / "hook_index_seed.json").read_text()
+    assert repo.name not in seed
+    write(repo, "tools/gate.sh", PLAIN)
+    commit_all(repo)
+    assert run_goh(repo, "bare-hook-index").returncode == 1

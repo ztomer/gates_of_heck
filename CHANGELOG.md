@@ -2,6 +2,24 @@
 
 ## Unreleased
 
+* **A hook-run script that reads an index without binding the hook's is named (GOH.BAREINDEX).**
+  `.loop`'s tools/gate.sh ran a plain `git diff --cached`; under `git commit -- queue.json` the
+  hook commits a temporary index it carries only as `GOH_HOOK_INDEX_FILE`, so the gate read the
+  repository's own index and skipped its queue gate on every tick (fixed in .loop 50ff65b). `goh
+  bare-hook-index` (a structural step everywhere) now also finds `git diff --cached`/`--staged`,
+  `git show :path`, `git ls-files -s`/`--stage` and `git write-tree` in any shell source the commit
+  hook reaches (tools/gate.sh, the hooks, commit_gate.sh, and what they name by path) with no
+  `goh_bind_hook_index` or own `GIT_INDEX_FILE=` before it. The estate sweep found koffee_big's
+  `tools/run_gates.sh:55` and `tools/gates_toolchains.sh:171`: seeded in `hook_index_seed.json`, a
+  WARN-level ratchet keyed by repo and file (over the count, or unseeded, is red). goh's own
+  `gates/_proven.sh` `proven_tree` now binds itself. Red first: 4 new
+  `tests/test_check_bare_hook_index.py` cases failed with the reach disabled.
+* **A data-only commit no longer runs the Python twin over the whole tree (GOH.BAREINDEX).**
+  `gates/commit_gate.sh` `twin_due` asked `git ls-files -- '*.py'`, every tracked .py, so a
+  `queue.json` commit in a Python repo still ran py_staged; it now reads the staged set (`git diff
+  --cached --diff-filter=ACM`). Red first: `tests/test_staged_parity.py`'s new data-only case failed
+  on the old gate.
+
 ## v0.82.2 -- a test suite a gate launches never inherits git's repository variables
 
 * **A test suite a gate launches never inherits git's repository variables (GOH.HOOKGITENV).**

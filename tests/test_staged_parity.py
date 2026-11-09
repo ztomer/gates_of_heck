@@ -218,3 +218,16 @@ def test_a_staged_swiftlint_finding_is_refused_at_commit(tmp_path):
     text = got.stdout + got.stderr
     assert got.returncode != 0, text
     assert "trailing_semicolon" in text, text
+
+
+# twin_due once asked `git ls-files -- '*.py'`, every TRACKED .py: a data-only commit in a Python
+# repo ran py_staged over nothing it changed (GOH.BAREINDEX). The twin is due for the STAGED set.
+@pytest.mark.skipif(shutil.which("ruff") is None, reason="ruff not on PATH")
+def test_a_data_only_commit_in_a_python_repo_skips_the_python_twin(tmp_path):
+    repo = _consumer(tmp_path, GATE_STRUCTURAL_ONLY)
+    first = _commit_file(repo, "tool.py", "x = 1\n")
+    assert first.returncode == 0 and "python (staged)" in first.stdout + first.stderr, first
+    got = _commit_file(repo, "queue.json", "{}\n")
+    text = got.stdout + got.stderr
+    assert got.returncode == 0, text
+    assert "python (staged)" not in text and "ruff" not in text, text
