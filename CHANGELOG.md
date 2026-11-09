@@ -2,6 +2,28 @@
 
 ## Unreleased
 
+## v0.92.0 -- a gate says how a step failed, and says no more than it checked
+
+* **A failed step's line names how it ended (GOH.GATEHONEST).** goh_step's die line and
+  local_ci.sh's `FAILED` line (the one the push log keeps) carry `exit status N`,
+  `exit 137 = SIGKILL, signal 9` or `timed out after Ns, exit 124` (lib/exit_reason.sh). The
+  Python step wrapper reported a signalled child as status 247 for SIGKILL; it now returns 128+N,
+  like its Rust twin.
+* **swift_gate's `build + tests (warnings as errors)` is red on a warning the compiler did not
+  promote.** swift 6.4 prints a Swift 6 main-actor isolation warning under `-warnings-as-errors`
+  and exits 0; the spm step now judges the build's output with check_swift_warnings.py over the
+  package's own Sources and Tests.
+* **red_run keys tests by name.** A test whose signature changed (`func testA() {` to
+  `func testA() throws {`), or that moved, is the same test and needs no `Red-run:`; a rename is
+  still a new test.
+* **goh-floors caches only what it downloaded.** The cache step runs only when the runner's
+  shellcheck is below the floor (`floors.sh needs-release`), so it no longer warns about an empty
+  path on every run.
+* **The crates-behind drift warning is one sentence:** `Cargo.lock: 1 crate is behind its newest
+  compatible release, not by this change (since HEAD's parent ...); cargo update clears it: ...`.
+* **gates_of_heck has a GitHub-hosted run of its own gate** (`.github/workflows/gate.yml`,
+  `tools/gate.sh --full` on macos-26; CI.PUBLIC2).
+
 ## v0.91.0 -- a crates.io release alone never turns a repository red
 
 * **A crates.io release alone no longer turns a repository red (GOH.CRATESDRIFT, D-0001).**
