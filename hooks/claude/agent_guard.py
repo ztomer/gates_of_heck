@@ -30,6 +30,9 @@ by hand; this hook keeps them structurally (tests/test_claude_agent_guard.py):
 * Every allowed spawn is one line in `$XDG_CACHE_HOME/goh/agent-spawns.jsonl`; SubagentStop adds
   the outcome line -- tokens summed from the agent's transcript, the report's `Status:` and the
   report itself (the audit checks its shas) -- so a wrong choice either way is visible as data.
+* A fixed-name file the agent wrote straight into the shared scratchpad root is named at
+  SubagentStop (GOH.AGENTSCRATCH, `scratch_guard.py`): on the outcome line (`scratch_loose`) and
+  in a message to the session, with the per-item path to claim instead.
 * The owner's apps are put back (GOH.APPSTATE, `appstate.py`): the spawn line records which
   login-item apps were running; at SubagentStop any of them no longer running is relaunched and
   named on the outcome line (`apps`) and in a message to the session.
@@ -58,6 +61,7 @@ from typing import Any
 
 import appstate  # the owner's login-item apps, put back after an agent (GOH.APPSTATE)
 import model_choice  # the rules file's one reader, beside this script
+import scratch_guard  # a fixed-name file in the shared scratchpad root (GOH.AGENTSCRATCH)
 from ci_judge import judge_ci as _judge_ci  # the CI-watching judge, beside this script
 
 SPAWN_TOOLS = {"Agent", "Task"}  # `Task` is the tool's legacy name
@@ -409,6 +413,7 @@ def on_stop(event: dict[str, Any]) -> list[str]:
     report = event.get("last_assistant_message")
     report = report if isinstance(report, str) else ""
     text, settled = settled_transcript(transcript, report) if transcript else (None, False)
+    loose = scratch_guard.loose_writes(text) if text is not None else []
     warning = _append({
         "event": "outcome", "time": _now(), "session_id": event.get("session_id"),
         "tool_use_id": tool_use_id, "agent_id": event.get("agent_id"),
@@ -416,9 +421,10 @@ def on_stop(event: dict[str, Any]) -> list[str]:
         "status": _status(report), "report": report[:REPORT_CAP] or None,
         "faults": faults(report),
         "tokens": usage(text) if text is not None else None,
-        "tokens_settled": settled, "apps": apps,
+        "tokens_settled": settled, "apps": apps, "scratch_loose": loose,
     })  # fmt: skip
-    return [m for m in (appstate.describe(apps), warning) if m]
+    scratch = scratch_guard.message(loose) if loose else None
+    return [m for m in (appstate.describe(apps), scratch, warning) if m]
 
 
 def main() -> int:

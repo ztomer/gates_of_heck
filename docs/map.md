@@ -346,7 +346,7 @@ Every structural checker is native since Phase N3; the Python checkers they port
   until the owner turns it on, and nothing without `checkable` is ever routed down. Fails open. Pinned by
   `test_claude_agent_guard.py`, `test_agent_guard_exploration.py`.
 * `hooks/claude/agent_stalls.py` — `goh agent-stalls` and the coordinator's UserPromptSubmit hook
-  (`--hook`): each live subagent (not interrupted, not done: a `finished` meta is per stop, so a finished agent that stopped with a background job pending and no `Status:` report still counts, GOH.STALLS2; `is_waiting`/`full_said` are what `.loop`'s tick shares) whose transcript has not been
+  (`--hook`): each live subagent (not stopped -- `stop_marker()`, THE stopped-agent rule `.loop`'s tick shares: its interrupt record, or a TaskStop tool_result naming its id in its session, LOOP.LINGERSTOP; a transcript that just ends with no marker is `unknown`, never alive -- not done: a `finished` meta is per stop, so a finished agent that stopped with a background job pending and no `Status:` report still counts, GOH.STALLS2; `is_waiting`/`full_said` are what `.loop`'s tick shares) whose transcript has not been
   written for `GOH_AGENT_STALL_MINUTES` (20), with what it last said and each background job it
   launched and was never notified about, alive (the pids `lsof` finds holding the job's `.output`) or
   gone. The hook reads only the event's own session's `subagents/` and speaks to the coordinator
@@ -357,6 +357,14 @@ Every structural checker is native since Phase N3; the Python checkers they port
   will ever wake it), once per stall (`--state`), to a stamped, bounded log (GOH.STALLNOTIFY); the
   launchd job that ran it (`com.ztomer.goh-agent-stalls`) is RETIRED into `.loop`'s
   `com.ztomer.loopctl-tick` and its plist and installer are gone. Never signals a process. Pinned by `test_agent_stalls.py`.
+* `hooks/claude/scratch_guard.py` — `loose_writes()`: each file a subagent's transcript WROTE straight into the shared
+  scratchpad root (a Write/Edit `file_path`, or a redirect, `tee` or `-o` target of a `shell_tools.py` tool), never one under a
+  per-item dir; `agent_guard.py` names them at SubagentStop on the outcome line (`scratch_loose`) and to the session, with
+  `loopctl scratch <ITEM-ID>` as the way (GOH.AGENTSCRATCH). Pinned by `test_agent_guard_scratch.py`.
+* `hooks/claude/agent_stop.py` — THE stopped-agent rule, `stop_marker(transcript) -> str | None` (LOOP.LINGERSTOP):
+  "interrupted" (the record a stop mid-turn appends), "TaskStop" (a TaskStop tool_result naming the id in the session
+  transcript or a sibling subagent's, the only trace a stop after the turn's end leaves), "TaskStop: no such task", or None:
+  unknown, never alive. `agent_stalls.py` and `.loop`'s tick read it. Pinned by `test_agent_stalls.py`.
 * `hooks/claude/appstate.py` — the owner's login-item apps, snapshotted at each spawn by `agent_guard.py` and
   relaunched at SubagentStop when the agent left one not running (GOH.APPSTATE); seams for the item list, the
   process table and the launcher; inert under goh's suite without them. Pinned by `test_claude_appstate.py`.
