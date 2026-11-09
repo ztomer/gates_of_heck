@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## v0.77.0 -- load.py --wait is bounded by its own clock and queues only behind the gates ahead
+
 * **`load.py --wait` is bounded by its own clock and queues only behind the gates ahead of it
   (GOH.LOADWAIT, 2026-11-08).** ZN.APPCHECK's `--wait` held 25-50 min and once spent its whole
   budget before the experiment ran: the wait was for a CLEAR gate registry, bounded by the
