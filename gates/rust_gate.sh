@@ -301,10 +301,9 @@ rust_advisories() {
     # shellcheck disable=SC2086 # deliberate word-splitting: this IS the argv list (repo-relative locks)
     goh_step "every Cargo.lock at its newest compatible releases (cargo update --dry-run)" \
         "${_goh_cmd[@]}" crates-behind --root "$top" $behind_args
-    # A passing step's log is not shown, and here its advisories ARE the report: a lock skipped
-    # (offline, index unreachable -- never a silent pass), a seeded lock still behind, a duplicate
-    # major. The `⚠` lines are surfaced; the ok line above stays the verdict.
-    grep '⚠' "$GOH_LOG" >&2 || true
+    # Its advisories ARE the report (a lock skipped -- offline, index unreachable, never a silent
+    # pass --, a seeded lock still behind, a duplicate major); goh_step surfaces a passing step's
+    # `⚠` lines itself (GOH.STEPWARN), so nothing is repeated here.
 }
 
 rust_repo_checks() {

@@ -294,6 +294,27 @@ goh_step() {
     else
         ok "$label"
     fi
+    _goh_surface_warns
+}
+
+# _goh_surface_warns -- a PASSING step's `⚠` status lines, from $GOH_LOG, after its ok line
+# (GOH.STEPWARN). The log of a green step is deleted unread, so an advisory it printed -- a lock
+# skipped, "NOT a clean bill" -- reached nobody, and crates-behind grew a private grep to say it.
+# A status line is one whose first visible character (after indentation and colour escapes) is
+# `⚠`, the twin of xexit's `✗`; a `⚠` quoted mid-line is text. At most GOH_WARN_LINES (default 20)
+# are shown and the rest is counted, so a chatty step cannot bury the gate's own report.
+_goh_surface_warns() {
+    local _w _max="${GOH_WARN_LINES:-20}" _n=0 _total
+    case "$_max" in ''|*[!0-9]*) _max=20 ;; esac
+    _w="$(grep -E $'^([[:space:]]|\x1b\\[[0-9;?]*[ -/]*[@-~])*⚠' "$GOH_LOG" 2>/dev/null)" || return 0
+    [ -n "$_w" ] || return 0
+    _total="$(printf '%s\n' "$_w" | wc -l | tr -d ' ')"
+    printf '%s\n' "$_w" | awk -v max="$_max" 'NR <= max' >&2   # awk reads to EOF: head would SIGPIPE its producer
+    _n=$(( _total - _max ))
+    if [ "$_n" -gt 0 ]; then
+        printf '%s\n' "→ $_n more ⚠ line(s) not shown (GOH_WARN_LINES=$_max; raise it to see them)" >&2
+    fi
+    return 0
 }
 
 # goh_require <tool> <how to install>
