@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## v0.78.0 -- agent-stalls reports a finished agent whose job died; the installer takes another repo's plist
+
 * **`goh agent-stalls` reports a finished agent that stopped to wait on a job that died; the retired
   job is gone; the launchd installer takes another repo's plist (GOH.STALLS2, from LOOP.CTL2).**
   (a) `"finished": true` in an agent's meta is set per STOP, so an agent that ended its turn to wait on
