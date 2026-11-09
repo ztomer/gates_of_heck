@@ -211,11 +211,20 @@ pub fn run_command(staged: bool) -> i32 {
     }
 }
 
-/// The structural step, in every repo with a changelog.
+/// The structural step, in every repo.
+///
+/// Announced always, so a repo with no changelog says it has none rather than skipping silently. The worktree is looked at first, so that repo spends
+/// no git spawn on the step (`tests/test_goh_git_spawns.py`).
 #[must_use]
 pub fn step(repo: &Path, staged: bool) -> Option<i32> {
-    let files = crate::gitutil::index_files(repo).unwrap_or_default();
-    changelog_of(&files)?;
+    let on_disk = ["CHANGELOG.md", "docs/CHANGELOG.md"]
+        .iter()
+        .any(|c| repo.join(c).is_file());
+    let files = if on_disk {
+        crate::gitutil::index_files(repo).unwrap_or_default()
+    } else {
+        Vec::new()
+    };
     estate_seed::step(
         LABEL,
         "crates/goh/src/changelog_tags.rs",

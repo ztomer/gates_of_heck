@@ -233,6 +233,7 @@ def test_rust_test_code_spawns_git_only_through_the_testkit():
         "crates/goh-testkit/src/lib.rs": 2,  # local_env_vars() probe + git_command()
         "crates/goh/src/gitutil.rs": 6,  # repo_root / listed_files / content_bytes / committed_bytes / is_tracked / root_commit
         "crates/goh/src/blobs.rs": 1,  # prefetch_staged's cat-file
+        "crates/goh/src/changelog_tags.rs": 1,  # `git tag -l v*`, the whole-changelog check
         "crates/goh/src/index_view.rs": 2,  # staged + committed views: GIT_DIR/GIT_INDEX_FILE deliberate
         # claim-derivation's tree listing: GIT_* scrubbed, as the reference's foreign_repo_env
         "crates/goh/src/claims/derive.rs": 1,
