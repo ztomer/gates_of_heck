@@ -55,7 +55,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from _gitcensus import census
 from _gitutil import foreign_repo_env, repo_root
 
-from tui.lib import err, ok
+from tui.lib import counted, err, ok
 
 CONFIG = "git_env.json"
 GATE_DIRS = ("tools", "checks")
@@ -130,8 +130,8 @@ def judge(root: str, cfg: dict, config_name: str) -> tuple[list, str]:
             found.append(f"shell `{rel}` runs no git -- delete the declaration")
     summary = (
         f"git env: every git spawn in {', '.join(sources)} goes through the seam or says why "
-        f"({got.read} Python file(s) read; {len(cfg.get('exempt') or {})} exempt, "
-        f"{len(cfg.get('inherit') or {})} inheriting, {len(cfg.get('shell') or {})} shell site(s))"
+        f"({counted(got.read, 'Python file')} read; {len(cfg.get('exempt') or {})} exempt, "
+        f"{len(cfg.get('inherit') or {})} inheriting, {counted(len(cfg.get('shell') or {}), 'shell site')})"
     )
     return found, summary
 
@@ -185,7 +185,7 @@ def probe() -> int:
             _write(td, "tools/a.py", text)
             got = len(judge(td, {**cfg, **extra}, CONFIG)[0])
         if got != want:
-            err(f"probe: {name}: {got} finding(s), wanted {want}")
+            err(f"probe: {name}: {counted(got, 'finding')}, wanted {want}")
             bad += 1
     with tempfile.TemporaryDirectory(prefix="goh-git-env-probe.") as td:
         os.makedirs(os.path.join(td, "tools"))

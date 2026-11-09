@@ -40,7 +40,7 @@ def test_a_call_through_the_seam_passes_and_says_what_it_read(repo: Path) -> Non
     write(repo, "tools/a.py", ROUTED)
     commit_all(repo)
     r = run_check(repo, GATE)
-    assert r.returncode == 0 and "1 Python file(s) read" in r.stdout, r.stdout + r.stderr
+    assert r.returncode == 0 and "1 Python file read" in r.stdout, r.stdout + r.stderr
 
 
 def test_the_empty_scope_skeleton_is_refused_not_passed(repo: Path) -> None:

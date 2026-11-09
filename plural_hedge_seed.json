@@ -74,13 +74,6 @@
     {
       "root": "73391f04f5f2b92ab9813c62e6cecdce919d2d86",
       "repo": "gates_of_heck",
-      "path": "checks/check_git_env.py",
-      "count": 3,
-      "reason": "unreviewed: 3 hedged plurals: lines 133, 134, 188"
-    },
-    {
-      "root": "73391f04f5f2b92ab9813c62e6cecdce919d2d86",
-      "repo": "gates_of_heck",
       "path": "checks/check_mcp_wire.py",
       "count": 4,
       "reason": "unreviewed: 4 hedged plurals: lines 376, 396, 408, 425"
@@ -742,13 +735,6 @@
       "path": "tests/test_check_dep_currency.py",
       "count": 1,
       "reason": "unreviewed: 1 hedged plural: line 241"
-    },
-    {
-      "root": "73391f04f5f2b92ab9813c62e6cecdce919d2d86",
-      "repo": "gates_of_heck",
-      "path": "tests/test_check_git_env.py",
-      "count": 1,
-      "reason": "unreviewed: 1 hedged plural: line 43"
     },
     {
       "root": "73391f04f5f2b92ab9813c62e6cecdce919d2d86",
