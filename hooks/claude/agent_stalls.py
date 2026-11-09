@@ -21,11 +21,17 @@ What Claude Code leaves on disk, probed on this machine (Claude Code 2.1.317):
 * the job's processes hold that output file open as stdout and stderr, so `lsof` on the path is
   the job's process list; nothing holding it means the job is gone.
 
-A subagent is STALLED when it is not finished, not interrupted, and its transcript has not been
-written for `--minutes` (default 20, `GOH_AGENT_STALL_MINUTES`). One older than `--max-age-hours`
-(default 24) is residue of a session that is gone, not a stall. Each stall is named with its idle
-time, the last thing it said, and each background job it is still waiting on: alive (pids) or gone.
-Exit 1 when any is stalled, 0 when none, 2 on a bad argument.
+A subagent is STALLED when it is not interrupted, its transcript has not been written for
+`--minutes` (default 20, `GOH_AGENT_STALL_MINUTES`), and it is not done. "Done" is NOT the meta
+file's `"finished": true`: Claude Code sets that on every STOP of a background agent, including one
+that ended its turn to wait on its own background job ("stopped with background work of its own
+still running"), so a finished agent whose job then died was never reported (GOH.STALLS2). A
+finished agent is done when it ends in the report contract's `Status:` line or has no background job
+still pending (`is_waiting`, the one definition `.loop`'s tick shares); a finished agent that
+stopped with a job pending and no report is a stall. One older than `--max-age-hours` (default 24)
+is residue of a session that is gone, not a stall. Each stall is named with its idle time, the last
+thing it said, and each background job it is still waiting on: alive (pids) or gone. Exit 1 when
+any is stalled, 0 when none, 2 on a bad argument.
 
 `--hook` is the coordinator's UserPromptSubmit hook: it reads the event's own session's subagents
 and, when one is stalled, puts the list in front of the coordinator (`additionalContext`) and the
@@ -41,15 +47,21 @@ not fire on any of them. So the coordinator sees a stall on its next wake of any
 needs nothing more. The gap is a coordinator that never wakes: no owner prompt, no wakeup, and every
 agent it waits on stalled, so no notification is coming.
 
-`--notify` closes that gap for the OWNER: the launchd job com.ztomer.goh-agent-stalls runs it every
-five minutes, a one-shot pass that exits (no daemon). Across every session it finds each stall whose
-pending jobs are ALL gone -- idle past the threshold, waiting on background work no live process
-can still complete, so nothing will ever notify it (a stall with a live job may be a long build and
-wakes when it ends; one with no job at all is "in a tool call", which the hook names). Each such
-stall is posted as a macOS notification ONCE: the state file (`--state`, default
-`~/.cache/goh/agent-stalls-notified.json`) maps an agent id to the transcript write the owner was
-told about, holds only the stalls of the latest pass, and a stall that moves and stalls again is
-told again. The log is stamped and bounded (moved to `.1` past 256 KiB, lib/load_reap_log.py).
+`--notify` is the owner's channel for a coordinator that never wakes: a one-shot pass (no daemon)
+that, across every session, finds each stall whose pending jobs are ALL gone -- idle past the
+threshold, waiting on background work no live process can still complete, so nothing will ever
+notify it (a stall with a live job may be a long build and wakes when it ends; one with no job at
+all is "in a tool call", which the hook names). Each such stall is posted as a macOS notification
+ONCE: the state file (`--state`, default `~/.cache/goh/agent-stalls-notified.json`) maps an agent id
+to the transcript write the owner was told about, holds only the stalls of the latest pass, and a
+stall that moves and stalls again is told again. The log is stamped and bounded (moved to `.1` past
+256 KiB, lib/load_reap_log.py).
+
+RETIRED JOB (LOOP.CTL2, GOH.STALLS2): goh no longer schedules this pass. The launchd job
+com.ztomer.goh-agent-stalls that ran `--notify` every five minutes was replaced by
+com.ztomer.loopctl-tick (`.loop`), which is the one agent notifier and calls this module's readers
+(`stalls`, `pending_jobs`, `is_waiting`, `full_said`) for the agents of other sessions. Its plist
+and installer were deleted; tests/test_agent_stalls.py pins that nothing can install it again.
 
 Seams: `now` (the clock), the subagents directories, and `holders` (the process table) are
 arguments of `stalls()`; `notify` (the poster) and the state path are arguments of `notify_new()`;
@@ -84,6 +96,12 @@ LAUNCH = re.compile(
 )
 NOTIFIED = re.compile(r"<task-id>(\w+)</task-id>")
 INTERRUPTED = "[Request interrupted by user"
+# A stop that is not the end: the last words wait on something, and are not the report contract's.
+WAIT_WORDS = re.compile(
+    r"\b(waiting|wait (for|on)|will resume|resume when|once (it|the \w+) (finishes|completes))\b",
+    re.IGNORECASE,
+)
+REPORT = re.compile(r"^\s*Status:", re.MULTILINE)
 
 Holders = Callable[[list[str]], dict[str, list[int]]]
 
@@ -242,6 +260,28 @@ def _meta(transcript: Path) -> dict:
     return meta if isinstance(meta, dict) else {}
 
 
+def full_said(path: Path) -> str:
+    """The agent's last text, whole (`_last_turn` truncates it for display)."""
+    for rec in reversed(list(_records(_tail(path)))):
+        content = _content(rec)
+        if rec.get("type") == "assistant" and isinstance(content, list):
+            words = " ".join(
+                str(b.get("text", ""))
+                for b in content
+                if isinstance(b, dict) and b.get("type") == "text"
+            )
+            if words.strip():
+                return words
+    return ""
+
+
+def is_waiting(finished: bool, said: str, jobs: list[Job]) -> bool:
+    """Stopped, but not done. `finished` is set on every STOP of a background agent, including one
+    that ended its turn to wait for its own background job; a report (`Status:`) is final, and a
+    stop with a job still pending, or whose last words are a wait, is not."""
+    return finished and not REPORT.search(said) and bool(jobs or WAIT_WORDS.search(said))
+
+
 def stalls(
     dirs: Iterable[Path], now: float, minutes: float = DEFAULT_MINUTES,
     max_age_hours: float = DEFAULT_MAX_AGE_HOURS, holders: Holders = lsof_holders,
@@ -257,11 +297,13 @@ def stalls(
             if idle < minutes * 60 or idle > max_age_hours * 3600:
                 continue
             meta = _meta(transcript)
-            if meta.get("finished"):
-                continue
             try:
                 interrupted, state, said = _last_turn(transcript)
                 jobs = pending_jobs(transcript.read_text(encoding="utf-8", errors="replace"))
+                if meta.get("finished") and not (
+                    jobs and is_waiting(True, full_said(transcript), jobs)
+                ):
+                    continue  # it returned for good: a report, or nothing it still waits on
             except OSError:
                 continue
             if interrupted:
@@ -293,7 +335,7 @@ def _minutes_env() -> float:
 
 
 def report(found: list[Stall], minutes: float) -> str:
-    head = f"{len(found)} subagent(s) idle {int(minutes)}m+ and not finished:"
+    head = f"{len(found)} subagent(s) idle {int(minutes)}m+ and not done:"
     return "\n".join([head, *(f"  ⚠ {s.line()}" for s in found)])
 
 

@@ -20,7 +20,6 @@ TOOLS = REPO_ROOT / "tools"
 JOBS = {
     "install_load_reap.sh": "com.ztomer.goh-load-reap",
     "install_actions_sweep.sh": "com.ztomer.goh-actions-sweep",
-    "install_agent_stalls.sh": "com.ztomer.goh-agent-stalls",
 }
 
 
@@ -135,3 +134,62 @@ def test_a_loaded_install_and_an_unloaded_remove_still_succeed(tmp_path):
     assert _with_fake_launchctl(tmp_path, "install", loaded=True).returncode == 0
     (tmp_path / "bin").rename(tmp_path / "bin2")
     assert _with_fake_launchctl(tmp_path, "remove", loaded=False).returncode == 0
+
+
+def _foreign_plist(tmp_path, label="com.example.other-repo-job"):
+    """A job some OTHER repo owns (.loop's tick): its plist lives outside goh's launchagents/."""
+    src = tmp_path / "otherrepo" / "launchagents" / f"{label}.plist"
+    src.parent.mkdir(parents=True)
+    src.write_text(
+        '<?xml version="1.0" encoding="UTF-8"?>\n'
+        '<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">\n'
+        f'<plist version="1.0"><dict><key>Label</key><string>{label}</string></dict></plist>\n'
+    )
+    return src
+
+
+def _run_arg(arg, mode, dest):
+    return subprocess.run(
+        ["/bin/bash", str(TOOLS / "install_launchagent.sh"), str(arg), mode],
+        capture_output=True,
+        text=True,
+        stdin=subprocess.DEVNULL,
+        env={
+            "PATH": "/usr/bin:/bin:/opt/homebrew/bin",
+            "HOME": str(dest),
+            "LAUNCHAGENTS_DIR": str(dest / "LA"),
+        },
+        check=False,
+    )
+
+
+def test_the_installer_takes_a_plist_path_from_another_repo(tmp_path):
+    src = _foreign_plist(tmp_path)
+    label = src.stem
+    installed = tmp_path / "LA" / src.name
+    assert _run_arg(src, "check", tmp_path).returncode == 1  # not installed
+    assert _run_arg(src, "install", tmp_path).returncode == 0
+    assert installed.read_bytes() == src.read_bytes()
+    assert _run_arg(src, "check", tmp_path).returncode == 0
+    src.write_text(src.read_text().replace("</dict>", "<key>RunAtLoad</key><true/></dict>"))
+    drift = _run_arg(src, "check", tmp_path)
+    assert drift.returncode == 1 and "differs" in drift.stderr  # compared against THAT repo's copy
+    assert _run_arg(src, "remove", tmp_path).returncode == 0
+    assert not installed.exists()
+    assert label in _run_arg(src, "check", tmp_path).stderr
+
+
+def test_a_plist_whose_label_is_not_its_filename_is_refused(tmp_path):
+    """launchctl keys on the Label inside, the installer on the name: a mismatch installs a job
+    that `remove` and `check` would never find again."""
+    src = _foreign_plist(tmp_path)
+    bad = src.with_name("com.example.renamed.plist")
+    src.rename(bad)
+    r = _run_arg(bad, "install", tmp_path)
+    assert r.returncode != 0 and "Label" in r.stderr
+    assert not (tmp_path / "LA" / bad.name).exists()
+
+
+def test_a_missing_foreign_plist_is_refused_by_name(tmp_path):
+    r = _run_arg(tmp_path / "nowhere" / "com.example.gone.plist", "install", tmp_path)
+    assert r.returncode != 0 and "com.example.gone.plist" in r.stderr

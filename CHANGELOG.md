@@ -2,6 +2,23 @@
 
 ## Unreleased
 
+* **`goh agent-stalls` reports a finished agent that stopped to wait on a job that died; the retired
+  job is gone; the launchd installer takes another repo's plist (GOH.STALLS2, from LOOP.CTL2).**
+  (a) `"finished": true` in an agent's meta is set per STOP, so an agent that ended its turn to wait on
+  a background job read finished and was never reported when the job died: `stalls()` now treats a
+  finished agent as done only when it ended in a `Status:` report or has no job pending
+  (`is_waiting`, `full_said`: the one definition `.loop`'s tick now imports instead of keeping its
+  own). Red first: `test_a_finished_agent_that_stopped_to_wait_on_a_dead_job_is_a_stall`,
+  `test_is_waiting_is_the_one_definition_of_a_stop_that_is_not_the_end` and
+  `test_a_full_report_is_read_whole_not_from_the_display_truncation`. (b) The launchd job
+  `com.ztomer.goh-agent-stalls` was replaced by `com.ztomer.loopctl-tick`: its plist,
+  `tools/agent_stalls_notify.sh` and `tools/install_agent_stalls.sh` are deleted, and
+  `test_a_retired_job_has_no_plist_no_installer_and_cannot_be_installed` keeps a retired label from
+  being installed again. (c) `tools/install_launchagent.sh` takes `LABEL` or the PATH of a plist in
+  another repo (the file name is the label and must equal the `Label` inside), so `.loop` drops its
+  copy of the installer. Red first: `test_the_installer_takes_a_plist_path_from_another_repo`,
+  `test_a_plist_whose_label_is_not_its_filename_is_refused`.
+
 ## v0.77.0 -- load.py --wait is bounded by its own clock and queues only behind the gates ahead
 
 * **`load.py --wait` is bounded by its own clock and queues only behind the gates ahead of it

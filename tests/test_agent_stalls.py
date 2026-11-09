@@ -97,10 +97,9 @@ def test_a_job_whose_output_is_held_is_named_alive_with_its_pids(tmp_path: Path)
     ("idle_min", "meta"),
     [
         (19, None),  # under the threshold: still working, as far as anyone can tell
-        (30, {"description": "Q", "finished": True}),  # it returned
         (60 * 25, None),  # older than max-age: a dead session's residue, not a stall
     ],
-    ids=["fresh", "finished", "residue"],
+    ids=["fresh", "residue"],
 )
 def test_not_a_stall(tmp_path: Path, idle_min: float, meta: dict | None) -> None:
     d = tmp_path / "subagents"
@@ -292,13 +291,86 @@ def test_the_notify_pass_posts_through_osascript_argv_and_logs_a_stamped_line(
     assert (again.returncode, again.stdout) == (0, "")  # told once
 
 
-def test_the_launchd_job_runs_the_notify_pass_every_five_minutes() -> None:
-    import plistlib
+def _finished(
+    d: Path, said: str, recs_before: list[dict] | None = None, idle_min: float = 30
+) -> Path:
+    """A STOPPED agent (`finished` is set on every stop): job bone launched, then the turn ended."""
+    recs = [
+        {"type": "user", "message": {"content": "Queue item Q.X"}},
+        *(recs_before if recs_before is not None else [_launch("bone", d / "bone.output")]),
+        _assistant(said),
+    ]
+    return _agent(d, "f1", recs, idle_min, meta={"description": "Q.f1", "finished": True})
 
-    plist = plistlib.loads(
-        (REPO_ROOT / "launchagents" / "com.ztomer.goh-agent-stalls.plist").read_bytes()
-    )
-    assert plist["StartInterval"] == 300 and plist["RunAtLoad"] is True
-    assert "/tools/agent_stalls_notify.sh;" in plist["ProgramArguments"][-1]
-    job = (REPO_ROOT / "tools" / "agent_stalls_notify.sh").read_text()
-    assert 'agent_stalls.py" --notify' in job and "goh_from_head" in job
+
+def test_a_finished_agent_that_stopped_to_wait_on_a_dead_job_is_a_stall(tmp_path: Path) -> None:
+    """`finished` is set per STOP, so an agent that ended its turn to wait on a background job
+    reads finished while it waits; when that job dies no notification comes (GOH.STALLS2)."""
+    d = tmp_path / "subagents"
+    _finished(d, "I'll wait for the completion notification.")
+    (s,) = st.stalls([d], NOW, holders=_none)
+    assert (s.agent_id, s.state) == ("f1", "waiting")
+    assert [j.id for j in s.jobs] == ["bone"] and not s.jobs[0].pids
+    assert [x.agent_id for x in st.dead_waits([s])] == ["f1"]  # the owner's notice sees it too
+
+
+@pytest.mark.parametrize(
+    ("said", "recs"),
+    [
+        ("Status: landed\nthe job is still running but my work is done", None),  # its report
+        ("Done; nothing left to wait on.", []),  # finished, no job pending
+        ("Done.", [_launch("bone", "/x/bone.output"), _notified("bone")]),  # the job reported back
+    ],
+    ids=["report-contract", "no-job", "job-notified"],
+)
+def test_a_finished_agent_that_is_done_is_not_a_stall(
+    tmp_path: Path, said: str, recs: list[dict] | None
+) -> None:
+    d = tmp_path / "subagents"
+    _finished(d, said, recs)
+    assert st.stalls([d], NOW, holders=_none) == []
+
+
+@pytest.mark.parametrize(
+    ("finished", "said", "jobs", "want"),
+    [
+        (True, "I'll wait for it.", True, True),  # stopped on a pending job
+        (True, "Will resume when the build finishes.", False, True),  # a wait with no job seen
+        (True, "Status: landed", True, False),  # a report is final
+        (True, "All done.", False, False),
+        (False, "I'll wait for it.", True, False),  # not stopped: running, not waiting
+    ],
+)
+def test_is_waiting_is_the_one_definition_of_a_stop_that_is_not_the_end(
+    finished: bool, said: str, jobs: bool, want: bool
+) -> None:
+    pend = [st.Job("b", "/x/b.output")] if jobs else []
+    assert st.is_waiting(finished, said, pend) is want
+
+
+def test_a_full_report_is_read_whole_not_from_the_display_truncation(tmp_path: Path) -> None:
+    d = tmp_path / "subagents"
+    _finished(d, "x" * 400 + "\nStatus: landed")
+    assert st.full_said(next(d.glob("agent-*.jsonl"))).endswith("Status: landed")
+    assert st.stalls([d], NOW, holders=_none) == []
+
+
+RETIRED_JOBS = {"com.ztomer.goh-agent-stalls": "retired into com.ztomer.loopctl-tick (LOOP.CTL2)"}
+
+
+@pytest.mark.parametrize("label", RETIRED_JOBS)
+def test_a_retired_job_has_no_plist_no_installer_and_cannot_be_installed(
+    tmp_path: Path, label: str
+) -> None:
+    """Nothing reinstalls a retired job: its plist and caller scripts are gone, and the installer
+    refuses it for want of a plist (a `remove` still works, so a loaded copy can be taken down)."""
+    assert not (REPO_ROOT / "launchagents" / f"{label}.plist").exists()
+    callers = [p.name for p in (REPO_ROOT / "tools").glob("install_*.sh")
+               if label in p.read_text()]  # fmt: skip
+    assert callers == []
+    env = {"PATH": "/usr/bin:/bin", "HOME": str(tmp_path), "LAUNCHAGENTS_DIR": str(tmp_path / "LA")}
+    r = subprocess.run(["/bin/bash", str(REPO_ROOT / "tools" / "install_launchagent.sh"), label,
+                        "install"], capture_output=True, text=True, env=env, check=False,
+                       stdin=subprocess.DEVNULL)  # fmt: skip
+    assert r.returncode != 0 and not (tmp_path / "LA" / f"{label}.plist").exists()
+    assert "plist" in r.stderr

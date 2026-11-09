@@ -93,15 +93,6 @@ phase, and each is one landing.
 
 Why second: they cost every session a stall or a stale type today, and each is independent of Phase 1.
 
-- **GOH.STALLS2** (queue: GOH.STALLS2) (a) `hooks/claude/agent_stalls.py` `stalls()` skips an agent whose
-  `meta.json` says finished, but finished is set per STOP, so an agent that stopped to wait on a background
-  job that then died is never reported; fix it at the source and have loopctl call it. (b)
-  `launchagents/com.ztomer.goh-agent-stalls.plist` and the module docstring still describe the job retired
-  for `com.ztomer.loopctl-tick`: delete the plist and its installer or mark them retired. (c)
-  `tools/install_launchagent.sh` reads plists only from goh's `launchagents/`, so `.loop` copied it as
-  `tools/install_tick.sh`: let it take a plist path, then delete the copy.
-  **Done when:** a finished-but-waiting agent whose job died is reported (test red first); no retired plist
-  is installable; `.loop`'s `install_tick.sh` uses goh's installer and the copy is deleted; released.
 - **GOH.AGENTRETIRE** (queue: GOH.AGENTRETIRE) goh's apply step installs `~/.claude/agents/repo-worker*.md`
   but never removes a type goh retires, so it keeps loading in every session. Track what goh installed
   (a manifest), remove what it no longer ships, never touch a file goh did not install. Also verify

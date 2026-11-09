@@ -1,7 +1,10 @@
 #!/usr/bin/env bash
-# install_launchagent.sh LABEL [install|remove|check] -- install one of this repo's launchd jobs.
+# install_launchagent.sh LABEL|PLIST [install|remove|check] -- install one of this repo's launchd jobs,
+# or another repo's: a PLIST argument (a path ending in .plist) is read from where it is, its label
+# the file's name, which must equal the Label inside (GOH.STALLS2: .loop kept a copy of this logic
+# because the plist could only come from here).
 #
-# The plist lives in this repo (launchagents/LABEL.plist) and is COPIED into ~/Library/LaunchAgents,
+# The plist lives in the owning repo (here: launchagents/LABEL.plist) and is COPIED into ~/Library/LaunchAgents,
 # because a plist that exists only in the repo protects nobody: the copies drifted before
 # (2026-10-04, two installed plists still named deleted scripts and failed every night saying
 # nothing). `check` compares BYTES and exits 1 naming the drift: `install` copies bytes, and a
@@ -29,9 +32,16 @@ else
     err() { printf '%s\n' "$*" >&2; }
     die() { printf '%s\n' "$*" >&2; exit 1; }
 fi
-label="${1:-}"
-[ -n "$label" ] || die "usage: install_launchagent.sh LABEL [install|remove|check]"
-src="$ROOT/launchagents/$label.plist"
+arg="${1:-}"
+[ -n "$arg" ] || die "usage: install_launchagent.sh LABEL|PLIST [install|remove|check]"
+case "$arg" in
+*.plist)   # another repo's plist, by path: its name is the label
+    src="$arg"
+    label="$(basename "$arg" .plist)" ;;
+*)
+    label="$arg"
+    src="$ROOT/launchagents/$label.plist" ;;
+esac
 dest_dir="${LAUNCHAGENTS_DIR:-$HOME/Library/LaunchAgents}"
 dest="$dest_dir/$label.plist"
 mode="${2:-install}"
@@ -40,6 +50,8 @@ case "$mode" in
 install)
     [ -f "$src" ] || die "$src is missing: the job has no plist to install"
     plutil -lint -s "$src" || die "$src is not a valid plist"
+    inside="$(plutil -extract Label raw -o - "$src" 2>/dev/null)" || inside=""
+    [ "$inside" = "$label" ] || die "$src: its Label is '$inside', not '$label' (the file's name): launchctl would key on one and remove/check on the other"
     mkdir -p "$dest_dir"
     cp "$src" "$dest"
     if [ -z "${LAUNCHAGENTS_DIR:-}" ]; then
@@ -69,13 +81,13 @@ check)
         exit 1
     fi
     if ! cmp -s "$src" "$dest"; then
-        err "$label: the installed copy differs from the repo's (reinstall: install_launchagent.sh $label)"
+        err "$label: the installed copy differs from the repo's (reinstall: install_launchagent.sh $arg)"
         exit 1
     fi
     ok "$label: installed and current"
     ;;
 *)
-    die "usage: install_launchagent.sh LABEL [install|remove|check]"
+    die "usage: install_launchagent.sh LABEL|PLIST [install|remove|check]"
     ;;
 esac
 exit
