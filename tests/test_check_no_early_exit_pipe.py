@@ -156,7 +156,7 @@ def test_staged_judges_the_index_not_the_worktree(goh: Path, repo: Path) -> None
 
 def test_an_unseeded_finding_fails_at_full_scope(goh: Path, repo: Path) -> None:
     """BACKLOG 6.9: on by default. The step used to name these at full scope and pass, so a repo
-    carried them forever (Finance: 16)."""
+    carried them forever (one private consumer: 16)."""
     write(repo, "deploy.sh", RACY)
     commit_all(repo)
     r = _structural(goh, repo, "--full")

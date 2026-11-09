@@ -8,7 +8,7 @@
 //!
 //! Comments and literals are read by `rustlex`, with its state carried
 //! across lines: a doc comment MENTIONING `#[allow]` is prose, and so is a
-//! string or raw string holding one (a fixture writing Rust, zinc
+//! string or raw string holding one (a fixture writing Rust, a private consumer
 //! `crates/xtask/src/walk_tests.rs:28`, 2026-10-12). The frozen reference
 //! judged a quoted `#[allow(` as a suppression; that was the defect, and the
 //! parity suite names the divergence.

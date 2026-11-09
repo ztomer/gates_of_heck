@@ -391,7 +391,7 @@ fn the_home_paths_gate_runs_only_when_declared_and_goes_red_on_a_checkout_path()
     // Undeclared: the step does not run, a home path passes untouched.
     let r = repo_with(&[
         ("README.md", "x\n"),
-        ("NOTES.md", "run it from ~/Projects/salary\n"),
+        ("NOTES.md", "run it from ~/Projects/private-cli\n"),
         (".gatesrc", "GOH_MAX_LINES=500\n"),
     ])
     .expect("fixture");

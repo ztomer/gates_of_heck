@@ -215,7 +215,7 @@ def _forgotten_member(repo):
 
     (Until 6.18 this fixture also declared `[workspace.package] version = "1.79.3"`. Under a
     workspace version, a member that writes its own literal has opted out of inheritance -- it
-    keeps its own version line, as Finance/zinc's `zinc-payroll` 1.9.0 does under 4.8.0 -- so
+    keeps its own version line, as a private nested workspace's `app-legacy` 1.9.0 does under 4.8.0 -- so
     that shape no longer reads as a forgotten bump; the layout with nothing to inherit does.)
     """
     write(repo, "VERSION", "1.79.3\n")

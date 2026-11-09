@@ -8,12 +8,22 @@
   (`tui/plural.sh`, sourced by `tui/lib.sh` and by every gate whatever lib it sourced), and
   `goh_tui::counted`/`noun` -- and a structural step in every repo refuses a `word(s)`,
   `word(es)`, `entr(ies)` or `{unit}(s)` inside a string literal of a `.py`, shell, `.rs` or
-  `.swift` source (lifted from routines' `plural::tests`). The estate's 2305 sites in 37 repos are
-  seeded in `plural_hedge_seed.json` by root commit: a seeded file warns, a new hedge is red.
+  `.swift` source (lifted from routines' `plural::tests`). The estate's sites are seeded by root
+  commit in their v0.88.0 homes: goh's own 145 entries in its `plural_hedge_seed.json`, the 143 of
+  the eight repos gated on a GitHub runner in each one's own (written, for that repo to commit),
+  and the other 779 in the private store; a seeded file warns, a new hedge is red.
   goh's own named hedges are fixed (roadmap, local_ci.sh, py_lint_ceiling.py, model_choice_watch.py,
   the scanner-subject units, the estate-seed reports); the rest of goh's are seeded like any
   consumer's. Red first: the finder with its letter test disabled failed its unit table; the CLI
   test's planted `{n} step(s)` was red.
+* **A public tree names no private repository: `goh private-names` (GOH.FINANCENAMES).** goh's
+  comments, docs and fixtures named a private metarepo and its workspaces, crates and apps (52
+  files); each now says what it was ("a private consumer", "a private nested workspace") and keeps
+  its meaning, fixtures renamed alike. A structural step behind `GOH_NO_PRIVATE_NAMES=on` (set here)
+  refuses a tracked line or path holding a listed name at word edges; the list is the private
+  store's `private_names.txt`, which no tree holds, and a machine without it says `not judged` on a
+  warning line. Published history is not rewritten. Red first: a planted name in a staged file
+  was refused (exit 1), and the step's own first draft, whose doc comment named the metarepo.
 * **A subagent's direct `gh` CI read is named (GOH.GHDOOR).** The repo-worker definitions say CI is
   read only through `loopctl.py ci <full-sha> --repo OWNER/NAME [--wait]` (exit 75: throttled, not
   a failure), never `gh run list/view/watch` or `gh api .../actions`; agent_guard's SubagentStop
@@ -24,7 +34,7 @@
 
 * **No repository's seed entries in another's tree; goh's public tree holds only its own (GOH.SEEDPRIVATE).**
   gates_of_heck is public, and its estate seeds held every consumer's entries --
-  `crates_behind_seed.json` published `Finance/zinc` and its count. An estate seed
+  `crates_behind_seed.json` published a private consumer's nested Cargo workspace and its count. An estate seed
   (`crates/goh/src/estate_seed.rs`: changelog-tags, crates-behind, mktemp-portable, release-quiet,
   bare-hook-index) is now read from the JUDGED repository's own tracked `<kind>_seed.json` plus the
   owner's private store (`GOH_SEED_DIR`, else `~/.local/state/goh/seeds`), one key (root commit,
@@ -35,7 +45,7 @@
   only its own changelog entry; the other 36 consumer entries moved -- 5 into the three
   consumers that committed them (antiknob, app-mcp-bridge, divoom-control), 28 into the private
   store, 3 found stale and dropped. Red first: six tests in `tests/test_estate_seed_home.py` (a
-  planted `Finance/zinc` root in a tracked seed was accepted; the store was never read; goh's tree
+  planted a private consumer's nested Cargo workspace root in a tracked seed was accepted; the store was never read; goh's tree
   named ten consumers' changelogs).
 * **A clone with no `v*` tag calls no changelog seed entry stale.** A CI checkout fetches no tags,
   so changelog-tags compared nothing; that run is partial now (over-count and unseeded still
@@ -92,7 +102,7 @@
   mediaremote-adapter) seeded in `mktemp_port_seed.json`. Red first on monitor's old
   `mktemp -t "release-step"` line.
 * **The whole changelog agrees with the tags: `goh changelog-tags` (GOH.CHANGELOGALL).** Lifted
-  from zinc's `tools/check_changelog_tags.py` (ZN.CLHEAD): an orphan heading tail, a `v*` tag with
+  from a private consumer's `tools/check_changelog_tags.py` (ZN.CLHEAD): an orphan heading tail, a `v*` tag with
   no heading, a heading at or above the first tag that no tag names; the current version (the
   `VERSION` file, else the newest heading above every tag) is exempt. A structural step in every
   repo with a `CHANGELOG.md` or `docs/CHANGELOG.md`. 305 findings in 11 changelogs (goh's own
@@ -422,7 +432,7 @@
 ## v0.69.0 -- a load experiment refuses a build tool that takes a machine-wide lock; the release kit never reopens a running app
 
 * **A load experiment refuses a build tool that takes a machine-wide lock (GOH.LOADLOCK).** On
-  2026-11-08 `load.py --max 25m --oversubscribe 32 -- taskpolicy -b cargo test -q -p taxes-cli
+  2026-11-08 `load.py --max 25m --oversubscribe 32 -- taskpolicy -b cargo test -q -p app-cli
   --test app_check` starved cargo to 0.36 s of CPU in 21 minutes, but cargo had first taken
   `~/.cargo/.package-cache`, and nine other agents' cargo runs across the machine waited on that
   lock for 15-20 minutes (the holder in read_manifest, the waiters in CacheLocker::lock_exclusive).
@@ -797,7 +807,7 @@
   `test_proven_moved.py` and the rust group test were red (10 of them) with the runners' wiring removed.
 * **`tools/load.py` refuses to starve another session's gate (GOH.LOADX, 2026-11-02).** It refused a
   second load experiment and nothing else: on 2026-11-01 a divoom repro ran 15 spinners twice (load
-  average 137 on 16 cores) while zinc's pre-push gate, which fails past 30 min, was running. The
+  average 137 on 16 cores) while a private consumer's pre-push gate, which fails past 30 min, was running. The
   machine already had the registry: every gate joins `lib/bench_lock.sh`'s `gates/` by pid; the
   entry now carries the stage and the repo, and `gates/commit_gate.sh` joins as `pre-commit` (the
   pre-push already joined). `lib/gates_in_flight.py` is its one reader -- a dead pid, a recycled
@@ -808,8 +818,8 @@
   change, and the other two (recycled pid, own ancestor) go red with their checks removed.
 * **The stock commit-msg hook runs the repo's own message layer, `tools/commit_msg.sh` (2026-11-01).**
   A repo with a message rule of its own had nowhere to put it but a hand-edited hook, which a
-  reinstall overwrites and `doctor` reports as drift: the Finance metarepo needed every commit
-  message read for a real figure or name (zinc's detectors, through their `--repo` seam), and the
+  reinstall overwrites and `doctor` reports as drift: a private metarepo needed every commit
+  message read for a real figure or name (a private consumer's detectors, through their `--repo` seam), and the
   stock hook ran only `commit-class` and `red-run`. `gates/commit_msg.sh` now runs
   `tools/commit_msg.sh <message-file>` when the file exists, as the pre-commit hook runs
   `tools/gate.sh`; absent, nothing changes. Calibrated: with the line removed,
@@ -874,7 +884,7 @@
 
 * **The estate audit's verdict is the push's, read from the repo's gate (queue GOH.EA2).** It ran
   biting cargo-audit on every tracked `Cargo.lock` and the session hook said "the next push of
-  <lock> is red". `Finance/zinc` gates with cargo-deny, whose `deny.toml` ignores
+  <lock> is red". A private consumer's nested Cargo workspace gates with cargo-deny, whose `deny.toml` ignores
   RUSTSEC-2024-0370 and whose graph targets leave glib (RUSTSEC-2024-0429) out: its push is red for
   neither. `monitor/fuzz/Cargo.lock` is a workspace no gate step audits: the claim was false and hid
   the gap. `lib/gate_coverage.py` now reads `GOH_CI_STEPS`, `tools/gate.sh`,
@@ -883,7 +893,7 @@
   `cargo deny ... check [advisories]`. A lock a step audits is judged by that step (cargo-audit with
   its deny flags and `.cargo/audit.toml`; cargo-deny RUN with its `deny.toml`); a lock no step
   audits is `unaudited`, printed as NOT AUDITED AT PUSH with what fires there; one a
-  shell-variable step might cover is `undetermined`. On the real estate: zinc reports
+  shell-variable step might cover is `undetermined`. On the real estate: a private consumer reports
   RUSTSEC-2026-0414 only, monitor/fuzz is not audited at push, and koffee_big plus three
   media_server testkit locks are undetermined. Pinned by `tests/test_estate_gate_coverage.py`.
 * **A scratch repo never enters the machine's estate registry.** server-template's
@@ -976,7 +986,7 @@ Minor bump: a new consumer-facing gate (`checks/check_mcp_wire.py`) and three `.
   state readOnlyHint and destructiveHint; a destructive tool listed by default; no `outputSchema`
   of type object, unless `GOH_MCP_UNSTRUCTURED` names the tool with a reason (a ratchet). A silent
   server is red at its timeout, and the whole process group and every descendant are reaped,
-  pass or fail. Live on 2026-10-26: antiknob green; routines, monitor's agent, divoomd and zinc
+  pass or fail. Live on 2026-10-26: antiknob green; routines, monitor's agent, divoomd and a private consumer
   red on annotations and outputSchema.
 * **`structural.sh --full` was never fail-fast.** `[ -n "$KEEP_GOING" ]` held for `0` too, so
   every run went down the `--keep-going` path; it reads `= 1` now (pinned by two independent reds).
@@ -1732,7 +1742,7 @@ back in `CadGoose/tools/profiling/` (CadGoose `046f6ce`), fixed there and pinned
 ## v0.39.0 — a consumer's own `tools/gate.sh --full` holds the gate slot _(2026-10-18)_
 
 Minor bump: closes the gap v0.37.0 named. The ~15 consumer `tools/gate.sh` copies written before
-the slot (Finance, ZoneWM, divoom-control, games, servers, ...) run `structural.sh "$@"` and then
+the slot (a private consumer, ZoneWM, divoom-control, games, servers, ...) run `structural.sh "$@"` and then
 their own layers, and never exec `local_ci.sh`: hand-run `--full`, they took no slot and raced every
 push on the machine. install.sh never rewrites a gate.sh, so the one goh file they all already call
 carries the fix -- no consumer edit.
@@ -1782,7 +1792,7 @@ still raced every push on the machine.
 ## v0.36.0 — a machine-wide limit on concurrent push gates _(2026-10-18)_
 
 Minor bump: a push now waits for a gate slot when the machine is full. Several sessions pushed at once
-with nothing limiting them, and two pushes failed on load, not on their changes: zinc's gate was
+with nothing limiting them, and two pushes failed on load, not on their changes: a private consumer's gate was
 killed mid-test (exit 144), and games' Release rebuild built 240 of 814 objects inside a 900 s step
 limit while the 15-minute load average was 49.6.
 
@@ -2279,13 +2289,13 @@ their parsers would have been a worse defect than the one it fixed.
 
 * **`goh lock-version` reads manifests as TOML, and a crate keeping its own version line is not
   the release** (6.18). A line regex read `version = "1.9.0"  # ...` as no version, so
-  Finance/zinc's `zinc-payroll` read as inheriting 4.8.0 and its lock as stale; and arm 2
+  a private nested workspace's `app-legacy` read as inheriting 4.8.0 and its lock as stale; and arm 2
   compared `VERSION` against that crate's own 1.9.0. Now the manifests and the lock go through
   the `toml` crate, and arm 2 compares the release against the members that carry it: those
   inheriting `[workspace.package] version`, or every member where there is none to inherit
   (media_server's per-crate literals, still red when one is left behind). A manifest or lock
   that is not valid TOML is now a finding naming the file (cargo could not build it either).
-  Finance/zinc reads green (26 crates).
+  A private nested workspace reads green (26 crates).
 
 * **`goh emoji` run alone reads `GOH_ALLOW` from `.gatesrc`, as structural does** (6.17).
   Its `--allow` defaulted to nothing, so remote_dotfiles' permitted glyphs were refused alone and
@@ -2322,9 +2332,9 @@ media_server's own reds and 5.2 is the owner's call; both carry over (BACKLOG).
 
 * **The stdin gate is on by default** (`0c93f4d`, 3.4). `GOH_SUBPROCESS_STDIN` unset now means
   on, at both scopes; only `GOH_SUBPROCESS_STDIN=off` in the repo's own `.gatesrc` skips it. The
-  15 repos left in 3.3's table (367 findings counted 2026-10-09: media_server 88, Finance/zinc 71,
+  15 repos left in 3.3's table (367 findings counted 2026-10-09: media_server 88, a private workspace 71,
   divoom-control 52, scripts 52, monitor 39, koffee_big 23, ztools 13, routines 8, games 6,
-  app_updates 5, old_phones 4, Finance/salary 2, Finance/zinc-core 2, CadGoose 1, sys_updater 1)
+  app_updates 5, old_phones 4, two private repos 2 each, CadGoose 1, sys_updater 1)
   are red at their next commit. Declare each call's stdin, or adopt what is left with
   `goh subprocess-stdin --seed`, then set `GOH_SUBPROCESS_STDIN_MIN_CALLS`.
 * **ZeroThunder: a render that counts frames must deliver them** (`f62dbb3`, 4.6). The display
@@ -2389,7 +2399,7 @@ repos go red at their next commit or push. The first section lists those changes
   `GOH_NO_EARLY_EXIT_PIPE=1`. Now each file is held to `early_exit_pipe_seed.json` (written by
   `--seed`; the counts may only fall), through `crate::seedcount`, which fixed-sleep and
   status-markers share. Nine repos are red at their next push (old_phones 99, koffee_big 29,
-  Finance 16, ...).
+  a private consumer 16, ...).
 * **No bare `python3` in a hook or gate** (`1c4be61`, `61326f3`, `851cc70`). When Homebrew moved
   `python3` to 3.15 on 2026-10-10, three repos broke three different ways, and no error named the
   interpreter. `gates/python.sh` is now the one way a hook or gate runs Python. It uses a `.venv`,
@@ -2462,7 +2472,7 @@ repos go red at their next commit or push. The first section lists those changes
   re-keyed one call three times in an afternoon. `crate::callkey` is now the key. The claims
   allowlist keys on the claim's own span, and is no longer scanned as prose.
 * **Text scanners read a literal as text** (`20281bb`). `goh no-allow` flagged `#[allow]` inside
-  a string (zinc), and a `//` inside a URL ended the line early. `crates/goh/src/rustlex.rs`
+  a string (a private consumer), and a `//` inside a URL ended the line early. `crates/goh/src/rustlex.rs`
   carries lexer state across lines (raw strings at any hash count, char literals vs lifetimes);
   no-allow and empty-assert read through it.
 * **A credential expanded into a URL's userinfo is a secret** (`4686280`,
@@ -3038,7 +3048,7 @@ Measured: cross-session serialization of `structural --full`, sigma 0.45 -> 0.10
 
 ### 13. Consumers, fixed the day they reported
 
-* **install.sh never silently bypasses hooks another manager owns** (zinc): live hooks in
+* **install.sh never silently bypasses hooks another manager owns** (a private consumer): live hooks in
   `.git/hooks`, another `core.hooksPath` or a `.pre-commit-config.yaml` refuse the install before
   anything is written; `--replace-hooks` takes them over, naming what stops running. Every stock
   hook in `hooks/` is installed -- the directory is the list.
@@ -3315,7 +3325,7 @@ In `~/.cache/goh/push/`: a three-day-old export worktree and 230 `*.out` files; 
 `{workspace-path-hash}` and the export path was random -- every push built every dependency cold.
 A run now owns `<root>/<repo>-<hash>/<repo>` with an owner stamp (pid + start time): stable per
 repo, so dependencies stay warm; a concurrent push takes a private path with its build-dir inside
-it; cleanup NAMES what the gate wrote outside its tree (Finance's tests write `"$HERE.out"`); and
+it; cleanup NAMES what the gate wrote outside its tree (a private consumer's tests write `"$HERE.out"`); and
 each run reaps runs whose owner is dead, which `git worktree prune` never did (`docs/contracts.md`
 21). The litter was removed.
 
@@ -4144,7 +4154,7 @@ LINKED worktree `GIT_DIR` is absolute, so a checker that ran `git init` on a
 scratch repo inherited it and re-initialised THE REAL REPOSITORY instead —
 and with `extensions.worktreeConfig` on, wrote `core.bare = true` into the
 shared config. Every checkout of that repo then died with `fatal: this
-operation must be run in a work tree` (zinc, 2026-09-27). These gates run
+operation must be run in a work tree` (a private consumer, 2026-09-27). These gates run
 inside every consumer's hooks, so one miss flips any repo, in every worktree at
 once, from a command that looked like it was building a fixture.
 
@@ -4184,7 +4194,7 @@ tagged: v0.12.6, v0.13.0 (the Rust port), v0.13.1 and v0.13.2.
 `checks/check_no_kill_by_name.py`, opt-in per repo with
 `GOH_NO_KILL_BY_NAME=1`, fails on a `pkill` or `killall` that matches by
 name, and on a `pgrep` or `pidof` that feeds a `kill`. A name matches
-processes the caller does not own. On 2026-09-23 zinc's T6 cleanup ran
+processes the caller does not own. On 2026-09-23 a private consumer's T6 cleanup ran
 `pkill -9 -f camoufox` and SIGKILLed another session's Gemini browser in the
 middle of a reply, which stopped the necrohand campaign. Owner-scoped forms
 pass: `pkill -P`, `-g` and `-s`, and `killpg`. Comments, docstrings and prose

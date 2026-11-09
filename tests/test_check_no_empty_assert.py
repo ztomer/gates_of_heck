@@ -51,7 +51,7 @@ DIRTY = [
 CLEAN = [
     # A NEGATED emptiness test is a real assertion, with or without a message: when it fails the
     # value is empty, so there is nothing for `assert_ne!(v.len(), 0)` to show. It is also the
-    # spelling clippy's `len_zero` asks for in place of `v.len() > 0`. zinc's
+    # spelling clippy's `len_zero` asks for in place of `v.len() > 0`. A private consumer's
     # compute_memo_tests.rs:220 was rewritten to `assert_ne!` to get past this gate (G18).
     "assert!(!v.is_empty());",
     'assert!(!v.is_empty(), "msg");',

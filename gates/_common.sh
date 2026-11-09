@@ -265,7 +265,7 @@ goh_step() {
         # The FAILURES first, then the tail: a 173-test `swift test` puts its
         # nine failing cases far above the last 60 lines, and the log is
         # deleted at exit — a red gate that names no test is a red gate
-        # nobody can act on (zinc E.1c, 2026-09-21). GOH_FAIL_PATTERN is
+        # nobody can act on (a private consumer's E.1c, 2026-09-21). GOH_FAIL_PATTERN is
         # the grep; GOH_FAIL_LINES caps how many hits are shown.
         # Only lines ATTRIBUTABLE to the sub-step that failed: a passing sibling's `✗` (a
         # calibration plant's quoted row) is left out and counted, and an unframed log says it is

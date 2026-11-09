@@ -5,7 +5,7 @@ three days old) and 230 `*.out` files going back two weeks. Two defects, one cla
 leaves state outside anything that removes it*:
 
   * The worktree sat directly in the shared export root, so anything the gate wrote BESIDE its tree
-    landed in the shared root and outlived the run. Finance's `tests/test_repos.sh` writes
+    landed in the shared root and outlived the run. A private consumer's `tests/test_repos.sh` writes
     `"$HERE.out"` -- a sibling of the repo root -- which in an export is the shared root.
   * The header promised "a worktree left behind by a SIGKILL is pruned by the next run", and
     `git worktree prune` only forgets a worktree whose DIRECTORY is gone. A killed run's directory

@@ -7,7 +7,7 @@
                           [--for-caller]   # the owner is the caller's caller, not this process's parent
 
 THE INCIDENT (2026-10-18). Every repo's pre-push runs goh's push gate, and several sessions pushed at
-once with nothing limiting them. Two pushes failed on load, not on their changes: zinc's gate was
+once with nothing limiting them. Two pushes failed on load, not on their changes: a private consumer's gate was
 killed mid-test (exit 144), and games' Release rebuild built 240 of 814 objects inside a 900 s step
 limit while the 15-minute load average was 49.6. A step ceiling measured on a quiet box is a lie on
 a box running five cold gates.

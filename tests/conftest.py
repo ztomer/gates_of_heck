@@ -31,7 +31,7 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 # Every test builds its OWN repos. Run from a git hook (pre-push from a linked worktree hands
 # the suite GIT_DIR=<main>/.git/worktrees/<name>), an inherited GIT_DIR turns each fixture's
 # `git init <tmp>` into a re-init of the REAL repository -- core.bare=true lands in the shared
-# config and no checkout works (zinc, 2026-09-27). Dropped at import, before any fixture runs,
+# config and no checkout works (a private consumer, 2026-09-27). Dropped at import, before any fixture runs,
 # using git's own list via the one helper the checkers share. Pinned by test_hook_git_env.py.
 sys.path.insert(0, str(REPO_ROOT / "checks"))
 from _gitutil import local_env_vars

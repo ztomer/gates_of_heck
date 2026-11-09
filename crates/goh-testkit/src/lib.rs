@@ -42,7 +42,7 @@ pub fn local_env_vars() -> &'static [String] {
 /// A git hook exports `GIT_DIR` (and `GIT_INDEX_FILE`); under a LINKED
 /// worktree `GIT_DIR` is `<main>/.git/worktrees/<name>`, absolute, so a
 /// fixture's `git init <tmp>` inheriting it RE-INITIALISES THE REAL
-/// REPOSITORY and writes `core.bare = true` into its shared config (zinc,
+/// REPOSITORY and writes `core.bare = true` into its shared config (a private consumer,
 /// 2026-09-27); a fixture's `config`/`add`/`commit` land there too.
 pub fn scrub_repo_env(cmd: &mut Command) -> &mut Command {
     for name in local_env_vars() {

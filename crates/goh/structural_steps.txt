@@ -28,6 +28,7 @@ no disallowed emoji
 no early-exit pipe under pipefail
 no hard-coded home paths
 no process kill by name
+no private repository named in a public tree
 no tracked build output
 no tracked file its .gitignore ignores
 no unreaped spawns in tests

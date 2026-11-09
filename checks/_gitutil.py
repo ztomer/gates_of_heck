@@ -47,7 +47,7 @@ def foreign_repo_env(base=None) -> dict:
     (`<main>/.git/worktrees/<name>`), so a child `git init <tmpdir>` that inherits it
     RE-INITIALISES THE REAL REPOSITORY instead -- and with extensions.worktreeConfig on, writes
     `core.bare = true` into the shared config, after which no checkout of that repo works
-    (zinc, 2026-09-27). `git -C tmp config` / `add` / `commit` land in the real repo too. Every
+    (a private consumer, 2026-09-27). `git -C tmp config` / `add` / `commit` land in the real repo too. Every
     git call on a scratch, fixture or skeleton repo -- and every process run INSIDE one -- takes
     this env. Never used for the repo being gated: there GIT_INDEX_FILE names the index being
     committed, which is exactly the tree to police."""

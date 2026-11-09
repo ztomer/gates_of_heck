@@ -1,7 +1,7 @@
 //! No process kill BY NAME -- Rust port of the retired `checks/check_no_kill_by_name.py`
 //! (Phase N1).
 //!
-//! A name is not an owner: zinc's harness ended every capture with
+//! A name is not an owner: a private consumer's harness ended every capture with
 //! `pkill -9 -f "Camoufox.app"` and `SIGKILL`ed another session's browser in
 //! the middle of a reply (2026-09-23). Kill what you started -- its pid, its
 //! group (`pkill -g`), the tree below your pid (`pkill -P`). A `killall`

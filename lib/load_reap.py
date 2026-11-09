@@ -13,7 +13,7 @@ THE NARROWNESS IS THE POINT. Three things are never touched:
 
 Nothing is matched by NAME. A name is not an owner -- the house forbids killing by name
 (`goh kill-by-name`), and the pkill that a name-based reaper needs is exactly what killed another
-session's browser once (zinc, 2026-09-23). This kills by PID, from its own registry.
+session's browser once (a private consumer, 2026-09-23). This kills by PID, from its own registry.
 
 THE SECOND SHAPE (2026-10-20, later the same day). A record can VANISH: an experiment that ran in
 a temporary directory leaves its registry there, and that directory is pruned -- eight helpers,
@@ -154,7 +154,7 @@ def kill(pid: int, grace: float = GRACE_S) -> bool:
 def pgrep(pattern: str) -> list[int]:
     """The name lookup: `pgrep -f`, and only that.
 
-    A name matches processes the caller does not own -- zinc's harness SIGKILLed another
+    A name matches processes the caller does not own -- a private consumer's harness SIGKILLed another
     session's browser (2026-09-23) -- so this lookup is the RECORDED EXEMPTION: the house's
     kill-by-name rule sees it, because the lookup and the kill sit on ONE line, and the entry
     that excuses it is in kill_by_name_allow.json with its reason written down.

@@ -1,6 +1,6 @@
 """install.sh never silently bypasses hooks another manager owns.
 
-zinc, 2026-10-06: its gates were pre-commit-framework hooks in `.git/hooks`
+A private consumer, 2026-10-06: its gates were pre-commit-framework hooks in `.git/hooks`
 (`.pre-commit-config.yaml`). install.sh set `core.hooksPath=.githooks`, which made git
 stop running every one of them, and wrote a starter gate with no layers -- a repo that
 went from gated to ungated while the install said "installed". Now an install that would

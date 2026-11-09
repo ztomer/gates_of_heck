@@ -1,6 +1,6 @@
 //! The whole changelog agrees with the tags (`goh changelog-tags`, GOH.CHANGELOGALL).
 //!
-//! Lifted from zinc's `tools/check_changelog_tags.py` (ZN.CLHEAD, zinc 421acfb): zinc's v5.11.11
+//! Lifted from a private consumer's `tools/check_changelog_tags.py` (ZN.CLHEAD, a private consumer at 421acfb): a private consumer's v5.11.11
 //! stanza lost its `## v5.11.11` heading, the line read ` — a socket appears only once it listens
 //! ... (2026-11-08)`, so its entries sat inside v5.12.0's body and nothing said so.
 //! `tools/release-kit/changelog_cut.py check` asks only about the stanza being tagged, at release
@@ -51,7 +51,7 @@ static TAGNAME: LazyLock<Regex> = LazyLock::new(|| {
 });
 
 const FIX: &str = "    Every release tag has its `## vX` heading, every entry sits under one, and a heading names a\n    \
-     tag (zinc's v5.11.11 lost its heading and its entries read as v5.12.0's, ZN.CLHEAD). Restore\n    \
+     tag (a private consumer's v5.11.11 lost its heading and its entries read as v5.12.0's, ZN.CLHEAD). Restore\n    \
      the `## vX` on an orphan tail; add the stanza a tag lacks, or name the version a heading\n    \
      wrongly carries.\n";
 

@@ -16,8 +16,8 @@
 #   3. writes starter tools/gate.sh and .gatesrc if absent (never overwrites)
 #
 # A LOCALLY MODIFIED hook is refused by name and left exactly as it is; every OTHER
-# hook still installs. Refusing the whole run instead left CadGoose, salary and
-# zinc-core with no commit-msg, post-rewrite or pre-applypatch at all (2026-10-14) --
+# hook still installs. Refusing the whole run instead left CadGoose and two private
+# repos with no commit-msg, post-rewrite or pre-applypatch at all (2026-10-14) --
 # a repo pays for one hand-edited hook with every gate it never asked for. The exit
 # code is still non-zero while a refusal stands, so a partial install is never
 # reported as a complete one.
@@ -60,9 +60,9 @@ target="$(cd "$target" && pwd)"
 git -C "$target" rev-parse --show-toplevel >/dev/null 2>&1 \
     || die "$target is not inside a git repo"
 
-# HOOKS ANOTHER MANAGER OWNS ARE NEVER SILENTLY BYPASSED (zinc, 2026-10-06). Setting
+# HOOKS ANOTHER MANAGER OWNS ARE NEVER SILENTLY BYPASSED (a private consumer, 2026-10-06). Setting
 # core.hooksPath makes git stop running .git/hooks -- the pre-commit framework's home -- and a
-# different hooksPath belongs to husky or a repo's own runner. zinc went from gated to ungated
+# different hooksPath belongs to husky or a repo's own runner. A private consumer went from gated to ungated
 # while this script said "installed". So this is asked BEFORE anything is written, and the answer
 # is a refusal naming what would stop running, unless --replace-hooks says to take them over.
 # tests/test_install_foreign_hooks.py

@@ -1,7 +1,7 @@
 """lib/gate_slot.sh -- at most N gates run their heavy steps at once, machine-wide.
 
 2026-10-18: several sessions pushed at once with no limit, and two pushes failed on the box's load
-rather than on their changes (zinc killed mid-test, exit 144; games' Release rebuild out of its
+rather than on their changes (a private consumer killed mid-test, exit 144; games' Release rebuild out of its
 900 s step limit at a 15-minute load average of 49.6). These tests run the real shell library and
 the real push gate against a private slot directory (conftest's host_locks fixture), with fake
 steps that wait on files, never on the clock:
@@ -137,15 +137,15 @@ def holder_line(waiter: Gate, repo: str, pid: int, today: str) -> str:
 
 def test_the_wait_names_each_holder_and_its_end_says_how_long(tmp_path):
     env = _env(tmp_path, 1)
-    holder = Gate(tmp_path, "zinc-like", env)
+    holder = Gate(tmp_path, "consumer-like", env)
     try:
         holder.wait_for("TAKEN")
         waiter = Gate(tmp_path, "games-like", env, body="true")
         # The date the holder stamped when it took the slot, read as close to the stamp as
         # the test can: the needle carries it, so the wait cannot miss it.
         today = time.strftime("%Y-%m-%d")
-        line = holder_line(waiter, "zinc-like", holder.proc.pid, today)
-        assert "zinc-like" in line, line  # the repo
+        line = holder_line(waiter, "consumer-like", holder.proc.pid, today)
+        assert "consumer-like" in line, line  # the repo
         assert f"pid {holder.proc.pid}" in line, line  # the holder's shell
         assert "since " + today in line, line  # since when
         time.sleep(1.2)

@@ -1,7 +1,7 @@
 """tools/load.py refuses to starve another session's gate that is in flight (GOH.LOADX).
 
 THE CLASS (2026-11-01). The load tool refused a SECOND load experiment, and nothing else: a divoom
-repro ran 15 spinners twice (load average 137 on 16 cores) while zinc's pre-push gate -- which
+repro ran 15 spinners twice (load average 137 on 16 cores) while a private consumer's pre-push gate -- which
 fails past 30 minutes -- was running beside it. One experiment's load is another session's red
 gate, and the gate's log blames nothing.
 
@@ -41,7 +41,7 @@ def _gates() -> Path:
 
 
 def _register(
-    pid: int, stage: str = "pre-push", repo: str = "/Users/someone/Projects/zinc"
+    pid: int, stage: str = "pre-push", repo: str = "/Users/someone/Projects/consumer"
 ) -> Path:
     entry = _gates() / str(pid)
     entry.write_text(f"{stage}\n{repo}\n")
@@ -72,7 +72,7 @@ def test_a_live_gate_in_flight_is_refused_and_named(tmp_path: Path) -> None:
         result = _run(tmp_path)
         assert result.returncode == EXIT_GATE, (result.returncode, result.stdout, result.stderr)
         said = result.stderr
-        assert "pre-push" in said and "/Users/someone/Projects/zinc" in said, said
+        assert "pre-push" in said and "/Users/someone/Projects/consumer" in said, said
         assert f"pid {gate.proc.pid}" in said and "running" in said, said
         assert "--wait" in said and "--despite-gate" in said, said
         assert "spinner(s) started" not in result.stdout, "it burned before it refused"
@@ -167,7 +167,7 @@ def test_an_expired_wait_names_what_it_waited_for_and_the_load(tmp_path: Path) -
         assert result.returncode == EXIT_GATE, (result.returncode, result.stderr)
         said = result.stderr
         assert f"{ICON_ERR} load: --wait-max of 1s expired" in said, said
-        assert f"pid {gate.proc.pid}" in said and "/Users/someone/Projects/zinc" in said, said
+        assert f"pid {gate.proc.pid}" in said and "/Users/someone/Projects/consumer" in said, said
         assert "load average" in said and "core(s)" in said, said
     finally:
         load_kit.reap()
@@ -201,7 +201,7 @@ def test_the_wait_does_not_queue_behind_gates_that_arrive_later(tmp_path: Path) 
 def test_a_hook_that_dies_leaves_no_live_entry(tmp_path: Path) -> None:
     """The real registration, SIGKILLed before its cleanup: the file stays, the gate does not."""
     (tmp_path / "load").mkdir()
-    repo = tmp_path / "zinc"
+    repo = tmp_path / "consumer"
     repo.mkdir()
     killed = subprocess.run(
         ["bash", "-c", f'. "{BENCH}"; bench_lock_join pre-commit; echo "$BENCH_LOCK_ENTRY"; kill -9 $$'],

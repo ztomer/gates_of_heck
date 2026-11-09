@@ -1,6 +1,6 @@
 """A hook's GIT_DIR must never reach git run on ANOTHER repository.
 
-zinc, 2026-09-27: git hands a hook GIT_DIR (and GIT_INDEX_FILE). Under a LINKED worktree
+A private consumer, 2026-09-27: git hands a hook GIT_DIR (and GIT_INDEX_FILE). Under a LINKED worktree
 GIT_DIR is absolute -- `<main>/.git/worktrees/<name>` -- so any child `git init <tmpdir>` that
 inherits it re-initialises the REAL repository instead, and with extensions.worktreeConfig on
 writes `core.bare = true` into the shared config. Every checkout of the repo then fails with

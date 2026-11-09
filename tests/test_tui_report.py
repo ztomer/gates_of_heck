@@ -36,12 +36,12 @@ from conftest import REPO_ROOT
 
 HEADER = "all 1 gate slots are held -- waiting for one (GOH_GATE_SLOTS=1, /tmp/slots):"
 DETAILS = (
-    "slot-0: zinc (pid 4213, since 2026-10-21 05:07:12, 3s)",
+    "slot-0: consumer (pid 4213, since 2026-10-21 05:07:12, 3s)",
     "slot-1: games (pid 4214, since 2026-10-21 05:07:13, 2s)",
 )
 EXPECTED = (
     "→ all 1 gate slots are held -- waiting for one (GOH_GATE_SLOTS=1, /tmp/slots):\n"
-    "· slot-0: zinc (pid 4213, since 2026-10-21 05:07:12, 3s)\n"
+    "· slot-0: consumer (pid 4213, since 2026-10-21 05:07:12, 3s)\n"
     "· slot-1: games (pid 4214, since 2026-10-21 05:07:13, 2s)\n"
 )
 

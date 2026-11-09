@@ -1,7 +1,7 @@
 """The goh gates in flight on this machine: who is running a commit or push gate right now.
 
 THE CLASS (GOH.LOADX, 2026-11-01). tools/load.py refused a second LOAD experiment and nothing
-else: a divoom repro ran 15 spinners twice (load average 137 on 16 cores) while zinc's pre-push
+else: a divoom repro ran 15 spinners twice (load average 137 on 16 cores) while a private consumer's pre-push
 gate -- which fails past 30 minutes -- was running beside it. Deliberate load is a cost charged to
 every other session's gate, so the thing that makes it has to be able to ask who is paying.
 
@@ -242,7 +242,7 @@ def refusal(hold: Hold, count: int, waited: bool, wait_s: float, ncpu: int) -> s
         f"the machine: {load_reading(ncpu)}",
         (
             f"{count} spinner(s) would starve it, and a starved gate fails on its own clock "
-            "(zinc's pre-push, 2026-11-01, at load 137 on 16 cores) with nothing naming the load."
+            "(a private consumer's pre-push, 2026-11-01, at load 137 on 16 cores) with nothing naming the load."
         ),
         (
             "Pass --wait (bounded by --wait-max) to start once the gates ahead are done, or "

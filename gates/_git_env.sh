@@ -5,7 +5,7 @@
 # absolute, so anything the hook spawns that runs git on ANOTHER repository acts on this one: a
 # consumer suite's scratch `git init` wrote core.bare=true into the shared config, its scratch
 # commit landed on the committing branch and its `stash` on the shared stack (media_server,
-# 2026-10-08); before that, zinc's pre-push (2026-09-27). Sourced by gates/_from_head.sh (so by
+# 2026-10-08); before that, a private consumer's pre-push (2026-09-27). Sourced by gates/_from_head.sh (so by
 # every gate), gates/_goh_bin.sh, gates/_proven.sh and
 # hooks/pre-commit. (scripts/build-goh.sh keeps its own inline unset: it must run from a tree with
 # no gates/ at all, tests/test_goh_build_publish.py.)

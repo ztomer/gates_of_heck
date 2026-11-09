@@ -2,7 +2,7 @@
 
 gates_of_heck is PUBLIC, and its estate seeds (`release_quiet_seed.json`, `crates_behind_seed.json`
 and the rest, `crates/goh/src/estate_seed.rs`) named the owner's private repositories:
-`crates_behind_seed.json` published `Finance/zinc` and its count. A seed entry about a repository
+`crates_behind_seed.json` published a private consumer's nested Cargo workspace and its count. A seed entry about a repository
 now lives in THAT repository's own tracked seed file, or in the owner's private store
 (`GOH_SEED_DIR`, else `$XDG_STATE_HOME/goh/seeds`), never in another repository's tree:
 
@@ -126,7 +126,7 @@ def test_one_entry_in_both_homes_is_refused(repo: Path, tmp_path: Path) -> None:
 
 
 def test_gates_of_heck_tracks_only_its_own_estate_entries() -> None:
-    """The public tree names no other repository's seed entry (the published `Finance/zinc`)."""
+    """The public tree names no other repository's seed entry (the published private nested workspace)."""
     own = _root(REPO_ROOT)
     tracked = set(git(REPO_ROOT, "ls-files").splitlines())
     for name in ESTATE_SEEDS:

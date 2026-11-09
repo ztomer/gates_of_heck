@@ -1,7 +1,7 @@
 """Does a command take a MACHINE-WIDE lock? -- the house's ONE answer, for `tools/load.py` and the
 Bash guard that reads a `load.py` command line before it runs (GOH.LOADLOCK, 2026-11-08).
 
-THE CLASS. `load.py --max 25m --oversubscribe 32 -- taskpolicy -b cargo test -q -p taxes-cli
+THE CLASS. `load.py --max 25m --oversubscribe 32 -- taskpolicy -b cargo test -q -p app-cli
 --test app_check` starved cargo to 0.36 s of CPU in 21 minutes -- but cargo had FIRST taken
 `~/.cargo/.package-cache`, and nine other agents' cargo processes across the machine blocked on
 that lock for 15-20 minutes (sampled: the holder in read_manifest, the waiters in

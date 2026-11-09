@@ -101,7 +101,7 @@ def test_goh_step_dumps_failing_output_and_exits(tmp_path):
 
 
 def test_goh_step_names_the_failures_buried_above_the_tail(tmp_path):
-    """Contract property 2, sharpened (zinc E.1c, 2026-09-21): a failing case
+    """Contract property 2, sharpened (a private consumer's E.1c, 2026-09-21): a failing case
     that scrolled 200 lines above the tail is still NAMED, in a failure block
     printed before the tail — nine `swift test` failures out of 173 had left a
     red gate with no test name in it, and the log is deleted at exit."""

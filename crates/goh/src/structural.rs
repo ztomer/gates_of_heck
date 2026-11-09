@@ -199,6 +199,7 @@ pub fn run(staged: bool, full: bool, keep_going: bool) -> i32 {
     step!(lockver::step());
     step!(pyformat::step(&cfg, staged));
     step!(killname::step(&cfg, staged));
+    step!(crate::privnames::step(&repo, &cfg, staged));
     step!(unreaped::step(&cfg, staged));
     step!(late_steps(&repo, &files, &checks, &cfg, staged, &tally));
     // Last: every scanner above recorded what it read, and this judges each against its floor

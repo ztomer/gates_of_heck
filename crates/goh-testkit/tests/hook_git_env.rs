@@ -1,4 +1,4 @@
-//! A hook's `GIT_DIR` must never reach a fixture's git (zinc, 2026-09-27).
+//! A hook's `GIT_DIR` must never reach a fixture's git (a private consumer, 2026-09-27).
 //!
 //! Under a LINKED worktree a hook's `GIT_DIR` is `<main>/.git/worktrees/<name>`;
 //! a fixture `git init <tmp>` that inherits it re-initialises the REAL repo

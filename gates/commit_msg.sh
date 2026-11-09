@@ -27,7 +27,7 @@ rc=0
 [ -z "$class_on" ] || bash "$HERE/goh.sh" commit-class "$1" || rc=1
 [ -z "$red_on" ] || bash "$HERE/goh.sh" red-run "$1" || rc=1
 # The repo's own message layer, as tools/gate.sh is its tree layer: a repo whose messages carry a
-# rule of its own (Finance reads each one for a real figure or name) puts it in tools/commit_msg.sh,
+# rule of its own (a private consumer reads each one for a real figure or name) puts it in tools/commit_msg.sh,
 # and the stock hook runs it -- never a hand-edited hook, which a reinstall overwrites and doctor
 # reports as drift. Absent, nothing runs; present and red, the commit is refused.
 [ ! -f "$root/tools/commit_msg.sh" ] || bash "$root/tools/commit_msg.sh" "$1" || rc=1

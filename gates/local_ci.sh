@@ -286,7 +286,7 @@ run_step() {
 
 # THE SCHEDULER (BACKLOG P2). GOH_CI_JOBS=N runs up to N steps at once; unset is 1, i.e. serial,
 # because concurrency is a repo's DECLARATION, never an inference -- two steps that write one file
-# (the Finance `*.out` class) are only safe apart, and nothing here can see that. What a repo
+# (the `*.out` class) are only safe apart, and nothing here can see that. What a repo
 # declares beside the count is the RESOURCE TAG: `[db,screen] cmd` -- steps sharing a tag never
 # overlap. (A tag cannot hold a colon: the colon separates steps. Write `cargo=crates/x`.)
 #

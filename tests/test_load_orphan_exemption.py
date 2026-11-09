@@ -1,6 +1,6 @@
 """The RECORDED EXEMPTIONS: the name lookups the house's kill-by-name rule allows.
 
-THE RULE. A name is not an owner -- zinc's harness SIGKILLed another session's browser with a
+THE RULE. A name is not an owner -- a private consumer's harness SIGKILLed another session's browser with a
 `pkill -9 -f` in the middle of a reply (2026-09-23) -- so the house forbids killing by name
 (`goh kill-by-name`), and an exemption is a RECORD: one file, one exact call, a reason, and a
 stale entry fails.

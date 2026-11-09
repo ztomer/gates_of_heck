@@ -56,7 +56,7 @@ phase, and each is one landing.
 - **GOH.ROADMAPREQ** (queue: GOH.ROADMAPREQ) A repo with no `GOH_ROADMAP` still passes with a warning.
   Seed the remaining repos (koffee_big, ZoneWM including retiring `check_stale_backlog.py`,
   divoom-control, monitor, scripts, servers/media_server including its stale History sentence,
-  Finance/zinc, the 8 peer repos), then turn the warning red.
+  a private nested workspace, the 8 peer repos), then turn the warning red.
   **Done when:** every gated repo declares `GOH_ROADMAP` (a path or `none`); an unset one is red, proven
   on a fixture.
 - **LOOP.INSTALLED2** (queue: LOOP.INSTALLED2) The goh part: `GOH_INSTALLS` is a `.gatesrc` key used by 8

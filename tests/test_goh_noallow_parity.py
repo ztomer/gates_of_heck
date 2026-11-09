@@ -161,7 +161,7 @@ def test_no_allow_agrees(goh: Path, tmp_path: Path, name: str, staged: bool) -> 
     args = ["--staged"] if staged else []
     if name in LITERAL_DIVERGENCE:
         # A deliberate divergence (2026-10-12, BACKLOG 6.4): the reference judged a suppression
-        # spelled inside a string literal as one, which flagged a test fixture writing Rust (zinc
+        # spelled inside a string literal as one, which flagged a test fixture writing Rust (a private consumer
         # `crates/xtask/src/walk_tests.rs:28`). Text inside a literal is not an attribute.
         assert run_goh(goh, repo, *args)[0] == 0 and run_py(repo, *args)[0] == 1, name
         return

@@ -18,7 +18,7 @@ push only the item's repo, and skills reached 17 commits ahead unseen. Asked loc
 --count @{u}..HEAD`: no fetch, no network), every repo at once, each bounded by AHEAD_TIMEOUT_S; a
 repo with no upstream, or one that does not answer in time, says nothing (tests/test_estate_ahead.py).
 
-The state is a day old by design, and a lock can move on in that day (GOH.EA3: zinc's pulldown-cmark
+The state is a day old by design, and a lock can move on in that day (GOH.EA3: a private consumer's pulldown-cmark
 0.13.4 -> 0.13.6 landed after the run, and this hook still said the next push was red). So before
 any lock is called red, the lock is RE-READ as it is now: one that no longer carries any crate
 version the run named is said to be "fixed since the run", never red. A lock that is gone or will

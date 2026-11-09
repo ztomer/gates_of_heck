@@ -108,7 +108,7 @@ Pin: this paragraph (no test can prove a negative trust boundary).
 A hook exports `GIT_DIR`/`GIT_INDEX_FILE`; under a linked worktree
 `GIT_DIR` is absolute, so an inheriting `git init <tmp>` re-initialises
 the REAL repo and writes `core.bare = true` into its shared config
-(zinc, 2026-09-27). Every git call on a skeleton, fixture or export —
+(a private consumer, 2026-09-27). Every git call on a skeleton, fixture or export —
 and every process run inside one — drops git's own list
 (`git rev-parse --local-env-vars`): `_gitutil.foreign_repo_env` in
 Python (`check_empty_scope`, `check_probes_pass`), `goh_unbind_git`

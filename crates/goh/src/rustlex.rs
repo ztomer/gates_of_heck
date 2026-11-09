@@ -6,7 +6,7 @@
 //! `"https://..."` ended the line there; strings were blanked by a one-line
 //! regex that knew nothing of raw strings, character literals or a string
 //! carried onto the next line. So `goh no-allow` flagged `#[allow(...)]`
-//! written inside a test fixture's string (zinc `crates/xtask/src/walk_tests.rs:28`,
+//! written inside a test fixture's string (a private consumer's `crates/xtask/src/walk_tests.rs:28`,
 //! 2026-10-12). One lexer answers all of it, with its state carried across
 //! lines: nestable block comments, `//` tails, `"..."` with escapes (and
 //! `b"`/`c"`), raw strings `r#"..."#` at any hash count, and character

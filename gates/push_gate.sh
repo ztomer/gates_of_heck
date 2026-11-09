@@ -22,7 +22,7 @@
 #
 # A RUN OWNS ONE DIRECTORY: <export root>/<repo>-<hash>/<repo>, with `.owner` (pid + start time) beside
 # the tree. Measured 2026-10-05: the export root held a three-day-old worktree and 230 `*.out` files.
-# The worktree sat directly in the shared root, so whatever a gate wrote BESIDE its tree (Finance's
+# The worktree sat directly in the shared root, so whatever a gate wrote BESIDE its tree (a private consumer's
 # tests write "$HERE.out") outlived every run; and the promise that the next run's `git worktree
 # prune` cleans up after a SIGKILL was false -- prune forgets a worktree whose DIRECTORY is gone, and
 # a killed run's directory is not gone. Now cleanup removes the whole run directory on every exit
@@ -56,7 +56,7 @@ set -euo pipefail
 # helper pre-commit uses too). Pushed from a LINKED worktree, git hands this hook
 # GIT_DIR=<main>/.git/worktrees/<name>: inherited, it points every git call in the export at the
 # PUSHING checkout, and a test that runs `git init <tmp>` re-initialises the real repository and
-# writes core.bare=true into its shared config (zinc, 2026-09-27); `git -C "$GOH" status` below
+# writes core.bare=true into its shared config (a private consumer, 2026-09-27); `git -C "$GOH" status` below
 # listed the pusher's files against the gates checkout as uncommitted gate source.
 goh_hook_unbind || exit $?
 
@@ -369,7 +369,7 @@ while read -r local_ref local_sha _remote_ref _remote_sha; do
     # theory is to gate where the tools were calibrated: a directory beside the user's checkouts.
     # `pwd -P` besides, so a symlinked component can never be the difference.
     # A MACHINE-WIDE SLOT before the heavy work (lib/gate_slot.sh). Several sessions pushing at once
-    # had no limit: zinc's gate was killed mid-test and games' Release rebuild ran out its 900 s step
+    # had no limit: a private consumer's gate was killed mid-test and games' Release rebuild ran out its 900 s step
     # limit at a load average of 49.6 (2026-10-18) -- failures of the box, not of the change. Taken
     # once per push, before the export, and held to exit; every step ceiling starts inside the gate,
     # so the wait is reported here and charged to no step.

@@ -279,7 +279,7 @@ def test_the_session_hook_is_silent_about_ungated_when_there_are_none(tmp_path, 
 
 
 def _fixed_since(state: Path, estate: Path, *, new: bool) -> None:
-    """The run named the planted crate in hit/Cargo.lock; then the lock moved on (GOH.EA3): zinc's
+    """The run named the planted crate in hit/Cargo.lock; then the lock moved on (GOH.EA3): a private consumer's
     pulldown-cmark 0.13.4 -> 0.13.6 landed after the daily run, and the hook still said red."""
     if new:
         data = json.loads(state.read_text())

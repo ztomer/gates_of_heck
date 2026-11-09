@@ -10,7 +10,7 @@ hooks it never had (6.20, 2026-10-14):
   * **A hook is locally modified.** That ONE hook is refused, by name, and left byte-for-byte
     alone; every other hook still installs; the exit code is non-zero so the partial install is
     never read as a complete one. Refusing the whole run here was the bug: one hand-edited
-    `pre-commit` cost CadGoose, salary and zinc-core their `commit-msg`, `post-rewrite` and
+    `pre-commit` cost CadGoose and two private repos their `commit-msg`, `post-rewrite` and
     `pre-applypatch` as well.
 
 The class the rest of this file still guards is "write-as-you-go, then refuse": the hook loop

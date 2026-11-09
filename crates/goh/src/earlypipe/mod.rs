@@ -21,7 +21,7 @@
 //! bodies are not code (`lex.rs`).
 //!
 //! WIRING: the structural step runs in every repo, on by default (BACKLOG 6.9; it used to name
-//! existing findings at full scope without failing, and Finance carried 16 that way). At
+//! existing findings at full scope without failing, and a private consumer carried 16 that way). At
 //! `--staged` it refuses a NEW finding -- one the file's HEAD blob does not already carry, so the
 //! commit that adds a racy pipe can still be changed. At full scope each file's findings are
 //! judged against `early_exit_pipe_seed.json`, a per-file count that may only fall

@@ -9,7 +9,7 @@
 # WHY PATH IS NOT THE ANSWER. A swiftly toolchain on PATH shadows Xcode's:
 # on 2026-09-16 `swift build` under swiftly 6.3.3 rejected the
 # `-target-arch-variant` flag Xcode 6.4's driver emits and could not find
-# `SwiftData` (no platform SDK), so ZincTender's pre-push gate and its
+# `SwiftData` (no platform SDK), so a private Swift app's pre-push gate and its
 # packaging script were "environmentally broken" for three days and a
 # corrected rules table never shipped — while `/usr/bin/swift build` on the
 # same tree took 14 s. The platform SDK lives with Xcode's toolchain, and

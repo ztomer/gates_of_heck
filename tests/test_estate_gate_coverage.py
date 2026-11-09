@@ -1,7 +1,7 @@
 """The estate audit's verdict is the one the repo's own push gate would reach (queue GOH.EA2).
 
 `scripts/estate_audit.py` said "the next push of <lock> is red" for two locks whose push was not:
-`Finance/zinc` gates with cargo-deny, whose `deny.toml` ignores what cargo-audit reported, and
+a private consumer's nested Cargo workspace gates with cargo-deny, whose `deny.toml` ignores what cargo-audit reported, and
 `monitor/fuzz/Cargo.lock` is a workspace no gate step of monitor audits at all. The coverage is read
 from the gate (`lib/gate_coverage.py`): a lock no step audits is NOT AUDITED AT PUSH, a lock a
 cargo-deny step audits is judged by cargo-deny, and a step goh cannot read makes the lock
@@ -109,8 +109,8 @@ sys.exit(1 if {verdict!r} == "error" else 0)
 
 
 def _deny_repo(root: Path) -> Path:
-    """zinc's shape: no rust_gate.sh, the push runs `make ci`, whose recipe runs cargo-deny."""
-    repo = _repo(root, "zinc", "goh-fixture-crate", gated=False)
+    """A private consumer's shape: no rust_gate.sh, the push runs `make ci`, whose recipe runs cargo-deny."""
+    repo = _repo(root, "consumer", "goh-fixture-crate", gated=False)
     _add(
         repo,
         {

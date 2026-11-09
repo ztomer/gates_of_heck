@@ -1,7 +1,7 @@
 """A load experiment refuses a build tool that takes a MACHINE-WIDE lock (GOH.LOADLOCK, 2026-11-08).
 
 THE CLASS. An agent ran `tools/load.py --max 25m --oversubscribe 32 -- taskpolicy -b cargo test -q
--p taxes-cli --test app_check`. The starved cargo got 0.36 s of CPU in 21 minutes, but had first
+-p app-cli --test app_check`. The starved cargo got 0.36 s of CPU in 21 minutes, but had first
 taken `~/.cargo/.package-cache`, so nine other agents' cargo processes across the machine blocked on
 that lock for 15-20 minutes (sampled: the holder in read_manifest, the waiters in
 CacheLocker::lock_exclusive). A load experiment whose command takes a machine-wide lock under
@@ -37,7 +37,7 @@ GUARD = REPO_ROOT / "hooks" / "claude" / "discard_guard.py"
 pytestmark = pytest.mark.xdist_group("load_orphans")
 
 LOCKING = [
-    ["cargo", "test", "-q", "-p", "taxes-cli", "--test", "app_check"],
+    ["cargo", "test", "-q", "-p", "app-cli", "--test", "app_check"],
     ["cargo", "build"],
     ["cargo", "run", "--release"],
     ["cargo", "check"],

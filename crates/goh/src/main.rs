@@ -56,6 +56,7 @@ pub mod pathfilter;
 pub mod platform;
 pub mod pluralhedge;
 pub mod prefetch;
+pub mod privnames;
 pub mod proven;
 pub mod provenance;
 pub mod pyformat;
@@ -428,6 +429,7 @@ fn run_ported(command: Commands) -> Result<i32, Box<Commands>> {
         Commands::ReleaseQuiet(a) => paths(a.exclude, |x| relquiet::run_command(a.staged, x)),
         Commands::MktempPortable(a) => paths(a.exclude, |x| mktempport::run_command(a.staged, x)),
         Commands::PluralHedge(a) => paths(a.exclude, |x| pluralhedge::run_command(a.staged, x)),
+        Commands::PrivateNames(a) => privnames::run_command(a.staged),
         Commands::ChangelogTags(a) => changelog_tags::run_command(a.staged),
         Commands::CheckoutCredentials(a) => checkoutcreds::run_command(a.staged),
         Commands::TapWrites(a) => tapwrite::run_command(a.staged),

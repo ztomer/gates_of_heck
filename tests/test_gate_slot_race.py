@@ -49,7 +49,7 @@ def test_the_report_is_one_write_and_the_reader_cannot_see_it_in_pieces(tmp_path
     for n in range(TRIALS):
         work = tmp_path / f"work-{n}"
         work.mkdir()
-        trial = Trial(instrumented, work, poll=0.001, holder_name="zinc-like", pause=PAUSE_S)
+        trial = Trial(instrumented, work, poll=0.001, holder_name="consumer-like", pause=PAUSE_S)
         try:
             _polls, seen, failed, failed_fixed = trial.run()
         finally:
@@ -62,8 +62,8 @@ def test_the_report_is_one_write_and_the_reader_cannot_see_it_in_pieces(tmp_path
             # E39's reading still works: the wait is for the line, and the text it returns
             # carries every substring the assertions read.
             today = time.strftime("%Y-%m-%d")
-            line = holder_line(trial, "zinc-like", trial.holder_pid(), today)
-            assert "zinc-like" in line, line
+            line = holder_line(trial, "consumer-like", trial.holder_pid(), today)
+            assert "consumer-like" in line, line
             assert f"pid {trial.holder_pid()}" in line, line
             assert "since " + today in line, line
     assert sightings == 0, (
@@ -87,7 +87,7 @@ def test_the_probe_can_still_see_the_old_two_write_report(tmp_path):
     instrumented = instrumented_copy(REPO_ROOT, tmp_path / "legacy", PAUSE_S, shape="legacy")
     work = tmp_path / "work"
     work.mkdir()
-    trial = Trial(instrumented, work, poll=0.001, holder_name="zinc-like", pause=PAUSE_S)
+    trial = Trial(instrumented, work, poll=0.001, holder_name="consumer-like", pause=PAUSE_S)
     try:
         trial.start()
         assert trial.header_without_line(10.0), (

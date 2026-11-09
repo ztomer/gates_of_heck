@@ -266,7 +266,7 @@ pub fn step_home_paths(
     use crate::homepaths::ScopeVerdict;
     // 7b. Hard-coded home paths (opt-in per repo). A location under
     // someone's HOME in a shipped script or binary works on one machine at
-    // one moment — the salary CLI outage of 2026-09.
+    // one moment — a private CLI's outage of 2026-09.
     if !gatesrc::opt_in(cfg, "GOH_NO_HOME_PATHS") {
         return None;
     }

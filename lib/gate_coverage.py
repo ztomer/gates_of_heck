@@ -1,7 +1,7 @@
 """Which tracked Cargo.lock a repo's PUSH gate audits, and with which tool -- read from the gate.
 
 The estate audit (`scripts/estate_audit.py`) told every session "the next push of <lock> is red",
-and two locks disproved it on 2026-11-01. `Finance/zinc` gates with cargo-deny, whose `deny.toml`
+and two locks disproved it on 2026-11-01. A private consumer's nested Cargo workspace gates with cargo-deny, whose `deny.toml`
 ignores RUSTSEC-2024-0370 and whose `[graph] targets` leave glib out: its push is red for neither,
 and the audit, running cargo-audit against no ignore list, said it was red for both. And
 `monitor/fuzz/Cargo.lock` is its own workspace that no gate step of monitor audits: the claim

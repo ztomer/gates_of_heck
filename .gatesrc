@@ -26,6 +26,10 @@ GOH_SKILLS_CORPUS=1
 # one `legitimate` entry.
 GOH_NO_KILL_BY_NAME=1
 
+# This tree is public: no private repository is named in it (`goh private-names`, GOH.FINANCENAMES).
+# The list of names is the owner's private store's `private_names.txt`, never this tree.
+GOH_NO_PRIVATE_NAMES=on
+
 # No early-exit consumer on a pipe under pipefail (`goh early-exit-pipe`). The step runs in every
 # repo with the ratchet open (a NEW racy pipe refused at commit); this repo's tree is clean, so it
 # closes the ratchet and every finding fails.

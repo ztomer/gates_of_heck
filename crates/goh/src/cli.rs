@@ -415,6 +415,8 @@ pub enum Commands {
     MktempPortable(ExcludeStagedArgs),
     /// Fail on a hedged plural (`file(s)`, `entr(ies)`) in a string literal; count with counted/noun.
     PluralHedge(ExcludeStagedArgs),
+    /// Fail on a private repository's name (the private store's list) in this tracked tree.
+    PrivateNames(StagedArgs),
     /// Fail when the whole changelog and the `v*` tags disagree (GOH.CHANGELOGALL).
     ChangelogTags(StagedArgs),
     /// Fail on an `actions/checkout` step that leaves the job token in `.git/config`:

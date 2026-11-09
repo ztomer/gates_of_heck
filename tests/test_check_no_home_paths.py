@@ -1,6 +1,6 @@
 """checks/check_no_home_paths.py — no hard-coded home paths in a tracked tree.
 
-The class behind the salary CLI outage (2026-09): a location under someone's
+The class behind a private CLI's outage (2026-09): a location under someone's
 HOME written into a script, a shell function, a binary or a doc. The gate
 must go RED on each of the four shapes, honour `path-ok: <reason>` and refuse
 a bare marker, honour --exclude, and refuse to report clean over zero files.
@@ -34,9 +34,9 @@ def test_clean_tree_passes(repo):
 def test_each_shape_is_red_and_named(repo):
     shapes = {
         "a.swift": '"/Users/ztomer/.cache/cargo-target/release/lib.dylib"',
-        "b.sh": 'FFI="$HOME/Projects/Finance/ZincTender/_rescued_taxes_ffi"',
+        "b.sh": 'FFI="$HOME/Projects/private/app/_rescued_ffi"',
         "c.sh": 'FFI="${HOME}/Projects/x"',
-        "d.md": "calls the binary with `--config-dir ~/Projects/salary`",
+        "d.md": "calls the binary with `--config-dir ~/Projects/private-cli`",
         "e.py": 'p = "/home/deploy/app/config.yaml"',
     }
     for name, line in shapes.items():
@@ -78,8 +78,8 @@ def test_bare_marker_suppresses_nothing(repo):
 
 
 def test_exclude_skips_matching_paths_only(repo):
-    write(repo, "docs/history.md", "it used to run from ~/Projects/salary\n")
-    write(repo, "src/x.sh", "cd ~/Projects/salary\n")
+    write(repo, "docs/history.md", "it used to run from ~/Projects/private-cli\n")
+    write(repo, "src/x.sh", "cd ~/Projects/private-cli\n")
     stage(repo, "docs/history.md", "src/x.sh")
     r = run_check(repo, "--staged", "--exclude", "^docs/")
     assert r.returncode != 0
