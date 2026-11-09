@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## v0.82.2 -- a test suite a gate launches never inherits git's repository variables
+
 * **A test suite a gate launches never inherits git's repository variables (GOH.HOOKGITENV).**
   A gate that binds the commit's index for its own git (`goh_bind_hook_index`, the documented use
   under `commit -a` / `commit <paths>`) handed `GIT_INDEX_FILE` to the pytest it ran next, and every
