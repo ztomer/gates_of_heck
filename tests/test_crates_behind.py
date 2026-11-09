@@ -14,6 +14,7 @@ import subprocess
 from pathlib import Path
 
 import pytest
+from _fast_git import fast_init
 from conftest import REPO_ROOT, run_goh
 from test_rust_gate import CURRENT, LIB_CLEAN, _git, mkcrate, run_script
 
@@ -41,7 +42,7 @@ def _held_back(tmp: Path) -> Path:
         )
         if r.returncode != 0:
             pytest.skip(f"registry unreachable ({' '.join(argv)}): {r.stderr.strip()[:200]}")
-    _git(tmp, "init", "-q")
+    fast_init(tmp)
     _git(tmp, "add", "-A")
     _git(tmp, "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-q", "-m", "fixture")
     return tmp
