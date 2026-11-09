@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## v0.85.0 -- a release step never hides its output; BSD-only mktemp and a changelog out of step with its tags are named
+
 * **A release step that can fail never hides its output: `goh release-quiet` (GOH.RELHIDE).**
   monitor's v0.69.2 release stopped at "cargo test failed -- nothing tagged" with the test output
   sent to /dev/null (fixed there in 2a0a3ce with `step()`). A structural step in every repo now
