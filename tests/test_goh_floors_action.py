@@ -319,3 +319,32 @@ def test_the_cache_is_keyed_by_version_and_sha256(tmp_path: Path) -> None:
     assert "uses: actions/cache@" in action
     assert "key: goh-floors-${{ steps.key.outputs.shellcheck }}" in action
     assert 'GOH_FLOORS_CACHE="$RUNNER_TEMP/goh-floors/cache"' in action
+
+
+# GOH.GATEHONEST (4): on a runner whose shellcheck already meets the floor nothing is downloaded,
+# so the cache dir is never made, and actions/cache's post step warned "Path Validation Error" on
+# every run. floors.sh says whether a release is needed, and the cache step runs only then.
+def test_a_runner_at_the_floor_needs_no_release(tmp_path: Path) -> None:
+    sc = _shellcheck(tmp_path / "have", FLOOR["shellcheck"])
+    done = _run("needs-release", path=f"{sc.parent}:{BASE_PATH}")
+    assert done.returncode == 0, done.stderr
+    assert done.stdout.strip() == "false"
+
+
+def test_a_runner_below_the_floor_or_without_one_needs_the_release(tmp_path: Path) -> None:
+    sc = _shellcheck(tmp_path / "have", "0.9.0")
+    below = _run("needs-release", path=f"{sc.parent}:{BASE_PATH}")
+    assert below.returncode == 0 and below.stdout.strip() == "true", below.stderr
+    none = _run("needs-release", path=BASE_PATH)
+    assert none.returncode == 0 and none.stdout.strip() == "true", none.stderr
+
+
+def test_the_cache_step_runs_only_when_a_release_is_needed() -> None:
+    action = (ACTION / "action.yml").read_text()
+    assert 'floors.sh" needs-release)' in action
+    assert 'echo "needed=$needed" >> "$GITHUB_OUTPUT"' in action
+    cache = action[action.index("uses: actions/cache@") :]
+    head = action[: action.index("uses: actions/cache@")].rsplit("- ", 1)[1]
+    assert "if: steps.key.outputs.needed == 'true'" in head + cache.split("\n    - ", 1)[0], (
+        "the cache step runs on a runner that downloads nothing"
+    )

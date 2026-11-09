@@ -125,6 +125,21 @@ cache_key() {
     printf 'shellcheck-%s-%s-%s\n' "$version" "$plat" "$sum"
 }
 
+# needs_release -- `true` when this runner's shellcheck is missing or below the floor (a release
+# will be installed, so there is a tarball to cache), else `false`. The action's cache step runs
+# only on `true`: with nothing downloaded its post step warned of an empty path on every run
+# (GOH.GATEHONEST).
+needs_release() {
+    local want have v=""
+    want="$(floor shellcheck)"
+    have="$(type -P shellcheck || true)"
+    if [ -n "$have" ] && v="$(sc_version "$have")" && [ -n "$v" ] && ge "$v" "$want"; then
+        echo false
+    else
+        echo true
+    fi
+}
+
 shellcheck_at_floor() {
     local bindir="$1" want have plat version sum v="" cache="${GOH_FLOORS_CACHE:-}"
     want="$(floor shellcheck)"
@@ -178,7 +193,8 @@ case "${1:-}" in
     shellcheck) shellcheck_at_floor "${2:?shellcheck <bindir>}" ;;
     verify) verify ;;
     cache-key) cache_key ;;
-    *) die "usage: floors.sh floor <tool> | shellcheck <bindir> | verify | cache-key" 2 ;;
+    needs-release) needs_release ;;
+    *) die "usage: floors.sh floor <tool> | shellcheck <bindir> | verify | cache-key | needs-release" 2 ;;
 esac
 exit
 } # parse-guard

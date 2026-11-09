@@ -41,16 +41,21 @@ runs:
         python-version: ${{ steps.floors.outputs.python }}
     # The verified shellcheck tarball, kept across runs (GOH.FLOORSRETRY): keyed by the version and
     # sha256 floors.sh would install, so a raised floor or a new checksum is a new key. A restore
-    # is re-verified by floors.sh; a miss downloads (with retries) and this step saves it.
+    # is re-verified by floors.sh; a miss downloads (with retries) and this step saves it. It runs
+    # only when a release is needed: on a runner already at the floor nothing is downloaded, and
+    # its post step warned of an empty cache path on every run (GOH.GATEHONEST).
     - id: key
       shell: bash
       env:
         GOH_FLOORS_GOH: ${{ steps.floors.outputs.goh }}
       run: |
         set -euo pipefail
+        needed="$(bash "$GOH_FLOORS_GOH/.github/actions/goh-floors/floors.sh" needs-release)"
+        echo "needed=$needed" >> "$GITHUB_OUTPUT"
         key="$(bash "$GOH_FLOORS_GOH/.github/actions/goh-floors/floors.sh" cache-key)"
         echo "shellcheck=$key" >> "$GITHUB_OUTPUT"
-    - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+    - if: steps.key.outputs.needed == 'true'
+      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
         path: ${{ runner.temp }}/goh-floors/cache
         key: goh-floors-${{ steps.key.outputs.shellcheck }}
