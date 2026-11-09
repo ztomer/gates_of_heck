@@ -120,8 +120,17 @@ case "$MODE" in
     # four actor-isolation warnings sat in ZoneWM's test targets through every green push until
     # 2026-09-21, found only because an unrelated public-API change recompiled the files. Rule 14:
     # a warning is the migration's due date, and a gate that reads only half the tree is half a gate.
-    goh_step "build + tests (warnings as errors)" \
-        "$SWIFT" build --build-tests -Xswiftc -warnings-as-errors
+    # And judged from what the compiler SAID, not only its exit code: swift 6.4 prints a Swift 6
+    # main-actor isolation warning under -warnings-as-errors and exits 0 -- token-pool's
+    # LoginItemTests.swift:46-47 passed this step with two (GOH.GATEHONEST, probed 2026-11-09).
+    # The dirs are the package's own, from the git root the checker joins them to.
+    _pfx="$(git rev-parse --show-prefix 2>/dev/null || true)"
+    _spm_log=".build/swift-build-warnings.log"; mkdir -p .build
+    goh_step "build + tests (warnings as errors)" /usr/bin/env bash -c \
+        '"$1" build --build-tests -Xswiftc -warnings-as-errors >"$2" 2>&1; rc=$?; cat "$2"
+         [ "$rc" -eq 0 ] || exit "$rc"; exec "$3" "$4" --log "$2" --dirs "$5"' _ \
+        "$SWIFT" "$_spm_log" "$GOH_PY" "$HERE/../checks/check_swift_warnings.py" \
+        "${GOH_SWIFT_WARN_DIRS:-${_pfx}Sources,${_pfx}Tests}"
     if [ -n "${GOH_SWIFT_COV_MIN:-}" ]; then
         goh_step "test + coverage" "$SWIFT" test --enable-code-coverage
         _cov_args=(--min "$GOH_SWIFT_COV_MIN")
