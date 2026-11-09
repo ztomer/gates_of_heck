@@ -1,0 +1,58 @@
+name: gate
+
+# ONE job, ONE command: `tools/gate.sh --full`, the command the pre-push hook runs (it execs
+# gates/local_ci.sh over .gatesrc's GOH_CI_STEPS), so the hosted run and the local gate cannot
+# disagree about what green means (CI.PUBLIC2, owner ruling 2026-11-08: "Yes, public repos").
+# This repo IS the gates, so the gate is its own tree: no second checkout of gates_of_heck.
+#
+# macOS on Apple silicon, the platform the house ships for (house rule 3). Every action is pinned
+# to a released tag's commit, the tag beside it, never a moving tag; raise one in its own commit.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  gate:
+    runs-on: macos-26
+    timeout-minutes: 60
+    env:
+      CARGO_TERM_COLOR: never
+    steps:
+      # persist-credentials: false: the structural gate refuses a job token left in git config,
+      # and nothing after the clone needs it. fetch-depth 0: the gate reads history (tags, the
+      # changelog's versions, crates-behind's "since HEAD's parent").
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - name: GOH_DIR is this checkout
+        run: echo "GOH_DIR=$GITHUB_WORKSPACE" >> "$GITHUB_ENV"
+      # The tool floors (python3, shellcheck), from this tree's own gates/required_tools.tsv.
+      - name: Meet goh's tool floors
+        uses: ./.github/actions/goh-floors
+      - name: Rust toolchain from rust-toolchain.toml
+        run: |
+          rustup toolchain install
+          rustc -V
+          cargo clippy -V
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+      # The gate's own manifest, never a copy of it: captured under pipefail, then each install
+      # line run under `bash -eux`, so a failed install fails the step.
+      - name: Install the tools the gate requires
+        run: |
+          set -euo pipefail
+          cmds="$(python3 gates/required_tools.py --repo . --install)"
+          printf '%s\n' "$cmds"
+          grep -v '^#' <<<"$cmds" | bash -eux
+      - name: The gate
+        run: ./tools/gate.sh --full
