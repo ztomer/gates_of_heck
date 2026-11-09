@@ -276,8 +276,8 @@ run_step() {
     # started with `&`, which forks a subshell for the function, and a TERM to that subshell ended it
     # without reaching the wrapper -- so the step's sweep never ran. Exec'd, $! IS the wrapper.
     # shellcheck disable=SC2086  # a command STRING is the feature here; see the header
-    # The native canary (`goh canary`, the same contract: tests/test_orphan_canary.py runs both) when
-    # the binary resolved -- one exec per step instead of a Python start-up -- else the Python.
+    # The native canary (`goh canary`; tests/test_orphan_canary.py runs both) when resolved, else the Python.
+    goh_unbind_git   # a step is a test suite: it never sees git's repository variables (GOH.HOOKGITENV)
     if [ -x "${GOH_RESOLVED_BIN:-}" ]; then
         exec "$GOH_RESOLVED_BIN" canary "${args[@]}" -- bash -c "$cmd" </dev/null
     fi

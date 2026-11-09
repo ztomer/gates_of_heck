@@ -214,6 +214,12 @@ goh_cmd_brief() {
 # expiry the sweep reaches the whole subtree rather than the direct children -- measured 2026-10-03:
 # `pkill -P` left two grandchildren alive against `bash -c 'sleep 400 & wait'`, and those are the
 # processes that make the NEXT run hang.
+#
+# THE STEP IS A TEST SUITE MORE OFTEN THAN NOT (pytest, cargo test, swift test), and it never sees git's
+# repository variables (GOH.HOOKGITENV, 2026-11-08): a gate that bound the commit's index for its OWN
+# git (goh_bind_hook_index, gates/_git_env.sh) would hand GIT_INDEX_FILE to every `git` the suite runs
+# in a fixture of its own, which then wrote the COMMIT's index. The gate's shell keeps its binding;
+# only the subshell the step runs in drops it (tests/test_gate_tests_unbound.py).
 goh_step() {
     local label="$1"; shift
     local _goh_t0 _goh_rc=0 _goh_limit
@@ -229,15 +235,15 @@ goh_step() {
         # its CLI contract is the Python's (tests/test_step_wrapper_cli.py) -- else the Python.
         local _goh_wrap=("$GOH_PY" -S "$GOH_ROOT/lib/bounded_run.py")
         [ -x "${GOH_RESOLVED_BIN:-}" ] && _goh_wrap=("$GOH_RESOLVED_BIN" step)
-        if "${_goh_wrap[@]}" --timeout "$_goh_limit" \
-                --grace "${GOH_STEP_GRACE:-5}" --label "$label" -- "$@" >"$GOH_LOG" 2>&1; then
+        if ( goh_unbind_git; exec "${_goh_wrap[@]}" --timeout "$_goh_limit" \
+                --grace "${GOH_STEP_GRACE:-5}" --label "$label" -- "$@" ) >"$GOH_LOG" 2>&1; then
             _goh_rc=0
         else
             _goh_rc=$?
         fi
     else
         step "$label (UNBOUNDED — GOH_STEP_TIMEOUT=0)"
-        if "$@" >"$GOH_LOG" 2>&1; then
+        if ( goh_unbind_git; "$@" ) >"$GOH_LOG" 2>&1; then
             _goh_rc=0
         else
             _goh_rc=$?

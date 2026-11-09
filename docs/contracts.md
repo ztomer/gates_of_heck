@@ -131,7 +131,12 @@ the carried pair: a consumer gate that did (`GIT_INDEX_FILE="${GOH_HOOK_INDEX_FI
 bound it inside a TEST's fixture and judged the outer index (routines,
 media_server, 2026-10-08), so `goh bare-hook-index` refuses an expansion of
 either variable in any shell source but the one defining the binder.
-Pin: `tests/test_commit_hook_git_env.py`, `tests/test_hook_git_env.py`,
+A gate's own git may hold that binding, so a TEST SUITE the gate launches never inherits it
+(GOH.HOOKGITENV, 2026-11-08): `goh_step` (pytest, cargo test, swift test, xcodebuild test),
+`local_ci.sh` steps and the coverage gate's python and rust test runs start the suite after
+`goh_unbind_git`, in a subshell, so the gate's shell keeps the index it bound while no `git` the
+suite runs in a fixture of its own can write the commit's.
+Pin: `tests/test_gate_tests_unbound.py`, `tests/test_commit_hook_git_env.py`, `tests/test_hook_git_env.py`,
 `crates/goh-testkit/tests/hook_git_env.rs`, `crates/goh/src/hookindex/tests.rs`.
 
 ## 13. A name is checked against the object it names, never the working tree

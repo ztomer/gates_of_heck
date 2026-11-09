@@ -79,6 +79,7 @@ run_rust() {
         local label="external: $EXTERNAL" part="$PARTS/part-external.info"
         info "exporting $label"
         if (
+            goh_unbind_git   # the suite is a test run: it never sees git's repository variables (GOH.HOOKGITENV)
             export CARGO_TARGET_DIR="$PROJ/target/llvm-cov-external"
             export CARGO_BUILD_BUILD_DIR="$COV_CACHE/$COV_KEY/external"
             showenv="$(cargo llvm-cov show-env --sh 2>/dev/null)" || exit 1
@@ -158,6 +159,7 @@ PYEOF
         # (tests/test_coverage_incremental.py::test_a_binary_of_another_build_never_counts).
         # shellcheck disable=SC2086  # KINDS is a list of flags
         if (
+            goh_unbind_git   # the suite is a test run: it never sees git's repository variables (GOH.HOOKGITENV)
             eval "$(cargo llvm-cov show-env --sh 2>/dev/null)" && [ -n "${LLVM_PROFILE_FILE:-}" ] || exit 1
             cargo llvm-cov clean --profraw-only || {
                 echo "could not clear the previous run's profiles -- its counts would be this run's"

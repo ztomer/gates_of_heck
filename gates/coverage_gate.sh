@@ -354,6 +354,7 @@ except Exception: pass') || true
 # ── py ──────────────────────────────────────────────────────────────────────
 run_py() {
     cd "$PROJ"
+    goh_unbind_git   # the suite is a test run: it never sees git's repository variables (GOH.HOOKGITENV)
     need python3 "coverage + pytest"
     "$GOH_PY" -m coverage --version >/dev/null 2>&1 \
         || { err "'coverage' not installed ($GOH_PY -m pip install coverage pytest)"; exit 2; }

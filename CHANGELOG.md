@@ -2,6 +2,18 @@
 
 ## Unreleased
 
+* **A test suite a gate launches never inherits git's repository variables (GOH.HOOKGITENV).**
+  A gate that binds the commit's index for its own git (`goh_bind_hook_index`, the documented use
+  under `commit -a` / `commit <paths>`) handed `GIT_INDEX_FILE` to the pytest it ran next, and every
+  `git` a test ran in its own temp fixture wrote the COMMIT's index (.loop, 2026-11-08: 7 tests red
+  only when committed, scrubbed in its conftest as a stopgap). `goh_step` (so py_gate, rust_gate,
+  swift_gate), `local_ci.sh` steps and the coverage gate's python and rust test runs now start the
+  suite after `goh_unbind_git`, in a subshell: the gate keeps its own binding. Red first:
+  `tests/test_gate_tests_unbound.py` committed for real through the stock hook in a linked worktree
+  failed `commit -a` and `commit <paths>` with `GIT_INDEX_FILE=.../index.lock` in the suite's
+  environment, plus the local_ci, coverage and rust-coverage cases; the plain commit and the
+  gate's-own-git cases were green before and stay green.
+
 ## v0.82.1 -- the release-kit installs every artifact before it launches
 
 * **Every artifact lands before the launch step; a failed relaunch is retried and named
