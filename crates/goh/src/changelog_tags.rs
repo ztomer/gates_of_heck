@@ -191,8 +191,10 @@ fn judge(root: &Path, files: &[String], staged: bool) -> (i32, String, String) {
             tags.len()
         ),
     };
-    // Whole-file at both scopes, so a staged run judges a stale entry too.
-    estate_seed::verdict(root, false, KIND, &seed, &sites, &report)
+    // Whole-file at both scopes, so a staged run judges a stale entry too -- unless no `v*` tag was
+    // there to compare (a CI checkout fetches none): then nothing was read, and nothing is stale.
+    let unread = !tags.iter().any(|t| TAGNAME.is_match(t));
+    estate_seed::verdict(root, unread, KIND, &seed, &sites, &report)
 }
 
 /// `goh changelog-tags [--staged]`.

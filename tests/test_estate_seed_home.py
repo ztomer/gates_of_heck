@@ -135,3 +135,20 @@ def test_gates_of_heck_tracks_only_its_own_estate_entries() -> None:
         entries = json.loads((REPO_ROOT / name).read_text())["entries"]
         foreign = [f"{e['repo']} {e['path']}" for e in entries if e["root"] != own]
         assert not foreign, f"{name} names another repository's entries: {foreign}"
+
+
+def test_a_clone_with_no_tags_calls_no_changelog_entry_stale(repo: Path, tmp_path: Path) -> None:
+    """A CI checkout fetches no tags: changelog-tags read nothing to compare, so its entry is not
+    stale there (it was red on gates_of_heck's own fresh clone)."""
+    write(repo, "CHANGELOG.md", "# CHANGELOG\n\n## v0.1.0 -- first\n")
+    commit_all(repo)
+    entry = {"root": _root(repo), "repo": "fixture", "path": "CHANGELOG.md", "count": 1}
+    seed = {"why": "a test's", "entries": [{**entry, "reason": "unreviewed: a test"}]}
+    write(repo, "changelog_tags_seed.json", json.dumps(seed))
+    commit_all(repo)
+    env = hermetic_env(GOH_SEED_DIR=str(tmp_path / "no-store"))
+    r = run_goh(repo, "changelog-tags", env=env)
+    assert r.returncode == 0, r.stdout + r.stderr
+    git(repo, "tag", "v0.1.0")
+    r = run_goh(repo, "changelog-tags", env=env)
+    assert r.returncode == 1 and "stale" in r.stderr, r.stdout + r.stderr
