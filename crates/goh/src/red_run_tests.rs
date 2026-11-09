@@ -105,3 +105,50 @@ fn red_run_in_the_body_is_refused_and_in_the_trailer_block_passes() {
     let in_block = "fix: x\n\nbody\n\nRed-run: the old fetch fails it\nCo-Authored-By: C <c@x>\n";
     assert_eq!(refusal(in_block, RENAMES_A_RUST_TEST), None);
 }
+
+/// GOH.GATEHONEST (3): a test whose SIGNATURE changed is the same test. Keyed by its declaration
+/// line, `func testA() {` -> `func testA() throws {` read as a new test and asked for a `Red-run:`
+/// (token-pool 85eb45c, TP.WIDGETFLAKE). Tests are keyed by name, per file.
+#[test]
+fn a_test_whose_signature_changed_is_the_same_test() {
+    let swift = concat!(
+        "diff --git a/T/LoginItemTests.swift b/T/LoginItemTests.swift\n",
+        "--- a/T/LoginItemTests.swift\n",
+        "+++ b/T/LoginItemTests.swift\n",
+        "@@ -50,2 +50,3 @@\n",
+        "-    func testTheToggleTurnsItBackOn() {\n",
+        "+    func testTheToggleTurnsItBackOn() throws {\n",
+        "+        let defaults = try freshDefaults()\n",
+        "@@ -60,1 +61,1 @@\n",
+        "-    @Test func reds() {\n",
+        "+    @Test func reds() async throws {\n",
+    );
+    assert_eq!(added_tests(swift), Vec::<String>::new());
+    let py =
+        "--- a/t.py\n+++ b/t.py\n@@ -1 +1 @@\n-def test_x(self):\n+def test_x(self, tmp_path):\n";
+    assert_eq!(added_tests(py), Vec::<String>::new());
+    let rs = "+++ b/a.rs\n@@ -1,2 +1,2 @@\n #[test]\n-fn t() {\n+fn t() -> Result<(), E> {\n";
+    assert_eq!(added_tests(rs), Vec::<String>::new());
+    let js = "+++ b/a.test.ts\n@@ -1 +1 @@\n-it(\"reds\", () => {\n+it(\"reds\", async () => {\n";
+    assert_eq!(added_tests(js), Vec::<String>::new());
+}
+
+#[test]
+fn a_test_moved_to_another_hunk_is_the_same_test_and_a_new_name_is_new() {
+    let moved = concat!(
+        "+++ b/t.py\n",
+        "@@ -1,1 +0,0 @@\n",
+        "-def test_moved():\n",
+        "@@ -90,0 +89,2 @@\n",
+        "+def test_moved():\n",
+        "+def test_brand_new():\n",
+    );
+    assert_eq!(added_tests(moved), vec!["t.py: def test_brand_new():"]);
+    // A name removed from ANOTHER file does not excuse one added here.
+    let elsewhere =
+        "+++ b/a.py\n@@ -1 +0,0 @@\n-def test_x():\n+++ b/b.py\n@@ -0,0 +1 @@\n+def test_x():\n";
+    assert_eq!(added_tests(elsewhere), vec!["b.py: def test_x():"]);
+    // A plain fn that GAINS `#[test]` was no test before: it is a new one.
+    let attr = "+++ b/a.rs\n@@ -1,1 +1,2 @@\n-fn t() {\n+#[test]\n+fn t() -> R {\n";
+    assert_eq!(added_tests(attr).len(), 1);
+}

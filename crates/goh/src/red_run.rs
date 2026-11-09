@@ -47,31 +47,97 @@ fn declares_item(line: &str) -> bool {
     t.starts_with("fn ") || t.starts_with("func ")
 }
 
-/// Every test declaration a unified diff ADDS, as `path: line`, in diff order.
-#[must_use]
-pub fn added_tests(diff: &str) -> Vec<String> {
+/// The name a test declaration line gives its test: the identifier after `def`/`fn`/`func`, or a
+/// JS/bats test's quoted title. None for a bare attribute line (`#[test]`, `@Test`), whose name is
+/// on the declaration below it.
+fn test_name(line: &str) -> Option<String> {
+    let t = line.trim_start();
+    for kw in ["def ", "fn ", "func "] {
+        if let Some(at) = t.find(kw).filter(|&i| i == 0 || t[..i].ends_with(' ')) {
+            let rest = &t[at + kw.len()..];
+            let name: String = rest
+                .chars()
+                .take_while(|c| c.is_alphanumeric() || *c == '_')
+                .collect();
+            return (!name.is_empty()).then_some(name);
+        }
+    }
+    let open = t.find(['"', '\'', '`'])?;
+    let quote = t[open..].chars().next()?;
+    let body = &t[open + 1..];
+    body.find(quote).map(|close| body[..close].to_owned())
+}
+
+/// One test declaration a diff side carries: its `path: line`, and its name when it has one.
+struct Declared {
+    path: String,
+    shown: String,
+    name: Option<String>,
+}
+
+/// The test declarations on one side of a unified diff (`+` added, `-` removed), in diff order. An
+/// attribute line (`#[test]`) names the test declared below it; a declaration line under an
+/// attribute that is context (a test renamed in place, `app_updates` de40622) is one too -- the
+/// diff is read at `-U1` so that context line is there to see.
+fn declared(diff: &str, side: char) -> Vec<Declared> {
     let mut path = String::new();
-    let mut out = Vec::new();
-    // A test whose attribute (`#[test]`, `@Test`) is unchanged CONTEXT and whose declaration line
-    // is added -- a test renamed in place -- is an added test too (app_updates de40622). The diff
-    // is read at `-U1` so that context line is there to see.
+    let mut out: Vec<Declared> = Vec::new();
     let mut context_attr = false;
+    // An attribute on this side whose name is on the next declaration line of this side.
+    let mut pending: Option<usize> = None;
     for line in diff.lines() {
         if let Some(p) = line.strip_prefix("+++ ") {
             p.strip_prefix("b/").unwrap_or(p).clone_into(&mut path);
             context_attr = false;
-        } else if let Some(added) = line.strip_prefix('+') {
-            if declares_test(&path, added) || (context_attr && declares_item(added)) {
-                out.push(format!("{path}: {}", added.trim()));
+            pending = None;
+        } else if line.starts_with("--- ") {
+            context_attr = false;
+            pending = None;
+        } else if let Some(this) = line.strip_prefix(side) {
+            if let Some(i) = pending.filter(|_| declares_item(this)) {
+                out[i].name = test_name(this);
+                pending = None;
+            } else if declares_test(&path, this) || (context_attr && declares_item(this)) {
+                let name = test_name(this);
+                pending = name.is_none().then_some(out.len());
+                out.push(Declared {
+                    path: path.clone(),
+                    shown: format!("{path}: {}", this.trim()),
+                    name,
+                });
             }
             context_attr = false;
         } else if let Some(kept) = line.strip_prefix(' ') {
             context_attr = declares_test(&path, kept);
-        } else if !line.starts_with('-') {
+            pending = None;
+        } else if !line.starts_with(['+', '-']) {
             context_attr = false;
+            pending = None;
         }
     }
     out
+}
+
+/// Every test declaration a unified diff ADDS, as `path: line`, in diff order.
+///
+/// Keyed by NAME per file (GOH.GATEHONEST): a test the same diff removes from the same file under the same name is
+/// the same test with a new signature or place (`func testA() {` -> `func testA() throws {`), not a
+/// new one. A rename is a new name, so it is still an added test.
+#[must_use]
+pub fn added_tests(diff: &str) -> Vec<String> {
+    let removed: std::collections::HashSet<(String, String)> = declared(diff, '-')
+        .into_iter()
+        .filter_map(|d| d.name.map(|n| (d.path, n)))
+        .collect();
+    declared(diff, '+')
+        .into_iter()
+        .filter(|d| {
+            d.name
+                .as_ref()
+                .is_none_or(|n| !removed.contains(&(d.path.clone(), n.clone())))
+        })
+        .map(|d| d.shown)
+        .collect()
 }
 
 /// Why `message` may not commit `diff`, or None.
