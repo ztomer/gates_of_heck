@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+## v0.82.1 -- the release-kit installs every artifact before it launches
+
+* **Every artifact lands before the launch step; a failed relaunch is retried and named
+  (RT.INSTALLORDER).** routines' v0.110.16 install replaced Routines.app, then the kit's relaunch
+  failed (`open`: _LSOpenURLsWithCompletionHandler -600) and its caller died before installing the
+  CLI: app new, CLI old. `tools/release-kit/update_dev.sh` now runs `AFTER_INSTALL_CMD` (a caller's
+  other artifacts) after the app is installed and before step 6; a failing one launches nothing. A
+  failed `open` re-registers the bundle with `lsregister -f` (seam `LSREGISTER`) and is retried once;
+  a second failure exits 4 as "relaunch failed", with every artifact installed. Red first: the 3 new
+  `tests/test_release_kit_update_dev.py` cases failed on the old kit.
+
 ## v0.82.0 -- the CI-watching spawn judge reads requests, not keywords
 
 * **The CI-watching judge reads requests, not keywords (GOH.CIJUDGEFP).** `judge_ci` in
