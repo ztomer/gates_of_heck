@@ -347,6 +347,27 @@ pub fn plural(n: usize) -> String {
     }
 }
 
+/// The drift line's subject and verb, one clause (GOH.GATEHONEST): `1 crate is behind its newest
+/// compatible release`. It read "1 crate behind its newest compatible release behind by releases".
+#[must_use]
+pub fn drift_phrase(n: usize) -> String {
+    if n == 1 {
+        "1 crate is behind its newest compatible release".to_owned()
+    } else {
+        format!("{n} crates are behind their newest compatible releases")
+    }
+}
+
+/// `1 other is` / `N others are`, the OK line's count of drifted crates.
+#[must_use]
+pub fn others(n: usize) -> String {
+    if n == 1 {
+        "1 other is".to_owned()
+    } else {
+        format!("{n} others are")
+    }
+}
+
 #[cfg(test)]
 #[path = "crates_change_tests.rs"]
 mod tests;

@@ -111,8 +111,16 @@ def test_a_release_alone_leaves_the_gate_green_and_says_the_drift(tmp_path):
     r = _behind(repo, cargo, _index(tmp_path, "itoa", ITOA_19_BEFORE))
     assert r.returncode == 0, r.stdout + r.stderr
     assert "itoa v1.0.18 -> v1.0.19" in r.stderr, r.stderr
-    assert "not this change's" in r.stderr, r.stderr
+    assert "not by this change" in r.stderr, r.stderr
     assert "every Cargo.lock is at its newest" not in r.stdout, "drift is no clean bill"
+    # ONE clean sentence (GOH.GATEHONEST 5): it read "1 crate behind its newest compatible release
+    # behind by releases, not this change's", and the OK line "... release by later releases".
+    drift = next(ln for ln in r.stderr.splitlines() if "itoa v1.0.18" in ln)
+    assert (
+        "Cargo.lock: 1 crate is behind its newest compatible release, not by this change (" in drift
+    ), drift
+    assert drift.count(" behind ") == 1, drift
+    assert "no crate this change locked is behind; 1 other is (above)" in r.stdout, r.stdout
 
 
 def test_a_change_that_adds_a_crate_behind_is_red(tmp_path):
@@ -145,7 +153,7 @@ def test_a_release_after_the_change_was_committed_does_not_make_it_red(tmp_path)
     cargo = _cargo(tmp_path, "    Updating itoa v1.0.18 -> v1.0.19\n")
     r = _behind(repo, cargo, _index(tmp_path, "itoa", [("1.0.18", BEFORE), ("1.0.19", AFTER)]))
     assert r.returncode == 0, r.stdout + r.stderr
-    assert "itoa v1.0.18 -> v1.0.19" in r.stderr and "not this change's" in r.stderr, r.stderr
+    assert "itoa v1.0.18 -> v1.0.19" in r.stderr and "not by this change" in r.stderr, r.stderr
 
 
 def test_the_change_is_the_whole_pushed_range_when_the_base_is_named(tmp_path):

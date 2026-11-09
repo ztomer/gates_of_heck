@@ -396,9 +396,9 @@ fn verdict(root: &Path, judged: &[Judged]) -> (i32, String, String) {
             // bury every other step's warnings under goh_step's cap (GOH_WARN_LINES).
             let _ = writeln!(
                 notes,
-                "{WARN} {TAG} {}: {} behind by releases, not this change's ({}; `cargo update` clears it): {}",
+                "{WARN} {TAG} {}: {}, not by this change ({}); `cargo update` clears it: {}",
                 j.rel,
-                crates_change::plural(j.drift.len()),
+                crates_change::drift_phrase(j.drift.len()),
                 j.since,
                 crates_change::listed(&j.drift, 6)
             );
@@ -446,8 +446,8 @@ fn verdict(root: &Path, judged: &[Judged]) -> (i32, String, String) {
         )
     } else if drifting > 0 {
         format!(
-            "no crate this change locked is behind; {} by later releases (above) -- NOT a clean bill",
-            crates_change::plural(drifting)
+            "no crate this change locked is behind; {} (above) -- NOT a clean bill",
+            crates_change::others(drifting)
         )
     } else {
         "every Cargo.lock is at its newest compatible releases".to_owned()
