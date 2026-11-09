@@ -36,8 +36,8 @@
 //! land was refused. A root commit is the same in every clone, worktree and move of a repository
 //! (`repo` in an entry is a label for the reader, never matched).
 //!
-//! One implementation for every seeded check (`hookindex`, `relquiet`, `mktempport`, `changelog`,
-//! `crates_behind`): the first copy of this lived in `hookindex/seed.rs`, and a second copy is how
+//! One implementation for every seeded check (`hookindex`, `relquiet`, `mktempport`, `changelog`;
+//! `crates_behind`'s seed is retired, D-0001): the first copy of this lived in `hookindex/seed.rs`, and a second copy is how
 //! one of them would have kept the directory-name key.
 
 use std::collections::BTreeMap;

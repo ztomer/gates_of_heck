@@ -31,9 +31,10 @@
 #      same lint. Runs first because it reads a few dozen files and reports the
 #      offending lines, where clippy needs the crate to compile and reports at
 #      the end -- so the price of a violation is the violation, not the repo.
-#   3b. goh crates-behind -- every tracked Cargo.lock at its newest compatible releases: a lock
-#      `cargo update --dry-run` would move fails, naming the crates (estate seed
-#      crates_behind_seed.json); an unreachable index is a stated skip; duplicate majors warn.
+#   3b. goh crates-behind -- every tracked Cargo.lock at its newest compatible releases: an entry
+#      `cargo update --dry-run` would move fails when the change locked it behind a release out
+#      before the commit (docs/decisions/D-0001-*); other behind entries warn as drift; an
+#      unreachable index is a stated skip; duplicate majors warn.
 #   4. coverage floor, when stated (GOH_COV_FLOOR_RUST or GOH_COV_FLOORS_JSON
 #      in .gatesrc) — via gates/coverage_gate.sh, with the floor passed as
 #      explicit argv (.gatesrc values are shell variables, NOT exported, so
@@ -293,9 +294,11 @@ rust_advisories() {
             "$GOH_PY" "$HERE/../checks/check_audit_ignores.py" --no-fetch --repo "$top" --lock "$lockfile"
     done <<<"$ratchets|"
     # EVERY LOCK AT ITS NEWEST COMPATIBLE RELEASES (house Rust rule 2, GOH.CRATESBEHIND):
-    # `cargo update --dry-run` per lock, bounded, writing nothing; a lock it would move fails with
-    # the crates named, against the estate seed (the repo's own crates_behind_seed.json or the
-    # private store, GOH.SEEDPRIVATE). An unreachable index is a stated skip, never a pass; duplicate majors (`cargo tree -d`) warn. Outside the proven
+    # `cargo update --dry-run` per lock, bounded, writing nothing; an entry it would move fails only
+    # when the change locked it (not in the base's lock: GOH_CHANGE_BASE from the push gate, else
+    # the upstream, else HEAD's parent) behind a release out before the commit; the rest warn as
+    # drift (GOH.CRATESDRIFT, docs/decisions/D-0001-*). An unreachable index is a stated skip, never
+    # a pass; duplicate majors (`cargo tree -d`) warn. Outside the proven
     # groups like the advisories: the registry is an input no key names.
     [ "${GOH_DEPS_OFFLINE:-}" = "1" ] && behind_args="$behind_args --offline"
     # shellcheck disable=SC2086 # deliberate word-splitting: this IS the argv list (repo-relative locks)

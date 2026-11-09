@@ -23,13 +23,18 @@
 //! the ones in two compatibility classes (`syn 2` beside `syn 3`) are named as warnings. Two
 //! majors are often upstream's doing, so it is a report, not a verdict.
 //!
-//! THE ESTATE SEED: the repos behind on the day this landed are seeded in
-//! `crates_behind_seed.json` (`crate::estate_seed`, keyed by root commit and lock path): a seeded
-//! lock at or under its count warns, more behind or unseeded is red, and a lock found lower or
-//! clean is named to lower or delete. "Done" is an empty list.
+//! RED IS THE CHANGE'S, NEVER THE REGISTRY'S (GOH.CRATESDRIFT, 2026-11-09; the decision is
+//! `docs/decisions/D-0001-crates-behind-judges-the-change.md`). The registry moves on its own, and a
+//! count of entries behind it, ratcheted by a seed, turned four consumers red in one day that had
+//! not moved. A behind entry is red only when the change being judged locked it and a newer
+//! release was out before the change was committed (`crate::crates_change`); every other behind
+//! entry is DRIFT, one warning per lock naming each, until `cargo update`. `--live` is the owner's
+//! sweep: every behind entry red. The estate seed (`crates_behind_seed.json`) is retired with the
+//! count it ratcheted: one still standing is named to delete, never read.
 
-use crate::estate_seed::{self, Kind, Report, Sites};
-use goh_tui::{ERR, WARN};
+use crate::crates_change::{self, Base};
+use crate::estate_seed::{self, Kind};
+use goh_tui::{ERR, OK, WARN};
 use std::fmt::Write as _;
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -40,7 +45,8 @@ const TAG: &str = "[crates_behind]";
 /// The default bound on each cargo call, in seconds.
 pub const DEFAULT_TIMEOUT_SECS: u64 = 120;
 
-/// The seed of the estate's locks behind on the day the check landed.
+/// The retired seed of the estate's locks behind on the day the check landed (D-0001): named to
+/// delete wherever it still stands, never read.
 pub const KIND: Kind = Kind {
     file: "crates_behind_seed.json",
     unit: "crate behind",
@@ -53,7 +59,7 @@ const FIX: &str = "    House Rust rule 2: latest dependencies. In the workspace 
      (`=x.y.z`) with the reason beside it, never left behind in the lock.\n";
 
 /// One lock entry `cargo update --dry-run` would move.
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Move {
     pub name: String,
     pub from: String,
@@ -266,14 +272,40 @@ fn tree_duplicates(
     Ok(duplicate_majors(&String::from_utf8_lossy(&ran.stdout)))
 }
 
-/// One lock, judged: its repo-relative path, its outcome, its duplicate majors (or why not).
+/// One lock, judged: its repo-relative path, its outcome, its duplicate majors (or why not), and
+/// its behind entries split into the change's (`red`) and the registry's (`drift`).
 struct Judged {
     rel: String,
     outcome: Outcome,
     dupes: Result<Vec<(String, Vec<String>)>, String>,
+    red: Vec<Move>,
+    drift: Vec<Move>,
+    notes: Vec<String>,
+    /// Where the change started, for the drift line (`HEAD's parent 1a2b3c4d`).
+    since: String,
 }
 
-fn judge_lock(root: &Path, lock: &str, a: &crate::cli::CratesBehindArgs, offline: bool) -> Judged {
+impl Judged {
+    const fn failed(rel: String, why: String) -> Self {
+        Self {
+            rel,
+            outcome: Outcome::Failed(why),
+            dupes: Ok(Vec::new()),
+            red: Vec::new(),
+            drift: Vec::new(),
+            notes: Vec::new(),
+            since: String::new(),
+        }
+    }
+}
+
+fn judge_lock(
+    root: &Path,
+    lock: &str,
+    a: &crate::cli::CratesBehindArgs,
+    offline: bool,
+    rev: &crates_change::BaseRev,
+) -> Judged {
     let path = if Path::new(lock).is_absolute() {
         PathBuf::from(lock)
     } else {
@@ -289,12 +321,7 @@ fn judge_lock(root: &Path, lock: &str, a: &crate::cli::CratesBehindArgs, offline
         .map_or_else(|| root.to_path_buf(), Path::to_path_buf);
     let timeout = Duration::from_secs(a.timeout);
     if !path.is_file() {
-        let outcome = Outcome::Failed(format!("no lock at {}", path.display()));
-        return Judged {
-            rel,
-            outcome,
-            dupes: Ok(Vec::new()),
-        };
+        return Judged::failed(rel, format!("no lock at {}", path.display()));
     }
     let outcome = if offline {
         Outcome::Skipped("offline (GOH_DEPS_OFFLINE=1): the registry was not asked".to_owned())
@@ -302,21 +329,45 @@ fn judge_lock(root: &Path, lock: &str, a: &crate::cli::CratesBehindArgs, offline
         dry_run(&a.cargo, &dir, timeout)
     };
     let dupes = tree_duplicates(&a.cargo, &dir, offline, timeout);
+    let (red, drift, notes) = match &outcome {
+        Outcome::Judged(moves) | Outcome::Cached(moves) if !moves.is_empty() => {
+            let base = if a.live {
+                Base::Known(crates_change::Entries::new())
+            } else {
+                crates_change::base_of(root, &rel, rev)
+            };
+            let fetch = |name: &str| crates_change::fetch_index(&a.index, name, timeout);
+            let moves = moves.iter().map(Move::clone).collect();
+            let cutoff = crates_change::cutoff(root, &rel);
+            crates_change::classify(moves, &base, cutoff, a.live, &fetch)
+        }
+        _ => (Vec::new(), Vec::new(), Vec::new()),
+    };
+    let since = match rev {
+        _ if a.live => "--live".to_owned(),
+        Ok(Some((c, label))) => format!("since {label} {}", &c[..c.len().min(8)]),
+        Ok(None) => "the root commit".to_owned(),
+        Err(_) => "no base".to_owned(),
+    };
     Judged {
         rel,
         outcome,
         dupes,
+        red,
+        drift,
+        notes,
+        since,
     }
 }
 
 /// The whole verdict: `(exit code, stdout, stderr)`.
 fn verdict(root: &Path, judged: &[Judged]) -> (i32, String, String) {
-    let seed = match estate_seed::load(root, KIND) {
-        Ok(s) => s,
-        Err(m) => return (2, String::new(), format!("{ERR} {TAG} {m}\n")),
-    };
-    let (mut notes, mut failed, mut skipped) = (String::new(), String::new(), 0usize);
-    let mut sites = Sites::new();
+    let (mut notes, mut failed, mut red) = (
+        crates_change::retired_seed(root, KIND, TAG),
+        String::new(),
+        String::new(),
+    );
+    let (mut skipped, mut reds, mut drifting) = (0usize, 0usize, 0usize);
     for j in judged {
         if matches!(j.outcome, Outcome::Cached(_)) {
             skipped += 1;
@@ -327,13 +378,6 @@ fn verdict(root: &Path, judged: &[Judged]) -> (i32, String, String) {
             );
         }
         match &j.outcome {
-            Outcome::Judged(moves) | Outcome::Cached(moves) if !moves.is_empty() => {
-                let lines = moves
-                    .iter()
-                    .map(|m| format!("    {}: {} {} -> {}", j.rel, m.name, m.from, m.to))
-                    .collect();
-                sites.insert(j.rel.clone(), lines);
-            }
             Outcome::Judged(_) | Outcome::Cached(_) => {}
             Outcome::Skipped(why) => {
                 skipped += 1;
@@ -342,6 +386,26 @@ fn verdict(root: &Path, judged: &[Judged]) -> (i32, String, String) {
             Outcome::Failed(why) => {
                 let _ = writeln!(failed, "{ERR} {TAG} {}: cannot judge -- {why}", j.rel);
             }
+        }
+        for n in &j.notes {
+            let _ = writeln!(notes, "{WARN} {TAG} {}: {n}", j.rel);
+        }
+        if !j.drift.is_empty() {
+            drifting += j.drift.len();
+            // ONE status line per lock: monitor carried 30 behind entries, and a line each would
+            // bury every other step's warnings under goh_step's cap (GOH_WARN_LINES).
+            let _ = writeln!(
+                notes,
+                "{WARN} {TAG} {}: {} behind by releases, not this change's ({}; `cargo update` clears it): {}",
+                j.rel,
+                crates_change::plural(j.drift.len()),
+                j.since,
+                crates_change::listed(&j.drift, 6)
+            );
+        }
+        for m in &j.red {
+            reds += 1;
+            let _ = writeln!(red, "    {}: {} {} -> {}", j.rel, m.name, m.from, m.to);
         }
         match &j.dupes {
             Ok(d) => {
@@ -363,33 +427,32 @@ fn verdict(root: &Path, judged: &[Judged]) -> (i32, String, String) {
             }
         }
     }
-    let ok = if skipped == 0 {
-        "every Cargo.lock is at its newest compatible releases".to_owned()
-    } else {
+    if !failed.is_empty() {
+        // Nothing passed: a lock that cannot be judged must not sit under a pass line.
+        return (2, String::new(), format!("{notes}{failed}"));
+    }
+    if reds > 0 {
+        let err = format!(
+            "{notes}{ERR} {TAG} {} that this change locked (a newer release was out before it was committed):\n{red}{FIX}",
+            crates_change::plural(reds)
+        );
+        return (1, String::new(), err);
+    }
+    let ok = if skipped > 0 {
         format!(
             "{} of {} lock(s) judged against the live registry, {skipped} not (above) -- NOT a clean bill",
             judged.len() - skipped,
             judged.len()
         )
+    } else if drifting > 0 {
+        format!(
+            "no crate this change locked is behind; {} by later releases (above) -- NOT a clean bill",
+            crates_change::plural(drifting)
+        )
+    } else {
+        "every Cargo.lock is at its newest compatible releases".to_owned()
     };
-    let report = Report {
-        tag: TAG,
-        item: "GOH.CRATESBEHIND",
-        what: (
-            "crate behind its newest compatible release",
-            "crates behind their newest compatible release",
-        ),
-        fix: FIX,
-        ok,
-    };
-    // A skipped lock was not read: no entry may be called stale on its account (`staged` = partial).
-    let partial = skipped > 0 || !failed.is_empty();
-    let (code, out, err) = estate_seed::verdict(root, partial, KIND, &seed, &sites, &report);
-    if !failed.is_empty() {
-        // Nothing passed: a lock that cannot be judged must not sit under a pass line.
-        return (2, String::new(), format!("{notes}{failed}{err}"));
-    }
-    (code, out, format!("{notes}{err}"))
+    (0, format!("{OK} {TAG} OK — {ok}\n"), notes)
 }
 
 /// `goh crates-behind [--root R] [--lock L]... [--offline] [--timeout S]`.
@@ -403,6 +466,8 @@ pub fn run_command(a: &crate::cli::CratesBehindArgs) -> i32 {
         .canonicalize()
         .unwrap_or_else(|_| PathBuf::from(&root));
     let offline = a.offline || std::env::var("GOH_DEPS_OFFLINE").is_ok_and(|v| v == "1");
+    // One base for every lock: the commit the change started from (crate::crates_change).
+    let rev = crates_change::base_rev(&root);
     let locks = if a.locks.is_empty() {
         vec!["Cargo.lock".to_owned()]
     } else {
@@ -414,15 +479,13 @@ pub fn run_command(a: &crate::cli::CratesBehindArgs) -> i32 {
         std::thread::scope(|s| {
             let handles: Vec<_> = chunk
                 .iter()
-                .map(|l| s.spawn(|| judge_lock(&root, l, a, offline)))
+                .map(|l| s.spawn(|| judge_lock(&root, l, a, offline, &rev)))
                 .collect();
             for (l, h) in chunk.iter().zip(handles) {
                 // A worker that panicked judged nothing: it is a lock that cannot be judged, never
                 // one that silently drops out of the verdict.
-                judged.push(h.join().unwrap_or_else(|_| Judged {
-                    rel: l.clone(),
-                    outcome: Outcome::Failed("its worker panicked".to_owned()),
-                    dupes: Ok(Vec::new()),
+                judged.push(h.join().unwrap_or_else(|_| {
+                    Judged::failed(l.clone(), "its worker panicked".to_owned())
                 }));
             }
         });

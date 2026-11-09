@@ -26,6 +26,7 @@ pub mod cli_args;
 pub mod commands;
 pub mod commit_class;
 pub mod crates_behind;
+pub mod crates_change;
 pub mod credurls;
 pub mod deadexec;
 pub mod deps;

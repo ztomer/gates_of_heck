@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+* **A crates.io release alone no longer turns a repository red (GOH.CRATESDRIFT, D-0001).**
+  `goh crates-behind` reds a behind `Cargo.lock` entry only when the change locked it (its name and
+  version are not in the base's lock: an added crate or a downgrade) and a newer compatible release
+  was out before the change was committed (the sparse index's `pubtime`). Every other behind entry
+  is drift: one warning per lock, naming each. The push gate passes the pushed range's base
+  (`GOH_CHANGE_BASE`); `--live` is the owner's sweep, red on every behind entry. The counted seed
+  `crates_behind_seed.json` is retired, named to delete wherever it stands. The decision is the
+  first record of `docs/decisions/`.
+
 ## v0.90.1 -- goh ship --help shows its own usage; a ship result names the landed commit; the bump is git-cliff's
 
 * **`goh ship --help` prints ship.py's own usage (GOH.SHIPADOPT).** The pass-through subcommands

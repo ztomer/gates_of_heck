@@ -343,7 +343,7 @@ fi
 gated=0
 # <"$refs_file", NOT stdin: `cat` above drained it, and a while-read on a spent
 # stream is a loop that never runs — a gate that silently gates nothing.
-while read -r local_ref local_sha _remote_ref _remote_sha; do
+while read -r local_ref local_sha _remote_ref remote_sha; do
     [ -n "${local_sha:-}" ] || continue
     [ "$local_sha" = "$zero" ] && continue          # a delete: nothing to test
     # A tag's sha is the tag OBJECT; the code under test is the commit it points at.
@@ -437,6 +437,7 @@ while read -r local_ref local_sha _remote_ref _remote_sha; do
     # real checkout instead, and a checker reads it only for citations that name a child. The
     # isolation the worktree buys -- never certify the working tree -- is untouched, because what it
     # guards is this repo's OWN files, and those still come from the worktree.
+    change_base="$(push_change_base "$root" "$commit" "${remote_sha:-$zero}" "$remote_name")"   # lib/push_runs.sh
     repo_before="$(goh_repo_snapshot "$root")"   # what the gate may not write (lib/repo_writes.sh)
     slept_mark="$(goh_sleep_mark)"
     # The house structural layer runs whether or not the repo's gate calls it (BACKLOG 6.7), and so
@@ -446,7 +447,7 @@ while read -r local_ref local_sha _remote_ref _remote_sha; do
     steps_mark="$(mktemp "${TMPDIR:-/tmp}/goh-ci-steps-mark.XXXXXX")"
     # shellcheck source=/dev/null # the .gatesrc below is the gated repo's, unknown at lint (GOH.SHX2)
     (cd "$worktree" \
-        && GOH_CROSS_REPO_ROOT="$root" GOH_STRUCTURAL_MARK="$structural_mark" \
+        && GOH_CROSS_REPO_ROOT="$root" GOH_CHANGE_BASE="$change_base" GOH_STRUCTURAL_MARK="$structural_mark" \
             GOH_CI_STEPS_MARK="$steps_mark" bash "$worktree/tools/gate.sh" --full \
         && { grep -qFx -- "--full	$(git rev-parse --show-toplevel)" "$structural_mark" || {
                 warn "pre-push: tools/gate.sh --full passed without running the house structural layer -- running it now"

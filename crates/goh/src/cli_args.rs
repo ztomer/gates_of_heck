@@ -158,7 +158,14 @@ pub struct CratesBehindArgs {
     /// Seconds each cargo call may take before the lock is skipped as unreachable.
     #[arg(long, default_value_t = crate::crates_behind::DEFAULT_TIMEOUT_SECS)]
     pub timeout: u64,
+    /// Every behind entry is red, whoever locked it: the owner's `cargo update` sweep. Without it,
+    /// only an entry the change locked is red, and the rest warn (GOH.CRATESDRIFT, D-0001).
+    #[arg(long)]
+    pub live: bool,
     /// The cargo to run (a test seam; the gate never passes it).
     #[arg(long, default_value = "cargo", hide = true)]
     pub cargo: String,
+    /// The sparse index read for release dates (a test seam; the gate never passes it).
+    #[arg(long, default_value = crate::crates_change::DEFAULT_INDEX, hide = true)]
+    pub index: String,
 }

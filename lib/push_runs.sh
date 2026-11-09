@@ -83,3 +83,15 @@ run_litter() {
     printf '%s' "$out"
 }
 
+# push_change_base ROOT COMMIT REMOTE_SHA REMOTE -- where the pushed change started, for the gate's
+# GOH_CHANGE_BASE (GOH.CRATESDRIFT, docs/decisions/D-0001-*): the export is a detached worktree
+# with no upstream, so a check that judges only what the change did (`goh crates-behind`) is told:
+# the remote's tip of the ref, or for a new branch its merge base with the remote's default
+# branch; empty when neither is known. The caller always sets it, so no inherited value stands in.
+push_change_base() {
+    if [ "$3" != "0000000000000000000000000000000000000000" ]; then
+        git -C "$1" rev-parse --verify --quiet "$3^{commit}" || true
+    elif [ -n "$4" ]; then
+        git -C "$1" merge-base "$2" "refs/remotes/$4/HEAD" 2>/dev/null || true
+    fi
+}
