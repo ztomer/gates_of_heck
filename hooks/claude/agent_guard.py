@@ -33,6 +33,9 @@ by hand; this hook keeps them structurally (tests/test_claude_agent_guard.py):
 * A fixed-name file the agent wrote straight into the shared scratchpad root is named at
   SubagentStop (GOH.AGENTSCRATCH, `scratch_guard.py`): on the outcome line (`scratch_loose`) and
   in a message to the session, with the per-item path to claim instead.
+* A direct `gh run watch/view/list` or `gh api .../actions` call the agent ran is named at
+  SubagentStop (GOH.GHDOOR, `ci_door.py`): on the outcome line (`ci_direct`) and to the session,
+  with loopctl's one CI door to use instead.
 * The owner's apps are put back (GOH.APPSTATE, `appstate.py`): the spawn line records which
   login-item apps were running; at SubagentStop any of them no longer running is relaunched and
   named on the outcome line (`apps`) and in a message to the session.
@@ -60,6 +63,7 @@ from pathlib import Path
 from typing import Any
 
 import appstate  # the owner's login-item apps, put back after an agent (GOH.APPSTATE)
+import ci_door  # a direct gh CI read past loopctl's door (GOH.GHDOOR)
 import model_choice  # the rules file's one reader, beside this script
 import scratch_guard  # a fixed-name file in the shared scratchpad root (GOH.AGENTSCRATCH)
 from ci_judge import judge_ci as _judge_ci  # the CI-watching judge, beside this script
@@ -449,6 +453,7 @@ def on_stop(event: dict[str, Any]) -> list[str]:
     report = report if isinstance(report, str) else ""
     text, settled = settled_transcript(transcript, report) if transcript else (None, False)
     loose = scratch_guard.loose_writes(text) if text is not None else []
+    ci = ci_door.direct_calls(text) if text is not None else []
     warning = _append({
         "event": "outcome", "time": _now(), "session_id": event.get("session_id"),
         "tool_use_id": tool_use_id, "agent_id": event.get("agent_id"),
@@ -457,9 +462,11 @@ def on_stop(event: dict[str, Any]) -> list[str]:
         "faults": faults(report),
         "tokens": usage(text) if text is not None else None,
         "tokens_settled": settled, "apps": apps, "scratch_loose": loose,
+        "ci_direct": ci,
     })  # fmt: skip
     scratch = scratch_guard.message(loose) if loose else None
-    return [m for m in (appstate.describe(apps), scratch, warning) if m]
+    door = ci_door.message(ci) if ci else None
+    return [m for m in (appstate.describe(apps), scratch, door, warning) if m]
 
 
 def main() -> int:

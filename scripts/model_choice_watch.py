@@ -51,7 +51,7 @@ from typing import Any
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
-from tui.lib import ok, warn
+from tui.lib import counted, ok, warn
 
 sys.path.insert(0, str(ROOT / "hooks" / "claude"))
 sys.path.insert(0, str(ROOT / "scripts"))
@@ -238,7 +238,10 @@ def canary(ledger: Path, projects: Path, days: int) -> dict[str, Any]:
             if any(t in raw.replace(" ", "") for t in SPAWN_TOOLS) and _spawned(raw, since):
                 uses += 1
     red = uses > 0 and spawns == 0
-    detail = f"{uses} Agent call(s) in transcripts and {spawns} ledgered spawn(s) in {days} days"
+    detail = (
+        f"{counted(uses, 'Agent call')} in transcripts and "
+        f"{counted(spawns, 'ledgered spawn')} in {days} days"
+    )
     return {"red": red, "detail": detail, "uses": uses, "spawns": spawns}
 
 
@@ -472,8 +475,8 @@ def main(argv: list[str] | None = None) -> int:
     n_unv = sum(f["status"] == "unverified" for f in facts)
     audit = state["audit"] or {"proposals": [], "verification": {"silent_failure": []}}
     summary = (f"model-choice watch: {'RED' if red else 'green'}, {n_re} re-research, {n_unv} unverified, "
-               f"{len(audit['proposals'])} proposal(s), "
-               f"{len(audit['verification']['silent_failure'])} silent failure(s) -> {args.findings}")  # fmt: skip
+               f"{counted(len(audit['proposals']), 'proposal')}, "
+               f"{counted(len(audit['verification']['silent_failure']), 'silent failure')} -> {args.findings}")  # fmt: skip
     for path, text in ((args.state, json.dumps(state, indent=1, default=str) + "\n"),
                        (args.findings, _findings(state, summary))):  # fmt: skip
         path.parent.mkdir(parents=True, exist_ok=True)

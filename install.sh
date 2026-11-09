@@ -315,7 +315,7 @@ if [ "$refusals_stand" -ne 0 ]; then
     if [ "${#install_hooks[@]}" -gt 0 ]; then
         info "installed anyway: ${install_hooks[*]}"
     fi
-    err "install: INCOMPLETE — ${#refused[@]} hook(s) left as the repo has them: ${refused[*]}"
+    err "install: INCOMPLETE — $(counted "${#refused[@]}" hook) left as the repo has them: ${refused[*]}"
     exit 1
 fi
 exit

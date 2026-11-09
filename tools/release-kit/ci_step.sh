@@ -72,7 +72,7 @@ ci_watch() {
     fi
     pending="$(awk -F'\t' 'NF && $1 != "completed"' <<<"$runs")"
     if [ -n "$runs" ] && [ -z "$pending" ]; then
-      ok "$(wc -l <<<"$runs" | tr -d ' ') CI run(s) for ${HEAD_SHA:0:12}, every one green"
+      ok "$(counted "$(wc -l <<<"$runs")" "CI run") for ${HEAD_SHA:0:12}, every one green"
       return 0
     fi
     if [ "$SECONDS" -ge "$deadline" ]; then

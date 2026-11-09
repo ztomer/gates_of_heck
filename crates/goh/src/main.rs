@@ -54,6 +54,7 @@ pub mod movingtag;
 pub mod noallow;
 pub mod pathfilter;
 pub mod platform;
+pub mod pluralhedge;
 pub mod prefetch;
 pub mod proven;
 pub mod provenance;
@@ -426,6 +427,7 @@ fn run_ported(command: Commands) -> Result<i32, Box<Commands>> {
         Commands::BareHookIndex(a) => paths(a.exclude, |x| hookindex::run_command(a.staged, x)),
         Commands::ReleaseQuiet(a) => paths(a.exclude, |x| relquiet::run_command(a.staged, x)),
         Commands::MktempPortable(a) => paths(a.exclude, |x| mktempport::run_command(a.staged, x)),
+        Commands::PluralHedge(a) => paths(a.exclude, |x| pluralhedge::run_command(a.staged, x)),
         Commands::ChangelogTags(a) => changelog_tags::run_command(a.staged),
         Commands::CheckoutCredentials(a) => checkoutcreds::run_command(a.staged),
         Commands::TapWrites(a) => tapwrite::run_command(a.staged),

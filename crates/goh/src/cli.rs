@@ -413,6 +413,8 @@ pub enum Commands {
     ReleaseQuiet(ExcludeStagedArgs),
     /// Fail on `mktemp -t NAME` with no X in NAME (BSD-only; GNU refuses it).
     MktempPortable(ExcludeStagedArgs),
+    /// Fail on a hedged plural (`file(s)`, `entr(ies)`) in a string literal; count with counted/noun.
+    PluralHedge(ExcludeStagedArgs),
     /// Fail when the whole changelog and the `v*` tags disagree (GOH.CHANGELOGALL).
     ChangelogTags(StagedArgs),
     /// Fail on an `actions/checkout` step that leaves the job token in `.git/config`:

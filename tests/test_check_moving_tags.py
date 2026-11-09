@@ -178,7 +178,7 @@ def test_the_floor_reds_a_scan_that_lost_its_subject(goh: Path, repo: Path) -> N
     write(repo, "Dockerfile", DOCKERFILE_PINNED)
     write(repo, ".gatesrc", "GOH_MOVING_TAGS_MIN_REFS=2\n")
     commit_all(repo)
-    below = "`no container image on a moving tag` read 1 image reference(s) and .gatesrc declares a floor of 2"
+    below = "`no container image on a moving tag` read 1 image reference and .gatesrc declares a floor of 2"
     red = _structural(goh, repo, "--full", "--keep-going")
     assert red.returncode == 1 and below in red.stdout + red.stderr, red.stdout + red.stderr
     write(repo, ".gatesrc", "GOH_MOVING_TAGS_MIN_REFS=1\n")

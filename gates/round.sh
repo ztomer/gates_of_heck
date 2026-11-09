@@ -69,7 +69,7 @@ if [ -n "$(setting GOH_PYTHON_FORMATTED)" ]; then
     for p in "$@"; do case "$p" in *.py) [ -e "$p" ] && py+=("$p") ;; esac; done
     if [ "${#py[@]}" -gt 0 ]; then
         ruff format -q -- "${py[@]}" || die "round stopped: ruff format failed"
-        ok "${#py[@]} Python file(s) formatted"
+        ok "$(counted "${#py[@]}" "Python file") formatted"
     fi
 fi
 

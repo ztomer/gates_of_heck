@@ -144,7 +144,10 @@ fn judge(root: &Path, files: &[String], exclude: &str, staged: bool) -> (i32, St
     let report = Report {
         tag: TAG,
         item: "GOH.MKTEMPPORT",
-        what: "BSD-only mktemp -t call(s) with no X in the template",
+        what: (
+            "BSD-only mktemp -t call with no X in the template",
+            "BSD-only mktemp -t calls with no X in the template",
+        ),
         fix: FIX,
         ok: "every mktemp -t names its X's".to_string(),
     };

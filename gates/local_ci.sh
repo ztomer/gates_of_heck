@@ -38,7 +38,7 @@ for _tui in "${GOH_GIT_ROOT:-}/tui/lib.sh" tui/lib.sh "$GOH_ROOT/tui/lib.sh"; do
     # shellcheck disable=SC1090  # vendored lib resolved at runtime, as _common.sh
     [ -n "$_tui" ] && [ -f "$_tui" ] && . "$_tui" && break
 done
-unset _tui
+unset _tui; . "$GOH_ROOT/tui/plural.sh"  # counted/plural_noun: goh's own, whatever lib came first
 info() { printf '→ %s\n' "$*"; }
 ok() { printf '✓ %s\n' "$*"; }
 warn() { printf '⚠ %s\n' "$*" >&2; }
@@ -222,7 +222,7 @@ if [ "$_n" -eq 0 ]; then
     exit 2
 fi
 
-section "local CI — $_n step(s) in $ROOT"
+section "local CI — $(counted "$_n" step) in $ROOT"
 
 if [ "$DRY_RUN" -eq 1 ]; then
     while IFS="	" read -r src cmd; do
@@ -483,13 +483,13 @@ exec 3>&-
 section "result"
 if [ "$FAILED" -eq 0 ]; then
     if [ "$PROVEN_SKIPPED" -gt 0 ]; then
-        ok "all $_n step(s) passed ($PROVEN_SKIPPED proven earlier on this tree, not re-run)"
+        ok "all $(counted "$_n" step) passed ($PROVEN_SKIPPED proven earlier on this tree, not re-run)"
     else
-        ok "all $_n step(s) passed"
+        ok "all $(counted "$_n" step) passed"
     fi
     exit 0
 fi
-err "$FAILED of $_n step(s) failed:"
+err "$FAILED of $(counted "$_n" step) failed:"
 err "$FAILED_NAMES"
 # The tail above is 30 lines. A shuffled test suite prints its seed at the
 # TOP, so the line that says how to reproduce the failure is never in it.

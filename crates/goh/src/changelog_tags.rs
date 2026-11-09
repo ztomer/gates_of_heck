@@ -184,7 +184,10 @@ fn judge(root: &Path, files: &[String], staged: bool) -> (i32, String, String) {
     let report = Report {
         tag: TAG,
         item: "GOH.CHANGELOGALL",
-        what: "way(s) the changelog and the tags disagree",
+        what: (
+            "way the changelog and the tags disagree",
+            "ways the changelog and the tags disagree",
+        ),
         fix: FIX,
         ok: format!(
             "{file}: every one of {} tag(s) has its heading, no orphan entry",

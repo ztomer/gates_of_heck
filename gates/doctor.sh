@@ -28,6 +28,9 @@ if [ -f "$GOH_ROOT/tui/lib.sh" ]; then
     . "$GOH_ROOT/tui/lib.sh"
 fi
 
+# shellcheck source=tui/plural.sh
+[ -f "$GOH_ROOT/tui/plural.sh" ] && . "$GOH_ROOT/tui/plural.sh"
+command -v counted >/dev/null 2>&1 || counted() { printf '%s %s' "$1" "$2"; }  # a doctor without its tree
 PROBLEMS=0
 fail() { err "problem: $*"; PROBLEMS=$((PROBLEMS + 1)); }
 
@@ -137,7 +140,7 @@ if [ "$PROBLEMS" -eq 0 ]; then
     ok "doctor: healthy"
     exit 0
 fi
-err "doctor: $PROBLEMS problem(s) — fix the named lines above"
+err "doctor: $(counted "$PROBLEMS" problem) — fix the named lines above"
 exit 1
 exit
 } # parse-guard

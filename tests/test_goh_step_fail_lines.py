@@ -176,7 +176,7 @@ def test_a_tail_that_drops_lines_says_how_many(tmp_path):
     body = "goh_step 'long check' /bin/bash -c 'seq 1 100; exit 1'"
     long = _run(tmp_path, f"GOH_TAIL=10\n{body}")
     assert long.returncode != 0
-    assert "90 earlier line(s) not shown (GOH_TAIL=10" in long.stderr, long.stderr
+    assert "90 earlier lines not shown (GOH_TAIL=10" in long.stderr, long.stderr
     short = _run(tmp_path, f"GOH_TAIL=500\n{body}")
     assert "not shown (GOH_TAIL" not in short.stderr, short.stderr
 

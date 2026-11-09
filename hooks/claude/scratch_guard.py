@@ -21,7 +21,10 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "lib"))
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))  # the goh root: tui.lib
 from shell_tools import COMMAND_FIELD, SHELL_TOOLS  # the ONE list of shell-running tools
+
+from tui.lib import counted
 
 # The scratchpad root Claude Code hands a session: /private/tmp/claude-<uid>/<proj>/<uuid>/scratchpad
 ROOT = r"(?:/private)?/tmp/claude-\d+/[^/\s'\"]+/[0-9a-f-]{36}/scratchpad"
@@ -33,7 +36,7 @@ SHELL_WRITE = re.compile(
 FILE_TOOLS = ("Write", "Edit", "MultiEdit", "NotebookEdit")
 
 
-def _tool_uses(text: str) -> list[tuple[str, dict]]:
+def tool_uses(text: str) -> list[tuple[str, dict]]:
     out = []
     for raw in text.splitlines():
         try:
@@ -57,7 +60,7 @@ def _tool_uses(text: str) -> list[tuple[str, dict]]:
 def loose_writes(text: str) -> list[str]:
     """Each distinct scratchpad-root file the transcript's tool calls wrote, first write first."""
     found: list[str] = []
-    for name, inp in _tool_uses(text):
+    for name, inp in tool_uses(text):
         paths: list[str] = []
         if name in FILE_TOOLS:
             paths = [str(inp.get("file_path") or inp.get("notebook_path") or "")]
@@ -72,7 +75,7 @@ def loose_writes(text: str) -> list[str]:
 def message(paths: list[str]) -> str:
     """The one line the session sees."""
     return (
-        f"⚠ subagent wrote {len(paths)} fixed-name file(s) into the shared scratchpad root: "
+        f"⚠ subagent wrote {counted(len(paths), 'fixed-name file')} into the shared scratchpad root: "
         + ", ".join(paths)
         + ". Another agent can overwrite them; claim a per-item path with `python3 "
         "~/Projects/.loop/tools/loopctl.py scratch <ITEM-ID> --base <scratchpad> [--file NAME]`."

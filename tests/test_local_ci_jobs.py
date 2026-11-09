@@ -108,7 +108,7 @@ def test_a_failure_among_concurrent_steps_is_accumulated_and_named(repo):
     assert r.returncode == 1
     assert a.exists() and c.exists(), "a failing step stopped its siblings"
     assert "WHY-IT-FAILED" in r.stderr, "the failing step's output was withheld"
-    assert "1 of 3 step(s) failed" in r.stderr
+    assert "1 of 3 steps failed" in r.stderr
 
 
 def test_a_timeout_reaps_only_its_own_step(repo):
@@ -165,7 +165,7 @@ def test_steps_only_ignores_the_repos_own_steps(repo):
     r, _ = run_cli(repo, "--steps-only", "--step", "true")
     assert r.returncode == 0, r.stdout + r.stderr
     assert not marker.exists(), "--steps-only ran a .gatesrc step"
-    assert "1 step(s)" in r.stdout
+    assert "1 step in" in r.stdout
 
 
 def test_steps_only_without_steps_is_an_error(repo):

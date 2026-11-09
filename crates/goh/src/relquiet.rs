@@ -273,7 +273,10 @@ fn judge(root: &Path, files: &[String], exclude: &str, staged: bool) -> (i32, St
     let report = Report {
         tag: TAG,
         item: "GOH.RELHIDE",
-        what: "release step(s) that send their output to /dev/null",
+        what: (
+            "release step that sends its output to /dev/null",
+            "release steps that send their output to /dev/null",
+        ),
         fix: FIX,
         ok: format!("{scripts} release-named file(s), no gate/test/install step hides its output"),
     };

@@ -77,7 +77,7 @@ def test_the_reworked_shape_passes(repo, queue):
     fixture(repo, CLEAN)
     r = roadmap(repo, queue)
     assert r.returncode == 0, r.stdout + r.stderr
-    assert "3 open entr(ies) in 2 phase(s)" in r.stdout, r.stdout
+    assert "3 entries open in 2 phases" in r.stdout, r.stdout
 
 
 @pytest.mark.parametrize("rule", sorted(PLANTED))

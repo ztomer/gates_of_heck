@@ -33,6 +33,9 @@ import subprocess
 import sys
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))  # the goh root: tui.lib
+from tui.lib import counted
+
 KEY = "GOH_PY_LINT_CEILINGS"
 
 
@@ -98,19 +101,19 @@ def check(path: str, runner: str, files: list[str]) -> int:
     for f in sorted(files):
         have, ceiling = len(found.get(f, [])), staged.get(f, 0)
         if have > ceiling:
-            problems.append(f"{f}: {have} ruff finding(s), ceiling {ceiling}")
+            problems.append(f"{f}: {counted(have, 'ruff finding')}, ceiling {ceiling}")
             problems += [
                 f"    {f}:{x['location']['row']}:{x['location']['column']} {x['code']} {x['message']}"
                 for x in found[f]
             ]
         elif have < ceiling:
             problems.append(
-                f"{f}: {have} ruff finding(s), under its ceiling {ceiling} -- write {have} in {path}"
+                f"{f}: {counted(have, 'ruff finding')}, under its ceiling {ceiling} -- write {have} in {path}"
             )
     for p in problems:
         print(f"✗ {p}" if not p.startswith(" ") else p, file=sys.stderr)
     if not problems:
-        print(f"✓ ruff check: {len(files)} staged file(s) within {path}")
+        print(f"✓ ruff check: {counted(len(files), 'staged file')} within {path}")
     return 1 if problems else 0
 
 
@@ -120,7 +123,8 @@ def seed(out: str, runner: str) -> int:
     Path(out).parent.mkdir(parents=True, exist_ok=True)
     Path(out).write_text(json.dumps(counts, indent=2, sort_keys=True) + "\n")
     print(
-        f"✓ {out}: {sum(counts.values())} finding(s) in {len(counts)} of {len(tracked)} tracked file(s)"
+        f"✓ {out}: {counted(sum(counts.values()), 'finding')} in {len(counts)} of "
+        f"{counted(len(tracked), 'tracked file')}"
     )
     return 0
 

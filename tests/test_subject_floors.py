@@ -56,7 +56,7 @@ def test_a_floor_above_what_the_tree_holds_is_the_stopped_reading_verdict(repo: 
     commit_all(repo)
     code, out = _full(repo)
     assert code == 1, out
-    assert KEY in out and "floor of 3" in out and "read 2 test file(s)" in out, out
+    assert KEY in out and "floor of 3" in out and "read 2 test files" in out, out
 
 
 def test_a_keyless_gatesrc_passes_and_says_which_floors_it_lacks(repo: Path) -> None:

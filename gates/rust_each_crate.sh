@@ -89,7 +89,7 @@ while IFS= read -r d; do
     args+=(--step "GOH_RUST_GROUPS=crate,coverage $gate $(printf %q "$d")")
 done <<<"$ordered"
 
-info "rust gate over $(wc -l <<<"$ordered" | tr -d ' ') crate(s), ${GOH_RUST_JOBS:-4} at a time; repo-wide scans once"
+info "rust gate over $(counted "$(wc -l <<<"$ordered")" crate), ${GOH_RUST_JOBS:-4} at a time; repo-wide scans once"
 exec bash "$HERE/local_ci.sh" --steps-only --jobs "${GOH_RUST_JOBS:-4}" "${args[@]}" "$repo"
 exit
 } # parse-guard

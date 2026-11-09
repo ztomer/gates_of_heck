@@ -1,7 +1,7 @@
 """tui/lib.py — Kare TUI output primitives (vendored from ~/projects/scripts/_lib.py).
 
 Import from a repo script (add the repo root or tui/ to sys.path first):
-    from tui.lib import info, step, ok, err, warn, die, hr, section, report
+    from tui.lib import info, step, ok, err, warn, die, hr, section, report, counted, noun
 
 Self-contained: reads tui/stylerc (repo source of truth), no machine dependency.
 Icons: → · ✓ ✗ ⚠   Colors: restrained, NO_COLOR + non-tty aware (degrades to plain text).
@@ -146,3 +146,13 @@ def section(title: str) -> None:
     hr()
     print(f"{_C_BOLD}  {title}{_C_RESET}", flush=True)
     hr()
+
+
+def noun(n: int, singular: str, plural: str | None = None) -> str:
+    """The noun for a count of `n`: exactly one is singular; `plural` defaults to singular + s."""
+    return singular if n == 1 else (plural or f"{singular}s")
+
+
+def counted(n: int, singular: str, plural: str | None = None) -> str:
+    """`1 file`, `0 files`, `3 files` -- never the hedge `goh plural-hedge` refuses (GOH.PLURALHEDGE)."""
+    return f"{n} {noun(n, singular, plural)}"

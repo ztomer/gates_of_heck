@@ -282,9 +282,10 @@ fn write_seed(root: &Path, cfg: &crate::gatesrc::Gatesrc, queue_flag: Option<&st
     }
     let total: usize = g.found.values().map(Vec::len).sum();
     goh_tui::outln!(
-        "{} {TAG} seeded {SEED_FILE}: {total} finding(s) under {} key(s)",
+        "{} {TAG} seeded {SEED_FILE}: {} under {}",
         goh_tui::OK,
-        g.found.len()
+        goh_tui::counted(total, "finding"),
+        goh_tui::counted(g.found.len(), "key")
     );
     0
 }

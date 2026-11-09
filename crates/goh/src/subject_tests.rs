@@ -69,7 +69,7 @@ fn at_the_floor_passes_and_one_under_is_red_naming_key_floor_and_count() {
     assert_eq!(judge(&read, &floors(&[("GOH_EMOJI_MIN_FILES", 12)])).0, 0);
     let (code, text) = judge(&read, &floors(&[("GOH_EMOJI_MIN_FILES", 13)]));
     assert_eq!(code, 1, "{text}");
-    for want in ["GOH_EMOJI_MIN_FILES", "floor of 13", "read 12 text file(s)"] {
+    for want in ["GOH_EMOJI_MIN_FILES", "floor of 13", "read 12 text files"] {
         assert!(text.contains(want), "{want}: {text}");
     }
 }

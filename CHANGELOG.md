@@ -2,6 +2,24 @@
 
 ## Unreleased
 
+* **A hedged plural in a string is a structural finding: `goh plural-hedge` (GOH.PLURALHEDGE).**
+  `0 open entr(ies)`, `4 step(s)`, `2 finding(s)` never decided which number they meant. A count
+  now meets its noun in the tui lib -- `counted`/`noun` (`tui.lib`), `counted`/`plural_noun`
+  (`tui/plural.sh`, sourced by `tui/lib.sh` and by every gate whatever lib it sourced), and
+  `goh_tui::counted`/`noun` -- and a structural step in every repo refuses a `word(s)`,
+  `word(es)`, `entr(ies)` or `{unit}(s)` inside a string literal of a `.py`, shell, `.rs` or
+  `.swift` source (lifted from routines' `plural::tests`). The estate's 2305 sites in 37 repos are
+  seeded in `plural_hedge_seed.json` by root commit: a seeded file warns, a new hedge is red.
+  goh's own named hedges are fixed (roadmap, local_ci.sh, py_lint_ceiling.py, model_choice_watch.py,
+  the scanner-subject units, the estate-seed reports); the rest of goh's are seeded like any
+  consumer's. Red first: the finder with its letter test disabled failed its unit table; the CLI
+  test's planted `{n} step(s)` was red.
+* **A subagent's direct `gh` CI read is named (GOH.GHDOOR).** The repo-worker definitions say CI is
+  read only through `loopctl.py ci <full-sha> --repo OWNER/NAME [--wait]` (exit 75: throttled, not
+  a failure), never `gh run list/view/watch` or `gh api .../actions`; agent_guard's SubagentStop
+  names each direct call it finds in the transcript (`ci_door.py`, `ci_direct` on the outcome line).
+  Red first: a planted `gh run watch` transcript line was not named.
+
 ## v0.88.0 -- no repository's seed entries in another's tree; goh's public tree holds only its own
 
 * **No repository's seed entries in another's tree; goh's public tree holds only its own (GOH.SEEDPRIVATE).**

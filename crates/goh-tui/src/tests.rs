@@ -82,3 +82,15 @@ fn text_off_a_terminal_passes_through_unchanged() {
     let text = format!("{OK} a\nplain\n{ERR} b\n");
     assert_eq!(render_text(&text, Stream::Out), text);
 }
+
+#[test]
+fn a_count_meets_its_noun() {
+    assert_eq!(crate::counted(1, "file"), "1 file");
+    assert_eq!(crate::counted(0, "file"), "0 files");
+    assert_eq!(crate::counted(3, "file"), "3 files");
+    assert_eq!(crate::counted_as(1, "entry", "entries"), "1 entry");
+    assert_eq!(crate::counted_as(2, "entry", "entries"), "2 entries");
+    assert_eq!(crate::noun(1, "run"), "run");
+    assert_eq!(crate::noun(2, "run"), "runs");
+    assert_eq!(crate::noun_as(2, "process", "processes"), "processes");
+}

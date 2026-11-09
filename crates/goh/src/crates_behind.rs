@@ -375,7 +375,10 @@ fn verdict(root: &Path, judged: &[Judged]) -> (i32, String, String) {
     let report = Report {
         tag: TAG,
         item: "GOH.CRATESBEHIND",
-        what: "crate(s) behind their newest compatible release",
+        what: (
+            "crate behind its newest compatible release",
+            "crates behind their newest compatible release",
+        ),
         fix: FIX,
         ok,
     };

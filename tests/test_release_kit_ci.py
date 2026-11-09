@@ -56,7 +56,7 @@ def test_no_run_for_head_refuses_the_tag(kit):
 def test_every_run_green_tags(kit):
     r = run_release(_with_ci(kit, GREEN))
     out = r.stdout + r.stderr
-    assert r.returncode == 0 and "2 CI run(s)" in out, out
+    assert r.returncode == 0 and "2 CI runs" in out, out
     assert _tagged(kit)
 
 
@@ -144,7 +144,7 @@ def test_pending_then_green_is_waited_for_and_tags(kit):
     r = run_release(kit, env_extra={"GOH_RELEASE_CI_WAIT": "60"})
     out = r.stdout + r.stderr
     assert r.returncode == 0, out
-    assert "waiting" in out and "2 CI run(s)" in out, out
+    assert "waiting" in out and "2 CI runs" in out, out
     assert _tagged(kit)
 
 

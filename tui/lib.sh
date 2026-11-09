@@ -109,6 +109,9 @@ hr() {
 section() { printf '\n'; hr; bold "  $1"; hr; }
 
 # ── Utilities ──────────────────────────────────────────────────────────
+# A count meets its noun: `counted N noun [plural]`, `plural_noun N noun [plural]` (tui/plural.sh,
+# which a gate that may have sourced a VENDORED lib sources from goh directly).
+if [ -f "$_TUI_DIR/plural.sh" ]; then . "$_TUI_DIR/plural.sh"; fi
 require_commands() {
   local missing=()
   for cmd in "$@"; do

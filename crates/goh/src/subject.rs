@@ -49,125 +49,155 @@ use std::fmt::Write as _;
 pub struct Subject {
     /// The `.gatesrc` key holding this scanner's floor.
     pub key: &'static str,
-    /// What the count counts, plural, e.g. `text file(s)`.
+    /// What the count counts, singular, e.g. `text file`.
     pub unit: &'static str,
+    /// The same, plural: `text files`.
+    pub units: &'static str,
     /// The structural step (or command) that reads it.
     pub scanner: &'static str,
 }
 
 pub const EMOJI: Subject = Subject {
     key: "GOH_EMOJI_MIN_FILES",
-    unit: "text file(s)",
+    unit: "text file",
+    units: "text files",
     scanner: "no disallowed emoji",
 };
 pub const CONFLICT_MARKERS: Subject = Subject {
     key: "GOH_CONFLICT_MARKERS_MIN_FILES",
-    unit: "file(s)",
+    unit: "file",
+    units: "files",
     scanner: "no conflict markers",
 };
 pub const FILE_LENGTH: Subject = Subject {
     key: "GOH_FILE_LENGTH_MIN_FILES",
-    unit: "file(s) measured",
+    unit: "file measured",
+    units: "files measured",
     scanner: "file length",
 };
 pub const SECRETS: Subject = Subject {
     key: "GOH_SECRETS_MIN_FILES",
-    unit: "text file(s)",
+    unit: "text file",
+    units: "text files",
     scanner: "no committed secrets",
 };
 pub const SHELL_LINT: Subject = Subject {
     key: "GOH_SHELL_LINT_MIN_FILES",
-    unit: "shell file(s)",
+    unit: "shell file",
+    units: "shell files",
     scanner: "shell lint",
 };
 pub const EARLY_EXIT_PIPE: Subject = Subject {
     key: "GOH_EARLY_EXIT_PIPE_MIN_FILES",
-    unit: "shell source(s)",
+    unit: "shell source",
+    units: "shell sources",
     scanner: "no early-exit pipe under pipefail",
 };
 pub const DEAD_AFTER_EXEC: Subject = Subject {
     key: "GOH_DEAD_AFTER_EXEC_MIN_FILES",
-    unit: "shell source(s)",
+    unit: "shell source",
+    units: "shell sources",
     scanner: "no code after exec",
 };
 pub const BARE_HOOK_INDEX: Subject = Subject {
     key: "GOH_BARE_HOOK_INDEX_MIN_FILES",
-    unit: "shell source(s)",
+    unit: "shell source",
+    units: "shell sources",
     scanner: "no bare read of the hook's index",
 };
 pub const RELEASE_QUIET: Subject = Subject {
     key: "GOH_RELEASE_QUIET_MIN_FILES",
-    unit: "release script(s)",
+    unit: "release script",
+    units: "release scripts",
     scanner: "no release step hides its output",
 };
 pub const MKTEMP_PORTABLE: Subject = Subject {
     key: "GOH_MKTEMP_PORTABLE_MIN_FILES",
-    unit: "shell source(s)",
+    unit: "shell source",
+    units: "shell sources",
     scanner: "no BSD-only mktemp -t",
+};
+pub const PLURAL_HEDGE: Subject = Subject {
+    key: "GOH_PLURAL_HEDGE_MIN_FILES",
+    unit: "source",
+    units: "sources",
+    scanner: "no hedged plural in a string",
 };
 pub const BARE_PYTHON: Subject = Subject {
     key: "GOH_BARE_PYTHON_MIN_FILES",
-    unit: "hook/gate script(s)",
+    unit: "hook/gate script",
+    units: "hook/gate scripts",
     scanner: "no bare python in a hook or gate",
 };
 pub const CHECKOUT_CREDENTIALS: Subject = Subject {
     key: "GOH_CHECKOUT_CREDENTIALS_MIN_FILES",
-    unit: "workflow/action file(s)",
+    unit: "workflow/action file",
+    units: "workflow/action files",
     scanner: "no checkout leaves its token in git config",
 };
 pub const TAP_WRITES: Subject = Subject {
     key: "GOH_TAP_WRITES_MIN_FILES",
-    unit: "script/workflow file(s)",
+    unit: "script/workflow file",
+    units: "script/workflow files",
     scanner: "no direct write to a Homebrew tap",
 };
 pub const MOVING_TAGS: Subject = Subject {
     key: "GOH_MOVING_TAGS_MIN_REFS",
-    unit: "image reference(s)",
+    unit: "image reference",
+    units: "image references",
     scanner: "no container image on a moving tag",
 };
 pub const MD_LINKS: Subject = Subject {
     key: "GOH_MD_LINKS_MIN_LINKS",
-    unit: "markdown link(s)",
+    unit: "markdown link",
+    units: "markdown links",
     scanner: "markdown links resolve",
 };
 pub const UNREAPED_SPAWN: Subject = Subject {
     key: "GOH_UNREAPED_SPAWN_MIN_FILES",
-    unit: "test file(s)",
+    unit: "test file",
+    units: "test files",
     scanner: "no unreaped spawns in tests",
 };
 pub const SUBPROCESS_STDIN: Subject = Subject {
     key: "GOH_SUBPROCESS_STDIN_MIN_CALLS",
-    unit: "process call(s)",
+    unit: "process call",
+    units: "process calls",
     scanner: "every child process names its stdin",
 };
 pub const FIXED_SLEEP: Subject = Subject {
     key: "GOH_FIXED_SLEEP_MIN_FILES",
-    unit: "Python file(s)",
+    unit: "Python file",
+    units: "Python files",
     scanner: "goh fixed-sleep",
 };
 pub const STATUS_MARKERS: Subject = Subject {
     key: "GOH_STATUS_MARKERS_MIN_FILES",
-    unit: "source file(s)",
+    unit: "source file",
+    units: "source files",
     scanner: "goh status-markers",
 };
 pub const JS_SYNTAX: Subject = Subject {
     key: "GOH_JS_SYNTAX_MIN_FILES",
-    unit: "JavaScript file(s)",
+    unit: "JavaScript file",
+    units: "JavaScript files",
     scanner: "every tracked JavaScript source parses",
 };
 pub const INSTALLED_VERSION: Subject = Subject {
     key: "GOH_INSTALLED_VERSION_MIN_FILES",
-    unit: "Markdown file(s)",
+    unit: "Markdown file",
+    units: "Markdown files",
     scanner: "no doc keeps the installed version by hand",
 };
 pub const BUSY_LOOP: Subject = Subject {
     key: "GOH_BUSY_LOOP_MIN_FILES",
-    unit: "shell source(s)",
+    unit: "shell source",
+    units: "shell sources",
     scanner: "no busy loop or busy-wait in a tracked file",
 };
 
 /// Every scanner with a subject, spelled once: the keys `.gatesrc` may hold a floor in.
-pub const ALL: [&Subject; 22] = [
+pub const ALL: [&Subject; 23] = [
     &EMOJI,
     &CONFLICT_MARKERS,
     &FILE_LENGTH,
@@ -178,6 +208,7 @@ pub const ALL: [&Subject; 22] = [
     &BARE_HOOK_INDEX,
     &RELEASE_QUIET,
     &MKTEMP_PORTABLE,
+    &PLURAL_HEDGE,
     &BARE_PYTHON,
     &CHECKOUT_CREDENTIALS,
     &TAP_WRITES,
@@ -212,7 +243,7 @@ pub fn parse_floors(
             format!(
                 "{} is not a whole number of {}: {raw:?} -- a floor that does not parse is \
                  refused, never read as no floor",
-                subject.key, subject.unit
+                subject.key, subject.units
             )
         })?;
         floors.insert(subject.key, n);
@@ -232,9 +263,12 @@ pub fn floor(cfg: &crate::gatesrc::Gatesrc, subject: &Subject) -> Option<usize> 
 pub fn below(subject: &Subject, floor: Option<usize>, read: usize) -> Option<String> {
     let floor = floor.filter(|f| read < *f)?;
     let what = if read == 0 {
-        format!("read NONE of its subject ({})", subject.unit)
+        format!("read NONE of its subject ({})", subject.units)
     } else {
-        format!("read {read} {}", subject.unit)
+        format!(
+            "read {read} {}",
+            goh_tui::noun_as(read, subject.unit, subject.units)
+        )
     };
     Some(format!(
         "{ERR} [subject] `{}` {what} and .gatesrc declares a floor of {floor} ({})\n\
@@ -286,9 +320,13 @@ pub fn judge(
     if !unset.is_empty() {
         let _ = writeln!(
             s,
-            "{START} [subject] {} scanner(s) declare no floor in .gatesrc, so a scan that stops \
+            "{START} [subject] {} no floor in .gatesrc, so a scan that stops \
              reading would pass; this run read: {}",
-            unset.len(),
+            if unset.len() == 1 {
+                "1 scanner declares".to_string()
+            } else {
+                format!("{} scanners declare", unset.len())
+            },
             unset.join(" ")
         );
     }

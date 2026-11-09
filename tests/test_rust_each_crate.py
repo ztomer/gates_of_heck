@@ -77,7 +77,7 @@ def test_every_crate_gated_repo_scans_once_biggest_first(estate: Path, tmp_path:
     r = _each(estate, timings)
     out = r.stdout + r.stderr
     assert r.returncode == 0, out
-    assert "rust gate over 3 crate(s)" in out, out
+    assert "rust gate over 3 crates" in out, out
     labels = [json.loads(line)["label"] for line in timings.read_text().splitlines()]
     assert labels.count("lint policy is inherited") == 1, labels
     assert labels.count("fmt") == 3, labels
@@ -94,7 +94,7 @@ def test_a_red_crate_is_named_and_the_others_finish(estate: Path) -> None:
     _git(estate, "add", "-A")
     r = _each(estate)
     assert r.returncode == 1, r.stdout + r.stderr
-    assert "step(s) failed" in r.stderr and "crates/b" in r.stderr.split("step(s) failed", 1)[1], (
+    assert "steps failed" in r.stderr and "crates/b" in r.stderr.split("steps failed", 1)[1], (
         r.stderr
     )
     assert r.stdout.count("✓ [") >= 2, "the other crates did not finish"
@@ -109,7 +109,7 @@ def test_a_nested_manifest_is_its_crates_business(estate: Path) -> None:
     (kit / "src" / "lib.rs").write_text("")
     _git(estate, "add", "-A")
     r = _each(estate, GOH_CI_STEPS="unused")
-    assert "rust gate over 3 crate(s)" in r.stdout + r.stderr
+    assert "rust gate over 3 crates" in r.stdout + r.stderr
 
 
 @pytest.mark.parametrize(("key", "value"), [("GOH_RUST_JOBS", "many"), ("GOH_RUST_JOBS", "0")])

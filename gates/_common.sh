@@ -42,6 +42,8 @@ for _goh_tui in "${GOH_GIT_ROOT:+$GOH_GIT_ROOT/tui/lib.sh}" \
     fi
 done
 unset _goh_tui
+# shellcheck source=tui/plural.sh
+. "$GOH_ROOT/tui/plural.sh"  # counted/plural_noun: goh's own, whatever lib.sh was sourced above
 # shellcheck source=lib/bench_lock.sh
 . "$GOH_ROOT/lib/bench_lock.sh"  # a measurement holds off every gate on the host (goh_init)
 
@@ -279,7 +281,7 @@ goh_step() {
         _goh_tail="${GOH_TAIL:-60}"
         _goh_dropped=$(( $(wc -l < "$GOH_LOG") - _goh_tail ))
         if [ "$_goh_dropped" -gt 0 ]; then
-            printf '%s\n' "→ $_goh_dropped earlier line(s) not shown (GOH_TAIL=$_goh_tail; raise it to see them)" >&2
+            printf '%s\n' "→ $_goh_dropped earlier $(plural_noun "$_goh_dropped" line) not shown (GOH_TAIL=$_goh_tail; raise it to see them)" >&2
         fi
         tail -n "$_goh_tail" "$GOH_LOG" >&2
         printf '\n'
@@ -312,7 +314,7 @@ _goh_surface_warns() {
     printf '%s\n' "$_w" | awk -v max="$_max" 'NR <= max' >&2   # awk reads to EOF: head would SIGPIPE its producer
     _n=$(( _total - _max ))
     if [ "$_n" -gt 0 ]; then
-        printf '%s\n' "→ $_n more ⚠ line(s) not shown (GOH_WARN_LINES=$_max; raise it to see them)" >&2
+        printf '%s\n' "→ $_n more ⚠ $(plural_noun "$_n" line) not shown (GOH_WARN_LINES=$_max; raise it to see them)" >&2
     fi
     return 0
 }

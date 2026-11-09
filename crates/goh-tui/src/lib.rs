@@ -204,5 +204,34 @@ pub fn warn(message: &str) {
     say(Mark::Warn, message);
 }
 
+/// `1 file`, `0 files`, `3 files`: a count with its noun, so no message hedges with `file(s)`
+/// (GOH.PLURALHEDGE; `goh plural-hedge` refuses the hedge). Exactly one is singular.
+#[must_use]
+pub fn counted(n: usize, singular: &str) -> String {
+    format!("{n} {}", noun(n, singular))
+}
+
+/// As [`counted`], for a noun whose plural is not the singular plus `s` (`entry`, `entries`).
+#[must_use]
+pub fn counted_as(n: usize, singular: &str, plural: &str) -> String {
+    format!("{n} {}", noun_as(n, singular, plural))
+}
+
+/// The noun alone, for a sentence that places the number itself.
+#[must_use]
+pub fn noun(n: usize, singular: &str) -> String {
+    if n == 1 {
+        singular.to_string()
+    } else {
+        format!("{singular}s")
+    }
+}
+
+/// As [`noun`], with the plural named.
+#[must_use]
+pub fn noun_as(n: usize, singular: &str, plural: &str) -> String {
+    if n == 1 { singular } else { plural }.to_string()
+}
+
 #[cfg(test)]
 mod tests;

@@ -230,7 +230,8 @@ pub fn judge(
             Some(s) if *n > s.count => v.red.push(path.clone()),
             Some(s) if *n < s.count => {
                 let note = format!(
-                    "{n} {unit}(s), seeded {} -- lower its entry in {}",
+                    "{}, seeded {} -- lower its entry in {}",
+                    goh_tui::counted(*n, unit),
                     s.count,
                     home(kind, *s)
                 );
@@ -278,8 +279,9 @@ pub struct Report<'a> {
     pub tag: &'a str,
     /// The queue item that seeded it, named on every warning (`GOH.RELHIDE`).
     pub item: &'a str,
-    /// The red header's tail after the count: `release step(s) that discard their output`.
-    pub what: &'a str,
+    /// The red header's tail after the count, singular and plural: (`release step that discards
+    /// its output`, `release steps that discard their output`).
+    pub what: (&'a str, &'a str),
     /// The fix, indented, ending in a newline.
     pub fix: &'a str,
     /// The pass line, without the glyph and tag.
@@ -327,10 +329,10 @@ pub fn verdict(
             format!("{OK} {} OK — {}\n", r.tag, r.ok)
         } else {
             format!(
-                "{OK} {} OK — nothing beyond the {} seed; {} seeded file(s) warned\n",
+                "{OK} {} OK — nothing beyond the {} seed; {} warned\n",
                 r.tag,
                 r.item,
-                v.warn.len()
+                goh_tui::counted(v.warn.len(), "seeded file")
             )
         };
         return (0, ok, warns);
@@ -339,7 +341,8 @@ pub fn verdict(
     if !v.red.is_empty() {
         let n: usize = v.red.iter().map(|p| sites[p].len()).sum();
         let scope = if staged { "staged" } else { "tracked" };
-        let _ = writeln!(err, "{ERR} {} {n} {} ({scope}):", r.tag, r.what);
+        let what = goh_tui::noun_as(n, r.what.0, r.what.1);
+        let _ = writeln!(err, "{ERR} {} {n} {what} ({scope}):", r.tag);
         for p in &v.red {
             for line in &sites[p] {
                 let _ = writeln!(err, "{line}");
@@ -362,9 +365,10 @@ pub fn stale_report(tag: &str, item: &str, stale: &[(String, String)]) -> String
     }
     let _ = writeln!(
         out,
-        "{} {tag} {} stale {item} seed entr(ies): a ratchet holds only what is still there:",
+        "{} {tag} {} stale {item} seed {}: a ratchet holds only what is still there:",
         goh_tui::ERR,
-        stale.len()
+        stale.len(),
+        goh_tui::noun_as(stale.len(), "entry", "entries")
     );
     for (path, note) in stale {
         let _ = writeln!(out, "    {path}: {note}");

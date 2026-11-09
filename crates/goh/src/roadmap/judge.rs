@@ -105,8 +105,10 @@ pub fn judge(
     let seeded: usize = seed.values().sum();
     let _ = writeln!(
         s,
-        "{OK} {TAG} {}: {} open entr(ies) in {} phase(s), {seeded} seeded",
-        g.roadmap, g.entries, g.phases
+        "{OK} {TAG} {}: {} open in {}, {seeded} seeded",
+        g.roadmap,
+        goh_tui::counted_as(g.entries, "entry", "entries"),
+        goh_tui::counted(g.phases, "phase")
     );
     (0, s)
 }
