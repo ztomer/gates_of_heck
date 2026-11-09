@@ -2,6 +2,18 @@
 
 ## Unreleased
 
+## v0.86.0 -- a Cargo.lock behind its newest compatible releases fails the push
+
+* **Every Cargo.lock at its newest compatible releases: `goh crates-behind` (GOH.CRATESBEHIND).**
+  routines' lock had fallen 37 compatible updates behind (FAULTS.ROUTINES) with every gate green.
+  rust_gate.sh now runs `cargo update --dry-run` (bounded, `--timeout`, default 120 s; writes
+  nothing) over every tracked lock it audits; a lock it would move is red, naming each crate. An
+  unreachable or timed-out index, `GOH_DEPS_OFFLINE=1`, and `CARGO_NET_OFFLINE`'s cached index are
+  each a stated skip, never a clean bill. Duplicate majors from `cargo tree -d` (`syn 2 + 3`) warn.
+  The estate sweep found 15 locks in 13 repos behind, seeded in `crates_behind_seed.json`; goh's own
+  lock (13 behind) is updated. Red first on a fixture holding itoa one patch back.
+* **koffee_big's bare hook-index entries are gone (KB.HOOKINDEX):** `hook_index_seed.json` is empty.
+
 ## v0.85.0 -- a release step never hides its output; BSD-only mktemp and a changelog out of step with its tags are named
 
 * **A release step that can fail never hides its output: `goh release-quiet` (GOH.RELHIDE).**
