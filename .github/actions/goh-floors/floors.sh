@@ -6,6 +6,17 @@
 #                                   verified release (shellcheck.sha256) unpacked into <bindir>
 #   floors.sh verify                goh's own judges, red naming the floor: the house Python
 #                                   (lib/house_python.sh) and shellcheck (required_tools.py --check)
+#   floors.sh cache-key             the release shellcheck would install, as a cache key
+#                                   (shellcheck-<version>-<platform>-<sha256>): actions/cache keeps
+#                                   the verified tarball across runs under it (GOH.FLOORSRETRY)
+#
+# A DOWNLOAD IS INFRASTRUCTURE (GOH.FLOORSRETRY, 2026-11-09). One transient GitHub outage turned
+# five consumer runs red with "could not download .../shellcheck/releases/download/v0.11.0/..." --
+# each passed on a rerun with no change, and each read as the repository's failure. The tarball is
+# now taken from GOH_FLOORS_CACHE (restored by actions/cache, re-verified against its sha256 on
+# every use), else downloaded with GOH_FLOORS_ATTEMPTS tries (default 4) and a doubling pause from
+# GOH_FLOORS_BACKOFF seconds (default 5: 5 + 10 + 20 s at most between them); an exhausted retry
+# says it was the download, not the repository.
 #
 # WHY (G7, 2026-10-26). goh raised python3 to 3.15 and shellcheck to 0.11.0; GitHub's runners ship
 # 3.12.3 and 0.9.0, and every consumer whose CI runs goh's gates went red (divoom-control run
@@ -19,7 +30,8 @@
 #
 # SEAMS (tests): GOH_FLOORS_OS / GOH_FLOORS_ARCH (the platform, default uname), GOH_FLOORS_URL (the
 # release base, default GitHub's), GOH_FLOORS_TSV (the floor table), GOH_FLOORS_SUMS (the verified
-# checksums). Platforms: Linux x86_64 and aarch64, macOS on Apple silicon. Anything else is
+# checksums), GOH_FLOORS_FETCH (one download attempt, `<cmd> <url> <out>`; default curl),
+# GOH_FLOORS_ATTEMPTS / GOH_FLOORS_BACKOFF (the retry), GOH_FLOORS_CACHE (the tarball cache). Platforms: Linux x86_64 and aarch64, macOS on Apple silicon. Anything else is
 # refused -- never a fallback build.
 { # parse-guard -- bash reads this group whole before running it (tests/test_parse_guard.py)
 set -euo pipefail
@@ -73,8 +85,48 @@ sha256() {
     if type -P sha256sum >/dev/null; then sha256sum "$1" | cut -d' ' -f1; else shasum -a 256 "$1" | cut -d' ' -f1; fi
 }
 
+# release -- sets version, sum and plat: the newest verified release at or above the floor.
+release() {
+    local want="$1" v s
+    plat="$(platform)"
+    read -r version sum < <(awk -F'\t' -v p="$plat" '!/^#/ && $1 == "shellcheck" && $3 == p { print $2, $4 }' "$SUMS" \
+        | sort -t. -k1,1n -k2,2n -k3,3n | while read -r v s; do ge "$v" "$want" && echo "$v $s"; done | tail -1) || true
+    [ -n "${version:-}" ] || die "goh-floors: no verified shellcheck release at or above the floor $want for $plat in $SUMS -- record its sha256 there in the commit that raises the floor"
+}
+
+# fetch_once <url> <out> -- ONE download attempt (GOH_FLOORS_FETCH replaces it in tests).
+fetch_once() {
+    if [ -n "${GOH_FLOORS_FETCH:-}" ]; then
+        "$GOH_FLOORS_FETCH" "$1" "$2"
+        return
+    fi
+    curl --proto '=https,file' --fail --silent --show-error --location --connect-timeout 20 \
+        --max-time 300 -o "$2" "$1"
+}
+
+# download <url> <out> -- bounded retries with a doubling pause; the last failure names the download.
+download() {
+    local url="$1" out="$2" attempts="${GOH_FLOORS_ATTEMPTS:-4}" pause="${GOH_FLOORS_BACKOFF:-5}" i
+    for ((i = 1; i <= attempts; i++)); do
+        rm -f "$out"
+        fetch_once "$url" "$out" && [ -s "$out" ] && return 0
+        if ((i < attempts)); then
+            warn "goh-floors: download attempt $i of $attempts failed ($url); again in ${pause}s"
+            sleep "$pause"
+            pause=$((pause * 2))
+        fi
+    done
+    die "goh-floors: INFRASTRUCTURE, not this repository -- the download of $url failed $attempts times (a GitHub release outage reads like this; re-run the job)"
+}
+
+cache_key() {
+    local version sum plat
+    release "$(floor shellcheck)"
+    printf 'shellcheck-%s-%s-%s\n' "$version" "$plat" "$sum"
+}
+
 shellcheck_at_floor() {
-    local bindir="$1" want have plat version sum v=""
+    local bindir="$1" want have plat version sum v="" cache="${GOH_FLOORS_CACHE:-}"
     want="$(floor shellcheck)"
     have="$(type -P shellcheck || true)"
     if [ -n "$have" ] && v="$(sc_version "$have")" && [ -n "$v" ] && ge "$v" "$want"; then
@@ -82,18 +134,27 @@ shellcheck_at_floor() {
         return 0
     fi
     [ -n "$have" ] && info "goh-floors: shellcheck ${v:-of no readable version} at $have is below the floor $want"
-    plat="$(platform)"
-    # The newest verified release at or above the floor, for this platform.
-    read -r version sum < <(awk -F'\t' -v p="$plat" '!/^#/ && $1 == "shellcheck" && $3 == p { print $2, $4 }' "$SUMS" \
-        | sort -t. -k1,1n -k2,2n -k3,3n | while read -r v s; do ge "$v" "$want" && echo "$v $s"; done | tail -1) || true
-    [ -n "${version:-}" ] || die "goh-floors: no verified shellcheck release at or above the floor $want for $plat in $SUMS -- record its sha256 there in the commit that raises the floor"
+    release "$want"
     TMP="$(mktemp -d "${TMPDIR:-/tmp}/goh-floors.XXXXXX")"
     trap 'rm -rf "$TMP"' EXIT
     local tmp="$TMP"
     local asset="shellcheck-v$version.$plat.tar.gz"
-    curl --proto '=https,file' --fail --silent --show-error --location --retry 5 -o "$tmp/$asset" "$URL/v$version/$asset" \
-        || die "goh-floors: could not download $URL/v$version/$asset"
+    # The cache is trusted no more than the network: its copy is verified like a download, and a
+    # copy that does not match is dropped and fetched again.
+    if [ -n "$cache" ] && [ -f "$cache/$asset" ]; then
+        if [ "$(sha256 "$cache/$asset")" = "$sum" ]; then
+            cp "$cache/$asset" "$tmp/$asset"
+            info "goh-floors: $asset from the cache ($cache), its sha256 verified"
+        else
+            warn "goh-floors: the cached $asset does not match its recorded sha256 -- dropped, fetched again"
+            rm -f "$cache/$asset"
+        fi
+    fi
+    [ -f "$tmp/$asset" ] || download "$URL/v$version/$asset" "$tmp/$asset"
     [ "$(sha256 "$tmp/$asset")" = "$sum" ] || die "goh-floors: $asset does not match its recorded sha256 ($sum) -- refused"
+    if [ -n "$cache" ] && [ ! -f "$cache/$asset" ]; then
+        mkdir -p "$cache" && cp "$tmp/$asset" "$cache/$asset"
+    fi
     tar -xzf "$tmp/$asset" -C "$tmp"
     mkdir -p "$bindir"
     install -m 0755 "$tmp/shellcheck-v$version/shellcheck" "$bindir/shellcheck"
@@ -116,7 +177,8 @@ case "${1:-}" in
     floor) floor "${2:?floor <tool>}" ;;
     shellcheck) shellcheck_at_floor "${2:?shellcheck <bindir>}" ;;
     verify) verify ;;
-    *) die "usage: floors.sh floor <tool> | shellcheck <bindir> | verify" 2 ;;
+    cache-key) cache_key ;;
+    *) die "usage: floors.sh floor <tool> | shellcheck <bindir> | verify | cache-key" 2 ;;
 esac
 exit
 } # parse-guard

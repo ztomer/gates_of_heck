@@ -226,3 +226,96 @@ def test_a_failed_floor_read_fails_its_step() -> None:
     for n, line in enumerate((ACTION / "action.yml").read_text().splitlines(), 1):
         if line.strip().startswith("echo") and "$(" in line:
             raise AssertionError(f"action.yml:{n}: a $(...) inside an echo: {line.strip()}")
+
+
+# GOH.FLOORSRETRY (2026-11-09): one transient GitHub outage turned five consumer runs red on
+# "could not download .../shellcheck/releases/download/v0.11.0/..."; each passed on a rerun. The
+# download is retried (bounded), the verified tarball is cached across runs, and an exhausted retry
+# names the download, not the repository.
+
+
+def _fetcher(tmp: Path, fails: int) -> tuple[Path, Path]:
+    """A downloader that fails its first FAILS calls, then copies the file:// URL. Returns
+    (the command, the call count file)."""
+    calls = tmp / "fetch.calls"
+    cmd = tmp / "fetch"
+    cmd.write_text(
+        "#!/bin/bash\n"
+        f'n=$(( $(cat "{calls}" 2>/dev/null || echo 0) + 1 )); echo "$n" > "{calls}"\n'
+        f'[ "$n" -gt {fails} ] || {{ echo "curl: (22) The requested URL returned error: 504" >&2; exit 22; }}\n'
+        'cp "${1#file://}" "$2"\n'
+    )
+    cmd.chmod(0o755)
+    return cmd, calls
+
+
+def _below_floor(tmp: Path, fails: int, **extra: str) -> tuple[subprocess.CompletedProcess, Path]:
+    base, sha = _release(tmp, "9.0.0", "linux.x86_64", "9.0.0")
+    fetch, calls = _fetcher(tmp, fails)
+    done = _run(
+        "shellcheck", str(tmp / "bin"), path=BASE_PATH, GOH_FLOORS_URL=base,
+        GOH_FLOORS_SUMS=str(_sums(tmp, [("9.0.0", "linux.x86_64", sha)])),
+        GOH_FLOORS_OS="Linux", GOH_FLOORS_ARCH="x86_64", GOH_FLOORS_FETCH=str(fetch),
+        GOH_FLOORS_BACKOFF="0", **extra,
+    )  # fmt: skip
+    return done, calls
+
+
+def test_a_download_that_fails_twice_then_succeeds_installs(tmp_path: Path) -> None:
+    done, calls = _below_floor(tmp_path, 2)
+    assert done.returncode == 0, done.stderr
+    assert calls.read_text().strip() == "3"
+    assert (tmp_path / "bin" / "shellcheck").is_file()
+    assert "attempt 1 of 4 failed" in done.stderr
+
+
+def test_a_download_that_always_fails_names_the_download_not_the_repo(tmp_path: Path) -> None:
+    done, calls = _below_floor(tmp_path, 99, GOH_FLOORS_ATTEMPTS="3")
+    assert done.returncode != 0
+    assert calls.read_text().strip() == "3", "the retry is bounded by GOH_FLOORS_ATTEMPTS"
+    assert "INFRASTRUCTURE, not this repository" in done.stderr, done.stderr
+    assert "shellcheck-v9.0.0.linux.x86_64.tar.gz failed 3 times" in done.stderr, done.stderr
+    assert not (tmp_path / "bin" / "shellcheck").exists()
+
+
+def test_a_cached_tarball_is_verified_and_downloads_nothing(tmp_path: Path) -> None:
+    cache = tmp_path / "cache"
+    first, _ = _below_floor(tmp_path / "a", 0, GOH_FLOORS_CACHE=str(cache))
+    assert first.returncode == 0, first.stderr
+    assert (cache / "shellcheck-v9.0.0.linux.x86_64.tar.gz").is_file(), "the download was not kept"
+    (tmp_path / "b").mkdir()
+    sha = hashlib.sha256((cache / "shellcheck-v9.0.0.linux.x86_64.tar.gz").read_bytes()).hexdigest()
+    fetch, calls = _fetcher(tmp_path / "b", 99)
+    done = _run(
+        "shellcheck", str(tmp_path / "b" / "bin"), path=BASE_PATH, GOH_FLOORS_URL="file:///nonexistent",
+        GOH_FLOORS_SUMS=str(_sums(tmp_path / "b", [("9.0.0", "linux.x86_64", sha)])),
+        GOH_FLOORS_OS="Linux", GOH_FLOORS_ARCH="x86_64", GOH_FLOORS_FETCH=str(fetch),
+        GOH_FLOORS_BACKOFF="0", GOH_FLOORS_CACHE=str(cache),
+    )  # fmt: skip
+    assert done.returncode == 0, done.stderr
+    assert not calls.exists(), "a verified cache hit still downloaded"
+    assert "from the cache" in done.stdout + done.stderr
+
+
+def test_a_tampered_cache_is_dropped_and_fetched_again(tmp_path: Path) -> None:
+    cache = tmp_path / "cache"
+    cache.mkdir()
+    (cache / "shellcheck-v9.0.0.linux.x86_64.tar.gz").write_bytes(b"not the release")
+    done, calls = _below_floor(tmp_path, 0, GOH_FLOORS_CACHE=str(cache))
+    assert done.returncode == 0, done.stderr
+    assert calls.read_text().strip() == "1"
+    assert "dropped, fetched again" in done.stderr
+
+
+def test_the_cache_is_keyed_by_version_and_sha256(tmp_path: Path) -> None:
+    sums = _sums(tmp_path, [("9.0.0", "linux.x86_64", "ab" * 32)])
+    tsv = tmp_path / "t.tsv"
+    tsv.write_text("structural\tshellcheck\tbrew\tx\tcrates/goh/src/shell_lint.rs\t9.0.0\n")
+    done = _run("cache-key", path=BASE_PATH, GOH_FLOORS_SUMS=str(sums), GOH_FLOORS_TSV=str(tsv),
+                GOH_FLOORS_OS="Linux", GOH_FLOORS_ARCH="x86_64")  # fmt: skip
+    assert done.returncode == 0, done.stderr
+    assert done.stdout.strip() == f"shellcheck-9.0.0-linux.x86_64-{'ab' * 32}"
+    action = (ACTION / "action.yml").read_text()
+    assert "uses: actions/cache@" in action
+    assert "key: goh-floors-${{ steps.key.outputs.shellcheck }}" in action
+    assert 'GOH_FLOORS_CACHE="$RUNNER_TEMP/goh-floors/cache"' in action
