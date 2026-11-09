@@ -41,15 +41,6 @@ CHANGELOG) resolve in this file at `1a7c444`: `git show 1a7c444:docs/BACKLOG.md`
 Why first: each is a rule that only discipline held, and broke on 2026-11-08; none depends on another
 phase, and each is one landing.
 
-- **GOH.STAGEDPARITY** (queue: GOH.STAGEDPARITY) House rule 17, estate-wide: the push layer runs fast
-  checks the commit layer skips, so a green commit gets its push refused. Add `gates/swift_staged.sh`
-  (swiftlint `--strict` on staged `.swift`, built like `py_staged.sh`), have `commit_gate.sh` run
-  `py_staged.sh` and `swift_staged.sh` for every repo with those files, add a self-check that every fast
-  push-layer check has a staged twin, then delete koffee_big's own staged block (its `8f415fd`).
-  **Done when:** the commit layer runs ruff and swiftlint on staged files in every repo; the parity
-  self-check goes red on a missing twin (red first); koffee_big's local block is gone; a planted finding
-  is refused at commit in Finance, ZoneWM, games, servers, scripts, antiknob, koffee_oss,
-  mediaremote-adapter and token-pool.
 - **GOH.RUNNERPIN** (queue: GOH.RUNNERPIN) A moving runner label breaks "latest is a named release":
   antiknob, divoom-control and monitor use `*-latest` labels, and CI warns that `ubuntu-latest` moves to
   Ubuntu 26. Add a goh check refusing `*-latest` `runs-on` labels and moving action tags in
