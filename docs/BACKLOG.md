@@ -93,12 +93,6 @@ phase, and each is one landing.
 
 Why second: they cost every session a stall or a stale type today, and each is independent of Phase 1.
 
-- **GOH.LOADWAIT** (queue: GOH.LOADWAIT) `load.py --wait` held 25-50 min behind other sessions' gates and
-  once expired before running (ZN.APPCHECK, 2026-11-08): a load experiment queued behind every gate on
-  the machine is unbounded in practice. Measure what it waits on, give the wait its own bound separate
-  from the experiment's `--max`, report what it waited for, and consider running only when the machine's
-  own load is the baseline the experiment needs.
-  **Done when:** `load.py`'s wait is bounded and names what it waited for; test red first; goh released.
 - **GOH.STALLS2** (queue: GOH.STALLS2) (a) `hooks/claude/agent_stalls.py` `stalls()` skips an agent whose
   `meta.json` says finished, but finished is set per STOP, so an agent that stopped to wait on a background
   job that then died is never reported; fix it at the source and have loopctl call it. (b)
@@ -133,22 +127,6 @@ public (owner, 2026-11-08: "Yes, public repos").
   each repo is PUBLIC before leaving Actions on.
   **Done when:** gates_of_heck and monitor have a green hosted run of their own gate on main HEAD; divoom
   CI execs `tools/gate.sh --full` with the stale comments and the token fallback gone.
-
-## Phase 4 — agent spend: measure, configure, then automate
-
-Why fourth: SHIP is the largest and needs the loop controller's records; the spend watch (shipped)
-measures it against its prediction.
-
-- **GOH.SHIP** (queue: GOH.SHIP) Build `goh ship`: a detached, time-bounded landing pipeline (push through
-  the pre-push gate, the repo's release kit, install, the loopctl verify card) that writes one result JSON
-  and posts a pass/fail line per step; the agent's contract ends at "committed, local gate green, goh ship
-  started". Reuse maintained release tools (cargo-release, cargo-dist, release-please's changelog logic)
-  inside the kit. For the private repos only; public repos use hosted workflows (Phase 3). Measured over
-  116 transcripts: 49% of agent context is spent from the first push on. `agent_guard`'s appended contract
-  and the agent-fanout skill change to hand off there.
-  **Done when:** goh released with `goh ship`; one real agent item lands through it end to end with no
-  agent turn after the hand-off; the failure path is proven by a planted gate failure; the share of agent
-  context spent from the first push on falls from 49% to under 25%.
 
 ## Phase 5 — speed of the checks
 

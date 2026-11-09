@@ -30,7 +30,15 @@ WHAT THIS TOOL DOES, IN THE ORDER THAT MATTERS.
      `--oversubscribe` says it is meant: N > ncpu starves the thing under test.
   7. It REFUSES a command at background priority, which N spinners starve (lib/load_priority.py).
   8. It REFUSES to starve a GATE in flight (lib/gates_in_flight.py), naming it, exit EXIT_GATE:
-     `--wait` (at most --max; then the deadline starts) and `--despite-gate` are the ways on.
+     `--wait` and `--despite-gate` are the ways on. The wait has its OWN bound, `--wait-max`
+     (default 15m), never the experiment's --max, and it waits for the gates in flight when it
+     asked, not for a clear machine (GOH.LOADWAIT, 2026-11-08: ZN.APPCHECK's --wait held 25-50
+     min behind a stream of other sessions' gates, and once spent its whole budget queueing). On
+     expiry it names the gates still ahead, the ones that joined, and the load reading.
+ 10. It RECORDS the baseline it ran on -- the load average before its spinners start -- instead of
+     waiting for one: on a machine of a dozen sessions (load 36-78 on 16 cores, measured
+     2026-11-08) a "quiet machine" precondition is another unbounded wait, and the spinners'
+     load is a known N added on top of whatever the reading says.
   9. It REFUSES a build tool that takes a MACHINE-WIDE lock (lib/load_locks.py, GOH.LOADLOCK,
      2026-11-08): a starved `cargo test` held ~/.cargo/.package-cache for 21 minutes and stalled
      nine other agents. Build first (`cargo test --no-run`), put only the binary under load;
@@ -64,6 +72,10 @@ import load_locks
 import load_priority
 import load_reap
 import load_registry as reg
+from load_tree import GRACE_S, kill_tree
+
+sys.path.insert(0, str(ROOT))
+from tui.lib import err, info, warn
 
 EXIT_BUSY = 3  # the slot is taken
 EXIT_GATE = 75  # another session's gate is in flight (EX_TEMPFAIL: try again when it is done)
@@ -71,7 +83,6 @@ EXIT_LEAK = 70  # a spinner outlived the cleanup: the experiment's verdict is no
 EXIT_DEADLINE = 124  # the deadline expired (the number `timeout(1)` uses)
 DEFAULT_MAX_S = 1800.0  # the deadline when none is named: 30 minutes
 UNITS = {"s": 1.0, "m": 60.0, "h": 3600.0}
-GRACE_S = 2.0
 RELEASE_S = 5.0  # how long a spinner may wait for its release byte
 
 
@@ -85,7 +96,11 @@ def _parse(argv: list[str]) -> argparse.Namespace:
     parser.add_argument("--reap", action="store_true", help="kill the orphans a dead owner left")
     parser.add_argument("--max", help=f"deadline: 45, 90m, 2h (default {DEFAULT_MAX_S:g}s)")
     parser.add_argument("--oversubscribe", action="store_true", help="allow N > cores")
-    parser.add_argument("--wait", action="store_true", help="wait (to --max) for gates in flight")
+    parser.add_argument("--wait", action="store_true", help="wait for the gates in flight")
+    parser.add_argument(
+        "--wait-max",
+        help=f"bound on --wait, implies it (default {gates_in_flight.DEFAULT_WAIT_S:g}s)",
+    )
     parser.add_argument("--despite-gate", action="store_true", help="load beside a gate in flight")
     parser.add_argument(load_priority.ESCAPE_FLAG, metavar="REASON", help=load_priority.HELP)
     parser.add_argument(load_locks.ESCAPE_FLAG, metavar="REASON", help=load_locks.HELP)
@@ -93,7 +108,7 @@ def _parse(argv: list[str]) -> argparse.Namespace:
     return parser.parse_args(argv)
 
 
-def parse_duration(text: str) -> float:
+def parse_duration(text: str, flag: str = "--max") -> float:
     """A deadline in seconds from `45`, `30s`, `90m` or `2h`; anything that bounds nothing raises."""
     raw = text.strip().lower()
     scale = 1.0
@@ -103,9 +118,9 @@ def parse_duration(text: str) -> float:
     try:
         value = float(raw) * scale
     except ValueError:
-        raise ValueError(f"--max {text!r} is not a duration (seconds, or 90m / 2h)") from None
+        raise ValueError(f"{flag} {text!r} is not a duration (seconds, or 90m / 2h)") from None
     if not math.isfinite(value) or value <= 0:
-        raise ValueError(f"--max {text!r} bounds nothing: a deadline is a positive, finite time")
+        raise ValueError(f"{flag} {text!r} bounds nothing: a deadline is a positive, finite time")
     return value
 
 
@@ -115,69 +130,6 @@ def cores() -> int:
     if seam:
         return max(1, int(seam))
     return os.cpu_count() or 1
-
-
-def _descendants(root: int) -> list[int]:
-    """Every live descendant of `root`, read from the process table (children before none)."""
-    try:
-        listing = subprocess.run(
-            ["ps", "-ax", "-o", "pid=,ppid="],
-            capture_output=True,
-            text=True,
-            stdin=subprocess.DEVNULL,
-            timeout=10,
-            check=False,
-        ).stdout
-    except (OSError, subprocess.TimeoutExpired):
-        return []
-    children: dict[int, list[int]] = {}
-    for line in listing.splitlines():
-        parts = line.split()
-        if len(parts) == 2 and parts[0].isdigit() and parts[1].isdigit():
-            children.setdefault(int(parts[1]), []).append(int(parts[0]))
-    found: list[int] = []
-    frontier = [root]
-    while frontier:
-        pid = frontier.pop()
-        for child in children.get(pid, []):
-            if child not in found:
-                found.append(child)
-                frontier.append(child)
-    return found
-
-
-def _signal_tree(group: int, pids: list[int], number: int) -> None:
-    try:
-        os.killpg(group, number)
-    except (ProcessLookupError, PermissionError, OSError):
-        pass
-    for pid in pids:
-        try:
-            os.kill(pid, number)
-        except (ProcessLookupError, PermissionError, OSError):
-            pass
-
-
-def kill_tree(proc: subprocess.Popen) -> None:
-    """Kill the command's whole tree: its process group, and every descendant -- one that left
-    the group with a session of its own too -- snapshotted BEFORE anything dies, because a child
-    whose parent is killed is re-parented to launchd and is no longer anyone's descendant."""
-    tree = [(pid, reg.pid_start(pid) or "") for pid in _descendants(proc.pid)]
-    pids = [pid for pid, _start in tree]
-    _signal_tree(proc.pid, [proc.pid, *pids], signal.SIGTERM)
-    give_up = time.monotonic() + GRACE_S
-    while time.monotonic() < give_up:
-        if proc.poll() is not None and not any(reg.pid_alive(pid) for pid in pids):
-            break
-        time.sleep(0.05)
-    # The pid is checked against the start time it had: a number the kernel handed to somebody
-    # else in the meantime is not ours to kill.
-    same = [pid for pid, start in tree if not start or reg.pid_start(pid) == start]
-    _signal_tree(proc.pid, same, signal.SIGKILL)
-    try:
-        proc.wait(timeout=GRACE_S)
-    except subprocess.TimeoutExpired:
-        pass
 
 
 def _directory(opts: argparse.Namespace) -> Path:
@@ -406,6 +358,11 @@ def main(argv: list[str]) -> int:
         return 2
     try:
         max_s = DEFAULT_MAX_S if opts.max is None else parse_duration(opts.max)
+        wait_s = (
+            gates_in_flight.DEFAULT_WAIT_S
+            if opts.wait_max is None
+            else parse_duration(opts.wait_max, "--wait-max")
+        )
     except ValueError as error:
         print(f"load: {error}", file=sys.stderr)
         return 2
@@ -422,9 +379,19 @@ def main(argv: list[str]) -> int:
             print(f"load: {why}", file=sys.stderr)
         return 2
 
-    if count and not opts.despite_gate and (busy := gates_in_flight.hold_off(opts.wait, max_s)):
-        print(gates_in_flight.refusal(busy, count, opts.wait), file=sys.stderr)
-        return EXIT_GATE
+    wait = opts.wait or opts.wait_max is not None
+    if count and not opts.despite_gate:
+        hold = gates_in_flight.hold_off(wait, wait_s)
+        if hold:
+            err(gates_in_flight.refusal(hold, count, wait, wait_s, ncpu))
+            return EXIT_GATE
+        if hold.joined:
+            warn(
+                f"load: the gates ahead are done; {len(hold.joined)} gate(s) that started during "
+                f"the wait run beside the load: {gates_in_flight.names(hold.joined)}"
+            )
+    baseline = gates_in_flight.load_reading(ncpu)
+    info(f"load: baseline before the spinners: {baseline}")
     experiment = Experiment(directory, count, command, max_s)
     try:
         experiment.claim()
@@ -448,6 +415,7 @@ def main(argv: list[str]) -> int:
         print(f"load: cannot take the slot: {error}", file=sys.stderr)
         return 2
 
+    experiment.data["baseline"] = baseline  # --status names the machine it started on
     parent = os.getppid()
     _install_handlers(experiment)
     if parent != 1:

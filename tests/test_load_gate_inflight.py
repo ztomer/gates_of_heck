@@ -25,6 +25,8 @@ import timing_bounds
 from conftest import REPO_ROOT
 from test_commit_gate_structural import _commit, _consumer
 
+from tui.lib import ICON_ERR
+
 TOOL = REPO_ROOT / "tools" / "load.py"
 BENCH = REPO_ROOT / "lib" / "bench_lock.sh"
 EXIT_GATE = 75
@@ -137,18 +139,63 @@ def test_wait_starts_once_the_gate_exits(tmp_path: Path) -> None:
         assert "spinner(s) started" in tool.spoken(), tool.spoken()
 
 
-def test_wait_is_bounded_by_max(tmp_path: Path) -> None:
+def test_the_wait_has_its_own_bound_separate_from_max(tmp_path: Path) -> None:
+    """GOH.LOADWAIT (2026-11-08): the wait was bounded by the EXPERIMENT's --max, so ZN.APPCHECK's
+    `--wait` held 25-50 min and once spent its whole budget queueing. `--wait-max` bounds the wait
+    alone; a long --max does not lengthen it."""
     (tmp_path / "load").mkdir()
     try:
         gate = _gate_process()
         _register(gate.proc.pid)
         started = time.monotonic()
-        result = _run(tmp_path, "--wait", "--max", "2")
+        result = _run(tmp_path, "--wait", "--wait-max", "2", "--max", "600")
         assert result.returncode == EXIT_GATE, (result.returncode, result.stderr)
         assert time.monotonic() - started < timing_bounds.patience(30)
-        assert "pre-push" in result.stderr, result.stderr
+        assert "spinner(s) started" not in result.stdout, "it burned after the wait expired"
     finally:
         load_kit.reap()
+
+
+def test_an_expired_wait_names_what_it_waited_for_and_the_load(tmp_path: Path) -> None:
+    """On expiry it says WHICH gate it waited on (stage, repo, pid), for how long, and the load
+    reading it saw, through the Kare lib's `err` -- not a bare print a reader cannot tell apart."""
+    (tmp_path / "load").mkdir()
+    try:
+        gate = _gate_process()
+        _register(gate.proc.pid)
+        result = _run(tmp_path, "--wait", "--wait-max", "1")
+        assert result.returncode == EXIT_GATE, (result.returncode, result.stderr)
+        said = result.stderr
+        assert f"{ICON_ERR} load: --wait-max of 1s expired" in said, said
+        assert f"pid {gate.proc.pid}" in said and "/Users/someone/Projects/zinc" in said, said
+        assert "load average" in said and "core(s)" in said, said
+    finally:
+        load_kit.reap()
+
+
+def test_the_wait_does_not_queue_behind_gates_that_arrive_later(tmp_path: Path) -> None:
+    """The cause of the unbounded wait: it waited for the machine to be CLEAR, and with many
+    sessions a new gate starts before the last one ends (measured 2026-11-08: a ZoneWM pre-push
+    of 8 min overlapped by a stream of monitor pre-commits). A gate that starts after the wait
+    began is no worse off than one that starts a second after the experiment does: the wait
+    queues behind the gates AHEAD of it, and names the late ones."""
+    directory = tmp_path / "load"
+    directory.mkdir()
+    first = _gate_process()
+    _register(first.proc.pid)
+    with load_kit.owned(directory, 1, QUICK, options=("--wait",)) as tool:
+        assert load_kit.wait_until(lambda: "waiting" in tool.spoken()), tool.spoken()
+        late = _gate_process()
+        _register(late.proc.pid, stage="pre-commit", repo="/Users/someone/Projects/monitor")
+        time.sleep(1.5)  # more than a poll: the waiter has seen the late gate
+        first.stop()
+        tool.proc.wait(timeout=timing_bounds.patience(30))
+        said = tool.spoken()
+        assert tool.proc.returncode == 0, said
+        assert "spinner(s) started" in said, said
+        assert f"pid {late.proc.pid}" in said, (
+            f"the late gate it did not wait for is unnamed: {said}"
+        )
 
 
 def test_a_hook_that_dies_leaves_no_live_entry(tmp_path: Path) -> None:

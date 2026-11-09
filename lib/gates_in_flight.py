@@ -25,9 +25,13 @@ from __future__ import annotations
 
 import os
 import subprocess
+import sys
 import time
 from dataclasses import dataclass
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from tui.lib import report  # tui.lib, whatever the caller's path
 
 DEFAULT_DIR = "/tmp/gates-of-heck-bench.lock"  # lib/bench_lock.sh's BENCH_LOCK_DIR default
 START_SLACK_S = 2.0  # `ps` reports a start to the second; the entry's mtime is finer
@@ -157,33 +161,92 @@ def in_flight(directory: Path | None = None, exclude: set[int] | None = None) ->
 
 
 POLL_S = 1.0  # how often a waiting caller looks again
+DEFAULT_WAIT_S = 900.0  # `--wait` without `--wait-max`: 15 minutes, never the experiment's --max
 
 
-def hold_off(wait: bool, max_s: float, poll_s: float = POLL_S) -> list[Gate]:
+@dataclass(frozen=True)
+class Hold:
+    """What a load would starve, and what the wait for it saw.
+
+    `ahead` are the gates the load waits for: the ones in flight when it asked. `joined` are the
+    gates that started WHILE it waited -- named, never waited on (GOH.LOADWAIT, 2026-11-08: a wait
+    for a CLEAR machine is a wait behind every gate that will ever start, and on a machine of a
+    dozen sessions the registry is rarely empty -- ZN.APPCHECK's `--wait` held 25-50 min and once
+    spent its whole budget queueing). A gate that starts after the wait began is no worse off than
+    one that starts a second after the experiment does, which nothing could have spared either.
+    """
+
+    ahead: list[Gate]
+    joined: list[Gate]
+    waited_s: float = 0.0
+
+    def __bool__(self) -> bool:
+        return bool(self.ahead)
+
+
+def _key(gate: Gate) -> tuple[int, float]:
+    return gate.pid, gate.since  # a pid is not an identity; the entry's mtime with it is
+
+
+def hold_off(wait: bool, wait_s: float = DEFAULT_WAIT_S, poll_s: float = POLL_S) -> Hold:
     """The gates a load would starve: none when the machine is clear. With `wait`, look again
-    every `poll_s` until it is, for at most `max_s`, and say ONCE what it waits for."""
+    every `poll_s` until the gates in flight NOW are done, for at most `wait_s` (its own bound,
+    not the experiment's), and say what it waits for."""
     busy = in_flight()
     if not busy or not wait:
-        return busy
-    give_up = time.monotonic() + max_s
-    print(f"load: waiting for the gate(s) in flight to finish: {_names(busy)}", flush=True)
-    while busy and time.monotonic() < give_up:
+        return Hold(busy, [])
+    report(
+        f"load: waiting (at most {_duration(wait_s)}, --wait-max) for {len(busy)} gate(s) in "
+        "flight; gates that start meanwhile are named, not waited on:",
+        *(gate.describe() for gate in busy),
+    )
+    wanted = {_key(gate) for gate in busy}
+    began = time.monotonic()
+    give_up = began + wait_s
+    ahead, joined = busy, []
+    while ahead and time.monotonic() < give_up:
         time.sleep(min(poll_s, max(0.0, give_up - time.monotonic())))
-        busy = in_flight()
-    return busy
+        live = in_flight()
+        ahead = [gate for gate in live if _key(gate) in wanted]
+        joined = [gate for gate in live if _key(gate) not in wanted]
+    return Hold(ahead, joined, time.monotonic() - began)
 
 
-def _names(gates: list[Gate]) -> str:
+def load_reading(ncpu: int) -> str:
+    """The machine's load as the kernel reports it, beside the cores it is shared by."""
+    try:
+        one, five, fifteen = os.getloadavg()
+    except OSError:
+        return f"load average unreadable on {ncpu} core(s)"
+    return f"load average {one:.1f} / {five:.1f} / {fifteen:.1f} (1/5/15 min) on {ncpu} core(s)"
+
+
+def names(gates: list[Gate]) -> str:
     return "; ".join(gate.describe() for gate in gates)
 
 
-def refusal(gates: list[Gate], count: int, waited: bool) -> str:
-    """Why a load of `count` spinners does not start beside `gates`, and the two ways forward."""
-    head = "still in flight after --wait" if waited else "in flight on this machine"
-    return (
-        f"load: another session's gate is {head}: {_names(gates)}.\n"
-        f"      {count} spinner(s) would starve it, and a starved gate fails on its own clock "
-        "(zinc's pre-push, 2026-11-01, at load 137 on 16 cores) with nothing naming the load.\n"
-        "      Pass --wait to start once it is clear (bounded by --max), or --despite-gate if "
-        "loading the machine under it is meant."
-    )
+def refusal(hold: Hold, count: int, waited: bool, wait_s: float, ncpu: int) -> str:
+    """Why a load of `count` spinners does not start beside the gates ahead, and the ways on.
+    One message, for the Kare lib's `err`: the head names what is in flight, the rest why."""
+    if waited:
+        head = (
+            f"load: --wait-max of {_duration(wait_s)} expired after {_duration(hold.waited_s)}; "
+            f"still waiting for: {names(hold.ahead)}"
+        )
+    else:
+        head = f"load: another session's gate is in flight on this machine: {names(hold.ahead)}"
+    lines = [head]
+    if hold.joined:
+        lines.append(f"started during the wait, not waited on: {names(hold.joined)}")
+    lines += [
+        f"the machine: {load_reading(ncpu)}",
+        (
+            f"{count} spinner(s) would starve it, and a starved gate fails on its own clock "
+            "(zinc's pre-push, 2026-11-01, at load 137 on 16 cores) with nothing naming the load."
+        ),
+        (
+            "Pass --wait (bounded by --wait-max) to start once the gates ahead are done, or "
+            "--despite-gate if loading the machine under them is meant."
+        ),
+    ]
+    return "\n      ".join(lines)

@@ -2,6 +2,21 @@
 
 ## Unreleased
 
+* **`load.py --wait` is bounded by its own clock and queues only behind the gates ahead of it
+  (GOH.LOADWAIT, 2026-11-08).** ZN.APPCHECK's `--wait` held 25-50 min and once spent its whole
+  budget before the experiment ran: the wait was for a CLEAR gate registry, bounded by the
+  experiment's `--max` (default 30 min). Measured the same evening: a ZoneWM pre-push of 8 min
+  overlapped by a stream of monitor pre-commits, load 36-78 on 16 cores, the registry never empty
+  for a minute. Now the wait is for the gates in flight when it asked (keyed by pid and entry time);
+  a gate that starts meanwhile is named, not waited on, since it is no worse off than one that
+  starts a second after the spinners. `--wait-max` (default 15m, implies `--wait`) bounds the wait
+  alone; on expiry a Kare `err` names the gates still ahead, the late ones and the load average.
+  The tool records the load average it started on (printed, and in the registry) instead of
+  waiting for a quiet machine, which is another unbounded wait. Red first:
+  `test_the_wait_has_its_own_bound_separate_from_max`,
+  `test_an_expired_wait_names_what_it_waited_for_and_the_load` and
+  `test_the_wait_does_not_queue_behind_gates_that_arrive_later` failed on v0.76.0.
+
 ## v0.76.0 -- goh ship: a private repo lands with no agent watching
 
 * **`goh ship`: a private repo lands with no agent watching (GOH.SHIP, owner 2026-11-08).** An agent's
