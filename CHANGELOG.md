@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## v0.79.0 -- the Bash guard refuses a by-name kill of a shared command; goh skills takes a path; apply retires agent types
+
 * **The Bash guard refuses a by-name kill of a shared command (GOH.PKILLNAME); `goh skills <path>`
   takes the corpus root positionally (GOH.SKILLSPATH); the apply step removes an agent type goh
   retired (GOH.AGENTRETIRE).** (a) On 2026-11-08 a pattern kill of `tools/gate.sh --full` stopped two
