@@ -16,6 +16,9 @@ every existing caller's except-clause keeps working.
 import os
 import signal
 import subprocess
+import time
+
+TERM_GRACE_S = 5.0  # how long a SIGTERMed group is given to clean up (git removes its .lock files)
 
 
 def session_pgid(proc: subprocess.Popen) -> int:
@@ -31,14 +34,47 @@ def session_pgid(proc: subprocess.Popen) -> int:
     return proc.pid
 
 
+def stop_group(
+    pgid: int, grace: float = TERM_GRACE_S, proc: subprocess.Popen | None = None
+) -> bool:
+    """Stop the process group `pgid`: SIGTERM, up to `grace` seconds for it to empty, then SIGKILL.
+
+    THE CLASS (GOH.GITKILL, 2026-11-08). A SIGKILL gives nothing a chance to clean up. `git commit`
+    killed that way dies holding `index.lock` and orphans its hook, and every later commit in the
+    repository is refused; on SIGTERM git's own handler removes its lock files. So the group is
+    TERMed first and KILLed only if it is still there after the grace. True when the group is gone.
+    `proc`, the group's leader when the caller started it, is reaped as it exits: a zombie leader
+    keeps its group alive, and a group that has only exited looks like one that is ignoring TERM.
+    """
+    for sig, wait in ((signal.SIGTERM, grace), (signal.SIGKILL, 2.0)):
+        try:
+            os.killpg(pgid, sig)
+        except ProcessLookupError:
+            return True
+        except OSError:
+            return False
+        end = time.monotonic() + wait
+        while time.monotonic() < end:
+            if proc is not None:
+                proc.poll()
+            try:
+                os.killpg(pgid, 0)
+            except ProcessLookupError:
+                return True
+            except OSError:
+                return False
+            time.sleep(0.02)
+    return False
+
+
 def _kill_process_group(proc: subprocess.Popen) -> None:
-    """SIGKILL the child's whole process group; fall back to p.kill()."""
+    """Stop the child's whole process group (TERM, then KILL); fall back to p.kill()."""
     try:
-        os.killpg(session_pgid(proc), signal.SIGKILL)
-        return
+        os.killpg(session_pgid(proc), 0)
     except OSError:
-        pass  # no such group: the child was not started in its own session
-    proc.kill()
+        proc.kill()  # no such group: the child was not started in its own session
+        return
+    stop_group(session_pgid(proc), proc=proc)
 
 
 def run_captured(

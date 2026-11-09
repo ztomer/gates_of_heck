@@ -86,6 +86,12 @@ except ImportError:  # the shared rule is not there: the guard judges what it ca
         file=sys.stderr,
     )
 
+# git under a deadline with no optional lock to strand (GOH.GITKILL); missing, `_git` answers "no".
+try:
+    import gitrun
+except ImportError:
+    gitrun = None
+
 # The house's ONE definition of "background priority" (G1f), shared with tools/load.py, which
 # refuses the same command line when it runs; the guard refuses it before a tool call is spent.
 try:
@@ -190,10 +196,9 @@ def _segments(command: str) -> list[list[str]]:
 
 def _git(cwd: str, *args: str) -> subprocess.CompletedProcess[str]:
     env = {k: v for k, v in os.environ.items() if not k.startswith("GIT_")}
-    return subprocess.run(
-        ["git", "-C", cwd, *args], capture_output=True, text=True, env=env,
-        stdin=subprocess.DEVNULL, timeout=10, check=False,
-    )  # fmt: skip
+    if gitrun is None:
+        return subprocess.CompletedProcess(["git", *args], 1, "", "lib/gitrun.py is not there")
+    return gitrun.run_reader(["-C", cwd, *args], timeout=10, env=env)
 
 
 def _is_rev(cwd: str, tok: str) -> bool:

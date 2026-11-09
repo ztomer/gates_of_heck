@@ -146,6 +146,9 @@ fn nul_list(root: &Path, args: &[&str]) -> Result<Vec<String>, String> {
         .arg("-C")
         .arg(root)
         .args(args)
+        // a reader of the work tree (`diff HEAD`) would refresh the index under an optional lock,
+        // and a goh killed in that window strands `index.lock` (GOH.GITKILL): it takes none
+        .env("GIT_OPTIONAL_LOCKS", "0")
         .output()
         .map_err(|e| format!("git list failed: {e}"))?;
     if !out.status.success() {

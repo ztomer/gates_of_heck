@@ -37,6 +37,10 @@ Run from inside any git repository:
 
 This sets up `.githooks/` to delegate to this checkout. If `tools/gate.sh` or `.gatesrc` don't exist in the target repo, it creates starter templates.
 
+Tools a gate REFUSES without are listed in `gates/required_tools.tsv`. One tool is optional and degrades
+with a stated reason: `docker-compose` (`brew install docker-compose`), which the calibration half of
+`tests/test_secret_render_guard.py` runs against real compose; absent, those two tests skip and say so.
+
 ## Structure
 
 Checks run in three layers:

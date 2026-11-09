@@ -39,6 +39,9 @@ root="$(git rev-parse --show-toplevel)"
 # shellcheck source=lib/repo_hold.sh
 . "$HERE/../lib/repo_hold.sh"
 goh_refuse_held "$root" "pre-commit: this commit" || exit 1   # a held repo is not committed to
+# shellcheck source=lib/landed_only.sh
+. "$HERE/../lib/landed_only.sh"
+goh_refuse_unlanded_commit "$root" "pre-commit: this commit" || exit 1   # main moves only through land.sh (GOH.LANDONLY)
 gate="$root/tools/gate.sh"
 structural="$HERE/structural.sh"
 # shellcheck source=lib/bench_lock.sh

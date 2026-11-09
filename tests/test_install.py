@@ -185,7 +185,11 @@ def test_self_hosted_repo_satisfies_its_own_hook(tmp_path, goh):
         (copy / rel).parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(src, copy / rel, follow_symlinks=False)
     subprocess.run(
-        ["git", "-C", str(copy), "init", "-q", "-b", "main"], check=True, stdin=subprocess.DEVNULL
+        # not `main`: this tree's .gatesrc says GOH_LANDED_ONLY=main, and a commit on main in a primary
+        # checkout is refused outside land.sh (GOH.LANDONLY, tests/test_landed_only_commit.py)
+        ["git", "-C", str(copy), "init", "-q", "-b", "work"],
+        check=True,
+        stdin=subprocess.DEVNULL,
     )
     subprocess.run(
         ["/bin/bash", str(copy / "install.sh"), str(copy)],

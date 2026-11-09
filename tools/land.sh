@@ -61,7 +61,7 @@ if [ "$tip" = "$base" ]; then
     err "land.sh: nothing to land -- $branch @ ${tip:0:8} IS the main tip (did a hook refuse the commit?) -- nothing landed"
     exit 1
 fi
-if [ -n "$(git status --porcelain --untracked-files=no)" ]; then
+if [ -n "$(GIT_OPTIONAL_LOCKS=0 git status --porcelain --untracked-files=no)" ]; then
     err "land.sh: uncommitted changes to tracked files in $here -- the gate would judge a tree that is not ${tip:0:8} -- nothing landed"
     exit 1
 fi
@@ -83,7 +83,7 @@ if ! git -C "$main" merge-base --is-ancestor "$base" "$tip"; then
     exit 1
 fi
 # What the range changes is known before main moves, so a missing change lands nothing.
-changed="$(git -C "$main" diff --name-only "$base" "$tip")"
+changed="$(GIT_OPTIONAL_LOCKS=0 git -C "$main" diff --name-only "$base" "$tip")"
 for want in ${GOH_LAND_EXPECT:-}; do
     case $'\n'"$changed"$'\n' in
         *$'\n'"$want"$'\n'*) ;;
@@ -91,7 +91,9 @@ for want in ${GOH_LAND_EXPECT:-}; do
             exit 1 ;;
     esac
 done
-git -C "$main" merge --ff-only -q "$tip"
+# GOH_LAND_CALLER names this script to the merge's own hooks (lib/landed_only.sh refuses a commit on
+# the landed-only branch from anyone else); inline, so it reaches the merge alone, never the gate.
+GOH_LAND_CALLER=land.sh git -C "$main" merge --ff-only -q "$tip"
 # Verify the claim before making it: main must now BE the gated tip and differ from where it was.
 after="$(git -C "$main" rev-parse HEAD)"
 if [ "$after" != "$tip" ] || [ "$after" = "$base" ]; then   # (also: nothing to land if the tip IS main)

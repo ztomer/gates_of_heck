@@ -2,6 +2,33 @@
 
 ## Unreleased
 
+* **A git process stopped at a deadline strands no lock, and a git reader takes none (GOH.GITKILL);
+  a commit on a landed-only branch outside `land.sh` is refused (GOH.LANDONLY).** (a) The class,
+  found in `.loop` (`4e82af6`, `7ae11d8`): `subprocess.run(["git", ..], timeout=)` SIGKILLs git alone,
+  which leaves `index.lock` behind (a writer) or an optional one (`git status`/`git diff` refresh
+  the index under it) and refuses every later commit. `lib/gitrun.py` is the seam: `run_reader`
+  sets `GIT_OPTIONAL_LOCKS=0`, `run_writer` runs git in its own session and stops the whole group
+  with SIGTERM before SIGKILL, and `lib/killtree.py stop_group` is now the one group kill (the
+  generated-file, baseline-ratchet and release-canary runners went through a SIGKILL-only one). Sites
+  moved: `tools/ship.py`, `checks/_calibration.py` (2, through `checks/_gitutil.py git_read`, the checks tier's twin: that
+  directory is copied whole into probes and cannot import `lib/`), `lib/landed_verify.py` (3),
+  `hooks/claude/compact_restore.py`, `hooks/claude/discard_guard.py`; the work-tree readers in
+  `crates/goh/build.rs`, `gitutil.rs`, `push_gate.sh`, `structural.sh`, `_goh_bin.sh`, `land.sh`,
+  `tap_bump.sh` and `archive_repo.sh` take no optional lock. Red first:
+  `tests/test_git_deadline_class.py` (13 of 16 failed on the tree before; it scans for a git spawn
+  under `timeout=`, a SIGKILL group kill outside `stop_group`, and a shell/Rust `git status`/`diff`
+  without the setting, and drives a real git shim to a real deadline; a mutated `stop_group` that only
+  KILLs turns two of them red). (b) SRV.NTFYROTATE committed `5c4936f` directly on goh's main
+  (nothing refused it; the push gate only read the tip, and a later landed tip carried the commit).
+  `gates/commit_gate.sh` now refuses a commit in the PRIMARY checkout while HEAD is the
+  `GOH_LANDED_ONLY` branch, before any gate runs (`lib/landed_only.sh`); a linked worktree, another
+  branch and a repo naming no branch are untouched, `tools/land.sh` names itself with
+  `GOH_LAND_CALLER=land.sh` on its merge, and the human escape is `GOH_MAIN_COMMIT_OK='<reason>'`.
+  Red first: `tests/test_landed_only_commit.py` (8 of 15 failed unwired; it lands through the real
+  hook and runs `release.sh` in the primary checkout and in a worktree). `docker-compose` is recorded
+  in the README as the one optional tool, and the secret-render calibration skips with that reason
+  without it (`test_without_compose_the_calibration_degrades_with_a_stated_reason`).
+
 ## v0.79.0 -- the Bash guard refuses a by-name kill of a shared command; goh skills takes a path; apply retires agent types
 
 * **The Bash guard refuses a by-name kill of a shared command (GOH.PKILLNAME); `goh skills <path>`

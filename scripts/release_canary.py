@@ -38,7 +38,6 @@ import concurrent.futures as cf
 import datetime as dt
 import os
 import re
-import signal
 import subprocess
 import sys
 import tempfile
@@ -54,6 +53,7 @@ from tui.lib import err, info, ok, warn
 
 sys.path.insert(0, str(ROOT / "lib"))
 import estate_registry
+import killtree
 
 KEY = "release_canary"
 RUN_TIMEOUT_S = 900
@@ -239,7 +239,9 @@ def structural(side: Side, tree: Path) -> Verdict:
     try:
         out, _ = proc.communicate(timeout=RUN_TIMEOUT_S)
     except subprocess.TimeoutExpired:
-        os.killpg(proc.pid, signal.SIGKILL)  # its own session: the group id is its pid
+        killtree.stop_group(
+            proc.pid, proc=proc
+        )  # its own session: the group id is its pid; TERM, then KILL
         proc.communicate()
         return Verdict(error=f"past its {RUN_TIMEOUT_S} s ceiling, killed")
     return parse(proc.returncode, out)

@@ -41,14 +41,6 @@ CHANGELOG) resolve in this file at `1a7c444`: `git show 1a7c444:docs/BACKLOG.md`
 Why first: each is a rule that only discipline held, and broke on 2026-11-08; none depends on another
 phase, and each is one landing.
 
-- **GOH.LANDONLY** (queue: GOH.LANDONLY) A commit in the primary checkout on main outside `land.sh`
-  happened (SRV.NTFYROTATE, `5c4936f`) because nothing refuses it. Pre-commit refuses a commit on
-  main in the primary checkout unless `land.sh` is the caller (an env token it sets), with the escape
-  documented. `5c4936f` is on main without land.sh's gate, so gate it through `land.sh`;
-  `tests/test_secret_render_guard.py` needs docker-compose and must skip with a stated reason
-  when it is absent (rule 13), the dependency recorded where the install docs list tools.
-  **Done when:** a direct commit on goh main outside `land.sh` is refused (red first); `5c4936f` is gated
-  via `land.sh` and pushed; the secret-render test degrades with a stated reason without docker-compose.
 - **GOH.STAGEDPARITY** (queue: GOH.STAGEDPARITY) House rule 17, estate-wide: the push layer runs fast
   checks the commit layer skips, so a green commit gets its push refused. Add `gates/swift_staged.sh`
   (swiftlint `--strict` on staged `.swift`, built like `py_staged.sh`), have `commit_gate.sh` run
@@ -58,13 +50,6 @@ phase, and each is one landing.
   self-check goes red on a missing twin (red first); koffee_big's local block is gone; a planted finding
   is refused at commit in Finance, ZoneWM, games, servers, scripts, antiknob, koffee_oss,
   mediaremote-adapter and token-pool.
-- **GOH.GITKILL** (queue: GOH.GITKILL) A git process under a timeout that is SIGKILLed strands
-  `index.lock` (a writer) or takes an optional one it strands (a status reader); class found in `.loop`
-  (`4e82af6`, `7ae11d8`). Sweep hooks, `tools/land.sh`, `local_ci`, `checks/` and the Rust crates:
-  writers run in their own process group and get SIGTERM before SIGKILL, readers run with
-  `GIT_OPTIONAL_LOCKS=0`; add a structural check if the shape is greppable.
-  **Done when:** no goh git writer is SIGKILLed at a deadline and no goh git reader takes optional locks;
-  tests red first; released.
 - **GOH.RUNNERPIN** (queue: GOH.RUNNERPIN) A moving runner label breaks "latest is a named release":
   antiknob, divoom-control and monitor use `*-latest` labels, and CI warns that `ubuntu-latest` moves to
   Ubuntu 26. Add a goh check refusing `*-latest` `runs-on` labels and moving action tags in
@@ -88,22 +73,6 @@ phase, and each is one landing.
   `installs.HELD` rows, the pushes in four repos) are `.loop`'s and the queue's.
   **Done when:** `GOH_INSTALLS` is documented in `docs/config.md` and checked in goh, test first, landed
   via `tools/land.sh`.
-
-## Phase 2 — defects in goh's agent and load tooling
-
-Why second: they cost every session a stall or a stale type today, and each is independent of Phase 1.
-
-- **GOH.AGENTRETIRE** (queue: GOH.AGENTRETIRE) goh's apply step installs `~/.claude/agents/repo-worker*.md`
-  but never removes a type goh retires, so it keeps loading in every session. Track what goh installed
-  (a manifest), remove what it no longer ships, never touch a file goh did not install. Also verify
-  `repo-worker-ui` gets computer-use, the in-app browser and the iOS simulator tools from a fresh desktop
-  session (untested: those servers exist only there).
-  **Done when:** a retired type is removed by apply and a foreign file is untouched (test red first);
-  `repo-worker-ui`'s tools are confirmed in a desktop session; released.
-- **GOH.SKILLSPATH** (queue: GOH.SKILLSPATH) `goh skills <path>` stops with a usage error when given a path
-  (seen by CLAUDE.SLIM, 2026-11-08). Reproduce, make the CLI accept a path or its usage say what it takes.
-  **Done when:** `goh skills <path>` works on a skills dir; test red first; landed through `tools/land.sh`
-  and installed.
 
 ## Phase 3 — public CI
 

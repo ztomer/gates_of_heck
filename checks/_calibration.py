@@ -39,7 +39,7 @@ import subprocess
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from _gitutil import foreign_repo_env, listed_files
+from _gitutil import foreign_repo_env, git_read, listed_files
 from _retired import NATIVE
 
 # The registry, relative to the repo root.
@@ -125,14 +125,8 @@ def committed(repo_root: str, path: str) -> bool | None:
     repository and "this directory is not a repository" must not read as "this proof is a lie".
     """
     try:
-        inside = subprocess.run(
-            ["git", "-C", repo_root, "rev-parse", "--show-toplevel"],
-            capture_output=True,
-            text=True,
-            timeout=30,
-            check=False,
-            env=foreign_repo_env(),
-            stdin=subprocess.DEVNULL,
+        inside = git_read(
+            ["-C", repo_root, "rev-parse", "--show-toplevel"], timeout=30, env=foreign_repo_env()
         )
     except (OSError, subprocess.SubprocessError):
         return None
@@ -146,14 +140,8 @@ def committed(repo_root: str, path: str) -> bool | None:
     if rel.startswith(".." + os.sep):
         return None
     try:
-        found = subprocess.run(
-            ["git", "-C", top, "cat-file", "-e", f"HEAD:{rel}"],
-            capture_output=True,
-            text=True,
-            timeout=30,
-            check=False,
-            env=foreign_repo_env(),
-            stdin=subprocess.DEVNULL,
+        found = git_read(
+            ["-C", top, "cat-file", "-e", f"HEAD:{rel}"], timeout=30, env=foreign_repo_env()
         )
     except (OSError, subprocess.SubprocessError):
         return None

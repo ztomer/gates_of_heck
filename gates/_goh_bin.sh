@@ -191,7 +191,7 @@ goh_store_prune() { # <store> <current key> [keep, default 4]
 goh_live_delta() {
     local root="$1" diff untracked stamp
     diff="$( (goh_unbind_git
-              git -C "$root" diff HEAD -- crates Cargo.toml Cargo.lock rust-toolchain.toml) 2>/dev/null)"
+              GIT_OPTIONAL_LOCKS=0 git -C "$root" diff HEAD -- crates Cargo.toml Cargo.lock rust-toolchain.toml) 2>/dev/null)"
     untracked="$( (goh_unbind_git
                    cd "$root" && git ls-files -z --others --exclude-standard -- crates \
                    | xargs -0 -r shasum 2>/dev/null) 2>/dev/null)"

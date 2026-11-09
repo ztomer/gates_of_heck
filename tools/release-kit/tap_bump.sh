@@ -74,7 +74,7 @@ bash "$GOH/gates/python.sh" "$GOH/tools/release-kit/tap_rewrite.py" "$file" --ta
   --sha "$sha" ${RESOURCES[@]+"${RESOURCES[@]}"} \
   || die "tap_bump: ${SUBDIR}/${NAME}.rb was not rewritten (above) -- nothing pushed"
 
-if git -C "$work/tap" diff --quiet; then
+if GIT_OPTIONAL_LOCKS=0 git -C "$work/tap" diff --quiet; then
   ok "${NAME} is already at ${TAG} with this sha256 -- nothing to commit"
   exit 0
 fi

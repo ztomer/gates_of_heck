@@ -28,6 +28,9 @@ fn git(root: &Path, args: &[&str]) -> Option<String> {
         .env_remove("GIT_PREFIX")
         .env_remove("GIT_COMMON_DIR")
         .env_remove("GIT_OBJECT_DIRECTORY")
+        // `git status` refreshes the index under an OPTIONAL lock; a cargo build killed in that
+        // window strands `index.lock` (GOH.GITKILL), so this reader takes none.
+        .env("GIT_OPTIONAL_LOCKS", "0")
         .output()
         .ok()?;
     out.status

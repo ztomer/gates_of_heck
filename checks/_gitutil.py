@@ -84,6 +84,27 @@ def scratch_git(dest: str) -> None:
     shutil.copytree(_EMPTY_GIT["git"], os.path.join(dest, ".git"))
 
 
+def git_read(args, *, timeout, env=None):
+    """`git <args>` for a command that only READS, under a deadline (GOH.GITKILL).
+
+    The checks tier's twin of `lib/gitrun.py run_reader`: this directory is copied whole into
+    fixtures and probes, so it cannot import `lib/`. A reader that is killed at its deadline strands
+    no `index.lock` when git was told to take no optional one (`git status` and `git diff` refresh the
+    index under it). `tests/test_git_deadline_class.py` pins this and `run_reader` to the same env.
+    """
+    env = dict(os.environ if env is None else env)
+    env["GIT_OPTIONAL_LOCKS"] = "0"
+    return subprocess.run(
+        ["git", *args],
+        capture_output=True,
+        text=True,
+        timeout=timeout,
+        check=False,
+        env=env,
+        stdin=subprocess.DEVNULL,
+    )
+
+
 def is_work_tree(path) -> bool:
     """Whether `path` is the top of a git work tree, by git's own answer.
 

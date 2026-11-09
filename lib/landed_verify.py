@@ -27,6 +27,8 @@ import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
 
+import gitrun
+
 SHA_WORD = re.compile(r"\b[0-9a-f]{7,40}\b")
 GITHUB = re.compile(r"github\.com[:/]([\w.-]+)/([\w.-]+?)(?:\.git)?/?$")
 CI_OK = {"success", "skipped", "neutral"}
@@ -40,6 +42,11 @@ class Unreachable(Exception):
 def _run(cmd: list[str], stdin: str | None = None) -> subprocess.CompletedProcess[str]:
     return subprocess.run(cmd, input=stdin if stdin is not None else "", capture_output=True,
                           text=True, timeout=60, check=False)  # fmt: skip
+
+
+def _git(repo: Path, *args: str, stdin: str | None = None) -> subprocess.CompletedProcess[str]:
+    """A git READ of `repo` under the same 60 s bound as `_run`, with no optional lock to strand."""
+    return gitrun.run_reader(["-C", str(repo), *args], timeout=60, input_text=stdin)
 
 
 def git_repos(root: Path) -> list[Path]:
@@ -59,7 +66,7 @@ def locate(words: list[str], repos: list[Path]) -> dict[str, tuple[Path, str]]:
         if not todo:
             break
         query = "".join(f"{w}^{{commit}}\n" for w in todo)
-        r = _run(["git", "-C", str(repo), "cat-file", "--batch-check"], stdin=query)
+        r = _git(repo, "cat-file", "--batch-check", stdin=query)
         for w, line in zip(todo, r.stdout.splitlines(), strict=False):
             parts = line.split()
             if len(parts) >= 2 and parts[1] == "commit":
@@ -68,14 +75,14 @@ def locate(words: list[str], repos: list[Path]) -> dict[str, tuple[Path, str]]:
 
 
 def _is_ancestor(repo: Path, a: str, b: str) -> bool:
-    return _run(["git", "-C", str(repo), "merge-base", "--is-ancestor", a, b]).returncode == 0
+    return _git(repo, "merge-base", "--is-ancestor", a, b).returncode == 0
 
 
 def _slug(repo: Path) -> str | None:
     """`owner/name` of the repo's GitHub remote: `origin` when it is on GitHub, else the first that
     is (ZoneWM's is `v2origin`)."""
     found: dict[str, str] = {}
-    for line in _run(["git", "-C", str(repo), "remote", "-v"]).stdout.splitlines():
+    for line in _git(repo, "remote", "-v").stdout.splitlines():
         parts = line.split()
         m = GITHUB.search(parts[1]) if len(parts) >= 2 else None
         if m:

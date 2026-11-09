@@ -30,7 +30,7 @@ root="$(cd "$repo" && git rev-parse --show-toplevel 2>/dev/null)" \
     || die "archive_repo.sh: $repo is not a git repository"
 
 # Nothing may exist only here.
-dirty="$(git -C "$root" status --porcelain --untracked-files=all)"
+dirty="$(GIT_OPTIONAL_LOCKS=0 git -C "$root" status --porcelain --untracked-files=all)"
 if [ -n "$dirty" ]; then
     err "archive_repo.sh: $root has changes no remote holds -- commit and push them, or remove them:"
     printf '%s\n' "$dirty" | sed -n 1,20p | while IFS= read -r line; do step "$line"; done >&2

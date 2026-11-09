@@ -129,7 +129,7 @@ fi
 # them itself (contract #12), as does the version read below.
 _goh_gate_source_paths="gates checks lib tui"
 _goh_dirty_gate_source() {
-    (goh_unbind_git; git -C "$GOH_ROOT" status --porcelain --untracked-files=normal \
+    (goh_unbind_git; GIT_OPTIONAL_LOCKS=0 git -C "$GOH_ROOT" status --porcelain --untracked-files=normal \
         -- $_goh_gate_source_paths 2>/dev/null) || true
 }
 

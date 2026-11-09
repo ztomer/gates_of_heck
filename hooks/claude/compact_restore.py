@@ -11,8 +11,22 @@ directory outside a repository, prints nothing (tests/test_claude_compact_hooks.
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
+
+# The shared git-under-a-deadline seam (lib/gitrun.py: no optional lock for a status to strand).
+# It sits beside this hook's checkout; a missing one prints nothing, as any git failure does.
+sys.path.insert(
+    0,
+    os.path.join(
+        os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "lib"
+    ),
+)
+try:
+    import gitrun
+except ImportError:
+    gitrun = None
 
 GIT_TIMEOUT_S = 5
 MAX_STATUS_LINES = 40
@@ -20,15 +34,10 @@ RECENT_COMMITS = 5
 
 
 def _git(cwd: str, *args: str) -> str | None:
+    if gitrun is None:
+        return None
     try:
-        r = subprocess.run(
-            ["git", "-C", cwd, *args],
-            capture_output=True,
-            text=True,
-            timeout=GIT_TIMEOUT_S,
-            check=False,
-            stdin=subprocess.DEVNULL,
-        )
+        r = gitrun.run_reader(["-C", cwd, *args], timeout=GIT_TIMEOUT_S)
     except (OSError, subprocess.TimeoutExpired):
         return None
     return r.stdout.rstrip("\n") if r.returncode == 0 else None

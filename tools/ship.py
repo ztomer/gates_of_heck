@@ -50,6 +50,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "lib"))
 import bounded_run
+import gitrun
 
 from tui.lib import err, info, ok, step
 
@@ -68,8 +69,7 @@ class Refused(Exception):
 
 
 def git(repo: Path, *args: str) -> str:
-    done = subprocess.run(["git", "-C", str(repo), *args], capture_output=True, text=True,
-                          stdin=subprocess.DEVNULL, check=False, timeout=60)  # fmt: skip
+    done = gitrun.run_reader(["-C", str(repo), *args], timeout=60)
     return done.stdout.strip() if done.returncode == 0 else ""
 
 

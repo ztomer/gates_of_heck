@@ -120,7 +120,7 @@ tag_check="$GOH/gates/goh.sh"
 # list is spelled out rather than sourced from a helper because a helper under
 # gates/ is itself gate source this check cannot vouch for;
 # tests/test_goh_structural.py pins the lists to each other.
-gate_dirty="$(git -C "$GOH" status --porcelain --untracked-files=normal \
+gate_dirty="$(GIT_OPTIONAL_LOCKS=0 git -C "$GOH" status --porcelain --untracked-files=normal \
     -- gates checks lib tui 2>/dev/null || true)"
 if [ -n "$gate_dirty" ]; then
     warn "the gates judging this push are NOT committed — the export runs them from $GOH:"

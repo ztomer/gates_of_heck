@@ -31,6 +31,12 @@ from pathlib import Path
 import pytest
 from test_claude_load_guard import _decide
 
+# The two calibration tests below run REAL compose, a dependency the rest of the suite does not
+# have (house rule 13: probe it, degrade with a reason). Recorded in README.md under Install.
+NO_COMPOSE = (
+    "no compose CLI (docker compose / docker-compose) on this machine -- "
+    "brew install docker-compose; the guard's refusal cases above still ran"
+)
 PLANTED_ENV = "plantedEnvSecret7Q"
 PLANTED_FILE = "plantedEnvFileSecret9Z"
 
@@ -161,7 +167,7 @@ def test_every_allowed_compose_form_prints_no_planted_value(planted: Path) -> No
     lets through over a fixture whose `.env` and `env_file` carry planted values."""
     compose = _compose()
     if compose is None:
-        pytest.skip("no compose CLI (docker compose / docker-compose) on this machine")
+        pytest.skip(NO_COMPOSE)
     forms = [f for f in _compose_forms(ALLOWED) if "-" not in f]  # `-f -` reads stdin
     assert forms, "no allowed compose form to calibrate"
     for form in forms:
@@ -185,7 +191,7 @@ def test_the_refused_forms_do_print_the_planted_values(planted: Path) -> None:
     calibration above is not green because the fixture is blind."""
     compose = _compose()
     if compose is None:
-        pytest.skip("no compose CLI (docker compose / docker-compose) on this machine")
+        pytest.skip(NO_COMPOSE)
     leaked = 0
     for form in (["config"], ["config", "--format", "json"], ["config", "--environment"]):
         out = subprocess.run(
@@ -199,3 +205,15 @@ def test_the_refused_forms_do_print_the_planted_values(planted: Path) -> None:
         assert out.returncode == 0, (form, out.stderr)
         leaked += PLANTED_ENV in out.stdout
     assert leaked == 3, f"only {leaked} of 3 refused forms printed the planted .env value"
+
+
+def test_without_compose_the_calibration_degrades_with_a_stated_reason(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """No docker and no docker-compose on PATH: `_compose()` answers None, so both calibration tests
+    take the skip above (never an error, never a silent pass), and the reason names the fix."""
+    monkeypatch.setattr(shutil, "which", lambda _name: None)
+    assert _compose() is None
+    assert "brew install docker-compose" in NO_COMPOSE
+    readme = (Path(__file__).resolve().parent.parent / "README.md").read_text(encoding="utf-8")
+    assert "docker-compose" in readme, "the dependency is recorded in README.md (Install)"
