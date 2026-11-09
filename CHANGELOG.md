@@ -9,9 +9,11 @@
   `goh_tui::counted`/`noun` -- and a structural step in every repo refuses a `word(s)`,
   `word(es)`, `entr(ies)` or `{unit}(s)` inside a string literal of a `.py`, shell, `.rs` or
   `.swift` source (lifted from routines' `plural::tests`). The estate's sites are seeded by root
-  commit in their v0.88.0 homes: goh's own 145 entries in its `plural_hedge_seed.json`, the 143 of
-  the eight repos gated on a GitHub runner in each one's own (written, for that repo to commit),
-  and the other 779 in the private store; a seeded file warns, a new hedge is red.
+  commit in their v0.88.0 homes: goh's own 145 entries in its `plural_hedge_seed.json`, every other
+  repository's 922 in the private store (re-counted against today's trees, none stale); a seeded
+  file warns, a new hedge is red. The eight repos gated on a GitHub runner (CadGoose,
+  Adv360-Pro-ZMK, antiknob, homebrew-tap, monitor, divoom-control, ztools, sys_updater) will need
+  their entries moved into a tracked seed file of their own, each in its own commit.
   goh's own named hedges are fixed (roadmap, local_ci.sh, py_lint_ceiling.py, model_choice_watch.py,
   the scanner-subject units, the estate-seed reports); the rest of goh's are seeded like any
   consumer's. Red first: the finder with its letter test disabled failed its unit table; the CLI
