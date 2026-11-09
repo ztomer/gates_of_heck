@@ -21,7 +21,12 @@ What Claude Code leaves on disk, probed on this machine (Claude Code 2.1.317):
 * the job's processes hold that output file open as stdout and stderr, so `lsof` on the path is
   the job's process list; nothing holding it means the job is gone.
 
-A subagent is STALLED when it is not interrupted, its transcript has not been written for
+A subagent is STOPPED when `agent_stop.stop_marker()` finds a marker on disk: its interrupt record, or a
+TaskStop tool_result naming its id in its session (the only trace a stop of an agent that had
+already ended its turn leaves; LOOP.LINGERSTOP). Stopped is finished. A transcript that just ends,
+with no marker, says nothing about whether the agent lives: its state is "unknown", never alive.
+
+A subagent is STALLED when it is not stopped, its transcript has not been written for
 `--minutes` (default 20, `GOH_AGENT_STALL_MINUTES`), and it is not done. "Done" is NOT the meta
 file's `"finished": true`: Claude Code sets that on every STOP of a background agent, including one
 that ended its turn to wait on its own background job ("stopped with background work of its own
@@ -60,7 +65,7 @@ stall that moves and stalls again is told again. The log is stamped and bounded 
 RETIRED JOB (LOOP.CTL2, GOH.STALLS2): goh no longer schedules this pass. The launchd job
 com.ztomer.goh-agent-stalls that ran `--notify` every five minutes was replaced by
 com.ztomer.loopctl-tick (`.loop`), which is the one agent notifier and calls this module's readers
-(`stalls`, `pending_jobs`, `is_waiting`, `full_said`) for the agents of other sessions. Its plist
+(`stalls`, `pending_jobs`, `is_waiting`, `full_said`, `stop_marker`) for the agents of other sessions. Its plist
 and installer were deleted; tests/test_agent_stalls.py pins that nothing can install it again.
 
 Seams: `now` (the clock), the subagents directories, and `holders` (the process table) are
@@ -82,6 +87,9 @@ from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from agent_stop import INTERRUPTED, stop_marker  # THE stopped-agent rule (LOOP.LINGERSTOP)
+
 DEFAULT_MINUTES = 20
 DEFAULT_MAX_AGE_HOURS = 24
 TAIL_BYTES = 1 << 16
@@ -95,13 +103,13 @@ LAUNCH = re.compile(
     re.DOTALL,
 )
 NOTIFIED = re.compile(r"<task-id>(\w+)</task-id>")
-INTERRUPTED = "[Request interrupted by user"
 # A stop that is not the end: the last words wait on something, and are not the report contract's.
 WAIT_WORDS = re.compile(
     r"\b(waiting|wait (for|on)|will resume|resume when|once (it|the \w+) (finishes|completes))\b",
     re.IGNORECASE,
 )
 REPORT = re.compile(r"^\s*Status:", re.MULTILINE)
+UNKNOWN = "unknown"
 
 Holders = Callable[[list[str]], dict[str, list[int]]]
 
@@ -122,7 +130,7 @@ class Stall:
     agent_id: str
     description: str
     idle_s: float
-    state: str  # "waiting" (ended its turn), "in a tool call", or "mid-turn"
+    state: str  # "waiting" (ended its turn), "in a tool call", or "unknown" (it just ends)
     last_said: str
     jobs: list[Job]
     transcript: str
@@ -226,7 +234,7 @@ def _last_turn(path: Path) -> tuple[bool, str, str]:
     """(interrupted, state, last text the agent said), from the transcript's tail."""
     recs = [r for r in _records(_tail(path)) if r.get("type") in ("user", "assistant")]
     if not recs:
-        return False, "mid-turn", ""
+        return False, UNKNOWN, ""
     last = recs[-1]
     content = _content(last)
     texts = [content] if isinstance(content, str) else [
@@ -248,7 +256,7 @@ def _last_turn(path: Path) -> tuple[bool, str, str]:
     elif last.get("type") == "assistant" and msg.get("stop_reason") == "tool_use":
         state = "in a tool call"
     else:
-        state = "mid-turn"
+        state = UNKNOWN  # no stop marker and no end: nothing says it lives (LOOP.LINGERSTOP)
     return False, state, said
 
 
@@ -306,8 +314,8 @@ def stalls(
                     continue  # it returned for good: a report, or nothing it still waits on
             except OSError:
                 continue
-            if interrupted:
-                continue
+            if interrupted or stop_marker(transcript):
+                continue  # stopped is finished (LOOP.LINGERSTOP)
             held = holders([j.output for j in jobs]) if jobs else {}
             for j in jobs:
                 j.pids = sorted(held.get(j.output, []))

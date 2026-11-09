@@ -374,3 +374,105 @@ def test_a_retired_job_has_no_plist_no_installer_and_cannot_be_installed(
                        stdin=subprocess.DEVNULL)  # fmt: skip
     assert r.returncode != 0 and not (tmp_path / "LA" / f"{label}.plist").exists()
     assert "plist" in r.stderr
+
+
+# --- the one stopped-agent rule (LOOP.LINGERSTOP) ---------------------------------------------
+# Probed 2026-11-08 on the coordinator's own session (Claude Code 2.1.317): TaskStop of an agent
+# that had already ended its turn writes NOTHING to the agent's transcript, meta or task output
+# file (a3804c28b15885a20, SRV.ARRLIVE: transcript last written 02:30:34, stopped 02:31:26); the
+# only record is the TaskStop tool_result in the session transcript that stopped it. A stop
+# mid-turn also appends `[Request interrupted by user]` (a921d818bcfc3397e, RT.WEBKITFLAKE).
+
+
+def _session(tmp_path: Path) -> tuple[Path, Path]:
+    """(subagents dir, the session transcript beside it), the layout Claude Code writes."""
+    sess = tmp_path / "proj" / "s1"
+    return sess / "subagents", sess.with_suffix(".jsonl")
+
+
+def _task_stop(agent: str, found: bool = True) -> dict:
+    if found:
+        res: object = {"message": f"Successfully stopped task: {agent} (Q.{agent})",
+                       "task_id": agent, "task_type": "local_agent"}  # fmt: skip
+        body = json.dumps(res)
+    else:
+        res = f"Error: No task found with ID: {agent}. Running background agents: aother (Q.O)"
+        body = f"<tool_use_error>No task found with ID: {agent}.</tool_use_error>"
+    return {
+        "type": "user", "timestamp": "2026-11-09T02:31:26.311Z", "toolUseResult": res,
+        "message": {"content": [{"type": "tool_result", "tool_use_id": "t1", "content": body}]},
+    }  # fmt: skip
+
+
+def _parent(path: Path, recs: list[dict]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("".join(json.dumps(r) + "\n" for r in recs))
+
+
+def _arrlive(d: Path) -> Path:
+    """The a3804c28b15885a20 shape: a report, then a postscript, a job never notified, finished."""
+    recs = [
+        _launch("bk26", d / "bk26.output"),
+        _assistant("Status: landed\nCommits: 40ab51b1"),
+        _assistant("That notification was only the helper; my report above stands."),
+    ]
+    return _agent(d, "a38", recs, 105, meta={"description": "SRV.ARRLIVE", "finished": True})
+
+
+@pytest.mark.parametrize("found", [True, False], ids=["stopped", "no-such-task"])
+def test_an_agent_a_task_stop_named_is_stopped_not_a_stall(tmp_path: Path, found: bool) -> None:
+    d, parent = _session(tmp_path)
+    t = _arrlive(d)
+    assert [s.agent_id for s in st.stalls([d], NOW, holders=_none)] == ["a38"]  # no marker yet
+    _parent(parent, [{"type": "user", "message": {"content": "go"}}, _task_stop("a38", found)])
+    assert st.stop_marker(t) == ("TaskStop" if found else "TaskStop: no such task")
+    assert st.stalls([d], NOW, holders=_none) == []
+
+
+def test_a_task_stop_by_a_sibling_subagent_counts(tmp_path: Path) -> None:
+    d, _ = _session(tmp_path)
+    t = _arrlive(d)
+    _agent(d, "boss", [_task_stop("a38")], 1)
+    assert st.stop_marker(t) == "TaskStop"
+
+
+def test_a_stop_mid_turn_is_marked_by_its_interrupt_record(tmp_path: Path) -> None:
+    d, _ = _session(tmp_path)
+    stop = {"type": "user", "message": {"content": [{"type": "text", "text": "[Request interrupted by user]"}]}}  # fmt: skip
+    t = _agent(d, "a92", [_assistant("working", "tool_use"), stop], 120)
+    assert st.stop_marker(t) == "interrupted"
+
+
+def test_the_stop_phrase_quoted_in_a_prompt_is_not_a_stop(tmp_path: Path) -> None:
+    """Only a TaskStop tool_result stops an agent; a coordinator quoting its words stops nothing."""
+    d, parent = _session(tmp_path)
+    t = _arrlive(d)
+    said = "Successfully stopped task: a38 (Q.a38) and No task found with ID: a38"
+    _parent(parent, [{"type": "user", "message": {"content": said}}, _assistant(said)])
+    assert st.stop_marker(t) is None
+    assert [s.agent_id for s in st.stalls([d], NOW, holders=_none)] == ["a38"]
+
+
+def test_a_stop_of_another_agent_is_not_this_ones(tmp_path: Path) -> None:
+    d, parent = _session(tmp_path)
+    t = _arrlive(d)
+    _parent(parent, [_task_stop("a3")])  # a prefix of a38: ids are whole words
+    assert st.stop_marker(t) is None
+
+
+def test_a_transcript_that_just_ends_with_no_marker_is_unknown_never_alive(tmp_path: Path) -> None:
+    """A transcript whose last record is a tool result reads neither waiting nor in a tool call:
+    nothing says whether the agent lives, so it is named unknown, not mid-turn."""
+    d, _ = _session(tmp_path)
+    _agent(d, "u1", [_assistant("Running it.", "tool_use"), _launch("bx", d / "bx.output")], 40)
+    (s,) = st.stalls([d], NOW, holders=_none)
+    assert s.state == "unknown"
+    assert "unknown" in s.line() and "mid-turn" not in s.line()
+
+
+def test_a_live_agent_in_a_tool_call_with_no_marker_is_still_a_stall(tmp_path: Path) -> None:
+    d, parent = _session(tmp_path)
+    _parent(parent, [_task_stop("other")])
+    _agent(d, "h2", [_assistant("Running the suite.", "tool_use")], 45)
+    (s,) = st.stalls([d], NOW, holders=_none)
+    assert (s.agent_id, s.state) == ("h2", "in a tool call")
