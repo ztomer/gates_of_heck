@@ -19,6 +19,12 @@
   `queue.json` commit in a Python repo still ran py_staged; it now reads the staged set (`git diff
   --cached --diff-filter=ACM`). Red first: `tests/test_staged_parity.py`'s new data-only case failed
   on the old gate.
+* **SessionStart names every estate repo with unpushed commits (GOH.AHEADREPORT).** A commit landed
+  in a repo other than the item's own (skills, 17 commits ahead) was pushed by nobody.
+  `hooks/claude/estate_advisories.py` now adds one line per registered repo whose `git rev-list
+  --count @{u}..HEAD` is above 0: local only, all repos at once, 2 s bound each (0.17 s over the
+  46-repo estate); no upstream says nothing. Red first: `tests/test_estate_ahead.py` failed on the
+  old hook.
 
 ## v0.82.2 -- a test suite a gate launches never inherits git's repository variables
 

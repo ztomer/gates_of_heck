@@ -11,6 +11,13 @@ aside for having no `.gatesrc`. And it says what the last RELEASE CANARY found (
 scripts/release_canary.py): a goh change that turns a consumer red at push, refused at land and
 named here, by repo and the seed it needs, until a run clears it (tests/test_release_canary.py).
 
+It also names every registered estate repo with commits AHEAD of its upstream (GOH.AHEADREPORT):
+a commit landed in a repo other than the item's own -- a learning written into ~/.claude/skills from
+another repo's session -- is pushed by nobody, since `goh ship`, `loopctl done` and the agents all
+push only the item's repo, and skills reached 17 commits ahead unseen. Asked locally (`git rev-list
+--count @{u}..HEAD`: no fetch, no network), every repo at once, each bounded by AHEAD_TIMEOUT_S; a
+repo with no upstream, or one that does not answer in time, says nothing (tests/test_estate_ahead.py).
+
 The state is a day old by design, and a lock can move on in that day (GOH.EA3: zinc's pulldown-cmark
 0.13.4 -> 0.13.6 landed after the run, and this hook still said the next push was red). So before
 any lock is called red, the lock is RE-READ as it is now: one that no longer carries any crate
@@ -23,15 +30,22 @@ from __future__ import annotations
 import datetime as dt
 import json
 import os
+import subprocess
 import sys
 import tomllib
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "lib"))
+import estate_registry  # the registry, beside the audit's state file
 
 STALE_AFTER_H = 36  # a daily job, plus a missed run's grace
 NEW_WITHIN_H = 48
 MAX_LINES = 12
 MAX_REPOS = 6
 SCRIPT = "$GOH_DIR/scripts/estate_audit.py"
+AHEAD_TIMEOUT_S = 2.0  # one local rev-list; a repo slower than this is not worth a SessionStart
+AHEAD_WORKERS = 16
 
 
 def state_path() -> Path:
@@ -105,7 +119,53 @@ def _canary(rec: dict) -> list[str]:
     return lines
 
 
+def _ahead(repo: Path) -> int:
+    """Commits on HEAD its upstream lacks, as git knows it locally; 0 with no upstream, or when git
+    does not answer in time. The hook's own git variables are dropped: the repo is named by path."""
+    env = {k: v for k, v in os.environ.items() if not k.startswith("GIT_")}
+    env["GIT_OPTIONAL_LOCKS"] = "0"
+    try:
+        r = subprocess.run(
+            ["git", "-C", str(repo), "rev-list", "--count", "@{upstream}..HEAD"],
+            capture_output=True,
+            text=True,
+            timeout=AHEAD_TIMEOUT_S,
+            env=env,
+            stdin=subprocess.DEVNULL,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return 0
+    out = r.stdout.strip()
+    return int(out) if r.returncode == 0 and out.isdigit() else 0
+
+
+def _named(repo: Path) -> str:
+    home = Path.home()
+    return f"~/{repo.relative_to(home)}" if repo.is_relative_to(home) else str(repo)
+
+
+def ahead_lines(registry: Path) -> list[str]:
+    """One line per registered repo with unpushed commits, in path order."""
+    repos = estate_registry.existing(registry)
+    with ThreadPoolExecutor(max_workers=AHEAD_WORKERS) as pool:
+        counts = list(pool.map(_ahead, repos))
+    ahead = [(r, n) for r, n in zip(repos, counts, strict=True) if n > 0]
+    lines = [
+        f"estate: {_named(r)} is {n} commit(s) ahead of its upstream -- unpushed; push it"
+        for r, n in ahead[:MAX_LINES]
+    ]
+    if len(ahead) > MAX_LINES:
+        rest = ", ".join(_named(r) for r, _ in ahead[MAX_LINES:])
+        lines.append(f"estate: {len(ahead) - MAX_LINES} more repo(s) ahead: {rest}")
+    return lines
+
+
 def report(state: Path, now: dt.datetime) -> list[str]:
+    return _audit(state, now) + ahead_lines(estate_registry.registry_path(state))
+
+
+def _audit(state: Path, now: dt.datetime) -> list[str]:
     if not state.exists():
         return [
             f"goh estate audit has never run here: `python3 {SCRIPT} --install` schedules it daily."
