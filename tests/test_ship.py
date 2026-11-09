@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 import subprocess
 import sys
 import time
@@ -200,7 +201,13 @@ def test_a_head_already_tagged_skips_the_release(shipped, tmp_path):
 
 @pytest.mark.parametrize(
     ("subject", "want"),
-    [("fix: a", "1.0.1"), ("feat: a", "1.1.0"), ("feat!: a", "2.0.0"), ("chore: a", "1.0.1")],
+    [
+        ("fix: a", "1.0.1"),
+        ("feat: a", "1.1.0"),
+        ("feat!: a", "2.0.0"),
+        ("chore: a", "1.0.1"),
+        ("not conventional", "1.0.1"),
+    ],
 )
 def test_the_next_version_follows_conventional_commits(shipped, tmp_path, subject, want):
     git(shipped, "reset", "-q", "--hard", "v1.0.0")
@@ -278,3 +285,65 @@ def test_no_github_remote_asks_for_no_ci_verdict(shipped, tmp_path):
     r = _ship(shipped, tmp_path, "--wait", **_ci_env(tmp_path, "red"))
     assert r.returncode == 0, r.stdout + r.stderr
     assert _ci_calls(tmp_path) == []
+
+
+def test_goh_ship_help_is_ship_py_usage_not_clap_help(shipped, tmp_path):
+    """GOH.SHIPADOPT: `goh ship --help` printed clap's one-line pass-through help, so the flags the
+    pipeline takes were nowhere an agent looked. The help is the script's own."""
+    for flag in ("--help", "-h"):
+        r = run_goh(shipped, "ship", flag, env=_env(tmp_path))
+        assert r.returncode == 0, r.stdout + r.stderr
+        assert "usage: goh ship" in r.stdout and "--summary" in r.stdout, r.stdout
+    r = run_goh(shipped, "agent-stalls", "--help", env=_env(tmp_path))
+    assert "usage:" in r.stdout and "Usage: goh agent-stalls" not in r.stdout, r.stdout
+
+
+BUMP_RELEASE = ('printf "%s\\n" "$GOH_SHIP_VERSION" > VERSION && git add VERSION && '
+                'git -c user.name=t -c user.email=t@t commit -q -m "release: v$GOH_SHIP_VERSION" && '
+                'git tag "v$GOH_SHIP_VERSION" && git push -q origin HEAD:refs/heads/main '
+                '"v$GOH_SHIP_VERSION"')  # fmt: skip
+
+
+def test_the_result_names_the_landed_commit_not_the_hand_off(shipped, tmp_path):
+    """GOH.SHIPADOPT: a release kit that commits its bump lands a commit the hand-off never had;
+    the pilot's result (and so `loopctl done`'s record) named the hand-off commit instead."""
+    handoff = git(shipped, "rev-parse", "HEAD").strip()
+    r = _ship(shipped, tmp_path, "--wait", GOH_SHIP_RELEASE=BUMP_RELEASE)
+    assert r.returncode == 0, r.stdout + r.stderr
+    res = _result(tmp_path)
+    landed = git(shipped, "ls-remote", "origin", "refs/heads/main").split()[0]
+    assert landed != handoff
+    assert res["sha"] == landed, res
+    assert res["handoff_sha"] == handoff, res
+
+
+def _path_with(tmp_path: Path, cliff: str | None) -> str:
+    """PATH with git-cliff replaced by CLIFF's script (None: no git-cliff at all)."""
+    bin_ = tmp_path / "cliffbin"
+    bin_.mkdir(exist_ok=True)
+    for tool in ("git", "bash", "python3"):
+        found = shutil.which(tool)
+        assert found, tool
+        if not (bin_ / tool).exists():
+            (bin_ / tool).symlink_to(found)
+    if cliff is not None:
+        (bin_ / "git-cliff").write_text(cliff)
+        (bin_ / "git-cliff").chmod(0o755)
+    return f"{bin_}:/usr/bin:/bin"
+
+
+def test_the_next_version_is_git_cliffs_answer(shipped, tmp_path):
+    """The bump is the maintained tool's (git-cliff --bumped-version), not a hand copy of its rule:
+    whatever it answers is the version, so a repo's own cliff.toml [bump] is honoured."""
+    path = _path_with(tmp_path, "#!/bin/sh\necho v7.8.9\n")
+    r = _ship(shipped, tmp_path, "--wait", PATH=path)
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert _result(tmp_path)["version"] == "7.8.9"
+
+
+def test_without_git_cliff_the_ship_is_refused_naming_it(shipped, tmp_path):
+    r = _ship(shipped, tmp_path, "--wait", PATH=_path_with(tmp_path, None))
+    assert r.returncode == 2, r.stdout + r.stderr
+    assert "git-cliff" in r.stderr and "brew install git-cliff" in r.stderr, r.stderr
+    r = _ship(shipped, tmp_path, "--wait", "--bump", "patch", PATH=_path_with(tmp_path, None))
+    assert r.returncode == 0, r.stdout + r.stderr  # an explicit bump needs no tool

@@ -30,9 +30,15 @@ to `<result>.log`. Each step runs under `lib/bounded_run.py`: own session, GOH_S
 running with PPID=1. A failed step stops the pipeline; the result names it (`failed_step`) and
 carries the last 40 lines of its log (`tail`), which is all a resumed agent needs.
 
-The next version, when neither --version nor --bump is given, is release-please's rule over the
-conventional-commit subjects since the newest v-tag: a `!` or BREAKING CHANGE is major, a feat is
-minor, anything else a patch. Exit: 0 started (or, with --wait, shipped), 1 a step failed, 2 refused.
+The next version, when neither --version nor --bump is given, is the maintained tool's answer,
+`git-cliff --bumped-version` over the conventional commits since the newest v-tag (a `!` or BREAKING
+CHANGE is major, a feat minor; a repo's own cliff.toml [bump] is honoured); a span git-cliff finds
+nothing to bump in (no conventional commit) is a patch. No git-cliff on PATH refuses the ship, naming
+the install; --version or --bump needs none (gates/required_tools.tsv, layer `ship`).
+
+`sha` in the result is the LANDED commit: HEAD after the release step, which may commit a version
+bump the hand-off never had; `handoff_sha` is the commit the agent handed off.
+Exit: 0 started (or, with --wait, shipped), 1 a step failed, 2 refused.
 """
 
 from __future__ import annotations
@@ -44,6 +50,7 @@ import json
 import os
 import re
 import shlex
+import shutil
 import subprocess
 import sys
 import time
@@ -106,13 +113,22 @@ def newest_tag(repo: Path) -> str:
     return ""
 
 
-def bump_kind(subjects: list[str], bodies: str) -> str:
-    """release-please's rule over conventional commits: breaking -> major, feat -> minor."""
-    if "BREAKING CHANGE" in bodies or any(re.match(r"^\w+(\([^)]*\))?!:", s) for s in subjects):
-        return "major"
-    if any(re.match(r"^feat(\([^)]*\))?:", s) for s in subjects):
-        return "minor"
-    return "patch"
+CLIFF_TAGS = r"^v[0-9]+\.[0-9]+\.[0-9]+$"  # SEMVER, as git-cliff's --tag-pattern
+
+
+def cliff_version(repo: Path, tag: str) -> str:
+    """git-cliff's next version after TAG (X.Y.Z), or "" when it finds nothing to bump."""
+    if not shutil.which("git-cliff"):
+        raise Refused("the next version is git-cliff's answer and git-cliff is not on PATH: "
+                      "brew install git-cliff (or pass --version X.Y.Z / --bump KIND)")  # fmt: skip
+    done = subprocess.run(["git-cliff", "--bumped-version", "--tag-pattern", CLIFF_TAGS],
+                          cwd=repo, env=unbound_env(), capture_output=True, text=True,
+                          stdin=subprocess.DEVNULL, check=False, timeout=120)  # fmt: skip
+    lines = done.stdout.split()
+    if done.returncode != 0 or not lines or not SEMVER.match(lines[-1]):
+        why = (done.stderr.strip().splitlines() or [f"exit {done.returncode}"])[-1]
+        raise Refused(f"git-cliff --bumped-version gave no vX.Y.Z: {why}")
+    return "" if lines[-1] == tag else lines[-1].removeprefix("v")
 
 
 def next_version(repo: Path, tag: str, version: str | None, bump: str | None) -> str:
@@ -125,9 +141,10 @@ def next_version(repo: Path, tag: str, version: str | None, bump: str | None) ->
         return ""
     major, minor, patch = (int(x) for x in m.groups())
     if not bump:
-        span = f"{tag}..HEAD"
-        bump = bump_kind(git(repo, "log", "--format=%s", span).splitlines(),
-                         git(repo, "log", "--format=%b", span))  # fmt: skip
+        found = cliff_version(repo, tag)
+        if found:
+            return found
+        bump = "patch"
     if bump == "major":
         return f"{major + 1}.0.0"
     if bump == "minor":
@@ -176,7 +193,7 @@ def plan(args: argparse.Namespace) -> dict:
     out = Path(args.out) if args.out else default_out(name, sha)
     return {
         "schema": 1, "repo": str(repo), "name": name, "item": args.item or None,
-        "summary": args.summary or "", "remote": remote, "branch": branch, "sha": sha,
+        "summary": args.summary or "", "remote": remote, "branch": branch, "sha": sha, "handoff_sha": sha,
         "base_tag": tag, "version": next_version(repo, tag, args.version, args.bump),
         "release": cfg["GOH_SHIP_RELEASE"], "install": cfg["GOH_SHIP_INSTALL"],
         "timeout_s": timeout, "loopctl": str(loopctl()), "result": str(out),
@@ -303,6 +320,8 @@ def run_steps(res: dict) -> int:
         if out.code == 0 and not out.timed_out:
             entry["status"] = "ok"
             res["steps"].append(entry)
+            if name == "release":
+                res["sha"] = git(Path(res["repo"]), "rev-parse", "HEAD") or res["sha"]
             save(res)
             ok(f"{name} ({secs} s)")
             continue

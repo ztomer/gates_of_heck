@@ -257,7 +257,7 @@ bound, fails the ship at verify (GOH.SHIPCIWAIT).
 | `GOH_SHIP_CI_POLL` | `60` | Seconds between two CI waits that came back pending (the door's own cap, or a throttle past it), within the verify step's bound less 60 s for the card. A test seam. |
 | `GOH_SHIP_DIR` | `~/.local/state/goh/ship` | Where results go: `<dir>/<repo>/<UTC stamp>-<sha8>.json`, with `.log` (the worker's marks) and `.<step>.log` beside it; `--out` names one. |
 | `GOH_LOOPCTL` | `~/Projects/.loop/tools/loopctl.py` | The coordinator's `loopctl`, which the verify and done steps run (a test seam). The repo is named to it relative to `LOOPCTL_ROOT`, else `~/Projects`. |
-| `GOH_SHIP_VERSION` | set by `goh ship` | Exported to every step: the version the release step cuts (`--version`, `--bump`, else release-please's rule over the conventional commits since the newest tag). Never set by hand. |
+| `GOH_SHIP_VERSION` | set by `goh ship` | Exported to every step: the version the release step cuts (`--version`, `--bump`, else `git-cliff --bumped-version` over the conventional commits since the newest tag, a patch when it finds nothing to bump; no git-cliff refuses the ship, naming `brew install git-cliff`). Never set by hand. The result's `sha` is the LANDED commit (HEAD after the release step, which may commit a bump); `handoff_sha` is the commit handed off. |
 | `GOH_SHIP_RESULT` | set by `goh ship` | Exported to every step: the result JSON's path. Never set by hand. |
 
 ## Claude Code hooks (`hooks/claude/`, wired in `~/.claude/settings.json`)

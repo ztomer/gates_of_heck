@@ -61,3 +61,4 @@ coverage-py	python3	system	the house interpreter (lib/house_python.sh): brew ins
 coverage-py	coverage	pip	python3 -m pip install coverage	gates/coverage_gate.sh	-
 coverage-py	pytest	pip	python3 -m pip install pytest	gates/coverage_gate.sh	9.1.1
 screen-linkage	nm	system	xcode-select --install	checks/check_no_screen_linkage.sh	-
+ship	git-cliff	brew	brew install git-cliff	tools/ship.py	-

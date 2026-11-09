@@ -66,6 +66,10 @@ def _scanned() -> set[tuple[str, str]]:
         ("checks", "*.py"),
         ("scripts", "*.sh"),
         ("lib", "*.sh"),
+        (
+            "tools",
+            "*.py",
+        ),  # tools/ship.py's git-cliff (layer `ship`, never inferred: CI ships nothing)
         ("crates/goh/src", "**/*.rs"),
     ):
         for path in sorted((ROOT / base).glob(pattern)):

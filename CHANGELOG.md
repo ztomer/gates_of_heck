@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+* **`goh ship --help` prints ship.py's own usage (GOH.SHIPADOPT).** The pass-through subcommands
+  (`goh ship`, `goh agent-stalls`) turn clap's help flag off, so `--help`/`-h` reach the script.
+* **A ship result names the landed commit.** `sha` is HEAD after the release step (a kit that
+  commits its version bump lands a commit the hand-off never had), so `loopctl done --shipped`
+  records what landed; `handoff_sha` keeps the commit the agent handed off.
+* **The next version is git-cliff's (`git-cliff --bumped-version`), not a hand copy of
+  release-please's rule.** A repo's own cliff.toml `[bump]` is honoured; nothing to bump is a
+  patch; no git-cliff refuses the ship naming its install (`required_tools.tsv` layer `ship`,
+  never inferred for a CI). `--version`/`--bump` need no tool.
+
 ## v0.90.0 -- goh ship waits on a queued CI; goh-floors survives a download outage; a store entry CI cannot read is refused
 
 * **`goh ship` treats a queued or running CI as pending, not red (GOH.SHIPCIWAIT).** On a GitHub
