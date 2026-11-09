@@ -2,6 +2,29 @@
 
 ## Unreleased
 
+## v0.84.0 -- a stopped agent is finished, never alive; a loose scratchpad write is named
+
+* **One stopped-agent rule: `hooks/claude/agent_stop.py` `stop_marker()` (LOOP.LINGERSTOP).**
+  `goh agent-stalls` listed SRV.ARRLIVE's agent a3804c28b15885a20 as idle and waiting after TaskStop
+  had stopped it, and `.loop`'s linger read called RT.WEBKITFLAKE's a921d818bcfc3397e alive. Probed
+  on the live session: a stop of an agent that had already ended its turn writes nothing to its
+  transcript, meta or task output file; the only trace is the TaskStop tool_result naming its id in
+  the session transcript (a stop mid-turn also appends `[Request interrupted by user]`).
+  `stop_marker(transcript) -> str | None` returns "interrupted", "TaskStop", "TaskStop: no such
+  task" or None; `stalls()` treats stopped as finished, and a transcript that just ends with no
+  marker is state `unknown`, never `mid-turn`. Re-exported from `agent_stalls` for `.loop`'s tick.
+  On the live session: before, a3804c28b15885a20 was a stall; after, none. Red first: 7 new
+  `tests/test_agent_stalls.py` cases.
+* **Agents claim per-item scratch and release a bump with the repo's script (GOH.AGENTSCRATCH).**
+  `repo-worker.md` and `repo-worker-ui.md` say temp files go only under `loopctl.py scratch
+  <ITEM-ID> --base <scratchpad>` (or `--file NAME`), never a fixed name in the shared scratchpad,
+  and that a version bump is released with `.gatesrc` GOH_SHIP_RELEASE, since `loopctl done`
+  refuses a bumped, untagged landing. `hooks/claude/scratch_guard.py` `loose_writes()` finds each
+  file a subagent wrote straight into the scratchpad root (Write/Edit, or a redirect, `tee` or `-o`
+  of a shell tool); `agent_guard.py` names them at SubagentStop, to the session and on the outcome
+  line (`scratch_loose`). 124 subagent transcripts on this machine carry one. Red first: the planted
+  `scratchpad/release.log` case failed with the call disabled.
+
 ## v0.83.0 -- a gate that reads an index unbound is named; SessionStart names unpushed repos
 
 * **A hook-run script that reads an index without binding the hook's is named (GOH.BAREINDEX).**
