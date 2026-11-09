@@ -19,7 +19,7 @@
 //!
 //! WIRING: a structural step in EVERY repo, a hard gate at both scopes for expansions (the sweep
 //! found two sites, both fixed in their own repos). Unbound index reads are judged against the
-//! estate seed (`seed.rs`, `hook_index_seed.json`): koffee_big's two sites WARN until fixed there;
+//! estate seed (`seed.rs`, `hook_index_seed.json`): `koffee_big`'s two sites WARN until fixed there;
 //! any other is red.
 
 pub mod index;
@@ -118,9 +118,12 @@ fn judge(
     }
     let found = index_findings(root, &sources, exclude.as_ref());
     let counts: BTreeMap<String, usize> = found.iter().map(|(p, r)| (p.clone(), r.len())).collect();
-    let repo = root
-        .file_name()
-        .map_or_else(String::new, |s| s.to_string_lossy().into_owned());
+    // One git spawn, and only when a seed could matter: findings to judge, or a full run's stale check.
+    let repo = if counts.is_empty() && (staged || seed.is_empty()) {
+        String::new()
+    } else {
+        seed::identity(root).unwrap_or_default()
+    };
     let verdict = seed::judge(&repo, &counts, seed, !staged);
     let site = |rel: &str, r: &index::IndexRead| {
         let lines = lines_of(rel);

@@ -1,13 +1,15 @@
 {
- "why": "goh bare-hook-index: hook-run scripts that read an index (git diff --cached, git show :path, git ls-files --stage, git write-tree) without goh_bind_hook_index, as the estate stood when the check widened (GOH.BAREINDEX, 2026-11-08). A seeded file WARNS; over its count it is red; an unseeded read is red. Each entry is fixed in its own repo, then deleted here: done is an empty list (crates/goh/src/hookindex/seed.rs).",
+ "why": "goh bare-hook-index: hook-run scripts that read an index (git diff --cached, git show :path, git ls-files --stage, git write-tree) without goh_bind_hook_index, as the estate stood when the check widened (GOH.BAREINDEX, 2026-11-08). Keyed by the repo's root commit (stable across clones); `repo` is a label. A seeded file WARNS; over its count it is red; an unseeded read is red. Each entry is fixed in its own repo, then deleted here: done is an empty list (crates/goh/src/hookindex/seed.rs).",
  "entries": [
   {
+   "root": "63c1b93f4537ed89f2e0c040f2bdcb1c79bc7c69",
    "repo": "koffee_big",
    "path": "tools/run_gates.sh",
    "count": 1,
    "reason": "unreviewed: staged_names() runs `git -C \"$root\" diff --cached` unbound, so under `git commit -- path` or `commit -a` the staged scope lists the repository's own index, not the tree being committed"
   },
   {
+   "root": "63c1b93f4537ed89f2e0c040f2bdcb1c79bc7c69",
    "repo": "koffee_big",
    "path": "tools/gates_toolchains.sh",
    "count": 1,

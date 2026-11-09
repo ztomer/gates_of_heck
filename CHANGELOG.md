@@ -11,7 +11,8 @@
   hook reaches (tools/gate.sh, the hooks, commit_gate.sh, and what they name by path) with no
   `goh_bind_hook_index` or own `GIT_INDEX_FILE=` before it. The estate sweep found koffee_big's
   `tools/run_gates.sh:55` and `tools/gates_toolchains.sh:171`: seeded in `hook_index_seed.json`, a
-  WARN-level ratchet keyed by repo and file (over the count, or unseeded, is red). goh's own
+  WARN-level ratchet keyed by the repo's ROOT COMMIT and file, so the release canary's clone
+  (named `tree`) is still the seeded repo (over the count, or unseeded, is red). goh's own
   `gates/_proven.sh` `proven_tree` now binds itself. Red first: 4 new
   `tests/test_check_bare_hook_index.py` cases failed with the reach disabled.
 * **A data-only commit no longer runs the Python twin over the whole tree (GOH.BAREINDEX).**

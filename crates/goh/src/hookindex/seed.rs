@@ -3,10 +3,15 @@
 //! The sweep that widened `goh bare-hook-index` to plain index reads (GOH.BAREINDEX) found
 //! consumers whose hook-run scripts read an index unbound; they are fixed in their own repos, one
 //! queue item each. Until then each is seeded here, in `gates_of_heck` (`hook_index_seed.json`,
-//! read from `$GOH_DIR`), keyed by the repository's directory name and the file: a seeded file at
+//! read from `$GOH_DIR`), keyed by the repository's ROOT COMMIT and the file: a seeded file at
 //! or under its count WARNS with its sites, over it is red, and an entry a full run finds clean or
 //! lower is named to delete or lower (a warn: the consumer that fixed it cannot edit this file in
 //! the same commit). An unseeded read is red. "Done" is an empty `entries`.
+//!
+//! WHY THE ROOT COMMIT. The directory name was the first key, and the release canary judges each
+//! consumer in a clone named `tree`: the seeded repo read as unseeded and the land was refused. A
+//! root commit is the same in every clone, worktree and move of a repository (`repo` in an entry is
+//! a label for the reader, never matched).
 
 use std::collections::BTreeMap;
 use std::path::Path;
@@ -14,7 +19,7 @@ use std::path::Path;
 /// The seed's file name, at the `gates_of_heck` root.
 pub const SEED_FILE: &str = "hook_index_seed.json";
 
-/// `(repo, path) -> count` as seeded.
+/// `(root commit, path) -> count` as seeded.
 pub type Seed = BTreeMap<(String, String), usize>;
 
 /// Read the seed at `goh`. A missing file is an empty seed; a corrupt one is an error.
@@ -36,18 +41,19 @@ pub fn load(goh: &Path) -> Result<Seed, String> {
         .ok_or_else(|| bad("no `entries` array"))?
     {
         let field = |k: &str| e.get(k).and_then(serde_json::Value::as_str);
-        let (Some(repo), Some(file), Some(count)) = (
+        let (Some(root), Some(repo), Some(file), Some(count)) = (
+            field("root"),
             field("repo"),
             field("path"),
             e.get("count").and_then(serde_json::Value::as_u64),
         ) else {
-            return Err(bad("an entry lacks repo, path or count"));
+            return Err(bad("an entry lacks root, repo, path or count"));
         };
         if field("reason").is_none_or(str::is_empty) {
             return Err(bad(&format!("{repo} {file} has no reason")));
         }
         let count = usize::try_from(count).map_err(|e| bad(&e.to_string()))?;
-        seed.insert((repo.to_string(), file.to_string()), count);
+        seed.insert((root.to_string(), file.to_string()), count);
     }
     Ok(seed)
 }
@@ -61,7 +67,30 @@ pub struct Verdict {
     pub warn: Vec<(String, String)>,
 }
 
-/// Judge `found` (`path -> number of reads`) in `repo` against `seed`. `full`: every hook-run
+/// The repository's stable identity: its root commit (the least, when history has several), or
+/// `None` before its first commit -- which no seed names, so every read there is red.
+#[must_use]
+pub fn identity(root: &Path) -> Option<String> {
+    let out = std::process::Command::new("git")
+        .arg("-C")
+        .arg(root)
+        .args(["rev-list", "--max-parents=0", "HEAD"])
+        .stdin(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .output()
+        .ok()?;
+    if !out.status.success() {
+        return None;
+    }
+    String::from_utf8_lossy(&out.stdout)
+        .lines()
+        .map(str::trim)
+        .filter(|l| !l.is_empty())
+        .min()
+        .map(str::to_string)
+}
+
+/// Judge `found` (`path -> number of reads`) in the repo whose identity is `repo` against `seed`. `full`: every hook-run
 /// file was read, so an entry with fewer reads than seeded is stale.
 #[must_use]
 pub fn judge(repo: &str, found: &BTreeMap<String, usize>, seed: &Seed, full: bool) -> Verdict {

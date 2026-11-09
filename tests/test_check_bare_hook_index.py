@@ -9,6 +9,7 @@ written, index truth, the binder's own file, exclusion, the dispatcher, and the 
 
 from __future__ import annotations
 
+import json
 import subprocess
 from pathlib import Path
 
@@ -179,11 +180,48 @@ def test_a_private_index_the_script_chose_is_not_the_hooks(repo: Path) -> None:
     assert run_goh(repo, "bare-hook-index").returncode == 0
 
 
-def test_the_estate_seed_warns_and_does_not_hide(repo: Path) -> None:
-    """The seed is keyed by the repository's directory name; this fixture's is not in it, so the
-    same read that warns in a seeded repo is red here -- never a silent pass."""
-    seed = (REPO_ROOT / "hook_index_seed.json").read_text()
-    assert repo.name not in seed
+def _seeded_goh(tmp: Path, root: str, count: int) -> Path:
+    goh = tmp / "goh"
+    goh.mkdir()
+    entry = {"root": root, "repo": "fixture", "path": "tools/gate.sh", "count": count}
+    seed = {"why": "a test's", "entries": [{**entry, "reason": "unreviewed: a test's"}]}
+    (goh / "hook_index_seed.json").write_text(json.dumps(seed))
+    return goh
+
+
+def _under(goh: Path, repo: Path) -> subprocess.CompletedProcess:
+    return run_goh(repo, "bare-hook-index", env=hermetic_env(GOH_DIR=str(goh)))
+
+
+def test_the_estate_seed_warns_by_root_commit_in_any_clone(repo: Path, tmp_path: Path) -> None:
+    """The seed is keyed by the ROOT COMMIT. Keyed by directory name it missed the release
+    canary's clone (named `tree`), and the land was refused for a seeded consumer."""
     write(repo, "tools/gate.sh", PLAIN)
     commit_all(repo)
+    root = git(repo, "rev-list", "--max-parents=0", "HEAD").strip()
+    goh = _seeded_goh(tmp_path, root, 1)
+    clone = tmp_path / "tree"
+    subprocess.run(
+        ["git", "clone", "-q", str(repo), str(clone)],
+        check=True,
+        capture_output=True,
+        stdin=subprocess.DEVNULL,
+    )
+    for where in (repo, clone):
+        r = _under(goh, where)
+        assert r.returncode == 0, r.stdout + r.stderr
+        assert "seeded (GOH.BAREINDEX ratchet): tools/gate.sh" in r.stderr, r.stderr
+        assert "tools/gate.sh:3:" in r.stderr, r.stderr  # a warn names its site: never silent
+    # Over its count is red; unseeded (the real seed, which does not know this repo) is red.
+    write(repo, "tools/gate.sh", PLAIN + "git write-tree\n")
+    commit_all(repo)
+    assert _under(goh, repo).returncode == 1
     assert run_goh(repo, "bare-hook-index").returncode == 1
+
+
+def test_a_seeded_file_gone_clean_says_to_delete_its_entry(repo: Path, tmp_path: Path) -> None:
+    write(repo, "tools/gate.sh", LOOP_BOUND)
+    commit_all(repo)
+    goh = _seeded_goh(tmp_path, git(repo, "rev-list", "--max-parents=0", "HEAD").strip(), 1)
+    r = _under(goh, repo)
+    assert r.returncode == 0 and "delete its entry" in r.stderr, r.stdout + r.stderr
