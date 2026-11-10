@@ -43,6 +43,31 @@ fn a_commit_adding_a_test_without_the_trailer_is_refused() {
 }
 
 #[test]
+fn a_claim_is_hollow_only_when_it_is_the_whole_hollow_word() {
+    // A prefix match refused real claims that merely BEGIN with a hollow word (GOH.REDRUNHOLLOW).
+    for real in [
+        "none is a name, and the test went red when it was dropped",
+        "nonetheless the guard was removed and the test failed",
+        "done_state returning early -- the test went red",
+        "-U1 diff context: the parser read one line and the test failed",
+        "yesterday's fallback restored -- red",
+    ] {
+        let msg = format!("feat: x\n\nbody\n\nRed-run: {real}\n");
+        assert_eq!(refusal(&msg, ADDS_A_TEST), None, "{real:?} was refused");
+    }
+    for hollow in super::HOLLOW {
+        for spelt in [
+            hollow.to_string(),
+            format!("{hollow}."),
+            format!(" {} ", hollow.to_uppercase()),
+        ] {
+            let msg = format!("feat: x\n\nbody\n\nRed-run: {spelt}\n");
+            assert!(refusal(&msg, ADDS_A_TEST).is_some(), "{spelt:?} passed");
+        }
+    }
+}
+
+#[test]
 fn the_trailer_must_be_in_the_trailer_block_and_say_something() {
     let named = "feat: x\n\nbody\n\nRed-run: x() returning True -- the test failed\n";
     assert_eq!(refusal(named, ADDS_A_TEST), None);

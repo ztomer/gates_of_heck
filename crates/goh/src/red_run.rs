@@ -18,7 +18,9 @@ use goh_tui::ERR;
 
 const KEY: &str = "Red-run";
 const TAG: &str = "[red_run]";
-/// What an empty claim looked like elsewhere; a value starting with one of these says nothing.
+/// What an empty claim looked like elsewhere. A claim that IS one of these -- trimmed, case-folded,
+/// trailing punctuation dropped -- says nothing; one that merely begins with one ("none is a name",
+/// "`done_state` ...", "-U1 diff") is a claim (GOH.REDRUNHOLLOW).
 const HOLLOW: [&str; 6] = ["none", "n/a", "tbd", "-", "yes", "done"];
 
 /// Whether `line`, in the file at `path`, declares a test. By language, at the line's start, so a
@@ -152,9 +154,9 @@ pub fn refusal(message: &str, diff: &str) -> Option<String> {
     let trailers = final_trailers(&lines);
     let claim = trailers
         .get(KEY)
-        .map(|v| v.to_lowercase())
+        .map(|v| hollow_form(v))
         .unwrap_or_default();
-    if !claim.is_empty() && !HOLLOW.iter().any(|h| claim.starts_with(h)) {
+    if !claim.is_empty() && !HOLLOW.contains(&claim.as_str()) {
         return None;
     }
     let more = match added.len() {
@@ -165,6 +167,15 @@ pub fn refusal(message: &str, diff: &str) -> Option<String> {
         "it adds a test ({first}{more}) and its trailer block carries no `{KEY}:` naming the \
          mutation that turned it red -- break the code once, watch the test fail, and say what broke"
     ))
+}
+
+/// A claim as it is judged hollow: trimmed, case-folded, trailing `.,;:!?` dropped.
+fn hollow_form(claim: &str) -> String {
+    claim
+        .trim()
+        .trim_end_matches(['.', ',', ';', ':', '!', '?'])
+        .trim_end()
+        .to_lowercase()
 }
 
 /// git's stdout as text, through `commit_class`'s one spawn (the census of git spawns stays one).
