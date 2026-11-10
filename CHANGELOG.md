@@ -2,6 +2,25 @@
 
 ## Unreleased
 
+## v0.93.0 -- a step that needs the owner's estate says NOT APPLICABLE on a hosted runner, and only there
+
+* **NOT APPLICABLE, a third verdict (CI.PUBLIC2).** The R3 estate corpus sweep and its probe and
+  the release canary need the owner's estate; on a GitHub-hosted run (`GITHUB_ACTIONS=true`) that
+  probes it absent they say NOT APPLICABLE and exit 78 (`lib/not_applicable.py`). `local_ci.sh`
+  reports such a step on its own line and counts it apart -- on a hosted run only: anywhere else a
+  step that exits 78 is FAILED, and an estate sweep with no corpus on the machine is red (it was a
+  silent "0/N verified" pass). The owner's machine stays the judge of record.
+* **goh's own suite declares pytest** (`required_tools.py` layer `goh-suite`, from a
+  `GOH_COV_*_EXTERNAL` naming `tools/pytest.sh`), and `tools/pytest.sh` refuses by name without it:
+  goh's first hosted run lost its coverage external to "No module named pytest".
+* **pip installs into the house interpreter** (`lib/house_python.sh`), never PATH's first python3.
+* **No `brew install` off macOS.** On Linux each brew tool already on PATH is done and a missing one
+  is refused by name (`GOH_TOOLS_OS` overrides); multitop's ubuntu run died on `brew: command not found`.
+* **red-run: a claim is hollow only when it IS a hollow word** (trimmed, case-folded, trailing
+  punctuation dropped), so "none is a name, ..." and "done_state ..." are claims (GOH.REDRUNHOLLOW).
+* **The suite's children write temp files in the suite's temp root** (`tests/suite_tmp.py`), so the
+  red `local_ci.sh` runs the suite makes no longer leave `goh-local-ci.*` logs in the user's temp dir.
+
 ## v0.92.0 -- a gate says how a step failed, and says no more than it checked
 
 * **A failed step's line names how it ended (GOH.GATEHONEST).** goh_step's die line and
