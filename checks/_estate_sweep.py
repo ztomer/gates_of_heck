@@ -54,6 +54,9 @@ from _gitutil import foreign_repo_env
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from tui.lib import info
 
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "lib"))
+import not_applicable
+
 HERE = os.path.dirname(os.path.abspath(__file__))
 REPO = os.path.dirname(HERE)
 
@@ -94,7 +97,11 @@ def corpus_sweep(root=None, force=False) -> bool:
     )
     for line in (result.stdout + result.stderr).strip().splitlines():
         info(line)
-    return result.returncode == 0
+    # NOT APPLICABLE (no corpus on a hosted runner, said above) is not a failure there, and is
+    # one anywhere else: the owner's machine is the judge of record (lib/not_applicable.py).
+    return result.returncode == 0 or (
+        result.returncode == not_applicable.EXIT and not_applicable.hosted()
+    )
 
 
 def estate_in_scope(root) -> bool:

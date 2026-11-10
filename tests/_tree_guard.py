@@ -16,6 +16,7 @@ The same session start sweeps the temp dir (`sweep_temp`): a worker killed mid-r
 
 from __future__ import annotations
 
+import os
 import sys
 import tempfile
 from pathlib import Path
@@ -29,7 +30,11 @@ _KEY = "_goh_tree_stamp"
 
 
 def sweep_temp(directory: str | None = None) -> list[str]:
-    return backstop(directory or tempfile.gettempdir())
+    # The USER's temp dir, where a killed run's leftovers are: the suite's own TMPDIR is
+    # tests/suite_tmp.py's, and is removed with the suite.
+    return backstop(
+        directory or os.environ.get("GATES_OF_HECK_SUITE_REAL_TMP") or tempfile.gettempdir()
+    )
 
 
 def pytest_sessionstart(session) -> None:

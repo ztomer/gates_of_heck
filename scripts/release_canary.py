@@ -54,6 +54,7 @@ from tui.lib import err, info, ok, warn
 sys.path.insert(0, str(ROOT / "lib"))
 import estate_registry
 import killtree
+import not_applicable
 
 KEY = "release_canary"
 RUN_TIMEOUT_S = 900
@@ -357,8 +358,21 @@ def run(args: argparse.Namespace) -> tuple[dict, int]:
             return rec, 0
     repos, problems = consumers(args.root, args.state, args.goh)
     rec.update(consumers=len(repos), problems=problems)
+    registry = estate_registry.registry_path(args.state)
+    # No estate at all -- no registry, no consumer under the root: a clean machine. A hosted runner
+    # says the canary is NOT APPLICABLE; anywhere else it refuses below, as it always did, because
+    # the owner's machine is the judge of record (lib/not_applicable.py).
+    if (
+        not repos
+        and not registry.exists()
+        and not_applicable.declare(
+            "the release canary", f"the consumer estate (registry {registry}, root {args.root})"
+        )
+    ):
+        rec.update(verdict="not-applicable")
+        return rec, not_applicable.EXIT
     if not repos:
-        why = f"no consumer in the estate (registry {estate_registry.registry_path(args.state)},"
+        why = f"no consumer in the estate (registry {registry},"
         rec.update(verdict="refused", errors=[f"{why} root {args.root}): a sweep of nothing"])
         return rec, 1
     with tempfile.TemporaryDirectory(prefix="goh-release-canary-sides-") as tmp:
@@ -375,6 +389,8 @@ def run(args: argparse.Namespace) -> tuple[dict, int]:
 
 def say(rec: dict) -> None:
     base, head = rec.get("base", "the last release"), rec.get("head", "HEAD")
+    if rec["verdict"] == "not-applicable":
+        return  # said where it was found (not_applicable.declare)
     if rec["verdict"] == "no-gate-change":
         ok(f"release canary: no gate input changed since {base} -- nothing to sweep")
         return

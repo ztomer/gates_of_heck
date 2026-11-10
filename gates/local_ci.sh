@@ -1,8 +1,6 @@
 #!/usr/bin/env bash
-# local_ci.sh — ONE declarative step runner replacing the ~10 copy-pasted
-# local-CI orchestrators (app_updates tools/local_ci.sh, CadGoose2
-# tools/local_ci.sh, divoom-control scripts/ci_local.sh all share the same
-# skeleton: a step list, a fail accumulator, log-on-failure, tui styling).
+# local_ci.sh — ONE declarative step runner replacing the ~10 copy-pasted local-CI orchestrators
+# (app_updates, CadGoose2, divoom-control: a step list, a fail accumulator, log-on-failure, tui).
 # Only the step LIST was per-repo; the skeleton drifted copy by copy. The list
 # is data here, declared by the repo:
 #
@@ -10,23 +8,20 @@
 # or CLI:    local_ci.sh --step './tools/repo_gates.sh' --step 'cargo test'
 # (both at once: .gatesrc steps run first, then --step additions)
 #
-# Each token is one shell command string. It runs with output captured to a
-# temp-dir log; on failure the log tail is printed and the accumulator ticks.
-# A failing step NEVER stops the run — one pass must surface every failure,
-# which is what every ancestor's fail-accumulator existed for. Exit is nonzero
-# iff ANY step failed. --dry-run lists steps (with their source) and runs none.
+# Each token is one shell command string. It runs with output captured to a temp-dir log; on
+# failure the log tail is printed and the accumulator ticks. A failing step NEVER stops the run --
+# one pass must surface every failure, which is what every ancestor's fail-accumulator existed for.
+# Exit is nonzero iff ANY step failed. --dry-run lists steps (with their source) and runs none.
 #
-# Deliberately thin: labels are the commands themselves, there is no step
-# metadata to drift. The value is that the skeleton exists exactly once.
+# Deliberately thin: labels are the commands themselves, there is no step metadata to drift.
 #
-# PROVEN STEPS. Every step goes through the proven-step cache (gates/_proven.sh,
-# the rationale in gates/proven.sh): a step that already passed on this exact
-# committed tree -- in the pre-commit hook, or an earlier run -- is skipped with
-# a line saying who proved it and when, and a green step on a clean tree leaves
-# a record. A dirty working tree has no key, so everything runs as before.
-# GOH_PROVEN=0 turns the cache off.
+# PROVEN STEPS. Every step goes through the proven-step cache (gates/_proven.sh, the rationale in
+# gates/proven.sh): a step that already passed on this exact committed tree -- in the pre-commit
+# hook, or an earlier run -- is skipped with a line saying who proved it and when, and a green step
+# on a clean tree leaves a record. A dirty working tree has no key. GOH_PROVEN=0 turns it off.
 #
-# Exit codes: 0 all green · 1 any step failed · 2 usage/config error.
+# Exit codes: 0 all green · 1 any step failed · 2 usage/config error. A step exiting 78 is NOT
+# APPLICABLE: its own line, accepted on a hosted run only (gates/_not_applicable.sh).
 { # parse-guard -- bash reads this group whole before running it (tests/test_parse_guard.py)
 . "$(dirname "${BASH_SOURCE[0]}")/_from_head.sh"; goh_from_head "${BASH_SOURCE[0]}" "$@"   # run HEAD, not the tree (C4)
 set -uo pipefail
@@ -52,6 +47,7 @@ die() { err "local_ci: $*"; exit "${2:-2}"; }
 . "$HERE/_proven.sh"
 # shellcheck source=gates/_steps.sh
 . "$HERE/_steps.sh"
+. "$HERE/_not_applicable.sh"  # lci_not_applicable
 # shellcheck source=gates/_goh_bin.sh
 . "$HERE/_goh_bin.sh"
 # shellcheck source=lib/bench_lock.sh
@@ -252,6 +248,7 @@ LOGDIR=$(mktemp -d "${TMPDIR:-/tmp}/goh-local-ci.XXXXXX")
 FAILED=0
 FAILED_NAMES=""
 PROVEN_SKIPPED=0
+NOT_HERE=0
 
 # run_step <logf> <cmd-string> <index> — exit code of the step, 124 on a timeout. Background only:
 # it EXECs, so it replaces the shell that runs it.
@@ -431,6 +428,8 @@ _report() { # _report <i>
   $cmd (declared artifact missing)"
     elif [ "$rc" -eq 0 ]; then
         ok "[$i/$_n] $cmd"
+    elif [ "$rc" -eq 78 ] && lci_not_applicable "[$i/$_n]" "$cmd" "$logf"; then
+        NOT_HERE=$((NOT_HERE + 1))
     elif [ "$rc" -eq 125 ]; then
         # The step was GREEN and something it spawned outlived it. Named separately, and with its own
         # exit code, because the common reading of "the test suite passed" is that nothing survived
@@ -482,10 +481,11 @@ exec 3>&-
 
 section "result"
 if [ "$FAILED" -eq 0 ]; then
+    [ "$NOT_HERE" -eq 0 ] || warn "$NOT_HERE of $(counted "$_n" step) NOT APPLICABLE on this hosted runner (named above)"
     if [ "$PROVEN_SKIPPED" -gt 0 ]; then
-        ok "all $(counted "$_n" step) passed ($PROVEN_SKIPPED proven earlier on this tree, not re-run)"
+        ok "all $(counted "$((_n - NOT_HERE))" step) passed ($PROVEN_SKIPPED proven earlier on this tree, not re-run)"
     else
-        ok "all $(counted "$_n" step) passed"
+        ok "all $(counted "$((_n - NOT_HERE))" step) passed"
     fi
     exit 0
 fi

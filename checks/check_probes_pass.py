@@ -51,7 +51,10 @@ from _tree_stamp import stamp, tree_changed
 
 HOUSE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, HOUSE)
-from tui.lib import err, info, ok, warn
+from tui.lib import counted, err, info, ok, warn
+
+sys.path.insert(0, os.path.join(HOUSE, "lib"))
+import not_applicable
 
 # Directories a repo keeps its gates in. Both, because gates_of_heck uses checks/ and every
 # consuming repo uses tools/.
@@ -177,7 +180,7 @@ def _report_undeclared(root, show=5):
         return
     shown = ", ".join(names[:show]) + (f" (+{len(names) - show} more)" if len(names) > show else "")
     info(
-        f"{len(names)} self-proof(s) NOT run here -- not named check_*, so not declared headless "
+        f"{counted(len(names), 'self-proof')} NOT run here -- not named check_*, so not declared headless "
         f"gates: {shown}"
     )
 
@@ -204,7 +207,10 @@ def _interpreter(path):
 
 
 def run_one(path, flag, cwd, timeout=TIMEOUT):
-    """(ok, detail). A probe must exit 0; anything else is the probe telling us it is broken."""
+    """(ok, detail). A probe must exit 0; anything else is the probe telling us it is broken --
+    but for not_applicable.EXIT with its NOT APPLICABLE line ON A HOSTED RUN, which is (None, that
+    line): its prerequisite (the owner's estate) is not on this machine. Off a hosted run that exit
+    is BROKEN like any other (lib/not_applicable.py)."""
     try:
         result = subprocess.run(
             [*_interpreter(path), path, flag],
@@ -222,6 +228,9 @@ def run_one(path, flag, cwd, timeout=TIMEOUT):
     if result.returncode == 0:
         return True, ""
     tail = (result.stdout + result.stderr).strip().splitlines()
+    said = [line for line in tail if not_applicable.MARK in line]
+    if result.returncode == not_applicable.EXIT and said and not_applicable.hosted():
+        return None, "\n".join(said)
     # The HEAD of a traceback names the probe that broke; the tail names the exception. Both are
     # wanted, and a probe that prints a hundred case lines must not bury either.
     detail = tail[:4] + (["    ..."] + tail[-4:] if len(tail) > 8 else tail[4:])
@@ -311,7 +320,7 @@ def main(argv=None):
         return 0
     if not probes:
         warn(
-            f"{total} gate(s) here and not one declares an INLINE self-proof -- any proof they\n"
+            f"{counted(total, 'gate')} here and not one declares an INLINE self-proof -- any proof they\n"
             f"      have lives elsewhere, and this gate does not check that it still runs"
         )
         # The registry is still read. A registry full of proof claims over a tree with no
@@ -321,7 +330,7 @@ def main(argv=None):
         for line in bad:
             err(line)
         if bad:
-            err(f"{len(bad)} claim(s) in the calibration registry do not hold.")
+            err(f"{counted(len(bad), 'claim')} in the calibration registry do not hold.")
             return 1
         for line in notes:
             info(line)
@@ -343,11 +352,14 @@ def main(argv=None):
         verdicts = list(pool.map(lambda probe: run_one(probe[0], probe[1], cwd=root), probes))
     if tree_changed(root, before, probes, run_one):  # parallel probes race a probe writing in it
         return 1
+    not_here = []
     for (path, flag), (passed, detail) in zip(probes, verdicts):
         if passed:
             ran.add(os.path.relpath(path, root))
         else:
-            failed.append((path, detail))
+            (failed if passed is False else not_here).append((path, detail))
+    for path, detail in not_here:  # said whatever else failed: neither a pass nor a failure
+        warn(f"{os.path.relpath(path, root)} --probe: {detail}")
 
     for path, detail in failed:
         err(f"{os.path.relpath(path, root)} --probe is BROKEN: {detail}")
@@ -362,7 +374,9 @@ def main(argv=None):
     for line in bad:
         err(line)
     if bad:
-        err(f"{len(bad)} claim(s) in the calibration registry do not hold against this estate.")
+        err(
+            f"{counted(len(bad), 'claim')} in the calibration registry do not hold against this estate."
+        )
         info("A registry nothing reads is a rumour (docs/SUPERSOTA.md R7). One that is read and")
         info("disagrees with the estate is worse: it names proofs that do not run.")
         info("Fix the entry, or delete the claim -- do not reword it.")
@@ -370,7 +384,10 @@ def main(argv=None):
 
     for line in notes:
         info(line)
-    ok(f"{len(probes)} of {total} gate(s) carry an inline self-proof, every one still passing")
+    na = f", {len(not_here)} of them NOT APPLICABLE here (named above)" if not_here else ""
+    ok(
+        f"{len(probes)} of {counted(total, 'gate')} carry an inline self-proof, every one still passing{na}"
+    )
     _report_undeclared(root)
     if load_registry(root) is not None:
         ok("every claim in the calibration registry holds against the estate it names")
@@ -380,120 +397,11 @@ def main(argv=None):
 
 
 def probe():
-    """Three cases: a passing proof, a BROKEN proof, and a gate that declares none."""
-    import tempfile
-    import textwrap
+    """Prove THIS gate can go red: checks/_probes_pass_probe.py drives it through a passing, a
+    BROKEN, a NOT APPLICABLE and an undeclared self-proof (split out under the file-length cap)."""
+    from _probes_pass_probe import probe as run
 
-    from _calibration_probe import probe as calibration_probe
-
-    bad = 0
-    with tempfile.TemporaryDirectory(prefix="goh-probes.") as td:
-        tools = os.path.join(td, "tools")
-        os.makedirs(tools)
-
-        def gate(name, body):
-            with open(os.path.join(tools, name), "w", encoding="utf-8") as handle:
-                handle.write(textwrap.dedent(body).lstrip())
-
-        gate(
-            "check_good.py",
-            """
-            import sys
-            if "--probe" in sys.argv:
-                print("ok")
-                sys.exit(0)
-            sys.exit(0)
-        """,
-        )
-        gate(
-            "check_broken.py",
-            """
-            import sys
-            if "--probe" in sys.argv:
-                raise SystemExit("the fixture this probe drove was renamed")
-            sys.exit(0)
-        """,
-        )
-        # Declares no self-proof, and MENTIONS --probe in prose -- the false positive the
-        # anchored detector exists to refuse.
-        gate(
-            "check_bare.py",
-            '''
-            """This gate has no --probe yet; see the backlog."""
-            import sys
-            sys.exit(0)
-        ''',
-        )
-
-        # main(argv) taking the list as a PARAMETER is as real a dispatch as reading sys.argv.
-        # Requiring the module path marked ZeroThunder's check_mesh_integrity, which ships a
-        # genuine --break-probe, as carrying no self-proof at all.
-        gate(
-            "check_param.py",
-            """
-            import sys
-            def main(argv):
-                if "--break-probe" in argv:
-                    return 0
-                return 0
-            sys.exit(main(sys.argv[1:]))
-        """,
-        )
-
-        probes, total = discover(td)
-        names = {os.path.basename(p) for p, _ in probes}
-
-        for label, want, got in (
-            ("all four gates are counted", 4, total),
-            (
-                "every real self-proof is found",
-                {"check_good.py", "check_broken.py", "check_param.py"},
-                names,
-            ),
-            ("a main(argv) dispatch counts as a self-proof", True, "check_param.py" in names),
-            ("a gate that only MENTIONS --probe is not counted", False, "check_bare.py" in names),
-            (
-                "a passing proof passes",
-                (True, ""),
-                run_one(os.path.join(tools, "check_good.py"), "--probe", td),
-            ),
-            (
-                "a BROKEN proof is caught",
-                False,
-                run_one(os.path.join(tools, "check_broken.py"), "--probe", td)[0],
-            ),
-            ("the whole run goes red on it", 1, main(["--root", td])),
-        ):
-            if want != got:
-                err(f"probe: {label} (wanted {want!r}, got {got!r})")
-                bad += 1
-            else:
-                ok(f"probe: {label}")
-
-        os.remove(os.path.join(tools, "check_broken.py"))
-        if main(["--root", td]) != 0:
-            err("probe: a tree whose proofs all pass should be green")
-            bad += 1
-        else:
-            ok("probe: a tree whose proofs all pass is green")
-
-        empty = os.path.join(td, "empty")
-        os.makedirs(empty)
-        if main(["--root", empty]) != 0:
-            err("probe: a repo with no gates at all should not fail")
-            bad += 1
-        else:
-            ok("probe: a repo with no gates at all is reported, not failed")
-
-    # The registry reader rides here because it is the half of R1 that discovery cannot see. It is
-    # a MODULE's self-proof rather than this gate's, so it is driven and counted here.
-    bad += calibration_probe()
-
-    if bad:
-        err(f"check_probes_pass --probe: {bad} case(s) wrong")
-        return 1
-    ok("check_probes_pass --probe: a broken self-proof goes red, and prose does not count as one")
-    return 0
+    return run(sys.modules[__name__])
 
 
 if __name__ == "__main__":

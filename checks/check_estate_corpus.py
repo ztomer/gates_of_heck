@@ -81,7 +81,10 @@ from _gitutil import foreign_repo_env
 from _ordered_pool import in_order
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from tui.lib import err, info, ok, warn
+from tui.lib import counted, err, info, ok, warn
+
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "lib"))
+import not_applicable
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 # The gates checkout whose `goh.sh` runs the native checks: GOH_DIR when the caller says (a copy of
@@ -253,7 +256,7 @@ def judge(entry, bad):
     if len(files) < MIN_FILES:
         where = "/".join(entry["scope"]) if entry["scope"] != (".",) else ""
         err(
-            f"{entry['checker']}: the corpus at {entry['root']}/{where} has {len(files)} file(s), "
+            f"{entry['checker']}: the corpus at {entry['root']}/{where} has {counted(len(files), 'file')}, "
             f"below the floor of {MIN_FILES}. Refusing to count a fixture as an estate."
         )
         bad.append(entry["checker"])
@@ -270,7 +273,7 @@ def judge(entry, bad):
         existing = sum(1 for _ in handle)
     if existing < MIN_TARGET_LINES:
         err(
-            f"{entry['checker']}: the plant would land in {target}, which holds {existing} line(s) "
+            f"{entry['checker']}: the plant would land in {target}, which holds {counted(existing, 'line')} "
             f"of the estate -- below the floor of {MIN_TARGET_LINES}. A violation in a stub is "
             f"judged by the estate's FILENAME."
         )
@@ -315,7 +318,7 @@ def judge(entry, bad):
         return "blind"
     if real_rc != 1 or not named:
         err(
-            f"{entry['checker']}: a violation planted in {len(files)} real file(s) from "
+            f"{entry['checker']}: a violation planted in {counted(len(files), 'real file')} from "
             f"{entry['root']} was NOT caught"
             + (f" (exit {real_rc})" if real_rc != 1 else " (exit 1, but it did not name the file)")
         )
@@ -332,7 +335,7 @@ def judge(entry, bad):
         )
     line = (
         f"{entry['checker']}: red on a plant inside {target} ({existing} lines of real code, "
-        f"{len(files)} real file(s) from {os.path.basename(entry['root'])})"
+        f"{counted(len(files), 'real file')} from {os.path.basename(entry['root'])})"
         + ("" if min_rc == 1 else " -- and GREEN on the bare one-file fixture")
     )
     ok(line)
@@ -365,13 +368,24 @@ def main(argv=None):
     states = in_order(lambda entry: _judged(entry, bad), ESTATE)
     verified = states.count("verified")
     unavailable = states.count("unavailable")
+    if unavailable == len(ESTATE):
+        # Not one corpus is on this machine: a sweep of nothing. On a hosted runner that is the
+        # machine, said as such; anywhere else it is this gate's failure, never a green (CI.PUBLIC2).
+        if not_applicable.declare(
+            "the R3 estate corpus sweep", "the consumer repos it plants into"
+        ):
+            return not_applicable.EXIT
+        err(f"none of the {len(ESTATE)} estate corpora is on this machine -- a sweep of nothing")
+        return 1
     if bad:
-        err(f"{len(bad)} checker(s) did not refuse a violation planted in the real estate.")
+        err(
+            f"{counted(len(bad), 'checker')} did not refuse a violation planted in the real estate."
+        )
         info("A checker that only works on the shape its author imagined is not a gate, and the")
         info("fixture beside it is the reason: a fixture cannot disagree with its own assumption.")
         return 1
     ok(
-        f"{verified}/{len(ESTATE)} checker(s) went red on a plant inside real estate corpora"
+        f"{verified}/{counted(len(ESTATE), 'checker')} went red on a plant inside real estate corpora"
         + (f"; {unavailable} not on this machine, named above" if unavailable else "")
     )
     return 0
@@ -379,9 +393,21 @@ def main(argv=None):
 
 def probe():
     """Three cases: a real estate that is green, a checker that CANNOT fail, and a corpus that
-    degraded to a fixture. The second is the whole point of this file."""
+    degraded to a fixture. The second is the whole point of this file.
+
+    Two of the three plant into the first REAL entry's corpus. Where it is absent, a hosted runner
+    says those two are NOT APPLICABLE, still runs the third, and exits not_applicable.EXIT; any
+    other machine runs all three and the absent corpus fails them, as it always did (CI.PUBLIC2)."""
 
     saved, home, blind_dir = ESTATE, _estate_corpus_io.HERE, ""
+    if not os.path.isdir(os.path.expanduser(saved[0]["root"])) and not_applicable.declare(
+        "check_estate_corpus --probe (a checker that cannot fail; a real entry verifies)",
+        f"its first real corpus, {saved[0]['root']}",
+    ):
+        if not _thin_refused({**saved[0], "args": (), "why": "probe"}):
+            err("check_estate_corpus --probe: 1 case wrong")
+            return 1
+        return not_applicable.EXIT
     bad = 0
     try:
         # A checker that always passes: a sweep blind to it reports coverage it never measured.
@@ -411,34 +437,8 @@ def probe():
 
         # A corpus below the floor must be REFUSED, not used: a real repo's name on one file is
         # the failure this gate exists to catch, reproduced inside the gate.
-        with tempfile.TemporaryDirectory(prefix="goh-estate.") as td:
-            thin = os.path.join(td, "thin")
-            os.makedirs(os.path.join(thin, "src"))
-            with open(os.path.join(thin, "src", "lib.rs"), "w", encoding="utf-8") as handle:
-                handle.write("fn main() {}\n")
-            for args in (
-                ("init", "-q"),
-                ("config", "user.email", "c@e.invalid"),
-                ("config", "user.name", "c"),
-                ("add", "-A"),
-            ):
-                subprocess.run(
-                    ["git", "-C", thin, *args],
-                    capture_output=True,
-                    env=foreign_repo_env(),
-                    stdin=subprocess.DEVNULL,
-                    check=False,
-                )
-            findings = []
-            judge(
-                {**entry, "checker": "check_thin_corpus.py", "root": thin, "scope": ("src",)},
-                findings,
-            )
-            if findings:
-                ok("probe: a corpus below the floor is refused, not used")
-            else:
-                err("probe: a one-file 'estate' was accepted — the gate can prove a fixture")
-                bad += 1
+        if not _thin_refused(entry):
+            bad += 1
 
         _estate_corpus_io.HERE = home
         if judge(saved[0], []) != "verified":
@@ -452,10 +452,42 @@ def probe():
         shutil.rmtree(blind_dir, ignore_errors=True)  # it leaked once per probe run (2026-10-06)
 
     if bad:
-        err(f"check_estate_corpus --probe: {bad} case(s) wrong")
+        err(f"check_estate_corpus --probe: {counted(bad, 'case')} wrong")
         return 1
     ok("check_estate_corpus --probe: a checker that cannot fail, and a corpus that is a fixture")
     return 0
+
+
+def _thin_refused(entry):
+    """True when a one-file corpus under a real entry's shape is REFUSED, never used."""
+    with tempfile.TemporaryDirectory(prefix="goh-estate.") as td:
+        thin = os.path.join(td, "thin")
+        os.makedirs(os.path.join(thin, "src"))
+        with open(os.path.join(thin, "src", "lib.rs"), "w", encoding="utf-8") as handle:
+            handle.write("fn main() {}\n")
+        for args in (
+            ("init", "-q"),
+            ("config", "user.email", "c@e.invalid"),
+            ("config", "user.name", "c"),
+            ("add", "-A"),
+        ):
+            subprocess.run(
+                ["git", "-C", thin, *args],
+                capture_output=True,
+                env=foreign_repo_env(),
+                stdin=subprocess.DEVNULL,
+                check=False,
+            )
+        findings = []
+        judge(
+            {**entry, "checker": "check_thin_corpus.py", "root": thin, "scope": ("src",)},
+            findings,
+        )
+    if findings:
+        ok("probe: a corpus below the floor is refused, not used")
+        return True
+    err("probe: a one-file 'estate' was accepted — the gate can prove a fixture")
+    return False
 
 
 if __name__ == "__main__":

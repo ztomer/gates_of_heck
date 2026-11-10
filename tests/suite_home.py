@@ -94,3 +94,4 @@ def _enter() -> None:
 
 
 _enter()
+import suite_tmp  # noqa: F401  (and the suite's own TMPDIR: tests/suite_tmp.py)
