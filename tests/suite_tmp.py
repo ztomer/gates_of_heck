@@ -9,9 +9,13 @@ bound (the newest 20, then the 12-hour backstop) ever removed them. A test that 
 TMPDIR was clean; the rest leaked. So TMPDIR points at a directory the suite owns for the whole
 session, and a new test that runs a gate is contained without anyone remembering it:
 
-  * under tools/pytest.sh it is `$PYTEST_DEBUG_TEMPROOT/tmp`, inside the root the runner removes
-    after a green suite and keeps after a red one -- the kept logs stay with the failure they explain;
-  * under a bare `pytest`, a `goh-suite-tmp.*` directory of its own, removed at exit.
+  * under tools/pytest.sh it IS `$PYTEST_DEBUG_TEMPROOT`, the root the runner removes after a green
+    suite and keeps after a red one -- the kept logs stay with the failure they explain;
+  * under a bare `pytest`, a `goh-suite-tmp.*` directory of its own, which becomes the
+    PYTEST_DEBUG_TEMPROOT too, removed at exit.
+
+Either way every tmp_path is UNDER TMPDIR, as it is outside the suite: install.sh tells a scratch
+repo by exactly that (tests/test_estate_registry.py).
 
 The user's own temp dir is kept by name (REAL_TMP_MARKER), for the one thing that must still see it:
 the session-start sweep of what killed runs left there (tests/_tree_guard.py).
@@ -41,11 +45,11 @@ def _enter() -> None:
     real = tempfile.gettempdir()
     root = os.environ.get("PYTEST_DEBUG_TEMPROOT")
     if root and os.path.isdir(root):
-        tmp = Path(root) / "tmp"
-        tmp.mkdir(exist_ok=True)
+        tmp = Path(root)
     else:
         tmp = Path(tempfile.mkdtemp(prefix="goh-suite-tmp.", dir=real))
         atexit.register(shutil.rmtree, tmp, True)
+        os.environ["PYTEST_DEBUG_TEMPROOT"] = str(tmp)
     os.environ[REAL_TMP_MARKER] = real
     os.environ[MARKER] = str(tmp)
     os.environ["TMPDIR"] = str(tmp)
