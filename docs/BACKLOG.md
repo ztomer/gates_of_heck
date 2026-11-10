@@ -47,12 +47,6 @@ phase, and each is one landing.
   `.github/workflows`, then pin those three repos to named images.
   **Done when:** the check is red on a fixture with `ubuntu-latest` and green on a named image; antiknob,
   divoom-control and monitor are pinned and their CI is green.
-- **GOH.STRAYBR** (queue: GOH.STRAYBR) Origin carries `wf/js`, `wf/js2`, `wf/leak`, `wf/load`, `wf/spin`
-  (the old kit pushed them from worktrees; the class GOH.RELBRANCH fixed). Fetch each, test whether it is
-  in main (ancestor or `git cherry`), delete the merged ones from origin, report what an unmerged one
-  holds instead of deleting it, and add a check that names merged non-default remote branches.
-  **Done when:** origin holds no merged stray branch; any unmerged one is named with its content; a check
-  reports merged strays.
 - **GOH.ROADMAPREQ** (queue: GOH.ROADMAPREQ) A repo with no `GOH_ROADMAP` still passes with a warning.
   Seed the remaining repos (koffee_big, ZoneWM including retiring `check_stale_backlog.py`,
   divoom-control, monitor, scripts, servers/media_server including its stale History sentence,

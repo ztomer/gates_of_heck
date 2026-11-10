@@ -24,9 +24,15 @@ permissions:
 jobs:
   gate:
     runs-on: macos-26
-    timeout-minutes: 60
+    timeout-minutes: 75
     env:
       CARGO_TERM_COLOR: never
+      # The step ceiling is this MACHINE's budget, set here like GOH_GATE_SLOTS, never in
+      # .gatesrc (where it would loosen the owner's 16-core hang detector too). Measured
+      # 2026-11-10: ./gates/rust_gate.sh is 255 s wall and 1585 s CPU on the owner's machine; the
+      # 3-core runner ran it out of the 900 s default (run 42916888942), so 2700 s is the CPU
+      # time over 3 cores at under half the owner's per-core speed, rounded up.
+      GOH_LCI_TIMEOUT: "2700"
     steps:
       # persist-credentials: false: the structural gate refuses a job token left in git config,
       # and nothing after the clone needs it. fetch-depth 0: the gate reads history (tags, the

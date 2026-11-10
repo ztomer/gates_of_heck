@@ -127,3 +127,31 @@ def test_the_suite_keeps_its_children_out_of_the_users_temp_dir():
     assert os.path.realpath(mine) != os.path.realpath(real), (mine, real)
     assert os.path.realpath(mine).startswith(os.path.realpath(real)), (mine, real)
     assert os.environ.get(suite_tmp.MARKER) == mine
+
+
+@pytest.mark.parametrize("hosted", MODES)
+def test_the_empty_tree_sweep_never_retires_an_excuse_over_not_applicable(tmp_path, hosted):
+    """goh run 42916888942 (v0.93.0): on the hosted runner the empty-tree sweep ran the excused
+    check_estate_corpus.py, which said NOT APPLICABLE (78), and the sweep read that non-zero exit as
+    "now FAILS on an empty tree -- delete its excuse". A step that did not judge cannot retire an
+    excuse; off a hosted runner the same 78 is not honest, and stays the refusal it always was."""
+    import json
+
+    repo = tmp_path / "repo"
+    gates = repo / "checks"
+    gates.mkdir(parents=True)
+    (gates / "check_estate.py").write_text(
+        "import sys\nprint('NOT APPLICABLE on this hosted runner: s needs the estate')\n"
+        "sys.exit(78)\n"
+    )
+    excuse = {"check_estate.py": "its subject is the consumer estate, not this tree"}
+    (gates / "empty_scope_allow.json").write_text(json.dumps({"legitimate": excuse}))
+    fast_init(repo)
+    argv = [sys.executable, str(REPO_ROOT / "checks" / "check_empty_scope.py"), "--root", str(repo)]
+    rc, out = _run(argv, _env(hosted))
+    if hosted:
+        assert rc == 0, out
+        assert "delete its excuse" not in out and "check_estate.py" in out, out
+        assert not_applicable.MARK in out, out
+    else:
+        assert rc == 1 and "check_estate.py is excused here but now FAILS" in out, out

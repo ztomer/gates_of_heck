@@ -59,6 +59,9 @@ from _gitutil import foreign_repo_env, repo_root
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from tui.lib import err, info, ok, warn
 
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "lib"))
+import not_applicable
+
 GATE_DIRS = ("tools", "checks")
 ALLOW_FILE = "empty_scope_allow.json"
 
@@ -329,6 +332,18 @@ def sweep(skeleton, gate_name, names, timeout=None, excused=()):
                 continue  # a named non-run, not a pass
             lines = [ln for ln in text.splitlines() if ln.strip()]
             blind[name] = lines[-1].strip()[:100] if lines else "(no output)"
+        elif (
+            result.returncode == not_applicable.EXIT
+            and not_applicable.hosted()
+            and not_applicable.MARK in result.stdout + result.stderr
+        ):
+            # A step that needs the owner's estate, swept on a hosted runner, where only it may say
+            # so (lib/not_applicable.py). It did not judge, so it neither passed nor refused, and it
+            # cannot retire its excuse (goh run 42916888942). Off a hosted run 78 is no such thing
+            # and falls through to the refusal it always was.
+            unrunnable[name] = (
+                f"{UNMEASURABLE}: it says {not_applicable.MARK} on this hosted runner"
+            )
         elif is_usage_error(result.stdout + result.stderr) or _is_shell_usage_error(name, result):
             # A gate that DEMANDS an argument did not refuse to report compliance — it never got
             # to look. Scored as a pass it is worse than a blind gate, because it is silent AND
