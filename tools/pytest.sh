@@ -50,6 +50,10 @@ if [ -z "${GATES_OF_HECK_SUITE_RUNNER:-}" ] && [ -z "${GATES_OF_HECK_SUITE_NESTE
     trap '[ "$(readlink "$SUITE_LOCK" 2>/dev/null)" = "$$" ] && rm -f "$SUITE_LOCK"' EXIT
 fi
 export GATES_OF_HECK_SUITE_RUNNER=$$
+# Refused by name, not as "No module named pytest" from the coverage gate's external export, the
+# shape goh's first hosted run died of (CI.PUBLIC2): the manifest's goh-suite layer installs it.
+"$GOH_PY" -m pytest --version >/dev/null 2>&1 \
+    || die "pytest is not installed for the house interpreter $GOH_PY -- \"$GOH_PY\" -m pip install pytest"
 ARGS=(-q)
 if "$GOH_PY" -c "import xdist" 2>/dev/null; then
     ARGS+=(-n 12 --dist loadgroup)

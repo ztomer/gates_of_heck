@@ -54,5 +54,9 @@ jobs:
           cmds="$(python3 gates/required_tools.py --repo . --install)"
           printf '%s\n' "$cmds"
           grep -v '^#' <<<"$cmds" | bash -eux
+          # The suite's parallel runner: an accelerator, not a requirement (tools/pytest.sh runs
+          # serial without it), so not a manifest row -- but serial, the coverage group's suite
+          # outruns local_ci's step ceiling. Into the house interpreter, the one the suite runs.
+          "$(bash lib/house_python.sh)" -m pip install pytest-xdist
       - name: The gate
         run: ./tools/gate.sh --full

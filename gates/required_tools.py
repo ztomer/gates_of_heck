@@ -24,7 +24,8 @@ and the step passes having installed nothing):
     set -euo pipefail; cmds="$(python3 "$GOH_DIR/gates/required_tools.py" --repo . --install)"
     grep -v '^#' <<<"$cmds" | bash -eux
 
-On a runner without brew (ubuntu-latest), use `--names` and the runner's own package manager.
+Off macOS (ubuntu-latest) the brew tools are not installed but REQUIRED: one already on PATH is
+done, a missing one is refused by name (GOH_TOOLS_OS overrides the OS); `--names` lists them.
 The FLOORS a runner's own packages miss (GitHub's runners ship python 3.12 and shellcheck 0.9) are
 met by the goh-floors action (.github/actions/goh-floors), which reads them from this table.
 `ruff` is its own layer (`python-format`): only repos that set GOH_PYTHON_FORMATTED need it;
@@ -50,7 +51,9 @@ if __name__ == "__main__":  # C4: run HEAD's copy, not the shared working tree (
 
 import argparse
 import os
+import platform
 import re
+import shlex
 import shutil
 import subprocess
 import sys
@@ -129,6 +132,11 @@ def detect(repo: str) -> tuple[set[str], set[str]]:
         layers.add(f"coverage-{lang}")
     if "rust" in layers and re.search(r"^\s*(export\s+)?GOH_COV_FLOOR", text, re.MULTILINE):
         layers.add("coverage-rust")  # rust_gate.sh runs the coverage step itself
+    # goh's own suite as a coverage external (GOH_COV_RUST_EXTERNAL=... ./tools/pytest.sh): it needs
+    # pytest, and nothing else declared it -- goh's first hosted run lost its external export to
+    # "No module named pytest" (CI.PUBLIC2).
+    if re.search(r"^\s*(export\s+)?GOH_COV_\w*EXTERNAL=.*tools/pytest\.sh", text, re.MULTILINE):
+        layers.add("goh-suite")
     structural = set()
     if _tracks_shell(repo):
         structural.add("shellcheck")
@@ -137,6 +145,11 @@ def detect(repo: str) -> tuple[set[str], set[str]]:
     if re.search(r"^\s*(export\s+)?GOH_RUST_LINT_CARGO=['\"]?cargo-zigbuild", text, re.MULTILINE):
         layers.add("rust-cross")  # the --target lint configs run through cargo-zigbuild
     return layers, structural
+
+
+def tools_os() -> str:
+    """The OS the install lines are for: GOH_TOOLS_OS (a test, either direction), else this one."""
+    return os.environ.get("GOH_TOOLS_OS") or platform.system()
 
 
 def install_lines(selected: list[dict]) -> list[str]:
@@ -152,11 +165,25 @@ def install_lines(selected: list[dict]) -> list[str]:
     prefix = {
         "brew": "brew install",
         "cargo": "cargo install --locked",
-        "pip": "python3 -m pip install",
+        # The interpreter the gates RUN (lib/house_python.sh: the newest python3, whatever the PATH
+        # order), never PATH's first python3: a hosted macOS runner carries two 3.15s, and a module
+        # installed into the other one is "No module named pytest" to the gate (CI.PUBLIC2).
+        "pip": f'"$(bash {shlex.quote(os.path.join(os.path.dirname(HERE), "lib", "house_python.sh"))})"'
+        " -m pip install",
     }
     out = []
-    if groups["brew"]:
+    if groups["brew"] and tools_os() == "Darwin":
         out.append(f"{prefix['brew']} {' '.join(groups['brew'])}")
+    elif groups["brew"]:
+        # brew is the macOS route; a Linux runner has none, and `brew install` there was
+        # "brew: command not found" before any gate ran (multitop run 42601978121, CI.PUBLIC2).
+        # A tool already on PATH is done (goh-floors puts shellcheck there); a missing one is
+        # refused by name, for the runner's own package manager (`--names`).
+        out.append(
+            "for t in " + " ".join(groups["brew"]) + '; do command -v "$t" >/dev/null 2>&1'
+            ' || { echo "required_tools: $t is missing, and brew is the macOS route -- install'
+            " it with this machine's package manager\" >&2; exit 1; }; done"
+        )
     if groups["cargo"]:
         # A cargo tool already on PATH is DONE, whatever put it there. `cargo install` REFUSES a
         # binary it did not record -- `error: binary `cargo-audit` already exists in destination`,

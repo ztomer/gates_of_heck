@@ -70,6 +70,7 @@ def _scanned() -> set[tuple[str, str]]:
             "tools",
             "*.py",
         ),  # tools/ship.py's git-cliff (layer `ship`, never inferred: CI ships nothing)
+        ("tools", "*.sh"),  # tools/pytest.sh's pytest (layer `goh-suite`)
         ("crates/goh/src", "**/*.rs"),
     ):
         for path in sorted((ROOT / base).glob(pattern)):
@@ -300,3 +301,68 @@ def test_shellcheck_is_required_exactly_when_shell_lint_has_files(tmp_path: Path
     not shell (2026-10-10), so it alone must not demand shellcheck, and a git hook still does."""
     assert "shellcheck" not in _names_for(tmp_path / "py", {"hooks/claude/n.py": "print(1)\n"})
     assert "shellcheck" in _names_for(tmp_path / "sh", {"hooks/pre-commit": "#!/bin/sh\n"})
+
+
+def _cli(*args: str, **env: str) -> subprocess.CompletedProcess:
+    return subprocess.run(
+        [sys.executable, str(CLI), *args], capture_output=True, text=True, timeout=30,
+        stdin=subprocess.DEVNULL, check=False, env={**os.environ, **env},
+    )  # fmt: skip
+
+
+def test_goh_suite_as_a_coverage_external_needs_pytest(tmp_path):
+    """goh's first hosted run lost its external export to "No module named pytest": the suite ran
+    as GOH_COV_RUST_EXTERNAL, and no layer said it needs pytest (CI.PUBLIC2)."""
+    fast_init(tmp_path)
+    (tmp_path / ".gatesrc").write_text("GOH_COV_RUST_EXTERNAL='GOH_TEST_BIN=x ./tools/pytest.sh'\n")
+    got = _cli("--repo", str(tmp_path))
+    assert got.returncode == 0, got.stderr
+    assert any(ln.split("\t")[:2] == ["goh-suite", "pytest"] for ln in got.stdout.splitlines())
+    (tmp_path / ".gatesrc").write_text("GOH_COV_FLOOR=95\n")
+    assert "goh-suite" not in _cli("--repo", str(tmp_path)).stdout
+
+
+def test_pip_installs_into_the_house_interpreter():
+    """Not PATH's first python3: a hosted macOS runner carries two 3.15s (CI.PUBLIC2)."""
+    got = _cli("--layer", "goh-suite", "--install")
+    line = next(ln for ln in got.stdout.splitlines() if "pip install" in ln)
+    assert line.startswith('"$(bash ') and "lib/house_python.sh" in line, line
+    assert line.endswith("-m pip install pytest"), line
+    want = subprocess.run(
+        ["bash", str(ROOT / "lib" / "house_python.sh")], capture_output=True, text=True,
+        stdin=subprocess.DEVNULL, check=True,
+    ).stdout.strip()  # fmt: skip
+    said = subprocess.run(
+        ["bash", "-c", line.replace("-m pip install pytest", "-c 'import sys; print(sys.executable)'")],
+        capture_output=True, text=True, stdin=subprocess.DEVNULL, check=True,
+    ).stdout.strip()  # fmt: skip
+    assert os.path.realpath(said) == os.path.realpath(subprocess.run(
+        [want, "-c", "import sys; print(sys.executable)"], capture_output=True, text=True,
+        stdin=subprocess.DEVNULL, check=True,
+    ).stdout.strip())  # fmt: skip
+
+
+@pytest.mark.parametrize("os_name", ["Darwin", "Linux"])
+def test_brew_is_printed_only_for_macos(tmp_path, os_name):
+    """multitop's ubuntu run died on `brew: command not found` (run 42601978121, CI.PUBLIC2)."""
+    lines = [
+        ln for ln in _cli("--layer", "swift", "--install", GOH_TOOLS_OS=os_name).stdout.splitlines()
+        if ln and not ln.startswith("#")
+    ]  # fmt: skip
+    assert len(lines) == 1, lines
+    if os_name == "Darwin":
+        assert lines[0] == "brew install swiftlint", lines
+        return
+    assert "brew install" not in lines[0], lines
+    bindir = tmp_path / "bin"
+    bindir.mkdir()
+    path = f"{bindir}:/usr/bin:/bin"
+    run = lambda: subprocess.run(
+        ["/bin/bash", "-c", lines[0]], capture_output=True, text=True, env={"PATH": path},
+        stdin=subprocess.DEVNULL, check=False,
+    )  # fmt: skip
+    missing = run()
+    assert missing.returncode != 0 and "swiftlint is missing" in missing.stderr, missing
+    (bindir / "swiftlint").write_text("#!/bin/sh\n")
+    (bindir / "swiftlint").chmod(0o755)
+    assert run().returncode == 0, "a tool already on PATH is done"
