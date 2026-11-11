@@ -393,3 +393,34 @@ def test_brew_is_printed_only_for_macos(tmp_path, os_name):
     (bindir / "swiftlint").write_text("#!/bin/sh\n")
     (bindir / "swiftlint").chmod(0o755)
     assert run().returncode == 0, "a tool already on PATH is done"
+
+
+# The staged gates goh's own pre-commit runs on its own tree (gates/commit_gate.sh: structural with
+# its shell lint, the python and swift twins, the rustfmt check) -- what
+# tests/test_install.py::test_self_hosted_repo_satisfies_its_own_hook commits through.
+SELF_HOSTED_HOOK_SITES = (
+    "gates/py_staged.sh",
+    "gates/swift_staged.sh",
+    "crates/goh/src/rustfmt_staged.rs",
+    "crates/goh/src/shell_lint.rs",
+)
+
+
+def test_goh_suite_installs_every_tool_its_self_hosted_hook_runs():
+    """Run 42957429139: the self-hosted hook test died "swiftlint is not installed" on the hosted
+    runner, after ruff (run 42950563400) -- one tool at a time, because no rule said the suite's
+    layer must carry what goh's own hook needs (CI.PUBLIC2). Every tool a hook site requires is a
+    goh-suite row, with a named floor where the tool is not the toolchain's own."""
+    rows = _manifest()
+    hook = {r["tool"] for r in rows if r["site"] in SELF_HOSTED_HOOK_SITES}
+    suite = {r["tool"] for r in rows if r["layer"] == "goh-suite"}
+    assert hook - suite == set(), (
+        f"the hook needs, the goh-suite layer lacks: {sorted(hook - suite)}"
+    )
+    floors = {
+        ln.split("\t")[1]: ln.split("\t")[5]
+        for ln in MANIFEST.read_text().splitlines()
+        if ln.startswith("goh-suite\t")
+    }
+    for tool in hook - {"ruff", "rustfmt"}:  # ruff: pinned per repo (GOH.RUFFPIN); rustfmt: rustup's
+        assert floors[tool] != "-", f"goh-suite {tool} names no release"

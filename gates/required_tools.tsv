@@ -26,6 +26,7 @@
 #   zig 0.17.0           PROVEN: the C compiler cargo-zigbuild gives the musl lint configs.
 #   shellcheck 0.11.0    PROVEN, and what goh shell_lint is calibrated against (two defects it
 #                        exits 0 on are handled by goh, not by it).
+#   swiftlint 0.65.1     PROVEN: the release goh's own pre-commit ran green on (2026-11-10).
 #   cargo-machete 0.7.0  HARD: before it, ignored files (target/) were searched -- slow, and false
 #                        "unused dependency" reports from generated sources.
 #   cargo-audit 0.21.0   HARD: where version-4 Cargo.lock support landed (--deny unsound/yanked
@@ -47,6 +48,9 @@ goh-suite	numpy	pip	python3 -m pip install numpy	tools/pytest.sh	-
 goh-suite	coverage	pip	python3 -m pip install coverage	tools/pytest.sh	-
 goh-suite	ruff	pip	python3 -m pip install ruff	tools/pytest.sh	-
 goh-suite	git-cliff	brew	brew install git-cliff	tools/pytest.sh	-
+goh-suite	shellcheck	brew	brew install shellcheck	tools/pytest.sh	0.11.0
+goh-suite	swiftlint	brew	brew install swiftlint	tools/pytest.sh	0.65.1
+goh-suite	rustfmt	system	rustup component add rustfmt	tools/pytest.sh	-
 python	ruff	pip	python3 -m pip install ruff	gates/py_staged.sh	-
 rust	cargo	system	rustup (https://rustup.rs)	gates/rust_gate.sh	-
 rust	cargo-machete	cargo	cargo install cargo-machete	gates/rust_gate.sh	0.7.0

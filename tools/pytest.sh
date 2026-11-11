@@ -70,6 +70,11 @@ export GATES_OF_HECK_SUITE_RUNNER=$$
 "$GOH_PY" -m ruff --version >/dev/null 2>&1 \
     || die "ruff is not installed for the house interpreter $GOH_PY -- \"$GOH_PY\" -m pip install ruff"
 command -v git-cliff >/dev/null 2>&1 || die "git-cliff is not on PATH (tools/ship.py's next version) -- brew install git-cliff"
+# What goh's OWN pre-commit runs (test_self_hosted_repo_satisfies_its_own_hook; run 42957429139 died
+# "swiftlint is not installed"): the shell lint, the swift twin and the rustfmt check.
+command -v shellcheck >/dev/null 2>&1 || die "shellcheck is not on PATH (goh's own hook: shell lint) -- brew install shellcheck"
+command -v swiftlint >/dev/null 2>&1 || die "swiftlint is not on PATH (goh's own hook: the swift twin) -- brew install swiftlint"
+command -v rustfmt >/dev/null 2>&1 || die "rustfmt is not on PATH (goh's own hook: the rustfmt check) -- rustup component add rustfmt"
 ARGS=(-q)
 if "$GOH_PY" -c "import xdist" 2>/dev/null; then
     # The machine's cores, capped at 12 (run 42950563400: `-n 12` on a 3-core hosted runner
