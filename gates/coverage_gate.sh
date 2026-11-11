@@ -107,8 +107,17 @@ export_failed() {
         err "$1: TESTS FAILED under coverage ($(grep -cE '^(FAILED|ERROR) [^ ]+::' "$2") red):"
         sed -nE 's/^(FAILED|ERROR) ([^ ]+::[^ ]*).*/    \1 \2/p' "$2" | sort -u >&2
     fi
+    # GOH_TAIL long, like the failed step around it (run 42944992082: the step printed whole and
+    # this fixed 25-line tail under it kept one red test's reason of 65); a cut tail counts its cut.
+    local keep dropped
+    keep="${GOH_TAIL:-25}"
+    dropped=$(( $(wc -l < "$2") - keep ))
     warn "$1 export failed — tail of $2:"
-    tail -n 25 "$2" | sed 's/^/    /' >&2
+    if [ "$dropped" -gt 0 ]; then
+        if [ "$dropped" -eq 1 ]; then local noun=line; else local noun=lines; fi
+        printf '%s\n' "    → $dropped earlier $noun not shown (GOH_TAIL=$keep; raise it to see them)" >&2
+    fi
+    tail -n "$keep" "$2" | sed 's/^/    /' >&2
 }
 
 usage() {
