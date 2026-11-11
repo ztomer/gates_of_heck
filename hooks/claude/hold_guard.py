@@ -1,6 +1,19 @@
 #!/usr/bin/env python3
 """A Claude Code PreToolUse hook: nothing inside a HELD repo changes, and the refusal says why.
 
+Two kinds of hold, one judge (the Bash parsing below serves both):
+
+  * the REPO's own hold (`goh.hold` / `goh.archived` in its git config, `lib/repo_hold.py`): no
+    one changes it, the main thread included;
+  * the LOOP QUEUE's hold (LOOP.FOREIGNEDIT, `lib/queue_hold.py`): a repo an in-progress item holds
+    is changed only by that item's agent. Judged only for a SUBAGENT (the event's `agent_id`, which
+    `loopctl start ID AGENTID` records on the item); the main thread is the coordinator and is never
+    refused. `git fetch` and `git worktree` (the sanctioned way into a repo another agent holds) are
+    not writes to its checkout here.
+
+A subagent's direct GitHub Actions poll (`gh run watch/view/list`, `gh api .../actions`, `gh pr
+checks --watch`) is refused here too, naming loopctl's one CI door (LOOP.GHDOOR, `ci_door.py`).
+
 THE HOLD (2026-10-26, `lib/repo_hold.py`). ztomer/apes was archived on GitHub and its local clone
 kept, marked `goh.archived` and made read-only (`chmod -R a-w`). A write then failed with a bare
 "Permission denied" that named neither the reason nor the way out -- and an agent's reflex on
@@ -31,6 +44,10 @@ import sys
 _ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, os.path.join(_ROOT, "lib"))
 try:
+    import queue_hold  # the loop queue's holds (LOOP.FOREIGNEDIT)
+except ImportError:
+    queue_hold = None
+try:
     import repo_hold
 except ImportError:  # the shared reader is not there: fail OPEN, and say so
     repo_hold = None
@@ -60,6 +77,9 @@ FILE_WRITES = {
 # Copy verbs: only the LAST operand (the destination) is written.
 COPY_WRITES = {"cp", "ln", "install", "rsync", "ditto", "scp"}
 IN_PLACE = {"sed", "gsed", "perl", "ruby"}  # write only with -i
+# git verbs that touch only the shared object store or add a worktree: another agent's way in, never
+# a write to the holder's checkout (a queue hold only; a repo hold refuses them as before).
+GIT_BESIDE = {"fetch", "worktree"}
 RECURSIVE_FLAGS = {"-R", "-r", "--recursive", "-rf", "-fr", "-Rf", "-fR"}
 REDIRECTS = {">", ">>", ">|", "&>", "&>>", "1>", "2>", "1>>", "2>>"}
 SEPARATORS = {"&&", "||", ";", "|", "&", "|&", ";;"}
@@ -102,12 +122,16 @@ def _segments(command: str) -> list[list[str]]:
 
 
 def _strip_prefix(seg: list[str]) -> list[str]:
-    """Drop env assignments and wrappers (`FOO=1 sudo -n env nice rm x` -> `rm x`)."""
+    """Drop env assignments, wrappers and the shell's own keywords (`FOO=1 sudo -n env nice rm x`
+    -> `rm x`; `do rm x`, `then git commit` -> the command they lead)."""
     wrappers = {"sudo", "env", "nice", "nohup", "time", "command", "builtin", "exec", "xargs"}
+    keywords = {"do", "then", "else", "elif", "if", "while", "until", "!", "{"}
     i = 0
     while i < len(seg):
         tok = seg[i]
-        if "=" in tok and not tok.startswith(("-", "=")) and tok.split("=")[0].isidentifier():
+        if tok in keywords or (
+            "=" in tok and not tok.startswith(("-", "=")) and tok.split("=")[0].isidentifier()
+        ):
             i += 1
         elif tok in wrappers:
             i += 1
@@ -128,11 +152,18 @@ def _operands(args: list[str]) -> list[str]:
     return out
 
 
-def _held(path: str, cwd: str, recursive: bool) -> list:
+def _held(path: str, cwd: str, recursive: bool, agent: str | None = None) -> list:
+    """The holds a write to `path` meets: the repo's own, then (for a subagent) the queue's."""
     hold = repo_hold.find_hold(path, cwd)
     if hold:
         return [hold]
-    return repo_hold.holds_below(path, cwd) if recursive else []
+    found = repo_hold.holds_below(path, cwd) if recursive else []
+    if found or not agent or queue_hold is None:
+        return found
+    qhold = queue_hold.find(path, cwd, agent)
+    if qhold:
+        return [qhold]
+    return queue_hold.holds_below(path, cwd, agent) if recursive else []
 
 
 def _git_target(args: list[str], here: str) -> tuple[str, list[str]]:
@@ -164,8 +195,9 @@ def _git_writes(verb: str, rest: list[str]) -> bool:
     return False
 
 
-def judge_command(command: str, cwd: str) -> str | None:
-    """The refusal for a Bash command that would change a held repo, or None."""
+def judge_command(command: str, cwd: str, agent: str | None = None) -> str | None:
+    """The refusal for a Bash command that would change a held repo, or None. `agent` is the
+    subagent's id (None on the main thread), which brings the loop queue's holds in."""
     if repo_hold is None:
         return None
     try:
@@ -181,7 +213,7 @@ def judge_command(command: str, cwd: str) -> str | None:
             tok = raw[i]
             if tok in REDIRECTS or (tok.endswith(">") and tok.rstrip(">").isdigit()):
                 if i + 1 < len(raw) and raw[i + 1] not in ("&",) and raw[i + 1] != "/dev/null":
-                    for hold in _held(raw[i + 1], here, False):
+                    for hold in _held(raw[i + 1], here, False, agent):
                         return hold.describe(f"writing {raw[i + 1]} (a redirection)")
                 i += 2
                 continue
@@ -207,7 +239,7 @@ def judge_command(command: str, cwd: str) -> str | None:
         if verb == "git":
             where, rest = _git_target(args, here)
             if rest and _git_writes(rest[0], rest[1:]):
-                for hold in _held(where, here, False):
+                for hold in _held(where, here, False, None if rest[0] in GIT_BESIDE else agent):
                     return hold.describe(f"`git {' '.join(rest[:3])}`")
             continue
         recursive = any(a in RECURSIVE_FLAGS for a in args)
@@ -227,16 +259,30 @@ def judge_command(command: str, cwd: str) -> str | None:
         elif verb == "dd":
             targets = [a[3:] for a in args if a.startswith("of=")]
         for target in targets:
-            for hold in _held(target, here, recursive):
+            for hold in _held(target, here, recursive, agent):
                 return hold.describe(f"`{verb}` on {target}")
     return None
 
 
-def judge_path(path: str, tool: str, cwd: str) -> str | None:
+def judge_path(path: str, tool: str, cwd: str, agent: str | None = None) -> str | None:
     if repo_hold is None or not path:
         return None
     hold = repo_hold.find_hold(path, cwd)
+    if hold is None and agent and queue_hold is not None:
+        hold = queue_hold.find(path, cwd, agent)
     return hold.describe(f"{tool} of {path}") if hold else None
+
+
+def judge_ci_poll(command: str, agent: str | None) -> str | None:
+    """A subagent's direct gh CI poll, refused naming loopctl's door (LOOP.GHDOOR), or None."""
+    if not agent:
+        return None
+    try:
+        import ci_door  # beside this script; lazily, as it imports this module's parser
+    except ImportError:
+        return None
+    calls = ci_door.calls_in(command)
+    return ci_door.refusal(calls) if calls else None
 
 
 def main() -> int:
@@ -247,11 +293,13 @@ def main() -> int:
     tool = event.get("tool_name") or ""
     tool_input = event.get("tool_input") or {}
     cwd = event.get("cwd") or os.getcwd()
+    agent = str(event.get("agent_id") or "").strip() or None  # absent on the main thread
     if tool in ("Write", "Edit", "MultiEdit", "NotebookEdit"):
         path = tool_input.get("file_path") or tool_input.get("notebook_path") or ""
-        reason = judge_path(path, tool, cwd)
+        reason = judge_path(path, tool, cwd, agent)
     elif tool in SHELL_TOOLS:
-        reason = judge_command(tool_input.get(COMMAND_FIELD) or "", cwd)
+        command = tool_input.get(COMMAND_FIELD) or ""
+        reason = judge_ci_poll(command, agent) or judge_command(command, cwd, agent)
     else:
         reason = None
     if reason:

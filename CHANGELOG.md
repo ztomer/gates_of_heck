@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+* **A subagent writes only in its own queue item's repos, and never polls Actions through gh
+  (LOOP.FOREIGNEDIT, LOOP.GHDOOR).** `hooks/claude/hold_guard.py` reads the loop queue
+  (`lib/queue_hold.py`): a subagent's Edit/Write/NotebookEdit, or a changing shell command, inside a
+  repo an in-progress item other than its own holds is denied naming the holder. The tie is exact:
+  `loopctl start ID AGENTID` records the agent, and the hook event's `agent_id` is set only inside a
+  subagent, so the coordinator (main thread) is never refused; a linked worktree, `git fetch` and
+  `git worktree` pass. The same hook denies a subagent's `gh run watch|view|list`, `gh api
+  .../actions` and `gh pr checks --watch`, naming `loopctl ci --wait` (`ci_door.calls_in`, now the
+  one matcher, which the SubagentStop detection shares). The Bash parser also judges a command led by
+  a shell keyword (`do rm x`, `then git commit`), which it used to skip.
+
 ## v0.95.0 -- the house ruff set with per-file ceilings, and workflows that name what they run
 
 * **ONE house ruff rule set, and per-file ceilings that only fall (RUFF.RULES).** `gates/ruff_house.py`
