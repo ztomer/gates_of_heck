@@ -205,13 +205,13 @@ def test_a_pass_that_read_before_finish_does_not_resurrect_the_slot(
 def test_a_live_owner_keeps_its_slot_before_its_first_spinner(tmp_path: Path) -> None:
     """A registry that names no spinner yet is not an empty record: its owner is alive, and a
     pass that removed it handed the slot to a second experiment the first would then clobber."""
-    experiment = tool.Experiment(tmp_path, 0, ["true"])
+    experiment = tool.Experiment(tmp_path, 1, ["true"])
     experiment.claim()
     try:
         load_reap.reap_registry(reg.registry_path(tmp_path))
         assert reg.registry_path(tmp_path).exists(), "a live owner's slot was removed"
         with pytest.raises(FileExistsError):
-            tool.Experiment(tmp_path, 0, ["true"]).claim()
+            tool.Experiment(tmp_path, 1, ["true"]).claim()
     finally:
         experiment.finish()
 

@@ -154,6 +154,7 @@ def _describe(data: dict) -> str:
 
 def _status(directory: Path) -> int:
     path = reg.registry_path(directory)
+    _status_gates(directory)
     if not path.exists():
         print(f"load: no experiment holds {path}")
         return 0
@@ -163,6 +164,14 @@ def _status(directory: Path) -> int:
         return 1
     print(f"load: {path} holds an experiment: {_describe(data)}")
     return 0
+
+
+def _status_gates(directory: Path) -> None:
+    for path in load_slot.live_gates(directory):
+        print(f"load: {path} shares the slot (a gate): {_describe(reg.read(path) or {})}")
+    pending = load_slot.pending_path(directory)
+    if pending.exists():
+        print(f"load: {pending} waits for the gates: {_describe(reg.read(pending) or {})}")
 
 
 def _reap(directory: Path) -> int:
@@ -216,11 +225,10 @@ class Experiment:
         self.done = False
         self.lock = threading.RLock()
 
-    def claim(self) -> None:
-        """Take the slot, refusing one that is taken."""
-        taken = reg.registry_files(self.directory)
-        if taken:
-            raise FileExistsError(str(taken[0]))
+    def claim(self, waits: bool = False, gates: int = load_slot.DEFAULT_GATES) -> None:
+        """Take the slot, refusing one that is taken (D-0003): a run with no spinners takes a
+        place in the SHARED slot (at most `gates` of them); a run with spinners takes it alone,
+        and when it `waits` it marks itself pending so gates arriving behind it queue behind it."""
         now = time.time()
         self.data = {
             "version": reg.VERSION,
@@ -232,7 +240,10 @@ class Experiment:
             "command": list(self.command),
             "pids": [],
         }
-        reg.create(self.registry, self.data)
+        if self.count == 0:
+            self.registry = load_slot.take_shared(self.directory, self.data, gates)
+        else:
+            load_slot.take_alone(self.directory, self.registry, self.data, waits)
 
     def _release(self, fifo: Path) -> None:
         """Open the release pipe for writing and hand the spinner its byte.
@@ -405,12 +416,30 @@ def main(argv: list[str]) -> int:
     experiment = Experiment(directory, count, command, max_s)
     slot_wait = load_slot.waits(count, wait)
     try:
-        holder, _ = load_slot.claim(experiment.claim, slot_wait, wait_s, info)
+        gates = load_slot.gate_limit()
+    except ValueError as error:
+        print(f"load: {error}", file=sys.stderr)
+        return 2
+    try:
+        holder, _ = load_slot.claim(
+            lambda: experiment.claim(slot_wait, gates), slot_wait, wait_s, info
+        )
     except OSError as error:
         print(f"load: cannot take the slot: {error}", file=sys.stderr)
         return 2
+    finally:
+        load_slot.clear_pending(directory)
     if holder is not None:
         described = _describe(reg.read(holder) or {})
+        if load_slot.is_shared(holder):
+            why = (
+                f"all {gates} places are taken, {load_slot.GATES_ENV}={gates}"
+                if count == 0
+                else "an experiment with spinners runs alone"
+            )
+            described = f"a gate sharing the slot ({why}): {described}"
+        elif load_slot.is_pending(holder):
+            described = f"an experiment waiting for the gates ahead of it: {described}"
         print(load_slot.refusal(holder, described, given, slot_wait, wait_s), file=sys.stderr)
         return EXIT_BUSY
 

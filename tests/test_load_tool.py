@@ -344,7 +344,7 @@ def test_a_second_finish_waits_for_the_first_to_complete(tmp_path: Path, monkeyp
     sys.path.insert(0, str(REPO_ROOT / "tools"))
     import load as tool_module
 
-    experiment = tool_module.Experiment(tmp_path, 0, ["true"])
+    experiment = tool_module.Experiment(tmp_path, 1, ["true"])
     experiment.claim()
     first_started = threading.Event()
 

@@ -31,6 +31,7 @@
   command and the exact rerun line; `--wait` starts once the holder is done; a 0-spinner run waits
   unasked; the slot wait is bounded by `--wait-max`. In the estate: an agent report of a gate run
   bare "because load.py refused" shows the ruling has not made the right path the easy one.
+- **Re-opened:** 2026-11-11 by D-0003 (gates share the slot, at most three).
 - **Re-open when:** a 0-spinner run waits its whole `--wait-max` behind experiments more than once a
   week (gates would then need a slot of their own), or an experiment needs to start beside a gate
   run on purpose.
