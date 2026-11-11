@@ -154,3 +154,18 @@ def test_a_nested_config_the_root_excludes_is_not_linted(repo):
     stage(repo, ".swiftlint.yml")
     rc, text = run(repo)
     assert rc != 0 and "A.swift" in text, text
+
+
+def test_a_file_outside_the_configs_included_roots_is_not_linted(repo):
+    """The push walks only `included` (ZoneWM: Sources), so a staged Tests/ file is not its business:
+    swiftlint given explicit paths ignores `included`, and the commit refused 37 findings the push
+    would never read (ZW.WALLCLOCK2)."""
+    write(repo, ".swiftlint.yml", "included:\n  - Sources\n")
+    write(repo, "Tests/T.swift", BAD)
+    stage(repo, ".swiftlint.yml", "Tests/T.swift")
+    rc, text = run(repo)
+    assert rc == 0 and "outside" in text and "included" in text, text
+    write(repo, "Sources/S.swift", BAD)  # inside an included root: judged as before
+    stage(repo, "Sources/S.swift")
+    rc, text = run(repo)
+    assert rc != 0 and "S.swift" in text and "T.swift" not in text, text

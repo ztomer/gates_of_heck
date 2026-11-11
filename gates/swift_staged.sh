@@ -114,6 +114,25 @@ excluded_above() {
     done
     return 1
 }
+# in_included <root> <file relative to root>: the file sits under one of the `included:` roots of
+# <root>/.swiftlint.yml, or that config names none (the whole tree is in scope). swiftlint given EXPLICIT
+# paths ignores `included`, while the push walks only those roots (ZoneWM: `included: Sources`, so its
+# Tests/ are never linted): without this a commit was refused for findings in a file the push never
+# reads (ZW.WALLCLOCK2). An inline list (`included: [A, B]`) is not parsed and means "lint it": stricter.
+in_included() {
+    local cfg="$1/.swiftlint.yml" f="$2" inc p
+    [ -f "$cfg" ] || return 0
+    grep -q '^included:[[:space:]]*[^[:space:]#]' "$cfg" && return 0
+    inc="$(awk '/^[^[:space:]#]/ { on = ($0 ~ /^included:/) }
+        on && /^[[:space:]]*-[[:space:]]+/ { sub(/^[[:space:]]*-[[:space:]]+/, ""); gsub(/["'"'"']/, "");
+            sub(/[[:space:]]*(#.*)?$/, ""); sub(/^\.\//, ""); sub(/\/$/, ""); print }' "$cfg")"
+    [ -n "$inc" ] || return 0
+    while IFS= read -r p; do
+        [ -n "$p" ] || continue
+        case "$f" in "$p" | "$p"/*) return 0 ;; esac
+    done <<<"$inc"
+    return 1
+}
 while IFS= read -r root; do
     [ -n "$root" ] || continue
     files=()
@@ -121,6 +140,15 @@ while IFS= read -r root; do
         [ "$d" = "$root" ] || continue
         if [ "$root" = "." ]; then files+=("$f"); else files+=("${f#"$root"/}"); fi
     done <<<"$pairs"
+    kept=()
+    for f in "${files[@]}"; do
+        in_included "$root" "$f" && kept+=("$f")
+    done
+    if [ "${#kept[@]}" -eq 0 ]; then
+        info "every staged .swift in $root is outside the included roots of $root/.swiftlint.yml"
+        continue
+    fi
+    files=("${kept[@]}")
     [ "$root" = "." ] || ! excluded_above "$root" "${files[@]}" || continue
     # That root's own baseline, as swift_gate.sh run there would read it. The gated repo's
     # .gatesrc, unknown when this script is linted (GOH.SHX), in a child: `bash -c`, as land.sh reads it.

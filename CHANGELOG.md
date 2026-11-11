@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+* **The staged swift lint reads only the config's `included` roots.** `swift_staged.sh` handed swiftlint
+  explicit paths, which ignore `.swiftlint.yml` `included`, so a repo whose config includes only
+  `Sources` had its staged `Tests/` files judged at commit by rules the push never applies (ZoneWM,
+  37 findings, ZW.WALLCLOCK2). A staged file outside every `included` root is now skipped, named;
+  an inline `included: [..]` list is not parsed and stays linted.
+
 ## v0.94.0 -- the empty-tree sweep never retires an excuse over NOT APPLICABLE
 
 * **A step that did not judge cannot retire its excuse (CI.PUBLIC2).** On a hosted run the
