@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+* **The suite never starts the machine's sccache server under its own temp dir (GOH.SCCACHETMP).**
+  A cargo in the suite that found no server started one, which inherited the suite's
+  `goh-suite-tmp.*` TMPDIR and HOME and outlived both: once the root was removed, every cargo build
+  on the machine failed "Failed to create temp dir" until the server was restarted by hand. The
+  suite's PATH now leads with a `sccache` that runs the real one under the user's TMPDIR and HOME.
+
 * **The release canary's export cannot fail silently (GOH.SUITEFLAKES).** `git archive | tar -x`
   under pipefail: bsdtar exits at the end marker without draining the pipe, so git's late padding
   write took SIGPIPE, exit 141 with no stderr -- "exporting v0.96.0: " and nothing after it. The
