@@ -33,6 +33,8 @@ command at all.
 
 from __future__ import annotations
 
+import shlex
+
 import load_priority
 
 ESCAPE_FLAG = "--shared-lock-ok"
@@ -118,18 +120,25 @@ def locking_command(argv: list[str]) -> tuple[str, str] | None:
     return None
 
 
-def refusal(count: int, found: tuple[str, str]) -> str:
+def refusal(count: int, found: tuple[str, str], command: list[str] | None = None) -> str:
     """Why a load experiment over a lock-taking build command is refused, and the way out."""
     family, named = found
     return (
         f"the command is a build tool that takes a machine-wide lock ({named}): started under "
-        f"{count} spinner(s) it is starved, and it HOLDS that lock the whole time -- every other "
-        "process on the machine that wants it waits too. That is how `load.py 32 -- taskpolicy -b "
-        "cargo test` held ~/.cargo/.package-cache for 21 minutes and stalled nine other agents' "
-        "cargo runs (2026-11-08). Build first -- "
+        f"{count} {'spinner' if count == 1 else 'spinners'} it is starved, and it HOLDS that lock "
+        "the whole time -- every other process on the machine that wants it waits too. That is "
+        "how `load.py 32 -- taskpolicy -b cargo test` held ~/.cargo/.package-cache for 21 "
+        "minutes and stalled nine other agents' cargo runs (2026-11-08). Build first -- "
         f"{HINTS[family]} -- and put only the prebuilt binary under load.py; "
-        f"if the lock is yours alone, pass `{ESCAPE_FLAG} <reason>`."
+        f"if the lock is yours alone, pass `{ESCAPE_FLAG} <reason>`. To run it as a gate, with no "
+        f"spinners, waiting for the slot: {wait_line(command)}"
     )
+
+
+def wait_line(command: list[str] | None) -> str:
+    """The 0-spinner line that waits for the slot (GOH.LOADBUILDLOCK): a build run as a gate."""
+    shown = shlex.join(command) if command else "<the command>"
+    return f'python3 "$GOH_DIR/tools/load.py" --wait 0 -- {shown}'
 
 
 def preflight(count: int, command: list[str], reason: str | None) -> str | None:
@@ -141,7 +150,7 @@ def preflight(count: int, command: list[str], reason: str | None) -> str | None:
         )
     found = locking_command(command)
     if count > 0 and found and reason is None:
-        return refusal(count, found)
+        return refusal(count, found, command)
     return None
 
 
@@ -151,7 +160,7 @@ def judge_invocation(tokens: list[str]) -> str | None:
     if escapes.get(ESCAPE_FLAG) or not count or count <= 0 or not command:
         return None
     found = locking_command(command)
-    return refusal(count, found) if found else None
+    return refusal(count, found, command) if found else None
 
 
 def refusals(

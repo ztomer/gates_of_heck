@@ -105,6 +105,12 @@ try:
 except ImportError:
     load_locks = None
 
+# A build or a gate run bare while the load slot is held (GOH.LOADBUILDLOCK), the same way.
+try:
+    import load_bare
+except ImportError:
+    load_bare = None
+
 # The self-matching wait (2026-11-01), the same way: a missing rule fails open.
 try:
     import self_match
@@ -361,6 +367,18 @@ def judge_priority(command: str) -> str | None:
     return None
 
 
+def judge_bare(command: str) -> str | None:
+    """The refusal for a build or a gate run outside `tools/load.py` while another experiment
+    holds the load slot (GOH.LOADBUILDLOCK), or None. `# bare-ok: <reason>`."""
+    if load_bare is None:
+        return None
+    try:
+        segs = _segments(command)
+    except ValueError:
+        return None
+    return load_bare.judge(command, segs)
+
+
 def judge_file(path: str, content: str) -> str | None:
     """The refusal reason for a file that runs a backgrounded busy loop or a busy-wait, or None.
 
@@ -417,6 +435,7 @@ def main() -> int:
             or judge_secret_render(command)
             or judge_name_kill(command)
             or judge_priority(command)
+            or judge_bare(command)
         )
     else:
         reason = None

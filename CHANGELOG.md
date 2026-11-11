@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+* **A build or a gate run bare beside a held load slot is refused (GOH.LOADBUILDLOCK).** Two agents
+  met `load.py ... 1 -- swift test` refused for its machine-wide lock, then `--shared-lock-ok ... 0`
+  refused for a slot held by a land.sh -- the load.py of before GOH.LOADREFUSE, which that land.sh
+  was landing -- and ran `swift test` with no load.py. The lock refusal now prints the 0-spinner line
+  that waits for the slot, and the Bash guard (lib/load_bare.py) refuses a lock-taking build or a
+  `gate.sh` outside load.py while a live experiment that is not its own ancestor holds the slot,
+  naming the holder and that line (`# bare-ok: <reason>` escapes).
+
 * **One ruff on the machine, checked (GOH.TOOLHYGIENE).** `python3 -m ruff` (the house
   interpreter, the Python gates' runner) was 0.17.0 while PATH's ruff was 0.17.4, so a gate's
   verdict hung on how it was invoked. gates/ruff_agree.py asks every invocation and refuses a split,
