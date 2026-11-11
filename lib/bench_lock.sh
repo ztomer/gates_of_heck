@@ -110,6 +110,21 @@ _bench_nested() {
     return 1
 }
 
+# bench_lock_nested -- this process runs inside a registered gate or the measurement: the PUBLIC
+# question (GOH.BENCHNEST; a consumer's host lock had to call the private _bench_nested).
+bench_lock_nested() { _bench_nested; }
+
+# This process's ancestors' pids, space-delimited and padded: a drain never waits on its own.
+_bench_ancestors() {
+    local p="$PPID" out=" $$ "
+    while [ -n "$p" ] && [ "$p" -gt 1 ]; do
+        out="$out$p "
+        p="$(ps -o ppid= -p "$p" 2>/dev/null)" || break
+        p="${p//[[:space:]]/}"
+    done
+    printf '%s' "$out"
+}
+
 # bench_lock_join <label> -- register this gate; wait while a measurement holds the host.
 # Never fails a gate: a lock it cannot write is a lock it does not take part in.
 bench_lock_join() {
@@ -181,13 +196,16 @@ _bench_running() {
     case "$(ps -o stat= -p "$1" 2>/dev/null)" in Z* | "") return 1 ;; esac
 }
 
-# Every registered gate has finished; a dead one's entry is removed. Sets BENCH_LOCK_BUSY.
+# Every registered gate has finished; a dead one's entry is removed. Sets BENCH_LOCK_BUSY. The
+# caller's own ancestors (BENCH_LOCK_MINE) are skipped: a measurement nested in a gate (P5 inside
+# ci_local inside a release, GOH.BENCHNEST) waited for gates that cannot end before it does.
 _bench_drained() {
     local f pid
     BENCH_LOCK_BUSY=""
     for f in "$BENCH_LOCK_DIR/gates"/*; do
         [ -e "$f" ] || continue
         pid="${f##*/}"
+        case "${BENCH_LOCK_MINE:- }" in *" $pid "*) continue ;; esac
         if _bench_running "$pid"; then
             BENCH_LOCK_BUSY="$BENCH_LOCK_BUSY $pid ($(head -n 1 "$f" 2>/dev/null))"
         else
@@ -226,6 +244,7 @@ bench_lock_exclusive() {
     printf '%s\n%s\n%s\n%s\n%s\n' "$$" "$(_bench_start_time "$$")" "$(date +%s)" \
         "$BENCH_LOCK_MAX_HOLD" "$label (pid $$)" >"$BENCH_LOCK_DIR/exclusive/owner"
     BENCH_LOCK_HELD=1
+    BENCH_LOCK_MINE="$(_bench_ancestors)"
     said=""
     if [ -n "${2:-}" ] && [ "$2" -lt $((deadline - $(date +%s))) ]; then
         wait_s="$2"
