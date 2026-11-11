@@ -98,3 +98,13 @@ def test_a_planted_gh_run_watch_reaches_the_session_and_the_ledger(tmp_path: Pat
 @pytest.mark.parametrize("name", ["repo-worker.md", "repo-worker-ui.md"])
 def test_both_agent_definitions_carry_the_ci_door_sentence(name: str) -> None:
     assert SENTENCE in (AGENTS / name).read_text()
+
+
+EVIDENCE = "never only in /tmp or the session scratchpad: /private/tmp is wiped at every boot"
+
+
+@pytest.mark.parametrize("name", ["repo-worker.md", "repo-worker-ui.md"])
+def test_both_agent_definitions_say_where_kept_evidence_lives(name: str) -> None:
+    """GOH.SCRATCHBRIEF: evidence a worker left only under /private/tmp was gone after a reboot."""
+    text = (AGENTS / name).read_text()
+    assert EVIDENCE in text and "loopctl scratch ID" in text

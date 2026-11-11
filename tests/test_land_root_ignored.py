@@ -15,7 +15,7 @@ from pathlib import Path
 from conftest import REPO_ROOT, commit_all, git, write
 
 # Directories goh's own tools create inside a checkout (not the user's build output): the land root.
-TOOL_OWNED = ("build/",)
+TOOL_OWNED = ("build/", ".claude/worktrees/")  # the land root; Claude Code's own worktrees
 
 
 def _checkout_with_repo_ignore(repo: Path) -> Path:

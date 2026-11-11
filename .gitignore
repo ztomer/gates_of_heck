@@ -16,3 +16,4 @@ __pycache__/
 # The land root: tools/land.sh runs from a linked worktree under build/<name>, and an open one must
 # not read as an uncommitted main checkout (tests/test_land_root_ignored.py).
 /build/
+/.claude/worktrees/
