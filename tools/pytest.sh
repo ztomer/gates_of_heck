@@ -6,7 +6,7 @@
 # tests' group went 2026-10-06: test_release_hardening.py rewrites a copy of
 # release.sh now, not the real one, and tests/_tree_guard.py fails any run in
 # which a test moves the checkout.
-# -n 12: measured 2026-10-06 against 8 (67/79 s vs 74/96 s, interleaved) once
+# -n 12, the cap (fewer cores, fewer workers): measured 2026-10-06 against 8 (67/79 s vs 74/96 s, interleaved) once
 # the spawn cuts landed; 16 was a draw with 12 under load, and leaves no
 # headroom for the other sessions sharing the box.
 { # parse-guard -- bash reads this group whole before running it (tests/test_parse_guard.py)
@@ -72,7 +72,12 @@ export GATES_OF_HECK_SUITE_RUNNER=$$
 command -v git-cliff >/dev/null 2>&1 || die "git-cliff is not on PATH (tools/ship.py's next version) -- brew install git-cliff"
 ARGS=(-q)
 if "$GOH_PY" -c "import xdist" 2>/dev/null; then
-    ARGS+=(-n 12 --dist loadgroup)
+    # The machine's cores, capped at 12 (run 42950563400: `-n 12` on a 3-core hosted runner
+    # starved a cold goh build and a structural --full past their 600 s timeouts).
+    cores="${GOH_SUITE_CORES:-$(sysctl -n hw.ncpu 2>/dev/null || getconf _NPROCESSORS_ONLN 2>/dev/null || echo 1)}"
+    case "$cores" in '' | *[!0-9]* | 0) die "cannot read this machine's core count (got '$cores')" 2 ;; esac
+    [ "$cores" -gt 12 ] && cores=12
+    ARGS+=(-n "$cores" --dist loadgroup)
 else
     warn "pytest-xdist not installed — serial suite (pip3 install pytest-xdist)"
 fi
