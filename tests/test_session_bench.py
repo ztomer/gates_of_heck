@@ -23,7 +23,7 @@ from conftest import REPO_ROOT, hermetic_env
 
 BENCH = REPO_ROOT / "tools" / "session_bench.py"
 
-HOLD = 1.0  # seconds SERIAL holds the shared lock
+HOLD = 0.2  # seconds SERIAL holds the shared lock (end to end only; no ratio is asserted)
 SERIAL = (
     "python3 -c \"import fcntl,time,os; f=open(os.environ['SHARED_LOCK'],'a'); "
     f'fcntl.flock(f, fcntl.LOCK_EX); time.sleep({HOLD})"'
@@ -85,25 +85,39 @@ def _row(doc: dict, n: int) -> dict:
     return next(row for row in doc["rows"] if row["sessions"] == n)
 
 
-def test_a_workload_holding_a_shared_lock_reads_as_serial(tmp_path: Path) -> None:
-    """SERIAL is not wholly serial: its interpreter start runs in parallel, outside the lock, and
-    grows with the box's load. With s that start and L the hold, N sessions take s + N*L, so its
-    true serialized fraction is L / (s + L) = HOLD / t1 -- and at load 40 a 0.4 s hold read 0.693
-    against a fixed 0.7 (2026-10-08). The bound is the fraction THIS box allowed, measured on the
-    same run; a blind fit (sigma ~0) or a halved one still fails it."""
-    doc = _bench(tmp_path, SERIAL, "--sessions", "1,2,4", "--warmup", "0")
-    truth = HOLD / _row(doc, 1)["makespan_s"]
-    assert doc["usl"]["sigma"] > 0.8 * truth, (truth, doc)
-    assert _row(doc, 4)["speedup"] < 4 / (1 + 3 * 0.8 * truth), (truth, doc)
+def _scored(makespans: dict[int, float]) -> tuple[list[dict], dict[str, float]]:
+    rows = [{"sessions": n, "makespan_s": t} for n, t in sorted(makespans.items())]
+    return rows, _bench_module().score(rows)
 
 
-def test_a_workload_sharing_nothing_reads_as_parallel(tmp_path: Path) -> None:
-    """The bench starts its N sessions one Popen after another, so a session starts up to N-1
-    spawns late; at load 55 that skew turned a 0.4 s sleep's 4.0 into 2.98 against 3.0
-    (2026-10-08). The sleep is HOLD, long against any spawn skew, so the floor measures overlap."""
-    doc = _bench(tmp_path, PARALLEL, "--sessions", "1,2,4", "--warmup", "0")
-    assert _row(doc, 4)["speedup"] > 3.0, doc
-    assert doc["usl"]["sigma"] < 0.15, doc
+def test_a_workload_holding_a_shared_lock_reads_as_serial() -> None:
+    """STRUCTURAL, not timed (GOH.ENVLEAK): a workload with a parallel start s and a serial hold
+    L takes s + N*L for N sessions, so its true serialized fraction is L / t1. Fed those
+    makespans, the bench's scoring must recover exactly that fraction; a blind fit (sigma ~0) or
+    a halved one fails. This used to run a real flock and read 0.615 against a truth of 0.842 on
+    a loaded macOS runner under coverage (goh run 43039999613)."""
+    for s, hold in ((0.0, 1.0), (0.2, 1.0), (0.5, 0.4)):
+        rows, usl = _scored({n: s + n * hold for n in (1, 2, 4)})
+        truth = hold / rows[0]["makespan_s"]
+        assert abs(usl["sigma"] - truth) < 0.02 and usl["kappa"] < 0.02, (s, truth, usl)
+        assert rows[2]["speedup"] < 4 / (1 + 3 * 0.8 * truth), (truth, rows)
+
+
+def test_a_workload_sharing_nothing_reads_as_parallel() -> None:
+    """STRUCTURAL: equal makespans at every N are a linear speedup and no contention."""
+    rows, usl = _scored({1: 1.0, 2: 1.0, 4: 1.0})
+    assert [r["speedup"] for r in rows] == [1.0, 2.0, 4.0], rows
+    assert [r["efficiency"] for r in rows] == [1.0, 1.0, 1.0], rows
+    assert usl == {"sigma": 0.0, "kappa": 0.0}, usl
+
+
+def test_the_bench_scores_its_own_measured_makespans(tmp_path: Path) -> None:
+    """End to end with no clock ratio in the assertion: the real bench's speedups and fit are
+    exactly the scoring of the makespans it reports, whatever the box's load."""
+    doc = _bench(tmp_path, SERIAL, "--sessions", "1,2", "--warmup", "0")
+    rows = [{"sessions": r["sessions"], "makespan_s": r["makespan_s"]} for r in doc["rows"]]
+    assert _bench_module().score(rows) == doc["usl"], doc
+    assert [r["speedup"] for r in rows] == [r["speedup"] for r in doc["rows"]], doc
 
 
 def test_every_lock_wait_is_named(tmp_path: Path) -> None:

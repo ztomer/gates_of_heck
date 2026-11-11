@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+* **The session bench's SERIAL and PARALLEL pins score injected makespans, not a wall clock
+  (GOH.ENVLEAK).** goh run 43039999613 read a fitted sigma of 0.615 against a truth of 0.842 on a
+  loaded macOS runner under coverage. The speedup/efficiency/USL scoring moved into
+  `session_bench.score(rows)`; the pins feed it `s + N*L` and equal makespans and require the exact
+  fraction `L / t1` and a linear speedup. Red first with the fit halved and with it blind
+  (sigma 0); one end-to-end test checks only that the report is the scoring of its own makespans.
+
 * **The land root is ignored (GOH.BUILDIGNORE).** land worktrees live under `build/<name>` inside
   the checkout, and `build/` was not in `.gitignore`: while a land was open the main checkout showed
   `?? build/` and every estate dirty-check read goh as uncommitted. `/build/` is ignored now;

@@ -201,6 +201,19 @@ def inflation(alone: dict[str, float], crowded: dict[str, float]) -> list[dict]:
     return sorted(rows, key=lambda r: r["crowded_ms"] - r["alone_ms"], reverse=True)
 
 
+def score(rows: list[dict]) -> dict[str, float]:
+    """Add speedup and efficiency to each row (rows[0] is N=1) and return the rounded USL fit.
+
+    Pure over the makespans, so the scoring is pinned with injected values, not a wall clock."""
+    t1 = rows[0]["makespan_s"]
+    for row in rows:
+        row["speedup"] = (
+            round(row["sessions"] * t1 / row["makespan_s"], 2) if row["makespan_s"] else 0
+        )
+        row["efficiency"] = round(row["speedup"] / row["sessions"], 2)
+    return {k: round(v, 3) for k, v in usl_fit({r["sessions"]: r["speedup"] for r in rows}).items()}
+
+
 def bench(args) -> int:
     repo = Path(args.repo).resolve()
     sessions = sorted({1, *(int(n) for n in args.sessions.split(","))})
@@ -257,20 +270,11 @@ def bench(args) -> int:
                     "lock_waits": waits,
                 }
             )
-        t1 = rows[0]["makespan_s"]
-        for row in rows:
-            row["speedup"] = (
-                round(row["sessions"] * t1 / row["makespan_s"], 2) if row["makespan_s"] else 0
-            )
-            row["efficiency"] = round(row["speedup"] / row["sessions"], 2)
         doc = {
             "repo": str(repo),
             "workload": args.workload,
             "rows": rows,
-            "usl": {
-                k: round(v, 3)
-                for k, v in usl_fit({r["sessions"]: r["speedup"] for r in rows}).items()
-            },
+            "usl": score(rows),
             "inflation": inflation(step_means(timed[1]), step_means(timed[max(sessions)]))[:15],
         }
         report(doc)
