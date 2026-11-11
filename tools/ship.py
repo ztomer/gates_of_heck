@@ -26,6 +26,13 @@ every agent's context (GOH.SPENDWATCH). Here it is a pipeline no turn watches:
     done     with --item: `loopctl done ID --shipped RESULT`, which records the item from this
              result and the card through done's own gates (CI on what landed), so no agent turn
 
+PREFLIGHT (GOH.SHIPPREFLIGHT). The kit runs after the push, so a precondition it could read before
+(token-pool's "no '## Unreleased' section", another kit's "no row for v5.18.0") was found after.
+When the release step will run, plan() first runs goh's CHANGELOG.md reading (`changelog_cut.py
+ready`), then `.gatesrc` GOH_SHIP_PREFLIGHT (`{version}` substituted), in the repo under the ship's
+bound with GOH_SHIP_VERSION/SUMMARY/ITEM set; a non-zero exit refuses, nothing pushed. A new check
+is a line in the repo's preflight, never a case here (`scripts/ship_preflight_audit.py`).
+
 Started without --wait it validates, writes the result JSON (status `running`), detaches a worker
 in its own session and prints one line naming the result; the worker prints a ✓/✗/· line per step
 to `<result>.log`. Each step runs under `lib/bounded_run.py`: own session, GOH_SHIP_TIMEOUT seconds
@@ -56,6 +63,7 @@ import shlex
 import shutil
 import subprocess
 import sys
+import tempfile
 import time
 from pathlib import Path
 
@@ -77,7 +85,8 @@ GITHUB = re.compile(r"github\.com[:/]([\w.-]+/[\w.-]+?)(?:\.git)?/?$")
 TAIL = 40
 GRACE = 5
 DEFAULT_TIMEOUT = 3600
-KEYS = ("GOH_SHIP_RELEASE", "GOH_SHIP_INSTALL", "GOH_SHIP_TIMEOUT", "GOH_SHIP_RELEASE_PUSHES")
+KEYS = ("GOH_SHIP_RELEASE", "GOH_SHIP_INSTALL", "GOH_SHIP_TIMEOUT", "GOH_SHIP_RELEASE_PUSHES",
+        "GOH_SHIP_PREFLIGHT")  # fmt: skip
 SEMVER = re.compile(r"^v(\d+)\.(\d+)\.(\d+)$")
 
 
@@ -172,25 +181,49 @@ def loopctl() -> Path:
     return Path(os.environ.get("GOH_LOOPCTL") or Path.home() / "Projects/.loop/tools/loopctl.py")
 
 
-def unreleased_has_entries(repo: Path, cfg: dict[str, str], version: str) -> None:
-    """Refuse, before the push, a release that would cut an empty Unreleased (GOH.SHIPUNRELEASED).
-
-    routines' ship pushed main and then its kit's changelog_cut said `Unreleased is empty: nothing
-    to release`. The release step runs whenever GOH_SHIP_RELEASE is declared and HEAD carries no
-    version tag -- with or without --bump, the version being git-cliff's otherwise."""
-    log = repo / "CHANGELOG.md"
-    if not (cfg["GOH_SHIP_RELEASE"] and version and log.is_file()):
-        return
+def preflights(repo: Path, cfg: dict[str, str], version: str) -> list[tuple[str, str]]:
+    """The commands asked before the push when the release step will run, in order: goh's
+    changelog reading (GOH.SHIPUNRELEASED: routines' kit said `Unreleased is empty: nothing to
+    release` after its push), then the repo's GOH_SHIP_PREFLIGHT, each as (whose, command). None
+    when no release runs."""
+    if not (cfg["GOH_SHIP_RELEASE"] and version):
+        return []
     if any(SEMVER.match(t) for t in git(repo, "tag", "--points-at", "HEAD").splitlines()):
-        return
-    sys.path.insert(0, str(ROOT / "tools" / "release-kit"))
-    import changelog_cut  # the release kit's own reading of Unreleased, not a copy
+        return []
+    out = []
+    if (repo / "CHANGELOG.md").is_file():
+        cut = shlex.quote(str(ROOT / "tools" / "release-kit" / "changelog_cut.py"))
+        ready = f"{shlex.quote(sys.executable)} {cut} ready --version {version} --file CHANGELOG.md"
+        out.append(("goh's changelog reading", ready))
+    if cfg["GOH_SHIP_PREFLIGHT"].strip():
+        out.append(("GOH_SHIP_PREFLIGHT", cfg["GOH_SHIP_PREFLIGHT"].replace("{version}", version)))
+    return out
 
-    lines = log.read_text(encoding="utf-8").splitlines()
-    if changelog_cut.nothing_to_release(lines, version):
+
+def run_preflights(repo: Path, cmds: list[tuple[str, str]], version: str, args: argparse.Namespace,
+                   timeout: int) -> None:  # fmt: skip
+    """Run each preflight under the ship's bound; the first refusal raises Refused, naming it."""
+    unset = " ".join(git_bindings())
+    env = (f"unset {unset}; export GOH_SHIP_VERSION={shlex.quote(version)} "
+           f"GOH_SHIP_SUMMARY={shlex.quote(args.summary or '')} "
+           f"GOH_SHIP_ITEM={shlex.quote(args.item or '')}; "
+           f"cd {shlex.quote(str(repo))} || exit 2; ")  # fmt: skip
+    for whose, cmd in cmds:
+        fd, logname = tempfile.mkstemp(prefix="goh-ship-preflight.", suffix=".log")
+        os.close(fd)
+        log = Path(logname)
+        try:
+            out = bounded_run.run_step(["bash", "-c", env + cmd], timeout, GRACE, "ship preflight",
+                                       str(log))  # fmt: skip
+            said = [ln for ln in tail(log) if ln.strip()][-8:]
+        finally:
+            log.unlink(missing_ok=True)
+        if out.code == 0 and not out.timed_out:
+            continue
+        what = f"timed out after {timeout}s" if out.timed_out else f"exit {out.code}"
         raise Refused(
-            f"{log}: Unreleased is empty and no ## v{version} stanza is written; add the entry "
-            "this release ships under ## Unreleased, commit, then ship"
+            f"{repo.name}: the release preflight ({whose}) refuses v{version} before anything is "
+            f"pushed ({what}): `{cmd}`\n  " + "\n  ".join(said or ["(it printed nothing)"])
         )
 
 
@@ -214,11 +247,12 @@ def plan(args: argparse.Namespace) -> dict:
                       ".gatesrc: name its release kit, e.g. GOH_SHIP_RELEASE='tools/release.sh "
                       "{version}'")  # fmt: skip
     version = next_version(repo, tag, args.version, args.bump)
-    unreleased_has_entries(repo, cfg, version)
     try:
         timeout = int(cfg["GOH_SHIP_TIMEOUT"] or DEFAULT_TIMEOUT)
     except ValueError:
         raise Refused(f"GOH_SHIP_TIMEOUT={cfg['GOH_SHIP_TIMEOUT']!r} is not seconds") from None
+    asked = preflights(repo, cfg, version)
+    run_preflights(repo, asked, version, args, timeout)
     root = Path(os.environ.get("LOOPCTL_ROOT") or Path.home() / "Projects")
     try:
         name = str(repo.resolve().relative_to(root.resolve()))
@@ -231,6 +265,7 @@ def plan(args: argparse.Namespace) -> dict:
         "base_tag": tag, "version": version,
         "release": cfg["GOH_SHIP_RELEASE"], "install": cfg["GOH_SHIP_INSTALL"],
         "release_pushes": cfg["GOH_SHIP_RELEASE_PUSHES"] == "1",
+        "preflight": [c for w, c in asked if w == "GOH_SHIP_PREFLIGHT"],
         "timeout_s": timeout, "loopctl": str(loopctl()), "result": str(out),
         "status": "running", "started": dt.datetime.now(dt.UTC).isoformat(timespec="seconds"),
         "steps": [], "failed_step": None, "tail": [], "pid": None,

@@ -2,6 +2,18 @@
 
 ## Unreleased
 
+* **goh ship asks every release precondition before its push: GOH_SHIP_PREFLIGHT
+  (GOH.SHIPPREFLIGHT).** token-pool's kit refused after the push ("CHANGELOG.md has no '##
+  Unreleased' section"), a private consumer's too ("its plan's done ledger has no row for
+  v5.18.0"). A repo now declares `.gatesrc` GOH_SHIP_PREFLIGHT, a command given `{version}` (its kit's `--check`
+  mode); when the release step will run, `plan` runs it in the repo, under the ship's bound, with
+  GOH_SHIP_VERSION, GOH_SHIP_SUMMARY and GOH_SHIP_ITEM set, and a non-zero exit refuses the ship
+  with the command's last lines, nothing pushed. goh's empty-Unreleased check is the first
+  preflight on the same path (`changelog_cut.py ready`), no longer a case in `plan`.
+  `scripts/ship_preflight_audit.py` is the ratchet of estate kits that declare none (seeded in the
+  private store with nine; a new one is red, a fixed one stale and red). Red first: the push ran
+  under a refusing preflight.
+
 * **The writer guard judges a write by its operand's own resolved path (GOH.GUARDSCRATCH).**
   ZT.EMBEDSEAM's agent was refused `S=~/.local/state/loop/scratch/ZT.EMBEDSEAM; sed -i ''
   's/x/y/' $S/m.sh` as a write to `~/Projects/.loop`, which LOOP.CLOSESTAMP held: BSD sed's `-i ''`

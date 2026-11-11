@@ -447,3 +447,52 @@ def test_an_unreleased_entry_or_a_written_stanza_ships(shipped, tmp_path):
     _changelog(shipped, "# CHANGELOG\n\n## Unreleased\n\n## v1.1.0\n\n* by hand\n")
     r = _ship(shipped, tmp_path, "--wait", "--version", "1.1.0")
     assert r.returncode == 0, r.stdout + r.stderr
+
+
+# ---- GOH.SHIPPREFLIGHT: a release precondition knowable before the push is asked before it ----
+# token-pool's kit refused after the push ("CHANGELOG.md has no '## Unreleased' section"), a
+# private consumer's after its push too ("its plan's done ledger has no row for v5.18.0"). A repo
+# declares GOH_SHIP_PREFLIGHT, a command given {version}; plan() runs it (and goh's own changelog
+# reading, the same path) before the first step, and a refusal starts nothing.
+
+LEDGER_REFUSES = 'echo "the done ledger has no row for v{version}" >&2; exit 1'
+
+
+@pytest.mark.parametrize("args", [(), ("--item", "X.ONE"), ("--bump", "patch")])
+def test_a_failing_preflight_refuses_with_its_reason_and_leaves_origin_untouched(
+    shipped, tmp_path, args
+):
+    before = git(shipped, "ls-remote", "origin")
+    r = _ship(shipped, tmp_path, "--wait", *args, GOH_SHIP_PREFLIGHT=LEDGER_REFUSES)
+    assert r.returncode == 2, r.stdout + r.stderr
+    version = "1.0.1" if args == ("--bump", "patch") else "1.1.0"
+    assert f"the done ledger has no row for v{version}" in r.stderr, r.stderr
+    assert "GOH_SHIP_PREFLIGHT" in r.stderr, r.stderr
+    assert git(shipped, "ls-remote", "origin") == before
+    assert not (tmp_path / "ship.json").exists()
+    assert _calls(tmp_path) == []
+
+
+def test_the_preflight_runs_in_the_repo_with_the_version_and_a_pass_ships(shipped, tmp_path):
+    check = ('test -f f.txt && test "$GOH_SHIP_VERSION" = 1.1.0 && test {version} = 1.1.0 '
+             '&& echo "$GOH_SHIP_SUMMARY" > ' + str(tmp_path / "seen"))  # fmt: skip
+    r = _ship(shipped, tmp_path, "--wait", "--summary", "the title", GOH_SHIP_PREFLIGHT=check)
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert (tmp_path / "seen").read_text().strip() == "the title"
+    assert _result(tmp_path)["preflight"] == [check.replace("{version}", "1.1.0")]
+
+
+def test_no_release_step_runs_no_preflight(shipped, tmp_path):
+    git(shipped, "tag", "v1.0.1")  # HEAD already tagged: the release step is skipped
+    r = _ship(shipped, tmp_path, "--wait", GOH_SHIP_PREFLIGHT=LEDGER_REFUSES)
+    assert r.returncode == 0, r.stdout + r.stderr
+
+
+def test_a_hung_preflight_is_bounded_and_refused(shipped, tmp_path):
+    before = git(shipped, "ls-remote", "origin")
+    t0 = time.monotonic()
+    r = _ship(shipped, tmp_path, "--wait", GOH_SHIP_PREFLIGHT="sleep 60", GOH_SHIP_TIMEOUT="2")
+    assert r.returncode == 2, r.stdout + r.stderr
+    assert time.monotonic() - t0 < 30
+    assert "timed out" in r.stderr, r.stderr
+    assert git(shipped, "ls-remote", "origin") == before

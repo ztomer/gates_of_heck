@@ -19,12 +19,15 @@ unreleased -- the tag ships the whole tree -- so:
   does not end on a joining mark, leaves no backtick or bracket open: AU.RELHEADING; `cut` refuses
   the same title, given or derived), Unreleased (if the file keeps one) is ONE section and EMPTY,
   and no entry of X's stanza repeats an entry of an earlier stanza. Exit 1 names each finding.
+* `ready --version X`: goh ship's preflight, asked BEFORE its push (GOH.SHIPPREFLIGHT): exit 1
+  when a cut of X would be refused as empty (`nothing_to_release`), else 0.
 
 An entry is a top-level list item (`* ` or `- ` at column 0) with its continuation lines, compared
 with whitespace collapsed. Headings: `## Unreleased` / `## [Unreleased]`, `## vX...` / `## [X]...`.
 
     changelog_cut.py cut   --version 1.2.3 [--title "what it ships"] [--file CHANGELOG.md]
     changelog_cut.py check --version 1.2.3 [--file CHANGELOG.md]
+    changelog_cut.py ready --version 1.2.3 [--file CHANGELOG.md]
 """
 
 from __future__ import annotations
@@ -339,7 +342,7 @@ def cut(lines: list[str], version: str, title: str | None) -> tuple[list[str] | 
 
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n", 1)[0])
-    ap.add_argument("mode", choices=["cut", "check"])
+    ap.add_argument("mode", choices=["cut", "check", "ready"])
     ap.add_argument("--version", required=True)
     ap.add_argument("--title")
     ap.add_argument("--file", default="CHANGELOG.md")
@@ -351,6 +354,13 @@ def main(argv: list[str] | None = None) -> int:
     except OSError as e:
         print(f"✗ changelog_cut: cannot read {path}: {e}", file=sys.stderr)
         return 2
+    if a.mode == "ready":  # goh ship's preflight, before its push (GOH.SHIPPREFLIGHT)
+        if nothing_to_release(lines, a.version):
+            print(f"✗ changelog: {path}: Unreleased is empty and no ## v{a.version} stanza is "
+                  "written; add the entry this release ships under ## Unreleased, commit, then "
+                  "ship", file=sys.stderr)  # fmt: skip
+            return 1
+        return 0
     if a.mode == "check":
         findings = check(lines, a.version)
         for f in findings:
