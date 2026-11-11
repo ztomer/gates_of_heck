@@ -148,3 +148,40 @@ def test_a_log_past_its_cap_is_moved_aside_and_stays_bounded(tmp_path: Path) -> 
     log.write_text("small\n", encoding="utf-8")
     assert _job(empty, log, "--max-log-bytes", "200").returncode == 0
     assert log.read_text(encoding="utf-8") == "small\n"
+
+
+def test_a_sweep_under_the_suite_takes_nothing_outside_its_scope(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Run 42950563400: a sweep this file ran took ANOTHER test's `/bin/sh -c read _ < ...`
+    spinner, because the shape sweeps read the whole machine. Under the goh suite a shape sweep
+    takes only what names a path under GOH_LOAD_REAP_SCOPE (the test's own tmp_path), so no test's
+    sweep can reach another's children: an orphaned house spinner with a dead owner, OUTSIDE the
+    scope, is left alone, and the same shape inside it is taken."""
+    me, alive = os.getpid(), reg.pid_alive
+    elsewhere = tmp_path / "other-test"
+    elsewhere.mkdir()
+    fifo = elsewhere / f"release-{me}-0.fifo"
+    os.mkfifo(fifo)
+    pid = load_kit.orphan(["/bin/sh", "-c", reg.spinner_command(fifo)])
+    monkeypatch.setattr(reg, "pid_alive", lambda p: p != me and alive(p))
+    monkeypatch.setenv("GOH_LOAD_REAP_SCOPE", str(tmp_path / "mine"))
+    report = load_reap.reap_orphans()
+    assert not [k for k in report.kills if k.pid == pid], "a sweep took a process outside its scope"
+    assert load_kit.alive(pid)
+    monkeypatch.setenv("GOH_LOAD_REAP_SCOPE", str(elsewhere))
+    assert [k for k in load_reap.reap_orphans().kills if k.pid == pid]
+
+
+def test_a_sweep_under_the_suite_with_no_scope_takes_nothing(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    me, alive = os.getpid(), reg.pid_alive
+    fifo = tmp_path / f"release-{me}-0.fifo"
+    os.mkfifo(fifo)
+    pid = load_kit.orphan(["/bin/sh", "-c", reg.spinner_command(fifo)])
+    monkeypatch.setattr(reg, "pid_alive", lambda p: p != me and alive(p))
+    monkeypatch.delenv("GOH_LOAD_REAP_SCOPE", raising=False)
+    assert os.environ.get("GATES_OF_HECK_SUITE_REAL_HOME"), "not under the suite"
+    assert not [k for k in load_reap.reap_orphans().kills if k.pid == pid]
+    assert load_kit.alive(pid)

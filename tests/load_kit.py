@@ -453,3 +453,14 @@ def suite_leak_check(tmp_path_factory):
     _clean(leaked)
     assert not survivors, f"the suite left processes running: {survivors}"
     assert not leaked, f"the suite left spinners running: {leaked}"
+
+
+@pytest.fixture(autouse=True)
+def load_reap_scope(request, monkeypatch):
+    """A shape sweep under the suite takes only what names a path under GOH_LOAD_REAP_SCOPE
+    (lib/load_reap.py `in_scope`, run 42950563400): every test on the `load_orphans` worker --
+    where test_load_burning.py's class rule puts each file that sweeps -- scopes it to its own
+    tmp_path, so its sweep cannot take another test's children."""
+    marker = request.node.get_closest_marker("xdist_group")
+    if marker is not None and "load_orphans" in marker.args:
+        monkeypatch.setenv("GOH_LOAD_REAP_SCOPE", str(request.getfixturevalue("tmp_path")))

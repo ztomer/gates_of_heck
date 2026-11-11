@@ -104,6 +104,24 @@ SHELLS = ("sh", "bash", "zsh", "ksh", "dash")
 SCRIPT_BYTES = 65536
 
 
+# THE SUITE'S OWN CHILDREN (run 42950563400). A shape sweep reads the WHOLE machine, so a sweep a
+# goh test ran took another test's `/bin/sh -c read _ < ...` spinner on a 3-core hosted runner. A
+# sweep run under the goh suite (its marker, tests/suite_home.py) takes only a process whose command
+# line names a path under GOH_LOAD_REAP_SCOPE -- the test's own directory -- and nothing at all when
+# no scope is named. The launchd job runs outside the suite and is unchanged.
+SUITE_MARKER = "GATES_OF_HECK_SUITE_REAL_HOME"
+SCOPE_ENV = "GOH_LOAD_REAP_SCOPE"
+
+
+def in_scope(command: str) -> bool:
+    """Whether a shape sweep may take this command line (always, outside the goh suite)."""
+    scope = os.environ.get(SCOPE_ENV, "").strip().rstrip("/")
+    if not scope:
+        return not os.environ.get(SUITE_MARKER)
+    real = os.path.realpath(scope)
+    return any(f"{root}/" in command for root in {scope, real})
+
+
 class Blind(Exception):
     """A lookup the machine could not answer in time: one shape is not searched this pass.
 
@@ -198,7 +216,7 @@ def our_orphans(candidates: list[int]) -> list[int]:
         if info is None:
             continue
         parent, command = info
-        if parent != 1:
+        if parent != 1 or not in_scope(command):
             continue
         shape = reg.spinner_shape(command)
         if shape is None:
@@ -350,7 +368,7 @@ def burning_orphans(candidates: list[int], min_cpu_s: float = BURN_CPU_S) -> lis
         if info is None:
             continue
         parent, cpu, command = info
-        if parent != 1:
+        if parent != 1 or not in_scope(command):
             continue
         if cpu < min_cpu_s:
             continue

@@ -39,7 +39,7 @@ from host_locks import no_test_reaches_a_host_lock, scrubbed  # noqa: F401  (an 
 
 # The suite's leak check (an autouse session fixture): the OWNER of a process is responsible for
 # it, so the session proves that nothing it started outlived it.
-from load_kit import suite_leak_check  # noqa: F401  (an autouse fixture)
+from load_kit import load_reap_scope, suite_leak_check  # noqa: F401  (autouse fixtures)
 from real_state_guard import no_test_writes_the_real_goh_state  # noqa: F401  (an autouse fixture)
 
 for _name in local_env_vars():

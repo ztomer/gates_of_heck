@@ -264,6 +264,9 @@ def test_the_shape_filter_asks_three_questions_and_no_more(monkeypatch) -> None:
     house's shape, and the owner the pipe names is gone. A fourth question would be a wider
     exemption than the one that was recorded."""
     asked: list[tuple[str, int]] = []
+    # The suite's own narrowing (in_scope: under the goh suite, only the test's own directory) is
+    # pinned in test_load_reap_log.py; outside the suite it takes everything, as here.
+    monkeypatch.setattr(load_reap, "in_scope", lambda command: True)
     monkeypatch.setattr(load_reap, "_process", lambda pid: (1, EXACT_COMMAND))
     monkeypatch.setattr(reg, "pid_alive", lambda pid: asked.append(("owner", pid)) or False)
     assert load_reap.our_orphans([4242]) == [4242]
