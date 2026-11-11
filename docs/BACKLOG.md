@@ -59,20 +59,6 @@ phase, and each is one landing.
   **Done when:** `GOH_INSTALLS` is documented in `docs/config.md` and checked in goh, test first, landed
   via `tools/land.sh`.
 
-## Phase 3 — public CI
-
-Why third: the hosted run should judge the pinned runner images Phase 1 introduces, and the repos are
-public (owner, 2026-11-08: "Yes, public repos").
-
-- **CI.PUBLIC2** (queue: CI.PUBLIC2) gates_of_heck and monitor (multitop) still lack a GitHub-hosted run
-  of their own gate (they were held). divoom-control's CI runs its checks as separate steps instead of
-  `tools/gate.sh --full`, so CI and the local gate can drift (one gate, one command: CI execs the gate),
-  and its `tests.yml` carries stale comments that gates_of_heck is private plus a
-  `GOH_TOKEN || github.token` fallback it no longer needs. Pin actions and goh to released tags; confirm
-  each repo is PUBLIC before leaving Actions on.
-  **Done when:** gates_of_heck and monitor have a green hosted run of their own gate on main HEAD; divoom
-  CI execs `tools/gate.sh --full` with the stale comments and the token fallback gone.
-
 ## Phase 5 — speed of the checks
 
 Why last: nothing else waits on it, and the rework of the gate rules above changes what is worth timing.
