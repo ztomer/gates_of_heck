@@ -75,8 +75,10 @@ def held(fetch: bool) -> Iterator[Path]:
 
 
 def audit_args(db: Path, fetch: bool) -> list[str]:
-    """What an audit adds so it reads `db`, and refreshes it only when asked."""
-    return ["--db", str(db), *([] if fetch else ["--no-fetch"])]
+    """What an audit adds so it reads `db`, and refreshes it only when asked -- or when there is no
+    copy to read at all (nothing to seed from: a fresh hosted runner), which `held` already locked
+    exclusively for this first fetch (run 42950563400)."""
+    return ["--db", str(db), *([] if fetch or not db.exists() else ["--no-fetch"])]
 
 
 def main(argv: list[str]) -> int:

@@ -30,13 +30,15 @@ def db(tmp_path: Path) -> Path:
 
 
 @contextmanager
-def _started(db: Path, tmp_path: Path, mode: str) -> Iterator[tuple[subprocess.Popen, Path]]:
+def _started(
+    db: Path, tmp_path: Path, mode: str, **extra: str
+) -> Iterator[tuple[subprocess.Popen, Path]]:
     record = tmp_path / f"argv-{mode}"
     fake = tmp_path / "bin" / "cargo"
     fake.parent.mkdir(exist_ok=True)
     fake.write_text('#!/bin/sh\nprintf "%s\\n" "$@" > "$GOH_TEST_RECORD"\n')
     fake.chmod(0o755)
-    env = hermetic_env(GOH_ADVISORY_DB=str(db), GOH_TEST_RECORD=str(record))
+    env = hermetic_env(GOH_ADVISORY_DB=str(db), GOH_TEST_RECORD=str(record), **extra)
     env["PATH"] = f"{fake.parent}:{env['PATH']}"
     with subprocess.Popen(
         ["python3", str(SEAM), "run", mode, "--", "cargo", "audit", "--file", "Cargo.lock"],
@@ -113,3 +115,17 @@ def test_the_house_audits_go_through_the_seam() -> None:
     for rel in ("checks/check_audit_ignores.py", "scripts/estate_audit.py"):
         text = (REPO_ROOT / rel).read_text()
         assert "advisory_db.held(" in text and "advisory_db.audit_args(" in text, rel
+
+
+def test_an_offline_read_with_no_copy_anywhere_fetches_it_once(tmp_path: Path) -> None:
+    """Run 42950563400: a hosted runner's fresh HOME had no `~/.cargo/advisory-db` to seed from, and
+    `--no-fetch` (GOH_DEPS_OFFLINE=1) audited against nothing, so test_crates_behind's gate died.
+    The module says a missing copy is "fetched by the audit itself": offline means no REFRESH, and
+    with no copy at all there is nothing to judge against until the first fetch."""
+    missing = tmp_path / "none" / "advisory-db"
+    bare = tmp_path / "home"  # no ~/.cargo/advisory-db to seed from, as on the hosted runner
+    bare.mkdir()
+    with _started(missing, tmp_path, "--no-fetch", HOME=str(bare)) as (proc, record):
+        assert proc.wait(timeout=30) == 0
+    got = record.read_text().split()
+    assert "--no-fetch" not in got and str(missing) in got, got
