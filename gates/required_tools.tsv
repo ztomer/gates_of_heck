@@ -58,8 +58,8 @@ rust	cargo-audit	cargo	cargo install cargo-audit	gates/rust_gate.sh	0.21.0
 rust	rustfmt	system	rustup component add rustfmt	crates/goh/src/rustfmt_staged.rs	-
 rust-cross	cargo-zigbuild	cargo	cargo install cargo-zigbuild	gates/rust_gate.sh	0.24.0
 rust-cross	zig	brew	brew install zig	gates/rust_gate.sh	0.17.0
-swift	swiftlint	brew	brew install swiftlint	gates/swift_gate.sh	-
-swift	swiftlint	brew	brew install swiftlint	gates/swift_staged.sh	-
+swift	swiftlint	brew	brew install swiftlint	gates/swift_gate.sh	0.65.1
+swift	swiftlint	brew	brew install swiftlint	gates/swift_staged.sh	0.65.1
 coverage-rust	cargo	system	rustup (https://rustup.rs)	gates/_coverage_rust.sh	-
 coverage-rust	cargo-llvm-cov	cargo	cargo install cargo-llvm-cov	gates/_coverage_rust.sh	0.6.24
 coverage-rust	python3	system	the house interpreter (lib/house_python.sh): brew install python	gates/_coverage_rust.sh	3.15

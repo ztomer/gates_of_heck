@@ -41,6 +41,10 @@ def _mk_repo(
             if name == "xcodebuild" and xcodebuild_says
             else ""
         )
+        if (
+            name == "swiftlint"
+        ):  # the floor check (gates/required_tools.tsv) reads `swiftlint version`
+            body = '[ "$1" = version ] && { echo 0.65.1; exit 0; }\n'
         f.write_text(f"#!/bin/bash\n{body}exit 0\n")
         f.chmod(0o755)
     mk_xcrun_find_shim(bin_, bin_ / "swift")

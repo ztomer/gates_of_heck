@@ -131,8 +131,8 @@ def test_a_version_the_caller_read_is_judged_too() -> None:
 
 
 def test_a_tool_with_no_floor_is_judged_on_presence_alone(tmp_path: Path) -> None:
-    _fake(tmp_path / "bin", "swiftlint", "0.0.1")
-    out = _cli(["--check", "--tool", "swiftlint"], env=_env(tmp_path / "bin"))
+    _fake(tmp_path / "bin", "git-cliff", "0.0.1")
+    out = _cli(["--check", "--tool", "git-cliff"], env=_env(tmp_path / "bin"))
     assert out.returncode == 0, (out.stdout, out.stderr)
 
 

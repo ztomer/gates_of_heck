@@ -41,7 +41,15 @@ def _repo(tmp_path: Path):
     write(r, ".gatesrc", "GOH_SWIFT_MODE=spm\n")
     bin_ = tmp_path / "bin"
     bin_.mkdir()
-    for name, body in (("swift", SWIFT), ("swiftlint", "#!/bin/bash\nexit 0\n")):
+    for name, body in (
+        ("swift", SWIFT),
+        (
+            "swiftlint",
+            "#!/bin/bash\n"
+            + '[ "$1" = version ] && { echo 0.65.1; exit 0; }  # the floor check (gates/required_tools.tsv)\n'
+            + "exit 0\n",
+        ),
+    ):
         f = bin_ / name
         f.write_text(body)
         f.chmod(0o755)

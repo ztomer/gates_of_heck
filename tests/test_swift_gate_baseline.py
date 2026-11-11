@@ -317,7 +317,10 @@ def _mk_fake_swiftlint(bin_dir: Path, canned_report: Path | None) -> None:
     """A PATH-shim swiftlint: logs its argv, emits the canned JSON when the
     gate asks for the reporter format, exits like swiftlint does on findings."""
     shim = bin_dir / "swiftlint"
-    body = 'echo "$@" >> "$GOH_SHIM_LOG"\n'
+    body = (
+        '[ "$1" = version ] && { echo 0.65.1; exit 0; }  # the floor check (gates/required_tools.tsv)\n'
+        + 'echo "$@" >> "$GOH_SHIM_LOG"\n'
+    )
     if canned_report is not None:
         body += f'case "$*" in *--reporter*) cat "{canned_report}"; exit 2 ;; esac\n'
     body += "exit 0\n"
