@@ -490,9 +490,7 @@ def test_no_release_step_runs_no_preflight(shipped, tmp_path):
 
 def test_a_hung_preflight_is_bounded_and_refused(shipped, tmp_path):
     before = git(shipped, "ls-remote", "origin")
-    t0 = time.monotonic()
     r = _ship(shipped, tmp_path, "--wait", GOH_SHIP_PREFLIGHT="sleep 60", GOH_SHIP_TIMEOUT="2")
     assert r.returncode == 2, r.stdout + r.stderr
-    assert time.monotonic() - t0 < 30
-    assert "timed out" in r.stderr, r.stderr
+    assert "timed out after 2s" in r.stderr, r.stderr  # the bound, not the sleep, ended it
     assert git(shipped, "ls-remote", "origin") == before

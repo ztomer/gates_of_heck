@@ -203,17 +203,17 @@ def preflights(repo: Path, cfg: dict[str, str], version: str) -> list[tuple[str,
 def run_preflights(repo: Path, cmds: list[tuple[str, str]], version: str, args: argparse.Namespace,
                    timeout: int) -> None:  # fmt: skip
     """Run each preflight under the ship's bound; the first refusal raises Refused, naming it."""
-    unset = " ".join(git_bindings())
-    env = (f"unset {unset}; export GOH_SHIP_VERSION={shlex.quote(version)} "
-           f"GOH_SHIP_SUMMARY={shlex.quote(args.summary or '')} "
-           f"GOH_SHIP_ITEM={shlex.quote(args.item or '')}; "
-           f"cd {shlex.quote(str(repo))} || exit 2; ")  # fmt: skip
+    env = ["env", *(f"-u{k}" for k in git_bindings()), f"GOH_SHIP_VERSION={version}",
+           f"GOH_SHIP_SUMMARY={args.summary or ''}",
+           f"GOH_SHIP_ITEM={args.item or ''}"]  # fmt: skip
+    cd = f"cd {shlex.quote(str(repo))} || exit 2; "
     for whose, cmd in cmds:
         fd, logname = tempfile.mkstemp(prefix="goh-ship-preflight.", suffix=".log")
         os.close(fd)
         log = Path(logname)
         try:
-            out = bounded_run.run_step(["bash", "-c", env + cmd], timeout, GRACE, "ship preflight",
+            argv = [*env, "bash", "-c", cd + cmd]
+            out = bounded_run.run_step(argv, timeout, GRACE, "ship preflight",
                                        str(log))  # fmt: skip
             said = [ln for ln in tail(log) if ln.strip()][-8:]
         finally:

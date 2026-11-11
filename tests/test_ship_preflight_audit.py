@@ -9,12 +9,11 @@ is no longer a finding is stale and red, so the seed only shrinks.
 from __future__ import annotations
 
 import json
-import os
 import subprocess
 import sys
 from pathlib import Path
 
-from conftest import REPO_ROOT
+from conftest import REPO_ROOT, hermetic_env
 
 AUDIT = REPO_ROOT / "scripts" / "ship_preflight_audit.py"
 
@@ -34,9 +33,8 @@ def _estate(tmp_path: Path) -> Path:
 
 
 def _audit(tmp_path: Path, root: Path, *args: str) -> subprocess.CompletedProcess[str]:
-    env = {k: v for k, v in os.environ.items() if not k.startswith("GOH_SHIP_")}
-    env.update(GOH_SEED_DIR=str(tmp_path / "seeds"), GOH_ESTATE_STATE=str(tmp_path / "st.json"),
-               PYTHONPATH=str(REPO_ROOT))  # fmt: skip
+    env = hermetic_env(GOH_SEED_DIR=str(tmp_path / "seeds"),
+                       GOH_ESTATE_STATE=str(tmp_path / "st.json"))  # fmt: skip
     return subprocess.run([sys.executable, str(AUDIT), "--root", str(root), *args], env=env,
                           capture_output=True, text=True, timeout=60, check=False,
                           stdin=subprocess.DEVNULL)  # fmt: skip
@@ -76,12 +74,11 @@ def test_a_seeded_repo_that_declares_its_preflight_is_stale_and_red(tmp_path):
 def test_the_environment_does_not_mask_a_repos_own_gatesrc(tmp_path):
     root = _estate(tmp_path)
     _audit(tmp_path, root, "--seed")
-    env_set = subprocess.run(
-        [sys.executable, str(AUDIT), "--root", str(root)],
-        env={**os.environ, "GOH_SEED_DIR": str(tmp_path / "seeds"), "GOH_SHIP_PREFLIGHT": "true",
-             "GOH_ESTATE_STATE": str(tmp_path / "st.json")},
-        capture_output=True, text=True, timeout=60, check=False, stdin=subprocess.DEVNULL,
-    )  # fmt: skip
+    env = hermetic_env(GOH_SEED_DIR=str(tmp_path / "seeds"), GOH_SHIP_PREFLIGHT="true",
+                       GOH_ESTATE_STATE=str(tmp_path / "st.json"))  # fmt: skip
+    env_set = subprocess.run([sys.executable, str(AUDIT), "--root", str(root)], env=env,
+                             capture_output=True, text=True, timeout=60, check=False,
+                             stdin=subprocess.DEVNULL)  # fmt: skip
     assert env_set.returncode == 0, (
         env_set.stdout + env_set.stderr
     )  # `late` is still the seeded one

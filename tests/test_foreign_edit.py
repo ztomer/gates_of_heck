@@ -23,7 +23,7 @@ import sys
 from pathlib import Path
 
 import pytest
-from conftest import REPO_ROOT
+from conftest import REPO_ROOT, hermetic_env
 
 GUARD = REPO_ROOT / "hooks" / "claude" / "hold_guard.py"
 ME, OTHER = "a1111111111111111", "a2222222222222222"
@@ -237,8 +237,9 @@ def _scratch_bash(projects: Path, command: str, cwd: Path, agent: str = ME) -> s
     event = {"session_id": "s", "hook_event_name": "PreToolUse", "tool_name": "Bash",
              "tool_input": {"command": command}, "cwd": str(cwd),
              "agent_id": agent, "agent_type": "repo-worker"}  # fmt: skip
-    env = {**os.environ, "GOH_LOOP_QUEUE": str(projects / ".loop" / "queue.json"),
-           "LOOPCTL_SCRATCH_ROOT": str(projects.parent / "state" / "loop" / "scratch")}  # fmt: skip
+    scratch = projects.parent / "state" / "loop" / "scratch"
+    env = hermetic_env(GOH_LOOP_QUEUE=str(projects / ".loop" / "queue.json"),
+                       LOOPCTL_SCRATCH_ROOT=str(scratch))  # fmt: skip
     r = subprocess.run([sys.executable, str(GUARD)], input=json.dumps(event), capture_output=True,
                        text=True, timeout=30, check=False, env=env)  # fmt: skip
     assert r.returncode == 0, r.stderr
