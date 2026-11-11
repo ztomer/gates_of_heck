@@ -156,19 +156,39 @@ def export(goh: Path, rev: str, dest: Path) -> str | None:
     if not sha:
         return f"{rev} is not a commit of {goh}"
     dest.mkdir(parents=True)
-    r = subprocess.run(
-        ["bash", "-c", 'set -o pipefail; git -C "$1" archive "$2" | tar -x -C "$3"', "_"]
-        + [str(goh), sha, str(dest)],
+    # NOT `git archive | tar -x` (GOH.SUITEFLAKES). bsdtar exits at the archive's end marker
+    # without draining the pipe, so git's last write of record padding, landing after that, takes
+    # SIGPIPE: exit 141 with NOTHING on stderr, and `pipefail` made that the release canary's
+    # "exporting v0.96.0: " with an empty reason (once, 2026-11-11). The archive is read whole,
+    # then handed to tar, which may stop reading wherever it likes.
+    archive = subprocess.run(
+        ["git", "-C", str(goh), "archive", sha],
         env=foreign_repo_env(),
         capture_output=True,
-        text=True,
         check=False,
         stdin=subprocess.DEVNULL,
     )
-    if r.returncode != 0:
-        return f"exporting {rev}: {r.stderr.strip()}"
+    if archive.returncode != 0:
+        return f"exporting {rev}: {_failed('git archive', archive)}"
+    unpack = subprocess.run(
+        ["tar", "-x", "-C", str(dest)],
+        input=archive.stdout,
+        env=foreign_repo_env(),
+        capture_output=True,
+        check=False,
+    )
+    if unpack.returncode != 0:
+        return f"exporting {rev}: {_failed('tar -x', unpack)}"
     (dest / ".goh-head").write_text(f"{sha}\n")
     return None
+
+
+def _failed(what: str, r: subprocess.CompletedProcess) -> str:
+    """A failed step, never an empty reason: its exit (a signal by name) and its stderr's tail."""
+    why = r.stderr.decode("utf-8", "replace").strip() if isinstance(r.stderr, bytes) else r.stderr
+    code = f"signal {-r.returncode}" if r.returncode < 0 else f"exit {r.returncode}"
+    tail = " | ".join((why or "").strip().splitlines()[-3:])
+    return f"{what} {code}: {tail or 'no stderr'}"
 
 
 def consumers(root: Path, state: Path, goh: Path) -> tuple[list[Path], list[str]]:

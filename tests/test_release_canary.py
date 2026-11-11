@@ -235,3 +235,41 @@ def test_a_side_is_exported_as_a_consumer_gets_it(tmp_path):
     ).stdout.strip()
     assert (tmp_path / "side" / ".goh-head").read_text().strip() == head
     assert (tmp_path / "side" / "gates" / "structural.sh").is_file()
+
+
+def test_an_export_survives_tar_closing_the_pipe_before_git_is_done(tmp_path, monkeypatch):
+    """GOH.SUITEFLAKES: bsdtar exits at the end marker without draining its input, so a writer still
+    padding the record takes SIGPIPE -- exit 141, no stderr, and the canary refused a release with
+    "exporting v0.96.0: " and nothing after it. This git writes its archive, then more, late."""
+    real = shutil.which("git")
+    shim = tmp_path / "bin"
+    shim.mkdir()
+    (shim / "git").write_text(
+        "#!/bin/bash\n"
+        'for a in "$@"; do\n'
+        '  if [ "$a" = archive ]; then\n'
+        f'    "{real}" "$@" || exit\n'
+        "    sleep 0.5\n"
+        "    head -c 65536 /dev/zero || exit\n"
+        "    exit 0\n"
+        "  fi\n"
+        "done\n"
+        f'exec "{real}" "$@"\n'
+    )
+    (shim / "git").chmod(0o755)
+    monkeypatch.setenv("PATH", f"{shim}{os.pathsep}{os.environ['PATH']}")
+    spec = importlib.util.spec_from_file_location("release_canary_mod", SCRIPT)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    assert mod.export(REPO_ROOT, "HEAD", tmp_path / "side") is None
+    assert (tmp_path / "side" / "gates" / "structural.sh").is_file()
+
+
+def test_a_failed_step_always_names_its_exit_and_stderr():
+    spec = importlib.util.spec_from_file_location("release_canary_mod", SCRIPT)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    silent = subprocess.CompletedProcess(["git"], 141, b"", b"")
+    assert mod._failed("git archive", silent) == "git archive exit 141: no stderr"
+    killed = subprocess.CompletedProcess(["tar"], -13, b"", b"tar: x\ntar: broken\n")
+    assert mod._failed("tar -x", killed) == "tar -x signal 13: tar: x | tar: broken"

@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+* **The release canary's export cannot fail silently (GOH.SUITEFLAKES).** `git archive | tar -x`
+  under pipefail: bsdtar exits at the end marker without draining the pipe, so git's late padding
+  write took SIGPIPE, exit 141 with no stderr -- "exporting v0.96.0: " and nothing after it. The
+  archive is read whole and then unpacked, and every failed step names its exit and stderr.
+
 * **A file another repo deleted mid-edit no longer turns goh's gate red (GOH.LOADBUILDLOCK).**
   routines had eight fixtures deleted from its worktree; `listed_files`' full mode still named them
   (`ls-files --cached`), and check_estate_corpus.py died copying the first, which took structural
