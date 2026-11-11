@@ -199,6 +199,51 @@ def test_a_head_already_tagged_skips_the_release(shipped, tmp_path):
     assert rel["status"] == "skipped" and "v1.0.1" in rel["why"]
 
 
+def _refusing_pre_push(repo: Path, tmp_path: Path) -> None:
+    """A pre-push hook that refuses every push it gates: the hand-off alone is not pushable."""
+    hooks = tmp_path / "hooks"
+    hooks.mkdir()
+    (hooks / "pre-push").write_text("#!/bin/sh\necho 'note ahead of the version'; exit 1\n")
+    (hooks / "pre-push").chmod(0o755)
+    git(repo, "config", "core.hooksPath", str(hooks))
+
+
+# A release kit that commits its bump and pushes the hand-off with it (ZoneWM's tools/release.sh:
+# its note may only land in the release commit, so the hand-off alone is refused by its gate).
+PUSHING_KIT = ('git -c user.name=t -c user.email=t@t commit -q --allow-empty -m "release" && '
+               'git tag "v$GOH_SHIP_VERSION" && '
+               'git push -q --no-verify origin HEAD:refs/heads/main "v$GOH_SHIP_VERSION"')  # fmt: skip
+
+
+def test_a_release_kit_that_pushes_lands_the_hand_off_without_the_separate_push(shipped, tmp_path):
+    _refusing_pre_push(shipped, tmp_path)
+    r = _ship(
+        shipped, tmp_path, "--wait", GOH_SHIP_RELEASE=PUSHING_KIT, GOH_SHIP_RELEASE_PUSHES="1"
+    )
+    assert r.returncode == 0, r.stdout + r.stderr
+    res = _result(tmp_path)
+    push = next(s for s in res["steps"] if s["name"] == "push")
+    assert push["status"] == "skipped" and "release kit pushes" in push["why"], push
+    assert git(shipped, "ls-remote", "origin", "refs/heads/main").split()[0] == res["sha"]
+
+
+def test_without_the_key_the_hand_off_is_pushed_first_and_its_gate_is_heard(shipped, tmp_path):
+    _refusing_pre_push(shipped, tmp_path)
+    r = _ship(shipped, tmp_path, "--wait", GOH_SHIP_RELEASE=PUSHING_KIT)
+    assert r.returncode == 1
+    assert _result(tmp_path)["failed_step"] == "push"
+
+
+def test_a_pushing_kit_on_a_head_already_tagged_still_pushes(shipped, tmp_path):
+    git(shipped, "tag", "v1.0.1")
+    r = _ship(
+        shipped, tmp_path, "--wait", GOH_SHIP_RELEASE=PUSHING_KIT, GOH_SHIP_RELEASE_PUSHES="1"
+    )
+    assert r.returncode == 0, r.stdout + r.stderr
+    steps = {s["name"]: s["status"] for s in _result(tmp_path)["steps"]}
+    assert steps["push"] == "ok" and steps["release"] == "skipped", steps
+
+
 @pytest.mark.parametrize(
     ("subject", "want"),
     [

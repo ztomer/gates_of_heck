@@ -253,6 +253,7 @@ bound, fails the ship at verify (GOH.SHIPCIWAIT).
 | Key | Default | Meaning |
 |---|---|---|
 | `GOH_SHIP_RELEASE` | unset | The repo's release command, run with `GOH_SHIP_VERSION` exported and `{version}` substituted (`tools/release.sh {version}`). Required when the repo tags releases (a `vX.Y.Z` tag exists): `goh ship` refuses before starting without it. Skipped when HEAD already carries a version tag. The environment (even empty) beats `.gatesrc`. |
+| `GOH_SHIP_RELEASE_PUSHES` | unset | `1`: the release kit pushes the hand-off together with its release commit, so the push step is skipped (said) whenever the release step runs. For a repo whose gate refuses the hand-off alone (ZoneWM: a release note may only land in the release commit). A HEAD already tagged still gets the push step. |
 | `GOH_SHIP_INSTALL` | unset (step skipped, said) | The install command after the release; unset when the release kit installs (a `--verify` that runs the installer) or nothing installs. |
 | `GOH_SHIP_TIMEOUT` | `3600` | Seconds each step may run before its whole process group is TERM'd then KILL'd (`lib/bounded_run.py`); the step is `timed_out` in the result. |
 | `GOH_SHIP_CI_POLL` | `60` | Seconds between two CI waits that came back pending (the door's own cap, or a throttle past it), within the verify step's bound less 60 s for the card. A test seam. |

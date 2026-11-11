@@ -9,7 +9,10 @@ An agent's contract ends at "committed, local gate green, goh ship started". Wha
 after its first push -- re-run the gate, release, install, read the claim card, wait -- was 49% of
 every agent's context (GOH.SPENDWATCH). Here it is a pipeline no turn watches:
 
-    push     `git push REMOTE HEAD:BRANCH` (the upstream the branch tracks), through the pre-push gate
+    push     `git push REMOTE HEAD:BRANCH` (the upstream the branch tracks), through the pre-push gate;
+             skipped when `.gatesrc` GOH_SHIP_RELEASE_PUSHES=1 and the release step will run: that
+             kit pushes the hand-off with its release commit (a repo whose release note may only
+             land in the release commit has a hand-off its own gate refuses alone)
     release  the repo's release kit, `.gatesrc` GOH_SHIP_RELEASE, run with GOH_SHIP_VERSION set (also
              `{version}` in the command); skipped when HEAD already carries a version tag; a repo
              that tags and declares none is refused before anything starts
@@ -74,7 +77,7 @@ GITHUB = re.compile(r"github\.com[:/]([\w.-]+/[\w.-]+?)(?:\.git)?/?$")
 TAIL = 40
 GRACE = 5
 DEFAULT_TIMEOUT = 3600
-KEYS = ("GOH_SHIP_RELEASE", "GOH_SHIP_INSTALL", "GOH_SHIP_TIMEOUT")
+KEYS = ("GOH_SHIP_RELEASE", "GOH_SHIP_INSTALL", "GOH_SHIP_TIMEOUT", "GOH_SHIP_RELEASE_PUSHES")
 SEMVER = re.compile(r"^v(\d+)\.(\d+)\.(\d+)$")
 GIT_BINDINGS = ("GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE", "GIT_PREFIX", "GIT_COMMON_DIR",
                 "GIT_OBJECT_DIRECTORY")  # fmt: skip
@@ -196,6 +199,7 @@ def plan(args: argparse.Namespace) -> dict:
         "summary": args.summary or "", "remote": remote, "branch": branch, "sha": sha, "handoff_sha": sha,
         "base_tag": tag, "version": next_version(repo, tag, args.version, args.bump),
         "release": cfg["GOH_SHIP_RELEASE"], "install": cfg["GOH_SHIP_INSTALL"],
+        "release_pushes": cfg["GOH_SHIP_RELEASE_PUSHES"] == "1",
         "timeout_s": timeout, "loopctl": str(loopctl()), "result": str(out),
         "status": "running", "started": dt.datetime.now(dt.UTC).isoformat(timespec="seconds"),
         "steps": [], "failed_step": None, "tail": [], "pid": None,
@@ -222,6 +226,11 @@ def command(res: dict, name: str) -> tuple[str | None, str]:
     lc = shlex.quote(res["loopctl"])
     py = shlex.quote(sys.executable)
     if name == "push":
+        if res.get("release_pushes") and command(res, "release")[0] is not None:
+            return (
+                None,
+                "the release kit pushes the hand-off with its release (GOH_SHIP_RELEASE_PUSHES=1)",
+            )
         return f"git push {shlex.quote(res['remote'])} HEAD:refs/heads/{res['branch']}", ""
     if name == "release":
         if not res["release"]:
