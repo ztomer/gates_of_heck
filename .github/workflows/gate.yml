@@ -33,6 +33,10 @@ jobs:
       # 3-core runner ran it out of the 900 s default (run 42916888942), so 2700 s is the CPU
       # time over 3 cores at under half the owner's per-core speed, rounded up.
       GOH_LCI_TIMEOUT: "2700"
+      # A failed step's output, whole: local_ci prints a 30-line tail and keeps the full log on the
+      # machine, which a hosted runner deletes when the job ends. Run 42930175911 named 12 of its
+      # 90 red tests and the rest were lost. Like the ceiling, a property of THIS machine.
+      GOH_TAIL: "100000"
     steps:
       # persist-credentials: false: the structural gate refuses a job token left in git config,
       # and nothing after the clone needs it. fetch-depth 0: the gate reads history (tags, the

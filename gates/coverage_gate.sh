@@ -101,6 +101,12 @@ export_failed() {
         failed="$(sed -n 's/^test \(.*\) \.\.\. FAILED$/\1/p' "$2" | sort -u | tr '\n' ' ')"
         err "$1: TESTS FAILED under coverage: ${failed:-see the tail below}"
     fi
+    # pytest's short summary, WHOLE (run 42930175911: the 25-line tail showed 12 of 90 red nodes,
+    # from a hosted runner whose log was gone by the time anyone read it).
+    if grep -qE '^(FAILED|ERROR) [^ ]+::' "$2"; then
+        err "$1: TESTS FAILED under coverage ($(grep -cE '^(FAILED|ERROR) [^ ]+::' "$2") red):"
+        sed -nE 's/^(FAILED|ERROR) ([^ ]+::[^ ]*).*/    \1 \2/p' "$2" | sort -u >&2
+    fi
     warn "$1 export failed — tail of $2:"
     tail -n 25 "$2" | sed 's/^/    /' >&2
 }
