@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+* **`goh ship --summary` titles the release stanza (GOH.SHIPSUMMARY).** v0.96.0's heading ended
+  mid-clause, "... and v0.95.0's bump was made by": the summary reached the preflight but never the release step, so tools/release_goh.sh saw no
+  GOH_SHIP_SUMMARY and the cut clipped the first entry at 90 characters. The release step now runs
+  with GOH_SHIP_SUMMARY and GOH_SHIP_ITEM; release.sh takes the summary as its default `--title`; a
+  bold lead that is its own sentence is the derived title; and a clause clipped to fit is refused,
+  by `changelog_cut.py cut` and by goh ship's preflight before its push (`ready --title`).
+
 ## v0.96.0 -- goh declared no GOH_SHIP_RELEASE, so `goh ship` refused it and v0.95.0's bump was made by
 
 * **goh ship releases goh itself: tools/release_goh.sh (GOH.SHIPKIT).** goh declared no

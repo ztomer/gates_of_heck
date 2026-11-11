@@ -181,7 +181,7 @@ def loopctl() -> Path:
     return Path(os.environ.get("GOH_LOOPCTL") or Path.home() / "Projects/.loop/tools/loopctl.py")
 
 
-def preflights(repo: Path, cfg: dict[str, str], version: str) -> list[tuple[str, str]]:
+def preflights(repo: Path, cfg: dict[str, str], version: str, summary="") -> list[tuple[str, str]]:
     """The commands asked before the push when the release step will run, in order: goh's
     changelog reading (GOH.SHIPUNRELEASED: routines' kit said `Unreleased is empty: nothing to
     release` after its push), then the repo's GOH_SHIP_PREFLIGHT, each as (whose, command). None
@@ -194,7 +194,7 @@ def preflights(repo: Path, cfg: dict[str, str], version: str) -> list[tuple[str,
     if (repo / "CHANGELOG.md").is_file():
         cut = shlex.quote(str(ROOT / "tools" / "release-kit" / "changelog_cut.py"))
         ready = f"{shlex.quote(sys.executable)} {cut} ready --version {version} --file CHANGELOG.md"
-        out.append(("goh's changelog reading", ready))
+        out.append(("goh's changelog reading", f"{ready} --title {shlex.quote(summary)}"))
     if cfg["GOH_SHIP_PREFLIGHT"].strip():
         out.append(("GOH_SHIP_PREFLIGHT", cfg["GOH_SHIP_PREFLIGHT"].replace("{version}", version)))
     return out
@@ -251,7 +251,7 @@ def plan(args: argparse.Namespace) -> dict:
         timeout = int(cfg["GOH_SHIP_TIMEOUT"] or DEFAULT_TIMEOUT)
     except ValueError:
         raise Refused(f"GOH_SHIP_TIMEOUT={cfg['GOH_SHIP_TIMEOUT']!r} is not seconds") from None
-    asked = preflights(repo, cfg, version)
+    asked = preflights(repo, cfg, version, args.summary or "")
     run_preflights(repo, asked, version, args, timeout)
     root = Path(os.environ.get("LOOPCTL_ROOT") or Path.home() / "Projects")
     try:
@@ -375,8 +375,8 @@ def run_steps(res: dict) -> int:
     os.chdir(res["repo"])
     for k in git_bindings():
         os.environ.pop(k, None)
-    os.environ["GOH_SHIP_VERSION"] = res["version"]
-    os.environ["GOH_SHIP_RESULT"] = res["result"]
+    os.environ.update(GOH_SHIP_VERSION=res["version"], GOH_SHIP_RESULT=res["result"],
+                      GOH_SHIP_SUMMARY=res["summary"], GOH_SHIP_ITEM=res["item"] or "")  # fmt: skip
     stem = Path(res["result"]).with_suffix("")
     for name in STEPS:
         cmd, why = command(res, name)

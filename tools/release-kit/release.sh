@@ -102,7 +102,7 @@ source "$GOH/tui/lib.sh"
 VERSION=""
 GATE_CMD="${GOH_RELEASE_GATE:-}"
 BRANCH=""            # --branch NAME; default: origin's default branch (branch_step.sh)
-CHANGELOG_CHECK=1; TITLE=""
+CHANGELOG_CHECK=1; TITLE="${GOH_SHIP_SUMMARY:-}"   # goh ship --summary titles the stanza (GOH.SHIPSUMMARY); --title wins
 CI_CHECK=1
 DO_PUSH=1
 DO_RELEASE=1

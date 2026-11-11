@@ -97,3 +97,37 @@ def test_a_phrase_or_a_bare_heading_passes_the_check(tmp_path, heading):
     log = _log(tmp_path, f"# C\n\n## Unreleased\n\n{heading}\n\n- x\n\n{DATED_TAIL}")
     r = _cut(log, "check", "--version", "1.2.0")
     assert r.returncode == 0, r.stderr
+
+
+# ---- GOH.SHIPSUMMARY: a clause clipped at TITLE_MAX is no title ---------------------------------
+
+ENTRY_096 = (
+    "* **goh ship releases goh itself: tools/release_goh.sh (GOH.SHIPKIT).** goh declared no\n"
+    "  GOH_SHIP_RELEASE, so `goh ship` refused it and v0.95.0's bump was made by hand. The kit\n"
+    "  refuses a dirty tree.\n"
+)
+LONG_096 = (
+    "* goh declared no GOH_SHIP_RELEASE, so `goh ship` refused it and v0.95.0's bump was made by\n"
+    "  hand. The kit refuses a dirty tree.\n"
+)
+GOH_TAIL = "## v0.95.0 -- older\n\n* older\n"
+
+
+def test_a_lead_that_is_its_own_sentence_is_the_title(tmp_path):
+    """v0.96.0's entry: the bold lead is a sentence, the text after it the explanation."""
+    log = _log(tmp_path, f"# C\n\n## Unreleased\n\n{ENTRY_096}\n{GOH_TAIL}")
+    r = _cut(log, "cut", "--version", "0.96.0")
+    assert r.returncode == 0, r.stderr
+    assert "\n## v0.96.0 -- goh ship releases goh itself\n" in log.read_text(), log.read_text()
+
+
+def test_a_cut_refuses_a_clause_clipped_to_fit(tmp_path):
+    log = _log(tmp_path, f"# C\n\n## Unreleased\n\n{LONG_096}\n{GOH_TAIL}")
+    before = log.read_text()
+    r = _cut(log, "cut", "--version", "0.96.0")
+    assert r.returncode == 1 and "past 90" in r.stderr and "--title" in r.stderr, r.stderr
+    assert log.read_text() == before
+    assert _cut(log, "ready", "--version", "0.96.0").returncode == 1
+    assert _cut(log, "ready", "--version", "0.96.0", "--title", "goh ships itself").returncode == 0
+    r = _cut(log, "cut", "--version", "0.96.0", "--title", "goh ships itself")
+    assert r.returncode == 0, r.stderr

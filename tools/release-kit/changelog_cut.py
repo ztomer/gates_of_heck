@@ -19,15 +19,16 @@ unreleased -- the tag ships the whole tree -- so:
   does not end on a joining mark, leaves no backtick or bracket open: AU.RELHEADING; `cut` refuses
   the same title, given or derived), Unreleased (if the file keeps one) is ONE section and EMPTY,
   and no entry of X's stanza repeats an entry of an earlier stanza. Exit 1 names each finding.
-* `ready --version X`: goh ship's preflight, asked BEFORE its push (GOH.SHIPPREFLIGHT): exit 1
-  when a cut of X would be refused as empty (`nothing_to_release`), else 0.
+* `ready --version X [--title T]`: goh ship's preflight, asked BEFORE its push (GOH.SHIPPREFLIGHT):
+  exit 1 when a cut of X would be refused as empty (`nothing_to_release`) or its title, T or the
+  derived one, is no phrase or a clause clipped at TITLE_MAX (GOH.SHIPSUMMARY), else 0.
 
 An entry is a top-level list item (`* ` or `- ` at column 0) with its continuation lines, compared
 with whitespace collapsed. Headings: `## Unreleased` / `## [Unreleased]`, `## vX...` / `## [X]...`.
 
     changelog_cut.py cut   --version 1.2.3 [--title "what it ships"] [--file CHANGELOG.md]
     changelog_cut.py check --version 1.2.3 [--file CHANGELOG.md]
-    changelog_cut.py ready --version 1.2.3 [--file CHANGELOG.md]
+    changelog_cut.py ready --version 1.2.3 [--title "what it ships"] [--file CHANGELOG.md]
 """
 
 from __future__ import annotations
@@ -160,21 +161,40 @@ TITLE_MAX = 90
 
 def derive_title(first_entry: str) -> str:
     """A heading's title from an entry: its first clause, house-lowercase, at most TITLE_MAX."""
+    return derive(first_entry)[0]
+
+
+def derive(first_entry: str) -> tuple[str, str | None]:
+    """(title, why it is no title or None). The title is the entry's first clause, house-lowercase.
+    A bold lead that is its own sentence (`**goh ship releases goh itself.** goh declared ...`) IS
+    the title; a label lead (`**Fix**: the x`) gives way to what follows it, unless that is no
+    phrase (AU.RELHEADING). A clause longer than TITLE_MAX is not cut to fit: v0.96.0 shipped as
+    `## v0.96.0 -- ... and v0.95.0's bump was made by`, a clause cut at 90 characters
+    (GOH.SHIPSUMMARY), so a clipped clause comes back with the reason, and `cut` refuses it,
+    naming --title."""
     text = first_entry.strip()
     lead = re.match(r"^\*\*([^*]+)\*\*:?\s*(.*)$", text)
-    if (
-        lead
-    ):  # `**Fix**: the x` -> "the x"; `**the x**, like y` -> the lead is the phrase (AU.RELHEADING)
-        text = lead.group(2) if re.match(r"[\w`'\"]", lead.group(2)) else lead.group(1).strip()
+    if lead:
+        own_sentence = lead.group(1).rstrip().endswith((".", "!", "?"))
+        text = (
+            lead.group(2)
+            if re.match(r"[\w`'\"]", lead.group(2)) and not own_sentence
+            else lead.group(1).strip()
+        )
     m = TITLE_STOP.search(text)
     clause = (text[: m.start()] if m else text).strip()
+    clipped = None
     if len(clause) > TITLE_MAX:
+        clipped = (
+            f"the first entry's first clause runs {len(clause)} characters, past {TITLE_MAX}, and "
+            f"cut to fit it would break off mid-clause"
+        )
         clause = clause[:TITLE_MAX].rsplit(" ", 1)[0]
         if clause.count("`") % 2:  # never leave a code span open
             clause = clause[: clause.rfind("`")]
     if clause[:2].isalpha() and clause[1:2].islower():  # "The x" -> "the x"; "ZT.X" stays
         clause = clause[:1].lower() + clause[1:]
-    return clause.rstrip(" ,;:")
+    return clause.rstrip(" ,;:"), clipped
 
 
 _HEADING_TAIL = re.compile(r"(?:^|\s)(?:_?\(\d{4}-\d{2}-\d{2}\)_?|-?\s*\d{4}-\d{2}-\d{2})$")
@@ -296,6 +316,24 @@ def nothing_to_release(lines: list[str], version: str) -> bool:
     return not any(_strip_edges(body(lines, u)) for u in unrels)
 
 
+def title_refusal(lines: list[str], version: str, title: str | None) -> str | None:
+    """Why a cut of VERSION would refuse its heading's title ('' title given or derived), or None.
+    Asked by `ready`, before goh ship's push, of what the kit's cut will write."""
+    secs = sections(lines)
+    unrels = [s for s in secs if s.unreleased]
+    if not unrels or any(s.version == version for s in secs):
+        return None
+    if title is None:
+        if not heading_style(secs)[0]:
+            return None
+        moved = [ln for u in unrels for ln in body(lines, u)]
+        title, clipped = derive((entries(moved) or [""])[0])
+        if clipped:
+            return f"the derived v{version} title '{title}' is not a phrase: {clipped}"
+    why = title_findings(title)
+    return f"the v{version} title '{title}' is not a phrase: {'; '.join(why)}" if why else None
+
+
 def cut(lines: list[str], version: str, title: str | None) -> tuple[list[str] | None, list[str]]:
     secs = sections(lines)
     unrels = [s for s in secs if s.unreleased]
@@ -326,10 +364,11 @@ def cut(lines: list[str], version: str, title: str | None) -> tuple[list[str] | 
     else:
         titled, sep, dated = heading_style(secs)
         head = "#" * first.level
+        clipped = None
         if title is None and titled:
-            title = derive_title((entries(moved) or [""])[0])
+            title, clipped = derive((entries(moved) or [""])[0])
         stamp = f" _({datetime.date.today().isoformat()})_" if dated else ""
-        why = title_findings(title or "")
+        why = title_findings(title or "") + ([clipped] if clipped else [])
         if why:
             return None, [_fragment(title or "", why)]
         heading = f"{head} v{version} {sep} {title}{stamp}" if title else f"{head} v{version}"
@@ -359,6 +398,12 @@ def main(argv: list[str] | None = None) -> int:
             print(f"✗ changelog: {path}: Unreleased is empty and no ## v{a.version} stanza is "
                   "written; add the entry this release ships under ## Unreleased, commit, then "
                   "ship", file=sys.stderr)  # fmt: skip
+            return 1
+        # '' is no title: goh ship passes its --summary, empty when none was given.
+        why = title_refusal(lines, a.version, a.title or None)
+        if why:  # the kit's cut would refuse it after the push (GOH.SHIPSUMMARY)
+            print(f"✗ changelog: {path}: {why}; pass `goh ship --summary TEXT`, which titles "
+                  "the stanza", file=sys.stderr)  # fmt: skip
             return 1
         return 0
     if a.mode == "check":
