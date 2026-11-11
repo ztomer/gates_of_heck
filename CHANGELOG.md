@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+* **The session bench's inflation report is pinned without a clock (GOH.WALLCLOCK).**
+  `test_the_slowest_inflating_steps_are_reported` slept under a flock and asserted a measured ratio
+  above 1.5; a hosted runner read 1.48 and the run went red (goh 42990295293). The test now injects
+  the durations as `GOH_TIMINGS` lines and asserts the ordering, means, ratios and exclusions
+  exactly, with one end-to-end pin that the bench carries a workload's fixed timings into its
+  report. The real serialization measurement stays with the SERIAL/PARALLEL pins, which bound by
+  the box's own single-session time.
+
 * **`goh workflow-pins`: a workflow names its runner image and its action releases (GOH.RUNNERPIN).**
   "Latest" is a named release, never a moving label (house rule 2026-10-06), and two things in a
   workflow still moved under an unchanged file: a `*-latest` runner label (CI warned `ubuntu-latest`

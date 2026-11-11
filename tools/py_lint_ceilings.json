@@ -265,7 +265,6 @@
   "tests/test_screen_presentation.py": 3,
   "tests/test_secret_render_guard.py": 1,
   "tests/test_self_match_wait.py": 1,
-  "tests/test_session_bench.py": 1,
   "tests/test_shell_lint_source_paths.py": 1,
   "tests/test_ship.py": 3,
   "tests/test_spend_watch.py": 13,

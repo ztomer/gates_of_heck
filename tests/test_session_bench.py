@@ -132,19 +132,70 @@ def test_a_failing_session_is_counted_not_timed_as_a_success(tmp_path: Path) -> 
     assert _row(doc, 2)["failed"] == 2, doc
 
 
+def _timings(path: Path, rows: list[tuple[str, float]]) -> Path:
+    path.write_text("".join(json.dumps({"label": k, "ms": v, "rc": 0}) + "\n" for k, v in rows))
+    return path
+
+
+def _bench_module():
+    sys.path.insert(0, str(REPO_ROOT / "tools"))
+    try:
+        import session_bench
+    finally:
+        sys.path.remove(str(REPO_ROOT / "tools"))
+    return session_bench
+
+
 def test_the_slowest_inflating_steps_are_reported(tmp_path: Path) -> None:
-    """With GOH_TIMINGS lines from the workload, the bench names the step whose time grew most
-    from one session to many: where the serialization IS, not only that it exists."""
-    timed = (
-        "python3 -c \"import fcntl,time,os,json; f=open(os.environ['SHARED_LOCK'],'a'); "
-        "t=time.time(); fcntl.flock(f, fcntl.LOCK_EX); time.sleep(0.3); "
-        "open(os.environ['GOH_TIMINGS'],'a').write(json.dumps({'label':'locked step',"
-        "'ms':int((time.time()-t)*1000),'rc':0})+chr(10)); "
-        "open(os.environ['GOH_TIMINGS'],'a').write(json.dumps({'label':'free step','ms':5,'rc':0})+chr(10))\""
+    """The report names the step whose time grew most from one session to many. STRUCTURAL, not
+    timed (GOH.WALLCLOCK): the durations are injected as GOH_TIMINGS lines, so the ordering, the
+    mean, the ratio and the exclusions are tested exactly. This test used to sleep 0.3 s under a
+    flock and assert ratio > 1.5 on the measured walls; on a hosted runner it read 1.48 (goh run
+    42990295293) -- a wall-clock assertion on a loaded box. That the serialization IS measured
+    stays with the SERIAL/PARALLEL pins above, which bound by the box's own t1; nothing here
+    depends on a clock."""
+    sb = _bench_module()
+    alone = sb.step_means(
+        [
+            _timings(
+                tmp_path / "a0",
+                [("locked", 300), ("free", 5), ("zero", 0), ("alone only", 9), ("gain", 100)],
+            ),
+            _timings(tmp_path / "a1", [("locked", 500), ("gain", 100)]),
+            tmp_path / "missing",  # a session that wrote no timings is skipped, not an error
+        ]
     )
-    doc = _bench(tmp_path, timed, "--sessions", "1,3", "--warmup", "0")
-    top = doc["inflation"][0]
-    assert top["label"] == "locked step" and top["ratio"] > 1.5, doc["inflation"]
+    crowded = sb.step_means(
+        [
+            _timings(
+                tmp_path / "c0",
+                [("locked", 900), ("free", 5), ("zero", 40), ("crowded only", 70), ("gain", 130)],
+            ),
+            _timings(tmp_path / "c1", [("locked", 1100)]),
+        ]
+    )
+    assert alone["locked"] == 400 and crowded["locked"] == 1000, (alone, crowded)
+    rows = sb.inflation(alone, crowded)
+    assert [r["label"] for r in rows] == ["locked", "zero", "gain", "free"], rows
+    assert rows[0] == {"label": "locked", "alone_ms": 400.0, "crowded_ms": 1000.0, "ratio": 2.5}
+    assert next(r for r in rows if r["label"] == "zero")["ratio"] is None  # no divide by zero
+    assert next(r for r in rows if r["label"] == "free")["ratio"] == 1.0
+
+
+def test_the_bench_reads_the_workloads_timings_into_its_report(tmp_path: Path) -> None:
+    """End to end through the real bench, with no clock in the assertion: a workload that writes
+    GOH_TIMINGS lines of FIXED values gets exactly those steps, with exactly those means, in the
+    report, whatever the box's load."""
+    emit = (
+        "python3 -c \"import os,json; f=open(os.environ['GOH_TIMINGS'],'a'); "
+        "f.write(json.dumps({'label':'fixed','ms':250,'rc':0})+chr(10)); "
+        "f.write(json.dumps({'label':'other','ms':5,'rc':0})+chr(10))\""
+    )
+    doc = _bench(tmp_path, emit, "--sessions", "1,3", "--warmup", "0")
+    assert {r["label"]: (r["alone_ms"], r["crowded_ms"]) for r in doc["inflation"]} == {
+        "fixed": (250.0, 250.0),
+        "other": (5.0, 5.0),
+    }, doc["inflation"]
 
 
 FAILS = "echo the cause of it; exit 3"
