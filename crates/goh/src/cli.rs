@@ -434,6 +434,9 @@ pub enum Commands {
     MovingTags(StagedArgs),
     /// Fail on a plan (ROADMAP/PLAN/BACKLOG/TODO `.md`) stating the installed version (it rots).
     InstalledVersion(StagedArgs),
+    /// Fail on a `GOH_INSTALLS` entry the installed-version reader cannot read: each is an app at
+    /// `/Applications/...X.app` or `~/Applications/...X.app`, or a CLI by its bare name.
+    Installs,
     /// One roadmap (`GOH_ROADMAP`) of open entries, each with an id and a `Done when:`.
     Roadmap(RoadmapArgs),
     /// Fail on a test spawn no guard reaps, or whose reap sits below a line that can panic.

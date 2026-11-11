@@ -41,6 +41,7 @@ pub mod homepaths;
 pub mod hookindex;
 pub mod house_python;
 pub mod index_view;
+pub mod installs;
 pub mod instline;
 pub mod jssyntax;
 pub mod killname;
@@ -348,6 +349,7 @@ fn run_scanners(command: Commands) -> Result<i32, Box<Commands>> {
             paths(exclude, |x| statusmark::run_command(seed, x))
         }
         Commands::PrivateNames(a) => privnames::run_command(a.staged),
+        Commands::Installs => installs::run_command(),
         other => return Err(Box::new(other)),
     })
 }

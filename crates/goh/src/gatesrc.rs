@@ -101,6 +101,8 @@ pub struct Gatesrc {
     /// `GOH_ROADMAP`: the one roadmap file, repo-relative, or `none` (`goh roadmap`). Unset: the
     /// roadmap step judges nothing and says so.
     pub roadmap: Option<String>,
+    /// `GOH_INSTALLS`: what this repo installs on the Mac (`goh installs`). Unset: not judged.
+    pub installs: Option<String>,
 }
 
 /// Parse one right-hand side: single/double-quoted or bare with `#` comment.
@@ -232,6 +234,7 @@ pub fn from_pairs(pairs: &BTreeMap<String, String>) -> Result<Gatesrc, String> {
         js_syntax_gate: pairs.get("GOH_JS_SYNTAX").cloned(),
         bare_python_scope: get("GOH_BARE_PYTHON_SCOPE"),
         roadmap: pairs.get("GOH_ROADMAP").filter(|v| !v.is_empty()).cloned(),
+        installs: pairs.get("GOH_INSTALLS").cloned(),
     })
 }
 
@@ -245,7 +248,7 @@ pub fn from_pairs(pairs: &BTreeMap<String, String>) -> Result<Gatesrc, String> {
 /// keys, so a step that reads one from the environment (`GOH_STEP_TIMEOUT`, and
 /// every child it spawns) sees the file's value, never an inherited one.
 /// Pinned against `docs/config.md` by `tests/test_gate_environment.py`.
-pub const PIPELINE_KEYS: [&str; 46] = [
+pub const PIPELINE_KEYS: [&str; 47] = [
     "GOH_MAX_LINES",
     "GOH_LINE_EXCLUDE",
     "GOH_LINE_BASELINE",
@@ -293,6 +296,7 @@ pub const PIPELINE_KEYS: [&str; 46] = [
     "GOH_BUSY_LOOP_MIN_FILES",
     "GOH_INSTALLED_VERSION_MIN_FILES",
     "GOH_ROADMAP",
+    "GOH_INSTALLS",
 ];
 
 /// Make the process environment say what `root/.gatesrc` says for every
