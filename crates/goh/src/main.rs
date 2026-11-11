@@ -317,6 +317,15 @@ fn paths<F: FnOnce(&str) -> i32>(exclude: Option<String>, run: F) -> i32 {
     declared(exclude, None, gatesrc::Exempt::Paths).map_or_else(|code| code, |x| run(&x))
 }
 
+/// `goh early-exit-pipe`: the seed write, or the scan.
+fn early_pipe(seed: bool, staged: bool, exclude: &str) -> i32 {
+    if seed {
+        earlypipe::write_seed(exclude)
+    } else {
+        earlypipe::run_command(staged, exclude)
+    }
+}
+
 /// The path scanners (`--exclude` resolved against the repo's `.gatesrc`), or the command back.
 fn run_scanners(command: Commands) -> Result<i32, Box<Commands>> {
     Ok(match command {
@@ -422,13 +431,7 @@ fn run_ported(command: Commands) -> Result<i32, Box<Commands>> {
             exclude,
             staged,
             seed,
-        } => paths(exclude, |x| {
-            if seed {
-                earlypipe::write_seed(x)
-            } else {
-                earlypipe::run_command(staged, x)
-            }
-        }),
+        } => paths(exclude, |x| early_pipe(seed, staged, x)),
         Commands::DeadAfterExec(a) => paths(a.exclude, |x| deadexec::run_command(a.staged, x)),
         Commands::BareHookIndex(a) => paths(a.exclude, |x| hookindex::run_command(a.staged, x)),
         Commands::ReleaseQuiet(a) => paths(a.exclude, |x| relquiet::run_command(a.staged, x)),
