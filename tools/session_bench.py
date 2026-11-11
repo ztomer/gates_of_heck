@@ -51,7 +51,7 @@ sys.path.insert(0, str(GOH / "checks"))
 
 from _gitutil import foreign_repo_env
 
-from tui.lib import err, info, ok, warn
+from tui.lib import counted, err, info, ok, warn
 
 DEFAULT_WORKLOAD = f'bash "{GOH}/gates/structural.sh" --full'
 # tools/quiet.sh's --max-load: this box's floor with every gate drained is 4.5 min / 6.2 median
@@ -164,7 +164,7 @@ def show_failure(runs: list[dict]) -> None:
         for rc, log in zip(r["rcs"], r["logs"], strict=True):
             if rc:
                 lines = log.read_text(errors="replace").splitlines()[-TAIL:]
-                err(f"{log} exited {rc}; its last {len(lines)} line(s):")
+                err(f"{log} exited {rc}; its last {counted(len(lines), 'line')}:")
                 print("\n".join(lines), file=sys.stderr)
                 return
 
@@ -284,7 +284,8 @@ def bench(args) -> int:
         if failed:
             show_failure(runs)
             err(
-                f"{failed} session run(s) failed -- logs in {logs} (kept); this is not a measurement"
+                f"{counted(failed, 'session run')} failed -- logs in {logs} (kept); "
+                "this is not a measurement"
             )
             args.keep = True
             return 1

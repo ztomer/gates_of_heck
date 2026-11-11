@@ -980,13 +980,6 @@
       "path": "tools/release-kit/changelog_cut.py",
       "count": 1,
       "reason": "unreviewed: 1 hedged plural: line 116"
-    },
-    {
-      "root": "73391f04f5f2b92ab9813c62e6cecdce919d2d86",
-      "repo": "gates_of_heck",
-      "path": "tools/session_bench.py",
-      "count": 2,
-      "reason": "unreviewed: 2 hedged plurals: lines 167, 283"
     }
   ]
 }

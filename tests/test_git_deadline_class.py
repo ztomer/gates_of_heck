@@ -32,6 +32,7 @@ from pathlib import Path
 import pytest
 from _own_files import own_source_files
 from conftest import REPO_ROOT
+from timing_bounds import GiveUp
 
 sys.path.insert(0, str(REPO_ROOT / "lib"))
 
@@ -345,18 +346,42 @@ def test_run_writer_returns_the_result_of_a_writer_that_finishes(
     assert done is not None and done.returncode == 0 and done.stdout.strip() == "done commit -q"
 
 
+def _pid_written(path: Path, within_s: float) -> int:
+    """The pid in `path` once its CONTENT is there: a reader that opened it the instant it existed
+    read "" under load (GOH.LOADFLAKE, ValueError at int(''))."""
+    give_up = GiveUp(within_s)
+    while not give_up.passed():
+        text = path.read_text() if path.exists() else ""
+        if text.strip().isdigit():
+            return int(text)
+        time.sleep(0.02)
+    raise AssertionError(f"{path.name} held no pid after {within_s:.0f} s: the hook never wrote it")
+
+
+@pytest.mark.parametrize("late_s", [0.0, 0.6])
 def test_run_writer_stops_the_whole_group_a_hook_included(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, late_s: float
 ) -> None:
+    """The hook writes its pid atomically (tmp, then mv) and `git` blocks only once it is there, so
+    the stop judges a hook that ran; `late_s` forces the late write that flaked under load (red on
+    the old read-at-once body, FileNotFoundError). The deadline is past the write, with slack."""
     import gitrun
 
     hook_pid = tmp_path / "hook.pid"
-    body = f"sh -c 'echo $$ > \"{hook_pid}\"; exec sleep 300' & wait"
+    tmp = tmp_path / "hook.pid.tmp"
+    hook = f'sleep {late_s}; echo $$ > "{tmp}"; mv "{tmp}" "{hook_pid}"; exec sleep 300'
+    body = f"sh -c '{hook}' & wait"
     _with_path(_shim(tmp_path, body), monkeypatch)
-    assert gitrun.run_writer(["commit"], cwd=tmp_path, deadline_s=0.5, grace_s=1.0) is None
-    time.sleep(0.3)
-    with pytest.raises(ProcessLookupError):
-        os.kill(int(hook_pid.read_text()), 0)
+    assert gitrun.run_writer(["commit"], cwd=tmp_path, deadline_s=late_s + 2.0, grace_s=1.0) is None
+    pid = _pid_written(hook_pid, within_s=10)
+    give_up = GiveUp(5)
+    while not give_up.passed():
+        try:
+            os.kill(pid, 0)
+        except ProcessLookupError:
+            return
+        time.sleep(0.05)
+    pytest.fail(f"the hook {pid} outlived the stopped writer's group")
 
 
 def test_killtree_terms_before_it_kills(tmp_path: Path) -> None:
