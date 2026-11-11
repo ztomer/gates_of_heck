@@ -79,8 +79,15 @@ GRACE = 5
 DEFAULT_TIMEOUT = 3600
 KEYS = ("GOH_SHIP_RELEASE", "GOH_SHIP_INSTALL", "GOH_SHIP_TIMEOUT", "GOH_SHIP_RELEASE_PUSHES")
 SEMVER = re.compile(r"^v(\d+)\.(\d+)\.(\d+)$")
-GIT_BINDINGS = ("GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE", "GIT_PREFIX", "GIT_COMMON_DIR",
-                "GIT_OBJECT_DIRECTORY")  # fmt: skip
+
+
+def git_bindings() -> tuple[str, ...]:
+    """The variables that bind git to one repository: git's own list (`--local-env-vars`,
+    checks/_gitutil.py), never a hand copy -- the copy here held 6 of git's 15 (GOH.ENVLEAK)."""
+    sys.path.insert(0, str(ROOT / "checks"))
+    from _gitutil import local_env_vars
+
+    return local_env_vars()
 
 
 class Refused(Exception):
@@ -301,13 +308,13 @@ def ci_wait(result: str) -> int:
 def unbound_env() -> dict[str, str]:
     """This environment without git's repository bindings: a step runs in the shipped repo, never in
     whatever repository a hook that started `goh ship` had bound (contract #12)."""
-    return {k: v for k, v in os.environ.items() if k not in GIT_BINDINGS}
+    return {k: v for k, v in os.environ.items() if k not in git_bindings()}
 
 
 def run_steps(res: dict) -> int:
     """Run the pipeline in this process; one mark per step; 0 shipped, 1 a step failed."""
     os.chdir(res["repo"])
-    for k in GIT_BINDINGS:
+    for k in git_bindings():
         os.environ.pop(k, None)
     os.environ["GOH_SHIP_VERSION"] = res["version"]
     os.environ["GOH_SHIP_RESULT"] = res["result"]

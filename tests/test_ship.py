@@ -392,3 +392,20 @@ def test_without_git_cliff_the_ship_is_refused_naming_it(shipped, tmp_path):
     assert "git-cliff" in r.stderr and "brew install git-cliff" in r.stderr, r.stderr
     r = _ship(shipped, tmp_path, "--wait", "--bump", "patch", PATH=_path_with(tmp_path, None))
     assert r.returncode == 0, r.stdout + r.stderr  # an explicit bump needs no tool
+
+
+def test_a_step_runs_with_none_of_gits_repository_variables(monkeypatch):
+    """GOH.ENVLEAK: the steps' scrub is git's OWN list (`--local-env-vars`), never a hand copy. The
+    copy held 6 of git's 15: GIT_CONFIG_PARAMETERS, GIT_ALTERNATE_OBJECT_DIRECTORIES and the rest
+    reached the release kit and every test its push gate ran."""
+    sys.path.insert(0, str(REPO_ROOT / "checks"))
+    from _gitutil import local_env_vars
+
+    sys.path.insert(0, str(REPO_ROOT / "tools"))
+    import ship
+
+    names = local_env_vars()
+    assert "GIT_CONFIG_PARAMETERS" in names  # calibration: the list is git's, not the copy's
+    for name in names:
+        monkeypatch.setenv(name, "/leaked")
+    assert not set(names) & set(ship.unbound_env())

@@ -9,6 +9,11 @@
 { # parse-guard -- bash reads this group whole before running it (tests/test_parse_guard.py)
 . "$(dirname "${BASH_SOURCE[0]}")/_from_head.sh"; goh_from_head "${BASH_SOURCE[0]}" "$@"   # run HEAD, not the tree (C4)
 set -euo pipefail
+# The hook's repository variables go first, as in every other hook (gates/_git_env.sh): from a
+# linked worktree git hands commit-msg an absolute GIT_DIR, and the repo's own tools/commit_msg.sh
+# below inherited it, so a `git init <tmp>` anywhere under it re-initialised THIS repository
+# (GOH.ENVLEAK, tests/test_commit_msg_git_env.py).
+goh_hook_unbind || exit $?
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 root="$(git rev-parse --show-toplevel)"
 # A held repo takes no commit; commit-msg is also the hook a MERGE commit runs (lib/repo_hold.sh).
