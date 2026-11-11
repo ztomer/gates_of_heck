@@ -176,7 +176,26 @@ def listed_files(root: str, staged: bool) -> list[str]:
             f"git {cmd[3]} failed (exit {out.returncode}): "
             f"{out.stderr.decode('utf-8', 'replace').strip()[:200]}"
         )
-    return [n.decode("utf-8", "replace") for n in out.stdout.split(b"\0") if n]
+    names = [n.decode("utf-8", "replace") for n in out.stdout.split(b"\0") if n]
+    if staged:
+        return names
+    # A tracked file deleted from the worktree is still in the INDEX, so `--cached` names it -- but
+    # it is not in the tree "full" judges. Measured 2026-11-11: routines had eight fixtures deleted
+    # mid-edit, and check_estate_corpus.py died copying the first (FileNotFoundError), which took
+    # structural --full and the empty-scope sweep red in goh over another repo's working state.
+    gone = subprocess.run(
+        ["git", "-C", root, "ls-files", "-z", "--deleted"],
+        capture_output=True,
+        stdin=subprocess.DEVNULL,
+        check=False,
+    )
+    if gone.returncode != 0:
+        raise RuntimeError(
+            f"git ls-files --deleted failed (exit {gone.returncode}): "
+            f"{gone.stderr.decode('utf-8', 'replace').strip()[:200]}"
+        )
+    deleted = {n.decode("utf-8", "replace") for n in gone.stdout.split(b"\0") if n}
+    return [n for n in names if n not in deleted] if deleted else names
 
 
 # Directories a FALLBACK walk never descends: build output and VCS internals. Only consulted

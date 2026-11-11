@@ -75,7 +75,12 @@ def materialise(source, files, dest):
         src = os.path.join(source, rel)
         dst = os.path.join(dest, rel)
         os.makedirs(os.path.dirname(dst) or dest, exist_ok=True)
-        shutil.copyfile(src, dst)
+        try:
+            shutil.copyfile(src, dst)
+        except FileNotFoundError:
+            # Deleted by its owner between the listing and this copy (another agent's edit in
+            # flight): not in the tree any more, so not in the corpus. The floor still counts.
+            continue
     scratch_git(dest)  # one empty .git copied, not init + config x2 (checks/_gitutil.py)
     for args in (("add", "-A"), (*_IDENTITY, "commit", "-qm", "corpus")):
         subprocess.run(

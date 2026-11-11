@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+* **A file another repo deleted mid-edit no longer turns goh's gate red (GOH.LOADBUILDLOCK).**
+  routines had eight fixtures deleted from its worktree; `listed_files`' full mode still named them
+  (`ls-files --cached`), and check_estate_corpus.py died copying the first, which took structural
+  --full, the empty-scope sweep and two suite tests red on main and on every branch. Full scope now
+  omits a tracked file deleted from the worktree, and the corpus copy skips one removed under it.
+
 * **A build or a gate run bare beside a held load slot is refused (GOH.LOADBUILDLOCK).** Two agents
   met `load.py ... 1 -- swift test` refused for its machine-wide lock, then `--shared-lock-ok ... 0`
   refused for a slot held by a land.sh -- the load.py of before GOH.LOADREFUSE, which that land.sh
