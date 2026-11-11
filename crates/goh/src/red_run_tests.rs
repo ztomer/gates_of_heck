@@ -177,3 +177,33 @@ fn a_test_moved_to_another_hunk_is_the_same_test_and_a_new_name_is_new() {
     let attr = "+++ b/a.rs\n@@ -1,1 +1,2 @@\n-fn t() {\n+#[test]\n+fn t() -> R {\n";
     assert_eq!(added_tests(attr).len(), 1);
 }
+
+#[test]
+fn a_red_run_left_in_the_body_is_refused_naming_its_line_and_the_fix() {
+    // GOH.REDRUNPLACE: one blank line above Co-Authored-By makes it body text to git; the old
+    // refusal said the block "carries no `Red-run:`", which reads as missing. Both shapes.
+    let above = "feat: x\n\nbody\n\nRed-run: dropped the guard, the test went red\n\n\
+                 Co-Authored-By: A <a@b>\n";
+    let inside = "feat: x\n\nbody line\nRed-run: dropped the guard, the test went red\nmore\n\n\
+                  Co-Authored-By: A <a@b>\n";
+    for (msg, line) in [(above, 5), (inside, 4)] {
+        let why = refusal(msg, ADDS_A_TEST).expect("still refused: git reads no trailer there");
+        assert!(
+            why.contains(&format!(
+                "Red-run found in the body (line {line}), not in the trailer block: put it \
+                 directly above Co-Authored-By with no blank line between"
+            )),
+            "{why}"
+        );
+    }
+    let missing = refusal("feat: x\n\nbody\n\nCo-Authored-By: A <a@b>\n", ADDS_A_TEST).unwrap();
+    assert!(!missing.contains("found in the body"), "{missing}");
+    let hollow = refusal(
+        "feat: x\n\nbody\n\nRed-run: none\nCo-Authored-By: A <a@b>\n",
+        ADDS_A_TEST,
+    );
+    assert!(
+        !hollow.unwrap().contains("found in the body"),
+        "a hollow trailer is not misplaced"
+    );
+}

@@ -163,10 +163,26 @@ pub fn refusal(message: &str, diff: &str) -> Option<String> {
         1 => String::new(),
         n => format!(" and {} more", n - 1),
     };
+    if let Some(n) = misplaced(&lines).filter(|_| !trailers.contains_key(KEY)) {
+        // git reads it as body text, so it is still refused; the refusal says WHERE, because
+        // "carries no Red-run" read as missing to the writer who had written one (GOH.REDRUNPLACE).
+        return Some(format!(
+            "it adds a test ({first}{more}): {KEY} found in the body (line {n}), not in the \
+             trailer block: put it directly above Co-Authored-By with no blank line between"
+        ));
+    }
     Some(format!(
         "it adds a test ({first}{more}) and its trailer block carries no `{KEY}:` naming the \
          mutation that turned it red -- break the code once, watch the test fail, and say what broke"
     ))
+}
+
+/// The 1-based line of the last `Red-run:` line outside the trailer block, when the block has none.
+fn misplaced(lines: &[&str]) -> Option<usize> {
+    lines
+        .iter()
+        .rposition(|l| l.strip_prefix(KEY).is_some_and(|r| r.starts_with(':')))
+        .map(|i| i + 1)
 }
 
 /// A claim as it is judged hollow: trimmed, case-folded, trailing `.,;:!?` dropped.
