@@ -44,6 +44,8 @@ python	pytest	pip	python3 -m pip install pytest	gates/py_gate.sh	9.1.1
 goh-suite	pytest	pip	python3 -m pip install pytest	tools/pytest.sh	9.1.1
 goh-suite	pillow	pip	python3 -m pip install pillow	tools/pytest.sh	-
 goh-suite	numpy	pip	python3 -m pip install numpy	tools/pytest.sh	-
+goh-suite	ruff	pip	python3 -m pip install ruff	tools/pytest.sh	-
+goh-suite	git-cliff	brew	brew install git-cliff	tools/pytest.sh	-
 python	ruff	pip	python3 -m pip install ruff	gates/py_staged.sh	-
 rust	cargo	system	rustup (https://rustup.rs)	gates/rust_gate.sh	-
 rust	cargo-machete	cargo	cargo install cargo-machete	gates/rust_gate.sh	0.7.0

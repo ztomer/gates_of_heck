@@ -336,6 +336,19 @@ def test_goh_suite_installs_the_modules_its_tests_import():
         assert pkg in line.split(), line
 
 
+def test_goh_suite_installs_the_tools_its_fixture_gates_run():
+    """Run 42944992082: the suite gates fixture repos through the Python layer (`<python> -m ruff`)
+    and ships them through tools/ship.py (git-cliff), and the hosted runner had neither, because
+    goh's own gates declare no python or ship layer -- 23 test_ship and ~45 Python-gate tests went
+    red on a missing tool, not a defect (CI.PUBLIC2). The goh-suite layer installs both."""
+    got = _cli("--layer", "goh-suite", "--install")
+    assert got.returncode == 0, got.stderr
+    pip = next(ln for ln in got.stdout.splitlines() if "pip install" in ln)
+    assert "ruff" in pip.split(), pip
+    brew = next((ln for ln in got.stdout.splitlines() if ln.startswith("brew install")), "")
+    assert "git-cliff" in brew.split(), got.stdout
+
+
 def test_pip_installs_into_the_house_interpreter():
     """Not PATH's first python3: a hosted macOS runner carries two 3.15s (CI.PUBLIC2)."""
     got = _cli("--layer", "goh-suite", "--install")

@@ -60,6 +60,12 @@ export GATES_OF_HECK_SUITE_RUNNER=$$
     || die "pillow is not installed for the house interpreter $GOH_PY -- \"$GOH_PY\" -m pip install pillow"
 "$GOH_PY" -c 'import numpy' 2>/dev/null \
     || die "numpy is not installed for the house interpreter $GOH_PY -- \"$GOH_PY\" -m pip install numpy"
+# The tools the suite's FIXTURE repos are gated and shipped with (run 42944992082: ~45 Python-gate
+# tests died on "ruff is not available through <python> -m", and 23 test_ship tests on a missing
+# git-cliff): goh's own gates declare no python or ship layer, so the goh-suite layer installs them.
+"$GOH_PY" -m ruff --version >/dev/null 2>&1 \
+    || die "ruff is not installed for the house interpreter $GOH_PY -- \"$GOH_PY\" -m pip install ruff"
+command -v git-cliff >/dev/null 2>&1 || die "git-cliff is not on PATH (tools/ship.py's next version) -- brew install git-cliff"
 ARGS=(-q)
 if "$GOH_PY" -c "import xdist" 2>/dev/null; then
     ARGS+=(-n 12 --dist loadgroup)
