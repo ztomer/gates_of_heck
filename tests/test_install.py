@@ -12,6 +12,7 @@ refused BY NAME unless --force. Red proof: every refusal test below returned
 import os
 import shutil
 import subprocess
+import sys
 
 from conftest import EMOJI_SMILE, REPO_ROOT, git, hermetic_env, write
 
@@ -160,6 +161,21 @@ def test_hook_passes_clean_commit(repo):
     assert "all structural gates passed" in (r.stdout + r.stderr)
 
 
+def _hook_toolchain_env() -> dict[str, str]:
+    """What the self-hosted hook needs of THIS machine beyond its reduced PATH: the toolchains the
+    suite names (tests/suite_home.py), and the house interpreter the suite runs on. Run 42950563400:
+    under `/usr/bin:/bin:/opt/homebrew/bin` the hook resolved Homebrew's python3, which held no ruff
+    (the runner installs the suite's tools into its setup-python interpreter), and the python gate
+    died "ruff is not available through '/opt/homebrew/bin/python3 -m'"."""
+    env = {k: os.environ[k] for k in ("RUSTUP_HOME", "CARGO_HOME") if k in os.environ}
+    env["GOH_PY"] = sys.executable
+    return env
+
+
+def test_the_self_hosted_hook_runs_on_the_suites_interpreter():
+    assert _hook_toolchain_env()["GOH_PY"] == sys.executable
+
+
 def test_self_hosted_repo_satisfies_its_own_hook(tmp_path, goh):
     """gates_of_heck itself must pass its own pre-commit: clone-like check by
     installing into a fresh copy of THIS repo's tree and committing. The copy holds
@@ -209,8 +225,7 @@ def test_self_hosted_repo_satisfies_its_own_hook(tmp_path, goh):
         found = shutil.which(name)
         if found:
             (tools / name).symlink_to(found)
-    # The suite names it (tests/suite_home.py), and CARGO_HOME when the machine set one.
-    toolchain_env = {k: os.environ[k] for k in ("RUSTUP_HOME", "CARGO_HOME") if k in os.environ}
+    toolchain_env = _hook_toolchain_env()
     # GOH_DIR points the delegation at the copy itself → true self-host.
     r = subprocess.run(
         [
