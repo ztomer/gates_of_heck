@@ -2,6 +2,27 @@
 
 ## Unreleased
 
+* **A load refusal names the holder and the line to paste; a gate run waits for the slot
+  (GOH.LOADREFUSE, D-0002).** Two agents met `another load experiment already holds the slot` on a
+  `load.py 0 -- <gate>` and ran the gate bare. `--wait` now waits for the slot as well as for the
+  gates in flight (one bound, `--wait-max`), a run with no spinners waits unasked, and a refusal
+  prints `python3 <goh>/tools/load.py --wait <the same arguments>` beside the holder's pid, start,
+  spinners and command (lib/load_slot.py). Red first: all four of tests/test_load_refusal.py.
+
+* **gitrun's `repo=` drops git's local-env list; goh ship reads the repo it names
+  (GOH.SHIPGITDIR).** git ignores `-C` once GIT_DIR is set, so `goh ship` started from a hook
+  refused its own repo as "is not a git checkout". `run_reader`/`run_writer` take `repo=`; the five
+  sites that spelled `-C` by hand moved to it and an AST scan refuses a new one.
+
+* **A Red-run left in the body is refused naming its line (GOH.REDRUNPLACE).** One blank line
+  above Co-Authored-By makes it body text to git; the refusal now says `Red-run found in the body
+  (line N), not in the trailer block: put it directly above Co-Authored-By with no blank line
+  between`. Still refused: git's trailer semantics hold.
+
+* **The group-stop test waits on the hook pid's content (GOH.LOADFLAKE).** Under load it read
+  an empty hook.pid; a forced 0.8 s late write reproduced it. session_bench.py says its counts
+  (`1 line`, `3 session runs`), never `line(s)`.
+
 * **goh ship asks every release precondition before its push: GOH_SHIP_PREFLIGHT
   (GOH.SHIPPREFLIGHT).** token-pool's kit refused after the push ("CHANGELOG.md has no '##
   Unreleased' section"), a private consumer's too ("its plan's done ledger has no row for

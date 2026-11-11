@@ -15,7 +15,9 @@ kept burning a core each for hours -- 24 for 3h12m (load average 206), then 12 f
 WHAT THIS TOOL DOES, IN THE ORDER THAT MATTERS.
 
   1. It REFUSES to start while another experiment holds the slot (one registry file, created
-     with O_EXCL semantics): two load experiments at once measure a machine twice as busy.
+     with O_EXCL semantics): two load experiments at once measure a machine twice as busy. The
+     refusal names the holder and prints the line to paste; `--wait` waits for the slot, and a
+     run with no spinners (N=0, a gate) waits without being asked (lib/load_slot.py, D-0002).
   2. It REGISTERS every spinner it starts -- the pid, and the process's start time, because a
      pid alone is not an identity -- in that registry, BEFORE the spinner is allowed to burn.
   3. It REAPS on the way out: EXIT, TERM, INT and HUP all kill exactly the pids it registered,
@@ -72,10 +74,11 @@ import load_locks
 import load_priority
 import load_reap
 import load_registry as reg
+import load_slot
 from load_tree import GRACE_S, kill_tree
 
 sys.path.insert(0, str(ROOT))
-from tui.lib import err, info, warn
+from tui.lib import counted, err, info, warn
 
 EXIT_BUSY = 3  # the slot is taken
 EXIT_GATE = 75  # another session's gate is in flight (EX_TEMPFAIL: try again when it is done)
@@ -96,7 +99,9 @@ def _parse(argv: list[str]) -> argparse.Namespace:
     parser.add_argument("--reap", action="store_true", help="kill the orphans a dead owner left")
     parser.add_argument("--max", help=f"deadline: 45, 90m, 2h (default {DEFAULT_MAX_S:g}s)")
     parser.add_argument("--oversubscribe", action="store_true", help="allow N > cores")
-    parser.add_argument("--wait", action="store_true", help="wait for the gates in flight")
+    parser.add_argument(
+        "--wait", action="store_true", help="wait for the gates in flight and the slot"
+    )
     parser.add_argument(
         "--wait-max",
         help=f"bound on --wait, implies it (default {gates_in_flight.DEFAULT_WAIT_S:g}s)",
@@ -143,7 +148,8 @@ def _describe(data: dict) -> str:
     count = len(pids) if isinstance(pids, list) else 0
     command = data.get("command")
     shown = " ".join(str(part) for part in command) if isinstance(command, list) else ""
-    return f"owner pid {data.get('owner_pid')} (started {data.get('owner_start')}), {count} spinner(s), command: {shown}"
+    owner = f"owner pid {data.get('owner_pid')} (started {data.get('owner_start')})"
+    return f"{owner}, {counted(count, 'spinner')}, command: {shown}"
 
 
 def _status(directory: Path) -> int:
@@ -331,6 +337,7 @@ def _install_handlers(experiment: Experiment) -> None:
 
 def main(argv: list[str]) -> int:
     opts = _parse(argv)
+    given = list(argv)
     directory = _directory(opts)
     if opts.status:
         return _status(directory)
@@ -384,6 +391,8 @@ def main(argv: list[str]) -> int:
         hold = gates_in_flight.hold_off(wait, wait_s)
         if hold:
             err(gates_in_flight.refusal(hold, count, wait, wait_s, ncpu))
+            if not wait:
+                print(f"      the line to paste: {load_slot.rerun_line(given)}", file=sys.stderr)
             return EXIT_GATE
         if hold.joined:
             warn(
@@ -393,27 +402,16 @@ def main(argv: list[str]) -> int:
     baseline = gates_in_flight.load_reading(ncpu)
     info(f"load: baseline before the spinners: {baseline}")
     experiment = Experiment(directory, count, command, max_s)
+    slot_wait = load_slot.waits(count, wait)
     try:
-        experiment.claim()
-    except FileExistsError as error:
-        other = Path(str(error))
-        data = reg.read(other) or {}
-        print(f"load: another load experiment already holds the slot: {other}", file=sys.stderr)
-        print(f"      {_describe(data)}", file=sys.stderr)
-        print(
-            "      One experiment at a time: a second load measures a machine twice as busy, and "
-            "neither can be told from the other afterwards.",
-            file=sys.stderr,
-        )
-        print(
-            "      If that experiment is gone: tools/load.py --reap (or wait for the backstop, "
-            "which reads the same registry every minute).",
-            file=sys.stderr,
-        )
-        return EXIT_BUSY
+        holder, _ = load_slot.claim(experiment.claim, slot_wait, wait_s, info)
     except OSError as error:
         print(f"load: cannot take the slot: {error}", file=sys.stderr)
         return 2
+    if holder is not None:
+        described = _describe(reg.read(holder) or {})
+        print(load_slot.refusal(holder, described, given, slot_wait, wait_s), file=sys.stderr)
+        return EXIT_BUSY
 
     experiment.data["baseline"] = baseline  # --status names the machine it started on
     parent = os.getppid()

@@ -964,8 +964,8 @@
       "root": "73391f04f5f2b92ab9813c62e6cecdce919d2d86",
       "repo": "gates_of_heck",
       "path": "tools/load.py",
-      "count": 6,
-      "reason": "unreviewed: 6 hedged plurals: lines 146, 281, 372, 390, 449, 457"
+      "count": 5,
+      "reason": "unreviewed: 5 hedged plurals: lines 287, 379, 399, 447, 455"
     },
     {
       "root": "73391f04f5f2b92ab9813c62e6cecdce919d2d86",
