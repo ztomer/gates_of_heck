@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+* **goh ship releases goh itself: tools/release_goh.sh (GOH.SHIPKIT).** goh declared no
+  GOH_SHIP_RELEASE, so `goh ship` refused it and v0.95.0's bump was made by hand. The kit refuses a
+  dirty tree, an existing tag and an empty Unreleased before anything moves; then, in a build/
+  worktree, bumps `[workspace.package]` and Cargo.lock, cuts Unreleased into the version's stanza,
+  lands through tools/land.sh, pushes main, and tags with the stanza as the message.
+
 * **A load refusal names the holder and the line to paste; a gate run waits for the slot
   (GOH.LOADREFUSE, D-0002).** Two agents met `another load experiment already holds the slot` on a
   `load.py 0 -- <gate>` and ran the gate bare. `--wait` now waits for the slot as well as for the

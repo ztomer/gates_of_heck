@@ -180,3 +180,6 @@ GOH_LANDED_ONLY=main
 # What `tools/release-kit/release.sh` runs before it tags, when no --gate is passed (GOH.SHX2):
 # goh's own full gate, so a bare release of goh is gated rather than refused.
 GOH_RELEASE_GATE="tools/gate.sh --full"
+# goh ship releases goh through its own kit (GOH.SHIPKIT): bump, cut, land, push, tag. It pushes.
+GOH_SHIP_RELEASE='tools/release_goh.sh {version}'
+GOH_SHIP_RELEASE_PUSHES=1
