@@ -138,6 +138,18 @@ pub fn depinfo_escapes_keyed(
         },
         PathBuf::from,
     );
+    // The repository's own git dir (a worktree's is under the main checkout's `.git/worktrees/`):
+    // a build script that re-runs on `index` or `logs/HEAD` (goh's source stamp) reads no input
+    // the proof keys -- the cache requires a clean tree, and that tree is the key (GOH.LANDGAPS).
+    let git_dirs: Vec<PathBuf> = ["--absolute-git-dir", "--git-common-dir"]
+        .iter()
+        .filter_map(|flag| crate::rust_scope::run(&root, "git", &["rev-parse", flag]).ok())
+        .map(|out| {
+            let p = PathBuf::from(out.trim());
+            let p = if p.is_absolute() { p } else { root.join(p) };
+            std::fs::canonicalize(&p).unwrap_or(p)
+        })
+        .collect();
     let mut bad = BTreeSet::new();
     for file in dep_files(&build, &prefixes) {
         let text = std::fs::read_to_string(&file).unwrap_or_default();
@@ -149,6 +161,10 @@ pub fn depinfo_escapes_keyed(
                 base.join(dep)
             };
             let s = dep.to_string_lossy();
+            let canon = std::fs::canonicalize(&dep).unwrap_or_else(|_| dep.clone());
+            if git_dirs.iter().any(|g| canon.starts_with(g)) {
+                continue;
+            }
             if dep.starts_with(&build)
                 || target.as_ref().is_some_and(|t| dep.starts_with(t))
                 || dep.starts_with(&home)

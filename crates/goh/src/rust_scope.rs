@@ -36,7 +36,7 @@ const CONFIG_NAMES: &[&str] = &[
     ".gatesrc",
 ];
 
-fn run(dir: &Path, program: &str, args: &[&str]) -> Result<String, String> {
+pub(crate) fn run(dir: &Path, program: &str, args: &[&str]) -> Result<String, String> {
     let out = Command::new(program)
         .args(args)
         .current_dir(dir)

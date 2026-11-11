@@ -230,6 +230,44 @@ fn a_dep_info_read_outside_the_scope_is_named_and_one_inside_is_not() {
     drop(dir); // the estate holds the build directory until the last read above
 }
 
+/// GOH.LANDGAPS (2026-11-09): goh's build.rs re-runs on the repository's `index` and `logs/HEAD`
+/// (its source stamp), and from a worktree those live in `<main>/.git/worktrees/<name>/` -- outside
+/// the checkout, unkeyable, so no crate check was ever recorded as proven there. The git dir is
+/// not a build input the proof keys: the cache needs a clean tree, whose trees ARE the key.
+#[test]
+fn a_dep_info_read_of_the_repositorys_own_git_dir_is_not_an_escape() {
+    let dir = estate();
+    let cargo_dir = dir.path().join("crates/a");
+    let meta = super::metadata(&cargo_dir, true).expect("metadata");
+    let build = PathBuf::from(
+        meta["build_directory"]
+            .as_str()
+            .or_else(|| meta["target_directory"].as_str())
+            .expect("a build directory"),
+    );
+    let deps = build.join("debug").join("deps");
+    std::fs::create_dir_all(&deps).expect("mkdir deps");
+    let root = std::fs::canonicalize(dir.path()).expect("canonical");
+    let git_dir = root.join(".git");
+    let d = deps.join("a-4567.d");
+    std::fs::write(
+        &d,
+        format!(
+            "{}: {} {} {}\n",
+            d.display(),
+            root.join("crates/a/src/lib.rs").display(),
+            git_dir.join("index").display(),
+            git_dir.join("logs/HEAD").display()
+        ),
+    )
+    .expect("write .d");
+    let entries = vec!["crates/a".to_owned(), "crates/b".to_owned()];
+    let bad = crate::rust_depinfo::depinfo_escapes(&cargo_dir, &entries).expect("depinfo");
+    std::fs::remove_file(&d).ok();
+    assert_eq!(bad, Vec::<String>::new());
+    drop(dir);
+}
+
 #[test]
 fn the_command_prints_a_scope_checks_a_file_and_refuses_a_non_workspace() {
     let dir = estate();

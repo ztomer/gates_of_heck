@@ -32,7 +32,7 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 # the suite GIT_DIR=<main>/.git/worktrees/<name>), an inherited GIT_DIR turns each fixture's
 # `git init <tmp>` into a re-init of the REAL repository -- core.bare=true lands in the shared
 # config and no checkout works (a private consumer, 2026-09-27). Dropped at import, before any fixture runs,
-# using git's own list via the one helper the checkers share. Pinned by test_hook_git_env.py.
+# using git's own list (test_hook_git_env.py); the gate's profile too (GOH.LANDGAPS).
 sys.path.insert(0, str(REPO_ROOT / "checks"))
 from _gitutil import local_env_vars
 from host_locks import no_test_reaches_a_host_lock, scrubbed  # noqa: F401  (an autouse fixture)
@@ -42,7 +42,7 @@ from host_locks import no_test_reaches_a_host_lock, scrubbed  # noqa: F401  (an 
 from load_kit import load_reap_scope, suite_leak_check  # noqa: F401  (autouse fixtures)
 from real_state_guard import no_test_writes_the_real_goh_state  # noqa: F401  (an autouse fixture)
 
-for _name in local_env_vars():
+for _name in [*local_env_vars(), *(f"GOH_TIMINGS{t}" for t in ("", "_PARENT", "_KIND", "_CWD"))]:
     os.environ.pop(_name, None)
 
 # Disallowed-by-policy glyphs, by number (see checks/check_no_emoji.py).
