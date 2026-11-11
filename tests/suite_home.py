@@ -52,7 +52,21 @@ HOME_DEFAULTS = {
 GITCONFIG = "[user]\n\tname = goh suite\n\temail = suite@goh.test\n[init]\n\tdefaultBranch = main\n"
 
 
+# A ship's run inputs (tools/ship.py exports them to its release step, whose gate runs this suite)
+# are the CALLER's, never a test's. GOH.SHIPSUMMARY made release.sh title its cut with
+# GOH_SHIP_SUMMARY, and v0.97.0's own release gate went red: four fixture kits cut their CHANGELOG
+# under the real release's summary (test_changelog_cut, test_release_kit_version). Dropped at entry,
+# so a ship variable added later is contained without anyone remembering it.
+SHIP_PREFIX = "GOH_SHIP_"
+
+
+def _drop_ship_inputs() -> None:
+    for name in [k for k in os.environ if k.startswith(SHIP_PREFIX)]:
+        del os.environ[name]
+
+
 def _enter() -> None:
+    _drop_ship_inputs()
     if os.environ.get(
         MARKER
     ):  # a nested run (an xdist worker, a suite a test starts) keeps its own

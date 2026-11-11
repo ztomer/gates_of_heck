@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+* **A ship's run inputs never reach the suite (GOH.SHIPENV).** goh ship exports GOH_SHIP_SUMMARY
+  to its release step, and since GOH.SHIPSUMMARY release.sh titles its cut with it: v0.97.0's own
+  release gate ran the suite under it, and four fixture kits cut their CHANGELOGs with the real
+  release's title. tests/suite_home.py drops every GOH_SHIP_* variable at the suite's entry.
+
 * **The suite never starts the machine's sccache server under its own temp dir (GOH.SCCACHETMP).**
   A cargo in the suite that found no server started one, which inherited the suite's
   `goh-suite-tmp.*` TMPDIR and HOME and outlived both: once the root was removed, every cargo build
