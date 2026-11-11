@@ -8,20 +8,21 @@ this landed): red, then green after `cargo update`. That arm needs the registry,
 saying so -- when the index cannot be reached; the offline arm is hermetic.
 """
 
-import os
 import shutil
 import subprocess
 from pathlib import Path
 
 import pytest
 from _fast_git import fast_init
-from conftest import REPO_ROOT, run_goh
+from conftest import hermetic_env, run_goh
 from test_rust_gate import CURRENT, LIB_CLEAN, _git, mkcrate, run_script
 
 pytestmark = pytest.mark.skipif(shutil.which("cargo") is None, reason="cargo not installed")
 
-ENV = {**os.environ, "GOH_DIR": str(REPO_ROOT)}
-ENV.pop("GOH_DEPS_OFFLINE", None)
+# No inherited GOH_*: the push gate exports GOH_CHANGE_BASE (the remote tip), which is no commit in
+# the fixture clone, so "this change locked it" had no base and the red arm read green (release
+# v0.95.0, 2026-11-11). hermetic_env also drops GOH_DEPS_OFFLINE.
+ENV = hermetic_env()
 HELD = "1.0.18"  # one patch below itoa's newest 1.x on 2026-11-09
 
 
