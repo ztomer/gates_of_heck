@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+## v0.94.0 -- the empty-tree sweep never retires an excuse over NOT APPLICABLE
+
+* **A step that did not judge cannot retire its excuse (CI.PUBLIC2).** On a hosted run the
+  empty-tree sweep (`check_empty_scope.py`) read the excused `check_estate_corpus.py`'s NOT
+  APPLICABLE (exit 78) as "now FAILS on an empty tree -- delete its excuse" (goh run 42916888942).
+  There, 78 with the NOT APPLICABLE mark is now "not measurable on an empty tree", named and never
+  failing; off a hosted run 78 stays the refusal it was.
+* **goh's hosted gate has the runner's step ceiling.** `rust_gate.sh` is 255 s wall and 1585 s CPU on
+  the owner's machine and ran out of the 900 s default on the 3-core runner; the workflow sets
+  `GOH_LCI_TIMEOUT=2700` as that machine's budget (never in `.gatesrc`) and a 75-minute job ceiling.
+
 ## v0.93.0 -- a step that needs the owner's estate says NOT APPLICABLE on a hosted runner, and only there
 
 * **NOT APPLICABLE, a third verdict (CI.PUBLIC2).** The R3 estate corpus sweep and its probe and
