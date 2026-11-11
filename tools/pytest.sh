@@ -54,6 +54,12 @@ export GATES_OF_HECK_SUITE_RUNNER=$$
 # shape goh's first hosted run died of (CI.PUBLIC2): the manifest's goh-suite layer installs it.
 "$GOH_PY" -m pytest --version >/dev/null 2>&1 \
     || die "pytest is not installed for the house interpreter $GOH_PY -- \"$GOH_PY\" -m pip install pytest"
+# The suite's own imports (run 42930175911: twelve golden_core tests errored on a runner with no
+# Pillow, and the numpy parity tier skipped): refused by name, installed by the goh-suite layer.
+"$GOH_PY" -c 'import PIL' 2>/dev/null \
+    || die "pillow is not installed for the house interpreter $GOH_PY -- \"$GOH_PY\" -m pip install pillow"
+"$GOH_PY" -c 'import numpy' 2>/dev/null \
+    || die "numpy is not installed for the house interpreter $GOH_PY -- \"$GOH_PY\" -m pip install numpy"
 ARGS=(-q)
 if "$GOH_PY" -c "import xdist" 2>/dev/null; then
     ARGS+=(-n 12 --dist loadgroup)

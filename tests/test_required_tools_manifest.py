@@ -45,6 +45,8 @@ SITES = [
     re.compile(r"cargo ([\w-]+) --version >/dev/null 2>&1 \\\s*\n\s*\|\|"),
     # The native ports (Phase N1) refuse through one helper, `pyformat::on_path("tool")`.
     re.compile(r"\bon_path\(\"([\w.-]+)\"\)"),
+    # A module the goh suite imports, refused by name in tools/pytest.sh (layer `goh-suite`).
+    re.compile(r"-c 'import \w+' 2>/dev/null \\\s*\n\s*\|\| die \"([\w.-]+) is not installed"),
 ]
 
 
@@ -322,18 +324,30 @@ def test_goh_suite_as_a_coverage_external_needs_pytest(tmp_path):
     assert "goh-suite" not in _cli("--repo", str(tmp_path)).stdout
 
 
+def test_goh_suite_installs_the_modules_its_tests_import():
+    """Run 42930175911: twelve golden_core tests errored with `NameError: PILImage` -- the suite
+    builds its PNGs through Pillow, the parity tier is numpy's, and the hosted runner had neither,
+    because no layer said the suite needs them (CI.PUBLIC2). tools/pytest.sh refuses without them,
+    and the goh-suite layer installs them."""
+    got = _cli("--layer", "goh-suite", "--install")
+    assert got.returncode == 0, got.stderr
+    line = next(ln for ln in got.stdout.splitlines() if "pip install" in ln)
+    for pkg in ("pytest", "pillow", "numpy"):
+        assert pkg in line.split(), line
+
+
 def test_pip_installs_into_the_house_interpreter():
     """Not PATH's first python3: a hosted macOS runner carries two 3.15s (CI.PUBLIC2)."""
     got = _cli("--layer", "goh-suite", "--install")
     line = next(ln for ln in got.stdout.splitlines() if "pip install" in ln)
     assert line.startswith('"$(bash ') and "lib/house_python.sh" in line, line
-    assert line.endswith("-m pip install pytest"), line
+    assert " -m pip install pytest" in line, line
     want = subprocess.run(
         ["bash", str(ROOT / "lib" / "house_python.sh")], capture_output=True, text=True,
         stdin=subprocess.DEVNULL, check=True,
     ).stdout.strip()  # fmt: skip
     said = subprocess.run(
-        ["bash", "-c", line.replace("-m pip install pytest", "-c 'import sys; print(sys.executable)'")],
+        ["bash", "-c", line.split(" -m pip install ")[0] + " -c 'import sys; print(sys.executable)'"],
         capture_output=True, text=True, stdin=subprocess.DEVNULL, check=True,
     ).stdout.strip()  # fmt: skip
     assert os.path.realpath(said) == os.path.realpath(subprocess.run(
