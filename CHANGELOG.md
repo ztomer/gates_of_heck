@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+* **The land root is ignored (GOH.BUILDIGNORE).** land worktrees live under `build/<name>` inside
+  the checkout, and `build/` was not in `.gitignore`: while a land was open the main checkout showed
+  `?? build/` and every estate dirty-check read goh as uncommitted. `/build/` is ignored now;
+  `tests/test_land_root_ignored.py` opens a worktree under `build/` against the repo's own
+  `.gitignore` and requires a clean `git status --porcelain` (red before the rule, green after).
+  The other directories goh's tools make inside a checkout (`.pytest_cache`, `.ruff_cache`) carry
+  their own `.gitignore`; `bin/goh`, `bin/by-stamp/` and `target/` were already listed.
+
 * **A release heading is a phrase, never a fragment (AU.RELHEADING).** app_updates v1.59.1 shipped
   as `## v1.59.1 — , like every other config file`: `changelog_cut.py`'s title derivation stripped
   the first entry's bold lead (`**`autoinstall.toml` now lives in the config dir ... names**, like
