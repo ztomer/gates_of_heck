@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 # py_staged.sh — the CHEAP half of py_gate.sh, at COMMIT time, on the staged .py files only.
 #
-#   1. ruff check          on staged *.py (against per-file ceilings when GOH_PY_LINT_CEILINGS is set)
+#   1. ruff check          on staged *.py: with GOH_PY_LINT_CEILINGS, the repo's rules plus the house
+#                          set (gates/ruff_house.py) against per-file ceilings; unset, the PLW1510
+#                          floor, and a warning counting what the house set would find
 #   2. ruff format --check on staged *.py
 #   3. with GOH_PY_NOQA_PARITY: no `# noqa` that a second linter the repo runs still reports
 #
@@ -110,6 +112,7 @@ if [ -n "${GOH_PY_LINT_CEILINGS:-}" ]; then
         "$GOH_PY" "$HERE/py_lint_ceiling.py" --check --ceilings "$GOH_PY_LINT_CEILINGS" --runner "$RUN" -- "${STAGED[@]}"
 else
     goh_step "ruff check ($scope)"        "${RUN_ARR[@]}" ruff check --extend-select PLW1510 "${STAGED[@]}"  # the house floor (G17b, py_gate.sh)
+    goh_py_house_unadopted "${STAGED[@]}"
 fi
 goh_step "ruff format check ($scope)" "${RUN_ARR[@]}" ruff format --check "${STAGED[@]}"
 if [ -n "${GOH_PY_NOQA_PARITY:-}" ]; then

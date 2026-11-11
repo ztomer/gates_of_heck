@@ -59,6 +59,15 @@ phase, and each is one landing.
   **Done when:** `GOH_INSTALLS` is documented in `docs/config.md` and checked in goh, test first, landed
   via `tools/land.sh`.
 
+- **RUFF.RULES2 — the unadopted house ruff set goes red.** `gates/ruff_house.py` is the house set;
+  a repo without `GOH_PY_LINT_CEILINGS` is still judged on the PLW1510 floor and only WARNED with the
+  house set's count (`goh_py_house_unadopted`, gates/_py.sh), because koffee_big, token-pool and
+  ZoneWM could not seed in the round that added it (owner-gated unreleased commits; a live test
+  run). Each seeds (`py_lint_ceiling.py --seed tools/py_lint_ceilings.json`, the key in .gatesrc).
+  ZoneWM's per-rule `ruff_ratchet.py` does not pass the house set yet either.
+  Done when: the warning branch is a red step and `tests/test_py_lint_ceiling.py`'s unadopted
+  case asserts the red.
+
 ## Phase 5 — speed of the checks
 
 Why last: nothing else waits on it, and the rework of the gate rules above changes what is worth timing.

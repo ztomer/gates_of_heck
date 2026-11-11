@@ -168,3 +168,17 @@ goh_py_interpreter() {
     fi
     printf '%s\n' "$py"
 }
+
+# THE HOUSE RULE SET, NOT YET ADOPTED (RUFF.RULES). A repo with GOH_PY_LINT_CEILINGS runs its own
+# rules plus gates/ruff_house.py's, each file held to a ceiling. One without it is judged on the
+# PLW1510 floor alone, and this says, on every run, how much the house set would find there -- so
+# "not adopted" reads as a debt someone owes, never as clean.
+# goh_py_house_unadopted <path...>: warn with the count of house-set findings in <path...>.
+_goh_py_here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
+goh_py_house_unadopted() {
+    local house n
+    house="$("$GOH_PY" -S "$_goh_py_here/ruff_house.py")" || die "$GOH_NAME: gates/ruff_house.py did not run"
+    n="$("${RUN_ARR[@]}" ruff check --no-cache --exit-zero --extend-select "$house" \
+        --output-format concise --quiet "$@" </dev/null 2>/dev/null | grep -c ':[0-9]*:[0-9]*: ' || true)"
+    [ "${n:-0}" -eq 0 ] || warn "house ruff set ($house) not adopted: $(counted "$n" finding) here -- seed GOH_PY_LINT_CEILINGS (gates/py_lint_ceiling.py --seed tools/py_lint_ceilings.json)"
+}

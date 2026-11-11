@@ -72,7 +72,18 @@ goh_pytest_root  # a concurrent suite cannot prune this one's temp dirs
 # PLW1510 is the house floor on top of the project's own rule set (G17b, 2026-10-26): a
 # `subprocess.run` must say what a failing child does (`check=True` stops the caller,
 # `check=False` says the exit code is judged below). Rolled out to every consumer first.
-goh_step_in "$pkg_dir" "ruff check"        "${RUN_ARR[@]}" ruff check --extend-select PLW1510 .
+if [ -n "${GOH_PY_LINT_CEILINGS:-}" ]; then
+    # The repo's rules plus the house set, over every tracked .py, each file held to its ceiling
+    # (gates/py_lint_ceiling.py, RUFF.RULES): the push judges what the commit gate judged, whole.
+    PY_TRACKED=()
+    while IFS= read -r f; do [ -n "$f" ] && PY_TRACKED+=("$f"); done < <(git ls-files -- '*.py')
+    [ "${#PY_TRACKED[@]}" -gt 0 ] || die "no tracked .py to hold to $GOH_PY_LINT_CEILINGS"
+    goh_step "ruff check under $GOH_PY_LINT_CEILINGS" \
+        "$GOH_PY" "$HERE/py_lint_ceiling.py" --check --ceilings "$GOH_PY_LINT_CEILINGS" --runner "$RUN" -- "${PY_TRACKED[@]}"
+else
+    goh_step_in "$pkg_dir" "ruff check"        "${RUN_ARR[@]}" ruff check --extend-select PLW1510 .
+    goh_py_house_unadopted "$pkg_dir"
+fi
 goh_step_in "$pkg_dir" "ruff format check" "${RUN_ARR[@]}" ruff format --check .
 if [ -n "${GOH_PY_NOQA_PARITY:-}" ]; then
     # A `# noqa` ruff honours and the second linter the repo runs ignores (gates/py_noqa_parity.py, 4.5).

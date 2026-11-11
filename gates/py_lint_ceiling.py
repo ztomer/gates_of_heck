@@ -6,7 +6,11 @@ of `{"path.py": count}` (BACKLOG 4.4). A staged file may carry up to its ceiling
 its findings; under it fails with the number to write, so the ratchet never holds room for a finding
 to come back; a file not listed carries none. The ceilings are read from the INDEX (what is being
 committed): one that is missing from it, or higher than HEAD's, is a finding -- deleting the file or
-raising a number is how debt is reset, and a ceiling that can be reset proves nothing.
+raising a number is how debt is reset, and a ceiling that can be reset proves nothing. A ceiling
+for a file the commit does not carry is stale and fails: its debt left with the file.
+
+ruff runs the repo's own rule set PLUS the house set (gates/ruff_house.py, RUFF.RULES): a seed
+counts both, so a repo adopting the house rules carries today's findings and adds none.
 
     py_lint_ceiling.py --check --ceilings tools/py_lint_ceilings.json --runner "python3 -m" -- a.py b.py
     py_lint_ceiling.py --seed tools/py_lint_ceilings.json [--runner "python3 -m"]   # every tracked .py
@@ -36,6 +40,9 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))  # the goh root: tui.lib
 from tui.lib import counted
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))  # gates/: the house rule set
+from ruff_house import extend_select
+
 KEY = "GOH_PY_LINT_CEILINGS"
 
 
@@ -63,7 +70,8 @@ def findings(runner: str, files: list[str]) -> dict[str, list[dict]]:
     """Each file's ruff findings, keyed by its path relative to the repo root."""
     if not files:
         return {}
-    cmd = [*shlex.split(runner), "ruff", "check", "--output-format", "json", "--exit-zero", *files]
+    cmd = [*shlex.split(runner), "ruff", "check", "--extend-select", extend_select()]
+    cmd += ["--output-format", "json", "--exit-zero", *files]
     r = subprocess.run(cmd, capture_output=True, text=True, check=False, stdin=subprocess.DEVNULL)
     try:
         found = json.loads(r.stdout or "[]")
@@ -97,6 +105,13 @@ def check(path: str, runner: str, files: list[str]) -> int:
             f"{k}: ceiling raised {head.get(k, 0)} -> {v} in {path}"
             for k, v in sorted(raised.items())
         ]
+    # A ceiling for a file that is gone is a hole left standing for the next one (close-the-class's
+    # stale-entry property): the debt it counted left with the file, so must its exemption.
+    problems += [
+        f"{k}: ceiling {v} for a file that is not in this commit -- delete it from {path}"
+        for k, v in sorted(staged.items())
+        if not Path(k).is_file()
+    ]
     found = findings(runner, files)
     for f in sorted(files):
         have, ceiling = len(found.get(f, [])), staged.get(f, 0)

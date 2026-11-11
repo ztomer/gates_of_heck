@@ -118,3 +118,70 @@ def test_seed_writes_every_tracked_files_count(repo):
     )  # fmt: skip
     assert r.returncode == 0, r.stdout + r.stderr
     assert json.loads(out.read_text()) == {"old.py": 2}
+
+
+# THE HOUSE SET (RUFF.RULES, gates/ruff_house.py). koffee_big's ruff.toml selected PLW1510 alone, so
+# its `ruff check` read as a lint gate and checked one rule. A finding from the house set is a
+# finding under ceilings whatever the repo selects: B006 (a mutable default) is outside both
+# PLW1510 and ruff's defaults, so only the house set can name it.
+ONE_RULE = '[lint]\nselect = ["PLW1510"]\n'
+MUTABLE_DEFAULT = "def f(x=[]):\n    return x\n"
+
+
+def test_a_planted_house_finding_is_red_whatever_the_repo_selects(repo):
+    write(repo, "ruff.toml", ONE_RULE)
+    ceilings(repo, {})
+    write(repo, "new.py", MUTABLE_DEFAULT)
+    stage(repo, "new.py")
+    r = run(repo)
+    assert r.returncode != 0, r.stdout + r.stderr
+    assert "B006" in r.stdout + r.stderr
+    # Calibration: the repo's own config alone passes this file -- the red is the house set's.
+    plain = subprocess.run(
+        ["ruff", "check", "--no-cache", "new.py"], cwd=repo, capture_output=True, text=True,
+        check=False, stdin=subprocess.DEVNULL,
+    )  # fmt: skip
+    assert plain.returncode == 0, plain.stdout
+
+
+def test_a_repo_ignore_cannot_subtract_a_house_rule(repo):
+    write(repo, "ruff.toml", '[lint]\nignore = ["B006"]\n')
+    ceilings(repo, {})
+    write(repo, "new.py", MUTABLE_DEFAULT)
+    stage(repo, "new.py")
+    r = run(repo)
+    assert r.returncode != 0 and "B006" in r.stdout + r.stderr
+
+
+def test_seed_counts_the_house_set(repo):
+    write(repo, "ruff.toml", ONE_RULE)
+    write(repo, "old.py", MUTABLE_DEFAULT)
+    commit_all(repo, "debt")
+    out = repo / "tools" / "py_lint_ceilings.json"
+    r = subprocess.run(
+        ["python3", str(SEED), "--seed", str(out)], cwd=repo, capture_output=True, text=True,
+        check=False, stdin=subprocess.DEVNULL,
+    )  # fmt: skip
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert json.loads(out.read_text()) == {"old.py": 1}
+
+
+def test_a_ceiling_for_a_file_that_is_gone_is_stale(repo):
+    ceilings(repo, {"old.py": 2, "gone.py": 1})
+    write(repo, "old.py", TWO_FINDINGS)
+    stage(repo, "old.py")
+    r = run(repo)
+    assert r.returncode != 0
+    assert "gone.py" in r.stdout + r.stderr and "not in this commit" in r.stdout + r.stderr
+
+
+def test_unadopted_the_floor_holds_and_the_house_debt_is_named(repo):
+    write(repo, "ruff.toml", ONE_RULE)
+    write(repo, "new.py", MUTABLE_DEFAULT)
+    stage(repo, "ruff.toml", "new.py")
+    r = run(repo)
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert (
+        "house ruff set" in r.stdout + r.stderr
+        and "not adopted: 1 finding here" in r.stdout + r.stderr
+    )

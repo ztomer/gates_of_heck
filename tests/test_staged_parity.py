@@ -35,6 +35,7 @@ PUSH_GATES = ("py_gate.sh", "swift_gate.sh", "rust_gate.sh")
 
 FAST: dict[tuple[str, str], str] = {
     ("py_gate.sh", "ruff check"): "py_staged.sh",
+    ("py_gate.sh", "ruff check under $GOH_PY_LINT_CEILINGS"): "py_staged.sh",
     ("py_gate.sh", "ruff format check"): "py_staged.sh",
     ("py_gate.sh", "noqa parity with $GOH_PY_NOQA_PARITY"): "py_staged.sh",
     ("swift_gate.sh", "swiftlint --strict"): "swift_staged.sh",

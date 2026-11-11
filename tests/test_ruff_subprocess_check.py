@@ -4,7 +4,8 @@
 from "a failure is silently ignored". 325 calls here left it unsaid, and the repo's own gate never
 ran `ruff check`, so nothing said so; the rule was only red under ruff's defaults, which no step used.
 pyproject.toml runs ruff's DEFAULT rule set for THIS repo (G17: it was PLW1510 alone, while ~600
-findings under the defaults went unseen) and GOH_CI_STEPS runs `ruff check .`. Consumers keep
+findings under the defaults went unseen), and GOH_CI_STEPS runs it through `py_staged.sh --all`, plus
+the house set (gates/ruff_house.py) under per-file ceilings (RUFF.RULES). Consumers keep
 their own rule sets (the shared py_gate.sh runs the project's configuration), so this does not turn
 any of them red.
 """
@@ -79,7 +80,8 @@ def test_the_push_gate_runs_ruff_check() -> None:
     gatesrc = (REPO_ROOT / ".gatesrc").read_text(encoding="utf-8")
     steps = re.search(r"^GOH_CI_STEPS='(.+)'$", gatesrc, re.MULTILINE)
     assert steps, "GOH_CI_STEPS is not set"
-    assert "ruff check ." in [s.strip() for s in steps.group(1).split(":")]
+    assert "./gates/py_staged.sh --all ." in [s.strip() for s in steps.group(1).split(":")]
+    assert re.search(r"^GOH_PY_LINT_CEILINGS=tools/py_lint_ceilings.json$", gatesrc, re.MULTILINE)
 
 
 def test_fixtures_are_data_and_stay_as_written() -> None:
