@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## v0.96.0 -- goh declared no GOH_SHIP_RELEASE, so `goh ship` refused it and v0.95.0's bump was made by
+
 * **goh ship releases goh itself: tools/release_goh.sh (GOH.SHIPKIT).** goh declared no
   GOH_SHIP_RELEASE, so `goh ship` refused it and v0.95.0's bump was made by hand. The kit refuses a
   dirty tree, an existing tag and an empty Unreleased before anything moves; then, in a build/
