@@ -25,6 +25,9 @@ CHECK = ROOT / "checks" / "check_estate_corpus.py"
 sys.path.insert(0, str(ROOT / "checks"))
 import check_estate_corpus as sweep
 
+sys.path.insert(0, str(ROOT / "lib"))
+import not_applicable
+
 
 def run_gate(*args):
     return subprocess.run(
@@ -37,8 +40,15 @@ def run_gate(*args):
 
 
 def test_the_probe_passes():
+    """Where the first real corpus is absent, a hosted run's probe says NOT APPLICABLE (exit 78)
+    and still proves its third case; anywhere else it must pass whole (lib/not_applicable.py)."""
     got = run_gate("--probe")
-    assert got.returncode == 0, got.stdout + got.stderr
+    said = got.stdout + got.stderr
+    if not os.path.isdir(os.path.expanduser(sweep.ESTATE[0]["root"])) and not_applicable.hosted():
+        assert got.returncode == not_applicable.EXIT, said
+        assert not_applicable.MARK in said and "a corpus below the floor is refused" in said, said
+        return
+    assert got.returncode == 0, said
 
 
 def test_every_entry_names_a_corpus_that_is_a_corpus():
@@ -46,9 +56,10 @@ def test_every_entry_names_a_corpus_that_is_a_corpus():
     typo would otherwise turn an entry into a permanent silent skip -- the estate's own version of
     a fixture."""
     for entry in sweep.ESTATE:
-        root = os.path.expanduser(entry["root"])
-        here = os.path.isdir(root)
-        assert here or "~" not in entry["root"], f"{entry['checker']}: a hard-coded absolute path"
+        # Home-relative, so it names the same corpus on any machine: the old `here or "~" not in
+        # root` inverted this, held only where every corpus was present, and failed on a hosted
+        # runner whose home had none (run 42944992082).
+        assert entry["root"].startswith("~/"), f"{entry['checker']}: a hard-coded absolute path"
         assert entry["why"].strip(), f"{entry['checker']}: no reason recorded"
         assert entry["ext"].startswith("."), f"{entry['checker']}: no language to plant into"
 
