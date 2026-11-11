@@ -13,7 +13,8 @@ import os
 import subprocess
 from pathlib import Path
 
-from conftest import REPO_ROOT, git
+from _fast_git import fast_init
+from conftest import REPO_ROOT, hermetic_env
 
 GATE = REPO_ROOT / "gates" / "commit_gate.sh"
 STUB = '#!/usr/bin/env bash\necho "SELF-GATED dir=$GOH_DIR live=${GOH_LIVE:-}"\n'
@@ -21,8 +22,7 @@ STUB = '#!/usr/bin/env bash\necho "SELF-GATED dir=$GOH_DIR live=${GOH_LIVE:-}"\n
 
 def _goh_checkout(root: Path) -> Path:
     """A repository shaped like gates_of_heck, whose commit gate only says it ran."""
-    root.mkdir()
-    git(root, "init", "-q")
+    fast_init(root)
     (root / "gates").mkdir()
     (root / "gates" / "commit_gate.sh").write_text(STUB)
     (root / "gates" / "_from_head.sh").write_text("# a goh checkout\n")
@@ -32,8 +32,7 @@ def _goh_checkout(root: Path) -> Path:
 
 
 def _commit_gate(cwd: Path, **extra: str) -> subprocess.CompletedProcess[str]:
-    env = dict(os.environ, **extra)
-    env.pop("GOH_SELF_GATED", None)
+    env = hermetic_env(**extra)
     return subprocess.run(
         ["bash", str(GATE)],
         cwd=cwd,
@@ -56,8 +55,7 @@ def test_a_goh_worktree_commit_is_judged_by_its_own_gates(tmp_path: Path) -> Non
 
 def test_a_consumer_commit_is_not_handed_anywhere(tmp_path: Path) -> None:
     repo = tmp_path / "consumer"
-    repo.mkdir()
-    git(repo, "init", "-q")
+    fast_init(repo)
     (repo / "gates").mkdir()
     (repo / "gates" / "commit_gate.sh").write_text(STUB)  # a gate of its own is not goh
     ran = _commit_gate(repo, GOH_DIR=str(REPO_ROOT))

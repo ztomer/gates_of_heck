@@ -15,7 +15,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-from conftest import REPO_ROOT
+from conftest import REPO_ROOT, hermetic_env
 
 sys.path.insert(0, str(REPO_ROOT / "lib"))
 import step_timings
@@ -25,7 +25,7 @@ PROFILE = ("GOH_TIMINGS", "GOH_TIMINGS_PARENT", "GOH_TIMINGS_KIND", "GOH_TIMINGS
 
 def test_importing_the_suite_drops_every_profile_variable(tmp_path: Path) -> None:
     profile = tmp_path / "timings.jsonl"
-    env = dict(os.environ, **{name: str(profile) for name in PROFILE})
+    env = hermetic_env(**{name: str(profile) for name in PROFILE})
     probe = (
         "import os, sys; sys.path[:0] = ['tests', 'lib']; import conftest, step_timings; "
         "step_timings.record('the step', 1.0, 124, 'tree'); "

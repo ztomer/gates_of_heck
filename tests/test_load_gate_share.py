@@ -10,7 +10,6 @@ not starved by gates that keep arriving (a gate arriving behind it waits for it)
 
 from __future__ import annotations
 
-import os
 import subprocess
 import sys
 import time
@@ -19,17 +18,14 @@ from pathlib import Path
 import load_kit
 import pytest
 import timing_bounds
-from conftest import REPO_ROOT
+from conftest import REPO_ROOT, hermetic_env
 
 TOOL = REPO_ROOT / "tools" / "load.py"
 pytestmark = pytest.mark.xdist_group("load_orphans")  # with tests/test_load_tool.py
 
 
 def _env(**extra: str) -> dict[str, str]:
-    env = dict(os.environ)
-    env.pop("GOH_LOAD_GATES", None)
-    env.update(extra)
-    return env
+    return hermetic_env(**extra)  # no inherited GOH_LOAD_GATES
 
 
 def _run(args: list[str], timeout: float = 60.0, **extra: str) -> subprocess.CompletedProcess[str]:
