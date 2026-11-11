@@ -16,6 +16,11 @@ ZW.SPACEWALL's agent ran `make push` in that tree; one writer per repo held only
 A linked worktree (`git worktree add build/x` inside a held checkout) is its own repo here: it is
 the sanctioned way for a second agent to change a repo another holds (goh's `tools/land.sh`).
 
+An item's SCRATCH dir, `loopctl scratch ID` (`<scratch root>/<ID>/`: LOOPCTL_SCRATCH_ROOT, else
+$XDG_STATE_HOME/loop/scratch, else ~/.local/state/loop/scratch, loopscratch.scratch_root's order),
+belongs to item ID: it is judged before any repo, so the owner writes there from any cwd and another
+in-progress item's agent is refused (GOH.GUARDSCRATCH, 2026-11-11).
+
 Seams: GOH_LOOP_QUEUE names the queue file (default ~/Projects/.loop/queue.json); repo tokens are
 read under the queue's own projects directory (the queue's grandparent), `~/` tokens under $HOME.
 A queue that is missing or does not parse holds nothing: the guard fails OPEN.
@@ -38,12 +43,33 @@ def _real(path: str) -> str:
     return os.path.realpath(os.path.expanduser(path))
 
 
-def repo_root(path: str, cwd: str | None = None) -> str | None:
-    """The nearest enclosing git worktree top of `path` (which need not exist), or None."""
+def scratch_root() -> str:
+    """Where `loopctl scratch` keeps item dirs (the .loop tools' loopscratch.scratch_root order)."""
+    if os.environ.get("LOOPCTL_SCRATCH_ROOT"):
+        return _real(os.environ["LOOPCTL_SCRATCH_ROOT"])
+    state = os.environ.get("XDG_STATE_HOME") or os.path.expanduser("~/.local/state")
+    return _real(os.path.join(state, "loop", "scratch"))
+
+
+def _absolute(path: str, cwd: str | None) -> str:
     path = os.path.expanduser(path)
     if not os.path.isabs(path):
         path = os.path.join(cwd or os.getcwd(), path)
-    here = _real(os.path.normpath(path))
+    return _real(os.path.normpath(path))
+
+
+def scratch_item(path: str, cwd: str | None = None) -> tuple[str, str] | None:
+    """(the scratch dir, its item ID) when `path` lies inside an item's scratch dir, else None."""
+    root, here = scratch_root(), _absolute(path, cwd)
+    if not here.startswith(root + os.sep):
+        return None
+    item = here[len(root) + 1 :].split(os.sep, 1)[0]
+    return (os.path.join(root, item), item) if item else None
+
+
+def repo_root(path: str, cwd: str | None = None) -> str | None:
+    """The nearest enclosing git worktree top of `path` (which need not exist), or None."""
+    here = _absolute(path, cwd)
     while True:
         if os.path.exists(os.path.join(here, ".git")):
             return here
@@ -124,11 +150,25 @@ def find(
     main thread (no `caller`), a path in no repo, an unheld repo, or a repo the caller holds."""
     if not caller:
         return None
+    scratch = scratch_item(path, cwd)
+    if scratch is not None:
+        holders, _ = _holders(queue or queue_path())
+        return _scratch_judge(holders, *scratch, caller)
     root = repo_root(path, cwd)
     if root is None:
         return None
     holders, projects = _holders(queue or queue_path())
     return _judge(holders, projects, root, caller)
+
+
+def _scratch_judge(holders: list[_Holder], where: str, item: str, caller: str) -> QueueHold | None:
+    """Item ITEM's scratch dir: its own agent writes there; another agent is refused while ITEM is
+    in progress under someone else; a closed or unknown item's dir holds nothing."""
+    owner = next((h for h in holders if h.item == item), None)
+    if owner is None or owner.agent == caller:
+        return None
+    mine = tuple(h.item for h in holders if h.agent == caller)
+    return QueueHold(where, item, owner.agent or "unrecorded", caller, mine)
 
 
 def holds_below(

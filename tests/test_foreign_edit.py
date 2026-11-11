@@ -223,3 +223,80 @@ def test_loopctl_a_quote_a_heredoc_or_another_gh_call_runs(estate: Path, command
 
 def test_the_coordinator_may_read_ci_through_gh(estate: Path) -> None:
     assert _bash(estate, "gh run watch 123456", agent=None) is None
+
+
+# ---- GOH.GUARDSCRATCH: the target is the operand's own path, never cwd or a non-path token ----
+# 2026-11-11: ZT.EMBEDSEAM's agent ran, from a cwd in ~/Projects/.loop (held by LOOP.CLOSESTAMP),
+#   S=~/.local/state/loop/scratch/ZT.EMBEDSEAM; sed -i '' 's/nomic-embed-text/potion/' $S/m.sh
+# and was refused "`sed` on s/nomic-embed-text/potion/": BSD sed's `-i ''` suffix shifted the
+# script into the operands, the script and the unexpanded `$S/m.sh` were each resolved against the
+# cwd, and the cwd's repo was the one held. The scratch dir loopctl gave the agent is its item's.
+
+
+def _scratch_bash(projects: Path, command: str, cwd: Path, agent: str = ME) -> str | None:
+    event = {"session_id": "s", "hook_event_name": "PreToolUse", "tool_name": "Bash",
+             "tool_input": {"command": command}, "cwd": str(cwd),
+             "agent_id": agent, "agent_type": "repo-worker"}  # fmt: skip
+    env = {**os.environ, "GOH_LOOP_QUEUE": str(projects / ".loop" / "queue.json"),
+           "LOOPCTL_SCRATCH_ROOT": str(projects.parent / "state" / "loop" / "scratch")}  # fmt: skip
+    r = subprocess.run([sys.executable, str(GUARD)], input=json.dumps(event), capture_output=True,
+                       text=True, timeout=30, check=False, env=env)  # fmt: skip
+    assert r.returncode == 0, r.stderr
+    return (
+        json.loads(r.stdout)["hookSpecificOutput"]["permissionDecisionReason"]
+        if r.stdout.strip()
+        else None
+    )
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "S={s}/X.MINE; sed -i '' 's/nomic-embed-text/potion-base-4M/' $S/m.sh && bash $S/m.sh",
+        "sed -i '' 's/a/b/' {s}/X.MINE/m.sh",
+        "sed -i.bak -e 's/a/b/' {s}/X.MINE/m.sh",
+        "sed -E -i '' -e 's/a/b/' -e 's/c/d/' \"{s}/X.MINE/m.sh\"",
+        "perl -pi -e 's/a/b/' {s}/X.MINE/m.sh",
+        "echo x > {s}/X.MINE/out.txt && rm -rf {s}/X.MINE/old",
+        'S={s}/X.MINE; echo x > "$S/out.txt"',
+    ],
+)
+def test_my_own_scratch_write_passes_from_a_cwd_inside_a_held_repo(
+    estate: Path, command: str
+) -> None:
+    scratch = estate.parent / "state" / "loop" / "scratch"
+    (scratch / "X.MINE").mkdir(parents=True)
+    assert _scratch_bash(estate, command.format(s=scratch), cwd=estate / "theirs") is None
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "sed -i '' 's/a/b/' {p}/theirs/x",
+        "sed -i 's/a/b/' {p}/theirs/x",  # GNU's form
+        "sed -i '' -e 's/a/b/' x",  # a relative operand IS in the cwd's repo
+        "S={p}/theirs; sed -i '' 's/a/b/' $S/x",
+        "echo x > {s}/X.THEIRS/m.sh",  # another item's scratch is that item's
+    ],
+)
+def test_a_write_into_a_held_repo_or_another_items_scratch_is_still_refused(
+    estate: Path, command: str
+) -> None:
+    scratch = estate.parent / "state" / "loop" / "scratch"
+    (scratch / "X.THEIRS").mkdir(parents=True)
+    reason = _scratch_bash(estate, command.format(p=estate, s=scratch), cwd=estate / "theirs")
+    assert reason and "X.THEIRS" in reason, reason
+
+
+def test_the_edit_tools_keep_to_the_items_own_scratch(estate: Path, monkeypatch) -> None:
+    scratch = estate.parent / "state" / "loop" / "scratch"
+    monkeypatch.setenv("LOOPCTL_SCRATCH_ROOT", str(scratch))
+    assert _verdict(estate, "Write", {"file_path": str(scratch / "X.MINE" / "a.py")}) is None
+    reason = _verdict(estate, "Write", {"file_path": str(scratch / "X.THEIRS" / "a.py")})
+    assert reason and "X.THEIRS" in reason
+    # the coordinator, and an item no queue row names, are not refused there
+    assert (
+        _verdict(estate, "Write", {"file_path": str(scratch / "X.THEIRS" / "a.py")}, agent=None)
+        is None
+    )
+    assert _verdict(estate, "Write", {"file_path": str(scratch / "X.GONE" / "a.py")}) is None

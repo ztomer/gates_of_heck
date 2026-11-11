@@ -27,6 +27,15 @@ boundary and with the hold's own reason and lift command:
     undo the read-only layer) naming a path inside one. A RECURSIVE verb on an ancestor
     (`chmod -R u+w ~/Projects`) is refused when a held repo lies below it.
 
+THE TARGET IS THE OPERAND'S OWN PATH (GOH.GUARDSCRATCH, 2026-11-11). A write is judged by the
+repo enclosing the path it names, resolved to an absolute path, and by nothing else: a sed or perl
+SCRIPT is not a path (BSD sed's `-i ''` suffix no longer shifts it into the operands), an empty
+operand is no path, and a `$VAR` the same command assigned (`S=dir; sed -i '' x $S/f`) is expanded
+first; an operand whose head is still unexpanded names nothing knowable and is not resolved against
+the cwd (only its literal prefix, when it has one, is judged). ZT.EMBEDSEAM's agent was refused a
+`sed -i` on its own scratch file because the script and `$S/m.sh` were each resolved against a cwd
+in a repo another item held.
+
 Read-only commands (ls, cat, rg, git log/status/diff/show) run. A command it cannot split runs,
 unjudged: the guard must never be what breaks an ordinary command. The read-only layer still
 stands behind it. The way out is the hold's lift command (`scripts/release_hold.sh`, or
@@ -153,7 +162,10 @@ def _operands(args: list[str]) -> list[str]:
 
 
 def _held(path: str, cwd: str, recursive: bool, agent: str | None = None) -> list:
-    """The holds a write to `path` meets: the repo's own, then (for a subagent) the queue's."""
+    """The holds a write to `path` meets: the repo's own, then (for a subagent) the queue's. A
+    relative path after a `cd` the guard could not follow (`cwd` "") names nothing knowable."""
+    if not cwd and not os.path.isabs(os.path.expanduser(path)):
+        return []
     hold = repo_hold.find_hold(path, cwd)
     if hold:
         return [hold]
@@ -164,6 +176,66 @@ def _held(path: str, cwd: str, recursive: bool, agent: str | None = None) -> lis
     if qhold:
         return [qhold]
     return queue_hold.holds_below(path, cwd, agent) if recursive else []
+
+
+VAR = re.compile(r"\$(?:\{(\w+)\}|(\w+))")
+
+
+def _assigns(seg: list[str]) -> dict[str, str] | None:
+    """A segment that only assigns (`S=dir`, `export S=dir`): its NAME -> value, else None."""
+    toks = seg[1:] if seg[:1] == ["export"] else seg
+    pairs = [t.split("=", 1) for t in toks]
+    if toks and all(len(p) == 2 and p[0].isidentifier() for p in pairs):
+        return dict(pairs)
+    return None
+
+
+def _expand(tok: str, shell: dict[str, str], whole: bool = False) -> str | None:
+    """TOK with the command's own assignments (and $HOME) expanded; a part still unexpandable cuts
+    it to its literal prefix (None with `whole`); None when nothing literal is left."""
+    known = {"HOME": os.path.expanduser("~"), **shell}
+    tok = VAR.sub(lambda m: known.get(m.group(1) or m.group(2), m.group(0)), tok)
+    cut = min((i for i in (tok.find("$"), tok.find("`")) if i >= 0), default=-1)
+    if cut >= 0:
+        if whole:
+            return None
+        tok = tok[:cut]
+    return tok or None
+
+
+# Options of an in-place editor that take the next token as their argument (never a path written).
+SED_ARG_OPTS = {"-e", "-f", "--expression", "--file", "-l"}
+PERL_ARG_OPTS = {"-e", "-E", "-I", "-M", "-m"}
+
+
+def _in_place_targets(verb: str, args: list[str]) -> list[str]:
+    """The files `sed -i` / `perl -pi` (gsed, ruby) rewrite: its operands less the script, which is
+    the first operand only when no -e/-f gave it. BSD sed's `-i SUFFIX` takes the next token when
+    it is empty or a `.ext`; an empty token is never a path."""
+    if not any(a.startswith(("-i", "-pi", "--in-place")) for a in args):
+        return []
+    sed = verb in ("sed", "gsed")
+    takes = SED_ARG_OPTS if sed else PERL_ARG_OPTS
+    ops: list[str] = []
+    script_given, i = False, 0
+    while i < len(args):
+        a, nxt = args[i], (args[i + 1] if i + 1 < len(args) else None)
+        if a == "--":
+            ops += args[i + 1 :]
+            break
+        if sed and a == "-i" and nxt is not None and (nxt == "" or nxt.startswith(".")):
+            i += 2  # BSD sed's suffix
+        elif a in takes or (not sed and a.startswith("-") and a.endswith("e")):  # perl -pe CODE
+            script_given, i = True, i + 2
+        else:
+            if sed and a[:2] in ("-e", "-f") and len(a) > 2:  # -e'script' joined
+                script_given = True
+            elif not a.startswith("-"):
+                ops.append(a)
+            i += 1
+    if not script_given:
+        ops = ops[1:]
+    return [o for o in ops if o]
 
 
 def _git_target(args: list[str], here: str) -> tuple[str, list[str]]:
@@ -205,16 +277,22 @@ def judge_command(command: str, cwd: str, agent: str | None = None) -> str | Non
     except ValueError:
         return None
     here = cwd
+    shell: dict[str, str] = {}  # the command's own assignments, in order (`S=dir; ... $S/f`)
     for raw in segments:
+        assigned = _assigns(raw)
+        if assigned is not None:
+            shell.update({k: _expand(v, shell) or "" for k, v in assigned.items()})
+            continue
         # Redirections first: `> path` writes path, whatever the command.
         seg: list[str] = []
         i = 0
         while i < len(raw):
             tok = raw[i]
             if tok in REDIRECTS or (tok.endswith(">") and tok.rstrip(">").isdigit()):
-                if i + 1 < len(raw) and raw[i + 1] not in ("&",) and raw[i + 1] != "/dev/null":
-                    for hold in _held(raw[i + 1], here, False, agent):
-                        return hold.describe(f"writing {raw[i + 1]} (a redirection)")
+                dest = _expand(raw[i + 1], shell) if i + 1 < len(raw) else None
+                if dest and raw[i + 1] != "&" and dest != "/dev/null":
+                    for hold in _held(dest, here, False, agent):
+                        return hold.describe(f"writing {dest} (a redirection)")
                 i += 2
                 continue
             if tok in ("<", "<<", "<<<", ">&", "<&"):
@@ -234,7 +312,8 @@ def judge_command(command: str, cwd: str, agent: str | None = None) -> str | Non
                     "from their own terminal, never by an agent: ask them to run it."
                 )
         if verb in ("cd", "pushd") and len(args) == 1:
-            here = os.path.join(here, os.path.expanduser(args[0]))
+            to = _expand(args[0], shell, whole=True)
+            here = os.path.join(here, os.path.expanduser(to)) if to and here else ""  # "" unknown
             continue
         if verb == "git":
             where, rest = _git_target(args, here)
@@ -252,13 +331,16 @@ def judge_command(command: str, cwd: str, agent: str | None = None) -> str | Non
         elif verb in COPY_WRITES:
             ops = _operands(args)
             targets = ops[-1:] if len(ops) >= 2 else []
-        elif verb in IN_PLACE and any(a.startswith(("-i", "-pi")) for a in args):
-            targets = _operands(args)[1:]
+        elif verb in IN_PLACE:
+            targets = _in_place_targets(verb, args)
         elif verb == "find" and any(a in ("-delete", "-exec", "-execdir") for a in args):
             targets, recursive = [a for a in args if not a.startswith("-")][:1], True
         elif verb == "dd":
             targets = [a[3:] for a in args if a.startswith("of=")]
-        for target in targets:
+        for raw_target in targets:
+            target = _expand(raw_target, shell)
+            if not target:
+                continue  # an empty operand, or one whose head is unexpandable: no knowable path
             for hold in _held(target, here, recursive, agent):
                 return hold.describe(f"`{verb}` on {target}")
     return None

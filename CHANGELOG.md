@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+* **The writer guard judges a write by its operand's own resolved path (GOH.GUARDSCRATCH).**
+  ZT.EMBEDSEAM's agent was refused `S=~/.local/state/loop/scratch/ZT.EMBEDSEAM; sed -i ''
+  's/x/y/' $S/m.sh` as a write to `~/Projects/.loop`, which LOOP.CLOSESTAMP held: BSD sed's `-i ''`
+  shifted the script into the operands, and the script and the unexpanded `$S/m.sh` were each
+  resolved against the cwd. `hold_guard.py` now reads sed/perl scripts as scripts (`-i SUFFIX`,
+  `-e`, `-f`), skips empty operands, expands the command's own `NAME=value` assignments, and never
+  resolves an operand whose head stays unexpanded against the cwd. `lib/queue_hold.py` gives
+  `<scratch root>/<ID>/` (`loopctl scratch`'s root) to item ID: its agent writes there from any
+  cwd, another in-progress item's agent is refused. Red first: four scratch writes refused, a write
+  into another item's scratch passed; a write into a held repo is still refused.
+
 * **goh ship refuses an empty Unreleased before it pushes (GOH.SHIPUNRELEASED).** routines' ship
   pushed main, then its release kit's changelog_cut said `Unreleased is empty: nothing to release`.
   When the release step will run (GOH_SHIP_RELEASE declared, HEAD untagged; with or without
