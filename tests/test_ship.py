@@ -409,3 +409,41 @@ def test_a_step_runs_with_none_of_gits_repository_variables(monkeypatch):
     for name in names:
         monkeypatch.setenv(name, "/leaked")
     assert not set(names) & set(ship.unbound_env())
+
+
+def _changelog(repo: Path, text: str) -> None:
+    (repo / "CHANGELOG.md").write_text(text)
+    git(repo, "add", "CHANGELOG.md")
+    git(repo, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "-m", "docs: changelog")
+
+
+EMPTY_UNRELEASED = "# CHANGELOG\n\n## Unreleased\n\n## v1.0.0\n\n* the first\n"
+
+
+@pytest.mark.parametrize("args", [(), ("--item", "X.ONE"), ("--bump", "patch")])
+def test_an_empty_unreleased_is_refused_before_the_push(shipped, tmp_path, args):
+    """GOH.SHIPUNRELEASED: routines' ship pushed main, then its release kit's changelog_cut said
+    `Unreleased is empty: nothing to release`. A release step that will run (with or without
+    --bump: the version is git-cliff's otherwise) over an empty Unreleased is refused at start,
+    naming the missing entry, and nothing is pushed."""
+    _changelog(shipped, EMPTY_UNRELEASED)
+    before = git(shipped, "ls-remote", "origin", "refs/heads/main")
+    r = _ship(shipped, tmp_path, "--wait", *args)
+    assert r.returncode == 2, r.stdout + r.stderr
+    assert "Unreleased" in r.stderr and "CHANGELOG.md" in r.stderr, r.stderr
+    assert git(shipped, "ls-remote", "origin", "refs/heads/main") == before
+    assert not (tmp_path / "ship.json").exists()
+
+
+def test_an_empty_unreleased_is_not_refused_when_no_release_runs(shipped, tmp_path):
+    """HEAD already tagged: the release step is skipped, so nothing is cut and nothing refused."""
+    _changelog(shipped, EMPTY_UNRELEASED)
+    git(shipped, "tag", "v1.0.1")
+    r = _ship(shipped, tmp_path, "--wait")
+    assert r.returncode == 0, r.stdout + r.stderr
+
+
+def test_an_unreleased_entry_or_a_written_stanza_ships(shipped, tmp_path):
+    _changelog(shipped, "# CHANGELOG\n\n## Unreleased\n\n## v1.1.0\n\n* by hand\n")
+    r = _ship(shipped, tmp_path, "--wait", "--version", "1.1.0")
+    assert r.returncode == 0, r.stdout + r.stderr

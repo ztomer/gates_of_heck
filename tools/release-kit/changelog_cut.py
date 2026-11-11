@@ -282,6 +282,17 @@ def merge_into_stanza(base: list[str], st: Section, moved: list[str]) -> list[st
     return [*base[: st.start + 1], *block, *base[st.end :]]
 
 
+def nothing_to_release(lines: list[str], version: str) -> bool:
+    """True when a cut of VERSION would be refused as empty: the file has an Unreleased section,
+    every one is empty, and no stanza for VERSION is written yet (goh ship asks before its push,
+    GOH.SHIPUNRELEASED). A file with no Unreleased heading does not cut from one: False."""
+    secs = sections(lines)
+    unrels = [s for s in secs if s.unreleased]
+    if not unrels or any(s.version == version for s in secs):
+        return False
+    return not any(_strip_edges(body(lines, u)) for u in unrels)
+
+
 def cut(lines: list[str], version: str, title: str | None) -> tuple[list[str] | None, list[str]]:
     secs = sections(lines)
     unrels = [s for s in secs if s.unreleased]

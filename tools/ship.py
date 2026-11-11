@@ -172,6 +172,28 @@ def loopctl() -> Path:
     return Path(os.environ.get("GOH_LOOPCTL") or Path.home() / "Projects/.loop/tools/loopctl.py")
 
 
+def unreleased_has_entries(repo: Path, cfg: dict[str, str], version: str) -> None:
+    """Refuse, before the push, a release that would cut an empty Unreleased (GOH.SHIPUNRELEASED).
+
+    routines' ship pushed main and then its kit's changelog_cut said `Unreleased is empty: nothing
+    to release`. The release step runs whenever GOH_SHIP_RELEASE is declared and HEAD carries no
+    version tag -- with or without --bump, the version being git-cliff's otherwise."""
+    log = repo / "CHANGELOG.md"
+    if not (cfg["GOH_SHIP_RELEASE"] and version and log.is_file()):
+        return
+    if any(SEMVER.match(t) for t in git(repo, "tag", "--points-at", "HEAD").splitlines()):
+        return
+    sys.path.insert(0, str(ROOT / "tools" / "release-kit"))
+    import changelog_cut  # the release kit's own reading of Unreleased, not a copy
+
+    lines = log.read_text(encoding="utf-8").splitlines()
+    if changelog_cut.nothing_to_release(lines, version):
+        raise Refused(
+            f"{log}: Unreleased is empty and no ## v{version} stanza is written; add the entry "
+            "this release ships under ## Unreleased, commit, then ship"
+        )
+
+
 def plan(args: argparse.Namespace) -> dict:
     """Everything decided before a worker starts; a Refused here starts nothing."""
     top = git(Path(args.repo or "."), "rev-parse", "--show-toplevel")
@@ -191,6 +213,8 @@ def plan(args: argparse.Namespace) -> dict:
         raise Refused(f"{repo.name} tags releases ({tag}) but declares no GOH_SHIP_RELEASE in its "
                       ".gatesrc: name its release kit, e.g. GOH_SHIP_RELEASE='tools/release.sh "
                       "{version}'")  # fmt: skip
+    version = next_version(repo, tag, args.version, args.bump)
+    unreleased_has_entries(repo, cfg, version)
     try:
         timeout = int(cfg["GOH_SHIP_TIMEOUT"] or DEFAULT_TIMEOUT)
     except ValueError:
@@ -204,7 +228,7 @@ def plan(args: argparse.Namespace) -> dict:
     return {
         "schema": 1, "repo": str(repo), "name": name, "item": args.item or None,
         "summary": args.summary or "", "remote": remote, "branch": branch, "sha": sha, "handoff_sha": sha,
-        "base_tag": tag, "version": next_version(repo, tag, args.version, args.bump),
+        "base_tag": tag, "version": version,
         "release": cfg["GOH_SHIP_RELEASE"], "install": cfg["GOH_SHIP_INSTALL"],
         "release_pushes": cfg["GOH_SHIP_RELEASE_PUSHES"] == "1",
         "timeout_s": timeout, "loopctl": str(loopctl()), "result": str(out),

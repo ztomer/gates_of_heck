@@ -2,6 +2,18 @@
 
 ## Unreleased
 
+* **goh ship refuses an empty Unreleased before it pushes (GOH.SHIPUNRELEASED).** routines' ship
+  pushed main, then its release kit's changelog_cut said `Unreleased is empty: nothing to release`.
+  When the release step will run (GOH_SHIP_RELEASE declared, HEAD untagged; with or without
+  --bump, since the version is otherwise git-cliff's) and CHANGELOG.md has an Unreleased heading
+  that is empty with no `## vX` stanza written, `plan` refuses, naming the file and the missing
+  entry, and nothing is pushed (`changelog_cut.nothing_to_release`). Red first: the push ran.
+
+* **Agent prompts name where kept evidence lives; Claude Code's worktrees are ignored
+  (GOH.SCRATCHBRIEF).** `repo-worker*.md` say must-keep evidence goes under the item's repo, a state
+  dir or `loopctl scratch ID`, never only in /tmp, which is wiped at every boot; `.gitignore` lists
+  `/.claude/worktrees/`, pinned in `tests/test_land_root_ignored.py`.
+
 * **The session bench's SERIAL and PARALLEL pins score injected makespans, not a wall clock
   (GOH.ENVLEAK).** goh run 43039999613 read a fitted sigma of 0.615 against a truth of 0.842 on a
   loaded macOS runner under coverage. The speedup/efficiency/USL scoring moved into
