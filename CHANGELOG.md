@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## v0.97.0 -- A file another repo deleted mid-edit no longer turns goh's gate red; the suite never starts sccache under its own temp dir; the canary's export cannot fail silently
+
 * **A ship's run inputs never reach the suite (GOH.SHIPENV).** goh ship exports GOH_SHIP_SUMMARY
   to its release step, and since GOH.SHIPSUMMARY release.sh titles its cut with it: v0.97.0's own
   release gate ran the suite under it, and four fixture kits cut their CHANGELOGs with the real
