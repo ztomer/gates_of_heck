@@ -199,6 +199,18 @@ def test_self_hosted_repo_satisfies_its_own_hook(tmp_path, goh):
         check=False,
     )
     git(copy, "add", "-A")
+    # The hook's formatters and linters, from wherever THIS machine keeps them, without the rest of
+    # that directory: a hosted runner's rustfmt is a rustup proxy in ~/.cargo/bin (beside cargo,
+    # which this PATH must not hold), and the hook said "rustfmt is not installed" (run
+    # 42930175911). The proxy finds its toolchains through RUSTUP_HOME, which HOME (the test's tmp_path) no longer gives.
+    tools = tmp_path / "hook-tools"
+    tools.mkdir()
+    for name in ("rustfmt", "shellcheck", "ruff"):
+        found = shutil.which(name)
+        if found:
+            (tools / name).symlink_to(found)
+    # The suite names it (tests/suite_home.py), and CARGO_HOME when the machine set one.
+    toolchain_env = {k: os.environ[k] for k in ("RUSTUP_HOME", "CARGO_HOME") if k in os.environ}
     # GOH_DIR points the delegation at the copy itself → true self-host.
     r = subprocess.run(
         [
@@ -219,7 +231,8 @@ def test_self_hosted_repo_satisfies_its_own_hook(tmp_path, goh):
             "GOH_DIR": str(copy),
             "GOH_BIN": str(goh),
             "HOME": str(tmp_path),
-            "PATH": "/usr/bin:/bin:/opt/homebrew/bin",
+            "PATH": f"/usr/bin:/bin:/opt/homebrew/bin:{tools}",
+            **toolchain_env,
         },
         stdin=subprocess.DEVNULL,
         check=False,
