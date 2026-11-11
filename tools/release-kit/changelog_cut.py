@@ -15,8 +15,10 @@ unreleased -- the tag ships the whole tree -- so:
   release.sh runs it itself whenever Unreleased holds entries (GOH.CUTAUTO). Refused when
   Unreleased is empty (nothing to release) or when a moved entry repeats one an earlier stanza holds.
 * `check --version X`: what release.sh's changelog step asks of the commit being tagged -- the
-  stanza for X exists, Unreleased (if the file keeps one) is ONE section and EMPTY, and no entry of
-  X's stanza repeats an entry of an earlier stanza. Exit 1 names each finding.
+  stanza for X exists, its heading's title is a phrase (it opens on a word, a code span or a quote,
+  does not end on a joining mark, leaves no backtick or bracket open: AU.RELHEADING; `cut` refuses
+  the same title, given or derived), Unreleased (if the file keeps one) is ONE section and EMPTY,
+  and no entry of X's stanza repeats an entry of an earlier stanza. Exit 1 names each finding.
 
 An entry is a top-level list item (`* ` or `- ` at column 0) with its continuation lines, compared
 with whitespace collapsed. Headings: `## Unreleased` / `## [Unreleased]`, `## vX...` / `## [X]...`.
@@ -118,7 +120,18 @@ def check(lines: list[str], version: str) -> list[str]:
                 f"stanza (changelog_cut.py cut) or delete what an earlier stanza already says"
             )
     findings += [f"duplicate entry: {d}" for d in duplicates(lines, secs, version)]
+    mine = next(s for s in secs if s.version == version)
+    why = title_findings(heading_title(mine.title))
+    if why:
+        findings.append(_fragment(mine.title, why))
     return findings
+
+
+def _fragment(heading: str, why: list[str]) -> str:
+    return (
+        f"the heading '{heading}' is not a phrase: {'; '.join(why)} -- a release is named by a "
+        f"title that stands alone (pass --title, or write the heading by hand)"
+    )
 
 
 DATED_TAIL = re.compile(r"\s_\(\d{4}-\d{2}-\d{2}\)_$")
@@ -144,7 +157,12 @@ TITLE_MAX = 90
 
 def derive_title(first_entry: str) -> str:
     """A heading's title from an entry: its first clause, house-lowercase, at most TITLE_MAX."""
-    text = re.sub(r"^\*\*[^*]+\*\*:?\s*", "", first_entry).strip()
+    text = first_entry.strip()
+    lead = re.match(r"^\*\*([^*]+)\*\*:?\s*(.*)$", text)
+    if (
+        lead
+    ):  # `**Fix**: the x` -> "the x"; `**the x**, like y` -> the lead is the phrase (AU.RELHEADING)
+        text = lead.group(2) if re.match(r"[\w`'\"]", lead.group(2)) else lead.group(1).strip()
     m = TITLE_STOP.search(text)
     clause = (text[: m.start()] if m else text).strip()
     if len(clause) > TITLE_MAX:
@@ -154,6 +172,36 @@ def derive_title(first_entry: str) -> str:
     if clause[:2].isalpha() and clause[1:2].islower():  # "The x" -> "the x"; "ZT.X" stays
         clause = clause[:1].lower() + clause[1:]
     return clause.rstrip(" ,;:")
+
+
+_HEADING_TAIL = re.compile(r"(?:^|\s)(?:_?\(\d{4}-\d{2}-\d{2}\)_?|-?\s*\d{4}-\d{2}-\d{2})$")
+_HEADING_HEAD = re.compile(r"^(?:v|\[)\d+\.\d+(?:\.\d+)?\]?\s*(?:--|—|\u2013|-)?\s*")
+_DANGLING_END = ",;:-—\u2013("
+
+
+def heading_title(heading_text: str) -> str:
+    """The title of a version heading's text (`v1.2.3 — title _(day)_`); '' for a bare heading."""
+    return _HEADING_TAIL.sub("", _HEADING_HEAD.sub("", heading_text, count=1)).strip()
+
+
+def title_findings(title: str) -> list[str]:
+    """Why `title` is not a phrase (AU.RELHEADING: app_updates v1.59.1 shipped `## v1.59.1 — , like
+    every other config file`): it must open on a word, a code span or a quote, close on something
+    other than a joining mark, and balance its backticks and brackets."""
+    out: list[str] = []
+    if not title:
+        return out
+    if not re.match(r"[\w`'\"]", title):
+        out.append("it opens on punctuation, so it is the tail of a sentence")
+    if title[-1] in _DANGLING_END:
+        out.append(f"it ends on '{title[-1]}', so it breaks off")
+    if (
+        title.count("`") % 2
+        or title.count("(") != title.count(")")
+        or title.count("[") != title.count("]")
+    ):
+        out.append("a backtick, parenthesis or bracket is left open")
+    return out
 
 
 def _strip_edges(ls: list[str]) -> list[str]:
@@ -267,6 +315,9 @@ def cut(lines: list[str], version: str, title: str | None) -> tuple[list[str] | 
         if title is None and titled:
             title = derive_title((entries(moved) or [""])[0])
         stamp = f" _({datetime.date.today().isoformat()})_" if dated else ""
+        why = title_findings(title or "")
+        if why:
+            return None, [_fragment(title or "", why)]
         heading = f"{head} v{version} {sep} {title}{stamp}" if title else f"{head} v{version}"
         new = [*base[: head_at + 2], heading, "", *moved, "", *base[head_at + 2 :]]
     dups = duplicates(new, sections(new), version)

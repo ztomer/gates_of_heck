@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+* **A release heading is a phrase, never a fragment (AU.RELHEADING).** app_updates v1.59.1 shipped
+  as `## v1.59.1 — , like every other config file`: `changelog_cut.py`'s title derivation stripped
+  the first entry's bold lead (`**`autoinstall.toml` now lives in the config dir ... names**, like
+  every other config file.`) and kept the text after it. `derive_title` now keeps the bold lead when
+  what follows it does not open on a word, and `cut` (given or derived title) and `check` (a
+  hand-written stanza) refuse a title that opens on punctuation, ends on a joining mark
+  (`,;:-—–(`) or leaves a backtick, parenthesis or bracket open, naming why and `--title`. The
+  530 version headings across the repos on this machine all pass but the one that shipped.
+
 * **A subagent writes only in its own queue item's repos, and never polls Actions through gh
   (LOOP.FOREIGNEDIT, LOOP.GHDOOR).** `hooks/claude/hold_guard.py` reads the loop queue
   (`lib/queue_hold.py`): a subagent's Edit/Write/NotebookEdit, or a changing shell command, inside a
