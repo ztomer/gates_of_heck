@@ -24,8 +24,10 @@ def _run(tmp_path: Path, exit_code: int):
     stub = bin_dir / "python3"
     stub.write_text(
         "#!/bin/bash\n"
-        # -c: the xdist probe; `-m pytest --version`: the runner's pytest refusal (CI.PUBLIC2).
-        'if [ "$1" = -c ] || [ "$3" = --version ]; then exit 0; fi\n'
+        # -c: the xdist probe; `-m pytest --version`: the runner's pytest refusal (CI.PUBLIC2);
+        # gates/ruff_agree.py: the one-ruff preflight (GOH.TOOLHYGIENE).
+        'if [ "$1" = -c ] || [ "$3" = --version ] || [ "${1##*/}" = ruff_agree.py ]; then\n'
+        "  exit 0\nfi\n"
         f'printf "%s\\n" "$PYTEST_DEBUG_TEMPROOT" > "{argv}"\n'
         f"exit {exit_code}\n"
     )

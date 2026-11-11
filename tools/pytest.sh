@@ -69,6 +69,10 @@ export GATES_OF_HECK_SUITE_RUNNER=$$
 # git-cliff): goh's own gates declare no python or ship layer, so the goh-suite layer installs them.
 "$GOH_PY" -m ruff --version >/dev/null 2>&1 \
     || die "ruff is not installed for the house interpreter $GOH_PY -- \"$GOH_PY\" -m pip install ruff"
+# One ruff (GOH.TOOLHYGIENE): `python3 -m ruff` was 0.17.0 while PATH's ruff was 0.17.4, so a gate's
+# verdict hung on how it was invoked. Every invocation reports the same version, or nothing runs.
+"$GOH_PY" "$GOH/gates/ruff_agree.py" \
+    || die "the rufs on this machine disagree (above) -- upgrade the older ones, then rerun"
 command -v git-cliff >/dev/null 2>&1 || die "git-cliff is not on PATH (tools/ship.py's next version) -- brew install git-cliff"
 # What goh's OWN pre-commit runs (test_self_hosted_repo_satisfies_its_own_hook; run 42957429139 died
 # "swiftlint is not installed"): the shell lint, the swift twin and the rustfmt check.

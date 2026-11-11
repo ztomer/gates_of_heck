@@ -42,7 +42,7 @@ import load_registry as reg
 
 TOOL = REPO_ROOT / "tools" / "load.py"
 REAPER = REPO_ROOT / "tools" / "load_reap.py"
-SPINNERS = re.compile(r"spinner\(s\) started: ((?:\d+[ ]?)+)")
+SPINNERS = re.compile(r"spinners? started: ((?:\d+[ ]?)+)")
 
 # ONE WORKER (with tests/test_load_reap.py): the backstop's sweep is global, so a deliberate
 # orphan made by one test would be found -- and killed -- by a sweep another test runs at the
@@ -279,7 +279,7 @@ def test_a_deadline_that_bounds_nothing_is_refused(tmp_path: Path, value: str) -
     result = _run(["--dir", str(tmp_path), "--max", value, "1", "--", "/bin/sh", "-c", "true"])
     assert result.returncode == 2, (result.returncode, result.stdout, result.stderr)
     assert "--max" in result.stderr, result.stderr
-    assert "spinner(s) started" not in result.stdout, result.stdout
+    assert not re.search(r"spinners? started", result.stdout), result.stdout
 
 
 def test_the_deadline_accepts_minutes_and_hours(tmp_path: Path) -> None:
@@ -311,7 +311,7 @@ def test_more_spinners_than_cores_is_refused(tmp_path: Path) -> None:
     )  # fmt: skip
     assert result.returncode == 2, (result.returncode, result.stdout, result.stderr)
     assert "--oversubscribe" in result.stderr and "2 core" in result.stderr, result.stderr
-    assert "spinner(s) started" not in result.stdout, result.stdout
+    assert not re.search(r"spinners? started", result.stdout), result.stdout
 
 
 @pytest.mark.parametrize(("count", "flags"), [(2, []), (3, ["--oversubscribe"])])

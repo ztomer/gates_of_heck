@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+* **One ruff on the machine, checked (GOH.TOOLHYGIENE).** `python3 -m ruff` (the house
+  interpreter, the Python gates' runner) was 0.17.0 while PATH's ruff was 0.17.4, so a gate's
+  verdict hung on how it was invoked. gates/ruff_agree.py asks every invocation and refuses a split,
+  naming each one and its upgrade; tools/pytest.sh runs it before the suite. tools/load.py says its
+  counts (`1 spinner`, `16 cores`): its five plural-hedge seed entries are gone.
+
 * **`goh ship --summary` titles the release stanza (GOH.SHIPSUMMARY).** v0.96.0's heading ended
   mid-clause, "... and v0.95.0's bump was made by": the summary reached the preflight but never the release step, so tools/release_goh.sh saw no
   GOH_SHIP_SUMMARY and the cut clipped the first entry at 90 characters. The release step now runs

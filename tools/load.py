@@ -284,7 +284,7 @@ class Experiment:
             reg.write(self.registry, self.data)
             self._release(fifo)
         pids = " ".join(str(proc.pid) for proc in self.procs)
-        print(f"load: {len(self.procs)} spinner(s) started: {pids}", flush=True)
+        print(f"load: {counted(len(self.procs), 'spinner')} started: {pids}", flush=True)
 
     def abort(self) -> list[int]:
         """The experiment is cut short (deadline, signal, a dead owner): the command's tree goes
@@ -376,8 +376,9 @@ def main(argv: list[str]) -> int:
     ncpu = cores()
     if count > ncpu and not opts.oversubscribe:
         print(
-            f"load: {count} spinners on {ncpu} core(s) starves the command under test (a starved "
-            "test hangs, and a hang is not a measurement); pass --oversubscribe if that is meant",
+            f"load: {count} spinners on {counted(ncpu, 'core')} starves the command under test "
+            "(a starved test hangs, and a hang is not a measurement); pass --oversubscribe if that "
+            "is meant",
             file=sys.stderr,
         )
         return 2
@@ -396,8 +397,8 @@ def main(argv: list[str]) -> int:
             return EXIT_GATE
         if hold.joined:
             warn(
-                f"load: the gates ahead are done; {len(hold.joined)} gate(s) that started during "
-                f"the wait run beside the load: {gates_in_flight.names(hold.joined)}"
+                f"load: the gates ahead are done; {counted(len(hold.joined), 'gate')} that started "
+                f"during the wait run beside the load: {gates_in_flight.names(hold.joined)}"
             )
     baseline = gates_in_flight.load_reading(ncpu)
     info(f"load: baseline before the spinners: {baseline}")
@@ -444,7 +445,9 @@ def main(argv: list[str]) -> int:
             file=sys.stderr,
         )
         if survivors:
-            print(f"load: {len(survivors)} spinner(s) outlived the cleanup", file=sys.stderr)
+            print(
+                f"load: {counted(len(survivors), 'spinner')} outlived the cleanup", file=sys.stderr
+            )
         return EXIT_DEADLINE
     except KeyboardInterrupt:
         experiment.abort()
@@ -452,7 +455,7 @@ def main(argv: list[str]) -> int:
     survivors = experiment.finish()
     if survivors:
         print(
-            f"load: {len(survivors)} spinner(s) outlived the cleanup: "
+            f"load: {counted(len(survivors), 'spinner')} outlived the cleanup: "
             f"{' '.join(str(pid) for pid in survivors)}; the registry keeps them and the backstop "
             f"kills them.",
             file=sys.stderr,

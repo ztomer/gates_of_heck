@@ -851,27 +851,6 @@
     {
       "root": "73391f04f5f2b92ab9813c62e6cecdce919d2d86",
       "repo": "gates_of_heck",
-      "path": "tests/test_load_locks.py",
-      "count": 4,
-      "reason": "unreviewed: 4 hedged plurals: lines 137, 145, 173, 181"
-    },
-    {
-      "root": "73391f04f5f2b92ab9813c62e6cecdce919d2d86",
-      "repo": "gates_of_heck",
-      "path": "tests/test_load_priority.py",
-      "count": 3,
-      "reason": "unreviewed: 3 hedged plurals: lines 112, 121, 129"
-    },
-    {
-      "root": "73391f04f5f2b92ab9813c62e6cecdce919d2d86",
-      "repo": "gates_of_heck",
-      "path": "tests/test_load_tool.py",
-      "count": 2,
-      "reason": "unreviewed: 2 hedged plurals: lines 282, 314"
-    },
-    {
-      "root": "73391f04f5f2b92ab9813c62e6cecdce919d2d86",
-      "repo": "gates_of_heck",
       "path": "tests/test_mcp_scaffold_wire.py",
       "count": 2,
       "reason": "unreviewed: 2 hedged plurals: lines 32, 173"
@@ -959,13 +938,6 @@
       "path": "tests/test_tree_walks.py",
       "count": 1,
       "reason": "unreviewed: 1 hedged plural: line 85"
-    },
-    {
-      "root": "73391f04f5f2b92ab9813c62e6cecdce919d2d86",
-      "repo": "gates_of_heck",
-      "path": "tools/load.py",
-      "count": 5,
-      "reason": "unreviewed: 5 hedged plurals: lines 287, 379, 399, 447, 455"
     },
     {
       "root": "73391f04f5f2b92ab9813c62e6cecdce919d2d86",

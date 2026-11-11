@@ -15,6 +15,7 @@ that runs load.py inside itself chose its own load).
 from __future__ import annotations
 
 import os
+import re
 import subprocess
 import sys
 import time
@@ -75,7 +76,7 @@ def test_a_live_gate_in_flight_is_refused_and_named(tmp_path: Path) -> None:
         assert "pre-push" in said and "/Users/someone/Projects/consumer" in said, said
         assert f"pid {gate.proc.pid}" in said and "running" in said, said
         assert "--wait" in said and "--despite-gate" in said, said
-        assert "spinner(s) started" not in result.stdout, "it burned before it refused"
+        assert not re.search(r"spinners? started", result.stdout), "it burned before it refused"
     finally:
         load_kit.reap()
 
@@ -87,7 +88,7 @@ def test_the_override_runs_beside_a_gate(tmp_path: Path) -> None:
         _register(gate.proc.pid)
         result = _run(tmp_path, "--despite-gate")
         assert result.returncode == 0, result.stderr
-        assert "spinner(s) started" in result.stdout, result.stdout
+        assert re.search(r"spinners? started", result.stdout), result.stdout
     finally:
         load_kit.reap()
 
@@ -136,7 +137,7 @@ def test_wait_starts_once_the_gate_exits(tmp_path: Path) -> None:
         gate.stop()
         tool.proc.wait(timeout=timing_bounds.patience(60))
         assert tool.proc.returncode == 0, tool.spoken()
-        assert "spinner(s) started" in tool.spoken(), tool.spoken()
+        assert re.search(r"spinners? started", tool.spoken()), tool.spoken()
 
 
 def test_the_wait_has_its_own_bound_separate_from_max(tmp_path: Path) -> None:
@@ -151,7 +152,9 @@ def test_the_wait_has_its_own_bound_separate_from_max(tmp_path: Path) -> None:
         result = _run(tmp_path, "--wait", "--wait-max", "2", "--max", "600")
         assert result.returncode == EXIT_GATE, (result.returncode, result.stderr)
         assert time.monotonic() - started < timing_bounds.patience(30)
-        assert "spinner(s) started" not in result.stdout, "it burned after the wait expired"
+        assert not re.search(r"spinners? started", result.stdout), (
+            "it burned after the wait expired"
+        )
     finally:
         load_kit.reap()
 
@@ -192,7 +195,7 @@ def test_the_wait_does_not_queue_behind_gates_that_arrive_later(tmp_path: Path) 
         tool.proc.wait(timeout=timing_bounds.patience(30))
         said = tool.spoken()
         assert tool.proc.returncode == 0, said
-        assert "spinner(s) started" in said, said
+        assert re.search(r"spinners? started", said), said
         assert f"pid {late.proc.pid}" in said, (
             f"the late gate it did not wait for is unnamed: {said}"
         )

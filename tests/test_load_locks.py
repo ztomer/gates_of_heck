@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -134,7 +135,7 @@ def test_the_tool_refuses_a_lock_taking_command_before_any_spinner(
     assert "machine-wide" in result.stderr, result.stderr
     assert "--shared-lock-ok" in result.stderr, result.stderr
     assert "--no-run" in result.stderr or "prebuilt" in result.stderr, result.stderr
-    assert "spinner(s) started" not in result.stdout, result.stdout
+    assert not re.search(r"spinners? started", result.stdout), result.stdout
     assert not list(tmp_path.glob("*.json")), "a refused experiment took the slot"
 
 
@@ -142,7 +143,7 @@ def test_a_prebuilt_binary_runs_under_load(tmp_path: Path) -> None:
     """The accepted shape: build first, put only the binary under load."""
     result = _tool(["1", "--", "/bin/sh", "-c", "true"], tmp_path)
     assert result.returncode == 0, (result.returncode, result.stdout, result.stderr)
-    assert "spinner(s) started" in result.stdout, result.stdout
+    assert re.search(r"spinners? started", result.stdout), result.stdout
 
 
 def test_the_escape_takes_a_reason_and_then_runs(tmp_path: Path) -> None:
@@ -170,7 +171,7 @@ def test_the_escape_takes_a_reason_and_then_runs(tmp_path: Path) -> None:
         env=env,
     )  # fmt: skip
     assert result.returncode == 0, (result.returncode, result.stdout, result.stderr)
-    assert "spinner(s) started" in result.stdout, result.stdout
+    assert re.search(r"spinners? started", result.stdout), result.stdout
 
 
 @pytest.mark.parametrize("reason", ["", "   "])
@@ -178,7 +179,7 @@ def test_an_escape_with_no_reason_excuses_nothing(tmp_path: Path, reason: str) -
     result = _tool(["--shared-lock-ok", reason, "1", "--", "cargo", "test"], tmp_path)
     assert result.returncode == 2, (result.returncode, result.stdout, result.stderr)
     assert "--shared-lock-ok" in result.stderr, result.stderr
-    assert "spinner(s) started" not in result.stdout, result.stdout
+    assert not re.search(r"spinners? started", result.stdout), result.stdout
 
 
 def test_no_spinners_hold_no_lock_against_anything(tmp_path: Path) -> None:

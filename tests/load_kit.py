@@ -52,8 +52,8 @@ import load_registry as reg
 TOOL = ROOT / "tools" / "load.py"
 GRACE_S = 5.0
 
-# What the tool says when its spinners are up: "load: 3 spinner(s) started: 101 102 103".
-SPINNERS = re.compile(r"spinner\(s\) started: ((?:\d+[ ]?)+)")
+# What the tool says when its spinners are up: "load: 3 spinners started: 101 102 103".
+SPINNERS = re.compile(r"spinners? started: ((?:\d+[ ]?)+)")
 
 # Every child this suite owns, every pid it owns (with the process's START TIME, because a pid
 # is not an identity), and every directory it ran one in: the suite owns them all, and the
