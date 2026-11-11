@@ -3,7 +3,7 @@
 GOH.ENVLEAK, 2026-11-11. pre-commit, pre-push, post-rewrite and pre-applypatch drop git's
 repository variables at entry (gates/_git_env.sh `goh_hook_unbind`); commit-msg did not, so a
 commit from a LINKED worktree handed the consumer's `tools/commit_msg.sh` an absolute GIT_DIR
-(and, under `commit -a`, GIT_INDEX_FILE) -- every `git init <tmp>` that script's children ran
+(and, under `commit -a`, GIT_INDEX_FILE) -- every scratch-repo init that script's children ran
 re-initialised the real repository, the media_server corruption (contract #12) by the one hook
 left open. Each case commits for real from a linked worktree, so git itself sets the variables.
 """

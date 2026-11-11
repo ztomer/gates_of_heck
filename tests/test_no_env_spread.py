@@ -2,7 +2,7 @@
 
 `{**os.environ, ...}`, `os.environ.copy()` and `dict(os.environ)` hand a child whatever the CALLER
 exported. Run from a hook or a gate, that is the push gate's GOH_CHANGE_BASE (test_crates_behind's
-red arm read green, GOH.RUNNERPIN, 2026-11-11), a hook's GIT_DIR (a fixture's `git init`
+red arm read green, GOH.RUNNERPIN, 2026-11-11), a hook's GIT_DIR (a fixture's repo init
 re-initialises the real repository, contract #12), or goh ship's GOH_SHIP_*. The one helper is
 `conftest.hermetic_env` (no inherited GOH_* but the locations it names; `drop_git=True` drops
 GIT_* too), and what a test needs is put back by name.
