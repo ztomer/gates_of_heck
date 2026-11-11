@@ -318,9 +318,28 @@ def unregistered(root: str, data: dict) -> list[str]:
     return bad
 
 
-def verify(root: str, data: dict, ran: set[str]) -> list[str]:
+def _foreign(root: str, cited: str) -> bool:
+    """A citation into ANOTHER estate: a path whose first component is no directory of this repo."""
+    head = os.path.expanduser(cited).split("/", 1)
+    return len(head) == 2 and not os.path.isdir(os.path.join(root, head[0]))
+
+
+def verify(
+    root: str,
+    data: dict,
+    ran: set[str],
+    not_here: frozenset[str] = frozenset(),
+    unjudged: list[str] | None = None,
+    hosted: bool = False,
+) -> list[str]:
     """Every way the registry's claims fail to hold. `ran` is the set of repo-relative paths whose
-    self-proof this sweep actually ran to green.
+    self-proof this sweep actually ran to green; `not_here` those whose self-proof said NOT
+    APPLICABLE; `hosted` is lib/not_applicable.hosted(), passed in by the gate.
+
+    A claim whose evidence THIS machine cannot read -- another estate's prover absent on a hosted
+    runner, or a self-proof in `not_here` -- is neither green nor red: it is appended to `unjudged`
+    with its reason ("not judged here"), never to the findings. Off a hosted run both stay findings:
+    the owner's machine is the judge of record (CI.PUBLIC2, run 42930175911).
 
     An empty list means every claim checked out. A non-empty one names the entry, so a reader can
     see which claim died rather than that "the registry is stale".
@@ -363,6 +382,13 @@ def verify(root: str, data: dict, ran: set[str]) -> list[str]:
         rest = why[match.end() :]
         path = resolves_to(root, cited)
         if path is None:
+            if hosted and _foreign(root, cited):
+                if unjudged is not None:
+                    unjudged.append(
+                        f"proven_by: {key!r} cites {cited}, another estate's file, which this hosted "
+                        f"runner cannot read -- not judged here; the owner's machine judges it"
+                    )
+                continue
             bad.append(f"proven_by: {key!r} cites {cited}, which does not exist")
             continue
         in_head = committed(root, path)
@@ -390,6 +416,13 @@ def verify(root: str, data: dict, ran: set[str]) -> list[str]:
             )
             continue
         flag = SELF_PROOF_FLAG.search(rest)
+        if flag and rel in not_here:
+            if unjudged is not None:
+                unjudged.append(
+                    f"proven_by: {key!r} cites {rel} {flag.group(0)}, which said NOT APPLICABLE on "
+                    f"this hosted runner -- not judged here; the owner's machine judges it"
+                )
+            continue
         if flag and rel not in ran:
             # The load-bearing half. The sweep runs what it DISCOVERS, so a checker that stopped
             # dispatching on its flag stops being run at all -- silently, while the registry keeps

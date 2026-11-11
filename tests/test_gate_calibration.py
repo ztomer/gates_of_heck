@@ -66,7 +66,13 @@ def green_probes(root):
         passed, _ = gate.run_one(path, flag, cwd=str(root))
         if passed:
             ran[os.path.relpath(path, str(root))] = flag
+        elif passed is None:  # NOT APPLICABLE, which only a hosted run may say (run_one)
+            NOT_HERE.add(os.path.relpath(path, str(root)))
     return ran
+
+
+# The self-proofs that said NOT APPLICABLE on this (hosted) run; empty on the owner's machine.
+NOT_HERE: set[str] = set()
 
 
 # ── the real registry, against the real estate ────────────────────────────────
@@ -80,8 +86,13 @@ def ran_here() -> dict:
 
 def test_the_house_registry_holds_against_this_repo(ran_here):
     """The claim under test is the real file, not a fixture of it."""
-    bad = reader.verify(str(ROOT), reader.load(str(ROOT)), set(ran_here))
+    unjudged: list[str] = []
+    bad = reader.verify(
+        str(ROOT), reader.load(str(ROOT)), set(ran_here), frozenset(NOT_HERE), unjudged,
+        gate.not_applicable.hosted(),
+    )  # fmt: skip
     assert bad == [], bad
+    assert not unjudged or gate.not_applicable.hosted(), unjudged
 
 
 def test_every_checker_under_checks_is_in_the_house_registry():
@@ -130,6 +141,8 @@ def test_every_local_citation_names_a_proof_the_sweep_actually_ran(ran_here):
     local = {key: why for key, why in data["proven_by"].items() if why.startswith("checks/")}
     for key, why in local.items():
         cited = reader.CITED_FILE.match(why).group(1)
+        if cited in NOT_HERE:
+            continue  # said NOT APPLICABLE on this hosted run: not judged here
         assert cited in ran, f"{key}: cites {cited}, which the sweep did not run"
     # Since Phase N3 the local proofs are native test suites, run by the push gate's pytest step.
     suites = {key: why for key, why in data["proven_by"].items() if why.startswith("tests/")}
@@ -153,6 +166,8 @@ def test_every_external_citation_names_a_prover_that_claims_the_gate():
         outside += 1
         claimed = reader.claims(path)
         assert claimed is None or key in claimed, key
+    if not outside and gate.not_applicable.hosted():
+        pytest.skip("NOT APPLICABLE on this hosted runner: the other estates' provers are not here")
     assert outside, "no entry cites another estate, so this test would prove nothing"
 
 
@@ -275,6 +290,69 @@ def test_a_claim_to_a_proof_that_does_not_run_is_red(tmp_path):
     got = run_gate(root)
     assert got.returncode == 1
     assert "did not run to green" in got.stderr
+
+
+def _hosted_env(hosted: str) -> dict[str, str]:
+    env = {k: v for k, v in os.environ.items() if k != "GITHUB_ACTIONS"}
+    if hosted:
+        env["GITHUB_ACTIONS"] = hosted
+    return env
+
+
+# A file in ANOTHER estate (its first component is no directory of this repo), absent here: on the
+# owner's machine a missing prover is a finding; a hosted runner holds no other estate to read.
+FOREIGN = "no_such_estate_here/tools/check_gate_canary.py -- every gate goes red on a violation"
+# A self-proof that probes its prerequisite and finds the owner's estate absent (lib/not_applicable).
+ESTATE_BOUND = (
+    "import sys\n"
+    'if "--probe" in sys.argv:\n'
+    '    print("NOT APPLICABLE on this hosted runner: probe needs the estate, which is not here")\n'
+    "    sys.exit(78)\n"
+)
+
+
+@pytest.mark.parametrize("hosted", ["true", ""], ids=["hosted", "owner-machine"])
+def test_a_claim_whose_evidence_a_runner_cannot_read_is_not_judged_there(tmp_path, hosted):
+    """CI.PUBLIC2 (run 42930175911): 18 claims citing game_asset_factory's canary and one citing a
+    probe that said NOT APPLICABLE went RED on a hosted runner because the evidence was absent.
+    Absent evidence is neither green nor red there: it is "not judged here", with its reason. On the
+    owner's machine, the judge of record, both stay findings."""
+    root = estate(
+        tmp_path,
+        {"prover": PROBING, "bound": ESTATE_BOUND},
+        {
+            "proven_by": {
+                "prover": FOREIGN,
+                "bound": "checks/check_bound.py --probe: red on a violation",
+            }
+        },
+    )
+    got = subprocess.run(
+        [sys.executable, str(CHECK), "--root", str(root)], cwd=root, capture_output=True,
+        text=True, check=False, stdin=subprocess.DEVNULL, env=_hosted_env(hosted),
+    )  # fmt: skip
+    said = got.stdout + got.stderr
+    if hosted:
+        assert got.returncode == 0, said
+        assert said.count("not judged here") == 2, said
+        assert "does not exist" not in said and "did not run to green" not in said, said
+    else:
+        assert got.returncode == 1, said
+        assert "not judged here" not in said, said
+
+
+def test_a_missing_file_of_THIS_repo_stays_red_on_a_hosted_run(tmp_path):
+    """Only another estate's file is unreadable on a runner; this repo's own is in the checkout."""
+    root = estate(
+        tmp_path,
+        {"prover": PROBING},
+        {"proven_by": {"prover": "checks/check_absent.py --probe: red"}},
+    )
+    got = subprocess.run(
+        [sys.executable, str(CHECK), "--root", str(root)], cwd=root, capture_output=True,
+        text=True, check=False, stdin=subprocess.DEVNULL, env=_hosted_env("true"),
+    )  # fmt: skip
+    assert got.returncode == 1 and "does not exist" in got.stderr, got.stdout + got.stderr
 
 
 def test_a_sound_registry_is_green_through_the_gate(tmp_path):

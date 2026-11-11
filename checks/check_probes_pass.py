@@ -262,7 +262,7 @@ def blind(root, dirs=GATE_DIRS):
     return False
 
 
-def registry_verdict(root, ran):
+def registry_verdict(root, ran, not_here=frozenset()):
     """The calibration registry's claims, checked against what this run observed.
 
     `checks/gate_calibration.json` is the estate's record of which gates have proven they can
@@ -272,12 +272,18 @@ def registry_verdict(root, ran):
     calling it proven. This is the half that closes it: every entry is verified against reality,
     and one whose gate does not exist or whose proof did not run here is a finding.
 
-    Returns (findings, notes). An absent registry is not a finding: only this repo has one.
+    Returns (findings, notes). An absent registry is not a finding: only this repo has one. A claim
+    whose evidence a hosted runner cannot read is neither: it is warned as "not judged here", with
+    its reason (CI.PUBLIC2).
     """
     data = load_registry(root)
     if data is None:
         return [], []
-    return verify(root, data, ran), external_note(root, data)
+    unjudged: list[str] = []
+    bad = verify(root, data, ran, frozenset(not_here), unjudged, not_applicable.hosted())
+    for line in unjudged:
+        warn(line)
+    return bad, external_note(root, data)
 
 
 def main(argv=None):
@@ -370,7 +376,7 @@ def main(argv=None):
         info("Fix the probe against the gate as it is now, or delete it and lose the claim.")
         return 1
 
-    bad, notes = registry_verdict(root, ran)
+    bad, notes = registry_verdict(root, ran, {os.path.relpath(path, root) for path, _ in not_here})
     for line in bad:
         err(line)
     if bad:
