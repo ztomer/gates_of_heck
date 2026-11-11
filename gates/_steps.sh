@@ -22,6 +22,7 @@
 
 parse_step_prefix() {
     local n="$1" cmd="$2" head items item key paths p tags=""
+    PRODUCES[n]=","; CONSUMES[n]=","  # the declared paths, comma-delimited, for _deps_done
     case "$cmd" in
         "["*"] "*)
             head="${cmd%%] *}"
@@ -44,6 +45,8 @@ parse_step_prefix() {
                             case "$p" in
                                 ""|*" "*) die "step $n: an artifact path holds a space in it (got '$p')" ;;
                             esac
+                            if [ "$key" = produces ]; then PRODUCES[n]="${PRODUCES[n]}$p,"
+                            else CONSUMES[n]="${CONSUMES[n]}$p,"; fi
                         done
                         ;;
                     *)
@@ -58,4 +61,21 @@ parse_step_prefix() {
             ;;
         *) RUN[n]="$cmd" ;;
     esac
+}
+
+# _deps_done <i> -- every step declared before i that `produces=` a path i `consumes=` is done
+# (GOH.PROVENBUILD gap 2): under GOH_CI_JOBS>1 a producer held back by a busy tag let its consumer,
+# declared after it, start first and read nothing. Order, not a tag: two consumers still overlap.
+_deps_done() {
+    local i="$1" j rest p
+    [ "${CONSUMES[i]:-,}" != "," ] || return 0
+    for ((j = 1; j < i; j++)); do
+        [ "${STATE[j]}" = "done" ] && continue
+        rest="${CONSUMES[i]#,}"
+        while [ -n "$rest" ]; do
+            p="${rest%%,*}"; rest="${rest#*,}"
+            case "${PRODUCES[j]:-,}" in *",$p,"*) return 1 ;; esac
+        done
+    done
+    return 0
 }

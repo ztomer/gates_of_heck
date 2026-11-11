@@ -384,7 +384,7 @@ _launch() { # start every pending step a slot and its tags allow, in declared or
     for ((i = 1; i <= n; i++)); do
         [ "${STATE[i]}" = pending ] || continue
         [ "$RUNNING" -lt "$JOBS" ] || return 0
-        _tags_free "$i" && _start "$i"
+        _tags_free "$i" && _deps_done "$i" && _start "$i"
         # Serial: a run is reported before the next starts, so the live header stays on top.
         [ "$LIVE" -eq 1 ] && [ "$RUNNING" -gt 0 ] && return 0
     done
