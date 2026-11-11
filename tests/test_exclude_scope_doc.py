@@ -100,6 +100,16 @@ def test_the_tap_write_scan_cannot_take_a_path_exemption() -> None:
         assert not READS_KEY.search(text), f
 
 
+def test_the_workflow_pin_scan_cannot_take_a_path_exemption() -> None:
+    """What CI runs on is not a style: its one escape is the reasoned `workflow-pin-ok:` marker
+    on the reference, never a path pattern."""
+    assert "nor the workflow-pin scan" in _row()
+    for f in (SRC / "workflowpin").glob("*.rs"):
+        text = f.read_text(encoding="utf-8")
+        assert "PathFilter" not in text and "compile_exclude" not in text, f
+        assert not READS_KEY.search(text), f
+
+
 def test_the_moving_tag_scan_cannot_take_a_path_exemption() -> None:
     """What a build pulls is not a style: its one escape is the reasoned `moving-tag-ok:` marker
     on the reference, never a path pattern -- vendored or not."""

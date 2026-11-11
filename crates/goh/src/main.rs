@@ -105,6 +105,7 @@ pub mod urlexpand;
 pub mod vendored;
 pub mod verdict_cache;
 pub mod versrc;
+pub mod workflowpin;
 
 use goh_tui::ERR;
 use std::path::PathBuf;
@@ -437,6 +438,7 @@ fn run_ported(command: Commands) -> Result<i32, Box<Commands>> {
         Commands::CheckoutCredentials(a) => checkoutcreds::run_command(a.staged),
         Commands::TapWrites(a) => tapwrite::run_command(a.staged),
         Commands::MovingTags(a) => movingtag::run_command(a.staged),
+        Commands::WorkflowPins(a) => workflowpin::run_command(a.staged),
         Commands::InstalledVersion(a) => instline::run_command(a.staged),
         Commands::Roadmap(a) => roadmap::run_command(a.staged, a.seed, a.queue.as_deref()),
         Commands::UnreapedSpawn {

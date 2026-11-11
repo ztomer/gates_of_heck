@@ -147,6 +147,12 @@ pub const MOVING_TAGS: Subject = Subject {
     units: "image references",
     scanner: "no container image on a moving tag",
 };
+pub const WORKFLOW_PINS: Subject = Subject {
+    key: "GOH_WORKFLOW_PINS_MIN_REFS",
+    unit: "workflow reference",
+    units: "workflow references",
+    scanner: "no moving runner label or action ref in a workflow",
+};
 pub const MD_LINKS: Subject = Subject {
     key: "GOH_MD_LINKS_MIN_LINKS",
     unit: "markdown link",
@@ -197,7 +203,7 @@ pub const BUSY_LOOP: Subject = Subject {
 };
 
 /// Every scanner with a subject, spelled once: the keys `.gatesrc` may hold a floor in.
-pub const ALL: [&Subject; 23] = [
+pub const ALL: [&Subject; 24] = [
     &EMOJI,
     &CONFLICT_MARKERS,
     &FILE_LENGTH,
@@ -213,6 +219,7 @@ pub const ALL: [&Subject; 23] = [
     &CHECKOUT_CREDENTIALS,
     &TAP_WRITES,
     &MOVING_TAGS,
+    &WORKFLOW_PINS,
     &MD_LINKS,
     &UNREAPED_SPAWN,
     &SUBPROCESS_STDIN,

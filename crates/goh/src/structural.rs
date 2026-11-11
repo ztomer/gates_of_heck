@@ -5,6 +5,7 @@ use crate::{
     blobs, busyloop, checkoutcreds, claims, credurls, deadexec, earlypipe, gatesrc, gitutil,
     goh_root, hookindex, killname, lockver, mdlinks, movingtag, prefetch, provenance, pyformat,
     scope, shell_lint, steps, steps_delegated, steps_rust, substdin, tapwrite, unreaped, vendored,
+    workflowpin,
 };
 use goh_tui::{ERR, OK};
 
@@ -172,6 +173,8 @@ pub fn run(staged: bool, full: bool, keep_going: bool) -> i32 {
     step!(git_config_steps(&repo, &files, staged, &tally));
     // What a build or a deploy pulls: a container image pinned to one build, never a moving tag.
     step!(movingtag::step(&repo, &files, staged));
+    // What CI runs on and runs: a named runner image and named action releases, never a moving label.
+    step!(workflowpin::step(&repo, &files, staged));
     // What a script RUNS: a backgrounded busy loop has nothing to reap it, and the house has
     // ONE way to make load. Beside the moving-tag step: both are the house's own tools, and
     // both are about a pin or a load that outlives the thing that started it.

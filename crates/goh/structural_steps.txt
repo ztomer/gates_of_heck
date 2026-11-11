@@ -27,6 +27,7 @@ no credential in a git remote URL
 no disallowed emoji
 no early-exit pipe under pipefail
 no hard-coded home paths
+no moving runner label or action ref in a workflow
 no process kill by name
 no private repository named in a public tree
 no tracked build output

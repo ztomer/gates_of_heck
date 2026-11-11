@@ -129,6 +129,19 @@ FULL_CASES: dict[str, dict[str, bytes]] = {
         + b"a" * 64
         + b"\n",
     },
+    # workflow-pins, a hard gate in every repo: `ubuntu-latest` fails; a named image passes.
+    "workflow_pin_red": {
+        ".gatesrc": GATESRC,
+        ".github/workflows/ci.yml": (
+            b"on: push\njobs:\n  a:\n    runs-on: ubuntu-latest\n    steps: []\n"
+        ),
+    },
+    "workflow_pin_green": {
+        ".gatesrc": GATESRC,
+        ".github/workflows/ci.yml": (
+            b"on: push\njobs:\n  a:\n    runs-on: ubuntu-24.04\n    steps: []\n"
+        ),
+    },
     # checkout-credentials, a hard gate in every repo: a default checkout fails; `false` passes.
     "checkout_token_red": {
         ".gatesrc": GATESRC,
@@ -137,7 +150,7 @@ FULL_CASES: dict[str, dict[str, bytes]] = {
     "checkout_token_green": {
         ".gatesrc": GATESRC,
         ".github/workflows/ci.yml": (
-            b"jobs:\n  a:\n    steps:\n      - uses: actions/checkout@v4\n"
+            b"jobs:\n  a:\n    steps:\n      - uses: actions/checkout@v4.2.2\n"
             b"        with:\n          persist-credentials: false\n"
         ),
     },
@@ -256,6 +269,8 @@ EXPECTED: dict[str, tuple[int, str | None]] = {
     "tap_write_red": (1, "no direct write to a Homebrew tap"),
     "moving_tag_green": (0, None),
     "moving_tag_red": (1, "no container image on a moving tag"),
+    "workflow_pin_green": (0, None),
+    "workflow_pin_red": (1, "no moving runner label or action ref in a workflow"),
     "checkout_token_green": (0, None),
     "checkout_token_red": (1, "no checkout leaves its token in git config"),
     "clean": (0, None),

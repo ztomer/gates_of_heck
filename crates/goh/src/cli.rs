@@ -432,6 +432,11 @@ pub enum Commands {
     /// `uses: docker://`. A digest, a release tag or a commit id passes; the one escape is
     /// `# moving-tag-ok: <reason>`. No `--exclude`: what a build pulls is not a style.
     MovingTags(StagedArgs),
+    /// Fail on a workflow (`.github/workflows`, composite actions) with a `*-latest` runner label
+    /// or an action on a ref its owner moves: a branch (`@stable`) or a major-only tag (`@v4`).
+    /// A named image (`ubuntu-24.04`), a commit id or a full release tag (`@v4.1.2`) passes; the
+    /// one escape is `# workflow-pin-ok: <reason>`. No `--exclude`: what CI runs on is not a style.
+    WorkflowPins(StagedArgs),
     /// Fail on a plan (ROADMAP/PLAN/BACKLOG/TODO `.md`) stating the installed version (it rots).
     InstalledVersion(StagedArgs),
     /// Fail on a `GOH_INSTALLS` entry the installed-version reader cannot read: each is an app at

@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+* **`goh workflow-pins`: a workflow names its runner image and its action releases (GOH.RUNNERPIN).**
+  "Latest" is a named release, never a moving label (house rule 2026-10-06), and two things in a
+  workflow still moved under an unchanged file: a `*-latest` runner label (CI warned `ubuntu-latest`
+  was moving to Ubuntu 26, M.FLOODREAP) and an action on a branch or a major-only tag (`@stable`,
+  `@v4`; monitor pinned its by hand in M.CIPARITY and nothing refused the next floating tag). A
+  structural step in every repo, both scopes, read through the YAML parse; a named image, a commit
+  id, a full release tag and a path in this repo pass; the one escape is `# workflow-pin-ok:
+  <reason>`; floored by `GOH_WORKFLOW_PINS_MIN_REFS`. The goh-floors usage comment no longer
+  recommends `@main`.
+
 * **The staged swift lint reads only the config's `included` roots.** `swift_staged.sh` handed swiftlint
   explicit paths, which ignore `.swiftlint.yml` `included`, so a repo whose config includes only
   `Sources` had its staged `Tests/` files judged at commit by rules the push never applies (ZoneWM,

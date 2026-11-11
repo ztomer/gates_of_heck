@@ -7,7 +7,7 @@
 # judges, which fail naming the floor. Use it right after goh is checked out:
 #
 #   - uses: ./goh/.github/actions/goh-floors          # goh checked out into the workspace
-#   - uses: ztomer/gates_of_heck/.github/actions/goh-floors@main
+#   - uses: ztomer/gates_of_heck/.github/actions/goh-floors@<release commit>   # a commit id: never @main
 #     with: { goh-dir: "${{ env.GOH_DIR }}" }          # goh cloned elsewhere: judge THAT copy's floors
 name: goh-floors
 description: Meet gates_of_heck's tool floors (python3, shellcheck) from its own floor table.

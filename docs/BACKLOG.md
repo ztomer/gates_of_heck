@@ -41,23 +41,12 @@ CHANGELOG) resolve in this file at `1a7c444`: `git show 1a7c444:docs/BACKLOG.md`
 Why first: each is a rule that only discipline held, and broke on 2026-11-08; none depends on another
 phase, and each is one landing.
 
-- **GOH.RUNNERPIN** (queue: GOH.RUNNERPIN) A moving runner label breaks "latest is a named release":
-  antiknob, divoom-control and monitor use `*-latest` labels, and CI warns that `ubuntu-latest` moves to
-  Ubuntu 26. Add a goh check refusing `*-latest` `runs-on` labels and moving action tags in
-  `.github/workflows`, then pin those three repos to named images.
-  **Done when:** the check is red on a fixture with `ubuntu-latest` and green on a named image; antiknob,
-  divoom-control and monitor are pinned and their CI is green.
 - **GOH.ROADMAPREQ** (queue: GOH.ROADMAPREQ) A repo with no `GOH_ROADMAP` still passes with a warning.
   Seed the remaining repos (koffee_big, ZoneWM including retiring `check_stale_backlog.py`,
   divoom-control, monitor, scripts, servers/media_server including its stale History sentence,
   a private nested workspace, the 8 peer repos), then turn the warning red.
   **Done when:** every gated repo declares `GOH_ROADMAP` (a path or `none`); an unset one is red, proven
   on a fixture.
-- **LOOP.INSTALLED2** (queue: LOOP.INSTALLED2) The goh part: `GOH_INSTALLS` is a `.gatesrc` key used by 8
-  repos but absent from `docs/config.md` and from any goh check. The other parts (the three
-  `installs.HELD` rows, the pushes in four repos) are `.loop`'s and the queue's.
-  **Done when:** `GOH_INSTALLS` is documented in `docs/config.md` and checked in goh, test first, landed
-  via `tools/land.sh`.
 
 - **RUFF.RULES2 — the unadopted house ruff set goes red.** `gates/ruff_house.py` is the house set;
   a repo without `GOH_PY_LINT_CEILINGS` is still judged on the PLW1510 floor and only WARNED with the

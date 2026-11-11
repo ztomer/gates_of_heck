@@ -71,6 +71,7 @@ GOH_RELEASE_QUIET_MIN_FILES=2           # [2] release-named shell scripts (2026-
 GOH_MKTEMP_PORTABLE_MIN_FILES=78        # [87] shell sources (2026-11-08)
 GOH_PLURAL_HEDGE_MIN_FILES=720          # [~800] py/sh/rs/swift sources (2026-11-09)
 GOH_TAP_WRITES_MIN_FILES=370            # [414] script/workflow files (2026-10-17)
+GOH_WORKFLOW_PINS_MIN_REFS=5           # [5] runner labels and action references (2026-11-11)
 GOH_MOVING_TAGS_MIN_REFS=0              # [0] image references -- this tree builds and pulls no image
 GOH_MD_LINKS_MIN_LINKS=1                # [1] markdown links -- this tree cites by path, not link
 GOH_CHECKOUT_CREDENTIALS_MIN_FILES=1    # [1] workflow/action files (2026-10-26)

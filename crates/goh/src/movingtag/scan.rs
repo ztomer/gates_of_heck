@@ -80,30 +80,46 @@ fn is_comment(line: &str) -> bool {
     line.trim_start().starts_with('#')
 }
 
-/// The marker on `line`, if any: its reason (possibly empty).
-fn marker_on(line: &str) -> Option<&str> {
-    let at = line.find(MARKER)?;
+/// The `marker` (an escape such as [`MARKER`]) on `line`, if any: its reason (possibly empty).
+#[must_use]
+pub fn marker_in<'a>(line: &'a str, marker: &str) -> Option<&'a str> {
+    let at = line.find(marker)?;
     line[..at]
         .contains('#')
-        .then(|| line[at + MARKER.len()..].trim())
+        .then(|| line[at + marker.len()..].trim())
 }
 
-/// The marker covering lines `start..=end` (1-based): on them, or in the comment lines directly
-/// above `start`. Returns its line and reason.
-fn covering_marker<'a>(lines: &[&'a str], start: usize, end: usize) -> Option<(usize, &'a str)> {
+/// The `marker` covering lines `start..=end` (1-based): on them, or in the comment lines directly
+/// above `start`. Returns its line and reason. Shared with `goh workflow-pins`, whose escape has
+/// the same shape.
+#[must_use]
+pub fn covering<'a>(
+    lines: &[&'a str],
+    marker: &str,
+    start: usize,
+    end: usize,
+) -> Option<(usize, &'a str)> {
     for n in start..=end.min(lines.len()) {
-        if let Some(reason) = marker_on(lines[n - 1]) {
+        if let Some(reason) = marker_in(lines[n - 1], marker) {
             return Some((n, reason));
         }
     }
     let mut n = start.saturating_sub(1);
     while n >= 1 && is_comment(lines[n - 1]) {
-        if let Some(reason) = marker_on(lines[n - 1]) {
+        if let Some(reason) = marker_in(lines[n - 1], marker) {
             return Some((n, reason));
         }
         n -= 1;
     }
     None
+}
+
+fn marker_on(line: &str) -> Option<&str> {
+    marker_in(line, MARKER)
+}
+
+fn covering_marker<'a>(lines: &[&'a str], start: usize, end: usize) -> Option<(usize, &'a str)> {
+    covering(lines, MARKER, start, end)
 }
 
 /// Judge every image reference in the file `rel` holding `text`.
