@@ -60,6 +60,10 @@ export GATES_OF_HECK_SUITE_RUNNER=$$
     || die "pillow is not installed for the house interpreter $GOH_PY -- \"$GOH_PY\" -m pip install pillow"
 "$GOH_PY" -c 'import numpy' 2>/dev/null \
     || die "numpy is not installed for the house interpreter $GOH_PY -- \"$GOH_PY\" -m pip install numpy"
+# The coverage gate's tests run coverage through the house interpreter (run 42950563400:
+# test_gate_tests_unbound died on "'coverage' not installed").
+"$GOH_PY" -c 'import coverage' 2>/dev/null \
+    || die "coverage is not installed for the house interpreter $GOH_PY -- \"$GOH_PY\" -m pip install coverage"
 # The tools the suite's FIXTURE repos are gated and shipped with (run 42944992082: ~45 Python-gate
 # tests died on "ruff is not available through <python> -m", and 23 test_ship tests on a missing
 # git-cliff): goh's own gates declare no python or ship layer, so the goh-suite layer installs them.
