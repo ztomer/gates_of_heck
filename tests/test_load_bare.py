@@ -12,14 +12,13 @@ run while a live experiment that is not the hook's own ancestor holds the slot.
 from __future__ import annotations
 
 import json
-import os
 import subprocess
 import sys
 from pathlib import Path
 
 import pytest
 import timing_bounds
-from conftest import REPO_ROOT
+from conftest import REPO_ROOT, hermetic_env
 
 sys.path.insert(0, str(REPO_ROOT / "lib"))
 
@@ -34,7 +33,7 @@ def _guard(command: str, load_dir: Path) -> str | None:
     event = {"tool_name": "Bash", "tool_input": {"command": command}, "cwd": str(load_dir)}
     ran = subprocess.run([sys.executable, str(GUARD)], input=json.dumps(event), capture_output=True,
                          text=True, timeout=30, check=False,
-                         env={**os.environ, "GOH_LOAD_DIR": str(load_dir)})  # fmt: skip
+                         env=hermetic_env(GOH_LOAD_DIR=str(load_dir)))  # fmt: skip
     assert ran.returncode == 0, ran.stderr
     if not ran.stdout.strip():
         return None
@@ -103,7 +102,7 @@ def test_the_build_lock_refusal_names_the_wait_line(tmp_path):
          "--", "swift", "test", "--package-path", "."],
         capture_output=True, text=True, stdin=subprocess.DEVNULL,
         timeout=timing_bounds.patience(60), check=False,
-        env={**os.environ, "GOH_LOAD_NCPU": "64"},
+        env=hermetic_env(GOH_LOAD_NCPU="64"),
     )  # fmt: skip
     assert ran.returncode == 2, ran.stderr
     assert 'tools/load.py" --wait 0 -- swift test --package-path .' in ran.stderr, ran.stderr
