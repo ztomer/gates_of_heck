@@ -2,6 +2,20 @@
 
 ## Unreleased
 
+## v0.95.0 -- the house ruff set with per-file ceilings, and workflows that name what they run
+
+* **ONE house ruff rule set, and per-file ceilings that only fall (RUFF.RULES).** `gates/ruff_house.py`
+  carries the rule set every repo is linted by, and `tools/py_lint_ceilings.json` the per-file count a
+  file may not exceed (`gates/py_lint_ceiling.py`): a file under its ceiling must write the lower
+  number, so the count only falls. A repo whose CI pinned an earlier goh lints with its own narrower
+  select and finds 0, which reads as "under its ceiling -- write 0"; it takes this release to meet
+  the set it was seeded under (RUFF.ADOPT2).
+
+* **`test_crates_behind` runs with no inherited `GOH_*`.** The push gate exports `GOH_CHANGE_BASE`
+  (the remote tip), which is no commit in the test's fixture clone, so the red arm saw "no base" and
+  read green; it failed only inside a push of a release (v0.95.0). The module's environment is now
+  `hermetic_env()`.
+
 * **The session bench's inflation report is pinned without a clock (GOH.WALLCLOCK).**
   `test_the_slowest_inflating_steps_are_reported` slept under a flock and asserted a measured ratio
   above 1.5; a hosted runner read 1.48 and the run went red (goh 42990295293). The test now injects
