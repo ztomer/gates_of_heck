@@ -46,7 +46,7 @@ def _run(cmd: list[str], stdin: str | None = None) -> subprocess.CompletedProces
 
 def _git(repo: Path, *args: str, stdin: str | None = None) -> subprocess.CompletedProcess[str]:
     """A git READ of `repo` under the same 60 s bound as `_run`, with no optional lock to strand."""
-    return gitrun.run_reader(["-C", str(repo), *args], timeout=60, input_text=stdin)
+    return gitrun.run_reader(args, repo=repo, timeout=60, input_text=stdin)
 
 
 def git_repos(root: Path) -> list[Path]:

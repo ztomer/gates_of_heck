@@ -45,6 +45,10 @@ if sys.argv[1] == "ci":  # $FAKE_CI: the verdicts in order (the last repeats), c
 
 @pytest.fixture
 def shipped(repo: Path, tmp_path: Path) -> Path:
+    return make_shipped(repo, tmp_path)
+
+
+def make_shipped(repo: Path, tmp_path: Path) -> Path:
     """`repo` with a bare `origin` it tracks, tagged v1.0.0 and pushed, then one commit on top."""
     remote = tmp_path / "remote.git"
     git(repo, "clone", "-q", "--bare", str(repo), str(remote))

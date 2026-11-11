@@ -107,6 +107,58 @@ def test_the_scan_sees_a_planted_site(tmp_path: Path) -> None:
     assert hits == [2]
 
 
+def _seam_calls_with_hand_c(tree: ast.Module) -> list[int]:
+    """`gitrun.run_reader([..."-C"...])` / `run_writer`: a repo named by hand, not by `repo=`."""
+    hits = []
+    for node in ast.walk(tree):
+        func = node.func if isinstance(node, ast.Call) else None
+        name = func.attr if isinstance(func, ast.Attribute) else getattr(func, "id", "")
+        if name not in {"run_reader", "run_writer"} or not node.args:
+            continue
+        first = node.args[0]
+        elts = first.elts[:1] if isinstance(first, (ast.List, ast.Tuple)) else []
+        if elts and isinstance(elts[0], ast.Constant) and elts[0].value == "-C":
+            hits.append(node.lineno)
+    return hits
+
+
+def test_a_seam_call_names_its_repo_by_keyword_never_by_a_hand_written_dash_c() -> None:
+    """GOH.SHIPGITDIR: git ignores `-C` once GIT_DIR is set, and a hook exports it, so a call that
+    names a repository goes through `repo=`, which also drops git's local-env list."""
+    found = [f"{rel}:{n}" for rel in _python_sources() if rel not in SEAMS
+             for n in _seam_calls_with_hand_c(_tree(rel))]  # fmt: skip
+    assert found == [], f"pass repo= to gitrun, not a leading '-C': {found}"
+
+
+def test_the_dash_c_scan_sees_a_planted_site() -> None:
+    planted = ast.parse(
+        "gitrun.run_reader(['-C', r, 'status'], timeout=5)\n"
+        "gitrun.run_reader(['status'], repo=r, timeout=5)\n"
+        "run_writer(['-C', r, 'add'], deadline_s=1)\n"
+    )
+    assert _seam_calls_with_hand_c(planted) == [1, 3]
+
+
+def test_repo_drops_a_leaked_git_dir(
+    repo: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A live GIT_DIR naming another repo: `-C` alone answers for THAT one; `repo=` does not."""
+    import shutil
+
+    import gitrun
+
+    other = tmp_path / "other"
+    shutil.copytree(repo, other, symlinks=True)
+    monkeypatch.setenv("GIT_DIR", str(other / ".git"))
+    ask = ["rev-parse", "--absolute-git-dir"]
+    leaked = gitrun.run_reader(["-C", str(repo), *ask], timeout=10)
+    assert (
+        Path(leaked.stdout.strip()) == (other / ".git").resolve()
+    )  # calibration: the leak is real
+    named = gitrun.run_reader(ask, repo=repo, timeout=10)
+    assert Path(named.stdout.strip()) == (repo / ".git").resolve()
+
+
 def test_a_direct_git_status_or_diff_carries_the_no_lock_env() -> None:
     """A literal `["git", ..., "status"|"diff"]` (no --cached) names GIT_OPTIONAL_LOCKS in its env."""
     bad = []

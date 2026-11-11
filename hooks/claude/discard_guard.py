@@ -198,7 +198,7 @@ def _git(cwd: str, *args: str) -> subprocess.CompletedProcess[str]:
     env = {k: v for k, v in os.environ.items() if not k.startswith("GIT_")}
     if gitrun is None:
         return subprocess.CompletedProcess(["git", *args], 1, "", "lib/gitrun.py is not there")
-    return gitrun.run_reader(["-C", cwd, *args], timeout=10, env=env)
+    return gitrun.run_reader(args, repo=cwd, timeout=10, env=env)
 
 
 def _is_rev(cwd: str, tok: str) -> bool:

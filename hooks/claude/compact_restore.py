@@ -37,7 +37,7 @@ def _git(cwd: str, *args: str) -> str | None:
     if gitrun is None:
         return None
     try:
-        r = gitrun.run_reader(["-C", cwd, *args], timeout=GIT_TIMEOUT_S)
+        r = gitrun.run_reader(args, repo=cwd, timeout=GIT_TIMEOUT_S)
     except (OSError, subprocess.TimeoutExpired):
         return None
     return r.stdout.rstrip("\n") if r.returncode == 0 else None

@@ -126,7 +126,8 @@ def _ahead(repo: Path) -> int:
     env = {k: v for k, v in os.environ.items() if not k.startswith("GIT_")}
     try:
         r = gitrun.run_reader(
-            ["-C", str(repo), "rev-list", "--count", "@{upstream}..HEAD"],
+            ["rev-list", "--count", "@{upstream}..HEAD"],
+            repo=repo,
             timeout=AHEAD_TIMEOUT_S,
             env=env,
         )

@@ -104,7 +104,7 @@ class Refused(Exception):
 
 
 def git(repo: Path, *args: str) -> str:
-    done = gitrun.run_reader(["-C", str(repo), *args], timeout=60)
+    done = gitrun.run_reader(args, repo=repo, timeout=60)
     return done.stdout.strip() if done.returncode == 0 else ""
 
 
