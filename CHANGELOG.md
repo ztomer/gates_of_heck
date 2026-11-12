@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## v0.99.0 -- The Bash guard judges the command that runs (heredocs, newlines); no stash, reset or branch switch in a shared checkout; every kill by name refused naming its live hits; a path commit lints the tree it records; the main-commit escape is logged
+
 * **The Bash guard judges the command that runs, not a heredoc's words (GOH.HEREDOCBUILD).** A script
   written by `cat > f <<'EOF' ... cargo clippy ... EOF` and run through `load.py -- bash f` was
   refused as a bare build. Consumers: a heredoc body is now its owner's stdin (`lib/shell_segments.py`)
