@@ -2,6 +2,35 @@
 
 ## Unreleased
 
+* **Gates share the load slot, three at once; a load experiment still holds it alone (GOH.GATESLOT).**
+  A `load.py 0 -- <gate>` took the machine-wide slot as exclusively as a spinner experiment, so
+  every agent's gate ran one at a time: on 2026-11-11 the queue ran five deep and stalled ~20 min
+  behind one `git push`. Measured on 16 cores (a CPU-bound gate at -n 12): 20.9/24.1 s alone,
+  39.8/39.2 s two at once, 56.4/56.5 s three, 74.8/73.4 s four -- flat throughput, and one round at
+  four failed. A run with no spinners now holds one of `GOH_LOAD_GATES` (default 3) places; a run
+  with spinners holds the slot alone and waits for them, and its pending mark queues gates arriving
+  behind it, so it cannot starve (docs/decisions/D-0003).
+
+* **A commit in a goh checkout is judged by that checkout's own gates (GOH.SELFGATE).** goh's
+  pre-commit ran the shared checkout's HEAD gates over a goh worktree commit, so a gate change and
+  the fix it requires needed `GOH_DIR=<worktree> GOH_LIVE=1` to land together. gates/commit_gate.sh
+  hands such a commit to its own tree's commit gate, live, once. Consumer repos are unchanged.
+
+* **A measurement nested in a gate drains every gate but its own ancestors (GOH.BENCHNEST).** A
+  perf step inside ci_local inside a release waited for the gates it ran inside, so its drain never
+  got the lock. `bench_lock_nested` is the public "am I inside a gate" question; builds outside any
+  gate are ruled load, seen by tools/quiet.sh, not gates (docs/decisions/D-0004).
+
+* **Under GOH_CI_JOBS>1 a `consumes=` step starts after its producers are done (GOH.PROVENBUILD).**
+  The scheduler saw resource tags only, so a producer held back by a busy tag let its consumer start
+  first and read nothing.
+
+* **Land profiles, worktree proofs and goh's Linux cfg (GOH.LANDGAPS).** The rc=124 row in a passing
+  land profile was a test's deliberate timeout, recorded through the GOH_TIMINGS the suite inherited:
+  conftest drops the profile variables. From a worktree no crate check was recorded as proven,
+  because goh's build.rs re-runs on the git dir's index and logs/HEAD: the repository's own git dir
+  is not an escape. goh now also lints `--target x86_64-unknown-linux-gnu` (house rule 3).
+
 ## v0.97.0 -- A file another repo deleted mid-edit no longer turns goh's gate red; the suite never starts sccache under its own temp dir; the canary's export cannot fail silently
 
 * **A ship's run inputs never reach the suite (GOH.SHIPENV).** goh ship exports GOH_SHIP_SUMMARY
