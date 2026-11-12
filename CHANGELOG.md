@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## v0.101.0 -- changelog-tags refuses to judge a shallow or tagless clone; the hosted gate pins one ruff; commit-scope seeded checks judge renames, read the index's seed and lock the store
+
 * **A commit-scope seeded check reads what the commit records (GOH.SEEDSCOPE).** Three seams found
   landing GOH.SEEDSTALE. Consumers: every staged listing (`gitutil::listed_files`,
   `checks/_gitutil.py`, `gates/py_staged.sh`, `gates/swift_staged.sh`, `gates/commit_gate.sh`) now
