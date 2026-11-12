@@ -37,10 +37,11 @@ def test_a_kept_root_with_a_read_only_tree_is_reaped_not_leaked(tmp_path) -> Non
     root = tmp_path / "goh-pytest.abc123"
     (root / "a" / "b").mkdir(parents=True)
     (root / "a" / "b" / "f").write_text("x")
+    old = time.time() - 40 * 3600
+    for d in (root / "a" / "b", root / "a", root):  # a killed run's tree is old all through
+        os.utime(d, (old, old))
     (root / "a" / "b").chmod(0o555)
     (root / "a").chmod(0o555)
-    old = time.time() - 40 * 3600
-    os.utime(root, (old, old))
     try:
         removed = prune(str(tmp_path), "goh-", keep=0, idle=3600)
         assert [os.path.basename(r) for r in removed] == ["goh-pytest.abc123"]

@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+* **A kept pytest temp root is bounded, and is 21x smaller (GOH.PYTESTTMP).** TMPDIR held 55.3 GiB:
+  eleven kept `goh-pytest.*` roots of ~5 GiB, every test's `tmp_path` of each failed run. Now pytest keeps
+  only a failed test's `tmp_path` (`tmp_path_retention_policy=failed`), each run cuts older kept roots to
+  the newest 3 within 1 GiB (`GOH_PYTEST_KEEP`, `GOH_PYTEST_KEEP_BYTES`; `prune_kept.py --max-bytes`),
+  and a root whose owner pid is alive or whose tree moved within the hour is never cut. goh's own
+  checkout fixture clones with `--shared`: it copied 80 MiB of objects into each of 35 tests.
+  Measured on goh's own suite, a failed run's kept root: 5.22 GiB (5473216 KiB) before, 253 MiB
+  (258980 KiB) after, five failed tests' dirs included.
+
 ## v0.104.1 -- goh ship's release step fails, naming the gap, when the kit's commit or tag is not on the remote
 
 * **goh ship's release step checks its own effect (GOH.RELEASEUNPUSHED).** necrohand's kit committed

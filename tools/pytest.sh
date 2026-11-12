@@ -18,8 +18,6 @@ GOH="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 . "$GOH/tui/lib.sh"
 cd "$GOH"
 # shellcheck source=gates/_pytest_root.sh
-. "$GOH/gates/_pytest_root.sh"
-goh_pytest_root  # concurrent suites cannot prune each other's temp dirs; kept after a failure
 # ONE SUITE AT A TIME, never a suite inside itself (G2d, 2026-10-25). A test that ran this runner
 # with a stub `python3` first on PATH stopped intercepting the day the runner moved to the house
 # interpreter: the runner ran the REAL suite inside the test, whose copy of that test ran it again --
@@ -49,6 +47,9 @@ if [ -z "${GATES_OF_HECK_SUITE_RUNNER:-}" ] && [ -z "${GATES_OF_HECK_SUITE_NESTE
     done
     trap '[ "$(readlink "$SUITE_LOCK" 2>/dev/null)" = "$$" ] && rm -f "$SUITE_LOCK"' EXIT
 fi
+. "$GOH/gates/_pytest_root.sh"
+# After the guards: a refused runner claims no root and cuts no other run's kept ones.
+goh_pytest_root  # concurrent suites cannot prune each other's temp dirs; kept after a failure
 export GATES_OF_HECK_SUITE_RUNNER=$$
 # Refused by name, not as "No module named pytest" from the coverage gate's external export, the
 # shape goh's first hosted run died of (CI.PUBLIC2): the manifest's goh-suite layer installs it.

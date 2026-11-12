@@ -240,10 +240,14 @@ def test_all_gate_source_path_lists_are_the_same_list() -> None:
 def _clean_checkout_of_todays_gates(tmp_path: Path) -> Path:
     """A CLEAN git checkout of the gate as it stands, uncommitted work included. A clone
     of HEAD is wrong twice: it does not carry the gate under test mid-change, and every
-    assertion would answer with the live tree."""
+    assertion would answer with the live tree.
+
+    `--shared` borrows ROOT's objects (alternates) instead of copying them: `--no-hardlinks`
+    copied the whole object store, 80 MiB of the ~100 MiB each of 35 tests left in a kept temp
+    root (GOH.PYTESTTMP). The clone's own commits and the test's writes stay in its own store."""
     checkout = tmp_path / "gates_of_heck"
     subprocess.run(
-        ["git", "clone", "-q", "--no-hardlinks", str(ROOT), str(checkout)],
+        ["git", "clone", "-q", "--shared", str(ROOT), str(checkout)],
         check=True,
         capture_output=True,
         stdin=subprocess.DEVNULL,

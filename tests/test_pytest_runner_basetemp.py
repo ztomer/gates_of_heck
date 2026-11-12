@@ -59,6 +59,7 @@ def test_a_failing_run_keeps_its_temp_root_and_its_exit(tmp_path):
     done, base = _run(tmp_path, 3)
     assert done.returncode == 3, done.stdout + done.stderr
     assert base.is_dir() and str(base) in done.stdout + done.stderr
+    (base / ".goh-owner").unlink()  # the runner's pid: what keeps a live root from being cut
     base.rmdir()
 
 
