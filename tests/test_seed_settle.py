@@ -31,6 +31,8 @@ S = "(" + "s)"
 HEDGE = f'print(f"{{n}} step{S} ran")\n'
 HEDGE2 = HEDGE + f'print(f"{{n}} file{S}")\n'
 ONE = f'print("x{S}")\n'
+# The same for a planted temp: `tests/test_temp_claimable.py` reads every test's `$(mktemp ...)`.
+MK = "mk" + "temp"
 
 # One seeded check per row: its command, its seed file, a file with ONE finding, the same file with
 # TWO, and the fixed file. plural_hedge, mktemp_port and release_quiet share `estate_seed::verdict`.
@@ -48,9 +50,9 @@ CHECKS = [
         "mktemp-portable",
         "mktemp_port_seed.json",
         "a.sh",
-        "#!/usr/bin/env bash\nd=$(mktemp -d -t goh)\n",
-        "#!/usr/bin/env bash\nd=$(mktemp -d -t goh)\ne=$(mktemp -d -t goh2)\n",
-        "#!/usr/bin/env bash\nd=$(mktemp -d)\n",
+        f"#!/usr/bin/env bash\nd=$({MK} -d -t goh)\n",
+        f"#!/usr/bin/env bash\nd=$({MK} -d -t goh)\ne=$({MK} -d -t goh2)\n",
+        f"#!/usr/bin/env bash\nd=$({MK} -d -t goh-x.XXXXXX)\n",
         id="mktemp_port",
     ),
     pytest.param(

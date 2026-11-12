@@ -6,7 +6,8 @@
 //! literal or a lifetime). A hedge must follow a letter or a `}` (`{unit}(s)` is a hedge built
 //! from a placeholder). Not a hedge, by what it is: `http(s)` (a scheme), a call in a code
 //! fragment held in a string (`console.log(s)`, `module_from_spec(s)`, `def close(s):` -- a word
-//! after `.`, `def `, `fn ` or `func `, or one with `_` in it). What the lexing misses -- a
+//! after `.`, `def `, `fn ` or `func `, or one with `_` in it), and a builtin shown called
+//! (`print(s)`, `len(s)`: `CALLS`, GOH.HEDGECODE). What the lexing misses -- a
 //! hedge inside a multi-line string's middle lines (a heredoc, a docstring body) -- is invisible
 //! here, and said so in `mod.rs`.
 
@@ -29,40 +30,110 @@ fn is_comment_line(line: &str, lang: Lang) -> bool {
     }
 }
 
+/// Where the lexer is: in code (a substitution's own `(` depth), or in a string.
+enum Ctx {
+    Code(usize),
+    Str(char, usize),
+}
+
 /// The byte spans of `line`'s string literals' contents, up to a trailing comment.
+///
+/// In Python and shell a `$(` inside a `"` string is a command substitution: its code is not
+/// string text, and the strings inside it are strings (`"$([[ "$x" == *"5 file(s)"* ]])"` hedges;
+/// a naive quote toggle read that hedge as code, scripts SC-3, 2026-11-12).
 #[must_use]
 pub fn literal_spans(line: &str, lang: Lang) -> Vec<(usize, usize)> {
     if is_comment_line(line, lang) {
         return Vec::new();
     }
     let mut spans = Vec::new();
-    let mut open: Option<(char, usize)> = None;
+    let mut stack = vec![Ctx::Code(0)];
     let mut escaped = false;
+    let mut opener = false;
     let mut prev = ' ';
     for (i, c) in line.char_indices() {
-        if let Some((q, start)) = open {
-            if escaped {
-                escaped = false;
-            } else if c == '\\' {
-                escaped = true;
-            } else if c == q {
-                spans.push((start, i));
-                open = None;
+        let nested = stack.len() > 1;
+        match stack.last_mut() {
+            Some(Ctx::Str(q, start)) => {
+                if escaped {
+                    escaped = false;
+                } else if c == '\\' {
+                    escaped = true;
+                } else if c == *q {
+                    spans.push((*start, i));
+                    stack.pop();
+                } else if lang == Lang::Hash
+                    && *q == '"'
+                    && c == '$'
+                    && line[i + 1..].starts_with('(')
+                {
+                    spans.push((*start, i));
+                    stack.push(Ctx::Code(0));
+                    opener = true;
+                }
             }
-        } else if c == '"' || (c == '\'' && lang == Lang::Hash) {
-            open = Some((c, i + 1));
-        } else if (lang == Lang::Hash && c == '#' && (prev.is_whitespace() || i == 0))
-            || (lang == Lang::Slash && c == '/' && line[i + 1..].starts_with('/'))
-        {
-            break; // a comment starts: nothing after it is a string
+            Some(Ctx::Code(depth)) => {
+                if c == '"' || (c == '\'' && lang == Lang::Hash) {
+                    stack.push(Ctx::Str(c, i + 1));
+                } else if !nested
+                    && ((lang == Lang::Hash && c == '#' && (prev.is_whitespace() || i == 0))
+                        || (lang == Lang::Slash && c == '/' && line[i + 1..].starts_with('/')))
+                {
+                    break; // a comment starts: nothing after it is a string
+                } else if c == '(' {
+                    if opener {
+                        opener = false;
+                    } else {
+                        *depth += 1;
+                    }
+                } else if c == ')' && nested {
+                    if *depth == 0 {
+                        stack.pop(); // the substitution ends: its string goes on
+                        if let Some(Ctx::Str(_, start)) = stack.last_mut() {
+                            *start = i + 1;
+                        }
+                    } else {
+                        *depth -= 1;
+                    }
+                }
+            }
+            None => break,
         }
         prev = c;
     }
-    if let Some((_, start)) = open {
-        spans.push((start, line.len())); // a string that runs on past the line's end
+    if let Some(Ctx::Str(_, start)) = stack.last() {
+        spans.push((*start, line.len())); // a string that runs on past the line's end
     }
     spans
 }
+
+/// Builtin calls a string shows as code (`print(s)`, `len(s)`): no count noun is spelled so. A
+/// builtin that is also a count noun (`set`, `list`, `type`, `id`, `map`) is not here: `3 set(s)`
+/// is a hedge.
+const CALLS: &[&str] = &[
+    "abs",
+    "bool",
+    "callable",
+    "chr",
+    "enumerate",
+    "eval",
+    "exec",
+    "float",
+    "getattr",
+    "hasattr",
+    "int",
+    "isinstance",
+    "len",
+    "ord",
+    "print",
+    "repr",
+    "reversed",
+    "setattr",
+    "sorted",
+    "str",
+    "vars",
+    "zip",
+];
 
 /// The hedges in one piece of string text: each `word(s)` as written.
 #[must_use]
@@ -85,6 +156,7 @@ pub fn hedges(text: &str) -> Vec<String> {
             let word = &before[start..];
             let lead = &before[..start];
             if word.eq_ignore_ascii_case("http")
+                || (suffix == "(s)" && CALLS.contains(&word))
                 || (word.contains('_') && !word.contains('{'))
                 || lead.ends_with('.')
                 || ["def ", "fn ", "func "].iter().any(|k| lead.ends_with(k))

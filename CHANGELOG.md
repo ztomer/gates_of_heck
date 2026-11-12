@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+* **A builtin shown called in a string is not a hedged plural; a hedge inside `"$(...)"` is seen
+  (GOH.HEDGECODE).** `goh plural-hedge` reported `print(s)` in a Python string (ZoneWM) and missed
+  `session(s)` inside a `[[ ]]` in a command substitution in a shell string (scripts). Consumers:
+  `print(s)`, `len(s)`, `str(s)` and the other builtins that are no count noun are not findings
+  (`set(s)`, `list(s)`, `type(s)` still are); in Python and shell a `$(` inside a `"` string is code
+  and the strings within it are read. The estate corpus re-run (46 repositories, 2124 findings)
+  loses one, `str(s)` in necrohand's `tools/daei_contact.py:86`, a call, and gains none.
+
 * **A commit settles the seed entries its fix settles (GOH.SEEDSTALE).** An agent fixed a seeded
   site, the commit passed, and the push went red on a stale entry in the private seed store, which
   nothing in a commit can delete -- five pushes and releases on 2026-11-11/12. Consumers: a commit's
