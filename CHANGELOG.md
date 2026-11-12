@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## v0.103.1 -- goh_rm_tree: a read-only tree in a consumer's pytest temp root no longer fails a gate silently
+
 * **A read-only tree in a consumer's pytest temp root no longer fails a gate silently (GOH.RMREADONLY).**
   ZeroThunder's push gate (2026-11-12) passed every check, then went red with no `✗` line: a test left
   directories without `u+w` in its tmp_path, `rm -rf "$PYTEST_DEBUG_TEMPROOT"` hit 1284 "Permission
