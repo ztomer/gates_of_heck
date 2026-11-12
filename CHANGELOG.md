@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## v0.104.1 -- goh ship's release step fails, naming the gap, when the kit's commit or tag is not on the remote
+
 * **goh ship's release step checks its own effect (GOH.RELEASEUNPUSHED).** necrohand's kit committed
   and tagged without pushing, exited 0, and the ship failed one step later at verify, far from the cause
   (ship 20261112T081926Z-307f9eff). After the kit, HEAD must be on the remote branch and HEAD's version
