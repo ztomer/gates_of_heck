@@ -15,7 +15,7 @@ import subprocess
 from pathlib import Path
 
 import pytest
-from conftest import REPO_ROOT, write
+from conftest import REPO_ROOT, hermetic_env, write
 
 pytestmark = pytest.mark.skipif(
     shutil.which("ruff") is None or shutil.which("pytest") is None,
@@ -52,7 +52,7 @@ def _gate(repo: Path, tmpdir: Path) -> subprocess.CompletedProcess:
         capture_output=True,
         text=True,
         stdin=subprocess.DEVNULL,
-        env={**os.environ, "TMPDIR": str(tmpdir)},
+        env=hermetic_env(TMPDIR=str(tmpdir)),
         check=False,
     )
 
@@ -76,7 +76,7 @@ def _helper(path: Path, tmpdir: Path) -> subprocess.CompletedProcess:
         capture_output=True,
         text=True,
         stdin=subprocess.DEVNULL,
-        env={**os.environ, "TMPDIR": str(tmpdir)},
+        env=hermetic_env(TMPDIR=str(tmpdir)),
         check=False,
     )  # fmt: skip
 
