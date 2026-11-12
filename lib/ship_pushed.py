@@ -2,6 +2,16 @@
 
 from __future__ import annotations
 
+if __name__ == "__main__":  # C4: run HEAD's copy, not the shared working tree (gates/_from_head.py)
+    import contextlib as _contextlib
+    import os as _os
+    import sys as _sys
+
+    _sys.path.insert(0, _os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "..", "gates"))
+    with _contextlib.suppress(ModuleNotFoundError):  # a copy outside any checkout: nothing to rerun
+        __import__("_from_head").reexec(__file__)
+    del _sys.path[0]
+
 import re
 import shlex
 import subprocess
