@@ -98,7 +98,9 @@ def test_clean_removes_untracked_work_and_is_refused(repo: Path) -> None:
         "git checkout -- a.txt",  # nothing uncommitted in it
         "git checkout -- b.txt",  # another file is dirty, this one is not
         "git restore --staged a.txt",  # the index only: the worktree keeps the edit
-        "git checkout -b topic",
+        # loses nothing, so the discard rule lets it by; the shared-checkout rule (GOH.NORESET)
+        # refuses a branch switch in a primary checkout, hence its escape here
+        "git checkout -b topic  # reset-ok: a fixture repo nobody shares",
         "git clean -nd",
         "git status",
         "git diff -- a.txt",
