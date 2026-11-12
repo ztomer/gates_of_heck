@@ -217,7 +217,7 @@ fn release_version(root: &Path, spec: &str) -> Result<Vec<(String, String)>, Str
         } else {
             let p = root.join(&path);
             if p.is_file() {
-                vec![(path.clone(), p)]
+                vec![(path, p)]
             } else {
                 Vec::new()
             }

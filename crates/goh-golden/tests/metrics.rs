@@ -77,7 +77,7 @@ fn every_tolerance_row_gets_and_sets_its_own_field() {
     for (i, spec) in TOLERANCES.iter().enumerate() {
         let base = Tolerances::default();
         assert!((spec.get)(&base).eq(&spec.default), "{}", spec.key);
-        let mut t = base.clone();
+        let mut t = base;
         let value = 100.0 + f64::from(u32::try_from(i).expect("small"));
         (spec.set)(&mut t, value);
         assert!((spec.get)(&t).eq(&value), "{}", spec.key);

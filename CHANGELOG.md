@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+* **The workspace is clippy-clean under Rust 1.100.0.** Its `redundant_clone` now sees the last use
+  of `path` in `crates/goh/src/lockver.rs` and of `base` in `crates/goh-golden/tests/metrics.rs`;
+  both clones are gone, so the hosted runner's `-D warnings` clippy passes again.
+
 ## v0.106.2 -- release scripts run under macOS bash 3.2: no empty-array expansion trips set -u
 
 * **Release scripts and gates run under macOS bash 3.2: no maybe-empty array trips `set -u`.**
