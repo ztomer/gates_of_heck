@@ -65,7 +65,6 @@ def test_every_by_name_kill_of_a_shared_command_is_refused(command: str) -> None
         "kill %1",
         f"{PK} -P $$ cargo",
         f"{PG} -f tools/gate.sh",
-        f"{PK} -f my-own-server.py",
         f"echo '{PK} -f gate.sh'",
         f'git commit -m "never {PK} -f cargo"',
         f"{PK} -f gate.sh  # kill-ok: my sandbox VM, nothing else runs here",
@@ -73,3 +72,38 @@ def test_every_by_name_kill_of_a_shared_command_is_refused(command: str) -> None
 )
 def test_a_pid_kill_and_an_unshared_or_quoted_name_runs(command: str) -> None:
     assert _decide(command) is None, command
+
+
+# GOH.NOPKILL (2026-11-09): a pattern kill of a name no shared-command list knows (the ship result
+# file's) killed the `goh ship` whose command line carried it. Every by-name kill is refused now.
+@pytest.mark.parametrize(
+    "command",
+    [
+        f'{PK} -f "20261109T104119Z-4439f143.json"',
+        f"{PK} -f my-own-server.py",
+        f"{PK} sleep",
+        f"{PK} -9 -x watcher",
+        f"{KA} Safari",
+        f"{KA} -9 my-daemon",
+        f"{PG} -f result.json | xargs kill",
+        f"kill $({PG} -f my-watcher.sh)",
+    ],
+)
+def test_every_unscoped_by_name_kill_is_refused(command: str) -> None:
+    reason = _decide(command)
+    assert reason is not None, command
+    assert "kill <pid>" in reason and "TaskStop" in reason and "kill-ok" in reason, reason
+
+
+def test_the_refusal_names_what_the_pattern_would_hit_now() -> None:
+    marker = "goh_nopkill_marker_4242"
+    holder = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(30)", marker],
+                              stdin=subprocess.DEVNULL)  # fmt: skip
+    try:
+        reason = _decide(f"{PK} -f {marker}")
+        assert reason is not None
+        assert str(holder.pid) in reason and marker in reason, reason
+    finally:
+        holder.kill()
+        holder.wait()
+    assert "matches no process right now" in (_decide(f"{PK} -f {marker}_gone") or "")

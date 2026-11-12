@@ -7,16 +7,24 @@ already refuses such a kill in tracked code; a command typed into the Bash tool 
 so the Claude Bash guard (`hooks/claude/discard_guard.py`) applies this rule before it runs.
 
 THE RULE. In the command (quoted text is TEXT: `echo`, a commit message), a by-name kill is
-refused when its pattern would reach a SHARED command -- one that other sessions run
-concurrently (`SHARED`, sample command lines below):
+refused (until GOH.NOPKILL, only when its pattern reached a command other sessions run; now
+whatever it names, below):
   - the pattern kill (`-f` matches the full command line, else the process name), unless scoped
     to what the caller owns (`-P <pid>`, `-g`, `-s`);
   - the all-of-a-name kill (exact process name);
   - a `pgrep`/`pidof` feeding `kill` in the same pipeline or command substitution.
-A kill of a numeric pid, a job (`%1`) or a scoped pattern runs; so does a pattern no shared
-command line matches.
+A kill of a numeric pid, a job (`%1`) or a scoped pattern runs.
 
 The one escape is `# kill-ok: <reason>`.
+
+EVERY NAME, NOT ONLY A SHARED ONE (GOH.NOPKILL, 2026-11-09). The loop coordinator stopped its own
+watcher with a pattern kill of the RESULT FILE's name (`20261109T104119Z-4439f143.json`), which is
+no shared command -- and the `goh ship` it was watching carried the same path on its command line,
+so the ship died at push (exit 143). No list of shared commands can know what else carries a
+pattern. So an unscoped pattern kill (`-f` or a bare pattern), an all-of-a-name kill, and a pgrep
+feeding kill are refused whatever they name, and the refusal names what the pattern matches RIGHT
+NOW (`pgrep -fl`), so the caller sees the process it would have hit. A scoped kill (`-P <pid>`,
+`-g`, `-s`), a numeric pid and a job still run.
 """
 
 from __future__ import annotations
@@ -24,27 +32,12 @@ from __future__ import annotations
 import os
 import re
 import shlex
+import subprocess
 
 ESCAPE = re.compile(r"#\s*kill-ok:\s*\S")
 
 # The command names, split so the house's own kill-by-name check does not read them as calls.
 PKILL, KILLALL, PGREP, PIDOF = "p" + "kill", "kill" + "all", "p" + "grep", "pid" + "of"
-
-# Command lines that more than one session runs at once on this Mac.
-SHARED = (
-    "bash tools/gate.sh --full",
-    "bash /Users/x/Projects/gates_of_heck/tools/gate_profile.sh .",
-    "bash tools/land.sh",
-    "cargo test --workspace",
-    "/Users/x/.rustup/toolchains/stable/bin/cargo clippy",
-    "python3 -m pytest -q tests",
-    "/opt/homebrew/bin/pytest -q",
-    "python3 /Users/x/Projects/gates_of_heck/tools/load.py 8 -- make",
-    "xcodebuild test -scheme App",
-)
-_SHARED_WORDS = re.compile(
-    r"gate(?:_profile)?\.sh|land\.sh|(?<![\w-])cargo(?![\w-])|pytest|load\.py|xcodebuild"
-)
 
 _WRAPPERS = {"sudo", "doas", "env", "nohup", "exec", "command", "nice", "time", "rtk"}
 _SCOPED = {"-P", "-g", "-s", "--parent", "--pgroup", "--session"}
@@ -61,26 +54,35 @@ WAY_OUT = (
 )
 
 
-def _reason(what: str) -> str:
+def live(pattern: str, full: bool, exact: bool = False) -> list[str]:
+    """`pid command` of each process the pattern matches now (pgrep's own answer), at most 8."""
+    argv = [PGREP, "-l"] + (["-f"] if full else []) + (["-x"] if exact else []) + ["--", pattern]
+    try:
+        done = subprocess.run(argv, capture_output=True, text=True, timeout=5, check=False,
+                              stdin=subprocess.DEVNULL)  # fmt: skip
+    except (OSError, subprocess.SubprocessError):
+        return []
+    mine = {os.getpid(), os.getppid()}
+    rows = [ln.strip() for ln in done.stdout.splitlines() if ln.strip()]
+    return [r for r in rows if not r.split()[0].isdigit() or int(r.split()[0]) not in mine][:8]
+
+
+def _hits(pairs: list[tuple[str, bool, bool]]) -> str:
+    rows = [row for pattern, full, exact in pairs for row in live(pattern, full, exact)]
+    if not rows:
+        return "It matches no process right now, so a later one it would hit is unknown. "
+    return "Right now it would hit: " + "; ".join(r[:120] for r in rows[:8]) + ". "
+
+
+def _reason(what: str, pairs: list[tuple[str, bool, bool]] | None = None) -> str:
     return (
-        f"This kills by name: {what} A name reaches every session's processes, not just yours: on "
-        "2026-11-08 an agent stopped its own gate with a pattern kill of `tools/gate.sh --full` "
-        f"and killed two other sessions' gate runs with it. {WAY_OUT}"
+        f"This kills by name: {what} {_hits(pairs or [])}A name reaches every process whose name "
+        "or command line carries it, not just yours: on 2026-11-08 an agent stopped its own gate "
+        "with a pattern kill of `tools/gate.sh --full` and killed two other sessions' gate runs, "
+        "and on 2026-11-09 a pattern kill of a result file's name killed the `goh ship` whose "
+        f"command line carried that path. Stop a process by the PID you hold (`kill <pid>`; a "
+        f"background task by TaskStop <id>). {WAY_OUT}"
     )
-
-
-def _matches(pattern: str, full: bool) -> bool:
-    if _SHARED_WORDS.search(pattern):
-        return True
-    for line in SHARED:
-        target = line if full else os.path.basename(line.split()[0])
-        try:
-            if re.search(pattern, target):
-                return True
-        except re.error:
-            if pattern in target:
-                return True
-    return False
 
 
 def _tokens(command: str) -> list[str]:
@@ -150,26 +152,27 @@ def judge(command: str) -> str | None:
         return None
     for pipe in pipes:
         kills = False
-        finders: list[str] = []
+        finders: list[tuple[str, list[tuple[str, bool, bool]]]] = []
         for cmd in pipe:
             prog, args = _program(cmd)
             if prog == PKILL:
                 pats, full, scoped = _patterns(args)
-                if not scoped and any(_matches(p, full) for p in pats):
-                    return _reason(f"`{PKILL} {' '.join(args)}`.")
+                if not scoped and pats:
+                    return _reason(f"`{PKILL} {' '.join(args)}`.", [(p, full, False) for p in pats])
             elif prog == KILLALL:
                 pats, _, _ = _patterns(args)
-                for p in pats:
-                    if _SHARED_WORDS.search(p) or any(
-                        os.path.basename(line.split()[0]) == p for line in SHARED
-                    ):
-                        return _reason(f"`{KILLALL} {' '.join(args)}`.")
+                if pats:
+                    return _reason(
+                        f"`{KILLALL} {' '.join(args)}`.", [(p, False, True) for p in pats]
+                    )
             elif prog == "kill" or (prog == "xargs" and "kill" in args):
                 kills = True
             elif prog in (PGREP, PIDOF):
                 pats, full, scoped = _patterns(args)
-                if not scoped and any(_matches(p, full or prog == PIDOF) for p in pats):
-                    finders.append(f"`{prog} {' '.join(args)}`")
+                if not scoped and pats:
+                    exact = prog == PIDOF
+                    finders.append((f"`{prog} {' '.join(args)}`",
+                                    [(p, full, exact) for p in pats]))  # fmt: skip
         if kills and finders:
-            return _reason(f"{finders[0]} feeding `kill`.")
+            return _reason(f"{finders[0][0]} feeding `kill`.", finders[0][1])
     return None
