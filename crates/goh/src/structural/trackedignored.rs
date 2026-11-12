@@ -99,7 +99,9 @@ fn rules_for(repo: &Path, paths: &[String]) -> Result<Vec<Hit>, String> {
         &[0, 1],
     )?;
     let mut hits: Vec<Hit> = fields
-        .chunks_exact(4)
+        .as_chunks::<4>()
+        .0
+        .iter()
         .map(|f| Hit {
             source: f[0].clone(),
             line: f[1].clone(),

@@ -30,8 +30,8 @@ pub const KIND: crate::estate_seed::Kind = crate::estate_seed::Kind {
 /// # Errors
 ///
 /// As `crate::estate_seed::load`: a corrupt file, a foreign entry, an entry in both homes.
-pub fn load(repo: &Path) -> Result<Seed, String> {
-    crate::estate_seed::load(repo, KIND)
+pub fn load(repo: &Path, staged: bool) -> Result<Seed, String> {
+    crate::estate_seed::load(repo, KIND, staged)
 }
 
 /// Judge `found` (`path -> number of reads`) in the repo whose identity is `repo` against `seed`.

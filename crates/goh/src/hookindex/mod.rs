@@ -198,8 +198,8 @@ fn expansions(sources: &[(String, String)]) -> (String, usize) {
 }
 
 /// The estate seed for the repository at `repo`, or the report a corrupt or foreign one makes.
-fn estate_seed(repo: &Path) -> Result<seed::Seed, String> {
-    seed::load(repo).map_err(|m| format!("{ERR} {TAG} {m}\n"))
+fn estate_seed(repo: &Path, staged: bool) -> Result<seed::Seed, String> {
+    seed::load(repo, staged).map_err(|m| format!("{ERR} {TAG} {m}\n"))
 }
 
 /// `goh bare-hook-index [--staged] [--exclude RE]`.
@@ -216,7 +216,7 @@ pub fn run_command(staged: bool, exclude: &str) -> i32 {
             return 2;
         }
     };
-    let (code, out, err) = match estate_seed(&root) {
+    let (code, out, err) = match estate_seed(&root, staged) {
         Ok(seed) => judge(&root, &files, exclude, staged, &seed),
         Err(m) => (2, String::new(), m),
     };
@@ -239,7 +239,7 @@ pub fn step(
         "no bare read of the hook's index"
     };
     let start = crate::step_report::begin(label);
-    let verdict = match estate_seed(repo) {
+    let verdict = match estate_seed(repo, staged) {
         Ok(seed) => judge(repo, files, &cfg.exclude, staged, &seed),
         Err(m) => (2, String::new(), m),
     };

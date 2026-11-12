@@ -179,8 +179,10 @@ pub fn mean_abs_diff(a: &Image, b: &Image) -> f64 {
 pub fn changed_fraction(a: &Image, b: &Image, threshold: f64) -> f64 {
     let changed = a
         .pixels
-        .chunks_exact(CHANNELS)
-        .zip(b.pixels.chunks_exact(CHANNELS))
+        .as_chunks::<CHANNELS>()
+        .0
+        .iter()
+        .zip(b.pixels.as_chunks::<CHANNELS>().0)
         .filter(|(p, q)| {
             p.iter()
                 .zip(q.iter())
@@ -195,7 +197,9 @@ pub fn changed_fraction(a: &Image, b: &Image, threshold: f64) -> f64 {
 fn luma(pixels: &[u8]) -> Vec<f64> {
     let channels = count(CHANNELS);
     pixels
-        .chunks_exact(CHANNELS)
+        .as_chunks::<CHANNELS>()
+        .0
+        .iter()
         .map(|px| px.iter().map(|c| f64::from(*c)).fold(0.0, |acc, v| acc + v) / channels)
         .collect()
 }

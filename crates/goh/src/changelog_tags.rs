@@ -181,7 +181,7 @@ fn judge(root: &Path, files: &[String], staged: bool) -> (i32, String, String) {
             String::new(),
         );
     };
-    let seed = match estate_seed::load(root, KIND) {
+    let seed = match estate_seed::load(root, KIND, staged) {
         Ok(s) => s,
         Err(m) => return (2, String::new(), format!("{ERR} {TAG} {m}\n")),
     };

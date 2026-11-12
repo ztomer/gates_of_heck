@@ -31,7 +31,7 @@ pub fn pairwise_sum(values: &[f64]) -> f64 {
     if n <= PAIRWISE_BLOCK {
         let whole = n - n % PAIRWISE_UNROLL;
         let mut acc = [0.0; PAIRWISE_UNROLL];
-        for block in values[..whole].chunks_exact(PAIRWISE_UNROLL) {
+        for block in values[..whole].as_chunks::<PAIRWISE_UNROLL>().0 {
             for (slot, v) in acc.iter_mut().zip(block) {
                 *slot += v;
             }
@@ -98,7 +98,7 @@ mod tests {
         let paired = pairwise_sum(&values);
         let expected = {
             let mut acc = [0.0; PAIRWISE_UNROLL];
-            for block in values.chunks_exact(PAIRWISE_UNROLL) {
+            for block in values.as_chunks::<PAIRWISE_UNROLL>().0 {
                 for (slot, v) in acc.iter_mut().zip(block) {
                     *slot += v;
                 }

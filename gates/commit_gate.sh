@@ -67,7 +67,7 @@ root_phys="$(cd "$root" && pwd -P)"
 # ruff over nothing it changed (GOH.BAREINDEX).
 twin_due() {
     grep -qFx -- "$1	$root_phys" "$twins" && return 1
-    [ -n "$( (goh_bind_hook_index; cd "$root" && git diff --cached --name-only --diff-filter=ACM -- "$2" | head -n 1) 2>/dev/null)" ]
+    [ -n "$( (goh_bind_hook_index; cd "$root" && git diff --cached --name-only --diff-filter=ACMR -- "$2" | head -n 1) 2>/dev/null)" ]
 }
 
 repo_before="$(goh_repo_snapshot "$root")"   # what the gate may not write (lib/repo_writes.sh)

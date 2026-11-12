@@ -3,7 +3,7 @@
 
 use std::path::{Path, PathBuf};
 
-use super::Raw;
+use super::parse::Raw;
 
 /// The day a store entry for a repository whose CI runs goh turns from a warning into a refusal:
 /// 2026-11-16T00:00:00Z, a week after GOH.STORECI landed (seconds since the epoch).

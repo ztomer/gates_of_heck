@@ -70,7 +70,7 @@ STAGED=()
 while IFS= read -r f; do
     [ -n "$f" ] && STAGED+=("$f")
 done < <( (goh_bind_hook_index  # the index being committed (gates/_git_env.sh)
-          git diff --cached --name-only --diff-filter=ACM --relative -- '*.swift') 2>/dev/null || true)
+          git diff --cached --name-only --diff-filter=ACMR --relative -- '*.swift') 2>/dev/null || true)
 # macOS ships bash 3.2: no mapfile, and "${arr[@]}" on an empty array trips `set -u` there.
 if [ "${#STAGED[@]}" -eq 0 ]; then
     info "no staged .swift files"

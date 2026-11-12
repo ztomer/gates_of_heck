@@ -162,7 +162,7 @@ def listed_files(root: str, staged: bool) -> list[str]:
     no consumer could resolve — those files were silently unpoliced. decode
     with 'replace' keeps a hostile byte sequence from killing the gate."""
     cmd = (
-        ["git", "-C", root, "diff", "--cached", "--name-only", "-z", "--diff-filter=ACM"]
+        ["git", "-C", root, "diff", "--cached", "--name-only", "-z", "--diff-filter=ACMR"]
         if staged
         else ["git", "-C", root, "ls-files", "-z", "--cached", "--others", "--exclude-standard"]
     )

@@ -92,7 +92,14 @@ pub fn write_settled(dir: &Path, kind: Kind, repo: &str, settled: &Settle) -> Re
         return Ok(());
     }
     let file = dir.join(kind.file);
+    // Read-modify-rename under ONE lock on the store directory (GOH.SEEDSCOPE): two commits
+    // settling at once each read the old file, and the second rename wrote back the entry the
+    // first deleted. The directory, never the file, which the rename replaces; and no lock file,
+    // which a crashed holder would leave behind.
+    let lock = std::fs::File::open(dir).map_err(|e| format!("{}: {e}", dir.display()))?;
+    lock.lock().map_err(|e| format!("{}: {e}", dir.display()))?;
     let text = std::fs::read_to_string(&file).map_err(|e| format!("{}: {e}", file.display()))?;
+    hold_for_test();
     let mut v: serde_json::Value =
         serde_json::from_str(&text).map_err(|e| format!("{}: {e}", file.display()))?;
     let Some(entries) = v
@@ -131,6 +138,17 @@ pub fn write_settled(dir: &Path, kind: Kind, repo: &str, settled: &Settle) -> Re
         let _ = std::fs::remove_file(&tmp);
         format!("{}: {e}", file.display())
     })
+}
+
+/// The test seam that widens the read-to-rename window (`GOH_SEED_SETTLE_HOLD_MS`), so the
+/// two-process test in `tests/test_seed_scope.py` races on every run rather than by luck.
+fn hold_for_test() {
+    if let Some(ms) = std::env::var("GOH_SEED_SETTLE_HOLD_MS")
+        .ok()
+        .and_then(|v| v.parse::<u64>().ok())
+    {
+        std::thread::sleep(std::time::Duration::from_millis(ms));
+    }
 }
 
 /// `judge` over `scope`, a commit's run first settling the entries of what it read (`settle`).

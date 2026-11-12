@@ -66,7 +66,7 @@ pub fn is_tracked(root: &Path, rel: &str) -> bool {
 ///
 /// Full mode lists the WORKTREE — everything tracked plus every untracked
 /// file git does not ignore (`ls-files --cached --others --exclude-standard`);
-/// staged mode lists added/copied/modified index entries (`--diff-filter=ACM`,
+/// staged mode lists added/copied/modified/renamed (new path) index entries (`--diff-filter=ACMR`,
 /// mirroring `listed_files`). Full used to be tracked-only, so a brand-new
 /// oversized file was invisible to `--full` until it was staged; "full"
 /// answers "is my tree green", and an untracked file is the tree.
@@ -79,7 +79,13 @@ pub fn listed_files(root: &Path, staged: bool) -> Result<Vec<String>, String> {
     if staged {
         nul_list(
             root,
-            &["diff", "--cached", "--name-only", "-z", "--diff-filter=ACM"],
+            &[
+                "diff",
+                "--cached",
+                "--name-only",
+                "-z",
+                "--diff-filter=ACMR",
+            ],
         )
     } else {
         nul_list(

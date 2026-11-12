@@ -133,7 +133,7 @@ fn sites(root: &Path, files: &[String], exclude: &str, staged: bool) -> Result<S
 /// The verdict over `files`: `(exit code, stdout, stderr)`.
 fn judge(root: &Path, files: &[String], exclude: &str, staged: bool) -> (i32, String, String) {
     use goh_tui::ERR;
-    let seed = match estate_seed::load(root, KIND) {
+    let seed = match estate_seed::load(root, KIND, staged) {
         Ok(s) => s,
         Err(m) => return (2, String::new(), format!("{ERR} {TAG} {m}\n")),
     };

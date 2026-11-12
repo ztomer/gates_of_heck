@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+* **A commit-scope seeded check reads what the commit records (GOH.SEEDSCOPE).** Three seams found
+  landing GOH.SEEDSTALE. Consumers: every staged listing (`gitutil::listed_files`,
+  `checks/_gitutil.py`, `gates/py_staged.sh`, `gates/swift_staged.sh`, `gates/commit_gate.sh`) now
+  includes a rename's new path (`--diff-filter=ACMR`), so `git mv a.py b.py` no longer lets b.py's
+  findings in unread while a.py's store entry is settled away; a `--staged` run reads the TRACKED
+  seed file from the index, not an unstaged worktree edit; and the private store's
+  read-modify-rename holds a lock on the store directory, so two commits settling at once keep
+  both prunes.
+
 * **The hosted gate has one ruff, pinned (GOH.CIRUFF).** Run 43139901867 failed goh's rust coverage
   step on `ruff: 3 invocations, 2 versions`: the manifest's `brew install ruff` and its unpinned pip
   row gave the runner two, and the split read as a coverage loss. `.github/workflows/gate.yml` now

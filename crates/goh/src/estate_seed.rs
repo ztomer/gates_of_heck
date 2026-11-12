@@ -101,58 +101,14 @@ fn home(kind: Kind, held: Held) -> String {
     }
 }
 
-/// One entry as a file spells it.
-struct Raw {
-    root: String,
-    repo: String,
-    path: String,
-    count: usize,
-}
-
-/// The entries of the seed file at `path`. A missing file holds none; a corrupt one is an error.
-fn parse(path: &Path, kind: Kind) -> Result<Vec<Raw>, String> {
-    let Ok(text) = std::fs::read_to_string(path) else {
-        return Ok(Vec::new());
-    };
-    let bad = |why: &str| format!("{} is not a {}: {why}", path.display(), kind.name);
-    let v: serde_json::Value = serde_json::from_str(&text).map_err(|e| bad(&e.to_string()))?;
-    let mut out = Vec::new();
-    for e in v
-        .get("entries")
-        .and_then(serde_json::Value::as_array)
-        .ok_or_else(|| bad("no `entries` array"))?
-    {
-        let field = |k: &str| e.get(k).and_then(serde_json::Value::as_str);
-        let (Some(root), Some(repo), Some(file), Some(count)) = (
-            field("root"),
-            field("repo"),
-            field("path"),
-            e.get("count").and_then(serde_json::Value::as_u64),
-        ) else {
-            return Err(bad("an entry lacks root, repo, path or count"));
-        };
-        if field("reason").is_none_or(str::is_empty) {
-            return Err(bad(&format!("{repo} {file} has no reason")));
-        }
-        let count = usize::try_from(count).map_err(|e| bad(&e.to_string()))?;
-        out.push(Raw {
-            root: root.to_string(),
-            repo: repo.to_string(),
-            path: file.to_string(),
-            count,
-        });
-    }
-    Ok(out)
-}
-
 /// `kind`'s seed for the repository at `repo`: its own tracked file and the private store.
 ///
 /// # Errors
 ///
 /// A corrupt file; a tracked entry naming another repository's root; one entry in both homes; a
 /// store entry for a repository whose CI runs goh (from `STORE_CI_REFUSED_FROM`; a warning before).
-pub fn load(repo: &Path, kind: Kind) -> Result<Seed, String> {
-    load_from(repo, store_dir().as_deref(), kind)
+pub fn load(repo: &Path, kind: Kind, staged: bool) -> Result<Seed, String> {
+    load_scoped(repo, store_dir().as_deref(), kind, staged)
 }
 
 /// `load` with the store named (`None`: no store), so a test never reads the machine's.
@@ -161,10 +117,24 @@ pub fn load(repo: &Path, kind: Kind) -> Result<Seed, String> {
 ///
 /// As `load`.
 pub fn load_from(repo: &Path, store: Option<&Path>, kind: Kind) -> Result<Seed, String> {
+    load_scoped(repo, store, kind, false)
+}
+
+/// `load_from` at a scope: `staged` reads the tracked seed from the index (`tracked_text`).
+///
+/// # Errors
+///
+/// As `load`.
+pub fn load_scoped(
+    repo: &Path,
+    store: Option<&Path>,
+    kind: Kind,
+    staged: bool,
+) -> Result<Seed, String> {
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map_or(0, |d| d.as_secs());
-    load_at(repo, store, kind, now)
+    load_in(repo, store, kind, now, staged)
 }
 
 /// `load_from` at the time `now` (seconds since the epoch), which decides whether a store entry for
@@ -174,8 +144,19 @@ pub fn load_from(repo: &Path, store: Option<&Path>, kind: Kind) -> Result<Seed, 
 ///
 /// As `load`.
 pub fn load_at(repo: &Path, store: Option<&Path>, kind: Kind, now: u64) -> Result<Seed, String> {
+    load_in(repo, store, kind, now, false)
+}
+
+fn load_in(
+    repo: &Path,
+    store: Option<&Path>,
+    kind: Kind,
+    now: u64,
+    staged: bool,
+) -> Result<Seed, String> {
     let mut seed = Seed::new();
-    let tracked = parse(&repo.join(kind.file), kind)?;
+    let on_disk = repo.join(kind.file);
+    let tracked = parse_text(&on_disk, tracked_text(repo, kind, staged), kind)?;
     if !tracked.is_empty() {
         let own = crate::gitutil::root_commit(repo).unwrap_or_default();
         // Unverifiable, so the file's entries are taken as its own: a shallow clone (its root is the
@@ -465,8 +446,10 @@ pub fn clip(s: &str) -> String {
     out
 }
 
+mod parse;
 mod settle;
 mod store_ci;
+use parse::{parse, parse_text, tracked_text};
 #[cfg(test)]
 use settle::settled_seed;
 pub use settle::{judge_settled, settle, settle_store, write_settled, Scope, Settle};

@@ -93,7 +93,7 @@ fn status_discarded(m: &[char], raw: &[char], mut i: usize) -> bool {
 
 /// Past the blanks and newlines after a `|` or `||`: the shell reads the next command from the
 /// next line, so `producer |` at a line end continues the pipeline.
-fn past_blank_lines(m: &[char], mut i: usize) -> usize {
+const fn past_blank_lines(m: &[char], mut i: usize) -> usize {
     while i < m.len() && m[i].is_whitespace() {
         i += 1;
     }
