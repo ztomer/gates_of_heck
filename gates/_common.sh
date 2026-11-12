@@ -47,6 +47,8 @@ unset _goh_tui
 # shellcheck source=lib/bench_lock.sh
 # shellcheck source=lib/exit_reason.sh
 . "$GOH_ROOT/lib/exit_reason.sh"  # goh_exit_reason: a failed step's line names how it ended
+# shellcheck source=lib/rm_tree.sh
+. "$GOH_ROOT/lib/rm_tree.sh"  # goh_rm_tree: cleanup of a tree a consumer wrote, read-only or not
 # shellcheck source=lib/bench_lock.sh
 . "$GOH_ROOT/lib/bench_lock.sh"  # a measurement holds off every gate on the host (goh_init)
 
@@ -151,7 +153,7 @@ goh_init() {
         # A red run names the move, if there was one: that is its likeliest cause.
         if [ "$_goh_rc" -ne 0 ] && [ -z "$GOH_TREE_CHECKED" ]; then goh_tree_check || true; fi
         [ -n "$GOH_TREE_STAMP_FILE" ] && rm -f "$GOH_TREE_STAMP_FILE"
-        while IFS= read -r _p; do [ -n "$_p" ] && rm -rf "$_p"; done <<_goh_cleanup_eof
+        while IFS= read -r _p; do [ -n "$_p" ] && goh_rm_tree "$_p"; done <<_goh_cleanup_eof
 $_goh_cleanup
 _goh_cleanup_eof
         if [ "$_goh_rc" -eq 0 ] && [ "$GOH_COMPLETED" != "1" ]; then

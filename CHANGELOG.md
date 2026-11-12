@@ -2,6 +2,18 @@
 
 ## Unreleased
 
+* **A read-only tree in a consumer's pytest temp root no longer fails a gate silently (GOH.RMREADONLY).**
+  ZeroThunder's push gate (2026-11-12) passed every check, then went red with no `✗` line: a test left
+  directories without `u+w` in its tmp_path, `rm -rf "$PYTEST_DEBUG_TEMPROOT"` hit 1284 "Permission
+  denied" errors, and under `set -e` the failed rm was the gate's exit. Removal of a tree a consumer's
+  code wrote now goes through `goh_rm_tree` (`lib/rm_tree.sh`): `chmod -R u+rwx`, then remove. A residue
+  that still cannot be removed is a warning naming the path, not a failure (every check had already
+  passed; a leftover temp dir is housekeeping, not a defect in the code under test). Same helper for
+  `py_gate`, `coverage_gate`, `tools/pytest.sh`, the push gate's export and run dir, killed-run reaping,
+  local CI's log dir and the gate-exit cleanup list; `lib/prune_kept.py` (the 12-hour backstop for kept
+  `goh-pytest.*` roots) made such a tree writable too, where `rmtree(ignore_errors=True)` had left it for
+  ever while reporting it removed.
+
 ## v0.103.0 -- a commit refused by any gate step settles no seed entry: checks journal to GOH_SEED_PENDING, applied after every step passes
 
 * **A commit refused by any step of its gate settles no seed entry (GOH.SEEDREFUSED).** Since

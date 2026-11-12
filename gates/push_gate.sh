@@ -197,14 +197,14 @@ export_root="${GOH_PUSH_WORKTREES:-$HOME/.cache/goh/push}"; goh_suite_cache_ok "
 
 cleanup_run() {
     if [ -n "$worktree" ] && [ -d "$worktree" ]; then
-        git -C "$root" worktree remove --force "$worktree" >/dev/null 2>&1 || rm -rf "$worktree"
+        git -C "$root" worktree remove --force "$worktree" >/dev/null 2>&1 || goh_rm_tree "$worktree"
     fi
     if [ -n "$run_dir" ] && [ -d "$run_dir" ]; then
         local litter
         litter="$(run_litter "$run_dir" "$worktree")"
         # Named, not swept silently: the defect is the consumer's to fix.
         [ -n "$litter" ] && warn "pre-push: the gate wrote outside its tree (removed): $litter"
-        rm -rf "$run_dir"
+        goh_rm_tree "$run_dir"
     fi
     worktree=""
     run_dir=""

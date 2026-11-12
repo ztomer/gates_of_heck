@@ -2,6 +2,7 @@
 nothing outside its own prefix."""
 
 import os
+import subprocess
 import sys
 import time
 
@@ -28,3 +29,24 @@ def test_the_newest_and_the_recent_are_kept_and_nothing_else_is_touched(tmp_path
     assert sorted(os.path.basename(r) for r in removed) == [
         f"goh-local-ci.{i:02d}" for i in range(6)
     ]
+
+
+def test_a_kept_root_with_a_read_only_tree_is_reaped_not_leaked(tmp_path) -> None:
+    """A failed run keeps its `goh-pytest.*` root; a consumer test's read-only tree inside it made
+    `rmtree(ignore_errors=True)` remove nothing, silently, for ever (2026-11-12)."""
+    root = tmp_path / "goh-pytest.abc123"
+    (root / "a" / "b").mkdir(parents=True)
+    (root / "a" / "b" / "f").write_text("x")
+    (root / "a" / "b").chmod(0o555)
+    (root / "a").chmod(0o555)
+    old = time.time() - 40 * 3600
+    os.utime(root, (old, old))
+    try:
+        removed = prune(str(tmp_path), "goh-", keep=0, idle=3600)
+        assert [os.path.basename(r) for r in removed] == ["goh-pytest.abc123"]
+        assert not root.exists()
+    finally:
+        if root.exists():
+            subprocess.run(
+                ["chmod", "-R", "u+rwx", str(root)], stdin=subprocess.DEVNULL, check=False
+            )

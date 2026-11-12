@@ -386,7 +386,7 @@ run_py() {
         ${IGNORE:+--omit "$IGNORE"} \
         -m pytest -q >/dev/null 2>&1 \
         || { err "tests failed while collecting coverage"; exit 1; }
-    rm -rf "$PYTEST_DEBUG_TEMPROOT"
+    goh_rm_tree "$PYTEST_DEBUG_TEMPROOT"
 
     # The floor is enforced BY coverage itself (--fail-under), and echoed here
     # in house voice so every mode reports the same shape.

@@ -2,6 +2,9 @@
 # The push gate's run ownership: who holds a run dir under `$export_root`, and reaping what a killed
 # gate left behind. Sourced by gates/push_gate.sh after the tui lib (for `info`).
 
+# shellcheck source=lib/rm_tree.sh
+. "${BASH_SOURCE[0]%/*}/rm_tree.sh"
+
 # `<pid> <start time>`: the identity of a live process. A pid alone is reused; the pair is not.
 owner_stamp() {
     printf '%s %s\n' "$1" "$(ps -o lstart= -p "$1" 2>/dev/null | tr -s ' ' | sed 's/^ //;s/ $//')"
@@ -18,7 +21,7 @@ reap_dead_runs() {
             continue
         fi
         info "pre-push: removing a run left by a killed gate: ${dir%/}"
-        rm -rf "$dir"
+        goh_rm_tree "$dir"
     done
     # A stable export's `.source` marker outlives its runs by design, and dies with its checkout.
     local marker owner

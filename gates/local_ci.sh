@@ -33,7 +33,7 @@ for _tui in "${GOH_GIT_ROOT:-}/tui/lib.sh" tui/lib.sh "$GOH_ROOT/tui/lib.sh"; do
     # shellcheck disable=SC1090  # vendored lib resolved at runtime, as _common.sh
     [ -n "$_tui" ] && [ -f "$_tui" ] && . "$_tui" && break
 done
-unset _tui; . "$GOH_ROOT/tui/plural.sh"; . "$GOH_ROOT/lib/exit_reason.sh"  # counted/plural_noun: goh's own; goh_exit_reason
+unset _tui; . "$GOH_ROOT/tui/plural.sh"; . "$GOH_ROOT/lib/exit_reason.sh"; . "$GOH_ROOT/lib/rm_tree.sh"  # counted/plural_noun: goh's own; goh_exit_reason; goh_rm_tree
 info() { printf '→ %s\n' "$*"; }
 ok() { printf '✓ %s\n' "$*"; }
 warn() { printf '⚠ %s\n' "$*" >&2; }
@@ -172,7 +172,7 @@ LOGDIR=""
 # have shown. Kept on failure, and the path is printed with the result.
 cleanup() {
     if [ -n "$LOGDIR" ] && [ "${FAILED:-0}" -eq 0 ]; then
-        rm -rf "$LOGDIR" || true
+        goh_rm_tree "$LOGDIR"
     fi
     if [ -n "$BENCH_LOCK_ENTRY" ]; then rm -f "$BENCH_LOCK_ENTRY"; fi
     gate_slot_release

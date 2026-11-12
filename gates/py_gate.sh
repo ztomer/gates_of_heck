@@ -112,7 +112,7 @@ else
     goh_step_in "$pkg_dir" "pytest" "${RUN_ARR[@]}" pytest -q
     warn "no coverage floor — set GOH_PY_COV_MIN in .gatesrc"
 fi
-rm -rf "$PYTEST_DEBUG_TEMPROOT"
+goh_rm_tree "$PYTEST_DEBUG_TEMPROOT"   # a read-only tree a test left is made writable first
 
 goh_done
 exit

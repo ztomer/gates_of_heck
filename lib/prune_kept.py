@@ -35,6 +35,18 @@ IDLE_S = 3600
 BACKSTOP_IDLE_S = 12 * 3600
 
 
+def _make_writable(path: str) -> None:
+    """`u+rwx` on a tree, so `rmtree` can empty it: a consumer test's read-only fixture (a directory
+    without `u+w`) otherwise left a kept `goh-pytest.*` root for ever, silently (2026-11-12)."""
+    for dirpath, dirnames, _files in os.walk(path):
+        for d in (dirpath, *(os.path.join(dirpath, n) for n in dirnames)):
+            try:
+                if not os.path.islink(d):
+                    os.chmod(d, 0o700 | os.lstat(d).st_mode)
+            except OSError:
+                continue
+
+
 def prune(directory: str, prefix: str, keep: int = KEEP, idle: float = IDLE_S) -> list[str]:
     """The paths removed."""
     try:
@@ -55,7 +67,10 @@ def prune(directory: str, prefix: str, keep: int = KEEP, idle: float = IDLE_S) -
         if now - mtime < idle:
             continue
         if os.path.isdir(path) and not os.path.islink(path):
+            _make_writable(path)
             shutil.rmtree(path, ignore_errors=True)
+            if os.path.lexists(path):
+                continue  # not removed: do not claim it was (a read-only residue stays named)
         else:
             try:
                 os.unlink(path)

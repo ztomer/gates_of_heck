@@ -100,7 +100,7 @@ done
 rc=0
 "$GOH_PY" -m pytest ${TARGET[@]+"${TARGET[@]}"} "${ARGS[@]}" "$@" || rc=$?
 if [ "$rc" -eq 0 ]; then
-    rm -rf "$PYTEST_DEBUG_TEMPROOT"
+    goh_rm_tree "$PYTEST_DEBUG_TEMPROOT"
 else
     info "the failed run's temp root is kept: $PYTEST_DEBUG_TEMPROOT"
 fi
