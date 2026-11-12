@@ -11,6 +11,7 @@
 
 use super::{settle::settled_lines, write_store_file, Kind, Settle};
 use std::collections::BTreeMap;
+use std::fmt::Write as _;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicUsize, Ordering};
 
@@ -63,12 +64,13 @@ pub(super) fn journal(
     }
     let file = store.join(kind.file);
     settled.store.keys().fold(String::new(), |mut out, path| {
-        out.push_str(&format!(
+        let _ = writeln!(
+            out,
             "{} {tag} {path}: its entry in {} settles once every step of this commit passes \
-             (GOH.SEEDREFUSED)\n",
+             (GOH.SEEDREFUSED)",
             goh_tui::START,
             file.display()
-        ));
+        );
         out
     })
 }
@@ -119,11 +121,12 @@ pub fn apply(pending: &Path) -> (i32, String) {
         let v = match parsed {
             Ok(v) => v,
             Err(m) => {
-                out.push_str(&format!(
-                    "{} goh seed-settle {}: {m}; its settle is dropped\n",
+                let _ = writeln!(
+                    out,
+                    "{} goh seed-settle {}: {m}; its settle is dropped",
                     goh_tui::WARN,
                     path.display()
-                ));
+                );
                 continue;
             }
         };
@@ -144,12 +147,15 @@ pub fn apply(pending: &Path) -> (i32, String) {
     for ((store, file, root), d) in &due {
         match write_store_file(store, file, root, &d.store) {
             Ok(()) => out.push_str(&settled_lines(&d.store, &d.unit, &d.tag, &store.join(file))),
-            Err(m) => out.push_str(&format!(
-                "{} {} could not settle {}: {m}; the push will call its entry stale\n",
-                goh_tui::WARN,
-                d.tag,
-                store.join(file).display()
-            )),
+            Err(m) => {
+                let _ = writeln!(
+                    out,
+                    "{} {} could not settle {}: {m}; the push will call its entry stale",
+                    goh_tui::WARN,
+                    d.tag,
+                    store.join(file).display()
+                );
+            }
         }
     }
     (0, out)
