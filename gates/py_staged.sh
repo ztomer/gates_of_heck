@@ -109,16 +109,16 @@ fi
 if [ -n "${GOH_PY_LINT_CEILINGS:-}" ]; then
     # Debt the repo carries, counted per file, may only fall (gates/py_lint_ceiling.py, BACKLOG 4.4).
     goh_step "ruff check under $GOH_PY_LINT_CEILINGS ($scope)" \
-        "$GOH_PY" "$HERE/py_lint_ceiling.py" --check --ceilings "$GOH_PY_LINT_CEILINGS" --runner "$RUN" -- "${STAGED[@]}"
+        "$GOH_PY" "$HERE/py_lint_ceiling.py" --check --ceilings "$GOH_PY_LINT_CEILINGS" --runner "$RUN" -- ${STAGED[@]+"${STAGED[@]}"}
 else
-    goh_step "ruff check ($scope)"        "${RUN_ARR[@]}" ruff check --extend-select PLW1510 "${STAGED[@]}"  # the house floor (G17b, py_gate.sh)
-    goh_py_house_unadopted "${STAGED[@]}"
+    goh_step "ruff check ($scope)"        "${RUN_ARR[@]}" ruff check --extend-select PLW1510 ${STAGED[@]+"${STAGED[@]}"}  # the house floor (G17b, py_gate.sh)
+    goh_py_house_unadopted ${STAGED[@]+"${STAGED[@]}"}
 fi
-goh_step "ruff format check ($scope)" "${RUN_ARR[@]}" ruff format --check "${STAGED[@]}"
+goh_step "ruff format check ($scope)" "${RUN_ARR[@]}" ruff format --check ${STAGED[@]+"${STAGED[@]}"}
 if [ -n "${GOH_PY_NOQA_PARITY:-}" ]; then
     # A `# noqa` ruff honours and the second linter the repo runs ignores (gates/py_noqa_parity.py, 4.5).
     goh_step "noqa parity with $GOH_PY_NOQA_PARITY ($scope)" \
-        "$GOH_PY" "$HERE/py_noqa_parity.py" --linters "$GOH_PY_NOQA_PARITY" --runner "$RUN" -- "${STAGED[@]}"
+        "$GOH_PY" "$HERE/py_noqa_parity.py" --linters "$GOH_PY_NOQA_PARITY" --runner "$RUN" -- ${STAGED[@]+"${STAGED[@]}"}
 fi
 [ "$scope" != staged ] || cd "$checkout"
 goh_done

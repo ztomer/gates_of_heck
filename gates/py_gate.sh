@@ -82,7 +82,7 @@ if [ -n "${GOH_PY_LINT_CEILINGS:-}" ]; then
     while IFS= read -r f; do [ -n "$f" ] && PY_TRACKED+=("$f"); done < <( (goh_bind_hook_index; git ls-files -- '*.py') )
     [ "${#PY_TRACKED[@]}" -gt 0 ] || die "no tracked .py to hold to $GOH_PY_LINT_CEILINGS"
     goh_step "ruff check under $GOH_PY_LINT_CEILINGS" \
-        "$GOH_PY" "$HERE/py_lint_ceiling.py" --check --ceilings "$GOH_PY_LINT_CEILINGS" --runner "$RUN" -- "${PY_TRACKED[@]}"
+        "$GOH_PY" "$HERE/py_lint_ceiling.py" --check --ceilings "$GOH_PY_LINT_CEILINGS" --runner "$RUN" -- ${PY_TRACKED[@]+"${PY_TRACKED[@]}"}
 else
     goh_step_in "$pkg_dir" "ruff check"        "${RUN_ARR[@]}" ruff check --extend-select PLW1510 .
     goh_py_house_unadopted "$pkg_dir"

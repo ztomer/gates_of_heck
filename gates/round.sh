@@ -68,7 +68,7 @@ if [ -n "$(setting GOH_PYTHON_FORMATTED)" ]; then
     py=()
     for p in "$@"; do case "$p" in *.py) [ -e "$p" ] && py+=("$p") ;; esac; done
     if [ "${#py[@]}" -gt 0 ]; then
-        ruff format -q -- "${py[@]}" || die "round stopped: ruff format failed"
+        ruff format -q -- ${py[@]+"${py[@]}"} || die "round stopped: ruff format failed"
         ok "$(counted "${#py[@]}" "Python file") formatted"
     fi
 fi
@@ -102,7 +102,7 @@ if [ -n "$pre" ]; then
 fi
 
 section "commit (the pre-commit hook gates it)"
-[ "${#add[@]}" -eq 0 ] || git add -- "${add[@]}"
+[ "${#add[@]}" -eq 0 ] || git add -- ${add[@]+"${add[@]}"}
 git diff --cached --quiet -- "$@" && die "round stopped: nothing to commit in the named paths"
 git commit -q --only -F - -- "$@" <<<"$msg" || die "round stopped: the commit was refused (above)"
 sha="$(git rev-parse HEAD)"

@@ -15,10 +15,13 @@ from pathlib import Path
 from conftest import REPO_ROOT, git, hermetic_env
 
 KIT = REPO_ROOT / "tools" / "release_goh.sh"
+# The macOS /bin/bash is 3.2, where `"${a[@]}"` of an empty array trips `set -u`; the hosted runner
+# runs the kit with it, so the suite does too (v0.106.1 was red there, green on Homebrew bash 5).
+BASH = "/bin/bash" if Path("/bin/bash").exists() else "bash"
 
 
 def _kit(repo: Path, *args: str) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(["bash", str(KIT), *args], cwd=repo, env=hermetic_env(drop_git=True),
+    return subprocess.run([BASH, str(KIT), *args], cwd=repo, env=hermetic_env(drop_git=True),
                           capture_output=True, text=True, timeout=60, stdin=subprocess.DEVNULL,
                           check=False)  # fmt: skip
 
@@ -69,7 +72,7 @@ def test_the_ship_summary_titles_the_preflight_too(repo: Path) -> None:
         repo, "# CHANGELOG\n\n## Unreleased\n\n* , a tail\n\n## v0.1.0 -- first\n\n* **One.** a\n"
     )
     env = hermetic_env(drop_git=True, GOH_SHIP_SUMMARY="the real title")
-    r = subprocess.run(["bash", str(KIT), "0.2.0"], cwd=repo, env=env, capture_output=True,
+    r = subprocess.run([BASH, str(KIT), "0.2.0"], cwd=repo, env=env, capture_output=True,
                        text=True, timeout=60, stdin=subprocess.DEVNULL, check=False)  # fmt: skip
     assert "is not a phrase" not in r.stderr, r.stderr
     assert "holds nothing to release" not in r.stderr, r.stderr

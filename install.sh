@@ -139,7 +139,7 @@ done
 refusals_stand=0
 if [ "${#refused[@]}" -gt 0 ]; then
     refusals_stand=1
-    for h in "${refused[@]}"; do
+    for h in ${refused[@]+"${refused[@]}"}; do
         err "install: $hooks_dir/$h differs from both the stock hook and our install record"
     done
     err "  it looks locally modified — it is left exactly as it is"

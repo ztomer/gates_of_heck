@@ -81,7 +81,7 @@ goh_require swiftlint "brew install swiftlint"
 
 # Each file's lint root: its nearest ancestor (inside the repo) with a .swiftlint.yml, else ".".
 pairs=""
-for f in "${STAGED[@]}"; do
+for f in ${STAGED[@]+"${STAGED[@]}"}; do
     d="$(dirname "$f")"
     while [ "$d" != "." ] && [ ! -f "$d/.swiftlint.yml" ]; do d="$(dirname "$d")"; done
     pairs="$pairs$d	$f
@@ -141,15 +141,15 @@ while IFS= read -r root; do
         if [ "$root" = "." ]; then files+=("$f"); else files+=("${f#"$root"/}"); fi
     done <<<"$pairs"
     kept=()
-    for f in "${files[@]}"; do
+    for f in ${files[@]+"${files[@]}"}; do
         in_included "$root" "$f" && kept+=("$f")
     done
     if [ "${#kept[@]}" -eq 0 ]; then
         info "every staged .swift in $root is outside the included roots of $root/.swiftlint.yml"
         continue
     fi
-    files=("${kept[@]}")
-    [ "$root" = "." ] || ! excluded_above "$root" "${files[@]}" || continue
+    files=(${kept[@]+"${kept[@]}"})
+    [ "$root" = "." ] || ! excluded_above "$root" ${files[@]+"${files[@]}"} || continue
     # That root's own baseline, as swift_gate.sh run there would read it. The gated repo's
     # .gatesrc, unknown when this script is linted (GOH.SHX), in a child: `bash -c`, as land.sh reads it.
     baseline="$(cd "$root" && bash -c 'unset GOH_SWIFT_LINT_BASELINE
@@ -158,7 +158,7 @@ while IFS= read -r root; do
     where=""
     [ "$root" = "." ] || where=" in $root"
     goh_step "swiftlint --strict (staged$where${baseline:+, baseline: $(basename "$baseline")})" \
-        bash "$HERE/swift_staged.sh" --lint-root "$root" "$baseline" "${files[@]}"
+        bash "$HERE/swift_staged.sh" --lint-root "$root" "$baseline" ${files[@]+"${files[@]}"}
 done <<<"$roots"
 goh_done
 exit

@@ -33,7 +33,7 @@ case "$hook" in
         done < <(awk '!seen[$2]++')
         [ "${#new[@]}" -gt 0 ] || exit 0
         rc=0
-        bash "$HERE/goh.sh" markers --commits "${new[@]}" || rc=$?
+        bash "$HERE/goh.sh" markers --commits ${new[@]+"${new[@]}"} || rc=$?
         if [ "$rc" -eq 1 ]; then
             err "post-rewrite: the rebase COMMITTED the conflict markers above"
             err "  it has finished, so nothing was refused: fix each commit named there before"

@@ -267,7 +267,7 @@ run_swift() {
     if [ -n "$IGNORE" ]; then _SWIFT_ARGS+=(--ignore "$IGNORE"); fi
     if [ -n "$INCLUDE" ]; then _SWIFT_ARGS+=(--include "$INCLUDE"); fi
     if [ -n "$MARKER_CEILING" ]; then _SWIFT_ARGS+=(--marker-ceiling "$MARKER_CEILING"); fi
-    "$GOH_PY" "$GOH_ROOT/gates/coverage_swift.py" "${_SWIFT_ARGS[@]}" \
+    "$GOH_PY" "$GOH_ROOT/gates/coverage_swift.py" ${_SWIFT_ARGS[@]+"${_SWIFT_ARGS[@]}"} \
         || exit $?
 }
 

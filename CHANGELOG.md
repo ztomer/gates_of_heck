@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+* **Release scripts and gates run under macOS bash 3.2: no maybe-empty array trips `set -u`.**
+  v0.106.1's `tools/release_goh.sh` expanded `"${title[@]}"` after `title=()`, an unbound variable
+  under the macOS /bin/bash 3.2 when no summary is passed (green on Homebrew bash 5, red on the hosted
+  runner). Every such expansion in goh's tracked scripts (18 sites, 9 files) is now
+  `${a[@]+"${a[@]}"}`; `tests/test_bash32_empty_array.py` refuses a bare one in any `set -u` script
+  that can assign the array empty, and `tests/test_release_goh.py` runs the kit under /bin/bash.
+
 ## v0.106.1 -- the roadmap pending list is gone: every repo it named declares GOH_ROADMAP
 
 * **A bold lead holding a `*` titles its stanza, and goh's kit preflights with the ship summary.**
