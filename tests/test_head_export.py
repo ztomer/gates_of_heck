@@ -20,6 +20,7 @@ import time
 from pathlib import Path
 
 import pytest
+from _fast_git import fast_init
 from conftest import REPO_ROOT, commit_all, git, hermetic_env, write
 
 sys.path.insert(0, str(REPO_ROOT / "lib"))
@@ -109,8 +110,7 @@ def test_an_export_is_answered_as_is_and_a_hook_git_dir_is_ignored(sibling, cach
     nested = _export(Path(dest), cache)
     assert nested.returncode == 0 and nested.stdout.strip() == dest, nested.stderr
     other = tmp_path / "other"
-    other.mkdir()
-    git(other, "init", "-q")
+    fast_init(other)
     bound = _export(sibling, cache, GIT_DIR=str(other / ".git"))
     assert bound.returncode == 0 and bound.stdout.strip() == dest, bound.stderr
 
