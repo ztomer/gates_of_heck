@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## v0.98.0 -- Gates share the load slot (three at once) while a load experiment still holds it alone; a nested measurement drains every gate but its own; consumes= steps wait for their producers; worktree crate proofs record
+
 * **Gates share the load slot, three at once; a load experiment still holds it alone (GOH.GATESLOT).**
   A `load.py 0 -- <gate>` took the machine-wide slot as exclusively as a spinner experiment, so
   every agent's gate ran one at a time: on 2026-11-11 the queue ran five deep and stalled ~20 min
