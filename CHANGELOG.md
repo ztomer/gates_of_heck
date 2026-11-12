@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## v0.105.0 -- a kept pytest temp root holds only failed tests' dirs (21x smaller) and older roots are bounded by count and size
+
 * **A kept pytest temp root is bounded, and is 21x smaller (GOH.PYTESTTMP).** TMPDIR held 55.3 GiB:
   eleven kept `goh-pytest.*` roots of ~5 GiB, every test's `tmp_path` of each failed run. Now pytest keeps
   only a failed test's `tmp_path` (`tmp_path_retention_policy=failed`), each run cuts older kept roots to
