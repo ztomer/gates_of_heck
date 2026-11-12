@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## v0.100.0 -- A commit settles the store seed entries its fix settles, so a fixed seeded site no longer turns the push red (GOH.SEEDSTALE, D-0005); plural_hedge stops reporting builtin calls such as print(s) and reads strings inside "$(...)" (GOH.HEDGECODE)
+
 * **A builtin shown called in a string is not a hedged plural; a hedge inside `"$(...)"` is seen
   (GOH.HEDGECODE).** `goh plural-hedge` reported `print(s)` in a Python string (ZoneWM) and missed
   `session(s)` inside a `[[ ]]` in a command substitution in a shell string (scripts). Consumers:
