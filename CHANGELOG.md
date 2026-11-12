@@ -2,6 +2,36 @@
 
 ## Unreleased
 
+* **The Bash guard judges the command that runs, not a heredoc's words (GOH.HEREDOCBUILD).** A script
+  written by `cat > f <<'EOF' ... cargo clippy ... EOF` and run through `load.py -- bash f` was
+  refused as a bare build. Consumers: a heredoc body is now its owner's stdin (`lib/shell_segments.py`)
+  and is judged as code only when a shell reads it as its script (`sh <<EOF`, `bash -s <<EOF`) outside
+  `load.py`; a newline now separates commands for every guard rule, so a bare `cargo build` on a
+  command's second line is refused where it was missed.
+
+* **No stash, reset or branch switch in a shared checkout (GOH.NORESET).** Agents ran a bare
+  `git reset -q` in token-pool's shared checkout twice. Consumers: in a PRIMARY checkout the Bash guard
+  now refuses `git stash` (not `list`/`show`), `git reset` in any form, `git switch`, `git checkout
+  <branch>`/`-b`/`-`, and `git restore --staged` with no path or `.`; a linked worktree, a pathed
+  `git restore --staged <paths>`, `git checkout -- <paths>` and `# reset-ok: <reason>` run.
+
+* **Every kill by name is refused, naming what it would hit now (GOH.NOPKILL).** A pattern kill of a
+  ship's result-file name killed the `goh ship` carrying that path (exit 143). Consumers: an unscoped
+  `pkill` pattern, any `killall`, and a pgrep feeding `kill` are refused whatever they name (before,
+  only names of shared commands), with the PIDs `pgrep -fl` matches right now; `kill <pid>`,
+  `pkill -P <pid>`, and `# kill-ok: <reason>` run.
+
+* **A `git commit -- <paths>` lints the tree it records (GOH.STAGEDNEW).** With an unrelated NEW file
+  staged, `py_gate.sh` inside a commit gate's index export listed files from the repository's index
+  and ruff reported E902 on the file the export lacked. Consumers: the list is the committed index's;
+  a `py_lint_ceiling.py` failure prints the one command that reproduces it (`ruff check` alone is
+  weaker).
+
+* **The main-checkout commit escape is logged (GOH.MAINCOMMIT).** The refusal itself shipped as
+  GOH.LANDONLY (v0.80.0); the owner's `GOH_MAIN_COMMIT_OK=<reason>` stays, and each use is now
+  appended to `<common git dir>/goh-main-commits.log` and said on stderr. Any repo opts in with
+  `GOH_LANDED_ONLY=<branch>`, so it is already the kit option.
+
 ## v0.98.0 -- Gates share the load slot (three at once) while a load experiment still holds it alone; a nested measurement drains every gate but its own; consumes= steps wait for their producers; worktree crate proofs record
 
 * **Gates share the load slot, three at once; a load experiment still holds it alone (GOH.GATESLOT).**
