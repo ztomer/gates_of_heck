@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## v0.106.0 -- every gated repo declares GOH_ROADMAP (a path or none)
+
 * **Every gated repo declares `GOH_ROADMAP` (GOH.ROADMAPREQ).** An unset `GOH_ROADMAP` is now red
   (`goh roadmap`), naming the plan files it sees. The turn-on is staged so no consumer's push goes
   red with no item: a repo still listed in `crates/goh/src/roadmap/pending.txt` (twelve, seeded from
