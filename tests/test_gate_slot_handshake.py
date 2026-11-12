@@ -25,6 +25,7 @@ import subprocess
 from pathlib import Path
 
 import pytest
+from conftest import hermetic_env
 from test_bash5_guard import _scope
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -79,10 +80,12 @@ def _bashes() -> list[str]:
 def _acquire(tmp_path: Path, bash: str, handshake: str) -> subprocess.CompletedProcess:
     helper = tmp_path / "fake_holder.py"
     helper.write_text(FAKE_HELPER)
-    env = dict(os.environ, GOH_DIR=str(REPO_ROOT), NO_COLOR="1", FAKE_HANDSHAKE=handshake)
-    env["GOH_GATE_SLOT_DIR"] = str(tmp_path / "slots")
-    env["GOH_GATE_SLOTS"] = "1"
-    env.pop("GOH_GATE_SLOT", None)
+    env = hermetic_env(
+        NO_COLOR="1",
+        FAKE_HANDSHAKE=handshake,
+        GOH_GATE_SLOT_DIR=str(tmp_path / "slots"),
+        GOH_GATE_SLOTS="1",
+    )
     return subprocess.run(
         [bash, "-c", GATE.format(goh=REPO_ROOT, helper=helper)],
         capture_output=True,
