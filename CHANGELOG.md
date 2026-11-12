@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## v0.103.0 -- a commit refused by any gate step settles no seed entry: checks journal to GOH_SEED_PENDING, applied after every step passes
+
 * **A commit refused by any step of its gate settles no seed entry (GOH.SEEDREFUSED).** Since
   GOH.SEEDSTALE a seeded check's commit run wrote the private seed store the moment that check
   passed, so a commit a later step refused had already lowered or deleted entries: a necrohand
