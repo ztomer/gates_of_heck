@@ -16,6 +16,8 @@ from pathlib import Path
 import pytest
 from conftest import commit_all, git, hermetic_env, run_goh, stage, write
 
+GOH_ROOT = Path(__file__).resolve().parent.parent
+
 GATESRC = "GOH_ROADMAP=ROADMAP.md\n"
 
 CLEAN = """# Roadmap
@@ -128,7 +130,7 @@ def test_a_lower_case_document_about_a_plan_is_not_a_plan_file(repo, queue):
 
 def test_unset_is_red_unless_the_repo_is_still_pending(repo, queue, tmp_path):
     """GOH.ROADMAPREQ: every gated repo declares GOH_ROADMAP (a path or none). The turn-on is
-    staged: a repo named in the pending list (roadmap/pending.txt, the seam GOH_ROADMAP_PENDING)
+    staged: a repo named in the pending list (the test seam GOH_ROADMAP_PENDING)
     still passes with a warning naming the item, so no consumer's push goes red with no item."""
     write(repo, "ROADMAP.md", CLEAN)
     commit_all(repo)
@@ -148,6 +150,19 @@ def test_unset_is_red_unless_the_repo_is_still_pending(repo, queue, tmp_path):
     pending.write_text(f"{root} some-other-name\n")
     r = roadmap(repo, queue, env_extra={"GOH_ROADMAP_PENDING": str(pending)})
     assert r.returncode == 0 and "pending" in r.stdout, (r.stdout, r.stderr)
+
+
+def test_no_shipped_pending_list_is_left_to_go_stale(repo, queue):
+    """GOH.ROADMAPREQ's staged turn-on is over: every repo the shipped list named declares, so the
+    list is gone, and with no seam set an unset GOH_ROADMAP is red in every repo -- no line naming
+    a repo that already declares can linger."""
+    assert not (GOH_ROOT / "crates/goh/src/roadmap/pending.txt").exists()
+    write(repo, "ROADMAP.md", CLEAN)
+    commit_all(repo)
+    env = {k: v for k, v in hermetic_env().items() if k != "GOH_ROADMAP_PENDING"}
+    env["GOH_ROADMAP_QUEUE"] = str(queue)
+    r = run_goh(repo, "roadmap", env=env)
+    assert r.returncode == 1 and "GOH_ROADMAP is unset" in r.stderr, (r.stdout, r.stderr)
 
 
 def test_none_makes_every_plan_file_a_finding(repo, queue):

@@ -41,13 +41,6 @@ CHANGELOG) resolve in this file at `1a7c444`: `git show 1a7c444:docs/BACKLOG.md`
 Why first: each is a rule that only discipline held, and broke on 2026-11-08; none depends on another
 phase, and each is one landing.
 
-- **GOH.ROADMAPREQ** (queue: GOH.ROADMAPREQ) An unset `GOH_ROADMAP` is red, save for the repos
-  still listed in `crates/goh/src/roadmap/pending.txt` (the staged turn-on, a warning naming this
-  item). Each consumer declares in its own `.gatesrc` (ZoneWM also retires `check_stale_backlog.py`,
-  servers/media_server its stale History sentence), and its line leaves the list.
-  **Done when:** `pending.txt` is empty and deleted with its seam; every gated repo declares
-  `GOH_ROADMAP` (a path or `none`).
-
 - **RUFF.RULES2 — the unadopted house ruff set goes red.** `gates/ruff_house.py` is the house set;
   a repo without `GOH_PY_LINT_CEILINGS` is still judged on the PLW1510 floor and only WARNED with the
   house set's count (`goh_py_house_unadopted`, gates/_py.sh), because koffee_big, token-pool and

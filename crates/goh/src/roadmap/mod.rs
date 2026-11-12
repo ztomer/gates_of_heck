@@ -15,9 +15,8 @@
 //!      `tools/check_stale_backlog.py`, generalised; the queue is a seam, `queue.rs`).
 //!
 //! Today's findings are DEBT held by `roadmap_seed.json` (`judge.rs`): a count per `<file>#<rule>`
-//! that may only fall. `GOH_ROADMAP` unset is red (GOH.ROADMAPREQ), save for a repo still named in
-//! `pending.txt`, the staged turn-on, which passes with a warning naming the item;
-//! `GOH_ROADMAP=none` declares no roadmap, so every plan file is a finding.
+//! that may only fall. `GOH_ROADMAP` unset is red (GOH.ROADMAPREQ; the staged turn-on's list is gone, every repo on
+//! it having declared), save under the test seam `GOH_ROADMAP_PENDING`; `GOH_ROADMAP=none` declares no roadmap, so every plan file is a finding.
 //!
 //! A structural step in every repo. At `--staged` it judges only a commit that brings the
 //! roadmap, its seed, `.gatesrc` or a plan file -- the queue moves under a repo, and a commit
@@ -160,18 +159,16 @@ fn seeds(root: &Path, staged: bool) -> Result<Seeds, String> {
     Ok((now, head))
 }
 
-/// The repos still allowed an unset `GOH_ROADMAP` (GOH.ROADMAPREQ's staged turn-on).
-const PENDING: &str = include_str!("pending.txt");
-
-/// Whether this repo is still pending: its root commit (`gitutil::root_commit`, which an export
-/// answers too) or its checkout's basename names a line, or a line is `*`. `GOH_ROADMAP_PENDING`
-/// names another list: a SEAM for tests, read from the environment, never from `.gatesrc`.
+/// Whether a fixture stands pending: `GOH_ROADMAP_PENDING` names a list (one `<root commit>
+/// <name>` or `*` per line) that excuses an unset `GOH_ROADMAP` with a warning. A SEAM for tests,
+/// read from the environment, never from `.gatesrc`; unset, no repo is pending. The shipped list
+/// (`pending.txt`) is gone: every repo it named declares (GOH.ROADMAPREQ, RM.*).
 fn pending(root: &Path) -> Result<bool, String> {
-    let text = match std::env::var_os("GOH_ROADMAP_PENDING") {
-        Some(p) => std::fs::read_to_string(&p)
-            .map_err(|e| format!("GOH_ROADMAP_PENDING={}: {e}", Path::new(&p).display()))?,
-        None => PENDING.to_owned(),
+    let Some(p) = std::env::var_os("GOH_ROADMAP_PENDING") else {
+        return Ok(false);
     };
+    let text = std::fs::read_to_string(&p)
+        .map_err(|e| format!("GOH_ROADMAP_PENDING={}: {e}", Path::new(&p).display()))?;
     let name = root
         .file_name()
         .and_then(|n| n.to_str())
@@ -228,8 +225,8 @@ fn verdict(
             Ok(true) => (
                 0,
                 format!(
-                    "{} {TAG} {} (this repo is pending in goh's roadmap/pending.txt, GOH.ROADMAPREQ: \
-                     it goes red once that line is gone)\n",
+                    "{} {TAG} {} (this repo is pending under GOH_ROADMAP_PENDING, GOH.ROADMAPREQ's \
+                     test seam)\n",
                     goh_tui::WARN,
                     unset_note(&tree)
                 ),

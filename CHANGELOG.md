@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+* **The roadmap pending list is gone (GOH.ROADMAPREQ, RM.*).** Every repo it named now declares
+  `GOH_ROADMAP` (the nine consumers, a private nested workspace, skills and `.loop`), so `crates/goh/src/roadmap/pending.txt`
+  is deleted: an unset `GOH_ROADMAP` is red in every repo, and no list of repos that already
+  declare can go stale. `GOH_ROADMAP_PENDING` stays as the suite's fixture seam only.
+
 ## v0.106.0 -- every gated repo declares GOH_ROADMAP (a path or none)
 
 * **Every gated repo declares `GOH_ROADMAP` (GOH.ROADMAPREQ).** An unset `GOH_ROADMAP` is now red
