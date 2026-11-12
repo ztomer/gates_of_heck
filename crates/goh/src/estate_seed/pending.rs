@@ -3,7 +3,7 @@
 //! GOH.SEEDSTALE let a commit's own run of a seeded check lower or delete the store entries its
 //! change settles, and the check wrote the store the moment IT passed. A commit refused by a LATER
 //! step of the same gate (the repository's tests, the line cap, the python twin) had already
-//! pruned the store: on 2026-11-12 a necrohand agent's refused commits deleted 13 plural_hedge
+//! pruned the store: on 2026-11-12 a necrohand agent's refused commits deleted 13 `plural_hedge`
 //! entries for files it then reverted. So the hook (`gates/commit_gate.sh`) names a pending
 //! directory in `GOH_SEED_PENDING`; a check run under it JOURNALS its settle there instead of
 //! writing the store, and the hook runs `goh seed-settle <dir>` only once every step has passed.
