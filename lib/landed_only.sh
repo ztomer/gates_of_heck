@@ -20,6 +20,8 @@
 #                             fast-forward runs no pre-commit hook today; the token is what keeps
 #                             that true if land.sh ever makes a commit of its own.)
 #   GOH_MAIN_COMMIT_OK=<why>  the human escape; the reason is required, an empty one is no escape.
+#                             Each use is appended to <common git dir>/goh-main-commits.log (UTC
+#                             time, HEAD, reason) and said on stderr (GOH.MAINCOMMIT, 2026-11-11).
 # Pinned by tests/test_landed_only_commit.py.
 goh_refuse_unlanded_commit() {
     local root="$1" what="$2" landed branch gitdir common
@@ -32,7 +34,14 @@ goh_refuse_unlanded_commit() {
     gitdir="$(git -C "$root" rev-parse --absolute-git-dir 2>/dev/null)" || return 0
     common="$(git -C "$root" rev-parse --path-format=absolute --git-common-dir 2>/dev/null)" || return 0
     [ "$(cd "$gitdir" && pwd -P)" = "$(cd "$common" && pwd -P)" ] || return 0   # a linked worktree
-    [ -z "${GOH_MAIN_COMMIT_OK-}" ] || return 0
+    if [ -n "${GOH_MAIN_COMMIT_OK-}" ]; then
+        # The owner's escape stays (GOH.MAINCOMMIT, 2026-11-11), and every use is written down: a
+        # habit of it shows in the log, not in a commit nobody gated.
+        printf '%s\t%s\t%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$(git -C "$root" rev-parse --short HEAD 2>/dev/null || echo none)" \
+            "${GOH_MAIN_COMMIT_OK//[$'\t\n']/ }" >>"$common/goh-main-commits.log" 2>/dev/null || true
+        printf '%s\n' "⚠ $what: GOH_MAIN_COMMIT_OK='$GOH_MAIN_COMMIT_OK' -- a commit on '$landed' in the primary checkout, past tools/land.sh; logged in $common/goh-main-commits.log" >&2
+        return 0
+    fi
     printf '%s\n' "✗ $what is refused: $root is the primary checkout and HEAD is '$landed', which moves only through tools/land.sh (GOH_LANDED_ONLY)" \
         "  commit on a branch in a worktree (git worktree add ../wt -b my-branch), gate it and fast-forward main with:" \
         "    tools/land.sh                      # from that worktree" \

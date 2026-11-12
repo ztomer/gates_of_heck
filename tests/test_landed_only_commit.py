@@ -156,6 +156,22 @@ def test_the_documented_escape_needs_a_reason(tmp_path: Path) -> None:
     assert got.returncode == 0, got.stdout + got.stderr
 
 
+def test_the_escape_is_logged_with_its_reason(tmp_path: Path) -> None:
+    """GOH.MAINCOMMIT (2026-11-11): the escape stays for the owner's own hand commits, and each use
+    is written down -- the reason, when, and the HEAD it was made on -- in the common git dir, and
+    said on stderr, so a habit of it shows."""
+    main, _ = _landed_only_repo(tmp_path)
+    log = main / ".git" / "goh-main-commits.log"
+    assert not log.exists()
+    got = _commit(main, GOH_MAIN_COMMIT_OK="owner hotfix: the gate host is down")
+    assert got.returncode == 0, got.stdout + got.stderr
+    assert "GOH_MAIN_COMMIT_OK" in got.stderr and str(log) in got.stderr, got.stderr
+    lines = log.read_text().splitlines()
+    assert len(lines) == 1 and "owner hotfix: the gate host is down" in lines[0], lines
+    _commit(main, GOH_LAND_CALLER="land.sh")
+    assert len(log.read_text().splitlines()) == 1, "land.sh's token is not the escape: not logged"
+
+
 def test_land_sh_still_lands_through_the_installed_hook(tmp_path: Path) -> None:
     """The end to end of the claim: land.sh from a worktree, with the refusing hook installed,
     moves main -- and says so to the merge's own hooks (a post-merge hook reads the token)."""
