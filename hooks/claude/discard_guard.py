@@ -54,6 +54,12 @@ in an ssh heredoc, echoed both ntfy password hashes into its transcript (compose
 the command and in the code it hands to `ssh` or a shell. The escape is `# secrets-ok: <reason>`.
 The rule is `lib/secret_render.py`.
 
+THE SHARED CHECKOUT (GOH.NORESET, 2026-11-11). `git stash`, `git reset` in any form, a branch switch
+(`git switch`, `git checkout <branch>`) and a whole-index `git restore --staged` are refused in a
+PRIMARY checkout -- the one every session shares; a linked worktree is its creator's -- because each
+moves other sessions' work with yours. The escape is `# reset-ok: <reason>`. The rule is
+`lib/shared_checkout.py`.
+
 It judges only what it can parse. A command it cannot split runs, unjudged: the guard must never
 be the thing that breaks an ordinary command. A pattern inside a string or a heredoc is TEXT, not
 code, so it is not a finding: `echo 'while :; do :; done'` writes a loop, it does not run one. And
@@ -111,6 +117,12 @@ try:
 except ImportError:
     load_bare = None
 
+# How a command splits into the simple commands that run (GOH.HEREDOCBUILD): fails open to shlex.
+try:
+    import shell_segments
+except ImportError:
+    shell_segments = None
+
 # The self-matching wait (2026-11-01), the same way: a missing rule fails open.
 try:
     import self_match
@@ -128,6 +140,12 @@ try:
     import name_kill
 except ImportError:
     name_kill = None
+
+# The stash / reset / branch switch in a shared checkout (GOH.NORESET, 2026-11-11): fails open.
+try:
+    import shared_checkout
+except ImportError:
+    shared_checkout = None
 
 # The tools whose input holds a shell command (Bash, Monitor): ONE list, `lib/shell_tools.py`.
 try:
@@ -187,7 +205,10 @@ def _new_text(tool_input: dict) -> str:
 
 
 def _segments(command: str) -> list[list[str]]:
-    """The command's simple commands, split on shell separators (the punctuation shlex keeps)."""
+    """The command's simple commands, the way the shell runs them: split on separators and newlines,
+    heredoc bodies left out as their owner's stdin (`lib/shell_segments.py`, GOH.HEREDOCBUILD)."""
+    if shell_segments is not None:
+        return shell_segments.segments(command)
     lex = shlex.shlex(command, posix=True, punctuation_chars=";&|")
     lex.whitespace_split = True
     lex.commenters = "#"
@@ -346,6 +367,14 @@ def judge_name_kill(command: str) -> str | None:
     return name_kill.judge(command)
 
 
+def judge_shared(command: str, cwd: str) -> str | None:
+    """The refusal for a `git stash`, `git reset`, branch switch or whole-index unstage in a PRIMARY
+    checkout, the one every session shares (GOH.NORESET), or None. `# reset-ok: <reason>`."""
+    if shared_checkout is None:
+        return None
+    return shared_checkout.judge(command, cwd)
+
+
 def judge_priority(command: str) -> str | None:
     """The refusal for a `tools/load.py` command line whose wrapped command runs at background
     priority (`load.py 32 -- taskpolicy -b loop.sh`, the 10h14m run of 2026-10-25), or None."""
@@ -372,11 +401,7 @@ def judge_bare(command: str) -> str | None:
     holds the load slot (GOH.LOADBUILDLOCK), or None. `# bare-ok: <reason>`."""
     if load_bare is None:
         return None
-    try:
-        segs = _segments(command)
-    except ValueError:
-        return None
-    return load_bare.judge(command, segs)
+    return load_bare.judge(command)
 
 
 def judge_file(path: str, content: str) -> str | None:
@@ -429,6 +454,7 @@ def main() -> int:
         command = tool_input.get(COMMAND_FIELD) or ""
         reason = (
             judge(command, event.get("cwd") or os.getcwd())
+            or judge_shared(command, event.get("cwd") or os.getcwd())
             or judge_load(command)
             or judge_wait(command)
             or judge_self_match(command)

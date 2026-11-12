@@ -20,6 +20,12 @@ that is not this process's own ancestor (a gate started under `load.py 0 -- tool
 its builds inside the slot it holds)? Then it is refused, naming the holder and the line that
 waits for the slot instead: `python3 "$GOH_DIR/tools/load.py" --wait 0 -- <the command>`. The
 escape is `# bare-ok: <reason>`.
+
+WHAT RUNS (GOH.HEREDOCBUILD, 2026-11-11). The command is split by `lib/shell_segments.py`: a heredoc
+body is its owner's stdin, so `cat > rg.sh <<'EOF' ... cargo clippy ... EOF` then `load.py -- bash
+rg.sh` writes a build and runs it in the slot, and is not refused; a body is judged as commands only
+when its owner is a shell reading its script from stdin (`sh <<EOF`, `bash -s <<EOF`) with no
+`load.py` in front of it, so a bare `cargo build` there is still refused.
 """
 
 from __future__ import annotations
@@ -33,6 +39,7 @@ from pathlib import Path
 import load_locks
 import load_priority
 import load_registry as reg
+import shell_segments
 
 ESCAPE = re.compile(r"#\s*bare-ok:\s*\S")
 GATE_SCRIPTS = {"gate.sh"}
@@ -104,11 +111,33 @@ def _describe(data: dict) -> str:
     return f"pid {data.get('owner_pid')}, {spinners} {noun}, command: {shown}"
 
 
-def judge(command: str, segments: list[list[str]]) -> str | None:
+def _bare_segment(command: str, depth: int = 0) -> list[str] | None:
+    """The first simple command that runs a build or a gate bare, heredoc scripts included."""
+    segs, bodies = shell_segments.split(command)
+    for seg in segs:
+        plain = [t for t in seg if t not in bodies]
+        if not plain:
+            continue
+        if runs_bare(plain):
+            return plain
+        if depth >= 4 or any(os.path.basename(t) == "load.py" for t in plain):
+            continue  # a script load.py runs is inside the slot
+        if shell_segments.reads_script(plain):
+            for marker in (t for t in seg if t in bodies):
+                found = _bare_segment(bodies[marker], depth + 1)
+                if found:
+                    return found
+    return None
+
+
+def judge(command: str) -> str | None:
     """The refusal for a command that runs a build or a gate bare while the slot is held."""
     if ESCAPE.search(command):
         return None
-    bare = next((seg for seg in segments if runs_bare(seg)), None)
+    try:
+        bare = _bare_segment(command)
+    except ValueError:  # a command shlex cannot split runs, unjudged
+        return None
     if bare is None:
         return None
     held = holder()

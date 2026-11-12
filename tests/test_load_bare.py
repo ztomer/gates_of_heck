@@ -106,3 +106,42 @@ def test_the_build_lock_refusal_names_the_wait_line(tmp_path):
     )  # fmt: skip
     assert ran.returncode == 2, ran.stderr
     assert 'tools/load.py" --wait 0 -- swift test --package-path .' in ran.stderr, ran.stderr
+
+
+# GOH.HEREDOCBUILD (2026-11-11): the guard judges the command that runs, not the words of a heredoc
+# body. The ZT-1 agent's script was written by `cat` and run through load.py, and was refused.
+WRITTEN_THEN_RUN = (
+    "cat > /x/rg.sh <<'EOF'\ncd ~/Projects/ztools/rust\n"
+    "cargo test -q --lib hebrew_half 2>&1 | grep -E 'test result' | head -6\n"
+    "cargo fmt --check && cargo clippy -q --all-targets -- -D warnings 2>&1 | tail -20\nEOF\n"
+    'python3 "$GOH_DIR/tools/load.py" --wait --wait-max 3000 0 -- bash /x/rg.sh'
+)
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        WRITTEN_THEN_RUN,
+        "python3 \"$GOH_DIR/tools/load.py\" --wait 0 -- bash <<'EOF'\ncd x && cargo test\nEOF",
+        "git commit -q -F - <<'EOF'\nfix: a bare cargo build; cargo test ran\nEOF",
+        "python3 - <<'PY'\nimport os; os.system('ls')  # cargo build\nPY",
+        "bash -c 'echo hi' <<'EOF'\ncargo build\nEOF",
+    ],
+)
+def test_a_heredoc_that_is_text_or_runs_inside_load_py_is_not_bare(held, command):
+    assert _guard(command, held[0]) is None, command
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "sh <<'EOF'\ncargo build\nEOF",
+        "bash -s <<EOF\ncd x && cargo test -q\nEOF",
+        "cd x\ncargo build --release",
+        "echo start\nbash tools/gate.sh --full",
+    ],
+)
+def test_a_heredoc_a_shell_runs_bare_or_a_later_line_is_still_judged(held, command):
+    why = _guard(command, held[0])
+    assert why is not None, command
+    assert 'tools/load.py" --wait 0 -- ' in why, why

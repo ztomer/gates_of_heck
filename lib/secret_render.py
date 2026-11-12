@@ -263,3 +263,7 @@ def judge(command: str) -> str | None:
             if reason:
                 return reason
     return None
+
+
+# The quoted-span and heredoc finder, public: lib/shell_segments.py cuts heredoc bodies with it.
+spans = _spans
