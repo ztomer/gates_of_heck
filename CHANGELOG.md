@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+* **changelog-tags does not judge a clone whose tags it cannot trust (GOH.TAGLESSCI).** On
+  divoom-control 331be031 the local run found 16 findings inside the seed's 18, and the hosted
+  runner (`actions/checkout` at its default depth, run 43136219614) found none and failed the seed
+  as stale: a shallow checkout holds no tag on a branch push and the one pushed on a tag push.
+  Consumers: on a shallow clone, or a clone with no `v*` tag whose changelog has version headings,
+  `goh changelog-tags` prints `NOT JUDGED -- <why>; fetch-depth: 0 ...`, exits 0 and calls no seed
+  entry stale; it never prints the clean pass. A CI that should judge it checks out with
+  `fetch-depth: 0`. The pass line counts its tags (`1 tag`, not `1 tag(s)`).
+
 ## v0.100.0 -- A commit settles the store seed entries its fix settles, so a fixed seeded site no longer turns the push red (GOH.SEEDSTALE, D-0005); plural_hedge stops reporting builtin calls such as print(s) and reads strings inside "$(...)" (GOH.HEDGECODE)
 
 * **A builtin shown called in a string is not a hedged plural; a hedge inside `"$(...)"` is seen

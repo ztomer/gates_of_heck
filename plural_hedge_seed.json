@@ -123,13 +123,6 @@
     {
       "root": "73391f04f5f2b92ab9813c62e6cecdce919d2d86",
       "repo": "gates_of_heck",
-      "path": "crates/goh/src/changelog_tags.rs",
-      "count": 1,
-      "reason": "unreviewed: 1 hedged plural: line 193"
-    },
-    {
-      "root": "73391f04f5f2b92ab9813c62e6cecdce919d2d86",
-      "repo": "gates_of_heck",
       "path": "crates/goh/src/checkoutcreds/mod.rs",
       "count": 2,
       "reason": "unreviewed: 2 hedged plurals: lines 87, 92"

@@ -14,6 +14,10 @@
 //!   repo tracks one, else the newest heading when it is above every tag (a stanza cut ahead of
 //!   its tag; a second one above every tag is a finding).
 //!
+//! NOT JUDGED (GOH.TAGLESSCI): a shallow clone, or one with no `v*` tag while its changelog has
+//! version headings, holds a tag set that is not the repository's (a CI checkout fetches one or
+//! none), so the run names why and how to fetch them, exits 0 and calls no seed entry stale.
+//!
 //! SCOPE: the repo's `CHANGELOG.md`, else `docs/CHANGELOG.md`; a repo with neither has nothing to
 //! judge and says so. Both scopes: the file and the tags are read whole either way (the index's
 //! copy of the changelog at `--staged`).
@@ -115,6 +119,31 @@ pub fn findings(file: &str, text: &str, tags: &[String], current: Option<&str>) 
     out
 }
 
+/// Why the clone's tags cannot be compared with its changelog (GOH.TAGLESSCI), or `None`.
+///
+/// A shallow clone holds the tags its fetch carried, not the repository's: `actions/checkout` at
+/// its default depth fetches none on a branch push and the ONE pushed on a tag push, and on
+/// divoom-control 331be031 the runner read that partial set as a clean changelog and failed the
+/// seed as stale (run 43136219614) where the full clone found 16 findings. A clone with no `v*` tag
+/// while its changelog has version headings was cloned without them (`--no-tags`) or never
+/// tagged; either way nothing it could say about the tags would be a verdict.
+#[must_use]
+fn untrusted(shallow: bool, tags: &[String], text: &str) -> Option<String> {
+    const FETCH: &str = "fetch the whole history and its tags to judge it (actions/checkout `fetch-depth: 0`, or `git fetch --tags --unshallow`)";
+    if shallow {
+        return Some(format!(
+            "a shallow clone: its tags are the ones its fetch carried, not the repository's; {FETCH}"
+        ));
+    }
+    let tagged = tags.iter().any(|t| TAGNAME.is_match(t));
+    let headed = text.lines().any(|l| HEAD.is_match(l));
+    (!tagged && headed).then(|| {
+        format!(
+            "no v* tag in this clone, and the changelog has version headings to compare; {FETCH}"
+        )
+    })
+}
+
 /// The repo's changelog among `files`: `CHANGELOG.md`, else `docs/CHANGELOG.md`.
 fn changelog_of(files: &[String]) -> Option<&'static str> {
     ["CHANGELOG.md", "docs/CHANGELOG.md"]
@@ -169,6 +198,10 @@ fn judge(root: &Path, files: &[String], staged: bool) -> (i32, String, String) {
         Ok(t) => t,
         Err(m) => return (2, String::new(), format!("{ERR} {TAG} {m}\n")),
     };
+    if let Some(why) = untrusted(crate::gitutil::is_shallow(root), &tags, &text) {
+        let line = format!("{} {TAG} NOT JUDGED — {why}\n", goh_tui::WARN);
+        return (0, String::new(), line);
+    }
     let current = files
         .iter()
         .any(|f| f == "VERSION")
@@ -190,8 +223,8 @@ fn judge(root: &Path, files: &[String], staged: bool) -> (i32, String, String) {
         ),
         fix: FIX,
         ok: format!(
-            "{file}: every one of {} tag(s) has its heading, no orphan entry",
-            tags.len()
+            "{file}: every one of {} has its heading, no orphan entry",
+            goh_tui::counted(tags.len(), "tag")
         ),
     };
     // Whole-file at both scopes, so a staged run judges a stale entry too -- unless no `v*` tag was
@@ -312,6 +345,23 @@ mod tests {
         // Two stanzas above every tag: only one is pending.
         let f = findings("CHANGELOG.md", &text, &tags(&["v1.0.0"]), Some("1.2.0"));
         assert_eq!(f, vec!["    CHANGELOG.md:9: `## v1.1.0` names no tag"]);
+    }
+
+    #[test]
+    fn a_clone_whose_tags_cannot_be_trusted_is_not_judged() {
+        let why = untrusted(true, &tags(&["v1.2.0"]), GOOD).unwrap_or_default();
+        assert!(
+            why.contains("shallow") && why.contains("fetch-depth: 0"),
+            "{why}"
+        );
+        let why = untrusted(false, &tags(&["vnext"]), GOOD).unwrap_or_default();
+        assert!(why.contains("no v* tag"), "{why}");
+        assert_eq!(untrusted(false, &tags(&["v1.1.0"]), GOOD), None);
+        // Before the first release there is nothing to compare: a pass, not a refusal.
+        assert_eq!(
+            untrusted(false, &[], "# CHANGELOG\n\n## Unreleased\n"),
+            None
+        );
     }
 
     #[test]
