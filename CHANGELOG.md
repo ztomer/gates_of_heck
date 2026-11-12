@@ -2,6 +2,22 @@
 
 ## Unreleased
 
+* **A sibling repo reaches a consumer's gate at its HEAD commit, never its working tree (GOH.HEADEXPORT).**
+  ZeroThunder's push gate imported game_asset_factory from the live checkout, and a concurrent agent's
+  uncommitted edit there failed the push (2026-11-11); ZeroThunder fixed it with a repo-local export and
+  three more consumers carried the same working-tree path. `lib/head_export.sh` is the one public helper:
+  `. "$GOH_DIR/lib/head_export.sh"; goh_head_export GAF_DIR "$GAF_SRC" || exit 2` sets the variable to a
+  read-only local clone of the source's HEAD, detached, cached by sha at
+  `~/.cache/goh/sibling/<name>/<sha>/` (a clone, not `git archive`: a sibling that finds its root through
+  git answered `RootNotFound` from an archive). An export passed back in is answered as is; a hook's
+  `GIT_DIR` cannot redirect it (contract #12); a source with no HEAD is refused, exit 2. The cache is
+  pruned by `gates/_head_cache.py`'s policy (now parameterised by stamp names and remover) with
+  `goh_rm_tree`, so a read-only export is evicted whole instead of left behind and reported gone.
+* **`goh_rm_tree` no longer changes the mode of a file it removes.** It ran `chmod -R u+rwx`, which
+  rewrites a hard-linked inode outside the tree: evicting a local clone rewrote the source repository's
+  object modes (0444 to 0744, `tests/test_head_export.py`). Only directories get `u+rwx` now; unlinking
+  a file needs its directory's `w`, never its own.
+
 ## v0.103.1 -- goh_rm_tree: a read-only tree in a consumer's pytest temp root no longer fails a gate silently
 
 * **A read-only tree in a consumer's pytest temp root no longer fails a gate silently (GOH.RMREADONLY).**

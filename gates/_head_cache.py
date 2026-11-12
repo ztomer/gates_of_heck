@@ -35,9 +35,16 @@ IN_USE_S = 3600
 BUILD_LEFTOVER_S = 86400  # a `.build.*` temp dir a crashed export left behind
 
 
-def last_use(path: str) -> float:
+STAMPS = (".goh-used", ".goh-head")  # last-use stamp first, then the marker it falls back to
+
+
+def _rmtree(path: str) -> None:
+    shutil.rmtree(path, ignore_errors=True)
+
+
+def last_use(path: str, stamps: tuple[str, ...] = STAMPS) -> float:
     """The `.goh-used` stamp; an export from before the stamp falls back to `.goh-head`."""
-    for name in (".goh-used", ".goh-head"):
+    for name in stamps:
         try:
             return os.stat(os.path.join(path, name)).st_mtime
         except OSError:
@@ -63,8 +70,14 @@ def prune(
     now: float | None = None,
     keep: int = KEEP,
     max_bytes: int | None = None,
+    stamps: tuple[str, ...] = STAMPS,
+    remove=_rmtree,
 ) -> list[str]:
-    """Remove what the policy above says; return what went."""
+    """Remove what the policy above says; return what went.
+
+    `stamps` and `remove` let another cache share the POLICY: lib/head_export.py's sibling exports
+    are read-only trees, which `rmtree(ignore_errors=True)` would leave in place while reporting
+    them gone, so it passes a remover that makes the tree writable first."""
     now = time.time() if now is None else now
     exports, leftovers = [], []
     for entry in os.scandir(cache):
@@ -73,26 +86,28 @@ def prune(
         if entry.name.startswith(".build."):
             leftovers.append(entry.path)
         elif not entry.name.startswith(".") and entry.name != current:
-            exports.append((last_use(entry.path), entry.path))
+            exports.append((last_use(entry.path, stamps), entry.path))
     exports.sort(reverse=True)  # most recently used first
     gone = []
     for rank, (used, path) in enumerate(exports, start=2):  # the current export is rank 1
         idle = now - used
         if idle > TTL_DAYS * 86400 or (rank > keep and idle > IN_USE_S):
-            shutil.rmtree(path, ignore_errors=True)
+            remove(path)
             gone.append(path)
     for path in leftovers:
         if now - os.stat(path).st_mtime > BUILD_LEFTOVER_S:
-            shutil.rmtree(path, ignore_errors=True)
+            remove(path)
             gone.append(path)
     if max_bytes is not None:
         gone += _over_budget(
-            cache, current, [e for e in exports if e[1] not in gone], now, max_bytes
+            cache, current, [e for e in exports if e[1] not in gone], now, max_bytes, remove
         )
     return gone
 
 
-def _over_budget(cache: str, current: str, exports, now: float, max_bytes: int) -> list[str]:
+def _over_budget(
+    cache: str, current: str, exports, now: float, max_bytes: int, remove=_rmtree
+) -> list[str]:
     """Least recently used first, until the cache fits `max_bytes`; never one used within the hour."""
     sizes = {path: tree_bytes(path) for _used, path in exports}
     total = sum(sizes.values()) + tree_bytes(os.path.join(cache, current))
@@ -100,7 +115,7 @@ def _over_budget(cache: str, current: str, exports, now: float, max_bytes: int) 
     for used, path in reversed(exports):  # least recently used first
         if total <= max_bytes or now - used <= IN_USE_S:
             break  # the rest were used more recently still
-        shutil.rmtree(path, ignore_errors=True)
+        remove(path)
         gone.append(path)
         total -= sizes[path]
     return gone

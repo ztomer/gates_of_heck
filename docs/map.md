@@ -187,6 +187,7 @@ Every structural checker is native since Phase N3; the Python checkers they port
 ## Lib (`lib/`)
 
 | Module | Purpose | Test |
+| `head_export.py` / `head_export.sh` | A SIBLING repo at its HEAD commit for a consumer's gate, never its working tree (GOH.HEADEXPORT): `goh_head_export VAR SRC [CACHE] [KEEP]` sets VAR to a read-only clone of SRC's HEAD at `~/.cache/goh/sibling/<name>/<sha>/` (`.head-export` names sha and source), pruned by `gates/_head_cache.py`'s policy through `goh_rm_tree`. | `test_head_export.py` |
 | `swift_coverage_scope.py` | What counts as "the code under test" in a Swift coverage measurement -- ONE definition both measurement paths import. | `test_coverage_swift_scope.py` |
 | `tree_stamp.py` | Did the working tree move while a gate ran over it? A stamp taken before and after; a gate certifying bytes that changed under it says so (ZoneWM 2c.9). | `test_tree_stamp.py` |
 | `landed_verify.py` | Is a subagent's `landed` true? The report's shas located in the estate's repos, then each on its GitHub default branch and CI concluded success on it (or on the first run that contains it). A mismatch is `silent-failure`; gh missing, the network down or offline is `unverified`, never a pass. Read by `scripts/agent_audit.py`. | `test_agent_audit_verify.py` |
