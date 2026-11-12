@@ -37,6 +37,11 @@ jobs:
       # machine, which a hosted runner deletes when the job ends. Run 42930175911 named 12 of its
       # 90 red tests and the rest were lost. Like the ceiling, a property of THIS machine.
       GOH_TAIL: "100000"
+      # The ONE ruff this runner has (GOH.CIRUFF): run 43139901867 failed the rust coverage step on
+      # "ruff: 3 invocations, 2 versions" -- the manifest's `brew install ruff` and its unpinned
+      # `pip install ruff` gave the runner two. A named release, the newest; raise it in its own
+      # commit (tests/test_ruff_agree.py reads it).
+      GOH_CI_RUFF: "0.17.4"
     steps:
       # persist-credentials: false: the structural gate refuses a job token left in git config,
       # and nothing after the clone needs it. fetch-depth 0: the gate reads history (tags, the
@@ -63,7 +68,13 @@ jobs:
           set -euo pipefail
           cmds="$(python3 gates/required_tools.py --repo . --install)"
           printf '%s\n' "$cmds"
-          grep -v '^#' <<<"$cmds" | bash -eux
+          # Every row but ruff's: ruff is the one pinned release below, into the house interpreter.
+          grep -v '^#' <<<"$cmds" | sed -E 's/ ruff( |$)/\1/g' | bash -eux
+          py="$(bash lib/house_python.sh)"
+          if brew list --formula ruff >/dev/null 2>&1; then brew uninstall --ignore-dependencies ruff; fi
+          "$py" -m pip install "ruff==$GOH_CI_RUFF"
+          # A runner that still carries another ruff fails HERE, naming it, not in a gate step.
+          GOH_PY="$py" "$py" gates/ruff_agree.py --pin "$GOH_CI_RUFF"
           # The suite's parallel runner: an accelerator, not a requirement (tools/pytest.sh runs
           # serial without it), so not a manifest row -- but serial, the coverage group's suite
           # outruns local_ci's step ceiling. Into the house interpreter, the one the suite runs.

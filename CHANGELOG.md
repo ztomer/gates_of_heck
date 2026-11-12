@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+* **The hosted gate has one ruff, pinned (GOH.CIRUFF).** Run 43139901867 failed goh's rust coverage
+  step on `ruff: 3 invocations, 2 versions`: the manifest's `brew install ruff` and its unpinned pip
+  row gave the runner two, and the split read as a coverage loss. `.github/workflows/gate.yml` now
+  installs every manifest row but ruff's, removes a brew ruff, installs `ruff==$GOH_CI_RUFF` (a named
+  release, 0.17.4) into the house interpreter and runs `gates/ruff_agree.py --pin` in that same
+  provisioning step. Consumers: `ruff_agree.py --pin VERSION` refuses any invocation that is not
+  that release, and a house interpreter with no `-m ruff`.
+
 * **changelog-tags does not judge a clone whose tags it cannot trust (GOH.TAGLESSCI).** On
   divoom-control 331be031 the local run found 16 findings inside the seed's 18, and the hosted
   runner (`actions/checkout` at its default depth, run 43136219614) found none and failed the seed

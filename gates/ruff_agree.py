@@ -15,6 +15,14 @@ none on PATH, agrees with itself: exit 0. Run by tools/pytest.sh before the suit
 gate fails on the split locally and in CI alike.
 
     python3 gates/ruff_agree.py          # GOH_PY: the house interpreter (lib/house_python.sh)
+    python3 gates/ruff_agree.py --pin 0.17.4
+
+--pin VERSION (GOH.CIRUFF, the hosted runner): every invocation must BE that release, and the house
+interpreter's `-m ruff` must exist. Run 43139901867 failed goh's rust coverage step on "ruff: 3
+invocations, 2 versions": the runner got one ruff from the manifest's brew row and another from
+its unpinned pip row, and the split surfaced as a coverage loss. .github/workflows/gate.yml
+installs one ruff, GOH_CI_RUFF, and asks this in that provisioning step, so a runner that carries
+another ruff fails there, named. Locally the newest release is the rule, so no pin is given.
 """
 
 from __future__ import annotations
@@ -101,8 +109,28 @@ def invocations(py: str, path: str) -> list[tuple[str, Path | None, str | None]]
     return out
 
 
+def _pinned(py: str, pin: str) -> int:
+    every = invocations(py, os.environ.get("PATH", ""))
+    off = [(label, v) for label, _, v in every if v != pin and (v or label.endswith(" -m ruff"))]
+    if not off:
+        return 0
+    print(f"✗ ruff: the pinned ruff {pin} is not the only ruff here -- the gate would judge with "
+          "another (GOH.CIRUFF):", file=sys.stderr)  # fmt: skip
+    for label, v in off:
+        print(f"    {label}: {f'ruff {v}' if v else 'no ruff'}", file=sys.stderr)
+    print(f'  install exactly "ruff=={pin}" into {py} and remove every other ruff on PATH',
+          file=sys.stderr)  # fmt: skip
+    return 1
+
+
 def main() -> int:
     py = os.environ.get("GOH_PY") or sys.executable
+    args = sys.argv[1:]
+    if args[:1] == ["--pin"] and len(args) == 2:
+        return _pinned(py, args[1])
+    if args:
+        print(f"usage: {sys.argv[0]} [--pin VERSION]", file=sys.stderr)
+        return 2
     found = [x for x in invocations(py, os.environ.get("PATH", "")) if x[2]]
     versions = {v for _, _, v in found if v}
     if len(versions) <= 1:

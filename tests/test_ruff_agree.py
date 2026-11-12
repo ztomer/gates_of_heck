@@ -60,3 +60,79 @@ def test_two_rufs_on_path_that_disagree_are_refused(tmp_path):
 
 def test_the_suite_preflight_runs_it():
     assert "gates/ruff_agree.py" in (REPO_ROOT / "tools" / "pytest.sh").read_text()
+
+
+# The hosted runner (GOH.CIRUFF): run 43139901867 failed goh's rust coverage step's pytest
+# export on "ruff: 3 invocations, 2 versions" -- the manifest's `brew install ruff` and its unpinned
+# pip row gave the runner two, and the split read as a coverage loss, not a provisioning one. The
+# workflow now installs ONE ruff, its pin, and asks `ruff_agree.py --pin` in that same step.
+PIN = "0.17.4"
+
+
+def _run_pin(py: Path, pin: str, *dirs: Path) -> subprocess.CompletedProcess[str]:
+    env = hermetic_env(GOH_PY=str(py), PATH=os.pathsep.join([*map(str, dirs), "/usr/bin:/bin"]))
+    return subprocess.run([sys.executable, str(AGREE), "--pin", pin], env=env, capture_output=True,
+                          text=True, timeout=60, stdin=subprocess.DEVNULL, check=False)  # fmt: skip
+
+
+def test_the_pin_holds_when_every_ruff_is_it(tmp_path):
+    on_path = _fake(tmp_path / "bin" / "ruff", PIN).parent
+    assert _run_pin(_py(tmp_path, PIN), PIN, on_path).returncode == 0
+
+
+def test_rufs_that_agree_on_another_version_break_the_pin(tmp_path):
+    """Agreeing is not enough on the runner: two 0.17.3s are not the pinned 0.17.4."""
+    on_path = _fake(tmp_path / "bin" / "ruff", "0.17.3").parent
+    r = _run_pin(_py(tmp_path, "0.17.3"), PIN, on_path)
+    assert r.returncode == 1, r.stderr
+    assert f"pinned ruff {PIN}" in r.stderr and "ruff 0.17.3" in r.stderr, r.stderr
+
+
+def test_a_second_ruff_the_runner_image_carries_breaks_the_pin(tmp_path):
+    house = _fake(tmp_path / "house" / "ruff", PIN).parent
+    image = _fake(tmp_path / "image" / "ruff", "0.16.9").parent
+    r = _run_pin(_py(tmp_path, PIN), PIN, house, image)
+    assert r.returncode == 1 and "ruff 0.16.9" in r.stderr, r.stderr
+    assert str(image / "ruff") in r.stderr, "names the stray one: " + r.stderr
+
+
+def test_the_pin_needs_the_house_interpreters_ruff(tmp_path):
+    """No `-m ruff` at all is not agreement under a pin: the Python gates run exactly that."""
+    py = tmp_path / "py" / "python3"
+    py.parent.mkdir()
+    py.write_text("#!/bin/sh\nexit 1\n")
+    py.chmod(0o755)
+    r = _run_pin(py, PIN)
+    assert r.returncode == 1 and "-m ruff" in r.stderr, r.stderr
+
+
+def _install_step() -> str:
+    import yaml
+
+    wf = yaml.safe_load((REPO_ROOT / ".github" / "workflows" / "gate.yml").read_text())
+    [step] = [s for s in wf["jobs"]["gate"]["steps"] if s.get("name", "").startswith("Install")]
+    return step["run"]
+
+
+def test_the_workflow_installs_one_pinned_ruff_and_asks_the_pin_before_the_gate():
+    import re
+
+    wf = (REPO_ROOT / ".github" / "workflows" / "gate.yml").read_text()
+    m = re.search(r'GOH_CI_RUFF: "(\d+\.\d+\.\d+)"', wf)
+    assert m, "gate.yml pins ruff to a named release in GOH_CI_RUFF"
+    run = _install_step()
+    assert run.count('install "ruff==$GOH_CI_RUFF"') == 1, run
+    # The manifest's own ruff (brew, and an unpinned pip) is filtered out of what the step runs:
+    # the step's filter, applied to the real manifest, leaves no ruff and every other tool.
+    [line] = [x for x in run.splitlines() if x.rstrip().endswith("| bash -eux")]
+    filt = line.split('<<<"$cmds" |', 1)[1].rsplit("| bash -eux", 1)[0]
+    cmds = subprocess.run([sys.executable, str(REPO_ROOT / "gates" / "required_tools.py"), "--repo",
+                           str(REPO_ROOT), "--install"], capture_output=True, text=True,
+                          check=True, stdin=subprocess.DEVNULL).stdout  # fmt: skip
+    assert re.search(r"\bruff\b", cmds), "the manifest installs ruff: the filter has work to do"
+    left = subprocess.run(["bash", "-c", f"grep -v '^#' | {filt}"], input=cmds,
+                          capture_output=True, text=True, check=True).stdout  # fmt: skip
+    assert not re.search(r"\bruff\b", left), left
+    assert "shellcheck" in left and "pytest" in left, "every other tool is still installed: " + left
+    assert 'gates/ruff_agree.py --pin "$GOH_CI_RUFF"' in run, run
+    assert wf.index("ruff_agree.py") < wf.index("./tools/gate.sh --full")
