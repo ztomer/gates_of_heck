@@ -107,11 +107,18 @@ def test_the_pin_needs_the_house_interpreters_ruff(tmp_path):
 
 
 def _install_step() -> str:
-    import yaml
-
-    wf = yaml.safe_load((REPO_ROOT / ".github" / "workflows" / "gate.yml").read_text())
-    [step] = [s for s in wf["jobs"]["gate"]["steps"] if s.get("name", "").startswith("Install")]
-    return step["run"]
+    """The Install step's `run: |` block, read as text: the hosted runner has no PyYAML (v0.101.0's
+    run 43147543825 went red on `import yaml`), and a test of the runner must run on the runner."""
+    lines = (REPO_ROOT / ".github" / "workflows" / "gate.yml").read_text().splitlines()
+    [at] = [i for i, x in enumerate(lines) if x.strip().startswith("- name: Install")]
+    assert lines[at + 1].strip() == "run: |", lines[at + 1]
+    indent = len(lines[at + 1]) - len(lines[at + 1].lstrip()) + 2
+    body = []
+    for x in lines[at + 2 :]:
+        if x.strip() and len(x) - len(x.lstrip()) < indent:
+            break
+        body.append(x[indent:])
+    return "\n".join(body).rstrip() + "\n"
 
 
 def test_the_workflow_installs_one_pinned_ruff_and_asks_the_pin_before_the_gate():
