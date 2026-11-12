@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## v0.106.1 -- the roadmap pending list is gone: every repo it named declares GOH_ROADMAP
+
 * **A bold lead holding a `*` titles its stanza, and goh's kit preflights with the ship summary.**
   `changelog_cut.py` read a bold lead as `**[^*]+**`, so `**... (RM.*).**` missed it and the derived
   title kept its markers, refused as opening on punctuation (every consumer kit derives the same way).
