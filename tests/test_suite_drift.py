@@ -216,11 +216,17 @@ def test_a_throwaway_crate_builds_into_the_runs_own_build_dir(tmp_path: Path) ->
     )
     assert r.returncode == 0, r.stderr
     shared = Path(os.environ.get("CARGO_HOME", Path.home() / ".cargo")) / "build"
-    leaked = list(shared.glob(f"*/*/debug/.fingerprint/{name}-*"))
+
+    # A unit's trace, in both build-dir layouts: `.fingerprint/<name>-<hash>` and, from cargo 1.100,
+    # `build/<name>/<hash>/fingerprint` (one directory per unit).
+    def units(d: Path, pre: str) -> list[Path]:
+        return [*d.glob(f"{pre}.fingerprint/{name}-*"), *d.glob(f"{pre}build/{name}/*/fingerprint")]
+
+    leaked = units(shared, "*/*/debug/")
     assert not leaked, f"the throwaway crate's build landed in the shared root: {leaked}"
     import _drift_guard
 
-    owned = list(Path(_drift_guard.BUILD_DIR).glob(f"**/.fingerprint/{name}-*"))
+    owned = units(Path(_drift_guard.BUILD_DIR), "**/")
     assert owned, f"the build is not in the run's own build dir {_drift_guard.BUILD_DIR}"
     # A caller that names its own build dir (the coverage gate pins one per project) keeps it, exactly.
     named = tmp_path / "named-build"
@@ -234,7 +240,7 @@ def test_a_throwaway_crate_builds_into_the_runs_own_build_dir(tmp_path: Path) ->
         check=False,
     )
     assert r.returncode == 0, r.stderr
-    assert list(named.glob(f"*/.fingerprint/{name}-*")), "a caller's own build dir was not kept"
+    assert units(named, "*/"), "a caller's own build dir was not kept"
 
 
 def test_a_workspace_under_home_is_not_mistaken_for_one_naming_its_build_dir() -> None:

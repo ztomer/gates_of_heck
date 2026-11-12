@@ -268,6 +268,48 @@ fn a_dep_info_read_of_the_repositorys_own_git_dir_is_not_an_escape() {
     drop(dir);
 }
 
+/// Cargo 1.100 (Rust 1.100.0, 2026-11-09) moved the build dir to one directory per unit:
+/// dep-info at `debug/build/<pkg>/<hash>/out/<pkg>-<hash>.d`, a build script's output at
+/// `debug/build/<pkg>/<hash>/run/stdout`. The walk read only `deps/*.d` and `<pkg>-<hash>/output`,
+/// so no escape was seen and nothing was learned (the scoped-cache suite went red under 1.100).
+#[test]
+fn the_per_unit_build_dir_layout_is_read_too() {
+    let dir = estate();
+    let cargo_dir = dir.path().join("crates/a");
+    let meta = super::metadata(&cargo_dir, true).expect("metadata");
+    let build = PathBuf::from(
+        meta["build_directory"]
+            .as_str()
+            .or_else(|| meta["target_directory"].as_str())
+            .expect("a build directory"),
+    );
+    let unit = build.join("debug/build/a");
+    let out = unit.join("0123abcd/out");
+    let run = unit.join("4567ef01/run");
+    std::fs::create_dir_all(&out).expect("mkdir out");
+    std::fs::create_dir_all(&run).expect("mkdir run");
+    let root = std::fs::canonicalize(dir.path()).expect("canonical");
+    let d = out.join("a-0123abcd.d");
+    std::fs::write(
+        &d,
+        format!("{}: {}\n", d.display(), root.join("secret.txt").display()),
+    )
+    .expect("write .d");
+    std::fs::write(
+        run.join("stdout"),
+        format!(
+            "cargo:rerun-if-changed={}\n",
+            root.join("other.txt").display()
+        ),
+    )
+    .expect("write stdout");
+    let entries = vec!["crates/a".to_owned(), "crates/b".to_owned()];
+    let bad = crate::rust_depinfo::depinfo_escapes(&cargo_dir, &entries).expect("depinfo");
+    std::fs::remove_dir_all(&unit).ok();
+    assert_eq!(bad, vec!["other.txt".to_owned(), "secret.txt".to_owned()]);
+    drop(dir);
+}
+
 #[test]
 fn the_command_prints_a_scope_checks_a_file_and_refuses_a_non_workspace() {
     let dir = estate();

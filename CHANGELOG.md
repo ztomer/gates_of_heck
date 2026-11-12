@@ -5,6 +5,10 @@
 * **The workspace is clippy-clean under Rust 1.100.0.** Its `redundant_clone` now sees the last use
   of `path` in `crates/goh/src/lockver.rs` and of `base` in `crates/goh-golden/tests/metrics.rs`;
   both clones are gone, so the hosted runner's `-D warnings` clippy passes again.
+  Cargo 1.100 also moved the build dir to one directory per unit (`build/<pkg>/<hash>/out/*.d`,
+  `.../run/stdout`); the per-crate cache's dep-info walk (`crates/goh/src/rust_depinfo.rs`) read
+  only the old `deps/*.d` and `<pkg>-<hash>/output`, so it saw no read outside a crate's scope and
+  learned nothing. It now reads both layouts, and the suite's build-dir probe looks in both.
 
 ## v0.106.2 -- release scripts run under macOS bash 3.2: no empty-array expansion trips set -u
 

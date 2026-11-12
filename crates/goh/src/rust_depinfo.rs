@@ -15,6 +15,14 @@ pub(crate) fn covered(entry_set: &[String], rel_path: &str) -> bool {
         .any(|e| e == "." || rel_path == e || rel_path.starts_with(&format!("{e}/")))
 }
 
+/// The package a per-unit build directory belongs to (cargo 1.100+): `build/<pkg>/<hash>/{out,run}`.
+fn unit_package(dir: &Path) -> Option<String> {
+    let unit = dir.parent()?;
+    let pkg = unit.parent()?;
+    let under_build = pkg.parent()?.file_name().is_some_and(|b| b == "build");
+    under_build.then(|| pkg.file_name().map(|n| n.to_string_lossy().into_owned()))?
+}
+
 fn dep_files(build_dir: &Path, prefixes: &[String]) -> Vec<PathBuf> {
     let mut found = Vec::new();
     let mut stack = vec![(build_dir.to_path_buf(), 0)];
@@ -22,24 +30,37 @@ fn dep_files(build_dir: &Path, prefixes: &[String]) -> Vec<PathBuf> {
         let Ok(rd) = std::fs::read_dir(&dir) else {
             continue;
         };
+        let leaf = dir.file_name().map(|d| d.to_string_lossy().into_owned());
+        // Cargo 1.100's per-unit layout names the package by directory, not by file prefix.
+        let unit_pkg = match leaf.as_deref() {
+            Some("out" | "run") => unit_package(&dir).filter(|pkg| {
+                prefixes
+                    .iter()
+                    .any(|p| p.strip_suffix('-') == Some(pkg.as_str()))
+            }),
+            _ => None,
+        };
         for entry in rd.filter_map(Result::ok) {
             let path = entry.path();
             let name = entry.file_name().to_string_lossy().into_owned();
             if path.is_dir() {
-                if depth < 4 {
+                if depth < 6 {
                     stack.push((path, depth + 1));
                 }
                 continue;
             }
-            let dep_info = dir.file_name().is_some_and(|d| d == "deps")
-                && path
-                    .extension()
-                    .is_some_and(|e| e.eq_ignore_ascii_case("d"))
-                && prefixes.iter().any(|p| name.starts_with(p));
-            let script_output = name == "output"
-                && dir
-                    .file_name()
-                    .is_some_and(|d| prefixes.iter().any(|p| d.to_string_lossy().starts_with(p)));
+            let is_d = path
+                .extension()
+                .is_some_and(|e| e.eq_ignore_ascii_case("d"));
+            let dep_info = (leaf.as_deref() == Some("deps")
+                && is_d
+                && prefixes.iter().any(|p| name.starts_with(p)))
+                || (leaf.as_deref() == Some("out") && is_d && unit_pkg.is_some());
+            let script_output = (name == "output"
+                && leaf
+                    .as_deref()
+                    .is_some_and(|d| prefixes.iter().any(|p| d.starts_with(p))))
+                || (name == "stdout" && leaf.as_deref() == Some("run") && unit_pkg.is_some());
             if dep_info || script_output {
                 found.push(path);
             }
@@ -49,7 +70,13 @@ fn dep_files(build_dir: &Path, prefixes: &[String]) -> Vec<PathBuf> {
 }
 
 pub(crate) fn depinfo_paths(file: &Path, text: &str) -> Vec<PathBuf> {
-    if file.file_name().is_some_and(|n| n == "output") {
+    let script = file.file_name().is_some_and(|n| n == "output")
+        || (file.file_name().is_some_and(|n| n == "stdout")
+            && file
+                .parent()
+                .and_then(Path::file_name)
+                .is_some_and(|d| d == "run"));
+    if script {
         // A build script's output: `cargo:rerun-if-changed=PATH`, relative to its package.
         return text
             .lines()
