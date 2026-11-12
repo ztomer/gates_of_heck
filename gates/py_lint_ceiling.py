@@ -127,6 +127,20 @@ def check(path: str, runner: str, files: list[str]) -> int:
             )
     for p in problems:
         print(f"✗ {p}" if not p.startswith(" ") else p, file=sys.stderr)
+    if problems:
+        # The one command that reproduces this verdict (GOH.STAGEDNEW): a plain `ruff check` runs
+        # the repo's rules without the house set and judges no ceiling, so it reads clean here.
+        failing = sorted(
+            {p.split(":", 1)[0] for p in problems if not p.startswith(" ")} & set(files)
+        )
+        again = shlex.join(
+            ["--check", "--ceilings", path, "--runner", runner, "--", *(failing or files)]
+        )
+        print(
+            f'  reproduce: python3 "$GOH_DIR/gates/py_lint_ceiling.py" {again}  '
+            "(a plain `ruff check` is weaker: no house rules, no ceiling)",
+            file=sys.stderr,
+        )
     if not problems:
         print(f"✓ ruff check: {counted(len(files), 'staged file')} within {path}")
     return 1 if problems else 0

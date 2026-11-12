@@ -75,8 +75,11 @@ goh_pytest_root  # a concurrent suite cannot prune this one's temp dirs
 if [ -n "${GOH_PY_LINT_CEILINGS:-}" ]; then
     # The repo's rules plus the house set, over every tracked .py, each file held to its ceiling
     # (gates/py_lint_ceiling.py, RUFF.RULES): the push judges what the commit gate judged, whole.
+    # The files of the tree being JUDGED (GOH.STAGEDNEW): inside a commit gate's export of a
+    # `git commit -- <paths>` index, the repository's own index also lists a staged NEW file the
+    # export lacks, and ruff reported E902 on it. The carried index is the one the export holds.
     PY_TRACKED=()
-    while IFS= read -r f; do [ -n "$f" ] && PY_TRACKED+=("$f"); done < <(git ls-files -- '*.py')
+    while IFS= read -r f; do [ -n "$f" ] && PY_TRACKED+=("$f"); done < <( (goh_bind_hook_index; git ls-files -- '*.py') )
     [ "${#PY_TRACKED[@]}" -gt 0 ] || die "no tracked .py to hold to $GOH_PY_LINT_CEILINGS"
     goh_step "ruff check under $GOH_PY_LINT_CEILINGS" \
         "$GOH_PY" "$HERE/py_lint_ceiling.py" --check --ceilings "$GOH_PY_LINT_CEILINGS" --runner "$RUN" -- "${PY_TRACKED[@]}"
