@@ -30,23 +30,7 @@
 # .swift runs gates/swift_staged.sh, after its gate passes -- unless that gate already ran the twin
 # for this tree (GOH_STAGED_TWIN_MARK, the way GOH_STRUCTURAL_MARK works). Which push checks need a
 # twin is decided by tests/test_staged_parity.py, which is red on a fast push step with none.
-#
-# A GOH CHECKOUT JUDGES ITSELF (GOH.SELFGATE, 2026-11-11). A commit in a gates_of_heck checkout --
-# a worktree, a clone, the shared checkout -- is handed to THAT checkout's commit gate, live
-# (GOH_DIR=<it>, GOH_LIVE=1): its gates are the tree being committed. Judged by the shared
-# checkout's HEAD instead, a commit changing a gate's verdict over goh (RUFF.RULES, 686548f) could
-# not land with the fix it requires. A goh checkout is a toplevel holding gates/commit_gate.sh,
-# gates/_from_head.sh and crates/goh/; GOH_SELF_GATED marks the hand-off so it happens once.
 { # parse-guard -- bash reads this group whole before running it (tests/test_parse_guard.py)
-if [ -z "${GOH_SELF_GATED:-}" ]; then
-    _goh_self="$(env -u GIT_DIR -u GIT_WORK_TREE git rev-parse --show-toplevel 2>/dev/null || true)"
-    if [ -n "$_goh_self" ] && [ -f "$_goh_self/gates/commit_gate.sh" ] \
-        && [ -f "$_goh_self/gates/_from_head.sh" ] && [ -d "$_goh_self/crates/goh" ]; then
-        _goh_self="$(cd "$_goh_self" && pwd -P)"
-        export GOH_SELF_GATED=1 GOH_DIR="$_goh_self" GOH_LIVE=1
-        exec bash "$_goh_self/gates/commit_gate.sh" "$@"
-    fi
-fi
 . "$(dirname "${BASH_SOURCE[0]}")/_from_head.sh"; goh_from_head "${BASH_SOURCE[0]}" "$@"   # run HEAD, not the tree (C4)
 set -euo pipefail
 # git binds this hook to its repository (GIT_DIR, GIT_INDEX_FILE -- absolute from a linked

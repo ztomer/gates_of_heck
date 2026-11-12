@@ -11,11 +11,6 @@
   with spinners holds the slot alone and waits for them, and its pending mark queues gates arriving
   behind it, so it cannot starve (docs/decisions/D-0003).
 
-* **A commit in a goh checkout is judged by that checkout's own gates (GOH.SELFGATE).** goh's
-  pre-commit ran the shared checkout's HEAD gates over a goh worktree commit, so a gate change and
-  the fix it requires needed `GOH_DIR=<worktree> GOH_LIVE=1` to land together. gates/commit_gate.sh
-  hands such a commit to its own tree's commit gate, live, once. Consumer repos are unchanged.
-
 * **A measurement nested in a gate drains every gate but its own ancestors (GOH.BENCHNEST).** A
   perf step inside ci_local inside a release waited for the gates it ran inside, so its drain never
   got the lock. `bench_lock_nested` is the public "am I inside a gate" question; builds outside any
