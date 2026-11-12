@@ -135,6 +135,31 @@ const CALLS: &[&str] = &[
     "zip",
 ];
 
+/// A name shown CALLED, not a noun hedged (GOH.HEDGECALL: `CadGoose2`'s C fixture string held
+/// `stripThinkBlocks(s);`): a `lowerCamelCase` identifier, a function's spelling (a type's `PascalCase`
+/// stays a noun: necrohand's `CAMetalLayer(s)` hedges, as do `URL(s)` and `File(s)`), or any name whose `(s)` is followed at once by
+/// what only code puts there -- a method call `.name`, or a `;` closing a block (`; }`). A noun
+/// hedge is followed by a space, a `{placeholder}`, `,`, `)`, `:`, `;` or a sentence's `.`.
+fn is_identifier_call(word: &str, after: &str) -> bool {
+    let camel = word.starts_with(|c: char| c.is_lowercase())
+        && word
+            .chars()
+            .zip(word.chars().skip(1))
+            .any(|(a, b)| a.is_lowercase() && b.is_uppercase());
+    let mut rest = after.chars();
+    let next = rest.next();
+    let code = match next {
+        Some('.') => rest.next().is_some_and(|c| c.is_alphabetic() || c == '_'),
+        // `f(s); }` ends a statement in a block; `entry(s); then` and `app(s); "` are prose.
+        Some(';') => {
+            let first = rest.next();
+            first == Some('}') || (first == Some(' ') && rest.next() == Some('}'))
+        }
+        _ => false,
+    };
+    camel || code
+}
+
 /// The hedges in one piece of string text: each `word(s)` as written.
 #[must_use]
 pub fn hedges(text: &str) -> Vec<String> {
@@ -157,6 +182,7 @@ pub fn hedges(text: &str) -> Vec<String> {
             let lead = &before[..start];
             if word.eq_ignore_ascii_case("http")
                 || (suffix == "(s)" && CALLS.contains(&word))
+                || (suffix == "(s)" && is_identifier_call(word, &text[at + suffix.len()..]))
                 || (word.contains('_') && !word.contains('{'))
                 || lead.ends_with('.')
                 || ["def ", "fn ", "func "].iter().any(|k| lead.ends_with(k))

@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+* **plural-hedge reads a function called in a string as code, not a hedge (GOH.HEDGECALL).** A C
+  fixture string in CadGoose2 held `stripThinkBlocks` called on `s`, which was read as a hedged
+  plural. A `lowerCamelCase` name, or any name whose hedge suffix is followed at once by a method
+  call (`.strip`) or a `; }`, is a call; a type's `PascalCase` (necrohand's `CAMetalLayer`), an
+  acronym, and a noun followed by a placeholder, `;`, `,` or `.` still hedge. Estate re-run (37
+  repositories, 1782 findings): none lost, none gained.
+
 * **A push gate carries a sibling checkout at its HEAD, never its live working tree
   (GOH.PUSHSIBLINGS).** ZeroThunder's push failed on game_asset_factory's uncommitted edit: the
   export linked every sibling a tracked manifest's path dependency names to its working tree. It is

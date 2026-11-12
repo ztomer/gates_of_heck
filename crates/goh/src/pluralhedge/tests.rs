@@ -64,3 +64,30 @@ fn a_hedge_inside_a_command_substitution_in_a_string_is_seen() {
     // The code of a substitution is not a string: a `(s)` there is not read.
     assert_eq!(lines(&h("x=\"$(f@ | wc -l) left\"\n"), Lang::Hash).len(), 0);
 }
+
+#[test]
+fn an_identifier_call_shown_in_a_string_is_not_a_hedge() {
+    // CadGoose2 tools/check_replies_are_sanitized.py (2026-11-11): a C fixture in a Python string.
+    let py = h("raw = \"void reply() { stripThinkBlocks@; }\\n\"\n");
+    assert_eq!(lines(&py, Lang::Hash), Vec::<usize>::new());
+    // A type's name hedged is a noun hedge (necrohand Constants+Render.swift: `CAMetalLayer@`).
+    assert_eq!(hedges(&h("3 CAMetalLayer@")), [h("CAMetalLayer@")]);
+    assert_eq!(hedges(&h("x = trim@; }")).len(), 0); // a bare name amid code
+    assert_eq!(hedges(&h("y = f@.strip()")).len(), 0);
+    // The estate's real hedges next to code-like marks (ZoneWM, a private consumer, ZeroThunder).
+    assert_eq!(
+        hedges(&h("modifier keycode@ {list(left)} held")),
+        [h("keycode@")]
+    );
+    assert_eq!(hedges(&h("{n} engine cache@; ")), [h("cache@")]);
+    assert_eq!(hedges(&h("{n} item@{tail}")), [h("item@")]);
+    // Real noun hedges, capitalised, acronyms and at a sentence's end, are still found.
+    assert_eq!(
+        hedges(&h("File@ changed: 3 URL@.")),
+        [h("File@"), h("URL@")]
+    );
+    assert_eq!(
+        hedges(&h("(2 file@), then 1 entry@; done")),
+        [h("file@"), h("entry@")]
+    );
+}
