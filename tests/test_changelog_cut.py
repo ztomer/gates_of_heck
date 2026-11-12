@@ -189,3 +189,15 @@ def test_the_kit_merges_instead_of_refusing_a_hand_written_stanza(kit):
     text = sh(kit["proj"], "show", f"{TAG}:CHANGELOG.md")
     assert f"## Unreleased\n\n## {TAG}\n\n- hand written\n- shipped late\n" in text, text
     assert sh(kit["proj"], "log", "-1", "--format=%s").strip() == f"chore: changelog {TAG}"
+
+
+def test_a_bold_lead_holding_an_asterisk_is_still_the_title(tmp_path):
+    """goh v0.106.1's ship was refused: its lead `**... (GOH.ROADMAPREQ, RM.*).**` holds a `*`, the
+    lead pattern `[^*]+` missed it, and the derived title kept the bold markers
+    ('**The roadmap pending list is gone'), which reads as opening on punctuation."""
+    entry = "**The roadmap list is gone (GOH.X, RM.*).** Every repo declares it."
+    log = _log(tmp_path, f"# C\n\n## Unreleased\n\n* {entry}\n\n{DATED_TAIL}")
+    r = _cut(log, "ready", "--version", "1.2.0")
+    assert r.returncode == 0, r.stderr
+    assert _cut(log, "cut", "--version", "1.2.0").returncode == 0
+    assert f"\n## v1.2.0 — the roadmap list is gone _({TODAY})_\n" in log.read_text()

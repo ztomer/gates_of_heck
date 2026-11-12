@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+* **A bold lead holding a `*` titles its stanza, and goh's kit preflights with the ship summary.**
+  `changelog_cut.py` read a bold lead as `**[^*]+**`, so `**... (RM.*).**` missed it and the derived
+  title kept its markers, refused as opening on punctuation (every consumer kit derives the same way).
+  `tools/release_goh.sh` ran its `ready` preflight without `GOH_SHIP_SUMMARY`, so `--summary` never
+  reached the check, and it reported every `ready` refusal as an empty Unreleased; it now passes the
+  summary and points at the reason printed above.
+
 * **The roadmap pending list is gone (GOH.ROADMAPREQ, RM.*).** Every repo it named now declares
   `GOH_ROADMAP` (the nine consumers, a private nested workspace, skills and `.loop`), so `crates/goh/src/roadmap/pending.txt`
   is deleted: an unset `GOH_ROADMAP` is red in every repo, and no list of repos that already

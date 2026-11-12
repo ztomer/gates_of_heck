@@ -174,7 +174,8 @@ def derive(first_entry: str) -> tuple[str, str | None]:
     (GOH.SHIPSUMMARY), so a clipped clause comes back with the reason, and `cut` refuses it,
     naming --title."""
     text = first_entry.strip()
-    lead = re.match(r"^\*\*([^*]+)\*\*:?\s*(.*)$", text)
+    # The lead runs to the first `**`, so a lone `*` inside it (`RM.*`) stays in it (v0.106.1).
+    lead = re.match(r"^\*\*(.+?)\*\*:?\s*(.*)$", text)
     if lead:
         own_sentence = lead.group(1).rstrip().endswith((".", "!", "?"))
         text = (

@@ -39,8 +39,11 @@ if git rev-parse -q --verify "refs/tags/$TAG" >/dev/null; then
     err "release_goh.sh: $TAG already exists; a tag is never moved -- nothing moved"
     exit 1
 fi
-if ! "$GOH_PY" "$GOH/tools/release-kit/changelog_cut.py" ready --version "$VERSION" --file CHANGELOG.md >&2; then
-    err "release_goh.sh: CHANGELOG.md's Unreleased holds nothing to release -- nothing moved"
+# The preflight asks of the title the cut will write: goh ship's --summary, as the cut below.
+title=()
+[ -n "${GOH_SHIP_SUMMARY:-}" ] && title=(--title "$GOH_SHIP_SUMMARY")
+if ! "$GOH_PY" "$GOH/tools/release-kit/changelog_cut.py" ready --version "$VERSION" "${title[@]}" --file CHANGELOG.md >&2; then
+    err "release_goh.sh: CHANGELOG.md is not ready to release (above) -- nothing moved"
     exit 1
 fi
 
@@ -70,8 +73,6 @@ PY
     if [ -f Cargo.lock ]; then
         cargo update --workspace --offline -q
     fi
-    title=()
-    [ -n "${GOH_SHIP_SUMMARY:-}" ] && title=(--title "$GOH_SHIP_SUMMARY")
     "$GOH_PY" "$GOH/tools/release-kit/changelog_cut.py" cut --version "$VERSION" "${title[@]}" --file CHANGELOG.md
     "$GOH_PY" "$GOH/tools/release-kit/changelog_cut.py" check --version "$VERSION" --file CHANGELOG.md
     heading="$(grep -m1 -E "^## v${VERSION//./\\.}( |$)" CHANGELOG.md)"

@@ -35,7 +35,7 @@ def test_an_empty_unreleased_is_refused_before_anything_moves(repo: Path) -> Non
     head = git(repo, "rev-parse", "HEAD")
     r = _kit(repo, "0.2.0")
     assert r.returncode != 0, r.stdout + r.stderr
-    assert "nothing to release" in r.stderr, r.stderr
+    assert "Unreleased is empty" in r.stderr, r.stderr
     assert git(repo, "rev-parse", "HEAD") == head
     assert git(repo, "worktree", "list").count("\n") == 1, "a refused release made a worktree"
 
@@ -59,3 +59,26 @@ def test_ship_is_told_the_kit_and_that_it_pushes() -> None:
     rc = (REPO_ROOT / ".gatesrc").read_text()
     assert "GOH_SHIP_RELEASE='tools/release_goh.sh {version}'" in rc
     assert "GOH_SHIP_RELEASE_PUSHES=1" in rc
+
+
+def test_the_ship_summary_titles_the_preflight_too(repo: Path) -> None:
+    """The kit's own `ready` preflight ran without GOH_SHIP_SUMMARY, so an entry that derives no
+    title refused a ship that passed --summary, and the refusal was reported as an empty
+    Unreleased (v0.106.1, 2026-11-12)."""
+    _commit(
+        repo, "# CHANGELOG\n\n## Unreleased\n\n* , a tail\n\n## v0.1.0 -- first\n\n* **One.** a\n"
+    )
+    env = hermetic_env(drop_git=True, GOH_SHIP_SUMMARY="the real title")
+    r = subprocess.run(["bash", str(KIT), "0.2.0"], cwd=repo, env=env, capture_output=True,
+                       text=True, timeout=60, stdin=subprocess.DEVNULL, check=False)  # fmt: skip
+    assert "is not a phrase" not in r.stderr, r.stderr
+    assert "holds nothing to release" not in r.stderr, r.stderr
+
+
+def test_a_title_refusal_is_not_reported_as_an_empty_unreleased(repo: Path) -> None:
+    _commit(
+        repo, "# CHANGELOG\n\n## Unreleased\n\n* , a tail\n\n## v0.1.0 -- first\n\n* **One.** a\n"
+    )
+    r = _kit(repo, "0.2.0")
+    assert r.returncode != 0 and "is not a phrase" in r.stderr, r.stderr
+    assert "holds nothing to release" not in r.stderr, r.stderr
