@@ -2,6 +2,19 @@
 
 ## Unreleased
 
+* **The gate slot's handshake is read whole, or the gate fails naming it (GOH.CI107).** v0.107.0's
+  hosted run failed `test_a_push_waits_for_a_slot_and_its_step_limit_counts_from_the_slot`: the push
+  waited for its slot, exited 0, and never said "taken after Ns waiting". `lib/gate_slot.sh` read
+  the holder's one-line handshake with `read -t 1` in a liveness loop, and a timeout that fires part
+  way through a line has already consumed those bytes: the retry read the tail as the fields, so
+  the wait went unreported and `GOH_GATE_SLOT` lost its path (a 1 ms timeout split 404 of 2000
+  single-write lines on this Mac under bash 5.3; under bash 3.2 too). It now reads a character at a
+  time (consumed whole or not at all, 3.2-safe), and a handshake that is not five well-formed fields
+  fails the gate quoting what it read. `tests/test_gate_slot_handshake.py` feeds a fake holder's
+  handshake in two parts across the timeout under every bash on the machine (red on the old reader:
+  `gate slot 4//.../slot-0 taken (GOH_GATE_SLOTS)`), and refuses a timed whole-line `read` in any
+  tracked bash file.
+
 ## v0.107.0 -- goh's shell runs on bash >= 5: every bash file runs lib/bash5.sh first, re-exec'ing under Homebrew or system bash 5
 
 * **goh's shell runs on bash >= 5, enforced structurally (GOH.BASH5, owner ruling 2026-11-12).**

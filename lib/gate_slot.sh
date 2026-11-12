@@ -71,9 +71,19 @@ _gate_slot_take() { # <repo> <owner pid> <"" | --for-caller>
     pid=$!
     # Read-write, so the open never blocks and a holder that died before writing cannot hang this
     # shell: the read times out, and the holder's liveness is asked between reads.
+    # A CHARACTER AT A TIME (GOH.CI107): a `read -t` that times out part way through a line has
+    # already consumed those bytes, so a line-at-a-time loop restarted mid-line and read the tail as
+    # the fields -- the wait went unreported and GOH_GATE_SLOT lost its path (v0.107.0's hosted run;
+    # a 1 ms timeout split 404 of 2000 single-write lines here). One character is consumed whole or
+    # not at all, under bash 3.2 (a sourced library stays 3.2-safe) and 5.
+    # Pinned by tests/test_gate_slot_handshake.py, which also refuses the class in every bash file.
+    local hs="" c
     exec 7<>"$fifo"
-    while ! read -r -t 1 idx total waited path mech <&7; do
-        if ! kill -0 "$pid" 2>/dev/null; then
+    while :; do
+        if IFS= read -r -n 1 -t 1 c <&7; then
+            [ -n "$c" ] || break   # the newline: the handshake is whole
+            hs+="$c"
+        elif ! kill -0 "$pid" 2>/dev/null; then
             exec 7<&-
             rm -f "$fifo"
             err "gate slot: the slot holder (lib/gate_slot.py) exited without a slot"
@@ -82,6 +92,16 @@ _gate_slot_take() { # <repo> <owner pid> <"" | --for-caller>
     done
     exec 7<&-
     rm -f "$fifo"
+    read -r idx total waited path mech <<<"$hs"
+    case "$idx:$total:$waited" in
+        *[!0-9:]* | :* | *::* | *:) path="" ;;
+    esac
+    if [ -z "$path" ]; then
+        kill "$pid" 2>/dev/null || true
+        line="gate slot: the slot holder's handshake is not"
+        err "$line '<slot> <slots> <seconds waited> <path> <watch>': '$hs'"
+        exit 1
+    fi
     # WHICH watch took the slot: the kernel event (kqueue on macOS, a pidfd on Linux) or the pid
     # poll where the kernel has neither. Named, because a watch that cannot be seen cannot be
     # proved to have run -- the Linux pidfd branch shipped in v0.39.0 without ever being run.
