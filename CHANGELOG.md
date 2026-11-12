@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## v0.107.1 -- gate slot handshake read a character at a time; a timed read split mid-line no longer hides the wait (GOH.CI107)
+
 * **The gate slot's handshake is read whole, or the gate fails naming it (GOH.CI107).** v0.107.0's
   hosted run failed `test_a_push_waits_for_a_slot_and_its_step_limit_counts_from_the_slot`: the push
   waited for its slot, exited 0, and never said "taken after Ns waiting". `lib/gate_slot.sh` read
