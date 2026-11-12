@@ -1,0 +1,20 @@
+# GOH.ROADMAPREQ staged turn-on: every gated repo declares GOH_ROADMAP (a path or none); an unset
+# one is RED, except a repo named here, which still passes with a warning naming the item.
+# One repo per line: `<root commit> <name>`. The root commit is the identity (stable across
+# clones, worktrees and the push gate's export, whose directory name is not the repo's); the name
+# is matched against the checkout's basename too, for a shallow clone whose root is its boundary.
+# Delete a line the moment that repo's .gatesrc declares GOH_ROADMAP; when the list is empty,
+# delete it and its seam. A line `*` stands every repo pending: only the suite's list says it.
+# (Seeded 2026-11-12 from the estate registry: the gated repos with no GOH_ROADMAP that day.)
+be2cf8619efa5e6cf8b1c53217e8bb4345766b29 skills
+8831e64af325f5d5d2f3bea9d89d617122f3d63b .loop
+0a38e2de04e0cb8d21b4cc0a4de4e431dca256b7 Adv360-Pro-ZMK
+af6334179af5ccd614bfb7a9e52b2b78ab910cfb CadGoose
+bdbe3ad698c8f8591d4aed721cb761a6fddac09d  # a private nested workspace, by root commit only
+474da023a227f6568de70d887cdcdddd9a35f013 divoom-control
+5e77cfc6b85ee7389c12e391d44f08597049ec82 koffee_oss
+b6f7d4e9c6fdb448396aa9d977f2c329d8175184 mediaremote-adapter
+b39e3e8b286e7408139f584cfbb781ddc02ab8af monitor
+1b9542cee85758c55c6c04d1275882add387362f remote_dotfiles
+b040e28966693ce1dd58386fe4179d90b16a599e media_server
+6004cf2951c669d1a2b21afc93d64597f7c80e2b sys_updater

@@ -113,7 +113,7 @@
   "tests/_mcp_scaffold_kit.py": 1,
   "tests/_tree_guard.py": 2,
   "tests/bench_load_fakes.py": 2,
-  "tests/conftest.py": 15,
+  "tests/conftest.py": 14,
   "tests/goh_structural_cases.py": 3,
   "tests/host_locks.py": 1,
   "tests/load_kit.py": 1,

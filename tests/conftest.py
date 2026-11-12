@@ -139,10 +139,10 @@ def hermetic_env(drop_git: bool = False, **overrides: str) -> dict[str, str]:
     definition: eleven files carried this filter inline, and two had grown their own copy.
     `GOH_ESTATE_STATE` is KEPT: it names a file, not a step (BACKLOG 6.14)."""
     drop = ("GOH_", "GIT_") if drop_git else ("GOH_",)
-    # GOH_LIVE, GOH_ESTATE_STATE (a LOCATION, not an opt-in) and the machine locks' private copies
-    # (host_locks.py, PRIVATE_ROOTS: the locks and the push caches): a location is not an opt-in, and dropping it sent every hermetic child
-    # to the REAL bench lock and gate slots.
-    env = scrubbed(os.environ, drop, keep=("GOH_LIVE", "GOH_ESTATE_STATE"))
+    # GOH_LIVE, GOH_ESTATE_STATE and GOH_ROADMAP_PENDING (suite_home.py) and the machine locks'
+    # private copies (host_locks.py, PRIVATE_ROOTS): a location is not an opt-in, and dropping it
+    # sent every hermetic child to the REAL bench lock and gate slots.
+    env = scrubbed(os.environ, drop, keep=("GOH_LIVE", "GOH_ESTATE_STATE", "GOH_ROADMAP_PENDING"))
     # The rust coverage build dir is keyed on a project's path (gates/_coverage_rust.sh): a fixture
     # in a fresh tmp dir would leave one never-reused build per test in the user's cache.
     env["GOH_COV_CACHE"] = _SUITE_COV_CACHE

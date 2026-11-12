@@ -69,9 +69,11 @@ def _porcelain(repo: Path) -> str:
 #
 # GOH_ROADMAP_QUEUE is a LOCATION seam (`goh roadmap`'s umbrella queue file), not a repo's choice:
 # the environment IS its source -- a test names a fixture queue, a machine without the umbrella
-# names none -- and dropping it would send every fixture to the real queue.
+# names none -- and dropping it would send every fixture to the real queue. GOH_ROADMAP_PENDING is
+# the same kind of seam (the repos still pending under GOH.ROADMAPREQ): a test names its own.
 NOT_PIPELINE_CONFIG = {
     "GOH_ROADMAP_QUEUE",
+    "GOH_ROADMAP_PENDING",
     "GOH_PY_RUNNER",
     "GOH_PYTHON_VERSION",
     "GOH_BIN",

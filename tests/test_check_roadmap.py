@@ -60,8 +60,10 @@ def queue(tmp_path: Path) -> Path:
     return path
 
 
-def roadmap(repo: Path, queue: Path | None, *args: str):
-    env = hermetic_env(GOH_ROADMAP_QUEUE=str(queue) if queue else str(repo / "no-queue.json"))
+def roadmap(repo: Path, queue: Path | None, *args: str, env_extra: dict[str, str] | None = None):
+    env = hermetic_env(
+        GOH_ROADMAP_QUEUE=str(queue) if queue else str(repo / "no-queue.json"), **(env_extra or {})
+    )
     return run_goh(repo, "roadmap", *args, env=env)
 
 
@@ -124,12 +126,32 @@ def test_a_lower_case_document_about_a_plan_is_not_a_plan_file(repo, queue):
     assert roadmap(repo, queue).returncode == 0
 
 
-def test_unset_passes_and_says_so_and_none_makes_every_plan_file_a_finding(repo, queue):
+def test_unset_is_red_unless_the_repo_is_still_pending(repo, queue, tmp_path):
+    """GOH.ROADMAPREQ: every gated repo declares GOH_ROADMAP (a path or none). The turn-on is
+    staged: a repo named in the pending list (roadmap/pending.txt, the seam GOH_ROADMAP_PENDING)
+    still passes with a warning naming the item, so no consumer's push goes red with no item."""
     write(repo, "ROADMAP.md", CLEAN)
     commit_all(repo)
-    r = roadmap(repo, queue)
+    none_pending = tmp_path / "pending-empty.txt"
+    none_pending.write_text("# no repo pending\n")
+    r = roadmap(repo, queue, env_extra={"GOH_ROADMAP_PENDING": str(none_pending)})
+    assert r.returncode == 1 and "GOH_ROADMAP is unset" in r.stderr, (r.stdout, r.stderr)
+    assert "Plan files here: ROADMAP.md" in r.stderr, r.stderr
+    pending = tmp_path / "pending.txt"
+    pending.write_text("# repos still to declare\nproj\n")
+    r = roadmap(repo, queue, env_extra={"GOH_ROADMAP_PENDING": str(pending)})
     assert r.returncode == 0 and "GOH_ROADMAP is unset" in r.stdout, r.stdout
-    assert "Plan files here: ROADMAP.md" in r.stdout, r.stdout
+    assert "pending" in r.stdout and "GOH.ROADMAPREQ" in r.stdout, r.stdout
+    # The root commit is the identity: a checkout under another name (the push gate's export
+    # directory) is still the pending repo.
+    root = git(repo, "rev-list", "--max-parents=0", "HEAD").strip()
+    pending.write_text(f"{root} some-other-name\n")
+    r = roadmap(repo, queue, env_extra={"GOH_ROADMAP_PENDING": str(pending)})
+    assert r.returncode == 0 and "pending" in r.stdout, (r.stdout, r.stderr)
+
+
+def test_none_makes_every_plan_file_a_finding(repo, queue):
+    write(repo, "ROADMAP.md", CLEAN)
     write(repo, ".gatesrc", "GOH_ROADMAP=none\n")
     commit_all(repo)
     r = roadmap(repo, queue)

@@ -105,6 +105,10 @@ def _enter() -> None:
     os.environ["HOME"] = str(home)
     os.environ["XDG_CACHE_HOME"] = str(home / ".cache")
     os.environ["XDG_STATE_HOME"] = str(home / ".local" / "state")
+    # Every fixture repo stands pending under GOH.ROADMAPREQ (judged on what its test declares);
+    # test_check_roadmap.py names its own list, and hermetic_env keeps this one.
+    (home / "roadmap_pending.txt").write_text("*\n")
+    os.environ["GOH_ROADMAP_PENDING"] = str(home / "roadmap_pending.txt")
 
 
 _enter()

@@ -15,7 +15,8 @@
 //!      `tools/check_stale_backlog.py`, generalised; the queue is a seam, `queue.rs`).
 //!
 //! Today's findings are DEBT held by `roadmap_seed.json` (`judge.rs`): a count per `<file>#<rule>`
-//! that may only fall. `GOH_ROADMAP` unset passes with a line saying so (the rollout state);
+//! that may only fall. `GOH_ROADMAP` unset is red (GOH.ROADMAPREQ), save for a repo still named in
+//! `pending.txt`, the staged turn-on, which passes with a warning naming the item;
 //! `GOH_ROADMAP=none` declares no roadmap, so every plan file is a finding.
 //!
 //! A structural step in every repo. At `--staged` it judges only a commit that brings the
@@ -159,6 +160,34 @@ fn seeds(root: &Path, staged: bool) -> Result<Seeds, String> {
     Ok((now, head))
 }
 
+/// The repos still allowed an unset `GOH_ROADMAP` (GOH.ROADMAPREQ's staged turn-on).
+const PENDING: &str = include_str!("pending.txt");
+
+/// Whether this repo is still pending: its root commit (`gitutil::root_commit`, which an export
+/// answers too) or its checkout's basename names a line, or a line is `*`. `GOH_ROADMAP_PENDING`
+/// names another list: a SEAM for tests, read from the environment, never from `.gatesrc`.
+fn pending(root: &Path) -> Result<bool, String> {
+    let text = match std::env::var_os("GOH_ROADMAP_PENDING") {
+        Some(p) => std::fs::read_to_string(&p)
+            .map_err(|e| format!("GOH_ROADMAP_PENDING={}: {e}", Path::new(&p).display()))?,
+        None => PENDING.to_owned(),
+    };
+    let name = root
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or_default();
+    let commit = crate::gitutil::root_commit(root);
+    Ok(text
+        .lines()
+        .map(|l| l.split('#').next().unwrap_or_default().trim())
+        .filter(|l| !l.is_empty())
+        .any(|l| {
+            l == "*"
+                || l.split_whitespace()
+                    .any(|w| w == name || commit.as_deref() == Some(w))
+        }))
+}
+
 /// The plan files a repo with no `GOH_ROADMAP` holds, for the line that says it is unset.
 fn unset_note(tree: &[String]) -> String {
     let plans: Vec<&str> = tree
@@ -195,10 +224,19 @@ fn verdict(
     };
     let declared = Declared::from_cfg(cfg);
     if declared == Declared::Unset {
-        return (
-            0,
-            format!("{} {TAG} {}\n", goh_tui::WARN, unset_note(&tree)),
-        );
+        return match pending(root) {
+            Ok(true) => (
+                0,
+                format!(
+                    "{} {TAG} {} (this repo is pending in goh's roadmap/pending.txt, GOH.ROADMAPREQ: \
+                     it goes red once that line is gone)\n",
+                    goh_tui::WARN,
+                    unset_note(&tree)
+                ),
+            ),
+            Ok(false) => (1, format!("{ERR} {TAG} {}\n", unset_note(&tree))),
+            Err(m) => (2, format!("{ERR} {TAG} {m}\n")),
+        };
     }
     let exclude = match crate::steps::compile_exclude(&cfg.exclude) {
         Ok(x) => x,

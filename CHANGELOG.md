@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+* **Every gated repo declares `GOH_ROADMAP` (GOH.ROADMAPREQ).** An unset `GOH_ROADMAP` is now red
+  (`goh roadmap`), naming the plan files it sees. The turn-on is staged so no consumer's push goes
+  red with no item: a repo still listed in `crates/goh/src/roadmap/pending.txt` (twelve, seeded from
+  the estate registry) passes with a warning naming the item until it declares a path or `none`.
+
 ## v0.105.0 -- a kept pytest temp root holds only failed tests' dirs (21x smaller) and older roots are bounded by count and size
 
 * **A kept pytest temp root is bounded, and is 21x smaller (GOH.PYTESTTMP).** TMPDIR held 55.3 GiB:

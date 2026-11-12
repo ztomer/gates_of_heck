@@ -46,7 +46,7 @@ def _git(d: Path, *args: str) -> subprocess.CompletedProcess:
 
 def _consumer(at: Path, script: str) -> Path:
     fast_init(at)
-    (at / ".gatesrc").write_text("GOH_MAX_LINES=500\n")
+    (at / ".gatesrc").write_text("GOH_MAX_LINES=500\nGOH_ROADMAP=none\n")
     (at / "run.sh").write_text(script)
     (at / "run.sh").chmod(0o755)
     _git(at, "add", "-A")
