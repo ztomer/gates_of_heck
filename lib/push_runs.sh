@@ -36,20 +36,39 @@ reap_dead_runs() {
 # workaround was then named as the gate writing outside its tree; token-pool's widget
 # (`.package(path: "../../ZoneWM/Packages/SpaceBarKit")`, 2026-11-07) died the same way. So the
 # export provides every sibling a TRACKED Cargo.toml or Package.swift names (gates/_push_siblings.py),
-# as a link: gates_of_heck to $GOH, any other to the checkout of that name beside the real one, when
-# there is one ($1 = the export's tree, $2 = the run directory, $3 = the real checkout). Each link
-# is recorded in $2/.siblings so `run_litter` knows it for the run's own. An existing entry is never
+# at its HEAD: gates_of_heck from $GOH, any other from the checkout of that name beside the real one,
+# when there is one ($1 = the export's tree, $2 = the run directory, $3 = the real checkout). Each
+# is recorded in $2/.siblings (with the commit) so `run_litter` knows it for the run's own. An existing entry is never
 # replaced; a sibling that is not checked out gets no link, and the build says what is missing.
 export_siblings() {
-    local tree="$1" run_dir="$2" root="$3" name target
+    local tree="$1" run_dir="$2" root="$3" name target sha dirty
     while IFS= read -r name; do
         [ -n "$name" ] || continue
         if [ -e "$run_dir/$name" ] || [ -L "$run_dir/$name" ]; then continue; fi
         if [ "$name" = gates_of_heck ]; then target="$GOH"; else target="$(dirname "$root")/$name"; fi
         [ -d "$target" ] || continue
-        ln -s "$target" "$run_dir/$name"
-        printf '%s\t%s\n' "$name" "$target" >>"$run_dir/.siblings"
-        info "pre-push: the export carries the sibling $name (a tracked manifest's path dependency names it)"
+        # The sibling's HEAD, never its live working tree (GOH.PUSHSIBLINGS: ZeroThunder's push
+        # judged game_asset_factory's uncommitted edit). A shared clone checked out at that commit:
+        # nothing is written to the sibling's own .git, and the log names the commit linked.
+        if sha="$(git -C "$target" rev-parse -q --verify 'HEAD^{commit}' 2>/dev/null)" &&
+            [ "$(cd "$(git -C "$target" rev-parse --show-toplevel)" && /bin/pwd -P)" = "$(cd "$target" && /bin/pwd -P)" ]; then
+            if ! { git clone -q --shared --no-checkout -c core.hooksPath=/dev/null "$target" "$run_dir/$name" &&
+                git -C "$run_dir/$name" -c core.hooksPath=/dev/null checkout -q --detach "$sha"; } 2>/dev/null; then
+                rm -rf "${run_dir:?}/$name"
+                warn "pre-push: the sibling $name could not be checked out at ${sha:0:12}; the export does not carry it"
+                continue
+            fi
+            printf '%s\t%s@%s\n' "$name" "$target" "$sha" >>"$run_dir/.siblings"
+            dirty=""
+            [ -z "$(git -C "$target" status --porcelain 2>/dev/null)" ] ||
+                dirty="; its uncommitted edits are not gated"
+            info "pre-push: the export carries the sibling $name at ${sha:0:12}, its HEAD (a tracked manifest's path dependency names it$dirty)"
+        else
+            # Not a git checkout (an installed snapshot such as goh's HEAD cache): no commit to name.
+            ln -s "$target" "$run_dir/$name"
+            printf '%s\t%s\n' "$name" "$target" >>"$run_dir/.siblings"
+            warn "pre-push: the sibling $name ($target) is no git checkout, so it is linked as it stands"
+        fi
     done < <("$GOH_PY" -S "$GOH/gates/_push_siblings.py" "$tree")
 }
 
@@ -60,6 +79,18 @@ private_cargo_config() {
     mkdir -p "$1/.cargo"
     printf '[build]\nbuild-dir = "%s"\n' "${esc//\"/\\\"}" >"$1/.cargo/config.toml"
     printf '.cargo\n' >>"$1/.kit-wrote"
+}
+
+# sibling_recorded RUN_DIR NAME: NAME is the sibling export_siblings made: a link to the target it
+# recorded, or the checkout it cloned at the commit it recorded (and nothing else under that name).
+sibling_recorded() {
+    local dir="$1/$2" line
+    line="$(grep -m1 -F "$2"$'\t' "$1/.siblings")" || return 1
+    [ "${line%%$'\t'*}" = "$2" ] || return 1
+    case "${line#*$'\t'}" in
+        *@*) [ ! -L "$dir" ] && [ "$(git -C "$dir" rev-parse -q --verify HEAD 2>/dev/null)" = "${line##*@}" ] ;;
+        *) [ -L "$dir" ] && [ "$(readlink "$dir")" = "${line#*$'\t'}" ] ;;
+    esac
 }
 
 # What a gate left in run directory $1 beyond the run's own entries: the owner stamp, the private
@@ -74,10 +105,7 @@ run_litter() {
             .owner | .cargo-build | .siblings | .kit-wrote | "$(basename "$worktree")") continue ;;
         esac
         if [ -f "$run_dir/.kit-wrote" ] && grep -qxF "$name" "$run_dir/.kit-wrote"; then continue; fi
-        if [ -L "$run_dir/$name" ] && [ -f "$run_dir/.siblings" ] &&
-            grep -qxF "$name"$'\t'"$(readlink "$run_dir/$name")" "$run_dir/.siblings"; then
-            continue
-        fi
+        if [ -f "$run_dir/.siblings" ] && sibling_recorded "$run_dir" "$name"; then continue; fi
         out="$out$name "
     done < <(ls -A "$run_dir")
     printf '%s' "$out"

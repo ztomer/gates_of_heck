@@ -321,7 +321,8 @@ def test_the_stable_export_names_its_build_dirs_as_cargo_does(tmp_path):
 
 SIBLING_GATE = GATE.replace(
     "exit 0\n",
-    'printf "sibling=%s\\n" "$(readlink ../gates_of_heck || echo NONE)" >> "$out"\n'
+    'printf "sibling=%s\\n" '
+    '"$(git -C ../gates_of_heck rev-parse HEAD 2>/dev/null || echo NONE)" >> "$out"\n'
     'printf "tui=%s\\n" "$([ -d ../gates_of_heck/crates/goh-tui ] && echo found || echo MISSING)" >> "$out"\n'
     "exit 0\n",
 )
@@ -348,7 +349,7 @@ def test_a_consumer_that_declares_the_goh_sibling_gets_it_in_the_export(tmp_path
     got = _push(repo, tmp_path, tmp_path / "exports")
     assert got.returncode == 0, got.stdout + got.stderr
     seen = _report(tmp_path)
-    assert seen["sibling"] == str(REPO_ROOT) and seen["tui"] == "found", seen
+    assert seen["sibling"] == _git(REPO_ROOT, "rev-parse", "HEAD") and seen["tui"] == "found", seen
     assert "outside its tree" not in got.stdout + got.stderr, got.stdout + got.stderr
     assert _run_litter(tmp_path / "exports") == []
 
@@ -368,6 +369,48 @@ def test_a_sibling_the_gate_makes_itself_is_still_named_as_litter(tmp_path):
     got = _push(repo, tmp_path, tmp_path / "exports")
     assert got.returncode == 0, got.stdout + got.stderr
     assert "outside its tree (removed): other_sibling" in got.stdout + got.stderr
+
+
+# ── a sibling is gated at a named commit, never its live working tree (GOH.PUSHSIBLINGS) ──────
+# ZeroThunder, 2026-11-11: its push failed on game_asset_factory's UNCOMMITTED edit, because the
+# export linked the sibling's working tree; ZoneWM D-0361 moved SpaceBarKit consumers to a pinned
+# release for the same reason. The export carries the sibling's HEAD, and the log names the commit.
+
+HEAD_GATE = GATE.replace(
+    "exit 0\n",
+    'printf "file=%s\\n" "$(cat ../Kit/Packages/K/f.txt 2>/dev/null || echo NONE)" >> "$out"\n'
+    'printf "untracked=%s\\n" '
+    '"$([ -e ../Kit/Packages/K/new.txt ] && echo SEEN || echo no)" >> "$out"\n'
+    "exit 0\n",
+)
+
+
+def _kit_checkout(tmp_path: Path) -> tuple[Path, str]:
+    kit = tmp_path / "Kit"
+    (kit / "Packages" / "K").mkdir(parents=True)
+    (kit / "Packages" / "K" / "f.txt").write_text("committed\n")
+    _git(kit, "init", "-q", "-b", "main")
+    _git(kit, "add", "-A")
+    _git(kit, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "kit")
+    return kit, _git(kit, "rev-parse", "HEAD")
+
+
+def test_a_siblings_uncommitted_edit_does_not_reach_the_push_gate(tmp_path):
+    repo = _swift_sibling_repo(tmp_path)
+    (repo / "tools" / "gate.sh").write_text(HEAD_GATE)
+    _git(repo, "commit", "-qam", "head gate")
+    kit, sha = _kit_checkout(tmp_path)
+    (kit / "Packages" / "K" / "f.txt").write_text("UNCOMMITTED EDIT\n")
+    (kit / "Packages" / "K" / "new.txt").write_text("untracked\n")
+    got = _push(repo, tmp_path, tmp_path / "exports")
+    assert got.returncode == 0, got.stdout + got.stderr
+    seen = _report(tmp_path)
+    assert seen["file"] == "committed" and seen["untracked"] == "no", seen
+    assert f"sibling Kit at {sha[:12]}" in got.stdout + got.stderr, got.stdout + got.stderr
+    assert "uncommitted" in got.stdout + got.stderr, got.stdout + got.stderr
+    assert (kit / "Packages" / "K" / "f.txt").read_text() == "UNCOMMITTED EDIT\n"
+    assert _git(kit, "worktree", "list").count("\n") == 0  # the sibling's .git is untouched
+    assert _run_litter(tmp_path / "exports") == []
 
 
 # ── any sibling a tracked manifest names ─────────────────────────────────────────────────────────

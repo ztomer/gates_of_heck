@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+* **A push gate carries a sibling checkout at its HEAD, never its live working tree
+  (GOH.PUSHSIBLINGS).** ZeroThunder's push failed on game_asset_factory's uncommitted edit: the
+  export linked every sibling a tracked manifest's path dependency names to its working tree. It is
+  now a shared clone checked out at the sibling's HEAD (nothing is written to the sibling's own
+  .git), recorded with its commit, and the push log names the commit and says when the sibling's
+  uncommitted edits were left out. A sibling that is no git checkout is linked as it stands, with a
+  warning.
+
 * **goh ship asks the changelog contract the repo's kit declares, at start (GOH.SHIPCHANGELOG).**
   token-pool's ship ran its whole gate and push, then its kit refused: "CHANGELOG.md has no
   '## Unreleased' section to release". goh's reading assumed changelog_cut's contract, under which a
