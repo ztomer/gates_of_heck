@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## v0.107.2 -- coverage phases stream with start and elapsed; the external suite drives an optimized instrumented goh
+
 * **The coverage step streams its phases, and the external suite drives an optimized binary
   (GOH.COVPHASES).** goh's hosted coverage step was cut at GOH_STEP_TIMEOUT 1800 s on every release
   since v0.107.0 with three intro lines in its log: each part's output went to its own log, read
