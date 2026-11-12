@@ -171,6 +171,17 @@ fn goh_root() -> std::io::Result<PathBuf> {
         .canonicalize()
 }
 
+/// A pending list (`goh roadmap`, GOH.ROADMAPREQ) that stands every fixture pending: a fixture is
+/// judged on what its test declares. The roadmap requirement itself is proven in
+/// `tests/test_check_roadmap.py`, which names its own list.
+fn roadmap_pending() -> std::io::Result<PathBuf> {
+    let path = std::env::temp_dir().join("goh-testkit-roadmap-pending.txt");
+    if !path.is_file() {
+        std::fs::write(&path, "*\n")?;
+    }
+    Ok(path)
+}
+
 /// Run the goh binary at `bin`.
 ///
 /// The test passes `env!("CARGO_BIN_EXE_goh")`, which only the goh crate's
@@ -193,6 +204,7 @@ pub fn goh_at(
     scrub_repo_env(&mut cmd);
     cmd.args(args)
         .env("GOH_DIR", goh_root()?)
+        .env("GOH_ROADMAP_PENDING", roadmap_pending()?)
         .env_remove("GOH_BIN")
         .env_remove("GOH_NO_NATIVE");
     if let Some(r) = repo {
