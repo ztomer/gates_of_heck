@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+* **The ruff-pin test runs on the hosted runner (GOH.CIRUFF).** v0.101.0's
+  `test_the_workflow_installs_one_pinned_ruff_and_asks_the_pin_before_the_gate` imported PyYAML to
+  read `gate.yml`, which the runner does not have, so the hosted gate went red (run 43147543825) on a
+  test of the runner itself. It now reads the Install step's `run: |` block as text.
+
 ## v0.101.0 -- changelog-tags refuses to judge a shallow or tagless clone; the hosted gate pins one ruff; commit-scope seeded checks judge renames, read the index's seed and lock the store
 
 * **A commit-scope seeded check reads what the commit records (GOH.SEEDSCOPE).** Three seams found
