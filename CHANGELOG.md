@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## v0.102.0 -- goh ship asks the changelog contract the kit declares; push siblings at HEAD; plural-hedge reads calls
+
 * **plural-hedge reads a function called in a string as code, not a hedge (GOH.HEDGECALL).** A C
   fixture string in CadGoose2 held `stripThinkBlocks` called on `s`, which was read as a hedged
   plural. A `lowerCamelCase` name, or any name whose hedge suffix is followed at once by a method
