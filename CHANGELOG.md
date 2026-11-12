@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## v0.106.3 -- goh is clean under Rust 1.100.0: no redundant clone, and the crate cache reads cargo's per-unit build dir
+
 * **The workspace is clippy-clean under Rust 1.100.0.** Its `redundant_clone` now sees the last use
   of `path` in `crates/goh/src/lockver.rs` and of `base` in `crates/goh-golden/tests/metrics.rs`;
   both clones are gone, so the hosted runner's `-D warnings` clippy passes again.
