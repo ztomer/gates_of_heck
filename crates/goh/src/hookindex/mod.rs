@@ -97,34 +97,18 @@ fn judge(
             .map(|(_, t)| t.lines().map(str::to_string).collect())
             .unwrap_or_default()
     };
-    let mut listing = String::new();
-    let mut n = 0usize;
-    for (rel, text) in &sources {
-        if scan::defines_binder(text) {
-            continue;
-        }
-        let lines: Vec<&str> = text.lines().collect();
-        for r in scan::reads(text) {
-            n += 1;
-            let src = lines.get(r.line - 1).copied().unwrap_or("");
-            let _ = writeln!(
-                listing,
-                "    {rel}:{}: {}  -- expands ${}",
-                r.line,
-                clip(src),
-                r.var
-            );
-        }
-    }
+    let (listing, n) = expansions(&sources);
     let found = index_findings(root, &sources, exclude.as_ref());
     let counts: BTreeMap<String, usize> = found.iter().map(|(p, r)| (p.clone(), r.len())).collect();
-    // One git spawn, and only when a seed could matter: findings to judge, or a full run's stale check.
-    let repo = if counts.is_empty() && (staged || seed.is_empty()) {
-        String::new()
-    } else {
-        crate::gitutil::root_commit(root).unwrap_or_default()
-    };
-    let verdict = seed::judge(&repo, &counts, seed, !staged);
+    // One git spawn, and only when a seed could matter: findings to judge, or a seed to judge
+    // stale (a full run) or to settle (a commit's own run, GOH.SEEDSTALE).
+    let repo = crate::estate_seed::repo_identity(root, !counts.is_empty(), seed);
+    let run = crate::estate_seed::Scope::of(staged);
+    let (verdict, settled) =
+        match crate::estate_seed::judge_settled(root, &repo, run, &counts, seed, seed::KIND) {
+            Ok(j) => j,
+            Err(m) => return (2, String::new(), format!("{ERR} {TAG} {m}\n")),
+        };
     let site = |rel: &str, r: &index::IndexRead| {
         let lines = lines_of(rel);
         let src = lines.get(r.line - 1).map_or("", String::as_str);
@@ -155,6 +139,13 @@ fn judge(
     }
     let stale = crate::estate_seed::stale_report(TAG, "GOH.BAREINDEX", &verdict.stale);
     if n == 0 && m == 0 && stale.is_empty() {
+        warns.push_str(&crate::estate_seed::settle_store(
+            &repo,
+            seed::KIND,
+            &settled,
+            TAG,
+            "GOH.BAREINDEX",
+        ));
         let ok = format!(
             "{OK} {TAG} OK — {} {scope} shell source(s), the hook's index read only by goh_bind_hook_index\n",
             sources.len()
@@ -180,6 +171,30 @@ fn judge(
     }
     err.push_str(&stale);
     (1, String::new(), err)
+}
+
+/// The listing of the carried index's expansions outside the binder, and how many there are.
+fn expansions(sources: &[(String, String)]) -> (String, usize) {
+    let mut listing = String::new();
+    let mut n = 0usize;
+    for (rel, text) in sources {
+        if scan::defines_binder(text) {
+            continue;
+        }
+        let lines: Vec<&str> = text.lines().collect();
+        for r in scan::reads(text) {
+            n += 1;
+            let src = lines.get(r.line - 1).copied().unwrap_or("");
+            let _ = writeln!(
+                listing,
+                "    {rel}:{}: {}  -- expands ${}",
+                r.line,
+                clip(src),
+                r.var
+            );
+        }
+    }
+    (listing, n)
 }
 
 /// The estate seed for the repository at `repo`, or the report a corrupt or foreign one makes.

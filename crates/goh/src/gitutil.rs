@@ -127,6 +127,19 @@ pub fn uncommitted(root: &Path, pathspecs: &[&str]) -> Result<Vec<String>, Strin
     nul_list(root, &args)
 }
 
+/// Every path this commit changes (`diff --cached`, renames split into a deletion and an
+/// addition): the entries a commit's own run settles (`estate_seed::settle`).
+///
+/// # Errors
+///
+/// As `listed_files`: a failing git is loud, never an empty list.
+pub fn staged_paths(root: &Path) -> Result<Vec<String>, String> {
+    nul_list(
+        root,
+        &["diff", "--cached", "--name-only", "-z", "--no-renames"],
+    )
+}
+
 /// The files this commit ADDS to the index (`--diff-filter=A`): a new path, not an edit.
 ///
 /// # Errors

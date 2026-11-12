@@ -237,3 +237,68 @@ fn every_way_a_workflow_brings_goh_in_is_seen() {
         assert_eq!(goh_workflow(r.path()).as_deref(), Some("w.yaml"), "{line}");
     }
 }
+
+#[test]
+fn a_commit_settles_only_the_entries_of_what_it_read() {
+    let mut s = seed(&[("r", "t0.sh", 1), ("r", "t1.sh", 2), ("q", "a.sh", 1)]);
+    for (p, n) in [("a.sh", 2), ("b.sh", 3), ("c.sh", 1)] {
+        s.insert(
+            ("r".to_string(), p.to_string()),
+            Held {
+                count: n,
+                stored: true,
+            },
+        );
+    }
+    let read: std::collections::BTreeSet<String> = ["a.sh", "b.sh", "t0.sh", "t1.sh"]
+        .into_iter()
+        .map(str::to_string)
+        .collect();
+    let out = settle("r", &found(&[("b.sh", 1), ("t1.sh", 1)]), &s, &read, K);
+    // a.sh is read and clean (deleted), b.sh lowered, c.sh unread and untouched; another repo's
+    // a.sh is not this one's.
+    assert_eq!(out.store, found(&[("a.sh", 0), ("b.sh", 1)]));
+    // A tracked entry left with nothing is stale at the commit; one only lowered is the push's
+    // warning to lower, as before.
+    assert_eq!(out.stale.len(), 1, "{:?}", out.stale);
+    assert_eq!(out.stale[0].0, "t0.sh");
+    assert!(out.stale[0].1.contains("in this commit"), "{:?}", out.stale);
+    let now = settled_seed(&s, "r", &out);
+    assert!(!now.contains_key(&("r".to_string(), "a.sh".to_string())));
+    assert_eq!(now[&("r".to_string(), "b.sh".to_string())].count, 1);
+    assert!(now.contains_key(&("q".to_string(), "a.sh".to_string())));
+}
+
+#[test]
+fn a_settled_store_keeps_every_other_entry_and_its_shape() {
+    let dir = tempfile::tempdir().expect("tmp");
+    std::fs::write(
+        dir.path().join(K.file),
+        r#"{"why":"w","entries":[
+          {"root":"r","repo":"x","path":"a.sh","count":2,"reason":"one"},
+          {"root":"r","repo":"x","path":"b.sh","count":1,"reason":"two"},
+          {"root":"q","repo":"y","path":"a.sh","count":1,"reason":"three"}]}"#,
+    )
+    .expect("write");
+    let settled = Settle {
+        store: found(&[("a.sh", 1), ("b.sh", 0)]),
+        stale: Vec::new(),
+    };
+    write_settled(dir.path(), K, "r", &settled).expect("settled");
+    let v: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(dir.path().join(K.file)).expect("read"))
+            .expect("json");
+    assert_eq!(v["why"], "w");
+    let e = v["entries"].as_array().expect("entries");
+    assert_eq!(e.len(), 2, "{e:?}");
+    assert_eq!(
+        (e[0]["path"].as_str(), e[0]["count"].as_u64()),
+        (Some("a.sh"), Some(1))
+    );
+    assert!(e[0]["reason"]
+        .as_str()
+        .is_some_and(|r| r.starts_with("one;")));
+    assert_eq!(e[1]["root"], "q");
+    let left: Vec<_> = std::fs::read_dir(dir.path()).expect("dir").collect();
+    assert_eq!(left.len(), 1, "no temporary file left behind");
+}

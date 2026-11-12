@@ -287,11 +287,13 @@ pub fn judge(
     v
 }
 
-/// The repo identity `judge` keys by, read only when a seed could matter: findings to judge, or a
-/// full run's stale check over a non-empty seed. One git spawn at most.
+/// The repo identity `judge` keys by, read only when a seed could matter.
+///
+/// That is findings to judge, or a non-empty seed (a full run's stale check, a commit's settling
+/// of the entries it changes). One git spawn at most.
 #[must_use]
-pub fn repo_identity(root: &Path, any_found: bool, staged: bool, seed: &Seed) -> String {
-    if !any_found && (staged || seed.is_empty()) {
+pub fn repo_identity(root: &Path, any_found: bool, seed: &Seed) -> String {
+    if !any_found && seed.is_empty() {
         return String::new();
     }
     crate::gitutil::root_commit(root).unwrap_or_default()
@@ -330,11 +332,28 @@ pub fn verdict(
     sites: &Sites,
     r: &Report<'_>,
 ) -> (i32, String, String) {
+    verdict_in(root, Scope::of(staged), kind, seed, sites, r)
+}
+
+/// `verdict` with its scope spelled out (`Scope`).
+#[must_use]
+pub fn verdict_in(
+    root: &Path,
+    scope: Scope,
+    kind: Kind,
+    seed: &Seed,
+    sites: &Sites,
+    r: &Report<'_>,
+) -> (i32, String, String) {
     use goh_tui::{ERR, OK, WARN};
     use std::fmt::Write as _;
     let counts: BTreeMap<String, usize> = sites.iter().map(|(p, s)| (p.clone(), s.len())).collect();
-    let repo = repo_identity(root, !counts.is_empty(), staged, seed);
-    let v = judge(&repo, &counts, seed, !staged, kind);
+    let commit = scope.commit;
+    let repo = repo_identity(root, !counts.is_empty(), seed);
+    let (v, settled) = match judge_settled(root, &repo, scope, &counts, seed, kind) {
+        Ok(j) => j,
+        Err(m) => return (2, String::new(), format!("{ERR} {} {m}\n", r.tag)),
+    };
     let mut warns = String::new();
     for (path, note) in &v.warn {
         let _ = writeln!(
@@ -355,6 +374,7 @@ pub fn verdict(
         }
     }
     if v.red.is_empty() && v.stale.is_empty() {
+        warns.push_str(&settle_store(&repo, kind, &settled, r.tag, r.item));
         // A pass over seeded sites is not the clean pass: it says the seed is what passed.
         let ok = if v.warn.is_empty() {
             format!("{OK} {} OK — {}\n", r.tag, r.ok)
@@ -371,7 +391,7 @@ pub fn verdict(
     let mut err = warns;
     if !v.red.is_empty() {
         let n: usize = v.red.iter().map(|p| sites[p].len()).sum();
-        let scope = if staged { "staged" } else { "tracked" };
+        let scope = if commit { "staged" } else { "tracked" };
         let what = goh_tui::noun_as(n, r.what.0, r.what.1);
         let _ = writeln!(err, "{ERR} {} {n} {what} ({scope}):", r.tag);
         for p in &v.red {
@@ -445,7 +465,11 @@ pub fn clip(s: &str) -> String {
     out
 }
 
+mod settle;
 mod store_ci;
+#[cfg(test)]
+use settle::settled_seed;
+pub use settle::{judge_settled, settle, settle_store, write_settled, Scope, Settle};
 pub use store_ci::{goh_workflow, STORE_CI_REFUSED_FROM};
 
 #[cfg(test)]

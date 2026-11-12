@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+* **A commit settles the seed entries its fix settles (GOH.SEEDSTALE).** An agent fixed a seeded
+  site, the commit passed, and the push went red on a stale entry in the private seed store, which
+  nothing in a commit can delete -- five pushes and releases on 2026-11-11/12. Consumers: a commit's
+  own run of an estate-seeded check (plural_hedge, mktemp_port, release_quiet, changelog_tags,
+  hook_index) now lowers or deletes the STORE entry of every file it changes that holds fewer
+  findings, and prints `-> [check] path: no ... left, its entry deleted from <store> by this commit`;
+  a TRACKED entry the commit leaves with nothing is red at the commit (delete it in the same
+  commit) rather than at the push. Growth is still red, a refused commit writes nothing, and the
+  push's stale check stays as the backstop (D-0005).
+
 ## v0.99.0 -- The Bash guard judges the command that runs (heredocs, newlines); no stash, reset or branch switch in a shared checkout; every kill by name refused naming its live hits; a path commit lints the tree it records; the main-commit escape is logged
 
 * **The Bash guard judges the command that runs, not a heredoc's words (GOH.HEREDOCBUILD).** A script

@@ -196,8 +196,18 @@ fn judge(root: &Path, files: &[String], staged: bool) -> (i32, String, String) {
     };
     // Whole-file at both scopes, so a staged run judges a stale entry too -- unless no `v*` tag was
     // there to compare (a CI checkout fetches none): then nothing was read, and nothing is stale.
+    // At a commit the whole changelog was read, so that is what its run settles (GOH.SEEDSTALE).
     let unread = !tags.iter().any(|t| TAGNAME.is_match(t));
-    estate_seed::verdict(root, unread, KIND, &seed, &sites, &report)
+    let scope = estate_seed::Scope {
+        commit: staged,
+        full: !unread,
+        read: Some(if unread {
+            std::collections::BTreeSet::new()
+        } else {
+            std::collections::BTreeSet::from([file.to_string()])
+        }),
+    };
+    estate_seed::verdict_in(root, scope, KIND, &seed, &sites, &report)
 }
 
 /// `goh changelog-tags [--staged]`.
