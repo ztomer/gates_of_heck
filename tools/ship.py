@@ -15,9 +15,8 @@ every agent's context (GOH.SPENDWATCH). Here it is a pipeline no turn watches:
              land in the release commit has a hand-off its own gate refuses alone)
     release  the repo's release kit, `.gatesrc` GOH_SHIP_RELEASE, run with GOH_SHIP_VERSION set (also
              `{version}` in the command); skipped when HEAD already carries a version tag; a repo
-             that tags and declares none is refused before anything starts
-    install  `.gatesrc` GOH_SHIP_INSTALL; skipped (said) when undeclared: a release kit that installs
-             (sys_updater's --verify) or a repo that installs nothing needs no step
+             that tags none is refused first; then lib/ship_pushed.py: HEAD and its tag are pushed
+    install  `.gatesrc` GOH_SHIP_INSTALL; skipped (said) when undeclared (a kit may install)
     verify   first, when the remote is GitHub's, the CI verdict on HEAD through the throttle-aware
              door (`loopctl ci SHA --repo OWNER/NAME --wait`): queued or running is PENDING and
              waited on, within the ship's bound; red, or still pending at the bound, fails here
@@ -73,6 +72,7 @@ sys.path.insert(0, str(ROOT / "lib"))
 import bounded_run
 import gitrun
 import ship_changelog
+import ship_pushed
 
 from tui.lib import err, info, ok, step
 
@@ -305,7 +305,7 @@ def command(res: dict, name: str) -> tuple[str | None, str]:
                 if SEMVER.match(t)]  # fmt: skip
         if held:
             return None, f"HEAD already carries {held[0]}"
-        return res["release"].replace("{version}", res["version"]), ""
+        return ship_pushed.after(res["release"].replace("{version}", res["version"]), res), ""
     if name == "install":
         return (res["install"] or None), "no GOH_SHIP_INSTALL declared"
     have = Path(res["loopctl"]).is_file()

@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+* **goh ship's release step checks its own effect (GOH.RELEASEUNPUSHED).** necrohand's kit committed
+  and tagged without pushing, exited 0, and the ship failed one step later at verify, far from the cause
+  (ship 20261112T081926Z-307f9eff). After the kit, HEAD must be on the remote branch and HEAD's version
+  tag on the remote (read at the push URL); else the release step fails naming the unpushed commit or tag
+  and the fix (append the push to GOH_SHIP_RELEASE, or make the kit push).
+
 ## v0.104.0 -- goh_head_export: a sibling repo at its HEAD commit (read-only, sha-cached clone) for a consumer's gate; goh_rm_tree no longer chmods hard-linked files
 
 * **A sibling repo reaches a consumer's gate at its HEAD commit, never its working tree (GOH.HEADEXPORT).**
