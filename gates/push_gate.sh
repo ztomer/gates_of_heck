@@ -50,6 +50,7 @@
 # overrides). A green run deletes its log; a red one keeps it, prints its path, and the newest
 # `keep_failed_logs` are kept. The cost: the gate writes to a pipe, so its colours are off.
 { # parse-guard -- bash reads this group whole before running it (tests/test_parse_guard.py)
+. "$(dirname "${BASH_SOURCE[0]}")/../lib/bash5.sh" && goh_bash5 "$@"
 . "$(dirname "${BASH_SOURCE[0]}")/_from_head.sh"; goh_from_head "${BASH_SOURCE[0]}" "$@"   # run HEAD, not the tree (C4)
 set -euo pipefail
 # The hook's repository variables go first, before anything is spawned (gates/_git_env.sh, the

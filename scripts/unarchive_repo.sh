@@ -7,6 +7,7 @@
 # else (an agent, a pipe), it refuses and names the command. Seams: GOH_GH, GOH_GH_USER, and
 # GOH_HOLD_INTERACTIVE=1 to answer the offer from stdin without a terminal.
 { # parse-guard -- bash reads this group whole before running it (tests/test_parse_guard.py)
+. "$(dirname "${BASH_SOURCE[0]}")/../lib/bash5.sh" && goh_bash5 "$@"
 set -euo pipefail
 GOH="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 # shellcheck source=tui/lib.sh

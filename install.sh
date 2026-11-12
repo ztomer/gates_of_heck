@@ -30,6 +30,7 @@
 # It does NOT copy the checkers: hooks delegate to this checkout at runtime,
 # so a fix here reaches every installed repo with zero re-install steps.
 { # parse-guard -- bash reads this group whole before running it (tests/test_parse_guard.py)
+. "$(dirname "${BASH_SOURCE[0]}")/lib/bash5.sh" && goh_bash5 "$@"
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -139,7 +140,7 @@ done
 refusals_stand=0
 if [ "${#refused[@]}" -gt 0 ]; then
     refusals_stand=1
-    for h in ${refused[@]+"${refused[@]}"}; do
+    for h in "${refused[@]}"; do
         err "install: $hooks_dir/$h differs from both the stock hook and our install record"
     done
     err "  it looks locally modified — it is left exactly as it is"
@@ -169,7 +170,7 @@ fi
 
 # Pass 2: the writes. Nothing below refuses.
 mkdir -p "$hooks_dir" "$rec_dir"
-for h in ${install_hooks[@]+"${install_hooks[@]}"}; do   # bash 3.2: empty "${a[@]}" is unbound
+for h in "${install_hooks[@]}"; do
     cp "$HERE/hooks/$h" "$hooks_dir/$h"
     chmod +x "$hooks_dir/$h"
     hash_hex "$hooks_dir/$h" >"$rec_dir/$h.sha256"
@@ -297,7 +298,7 @@ fi
 
 # The claim is checked against the repo before it is made (G15): every hook this run installed is
 # there, executable and byte-equal to the stock one, and git will actually read .githooks.
-for h in ${install_hooks[@]+"${install_hooks[@]}"}; do
+for h in "${install_hooks[@]}"; do
     [ -x "$hooks_dir/$h" ] && [ "$(hash_hex "$hooks_dir/$h")" = "$(hash_hex "$HERE/hooks/$h")" ] \
         || die "install: $hooks_dir/$h is not the executable stock hook after the install"
 done

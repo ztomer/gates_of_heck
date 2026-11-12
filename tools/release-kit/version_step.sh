@@ -10,6 +10,7 @@
 # with the repo's .gatesrc in its environment as the pre-push gives it) is asked here, first, over the
 # tag that WOULD be pushed: a release whose version is not committed refuses before anything is
 # pushed, waited for or tagged (tests/test_release_kit_version.py).
+. "$(dirname "${BASH_SOURCE[0]}")/../../lib/bash5.sh" && goh_bash5 "$@"
 release_version_step() {
   local _vtop _vrefs _vrc
   begin "version" "HEAD declares ${VERSION}"

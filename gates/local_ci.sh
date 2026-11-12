@@ -1,8 +1,7 @@
 #!/usr/bin/env bash
 # local_ci.sh — ONE declarative step runner replacing the ~10 copy-pasted local-CI orchestrators
 # (app_updates, CadGoose2, divoom-control: a step list, a fail accumulator, log-on-failure, tui).
-# Only the step LIST was per-repo; the skeleton drifted copy by copy. The list
-# is data here, declared by the repo:
+# Only the step LIST was per-repo; the skeleton drifted copy by copy. The list is data here:
 #
 #   .gatesrc:  GOH_CI_STEPS='./tools/repo_gates.sh:cargo test:./scripts/lint.sh'
 # or CLI:    local_ci.sh --step './tools/repo_gates.sh' --step 'cargo test'
@@ -23,6 +22,7 @@
 # Exit codes: 0 all green · 1 any step failed · 2 usage/config error. A step exiting 78 is NOT
 # APPLICABLE: its own line, accepted on a hosted run only (gates/_not_applicable.sh).
 { # parse-guard -- bash reads this group whole before running it (tests/test_parse_guard.py)
+. "$(dirname "${BASH_SOURCE[0]}")/../lib/bash5.sh" && goh_bash5 "$@"
 . "$(dirname "${BASH_SOURCE[0]}")/_from_head.sh"; goh_from_head "${BASH_SOURCE[0]}" "$@"   # run HEAD, not the tree (C4)
 set -uo pipefail
 

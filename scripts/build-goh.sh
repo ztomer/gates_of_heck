@@ -7,6 +7,7 @@
 # (tests/test_goh_platform_gate.py drives it).
 # GOH_BUILD_GATE_ONLY=1 stops after the gate, before cargo.
 { # parse-guard -- bash reads this group whole before running it (tests/test_parse_guard.py)
+. "$(dirname "${BASH_SOURCE[0]}")/../lib/bash5.sh" && goh_bash5 "$@"
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

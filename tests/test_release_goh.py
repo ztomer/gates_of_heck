@@ -15,8 +15,8 @@ from pathlib import Path
 from conftest import REPO_ROOT, git, hermetic_env
 
 KIT = REPO_ROOT / "tools" / "release_goh.sh"
-# The macOS /bin/bash is 3.2, where `"${a[@]}"` of an empty array trips `set -u`; the hosted runner
-# runs the kit with it, so the suite does too (v0.106.1 was red there, green on Homebrew bash 5).
+# The macOS /bin/bash is 3.2; the hosted runner and minimal-PATH hooks start the kit with it, so the
+# suite does too: the bash 5 guard must re-exec it (lib/bash5.sh; v0.106.1 was red there).
 BASH = "/bin/bash" if Path("/bin/bash").exists() else "bash"
 
 

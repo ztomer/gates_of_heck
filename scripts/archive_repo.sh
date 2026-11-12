@@ -9,6 +9,7 @@
 # Then: `gh repo archive` (skipped when GitHub already says archived), the hold with
 # unarchive_repo.sh as its lift, and `chmod -R a-w`. Seams: GOH_GH, GOH_GH_USER.
 { # parse-guard -- bash reads this group whole before running it (tests/test_parse_guard.py)
+. "$(dirname "${BASH_SOURCE[0]}")/../lib/bash5.sh" && goh_bash5 "$@"
 set -euo pipefail
 GOH="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 # shellcheck source=tui/lib.sh

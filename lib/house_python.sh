@@ -25,6 +25,7 @@
 # The verdict is exported (GOH_PY, GOH_PY_OK) so a process tree resolves once.
 
 # _goh_house_py_version <python>: its major.minor.micro, or nothing and 1.
+. "$(dirname "${BASH_SOURCE[0]}")/../lib/bash5.sh" && goh_bash5 "$@"
 _goh_house_py_version() {
     "$1" -I -S -c 'import sys; print("%d.%d.%d" % sys.version_info[:3])' 2>/dev/null </dev/null
 }

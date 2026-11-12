@@ -19,6 +19,7 @@
 #   goh_step "fmt" cargo fmt --all -- --check
 #   goh_done
 # Consumers load HEAD's copy of this file, never the shared working tree (C4, _from_head.sh).
+. "$(dirname "${BASH_SOURCE[0]}")/../lib/bash5.sh" && goh_bash5 "$@"
 . "$(dirname "${BASH_SOURCE[0]}")/_from_head.sh" && goh_from_head_lib "${BASH_SOURCE[0]}" && return 0
 
 set -euo pipefail

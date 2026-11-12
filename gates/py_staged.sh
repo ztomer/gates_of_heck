@@ -29,6 +29,7 @@
 #
 # The runner resolution is gates/_py.sh's, shared with py_gate.sh (GOH_PY_RUNNER, else .venv, else python3).
 { # parse-guard -- bash reads this group whole before running it (tests/test_parse_guard.py)
+. "$(dirname "${BASH_SOURCE[0]}")/../lib/bash5.sh" && goh_bash5 "$@"
 . "$(dirname "${BASH_SOURCE[0]}")/_from_head.sh"; goh_from_head "${BASH_SOURCE[0]}" "$@"   # run HEAD, not the tree (C4)
 set -euo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -78,7 +79,7 @@ else
         [ -n "$f" ] && STAGED+=("$f")
     done < <( (goh_bind_hook_index  # the index being committed (gates/_git_env.sh); ruff gets none
               git diff --cached --name-only --diff-filter=ACMR -- '*.py') 2>/dev/null || true)
-    # macOS ships bash 3.2: no mapfile, and "${arr[@]}" on an empty array trips `set -u` there.
+    # Nothing staged: nothing to judge, and saying so beats an empty run.
     if [ "${#STAGED[@]}" -eq 0 ]; then
         info "no staged .py files"
         goh_done
@@ -109,16 +110,16 @@ fi
 if [ -n "${GOH_PY_LINT_CEILINGS:-}" ]; then
     # Debt the repo carries, counted per file, may only fall (gates/py_lint_ceiling.py, BACKLOG 4.4).
     goh_step "ruff check under $GOH_PY_LINT_CEILINGS ($scope)" \
-        "$GOH_PY" "$HERE/py_lint_ceiling.py" --check --ceilings "$GOH_PY_LINT_CEILINGS" --runner "$RUN" -- ${STAGED[@]+"${STAGED[@]}"}
+        "$GOH_PY" "$HERE/py_lint_ceiling.py" --check --ceilings "$GOH_PY_LINT_CEILINGS" --runner "$RUN" -- "${STAGED[@]}"
 else
-    goh_step "ruff check ($scope)"        "${RUN_ARR[@]}" ruff check --extend-select PLW1510 ${STAGED[@]+"${STAGED[@]}"}  # the house floor (G17b, py_gate.sh)
-    goh_py_house_unadopted ${STAGED[@]+"${STAGED[@]}"}
+    goh_step "ruff check ($scope)"        "${RUN_ARR[@]}" ruff check --extend-select PLW1510 "${STAGED[@]}"  # the house floor (G17b, py_gate.sh)
+    goh_py_house_unadopted "${STAGED[@]}"
 fi
-goh_step "ruff format check ($scope)" "${RUN_ARR[@]}" ruff format --check ${STAGED[@]+"${STAGED[@]}"}
+goh_step "ruff format check ($scope)" "${RUN_ARR[@]}" ruff format --check "${STAGED[@]}"
 if [ -n "${GOH_PY_NOQA_PARITY:-}" ]; then
     # A `# noqa` ruff honours and the second linter the repo runs ignores (gates/py_noqa_parity.py, 4.5).
     goh_step "noqa parity with $GOH_PY_NOQA_PARITY ($scope)" \
-        "$GOH_PY" "$HERE/py_noqa_parity.py" --linters "$GOH_PY_NOQA_PARITY" --runner "$RUN" -- ${STAGED[@]+"${STAGED[@]}"}
+        "$GOH_PY" "$HERE/py_noqa_parity.py" --linters "$GOH_PY_NOQA_PARITY" --runner "$RUN" -- "${STAGED[@]}"
 fi
 [ "$scope" != staged ] || cd "$checkout"
 goh_done

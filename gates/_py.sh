@@ -8,6 +8,7 @@
 # missing tool, with no install line (2026-10-10, Homebrew python3 3.14 -> 3.15). Each tool is
 # probed before any step runs, and a missing one is a named refusal (gates/required_tools.tsv).
 
+. "$(dirname "${BASH_SOURCE[0]}")/../lib/bash5.sh" && goh_bash5 "$@"
 # shellcheck source=lib/house_python.sh
 . "${BASH_SOURCE[0]%/*}/../lib/house_python.sh" || exit 1   # GOH_PY: the house interpreter, never PATH's first python3 (G2d)
 

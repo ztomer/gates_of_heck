@@ -24,6 +24,7 @@
 # GOH_STEP_TIMEOUT) belongs to a step the gate starts AFTER this returns, so a wait can never spend
 # a step's budget. Pinned by tests/test_gate_slot.py.
 
+. "$(dirname "${BASH_SOURCE[0]}")/../lib/bash5.sh" && goh_bash5 "$@"
 # shellcheck source=lib/house_python.sh
 . "${BASH_SOURCE[0]%/*}/house_python.sh" || exit 1   # GOH_PY: the house interpreter, never PATH's first python3 (G2d)
 GATE_SLOT_HELPER="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/gate_slot.py" # beside this file

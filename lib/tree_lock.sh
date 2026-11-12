@@ -34,6 +34,7 @@
 # removing a flock file under a holder hands the next caller a fresh, unlocked
 # inode, which is the race this file exists to prevent).
 
+. "$(dirname "${BASH_SOURCE[0]}")/../lib/bash5.sh" && goh_bash5 "$@"
 TREE_LOCK_FD=9
 
 # A peer's pid is written into the file for the wait message only; the lock

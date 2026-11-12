@@ -10,7 +10,7 @@
 # that variable names the index being committed -- which is exactly the tree to key on. Every git
 # call on a gates_of_heck checkout strips the GIT_* variables first, or a hook's index would be
 # read as goh's.
-
+. "$(dirname "${BASH_SOURCE[0]}")/../lib/bash5.sh" && goh_bash5 "$@"
 # shellcheck source=gates/_hash.sh
 . "$(dirname "${BASH_SOURCE[0]}")/_hash.sh"
 # shellcheck source=gates/_git_env.sh

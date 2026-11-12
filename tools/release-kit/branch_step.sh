@@ -20,6 +20,7 @@
 # Tests: tests/test_release_kit_branch.py.
 
 # release_default_branch -- origin's default branch name, or nothing when it cannot be read.
+. "$(dirname "${BASH_SOURCE[0]}")/../../lib/bash5.sh" && goh_bash5 "$@"
 release_default_branch() {
   local def
   def="$(git symbolic-ref -q --short refs/remotes/origin/HEAD 2>/dev/null || true)"

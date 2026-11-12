@@ -5,6 +5,7 @@
 # so every installed repo has it at runtime with no re-install.
 #
 #   goh_refuse_held <repo root> <what is refused>   # 0 when not held; 1 with the reason and lift printed
+. "$(dirname "${BASH_SOURCE[0]}")/../lib/bash5.sh" && goh_bash5 "$@"
 if [ -z "${GOH_PY:-}" ]; then
     # shellcheck source=lib/house_python.sh
     . "${BASH_SOURCE[0]%/*}/house_python.sh" || return 1

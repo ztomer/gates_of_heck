@@ -17,6 +17,7 @@
 #     the push's cold one takes minutes (ZoneWM's `make verify`, 25 min cold);
 #   * the push is PINNED (`<sha>:refs/heads/<branch>`), and the remote is read back afterwards.
 { # parse-guard -- bash reads this group whole before running it (tests/test_parse_guard.py)
+. "$(dirname "${BASH_SOURCE[0]}")/../lib/bash5.sh" && goh_bash5 "$@"
 . "$(dirname "${BASH_SOURCE[0]}")/_from_head.sh"; goh_from_head "${BASH_SOURCE[0]}" "$@"   # run HEAD, not the tree (C4)
 set -euo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -68,7 +69,7 @@ if [ -n "$(setting GOH_PYTHON_FORMATTED)" ]; then
     py=()
     for p in "$@"; do case "$p" in *.py) [ -e "$p" ] && py+=("$p") ;; esac; done
     if [ "${#py[@]}" -gt 0 ]; then
-        ruff format -q -- ${py[@]+"${py[@]}"} || die "round stopped: ruff format failed"
+        ruff format -q -- "${py[@]}" || die "round stopped: ruff format failed"
         ok "$(counted "${#py[@]}" "Python file") formatted"
     fi
 fi
@@ -102,7 +103,7 @@ if [ -n "$pre" ]; then
 fi
 
 section "commit (the pre-commit hook gates it)"
-[ "${#add[@]}" -eq 0 ] || git add -- ${add[@]+"${add[@]}"}
+[ "${#add[@]}" -eq 0 ] || git add -- "${add[@]}"
 git diff --cached --quiet -- "$@" && die "round stopped: nothing to commit in the named paths"
 git commit -q --only -F - -- "$@" <<<"$msg" || die "round stopped: the commit was refused (above)"
 sha="$(git rev-parse HEAD)"

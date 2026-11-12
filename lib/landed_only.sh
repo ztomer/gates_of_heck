@@ -23,6 +23,7 @@
 #                             Each use is appended to <common git dir>/goh-main-commits.log (UTC
 #                             time, HEAD, reason) and said on stderr (GOH.MAINCOMMIT, 2026-11-11).
 # Pinned by tests/test_landed_only_commit.py.
+. "$(dirname "${BASH_SOURCE[0]}")/../lib/bash5.sh" && goh_bash5 "$@"
 goh_refuse_unlanded_commit() {
     local root="$1" what="$2" landed branch gitdir common
     [ "${GOH_LAND_CALLER-}" = "land.sh" ] && return 0

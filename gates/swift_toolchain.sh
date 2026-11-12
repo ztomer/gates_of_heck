@@ -24,6 +24,7 @@
 #   . "$GOH_DIR/gates/swift_toolchain.sh"; goh_swift_resolve
 #   "$SWIFT" build -c release …
 
+. "$(dirname "${BASH_SOURCE[0]}")/../lib/bash5.sh" && goh_bash5 "$@"
 _goh_swift_fail() {
     if declare -F die >/dev/null 2>&1; then die "$1"; fi
     printf '✗ %s\n' "$1" >&2

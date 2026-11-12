@@ -8,6 +8,7 @@
 # goh_owner_repo <root>: prints `<remote>\t<owner>/<name>` for the ONE remote under the owner's
 # account, or dies listing every remote and its owner -- a clone of someone else's repo (apes'
 # `origin` is Galzai/apes; the owner's fork is `estate`) must never have the other account archived.
+. "$(dirname "${BASH_SOURCE[0]}")/../lib/bash5.sh" && goh_bash5 "$@"
 goh_owner_repo() {
     local root="$1" login remote url slug found="" listed=""
     login="${GOH_GH_USER:-$("${GOH_GH:-gh}" api user --jq .login)}" \

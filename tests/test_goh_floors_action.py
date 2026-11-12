@@ -348,3 +348,13 @@ def test_the_cache_step_runs_only_when_a_release_is_needed() -> None:
     assert "if: steps.key.outputs.needed == 'true'" in head + cache.split("\n    - ", 1)[0], (
         "the cache step runs on a runner that downloads nothing"
     )
+
+
+def test_bash_5_is_met_before_any_goh_script_runs() -> None:
+    """GOH.BASH5: floors.sh is guarded, so the runner must have a bash >= 5 before it runs; the
+    step asks lib/bash5.sh (never a restated floor) and installs Homebrew's on macOS."""
+    action = (ACTION / "action.yml").read_text()
+    first = action[action.index("  steps:\n") :].split("\n    - ", 2)[1]
+    assert 'bash "$goh/lib/bash5.sh"' in first and "brew install bash" in first, first
+    assert 'b="$(bash "$goh/lib/bash5.sh")"' in first, "a failed probe inside an echo is not seen"
+    assert action.index("lib/bash5.sh") < action.index('floors.sh" floor')

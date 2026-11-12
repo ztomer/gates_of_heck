@@ -23,6 +23,7 @@
 #
 # Truthiness matches the Python convention: "", 0, false, no, off mean OFF.
 
+. "$(dirname "${BASH_SOURCE[0]}")/../lib/bash5.sh" && goh_bash5 "$@"
 GOH_HEADLESS_REFUSAL_EXIT=3
 
 _headless_truthy() {

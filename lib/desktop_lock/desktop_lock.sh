@@ -75,6 +75,7 @@
 #     <human label> (pid <pid>)
 # The Python half (desktop_lock.py) writes and reads the SAME bytes.
 
+. "$(dirname "${BASH_SOURCE[0]}")/../../lib/bash5.sh" && goh_bash5 "$@"
 DESKTOP_LOCK_DIR="/tmp/mac-desktop-ui.lock"
 # Long enough that a run queued behind a real peer waits it out rather than
 # failing; short enough that a wedged harness reports instead of hanging a

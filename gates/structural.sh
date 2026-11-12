@@ -13,6 +13,7 @@
 #   GOH_MAX_LINES=500          # file-length cap; unset disables the check
 #   GOH_LINE_EXCLUDE="re1|re2" # paths exempt from the cap
 { # parse-guard -- bash reads this group whole before running it (tests/test_parse_guard.py)
+. "$(dirname "${BASH_SOURCE[0]}")/../lib/bash5.sh" && goh_bash5 "$@"
 . "$(dirname "${BASH_SOURCE[0]}")/_from_head.sh"; goh_from_head "${BASH_SOURCE[0]}" "$@"   # run HEAD, not the tree (C4)
 set -euo pipefail
 # Every step this gate times is the native tier's in-process work, whose raw CPU is its figure

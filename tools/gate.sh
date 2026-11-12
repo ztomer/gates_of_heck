@@ -4,6 +4,7 @@
 #   --staged : pre-commit scope (fast) — layer 1 only
 #   --full   : pre-push scope — every layer
 { # parse-guard -- bash reads this group whole before running it (tests/test_parse_guard.py)
+. "$(dirname "${BASH_SOURCE[0]}")/../lib/bash5.sh" && goh_bash5 "$@"
 set -euo pipefail
 # THIS repo is the gates: its gate is its own tree, never $GOH_DIR (see .gatesrc's GOH_CI_STEPS).
 GOH="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"

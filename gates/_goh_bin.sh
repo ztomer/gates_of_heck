@@ -24,6 +24,7 @@
 
 # Its git on the gates checkout drops a hook's repository variables (contract #12); sourced here
 # too, because a probe sources this file alone (tests/_drift_guard.py).
+. "$(dirname "${BASH_SOURCE[0]}")/../lib/bash5.sh" && goh_bash5 "$@"
 # shellcheck source=gates/_git_env.sh
 . "$(dirname "${BASH_SOURCE[0]}")/_git_env.sh"
 # shellcheck source=lib/house_python.sh

@@ -15,6 +15,7 @@
 #
 # release.sh's tap step calls this; a product's own release script calls it the same way.
 { # parse-guard -- bash reads this group whole before running it (tests/test_parse_guard.py)
+. "$(dirname "${BASH_SOURCE[0]}")/../../lib/bash5.sh" && goh_bash5 "$@"
 set -euo pipefail
 GOH="${GOH_DIR:-$HOME/Projects/gates_of_heck}"
 # shellcheck disable=SC1091
@@ -71,7 +72,7 @@ esac
 # before it is written: two blind sed expressions once moved a cask's digest but not its version,
 # and gave multitop's agent resources the source tarball's digest (BACKLOG 6.15).
 bash "$GOH/gates/python.sh" "$GOH/tools/release-kit/tap_rewrite.py" "$file" --tag "$TAG" \
-  --sha "$sha" ${RESOURCES[@]+"${RESOURCES[@]}"} \
+  --sha "$sha" "${RESOURCES[@]}" \
   || die "tap_bump: ${SUBDIR}/${NAME}.rb was not rewritten (above) -- nothing pushed"
 
 if GIT_OPTIONAL_LOCKS=0 git -C "$work/tap" diff --quiet; then

@@ -9,6 +9,7 @@
 # exit 137 by itself; the words say "exit 137 = SIGKILL", which is what a status of 137 means to
 # every shell. The words hold no parentheses: lib/fail_lines.py reads them inside `failed (...)`.
 # Pinned by tests/test_step_exit_reason.py. Bash 3.2-safe.
+. "$(dirname "${BASH_SOURCE[0]}")/../lib/bash5.sh" && goh_bash5 "$@"
 goh_exit_reason() {
     local rc="$1" limit="${2:-}" name
     if [ "$rc" -eq 124 ] && [ -n "$limit" ] && [ "$limit" -gt 0 ]; then

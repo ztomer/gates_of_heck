@@ -8,6 +8,7 @@
 #
 # <src> already an export: VAR is <src>. Returns 2, the reason on stderr, when <src> names no commit;
 # VAR is then left as it was. Never call it in a $(...): the export must reach the caller.
+. "$(dirname "${BASH_SOURCE[0]}")/../lib/bash5.sh" && goh_bash5 "$@"
 # shellcheck source=lib/house_python.sh
 . "${BASH_SOURCE[0]%/*}/house_python.sh" || return 1
 

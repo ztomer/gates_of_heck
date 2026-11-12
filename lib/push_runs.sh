@@ -2,6 +2,7 @@
 # The push gate's run ownership: who holds a run dir under `$export_root`, and reaping what a killed
 # gate left behind. Sourced by gates/push_gate.sh after the tui lib (for `info`).
 
+. "$(dirname "${BASH_SOURCE[0]}")/../lib/bash5.sh" && goh_bash5 "$@"
 # shellcheck source=lib/rm_tree.sh
 . "${BASH_SOURCE[0]%/*}/rm_tree.sh"
 

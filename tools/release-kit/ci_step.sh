@@ -19,6 +19,7 @@
 # --no-push with an unpushed HEAD refuses: no CI can run on a commit origin does not have.
 # Tests: tests/test_release_kit_ci.py (the fake gh lists runs only for commits origin holds).
 
+. "$(dirname "${BASH_SOURCE[0]}")/../../lib/bash5.sh" && goh_bash5 "$@"
 ci_wait_secs() { # <name> <value> -- the value, when it is a whole number of seconds
   case "$2" in
     '' | *[!0-9]*) die "step 'args': $1 must be a whole number of seconds (got '$2')" ;;

@@ -10,6 +10,7 @@
 # refused, naming the writer and the test. Outside goh's suite this is always 0.
 
 # goh_suite_cache_ok <path> <writer> -- 0 when <path> may be written; 1, with the reason on stderr.
+. "$(dirname "${BASH_SOURCE[0]}")/../lib/bash5.sh" && goh_bash5 "$@"
 goh_suite_cache_ok() {
     local real="${GATES_OF_HECK_SUITE_REAL_HOME:-}"
     [ -n "$real" ] || return 0   # set by tests/suite_home.py alone: keyed on nothing a scrub drops

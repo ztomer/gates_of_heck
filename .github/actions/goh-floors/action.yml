@@ -10,7 +10,7 @@
 #   - uses: ztomer/gates_of_heck/.github/actions/goh-floors@<release commit>   # a commit id: never @main
 #     with: { goh-dir: "${{ env.GOH_DIR }}" }          # goh cloned elsewhere: judge THAT copy's floors
 name: goh-floors
-description: Meet gates_of_heck's tool floors (python3, shellcheck) from its own floor table.
+description: Meet gates_of_heck's tool floors (bash 5, python3, shellcheck) from its own floor table.
 inputs:
   goh-dir:
     description: The gates_of_heck checkout whose floors to meet; default, the one this action is in.
@@ -23,6 +23,22 @@ outputs:
 runs:
   using: composite
   steps:
+    # bash >= 5 FIRST (GOH.BASH5): every goh script re-execs under it (lib/bash5.sh), including
+    # floors.sh below, and a macOS runner's PATH finds Apple's /bin/bash 3.2. lib/bash5.sh, run
+    # directly by that 3.2, names the bash it would use or fails naming the fix; a macOS runner with
+    # none gets Homebrew's, at /opt/homebrew/bin/bash -- the same bash the owner's machine uses. A
+    # Linux runner's system bash is already 5. Nothing here restates the floor.
+    - shell: bash
+      env:
+        GOH_FLOORS_DIR: ${{ inputs.goh-dir }}
+      run: |
+        set -euo pipefail
+        goh="${GOH_FLOORS_DIR:-$GITHUB_ACTION_PATH/../../..}"
+        if ! bash "$goh/lib/bash5.sh" >/dev/null 2>&1 && [ "$(uname -s)" = Darwin ]; then
+          brew install bash
+        fi
+        b="$(bash "$goh/lib/bash5.sh")"   # captured, so a failure fails the step (G7)
+        echo "bash >= 5: $b"
     - id: floors
       shell: bash
       env:

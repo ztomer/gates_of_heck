@@ -34,6 +34,7 @@
 # GOH_FLOORS_ATTEMPTS / GOH_FLOORS_BACKOFF (the retry), GOH_FLOORS_CACHE (the tarball cache). Platforms: Linux x86_64 and aarch64, macOS on Apple silicon. Anything else is
 # refused -- never a fallback build.
 { # parse-guard -- bash reads this group whole before running it (tests/test_parse_guard.py)
+. "$(dirname "${BASH_SOURCE[0]}")/../../../lib/bash5.sh" && goh_bash5 "$@"
 set -euo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 GOH="$(cd "$HERE/../../.." && pwd)"

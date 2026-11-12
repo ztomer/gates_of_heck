@@ -28,6 +28,7 @@
 
 # proven_decl <step> — the declared artifacts, one per line: "<produces|consumes> <path>".
 # Pure parameter expansion: no spawn, and bash 3.2 safe.
+. "$(dirname "${BASH_SOURCE[0]}")/../lib/bash5.sh" && goh_bash5 "$@"
 proven_decl() {
     local step="$1" head rest item kind paths path
     case "$step" in

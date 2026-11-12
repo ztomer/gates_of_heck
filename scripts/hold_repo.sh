@@ -11,6 +11,7 @@
 # Uses: an archived repo (archive_repo.sh), an upstream clone that belongs to someone else, a
 # repo frozen during a release, a repo an owner ruling parks.
 { # parse-guard -- bash reads this group whole before running it (tests/test_parse_guard.py)
+. "$(dirname "${BASH_SOURCE[0]}")/../lib/bash5.sh" && goh_bash5 "$@"
 set -euo pipefail
 GOH="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 # shellcheck source=tui/lib.sh

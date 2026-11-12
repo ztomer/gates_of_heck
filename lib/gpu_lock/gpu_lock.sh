@@ -103,6 +103,7 @@
 # that only returns non-zero is not enough here: `return` from a sourced file
 # returns from the SOURCE, and the caller carries on regardless. Defining
 # fallbacks means `die` is always a real abort, whatever the caller sourced.
+. "$(dirname "${BASH_SOURCE[0]}")/../../lib/bash5.sh" && goh_bash5 "$@"
 for _gpu_lock_helper in info ok warn err; do
     declare -F "$_gpu_lock_helper" >/dev/null 2>&1 || eval "
         $_gpu_lock_helper() { printf '%s\n' \"\$*\" >&2; }"

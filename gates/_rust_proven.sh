@@ -26,6 +26,7 @@
 #   * no native goh, or a scope it cannot name: the group simply runs, uncached, and says so.
 # GOH_PROVEN=0 turns all of it off.
 
+. "$(dirname "${BASH_SOURCE[0]}")/../lib/bash5.sh" && goh_bash5 "$@"
 # shellcheck source=gates/_proven.sh
 . "$HERE/_proven.sh"
 # shellcheck source=gates/_goh_bin.sh

@@ -29,6 +29,7 @@
 # a hand-kept one had drifted to 7 of git's 15. Asked ONCE per process tree and exported -- it was
 # ~1300 spawns per suite run (2026-10-06, tests/test_git_local_vars.py) -- and an inherited value is
 # trusted only when it names GIT_DIR, the variable the list exists to drop.
+. "$(dirname "${BASH_SOURCE[0]}")/../lib/bash5.sh" && goh_bash5 "$@"
 case " ${GOH_GIT_LOCAL_VARS:-} " in
     *" GIT_DIR "*) ;;
     *) GOH_GIT_LOCAL_VARS="$(git rev-parse --local-env-vars 2>/dev/null | tr '\n' ' ')" ;;

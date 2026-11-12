@@ -17,6 +17,7 @@
 # silent: the verdict was already given by the checks, and a leftover temp directory is the machine's
 # housekeeping, not a defect in the code under test. Returns 0 either way. The caller's `set -e` must
 # not be able to end the gate over cleanup.
+. "$(dirname "${BASH_SOURCE[0]}")/../lib/bash5.sh" && goh_bash5 "$@"
 goh_rm_tree() {
     local p
     for p in "$@"; do

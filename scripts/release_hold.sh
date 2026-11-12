@@ -7,6 +7,7 @@
 # which checks GitHub first) is refused here, naming that command -- the wrapper that owns the way
 # out calls this with GOH_HOLD_LIFTED_BY set to its own name.
 { # parse-guard -- bash reads this group whole before running it (tests/test_parse_guard.py)
+. "$(dirname "${BASH_SOURCE[0]}")/../lib/bash5.sh" && goh_bash5 "$@"
 set -euo pipefail
 GOH="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 # shellcheck source=tui/lib.sh

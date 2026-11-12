@@ -70,9 +70,9 @@
 #   tools/release-kit/release.sh --version 1.2.3 --gate "$GOH/tools/gate.sh" \
 #       --tap ztomer/homebrew-tap --cask myapp --artifact dist/MyApp-1.2.3.dmg
 # Run HEAD, not the tree (C4) -- once: the self-buffered copy below runs from $TMPDIR, where
-# `../../gates` is nothing, and its parent already chose the tree (tests/test_release_kit.py).
-[ -n "${GOH_RELEASE_BUFFERED:-}" ] \
-  || { . "$(dirname "${BASH_SOURCE[0]}")/../../gates/_from_head.sh"; goh_from_head "${BASH_SOURCE[0]}" "$@"; }
+# `../../gates` is nothing, and its parent already chose the tree (tests/test_release_kit.py). The
+# bash 5 guard runs first too (lib/bash5.sh); the buffered copy is exec'd by its "$BASH".
+[ -n "${GOH_RELEASE_BUFFERED:-}" ] || { . "$(dirname "${BASH_SOURCE[0]}")/../../lib/bash5.sh" && goh_bash5 "$@"; . "$(dirname "${BASH_SOURCE[0]}")/../../gates/_from_head.sh"; goh_from_head "${BASH_SOURCE[0]}" "$@"; }
 set -euo pipefail
 
 # ── self-buffering (must run before ANY logic) ───────────────────────────────
@@ -90,7 +90,7 @@ if [ -z "${GOH_RELEASE_BUFFERED:-}" ]; then
   _SELF_COPY="$(mktemp "${TMPDIR:-/tmp}/goh-release-buffered.XXXXXX")"
   cat "$0" > "${_SELF_COPY}"
   export GOH_RELEASE_BUFFERED="${_SELF_COPY}"
-  exec /bin/bash "${_SELF_COPY}" "$@"
+  exec "$BASH" "${_SELF_COPY}" "$@"   # bash >= 5: the guard above ran first
 fi
 _SELF_COPY="${GOH_RELEASE_BUFFERED}"
 unset GOH_RELEASE_BUFFERED

@@ -662,3 +662,44 @@ node AND under the `JavaScriptCore` fallback that reads the same files with no n
 `.js` file carrying module syntax is red, because a browser loads a `.js` file with `<script
 src>`; a `.mjs` file is green and is named in the report as a module; a `.cjs` file with a
 top-level `return` is green, because that is node's CommonJS; the clean tree is green).
+
+## 28. goh's shell runs on bash >= 5, and the guard is every bash file's first statement
+
+Owner ruling 2026-11-12 (GOH.BASH5): require bash 5, enforced structurally -- not "stay
+bash-3.2-safe", not zsh. `#!/usr/bin/env bash` finds Homebrew's 5.3 in the owner's terminal and
+Apple's /bin/bash 3.2 on the hosted macOS runner, under a minimal-PATH git hook and under launchd,
+so the local gate and CI judged two languages (v0.106.1: `title[@]: unbound variable` on the runner
+only). Every bash file goh tracks runs, as its first statement,
+
+    . "$(dirname "${BASH_SOURCE[0]}")/<up>/lib/bash5.sh" && goh_bash5 "$@"
+
+(`$GOH/lib/bash5.sh` in the hook templates, which are copied into consumers).
+
+* **Executed** (the caller is not `source`, read from `FUNCNAME[1]`): under bash < 5 it re-execs the
+  same script with the same arguments and stdin under the first candidate whose OWN `BASH_VERSINFO`
+  is >= 5 -- macOS `/opt/homebrew/bin/bash` (Apple silicon only), Linux `/usr/bin/bash`, `/bin/bash`
+  (already 5 on every supported distribution: the guard is a no-op there), then PATH's bash. None:
+  it dies, Kare style, naming the fix (`brew install bash`). The parse guard means bash 3.2 PARSES
+  the whole group before the guard runs, so every guarded file must parse under 3.2 (a test runs
+  `/bin/bash -n` over each); it never RUNS past the guard there.
+* **Sourced**: never re-execs (a library has neither its caller's argv nor the right to replace
+  it). Under bash < 5 it warns once per process tree, naming the script that sourced it, and
+  returns: consumer scripts source goh's libraries under whatever bash they run, so a sourced file
+  stays bash-3.2-safe (`tests/test_bash32_empty_array.py` holds its empty-array rule to them only).
+* **No loop**: the re-exec exports `GOH_BASH5_REEXEC=<chosen bash>`; the bash-5 child unsets it.
+  A child still below 5 with the marker set was handed a bash that lied: refused, never re-exec'd.
+* **Seams**: `GOH_BASH_CANDIDATES` (colon list replacing the candidates: `=/bin/bash` is "no bash 5
+  found") and `GOH_BASH_MAJOR` (the major to believe of this shell: "old bash" where no 3.2 exists;
+  dropped before the re-exec). On this Mac both directions also run against the real /bin/bash 3.2.
+* **CI**: the goh-floors action's first step runs `lib/bash5.sh` directly (it prints the bash it
+  would use, or fails) and installs Homebrew's bash on a macOS runner that has none, so the hosted
+  run re-execs into `/opt/homebrew/bin/bash` exactly as the owner's machine does.
+* Internal re-execs of an already-guarded script use `"$BASH"` (`gates/_from_head.sh`, the release
+  kit's self-buffered copy, which ran under a hard-coded `/bin/bash` until then).
+
+Pin: `tests/test_bash5_guard.py` (the gate: the guard is the first statement of every tracked bash
+file -- only the parse-guard opener, `set` and plain assignments may precede it -- with a stale-entry
+check on its two exemptions; calibrated on synthetic texts both ways and by hand on 2026-11-12 by
+deleting the guard from `tools/land.sh` and planting a `mapfile` before it in `gates/goh.sh`, both red
+naming the file; plus re-exec keeping args and stdin, no bash 5 dies naming the fix, the
+GOH_BASH_MAJOR seam, the lying-bash refusal, sourced-never-re-execs-and-warns-once).

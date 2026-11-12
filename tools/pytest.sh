@@ -10,6 +10,7 @@
 # the spawn cuts landed; 16 was a draw with 12 under load, and leaves no
 # headroom for the other sessions sharing the box.
 { # parse-guard -- bash reads this group whole before running it (tests/test_parse_guard.py)
+. "$(dirname "${BASH_SOURCE[0]}")/../lib/bash5.sh" && goh_bash5 "$@"
 set -euo pipefail
 # shellcheck source=lib/house_python.sh
 . "${BASH_SOURCE[0]%/*}/../lib/house_python.sh" || exit 1   # GOH_PY: the house interpreter, never PATH's first python3 (G2d)
@@ -99,7 +100,7 @@ for a in "$@"; do
     [ -e "${a%%::*}" ] && { TARGET=(); break; }
 done
 rc=0
-"$GOH_PY" -m pytest ${TARGET[@]+"${TARGET[@]}"} "${ARGS[@]}" "$@" || rc=$?
+"$GOH_PY" -m pytest "${TARGET[@]}" "${ARGS[@]}" "$@" || rc=$?
 if [ "$rc" -eq 0 ]; then
     goh_rm_tree "$PYTEST_DEBUG_TEMPROOT"
 else

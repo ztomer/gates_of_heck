@@ -5,6 +5,7 @@
 # ── rust ────────────────────────────────────────────────────────────────────
 # Ported from app_updates/tools/coverage_check.sh; see lineage above. ONE instrumented run of
 # every declared lib/bin/test target, its lcov fed to the CGU-normalizing merger below.
+. "$(dirname "${BASH_SOURCE[0]}")/../lib/bash5.sh" && goh_bash5 "$@"
 run_rust() {
     cd "$PROJ" || exit 2
     need cargo "cargo llvm-cov drives the instrumented build"

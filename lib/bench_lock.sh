@@ -43,6 +43,7 @@
 #
 # Pinned by tests/test_bench_lock.py and tests/test_load_gate_inflight.py.
 
+. "$(dirname "${BASH_SOURCE[0]}")/../lib/bash5.sh" && goh_bash5 "$@"
 BENCH_LOCK_DIR="${GOH_BENCH_LOCK_DIR:-/tmp/gates-of-heck-bench.lock}"
 BENCH_LOCK_MAX_HOLD="${GOH_BENCH_MAX_HOLD:-900}"
 BENCH_LOCK_ENTRY="" # this process's registration: the caller's cleanup removes it

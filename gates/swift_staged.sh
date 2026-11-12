@@ -21,6 +21,7 @@
 #
 # Exits 0 when nothing Swift is staged, and when every staged file is excluded by its config.
 { # parse-guard -- bash reads this group whole before running it (tests/test_parse_guard.py)
+. "$(dirname "${BASH_SOURCE[0]}")/../lib/bash5.sh" && goh_bash5 "$@"
 . "$(dirname "${BASH_SOURCE[0]}")/_from_head.sh"; goh_from_head "${BASH_SOURCE[0]}" "$@"   # run HEAD, not the tree (C4)
 set -euo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -71,7 +72,7 @@ while IFS= read -r f; do
     [ -n "$f" ] && STAGED+=("$f")
 done < <( (goh_bind_hook_index  # the index being committed (gates/_git_env.sh)
           git diff --cached --name-only --diff-filter=ACMR --relative -- '*.swift') 2>/dev/null || true)
-# macOS ships bash 3.2: no mapfile, and "${arr[@]}" on an empty array trips `set -u` there.
+# Nothing staged: nothing to judge, and saying so beats an empty run.
 if [ "${#STAGED[@]}" -eq 0 ]; then
     info "no staged .swift files"
     goh_done
@@ -81,7 +82,7 @@ goh_require swiftlint "brew install swiftlint"
 
 # Each file's lint root: its nearest ancestor (inside the repo) with a .swiftlint.yml, else ".".
 pairs=""
-for f in ${STAGED[@]+"${STAGED[@]}"}; do
+for f in "${STAGED[@]}"; do
     d="$(dirname "$f")"
     while [ "$d" != "." ] && [ ! -f "$d/.swiftlint.yml" ]; do d="$(dirname "$d")"; done
     pairs="$pairs$d	$f
@@ -141,15 +142,15 @@ while IFS= read -r root; do
         if [ "$root" = "." ]; then files+=("$f"); else files+=("${f#"$root"/}"); fi
     done <<<"$pairs"
     kept=()
-    for f in ${files[@]+"${files[@]}"}; do
+    for f in "${files[@]}"; do
         in_included "$root" "$f" && kept+=("$f")
     done
     if [ "${#kept[@]}" -eq 0 ]; then
         info "every staged .swift in $root is outside the included roots of $root/.swiftlint.yml"
         continue
     fi
-    files=(${kept[@]+"${kept[@]}"})
-    [ "$root" = "." ] || ! excluded_above "$root" ${files[@]+"${files[@]}"} || continue
+    files=("${kept[@]}")
+    [ "$root" = "." ] || ! excluded_above "$root" "${files[@]}" || continue
     # That root's own baseline, as swift_gate.sh run there would read it. The gated repo's
     # .gatesrc, unknown when this script is linted (GOH.SHX), in a child: `bash -c`, as land.sh reads it.
     baseline="$(cd "$root" && bash -c 'unset GOH_SWIFT_LINT_BASELINE
@@ -158,7 +159,7 @@ while IFS= read -r root; do
     where=""
     [ "$root" = "." ] || where=" in $root"
     goh_step "swiftlint --strict (staged$where${baseline:+, baseline: $(basename "$baseline")})" \
-        bash "$HERE/swift_staged.sh" --lint-root "$root" "$baseline" ${files[@]+"${files[@]}"}
+        bash "$HERE/swift_staged.sh" --lint-root "$root" "$baseline" "${files[@]}"
 done <<<"$roots"
 goh_done
 exit

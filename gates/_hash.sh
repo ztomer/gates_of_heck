@@ -3,6 +3,7 @@
 # so the record install writes and the comparison doctor makes cannot drift.
 # sha256 digest of a file's contents, via whichever tool exists. All three
 # produce the same SHA-256 digest, so records stay comparable across the chain.
+. "$(dirname "${BASH_SOURCE[0]}")/../lib/bash5.sh" && goh_bash5 "$@"
 hash_hex() {
     if command -v shasum >/dev/null 2>&1; then
         shasum -a 256 "$1" | cut -d' ' -f1

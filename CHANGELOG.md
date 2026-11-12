@@ -2,6 +2,26 @@
 
 ## Unreleased
 
+* **goh's shell runs on bash >= 5, enforced structurally (GOH.BASH5, owner ruling 2026-11-12).**
+  `#!/usr/bin/env bash` found Homebrew's 5.3 locally and Apple's /bin/bash 3.2 on the hosted macOS
+  runner, under minimal-PATH git hooks and under launchd, so the local gate and CI ran two
+  languages. Every tracked bash file (92) now runs `lib/bash5.sh` as its first statement: an
+  EXECUTED script under bash < 5 re-execs itself, same arguments and stdin, under the first bash
+  >= 5 it finds (`/opt/homebrew/bin/bash` on macOS; the system bash on Linux, where it is a no-op),
+  or dies naming the fix (`brew install bash`); a SOURCED file never re-execs and warns once, so
+  goh's libraries stay bash-3.2-safe for the consumer scripts that source them. The re-exec carries
+  a marker the child consumes (no loop; a bash that lies about its version is refused), and two
+  seams (`GOH_BASH_CANDIDATES`, `GOH_BASH_MAJOR`) test both directions, with the real /bin/bash 3.2
+  as the red case on this Mac. `tests/test_bash5_guard.py` is the gate (guard first in every file,
+  every file parses under 3.2), calibrated red by deleting one guard and planting a statement
+  before another. The goh-floors action meets bash 5 first (Homebrew's on a macOS runner without
+  it), so CI re-execs into the same bash the owner's machine uses. The 18 `${a[@]+"${a[@]}"}`
+  workarounds of v0.106.2 sat in executed scripts the guard now runs under bash 5, so they are
+  plain `"${a[@]}"` again; `tests/test_bash32_empty_array.py` now proves the guard against /bin/bash
+  3.2 and holds the empty-array rule to sourced libraries only. `gates/_from_head.sh` and the
+  release kit's self-buffered copy re-exec with `"$BASH"`: the kit's copy ran under a hard-coded
+  /bin/bash 3.2 until now. Contract: docs/contracts.md section 28.
+
 ## v0.106.3 -- goh is clean under Rust 1.100.0: no redundant clone, and the crate cache reads cargo's per-unit build dir
 
 * **The workspace is clippy-clean under Rust 1.100.0.** Its `redundant_clone` now sees the last use

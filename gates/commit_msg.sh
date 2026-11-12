@@ -7,6 +7,7 @@
 # tools/commit_msg.sh, runs last when it exists. `git commit --no-verify` skips
 # this, and push_gate.sh asks again over the pushed range, so the skip does not survive the push.
 { # parse-guard -- bash reads this group whole before running it (tests/test_parse_guard.py)
+. "$(dirname "${BASH_SOURCE[0]}")/../lib/bash5.sh" && goh_bash5 "$@"
 . "$(dirname "${BASH_SOURCE[0]}")/_from_head.sh"; goh_from_head "${BASH_SOURCE[0]}" "$@"   # run HEAD, not the tree (C4)
 set -euo pipefail
 # The hook's repository variables go first, as in every other hook (gates/_git_env.sh): from a

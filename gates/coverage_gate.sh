@@ -66,6 +66,7 @@
 #
 # Exit codes: 0 pass · 1 coverage below floor · 2 usage/config error.
 { # parse-guard -- bash reads this group whole before running it (tests/test_parse_guard.py)
+. "$(dirname "${BASH_SOURCE[0]}")/../lib/bash5.sh" && goh_bash5 "$@"
 . "$(dirname "${BASH_SOURCE[0]}")/_from_head.sh"; goh_from_head "${BASH_SOURCE[0]}" "$@"   # run HEAD, not the tree (C4)
 set -euo pipefail
 
@@ -267,7 +268,7 @@ run_swift() {
     if [ -n "$IGNORE" ]; then _SWIFT_ARGS+=(--ignore "$IGNORE"); fi
     if [ -n "$INCLUDE" ]; then _SWIFT_ARGS+=(--include "$INCLUDE"); fi
     if [ -n "$MARKER_CEILING" ]; then _SWIFT_ARGS+=(--marker-ceiling "$MARKER_CEILING"); fi
-    "$GOH_PY" "$GOH_ROOT/gates/coverage_swift.py" ${_SWIFT_ARGS[@]+"${_SWIFT_ARGS[@]}"} \
+    "$GOH_PY" "$GOH_ROOT/gates/coverage_swift.py" "${_SWIFT_ARGS[@]}" \
         || exit $?
 }
 

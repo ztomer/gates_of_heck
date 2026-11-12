@@ -14,6 +14,7 @@
 #   post-rewrite amend    nothing: the amend ran pre-commit, or skipped it with --no-verify.
 #   pre-applypatch        the index the patch made; non-zero REFUSES it (`git am --no-verify` skips).
 { # parse-guard -- bash reads this group whole before running it (tests/test_parse_guard.py)
+. "$(dirname "${BASH_SOURCE[0]}")/../lib/bash5.sh" && goh_bash5 "$@"
 . "$(dirname "${BASH_SOURCE[0]}")/_from_head.sh"; goh_from_head "${BASH_SOURCE[0]}" "$@"   # run HEAD, not the tree (C4)
 set -euo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -33,7 +34,7 @@ case "$hook" in
         done < <(awk '!seen[$2]++')
         [ "${#new[@]}" -gt 0 ] || exit 0
         rc=0
-        bash "$HERE/goh.sh" markers --commits ${new[@]+"${new[@]}"} || rc=$?
+        bash "$HERE/goh.sh" markers --commits "${new[@]}" || rc=$?
         if [ "$rc" -eq 1 ]; then
             err "post-rewrite: the rebase COMMITTED the conflict markers above"
             err "  it has finished, so nothing was refused: fix each commit named there before"

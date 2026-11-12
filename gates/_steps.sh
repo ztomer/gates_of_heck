@@ -20,6 +20,7 @@
 # comma-delimited tag list, comma-delimited and TRAILING-COMMA'd: the scheduler's `_tags_free`
 # walks it with `${rest#*,}` and needs that comma to end the list).
 
+. "$(dirname "${BASH_SOURCE[0]}")/../lib/bash5.sh" && goh_bash5 "$@"
 parse_step_prefix() {
     local n="$1" cmd="$2" head items item key paths p tags=""
     PRODUCES[n]=","; CONSUMES[n]=","  # the declared paths, comma-delimited, for _deps_done

@@ -11,6 +11,7 @@
 #   trap 'goh_container_runtime_down' EXIT
 #   goh_container_runtime_up "my-label" || exit 1
 
+. "$(dirname "${BASH_SOURCE[0]}")/../lib/bash5.sh" && goh_bash5 "$@"
 if [ -n "${GOH_DIR:-}" ] && [ -f "$GOH_DIR/tui/lib.sh" ]; then
     # shellcheck source=tui/lib.sh
     . "$GOH_DIR/tui/lib.sh"
