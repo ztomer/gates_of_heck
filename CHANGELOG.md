@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## v0.106.2 -- release scripts run under macOS bash 3.2: no empty-array expansion trips set -u
+
 * **Release scripts and gates run under macOS bash 3.2: no maybe-empty array trips `set -u`.**
   v0.106.1's `tools/release_goh.sh` expanded `"${title[@]}"` after `title=()`, an unbound variable
   under the macOS /bin/bash 3.2 when no summary is passed (green on Homebrew bash 5, red on the hosted
