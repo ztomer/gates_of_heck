@@ -11,7 +11,7 @@
 # sources lib/house_python.sh, which refuses a machine below the python3 floor, so without this the
 # script that meets the floor could not print a line on the runner that needs it (goh G7: every
 # GitHub runner, 2026-10-26). The checkout such a script runs from is a CI checkout of one commit.
-. "$(dirname "${BASH_SOURCE[0]}")/../lib/bash5.sh" && goh_bash5 "$@"
+[ ! -f "$(dirname "${BASH_SOURCE[0]}")/../lib/bash5.sh" ] || { . "$(dirname "${BASH_SOURCE[0]}")/../lib/bash5.sh" && goh_bash5 "$@"; }   # a lone tui/ copy has none
 if [ -z "${GOH_TUI_BOOTSTRAP:-}" ] && [ -f "$(dirname "${BASH_SOURCE[0]}")/../gates/_from_head.sh" ]; then
     . "$(dirname "${BASH_SOURCE[0]}")/../gates/_from_head.sh" && goh_from_head_lib "${BASH_SOURCE[0]}" && return 0
 fi

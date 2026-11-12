@@ -4,7 +4,7 @@ Owner ruling 2026-11-12: require bash 5, enforced structurally. The macOS /bin/b
 what the hosted runner, a minimal-PATH git hook and launchd find through `#!/usr/bin/env bash`;
 v0.106.1 was green on Homebrew bash 5 and red there. The guard (docs/contracts.md section 28)
 re-execs an EXECUTED script under the first bash >= 5 it finds, or dies naming the fix; a SOURCED
-file never re-execs, it warns once and stays bash-3.2-safe.
+file never re-execs: it returns, silently, and stays bash-3.2-safe.
 
 THE GATE (test_every_tracked_bash_file_runs_the_guard_first): the guard is the first statement --
 nothing but the shebang, comments, the parse-guard opener, `set` and plain assignments before it --
@@ -57,6 +57,12 @@ def _scope() -> list[str]:
     return [f for f in files if f not in EXEMPT]
 
 
+def tui_form(src: str) -> str:
+    """tui/ is self-contained (its header): tests and vendored copies carry it without lib/."""
+    lib = f"{src}/lib/bash5.sh"
+    return f'[ ! -f "{lib}" ] || {{ . "{lib}" && goh_bash5 "$@"; }}   # a lone tui/ copy has none'
+
+
 PRELUDE = re.compile(r"^(?:\{ # parse-guard.*|set -[a-z]+(?: [a-z]+)*|[A-Za-z_]\w*=[^`]*)$")
 
 
@@ -70,6 +76,8 @@ def findings(path: str, text: str) -> list[str]:
         m = GUARD.search(s)
         if m and HOOK.match(path) and s != HOOK_FORM:
             return [f"{path}:{i}: a hook runs the guard only in its tolerant form: {HOOK_FORM}"]
+        if m and path.startswith("tui/") and s != tui_form(m.group("src")):
+            return [f"{path}:{i}: tui/ runs the guard only in its tolerant form"]
         if m:
             src = m.group("src")
             want = "$GOH" if HOOK.match(path) else '$(dirname "${BASH_SOURCE[0]}")'
@@ -102,6 +110,9 @@ def test_the_gate_sees_a_missing_or_late_guard():
     assert findings("hooks/pre-push", hook) == []
     bare = hook.replace(HOOK_FORM, '. "$GOH/lib/bash5.sh" && goh_bash5 "$@"')
     assert "tolerant form" in findings("hooks/pre-push", bare)[0]
+    tui = "# x\n" + tui_form('$(dirname "${BASH_SOURCE[0]}")/..') + "\n"
+    assert findings("tui/lib.sh", tui) == []
+    assert "tolerant form" in findings("tui/lib.sh", ok)[0]
     assert findings("hooks/pre-push", hook.replace('GOH="${GOH_DIR:-x}"', 'GOH="$(pwd)"'))
 
 
@@ -144,7 +155,7 @@ def _script(tmp_path: Path, body: str = "") -> Path:
         f'. "{REPO_ROOT}/lib/bash5.sh" && goh_bash5 "$@"\n'
         "set -euo pipefail\n" + body + "a=()\n"
         'printf "v=%s n=%s" "${BASH_VERSINFO[0]}" "$#"; printf " [%s]" "$@" "${a[@]}"; echo\n'
-        'read -r line || true; echo "stdin=$line marker=${GOH_BASH5_REEXEC-unset}"\nexit\n}\n'
+        'read -r line || true; echo "stdin=$line marker=${GOH_BASH_REEXEC-unset}"\nexit\n}\n'
     )
     return s
 
@@ -201,15 +212,13 @@ def test_a_bash_that_lies_about_its_version_is_refused_not_looped(tmp_path):
     assert r.returncode == 1 and "refused rather than re-run again" in r.stderr, r.stderr
 
 
-def test_a_sourced_library_never_reexecs_and_warns_once(tmp_path):
+def test_a_sourced_library_never_reexecs_and_says_nothing(tmp_path):
     old = _old_bash()
     s = tmp_path / "s.sh"
     s.write_text(f'. "{REPO_ROOT}/tui/lib.sh"\n. "{REPO_ROOT}/lib/exit_reason.sh"\n'
                  'echo "v=${BASH_VERSINFO[0]}"\n')  # fmt: skip
     r = _run([old, str(s)])
-    assert r.returncode == 0 and r.stdout == "v=3\n", (r.stdout, r.stderr)
-    assert r.stderr.count("below goh's floor of bash 5") == 1, r.stderr
-    assert f"{s} sourced {REPO_ROOT}/tui/lib.sh" in r.stderr, r.stderr
+    assert r.returncode == 0 and r.stdout == "v=3\n" and r.stderr == "", (r.stdout, r.stderr)
     r = _run([bash5(), str(s)])
     assert r.returncode == 0 and r.stdout == "v=5\n" and r.stderr == "", r.stderr
 

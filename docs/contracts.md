@@ -673,7 +673,10 @@ only). Every bash file goh tracks runs, as its first statement,
 
     . "$(dirname "${BASH_SOURCE[0]}")/<up>/lib/bash5.sh" && goh_bash5 "$@"
 
-(`$GOH/lib/bash5.sh` in the hook templates, which are copied into consumers).
+(`$GOH/lib/bash5.sh` in the hook templates, which are copied into consumers). Hooks and `tui/`
+(self-contained, carried alone by tests and vendored copies) use the tolerant form
+`[ ! -f X ] || { . X && goh_bash5 "$@"; }`: a `.` of a missing file ends a non-interactive bash,
+and an older GOH_DIR refused every commit with no reason.
 
 * **Executed** (the caller is not `source`, read from `FUNCNAME[1]`): under bash < 5 it re-execs the
   same script with the same arguments and stdin under the first candidate whose OWN `BASH_VERSINFO`
@@ -683,10 +686,10 @@ only). Every bash file goh tracks runs, as its first statement,
   the whole group before the guard runs, so every guarded file must parse under 3.2 (a test runs
   `/bin/bash -n` over each); it never RUNS past the guard there.
 * **Sourced**: never re-execs (a library has neither its caller's argv nor the right to replace
-  it). Under bash < 5 it warns once per process tree, naming the script that sourced it, and
-  returns: consumer scripts source goh's libraries under whatever bash they run, so a sourced file
+  it). It returns, silently (a warning was tried and dropped: it printed into every
+  unguarded consumer script's and test's output): consumer scripts source goh's libraries under whatever bash they run, so a sourced file
   stays bash-3.2-safe (`tests/test_bash32_empty_array.py` holds its empty-array rule to them only).
-* **No loop**: the re-exec exports `GOH_BASH5_REEXEC=<chosen bash>`; the bash-5 child unsets it.
+* **No loop**: the re-exec exports `GOH_BASH_REEXEC=<chosen bash>`; the bash-5 child unsets it.
   A child still below 5 with the marker set was handed a bash that lied: refused, never re-exec'd.
 * **Seams**: `GOH_BASH_CANDIDATES` (colon list replacing the candidates: `=/bin/bash` is "no bash 5
   found") and `GOH_BASH_MAJOR` (the major to believe of this shell: "old bash" where no 3.2 exists;
@@ -702,4 +705,4 @@ file -- only the parse-guard opener, `set` and plain assignments may precede it 
 check on its two exemptions; calibrated on synthetic texts both ways and by hand on 2026-11-12 by
 deleting the guard from `tools/land.sh` and planting a `mapfile` before it in `gates/goh.sh`, both red
 naming the file; plus re-exec keeping args and stdin, no bash 5 dies naming the fix, the
-GOH_BASH_MAJOR seam, the lying-bash refusal, sourced-never-re-execs-and-warns-once).
+GOH_BASH_MAJOR seam, the lying-bash refusal, sourced-never-re-execs-and-says-nothing).

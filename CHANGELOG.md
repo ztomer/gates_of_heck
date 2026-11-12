@@ -8,7 +8,7 @@
   languages. Every tracked bash file (92) now runs `lib/bash5.sh` as its first statement: an
   EXECUTED script under bash < 5 re-execs itself, same arguments and stdin, under the first bash
   >= 5 it finds (`/opt/homebrew/bin/bash` on macOS; the system bash on Linux, where it is a no-op),
-  or dies naming the fix (`brew install bash`); a SOURCED file never re-execs and warns once, so
+  or dies naming the fix (`brew install bash`); a SOURCED file never re-execs and returns silently, so
   goh's libraries stay bash-3.2-safe for the consumer scripts that source them. The re-exec carries
   a marker the child consumes (no loop; a bash that lies about its version is refused), and two
   seams (`GOH_BASH_CANDIDATES`, `GOH_BASH_MAJOR`) test both directions, with the real /bin/bash 3.2

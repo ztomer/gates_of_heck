@@ -15,11 +15,12 @@
 # stdin, with the first bash >= 5 it finds -- so the rest of the file, parsed whole by bash 3.2
 # before this line ran (the parse guard), is RUN only by bash 5. None found: it dies naming the fix.
 # SOURCED (`.`/`source`, told apart by FUNCNAME[1] = "source"): it NEVER re-execs -- a library has
-# neither its caller's argv nor the right to replace its caller. Under bash < 5 it warns once per
-# process tree and returns, so a library stays bash-3.2-safe: consumer scripts source goh's
-# libraries under whatever bash they run (the estate sweep that guards them is its own item).
+# neither its caller's argv nor the right to replace its caller. It returns, silently: consumer
+# scripts source goh's libraries under whatever bash they run, so a library stays bash-3.2-safe
+# (the estate sweep that guards them is its own item). A warning there was tried and dropped: it
+# printed into every unguarded consumer script's and test's output, a signal nobody acts on.
 #
-# NO LOOP. The re-exec exports GOH_BASH5_REEXEC=<the bash it chose>; the bash-5 child consumes it
+# NO LOOP. The re-exec exports GOH_BASH_REEXEC=<the bash it chose>; the bash-5 child consumes it
 # (unsets it), so a grandchild starts clean. A child that still finds itself below 5 with the marker
 # set was handed a bash that lied about its version: refused, naming it, never exec'd again.
 #
@@ -50,7 +51,7 @@ _goh_bash5_say() {
     shift
     tui="$(cd "$(dirname "${BASH_SOURCE[0]}")/../tui" 2>/dev/null && pwd)/lib.sh"
     # shellcheck source=/dev/null  # never followed: tui/lib.sh runs this guard, a cycle for -x
-    if [ -f "$tui" ] && GOH_BASH5_SAYING=1 GOH_TUI_BOOTSTRAP=1 . "$tui" 2>/dev/null; then
+    if [ -f "$tui" ] && GOH_TUI_BOOTSTRAP=1 . "$tui" 2>/dev/null; then
         "$level" "$*"
     elif [ "$level" = err ]; then
         printf '%s\n' "✗ $*" >&2
@@ -88,24 +89,18 @@ _goh_bash5_fix() {
     esac
 }
 
-goh_bash5() { # "$@" of the caller -- returns on bash >= 5; else re-execs (executed) or warns (sourced)
+goh_bash5() { # "$@" of the caller -- returns on bash >= 5; else re-execs (executed); sourced, returns
     local major="${GOH_BASH_MAJOR:-${BASH_VERSINFO[0]}}" script cand
     if [ "${FUNCNAME[1]:-}" = source ]; then
-        [ "$major" -ge "$GOH_BASH_FLOOR" ] && return 0
-        [ -n "${GOH_BASH5_SAYING:-}${GOH_BASH5_WARNED:-}" ] && return 0
-        export GOH_BASH5_WARNED=1
-        _goh_bash5_say warn "${BASH_SOURCE[2]:-a shell} sourced ${BASH_SOURCE[1]} under bash" \
-"${BASH_VERSION} ($BASH), below goh's floor of bash $GOH_BASH_FLOOR -- give that script the guard" \
-"as its first statement: . \"\$GOH_DIR/lib/bash5.sh\" && goh_bash5 \"\$@\""
-        return 0
+        return 0   # a library never re-execs and stays bash-3.2-safe (header: SOURCED)
     fi
     if [ "$major" -ge "$GOH_BASH_FLOOR" ]; then
-        unset GOH_BASH5_REEXEC
+        unset GOH_BASH_REEXEC
         return 0
     fi
     script="${BASH_SOURCE[1]}"
-    if [ -n "${GOH_BASH5_REEXEC:-}" ]; then
-        _goh_bash5_say err "$script: re-run under $GOH_BASH5_REEXEC, which said it was bash" \
+    if [ -n "${GOH_BASH_REEXEC:-}" ]; then
+        _goh_bash5_say err "$script: re-run under $GOH_BASH_REEXEC, which said it was bash" \
 "$GOH_BASH_FLOOR, and this is still bash ${BASH_VERSION} -- refused rather than re-run again"
         exit 1
     fi
@@ -115,7 +110,7 @@ goh_bash5() { # "$@" of the caller -- returns on bash >= 5; else re-execs (execu
         exit 1
     fi
     unset GOH_BASH_MAJOR
-    export GOH_BASH5_REEXEC="$cand"
+    export GOH_BASH_REEXEC="$cand"
     exec "$cand" "$script" "$@"
 }
 
