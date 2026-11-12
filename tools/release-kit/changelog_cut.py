@@ -19,8 +19,9 @@ unreleased -- the tag ships the whole tree -- so:
   does not end on a joining mark, leaves no backtick or bracket open: AU.RELHEADING; `cut` refuses
   the same title, given or derived), Unreleased (if the file keeps one) is ONE section and EMPTY,
   and no entry of X's stanza repeats an entry of an earlier stanza. Exit 1 names each finding.
-* `ready --version X [--title T]`: goh ship's preflight, asked BEFORE its push (GOH.SHIPPREFLIGHT):
-  exit 1 when a cut of X would be refused as empty (`nothing_to_release`) or its title, T or the
+* `ready --version X [--title T] [--contract cut|unreleased]`: goh ship's preflight, asked BEFORE
+  its push (GOH.SHIPPREFLIGHT), under the kit's declared contract (GOH.SHIPCHANGELOG): exit 1 when
+  the kit would find nothing to release (`nothing_to_release`) or its title, T or the
   derived one, is no phrase or a clause clipped at TITLE_MAX (GOH.SHIPSUMMARY), else 0.
 
 An entry is a top-level list item (`* ` or `- ` at column 0) with its continuation lines, compared
@@ -305,15 +306,29 @@ def merge_into_stanza(base: list[str], st: Section, moved: list[str]) -> list[st
     return [*base[: st.start + 1], *block, *base[st.end :]]
 
 
-def nothing_to_release(lines: list[str], version: str) -> bool:
-    """True when a cut of VERSION would be refused as empty: the file has an Unreleased section,
-    every one is empty, and no stanza for VERSION is written yet (goh ship asks before its push,
-    GOH.SHIPUNRELEASED). A file with no Unreleased heading does not cut from one: False."""
+def nothing_to_release(lines: list[str], version: str, contract: str = "cut") -> str | None:
+    """Why the kit's release of VERSION would find nothing to release, or None; goh ship asks
+    before its push (GOH.SHIPUNRELEASED), under the contract the repo's kit DECLARES (`.gatesrc`
+    GOH_SHIP_CHANGELOG, GOH.SHIPCHANGELOG): a written `## vVERSION` stanza is released as it
+    stands under both, else
+    * `cut` (this file's `cut`): some Unreleased section holds an entry;
+    * `unreleased` (a kit that renames the heading, token-pool's): exactly ONE Unreleased section,
+      holding an entry.
+    A file with no Unreleased heading and no stanza has nothing to release under either: the guess
+    that it "does not cut from one" passed token-pool's ship, whose kit then refused after its
+    push."""
     secs = sections(lines)
+    if any(s.version == version for s in secs):
+        return None
     unrels = [s for s in secs if s.unreleased]
-    if not unrels or any(s.version == version for s in secs):
-        return False
-    return not any(_strip_edges(body(lines, u)) for u in unrels)
+    if not unrels:
+        return f"no ## Unreleased section and no ## v{version} stanza is written"
+    if contract == "unreleased" and len(unrels) > 1:
+        return (f"{len(unrels)} ## Unreleased sections, and the kit releases exactly one; "
+                "fold them into one")  # fmt: skip
+    if not any(_strip_edges(body(lines, u)) for u in unrels):
+        return f"Unreleased is empty and no ## v{version} stanza is written"
+    return None
 
 
 def title_refusal(lines: list[str], version: str, title: str | None) -> str | None:
@@ -385,6 +400,8 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--version", required=True)
     ap.add_argument("--title")
     ap.add_argument("--file", default="CHANGELOG.md")
+    ap.add_argument("--contract", choices=["cut", "unreleased"], default="cut",
+                    help="ready: the changelog contract the release kit declares")  # fmt: skip
     a = ap.parse_args(argv)
     a.version = a.version.removeprefix("v")  # the tag spelling; stanzas are written `## v<version>`
     path = Path(a.file)
@@ -394,13 +411,13 @@ def main(argv: list[str] | None = None) -> int:
         print(f"✗ changelog_cut: cannot read {path}: {e}", file=sys.stderr)
         return 2
     if a.mode == "ready":  # goh ship's preflight, before its push (GOH.SHIPPREFLIGHT)
-        if nothing_to_release(lines, a.version):
-            print(f"✗ changelog: {path}: Unreleased is empty and no ## v{a.version} stanza is "
-                  "written; add the entry this release ships under ## Unreleased, commit, then "
-                  "ship", file=sys.stderr)  # fmt: skip
+        empty = nothing_to_release(lines, a.version, a.contract)
+        if empty:
+            print(f"✗ changelog: {path}: {empty}; add the entry this release ships under "
+                  "## Unreleased, commit, then ship", file=sys.stderr)  # fmt: skip
             return 1
         # '' is no title: goh ship passes its --summary, empty when none was given.
-        why = title_refusal(lines, a.version, a.title or None)
+        why = title_refusal(lines, a.version, a.title or None) if a.contract == "cut" else None
         if why:  # the kit's cut would refuse it after the push (GOH.SHIPSUMMARY)
             print(f"✗ changelog: {path}: {why}; pass `goh ship --summary TEXT`, which titles "
                   "the stanza", file=sys.stderr)  # fmt: skip

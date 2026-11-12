@@ -9,8 +9,8 @@ An agent's contract ends at "committed, local gate green, goh ship started". Wha
 after its first push -- re-run the gate, release, install, read the claim card, wait -- was 49% of
 every agent's context (GOH.SPENDWATCH). Here it is a pipeline no turn watches:
 
-    push     `git push REMOTE HEAD:BRANCH` (the upstream the branch tracks), through the pre-push gate;
-             skipped when `.gatesrc` GOH_SHIP_RELEASE_PUSHES=1 and the release step will run: that
+    push     `git push REMOTE HEAD:BRANCH` (the upstream the branch tracks), through the pre-push
+             gate; skipped when `.gatesrc` GOH_SHIP_RELEASE_PUSHES=1 and the release step runs: that
              kit pushes the hand-off with its release commit (a repo whose release note may only
              land in the release commit has a hand-off its own gate refuses alone)
     release  the repo's release kit, `.gatesrc` GOH_SHIP_RELEASE, run with GOH_SHIP_VERSION set (also
@@ -28,10 +28,10 @@ every agent's context (GOH.SPENDWATCH). Here it is a pipeline no turn watches:
 
 PREFLIGHT (GOH.SHIPPREFLIGHT). The kit runs after the push, so a precondition it could read before
 (token-pool's "no '## Unreleased' section", another kit's "no row for v5.18.0") was found after.
-When the release step will run, plan() first runs goh's CHANGELOG.md reading (`changelog_cut.py
-ready`), then `.gatesrc` GOH_SHIP_PREFLIGHT (`{version}` substituted), in the repo under the ship's
-bound with GOH_SHIP_VERSION/SUMMARY/ITEM set; a non-zero exit refuses, nothing pushed. A new check
-is a line in the repo's preflight, never a case here (`scripts/ship_preflight_audit.py`).
+When the release step will run, plan() first runs goh's CHANGELOG.md reading (the contract
+GOH_SHIP_CHANGELOG declares), then `.gatesrc` GOH_SHIP_PREFLIGHT ({version} substituted), in the
+repo under the ship's bound with GOH_SHIP_VERSION/SUMMARY/ITEM set; a non-zero exit refuses, nothing
+pushed. A new check is a line in the repo's preflight, never a case here (ship_preflight_audit).
 
 Started without --wait it validates, writes the result JSON (status `running`), detaches a worker
 in its own session and prints one line naming the result; the worker prints a ✓/✗/· line per step
@@ -43,8 +43,8 @@ carries the last 40 lines of its log (`tail`), which is all a resumed agent need
 The next version, when neither --version nor --bump is given, is the maintained tool's answer,
 `git-cliff --bumped-version` over the conventional commits since the newest v-tag (a `!` or BREAKING
 CHANGE is major, a feat minor; a repo's own cliff.toml [bump] is honoured); a span git-cliff finds
-nothing to bump in (no conventional commit) is a patch. No git-cliff on PATH refuses the ship, naming
-the install; --version or --bump needs none (gates/required_tools.tsv, layer `ship`).
+nothing to bump in (no conventional commit) is a patch. No git-cliff on PATH refuses the ship,
+naming the install; --version or --bump needs none (gates/required_tools.tsv, layer `ship`).
 
 `sha` in the result is the LANDED commit: HEAD after the release step, which may commit a version
 bump the hand-off never had; `handoff_sha` is the commit the agent handed off.
@@ -72,6 +72,7 @@ sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "lib"))
 import bounded_run
 import gitrun
+import ship_changelog
 
 from tui.lib import err, info, ok, step
 
@@ -86,7 +87,7 @@ TAIL = 40
 GRACE = 5
 DEFAULT_TIMEOUT = 3600
 KEYS = ("GOH_SHIP_RELEASE", "GOH_SHIP_INSTALL", "GOH_SHIP_TIMEOUT", "GOH_SHIP_RELEASE_PUSHES",
-        "GOH_SHIP_PREFLIGHT")  # fmt: skip
+        "GOH_SHIP_PREFLIGHT", "GOH_SHIP_CHANGELOG")  # fmt: skip
 SEMVER = re.compile(r"^v(\d+)\.(\d+)\.(\d+)$")
 
 
@@ -190,11 +191,10 @@ def preflights(repo: Path, cfg: dict[str, str], version: str, summary="") -> lis
         return []
     if any(SEMVER.match(t) for t in git(repo, "tag", "--points-at", "HEAD").splitlines()):
         return []
-    out = []
-    if (repo / "CHANGELOG.md").is_file():
-        cut = shlex.quote(str(ROOT / "tools" / "release-kit" / "changelog_cut.py"))
-        ready = f"{shlex.quote(sys.executable)} {cut} ready --version {version} --file CHANGELOG.md"
-        out.append(("goh's changelog reading", f"{ready} --title {shlex.quote(summary)}"))
+    try:
+        out = ship_changelog.reading(repo, cfg["GOH_SHIP_CHANGELOG"], version, summary)
+    except ValueError as e:
+        raise Refused(str(e)) from None
     if cfg["GOH_SHIP_PREFLIGHT"].strip():
         out.append(("GOH_SHIP_PREFLIGHT", cfg["GOH_SHIP_PREFLIGHT"].replace("{version}", version)))
     return out

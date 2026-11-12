@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+* **goh ship asks the changelog contract the repo's kit declares, at start (GOH.SHIPCHANGELOG).**
+  token-pool's ship ran its whole gate and push, then its kit refused: "CHANGELOG.md has no
+  '## Unreleased' section to release". goh's reading assumed changelog_cut's contract, under which a
+  file with no Unreleased heading "does not cut from one". `.gatesrc` GOH_SHIP_CHANGELOG now names
+  the contract (`cut`, `unreleased` or `kit`); a repo with a CHANGELOG.md that declares none, or an
+  unknown one, is refused with nothing started, and under `cut` or `unreleased` a file with no
+  Unreleased entry and no stanza for the version is refused before any gate or push. Consumers with
+  a release kit and a CHANGELOG.md add the line to their `.gatesrc`.
+
 ## v0.101.1 -- the ruff-pin test reads gate.yml as text, so it runs on the hosted runner (no PyYAML)
 
 * **The ruff-pin test runs on the hosted runner (GOH.CIRUFF).** v0.101.0's

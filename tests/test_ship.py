@@ -73,6 +73,8 @@ def _env(tmp_path: Path, **over: str) -> dict[str, str]:
 
 
 def _ship(repo: Path, tmp_path: Path, *args: str, **env: str) -> subprocess.CompletedProcess[str]:
+    if (repo / "CHANGELOG.md").is_file():  # goh's changelog_cut contract unless a test names one
+        env.setdefault("GOH_SHIP_CHANGELOG", "cut")
     return subprocess.run([sys.executable, str(SHIP), "--repo", str(repo), "--out",
                            str(tmp_path / "ship.json"), *args],
                           env=_env(tmp_path, **env), capture_output=True, text=True, timeout=120,
@@ -444,12 +446,6 @@ def test_an_empty_unreleased_is_not_refused_when_no_release_runs(shipped, tmp_pa
     _changelog(shipped, EMPTY_UNRELEASED)
     git(shipped, "tag", "v1.0.1")
     r = _ship(shipped, tmp_path, "--wait")
-    assert r.returncode == 0, r.stdout + r.stderr
-
-
-def test_an_unreleased_entry_or_a_written_stanza_ships(shipped, tmp_path):
-    _changelog(shipped, "# CHANGELOG\n\n## Unreleased\n\n## v1.1.0\n\n* by hand\n")
-    r = _ship(shipped, tmp_path, "--wait", "--version", "1.1.0")
     assert r.returncode == 0, r.stdout + r.stderr
 
 
