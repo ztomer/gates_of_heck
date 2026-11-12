@@ -20,6 +20,7 @@ import os
 import subprocess
 from pathlib import Path
 
+from _fast_git import fast_init
 from test_push_gate import GATE, PUSH_GATE, REPO_ROOT, _git, _repo
 
 LITTER_GATE = GATE.replace("exit 0\n", 'printf x > "../$(basename "$PWD").out"\nexit 0\n')
@@ -389,7 +390,7 @@ def _kit_checkout(tmp_path: Path) -> tuple[Path, str]:
     kit = tmp_path / "Kit"
     (kit / "Packages" / "K").mkdir(parents=True)
     (kit / "Packages" / "K" / "f.txt").write_text("committed\n")
-    _git(kit, "init", "-q", "-b", "main")
+    fast_init(kit, "main")
     _git(kit, "add", "-A")
     _git(kit, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "kit")
     return kit, _git(kit, "rev-parse", "HEAD")

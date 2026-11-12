@@ -60,7 +60,7 @@ export_siblings() {
             fi
             printf '%s\t%s@%s\n' "$name" "$target" "$sha" >>"$run_dir/.siblings"
             dirty=""
-            [ -z "$(git -C "$target" status --porcelain 2>/dev/null)" ] ||
+            [ -z "$(git --no-optional-locks -C "$target" status --porcelain 2>/dev/null)" ] ||
                 dirty="; its uncommitted edits are not gated"
             info "pre-push: the export carries the sibling $name at ${sha:0:12}, its HEAD (a tracked manifest's path dependency names it$dirty)"
         else
