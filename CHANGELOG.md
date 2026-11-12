@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## v0.104.0 -- goh_head_export: a sibling repo at its HEAD commit (read-only, sha-cached clone) for a consumer's gate; goh_rm_tree no longer chmods hard-linked files
+
 * **A sibling repo reaches a consumer's gate at its HEAD commit, never its working tree (GOH.HEADEXPORT).**
   ZeroThunder's push gate imported game_asset_factory from the live checkout, and a concurrent agent's
   uncommitted edit there failed the push (2026-11-11); ZeroThunder fixed it with a repo-local export and
