@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## v0.107.0 -- goh's shell runs on bash >= 5: every bash file runs lib/bash5.sh first, re-exec'ing under Homebrew or system bash 5
+
 * **goh's shell runs on bash >= 5, enforced structurally (GOH.BASH5, owner ruling 2026-11-12).**
   `#!/usr/bin/env bash` found Homebrew's 5.3 locally and Apple's /bin/bash 3.2 on the hosted macOS
   runner, under minimal-PATH git hooks and under launchd, so the local gate and CI ran two
