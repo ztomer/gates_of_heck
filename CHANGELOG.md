@@ -2,6 +2,19 @@
 
 ## Unreleased
 
+* **The coverage step streams its phases, and the external suite drives an optimized binary
+  (GOH.COVPHASES).** goh's hosted coverage step was cut at GOH_STEP_TIMEOUT 1800 s on every release
+  since v0.107.0 with three intro lines in its log: each part's output went to its own log, read
+  only on failure. `gates/_coverage_rust.sh` now prints every phase (workspace build, cargo test
+  and report; external build, suite and report; merge) with its start and elapsed as it runs, on
+  the gate's stdout, and a stop signal names the phase it landed in, its elapsed and the tail of
+  that phase's log. The numbers named the cause: the external suite drove an UNOPTIMIZED
+  instrumented goh, where the plain suite drives a release one -- an `emoji` scan took 1,439 ms a
+  call against 70 ms release (`status-markers` 186 ms against 55 ms). The external build is now
+  `--config profile.dev.opt-level=2` (271 ms and 55 ms), counters unchanged, the 95% floor kept.
+  `tests/test_coverage_phases.py` (red on the old gate: its kill left only the intro lines and
+  `TIMED OUT after 3s`; the build carried no opt-level).
+
 ## v0.107.1 -- gate slot handshake read a character at a time; a timed read split mid-line no longer hides the wait (GOH.CI107)
 
 * **The gate slot's handshake is read whole, or the gate fails naming it (GOH.CI107).** v0.107.0's

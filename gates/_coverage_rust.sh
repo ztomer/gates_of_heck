@@ -6,6 +6,51 @@
 # Ported from app_updates/tools/coverage_check.sh; see lineage above. ONE instrumented run of
 # every declared lib/bin/test target, its lcov fed to the CGU-normalizing merger below.
 . "$(dirname "${BASH_SOURCE[0]}")/../lib/bash5.sh" && goh_bash5 "$@"
+# ── THE PHASES, STREAMED (GOH.COVPHASES) ─────────────────────────────────────
+# A step killed on its ceiling shows the tail of what it printed, and this mode printed three intro
+# lines and then nothing for half an hour: each part's output goes to its own log, read only when
+# the part FAILS. Hosted run 43320855869 was cut at 1800 s with no word of which of its builds,
+# test runs and reports had the time. So every phase says when it starts and how long it took, on
+# the gate's own stdout (fd 3: a part's stdout is its log) as it happens, and a stop signal names the
+# phase it landed in, its elapsed, and the tail of that phase's log (tests/test_coverage_phases.py).
+cov_phase() { # cov_phase <name> <log>: begin <name>, ending the phase in progress; "" ends only
+    local now
+    now="$(date +%s)"
+    if [ -s "$COV_PHASE_FILE" ]; then
+        local t0 name
+        IFS=$'\t' read -r t0 name _ <"$COV_PHASE_FILE"
+        printf '%s\n' "  ✓ phase '$name': $((now - t0)) s" >&3
+    fi
+    if [ -n "$1" ]; then
+        printf '%s\t%s\t%s\n' "$now" "$1" "${2:-}" >"$COV_PHASE_FILE"
+        printf '%s\n' "  → phase '$1' started $(date -u +%H:%M:%SZ)" >&3
+    else
+        : >"$COV_PHASE_FILE"
+    fi
+}
+cov_phase_failed() { # a part that failed: its phase in progress is named as the one that failed
+    local t0 name
+    if [ -s "$COV_PHASE_FILE" ]; then
+        IFS=$'\t' read -r t0 name _ <"$COV_PHASE_FILE"
+        printf '%s\n' "  ✗ phase '$name' failed after $(($(date +%s) - t0)) s" >&3
+        : >"$COV_PHASE_FILE"
+    fi
+}
+cov_phase_stopped() { # the stop-signal trap: name the phase the signal landed in, then exit 128+N
+    local t0 name log
+    trap - TERM INT HUP
+    if [ -s "$COV_PHASE_FILE" ]; then
+        IFS=$'\t' read -r t0 name log <"$COV_PHASE_FILE"
+        printf '%s\n' "✗ coverage stopped by SIG$1 in phase '$name' after $(($(date +%s) - t0)) s" >&3
+        if [ -n "$log" ] && [ -s "$log" ]; then
+            printf '%s\n' "    tail of $log:" >&3
+            tail -n "${GOH_TAIL:-25}" "$log" | sed 's/^/    /' >&3
+        fi
+    else
+        printf '%s\n' "✗ coverage stopped by SIG$1 between phases" >&3
+    fi
+    case "$1" in INT) exit 130 ;; HUP) exit 129 ;; *) exit 143 ;; esac
+}
 run_rust() {
     cd "$PROJ" || exit 2
     need cargo "cargo llvm-cov drives the instrumented build"
@@ -86,27 +131,45 @@ run_rust() {
             showenv="$(cargo llvm-cov show-env --sh 2>/dev/null)" || exit 1
             eval "$showenv"
             cargo llvm-cov clean --profraw-only >/dev/null 2>&1 || true
-            cargo build --locked --bins --message-format=json-render-diagnostics \
-                >"$part.json" 2>"$part.log" || exit 1
-            "$GOH_PY" "$GOH_ROOT/gates/_cov_prune.py" "$part.json" >>"$part.log" 2>&1 || exit 1
+            cov_phase "external: instrumented build" "$part.log"
+            # OPTIMIZED (GOH.COVPHASES): CMD drives the binary the way a user does -- the plain
+            # suite drives a release build -- and an unoptimized one made every call 5-20x slower
+            # (an `emoji` scan: 70 ms release, 1,439 ms debug-instrumented, 271 ms instrumented at
+            # opt-level 2). Counters are placed before LLVM optimizes, so what they count is the
+            # same; the debug profile, its assertions and its target dir are kept. `--config`, not
+            # an exported variable: CMD's own builds never see it.
+            cargo build --locked --bins --config profile.dev.opt-level=2 \
+                --message-format=json-render-diagnostics \
+                >"$part.json" 2>"$part.log" 3>&- || exit 1
+            "$GOH_PY" "$GOH_ROOT/gates/_cov_prune.py" "$part.json" >>"$part.log" 2>&1 3>&- || exit 1
+            cov_phase "$label" "$part.log"
             bins="$CARGO_TARGET_DIR/debug" profile="${LLVM_PROFILE_FILE/-%p/}"
             (
                 for v in $(printf '%s\n' "$showenv" | sed -n 's/^export \([A-Za-z_][A-Za-z0-9_]*\)=.*/\1/p'); do
                     unset "$v"
                 done
                 eval "$CALLER_CARGO_ENV"
-                LLVM_PROFILE_FILE="$profile" GOH_COVERAGE_BIN_DIR="$bins" bash -c "$EXTERNAL"
+                LLVM_PROFILE_FILE="$profile" GOH_COVERAGE_BIN_DIR="$bins" bash -c "$EXTERNAL" 3>&-
             ) >>"$part.log" 2>&1 || exit 1
+            cov_phase "external: report" "$part.log"
             cargo llvm-cov report ${IGNORE:+--ignore-filename-regex "$IGNORE"} \
-                --lcov --output-path "$part" >>"$part.log" 2>&1
+                --lcov --output-path "$part" >>"$part.log" 2>&1 3>&- || exit 1
+            cov_phase ""
         ); then
             : >"$part.ok"
         else
+            cov_phase_failed
             export_failed "$label" "$part.log"
         fi
     }
     PARTS="$CARGO_TARGET_DIR/lcov-parts"
     rm -rf "$PARTS"; mkdir -p "$PARTS"
+    exec 3>&1
+    COV_PHASE_FILE="$PARTS/.phase"
+    : >"$COV_PHASE_FILE"
+    trap 'cov_phase_stopped TERM' TERM
+    trap 'cov_phase_stopped INT' INT
+    trap 'cov_phase_stopped HUP' HUP
 
     # Package + target discovery: ASK CARGO, never the filesystem. A
     # `find tests -name '*.rs'` walk reports FILE names; cargo metadata
@@ -166,15 +229,20 @@ PYEOF
                 echo "could not clear the previous run's profiles -- its counts would be this run's"
                 exit 1
             }
+            cov_phase "workspace: instrumented build" "$WORKSPACE_PART.log"
             cargo test --no-run --locked --workspace $KINDS --all-features \
-                --message-format=json-render-diagnostics >"$WORKSPACE_PART.json" || exit 1
-            "$GOH_PY" "$GOH_ROOT/gates/_cov_prune.py" "$WORKSPACE_PART.json" || exit 1
-            cargo test --locked --workspace $KINDS --all-features || exit 1
+                --message-format=json-render-diagnostics >"$WORKSPACE_PART.json" 3>&- || exit 1
+            "$GOH_PY" "$GOH_ROOT/gates/_cov_prune.py" "$WORKSPACE_PART.json" 3>&- || exit 1
+            cov_phase "workspace: cargo test" "$WORKSPACE_PART.log"
+            cargo test --locked --workspace $KINDS --all-features 3>&- || exit 1
+            cov_phase "workspace: report" "$WORKSPACE_PART.log"
             cargo llvm-cov report ${IGNORE:+--ignore-filename-regex "$IGNORE"} \
-                --lcov --output-path "$WORKSPACE_PART"
+                --lcov --output-path "$WORKSPACE_PART" 3>&- || exit 1
+            cov_phase ""
         ) >"$WORKSPACE_PART.log" 2>&1; then
             : >"$WORKSPACE_PART.ok"
         else
+            cov_phase_failed
             export_failed "the workspace's targets" "$WORKSPACE_PART.log"
         fi
     fi
@@ -209,5 +277,9 @@ PYEOF
     if [ -n "$FLOORS_JSON" ]; then _MERGE_ARGS+=(--floors-json "$FLOORS_JSON"); fi
     if [ -n "$INCLUDE" ]; then _MERGE_ARGS+=(--include "$INCLUDE"); fi
     if [ -n "$MARKER_CEILING" ]; then _MERGE_ARGS+=(--marker-ceiling "$MARKER_CEILING"); fi
-    "$GOH_PY" "$GOH_ROOT/gates/lcov_merge.py" "${_MERGE_ARGS[@]}" "$PARTS"
+    cov_phase "merge + floor" ""
+    local merge_rc=0
+    "$GOH_PY" "$GOH_ROOT/gates/lcov_merge.py" "${_MERGE_ARGS[@]}" "$PARTS" || merge_rc=$?
+    cov_phase ""
+    return "$merge_rc"
 }
