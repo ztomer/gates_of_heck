@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## v0.101.1 -- the ruff-pin test reads gate.yml as text, so it runs on the hosted runner (no PyYAML)
+
 * **The ruff-pin test runs on the hosted runner (GOH.CIRUFF).** v0.101.0's
   `test_the_workflow_installs_one_pinned_ruff_and_asks_the_pin_before_the_gate` imported PyYAML to
   read `gate.yml`, which the runner does not have, so the hosted gate went red (run 43147543825) on a
