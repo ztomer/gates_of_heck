@@ -1,5 +1,4 @@
-//! The command line: every `goh` subcommand and its flags. Split out of
-//! `main.rs`, which keeps the dispatch, at the line cap.
+//! The command line: every `goh` subcommand and its flags (out of `main.rs`, at the line cap).
 
 use std::path::PathBuf;
 
@@ -31,8 +30,7 @@ pub enum Commands {
         #[arg(long)]
         check_depinfo: Option<PathBuf>,
     },
-    /// Run a command under a ceiling, its process group swept on expiry or on a signal (the
-    /// native `lib/bounded_run.py`).
+    /// Run a command under a ceiling, its group swept on expiry or a signal (`lib/bounded_run.py`).
     Step {
         /// The ceiling, in seconds (a positive integer).
         #[arg(long, default_value = "900", allow_hyphen_values = true)]
@@ -415,6 +413,8 @@ pub enum Commands {
     MktempPortable(ExcludeStagedArgs),
     /// Fail on a hedged plural (`file(s)`, `entr(ies)`) in a string literal; count with counted/noun.
     PluralHedge(ExcludeStagedArgs),
+    /// Apply a passed commit's journalled seed settles (`gates/commit_gate.sh`, GOH.SEEDREFUSED).
+    SeedSettle { pending: PathBuf },
     /// Fail on a private repository's name (the private store's list) in this tracked tree.
     PrivateNames(StagedArgs),
     /// Fail when the whole changelog and the `v*` tags disagree (GOH.CHANGELOGALL).

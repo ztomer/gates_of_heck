@@ -88,10 +88,24 @@ pub fn settled_seed(seed: &Seed, repo: &str, settled: &Settle) -> Seed {
 ///
 /// The store file cannot be read, parsed or written.
 pub fn write_settled(dir: &Path, kind: Kind, repo: &str, settled: &Settle) -> Result<(), String> {
-    if settled.store.is_empty() {
+    write_store_file(dir, kind.file, repo, &settled.store)
+}
+
+/// `write_settled` by the seed file's name: what `goh seed-settle` applies from a journal.
+///
+/// # Errors
+///
+/// The store file cannot be read, parsed or written.
+pub fn write_store_file(
+    dir: &Path,
+    name: &str,
+    repo: &str,
+    store: &BTreeMap<String, usize>,
+) -> Result<(), String> {
+    if store.is_empty() {
         return Ok(());
     }
-    let file = dir.join(kind.file);
+    let file = dir.join(name);
     // Read-modify-rename under ONE lock on the store directory (GOH.SEEDSCOPE): two commits
     // settling at once each read the old file, and the second rename wrote back the entry the
     // first deleted. The directory, never the file, which the rename replaces; and no lock file,
@@ -117,7 +131,7 @@ pub fn write_settled(dir: &Path, kind: Kind, repo: &str, settled: &Settle) -> Re
         if field("root").as_deref() != Some(repo) {
             return true;
         }
-        let Some(n) = field("path").and_then(|p| settled.store.get(&p).copied()) else {
+        let Some(n) = field("path").and_then(|p| store.get(&p).copied()) else {
             return true;
         };
         if n == 0 {
@@ -132,7 +146,7 @@ pub fn write_settled(dir: &Path, kind: Kind, repo: &str, settled: &Settle) -> Re
     });
     let mut body = serde_json::to_string_pretty(&v).map_err(|e| e.to_string())?;
     body.push('\n');
-    let tmp = dir.join(format!(".{}.{}.tmp", kind.file, std::process::id()));
+    let tmp = dir.join(format!(".{name}.{}.tmp", std::process::id()));
     std::fs::write(&tmp, &body).map_err(|e| format!("{}: {e}", tmp.display()))?;
     std::fs::rename(&tmp, &file).map_err(|e| {
         let _ = std::fs::remove_file(&tmp);
@@ -236,6 +250,11 @@ pub fn settle_store(repo: &str, kind: Kind, settled: &Settle, tag: &str, item: &
     let Some(dir) = store_dir() else {
         return out;
     };
+    // Inside a commit's hook the settle waits for EVERY step of that commit (GOH.SEEDREFUSED): a
+    // later step refusing the commit must leave the store as it was.
+    if let Some(pending) = super::pending::dir() {
+        return super::pending::journal(&pending, &dir, kind, repo, settled, tag, item);
+    }
     let file = dir.join(kind.file);
     if let Err(m) = write_settled(&dir, kind, repo, settled) {
         let _ = writeln!(
@@ -247,11 +266,24 @@ pub fn settle_store(repo: &str, kind: Kind, settled: &Settle, tag: &str, item: &
         );
         return out;
     }
-    for (path, n) in &settled.store {
+    out.push_str(&settled_lines(&settled.store, kind.unit, tag, &file));
+    out
+}
+
+/// What a settle did, one line per entry it lowered or deleted from `file`.
+pub(super) fn settled_lines(
+    store: &BTreeMap<String, usize>,
+    unit: &str,
+    tag: &str,
+    file: &Path,
+) -> String {
+    use std::fmt::Write as _;
+    let mut out = String::new();
+    for (path, n) in store {
         let did = if *n == 0 {
-            format!("no {} left, its entry deleted", kind.unit)
+            format!("no {unit} left, its entry deleted")
         } else {
-            format!("its entry lowered to {}", goh_tui::counted(*n, kind.unit))
+            format!("its entry lowered to {}", goh_tui::counted(*n, unit))
         };
         let _ = writeln!(
             out,

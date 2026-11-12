@@ -447,12 +447,16 @@ pub fn clip(s: &str) -> String {
 }
 
 mod parse;
+mod pending;
 mod settle;
 mod store_ci;
 use parse::{parse, parse_text, tracked_text};
+pub use pending::{apply as apply_pending, PENDING_ENV};
 #[cfg(test)]
 use settle::settled_seed;
-pub use settle::{judge_settled, settle, settle_store, write_settled, Scope, Settle};
+pub use settle::{
+    judge_settled, settle, settle_store, write_settled, write_store_file, Scope, Settle,
+};
 pub use store_ci::{goh_workflow, STORE_CI_REFUSED_FROM};
 
 #[cfg(test)]

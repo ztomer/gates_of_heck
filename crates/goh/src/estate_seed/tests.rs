@@ -302,3 +302,41 @@ fn a_settled_store_keeps_every_other_entry_and_its_shape() {
     let left: Vec<_> = std::fs::read_dir(dir.path()).expect("dir").collect();
     assert_eq!(left.len(), 1, "no temporary file left behind");
 }
+
+#[test]
+fn a_journalled_settle_writes_nothing_until_applied_and_merges_once() {
+    let store = tempfile::tempdir().expect("store");
+    let pending = tempfile::tempdir().expect("pending");
+    let text = r#"{"entries":[{"root":"r","repo":"x","path":"a.sh","count":2,"reason":"one"}]}"#;
+    std::fs::write(store.path().join(K.file), text).expect("write");
+    let settled = Settle {
+        store: found(&[("a.sh", 1)]),
+        stale: Vec::new(),
+    };
+    let lowered = Settle {
+        store: found(&[("a.sh", 0)]),
+        stale: Vec::new(),
+    };
+    for s in [&settled, &lowered] {
+        let said = pending::journal(pending.path(), store.path(), K, "r", s, "t", "I");
+        assert!(said.contains("GOH.SEEDREFUSED"), "{said}");
+    }
+    let held = std::fs::read_to_string(store.path().join(K.file)).expect("read");
+    assert_eq!(held, text, "a journal writes no store");
+    let (code, said) = apply_pending(pending.path());
+    assert_eq!(code, 0, "{said}");
+    assert_eq!(
+        said.matches("a.sh").count(),
+        1,
+        "one line per entry: {said}"
+    );
+    assert!(
+        said.contains("entry deleted"),
+        "the lowest count wins: {said}"
+    );
+    let v: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(store.path().join(K.file)).expect("read"))
+            .expect("json");
+    assert_eq!(v["entries"].as_array().map(Vec::len), Some(0));
+    assert_eq!(std::fs::read_dir(pending.path()).expect("dir").count(), 0);
+}

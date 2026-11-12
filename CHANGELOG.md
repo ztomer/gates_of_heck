@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+* **A commit refused by any step of its gate settles no seed entry (GOH.SEEDREFUSED).** Since
+  GOH.SEEDSTALE a seeded check's commit run wrote the private seed store the moment that check
+  passed, so a commit a later step refused had already lowered or deleted entries: a necrohand
+  agent's refused commits pruned 13 plural_hedge entries for files it then reverted. The commit
+  hook now names a pending directory (`GOH_SEED_PENDING`); a check run under it journals its settle
+  there, and `goh seed-settle` applies the journal only after every commit-gate step has passed. A
+  refused commit leaves every store byte-identical; a passing one settles as D-0005 says.
+
 ## v0.102.0 -- goh ship asks the changelog contract the kit declares; push siblings at HEAD; plural-hedge reads calls
 
 * **plural-hedge reads a function called in a string as code, not a hedge (GOH.HEDGECALL).** A C

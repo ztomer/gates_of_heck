@@ -30,6 +30,13 @@
 # .swift runs gates/swift_staged.sh, after its gate passes -- unless that gate already ran the twin
 # for this tree (GOH_STAGED_TWIN_MARK, the way GOH_STRUCTURAL_MARK works). Which push checks need a
 # twin is decided by tests/test_staged_parity.py, which is red on a fast push step with none.
+#
+# A SEED SETTLE WAITS FOR THE WHOLE COMMIT (GOH.SEEDREFUSED, D-0005). A seeded check's commit run
+# lowers or deletes the private-store entries the change settles; it wrote the store the moment IT
+# passed, so a commit a LATER step refused had already pruned it (necrohand, 2026-11-12: 13
+# plural_hedge entries for files then reverted). Every check run under this hook journals its settle
+# in GOH_SEED_PENDING instead, and `goh seed-settle` applies the journal only after every step below
+# has passed; a refused commit's journal goes with its directory. tests/test_seed_refused.py.
 { # parse-guard -- bash reads this group whole before running it (tests/test_parse_guard.py)
 . "$(dirname "${BASH_SOURCE[0]}")/_from_head.sh"; goh_from_head "${BASH_SOURCE[0]}" "$@"   # run HEAD, not the tree (C4)
 set -euo pipefail
@@ -60,7 +67,9 @@ structural="$HERE/structural.sh"
 bench_lock_join "pre-commit"
 mark=""
 twins="$(mktemp "${TMPDIR:-/tmp}/goh-staged-twins.XXXXXX")"
-trap 'rm -f "$twins" ${mark:+"$mark"} ${BENCH_LOCK_ENTRY:+"$BENCH_LOCK_ENTRY"}' EXIT
+pending="$(mktemp -d "${TMPDIR:-/tmp}/goh-seed-pending.XXXXXX")"
+trap 'rm -rf "$twins" "$pending" ${mark:+"$mark"} ${BENCH_LOCK_ENTRY:+"$BENCH_LOCK_ENTRY"}' EXIT
+export GOH_SEED_PENDING="$pending"
 root_phys="$(cd "$root" && pwd -P)"
 # twin_due <name> <glob>: the commit adds or changes a <glob> file, and no gate ran <name> here. The
 # STAGED set, not `git ls-files` (every tracked file): a data-only commit in a Python repo re-ran
@@ -93,5 +102,15 @@ if [ "$status" -eq 0 ] && twin_due swift_staged '*.swift'; then
 fi
 goh_repo_writes "$root" "$repo_before" || { err "pre-commit: nothing committed"; exit 1; }
 [ "$status" -eq 0 ] || exit "$status"
+if [ -n "$(ls -A "$pending")" ]; then   # every step passed: the settles the checks journalled
+    # shellcheck source=gates/_goh_bin.sh
+    . "$HERE/_goh_bin.sh"
+    goh_resolve_native
+    if [ -z "$goh_native" ]; then
+        warn "pre-commit: no goh binary to settle the seed (${goh_native_why:-none}); the push will call its entry stale"
+    elif ! "$goh_native" seed-settle "$pending"; then
+        warn "pre-commit: goh seed-settle failed; the push will call its entry stale"
+    fi
+fi
 exit
 } # parse-guard
