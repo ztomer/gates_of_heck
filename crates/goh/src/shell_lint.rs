@@ -135,6 +135,25 @@ fn dir_rc_key(src: &Path, memo: &mut std::collections::HashMap<PathBuf, String>)
     key
 }
 
+/// One shellcheck, with `-x`, over `path` in `base`: its stdout then stderr.
+fn shellcheck_one(base: &Path, severity: &str, path: &Path) -> Result<String, String> {
+    let mut cmd = Command::new("shellcheck");
+    // `--source-path=SCRIPTDIR` in every repo (GOH.REL2): the house idiom names a library
+    // relative to the script (`$(dirname "${BASH_SOURCE[0]}")/lib.sh`), which shellcheck
+    // otherwise resolves against the CWD and silently does not follow. Measured over the
+    // estate before it went in: 0 new findings in 37 consumers.
+    cmd.current_dir(base)
+        .arg("-x")
+        .arg("--source-path=SCRIPTDIR")
+        .arg(format!("--severity={severity}"))
+        .arg("--format=gcc")
+        .arg(path);
+    let ran = bounded(&mut cmd).map_err(|e| format!("shellcheck: {e}"))?;
+    let mut text = String::from_utf8_lossy(&ran.stdout).into_owned();
+    text.push_str(&String::from_utf8_lossy(&ran.stderr));
+    Ok(text)
+}
+
 /// `bash -n` and shellcheck for the files no record covers; the verdicts, in order.
 fn check_misses(
     misses: &[&(String, PathBuf)],
@@ -165,22 +184,38 @@ fn check_misses(
     // depended on which files shared the call and the seed flapped (GOH.SHSEV). One call per
     // file WITHOUT `-x` followed nothing, and the lint went blind to every finding that needs a
     // sourced file (GOH.SHX). With `-x`, a file reads what it sources whoever shares the call.
+    // The calls are independent (each file reads what it sources whoever else is linted), so
+    // they run side by side, one thread per core over interleaved chunks (GOH.COVDEDUPE): one
+    // after another, a cold lint of goh's 84 files held one core for 60 s, which the
+    // self-hosted hook test and `structural --full` each paid in full.
+    let jobs = std::thread::available_parallelism()
+        .map_or(1, std::num::NonZeroUsize::get)
+        .clamp(1, clean.len());
+    let ran: Vec<(usize, Result<String, String>)> = std::thread::scope(|scope| {
+        let mut handles = Vec::with_capacity(jobs);
+        for j in 0..jobs {
+            let mine: Vec<usize> = clean.iter().copied().skip(j).step_by(jobs).collect();
+            handles.push(scope.spawn(move || {
+                mine.into_iter()
+                    .map(|i| (i, shellcheck_one(base, severity, &misses[i].1)))
+                    .collect::<Vec<_>>()
+            }));
+        }
+        handles
+            .into_iter()
+            .flat_map(|h| {
+                h.join().unwrap_or_else(|_| {
+                    vec![(
+                        usize::MAX,
+                        Err("shellcheck: a lint thread panicked".to_owned()),
+                    )]
+                })
+            })
+            .collect()
+    });
     let mut attributable = true;
-    for &i in &clean {
-        let mut cmd = Command::new("shellcheck");
-        // `--source-path=SCRIPTDIR` in every repo (GOH.REL2): the house idiom names a library
-        // relative to the script (`$(dirname "${BASH_SOURCE[0]}")/lib.sh`), which shellcheck
-        // otherwise resolves against the CWD and silently does not follow. Measured over the
-        // estate before it went in: 0 new findings in 37 consumers.
-        cmd.current_dir(base)
-            .arg("-x")
-            .arg("--source-path=SCRIPTDIR")
-            .arg(format!("--severity={severity}"))
-            .arg("--format=gcc")
-            .arg(&misses[i].1);
-        let ran = bounded(&mut cmd).map_err(|e| format!("shellcheck: {e}"))?;
-        let mut text = String::from_utf8_lossy(&ran.stdout).into_owned();
-        text.push_str(&String::from_utf8_lossy(&ran.stderr));
+    for (i, text) in ran {
+        let text = text?;
         let src = misses[i].1.to_string_lossy();
         for line in text
             .trim_end_matches('\n')

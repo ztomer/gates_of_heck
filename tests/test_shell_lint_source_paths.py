@@ -22,6 +22,7 @@ import subprocess
 from pathlib import Path
 
 import pytest
+from _parse_findings import findings, probe
 from conftest import commit_all, run_goh, stage, write
 
 pytestmark = pytest.mark.skipif(shutil.which("shellcheck") is None, reason="needs shellcheck")
@@ -147,21 +148,20 @@ def test_no_goh_shell_file_makes_shellcheck_follow_a_gatesrc(tmp_path):
     # spelling is caught too -- and `disable=SC1091` is not mistaken for not following
     # (local_ci.sh carried exactly that and followed goh's own .gatesrc anyway).
     (tmp_path / ".gatesrc").write_text("if then (\n")
+    named = [rel for rel in _shell_files() if ".gatesrc" in (GOH / rel).read_text(errors="replace")]
+    assert any("SC1091" in line for line in probe(tmp_path / "probe", "--severity=info")), (
+        "the instrument cannot see a missing source"
+    )
+    # Only parsed, in parallel (tests/_parse_findings.py): both codes are parse findings. Each line
+    # is judged against the file it names, whichever script's run reported it.
     followed = []
-    for rel in _shell_files():
-        lines = (GOH / rel).read_text(errors="replace").splitlines()
-        if not any(".gatesrc" in line for line in lines):
+    for line in findings([str(GOH / rel) for rel in named], tmp_path, "--severity=info"):
+        if "SC1091" not in line and "SC1094" not in line:
             continue
-        r = subprocess.run(
-            ["shellcheck", "-x", "-f", "gcc", "--severity=info", str(GOH / rel)],
-            cwd=tmp_path,
-            capture_output=True,
-            text=True,
-            stdin=subprocess.DEVNULL,
-            check=False,
-        )
-        for line in r.stdout.splitlines():
-            parts = line.split(":")
-            if ("SC1091" in line or "SC1094" in line) and ".gatesrc" in lines[int(parts[1]) - 1]:
-                followed.append(f"{rel}:{parts[1]}: {lines[int(parts[1]) - 1].strip()}")
+        path, lineno = line.split(":")[:2]
+        src = Path(path) if Path(path).is_absolute() else tmp_path / path
+        text = src.read_text(errors="replace").splitlines() if src.is_file() else []
+        if 0 < int(lineno) <= len(text) and ".gatesrc" in text[int(lineno) - 1]:
+            rel = src.relative_to(GOH) if src.is_relative_to(GOH) else src
+            followed.append(f"{rel}:{lineno}: {text[int(lineno) - 1].strip()}")
     assert followed == [], "\n".join(followed)

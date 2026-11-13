@@ -140,17 +140,23 @@ def test_a_tracked_shellcheckrc_is_read_at_both_scopes(repo, scope):
     assert rc == 0, "the rc's rule is read: " + out
 
 
-def test_shellcheck_follows_every_source_in_this_tree():
+def test_shellcheck_follows_every_source_in_this_tree(tmp_path):
     """`-x` follows only a source it can find. This tree sources its libraries the house way,
     `. "$(dirname "${BASH_SOURCE[0]}")/../gates/_from_head.sh"`, which shellcheck resolves against
     the CWD unless told otherwise -- so release.sh, land.sh and 30-odd more were linted without the
     file they source (SC1091, an info no severity judges). `.shellcheckrc`'s
     `source-path=SCRIPTDIR` resolves it against the script's own directory; this pins that every
-    tracked shell file here has its sources followed (GOH.VENDOR)."""
+    tracked shell file here has its sources followed (GOH.VENDOR). SC1091 is a parse finding, so
+    the files are only parsed, in parallel (tests/_parse_findings.py): 181.7 s on the hosted
+    runner when it ran the full analysis on one core (GOH.COVDEDUPE)."""
     import subprocess
 
+    from _parse_findings import findings, probe
     from conftest import REPO_ROOT
 
+    assert any("SC1091" in line for line in probe(tmp_path, "--include=SC1091")), (
+        "the instrument cannot see a missing source"
+    )
     listed = subprocess.run(
         ["git", "-C", str(REPO_ROOT), "ls-files", "*.sh"],
         capture_output=True,
@@ -159,13 +165,5 @@ def test_shellcheck_follows_every_source_in_this_tree():
         stdin=subprocess.DEVNULL,
     ).stdout.split()
     assert len(listed) > 50, listed
-    r = subprocess.run(
-        ["shellcheck", "-x", "--include=SC1091", "--format=gcc", *listed],
-        cwd=REPO_ROOT,
-        capture_output=True,
-        text=True,
-        check=False,
-        stdin=subprocess.DEVNULL,
-        env={k: v for k, v in os.environ.items() if k != "SHELLCHECK_OPTS"},
-    )
-    assert "SC1091" not in r.stdout, r.stdout
+    found = findings(listed, REPO_ROOT, "--include=SC1091")
+    assert not [line for line in found if "SC1091" in line], "\n".join(found)

@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+* **The suite's whole-tree shellcheck passes cost what they measure (GOH.COVDEDUPE).** v0.107.3's
+hosted run 43350426360 failed on one test: `test_shellcheck_follows_every_source_in_this_tree` took
+181.7 s against its 60 s ceiling (x2.8 for load). It asked shellcheck for SC1091, a parse finding,
+and paid the full dataflow analysis of 84 files on one core. It and the `.gatesrc`-follow test now
+share `tests/_parse_findings.py`: `--extended-analysis=false`, the files judged in parallel, and a
+probe that must still see a missing source under the same flags. Locally 56 s -> 2.9 s and
+10.4 s -> 0.8 s, every assertion kept, both proven red by breaking the tree. `goh shell-lint` itself
+now runs its per-file shellcheck calls one thread per core (tests/test_shell_lint_parallel.py, red on
+v0.107.3): the self-hosted hook test, whose verdict cache is cold, went 72 s -> 38 s.
+
 ## v0.107.3 -- step budget: local_ci's ceiling reaches inner goh_steps (GOH_STEP_BUDGET), so coverage runs under the workflow's 2700 s; suite leak check sees any orphan under the run's temp root (GOH.CI107, GOH.BASH5)
 
 * **A caller's step budget reaches the steps inside it (GOH.COVPHASES, GOH.CI107, GOH.BASH5).** The
