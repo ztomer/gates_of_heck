@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## v0.107.3 -- step budget: local_ci's ceiling reaches inner goh_steps (GOH_STEP_BUDGET), so coverage runs under the workflow's 2700 s; suite leak check sees any orphan under the run's temp root (GOH.CI107, GOH.BASH5)
+
 * **A caller's step budget reaches the steps inside it (GOH.COVPHASES, GOH.CI107, GOH.BASH5).** The
   workflow's GOH_LCI_TIMEOUT=2700 gave `./gates/rust_gate.sh` 2700 s, but rust_gate.sh drops
   GOH_STEP_TIMEOUT on entry, so its coverage step stayed at the fixed 1800 s (run 43331499075).
