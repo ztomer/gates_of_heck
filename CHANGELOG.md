@@ -2,6 +2,18 @@
 
 ## Unreleased
 
+* **A GOH_DIR naming a pruned HEAD export no longer breaks goh (GOH.TRANSIENTDIR).** Gates export
+GOH_DIR at `~/.cache/goh/head/<sha>`; a long-lived process started under one kept it (a ship's release
+kit `open`ed Routines.app with it, whose from_head jobs exited 2 from 2026-11-12 20:43 once the export
+was pruned; a Claude session's commits were refused by pre-commit). The escape: the release kit's
+launch (`update_dev.sh`) runs its opener under `env -i`, as `goh launch-app` does, so the app gets the
+login environment (the bare-open seed is now empty). The readers: one rule, a GOH_DIR that is not a
+directory resolves to GOH_LIVE_ROOT then the default checkout, said on stderr and exported --
+`lib/goh_root.sh` (`goh_dir_repair`, copied verbatim into every stock hook and pinned), `lib/goh_root.py`
+(repo_hold), and the native binary, which re-runs itself with the repaired GOH_DIR. The prior stock
+pre-commit/pre-push are retired `same-logic`; `goh hooks --refresh` delivers the fallback. Pinned by
+tests/test_dead_goh_dir.py (15 cases, all red on the old code).
+
 ## v0.111.1 -- load.py exits with the wrapped command's status (128+N on a signal); a dead owner is not success
 
 * **`tools/load.py` exits with the wrapped command's status as a shell does (GOH.LOADRC).** A command

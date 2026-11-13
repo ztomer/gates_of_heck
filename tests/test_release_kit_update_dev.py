@@ -63,9 +63,10 @@ class TestUpdateDev:
     def test_launch_flag_opens_installed_copy(self, tmp_path):
         bin_dir = tmp_path / "fakeopen"
         bin_dir.mkdir()
-        (bin_dir / "open").write_text('#!/usr/bin/env bash\nprintf "%s\\n" "$*" >> "$OPEN_LOG"\n')
+        # The kit runs `open` with an EMPTY environment (GOH.TRANSIENTDIR): the log path is baked.
+        log = tmp_path / "open.log"
+        (bin_dir / "open").write_text(f'#!/usr/bin/env bash\nprintf "%s\\n" "$*" >> "{log}"\n')
         (bin_dir / "open").chmod(0o755)
-        os.environ["OPEN_LOG"] = str(tmp_path / "open.log")
         r = run_update_dev(tmp_path, bin_dir, "--launch")
         assert r.returncode == 0, r.stdout + r.stderr
         assert (tmp_path / "open.log").read_text().startswith(str(tmp_path / "dest"))
@@ -125,7 +126,8 @@ def _world(tmp_path: Path, running: bool) -> Path:
     bin_dir = tmp_path / "fakes"
     bin_dir.mkdir()
     for name, body in FAKES.items():
-        (bin_dir / name).write_text("#!/usr/bin/env bash\n" + body)
+        # STATE baked in: the kit runs `open` with an empty environment (GOH.TRANSIENTDIR).
+        (bin_dir / name).write_text(f"#!/usr/bin/env bash\nSTATE='{tmp_path}'\n" + body)
         (bin_dir / name).chmod(0o755)
     os.environ["STATE"] = str(tmp_path)
     if running:
@@ -203,7 +205,7 @@ class TestInstallEverythingThenLaunch:
 
     def _failing_open(self, bin_dir: Path, tmp_path: Path, fails: int) -> None:
         (bin_dir / "open").write_text(
-            "#!/usr/bin/env bash\n"
+            f"#!/usr/bin/env bash\nSTATE='{tmp_path}'\n"
             'n=$(cat "$STATE/opens" 2>/dev/null || echo 0); n=$((n+1)); echo "$n" > "$STATE/opens"\n'
             f'[ "$n" -le {fails} ] && exit 1\n'
             'touch "$STATE/running"\n'

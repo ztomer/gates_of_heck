@@ -36,6 +36,8 @@ import os
 import sys
 from dataclasses import dataclass
 
+from goh_root import goh_root  # beside this file: every importer has lib/ on its path
+
 KEYS = ("hold", "archived")  # [goh] keys that are holds; `archived` is the first one's spelling
 SKIP_DIRS = {"node_modules", "target", ".build", "build", "dist", "__pycache__", ".venv", "venv"}
 
@@ -48,7 +50,7 @@ class Hold:
 
     def lift(self) -> str:
         """The command that lifts this hold."""
-        goh = os.environ.get("GOH_DIR") or os.path.expanduser("~/Projects/gates_of_heck")
+        goh = goh_root()  # a dead export GOH_DIR resolves to a live goh (GOH.TRANSIENTDIR)
         if self.key == "archived":
             return f'"{goh}/scripts/unarchive_repo.sh" {self.root}'
         marker = " -- lift: "

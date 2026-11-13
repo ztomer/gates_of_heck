@@ -175,13 +175,19 @@ if [ "$LAUNCH" = 1 ] || { [ "$WAS_RUNNING" = 1 ] && [ "$NO_LAUNCH" = 0 ]; }; the
     exit
   fi
   if [ "$WAS_RUNNING" = 1 ]; then info "relaunching ${PROCESS_NAME} (it was running before the install)"; else info "launching"; fi
-  if ! open "$DEST"; then
+  # The app gets launchd's LOGIN environment, never this script's (GOH.TRANSIENTDIR): `open` hands
+  # the app its own environment, and under a ship that held GOH_DIR at a transient HEAD export.
+  # Routines.app kept it, and every job it ran exited 2 once the export was pruned. `env -i` on the
+  # opener is `goh launch-app`'s mechanism (crates/goh/src/launchapp.rs, its probe); the opener is
+  # resolved first, so a test's fake on PATH still answers.
+  OPENER="$(command -v open)" || die "no \`open\` on PATH -- cannot launch ${DEST}"
+  if ! env -i "$OPENER" "$DEST"; then
     # LaunchServices may not have registered the new bundle yet (`open` -600, 2026-11-08):
     # register it, then try once more. Every artifact is installed by now either way.
     LSREG="${LSREGISTER:-/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister}"
     warn "open $DEST failed -- registering it with LaunchServices and retrying once"
     "$LSREG" -f "$DEST" >/dev/null 2>&1 || warn "lsregister -f $DEST failed"
-    if ! open "$DEST"; then
+    if ! env -i "$OPENER" "$DEST"; then
       err "relaunch failed: open $DEST failed twice -- ${PROCESS_NAME} is NOT running (every artifact is installed; open it by hand)"
       exit 4
     fi

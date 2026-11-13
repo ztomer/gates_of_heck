@@ -38,6 +38,7 @@ pub mod estate_seed;
 pub mod fixedsleep;
 pub mod gatesrc;
 pub mod gitutil;
+pub mod goh_dir;
 pub mod homepaths;
 pub mod hookindex;
 pub mod house_python;
@@ -130,6 +131,7 @@ pub(crate) fn goh_root() -> PathBuf {
 }
 
 fn main() {
+    goh_dir::repair();
     let (os, arch) = platform::current();
     if let Err(reason) = platform::check(&os, &arch) {
         goh_tui::eoutln!("{ERR} {reason}");
