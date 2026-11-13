@@ -30,6 +30,12 @@ one under the user's own TMPDIR and HOME (`write_sccache_shim`): whichever test 
 it starts the server a user would have started, with the user's sccache config. The class, stated:
 a process the suite may start but does not own -- a server, a daemon, an agent -- gets the user's
 environment, never the suite's disposable one. Pinned by tests/test_suite_sccache.py.
+
+THE ROOT NEVER OUTLIVES ITS RUN (GOH.ENVDUMP). `atexit` is skipped by SIGKILL, SIGTERM and SIGHUP,
+so a killed bare-pytest run left its `goh-suite-tmp.*` root behind (2026-11-12 17:10, holding a
+test's dump of the whole environment). A reaper process waiting on a pipe only this process holds
+removes the root when the pipe closes, however the run ends. Pinned by
+tests/test_suite_tmp_reaped.py, every arm red before the reaper.
 """
 
 from __future__ import annotations
@@ -38,6 +44,8 @@ import atexit
 import os
 import shlex
 import shutil
+import subprocess
+import sys
 import tempfile
 from pathlib import Path
 
@@ -84,6 +92,49 @@ def _shim_sccache(tmp: Path, real_tmp_dir: str) -> None:
     os.environ["PATH"] = f"{bin_dir}{os.pathsep}{os.environ.get('PATH', '')}"
 
 
+# The reaper: blocks on the pipe until EVERY write end is closed, which the kernel does however
+# the suite ends (SIGKILL included), then removes the root. `-S`: no site, so no user code runs.
+REAPER = (
+    "import os, shutil, sys\n"
+    "fd = int(sys.argv[1])\n"
+    "while os.read(fd, 64):\n"
+    "    pass\n"
+    "shutil.rmtree(sys.argv[2], ignore_errors=True)\n"
+)
+
+
+def _reap_on_exit(tmp: Path) -> None:
+    """Remove `tmp` when this process ends, however it ends (GOH.ENVDUMP): `atexit` alone never
+    ran on a SIGKILL, SIGTERM or SIGHUP, and a killed run's root outlived it holding what its
+    tests wrote. The write end stays in this process only (os.pipe's fds are not inheritable, so
+    no xdist worker or gate child keeps the reaper waiting); the reaper is in a session of its
+    own, so a signal to the suite's process group does not take it down with the suite."""
+    (tmp / ".goh-owner").write_text(f"{os.getpid()}\n")  # the backstop sweep skips a live root
+    read_end, write_end = os.pipe()
+    try:
+        _REAPER.append(_spawn_reaper(read_end, tmp))
+    finally:
+        os.close(read_end)
+    _REAPER_PIPE.append(write_end)  # held open for the life of the process, never closed by hand
+
+
+_REAPER_PIPE: list[int] = []
+_REAPER: list[subprocess.Popen] = []
+
+
+def _spawn_reaper(read_end: int, tmp: Path) -> subprocess.Popen:
+    """Never waited on, by design: it outlives this process and exits when the pipe closes."""
+    return subprocess.Popen(
+        [sys.executable, "-S", "-c", REAPER, str(read_end), str(tmp)],
+        pass_fds=(read_end,),
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        start_new_session=True,
+        close_fds=True,
+    )
+
+
 def _enter() -> None:
     # An xdist worker inherits the controller's; a suite a test starts with a TMPDIR of its own
     # (test_temp_claimable.py's sweep) enters afresh, with that TMPDIR as its real one.
@@ -96,6 +147,7 @@ def _enter() -> None:
     else:
         tmp = Path(tempfile.mkdtemp(prefix="goh-suite-tmp.", dir=real))
         atexit.register(shutil.rmtree, tmp, True)
+        _reap_on_exit(tmp)
         os.environ["PYTEST_DEBUG_TEMPROOT"] = str(tmp)
     os.environ[REAL_TMP_MARKER] = real
     _shim_sccache(tmp, real)
