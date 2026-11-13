@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## v0.107.4 -- whole-tree shellcheck tests only parse, in parallel; goh shell-lint runs its shellcheck calls per core
+
 * **The suite's whole-tree shellcheck passes cost what they measure (GOH.COVDEDUPE).** v0.107.3's
 hosted run 43350426360 failed on one test: `test_shellcheck_follows_every_source_in_this_tree` took
 181.7 s against its 60 s ceiling (x2.8 for load). It asked shellcheck for SC1091, a parse finding,
