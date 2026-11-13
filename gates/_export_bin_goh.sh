@@ -11,6 +11,7 @@
 # export cannot answer: the live checkout is GOH_LIVE_ROOT, else the one that made the export
 # (`.goh-live`). Pinned by tests/test_ship_pinned.py.
 { # parse-guard -- bash reads this group whole before running it (tests/test_parse_guard.py)
+. "$(dirname "${BASH_SOURCE[0]}")/../lib/bash5.sh" && goh_bash5 "$@"
 _goh_export="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 if [ ! -f "$_goh_export/.goh-head" ]; then
     echo "✗ goh: $0 is an export's bin/goh, and $_goh_export is no export (.goh-head)" >&2
@@ -28,7 +29,7 @@ export GOH_LIVE_ROOT
 # shellcheck source=gates/_goh_bin.sh
 . "$_goh_export/gates/_goh_bin.sh"
 goh_resolve_native
-if [ -z "$goh_native" ] || [ "$(cd "$(dirname "$goh_native")" && pwd -P)/$(basename "$goh_native")" = "$_goh_export/bin/goh" ]; then
+if [ -z "$goh_native" ] || [ "$(cd "$(dirname "$goh_native")" && pwd -P)/$(basename "$goh_native")" = "$_goh_export"/bin/goh ]; then
     echo "✗ goh: no native goh for $(cat "$_goh_export/.goh-head"): ${goh_native_why:-it resolved to this shim}" >&2
     exit 2
 fi

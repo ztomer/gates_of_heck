@@ -96,8 +96,8 @@ _goh_head_dir() {
         # under it (a ship's release kit, GOH.SHIPPINNED; the coordinator's leaked GOH_DIR,
         # GOH.CLEANOPEN): every export carries a shim to its own commit's native build, and names
         # the checkout that made it, which the shim asks for that commit's stamp.
-        if ! { mkdir -p "$tmp/bin" && cp "$(dirname "${BASH_SOURCE[0]}")/_export_bin_goh.sh" "$tmp/bin/goh" \
-                && chmod 755 "$tmp/bin/goh" && printf '%s\n' "$root" > "$tmp/.goh-live"; }; then
+        if ! { mkdir -p "$tmp/bin" && cp "$(dirname "${BASH_SOURCE[0]}")/_export_bin_goh.sh" "$tmp"/bin/goh \
+                && chmod 755 "$tmp"/bin/goh && printf '%s\n' "$root" > "$tmp/.goh-live"; }; then
             rm -rf "$tmp"
             echo "⚠ gates_of_heck: could not give the export of HEAD a bin/goh -- running the working tree at $root" >&2
             return 1
