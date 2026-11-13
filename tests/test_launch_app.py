@@ -17,6 +17,7 @@ from pathlib import Path
 
 import pytest
 from conftest import hermetic_env, native_goh_path
+from timing_bounds import GiveUp
 
 pytestmark = pytest.mark.skipif(sys.platform != "darwin", reason="LaunchServices' open is macOS")
 
@@ -45,9 +46,9 @@ def _probe_app(root: Path, tag: str) -> tuple[Path, Path]:
 
 
 def _environ_of(out: Path) -> dict[str, str]:
-    deadline = time.monotonic() + 60  # a loaded host launches slowly; the file is the effect
+    give_up = GiveUp(20)  # a failure is "never": stretched by the load at every check
     while not out.exists():
-        assert time.monotonic() < deadline, f"the probe app never wrote {out}"
+        assert not give_up.passed(), f"the probe app never wrote {out}"
         time.sleep(0.2)
     pairs = (ln.split("=", 1) for ln in out.read_text().splitlines() if "=" in ln)
     return dict(pairs)

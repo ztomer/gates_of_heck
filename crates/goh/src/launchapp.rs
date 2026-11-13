@@ -12,7 +12,7 @@
 //! |----------------------------------------------|----------|--------------------|----------|
 //! | Finder `open` (the login reference)          | absent   | absent           | 16       |
 //! | `open -a APP`, `open -n -a APP`              | present  | present          | 122      |
-//! | `open --env GOH_SENTINEL= -a APP`            | present  | present          | 122      |
+//! | `open --env SENTINEL= -a APP`                | present  | present          | 122      |
 //! | `osascript 'tell application APP to launch'` | present  | present          | 122      |
 //! | `launchctl asuser UID open -a APP`           | present  | present          | 123      |
 //! | `env -i /usr/bin/open -a APP`                | absent   | absent           | 17       |
