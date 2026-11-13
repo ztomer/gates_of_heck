@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## v0.110.0 -- goh ship and the release kit read hosted CI once and never wait on it (advisory over the push gate); goh ship --bump none
+
 * **goh ship and the release kit read hosted CI once and never wait on it; `goh ship --bump none`
 ships with no release (GOH.CIWAIT).** Hosted CI re-runs the gate the push already passed, and the
 owner ruled it advisory (2026-11-11; .loop LOOP.CIADVISORY: `loopctl done` closes on the local push
