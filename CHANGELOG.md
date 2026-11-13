@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## v0.108.1 -- no goh test writes or prints a whole environment (tests/env_probe.py, tests/test_no_env_dump.py); the suite temp root is reaped on any exit
+
 * **No goh test writes or prints a whole environment, and the suite's temp root never outlives its
 run (GOH.ENVDUMP).** `test_coverage_external.py` wrote `env > seen.env` into its temp dir, and a
 killed bare-pytest run left its `goh-suite-tmp.*` root behind holding it (2026-11-12, 160 lines,
