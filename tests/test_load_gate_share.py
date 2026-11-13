@@ -41,8 +41,9 @@ def _run(args: list[str], timeout: float = 60.0, **extra: str) -> subprocess.Com
 
 
 def _holding_gate(directory: Path, release: Path, tag: str, **extra: str) -> subprocess.Popen:
-    """A 0-spinner run holding its place until `release` exists."""
-    script = f"until [ -e '{release}' ]; do sleep 0.05; done # {tag}"
+    """A 0-spinner run holding its place until `release` exists. The loop writes its pid to
+    `<release>.pid`: a test that SIGKILLs the gate orphans the loop, and owns it (`_own_loop`)."""
+    script = f"echo $$ >'{release}.pid'; until [ -e '{release}' ]; do sleep 0.05; done # {tag}"
     return subprocess.Popen(
         [sys.executable, str(TOOL), "--dir", str(directory), "0", "--", "/bin/sh", "-c", script],
         stdin=subprocess.DEVNULL,
@@ -59,6 +60,16 @@ def _shared(directory: Path) -> list[Path]:
 
 def _until(predicate, seconds: float = 20.0) -> None:
     assert load_kit.wait_until(predicate, timing_bounds.patience(seconds)), "never happened"
+
+
+def _own_loop(release: Path) -> None:
+    """The suite owns the holding loop (load_kit.own_pid), so the kit reaps it at the test's end,
+    PASS OR FAIL. A SIGKILLed `load.py` cannot wait for its child, the `release` touch alone raced
+    pytest deleting tmp_path, and the loop spun at PID 1 on a path that no longer existed: one per
+    run, 28 reaped by hand on 2026-11-12, the oldest 12 h old (GOH.COVPHASES)."""
+    pidfile = Path(f"{release}.pid")
+    _until(lambda: pidfile.is_file() and pidfile.read_text().strip().isdigit())
+    load_kit.own_pid(int(pidfile.read_text().strip()))
 
 
 def _end(proc: subprocess.Popen, release: Path) -> None:
@@ -151,6 +162,7 @@ def test_a_dead_gates_place_is_pruned(tmp_path: Path) -> None:
     """A gate SIGKILLed before its cleanup leaves its file; the next claim does not count it."""
     release = tmp_path / "release"
     first = _holding_gate(tmp_path, release, "gate-a", GOH_LOAD_GATES="1")
+    _own_loop(release)
     _until(lambda: len(_shared(tmp_path)) == 1)
     first.kill()
     first.wait()

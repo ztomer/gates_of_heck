@@ -125,6 +125,29 @@ def leaked_spinners(roots: list[str] | None = None) -> list[tuple[int, str]]:
     return out
 
 
+def leaked_under(roots: list[str]) -> list[tuple[int, str]]:
+    """Live processes of ANY shape whose command line names a path under one of `roots`.
+
+    `leaked_spinners` saw only the spinner shape, so a test's OWN child outliving it went unseen:
+    tests/test_load_gate_share.py SIGKILLed a holding `load.py` and its `/bin/sh -c until [ -e
+    .../release ]` loop, re-parented to PID 1, spun on a path pytest had already deleted -- one per
+    run, 28 found by hand on 2026-11-12, the oldest 12 h old (GOH.COVPHASES). Whatever names the
+    run's temp root was started for this run; at the session's end nothing should. This process
+    and its ancestors (a `--basetemp` on the runner's own command line) are not leaks.
+    """
+    scope = [f"{root.rstrip('/')}/" for root in roots]
+    mine: set[int] = set()
+    pid = os.getpid()
+    while pid > 1 and pid not in mine:
+        mine.add(pid)
+        pid = reg.pid_ppid(pid) or 0
+    return [
+        (pid, command)
+        for pid, _parent, command in live_processes()
+        if pid not in mine and any(prefix in command for prefix in scope)
+    ]
+
+
 def registered(directory: Path) -> list[int]:
     """The pids the tool registered: the spinners it started, which the suite owns too."""
     data = reg.read(reg.registry_path(directory)) or {}
@@ -450,9 +473,10 @@ def suite_leak_check(tmp_path_factory):
     yield
     survivors = reap()
     leaked = leaked_spinners(roots)
+    leaked += [found for found in leaked_under(roots) if found not in leaked]
     _clean(leaked)
     assert not survivors, f"the suite left processes running: {survivors}"
-    assert not leaked, f"the suite left spinners running: {leaked}"
+    assert not leaked, f"the suite left processes running: {leaked}"
 
 
 @pytest.fixture(autouse=True)
