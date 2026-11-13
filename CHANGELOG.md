@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+* **A caller's step budget reaches the steps inside it (GOH.COVPHASES, GOH.CI107, GOH.BASH5).** The
+  workflow's GOH_LCI_TIMEOUT=2700 gave `./gates/rust_gate.sh` 2700 s, but rust_gate.sh drops
+  GOH_STEP_TIMEOUT on entry, so its coverage step stayed at the fixed 1800 s (run 43331499075).
+  `local_ci.sh` now exports each step's ceiling as GOH_STEP_BUDGET, and `goh_step` (shell and
+  native tiers) falls back to it before 1800 s; a repo's own GOH_STEP_TIMEOUT still wins.
+  `tests/test_step_budget.py` was red on the old scripts.
+* **The suite's leak check sees any process left under the run's temp root, not only spinners.**
+  `test_a_dead_gates_place_is_pruned` SIGKILLed a holding `load.py` and orphaned its
+  `until [ -e .../release ]` loop at PID 1 on every run (28 found, the oldest 12 h); the test now
+  owns the loop, and the widened check went red on the old test.
+
 ## v0.107.2 -- coverage phases stream with start and elapsed; the external suite drives an optimized instrumented goh
 
 * **The coverage step streams its phases, and the external suite drives an optimized binary
