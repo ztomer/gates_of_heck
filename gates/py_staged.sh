@@ -109,8 +109,11 @@ if [ "$scope" = staged ]; then
 fi
 if [ -n "${GOH_PY_LINT_CEILINGS:-}" ]; then
     # Debt the repo carries, counted per file, may only fall (gates/py_lint_ceiling.py, BACKLOG 4.4).
+    # --view in the staged scope: the ceilings are the export's, the index being committed -- the
+    # repository's own index is not it under `git commit -- <paths>` (GOH.HOOKREFRESH).
+    view=""; [ "$scope" != staged ] || view=1
     goh_step "ruff check under $GOH_PY_LINT_CEILINGS ($scope)" \
-        "$GOH_PY" "$HERE/py_lint_ceiling.py" --check --ceilings "$GOH_PY_LINT_CEILINGS" --runner "$RUN" -- "${STAGED[@]}"
+        "$GOH_PY" "$HERE/py_lint_ceiling.py" --check ${view:+--view} --ceilings "$GOH_PY_LINT_CEILINGS" --runner "$RUN" -- "${STAGED[@]}"
 else
     goh_step "ruff check ($scope)"        "${RUN_ARR[@]}" ruff check --extend-select PLW1510 "${STAGED[@]}"  # the house floor (G17b, py_gate.sh)
     goh_py_house_unadopted "${STAGED[@]}"

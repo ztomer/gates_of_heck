@@ -185,3 +185,69 @@ def test_unadopted_the_floor_holds_and_the_house_debt_is_named(repo):
         "house ruff set" in r.stdout + r.stderr
         and "not adopted: 1 finding here" in r.stdout + r.stderr
     )
+
+
+def test_commit_with_paths_reads_the_ceiling_it_commits(repo):
+    """`git commit -- <paths>` commits a TEMPORARY index only GIT_INDEX_FILE names (GOH.HOOKREFRESH,
+    the skills repo, 2026-11-13). The ceiling written down in the working tree and committed by
+    path never reached the repository's own index, and the gate read THAT one: the commit was
+    refused for being under a ceiling it was lowering. The hook below is the stock hook's shape --
+    carry the index, unbind, run the staged gate -- and the commit is a real one."""
+    write(repo, "old.py", TWO_FINDINGS + "import json\n")
+    ceilings(repo, {"old.py": 3})
+    hook = repo / ".git" / "hooks" / "pre-commit"
+    hook.write_text(
+        "#!/bin/bash\n"
+        f'. "{REPO_ROOT}/gates/_git_env.sh"; goh_hook_unbind || exit $?\n'
+        f'exec bash "{REPO_ROOT}/gates/py_staged.sh"\n'
+    )
+    hook.chmod(0o755)
+    write(repo, "old.py", TWO_FINDINGS)
+    write(repo, "tools/py_lint_ceilings.json", json.dumps({"old.py": 2}) + "\n")
+    r = subprocess.run(
+        [
+            "git",
+            "-C",
+            str(repo),
+            "-c",
+            "user.name=t",
+            "-c",
+            "user.email=t@t",
+            "commit",
+            "-m",
+            "lower the ceiling",
+            "--",
+            "old.py",
+            "tools/py_lint_ceilings.json",
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+        stdin=subprocess.DEVNULL,
+    )
+    assert r.returncode == 0, r.stdout + r.stderr
+    # ...and the other direction: a ceiling RAISED by path is still seen, from the same index.
+    write(repo, "tools/py_lint_ceilings.json", json.dumps({"old.py": 3}) + "\n")
+    write(repo, "old.py", TWO_FINDINGS + "import json\n")
+    r = subprocess.run(
+        [
+            "git",
+            "-C",
+            str(repo),
+            "-c",
+            "user.name=t",
+            "-c",
+            "user.email=t@t",
+            "commit",
+            "-m",
+            "raise it",
+            "--",
+            "old.py",
+            "tools/py_lint_ceilings.json",
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+        stdin=subprocess.DEVNULL,
+    )
+    assert r.returncode != 0 and "raised 2 -> 3" in r.stdout + r.stderr, r.stdout + r.stderr

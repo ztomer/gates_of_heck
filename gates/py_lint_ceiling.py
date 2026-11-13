@@ -5,7 +5,8 @@
 of `{"path.py": count}` (BACKLOG 4.4). A staged file may carry up to its ceiling; over it fails with
 its findings; under it fails with the number to write, so the ratchet never holds room for a finding
 to come back; a file not listed carries none. The ceilings are read from the INDEX (what is being
-committed): one that is missing from it, or higher than HEAD's, is a finding -- deleting the file or
+committed; `--view`, the staged scope, reads them from the index export it runs in): one that is
+missing from it, or higher than HEAD's, is a finding -- deleting the file or
 raising a number is how debt is reset, and a ceiling that can be reset proves nothing. A ceiling
 for a file the commit does not carry is stale and fails: its debt left with the file.
 
@@ -53,12 +54,26 @@ def _git(*args: str) -> subprocess.CompletedProcess[str]:
 
 
 def _ceilings_at(rev: str, path: str) -> dict[str, int] | None:
-    """The ceilings at `rev` (":" is the index), or None where the file is not there."""
-    shown = _git("show", f"{rev}{path}" if rev == ":" else f"{rev}:{path}")
-    if shown.returncode != 0:
-        return None
+    """The ceilings at `rev` (":" is the index, "view" the file in the cwd), or None where the file
+    is not there.
+
+    "view" is the staged scope's (`--view`): py_staged.sh runs this inside goh_index_view's export
+    of the index BEING COMMITTED, so the file there is that index's bytes -- the ones ruff judges.
+    `git show :` from the export reads the repository's OWN index instead, which under
+    `git commit -- <paths>` (a temporary index only the hook's GIT_INDEX_FILE names) is not the
+    commit: the skills repo was refused for a ceiling it was lowering (GOH.HOOKREFRESH)."""
+    if rev == "view":
+        try:
+            text = Path(path).read_text(encoding="utf-8")
+        except FileNotFoundError:
+            return None
+    else:
+        shown = _git("show", f"{rev}{path}" if rev == ":" else f"{rev}:{path}")
+        if shown.returncode != 0:
+            return None
+        text = shown.stdout
     try:
-        data = json.loads(shown.stdout)
+        data = json.loads(text)
     except json.JSONDecodeError as e:
         raise SystemExit(f"✗ {KEY}: {path} at {rev} is not JSON ({e})") from None
     if not isinstance(data, dict) or not all(isinstance(v, int) for v in data.values()):
@@ -88,8 +103,8 @@ def findings(runner: str, files: list[str]) -> dict[str, list[dict]]:
     return by_file
 
 
-def check(path: str, runner: str, files: list[str]) -> int:
-    staged = _ceilings_at(":", path)
+def check(path: str, runner: str, files: list[str], *, view: bool = False) -> int:
+    staged = _ceilings_at("view" if view else ":", path)
     if staged is None:
         print(
             f"✗ {KEY}={path} names a file that is not in this commit: deleting the ceilings resets"
@@ -167,6 +182,11 @@ def main() -> int:
     mode.add_argument("--seed", metavar="OUT", help="write today's count for every tracked .py")
     ap.add_argument("--ceilings", help="the ceilings file (with --check)")
     ap.add_argument(
+        "--view",
+        action="store_true",
+        help="the cwd is an export of the index being committed: read the ceilings from it",
+    )
+    ap.add_argument(
         "--runner", default="python3 -m", help="how ruff is run (GOH_PY_RUNNER's shape)"
     )
     ap.add_argument("files", nargs="*")
@@ -175,7 +195,7 @@ def main() -> int:
         return seed(a.seed, a.runner)
     if not a.ceilings:
         ap.error("--check needs --ceilings")
-    return check(a.ceilings, a.runner, a.files)
+    return check(a.ceilings, a.runner, a.files, view=a.view)
 
 
 if __name__ == "__main__":
