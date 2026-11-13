@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """goh ship: the detached, time-bounded LOCAL landing pipeline (GOH.SHIP, owner 2026-11-08).
 
-    goh ship [--repo DIR] [--item ID] [--summary TEXT] [--version X.Y.Z | --bump patch|minor|major]
+    goh ship [--repo DIR] [--item ID] [--summary TEXT]
+             [--version X.Y.Z | --bump patch|minor|major|none]
              [--wait] [--out PATH]
     goh ship --status RESULT.json
 
@@ -17,11 +18,15 @@ every agent's context (GOH.SPENDWATCH). Here it is a pipeline no turn watches:
              `{version}` in the command); skipped when HEAD already carries a version tag; a repo
              that tags none is refused first; then lib/ship_pushed.py: HEAD and its tag are pushed
     install  `.gatesrc` GOH_SHIP_INSTALL; skipped (said) when undeclared (a kit may install)
-    verify   first, when the remote is GitHub's, the CI verdict on HEAD through the throttle-aware
-             door (`loopctl ci SHA --repo OWNER/NAME --wait`): queued or running is PENDING and
-             waited on, within the ship's bound; red, or still pending at the bound, fails here
-             (GOH.SHIPCIWAIT). Then `loopctl verify REPO`, the claim card (GOH_LOOPCTL; REPO
-             relative to LOOPCTL_ROOT or ~/Projects); skipped without loopctl and without --item
+    verify   first, when the remote is GitHub's, the CI verdict on HEAD, read ONCE through the
+             throttle-aware door (`loopctl ci SHA --repo OWNER/NAME`), never waited on: hosted CI is
+             ADVISORY (owner 2026-11-11; .loop LOOP.CIADVISORY, GOH.CIWAIT). Red (or unread) fails
+             here, a finding; queued, running or throttled on a checkout whose pre-push hook is
+             goh's push gate passes, said as advisory (`loopctl done` records the run and `loopctl
+             tick` re-reads it, naming a red one); with no push-gate hook it fails at once, as done
+             would refuse it. Then `loopctl verify REPO`, the claim card (GOH_LOOPCTL; REPO relative
+             to LOOPCTL_ROOT or ~/Projects), whose only failing line may be that advisory CI one;
+             skipped without loopctl and without --item
     done     with --item: `loopctl done ID --shipped RESULT`, which records the item from this
              result and the card through done's own gates (CI on what landed), so no agent turn
 
@@ -44,6 +49,9 @@ The next version, when neither --version nor --bump is given, is the maintained 
 CHANGE is major, a feat minor; a repo's own cliff.toml [bump] is honoured); a span git-cliff finds
 nothing to bump in (no conventional commit) is a patch. No git-cliff on PATH refuses the ship,
 naming the install; --version or --bump needs none (gates/required_tools.tsv, layer `ship`).
+`--bump none` ships with no release: a repo that declares no version (no v-tag), or a HEAD that
+already carries its tag; a tagging repo past its newest tag is refused, naming --version X.Y.Z (the
+version a commit already bumped, which the kit then tags) and the bumps (GOH.CIWAIT).
 
 `sha` in the result is the LANDED commit: HEAD after the release step, which may commit a version
 bump the hand-off never had; `handoff_sha` is the commit the agent handed off.
@@ -73,16 +81,11 @@ import bounded_run
 import gitrun
 import ship_changelog
 import ship_pushed
+import ship_verify
 
 from tui.lib import err, info, ok, step
 
 STEPS = ("push", "release", "install", "verify", "done")
-# `loopctl ci`'s exits (.loop tools/loopci.py): green, red or unread, pending, no verdict exists
-# (Actions off, no workflows), throttled; 2 is a refused call.
-CI_GREEN, CI_RED, CI_PENDING, CI_NONE, CI_THROTTLED = 0, 1, 3, 4, 75
-CI_POLL = 60  # between two waits that came back pending (the door's own bound, or a throttle)
-CI_MARGIN = 60  # of the verify step's bound, kept for the card after the wait
-GITHUB = re.compile(r"github\.com[:/]([\w.-]+/[\w.-]+?)(?:\.git)?/?$")
 TAIL = 40
 GRACE = 5
 DEFAULT_TIMEOUT = 3600
@@ -153,9 +156,19 @@ def cliff_version(repo: Path, tag: str) -> str:
 
 def next_version(repo: Path, tag: str, version: str | None, bump: str | None) -> str:
     if version:
+        if bump:
+            raise Refused(f"--version {version} and --bump {bump} both name the version: pass one")
         if not re.fullmatch(r"\d+\.\d+\.\d+", version.removeprefix("v")):
             raise Refused(f"--version {version!r} is not X.Y.Z")
         return version.removeprefix("v")
+    if bump == "none":
+        held = [t for t in git(repo, "tag", "--points-at", "HEAD").splitlines() if SEMVER.match(t)]
+        if tag and not held:
+            raise Refused(f"--bump none ships no release, but {repo.name} tags releases and HEAD "
+                          f"is past {tag}, so it would land untagged: pass --version X.Y.Z for "
+                          "the version a commit already bumped (the kit tags it), or --bump "
+                          "patch|minor|major to cut the next")  # fmt: skip
+        return ""
     m = SEMVER.match(tag)
     if not m:
         return ""
@@ -262,7 +275,7 @@ def plan(args: argparse.Namespace) -> dict:
     return {
         "schema": 1, "repo": str(repo), "name": name, "item": args.item or None,
         "summary": args.summary or "", "remote": remote, "branch": branch, "sha": sha, "handoff_sha": sha,
-        "base_tag": tag, "version": version,
+        "base_tag": tag, "version": version, "bump": args.bump,
         "release": cfg["GOH_SHIP_RELEASE"], "install": cfg["GOH_SHIP_INSTALL"],
         "release_pushes": cfg["GOH_SHIP_RELEASE_PUSHES"] == "1",
         "preflight": [c for w, c in asked if w == "GOH_SHIP_PREFLIGHT"],
@@ -301,6 +314,9 @@ def command(res: dict, name: str) -> tuple[str | None, str]:
     if name == "release":
         if not res["release"]:
             return None, "the repo tags nothing and declares no GOH_SHIP_RELEASE"
+        if res.get("bump") == "none":
+            kept = f"the version stays {res['base_tag']}" if res["base_tag"] else "no version"
+            return None, f"--bump none: no release ({kept})"
         held = [t for t in git(Path(res["repo"]), "tag", "--points-at", "HEAD").splitlines()
                 if SEMVER.match(t)]  # fmt: skip
         if held:
@@ -312,56 +328,11 @@ def command(res: dict, name: str) -> tuple[str | None, str]:
     if name == "verify":
         if not have and not res["item"]:
             return None, f"no loopctl at {res['loopctl']} and no --item"
-        card = f"{py} {lc} verify {shlex.quote(res['name'])}"
-        wait = f"{py} {shlex.quote(str(Path(__file__).resolve()))} --ci-wait {shlex.quote(res['result'])}"
-        return f"{wait} && {card}", ""
+        me = shlex.quote(str(Path(__file__).resolve()))
+        return f"{py} {me} --verify {shlex.quote(res['result'])}", ""
     if not res["item"]:
         return None, "no --item to record"
     return f"{py} {lc} done {shlex.quote(res['item'])} --shipped {shlex.quote(res['result'])}", ""
-
-
-def github_slug(repo: Path, remote: str) -> str:
-    """OWNER/NAME of REMOTE when it is GitHub's (its fetch URL), else ""."""
-    m = GITHUB.search(git(repo, "remote", "get-url", remote))
-    return m.group(1) if m else ""
-
-
-def ci_wait(result: str) -> int:
-    """Wait on HEAD's CI verdict before the card: 0 green or no verdict exists, 1 red or the bound.
-
-    A queued or running CI is pending, never red: the ship that read loopci's one queued run 1.6 s
-    after its push failed although CI went green minutes later (GOH.SHIPCIWAIT, run 42577152924).
-    The wait is the door's (`loopctl ci --wait`), which polls through the shared cache and sleeps
-    through a throttle; a wait that comes back pending (the door's own cap, a throttle past it) is
-    asked again until the verify step's bound, less CI_MARGIN for the card."""
-    res = json.loads(Path(result).read_text(encoding="utf-8"))
-    repo = Path(res["repo"])
-    slug = github_slug(repo, res["remote"])
-    if not slug:
-        step("CI: the remote is not GitHub's; no CI verdict to wait on")
-        return 0
-    sha = git(repo, "rev-parse", "HEAD")
-    poll = float(os.environ.get("GOH_SHIP_CI_POLL") or CI_POLL)
-    start = time.monotonic()
-    end = start + max(1.0, res["timeout_s"] - CI_MARGIN)
-    while True:
-        left = end - time.monotonic()
-        argv = [sys.executable, res["loopctl"], "ci", sha, "--repo", slug, "--wait", "--timeout",
-                str(max(1, int(left)))]  # fmt: skip
-        code = subprocess.run(argv, cwd=repo, env=unbound_env(), stdin=subprocess.DEVNULL,
-                              check=False).returncode  # fmt: skip
-        if code in (CI_GREEN, CI_NONE):
-            return 0
-        if code not in (CI_PENDING, CI_THROTTLED):
-            what = "CI red" if code == CI_RED else f"loopctl ci failed (exit {code})"
-            err(f"{what} for {sha[:8]} on {slug}: the ship stops at verify")
-            return 1
-        left = end - time.monotonic()
-        if left <= 0:
-            err(f"CI still pending for {sha[:8]} on {slug} after {time.monotonic() - start:.0f}s, "
-                "the ship's bound (GOH_SHIP_TIMEOUT): not red, not green")  # fmt: skip
-            return 1
-        time.sleep(min(poll, left))
 
 
 def unbound_env() -> dict[str, str]:
@@ -480,15 +451,17 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--item", help="the queue item `loopctl done` records on success")
     ap.add_argument("--summary", help="what landed, one line (the item's result)")
     ap.add_argument("--version", help="the release version X.Y.Z (default: from the commits)")
-    ap.add_argument("--bump", choices=("patch", "minor", "major"))
+    ap.add_argument("--bump", choices=("patch", "minor", "major", "none"),
+                    help="the next version's part, or none: ship with no release (no version, "
+                         "or a HEAD already tagged)")  # fmt: skip
     ap.add_argument("--wait", action="store_true", help="run in the foreground, a mark per step")
     ap.add_argument("--out", help="the result JSON (default ~/.local/state/goh/ship/REPO/...)")
     ap.add_argument("--status", metavar="RESULT", help="print a result's marks")
     ap.add_argument("--worker", metavar="RESULT", help=argparse.SUPPRESS)
-    ap.add_argument("--ci-wait", metavar="RESULT", help=argparse.SUPPRESS)
+    ap.add_argument("--verify", metavar="RESULT", help=argparse.SUPPRESS)
     args = ap.parse_args(argv)
-    if args.ci_wait:
-        return ci_wait(args.ci_wait)
+    if args.verify:
+        return ship_verify.verify(args.verify)
     if args.worker:
         return worker(args.worker)
     if args.status:

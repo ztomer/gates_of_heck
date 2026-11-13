@@ -255,8 +255,6 @@ Measured on media_server: `structural --full` 1.9 s -> 0.30 s warm.
 |---|---|---|
 | `GOH_RELEASE_GATE` | unset (required) | Gate command a release must pass: declared in `.gatesrc`, or exported (`--gate CMD` beats both, the environment beats `.gatesrc`). |
 | `GOH_RELEASE_BACKFILL_FLOOR` | unset (no floor) | The oldest tag the release step backfills a GitHub release for (`v2.2.0` or `2.2`): an earlier tag is neither backfilled nor warned about, in the live loop and the `--dry-run` plan alike. For a repo whose CHANGELOG deliberately starts at some version (ztools: 56 pre-v2.2.0 tags). Declared in `.gatesrc` (read by name in a child) or exported; a value that is not a version is refused. |
-| `GOH_RELEASE_CI_WAIT` | `1800` | Seconds step 0 watches the CI runs for HEAD (after pushing an unpushed HEAD) before refusing a pending or missing run; a red run refuses at once. `0` looks once. |
-| `GOH_RELEASE_CI_POLL` | `20` | Seconds between looks while that watch waits. |
 | `GOH_RELEASE_BUFFERED` | internal | Self-buffering sentinel set at startup; unset after snapshot so nested invocations stay hermetic. Do not set by hand. |
 
 ## Ship (`goh ship`, `tools/ship.py`, GOH.SHIP)
@@ -264,9 +262,13 @@ Measured on media_server: `structural --full` 1.9 s -> 0.30 s warm.
 The local landing pipeline an agent hands off to (private repos; public ones keep standard GitHub
 workflows, CI.PUBLIC): push through the pre-push gate -> the repo's release kit -> install -> the
 `loopctl verify` card -> `loopctl done ID --shipped RESULT`, detached and bounded, one result JSON.
-On a GitHub remote the verify step first waits on HEAD's CI verdict through `loopctl ci SHA --repo
-OWNER/NAME --wait`: queued or running is pending, never red; red, or still pending at the step's
-bound, fails the ship at verify (GOH.SHIPCIWAIT).
+On a GitHub remote the verify step first reads HEAD's CI verdict ONCE through `loopctl ci SHA --repo
+OWNER/NAME`, never waiting: hosted CI is advisory (owner 2026-11-11, .loop LOOP.CIADVISORY,
+GOH.CIWAIT). Red or unread fails the ship at verify; queued, running or throttled passes as advisory
+when the checkout's pre-push hook is goh's push gate (`loopctl done` records the run, `loopctl tick`
+re-reads it and names a red one), and fails at once without one. `--bump none` ships with no release:
+a repo with no v-tag, or a HEAD already tagged; past the newest tag it is refused, naming
+`--version X.Y.Z`.
 
 | Key | Default | Meaning |
 |---|---|---|
@@ -276,7 +278,6 @@ bound, fails the ship at verify (GOH.SHIPCIWAIT).
 | `GOH_SHIP_RELEASE_PUSHES` | unset | `1`: the release kit pushes the hand-off together with its release commit, so the push step is skipped (said) whenever the release step runs. For a repo whose gate refuses the hand-off alone (ZoneWM: a release note may only land in the release commit). A HEAD already tagged still gets the push step. |
 | `GOH_SHIP_INSTALL` | unset (step skipped, said) | The install command after the release; unset when the release kit installs (a `--verify` that runs the installer) or nothing installs. |
 | `GOH_SHIP_TIMEOUT` | `3600` | Seconds each step may run before its whole process group is TERM'd then KILL'd (`lib/bounded_run.py`); the step is `timed_out` in the result. |
-| `GOH_SHIP_CI_POLL` | `60` | Seconds between two CI waits that came back pending (the door's own cap, or a throttle past it), within the verify step's bound less 60 s for the card. A test seam. |
 | `GOH_SHIP_DIR` | `~/.local/state/goh/ship` | Where results go: `<dir>/<repo>/<UTC stamp>-<sha8>.json`, with `.log` (the worker's marks) and `.<step>.log` beside it; `--out` names one. |
 | `GOH_LOOPCTL` | `~/Projects/.loop/tools/loopctl.py` | The coordinator's `loopctl`, which the verify and done steps run (a test seam). The repo is named to it relative to `LOOPCTL_ROOT`, else `~/Projects`. |
 | `GOH_SHIP_VERSION` | set by `goh ship` | Exported to every step: the version the release step cuts (`--version`, `--bump`, else `git-cliff --bumped-version` over the conventional commits since the newest tag, a patch when it finds nothing to bump; no git-cliff refuses the ship, naming `brew install git-cliff`). Never set by hand. The result's `sha` is the LANDED commit (HEAD after the release step, which may commit a bump); `handoff_sha` is the commit handed off. |

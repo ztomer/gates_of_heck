@@ -126,8 +126,6 @@ def run_release(
     )
     for k in ("GOH_RELEASE_GATE", "GOH_RELEASE_BUFFERED"):
         env.pop(k, None)
-    # The CI watch looks once and never sleeps unless a test asks for a wait (test_release_kit_ci.py).
-    env.update({"GOH_RELEASE_CI_WAIT": "0", "GOH_RELEASE_CI_POLL": "0"})
     env.update(env_extra or {})
     return subprocess.run(
         [

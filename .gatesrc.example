@@ -72,8 +72,6 @@ GOH_MAX_LINES=500                 # file-length cap; unset disables the check
 # GOH_CI_JOBS=4                     # run that many steps at once (default 1); '[tag] cmd' steps sharing a tag never overlap
 # GOH_RELEASE_GATE='./tools/gate.sh --full'
 # GOH_RELEASE_BACKFILL_FLOOR=v2.2.0   # no GitHub release is backfilled for a tag older than this
-# GOH_RELEASE_CI_WAIT=1800          # seconds the release kit watches HEAD's CI (after pushing it) before refusing
-# GOH_RELEASE_CI_POLL=20            # seconds between looks during that watch
 # GOH_TAG_VERSION_SOURCES='file:VERSION cargo:Cargo.toml'   # what a pushed v<semver>
 #   tag must match, read at the tagged COMMIT. Scope a glob to what you ship
 #   (cargo:crates/*/Cargo.toml); **/Cargo.toml sweeps vendor/ and invents

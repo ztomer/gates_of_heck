@@ -1,4 +1,5 @@
-"""The release kit refuses to tag over a red, pending or missing CI run on HEAD (BACKLOG 6.5).
+"""The release kit refuses to tag over a red CI run on HEAD (BACKLOG 6.5), and reads CI once, never
+waiting: a pending or missing run is ADVISORY over goh's push gate (GOH.CIWAIT, owner 2026-11-11).
 
 ztools' CI has been red since 2026-10-10 (`.python-version` is gitignored and ci.yml reads it),
 and v3.6.0, v3.7.0 and v3.8.0 were each tagged over it. The kit's first step now reads the runs
@@ -31,6 +32,22 @@ def _tagged(kit: dict) -> bool:
     return (kit["proj"] / ".git" / "refs" / "tags" / TAG).exists()
 
 
+def _push_gated(kit: dict) -> dict:
+    """The checkout's pre-push hook is goh's push gate: the local record that a commit passed the
+    full gate before it could be pushed (what .loop's `loopctl done` reads the same way)."""
+    hook = kit["proj"] / ".git" / "hooks" / "pre-push"
+    hook.write_text(
+        '#!/bin/sh\n# exec "$GOH_DIR/gates/push_gate.sh" (a stand-in that passes)\nexit 0\n'
+    )
+    hook.chmod(0o755)
+    return kit
+
+
+def _run_lists(kit: dict) -> int:
+    log = kit["gh_log"]
+    return sum("run list" in ln for ln in log.read_text().splitlines()) if log.exists() else 0
+
+
 def test_a_red_run_refuses_the_tag_and_names_the_run(kit):
     r = run_release(_with_ci(kit, RED))
     out = r.stdout + r.stderr
@@ -39,17 +56,43 @@ def test_a_red_run_refuses_the_tag_and_names_the_run(kit):
     assert not _tagged(kit)
 
 
-def test_a_pending_run_refuses_the_tag(kit):
+def test_a_pending_run_without_the_push_gate_refuses_at_once(kit):
     r = run_release(_with_ci(kit, PENDING))
     out = r.stdout + r.stderr
-    assert r.returncode != 0 and "ci: in_progress" in out, out
+    assert r.returncode != 0 and "ci: in_progress" in out and "push gate" in out, out
+    assert _run_lists(kit) == 1, "the kit read CI more than once"
     assert not _tagged(kit)
 
 
-def test_no_run_for_head_refuses_the_tag(kit):
+def test_no_run_for_head_without_the_push_gate_refuses_the_tag(kit):
     r = run_release(_with_ci(kit, None))
     out = r.stdout + r.stderr
     assert r.returncode != 0 and "no CI run for HEAD" in out, out
+    assert not _tagged(kit)
+
+
+def test_a_pending_run_over_the_push_gate_tags_advisory_after_one_read(kit):
+    """GOH.CIWAIT: the kit watched CI up to 1800 s for a run re-running the gate the push already
+    passed. Over goh's push gate a pending run is advisory: tagged now, said, read once."""
+    r = run_release(_push_gated(_with_ci(kit, PENDING)))
+    out = r.stdout + r.stderr
+    assert r.returncode == 0, out
+    assert "advisory" in out and "ci: in_progress" in out, out
+    assert _run_lists(kit) == 1, "the kit read CI more than once"
+    assert _tagged(kit)
+
+
+def test_no_run_yet_over_the_push_gate_tags_advisory(kit):
+    r = run_release(_push_gated(_with_ci(kit, None)))
+    out = r.stdout + r.stderr
+    assert r.returncode == 0 and "advisory" in out, out
+    assert _tagged(kit)
+
+
+def test_a_red_run_over_the_push_gate_still_refuses(kit):
+    r = run_release(_push_gated(_with_ci(kit, RED)))
+    out = r.stdout + r.stderr
+    assert r.returncode != 0 and "ci: failure" in out, out
     assert not _tagged(kit)
 
 
@@ -104,8 +147,8 @@ def test_actions_enabled_with_no_run_still_refuses(kit):
 #
 # A wrapper commits "chore: version X" and calls the kit; that commit was never pushed, so GitHub
 # had no run for it and step 0 refused "no CI run for HEAD" -- the release needed a hand push, a
-# wait, and a re-run. The kit now pushes the branch (the gated push, no --no-verify), watches the
-# runs for HEAD under a deadline (GOH_RELEASE_CI_WAIT), and tags only over a green.
+# wait, and a re-run. The kit now pushes the branch (the gated push, no --no-verify) and reads the
+# runs for HEAD once: red refuses, green tags, pending is advisory over the push gate (GOH.CIWAIT).
 
 
 def _origin_has_runs_only_for_pushed(kit: dict) -> None:
@@ -114,13 +157,6 @@ def _origin_has_runs_only_for_pushed(kit: dict) -> None:
 
 def _git_lines(kit: dict) -> list[str]:
     return kit["git_log"].read_text().splitlines()
-
-
-def _sequence(kit: dict, *answers: str) -> None:
-    d = kit["gh_state"] / "runs.d"
-    d.mkdir()
-    for i, a in enumerate(answers):
-        (d / f"{i:03d}").write_text(a)
 
 
 def test_an_unpushed_head_is_pushed_then_its_green_ci_tags(kit):
@@ -136,42 +172,6 @@ def test_an_unpushed_head_is_pushed_then_its_green_ci_tags(kit):
     tag = next(i for i, x in enumerate(lines) if x.startswith("git tag -a"))
     assert first_push < tag, lines  # pushed for its CI BEFORE the tag was cut
     assert "--no-verify" not in "\n".join(lines), lines  # the gated push, never around it
-
-
-def test_pending_then_green_is_waited_for_and_tags(kit):
-    _with_ci(kit, None)
-    _sequence(kit, PENDING, PENDING, GREEN)
-    r = run_release(kit, env_extra={"GOH_RELEASE_CI_WAIT": "60"})
-    out = r.stdout + r.stderr
-    assert r.returncode == 0, out
-    assert "waiting" in out and "2 CI runs" in out, out
-    assert _tagged(kit)
-
-
-def test_no_run_yet_then_green_is_waited_for(kit):
-    _with_ci(kit, None)
-    _sequence(kit, "", GREEN)
-    r = run_release(kit, env_extra={"GOH_RELEASE_CI_WAIT": "60"})
-    assert r.returncode == 0, r.stdout + r.stderr
-    assert _tagged(kit)
-
-
-def test_a_run_that_turns_red_while_waited_on_refuses_at_once(kit):
-    _with_ci(kit, None)
-    _sequence(kit, PENDING, RED)
-    r = run_release(kit, env_extra={"GOH_RELEASE_CI_WAIT": "600"})
-    out = r.stdout + r.stderr
-    assert r.returncode != 0 and "ci: failure" in out and "runs/1" in out, out
-    assert "timed out" not in out, out
-    assert not _tagged(kit)
-
-
-def test_the_watch_times_out_naming_the_pending_run(kit):
-    r = run_release(_with_ci(kit, PENDING), env_extra={"GOH_RELEASE_CI_WAIT": "1"})
-    out = r.stdout + r.stderr
-    assert r.returncode != 0, out
-    assert "timed out" in out and "GOH_RELEASE_CI_WAIT" in out and "ci: in_progress" in out, out
-    assert not _tagged(kit)
 
 
 def test_no_push_with_an_unpushed_head_refuses_and_says_why(kit):
@@ -211,10 +211,10 @@ def test_actions_disabled_with_an_unpushed_head_tags_without_an_early_push(kit):
     assert pushes == [f"git push origin main {TAG}"], pushes
 
 
-def test_the_dry_run_plans_the_push_and_the_wait(kit):
+def test_the_dry_run_plans_the_push_and_the_one_read(kit):
     _with_ci(kit, GREEN)
     r = run_release(kit, "--dry-run")
     out = r.stdout + r.stderr
     assert r.returncode == 0, out
-    assert "git push origin main" in out and "wait up to" in out, out
+    assert "git push origin main" in out and "read once" in out and "wait" not in out, out
     assert not kit["git_log"].exists() or not any(x.startswith("git push") for x in _git_lines(kit))

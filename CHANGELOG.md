@@ -2,6 +2,20 @@
 
 ## Unreleased
 
+* **goh ship and the release kit read hosted CI once and never wait on it; `goh ship --bump none`
+ships with no release (GOH.CIWAIT).** Hosted CI re-runs the gate the push already passed, and the
+owner ruled it advisory (2026-11-11; .loop LOOP.CIADVISORY: `loopctl done` closes on the local push
+gate and `loopctl tick` re-reads the run), but the ship's verify step still polled `loopctl ci
+--wait` (the v0.109.0 ship sat 3+ minutes in it) and the kit's step 0 watched for up to 1800 s. Both
+now read once: red (or unread) fails, a finding; green passes; queued, running or not yet started
+passes as ADVISORY when the checkout's pre-push hook is goh's push gate, said, and the ship's card
+may then carry that CI line as its only failing one; with no push-gate hook it fails at once, as
+`loopctl done` refuses it. `GOH_RELEASE_CI_WAIT`, `GOH_RELEASE_CI_POLL` and `GOH_SHIP_CI_POLL` are
+gone. Two agents on 2026-11-13 needed a ship with no new version: `--bump none` ships a repo with no
+v-tag, or a HEAD already tagged, without a release; a tagging repo past its newest tag is refused,
+naming `--version X.Y.Z` (the version a commit already bumped) and the bumps. `--version` with
+`--bump` is refused rather than one silently winning.
+
 ## v0.109.0 -- goh hooks lists and refreshes stale stock hooks estate-wide; the staged lint gate reads the ceiling the commit carries
 
 * **Stale stock hooks are listed estate-wide and refreshed by one command, and the staged lint gate

@@ -249,7 +249,7 @@
   "tests/test_python_from_head.py": 1,
   "tests/test_real_state_guard.py": 1,
   "tests/test_red_run.py": 3,
-  "tests/test_release_kit.py": 3,
+  "tests/test_release_kit.py": 2,
   "tests/test_release_kit_branch.py": 1,
   "tests/test_release_kit_gen_app_icons.py": 1,
   "tests/test_release_kit_update_dev.py": 5,

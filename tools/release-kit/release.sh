@@ -11,9 +11,9 @@
 #   0. ci         every CI run for HEAD (`gh run list --commit`) complete and green (GitHub
 #                 Actions DISABLED for the repo, read from its actions/permissions, is "no CI");
 #                 HEAD not on origin/BRANCH is PUSHED first (the gated push) so CI runs on it,
-#                 then watched: red refuses at once, pending or none at the deadline
-#                 (GOH_RELEASE_CI_WAIT, default 1800 s), each run named (ztools tagged three
-#                 releases over red CI). No workflows: "no CI", not a green. (ci_step.sh)
+#                 read ONCE, never waited on: red refuses, each run named (ztools tagged three
+#                 over red CI); pending or none is ADVISORY over goh's push gate, refused
+#                 without one (GOH.CIWAIT). No workflows: "no CI", not a green. (ci_step.sh)
 #   1. gate       verify the local gate-of-record is green
 #                 (--gate CMD or GOH_RELEASE_GATE; a release is only cut on a
 #                 green gate of record)
@@ -265,7 +265,7 @@ release_changelog_cut || { _cut_rc=$?; [ "$_cut_rc" -eq 3 ] || exit "$_cut_rc"; 
 
 # ── 0. CI on the commit being tagged ─────────────────────────────────────────
 # First, because a red answer spares the gate and every step after it. An unpushed HEAD is pushed
-# (gated) and its runs watched under a deadline: tools/release-kit/ci_step.sh.
+# (gated) and its runs read once, never waited on: tools/release-kit/ci_step.sh.
 # shellcheck source=tools/release-kit/ci_step.sh
 source "$GOH/tools/release-kit/ci_step.sh"
 release_ci_step "$CI_CHECK"
