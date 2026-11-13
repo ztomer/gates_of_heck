@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+* **A ship runs every step with the goh it started under, and every HEAD export carries a
+`bin/goh` (GOH.SHIPPINNED).** A consumer's v5.22.12 was shipped under v0.109; v0.110.0 landed while its
+release ran, and the worker started its verify step as `ship.py --ci-wait` against the LIVE ship.py,
+which had dropped the flag, with push, release and install already done. `tools/ship.py` now re-runs
+from the export of its checkout's HEAD (C4, the gates' own mechanism), so the worker, its verify
+step and every step's GOH_DIR are one immutable tree. bin/goh is not in git, so an export had no
+bin/ and a step running `$GOH_DIR/bin/goh` found nothing (the export that leaked into the
+coordinator's GOH_DIR): each export now carries `bin/goh` (gates/_export_bin_goh.sh), a shim to the
+native build of the export's own commit, and `.goh-live`, the checkout that made it.
+
 ## v0.110.0 -- goh ship and the release kit read hosted CI once and never wait on it (advisory over the push gate); goh ship --bump none
 
 * **goh ship and the release kit read hosted CI once and never wait on it; `goh ship --bump none`

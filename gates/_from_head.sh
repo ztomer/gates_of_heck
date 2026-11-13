@@ -92,6 +92,16 @@ _goh_head_dir() {
         # seeds asked of it found no root (gitutil::root_commit reads this in an export).
         (goh_unbind_git; git -C "$root" rev-list --max-parents=0 "$head") > "$tmp/.goh-root" 2>/dev/null \
             || rm -f "$tmp/.goh-root"
+        # bin/goh is not in git, and an export without one failed whatever ran `$GOH_DIR/bin/goh`
+        # under it (a ship's release kit, GOH.SHIPPINNED; the coordinator's leaked GOH_DIR,
+        # GOH.CLEANOPEN): every export carries a shim to its own commit's native build, and names
+        # the checkout that made it, which the shim asks for that commit's stamp.
+        if ! { mkdir -p "$tmp/bin" && cp "$(dirname "${BASH_SOURCE[0]}")/_export_bin_goh.sh" "$tmp/bin/goh" \
+                && chmod 755 "$tmp/bin/goh" && printf '%s\n' "$root" > "$tmp/.goh-live"; }; then
+            rm -rf "$tmp"
+            echo "⚠ gates_of_heck: could not give the export of HEAD a bin/goh -- running the working tree at $root" >&2
+            return 1
+        fi
         : > "$tmp/.goh-used"  # the last-use stamp, made before the rename (gates/_head_cache.py)
         # rename(2), whole: fails if another hook won the race, and theirs is the same commit.
         "$GOH_PY" -c 'import os, sys; os.rename(sys.argv[1], sys.argv[2])' "$tmp" "$dest" 2>/dev/null \

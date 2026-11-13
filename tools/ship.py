@@ -60,6 +60,22 @@ Exit: 0 started (or, with --wait, shipped), 1 a step failed, 2 refused.
 
 from __future__ import annotations
 
+# ONE GOH PER SHIP (GOH.SHIPPINNED). Run from a checkout, this re-runs from the export of its HEAD
+# (C4, gates/_from_head.sh), so the worker, the verify step it starts (`ship.py --verify`, by this
+# file's own path) and every step's GOH_DIR are that one immutable tree. They read the live
+# checkout before: a consumer's ship, started under v0.109, ran its verify step against v0.110's
+# ship.py, which had dropped the flag (`unrecognized arguments: --ci-wait`).
+# Pinned by tests/test_ship_pinned.py.
+if __name__ == "__main__":  # C4: run HEAD's copy, not the shared working tree (gates/_from_head.py)
+    import contextlib as _contextlib
+    import os as _os
+    import sys as _sys
+
+    _sys.path.insert(0, _os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "..", "gates"))
+    with _contextlib.suppress(ModuleNotFoundError):  # a copy outside any checkout: run as is
+        __import__("_from_head").reexec(__file__)
+    del _sys.path[0]
+
 import argparse
 import datetime as dt
 import fcntl
