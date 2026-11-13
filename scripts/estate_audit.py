@@ -49,12 +49,13 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "checks"))
 from _gitutil import foreign_repo_env
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from tui.lib import info, ok, warn
+from tui.lib import counted, info, noun, ok, warn
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
 import advisory_db
 import estate_registry
 import gate_coverage
+import hook_currency
 
 DENY = [
     "--deny",
@@ -280,7 +281,13 @@ def run(
     # The estate is the walk UNIONED with the registry (BACKLOG 6.14): a repo `install.sh` wired
     # goh into outside the root is a consumer, and a registered path that is gone is named.
     estate, problems = estate_registry.union(repos(root), estate_registry.registry_path(state))
+    stale_hooks: dict[str, list[str]] = {}
+    goh = Path(__file__).resolve().parent.parent
     for repo in estate:
+        # Stock hooks older than goh's (GOH.HOOKREFRESH): named here, refreshed by `goh hooks
+        # --refresh`. Every repo, gated or not -- a stale copy refuses commits either way.
+        if hooks := hook_currency.stale(repo, goh, foreign_repo_env()):
+            stale_hooks[_where(repo, root)] = hooks
         if not gated(repo):
             # NAMED, not dropped: a house repo that lost its .gatesrc must read as set aside, not
             # as an estate that happens to be clean.
@@ -336,6 +343,7 @@ def run(
         "advisories": advisories,
         "unaudited": unaudited,
         "undetermined": undetermined,
+        "stale_hooks": stale_hooks,
         "errors": errors,
         "registry": str(estate_registry.registry_path(state)),
         "problems": problems,
@@ -415,8 +423,9 @@ def main() -> int:
         args.root.resolve(), args.state, args.db, not args.no_fetch, shlex.split(args.cargo_deny)
     )
     info(
-        f"{result['lockfiles']} lockfile(s) under {result['root']}, {result['excluded']} set aside"
-        f" by their repo's GOH_EXCLUDE, {len(result['ungated'])} repo(s) set aside for no .gatesrc"
+        f"{counted(result['lockfiles'], 'lockfile')} under {result['root']},"
+        f" {result['excluded']} set aside by their repo's GOH_EXCLUDE,"
+        f" {counted(len(result['ungated']), 'repo')} set aside for no .gatesrc"
         f" -> {args.state}"
     )
     for aid, a in sorted(result["advisories"].items()):
@@ -430,6 +439,11 @@ def main() -> int:
         warn(
             f"push audit not readable: {where} ({'; '.join(u['unread'])})"
             + (f" -- {', '.join(u['firing'])} fire there" if u["firing"] else "")
+        )
+    for where, hooks in sorted(result["stale_hooks"].items()):
+        warn(
+            f"stale stock {noun(len(hooks), 'hook')} {', '.join(hooks)}: {where}"
+            " -- refresh: goh hooks --refresh"
         )
     for e in result["errors"]:
         warn(f"not audited: {e}")

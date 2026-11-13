@@ -70,10 +70,8 @@ def test_a_repo_ahead_is_named_and_one_level_or_without_upstream_is_not(tmp_path
     (state.parent / "installed_repos").write_text(f"{ahead}\n{level}\n{loose}\n")
     out = _hook(state)
     named = [line for line in out.splitlines() if line.startswith("estate: ")]
-    assert named == [
-        f"estate: {ahead} is 1 commit(s) ahead of its upstream -- unpushed; push it"
-    ], out
+    assert named == [f"estate: {ahead} is 1 commit ahead of its upstream -- unpushed; push it"], out
     _commit(ahead, "d")
-    assert f"estate: {ahead} is 2 commit(s) ahead" in _hook(state)
+    assert f"estate: {ahead} is 2 commits ahead" in _hook(state)
     git(ahead, "push", "-q", "origin", "HEAD")
     assert "estate: " not in _hook(state)

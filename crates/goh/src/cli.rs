@@ -48,10 +48,11 @@ pub enum Commands {
     /// List each live subagent idle past a threshold while it waits on its own background work
     /// (`hooks/claude/agent_stalls.py`; its flags pass through). Exit 1 when any is stalled.
     AgentStalls(PassArgs),
-    /// Land a committed, locally green HEAD with no agent watching: push through the pre-push
-    /// gate, the repo's release kit, install, the `loopctl verify` card, then `loopctl done`
-    /// (`tools/ship.py`, GOH.SHIP; its flags pass through). Detached unless `--wait`.
+    /// Land a green HEAD unwatched: pre-push gate, release kit, install, `loopctl verify`, then
+    /// `loopctl done` (`tools/ship.py`, GOH.SHIP; flags pass through). Detached unless `--wait`.
     Ship(PassArgs),
+    /// Name estate repos with stale stock hooks; `--refresh` fixes them (scripts/hooks_refresh.py)
+    Hooks(PassArgs),
     /// Run a step under a ceiling; report what it left running (`lib/orphan_canary.py wrap`).
     Canary {
         /// The repo, for attributing a leaked process by its path (default: cwd).

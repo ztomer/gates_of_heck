@@ -564,13 +564,6 @@
     {
       "root": "73391f04f5f2b92ab9813c62e6cecdce919d2d86",
       "repo": "gates_of_heck",
-      "path": "hooks/claude/estate_advisories.py",
-      "count": 9,
-      "reason": "unreviewed: 9 hedged plurals: lines 103, 116, 151, 156, 202, 212, 223, 226, 231"
-    },
-    {
-      "root": "73391f04f5f2b92ab9813c62e6cecdce919d2d86",
-      "repo": "gates_of_heck",
       "path": "lib/bounded_run.py",
       "count": 1,
       "reason": "unreviewed: 1 hedged plural: line 390"
@@ -644,13 +637,6 @@
       "path": "scripts/claude_cache_probe.py",
       "count": 1,
       "reason": "unreviewed: 1 hedged plural: line 221"
-    },
-    {
-      "root": "73391f04f5f2b92ab9813c62e6cecdce919d2d86",
-      "repo": "gates_of_heck",
-      "path": "scripts/estate_audit.py",
-      "count": 2,
-      "reason": "unreviewed: 2 hedged plurals: lines 418, 419"
     },
     {
       "root": "73391f04f5f2b92ab9813c62e6cecdce919d2d86",
@@ -791,20 +777,6 @@
       "path": "tests/test_display_seam.py",
       "count": 1,
       "reason": "unreviewed: 1 hedged plural: line 152"
-    },
-    {
-      "root": "73391f04f5f2b92ab9813c62e6cecdce919d2d86",
-      "repo": "gates_of_heck",
-      "path": "tests/test_estate_ahead.py",
-      "count": 2,
-      "reason": "unreviewed: 2 hedged plurals: lines 74, 77"
-    },
-    {
-      "root": "73391f04f5f2b92ab9813c62e6cecdce919d2d86",
-      "repo": "gates_of_heck",
-      "path": "tests/test_estate_audit.py",
-      "count": 2,
-      "reason": "unreviewed: 2 hedged plurals: lines 184, 302"
     },
     {
       "root": "73391f04f5f2b92ab9813c62e6cecdce919d2d86",

@@ -36,6 +36,9 @@ import tomllib
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))  # the goh root: tui.lib
+from tui.lib import counted
+
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "lib"))
 import estate_registry  # the registry, beside the audit's state file
 import gitrun  # git under a deadline that never strands an index.lock
@@ -100,7 +103,8 @@ def _canary(rec: dict) -> list[str]:
             for f in flips
         ]
         lines.append(
-            f"goh release canary REFUSED ({when}): it turns {len(turned)} consumer(s) red at push"
+            f"goh release canary REFUSED ({when}): it turns {counted(len(turned), 'consumer')}"
+            " red at push"
             f" -- {'; '.join(named[:MAX_REPOS])}{'; ...' if len(named) > MAX_REPOS else ''}"
         )
     errors = rec.get("errors") or []
@@ -113,7 +117,8 @@ def _canary(rec: dict) -> list[str]:
     if already:
         named = [f"{repo} ({', '.join(steps)})" for repo, steps in sorted(already.items())]
         lines.append(
-            f"goh release canary: {len(already)} consumer(s) red at push under the last release"
+            f"goh release canary: {counted(len(already), 'consumer')} red at push under the last"
+            " release"
             f" too (their own debt): {', '.join(named[:MAX_REPOS])}"
             f"{', ...' if len(named) > MAX_REPOS else ''}"
         )
@@ -149,12 +154,12 @@ def ahead_lines(registry: Path) -> list[str]:
         counts = list(pool.map(_ahead, repos))
     ahead = [(r, n) for r, n in zip(repos, counts, strict=True) if n > 0]
     lines = [
-        f"estate: {_named(r)} is {n} commit(s) ahead of its upstream -- unpushed; push it"
+        f"estate: {_named(r)} is {counted(n, 'commit')} ahead of its upstream -- unpushed; push it"
         for r, n in ahead[:MAX_LINES]
     ]
     if len(ahead) > MAX_LINES:
         rest = ", ".join(_named(r) for r, _ in ahead[MAX_LINES:])
-        lines.append(f"estate: {len(ahead) - MAX_LINES} more repo(s) ahead: {rest}")
+        lines.append(f"estate: {counted(len(ahead) - MAX_LINES, 'more repo')} ahead: {rest}")
     return lines
 
 
@@ -200,7 +205,8 @@ def _audit(state: Path, now: dt.datetime) -> list[str]:
             {lf.split("/Cargo.lock")[0] for _, a in standing for lf in a.get("lockfiles", [])}
         )
         lines.append(
-            f"goh estate audit: {len(standing)} standing advisory(ies) in {len(repos)} lockfile(s)"
+            f"goh estate audit: {counted(len(standing), 'standing advisory', 'standing advisories')}"
+            f" in {counted(len(repos), 'lockfile')}"
             f" ({', '.join(repos[:MAX_REPOS])}{', ...' if len(repos) > MAX_REPOS else ''});"
             f" `python3 {SCRIPT} --no-fetch` lists them"
         )
@@ -210,7 +216,8 @@ def _audit(state: Path, now: dt.datetime) -> list[str]:
     ungated = data.get("ungated", [])
     if ungated:
         lines.append(
-            f"goh estate audit: {len(ungated)} repo(s) set aside as ungated (no .gatesrc, so no house"
+            f"goh estate audit: {counted(len(ungated), 'repo')} set aside as ungated (no .gatesrc,"
+            " so no house"
             f" gate runs there and no push of theirs is red): {', '.join(ungated[:MAX_REPOS])}"
             f"{', ...' if len(ungated) > MAX_REPOS else ''}"
         )
@@ -221,18 +228,34 @@ def _audit(state: Path, now: dt.datetime) -> list[str]:
     if unaudited:
         firing = sorted({i for ids in unaudited.values() for i in ids})
         lines.append(
-            f"goh estate audit: {len(unaudited)} tracked lockfile(s) NOT AUDITED AT PUSH (no gate"
+            f"goh estate audit: {counted(len(unaudited), 'tracked lockfile')} NOT AUDITED AT PUSH"
+            " (no gate"
             f" step of their repo audits them): {', '.join(sorted(unaudited)[:MAX_REPOS])}"
             f"{', ...' if len(unaudited) > MAX_REPOS else ''}"
-            + (f"; {len(firing)} advisory(ies) fire there unseen" if firing else "")
+            + (
+                f"; {counted(len(firing), 'advisory', 'advisories')} fire there unseen"
+                if firing
+                else ""
+            )
         )
     undetermined = data.get("undetermined", {})
     if undetermined:
         lines.append(
-            f"goh estate audit: {len(undetermined)} lockfile(s) whose push-time audit goh cannot"
+            f"goh estate audit: {counted(len(undetermined), 'lockfile')} whose push-time audit goh"
+            " cannot"
             f" read (a gate step names its target through a shell variable):"
             f" {', '.join(sorted(undetermined)[:MAX_REPOS])}"
             f"{', ...' if len(undetermined) > MAX_REPOS else ''}"
+        )
+    # Stock hooks older than goh's refuse every commit there (structural.sh); one command
+    # refreshes them all (scripts/hooks_refresh.py, GOH.HOOKREFRESH).
+    stale_hooks = data.get("stale_hooks", {})
+    if stale_hooks:
+        lines.append(
+            f"goh estate audit: {counted(len(stale_hooks), 'repo')} with stale stock hooks (their"
+            " commits"
+            f" are refused): {', '.join(sorted(stale_hooks)[:MAX_REPOS])}"
+            f"{', ...' if len(stale_hooks) > MAX_REPOS else ''} -- refresh: goh hooks --refresh"
         )
     for e in data.get("errors", []):
         lines.append(f"  not audited: {e}")

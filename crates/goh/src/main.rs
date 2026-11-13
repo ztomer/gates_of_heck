@@ -143,7 +143,7 @@ fn main() {
     std::process::exit(code);
 }
 
-/// `goh agent-stalls` and `goh ship`: the house interpreter on one of goh's Python entry points,
+/// `goh agent-stalls`, `goh ship` and `goh hooks`: the house interpreter on one of goh's Python entry points,
 /// its exit code passed through (GOH.STALLAGENT, GOH.SHIP). One implementation each: the
 /// coordinator's hook runs the same `agent_stalls.py`, and `tools/ship.py` is the pipeline.
 fn house_script(name: &str, rel: &str, args: &[String]) -> i32 {
@@ -168,6 +168,9 @@ fn house_script(name: &str, rel: &str, args: &[String]) -> i32 {
         )
 }
 
+/// `goh agent-stalls`' entry point (one line in `run_core`, which is at clippy's length cap).
+const STALLS: &str = "hooks/claude/agent_stalls.py";
+
 /// The commands that are not Phase N1 ports.
 fn run_core(command: Commands) -> i32 {
     match command {
@@ -175,10 +178,9 @@ fn run_core(command: Commands) -> i32 {
             cargo_dir,
             check_depinfo,
         } => rust_scope::run_command(&cargo_dir, check_depinfo.as_deref()),
-        Commands::AgentStalls(a) => {
-            house_script("agent-stalls", "hooks/claude/agent_stalls.py", &a.args)
-        }
+        Commands::AgentStalls(a) => house_script("agent-stalls", STALLS, &a.args),
         Commands::Ship(a) => house_script("ship", "tools/ship.py", &a.args),
+        Commands::Hooks(a) => house_script("hooks", "scripts/hooks_refresh.py", &a.args),
         Commands::BareOpen(a) => paths(a.exclude, |x| bareopen::run_command(a.staged, x)),
         Commands::LaunchApp(a) => launchapp::run_args(a),
         Commands::SourceTree => {

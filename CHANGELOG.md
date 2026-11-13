@@ -2,6 +2,21 @@
 
 ## Unreleased
 
+* **Stale stock hooks are listed estate-wide and refreshed by one command, and the staged lint gate
+reads the ceiling the commit carries (GOH.HOOKREFRESH).** structural.sh rightly refuses a commit run
+by an older stock hook, but nothing refreshed them when goh moved: on 2026-11-12/13
+game_asset_factory, the skills repo, divoom-control and CadGoose were each refused in turn and an
+agent ran install.sh by hand. `goh hooks` (`scripts/hooks_refresh.py`, `lib/hook_currency.py`) names
+every estate repo whose stock hooks are stale; `goh hooks --refresh [--except <repo>]` runs
+install.sh in each and commits `.githooks` alone -- a stale hook only, never one a repo edited, and
+never a repo whose `.githooks` has uncommitted changes. The daily estate audit records the list
+(`stale_hooks`) and the session hook says it. A command, not an automatic refresh: the hooks are
+tracked files of the consumer, and a gate or a release that rewrote them would move trees other
+agents are working in. Separately, under `git commit -- <paths>` the staged lint gate read
+`GOH_PY_LINT_CEILINGS` from the repository's own index, not the temporary one being committed, so a
+commit lowering a ceiling by path was refused for being under the OLD one;
+`py_lint_ceiling.py --view` (the staged scope) now reads it from the index export ruff judges.
+
 ## v0.108.1 -- no goh test writes or prints a whole environment (tests/env_probe.py, tests/test_no_env_dump.py); the suite temp root is reaped on any exit
 
 * **No goh test writes or prints a whole environment, and the suite's temp root never outlives its

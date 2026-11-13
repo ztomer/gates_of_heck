@@ -181,7 +181,7 @@ def test_the_first_run_is_a_baseline_not_news(tmp_path, estate):
     found = _audit(estate, state, _db(tmp_path, planted=True))
     assert found["advisories"][PLANTED]["first_seen"] is None, found
     out = _hook(state)
-    assert "NEW" not in out and "1 standing advisory(ies) in 2 lockfile(s)" in out, out
+    assert "NEW" not in out and "1 standing advisory in 2 lockfiles" in out, out
 
 
 def test_a_tree_the_repo_excludes_is_set_aside(tmp_path, estate):
@@ -299,7 +299,7 @@ def test_a_lock_fixed_since_the_run_is_not_reported_red(tmp_path, estate, new):
     assert red == [], out
     assert "fixed since the run" in out and "hit/Cargo.lock" in out, out
     # The lock that still carries the version is still reported.
-    assert "NEW" in out if new else "1 standing advisory(ies) in 1 lockfile(s)" in out, out
+    assert "NEW" in out if new else "1 standing advisory in 1 lockfile" in out, out
     if new:
         assert "group/clean/nested/Cargo.lock is red" in out, out
 

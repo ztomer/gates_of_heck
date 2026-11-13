@@ -262,6 +262,7 @@ for _goh_h in pre-commit pre-push; do
 done
 if [ -n "$_goh_stale" ]; then
     err "  update the hooks, then commit them:  $GOH_ROOT/install.sh \"$PWD\""
+    err "  (every estate repo at once: goh hooks --refresh)"
     exit 1
 fi
 unset _goh_hooks _goh_h _goh_sum _goh_stale
