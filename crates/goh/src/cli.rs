@@ -51,7 +51,7 @@ pub enum Commands {
     /// Land a green HEAD unwatched: pre-push gate, release kit, install, `loopctl verify`, then
     /// `loopctl done` (`tools/ship.py`, GOH.SHIP; flags pass through). Detached unless `--wait`.
     Ship(PassArgs),
-    /// Name estate repos with stale stock hooks; `--refresh` fixes them (scripts/hooks_refresh.py)
+    /// Name estate repos with stale stock hooks; `--refresh` fixes them (`hooks_refresh.py`)
     Hooks(PassArgs),
     /// Run a step under a ceiling; report what it left running (`lib/orphan_canary.py wrap`).
     Canary {
