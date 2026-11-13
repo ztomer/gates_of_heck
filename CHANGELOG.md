@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## v0.113.1 -- Repair dead GOH_DIR in starter tools/gate.sh and migrate existing scripts (EST.GOHDIRSHELL)
+
 * **Stock `tools/gate.sh` installed by `install.sh` now repairs a stale or dead `GOH_DIR` before invoking the gate (`EST.GOHDIRSHELL`).** Copies `goh_dir_repair` from `lib/goh_root.sh` into starter `tools/gate.sh` and migrates existing un-repaired starter scripts on `install.sh` rerun. Pinned by `tests/test_dead_goh_dir_gate.py`.
 
 ## v0.113.0 -- goh's coverage and push caches are bounded: coverage by liveness, sccache pinned out of test sandboxes
