@@ -131,9 +131,7 @@ def _pinned(home: str, sccache_dir: str | None, then_home: str) -> str:
     env = {"PATH": "/usr/bin:/bin", "HOME": home}
     if sccache_dir is not None:
         env["SCCACHE_DIR"] = sccache_dir
-    script = (
-        f'. "{REPO_ROOT}/lib/sccache_dir.sh"; HOME="{then_home}"; env | sed -n "s/^SCCACHE_DIR=//p"'
-    )
+    script = f'. "{REPO_ROOT}/lib/sccache_dir.sh"; HOME="{then_home}"; printenv SCCACHE_DIR || true'
     out = subprocess.run(
         ["bash", "-c", script],
         env=env,
@@ -164,7 +162,8 @@ def test_the_push_gate_hands_the_gate_the_pinned_dir(tmp_path) -> None:
     home = tmp_path / "home"
     home.mkdir()
     sha = _git(repo, "rev-parse", "HEAD")
-    env = {k: v for k, v in os.environ.items() if k != "SCCACHE_DIR"}
+    env = hermetic_env()
+    env.pop("SCCACHE_DIR", None)
     env.update(
         HOME=str(home), GATE_REPORT=str(tmp_path / "report.txt"), GOH_DIR=str(REPO_ROOT),
         GOH_PUSH_LOGS=str(tmp_path / "logs"), GOH_PUSH_WORKTREES=str(tmp_path / "exports"),

@@ -9,7 +9,7 @@
 # Pinned once, at the gate's entry, the sandbox can move HOME and nothing else: the variable is
 # inherited by every child, so the server a test starts is the user's. A dir the user chose stays.
 # Sourced by gates/_common.sh (every gate runner) and gates/push_gate.sh.
-. "$(dirname "${BASH_SOURCE[0]}")/bash5.sh" && goh_bash5 "$@"
+. "$(dirname "${BASH_SOURCE[0]}")/../lib/bash5.sh" && goh_bash5 "$@"
 if [ -z "${SCCACHE_DIR:-}" ]; then
     case "$(uname -s)" in
         Darwin) SCCACHE_DIR="$HOME/Library/Caches/Mozilla.sccache" ;;
