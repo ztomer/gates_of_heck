@@ -337,7 +337,8 @@ def test_the_default_ceiling_exists_on_both_paths() -> None:
     be typed is a default that does not exist."""
     for name, needle in (
         ("gates/local_ci.sh", "${GOH_LCI_TIMEOUT:-900}"),
-        ("gates/_common.sh", "${GOH_STEP_TIMEOUT:-$_goh_step_default_timeout}"),
+        ("gates/_common.sh", "${GOH_STEP_TIMEOUT:-$_goh_fallback}"),
+        ("gates/_common.sh", "${GOH_STEP_BUDGET:-$_goh_step_default_timeout}"),
     ):
         source = (Path(__file__).resolve().parent.parent / name).read_text()
         assert needle in source, f"{name} has no default ceiling"

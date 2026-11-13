@@ -183,14 +183,28 @@ _goh_cleanup_eof
 # Lower-case on purpose: a `GOH_*` name here reads as a repo-settable config key to
 # `test_config_schema.py`, and this one is not one -- it is the constant the default
 # comes from. GOH_STEP_TIMEOUT is the key; this is what it falls back to.
+#
+# GOH_STEP_BUDGET is the CALLER's ceiling, the fallback before that constant: `local_ci.sh` sets it
+# to the ceiling of the step it runs (GOH_LCI_TIMEOUT), so a `goh_step` inside that step can use the
+# time its caller granted. Without it, the hosted workflow gave `./gates/rust_gate.sh` 2700 s and
+# its coverage step was still cut at 1800 s (GOH.COVPHASES, run 43331499075): rust_gate.sh drops
+# GOH_STEP_TIMEOUT on entry (a fixture's environment is not configuration), and the budget is the
+# one bound that is not configuration -- the caller's, never a repo's. The repo's own
+# GOH_STEP_TIMEOUT still wins (tests/test_step_budget.py).
 _goh_step_default_timeout=1800
 goh_step_timeout() {
-    case "${GOH_STEP_TIMEOUT:-$_goh_step_default_timeout}" in
+    case "${GOH_STEP_BUDGET:-}" in
+        *[!0-9]*)
+            err "${GOH_NAME:-gate}: GOH_STEP_BUDGET must be a non-negative integer of seconds (got '${GOH_STEP_BUDGET}') — refusing to run a step with an unknown ceiling"
+            exit 2 ;;
+    esac
+    local _goh_fallback="${GOH_STEP_BUDGET:-$_goh_step_default_timeout}"
+    case "${GOH_STEP_TIMEOUT:-$_goh_fallback}" in
         ""|0) echo 0 ;;
         *[!0-9]*)
             err "${GOH_NAME:-gate}: GOH_STEP_TIMEOUT must be a non-negative integer of seconds (got '${GOH_STEP_TIMEOUT}') — refusing to run a step with an unknown ceiling"
             exit 2 ;;
-        *) echo "${GOH_STEP_TIMEOUT:-$_goh_step_default_timeout}" ;;
+        *) echo "${GOH_STEP_TIMEOUT:-$_goh_fallback}" ;;
     esac
 }
 
@@ -264,7 +278,7 @@ goh_step() {
         # with no output and no reason reads exactly like the 2026-10-03 incident: a run that hangs
         # and says nothing. So the number, the reason, and the survivors come first.
         if [ "$_goh_rc" -eq 124 ]; then
-            err "$label: TIMED OUT after ${_goh_limit}s (GOH_STEP_TIMEOUT; default ${_goh_step_default_timeout})"
+            err "$label: TIMED OUT after ${_goh_limit}s (GOH_STEP_TIMEOUT; else the caller's GOH_STEP_BUDGET; default ${_goh_step_default_timeout})"
             err "  Raise it in .gatesrc if the step genuinely needs longer. An unbounded step cannot"
             err "  be told apart from a hung one — and a hung test step used to be the silent failure."
         fi

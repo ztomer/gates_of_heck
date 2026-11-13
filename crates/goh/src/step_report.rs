@@ -75,21 +75,40 @@ pub(crate) fn ceiling_secs() -> u64 {
 }
 
 /// The ceiling in force, or `None` when `GOH_STEP_TIMEOUT=0` opted out.
+///
+/// With no `GOH_STEP_TIMEOUT`, the CALLER's budget (`GOH_STEP_BUDGET`, which `gates/local_ci.sh`
+/// sets to the ceiling of the step it runs) comes before the constant: a step its caller gave
+/// 2700 s was cut at 1800 s inside it (GOH.COVPHASES). The same rule as `gates/_common.sh`'s
+/// `goh_step_timeout`; the repo's own key still wins (`tests/test_step_budget.py`).
 fn ceiling() -> Option<u64> {
     let raw = std::env::var("GOH_STEP_TIMEOUT").ok();
     match raw.as_deref().map(str::trim).filter(|s| !s.is_empty()) {
-        None => Some(default_timeout()),
-        Some("0") => None,
-        // A typo'd ceiling must never silently leave a step UNBOUNDED, which is the defect. Named
-        // and refused rather than guessed at: a wrong guess reads as a working gate.
-        Some(other) => other.parse::<u64>().ok().filter(|n| *n > 0).or_else(|| {
-            goh_tui::eoutln!(
-                "{ERR} structural: GOH_STEP_TIMEOUT must be a non-negative integer of seconds \
-                 (got {other:?}) — refusing to run a step with an unknown ceiling"
-            );
-            None
-        }),
+        None => match std::env::var("GOH_STEP_BUDGET")
+            .ok()
+            .as_deref()
+            .map(str::trim)
+        {
+            None | Some("") => Some(default_timeout()),
+            Some(budget) => parse_ceiling("GOH_STEP_BUDGET", budget),
+        },
+        Some(other) => parse_ceiling("GOH_STEP_TIMEOUT", other),
     }
+}
+
+/// One ceiling value: `0` opts out, a positive integer is the bound.
+fn parse_ceiling(key: &str, raw: &str) -> Option<u64> {
+    if raw == "0" {
+        return None;
+    }
+    // A typo'd ceiling must never silently leave a step UNBOUNDED, which is the defect. Named
+    // and refused rather than guessed at: a wrong guess reads as a working gate.
+    raw.parse::<u64>().ok().filter(|n| *n > 0).or_else(|| {
+        goh_tui::eoutln!(
+            "{ERR} structural: {key} must be a non-negative integer of seconds \
+             (got {raw:?}) — refusing to run a step with an unknown ceiling"
+        );
+        None
+    })
 }
 
 /// The suffix both tiers put on a step line, so the parity comparison is over the same string.
