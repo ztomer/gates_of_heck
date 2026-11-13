@@ -28,7 +28,8 @@ from timing_bounds import GiveUp
 TESTS = Path(__file__).resolve().parent
 
 ENTER = (
-    "import os, sys, time\n"
+    "import os, signal, sys, time\n"
+    "signal.signal(signal.SIGHUP, signal.SIG_DFL)\n"
     f"sys.path.insert(0, {str(TESTS)!r})\n"
     "import suite_tmp\n"
     "print(os.environ['TMPDIR'], flush=True)\n"

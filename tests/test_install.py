@@ -344,6 +344,7 @@ def test_recorded_hash_allows_update_after_a_stock_bump(tmp_path):
     shutil.copy2(REPO_ROOT / "install.sh", src / "install.sh")
     (src / "lib").mkdir()
     shutil.copy2(REPO_ROOT / "lib" / "bash5.sh", src / "lib" / "bash5.sh")  # install.sh's guard
+    shutil.copy2(REPO_ROOT / "lib" / "goh_root.sh", src / "lib" / "goh_root.sh")  # gate repair
     ((src) / "gates").mkdir(exist_ok=True)
     shutil.copy2(REPO_ROOT / "gates" / "_hash.sh", src / "gates" / "_hash.sh")
     for h in (p for p in (REPO_ROOT / "hooks").iterdir() if p.is_file()):

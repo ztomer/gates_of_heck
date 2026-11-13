@@ -178,6 +178,20 @@ done
 
 git -C "$target" config core.hooksPath .githooks
 
+# THE STARTER GATE UNDER A DEAD EXPORT (EST.GOHDIRSHELL). tools/gate.sh read GOH_DIR bare, so a shell
+# that inherited a pruned ~/.cache/goh/head/<sha> export ran structural.sh from a directory that was
+# gone. It carries lib/goh_root.sh's rule, cut from that file here so there is one definition (a
+# dead goh can be sourced from by nobody). A starter written before this has the one stock line
+# below and no repair: that line alone gets the block in front of it, the repo's own layers are
+# never touched, and `goh hooks --refresh` (which runs this) lists and commits it.
+# tests/test_dead_goh_dir_gate.py
+gate_goh_line='GOH="${GOH_DIR:-${GOH:-$HOME/Projects/gates_of_heck}}"'
+gate_repair="# A GOH_DIR naming a pruned HEAD export falls back to the live checkout, said once on stderr
+# (gates_of_heck lib/goh_root.sh, GOH.TRANSIENTDIR; inlined: a dead goh can be sourced from by nobody).
+$(sed -n '/^goh_dir_repair() {$/,/^}$/p' "$HERE/lib/goh_root.sh")
+goh_dir_repair"
+case "$gate_repair" in *"goh_dir_repair() {"*"return 0"*) ;; *) die "install: no goh_dir_repair() in $HERE/lib/goh_root.sh" ;; esac
+
 if [ ! -f "$target/tools/gate.sh" ]; then
     mkdir -p "$target/tools"
     cat >"$target/tools/gate.sh" <<'GATE'
@@ -224,6 +238,20 @@ esac
 GATE
     chmod +x "$target/tools/gate.sh"
     info "wrote tools/gate.sh (uncomment the layers this repo needs)"
+fi
+
+if [ -f "$target/tools/gate.sh" ] && ! grep -q '^goh_dir_repair$' "$target/tools/gate.sh" \
+   && grep -Fxq "$gate_goh_line" "$target/tools/gate.sh"; then
+    migrated="" placed=0
+    while IFS= read -r line || [ -n "$line" ]; do
+        if [ "$placed" -eq 0 ] && [ "$line" = "$gate_goh_line" ]; then
+            migrated+="$gate_repair"$'\n'
+            placed=1
+        fi
+        migrated+="$line"$'\n'
+    done <"$target/tools/gate.sh"
+    printf '%s' "$migrated" >"$target/tools/gate.sh"
+    info "tools/gate.sh: a dead export GOH_DIR now falls back to the live goh (its layers untouched)"
 fi
 
 if [ ! -f "$target/.gatesrc" ]; then
