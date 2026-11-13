@@ -21,3 +21,5 @@ bec9f8937f1fc8480812ec375d692cb62165e9ce53895c43b52614527b559c2d  pre-push  (97a
 577b439a16bf45591ae74e26dad4e0716052e45c6820188620cadb0f6e529656  pre-commit  (18330c7)
 af8f0f1195cdb0736f0b9cd9a1e40aac880f4ee0643fd2245e401ff67af790d7  pre-commit  (aede5bc, same-logic: GOH.TRANSIENTDIR added only a dead-export GOH_DIR fallback; a live GOH_DIR runs today's gate unchanged; `goh hooks --refresh` delivers it)
 daf849be6b7977c2ad03714db0838d410282ebf7b957ee5a52fed489087947f4  pre-push  (aede5bc, same-logic: GOH.TRANSIENTDIR added only a dead-export GOH_DIR fallback; a live GOH_DIR runs today's gate unchanged; `goh hooks --refresh` delivers it)
+90d8b06e52a6179a1544c23a4cbb3e681663702a5206c9f40abd9a9c753b352e  pre-commit  (565dd2a, same-logic: GOH.TRANSIENTDIR first cut of the dead-export fallback, before the bash 5 guard; a live GOH_DIR runs today's gate unchanged)
+51a4ebbcf511c07fc8cd32e8e23e7049bbad9f19c729e89244816ba0c2f47245  pre-push  (565dd2a, same-logic: GOH.TRANSIENTDIR first cut of the dead-export fallback, before the bash 5 guard; a live GOH_DIR runs today's gate unchanged)

@@ -23,6 +23,7 @@ from pathlib import Path
 
 import pytest
 from conftest import REPO_ROOT, hermetic_env, native_goh_path
+from env_probe import probe_sh, read_probe
 
 HOOKS = {
     "pre-commit": "commit_gate.sh",
@@ -43,20 +44,13 @@ def _fake_goh(root: Path) -> Path:
     return root
 
 
-def _git_repo(path: Path) -> Path:
-    path.mkdir()
-    subprocess.run(["git", "init", "-q", str(path)], check=True, stdin=subprocess.DEVNULL)
-    (path / "msg").write_text("x\n")
-    return path
-
-
 @pytest.mark.parametrize("via", ["GOH_LIVE_ROOT", "the default checkout"])
 @pytest.mark.parametrize("hook", sorted(HOOKS))
-def test_a_stock_hook_runs_under_a_dead_export(tmp_path, hook, via):
+def test_a_stock_hook_runs_under_a_dead_export(tmp_path, repo, hook, via):
     live = _fake_goh(tmp_path / "home" / "Projects" / "gates_of_heck")
     if via == "GOH_LIVE_ROOT":
         live = _fake_goh(tmp_path / "live")
-    repo = _git_repo(tmp_path / "repo")
+    (repo / "msg").write_text("x\n")
     dead = tmp_path / "cache" / "goh" / "head" / ("c06bc794" * 5)
     env = hermetic_env(drop_git=True, HOME=str(tmp_path / "home"), GOH_DIR=str(dead))
     env.pop("GOH_LIVE", None)
@@ -90,7 +84,8 @@ def test_every_stock_hook_carries_the_one_rule_verbatim():
     for hook in HOOKS:
         body = (REPO_ROOT / "hooks" / hook).read_text()
         assert _function(body) == rule, f"hooks/{hook} drifted from lib/goh_root.sh"
-        assert body.index("goh_dir_repair\n") < body.index('GOH="${GOH_DIR'), hook
+        call = body.index('goh_dir_repair\nGOH="${GOH_DIR:-$GOH}"\n')
+        assert body.index("goh_bash5") < call < body.index("/gates/"), hook
 
 
 def test_a_live_goh_dir_is_left_alone(tmp_path):
@@ -151,7 +146,8 @@ def test_the_release_kit_launches_the_app_without_its_environment(tmp_path):
         sys.path.pop(0)
     fakes = tmp_path / "fakes"
     fakes.mkdir()
-    (fakes / "open").write_text(f'#!/bin/bash\n/usr/bin/env > "{tmp_path}/app.env"\n')
+    probe = probe_sh(tmp_path / "app.env", keep=("GOH_DIR",))
+    (fakes / "open").write_text(f"#!/bin/sh\n{probe}\n")
     (fakes / "open").chmod(0o755)
     os.environ["GOH_TRANSIENTDIR_SENTINEL"] = "leaked"
     try:
@@ -159,5 +155,5 @@ def test_the_release_kit_launches_the_app_without_its_environment(tmp_path):
     finally:
         os.environ.pop("GOH_TRANSIENTDIR_SENTINEL")
     assert r.returncode == 0, r.stdout + r.stderr
-    seen = (tmp_path / "app.env").read_text()
-    assert "GOH_TRANSIENTDIR_SENTINEL" not in seen and "GOH_DIR=" not in seen, seen
+    seen = read_probe(tmp_path / "app.env")
+    assert "GOH_TRANSIENTDIR_SENTINEL" not in seen and "GOH_DIR" not in seen, seen

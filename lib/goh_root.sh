@@ -15,9 +15,11 @@
 # installed by copy and can source nothing before they have found goh), lib/goh_root.py, and the
 # native binary's `goh_root` (crates/goh/src/main.rs). tests/test_dead_goh_dir.py pins all three and
 # the hooks' copies. A GOH_DIR that exists is never touched.
+. "$(dirname "${BASH_SOURCE[0]}")/../lib/bash5.sh" && goh_bash5 "$@"
 goh_dir_repair() {
     [ -n "${GOH_DIR:-}" ] && [ ! -d "$GOH_DIR" ] || return 0
     local c
+    # path-ok: house default, after GOH_DIR and GOH_LIVE_ROOT (the export itself is gone)
     for c in "${GOH_LIVE_ROOT:-}" "$HOME/Projects/gates_of_heck"; do
         if [ -n "$c" ] && [ -d "$c/gates" ]; then
             echo "⚠ gates_of_heck: GOH_DIR=$GOH_DIR no longer exists (a pruned HEAD export this" \
