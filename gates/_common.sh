@@ -48,6 +48,8 @@ unset _goh_tui
 # shellcheck source=lib/bench_lock.sh
 # shellcheck source=lib/exit_reason.sh
 . "$GOH_ROOT/lib/exit_reason.sh"  # goh_exit_reason: a failed step's line names how it ended
+# shellcheck source=lib/sccache_dir.sh
+. "$GOH_ROOT/lib/sccache_dir.sh"  # a repo's test sandbox moves HOME, never the compile cache (GOH.CACHEBOUND)
 # shellcheck source=lib/rm_tree.sh
 . "$GOH_ROOT/lib/rm_tree.sh"  # goh_rm_tree: cleanup of a tree a consumer wrote, read-only or not
 # shellcheck source=lib/bench_lock.sh

@@ -19,6 +19,13 @@ its week, and build-goh's exports were never pruned at all: 675 entries, 8.7 GiB
 export goh had ever been built from (2026-10-17, the day the disk filled). `max_bytes` evicts the
 least recently used past the budget, under the same rule: one used within the hour never goes.
 
+The hour is a guess at "in use", and a guess is a bound only when nobody uses the machine
+(GOH.CACHEBOUND, 2026-11-13): a coverage sweep builds ~40 projects inside one hour, every entry
+"used within the hour", and the cache held 21 GiB against an 8 GiB budget. A cache whose writer
+RECORDS its user passes `marker` (a file holding the pid of the process using the entry): an entry
+whose pid is alive is never removed, and `grace` (seconds) shrinks the recency guess to cover only
+the gap before the marker lands. Without a marker the hour stands.
+
 A LIBRARY, not an entry point: it is part of the C4 mechanism itself (the export it prunes is
 what every other entry point re-runs from), so `_from_head.sh` imports it and calls `prune`.
 """
@@ -52,6 +59,22 @@ def last_use(path: str, stamps: tuple[str, ...] = STAMPS) -> float:
     return os.stat(path).st_mtime
 
 
+def running(path: str, marker: str | None) -> bool:
+    """True when `path/<marker>` names a live process: the entry is in use, whatever its stamp says.
+    A reused pid keeps an entry one run too long; it can never lose one that is in use."""
+    if not marker:
+        return False
+    try:
+        with open(os.path.join(path, marker), encoding="ascii") as handle:
+            pid = int(handle.read().split()[0])
+        os.kill(pid, 0)
+    except PermissionError:
+        return True  # alive, and not ours
+    except (OSError, ValueError, IndexError):
+        return False
+    return True
+
+
 def tree_bytes(path: str) -> int:
     """Bytes on disk under `path` (allocated blocks, links not followed)."""
     total = 0
@@ -72,6 +95,8 @@ def prune(
     max_bytes: int | None = None,
     stamps: tuple[str, ...] = STAMPS,
     remove=_rmtree,
+    grace: float = IN_USE_S,
+    marker: str | None = None,
 ) -> list[str]:
     """Remove what the policy above says; return what went.
 
@@ -91,7 +116,9 @@ def prune(
     gone = []
     for rank, (used, path) in enumerate(exports, start=2):  # the current export is rank 1
         idle = now - used
-        if idle > TTL_DAYS * 86400 or (rank > keep and idle > IN_USE_S):
+        if running(path, marker):
+            continue
+        if idle > TTL_DAYS * 86400 or (rank > keep and idle > grace):
             remove(path)
             gone.append(path)
     for path in leftovers:
@@ -100,21 +127,38 @@ def prune(
             gone.append(path)
     if max_bytes is not None:
         gone += _over_budget(
-            cache, current, [e for e in exports if e[1] not in gone], now, max_bytes, remove
+            cache,
+            current,
+            [e for e in exports if e[1] not in gone],
+            now,
+            max_bytes,
+            remove,
+            grace,
+            marker,
         )
     return gone
 
 
 def _over_budget(
-    cache: str, current: str, exports, now: float, max_bytes: int, remove=_rmtree
+    cache: str,
+    current: str,
+    exports,
+    now: float,
+    max_bytes: int,
+    remove=_rmtree,
+    grace: float = IN_USE_S,
+    marker: str | None = None,
 ) -> list[str]:
-    """Least recently used first, until the cache fits `max_bytes`; never one used within the hour."""
+    """Least recently used first, until the cache fits `max_bytes`; never one in use (a live
+    `marker` pid) and never one stamped within `grace`."""
     sizes = {path: tree_bytes(path) for _used, path in exports}
     total = sum(sizes.values()) + tree_bytes(os.path.join(cache, current))
     gone = []
     for used, path in reversed(exports):  # least recently used first
-        if total <= max_bytes or now - used <= IN_USE_S:
-            break  # the rest were used more recently still
+        if total <= max_bytes:
+            break
+        if now - used <= grace or running(path, marker):
+            continue  # in use, or used a moment ago: the next one up may not be
         remove(path)
         gone.append(path)
         total -= sizes[path]

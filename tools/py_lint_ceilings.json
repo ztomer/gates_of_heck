@@ -42,7 +42,7 @@
   "checks/loc_of_baseline_files.py": 2,
   "gates/_cov_prune.py": 1,
   "gates/_from_head.py": 1,
-  "gates/_head_cache.py": 2,
+  "gates/_head_cache.py": 1,
   "gates/_push_build_dirs.py": 1,
   "gates/_push_siblings.py": 1,
   "gates/coverage_swift.py": 5,

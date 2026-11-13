@@ -70,7 +70,7 @@ GOH="${GOH_DIR:-${GOH:-$HOME/Projects/gates_of_heck}}"
 # shellcheck source=lib/repo_writes.sh
 . "$GOH/lib/repo_writes.sh"
 # shellcheck source=lib/push_runs.sh
-. "$GOH/lib/push_runs.sh"; . "$GOH/lib/suite_cache_guard.sh"
+. "$GOH/lib/push_runs.sh"; . "$GOH/lib/suite_cache_guard.sh"; . "$GOH/lib/sccache_dir.sh"   # the last pins SCCACHE_DIR before any repo code runs
 # shellcheck source=lib/gate_slot.sh
 . "$GOH/lib/gate_slot.sh"
 bench_lock_join "pre-push" # the whole push is one registration; a measurement waits for it

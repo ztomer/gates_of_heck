@@ -11,12 +11,21 @@ owner_stamp() {
     printf '%s %s\n' "$1" "$(ps -o lstart= -p "$1" 2>/dev/null | tr -s ' ' | sed 's/^ //;s/ $//')"
 }
 
-# Reap what killed runs left under export root $1: a run directory whose owner is not alive. Only directories carrying an
-# `.owner` are judged; anything else in the root is not this layout's to delete.
+# Reap what killed runs left under export root $1: a run directory whose owner is not alive, or that
+# has none and is past the grace below. Files in the root (the `.source` markers) are not judged here.
 reap_dead_runs() {
     local export_root="$1" dir pid
     for dir in "$export_root"/*/; do
-        [ -f "$dir.owner" ] || continue
+        if [ ! -f "$dir.owner" ]; then
+            # An ownerless run dir is a dead run's once it has idled past the gap between a run's
+            # mkdir and its `.owner` (milliseconds): a stray writer (an sccache server a test
+            # started, GOH.CACHEBOUND) recreated one, 16 GiB of it, and `mkdir` then failed on the
+            # stable path for every push after -- "held by a live push", a cold private build.
+            [ -n "$(find "$dir" -maxdepth 0 -mmin +10 2>/dev/null)" ] || continue
+            info "pre-push: removing an ownerless run directory: ${dir%/}"
+            goh_rm_tree "$dir"
+            continue
+        fi
         read -r pid _ <"$dir.owner" || continue
         if [ "$(owner_stamp "$pid")" = "$(cat "$dir.owner")" ] && kill -0 "$pid" 2>/dev/null; then
             continue

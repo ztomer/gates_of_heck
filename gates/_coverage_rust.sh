@@ -51,6 +51,10 @@ cov_phase_stopped() { # the stop-signal trap: name the phase the signal landed i
     fi
     case "$1" in INT) exit 130 ;; HUP) exit 129 ;; *) exit 143 ;; esac
 }
+cov_cache_prune() { # the cache bounded by bytes: at the start of a run AND at its normal end
+    "$GOH_PY" -S -c 'import sys; sys.path.insert(0, sys.argv[1]); import _head_cache; gib = float(sys.argv[4]); _head_cache.prune(sys.argv[2], sys.argv[3], keep=200, max_bytes=int(gib * 2**30) if gib > 0 else None, grace=600, marker=".goh-running")' \
+        "$(dirname "${BASH_SOURCE[0]}")" "$COV_CACHE" "$COV_KEY" "${GOH_COV_CACHE_MAX_GIB:-8}" 2>/dev/null || true
+}
 run_rust() {
     cd "$PROJ" || exit 2
     need cargo "cargo llvm-cov drives the instrumented build"
@@ -84,13 +88,17 @@ run_rust() {
     # mediaops' CLI tests failed. Per-project isolation (above) holds -- the key is the project's
     # physical path. Pruned like the HEAD exports (gates/_head_cache.py): a week unused, past the
     # newest 200, or past GOH_COV_CACHE_MAX_GIB (default 8; 0 = no byte budget) -- each only once
-    # idle for an hour.
+    # idle (no live `.goh-running` pid, none stamped in the last 10 minutes).
     COV_CACHE="${GOH_COV_CACHE:-${XDG_CACHE_HOME:-$HOME/.cache}/goh/llvm-cov}"
     COV_KEY="$(pwd -P | shasum -a 256 | cut -c1-16)"
     mkdir -p "$COV_CACHE/$COV_KEY"
     : >"$COV_CACHE/$COV_KEY/.goh-used"
-    "$GOH_PY" -S -c 'import sys; sys.path.insert(0, sys.argv[1]); import _head_cache; gib = float(sys.argv[4]); _head_cache.prune(sys.argv[2], sys.argv[3], keep=200, max_bytes=int(gib * 2**30) if gib > 0 else None)' \
-        "$(dirname "${BASH_SOURCE[0]}")" "$COV_CACHE" "$COV_KEY" "${GOH_COV_CACHE_MAX_GIB:-8}" 2>/dev/null || true
+    # WHO IS USING IT, not when (GOH.CACHEBOUND). The byte budget spared every entry stamped within
+    # the hour, and a sweep of ~40 projects is one hour: 21 GiB held against a budget of 8. The run
+    # records its pid; an entry whose pid is alive is never evicted, any other one past the budget is,
+    # past a 10-minute grace that covers a run which predates the marker.
+    printf '%s\n' "$$" >"$COV_CACHE/$COV_KEY/.goh-running"
+    cov_cache_prune
     export CARGO_TARGET_DIR="$PROJ/target/llvm-cov"
     export CARGO_BUILD_BUILD_DIR="$COV_CACHE/$COV_KEY/build"
     export RUSTC_WRAPPER=""
@@ -281,5 +289,6 @@ PYEOF
     local merge_rc=0
     "$GOH_PY" "$GOH_ROOT/gates/lcov_merge.py" "${_MERGE_ARGS[@]}" "$PARTS" || merge_rc=$?
     cov_phase ""
+    cov_cache_prune   # what this run's own build pushed past the budget goes now, not at the next run
     return "$merge_rc"
 }

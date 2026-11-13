@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+* **Both unbounded goh caches are bounded (GOH.CACHEBOUND).** `~/.cache/goh/llvm-cov` held 21 GiB
+against its 8 GiB budget because the budget spared every build stamped within the hour and a coverage
+sweep is one hour; a run now records its pid (`.goh-running`), liveness decides, a 10-minute grace
+covers older runs, and the prune also runs at the end of a run (`gates/_head_cache.py`). The push
+cache held 16 GiB in one ztools export, all of it a private sccache: a repo's test sandbox sets HOME,
+and an sccache server a test starts inherits it and serves the whole machine from there. Every gate
+now pins SCCACHE_DIR to the user's first (`lib/sccache_dir.sh`, sourced by `_common.sh` and
+`push_gate.sh`), and an ownerless export dir idle past 10 minutes is reaped instead of making the
+stable path look held (cold private build on every later push). Pinned by tests/test_cache_bounds.py
+(9 cases red on the old code).
+
 ## v0.112.0 -- a GOH_DIR naming a pruned HEAD export resolves to the live goh in hooks, the binary and Python; the release kit launches apps without its environment
 
 * **A GOH_DIR naming a pruned HEAD export no longer breaks goh (GOH.TRANSIENTDIR).** Gates export
