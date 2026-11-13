@@ -29,10 +29,12 @@ FAKE_LOOPCTL = """\
 import json, os, sys
 with open(os.environ["FAKE_LOOPCTL_LOG"], "a") as f:
     f.write(json.dumps(sys.argv[1:]) + "\\n")
-if sys.argv[1] == "verify":  # $FAKE_CARD_ERR: the card's failing lines, `|`-separated, to stderr
+if sys.argv[1] == "verify":  # $FAKE_CARD_ERR: failing lines, `|`-separated
     print("fake card line 1")
+    sys.path.insert(0, os.environ["FAKE_GOH_ROOT"])  # the card's own marks: tui.lib, as loopctl's
+    from tui.lib import err
     for line in filter(None, os.environ.get("FAKE_CARD_ERR", "").split("|")):
-        print(f"\x1b[31m✗\x1b[0m {line}", file=sys.stderr)
+        err(line)
     sys.exit(int(os.environ.get("FAKE_VERIFY_RC", "0")))
 if sys.argv[1] == "ci":  # $FAKE_CI: the verdicts in order (the last repeats), counted in $FAKE_CI_N
     states = os.environ["FAKE_CI"].split(",")
@@ -69,6 +71,7 @@ def _env(tmp_path: Path, **over: str) -> dict[str, str]:
         "GOH_LOOPCTL": str(tmp_path / "loopctl.py"),
         "FAKE_LOOPCTL_LOG": str(tmp_path / "loopctl.calls"),
         "LOOPCTL_ROOT": str(tmp_path),
+        "FAKE_GOH_ROOT": str(REPO_ROOT),
         "GOH_SHIP_RELEASE": 'git tag "v$GOH_SHIP_VERSION" && git push -q origin "v$GOH_SHIP_VERSION"',
     }
     return hermetic_env(drop_git=True, **{**base, **over})
