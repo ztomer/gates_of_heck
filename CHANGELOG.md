@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## v0.111.0 -- a goh ship runs every step with the goh it started under (pinned HEAD export); every export carries bin/goh
+
 * **A ship runs every step with the goh it started under, and every HEAD export carries a
 `bin/goh` (GOH.SHIPPINNED).** A consumer's v5.22.12 was shipped under v0.109; v0.110.0 landed while its
 release ran, and the worker started its verify step as `ship.py --ci-wait` against the LIVE ship.py,
