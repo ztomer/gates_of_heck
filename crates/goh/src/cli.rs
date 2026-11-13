@@ -5,8 +5,8 @@ use std::path::PathBuf;
 use clap::{Parser, Subcommand};
 
 pub use crate::cli_args::{
-    CratesBehindArgs, DepsArgs, ExcludeStagedArgs, PassArgs, ProvenAction, RoadmapArgs, SkillsArgs,
-    StagedArgs, TagVersionArgs,
+    CratesBehindArgs, DepsArgs, ExcludeStagedArgs, LaunchAppArgs, PassArgs, ProvenAction,
+    RoadmapArgs, SkillsArgs, StagedArgs, TagVersionArgs,
 };
 
 #[derive(Debug, Parser)]
@@ -239,8 +239,7 @@ pub enum Commands {
         #[arg(long)]
         staged: bool,
     },
-    /// Fail on live-display calls in test targets (native port of
-    /// `check_no_screen_presentation`).
+    /// Fail on live-display calls in test targets (native port of `check_no_screen_presentation`).
     Screen {
         /// Files/dirs to scan (test targets).
         paths: Vec<String>,
@@ -302,8 +301,7 @@ pub enum Commands {
         #[arg(long)]
         verdict: Option<String>,
     },
-    /// Dependency currency: a pin below the graph fails; crates.io drift reports
-    /// (native port of `check_dep_currency`).
+    /// Dependency currency: a pin below the graph fails; crates.io drift reports (`dep_currency`).
     Deps(DepsArgs),
     /// Fail when `cargo update --dry-run` would move a lock to newer compatible releases.
     CratesBehind(CratesBehindArgs),
@@ -318,11 +316,9 @@ pub enum Commands {
         #[arg(long)]
         staged: bool,
     },
-    /// Fail on a pushed release tag its own commit does not declare (native
-    /// port of `check_tag_version`).
+    /// Fail on a pushed release tag its own commit does not declare (port of `check_tag_version`).
     TagVersion(TagVersionArgs),
-    /// Fail when `Cargo.lock` disagrees with its manifests (native port of
-    /// `check_lock_version`).
+    /// Fail when `Cargo.lock` disagrees with its manifests (native port of `check_lock_version`).
     LockVersion {
         /// Repository to read (default: the cwd's repo).
         #[arg(long)]
@@ -411,6 +407,10 @@ pub enum Commands {
     ReleaseQuiet(ExcludeStagedArgs),
     /// Fail on `mktemp -t NAME` with no X in NAME (BSD-only; GNU refuses it).
     MktempPortable(ExcludeStagedArgs),
+    /// Fail on a bare `open` in a shell source: it hands the app the caller environment.
+    BareOpen(ExcludeStagedArgs),
+    /// Launch an app (or open a document) with launchd's login environment, never the caller's.
+    LaunchApp(LaunchAppArgs),
     /// Fail on a hedged plural (`file(s)`, `entr(ies)`) in a string literal; count with counted/noun.
     PluralHedge(ExcludeStagedArgs),
     /// Apply a passed commit's journalled seed settles (`gates/commit_gate.sh`, GOH.SEEDREFUSED).

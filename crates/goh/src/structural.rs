@@ -272,6 +272,7 @@ fn shell_steps(
         hookindex::step(repo, files, cfg, staged),
         crate::relquiet::step(repo, files, cfg, staged),
         crate::mktempport::step(repo, files, cfg, staged),
+        crate::bareopen::step(repo, files, cfg, staged),
         crate::pluralhedge::step(repo, files, cfg, staged),
         crate::barepy::step(repo, files, cfg, staged),
     ];

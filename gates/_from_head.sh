@@ -131,8 +131,36 @@ goh_from_head() { # <this script> <args...> -- execs the export's copy, or retur
     exec "$BASH" "$_goh_copy" "$@"   # this bash: the guard made it >= 5 (lib/bash5.sh)
 }
 
-goh_from_head_lib() { # <this lib> -- sources the export's copy (true) or lets this one load (false)
+# goh_from_head_lib <this lib> [--caller-env] -- sources the export's copy (true) or lets this one
+# load (false). --caller-env is for a lib ANY script sources (tui/lib.sh: a release, an installer),
+# whose caller is not a gate: the export's GOH_DIR, GOH_LIVE_ROOT and PYTHONPATH stay the lib's
+# business, and the caller gets its own three back -- value, export bit, or unset -- once the copy
+# has loaded. Exported into the caller, they reached everything it started: ZoneWM's release.sh
+# sourced tui/lib.sh, its `open -a` started ZoneWM with a GOH_DIR naming a transient export with no
+# bin/, and every app ZoneWM relaunched (Claude.app) handed it to every agent (GOH.CLEANOPEN,
+# 2026-11-13; tests/test_gates_from_head.py). A gate's own lib (_common.sh) keeps the export: its
+# sourcer IS a gate, and runs HEAD's gates through it.
+goh_from_head_lib() {
+    # Every save is LOCAL: HEAD's copy calls this again while it loads, and a global save was
+    # overwritten by that nested call with the export's own values.
+    local _goh_keep=() _goh_v _goh_was _goh_keep_GOH_DIR _goh_keep_GOH_LIVE_ROOT _goh_keep_PYTHONPATH
+    if [ "${2:-}" = --caller-env ]; then
+        for _goh_v in GOH_DIR GOH_LIVE_ROOT PYTHONPATH; do
+            _goh_was="$(declare -p "$_goh_v" 2>/dev/null)" || { _goh_keep+=("$_goh_v unset"); continue; }
+            case "$_goh_was" in "declare -x"*) _goh_keep+=("$_goh_v x") ;; *) _goh_keep+=("$_goh_v -") ;; esac
+            printf -v "_goh_keep_$_goh_v" '%s' "${!_goh_v}"
+        done
+    fi
     _goh_head_dir "$1" || return 1
     # shellcheck disable=SC1090
     . "$_goh_copy"
+    for _goh_v in "${_goh_keep[@]}"; do
+        set -- ${_goh_v}   # "NAME state": two words, no glob characters
+        case "$2" in
+            unset) unset "$1" ;;
+            *) _goh_was="_goh_keep_$1"; printf -v "$1" '%s' "${!_goh_was}"
+               if [ "$2" = x ]; then export "${1?}"; else export -n "${1?}"; fi ;;
+        esac
+    done
+    return 0
 }

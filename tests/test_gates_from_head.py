@@ -334,3 +334,41 @@ def test_entering_the_gates_again_does_not_grow_pythonpath() -> None:
         check=False,
     )
     assert r.returncode == 0, r.stdout + r.stderr
+
+
+def test_a_script_that_sources_tui_lib_keeps_its_own_goh_dir(gates: Path, tmp_path) -> None:
+    """GOH.CLEANOPEN: tui/lib.sh is sourced by ANY script (a release, an installer), and loading
+    HEAD's copy exported the export's path as GOH_DIR into that script. ZoneWM's release.sh then
+    started ZoneWM with it, and every app ZoneWM relaunched handed a GOH_DIR with no bin/ to every
+    agent. The export is the lib's business: the caller's GOH_DIR, GOH_LIVE_ROOT and PYTHONPATH
+    come back as they were -- and HEAD's copy is still the one that loaded (C4)."""
+    lib = gates / "tui" / "lib.sh"
+    before = lib.read_text()
+    lib.write_text(before + f'\necho "{PLANT}" >&2\n')
+    probe = (
+        f'. "{lib}"; type ok >/dev/null || exit 9; '
+        'printf "%s|%s|%s|%s" "$GOH_DIR" "${GOH_LIVE_ROOT-unset}" "$PYTHONPATH" '
+        '"$(bash -c \'printf %s "${GOH_DIR-unset}"\')"'
+    )
+    env = _env(tmp_path, GOH_DIR=str(gates), PYTHONPATH="/caller/py")
+    try:
+        r = subprocess.run(
+            ["bash", "-c", probe],
+            capture_output=True,
+            text=True,
+            env=env,
+            timeout=60,
+            stdin=subprocess.DEVNULL,
+            check=False,
+        )
+    finally:
+        lib.write_text(before)
+    assert r.returncode == 0, r.stderr
+    assert PLANT not in r.stderr, "the live tree's tui/lib.sh loaded, not HEAD's"
+    goh_dir, live_root, pythonpath, child = r.stdout.split("|")
+    assert (goh_dir, live_root, pythonpath, child) == (
+        str(gates),
+        "unset",
+        "/caller/py",
+        str(gates),
+    )

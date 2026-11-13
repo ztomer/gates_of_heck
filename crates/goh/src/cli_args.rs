@@ -169,3 +169,22 @@ pub struct CratesBehindArgs {
     #[arg(long, default_value = crate::crates_change::DEFAULT_INDEX, hide = true)]
     pub index: String,
 }
+
+/// `goh launch-app`'s flags (GOH.CLEANOPEN, `crate::launchapp`).
+#[derive(Debug, clap::Args)]
+pub struct LaunchAppArgs {
+    /// `open -g`: do not bring the app to the front.
+    #[arg(long)]
+    pub background: bool,
+    /// `open -n`: a new instance even if one runs.
+    #[arg(long)]
+    pub new: bool,
+    /// `open -W`: wait until the app exits.
+    #[arg(long)]
+    pub wait: bool,
+    /// The `.app` bundle, an app NAME (`open -a`), or anything `open` opens.
+    pub target: std::path::PathBuf,
+    /// The app's own arguments (`open --args`), after `--`.
+    #[arg(last = true)]
+    pub args: Vec<std::ffi::OsString>,
+}

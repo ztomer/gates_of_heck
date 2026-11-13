@@ -10,6 +10,7 @@
 
 #![deny(unsafe_code)]
 
+pub mod bareopen;
 pub mod barepy;
 pub mod blobs;
 pub mod bounded;
@@ -45,6 +46,7 @@ pub mod installs;
 pub mod instline;
 pub mod jssyntax;
 pub mod killname;
+pub mod launchapp;
 pub mod length;
 pub mod lints;
 pub mod lockver;
@@ -177,6 +179,8 @@ fn run_core(command: Commands) -> i32 {
             house_script("agent-stalls", "hooks/claude/agent_stalls.py", &a.args)
         }
         Commands::Ship(a) => house_script("ship", "tools/ship.py", &a.args),
+        Commands::BareOpen(a) => paths(a.exclude, |x| bareopen::run_command(a.staged, x)),
+        Commands::LaunchApp(a) => launchapp::run_args(a),
         Commands::SourceTree => {
             println!("{}", env!("GOH_SOURCE_STAMP"));
             0

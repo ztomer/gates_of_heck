@@ -2,6 +2,30 @@
 
 ## Unreleased
 
+* **An app a house script launches gets the login environment, never the caller's (GOH.CLEANOPEN).**
+  ZW.KITPEEK's ship ran ZoneWM's `install_release_build.sh` `open -a "$DEST"`: ZoneWM started with
+  `GOH_SHIP_ITEM` and a `GOH_DIR` naming a transient gate export with no `bin/`, and Claude.app,
+  relaunched through ZoneWM, gave both to every agent of that session (`$GOH_DIR/bin/goh` missing).
+  Probed with a throwaway app writing its own environ, a sentinel set in the caller: `open -a`,
+  `open -n`, `open --env`, `osascript ... launch` and `launchctl asuser` all carried it; only
+  `env -i /usr/bin/open` matched the Finder's launch (launchd's set plus `__CF_USER_TEXT_ENCODING`).
+  Three parts:
+  * `goh launch-app [--background] [--new] [--wait] TARGET [-- ARGS]`: `/usr/bin/open` with an
+    empty environment (`crates/goh/src/launchapp.rs`). `tests/test_launch_app.py` launches the probe
+    app both ways: a bare `open` carries the sentinel (the control), `launch-app` does not and the
+    app sees the login HOME. Red with `env_clear` removed.
+  * `goh bare-open`, a structural step in every repo: an `open` at a command position in a shell
+    source (quoted words and heredoc bodies not read). Seeded (`bare_open_seed.json`, an estate
+    ratchet) at the 23 sites the sweep found in 10 repos: ZoneWM, divoom-control, CadGoose,
+    CadGoose2, ZeroThunder, necrohand, koffee_big, mediaremote-adapter, routines (the owner's store)
+    and goh's own `tools/release-kit/update_dev.sh` (tracked). Red on a planted `open "$APP"`, and
+    stale once a site moves to `goh launch-app`.
+  * `tui/lib.sh` no longer exports HEAD's export into the script that sources it: its
+    `goh_from_head_lib --caller-env` gives the caller back its own `GOH_DIR`, `GOH_LIVE_ROOT` and
+    `PYTHONPATH` (value, export bit, or unset) once HEAD's copy has loaded. That export was the leak
+    site (ZoneWM's release.sh sources tui/lib.sh before its `open`). A gate's own `_common.sh`
+    keeps the export. Red first in `tests/test_gates_from_head.py`.
+
 ## v0.107.4 -- whole-tree shellcheck tests only parse, in parallel; goh shell-lint runs its shellcheck calls per core
 
 * **The suite's whole-tree shellcheck passes cost what they measure (GOH.COVDEDUPE).** v0.107.3's

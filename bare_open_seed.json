@@ -1,0 +1,12 @@
+{
+ "why": "goh bare-open (GOH.CLEANOPEN, 2026-11-13): a bare `open` hands the app the caller's environment. THIS repository's own entries only, keyed by its root commit (GOH.SEEDPRIVATE). At or under its count warns; over it, unseeded, or stale is red. Done is an empty list.",
+ "entries": [
+  {
+   "root": "73391f04f5f2b92ab9813c62e6cecdce919d2d86",
+   "repo": "gates_of_heck",
+   "path": "tools/release-kit/update_dev.sh",
+   "count": 2,
+   "reason": "unreviewed: the release kit's launch and its one retry (lines 178, 184); move to goh launch-app with the test's fake opener on GOH_LAUNCH_APP_OPEN (GOH.CLEANOPEN follow-up)"
+  }
+ ]
+}
