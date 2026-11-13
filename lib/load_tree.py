@@ -77,3 +77,11 @@ def kill_tree(proc: subprocess.Popen) -> None:
         proc.wait(timeout=GRACE_S)
     except subprocess.TimeoutExpired:
         pass
+
+
+def shell_status(status: int) -> int:
+    """A child's `Popen` status as a shell reports it (GOH.LOADRC): `wait()` gives -N for a death
+    by signal N, and `sys.exit(-15)` is the byte 241, which nothing reads as "killed by SIGTERM".
+    The shell's number is 128+N, so a refused push or a red gate run through this tool fails the
+    caller the same way it fails unwrapped."""
+    return 128 - status if status < 0 else status

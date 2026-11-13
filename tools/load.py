@@ -75,7 +75,7 @@ import load_priority
 import load_reap
 import load_registry as reg
 import load_slot
-from load_tree import GRACE_S, kill_tree
+from load_tree import GRACE_S, kill_tree, shell_status
 
 sys.path.insert(0, str(ROOT))
 from tui.lib import counted, err, info, warn
@@ -84,6 +84,7 @@ EXIT_BUSY = 3  # the slot is taken
 EXIT_GATE = 75  # another session's gate is in flight (EX_TEMPFAIL: try again when it is done)
 EXIT_LEAK = 70  # a spinner outlived the cleanup: the experiment's verdict is not trustworthy
 EXIT_DEADLINE = 124  # the deadline expired (the number `timeout(1)` uses)
+EXIT_ORPHAN = 128 + signal.SIGHUP  # the owner died and the command was cut short: not a success
 DEFAULT_MAX_S = 1800.0  # the deadline when none is named: 30 minutes
 UNITS = {"s": 1.0, "m": 60.0, "h": 3600.0}
 RELEASE_S = 5.0  # how long a spinner may wait for its release byte
@@ -334,7 +335,7 @@ def _watch_parent(experiment: Experiment, parent: int) -> None:
         time.sleep(0.25)
         if os.getppid() != parent:
             experiment.abort()
-            os._exit(0)
+            os._exit(EXIT_ORPHAN)
 
 
 def _install_handlers(experiment: Experiment) -> None:
@@ -491,7 +492,7 @@ def main(argv: list[str]) -> int:
         )
         return EXIT_LEAK
     print("load: spinners stopped, registry cleared", flush=True)
-    return status
+    return shell_status(status)
 
 
 if __name__ == "__main__":

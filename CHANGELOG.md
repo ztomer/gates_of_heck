@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+* **`tools/load.py` exits with the wrapped command's status as a shell does (GOH.LOADRC).** A command
+killed by signal N exited the tool 256-N (SIGTERM was 241, SIGKILL 247) because `Popen.wait()`'s negative
+status went to `sys.exit`; it is now 128+N. And when the tool's owner died, the watchdog killed the
+command and exited 0, reporting a command that never finished as a success; it is now 129 (SIGHUP).
+Pinned by tests/test_load_exit_status.py (red on the old tool, both directions).
+
 ## v0.111.0 -- a goh ship runs every step with the goh it started under (pinned HEAD export); every export carries bin/goh
 
 * **A ship runs every step with the goh it started under, and every HEAD export carries a
