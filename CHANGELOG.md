@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## v0.109.0 -- goh hooks lists and refreshes stale stock hooks estate-wide; the staged lint gate reads the ceiling the commit carries
+
 * **Stale stock hooks are listed estate-wide and refreshed by one command, and the staged lint gate
 reads the ceiling the commit carries (GOH.HOOKREFRESH).** structural.sh rightly refuses a commit run
 by an older stock hook, but nothing refreshed them when goh moved: on 2026-11-12/13
