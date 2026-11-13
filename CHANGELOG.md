@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## v0.113.0 -- goh's coverage and push caches are bounded: coverage by liveness, sccache pinned out of test sandboxes
+
 * **Both unbounded goh caches are bounded (GOH.CACHEBOUND).** `~/.cache/goh/llvm-cov` held 21 GiB
 against its 8 GiB budget because the budget spared every build stamped within the hour and a coverage
 sweep is one hour; a run now records its pid (`.goh-running`), liveness decides, a 10-minute grace
