@@ -18,6 +18,7 @@ import json
 import subprocess
 from pathlib import Path
 
+from _fast_git import fast_init
 from conftest import REPO_ROOT, hermetic_env, native_goh_path
 
 OLD_STOCK = "18330c7"  # a retired stock pre-commit (retired_hooks.sha256)
@@ -64,7 +65,7 @@ def _consumer(root: Path, name: str, pre_commit: bytes) -> Path:
     (repo / "tools").mkdir()
     (repo / "tools" / "gate.sh").write_text(GATE)
     (repo / "tools" / "gate.sh").chmod(0o755)
-    _git(repo.parent, "init", "-q", name)
+    fast_init(repo)
     _git(repo, "config", "user.email", "t@t")
     _git(repo, "config", "user.name", "t")
     _git(repo, "config", "core.hooksPath", ".githooks")
@@ -173,3 +174,26 @@ def test_the_estate_audit_records_the_stale_hooks(tmp_path):
     recorded = json.loads(state.read_text())["stale_hooks"]
     assert recorded == {"kept": ["pre-commit"], "stale": ["pre-commit"]}, recorded
     assert str(e["stale"]) not in recorded  # named relative to the root, like every audit entry
+
+
+def test_a_held_repo_is_set_aside_untouched(tmp_path):
+    e = _estate(tmp_path)
+    _git(e["stale"], "config", "goh.hold", "frozen for the test")
+    r = _run(tmp_path / "estate", tmp_path, "--refresh", "--except", str(e["kept"]))
+    out = r.stdout + r.stderr
+    assert r.returncode == 1 and "on hold" in out, out
+    assert (e["stale"] / ".githooks" / "pre-commit").read_bytes() == _old_pre_commit()
+
+
+def test_a_refused_commit_leaves_the_repo_as_it_was(tmp_path):
+    e = _estate(tmp_path)
+    (e["stale"] / "tools" / "commit_msg.sh").write_text("#!/bin/bash\nexit 1\n")
+    _git(e["stale"], "add", "-A")
+    _git(e["stale"], "commit", "-q", "--no-verify", "-m", "a commit-msg rule that refuses all")
+    head = _git(e["stale"], "rev-parse", "HEAD")
+    r = _run(tmp_path / "estate", tmp_path, "--refresh", "--except", str(e["kept"]))
+    out = r.stdout + r.stderr
+    assert r.returncode == 1 and "NOT refreshed" in out, out
+    assert _git(e["stale"], "rev-parse", "HEAD") == head
+    assert _git(e["stale"], "status", "--porcelain") == "", out
+    assert (e["stale"] / ".githooks" / "pre-commit").read_bytes() == _old_pre_commit()

@@ -18,10 +18,11 @@ plus one command run deliberately, refreshes the same hooks with nobody's tree m
 
 The refresh is install.sh's own (GOH_SKIP_BUILD=1): it overwrites a hook only when it is pristine
 -- today's stock, a stock goh once shipped, or the one it recorded installing -- so a hook a repo
-edited is never clobbered. A repo is set aside, named, when its `.githooks` has uncommitted
-changes (the commit would sweep them in) or when it lacks the tools/gate.sh and .gatesrc install.sh
-would otherwise write as starters. The commit carries `.githooks` only, through the repo's own
-hooks (the refreshed ones).
+edited is never clobbered. A repo is set aside, named, when it is on hold, when its `.githooks`
+has uncommitted changes (the commit would sweep them in), or when it lacks the tools/gate.sh and
+.gatesrc install.sh would otherwise write as starters. The commit carries `.githooks` only,
+through the repo's own hooks (the refreshed ones); one they refuse is undone, so the repo is left
+exactly as it was.
 """
 
 from __future__ import annotations
@@ -41,6 +42,7 @@ from tui.lib import counted, err, info, ok, warn
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
 import estate_registry
 import hook_currency
+import repo_hold
 
 GOH = Path(__file__).resolve().parent.parent
 MESSAGE = "chore: refresh goh's stock hooks ({hooks}) -- goh hooks --refresh"
@@ -79,6 +81,8 @@ def _tail(p: subprocess.CompletedProcess) -> str:
 
 def refresh(repo: Path, hooks: list[str]) -> tuple[bool, str]:
     """(refreshed, one line saying what happened)."""
+    if (hold := repo_hold.repo_hold(str(repo))) is not None:
+        return False, f"set aside: on hold (goh.{hold.key}), nothing in it may change"
     if not ((repo / "tools" / "gate.sh").is_file() and (repo / ".gatesrc").is_file()):
         return False, "set aside: no tools/gate.sh or .gatesrc (install.sh would write starters)"
     dirty = _git(repo, "status", "--porcelain", "--", ".githooks")
@@ -107,7 +111,11 @@ def refresh(repo: Path, hooks: list[str]) -> tuple[bool, str]:
         repo, "commit", "-q", "-m", MESSAGE.format(hooks=", ".join(hooks)), "--", ".githooks"
     )
     if done.returncode != 0:
-        return False, f"refreshed but NOT committed (its commit gate said: {_tail(done)})"
+        # Put `.githooks` back as it was (it was clean above, so this drops only what install.sh
+        # wrote): a refusal must not leave another agent's tree dirty.
+        _git(repo, "restore", "--source=HEAD", "--staged", "--worktree", "--", ".githooks")
+        _git(repo, "clean", "-fdq", "--", ".githooks")
+        return False, f"NOT refreshed: its commit gate refused ({_tail(done)}); left as it was"
     sha = _git(repo, "rev-parse", "--short", "HEAD").stdout.strip()
     return True, f"refreshed {', '.join(hooks)} in {sha}"
 
