@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## v0.111.1 -- load.py exits with the wrapped command's status (128+N on a signal); a dead owner is not success
+
 * **`tools/load.py` exits with the wrapped command's status as a shell does (GOH.LOADRC).** A command
 killed by signal N exited the tool 256-N (SIGTERM was 241, SIGKILL 247) because `Popen.wait()`'s negative
 status went to `sys.exit`; it is now 128+N. And when the tool's owner died, the watchdog killed the
