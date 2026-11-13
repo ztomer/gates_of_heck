@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## v0.112.0 -- a GOH_DIR naming a pruned HEAD export resolves to the live goh in hooks, the binary and Python; the release kit launches apps without its environment
+
 * **A GOH_DIR naming a pruned HEAD export no longer breaks goh (GOH.TRANSIENTDIR).** Gates export
 GOH_DIR at `~/.cache/goh/head/<sha>`; a long-lived process started under one kept it (a ship's release
 kit `open`ed Routines.app with it, whose from_head jobs exited 2 from 2026-11-12 20:43 once the export
