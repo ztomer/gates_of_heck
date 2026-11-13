@@ -17,6 +17,7 @@ from pathlib import Path
 
 import pytest
 from conftest import hermetic_env, native_goh_path
+from env_probe import probe_sh, read_probe
 from timing_bounds import GiveUp
 
 pytestmark = pytest.mark.skipif(sys.platform != "darwin", reason="LaunchServices' open is macOS")
@@ -34,13 +35,14 @@ PLIST = """<?xml version="1.0" encoding="UTF-8"?>
 
 
 def _probe_app(root: Path, tag: str) -> tuple[Path, Path]:
-    """An app that writes its environ to `<root>/<tag>.env` and exits."""
+    """An app that writes its environ's names (tests/env_probe.py) to `<root>/<tag>.env`, exits."""
     app = root / f"EnvProbe{tag}.app"
     (app / "Contents" / "MacOS").mkdir(parents=True)
     (app / "Contents" / "Info.plist").write_text(PLIST.format(tag=tag))
     out = root / f"{tag}.env"
     exe = app / "Contents" / "MacOS" / "envprobe"
-    exe.write_text(f'#!/bin/sh\nenv > "{out}.tmp" && mv "{out}.tmp" "{out}"\n')
+    # Names, plus the two values asserted on (GOH.ENVDUMP): the app's environ is a login one.
+    exe.write_text(f"#!/bin/sh\n{probe_sh(out, keep=(SENTINEL, 'HOME'))}\n")
     exe.chmod(0o755)
     return app, out
 
@@ -50,8 +52,7 @@ def _environ_of(out: Path) -> dict[str, str]:
     while not out.exists():
         assert not give_up.passed(), f"the probe app never wrote {out}"
         time.sleep(0.2)
-    pairs = (ln.split("=", 1) for ln in out.read_text().splitlines() if "=" in ln)
-    return dict(pairs)
+    return read_probe(out)
 
 
 def _caller_env(**extra: str) -> dict[str, str]:

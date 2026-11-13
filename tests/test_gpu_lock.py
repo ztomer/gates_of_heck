@@ -57,7 +57,7 @@ def test_the_owner_record_is_pid_start_label_and_the_owner_is_exported(lock):
     assert os.environ["ZTOOLS_GPU_LOCK_OWNER"] == pid
     lock.release()
     assert not os.path.exists(lock.lock_dir())
-    assert "ZTOOLS_GPU_LOCK_OWNER" not in os.environ
+    assert os.environ.get("ZTOOLS_GPU_LOCK_OWNER") is None  # never `in os.environ`: printed whole
 
 
 def test_a_live_beating_peer_is_refused_by_name_never_stolen(lock, peer):

@@ -14,6 +14,7 @@ from pathlib import Path
 
 import pytest
 from conftest import REPO_ROOT, hermetic_env
+from env_probe import probe_sh, read_probe
 
 
 def run_gate(cwd: Path, *args: str) -> subprocess.CompletedProcess:
@@ -99,7 +100,9 @@ def test_the_external_command_runs_in_the_callers_environment(tmp_path: Path) ->
     destination and `$GOH_COVERAGE_BIN_DIR`."""
     crate = _crate(tmp_path)
     seen = tmp_path / "seen.env"
-    probe = f'env > "{seen}"; "$GOH_COVERAGE_BIN_DIR/binonly" go'
+    # Names, plus the values asserted on: never the caller's whole environment (GOH.ENVDUMP).
+    kept = ("RUSTC_WRAPPER", "CARGO_TARGET_DIR", "LLVM_PROFILE_FILE")
+    probe = f'{probe_sh(seen, keep=kept)}; "$GOH_COVERAGE_BIN_DIR/binonly" go'
     env = hermetic_env(CARGO_TARGET_DIR=str(tmp_path / "callers-target"))
     r = subprocess.run(
         [
@@ -122,12 +125,13 @@ def test_the_external_command_runs_in_the_callers_environment(tmp_path: Path) ->
         check=False,
     )
     assert r.returncode == 0, r.stdout + r.stderr
-    got = dict(line.split("=", 1) for line in seen.read_text().splitlines() if "=" in line)
+    got = read_probe(seen)
     leaked = sorted(k for k in got if k.startswith(("CARGO_LLVM_COV", "__CARGO_LLVM_COV")))
     assert not leaked, f"the instrumented build's environment reached CMD: {leaked}"
     assert got.get("RUSTC_WRAPPER", "") == env.get("RUSTC_WRAPPER", ""), got.get("RUSTC_WRAPPER")
     assert got.get("CARGO_TARGET_DIR") == str(tmp_path / "callers-target")
-    assert "CARGO_INCREMENTAL" not in got or "CARGO_INCREMENTAL" in env
+    incremental_added = "CARGO_INCREMENTAL" in got and "CARGO_INCREMENTAL" not in env
+    assert not incremental_added, "the instrumented build's CARGO_INCREMENTAL reached CMD"
     assert got.get("LLVM_PROFILE_FILE"), "CMD's instrumented runs must know where to profile"
     assert "%p" not in got["LLVM_PROFILE_FILE"], "one profile per process: thousands of files"
 
@@ -139,22 +143,23 @@ def test_a_scrubbed_test_environment_keeps_the_profile_destination(monkeypatch, 
     the destination into every explicit environment while the suite is measured."""
     monkeypatch.setenv("GOH_COVERAGE_BIN_DIR", str(tmp_path))
     monkeypatch.setenv("LLVM_PROFILE_FILE", str(tmp_path / "p-%8m.profraw"))
+    printenv = ["/usr/bin/printenv", "LLVM_PROFILE_FILE"]  # the one name, never the whole env
     r = subprocess.run(
-        ["/usr/bin/env"],
+        printenv,
         env={"PATH": "/usr/bin:/bin"},
         capture_output=True,
         text=True,
         stdin=subprocess.DEVNULL,
         check=False,
     )
-    assert f"LLVM_PROFILE_FILE={tmp_path / 'p-%8m.profraw'}" in r.stdout.splitlines(), r.stdout
+    assert r.stdout.strip() == str(tmp_path / "p-%8m.profraw"), r.stdout
     monkeypatch.delenv("GOH_COVERAGE_BIN_DIR")
     r = subprocess.run(
-        ["/usr/bin/env"],
+        printenv,
         env={"PATH": "/usr/bin:/bin"},
         capture_output=True,
         text=True,
         stdin=subprocess.DEVNULL,
         check=False,
     )
-    assert "LLVM_PROFILE_FILE" not in r.stdout, "outside a measured run an env is left as given"
+    assert (r.returncode, r.stdout) == (1, ""), "outside a measured run an env is left as given"

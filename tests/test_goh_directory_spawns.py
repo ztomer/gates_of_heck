@@ -22,7 +22,8 @@ INHERIT = {
 def test_the_tests_declaration_holds_no_repository_is_named_in_this_process():
     """What the `tests` declaration rests on, read rather than trusted: under a hook GIT_DIR is set,
     and by the time a test runs conftest has dropped it."""
-    assert "GIT_DIR" not in os.environ and "GIT_INDEX_FILE" not in os.environ
+    bound = [n for n in ("GIT_DIR", "GIT_INDEX_FILE") if n in os.environ]  # names, not the env
+    assert bound == []
 
 
 def test_every_spawn_in_another_directory_states_its_environment():

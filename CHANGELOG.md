@@ -2,6 +2,21 @@
 
 ## Unreleased
 
+* **No goh test writes or prints a whole environment, and the suite's temp root never outlives its
+run (GOH.ENVDUMP).** `test_coverage_external.py` wrote `env > seen.env` into its temp dir, and a
+killed bare-pytest run left its `goh-suite-tmp.*` root behind holding it (2026-11-12, 160 lines,
+session tokens included); GOH.CLEANOPEN's launch test asserted on a dict read back from an `env`
+dump, and its red run printed it whole. `tests/env_probe.py` is now the one capture (every NAME,
+plus the values of the names a test asserts on; the rest read back as `<redacted>`), and
+`tests/test_no_env_dump.py` refuses `env`/`printenv` redirected or piped, a bare `env` argv, and a
+whole `os.environ` or env-building call in an assert (as pytest prints it) or a write. It was
+seeded with the 18 sites in 8 test files it found (ten of them asserts that would have printed
+a `hermetic_env()` whole as a call argument) and is now empty. `tests/suite_tmp.py` gives the root
+a reaper waiting on a pipe only the suite holds, so SIGKILL, SIGTERM and SIGHUP remove it as an
+ordinary exit does (`tests/test_suite_tmp_reaped.py`, every kill arm red before). Outside tests,
+nothing writes a whole environment: `gates/_hash.sh` and `checks/_estate_cache.py` hash the
+`GOH_*` keys only.
+
 ## v0.108.0 -- apps launched by house scripts get the login environment: goh launch-app, goh bare-open, tui/lib.sh keeps the caller's GOH_DIR
 
 * **An app a house script launches gets the login environment, never the caller's (GOH.CLEANOPEN).**

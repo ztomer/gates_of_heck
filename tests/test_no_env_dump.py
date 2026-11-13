@@ -16,20 +16,17 @@ this scanner refuses the others. What it sees, in every tests/**/*.py:
     arguments of a write (`write_text`, `write`, `writelines`, `dump`, `dumps`, `print`).
 
 It cannot see a dict a helper returns whole (a read-back of a dump file); that is why the dump
-itself is the thing refused. The seed, tests/env_dump_seed.json, is exactly the dumps each file
-held when this landed; a NEW dump is red, and so is an entry above its file's count, so the list
-only shrinks (close-the-class).
+itself is the thing refused. It landed as a ratchet seeded with every file's dumps; the seed is
+empty now, so any dump is red (close-the-class).
 """
 
 from __future__ import annotations
 
 import ast
-import json
 import re
 from pathlib import Path
 
 TESTS = Path(__file__).resolve().parent
-SEED = TESTS / "env_dump_seed.json"
 SELF = Path(__file__).name  # its calibration cases are dumps, by design
 
 _SHELL = re.compile(
@@ -70,6 +67,19 @@ def _is_env_source(node: ast.AST) -> bool:
             k is None and _is_env_source(v) for k, v in zip(node.keys, node.values, strict=True)
         )
     return False
+
+
+_ONE_VALUE = {"getenv", "putenv", "unsetenv"}
+
+
+def _is_env_call(node: ast.AST) -> bool:
+    """A call that BUILDS an environment, by the house naming (`hermetic_env()`, a test's own
+    `_env(...)`, `_caller_env()`): its value is a whole environment wherever it is printed."""
+    if not isinstance(node, ast.Call):
+        return False
+    f = node.func
+    name = f.attr if isinstance(f, ast.Attribute) else getattr(f, "id", "")
+    return name.lower().endswith("env") and name not in _ONE_VALUE
 
 
 def _parents(tree: ast.AST) -> dict[ast.AST, ast.AST]:
@@ -151,10 +161,14 @@ def dumps(source: str) -> list[int]:
     for scope in [tree, *scopes]:
         env_names = _env_names(scope) if scope is not tree else set()
         for node in _sinks(scope):
-            is_env = _is_environ(node) or (
-                isinstance(node, ast.Name)
-                and node.id in env_names
-                and isinstance(node.ctx, ast.Load)
+            is_env = (
+                _is_environ(node)
+                or _is_env_call(node)
+                or (
+                    isinstance(node, ast.Name)
+                    and node.id in env_names
+                    and isinstance(node.ctx, ast.Load)
+                )
             )
             if is_env and _whole(node, parents):
                 found.add(node.lineno)
@@ -203,13 +217,18 @@ def v():
     env = dict(os.environ, X="1")
     assert run(env=env).returncode == 0
 assert "X" not in os.environ
+assert run(_env(p)) == 0
+ok7 = os.getenv("HOME")
+assert os.getenv("HOME")
+assert _env(p).get("X") == "1"
 """
 
 
 def test_the_detector_sees_every_spelling_and_nothing_else():
     """Calibration: each dump is one finding; every look-alike (lines 14-28) is none. Line 29: a
-    call's arguments in an assert's test are printed whole; line 30: so is a membership test."""
-    assert dumps(CASES) == [3, 4, 5, 6, 7, 8, 11, 12, 13, 29, 30]
+    call's arguments in an assert's test are printed whole; line 30: so is a membership test;
+    line 31: so is an environment a helper builds (`_env(...)`), but not `os.getenv` (32-34)."""
+    assert dumps(CASES) == [3, 4, 5, 6, 7, 8, 11, 12, 13, 29, 30, 31]
 
 
 def test_a_planted_dump_is_red(tmp_path):
@@ -220,13 +239,15 @@ def test_a_planted_dump_is_red(tmp_path):
     assert len(dumps(plant)) == len(dumps(src)) + 1
 
 
-def test_no_test_dumps_an_environment_beyond_the_seed():
-    seed = json.loads(SEED.read_text(encoding="utf-8"))["files"]
+def test_no_test_dumps_an_environment():
+    """The class is closed. The seed it was calibrated against (2026-11-13, tests/env_dump_seed.json
+    in history, widened by the env-building-call rule) named test_check_shell_lint.py 2,
+    test_coverage_external.py 4, test_gate_tests_unbound.py 1, test_git_local_vars.py 2,
+    test_goh_directory_spawns.py 1, test_gpu_lock.py 1, test_launch_app.py 1 and
+    test_step_timings.py 6; each now captures names (tests/env_probe.py) or binds the
+    env-carrying call before asserting on it."""
     now = census()
-    grown = {f: n for f, n in now.items() if n > seed.get(f, 0)}
-    assert not grown, f"a whole environment dumped (use tests/env_probe.py): {grown}"
-    stale = {f: (n, now.get(f, 0)) for f, n in seed.items() if now.get(f, 0) < n}
-    assert not stale, f"lower these seed entries to the file's count (seed, now): {stale}"
+    assert now == {}, f"a whole environment dumped (use tests/env_probe.py): {now}"
 
 
 def test_the_census_reads_the_suite():

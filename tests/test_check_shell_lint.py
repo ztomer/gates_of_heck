@@ -458,9 +458,11 @@ def test_the_verdict_cache_is_keyed_on_the_severity(repo, tmp_path):
     write(repo, ".gatesrc", "GOH_SHELL_LINT_SEVERITY=error\n")
     write(repo, "warn.sh", WARN)
     stage(repo, "warn.sh")
-    assert run_lint(repo, "--staged", env=env).returncode == 0
+    at_error = run_lint(repo, "--staged", env=env)  # bound first: pytest prints `env=` whole
+    assert at_error.returncode == 0
     write(repo, ".gatesrc", "GOH_SHELL_LINT_SEVERITY=warning\n")
-    assert run_lint(repo, "--staged", env=env).returncode == 1
+    at_warning = run_lint(repo, "--staged", env=env)
+    assert at_warning.returncode == 1
 
 
 def test_a_files_findings_do_not_depend_on_which_files_share_the_run(repo):

@@ -23,6 +23,7 @@ from pathlib import Path
 import pytest
 from _fast_git import fast_init
 from conftest import REPO_ROOT, hermetic_env
+from env_probe import probe_sh, read_probe
 from test_commit_hook_git_env import _commit, _consumer, _git
 
 # The suite a consumer gate launches: it records which of git's local variables it was handed.
@@ -107,19 +108,19 @@ BOUND = {
 }
 
 
-def _dump_env(path: Path) -> str:
-    return f"env > {path}"
+def _names_probe(path: Path) -> str:
+    return probe_sh(path)  # the names alone (GOH.ENVDUMP): never the caller's values
 
 
 def _names_in(path: Path) -> list[str]:
-    return [line.split("=", 1)[0] for line in path.read_text().splitlines() if "=" in line]
+    return list(read_probe(path))
 
 
 def test_a_local_ci_step_sees_none_of_gits_local_variables(tmp_path):
     proj = tmp_path / "proj"
     fast_init(proj)
     out = tmp_path / "env.txt"
-    (proj / ".gatesrc").write_text(f"GOH_CI_STEPS='{_dump_env(out)}'\n")
+    (proj / ".gatesrc").write_text(f"GOH_CI_STEPS='{_names_probe(out)}'\n")
     got = subprocess.run(
         ["/bin/bash", str(REPO_ROOT / "gates" / "local_ci.sh")],
         cwd=proj,

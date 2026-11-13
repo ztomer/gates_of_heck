@@ -47,11 +47,13 @@ def _sourced(env: dict) -> list[str]:
 
 
 def test_the_list_is_gits_own() -> None:
-    assert _sourced(hermetic_env()) == GITS
+    got = _sourced(hermetic_env())  # bound first: pytest prints a call's arguments whole
+    assert got == GITS
 
 
 def test_an_inherited_list_without_git_dir_is_asked_again() -> None:
-    assert _sourced(hermetic_env(GOH_GIT_LOCAL_VARS="NOT_A_GIT_VAR")) == GITS
+    got = _sourced(hermetic_env(GOH_GIT_LOCAL_VARS="NOT_A_GIT_VAR"))
+    assert got == GITS
 
 
 def test_python_takes_a_valid_inherited_list_and_refuses_an_invalid_one() -> None:

@@ -47,7 +47,10 @@ def _bounded(env, *cmd: str, label: str, timeout: int = 20) -> int:
 def test_a_step_is_timed_in_milliseconds_not_seconds(tmp_path):
     """300 ms must read as ~300 ms: whole seconds would say 0, which is the defect."""
     out = tmp_path / "t.jsonl"
-    assert _bounded(_env(out), "sleep", "0.3", label="nap") == 0
+    rc = _bounded(
+        _env(out), "sleep", "0.3", label="nap"
+    )  # bound first: pytest prints the env argument whole
+    assert rc == 0
     (row,) = _rows(out)
     assert row["label"] == "nap" and row["rc"] == 0 and row["tier"] == "step"
     assert row["ms"] >= 250, row
@@ -56,8 +59,14 @@ def test_a_step_is_timed_in_milliseconds_not_seconds(tmp_path):
 
 def test_the_exit_code_and_a_timeout_are_recorded(tmp_path):
     out = tmp_path / "t.jsonl"
-    assert _bounded(_env(out), "false", label="red") == 1
-    assert _bounded(_env(out), "sleep", "30", label="hang", timeout=1) == 124
+    rc = _bounded(
+        _env(out), "false", label="red"
+    )  # bound first: pytest prints the env argument whole
+    assert rc == 1
+    rc = _bounded(
+        _env(out), "sleep", "30", label="hang", timeout=1
+    )  # bound first: pytest prints the env argument whole
+    assert rc == 124
     rows = {r["label"]: r for r in _rows(out)}
     assert rows["red"]["rc"] == 1
     assert rows["hang"]["rc"] == 124
@@ -67,7 +76,10 @@ def test_a_nested_step_names_its_parent(tmp_path):
     """A rust_gate.sh step inside a local_ci.sh step: the inner line must say which outer one."""
     out = tmp_path / "t.jsonl"
     inner = [sys.executable, str(BOUNDED), "--timeout", "5", "--label", "inner", "--", "true"]
-    assert _bounded(_env(out), *inner, label="outer") == 0
+    rc = _bounded(
+        _env(out), *inner, label="outer"
+    )  # bound first: pytest prints the env argument whole
+    assert rc == 0
     rows = {r["label"]: r for r in _rows(out)}
     assert rows["inner"]["parent"] == "outer"
     assert rows["outer"]["parent"] == ""
@@ -75,14 +87,18 @@ def test_a_nested_step_names_its_parent(tmp_path):
 
 def test_unset_writes_nothing_and_changes_nothing(tmp_path):
     env = hermetic_env()
-    assert _bounded(env, "true", label="quiet") == 0
+    rc = _bounded(env, "true", label="quiet")  # bound first: pytest prints the env argument whole
+    assert rc == 0
     assert not list(tmp_path.iterdir())
 
 
 def test_an_unwritable_file_never_turns_a_step_red(tmp_path):
     """The instrument must not be a reason a gate fails."""
     out = tmp_path / "no" / "such" / "dir" / "t.jsonl"
-    assert _bounded(_env(out), "true", label="fine") == 0
+    rc = _bounded(
+        _env(out), "true", label="fine"
+    )  # bound first: pytest prints the env argument whole
+    assert rc == 0
 
 
 def test_concurrent_writers_interleave_whole_lines(tmp_path):

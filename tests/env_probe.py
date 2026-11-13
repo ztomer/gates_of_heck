@@ -40,10 +40,11 @@ def _names(keep: Iterable[str]) -> list[str]:
 def probe_sh(out: Path, keep: Iterable[str] = ()) -> str:
     """A POSIX sh command: every name in its environment, and the values of `keep` only."""
     tmp, dest = shlex.quote(f"{out}.tmp"), shlex.quote(str(out))
+    # No single quote of its own, so it nests in a single-quoted setting (`GOH_CI_STEPS='...'`).
     values = "".join(
-        f'if [ -n "${{{n}+x}}" ]; then printf \'%s=%s\\n\' {n} "${n}"; fi; ' for n in _names(keep)
+        f'if [ -n "${{{n}+x}}" ]; then printf "%s=%s\\n" {n} "${n}"; fi; ' for n in _names(keep)
     )
-    names = "/usr/bin/awk 'BEGIN { for (k in ENVIRON) print k }'"
+    names = '/usr/bin/awk "BEGIN { for (k in ENVIRON) print k }"'
     return f"{{ {names}; {values}}} > {tmp} && mv {tmp} {dest}"
 
 
