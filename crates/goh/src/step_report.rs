@@ -81,18 +81,18 @@ pub(crate) fn ceiling_secs() -> u64 {
 /// 2700 s was cut at 1800 s inside it (GOH.COVPHASES). The same rule as `gates/_common.sh`'s
 /// `goh_step_timeout`; the repo's own key still wins (`tests/test_step_budget.py`).
 fn ceiling() -> Option<u64> {
-    let raw = std::env::var("GOH_STEP_TIMEOUT").ok();
-    match raw.as_deref().map(str::trim).filter(|s| !s.is_empty()) {
-        None => match std::env::var("GOH_STEP_BUDGET")
+    let set = |key: &str| {
+        std::env::var(key)
             .ok()
-            .as_deref()
-            .map(str::trim)
-        {
-            None | Some("") => Some(default_timeout()),
-            Some(budget) => parse_ceiling("GOH_STEP_BUDGET", budget),
-        },
-        Some(other) => parse_ceiling("GOH_STEP_TIMEOUT", other),
-    }
+            .map(|raw| raw.trim().to_owned())
+            .filter(|raw| !raw.is_empty())
+            .map(|raw| (key.to_owned(), raw))
+    };
+    set("GOH_STEP_TIMEOUT")
+        .or_else(|| set("GOH_STEP_BUDGET"))
+        .map_or(Some(default_timeout()), |(key, raw)| {
+            parse_ceiling(&key, &raw)
+        })
 }
 
 /// One ceiling value: `0` opts out, a positive integer is the bound.
