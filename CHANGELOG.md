@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## v0.108.0 -- apps launched by house scripts get the login environment: goh launch-app, goh bare-open, tui/lib.sh keeps the caller's GOH_DIR
+
 * **An app a house script launches gets the login environment, never the caller's (GOH.CLEANOPEN).**
   ZW.KITPEEK's ship ran ZoneWM's `install_release_build.sh` `open -a "$DEST"`: ZoneWM started with
   `GOH_SHIP_ITEM` and a `GOH_DIR` naming a transient gate export with no `bin/`, and Claude.app,
