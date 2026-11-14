@@ -24,6 +24,7 @@ import threading
 from pathlib import Path
 
 import pytest
+from _fast_git import fast_init
 from conftest import REPO_ROOT, hermetic_env
 
 pytestmark = pytest.mark.skipif(
@@ -73,8 +74,7 @@ def _crate(root: Path, name: str, lib: str, test: str | None, deps: str = "") ->
 
 
 def _repo(root: Path) -> tuple[Path, Path]:
-    root.mkdir(parents=True)
-    subprocess.run(["git", "init", "-q", str(root)], check=True, stdin=subprocess.DEVNULL)
+    fast_init(root)
     _crate(root, "common", COMMON, None)
     dep = 'common = { path = "../common" }\n'
     return _crate(root, "a", LIB_A, VERSION_A, dep), _crate(root, "b", LIB_B, VERSION_B, dep)

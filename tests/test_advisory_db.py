@@ -185,11 +185,8 @@ def test_an_offline_audit_asks_no_lookup(db: Path, tmp_path: Path) -> None:
     assert record.exists()
 
 
-SPIN = (
-    'exec python3 -c "import time\n'
-    "end = time.monotonic() + 20\n"
-    'while time.monotonic() < end: pass"\n'
-)
+# A busy loop that ends by itself after 2e9 steps (~20 s): a CPU ceiling must stop it long before.
+SPIN = "exec python3 -c 'n = 0\nwhile n < 2_000_000_000: n += 1'\n"
 
 
 def test_an_audit_that_burns_its_cpu_ceiling_is_stopped_and_named(db: Path, tmp_path: Path) -> None:
