@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+* **A first `goh ship` names its version (`GOH.FIRSTTAG`).** `tools/ship.py` `next_version` returned an empty version on a repo with no v-tag, so `--bump patch` ran the release kit with `{version}` as nothing (agent-feed AF.CORE). A tagless repo that declares a release kit is now refused before anything starts, naming `--version X.Y.Z`; a repo with no kit ships with no version as before. Pinned by `tests/test_ship_firsttag.py`.
+
 * **The release kit refuses before its first commit or push (`GOH.KITORDER`).** `tools/release-kit/release.sh` pushed an unpushed version commit for its CI read and only then refused a missing CHANGELOG stanza (ztools 3.19.0: a pushed, untagged bump). `release_refusals_first` (`version_step.sh`) now asks the declared gate, the backfill floor, a stale tag, the stanza and `changelog_cut.py check` before step 0b's cut commit and step 0's push, and a cut is checked before it is committed. Pinned by `tests/test_release_kit_order.py`.
 
 * **Judge gate step ceilings by process-group CPU time (including reaped descendants) and stall progress instead of raw wall clock (`--cpu-timeout`, `--stall`).** Added `lib/pgid_cpu.py` (`proc_listpids(PROC_PGRP_ONLY)` + `proc_pid_rusage` + `proc_pidinfo` on macOS, `/proc/<pid>/stat` on Linux) and `goh_sys::pgid_cpu_and_runnable`, wired into `lib/bounded_run.py`, `lib/orphan_canary.py`, `goh step`, `goh canary`, `gates/_common.sh`, `gates/local_ci.sh`, and `step_report.rs`. Pinned by `tests/test_bounded_run.py` and `tests/test_step_wrapper_cli.py`.

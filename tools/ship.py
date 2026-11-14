@@ -47,7 +47,9 @@ carries the last 40 lines of its log (`tail`), which is all a resumed agent need
 The next version, when neither --version nor --bump is given, is the maintained tool's answer,
 `git-cliff --bumped-version` over the conventional commits since the newest v-tag (a `!` or BREAKING
 CHANGE is major, a feat minor; a repo's own cliff.toml [bump] is honoured); a span git-cliff finds
-nothing to bump in (no conventional commit) is a patch. No git-cliff on PATH refuses the ship,
+nothing to bump in (no conventional commit) is a patch. A repo with no v-tag has nothing to bump
+from: its first release is refused unless --version names it (GOH.FIRSTTAG).
+No git-cliff on PATH refuses the ship,
 naming the install; --version or --bump needs none (gates/required_tools.tsv, layer `ship`).
 `--bump none` ships with no release: a repo that declares no version (no v-tag), or a HEAD that
 already carries its tag; a tagging repo past its newest tag is refused, naming --version X.Y.Z (the
@@ -170,7 +172,8 @@ def cliff_version(repo: Path, tag: str) -> str:
     return "" if lines[-1] == tag else lines[-1].removeprefix("v")
 
 
-def next_version(repo: Path, tag: str, version: str | None, bump: str | None) -> str:
+def next_version(repo: Path, tag: str, version: str | None, bump: str | None,
+                 releases: bool = True) -> str:  # fmt: skip
     if version:
         if bump:
             raise Refused(f"--version {version} and --bump {bump} both name the version: pass one")
@@ -186,7 +189,10 @@ def next_version(repo: Path, tag: str, version: str | None, bump: str | None) ->
                           "patch|minor|major to cut the next")  # fmt: skip
         return ""
     m = SEMVER.match(tag)
-    if not m:
+    if not m:  # a first release names its version: nothing to bump from (GOH.FIRSTTAG)
+        if releases:
+            raise Refused(f"{repo.name} has no v-tag, so there is no version to bump: pass "
+                          "--version X.Y.Z for its first release (or --bump none)")  # fmt: skip
         return ""
     major, minor, patch = (int(x) for x in m.groups())
     if not bump:
@@ -275,7 +281,7 @@ def plan(args: argparse.Namespace) -> dict:
         raise Refused(f"{repo.name} tags releases ({tag}) but declares no GOH_SHIP_RELEASE in its "
                       ".gatesrc: name its release kit, e.g. GOH_SHIP_RELEASE='tools/release.sh "
                       "{version}'")  # fmt: skip
-    version = next_version(repo, tag, args.version, args.bump)
+    version = next_version(repo, tag, args.version, args.bump, bool(cfg["GOH_SHIP_RELEASE"]))
     try:
         timeout = int(cfg["GOH_SHIP_TIMEOUT"] or DEFAULT_TIMEOUT)
     except ValueError:
