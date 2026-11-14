@@ -93,14 +93,11 @@ def firing(lockfile: str, fetch: bool) -> set[str]:
     directory, where no `.cargo/audit.toml` is read."""
     lockfile = os.path.abspath(lockfile)
     with tempfile.TemporaryDirectory(prefix="goh-audit.") as scratch, advisory_db.held(fetch) as db:
-        r = subprocess.run(
+        r = advisory_db.bounded(  # the audit's own ceilings (GOH.AUDITSPIN)
             ["cargo", "audit", "--json", *advisory_db.audit_args(db, fetch), "--file", lockfile],
-            check=False,
+            fetch,
             cwd=scratch,
             env=foreign_repo_env(),
-            capture_output=True,
-            text=True,
-            stdin=subprocess.DEVNULL,
         )
     try:
         report = json.loads(r.stdout)

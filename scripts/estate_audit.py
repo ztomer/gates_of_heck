@@ -149,6 +149,12 @@ def _run(argv: list[str], cwd: Path) -> subprocess.CompletedProcess:
     )
 
 
+def _audit_run(argv: list[str], fetch: bool, cwd: Path) -> subprocess.CompletedProcess:
+    """One cargo audit under the audit's own ceilings (GOH.AUDITSPIN): a spinning yanked check is
+    stopped in seconds of CPU and named on stderr's last line, which `audit` reports."""
+    return advisory_db.bounded(argv, fetch, cwd=cwd, env=foreign_repo_env())
+
+
 def audit(
     lock: Path, db: str | None, fetch: bool, cwd: Path | None = None
 ) -> tuple[list[dict], str | None]:
@@ -158,10 +164,12 @@ def audit(
     where = cwd or lock.parent
     try:
         if db:  # a fixture: no lock, nothing of the real database touched
-            r = _run([*argv, "--db", db, "--stale", *([] if fetch else ["--no-fetch"])], where)
+            r = _audit_run(
+                [*argv, "--db", db, "--stale", *([] if fetch else ["--no-fetch"])], fetch, where
+            )
         else:
             with advisory_db.held(fetch) as shared:
-                r = _run([*argv, *advisory_db.audit_args(shared, fetch)], where)
+                r = _audit_run([*argv, *advisory_db.audit_args(shared, fetch)], fetch, where)
         report = json.loads(r.stdout)
     except (OSError, subprocess.TimeoutExpired) as e:
         return [], str(e)
