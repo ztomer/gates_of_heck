@@ -53,13 +53,17 @@ Checks run in three layers:
 
 ## The native binary (`goh`)
 
-Layer 1 is a static Rust binary, `crates/goh`, and since Phase N3 it is the
-only tier: every structural checker is native. `install.sh` builds it to
-`bin/goh` (gitignored), which needs `cargo`; `gates/structural.sh` execs it,
-and REFUSES — naming the fix — when no binary resolves, rather than run a
-different gate in its place. Resolution: `GOH_BIN` (an explicit pointer at
-nothing is reported and refused, never silently replaced), then `bin/goh`,
-then `goh` on `PATH`. `GOH_NO_NATIVE` is retired: it is said and ignored.
+Layer 1 and the shipped CLI utilities live in a five-crate Cargo workspace (`crates/goh`,
+`crates/goh-sys`, `crates/goh-tui`, `crates/goh-testkit`, `crates/goh-golden`), built to `bin/goh`
+(gitignored) by `install.sh` using `cargo`. `gates/structural.sh` execs `goh` directly and REFUSES —
+naming the fix — when no binary resolves, rather than falling back. Resolution: `GOH_BIN` (an
+explicit pointer at nothing is reported and refused, never silently replaced), then `bin/goh`, then
+`goh` on `PATH`. `GOH_NO_NATIVE` is retired: it is said and ignored. Beyond Layer 1 structural
+checks (`markers`, `length`, `emoji`, `secrets`, `home-paths`, `no-allow`, `empty-assert`, `shell-lint`,
+`python-formatted`, `md-links`, `js-syntax`, `tag-version`, `lock-version`, `crates-behind`,
+`fixed-sleep`, `status-markers`, `subprocess-stdin`, `claim-derivation`, `early-exit-pipe`,
+`kill-by-name`, `busy-loop`), `goh` provides `ship`, `hooks`, `step`, `proven`, `canary`,
+`commit-class`, `red-run`, `requires-call`, and `agent-stalls`.
 
 Platform gate (`scripts/build-goh.sh`, also inside the binary): 64-bit only,
 macOS is Apple silicon only, Linux keeps x86_64 and aarch64. Unsupported
@@ -130,8 +134,9 @@ GOH_SWIFT_COLD=1                     # Wipe build artifacts before testing
 
 ## Extra Tools
 
+- `goh ship` (`tools/ship.py`): Lands a green HEAD unwatched — runs pre-push gate, invokes the repo's release kit, installs the built artifact, and updates loop tracking.
 - `tools/release-kit/release.sh`: Refuses while CI on HEAD is red, pending or missing, then checks gate and changelog, creates an annotated tag, pushes origin's default branch and the tag in one push (from any branch: `HEAD:refs/heads/<default>`, fast-forward only, never a stray branch), creates a GitHub release, and with `--tap` bumps the formula through `tap_bump.sh` (the tap's own gate, a pinned push).
-- `gates/local_ci.sh`: Runs a list of steps locally and preserves log files on failure. A step already proven on the same clean tree is skipped (see below).
+- `gates/local_ci.sh`: Runs a list of steps locally in process groups under `lib/bounded_run.py` / `lib/orphan_canary.py` and preserves log files on failure. Steps already proven on the same clean tree are skipped (`goh proven`).
 - `gates/proven.sh`: Runs one step unless it already passed on this exact tree.
 
 ## Proven steps
