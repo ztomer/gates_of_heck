@@ -134,6 +134,27 @@ def test_a_scrubbed_environment_reaches_the_kept_toolchain_and_caches() -> None:
         assert os.path.realpath(home / rel) == os.path.realpath(kept), (name, rel)
 
 
+def test_a_kept_cache_the_runner_has_not_made_yet_is_linked_too(tmp_path: Path) -> None:
+    """GOH.CIRUSTGATE (advisory CI run 43624157558 on 7373ebe0): a fresh hosted runner has no
+    ~/Library/Caches/Mozilla.sccache yet, but the gate pins SCCACHE_DIR to it (lib/sccache_dir.sh),
+    and the suite home linked a kept variable's default only when its target EXISTED -- so the
+    home's default was a separate, empty cache and the test above went red there, never here,
+    where the cache always exists. The suite home makes the kept place and links it."""
+    real = tmp_path / "real-home"
+    real.mkdir()
+    kept = real / "Library" / "Caches" / "Mozilla.sccache"
+    env = {k: v for k, v in os.environ.items() if k not in (REAL_MARKER, "XDG_CACHE_HOME")}
+    env.update(HOME=str(real), SCCACHE_DIR=str(kept))
+    tests = str(REPO_ROOT / "tests")
+    code = (f"import os, sys; sys.path.insert(0, {tests!r}); import suite_home; "
+            "print(os.path.realpath(os.path.expanduser('~/' + suite_home.HOME_DEFAULTS["
+            "'SCCACHE_DIR'])))")  # fmt: skip
+    proc = subprocess.run([sys.executable, "-c", code], env=env, capture_output=True, text=True,
+                          timeout=60, check=False, stdin=subprocess.DEVNULL)  # fmt: skip
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    assert proc.stdout.strip() == os.path.realpath(kept), proc.stdout + proc.stderr
+
+
 def test_rustup_under_a_scrubbed_environment_installs_nothing() -> None:
     if (
         not os.environ.get("RUSTUP_HOME")

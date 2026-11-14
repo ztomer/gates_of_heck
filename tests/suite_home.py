@@ -92,9 +92,13 @@ def _enter() -> None:
         if (real / rel).exists():
             (home / rel).parent.mkdir(parents=True, exist_ok=True)
             (home / rel).symlink_to(real / rel)
+    # A kept place not made yet is made, then linked: a fresh hosted runner has no sccache cache
+    # though the gate pins SCCACHE_DIR to it, and an unlinked default was a second, empty cache
+    # (GOH.CIRUSTGATE, advisory CI run 43624157558). The tool would make the same directory.
     for name, rel in HOME_DEFAULTS.items():
         kept = os.environ.get(name)
-        if kept and Path(kept).exists() and not os.path.lexists(home / rel):
+        if kept and not os.path.lexists(home / rel):
+            Path(kept).mkdir(parents=True, exist_ok=True)
             (home / rel).parent.mkdir(parents=True, exist_ok=True)
             (home / rel).symlink_to(kept)
     os.environ[MARKER] = REAL_HOME
