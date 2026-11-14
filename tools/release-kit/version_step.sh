@@ -52,6 +52,54 @@ release_backfill_floor() {
   fi
 }
 
+# release_refusals_first (GOH.KITORDER): every refusal the kit can decide from the tree, asked
+# BEFORE step 0b's cut commit and step 0's push. ztools 3.19.0 (2026-11-11) pushed its unpushed
+# "chore: version" commit for the CI read, then refused at the changelog step: a pushed, untagged
+# bump on origin. Asked here: a gate is declared (GATE_CMD, from .gatesrc as step 1 reads it), the
+# backfill floor parses, an existing tag names HEAD, and -- when step 0b will cut nothing -- the
+# stanza exists and `changelog_cut.py check` holds; a cut's own output is checked before it is
+# committed (release_changelog_cut). Steps 1-3 keep their own reports. Tests:
+# tests/test_release_kit_order.py.
+release_refusals_first() {
+  local _rtop
+  _rtop="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
+  begin "gate" "a gate of record is declared (it runs at step 1)"
+  if [ -z "$GATE_CMD" ] && [ -f "$_rtop/.gatesrc" ]; then
+    GATE_CMD="$(cd "$_rtop" && bash -c 'unset GOH_RELEASE_GATE; . ./.gatesrc >/dev/null 2>&1 </dev/null; printf %s "${GOH_RELEASE_GATE-}"')" \
+      || fail "cannot read $_rtop/.gatesrc"
+  fi
+  [ -n "$GATE_CMD" ] || fail "no gate configured — pass --gate CMD, set GOH_RELEASE_GATE, or declare GOH_RELEASE_GATE in .gatesrc; nothing committed or pushed"
+  release_backfill_floor  # GOH_RELEASE_BACKFILL_FLOOR -> BACKFILL_FLOOR
+  begin "tag" "no ${TAG} names another commit"
+  if git rev-parse -q --verify "refs/tags/${TAG}" >/dev/null \
+      && [ "$(git rev-parse "refs/tags/${TAG}^{commit}")" != "$(git rev-parse HEAD)" ]; then
+    fail "${TAG} exists at $(git rev-parse "refs/tags/${TAG}^{commit}") but HEAD is $(git rev-parse HEAD) — \
+bump --version, or move the tag deliberately: git tag -f ${TAG} && git push -f origin ${TAG}; nothing committed or pushed"
+  fi
+  [ "$CHANGELOG_CHECK" = 1 ] || return 0
+  begin "changelog" "CHANGELOG.md will hold a ${TAG} stanza, asked before the first commit or push"
+  [ -f CHANGELOG.md ] || fail "no CHANGELOG.md, so no stanza for ${VERSION} (add one with '## ${TAG}', or --no-changelog-check); nothing committed or pushed"
+  release_cut_pending && return 0  # step 0b cuts the stanza and checks it before committing
+  has_stanza "$VERSION" || fail "CHANGELOG.md has no stanza for ${VERSION} and Unreleased holds nothing to cut (add '## ${TAG}' first, or entries under '## Unreleased'); nothing committed or pushed"
+  bash "$GOH/gates/python.sh" "$GOH/tools/release-kit/changelog_cut.py" check --version "$VERSION" --file CHANGELOG.md \
+    || fail "CHANGELOG.md does not hold for ${TAG} (above) -- run tools/release-kit/changelog_cut.py cut --version ${VERSION} --title ... and commit; nothing committed or pushed"
+}
+
+# release_cut_pending: 0 when step 0b will cut a stanza (Unreleased holds entries), else 1. A dry cut
+# into a scratch copy, as step 0b's own; any other refusal of it is step 0b's to report.
+release_cut_pending() {
+  local _pcut _prc=0
+  _pcut="$(mktemp "${TMPDIR:-/tmp}/goh-release-cutp.XXXXXX")"
+  cp CHANGELOG.md "$_pcut" || { rm -f "$_pcut"; fail "cannot copy CHANGELOG.md"; }
+  bash "$GOH/gates/python.sh" "$GOH/tools/release-kit/changelog_cut.py" cut --version "$VERSION" \
+    ${TITLE:+--title "$TITLE"} --file "$_pcut" >/dev/null 2>"$_pcut.err" || _prc=1
+  if [ "$_prc" = 1 ] && grep -q "Unreleased is empty\|no Unreleased section" "$_pcut.err"; then
+    rm -f "$_pcut" "$_pcut.err"; return 1
+  fi
+  rm -f "$_pcut" "$_pcut.err"
+  return 0
+}
+
 # release_changelog_cut (GOH.CUTAUTO): step 0b. v0.64.0 refused every release whose CHANGELOG still
 # held committed Unreleased entries and told the human to run changelog_cut.py -- divoom-control,
 # token-pool and ztools all held some, so each one's next release would have been refused for a step
@@ -78,6 +126,9 @@ release_changelog_cut() {
   fi
   rm -f "$_ccut.err"
   begin "changelog-cut" "make the ${TAG} stanza from Unreleased"
+  # The cut is checked BEFORE it is committed (GOH.KITORDER): a refusal leaves HEAD as it was.
+  bash "$GOH/gates/python.sh" "$GOH/tools/release-kit/changelog_cut.py" check --version "$VERSION" --file "$_ccut" \
+    || { rm -f "$_ccut"; fail "the cut ${TAG} stanza does not hold (above) -- nothing written, committed or pushed"; }
   _csubj="$(git log -1 --format=%s)"
   if [ "$DRY_RUN" = 1 ]; then
     rm -f "$_ccut"

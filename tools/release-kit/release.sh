@@ -260,6 +260,7 @@ fi
 # shellcheck source=tools/release-kit/version_step.sh
 source "$GOH/tools/release-kit/version_step.sh"
 release_version_step
+release_refusals_first  # every tree-decided refusal before the first commit or push (GOH.KITORDER)
 # ── 0b. the stanza is cut from Unreleased by the kit, not refused (GOH.CUTAUTO) ──
 release_changelog_cut || { _cut_rc=$?; [ "$_cut_rc" -eq 3 ] || exit "$_cut_rc"; CUT_PLANNED=1; }
 
@@ -272,16 +273,8 @@ release_ci_step "$CI_CHECK"
 
 # ── 1. gate ──────────────────────────────────────────────────────────────────
 begin "gate" "verify the local gate of record"
-# A repo declares its release gate ONCE, in its .gatesrc (GOH_RELEASE_GATE), read by name in a child
-# so nothing else in the file reaches this shell. Without it a bare release of goh itself was refused
-# (GOH.SHX2). --gate and an exported GOH_RELEASE_GATE still beat it.
-_top="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
-if [ -z "$GATE_CMD" ] && [ -f "$_top/.gatesrc" ]; then
-  GATE_CMD="$(cd "$_top" && bash -c 'unset GOH_RELEASE_GATE; . ./.gatesrc >/dev/null 2>&1 </dev/null; printf %s "${GOH_RELEASE_GATE-}"')" \
-    || fail "cannot read $_top/.gatesrc"
-fi
-release_backfill_floor  # GOH_RELEASE_BACKFILL_FLOOR -> BACKFILL_FLOOR (version_step.sh)
-[ -n "$GATE_CMD" ] || fail "no gate configured — pass --gate CMD, set GOH_RELEASE_GATE, or declare GOH_RELEASE_GATE in .gatesrc"
+# A repo declares its release gate ONCE, in its .gatesrc (GOH_RELEASE_GATE; GOH.SHX2), resolved with
+# the backfill floor by release_refusals_first before anything was committed or pushed.
 if [ "$DRY_RUN" = 1 ]; then
   plan "run gate: ${GATE_CMD}"
 else
