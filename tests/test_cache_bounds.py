@@ -75,6 +75,24 @@ def test_a_build_whose_gate_is_alive_is_never_evicted(tmp_path) -> None:
     assert left == {"cur", "running"}, sorted(left)
 
 
+def test_a_shared_build_is_spared_while_any_of_its_crates_runs(tmp_path) -> None:
+    """GOH.COVSHAREDBUILD: a repo's crates share one build, several at once, and each adds its pid.
+    The first to finish must not leave the build evictable under the others."""
+    cache = tmp_path / "cov"
+    _entry(cache, "cur", 0)
+    shared = _entry(cache, "shared", 5 * HOUR)
+    alone = _entry(cache, "alone", 5 * HOUR)
+    dead = _dead_pid()
+    _head_cache.mark(str(shared), ".goh-running", os.getpid())
+    _head_cache.mark(str(shared), ".goh-running", dead)  # the last to start has finished
+    _head_cache.mark(str(alone), ".goh-running", dead)
+    assert (shared / ".goh-running").read_text().split() == [str(os.getpid()), str(dead)]
+    _head_cache.prune(str(cache), "cur", keep=200, max_bytes=1, grace=600, marker=".goh-running")
+    assert {p.name for p in cache.iterdir()} == {"cur", "shared"}
+    _head_cache.mark(str(shared), ".goh-running", os.getpid())  # a dead pid is dropped on the next
+    assert (shared / ".goh-running").read_text().split() == [str(os.getpid())]
+
+
 def test_a_build_stamped_inside_the_grace_is_spared(tmp_path) -> None:
     """A run from before the marker existed (or between its stamp and its marker) is not lost."""
     cache = tmp_path / "cov"

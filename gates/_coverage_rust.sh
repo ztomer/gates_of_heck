@@ -85,19 +85,34 @@ run_rust() {
     # a push-shaped re-checkout: 40.7 s of CPU cold, 19.2 s with the build dir kept, the same report.
     # The TARGET dir stays in the tree: it holds the binaries a test runs, and media_server's find
     # their repo by walking up from their own path (`env_mini::exe_root`); out of the tree, two of
-    # mediaops' CLI tests failed. Per-project isolation (above) holds -- the key is the project's
+    # mediaops' CLI tests failed. Per-REPO isolation (above) holds -- the key is the repo's
     # physical path. Pruned like the HEAD exports (gates/_head_cache.py): a week unused, past the
     # newest 200, or past GOH_COV_CACHE_MAX_GIB (default 8; 0 = no byte budget) -- each only once
     # idle (no live `.goh-running` pid, none stamped in the last 10 minutes).
     COV_CACHE="${GOH_COV_CACHE:-${XDG_CACHE_HOME:-$HOME/.cache}/goh/llvm-cov}"
-    COV_KEY="$(pwd -P | shasum -a 256 | cut -c1-16)"
+    # ONE BUILD DIR PER REPO, not per crate (GOH.COVSHAREDBUILD). The key was this crate's own path,
+    # so a repo of many cargo workspaces made one build dir PER CRATE and compiled every shared
+    # dependency cold in each: one media_server push made 29 dirs (each rebuilding libsqlite3-sys,
+    # libc, cc), 34 dirs and 9.3 GiB in the cache against its 8 GiB budget, the machine's top file
+    # writer. The key is the repo's root (git's top level, physical; the crate's own path outside
+    # git), so a repo's crates share one build and two repos never do. A crate at the repo root keys
+    # exactly as before. Sharing is safe for the BUILD: cargo gives a crate built as a workspace
+    # member (instrumented) and the same crate built as a dependency (not) different metadata
+    # hashes, measured 2026-11-14. The REPORT is kept to this crate's own build by _cov_prune.py's
+    # view (below), since cargo-llvm-cov reads every executable of a target's name in the build dir.
+    COV_ROOT="$( (unset GIT_DIR GIT_WORK_TREE GIT_COMMON_DIR GIT_INDEX_FILE
+        root="$(git -C "$PROJ" rev-parse --show-toplevel 2>/dev/null)" && cd "$root" && pwd -P) || pwd -P)"
+    COV_KEY="$(printf '%s\n' "$COV_ROOT" | shasum -a 256 | cut -c1-16)"
     mkdir -p "$COV_CACHE/$COV_KEY"
     : >"$COV_CACHE/$COV_KEY/.goh-used"
     # WHO IS USING IT, not when (GOH.CACHEBOUND). The byte budget spared every entry stamped within
-    # the hour, and a sweep of ~40 projects is one hour: 21 GiB held against a budget of 8. The run
-    # records its pid; an entry whose pid is alive is never evicted, any other one past the budget is,
-    # past a 10-minute grace that covers a run which predates the marker.
-    printf '%s\n' "$$" >"$COV_CACHE/$COV_KEY/.goh-running"
+    # the hour, and a sweep of ~40 projects is one hour: 21 GiB held against a budget of 8. Each run
+    # adds its pid (one per crate now: several share the entry at once); an entry with any pid alive
+    # is never evicted, any other one past the budget is, past a 10-minute grace that covers a run
+    # which predates the marker.
+    "$GOH_PY" -S -c 'import sys; sys.path.insert(0, sys.argv[1]); import _head_cache; _head_cache.mark(sys.argv[2], ".goh-running", int(sys.argv[3]))' \
+        "$(dirname "${BASH_SOURCE[0]}")" "$COV_CACHE/$COV_KEY" "$$" \
+        || { err "could not record this run in $COV_CACHE/$COV_KEY/.goh-running"; exit 2; }
     cov_cache_prune
     export CARGO_TARGET_DIR="$PROJ/target/llvm-cov"
     export CARGO_BUILD_BUILD_DIR="$COV_CACHE/$COV_KEY/build"
@@ -160,7 +175,8 @@ run_rust() {
                 LLVM_PROFILE_FILE="$profile" GOH_COVERAGE_BIN_DIR="$bins" bash -c "$EXTERNAL" 3>&-
             ) >>"$part.log" 2>&1 || exit 1
             cov_phase "external: report" "$part.log"
-            cargo llvm-cov report ${IGNORE:+--ignore-filename-regex "$IGNORE"} \
+            CARGO_LLVM_COV_BUILD_DIR="$CARGO_LLVM_COV_TARGET_DIR/cov-view" \
+                cargo llvm-cov report ${IGNORE:+--ignore-filename-regex "$IGNORE"} \
                 --lcov --output-path "$part" >>"$part.log" 2>&1 3>&- || exit 1
             cov_phase ""
         ); then
@@ -225,10 +241,12 @@ PYEOF
         # stale or partial file behind must not pass as measured data -- the marker is the proof.
         # BUILD, PRUNE, RUN, REPORT -- cargo-llvm-cov's show-env flow, the same instrumented
         # environment its one-shot mode sets (both are `set_env`), split so the build can be asked
-        # what it produced. The build dir outlives a build (above), and the report reads EVERY
-        # binary of a member's name it finds there, a previous build's included: _cov_prune.py
-        # deletes the binaries cargo's own artifact list does not name
-        # (tests/test_coverage_incremental.py::test_a_binary_of_another_build_never_counts).
+        # what it produced. The build dir outlives a build (above) and is shared by the repo's crates,
+        # and the report reads EVERY binary of a member's name it finds there -- a previous build's,
+        # or a sibling crate's `version` test: _cov_prune.py links the executables cargo's own
+        # artifact list names into a view the report reads instead of the build dir
+        # (tests/test_coverage_incremental.py::test_a_binary_of_another_build_never_counts,
+        # tests/test_coverage_shared_build.py).
         # shellcheck disable=SC2086  # KINDS is a list of flags
         if (
             goh_unbind_git   # the suite is a test run: it never sees git's repository variables (GOH.HOOKGITENV)
@@ -244,7 +262,9 @@ PYEOF
             cov_phase "workspace: cargo test" "$WORKSPACE_PART.log"
             cargo test --locked --workspace $KINDS --all-features 3>&- || exit 1
             cov_phase "workspace: report" "$WORKSPACE_PART.log"
-            cargo llvm-cov report ${IGNORE:+--ignore-filename-regex "$IGNORE"} \
+            # THIS BUILD'S executables only: the view _cov_prune.py made (GOH.COVSHAREDBUILD).
+            CARGO_LLVM_COV_BUILD_DIR="$CARGO_LLVM_COV_TARGET_DIR/cov-view" \
+                cargo llvm-cov report ${IGNORE:+--ignore-filename-regex "$IGNORE"} \
                 --lcov --output-path "$WORKSPACE_PART" 3>&- || exit 1
             cov_phase ""
         ) >"$WORKSPACE_PART.log" 2>&1; then

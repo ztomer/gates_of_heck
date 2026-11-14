@@ -59,20 +59,47 @@ def last_use(path: str, stamps: tuple[str, ...] = STAMPS) -> float:
     return os.stat(path).st_mtime
 
 
-def running(path: str, marker: str | None) -> bool:
-    """True when `path/<marker>` names a live process: the entry is in use, whatever its stamp says.
-    A reused pid keeps an entry one run too long; it can never lose one that is in use."""
-    if not marker:
-        return False
+def _alive(pid: int) -> bool:
     try:
-        with open(os.path.join(path, marker), encoding="ascii") as handle:
-            pid = int(handle.read().split()[0])
         os.kill(pid, 0)
     except PermissionError:
         return True  # alive, and not ours
-    except (OSError, ValueError, IndexError):
+    except OSError:
         return False
     return True
+
+
+def _pids(path: str, marker: str) -> list[int]:
+    try:
+        with open(os.path.join(path, marker), encoding="ascii") as handle:
+            return [int(w) for w in handle.read().split() if w.isdigit() and int(w) > 0]
+    except (OSError, ValueError):
+        return []
+
+
+def running(path: str, marker: str | None) -> bool:
+    """True when `path/<marker>` names a live process: the entry is in use, whatever its stamp says.
+    The marker holds one pid per user: the crates of one repo share one coverage build, several at
+    once (GOH.COVSHAREDBUILD), and any one alive keeps it. A reused pid keeps an entry one run too
+    long; it can never lose one that is in use."""
+    if not marker:
+        return False
+    return any(_alive(pid) for pid in _pids(path, marker))
+
+
+def mark(path: str, marker: str, pid: int) -> None:
+    """Add `pid` to `path/<marker>`, dropping pids no longer alive, under a lock: two crates of one
+    repo starting together must not overwrite each other's pid."""
+    import fcntl
+
+    os.makedirs(path, exist_ok=True)
+    with open(os.path.join(path, f"{marker}.lock"), "a", encoding="ascii") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        live = [p for p in _pids(path, marker) if p != pid and _alive(p)]
+        tmp = os.path.join(path, f"{marker}.{os.getpid()}")
+        with open(tmp, "w", encoding="ascii") as handle:
+            handle.write("".join(f"{p}\n" for p in [*live, pid]))
+        os.replace(tmp, os.path.join(path, marker))
 
 
 def tree_bytes(path: str) -> int:
