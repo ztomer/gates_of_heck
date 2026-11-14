@@ -434,8 +434,11 @@ pub(crate) fn run_child(
     // `ceiling()` is `None` only for an explicit opt-out, and bounded_run's own default would
     // then apply anyway -- so pass the DEFAULT rather than the opt-out, and let the step line be
     // the only place the opt-out is visible. Two places deciding one bound is how they disagree.
-    cmd.arg("--timeout")
-        .arg(ceiling().unwrap_or_else(default_timeout).to_string());
+    let limit = ceiling().unwrap_or_else(default_timeout);
+    let (wall, cpu, stall) = crate::stepcmd::gate_bounds(limit);
+    cmd.arg("--timeout").arg(wall.to_string());
+    cmd.arg("--cpu-timeout").arg(cpu.to_string());
+    cmd.arg("--stall").arg(stall.to_string());
     cmd.arg("--label").arg(args[0].clone());
     cmd.arg("--");
     cmd.arg(program);

@@ -188,3 +188,52 @@ pub struct LaunchAppArgs {
     #[arg(last = true)]
     pub args: Vec<std::ffi::OsString>,
 }
+
+/// Shared ceiling flags for `goh step` and `goh canary`.
+#[derive(Debug, clap::Args)]
+pub struct StepBoundArgs {
+    /// The ceiling, in seconds (a positive integer).
+    #[arg(long, default_value = "900", allow_hyphen_values = true)]
+    pub timeout: String,
+    /// Seconds between TERM and KILL when the group is swept.
+    #[arg(long, default_value_t = 5)]
+    pub grace: u64,
+    /// What to call the step in messages and timings (default: the command).
+    #[arg(long, default_value = "")]
+    pub label: String,
+    /// Process-group CPU-seconds ceiling (optional; includes reaped descendants).
+    #[arg(long, allow_hyphen_values = true)]
+    pub cpu_timeout: Option<String>,
+    /// Stalled wall-seconds ceiling when no CPU/runnable progress occurs (optional).
+    #[arg(long, allow_hyphen_values = true)]
+    pub stall: Option<String>,
+    /// The command, after `--`.
+    #[arg(last = true)]
+    pub command: Vec<String>,
+}
+
+/// `goh step` flags.
+#[derive(Debug, clap::Args)]
+pub struct StepArgs {
+    #[command(flatten)]
+    pub bound: StepBoundArgs,
+}
+
+/// `goh canary` flags.
+#[derive(Debug, clap::Args)]
+pub struct CanaryArgs {
+    /// The repo, for attributing a leaked process by its path (default: cwd).
+    #[arg(long)]
+    pub repo: Option<std::path::PathBuf>,
+    /// Append the step's output here instead of inheriting it.
+    #[arg(long)]
+    pub log: Option<std::path::PathBuf>,
+    /// Record the surviving pids here as JSON when there are any.
+    #[arg(long)]
+    pub snapshot: Option<std::path::PathBuf>,
+    /// Name every unattributable process too (accepted for the Python's CLI; no effect).
+    #[arg(long)]
+    pub verbose: bool,
+    #[command(flatten)]
+    pub bound: StepBoundArgs,
+}

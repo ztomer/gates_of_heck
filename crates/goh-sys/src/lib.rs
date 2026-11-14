@@ -76,6 +76,177 @@ pub fn children_cpu_ms() -> f64 {
     (span(usage.ru_utime) + span(usage.ru_stime)).as_secs_f64() * 1000.0
 }
 
+/// Cumulative CPU seconds (own + reaped descendants) and runnable thread count for process group
+/// `pgid`, or `None` when the OS or query is unavailable.
+#[cfg(target_os = "macos")]
+#[must_use]
+pub fn pgid_cpu_and_runnable(pgid: i32) -> Option<(f64, u32)> {
+    #[repr(C)]
+    #[derive(Clone, Copy)]
+    struct Timebase {
+        numer: u32,
+        denom: u32,
+    }
+    extern "C" {
+        fn mach_timebase_info(info: *mut Timebase) -> libc::c_int;
+    }
+    const PROC_PGRP_ONLY: u32 = 2;
+    let Ok(pgid_u32) = u32::try_from(pgid) else {
+        return None;
+    };
+    let mut tb = Timebase { numer: 0, denom: 0 };
+    // SAFETY: mach_timebase_info writes two u32 fields into `tb`, which this frame owns.
+    if unsafe { mach_timebase_info(&raw mut tb) } != 0 || tb.denom == 0 {
+        return None;
+    }
+
+    let mut pids = vec![0_i32; 512];
+    let count = loop {
+        let buf_bytes = i32::try_from(pids.len() * std::mem::size_of::<i32>()).unwrap_or(i32::MAX);
+        // SAFETY: `pids` is a writable buffer of `buf_bytes` bytes; kernel writes <= `buf_bytes`.
+        let nbytes = unsafe {
+            libc::proc_listpids(
+                PROC_PGRP_ONLY,
+                pgid_u32,
+                pids.as_mut_ptr().cast(),
+                buf_bytes,
+            )
+        };
+        if nbytes < 0 {
+            return None;
+        }
+        let n = usize::try_from(nbytes).unwrap_or(0) / std::mem::size_of::<i32>();
+        if n < pids.len() || pids.len() >= 8192 {
+            break n;
+        }
+        pids.resize(pids.len() * 2, 0);
+    };
+
+    let mut ticks: u64 = 0;
+    let mut runnable: u32 = 0;
+    let ti_size = i32::try_from(std::mem::size_of::<libc::proc_taskinfo>()).unwrap_or(0);
+    for &pid in &pids[..count.min(pids.len())] {
+        if pid <= 0 {
+            continue;
+        }
+        let mut ru = std::mem::MaybeUninit::<libc::rusage_info_v2>::zeroed();
+        // SAFETY: proc_pid_rusage writes one `rusage_info_v2` struct into `ru` for RUSAGE_INFO_V2.
+        let rc =
+            unsafe { libc::proc_pid_rusage(pid, libc::RUSAGE_INFO_V2, ru.as_mut_ptr().cast()) };
+        if rc == 0 {
+            // SAFETY: proc_pid_rusage returned 0, so `ru` is initialized.
+            let ru = unsafe { ru.assume_init() };
+            ticks = ticks
+                .saturating_add(ru.ri_user_time)
+                .saturating_add(ru.ri_system_time)
+                .saturating_add(ru.ri_child_user_time)
+                .saturating_add(ru.ri_child_system_time);
+        }
+        let mut ti = std::mem::MaybeUninit::<libc::proc_taskinfo>::zeroed();
+        // SAFETY: proc_pidinfo with PROC_PIDTASKINFO writes one `proc_taskinfo` of `ti_size` bytes.
+        let got = unsafe {
+            libc::proc_pidinfo(
+                pid,
+                libc::PROC_PIDTASKINFO,
+                0,
+                ti.as_mut_ptr().cast(),
+                ti_size,
+            )
+        };
+        if got == ti_size {
+            // SAFETY: `got == ti_size` guarantees the kernel filled all of `proc_taskinfo`.
+            let ti = unsafe { ti.assume_init() };
+            if let Ok(n) = u32::try_from(ti.pti_numrunning) {
+                runnable = runnable.saturating_add(n);
+            }
+        }
+    }
+    let ns = u128::from(ticks) * u128::from(tb.numer) / u128::from(tb.denom);
+    let secs = u32::try_from(ns / 1_000_000_000).unwrap_or(u32::MAX);
+    let sub_ns = u32::try_from(ns % 1_000_000_000).unwrap_or(0);
+    Some((
+        f64::from(secs) + f64::from(sub_ns) / 1_000_000_000.0,
+        runnable,
+    ))
+}
+
+/// Parse `/proc/<pid>/stat` into `(pgrp, state, total_jiffies)` across own and reaped children.
+#[cfg(any(target_os = "linux", test))]
+fn parse_proc_stat(stat: &str) -> Option<(i32, char, u64)> {
+    let rparen = stat.rfind(')')?;
+    let rest: Vec<&str> = stat.get(rparen + 1..)?.split_whitespace().collect();
+    if rest.len() <= 14 {
+        return None;
+    }
+    let state = rest[0].chars().next()?;
+    let pgrp: i32 = rest[2].parse().ok()?;
+    let own_user: u64 = rest[11].parse().ok()?;
+    let own_sys: u64 = rest[12].parse().ok()?;
+    let child_user: u64 = rest[13].parse().ok()?;
+    let child_sys: u64 = rest[14].parse().ok()?;
+    Some((
+        pgrp,
+        state,
+        own_user
+            .saturating_add(own_sys)
+            .saturating_add(child_user)
+            .saturating_add(child_sys),
+    ))
+}
+
+/// Cumulative CPU seconds (own + reaped descendants) and runnable thread count for process group
+/// `pgid`, or `None` when the OS or query is unavailable.
+#[cfg(target_os = "linux")]
+#[must_use]
+pub fn pgid_cpu_and_runnable(pgid: i32) -> Option<(f64, u32)> {
+    // SAFETY: sysconf(_SC_CLK_TCK) queries a scalar kernel constant and touches no memory.
+    let hz = unsafe { libc::sysconf(libc::_SC_CLK_TCK) };
+    let Ok(hz_u64) = u64::try_from(hz) else {
+        return None;
+    };
+    if hz_u64 == 0 {
+        return None;
+    }
+    let Ok(entries) = std::fs::read_dir("/proc") else {
+        return None;
+    };
+    let mut jiffies: u64 = 0;
+    let mut runnable: u32 = 0;
+    for entry in entries.flatten() {
+        let name = entry.file_name();
+        let Some(name_str) = name.to_str() else {
+            continue;
+        };
+        if !name_str.bytes().all(|b| b.is_ascii_digit()) {
+            continue;
+        }
+        let Ok(stat) = std::fs::read_to_string(entry.path().join("stat")) else {
+            continue;
+        };
+        let Some((proc_pgid, state, proc_jiffies)) = parse_proc_stat(&stat) else {
+            continue;
+        };
+        if proc_pgid != pgid {
+            continue;
+        }
+        jiffies = jiffies.saturating_add(proc_jiffies);
+        if state == 'R' {
+            runnable = runnable.saturating_add(1);
+        }
+    }
+    let secs = u32::try_from(jiffies / hz_u64).unwrap_or(u32::MAX);
+    let rem = u32::try_from(jiffies % hz_u64).unwrap_or(0);
+    let hz_f = u32::try_from(hz_u64).unwrap_or(100);
+    Some((f64::from(secs) + f64::from(rem) / f64::from(hz_f), runnable))
+}
+
+/// Fallback for kernels without libproc or `/proc`.
+#[cfg(not(any(target_os = "macos", target_os = "linux")))]
+#[must_use]
+pub const fn pgid_cpu_and_runnable(_pgid: i32) -> Option<(f64, u32)> {
+    None
+}
+
 #[cfg(test)]
 mod tests {
     #[test]
@@ -93,5 +264,44 @@ mod tests {
             .unwrap_or_else(|e| panic!("spawn: {e}"));
         assert!(status.success());
         assert!(super::children_cpu_ms() > before);
+    }
+
+    #[test]
+    fn parse_proc_stat_handles_parens_in_comm() {
+        let sample = "42 (my (odd) proc) R 1 42 42 0 -1 0 0 0 0 0 12 3 25 5 20 0 1 0 99";
+        assert_eq!(super::parse_proc_stat(sample), Some((42, 'R', 45)));
+        assert_eq!(super::parse_proc_stat("bad"), None);
+    }
+
+    #[test]
+    fn pgid_cpu_tracks_reaped_descendants_and_idle_sleep() {
+        use std::os::unix::process::CommandExt as _;
+        let mut child = std::process::Command::new("/bin/sh")
+            .args([
+                "-c",
+                "(i=0; while [ $i -lt 80000 ]; do i=$((i+1)); done); sleep 5",
+            ])
+            .process_group(0)
+            .spawn()
+            .unwrap_or_else(|e| panic!("spawn: {e}"));
+        let Ok(pgid) = i32::try_from(child.id()) else {
+            let _ = child.kill();
+            let _ = child.wait();
+            panic!("pid out of range");
+        };
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+        let mut sampled = None;
+        while std::time::Instant::now() < deadline {
+            sampled = super::pgid_cpu_and_runnable(pgid);
+            if matches!(sampled, Some((cpu_s, 0)) if cpu_s > 0.01) {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(50));
+        }
+        let _ = super::killpg(pgid, libc::SIGKILL);
+        let _ = child.wait();
+        let (cpu_s, runnable) = sampled.unwrap_or_else(|| panic!("expected sample"));
+        assert!(cpu_s > 0.01, "expected reaped CPU > 0.01s, got {cpu_s}");
+        assert_eq!(runnable, 0, "sleeping process should have 0 runnable");
     }
 }

@@ -265,10 +265,10 @@ NOT_HERE=0
 #    output so a red push has both. Judged by PROCESS GROUP, so concurrent steps (GOH_CI_JOBS) never
 #    report each other's processes.
 run_step() {
-    local logf="$1" cmd="$2" idx="$3"
-    local args=(--repo "$ROOT" --log "$logf" --grace "${GOH_STEP_GRACE:-5}" --label "$cmd"
-                --snapshot "$LOGDIR/orphans-$idx.json")
-    [ "$LCI_LIMIT" -gt 0 ] && args=(--timeout "$LCI_LIMIT" "${args[@]}") && export GOH_STEP_BUDGET="$LCI_LIMIT"  # inner goh_steps' too (GOH.COVPHASES)
+    local logf="$1" cmd="$2" idx="$3" _ncpu
+    local args=(--repo "$ROOT" --log "$logf" --grace "${GOH_STEP_GRACE:-5}" --label "$cmd" --snapshot "$LOGDIR/orphans-$idx.json")
+    _ncpu=$(getconf _NPROCESSORS_ONLN 2>/dev/null || echo 1); case "$_ncpu" in *[!0-9]*|""|0) _ncpu=1 ;; esac
+    [ "$LCI_LIMIT" -gt 0 ] && args=(--timeout "${GOH_STEP_WALL_BACKSTOP:-$((LCI_LIMIT * 4))}" --cpu-timeout "${GOH_STEP_CPU_TIMEOUT:-$((LCI_LIMIT * _ncpu))}" --stall "$LCI_LIMIT" "${args[@]}") && export GOH_STEP_BUDGET="$LCI_LIMIT"  # inner goh_steps' too (GOH.COVPHASES)
     # </dev/null on the command string: the caller's loop stdin is the step list. EXEC: run_step is
     # started with `&`, which forks a subshell for the function, and a TERM to that subshell ended it
     # without reaching the wrapper -- so the step's sweep never ran. Exec'd, $! IS the wrapper.

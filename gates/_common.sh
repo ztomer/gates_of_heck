@@ -254,12 +254,18 @@ goh_step() {
     # successful and the gate ran on. Caught by tests/test_tui_integration.py
     # (`failing step's output was withheld`), which is the contract this line exists to keep.
     if [ "$_goh_limit" -gt 0 ]; then
+        local _goh_ncpu _goh_cpu _goh_wall
+        _goh_ncpu=$(getconf _NPROCESSORS_ONLN 2>/dev/null || echo 1)
+        case "$_goh_ncpu" in *[!0-9]*|""|0) _goh_ncpu=1 ;; esac
+        _goh_cpu="${GOH_STEP_CPU_TIMEOUT:-$((_goh_limit * _goh_ncpu))}"
+        _goh_wall="${GOH_STEP_WALL_BACKSTOP:-$((_goh_limit * 4))}"
         step "$label (≤${_goh_limit}s)"
         # The native wrapper (`goh step`, one exec) when this gate already resolved the binary --
         # its CLI contract is the Python's (tests/test_step_wrapper_cli.py) -- else the Python.
         local _goh_wrap=("$GOH_PY" -S "$GOH_ROOT/lib/bounded_run.py")
         [ -x "${GOH_RESOLVED_BIN:-}" ] && _goh_wrap=("$GOH_RESOLVED_BIN" step)
-        if ( goh_unbind_git; exec "${_goh_wrap[@]}" --timeout "$_goh_limit" \
+        if ( goh_unbind_git; exec "${_goh_wrap[@]}" --timeout "$_goh_wall" \
+                --cpu-timeout "$_goh_cpu" --stall "$_goh_limit" \
                 --grace "${GOH_STEP_GRACE:-5}" --label "$label" -- "$@" ) >"$GOH_LOG" 2>&1; then
             _goh_rc=0
         else

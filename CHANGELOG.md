@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+* **Judge gate step ceilings by process-group CPU time (including reaped descendants) and stall progress instead of raw wall clock (`--cpu-timeout`, `--stall`).** Added `lib/pgid_cpu.py` (`proc_listpids(PROC_PGRP_ONLY)` + `proc_pid_rusage` + `proc_pidinfo` on macOS, `/proc/<pid>/stat` on Linux) and `goh_sys::pgid_cpu_and_runnable`, wired into `lib/bounded_run.py`, `lib/orphan_canary.py`, `goh step`, `goh canary`, `gates/_common.sh`, `gates/local_ci.sh`, and `step_report.rs`. Pinned by `tests/test_bounded_run.py` and `tests/test_step_wrapper_cli.py`.
+
 ## v0.113.1 -- Repair dead GOH_DIR in starter tools/gate.sh and migrate existing scripts (EST.GOHDIRSHELL)
 
 * **Stock `tools/gate.sh` installed by `install.sh` now repairs a stale or dead `GOH_DIR` before invoking the gate (`EST.GOHDIRSHELL`).** Copies `goh_dir_repair` from `lib/goh_root.sh` into starter `tools/gate.sh` and migrates existing un-repaired starter scripts on `install.sh` rerun. Pinned by `tests/test_dead_goh_dir_gate.py`.

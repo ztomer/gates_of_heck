@@ -201,24 +201,7 @@ fn run_core(command: Commands) -> i32 {
                 structural::run(staged, full, keep_going)
             }
         }
-        Commands::Canary {
-            repo,
-            log,
-            snapshot,
-            timeout,
-            grace,
-            label,
-            verbose: _,
-            command,
-        } => canarycmd::run(&canarycmd::Args {
-            repo,
-            log,
-            snapshot,
-            timeout,
-            grace,
-            label,
-            command,
-        }),
+        Commands::Canary(args) => canarycmd::run_cli(&args),
         Commands::CommitClass {
             file,
             range,
@@ -241,12 +224,7 @@ fn run_core(command: Commands) -> i32 {
                 artifacts,
             } => proven::record(&key, &tree, &step, &label, ttl, &artifacts),
         },
-        Commands::Step {
-            timeout,
-            grace,
-            label,
-            command,
-        } => stepcmd::run(&timeout, grace, &label, &command),
+        Commands::Step(args) => stepcmd::run_cli(&args),
         Commands::Markers { staged, commits } => commands::run_markers(staged, &commits),
         Commands::BusyLoop(args) => busyloop::run_command(args.staged),
         Commands::Screen {

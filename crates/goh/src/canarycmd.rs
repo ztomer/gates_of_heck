@@ -9,7 +9,7 @@
 
 use goh_tui::ERR;
 use std::collections::BTreeMap;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::process::Command;
 
 /// What a leaked pid's command line names when it is a concurrent gate run, not a leak.
@@ -21,38 +21,28 @@ const MACHINERY: [&str; 4] = [
 ];
 const LEAK_EXIT: i32 = 125;
 
-/// `goh canary` flags, grouped.
-pub struct Args {
-    pub repo: Option<PathBuf>,
-    pub log: Option<PathBuf>,
-    pub snapshot: Option<PathBuf>,
-    pub timeout: String,
-    pub grace: u64,
-    pub label: String,
-    pub command: Vec<String>,
-}
-
 /// `goh canary`.
 #[must_use]
-pub fn run(a: &Args) -> i32 {
-    let Some(limit) = crate::stepcmd::ceiling(&a.timeout, "orphan_canary") else {
+pub fn run_cli(a: &crate::cli_args::CanaryArgs) -> i32 {
+    let Some(bounds) = crate::stepcmd::parse_bound_args(&a.bound, "orphan_canary") else {
         return 2;
     };
-    if a.command.is_empty() {
+    if a.bound.command.is_empty() {
         eprintln!("orphan_canary wrap needs a command: ... wrap [opts] -- CMD");
         return 2;
     }
-    let label = if a.label.is_empty() {
-        a.command[0].clone()
+    let label = if a.bound.label.is_empty() {
+        a.bound.command[0].clone()
     } else {
-        a.label.clone()
+        a.bound.label.clone()
     };
     let span = crate::stepcmd::Span::begin();
     // No --log: the output goes NOWHERE, as the Python's DEVNULL -- never the caller's streams. A
     // leaked child holding an inherited pipe makes its reader wait out the leak (the trap
     // lib/bounded_run.py's `run` names).
     let out = a.log.as_deref().unwrap_or_else(|| Path::new("/dev/null"));
-    let (code, left) = crate::stepcmd::bounded(&a.command, limit, a.grace, &label, Some(out));
+    let (code, left) =
+        crate::stepcmd::bounded(&a.bound.command, bounds, a.bound.grace, &label, Some(out));
     crate::stepcmd::record(&label, &span, code);
     let repo = a
         .repo
@@ -60,7 +50,7 @@ pub fn run(a: &Args) -> i32 {
         .or_else(|| std::env::current_dir().ok())
         .unwrap_or_default();
     if let Some(path) = a.snapshot.as_deref().filter(|_| !left.is_empty()) {
-        snapshot(path, &a.command, &left);
+        snapshot(path, &a.bound.command, &left);
     }
     let ours = judge(&left, &roots(&repo));
     emit(&ours, &repo);

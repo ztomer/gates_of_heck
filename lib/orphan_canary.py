@@ -227,6 +227,8 @@ def wrap(args, command: list[str]) -> int:
         args.grace,
         args.label or command[0],
         output=args.log or bounded_run.DEVNULL_SENTINEL,
+        cpu_timeout=args.cpu_timeout,
+        stall=args.stall,
     )
     survivors = outcome.survivors
     roots = roots_for(args.repo or os.getcwd())
@@ -277,13 +279,20 @@ def main(argv=None) -> int:
     ap.add_argument("--grace", type=int, default=5, help="TERM->KILL grace on expiry, seconds")
     ap.add_argument("--label", default="", help="what to call the step in messages")
     ap.add_argument("--verbose", action="store_true", help="name every unattributable process")
+    ap.add_argument("--cpu-timeout", type=int, default=None, help="CPU-seconds ceiling")
+    ap.add_argument("--stall", type=int, default=None, help="stalled wall-seconds ceiling")
     args = ap.parse_args(argv)
     if not command:
         print("orphan_canary wrap needs a command: ... wrap [opts] -- CMD", file=sys.stderr)
         return 2
-    if args.timeout <= 0:
-        print(f"orphan_canary: --timeout must be positive (got {args.timeout})", file=sys.stderr)
-        return 2
+    for val, flag in (
+        (args.timeout, "--timeout"),
+        (args.cpu_timeout, "--cpu-timeout"),
+        (args.stall, "--stall"),
+    ):
+        if val is not None and val <= 0:
+            print(f"orphan_canary: {flag} must be positive (got {val})", file=sys.stderr)
+            return 2
     if not os.path.isfile(
         os.path.join(os.path.dirname(os.path.abspath(__file__)), "bounded_run.py")
     ):

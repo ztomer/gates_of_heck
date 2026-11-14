@@ -342,3 +342,79 @@ def test_the_default_ceiling_exists_on_both_paths() -> None:
     ):
         source = (Path(__file__).resolve().parent.parent / name).read_text()
         assert needle in source, f"{name} has no default ceiling"
+
+
+# ── CPU + stall progress bounds (ROADMAP 1.1) ────────────────────────────────
+
+
+def test_cpu_ceiling_refuses_burner_while_sleeping_step_passes(capsys) -> None:
+    """Falsifier: under raw wall-clock `--timeout 1`, a 2.2s sleep is refused; under
+    `--cpu-timeout 1 --timeout 30`, the sleep passes while single-process and reaped-descendant
+    CPU burners are refused with 124."""
+    assert bounded_run.run(["/bin/sleep", "2.2"], 1, 1, "wall-baseline") == bounded_run.TIMEOUT_EXIT
+    capsys.readouterr()
+
+    assert bounded_run.run(["/bin/sleep", "2.2"], 30, 1, "sleep-ok", cpu_timeout=1) == 0
+
+    rc_burn = bounded_run.run(
+        [sys.executable, "-c", "while True:\n pass"],
+        30,
+        1,
+        "cpu-burner",
+        cpu_timeout=1,
+    )
+    err_burn = capsys.readouterr().err
+    assert rc_burn == bounded_run.TIMEOUT_EXIT and "CPU budget" in err_burn, (rc_burn, err_burn)
+
+    reap_script = f'while true; do "{sys.executable}" -c "n=0\nfor i in range(6000000): n+=i"; done'
+    rc_reap = bounded_run.run(
+        ["/bin/sh", "-c", reap_script],
+        30,
+        1,
+        "reaped-burner",
+        cpu_timeout=1,
+    )
+    err_reap = capsys.readouterr().err
+    assert rc_reap == bounded_run.TIMEOUT_EXIT and "CPU budget" in err_reap, (rc_reap, err_reap)
+
+
+def test_fixed_work_step_passes_idle_and_under_load(tmp_path: Path) -> None:
+    """The same fixed-work CPU step passes both idle and under `tools/load.py 30`."""
+    root = Path(__file__).resolve().parent.parent
+    work = [sys.executable, "-c", "n=0\nfor i in range(8000000): n+=i"]
+    step_cmd = [
+        sys.executable,
+        str(root / "lib" / "bounded_run.py"),
+        "--timeout",
+        "30",
+        "--cpu-timeout",
+        "4",
+        "--stall",
+        "2",
+        "--grace",
+        "1",
+        "--",
+        *work,
+    ]
+    idle = subprocess.run(
+        step_cmd, capture_output=True, text=True, check=False, stdin=subprocess.DEVNULL
+    )
+    assert idle.returncode == 0, idle.stderr
+
+    load_cmd = [
+        sys.executable,
+        str(root / "tools" / "load.py"),
+        "--dir",
+        str(tmp_path / "load"),
+        "--despite-gate",
+        "--oversubscribe",
+        "--max",
+        "30",
+        "30",
+        "--",
+        *step_cmd,
+    ]
+    loaded = subprocess.run(
+        load_cmd, capture_output=True, text=True, check=False, stdin=subprocess.DEVNULL
+    )
+    assert loaded.returncode == 0, loaded.stdout + loaded.stderr

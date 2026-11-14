@@ -198,3 +198,80 @@ def test_a_signal_ignored_at_entry_stays_ignored(wrapper, tmp_path: Path) -> Non
         proc.wait(timeout=10)
         if grandchild and _alive(grandchild):
             os.kill(grandchild, signal.SIGKILL)
+
+
+def test_cpu_timeout_refuses_burner_and_reaped_children_not_sleep(wrapper) -> None:
+    r_sleep = _run(
+        wrapper, "--timeout", "30", "--cpu-timeout", "1", "--grace", "1", "--", "sleep", "2.2"
+    )
+    assert r_sleep.returncode == 0, r_sleep.stderr
+
+    r_burn = _run(
+        wrapper,
+        "--timeout",
+        "30",
+        "--cpu-timeout",
+        "1",
+        "--grace",
+        "1",
+        "--label",
+        "burn",
+        "--",
+        sys.executable,
+        "-c",
+        "while True:\n pass",
+    )
+    assert r_burn.returncode == 124 and "TIMED OUT after 1s: burn" in r_burn.stderr, r_burn.stderr
+
+    reap_script = f'while true; do "{sys.executable}" -c "n=0\nfor i in range(6000000): n+=i"; done'
+    r_reap = _run(
+        wrapper,
+        "--timeout",
+        "30",
+        "--cpu-timeout",
+        "1",
+        "--grace",
+        "1",
+        "--label",
+        "reap",
+        "--",
+        "/bin/sh",
+        "-c",
+        reap_script,
+    )
+    assert r_reap.returncode == 124 and "CPU budget" in r_reap.stderr, r_reap.stderr
+
+
+def test_stall_ceiling_catches_sleep_without_wall_limiting_active_work(wrapper) -> None:
+    r_stall = _run(
+        wrapper,
+        "--timeout",
+        "30",
+        "--cpu-timeout",
+        "5",
+        "--stall",
+        "1",
+        "--grace",
+        "1",
+        "--label",
+        "stuck",
+        "--",
+        "sleep",
+        "10",
+    )
+    assert r_stall.returncode == 124 and "TIMED OUT after 1s: stuck" in r_stall.stderr, (
+        r_stall.stderr
+    )
+
+
+@pytest.mark.parametrize(
+    "bad",
+    [
+        ["--timeout", "30", "--cpu-timeout", "0", "--", "true"],
+        ["--timeout", "30", "--stall", "-2", "--", "true"],
+        ["--timeout", "30", "--stall", "abc", "--", "true"],
+    ],
+)
+def test_bad_cpu_or_stall_ceiling_is_refused(wrapper, bad) -> None:
+    r = _run(wrapper, *bad)
+    assert r.returncode == 2, (bad, r.returncode, r.stderr)

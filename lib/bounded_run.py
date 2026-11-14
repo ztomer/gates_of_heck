@@ -295,6 +295,8 @@ def run_step(
     grace: float,
     label: str,
     output: object | None = None,
+    cpu_timeout: int | None = None,
+    stall: int | None = None,
 ) -> Outcome:
     """Run `argv` under a ceiling; report the code and whatever it left running.
 
@@ -303,7 +305,7 @@ def run_step(
     never quiet, so the wall measures the box too), and the child learns its parent's label.
     """
     t0, cpu0 = time.monotonic(), step_timings.children_cpu_ms()
-    outcome = _run_step(argv, timeout, grace, label, output)
+    outcome = _run_step(argv, timeout, grace, label, output, cpu_timeout, stall)
     step_timings.record(
         label or " ".join(argv),
         (time.monotonic() - t0) * 1000,
@@ -320,6 +322,8 @@ def _run_step(
     grace: float,
     label: str,
     output: object | None = None,
+    cpu_timeout: int | None = None,
+    stall: int | None = None,
 ) -> Outcome:
     stream = None
     merged = False  # stderr folds into stdout only when both are going to the same file
@@ -359,15 +363,31 @@ def _run_step(
         # WAIT, never poll. `wait(timeout=)` returns the instant the child exits; the 0.2 s poll it
         # replaced charged every step up to a fifth of a second of pure latency -- measured
         # 2026-10-05 as most of a structural run's wall time on a small tree.
-        try:
-            proc.wait(timeout=timeout)
-        except subprocess.TimeoutExpired:
+        expired: str | None = None
+        if cpu_timeout is not None or stall is not None:
+            import pgid_cpu
+
+            target_pgid = pgid if pgid is not None else proc.pid
+            expired = pgid_cpu.wait_for_exit(
+                proc,
+                target_pgid,
+                timeout,
+                label or " ".join(argv),
+                cpu_timeout=cpu_timeout,
+                stall=stall,
+            )
+        else:
+            try:
+                proc.wait(timeout=timeout)
+            except subprocess.TimeoutExpired:
+                expired = f"TIMED OUT after {timeout}s: {label or ' '.join(argv)}"
+        if expired is not None:
             _sweep(pgid, proc.pid, grace)
             try:
                 proc.wait(timeout=grace)
             except subprocess.TimeoutExpired:
                 pass
-            print(f"TIMED OUT after {timeout}s: {label or ' '.join(argv)}", file=sys.stderr)
+            print(expired, file=sys.stderr)
             return Outcome(
                 code=TIMEOUT_EXIT, descendants=_descendants(pid=proc.pid), timed_out=True
             )
@@ -423,7 +443,15 @@ def _shell_code(returncode: int | None) -> int:
     return 128 - returncode if returncode < 0 else returncode
 
 
-def run(argv: list[str], timeout: int, grace: float, label: str, output=None) -> int:
+def run(
+    argv: list[str],
+    timeout: int,
+    grace: float,
+    label: str,
+    output=None,
+    cpu_timeout: int | None = None,
+    stall: int | None = None,
+) -> int:
     """Run `argv` with a ceiling. Returns the command's code, or 124.
 
     `output` is where the step's stdout/stderr go: a path (opened for append) or a file object, or
@@ -437,57 +465,20 @@ def run(argv: list[str], timeout: int, grace: float, label: str, output=None) ->
     and `wrap` passes a path for the same reason: a reporter must not be made to wait by the
     thing it is reporting.
     """
-    return run_step(argv, timeout, grace, label, output).code
-
-
-def _fast_args(argv: list[str]) -> tuple[int, int, str, list[str]] | None:
-    """The one shape every gate passes -- `--timeout N [--grace N] [--label L] -- CMD...`, each flag
-    once, N a positive integer -- parsed without `argparse`, whose import is ~5 ms on every gate
-    step's path. Anything else returns None and goes through argparse, so every error message
-    and every unusual spelling behaves exactly as before."""
-    seen: dict[str, str] = {}
-    i = 0
-    while i < len(argv) and argv[i] != "--":
-        flag = argv[i]
-        if flag not in ("--timeout", "--grace", "--label") or flag in seen or i + 1 >= len(argv):
-            return None
-        seen[flag] = argv[i + 1]
-        i += 2
-    rest = argv[i + 1 :]
-    if i >= len(argv) or not rest:
-        return None
-    try:
-        timeout = int(seen.get("--timeout", str(DEFAULT_TIMEOUT)))
-        grace = int(seen.get("--grace", str(DEFAULT_GRACE)))
-    except ValueError:
-        return None
-    if timeout <= 0 or not all(seen.get(f, "0").isdigit() for f in ("--timeout", "--grace")):
-        return None
-    return timeout, grace, seen.get("--label", ""), rest
+    return run_step(argv, timeout, grace, label, output, cpu_timeout, stall).code
 
 
 def main(argv=None) -> int:
-    fast = _fast_args(sys.argv[1:] if argv is None else list(argv))
-    if fast is not None:
-        timeout, grace, label, rest = fast
-        return run(rest, timeout, grace, label)
-    import argparse  # the unusual spelling, an error, or --help: the full parser
+    import pgid_cpu
 
-    ap = argparse.ArgumentParser(
-        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
-    )
-    ap.add_argument("--timeout", type=int, default=DEFAULT_TIMEOUT, help="ceiling in seconds")
-    ap.add_argument("--grace", type=int, default=DEFAULT_GRACE, help="TERM->KILL grace, seconds")
-    ap.add_argument("--label", default="", help="what to call the step in the message")
-    args, rest = ap.parse_known_args(argv)
-    if rest and rest[0] == "--":
-        rest = rest[1:]
-    if not rest:
-        ap.error("no command: bounded_run.py -- CMD [ARG...]")
-    if args.timeout <= 0:
-        print(f"bounded_run: --timeout must be positive (got {args.timeout})", file=sys.stderr)
-        return 2
-    return run(rest, args.timeout, args.grace, args.label)
+    raw = sys.argv[1:] if argv is None else list(argv)
+    parsed = pgid_cpu.fast_args(raw, DEFAULT_TIMEOUT, DEFAULT_GRACE)
+    if parsed is None:
+        parsed, rc = pgid_cpu.parse_step_cli(argv, DEFAULT_TIMEOUT, DEFAULT_GRACE, __doc__)
+        if parsed is None:
+            return rc
+    timeout, grace, label, cpu_timeout, stall, rest = parsed
+    return run(rest, timeout, grace, label, cpu_timeout=cpu_timeout, stall=stall)
 
 
 if __name__ == "__main__":

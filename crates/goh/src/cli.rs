@@ -5,8 +5,8 @@ use std::path::PathBuf;
 use clap::{Parser, Subcommand};
 
 pub use crate::cli_args::{
-    CratesBehindArgs, DepsArgs, ExcludeStagedArgs, LaunchAppArgs, PassArgs, ProvenAction,
-    RoadmapArgs, SkillsArgs, StagedArgs, TagVersionArgs,
+    CanaryArgs, CratesBehindArgs, DepsArgs, ExcludeStagedArgs, LaunchAppArgs, PassArgs,
+    ProvenAction, RoadmapArgs, SkillsArgs, StagedArgs, StepArgs, TagVersionArgs,
 };
 
 #[derive(Debug, Parser)]
@@ -31,20 +31,7 @@ pub enum Commands {
         check_depinfo: Option<PathBuf>,
     },
     /// Run a command under a ceiling, its group swept on expiry or a signal (`lib/bounded_run.py`).
-    Step {
-        /// The ceiling, in seconds (a positive integer).
-        #[arg(long, default_value = "900", allow_hyphen_values = true)]
-        timeout: String,
-        /// Seconds between TERM and KILL when the group is swept.
-        #[arg(long, default_value_t = 5)]
-        grace: u64,
-        /// What to call the step in messages and timings (default: the command).
-        #[arg(long, default_value = "")]
-        label: String,
-        /// The command, after `--`.
-        #[arg(last = true)]
-        command: Vec<String>,
-    },
+    Step(StepArgs),
     /// List each live subagent idle past a threshold while it waits on its own background work
     /// (`hooks/claude/agent_stalls.py`; its flags pass through). Exit 1 when any is stalled.
     AgentStalls(PassArgs),
@@ -54,32 +41,7 @@ pub enum Commands {
     /// Name estate repos with stale stock hooks; `--refresh` fixes them (`hooks_refresh.py`)
     Hooks(PassArgs),
     /// Run a step under a ceiling; report what it left running (`lib/orphan_canary.py wrap`).
-    Canary {
-        /// The repo, for attributing a leaked process by its path (default: cwd).
-        #[arg(long)]
-        repo: Option<PathBuf>,
-        /// Append the step's output here instead of inheriting it.
-        #[arg(long)]
-        log: Option<PathBuf>,
-        /// Record the surviving pids here as JSON when there are any.
-        #[arg(long)]
-        snapshot: Option<PathBuf>,
-        /// The ceiling, in seconds (a positive integer).
-        #[arg(long, default_value = "900", allow_hyphen_values = true)]
-        timeout: String,
-        /// Seconds between TERM and KILL when the group is swept.
-        #[arg(long, default_value_t = 5)]
-        grace: u64,
-        /// What to call the step (default: the command).
-        #[arg(long, default_value = "")]
-        label: String,
-        /// Name every unattributable process too (accepted for the Python's CLI; no effect).
-        #[arg(long)]
-        verbose: bool,
-        /// The command, after `--`.
-        #[arg(last = true)]
-        command: Vec<String>,
-    },
+    Canary(CanaryArgs),
     /// A fix or perf commit names its Class and Siblings; a third instance ends the class
     /// (`gates/commit_msg.sh`, `gates/push_gate.sh`; opt-in by `GOH_COMMIT_CLASS`).
     CommitClass {

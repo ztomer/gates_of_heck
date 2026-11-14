@@ -34,29 +34,39 @@ enum Event {
     Stopped(i32),
 }
 
+#[derive(Clone, Copy)]
+pub(crate) struct Bounds {
+    pub(crate) wall: u64,
+    pub(crate) cpu: Option<u64>,
+    pub(crate) stall: Option<u64>,
+}
+
+/// Parse `--timeout`, `--cpu-timeout`, and `--stall` from shared `StepBoundArgs`.
+pub(crate) fn parse_bound_args(b: &crate::cli_args::StepBoundArgs, who: &str) -> Option<Bounds> {
+    let wall = ceiling(&b.timeout, who)?;
+    let cpu = opt_ceiling(b.cpu_timeout.as_deref(), "--cpu-timeout", who).ok()?;
+    let stall = opt_ceiling(b.stall.as_deref(), "--stall", who).ok()?;
+    Some(Bounds { wall, cpu, stall })
+}
+
 /// `goh step`. `timeout` is the raw flag, so a non-positive or unreadable one is refused here
 /// exactly as the Python refuses it.
 #[must_use]
-pub fn run(timeout: &str, grace: u64, label: &str, argv: &[String]) -> i32 {
-    let Ok(limit) = timeout.parse::<i64>() else {
-        eprintln!("goh step: --timeout must be an integer of seconds (got {timeout})");
+pub fn run_cli(a: &crate::cli_args::StepArgs) -> i32 {
+    let Some(bounds) = parse_bound_args(&a.bound, "goh step") else {
         return 2;
     };
-    if limit <= 0 {
-        eprintln!("goh step: --timeout must be positive (got {limit})");
-        return 2;
-    }
-    if argv.is_empty() {
+    if a.bound.command.is_empty() {
         eprintln!("goh step: no command: goh step --timeout N -- CMD [ARG...]");
         return 2;
     }
-    let label = if label.is_empty() {
-        argv.join(" ")
+    let label = if a.bound.label.is_empty() {
+        a.bound.command.join(" ")
     } else {
-        label.to_owned()
+        a.bound.label.clone()
     };
     let span = Span::begin();
-    let (code, left) = bounded(argv, limit.unsigned_abs(), grace, &label, None);
+    let (code, left) = bounded(&a.bound.command, bounds, a.bound.grace, &label, None);
     if !left.is_empty() {
         let shown: Vec<String> = left.iter().take(20).map(ToString::to_string).collect();
         eprintln!(
@@ -69,26 +79,50 @@ pub fn run(timeout: &str, grace: u64, label: &str, argv: &[String]) -> i32 {
     code
 }
 
-/// Parse a `--timeout` flag: `Some(seconds)`, or `None` after printing `who`'s refusal.
-pub(crate) fn ceiling(timeout: &str, who: &str) -> Option<u64> {
-    match timeout.parse::<i64>() {
+/// Parse one positive-integer bound flag (`--timeout`, `--cpu-timeout`, `--stall`).
+fn parse_pos(raw: &str, flag: &str, who: &str) -> Option<u64> {
+    match raw.parse::<i64>() {
         Ok(limit) if limit > 0 => Some(limit.unsigned_abs()),
         Ok(limit) => {
-            eprintln!("{who}: --timeout must be positive (got {limit})");
+            eprintln!("{who}: {flag} must be positive (got {limit})");
             None
         }
         Err(_) => {
-            eprintln!("{who}: --timeout must be an integer of seconds (got {timeout})");
+            eprintln!("{who}: {flag} must be an integer of seconds (got {raw})");
             None
         }
     }
+}
+
+/// Parse a `--timeout` flag: `Some(seconds)`, or `None` after printing `who`'s refusal.
+pub(crate) fn ceiling(timeout: &str, who: &str) -> Option<u64> {
+    parse_pos(timeout, "--timeout", who)
+}
+
+/// Parse an optional bound flag (`--cpu-timeout`, `--stall`); `Err(())` after refusal.
+pub(crate) fn opt_ceiling(raw: Option<&str>, flag: &str, who: &str) -> Result<Option<u64>, ()> {
+    raw.map_or(Ok(None), |v| parse_pos(v, flag, who).map(Some).ok_or(()))
+}
+
+/// Gate `(wall_backstop, cpu_budget, stall)` derived from a nominal step ceiling `limit`.
+pub(crate) fn gate_bounds(limit: u64) -> (u64, u64, u64) {
+    let ncpu = std::thread::available_parallelism().map_or(1, |n| n.get() as u64);
+    let env_u64 = |key: &str| {
+        std::env::var(key)
+            .ok()
+            .and_then(|v| v.trim().parse::<u64>().ok())
+            .filter(|&n| n > 0)
+    };
+    let cpu = env_u64("GOH_STEP_CPU_TIMEOUT").unwrap_or_else(|| limit.saturating_mul(ncpu));
+    let wall = env_u64("GOH_STEP_WALL_BACKSTOP").unwrap_or_else(|| limit.saturating_mul(4));
+    (wall, cpu, limit)
 }
 
 /// Run `argv` under the ceiling; `(its code, the pids still in its group when it exited)`. With
 /// `out`, the step's stdout and stderr are appended to that file, merged.
 pub(crate) fn bounded(
     argv: &[String],
-    limit: u64,
+    bounds: Bounds,
     grace: u64,
     label: &str,
     out: Option<&std::path::Path>,
@@ -159,34 +193,96 @@ pub(crate) fn bounded(
     let waiter = std::thread::spawn(move || {
         let _ = tx.send(Event::Exited(child.wait()));
     });
-    let mut left = Vec::new();
-    let code = match rx.recv_timeout(Duration::from_secs(limit)) {
-        Ok(Event::Exited(status)) => {
-            let code = status.map_or(127, |s| {
-                s.code().unwrap_or_else(|| 128 + s.signal().unwrap_or(0))
-            });
-            left = survivors(pgid);
-            code
-        }
-        Ok(Event::Stopped(sig)) => {
-            sweep(pgid, grace);
-            let _ = rx.recv_timeout(Duration::from_secs(grace.max(1)));
-            eprintln!(
-                "STOPPED by {}: {label} -- its process group was swept",
-                signal_name(sig)
-            );
-            128 + sig
-        }
-        Err(_) => {
-            sweep(pgid, grace);
-            let _ = rx.recv_timeout(Duration::from_secs(grace.max(1)));
-            eprintln!("TIMED OUT after {limit}s: {label}");
-            TIMEOUT_EXIT
-        }
-    };
+    let (code, left) = wait_bounded(&rx, pgid, bounds, grace, label);
     close();
     drop(waiter);
     (code, left)
+}
+
+fn finish_exit(status: std::io::Result<std::process::ExitStatus>, pgid: i32) -> (i32, Vec<i32>) {
+    let code = status.map_or(127, |s| {
+        s.code().unwrap_or_else(|| 128 + s.signal().unwrap_or(0))
+    });
+    (code, survivors(pgid))
+}
+
+fn finish_stop(
+    rx: &mpsc::Receiver<Event>,
+    pgid: i32,
+    sig: i32,
+    grace: u64,
+    label: &str,
+) -> (i32, Vec<i32>) {
+    sweep(pgid, grace);
+    let _ = rx.recv_timeout(Duration::from_secs(grace.max(1)));
+    eprintln!(
+        "STOPPED by {}: {label} -- its process group was swept",
+        signal_name(sig)
+    );
+    (128 + sig, Vec::new())
+}
+
+fn finish_timeout(rx: &mpsc::Receiver<Event>, pgid: i32, grace: u64, msg: &str) -> (i32, Vec<i32>) {
+    sweep(pgid, grace);
+    let _ = rx.recv_timeout(Duration::from_secs(grace.max(1)));
+    eprintln!("{msg}");
+    (TIMEOUT_EXIT, Vec::new())
+}
+
+fn wait_bounded(
+    rx: &mpsc::Receiver<Event>,
+    pgid: i32,
+    bounds: Bounds,
+    grace: u64,
+    label: &str,
+) -> (i32, Vec<i32>) {
+    if bounds.cpu.is_none() && bounds.stall.is_none() {
+        return match rx.recv_timeout(Duration::from_secs(bounds.wall)) {
+            Ok(Event::Exited(status)) => finish_exit(status, pgid),
+            Ok(Event::Stopped(sig)) => finish_stop(rx, pgid, sig, grace, label),
+            Err(_) => {
+                let msg = format!("TIMED OUT after {}s: {label}", bounds.wall);
+                finish_timeout(rx, pgid, grace, &msg)
+            }
+        };
+    }
+    let start = Instant::now();
+    let mut last_progress = start;
+    let mut peak_cpu = 0.0_f64;
+    loop {
+        match rx.recv_timeout(POLL) {
+            Ok(Event::Exited(status)) => return finish_exit(status, pgid),
+            Ok(Event::Stopped(sig)) => return finish_stop(rx, pgid, sig, grace, label),
+            Err(mpsc::RecvTimeoutError::Disconnected) => return (127, Vec::new()),
+            Err(mpsc::RecvTimeoutError::Timeout) => {
+                if let Some((cpu_s, runnable)) = goh_sys::pgid_cpu_and_runnable(pgid) {
+                    if cpu_s > peak_cpu || runnable > 0 {
+                        peak_cpu = peak_cpu.max(cpu_s);
+                        last_progress = Instant::now();
+                    }
+                } else {
+                    last_progress = Instant::now();
+                }
+                if let Some(cpu_limit) = bounds.cpu {
+                    let cpu_dur = Duration::try_from_secs_f64(peak_cpu).unwrap_or(Duration::MAX);
+                    if cpu_dur >= Duration::from_secs(cpu_limit) {
+                        let msg = format!("TIMED OUT after {cpu_limit}s: {label} (CPU budget)");
+                        return finish_timeout(rx, pgid, grace, &msg);
+                    }
+                }
+                if let Some(stall_limit) = bounds.stall {
+                    if last_progress.elapsed() >= Duration::from_secs(stall_limit) {
+                        let msg = format!("TIMED OUT after {stall_limit}s: {label} (stalled)");
+                        return finish_timeout(rx, pgid, grace, &msg);
+                    }
+                }
+                if start.elapsed() >= Duration::from_secs(bounds.wall) {
+                    let msg = format!("TIMED OUT after {}s: {label}", bounds.wall);
+                    return finish_timeout(rx, pgid, grace, &msg);
+                }
+            }
+        }
+    }
 }
 
 /// TERM the whole group, wait up to `grace` for it to empty, then KILL whatever is left.
