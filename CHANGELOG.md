@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+* **A failed `goh ship` release leaves the checkout as it found it (`GOH.SHIPUNDO`).** ztools' release step committed `chore: version 3.28.0`, failed at the pre-push gate, and left the bump on main. `lib/ship_undo.py` snapshots HEAD before the release step; on failure it deletes the version tags the release cut and moves the branch back with `git reset --keep` -- only for commits no remote holds (a pushed commit is never reset), and never over a working-tree edit. The result's `undo` says what was taken back or left. Pinned by `tests/test_ship_undo.py`.
+
 * **A first `goh ship` names its version (`GOH.FIRSTTAG`).** `tools/ship.py` `next_version` returned an empty version on a repo with no v-tag, so `--bump patch` ran the release kit with `{version}` as nothing (agent-feed AF.CORE). A tagless repo that declares a release kit is now refused before anything starts, naming `--version X.Y.Z`; a repo with no kit ships with no version as before. Pinned by `tests/test_ship_firsttag.py`.
 
 * **The release kit refuses before its first commit or push (`GOH.KITORDER`).** `tools/release-kit/release.sh` pushed an unpushed version commit for its CI read and only then refused a missing CHANGELOG stanza (ztools 3.19.0: a pushed, untagged bump). `release_refusals_first` (`version_step.sh`) now asks the declared gate, the backfill floor, a stale tag, the stanza and `changelog_cut.py check` before step 0b's cut commit and step 0's push, and a cut is checked before it is committed. Pinned by `tests/test_release_kit_order.py`.

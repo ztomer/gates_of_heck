@@ -14,9 +14,9 @@ every agent's context (GOH.SPENDWATCH). Here it is a pipeline no turn watches:
              gate; skipped when `.gatesrc` GOH_SHIP_RELEASE_PUSHES=1 and the release step runs: that
              kit pushes the hand-off with its release commit (a repo whose release note may only
              land in the release commit has a hand-off its own gate refuses alone)
-    release  the repo's release kit, `.gatesrc` GOH_SHIP_RELEASE, run with GOH_SHIP_VERSION set (also
-             `{version}` in the command); skipped when HEAD already carries a version tag; a repo
-             that tags none is refused first; then lib/ship_pushed.py: HEAD and its tag are pushed
+    release  the repo's release kit, `.gatesrc` GOH_SHIP_RELEASE, run with GOH_SHIP_VERSION set
+             (also `{version}` in the command); skipped when HEAD already carries a version tag; a
+             repo that tags none is refused first; then lib/ship_pushed.py: HEAD and its tag pushed
     install  `.gatesrc` GOH_SHIP_INSTALL; skipped (said) when undeclared (a kit may install)
     verify   first, when the remote is GitHub's, the CI verdict on HEAD, read ONCE through the
              throttle-aware door (`loopctl ci SHA --repo OWNER/NAME`), never waited on: hosted CI is
@@ -42,15 +42,15 @@ in its own session and prints one line naming the result; the worker prints a âœ
 to `<result>.log`. Each step runs under `lib/bounded_run.py`: own session, GOH_SHIP_TIMEOUT seconds
 (default 3600), then its whole process group TERM'd and KILL'd -- nothing it started is left
 running with PPID=1. A failed step stops the pipeline; the result names it (`failed_step`) and
-carries the last 40 lines of its log (`tail`), which is all a resumed agent needs.
+carries the last 40 lines of its log (`tail`), which is all a resumed agent needs. A failed release
+takes back the commits and tags it made that no remote holds (`undo`, lib/ship_undo.py).
 
 The next version, when neither --version nor --bump is given, is the maintained tool's answer,
 `git-cliff --bumped-version` over the conventional commits since the newest v-tag (a `!` or BREAKING
 CHANGE is major, a feat minor; a repo's own cliff.toml [bump] is honoured); a span git-cliff finds
-nothing to bump in (no conventional commit) is a patch. A repo with no v-tag has nothing to bump
-from: its first release is refused unless --version names it (GOH.FIRSTTAG).
-No git-cliff on PATH refuses the ship,
-naming the install; --version or --bump needs none (gates/required_tools.tsv, layer `ship`).
+nothing to bump in (no conventional commit) is a patch; with no v-tag there is nothing to bump from,
+so a first release with a kit is refused unless --version names it (GOH.FIRSTTAG). No git-cliff on
+PATH refuses the ship, naming the install; --version or --bump needs none (required_tools.tsv).
 `--bump none` ships with no release: a repo that declares no version (no v-tag), or a HEAD that
 already carries its tag; a tagging repo past its newest tag is refused, naming --version X.Y.Z (the
 version a commit already bumped, which the kit then tags) and the bumps (GOH.CIWAIT).
@@ -99,6 +99,7 @@ import bounded_run
 import gitrun
 import ship_changelog
 import ship_pushed
+import ship_undo
 import ship_verify
 
 from tui.lib import err, info, ok, step
@@ -303,7 +304,7 @@ def plan(args: argparse.Namespace) -> dict:
         "preflight": [c for w, c in asked if w == "GOH_SHIP_PREFLIGHT"],
         "timeout_s": timeout, "loopctl": str(loopctl()), "result": str(out),
         "status": "running", "started": dt.datetime.now(dt.UTC).isoformat(timespec="seconds"),
-        "steps": [], "failed_step": None, "tail": [], "pid": None,
+        "steps": [], "failed_step": None, "tail": [], "undo": [], "pid": None,
     }  # fmt: skip
 
 
@@ -381,6 +382,7 @@ def run_steps(res: dict) -> int:
         log = Path(f"{stem}.{name}.log")
         log.write_text(f"$ {cmd}\n", encoding="utf-8")
         t0 = time.monotonic()
+        snap = ship_undo.snapshot(Path(res["repo"])) if name == "release" else None
         out = bounded_run.run_step(["bash", "-c", cmd], res["timeout_s"], GRACE, f"ship {name}",
                                    str(log))  # fmt: skip
         secs = round(time.monotonic() - t0, 1)
@@ -397,6 +399,8 @@ def run_steps(res: dict) -> int:
         if out.timed_out:
             with log.open("a", encoding="utf-8") as f:
                 f.write(f"TIMED OUT after {res['timeout_s']}s: its process group was killed\n")
+        if snap:  # a failed release leaves the checkout as it found it (GOH.SHIPUNDO)
+            res["undo"] = ship_undo.undo(Path(res["repo"]), snap, res["remote"], log)
         res["steps"].append(entry)
         res.update(status="failed", failed_step=name, tail=tail(log))
         res["finished"] = dt.datetime.now(dt.UTC).isoformat(timespec="seconds")
@@ -437,8 +441,8 @@ def start(args: argparse.Namespace) -> int:
     log = Path(res["result"]).with_suffix(".log")
     with log.open("ab") as out:
         worker_argv = [sys.executable, str(Path(__file__).resolve()), "--worker", res["result"]]
-        subprocess.Popen(worker_argv, cwd=res["repo"], env=unbound_env(), stdin=subprocess.DEVNULL,
-                         stdout=out, stderr=out, start_new_session=True, close_fds=True)  # fmt: skip
+        subprocess.Popen(worker_argv, cwd=res["repo"], env=unbound_env(), stdout=out, stderr=out,
+                         stdin=subprocess.DEVNULL, start_new_session=True, close_fds=True)  # fmt: skip
     info(f"goh ship started: {res['result']}")
     return 0
 
