@@ -371,3 +371,54 @@ def test_a_gone_entry_names_the_command_that_removes_it_and_that_command_does(
     assert cli("forget", str(gone)).returncode == 0
     assert registry.read_text() == f"{keep}\n"
     assert cli("forget", str(gone)).returncode == 1  # not registered: named, not silent
+
+
+def _git_c(d: Path, *args: str) -> None:
+    """`git` with the file protocol allowed, for a real `submodule add` of a local repo."""
+    allow = ["-c", "protocol.file.allow=always"]
+    subprocess.run(
+        ["git", "-c", "user.email=t@t", "-c", "user.name=t", *allow, *args],
+        cwd=d,
+        capture_output=True,
+        check=True,
+        stdin=subprocess.DEVNULL,
+    )
+
+
+def test_the_walk_skips_a_linked_worktree_and_keeps_a_submodule(tmp_path: Path) -> None:
+    """GOH.CANARYWT: `walk_repos` took any directory with a `.git` ENTRY, and a linked worktree
+    has a `.git` FILE (`gitdir: <main>/.git/worktrees/<name>`). `ztools-wt-lm` was counted as a
+    consumer, another agent removed it while the release canary ran, and the canary failed
+    `cloning it: fatal: repository ... does not exist` on a path that was never in the registry.
+    A linked worktree is the same repository as its main checkout; a SUBMODULE also has a `.git`
+    file (`gitdir: <main>/.git/modules/<name>`) but is a separate repository, so it stays."""
+    sys.path.insert(0, str(REPO_ROOT / "lib"))
+    import estate_registry
+
+    root = tmp_path / "root"
+    main = _repo_at(root / "main")
+    _git(main, "branch", "feature")
+    wt = root / "main-wt"
+    _git(main, "worktree", "add", "-q", str(wt), "feature")
+    sub_src = _repo_at(tmp_path / "elsewhere" / "libsrc")
+    _git_c(main, "submodule", "add", "-q", str(sub_src), "vendor/lib")
+    # real git, real shapes: both are `.git` FILES, told apart only by where the gitdir points
+    assert (wt / ".git").is_file() and (main / "vendor" / "lib" / ".git").is_file()
+    assert "/worktrees/" in (wt / ".git").read_text()
+    assert "/modules/" in (main / "vendor" / "lib" / ".git").read_text()
+
+    walked = estate_registry.walk_repos(root)
+    assert main in walked
+    assert main / "vendor" / "lib" in walked, walked  # a submodule is its own repository
+    assert wt not in walked, walked  # a linked worktree is not
+    assert estate_registry.is_linked_worktree(wt)
+    assert not estate_registry.is_linked_worktree(main)
+    assert not estate_registry.is_linked_worktree(main / "vendor" / "lib")
+
+    # a worktree the walk never sees may still be REGISTERED (install.sh run inside it): it is not
+    # an estate member either, and `union` must not hand it to the canary
+    registry = tmp_path / "state" / "installed_repos"
+    registry.parent.mkdir()
+    registry.write_text(f"{wt}\n")
+    estate, problems = estate_registry.union(walked, registry)
+    assert wt.resolve() not in estate and not problems, (estate, problems)

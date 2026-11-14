@@ -146,14 +146,37 @@ def forget(path: Path, registry: Path | None = None) -> bool:
     return True
 
 
+def is_linked_worktree(d: Path) -> bool:
+    """True when `d` is a LINKED worktree (`git worktree add`): its `.git` is a FILE reading
+    `gitdir: <main>/.git/worktrees/<name>`. The same repository as its main checkout, so never a
+    consumer of its own (GOH.CANARYWT: `ztools-wt-lm` was counted as one, an agent removed it
+    mid-release, and the release canary died cloning a path that was never registered).
+
+    A SUBMODULE also has a `.git` file, but it points into `<main>/.git/modules/<name>` and is a
+    separate repository: only a gitdir through a `worktrees` directory is a worktree. A `.git`
+    DIRECTORY, a missing one or an unreadable file is not one.
+    """
+    git = Path(d) / ".git"
+    if not git.is_file():
+        return False
+    try:
+        head = git.read_text(encoding="utf-8", errors="replace").splitlines()[0]
+    except (OSError, IndexError):
+        return False
+    if not head.startswith("gitdir:"):
+        return False
+    return "worktrees" in Path(head.removeprefix("gitdir:").strip()).parts
+
+
 def walk_repos(root: Path, depth: int = REPO_DEPTH) -> list[Path]:
     """Every git work tree at most `depth` below the root, nested ones included: a repository
     inside another's tree (servers/media_server) is not tracked by its parent, so the walk goes on
-    below a repository rather than stopping at it."""
+    below a repository rather than stopping at it. A LINKED worktree is walked THROUGH but not
+    returned: it is its main checkout again (`is_linked_worktree`); a submodule is returned."""
     found, frontier = [], [(Path(root), 0)]
     while frontier:
         d, depth_here = frontier.pop()
-        if (d / ".git").exists():
+        if (d / ".git").exists() and not is_linked_worktree(d):
             found.append(d)
         if depth_here == depth:
             continue
@@ -172,7 +195,7 @@ def walk_repos(root: Path, depth: int = REPO_DEPTH) -> list[Path]:
 def existing(registry: Path | None = None) -> list[Path]:
     """The registered repos that are on disk and are git repositories."""
     repos, _ = read(registry)
-    return [r for r in repos if r.exists() and (r / ".git").exists()]
+    return [r for r in repos if r.exists() and (r / ".git").exists() and not is_linked_worktree(r)]
 
 
 def union(walked: Iterable[Path], registry: Path | None = None) -> tuple[list[Path], list[str]]:
@@ -199,6 +222,8 @@ def union(walked: Iterable[Path], registry: Path | None = None) -> tuple[list[Pa
             )
         elif not (r / ".git").exists():
             problems.append(f"registered but not a git repository: {r}")
+        elif is_linked_worktree(r):
+            continue  # install.sh run inside a worktree: the same repo as its main checkout
         else:
             found.add(r)
     return sorted(found), problems
