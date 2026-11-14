@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+* **An empty Unreleased beside the version's written stanza is a clean cut, and the kit commits nothing for it (`GOH.CUTEMPTY`).** `tools/release-kit/changelog_cut.py cut` refused `Unreleased is empty: nothing to release` when the stanza for the version was already written (EST.STORE1116); it now leaves the file as it stands and succeeds. Step 0b (`release_changelog_cut`) then committed with nothing staged (`committing the v1.2.3 stanza exited nonzero`) or amended the version commit to no end: a cut that changes nothing commits nothing, and `release_cut_pending` reads it as no cut, so the preflight checks the written stanza.
+
 ## v0.113.2 -- release kit refuses before its first commit or push (KITORDER); a tagless repo's first ship names its version (FIRSTTAG); a failed release takes back its unpushed bump and tags (SHIPUNDO)
 
 * **A failed `goh ship` release leaves the checkout as it found it (`GOH.SHIPUNDO`).** ztools' release step committed `chore: version 3.28.0`, failed at the pre-push gate, and left the bump on main. `lib/ship_undo.py` snapshots HEAD before the release step; on failure it deletes the version tags the release cut and moves the branch back with `git reset --keep` -- only for commits no remote holds (a pushed commit is never reset), and never over a working-tree edit. The result's `undo` says what was taken back or left. Pinned by `tests/test_ship_undo.py`.

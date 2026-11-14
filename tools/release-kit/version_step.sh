@@ -96,6 +96,9 @@ release_cut_pending() {
   if [ "$_prc" = 1 ] && grep -q "Unreleased is empty\|no Unreleased section" "$_pcut.err"; then
     rm -f "$_pcut" "$_pcut.err"; return 1
   fi
+  if [ "$_prc" = 0 ] && cmp -s CHANGELOG.md "$_pcut"; then  # a cut that changes nothing (GOH.CUTEMPTY)
+    rm -f "$_pcut" "$_pcut.err"; return 1
+  fi
   rm -f "$_pcut" "$_pcut.err"
   return 0
 }
@@ -125,6 +128,9 @@ release_changelog_cut() {
     fail "the ${TAG} stanza cannot be cut from Unreleased (above) -- nothing written, pushed or tagged"
   fi
   rm -f "$_ccut.err"
+  # The stanza is written and Unreleased is empty: the cut changed nothing, so nothing is committed
+  # (GOH.CUTEMPTY: committing it exited nonzero with nothing staged); the changelog step checks it.
+  if cmp -s CHANGELOG.md "$_ccut"; then rm -f "$_ccut"; return 0; fi
   begin "changelog-cut" "make the ${TAG} stanza from Unreleased"
   # The cut is checked BEFORE it is committed (GOH.KITORDER): a refusal leaves HEAD as it was.
   bash "$GOH/gates/python.sh" "$GOH/tools/release-kit/changelog_cut.py" check --version "$VERSION" --file "$_ccut" \

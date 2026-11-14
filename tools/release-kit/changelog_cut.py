@@ -12,8 +12,10 @@ unreleased -- the tag ships the whole tree -- so:
   file whose stanzas carry no title gets a bare `## vX`. Every Unreleased section is folded in and
   ONE heading is left. When a stanza for X already exists (written by hand), Unreleased's entries
   are merged into it, by sub-heading, and an entry it already holds is not repeated (GOH.CUTTITLE).
-  release.sh runs it itself whenever Unreleased holds entries (GOH.CUTAUTO). Refused when
-  Unreleased is empty (nothing to release) or when a moved entry repeats one an earlier stanza holds.
+  release.sh runs it itself whenever Unreleased holds entries (GOH.CUTAUTO). An empty Unreleased
+  beside X's written stanza is a clean cut that changes nothing (GOH.CUTEMPTY). Refused when
+  Unreleased is empty and X has no stanza (nothing to release) or when a moved entry repeats one an
+  earlier stanza holds.
 * `check --version X`: what release.sh's changelog step asks of the commit being tagged -- the
   stanza for X exists, its heading's title is a phrase (it opens on a word, a code span or a quote,
   does not end on a joining mark, leaves no backtick or bracket open: AU.RELHEADING; `cut` refuses
@@ -361,8 +363,11 @@ def cut(lines: list[str], version: str, title: str | None) -> tuple[list[str] | 
         if part:
             moved += ([""] if moved else []) + part
     first = unrels[0]
-    if not moved and not (len(unrels) > 1 and any(s.version == version for s in secs)):
+    written = any(s.version == version for s in secs)
+    if not moved and not written:
         return None, ["Unreleased is empty: nothing to release"]
+    if not moved and len(unrels) == 1:  # the stanza is written and nothing waits (GOH.CUTEMPTY)
+        return lines, []
     # One Unreleased heading, emptied: the other Unreleased sections' lines go with their headings.
     gone = {i for u in unrels[1:] for i in range(u.start, u.end)}
     base: list[str] = []
@@ -434,6 +439,11 @@ def main(argv: list[str] | None = None) -> int:
         print(f"✗ changelog_cut: {f}", file=sys.stderr)
     if new is None:
         return 1
+    if new is lines:
+        print(
+            f"✓ {path}: Unreleased is empty and the v{a.version} stanza is written; nothing to move"
+        )
+        return 0
     path.write_text("\n".join(new) + "\n", encoding="utf-8")
     print(f"✓ {path}: Unreleased is now the v{a.version} stanza (one heading)")
     return 0

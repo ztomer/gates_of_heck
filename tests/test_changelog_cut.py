@@ -20,6 +20,7 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
 import test_release_kit as rk
 from conftest import REPO_ROOT
 from test_release_kit import TAG, VERSION, commit_all, run_release, sh
@@ -176,6 +177,36 @@ def test_a_merge_does_not_repeat_an_entry_the_stanza_holds(tmp_path):
     assert _cut(log, "cut", "--version", "1.2.0").returncode == 0
     text = log.read_text()
     assert text.count("same") == 1 and "- late\n" in text, text
+
+
+def test_an_empty_unreleased_beside_the_versions_stanza_is_a_clean_cut(tmp_path):
+    """GOH.CUTEMPTY (DV.SHIPCUT, seen EST.STORE1116 2026-11-13): a version whose stanza is already
+    written and whose Unreleased is empty was refused by `cut` with "nothing to release". The stanza
+    IS the release: the cut leaves the file as it stands and succeeds. With no stanza an empty
+    Unreleased is still refused."""
+    text = "# C\n\n## Unreleased\n\n## v1.2.0 -- mine\n\n- shipped\n\n## v1.1.0 -- o\n\n- o\n"
+    log = _log(tmp_path, text)
+    r = _cut(log, "cut", "--version", "1.2.0")
+    assert r.returncode == 0, r.stderr
+    assert log.read_text() == text
+    assert _cut(log, "check", "--version", "1.2.0").returncode == 0
+    r = _cut(log, "cut", "--version", "1.3.0")
+    assert r.returncode == 1 and "nothing to release" in r.stderr, r.stderr
+
+
+@pytest.mark.parametrize("subject", [f"chore: version {VERSION}", "feat: something"])
+def test_the_kit_makes_no_commit_when_the_cut_changes_nothing(kit, subject):
+    """GOH.CUTEMPTY: with the no-op cut above, step 0b committed with nothing staged and the release
+    died ('committing the stanza exited nonzero'), or amended the version commit to no end. A cut
+    that changes nothing commits nothing: the release tags HEAD as it stands."""
+    _release_with(
+        kit, f"# C\n\n## Unreleased\n\n## {TAG}\n\n- hand written\n\n## v1.1.0\n\n- o\n", subject
+    )
+    before = sh(kit["proj"], "rev-parse", "HEAD").strip()
+    r = run_release(kit)
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert "exited nonzero" not in r.stdout + r.stderr, r.stdout + r.stderr
+    assert sh(kit["proj"], "rev-parse", f"{TAG}^{{commit}}").strip() == before
 
 
 def test_the_kit_merges_instead_of_refusing_a_hand_written_stanza(kit):
