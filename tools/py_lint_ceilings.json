@@ -295,6 +295,6 @@
   "tools/load_reap.py": 4,
   "tools/release-kit/changelog_cut.py": 1,
   "tools/session_bench.py": 3,
-  "tools/ship.py": 10,
+  "tools/ship.py": 9,
   "tui/lib.py": 2
 }

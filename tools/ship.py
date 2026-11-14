@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """goh ship: the detached, time-bounded LOCAL landing pipeline (GOH.SHIP, owner 2026-11-08).
 
-    goh ship [--repo DIR] [--item ID] [--summary TEXT]
+    goh ship [--repo DIR] [--item ID [--progress]] [--summary TEXT]
              [--version X.Y.Z | --bump patch|minor|major|none]
              [--wait] [--out PATH]
     goh ship --status RESULT.json
@@ -28,7 +28,8 @@ every agent's context (GOH.SPENDWATCH). Here it is a pipeline no turn watches:
              to LOOPCTL_ROOT or ~/Projects), whose only failing line may be that advisory CI one;
              skipped without loopctl and without --item
     done     with --item: `loopctl done ID --shipped RESULT`, which records the item from this
-             result and the card through done's own gates (CI on what landed), so no agent turn
+             result and the card through done's own gates (CI on what landed), so no agent turn;
+             --progress (a slice of a multi-release item): `loopctl progress`, the item left open
 
 PREFLIGHT (GOH.SHIPPREFLIGHT). The kit runs after the push, so a precondition it could read before
 (token-pool's "no '## Unreleased' section", another kit's "no row for v5.18.0") was found after.
@@ -144,8 +145,9 @@ def config(repo: Path) -> dict[str, str]:
         script = ". ./.gatesrc >/dev/null 2>&1 </dev/null; " + "; ".join(
             f'printf "%s\\0" "${{{k}-}}"' for k in KEYS)  # fmt: skip
         env = {k: v for k, v in os.environ.items() if k not in KEYS}
-        out = subprocess.run(["bash", "-c", script], cwd=repo, env=env, capture_output=True, text=True,
-                             stdin=subprocess.DEVNULL, check=False, timeout=30)  # fmt: skip
+        out = subprocess.run(["bash", "-c", script], cwd=repo, env=env, capture_output=True,
+                             text=True, stdin=subprocess.DEVNULL, check=False,
+                             timeout=30)  # fmt: skip
         values = out.stdout.split("\0")
         for k, v in zip(KEYS, values, strict=False):
             found.setdefault(k, v)
@@ -279,6 +281,8 @@ def plan(args: argparse.Namespace) -> dict:
     if not upstream:
         raise Refused(f"{repo}: the branch tracks no remote branch; nothing to push to")
     remote, _, branch = upstream.partition("/")
+    if args.progress and not args.item:
+        raise Refused("--progress needs --item: it records a slice of that item as PROGRESS")
     root = Path(os.environ.get("LOOPCTL_ROOT") or Path.home() / "Projects")
     try:
         name = str(repo.resolve().relative_to(root.resolve()))
@@ -305,6 +309,7 @@ def plan(args: argparse.Namespace) -> dict:
     out = Path(args.out) if args.out else default_out(name, sha)
     return {
         "schema": 1, "repo": str(repo), "name": name, "item": args.item or None,
+        "progress": bool(args.progress),
         "summary": args.summary or "", "remote": remote, "branch": branch, "sha": sha,
         "handoff_sha": sha,
         "base_tag": tag, "version": version, "bump": args.bump,
@@ -364,7 +369,8 @@ def command(res: dict, name: str) -> tuple[str | None, str]:
         return f"{py} {me} --verify {shlex.quote(res['result'])}", ""
     if not res["item"]:
         return None, "no --item to record"
-    return f"{py} {lc} done {shlex.quote(res['item'])} --shipped {shlex.quote(res['result'])}", ""
+    verb = "progress" if res.get("progress") else "done"  # a slice stays open (LOOP.SHIPSLICE)
+    return f"{py} {lc} {verb} {shlex.quote(res['item'])} --shipped {shlex.quote(res['result'])}", ""
 
 
 def unbound_env() -> dict[str, str]:
@@ -461,6 +467,8 @@ def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(prog="goh ship", description=__doc__.splitlines()[0])
     ap.add_argument("--repo", help="the checkout to ship (default: the current one)")
     ap.add_argument("--item", help="the queue item `loopctl done` records on success")
+    ap.add_argument("--progress", action="store_true",
+                    help="with --item: one slice: PROGRESS, the item left open")  # fmt: skip
     ap.add_argument("--summary", help="what landed, one line (the item's result)")
     ap.add_argument("--version", help="the release version X.Y.Z (default: from the commits)")
     ap.add_argument("--bump", choices=("patch", "minor", "major", "none"),
