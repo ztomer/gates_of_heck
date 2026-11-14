@@ -249,23 +249,18 @@ fi
 # refused: a hook a repo edited is not stock, and is its own business. Nothing is rewritten here --
 # `.githooks` is tracked, and a gate that edits the tree it judges dirties the commit it is in.
 # An entry tagged `same-logic` retired only a comment, so its hook runs today's gate (6.19).
-_goh_hooks="$(git config core.hooksPath 2>/dev/null || echo .githooks)"
-_goh_stale=""
-for _goh_h in pre-commit pre-push; do
-    [ -f "$_goh_hooks/$_goh_h" ] || continue
-    _goh_sum="$(shasum -a 256 <"$_goh_hooks/$_goh_h" | cut -d' ' -f1)"
-    if awk -v s="$_goh_sum" -v h="$_goh_h" '$1 == s && $2 == h && !/same-logic/ { f = 1 }
-            END { exit !f }' "$GOH_ROOT/retired_hooks.sha256" 2>/dev/null; then
-        err "$_goh_hooks/$_goh_h is an OLDER stock hook: the gate it runs is not today's"
-        _goh_stale=1
-    fi
-done
+# shellcheck source=gates/_hook_currency.sh
+. "$HERE/_hook_currency.sh"  # one reading, shared with goh ship's preflight (GOH.SHIPITEM)
+_goh_stale="$(goh_stale_hooks)"
 if [ -n "$_goh_stale" ]; then
+    while IFS= read -r _goh_h; do
+        err "$_goh_h is an OLDER stock hook: the gate it runs is not today's"
+    done <<<"$_goh_stale"
     err "  update the hooks, then commit them:  $GOH_ROOT/install.sh \"$PWD\""
     err "  (every estate repo at once: goh hooks --refresh)"
     exit 1
 fi
-unset _goh_hooks _goh_h _goh_sum _goh_stale
+unset _goh_h _goh_stale
 
 # ── A consumer's `tools/gate.sh --full` takes the gate slot HERE (lib/gate_slot.sh, v0.39.0). ──
 # The consumer copies written before v0.37.0 run this script first and then their own heavy layers,

@@ -34,7 +34,7 @@ def test_a_changelog_the_declared_kit_will_refuse_is_refused_before_any_step(
     assert "Unreleased" in r.stderr and "v1.1.0" in r.stderr, r.stderr
     assert git(shipped, "ls-remote", "origin") == before
     assert not (tmp_path / "ship.json").exists() and not (tmp_path / "pf").exists()
-    assert _calls(tmp_path) == []
+    assert [c for c in _calls(tmp_path) if c[0] != "shippable"] == []  # only the read-only item ask
 
 
 def test_a_kit_that_cuts_its_own_changelog_is_not_refused(shipped, tmp_path):

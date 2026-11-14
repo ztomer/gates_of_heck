@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+* **`goh ship` refuses a mismatched item and a stale hook before its first step (`GOH.SHIPITEM`).** Three goh releases shipped under RM.MONITOR (repo monitor) and only the done step refused them, after a 40-minute verify; koffee_big 2.17.5 pushed and only the release's bump commit refused `.githooks/pre-commit is an OLDER stock hook`. Preflight now asks `loopctl shippable ID --repo NAME` (an unknown, done or other repo's item is refused, nothing run; an `--item` with no loopctl is refused too) and refuses an OLDER stock hook, naming `install.sh`, by structural.sh's own reading (`gates/_hook_currency.sh`, now shared). `lib/ship_item.py` holds both; `goh ship --status` moved to `lib/ship_status.py` (500-line cap).
+
 * **An empty Unreleased beside the version's written stanza is a clean cut, and the kit commits nothing for it (`GOH.CUTEMPTY`).** `tools/release-kit/changelog_cut.py cut` refused `Unreleased is empty: nothing to release` when the stanza for the version was already written (EST.STORE1116); it now leaves the file as it stands and succeeds. Step 0b (`release_changelog_cut`) then committed with nothing staged (`committing the v1.2.3 stanza exited nonzero`) or amended the version commit to no end: a cut that changes nothing commits nothing, and `release_cut_pending` reads it as no cut, so the preflight checks the written stanza.
 
 ## v0.113.2 -- release kit refuses before its first commit or push (KITORDER); a tagless repo's first ship names its version (FIRSTTAG); a failed release takes back its unpushed bump and tags (SHIPUNDO)

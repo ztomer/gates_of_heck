@@ -36,6 +36,8 @@ When the release step will run, plan() first runs goh's CHANGELOG.md reading (th
 GOH_SHIP_CHANGELOG declares), then `.gatesrc` GOH_SHIP_PREFLIGHT ({version} substituted), in the
 repo under the ship's bound with GOH_SHIP_VERSION/SUMMARY/ITEM set; a non-zero exit refuses, nothing
 pushed. A new check is a line in the repo's preflight, never a case here (ship_preflight_audit).
+Before those, what the LAST steps refused (lib/ship_item.py, GOH.SHIPITEM): an --item loopctl
+refuses for this repo (unknown, done, another repo's), and an OLDER stock hook in the repo.
 
 Started without --wait it validates, writes the result JSON (status `running`), detaches a worker
 in its own session and prints one line naming the result; the worker prints a ✓/✗/· line per step
@@ -98,7 +100,9 @@ sys.path.insert(0, str(ROOT / "lib"))
 import bounded_run
 import gitrun
 import ship_changelog
+import ship_item
 import ship_pushed
+import ship_status
 import ship_undo
 import ship_verify
 
@@ -140,8 +144,8 @@ def config(repo: Path) -> dict[str, str]:
         script = ". ./.gatesrc >/dev/null 2>&1 </dev/null; " + "; ".join(
             f'printf "%s\\0" "${{{k}-}}"' for k in KEYS)  # fmt: skip
         env = {k: v for k, v in os.environ.items() if k not in KEYS}
-        out = subprocess.run(["bash", "-c", script], cwd=repo, env=env, capture_output=True,
-                             text=True, stdin=subprocess.DEVNULL, check=False, timeout=30)  # fmt: skip
+        out = subprocess.run(["bash", "-c", script], cwd=repo, env=env, capture_output=True, text=True,
+                             stdin=subprocess.DEVNULL, check=False, timeout=30)  # fmt: skip
         values = out.stdout.split("\0")
         for k, v in zip(KEYS, values, strict=False):
             found.setdefault(k, v)
@@ -275,6 +279,15 @@ def plan(args: argparse.Namespace) -> dict:
     if not upstream:
         raise Refused(f"{repo}: the branch tracks no remote branch; nothing to push to")
     remote, _, branch = upstream.partition("/")
+    root = Path(os.environ.get("LOOPCTL_ROOT") or Path.home() / "Projects")
+    try:
+        name = str(repo.resolve().relative_to(root.resolve()))
+    except ValueError:
+        name = repo.name
+    why = ship_item.item_refusal(repo, loopctl(), args.item, name) if args.item else None
+    why = why or ship_item.hook_refusal(repo, ROOT)
+    if why:
+        raise Refused(why)
     cfg = config(repo)
     tag = newest_tag(repo)
     sha = git(repo, "rev-parse", "HEAD")
@@ -289,15 +302,11 @@ def plan(args: argparse.Namespace) -> dict:
         raise Refused(f"GOH_SHIP_TIMEOUT={cfg['GOH_SHIP_TIMEOUT']!r} is not seconds") from None
     asked = preflights(repo, cfg, version, args.summary or "")
     run_preflights(repo, asked, version, args, timeout)
-    root = Path(os.environ.get("LOOPCTL_ROOT") or Path.home() / "Projects")
-    try:
-        name = str(repo.resolve().relative_to(root.resolve()))
-    except ValueError:
-        name = repo.name
     out = Path(args.out) if args.out else default_out(name, sha)
     return {
         "schema": 1, "repo": str(repo), "name": name, "item": args.item or None,
-        "summary": args.summary or "", "remote": remote, "branch": branch, "sha": sha, "handoff_sha": sha,
+        "summary": args.summary or "", "remote": remote, "branch": branch, "sha": sha,
+        "handoff_sha": sha,
         "base_tag": tag, "version": version, "bump": args.bump,
         "release": cfg["GOH_SHIP_RELEASE"], "install": cfg["GOH_SHIP_INSTALL"],
         "release_pushes": cfg["GOH_SHIP_RELEASE_PUSHES"] == "1",
@@ -442,33 +451,10 @@ def start(args: argparse.Namespace) -> int:
     with log.open("ab") as out:
         worker_argv = [sys.executable, str(Path(__file__).resolve()), "--worker", res["result"]]
         subprocess.Popen(worker_argv, cwd=res["repo"], env=unbound_env(), stdout=out, stderr=out,
-                         stdin=subprocess.DEVNULL, start_new_session=True, close_fds=True)  # fmt: skip
+                         stdin=subprocess.DEVNULL, start_new_session=True,
+                         close_fds=True)  # fmt: skip
     info(f"goh ship started: {res['result']}")
     return 0
-
-
-def status(result: str) -> int:
-    """Print the marks a result holds. 0 shipped, 1 failed, 2 unreadable, 3 running, 4 the worker
-    is gone (killed, or the machine slept through a reboot) while the result still says running."""
-    try:
-        res = json.loads(Path(result).read_text(encoding="utf-8"))
-    except (OSError, ValueError) as e:
-        err(f"goh ship: cannot read {result}: {e}")
-        return 2
-    for s in res["steps"]:
-        mark = {"ok": ok, "skipped": step}.get(s["status"], err)
-        mark(f"{s['name']}: {s['status']}" + (f" ({s['why']})" if s.get("why") else ""))
-    if res["status"] == "running":
-        pid = res.get("pid")
-        try:
-            if pid:
-                os.kill(pid, 0)
-            info(f"running: {result}")
-            return 3
-        except OSError:
-            err(f"the worker (pid {pid}) is gone and the result says running: {result}")
-            return 4
-    return 0 if res["status"] == "ok" else 1
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -491,7 +477,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.worker:
         return worker(args.worker)
     if args.status:
-        return status(args.status)
+        return ship_status.status(args.status)
     return start(args)
 
 

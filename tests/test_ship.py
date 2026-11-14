@@ -416,7 +416,7 @@ def test_a_failing_preflight_refuses_with_its_reason_and_leaves_origin_untouched
     assert "GOH_SHIP_PREFLIGHT" in r.stderr, r.stderr
     assert git(shipped, "ls-remote", "origin") == before
     assert not (tmp_path / "ship.json").exists()
-    assert _calls(tmp_path) == []
+    assert [c for c in _calls(tmp_path) if c[0] != "shippable"] == []  # only the read-only item ask
 
 
 def test_the_preflight_runs_in_the_repo_with_the_version_and_a_pass_ships(shipped, tmp_path):
