@@ -3,6 +3,7 @@
 # by concern when that file stood at the 500-line cap (GOH.LOCALCISPLIT); local_ci.sh is the
 # runner (the slot, the scheduler, the report) and this is its configuration. Sourced, never run.
 # shellcheck shell=bash
+_goh_d=${BASH_SOURCE[0]%/*}; [ "$_goh_d" != "${BASH_SOURCE[0]}" ] || _goh_d=.; . "$_goh_d/../lib/bash5.sh" || exit; goh_bash5 "$@"
 
 # GOH_LCI_TIMEOUT: per-step wall-clock ceiling in seconds. The DEFAULT is 900 (15 min), and the
 # default is the point: this was unset everywhere in the estate, which means "no limit", which means
