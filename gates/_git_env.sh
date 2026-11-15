@@ -16,7 +16,8 @@
 #                         committed when it is not the repository's own, then unbind. Returns 2,
 #                         naming why, when the repository is reachable only through them.
 #   goh_bind_hook_index   bind that carried index again, in THIS shell, for a reader of the index
-#                         being committed -- and only inside the repository it was carried from.
+#                         being committed -- and only inside the repository it was carried from,
+#                         and never over a GIT_INDEX_FILE its caller set (GOH.HOOKINDEX).
 #
 # WHY THE INDEX IS CARRIED. A plain `git commit` hands the hook the repository's own index, which
 # git finds again from the cwd; nothing is lost by dropping it. `commit -a` and `commit <paths>`
@@ -85,6 +86,10 @@ goh_hook_unbind() {
 
 goh_bind_hook_index() {
     [ -n "${GOH_HOOK_INDEX_FILE:-}" ] && [ -n "${GOH_HOOK_GIT_DIR:-}" ] || return 0
+    # A GIT_INDEX_FILE already set was set ON PURPOSE (the hook's own was dropped at entry): a test
+    # that runs its own gate over its own index inside a commit hook read the OUTER commit's index
+    # when this replaced it (EST.REDGATES3, 2026-11-13). The caller's wins (GOH.HOOKINDEX).
+    [ -z "${GIT_INDEX_FILE:-}" ] || return 0
     local here
     here="$(git rev-parse --absolute-git-dir 2>/dev/null)" || return 0
     [ "$(_goh_git_phys "$here")" = "$GOH_HOOK_GIT_DIR" ] || return 0
