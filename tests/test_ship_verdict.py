@@ -17,6 +17,7 @@ import subprocess
 import sys
 from pathlib import Path
 
+from _fast_git import fast_init
 from conftest import REPO_ROOT, hermetic_env
 from test_push_gate import PUSH_GATE, _git, _repo
 from test_ship import _result, _ship, make_shipped
@@ -130,8 +131,7 @@ def test_the_ship_worker_names_the_verdict_file_for_its_whole_run(tmp_path):
 
 def _init(tmp_path: Path) -> Path:
     repo = tmp_path / "shipped"
-    repo.mkdir()
-    _git(repo, "init", "-q", "-b", "main")
+    fast_init(repo, "main")
     (repo / "a.txt").write_text("one\n")
     _git(repo, "add", "a.txt")
     _git(repo, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "-m", "one")
