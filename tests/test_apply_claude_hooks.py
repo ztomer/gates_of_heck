@@ -34,6 +34,15 @@ NARROW = "Bash|Write|Edit|MultiEdit"
 WIDE = "Bash|Monitor|Write|Edit|MultiEdit"
 
 
+@pytest.fixture(autouse=True)
+def _the_suite_homes_agents_stay_unwritten():
+    """No test here reaches the suite's shared `~/.claude/agents` (GOH.FLAKYCLAUDEDRIFT): one that
+    did made every later `--check` in the session depend on whether it ran first."""
+    yield
+    shared = Path.home() / ".claude" / "agents"
+    assert not shared.exists(), f"a test wrote the suite home's {shared}: pass --agents-dir"
+
+
 def _hook(cmd: str, timeout: int | None = 15) -> dict:
     return {"type": "command", "command": cmd, **({"timeout": timeout} if timeout else {})}
 
@@ -145,8 +154,13 @@ def test_every_registration_applies_to_an_empty_settings_and_the_drift_check_agr
 
 
 def _run(settings: Path, *args: str) -> subprocess.CompletedProcess[str]:
+    """The CLI on `settings`, its agent types beside it. Without `--agents-dir` it read and WROTE
+    `~/.claude/agents` -- the suite's ONE home, shared by every test and worker -- so the `--check`
+    of a managed setting went red ("agent repo-worker: missing") unless a writing sibling had run
+    first in the same session (GOH.FLAKYCLAUDEDRIFT)."""
     return subprocess.run(
-        [sys.executable, str(SCRIPT), "--settings", str(settings), *args],
+        [sys.executable, str(SCRIPT), "--settings", str(settings),
+         "--agents-dir", str(settings.parent / "agents"), *args],
         stdin=subprocess.DEVNULL,
         capture_output=True, text=True, timeout=60, env=hermetic_env(), check=False,
     )  # fmt: skip
@@ -340,7 +354,9 @@ def test_the_cli_check_reads_a_managed_setting_drift(tmp_path: Path) -> None:
     s = tmp_path / "settings.json"
     applied, _ = ach.apply({}, REAL_REGS)
     s.write_text(json.dumps(applied))
-    assert _run(s, "--check").returncode == 0
+    assert ach.apply_agents(AGENT_SRC, tmp_path / "agents", check=False, dry_run=False) == 0
+    r = _run(s, "--check")
+    assert r.returncode == 0, r.stdout  # in place: hooks, managed settings AND this test's agents
     s.write_text(json.dumps({**applied, "env": {CAP: "99999"}}))
     r = _run(s, "--check")
     assert r.returncode == 1 and CAP in r.stdout
