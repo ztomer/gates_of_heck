@@ -22,6 +22,7 @@ from _fast_git import fast_init
 from _gatesrc_kit import write_gatesrc
 from conftest import REPO_ROOT, hermetic_env
 from test_release_kit import TAG, VERSION, commit_all, run_release, sh
+from timing_bounds import patience
 
 sys.path.insert(0, str(REPO_ROOT / "lib"))
 import ship_changelog
@@ -118,7 +119,7 @@ def _staged(repo: Path, goh: Path, rc: str) -> subprocess.CompletedProcess[str]:
     subprocess.run(["git", "add", "-A"], cwd=repo, check=True, stdin=subprocess.DEVNULL)
     return subprocess.run([str(goh), "structural", "--staged"], cwd=repo,
                           env=hermetic_env(GOH_DIR=str(REPO_ROOT)), capture_output=True, text=True,
-                          check=False, stdin=subprocess.DEVNULL, timeout=300)  # fmt: skip
+                          check=False, stdin=subprocess.DEVNULL, timeout=patience(300))  # fmt: skip
 
 
 def test_the_commit_gate_refuses_an_entry_written_under_unreleased(tmp_path, native_goh):

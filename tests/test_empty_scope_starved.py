@@ -37,6 +37,7 @@ sys.path.insert(0, str(REPO_ROOT / "checks"))
 sys.path.insert(0, str(REPO_ROOT / "lib"))
 import check_empty_scope as ces
 import pgid_cpu
+import source_closure
 
 SCRIPT = REPO_ROOT / "scripts" / "release_canary.py"
 LABEL = "gates refuse to pass over an empty tree"
@@ -198,8 +199,7 @@ def test_the_skeleton_carries_the_bash_guard_a_shell_gate_sources(tmp_path):
     comes along, ignored like the gate directory, so the sweep measures the gate, not its guard."""
     root = tmp_path / "repo"
     (root / "checks").mkdir(parents=True)
-    (root / "lib").mkdir()
-    (root / "lib" / "bash5.sh").write_text((REPO_ROOT / "lib" / "bash5.sh").read_text())
+    source_closure.copy_closure(root, "lib/bash5.sh")
     gate = root / "checks" / "check_args.sh"
     gate.write_text(
         '#!/usr/bin/env bash\n. "$(dirname "${BASH_SOURCE[0]}")/../lib/bash5.sh" || exit; '
@@ -218,3 +218,32 @@ def test_the_skeleton_carries_the_bash_guard_a_shell_gate_sources(tmp_path):
         capture_output=True, text=True, check=True, stdin=subprocess.DEVNULL,
     ).stdout  # fmt: skip
     assert "bash5.sh" not in listed, listed
+
+
+def test_the_skeleton_carries_what_a_shell_gate_sources_read_from_its_source(tmp_path):
+    """GOH.CLASS.HARNESS: the guard was a hand list (`GUARD = "lib/bash5.sh"`), right until a gate
+    sources anything else. The skeleton reads each gate's own `.` lines (lib/source_closure.py), so
+    a helper two hops away comes along, and stays ignored like the gate directory."""
+    root = tmp_path / "repo"
+    (root / "checks").mkdir(parents=True)
+    (root / "lib").mkdir()
+    (root / "lib" / "helper.sh").write_text('. "${BASH_SOURCE[0]%/*}/deeper.sh"\n')
+    (root / "lib" / "deeper.sh").write_text("say() { echo usage: check_args.sh FILE >&2; }\n")
+    gate = root / "checks" / "check_args.sh"
+    gate.write_text(
+        '#!/usr/bin/env bash\nHERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"\n'
+        '. "$HERE/../lib/helper.sh" || exit 1\nsay\nexit 2\n'
+    )
+    gate.chmod(0o755)
+    fast_init(root)
+    skeleton = ces.build_skeleton(str(root), str(root / "checks"), str(tmp_path / "skeleton"))
+    r = subprocess.run(
+        ["bash", os.path.join(skeleton, "checks", "check_args.sh")],
+        capture_output=True, text=True, check=False, stdin=subprocess.DEVNULL,
+    )  # fmt: skip
+    assert r.returncode == 2 and "usage:" in r.stderr, r.stderr
+    listed = subprocess.run(
+        ["git", "-C", skeleton, "ls-files", "--others", "--exclude-standard"],
+        capture_output=True, text=True, check=True, stdin=subprocess.DEVNULL,
+    ).stdout  # fmt: skip
+    assert "helper.sh" not in listed and "deeper.sh" not in listed, listed

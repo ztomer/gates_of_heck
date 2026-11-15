@@ -17,7 +17,7 @@ from pathlib import Path
 import pytest
 from _gatesrc_kit import write_gatesrc
 from conftest import REPO_ROOT
-from timing_bounds import GiveUp
+from timing_bounds import GiveUp, patience
 
 
 def _alive(pid: int) -> bool:
@@ -64,7 +64,7 @@ def test_a_signal_to_the_wrapper_reaps_the_step(tmp_path, sig):
     try:
         step = int(_wait_for(pidfile))
         wrapper.send_signal(sig)
-        wrapper.wait(timeout=10)
+        wrapper.wait(timeout=patience(10))  # 10 s starved at load ~200 (GOH.BOUNDEDRUNFLAKE)
         give_up = GiveUp(5)
         while _alive(step) and not give_up.passed():
             time.sleep(0.05)
@@ -105,11 +105,11 @@ def test_a_signal_ignored_at_entry_stays_ignored(tmp_path):
     try:
         step = int(_wait_for(pidfile))
         wrapper.send_signal(signal.SIGHUP)
-        time.sleep(0.5)
+        time.sleep(patience(0.5))  # a negative: the longer the box is starved, the longer it looks
         assert wrapper.poll() is None and _alive(step), "an ignored SIGHUP stopped the run"
     finally:
         wrapper.terminate()
-        wrapper.wait(timeout=10)
+        wrapper.wait(timeout=patience(10))
         try:
             os.kill(int(pidfile.read_text()), signal.SIGKILL)
         except (OSError, ValueError):
@@ -134,7 +134,7 @@ def test_a_term_to_a_concurrent_local_ci_reaps_every_running_step(tmp_path):
     try:
         steps_running = [int(_wait_for(p)) for p in pids]
         ci.send_signal(signal.SIGTERM)
-        ci.wait(timeout=15)
+        ci.wait(timeout=patience(15))
         give_up = GiveUp(8)
         while any(map(_alive, steps_running)) and not give_up.passed():
             time.sleep(0.05)
@@ -168,10 +168,10 @@ def test_a_stop_that_lands_while_the_step_is_starting_still_sweeps_it(monkeypatc
         return proc
 
     monkeypatch.setattr(bounded_run.subprocess, "Popen", popen_then_stop)
-    outcome = bounded_run.run_step(["sleep", "300"], timeout=60, grace=1, label="sleep")
+    outcome = bounded_run.run_step(["sleep", "300"], timeout=patience(60), grace=1, label="sleep")
     try:
         assert outcome.code == 128 + signal.SIGTERM
-        started[0].wait(timeout=5)
+        started[0].wait(timeout=patience(5))
     finally:
         if started[0].poll() is None:
             started[0].kill()

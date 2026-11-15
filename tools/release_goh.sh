@@ -9,8 +9,9 @@
 #   2. in a build/ worktree off HEAD: [workspace.package] version and Cargo.lock's workspace
 #      entries set to VERSION, Unreleased cut into `## vVERSION` (titled with GOH_SHIP_SUMMARY when
 #      ship gives one), one `release: vVERSION -- TITLE` commit through the hooks;
-#   3. tools/land.sh from that worktree: main moves only through land (.gatesrc GOH_LANDED_ONLY),
-#      never a commit in the main checkout and never GOH_MAIN_COMMIT_OK;
+#   3. tools/loaded_suite.sh, the suite once under tools/load.py's spinners (GOH.CLASS.HARNESS),
+#      then tools/land.sh from that worktree: main moves only through land (.gatesrc
+#      GOH_LANDED_ONLY), never a commit in the main checkout and never GOH_MAIN_COMMIT_OK;
 #   4. push main, then an annotated tag vVERSION whose message is the stanza, then push the tag.
 #
 # With .gatesrc GOH_CHANGELOG_FRAGMENTS=on (goh's own), each change's entry is its own file in
@@ -99,6 +100,9 @@ release: ${heading#\#\# }
 
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
 MSG
+    # The suite once under deliberate load, before main moves (GOH.CLASS.HARNESS): a test the box's
+    # load turns red is this release's refusal, named, not a random later land's.
+    tools/loaded_suite.sh
     tools/land.sh
 )
 

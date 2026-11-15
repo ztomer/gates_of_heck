@@ -198,6 +198,7 @@ Every structural checker is native since Phase N3; the Python checkers they port
 | `swift_coverage_scope.py` | What counts as "the code under test" in a Swift coverage measurement -- ONE definition both measurement paths import. | `test_coverage_swift_scope.py` |
 | `tree_stamp.py` | Did the working tree move while a gate ran over it? A stamp taken before and after; a gate certifying bytes that changed under it says so (ZoneWM 2c.9). | `test_tree_stamp.py` |
 | `landed_verify.py` | Is a subagent's `landed` true? The report's shas located in the estate's repos, then each on its GitHub default branch and CI concluded success on it (or on the first run that contains it). A mismatch is `silent-failure`; gh missing, the network down or offline is `unverified`, never a pass. Read by `scripts/agent_audit.py`. | `test_agent_audit_verify.py` |
+| `source_closure.py` | A goh script's dependency closure, read from its own `source`/`.` lines and imports, never a hand list (GOH.CLASS.HARNESS): `closure(paths)` follows the script-relative and GOH_DIR spellings and names every source line it cannot place; `copy_closure(dest, rel)` is the ONE fixture builder for a copy of part of goh (tests/fixture_copy_lint.py refuses a hand copy beyond its shrink-only seed); the empty-scope skeleton carries what its shell gates source through it. | `test_source_closure.py`, `test_empty_scope_starved.py` |
 | `land_lock.py` | The repository's land lock from Python (GOH.CLASS.CHECKOUT): `goh-land.lock` in the common git dir, the kernel flock tools/land.sh takes; the ship worker holds it for its pipeline, so a land waits behind a ship (naming it) and a ship behind a land; GOH_LAND_LOCK_OWNER lets a land the ship's own release kit runs proceed under the ship's hold. | `test_ship_land_lock.py`, `test_entry_points_leave_no_strays.py` |
 | `goh_root.py` / `goh_root.sh` | A GOH_DIR naming a REMOVED HEAD export (a pruned `~/.cache/goh/head/<sha>` a long-lived process inherited) resolves to GOH_LIVE_ROOT, then the default checkout, said on stderr (GOH.TRANSIENTDIR). One rule: `goh_root()` (Python, repo_hold), `goh_dir_repair` (shell; copied verbatim into every stock hook), `crates/goh/src/goh_dir.rs` (native, re-runs itself repaired). | `test_dead_goh_dir.py` |
 | `repo_hold.py` | THE HOLD: is this path inside a repo whose local git config carries `goh.hold` (or the legacy `goh.archived`)? Parsed, never asked of git (the Claude guard runs on every tool call); worktrees' `commondir` and enclosing repos followed; `holds_below` for a recursive verb on an ancestor, bounded. `check`/`show` CLI for the gates (`lib/repo_hold.sh`: commit, commit-msg, pre-applypatch, push refuse a held repo). | `test_repo_hold.py`, `test_hold_gates.py` |
@@ -275,6 +276,10 @@ Every structural checker is native since Phase N3; the Python checkers they port
   `ztomer/gates_of_heck/.github/actions/goh-floors@<release commit>` with `goh-dir`. `test_goh_floors_action.py`.
 * `tools/gate.sh` — this repo's own gate entry (layer 1 + parallel pytest
   on `--full`: `-n 12 --dist loadgroup`, serial fallback without xdist).
+* `tools/loaded_suite.sh [-n N] [-- CMD...]` -- the suite once under `tools/load.py`'s N spinners
+  (default the core count), which `tools/release_goh.sh` runs before its land (GOH.CLASS.HARNESS):
+  a load-sensitive test is red at the release that carries it, its line naming the spinners and the
+  load the run began on. `test_loaded_suite.py`.
 * `tools/load.py [N -- CMD...]` — the ONE way to make load on this machine, and it reaps itself.
   It takes the registry slot (`GOH_LOAD_DIR`, default `~/.cache/goh/load`), refusing a second
   experiment while one holds it; starts N spinners, REGISTERING each one (pid + start time)

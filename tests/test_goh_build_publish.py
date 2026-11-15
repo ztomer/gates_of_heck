@@ -14,9 +14,13 @@ from __future__ import annotations
 import os
 import shutil
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "lib"))
+import source_closure
 
 ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = ROOT / "scripts" / "build-goh.sh"
@@ -122,11 +126,9 @@ def test_a_change_outside_the_goh_sources_does_not_block(clone: Path) -> None:
 
 def test_a_tree_that_is_not_a_checkout_publishes(tmp_path: Path) -> None:
     tree = tmp_path / "tarball"
-    (tree / "scripts").mkdir(parents=True)
-    (tree / "crates").mkdir()
-    shutil.copy2(SCRIPT, tree / "scripts" / "build-goh.sh")
-    (tree / "lib").mkdir()  # a tarball carries the bash guard; without it the script stops
-    shutil.copy2(SCRIPT.parent.parent / "lib" / "bash5.sh", tree / "lib" / "bash5.sh")
+    (tree / "crates").mkdir(parents=True)
+    # A tarball carries what the script sources (its bash guard first): read, never listed.
+    source_closure.copy_closure(tree, "scripts/build-goh.sh", root=ROOT)
     r = check(tree, GIT_CEILING_DIRECTORIES=str(tmp_path))
     assert r.returncode == 0, r.stderr
 

@@ -62,10 +62,10 @@ from tui.lib import counted, err, info, ok, warn
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "lib"))
 import not_applicable
+import source_closure
 
 GATE_DIRS = ("tools", "checks")
 ALLOW_FILE = "empty_scope_allow.json"
-GUARD = "lib/bash5.sh"  # every goh shell gate sources it from beside its gate directory
 
 # Root files that give the skeleton its SHAPE. Without them a gate may die on "this is not a Swift
 # package" -- a legitimate refusal, but it answers a different question than the one being asked,
@@ -164,10 +164,8 @@ def allowed(gates):
 def build_skeleton(root, gates, workdir):
     """A git repo with the real gate directory, the shape files, and every directory -- no content.
 
-    The gate directory is copied WHOLE and on purpose: its baselines and allowlists must come
-    along, because "the baseline names 49 files and the scan found none" is precisely the state
-    being tested for. A skeleton without them tests nothing.
-    """
+    The gate directory is copied WHOLE and on purpose: its baselines and allowlists must come along,
+    because "the baseline names 49 files and the scan found none" is the state being tested for."""
     scratch_git("init", "-q", workdir, check=True)
     shutil.copytree(
         gates,
@@ -183,20 +181,21 @@ def build_skeleton(root, gates, workdir):
         for name in dirnames:
             rel = os.path.relpath(os.path.join(current, name), root)
             os.makedirs(os.path.join(workdir, rel), exist_ok=True)
-    # Runtime, not content (GOH.BASH5SILENT): a shell gate missing its guard dies, read as refusal.
-    if os.path.isfile(guard := os.path.join(os.path.dirname(gates), GUARD)):
-        shutil.copy2(guard, os.path.join(workdir, GUARD))  # ignored below, like the gate directory
+    # Runtime, not content: what the shell gates source from outside their directory, read from
+    # their own lines, never a hand list (GOH.CLASS.HARNESS); Python's comes through PYTHONPATH.
+    for rel in (runtime := source_closure.sourced_from_outside(gates, SKIP_DIRS)):
+        os.makedirs(os.path.dirname(os.path.join(workdir, rel)), exist_ok=True)
+        shutil.copy2(os.path.join(os.path.dirname(gates), rel), os.path.join(workdir, rel))
     for key, value in (("user.email", "scope@example.invalid"), ("user.name", "scope")):
         scratch_git("-C", workdir, "config", key, value, check=True)
-    # The gate directory is on DISK (runnable, baselines readable) but NOT TRACKED and IGNORED, or
-    # every whole-repo scanner finds the copied gates and passes honestly, which reads as blindness
-    # (tracked, check_no_emoji said "18 tracked files clean" over no content). Untracked stopped
-    # being enough once full scope became the WORKTREE (2026-09-14): .git/info/exclude ignores it.
+    # The gate directory is on DISK but NOT TRACKED and IGNORED (.git/info/exclude), or every
+    # whole-repo scanner finds the copied gates and passes honestly, which reads as blindness
+    # (check_no_emoji said "18 tracked files clean" over no content; untracked alone, 2026-09-14).
     info_dir = os.path.join(workdir, ".git", "info")
     os.makedirs(info_dir, exist_ok=True)
     with open(os.path.join(info_dir, "exclude"), "a", encoding="utf-8") as fh:
         fh.write(f"/{os.path.basename(gates)}/\n")
-        fh.write(f"/{GUARD}\n")
+        fh.writelines(f"/{rel}\n" for rel in runtime)  # ignored, like the gate directory
     scratch_git("-C", workdir, "add", "-A", "--", f":!{os.path.basename(gates)}")
     scratch_git("-C", workdir, "commit", "-qm", "skeleton", "--allow-empty")
     return workdir
