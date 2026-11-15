@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## v0.117.0 -- goh lanes round 3: canary honours GOH_SEED_DIR (CANARYSEEDDIR), sibling-worktree config not blamed (SHAREDCONFIG), killed binary copies leave nothing (STAGINGSTRAY), fixture copies its guard (PROFILEFIXTURE), ship reads docs/CHANGELOG.md (SHIPCLDOCS); one stale-hook rule (HOOKCURRENCYDUP), no GOH_ROADMAP_PENDING seam (ROADMAPHOOK); goh says every count with its noun (HEDGEOWN, LINEHEDGE), two heredocs per line (HEREDOC2), bold roadmap entries under grace (ROADMAPBOLD)
+
 * **`goh roadmap` reads a bold-paragraph entry, from 2026-11-23 (`GOH.ROADMAPBOLD`).** The reader counted only heading and list-item entries, so a paragraph opening `**KB.HYG1 Title.**` with no `Done when:` passed in silence (koffee_big held five; converting them to headings raised its count from 7 to 12). A paragraph whose first line opens with bold text carrying an id is an entry now, judged like the others; `**Why:**` and `**Done when:**` carry no id and open nothing. Behind `crate::grace` until 2026-11-23, so no released consumer turns red the day it lands.
 
 * **Two heredocs opened on one line are both judged by their owner (`GOH.HEREDOC2`).** `lib/shell_segments.py` cut only the first of `cat <<A <<B` or `sh <<A; cat <<B`, so the second body's lines stayed in the text as commands: a `cargo build` that `cat` only printed read as a bare build (a false refusal), and one that `sh` ran was refused only by accident. Every opener on a line is cut now, each body's marker standing where its own `<<WORD` was.
