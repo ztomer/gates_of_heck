@@ -69,14 +69,64 @@ fn dep_files(build_dir: &Path, prefixes: &[String]) -> Vec<PathBuf> {
     found
 }
 
-pub(crate) fn depinfo_paths(file: &Path, text: &str) -> Vec<PathBuf> {
-    let script = file.file_name().is_some_and(|n| n == "output")
+/// A build script's captured output: `<pkg>-<hash>/output`, or cargo 1.100's `<hash>/run/stdout`.
+fn is_script_output(file: &Path) -> bool {
+    file.file_name().is_some_and(|n| n == "output")
         || (file.file_name().is_some_and(|n| n == "stdout")
             && file
                 .parent()
                 .and_then(Path::file_name)
-                .is_some_and(|d| d == "run"));
-    if script {
+                .is_some_and(|d| d == "run"))
+}
+
+/// The package whose build script wrote `file`: `build/<pkg>/<hash>/run/stdout` (cargo 1.100+) or
+/// `build/<pkg>-<hash>/output`.
+fn script_package(file: &Path) -> Option<String> {
+    let dir = file.parent()?;
+    if file.file_name().is_some_and(|n| n == "stdout") {
+        return unit_package(dir);
+    }
+    let leaf = dir.file_name()?.to_string_lossy().into_owned();
+    leaf.rsplit_once('-').map(|(pkg, _hash)| pkg.to_owned())
+}
+
+/// `path` with `.` and `..` folded away by name: a file a build re-runs on may not exist, and
+/// `canonicalize` answers only for one that does.
+fn lexical(path: &Path) -> PathBuf {
+    use std::path::Component;
+    let mut out = PathBuf::new();
+    for c in path.components() {
+        match c {
+            Component::CurDir => {}
+            Component::ParentDir => {
+                if !out.pop() {
+                    out.push(c);
+                }
+            }
+            _ => out.push(c),
+        }
+    }
+    out
+}
+
+/// The directory a relative path in `file` is relative to, as cargo reads it (GOH.RERUNPATH,
+/// probed on cargo 1.100.0): a build script's `rerun-if-changed` is relative to its PACKAGE ROOT;
+/// rustc's dep-info is relative to the WORKSPACE ROOT, where cargo runs rustc for a path package
+/// it names relatively (any other source path is absolute, and so is every path rustc derives).
+/// `None` when the package is not one `cargo metadata` named.
+fn relative_base(
+    file: &Path,
+    pkg_roots: &std::collections::BTreeMap<String, PathBuf>,
+    ws_root: &Path,
+) -> Option<PathBuf> {
+    if is_script_output(file) {
+        return script_package(file).and_then(|p| pkg_roots.get(&p).cloned());
+    }
+    Some(ws_root.to_path_buf())
+}
+
+pub(crate) fn depinfo_paths(file: &Path, text: &str) -> Vec<PathBuf> {
+    if is_script_output(file) {
         // A build script's output: `cargo:rerun-if-changed=PATH`, relative to its package.
         return text
             .lines()
@@ -142,12 +192,24 @@ pub fn depinfo_escapes_keyed(
         .map(PathBuf::from)
         .ok_or("cargo metadata names no build directory")?;
     let target = meta["target_directory"].as_str().map(PathBuf::from);
+    let canon = |p: PathBuf| std::fs::canonicalize(&p).unwrap_or(p);
+    let ws_root = meta["workspace_root"]
+        .as_str()
+        .map(|w| canon(PathBuf::from(w)))
+        .ok_or("cargo metadata names no workspace root")?;
     let mut prefixes = Vec::new();
+    let mut pkg_roots = std::collections::BTreeMap::new();
     if let Some(pkgs) = meta["packages"].as_array() {
         for p in pkgs {
             if let Some(name) = p["name"].as_str() {
                 prefixes.push(format!("{}-", name.replace('-', "_")));
                 prefixes.push(format!("{name}-"));
+                if let Some(dir) = p["manifest_path"]
+                    .as_str()
+                    .and_then(|m| Path::new(m).parent())
+                {
+                    pkg_roots.insert(name.to_owned(), canon(dir.to_path_buf()));
+                }
             }
             for t in p["targets"].as_array().into_iter().flatten() {
                 if let Some(name) = t["name"].as_str() {
@@ -180,12 +242,19 @@ pub fn depinfo_escapes_keyed(
     let mut bad = BTreeSet::new();
     for file in dep_files(&build, &prefixes) {
         let text = std::fs::read_to_string(&file).unwrap_or_default();
-        let base = file.parent().map(Path::to_path_buf).unwrap_or_default();
+        let base = relative_base(&file, &pkg_roots, &ws_root);
         for dep in depinfo_paths(&file, &text) {
             let dep = if dep.is_absolute() {
-                dep
+                lexical(&dep)
+            } else if let Some(base) = &base {
+                lexical(&base.join(dep))
             } else {
-                base.join(dep)
+                // No package to resolve it against: name it, so the cache records nothing.
+                bad.insert(format!(
+                    "{} (relative to an unknown package)",
+                    dep.display()
+                ));
+                continue;
             };
             let s = dep.to_string_lossy();
             let canon = std::fs::canonicalize(&dep).unwrap_or_else(|_| dep.clone());

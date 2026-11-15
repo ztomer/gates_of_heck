@@ -310,6 +310,47 @@ fn the_per_unit_build_dir_layout_is_read_too() {
     drop(dir);
 }
 
+/// GOH.RERUNPATH (probed on cargo 1.100.0, 2026-11-15): a relative `rerun-if-changed` is relative to
+/// the PACKAGE ROOT (cargo re-ran `../outside.txt` beside the package and ignored one beside
+/// `run/`), and a relative path in rustc's dep-info is relative to the WORKSPACE ROOT (cargo runs
+/// rustc there; `pkga/src/../../other/inc.txt` was an `include_str!`). Both were joined to the
+/// directory the record sits in, inside the build dir, so the read was skipped: the scoped cache
+/// recorded a group whose build read a file it never keyed.
+#[test]
+fn a_relative_read_resolves_against_the_package_or_workspace_root_not_the_build_dir() {
+    let dir = estate();
+    let cargo_dir = dir.path().join("crates/a");
+    let meta = super::metadata(&cargo_dir, true).expect("metadata");
+    let build = PathBuf::from(
+        meta["build_directory"]
+            .as_str()
+            .or_else(|| meta["target_directory"].as_str())
+            .expect("a build directory"),
+    );
+    let unit = build.join("debug/build/a");
+    let out = unit.join("89abcdef/out");
+    let run = unit.join("fedcba98/run");
+    std::fs::create_dir_all(&out).expect("mkdir out");
+    std::fs::create_dir_all(&run).expect("mkdir run");
+    // crates/a is its own workspace root here, so rustc ran in crates/a.
+    let d = out.join("a-89abcdef.d");
+    std::fs::write(
+        &d,
+        format!("{}: src/lib.rs src/../../../read.txt\n", d.display()),
+    )
+    .expect("write .d");
+    std::fs::write(
+        run.join("stdout"),
+        "cargo:rerun-if-changed=build.rs\ncargo::rerun-if-changed=../../rerun.txt\n",
+    )
+    .expect("write stdout");
+    let entries = vec!["crates/a".to_owned(), "crates/b".to_owned()];
+    let bad = crate::rust_depinfo::depinfo_escapes(&cargo_dir, &entries).expect("depinfo");
+    std::fs::remove_dir_all(&unit).ok();
+    assert_eq!(bad, vec!["read.txt".to_owned(), "rerun.txt".to_owned()]);
+    drop(dir);
+}
+
 #[test]
 fn the_command_prints_a_scope_checks_a_file_and_refuses_a_non_workspace() {
     let dir = estate();
