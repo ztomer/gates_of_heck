@@ -247,6 +247,7 @@ fn common_dir(root: &Path) -> Option<PathBuf> {
         .arg("-C")
         .arg(root)
         .args(["rev-parse", "--path-format=absolute", "--git-common-dir"])
+        .env("GIT_OPTIONAL_LOCKS", "0")
         .stdin(std::process::Stdio::null())
         .output()
         .ok()?;
@@ -272,6 +273,7 @@ pub fn changed_since(root: &Path, rev: &str) -> Result<Vec<String>, String> {
         .arg("-C")
         .arg(root)
         .args(["diff", "--name-only", &format!("{rev}...HEAD")])
+        .env("GIT_OPTIONAL_LOCKS", "0")
         .stdin(std::process::Stdio::null())
         .output()
         .map_err(|e| format!("git diff: {e}"))?;
