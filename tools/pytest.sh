@@ -10,7 +10,7 @@
 # the spawn cuts landed; 16 was a draw with 12 under load, and leaves no
 # headroom for the other sessions sharing the box.
 { # parse-guard -- bash reads this group whole before running it (tests/test_parse_guard.py)
-. "$(dirname "${BASH_SOURCE[0]}")/../lib/bash5.sh" && goh_bash5 "$@"
+. "$(dirname "${BASH_SOURCE[0]}")/../lib/bash5.sh" || exit; goh_bash5 "$@"
 set -euo pipefail
 # shellcheck source=lib/house_python.sh
 . "${BASH_SOURCE[0]%/*}/../lib/house_python.sh" || exit 1   # GOH_PY: the house interpreter, never PATH's first python3 (G2d)

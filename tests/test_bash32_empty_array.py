@@ -102,7 +102,7 @@ def test_the_guard_is_what_makes_the_bare_form_safe(tmp_path):
     assert r.returncode != 0 and "unbound" in r.stderr, (r.stdout, r.stderr)
     guarded = tmp_path / "guarded.sh"
     guarded.write_text(
-        f'#!/usr/bin/env bash\n. "{REPO_ROOT}/lib/bash5.sh" && goh_bash5 "$@"\n' + body
+        f'#!/usr/bin/env bash\n. "{REPO_ROOT}/lib/bash5.sh" || exit; goh_bash5 "$@"\n' + body
     )
     r = _run(["/bin/bash", str(guarded)])
     assert r.returncode == 0 and r.stdout.strip() == "ran on 5", (r.stdout, r.stderr)

@@ -10,7 +10,7 @@
 # reaps the stages beside its destination whose process is gone (SIGKILL runs no trap). A stage
 # whose pid still runs is mid-copy and is left alone. tests/test_place_staging.py.
 
-. "$(dirname "${BASH_SOURCE[0]}")/../lib/bash5.sh" && goh_bash5 "$@"
+. "$(dirname "${BASH_SOURCE[0]}")/../lib/bash5.sh" || exit; goh_bash5 "$@"
 
 # goh_place <src> <dest>
 goh_place() {

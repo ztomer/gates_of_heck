@@ -11,7 +11,7 @@
 # export cannot answer: the live checkout is GOH_LIVE_ROOT, else the one that made the export
 # (`.goh-live`). Pinned by tests/test_ship_pinned.py.
 { # parse-guard -- bash reads this group whole before running it (tests/test_parse_guard.py)
-. "$(dirname "${BASH_SOURCE[0]}")/../lib/bash5.sh" && goh_bash5 "$@"
+. "$(dirname "${BASH_SOURCE[0]}")/../lib/bash5.sh" || exit; goh_bash5 "$@"
 _goh_export="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 if [ ! -f "$_goh_export/.goh-head" ]; then
     echo "✗ goh: $0 is an export's bin/goh, and $_goh_export is no export (.goh-head)" >&2

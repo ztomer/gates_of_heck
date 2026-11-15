@@ -11,6 +11,12 @@ nothing but the shebang, comments, the parse-guard opener, `set` and plain assig
 and every guarded file PARSES under the real bash 3.2 (on this Mac), so under 3.2 the guard is what
 runs first. Calibrated both ways by `test_the_gate_sees_a_missing_or_late_guard` and, once by hand
 on 2026-11-12, by deleting the guard line from tools/land.sh (red, naming the file).
+
+FAIL CLOSED (GOH.BASH5SILENT, test_every_guard_line_fails_closed and
+test_a_missing_guard_stops_every_form): the guard was `. lib/bash5.sh && goh_bash5 "$@"`. A missing
+or unreadable file made the `.` fail, `&&` skipped the guard, and the script ran on unguarded with
+no error (bash 5 ignores `set -e` on the left of `&&`). Every line that sources lib/bash5.sh now
+reads `. X || exit; goh_bash5 "$@"`: the `.` names the file and the script stops, non-zero.
 """
 
 from __future__ import annotations
@@ -26,7 +32,14 @@ from conftest import REPO_ROOT, hermetic_env
 
 GUARD = re.compile(
     r'\. "(?P<src>\$GOH|\$\(dirname "\$\{BASH_SOURCE\[0\]\}"\)(?:/\.\.)*)'
-    r'/lib/bash5\.sh" && goh_bash5 "\$@"'
+    r'/lib/bash5\.sh" \|\| exit; goh_bash5 "\$@"'
+)
+# Any `.`/`source` of lib/bash5.sh; each one must be the fail-closed CLOSED form, never `&&`.
+_SRC = r'(?:^|[;{&|]\s*)(?:\.|source) [^;&|]*?lib/bash5\.sh"'
+SOURCES = re.compile(_SRC)
+CLOSED = re.compile(_SRC + r' \|\| exit; goh_bash5 "\$@"')
+OPEN_WHY = (
+    '(a missing file skips the guard, the script runs on); write `. X || exit; goh_bash5 "$@"`'
 )
 # Files that are not goh's shell, each with its reason; a stale entry fails (_scope()).
 EXEMPT = {
@@ -37,7 +50,7 @@ HOOK = re.compile(r"^(?:\.githooks|hooks)/[^/]+$")
 # A hook is COPIED into consumers and finds goh through GOH_DIR, which may predate lib/bash5.sh: a
 # `.` of a missing file ends a non-interactive bash, and every commit was refused with no reason.
 HOOK_FORM = (
-    '[ ! -f "$GOH/lib/bash5.sh" ] || { . "$GOH/lib/bash5.sh" && goh_bash5 "$@"; }'
+    '[ ! -f "$GOH/lib/bash5.sh" ] || { . "$GOH/lib/bash5.sh" || exit; goh_bash5 "$@"; }'
     "   # an older GOH has none"
 )
 OLD = Path("/bin/bash")
@@ -60,7 +73,8 @@ def _scope() -> list[str]:
 def tui_form(src: str) -> str:
     """tui/ is self-contained (its header): tests and vendored copies carry it without lib/."""
     lib = f"{src}/lib/bash5.sh"
-    return f'[ ! -f "{lib}" ] || {{ . "{lib}" && goh_bash5 "$@"; }}   # a lone tui/ copy has none'
+    guard = f'{{ . "{lib}" || exit; goh_bash5 "$@"; }}'
+    return f'[ ! -f "{lib}" ] || {guard}   # a lone tui/ copy has none'
 
 
 PRELUDE = re.compile(r"^(?:\{ # parse-guard.*|set -[a-z]+(?: [a-z]+)*|[A-Za-z_]\w*=[^`]*)$")
@@ -73,6 +87,8 @@ def findings(path: str, text: str) -> list[str]:
         s = line.strip()
         if not s or s.startswith("#"):
             continue
+        if len(SOURCES.findall(s)) != len(CLOSED.findall(s)):
+            return [f"{path}:{i}: sources lib/bash5.sh failing OPEN {OPEN_WHY}"]
         m = GUARD.search(s)
         if m and HOOK.match(path) and s != HOOK_FORM:
             return [f"{path}:{i}: a hook runs the guard only in its tolerant form: {HOOK_FORM}"]
@@ -93,9 +109,10 @@ def findings(path: str, text: str) -> list[str]:
 def test_the_gate_sees_a_missing_or_late_guard():
     ok = (
         "#!/usr/bin/env bash\n# x\n{ # parse-guard\n"
-        '. "$(dirname "${BASH_SOURCE[0]}")/../lib/bash5.sh" && goh_bash5 "$@"\nset -e\n'
+        '. "$(dirname "${BASH_SOURCE[0]}")/../lib/bash5.sh" || exit; goh_bash5 "$@"\nset -e\n'
     )
     assert findings("gates/x.sh", ok) == []
+    assert "failing OPEN" in findings("gates/x.sh", ok.replace(" || exit;", " &&"))[0]
     assert findings("gates/x.sh", ok.replace('. "$(dirname', '# . "$(dirname')) == [
         "gates/x.sh: never runs the bash 5 guard"
     ]
@@ -108,8 +125,9 @@ def test_the_gate_sees_a_missing_or_late_guard():
         '#!/bin/bash\n{ # parse-guard\nset -euo pipefail\nGOH="${GOH_DIR:-x}"\n' + HOOK_FORM + "\n"
     )
     assert findings("hooks/pre-push", hook) == []
-    bare = hook.replace(HOOK_FORM, '. "$GOH/lib/bash5.sh" && goh_bash5 "$@"')
+    bare = hook.replace(HOOK_FORM, '. "$GOH/lib/bash5.sh" || exit; goh_bash5 "$@"')
     assert "tolerant form" in findings("hooks/pre-push", bare)[0]
+    assert "failing OPEN" in findings("hooks/pre-push", hook.replace(" || exit;", " &&"))[0]
     tui = "# x\n" + tui_form('$(dirname "${BASH_SOURCE[0]}")/..') + "\n"
     assert findings("tui/lib.sh", tui) == []
     assert "tolerant form" in findings("tui/lib.sh", ok)[0]
@@ -123,6 +141,51 @@ def test_every_tracked_bash_file_runs_the_guard_first():
     assert not bad, "bash 5 guard missing or late (docs/contracts.md section 28):\n" + "\n".join(
         bad
     )
+
+
+def test_every_guard_line_fails_closed():
+    """The census: EVERY line of every tracked bash file that sources lib/bash5.sh -- not only the
+    first statement findings() reads -- is the `|| exit; goh_bash5` form."""
+    bad = []
+    for f in _scope():
+        for i, line in enumerate((REPO_ROOT / f).read_text(errors="replace").splitlines(), 1):
+            s = line.strip()
+            if s and not s.startswith("#") and len(SOURCES.findall(s)) != len(CLOSED.findall(s)):
+                bad.append(f"{f}:{i}: {s[:90]}")
+    assert not bad, "lib/bash5.sh sourced failing open (GOH.BASH5SILENT):\n" + "\n".join(bad)
+
+
+def _guard_forms() -> dict[tuple[str, str], str]:
+    """{(dir, guard line): a file carrying it}: every distinct guard line, where it runs from."""
+    forms: dict[tuple[str, str], str] = {}
+    for f in _scope():
+        for line in (REPO_ROOT / f).read_text(errors="replace").splitlines():
+            s = line.strip()
+            if s and not s.startswith("#") and SOURCES.search(s):
+                forms.setdefault((os.path.dirname(f), s), f)
+                break
+    return forms
+
+
+def test_a_missing_guard_stops_every_form(tmp_path):
+    """Each distinct guard line in the tree, run from its own directory in a goh with no
+    lib/bash5.sh (the tolerant hook and tui/ forms: one that cannot be read), stops the script
+    non-zero naming the file; what follows the guard never runs."""
+    forms = _guard_forms()
+    assert len(forms) >= 10, forms  # one per directory depth and tolerant form; 0 = blind
+    for n, ((d, line), f) in enumerate(sorted(forms.items())):
+        root = tmp_path / str(n)
+        (root / d).mkdir(parents=True)
+        tolerant = line.startswith("[ ! -f")
+        if tolerant:  # a lone copy may lack it by design; present but unreadable must stop
+            (root / "lib").mkdir(exist_ok=True)
+            (root / "lib/bash5.sh").write_text("goh_bash5() { :; }\n")
+            (root / "lib/bash5.sh").chmod(0)
+        script = root / d / "x.sh"
+        script.write_text(f'#!/usr/bin/env bash\nGOH="{root}"\n{line}\necho RAN-ON\n')
+        r = _run(["bash", str(script)])
+        assert r.returncode != 0 and "RAN-ON" not in r.stdout, (f, line, r.stdout, r.stderr)
+        assert f"{root}/" in r.stderr and "lib/bash5.sh" in r.stderr, (f, r.stderr)
 
 
 def _old_bash() -> str:
@@ -152,7 +215,7 @@ def _script(tmp_path: Path, body: str = "") -> Path:
     s = tmp_path / "t.sh"
     s.write_text(
         "#!/usr/bin/env bash\n{ # parse-guard\n"
-        f'. "{REPO_ROOT}/lib/bash5.sh" && goh_bash5 "$@"\n'
+        f'. "{REPO_ROOT}/lib/bash5.sh" || exit; goh_bash5 "$@"\n'
         "set -euo pipefail\n" + body + "a=()\n"
         'printf "v=%s n=%s" "${BASH_VERSINFO[0]}" "$#"; printf " [%s]" "$@" "${a[@]}"; echo\n'
         'read -r line || true; echo "stdin=$line marker=${GOH_BASH_REEXEC-unset}"\nexit\n}\n'

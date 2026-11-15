@@ -8,7 +8,7 @@
 { # parse-guard -- bash reads this group whole before running it (tests/test_parse_guard.py)
 set -euo pipefail
 GOH="${GOH_DIR:-${GOH:-$HOME/Projects/gates_of_heck}}"
-[ ! -f "$GOH/lib/bash5.sh" ] || { . "$GOH/lib/bash5.sh" && goh_bash5 "$@"; }   # an older GOH has none
+[ ! -f "$GOH/lib/bash5.sh" ] || { . "$GOH/lib/bash5.sh" || exit; goh_bash5 "$@"; }   # an older GOH has none
 # A GOH_DIR naming a REMOVED HEAD export (inherited by a long-lived process) falls back to a live
 # gates_of_heck: lib/goh_root.sh's rule, copied verbatim (tests/test_dead_goh_dir.py; GOH.TRANSIENTDIR).
 goh_dir_repair() {

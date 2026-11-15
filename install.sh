@@ -30,7 +30,7 @@
 # It does NOT copy the checkers: hooks delegate to this checkout at runtime,
 # so a fix here reaches every installed repo with zero re-install steps.
 { # parse-guard -- bash reads this group whole before running it (tests/test_parse_guard.py)
-. "$(dirname "${BASH_SOURCE[0]}")/lib/bash5.sh" && goh_bash5 "$@"
+. "$(dirname "${BASH_SOURCE[0]}")/lib/bash5.sh" || exit; goh_bash5 "$@"
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

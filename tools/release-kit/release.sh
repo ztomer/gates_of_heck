@@ -72,7 +72,7 @@
 # Run HEAD, not the tree (C4) -- once: the self-buffered copy below runs from $TMPDIR, where
 # `../../gates` is nothing, and its parent already chose the tree (tests/test_release_kit.py). The
 # bash 5 guard runs first too (lib/bash5.sh); the buffered copy is exec'd by its "$BASH".
-[ -n "${GOH_RELEASE_BUFFERED:-}" ] || { . "$(dirname "${BASH_SOURCE[0]}")/../../lib/bash5.sh" && goh_bash5 "$@"; . "$(dirname "${BASH_SOURCE[0]}")/../../gates/_from_head.sh"; goh_from_head "${BASH_SOURCE[0]}" "$@"; }
+[ -n "${GOH_RELEASE_BUFFERED:-}" ] || { . "$(dirname "${BASH_SOURCE[0]}")/../../lib/bash5.sh" || exit; goh_bash5 "$@"; . "$(dirname "${BASH_SOURCE[0]}")/../../gates/_from_head.sh" || exit; goh_from_head "${BASH_SOURCE[0]}" "$@"; }
 set -euo pipefail
 
 # ── self-buffering (must run before ANY logic) ───────────────────────────────

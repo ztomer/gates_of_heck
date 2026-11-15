@@ -9,7 +9,10 @@
 # the local gate and CI judged two languages. Every bash file goh tracks now runs, as its first
 # statement (docs/contracts.md section 28, tests/test_bash5_guard.py refuses one that does not):
 #
-#   . "$(dirname "${BASH_SOURCE[0]}")/<up>/lib/bash5.sh" && goh_bash5 "$@"
+#   . "$(dirname "${BASH_SOURCE[0]}")/<up>/lib/bash5.sh" || exit; goh_bash5 "$@"
+#
+# `|| exit`, never `&&` (GOH.BASH5SILENT): with `&&` a missing file failed the `.`, skipped the guard,
+# and the script ran on unguarded with no error. Now the `.` names the file and the script stops.
 #
 # EXECUTED (a script bash runs): under bash < 5 it re-execs the same script, same arguments, same
 # stdin, with the first bash >= 5 it finds -- so the rest of the file, parsed whole by bash 3.2

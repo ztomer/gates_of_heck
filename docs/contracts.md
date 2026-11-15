@@ -671,12 +671,18 @@ Apple's /bin/bash 3.2 on the hosted macOS runner, under a minimal-PATH git hook 
 so the local gate and CI judged two languages (v0.106.1: `title[@]: unbound variable` on the runner
 only). Every bash file goh tracks runs, as its first statement,
 
-    . "$(dirname "${BASH_SOURCE[0]}")/<up>/lib/bash5.sh" && goh_bash5 "$@"
+    . "$(dirname "${BASH_SOURCE[0]}")/<up>/lib/bash5.sh" || exit; goh_bash5 "$@"
 
 (`$GOH/lib/bash5.sh` in the hook templates, which are copied into consumers). Hooks and `tui/`
 (self-contained, carried alone by tests and vendored copies) use the tolerant form
-`[ ! -f X ] || { . X && goh_bash5 "$@"; }`: a `.` of a missing file ends a non-interactive bash,
+`[ ! -f X ] || { . X || exit; goh_bash5 "$@"; }`: a `.` of a missing file ends a non-interactive bash,
 and an older GOH_DIR refused every commit with no reason.
+
+**Fail closed** (GOH.BASH5SILENT): every line that sources `lib/bash5.sh` reads `. X || exit;
+goh_bash5 "$@"`, never `. X && goh_bash5 "$@"`. With `&&`, a missing or unreadable file made the
+`.` fail, `&&` skipped the guard, and the script ran on unguarded with no error (bash 5 ignores
+`set -e` left of `&&`). Now the `.` names the file and the script stops, non-zero; a sourced file's
+`exit` stops its caller too, which is the point (its caller would otherwise run unguarded).
 
 * **Executed** (the caller is not `source`, read from `FUNCNAME[1]`): under bash < 5 it re-execs the
   same script with the same arguments and stdin under the first candidate whose OWN `BASH_VERSINFO`
@@ -705,7 +711,9 @@ file -- only the parse-guard opener, `set` and plain assignments may precede it 
 check on its two exemptions; calibrated on synthetic texts both ways and by hand on 2026-11-12 by
 deleting the guard from `tools/land.sh` and planting a `mapfile` before it in `gates/goh.sh`, both red
 naming the file; plus re-exec keeping args and stdin, no bash 5 dies naming the fix, the
-GOH_BASH_MAJOR seam, the lying-bash refusal, sourced-never-re-execs-and-says-nothing).
+GOH_BASH_MAJOR seam, the lying-bash refusal, sourced-never-re-execs-and-says-nothing; the
+fail-closed census over every line that sources the guard, and every distinct guard line run with
+its lib/bash5.sh missing -- or, for the tolerant forms, unreadable -- stops non-zero naming it).
 
 ## 29. A gate verdict is RECORDED, and a consumer reads the record, never the gate's log text
 

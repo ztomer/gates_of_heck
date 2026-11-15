@@ -15,7 +15,7 @@
 # installed by copy and can source nothing before they have found goh), lib/goh_root.py, and the
 # native binary's `goh_root` (crates/goh/src/main.rs). tests/test_dead_goh_dir.py pins all three and
 # the hooks' copies. A GOH_DIR that exists is never touched.
-. "$(dirname "${BASH_SOURCE[0]}")/../lib/bash5.sh" && goh_bash5 "$@"
+. "$(dirname "${BASH_SOURCE[0]}")/../lib/bash5.sh" || exit; goh_bash5 "$@"
 goh_dir_repair() {
     [ -n "${GOH_DIR:-}" ] && [ ! -d "$GOH_DIR" ] || return 0
     local c

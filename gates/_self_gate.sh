@@ -14,7 +14,7 @@
 # a consumer is never handed anywhere. GOH_SELF_GATED (<tree>|<toplevel>) marks the hand-off, so
 # it happens once per commit and a fixture commit a test makes inside it is judged on its own.
 # GOH_LIVE in the very checkout being committed is its developer's on purpose, and is kept.
-. "$(dirname "${BASH_SOURCE[0]}")/../lib/bash5.sh" && goh_bash5 "$@"
+. "$(dirname "${BASH_SOURCE[0]}")/../lib/bash5.sh" || exit; goh_bash5 "$@"
 
 goh_self_gate() { # <this commit_gate.sh> <args...> -- execs the staged tree's commit gate, or returns
     local top me tree

@@ -21,7 +21,7 @@
 # --no-push with an unpushed HEAD refuses: no CI can run on a commit origin does not have.
 # Tests: tests/test_release_kit_ci.py (the fake gh lists runs only for commits origin holds).
 
-. "$(dirname "${BASH_SOURCE[0]}")/../../lib/bash5.sh" && goh_bash5 "$@"
+. "$(dirname "${BASH_SOURCE[0]}")/../../lib/bash5.sh" || exit; goh_bash5 "$@"
 
 # ci_push_gated -- the checkout's pre-push hook (as git resolves it: core.hooksPath or the common
 # hooks dir) when it runs goh's push gate, else nothing (.loop tools/loopadvisory.py push_gated).
