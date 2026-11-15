@@ -220,7 +220,9 @@ Every structural checker is native since Phase N3; the Python checkers they port
 | `push_gated.py` | THE reading of whether a checkout's pre-push hook runs goh's push gate (GOH.SHIMPUSHGATED): the hook git resolves is judged by its BYTES -- today's stock shim, or a retired stock pre-push tagged `push-gate` in `retired_hooks.sha256` -- never by a gate script's name grepped out of it (the shim names none). The CLI for `tools/release-kit/ci_step.sh`, `push_gated` for `lib/ship_verify.py` and .loop's `loopadvisory.py`; `name_greps` is the class check that refuses a new name grep. | `test_push_gated.py` |
 | `ship_changelog.py` | goh ship's CHANGELOG.md reading under the contract the release kit DECLARES (`.gatesrc` GOH_SHIP_CHANGELOG: `cut`, `unreleased` or `kit`, GOH.SHIPCHANGELOG): the preflight it asks before any gate or push, and a refusal when a repo with a CHANGELOG.md declares none or an unknown one. | `test_ship_changelog.py` |
 | `ship_item.py` | goh ship's refusals of what its LAST steps refused (GOH.SHIPITEM), asked before its first: an `--item` that `loopctl shippable ID --repo NAME` refuses (unknown, done, or another repo's; RM.MONITOR shipped three goh releases and only done refused) and an OLDER stock hook in the repo (`lib/hook_currency.py`, structural.sh's own reading), which the release's commits met after the push. | `test_ship_item.py` |
-| `ship_status.py` | `goh ship --status RESULT`: the marks a ship result holds; 3 while running, 4 when the worker is gone and the result still says running. Also the result's whole write (`save`) and a step log's `tail`. | `test_ship.py` |
+| `canary_grace.py` | The release canary's grace-end finding, its one owner (GOH.CANARYGRACE): whether the canary runs HEAD once more at GOH_GRACE=over (`grace_pass`), the `grace_over` record it folds and says, and what `goh ship` carries from it -- `carry` copies the count and names for the shipped (or handed-off) commit into the result after each step (a gates tree with no record for either commit: `count: None` and why), `line` is the one line `--status` and the verify card say. | `test_release_canary_grace.py`, `test_ship_grace.py` |
+| `canary_sides.py` | The two sides the release canary compares, split from `scripts/release_canary.py` at its line cap: `resolve` (a revision's native goh, from the store or built), `export` (its gates as a consumer gets them, `.goh-head` naming the commit), `_failed` (a failed step's exit and stderr, never an empty reason). | `test_release_canary.py` |
+| `ship_status.py` | `goh ship --status RESULT`: the marks a ship result holds (and the grace-end line, `canary_grace.line`); 3 while running, 4 when the worker is gone and the result still says running. Also the result's whole write (`save`) and a step log's `tail`. | `test_ship.py` |
 | `ship_verdict.py` | `goh ship verdict --sha SHA [--repo DIR]`: the RECORDED gate verdict of the running ship above the caller (`green <sha>` in its `verdicts` file, written by `push_gate.sh`); exit 0 and the record path, else 1 (GOH.VERDICTAPI, contracts section 29). | `test_ship_verdict.py` |
 | `ship_pushed.py` | goh ship's release-effect check, run after the release kit (GOH.RELEASEUNPUSHED): HEAD on the remote branch and HEAD's version tag on the remote (read at the push URL), else the release step fails naming the unpushed commit or tag and the fix. | `test_ship_pushed.py` |
 | `ship_undo.py` | goh ship's release undo (GOH.SHIPUNDO): HEAD snapshotted before the release step; when it fails, the version tags it cut and the commits it made that no remote holds are taken back (`git reset --keep`, which refuses rather than overwrite an edit); a pushed commit is never reset, and the result's `undo` says what was left. | `test_ship_undo.py` |
@@ -461,8 +463,9 @@ Every structural checker is native since Phase N3; the Python checkers they port
   audits (NOT AUDITED AT PUSH) and one for those it cannot read, and a line saying so when the
   state file is missing or older than 36 h -- a job that stopped reads exactly like a clean estate.
   It also says what the last `scripts/release_canary.py` run found: a refusal (each consumer, step and
-  seed), what it could not judge, and consumers red under the last release too.
-  Pinned by `test_estate_audit.py` and `test_release_canary.py`.
+  seed), what it could not judge, consumers red under the last release too, and the consumers the
+  grace's end turns red (GOH.CANARYGRACE).
+  Pinned by `test_estate_audit.py`, `test_release_canary.py` and `test_release_canary_grace.py`.
 * `hooks/claude/hold_guard.py` — a Claude Code PreToolUse hook (matcher `Bash|Monitor|Write|Edit|MultiEdit|NotebookEdit`):
   nothing inside a held repo (`lib/repo_hold.py`) changes -- edits, writing git verbs, file verbs, redirections,
   chmod/chflags (so the read-only layer cannot be undone), `release_hold.sh` -- and the denial names the hold's
@@ -535,7 +538,12 @@ Every structural checker is native since Phase N3; the Python checkers they port
   consumer it cannot judge, or an estate with no consumer, refuses. A range that changes only
   docs, tests or prose sweeps nothing. Records `release_canary` in the estate state file, which the
   daily audit keeps (`lib/estate_registry.py` `update_state`, one lock, each writer its own keys).
-  Pinned by `test_release_canary.py` (v0.57.4's shell-lint change replayed over a fixture estate).
+  While `crate::grace` runs (`--grace auto`; `on`/`off` force it), HEAD's pass runs once more per
+  consumer at GOH_GRACE=over and every step red only there is NAMED under `grace_over` (count, repos,
+  steps, the pass's summed seconds), never refused before the date; `goh ship` carries it for the
+  commit it ships (`lib/canary_grace.py`, GOH.CANARYGRACE). The sides are built by
+  `lib/canary_sides.py`. Pinned by `test_release_canary.py` (v0.57.4's shell-lint change replayed
+  over a fixture estate) and `test_release_canary_grace.py` (a planted grace-held bare open).
 * `scripts/estate_registry.py` — the estate's registry, read and seeded (BACKLOG 6.14): `list` says what
   `install.sh` recorded and which of those paths is gone, `seed` registers the estate root's walk plus
   the consumer outside it (`~/.claude/skills`) once, `record` adds one repo. Additive and idempotent.

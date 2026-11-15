@@ -98,6 +98,8 @@ def _canary(e: dict, *extra: str, head: Path | None = None) -> subprocess.Comple
     argv = [sys.executable, str(SCRIPT), "--root", str(e["root"]), "--state", str(e["state"])]
     argv += ["--base-bin", str(e["base"]), "--head-bin", str(head or e["head"])]
     argv += ["--base-label", "v0.57.3", "--head-label", "v0.57.4", "--goh", str(REPO_ROOT)]
+    # The day's comparison only: the grace-end pass has its own suite (test_release_canary_grace).
+    argv += ["--grace", "off"]
     return subprocess.run(
         [*argv, *extra],
         capture_output=True,
@@ -267,7 +269,9 @@ def test_an_export_survives_tar_closing_the_pipe_before_git_is_done(tmp_path, mo
 
 
 def test_a_failed_step_always_names_its_exit_and_stderr():
-    spec = importlib.util.spec_from_file_location("release_canary_mod", SCRIPT)
+    spec = importlib.util.spec_from_file_location(
+        "canary_sides_mod", REPO_ROOT / "lib" / "canary_sides.py"
+    )
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
     silent = subprocess.CompletedProcess(["git"], 141, b"", b"")

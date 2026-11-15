@@ -21,6 +21,14 @@ When nothing a gate runs changed since the last release (only docs, tests or pro
 swept. The result is recorded under `release_canary` in the estate state file, which
 `hooks/claude/estate_advisories.py` reads at every session start.
 
+THE GRACE'S END (GOH.CANARYGRACE). `crate::grace` holds a new scanner shape back until its date
+(`OVER_FROM`), and a push judges under the day, so the passes above could clear a release whose red
+appears only when the grace ends. While the grace runs, HEAD's pass runs once more per consumer at
+GOH_GRACE=over -- the same pass, one more side -- and every step red there and not under the day is
+NAMED under `grace_over` in the record (count, repos, steps), never this release's refusal before
+the date; `goh ship` carries it into its result and card (lib/ship_canary.py). From the date the
+day's pass judges it, so the extra pass stops (`--grace auto`; `on`/`off` force it).
+
 It is a step of this repo's own gate (`.gatesrc` GOH_CI_STEPS), so `tools/land.sh` runs it before
 main moves -- the moment consumers start running the change -- and the push runs it again.
 
@@ -41,24 +49,30 @@ import re
 import subprocess
 import sys
 import tempfile
-from dataclasses import dataclass, field
+import time
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(ROOT / "checks"))
+# Each directory on the path right before what it holds: a path insert is not code to ruff (E402).
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "checks"))
 from _gitutil import foreign_repo_env
 
-sys.path.insert(0, str(ROOT))
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from tui.lib import counted, err, info, ok, warn
 
-sys.path.insert(0, str(ROOT / "lib"))
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
+import canary_grace
 import estate_registry
 import killtree
 import not_applicable
+from canary_sides import export, git_run as _git, resolve
 
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "gates"))
+import step_tools  # crate::grace's date, read from grace.rs (its one home)
+
+ROOT = Path(__file__).resolve().parent.parent
 KEY = "release_canary"
 RUN_TIMEOUT_S = 900
-BUILD_TIMEOUT_S = 1800
 JOBS = 4
 # What no gate runs: a change confined to these sweeps nothing.
 NOT_GATE_INPUTS = (":(exclude)docs", ":(exclude)tests", ":(exclude)*.md")
@@ -95,6 +109,7 @@ class Side:
     bin: Path
     gohdir: Path
     live: Path  # the gates checkout an export's binary is resolved from (GOH_LIVE_ROOT)
+    grace: str | None = None  # GOH_GRACE for this side; None: the day decides, as at a push
 
 
 @dataclass
@@ -107,17 +122,6 @@ class Verdict:
     error: str | None = None
 
 
-def _git(where: Path, *args: str) -> subprocess.CompletedProcess:
-    return subprocess.run(
-        ["git", "-C", str(where), *args],
-        env=foreign_repo_env(),
-        capture_output=True,
-        text=True,
-        check=False,
-        stdin=subprocess.DEVNULL,
-    )
-
-
 def last_release(goh: Path) -> str | None:
     """The newest release tag strictly before HEAD: HEAD may itself carry the tag being cut."""
     r = _git(goh, "describe", "--tags", "--abbrev=0", "--match", "v[0-9]*", "HEAD^")
@@ -128,81 +132,6 @@ def gate_inputs_changed(goh: Path, base: str) -> list[str] | None:
     """The files a gate runs that differ between `base` and HEAD (None: git could not say)."""
     r = _git(goh, "diff", "--name-only", base, "HEAD", "--", ".", *NOT_GATE_INPUTS)
     return r.stdout.split() if r.returncode == 0 else None
-
-
-def resolve(goh: Path, rev: str) -> tuple[Path | None, str]:
-    """(the native goh built from `rev`, why not): the gate's own resolver, which takes the build
-    from the shared store or builds that commit into it (gates/_goh_bin.sh, build-goh.sh --rev)."""
-    sha = _git(goh, "rev-parse", "--verify", "-q", f"{rev}^{{commit}}").stdout.strip()
-    if not sha:
-        return None, f"{rev} is not a commit of {goh}"
-    script = (
-        '. "$1/gates/_goh_bin.sh" && _goh_resolve_uncached "$1/gates" "$2"'
-        ' && printf "%s\\n%s" "$goh_native" "$goh_native_why"'
-    )
-    env = {k: v for k, v in foreign_repo_env().items() if not k.startswith("GOH_")}
-    try:
-        r = subprocess.run(
-            ["bash", "-c", script, "_", str(goh), sha],
-            env=env,
-            capture_output=True,
-            text=True,
-            timeout=BUILD_TIMEOUT_S,
-            check=False,
-            stdin=subprocess.DEVNULL,
-        )
-    except (OSError, subprocess.TimeoutExpired) as e:
-        return None, f"resolving goh at {rev}: {e}"
-    native, _, why = r.stdout.partition("\n")
-    if native and os.access(native, os.X_OK):
-        return Path(native), ""
-    tail = (r.stderr.strip().splitlines() or [""])[-1]
-    return None, f"no goh binary for {rev}: {why or tail or f'exit {r.returncode}'}"
-
-
-def export(goh: Path, rev: str, dest: Path) -> str | None:
-    """`git archive rev` into `dest` -- the gates the binary delegates to, as of that revision --
-    shaped as a consumer's gate gets them (gates/_from_head.sh): `.goh-head` names the commit, so
-    a gate script run from it runs in place and resolves that commit's binary. Without it a script
-    there walked up for a checkout, found none, and judged differently (sys_updater's empty-scope
-    probe read red here and green at its push)."""
-    sha = _git(goh, "rev-parse", "--verify", "-q", f"{rev}^{{commit}}").stdout.strip()
-    if not sha:
-        return f"{rev} is not a commit of {goh}"
-    dest.mkdir(parents=True)
-    # NOT `git archive | tar -x` (GOH.SUITEFLAKES). bsdtar exits at the archive's end marker
-    # without draining the pipe, so git's last write of record padding, landing after that, takes
-    # SIGPIPE: exit 141 with NOTHING on stderr, and `pipefail` made that the release canary's
-    # "exporting v0.96.0: " with an empty reason (once, 2026-11-11). The archive is read whole,
-    # then handed to tar, which may stop reading wherever it likes.
-    archive = subprocess.run(
-        ["git", "-C", str(goh), "archive", sha],
-        env=foreign_repo_env(),
-        capture_output=True,
-        check=False,
-        stdin=subprocess.DEVNULL,
-    )
-    if archive.returncode != 0:
-        return f"exporting {rev}: {_failed('git archive', archive)}"
-    unpack = subprocess.run(
-        ["tar", "-x", "-C", str(dest)],
-        input=archive.stdout,
-        env=foreign_repo_env(),
-        capture_output=True,
-        check=False,
-    )
-    if unpack.returncode != 0:
-        return f"exporting {rev}: {_failed('tar -x', unpack)}"
-    (dest / ".goh-head").write_text(f"{sha}\n")
-    return None
-
-
-def _failed(what: str, r: subprocess.CompletedProcess) -> str:
-    """A failed step, never an empty reason: its exit (a signal by name) and its stderr's tail."""
-    why = r.stderr.decode("utf-8", "replace").strip() if isinstance(r.stderr, bytes) else r.stderr
-    code = f"signal {-r.returncode}" if r.returncode < 0 else f"exit {r.returncode}"
-    tail = " | ".join((why or "").strip().splitlines()[-3:])
-    return f"{what} {code}: {tail or 'no stderr'}"
 
 
 def consumers(root: Path, state: Path, goh: Path) -> tuple[list[Path], list[str]]:
@@ -229,6 +158,8 @@ def _env(side: Side) -> dict:
         PYTHONPATH=os.pathsep.join([str(side.gohdir), *rest]),
         GIT_LFS_SKIP_SMUDGE="1",
     )
+    if side.grace:
+        env["GOH_GRACE"] = side.grace
     return env
 
 
@@ -305,8 +236,33 @@ def remedy(step: str, found: list[str]) -> str:
     return "fix the findings (`goh structural --full --keep-going` in the repo lists them)"
 
 
-def judge(repo: Path, base: Side, head: Side, scratch: Path) -> dict:
-    """{turned_red: [...], already_red: [...], errors: [...]} for one consumer."""
+def _fresh(tree: Path) -> None:
+    """The clone as committed again: a side's run leaves nothing the next side reads."""
+    _git(tree, "reset", "-q", "--hard")
+    _git(tree, "clean", "-q", "-fdx")
+
+
+def grace_end(over: Side, tree: Path, now: Verdict) -> dict:
+    """{turned_red, errors, seconds}: HEAD once more at the grace's end, against its pass under the
+    day (`now`). A step red only there is NAMED; nothing here refuses the release."""
+    _fresh(tree)
+    t0 = time.monotonic()
+    then = structural(over, tree)
+    secs = round(time.monotonic() - t0, 1)
+    if then.error:
+        return {"turned_red": [], "errors": [f"under {over.label}: {then.error}"], "seconds": secs}
+    flips = [{"step": s, "found": then.found.get(s, [])[:3]} for s in sorted(then.red - now.red)]
+    starved = [
+        f"under {over.label}: {s} gave no verdict ({why})"
+        for s, why in sorted(then.timed_out.items())
+        if s not in now.red
+    ]
+    return {"turned_red": flips, "errors": starved, "seconds": secs}
+
+
+def judge(repo: Path, base: Side, head: Side, scratch: Path, over: Side | None = None) -> dict:
+    """{turned_red: [...], already_red: [...], errors: [...]} for one consumer; with `over`, HEAD
+    at the grace's end too, under `grace` (grace_end)."""
     tree = scratch / "tree"
     env = {**foreign_repo_env(), "GIT_LFS_SKIP_SMUDGE": "1"}
     c = subprocess.run(
@@ -320,9 +276,10 @@ def judge(repo: Path, base: Side, head: Side, scratch: Path) -> dict:
     if c.returncode != 0:
         return {"errors": [f"cloning it: {c.stderr.strip()}"]}
     was = structural(base, tree)
-    _git(tree, "reset", "-q", "--hard")
-    _git(tree, "clean", "-q", "-fdx")
+    _fresh(tree)
+    t0 = time.monotonic()
     now = structural(head, tree)
+    head_secs = round(time.monotonic() - t0, 1)
     if now.error:
         return {"errors": [f"under {head.label}: {now.error}"]}
     # A base that could not judge (a .gatesrc key it predates, say) proves no step green: every red
@@ -346,6 +303,9 @@ def judge(repo: Path, base: Side, head: Side, scratch: Path) -> dict:
             )
     if was.error and out["turned_red"]:
         out["base_error"] = was.error
+    out["head_seconds"] = head_secs
+    if over is not None:
+        out["grace"] = grace_end(over, tree, now)
     return out
 
 
@@ -356,14 +316,17 @@ def _where(repo: Path, root: Path) -> str:
         return str(repo)
 
 
-def sweep(repos: list[Path], root: Path, base: Side, head: Side, jobs: int) -> dict:
-    turned, already, errors = {}, {}, []
+def sweep(
+    repos: list[Path], root: Path, base: Side, head: Side, jobs: int, over: Side | None = None
+) -> dict:
+    turned, already, errors, grace, t0 = {}, {}, [], canary_grace.empty(), time.monotonic()
     with (
         tempfile.TemporaryDirectory(prefix="goh-release-canary-") as tmp,
         cf.ThreadPoolExecutor(max_workers=jobs) as pool,
     ):
         futs = {
-            pool.submit(judge, r, base, head, Path(tmp) / str(i)): r for i, r in enumerate(repos)
+            pool.submit(judge, r, base, head, Path(tmp) / str(i), over): r
+            for i, r in enumerate(repos)
         }
         for fut in cf.as_completed(futs):
             where, got = _where(futs[fut], root), fut.result()
@@ -372,7 +335,12 @@ def sweep(repos: list[Path], root: Path, base: Side, head: Side, jobs: int) -> d
             if got.get("already_red"):
                 already[where] = got["already_red"]
             errors += [f"{where}: {e}" for e in got.get("errors", [])]
-    return {"turned_red": turned, "already_red": already, "errors": sorted(errors)}
+            canary_grace.fold(grace, where, got)
+    out = {"turned_red": turned, "already_red": already, "errors": sorted(errors)}
+    out["sweep_seconds"] = round(time.monotonic() - t0, 1)
+    if over is not None:
+        out["grace_over"] = canary_grace.closed(grace)
+    return out
 
 
 def _sides(args: argparse.Namespace, tmp: Path) -> tuple[Side | None, Side | None, list[str]]:
@@ -399,6 +367,8 @@ def _sides(args: argparse.Namespace, tmp: Path) -> tuple[Side | None, Side | Non
 def run(args: argparse.Namespace) -> tuple[dict, int]:
     now = dt.datetime.now(dt.UTC).isoformat(timespec="seconds")
     rec: dict = {"ran_at": now, "turned_red": {}, "already_red": {}, "errors": [], "problems": []}
+    rec["head_sha"] = _git(args.goh, "rev-parse", "HEAD").stdout.strip()  # what a ship matches
+    rec["grace_over"] = {"ran": False, "count": None, "why": "nothing was swept"}
     explicit = bool(args.base_bin and args.head_bin)
     if not explicit:
         args.base = args.base or last_release(args.goh)
@@ -438,7 +408,14 @@ def run(args: argparse.Namespace) -> tuple[dict, int]:
             rec.update(verdict="refused", errors=errors)
             return rec, 1
         rec.update(base=base.label, head=head.label)
-        rec.update(sweep(repos, args.root, base, head, args.jobs))
+        when = step_tools.over_from(str(head.gohdir)) or step_tools.over_from(str(args.goh))
+        want, why = canary_grace.grace_pass(args.grace, when, time.time())
+        over = (
+            replace(head, label=f"{head.label} at GOH_GRACE=over", grace="over") if want else None
+        )
+        rec["grace_over"] = {"ran": False, "count": None, "why": why}
+        rec.update(sweep(repos, args.root, base, head, args.jobs, over))
+        rec["grace_over"]["over_from"] = canary_grace.day(when)
     bad = rec["turned_red"] or rec["errors"]
     rec["verdict"] = "refused" if bad else "clear"
     return rec, 1 if bad else 0
@@ -466,6 +443,7 @@ def say(rec: dict) -> None:
                 err(f"  {where}: {f['step']} -- {f['remedy']}")
                 for line in f["found"]:
                     info(f"      found: {line}")
+    canary_grace.say(rec.get("grace_over") or {})
     if rec["verdict"] == "refused":
         err("release canary: REFUSED -- fix or seed each consumer above (in that repo), then land")
         err("  again; a consumer that should leave the estate leaves its registry, by name")
@@ -488,6 +466,12 @@ def main() -> int:
     ap.add_argument("--base-label")
     ap.add_argument("--head-label")
     ap.add_argument("--jobs", type=int, default=JOBS)
+    ap.add_argument(
+        "--grace",
+        choices=("auto", "on", "off"),
+        default="auto",
+        help="HEAD once more at GOH_GRACE=over (auto: while crate::grace's date is ahead)",
+    )
     args = ap.parse_args()
     args.root, args.goh = args.root.resolve(), args.goh.resolve()
     rec, rc = run(args)

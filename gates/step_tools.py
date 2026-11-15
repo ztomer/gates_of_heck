@@ -175,24 +175,28 @@ def unnamed(repo: str, manifest: set[str]) -> list[str]:
     return [f"{tool} (step: {step})" for tool, step in sorted(found.items())]
 
 
+def over_from(root: str | None = None) -> int | None:
+    """crate::grace::OVER_FROM, read from `crates/goh/src/grace.rs` (its one home) in the gates tree
+    `root` (default: this one); None when that tree has no grace."""
+    root = root or os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    path = os.path.join(root, "crates", "goh", "src", "grace.rs")
+    try:
+        with open(path, encoding="utf-8") as fh:
+            match = re.search(r"pub const OVER_FROM: u64 = ([\d_]+);", fh.read())
+    except OSError:
+        return None
+    return int(match.group(1).replace("_", "")) if match else None
+
+
 def grace_over(now: float | None = None) -> bool:
-    """crate::grace::over() in Python: GOH_GRACE `over`/`within`, else the day (OVER_FROM is read
-    from crates/goh/src/grace.rs, its one home)."""
+    """crate::grace::over() in Python: GOH_GRACE `over`/`within`, else the day (over_from)."""
     seam = os.environ.get("GOH_GRACE")
     if seam in ("over", "within"):
         return seam == "over"
-    path = os.path.join(
-        os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-        "crates",
-        "goh",
-        "src",
-        "grace.rs",
-    )
-    with open(path, encoding="utf-8") as fh:
-        match = re.search(r"pub const OVER_FROM: u64 = ([\d_]+);", fh.read())
-    if not match:
-        raise SystemExit(f"required_tools: no OVER_FROM in {path}")
-    return (time.time() if now is None else now) >= int(match.group(1).replace("_", ""))
+    when = over_from()
+    if when is None:
+        raise SystemExit("required_tools: no OVER_FROM in crates/goh/src/grace.rs")
+    return (time.time() if now is None else now) >= when
 
 
 def refuse(repo: str, manifest: set[str]) -> int:

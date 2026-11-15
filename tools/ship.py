@@ -376,6 +376,8 @@ def run_steps(res: dict, first: str = STEPS[0]) -> int:
     os.environ.update(GOH_SHIP_VERSION=res["version"], GOH_SHIP_RESULT=res["result"],
                       GOH_SHIP_SUMMARY=res["summary"], GOH_SHIP_ITEM=res["item"] or "",
                       GOH_GATE_VERDICTS=res.get("verdicts", ""))  # fmt: skip
+    import canary_grace  # here, not at the top: the import ceiling (E402) is spent (see worker)
+
     stem = Path(res["result"]).with_suffix("")
     for name in STEPS[STEPS.index(first) :]:
         cmd, why = command(res, name)
@@ -397,6 +399,7 @@ def run_steps(res: dict, first: str = STEPS[0]) -> int:
             res["steps"].append(entry)
             if name == "release":
                 res["sha"] = git(Path(res["repo"]), "rev-parse", "HEAD") or res["sha"]
+            canary_grace.carry(res)  # the release canary's grace-end finding (GOH.CANARYGRACE)
             save(res)
             ok(f"{name} ({secs} s)")
             continue

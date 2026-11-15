@@ -9,6 +9,8 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+import canary_grace  # tools/ship.py, the one importer, puts lib/ on sys.path
+
 from tui.lib import err, info, ok, step
 
 TAIL = 40  # a failed step's last log lines, carried in the result
@@ -41,6 +43,8 @@ def status(result: str) -> int:
     for s in res["steps"]:
         mark = {"ok": ok, "skipped": step}.get(s["status"], err)
         mark(f"{s['name']}: {s['status']}" + (f" ({s['why']})" if s.get("why") else ""))
+    if said := canary_grace.line(res):
+        step(said)
     if res["status"] == "running":
         pid = res.get("pid")
         try:
