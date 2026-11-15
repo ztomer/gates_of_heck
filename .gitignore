@@ -12,6 +12,9 @@ __pycache__/
 # ...and every build by its source stamp, which a gate takes for the commit it pinned
 # (gates/_goh_bin.sh).
 /bin/by-stamp/
+# ...and a placement's stage, `<dest>.<pid>.staging`, which a copy killed mid-way leaves until the next
+# placement reaps it (lib/place.sh, GOH.STAGINGSTRAY).
+/bin/*.staging
 
 # The land root: tools/land.sh runs from a linked worktree under build/<name>, and an open one must
 # not read as an uncommitted main checkout (tests/test_land_root_ignored.py).

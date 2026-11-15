@@ -188,8 +188,9 @@ if [[ "${REV}" != "HEAD" ]]; then
   echo "✓ goh for ${REV:0:7} ready in the store ($("${STORED}" --version | awk '{print $NF}'))"
   exit 0
 fi
-cp "${BIN}" "${PROJECT_ROOT}/bin/.goh.$$"
-mv "${PROJECT_ROOT}/bin/.goh.$$" "${PROJECT_ROOT}/bin/goh"
+# shellcheck source=lib/place.sh
+. "${PROJECT_ROOT}/lib/place.sh"   # staged and renamed; a killed copy's stage is reaped (GOH.STAGINGSTRAY)
+goh_place "${BIN}" "${PROJECT_ROOT}/bin/goh"
 
 # The binary that landed is the one HEAD describes: its version and its source stamp.
 GOT="$("${PROJECT_ROOT}/bin/goh" --version | awk '{print $NF}')"

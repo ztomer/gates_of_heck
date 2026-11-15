@@ -29,6 +29,8 @@
 . "$(dirname "${BASH_SOURCE[0]}")/_git_env.sh"
 # shellcheck source=lib/house_python.sh
 . "${BASH_SOURCE[0]%/*}/../lib/house_python.sh" || exit 1   # GOH_PY: the house interpreter, never PATH's first python3 (G2d)
+# shellcheck source=lib/place.sh
+. "${BASH_SOURCE[0]%/*}/../lib/place.sh"   # goh_place: a whole copy, staged and renamed, strays reaped
 
 goh_resolve_native() {
     goh_native=""
@@ -96,7 +98,7 @@ _goh_resolve_uncached() { # <gates dir> [<pinned commit>]
     [ "$(goh_stamp_of "$stored")" = "$want" ] || goh_store_take_shared "$want" "$stored"
     if [ "$(goh_stamp_of "$stored")" = "$want" ] && [ "$pin" = "$head" ] \
         && [ "$(goh_stamp_of "$here/../bin/goh")" != "$want" ]; then
-        _goh_place "$stored" "$here/../bin/goh"   # bin/goh still follows HEAD (C3), unbuilt
+        goh_place "$stored" "$here/../bin/goh"   # bin/goh still follows HEAD (C3), unbuilt
     fi
     if [ "$(goh_stamp_of "$stored")" != "$want" ]; then
         if [ "$pin" = "$head" ]; then
@@ -142,12 +144,6 @@ goh_shared_store_path() {
         "$(printf %s "$1" | shasum | cut -c1-40)"
 }
 
-# _goh_place <binary> <dest> -- a whole copy: staged beside <dest> and renamed, so a reader (or a
-# hook executing the old one) never sees half a binary.
-_goh_place() {
-    mkdir -p "$(dirname "$2")" && cp "$1" "$2.$$.staging" && mv "$2.$$.staging" "$2"
-}
-
 # goh_store_take_shared <stamp> <store path> -- the shared store's build of <stamp> into this root's
 # store, when it has one that still says it was built from <stamp>.
 goh_store_take_shared() {
@@ -155,7 +151,7 @@ goh_store_take_shared() {
     shared="$(goh_shared_store_path "$1")"
     [ "$(goh_stamp_of "$shared")" = "$1" ] || return 0
     : > "$(dirname "$shared")/.goh-used" 2>/dev/null || true
-    _goh_place "$shared" "$2" 2>/dev/null || return 0
+    goh_place "$shared" "$2" 2>/dev/null || return 0
     : > "$(dirname "$2")/.goh-used"
 }
 
@@ -164,7 +160,7 @@ goh_store_take_shared() {
 goh_store_adopt() {
     local dir stamp shared
     dir="$(dirname "$2")"
-    _goh_place "$1" "$2" || return 0
+    goh_place "$1" "$2" || return 0
     : > "$dir/.goh-used"
     goh_store_prune "$(dirname "$dir")" "$(basename "$dir")"
     stamp="$(goh_stamp_of "$2")"
@@ -173,7 +169,7 @@ goh_store_adopt() {
     [ "$(goh_stamp_of "$shared")" = "$stamp" ] && return 0
     . "$(dirname "${BASH_SOURCE[0]}")/../lib/suite_cache_guard.sh"
     goh_suite_cache_ok "$shared" "the shared goh store" || exit 2
-    _goh_place "$2" "$shared" 2>/dev/null || return 0
+    goh_place "$2" "$shared" 2>/dev/null || return 0
     : > "$(dirname "$shared")/.goh-used"
     goh_store_prune "$(dirname "$(dirname "$shared")")" "$(basename "$(dirname "$shared")")" 8
 }
