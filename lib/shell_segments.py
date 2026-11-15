@@ -37,23 +37,43 @@ _OPERATOR = re.compile(r"<<-?\s*(['\"]?)([^\s;&|<>()'\"]+)\1")
 
 def _cut_heredocs(command: str) -> tuple[str, dict[str, str]]:
     """The command with each heredoc body (and its closing line) cut out and its `<<WORD` replaced
-    by a marker token, and the bodies by marker."""
+    by a marker token, and the bodies by marker.
+
+    Every opener on a line is cut (GOH.HEREDOC2): `cat <<A <<B` and `cmd1 <<A; cmd2 <<B` open two
+    bodies that follow the line one after the other, and each body's marker stands where its own
+    `<<WORD` was -- cutting only the first left the second body's lines in the text as commands.
+    """
     docs = sorted((a, s, e) for a, s, e, kind in secret_render.spans(command) if kind == "<<")
     bodies: dict[str, str] = {}
     out: list[str] = []
     at = 0
-    for n, (anchor, start, end) in enumerate(docs):
+    n = 0
+    i = 0
+    while i < len(docs):
+        anchor, start, _ = docs[i]
         if anchor < at:  # a span inside a body already cut
+            i += 1
             continue
-        op = _OPERATOR.match(command, anchor)
-        if op is None:
+        # the openers on this line: every heredoc anchored before the first body starts
+        line = [d for d in docs[i:] if d[0] < start]
+        i += len(line)
+        pos = at
+        last = None
+        for a, s, e in line:
+            op = _OPERATOR.match(command, a)
+            if op is None:
+                continue
+            marker = _MARKER.format(n)
+            n += 1
+            bodies[marker] = command[s:e]
+            out += [command[pos:a], f" {marker} "]
+            pos = op.end()
+            last = e
+        if last is None:
             continue
-        marker = _MARKER.format(n)
-        bodies[marker] = command[start:end]
-        closing = command.find("\n", end)
-        stop = len(command) if closing < 0 else closing
-        out += [command[at:anchor], f" {marker} ", command[op.end() : start], "\n"]
-        at = stop
+        closing = command.find("\n", last)
+        out += [command[pos:start], "\n"]
+        at = len(command) if closing < 0 else closing
     out.append(command[at:])
     return "".join(out), bodies
 

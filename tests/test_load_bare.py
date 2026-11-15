@@ -126,6 +126,9 @@ WRITTEN_THEN_RUN = (
         "git commit -q -F - <<'EOF'\nfix: a bare cargo build; cargo test ran\nEOF",
         "python3 - <<'PY'\nimport os; os.system('ls')  # cargo build\nPY",
         "bash -c 'echo hi' <<'EOF'\ncargo build\nEOF",
+        # GOH.HEREDOC2: two heredocs opened on one line, the SECOND body text to its owner.
+        "cat <<'A' <<'B'\nx\nA\ncargo build\nB",
+        "sh <<'A'; cat <<'B'\necho ok\nA\ncargo build\nB",
     ],
 )
 def test_a_heredoc_that_is_text_or_runs_inside_load_py_is_not_bare(held, command):
@@ -139,6 +142,8 @@ def test_a_heredoc_that_is_text_or_runs_inside_load_py_is_not_bare(held, command
         "bash -s <<EOF\ncd x && cargo test -q\nEOF",
         "cd x\ncargo build --release",
         "echo start\nbash tools/gate.sh --full",
+        # GOH.HEREDOC2: the second of two heredocs on one line is a shell's stdin, so its body runs.
+        "cat <<'A'; sh <<'B'\nhello\nA\ncargo build\nB",
     ],
 )
 def test_a_heredoc_a_shell_runs_bare_or_a_later_line_is_still_judged(held, command):
