@@ -1,4 +1,4 @@
-use super::{added_tests, declares_test, refusal};
+use super::{added_tests, declares_test, refusal, refusal_read, reverts, Reading};
 
 const ADDS_A_TEST: &str = "diff --git a/tests/test_x.py b/tests/test_x.py\n\
 +++ b/tests/test_x.py\n\
@@ -205,5 +205,72 @@ fn a_red_run_left_in_the_body_is_refused_naming_its_line_and_the_fix() {
     assert!(
         !hollow.unwrap().contains("found in the body"),
         "a hollow trailer is not misplaced"
+    );
+}
+
+#[test]
+fn the_first_refusal_names_the_placement_and_shows_an_example() {
+    // GOH.REDRUNMSG: the first refusal said only "its trailer block carries no `Red-run:`", and
+    // two agents and the coordinator each lost two gated commits finding out where it goes.
+    let place = "directly above Co-Authored-By with no blank line between, e.g.\n\n    Red-run: ";
+    for msg in [
+        "feat: x\n\nbody\n",
+        "feat: x\n\nbody\n\nRed-run: dropped the guard\n\nCo-Authored-By: A <a@b>\n",
+        "feat: x\n\nbody\n\nRed-run: dropped the guard\nwrapped\nCo-Authored-By: A <a@b>\n",
+    ] {
+        let why = refusal(msg, ADDS_A_TEST).expect("refused");
+        assert!(why.contains(place), "{why}");
+        assert!(why.contains("\n    Co-Authored-By: "), "{why}");
+    }
+}
+
+#[test]
+fn a_red_run_git_reads_as_a_trailer_passes_where_this_parser_reads_none() {
+    // git reads a block holding a Signed-off-by as trailers at 25% trailer lines; this parser,
+    // stricter, does not. git's own reading is the one that counts.
+    let msg = "feat: x\n\nbody\n\nRed-run: dropped the guard, the test went red\nwrapped\n\
+               Signed-off-by: A <a@b>\n";
+    assert!(refusal(msg, ADDS_A_TEST).is_some());
+    let read = Reading {
+        git_trailers: Some(
+            "Red-run: dropped the guard, the test went red\nSigned-off-by: A <a@b>\n".into(),
+        ),
+        reverted_diff: None,
+    };
+    assert_eq!(refusal_read(msg, ADDS_A_TEST, &read), None);
+    let hollow = Reading {
+        git_trailers: Some("Red-run: none\n".into()),
+        reverted_diff: None,
+    };
+    assert!(
+        refusal_read(msg, ADDS_A_TEST, &hollow).is_some(),
+        "hollow even as git reads it"
+    );
+}
+
+#[test]
+fn a_revert_restoring_a_deleted_test_needs_no_new_claim_and_a_new_test_still_does() {
+    let sha = "0123456789abcdef0123456789abcdef01234567";
+    let msg = format!("Revert \"x\"\n\nThis reverts commit {sha}.\n");
+    assert_eq!(reverts(&msg).as_deref(), Some(sha));
+    assert_eq!(reverts("feat: x\n\nThis reverts commit abc.\n"), None);
+    // The reverted commit deleted the whole file: its `+++` is /dev/null.
+    let deleted = "diff --git a/tests/test_x.py b/tests/test_x.py\n\
+                   --- a/tests/test_x.py\n+++ /dev/null\n@@ -1,2 +0,0 @@\n\
+                   -def test_it_fails_without_the_fix() -> None:\n-    assert x()\n";
+    let read = Reading {
+        git_trailers: None,
+        reverted_diff: Some(deleted.into()),
+    };
+    assert_eq!(refusal_read(&msg, ADDS_A_TEST, &read), None);
+    let more = format!("{ADDS_A_TEST}+def test_brand_new() -> None:\n");
+    let why = refusal_read(&msg, &more, &read).expect("a test the revert does not restore");
+    assert!(
+        why.contains("test_brand_new") && !why.contains("and 1 more"),
+        "{why}"
+    );
+    assert!(
+        refusal(&msg, ADDS_A_TEST).is_some(),
+        "no reverted diff, no excuse"
     );
 }

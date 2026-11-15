@@ -12,6 +12,12 @@
 //!
 //! Opt-in per repo by `GOH_RED_RUN` in `.gatesrc`: the stock commit-msg hook asks at commit time
 //! (`gates/commit_msg.sh`), and `push_gate.sh` asks again over the pushed range.
+//!
+//! Every refusal says where the line goes, with an example (GOH.REDRUNMSG). A `Red-run:` that git
+//! itself reads as a trailer (`interpret-trailers --parse`; `%(trailers)` over a range) passes,
+//! though this parser is stricter than git. A `git revert` (`This reverts commit <sha>.`) that
+//! restores a test the reverted commit deleted needs no new claim for it: that test was red-proven
+//! where it was first added; any test the revert does not restore is judged as ever.
 
 use crate::commit_class::{cleaned, final_trailers};
 use goh_tui::ERR;
@@ -89,10 +95,16 @@ fn declared(diff: &str, side: char) -> Vec<Declared> {
     let mut pending: Option<usize> = None;
     for line in diff.lines() {
         if let Some(p) = line.strip_prefix("+++ ") {
-            p.strip_prefix("b/").unwrap_or(p).clone_into(&mut path);
+            // A deleted file's `+++` is /dev/null: its removed tests keep the `---` path.
+            if p != "/dev/null" {
+                p.strip_prefix("b/").unwrap_or(p).clone_into(&mut path);
+            }
             context_attr = false;
             pending = None;
-        } else if line.starts_with("--- ") {
+        } else if let Some(p) = line.strip_prefix("--- ") {
+            if let Some(old) = p.strip_prefix("a/") {
+                old.clone_into(&mut path);
+            }
             context_attr = false;
             pending = None;
         } else if let Some(this) = line.strip_prefix(side) {
@@ -127,29 +139,79 @@ fn declared(diff: &str, side: char) -> Vec<Declared> {
 /// new one. A rename is a new name, so it is still an added test.
 #[must_use]
 pub fn added_tests(diff: &str) -> Vec<String> {
-    let removed: std::collections::HashSet<(String, String)> = declared(diff, '-')
-        .into_iter()
-        .filter_map(|d| d.name.map(|n| (d.path, n)))
-        .collect();
+    added_beyond(diff, None)
+}
+
+/// `added_tests`, less the tests `reverted` (the diff of the commit a revert undoes) REMOVED: a
+/// `git revert` that restores a deleted test brings back one that was red-proven at the commit that
+/// first added it (GOH.REDRUNMSG). Keyed by path and name, as a moved test is.
+fn added_beyond(diff: &str, reverted: Option<&str>) -> Vec<String> {
+    let names = |d: &str| -> std::collections::HashSet<(String, String)> {
+        declared(d, '-')
+            .into_iter()
+            .filter_map(|t| t.name.map(|n| (t.path, n)))
+            .collect()
+    };
+    let removed = names(diff);
+    let restored = reverted.map(names).unwrap_or_default();
     declared(diff, '+')
         .into_iter()
         .filter(|d| {
-            d.name
-                .as_ref()
-                .is_none_or(|n| !removed.contains(&(d.path.clone(), n.clone())))
+            d.name.as_ref().is_none_or(|n| {
+                let key = (d.path.clone(), n.clone());
+                !removed.contains(&key) && !restored.contains(&key)
+            })
         })
         .map(|d| d.shown)
         .collect()
 }
 
+/// What git reads beside the message itself.
+///
+/// Its trailers, one `Token: value` per line (`interpret-trailers --parse`,
+/// `%(trailers:only,unfold)`), and the diff of the commit a `This reverts commit <sha>.` line names.
+#[derive(Default)]
+pub struct Reading {
+    pub git_trailers: Option<String>,
+    pub reverted_diff: Option<String>,
+}
+
+/// Where the line goes, with an example: said in EVERY refusal, the first included (GOH.REDRUNMSG
+/// -- two agents and the coordinator each lost two gated commits to a first refusal that named no
+/// place).
+const PLACEMENT: &str = "the trailer block is the message's LAST paragraph: put the line there, \
+     directly above Co-Authored-By with no blank line between, e.g.\n\
+     \n    Red-run: dropped the guard in parse(); test_it_refuses_an_empty_body went red\n\
+     \x20   Co-Authored-By: Name <noreply@example.com>";
+
 /// Why `message` may not commit `diff`, or None.
 #[must_use]
 pub fn refusal(message: &str, diff: &str) -> Option<String> {
-    let added = added_tests(diff);
+    refusal_read(message, diff, &Reading::default())
+}
+
+/// `refusal`, with git's own reading of the message: a `Red-run:` git reads as a trailer passes
+/// even where this parser, stricter than git, reads none (a block git accepts for its
+/// `Signed-off-by:`).
+#[must_use]
+pub fn refusal_read(message: &str, diff: &str, read: &Reading) -> Option<String> {
+    let added = added_beyond(diff, read.reverted_diff.as_deref());
     let first = added.first()?;
     let lines = cleaned(message);
+    let git_claim = read.git_trailers.as_deref().and_then(|t| {
+        t.lines()
+            .filter_map(|l| l.strip_prefix(KEY).and_then(|r| r.strip_prefix(':')))
+            .next_back()
+            .map(hollow_form)
+    });
+    if git_claim.is_some_and(|c| !c.is_empty() && !HOLLOW.contains(&c.as_str())) {
+        return None;
+    }
     if let Some(line) = crate::commit_class::unread_block(&lines, &[KEY]) {
-        return Some(crate::commit_class::unread_block_refusal(&line));
+        return Some(format!(
+            "{} -- {PLACEMENT}",
+            crate::commit_class::unread_block_refusal(&line)
+        ));
     }
     let trailers = final_trailers(&lines);
     let claim = trailers
@@ -168,13 +230,46 @@ pub fn refusal(message: &str, diff: &str) -> Option<String> {
         // "carries no Red-run" read as missing to the writer who had written one (GOH.REDRUNPLACE).
         return Some(format!(
             "it adds a test ({first}{more}): {KEY} found in the body (line {n}), not in the \
-             trailer block: put it directly above Co-Authored-By with no blank line between"
+             trailer block: put it directly above Co-Authored-By with no blank line between -- \
+             {PLACEMENT}"
         ));
     }
     Some(format!(
         "it adds a test ({first}{more}) and its trailer block carries no `{KEY}:` naming the \
-         mutation that turned it red -- break the code once, watch the test fail, and say what broke"
+         mutation that turned it red -- break the code once, watch the test fail, and say what \
+         broke; {PLACEMENT}"
     ))
+}
+
+/// The commit a `git revert` message names (`This reverts commit <40 hex>.`), when it names one.
+fn reverts(message: &str) -> Option<String> {
+    cleaned(message).iter().find_map(|l| {
+        let sha = l.trim().strip_prefix("This reverts commit ")?;
+        let sha = sha.trim_end_matches('.');
+        (sha.len() == 40 && sha.bytes().all(|b| b.is_ascii_hexdigit())).then(|| sha.to_owned())
+    })
+}
+
+/// The `Reading` beside `message`: git's trailers (`trailers`, already read) and the reverted
+/// commit's diff. A reverted sha git cannot show excuses nothing.
+fn reading(message: &str, trailers: Option<String>) -> Reading {
+    let reverted_diff = reverts(message).and_then(|sha| git(&show(&sha)).ok());
+    Reading {
+        git_trailers: trailers,
+        reverted_diff,
+    }
+}
+
+/// `git show` of one commit's diff, at the `-U1` `declared` reads.
+const fn show(sha: &str) -> [&str; 6] {
+    [
+        "show",
+        "--format=",
+        "-U1",
+        "--no-color",
+        "--no-ext-diff",
+        sha,
+    ]
 }
 
 /// The 1-based line of the last `Red-run:` line outside the trailer block, when the block has none.
@@ -225,7 +320,10 @@ pub fn check_file(path: &str) -> i32 {
             return 2;
         }
     };
-    refusal(&message, &diff).map_or(0, |why| {
+    // `--no-divider`: a commit's own trailers are read so (`%(trailers)`), and a `---` in a body
+    // is text, not the end of the message.
+    let trailers = git(&["interpret-trailers", "--parse", "--no-divider", path]).ok();
+    refusal_read(&message, &diff, &reading(&message, trailers)).map_or(0, |why| {
         goh_tui::eoutln!("{ERR} {TAG} commit refused: {why}");
         1
     })
@@ -263,17 +361,8 @@ pub fn check_range(revs: &[String]) -> i32 {
         if !parent_opts_in(sha) {
             continue;
         }
-        let read = git(&["log", "-1", "--format=%B", sha]).and_then(|m| {
-            git(&[
-                "show",
-                "--format=",
-                "-U1",
-                "--no-color",
-                "--no-ext-diff",
-                sha,
-            ])
-            .map(|d| (m, d))
-        });
+        let read =
+            git(&["log", "-1", "--format=%B", sha]).and_then(|m| git(&show(sha)).map(|d| (m, d)));
         let (message, diff) = match read {
             Ok(pair) => pair,
             Err(e) => {
@@ -281,7 +370,8 @@ pub fn check_range(revs: &[String]) -> i32 {
                 return 2;
             }
         };
-        if let Some(why) = refusal(&message, &diff) {
+        let trailers = git(&["log", "-1", "--format=%(trailers:only,unfold)", sha]).ok();
+        if let Some(why) = refusal_read(&message, &diff, &reading(&message, trailers)) {
             let short = sha.get(..8).unwrap_or(sha);
             goh_tui::eoutln!("{ERR} {TAG} {short} refused: {why}");
             refused += 1;

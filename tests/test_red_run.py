@@ -172,3 +172,41 @@ def test_the_commit_msg_hook_runs_the_repos_own_message_layer(repo: Path) -> Non
     r = _git_commit(repo, "feat: FORBIDDEN word")
     assert r.returncode != 0 and "layer: no" in r.stderr, r.stderr
     assert _git_commit(repo, "feat: an ordinary word").returncode == 0
+
+
+def test_a_red_run_git_reads_as_a_trailer_passes_through_the_binary(repo: Path) -> None:
+    """GOH.REDRUNMSG: git reads a block holding a Signed-off-by as trailers at 25% trailer lines;
+    the commit's own reading by git is the one that counts, not a parser stricter than git."""
+    _staged(repo, A_TEST)
+    msg = ("feat: x\n\nbody\n\nRed-run: the assert inverted -- the test failed\n"
+           "wrapped, no indent\nSigned-off-by: A <a@b>\n")  # fmt: skip
+    parsed = subprocess.run(["git", "interpret-trailers", "--parse", "--no-divider"], input=msg,
+                            capture_output=True, text=True, check=True, cwd=repo)  # fmt: skip
+    assert "Red-run:" in parsed.stdout, parsed.stdout  # git reads it as a trailer: the premise
+    r = _check(repo, msg)
+    assert r.returncode == 0, r.stdout + r.stderr
+
+
+def test_a_revert_that_restores_a_deleted_test_is_its_own_proof(repo: Path) -> None:
+    """GOH.REDRUNMSG: `git revert` of a commit that deleted a test re-adds a test red-proven at the
+    commit that first added it; a test the revert does not restore is still judged."""
+    (repo / ".gatesrc").write_text("GOH_RED_RUN=1\n")
+    git(repo, "add", ".gatesrc")
+    git(repo, "commit", "-q", "--no-verify", "-m", "chore: opt into red-run")
+    _staged(repo, A_TEST)
+    git(repo, "commit", "-q", "--no-verify", "-m", NAMED)
+    git(repo, "rm", "-q", "tests/test_new.py")
+    git(repo, "commit", "-q", "--no-verify", "-m", "chore: drop the test")
+    base = git(repo, "rev-parse", "HEAD").strip()
+    git(repo, "revert", "--no-edit", "HEAD")
+    r = _range(repo, f"{base}..HEAD")
+    assert r.returncode == 0, r.stdout + r.stderr
+    # The same revert at commit time, with one test it does not restore.
+    git(repo, "reset", "-q", "--hard", base)
+    git(repo, "revert", "--no-commit", "HEAD")
+    msg = git(repo, "log", "-1", "--format=Revert%n%nThis reverts commit %H.", "HEAD")
+    assert _check(repo, msg).returncode == 0
+    _staged(repo, A_TEST, "tests/test_other.py")
+    r = _check(repo, msg)
+    assert r.returncode == 1 and "tests/test_other.py" in r.stderr, r.stderr
+    assert "tests/test_new.py" not in r.stderr, r.stderr
