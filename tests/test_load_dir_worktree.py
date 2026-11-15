@@ -15,7 +15,7 @@ import sys
 
 import pytest
 from _fast_git import fast_init
-from conftest import REPO_ROOT
+from conftest import REPO_ROOT, hermetic_env
 
 sys.path.insert(0, str(REPO_ROOT / "lib"))
 import load_registry as reg
@@ -32,9 +32,7 @@ def checkout(tmp_path):
 
 
 def _run(argv, env_extra=None):
-    import os
-
-    env = {**os.environ, **(env_extra or {})}
+    env = hermetic_env(**(env_extra or {}))
     return subprocess.run(
         [sys.executable, *map(str, argv)],
         capture_output=True,
