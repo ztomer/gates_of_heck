@@ -22,6 +22,8 @@ import agent_stalls as st
 
 NOW = 1_800_000_000.0
 SCRIPT = REPO_ROOT / "hooks" / "claude" / "agent_stalls.py"
+# The real process table stays out: a hung shell elsewhere on the machine is not this test's.
+NO_PROCS = ("--procs", os.devnull)
 
 
 def _assistant(text: str, stop: str = "end_turn") -> dict:
@@ -132,7 +134,7 @@ def test_a_launch_phrase_in_the_agents_own_command_is_not_a_launch(tmp_path: Pat
 def test_the_cli_exits_1_on_a_stall_and_0_without_one(tmp_path: Path) -> None:
     d = tmp_path / "subagents"
     _waiting(d)
-    args = [sys.executable, str(SCRIPT), "--subagents", str(d), "--now", str(NOW)]
+    args = [sys.executable, str(SCRIPT), *NO_PROCS, "--subagents", str(d), "--now", str(NOW)]
     red = subprocess.run(args, capture_output=True, text=True, timeout=30, env=hermetic_env(), check=False, stdin=subprocess.DEVNULL)  # fmt: skip
     assert red.returncode == 1, red.stderr
     assert "Q.x1 [x1] idle 30m, waiting" in red.stdout and "btwo gone" in red.stdout
@@ -149,7 +151,7 @@ def test_the_hook_puts_a_fake_stall_in_front_of_the_coordinator(tmp_path: Path) 
     event = json.dumps({"hook_event_name": "UserPromptSubmit", "session_id": "sess",
                         "transcript_path": str(session.with_suffix(".jsonl")), "prompt": "hi"})  # fmt: skip
     r = subprocess.run(
-        [sys.executable, str(SCRIPT), "--hook", "--now", str(NOW)], input=event,
+        [sys.executable, str(SCRIPT), "--hook", *NO_PROCS, "--now", str(NOW)], input=event,
         capture_output=True, text=True, timeout=30, env=hermetic_env(), check=False,
     )  # fmt: skip
     assert r.returncode == 0, r.stderr
@@ -163,7 +165,8 @@ def test_the_hook_puts_a_fake_stall_in_front_of_the_coordinator(tmp_path: Path) 
 @pytest.mark.parametrize("stdin", ["{}", "not json", '{"transcript_path": "/nonexistent/s.jsonl"}'])
 def test_the_hook_is_silent_and_never_blocks_on_what_it_cannot_read(stdin: str) -> None:
     r = subprocess.run(
-        [sys.executable, str(SCRIPT), "--hook"], input=stdin, capture_output=True, text=True,
+        [sys.executable, str(SCRIPT), "--hook", *NO_PROCS], input=stdin, capture_output=True,
+        text=True,
         timeout=30, env=hermetic_env(), check=False,
     )  # fmt: skip
     assert (r.returncode, r.stdout) == (0, "")
@@ -191,8 +194,9 @@ def test_goh_agent_stalls_runs_this_file_and_passes_its_exit_code(tmp_path: Path
     d = tmp_path / "subagents"
     _waiting(d)
     r = run_goh(
-        tmp_path, "agent-stalls", "--subagents", str(d), "--now", str(NOW), env=hermetic_env()
-    )
+        tmp_path, "agent-stalls", *NO_PROCS, "--subagents", str(d), "--now", str(NOW),
+        env=hermetic_env(),
+    )  # fmt: skip
     assert r.returncode == 1, r.stderr
     assert "Q.x1 [x1] idle 30m, waiting" in r.stdout
 

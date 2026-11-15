@@ -429,6 +429,12 @@ Every structural checker is native since Phase N3; the Python checkers they port
   prints `.loop`'s stale-agent lines (a closed item's agent still running, an agent past 2 h), asked of
   its CLI, `loopctl stale --projects <root>`, by `hooks/claude/loop_stale.py` (`GOH_LOOPCTL`; a failing
   or slow CLI is said on stderr only; GOH.STALEHOOK). Pinned by `test_agent_stalls.py`, `test_agent_stalls_loop.py`.
+* `hooks/claude/stdin_hangs.py` — the Bash-tool readers blocked on the harness's stdin, which `goh agent-stalls` and its hook
+  print as `kill <pid>: ...` (GOH.STDINHANG): a descendant of a `claude` process's shell whose argv is a stdin reader by
+  `lib/stdin_reader.reads_stdin` (the Bash guard's definition), under a second of CPU, whose fd 0 (`lsof -F ftd -d 0`) is the
+  shell's own harness socket or pipe, once its agent has finished (its Bash command found in a finished subagent's transcript)
+  or past 2 h. Probed: a command with a heredoc gets no `< /dev/null`, so its fd 0 is the harness's unix socket. `--procs` is
+  the process-table seam (`/dev/null`: none). Never signals a process. Pinned by `test_stdin_hangs.py`.
 * `hooks/claude/ci_door.py` — `direct_calls()`: each `gh run watch/view/list` or `gh api .../actions` a subagent's
   transcript RAN at command position (GOH.GHDOOR); `agent_guard.py` names them at SubagentStop (`ci_direct`) with
   loopctl's one CI door, `loopctl.py ci <sha> --repo OWNER/NAME [--wait]`. Pinned by `tests/test_agent_guard_ci_door.py`.

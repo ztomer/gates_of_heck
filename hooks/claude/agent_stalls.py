@@ -68,6 +68,9 @@ com.ztomer.loopctl-tick (`.loop`), which is the one agent notifier and calls thi
 (`stalls`, `pending_jobs`, `is_waiting`, `full_said`, `stop_marker`) for the agents of other sessions. Its plist
 and installer were deleted; tests/test_agent_stalls.py pins that nothing can install it again.
 
+A Bash-tool reader blocked on the harness's stdin past its agent or 2 h is named too, "kill <pid>"
+(`stdin_hangs.py`, GOH.STDINHANG; `--procs` is its process-table seam).
+
 Seams: `now` (the clock), the subagents directories, and `holders` (the process table) are
 arguments of `stalls()`; `notify` (the poster) and the state path are arguments of `notify_new()`;
 the CLI takes `--now`, `--projects`, `--subagents` and `--state`. Nothing here ever signals a
@@ -90,6 +93,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from agent_stop import INTERRUPTED, stop_marker  # THE stopped-agent rule (LOOP.LINGERSTOP)
 from loop_stale import loop_stale_lines, start_loop_stale  # .loop's own rule (GOH.STALEHOOK)
+from stdin_hangs import lines as stdin_hang_lines  # a shell blocked on stdin (GOH.STDINHANG)
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from tui.lib import counted  # the count meets its noun (GOH.HEDGEOWN)
@@ -114,6 +118,7 @@ WAIT_WORDS = re.compile(
 )
 REPORT = re.compile(r"^\s*Status:", re.MULTILINE)
 UNKNOWN = "unknown"
+HUNG_HEAD = "Bash shells blocked reading the harness's stdin (hooks/claude/stdin_hangs.py):"
 
 Holders = Callable[[list[str]], dict[str, list[int]]]
 
@@ -351,7 +356,9 @@ def report(found: list[Stall], minutes: float) -> str:
     return "\n".join([head, *(f"  ⚠ {s.line()}" for s in found)])
 
 
-def hook(event_text: str, now: float, holders: Holders = lsof_holders) -> str | None:
+def hook(
+    event_text: str, now: float, holders: Holders = lsof_holders, procs: Path | None = None
+) -> str | None:
     """The UserPromptSubmit hook's JSON output for one event, or None to stay silent."""
     try:
         event = json.loads(event_text)
@@ -361,9 +368,11 @@ def hook(event_text: str, now: float, holders: Holders = lsof_holders) -> str | 
     minutes = _minutes_env()
     # <projects>/<proj>/<session>.jsonl: the root loopctl reads every session's subagents under.
     asked = start_loop_stale(transcript.parent.parent)
-    found = stalls([transcript.with_suffix("") / "subagents"], now, minutes, holders=holders)
+    subagents = transcript.with_suffix("") / "subagents"
+    found = stalls([subagents], now, minutes, holders=holders)
     loop_lines = loop_stale_lines(asked)
-    if not found and not loop_lines:
+    hung = stdin_hang_lines([subagents], procs)
+    if not found and not loop_lines and not hung:
         return None
     parts = []
     if found:
@@ -371,6 +380,8 @@ def hook(event_text: str, now: float, holders: Holders = lsof_holders) -> str | 
             "\nEach is waiting on work that may have died or never notified: check its jobs, then "
             "message it (SendMessage) or stop it (TaskStop). `goh agent-stalls` re-lists them."
         ))  # fmt: skip
+    if hung:
+        parts.append("\n".join([HUNG_HEAD, *(f"  ⚠ {ln}" for ln in hung)]))
     if loop_lines:
         parts.append("\n".join(["loopctl stale (the queue's stale agents):",
                                  *(f"  {ln}" for ln in loop_lines)]))  # fmt: skip
@@ -442,12 +453,15 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--hook", action="store_true", help="run as the UserPromptSubmit hook")
     ap.add_argument("--notify", action="store_true", help="tell the owner of new dead waits")
     ap.add_argument("--state", type=Path, default=None, help="--notify's record of what it told")
+    ap.add_argument(
+        "--procs", type=Path, default=None, help="a process-table fixture (a seam; /dev/null: none)"
+    )
     ap.add_argument("--log-path", type=Path, default=None, help="--notify's log, bounded")
     args = ap.parse_args(argv)
     now = time.time() if args.now is None else args.now
     if args.hook:
         try:
-            out = hook(sys.stdin.read(), now)
+            out = hook(sys.stdin.read(), now, procs=args.procs)
         except (OSError, ValueError) as e:  # never fails a prompt; says why on stderr
             print(f"agent_stalls: {e}", file=sys.stderr)
             return 0
@@ -467,13 +481,16 @@ def main(argv: list[str] | None = None) -> int:
         if args.log_path:
             log.rotate(args.log_path.expanduser())
         return 0
+    hung = stdin_hang_lines(dirs, args.procs)
     if args.json:
         print(json.dumps([s.__dict__ | {"jobs": [j.__dict__ for j in s.jobs]} for s in found]))
     elif found:
         print(report(found, minutes))
     else:
         print(f"✓ no subagent idle {int(minutes)}m+ across {counted(len(dirs), 'session')}")
-    return 1 if found else 0
+    if hung and not args.json:  # --json stays the stall list loopctl reads
+        print("\n".join([HUNG_HEAD, *(f"  ⚠ {ln}" for ln in hung)]))
+    return 1 if found or (hung and not args.json) else 0
 
 
 if __name__ == "__main__":

@@ -33,7 +33,8 @@ def _hook_event(projects: Path) -> str:
 
 def _run_hook(event: str, **env: str) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
-        [sys.executable, str(SCRIPT), "--hook"], input=event, capture_output=True, text=True,
+        [sys.executable, str(SCRIPT), "--hook", "--procs", os.devnull], input=event,
+        capture_output=True, text=True,
         timeout=60, env=hermetic_env(**env), check=False,
     )  # fmt: skip
 
