@@ -67,6 +67,7 @@ import ci_door  # a direct gh CI read past loopctl's door (GOH.GHDOOR)
 import model_choice  # the rules file's one reader, beside this script
 import scratch_guard  # a fixed-name file in the shared scratchpad root (GOH.AGENTSCRATCH)
 from ci_judge import judge_ci as _judge_ci  # the CI-watching judge, beside this script
+from report_faults import read_faults  # the report's `Faults seen:` (LOOP.FAULTBULLETS)
 
 SPAWN_TOOLS = {"Agent", "Task"}  # `Task` is the tool's legacy name
 
@@ -78,10 +79,6 @@ CONTRACT = (
     "(pre-existing WARN, error, red check, stale state), ';'-separated, each with where it is; "
     "or none>`. No narrative."
 )
-FAULTS_LINE = re.compile(
-    r"^[ \t>*-]*Faults[ \t]+seen:[ \t]*(.*?)[ \t]*$", re.IGNORECASE | re.MULTILINE
-)
-NO_FAULTS = {"none", "none.", "-", "n/a"}
 STATUSES = ("landed", "blocked", "failed", "answered")
 STATUS_LINE = re.compile(r"\s*status:\s*(\w+)\s*$", re.IGNORECASE)
 REPORT_CAP = 4000  # characters of the report kept on the outcome line (the audit reads its shas)
@@ -387,55 +384,6 @@ def _status(report: str) -> str:
     return word if word in STATUSES else "unreported"
 
 
-_OPENERS = {"(": ")", "[": "]"}
-
-
-def _split_top_level(body: str) -> list[str]:
-    """`body` split on ';' outside (), [], double quotes, backticks and single quotes (GOH.FAULTSPLIT).
-
-    A fault is one claim: "(only in my side run; the land gate passed)" is not two. A single quote
-    opens or closes a span only at a word edge, so an apostrophe ("doesn't") is text. A line that
-    ends with a span still open (an agent dropped a closer) falls back to the plain split: a stray
-    opener must never merge faults or lose one. Text the ledger already holds is never re-split
-    (rows carry their `faults` list), so existing fault keys are untouched.
-    """
-    parts: list[str] = []
-    start = 0
-    stack: list[str] = []  # the closers awaited, innermost last
-    quote = ""  # the quote char of the open span, else ""
-    for i, ch in enumerate(body):
-        if quote:
-            if ch == quote and (ch != "'" or not body[i + 1 : i + 2].isalnum()):
-                quote = ""
-        elif ch in '"`' or (ch == "'" and not body[i - 1 : i].isalnum()):
-            quote = ch
-        elif ch in _OPENERS:
-            stack.append(_OPENERS[ch])
-        elif stack and ch == stack[-1]:
-            stack.pop()
-        elif ch == ";" and not stack:
-            parts.append(body[start:i])
-            start = i + 1
-    if quote or stack:
-        return body.split(";")
-    parts.append(body[start:])
-    return parts
-
-
-def faults(report: str) -> list[str] | None:
-    """The report's `Faults seen:` line as a list: [] for none, None when the line is absent
-    (not stated, which is not the same claim as none)."""
-    m = FAULTS_LINE.search(report)
-    if m is None:
-        return None
-    body = m.group(1).strip()
-    # Backticks are looked through ONLY to recognise a wrapped `none`; a fault is recorded as
-    # written, so a leading backtick on the first one is part of it.
-    if body.strip("`").strip().lower() in NO_FAULTS or not body:
-        return []
-    return [f.strip() for f in _split_top_level(body) if f.strip()]
-
-
 def on_stop(event: dict[str, Any]) -> list[str]:
     """Record a finished subagent's outcome, putting back the login-item apps it left not running;
     the messages for the session (apps relaunched, a ledger not written). Never blocks the stop."""
@@ -452,6 +400,7 @@ def on_stop(event: dict[str, Any]) -> list[str]:
     report = event.get("last_assistant_message")
     report = report if isinstance(report, str) else ""
     text, settled = settled_transcript(transcript, report) if transcript else (None, False)
+    found_faults, unread = read_faults(report)
     loose = scratch_guard.loose_writes(text) if text is not None else []
     ci = ci_door.direct_calls(text) if text is not None else []
     warning = _append({
@@ -459,14 +408,14 @@ def on_stop(event: dict[str, Any]) -> list[str]:
         "tool_use_id": tool_use_id, "agent_id": event.get("agent_id"),
         "agent_type": event.get("agent_type"),
         "status": _status(report), "report": report[:REPORT_CAP] or None,
-        "faults": faults(report),
+        "faults": found_faults,
         "tokens": usage(text) if text is not None else None,
         "tokens_settled": settled, "apps": apps, "scratch_loose": loose,
         "ci_direct": ci,
     })  # fmt: skip
     scratch = scratch_guard.message(loose) if loose else None
     door = ci_door.message(ci) if ci else None
-    return [m for m in (appstate.describe(apps), scratch, door, warning) if m]
+    return [m for m in (appstate.describe(apps), scratch, door, unread, warning) if m]
 
 
 def main() -> int:

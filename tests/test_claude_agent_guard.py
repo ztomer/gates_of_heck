@@ -469,3 +469,12 @@ def test_the_outcome_record_carries_faults(tmp_path: Path, monkeypatch: pytest.M
     )
     rec = json.loads(agent_guard.ledger_path().read_text().splitlines()[-1])
     assert rec["faults"] == ["red CI on x"]
+
+
+def test_a_report_whose_faults_section_cannot_be_read_says_so_at_the_stop(tmp_path: Path) -> None:
+    """LOOP.FAULTBULLETS: an empty `Faults seen:` line with no list under it is recorded as not
+    stated, and the session is told why, rather than a silent `none`."""
+    report = "Status: landed\nabc1234 x\nFaults seen:\nsee the narrative above"
+    out = _run(_stop(None, report), tmp_path / "cache")
+    assert out and "no bullet list follows it" in out["systemMessage"], out
+    assert _ledger(tmp_path / "cache")[0]["faults"] is None

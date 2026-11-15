@@ -393,6 +393,10 @@ Every structural checker is native since Phase N3; the Python checkers they port
 * `hooks/claude/ci_door.py` — `direct_calls()`: each `gh run watch/view/list` or `gh api .../actions` a subagent's
   transcript RAN at command position (GOH.GHDOOR); `agent_guard.py` names them at SubagentStop (`ci_direct`) with
   loopctl's one CI door, `loopctl.py ci <sha> --repo OWNER/NAME [--wait]`. Pinned by `tests/test_agent_guard_ci_door.py`.
+* `hooks/claude/report_faults.py` — `read_faults()`: a subagent report's `Faults seen:` section as a list, the
+  line's top-level `;` faults plus each `- `/`* `/`1. ` bullet under it; an empty line with no list is not stated
+  (None) with a warning `agent_guard.py` passes to the session (LOOP.FAULTBULLETS). Pinned by
+  `tests/test_agent_guard_faults.py`.
 * `hooks/claude/scratch_guard.py` — `loose_writes()`: each file a subagent's transcript WROTE straight into the shared
   scratchpad root (a Write/Edit `file_path`, or a redirect, `tee` or `-o` target of a `shell_tools.py` tool), never one under a
   per-item dir; `agent_guard.py` names them at SubagentStop on the outcome line (`scratch_loose`) and to the session, with

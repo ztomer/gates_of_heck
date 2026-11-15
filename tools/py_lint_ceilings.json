@@ -54,7 +54,7 @@
   "gates/required_tools.py": 3,
   "gates/ruff_ratchet.py": 2,
   "gates/swift_lint_baseline.py": 3,
-  "hooks/claude/agent_guard.py": 8,
+  "hooks/claude/agent_guard.py": 7,
   "hooks/claude/agent_stalls.py": 2,
   "hooks/claude/agent_stop.py": 1,
   "hooks/claude/appstate.py": 2,
