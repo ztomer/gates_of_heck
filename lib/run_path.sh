@@ -13,8 +13,8 @@
 #                             so two worktrees of one repo never share a lock and one tree always
 #                             gets the same directory back (a stable path is what keeps a cargo
 #                             build-dir, keyed by workspace path, incremental)
-#   goh_index_tree [DIR]      the tree of the index git would commit (the hook's GIT_INDEX_FILE when
-#                             one is bound), written from a PRIVATE copy under the run root, so it
+#   goh_index_tree [DIR]      the tree of the index git would commit (the hook's GIT_INDEX_FILE, or the
+#                             one a hook carried, `goh_bind_hook_index`), written from a PRIVATE copy under the run root, so it
 #                             never takes, and never waits on, the shared `index.lock`
 #
 # The Python face is lib/run_path.py and the Rust face crates/goh/src/run_path.rs: one root, one key.
@@ -22,6 +22,8 @@
 # (crates/goh/src/runpaths.rs). tests/test_run_path.py, tests/test_entry_points_leave_no_strays.py.
 
 _goh_d=${BASH_SOURCE[0]%/*}; [ "$_goh_d" != "${BASH_SOURCE[0]}" ] || _goh_d=.; . "$_goh_d/../lib/bash5.sh" || exit; goh_bash5 "$@"
+
+. "$_goh_d/../gates/_git_env.sh" || exit   # goh_bind_hook_index: the index a commit hook carried
 
 goh_run_root() {
     local r="${GOH_RUN_DIR:-}"
@@ -60,6 +62,10 @@ goh_index_tree() {
     (
         [ -z "${1:-}" ] || cd "$1" || exit 2
         local idx root copy tree
+        # A hook drops its git variables at entry and carries a `commit -a` / `commit -- path`
+        # index only as GOH_HOOK_INDEX_FILE: the helper binds it itself, so a caller that forgot
+        # does not copy (and name the tree of) the repository's own, pre-commit, index.
+        goh_bind_hook_index
         idx="${GIT_INDEX_FILE:-}"
         if [ -n "$idx" ]; then
             case "$idx" in /*) ;; *) idx="$PWD/$idx" ;; esac  # relative to the cwd, as git reads it

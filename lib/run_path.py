@@ -50,11 +50,25 @@ def run_dir(tree: Path | str) -> Path:
     return d
 
 
+def _carried_index(repo: Path | str, env: dict[str, str]) -> str:
+    """The index an outer commit hook carried (gates/_git_env.sh `goh_hook_unbind`), when REPO is
+    the repository it belongs to: `commit -a` and `commit -- path` commit a TEMPORARY index that
+    only GOH_HOOK_INDEX_FILE names once the hook has dropped its git variables. Else ''."""
+    carried, git_dir = env.get("GOH_HOOK_INDEX_FILE", ""), env.get("GOH_HOOK_GIT_DIR", "")
+    if not carried or not git_dir:
+        return ""
+    here = gitrun.run_reader(("rev-parse", "--absolute-git-dir"), cwd=repo, env=env,
+                             timeout=DEADLINE_S)  # fmt: skip
+    if here.returncode != 0 or os.path.realpath(here.stdout.strip()) != os.path.realpath(git_dir):
+        return ""
+    return carried
+
+
 def index_tree(repo: Path | str, env: dict[str, str] | None = None) -> str:
     """The tree of the index git would commit in REPO (GIT_INDEX_FILE in ENV when set, relative to
     REPO), written from a private copy so the shared index and its lock are never touched."""
     env = dict(os.environ if env is None else env)
-    idx = env.get("GIT_INDEX_FILE", "")
+    idx = env.get("GIT_INDEX_FILE", "") or _carried_index(repo, env)
     if idx:
         index = Path(repo, idx)
     else:

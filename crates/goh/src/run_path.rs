@@ -88,8 +88,17 @@ pub fn index_tree(repo: Option<&Path>) -> Option<String> {
             .success()
             .then(|| String::from_utf8_lossy(&out.stdout).trim().to_owned())
     };
-    let index = match std::env::var_os("GIT_INDEX_FILE").filter(|i| !i.is_empty()) {
-        Some(i) => repo.map_or_else(|| PathBuf::from(&i), |r| r.join(&i)),
+    let own = std::env::var_os("GIT_INDEX_FILE").filter(|i| !i.is_empty());
+    let carried = || {
+        let here = git(&["rev-parse", "--absolute-git-dir"], None)?;
+        carried_index(
+            std::env::var_os("GOH_HOOK_INDEX_FILE").as_deref(),
+            std::env::var_os("GOH_HOOK_GIT_DIR").as_deref(),
+            Path::new(&here),
+        )
+    };
+    let index = match own.map(PathBuf::from).or_else(carried) {
+        Some(i) => repo.map_or_else(|| i.clone(), |r| r.join(&i)),
         None => PathBuf::from(git(
             &["rev-parse", "--path-format=absolute", "--git-path", "index"],
             None,
@@ -106,6 +115,24 @@ pub fn index_tree(repo: Option<&Path>) -> Option<String> {
     tree.filter(|t| !t.is_empty())
 }
 
+/// The index an outer commit hook carried (`gates/_git_env.sh` `goh_hook_unbind`), when the
+/// repository at `here` is the one it belongs to: `commit -a` and `commit -- path` commit a
+/// TEMPORARY index that only `GOH_HOOK_INDEX_FILE` names once the hook has dropped its git variables.
+fn carried_index(
+    index: Option<&std::ffi::OsStr>,
+    git_dir: Option<&std::ffi::OsStr>,
+    here: &Path,
+) -> Option<PathBuf> {
+    let (index, git_dir) = (index.filter(|i| !i.is_empty())?, git_dir?);
+    let same = |a: &Path, b: &Path| {
+        a.canonicalize()
+            .ok()
+            .zip(b.canonicalize().ok())
+            .is_some_and(|(a, b)| a == b)
+    };
+    same(Path::new(git_dir), here).then(|| PathBuf::from(index))
+}
+
 fn nanos() -> u128 {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -114,7 +141,7 @@ fn nanos() -> u128 {
 
 #[cfg(test)]
 mod tests {
-    use super::{key, root_from};
+    use super::{carried_index, key, root_from};
     use std::ffi::OsStr;
     use std::path::{Path, PathBuf};
 
@@ -146,5 +173,19 @@ mod tests {
         // pinned to as well (tests/test_run_path.py), so the three faces name one directory.
         assert_eq!(key(Path::new("/a/repo")), "repo-668405c985a3f02f");
         assert_ne!(key(Path::new("/a/repo")), key(Path::new("/b/repo")));
+    }
+
+    #[test]
+    fn a_carried_index_is_taken_only_for_the_repository_it_belongs_to() {
+        let dir = std::env::temp_dir();
+        let (idx, gd) = (Some(OsStr::new("/t/index.lock")), Some(dir.as_os_str()));
+        assert_eq!(
+            carried_index(idx, gd, &dir),
+            Some(PathBuf::from("/t/index.lock"))
+        );
+        assert_eq!(carried_index(idx, gd, Path::new("/nonexistent")), None);
+        assert_eq!(carried_index(None, gd, &dir), None);
+        assert_eq!(carried_index(Some(OsStr::new("")), gd, &dir), None);
+        assert_eq!(carried_index(idx, None, &dir), None);
     }
 }

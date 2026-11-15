@@ -18,7 +18,7 @@
 //!   a Python `repo /`, `root /`, `Path.cwd()`, `os.getcwd()`, `dir=repo`, `os.path.join(repo`;
 //!   a Rust `repo.join(`, `root.join(`;
 //! * a path in such a root's `build/` (`$main/build/...`, `repo / "build"`, `repo.join("build"`);
-//! * `git write-tree` (or a `"write-tree"` argv word): it writes the shared index under its lock.
+//! * `git write-tree` (or a `"write-tree"` argv word, a call's last argument too): it writes the shared index under its lock.
 //!
 //! WHAT IS NOT READ: a path built in a variable on an earlier line and used here (`$lock`), a root
 //! under another name, and any write a non-shell, non-Python, non-Rust file makes. The runtime half
@@ -111,7 +111,7 @@ static RS_BUILD: LazyLock<Regex> = LazyLock::new(|| {
         .unwrap_or_else(|e| unreachable!("a constant pattern: {e}"))
 });
 static WRITE_TREE: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r#"\bgit(?:\s+-C\s+\S+)*\s+write-tree\b|"write-tree"\s*[,\]]"#)
+    Regex::new(r#"\bgit(?:\s+-C\s+\S+)*\s+write-tree\b|"write-tree"\s*[,\])]"#)
         .unwrap_or_else(|e| unreachable!("a constant pattern: {e}"))
 });
 
@@ -309,7 +309,7 @@ pub fn judged_lines(rel: &str, text: &str) -> Vec<usize> {
 pub const SHAPES: crate::shapes::Declared = {
     use crate::shapes::{hooks, Declared, Shape, Token, Verdict};
     Declared {
-        probe: r#"(?:\$\{?(?:PROJECT_ROOT|REPO_ROOT|ROOT|repo|root|top|TOP|main|wt|PWD|REPO|toplevel|worktree|[1-9])\}?[/.]|\b(?:repo|root|ROOT|REPO_ROOT|top|wt|worktree)(?:\s*/\s*f?["']|\.join\())[^#]*(?:\.lock\b|\.staging\b|\.tmp\b|XXXXXX)|\bgit\s+write-tree\b|"write-tree"\s*[,\]]|\$\{?(?:main|repo|root|top|wt)\}?/build/"#,
+        probe: r#"(?:\$\{?(?:PROJECT_ROOT|REPO_ROOT|ROOT|repo|root|top|TOP|main|wt|PWD|REPO|toplevel|worktree|[1-9])\}?[/.]|\b(?:repo|root|ROOT|REPO_ROOT|top|wt|worktree)(?:\s*/\s*f?["']|\.join\())[^#]*(?:\.lock\b|\.staging\b|\.tmp\b|XXXXXX)|\bgit\s+write-tree\b|"write-tree"\s*[,\])]|\$\{?(?:main|repo|root|top|wt)\}?/build/"#,
         judged: hooks::run_paths,
         owns: &[Token {
             name: "temp, lock or stage path rooted at a work tree",
@@ -416,6 +416,9 @@ mod tests {
             (Lang::Shell, "    git write-tree 2>/dev/null"),
             (Lang::Shell, r#"    lock="$repo/.goh-tree.lock""#),
             (Lang::Rust, r#"    let t = git(&["write-tree"])?;"#),
+            // ZoneWM tools/index_tree.py: the word is the LAST argument of a call (2026-11-14).
+            (Lang::Python, r#"    tree = _git(root, "write-tree")"#),
+            (Lang::Python, r#"    run(("write-tree",), cwd=repo)"#),
             (Lang::Python, r#"    lock = repo / ".goh.lock""#),
             (Lang::Python, "    fd, tmp = tempfile.mkstemp(dir=root)"),
             (Lang::Rust, r#"    let tmp = repo.join(".x.tmp");"#),
