@@ -370,6 +370,11 @@ Every structural checker is native since Phase N3; the Python checkers they port
 * `tools/session_bench.py <repo>` — how much N concurrent sessions' gates serialize on each other: one
   clone per session, makespan and speedup per N, the USL fit (sigma = serialized fraction, kappa =
   interference), every lock wait by name, and the steps that inflated most. Pinned by `test_session_bench.py`.
+* `tools/daemon_cpu.py idle N | run [--path P] -- CMD` — what the system daemons our work drives
+  (fseventsd, mds/mds_stores/mdworker, mediaanalysisd, ReportCrash, WindowServer) burned over a window,
+  and the processes that burned CPU beside them, with the share inside CMD's own tree (exact tree CPU
+  by wait4 beside it) and each `--path`'s size change. No sudo: per-file attribution stays with
+  `sudo fs_usage`. It measures; it is not a gate (EST.FSEVENTSCHURN). Pinned by `test_daemon_cpu.py`.
 * `tools/profiling/` — the generic trace ranker only (app harnesses live in their repo; pinned
   by `test_profiling_generic.py`). `analyze_trace.sh` + `xctrace_profile.py` rank any Time Profiler trace (the `time-profile` export, id/ref resolved,
   streamed); pinned by `test_xctrace_profile.py`.
