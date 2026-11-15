@@ -5,6 +5,7 @@ they behave identically when invoked from a subdirectory. py_gate is exercised
 end-to-end on a real mini package (ruff + pytest must be installed).
 """
 
+import re
 import shutil
 import subprocess
 from pathlib import Path
@@ -13,6 +14,11 @@ import pytest
 from _fast_git import fast_init
 from _gatesrc_kit import write_gatesrc
 from conftest import REPO_ROOT, write
+
+# The ruff release goh's Python gates accept (gates/ruff_house.py RUFF, GOH.RUFFVERSION).
+_RUFF_PIN = re.search(
+    r'^RUFF = "([^"]+)"', (REPO_ROOT / "gates" / "ruff_house.py").read_text(), re.MULTILINE
+)[1]
 
 STRUCTURAL = "gates/structural.sh"
 
@@ -99,7 +105,8 @@ def test_py_gate_scopes_coverage_to_the_physical_path(repo, tmp_path):
     # (gates/python.sh takes GOH_PY_RUNNER too, GOH.PYSEAM), so a stub silent there has no pytest.
     runner.write_text(
         f'#!/bin/bash\nprintf "%s\\n" "$*" >> "{argv_log}"\n'
-        'case "$*" in *--version*) echo "pytest 99.0.0" ;; esac\n'
+        'case "$*" in "ruff --version") echo "ruff ' + _RUFF_PIN + '" ;;\n'  # goh's pin
+        '  *--version*) echo "pytest 99.0.0" ;; esac\n'
     )
     runner.chmod(0o755)
 
