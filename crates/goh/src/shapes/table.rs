@@ -339,6 +339,10 @@ pub const ROWS: &[Row] = &[
     unreviewed("every tag has its changelog heading"),
     unreviewed("every tracked JavaScript source parses"),
     Row {
+        scanner: "goh empty-assert",
+        state: State::Declared(crate::emptyassert::shapes::SHAPES),
+    },
+    Row {
         scanner: "file length",
         state: State::Declared(crate::length::shapes::SHAPES),
     },

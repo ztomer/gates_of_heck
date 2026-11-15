@@ -14,13 +14,15 @@
 use goh_tui::{ERR, OK};
 use regex::Regex;
 
+#[path = "emptyassert_shapes.rs"]
+pub mod shapes;
+
 /// The compiled shapes.
 pub struct Rules {
     assert_macro: Regex,
     is_empty: Regex,
     len_zero: Regex,
     len_zero_flipped: Regex,
-    string_literal: Regex,
     quotes: Regex,
 }
 
@@ -34,7 +36,6 @@ impl Rules {
             is_empty: rx(r"^(!?)\s*(.+)\.is_empty\s*\(\s*\)$")?,
             len_zero: rx(r"^!?\s*(.+)\.len\s*\(\s*\)\s*(?:==|!=|<|>)\s*0\b$")?,
             len_zero_flipped: rx(r"^!?\s*0\s*(?:==|!=|<|>)\s*(.+)\.len\s*\(\s*\)$")?,
-            string_literal: rx(r#""(?:[^"\\]|\\.)*""#)?,
             quotes: rx(r#""+"#)?,
         })
     }
@@ -42,6 +43,16 @@ impl Rules {
     /// `(lineno, invocation)` for each emptiness assertion in one file.
     #[must_use]
     pub fn findings(&self, text: &str) -> Vec<(usize, String)> {
+        self.invocations(text)
+            .into_iter()
+            .filter(|(_, inv)| self.is_violation(inv))
+            .collect()
+    }
+
+    /// `(lineno, invocation)` for every `assert!`/`debug_assert!` in code, whatever its verdict:
+    /// what the shape table counts as judged.
+    #[must_use]
+    pub fn invocations(&self, text: &str) -> Vec<(usize, String)> {
         let mut out = Vec::new();
         let (mut depth, mut start) = (0usize, 0usize);
         let mut buf: Vec<char> = Vec::new();
@@ -49,16 +60,9 @@ impl Rules {
         for (n, line) in text.split('\n').enumerate() {
             let (lexed, next) = crate::rustlex::lex_line(line, lex);
             lex = next;
-            let code = lexed.display;
-            let free: Vec<char> = self
-                .string_literal
-                .replace_all(&code, |c: &regex::Captures<'_>| {
-                    c[0].chars()
-                        .map(|ch| if ch == '{' || ch == '}' { ch } else { '"' })
-                        .collect::<String>()
-                })
-                .chars()
-                .collect();
+            // The lexer's mask, not a per-line regex: a string a trailing `\` carries onto this
+            // line is masked here too (GOH.EMPTYASSERTSTRING), and a brace stays visible.
+            let free: Vec<char> = lexed.masked.chars().collect();
             let mut i = 0usize;
             while i < free.len() {
                 if depth == 0 {
@@ -85,10 +89,7 @@ impl Rules {
                 } else if ch == ')' {
                     depth -= 1;
                     if depth == 0 {
-                        let joined: String = buf.iter().collect();
-                        if self.is_violation(&joined) {
-                            out.push((start, joined));
-                        }
+                        out.push((start, buf.iter().collect()));
                         buf.clear();
                     }
                 }
@@ -380,6 +381,20 @@ mod tests {
             false,
         ),
         ("assert!(v.is_empty(), \"left {v:?} over\");", false),
+        // A string a trailing `\` carries onto the next line is still a string there, and so is
+        // a raw string's second line (GOH.EMPTYASSERTSTRING: the scan-r4 lane's own FIX const).
+        (
+            "const FIX: &str = \"write \\\n    assert!(x.is_empty()); is the shape\";\nfn f() {}\n",
+            false,
+        ),
+        (
+            "const FIX: &str = r#\"write\nassert!(x.is_empty());\n\"#;\nfn f() {}\n",
+            false,
+        ),
+        (
+            "const S: &str = \"a \\\n b\"; assert!(v.is_empty());\n",
+            true,
+        ),
         // The house shape (GOH.ASSERTLINT): clippy 1.100.0 pedantic is silent on it too.
         ("assert!(x.is_empty(), \"expected no rows: {x:?}\");", false),
         // clippy's assert_is_empty suggestion: shows the value, not flagged.

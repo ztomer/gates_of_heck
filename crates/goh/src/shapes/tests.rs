@@ -40,6 +40,26 @@ fn every_scanner_in_the_registry_has_exactly_one_row() {
 }
 
 #[test]
+fn every_layer_scanner_is_a_step_a_layer_gate_runs() {
+    let gates = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../gates");
+    let text: String = std::fs::read_dir(&gates)
+        .expect("gates/")
+        .filter_map(Result::ok)
+        .filter(|e| e.path().extension().is_some_and(|x| x == "sh"))
+        .filter_map(|e| std::fs::read_to_string(e.path()).ok())
+        .collect();
+    for label in super::LAYER_SCANNERS {
+        let cmd = label
+            .strip_prefix("goh ")
+            .expect("a layer scanner is a goh command");
+        assert!(
+            text.contains(&format!("\"${{_goh_cmd[@]}}\" {cmd}")),
+            "`{label}` is in LAYER_SCANNERS and no gate in gates/ runs it: a stale entry"
+        );
+    }
+}
+
+#[test]
 fn the_burn_down_only_shrinks_and_no_new_scanner_joins_it() {
     let unreviewed: BTreeSet<&str> = table::ROWS
         .iter()

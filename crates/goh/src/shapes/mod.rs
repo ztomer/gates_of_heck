@@ -102,7 +102,15 @@ pub struct Row {
 /// The structural steps, one label per line: the registry the pipeline runs.
 pub const STRUCTURAL_STEPS: &str = include_str!("../../structural_steps.txt");
 
-/// Every scanner a row must exist for: each structural step and each subject's scanner.
+/// The scanners a language layer runs natively (`gates/rust_gate.sh`), by their `goh` command.
+///
+/// Neither a structural step nor a subject, so neither list reached them, and the
+/// shapes of `goh empty-assert` went undeclared (GOH.EMPTYASSERTSTRING). A test holds each to a
+/// `goh_step` in `gates/`.
+pub const LAYER_SCANNERS: &[&str] = &["goh empty-assert"];
+
+/// Every scanner a row must exist for: each structural step, each subject's scanner and each
+/// layer scanner.
 #[must_use]
 pub fn registry() -> BTreeSet<&'static str> {
     STRUCTURAL_STEPS
@@ -110,6 +118,7 @@ pub fn registry() -> BTreeSet<&'static str> {
         .map(str::trim)
         .filter(|l| !l.is_empty())
         .chain(crate::subject::ALL.iter().map(|s| s.scanner))
+        .chain(LAYER_SCANNERS.iter().copied())
         .collect()
 }
 

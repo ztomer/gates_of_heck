@@ -12,9 +12,14 @@
 //! `b"`/`c"`), raw strings `r#"..."#` at any hash count, and character
 //! literals told apart from lifetimes.
 //!
-//! Each line gives two views: `display`, the line with its comments removed
-//! and its literals intact (what a finding quotes), and `code`, the same with
-//! every literal's contents removed (what a pattern is matched against).
+//! Each line gives three views: `display`, the line with its comments removed
+//! and its literals intact (what a finding quotes); `code`, the same with
+//! every literal's contents removed (what a pattern is matched against); and
+//! `masked`, `display` with every literal character but a brace turned to `"`,
+//! column for column (a format string's `{x}` stays visible). The masked view
+//! is the lexer's, so a string carried onto the next line by a trailing `\` is
+//! masked there too -- a per-line regex read its continuation as code
+//! (GOH.EMPTYASSERTSTRING).
 
 /// Where a line starts: in code, or inside a construct an earlier line opened.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -37,12 +42,24 @@ pub struct Lexed {
     pub display: String,
     /// Comments removed and every literal emptied (`""`, `''`).
     pub code: String,
+    /// `display` with each literal character, delimiters included, as `"`, but a brace as itself.
+    pub masked: String,
 }
 
 impl Lexed {
     fn both(&mut self, c: char) {
         self.display.push(c);
         self.code.push(c);
+        self.masked.push(c);
+    }
+
+    /// Literal characters: shown in `display`, masked in `masked`.
+    fn lit<'a>(&mut self, cs: impl IntoIterator<Item = &'a char>) {
+        for c in cs {
+            self.display.push(*c);
+            self.masked
+                .push(if matches!(c, '{' | '}') { *c } else { '"' });
+        }
     }
 }
 
@@ -114,15 +131,14 @@ pub fn lex_line(line: &str, state: LexState) -> (Lexed, LexState) {
             }
             LexState::Str => {
                 if c == '\\' {
-                    out.display
-                        .extend(chars[i..(i + 2).min(chars.len())].iter());
+                    out.lit(&chars[i..(i + 2).min(chars.len())]);
                     i += 2;
                 } else {
                     if c == '"' {
                         out.code.push('"');
                         state = LexState::Code;
                     }
-                    out.display.push(c);
+                    out.lit([&c]);
                     i += 1;
                 }
             }
@@ -131,12 +147,12 @@ pub fn lex_line(line: &str, state: LexState) -> (Lexed, LexState) {
                     && chars.len() > i + hashes
                     && chars[i + 1..=i + hashes].iter().all(|h| *h == '#');
                 if closes {
-                    out.display.extend(chars[i..=i + hashes].iter());
+                    out.lit(&chars[i..=i + hashes]);
                     out.code.push('"');
                     state = LexState::Code;
                     i += hashes + 1;
                 } else {
-                    out.display.push(c);
+                    out.lit([&c]);
                     i += 1;
                 }
             }
@@ -148,16 +164,18 @@ pub fn lex_line(line: &str, state: LexState) -> (Lexed, LexState) {
                     state = LexState::Block(1);
                     i += 2;
                 } else if c == '"' {
-                    out.both('"');
+                    out.display.push('"');
+                    out.code.push('"');
+                    out.masked.push('"');
                     state = LexState::Str;
                     i += 1;
                 } else if let Some(hashes) = (c == 'r').then(|| raw_open(&chars, i)).flatten() {
-                    out.display.extend(chars[i..i + hashes + 2].iter());
+                    out.lit(&chars[i..i + hashes + 2]);
                     out.code.push('"');
                     state = LexState::Raw(hashes);
                     i += hashes + 2;
                 } else if let Some(end) = (c == '\'').then(|| char_end(&chars, i)).flatten() {
-                    out.display.extend(chars[i..end].iter());
+                    out.lit(&chars[i..end]);
                     out.code.push_str("''");
                     i = end;
                 } else {
