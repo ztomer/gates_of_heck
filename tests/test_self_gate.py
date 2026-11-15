@@ -53,7 +53,9 @@ def _goh_clone(tmp_path: Path) -> tuple[Path, Path]:
     clone = tmp_path / "goh"
     subprocess.run(["git", "clone", "-q", "--shared", str(REPO_ROOT), str(clone)],
                    check=True, stdin=subprocess.DEVNULL, capture_output=True)  # fmt: skip
-    git(clone, "checkout", "-q", "-b", "lane")  # a branch: main moves only through land.sh
+    # A branch: main moves only through land.sh. Never "lane": a lane worktree holds lane/<ITEM>,
+    # a ref that name cannot sit beside (GOH.REFRESHINDEXLOCK: this failed in every lane checkout).
+    git(clone, "checkout", "-q", "-b", "scratch-branch")
     # The clone is goh AT THIS CHANGE: the tree under test, committed, as a landed goh would be.
     show = ["git", "-C", str(REPO_ROOT), "diff", "HEAD", "--binary"]
     diff = subprocess.run(show, capture_output=True, check=True, stdin=subprocess.DEVNULL).stdout

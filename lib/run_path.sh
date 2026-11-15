@@ -23,8 +23,6 @@
 
 _goh_d=${BASH_SOURCE[0]%/*}; [ "$_goh_d" != "${BASH_SOURCE[0]}" ] || _goh_d=.; . "$_goh_d/../lib/bash5.sh" || exit; goh_bash5 "$@"
 
-. "$_goh_d/../gates/_git_env.sh" || exit   # goh_bind_hook_index: the index a commit hook carried
-
 goh_run_root() {
     local r="${GOH_RUN_DIR:-}"
     if [ -z "$r" ]; then
@@ -65,7 +63,10 @@ goh_index_tree() {
         # A hook drops its git variables at entry and carries a `commit -a` / `commit -- path`
         # index only as GOH_HOOK_INDEX_FILE: the helper binds it itself, so a caller that forgot
         # does not copy (and name the tree of) the repository's own, pre-commit, index.
-        goh_bind_hook_index
+        # A checkout holding only lib/ (a placement test's fixture) has no gates/: nothing is carried.
+        command -v goh_bind_hook_index >/dev/null 2>&1 || [ ! -f "$_goh_d/../gates/_git_env.sh" ] \
+            || . "$_goh_d/../gates/_git_env.sh" || exit 1
+        ! command -v goh_bind_hook_index >/dev/null 2>&1 || goh_bind_hook_index
         idx="${GIT_INDEX_FILE:-}"
         if [ -n "$idx" ]; then
             case "$idx" in /*) ;; *) idx="$PWD/$idx" ;; esac  # relative to the cwd, as git reads it
