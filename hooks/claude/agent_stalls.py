@@ -89,6 +89,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from agent_stop import INTERRUPTED, stop_marker  # THE stopped-agent rule (LOOP.LINGERSTOP)
+from loop_stale import loop_stale_lines, start_loop_stale  # .loop's own rule (GOH.STALEHOOK)
 
 DEFAULT_MINUTES = 20
 DEFAULT_MAX_AGE_HOURS = 24
@@ -355,13 +356,22 @@ def hook(event_text: str, now: float, holders: Holders = lsof_holders) -> str | 
     except (ValueError, KeyError, TypeError):
         return None
     minutes = _minutes_env()
+    # <projects>/<proj>/<session>.jsonl: the root loopctl reads every session's subagents under.
+    asked = start_loop_stale(transcript.parent.parent)
     found = stalls([transcript.with_suffix("") / "subagents"], now, minutes, holders=holders)
-    if not found:
+    loop_lines = loop_stale_lines(asked)
+    if not found and not loop_lines:
         return None
-    text = report(found, minutes) + (
-        "\nEach is waiting on work that may have died or never notified: check its jobs, then "
-        "message it (SendMessage) or stop it (TaskStop). `goh agent-stalls` re-lists them."
-    )
+    parts = []
+    if found:
+        parts.append(report(found, minutes) + (
+            "\nEach is waiting on work that may have died or never notified: check its jobs, then "
+            "message it (SendMessage) or stop it (TaskStop). `goh agent-stalls` re-lists them."
+        ))  # fmt: skip
+    if loop_lines:
+        parts.append("\n".join(["loopctl stale (the queue's stale agents):",
+                                 *(f"  {ln}" for ln in loop_lines)]))  # fmt: skip
+    text = "\n".join(parts)
     return json.dumps({
         "systemMessage": text,
         "hookSpecificOutput": {"hookEventName": "UserPromptSubmit", "additionalContext": text},
