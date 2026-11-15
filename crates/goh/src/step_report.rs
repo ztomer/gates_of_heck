@@ -293,7 +293,7 @@ pub(crate) fn delegated(
             "{out}\n{}\n{ERR} {label} printed {} above and exited 0 -- exit nonzero, \
              or say ⚠ if it is an advisory (GOH.XEXIT)\n",
             crosses.join("\n"),
-            goh_tui::counted(crosses.len(), "✗ line")
+            counted_crosses(crosses.len())
         );
         fail(label, &command_line(program, args, checks), &report, start)
     } else {
@@ -490,4 +490,10 @@ mod tests {
         // The instrument never fails a gate: an unwritable path is silently dropped.
         super::record_to(&dir.path().join("no/such/dir/t"), "x", 1.0, 0, "", "", "");
     }
+}
+
+/// `1 ✗ line` / `3 ✗ lines`, the glyph spelled through `goh_tui`.
+fn counted_crosses(n: usize) -> String {
+    let noun = goh_tui::noun_as(n, &format!("{ERR} line"), &format!("{ERR} lines"));
+    format!("{n} {noun}")
 }

@@ -10,7 +10,8 @@
 //! handed it to every agent of that session. The one launch is `goh launch-app PATH`
 //! (`crate::launchapp`), which clears the environment first.
 //!
-//! GOH.BAREOPEN2 widened the scan: an `open` behind `env FOO=1` or `FOO=1` (an `env -i` is the clean
+//! GOH.BAREOPEN2 widened the scan, from `crate::grace::OVER_FROM` (2026-11-23; before it the scan reads
+//! as the last release did, so a consumer is not red on shapes no seed names yet): an `open` behind `env FOO=1` or `FOO=1` (an `env -i` is the clean
 //! launch), an `open` in a `$( )` or backticks inside double quotes, and a Python subprocess that
 //! runs `open` (`crate::bareopen_py`).
 //!
@@ -24,6 +25,9 @@
 
 use crate::estate_seed::{self, Kind, Report, Sites};
 use std::path::Path;
+
+#[path = "bareopen_legacy.rs"]
+mod legacy;
 
 const TAG: &str = "[bare_open]";
 /// The step's label, the same line as in `structural_steps.txt`.
@@ -43,11 +47,18 @@ const FIX: &str = "    `open` hands the app it launches THIS shell's environment
      \"$GOH_DIR/bin/goh\" launch-app --background \"$APP\"    (open -g)\n";
 
 /// The words after which the next word is a command.
-const LEADERS: [&str; 7] = ["then", "do", "else", "exec", "nohup", "time", "sudo"];
+pub(crate) const LEADERS: [&str; 7] = ["then", "do", "else", "exec", "nohup", "time", "sudo"];
 
 /// The command-position `open`s in one line: the byte offset of each.
 #[must_use]
 pub fn scan_line(line: &str) -> Vec<usize> {
+    scan_line_in(line, true)
+}
+
+/// `scan_line` as of the last release when `shapes` is false (`crate::grace`): no `env`/assignment
+/// prefix, and a `$( )` inside double quotes still a string.
+#[must_use]
+pub fn scan_line_in(line: &str, shapes: bool) -> Vec<usize> {
     if line.trim_start().starts_with('#') {
         return Vec::new();
     }
@@ -61,14 +72,22 @@ pub fn scan_line(line: &str) -> Vec<usize> {
             continue;
         }
         let start = line[..at].strip_suffix("/usr/bin/").map_or(at, str::len);
-        if quoted(&line[..start]) {
+        if if shapes {
+            quoted(&line[..start])
+        } else {
+            legacy::quoted(&line[..start])
+        } {
             continue;
         }
         let before = line[..start].trim_end();
         if line[..start].ends_with(|c: char| c.is_alphanumeric() || "_-./$\"'".contains(c)) {
             continue;
         }
-        let leads = carries_caller_env(before);
+        let leads = if shapes {
+            carries_caller_env(before)
+        } else {
+            legacy::leads(before)
+        };
         if leads {
             out.push(start);
         }
@@ -240,6 +259,12 @@ fn heredoc_opens(line: &str) -> Option<String> {
 /// (an `AppleScript`'s `open`, a here-document's prose) not read.
 #[must_use]
 pub fn scan_text(text: &str) -> Vec<(usize, &str)> {
+    scan_text_in(text, crate::grace::over())
+}
+
+/// `scan_text` with the new shapes on or off (`crate::grace`).
+#[must_use]
+pub fn scan_text_in(text: &str, shapes: bool) -> Vec<(usize, &str)> {
     let mut out = Vec::new();
     let mut until: Option<String> = None;
     for (n, line) in text.lines().enumerate() {
@@ -249,7 +274,7 @@ pub fn scan_text(text: &str) -> Vec<(usize, &str)> {
             }
             continue;
         }
-        if !scan_line(line).is_empty() {
+        if !scan_line_in(line, shapes).is_empty() {
             out.push((n + 1, line));
         }
         until = heredoc_opens(line);
@@ -264,7 +289,8 @@ fn sites(root: &Path, files: &[String], exclude: &str, staged: bool) -> Result<S
     let pysources = crate::bareopen_py::sources(root, files, exclude.as_ref(), staged);
     crate::subject::record(&crate::subject::BARE_OPEN, sources.len() + pysources.len());
     let mut out = Sites::new();
-    for (rel, text) in &pysources {
+    // Read either way (the floor counts them), judged from `crate::grace::OVER_FROM`.
+    for (rel, text) in pysources.iter().filter(|_| crate::grace::over()) {
         let rows: Vec<&str> = text.lines().collect();
         let found: Vec<String> = crate::bareopen_py::scan_text(text)
             .unwrap_or_default()
@@ -408,6 +434,25 @@ mod tests {
             r#"msg="the file (open it) and $(date)""#,
         ] {
             assert!(scan_line(ok).is_empty(), "{ok}");
+        }
+    }
+
+    #[test]
+    fn within_the_grace_the_scan_reads_as_the_last_release_did() {
+        for old in [
+            r#"open "$APP""#,
+            "x || open -g Foo.app",
+            r#"( open "$APP" )"#,
+        ] {
+            assert_eq!(scan_line_in(old, false).len(), 1, "{old}");
+        }
+        for new in [
+            r#"env FOO=1 open -a "$APP""#,
+            r#"FOO=1 open -a "$APP""#,
+            r#"out="$(open -a "$APP")""#,
+        ] {
+            assert_eq!(scan_line_in(new, false).len(), 0, "{new}");
+            assert_eq!(scan_line_in(new, true).len(), 1, "{new}");
         }
     }
 

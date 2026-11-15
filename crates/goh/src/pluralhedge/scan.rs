@@ -228,11 +228,18 @@ pub struct Finding {
 /// Every line of `source` whose string literals hedge a plural, the first hedge named.
 #[must_use]
 pub fn findings(source: &str, lang: Lang) -> Vec<Finding> {
+    findings_in(source, lang, crate::grace::over())
+}
+
+/// `findings`, reading a string across a backslash continuation only when `continuation` is on
+/// (`crate::grace`: a consumer's newly seen hedges need their seed first).
+#[must_use]
+pub fn findings_in(source: &str, lang: Lang, continuation: bool) -> Vec<Finding> {
     let mut out = Vec::new();
     let mut carry = None;
     for (i, line) in source.lines().enumerate() {
         let (spans, open) = spans_from(line, lang, carry);
-        carry = open;
+        carry = open.filter(|_| continuation);
         let first = spans
             .into_iter()
             .find_map(|(a, b)| hedges(&line[a..b]).into_iter().next());

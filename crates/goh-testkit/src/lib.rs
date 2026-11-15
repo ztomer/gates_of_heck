@@ -206,8 +206,8 @@ pub fn goh_at(
         .env("GOH_DIR", goh_root()?)
         .env("GOH_ROADMAP_PENDING", roadmap_pending()?)
         // The fixtures are keyless repos: an undeclared floor is an advisory line here
-        // (GOH.FLOORREQ); a test of the requirement passes another value in `envs`.
-        .env("GOH_FLOOR_UNDECLARED", "allow")
+        // (GOH.FLOORREQ, `crate::grace`); a test of the requirement passes `over` in `envs`.
+        .env("GOH_GRACE", "within")
         .env_remove("GOH_BIN")
         .env_remove("GOH_NO_NATIVE");
     if let Some(r) = repo {

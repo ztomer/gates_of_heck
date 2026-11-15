@@ -97,12 +97,14 @@ fn judge(root: &Path, staged: bool) -> (i32, String, String) {
 
 /// The structural step, in every repo.
 #[must_use]
-pub fn step(repo: &Path, staged: bool) -> Option<i32> {
-    estate_seed::step(
-        LABEL,
-        "crates/goh/src/gatesrc_dupes.rs",
-        judge(repo, staged),
-    )
+pub fn step(repo: &Path, files: &[String], staged: bool) -> Option<i32> {
+    // A commit is judged on what it brings: no `.gatesrc` in it, nothing to read (and no git spawn).
+    let verdict = if staged && !files.iter().any(|f| f == FILE) {
+        (0, String::new(), String::new())
+    } else {
+        judge(repo, staged)
+    };
+    estate_seed::step(LABEL, "crates/goh/src/gatesrc_dupes.rs", verdict)
 }
 
 #[cfg(test)]
@@ -111,14 +113,14 @@ mod tests {
 
     #[test]
     fn a_key_set_twice_names_both_lines() {
-        let text = "GOH_A=1\n# GOH_B=2\nexport GOH_A=3   # later wins\nGOH_B=4\nGOH_C='x y'\n";
-        assert_eq!(repeated(text), vec![("GOH_A".to_string(), vec![1, 3])]);
+        let text = "FOO_A=1\n# FOO_B=2\nexport FOO_A=3   # later wins\nGOH_B=4\nGOH_C='x y'\n";
+        assert_eq!(repeated(text), vec![("FOO_A".to_string(), vec![1, 3])]);
     }
 
     #[test]
     fn comments_blank_lines_and_distinct_keys_pass() {
         assert_eq!(
-            repeated("# GOH_A=1\n# GOH_A=2\n\nGOH_A=1\nGOH_AB=2\n").len(),
+            repeated("# FOO_A=1\n# FOO_A=2\n\nGOH_A=1\nFOO_AB=2\n").len(),
             0
         );
         assert_eq!(repeated("echo hi\nif x; then\nfi\n").len(), 0);

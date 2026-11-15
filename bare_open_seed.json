@@ -1,19 +1,4 @@
 {
   "why": "goh bare-open (GOH.CLEANOPEN, 2026-11-13): a bare `open` hands the app the caller's environment. THIS repository's own entries only, keyed by its root commit (GOH.SEEDPRIVATE). At or under its count warns; over it, unseeded, or stale is red. Done is an empty list.",
-  "entries": [
-    {
-      "root": "73391f04f5f2b92ab9813c62e6cecdce919d2d86",
-      "repo": "gates_of_heck",
-      "path": "hooks/claude/appstate.py",
-      "count": 1,
-      "reason": "reviewed: the restore command is DATA (GOH_APPSTATE_LAUNCH_CMD, line 55) a hook reads back; moving it to goh launch-app belongs to the hooks lane (GOH.BAREOPEN2 sweep)"
-    },
-    {
-      "root": "73391f04f5f2b92ab9813c62e6cecdce919d2d86",
-      "repo": "gates_of_heck",
-      "path": "tests/test_launch_app.py",
-      "count": 1,
-      "reason": "reviewed: the control arm -- a bare open is the thing the test proves leaks the caller's environment (GOH.CLEANOPEN)"
-    }
-  ]
+  "entries": []
 }

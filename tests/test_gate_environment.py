@@ -74,6 +74,7 @@ def _porcelain(repo: Path) -> str:
 NOT_PIPELINE_CONFIG = {
     "GOH_ROADMAP_QUEUE",
     "GOH_ROADMAP_PENDING",
+    "GOH_GRACE",
     "GOH_PY_RUNNER",
     "GOH_PYTHON_VERSION",
     "GOH_BIN",

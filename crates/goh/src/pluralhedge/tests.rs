@@ -1,6 +1,6 @@
 //! The finder over the estate's shapes and the look-alikes that must stay clean.
 
-use super::scan::{findings, hedges, Lang};
+use super::scan::{findings, findings_in, hedges, Lang};
 
 fn lines(src: &str, lang: Lang) -> Vec<usize> {
     findings(src, lang).into_iter().map(|f| f.line).collect()
@@ -98,11 +98,19 @@ fn a_hedge_on_the_continuation_line_of_a_string_is_seen() {
     // continuation, which the line-by-line lexer read as code. Rust and Python continue a string
     // through a trailing backslash; the next line starts inside it.
     let rs = h("let m = format!(\"{out}\\n\\\n    printed the x line@ above\\n\");\nlet n = 1;\n");
-    assert_eq!(lines(&rs, Lang::Slash), [2]);
+    let on = |src: &str, lang| -> Vec<usize> {
+        findings_in(src, lang, true)
+            .into_iter()
+            .map(|f| f.line)
+            .collect()
+    };
+    assert_eq!(on(&rs, Lang::Slash), [2]);
+    // Within the grace (crate::grace) it reads as the last release did.
+    assert_eq!(findings_in(&rs, Lang::Slash, false).len(), 0);
     let py = h("MSG = \"first \\\n    2 file@ wrong\"\nx = 'a'\n");
-    assert_eq!(lines(&py, Lang::Hash), [2]);
+    assert_eq!(on(&py, Lang::Hash), [2]);
     // The continuation ends with the string: code after it is code again, and a string that
     // only ends its line (no backslash) never carries over.
     let after = h("let m = \"a \\\n b\"; // c@\nlet f = x.y@;\nlet c = '\"';\nlet d = e@;\n");
-    assert_eq!(lines(&after, Lang::Slash), Vec::<usize>::new());
+    assert_eq!(on(&after, Lang::Slash), Vec::<usize>::new());
 }

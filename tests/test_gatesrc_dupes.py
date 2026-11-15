@@ -9,17 +9,16 @@ stale entry (red)."""
 from __future__ import annotations
 
 import json
-import os
 from pathlib import Path
 
-from conftest import commit_all, git, run_goh, write
+from conftest import commit_all, git, hermetic_env, run_goh, write
 
 LABEL = "every .gatesrc key is set once"
 
 
 def _full(repo: Path) -> tuple[int, str]:
     # The floors are not this file's subject: the suite's seam keeps an undeclared one advisory.
-    env = {**os.environ, "GOH_FLOOR_UNDECLARED": "allow", "GOH_SEED_DIR": str(repo / "no-store")}
+    env = hermetic_env(GOH_GRACE="within", GOH_SEED_DIR=str(repo / "no-store"))
     r = run_goh(repo, "structural", "--full", env=env)
     return r.returncode, r.stdout + r.stderr
 

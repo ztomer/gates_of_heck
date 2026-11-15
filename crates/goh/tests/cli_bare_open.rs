@@ -10,7 +10,7 @@ fn bare_open(repo: &Repo, store: &std::path::Path) -> Result<Out, String> {
         std::path::Path::new(env!("CARGO_BIN_EXE_goh")),
         Some(repo),
         &["bare-open"],
-        &[("GOH_SEED_DIR", store)],
+        &[("GOH_SEED_DIR", store), ("GOH_GRACE", "over")],
     )
     .map_err(|e| e.to_string())
 }

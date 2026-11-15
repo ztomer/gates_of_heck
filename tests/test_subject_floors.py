@@ -9,7 +9,6 @@ commit (`--staged`) is never judged against a floor."""
 from __future__ import annotations
 
 import json
-import os
 import re
 import subprocess
 from pathlib import Path
@@ -38,10 +37,9 @@ def _fixture(repo: Path, gatesrc: str) -> None:
 
 
 def _full(repo: Path, required: bool = False, **env: str):
-    """`structural --full`. The seam says the day does not matter: `allow` (the default here, as
-    every fixture is keyless) is the advisory, `required` is the refusal the grace ends in."""
-    child = {k: v for k, v in os.environ.items() if k != "GOH_FLOOR_UNDECLARED"} | env
-    child["GOH_FLOOR_UNDECLARED"] = "required" if required else "allow"
+    """`structural --full`. The seam says the day does not matter: `within` (the default here, as
+    every fixture is keyless) is the advisory, `over` is the refusal the grace ends in."""
+    child = hermetic_env(GOH_GRACE="over" if required else "within", **env)
     r = run_goh(repo, "structural", "--full", env=child)
     return r.returncode, r.stdout + r.stderr
 
@@ -78,7 +76,7 @@ def test_a_floor_above_what_the_tree_holds_is_the_stopped_reading_verdict(repo: 
 
 def test_an_undeclared_floor_is_red_and_the_seam_keeps_the_old_advisory(repo: Path) -> None:
     """GOH.FLOORREQ / GOH.SCANNERFLOORS: a scanner that read something with no floor fails, naming
-    the key and what it read; `GOH_FLOOR_UNDECLARED=allow` (the suite's seam) is the advisory."""
+    the key and what it read; `GOH_GRACE=within` (the suite's seam) is the advisory."""
     _fixture(repo, "")
     code, out = _full(repo, required=True)
     assert code == 1, out
@@ -129,20 +127,20 @@ def test_a_planted_over_floor_is_red_in_every_mode_that_runs_the_scanner(repo: P
     GOH_EMOJI_MIN_FILES=9999 stay green under `--full`: every mode judges its floor."""
     _fixture(repo, f"{KEY}=3\n")  # the fixture holds 2 test files
     for mode in MODES:
-        r = run_goh(repo, "structural", *mode, env=hermetic_env(GOH_FLOOR_UNDECLARED="allow"))
+        r = run_goh(repo, "structural", *mode, env=hermetic_env(GOH_GRACE="within"))
         out = r.stdout + r.stderr
         assert r.returncode == 1 and KEY in out and "floor of 3" in out, (mode, out)
         bash = subprocess.run(
             ["bash", str(REPO_ROOT / "gates" / "structural.sh"), *mode],
             cwd=repo, capture_output=True, text=True, stdin=subprocess.DEVNULL, check=False,
-            env=hermetic_env(GOH_BIN=str(native_goh_path()), GOH_FLOOR_UNDECLARED="allow"),
+            env=hermetic_env(GOH_BIN=str(native_goh_path()), GOH_GRACE="within"),
         )  # fmt: skip
         out = bash.stdout + bash.stderr
         assert bash.returncode == 1 and KEY in out and "floor of 3" in out, (mode, out)
     write(repo, ".gatesrc", f"GOH_MAX_LINES=500\n{KEY}=2\n")
     commit_all(repo)
     for mode in MODES:  # the control: at the count, every mode is green
-        r = run_goh(repo, "structural", *mode, env=hermetic_env(GOH_FLOOR_UNDECLARED="allow"))
+        r = run_goh(repo, "structural", *mode, env=hermetic_env(GOH_GRACE="within"))
         assert r.returncode == 0, (mode, r.stdout + r.stderr)
 
 

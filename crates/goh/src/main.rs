@@ -41,6 +41,7 @@ pub mod gatesrc;
 pub mod gatesrc_dupes;
 pub mod gitutil;
 pub mod goh_dir;
+pub mod grace;
 pub mod homepaths;
 pub mod hookindex;
 pub mod house_python;
