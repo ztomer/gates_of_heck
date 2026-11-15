@@ -18,6 +18,7 @@ import time
 from pathlib import Path
 
 import pytest
+from _fast_git import fast_init
 from conftest import REPO_ROOT, commit_all, git, hermetic_env, write
 from timing_bounds import GiveUp
 
@@ -41,8 +42,7 @@ exit {rc}
 def make_repo(tmp_path: Path, name: str, rc: int = 0) -> tuple[Path, Path, str]:
     """A checkout `name` tracking a bare origin, one commit ahead of it, behind a fake push gate."""
     repo = tmp_path / name
-    repo.mkdir()
-    git(repo, "init", "-q", "-b", "main")
+    fast_init(repo, "main")
     git(repo, "config", "user.email", "t@example.invalid")
     git(repo, "config", "user.name", "t")
     write(repo, "a.txt", "one\n")
