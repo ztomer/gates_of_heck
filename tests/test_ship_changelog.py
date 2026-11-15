@@ -84,3 +84,55 @@ def test_an_unreleased_entry_or_a_written_stanza_ships(shipped, tmp_path):
     _changelog(shipped, "# CHANGELOG\n\n## Unreleased\n\n## v1.1.0\n\n* by hand\n")
     r = _ship(shipped, tmp_path, "--wait", "--version", "1.1.0")
     assert r.returncode == 0, r.stdout + r.stderr
+
+
+# GOH.SHIPCLDOCS: the reading looked only for a ROOT CHANGELOG.md, so a repo whose changelog is
+# docs/CHANGELOG.md (two consumers) was never asked before the push, and `cut` was refused there
+# for "no CHANGELOG.md". The house's locations are the ones `goh changelog-tags` reads.
+def _docs_changelog(repo: Path, text: str) -> None:
+    (repo / "docs").mkdir(exist_ok=True)
+    (repo / "docs" / "CHANGELOG.md").write_text(text)
+    git(repo, "add", "docs/CHANGELOG.md")
+    git(repo, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "-m", "docs: changelog")
+
+
+@pytest.mark.parametrize("contract", ["unreleased", "cut"])
+def test_a_docs_changelog_the_kit_will_refuse_is_refused_at_ship_start(shipped, tmp_path, contract):
+    _docs_changelog(shipped, NO_UNRELEASED)
+    before = git(shipped, "ls-remote", "origin")
+    r = _ship(shipped, tmp_path, "--wait", GOH_SHIP_CHANGELOG=contract)
+    assert r.returncode == 2, r.stdout + r.stderr
+    assert "docs/CHANGELOG.md" in r.stderr and "Unreleased" in r.stderr, r.stderr
+    assert git(shipped, "ls-remote", "origin") == before
+    assert not (tmp_path / "ship.json").exists()
+
+
+@pytest.mark.parametrize("contract", ["unreleased", "cut"])
+def test_a_docs_changelog_with_an_entry_ships_under_either_contract(shipped, tmp_path, contract):
+    _docs_changelog(shipped, "# C\n\n## Unreleased\n\n- an entry\n\n## v1.0.0\n\n- x\n")
+    r = _ship(shipped, tmp_path, "--wait", GOH_SHIP_CHANGELOG=contract)
+    assert r.returncode == 0, r.stdout + r.stderr
+
+
+def test_a_docs_changelog_with_no_declared_contract_is_refused(shipped, tmp_path):
+    _docs_changelog(shipped, "# C\n\n## Unreleased\n\n- an entry\n\n## v1.0.0\n\n- x\n")
+    r = _ship(shipped, tmp_path, "--wait", GOH_SHIP_CHANGELOG="")
+    assert r.returncode == 2, r.stdout + r.stderr
+    assert "GOH_SHIP_CHANGELOG" in r.stderr and "docs/CHANGELOG.md" in r.stderr, r.stderr
+
+
+def test_the_house_changelog_locations_are_the_ones_changelog_tags_reads():
+    import re
+    import sys
+
+    from conftest import REPO_ROOT
+
+    sys.path.insert(0, str(REPO_ROOT / "lib"))
+    import ship_changelog
+
+    rust = (REPO_ROOT / "crates" / "goh" / "src" / "changelog_tags.rs").read_text()
+    lists = {
+        tuple(re.findall(r'"([^"]+)"', m))
+        for m in re.findall(r"\[(\"CHANGELOG\.md\"[^\]]*)\]", rust)
+    }
+    assert lists == {ship_changelog.LOCATIONS}, lists
