@@ -21,6 +21,7 @@ no hand-rolled TUI mark
 no bare python in a hook or gate
 no busy loop or busy-wait in a tracked file
 no checkout leaves its token in git config
+no changelog entry under Unreleased
 no direct write to a Homebrew tap
 no code after exec
 no committed secrets

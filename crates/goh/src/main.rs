@@ -20,6 +20,7 @@ pub mod cache_root;
 pub mod callkey;
 pub mod canarycmd;
 pub mod ceiling;
+pub mod changelog_fragments;
 pub mod changelog_tags;
 pub mod checkoutcreds;
 pub mod claims;

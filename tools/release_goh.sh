@@ -13,6 +13,10 @@
 #      never a commit in the main checkout and never GOH_MAIN_COMMIT_OK;
 #   4. push main, then an annotated tag vVERSION whose message is the stanza, then push the tag.
 #
+# With .gatesrc GOH_CHANGELOG_FRAGMENTS=on (goh's own), each change's entry is its own file in
+# changelog/ (tools/release-kit/changelog_fragments.py): the preflight and the cut fold them into
+# Unreleased, and the release commit deletes the fragments it folded.
+#
 # It pushes, so .gatesrc says GOH_SHIP_RELEASE_PUSHES=1. Pinned by tests/test_release_goh.py.
 { # parse-guard -- bash reads this group whole before running it (tests/test_parse_guard.py)
 . "$(dirname "${BASH_SOURCE[0]}")/../lib/bash5.sh" || exit; goh_bash5 "$@"
@@ -43,7 +47,14 @@ fi
 # The preflight asks of the title the cut will write: goh ship's --summary, as the cut below.
 title=()
 [ -n "${GOH_SHIP_SUMMARY:-}" ] && title=(--title "$GOH_SHIP_SUMMARY")
-if ! "$GOH_PY" "$GOH/tools/release-kit/changelog_cut.py" ready --version "$VERSION" "${title[@]}" --file CHANGELOG.md >&2; then
+frag=()
+frag_on="$(bash -c 'unset GOH_CHANGELOG_FRAGMENTS; [ -f .gatesrc ] && . ./.gatesrc >/dev/null 2>&1 </dev/null; printf %s "${GOH_CHANGELOG_FRAGMENTS-}"')"
+case "$frag_on" in
+    on) frag=(--fragments changelog) ;;
+    "" | off) ;;
+    *) err "release_goh.sh: GOH_CHANGELOG_FRAGMENTS is neither on nor off: '$frag_on' -- nothing moved"; exit 2 ;;
+esac
+if ! "$GOH_PY" "$GOH/tools/release-kit/changelog_cut.py" ready --version "$VERSION" "${title[@]}" "${frag[@]}" --file CHANGELOG.md >&2; then
     err "release_goh.sh: CHANGELOG.md is not ready to release (above) -- nothing moved"
     exit 1
 fi
@@ -74,8 +85,12 @@ PY
     if [ -f Cargo.lock ]; then
         cargo update --workspace --offline -q
     fi
-    "$GOH_PY" "$GOH/tools/release-kit/changelog_cut.py" cut --version "$VERSION" "${title[@]}" --file CHANGELOG.md
-    "$GOH_PY" "$GOH/tools/release-kit/changelog_cut.py" check --version "$VERSION" --file CHANGELOG.md
+    "$GOH_PY" "$GOH/tools/release-kit/changelog_cut.py" cut --version "$VERSION" "${title[@]}" "${frag[@]}" --file CHANGELOG.md
+    if [ "${#frag[@]}" -gt 0 ]; then  # the stanza holds them now; the release commit deletes them
+        mapfile -t folded < <("$GOH_PY" "$GOH/tools/release-kit/changelog_cut.py" fragments "${frag[@]}")
+        [ "${#folded[@]}" -eq 0 ] || git rm -q -- "${folded[@]}"
+    fi
+    "$GOH_PY" "$GOH/tools/release-kit/changelog_cut.py" check --version "$VERSION" "${frag[@]}" --file CHANGELOG.md
     heading="$(grep -m1 -E "^## v${VERSION//./\\.}( |$)" CHANGELOG.md)"
     git add Cargo.toml CHANGELOG.md
     [ -f Cargo.lock ] && git add Cargo.lock

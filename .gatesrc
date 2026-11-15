@@ -194,3 +194,7 @@ GOH_SHIP_RELEASE_PUSHES=1
 # Its kit cuts CHANGELOG.md with changelog_cut.py, so goh ship asks that contract at start
 # (GOH.SHIPCHANGELOG).
 GOH_SHIP_CHANGELOG=cut
+# Each change's changelog entry is its own file, changelog/<ITEM-ID>.md, folded into the stanza the
+# release cuts; the commit gate keeps CHANGELOG.md's Unreleased empty (GOH.CLASS.CHECKOUT part d:
+# every lane land of 2026-11-14 conflicted on the one stanza they all wrote).
+GOH_CHANGELOG_FRAGMENTS=on

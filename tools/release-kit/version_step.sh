@@ -52,6 +52,24 @@ release_backfill_floor() {
   fi
 }
 
+# release_fragments: sets FRAGS to the repo's changelog fragment directory (`changelog/`, one file per
+# change: changelog_fragments.py, GOH.CLASS.CHECKOUT) when .gatesrc says GOH_CHANGELOG_FRAGMENTS=on,
+# else empty; read by name in a child like the floor above. Neither on nor off is refused.
+release_fragments() {
+  local top on=""
+  top="$(git rev-parse --show-toplevel)"
+  FRAGS=""
+  if [ -f "$top/.gatesrc" ]; then
+    on="$(cd "$top" && bash -c 'unset GOH_CHANGELOG_FRAGMENTS; . ./.gatesrc >/dev/null 2>&1 </dev/null; printf %s "${GOH_CHANGELOG_FRAGMENTS-}"')" \
+      || fail "cannot read $top/.gatesrc"
+  fi
+  case "$on" in
+    on) FRAGS="$top/changelog" ;;
+    "" | off) ;;
+    *) fail "GOH_CHANGELOG_FRAGMENTS is neither on nor off (got '$on')" ;;
+  esac
+}
+
 # release_refusals_first (GOH.KITORDER): every refusal the kit can decide from the tree, asked
 # BEFORE step 0b's cut commit and step 0's push. ztools 3.19.0 (2026-11-11) pushed its unpushed
 # "chore: version" commit for the CI read, then refused at the changelog step: a pushed, untagged
@@ -70,6 +88,7 @@ release_refusals_first() {
   fi
   [ -n "$GATE_CMD" ] || fail "no gate configured — pass --gate CMD, set GOH_RELEASE_GATE, or declare GOH_RELEASE_GATE in .gatesrc; nothing committed or pushed"
   release_backfill_floor  # GOH_RELEASE_BACKFILL_FLOOR -> BACKFILL_FLOOR
+  release_fragments  # GOH_CHANGELOG_FRAGMENTS -> FRAGS, the fragments every cut below folds in
   begin "tag" "no ${TAG} names another commit"
   if git rev-parse -q --verify "refs/tags/${TAG}" >/dev/null \
       && [ "$(git rev-parse "refs/tags/${TAG}^{commit}")" != "$(git rev-parse HEAD)" ]; then
@@ -81,7 +100,7 @@ bump --version, or move the tag deliberately: git tag -f ${TAG} && git push -f o
   [ -f CHANGELOG.md ] || fail "no CHANGELOG.md, so no stanza for ${VERSION} (add one with '## ${TAG}', or --no-changelog-check); nothing committed or pushed"
   release_cut_pending && return 0  # step 0b cuts the stanza and checks it before committing
   has_stanza "$VERSION" || fail "CHANGELOG.md has no stanza for ${VERSION} and Unreleased holds nothing to cut (add '## ${TAG}' first, or entries under '## Unreleased'); nothing committed or pushed"
-  bash "$GOH/gates/python.sh" "$GOH/tools/release-kit/changelog_cut.py" check --version "$VERSION" --file CHANGELOG.md \
+  bash "$GOH/gates/python.sh" "$GOH/tools/release-kit/changelog_cut.py" check --version "$VERSION" ${FRAGS:+--fragments "$FRAGS"} --file CHANGELOG.md \
     || fail "CHANGELOG.md does not hold for ${TAG} (above) -- run tools/release-kit/changelog_cut.py cut --version ${VERSION} --title ... and commit; nothing committed or pushed"
 }
 
@@ -92,7 +111,7 @@ release_cut_pending() {
   _pcut="$(mktemp "${TMPDIR:-/tmp}/goh-release-cutp.XXXXXX")"
   cp CHANGELOG.md "$_pcut" || { rm -f "$_pcut"; fail "cannot copy CHANGELOG.md"; }
   bash "$GOH/gates/python.sh" "$GOH/tools/release-kit/changelog_cut.py" cut --version "$VERSION" \
-    ${TITLE:+--title "$TITLE"} --file "$_pcut" >/dev/null 2>"$_pcut.err" || _prc=1
+    ${TITLE:+--title "$TITLE"} ${FRAGS:+--fragments "$FRAGS"} --file "$_pcut" >/dev/null 2>"$_pcut.err" || _prc=1
   if [ "$_prc" = 1 ] && grep -q "Unreleased is empty\|no Unreleased section" "$_pcut.err"; then
     rm -f "$_pcut" "$_pcut.err"; return 1
   fi
@@ -112,12 +131,13 @@ release_cut_pending() {
 # "chore: changelog vV" commit. It runs before CI and the gate, so both see the tree that is tagged.
 # A cut that would repeat an earlier stanza's entry is refused by changelog_cut.py, nothing written.
 release_changelog_cut() {
-  local _ccut _csubj
+  local _ccut _csubj _folded=()
   [ "$CHANGELOG_CHECK" = 1 ] && [ -f CHANGELOG.md ] || return 0
+  release_fragments
   _ccut="$(mktemp "${TMPDIR:-/tmp}/goh-release-cut.XXXXXX")"
   cp CHANGELOG.md "$_ccut" || fail "cannot copy CHANGELOG.md"
   if ! bash "$GOH/gates/python.sh" "$GOH/tools/release-kit/changelog_cut.py" cut --version "$VERSION" \
-      ${TITLE:+--title "$TITLE"} --file "$_ccut" >/dev/null 2>"$_ccut.err"; then
+      ${TITLE:+--title "$TITLE"} ${FRAGS:+--fragments "$FRAGS"} --file "$_ccut" >/dev/null 2>"$_ccut.err"; then
     if grep -q "Unreleased is empty\|no Unreleased section" "$_ccut.err"; then
       rm -f "$_ccut" "$_ccut.err"
       return 0  # nothing to cut: the changelog step names the missing stanza
@@ -143,6 +163,10 @@ release_changelog_cut() {
   fi
   mv "$_ccut" CHANGELOG.md || fail "cannot write CHANGELOG.md"
   git add CHANGELOG.md || fail "git add CHANGELOG.md exited nonzero"
+  if [ -n "$FRAGS" ]; then  # the stanza holds the fragments now; this commit deletes them
+    mapfile -t _folded < <(bash "$GOH/gates/python.sh" "$GOH/tools/release-kit/changelog_cut.py" fragments --fragments "$FRAGS")
+    [ "${#_folded[@]}" -eq 0 ] || git rm -q -- "${_folded[@]}" || fail "git rm of the folded fragments exited nonzero"
+  fi
   if [ "$_csubj" = "chore: version ${VERSION}" ] && [ -z "$(git branch -r --contains HEAD 2>/dev/null)" ]; then
     git commit -q --amend --no-edit || fail "amending the stanza into '${_csubj}' exited nonzero"
     ok "${TAG} stanza cut from Unreleased into $(git rev-parse --short HEAD) ('${_csubj}')"

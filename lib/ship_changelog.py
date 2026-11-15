@@ -16,6 +16,10 @@ The changelog is the first of the house's LOCATIONS the repo has -- `CHANGELOG.m
 `docs/CHANGELOG.md`, the ones `goh changelog-tags` reads (`crates/goh/src/changelog_tags.rs`,
 pinned equal by tests/test_ship_changelog.py). Only the root was read, so a docs/ changelog (two
 consumers) was never asked before the push and `cut` was refused there (GOH.SHIPCLDOCS).
+
+A repo whose `.gatesrc` says GOH_CHANGELOG_FRAGMENTS=on keeps each change's entry in its own file
+under `changelog/` beside the changelog (GOH.CLASS.CHECKOUT): the reading folds them in as the cut
+will, so a release whose Unreleased is empty and whose fragments hold its entries is ready.
 """
 
 from __future__ import annotations
@@ -34,10 +38,16 @@ def changelog_of(repo: Path) -> str | None:
     return next((c for c in LOCATIONS if (repo / c).is_file()), None)
 
 
-def reading(repo: Path, declared: str, version: str, summary: str) -> list[tuple[str, str]]:
+def reading(repo: Path, declared: str, version: str, summary: str,
+            fragments: str = "") -> list[tuple[str, str]]:  # fmt: skip
     """The preflights [(whose, command)] that ask CHANGELOG.md what the kit will, [] when the
-    contract asks nothing; ValueError naming the fault when the contract is missing or unknown."""
+    contract asks nothing; ValueError naming the fault when the contract is missing or unknown,
+    or GOH_CHANGELOG_FRAGMENTS (`fragments`) is neither on nor off."""
     contract = declared.strip()
+    if fragments.strip() not in ("", "on", "off"):
+        raise ValueError(
+            f"{repo.name}: GOH_CHANGELOG_FRAGMENTS={fragments!r} is neither on nor off"
+        )
     log = changelog_of(repo)
     has_log = log is not None
     if contract and contract not in CONTRACTS:
@@ -57,4 +67,6 @@ def reading(repo: Path, declared: str, version: str, summary: str) -> list[tuple
     ready = (f"{shlex.quote(sys.executable)} {shlex.quote(str(CUT))} ready --version {version} "
              f"--file {shlex.quote(log)} --contract {contract} "
              f"--title {shlex.quote(summary)}")  # fmt: skip
+    if fragments.strip() == "on":
+        ready += f" --fragments {shlex.quote(str(Path(log).parent / 'changelog'))}"
     return [(f"goh's changelog reading, contract {contract}", ready)]

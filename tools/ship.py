@@ -116,7 +116,7 @@ save, tail = ship_status.save, ship_status.tail  # the result file, a step log (
 GRACE = 5
 DEFAULT_TIMEOUT = 3600
 KEYS = ("GOH_SHIP_RELEASE", "GOH_SHIP_INSTALL", "GOH_SHIP_TIMEOUT", "GOH_SHIP_RELEASE_PUSHES",
-        "GOH_SHIP_PREFLIGHT", "GOH_SHIP_CHANGELOG")  # fmt: skip
+        "GOH_SHIP_PREFLIGHT", "GOH_SHIP_CHANGELOG", "GOH_CHANGELOG_FRAGMENTS")  # fmt: skip
 SEMVER = re.compile(r"^v(\d+)\.(\d+)\.(\d+)$")
 
 
@@ -236,7 +236,8 @@ def preflights(repo: Path, cfg: dict[str, str], version: str, summary="") -> lis
     if any(SEMVER.match(t) for t in git(repo, "tag", "--points-at", "HEAD").splitlines()):
         return []
     try:
-        out = ship_changelog.reading(repo, cfg["GOH_SHIP_CHANGELOG"], version, summary)
+        out = ship_changelog.reading(repo, cfg["GOH_SHIP_CHANGELOG"], version, summary,
+                                     cfg["GOH_CHANGELOG_FRAGMENTS"])  # fmt: skip
     except ValueError as e:
         raise Refused(str(e)) from None
     if cfg["GOH_SHIP_PREFLIGHT"].strip():

@@ -60,6 +60,9 @@ Details: `docs/map.md`.
   a staged reader of the index binds `goh_bind_hook_index`. Contract #12 in
   `docs/contracts.md`.
 * Fail fast, print the failing output (that is what `_common.sh` exists for).
+* A change's CHANGELOG entry is its own file, `changelog/<ITEM-ID>.md` (`* ` entries, no
+  heading; `changelog/README.md`), never a line under `## Unreleased`: the commit gate refuses
+  that (GOH_CHANGELOG_FRAGMENTS=on), and the release folds the fragments into its stanza.
 * Config: all `GOH_*` keys documented in `docs/config.md` + `.gatesrc.example`.
   Adding a key without documenting it fails `test_config_schema_covers_keys`.
 * Contracts in `docs/contracts.md` each name their pinning test. Do not

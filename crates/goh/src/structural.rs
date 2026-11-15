@@ -249,6 +249,7 @@ fn late_steps(
         crate::requires_call::step(repo, cfg, staged),
         substdin::step(cfg, files, staged),
         crate::changelog_tags::step(repo, staged),
+        crate::changelog_fragments::step(repo, cfg, staged),
         crate::gatesrc_dupes::step(repo, files, staged),
         steps_delegated::step_full_only(repo, checks, staged),
     ];

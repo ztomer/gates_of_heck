@@ -21,6 +21,8 @@ unreleased -- the tag ships the whole tree -- so:
   does not end on a joining mark, leaves no backtick or bracket open: AU.RELHEADING; `cut` refuses
   the same title, given or derived), Unreleased (if the file keeps one) is ONE section and EMPTY,
   and no entry of X's stanza repeats an entry of an earlier stanza. Exit 1 names each finding.
+* `--fragments DIR`: one file per change (changelog_fragments.py). cut and ready fold them into
+  Unreleased first; check refuses one left at the tagged commit; `fragments` lists them.
 * `ready --version X [--title T] [--contract cut|unreleased]`: goh ship's preflight, asked BEFORE
   its push (GOH.SHIPPREFLIGHT), under the kit's declared contract (GOH.SHIPCHANGELOG): exit 1 when
   the kit would find nothing to release (`nothing_to_release`) or its title, T or the
@@ -43,6 +45,9 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import changelog_fragments  # one file per change, folded at release (GOH.CLASS.CHECKOUT)
+
 from tui.lib import counted  # the count meets its noun (GOH.HEDGEOWN)
 
 HEADING = re.compile(r"^(#+)\s+(.*?)\s*$")
@@ -404,15 +409,39 @@ def cut(lines: list[str], version: str, title: str | None) -> tuple[list[str] | 
     return new, []
 
 
+def with_fragments(lines: list[str], d: Path) -> tuple[list[str], list[str]]:
+    """`lines` with every fragment in `d` folded into the first Unreleased section, after what it
+    holds (one is added above the first stanza when the file has none), and the findings."""
+    frags, findings = changelog_fragments.read(d)
+    if findings or not frags:
+        return lines, findings
+    add = [ln for _, fl in frags for ln in ["", *_strip_edges(fl)]]
+    secs = sections(lines)
+    unrel = next((s for s in secs if s.unreleased), None)
+    if unrel is None:
+        at = next((s.start for s in secs if s.level == 2), len(lines))
+        return [*lines[:at], "## Unreleased", *add, "", *lines[at:]], []
+    own = _rstrip(body(lines, unrel))
+    return [*lines[: unrel.start + 1], *own, *add, "", *lines[unrel.end :]], []
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n", 1)[0])
-    ap.add_argument("mode", choices=["cut", "check", "ready"])
-    ap.add_argument("--version", required=True)
+    ap.add_argument("mode", choices=["cut", "check", "ready", "fragments"])
+    ap.add_argument("--version")
+    ap.add_argument("--fragments", type=Path, help="the repo's fragment directory, if any")
     ap.add_argument("--title")
     ap.add_argument("--file", default="CHANGELOG.md")
     ap.add_argument("--contract", choices=["cut", "unreleased"], default="cut",
                     help="ready: the changelog contract the release kit declares")  # fmt: skip
     a = ap.parse_args(argv)
+    if a.mode == "fragments":  # the release commit deletes what the cut folded
+        if a.fragments is None:
+            ap.error("fragments needs --fragments DIR")
+        print("\n".join(str(p) for p in changelog_fragments.paths(a.fragments)))
+        return 0
+    if not a.version:
+        ap.error("--version is required")
     a.version = a.version.removeprefix("v")  # the tag spelling; stanzas are written `## v<version>`
     path = Path(a.file)
     try:
@@ -420,11 +449,18 @@ def main(argv: list[str] | None = None) -> int:
     except OSError as e:
         print(f"✗ changelog_cut: cannot read {path}: {e}", file=sys.stderr)
         return 2
+    if a.fragments is not None and a.mode != "check":
+        lines, bad = with_fragments(lines, a.fragments)
+        for f in bad:
+            print(f"✗ changelog fragment: {f}", file=sys.stderr)
+        if bad:
+            return 1
     if a.mode == "ready":  # goh ship's preflight, before its push (GOH.SHIPPREFLIGHT)
         empty = nothing_to_release(lines, a.version, a.contract)
         if empty:
-            print(f"✗ changelog: {path}: {empty}; add the entry this release ships under "
-                  "## Unreleased, commit, then ship", file=sys.stderr)  # fmt: skip
+            where = f"as a fragment in {a.fragments}/" if a.fragments else "under ## Unreleased"
+            print(f"✗ changelog: {path}: {empty}; add the entry this release ships {where}, "
+                  "commit, then ship", file=sys.stderr)  # fmt: skip
             return 1
         # '' is no title: goh ship passes its --summary, empty when none was given.
         why = title_refusal(lines, a.version, a.title or None) if a.contract == "cut" else None
@@ -435,6 +471,11 @@ def main(argv: list[str] | None = None) -> int:
         return 0
     if a.mode == "check":
         findings = check(lines, a.version)
+        left = changelog_fragments.paths(a.fragments) if a.fragments is not None else []
+        if left:
+            findings.append(f"{counted(len(left), 'fragment')} still in {a.fragments} at the "
+                            "commit being tagged: the tag ships them, so the cut folds them into "
+                            "the stanza and the release commit deletes them")  # fmt: skip
         for f in findings:
             print(f"✗ changelog: {f}", file=sys.stderr)
         return 1 if findings else 0

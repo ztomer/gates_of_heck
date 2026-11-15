@@ -85,3 +85,19 @@ def test_a_title_refusal_is_not_reported_as_an_empty_unreleased(repo: Path) -> N
     r = _kit(repo, "0.2.0")
     assert r.returncode != 0 and "is not a phrase" in r.stderr, r.stderr
     assert "holds nothing to release" not in r.stderr, r.stderr
+
+
+def test_the_preflight_folds_the_repos_fragments(repo: Path) -> None:
+    """GOH_CHANGELOG_FRAGMENTS=on (GOH.CLASS.CHECKOUT): the kit's `ready` reads changelog/, so a
+    fragment that cannot be folded refuses the release before anything moves -- a kit that did not
+    pass --fragments would have refused on the empty Unreleased instead."""
+    (repo / ".gatesrc").write_text("GOH_CHANGELOG_FRAGMENTS=on\n")
+    (repo / "changelog").mkdir()
+    (repo / "changelog" / "X.md").write_text("## a heading\n* x\n")
+    git(repo, "add", ".gatesrc", "changelog")
+    _commit(repo, "# CHANGELOG\n\n## Unreleased\n\n## v0.1.0 -- first\n\n* **One.** a\n")
+    head = git(repo, "rev-parse", "HEAD")
+    r = _kit(repo, "0.2.0")
+    assert r.returncode != 0, r.stdout + r.stderr
+    assert "X.md: holds a heading" in r.stderr, r.stderr
+    assert git(repo, "rev-parse", "HEAD") == head
