@@ -481,10 +481,12 @@ pub fn clip(s: &str) -> String {
     out
 }
 
+mod add;
 mod parse;
 mod pending;
 mod settle;
 mod store_ci;
+pub use add::add as add_to_store;
 use parse::{parse, parse_text, tracked_text};
 pub use pending::{apply as apply_pending, PENDING_ENV};
 #[cfg(test)]

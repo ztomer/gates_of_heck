@@ -247,3 +247,14 @@ pub struct CanaryArgs {
     #[command(flatten)]
     pub bound: StepBoundArgs,
 }
+
+/// `goh seed-add`: a sweep's pending entries into a private-store seed file, under the settle's
+/// lock (GOH.GRACEEND): an entry the store holds is replaced and said; one bad entry writes nothing.
+#[derive(clap::Args, Debug)]
+pub struct SeedAddArgs {
+    /// The store file, `<kind>_seed.json` (`tui_marks_seed.json`, `floor_seed.json`, ...).
+    #[arg(long)]
+    pub file: String,
+    /// A seed file's shape (`why` + `entries`), or the bare `entries` array.
+    pub input: std::path::PathBuf,
+}

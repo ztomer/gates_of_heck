@@ -194,7 +194,7 @@
       "root": "73391f04f5f2b92ab9813c62e6cecdce919d2d86",
       "repo": "gates_of_heck",
       "path": "gates/swift_toolchain.sh",
-      "count": 1,
+      "count": 2,
       "reason": "unreviewed: hand-rolled TUI mark at line(s) 30; print through tui/lib.sh or tui.lib (GOH.TUIMARKS seed, 2026-11-15)"
     },
     {
@@ -292,7 +292,7 @@
       "root": "73391f04f5f2b92ab9813c62e6cecdce919d2d86",
       "repo": "gates_of_heck",
       "path": "scripts/build-goh.sh",
-      "count": 14,
+      "count": 15,
       "reason": "unreviewed: hand-rolled TUI mark at line(s) 20, 28, 36, 49, 75, 95, 127, 158, 178, 185, 188, 198, ...; print through tui/lib.sh or tui.lib (GOH.TUIMARKS seed, 2026-11-15)"
     },
     {
@@ -319,8 +319,15 @@
     {
       "root": "73391f04f5f2b92ab9813c62e6cecdce919d2d86",
       "repo": "gates_of_heck",
+      "path": "tools/lint.py",
+      "count": 3,
+      "reason": "unreviewed: hand-rolled TUI mark at line(s) 49, 53, 65; print through tui/lib.sh or tui.lib (GOH.TUIMARKS seed; found by GOH.GRACEEND's grace-over self-walk, 2026-11-15)"
+    },
+    {
+      "root": "73391f04f5f2b92ab9813c62e6cecdce919d2d86",
+      "repo": "gates_of_heck",
       "path": "tools/release-kit/changelog_cut.py",
-      "count": 6,
+      "count": 7,
       "reason": "unreviewed: hand-rolled TUI mark at line(s) 421, 426, 432, 439, 443, 452; print through tui/lib.sh or tui.lib (GOH.TUIMARKS seed, 2026-11-15)"
     },
     {

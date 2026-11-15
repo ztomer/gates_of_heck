@@ -180,4 +180,6 @@ def test_the_real_reader_is_system_events_and_the_process_table() -> None:
     assert appstate.DEFAULTS["GOH_APPSTATE_ITEMS_CMD"][0] == "osascript"
     assert "path of every login item" in appstate.ITEMS_SCRIPT
     assert appstate.DEFAULTS["GOH_APPSTATE_RUNNING_CMD"] == ["ps", "-axww", "-o", "comm="]
-    assert appstate.DEFAULTS["GOH_APPSTATE_LAUNCH_CMD"][:1] == ["open"]
+    launch = appstate.DEFAULTS["GOH_APPSTATE_LAUNCH_CMD"]
+    assert Path(launch[0]).name == "goh"
+    assert launch[1:] == ["launch-app", "--background"]  # the login environment (GOH.CLEANOPEN)

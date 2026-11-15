@@ -440,6 +440,10 @@ fn run_ported(command: Commands) -> Result<i32, Box<Commands>> {
             let (code, said) = estate_seed::apply_pending(&pending);
             estate_seed::print((code, String::new(), said))
         }
+        Commands::SeedAdd(a) => {
+            let (code, said) = estate_seed::add_to_store(&a.file, &a.input);
+            estate_seed::print((code, String::new(), said))
+        }
         Commands::ChangelogTags(a) => changelog_tags::run_command(a.staged),
         Commands::CheckoutCredentials(a) => checkoutcreds::run_command(a.staged),
         Commands::TapWrites(a) => tapwrite::run_command(a.staged),

@@ -55,7 +55,13 @@ ITEMS_SCRIPT = (
 DEFAULTS = {
     "GOH_APPSTATE_ITEMS_CMD": ["osascript", "-e", ITEMS_SCRIPT],
     "GOH_APPSTATE_RUNNING_CMD": ["ps", "-axww", "-o", "comm="],
-    "GOH_APPSTATE_LAUNCH_CMD": ["open", "-g", "-a"],
+    # goh launch-app, never a bare `open`: open hands the app THIS hook's environment, and a
+    # relaunched login item outlives the session (GOH.CLEANOPEN, GOH.GRACEEND).
+    "GOH_APPSTATE_LAUNCH_CMD": [
+        str(Path(__file__).resolve().parents[2] / "bin" / "goh"),
+        "launch-app",
+        "--background",
+    ],
 }
 READ_TIMEOUT_S = 4.0
 LAUNCH_SETTLE_S = 3.0  # how long a relaunched app has to show up in the process table
