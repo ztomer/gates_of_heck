@@ -48,7 +48,8 @@ goh_swift_resolve() {
     fi
     found="$(command -v swift 2>/dev/null || true)"
     if [ -n "$found" ]; then
-        SWIFT="$found"; SWIFT_ORIGIN="path"
+        # shellcheck disable=SC2034  # SWIFT and SWIFT_ORIGIN are this function's outputs, read by its caller
+        SWIFT="$found" SWIFT_ORIGIN="path"
         return 0
     fi
     _goh_swift_fail "swift: not found — GOH_SWIFT unset, \`xcrun --find swift\` answered nothing, none on PATH"

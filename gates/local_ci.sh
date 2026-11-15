@@ -48,6 +48,8 @@ die() { err "local_ci: $*"; exit "${2:-2}"; }
 # shellcheck source=gates/_steps.sh
 . "$HERE/_steps.sh"
 . "$HERE/_not_applicable.sh"  # lci_not_applicable
+# shellcheck source=gates/_local_ci_config.sh
+. "$HERE/_local_ci_config.sh"  # lci_limit, lci_collect_steps
 # shellcheck source=gates/_goh_bin.sh
 . "$HERE/_goh_bin.sh"
 # shellcheck source=lib/bench_lock.sh
@@ -105,7 +107,7 @@ done
 
 [ -n "$ROOT" ] || ROOT="$PWD"
 [ -d "$ROOT" ] || die "repo root is not a directory: $ROOT"
-cd "$ROOT"
+cd "$ROOT" || die "cannot enter the repo root: $ROOT"
 ROOT="$(pwd)"
 
 # Per-repo declaration, sourced like every gate reads .gatesrc; only GOH_CI_STEPS concerns this script.
@@ -128,33 +130,7 @@ SRC_GATESRC="${GOH_CI_STEPS:-}"
 _proven_err="$(proven_settings 2>&1)" || die "$_proven_err"
 proven_settings
 
-# GOH_LCI_TIMEOUT: per-step wall-clock ceiling in seconds. The DEFAULT is 900 (15 min), and the
-# default is the point: this was unset everywhere in the estate, which means "no limit", which means
-# a hung `cargo test` sat there until something killed it -- and the thing that killed it (a timeout,
-# a cancelled agent) killed the run BEFORE it could report anything, so the only observable was
-# silence. media_server 2026-10-03: nine orphans, each holding the cargo build lock, every later
-# `cargo test` blocked, and nothing anywhere said why. A ceiling nobody gave a number is a
-# suggestion. 900 is set from measurement, not taste: this estate's own slowest test step is
-# mediaops' rust gate at 168 s and the whole pytest suite is 76 s, so 900 is 5x the slowest thing
-# measured and a fifteenth of the day it cost.
-#
-# `0` is the explicit escape hatch and now has to be typed.
-#
-# THE SWEEP IS THE OTHER HALF, and it was measured wrong. The old sweep was `pkill -P "$pid"`,
-# DIRECT children only, on a step shaped `cargo test` -> test binary -> the server the test spawned.
-# Measured 2026-10-03 with `bash -c 'sleep 400 & wait'`: the old sweep left 2 grandchildren ALIVE;
-# `lib/bounded_run.py` (own session + killpg) leaves NOTHING. So the mechanism meant to unstick a
-# hung step left running exactly the processes that make the NEXT step hang.
-case "${GOH_LCI_TIMEOUT:-900}" in
-    ""|0) LCI_LIMIT=0 ;;
-    *[!0-9]*)
-        die "GOH_LCI_TIMEOUT must be a non-negative integer of seconds (got '${GOH_LCI_TIMEOUT}')" ;;
-    # `:-900` on BOTH reads, not just the subject. The case matched the defaulted value and the arm
-    # then read the bare name, so a repo that never set the key died on an unbound variable under
-    # `set -u` -- the default being on is what made it reachable. (The key was unset in every repo
-    # in the estate until now, and the branch was simply never taken.)
-    *) LCI_LIMIT="${GOH_LCI_TIMEOUT:-900}" ;;
-esac
+LCI_LIMIT="$(lci_limit)" || exit 2   # each step's ceiling, GOH_LCI_TIMEOUT (gates/_local_ci_config.sh)
 
 if [ -z "$SRC_GATESRC" ] && [ -z "$CLI_STEPS" ]; then
     err "local_ci: no steps declared"
@@ -179,37 +155,7 @@ cleanup() {
 }
 trap cleanup EXIT
 
-ALL_STEPS=""      # newline-joined "source<TAB>cmd" records
-_n=0
-_add() { # _add <source> <cmd>
-    ALL_STEPS="${ALL_STEPS}${ALL_STEPS:+
-}$1	$2"
-}
-# THE MARK: push_gate.sh reads it to tell whether the repo's tools/gate.sh ran the steps its
-# .gatesrc declares, and runs them itself when it did not (tests/test_push_gate_ci_steps.py).
-# The tree, so a local_ci run inside some other repo does not stand in for this one's.
-if [ -n "$SRC_GATESRC" ] && [ -n "${GOH_CI_STEPS_MARK:-}" ]; then
-    printf '%s\n' "$(git -C "$ROOT" rev-parse --show-toplevel 2>/dev/null || printf '%s' "$ROOT")" \
-        >>"$GOH_CI_STEPS_MARK"
-fi
-if [ -n "$SRC_GATESRC" ]; then
-    _rest="$SRC_GATESRC"
-    while [ -n "$_rest" ]; do
-        _tok="${_rest%%:*}"
-        _rest="${_rest#*:}"
-        [ -n "$_tok" ] && { _n=$((_n + 1)); _add ".gatesrc" "$_tok"; }
-        [ "$_tok" = "$_rest" ] && break
-    done
-fi
-if [ -n "$CLI_STEPS" ]; then
-    _rest="$CLI_STEPS"
-    while [ -n "$_rest" ]; do
-        _tok="${_rest%%:*}"
-        _rest="${_rest#*:}"
-        [ -n "$_tok" ] && { _n=$((_n + 1)); _add "--step" "$_tok"; }
-        [ "$_tok" = "$_rest" ] && break
-    done
-fi
+lci_collect_steps   # ALL_STEPS and _n, from .gatesrc then --step (gates/_local_ci_config.sh)
 
 if [ "$_n" -eq 0 ]; then
     err "local_ci: no steps declared"
@@ -359,7 +305,7 @@ _start() {
         PLIVE[i]="$(_proven_identity_live </dev/null)"
         if hit="$(proven_lookup "${PKEY[i]}" "${CMD[i]}")"; then
             read -r age by <<<"$hit"
-            HIT[i]="$age $by"; STATE[i]=done; RC[i]=0; proven_hit_marks "${CMD[i]}" "$ROOT"
+            HIT[i]="$age $by"; STATE[i]="done"; RC[i]=0; proven_hit_marks "${CMD[i]}" "$ROOT"
             [ -z "${GOH_TIMINGS:-}" ] \
                 || "$GOH_PY" "$GOH_ROOT/lib/step_timings.py" record "${CMD[i]}" 0 0 step hit </dev/null
             return 0
@@ -462,14 +408,14 @@ _report() { # _report <i>
 NEXT=1
 _launch
 while [ "$NEXT" -le "$n" ]; do
-    while [ "$NEXT" -le "$n" ] && [ "${STATE[NEXT]}" = done ]; do
+    while [ "$NEXT" -le "$n" ] && [ "${STATE[NEXT]}" = "done" ]; do
         _report "$NEXT"; NEXT=$((NEXT + 1))
     done
     [ "$NEXT" -le "$n" ] || break
     if [ "$RUNNING" -eq 0 ]; then _launch; continue; fi
     read -r -u 3 _i _rc
     wait "${WRAP[_i]}" 2>/dev/null || true
-    RC[_i]="$_rc"; STATE[_i]=done; RUNNING=$((RUNNING - 1))
+    RC[_i]="$_rc"; STATE[_i]="done"; RUNNING=$((RUNNING - 1))
     _rest="${TAGS[_i]#,}"
     while [ -n "$_rest" ]; do
         _t="${_rest%%,*}"; _rest="${_rest#*,}"

@@ -191,9 +191,7 @@ remote_url="${2:-}"
 gated_commits=" "
 log_root="${GOH_PUSH_LOGS:-$HOME/.cache/goh/push-logs}"
 keep_failed_logs=20
-worktree=""
-run_dir=""
-refs_file=""
+worktree="" run_dir="" refs_file=""
 export_root="${GOH_PUSH_WORKTREES:-$HOME/.cache/goh/push}"; goh_suite_cache_ok "$log_root" "the push log" && goh_suite_cache_ok "$export_root" "the push worktree" || exit 2
 
 cleanup_run() {
@@ -210,6 +208,7 @@ cleanup_run() {
     worktree=""
     run_dir=""
 }
+# shellcheck disable=SC2329  # invoked by the EXIT, HUP, INT and TERM traps below
 cleanup() {
     cleanup_run
     [ -n "$refs_file" ] && rm -f "$refs_file"

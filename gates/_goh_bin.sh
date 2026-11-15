@@ -216,6 +216,7 @@ goh_live_binary() {
     if [ -x "$bin" ] && [ "$(cat "$bin.delta" 2>/dev/null)" = "$delta" ]; then
         goh_native="$bin"
     else
+        # shellcheck disable=SC2034  # goh_native_why is an output, read by the gates that source this
         goh_native_why="GOH_LIVE: the working tree's goh could not be built"
     fi
     return 0

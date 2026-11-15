@@ -58,9 +58,12 @@ parse_step_prefix() {
                         ;;
                 esac
             done
+            # shellcheck disable=SC2034  # TAGS[] is an output, read by local_ci.sh, which sources this
             TAGS[n]="${tags}"
             ;;
-        *) RUN[n]="$cmd" ;;
+        *)
+            # shellcheck disable=SC2034  # RUN[] is an output, read by local_ci.sh, which sources this
+            RUN[n]="$cmd" ;;
     esac
 }
 

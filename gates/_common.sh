@@ -156,15 +156,24 @@ goh_init() {
         # A red run names the move, if there was one: that is its likeliest cause.
         if [ "$_goh_rc" -ne 0 ] && [ -z "$GOH_TREE_CHECKED" ]; then goh_tree_check || true; fi
         [ -n "$GOH_TREE_STAMP_FILE" ] && rm -f "$GOH_TREE_STAMP_FILE"
-        while IFS= read -r _p; do [ -n "$_p" ] && goh_rm_tree "$_p"; done <<_goh_cleanup_eof
-$_goh_cleanup
-_goh_cleanup_eof
+        _goh_rm_registered
         if [ "$_goh_rc" -eq 0 ] && [ "$GOH_COMPLETED" != "1" ]; then
             err "$GOH_NAME: exited 0 without completing — abnormal termination is never a pass"
             _goh_rc=1
         fi
         exit "$_goh_rc"' EXIT
     printf '\n== %s gate ==\n' "$GOH_NAME"
+}
+
+# _goh_rm_registered -- remove every path goh_cleanup_add registered (the EXIT trap's sweep). A
+# function, not a loop in the trap's string: shellcheck cannot see a `read` inside a quoted trap
+# assign its variable, and read it as unassigned (SC2154, GOH.LOCALCISPLIT).
+_goh_rm_registered() {
+    local p
+    while IFS= read -r p; do
+        if [ -n "$p" ]; then goh_rm_tree "$p"; fi
+    done <<<"$_goh_cleanup"
+    return 0
 }
 
 # goh_step_timeout <label> -- prints the ceiling in seconds, or 0 for none.

@@ -52,6 +52,7 @@ _rust_scope_init() {
     export GOH_PROVEN_KEYED_ROOTS
     f="$(mktemp "${TMPDIR:-/tmp}/goh-rust-scope.XXXXXX")"
     goh_cleanup_add "$f" "$f.err"  # it was never removed: ~4,700 leaked (ZoneWM, 2026-10-06)
+    # shellcheck disable=SC2154  # cargo_dir is the sourcing gate's (rust_gate.sh), set before this runs
     if "$goh_native" rust-scope "$cargo_dir" >"$f" 2>"$f.err" && [ -s "$f" ]; then
         RUST_SCOPE_FILE="$f"
         # What earlier builds of this workspace were seen to read beyond it (see the header).
