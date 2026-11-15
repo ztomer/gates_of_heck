@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+* **goh's own changelog agrees with its tags: 0 disagreements, and its `changelog_tags_seed.json` entry is gone (`GOH.CHANGELOGHEADS`).** `goh changelog-tags` on goh held 24 findings in the seed: tag `v0.1.0` had no heading (its stanza was titled `## Gate wiring, harness, and class fixes`, the first release before headings named versions; `git show v0.1.0` tags 6683fd6 with that stanza), and 23 `## vX` headings named versions that were never tagged, locally or on the remote (`git ls-remote --tags origin` has none of v0.12.2, v0.12.3, v0.12.6, v0.13.0-v0.13.2, v0.28.1, v0.33.0-v0.42.0, v0.44.0, v0.46.0-v0.48.0): their entries shipped in the next tag (`git tag --contains` of their commits: v0.12.4, v0.13.3, v0.29.0, v0.43.0, v0.45.0, v0.49.0). The reading was right, the file was wrong: `v0.1.0` now heads its stanza, and each untagged heading is a `### vX (never tagged: released in vY)` subsection of the tagged stanza it sits in, so a tag's notes are the entries it really carries. No seed is needed; the stale entry would have been red.
+
 * **`goh git-deadline`: the git-deadline class is a native structural step in every repo (`GOH.GITKILLNATIVE`).** GOH.GITKILL (v0.80.0) fixed goh's own git calls that a deadline SIGKILLs alone (a writer strands `index.lock` and orphans its hook; a `git status`/`git diff` takes that lock optionally and strands it too), but its check was a pytest scan of goh's own tree, so `.loop`'s `loopq.py`, with the same shape, had none. `crates/goh/src/gitdeadline.rs` reads every non-test Python statement (`subprocess.run(["git", ...], timeout=...)` unless a no-lock reader with no writer verb; a literal `"status"`/`"diff"` reader without `GIT_OPTIONAL_LOCKS`) and every shell line (`git status`, or a `git diff` of the work tree, without `GIT_OPTIONAL_LOCKS=0`/`--no-optional-locks`; git under `timeout`), comments and docstrings never. The verb is git's own word (`crate::gitargv`), never a substring: a commit message saying "diff" or a plumbing `diff-tree` reads nothing, and a `git diff` with `--cached`/`--staged`/`--no-index`, a range or two operands before `--` compares no work tree, so it takes no lock (koffee_big `tools/cut_release.sh:274`/`:360`, `git diff --quiet "v$VERSION" HEAD`, was flagged; `a_diff_that_reads_no_work_tree_is_not_a_reader` was red on that line and green after, and the fixture's `cut.sh` went red with the two-operand rule disabled); a deliberate site says `# git-deadline-ok: <reason>` (goh's `checks/_gitutil.py` reader seam does). Seeded sites live in `git_deadline_seed.json` (`crate::estate_seed`), the floor is `GOH_GIT_DEADLINE_MIN_FILES`, and the verdict waits for `crate::grace::OVER_FROM` (2026-11-23) so consumers fix or seed first. `tests/test_git_deadline_native.py` plants `.loop`'s shape in a consumer fixture: its `goh structural` goes red at both scopes, green once fixed, quiet within the grace, warn when seeded; four of its tests went red with the deadline rule disabled and green restored. goh's own pytest scans of the same class (`tests/test_git_deadline_class.py`: the Python deadline, the direct reader, the shell reader and the shell `timeout`) are gone, one implementation left: `test_this_repo_has_no_site` judges this repo with the grace over; what stays in pytest is what the native step does not read (the Rust readers, group kills, a seam's hand-written `-C`, the seams' behaviour). The pytest Python rule also refused a no-lock reader under `timeout=`, which the native one allows by design (no lock to strand). The estate audit is not done here: a read-only scan on 2026-11-14 found sites in 17 consumers (scripts 6, koffee_big 5, monitor 4, divoom-control 3, CadGoose/ZoneWM/games/routines 2, nine more 1).
 
 * **A missing bash guard stops the script instead of letting it run on (`GOH.BASH5SILENT`).** Every goh bash file sourced its guard as `. lib/bash5.sh && goh_bash5 "$@"`: when the file was missing (found via a test fixture that copied a script without it) the `.` failed, `&&` skipped the guard, and the script ran on unguarded with no error -- bash 5 ignores `set -e` left of `&&`. All 100 sourcing lines now read `. lib/bash5.sh || exit; goh_bash5 "$@"` (the hook and `tui/` tolerant forms too, inside their braces; the release kit's `_from_head.sh` source likewise), so the `.` names the file and the script exits non-zero. `tests/test_bash5_guard.py` holds every line that sources the guard to that form (a census, not only the first statement) and runs each distinct guard line with its `lib/bash5.sh` missing -- unreadable for the tolerant forms -- asserting a non-zero exit naming the file and nothing after it run: red on the old tree (every file; the script printed past the guard with exit 0), green after, red again with one line reverted. The previous `pre-commit`/`pre-push` stock is retired `same-logic` (it differs only when an existing guard cannot be read); `goh hooks --refresh` delivers the new one.
@@ -2148,7 +2150,7 @@ deadline is no longer possible), and the commit gate judges Rust shape.
   on every goh move is that repo's stated design (its ROADMAP: "the pin is a VERSION, and the
   harness moving is what makes the gate red"); naming a release tag instead is the owner's call.
 
-## v0.48.0 — the JavaScript gate judges the BROWSER'S goal, and its failure mode was inverted _(2026-10-22)_
+### v0.48.0 (never tagged: released in v0.49.0) — the JavaScript gate judges the BROWSER'S goal, and its failure mode was inverted _(2026-10-22)_
 
 Minor bump: the JavaScript parse gate no longer asks node the way node is usually asked, and the
 goal it judges with is named before the engine that judges it.
@@ -2209,7 +2211,7 @@ goal it judges with is named before the engine that judges it.
   GREEN after it -- the planted `return 1` was the house's own blind spot, and it is now the
   house's own proof.
 
-## v0.47.0 — a spinner is refused at every level, and a commit pin is a pin the house can name _(2026-10-21)_
+### v0.47.0 (never tagged: released in v0.49.0) — a spinner is refused at every level, and a commit pin is a pin the house can name _(2026-10-21)_
 
 Minor bump: the spinner class is closed at three levels (the tool boundary, the commit, the
 machine), and the house's pin vocabulary learns the commit.
@@ -2268,7 +2270,7 @@ machine), and the house's pin vocabulary learns the commit.
   `tests/test_check_moving_tags.py` (RED before: the run could not tell a pin that can never move
   from one that can; GREEN after).
 
-## v0.46.0 — every tracked JavaScript source parses _(2026-10-21)_
+### v0.46.0 (never tagged: released in v0.49.0) — every tracked JavaScript source parses _(2026-10-21)_
 
 Minor bump: a new structural gate for the repositories that carry JavaScript, with two engines, an
 explicit template rule, and a floor that says when the scope stopped being read.
@@ -2360,7 +2362,7 @@ explicit template rule, and a floor that says when the scope stopped being read.
   would lose the green on every gate's "taken" line. No reader waits on
   the second line today.
 
-## v0.44.0 — the pidfd branch, the artifacts a step declares, the shell gates, and the load backstop _(2026-10-20)_
+### v0.44.0 (never tagged: released in v0.45.0) — the pidfd branch, the artifacts a step declares, the shell gates, and the load backstop _(2026-10-20)_
 
 Minor bump: three defects from the consumers' own roadmaps, all in the gate layer, all found by
 running the branch that had never run, and one defect in this repo's own suite, found by the load
@@ -2514,7 +2516,7 @@ the tiers differ in WHERE the files are read from, not in how many of them there
 * Contract 17 now says what the step proves, what it costs and what it no longer does. Cargo goes
   0.42.0 -> 0.43.0 across the workspace.
 
-## v0.42.0 — the estate is every repo `install.sh` installed into _(2026-10-19)_
+### v0.42.0 (never tagged: released in v0.43.0) — the estate is every repo `install.sh` installed into _(2026-10-19)_
 
 Minor bump: closes BACKLOG 6.14. The estate was a DIRECTORY (`~/Projects`, walked three levels
 deep), and `install.sh` wires goh into whatever repository it is pointed at -- so a consumer
@@ -2550,7 +2552,7 @@ and it was red on the stdin gate with 35 undeclared calls that no count carried.
   routines also measured COLD at 150 / 51 / 46 s -- a first push pays one-time builds (`make test`
   44 s cold against 3 s warm). j2 takes 65% of the saving here and 84% there.
 
-## v0.41.0 — a shared gate lands with its canary case _(2026-10-19)_
+### v0.41.0 (never tagged: released in v0.43.0) — a shared gate lands with its canary case _(2026-10-19)_
 
 Minor bump: the gate canary's fixtures and runner move here from game_asset_factory, and a new
 `checks/check_*` without a case is refused by this repo's own suite (contract 22).
@@ -2568,7 +2570,7 @@ Minor bump: the gate canary's fixtures and runner move here from game_asset_fact
 * GAF's `tools/check_gate_canary.py` imports both instead of keeping a copy, and stays the prover
   `checks/gate_calibration.json` cites.
 
-## v0.40.0 — `tools/profiling/` is the generic trace ranker only _(2026-10-19)_
+### v0.40.0 (never tagged: released in v0.43.0) — `tools/profiling/` is the generic trace ranker only _(2026-10-19)_
 
 Minor bump: eleven scripts and `_target_root.sh` (with its `GOH_PROFILE_TARGET` key) leave the
 suite. They were CadGoose's soak/trail/profile harness, canonized here while CadGoose and CadGoose2
@@ -2589,7 +2591,7 @@ back in `CadGoose/tools/profiling/` (CadGoose `046f6ce`), fixed there and pinned
   `refs/heads/<name>` appeared or vanished, still refused when the ref did not move. Pinned by two
   new cases in `tests/test_push_gate_repo_writes.py` (red on the delete case before).
 
-## v0.39.0 — a consumer's own `tools/gate.sh --full` holds the gate slot _(2026-10-18)_
+### v0.39.0 (never tagged: released in v0.43.0) — a consumer's own `tools/gate.sh --full` holds the gate slot _(2026-10-18)_
 
 Minor bump: closes the gap v0.37.0 named. The ~15 consumer `tools/gate.sh` copies written before
 the slot (a private consumer, ZoneWM, divoom-control, games, servers, ...) run `structural.sh "$@"` and then
@@ -2609,7 +2611,7 @@ carries the fix -- no consumer edit.
 * Pinned by `tests/test_gate_slot_consumer.py` (red on 3 of 5 before the change; the two that
   passed are the must-not-take guards).
 
-## v0.38.0 — a push runs the steps a repo declares, whatever its gate calls _(2026-10-18)_
+### v0.38.0 (never tagged: released in v0.43.0) — a push runs the steps a repo declares, whatever its gate calls _(2026-10-18)_
 
 Minor bump: a push gate can now run a repo's `GOH_CI_STEPS` itself. homebrew-tap's `tools/gate.sh
 --full` ran the structural layer alone, so the tap's consistency and `brew style` checks sat in its
@@ -2622,7 +2624,7 @@ divoom-control had the same hole until its R71 P0.1.
   as the structural mark (BACKLOG 6.7); a `local_ci` run in another tree does not count.
 * Pinned by `tests/test_push_gate_ci_steps.py` (red on 3 of 5 before the change).
 
-## v0.37.0 — every full-gate entry point takes the gate slot _(2026-10-18)_
+### v0.37.0 (never tagged: released in v0.43.0) — every full-gate entry point takes the gate slot _(2026-10-18)_
 
 Minor bump: a hand-run full gate now waits for a gate slot when the machine is full. v0.36.0 took the
 slot in `push_gate.sh` alone, so `tools/gate.sh --full` run directly and a round's warm preflight
@@ -2639,7 +2641,7 @@ still raced every push on the machine.
   consumer whose `--full` does not exec `local_ci.sh` still runs outside a slot when hand-run.
 * `lib/gate_slot.sh` resolves its helper beside itself, not from the caller's `$GOH`.
 
-## v0.36.0 — a machine-wide limit on concurrent push gates _(2026-10-18)_
+### v0.36.0 (never tagged: released in v0.43.0) — a machine-wide limit on concurrent push gates _(2026-10-18)_
 
 Minor bump: a push now waits for a gate slot when the machine is full. Several sessions pushed at once
 with nothing limiting them, and two pushes failed on load, not on their changes: a private consumer's gate was
@@ -2666,7 +2668,7 @@ Red first, each one: no slot (11 of 11 tests), a slot too many, a holder that ig
 death, no nested check, no ancestry fallback, a non-ancestor honoured, holders unnamed, the wait
 charged to the step (`TIMED OUT after 2s`), and `hermetic_env` dropping the lock dirs.
 
-## v0.35.1 — the silent-failure check reads goh and ZoneWM right _(2026-10-18)_
+### v0.35.1 (never tagged: released in v0.43.0) — the silent-failure check reads goh and ZoneWM right _(2026-10-18)_
 
 Patch bump: two false `unverified` verdicts found by running `lib/landed_verify.py` on real shas.
 
@@ -2677,7 +2679,7 @@ Patch bump: two false `unverified` verdicts found by running `lib/landed_verify.
   shas read "origin is not on GitHub"; live, its stopped-before-landing `81241cb8` now reads
   `silent-failure: not on ztomer/ZoneWM main`. Both red without the change.
 
-## v0.35.0 — the model-choice rule keeps itself current, and proposes its own changes _(2026-10-18)_
+### v0.35.0 (never tagged: released in v0.43.0) — the model-choice rule keeps itself current, and proposes its own changes _(2026-10-18)_
 
 Minor bump: a rules file, an exploration router, a silent-failure check and a weekly watch; the hook
 refuses nothing it did not refuse before. Owner (2026-10-18): "continually improve this approach,
@@ -2715,7 +2717,7 @@ otherwise we might get stuck with outdated rules" -- and rule changes are the ow
   and every web fact read `unverified` until the request named itself; the live proof passed on the
   hook and failed with `GOH_DIR` on an empty directory.
 
-## v0.34.1 — a subagent's tokens are read after its transcript catches up _(2026-10-18)_
+### v0.34.1 (never tagged: released in v0.43.0) — a subagent's tokens are read after its transcript catches up _(2026-10-18)_
 
 Patch bump: the ledger's token counts become whole; nothing refuses more.
 
@@ -2727,7 +2729,7 @@ Patch bump: the ledger's token counts become whole; nothing refuses more.
   growing usage on every entry, so the first one undercounts. Red without the change: a closing
   entry appended 0.3 s late was missed; a growing message counted at its first entry.
 
-## v0.34.0 — a subagent spawn names its model and effort, and is ledgered _(2026-10-18)_
+### v0.34.0 (never tagged: released in v0.43.0) — a subagent spawn names its model and effort, and is ledgered _(2026-10-18)_
 
 Minor bump: a new Claude Code hook that refuses spawns; nothing in any repo's gate refuses more.
 
@@ -2753,7 +2755,7 @@ Minor bump: a new Claude Code hook that refuses spawns; nothing in any repo's ga
   `|| exit 1`, a visible non-blocking hook error. The test runs every entry against an empty
   `GOH_DIR` (the bare form: exit 2, red).
 
-## v0.33.0 — CI and the local gate are held to the same scripts _(2026-10-18)_
+### v0.33.0 (never tagged: released in v0.43.0) — CI and the local gate are held to the same scripts _(2026-10-18)_
 
 Minor bump: a new opt-in check, nothing existing refuses more.
 
@@ -3041,7 +3043,7 @@ at the commit that adds it), so no consumer goes red on upgrade; it exists so no
 * **v0.28.1 was never tagged.** Its stanza below (the Swift coverage gate reading xcresults
   through `xccov`) ships in this release.
 
-## v0.28.1 — the Swift coverage gate can measure an xcresult again, and it excludes test code _(2026-10-15)_
+### v0.28.1 (never tagged: released in v0.29.0) — the Swift coverage gate can measure an xcresult again, and it excludes test code _(2026-10-15)_
 
 Found from the outside, by `koffee_oss` trying to set the coverage floor its own roadmap
 has asked for since 2026-10-14 and never could.
@@ -5039,7 +5041,7 @@ repo for these notes; `git status` fails before, succeeds after).
 This release also ships the four stanzas below, which were written but never
 tagged: v0.12.6, v0.13.0 (the Rust port), v0.13.1 and v0.13.2.
 
-## v0.13.2 — no process kill by name _(2026-09-27)_
+### v0.13.2 (never tagged: released in v0.13.3) — no process kill by name _(2026-09-27)_
 
 `checks/check_no_kill_by_name.py`, opt-in per repo with
 `GOH_NO_KILL_BY_NAME=1`, fails on a `pkill` or `killall` that matches by
@@ -5063,7 +5065,7 @@ The native pipeline delegates this step to the Python checker, as it does
 shell lint. Parity is pinned both ways, and GAF's canary proves the check
 bites.
 
-## v0.13.1 — a gate over the working tree says when the tree moved under it _(2026-09-27)_
+### v0.13.1 (never tagged: released in v0.13.3) — a gate over the working tree says when the tree moved under it _(2026-09-27)_
 
 A gate that builds and tests the WORKING tree certified whatever bytes sat
 there while it ran: an edit mid-run killed ZoneWM's `make verify` with
@@ -5078,7 +5080,7 @@ edit elsewhere is not theirs to refuse. Tool caches (`__pycache__`,
 output, never a move -- found by this repo's own py and rust gate tests.
 Consumers with their own runner call the CLI (ZoneWM's `make verify`).
 
-## v0.13.0 — the Rust port: native layer 1, bit-exact golden, one resolver _(2026-09-27)_
+### v0.13.0 (never tagged: released in v0.13.3) — the Rust port: native layer 1, bit-exact golden, one resolver _(2026-09-27)_
 
 Every checker a shared gate runs is now native (`goh`) with the Python
 checker as its parity-pinned fallback: home-paths, ceiling + ratchet,
@@ -5092,7 +5094,7 @@ resolution. `scripts/build-goh.sh` never publishes `bin/goh` from
 uncommitted goh sources (`GOH_BUILD_DIRTY=1` to override), and no test run
 can publish it. Plan retired: `git show 15004a5:docs/rust-port-plan.md`.
 
-## v0.12.6 — a hook from an older stock is pristine, not "locally modified" _(2026-09-27)_
+### v0.12.6 (never tagged: released in v0.13.3) — a hook from an older stock is pristine, not "locally modified" _(2026-09-27)_
 
 `install.sh` refused to update three repos whose hooks had never been
 touched: they were on the previous stock hook, installed before the
@@ -5147,7 +5149,7 @@ rustfmt's multi-line layout, with string literals ignored. Tests:
 `test_cfg_attr_wrapped_suppression_is_refused`,
 `test_cfg_attr_without_a_suppression_passes`.
 
-## v0.12.3 — the commit hook goes through `tools/gate.sh --staged` _(2026-09-21)_
+### v0.12.3 (never tagged: released in v0.12.4) — the commit hook goes through `tools/gate.sh --staged` _(2026-09-21)_
 
 `hooks/pre-commit` exec'd `structural.sh --staged` directly, so a staged
 language layer wired into a repo's `tools/gate.sh` (which the starter invites:
@@ -5169,7 +5171,7 @@ already declares for test code (`allow-*-in-tests`) but cannot reach helper
 functions in an integration-test crate; one `must()` helper stops a test with
 the reason. No suppression attribute anywhere in the tree.
 
-## v0.12.2 — `#[expect]` is a suppression too _(2026-09-20)_
+### v0.12.2 (never tagged: released in v0.12.4) — `#[expect]` is a suppression too _(2026-09-20)_
 
 `checks/check_no_allow.py` now refuses `#[expect(...)]` and `#![expect(...)]`
 beside `#[allow]`, and its scope covers `tests/` and `examples/` as well as
@@ -5908,7 +5910,7 @@ roof. 74 → 262 tests, every new checker red-proven.
   operators `⇒ ⇄`; per-repo extras via `GOH_ALLOW` in `.gatesrc`.
 - Hygiene: untrack `.opencode` session state; ignore it.
 
-## Gate wiring, harness, and class fixes _(2026-08-24)_
+## v0.1.0 — Gate wiring, harness, and class fixes _(2026-08-24)_
 
 First full audit of the factored-out gate suite found three broken wirings,
 two self-violations of the repo's own thesis, and several stated-vs-implemented

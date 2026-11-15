@@ -1,12 +1,4 @@
 {
  "why": "goh changelog-tags: the whole changelog against the v* tags -- an orphan heading tail, a tag with no heading, a heading no tag names, the current version exempt (GOH.CHANGELOGALL, 2026-11-08). THIS repository's own entries only, keyed by its root commit: an entry about another repository lives in that repository's own changelog_tags_seed.json or in the owner's private store ($GOH_SEED_DIR, else ~/.local/state/goh/seeds), never here, and one naming another root is refused (GOH.SEEDPRIVATE). At or under its count warns; over it, unseeded, or stale is red. Done is an empty list.",
- "entries": [
-  {
-   "root": "73391f04f5f2b92ab9813c62e6cecdce919d2d86",
-   "repo": "gates_of_heck",
-   "path": "CHANGELOG.md",
-   "count": 24,
-   "reason": "unreviewed: 24 finding(s): 1 tag(s) with no heading, 23 heading(s) no tag names"
-  }
- ]
+ "entries": []
 }
