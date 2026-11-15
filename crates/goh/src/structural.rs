@@ -251,6 +251,7 @@ fn late_steps(
         crate::changelog_tags::step(repo, staged),
         crate::changelog_fragments::step(repo, cfg, staged),
         crate::gatesrc_dupes::step(repo, files, staged),
+        crate::layerparity::step(repo, cfg, staged),
         steps_delegated::step_full_only(repo, checks, staged),
     ];
     first_stop(steps, tally)

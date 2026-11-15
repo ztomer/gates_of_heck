@@ -30,6 +30,7 @@ CONSUMERS: dict[str, tuple[str, ...]] = {
     "crates/goh/src/tuimarks/mod.rs": ("hand-rolled TUI mark",),
     "crates/goh/src/gitdeadline.rs": ("git deadline",),
     "crates/goh/src/barepy/mod.rs": ("bare python",),
+    "crates/goh/src/layerparity.rs": ("layer parity",),
     "crates/goh/src/killname/mod.rs": ("kill-by-name",),
     "crates/goh/src/unreaped/mod.rs": ("unreaped spawn",),
     "crates/goh/src/mdlinks.rs": ("md-links",),

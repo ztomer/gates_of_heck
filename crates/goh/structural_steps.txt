@@ -3,6 +3,7 @@ a file that calls X calls Y
 cap-exempt files within their ceilings
 every .gatesrc key is set once
 every child process names its stdin
+every language linted at commit is gated at push
 every scanner read its declared subject
 every tag has its changelog heading
 every tracked JavaScript source parses

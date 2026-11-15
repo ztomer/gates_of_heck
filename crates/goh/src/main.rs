@@ -54,6 +54,7 @@ pub mod instline;
 pub mod jssyntax;
 pub mod killname;
 pub mod launchapp;
+pub mod layerparity;
 pub mod length;
 pub mod lints;
 pub mod lockver;
@@ -356,6 +357,7 @@ fn run_scanners(command: Commands) -> Result<i32, Box<Commands>> {
             paths(exclude, |x| statusmark::run_command(seed, x))
         }
         Commands::PrivateNames(a) => privnames::run_command(a.staged),
+        Commands::LayerParity(a) => layerparity::run_command(a.staged),
         Commands::Installs => installs::run_command(),
         other => return Err(Box::new(other)),
     })

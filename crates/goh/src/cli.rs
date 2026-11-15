@@ -391,6 +391,8 @@ pub enum Commands {
     SeedSettle { pending: PathBuf },
     /// Fail on a private repository's name (the private store's list) in this tracked tree.
     PrivateNames(StagedArgs),
+    /// Fail when a language the commit gate lints has no push layer in `tools/gate.sh`.
+    LayerParity(StagedArgs),
     /// Fail when the whole changelog and the `v*` tags disagree (GOH.CHANGELOGALL).
     ChangelogTags(StagedArgs),
     /// Fail on an `actions/checkout` step that leaves the job token in `.git/config`:
