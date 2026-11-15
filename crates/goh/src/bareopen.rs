@@ -10,6 +10,10 @@
 //! handed it to every agent of that session. The one launch is `goh launch-app PATH`
 //! (`crate::launchapp`), which clears the environment first.
 //!
+//! GOH.BAREOPEN2 widened the scan: an `open` behind `env FOO=1` or `FOO=1` (an `env -i` is the clean
+//! launch), an `open` in a `$( )` or backticks inside double quotes, and a Python subprocess that
+//! runs `open` (`crate::bareopen_py`).
+//!
 //! WHAT IS JUDGED: every `open` (or `/usr/bin/open`) at a command position in a shell source
 //! (`crate::shellsrc`): the start of a line, or after `;`, `&`, `|`, `(`, `{`, `` ` ``, `!`, or
 //! one of `then do else exec nohup time sudo`. A word inside an argument (`info "launch: open
@@ -64,15 +68,7 @@ pub fn scan_line(line: &str) -> Vec<usize> {
         if line[..start].ends_with(|c: char| c.is_alphanumeric() || "_-./$\"'".contains(c)) {
             continue;
         }
-        let leads = before.is_empty()
-            || before.ends_with([';', '&', '|', '(', '{', '`', '!'])
-            || LEADERS.iter().any(|w| {
-                before.strip_suffix(w).is_some_and(|rest| {
-                    rest.chars()
-                        .next_back()
-                        .is_none_or(|c| c.is_whitespace() || ";&|(".contains(c))
-                })
-            });
+        let leads = carries_caller_env(before);
         if leads {
             out.push(start);
         }
@@ -80,22 +76,138 @@ pub fn scan_line(line: &str) -> Vec<usize> {
     out
 }
 
-/// Whether the end of `head` sits inside a quoted string (`'...'` or `"..."`, `\\` escapes outside
-/// single quotes): a word there is an argument, never the command.
-fn quoted(head: &str) -> bool {
-    let (mut single, mut double, mut escaped) = (false, false, false);
-    for c in head.chars() {
-        if escaped {
-            escaped = false;
-        } else if c == '\\' && !single {
-            escaped = true;
-        } else if c == '\'' && !double {
-            single = !single;
-        } else if c == '"' && !single {
-            double = !double;
+/// Whether the words in front of an `open` make it a command that hands the app THIS shell's
+/// environment: it starts a command (after a separator or a leader word), optionally behind
+/// variable assignments (`FOO=1 open`) or an `env` that sets variables and clears nothing
+/// (`env FOO=1 open`; GOH.BAREOPEN2). `env -i` / `env --ignore-environment` is the clean launch,
+/// the very thing `goh launch-app` does, so it is not a finding.
+fn carries_caller_env(before: &str) -> bool {
+    let seg = before
+        .rfind([';', '&', '|', '(', '{', '`', '!'])
+        .map_or(before, |i| &before[i + 1..]);
+    let words = shell_words(seg);
+    let mut words = words.iter().map(String::as_str).peekable();
+    while words.next_if(|w| LEADERS.contains(w)).is_some() {}
+    let rest: Vec<&str> = words.collect();
+    let Some((first, args)) = rest.split_first() else {
+        return true;
+    };
+    if first.rsplit('/').next() != Some("env") {
+        return rest.iter().all(|w| is_assignment(w));
+    }
+    let mut args = args.iter();
+    while let Some(w) = args.next() {
+        if *w == "--ignore-environment" || (is_short_opt(w) && w.contains('i')) || *w == "-" {
+            return false;
+        }
+        if matches!(*w, "-u" | "-C" | "-S" | "-P" | "--unset" | "--chdir") {
+            args.next();
+        } else if !(is_short_opt(w) || w.starts_with("--") || is_assignment(w)) {
+            return false;
         }
     }
-    single || double
+    true
+}
+
+fn is_short_opt(w: &str) -> bool {
+    w.len() > 1 && w.starts_with('-') && !w.starts_with("--")
+}
+
+/// `NAME=value`, the shell's assignment word.
+fn is_assignment(w: &str) -> bool {
+    w.split_once('=').is_some_and(|(name, _)| {
+        name.starts_with(|c: char| c.is_alphabetic() || c == '_')
+            && name.chars().all(|c| c.is_alphanumeric() || c == '_')
+    })
+}
+
+/// `seg` split at blanks that sit outside quotes (`FOO="a b"` is one word).
+fn shell_words(seg: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    let mut cur = String::new();
+    for c in seg.chars() {
+        cur.push(c);
+        if c.is_whitespace() && !quoted(&cur) {
+            cur.pop();
+            if !cur.is_empty() {
+                out.push(std::mem::take(&mut cur));
+            }
+        }
+    }
+    if !cur.is_empty() {
+        out.push(cur);
+    }
+    out
+}
+
+/// What a shell reads the next character as.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Ctx {
+    Single,
+    Double,
+    /// Inside `$( )` (its paren depth); code again, even within double quotes.
+    Sub(usize),
+    /// Inside backticks; code again.
+    Tick,
+}
+
+/// Whether the end of `head` sits inside a quoted string (`'...'` or `"..."`, `\\` escapes outside
+/// single quotes): a word there is an argument, never the command. A `$( )` or a pair of backticks
+/// inside double quotes is code again (GOH.BAREOPEN2: `x="$(open -a Foo)"` launches the app).
+fn quoted(head: &str) -> bool {
+    let mut stack: Vec<Ctx> = Vec::new();
+    let mut chars = head.chars().peekable();
+    while let Some(c) = chars.next() {
+        match stack.last().copied() {
+            Some(Ctx::Single) => {
+                if c == '\'' {
+                    stack.pop();
+                }
+                continue;
+            }
+            Some(Ctx::Double) if c == '"' => {
+                stack.pop();
+                continue;
+            }
+            Some(Ctx::Double) => {
+                match c {
+                    '\\' => {
+                        chars.next();
+                    }
+                    '$' if chars.next_if_eq(&'(').is_some() => stack.push(Ctx::Sub(0)),
+                    '`' => stack.push(Ctx::Tick),
+                    _ => {}
+                }
+                continue;
+            }
+            Some(Ctx::Tick) if c == '`' => {
+                stack.pop();
+                continue;
+            }
+            Some(Ctx::Sub(d)) if c == ')' => {
+                stack.pop();
+                if d > 0 {
+                    stack.push(Ctx::Sub(d - 1));
+                }
+                continue;
+            }
+            Some(Ctx::Sub(d)) if c == '(' => {
+                stack.pop();
+                stack.push(Ctx::Sub(d + 1));
+                continue;
+            }
+            _ => {}
+        }
+        match c {
+            '\\' => {
+                chars.next();
+            }
+            '\'' => stack.push(Ctx::Single),
+            '"' => stack.push(Ctx::Double),
+            _ => {}
+        }
+    }
+    matches!(stack.last(), Some(Ctx::Single | Ctx::Double))
 }
 
 /// The heredoc a line opens (`<<WORD`, `<<-WORD`, `<< 'WORD'`, `<<"WORD"`; never `<<<`): its
@@ -149,8 +261,25 @@ pub fn scan_text(text: &str) -> Vec<(usize, &str)> {
 fn sites(root: &Path, files: &[String], exclude: &str, staged: bool) -> Result<Sites, String> {
     let exclude = crate::steps::compile_exclude(exclude)?;
     let sources = crate::shellsrc::sources(root, files, exclude.as_ref(), staged);
-    crate::subject::record(&crate::subject::BARE_OPEN, sources.len());
+    let pysources = crate::bareopen_py::sources(root, files, exclude.as_ref(), staged);
+    crate::subject::record(&crate::subject::BARE_OPEN, sources.len() + pysources.len());
     let mut out = Sites::new();
+    for (rel, text) in &pysources {
+        let rows: Vec<&str> = text.lines().collect();
+        let found: Vec<String> = crate::bareopen_py::scan_text(text)
+            .unwrap_or_default()
+            .into_iter()
+            .map(|n| {
+                format!(
+                    "    {rel}:{n}: {}  -- the app gets this process's environment",
+                    estate_seed::clip(rows.get(n - 1).copied().unwrap_or(""))
+                )
+            })
+            .collect();
+        if !found.is_empty() {
+            out.insert(rel.clone(), found);
+        }
+    }
     for (rel, text) in &sources {
         let found: Vec<String> = scan_text(text)
             .into_iter()
@@ -243,6 +372,42 @@ mod tests {
             "x || open -g Foo.app",
         ] {
             assert_eq!(scan_line(bad).len(), 1, "{bad}");
+        }
+    }
+
+    /// GOH.BAREOPEN2: the shapes the first scan walked past, one plant each.
+    #[test]
+    fn the_shapes_the_first_scan_missed_are_found() {
+        for bad in [
+            // an `env` that sets variables (and clears nothing) hands the app the rest
+            r#"env FOO=1 open -a "$APP""#,
+            r#"  env FOO=1 BAR=2 /usr/bin/open "$APP""#,
+            r#"sudo env X=1 open "$APP""#,
+            r#"x=$(env -u HOME open "$APP")"#,
+            // a variable assignment before the command is the same launch
+            r#"FOO=1 open -a "$APP""#,
+            // a command substitution inside a double-quoted string is code
+            r#"out="$(open -a "$APP")""#,
+            r#"echo "started: $(open "$APP")""#,
+            r#"out="`open -a Foo`""#,
+            r#"echo "$(echo hi | open -f)""#,
+        ] {
+            assert_eq!(scan_line(bad).len(), 1, "{bad}");
+        }
+    }
+
+    #[test]
+    fn an_env_that_clears_the_environment_is_the_clean_launch() {
+        for ok in [
+            r#"env -i /usr/bin/open -a "$APP""#,
+            r#"env -i HOME="$HOME" open "$APP""#,
+            r#"env --ignore-environment open "$APP""#,
+            r#"x="$(env -i open "$APP")""#,
+            r#"echo "run env FOO=1 open -a X to launch""#,
+            r#"x="$(echo open)""#,
+            r#"msg="the file (open it) and $(date)""#,
+        ] {
+            assert!(scan_line(ok).is_empty(), "{ok}");
         }
     }
 

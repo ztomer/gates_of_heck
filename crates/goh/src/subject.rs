@@ -119,8 +119,8 @@ pub const MKTEMP_PORTABLE: Subject = Subject {
 };
 pub const BARE_OPEN: Subject = Subject {
     key: "GOH_BARE_OPEN_MIN_FILES",
-    unit: "shell source",
-    units: "shell sources",
+    unit: "shell or Python source",
+    units: "shell and Python sources",
     scanner: "no bare open of an app",
 };
 pub const PLURAL_HEDGE: Subject = Subject {

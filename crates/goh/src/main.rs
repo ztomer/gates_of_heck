@@ -11,6 +11,7 @@
 #![deny(unsafe_code)]
 
 pub mod bareopen;
+pub mod bareopen_py;
 pub mod barepy;
 pub mod blobs;
 pub mod bounded;
