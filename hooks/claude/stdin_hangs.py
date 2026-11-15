@@ -14,7 +14,10 @@ shows a different fd 0 (`tPIPE`, its own address).
 
 THE RULE. A descendant of a Bash-tool shell is HUNG ON STDIN when its argv is a stdin reader by the
 Bash guard's own definition (`lib/stdin_reader.reads_stdin`), it has used under a second of CPU,
-and its fd 0 is the shell's own harness socket or pipe. It is named when its agent has finished (the
+and its fd 0 is the shell's own harness socket or pipe. A read BUILTIN (`read`, `mapfile`) has no
+process: a Bash-tool shell with no descendant, under a second of CPU, its fd 0 still the harness
+socket or pipe and a read builtin in the text it evals (`stdin_reader.shell_reads`) is the reader,
+named with its own pid (GOH.STDINFILTERS). It is named when its agent has finished (the
 shell has outlived the agent that started it: nothing will ever feed or close that stdin) or when it
 has been blocked for `max_hours` (default 2). The line says "kill <pid>" and why. Nothing here
 signals a process: the coordinator kills it.
@@ -72,8 +75,11 @@ class Hang:
 
     def line(self) -> str:
         h, m = divmod(int(self.age_s // 60), 60)
+        where = (
+            "the Bash shell itself" if self.pid == self.shell else f"under Bash shell {self.shell}"
+        )
         return (
-            f"kill {self.pid}: `{self.reader}` (under Bash shell {self.shell}) has blocked reading "
+            f"kill {self.pid}: `{self.reader}` ({where}) has blocked reading "
             f"the harness's stdin for {h}h{m:02d}m at 0% CPU and nothing will ever feed it "
             f"({self.why}); its tool call never returns until it dies"
         )
@@ -225,9 +231,13 @@ def hangs(
             (p, r) for p in below
             if p.cpu_s < MAX_CPU_S and (r := stdin_reader.reads_stdin(p.command.split()))
         ]  # fmt: skip
+        if not below and shell.cpu_s < MAX_CPU_S:
+            # no child: a shell blocked at all is in a read BUILTIN (the shell is the reader)
+            builtin = stdin_reader.shell_reads(eval_text(shell.command))
+            readers += [(shell, builtin)] if builtin else []
         if not readers:
             continue
-        fd0 = stdin([shell.pid, *(p.pid for p, _ in readers)])
+        fd0 = stdin([shell.pid, *(p.pid for p, _ in readers if p is not shell)])
         own = fd0.get(shell.pid, "")
         if not own.startswith(("unix:", "PIPE:")):
             continue  # /dev/null or a file: it ends

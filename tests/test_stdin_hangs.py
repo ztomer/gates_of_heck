@@ -151,3 +151,60 @@ def test_the_hook_and_the_cli_name_the_hang(tmp_path: Path) -> None:
         stdin=subprocess.DEVNULL,
     )  # fmt: skip
     assert cli.returncode == 1 and "kill 300:" in cli.stdout, cli.stdout + cli.stderr
+
+
+# GOH.STDINFILTERS: a `read` builtin blocks the SHELL itself -- no child process is the reader -- so
+# a Bash-tool shell with no descendant, no CPU, its fd 0 still the harness socket and a `read` in
+# the command it evals is named, with the shell's own pid to kill. A filter (`grep`, as ugrep shows
+# in ps) blocked on the socket is named like `cat`.
+READ_SHELL = SHELL.replace("cat > /tmp/x.py 2>/dev/null", "read -r answer")
+
+
+def _read_table(shell_cmd: str = READ_SHELL, cpu: float = 0.01, kid: bool = False):
+    rows = [sh.Proc(100, 1, 9000, 50, CLAUDE), sh.Proc(200, 100, 6 * 3600, cpu, shell_cmd)]
+    return rows + ([sh.Proc(300, 200, 6 * 3600, 0.01, "sleep 99999")] if kid else [])
+
+
+def test_a_shell_blocked_in_its_own_read_builtin_is_named() -> None:
+    found = sh.hangs(_read_table(), stdin=_fd0())
+    assert [(h.pid, h.shell, h.reader) for h in found] == [(200, 200, "read")], found
+    assert found[0].line().startswith("kill 200: `read` (the Bash shell itself)"), found[0].line()
+
+
+@pytest.mark.parametrize(
+    ("table", "fd0", "why"),
+    [
+        (_read_table(SHELL.replace("cat > /tmp/x.py", "sed x")), _fd0(), "no read in its command"),
+        (_read_table(cpu=40.0), _fd0(), "the shell is working"),
+        (_read_table(kid=True), _fd0(), "a child runs: the shell waits on it"),
+        (_read_table(), _fd0(p200="CHR:0x3000002"), "/dev/null: the read ends"),
+    ],
+)
+def test_a_shell_not_blocked_in_read_is_not_named(table, fd0, why: str) -> None:
+    assert sh.hangs(table, stdin=fd0) == [], why
+
+
+def test_a_filter_on_the_harness_socket_is_named() -> None:
+    ugrep = "ugrep -G --ignore-files --hidden -I --exclude-dir=.git -c pattern"
+    found = sh.hangs(_table(cat_cmd=ugrep), stdin=_fd0())
+    assert [(h.pid, h.reader) for h in found] == [(300, "ugrep")], found
+
+
+def test_the_real_process_table_sees_a_shell_blocked_in_read() -> None:
+    """A real `sh` evals `read x` on one end of a socketpair: named by its own pid, no child."""
+    import os
+
+    ours, theirs = socket.socketpair()
+    proc = subprocess.Popen(["sh", "-c", "eval 'read x' && pwd -P"], stdin=theirs)
+    theirs.close()
+    try:
+        give_up, mine = GiveUp(10), []
+        while not mine and not give_up.passed():
+            found = sh.hangs(sh.process_table(), harness={os.getpid()}, max_hours=0)
+            mine = [h for h in found if h.shell == proc.pid]
+            time.sleep(0.05)
+        assert [(h.pid, h.reader) for h in mine] == [(proc.pid, "read")], mine
+    finally:
+        proc.kill()
+        proc.wait(timeout=patience(10))
+        ours.close()

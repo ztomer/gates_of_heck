@@ -93,7 +93,7 @@ def split_ops(command: str) -> tuple[list[tuple[list[str], str]], dict[str, str]
     segs: list[tuple[list[str], str]] = []
     words: list[str] = []
     for tok in lex:
-        if tok in SEPARATORS or set(tok) <= set(";&|\n"):
+        if tok in SEPARATORS or (tok and set(tok) <= set(";&|\n")):
             op = tok.replace("\n", "") or "\n"  # `|\n` lexes as one token: the `|` is the operator
             if words:
                 segs.append((words, op))

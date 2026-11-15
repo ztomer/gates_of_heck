@@ -106,3 +106,95 @@ def test_a_here_string_is_not_a_heredoc_opener():
     segs, bodies = shell_segments.split('cat <<< "$x"; rm -rf ~/y\necho z')
     assert bodies == {}, bodies
     assert ["rm", "-rf", "~/y"] in segs, segs
+
+
+# GOH.STDINFILTERS: a FILTER -- a program that reads its stdin when its argv names no input file
+# -- is a reader by the same rule as `cat`: its script operand (grep's pattern, jq's, sed's and
+# awk's program) is not a file, its options' values are not operands, and an option that names the
+# input or reads none (`grep -r`, `jq -n`, `sed -i`, `xargs -a`) makes it no reader.
+@pytest.mark.parametrize(
+    "command",
+    [
+        "grep foo",
+        "grep -c pattern",
+        "grep -e a -e b",
+        "grep -A 3 foo",
+        "egrep 'a|b'",
+        "jq .",
+        "jq -r '.x'",
+        "jq --arg k v '.a'",
+        "jq -r --args '.[]' a b",
+        "xargs rm",
+        "xargs -n1 echo",
+        "sed 's/a/b/'",
+        "sed -n -e p",
+        "awk '{print $1}'",
+        "awk -F: '{print}'",
+        "awk 'BEGIN{x=1} {print x}'",
+        "sort -u",
+        "sort -k2 -t,",
+        "wc -l",
+        "head -5",
+        "head -n 3",
+        "tail -n 1",
+        "cut -d, -f1",
+        "tr a-z A-Z",
+        "uniq -c",
+        "x=1; grep -q foo && echo yes",
+    ],
+)
+def test_a_filter_with_no_file_operand_and_no_input_is_refused(tmp_path, command):
+    reason = _decide(command, tmp_path)
+    assert reason is not None, command
+    assert "nothing feeds it" in reason, reason
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "grep foo file",
+        "grep -r foo",
+        "grep -rn foo .",
+        "grep -e x -- f",
+        "grep -f pats.txt file",
+        "grep -A 3 foo file",
+        'grep -q x <<< "$y"',
+        "git log | grep fix",
+        "jq . f.json",
+        "jq -n '1'",
+        "jq -nr '1'",
+        "jq --arg k v '.a' f.json",
+        "jq -f prog.jq in.json",
+        "jq --version",
+        "xargs -a list echo",
+        "find . -name '*.py' | xargs grep foo",
+        "sed -i '' 's/a/b/' f",
+        "sed 's/a/b/' f",
+        "sed -n p f",
+        "awk 'BEGIN{print 1}'",
+        "awk -v x=1 'BEGIN { print x }'",
+        "awk '{print}' f",
+        "awk -f p.awk f",
+        "awk '{print}' x=1 f",
+        "sort f",
+        "sort -o out f",
+        "wc -l f",
+        "wc -l < f",
+        "head -5 f",
+        "tail -f log",
+        "cut -d, -f1 f.csv",
+        "tr a b < f",
+        "echo x | tr a b",
+        "uniq in out",
+        "grep foo # stdin-ok: testing the escape",
+    ],
+)
+def test_a_filter_with_a_file_or_input_runs(tmp_path, command):
+    assert _decide(command, tmp_path) is None, command
+
+
+def test_an_empty_quoted_word_is_a_word_not_a_separator():
+    """`grep -c "" f` split as `grep -c` and `f`: shlex yields the empty word as '', and the
+    separator test (`set(tok) <= set(";&|\\n")`) holds for the empty set (GOH.STDINFILTERS)."""
+    segs, _ = shell_segments.split("grep -c \"\" f; rm -rf '' ~/y")
+    assert segs == [["grep", "-c", "", "f"], ["rm", "-rf", "", "~/y"]], segs

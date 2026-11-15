@@ -15,23 +15,34 @@ the harness's own unix socket, which never reaches end of file. Either way the r
 an empty file, or a hang no timeout ends.
 
 THE RULE, in the CODE of a Bash command (`lib/shell_segments.py`: quoted text, heredoc bodies and
-comments are not commands). A READER is `cat` with no file operand (or `-`), `tee`, `read` (not
-`-t`, not `-u`), `python`/`python3` with `-` or no script, and a shell that runs its stdin as
-its script (`sh -s`, a bare `bash`). It is FED by a heredoc, a here-string, a `<` redirect or a pipe
-into that same command -- or into the compound command around it (`cmd | while read`, `done < f`,
-`{ cat; } < f`) -- or by running in the background (a background list reads /dev/null). A reader
-under `timeout` is bounded and runs. One fed or bounded reader beside an unfed one does not excuse
-it. The escape is `# stdin-ok: <reason>`.
+comments are not commands). A READER is a FILTER whose argv names no input file -- a program that
+reads its stdin when given no file operand (`cat`, `grep`, `jq`, `sed`, `awk`, `sort`, `wc`, ...) --
+or one whose operands are never input (`tee`'s are outputs, `tr`'s are sets, `xargs`'s a command);
+the read builtins (`read`, `mapfile`; not `-t`, not `-u`); `python`/`python3` with `-` or no
+script;
+and a shell that runs its stdin as its script (`sh -s`, a bare `bash`). One rule judges every filter
+(GOH.STDINFILTERS): its options' values are not operands, its leading script operand is not a file
+unless an option supplied the script (`grep -e`, `jq -f`, `awk -f`), an operand `-` is stdin, and an
+option that names the input or reads none (`grep -r`, `jq -n`, `sed -i`, `xargs -a`, an awk program
+of BEGIN blocks only) makes it no reader. `FILTERS` holds each filter's argv grammar, not a verdict.
+A reader is FED by a heredoc, a here-string, a `<` redirect or a pipe into that same command -- or
+into the compound command around it (`cmd | while read`, `done < f`, `{ cat; } < f`) -- or by
+running in the background (a background list reads /dev/null). A reader under `timeout` is bounded
+and runs.
+One fed or bounded reader beside an unfed one does not excuse it. The escape is
+`# stdin-ok: <reason>`.
 
 The detector for the readers already hung is `hooks/claude/stdin_hangs.py` (`goh agent-stalls`),
 and it asks `reads_stdin` the same question of a live process's argv: one definition of a reader.
+A read BUILTIN has no process of its own (the shell is the reader); `shell_reads` names it in the
+text a blocked shell evals, for the detector to name the shell itself.
 """
 
 from __future__ import annotations
 
 import os
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 import shell_segments
 
@@ -43,6 +54,109 @@ TIMEOUTS = {"timeout", "gtimeout"}
 OPENERS = {"while": "done", "until": "done", "if": "fi", "for": "done", "select": "done", "{": "}"}
 SKIP = {"do", "then", "else", "elif", "!", "time"}
 CLOSERS = {"done", "fi", "}"}
+BUILTIN_READERS = {"read", "mapfile", "readarray"}
+INFO = frozenset({"--help", "--version"})
+
+
+@dataclass(frozen=True)
+class Filter:
+    """The argv grammar of a program that reads its stdin when its argv names no input file.
+
+    `valued`/`long_valued`: options whose value is the next word (a long one's count of words);
+    `script`: leading operands that are the program, not input, unless one of `script_opts` gave it;
+    `no_input`/`long_no_input`: options that name the input or read none; `operands`: "files", or
+    "never" when no operand is ever input (tee's outputs, tr's sets, xargs's command)."""
+
+    valued: str = ""
+    long_valued: dict[str, int] = field(default_factory=dict)
+    script: int = 0
+    script_opts: str = ""
+    long_script: frozenset[str] = frozenset()
+    no_input: str = ""
+    long_no_input: frozenset[str] = frozenset()
+    operands: str = "files"
+    rest_args: frozenset[str] = frozenset()  # after these, operands past the script are not files
+    assignments: bool = False  # `var=val` operands are not files (awk)
+    options_end: bool = False  # its options end at its first operand (xargs's command)
+
+
+_GREP = Filter(
+    valued="ABCDdefm",
+    long_valued=dict.fromkeys(
+        ("--regexp", "--file", "--max-count", "--after-context", "--before-context", "--context",
+         "--label", "--include", "--exclude", "--exclude-dir", "--devices", "--directories"), 1),
+    script=1, script_opts="ef", long_script=frozenset({"--regexp", "--file"}),
+    no_input="rRV", long_no_input=frozenset({"--recursive", "--dereference-recursive"}),
+)  # fmt: skip
+_AWK = Filter(valued="fFv", script=1, script_opts="f", assignments=True)
+_HEAD = Filter(valued="ncb", long_valued=dict.fromkeys(("--lines", "--bytes"), 1))
+FILTERS: dict[str, Filter] = {
+    "cat": Filter(),
+    "tac": Filter(),
+    "rev": Filter(),
+    "nl": Filter(valued="bdfhilnsvw"),
+    "tee": Filter(operands="never"),
+    "tr": Filter(operands="never"),
+    "xargs": Filter(
+        valued="EIJLnPRSsda",
+        long_valued={"--arg-file": 1},
+        operands="never",
+        options_end=True,
+        no_input="a",
+        long_no_input=frozenset({"--arg-file"}),
+    ),
+    "grep": _GREP,
+    "egrep": _GREP,
+    "fgrep": _GREP,
+    "ugrep": _GREP,
+    "sed": Filter(
+        valued="ef",
+        long_valued=dict.fromkeys(("--expression", "--file"), 1),
+        script=1,
+        script_opts="ef",
+        long_script=frozenset({"--expression", "--file"}),
+        no_input="i",
+        long_no_input=frozenset({"--in-place"}),
+    ),
+    "awk": _AWK,
+    "gawk": _AWK,
+    "mawk": _AWK,
+    "nawk": _AWK,
+    "jq": Filter(
+        valued="fL",
+        long_valued={
+            "--arg": 2,
+            "--argjson": 2,
+            "--slurpfile": 2,
+            "--rawfile": 2,
+            "--indent": 1,
+            "--from-file": 1,
+        },
+        script=1,
+        script_opts="f",
+        long_script=frozenset({"--from-file"}),
+        no_input="nh",
+        long_no_input=frozenset({"--null-input"}),
+        rest_args=frozenset({"--args", "--jsonargs"}),
+    ),
+    "sort": Filter(
+        valued="kotST",
+        long_valued=dict.fromkeys(
+            ("--key", "--output", "--field-separator", "--buffer-size", "--temporary-directory"), 1
+        ),
+        long_no_input=frozenset({"--files0-from"}),
+    ),
+    "uniq": Filter(valued="fs", long_valued=dict.fromkeys(("--skip-fields", "--skip-chars"), 1)),
+    "wc": Filter(long_no_input=frozenset({"--files0-from"})),
+    "head": _HEAD,
+    "tail": _HEAD,
+    "cut": Filter(
+        valued="bcdf",
+        long_valued=dict.fromkeys(
+            ("--bytes", "--characters", "--delimiter", "--fields", "--output-delimiter"), 1
+        ),
+    ),
+}
 WAY_OUT = (
     "Its input is the harness's stdin: the Bash tool feeds `< /dev/null` (the reader writes "
     "nothing) unless the command holds a heredoc, and then fd 0 is the harness's socket, which "
@@ -96,18 +210,11 @@ def reads_stdin(argv: list[str]) -> str | None:
     prefix = argv[: len(argv) - len(args) - 1]
     if any(os.path.basename(t) in TIMEOUTS for t in prefix):
         return None  # bounded: it ends on its own
-    if prog == "cat":
-        operands, ended = [], False
-        for a in args:
-            if ended or a == "-" or not a.startswith("-"):
-                operands.append(a)
-            ended = ended or a == "--"
-        return "cat" if not operands or "-" in operands else None
-    if prog == "tee":
-        return None if {"--help", "--version"} & set(args) else "tee"
-    if prog == "read":
-        flags = "".join(a[1:] for a in args if a.startswith("-"))
-        return None if "t" in flags or "u" in flags else "read"
+    if prog in FILTERS:
+        return prog if _filter_reads(FILTERS[prog], args) else None
+    if prog in BUILTIN_READERS:
+        flags = "".join(a[1:] for a in args if a.startswith("-") and not a.startswith("--"))
+        return None if "t" in flags or "u" in flags else prog
     if PYTHON.match(prog):
         skip = False
         for a in args:
@@ -124,6 +231,88 @@ def reads_stdin(argv: list[str]) -> str | None:
         return prog
     if prog in shell_segments.SHELLS and not {"--version", "--help"} & set(args):
         return f"{prog} -s" if shell_segments.reads_script(argv) else None
+    return None
+
+
+def _begin_only(program: str) -> bool:
+    """Is an awk program BEGIN blocks only (it reads no input)? Braces in strings are rare enough
+    in a BEGIN block that counting them is the rule; an unbalanced program is judged a reader."""
+    rest = program.strip()
+    while rest.startswith("BEGIN"):
+        rest = rest[5:].lstrip()
+        if not rest.startswith("{"):
+            return False
+        depth = 0
+        for i, ch in enumerate(rest):
+            depth += {"{": 1, "}": -1}.get(ch, 0)
+            if depth == 0:
+                rest = rest[i + 1 :].lstrip(" \t\n;")
+                break
+        else:
+            return False
+    return not rest
+
+
+def _filter_reads(spec: Filter, args: list[str]) -> bool:
+    """THE rule: does a filter with this grammar read its stdin given these arguments?"""
+    operands: list[str] = []
+    scripted = rest = ended = False
+    i = 0
+    while i < len(args):
+        a = args[i]
+        i += 1
+        if a.startswith("__goh_heredoc_"):
+            continue
+        if ended or a == "-" or not a.startswith("-"):
+            operands.append(a)
+            ended = ended or spec.options_end
+            continue
+        if a == "--":
+            ended = True
+            continue
+        if a.startswith("--"):
+            name, glued, _ = a.partition("=")
+            if name in INFO or name in spec.long_no_input:
+                return False
+            scripted = scripted or name in spec.long_script
+            rest = rest or name in spec.rest_args
+            if not glued:
+                i += spec.long_valued.get(name, 0)
+            continue
+        for j, ch in enumerate(a[1:], 1):
+            if ch in spec.no_input:
+                return False
+            scripted = scripted or ch in spec.script_opts
+            if ch in spec.valued:
+                if j == len(a) - 1:
+                    i += 1  # the value is the next word
+                break
+    if spec.operands == "never":
+        return True
+    if not scripted and spec.script:
+        program, operands = operands[: spec.script], operands[spec.script :]
+        if spec.assignments and program and _begin_only(program[0]):
+            return False
+    if rest:
+        operands = []
+    if spec.assignments:
+        operands = [o for o in operands if not re.match(r"^[A-Za-z_]\w*=", o)]
+    return not operands or "-" in operands
+
+
+def shell_reads(command: str) -> str | None:
+    """The read builtin a command's shell runs itself (`read`, `mapfile`), or None: the reader the
+    stall detector cannot see as a process. Fed or not -- the shell's own fd 0 tells that."""
+    try:
+        segs, bodies = shell_segments.split_ops(command)
+    except ValueError:
+        return None
+    for tokens, _op in segs:
+        words = [w for w in tokens if w not in OPENERS and w not in SKIP]
+        argv = _words(words, bodies)[0]
+        reader = reads_stdin(argv) if argv else None
+        if reader in BUILTIN_READERS:
+            return reader
     return None
 
 
@@ -218,4 +407,4 @@ def judge(command: str) -> str | None:
     )
 
 
-__all__ = ["ESCAPE", "judge", "reads_stdin"]
+__all__ = ["ESCAPE", "FILTERS", "Filter", "judge", "reads_stdin", "shell_reads"]
