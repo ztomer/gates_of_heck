@@ -27,8 +27,7 @@ SHIP = REPO_ROOT / "tools" / "ship.py"
 
 def _push(repo: Path, tmp_path: Path, verdicts: Path) -> subprocess.CompletedProcess:
     sha = _git(repo, "rev-parse", "HEAD")
-    env = dict(
-        os.environ,
+    env = hermetic_env(
         GATE_REPORT=str(tmp_path / "report.txt"),
         GOH_DIR=str(REPO_ROOT),
         GOH_PUSH_LOGS=str(tmp_path / "push-logs"),
