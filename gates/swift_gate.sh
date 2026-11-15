@@ -19,6 +19,13 @@
 # kill, and half-wiping invites "clean" runs over stale products.
 #
 #   swift_gate.sh [repo]
+#   swift_gate.sh --lint-only [repo]
+#
+# --lint-only runs stage 1 alone (GOH.SWIFTLINTONLY): for a consumer whose own full gate already
+# builds, tests and measures the package, which this gate then did a second time -- necrohand's
+# full gate grew ~4 minutes when it added the Swift layer (NH.SWIFTLAYER, a263da9) -- and warned
+# about a GOH_SWIFT_COV_MIN its own coverage step made moot. The lint is the layer goh's layer
+# parity asks for; the build, the warnings verdict and the coverage floor are then the caller's.
 #
 # Config, from the target repo's .gatesrc:
 #   GOH_SWIFT_MODE=spm|xcode   default: spm if Package.swift exists
@@ -52,6 +59,11 @@ set -euo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 . "$HERE/_common.sh"
 
+lint_only=""
+if [ "${1:-}" = "--lint-only" ]; then
+    lint_only=1
+    shift
+fi
 repo="${1:-$PWD}"
 cd "$repo"
 # The gated repo's own config, unknown when this script is linted (GOH.SHX):
@@ -100,6 +112,11 @@ if [ -n "${GOH_SWIFT_LINT_BASELINE:-}" ]; then
     swift_lint_with_baseline
 else
     goh_step "swiftlint --strict" swiftlint --strict
+fi
+if [ -n "$lint_only" ]; then
+    info "--lint-only: the build, its warnings and the coverage floor are the caller's gate"
+    goh_done
+    exit 0
 fi
 
 # ONE GATE PER TREE AT A TIME, cold or warm: a cold peer's wipe under this run's
