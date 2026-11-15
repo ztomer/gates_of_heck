@@ -133,6 +133,7 @@ def test_the_house_changelog_locations_are_the_ones_changelog_tags_reads():
     rust = (REPO_ROOT / "crates" / "goh" / "src" / "changelog_tags.rs").read_text()
     lists = {
         tuple(re.findall(r'"([^"]+)"', m))
-        for m in re.findall(r"\[(\"CHANGELOG\.md\"[^\]]*)\]", rust)
+        # an array of string literals only: a test's `["CHANGELOG.md".to_string()]` is no list
+        for m in re.findall(r'\[\s*("CHANGELOG\.md"(?:\s*,\s*"[^"]+")*)\s*,?\s*\]', rust)
     }
     assert lists == {ship_changelog.LOCATIONS}, lists
