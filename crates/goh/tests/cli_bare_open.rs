@@ -4,14 +4,15 @@
 
 use goh_testkit::{goh_at, repo_with, Out, Repo};
 
-fn bare_open(repo: &Repo, store: &std::path::Path) -> Out {
+fn bare_open(repo: &Repo, store: &std::path::Path) -> Result<Out, String> {
+    let store = store.to_str().ok_or("the store path is not UTF-8")?;
     goh_at(
         std::path::Path::new(env!("CARGO_BIN_EXE_goh")),
         Some(repo),
         &["bare-open"],
-        &[("GOH_SEED_DIR", store.to_str().expect("utf8"))],
+        &[("GOH_SEED_DIR", store)],
     )
-    .expect("goh runs")
+    .map_err(|e| e.to_string())
 }
 
 #[test]
@@ -38,7 +39,7 @@ fn every_launch_shape_is_red_and_its_clean_spelling_is_green() {
     ])
     .expect("fixture");
     r.git(&["add", "-A"]).expect("git");
-    let out = bare_open(&r, store.path());
+    let out = bare_open(&r, store.path()).expect("goh runs");
     assert!(!out.status.success(), "{}", out.text());
     for site in [
         "env_prefix.sh:2:",
@@ -67,6 +68,6 @@ fn every_launch_shape_is_red_and_its_clean_spelling_is_green() {
     r.write("launch_str.py", "print(\"run open -a Foo by hand\")\n")
         .expect("write");
     r.git(&["add", "-A"]).expect("git");
-    let out = bare_open(&r, store.path());
+    let out = bare_open(&r, store.path()).expect("goh runs");
     assert!(out.status.success(), "{}", out.text());
 }
