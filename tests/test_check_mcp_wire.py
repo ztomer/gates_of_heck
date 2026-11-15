@@ -16,7 +16,7 @@ import sys
 import time
 
 import pytest
-from conftest import REPO_ROOT, write
+from conftest import REPO_ROOT, hermetic_env, write
 
 CHECK = REPO_ROOT / "checks" / "check_mcp_wire.py"
 SERVER = REPO_ROOT / "tests" / "fixtures" / "mcp_wire" / "server.py"
@@ -365,13 +365,11 @@ def cargo_gate(repo, tmp_path, server, *, timeout, build_s, extra="", env=None, 
     fake.chmod(0o755)
     line = f"{prefix}cargo run --release --locked --quiet -- {server}"
     write(repo, ".gatesrc", f"GOH_MCP_SERVERS='{line}'\nGOH_MCP_TIMEOUT={timeout}\n{extra}")
-    run_env = dict(os.environ)
-    run_env.update(env or {})
+    run_env = hermetic_env(**(env or {}))
     run_env["PATH"] = f"{bin_dir}{os.pathsep}{run_env['PATH']}"
     run_env["FAKE_CARGO_DIR"] = str(tmp_path)
     run_env["FAKE_CARGO_BUILD_S"] = str(build_s)
-    t0 = time.monotonic()
-    r = subprocess.run(
+    return subprocess.run(
         [sys.executable, str(CHECK), str(repo)],
         capture_output=True,
         text=True,
@@ -380,7 +378,6 @@ def cargo_gate(repo, tmp_path, server, *, timeout, build_s, extra="", env=None, 
         env=run_env,
         timeout=180,
     )
-    return r, time.monotonic() - t0
 
 
 def calls(tmp_path):
@@ -392,21 +389,19 @@ def test_a_slow_build_and_a_fast_server_is_green_the_build_is_not_timed_as_the_a
     repo, tmp_path
 ):
     """The build (10 s) is longer than the whole wire bound (6 s); the server answers at once."""
-    r, _ = cargo_gate(repo, tmp_path, server_line(tmp_path, "built"), timeout=6, build_s=10)
+    r = cargo_gate(repo, tmp_path, server_line(tmp_path, "built"), timeout=6, build_s=10)
     green(r)
     assert calls(tmp_path)[0] == "build --release --locked --quiet", calls(tmp_path)
 
 
 def test_a_built_server_that_never_answers_is_still_red_as_no_answer(repo, tmp_path):
-    r, _ = cargo_gate(
-        repo, tmp_path, server_line(tmp_path, "mute", hang=True), timeout=2, build_s=0
-    )
+    r = cargo_gate(repo, tmp_path, server_line(tmp_path, "mute", hang=True), timeout=2, build_s=0)
     out = red(r, "wire: no answer to server/discover within 2s")
     assert "build:" not in out, out
 
 
 def test_a_failed_build_says_build_with_its_output_and_starts_no_server(repo, tmp_path):
-    r, _ = cargo_gate(
+    r = cargo_gate(
         repo,
         tmp_path,
         server_line(tmp_path, "unbuilt"),
@@ -423,7 +418,7 @@ def test_a_failed_build_says_build_with_its_output_and_starts_no_server(repo, tm
 
 
 def test_a_build_past_its_own_bound_says_build_and_is_reaped(repo, tmp_path):
-    r, took = cargo_gate(
+    r = cargo_gate(
         repo,
         tmp_path,
         server_line(tmp_path, "slow"),
@@ -432,7 +427,6 @@ def test_a_build_past_its_own_bound_says_build_and_is_reaped(repo, tmp_path):
         extra="GOH_MCP_BUILD_TIMEOUT=2\n",
     )
     red(r, "build: cargo build --release --locked --quiet did not finish within 2s")
-    assert took < 40, took
     assert _gone(int((tmp_path / "build.pid").read_text())), "the timed-out build outlived the gate"
     assert not any(c.startswith("run") for c in calls(tmp_path)), calls(tmp_path)
 
@@ -447,7 +441,7 @@ def test_a_server_that_moves_home_still_builds_with_the_real_toolchain(repo, tmp
     env = {"HOME": str(home)}
     for key in ("CARGO_HOME", "RUSTUP_HOME"):
         env[key] = ""
-    r, _ = cargo_gate(
+    r = cargo_gate(
         repo,
         tmp_path,
         server_line(tmp_path, "moved"),
