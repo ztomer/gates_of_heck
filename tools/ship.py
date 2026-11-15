@@ -433,7 +433,11 @@ def worker(result: str, resume: bool = False) -> int:
             return ship_verify.verify(result)  # resumed by a peer meanwhile: only read the card
         res["pid"] = os.getpid()
         save(res)
-        return run_steps(res, "verify" if resume else STEPS[0])
+        import land_lock  # here, not at the top: tools/ship.py's import ceiling (E402) is spent
+
+        queue = land_lock.path(Path(res["repo"]))  # a ship moves main as a land does
+        with land_lock.held(queue, f"goh ship {res['name']} @ {res['sha'][:8]}", info):
+            return run_steps(res, "verify" if resume else STEPS[0])
 
 
 def start(args: argparse.Namespace) -> int:

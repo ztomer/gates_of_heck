@@ -24,7 +24,8 @@
 # branch onto the main the holder landed (a conflict aborts the rebase and lands nothing) and gates
 # THAT commit, the one main fast-forwards to. The lock is tree_lock.sh's idiom, a kernel flock on a
 # shell fd, released on any exit; the gate and the merge run with that fd closed, so a daemon a gate
-# starts never holds later lands off. Pinned by tests/test_land_serial.py.
+# starts never holds later lands off. Pinned by tests/test_land_serial.py. goh ship holds the same lock
+# for its pipeline (lib/land_lock.py); a land its release kit runs proceeds under that hold.
 #
 # The gate proves WITH the proven-step cache on (G2f, GOH_PROFILE_PROVEN): gate_profile.sh keeps it
 # off by default because a profile of cache hits measures the cache, but landing wants the verdict,
@@ -72,15 +73,24 @@ fi
 . "$GOH/lib/house_python.sh" || exit 1
 lock="$(git -C "$main" rev-parse --path-format=absolute --git-common-dir)/goh-land.lock"
 exec 7>>"$lock"
-if ! "$GOH_PY" -c 'import fcntl; fcntl.flock(7, fcntl.LOCK_EX | fcntl.LOCK_NB)' 2>/dev/null </dev/null; then
-    holder=""
-    IFS= read -r holder <"$lock" 2>/dev/null || true
-    info "waiting for the land lock: held by ${holder:-another land} ($lock)"
-    "$GOH_PY" -c 'import fcntl; fcntl.flock(7, fcntl.LOCK_EX)' </dev/null
-    ok "land lock acquired"
+holder=""
+IFS= read -r holder <"$lock" 2>/dev/null || true
+# A land run BY the lock's holder (goh ship's release kit, lib/land_lock.py) is that holder's own
+# land: GOH_LAND_LOCK_OWNER names this lock and a live pid, and the file names that same pid.
+owner="${GOH_LAND_LOCK_OWNER:-}"
+owner_pid="${owner##* }"
+if [ "${owner% *}" = "$lock" ] && [ -n "$owner_pid" ] && kill -0 "$owner_pid" 2>/dev/null \
+    && [[ "$holder" == *"(pid $owner_pid,"* ]]; then
+    info "land lock held for this land by its caller: $holder"
+else
+    if ! "$GOH_PY" -c 'import fcntl; fcntl.flock(7, fcntl.LOCK_EX | fcntl.LOCK_NB)' 2>/dev/null </dev/null; then
+        info "waiting for the land lock: held by ${holder:-another land} ($lock)"
+        "$GOH_PY" -c 'import fcntl; fcntl.flock(7, fcntl.LOCK_EX)' </dev/null
+        ok "land lock acquired"
+    fi
+    : >"$lock"   # ours now: who we are, for the next waiter's line
+    printf '%s @ %s (pid %s, since %s)\n' "$branch" "${tip:0:8}" "$$" "$(date '+%H:%M:%S')" >&7
 fi
-: >"$lock"   # ours now: who we are, for the next waiter's line
-printf '%s @ %s (pid %s, since %s)\n' "$branch" "${tip:0:8}" "$$" "$(date '+%H:%M:%S')" >&7
 # Refuse BEFORE the gate what could never land (G15): a pre-commit hook that refused the commit left
 # the tip at the base, and "landed" was printed over a no-op merge. Landing is a state change, so the
 # state is checked, not the exit code of the merge.

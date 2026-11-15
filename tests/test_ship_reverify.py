@@ -7,7 +7,7 @@ and the coordinator recorded nine items by hand. A re-run of a result that faile
 resumes the ship there: verify again, as the worker runs it, and on green the result reads `ok` and
 the done step runs the same `loopctl done ID --shipped RESULT` the ship would have. Still red, the
 result stays failed at verify with the new tail. The loopctl here is test_ship's fake, its card
-failing while the checkout is dirty.
+failing while a transient file exists.
 """
 
 from __future__ import annotations
@@ -21,19 +21,21 @@ import test_ship
 from test_ship import FAKE_LOOPCTL, SHIP, _calls, _env, _result, _ship
 
 shipped = test_ship.shipped  # the fixture, by assignment (an import would be shadowed by each arg)
-# The card fails, as loopctl verify's does, while the checkout has an uncommitted file.
+# A transient on the card: it fails while card.transient sits beside its call log (tmp_path).
+# The live checkout's own strays no longer reach it: verify judges a clean export of the shipped
+# sha (tests/test_ship_export.py).
 DIRTY_CARD = """\
-import os, subprocess, sys
-if sys.argv[1] == "verify" and subprocess.run(["git", "status", "--porcelain"], text=True,
-                                              capture_output=True).stdout.strip():
+import os, sys
+if sys.argv[1] == "verify" and os.path.exists(
+        os.path.join(os.path.dirname(os.environ["FAKE_LOOPCTL_LOG"]), "card.transient")):
     os.environ.update(FAKE_VERIFY_RC="1", FAKE_CARD_ERR="working tree: 1 uncommitted")
 """
-STRAY = "bin/goh.4242.staging"  # what the install step leaves, as a concurrent goh build did
+TRANSIENT = "card.transient"  # under tmp_path; the install step makes it, as a stray once did
 
 
 def _failed_at_verify(repo: Path, tmp_path: Path, *args: str) -> dict:
     (tmp_path / "loopctl.py").write_text(DIRTY_CARD + FAKE_LOOPCTL)
-    install = f"mkdir -p bin && echo half > {STRAY}"
+    install = f"echo half > {tmp_path / TRANSIENT}"
     r = _ship(repo, tmp_path, "--wait", "--item", "X.ONE", *args, GOH_SHIP_INSTALL=install)
     assert r.returncode == 1, r.stdout + r.stderr
     res = _result(tmp_path)
@@ -50,7 +52,7 @@ def _reverify(tmp_path: Path) -> subprocess.CompletedProcess[str]:
 
 def test_a_green_reverify_records_the_ship_ok_and_runs_the_done_step(shipped, tmp_path):
     _failed_at_verify(shipped, tmp_path)
-    (shipped / STRAY).unlink()  # the transient is gone
+    (tmp_path / TRANSIENT).unlink()  # the transient is gone
     r = _reverify(tmp_path)
     assert r.returncode == 0, r.stdout + r.stderr
     res = _result(tmp_path)
@@ -82,7 +84,7 @@ def test_a_reverify_still_red_leaves_the_ship_failed_at_verify(shipped, tmp_path
 
 def test_a_reverified_slice_records_progress(shipped, tmp_path):
     _failed_at_verify(shipped, tmp_path, "--progress")
-    (shipped / STRAY).unlink()
+    (tmp_path / TRANSIENT).unlink()
     r = _reverify(tmp_path)
     assert r.returncode == 0, r.stdout + r.stderr
     assert _calls(tmp_path)[-1][:3] == ["progress", "X.ONE", "--shipped"], _calls(tmp_path)

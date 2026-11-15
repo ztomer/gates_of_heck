@@ -14,12 +14,14 @@ advisory CI its CI line is the one failing line it may carry. Pinned by tests/te
 from __future__ import annotations
 
 import json
+import os
 import re
 import subprocess
 import sys
 from pathlib import Path
 
 import gitrun  # tools/ship.py, the one importer, puts goh's root and lib/ on sys.path
+import ship_export
 
 from tui.lib import err, step
 
@@ -53,13 +55,13 @@ def push_gated(repo: Path) -> str:
         return ""
 
 
-def ci_read(repo: Path, remote: str, loopctl_py: str) -> tuple[bool, str]:
+def ci_read(repo: Path, remote: str, loopctl_py: str, sha: str = "") -> tuple[bool, str]:
     """HEAD's hosted CI, read ONCE (never waited on): (passes, why). Green or no verdict passes; red
     or unread fails; pending or throttled passes ADVISORY on a push-gated checkout, else fails."""
     slug = github_slug(repo, remote)
     if not slug:
         return True, "CI: the remote is not GitHub's; no CI verdict to read"
-    sha = git(repo, "rev-parse", "HEAD")
+    sha = sha or git(repo, "rev-parse", "HEAD")
     argv = [sys.executable, loopctl_py, "ci", sha, "--repo", slug]
     code = subprocess.run(argv, cwd=repo, env=gitrun.repo_env(), stdin=subprocess.DEVNULL,
                           check=False).returncode  # fmt: skip
@@ -108,15 +110,22 @@ def verify(result: str) -> int:
     card's own CI line (it reads the same pending run) is the one failing line it may carry."""
     res = json.loads(Path(result).read_text(encoding="utf-8"))
     repo = Path(res["repo"])
-    passes, why = ci_read(repo, res["remote"], res["loopctl"])
+    passes, why = ci_read(repo, res["remote"], res["loopctl"], res["sha"])
     if not passes:
         err(why)
         return 1
     if why:
         step(why)
-    card = subprocess.run([sys.executable, res["loopctl"], "verify", res["name"]], cwd=repo,
-                          env=gitrun.repo_env(), stdin=subprocess.DEVNULL, capture_output=True,
-                          text=True, check=False)  # fmt: skip
+    try:  # the card judges a clean export of the shipped sha, never the live checkout
+        with ship_export.exported(repo, res["name"], res["sha"], res["remote"],
+                                  res["branch"]) as root:  # fmt: skip
+            card = subprocess.run([sys.executable, res["loopctl"], "verify", res["name"]],
+                                  cwd=root / res["name"], env=gitrun.repo_env({**os.environ,
+                                  "LOOPCTL_ROOT": str(root)}), stdin=subprocess.DEVNULL,
+                                  capture_output=True, text=True, check=False)  # fmt: skip
+    except ship_export.ExportError as e:
+        err(f"verify: no clean export of {res['sha'][:8]} to judge: {e}")
+        return 1
     sys.stdout.write(card.stdout)
     sys.stdout.write(card.stderr)
     if card.returncode == 0:
