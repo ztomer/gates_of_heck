@@ -1,0 +1,90 @@
+#!/usr/bin/env python3
+"""Show a gate's STEP lines from its log as they land, while the log keeps everything.
+
+    lib/log_follow.py --pid PID LOG    # until PID is gone (or a TERM), then the rest, then exit
+
+GOH.LANDPROGRESS (2026-11-14). `tools/gate_profile.sh` -- land.sh's gate -- writes the push gate's
+whole output to a log and prints only the end, so a 40 min land under load read as silence. The log
+stays the record; this prints the lines that say where the gate is: local CI's `[i/n]` step lines
+and the section titles above them. It is bounded by its owner, never by hope: it exits when PID
+(the profile) is gone or when it is TERMed, draining what is already written first, so a killed
+profile leaves no follower behind (tests/test_gate_profile.py).
+"""
+
+from __future__ import annotations
+
+import argparse
+import os
+import re
+import signal
+import sys
+import time
+
+# local CI's `→ [1/7] cmd`, `✓ [1/7] cmd`, `✗ [7/7] FAILED: cmd`, `⚠ [3/7] ...`; section titles.
+STEP = re.compile(r"^\s*(?:[→✓✗⚠] \[\d+/\d+\]|\s*(?:pre-push: gating|local CI —))")
+POLL_S = 0.5
+
+
+class _Stop(Exception):
+    pass
+
+
+def _alive(pid: int) -> bool:
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    return True
+
+
+def _show(chunk: str, carry: str) -> str:
+    """Print each whole step line in `carry + chunk`; return the unfinished tail."""
+    text = carry + chunk
+    *whole, tail = text.split("\n")
+    for line in whole:
+        if STEP.match(line):
+            print(line.strip(), flush=True)
+    return tail
+
+
+def follow(log: str, pid: int) -> int:
+    def stop(_sig, _frame):
+        raise _Stop
+
+    signal.signal(signal.SIGTERM, stop)
+    carry, pos = "", 0
+    try:
+        while _alive(pid):
+            try:
+                with open(log, encoding="utf-8", errors="replace") as fh:
+                    fh.seek(pos)
+                    chunk = fh.read()
+                    pos = fh.tell()
+                carry = _show(chunk, carry)
+            except FileNotFoundError:
+                pass
+            time.sleep(POLL_S)
+    except _Stop:
+        pass
+    signal.signal(signal.SIGTERM, signal.SIG_DFL)
+    try:  # the drain: what landed between the last read and the stop
+        with open(log, encoding="utf-8", errors="replace") as fh:
+            fh.seek(pos)
+            _show(fh.read() + "\n", carry)
+    except FileNotFoundError:
+        pass
+    return 0
+
+
+def main(argv: list[str] | None = None) -> int:
+    ap = argparse.ArgumentParser(description=__doc__.split("\n", 1)[0])
+    ap.add_argument("--pid", type=int, required=True, help="the owner; gone means stop")
+    ap.add_argument("log")
+    args = ap.parse_args(argv)
+    return follow(args.log, args.pid)
+
+
+if __name__ == "__main__":
+    sys.exit(main())

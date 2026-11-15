@@ -39,12 +39,21 @@ controls() {
 }
 controls
 t0=$(date +%s)
+# The log's path FIRST, then each step line as it lands (GOH.LANDPROGRESS): a 40 min land under
+# load printed nothing until the end. The follower is bounded by this shell (it exits when $$ is
+# gone) and is stopped, drained and reaped right after the gate.
+: >"$out.log"
+printf '%s @ %s: push gate running (log: %s)\n' "$(basename "$repo")" "${sha:0:12}" "$out.log"
+"$GOH_PY" "$GOH/lib/log_follow.py" --pid $$ "$out.log" </dev/null &
+follower=$!
 # The local ref is the SHA itself (the pinned form): push_gate.sh refuses a named ref that no longer
 # names the gated commit, and a made-up branch name names nothing at all.
 printf '%s %s refs/heads/goh-profile %s\n' "$sha" "$sha" "$zero" \
     | (cd "$repo" && GOH_TIMINGS="$out" GOH_PROVEN="$proven" \
         bash "$GOH/gates/push_gate.sh" goh-profile "$repo") >"$out.log" 2>&1
 rc=$?
+kill -TERM "$follower" 2>/dev/null
+wait "$follower" 2>/dev/null
 controls
 printf '%s @ %s: push gate exit %s in %ss (log: %s)\n' \
     "$(basename "$repo")" "${sha:0:12}" "$rc" "$(( $(date +%s) - t0 ))" "$out.log"

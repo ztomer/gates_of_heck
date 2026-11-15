@@ -19,7 +19,8 @@ def _goh_copy(tmp_path: Path, push_gate: str) -> Path:
     goh = tmp_path / "goh"
     for rel in ("tools/gate_profile.sh", "gates/_from_head.sh", "gates/_git_env.sh",
                 "lib/step_timings.py", "lib/step_control.py", "lib/fail_lines.py",
-                "lib/house_python.sh", "gates/required_tools.tsv"):  # fmt: skip
+                "lib/house_python.sh", "gates/required_tools.tsv",
+                "lib/log_follow.py"):  # fmt: skip
         (goh / rel).parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(REPO_ROOT / rel, goh / rel)
     (goh / "gates" / "push_gate.sh").write_text(push_gate)
@@ -78,3 +79,51 @@ def test_a_profile_inside_a_profile_writes_nothing_into_the_outer_one(
     r = _profile(tmp_path, "cat >/dev/null\nexit 0\n")
     assert r.returncode == 0, r.stdout + r.stderr
     assert not outer.exists() or not outer.read_text().strip(), outer.read_text()
+
+
+# The push gate below waits for the TEST to release it, and the test releases it only on seeing the
+# gate's first step line on the profile's stdout. Captured whole into the log (the old shape), that
+# line surfaces only after the gate ends, so the gate is never released and fails (GOH.LANDPROGRESS:
+# a 40 min land under load read as silence).
+HELD_GATE = """cat >/dev/null
+echo '→ [1/2] (.gatesrc) ./step_one.sh'
+echo '✓ [1/2] ./step_one.sh'
+echo 'noise from inside the step'
+for _ in $(seq 1 300); do [ -f "$RELEASE" ] && break; sleep 0.1; done
+[ -f "$RELEASE" ] || { echo '✗ [2/2] FAILED: nobody saw step one before the gate ended'; exit 1; }
+echo '✓ [2/2] ./step_two.sh'
+exit 0
+"""
+
+
+def test_each_step_line_is_shown_while_the_gate_runs(tmp_path: Path) -> None:
+    goh = _goh_copy(tmp_path, HELD_GATE)
+    repo = tmp_path / "repo"
+    fast_init(repo, "main")
+    git(repo, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "--allow-empty",
+        "-m", "c")  # fmt: skip
+    release = tmp_path / "release"
+    env = {**hermetic_env(), "RELEASE": str(release)}
+    proc = subprocess.Popen(
+        ["bash", str(goh / "tools" / "gate_profile.sh"), str(repo)],
+        env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
+        stdin=subprocess.DEVNULL,
+    )  # fmt: skip
+    seen: list[str] = []
+    try:
+        for line in proc.stdout:
+            seen.append(line)
+            if "✓ [1/2] ./step_one.sh" in line:
+                release.touch()
+        rc = proc.wait(timeout=120)
+    finally:
+        if proc.poll() is None:
+            proc.kill()
+            proc.wait()
+    out = "".join(seen)
+    assert rc == 0, out
+    # The log's path comes FIRST, before any step: a reader can tail it from the start.
+    first = next(i for i, ln in enumerate(seen) if "[1/2]" in ln)
+    assert any("log:" in ln for ln in seen[:first]), out
+    assert "✓ [2/2] ./step_two.sh" in out, out
+    assert "noise from inside the step" not in out, out  # step lines only; the log has the rest
