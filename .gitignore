@@ -7,14 +7,13 @@ __pycache__/
 # a repo-local target/ must never be committed)
 /target/
 
-# The native binary install.sh builds here; never committed.
-/bin/goh
-# ...and every build by its source stamp, which a gate takes for the commit it pinned
-# (gates/_goh_bin.sh).
-/bin/by-stamp/
-# ...and a placement's stage, `<dest>.<pid>.staging`, which a copy killed mid-way leaves until the next
-# placement reaps it (lib/place.sh, GOH.STAGINGSTRAY).
-/bin/*.staging
+# bin/ is build output only, ignored WHOLE (GOH.BUILDLOCKIGNORE): the native binary install.sh builds
+# (bin/goh), every build by its source stamp (bin/by-stamp/, gates/_goh_bin.sh), a placement's stage
+# `<dest>.<pid>.staging` a copy killed mid-way leaves (lib/place.sh, GOH.STAGINGSTRAY), and the
+# builders' lock bin/.build.lock/ a killed build leaves (scripts/build-goh.sh). Named one at a time,
+# the lock was missed and read as `?? bin/`; nothing under bin/ is ever tracked
+# (tests/test_build_lock_ignored.py).
+/bin/
 
 # The land root: tools/land.sh runs from a linked worktree under build/<name>, and an open one must
 # not read as an uncommitted main checkout (tests/test_land_root_ignored.py).
