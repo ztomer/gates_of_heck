@@ -6,7 +6,7 @@
 //! use different toolchains with nothing saying so; and its pin after, tag plus digest.
 
 use super::reference::{is_moving_tag, substitute, verdict, Verdict};
-use super::scan::{in_scope, scan, Problem};
+use super::scan::{in_scope, kind, scan, Kind, Problem};
 use std::collections::BTreeMap;
 
 const DIGEST: &str = "sha256:840526f03c19c286b614d5cb97b11242ae19e468fc2ef2f095f6cf0465fa1c5b";
@@ -283,7 +283,7 @@ fn the_scan_counts_its_subject_and_says_what_it_could_not_read() {
 }
 
 #[test]
-fn scope_is_dockerfiles_and_yaml() {
+fn scope_is_dockerfiles_yaml_scripts_and_makefiles() {
     for rel in [
         "Dockerfile",
         "app/Dockerfile.dev",
@@ -295,13 +295,25 @@ fn scope_is_dockerfiles_and_yaml() {
     ] {
         assert!(in_scope(rel), "{rel} should be read");
     }
-    for rel in [
-        "README.md",
-        "Makefile",
-        "build.sh",
-        "dockerfile-lint.sh",
-        "Cargo.toml",
-    ] {
-        assert!(!in_scope(rel), "{rel} should not be read");
+    for rel in ["README.md", "Makefile", "build.sh", "Cargo.toml"] {
+        assert!(
+            !in_scope(rel),
+            "{rel} is not read by its name as a Dockerfile or YAML"
+        );
+    }
+    // Scripts and Makefiles are read by what they are (GOH.MOVINGTAGSH); a doc or a program is not.
+    let rows: &[(&str, &str, Option<Kind>)] = &[
+        ("build.sh", "", Some(Kind::Shell)),
+        ("dockerfile-lint.sh", "", Some(Kind::Shell)),
+        ("bin/ci", "#!/usr/bin/env bash\n", Some(Kind::Shell)),
+        ("bin/ci", "#!/usr/bin/env python3\n", None),
+        ("Makefile", "", Some(Kind::Make)),
+        ("mk/rules.mk", "", Some(Kind::Make)),
+        ("README.md", "docker run nginx\n", None),
+        ("src/main.rs", "", None),
+        ("Dockerfile", "", Some(Kind::Dockerfile)),
+    ];
+    for (rel, text, want) in rows {
+        assert_eq!(kind(rel, text), *want, "{rel}");
     }
 }

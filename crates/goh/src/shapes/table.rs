@@ -66,141 +66,26 @@ const fn unreviewed(scanner: &'static str) -> Row {
 }
 
 /// Prose names an image, a marker or an escape to describe it; nothing runs it.
-const DOCS: &str = r"(?i)\.(md|markdown|txt|rst|adoc|html?)$";
+pub(crate) const DOCS: &str = r"(?i)\.(md|markdown|txt|rst|adoc|html?)$";
 
 /// A whole-line comment in the languages the estate carries.
-const COMMENT: &str = r"^\s*(#|//|/\*|\*|<!--|;)";
+pub(crate) const COMMENT: &str = r"^\s*(#|//|/\*|\*|<!--|;)";
 /// Program source, not a build, deploy or shell file.
-const PROGRAM: &str =
+pub(crate) const PROGRAM: &str =
     r"(?i)\.(rs|py|swift|m|mm|c|cc|cpp|h|hpp|go|js|mjs|cjs|ts|tsx|jsx|java|kt|rb|css|scss)$";
 /// A recorded artifact: a patch, a log, a snapshot.
-const DATA: &str = r"(?i)\.(patch|diff|log|snap|golden|csv|tsv|out|expected)$";
+pub(crate) const DATA: &str = r"(?i)\.(patch|diff|log|snap|golden|csv|tsv|out|expected)$";
 /// A shell script by name (`crate::shellsrc` also reads a shebang, which a path cannot show).
-const SHELL: &str = r"(?i)\.(sh|bash|zsh)$|\.sh\.tmpl$";
+pub(crate) const SHELL: &str = r"(?i)\.(sh|bash|zsh)$|\.sh\.tmpl$";
 /// A make recipe or a CI run block: shell a Makefile or YAML holds.
-const RECIPE: &str = r"(?i)(^|/)(gnu)?makefile$|\.mk$|\.ya?ml$";
+pub(crate) const RECIPE: &str = r"(?i)(^|/)(gnu)?makefile$|\.mk$|\.ya?ml$";
 /// A test's own tree: what it holds is a planted fixture.
-const TESTS: &str = r"(?i)(^|/)tests?/|(^|/)test_[^/]*$|_tests?\.(py|rs)$";
+pub(crate) const TESTS: &str = r"(?i)(^|/)tests?/|(^|/)test_[^/]*$|_tests?\.(py|rs)$";
 
-const MOVING_TAG_GAP: &str = "GOH.MOVINGTAGSH";
 /// The shapes the differential found `goh tui-marks` does not read (to be filed as a member).
 const TUI_GAP: &str = "GOH.TUIMARKSHAPES";
 /// The shapes the differential found `goh status-markers` does not read (to be filed as a member).
 const STATUS_GAP: &str = "GOH.STATUSMARKSHAPES";
-
-const MOVING_TAGS: Declared = Declared {
-    probe: r#"^\s*FROM\s+\S|--from=\S|^\s*(?:-\s+)?image:\s*["']?[a-z0-9$]|\b[A-Z_]*IMAGE[A-Z_]*=["']?[a-z0-9$]|\b(?:docker|podman)\s+(?:run|pull|create)\b|docker://|^\s*container:\s*["']?[a-z0-9$]"#,
-    judged: hooks::moving_tags,
-    owns: &[Token {
-        name: "container image reference",
-        sample: ("Dockerfile", "FROM rust:1\n"),
-    }],
-    sources: &["crates/goh/src/movingtag/"],
-    shapes: &[
-        Shape {
-            name: "Dockerfile FROM",
-            path: r"(?i)(^|/)(Docker|Container)file[^/]*$",
-            line: r"^\s*FROM\s",
-            verdict: Verdict::Covered,
-            fixture: ("Dockerfile", "FROM rust:1.99.1\nRUN true\n"),
-        },
-        Shape {
-            name: "Dockerfile COPY --from",
-            path: r"(?i)(^|/)(Docker|Container)file[^/]*$",
-            line: r"--from=",
-            verdict: Verdict::Covered,
-            fixture: (
-                "build/Containerfile",
-                "FROM alpine:3.20.3\nCOPY --from=busybox:1.36.1 /bin/sh /sh\n",
-            ),
-        },
-        Shape {
-            name: "YAML image:",
-            path: r"(?i)\.ya?ml$",
-            line: r"image:",
-            verdict: Verdict::Covered,
-            fixture: ("compose/db.yml", "services:\n  db:\n    image: postgres:16.4\n"),
-        },
-        Shape {
-            name: "workflow container:",
-            path: r"(?i)\.ya?ml$",
-            line: r"container:",
-            verdict: Verdict::Covered,
-            fixture: (
-                ".github/workflows/ci.yml",
-                "on: push\njobs:\n  t:\n    runs-on: ubuntu-24.04\n    container: rust:1.99.1\n    steps:\n      - run: true\n",
-            ),
-        },
-        Shape {
-            name: "workflow uses: docker://",
-            path: r"(?i)\.ya?ml$",
-            line: r"docker://",
-            verdict: Verdict::Covered,
-            fixture: (
-                ".github/workflows/lint.yml",
-                "on: push\njobs:\n  l:\n    runs-on: ubuntu-24.04\n    steps:\n      - uses: docker://alpine:3.20.3\n",
-            ),
-        },
-        Shape {
-            name: "a comment",
-            path: "",
-            line: COMMENT,
-            verdict: Verdict::OutOfScope("a comment names an image, and a commented-out image is not built; nothing pulls it"),
-            fixture: ("Dockerfile", "FROM a:1.2.3\n# COPY --from=busybox:latest /x /x\n"),
-        },
-        Shape {
-            name: "prose",
-            path: DOCS,
-            line: "",
-            verdict: Verdict::OutOfScope("a doc names an image to describe it; it pulls nothing"),
-            fixture: ("docs/build.md", "The build runs `FROM rust:1.99.1`.\nFROM rust:1\n"),
-        },
-        Shape {
-            name: "program source",
-            path: PROGRAM,
-            line: "",
-            verdict: Verdict::OutOfScope(
-                "an image in a program is a string a test or a message holds, or an argument vector the \
-                 language builds; this check reads build and deploy files, not programs",
-            ),
-            fixture: ("tests/test_pins.py", "FIXTURE = \"\"\"\nimage: foo:latest\n\"\"\"\n"),
-        },
-        Shape {
-            name: "data: a patch, a log, a recorded output",
-            path: DATA,
-            line: "",
-            verdict: Verdict::OutOfScope("a recorded patch, log or output quotes an image; it is not a build file"),
-            fixture: ("audits/fix.patch", "+COPY --from=busybox:latest /x /x\n"),
-        },
-        Shape {
-            name: "an image variable a script or Makefile assigns",
-            path: "",
-            line: r"\b[A-Z_]*IMAGE[A-Z_]*=",
-            verdict: Verdict::Gap(MOVING_TAG_GAP),
-            fixture: (
-                "scripts/dev/linux_test.sh",
-                "#!/usr/bin/env bash\nIMAGE=rust:1\ndocker_run() { :; }\n",
-            ),
-        },
-        Shape {
-            name: "a docker/podman run, pull or create command line",
-            path: "",
-            line: r"(?i)\b(docker|podman)\s+(run|pull|create)\b",
-            verdict: Verdict::Gap(MOVING_TAG_GAP),
-            fixture: ("Makefile", "test:\n\tdocker run --rm rust:1 cargo test\n"),
-        },
-        Shape {
-            name: "compose YAML a shell heredoc or printf writes",
-            path: SHELL,
-            line: r"^\s*(-\s+)?image:",
-            verdict: Verdict::Gap(MOVING_TAG_GAP),
-            fixture: (
-                "tests/fixtures/gate_host.sh",
-                "#!/bin/sh\ncat > compose.yml <<'EOF'\nservices:\n  vpn:\n    image: qmcgaw/gluetun:latest\nEOF\n",
-            ),
-        },
-    ],
-};
 
 const STATUS_MARKERS: Declared = Declared {
     probe: concat!(
@@ -419,7 +304,7 @@ const TUI_MARKS: Declared = Declared {
 pub const ROWS: &[Row] = &[
     Row {
         scanner: "no container image on a moving tag",
-        state: State::Declared(MOVING_TAGS),
+        state: State::Declared(crate::movingtag::shapes::SHAPES),
     },
     Row {
         scanner: "goh status-markers",

@@ -10,11 +10,15 @@
 //! `image:` (compose, workflow containers and services, Kubernetes), a workflow's
 //! `container:` and `uses: docker://`. `reference.rs` says what moves; `scan.rs` reads a file.
 //!
-//! NOT READ: shell scripts and Makefiles. There an image is an argument whose position depends on
-//! the CLI's flag grammar (`docker run -v "$d:/v" -p 80:80 img cmd`), a volume or port spec has
-//! exactly the `a:b` shape of `name:tag`, most references arrive through a variable, and a name a
-//! script BUILDS (`apes/ticket-service:dev`) looks like one it pulls. A line read would invent
-//! findings or miss most references, so this check does not claim them.
+//! SHELL AND MAKE (GOH.MOVINGTAGSH, judged from `crate::grace::OVER_FROM`, 2026-11-23). A shell
+//! script and a Makefile's recipes are read too, narrowly (`shell.rs`): an image variable's
+//! assignment at the start of a command, and the image argument of `docker`/`podman` `run`,
+//! `create` and `pull` read through the CLI's own flag grammar. Until then they were not read at
+//! all, and `media_server`'s `linux_test.sh` ran `IMAGE=rust:1` unseen (SRV.RUSTTAG). A name the
+//! script builds (`docker build --tag "$IMAGE"`) pulls nothing, and an option the reader does not
+//! know leaves the reference unreadable rather than guessed. Not read: compose YAML a script
+//! writes in a heredoc or a string (every estate instance on 2026-11-15 was a test's fixture), and
+//! an image a program's source holds (`crate::shapes::table` names both).
 //!
 //! WIRING: a structural step in EVERY repo, a hard gate at both scopes. No `--exclude`, like
 //! `goh tap-writes`: what a build pulls is not a style a path can be exempt from, vendored or
@@ -34,6 +38,9 @@
 pub mod dockerfile;
 pub mod reference;
 pub mod scan;
+pub mod shapes;
+pub mod shell;
+pub mod shlex;
 pub mod yaml;
 
 use goh_tui::{ERR, OK};
@@ -101,18 +108,29 @@ impl Tally {
 
 /// The verdict over `files`: `(exit code, stdout, stderr)`.
 fn judge(root: &Path, files: &[String], staged: bool) -> (i32, String, String) {
+    judge_at(root, files, staged, crate::grace::over())
+}
+
+/// [`judge`] with the grace decided: before it, a shell script or Makefile is not read (the
+/// scanner reads as it did at the last release).
+fn judge_at(root: &Path, files: &[String], staged: bool, over: bool) -> (i32, String, String) {
     let scope = if staged { "staged" } else { "tracked" };
     let mut listing = String::new();
     let mut n = 0usize;
     let mut tally = Tally::default();
-    for rel in files.iter().filter(|r| scan::in_scope(r)) {
+    for rel in files.iter().filter(|r| scan::maybe_in_scope(r)) {
         let Some(blob) = crate::gitutil::content_bytes(root, rel, staged) else {
             continue;
         };
-        // Not UTF-8 is not a Dockerfile or YAML anything reads; there is nothing to judge.
+        // Not UTF-8 is not a Dockerfile, YAML or script anything reads; there is nothing to judge.
         let Ok(text) = String::from_utf8(blob) else {
             continue;
         };
+        match scan::kind(rel, &text) {
+            None => continue,
+            Some(scan::Kind::Shell | scan::Kind::Make) if !over => continue,
+            Some(_) => {}
+        }
         let s = scan::scan(rel, &text);
         tally.refs += s.refs;
         tally.digests += s.digests;

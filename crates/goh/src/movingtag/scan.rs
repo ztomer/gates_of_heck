@@ -1,12 +1,13 @@
 //! One file's image references judged, with the reasoned exemption applied.
 //!
-//! The references come from `dockerfile.rs` (a Dockerfile or Containerfile) or `yaml.rs` (every
-//! `*.yml`/`*.yaml`); `reference.rs` judges each. The one escape is
+//! The references come from `dockerfile.rs` (a Dockerfile or Containerfile), `yaml.rs` (every
+//! `*.yml`/`*.yaml`) or `shell.rs` (a shell script, by name or shebang, and a Makefile's recipes);
+//! `reference.rs` judges each. The one escape is
 //! `# moving-tag-ok: <reason>` on the reference's line or in the comment lines directly above it;
 //! an empty reason and a marker with no moving reference under it are findings.
 
 use super::reference::{verdict, Verdict};
-use super::{dockerfile, yaml};
+use super::{dockerfile, shell, yaml};
 
 /// The per-reference exemption: `# moving-tag-ok: <reason>`.
 pub const MARKER: &str = "moving-tag-ok:";
@@ -19,10 +20,55 @@ pub struct Ref {
     pub raw: String,
 }
 
-/// Whether `rel` is read: a Dockerfile/Containerfile, or YAML.
+/// Whether `rel` is read by its name alone: a Dockerfile/Containerfile, or YAML.
 #[must_use]
 pub fn in_scope(rel: &str) -> bool {
     dockerfile::is_dockerfile(rel) || is_yaml(rel)
+}
+
+/// What a file is read as.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Kind {
+    Dockerfile,
+    Yaml,
+    /// A shell script: `*.sh` and kin, or a shebang naming a shell (`crate::shellsrc`).
+    Shell,
+    Make,
+}
+
+/// Whether `rel` might be read once its text is seen: [`in_scope`], a shell or Makefile name, or a
+/// name with no extension (a script known by its shebang).
+#[must_use]
+pub fn maybe_in_scope(rel: &str) -> bool {
+    let name = rel.rsplit('/').next().unwrap_or(rel);
+    in_scope(rel)
+        || shell::is_makefile(rel)
+        || !name.contains('.')
+        || crate::shellsrc::is_shell(rel, b"")
+}
+
+/// How the file `rel` holding `text` is read, if at all.
+#[must_use]
+pub fn kind(rel: &str, text: &str) -> Option<Kind> {
+    if dockerfile::is_dockerfile(rel) {
+        Some(Kind::Dockerfile)
+    } else if is_yaml(rel) {
+        Some(Kind::Yaml)
+    } else if shell::is_makefile(rel) {
+        Some(Kind::Make)
+    } else {
+        crate::shellsrc::is_shell(rel, text.as_bytes()).then_some(Kind::Shell)
+    }
+}
+
+/// The references of `text`, read as `k`, and whether it parsed (only YAML can fail to).
+fn refs_of(k: Kind, rel: &str, text: &str) -> (Vec<Ref>, bool) {
+    match k {
+        Kind::Dockerfile => (dockerfile::refs(text), true),
+        Kind::Yaml => yaml::refs(rel, text),
+        Kind::Shell => (shell::refs(text, false), true),
+        Kind::Make => (shell::refs(text, true), true),
+    }
 }
 
 fn is_yaml(rel: &str) -> bool {
@@ -122,29 +168,28 @@ fn covering_marker<'a>(lines: &[&'a str], start: usize, end: usize) -> Option<(u
     covering(lines, MARKER, start, end)
 }
 
-/// Every line an image reference this scanner read spans, whatever its verdict: what the
-/// differential in `crate::shapes` counts as JUDGED (an empty list outside [`in_scope`]).
+/// Every line an image reference this scanner read spans, whatever its verdict.
+///
+/// What the differential in `crate::shapes` counts as JUDGED (an empty list for a file [`kind`]
+/// does not read). Every shape, the shell's included: the grace decides only what `goh moving-tags`
+/// reports.
 #[must_use]
 pub fn judged_lines(rel: &str, text: &str) -> Vec<usize> {
-    if !in_scope(rel) {
+    let Some(k) = kind(rel, text) else {
         return Vec::new();
-    }
-    let refs = if dockerfile::is_dockerfile(rel) {
-        dockerfile::refs(text)
-    } else {
-        yaml::refs(rel, text).0
     };
+    let refs = refs_of(k, rel, text).0;
     refs.iter().flat_map(|r| r.start..=r.end).collect()
 }
 
-/// Judge every image reference in the file `rel` holding `text`.
+/// Judge every image reference in the file `rel` holding `text` (nothing, for a file [`kind`]
+/// does not read).
 #[must_use]
 pub fn scan(rel: &str, text: &str) -> Scan {
-    let (refs, parsed) = if dockerfile::is_dockerfile(rel) {
-        (dockerfile::refs(text), true)
-    } else {
-        yaml::refs(rel, text)
+    let Some(k) = kind(rel, text) else {
+        return Scan::default();
     };
+    let (refs, parsed) = refs_of(k, rel, text);
     let lines: Vec<&str> = text.lines().collect();
     let mut out = Scan {
         unparsed: !parsed,
