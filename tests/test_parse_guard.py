@@ -99,3 +99,16 @@ def test_a_guarded_script_survives_being_rewritten_mid_run(tmp_path):
     assert guarded.strip() == "ORIGINAL", guarded
     unguarded = run(f"#!/bin/bash\n{body}")
     assert unguarded.strip() != "ORIGINAL", "the calibration arm cannot fail: the rewrite never bit"
+
+
+def test_no_exit_stands_before_the_guards_exit():
+    """The guard's bare `exit` carries the status of the line before it. An unconditional `exit N`
+    there leaves the guard's `exit` unreachable (shellcheck SC2317); `(exit N)` sets the status and
+    lets the guard end the run (GOH.NITS1)."""
+    bad = []
+    for f in executed_scripts():
+        lines = [ln for ln in (REPO_ROOT / f).read_text().splitlines() if ln.strip()]
+        code = [ln for ln in lines[:-2] if not ln.lstrip().startswith("#")]
+        if code and re.match(r"\s*exit\b", code[-1]):
+            bad.append(f"{f}: {code[-1].strip()}")
+    assert not bad, f"an exit before the guard's exit: {bad}"

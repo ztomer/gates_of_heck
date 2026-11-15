@@ -170,6 +170,6 @@ if ! awk -v a="$c0" -v b="$c1" 'BEGIN { d = (b - a) / a; exit !(d <= 0.10 && d >
     err "quiet: noisy: the control moved from $c0 s to $c1 s across the run (> 10%): background goh cannot hold changed under it -- not a quiet number"
     [ "$rc" -ne 0 ] || rc=1
 fi
-exit "$rc"
+(exit "$rc")
 exit
 } # parse-guard

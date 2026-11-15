@@ -1,4 +1,4 @@
-//! `goh private-names`: a public tree names no private repository (GOH.FINANCENAMES).
+//! `goh private-names`: a public tree names no private repository.
 //!
 //! `gates_of_heck` is public, and its comments, docs and test fixtures named the owner's private
 //! repositories and their paths for months -- the provenance of a defect ("found in X") written as
@@ -116,7 +116,7 @@ pub fn judge(root: &Path, list: &Path, staged: bool) -> (i32, String) {
     let _ = writeln!(
         out,
         "    Describe it instead (\"a private consumer\", \"a nested Cargo workspace\"); the list is \
-         {} (GOH.FINANCENAMES)",
+         {}",
         list.display()
     );
     (1, out)
@@ -232,6 +232,7 @@ mod tests {
         assert_eq!(code, 1, "{out}");
         assert!(out.contains("a.rs:1: names `Acme`"), "{out}");
         assert!(out.contains("1 line that names"), "{out}");
+        assert!(!out.contains("GOH."), "the hint names no queue item: {out}");
         std::fs::write(&list, "Other\n").expect("write");
         assert_eq!(judge(r.path(), &list, false), (0, String::new()));
     }

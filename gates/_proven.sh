@@ -77,7 +77,7 @@ proven_tree() {
     done <<EOF
 $st
 EOF
-    goh_index_tree 2>/dev/null  # a private copy of the index: never its shared lock (lib/run_path.sh)
+    goh_index_tree . 2>/dev/null  # a private copy of the index: never its shared lock (lib/run_path.sh)
 }
 
 # _proven_goh_git <dir> <git args...> — git on a gates_of_heck checkout, hook variables stripped
@@ -261,7 +261,7 @@ proven_key() (
     goh_bind_hook_index
     [ "${PROVEN_ON:-1}" = 1 ] || return 1
     if _proven_native_key; then
-        _proven_identity_live | "$GOH_RESOLVED_BIN" proven key "$1"
+        _proven_identity_live | "$GOH_RESOLVED_BIN" proven key -- "$1"
         return
     fi
     tree="$(proven_tree)" && [ -n "$tree" ] || return 1
@@ -354,7 +354,7 @@ proven_scoped_key() (
     [ "${PROVEN_ON:-1}" = 1 ] || return 1
     [ "$#" -gt 0 ] || return 1
     if _proven_native_key; then
-        _proven_identity_live | "$GOH_RESOLVED_BIN" proven key "$step" "$@"
+        _proven_identity_live | "$GOH_RESOLVED_BIN" proven key -- "$step" "$@"
         return
     fi
     tree="$(proven_tree)" && [ -n "$tree" ] || return 1
@@ -384,7 +384,7 @@ proven_lookup() {
     local dir f epoch="" by="" step="" line now age
     proven_undeclared_build "$2" && return 1  # its artifact is its point: never skipped
     if [ -x "${GOH_RESOLVED_BIN:-}" ]; then
-        "$GOH_RESOLVED_BIN" proven lookup "$1" "$2" "${PROVEN_TTL:-86400}"
+        "$GOH_RESOLVED_BIN" proven lookup -- "$1" "$2" "${PROVEN_TTL:-86400}"
         return
     fi
     dir="$(proven_dir)" || return 1
@@ -431,7 +431,7 @@ proven_error() {
 # artifact it produces (or consumes) proves nothing, and the cache must not remember it.
 proven_record() {
     local dir tmp now f epoch line kind path hash
-    local decl="" spec=""
+    local decl="" spec=()
     if ! proven_decl_valid "$3"; then
         proven_error "proven: a declaration in '$3' is not produces=/consumes=, or names a path with a space in it"
         return 2
@@ -445,12 +445,12 @@ proven_record() {
             proven_error "proven: the step declares the artifact '$path' ($kind) and it is not there"
             return 2
         fi
-        spec="$spec ${kind}:${path}"
+        spec+=("${kind}:${path}")
     done <<EOF
 $decl
 EOF
     if [ -x "${GOH_RESOLVED_BIN:-}" ]; then
-        "$GOH_RESOLVED_BIN" proven record "$1" "$2" "$3" "$4" "${PROVEN_TTL:-86400}" $spec
+        "$GOH_RESOLVED_BIN" proven record -- "$1" "$2" "$3" "$4" "${PROVEN_TTL:-86400}" "${spec[@]}"
         return
     fi
     dir="$(proven_dir)" || return 1

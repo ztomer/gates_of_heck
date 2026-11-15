@@ -214,7 +214,7 @@ PROVEN_FRESH=0; [ "$PROVEN_ON" = 0 ] || ! proven_fresh_tree </dev/null || PROVEN
 #    report each other's processes.
 run_step() {
     local logf="$1" cmd="$2" idx="$3" _ncpu
-    local args=(--repo "$ROOT" --log "$logf" --grace "${GOH_STEP_GRACE:-5}" --label "$cmd" --snapshot "$LOGDIR/orphans-$idx.json")
+    local args=(--repo "$ROOT" --log "$logf" --grace "${GOH_STEP_GRACE:-5}" "--label=$cmd" --snapshot "$LOGDIR/orphans-$idx.json")
     _ncpu=$(getconf _NPROCESSORS_ONLN 2>/dev/null || echo 1); case "$_ncpu" in *[!0-9]*|""|0) _ncpu=1 ;; esac
     [ "$LCI_LIMIT" -gt 0 ] && args=(--timeout "${GOH_STEP_WALL_BACKSTOP:-$((LCI_LIMIT * 4))}" --cpu-timeout "${GOH_STEP_CPU_TIMEOUT:-$((LCI_LIMIT * _ncpu))}" --stall "$LCI_LIMIT" "${args[@]}") && export GOH_STEP_BUDGET="$LCI_LIMIT"  # inner goh_steps' too (GOH.COVPHASES)
     # </dev/null on the command string: the caller's loop stdin is the step list. EXEC: run_step is
@@ -224,9 +224,9 @@ run_step() {
     # The native canary (`goh canary`; tests/test_orphan_canary.py runs both) when resolved, else the Python.
     goh_unbind_git   # a step is a test suite: it never sees git's repository variables (GOH.HOOKGITENV)
     if [ -x "${GOH_RESOLVED_BIN:-}" ]; then
-        exec "$GOH_RESOLVED_BIN" canary "${args[@]}" -- bash -c "$cmd" </dev/null
+        exec "$GOH_RESOLVED_BIN" canary "${args[@]}" -- bash -c -- "$cmd" </dev/null
     fi
-    exec "$GOH_PY" -S "$GOH_ROOT/lib/orphan_canary.py" wrap "${args[@]}" -- bash -c "$cmd" </dev/null
+    exec "$GOH_PY" -S "$GOH_ROOT/lib/orphan_canary.py" wrap "${args[@]}" -- bash -c -- "$cmd" </dev/null
 }
 
 # THE SCHEDULER (BACKLOG P2). GOH_CI_JOBS=N runs up to N steps at once; unset is 1, i.e. serial,
@@ -468,6 +468,6 @@ err "$FAILED_NAMES"
 # TOP, so the line that says how to reproduce the failure is never in it.
 err ""
 err "  full output: $LOGDIR"
-exit 1
+(exit 1)
 exit
 } # parse-guard

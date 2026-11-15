@@ -78,6 +78,6 @@ if [ "$fail" -eq 1 ]; then
     echo "  Tests must drive an EMULATED pointer and offscreen renders; the" >&2
     echo "  real cursor, screen and window server belong to the user." >&2
 fi
-exit "$((fail > 0 ? (fail == 2 ? 2 : 1) : 0))"
+(exit "$((fail > 0 ? (fail == 2 ? 2 : 1) : 0))")
 exit
 } # parse-guard

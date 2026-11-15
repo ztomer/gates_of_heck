@@ -70,7 +70,7 @@ impl IndexView {
         match Self::of(repo, Path::new(dir)) {
             Ok(Some(view)) => Ok(view),
             Ok(None) => {
-                goh_tui::eoutln!("{STEP} {dir} is outside this repo, so no part of this commit — NOT checked at --staged (--full reads it)");
+                goh_tui::eoutln!("{}", outside_note(dir));
                 Err(None)
             }
             Err(message) => {
@@ -300,6 +300,15 @@ fn make_temp_dir() -> Result<PathBuf, String> {
     Err(format!("no free goh-index name under {}", base.display()))
 }
 
+/// The `--staged` skip of a directory outside the repo, named by its last component: the full
+/// path is a machine's temp or home path, which says nothing to a reader of the log.
+fn outside_note(dir: &str) -> String {
+    let name = Path::new(dir)
+        .file_name()
+        .map_or_else(|| dir.to_owned(), |n| n.to_string_lossy().into_owned());
+    format!("{STEP} {name} is outside this repo, so no part of this commit — NOT checked at --staged (--full reads it)")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -316,6 +325,15 @@ mod tests {
         );
         let full = IndexView::at_scope(repo.path(), &dir, false).unwrap();
         assert_eq!(full.root(), other.path());
+    }
+
+    #[test]
+    fn the_outside_skip_names_no_absolute_path() {
+        let other = tempfile::tempdir().unwrap();
+        let dir = other.path().join("skills").to_string_lossy().into_owned();
+        let note = outside_note(&dir);
+        assert!(!note.contains(&*other.path().to_string_lossy()), "{note}");
+        assert!(note.contains("skills"), "{note}");
     }
 
     #[test]

@@ -1,0 +1,3 @@
+* A gate step whose string begins with `-` runs: `local_ci.sh` passes it as `--label=<s>`, `bash -c -- <s>`, and `goh proven key|lookup|record --` (each had read it as a flag). `tests/test_local_ci.py` pins it.
+* Shellcheck findings fixed at their cause: `_rust_proven.sh` sources from its own directory, not the caller's `$HERE` (SC2153); `_proven.sh` passes `goh_index_tree .` (SC2119) and the artifact spec as an array (SC2086); six parse-guarded scripts end in `(exit N)` before the guard's `exit`, so the guard's `exit` is reachable (SC2317), pinned by `tests/test_parse_guard.py`.
+* `goh structural --staged` names a corpus outside the repo by its directory name, not its absolute temp path; `goh private-names`' refusal hint names no queue item.

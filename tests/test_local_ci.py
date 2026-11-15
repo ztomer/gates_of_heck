@@ -252,3 +252,13 @@ def test_output_uses_kare_glyphs_only(repo):
         assert ord(ch_clean) < 0x1F000 or ch_clean in "→·✓✗⚠↔↑↓←⌘⌥⌨", (
             f"non-Kare pictograph U+{ord(ch_clean):04X} {ch_clean!r}"
         )
+
+
+def test_a_step_beginning_with_a_dash_runs(repo):
+    # The step string is the wrapper's --label: as a separate argument, a leading '-' read as a flag
+    # and the wrapper refused before the step ran (GOH.NITS1).
+    marker = repo / "ran"
+    gatesrc(repo, f"-x 2>/dev/null; touch {marker}")
+    r = run_ci(repo)
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert marker.exists(), r.stdout + r.stderr

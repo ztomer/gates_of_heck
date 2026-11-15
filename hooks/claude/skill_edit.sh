@@ -52,6 +52,6 @@ fi
     echo "✗ the skills corpus at $inside is now red (goh skills) -- fix it before moving on:"
     printf '%s\n' "$out"
 } >&2
-exit 2
+(exit 2)
 exit
 } # parse-guard

@@ -140,6 +140,6 @@ if [ "$rc" -eq 0 ] && [ -n "$key" ]; then
         [ "$rec" -eq 0 ] || warn "proven: could not write the record"
     fi
 fi
-exit "$rc"
+(exit "$rc")
 exit
 } # parse-guard

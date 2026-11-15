@@ -142,6 +142,6 @@ if [ "$PROBLEMS" -eq 0 ]; then
     exit 0
 fi
 err "doctor: $(counted "$PROBLEMS" problem) — fix the named lines above"
-exit 1
+(exit 1)
 exit
 } # parse-guard
