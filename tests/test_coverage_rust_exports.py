@@ -41,8 +41,9 @@ if [ "$1 $2" = "llvm-cov clean" ]; then exit 0; fi
 """
     + SHOW_ENV_FLOW
     + """\
-# The run: a dropped run fails here, before any report exists.
-if [ "$1" = "test" ]; then [ -z "${CARGO_STUB_DROP:-}" ]; exit; fi
+# The run: CARGO_STUB_DROP=all fails it here, its tests red, before any report exists; any other
+# drop passes the run and fails the report below.
+if [ "$1" = "test" ]; then [ "${CARGO_STUB_DROP:-}" != all ]; exit; fi
 tname=""; out=""; prev=""
 for a in "$@"; do
   case "$prev" in
@@ -170,16 +171,22 @@ FULL_COVER = [(n, 1) for n in range(1, 5)] + [(n, 1) for n in range(6, 13)]
 
 
 def test_a_failed_run_hard_fails_naming_every_target_it_lost(tmp_path):
-    """One run measures every target, so a run that fails loses all of them -- and names them."""
+    """One run measures every target, so a run that fails loses all of them -- and names them. A
+    run whose TESTS failed is starved by them, not an incomplete export (GOH.COVCASCADE); one whose
+    report failed is the export fault."""
     parts = {"lib.info": build_part(1, "_Za", 5, FULL_COVER)}
     proj = setup_fixture(tmp_path, parts)
-    r = run_rust_gate(
-        proj, tmp_path / "bin", tmp_path / "meta.json", tmp_path / "canned-parts", drop="all"
-    )
-    assert r.returncode == 1, r.stdout + r.stderr
-    combined = r.stdout + r.stderr
-    assert "expected but missing" in combined
-    assert "covfix (test all)" in combined and "covfix (lib)" in combined, combined
+    for drop, verdict in (
+        ("all", "starved by the failing tests"),
+        ("report", "expected but missing"),
+    ):
+        r = run_rust_gate(
+            proj, tmp_path / "bin", tmp_path / "meta.json", tmp_path / "canned-parts", drop=drop
+        )
+        assert r.returncode == 1, r.stdout + r.stderr
+        combined = r.stdout + r.stderr
+        assert verdict in combined, (drop, combined)
+        assert "covfix (test all)" in combined and "covfix (lib)" in combined, combined
 
 
 def test_a_valid_but_empty_run_is_named_and_measures_nothing(tmp_path):

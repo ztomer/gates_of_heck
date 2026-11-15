@@ -13,6 +13,12 @@ _goh_d=${BASH_SOURCE[0]%/*}; [ "$_goh_d" != "${BASH_SOURCE[0]}" ] || _goh_d=.; .
 # test runs and reports had the time. So every phase says when it starts and how long it took, on
 # the gate's own stdout (fd 3: a part's stdout is its log) as it happens, and a stop signal names the
 # phase it landed in, its elapsed, and the tail of that phase's log (tests/test_coverage_phases.py).
+# A part's TESTS failing is its own exit code (GOH.COVCASCADE): the part is then STARVED -- it has
+# nothing to export because its input failed -- and the verdict names the tests as the one red
+# cause, never "coverage exports incomplete" on top of them (the 2026-11-15 land: two pytest tests
+# under the external part read as a second, coverage fault). Any other phase failing (the build, the
+# prune, the report) is still a missing export (tests/test_coverage_starved.py).
+COV_TESTS_FAILED=86
 cov_phase() { # cov_phase <name> <log>: begin <name>, ending the phase in progress; "" ends only
     local now
     now="$(date +%s)"
@@ -191,7 +197,7 @@ run_rust() {
                 done
                 eval "$CALLER_CARGO_ENV"
                 LLVM_PROFILE_FILE="$profile" GOH_COVERAGE_BIN_DIR="$bins" bash -c "$EXTERNAL" 3>&-
-            ) >>"$part.log" 2>&1 || exit 1
+            ) >>"$part.log" 2>&1 || exit "$COV_TESTS_FAILED"
             cov_phase "external: report" "$part.log"
             CARGO_LLVM_COV_BUILD_DIR="$CARGO_LLVM_COV_TARGET_DIR/cov-view" \
                 cargo llvm-cov report ${IGNORE:+--ignore-filename-regex "$IGNORE"} \
@@ -199,6 +205,10 @@ run_rust() {
             cov_phase ""
         ); then
             : >"$part.ok"
+        elif [ "$?" = "$COV_TESTS_FAILED" ]; then
+            cov_phase_failed
+            : >"$part.starved"
+            export_failed "$label" "$part.log" tests
         else
             cov_phase_failed
             export_failed "$label" "$part.log"
@@ -279,7 +289,7 @@ PYEOF
             "$GOH_PY" "$GOH_ROOT/gates/_cov_prune.py" "$WORKSPACE_PART.json" 3>&- || exit 1
             cov_cache_prune   # the budget against the build just made, while the run is live
             cov_phase "workspace: cargo test" "$WORKSPACE_PART.log"
-            cargo test --locked --workspace $KINDS --all-features 3>&- || exit 1
+            cargo test --locked --workspace $KINDS --all-features 3>&- || exit "$COV_TESTS_FAILED"
             cov_phase "workspace: report" "$WORKSPACE_PART.log"
             # THIS BUILD'S executables only: the view _cov_prune.py made (GOH.COVSHAREDBUILD).
             CARGO_LLVM_COV_BUILD_DIR="$CARGO_LLVM_COV_TARGET_DIR/cov-view" \
@@ -288,6 +298,10 @@ PYEOF
             cov_phase ""
         ) >"$WORKSPACE_PART.log" 2>&1; then
             : >"$WORKSPACE_PART.ok"
+        elif [ "$?" = "$COV_TESTS_FAILED" ]; then
+            cov_phase_failed
+            : >"$WORKSPACE_PART.starved"
+            export_failed "the workspace's targets" "$WORKSPACE_PART.log" tests
         else
             cov_phase_failed
             export_failed "the workspace's targets" "$WORKSPACE_PART.log"
@@ -302,20 +316,31 @@ PYEOF
     # file, leaving garbage or a partial export that then counted as coverage ("100%" over
     # nothing). The ONLY warn-only case is a marker'd valid-but-empty part (targets with nothing
     # coverable in them): the run succeeded, it simply measures zero lines.
-    MISSING=""
+    MISSING="" STARVED=""
     if [ -n "$KINDS" ]; then
-        if [ ! -f "$WORKSPACE_PART.ok" ]; then
-            MISSING="$(cut -f1,2,3 "$METAF" | awk -F'\t' '{printf "%s%s (%s%s)", (NR>1?" ":""), $1, $2, ($3==""?"":" " $3)}')"
+        lost="$(cut -f1,2,3 "$METAF" | awk -F'\t' '{printf "%s%s (%s%s)", (NR>1?" ":""), $1, $2, ($3==""?"":" " $3)}')"
+        if [ -f "$WORKSPACE_PART.starved" ]; then
+            STARVED="the workspace's targets: $lost"
+        elif [ ! -f "$WORKSPACE_PART.ok" ]; then
+            MISSING="$lost"
         elif [ ! -s "$WORKSPACE_PART" ]; then
             warn "the workspace's targets exported a valid-but-EMPTY lcov part — nothing coverable was measured"
         fi
     fi
-    if [ -n "${EXTERNAL:-}" ] && [ ! -f "$PARTS/part-external.info.ok" ]; then
+    if [ -n "${EXTERNAL:-}" ] && [ -f "$PARTS/part-external.info.starved" ]; then
+        STARVED="${STARVED}${STARVED:+; }external: $EXTERNAL"
+    elif [ -n "${EXTERNAL:-}" ] && [ ! -f "$PARTS/part-external.info.ok" ]; then
         MISSING="${MISSING}${MISSING:+ }external: $EXTERNAL"
     fi
     if [ -n "$MISSING" ]; then
         err "coverage exports incomplete — expected but missing (failed or never written):${MISSING}"
         err "  each failed export above is lost coverage — fix it, do not trust this run"
+        [ -z "$STARVED" ] || warn "coverage also starved by the failing tests above: $STARVED"
+        exit 1
+    fi
+    if [ -n "$STARVED" ]; then
+        # Not red: the red cause is the tests named above. This only says why there is no number.
+        warn "coverage not measured: starved by the failing tests above ($STARVED) — fix them; no export failed"
         exit 1
     fi
 

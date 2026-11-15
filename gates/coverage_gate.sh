@@ -96,24 +96,32 @@ die() { err "coverage_gate: $*"; exit 2; }
 # push with no evidence has to be reproduced by hand before it can be fixed.
 # A failing TEST is named as one (BACKLOG P1c): the coverage run is the test run, so "export
 # failed" over a red test named a mechanism, not the defect, and read like a tooling retry.
+# A part STARVED by its own tests (third argument `tests`, GOH.COVCASCADE): the part failed in the
+# phase that runs them, so the tests are its one red cause -- named red even when the log names none
+# -- and the tail is theirs, not an export's.
 export_failed() {
-    local failed
+    local failed named=0
     if grep -q '^test result: FAILED' "$2"; then
         failed="$(sed -n 's/^test \(.*\) \.\.\. FAILED$/\1/p' "$2" | sort -u | tr '\n' ' ')"
         err "$1: TESTS FAILED under coverage: ${failed:-see the tail below}"
+        named=1
     fi
     # pytest's short summary, WHOLE (run 42930175911: the 25-line tail showed 12 of 90 red nodes,
     # from a hosted runner whose log was gone by the time anyone read it).
     if grep -qE '^(FAILED|ERROR) [^ ]+::' "$2"; then
         err "$1: TESTS FAILED under coverage ($(grep -cE '^(FAILED|ERROR) [^ ]+::' "$2") red):"
         sed -nE 's/^(FAILED|ERROR) ([^ ]+::[^ ]*).*/    \1 \2/p' "$2" | sort -u >&2
+        named=1
+    fi
+    if [ "${3:-}" = tests ] && [ "$named" = 0 ]; then
+        err "$1: TESTS FAILED under coverage: the run names none -- see the tail below"
     fi
     # GOH_TAIL long, like the failed step around it (run 42944992082: the step printed whole and
     # this fixed 25-line tail under it kept one red test's reason of 65); a cut tail counts its cut.
     local keep dropped
     keep="${GOH_TAIL:-25}"
     dropped=$(( $(wc -l < "$2") - keep ))
-    warn "$1 export failed — tail of $2:"
+    if [ "${3:-}" = tests ]; then warn "$1 tests failed — tail of $2:"; else warn "$1 export failed — tail of $2:"; fi
     if [ "$dropped" -gt 0 ]; then
         if [ "$dropped" -eq 1 ]; then local noun=line; else local noun=lines; fi
         printf '%s\n' "    → $dropped earlier $noun not shown (GOH_TAIL=$keep; raise it to see them)" >&2
