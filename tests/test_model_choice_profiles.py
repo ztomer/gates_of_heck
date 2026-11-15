@@ -21,6 +21,7 @@ from typing import Any
 
 import pytest
 from conftest import REPO_ROOT, hermetic_env
+from timing_bounds import patience
 
 sys.path.insert(0, str(REPO_ROOT / "hooks" / "claude"))
 import model_choice
@@ -81,7 +82,7 @@ def guard(tmp: Path, model: str, effort: str, because: str, *, pool: bool = Fals
         [sys.executable, str(GUARD)], input=json.dumps(event), capture_output=True, text=True,
         env=hermetic_env(XDG_CACHE_HOME=str(tmp / "cache"), POOL_STATE_DIR=str(pool_dir),
                          GOH_MODEL_CHOICE=str(rules_file(tmp, declared))),
-        timeout=30, check=False,
+        timeout=patience(30), check=False,
     )  # fmt: skip
     assert r.returncode == 0, r.stderr
     return json.loads(r.stdout) if r.stdout.strip() else None

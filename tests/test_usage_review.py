@@ -19,6 +19,7 @@ from pathlib import Path
 from typing import Any
 
 from conftest import REPO_ROOT, hermetic_env
+from timing_bounds import patience
 
 sys.path.insert(0, str(REPO_ROOT / "scripts"))
 import usage_review
@@ -121,7 +122,8 @@ def test_the_watch_writes_a_proposal_posts_a_notice_and_leaves_the_rules(tmp_pat
          str(tmp_path / "state.json"), "--root", str(tmp_path), "--offline-audit", "--no-spend",
          "--no-live-proof", "--settings", str(tmp_path / "settings.json"),
          "--notify", str(notify)],
-        capture_output=True, text=True, timeout=120, stdin=subprocess.DEVNULL, check=False,
+        capture_output=True, text=True, timeout=patience(120), stdin=subprocess.DEVNULL,
+        check=False,
         env=hermetic_env(NO_COLOR="1", GOH_MODEL_CHOICE=str(rules),
                          XDG_CACHE_HOME=str(tmp_path / "cache"),
                          POOL_STATE_DIR=str(tmp_path / "no-pool")),
