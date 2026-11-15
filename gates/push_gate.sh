@@ -494,7 +494,7 @@ for pair in ${gated_refs:-}; do
         exit 1
     fi
 done
-
+push_record_verdicts ${gated_commits:-}   # `green <sha>` in GOH_GATE_VERDICTS (lib/push_runs.sh)
 [ "$gated" -gt 0 ] || info "pre-push: nothing to gate (deletes, or commits the remote already has)"
 exit
 } # parse-guard

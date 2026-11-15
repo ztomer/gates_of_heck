@@ -286,6 +286,7 @@ a repo with no v-tag, or a HEAD already tagged; past the newest tag it is refuse
 | `GOH_LAND_TIMEOUT` | `3600` | Seconds the lander lets one request (its push gate, or its `goh ship --wait`) run before its whole process group is TERM'd then KILL'd; the request is recorded `red`, `timed out`. |
 | `GOH_SHIP_VERSION` | set by `goh ship` | Exported to every step: the version the release step cuts (`--version`, `--bump`, else `git-cliff --bumped-version` over the conventional commits since the newest tag, a patch when it finds nothing to bump; no git-cliff refuses the ship, naming `brew install git-cliff`). Never set by hand. The result's `sha` is the LANDED commit (HEAD after the release step, which may commit a bump); `handoff_sha` is the commit handed off. |
 | `GOH_SHIP_RESULT` | set by `goh ship` | Exported to every step: the result JSON's path. Never set by hand. |
+| `GOH_GATE_VERDICTS` | set by `goh ship` | The file the push gate appends `green <sha>` to for every commit it gated green and that did not move (`lib/push_runs.sh` `push_record_verdicts`); `goh ship` names the result's `verdicts` path for its whole run, and `goh ship verdict --sha SHA` reads it (`lib/ship_verdict.py`, GOH.VERDICTAPI, contracts section 29). Not a setting. |
 
 ## Claude Code hooks (`hooks/claude/`, wired in `~/.claude/settings.json`)
 

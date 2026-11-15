@@ -706,3 +706,25 @@ check on its two exemptions; calibrated on synthetic texts both ways and by hand
 deleting the guard from `tools/land.sh` and planting a `mapfile` before it in `gates/goh.sh`, both red
 naming the file; plus re-exec keeping args and stdin, no bash 5 dies naming the fix, the
 GOH_BASH_MAJOR seam, the lying-bash refusal, sourced-never-re-execs-and-says-nothing).
+
+## 29. A gate verdict is RECORDED, and a consumer reads the record, never the gate's log text
+
+GOH.VERDICTAPI (2026-11-14). A release kit started by `goh ship` may skip re-running the full gate
+over a commit ship's push step already gated (koffee_big: three ~19 min gates per ship). Its skip
+read the push log for `pre-push: gating <ref> @ <sha>` and `gates: all green`, so rewording either
+line turned the skip off and nobody saw it. The verdict is a record now:
+
+* **Written** by `gates/push_gate.sh` (`push_record_verdicts`, `lib/push_runs.sh`): after every
+  gated ref passed AND none moved while it was gated, one `green <sha>` line per gated commit in
+  the file `GOH_GATE_VERDICTS` names. A commit the remote already held was never gated: no line.
+* **Named** by `goh ship`: the result's `verdicts` field (`<result>.verdicts`), exported as
+  `GOH_GATE_VERDICTS` to every step of the run, so a push made by the release kit records too.
+* **Read** by `goh ship verdict --sha SHA [--repo DIR]` (`lib/ship_verdict.py`): exit 0 and the ship
+  record's path printed only when a record of that repo is `running`, its worker pid is an ANCESTOR
+  of the caller (a stale or hand-written record has no live worker above it), and its verdict file
+  holds `green SHA`; otherwise exit 1, nothing printed; 2 is a bad invocation. There is no flag or
+  variable that makes it say yes.
+
+Pinned by `tests/test_ship_verdict.py` (a green gate writes the sha, a red one nothing; the query
+answers for a running ship above the caller and refuses another sha, a finished ship, a dead
+worker; the ship worker names the file), each seen red against a broken writer or reader.

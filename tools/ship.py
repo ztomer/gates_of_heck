@@ -317,6 +317,7 @@ def plan(args: argparse.Namespace) -> dict:
         "release_pushes": cfg["GOH_SHIP_RELEASE_PUSHES"] == "1",
         "preflight": [c for w, c in asked if w == "GOH_SHIP_PREFLIGHT"],
         "timeout_s": timeout, "loopctl": str(loopctl()), "result": str(out),
+        "verdicts": str(out.with_suffix(".verdicts")),  # gates/push_gate.sh's record (VERDICTAPI)
         "status": "running", "started": dt.datetime.now(dt.UTC).isoformat(timespec="seconds"),
         "steps": [], "failed_step": None, "tail": [], "undo": [], "pid": None,
     }  # fmt: skip
@@ -385,7 +386,8 @@ def run_steps(res: dict) -> int:
     for k in git_bindings():
         os.environ.pop(k, None)
     os.environ.update(GOH_SHIP_VERSION=res["version"], GOH_SHIP_RESULT=res["result"],
-                      GOH_SHIP_SUMMARY=res["summary"], GOH_SHIP_ITEM=res["item"] or "")  # fmt: skip
+                      GOH_SHIP_SUMMARY=res["summary"], GOH_SHIP_ITEM=res["item"] or "",
+                      GOH_GATE_VERDICTS=res.get("verdicts", ""))  # fmt: skip
     stem = Path(res["result"]).with_suffix("")
     for name in STEPS:
         cmd, why = command(res, name)
@@ -464,6 +466,11 @@ def start(args: argparse.Namespace) -> int:
 
 
 def main(argv: list[str] | None = None) -> int:
+    given = sys.argv[1:] if argv is None else argv
+    if given[:1] == ["verdict"]:  # the recorded gate verdict (GOH.VERDICTAPI)
+        from ship_verdict import main as verdict
+
+        return verdict(given[1:])
     ap = argparse.ArgumentParser(prog="goh ship", description=__doc__.splitlines()[0])
     ap.add_argument("--repo", help="the checkout to ship (default: the current one)")
     ap.add_argument("--item", help="the queue item `loopctl done` records on success")

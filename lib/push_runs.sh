@@ -136,3 +136,14 @@ push_change_base() {
         git -C "$1" merge-base "$2" "refs/remotes/$4/HEAD" 2>/dev/null || true
     fi
 }
+
+# THE RECORDED VERDICT (GOH.VERDICTAPI, docs/contracts.md section 29): push_gate.sh calls this
+# after every gated ref passed and none moved, with the commits it gated green; each gets one
+# `green <sha>` line in the file GOH_GATE_VERDICTS names (`goh ship` names one per ship, and
+# `goh ship verdict --sha` reads it, lib/ship_verdict.py). A reader never parses the gate's log
+# text. A commit the remote already held was not gated, so it gets no line.
+push_record_verdicts() {
+    [ -n "${GOH_GATE_VERDICTS:-}" ] || return 0
+    local c
+    for c in "$@"; do printf 'green %s\n' "$c" >>"$GOH_GATE_VERDICTS"; done
+}
