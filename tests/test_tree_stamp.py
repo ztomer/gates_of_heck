@@ -207,3 +207,21 @@ def test_every_gate_that_builds_the_working_tree_stamps_it(gate):
 @pytest.mark.parametrize("gate", ["structural.sh", "py_staged.sh"])
 def test_the_staged_gates_do_not_stamp(gate):
     assert "goh_tree_stamp" not in (REPO_ROOT / "gates" / gate).read_text()
+
+
+def test_an_export_with_no_git_is_listed_by_walking_it(tmp_path):
+    """A HEAD or staged-tree export (`.goh-head`) has no git to ask: goh's suite runs in one when
+    the commit gate runs a declared source guard over a goh commit (gates/staged_guards.sh), and
+    its tree guard died in `git ls-files` before any test ran. Red first: CalledProcessError."""
+    sys.path.insert(0, str(REPO_ROOT / "lib"))
+    import tree_stamp
+
+    (tmp_path / ".goh-head").write_text("abc\n")
+    (tmp_path / "gates").mkdir()
+    (tmp_path / "gates" / "a.sh").write_text("x\n")
+    (tmp_path / "gates" / "__pycache__").mkdir()
+    (tmp_path / "gates" / "__pycache__" / "a.pyc").write_text("x\n")
+    assert tree_stamp.listed_files(tmp_path) == [".goh-head", "gates/a.sh"]
+    before = tree_stamp.fingerprint(tmp_path)
+    (tmp_path / "gates" / "b.sh").write_text("y\n")
+    assert tree_stamp.moved(before, tree_stamp.fingerprint(tmp_path)) == ["gates/b.sh"]

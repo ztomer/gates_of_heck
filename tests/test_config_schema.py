@@ -1,8 +1,14 @@
 """Config-schema drift gate: every GOH_* key the gates read must be documented.
 
 Red-proof: add `GOH_SOMETHING_NEW` to any gate without touching
-docs/config.md and this test goes red naming it.
+docs/config.md and this test goes red naming it -- at COMMIT, not only at push: the line below
+declares that this file reads the staged sources, so gates/staged_guards.sh runs it over the index
+whenever a commit stages a file it scans (GOH.CONFIGKEYCOMMIT; tests/test_staged_guards.py keeps
+the list equal to SCAN).
 """
+
+# goh-reads-staged: gates checks lib tools hooks tui install.sh crates scripts
+# goh-reads-staged: docs/config.md .gatesrc.example
 
 import re
 from pathlib import Path

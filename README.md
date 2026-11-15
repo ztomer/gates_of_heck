@@ -104,6 +104,15 @@ case "${1:-}" in
 esac
 ```
 
+A test that reads the repo's own source text (a guard: "no test names a raw defaults suite", "every
+key a gate reads is documented") is a check of the staged files. Declare it in the test file and
+every commit that stages what it reads runs it over the index, not only the push's suite
+(`gates/staged_guards.sh`):
+
+```python
+# goh-reads-staged: *.swift widget/Tests/
+```
+
 ## Configuration (`.gatesrc`)
 
 Put repo settings in `.gatesrc`. Full schema: `docs/config.md`;

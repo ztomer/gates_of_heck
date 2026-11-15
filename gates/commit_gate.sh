@@ -31,6 +31,10 @@
 # for this tree (GOH_STAGED_TWIN_MARK, the way GOH_STRUCTURAL_MARK works). Which push checks need a
 # twin is decided by tests/test_staged_parity.py, which is red on a fast push step with none.
 #
+# A SOURCE GUARD RUNS HERE TOO (GOH.CONFIGKEYCOMMIT). A pytest file that reads the repo's own source
+# text declares it (`# goh-reads-staged: <pathspec>...`), and gates/staged_guards.sh runs it over
+# the index whenever the commit stages what it reads, instead of leaving it to the push's suite.
+#
 # A SEED SETTLE WAITS FOR THE WHOLE COMMIT (GOH.SEEDREFUSED, D-0005). A seeded check's commit run
 # lowers or deletes the private-store entries the change settles; it wrote the store the moment IT
 # passed, so a commit a LATER step refused had already pruned it (necrohand, 2026-11-12: 13
@@ -112,6 +116,12 @@ if [ "$status" -eq 0 ] && twin_due py_staged '*.py'; then
 fi
 if [ "$status" -eq 0 ] && twin_due swift_staged '*.swift'; then
     bash "$HERE/swift_staged.sh" "$root" || status=$?
+fi
+# A test that declares it reads the repo's source text (`# goh-reads-staged:`) is a check of the
+# staged files, so it runs here when the commit stages what it reads (GOH.CONFIGKEYCOMMIT,
+# GOH.SWIFTGUARDCOMMIT; gates/staged_guards.sh). It exits 0 at once in a repo that declares none.
+if [ "$status" -eq 0 ]; then
+    bash "$HERE/staged_guards.sh" "$root" || status=$?
 fi
 goh_repo_writes "$root" "$repo_before" || { err "pre-commit: nothing committed"; exit 1; }
 [ "$status" -eq 0 ] || exit "$status"

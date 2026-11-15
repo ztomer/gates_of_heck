@@ -87,7 +87,23 @@ EXIT_CANNOT_ANSWER = 2
 
 
 def listed_files(repo: Path) -> list[str]:
-    """Every path git would show: tracked, plus untracked-and-not-ignored."""
+    """Every path git would show: tracked, plus untracked-and-not-ignored.
+
+    A HEAD or staged-tree export (`.goh-head`, gates/_from_head.sh) has no git to ask: every file
+    in it is the tree's, so it is listed whole. goh's suite runs in one when the commit gate runs a
+    declared source guard over a goh commit's staged tree (gates/staged_guards.sh), and its tree
+    guard died in `git ls-files` there before any test ran.
+    """
+    if (repo / ".goh-head").is_file() and not (repo / ".git").exists():
+        return sorted(
+            rel
+            for rel in (
+                os.path.relpath(os.path.join(d, f), repo)
+                for d, _dirs, files in os.walk(repo)
+                for f in files
+            )
+            if "__pycache__" not in rel.split(os.sep) and not is_gate_output(rel)
+        )
     out = subprocess.run(
         ["git", "-C", str(repo), "ls-files", "-z", "--cached", "--others", "--exclude-standard"],
         check=True,
