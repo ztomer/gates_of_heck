@@ -37,6 +37,9 @@ tracked. It reads the repo's OWN scripts those name too, two levels deep, commen
 (GOH.REQTOOLS: monitor's `bash tools/coverage_check.sh` runs coverage_gate.sh --lang rust), and a
 manifest `cargo-X` such a script runs as `cargo X`. An unknown --layer is refused: a typo that
 installs nothing reads as a green setup.
+
+A STEP'S TOOL IS IN A TABLE, OR THE STEP IS REFUSED (GOH.REQTOOLS): `--unnamed`, and every `--repo`
+mode, judge the tools `GOH_CI_STEPS` runs against the tables (gates/step_tools.py has the rule).
 """
 
 from __future__ import annotations
@@ -63,6 +66,9 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from tui.lib import noun  # the count meets its noun (GOH.HEDGEOWN)
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import step_tools  # a step's tool is in a table (GOH.REQTOOLS)
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 MANIFEST = os.path.join(HERE, "required_tools.tsv")
@@ -376,6 +382,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--found", default=None, help="the version text the caller read (--check)")
     ap.add_argument("--floors", action="store_true", help="tool<TAB>floor for every floor")
     ap.add_argument("--pin", metavar="TOOL", help="the release TOOL is pinned to; 1 when none")
+    ap.add_argument("--unnamed", action="store_true", help="a step's tool no table names (--repo)")
     args = ap.parse_args(argv)
     table = rows()
     if args.pin:
@@ -403,7 +410,13 @@ def main(argv: list[str] | None = None) -> int:
         )
         return 2
     layers, structural = set(args.layer), set()
+    if args.unnamed and not args.repo:
+        print("required_tools: --unnamed needs --repo", file=sys.stderr)
+        return 2
     if args.repo:
+        refused = step_tools.refuse(args.repo, {r["tool"] for r in table})
+        if refused or args.unnamed:
+            return refused
         found, structural = detect(args.repo)
         layers |= found
     selected = [r for r in table if r["layer"] in layers and r["layer"] != "structural"]

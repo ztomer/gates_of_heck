@@ -80,3 +80,11 @@ _deps_done() {
     done
     return 0
 }
+
+# lci_step_tools <root> -- a step's tool is in a table, or the step is refused (GOH.REQTOOLS): the
+# hosted install (`required_tools.py --repo . --install`) refuses the same step, so local and CI
+# agree. The rule and the tables are gates/step_tools.py's; before 2026-11-23 it only warns.
+lci_step_tools() {
+    "$GOH_PY" "$(dirname "${BASH_SOURCE[0]}")/required_tools.py" --repo "$1" --unnamed </dev/null \
+        || { err "local_ci: a step runs a tool no table names (above)"; return 1; }
+}

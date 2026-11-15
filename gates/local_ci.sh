@@ -108,8 +108,7 @@ done
 cd "$ROOT"
 ROOT="$(pwd)"
 
-# Per-repo declaration. Sourced like every other gate reads .gatesrc — it may
-# carry other GOH_* settings; only GOH_CI_STEPS concerns this script.
+# Per-repo declaration, sourced like every gate reads .gatesrc; only GOH_CI_STEPS concerns this script.
 # THE ENVIRONMENT IS NOT CONFIGURATION: a key is the repo's iff its own file says so (rust_gate.sh
 # and structural.sh drop theirs the same way). Measured: a run that exported GOH_CI_JOBS=4 made
 # every local_ci its test suite started concurrent, and an order test went red -- the parent's
@@ -163,6 +162,7 @@ if [ -z "$SRC_GATESRC" ] && [ -z "$CLI_STEPS" ]; then
     err "  or pass them on the command line:   local_ci.sh --step 'cmd1'"
     exit 2
 fi
+[ -z "$SRC_GATESRC" ] || lci_step_tools "$ROOT" || exit 1   # a step's tool is in a table (_steps.sh)
 
 LOGDIR=""
 # shellcheck disable=SC2329  # invoked via the EXIT trap below
