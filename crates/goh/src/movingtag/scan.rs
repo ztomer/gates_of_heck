@@ -6,7 +6,7 @@
 //! `# moving-tag-ok: <reason>` on the reference's line or in the comment lines directly above it;
 //! an empty reason and a marker with no moving reference under it are findings.
 
-use super::reference::{verdict, Verdict};
+use super::reference::{verdict_at, Verdict};
 use super::{dockerfile, shell, yaml};
 
 /// The per-reference exemption: `# moving-tag-ok: <reason>`.
@@ -183,9 +183,16 @@ pub fn judged_lines(rel: &str, text: &str) -> Vec<usize> {
 }
 
 /// Judge every image reference in the file `rel` holding `text` (nothing, for a file [`kind`]
-/// does not read).
+/// does not read), with the grace decided now.
 #[must_use]
 pub fn scan(rel: &str, text: &str) -> Scan {
+    scan_at(rel, text, crate::grace::over())
+}
+
+/// [`scan`] with the grace decided: before `crate::grace::OVER_FROM` (`over` false) a release
+/// line (`rust:1`) passes, as it did at the last release.
+#[must_use]
+pub fn scan_at(rel: &str, text: &str, over: bool) -> Scan {
     let Some(k) = kind(rel, text) else {
         return Scan::default();
     };
@@ -197,7 +204,7 @@ pub fn scan(rel: &str, text: &str) -> Scan {
     };
     let mut used = std::collections::BTreeSet::new();
     for r in refs {
-        let problem = match verdict(&r.raw) {
+        let problem = match verdict_at(&r.raw, over) {
             Verdict::NotAReference => continue,
             Verdict::Unreadable => {
                 out.refs += 1;

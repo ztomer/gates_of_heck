@@ -20,6 +20,11 @@
 //! writes in a heredoc or a string (every estate instance on 2026-11-15 was a test's fixture), and
 //! an image a program's source holds (`crate::shapes::table` names both).
 //!
+//! RELEASE LINES (GOH.MOVINGTAGCOARSE, judged from `crate::grace::OVER_FROM`, 2026-11-23; owner
+//! ruling 2026-11-15, "Yes, flag them"). A version coarser than a full `x.y.z` -- `rust:1`,
+//! `node:22`, `alpine:3`, `ubuntu:24.04` -- is re-pointed at every release of its line, so it is a
+//! moving tag unless a date or a commit id beside it names one build (`reference.rs`, D-0007).
+//!
 //! WIRING: a structural step in EVERY repo, a hard gate at both scopes. No `--exclude`, like
 //! `goh tap-writes`: what a build pulls is not a style a path can be exempt from, vendored or
 //! not; the one escape is the reasoned per-reference `# moving-tag-ok: <reason>` (the home-server
@@ -56,6 +61,10 @@ fn describe(p: &Problem) -> String {
         Problem::NoTag(r) => {
             format!("`{r}` has no tag -- it pulls whatever `latest` points at on the day it runs")
         }
+        Problem::Moving(r, tag) if !reference::is_channel(tag) => format!(
+            "`{r}` is on `{tag}`, a release line coarser than `x.y.z` -- it is re-pointed at every \
+             release of the line, so the same file pulls different software on different days"
+        ),
         Problem::Moving(r, tag) => format!(
             "`{r}` is on the moving tag `{tag}` -- its maintainer re-points it, so the same file \
              pulls different software on different days"
@@ -111,8 +120,8 @@ fn judge(root: &Path, files: &[String], staged: bool) -> (i32, String, String) {
     judge_at(root, files, staged, crate::grace::over())
 }
 
-/// [`judge`] with the grace decided: before it, a shell script or Makefile is not read (the
-/// scanner reads as it did at the last release).
+/// [`judge`] with the grace decided: before it, a shell script or Makefile is not read and a
+/// release line (`rust:1`) passes (the scanner reads as it did at the last release).
 fn judge_at(root: &Path, files: &[String], staged: bool, over: bool) -> (i32, String, String) {
     let scope = if staged { "staged" } else { "tracked" };
     let mut listing = String::new();
@@ -131,7 +140,7 @@ fn judge_at(root: &Path, files: &[String], staged: bool, over: bool) -> (i32, St
             Some(scan::Kind::Shell | scan::Kind::Make) if !over => continue,
             Some(_) => {}
         }
-        let s = scan::scan(rel, &text);
+        let s = scan::scan_at(rel, &text, over);
         tally.refs += s.refs;
         tally.digests += s.digests;
         tally.commits += s.commits;
@@ -159,7 +168,9 @@ fn judge_at(root: &Path, files: &[String], staged: bool, over: bool) -> (i32, St
         "    Pin each to ONE build: the release tag it is on today plus its digest, read from the\n    \
          registry (`docker buildx imagetools inspect IMAGE:TAG` prints the digest):\n          \
          FROM ghcr.io/owner/tool:1.4.2@sha256:<64 hex>\n    \
-         A digest pins whatever the tag says; a tag alone must name a release, not a channel.\n    \
+         A digest pins whatever the tag says; a tag alone must name ONE build -- a full `x.y.z`\n    \
+         release, a date or a commit id -- not a channel or a release line (`rust:1`, `node:22`,\n    \
+         `ubuntu:24.04`: docs/decisions/D-0007).\n    \
          An image that must float says why: `# moving-tag-ok: <reason>` on the line or in the\n    \
          comment lines directly above it.\n",
     );

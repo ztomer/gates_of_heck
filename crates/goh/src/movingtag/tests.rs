@@ -5,8 +5,8 @@
 //! and both CI jobs read `zmkfirmware/zmk-build-arm:stable`, so a CI run and a local build could
 //! use different toolchains with nothing saying so; and its pin after, tag plus digest.
 
-use super::reference::{is_moving_tag, substitute, verdict, Verdict};
-use super::scan::{in_scope, kind, scan, Kind, Problem};
+use super::reference::{is_channel, is_moving_tag, substitute, verdict, verdict_at, Verdict};
+use super::scan::{in_scope, kind, scan_at, Kind, Problem};
 use std::collections::BTreeMap;
 
 const DIGEST: &str = "sha256:840526f03c19c286b614d5cb97b11242ae19e468fc2ef2f095f6cf0465fa1c5b";
@@ -39,9 +39,6 @@ fn every_channel_is_moving_and_every_build_name_is_not() {
     }
     for tag in [
         "3.20.3",
-        "18-alpine",
-        "pg16",
-        "1",
         "v3.40.0",
         "3.5-branch-20250930025731-3.5.0-0.16.3-f93290b3ab1a-18117245422",
         "nightly-2025-01-01",
@@ -52,6 +49,90 @@ fn every_channel_is_moving_and_every_build_name_is_not() {
         "sha-4f9e2c1",
     ] {
         assert!(!is_moving_tag(tag), "{tag} should name one build");
+    }
+}
+
+/// OWNER RULING 2026-11-15, "Yes, flag them": a version coarser than a full `x.y.z` is a release
+/// LINE, re-pointed at every release of it, so it moves unless a date or a commit id pins a build.
+/// A distro's version is no exception (`docs/decisions/D-0007`): `ubuntu:24.04` floats across
+/// 24.04.N and its rebuilds; its pin is the dated tag (`noble-20250925`) or a digest.
+#[test]
+fn a_version_coarser_than_x_y_z_is_a_release_line_and_moves() {
+    for tag in [
+        "1",
+        "22",
+        "3",
+        "7.4",
+        "18-alpine",
+        "1-bookworm",
+        "1.83-slim",
+        "pg16",
+        "24.04",
+        "13",
+        "13.1-slim",
+        "v2",
+        "1234567",
+    ] {
+        assert!(is_moving_tag(tag), "{tag} is a release line");
+        assert!(
+            !is_channel(tag),
+            "{tag} is not a channel: the grace leaves it alone"
+        );
+    }
+    for tag in [
+        "1.99.1",
+        "1.99.1-slim-bookworm",
+        "22.11.0-alpine3.20",
+        "v3.40.0",
+        "noble-20250925",
+        "trixie-20250908-slim",
+        "1-20251101",
+        "f93290b3ab1a",
+        "sha-4f9e2c1",
+        "3.20.3-f93290b3ab1a",
+    ] {
+        assert!(!is_moving_tag(tag), "{tag} names one build");
+    }
+}
+
+#[test]
+fn the_gate_names_a_release_line_as_one_and_only_after_the_grace() {
+    let repo = goh_testkit::repo_with(&[
+        ("Dockerfile", "FROM rust:1\n"),
+        ("ci.sh", "#!/bin/sh\ndocker pull alpine:3\n"),
+    ])
+    .expect("fixture");
+    let files = vec!["Dockerfile".to_owned(), "ci.sh".to_owned()];
+    let (code, out, _) = super::judge_at(repo.path(), &files, false, false);
+    assert_eq!(code, 0, "within the grace a release line passes: {out}");
+    let (code, _, err) = super::judge_at(repo.path(), &files, false, true);
+    assert_eq!(code, 1, "{err}");
+    assert!(
+        err.contains("Dockerfile:1: `rust:1` is on `1`, a release line"),
+        "{err}"
+    );
+    assert!(
+        err.contains("ci.sh:2: `alpine:3` is on `3`, a release line"),
+        "{err}"
+    );
+}
+
+#[test]
+fn a_coarse_tag_is_judged_only_once_the_grace_is_over() {
+    // Before `crate::grace::OVER_FROM` the scanner reads as it did at the last release.
+    assert_eq!(verdict_at("rust:1", false), Verdict::Released);
+    assert_eq!(verdict_at("rust:1", true), Verdict::Moving("1".into()));
+    assert_eq!(
+        verdict("rust:1"),
+        Verdict::Moving("1".into()),
+        "the rule, ungraced"
+    );
+    for (rel, src) in COARSE_RED {
+        assert_eq!(
+            scan_at(rel, src, false).findings,
+            [],
+            "within the grace: {rel}"
+        );
     }
 }
 
@@ -89,9 +170,9 @@ fn a_reference_is_judged_by_its_digest_then_its_last_component() {
         // the commit (a version, a date, a build), and the maintainer can re-point it.
         ("alpine:3.20.3-f93290b3ab1a", Verdict::Released),
         // Not a commit id: letters without digits is a channel, and digits without letters is a
-        // version-shaped tag.
+        // version-shaped tag, here a release line (no date, no x.y.z).
         ("alpine:abc", Verdict::Moving("abc".into())),
-        ("alpine:1234567", Verdict::Released),
+        ("alpine:1234567", Verdict::Moving("1234567".into())),
         ("scratch", Verdict::NotAReference),
         ("", Verdict::NotAReference),
         ("${IMAGE}", Verdict::Unreadable),
@@ -134,7 +215,7 @@ enum K {
 }
 
 fn kinds(rel: &str, src: &str) -> Vec<(usize, K)> {
-    scan(rel, src)
+    scan_at(rel, src, true)
         .findings
         .into_iter()
         .map(|f| {
@@ -204,13 +285,67 @@ const RED: &[Row] = &[
     ),
     // A marker without a reason exempts nothing and says so; one with nothing under it is stale.
     ("Dockerfile", "# moving-tag-ok:\nFROM ubuntu:latest\n", &[(2, K::Empty)]),
-    ("Dockerfile", "# moving-tag-ok: a reason\nFROM ubuntu:24.04\n", &[(1, K::Stale)]),
+    ("Dockerfile", "# moving-tag-ok: a reason\nFROM ubuntu:24.04.3\n", &[(1, K::Stale)]),
     (
         "compose.yml",
         "services:\n  a:\n    # moving-tag-ok: a reason\n    image: nginx@sha256:840526f03c19c286b614d5cb97b11242ae19e468fc2ef2f095f6cf0465fa1c5b\n",
         &[(3, K::Stale)],
     ),
 ];
+
+/// The owner's rows (2026-11-15): `rust:1`, `node:22`, `alpine:3` in each kind of file read.
+const COARSE_RED: &[(&str, &str)] = &[
+    ("Dockerfile", "FROM rust:1 AS build\nFROM node:22\nCOPY --from=alpine:3 /a /b\n"),
+    (
+        ".github/workflows/ci.yml",
+        "jobs:\n  a:\n    container: rust:1\n    services:\n      n:\n        image: node:22\n    steps:\n      - uses: docker://alpine:3\n",
+    ),
+    (
+        "scripts/dev/linux_test.sh",
+        "#!/usr/bin/env bash\nIMAGE=rust:1\ndocker run --rm node:22 true\ndocker pull alpine:3\n",
+    ),
+];
+
+const COARSE_GREEN: &[(&str, &str)] = &[
+    ("Dockerfile", "FROM rust:1.99.1 AS build\nFROM rust:1@sha256:840526f03c19c286b614d5cb97b11242ae19e468fc2ef2f095f6cf0465fa1c5b\nFROM ubuntu:noble-20250925\n"),
+    (
+        ".github/workflows/ci.yml",
+        "jobs:\n  a:\n    container: rust:1.99.1\n    services:\n      n:\n        image: node:22@sha256:840526f03c19c286b614d5cb97b11242ae19e468fc2ef2f095f6cf0465fa1c5b\n    steps:\n      - uses: docker://debian:trixie-20250908\n",
+    ),
+    (
+        "scripts/dev/linux_test.sh",
+        "#!/usr/bin/env bash\nIMAGE=rust:1.99.1\ndocker run --rm node:22@sha256:840526f03c19c286b614d5cb97b11242ae19e468fc2ef2f095f6cf0465fa1c5b true\ndocker pull alpine:3.20.3\n",
+    ),
+];
+
+#[test]
+fn the_owners_coarse_rows_are_red_in_every_kind_of_file() {
+    let want: &[&[(usize, K)]] = &[
+        &[(1, K::Moving), (2, K::Moving), (3, K::Moving)],
+        &[(3, K::Moving), (6, K::Moving), (8, K::Moving)],
+        &[(2, K::Moving), (3, K::Moving), (4, K::Moving)],
+    ];
+    for ((rel, src), want) in COARSE_RED.iter().zip(want) {
+        assert_eq!(kinds(rel, src), *want, "{rel}:\n{src}");
+    }
+    for (rel, src) in COARSE_GREEN {
+        assert_eq!(kinds(rel, src), [], "{rel}:\n{src}");
+    }
+    // A distro's version is a release line too (D-0007), and a marker still exempts one.
+    assert_eq!(
+        kinds(
+            "Dockerfile",
+            "FROM ubuntu:24.04\nFROM debian:13\nFROM redis:7.4\nFROM postgres:18-alpine\n"
+        ),
+        [
+            (1, K::Moving),
+            (2, K::Moving),
+            (3, K::Moving),
+            (4, K::Moving)
+        ]
+    );
+    assert_eq!(kinds("compose.yml", "services:\n  a:\n    # moving-tag-ok: floats by ruling (DECISIONS #9)\n    image: postgres:18-alpine\n"), []);
+}
 
 const GREEN: &[(&str, &str)] = &[
     // Adv360-Pro-ZMK after P0.2: the dated release tag plus its digest.
@@ -223,7 +358,7 @@ const GREEN: &[(&str, &str)] = &[
     ("Dockerfile", "ARG TAG=1.2.3\nFROM node:${TAG}\n"),
     // An ARG with no default: unreadable, not a guess.
     ("Dockerfile", "ARG TAG\nFROM node:${TAG}\n"),
-    ("Dockerfile", "# FROM ubuntu:latest was the old base\nFROM ubuntu:24.04\n"),
+    ("Dockerfile", "# FROM ubuntu:latest was the old base\nFROM ubuntu:noble-20250925\n"),
     ("Dockerfile", "# moving-tag-ok: the upstream publishes no release tags\nFROM vendor/tool:latest\n"),
     // compose names the image it BUILDS; it does not pull it.
     ("docker-compose.yml", "services:\n  app:\n    build: .\n    image: me/app:latest\n"),
@@ -264,9 +399,10 @@ fn digests_releases_unreadables_and_reasoned_exemptions_are_green() {
 
 #[test]
 fn the_scan_counts_its_subject_and_says_what_it_could_not_read() {
-    let s = scan(
+    let s = scan_at(
         "compose.yml",
         "services:\n  a:\n    image: ${IMG}\n  b:\n    image: nginx@sha256:840526f03c19c286b614d5cb97b11242ae19e468fc2ef2f095f6cf0465fa1c5b\n  c:\n    image: n:latest # moving-tag-ok: r\n  d:\n    image: n:1.2.3\n  e:\n    image: n:f93290b3ab1a\n",
+        true,
     );
     assert_eq!(
         (
@@ -279,7 +415,7 @@ fn the_scan_counts_its_subject_and_says_what_it_could_not_read() {
         ),
         (5, 1, 1, 1, 1, false)
     );
-    assert!(scan("t.yaml", "{{- x }}\nimage: a:1\n").unparsed);
+    assert!(scan_at("t.yaml", "{{- x }}\nimage: a:1\n", true).unparsed);
 }
 
 #[test]

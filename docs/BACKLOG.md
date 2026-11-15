@@ -100,8 +100,6 @@ Why last: nothing else waits on it, and the rework of the gate rules above chang
   the shape of `name:tag`, references in variables, built names that look pulled. Un-policed floats at
   v0.31.0: monitor `build.sh:96` (`rust:alpine`) and `tools/lint_linux.sh:19` (`rust:1-bookworm`);
   media_server `scripts/dev/linux_test.sh:21` (`rust:1`).
-- **A version-shaped tag is not judged for coarseness**: `alpine:3`, `postgres:18-alpine`, `recyclarr:8`
-  float across rebuilds and pass. A per-repo opt-in demanding a digest everywhere is the way, if wanted.
 - **A Helm values `repository:`/`tag:` pair is not joined**, and a templated `image:` is counted
   unreadable (apes: 13 of 25 references).
 

@@ -15,11 +15,25 @@
 //!     (`1.2.3-dev`) or a commit id (`dev-a1b2c3d`).
 //!   * a tag that IS a commit id is the pin nothing can move, beside the digest: `:f93290b3ab1a`
 //!     names one build, and nobody can re-point it (THE COMMIT PIN, 2026-10-21).
+//!   * every other digit-bearing tag must name a build the same way -- a date, a full `x.y.z`
+//!     version (any suffix: `1.99.1-slim-bookworm`) or a commit id. One whose version is coarser
+//!     (`rust:1`, `node:22`, `alpine:3`, `redis:7.4`, `postgres:18-alpine`, `pg16`) is a release
+//!     LINE: its maintainer re-points it at every release of the line, so it is a moving tag
+//!     (OWNER RULING 2026-11-15, asked whether version-shaped tags like `rust:1` count: "Yes, flag
+//!     them"; GOH.MOVINGTAGCOARSE). Judged from `crate::grace::OVER_FROM` (2026-11-23): before it
+//!     [`verdict_at`] reads such a tag as it did at the last release, a released name.
 //!
-//! NOT judged: how coarse a version-shaped tag is. `alpine:3`, `postgres:18-alpine` and
-//! `ubuntu:24.04` all float across rebuilds, but telling a release line from a release needs the
-//! project's own versioning scheme, and the house rule asks for a NAMED released version, which
-//! these are; the only pins nothing can move are the digest and the commit id.
+//! THE DISTRO VERSION (`docs/decisions/D-0007-a-version-coarser-than-x-y-z-is-a-release-line.md`).
+//! `ubuntu:24.04` and `debian:13` / `debian:13.1` are release lines like any other, with no
+//! exception: Ubuntu's `24.04` is re-pointed across every 24.04.N point release and every rebuild
+//! in between, and Debian's `13.1` until 13.2 ships, so the text names a line, not a build. Each
+//! distro publishes the tag that does name one build, a dated one (`ubuntu:noble-20250925`,
+//! `debian:trixie-20250908`), and a digest pins any of them. An exception would need this file to
+//! know which repositories are distributions and which versioning scheme each uses, a list nobody
+//! maintains, and would pass `postgres:16.4` and `debian:13.1` while failing `redis:7.4` on the
+//! same two-part shape. The rule is the shape: fewer than three version components, no date and no
+//! commit id is a line. What the text still cannot see: a full `x.y.z` tag its maintainer rebuilds
+//! in place (`alpine:3.20.3` after a CVE fix) passes; only a digest is immune to that.
 
 use std::collections::BTreeMap;
 
@@ -116,25 +130,52 @@ pub fn is_commit_id(tag: &str) -> bool {
     is_commit(tag)
 }
 
-/// Whether `tag` is a pointer someone moves rather than the name of one build.
+/// Whether `tag` names one build: a date, a full `x.y.z` version or a commit id among its parts.
+fn names_a_build(tag: &str, parts: &[String]) -> bool {
+    has_date(tag) || has_full_version(tag) || parts.iter().any(|p| is_commit(p))
+}
+
+fn parts_of(tag: &str) -> Vec<String> {
+    tag.split(['-', '_', '.'])
+        .map(str::to_ascii_lowercase)
+        .collect()
+}
+
+/// Whether `tag` is a CHANNEL: no digit, or a channel word with no build named beside it.
+///
+/// All the scanner judged before GOH.MOVINGTAGCOARSE, and all it judges within `crate::grace`.
 #[must_use]
-pub fn is_moving_tag(tag: &str) -> bool {
+pub fn is_channel(tag: &str) -> bool {
     if !tag.bytes().any(|b| b.is_ascii_digit()) {
         return true;
     }
-    let parts: Vec<String> = tag
-        .split(['-', '_', '.'])
-        .map(str::to_ascii_lowercase)
-        .collect();
-    if !parts.iter().any(|p| CHANNELS.contains(&p.as_str())) {
-        return false;
-    }
-    !(has_date(tag) || has_full_version(tag) || parts.iter().any(|p| is_commit(p)))
+    let parts = parts_of(tag);
+    parts.iter().any(|p| CHANNELS.contains(&p.as_str())) && !names_a_build(tag, &parts)
 }
 
-/// Judge one reference, already substituted ([`substitute`]).
+/// Whether `tag` is a pointer someone moves rather than the name of one build: a channel, or a
+/// release line (a version coarser than `x.y.z` with no date or commit id beside it).
+#[must_use]
+pub fn is_moving_tag(tag: &str) -> bool {
+    is_moving_tag_at(tag, true)
+}
+
+/// [`is_moving_tag`], with release lines judged (`lines`) or passed as the grace has them.
+#[must_use]
+pub fn is_moving_tag_at(tag: &str, lines: bool) -> bool {
+    is_channel(tag) || (lines && !names_a_build(tag, &parts_of(tag)))
+}
+
+/// Judge one reference, already substituted ([`substitute`]), release lines included.
 #[must_use]
 pub fn verdict(raw: &str) -> Verdict {
+    verdict_at(raw, true)
+}
+
+/// [`verdict`], with release lines judged (`lines`, from `crate::grace::OVER_FROM`) or passed as a
+/// released name (before it: the verdict of the last release).
+#[must_use]
+pub fn verdict_at(raw: &str, lines: bool) -> Verdict {
     let r = raw.trim().trim_matches(['"', '\'']).trim();
     let r = r.strip_prefix("docker://").unwrap_or(r);
     if r.is_empty() {
@@ -159,7 +200,7 @@ pub fn verdict(raw: &str) -> Verdict {
     match tag {
         None if prefix.is_empty() && repo.eq_ignore_ascii_case("scratch") => Verdict::NotAReference,
         None => Verdict::NoTag,
-        Some(t) if is_moving_tag(t) => Verdict::Moving(t.to_owned()),
+        Some(t) if is_moving_tag_at(t, lines) => Verdict::Moving(t.to_owned()),
         Some(t) if is_commit_id(t) => Verdict::Commit,
         Some(_) => Verdict::Released,
     }

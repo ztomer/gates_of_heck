@@ -3,7 +3,7 @@
 //! (SRV.RUSTTAG), and its pin after.
 
 use super::refs;
-use crate::movingtag::scan::{scan, Problem};
+use crate::movingtag::scan::{scan_at, Problem};
 
 const DIGEST: &str = "sha256:8a4e90c7946b74626488b1446f712c0fe0ed1a596cbd3d871684bc9c5433ae07";
 
@@ -16,7 +16,7 @@ fn read(text: &str, make: bool) -> Vec<(usize, usize, String)> {
 }
 
 fn moving(rel: &str, text: &str) -> Vec<usize> {
-    scan(rel, text)
+    scan_at(rel, text, true)
         .findings
         .into_iter()
         .filter(|f| matches!(f.problem, Problem::Moving(..) | Problem::NoTag(_)))
@@ -108,13 +108,14 @@ fn the_flag_grammar_is_the_clis_and_an_unknown_flag_is_unreadable() {
     assert_eq!(r[3].2, "busybox");
     assert_eq!(r[4].2, "redis:latest");
     assert_eq!(r[5].2, "img:1");
-    assert_eq!(moving("t.sh", src), [2, 4, 5]);
+    // `img:1` is a release line (GOH.MOVINGTAGCOARSE).
+    assert_eq!(moving("t.sh", src), [2, 4, 5, 6]);
 }
 
 #[test]
 fn the_escape_reads_in_a_script() {
     let src = "# moving-tag-ok: the fixture plants it on purpose\ndocker run nginx:latest\ndocker run redis:latest # moving-tag-ok: DECISIONS #9\n";
-    let s = scan("t.sh", src);
+    let s = scan_at("t.sh", src, true);
     assert_eq!((s.findings.len(), s.exempt), (0, 2), "{:?}", s.findings);
 }
 
