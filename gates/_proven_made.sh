@@ -12,8 +12,8 @@
 #
 # THE MEASUREMENT. The ignored entries present after a step's real run and not before it are what
 # it made (`git ls-files -o -i --directory`: a wholly ignored directory is one entry). They are kept
-# per STEP STRING beside the records (`made/<hash>`), not per tree: what a build makes does not
-# change with the commit. Only a run that BEGAN with no ignored file (a push export; GOH_EXPORT_KEEP
+# per STEP STRING beside the records (`goh-proven-made/<hash>`; goh-proven/ holds records only),
+# not per tree: what a build makes does not change with the commit. Only a run that BEGAN with no ignored file (a push export; GOH_EXPORT_KEEP
 # entries and tool caches aside) sees everything a step made -- in a warm checkout the build/ of
 # yesterday hides today's -- so only such a run writes the `fresh` line that lets an empty list mean
 # "makes nothing". A warm run adds what it saw, never removes. Caches a tool rebuilds on demand
@@ -96,7 +96,7 @@ proven_made() {
 proven_made_file() {
     local dir
     dir="$(proven_dir)" || return 1
-    printf '%s/made/%s\n' "$dir" "$(printf 'made v1 %s' "$1" | hash_hex /dev/stdin)"
+    printf '%s-made/%s\n' "$dir" "$(printf 'made v1 %s' "$1" | hash_hex /dev/stdin)"
 }
 
 # proven_made_note <step> <fresh:0|1> <made, one per line> -- remember what a green run made. A
