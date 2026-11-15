@@ -15,7 +15,7 @@
 #
 # release.sh's tap step calls this; a product's own release script calls it the same way.
 { # parse-guard -- bash reads this group whole before running it (tests/test_parse_guard.py)
-. "$(dirname "${BASH_SOURCE[0]}")/../../lib/bash5.sh" || exit; goh_bash5 "$@"
+_goh_d=${BASH_SOURCE[0]%/*}; [ "$_goh_d" != "${BASH_SOURCE[0]}" ] || _goh_d=.; . "$_goh_d/../../lib/bash5.sh" || exit; goh_bash5 "$@"
 set -euo pipefail
 # shellcheck source=lib/goh_root.sh
 . "$(dirname "${BASH_SOURCE[0]}")/../../lib/goh_root.sh" && goh_dir_repair   # a dead export GOH_DIR (GOH.TRANSIENTDIR)

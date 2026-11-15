@@ -28,6 +28,10 @@
 //! before `--` (two revisions: `koffee_big`'s `git diff --quiet "v$VERSION" HEAD` took no lock and
 //! was the false positive that found this).
 //!
+//! A verb that takes no lock and runs no hook (`crate::gitargv::LOCK_FREE`: `ls-remote`, a config
+//! read, `rev-parse`, `cat-file`, `show-ref`, ...) strands nothing when stopped, so neither a bare
+//! `timeout` nor `timeout=` over it is a finding (GOH.GITKILLLOCKFREE); a writer under one stays red.
+//!
 //! Test files are not read (`tests/`, `test_*.py`, `*_test.py`, `conftest.py`): a test stops git
 //! in a scratch repository on purpose. A site that is deliberate says so on one of its lines:
 //! `# git-deadline-ok: <reason>` (the seam that every other call goes through, say).
@@ -43,7 +47,10 @@
 //! warn, anything else is red.
 
 use crate::estate_seed::{self, Kind, Report, Sites};
-use crate::gitargv::{invocation, python_argv, shell_invocations, takes_optional_lock, WRITERS};
+use crate::gitargv::{
+    invocation, lock_free, python_argv, shell_invocations, shell_words, takes_optional_lock, Word,
+    WRITERS,
+};
 use regex::Regex;
 use std::path::Path;
 use std::sync::LazyLock;
@@ -89,11 +96,24 @@ pub fn python_finding(stmt: &str) -> Option<&'static str> {
     let inv = invocation(argv.get(1..).unwrap_or_default());
     let no_lock = NO_LOCK.is_match(stmt);
     let writer = inv.verb.as_deref().is_some_and(|v| WRITERS.contains(&v));
-    if PY_DEADLINE.is_match(stmt) && (!no_lock || writer) {
+    if PY_DEADLINE.is_match(stmt) && (!no_lock || writer) && !lock_free(&inv) {
         return Some("git under subprocess's timeout=: SIGKILLed alone at the deadline");
     }
     (takes_optional_lock(&inv) && !no_lock)
         .then_some("git status/diff without GIT_OPTIONAL_LOCKS=0: takes index.lock")
+}
+
+/// Whether the git a `timeout` runs, from the text just after its `git`, is a lock-free verb
+/// (`crate::gitargv::LOCK_FREE`). `git-foo` or an unreadable verb is not.
+fn timed_git_is_lock_free(rest: &str) -> bool {
+    if !rest.is_empty() && !rest.starts_with(char::is_whitespace) {
+        return false;
+    }
+    let words: Vec<Word> = shell_words(rest)
+        .into_iter()
+        .map_while(|w| w.map(Word::Lit))
+        .collect();
+    lock_free(&invocation(&words))
 }
 
 /// Why one shell line stops git at a deadline or reads the work tree with the lock.
@@ -103,7 +123,10 @@ pub fn shell_finding(line: &str) -> Option<&'static str> {
         return None;
     }
     let code = line.split("  #").next().unwrap_or(line);
-    if SH_TIMEOUT.is_match(code) {
+    if SH_TIMEOUT
+        .find_iter(code)
+        .any(|m| !timed_git_is_lock_free(&code[m.end()..]))
+    {
         return Some("git under timeout: stopped alone, its hooks orphaned");
     }
     (!code.contains("GIT_OPTIONAL_LOCKS=0")
@@ -298,6 +321,36 @@ mod tests {
         ] {
             assert_eq!(scan_python(ok).expect("lexes"), vec![], "{ok}");
         }
+    }
+
+    #[test]
+    fn a_lock_free_verb_under_a_deadline_passes_and_a_writer_stays_red() {
+        for ok in [
+            "timeout 10 git ls-remote --tags origin\n",
+            "gtimeout -k 2 10 git -C \"$r\" rev-parse HEAD\n",
+            "v=$(timeout 5 git config --get user.name)\n",
+            "timeout 5 git config get user.name\n",
+        ] {
+            assert!(scan_shell(ok).is_empty(), "{ok}");
+        }
+        for bad in [
+            "timeout 10 git fetch origin\n",
+            "timeout 5 git config user.name x\n",
+            "timeout 5 git \"$verb\"\n",
+            "timeout 5 git-upload-pack .\n",
+            "timeout 5 git ls-remote o; timeout 5 git commit -q\n",
+            "gtimeout 30 git status --short\n",
+        ] {
+            assert_eq!(scan_shell(bad).len(), 1, "{bad}");
+        }
+        assert!(
+            scan_python("subprocess.run(['git', 'ls-remote', url], timeout=5)\n")
+                .is_some_and(|v| v.is_empty())
+        );
+        assert_eq!(
+            scan_python("subprocess.run(['git', 'push', url], timeout=5)\n").map(|v| v.len()),
+            Some(1)
+        );
     }
 
     #[test]

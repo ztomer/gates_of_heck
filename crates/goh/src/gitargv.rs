@@ -30,6 +30,77 @@ pub const WRITERS: &[&str] = &[
     "worktree",
     "gc",
 ];
+/// How a lock-free verb's words keep it lock-free.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LockFree {
+    /// Every form of the verb reads: it takes no lock and runs no hook.
+    Always,
+    /// `git config` reads only with a read flag (`--get`, `--list`, ...) or the `get`/`list`
+    /// subcommand; `git config KEY VALUE` writes the config file under `config.lock`.
+    ConfigRead,
+}
+
+/// The verbs that take no repository lock and run no hook (GOH.GITKILLLOCKFREE).
+///
+/// Stopped at a deadline, alone or not, they strand nothing, so a bare `timeout` over them is no finding. One
+/// row per verb, each pinned by `tests::every_lock_free_row_is_judged_by_its_rule`. `status` and a
+/// work-tree `diff` are absent: they take `index.lock` optionally (`takes_optional_lock`).
+pub const LOCK_FREE: &[(&str, LockFree)] = &[
+    ("ls-remote", LockFree::Always),
+    ("rev-parse", LockFree::Always),
+    ("cat-file", LockFree::Always),
+    ("show-ref", LockFree::Always),
+    ("rev-list", LockFree::Always),
+    ("for-each-ref", LockFree::Always),
+    ("ls-tree", LockFree::Always),
+    ("ls-files", LockFree::Always),
+    ("merge-base", LockFree::Always),
+    ("describe", LockFree::Always),
+    ("diff-tree", LockFree::Always),
+    ("var", LockFree::Always),
+    ("version", LockFree::Always),
+    ("config", LockFree::ConfigRead),
+];
+
+/// `git config`'s read flags and read subcommands.
+const CONFIG_READ_FLAGS: &[&str] = &[
+    "--get",
+    "--get-all",
+    "--get-regexp",
+    "--get-urlmatch",
+    "--get-color",
+    "--get-colorbool",
+    "--list",
+    "-l",
+];
+
+const fn lit(w: &Word) -> Option<&str> {
+    match w {
+        Word::Lit(s) => Some(s.as_str()),
+        _ => None,
+    }
+}
+
+/// Whether one invocation takes no lock and runs no hook, whatever stops it (`LOCK_FREE`).
+#[must_use]
+pub fn lock_free(inv: &Invocation) -> bool {
+    let Some(verb) = inv.verb.as_deref() else {
+        return false;
+    };
+    match LOCK_FREE.iter().find(|(v, _)| *v == verb).map(|(_, r)| *r) {
+        Some(LockFree::Always) => true,
+        Some(LockFree::ConfigRead) => {
+            matches!(inv.args.first().and_then(lit), Some("get" | "list"))
+                || inv
+                    .args
+                    .iter()
+                    .filter_map(lit)
+                    .any(|s| CONFIG_READ_FLAGS.contains(&s))
+        }
+        None => false,
+    }
+}
+
 /// git's global options that take their value as the next word.
 pub const GLOBAL_WITH_VALUE: &[&str] = &["-C", "-c", "--git-dir", "--work-tree", "--namespace"];
 
@@ -300,4 +371,54 @@ pub fn shell_invocations(code: &str) -> Vec<Invocation> {
         at_start = at_start && lead;
     }
     out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn shell(line: &str) -> Invocation {
+        let words: Vec<Word> = shell_words(line)
+            .into_iter()
+            .map_while(|w| w.map(Word::Lit))
+            .collect();
+        invocation(&words)
+    }
+
+    /// One row per `LOCK_FREE` verb: its read form is lock-free; a config write is not.
+    #[test]
+    fn every_lock_free_row_is_judged_by_its_rule() {
+        for (verb, rule) in LOCK_FREE {
+            let read = match rule {
+                LockFree::Always => format!("-C r {verb} x"),
+                LockFree::ConfigRead => format!("-C r {verb} --get x"),
+            };
+            assert!(lock_free(&shell(&read)), "{read}");
+            if *rule == LockFree::ConfigRead {
+                for write in [format!("{verb} k v"), format!("{verb} --unset k")] {
+                    assert!(!lock_free(&shell(&write)), "{write}");
+                }
+                assert!(lock_free(&shell(&format!("{verb} list"))));
+                assert!(lock_free(&shell(&format!("{verb} -l"))));
+            }
+        }
+        assert_eq!(LOCK_FREE.len(), 14, "a row added or dropped: pin it here");
+    }
+
+    #[test]
+    fn a_writer_or_an_unknown_verb_is_never_lock_free() {
+        for w in WRITERS {
+            assert!(!LOCK_FREE.iter().any(|(v, _)| v == w), "{w}");
+            assert!(!lock_free(&shell(w)), "{w}");
+        }
+        for v in ["status", "diff", "fetch", "push", "symbolic-ref", ""] {
+            assert!(!lock_free(&shell(v)), "{v}");
+        }
+        let unknown = Invocation {
+            verb: None,
+            args: vec![],
+            no_lock: false,
+        };
+        assert!(!lock_free(&unknown));
+    }
 }

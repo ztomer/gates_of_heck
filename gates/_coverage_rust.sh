@@ -5,7 +5,7 @@
 # ── rust ────────────────────────────────────────────────────────────────────
 # Ported from app_updates/tools/coverage_check.sh; see lineage above. ONE instrumented run of
 # every declared lib/bin/test target, its lcov fed to the CGU-normalizing merger below.
-. "$(dirname "${BASH_SOURCE[0]}")/../lib/bash5.sh" || exit; goh_bash5 "$@"
+_goh_d=${BASH_SOURCE[0]%/*}; [ "$_goh_d" != "${BASH_SOURCE[0]}" ] || _goh_d=.; . "$_goh_d/../lib/bash5.sh" || exit; goh_bash5 "$@"
 # ── THE PHASES, STREAMED (GOH.COVPHASES) ─────────────────────────────────────
 # A step killed on its ceiling shows the tail of what it printed, and this mode printed three intro
 # lines and then nothing for half an hour: each part's output goes to its own log, read only when

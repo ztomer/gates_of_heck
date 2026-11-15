@@ -17,7 +17,7 @@
 # starts agrees with the one that judged it. Like every gate entry point it then re-runs from HEAD's
 # export (gates/_from_head.sh, C4), so an uncommitted edit here judges nobody.
 { # parse-guard -- bash reads this group whole before running it (tests/test_parse_guard.py)
-. "$(dirname "${BASH_SOURCE[0]}")/../lib/bash5.sh" || exit; goh_bash5 "$@"
+_goh_d=${BASH_SOURCE[0]%/*}; [ "$_goh_d" != "${BASH_SOURCE[0]}" ] || _goh_d=.; . "$_goh_d/../lib/bash5.sh" || exit; goh_bash5 "$@"
 set -euo pipefail
 # shellcheck source=tui/lib.sh
 . "$(dirname "${BASH_SOURCE[0]}")/../tui/lib.sh"

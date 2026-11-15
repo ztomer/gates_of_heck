@@ -17,7 +17,7 @@
 # the stage falls back to `<dest>.<pid>.staging` beside it (ignored, reaped) rather than let `mv`
 # degrade to a copy a reader could see half of. Both homes are reaped.
 
-. "$(dirname "${BASH_SOURCE[0]}")/../lib/bash5.sh" || exit; goh_bash5 "$@"
+_goh_d=${BASH_SOURCE[0]%/*}; [ "$_goh_d" != "${BASH_SOURCE[0]}" ] || _goh_d=.; . "$_goh_d/../lib/bash5.sh" || exit; goh_bash5 "$@"
 # shellcheck source=lib/run_path.sh
 . "${BASH_SOURCE[0]%/*}/run_path.sh" || exit 1
 

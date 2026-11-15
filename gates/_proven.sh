@@ -8,7 +8,7 @@
 # handled by return code, and no function changes shell options. Every git call on the REPO is
 # made from the cwd and honours GIT_INDEX_FILE: in a pre-commit hook it names the index being
 # committed, the tree to key on. A git call on a goh checkout strips GIT_* first.
-. "$(dirname "${BASH_SOURCE[0]}")/../lib/bash5.sh" || exit; goh_bash5 "$@"
+_goh_d=${BASH_SOURCE[0]%/*}; [ "$_goh_d" != "${BASH_SOURCE[0]}" ] || _goh_d=.; . "$_goh_d/../lib/bash5.sh" || exit; goh_bash5 "$@"
 # shellcheck source=gates/_hash.sh
 . "$(dirname "${BASH_SOURCE[0]}")/_hash.sh"
 # shellcheck source=gates/_git_env.sh

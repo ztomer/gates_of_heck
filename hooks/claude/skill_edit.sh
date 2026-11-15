@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 { # parse-guard -- bash reads this group whole before running it (tests/test_parse_guard.py)
-. "$(dirname "${BASH_SOURCE[0]}")/../../lib/bash5.sh" || exit; goh_bash5 "$@"
+_goh_d=${BASH_SOURCE[0]%/*}; [ "$_goh_d" != "${BASH_SOURCE[0]}" ] || _goh_d=.; . "$_goh_d/../../lib/bash5.sh" || exit; goh_bash5 "$@"
 # hooks/claude/skill_edit.sh -- a Claude Code PostToolUse hook: judge the skills corpus the moment
 # a file in it is written (C2, writer-time half; tests/test_claude_skill_hook.py).
 #

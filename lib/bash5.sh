@@ -9,7 +9,11 @@
 # the local gate and CI judged two languages. Every bash file goh tracks now runs, as its first
 # statement (docs/contracts.md section 28, tests/test_bash5_guard.py refuses one that does not):
 #
-#   . "$(dirname "${BASH_SOURCE[0]}")/<up>/lib/bash5.sh" || exit; goh_bash5 "$@"
+#   _goh_d=${BASH_SOURCE[0]%/*}; [ "$_goh_d" != "${BASH_SOURCE[0]}" ] || _goh_d=.; \
+#   . "$_goh_d/<up>/lib/bash5.sh" || exit; goh_bash5 "$@"
+#
+# Bash builtins alone find the directory (GOH.GITKILLLOCKFREE): `${BASH_SOURCE[0]%/*}`, `.` for a bare
+# name, so the line runs with PATH empty, where `dirname` is not found.
 #
 # `|| exit`, never `&&` (GOH.BASH5SILENT): with `&&` a missing file failed the `.`, skipped the guard,
 # and the script ran on unguarded with no error. Now the `.` names the file and the script stops.

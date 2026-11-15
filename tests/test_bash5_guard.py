@@ -29,9 +29,15 @@ from pathlib import Path
 import pytest
 from _own_files import own_source_files
 from conftest import REPO_ROOT, hermetic_env
+from timing_bounds import patience
 
+from lib import source_closure
+
+# The guard finds its own directory with bash builtins alone, so it runs with PATH empty
+# (GOH.GITKILLLOCKFREE): `${BASH_SOURCE[0]%/*}`, or `.` for a bare name (`bash x.sh`).
+HERE = '_goh_d=${BASH_SOURCE[0]%/*}; [ "$_goh_d" != "${BASH_SOURCE[0]}" ] || _goh_d=.; '
 GUARD = re.compile(
-    r'\. "(?P<src>\$GOH|\$\(dirname "\$\{BASH_SOURCE\[0\]\}"\)(?:/\.\.)*)'
+    r'\. "(?P<src>\$GOH|\$_goh_d(?:/\.\.)*)'
     r'/lib/bash5\.sh" \|\| exit; goh_bash5 "\$@"'
 )
 # Any `.`/`source` of lib/bash5.sh; each one must be the fail-closed CLOSED form, never `&&`.
@@ -70,10 +76,15 @@ def tui_form(src: str) -> str:
     """tui/ is self-contained (its header): tests and vendored copies carry it without lib/."""
     lib = f"{src}/lib/bash5.sh"
     guard = f'{{ . "{lib}" || exit; goh_bash5 "$@"; }}'
-    return f'[ ! -f "{lib}" ] || {guard}   # a lone tui/ copy has none'
+    here = HERE if src.startswith("$_goh_d") else ""
+    return f'{here}[ ! -f "{lib}" ] || {guard}   # a lone tui/ copy has none'
 
 
-PRELUDE = re.compile(r"^(?:\{ # parse-guard.*|set -[a-z]+(?: [a-z]+)*|[A-Za-z_]\w*=[^`]*)$")
+# A bash-only library may refuse a non-bash shell first (gates/swift_toolchain.sh from zsh).
+PRELUDE = re.compile(
+    r"^(?:\{ # parse-guard.*|set -[a-z]+(?: [a-z]+)*|[A-Za-z_]\w*=[^`]*"
+    r'|\[ -n "\$\{BASH_VERSION-\}" \] \|\| \{ .*; return 1; \})$'
+)
 
 
 def findings(path: str, text: str) -> list[str]:
@@ -90,9 +101,11 @@ def findings(path: str, text: str) -> list[str]:
             return [f"{path}:{i}: tui/ runs the guard only in its tolerant form"]
         if m:
             src = m.group("src")
-            want = '$(dirname "${BASH_SOURCE[0]}")'
+            want = "$_goh_d"
             up = os.path.relpath(".", os.path.dirname(path) or ".")
             want += "" if up == "." else "/" + up
+            if src == want and not s.startswith(HERE):
+                return [f"{path}:{i}: finds its directory with more than bash builtins, not {HERE}"]
             return [] if src == want else [f"{path}:{i}: sources {src}/lib/bash5.sh, not {want}"]
         if not PRELUDE.match(s) or "$(" in s:
             return [f"{path}:{i}: runs before the bash 5 guard: {s[:60]}"]
@@ -102,19 +115,20 @@ def findings(path: str, text: str) -> list[str]:
 def test_the_gate_sees_a_missing_or_late_guard():
     ok = (
         "#!/usr/bin/env bash\n# x\n{ # parse-guard\n"
-        '. "$(dirname "${BASH_SOURCE[0]}")/../lib/bash5.sh" || exit; goh_bash5 "$@"\nset -e\n'
+        + HERE
+        + '. "$_goh_d/../lib/bash5.sh" || exit; goh_bash5 "$@"\nset -e\n'
     )
     assert findings("gates/x.sh", ok) == []
     assert "failing OPEN" in findings("gates/x.sh", ok.replace(" || exit;", " &&"))[0]
-    assert findings("gates/x.sh", ok.replace('. "$(dirname', '# . "$(dirname')) == [
+    assert findings("gates/x.sh", ok.replace(HERE, "# ")) == [
         "gates/x.sh: never runs the bash 5 guard"
     ]
     late = ok.replace("{ # parse-guard\n", "{ # parse-guard\nmapfile -t a < <(ls)\n")
     assert findings("gates/x.sh", late)[0].startswith("gates/x.sh:4: runs before")
-    assert findings("tools/release-kit/x.sh", ok)[0].endswith(
-        'not $(dirname "${BASH_SOURCE[0]}")/../..'
-    )
-    tui = "# x\n" + tui_form('$(dirname "${BASH_SOURCE[0]}")/..') + "\n"
+    assert findings("tools/release-kit/x.sh", ok)[0].endswith("not $_goh_d/../..")
+    old = ok.replace(HERE, "").replace('"$_goh_d', '"$(dirname "${BASH_SOURCE[0]}")')
+    assert "runs before the bash 5 guard" in findings("gates/x.sh", old)[0]  # `$(` is no builtin
+    tui = "# x\n" + tui_form("$_goh_d/..") + "\n"
     assert findings("tui/lib.sh", tui) == []
     assert "tolerant form" in findings("tui/lib.sh", ok)[0]
 
@@ -163,7 +177,7 @@ def test_a_missing_guard_stops_every_form(tmp_path):
     for n, ((d, line), f) in enumerate(sorted(forms.items())):
         root = tmp_path / str(n)
         (root / d).mkdir(parents=True)
-        tolerant = line.startswith("[ ! -f")
+        tolerant = "[ ! -f" in line
         if tolerant:  # a lone copy may lack it by design; present but unreadable must stop
             (root / "lib").mkdir(exist_ok=True)
             (root / "lib/bash5.sh").write_text("goh_bash5() { :; }\n")
@@ -173,6 +187,29 @@ def test_a_missing_guard_stops_every_form(tmp_path):
         r = _run(["bash", str(script)])
         assert r.returncode != 0 and "RAN-ON" not in r.stdout, (f, line, r.stdout, r.stderr)
         assert f"{root}/" in r.stderr and "lib/bash5.sh" in r.stderr, (f, r.stderr)
+
+
+def test_every_guard_form_runs_with_path_empty(tmp_path):
+    """GOH.GITKILLLOCKFREE: each distinct guard line, in a copy of goh's lib/ and tui/, runs on
+    bash 5 with PATH empty -- no `dirname` -- and reaches the line after it, both invoked by path
+    and as a bare name from its own directory (`bash x.sh`: `${BASH_SOURCE[0]%/*}` has no slash)."""
+    forms = _guard_forms()
+    assert len(forms) >= 10, forms
+    b5 = bash5()
+    for n, ((d, line), f) in enumerate(sorted(forms.items())):
+        root = tmp_path / str(n)
+        (root / d).mkdir(parents=True, exist_ok=True)
+        source_closure.copy_closure(root, "lib/bash5.sh")
+        # the release kit's line goes on to gates/_from_head.sh, which is not the guard
+        (root / "gates").mkdir(exist_ok=True)
+        (root / "gates/_from_head.sh").write_text("goh_from_head() { :; }\n")
+        script = root / d / "x.sh"
+        script.write_text(f"{line}\necho RAN-ON\n")
+        for argv, cwd in (([b5, str(script)], None), ([b5, "x.sh"], root / d)):
+            env = {"PATH": "", "GOH_RELEASE_BUFFERED": ""}
+            r = subprocess.run(argv, capture_output=True, text=True, check=False, cwd=cwd,
+                               env=env, stdin=subprocess.DEVNULL, timeout=patience(60))  # fmt: skip
+            assert r.returncode == 0 and r.stdout == "RAN-ON\n", (f, argv, r.stdout, r.stderr)
 
 
 def _old_bash() -> str:

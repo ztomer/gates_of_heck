@@ -15,7 +15,7 @@
 # (crates/goh/src/main.rs). The stock hooks carry no copy since GOH.CLASS.ROLLOUT: the shim skips a
 # GOH_DIR with no gates/hook.sh in the same order, and gates/hook.sh says so and exports the one it
 # runs. tests/test_dead_goh_dir.py pins them. A GOH_DIR that exists is never touched.
-. "$(dirname "${BASH_SOURCE[0]}")/../lib/bash5.sh" || exit; goh_bash5 "$@"
+_goh_d=${BASH_SOURCE[0]%/*}; [ "$_goh_d" != "${BASH_SOURCE[0]}" ] || _goh_d=.; . "$_goh_d/../lib/bash5.sh" || exit; goh_bash5 "$@"
 goh_dir_repair() {
     [ -n "${GOH_DIR:-}" ] && [ ! -d "$GOH_DIR" ] || return 0
     local c

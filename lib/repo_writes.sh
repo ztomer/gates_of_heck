@@ -21,7 +21,7 @@
 
 # goh_repo_snapshot ROOT -- the repository's own config and its refs, sorted: `config KEY=VALUE`
 # lines, then `ref NAME SHA` lines.
-. "$(dirname "${BASH_SOURCE[0]}")/../lib/bash5.sh" || exit; goh_bash5 "$@"
+_goh_d=${BASH_SOURCE[0]%/*}; [ "$_goh_d" != "${BASH_SOURCE[0]}" ] || _goh_d=.; . "$_goh_d/../lib/bash5.sh" || exit; goh_bash5 "$@"
 goh_repo_snapshot() {
     git -C "$1" config --local --list 2>/dev/null | LC_ALL=C sort | sed 's/^/config /'
     git -C "$1" for-each-ref --exclude=refs/remotes --format='ref %(refname) %(objectname)' 2>/dev/null \

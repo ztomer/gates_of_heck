@@ -24,7 +24,9 @@
 #   . "$GOH_DIR/gates/swift_toolchain.sh"; goh_swift_resolve
 #   "$SWIFT" build -c release …
 
-. "$(dirname "${BASH_SOURCE[0]}")/../lib/bash5.sh" || exit; goh_bash5 "$@"
+# Sourced from zsh there is no BASH_SOURCE to find lib/ by, and the body is bash: refuse in words.
+[ -n "${BASH_VERSION-}" ] || { printf '✗ %s\n' "gates/swift_toolchain.sh is bash: source it from bash, not ${ZSH_NAME:-this shell}" >&2; return 1; }
+_goh_d=${BASH_SOURCE[0]%/*}; [ "$_goh_d" != "${BASH_SOURCE[0]}" ] || _goh_d=.; . "$_goh_d/../lib/bash5.sh" || exit; goh_bash5 "$@"
 _goh_swift_fail() {
     if declare -F die >/dev/null 2>&1; then die "$1"; fi
     printf '✗ %s\n' "$1" >&2

@@ -7,7 +7,7 @@
 # (GITHUB_ACTIONS=true) -- having said so on its own line with the step's reason; 1 anywhere else,
 # having said why it is RED: off a hosted runner the owner's machine is the judge of record, and a
 # step that did not run there has not passed (tests/test_not_applicable.py, both directions).
-. "$(dirname "${BASH_SOURCE[0]}")/../lib/bash5.sh" || exit; goh_bash5 "$@"
+_goh_d=${BASH_SOURCE[0]%/*}; [ "$_goh_d" != "${BASH_SOURCE[0]}" ] || _goh_d=.; . "$_goh_d/../lib/bash5.sh" || exit; goh_bash5 "$@"
 lci_not_applicable() {
     local label="$1" cmd="$2" log="$3" why
     why="$(grep -F -m 3 'NOT APPLICABLE' "$log" 2>/dev/null)"

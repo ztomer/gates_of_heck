@@ -54,7 +54,8 @@ _ASSIGN = re.compile(
 ROOT_VARS = ("GOH_DIR", "GOH_ROOT", "GOH")
 # A sourced sibling that reads its caller's HERE (gates/_rust_proven.sh): goh's callers set it to
 # their own directory, which is the sibling's.
-SELF_VARS = ("HERE",)
+# `_goh_d` is the bash 5 guard's own directory, found with builtins (`${BASH_SOURCE[0]%/*}`).
+SELF_VARS = ("HERE", "_goh_d")
 _SOURCE = re.compile(r"(?:^|[;&|{(]|\bthen|\bdo|\belse)\s*(?:source|\.)\s+(?=\S)")
 _VAR = re.compile(r"^\$\{?([A-Za-z_][A-Za-z0-9_]*)(?::-[^}]*)?\}?/(.+)$")
 

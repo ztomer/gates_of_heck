@@ -135,16 +135,21 @@ pub fn named_sources(text: &str) -> Vec<String> {
     let mut out = Vec::new();
     for line in text.lines() {
         let t = line.trim_start();
-        let path = if t.starts_with('#') {
-            directive_path(t).and_then(tree_path)
-        } else {
-            t.strip_prefix("source ")
-                .or_else(|| t.strip_prefix(". "))
-                .and_then(|r| {
-                    subst_led(r.trim_start()).or_else(|| tree_path(r.split_whitespace().next()?))
-                })
-        };
-        out.extend(path);
+        if t.starts_with('#') {
+            out.extend(directive_path(t).and_then(tree_path));
+            continue;
+        }
+        // each `; `-led statement, so the bash 5 guard's `_goh_d=...; . "$_goh_d/..."` is read
+        for s in t.split("; ").map(str::trim_start) {
+            out.extend(
+                s.strip_prefix("source ")
+                    .or_else(|| s.strip_prefix(". "))
+                    .and_then(|r| {
+                        subst_led(r.trim_start())
+                            .or_else(|| tree_path(r.split_whitespace().next()?))
+                    }),
+            );
+        }
     }
     out
 }
@@ -407,6 +412,13 @@ mod tests {
             named_sources(text),
             vec!["lib/a.sh", "b.sh", "c.sh", "d.sh", ".gatesrc", "f"]
         );
+    }
+
+    #[test]
+    fn a_source_after_a_statement_on_its_line_is_read() {
+        let text = "_goh_d=${BASH_SOURCE[0]%/*}; [ \"$_goh_d\" != x ] || _goh_d=.; \
+                    . \"$_goh_d/../lib/bash5.sh\" || exit; goh_bash5 \"$@\"\n";
+        assert_eq!(named_sources(text), vec!["../lib/bash5.sh".to_owned()]);
     }
 
     #[test]

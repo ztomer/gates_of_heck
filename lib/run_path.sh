@@ -21,7 +21,7 @@
 # A new raw temp, lock or staging path under a work tree is refused by `goh run-paths`
 # (crates/goh/src/runpaths.rs). tests/test_run_path.py, tests/test_entry_points_leave_no_strays.py.
 
-. "$(dirname "${BASH_SOURCE[0]}")/../lib/bash5.sh" || exit; goh_bash5 "$@"
+_goh_d=${BASH_SOURCE[0]%/*}; [ "$_goh_d" != "${BASH_SOURCE[0]}" ] || _goh_d=.; . "$_goh_d/../lib/bash5.sh" || exit; goh_bash5 "$@"
 
 goh_run_root() {
     local r="${GOH_RUN_DIR:-}"

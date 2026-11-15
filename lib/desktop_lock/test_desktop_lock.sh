@@ -7,7 +7,7 @@
 # NOTE: this suite takes the REAL machine-wide lock at $DESKTOP_LOCK_DIR. If an
 # unrelated capture run is mid-flight on this Mac, wait for it rather than
 # debugging phantom failures.
-. "$(dirname "${BASH_SOURCE[0]}")/../../lib/bash5.sh" || exit; goh_bash5 "$@"
+_goh_d=${BASH_SOURCE[0]%/*}; [ "$_goh_d" != "${BASH_SOURCE[0]}" ] || _goh_d=.; . "$_goh_d/../../lib/bash5.sh" || exit; goh_bash5 "$@"
 set -uo pipefail
 GOH_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 source "${GOH_DIR:-$GOH_ROOT}/tui/lib.sh"

@@ -38,7 +38,7 @@
 # in GOH_SEED_PENDING instead, and `goh seed-settle` applies the journal only after every step below
 # has passed; a refused commit's journal goes with its directory. tests/test_seed_refused.py.
 { # parse-guard -- bash reads this group whole before running it (tests/test_parse_guard.py)
-. "$(dirname "${BASH_SOURCE[0]}")/../lib/bash5.sh" || exit; goh_bash5 "$@"
+_goh_d=${BASH_SOURCE[0]%/*}; [ "$_goh_d" != "${BASH_SOURCE[0]}" ] || _goh_d=.; . "$_goh_d/../lib/bash5.sh" || exit; goh_bash5 "$@"
 . "$(dirname "${BASH_SOURCE[0]}")/_from_head.sh"
 # shellcheck source=gates/_self_gate.sh
 . "$(dirname "${BASH_SOURCE[0]}")/_self_gate.sh"; goh_self_gate "${BASH_SOURCE[0]}" "$@"   # a goh commit: its own staged tree (GOH.SELFGATE)

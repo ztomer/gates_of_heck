@@ -11,7 +11,9 @@ import shutil
 import subprocess
 from pathlib import Path
 
+import pytest
 from conftest import REPO_ROOT
+from timing_bounds import patience
 
 TOOLCHAIN = REPO_ROOT / "gates" / "swift_toolchain.sh"
 
@@ -102,3 +104,18 @@ def test_nothing_anywhere_refuses_naming_every_rung(tmp_path):
     assert r.returncode != 0
     for rung in ("GOH_SWIFT", "xcrun --find swift", "PATH"):
         assert rung in r.stderr, r.stderr
+
+
+def test_sourced_from_zsh_it_refuses_naming_bash(tmp_path):
+    """GOH.GITKILLLOCKFREE: zsh has no BASH_SOURCE, so the guard looked for ./../lib/bash5.sh under
+    the cwd and failed with a bare "no such file". Sourced from zsh it refuses in words, returns
+    non-zero, and runs nothing after."""
+    zsh = shutil.which("zsh")
+    if not zsh:
+        pytest.skip("no zsh")
+    r = subprocess.run([zsh, "-fc", f'. "{TOOLCHAIN}"; echo "rc=$?"; typeset -f goh_swift_resolve'],
+                       capture_output=True, text=True, check=False, cwd=tmp_path,
+                       stdin=subprocess.DEVNULL, timeout=patience(30))  # fmt: skip
+    assert r.stdout.startswith("rc=1"), (r.stdout, r.stderr)
+    assert "goh_swift_resolve" not in r.stdout, r.stdout
+    assert "is bash: source it from bash" in r.stderr and "bash5.sh" not in r.stderr, r.stderr

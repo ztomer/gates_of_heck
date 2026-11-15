@@ -671,12 +671,16 @@ Apple's /bin/bash 3.2 on the hosted macOS runner, under a minimal-PATH git hook 
 so the local gate and CI judged two languages (v0.106.1: `title[@]: unbound variable` on the runner
 only). Every bash file goh tracks runs, as its first statement,
 
-    . "$(dirname "${BASH_SOURCE[0]}")/<up>/lib/bash5.sh" || exit; goh_bash5 "$@"
+    _goh_d=${BASH_SOURCE[0]%/*}; [ "$_goh_d" != "${BASH_SOURCE[0]}" ] || _goh_d=.; \
+    . "$_goh_d/<up>/lib/bash5.sh" || exit; goh_bash5 "$@"
+
 
 (`$GOH/lib/bash5.sh` in the hook templates, which are copied into consumers). Hooks and `tui/`
 (self-contained, carried alone by tests and vendored copies) use the tolerant form
 `[ ! -f X ] || { . X || exit; goh_bash5 "$@"; }`: a `.` of a missing file ends a non-interactive bash,
 and an older GOH_DIR refused every commit with no reason.
+
+Bash builtins alone find the directory (GOH.GITKILLLOCKFREE): `${BASH_SOURCE[0]%/*}`, or `.` for a bare name (`bash x.sh`), so the line runs with PATH empty, where `dirname` is not found (`tests/test_bash5_guard.py::test_every_guard_form_runs_with_path_empty`).
 
 **Fail closed** (GOH.BASH5SILENT): every line that sources `lib/bash5.sh` reads `. X || exit;
 goh_bash5 "$@"`, never `. X && goh_bash5 "$@"`. With `&&`, a missing or unreadable file made the

@@ -9,7 +9,7 @@
 # keeps the processes whose name contains NAME (an all-processes recording holds every one).
 # Report: <trace>.hotspots.txt unless named. Requires xcrun xctrace (Xcode) and python3.
 
-. "$(dirname "${BASH_SOURCE[0]}")/../../lib/bash5.sh" || exit; goh_bash5 "$@"
+_goh_d=${BASH_SOURCE[0]%/*}; [ "$_goh_d" != "${BASH_SOURCE[0]}" ] || _goh_d=.; . "$_goh_d/../../lib/bash5.sh" || exit; goh_bash5 "$@"
 set -euo pipefail
 # shellcheck source=lib/house_python.sh
 . "${BASH_SOURCE[0]%/*}/../../lib/house_python.sh" || exit 1   # GOH_PY: the house interpreter, never PATH's first python3 (G2d)

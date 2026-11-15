@@ -74,7 +74,9 @@ def test_a_reader_shell_line_and_a_timeout_are_found_and_the_no_lock_forms_pass(
     repo: Path, tmp_path: Path
 ) -> None:
     write(repo, "release.sh", '#!/usr/bin/env bash\nd="$(git status --porcelain)"\n')
-    write(repo, "push.sh", "#!/usr/bin/env bash\ntimeout 30 git ls-remote origin\n")
+    write(repo, "push.sh", "#!/usr/bin/env bash\ntimeout 30 git fetch origin\n")
+    # GOH.GITKILLLOCKFREE: ls-remote takes no lock and runs no hook; a bare timeout strands nothing
+    write(repo, "lsr.sh", "#!/usr/bin/env bash\ntimeout 30 git ls-remote origin\n")
     write(repo, "ok.sh", '#!/usr/bin/env bash\nd="$(GIT_OPTIONAL_LOCKS=0 git status)"\n')
     # koffee_big tools/cut_release.sh:274/:360: two revisions read no work tree, so no lock
     write(repo, "cut.sh", '#!/usr/bin/env bash\nif git diff --quiet "v$VERSION" HEAD; then :; fi\n')
@@ -83,6 +85,7 @@ def test_a_reader_shell_line_and_a_timeout_are_found_and_the_no_lock_forms_pass(
     assert r.returncode == 1, r.stdout + r.stderr
     assert "release.sh:2:" in r.stderr and "push.sh:2:" in r.stderr, r.stderr
     assert "ok.sh" not in r.stderr and "cut.sh" not in r.stderr, r.stderr
+    assert "lsr.sh" not in r.stderr, r.stderr
 
 
 def test_the_escape_and_a_test_file_are_green(repo: Path, tmp_path: Path) -> None:

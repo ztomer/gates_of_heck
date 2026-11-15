@@ -4,7 +4,7 @@
 # jobs (com.ztomer.reclaim-build-root, com.ztomer.reclaim-build-space): a different label, a
 # different script, and this one only ever touches the pids its own registry names.
 { # parse-guard -- bash reads this group whole before running it (tests/test_parse_guard.py)
-. "$(dirname "${BASH_SOURCE[0]}")/../lib/bash5.sh" || exit; goh_bash5 "$@"
+_goh_d=${BASH_SOURCE[0]%/*}; [ "$_goh_d" != "${BASH_SOURCE[0]}" ] || _goh_d=.; . "$_goh_d/../lib/bash5.sh" || exit; goh_bash5 "$@"
 exec "$(dirname "${BASH_SOURCE[0]}")/install_launchagent.sh" com.ztomer.goh-load-reap "$@"
 exit
 } # parse-guard
