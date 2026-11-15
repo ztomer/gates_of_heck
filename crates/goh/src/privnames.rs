@@ -9,7 +9,10 @@
 //! exactly what it guards. It is read from the owner's private store (`crate::estate_seed`'s
 //! `store_dir()`), `private_names.txt`: one name or path per line, `#` comments. A name matches
 //! case-sensitively at word edges (a letter, digit or `_` on either side is not an edge, so
-//! `AcmeTender` is not `Acme`, and `Acme/ws` and `acme-like` both name `Acme`). A machine with
+//! `AcmeTender` is not `Acme`, and `Acme/ws` and `acme-like` both name `Acme`). A side where the
+//! entry itself ends in a separator needs no edge: a repository whose name is an English word is
+//! listed by its path forms (`word/`, `/word`, `` `word` ``, `Word.app`), so `word/src/a.rs` is
+//! refused and the prose word is not (GOH.PRIVNAMES3). A machine with
 //! no list -- a GitHub runner -- cannot judge, and says so on a warning line naming where the list
 //! lives: the owner's machine, which runs every push, is the judge of record.
 //!
@@ -43,13 +46,20 @@ const fn word(c: char) -> bool {
 }
 
 /// The first listed name `line` holds at word edges.
+///
+/// An edge is required only where the name itself ends in a word character: an entry that ends
+/// in a separator (`app/`, `/app`, a backticked `` `app` ``) is its own edge on that side, so a
+/// path entry matches inside a longer path while the bare word stays unlisted.
 #[must_use]
 pub fn find<'a>(line: &str, names: &'a [String]) -> Option<&'a str> {
     names.iter().map(String::as_str).find(|name| {
+        let open = name.chars().next().is_some_and(word);
+        let close = name.chars().next_back().is_some_and(word);
         line.match_indices(name).any(|(at, _)| {
             let before = line[..at].chars().next_back();
             let after = line[at + name.len()..].chars().next();
-            !before.is_some_and(word) && !after.is_some_and(word)
+            let free = |c: Option<char>| c.is_none_or(|c| !word(c));
+            (!open || free(before)) && (!close || free(after))
         })
     })
 }
@@ -184,6 +194,19 @@ mod tests {
         assert_eq!(find("a fixture `acme-ws-like`", &n), Some("acme-ws"));
         assert_eq!(find("AcmeTender and Acmes", &n), None);
         assert_eq!(find("acme in lower case", &n), None);
+    }
+
+    #[test]
+    fn a_path_entry_needs_no_word_edge_where_it_ends_in_a_separator() {
+        // GOH.PRIVNAMES3: a repository named by an English word is listed by its path, never bare,
+        // and `chores/` must still match inside `chores/tests/a.rs`.
+        let n = names(&["chores/", "/chores", "`chores`", "Chores.app"]);
+        assert_eq!(find("see chores/tests/a.rs:3", &n), Some("chores/"));
+        assert_eq!(find("cd ~/Projects/chores && make", &n), Some("/chores"));
+        assert_eq!(find("a fix (`chores`, 2026-10-20)", &n), Some("`chores`"));
+        assert_eq!(find("open -a Chores.app's copy", &n), Some("Chores.app"));
+        assert_eq!(find("daily chores, cochores/ and /choresx", &n), None);
+        assert_eq!(find("Chores.application", &n), None);
     }
 
     #[test]
