@@ -64,11 +64,14 @@ GIT_INIT_SITES = {
 CPU_COUNT_POOLS = {
     "checks/_ordered_pool.py": 1,
     "checks/check_probes_pass.py": 1,
-    # Not a pool: the default COUNT of machine-wide gate slots (one gate per four cores), which
+    # Not a pool: the default COUNT of machine-wide gate slots (one gate per eight cores), which
     # bounds the gates and so every pool they run.
     "lib/gate_slot.py": 1,
     # Not a pool: the core count load.py REFUSES more spinners than (G1c), without --oversubscribe.
     "tools/load.py": 1,
+    # Not a pool: the core count an agent's outcome line records beside the load average, which the
+    # weekly usage review judges per core (GOH.ULTRARULES).
+    "hooks/claude/agent_guard.py": 1,
 }
 
 _INIT = re.compile(r'"init"|git init')

@@ -88,8 +88,12 @@ REPORT_EVERY_S = 30.0
 
 
 def default_slots() -> int:
-    """One gate per four cores, at least one: a cold gate's build and test steps each use every core."""
-    return max(1, (os.cpu_count() or 1) // 4)
+    """One gate per eight cores, at least one: a cold gate's build and test steps each use every core.
+
+    Machine config, not a model-choice profile: the load is the machine's, and this runs in every
+    consumer and on Linux CI, where no Claude plan exists. One per four (4 on a 16-core box) let the
+    load average reach 118-139 with six agents landing (GOH.ULTRARULES, 2026-11-15)."""
+    return max(1, (os.cpu_count() or 1) // 8)
 
 
 def slot_path(directory: str, i: int) -> str:

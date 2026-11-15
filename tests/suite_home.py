@@ -100,6 +100,9 @@ def _drop_caller_goh() -> None:
 
 def _enter() -> None:
     _drop_ship_inputs()
+    # token-pool's state dir holds the Claude meter agent_guard's budget guard reads
+    # (GOH.ULTRARULES): a caller's would decide every guard test's profile. The suite reads none.
+    os.environ.pop("POOL_STATE_DIR", None)
     if os.environ.get(
         MARKER
     ):  # a nested run (an xdist worker, a suite a test starts) keeps its own

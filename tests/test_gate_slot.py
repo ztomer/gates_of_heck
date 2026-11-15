@@ -22,6 +22,7 @@ import subprocess
 import time
 from pathlib import Path
 
+import pytest
 from test_push_gate import PUSH_GATE, _git, _repo
 from timing_bounds import GiveUp, assert_sooner
 
@@ -244,7 +245,9 @@ def test_zero_slots_is_off_and_garbage_is_refused(tmp_path):
     assert bad.returncode == 2 and "GOH_GATE_SLOTS must be" in bad.stderr, bad.stderr
 
 
-def test_the_default_is_one_slot_per_four_cores():
+def test_the_default_is_one_slot_per_eight_cores():
+    """GOH.ULTRARULES (2026-11-15): one per four cores (4 on this 16-core box) let the load average
+    reach 118-139 with six agents landing; one per eight is 2 here, at least one anywhere."""
     got = subprocess.run(
         ["python3", str(HELPER), "default"],
         capture_output=True,
@@ -252,7 +255,18 @@ def test_the_default_is_one_slot_per_four_cores():
         check=True,
         stdin=subprocess.DEVNULL,
     ).stdout.strip()
-    assert int(got) == max(1, (os.cpu_count() or 1) // 4)
+    assert int(got) == max(1, (os.cpu_count() or 1) // 8)
+
+
+@pytest.mark.parametrize(("cores", "slots"), [(16, 2), (8, 1), (4, 1), (1, 1), (None, 1), (64, 8)])
+def test_the_default_on_a_given_core_count(monkeypatch, cores, slots):
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location("gate_slot_default", HELPER)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    monkeypatch.setattr(mod.os, "cpu_count", lambda: cores)
+    assert mod.default_slots() == slots
 
 
 # --- through the push gate ----------------------------------------------------------------------

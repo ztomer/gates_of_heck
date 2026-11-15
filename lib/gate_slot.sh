@@ -13,7 +13,7 @@
 #         # gate.sh, held until it ends (the consumer copies that predate the slot all call
 #         # structural.sh first, and nothing else of goh's); otherwise take none
 #
-# GOH_GATE_SLOTS=N   how many gates at once (default: one per four cores, at least one;
+# GOH_GATE_SLOTS=N   how many gates at once (default: one per eight cores, at least one;
 #                    `python3 lib/gate_slot.py default` prints it). `0` turns the limit off.
 # GOH_GATE_SLOT_DIR  the lock files (default ~/.cache/goh/slots): machine-wide on purpose.
 # GOH_GATE_SLOT      set BY a gate holding a slot, "<slot file> <owner pid>", so a gate nested

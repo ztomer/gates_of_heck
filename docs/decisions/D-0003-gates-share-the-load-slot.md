@@ -27,7 +27,7 @@
   holds `registry.json` alone and is refused (or with `--wait`, waits) while any gate shares the
   slot; while it waits, `pending.experiment` makes new gates wait behind it. A dead owner's place
   is pruned at the next claim. The heavy-step bound inside a gate stays `lib/gate_slot.sh`
-  (`GOH_GATE_SLOTS`, one per four cores). `lib/load_bare.py` still refuses a bare build only
+  (`GOH_GATE_SLOTS`, one per eight cores since GOH.ULTRARULES; one per four before). `lib/load_bare.py` still refuses a bare build only
   beside an EXPERIMENT; beside gates a bare build is one more gate, not a spoiled measurement.
 - **Falsifier:** `tests/test_load_gate_share.py`. In the estate: a load-sensitive gate (a private
   consumer's frame clock) that fails only when two or three other gates share the slot means the bound is too

@@ -21,10 +21,13 @@ from typing import Any
 
 from conftest import REPO_ROOT, hermetic_env
 
+sys.path.insert(0, str(REPO_ROOT / "hooks" / "claude"))
+import model_choice
+
 RULES_FILE = REPO_ROOT / "hooks" / "claude" / "model_choice.json"
 RULES = json.loads(RULES_FILE.read_text(encoding="utf-8"))
 GUARD = REPO_ROOT / "hooks" / "claude" / "agent_guard.py"
-READERS = (GUARD, REPO_ROOT / "scripts" / "agent_audit.py")
+READERS = (GUARD, *(REPO_ROOT / "scripts" / f for f in ("agent_audit.py", "usage_review.py")))
 CHECK_KINDS = {"claude_version", "agent_enum", "contains", "price_row"}
 
 CLASS_LITERAL = re.compile(r"\b(?:sonnet|opus|haiku|fable)@(?:low|medium|high|xhigh|max)\b|\*@max")
@@ -115,10 +118,16 @@ def test_the_hook_fails_open_when_the_rules_file_cannot_be_read(tmp_path: Path) 
 
 def test_pool_first_names_real_tiers_and_a_task_class_for_each() -> None:
     """Owner rulings 2026-10-25 and 2026-11-01: every spawn weighs token-pool's `ask` before a
-    Claude subagent. The rules file says which tiers that is and which pool class each maps to."""
-    pool = RULES["pool_first"]
-    tiers = {v["tier"] for v in RULES["tiers"].values()}
-    assert set(pool["tiers"]) == tiers - {"never"}, "every tier a spawn may take weighs the pool"
-    assert "don't wait for me to prompt you to use agy" in pool["decided"]
-    assert set(pool["task_class"]) == set(pool["tiers"])
-    assert pool["tool"].startswith("mcp__") and pool["decided"]
+    Claude subagent -- per profile since 2026-11-15, when ultra narrowed it to read-only work. The
+    rules file says which tiers that is and which pool class each maps to."""
+    assert "don't wait for me to prompt you to use agy" in RULES["pool_first"]["decided"]
+    for name in RULES["profiles"]["order"]:
+        rules = model_choice.Rules(RULES, RULES_FILE, profile=name)
+        pool = rules.pool_first
+        tiers = {v["tier"] for v in rules.tiers.values()}
+        if name == "ultra":  # owner 2026-11-15 (GOH.ULTRARULES): pool-first is read-only work only
+            assert pool["tiers"] == ["lookup"], name
+        else:
+            assert set(pool["tiers"]) == tiers - {"never"}, f"{name}: every tier weighs the pool"
+        assert set(pool["tiers"]) <= set(pool["task_class"]), name
+        assert pool["tool"].startswith("mcp__") and pool["decided"]

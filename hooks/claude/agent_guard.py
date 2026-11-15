@@ -13,10 +13,16 @@ by hand; this hook keeps them structurally (tests/test_claude_agent_guard.py):
   Anything else is refused with the table in the reason, so the caller fixes it in one try. A
   spawn it allows gets the report contract appended to its prompt (once: a respawn carrying it is
   left alone). Agent types where the choice does not matter (`exempt_agent_types`) are exempt.
-* Free pools first (the rules file's `pool_first`, CLAUDE.md delegation rule 4): a spawn on any
-  tier it names (every tier but `never`, opus included since owner ruling 2026-11-01) must say in
-  its prompt that token-pool's `ask` was tried (`Pool: tried <...>`) or why it cannot do the work
-  (`Pool: unfit because <...>`); the ledger keeps the line as `pool`.
+* Profiles (the rules file's `profiles`, GOH.ULTRARULES): the tables in force are the owner's
+  declared profile (pro, max, ultra), dropped one step by the budget guard when token-pool's Claude
+  7-day meter is low, stale or unreadable (`model_choice.active_profile`). Every refusal goes
+  through `_deny`, which names the active profile and why it is active; the spawn line keeps
+  `profile`, `profile_why` and `meter`, the outcome line `load` and `cores` (the weekly usage
+  review, scripts/usage_review.py, reads them).
+* Free pools first (the active profile's `pool_first`, CLAUDE.md delegation rule 4): a spawn on
+  any tier it names (max and pro: every tier but `never`; ultra: read-only lookups only) must say
+  in its prompt that token-pool's `ask` was tried (`Pool: tried <...>`) or why it cannot do the
+  work (`Pool: unfit because <...>`); the ledger keeps the line as `pool`.
 * Lean agent types (the rules file's `lean_types`, GOH.LEANAGENT): a write spawn of a heavy type
   (`general-purpose`, whose first turn is ~70k tokens of MCP tool names and lists it never uses)
   is refused with the lean type goh installs (`repo-worker`, or `repo-worker-ui` for on-screen
@@ -183,11 +189,10 @@ def judge_choice(
         return f"{cls} is not in the table", info
     if rule["tier"] == "never":
         return f"{cls} is never chosen: {rule['why']}", info
-    need = set(rule["tags"])
-    if rule["need"] == "all" and not need <= set(tags):
-        return f"{cls} needs all of: {', '.join(sorted(need))}", info
-    if rule["need"] == "any" and not need & set(tags):
-        return f"{cls} needs one of: {', '.join(sorted(need))}", info
+    if not rules.accepts(rule, set(tags)):
+        need = "all of" if rule["need"] == "all" else "one of"
+        also = f", or all of: {', '.join(rule['also_all'])}" if rule.get("also_all") else ""
+        return f"{cls} needs {need}: {', '.join(sorted(rule['tags']))}{also}", info
     return None, info
 
 
@@ -238,6 +243,29 @@ def _routed(prompt: str, target: str, why: str, declared: str) -> str:
     return DECLARED.sub(swap, prompt)
 
 
+def _deny(reason: str, rules: model_choice.Rules) -> dict[str, Any]:
+    """The refusal, naming the active profile and why it is active (GOH.ULTRARULES): the one way
+    this hook refuses, so no refusal can leave the profile out."""
+    line = rules.profile_line()
+    reason = f"{reason}\nRules in force: {line}." if line else reason
+    return {"hookSpecificOutput": {"hookEventName": "PreToolUse", "permissionDecision": "deny",
+                                   "permissionDecisionReason": reason}}  # fmt: skip
+
+
+def _meter(reading: Any) -> dict[str, Any] | None:
+    """The meter figures a ledger line keeps (the weekly review's minimum reads them)."""
+    if not isinstance(reading, dict):
+        return None
+    return {k: v for k, v in reading.items() if k != "why"}
+
+
+def _load() -> list[float] | None:
+    try:
+        return [round(x, 2) for x in os.getloadavg()]
+    except OSError:
+        return None
+
+
 def on_spawn(event: dict[str, Any]) -> dict[str, Any] | None:
     """The PreToolUse output for an Agent/Task call, or None to let it run untouched."""
     tool_input = event.get("tool_input")
@@ -261,13 +289,11 @@ def on_spawn(event: dict[str, Any]) -> dict[str, Any] | None:
     if not exempt:
         why, info = judge_choice(model, effort, prompt, rules)
         if why:
-            reason = (
+            return _deny(
                 f"Refused: this {agent_type} spawn -- {why}. Name model AND effort, and declare "
-                f"them in the prompt as {FORMAT}, tags from this table:\n{rules.table_text()}"
+                f"them in the prompt as {FORMAT}, tags from this table:\n{rules.table_text()}",
+                rules,
             )
-            return {"hookSpecificOutput": {"hookEventName": "PreToolUse",
-                                           "permissionDecision": "deny",
-                                           "permissionDecisionReason": reason}}  # fmt: skip
     out: dict[str, Any] = {}
     final, new_input = prompt, dict(tool_input)
     declared = f"{info['model']}@{info['effort']}"
@@ -275,20 +301,14 @@ def on_spawn(event: dict[str, Any]) -> dict[str, Any] | None:
     if not exempt:
         why, pool = judge_pool(declared, prompt, rules)
         if why:
-            return {"hookSpecificOutput": {"hookEventName": "PreToolUse",
-                                           "permissionDecision": "deny",
-                                           "permissionDecisionReason": why}}  # fmt: skip
+            return _deny(why, rules)
     if not exempt and (why := _judge_ci(prompt, CONTRACT)):
-        return {"hookSpecificOutput": {"hookEventName": "PreToolUse",
-                                       "permissionDecision": "deny",
-                                       "permissionDecisionReason": why}}  # fmt: skip
+        return _deny(why, rules)
     escape = None
     if not exempt:
         why, escape = judge_type(agent_type, declared, prompt, rules)
         if why:
-            return {"hookSpecificOutput": {"hookEventName": "PreToolUse",
-                                           "permissionDecision": "deny",
-                                           "permissionDecisionReason": why}}  # fmt: skip
+            return _deny(why, rules)
     route = None
     if not exempt:
         route = rules.route(declared, info["tags"], hashlib.sha256(prompt.encode()).hexdigest())
@@ -311,6 +331,8 @@ def on_spawn(event: dict[str, Any]) -> dict[str, Any] | None:
         "route": route[1] if route else None, "pool": pool, "agent_type_escape": escape,
         "prompt_sha": hashlib.sha256(final.encode()).hexdigest(), "first_line": _first_line(prompt),
         "apps": appstate.snapshot(event.get("tool_use_id")),
+        "profile": rules.profile or None, "profile_why": rules.profile_why,
+        "meter": _meter(rules.meter),
     })  # fmt: skip
     if warning:
         out["systemMessage"] = warning
@@ -414,7 +436,7 @@ def on_stop(event: dict[str, Any]) -> list[str]:
         "faults": found_faults,
         "tokens": usage(text) if text is not None else None,
         "tokens_settled": settled, "apps": apps, "scratch_loose": loose,
-        "ci_direct": ci,
+        "ci_direct": ci, "load": _load(), "cores": os.cpu_count(),
     })  # fmt: skip
     scratch = scratch_guard.message(loose) if loose else None
     door = ci_door.message(ci) if ci else None

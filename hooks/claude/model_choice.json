@@ -114,6 +114,78 @@
     "sonnet@xhigh": {"tier": "never", "why": "Sonnet at xhigh/max costs more than Opus for less",
                      "rests_on": ["price.sonnet", "price.opus"]}
   },
+  "profiles": {
+    "_doc": "Which of the rules above are in force: the plan the owner pays for, narrowed by the budget guard. `declared` is the owner's plan, set by a person and by nothing else; `order` runs from the plan with the most headroom to the least, and the guard drops ONE step along it when the meter says the headroom is not there. Each profile's `changes` are laid over the top-level `tiers`, `pool_first` and `exploration` (a dict merges key by key, anything else replaces), so `max` -- no changes -- is the rules above exactly. model_choice.py resolves the active profile; agent_guard.py names it, and why it is active, in every refusal; scripts/model_choice_watch.py's usage review proposes moving `declared` or a profile's values with the week's numbers, and never edits this file.",
+    "declared": "ultra",
+    "order": ["ultra", "max", "pro"],
+    "decided": "owner 2026-11-15 (queue GOH.ULTRARULES): the Claude Ultra plan replaced Max -- 'All four' (the four ultra changes below), then the same day: \"keep pro/max / ultra profiles. reevaluate the rules on a regular cadence to fit the actual usage\". Approved this once as written here; later changes are proposals the owner applies.",
+    "measured": {
+      "window": "2026-11-08..2026-11-15, ~/.cache/goh/agent-spawns.jsonl",
+      "spawns": 615,
+      "pool_unfit": 600,
+      "pool_tried": 13,
+      "api_equivalent_usd": 5669,
+      "opus_share_of_spend": 0.96,
+      "claude_meter_left_pct": {"5h": 82, "7d": 95},
+      "agents_running": 6,
+      "load_average": [118, 139],
+      "cores": 16,
+      "reading": "a week on max rules spent ~96% of an API-equivalent $5,669 on Opus and left 95% of the 7-day meter: price, the reason behind the cheap tiers and the pool line on write spawns, was not the constraint; 600 of 615 spawns wrote `Pool: unfit` (the line was ceremony on write work); the machine, at load 118-139 on 16 cores, was"
+    },
+    "budget_guard": {
+      "meter_dir_env": "POOL_STATE_DIR",
+      "meter_dir": "~/.cache/token-pool",
+      "meter_file": "meter.json",
+      "source": "claude",
+      "window": "7d",
+      "windows": ["5h", "7d"],
+      "left_pattern": "{window}: (\\d+)% left",
+      "min_left_pct": 30,
+      "max_age_h": 6,
+      "why": "token-pool's meter (pool/meter.py; the 7-day window is the plan's binding one) below 30% left, a reading older than 6 h, or one that cannot be read drops the declared profile ONE step along `order`: a plan whose headroom cannot be seen is not spent as if it were there"
+    },
+    "review": {
+      "up_min_left_pct": 60,
+      "pool_unfit_share": 0.9,
+      "load_per_core": 4,
+      "why": "the weekly usage review (scripts/model_choice_watch.py): a week whose LOWEST 7d reading stayed at or over `up_min_left_pct` proposes the next profile up (with `pool_unfit_share` of spawns writing `Pool: unfit` as its evidence that the pool line is ceremony on write work); a week whose lowest reading fell under the guard's `min_left_pct` proposes the next profile down; a 1-minute load over `load_per_core` x cores when an agent landed proposes fewer gate slots (GOH_GATE_SLOTS, machine config: lib/gate_slot.py)"
+    },
+    "max": {
+      "about": "today's rules exactly (the plan before 2026-11-15): every tier weighs the pool, the cheap tiers alternate",
+      "changes": {}
+    },
+    "ultra": {
+      "about": "max plus four changes, measured on the week above: (1) pool-first narrows to read-only work; (2) the cheap first try is opus@medium; (3) at most 2 heavy gates at once machine-wide (machine config, lib/gate_slot.py, not a profile value); (4) the budget guard",
+      "changes": {
+        "pool_first": {"tiers": ["lookup"]},
+        "tiers": {
+          "opus@medium": {"tier": "cheap", "also_all": ["checkable", "known-fix"],
+                          "rests_on": ["price.opus", "bench.repo_tasks", "bench.escalation"]},
+          "sonnet@high": {"tier": "never",
+                          "why": "ultra: opus@medium solves more (86.6% of repo tasks vs sonnet@high 77.8%); price was its only reason, and the meter, not price, is the plan's limit",
+                          "rests_on": ["bench.repo_tasks"]},
+          "opus@low": {"tier": "never",
+                       "why": "ultra: opus@medium solves more (86.6% vs opus@low 74.8%); price was its only reason, and one escalation to opus@high stays (low-then-high 97% vs all-high 95.3%)",
+                       "rests_on": ["bench.repo_tasks", "bench.escalation"]}
+        },
+        "exploration": {"cheap_alternation": {"enabled": false}}
+      }
+    },
+    "pro": {
+      "about": "stricter than max, for a plan whose meter is the limit: a pool line on every tier (as max), sonnet@high the default write tier (77.8% at $0.33 per attempt: it solves more than opus@low for less), opus only for the hard tags (root cause, design, audit, research, security: the pool's `hard` class)",
+      "changes": {
+        "tiers": {
+          "sonnet@high": {"need": "any", "tags": ["checkable", "known-fix", "cross-module", "multi-session", "unchecked"]},
+          "opus@low": {"tier": "never",
+                       "why": "pro: sonnet@high solves more for less (77.8% at $0.33 vs opus@low 74.8% at $0.35 per attempt)",
+                       "rests_on": ["bench.repo_tasks"]},
+          "opus@medium": {"tags": ["unknown-root-cause", "design-ui", "audit-review", "research", "security"]},
+          "opus@high": {"tags": ["unknown-root-cause", "design-ui", "audit-review", "research", "security"]}
+        },
+        "exploration": {"cheap_alternation": {"enabled": false}}
+      }
+    }
+  },
   "exempt_agent_types": {
     "value": ["Explore", "claude-code-guide", "statusline-setup", "fork"],
     "why": "read-only lookups and meta agents, and `fork`, which ignores `model`: none lands commits, so they need no model and get no contract; their spawns are still ledgered"

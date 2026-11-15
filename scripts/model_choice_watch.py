@@ -16,7 +16,8 @@ outdated rules". Weekly (launchd), spending no tokens unless Claude Code itself 
    (the hook fell off), and when ~/.claude/settings.json's goh hook entries differ from
    `hooks/claude/registrations.json` (nothing else enforces that).
 4. AUDIT: `scripts/agent_audit.py` over the ledger -- silent failures and proposed rule changes.
-5. SPEND: `scripts/spend_watch.py` -- what subagents spent this week against the week before (cost
+5. USAGE REVIEW (GOH.ULTRARULES): `scripts/usage_review.py` proposes the profile usage fits.
+6. SPEND: `scripts/spend_watch.py` -- what subagents spent this week against the week before (cost
    shares, first-turn context, post-push share, idle-gap cache writes, Read bytes, repeated calls),
    calibrated against ccusage; a worse week, and a landed efficiency item that regressed against its
    `predicted`, are filed through the loop's `loopctl file`; agents' unfiled `Faults seen` are listed
@@ -37,6 +38,7 @@ from __future__ import annotations
 
 import argparse
 import datetime as dt
+import importlib
 import json
 import mmap
 import os
@@ -60,6 +62,8 @@ import apply_claude_hooks
 import model_choice
 import spend_watch
 from agent_guard import STATUSES, ledger_path
+
+usage_review = importlib.import_module("usage_review")  # scripts/, on sys.path above
 
 LABEL = "com.ztomer.goh-model-choice-watch"
 LOOP = Path.home() / "Projects" / ".loop"
@@ -341,6 +345,7 @@ def _findings(state: dict[str, Any], summary: str) -> str:
                   ""]  # fmt: skip
         lines += [f"- silent-failure: {s['time']} {s['class']} {s['first_line']}: {s['why']}"
                   for s in v["silent_failure"]]  # fmt: skip
+    lines += ["", *usage_review.render(r)] if (r := state.get("usage_review")) else []
     spend = state.get("spend")
     if spend:
         lines += [
@@ -420,6 +425,7 @@ def main(argv: list[str] | None = None) -> int:
     )
     ap.add_argument("--claude-md", type=Path, default=Path.home() / ".claude" / "CLAUDE.md")
     ap.add_argument("--no-spend", action="store_true", help="skip the SPEND section")
+    ap.add_argument("--notify", default="osascript", help="osascript, a notifier or ''")
     args = ap.parse_args(argv)
     if args.install:
         return install()
@@ -449,17 +455,15 @@ def main(argv: list[str] | None = None) -> int:
         "settings": settings_drift(args.settings, ROOT / "hooks" / "claude" / "registrations.json"),
         "audit": agent_audit.run(args.ledger, args.root, args.offline_audit),
     }  # fmt: skip
+    records = agent_audit.read(args.ledger)[0] if args.ledger.exists() else []
+    state["usage_review"] = usage_review.run(records, rules, args.days)
     if not args.no_spend:
         state["spend"] = spend_watch.run(
             projects=args.projects, now=dt.datetime.now(dt.UTC), queue=args.queue,
             loopctl=Path(args.loopctl) if args.loopctl else None, ccusage=args.ccusage or None,
             claude_md=args.claude_md, prior=prior.get("spend") or {}, repos=args.root)  # fmt: skip
         since = (prior.get("spend") or {}).get("ran_at")
-        rows = (
-            agent_audit.fault_rows(agent_audit.read(args.ledger)[0], since)
-            if args.ledger.exists()
-            else []
-        )
+        rows = agent_audit.fault_rows(records, since)
         try:
             items = json.loads(args.queue.read_text(encoding="utf-8")).get("items", [])
         except (OSError, ValueError):
@@ -487,6 +491,7 @@ def main(argv: list[str] | None = None) -> int:
             "".join(json.dumps(c, ensure_ascii=False) + "\n" for c in cands), encoding="utf-8"
         )
         sys.stdout.write("\n".join(spend_watch.render(state["spend"])) + "\n")
+    usage_review.post(state["usage_review"], args.notify, args.findings)
     print(summary)
     return 1 if red else 0
 

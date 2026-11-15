@@ -125,7 +125,7 @@ class World:
              str(t / "projects"), "--findings", str(t / "findings.md"), "--state",
              str(t / "state.json"), "--root", str(t), "--offline-audit",
              "--queue", str(t / "queue.json"), "--loopctl", "", "--ccusage", "",
-             "--claude-md", str(t / "CLAUDE.md"), *args],
+             "--claude-md", str(t / "CLAUDE.md"), "--notify", "", *args],
             capture_output=True, text=True, timeout=60, stdin=subprocess.DEVNULL, check=False,
             env=hermetic_env(NO_COLOR="1", GOH_MODEL_CHOICE=str(t / "rules.json"),
                              XDG_CACHE_HOME=str(t / "cache")),
