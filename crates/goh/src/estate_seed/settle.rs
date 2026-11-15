@@ -182,7 +182,12 @@ pub fn judge_settled(
     kind: Kind,
 ) -> Result<(Verdict, Settle), String> {
     let Scope { commit, full, read } = scope;
-    let mine = !repo.is_empty()
+    // A shape held back until the grace ends finds none of its sites yet: its entries are neither
+    // stale nor settled before then (`crate::grace::HELD_BACK_SEEDS`).
+    let held = crate::grace::holds_seed(kind.file);
+    let full = full && !held;
+    let mine = !held
+        && !repo.is_empty()
         && seed
             .range((repo.to_string(), String::new())..)
             .next()
