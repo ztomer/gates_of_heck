@@ -4,8 +4,8 @@
   is monitor, and only the done step refused it, after a 40-minute verify. `loopctl shippable ID
   --repo NAME` answers with done's own rule: an unknown item, a done one, or another repo's.
 * the hooks: koffee_big 2.17.5 pushed, then its release's bump commit refused '.githooks/pre-commit
-  is an OLDER stock hook'. The reading is structural.sh's own (gates/_hook_currency.sh), so the two
-  never disagree on what is stale.
+  is an OLDER stock hook'. The reading is structural.sh's own (lib/hook_currency.py, which
+  gates/_hook_currency.sh runs), so the two never disagree on what is stale.
 
 Each returns why the ship is refused, or None. Pinned by tests/test_ship_item.py.
 """
@@ -43,11 +43,10 @@ def item_refusal(repo: Path, loopctl: Path, item: str, name: str) -> str | None:
 
 
 def hook_refusal(repo: Path, goh_root: Path) -> str | None:
-    lib = shlex.quote(str(goh_root / "gates" / "_hook_currency.sh"))
-    script = f"GOH_ROOT={shlex.quote(str(goh_root))}; . {lib}; goh_stale_hooks"
-    done = subprocess.run(["bash", "-c", script], cwd=repo, env=_env(), capture_output=True,
-                          text=True, stdin=subprocess.DEVNULL, check=False, timeout=60)  # fmt: skip
-    stale = done.stdout.split()
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    import hook_currency
+
+    stale = hook_currency.refused(repo, goh_root, _env())
     if not stale:
         return None
     return (f"{repo.name}: {', '.join(stale)} is an OLDER stock hook, which refuses the release's "

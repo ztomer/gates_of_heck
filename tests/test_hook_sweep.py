@@ -16,11 +16,15 @@ from __future__ import annotations
 
 import hashlib
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
 from _fast_git import fast_init
 from conftest import REPO_ROOT, hermetic_env, native_goh_path
+
+sys.path.insert(0, str(REPO_ROOT / "lib"))
+import hook_currency  # the one reading `goh hooks` asks
 
 # name -> (commit, hook): retired stock copies that delegate to the runtime gate, each a hook-body
 # change that stranded consumers once it was retired untagged.
@@ -130,3 +134,37 @@ def test_a_delegating_hook_is_judged_by_its_bytes_not_a_tag(tmp_path):
     for name, (commit, hook) in ESTATE.items():
         repo = _consumer(tmp_path / "estate", name, hook, _blob(commit, hook))
         assert _stale(repo, goh) == [], name
+
+
+def _recorded(repo: Path, hook: str, body: bytes) -> None:
+    """Record `body` as what install.sh wrote, as install.sh records it."""
+    rec = repo / ".githooks" / ".goh-installed"
+    rec.mkdir(exist_ok=True)
+    (rec / f"{hook}.sha256").write_text(hashlib.sha256(body).hexdigest() + "\n", encoding="utf-8")
+
+
+# (commit, hook, recorded): a same-logic retired copy, and a commit-msg no list retires but
+# install.sh recorded writing. `goh hooks` called both stale while structural.sh said nothing.
+ONE_READING = {"same-logic": ("86a9ee0", "pre-push", False),
+               "recorded": ("b9df756", "commit-msg", True)}  # fmt: skip
+
+
+@pytest.mark.parametrize("case", sorted(ONE_READING))
+def test_every_hook_the_refresh_calls_stale_the_commit_gate_names(tmp_path, case):
+    """GOH.HOOKCURRENCYDUP: one reading of a stale hook. lib/hook_currency.py (the refresh, the
+    estate audit) and gates/_hook_currency.sh (structural.sh, goh ship) were two rules, and a hook
+    the first called stale the second passed in silence."""
+    commit, hook, recorded = ONE_READING[case]
+    body = _blob(commit, hook)
+    assert body != (REPO_ROOT / "hooks" / hook).read_bytes(), "the fixture is today's stock"
+    repo = _consumer(tmp_path, case, hook, body)
+    if recorded:
+        _recorded(repo, hook, body)
+    listed = hook_currency.stale(repo, REPO_ROOT, hermetic_env())
+    assert listed == [hook], listed
+    got = _structural(repo)
+    text = got.stdout + got.stderr
+    # It delegates, so it runs today's gate: named with its refresh, never refused.
+    assert got.returncode == 0, text
+    assert f".githooks/{hook} is an older stock hook" in text, text
+    assert "goh hooks --refresh" in text, text

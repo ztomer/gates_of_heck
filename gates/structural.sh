@@ -245,15 +245,18 @@ fi
 # still gated the working tree on 2026-10-05). A retired stock hash is pristine-but-old. It used to
 # be a warning, and five repos printed it on every commit for weeks without acting (2026-10-08):
 # a gate whose own hook is stale is not running today's gate, so it refuses, before the native
-# exec, so both tiers say it (tests/test_hook_currency.py). Only a BYTE-IDENTICAL retired copy is
-# refused: a hook a repo edited is not stock, and is its own business. Nothing is rewritten here --
-# `.githooks` is tracked, and a gate that edits the tree it judges dirties the commit it is in.
+# exec, so both tiers say it (tests/test_hook_currency.py). Only a BYTE-IDENTICAL stale copy (a
+# retired stock, or what install.sh recorded writing) is refused: a hook a repo edited is not
+# stock, and is its own business. Nothing is rewritten here -- `.githooks` is tracked, and a gate
+# that edits the tree it judges dirties the commit it is in. lib/hook_currency.py is the one
+# reading, shared with `goh hooks` and the estate audit (GOH.HOOKCURRENCYDUP).
 # An entry tagged `same-logic` retired only a comment, so its hook runs today's gate (6.19).
 # A retired copy that DELEGATES (execs commit_gate.sh/push_gate.sh) runs today's gate too, by its
 # bytes: it is warned, not refused, so a hook-body change strands no consumer (GOH.HOOKSWEEP).
 # shellcheck source=gates/_hook_currency.sh
 . "$HERE/_hook_currency.sh"  # one reading, shared with goh ship's preflight (GOH.SHIPITEM)
-_goh_stale="$(goh_stale_hooks)"
+_goh_unread() { err "could not read which hooks are stale (lib/hook_currency.py)"; exit 1; }
+_goh_stale="$(goh_stale_hooks)" || _goh_unread
 if [ -n "$_goh_stale" ]; then
     while IFS= read -r _goh_h; do
         err "$_goh_h is an OLDER stock hook: the gate it runs is not today's"
@@ -264,7 +267,7 @@ if [ -n "$_goh_stale" ]; then
 fi
 unset _goh_h _goh_stale
 # A retired copy that delegates runs today's gate (GOH.HOOKSWEEP): named, never refused.
-_goh_aging="$(goh_aging_hooks)"
+_goh_aging="$(goh_aging_hooks)" || _goh_unread
 if [ -n "$_goh_aging" ]; then
     while IFS= read -r _goh_h; do
         warn "$_goh_h is an older stock hook; it delegates, so today's gate runs -- refresh it"
