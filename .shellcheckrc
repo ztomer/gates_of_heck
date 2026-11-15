@@ -1,3 +1,6 @@
 # Resolve a `. "$(dirname "${BASH_SOURCE[0]}")/x.sh"` source against the script's own directory,
 # so shellcheck FOLLOWS it (SC1091) instead of looking under the cwd. GOH.VENDOR, 2026-11-08.
 source-path=SCRIPTDIR
+# Follow sourced files for EVERY shellcheck run (an editor, a hosted log, a bare `shellcheck f`),
+# not only the gate's `-x`: without it each source is an SC1091 info the gate never sees (GOH.DEPSBEHIND).
+external-sources=true

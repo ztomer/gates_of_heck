@@ -79,14 +79,14 @@ for _tui in "${GOH_GIT_ROOT:-}/tui/lib.sh" tui/lib.sh "$GOH_ROOT/tui/lib.sh"; do
     [ -n "$_tui" ] && [ -f "$_tui" ] && . "$_tui" && break
 done
 unset _tui
-info() { printf '→ %s\n' "$*"; }
-ok() { printf '✓ %s\n' "$*"; }
-warn() { printf '⚠ %s\n' "$*" >&2; }
-err() { printf '✗ %s\n' "$*" >&2; }
-command -v _lib_info >/dev/null 2>&1 && {
-    info() { _lib_info "$*"; }; ok() { _lib_ok "$*"; }
-    warn() { _lib_warn "$*"; }; err() { _lib_err "$*"; };
-}
+# info/err/warn only: the gate and _coverage_rust.sh call nothing else (an unused `ok` was SC2329).
+if command -v _lib_info >/dev/null 2>&1; then
+    info() { _lib_info "$*"; }; warn() { _lib_warn "$*"; }; err() { _lib_err "$*"; }
+else
+    info() { printf '→ %s\n' "$*"; }
+    warn() { printf '⚠ %s\n' "$*" >&2; }
+    err() { printf '✗ %s\n' "$*" >&2; }
+fi
 die() { err "coverage_gate: $*"; exit 2; }
 
 # An export that fails says WHY, here, from its own log: the failing test's
