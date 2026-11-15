@@ -29,6 +29,9 @@ KEY = "GOH_UNREAPED_SPAWN_MIN_FILES"
 
 
 def _fixture(repo: Path, gatesrc: str) -> None:
+    # The push layer for the fixture's Python, so `goh layer-parity` (judged under GOH_GRACE=over
+    # here) is green and the floors are what these tests judge.
+    write(repo, "tools/gate.sh", '#!/bin/bash\n"$GOH/gates/py_staged.sh" --all .\n')
     write(repo, ".gatesrc", "GOH_MAX_LINES=500\n" + gatesrc)
     write(repo, "tests/test_a.py", TEST_SRC)
     write(repo, "tests/test_b.py", TEST_SRC)

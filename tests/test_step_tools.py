@@ -16,7 +16,7 @@ from pathlib import Path
 
 import pytest
 from _gatesrc_kit import write_gatesrc
-from conftest import REPO_ROOT
+from conftest import REPO_ROOT, hermetic_env
 
 sys.path.insert(0, str(REPO_ROOT / "gates"))
 import required_tools
@@ -37,7 +37,7 @@ def _repo(tmp_path: Path, steps: str, extra: str = "") -> Path:
 
 
 def _cli(repo: Path, *args: str, grace: str) -> subprocess.CompletedProcess:
-    env = dict(os.environ, GOH_GRACE=grace, GOH_LIVE="1")
+    env = hermetic_env(GOH_GRACE=grace, GOH_LIVE="1")
     return subprocess.run(
         [sys.executable, str(CLI), "--repo", str(repo), *args],
         capture_output=True, text=True, env=env, stdin=subprocess.DEVNULL, check=False,
@@ -100,7 +100,7 @@ def test_the_python_grace_is_the_rust_one():
 def test_local_ci_refuses_the_same_step_before_running_any(tmp_path, grace, code):
     marker = tmp_path / "ran"
     repo = _repo(tmp_path, f"touch {marker}:frobnicate --all")
-    env = dict(os.environ, GOH_GRACE=grace)
+    env = hermetic_env(GOH_GRACE=grace)
     r = subprocess.run(
         ["/bin/bash", str(LOCAL_CI)], cwd=repo, capture_output=True, text=True, env=env,
         stdin=subprocess.DEVNULL, check=False,

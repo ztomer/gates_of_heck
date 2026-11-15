@@ -29,6 +29,9 @@ import subprocess
 import sys
 import time
 
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "checks"))
+from _gitutil import foreign_repo_env  # checks/ is the one copy
+
 # What every runner image the house uses carries (macOS with the Xcode command-line tools, and
 # ubuntu), so a step may run it with no table row: the shell and its utilities, git, make, the
 # Apple toolchain drivers, and rustup's own binaries (a tool the manifest names is not repeated). A
@@ -131,6 +134,7 @@ def _steps(repo: str) -> tuple[list[str], set[str]]:
     out = subprocess.run(
         ["bash", "-c", script], cwd=repo, capture_output=True, text=True,
         stdin=subprocess.DEVNULL, check=False,
+        env=foreign_repo_env(),  # sourcing .gatesrc needs no repository bound
     ).stdout  # fmt: skip
     steps, _, declared = out.partition("\0")
     return [s for s in steps.split(":") if s.strip()], set(declared.split())
