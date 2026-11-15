@@ -60,6 +60,11 @@ PRIMARY checkout -- the one every session shares; a linked worktree is its creat
 moves other sessions' work with yours. The escape is `# reset-ok: <reason>`. The rule is
 `lib/shared_checkout.py`.
 
+THE TEMP SWEEP (GOH.FLAKYENVCOV, 2026-11-14). `rm -rf $TMPDIR/goh-pytest.*/` deleted every live
+gate's pytest temp root, and another lane's land failed with 1281 FileNotFoundError errors. A
+recursive rm (or `find -delete`/`-exec rm`) whose glob can reach a goh temp root is refused; one
+named root runs. The escape is `# temp-sweep-ok: <reason>`. The rule is `lib/temp_sweep.py`.
+
 It judges only what it can parse. A command it cannot split runs, unjudged: the guard must never
 be the thing that breaks an ordinary command. A pattern inside a string or a heredoc is TEXT, not
 code, so it is not a finding: `echo 'while :; do :; done'` writes a loop, it does not run one. And
@@ -146,6 +151,12 @@ try:
     import shared_checkout
 except ImportError:
     shared_checkout = None
+
+# A glob rm over goh's per-run temp roots (GOH.FLAKYENVCOV, 2026-11-14): fails open.
+try:
+    import temp_sweep
+except ImportError:
+    temp_sweep = None
 
 # The tools whose input holds a shell command (Bash, Monitor): ONE list, `lib/shell_tools.py`.
 try:
@@ -460,6 +471,7 @@ def main() -> int:
             or judge_self_match(command)
             or judge_secret_render(command)
             or judge_name_kill(command)
+            or (temp_sweep.judge(command) if temp_sweep else None)
             or judge_priority(command)
             or judge_bare(command)
         )
