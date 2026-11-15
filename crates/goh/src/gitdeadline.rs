@@ -25,7 +25,7 @@
 //! The verb is git's verb, a word (`crate::gitargv`), never a substring of the line: a commit
 //! message saying "diff" or a plumbing `diff-tree` is no reader. A `git diff` reads the work tree
 //! unless it says `--cached`/`--staged`/`--no-index`, names a range (`A..B`), or names two operands
-//! before `--` (two revisions: koffee_big's `git diff --quiet "v$VERSION" HEAD` took no lock and
+//! before `--` (two revisions: `koffee_big`'s `git diff --quiet "v$VERSION" HEAD` took no lock and
 //! was the false positive that found this).
 //!
 //! Test files are not read (`tests/`, `test_*.py`, `*_test.py`, `conftest.py`): a test stops git

@@ -189,3 +189,32 @@ def test_a_starved_consumer_refuses_the_land_as_a_timeout(tmp_path, starved, mon
     assert rec["turned_red"] == {}, rec
     assert any("TIMED OUT after" in e and "no verdict" in e for e in rec["errors"]), rec
     assert "fix the findings" not in out, out
+
+
+def test_the_skeleton_carries_the_bash_guard_a_shell_gate_sources(tmp_path):
+    """GOH.BASH5SILENT: every goh shell gate sources `../lib/bash5.sh || exit`. The skeleton copied
+    the gate directory alone, so a shell gate died on the missing guard and the sweep read that as
+    the gate failing on an empty tree (check_no_screen_linkage.sh's excuse called stale). The guard
+    comes along, ignored like the gate directory, so the sweep measures the gate, not its guard."""
+    root = tmp_path / "repo"
+    (root / "checks").mkdir(parents=True)
+    (root / "lib").mkdir()
+    (root / "lib" / "bash5.sh").write_text((REPO_ROOT / "lib" / "bash5.sh").read_text())
+    gate = root / "checks" / "check_args.sh"
+    gate.write_text(
+        '#!/usr/bin/env bash\n. "$(dirname "${BASH_SOURCE[0]}")/../lib/bash5.sh" || exit; '
+        'goh_bash5 "$@"\necho "usage: check_args.sh FILE" >&2\nexit 2\n'
+    )
+    gate.chmod(0o755)
+    fast_init(root)
+    skeleton = ces.build_skeleton(str(root), str(root / "checks"), str(tmp_path / "skeleton"))
+    r = subprocess.run(
+        ["bash", os.path.join(skeleton, "checks", "check_args.sh")],
+        capture_output=True, text=True, check=False, stdin=subprocess.DEVNULL,
+    )  # fmt: skip
+    assert r.returncode == 2 and "usage:" in r.stderr, r.stderr
+    listed = subprocess.run(
+        ["git", "-C", skeleton, "ls-files", "--others", "--exclude-standard"],
+        capture_output=True, text=True, check=True, stdin=subprocess.DEVNULL,
+    ).stdout  # fmt: skip
+    assert "bash5.sh" not in listed, listed

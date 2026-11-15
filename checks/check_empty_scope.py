@@ -65,6 +65,7 @@ import not_applicable
 
 GATE_DIRS = ("tools", "checks")
 ALLOW_FILE = "empty_scope_allow.json"
+GUARD = "lib/bash5.sh"  # every goh shell gate sources it from beside its gate directory
 
 # Root files that give the skeleton its SHAPE. Without them a gate may die on "this is not a Swift
 # package" -- a legitimate refusal, but it answers a different question than the one being asked,
@@ -182,21 +183,20 @@ def build_skeleton(root, gates, workdir):
         for name in dirnames:
             rel = os.path.relpath(os.path.join(current, name), root)
             os.makedirs(os.path.join(workdir, rel), exist_ok=True)
+    # Runtime, not content (GOH.BASH5SILENT): a shell gate missing its guard dies, read as refusal.
+    if os.path.isfile(guard := os.path.join(os.path.dirname(gates), GUARD)):
+        shutil.copy2(guard, os.path.join(workdir, GUARD))  # ignored below, like the gate directory
     for key, value in (("user.email", "scope@example.invalid"), ("user.name", "scope")):
         scratch_git("-C", workdir, "config", key, value, check=True)
-    # The gate directory is on DISK (the gates must be runnable, and their baselines readable)
-    # but deliberately NOT TRACKED and IGNORED. Otherwise every whole-repo scanner finds the
-    # copied gates, does real work on them, and passes honestly -- which reports as blindness.
-    # Measured: leaving it tracked made check_no_emoji say "18 tracked files clean" and
-    # check_pyflakes "99 file(s) clean" on a tree with no content. Untracked alone stopped being
-    # enough on 2026-09-14, when full-scope listing became the WORKTREE (tracked + untracked,
-    # minus ignored) so a brand-new file is policed before it is staged; the skeleton now also
-    # ignores the gate dir via .git/info/exclude -- repo-local, never a tracked file, so it adds
-    # no content of its own. A scanner then sees what it would really see over an empty tree.
+    # The gate directory is on DISK (runnable, baselines readable) but NOT TRACKED and IGNORED, or
+    # every whole-repo scanner finds the copied gates and passes honestly, which reads as blindness
+    # (tracked, check_no_emoji said "18 tracked files clean" over no content). Untracked stopped
+    # being enough once full scope became the WORKTREE (2026-09-14): .git/info/exclude ignores it.
     info_dir = os.path.join(workdir, ".git", "info")
     os.makedirs(info_dir, exist_ok=True)
     with open(os.path.join(info_dir, "exclude"), "a", encoding="utf-8") as fh:
         fh.write(f"/{os.path.basename(gates)}/\n")
+        fh.write(f"/{GUARD}\n")
     scratch_git("-C", workdir, "add", "-A", "--", f":!{os.path.basename(gates)}")
     scratch_git("-C", workdir, "commit", "-qm", "skeleton", "--allow-empty")
     return workdir
