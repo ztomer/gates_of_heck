@@ -1,10 +1,11 @@
 """`goh commit-class`: a fix names the CLASS it belongs to, and a class seen twice before is ended.
 
-Ported from ZoneWM's `tools/check_commit_class.py` (roadmap Phase 8; its selftest cases are the
-first block below). One deliberate change, at ZoneWM's suggestion: a new commit's trailers must be
-in git's own trailer block -- the message's LAST paragraph -- so `git log --format=%(trailers)`
-and every other tool reads what the gate read. History is read the old way too (a `Class:` line
-anywhere), so the classes committed before the port still count toward a third instance.
+Ported from a private Swift app's `tools/check_commit_class.py` (roadmap Phase 8; its selftest cases
+are the first block below). One deliberate change, at a private Swift app's suggestion: a new
+commit's trailers must be in git's own trailer block -- the message's LAST paragraph -- so `git log
+--format=%(trailers)` and every other tool reads what the gate read. History is read the old way too
+(a `Class:` line anywhere), so the classes committed before the port still count toward a third
+instance.
 """
 
 from __future__ import annotations
@@ -242,8 +243,8 @@ def test_a_replay_judges_history_by_the_rule_it_was_written_under(repo: Path) ->
 
 
 def test_a_reworded_third_instance_is_still_the_class(repo: Path) -> None:
-    """ZoneWM's own third "ceiling recorded" class (2026-10-08): written afresh each time, so the
-    prototype's half-the-words rule saw three unrelated classes and refused none."""
+    """A private Swift app's own third "ceiling recorded" class (2026-10-08): written afresh each
+    time, so the prototype's half-the-words rule saw three unrelated classes and refused none."""
     earlier = (
         "a ceiling recorded over a defect, which then guards the defect",
         "a ceiling recorded under conditions the gate never judges it in",

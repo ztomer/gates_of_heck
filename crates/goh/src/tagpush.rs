@@ -14,7 +14,7 @@
 //! here and nowhere else. It must be in this push or already on the remote.
 //!
 //! A branch push is any line whose REMOTE ref is a branch: a pinned push
-//! (`git push origin <sha>:refs/heads/main`, the `make push` of `ZoneWM`) hands the
+//! (`git push origin <sha>:refs/heads/main`, the `make push` of a private Swift app) hands the
 //! hook a sha as its local ref. The remote is asked at the URL git hands the
 //! hook, and named by its name in the fix line.
 

@@ -2,10 +2,10 @@
 empty-tree sweep never reads a checker that CRASHED as one that refused.
 
 2026-10-05: `~/.zshrc` exports `PYTHONPATH=$GOH_DIR`, and non-interactive shells never read
-`~/.zshrc`. ZoneWM's tools failed `from tui.lib import ...` there and its Makefile now exports the
-path itself; in a push export the empty-tree sweep's skeleton mirrors `tui/` EMPTY, so with no
-PYTHONPATH every checker died on `ModuleNotFoundError` -- and the sweep scored each crash (exit 1)
-as a healthy refusal of the empty tree.
+`~/.zshrc`. A private Swift app's tools failed `from tui.lib import ...` there and its Makefile now
+exports the path itself; in a push export the empty-tree sweep's skeleton mirrors `tui/` EMPTY, so
+with no PYTHONPATH every checker died on `ModuleNotFoundError` -- and the sweep scored each crash
+(exit 1) as a healthy refusal of the empty tree.
 """
 
 import os

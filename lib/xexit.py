@@ -4,10 +4,10 @@
 usage: xexit.py [--say LABEL] LOG   prints each `✗` status line in LOG; exit 1 when there is one.
   --say LABEL: to stderr, with the refusal naming LABEL (what goh_step and local_ci.sh print).
 
-In the house TUI contract `✗` means FAILURE and `⚠` means advisory. ZoneWM's census_bench void
-hold and three render selftests printed `✗` and exited 0, and the gate called them green (fixed
-there in ZoneWM 06ee510e). goh_step and local_ci.sh run every gate step, so both ask this ONE
-predicate after a step exits 0; the Rust tier's delegated steps ask its twin
+In the house TUI contract `✗` means FAILURE and `⚠` means advisory. A private Swift app's
+census_bench void hold and three render selftests printed `✗` and exited 0, and the gate called them
+green (fixed there in a private Swift app 06ee510e). goh_step and local_ci.sh run every gate step,
+so both ask this ONE predicate after a step exits 0; the Rust tier's delegated steps ask its twin
 (crates/goh/src/step_report.rs `cross_lines`). A status line is one whose first visible
 character, after indentation and colour escapes, is `✗`; a `✗` quoted mid-line (a calibration
 plant's row, a docs table) is text, not a verdict. An advisory says `⚠`.

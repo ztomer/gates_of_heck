@@ -180,9 +180,10 @@ def listed_files(root: str, staged: bool) -> list[str]:
     if staged:
         return names
     # A tracked file deleted from the worktree is still in the INDEX, so `--cached` names it -- but
-    # it is not in the tree "full" judges. Measured 2026-11-11: routines had eight fixtures deleted
-    # mid-edit, and check_estate_corpus.py died copying the first (FileNotFoundError), which took
-    # structural --full and the empty-scope sweep red in goh over another repo's working state.
+    # it is not in the tree "full" judges. Measured 2026-11-11: a private Rust app had eight
+    # fixtures deleted mid-edit, and check_estate_corpus.py died copying the first
+    # (FileNotFoundError), which took structural --full and the empty-scope sweep red in goh over
+    # another repo's working state.
     gone = subprocess.run(
         ["git", "-C", root, "ls-files", "-z", "--deleted"],
         capture_output=True,

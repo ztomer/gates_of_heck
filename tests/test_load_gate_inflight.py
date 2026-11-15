@@ -178,9 +178,9 @@ def test_an_expired_wait_names_what_it_waited_for_and_the_load(tmp_path: Path) -
 
 def test_the_wait_does_not_queue_behind_gates_that_arrive_later(tmp_path: Path) -> None:
     """The cause of the unbounded wait: it waited for the machine to be CLEAR, and with many
-    sessions a new gate starts before the last one ends (measured 2026-11-08: a ZoneWM pre-push
-    of 8 min overlapped by a stream of monitor pre-commits). A gate that starts after the wait
-    began is no worse off than one that starts a second after the experiment does: the wait
+    sessions a new gate starts before the last one ends (measured 2026-11-08: a private Swift app
+    pre-push of 8 min overlapped by a stream of monitor pre-commits). A gate that starts after the
+    wait began is no worse off than one that starts a second after the experiment does: the wait
     queues behind the gates AHEAD of it, and names the late ones."""
     directory = tmp_path / "load"
     directory.mkdir()

@@ -109,7 +109,7 @@ def test_hook_blocks_violating_commit(repo):
 def test_pre_commit_runs_the_repo_gate_staged_layer(repo):
     """The commit hook must go THROUGH tools/gate.sh --staged, not straight to
     structural.sh: the starter gate.sh invites per-language staged layers, and
-    a hook that bypasses it makes every such layer decorative (media_server
+    a hook that bypasses it makes every such layer decorative (a private server workspace
     2026-09-21: a Rust gate wired under --staged never ran on commit)."""
     subprocess.run(
         ["/bin/bash", str(REPO_ROOT / "install.sh"), str(repo)],

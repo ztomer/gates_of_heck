@@ -1,6 +1,6 @@
 //! The check's specification as a table: every read RED on the line named, every mention GREEN.
 //!
-//! The first row is the incident as it was written (routines' and `media_server`'s tools/gate.sh,
+//! The first row is the incident as it was written (two private consumers' tools/gate.sh,
 //! 2026-10-08): a gate a test ran on a FIXTURE inherited the outer hook's carried index and
 //! judged the outer repository's index ("unable to read 404acec").
 

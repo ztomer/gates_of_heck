@@ -10,7 +10,7 @@
 #   * a changed `.git/config` (a remote URL, an include, any key) REFUSES the push, naming each key
 #     with its old and new value, userinfo redacted;
 #   * a moved ref is NAMED, not refused: another session commits to the same repository while a long
-#     gate runs (ZoneWM, D-0211), so a ref that moved is often someone else's work, and refusing it
+#     gate runs (a private Swift app, D-0211), so a ref that moved is often someone else's work, and refusing it
 #     would blame the gate for it. `refs/remotes` is left out: a fetch moves those legitimately.
 #     A branch's `branch.<name>.*` keys go with its ref: when refs/heads/<name> appeared or vanished,
 #     they are named with it, not refused (a concurrent branch delete refused a land, 2026-10-19),

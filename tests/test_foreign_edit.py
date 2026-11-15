@@ -1,6 +1,6 @@
 """LOOP.FOREIGNEDIT and LOOP.GHDOOR: a subagent keeps to its own item's repos and off gh CI polls.
 
-LOOP.FOREIGNEDIT (2026-11-11): WG.7.K's agent (item repo koffee_big) edited ZoneWM's
+LOOP.FOREIGNEDIT (2026-11-11): WG.7.K's agent (item repo koffee_big) edited a private Swift app's
 WidgetPanel.swift while ZW.SPACEWALL's agent ran `make push` in that tree.
 `hooks/claude/hold_guard.py` now reads the loop queue (`lib/queue_hold.py`): a subagent's
 Edit/Write/NotebookEdit, or a changing shell command, inside a repo an in-progress item OTHER

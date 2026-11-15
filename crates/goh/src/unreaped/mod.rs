@@ -2,7 +2,7 @@
 //!
 //! A TEST that spawns a long-running child no guard reaps leaks it, and so
 //! does one whose reap is real but sits BELOW a line that can panic: a failing
-//! test skips it (`media_server`, 2026-10-03: nine orphans, each holding the
+//! test skips it (a private server workspace, 2026-10-03: nine orphans, each holding the
 //! cargo build lock, and the only symptom was a later run printing nothing).
 //! The measured table that is this gate's specification lives in the
 //! reference's docstring and `tests/unreaped_spawn_table*.py`;
@@ -238,7 +238,7 @@ pub fn report(outcome: &Outcome) -> (i32, String) {
             "The only shape that survives a panic is a GUARD: wrap the Child in a ReapOnDrop whose",
             "Drop impl calls kill() and wait(), or use `with subprocess.Popen(...)`, or a shell",
             "`trap cleanup EXIT` that kills $!. If the reap is explicit, put it ABOVE the first",
-            "assertion -- the ordering IS the defect (media_server, 2026-10-03: nine live orphans,",
+            "assertion -- the ordering IS the defect (a private server workspace, 2026-10-03: nine live orphans,",
             "each holding the cargo build lock, and the only observable was a test run printing",
             "nothing at all). A gate with no ceiling on its own wait is the other half: see",
             "lib/bounded_run.py and GOH_LCI_TIMEOUT / GOH_STEP_TIMEOUT.",

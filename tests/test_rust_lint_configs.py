@@ -5,7 +5,7 @@ Until now no test exercised GOH_RUST_LINT_CONFIGS at all. So, on a real crate:
 * CALIBRATION: Linux-only dead code is invisible to the host clippy and red under a
   `--target x86_64-unknown-linux-musl` config -- the property the config exists for;
 * GOH_RUST_LINT_CARGO runs the `--target` configs (only those) through the named cargo command --
-  media_server's `cargo-zigbuild`, whose `zig cc` builds ring's C for musl;
+  a private server workspace's `cargo-zigbuild`, whose `zig cc` builds ring's C for musl;
 * a named command that is not installed fails up front, before any clippy.
 """
 

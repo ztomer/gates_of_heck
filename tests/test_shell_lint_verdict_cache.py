@@ -1,10 +1,10 @@
 """`goh shell-lint` reuses a file's verdict only when nothing it depends on moved (BACKLOG P4).
 
-Shell lint was the pole of a structural run (media_server `--full`: 1.57 of 1.9 s, all of it
-shellcheck). Its verdict is a pure function of the file's bytes and path, both tools, the flags,
-`SHELLCHECK_OPTS` and every `.shellcheckrc` shellcheck would read -- so the key names all of them,
-and each way a hit could be wrong is planted here. A logging `shellcheck` on PATH says which files
-the tool was really asked about.
+Shell lint was the pole of a structural run (a private server workspace `--full`: 1.57 of 1.9 s, all
+of it shellcheck). Its verdict is a pure function of the file's bytes and path, both tools, the
+flags, `SHELLCHECK_OPTS` and every `.shellcheckrc` shellcheck would read -- so the key names all of
+them, and each way a hit could be wrong is planted here. A logging `shellcheck` on PATH says which
+files the tool was really asked about.
 """
 
 from __future__ import annotations

@@ -1,6 +1,6 @@
 """The hook's carried index is read only by `goh_bind_hook_index` (`crates/goh/src/hookindex/`).
 
-routines' and media_server's tools/gate.sh read `${GOH_HOOK_INDEX_FILE:-...}` bare, so a gate a
+Two private consumers' tools/gate.sh read `${GOH_HOOK_INDEX_FILE:-...}` bare, so a gate a
 test ran on a FIXTURE under a `commit -a` hook bound the outer commit's index and died "unable to
 read 404acec" (2026-10-08, contract #12). What an expansion is lives beside the code
 (`hookindex/tests.rs`, mutation-proven); this file is the whole-repo behaviour: the incident as
@@ -16,7 +16,7 @@ from pathlib import Path
 from conftest import REPO_ROOT, commit_all, git, hermetic_env, run_goh, write
 
 LABEL = "no bare read of the hook's index"
-# routines' tools/gate.sh line 33 before 852b8d5.
+# A private Rust app's tools/gate.sh line 33 before 852b8d5.
 BARE = (
     "#!/usr/bin/env bash\nset -euo pipefail\n"
     'staged="$(GIT_INDEX_FILE="${GOH_HOOK_INDEX_FILE:-$(git rev-parse --git-path index)}" '
@@ -170,7 +170,8 @@ def test_every_index_read_shape_is_named(repo: Path) -> None:
 
 
 def test_a_private_index_the_script_chose_is_not_the_hooks(repo: Path) -> None:
-    """ZoneWM's release_precheck.sh shape: GIT_INDEX_FILE names a copy it made on purpose."""
+    """A private Swift app's release_precheck.sh shape: GIT_INDEX_FILE names a copy it made on
+    purpose."""
     write(
         repo,
         "tools/gate.sh",

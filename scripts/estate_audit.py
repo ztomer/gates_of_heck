@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """estate_audit.py -- the house Rust audit over every consumer, on a schedule (BACKLOG 6.13).
 
-RUSTSEC-2024-0449 turned antiknob's and media_server's pushes red at the same moment with no code
-change: the gate working as designed, found at the worst time. This runs rust_gate.sh's advisory
-step (`cargo audit`, biting) over every tracked Cargo.lock under the estate root, from each
+RUSTSEC-2024-0449 turned antiknob's and a private server workspace's pushes red at the same moment
+with no code change: the gate working as designed, found at the worst time. This runs rust_gate.sh's
+advisory step (`cargo audit`, biting) over every tracked Cargo.lock under the estate root, from each
 workspace root so its own `.cargo/audit.toml` exemptions apply, and records what fires in one
 state file. hooks/claude/estate_advisories.py reads that file at the start of every Claude
 session -- where the owner already looks -- and says so when the file is missing or old, because
@@ -84,7 +84,7 @@ def default_state() -> Path:
 
 def repos(root: Path) -> list[Path]:
     """Every git work tree at most REPO_DEPTH below the root, nested ones included: a repository
-    inside another's tree (servers/media_server) is not tracked by its parent, so the walk goes on
+    inside another's tree (a nested server repo) is not tracked by its parent, so the walk goes on
     below a repository rather than stopping at it."""
     return estate_registry.walk_repos(root, estate_registry.REPO_DEPTH)
 
@@ -94,7 +94,7 @@ def gated(repo: Path) -> bool:
     wires goh into, so a work tree without one is a third-party clone kept for reference or
     vendoring. No push of its is red, and what a vendored path dependency contributes to a house
     build is already in the CONSUMER's own lock, which is audited. (The enclosing repo's ignore
-    list is no discriminator: servers/media_server is ignored by servers/ and is a house repo.)"""
+    list is no discriminator: a nested server repo is ignored by servers/ and is a house repo.)"""
     return (repo / ".gatesrc").is_file()
 
 

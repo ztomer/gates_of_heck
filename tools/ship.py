@@ -228,9 +228,9 @@ def loopctl() -> Path:
 
 def preflights(repo: Path, cfg: dict[str, str], version: str, summary="") -> list[tuple[str, str]]:
     """The commands asked before the push when the release step will run, in order: goh's
-    changelog reading (GOH.SHIPUNRELEASED: routines' kit said `Unreleased is empty: nothing to
-    release` after its push), then the repo's GOH_SHIP_PREFLIGHT, each as (whose, command). None
-    when no release runs."""
+    changelog reading (GOH.SHIPUNRELEASED: a private Rust app's kit said `Unreleased is empty:
+    nothing to release` after its push), then the repo's GOH_SHIP_PREFLIGHT, each as (whose,
+    command). None when no release runs."""
     if not (cfg["GOH_SHIP_RELEASE"] and version):
         return []
     if any(SEMVER.match(t) for t in git(repo, "tag", "--points-at", "HEAD").splitlines()):

@@ -24,7 +24,7 @@ A path dependency's sources. `.package(path: "../Other")` compiles the other
 package into the same test binary with coverage on, and its files carry no
 marker the rule above can see: they are ordinary sources at an absolute path
 outside the package. token-pool's widget (2026-11-07) read 39.3% over 17
-files, 12 of them ZoneWM's SpaceBarKit -- the number measured the kit. So for
+files, 12 of them a private Swift app's SpaceBarKit -- the number measured the kit. So for
 an SPM package the denominator is the package's OWN non-test targets, read
 from `swift package describe --type json` (the manifest's answer, never a tree
 walk), and a file outside every one of those target directories is not code

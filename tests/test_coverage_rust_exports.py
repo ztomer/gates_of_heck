@@ -339,7 +339,7 @@ def test_coverage_build_never_shares_the_build_dir(tmp_path):
     exports from -- live in ONE directory shared with ordinary builds. The
     gate then merged stale instrumented binaries from the previous source
     into the report: lines past the end of the current file, all "uncovered",
-    and a 96% tree read 93.5% (routines, 2026-09-21). Every build-driving
+    and a 96% tree read 93.5% (a private Rust app, 2026-09-21). Every build-driving
     cargo call must see the build-dir pinned to the gate's OWN directory for
     this project: since 2026-10-17 that is `$GOH_COV_CACHE/<path key>/build`,
     outside the tree so a recreated push worktree keeps it (BACKLOG 5.1), and

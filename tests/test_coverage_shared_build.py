@@ -3,17 +3,17 @@
 
 `_coverage_rust.sh` keyed the build dir on each crate's `pwd -P`, so a repo of many cargo
 workspaces got one build dir PER CRATE and compiled every shared dependency cold in each: one
-media_server push (2026-11-14 17:09-17:13) made 29 dirs in ~/.cache/goh/llvm-cov, each rebuilding
-libsqlite3-sys, libc and cc, and the cache held 34 dirs, 9.3 GiB, over its 8 GiB budget -- the
-machine's top file writer, fseventsd at 100%. The key is now the repo's root, so its crates share
-one build dir, and different repos stay apart.
+private server workspace push (2026-11-14 17:09-17:13) made 29 dirs in ~/.cache/goh/llvm-cov, each
+rebuilding libsqlite3-sys, libc and cc, and the cache held 34 dirs, 9.3 GiB, over its 8 GiB budget
+-- the machine's top file writer, fseventsd at 100%. The key is now the repo's root, so its crates
+share one build dir, and different repos stay apart.
 
-Sharing has two hazards, both pinned here with a fixture shaped like media_server: two crates that
-each depend on a third by path, and each with a test target of the SAME name (`version`, which 29
-media_server crates have). cargo-llvm-cov's report reads every executable in the build dir whose
-name is one of the workspace's targets, so a shared dir would hand crate b crate a's `version`
-binary; and `_cov_prune.py` deleted such strays there, so a crate could delete a sibling's binary
-mid-run. The report now reads a view of THIS build's executables only.
+Sharing has two hazards, both pinned here with a fixture shaped like a private server workspace: two
+crates that each depend on a third by path, and each with a test target of the SAME name (`version`,
+which 29 a private server workspace crates have). cargo-llvm-cov's report reads every executable in
+the build dir whose name is one of the workspace's targets, so a shared dir would hand crate b crate
+a's `version` binary; and `_cov_prune.py` deleted such strays there, so a crate could delete a
+sibling's binary mid-run. The report now reads a view of THIS build's executables only.
 """
 
 from __future__ import annotations
@@ -62,8 +62,8 @@ def _crate(root: Path, name: str, lib: str, test: str | None, deps: str = "") ->
     if test is not None:
         (d / "tests").mkdir()
         (d / "tests" / "version.rs").write_text(test)
-    # A build script of its own, as most media_server crates have: every build script's executable
-    # is named `build_script_build`, and the report must count none of them.
+    # A build script of its own, as most a private server workspace crates have: every build
+    # script's executable is named `build_script_build`, and the report must count none of them.
     (d / "build.rs").write_text(
         'fn main() {\n    println!("cargo:rerun-if-changed=build.rs");\n}\n'
     )

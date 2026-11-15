@@ -358,11 +358,11 @@ CASES = [
         },
     ),
     (
-        # The gate that cost media_server a day: a test spawns a child that loops forever and the
-        # reap sits below an assertion that can panic, so every ordinary failure leaks it, each
-        # orphan holds the cargo build lock, and the only observable is a test run that prints
-        # nothing. Static, so a source file is the whole fixture -- no toolchain needed, unlike the
-        # cases above it that had to be written off for exactly that reason.
+        # The gate that cost a private server workspace a day: a test spawns a child that loops
+        # forever and the reap sits below an assertion that can panic, so every ordinary failure
+        # leaks it, each orphan holds the cargo build lock, and the only observable is a test run
+        # that prints nothing. Static, so a source file is the whole fixture -- no toolchain needed,
+        # unlike the cases above it that had to be written off for exactly that reason.
         "a test cannot leave an unreaped child behind",
         "check_no_unreaped_spawn.py",
         [],
@@ -437,10 +437,10 @@ CASES = [
 UNCOVERED = {
     # Added 2026-10-01 after the canary found it DECLARED AND UNREACHED -- the state its own
     # failure message calls "running in five repos with nothing showing it can fail". This gate
-    # came out of a real published defect (media_server: an amend was refused twice with
-    # `2>/dev/null`, a force-tag then named a commit whose VERSION said something else, and anyone
-    # checking out the tag got a build reporting the wrong version). It is worth keeping; it cannot
-    # be fixtured by THIS harness, because a case is a map of files and this gate needs a git
+    # came out of a real published defect (a private server workspace: an amend was refused twice
+    # with `2>/dev/null`, a force-tag then named a commit whose VERSION said something else, and
+    # anyone checking out the tag got a build reporting the wrong version). It is worth keeping; it
+    # cannot be fixtured by THIS harness, because a case is a map of files and this gate needs a git
     # repository with a commit, a tag and an amended VERSION file -- three things a file map cannot
     # express. Recorded rather than left to look covered.
     # Added 2026-10-10: gates_of_heck grew it after this table was last read against it.

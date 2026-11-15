@@ -9,9 +9,9 @@ _goh_d=${BASH_SOURCE[0]%/*}; [ "$_goh_d" != "${BASH_SOURCE[0]}" ] || _goh_d=.; .
 # default is the point: this was unset everywhere in the estate, which means "no limit", which means
 # a hung `cargo test` sat there until something killed it -- and the thing that killed it (a timeout,
 # a cancelled agent) killed the run BEFORE it could report anything, so the only observable was
-# silence. media_server 2026-10-03: nine orphans, each holding the cargo build lock, every later
-# `cargo test` blocked, and nothing anywhere said why. A ceiling nobody gave a number is a
-# suggestion. 900 is set from measurement, not taste: this estate's own slowest test step is
+# silence. A private server workspace 2026-10-03: nine orphans, each holding the cargo build lock,
+# every later `cargo test` blocked, and nothing anywhere said why. A ceiling nobody gave a number is
+# a suggestion. 900 is set from measurement, not taste: this estate's own slowest test step is
 # mediaops' rust gate at 168 s and the whole pytest suite is 76 s, so 900 is 5x the slowest thing
 # measured and a fifteenth of the day it cost.
 #

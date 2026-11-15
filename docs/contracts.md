@@ -120,7 +120,7 @@ The HOOKS drop them at entry, before anything is spawned
 (`goh_hook_unbind`: `hooks/pre-commit`, `gates/push_gate.sh`): a
 consumer's own test suite, run by its `tools/gate.sh --staged`, made a
 scratch repo and wrote `core.bare=true`, a commit and three stashes into
-the committing repository (media_server, 2026-10-08). The repository is
+the committing repository (a private server workspace, 2026-10-08). The repository is
 found again from the hook's cwd (refused, named, when it cannot be). The
 index being committed is NOT the repository's own under `commit -a` and
 `commit <paths>`; it travels as `GOH_HOOK_INDEX_FILE` with its git dir,
@@ -128,8 +128,8 @@ and a reader of the staged tree (`structural.sh --staged`, `goh.sh`,
 `py_staged.sh`, `goh_index_view`, the proven key) binds it again with
 `goh_bind_hook_index` -- only inside that repository. Nothing else reads
 the carried pair: a consumer gate that did (`GIT_INDEX_FILE="${GOH_HOOK_INDEX_FILE:-...}"`)
-bound it inside a TEST's fixture and judged the outer index (routines,
-media_server, 2026-10-08), so `goh bare-hook-index` refuses an expansion of
+bound it inside a TEST's fixture and judged the outer index (a private Rust app,
+a private server workspace, 2026-10-08), so `goh bare-hook-index` refuses an expansion of
 either variable in any shell source but the one defining the binder.
 A gate's own git may hold that binding, so a TEST SUITE the gate launches never inherits it
 (GOH.HOOKGITENV, 2026-11-08): `goh_step` (pytest, cargo test, swift test, xcodebuild test),
@@ -149,7 +149,7 @@ BEFORE the two skips that would otherwise exempt a retag of a commit the remote
 already holds.
 
 The class: a name that makes a claim, checked against something other than the
-object it names. media_server, 2026-10-01 — two `--amend --no-edit` runs
+object it names. A private server workspace, 2026-10-01 — two `--amend --no-edit` runs
 rejected by pre-commit under `2>/dev/null`, then `git tag -f v1.79.3` on a
 commit still declaring 1.79.1, published by `--follow-tags`. The commit gate
 proves the commit builds and passes; it can never prove the name is true.
@@ -297,7 +297,7 @@ Three scope decisions, each of which was wrong first:
   the gate rejected the very link it was written to check.
 * **A link resolves against the LINKING file**, not the repo root, so
   `../README.md` from inside `docs/` works. A DIRECTORY resolves too
-  (`[docs/decisions/](docs/decisions/)` is how ZoneWM points at a folder of
+  (`[docs/decisions/](docs/decisions/)` is how a private Swift app points at a folder of
   records); requiring a file reports every such link in the estate as broken.
 * **Out-of-scope links are SKIPPED and COUNTED** — http(s), `mailto:`,
   site-absolute. Nothing in the tree can know whether a remote document still
@@ -312,7 +312,7 @@ against the native `goh md-links`.
 
 ## 17. A wait is bounded, and a leak is reported by the run that made it
 
-media_server, 2026-10-03: `crates/archive-torznab-rs/tests/test_net_and_bin.rs` spawned the real
+A private server workspace, 2026-10-03: `crates/archive-torznab-rs/tests/test_net_and_bin.rs` spawned the real
 binary with `--bind 127.0.0.1:0` — a server that loops forever by design — and reaped it with an
 explicit `child.kill(); child.wait();` below four lines that can panic. Nine orphans accumulated,
 each holding the cargo build lock, so every later `cargo test` blocked with no output at all, and
@@ -340,11 +340,11 @@ killed. Four separate rules came out of it, and each answers a different questio
   commit produces) and full scope reads the WORKTREE. A scope of "the files this commit brings"
   could not see the contract in either direction, and both halves were found in the estate on
   2026-10-20: a file that USES a shared guard was reported as an unreaped spawn (the guard was
-  invisible, so the wrap looked like a bare `Child` — `routines` gave three of its test files a
+  invisible, so the wrap looked like a bare `Child` — a private Rust app gave three of its test files a
   guard of their own to get past it, which is the workaround, not the fix), and a commit that
   BROKE a shared guard was green (the files that rely on it were not in scope, so the tree leaked
   and the gate passed it). The cost is a whole-tree read at commit time, measured 2026-10-20:
-  363 test files in 0.07 s here, 420 in 0.16 s in `media_server`, the index's blobs fetched in
+  363 test files in 0.07 s here, 420 in 0.16 s in a private server workspace, the index's blobs fetched in
   one `git cat-file --batch`. What it no longer does: judge only the commit's files — a finding in
   a file the commit does not touch is a finding, because the leak it names is in the tree the
   commit produces.
@@ -376,7 +376,7 @@ killed. Four separate rules came out of it, and each answers a different questio
     naming no spinner is removed only when its owner is gone -- the slot is held exactly while its
     owner lives.
 
-Pin: `tests/test_check_no_unreaped_spawn.py` (the incident quoted from `media_server@052772a`, red
+Pin: `tests/test_check_no_unreaped_spawn.py` (the incident quoted from `the workspace at 052772a`, red
 on the real pre-fix file and green on the same file after its fix, run against the native through
 `tests/unreaped_spawn_table*.py`), `tests/test_check_no_unreaped_spawn_scope.py` (the scope: a
 shared guard is protection to the file the commit brings, a commit that breaks one is red, and the
@@ -393,7 +393,7 @@ green with the entry and red without it, a stale entry is red, and a broadened c
 backstop in a process of its own: a pass under the lock makes the tool WAIT, a pass that is only
 killing does not, and neither loses a spinner or resurrects a slot; a live owner keeps its slot),
 and `checks/check_estate_corpus.py`'s `no_unreaped_spawn` entry (the incident planted inside 611 real
-files from media_server).
+files from a private server workspace).
 
 ## 18. A number in prose is re-derived from the tree, and only a MARKED one
 
@@ -444,7 +444,7 @@ markdown file from a real estate repo).
 
 Every consumer executes these scripts live from this checkout, and bash reads a script LAZILY, by
 byte offset. An edit, pull or checkout here while a consumer's gate runs shifts every unread offset:
-routines' pre-push died with `coverage_gate.sh: line 485: syntax error near unexpected token ';;'`
+a private Rust app's pre-push died with `coverage_gate.sh: line 485: syntax error near unexpected token ';;'`
 (2026-10-05) on a line that is not a syntax error. Every EXECUTED bash script wraps its body in
 `{ # parse-guard … exit; } # parse-guard`, so bash parses the whole group before running any of it.
 Sourced files need nothing (`source` reads the whole file first); `release.sh` re-execs a temp copy

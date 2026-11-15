@@ -84,7 +84,7 @@ def _is_ancestor(repo: Path, a: str, b: str) -> bool:
 
 def _slug(repo: Path) -> str | None:
     """`owner/name` of the repo's GitHub remote: `origin` when it is on GitHub, else the first that
-    is (ZoneWM's is `v2origin`)."""
+    is (a private Swift app's is `v2origin`)."""
     found: dict[str, str] = {}
     for line in _git(repo, "remote", "-v").stdout.splitlines():
         parts = line.split()

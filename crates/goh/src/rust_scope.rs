@@ -1,9 +1,10 @@
 //! `goh rust-scope`: the INPUT SCOPE of one cargo workspace, for the proven cache (BACKLOG P3).
 //!
 //! The proven cache keyed every step on the WHOLE tree, so a README edit re-gated all 29 crates of
-//! `media_server`. A crate's gate reads its own packages, the packages they reach by `path =`, and a
-//! handful of config files; this names exactly those, as repo-relative paths whose git objects
-//! `gates/_proven.sh` hashes into the key. Every way that could be wrong is checked, not assumed:
+//! a private server workspace. A crate's gate reads its own packages, the packages they reach by
+//! `path =`, and a handful of config files; this names exactly those, as repo-relative paths whose
+//! git objects `gates/_proven.sh` hashes into the key. Every way that could be wrong is checked,
+//! not assumed:
 //!
 //! * a source file that reaches OUTSIDE its crate at run time (`CARGO_MANIFEST_DIR` with `..`, or a
 //!   `"../` string literal) makes the scope the whole tree (`.`) -- a test opening a fixture in a
@@ -134,9 +135,9 @@ fn escapes(line: &str) -> bool {
 ///
 /// Inside `include_str!` / `include_bytes!` / `include!` a literal is relative to the SOURCE FILE;
 /// at run time (`cargo test` runs in the package directory) it is relative to the PACKAGE, and so is
-/// one appended to `CARGO_MANIFEST_DIR` (`"/../x"`). Measured 2026-10-05: every `media_server` crate has
-/// `include_str!("../../../VERSION")` in its tests, and keying all 29 on the whole tree for one
-/// file made the per-crate cache worthless there.
+/// one appended to `CARGO_MANIFEST_DIR` (`"/../x"`). Measured 2026-10-05: every crate of a private
+/// server workspace has `include_str!("../../../VERSION")` in its tests, and keying all 29 on the
+/// whole tree for one file made the per-crate cache worthless there.
 fn reached(line: &str, source: &Path, package: &Path, root: &Path) -> Option<Vec<String>> {
     let all = string_literals(line);
     let literals: Vec<&str> = all
@@ -203,8 +204,8 @@ fn normalize(path: &Path) -> Option<PathBuf> {
 }
 
 /// Every tracked `.rs` file under any of `dirs`, from ONE `git ls-files` (each file once): it was
-/// a call per package -- 15 for `media_server`'s mediaops-rs and its path dependencies -- and what a
-/// file contributes depends on its nearest package, never on which listing found it.
+/// a call per package -- 15 for a private server workspace's mediaops-rs and its path dependencies
+/// -- and what a file contributes depends on its nearest package, never on which listing found it.
 fn tracked_rs(root: &Path, dirs: &[&str]) -> Vec<PathBuf> {
     if dirs.is_empty() {
         return Vec::new();

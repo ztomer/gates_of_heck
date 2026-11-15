@@ -5,7 +5,7 @@
   wait be spent, who runs the gate, and how does a queued landing survive a reboot?
 - **Evidence:** (measured 2026-11-14 from one coordinator session's 98 subagent transcripts, the
   wall time from a push's tool call to its completion notice) pushes of 1197 s and 1196 s
-  (game_asset_factory, media_server; 12 s of it a slot wait), 1298 s (a private consumer: its `make ci` hook
+  (game_asset_factory, a private server workspace; 12 s of it a slot wait), 1298 s (a private consumer: its `make ci` hook
   alone 1276 s), 1523 s (koffee_big's gate); one push waited 1308 s for a gate slot before its
   gate began. The cost is the gate's own wall time under three other gates' load plus the slot
   queue, and every second of it was an agent's idle lifetime (owner 2026-11-11: KB.OILCUP 9 h,

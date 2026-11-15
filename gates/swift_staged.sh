@@ -117,9 +117,10 @@ excluded_above() {
 }
 # in_included <root> <file relative to root>: the file sits under one of the `included:` roots of
 # <root>/.swiftlint.yml, or that config names none (the whole tree is in scope). swiftlint given EXPLICIT
-# paths ignores `included`, while the push walks only those roots (ZoneWM: `included: Sources`, so its
-# Tests/ are never linted): without this a commit was refused for findings in a file the push never
-# reads (ZW.WALLCLOCK2). An inline list (`included: [A, B]`) is not parsed and means "lint it": stricter.
+# paths ignores `included`, while the push walks only those roots (a private Swift app: `included:
+# Sources`, so its Tests/ are never linted): without this a commit was refused for findings in a
+# file the push never reads (ZW.WALLCLOCK2). An inline list (`included: [A, B]`) is not parsed and
+# means "lint it": stricter.
 in_included() {
     local cfg="$1/.swiftlint.yml" f="$2" inc p
     [ -f "$cfg" ] || return 0

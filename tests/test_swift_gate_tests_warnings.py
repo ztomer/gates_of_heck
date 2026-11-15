@@ -2,8 +2,8 @@
 
 `swift build -Xswiftc -warnings-as-errors` compiles only the product targets; `swift test` then
 compiles the test targets with warnings as warnings. Four actor-isolation warnings sat in
-ZoneWM's Tests/ through every green push until 2026-09-21, surfaced only when an unrelated change
-recompiled the files. The gate's build step must pass --build-tests.
+a private Swift app's Tests/ through every green push until 2026-09-21, surfaced only when an
+unrelated change recompiled the files. The gate's build step must pass --build-tests.
 """
 
 import os

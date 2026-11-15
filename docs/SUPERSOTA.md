@@ -24,9 +24,9 @@ via `GOH_DIR`, so:
 
 That asymmetry is why most of what is in this repo was not commissioned as
 gates_of_heck work. The emptiness-assert check was written because four repos
-were blocked by it (media_server 77 files, routines 50 assertions, app_updates
+were blocked by it (a private server workspace 77 files, a private Rust app 50 assertions, app_updates
 17, here 24). `dockerproxy_surface` and `log_rotation` were written for
-media_server. `_rust_text.py` was extracted because a second checker needed it.
+a private server workspace. `_rust_text.py` was extracted because a second checker needed it.
 
 **So: everyone owns this repo, and finding a defect in it from any other repo is
 a licence to fix it here, in that session.** The upgrade path is in §3.
@@ -252,7 +252,7 @@ each of them a way the registry has lied or could:
 * **a prover outside this repo lists the key among what it proves** (`--proves`),
   and its estate is named in the output rather than assumed. The prover is asked
   only when its CODE dispatches on the flag (read from its source, never by running
-  it), and its answer is a claim only as one registry key per line: routines'
+  it), and its answer is a claim only as one registry key per line: a private Rust app's
   `check_tabs_contract` before its `b774d20` ignored the flag, ran a cargo build and
   the real binary, and its rc-0 output became the claim set (G1b(a), 2026-10-25). A
   prover that does not answer is named as one that did not, with the reason.
@@ -307,7 +307,7 @@ second. The minutes were two defects instead: the R3 estate sweep ran on every
 `check_probes_pass.py` invocation including ones whose `--root` was a throwaway
 fixture (53.7 s to answer a question about a one-file estate), and
 `rust_findings` re-derived three crate-scope sets **once per file** over a
-2.77 MB crate context, which is 23.2 s → 2.1 s over `media_server`'s 626-file
+2.77 MB crate context, which is 23.2 s → 2.1 s over a private server workspace's 626-file
 `crates/` tree. Suite: **1379.8 s → 735.6 s** of test time, **233.6 s → 105.7 s**
 wall. The table was not shrunk.
 

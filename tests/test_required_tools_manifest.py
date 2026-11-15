@@ -262,8 +262,8 @@ def test_an_unknown_layer_is_refused_not_ignored():
     ("gatesrc", "wanted"), [("GOH_RUST_LINT_CARGO=cargo-zigbuild\n", True), ("", False)]
 )
 def test_the_cross_lint_tools_are_for_repos_that_name_zigbuild(tmp_path, gatesrc, wanted):
-    """media_server's --target clippy needs cargo-zigbuild AND zig; a repo that does not set it
-    must not be told to install either (BACKLOG P1g)."""
+    """A private server workspace's --target clippy needs cargo-zigbuild AND zig; a repo that does
+    not set it must not be told to install either (BACKLOG P1g)."""
     (tmp_path / "tools").mkdir()
     (tmp_path / "tools" / "gate.sh").write_text('"$GOH/gates/rust_gate.sh" .\n')
     write_gatesrc(tmp_path, gatesrc)

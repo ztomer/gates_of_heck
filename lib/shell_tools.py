@@ -6,7 +6,7 @@ registers each command judge on every member (pinned by `tests/test_monitor_guar
 that holds the command is `command` in each.
 
 A tool that runs a shell command and is missing here is a tool the guards never see: Monitor was
-exactly that until a ZoneWM agent's first Monitor wait was a self-matching `pgrep -f`.
+exactly that until a private Swift app agent's first Monitor wait was a self-matching `pgrep -f`.
 """
 
 from __future__ import annotations

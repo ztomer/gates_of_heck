@@ -1,8 +1,8 @@
 """Tree walks read the tree git can name, never the build output beside it (BACKLOG P1a).
 
-Measured 2026-10-05: `goh.sh lints` on media_server's `mediaops-rs` took 2.4 s, 2.27 of them
-system time, because `rglob("Cargo.toml")` descended 50,950 directories of `target/` (452 MB)
-before filtering the results. The same walk ran in four checkers and once per crate, 29 times
+Measured 2026-10-05: `goh.sh lints` on a private server workspace's `mediaops-rs` took 2.4 s, 2.27
+of them system time, because `rglob("Cargo.toml")` descended 50,950 directories of `target/` (452
+MB) before filtering the results. The same walk ran in four checkers and once per crate, 29 times
 per push. It was also WRONG, not only slow: a manifest a build script vendors into an ignored
 directory is not part of the repository, yet a disk walk counts it.
 

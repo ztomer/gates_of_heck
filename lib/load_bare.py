@@ -1,7 +1,7 @@
 """A gate or a build run BARE while the load slot is held (GOH.LOADBUILDLOCK, 2026-11-11).
 
 THE CASE. Two agents ran `swift test` through `tools/load.py` and met two refusals in a row
-(routines RT.DEFAULTSLEAK, transcript agent-aa13b5c3d03e9fd25, 17:35Z):
+(a private Rust app RT.DEFAULTSLEAK, transcript agent-aa13b5c3d03e9fd25, 17:35Z):
 
     load.py --wait --wait-max 2700 1 -- swift test ...                  -> exit 2, "the command is
         a build tool that takes a machine-wide lock (swift test) ... pass `--shared-lock-ok`"

@@ -50,8 +50,9 @@ goh_from_head "${BASH_SOURCE[0]}" "$@"   # run HEAD, not the tree (C4)
 set -euo pipefail
 # git binds this hook to its repository (GIT_DIR, GIT_INDEX_FILE -- absolute from a linked
 # worktree), and a test suite the gate runs that builds a scratch repo would act on THIS one
-# (media_server, 2026-10-08: core.bare=true, a stray commit, three stashes). Dropped before anything
-# is spawned; the index being committed travels as GOH_HOOK_INDEX_FILE (contract #12).
+# (a private server workspace, 2026-10-08: core.bare=true, a stray commit, three stashes). Dropped
+# before anything is spawned; the index being committed travels as GOH_HOOK_INDEX_FILE (contract
+# #12).
 goh_hook_unbind || exit $?
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

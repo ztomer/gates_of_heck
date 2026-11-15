@@ -3,7 +3,7 @@
 //! `0 open entr(ies)`, `4 step(s)`, `2 finding(s)`: a message that never decided which number it
 //! was talking about. The house helper decides it -- `counted`/`noun` in `tui.lib`, `counted`/
 //! `plural_noun` in `tui/lib.sh`, `goh_tui::counted`/`noun` in Rust -- so `1 file`, `0 files` and
-//! `3 files` come out right. routines carried the first copy of this check
+//! `3 files` come out right. A private Rust app carried the first copy of this check
 //! (`plural::tests::no_user_facing_string_hedges_with_an_s_in_parentheses`, which caught
 //! RT.WEBKITPROOF); this is the house one, over `.py`, `.sh` (and every shell source by shebang),
 //! `.rs` and `.swift`. The finder is `scan.rs`.

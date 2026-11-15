@@ -12,8 +12,8 @@
 //!     (`**KB.12 Title.** text`, a line that starts a paragraph) is an entry too (GOH.ROADMAPBOLD,
 //!     from `crate::grace::OVER_FROM`): `koffee_big` held five, none with a `Done when:`, that
 //!     the reader counted as nothing. It must open with an id -- `RT.WINCLOSE`, `P0.4`,
-//!     `H1` (a capital, then letters and digits, with a digit or a dot somewhere) or `ZoneWM`'s
-//!     dotted `0.15` -- and carry a `Done when:` clause;
+//!     `H1` (a capital, then letters and digits, with a digit or a dot somewhere) or a private
+//!     Swift app's dotted `0.15` -- and carry a `Done when:` clause;
 //!   * a `Done when:` clause that opens a line OUTSIDE every entry is a finding too: it is either
 //!     open work the phases do not hold, or an entry shape this reader cannot see -- the anchor
 //!     that keeps the entry grammar from going blind in silence (calibrate-the-instrument);

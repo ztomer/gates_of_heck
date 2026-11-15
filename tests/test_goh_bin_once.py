@@ -105,7 +105,8 @@ def test_an_answer_for_another_gates_root_is_not_taken(tmp_path: Path) -> None:
 
 def test_rust_gate_runs_its_native_steps_without_the_dispatcher(tmp_path: Path) -> None:
     """With the binary resolved, rust_gate's four native steps exec it directly: `bash goh.sh`
-    was ~30 ms of start-up per step, four steps per crate, 29 crates a media_server push."""
+    was ~30 ms of start-up per step, four steps per crate, 29 crates a private server workspace
+    push."""
     crate = tmp_path / "c"
     (crate / "src").mkdir(parents=True)
     (crate / "Cargo.toml").write_text(

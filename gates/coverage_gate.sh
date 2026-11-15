@@ -45,7 +45,7 @@
 #           were that AGGREGATION's, which the merger fixes. app_updates also
 #           exported one part per test target; since 2026-10-06 one run of
 #           every target is exported once (identical merged report on all 29
-#           media_server crates, 226 -> 173 s; _coverage_rust.sh).
+#           a private server workspace crates, 226 -> 173 s; _coverage_rust.sh).
 #   swift ← necrohand tools/check_coverage.sh + ZeroThunder tools/run_coverage.sh:
 #           swift test --enable-code-coverage → xcrun llvm-cov export
 #           -summary-only over the .xctest binary's merged profdata, JSON
@@ -298,8 +298,9 @@ run_cpp() {
     # failures into a percentage.
     # Profiles are THIS run's: a previous run's sat in the build dir and was merged into the
     # number. `%8m` pools them (at most 8 per instrumented binary, merged online by the runtime);
-    # `%p` wrote one per test process, a merge command line sized by the test count -- ZoneWM's
-    # SwiftPM twin died at ARG_MAX at 6,965 (D-0245). tests/test_coverage_gate_cpp_merge.py.
+    # `%p` wrote one per test process, a merge command line sized by the test count -- a private
+    # Swift app's SwiftPM twin died at ARG_MAX at 6,965 (D-0245).
+    # tests/test_coverage_gate_cpp_merge.py.
     rm -f "$PROJ/$build_dir"/default-*.profraw  # never fails: a build dir cmake did not make has none
     # shellcheck disable=SC2086
     (cd "$PROJ/$build_dir" && \

@@ -185,10 +185,10 @@ def test_a_prover_that_answers_nothing_has_not_said_rather_than_claimed_nothing(
 
 
 def test_a_prover_that_does_not_dispatch_on_proves_is_never_run(tmp_path):
-    """G1b(a), 2026-10-24. routines' check_tabs_contract (before its b774d20) had no `--proves`:
-    asked for its claims, it ignored the flag and ran its FULL path -- a cargo build and the real
-    binary -- and its rc-0 stdout became the claim set. A prover that does not dispatch on the flag
-    in its CODE is not asked at all, and the refusal says why."""
+    """G1b(a), 2026-10-24. A private Rust app's check_tabs_contract (before its b774d20) had no
+    `--proves`: asked for its claims, it ignored the flag and ran its FULL path -- a cargo build and
+    the real binary -- and its rc-0 stdout became the claim set. A prover that does not dispatch on
+    the flag in its CODE is not asked at all, and the refusal says why."""
     marker = tmp_path / "full_path_ran"
     ignores = tmp_path / "check_ignores.py"
     ignores.write_text(
@@ -212,7 +212,7 @@ def test_an_answer_that_is_not_a_list_of_keys_is_not_a_claim(tmp_path):
     chatty.write_text(
         "import sys\n"
         "if '--proves' in sys.argv:\n"
-        "    print('Compiling routines v0.4.0')\n"
+        "    print('Compiling app v0.4.0')\n"
         "    print('ok: 3 checks passed')\n"
     )
     claimed, reason = reader.claims_answer(str(chatty))

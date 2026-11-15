@@ -284,8 +284,9 @@ def _red_push(tmp_path: Path, gate: str, sleeptime: Path) -> subprocess.Complete
 
 
 def test_a_red_run_the_machine_slept_through_names_the_sleep(tmp_path):
-    """ZoneWM 2026-10-11: two Swift rows red at the second of a dark wake, green on the awake re-run.
-    A failure the sleep caused reads exactly like a defect unless the gate says the machine slept."""
+    """A private Swift app 2026-10-11: two Swift rows red at the second of a dark wake, green on the
+    awake re-run. A failure the sleep caused reads exactly like a defect unless the gate says the
+    machine slept."""
     got = _red_push(tmp_path, SLEEPING_GATE, tmp_path / "sleeptime")
     assert got.returncode == 1, got.stdout + got.stderr
     assert "SLEPT during this run" in got.stderr
@@ -374,8 +375,9 @@ def test_a_sibling_the_gate_makes_itself_is_still_named_as_litter(tmp_path):
 
 # ── a sibling is gated at a named commit, never its live working tree (GOH.PUSHSIBLINGS) ──────
 # ZeroThunder, 2026-11-11: its push failed on game_asset_factory's UNCOMMITTED edit, because the
-# export linked the sibling's working tree; ZoneWM D-0361 moved SpaceBarKit consumers to a pinned
-# release for the same reason. The export carries the sibling's HEAD, and the log names the commit.
+# export linked the sibling's working tree; a private Swift app D-0361 moved SpaceBarKit consumers
+# to a pinned release for the same reason. The export carries the sibling's HEAD, and the log names
+# the commit.
 
 HEAD_GATE = GATE.replace(
     "exit 0\n",
@@ -415,9 +417,9 @@ def test_a_siblings_uncommitted_edit_does_not_reach_the_push_gate(tmp_path):
 
 
 # ── any sibling a tracked manifest names ─────────────────────────────────────────────────────────
-# token-pool, 2026-11-07: widget/Package.swift depends on `.package(path: "../../ZoneWM/Packages/
-# SpaceBarKit")`, the house widget kit in the ZoneWM checkout beside it, and the export has nothing
-# beside its tree, so the push died on "the package at .../ZoneWM/Packages/SpaceBarKit cannot be
+# token-pool, 2026-11-07: widget/Package.swift depends on `.package(path: "../../app/Packages/
+# SpaceBarKit")`, the house widget kit in the app's checkout beside it, and the export has nothing
+# beside its tree, so the push died on "the package at .../app/Packages/SpaceBarKit cannot be
 # accessed". The gates_of_heck link above was ONE instance of the class: a path dependency from
 # any tracked manifest (Cargo.toml or Package.swift, at any depth) on a sibling checkout.
 

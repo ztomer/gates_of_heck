@@ -1,6 +1,6 @@
 """tree_lock.sh — one gate per build tree at a time.
 
-The incident (ZoneWM, 2026-09-21): two pre-push gates on one checkout, the
+The incident (a private Swift app, 2026-09-21): two pre-push gates on one checkout, the
 second's cold wipe landed during the first's test phase, four test bundles
 vanished under dlopen, the push went red naming the tests. These tests run the
 real shell library against a throwaway repo: a second acquirer BLOCKS until the

@@ -146,9 +146,10 @@ def undeclared(root, dirs=GATE_DIRS):
     """Files under the gate directories that carry a self-proof flag but are NOT named `check_*`.
 
     They are not run, deliberately: the `check_` name is a repo DECLARING a headless gate, and a
-    flag alone declares nothing about what the probe touches -- ZoneWM's `input_lock.py --probe`
-    installs an event tap and locks the owner's real input. They are NAMED, because a self-proof
-    nothing runs and nothing mentions is the silence this gate exists to end (ZoneWM, 2026-10-05).
+    flag alone declares nothing about what the probe touches -- a private Swift app's `input_lock.py
+    --probe` installs an event tap and locks the owner's real input. They are NAMED, because a
+    self-proof nothing runs and nothing mentions is the silence this gate exists to end (a private
+    Swift app, 2026-10-05).
     """
     try:
         scoped = sorted(listed_files(root, staged=False))

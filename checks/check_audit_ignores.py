@@ -18,9 +18,10 @@ place cargo-audit reads it -- and refuses:
 
 rust_gate.sh passes --no-fetch: its own audit step fetched the database a moment before. It audits
 EVERY tracked lock of the repo (lib/rust_locks.py), and one `.cargo/audit.toml` may judge several
-(media_server's root config governs 31): with `--repo`, the locks are the ones `rust_locks` says
-are audited from this directory, and an entry is stale only when it fires against NONE of them.
-`--lock` adds the workspace lock the gate was pointed at, when git does not track it yet.
+(a private server workspace's root config governs 31): with `--repo`, the locks are the ones
+`rust_locks` says are audited from this directory, and an entry is stale only when it fires against
+NONE of them. `--lock` adds the workspace lock the gate was pointed at, when git does not track it
+yet.
 """
 
 from __future__ import annotations

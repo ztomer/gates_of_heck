@@ -40,10 +40,10 @@ pub fn live_root_for(dir: &Path) -> Option<PathBuf> {
 ///
 /// Unset, or a directory, is fine. Every gate entry point exports `GOH_DIR` at a HEAD export under
 /// `~/.cache/goh/head/`, the cache prunes old exports, and a long-lived process started under a
-/// gate keeps the value: Routines.app's jobs and a Claude session's commits failed for hours once
-/// theirs was gone. The export cannot be read, so the rule is `lib/goh_root.sh`'s: its live root
-/// (`live`, already filtered by [`live_root_for`]), then the default checkout, whichever holds
-/// `gates/`.
+/// gate keeps the value: a private menu-bar app's jobs and a Claude session's commits failed for
+/// hours once theirs was gone. The export cannot be read, so the rule is `lib/goh_root.sh`'s: its
+/// live root (`live`, already filtered by [`live_root_for`]), then the default checkout, whichever
+/// holds `gates/`.
 fn repaired(
     goh_dir: Option<&std::ffi::OsStr>,
     live: Option<&std::ffi::OsStr>,

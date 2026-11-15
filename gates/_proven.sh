@@ -130,8 +130,8 @@ _proven_tool() {
 }
 
 # The run-constant half of proven_identity: the gates checkout's identity and the toolchains.
-# ~110 ms, and every step's key was computed twice in every group of every gate (a media_server
-# push: ~174 times). `proven_settings` asks it ONCE and exports it for the same working
+# ~110 ms, and every step's key was computed twice in every group of every gate (a private server
+# workspace push: ~174 times). `proven_settings` asks it ONCE and exports it for the same working
 # directory, PATH, toolchain override, gates root and GOH_LIVE mode; a key computed anywhere else
 # asks again (tests/test_proven_identity_once.py).
 _proven_memo_key() {

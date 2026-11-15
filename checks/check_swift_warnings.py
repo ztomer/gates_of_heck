@@ -11,8 +11,8 @@ its grep; `swift build` colours its output even into a pipe and wraps each group
 hyperlink, so the name never appears whole and that grep never matched anything. `check-deprecated`
 matched every warning, but ran its own `swift build` second, which on the cold pre-push tree has
 nothing left to compile and prints no warnings at all. So "every warning fatal" was never true at
-push: found in ZoneWM 2026-09-26, when a `self` captured in a `@Sendable` closure in a test, and an
-unneeded `nonisolated(unsafe)` in the agent, both passed it.
+push: found in a private Swift app 2026-09-26, when a `self` captured in a `@Sendable` closure in a
+test, and an unneeded `nonisolated(unsafe)` in the agent, both passed it.
 
 THE RULE. One `swift build --build-tests`; its whole output is read once, with every ANSI colour and
 OSC hyperlink stripped first. Any `warning:` whose file is under this repo's Sources/ or Tests/ fails
@@ -20,12 +20,12 @@ OSC hyperlink stripped first. Any `warning:` whose file is under this repo's Sou
 dynamic isolation are named as such. A build that fails fails the gate: files it never compiled
 printed no warnings.
 
-A WARM TREE (ZoneWM, 2026-09-27). A warm build prints warnings only for the files it recompiles,
-so a file compiled earlier by a filtered `swift test` never showed its warnings to this gate, which
-passed locally and failed the cold pre-push build. So before building, every Swift file under our
-dirs that differs from the upstream branch (committed since the last push, modified, or untracked;
-HEAD when there is no upstream) has its modification time touched and is compiled again. The
-upstream is what the cold pre-push gate last judged, so everything else was already clean there.
+A WARM TREE (a private Swift app, 2026-09-27). A warm build prints warnings only for the files it
+recompiles, so a file compiled earlier by a filtered `swift test` never showed its warnings to this
+gate, which passed locally and failed the cold pre-push build. So before building, every Swift file
+under our dirs that differs from the upstream branch (committed since the last push, modified, or
+untracked; HEAD when there is no upstream) has its modification time touched and is compiled again.
+The upstream is what the cold pre-push gate last judged, so everything else was already clean there.
 
   check_swift_warnings.py                      # build (in the git repo at cwd) and judge
   check_swift_warnings.py --dirs Sources,Tests # which top-level dirs are "ours" (the default)

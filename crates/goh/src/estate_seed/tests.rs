@@ -272,7 +272,7 @@ fn a_store_entry_for_a_repository_without_goh_in_its_ci_is_accepted() {
     for workflow in [
         None,
         Some("jobs:\n  build:\n    steps:\n      - run: make\n"),
-        // naming goh in a comment is not running it (servers/media_server's ci.yml does)
+        // naming goh in a comment is not running it (a nested server repo's ci.yml does)
         Some("# refused by the gates_of_heck structural gate\n# repository: ztomer/gates_of_heck\njobs: {}\n"),
     ] {
         let (r, store) = store_ci_case(workflow);

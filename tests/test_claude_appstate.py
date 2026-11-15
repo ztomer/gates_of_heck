@@ -1,6 +1,6 @@
 """An agent that leaves one of the owner's login-item apps not running has it put back (GOH.APPSTATE).
 
-On 2026-11-07/08 Routines.app (a login item) was left not running after two agents' UI tests, and
+On 2026-11-07/08 a login-item app was left not running after two agents' UI tests, and
 Osaurus.app (a login item serving the local model on :1337) was found not running.
 `hooks/claude/agent_guard.py` now snapshots which login-item apps run at every spawn
 (`hooks/claude/appstate.py`) and, at the agent's SubagentStop, relaunches each one running before
@@ -27,7 +27,7 @@ GUARD = HOOKS / "agent_guard.py"
 sys.path.insert(0, str(HOOKS))
 import appstate
 
-ROUTINES = "/Applications/Routines.app"
+WIDGET = "/Applications/Widget.app"
 OSAURUS = "/Applications/Osaurus.app"
 NOTION = "/Applications/Notion.app"
 
@@ -60,8 +60,8 @@ class World:
         self.cache = root / "cache"
 
     def set_running(self, apps: list[str]) -> None:
-        # A non-app process and a look-alike path that must never count as Routines.
-        procs = ["/usr/libexec/logd", "/Applications/Routines.app.bak/Contents/MacOS/old"]
+        # A non-app process and a look-alike path that must never count as the app.
+        procs = ["/usr/libexec/logd", "/Applications/Widget.app.bak/Contents/MacOS/old"]
         procs += [f"{a}/Contents/MacOS/main" for a in apps]
         (self.root / "procs").write_text("".join(f"{p}\n" for p in procs))
 
@@ -104,19 +104,19 @@ class World:
 
 @pytest.fixture
 def world(tmp_path: Path) -> World:
-    return World(tmp_path / "world", [ROUTINES, OSAURUS, NOTION], [ROUTINES, OSAURUS])
+    return World(tmp_path / "world", [WIDGET, OSAURUS, NOTION], [WIDGET, OSAURUS])
 
 
 def test_an_app_the_agent_left_not_running_is_relaunched_and_named(world: World) -> None:
     world.spawn()
-    world.set_running([OSAURUS])  # the agent's UI test quit Routines and never put it back
+    world.set_running([OSAURUS])  # the agent's UI test quit the app and never put it back
     out = world.stop()
-    assert world.launched() == [ROUTINES]
-    assert out is not None and "relaunched Routines" in out["systemMessage"], out
+    assert world.launched() == [WIDGET]
+    assert out is not None and "relaunched Widget" in out["systemMessage"], out
     spawn, outcome = world.ledger()
-    assert spawn["apps"] == [OSAURUS, ROUTINES]
-    assert outcome["apps"]["missing"] == [ROUTINES]
-    assert outcome["apps"]["relaunched"] == [ROUTINES] and outcome["apps"]["failed"] == []
+    assert spawn["apps"] == [OSAURUS, WIDGET]
+    assert outcome["apps"]["missing"] == [WIDGET]
+    assert outcome["apps"]["relaunched"] == [WIDGET] and outcome["apps"]["failed"] == []
 
 
 def test_an_app_still_running_and_one_never_running_are_left_alone(world: World) -> None:
@@ -134,9 +134,9 @@ def test_a_relaunch_that_never_shows_up_is_named_as_failed(world: World) -> None
     world.set_running([])
     (world.root / "launch-noop").write_text("")
     out = world.stop()
-    assert sorted(world.launched()) == [OSAURUS, ROUTINES]
-    assert out is not None and "could NOT relaunch Osaurus, Routines" in out["systemMessage"]
-    assert world.ledger()[-1]["apps"]["failed"] == [OSAURUS, ROUTINES]
+    assert sorted(world.launched()) == [OSAURUS, WIDGET]
+    assert out is not None and "could NOT relaunch Osaurus, Widget" in out["systemMessage"]
+    assert world.ledger()[-1]["apps"]["failed"] == [OSAURUS, WIDGET]
 
 
 def test_an_unreadable_login_item_list_launches_nothing(world: World) -> None:
@@ -155,7 +155,7 @@ def test_the_snapshot_is_spent_by_its_stop(world: World) -> None:
     world.stop()
     world.set_running([OSAURUS])
     assert world.stop() is None
-    assert world.launched() == [ROUTINES]
+    assert world.launched() == [WIDGET]
 
 
 def test_under_the_suite_the_real_defaults_never_run(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -172,7 +172,7 @@ def test_under_the_suite_the_real_defaults_never_run(monkeypatch: pytest.MonkeyP
     assert not appstate.enabled()
     assert appstate.running() is None
     assert appstate.snapshot("toolu_X") is None
-    assert appstate._launch(ROUTINES) is False
+    assert appstate._launch(WIDGET) is False
 
 
 def test_the_real_reader_is_system_events_and_the_process_table() -> None:

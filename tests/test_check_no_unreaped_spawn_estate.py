@@ -108,7 +108,7 @@ def _spawn():
 
 
 def test_a_drop_impl_that_only_waits_is_a_guard(repo: Path) -> None:
-    """`media_server/crates/mediaops-rs/tests/it/backup_snapshot.rs`: `Drop for Holder` closes stdin
+    """`<server>/crates/mediaops-rs/tests/it/backup_snapshot.rs`: `Drop for Holder` closes stdin
     and waits. Requiring kill AND wait called that a live orphan."""
     write(
         repo,
@@ -230,9 +230,9 @@ mod tests {
 
 
 def test_a_deadline_watchdog_is_reported_and_counted_not_failed(repo: Path) -> None:
-    """`media_server`'s lan-ip watcher arms a thread that SIGKILLs the child after 30 s. Bounded is
-    not prevented, so it is a real mitigation -- and it is COUNTED, because a mitigation nobody can
-    see is a mitigation that decays."""
+    """A private server workspace's lan-ip watcher arms a thread that SIGKILLs the child after 30 s.
+    Bounded is not prevented, so it is a real mitigation -- and it is COUNTED, because a mitigation
+    nobody can see is a mitigation that decays."""
     write(
         repo,
         "crates/x-rs/tests/a.rs",

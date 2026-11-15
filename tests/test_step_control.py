@@ -132,7 +132,8 @@ def test_an_unknown_kind_is_a_usage_error(tmp_path: Path) -> None:
 
 
 def test_a_repo_with_crates_in_subdirectories_needs_the_rust_control(repo: Path) -> None:
-    """media_server's 29 crates have no root Cargo.toml: a root-only test skipped its control."""
+    """A private server workspace's 29 crates have no root Cargo.toml: a root-only test skipped its
+    control."""
     assert step_control.kinds_for(repo) == []
     write(repo, "crates/a/Cargo.toml", "[package]\nname = 'a'\n")
     git(repo, "add", "-A")

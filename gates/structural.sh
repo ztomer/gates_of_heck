@@ -126,8 +126,8 @@ fi
 # THE GATES CHECKOUT IS ANOTHER REPOSITORY. A hook's GIT_DIR/GIT_INDEX_FILE, inherited, made this
 # `git status` answer with the CONSUMER's index against the export's files: every commit from a
 # linked worktree listed the consumer's tree as deleted and the gates as untracked, under "NOT
-# committed" (media_server, 2026-10-08). An older stock hook still passes them, so this git drops
-# them itself (contract #12), as does the version read below.
+# committed" (a private server workspace, 2026-10-08). An older stock hook still passes them, so
+# this git drops them itself (contract #12), as does the version read below.
 _goh_gate_source_paths="gates checks lib tui"
 _goh_dirty_gate_source() {
     (goh_unbind_git; GIT_OPTIONAL_LOCKS=0 git -C "$GOH_ROOT" status --porcelain --untracked-files=normal \

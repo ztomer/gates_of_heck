@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 """ruff_ratchet.py -- the repo's declared ruff rule set is a gate, its debt a per-rule count that only falls.
 
-A repo that declares a rule set and gates none of it has a linter it reads by eye: ZoneWM's
-ruff.toml selected PLW1510 alone and named "ruff's defaults read 841 findings here" in a comment,
-and monitor's pyproject declared its rules while no step ran them (G17c). Fixing every finding in
-one commit is the right end and rarely the right first step, and the two ways to defer it hide the
-debt: a baseline of fingerprints (no reader sees the findings again) or a blanket ignore (the rule
-stops existing). This is the third way: the rule set runs whole, and what it still reports is held
-to a COUNT per rule, in `ruff_ratchet.json`:
+A repo that declares a rule set and gates none of it has a linter it reads by eye: a private Swift
+app's ruff.toml selected PLW1510 alone and named "ruff's defaults read 841 findings here" in a
+comment, and monitor's pyproject declared its rules while no step ran them (G17c). Fixing every
+finding in one commit is the right end and rarely the right first step, and the two ways to defer it
+hide the debt: a baseline of fingerprints (no reader sees the findings again) or a blanket ignore
+(the rule stops existing). This is the third way: the rule set runs whole, and what it still reports
+is held to a COUNT per rule, in `ruff_ratchet.json`:
 
     {"BLE001": 36, "UP031": 32}
 

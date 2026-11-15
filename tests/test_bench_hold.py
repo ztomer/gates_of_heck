@@ -1,9 +1,9 @@
 """lib/bench_hold.py: a Python block holds the host's bench lock, and lets it go however it ends.
 
-A census longer than the bench lock's 900 s cap holds the host a piece at a time (ZoneWM's set 16
-time cells aside on 2026-10-11 under other sessions' gates, holding nothing). Each test runs
-against a private lock dir and real processes: a gate that starts during the block waits for it,
-and a caller that is SIGKILLed mid-block releases.
+A census longer than the bench lock's 900 s cap holds the host a piece at a time (a private Swift
+app's set 16 time cells aside on 2026-10-11 under other sessions' gates, holding nothing). Each test
+runs against a private lock dir and real processes: a gate that starts during the block waits for
+it, and a caller that is SIGKILLed mid-block releases.
 """
 
 from __future__ import annotations

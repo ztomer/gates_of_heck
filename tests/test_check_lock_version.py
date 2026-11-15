@@ -207,10 +207,10 @@ def test_inheritance_is_resolved_not_compared_literally(tmp_path):
 def _forgotten_member(repo):
     """The release bumped in every place EXCEPT one member manifest.
 
-    media_server's layout: a `VERSION` file and crates that each carry the release number as a
-    literal, with no `[workspace.package]` to inherit from. `VERSION` and `crates/web` say
-    1.79.3; `healthcheck` still declares 1.79.1 and its lockfile entry agrees. So the manifest and
-    the lockfile are consistent with each other, arm 1 has nothing to say, and the release claim
+    A private server workspace's layout: a `VERSION` file and crates that each carry the release
+    number as a literal, with no `[workspace.package]` to inherit from. `VERSION` and `crates/web`
+    say 1.79.3; `healthcheck` still declares 1.79.1 and its lockfile entry agrees. So the manifest
+    and the lockfile are consistent with each other, arm 1 has nothing to say, and the release claim
     has no gate standing in front of it.
 
     (Until 6.18 this fixture also declared `[workspace.package] version = "1.79.3"`. Under a
@@ -231,7 +231,7 @@ def _forgotten_member(repo):
 
 
 def test_a_release_number_bumped_in_one_place_only_is_red(tmp_path):
-    """media_server's shape: a `VERSION` file AND crate manifests. Bump VERSION
+    """A private server workspace's shape: a `VERSION` file AND crate manifests. Bump VERSION
     and the workspace, forget a member, and the manifest and the lockfile AGREE
     with each other on the old number -- so arm 1 is silent and nothing else is
     standing between the release claim and what shipped."""

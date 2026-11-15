@@ -129,8 +129,9 @@ def test_staged_ignores_unstaged_dirt(goh: Path, tmp_path: Path) -> None:
     )
 
 
-# Build scripts are source. ZoneWM, 2026-10-05: a 698-line `Makefile` passed the 500-line cap
-# because the scope was a SUFFIX list and a Makefile has no suffix; `mk/*.mk` was invisible too.
+# Build scripts are source. A private Swift app, 2026-10-05: a 698-line `Makefile` passed the
+# 500-line cap because the scope was a SUFFIX list and a Makefile has no suffix; `mk/*.mk` was
+# invisible too.
 BUILD_FILES = {
     "Makefile": lines(101),
     "sub/GNUmakefile": lines(101),

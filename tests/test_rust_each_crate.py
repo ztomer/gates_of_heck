@@ -1,8 +1,8 @@
 """rust_gate.sh --each-crate: every crate of a repo through ONE scheduler, repo-wide scans once.
 
-media_server hand-rolled this (`xargs -P 4`, a log dir, a `*.failed` sweep), and its 29 crates,
-started together, all missed the shared repo-scan record at once and ran the whole-repo scans 29
-times (BACKLOG P1f). On real cargo crates:
+A private server workspace hand-rolled this (`xargs -P 4`, a log dir, a `*.failed` sweep), and its
+29 crates, started together, all missed the shared repo-scan record at once and ran the whole-repo
+scans 29 times (BACKLOG P1f). On real cargo crates:
 * every top-level crate is gated, a nested manifest (a testkit) is its crate's business;
 * the repo-wide scans run ONCE; biggest crate first;
 * a red crate is named and the others still finish; bad config is refused, named;

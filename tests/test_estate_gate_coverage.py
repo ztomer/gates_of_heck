@@ -189,8 +189,9 @@ def test_rust_gate_sh_audits_every_tracked_lock_from_its_config(tmp_path):
 
 
 def test_a_cargo_dir_named_through_a_variable_still_audits_the_repo(tmp_path):
-    """media_server's --staged shape, `rust_gate.sh . "$crate"`: the variable names which crate is
-    LINTED, not which locks are audited -- every tracked one is, whatever the crate."""
+    """A private server workspace's --staged shape, `rust_gate.sh . "$crate"`: the variable names
+    which crate is LINTED, not which locks are audited -- every tracked one is, whatever the
+    crate."""
     repo = _gate_repo(
         tmp_path,
         {"tools/gate.sh": '"$GOH/gates/rust_gate.sh" . "$crate"\n', "sub/Cargo.lock": _lock()},
@@ -248,7 +249,8 @@ def test_each_crate_audits_every_lock_testkits_included(tmp_path):
             "crates/a/Cargo.lock": _lock(),
             "crates/a/src/lib.rs": "",
             # a testkit is its crate's business to --each-crate, but its lock is the repo's to
-            # audit: exactly media_server's testkits, which only a hand-written step audited.
+            # audit: exactly a private server workspace's testkits, which only a hand-written step
+            # audited.
             "crates/a/testkit/Cargo.toml": manifest.format(n="t"),
             "crates/a/testkit/Cargo.lock": _lock(),
         },

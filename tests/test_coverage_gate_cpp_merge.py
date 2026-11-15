@@ -1,11 +1,12 @@
 """coverage_gate.sh, C++ engine: the profile merge is bounded, and judges only THIS run.
 
-ZoneWM (D-0245, 2026-10-08): SwiftPM's per-process `%p` profiles numbered one per test, and the
-merge that passed them as arguments died at ARG_MAX ("Argument list too long") at 6,965 files. The
-cpp engine had the same shape: `ctest` runs one process per test under `default-%p.profraw`, and
-the merge took `$raws` unquoted as argv -- unbounded, and split on a space in the path. Reading the
-code found the sibling: a previous run's `default-*.profraw` sat in the build dir and was merged
-into this run's number. Shims stand in for cmake, ctest and xcrun; each records what it was given.
+A private Swift app (D-0245, 2026-10-08): SwiftPM's per-process `%p` profiles numbered one per test,
+and the merge that passed them as arguments died at ARG_MAX ("Argument list too long") at 6,965
+files. The cpp engine had the same shape: `ctest` runs one process per test under
+`default-%p.profraw`, and the merge took `$raws` unquoted as argv -- unbounded, and split on a space
+in the path. Reading the code found the sibling: a previous run's `default-*.profraw` sat in the
+build dir and was merged into this run's number. Shims stand in for cmake, ctest and xcrun; each
+records what it was given.
 """
 
 from __future__ import annotations

@@ -43,8 +43,8 @@ PLANTED_FILE = "plantedEnvFileSecret9Z"
 REFUSED = [
     "docker compose config",
     "docker compose config | grep NTFY",
-    "cd ~/prj/media_server && docker compose config 2>&1 | grep -E NTFY_AUTH",
-    "docker compose -p media_server --env-file ~/prj/media_server/.env config",
+    "cd ~/prj/server && docker compose config 2>&1 | grep -E NTFY_AUTH",
+    "docker compose -p server --env-file ~/prj/server/.env config",
     "docker compose -f compose/infra.yml config ntfy",
     "docker compose config --format json",
     "docker compose config --environment",
@@ -55,11 +55,11 @@ REFUSED = [
     "timeout 30 docker compose config",
     # the measured form: a script handed to the host over ssh in a heredoc
     (
-        "ssh media-server 'bash -s' <<'EOF'\ncd ~/prj/media_server\n"
+        "ssh media-server 'bash -s' <<'EOF'\ncd ~/prj/server\n"
         "docker compose config 2>&1 | grep NTFY_AUTH\nEOF"
     ),
-    "ssh media-server 'cd ~/prj/media_server && docker compose config'",
-    'ssh media-server "cd ~/prj/media_server && docker compose config | grep ntfy"',
+    "ssh media-server 'cd ~/prj/server && docker compose config'",
+    'ssh media-server "cd ~/prj/server && docker compose config | grep ntfy"',
     "bash -c 'docker compose config'",
     "bash -s <<EOF\ndocker compose config\nEOF",
     'echo "$(docker compose config)"',

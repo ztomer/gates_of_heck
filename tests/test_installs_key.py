@@ -16,7 +16,7 @@ GOOD = (
     "/Applications/Widget.app widget",
     "/Applications/Antiknob/Antiknob.app",
     "~/Applications/TokenPool.app",
-    "routines sys-updater app_updates",
+    "menubar sys-updater app_updates",
 )
 
 BAD = (

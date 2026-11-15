@@ -5,9 +5,9 @@
 #   rust_gate.sh --each-crate --list [repo]   # the crates it would gate, one repo-relative
 #                                             # directory per line, biggest first; runs nothing
 #
-# For a repo of many independent cargo workspaces (media_server: 29 crates under crates/), which
-# used to hand-roll this with `xargs -P 4`, a log dir and a `*.failed` sweep. Here it is one
-# scheduler, the one every repo's CI steps already use (local_ci.sh): its job budget, its
+# For a repo of many independent cargo workspaces (a private server workspace: 29 crates under
+# crates/), which used to hand-roll this with `xargs -P 4`, a log dir and a `*.failed` sweep. Here
+# it is one scheduler, the one every repo's CI steps already use (local_ci.sh): its job budget, its
 # declared-order reports, its fail accumulator, its ceilings and its orphan canary.
 #
 # * THE CRATES: every tracked Cargo.toml not inside another one's directory (a crate's testkit or

@@ -1,8 +1,9 @@
 //! The calls a Python file makes, from its AST (`ruff_python_parser`), for `goh requires-call`.
 //!
-//! Sized for BACKLOG 1.1 (2026-10-08): over `ZoneWM`'s `tools/` and this repo's 457 Python files it
-//! found the same 29,973 call sites, line for line, as Python's own `ast`, in 0.10 s. A call named
-//! in a string or a docstring is not a call -- the reason the check reads the AST at all.
+//! Sized for BACKLOG 1.1 (2026-10-08): over a private Swift app's `tools/` and this repo's 457
+//! Python files it found the same 29,973 call sites, line for line, as Python's own `ast`, in 0.10
+//! s. A call named in a string or a docstring is not a call -- the reason the check reads the AST
+//! at all.
 
 use std::collections::BTreeMap;
 

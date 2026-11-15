@@ -1,7 +1,7 @@
 """`goh deps` -- one crates.io lookup per crate NAME per TTL, shared, concurrent (P1b).
 
-Measured 2026-10-05: `dependency currency` cost 108 job-seconds of one media_server push -- one
-uncached, serial HTTPS request per dependency, repeated in each of 29 crates, for an arm that
+Measured 2026-10-05: `dependency currency` cost 108 job-seconds of one private server workspace push
+-- one uncached, serial HTTPS request per dependency, repeated in each of 29 crates, for an arm that
 only REPORTS. So: a shared on-disk answer per crate name, and concurrent lookups. What must
 hold, each tested here because none of it was before (every existing test runs offline):
 

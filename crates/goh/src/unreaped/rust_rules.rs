@@ -3,7 +3,7 @@
 //!
 //! Everything here takes ALREADY-MASKED text. The crate-scope sets are
 //! derived once per scan by the caller ([`CrateFacts`]) -- deriving them per
-//! file was the quadratic that cost `media_server` 23 s (2026-10-05).
+//! file was the quadratic that cost a private server workspace 23 s (2026-10-05).
 
 use std::collections::BTreeSet;
 

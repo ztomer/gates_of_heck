@@ -8,7 +8,7 @@
 # own (`cargo::unused_dependencies` and friends) whose levels that flag never
 # touches. Cargo emits those as warnings and still exits 0.
 #
-# Measured on routines, 2026-09-04: three dead dependencies printed a warning
+# Measured on a private Rust app, 2026-09-04: three dead dependencies printed a warning
 # on every single build, rode through fourteen green gate steps, and shipped in
 # a tagged release. `cargo clippy --workspace --all-targets --all-features --
 # -D warnings` printed two of them and exited 0. A gate that reads only the
@@ -25,7 +25,7 @@
 # Deliberate, and it is the stricter choice here. With `--all-targets`, cargo
 # builds the test targets too, so a crate listed under `[dependencies]` that is
 # only ever used by tests counts as USED and is never flagged — even though
-# belonging in `[dev-dependencies]` is exactly what it means. Routines had that
+# belonging in `[dev-dependencies]` is exactly what it means. A private Rust app had that
 # case: the plain build reported three unused deps, the `--all-targets` clippy
 # run reported two, and the third was a `tempfile` declared in both tables.
 #

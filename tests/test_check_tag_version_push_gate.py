@@ -66,7 +66,7 @@ def test_the_push_gate_refuses_a_lying_tag(tmp_path):
 def test_the_push_gate_checks_a_tag_whose_commit_the_remote_already_has(tmp_path):
     """The retag case, and the reason the check runs before every skip below it.
 
-    push_gate skips a commit the remote already has (ZoneWM: six never-pushed
+    push_gate skips a commit the remote already has (a private Swift app: six never-pushed
     tags on days-old commits, each costing a cold gate). That skip is about
     CODE; a tag's version claim is not, and re-tagging an old commit to a new
     version is exactly how a lie gets published.

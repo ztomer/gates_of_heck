@@ -4,7 +4,7 @@ use super::judge::{self, Gathered};
 use super::scan::{self, Rule};
 use std::collections::BTreeMap;
 
-/// The reworked shape (routines, Adv360-Pro-ZMK, `app_updates`): clean under every rule.
+/// The reworked shape (a private Rust app, Adv360-Pro-ZMK, `app_updates`): clean under every rule.
 const CLEAN: &str = "# Roadmap\n\n## Rulings in force\n\n- R1 owner 2026-11-08: one plan.\n\n\
 ## 5. Open items — in phase order\n\nEvery entry has an id and a **Done when**.\n\n\
 ### Phase 1 — now\n\nWhy: first.\n\n\
@@ -92,14 +92,14 @@ fn rule_3_an_entry_needs_an_id_and_a_clause_and_a_clause_needs_an_entry() {
         "Done when: nothing behind.",
     );
     assert_eq!(rules(&orphan), [Rule::Orphan]);
-    let zonewm = CLEAN.replace(
+    let swift_app = CLEAN.replace(
         "#### AU.WAF — attended solve",
         "#### 0.15 [OWNER] one swipe",
     );
     assert_eq!(
-        rules(&zonewm),
+        rules(&swift_app),
         Vec::<Rule>::new(),
-        "a dotted number is an id (ZoneWM's 0.15)"
+        "a dotted number is an id (a private Swift app's 0.15)"
     );
     let word_is_no_id = CLEAN.replace("**H1 dependency", "**Notarization dependency");
     assert_eq!(

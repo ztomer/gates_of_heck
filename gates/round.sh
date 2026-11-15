@@ -1,20 +1,20 @@
 #!/usr/bin/env bash
 # round.sh -m "<message>" <path>... -- one round, end to end: commit the NAMED paths, push the
-# commit, and prove the remote has it. Ported from ZoneWM's tools/round.sh (2026-10-06), where a
-# hand-written chain failed three ways in one night: a commit made after a red verify (`;` where
-# `&&` belonged), a commit that never happened (`git add` named a path a `git mv` had moved, and
-# the `rc` printed was another command's), and pushes refused for a full disk that read as a
-# codesign error. Each step here stops the round with its own reason.
+# commit, and prove the remote has it. Ported from a private Swift app's tools/round.sh
+# (2026-10-06), where a hand-written chain failed three ways in one night: a commit made after a red
+# verify (`;` where `&&` belonged), a commit that never happened (`git add` named a path a `git mv`
+# had moved, and the `rc` printed was another command's), and pushes refused for a full disk that
+# read as a codesign error. Each step here stops the round with its own reason.
 #
 # The gates are the repo's own hooks: the commit runs pre-commit, the push runs pre-push. So a round
 # is never weaker than a hand-run one, and needs no copy of either.
 #   * only the named paths are committed (`git commit --only`): anything else already staged stays
-#     staged and out of the commit -- the hole ZoneWM's version named;
+#     staged and out of the commit -- the hole a private Swift app's version named;
 #   * GOH_ROUND_NEVER (default `.claude/settings.local.json`) is never committed;
 #   * named `.py` files are ruff-formatted first when the repo opts into GOH_PYTHON_FORMATTED;
 #   * GOH_MIN_FREE_GIB is checked before the commit (lib/preflight_disk.py);
 #   * GOH_ROUND_PREFLIGHT, when set, runs before the commit: a WARM verify fails in seconds where
-#     the push's cold one takes minutes (ZoneWM's `make verify`, 25 min cold);
+#     the push's cold one takes minutes (a private Swift app's `make verify`, 25 min cold);
 #   * the push is PINNED (`<sha>:refs/heads/<branch>`), and the remote is read back afterwards.
 { # parse-guard -- bash reads this group whole before running it (tests/test_parse_guard.py)
 _goh_d=${BASH_SOURCE[0]%/*}; [ "$_goh_d" != "${BASH_SOURCE[0]}" ] || _goh_d=.; . "$_goh_d/../lib/bash5.sh" || exit; goh_bash5 "$@"
@@ -52,7 +52,7 @@ for p in "$@"; do
     case "$p" in -*) die "round refused: '$p' is not a path" ;; esac
     for n in $never; do [ "$p" != "$n" ] || die "round refused: $n is never committed (GOH_ROUND_NEVER)"; done
     # A path is real on disk, in the index, OR in HEAD: `git rm` and the old side of a `git mv`
-    # leave it in HEAD alone, and the round commits that deletion (ZoneWM, 2026-10-06).
+    # leave it in HEAD alone, and the round commits that deletion (a private Swift app, 2026-10-06).
     if [ -e "$p" ] || git ls-files --error-unmatch -- "$p" >/dev/null 2>&1; then
         add+=("$p")
     elif ! git cat-file -e "HEAD:$p" 2>/dev/null; then
@@ -86,9 +86,10 @@ if [ -n "$(setting GOH_PYTHON_FORMATTED)" ]; then
 fi
 
 # THE MESSAGE, BEFORE THE PREFLIGHT. The commit-msg hook judges it only at the commit, after a
-# preflight that can take twenty minutes: ZoneWM, 2026-10-12, lost two warm verifies in a row to a
-# message the hook then refused (a wrapped trailer, then a missing `Filed:`), each one judged in a
-# second. The repo's own hook runs here on the same message first; the commit runs it again.
+# preflight that can take twenty minutes: a private Swift app, 2026-10-12, lost two warm verifies in
+# a row to a message the hook then refused (a wrapped trailer, then a missing `Filed:`), each one
+# judged in a second. The repo's own hook runs here on the same message first; the commit runs it
+# again.
 hooks="$(git config core.hooksPath 2>/dev/null || echo .git/hooks)"
 if [ -x "$hooks/commit-msg" ]; then
     msg_file="$(mktemp "${TMPDIR:-/tmp}/goh-round-msg.XXXXXX")"

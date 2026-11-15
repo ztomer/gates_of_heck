@@ -6,8 +6,8 @@ Prints the block, or nothing when there is nothing to name.
 
 It used to be one grep over the whole log, and the whole log of an outer step is every sub-step's
 output: a red `make verify-clean` listed a calibration plant's quoted `✗` row as its failure,
-though the plant had exited 0 and the `✗` was the point of it (ZoneWM H2, BACKLOG C5). A line
-names the failure only when it can be ATTRIBUTED to the sub-step that failed, so:
+though the plant had exited 0 and the `✗` was the point of it (a private Swift app H2, BACKLOG C5).
+A line names the failure only when it can be ATTRIBUTED to the sub-step that failed, so:
 
 * NESTED house steps. An inner goh_step that failed already printed its own block, from its own
   log. That block is the attribution: quote the innermost one alone, name its step, and COUNT the

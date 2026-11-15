@@ -4,10 +4,10 @@
 //! closes the pipe; if the producer has more to write, its next write dies of SIGPIPE (141), and
 //! pipefail makes 141 the pipeline's status -- so a match reads as a MISS. Whether the producer
 //! had finished first is load: green in every test, false on a loaded host. Measured 2026-10-08:
-//! `media_server`'s deploy.sh ran `docker compose ps | grep -qxF "$svc"` and read a RUNNING
-//! service as absent; `git diff --cached --name-only | grep -qE` decided whether a gate layer
-//! ran; and `ps | head -6` exited 141 in this repo's own `tools/quiet.sh`. The consumers are in
-//! `consumer.rs`; the same race sits inside `$(producer | head -1)` under `set -e`.
+//! a private server workspace's deploy.sh ran `docker compose ps | grep -qxF "$svc"` and read a
+//! RUNNING service as absent; `git diff --cached --name-only | grep -qE` decided whether a gate
+//! layer ran; and `ps | head -6` exited 141 in this repo's own `tools/quiet.sh`. The consumers are
+//! in `consumer.rs`; the same race sits inside `$(producer | head -1)` under `set -e`.
 //!
 //! The fix reads the producer to completion first: `out="$(producer)"`, then
 //! `grep -q PAT <<< "$out"`, `head -n1 <<< "$out"`, or `[ -n "$out" ]` for "any output". The

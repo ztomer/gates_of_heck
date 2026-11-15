@@ -1,8 +1,8 @@
 """index_tree names the tree a commit records, from inside its own hook (GOH.REFRESHINDEXLOCK).
 
-`goh hooks --refresh` in ZoneWM made a commit whose gate step wrote the index's tree with a
-plain `git write-tree`: the outer `git commit` held `.git/index.lock` while its hook ran, and the
-step died "Unable to create .git/index.lock: File exists". The helper (`lib/run_path.sh`
+`goh hooks --refresh` in a private Swift app made a commit whose gate step wrote the index's tree
+with a plain `git write-tree`: the outer `git commit` held `.git/index.lock` while its hook ran, and
+the step died "Unable to create .git/index.lock: File exists". The helper (`lib/run_path.sh`
 goh_index_tree, `lib/run_path.py` index_tree) writes from a private copy; what is pinned here is
 that the copy is of the right index. A hook drops its git variables at entry (`goh_hook_unbind`)
 and carries a commit's TEMPORARY index (`commit -a`, `commit -- path`) only as

@@ -1,6 +1,6 @@
 //! The shell reader's specification: what it reads as an image, on which lines, and what it
-//! leaves alone. The incident row is `media_server`'s `scripts/dev/linux_test.sh` before 09cdcd89
-//! (SRV.RUSTTAG), and its pin after.
+//! leaves alone. The incident row is a private server workspace's `scripts/dev/linux_test.sh`
+//! before 09cdcd89 (SRV.RUSTTAG), and its pin after.
 
 use super::refs;
 use crate::movingtag::scan::{scan_at, Problem};

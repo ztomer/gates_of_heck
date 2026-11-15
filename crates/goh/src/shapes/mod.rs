@@ -1,11 +1,12 @@
 //! Every scanner declares the input shapes it covers, in ONE table (GOH.CLASS.SHAPE, 2026-11-15).
 //!
 //! THE CLASS: a new scanner sees only part of its input, and a scan of part reads as clean. The
-//! instances: moving-tags read only Dockerfiles and YAML (`media_server`'s `linux_test.sh` ran
-//! `IMAGE=rust:1` unseen), a roadmap scan counted only headings, a heredoc reader missed the second
-//! heredoc, a site list named only some sites, a changelog check read only the root CHANGELOG, a
-//! tool list came from `.gatesrc` alone. Each was fixed where it was found; the next scanner was
-//! written the same way, because nothing asked a scanner what it does NOT read.
+//! instances: moving-tags read only Dockerfiles and YAML (a private server workspace's
+//! `linux_test.sh` ran `IMAGE=rust:1` unseen), a roadmap scan counted only headings, a heredoc
+//! reader missed the second heredoc, a site list named only some sites, a changelog check read only
+//! the root CHANGELOG, a tool list came from `.gatesrc` alone. Each was fixed where it was found;
+//! the next scanner was written the same way, because nothing asked a scanner what it does NOT
+//! read.
 //!
 //! THE SEAM, three parts:
 //!

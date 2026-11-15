@@ -225,8 +225,8 @@ def test_a_cut_that_would_repeat_an_earlier_entry_is_refused(kit):
 
 
 def test_cut_follows_the_repos_dated_em_dash_heading_style(tmp_path):
-    """routines and ztools head stanzas `## vX — title _(YYYY-MM-DD)_`; a cut in `--` style broke
-    the shape every earlier stanza holds (ztools' heading gate reads it)."""
+    """A private Rust app and ztools head stanzas `## vX — title _(YYYY-MM-DD)_`; a cut in `--`
+    style broke the shape every earlier stanza holds (ztools' heading gate reads it)."""
     import datetime
 
     log = tmp_path / "CHANGELOG.md"

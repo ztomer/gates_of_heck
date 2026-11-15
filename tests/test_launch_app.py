@@ -3,7 +3,8 @@
 The probe that chose the mechanism, kept as the test: a throwaway `.app` whose executable writes its
 own environ to a file, launched with a sentinel set in the caller. A bare `open` hands the app the
 sentinel (the control arm: the instrument can see a leak); `goh launch-app` must not. A ship's
-`open -a` once started ZoneWM with the ship's GOH_DIR, and every app ZoneWM relaunched kept it.
+`open -a` once started a private Swift app with the ship's GOH_DIR, and every app it relaunched kept
+it.
 """
 
 from __future__ import annotations

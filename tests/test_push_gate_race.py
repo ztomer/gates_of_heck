@@ -1,10 +1,11 @@
-"""push_gate.sh refuses a push whose branch MOVED while it was being gated (ZoneWM D-0211).
+"""push_gate.sh refuses a push whose branch MOVED while it was being gated (a private Swift app
+D-0211).
 
 `git push <https-remote> main` hands the pre-push hook a sha, and the remote helper sends what
-`main` is when it SENDS -- after the hook returns. ZoneWM, 2026-10-05: the hook gated d0cf1968 for
-25 minutes, two commits landed meanwhile, and GitHub received f79cf19f, which no gate ran on
-(PushEvent before=c149e3bb head=f79cf19f). A bare file remote sends the gated sha, so a real push
-in a test would report "fine"; the defect is the hook's to catch, not git's to prevent.
+`main` is when it SENDS -- after the hook returns. A private Swift app, 2026-10-05: the hook gated
+d0cf1968 for 25 minutes, two commits landed meanwhile, and GitHub received f79cf19f, which no gate
+ran on (PushEvent before=c149e3bb head=f79cf19f). A bare file remote sends the gated sha, so a real
+push in a test would report "fine"; the defect is the hook's to catch, not git's to prevent.
 
 So after gating, the hook re-reads every pushed local ref: one that no longer names the gated
 commit is refused, naming both shas, and the push stops before anything is sent.
@@ -63,7 +64,7 @@ def test_a_branch_that_moved_during_the_gate_is_refused(tmp_path):
 
 def test_a_pinned_sha_push_is_not_refused_when_the_branch_moves(tmp_path):
     """`git push origin <sha>:refs/heads/main` sends the sha, whatever the branch does: the pinned
-    form ZoneWM now uses must stay green."""
+    form a private Swift app now uses must stay green."""
     repo = _moving_repo(tmp_path)
     gated = _git(repo, "rev-parse", "HEAD")
     r = _push(repo, tmp_path, gated)

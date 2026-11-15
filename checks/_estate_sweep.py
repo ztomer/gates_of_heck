@@ -24,8 +24,9 @@ EVERY invocation of `check_probes_pass.py` regardless of what `--root` named:
   * this gate's own `--probe` cost **54s**, because the probe calls `main()` three times on a
     fixture, and each of those ran the sweep.
   * five tests asserting that a FIXTURE's registry is sound were paying for eight real consumer
-    repos, and would have gone red because a media_server commit landed. That is a test about a
-    fixture whose verdict depends on the estate: the wrong kind of dependency, and expensive.
+    repos, and would have gone red because a private server workspace commit landed. That is a test
+    about a fixture whose verdict depends on the estate: the wrong kind of dependency, and
+    expensive.
 
 # THE RULE, and why it is scoping rather than caching
 

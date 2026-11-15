@@ -1,8 +1,9 @@
 //! The images a shell script (or a Makefile's recipes) pulls, read command by command
 //! (GOH.MOVINGTAGSH).
 //!
-//! THE INCIDENT: `media_server`'s `scripts/dev/linux_test.sh` ran `IMAGE=rust:1` through `docker run`
-//! and `goh moving-tags`, which read only Dockerfiles and YAML, never saw it (SRV.RUSTTAG).
+//! THE INCIDENT: a private server workspace's `scripts/dev/linux_test.sh` ran `IMAGE=rust:1`
+//! through `docker run` and `goh moving-tags`, which read only Dockerfiles and YAML, never saw it
+//! (SRV.RUSTTAG).
 //!
 //! WHAT IS READ, and only this, so a script's ordinary text is never taken for an image:
 //!

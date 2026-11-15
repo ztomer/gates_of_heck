@@ -73,7 +73,7 @@ run_rust() {
     # of this crate. Pinning only CARGO_TARGET_DIR left the instrumented
     # binaries of the PREVIOUS source in that shared dir, and the export
     # merged them in: lines past the end of the current file, all uncovered,
-    # a 96% tree reading 93.5% (routines, 2026-09-21).
+    # a 96% tree reading 93.5% (a private Rust app, 2026-09-21).
     # The caller's values of what this mode overrides: --external's CMD runs in THEM (see below).
     CALLER_CARGO_ENV="$(for v in CARGO_TARGET_DIR CARGO_BUILD_BUILD_DIR RUSTC_WRAPPER CARGO_INCREMENTAL; do
         if [ -n "${!v+x}" ]; then printf 'export %s=%q\n' "$v" "${!v}"; else printf 'unset %s\n' "$v"; fi
@@ -83,23 +83,24 @@ run_rust() {
     # crate's instrumented build began cold on every push, its registry dependencies included, while
     # clippy (cargo's own build dir, keyed on the same stable worktree path) stayed warm. mediaops-rs,
     # a push-shaped re-checkout: 40.7 s of CPU cold, 19.2 s with the build dir kept, the same report.
-    # The TARGET dir stays in the tree: it holds the binaries a test runs, and media_server's find
-    # their repo by walking up from their own path (`env_mini::exe_root`); out of the tree, two of
-    # mediaops' CLI tests failed. Per-REPO isolation (above) holds -- the key is the repo's
-    # physical path. Pruned like the HEAD exports (gates/_head_cache.py): a week unused, past the
-    # newest 200, or past GOH_COV_CACHE_MAX_GIB (default 8; 0 = no byte budget) -- each only once
-    # idle (no live `.goh-running` pid, none stamped in the last 10 minutes).
+    # The TARGET dir stays in the tree: it holds the binaries a test runs, and a private server
+    # workspace's find their repo by walking up from their own path (`env_mini::exe_root`); out of
+    # the tree, two of mediaops' CLI tests failed. Per-REPO isolation (above) holds -- the key is
+    # the repo's physical path. Pruned like the HEAD exports (gates/_head_cache.py): a week unused,
+    # past the newest 200, or past GOH_COV_CACHE_MAX_GIB (default 8; 0 = no byte budget) -- each
+    # only once idle (no live `.goh-running` pid, none stamped in the last 10 minutes).
     COV_CACHE="${GOH_COV_CACHE:-${XDG_CACHE_HOME:-$HOME/.cache}/goh/llvm-cov}"
     # ONE BUILD DIR PER REPO, not per crate (GOH.COVSHAREDBUILD). The key was this crate's own path,
     # so a repo of many cargo workspaces made one build dir PER CRATE and compiled every shared
-    # dependency cold in each: one media_server push made 29 dirs (each rebuilding libsqlite3-sys,
-    # libc, cc), 34 dirs and 9.3 GiB in the cache against its 8 GiB budget, the machine's top file
-    # writer. The key is the repo's root (git's top level, physical; the crate's own path outside
-    # git), so a repo's crates share one build and two repos never do. A crate at the repo root keys
-    # exactly as before. Sharing is safe for the BUILD: cargo gives a crate built as a workspace
-    # member (instrumented) and the same crate built as a dependency (not) different metadata
-    # hashes, measured 2026-11-14. The REPORT is kept to this crate's own build by _cov_prune.py's
-    # view (below), since cargo-llvm-cov reads every executable of a target's name in the build dir.
+    # dependency cold in each: one private server workspace push made 29 dirs (each rebuilding
+    # libsqlite3-sys, libc, cc), 34 dirs and 9.3 GiB in the cache against its 8 GiB budget, the
+    # machine's top file writer. The key is the repo's root (git's top level, physical; the crate's
+    # own path outside git), so a repo's crates share one build and two repos never do. A crate at
+    # the repo root keys exactly as before. Sharing is safe for the BUILD: cargo gives a crate built
+    # as a workspace member (instrumented) and the same crate built as a dependency (not) different
+    # metadata hashes, measured 2026-11-14. The REPORT is kept to this crate's own build by
+    # _cov_prune.py's view (below), since cargo-llvm-cov reads every executable of a target's name
+    # in the build dir.
     COV_ROOT="$( (unset GIT_DIR GIT_WORK_TREE GIT_COMMON_DIR GIT_INDEX_FILE
         root="$(git -C "$PROJ" rev-parse --show-toplevel 2>/dev/null)" && cd "$root" && pwd -P) || pwd -P)"
     COV_KEY="$(printf '%s\n' "$COV_ROOT" | shasum -a 256 | cut -c1-16)"
@@ -129,10 +130,10 @@ run_rust() {
     # ONE RUN, ONE EXPORT. The rust mode exported one lcov part PER TEST TARGET (`--no-clean`, the
     # profile reset between targets) and unioned them. The phantom misses that design was credited
     # with come from aggregating duplicate instantiations, and the CGU-normalizing merger fixes
-    # those whatever the part count: A/B on all 29 media_server crates (2026-10-06), one combined
-    # run of the same targets gave the IDENTICAL merged report -- same percentage, same covered and
-    # coverable line counts, every crate -- for 173 s against 226 s, one cargo invocation and one
-    # export per crate instead of one per target.
+    # those whatever the part count: A/B on all 29 crates of a private server workspace
+    # (2026-10-06), one combined run of the same targets gave the IDENTICAL merged report -- same
+    # percentage, same covered and coverable line counts, every crate -- for 173 s against 226 s,
+    # one cargo invocation and one export per crate instead of one per target.
 
     # THE EXTERNAL PART (--external / GOH_COV_RUST_EXTERNAL): a crate whose behaviour suite drives
     # its binary from outside `cargo test` (gates_of_heck: the pytest suite runs `goh` thousands of

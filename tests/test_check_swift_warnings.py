@@ -1,10 +1,10 @@
 """checks/check_swift_warnings.py — every warning in the repo's own Swift sources fails.
 
-The class behind ZoneWM's blind warning gates (2026-09-26): `swift build` colours its output and
-wraps each diagnostic group in an OSC 8 hyperlink even into a pipe, so a grep for `#<Group>` or a
-match anchored on plain text misses warnings that are plainly there. The gate must go RED on a
-hyperlinked, a coloured and a plain warning in the repo's own dirs, stay GREEN on a dependency's
-warning and on a clean log, and honour --dirs.
+The class behind a private Swift app's blind warning gates (2026-09-26): `swift build` colours its
+output and wraps each diagnostic group in an OSC 8 hyperlink even into a pipe, so a grep for
+`#<Group>` or a match anchored on plain text misses warnings that are plainly there. The gate must
+go RED on a hyperlinked, a coloured and a plain warning in the repo's own dirs, stay GREEN on a
+dependency's warning and on a clean log, and honour --dirs.
 """
 
 import subprocess

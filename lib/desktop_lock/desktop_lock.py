@@ -16,8 +16,8 @@ belongs on BOTH halves or in neither.
 
 WHERE THIS FILE IS CANONICAL. It lives here, beside the bash half, because
 gates_of_heck is the house lib and this is the machine-wide desktop mutex --
-koffee_big/tools/smoke.sh, ZoneWM/scripts/with_desktop_lock.sh and
-routines/tools/capture_ui.sh source the .sh, games/necrohand/tools/qa_lock.py
+koffee_big/tools/smoke.sh, a private Swift app's scripts/with_desktop_lock.sh and
+a private Rust app's tools/capture_ui.sh source the .sh, games/necrohand/tools/qa_lock.py
 imports this. A near-identical copy once also lived in ~/Projects/scripts/lib; it
 drifted (2026-10-04: three real fixes made only there), so it was deleted and its
 suite retargeted here rather than maintained as a second implementation. One

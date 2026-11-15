@@ -18,9 +18,9 @@
   set but the gate's declared inputs (`CALLER_INPUTS`) and points GOH_DIR at its own checkout; the
   release-kit tests build their children's env with `hermetic_env`.
 
-* **A version coarser than `x.y.z` is a moving tag: `rust:1`, `node:22`, `alpine:3`, `ubuntu:24.04` (GOH.MOVINGTAGCOARSE, owner ruling 2026-11-15, "Yes, flag them").** `goh moving-tags` passed every digit-bearing tag without a channel word, so media_server's `linux_test.sh` ran `IMAGE=rust:1` unseen (SRV.RUSTTAG). A tag now names one build only through a date, a full `x.y.z` version (any suffix) or a commit id, and a digest pins any tag; anything coarser is a release line its maintainer re-points at every release, and the report says so. Distribution versions get no exception (`docs/decisions/D-0007-a-version-coarser-than-x-y-z-is-a-release-line.md`): `ubuntu:24.04` floats across 24.04.N and its rebuilds, and pins by its dated tag (`noble-20250925`) or a digest. The fleet's exemption is unchanged, its per-image `# moving-tag-ok: ... (servers DECISIONS #9)` markers. Judged from `crate::grace::OVER_FROM` (2026-11-23); the estate's new sites on the day were 9 in 2 repos (media_server 8, 7 of them compose service images inside DECISIONS #9; CadGoose 1). Pinned by `movingtag/tests.rs` (`rust:1`, `node:22`, `alpine:3` red in a Dockerfile, a workflow and a `.sh`; `rust:1.99.1`, a digest and a dated tag green; all green within the grace), red before the change.
+* **A version coarser than `x.y.z` is a moving tag: `rust:1`, `node:22`, `alpine:3`, `ubuntu:24.04` (GOH.MOVINGTAGCOARSE, owner ruling 2026-11-15, "Yes, flag them").** `goh moving-tags` passed every digit-bearing tag without a channel word, so a private server workspace's `linux_test.sh` ran `IMAGE=rust:1` unseen (SRV.RUSTTAG). A tag now names one build only through a date, a full `x.y.z` version (any suffix) or a commit id, and a digest pins any tag; anything coarser is a release line its maintainer re-points at every release, and the report says so. Distribution versions get no exception (`docs/decisions/D-0007-a-version-coarser-than-x-y-z-is-a-release-line.md`): `ubuntu:24.04` floats across 24.04.N and its rebuilds, and pins by its dated tag (`noble-20250925`) or a digest. The fleet's exemption is unchanged, its per-image `# moving-tag-ok: ... (servers DECISIONS #9)` markers. Judged from `crate::grace::OVER_FROM` (2026-11-23); the estate's new sites on the day were 9 in 2 repos (a private server workspace 8, 7 of them compose service images inside DECISIONS #9; CadGoose 1). Pinned by `movingtag/tests.rs` (`rust:1`, `node:22`, `alpine:3` red in a Dockerfile, a workflow and a `.sh`; `rust:1.99.1`, a digest and a dated tag green; all green within the grace), red before the change.
 
-* **The index-tree helper names the tree a `commit -a` records, from inside its hook (GOH.REFRESHINDEXLOCK).** `goh hooks --refresh` in ZoneWM made a commit whose gate step ran a plain `git write-tree`: the outer `git commit` held `.git/index.lock` while its hook ran, and the step died `Unable to create .git/index.lock: File exists`. goh's helper already wrote from a private copy, but a hook drops its git variables at entry and carries a `commit -a` / `commit -- path` temporary index only as `GOH_HOOK_INDEX_FILE`, and the copy was of the repository's own index: the tree of the state BEFORE the commit. `goh_index_tree` (`lib/run_path.sh`), `run_path.index_tree` (`lib/run_path.py`) and the Rust `run_path::index_tree` now take the carried index themselves when it belongs to the repository they run in, so no caller has to remember to bind it. `tests/test_index_tree_in_hook.py` commits for real (plain, `-a`, `-- path`) through the shell and Python faces with the staged bytes differing from the worktree's: red on `-a` before, green after. `goh run-paths` also sees `"write-tree"` as the last argument of a call (`_git(root, "write-tree")`, the shape ZoneWM's `tools/index_tree.py` used), which its pattern missed.
+* **The index-tree helper names the tree a `commit -a` records, from inside its hook (GOH.REFRESHINDEXLOCK).** `goh hooks --refresh` in a private Swift app made a commit whose gate step ran a plain `git write-tree`: the outer `git commit` held `.git/index.lock` while its hook ran, and the step died `Unable to create .git/index.lock: File exists`. goh's helper already wrote from a private copy, but a hook drops its git variables at entry and carries a `commit -a` / `commit -- path` temporary index only as `GOH_HOOK_INDEX_FILE`, and the copy was of the repository's own index: the tree of the state BEFORE the commit. `goh_index_tree` (`lib/run_path.sh`), `run_path.index_tree` (`lib/run_path.py`) and the Rust `run_path::index_tree` now take the carried index themselves when it belongs to the repository they run in, so no caller has to remember to bind it. `tests/test_index_tree_in_hook.py` commits for real (plain, `-a`, `-- path`) through the shell and Python faces with the staged bytes differing from the worktree's: red on `-a` before, green after. `goh run-paths` also sees `"write-tree"` as the last argument of a call (`_git(root, "write-tree")`, the shape a private Swift app's `tools/index_tree.py` used), which its pattern missed.
 * **`tests/test_self_gate.py` no longer fails inside a lane worktree (GOH.REFRESHINDEXLOCK).** It checked out a branch named `lane` in a clone that carries `lane/<ITEM>`, a ref git refuses beside it (exit 128); it names its branch `scratch-branch`.
 
 ## v0.120.0 -- round 6: one pre-push reader, seed-add store writer, grace fixes, moving tags in scripts, shape/linecap docs, empty-assert lexer, staged-source guard, Swift lint-only, coverage values
@@ -39,7 +39,7 @@
 
 * **`file length` has its shape row, which names Markdown out of the cap with a reason; and the tree stamp no longer treats the retired in-tree lock as gate output (`GOH.LINECAPDOCS`).** `docs/map.md` reached 544 lines and nothing flagged it, because `length.rs` measures source suffixes and build-script names only, an exemption written in its header and nowhere the shape table could see. The row (`crates/goh/src/length_shapes.rs`) is a whole-file scanner's: its hook judges every line of a measured file, it owns no line token, and the walk now holds such a row to judging every line of each covered fixture, so a line scanner cannot pass as one (calibrated: a hook judging only line 1 is red). Its probe is the `#!` line; the estate reads 2029 judged, Markdown out of scope ("a doc is read by its headings and is as long as its subject"), and 210 shebang-only scripts and unlisted suffixes (`.zsh`, `.tmpl`, `.template`, `.pl`, `.mjs`) as the named gap GOH.LINECAPSCRIPTS. `lib/tree_stamp.py` listed `.goh-tree.lock` among the files the gates write into a tree; the lock has lived in the run directory since GOH.CLASS.CHECKOUT, so the name is dropped and a stray one mid-run is a move (`tests/test_tree_stamp.py`, red first).
 
-* **`goh moving-tags` reads shell scripts and Makefiles, narrowly (`GOH.MOVINGTAGSH`, judged from 2026-11-23 through `crate::grace`).** It read only Dockerfiles and YAML, so `media_server`'s `scripts/dev/linux_test.sh` ran `IMAGE=rust:1` unseen (SRV.RUSTTAG), and `goh shape-diff --estate` named 37 probe hits as the gap. The new reader (`crates/goh/src/movingtag/shell.rs`) reads a shell script (by name or shebang) and a Makefile's recipes and assignments through the shell's quoting: an image variable's assignment at the start of a command (`IMAGE=`, `BASE_IMAGE=`, `export`/`local` forms, with the file's earlier assignments and `${NAME:-default}` defaults substituted) and the image argument of `docker`/`podman` `run`, `create` and `pull`, past the CLI's own flag grammar (an unknown short flag leaves it unreadable, never guessed). A name the script builds (`docker build --tag "$IMAGE"`, `docker commit`, `docker tag`) pulls nothing, a path is no image, and a quoted `grep '^docker run$'`, a comment and a heredoc body are not commands; `# moving-tag-ok: <reason>` is the escape, as in YAML. The shape table now covers the four script shapes and names compose written by a heredoc (13, all test fixtures) and JSON records out of scope; the estate shape-diff reads 0 gaps (was 37), 75 judged (was 59), and no estate repo has a new finding. Red first: a planted `docker run rust:latest` in a `.sh` and in a Makefile was green, and is red; its `rust:1.99.1@sha256:...` pin is green. (`rust:1` itself is a version-shaped tag, which `reference.rs` deliberately does not judge, in a Dockerfile as in a script.)
+* **`goh moving-tags` reads shell scripts and Makefiles, narrowly (`GOH.MOVINGTAGSH`, judged from 2026-11-23 through `crate::grace`).** It read only Dockerfiles and YAML, so a private server workspace's `scripts/dev/linux_test.sh` ran `IMAGE=rust:1` unseen (SRV.RUSTTAG), and `goh shape-diff --estate` named 37 probe hits as the gap. The new reader (`crates/goh/src/movingtag/shell.rs`) reads a shell script (by name or shebang) and a Makefile's recipes and assignments through the shell's quoting: an image variable's assignment at the start of a command (`IMAGE=`, `BASE_IMAGE=`, `export`/`local` forms, with the file's earlier assignments and `${NAME:-default}` defaults substituted) and the image argument of `docker`/`podman` `run`, `create` and `pull`, past the CLI's own flag grammar (an unknown short flag leaves it unreadable, never guessed). A name the script builds (`docker build --tag "$IMAGE"`, `docker commit`, `docker tag`) pulls nothing, a path is no image, and a quoted `grep '^docker run$'`, a comment and a heredoc body are not commands; `# moving-tag-ok: <reason>` is the escape, as in YAML. The shape table now covers the four script shapes and names compose written by a heredoc (13, all test fixtures) and JSON records out of scope; the estate shape-diff reads 0 gaps (was 37), 75 judged (was 59), and no estate repo has a new finding. Red first: a planted `docker run rust:latest` in a `.sh` and in a Makefile was green, and is red; its `rust:1.99.1@sha256:...` pin is green. (`rust:1` itself is a version-shaped tag, which `reference.rs` deliberately does not judge, in a Dockerfile as in a script.)
 
 * **A checkout whose pre-push hook is goh's shim reads as push-gated again, through ONE reader (`GOH.SHIMPUSHGATED`).** The release kit's CI step (`ci_step.sh` `ci_push_gated`), goh ship's verify (`lib/ship_verify.py`) and .loop's `loopctl done` (`loopadvisory.push_gated`) each grepped the hook for `push_gate.sh`; the shim that GOH.CLASS.ROLLOUT (7223a9e) made the stock hook names no gate, so every shimmed checkout read as ungated and the v0.119.0 ship failed verify ("this checkout's pre-push hook is not goh's push gate") while its CI was pending. The grep also passed any hook that merely names the script. Now `lib/push_gated.py` judges the resolved hook by its BYTES: today's stock shim, or a retired stock pre-push tagged `push-gate` in `retired_hooks.sha256` (the 8 stamped hooks consumers keep until a refresh; the first, 73391f0, ran no push gate and stays ungated). The kit runs it as a script, ship_verify imports it, .loop loads it from goh. `tests/test_push_gated.py` classifies every retired pre-push (an untagged new one is red) and refuses a code line that searches for a gate script's name (`name_greps`, calibrated on the three readers it replaced; .loop runs it on its own tree). Red first: on 14195ca the kit read a shimmed checkout as ungated, the ship's verify failed it, and a hook only naming `push_gate.sh` read as gated.
 
@@ -63,7 +63,7 @@
 
 - goh obeys its own scanners (GOH.CLASS.SELF): `tests/test_self_walk.py` walks the scanner registry (`goh shape-diff --registry`, the shape table's own) and runs every scanner over goh itself with no seed, no grace and every opt-in on; goh's own violations are counted per scanner in `tests/self_walk_seed.json`, which only shrinks (a new, grown, lowered or stale entry is red). A violation planted for six scanners of different kinds turns each red. A scanner added to the registry is walked with no edit.
 
-* **Every scanner declares the input shapes it covers, and a differential beside a plain grep refuses an unnamed one (`GOH.CLASS.SHAPE`).** Scanners kept seeing part of their input (only Dockerfiles, only headings, the first heredoc, a root CHANGELOG) and reporting clean. `crates/goh/src/shapes/table.rs` holds one row per scanner in the registry (`structural_steps.txt` plus `subject::ALL`; a test refuses a scanner with no row): a declared row names a probe, the scanner's own judged hook, the tokens it owns, and each shape covered, out of scope with a reason, or a gap naming its queue item, every shape with a fixture the test re-proves. `goh shape-diff [ROOT] --estate --since main` runs in GOH_CI_STEPS where a scanner lands; over the 47-repo estate it names 37 moving-tags gap hits (`GOH.MOVINGTAGSH`, media_server's `linux_test.sh` among them), 95 tui-marks and 7 status-markers hits in new gaps (`GOH.TUIMARKSHAPES`, `GOH.STATUSMARKSHAPES`), and 0 unnamed; 41 scanners are still `unreviewed` on a shrink-only burn-down. Red from 2026-11-23 (`crate::grace`). One token, one owner: `goh tui-marks` no longer judges an ANSI escape, which `goh status-markers` owns, so one print line is not counted twice (the walk refuses a hook that judges another row's token).
+* **Every scanner declares the input shapes it covers, and a differential beside a plain grep refuses an unnamed one (`GOH.CLASS.SHAPE`).** Scanners kept seeing part of their input (only Dockerfiles, only headings, the first heredoc, a root CHANGELOG) and reporting clean. `crates/goh/src/shapes/table.rs` holds one row per scanner in the registry (`structural_steps.txt` plus `subject::ALL`; a test refuses a scanner with no row): a declared row names a probe, the scanner's own judged hook, the tokens it owns, and each shape covered, out of scope with a reason, or a gap naming its queue item, every shape with a fixture the test re-proves. `goh shape-diff [ROOT] --estate --since main` runs in GOH_CI_STEPS where a scanner lands; over the 47-repo estate it names 37 moving-tags gap hits (`GOH.MOVINGTAGSH`, a private server workspace's `linux_test.sh` among them), 95 tui-marks and 7 status-markers hits in new gaps (`GOH.TUIMARKSHAPES`, `GOH.STATUSMARKSHAPES`), and 0 unnamed; 41 scanners are still `unreviewed` on a shrink-only burn-down. Red from 2026-11-23 (`crate::grace`). One token, one owner: `goh tui-marks` no longer judges an ANSI escape, which `goh status-markers` owns, so one print line is not counted twice (the walk refuses a hook that judges another row's token).
 
 * **`goh git-deadline` passes lock-free git verbs under a deadline; the bash 5 guard runs with PATH empty; `gates/swift_toolchain.sh` refuses zsh in words (`GOH.GITKILLLOCKFREE`).** The rule flagged every git under `timeout`/`gtimeout` or `timeout=`, so `timeout 10 git ls-remote` read as a stranded-lock risk; `crates/goh/src/gitargv.rs` now holds one `LOCK_FREE` table (ls-remote, rev-parse, cat-file, show-ref, rev-list, for-each-ref, ls-tree, ls-files, merge-base, describe, diff-tree, var, version, and `config` in its read forms only), each row pinned by a test, and a writer or an unreadable verb under a bare deadline stays red. Every guard line found `lib/bash5.sh` with `dirname`, an external, so with PATH empty it sourced `/lib/bash5.sh` and stopped; all 92 lines now use `${BASH_SOURCE[0]%/*}` (`.` for a bare name), and `test_every_guard_form_runs_with_path_empty` runs each distinct form with `PATH=` by path and as `bash x.sh` (red on the old tree, green after). The source-closure readers (`lib/source_closure.py`, `goh shell-lint`'s scope) follow the new form. Sourced from zsh, `gates/swift_toolchain.sh` said `no such file or directory: ./../lib/bash5.sh`; it now returns 1 naming bash before the guard runs.
 
@@ -77,11 +77,11 @@
 
 * **goh's own changelog agrees with its tags: 0 disagreements, and its `changelog_tags_seed.json` entry is gone (`GOH.CHANGELOGHEADS`).** `goh changelog-tags` on goh held 24 findings in the seed: tag `v0.1.0` had no heading (its stanza was titled `## Gate wiring, harness, and class fixes`, the first release before headings named versions; `git show v0.1.0` tags 6683fd6 with that stanza), and 23 `## vX` headings named versions that were never tagged, locally or on the remote (`git ls-remote --tags origin` has none of v0.12.2, v0.12.3, v0.12.6, v0.13.0-v0.13.2, v0.28.1, v0.33.0-v0.42.0, v0.44.0, v0.46.0-v0.48.0): their entries shipped in the next tag (`git tag --contains` of their commits: v0.12.4, v0.13.3, v0.29.0, v0.43.0, v0.45.0, v0.49.0). The reading was right, the file was wrong: `v0.1.0` now heads its stanza, and each untagged heading is a `### vX (never tagged: released in vY)` subsection of the tagged stanza it sits in, so a tag's notes are the entries it really carries. No seed is needed; the stale entry would have been red.
 
-* **`goh git-deadline`: the git-deadline class is a native structural step in every repo (`GOH.GITKILLNATIVE`).** GOH.GITKILL (v0.80.0) fixed goh's own git calls that a deadline SIGKILLs alone (a writer strands `index.lock` and orphans its hook; a `git status`/`git diff` takes that lock optionally and strands it too), but its check was a pytest scan of goh's own tree, so `.loop`'s `loopq.py`, with the same shape, had none. `crates/goh/src/gitdeadline.rs` reads every non-test Python statement (`subprocess.run(["git", ...], timeout=...)` unless a no-lock reader with no writer verb; a literal `"status"`/`"diff"` reader without `GIT_OPTIONAL_LOCKS`) and every shell line (`git status`, or a `git diff` of the work tree, without `GIT_OPTIONAL_LOCKS=0`/`--no-optional-locks`; git under `timeout`), comments and docstrings never. The verb is git's own word (`crate::gitargv`), never a substring: a commit message saying "diff" or a plumbing `diff-tree` reads nothing, and a `git diff` with `--cached`/`--staged`/`--no-index`, a range or two operands before `--` compares no work tree, so it takes no lock (koffee_big `tools/cut_release.sh:274`/`:360`, `git diff --quiet "v$VERSION" HEAD`, was flagged; `a_diff_that_reads_no_work_tree_is_not_a_reader` was red on that line and green after, and the fixture's `cut.sh` went red with the two-operand rule disabled); a deliberate site says `# git-deadline-ok: <reason>` (goh's `checks/_gitutil.py` reader seam does). Seeded sites live in `git_deadline_seed.json` (`crate::estate_seed`), the floor is `GOH_GIT_DEADLINE_MIN_FILES`, and the verdict waits for `crate::grace::OVER_FROM` (2026-11-23) so consumers fix or seed first. `tests/test_git_deadline_native.py` plants `.loop`'s shape in a consumer fixture: its `goh structural` goes red at both scopes, green once fixed, quiet within the grace, warn when seeded; four of its tests went red with the deadline rule disabled and green restored. goh's own pytest scans of the same class (`tests/test_git_deadline_class.py`: the Python deadline, the direct reader, the shell reader and the shell `timeout`) are gone, one implementation left: `test_this_repo_has_no_site` judges this repo with the grace over; what stays in pytest is what the native step does not read (the Rust readers, group kills, a seam's hand-written `-C`, the seams' behaviour). The pytest Python rule also refused a no-lock reader under `timeout=`, which the native one allows by design (no lock to strand). The estate audit is not done here: a read-only scan on 2026-11-14 found sites in 17 consumers (scripts 6, koffee_big 5, monitor 4, divoom-control 3, CadGoose/ZoneWM/games/routines 2, nine more 1).
+* **`goh git-deadline`: the git-deadline class is a native structural step in every repo (`GOH.GITKILLNATIVE`).** GOH.GITKILL (v0.80.0) fixed goh's own git calls that a deadline SIGKILLs alone (a writer strands `index.lock` and orphans its hook; a `git status`/`git diff` takes that lock optionally and strands it too), but its check was a pytest scan of goh's own tree, so `.loop`'s `loopq.py`, with the same shape, had none. `crates/goh/src/gitdeadline.rs` reads every non-test Python statement (`subprocess.run(["git", ...], timeout=...)` unless a no-lock reader with no writer verb; a literal `"status"`/`"diff"` reader without `GIT_OPTIONAL_LOCKS`) and every shell line (`git status`, or a `git diff` of the work tree, without `GIT_OPTIONAL_LOCKS=0`/`--no-optional-locks`; git under `timeout`), comments and docstrings never. The verb is git's own word (`crate::gitargv`), never a substring: a commit message saying "diff" or a plumbing `diff-tree` reads nothing, and a `git diff` with `--cached`/`--staged`/`--no-index`, a range or two operands before `--` compares no work tree, so it takes no lock (koffee_big `tools/cut_release.sh:274`/`:360`, `git diff --quiet "v$VERSION" HEAD`, was flagged; `a_diff_that_reads_no_work_tree_is_not_a_reader` was red on that line and green after, and the fixture's `cut.sh` went red with the two-operand rule disabled); a deliberate site says `# git-deadline-ok: <reason>` (goh's `checks/_gitutil.py` reader seam does). Seeded sites live in `git_deadline_seed.json` (`crate::estate_seed`), the floor is `GOH_GIT_DEADLINE_MIN_FILES`, and the verdict waits for `crate::grace::OVER_FROM` (2026-11-23) so consumers fix or seed first. `tests/test_git_deadline_native.py` plants `.loop`'s shape in a consumer fixture: its `goh structural` goes red at both scopes, green once fixed, quiet within the grace, warn when seeded; four of its tests went red with the deadline rule disabled and green restored. goh's own pytest scans of the same class (`tests/test_git_deadline_class.py`: the Python deadline, the direct reader, the shell reader and the shell `timeout`) are gone, one implementation left: `test_this_repo_has_no_site` judges this repo with the grace over; what stays in pytest is what the native step does not read (the Rust readers, group kills, a seam's hand-written `-C`, the seams' behaviour). The pytest Python rule also refused a no-lock reader under `timeout=`, which the native one allows by design (no lock to strand). The estate audit is not done here: a read-only scan on 2026-11-14 found sites in 17 consumers (scripts 6, koffee_big 5, monitor 4, divoom-control 3, CadGoose/games and two private apps 2 each, nine more 1).
 
 * **A missing bash guard stops the script instead of letting it run on (`GOH.BASH5SILENT`).** Every goh bash file sourced its guard as `. lib/bash5.sh && goh_bash5 "$@"`: when the file was missing (found via a test fixture that copied a script without it) the `.` failed, `&&` skipped the guard, and the script ran on unguarded with no error -- bash 5 ignores `set -e` left of `&&`. All 100 sourcing lines now read `. lib/bash5.sh || exit; goh_bash5 "$@"` (the hook and `tui/` tolerant forms too, inside their braces; the release kit's `_from_head.sh` source likewise), so the `.` names the file and the script exits non-zero. `tests/test_bash5_guard.py` holds every line that sources the guard to that form (a census, not only the first statement) and runs each distinct guard line with its `lib/bash5.sh` missing -- unreadable for the tolerant forms -- asserting a non-zero exit naming the file and nothing after it run: red on the old tree (every file; the script printed past the guard with exit 0), green after, red again with one line reverted. The previous `pre-commit`/`pre-push` stock is retired `same-logic` (it differs only when an existing guard cannot be read); `goh hooks --refresh` delivers the new one. The empty-tree sweep (`checks/check_empty_scope.py`) copied the gate directory without the guard, so `check_no_screen_linkage.sh` died on the missing `lib/bash5.sh` and its excuse read as stale; the skeleton now carries `lib/bash5.sh`, ignored like the gate directory (`test_the_skeleton_carries_the_bash_guard_a_shell_gate_sources`: red before, green after). Five suites ran a goh script where the guard had silently failed and the script ran on unguarded, which they read as a pass: `test_doctor` and `test_swift_toolchain` (a PATH of shims alone, so no `dirname`) now link `dirname` in, and `test_goh_build_publish`'s tarball and `test_release_hardening`'s mirror carry `lib/`; all four went red at the land gate and green after.
 
-* **`goh release-quiet` reads the scripts a release calls, from 2026-11-23 (`GOH.RELQUIETCALLEES`).** It scanned only release-NAMED files, so ztools' `bin/ab_test` sent `cargo test` to /dev/null inside a script `tools/release.sh` runs, unseen (ZTL.RELQUIET). Decided: follow the calls, transitively (`crates/goh/src/relquiet_callees.rs`), rather than declare release-reachable scripts in `.gatesrc`, a list somebody has to remember. A call is a segment's command that resolves to a tracked shell source (`./x.sh`, `bash tools/x.sh`, `. "$(dirname "$0")/x.sh"`, `"$ROOT/bin/x"`), tried beside the caller, then from the root; a cycle ends at a script already read; a site names the release that reaches it. Judged from `crate::grace::OVER_FROM`; the estate re-scan found 2 new sites (ZoneWM `package_app.sh`, antiknob `install.sh`), pending in `GOH.GRACEEND`'s `release_quiet_callees_pending.json`.
+* **`goh release-quiet` reads the scripts a release calls, from 2026-11-23 (`GOH.RELQUIETCALLEES`).** It scanned only release-NAMED files, so ztools' `bin/ab_test` sent `cargo test` to /dev/null inside a script `tools/release.sh` runs, unseen (ZTL.RELQUIET). Decided: follow the calls, transitively (`crates/goh/src/relquiet_callees.rs`), rather than declare release-reachable scripts in `.gatesrc`, a list somebody has to remember. A call is a segment's command that resolves to a tracked shell source (`./x.sh`, `bash tools/x.sh`, `. "$(dirname "$0")/x.sh"`, `"$ROOT/bin/x"`), tried beside the caller, then from the root; a cycle ends at a script already read; a site names the release that reaches it. Judged from `crate::grace::OVER_FROM`; the estate re-scan found 2 new sites (a private Swift app `package_app.sh`, antiknob `install.sh`), pending in `GOH.GRACEEND`'s `release_quiet_callees_pending.json`.
 
 * **goh ship takes the land queue and judges a clean export (`GOH.CLASS.CHECKOUT`).** The class: one shared checkout, concurrent writers. A ship pushed, released (goh's kit lands a release commit) and installed from the main checkout while a lane's `tools/land.sh` could fast-forward it, and its verify read the live tree, so v0.116.0 failed on a `bin/goh.*.staging` another build left ("working tree: 1 uncommitted"). The ship worker now holds `goh-land.lock` (lib/land_lock.py, the flock land.sh takes) for its pipeline: a land waits naming the ship, a ship waits naming the land, and a land the ship's own release step runs proceeds under the ship's hold (`GOH_LAND_LOCK_OWNER`, honoured only for a live pid the lock file names). Verify runs the card with LOOPCTL_ROOT at a temp `git clone --shared` of the shipped sha (lib/ship_export.py), and reads CI for the shipped sha, not the live HEAD. `tests/test_ship_land_lock.py` (red: the ship pushed under a held lock; the release land timed out at 40 s), `tests/test_ship_export.py` (red: verify failed on the live stray), `tests/test_entry_points_leave_no_strays.py` (land then ship in a scratch repo leave no untracked or ignored file in any work tree; red with the lock planted in the tree; it found land.sh's new owner check unbound under `set -u` first).
 
@@ -169,17 +169,17 @@
 
 * **`goh plural-hedge` sees a hedge on the continuation line of a string, and goh's own step output counts its lines (`GOH.LINEHEDGE`).** `step_report.rs` printed "the ✗ line(s) above" on the line after a trailing backslash, which the line-by-line lexer read as code, so the check never saw it. A string now runs into the next line only through a trailing backslash. goh's own `✗ line(s)`, `earlier line(s) not shown` and `lib/xexit.py` hedges say `1 line` / `N lines`; two newly visible hedges in `substdin/seed.rs` are counted too. The 127 remaining seeded files in goh's own tree are `GOH.HEDGEOWN`'s.
 
-* **`goh bare-open` sees the three launch shapes it walked past (`GOH.BAREOPEN2`).** `env FOO=1 open ...` (and a plain `FOO=1 open ...`; `env -i` is the clean launch and stays green), an `open` inside `$( )` or backticks within double quotes (`x="$(open -a Foo)"`: the quote test read it as an argument), and a Python subprocess that runs `open` (`["open", "-a", app]`, `os.system(f"open -a {app}")`; `crate::bareopen_py`, read off the token stream, so a docstring or message is not a site). Each shape is a planted unit test and one fixture-repo test (`crates/goh/tests/cli_bare_open.rs`), red first; `GOH_BARE_OPEN_MIN_FILES` now counts shell and Python sources. The estate re-sweep found 13 Python sites (ZoneWM 6, divoom-control 2, ZeroThunder 2, scripts 1, this repo 2); the consumers' are seeded in the private store, this repo's two in `bare_open_seed.json`.
+* **`goh bare-open` sees the three launch shapes it walked past (`GOH.BAREOPEN2`).** `env FOO=1 open ...` (and a plain `FOO=1 open ...`; `env -i` is the clean launch and stays green), an `open` inside `$( )` or backticks within double quotes (`x="$(open -a Foo)"`: the quote test read it as an argument), and a Python subprocess that runs `open` (`["open", "-a", app]`, `os.system(f"open -a {app}")`; `crate::bareopen_py`, read off the token stream, so a docstring or message is not a site). Each shape is a planted unit test and one fixture-repo test (`crates/goh/tests/cli_bare_open.rs`), red first; `GOH_BARE_OPEN_MIN_FILES` now counts shell and Python sources. The estate re-sweep found 13 Python sites (a private Swift app 6, divoom-control 2, ZeroThunder 2, scripts 1, this repo 2); the consumers' are seeded in the private store, this repo's two in `bare_open_seed.json`.
 
 ## v0.114.0 -- estate walk skips linked git worktrees (CANARYWT), with the waiting AUDITSPIN, COVSHAREDBUILD, CUTEMPTY, SHIPITEM and CIRUSTGATE commits
 
-* **A repo's crates share one instrumented coverage build, and each report still reads only its own crate's build (`GOH.COVSHAREDBUILD`).** `gates/_coverage_rust.sh` keyed the build dir on each crate's path, so a multi-crate repo built every shared dependency cold once per crate: one media_server push made 29 dirs in `~/.cache/goh/llvm-cov`, the cache 34 dirs and 9.3 GiB over its 8 GiB budget, the machine's top file writer. The key is now the repo's root (git top level; the crate's path outside git), so two repos stay apart and a root crate keys as before. cargo-llvm-cov reads every executable of a target's name in the build dir, and 29 media_server crates have a `version` test, so `gates/_cov_prune.py` no longer deletes in the shared dir (a crate could delete a sibling's binary mid-run): it links this build's executables, build scripts excluded, into a per-crate view the report reads. The `.goh-running` marker holds one pid per running crate (`_head_cache.mark`). Measured on media_server's 29 crates, 4 at a time, cold: 29 build dirs -> 1, 3.35 -> 2.27 GiB, 9,420 -> 4,669 files, 595 -> 467 CPU s (wall 67 -> 79 s); warm (trees recreated): 301 -> 296 CPU s; all 29 reports identical to before, cold and warm.
+* **A repo's crates share one instrumented coverage build, and each report still reads only its own crate's build (`GOH.COVSHAREDBUILD`).** `gates/_coverage_rust.sh` keyed the build dir on each crate's path, so a multi-crate repo built every shared dependency cold once per crate: one private server workspace push made 29 dirs in `~/.cache/goh/llvm-cov`, the cache 34 dirs and 9.3 GiB over its 8 GiB budget, the machine's top file writer. The key is now the repo's root (git top level; the crate's path outside git), so two repos stay apart and a root crate keys as before. cargo-llvm-cov reads every executable of a target's name in the build dir, and 29 crates of a private server workspace have a `version` test, so `gates/_cov_prune.py` no longer deletes in the shared dir (a crate could delete a sibling's binary mid-run): it links this build's executables, build scripts excluded, into a per-crate view the report reads. The `.goh-running` marker holds one pid per running crate (`_head_cache.mark`). Measured on a private server workspace's 29 crates, 4 at a time, cold: 29 build dirs -> 1, 3.35 -> 2.27 GiB, 9,420 -> 4,669 files, 595 -> 467 CPU s (wall 67 -> 79 s); warm (trees recreated): 301 -> 296 CPU s; all 29 reports identical to before, cold and warm.
 
 * **Every goh `cargo audit` runs under its own short ceiling, and a fetching one refuses an index it cannot resolve (`GOH.AUDITSPIN`).** cargo-audit 0.23.0 spun at 100% CPU for 10.5 and 3.3 minutes in two push gates on 2026-11-14, output stopped at "Scanning Cargo.lock". Cause, upstream: tame-index 0.26.3 `AsyncRemoteSparseIndex::exec_request` retries a connect error with no backoff, and the yanked check's first crate request has no deadline, so a name lookup that fails fast (the resolver around a logoff) is an endless busy loop in getaddrinfo. Reproduced on demand: `HTTPS_PROXY=http://no-such-host.invalid:3128 cargo audit --deny yanked` never finishes. `lib/advisory_db.py` now asks that lookup first (the proxy's host when set, else index.crates.io) and refuses in words, and `bounded()` stops any audit at `GOH_AUDIT_CPU` (30 s CPU) or `GOH_AUDIT_WALL` (360 s), naming the stall; the gate step, `check_audit_ignores.py` and `estate_audit.py` all go through it. On the real spin: stopped at 3 s CPU in 11.7 s with nothing left running.
 
 * **The suite home links a kept cache the runner has not made yet (`GOH.CIRUSTGATE`).** Advisory CI run 43624157558 on 7373ebe0 failed `./gates/rust_gate.sh` at one test, `test_a_scrubbed_environment_reaches_the_kept_toolchain_and_caches`: a fresh hosted runner has no `~/Library/Caches/Mozilla.sccache`, the gate pins `SCCACHE_DIR` to it (`lib/sccache_dir.sh`), and `tests/suite_home.py` linked a kept variable's default under the suite home only when the target existed, so the home's default was a second, empty cache. It now makes the kept place and links it; a test drives a fresh home with the cache absent.
 
-* **`goh ship --progress` records one slice of a multi-release item and leaves it open (`LOOP.SHIPSLICE`).** a private consumer's v5.23.0 shipped one slice of MCP.ZN3 and the done step ran `loopctl done MCP.ZN3 --shipped`, refused only by accident. With `--progress` (which needs `--item`) the last step is `loopctl progress ID --shipped RESULT`: the ship's line is appended to the item as PROGRESS, through done's own result checks, and the item stays in progress; the closing slice ships without it and records done.
+* **`goh ship --progress` records one slice of a multi-release item and leaves it open (`LOOP.SHIPSLICE`).** A private consumer's v5.23.0 shipped one slice of MCP.ZN3 and the done step ran `loopctl done MCP.ZN3 --shipped`, refused only by accident. With `--progress` (which needs `--item`) the last step is `loopctl progress ID --shipped RESULT`: the ship's line is appended to the item as PROGRESS, through done's own result checks, and the item stays in progress; the closing slice ships without it and records done.
 
 * **`goh ship` refuses a mismatched item and a stale hook before its first step (`GOH.SHIPITEM`).** Three goh releases shipped under RM.MONITOR (repo monitor) and only the done step refused them, after a 40-minute verify; koffee_big 2.17.5 pushed and only the release's bump commit refused `.githooks/pre-commit is an OLDER stock hook`. Preflight now asks `loopctl shippable ID --repo NAME` (an unknown, done or other repo's item is refused, nothing run; an `--item` with no loopctl is refused too) and refuses an OLDER stock hook, naming `install.sh`, by structural.sh's own reading (`gates/_hook_currency.sh`, now shared). `lib/ship_item.py` holds both; `goh ship --status` moved to `lib/ship_status.py` (500-line cap).
 
@@ -216,7 +216,7 @@ stable path look held (cold private build on every later push). Pinned by tests/
 
 * **A GOH_DIR naming a pruned HEAD export no longer breaks goh (GOH.TRANSIENTDIR).** Gates export
 GOH_DIR at `~/.cache/goh/head/<sha>`; a long-lived process started under one kept it (a ship's release
-kit `open`ed Routines.app with it, whose from_head jobs exited 2 from 2026-11-12 20:43 once the export
+kit `open`ed a private menu-bar app with it, whose from_head jobs exited 2 from 2026-11-12 20:43 once the export
 was pruned; a Claude session's commits were refused by pre-commit). The escape: the release kit's
 launch (`update_dev.sh`) runs its opener under `env -i`, as `goh launch-app` does, so the app gets the
 login environment (the bare-open seed is now empty). The readers: one rule, a GOH_DIR that is not a
@@ -299,9 +299,9 @@ nothing writes a whole environment: `gates/_hash.sh` and `checks/_estate_cache.p
 ## v0.108.0 -- apps launched by house scripts get the login environment: goh launch-app, goh bare-open, tui/lib.sh keeps the caller's GOH_DIR
 
 * **An app a house script launches gets the login environment, never the caller's (GOH.CLEANOPEN).**
-  ZW.KITPEEK's ship ran ZoneWM's `install_release_build.sh` `open -a "$DEST"`: ZoneWM started with
+  ZW.KITPEEK's ship ran a private Swift app's `install_release_build.sh` `open -a "$DEST"`: the app started with
   `GOH_SHIP_ITEM` and a `GOH_DIR` naming a transient gate export with no `bin/`, and Claude.app,
-  relaunched through ZoneWM, gave both to every agent of that session (`$GOH_DIR/bin/goh` missing).
+  relaunched through a private Swift app, gave both to every agent of that session (`$GOH_DIR/bin/goh` missing).
   Probed with a throwaway app writing its own environ, a sentinel set in the caller: `open -a`,
   `open -n`, `open --env`, `osascript ... launch` and `launchctl asuser` all carried it; only
   `env -i /usr/bin/open` matched the Finder's launch (launchd's set plus `__CF_USER_TEXT_ENCODING`).
@@ -312,14 +312,14 @@ nothing writes a whole environment: `gates/_hash.sh` and `checks/_estate_cache.p
     app sees the login HOME. Red with `env_clear` removed.
   * `goh bare-open`, a structural step in every repo: an `open` at a command position in a shell
     source (quoted words and heredoc bodies not read). Seeded (`bare_open_seed.json`, an estate
-    ratchet) at the 23 sites the sweep found in 10 repos: ZoneWM, divoom-control, CadGoose,
-    CadGoose2, ZeroThunder, necrohand, koffee_big, mediaremote-adapter, routines (the owner's store)
+    ratchet) at the 23 sites the sweep found in 10 repos: a private Swift app, divoom-control, CadGoose,
+    CadGoose2, ZeroThunder, necrohand, koffee_big, mediaremote-adapter, a private Rust app (the owner's store)
     and goh's own `tools/release-kit/update_dev.sh` (tracked). Red on a planted `open "$APP"`, and
     stale once a site moves to `goh launch-app`.
   * `tui/lib.sh` no longer exports HEAD's export into the script that sources it: its
     `goh_from_head_lib --caller-env` gives the caller back its own `GOH_DIR`, `GOH_LIVE_ROOT` and
     `PYTHONPATH` (value, export bit, or unset) once HEAD's copy has loaded. That export was the leak
-    site (ZoneWM's release.sh sources tui/lib.sh before its `open`). A gate's own `_common.sh`
+    site (a private Swift app's release.sh sources tui/lib.sh before its `open`). A gate's own `_common.sh`
     keeps the export. Red first in `tests/test_gates_from_head.py`.
 
 ## v0.107.4 -- whole-tree shellcheck tests only parse, in parallel; goh shell-lint runs its shellcheck calls per core
@@ -564,7 +564,7 @@ v0.107.3): the self-hosted hook test, whose verdict cache is cold, went 72 s -> 
 ## v0.100.0 -- A commit settles the store seed entries its fix settles, so a fixed seeded site no longer turns the push red (GOH.SEEDSTALE, D-0005); plural_hedge stops reporting builtin calls such as print(s) and reads strings inside "$(...)" (GOH.HEDGECODE)
 
 * **A builtin shown called in a string is not a hedged plural; a hedge inside `"$(...)"` is seen
-  (GOH.HEDGECODE).** `goh plural-hedge` reported `print(s)` in a Python string (ZoneWM) and missed
+  (GOH.HEDGECODE).** `goh plural-hedge` reported `print(s)` in a Python string (a private Swift app) and missed
   `session(s)` inside a `[[ ]]` in a command substitution in a shell string (scripts). Consumers:
   `print(s)`, `len(s)`, `str(s)` and the other builtins that are no count noun are not findings
   (`set(s)`, `list(s)`, `type(s)` still are); in Python and shell a `$(` inside a `"` string is code
@@ -658,7 +658,7 @@ v0.107.3): the self-hosted hook test, whose verdict cache is cold, went 72 s -> 
   archive is read whole and then unpacked, and every failed step names its exit and stderr.
 
 * **A file another repo deleted mid-edit no longer turns goh's gate red (GOH.LOADBUILDLOCK).**
-  routines had eight fixtures deleted from its worktree; `listed_files`' full mode still named them
+  A private Rust app had eight fixtures deleted from its worktree; `listed_files`' full mode still named them
   (`ls-files --cached`), and check_estate_corpus.py died copying the first, which took structural
   --full, the empty-scope sweep and two suite tests red on main and on every branch. Full scope now
   omits a tracked file deleted from the worktree, and the corpus copy skips one removed under it.
@@ -736,7 +736,7 @@ v0.107.3): the self-hosted hook test, whose verdict cache is cold, went 72 s -> 
   cwd, another in-progress item's agent is refused. Red first: four scratch writes refused, a write
   into another item's scratch passed; a write into a held repo is still refused.
 
-* **goh ship refuses an empty Unreleased before it pushes (GOH.SHIPUNRELEASED).** routines' ship
+* **goh ship refuses an empty Unreleased before it pushes (GOH.SHIPUNRELEASED).** A private Rust app's ship
   pushed main, then its release kit's changelog_cut said `Unreleased is empty: nothing to release`.
   When the release step will run (GOH_SHIP_RELEASE declared, HEAD untagged; with or without
   --bump, since the version is otherwise git-cliff's) and CHANGELOG.md has an Unreleased heading
@@ -817,7 +817,7 @@ v0.107.3): the self-hosted hook test, whose verdict cache is cold, went 72 s -> 
 
 * **The staged swift lint reads only the config's `included` roots.** `swift_staged.sh` handed swiftlint
   explicit paths, which ignore `.swiftlint.yml` `included`, so a repo whose config includes only
-  `Sources` had its staged `Tests/` files judged at commit by rules the push never applies (ZoneWM,
+  `Sources` had its staged `Tests/` files judged at commit by rules the push never applies (a private Swift app,
   37 findings, ZW.WALLCLOCK2). A staged file outside every `included` root is now skipped, named;
   an inline `included: [..]` list is not parsed and stays linted.
 
@@ -925,7 +925,7 @@ v0.107.3): the self-hosted hook test, whose verdict cache is cold, went 72 s -> 
   (`tui/plural.sh`, sourced by `tui/lib.sh` and by every gate whatever lib it sourced), and
   `goh_tui::counted`/`noun` -- and a structural step in every repo refuses a `word(s)`,
   `word(es)`, `entr(ies)` or `{unit}(s)` inside a string literal of a `.py`, shell, `.rs` or
-  `.swift` source (lifted from routines' `plural::tests`). The estate's sites are seeded by root
+  `.swift` source (lifted from a private Rust app's `plural::tests`). The estate's sites are seeded by root
   commit in their v0.88.0 homes: goh's own 145 entries in its `plural_hedge_seed.json`, every other
   repository's 922 in the private store (re-counted against today's trees, none stale); a seeded
   file warns, a new hedge is red. The eight repos gated on a GitHub runner (CadGoose,
@@ -999,7 +999,7 @@ v0.107.3): the self-hosted hook test, whose verdict cache is cold, went 72 s -> 
 ## v0.86.0 -- a Cargo.lock behind its newest compatible releases fails the push
 
 * **Every Cargo.lock at its newest compatible releases: `goh crates-behind` (GOH.CRATESBEHIND).**
-  routines' lock had fallen 37 compatible updates behind (FAULTS.ROUTINES) with every gate green.
+  A private Rust app's lock had fallen 37 compatible updates behind (its FAULTS item) with every gate green.
   rust_gate.sh now runs `cargo update --dry-run` (bounded, `--timeout`, default 120 s; writes
   nothing) over every tracked lock it audits; a lock it would move is red, naming each crate. An
   unreachable or timed-out index, `GOH_DEPS_OFFLINE=1`, and `CARGO_NET_OFFLINE`'s cached index are
@@ -1017,7 +1017,7 @@ v0.107.3): the self-hosted hook test, whose verdict cache is cold, went 72 s -> 
   named so, `make`, `cargo test|clippy|install`, `brew fetch`, `pytest`, ...) whose STDOUT goes to
   /dev/null, including one inside a `VERIFY='...'` string; a presence probe is not a step, and
   `# release-quiet-ok: <reason>` is the escape. The estate sweep found 8 sites in 6 repos (antiknob,
-  app_updates, game_asset_factory, routines, sys_updater, ztools), seeded in
+  app_updates, game_asset_factory, a private Rust app, sys_updater, ztools), seeded in
   `release_quiet_seed.json`. Red first: the planted estate lines went unfound with the redirect
   reader disabled.
 * **`mktemp -t NAME` with no X is refused: `goh mktemp-portable` (GOH.MKTEMPPORT).** BSD appends
@@ -1104,7 +1104,7 @@ v0.107.3): the self-hosted hook test, whose verdict cache is cold, went 72 s -> 
 ## v0.82.1 -- the release-kit installs every artifact before it launches
 
 * **Every artifact lands before the launch step; a failed relaunch is retried and named
-  (RT.INSTALLORDER).** routines' v0.110.16 install replaced Routines.app, then the kit's relaunch
+  (RT.INSTALLORDER).** A private Rust app's v0.110.16 install replaced its app bundle, then the kit's relaunch
   failed (`open`: _LSOpenURLsWithCompletionHandler -600) and its caller died before installing the
   CLI: app new, CLI old. `tools/release-kit/update_dev.sh` now runs `AFTER_INSTALL_CMD` (a caller's
   other artifacts) after the app is installed and before step 6; a failing one launches nothing. A
@@ -1212,7 +1212,7 @@ v0.107.3): the self-hosted hook test, whose verdict cache is cold, went 72 s -> 
 * **`load.py --wait` is bounded by its own clock and queues only behind the gates ahead of it
   (GOH.LOADWAIT, 2026-11-08).** ZN.APPCHECK's `--wait` held 25-50 min and once spent its whole
   budget before the experiment ran: the wait was for a CLEAR gate registry, bounded by the
-  experiment's `--max` (default 30 min). Measured the same evening: a ZoneWM pre-push of 8 min
+  experiment's `--max` (default 30 min). Measured the same evening: a private Swift app pre-push of 8 min
   overlapped by a stream of monitor pre-commits, load 36-78 on 16 cores, the registry never empty
   for a minute. Now the wait is for the gates in flight when it asked (keyed by pid and entry time);
   a gate that starts meanwhile is named, not waited on, since it is no worse off than one that
@@ -1312,7 +1312,7 @@ v0.107.3): the self-hosted hook test, whose verdict cache is cold, went 72 s -> 
   that says "what shipped is in CHANGELOG.md" is not an entry); every open entry under a `Phase`
   heading opens with an id and carries `Done when:`, with a stray `Done when:` a finding so the
   entry grammar cannot go blind in silence; and a `(queue: <ID>)` whose umbrella item is done is a
-  finding (ZoneWM's advisory `check_stale_backlog.py`, generalised; the queue path is a seam,
+  finding (a private Swift app's advisory `check_stale_backlog.py`, generalised; the queue path is a seam,
   `GOH_ROADMAP_QUEUE`, and a machine without it gets the rule NOT JUDGED with the reason). Today's
   findings are a shrink-only ratchet, `roadmap_seed.json`: over, under and stale are red, and the
   seed may not rise against HEAD's. goh seeds its own `docs/BACKLOG.md`. Pinned by
@@ -1349,7 +1349,7 @@ v0.107.3): the self-hosted hook test, whose verdict cache is cold, went 72 s -> 
   descends from origin's default branch -- else the release refuses before the gate and the tag,
   naming the rebase (`tools/land.sh`) as the way forward. `--branch NAME` still pushes NAME as
   itself. Every other consumer was checked: ztools, app_updates and sys_updater reach the kit
-  (fixed here); monitor and routines push `main` explicitly, ZoneWM and koffee refuse a non-main
+  (fixed here); monitor and a private Rust app push `main` explicitly, a private Swift app and koffee refuse a non-main
   branch, and divoom, CadGoose, antiknob and app-mcp-bridge push the tag only. Pinned by
   `tests/test_release_kit_branch.py` (a worktree on a feature branch: main moved, tag on HEAD, no
   stray head; a diverged branch refused; origin's default read, not assumed; --branch unchanged).
@@ -1375,8 +1375,8 @@ v0.107.3): the self-hosted hook test, whose verdict cache is cold, went 72 s -> 
   through a shared `split_invocation`. Pinned by `tests/test_load_locks.py`.
 
 * **The release kit's launch step never opens a copy that is already running (RT.LAUNCHDASH).**
-  `open` on a running app is not a launch: macOS sends it a reopen event, and Routines.app answers
-  a reopen with its 1240x960 dashboard. On 2026-11-08 `routines/install.sh --launch` opened the copy
+  `open` on a running app is not a launch: macOS sends it a reopen event, and a private menu-bar app answers
+  a reopen with its 1240x960 dashboard. On 2026-11-08 `<app>/install.sh --launch` opened the copy
   `update_dev.sh` had just relaunched, and the dashboard nobody had open appeared. The launch step
   now says "already running" and opens nothing, and a copy that survives the quit and `pkill` stops
   the install (it was replaced under the live copy and opened again). Both directions pinned in
@@ -1410,7 +1410,7 @@ v0.107.3): the self-hosted hook test, whose verdict cache is cold, went 72 s -> 
 
 * **A kit cut writes the house heading, folds every Unreleased section into one, and merges into a
   hand-written stanza (GOH.CUTTITLE).** `release.sh` passed no title, so in repos whose headings
-  are `## vX — title _(YYYY-MM-DD)_` (routines, ztools) the cut wrote a bare `## vX`. Now the title
+  are `## vX — title _(YYYY-MM-DD)_` (a private Rust app, ztools) the cut wrote a bare `## vX`. Now the title
   is `--title`, else the first Unreleased entry's first clause, and the day is the release day;
   the dated style is kept when any of the newest five titled stanzas carries a day (ztools'
   hand-written `## vX -- title` pair no longer unlearns it); a file with no titled stanza still
@@ -1434,7 +1434,7 @@ v0.107.3): the self-hosted hook test, whose verdict cache is cold, went 72 s -> 
 
 * **`changelog_cut.py` takes the tag spelling of a version.** `--version v0.110.5` died with a
   `StopIteration` traceback (the stanza heading is `## v<version>`, so the lookup was `vv0.110.5`);
-  a leading `v` is now dropped in both `cut` and `check`. Found cutting routines v0.110.5.
+  a leading `v` is now dropped in both `cut` and `check`. Found cutting a private Rust app v0.110.5.
 
 * **The release kit cuts the stanza from Unreleased itself instead of refusing (GOH.CUTAUTO).**
   Since v0.64.0 `release.sh` refused any release whose CHANGELOG held committed Unreleased entries
@@ -1445,7 +1445,7 @@ v0.107.3): the self-hosted hook test, whose verdict cache is cold, went 72 s -> 
   INTO an unpushed `chore: version V` HEAD (every wrapper's bump commit), else commits it as
   `chore: changelog vV`; before CI and the gate, so both judge the tree that is tagged. `--title` is
   now optional (`## vV`), and a titled cut follows the file's own heading style (` — ` and a
-  ` _(YYYY-MM-DD)_` date, as routines and ztools write them, when its newest stanza has them). Refusals left: an entry repeating an earlier stanza's, a HEAD that does
+  ` _(YYYY-MM-DD)_` date, as a private Rust app and ztools write them, when its newest stanza has them). Refusals left: an entry repeating an earlier stanza's, a HEAD that does
   not declare the version, and a hand-written stanza with Unreleased still holding entries.
 * **`update_dev.sh`'s exact-name `pkill` reviewed; SC2015 infos fixed.** The kill_by_name_allow
   entry was `unreviewed`: it is the fallback after the by-name graceful quit, `-x` on the replaced
@@ -1454,7 +1454,7 @@ v0.107.3): the self-hosted hook test, whose verdict cache is cold, went 72 s -> 
 
 ## v0.64.0 -- agents put the owner's apps back; a tag names a commit that IS the release; shellcheck follows script-relative sources
 
-* **agent_guard puts the owner's login-item apps back after an agent (GOH.APPSTATE).** Routines.app
+* **agent_guard puts the owner's login-item apps back after an agent (GOH.APPSTATE).** A private menu-bar app
   was left not running after agents' UI tests and Osaurus.app was found down (2026-11-07/08).
   `hooks/claude/appstate.py` records at every spawn which login-item apps run (System Events'
   `path of every login item` against `ps -axww -o comm=`); at SubagentStop each one running before
@@ -1462,7 +1462,7 @@ v0.107.3): the self-hosted hook test, whose verdict cache is cold, went 72 s -> 
   outcome line (`apps`) and in a message to the session. Seams for the item list, the process table
   and the launcher; under goh's suite no default runs.
 * **`update_dev.sh` relaunches a copy it quit (GOH.APPSTATE root cause).** Step 2 quit the running
-  app and relaunched only with `--launch`, so every kit install of a running app (Routines.app,
+  app and relaunched only with `--launch`, so every kit install of a running app (a private menu-bar app,
   three times) left it STOPPED. A copy that was running is relaunched and seen running; `--no-launch`
   keeps it stopped and says so; `--launch` still starts one that was not running.
 * **release.sh refuses a HEAD that does not declare the version, before anything (GOH.REL2).**
@@ -1478,7 +1478,7 @@ v0.107.3): the self-hosted hook test, whose verdict cache is cold, went 72 s -> 
   are neither backfilled nor warned about, live or `--dry-run`.
 * **The shell lint passes `--source-path=SCRIPTDIR` in every repo (GOH.REL2).** Measured first over
   the 37 estate repos with shell files: 0 new findings; gone are SC1091 notes and three false
-  SC2034s, whose seeds koffee_big (bbe7897) and media_server (f77b5503) dropped. A source named
+  SC2034s, whose seeds koffee_big (bbe7897) and a private server workspace (f77b5503) dropped. A source named
   relative to the script, or led by `$(dirname ...)`, is collected for the staged checkout.
 
 ## v0.63.0 -- a vendored copy is known by its content; installed-version reads every non-history doc
@@ -1500,9 +1500,9 @@ v0.107.3): the self-hosted hook test, whose verdict cache is cold, went 72 s -> 
   house. Consumers fixed before this landed: app_updates (8a0f218), sys_updater (752d968), ztools
   (21e45fd).
 * **The shell lint refuses an absolute `# shellcheck source=` path and collects `$VAR/` sources
-  (GOH.SHX2).** Consumers fixed before this landed: ZoneWM (6ae2c99e), app_updates (0ac3782),
+  (GOH.SHX2).** Consumers fixed before this landed: a private Swift app (6ae2c99e), app_updates (0ac3782),
   CadGoose2 (f4b68a8), divoom-control (2ca744d), koffee_big (e49dc33), monitor (9a48687), necrohand
-  (c5f4827), routines (371b551), sys_updater (4bc0726). goh's gates no longer follow goh's own
+  (c5f4827), a private Rust app (371b551), sys_updater (4bc0726). goh's gates no longer follow goh's own
   `.gatesrc` under `-x`.
 * **A repo declares its release gate in `.gatesrc` (`GOH_RELEASE_GATE`).** goh's is
   `tools/gate.sh --full`, so a bare goh release is gated.
@@ -1530,7 +1530,7 @@ v0.107.3): the self-hosted hook test, whose verdict cache is cold, went 72 s -> 
 
 * **A SwiftPM path dependency is no longer counted as the package (GOH.SWIFTCOV, 2026-11-07).**
   `.package(path:)` compiles the other package into the test binary with coverage on, and the scope
-  counted its files: token-pool's widget read 39.3% over 17 files, 12 of them ZoneWM's SpaceBarKit.
+  counted its files: token-pool's widget read 39.3% over 17 files, 12 of them a private Swift app's SpaceBarKit.
   For a tree with a `Package.swift`, `lib/swift_coverage_scope.py` now confines the denominator to the
   package's own non-test targets, read from `swift package describe --type json`; both measurement
   paths (`checks/check_swift_coverage.py`, `gates/coverage_swift.py`) apply it, and a manifest that
@@ -1587,17 +1587,17 @@ v0.107.3): the self-hosted hook test, whose verdict cache is cold, went 72 s -> 
 
 ## v0.58.2 -- goh commit-class stops calling two common words a class
 
-* **`goh commit-class` no longer calls two common words a class (GOH.CLASSMATCH, 2026-11-07).** ZoneWM's
+* **`goh commit-class` no longer calls two common words a class (GOH.CLASSMATCH, 2026-11-07).** A private Swift app's
   `54b348de` (ZW.REV2) was refused as "the instance after 2 earlier ones": a fifteen-word Class
   shared `hold`+`narrower` with a fixed-width-column class and `form`+`value` with a settings-row
   class, and two shared content words was the whole test. The test now also needs a quarter of the
   SMALLER class's content words (`shared * 4 >= smaller`; two words still decide a class of eight or
   fewer). A rarity weight was tried on the registry first and cannot do this: `narrower` and `form`
-  are each in ONE of ZoneWM's 207 classes, so they weigh more than the words true restatements
+  are each in ONE of a private Swift app's 207 classes, so they weigh more than the words true restatements
   share. Length does: over that registry 326 pairs matched and 33 fall under a quarter, each two
   common words in a smaller class of 9 to 11 (none a restatement); the thinnest kept pair is a real
-  one at 2 of 7. The commit gate's verdict over every repo with `Class:` history (ZoneWM 1,186
-  commits, goh 737, nine others) is unchanged; the refused phrase now passes against ZoneWM's
+  one at 2 of 7. The commit gate's verdict over every repo with `Class:` history (a private Swift app 1,186
+  commits, goh 737, nine others) is unchanged; the refused phrase now passes against a private Swift app's
   history. Tests: `two_common_words_in_a_long_class_are_not_a_class` and
   `restatements_in_the_registry_still_match` (commit_class_tests.rs), one end to end in
   tests/test_commit_class.py.
@@ -1678,9 +1678,9 @@ v0.107.3): the self-hosted hook test, whose verdict cache is cold, went 72 s -> 
 ## v0.57.3 -- a step that prints ✗ and exits 0 is red; the load reaper logs when, which and why
 
 * **A step that prints `✗` and exits 0 is red (GOH.XEXIT, 2026-11-02).** In the house TUI contract
-  `✗` means failure and `⚠` advisory, but a gate step's exit code alone decided: ZoneWM's
+  `✗` means failure and `⚠` advisory, but a gate step's exit code alone decided: a private Swift app's
   census_bench void hold and three render selftests printed `✗` at exit 0 and passed (fixed there in
-  ZoneWM 06ee510e, with nothing checking the class). `lib/xexit.py` is the ONE predicate -- a line
+  a private Swift app 06ee510e, with nothing checking the class). `lib/xexit.py` is the ONE predicate -- a line
   whose first visible character, after indentation and colour escapes, is `✗`; a `✗` quoted
   mid-line is text -- and `goh_step`, `local_ci.sh`'s step report and the Rust tier's delegated
   steps (`step_report.rs` `cross_lines`, its twin) each refuse a step that printed one at exit 0,
@@ -1709,7 +1709,7 @@ v0.107.3): the self-hosted hook test, whose verdict cache is cold, went 72 s -> 
   reads green. Calibrated: 4 of `tests/test_apply_claude_hooks.py` red with the split removed.
 * **The Claude Code command guards judge Monitor like Bash (GOH.MONGUARD, 2026-11-02).** They were
   registered on `Bash` and nothing else, but Monitor runs a shell command too (field `command`,
-  read from the session transcripts' logged calls), and a ZoneWM agent's first Monitor wait was the
+  read from the session transcripts' logged calls), and a private Swift app agent's first Monitor wait was the
   self-matching `until ! pgrep -f ...` the Bash guard exists to refuse. `lib/shell_tools.py` is now
   the ONE list of tools whose input holds a shell command (`Bash`, `Monitor`); `discard_guard.py`
   (discard, busy loop, busy-wait, self-matching wait, load priority) and `hold_guard.py` judge any
@@ -1727,7 +1727,7 @@ v0.107.3): the self-hosted hook test, whose verdict cache is cold, went 72 s -> 
   path; reason) is a warning naming repo, step and path; one it does not carry is red; an entry whose
   step ran green without the rewrite, or whose path is no longer kept, is red. Nothing is spawned
   unless a kept file moved or the repo has the file. Seeded empty: a survey of the four consumers that
-  keep a path (koffee_big, ZoneWM, game_asset_factory, necrohand) found no proven-cached step that
+  keep a path (koffee_big, a private Swift app, game_asset_factory, necrohand) found no proven-cached step that
   rewrites one. Calibrated: `tests/test_kept_rewrite.py`, the two kept-file tests in
   `test_proven_moved.py` and the rust group test were red (10 of them) with the runners' wiring removed.
 * **`tools/load.py` refuses to starve another session's gate (GOH.LOADX, 2026-11-02).** It refused a
@@ -1772,7 +1772,7 @@ v0.107.3): the self-hosted hook test, whose verdict cache is cold, went 72 s -> 
   `test_opus_tier_work_without_a_pool_line_is_refused` red. Pinned by
   `tests/test_claude_agent_guard.py`, `tests/test_model_choice_rules.py`.
 * **`rust_gate.sh` audits every tracked lock of the repo, not only the one beside its manifest
-  (queue GOH.EA2).** A second workspace (monitor's `fuzz/`, media_server's crates and testkits,
+  (queue GOH.EA2).** A second workspace (monitor's `fuzz/`, a private server workspace's crates and testkits,
   koffee_big's core beside an app) was audited only by a hand-written step per lock, through a
   shell variable the estate audit could not read: four locks were "undetermined". Which locks,
   and from which directory each is audited, is one rule, `lib/rust_locks.py`: every tracked
@@ -1820,7 +1820,7 @@ v0.107.3): the self-hosted hook test, whose verdict cache is cold, went 72 s -> 
   audits is `unaudited`, printed as NOT AUDITED AT PUSH with what fires there; one a
   shell-variable step might cover is `undetermined`. On the real estate: a private consumer reports
   RUSTSEC-2026-0414 only, monitor/fuzz is not audited at push, and koffee_big plus three
-  media_server testkit locks are undetermined. Pinned by `tests/test_estate_gate_coverage.py`.
+  a private server workspace testkit locks are undetermined. Pinned by `tests/test_estate_gate_coverage.py`.
 * **A scratch repo never enters the machine's estate registry.** server-template's
   `tools/repo_gates.sh` vends into `mktemp -d` and runs `install.sh` there, and each run added two
   gone `tmp.*/{boxa,pib}` paths to `~/.local/state/goh/installed_repos` (76 of 122 lines). A
@@ -1838,11 +1838,11 @@ v0.107.3): the self-hosted hook test, whose verdict cache is cold, went 72 s -> 
   `Cargo.lock`, and the SessionStart hook told every session "the next push of <lock> is red". Ten
   nested repos have no `.gatesrc` (third-party clones kept for reference or vendoring:
   `divoom-control/references/*`, `old_phones/tools/{penumbra,jz8,mtksrc}`,
-  `routines/vendor/camoufox-rs{,-local}`, `playground/*`), three carry a lock, and no house gate
+  `<app>/vendor/camoufox-rs{,-local}`, `playground/*`), three carry a lock, and no house gate
   runs in any of them: no push of theirs is red, and what a vendored path dependency adds to a house
   build is already in the consumer's own audited lock. A work tree is now audited only with a
   `.gatesrc` at its root (`install.sh` writes one into every house repo; "ignored by the enclosing
-  repo" is no discriminator, `servers/media_server` is ignored by `servers/` and is a house repo),
+  repo" is no discriminator, a nested server repo is ignored by its parent and is a house repo),
   and registry entries follow the same rule. Every repo set aside for that is NAMED in the state
   file (`ungated`, beside `excluded`) and the hook prints one line with the count and the reason, so
   a house repo that lost its `.gatesrc` reads as set aside, not as a clean estate. Pinned by
@@ -1911,7 +1911,7 @@ Minor bump: a new consumer-facing gate (`checks/check_mcp_wire.py`) and three `.
   state readOnlyHint and destructiveHint; a destructive tool listed by default; no `outputSchema`
   of type object, unless `GOH_MCP_UNSTRUCTURED` names the tool with a reason (a ratchet). A silent
   server is red at its timeout, and the whole process group and every descendant are reaped,
-  pass or fail. Live on 2026-10-26: antiknob green; routines, monitor's agent, divoomd and a private consumer
+  pass or fail. Live on 2026-10-26: antiknob green; a private Rust app, monitor's agent, divoomd and a private consumer
   red on annotations and outputSchema.
 * **`structural.sh --full` was never fail-fast.** `[ -n "$KEEP_GOING" ]` held for `0` too, so
   every run went down the `--keep-going` path; it reads `= 1` now (pinned by two independent reds).
@@ -2166,7 +2166,7 @@ Minor bump: `tools/load.py` refuses two things it used to run (N above the core 
 deadline is no longer possible), and the commit gate judges Rust shape.
 
 * **`tools/load.py` is bounded by its own clock (G1c, `9770e4e`).** `load.py 32 -- taskpolicy -b
-  loop.sh` (a ZoneWM starvation proof wrapping `swift test` three times) ran 10h14m at load
+  loop.sh` (a private Swift app starvation proof wrapping `swift test` three times) ran 10h14m at load
   average ~154 on 2026-10-24/25: the background-priority test starved under 32 spinners on 16
   cores and hung, and nothing ended it. A deadline is now always in force (30 min, `--max 90m` /
   `--max 2h` to extend); the command runs in a process group of its own, and on expiry its whole
@@ -2188,7 +2188,7 @@ deadline is no longer possible), and the commit gate judges Rust shape.
 
 * **`--proves` is asked only of a prover that dispatches on it (G1b(a), `8155f4b`).** The
   calibration reader ran `<prover> --proves` blind; a prover that ignored the flag ran its full
-  path (routines' `check_tabs_contract` before its `b774d20`: a cargo build and the real binary)
+  path (a private Rust app's `check_tabs_contract` before its `b774d20`: a cargo build and the real binary)
   and its rc-0 stdout became the claim set. The source is read first (the flag as CODE, never in
   prose), and an answer is a claim only as one registry key per line. The external note no longer
   says a prover "lists each of them" without asking it.
@@ -2547,7 +2547,7 @@ spinners it left behind.
 
 Minor bump: `goh unreaped-spawn` read the files the COMMIT brings, and a guard is a CROSS-FILE
 contract -- one `tests/common/` defines it and every other test file relies on it -- so a scope of
-"the files this commit touches" could not see that contract in either direction. `routines` found
+"the files this commit touches" could not see that contract in either direction. A private Rust app found
 both halves on 2026-10-20 (b961bb0). The scope is now the repository's TEST SCOPE at both tiers;
 the tiers differ in WHERE the files are read from, not in how many of them there are.
 
@@ -2565,7 +2565,7 @@ the tiers differ in WHERE the files are read from, not in how many of them there
   that uses the guard and the step reads `✓ [no_unreaped_spawn] OK -- 2 test file(s), every spawned
   child reaped on a panic`, rc 0. Before, the guard was invisible to the file that used it, so the
   wrap looked like a bare `Child` -- a red on correct code, in the exact files the guard was written
-  for. `routines` worked around it by giving three of its test files a guard of their own; the
+  for. A private Rust app worked around it by giving three of its test files a guard of their own; the
   workaround is not the fix, because the guard the step could not see is still the guard the tree
   has.
 * **The "not applicable" it used to print on every ordinary commit.** At commit scope the step
@@ -2574,7 +2574,7 @@ the tiers differ in WHERE the files are read from, not in how many of them there
   non-run (`checks/check_empty_scope.py`), so the step was declaring a non-run on every ordinary
   commit. It now prints it only when the repository really has no test sources -- which is what the
   phrase says.
-* **What it costs.** 0.07 s over 363 test files here, 0.10 s over 420 in `media_server` (measured
+* **What it costs.** 0.07 s over 363 test files here, 0.10 s over 420 in a private server workspace (measured
   2026-10-20, the built binary, `--staged`; full scope is the same read from the worktree). The
   index's blobs arrive in ONE `git cat-file --batch` rather than one `git show` per file, and a
   prefetch no longer re-reads a blob it already holds (`blobs::holds`).
@@ -2619,10 +2619,10 @@ and it was red on the stdin gate with 35 undeclared calls that no count carried.
   of the outside repo, and the state file carried no `problems` key at all).
 * BACKLOG 3.3's rows are unchanged and still each repo's own. The P2 budget curve row moves from
   BACKLOG.md's measurements table into this file, met: `GOH_CI_JOBS=2` in each repo's `.gatesrc`,
-  **210 / 176 / 158 s** here at `98848cf` and **77 / 51 / 46 s** in routines at `c9a893f` (jobs
+  **210 / 176 / 158 s** here at `98848cf` and **77 / 51 / 46 s** in a private Rust app at `c9a893f` (jobs
   1/2/4, warm, 2026-10-16, `GOH_PROVEN=0` so no step could be skipped; two sweeps agreeing within
   3 s at 2 and 4) against a 186/147/138 s baseline (busy; knee read at j2 in both, 2026-10-08);
-  routines also measured COLD at 150 / 51 / 46 s -- a first push pays one-time builds (`make test`
+  a private Rust app also measured COLD at 150 / 51 / 46 s -- a first push pays one-time builds (`make test`
   44 s cold against 3 s warm). j2 takes 65% of the saving here and 84% there.
 
 ### v0.41.0 (never tagged: released in v0.43.0) — a shared gate lands with its canary case _(2026-10-19)_
@@ -2667,7 +2667,7 @@ back in `CadGoose/tools/profiling/` (CadGoose `046f6ce`), fixed there and pinned
 ### v0.39.0 (never tagged: released in v0.43.0) — a consumer's own `tools/gate.sh --full` holds the gate slot _(2026-10-18)_
 
 Minor bump: closes the gap v0.37.0 named. The ~15 consumer `tools/gate.sh` copies written before
-the slot (a private consumer, ZoneWM, divoom-control, games, servers, ...) run `structural.sh "$@"` and then
+the slot (a private consumer, a private Swift app, divoom-control, games, servers, ...) run `structural.sh "$@"` and then
 their own layers, and never exec `local_ci.sh`: hand-run `--full`, they took no slot and raced every
 push on the machine. install.sh never rewrites a gate.sh, so the one goh file they all already call
 carries the fix -- no consumer edit.
@@ -2741,16 +2741,16 @@ Red first, each one: no slot (11 of 11 tests), a slot too many, a holder that ig
 death, no nested check, no ancestry fallback, a non-ancestor honoured, holders unnamed, the wait
 charged to the step (`TIMED OUT after 2s`), and `hermetic_env` dropping the lock dirs.
 
-### v0.35.1 (never tagged: released in v0.43.0) — the silent-failure check reads goh and ZoneWM right _(2026-10-18)_
+### v0.35.1 (never tagged: released in v0.43.0) — the silent-failure check reads goh and a private Swift app right _(2026-10-18)_
 
 Patch bump: two false `unverified` verdicts found by running `lib/landed_verify.py` on real shas.
 
 * **A repo with no GitHub workflow is verified by being on its branch.** goh has none: its pre-push
   gate is its CI, so every landed goh sha read "no CI run covers it yet" forever. When no run covers a
   sha and `actions/workflows` counts 0, a sha on the default branch is `verified`.
-* **The GitHub remote is found by URL, not by the name `origin`.** ZoneWM's is `v2origin`, so its
+* **The GitHub remote is found by URL, not by the name `origin`.** A private Swift app's is `v2origin`, so its
   shas read "origin is not on GitHub"; live, its stopped-before-landing `81241cb8` now reads
-  `silent-failure: not on ztomer/ZoneWM main`. Both red without the change.
+  `silent-failure: not on <owner>/<app> main`. Both red without the change.
 
 ### v0.35.0 (never tagged: released in v0.43.0) — the model-choice rule keeps itself current, and proposes its own changes _(2026-10-18)_
 
@@ -2952,7 +2952,7 @@ that is green today stays green on upgrade.
   `COPY --from=` (`ARG` defaults substituted; stage names, stage indexes and `scratch` are not
   pulls), and every `*.yml`/`*.yaml` through the YAML parser -- `image:` (compose, workflow
   `container.image` and `services.*.image`, Kubernetes), a workflow's `container:`, and any
-  `uses: docker://`. Every YAML file, not a filename list, because media_server keeps its compose
+  `uses: docker://`. Every YAML file, not a filename list, because a private server workspace keeps its compose
   files in `compose/*.yml`. Compose's `${VAR:-default}` is judged by its default.
   Passes: a digest (`@sha256:...`, whatever the tag says), or a tag naming one build. Red: no tag
   (implicit `latest`); a tag with no digit (`latest`, `stable`, `alpine`, `bookworm`: a channel,
@@ -2971,7 +2971,7 @@ that is green today stays green on upgrade.
   CLI's flag grammar, `-v "$d:/v"` and `-p 80:80` have the shape of `name:tag`, references live
   in variables, and a name a script BUILDS looks like one it pulls; a line read would invent
   findings or miss most. Not judged: how coarse a version-shaped tag is (`alpine:3` passes).
-  Estate sweep at this commit: 40 findings in media_server, 4 in storage-server, 1 in
+  Estate sweep at this commit: 40 findings in a private server workspace, 4 in storage-server, 1 in
   server-template (all escaped citing servers DECISIONS #9 -- the fleet floats by owner ruling),
   4 in apes (pinned by digest); every other repo had none.
 
@@ -3031,7 +3031,7 @@ upgrading builds once into the new layout.
 Patch bump: one performance fix (BACKLOG 5.1, now met). Nothing for a consumer to change. The first
 push after upgrading pays the old cost once, while the cache fills.
 
-* **media_server's push gate: 122 s -> 83 s.** Profiled on `fce7d32` with `tools/gate_profile.sh`
+* **A private server workspace's push gate: 122 s -> 83 s.** Profiled on `fce7d32` with `tools/gate_profile.sh`
   (BACKLOG 5.3: CPU over a rust control, drift +2.7% on the measuring run, load ~42). Coverage
   was 218 s of summed step wall and 393 s of CPU across 28 crates. Its instrumented build lived in
   `$PROJ/target/llvm-cov`, and the push gate runs in a worktree it deletes after every push, so
@@ -3042,7 +3042,7 @@ push after upgrading pays the old cost once, while the cache fills.
   to 68 control units). The report is identical: mediaops-rs reads 96.52%, 12463/12912 lines,
   cold and warm.
 * **The TARGET dir stays in the tree.** Moving both dirs out failed two of mediaops' CLI tests:
-  media_server's binaries find their repo by walking up from their own path
+  a private server workspace's binaries find their repo by walking up from their own path
   (`env_mini::exe_root`), and the test binaries are run from the target dir.
 * Pruned like the HEAD exports (`gates/_head_cache.py`): a week unused, or past the newest 200 and
   idle for an hour. The suite gets a cache of its own (`hermetic_env` sets `GOH_COV_CACHE`), so
@@ -3218,7 +3218,7 @@ their parsers would have been a worse defect than the one it fixed.
   compared `VERSION` against that crate's own 1.9.0. Now the manifests and the lock go through
   the `toml` crate, and arm 2 compares the release against the members that carry it: those
   inheriting `[workspace.package] version`, or every member where there is none to inherit
-  (media_server's per-crate literals, still red when one is left behind). A manifest or lock
+  (a private server workspace's per-crate literals, still red when one is left behind). A manifest or lock
   that is not valid TOML is now a finding naming the file (cargo could not build it either).
   A private nested workspace reads green (26 crates).
 
@@ -3251,14 +3251,14 @@ their parsers would have been a worse defect than the one it fixed.
 Eighteen commits since v0.26.0. The v0.27.0 roadmap's correctness phase is closed, the stdin
 gate flipped on ahead of the estate sweep by the owner's ruling (each consumer clears its own
 debt in its own session), and the first measurement, 5.3, closed. 5.1 is blocked on
-media_server's own reds and 5.2 is the owner's call; both carry over (BACKLOG).
+a private server workspace's own reds and 5.2 is the owner's call; both carry over (BACKLOG).
 
 **Consumers: what goes red, and what to run**
 
 * **The stdin gate is on by default** (`0c93f4d`, 3.4). `GOH_SUBPROCESS_STDIN` unset now means
   on, at both scopes; only `GOH_SUBPROCESS_STDIN=off` in the repo's own `.gatesrc` skips it. The
-  15 repos left in 3.3's table (367 findings counted 2026-10-09: media_server 88, a private workspace 71,
-  divoom-control 52, scripts 52, monitor 39, koffee_big 23, ztools 13, routines 8, games 6,
+  15 repos left in 3.3's table (367 findings counted 2026-10-09: a private server workspace 88, a private workspace 71,
+  divoom-control 52, scripts 52, monitor 39, koffee_big 23, ztools 13, a private Rust app 8, games 6,
   app_updates 5, old_phones 4, two private repos 2 each, CadGoose 1, sys_updater 1)
   are red at their next commit. Declare each call's stdin, or adopt what is left with
   `goh subprocess-stdin --seed`, then set `GOH_SUBPROCESS_STDIN_MIN_CALLS`.
@@ -3290,7 +3290,7 @@ media_server's own reds and 5.2 is the owner's call; both carry over (BACKLOG).
 * **Fixed along the way:** the controls could not run from HEAD's export, which is not a git
   repository (`b2e288d`); a gate's kind leaked into its children, so a test suite's rows were
   labelled rust (`b2e288d`); a profile inside a profile wrote into the outer one's file
-  (`f0ded9c`); a repo whose crates have no root `Cargo.toml` (media_server's 29) got no rust
+  (`f0ded9c`); a repo whose crates have no root `Cargo.toml` (a private server workspace's 29) got no rust
   control (`21bcce4`); `path_invariance.py --help` ran `--help` as the gate and died in a
   traceback, and a gate command that cannot start is now a named exit 2 (`9c425ac`).
 
@@ -3302,7 +3302,7 @@ about for weeks, a pipe check that named findings and passed, a gate that never 
 layer, an advisory that turned two pushes red at once. Each class is now closed here once, so
 every repo gets the fix at runtime. The stdin gate (`goh subprocess-stdin`) lands and gets a
 migration path. It is still off by default: on 2026-10-09 it read 996 findings in 17 of 34 repos.
-This repo (555 calls in 186 files) and ZoneWM (123) have declared theirs and opted in, and the
+This repo (555 calls in 186 files) and a private Swift app (123) have declared theirs and opted in, and the
 flip waits on the other 15 (BACKLOG 3.3, 3.4). The cost of this release falls on consumers: some
 repos go red at their next commit or push. The first section lists those changes.
 
@@ -3340,7 +3340,7 @@ repos go red at their next commit or push. The first section lists those changes
   runs outside every proven record, because the advisory DB is an input no key names.
   `checks/check_audit_ignores.py` refuses an ignore that has no `# reason` or no longer fires.
   `lib/advisory_db.py` gives goh its own flock'd copy of the DB (`GOH_ADVISORY_DB`): a refresh
-  beside a `--no-fetch` read had torn the read. antiknob and eight media_server lockfiles are red
+  beside a `--no-fetch` read had torn the read. antiknob and eight lockfiles of a private server workspace are red
   on RUSTSEC-2024-0449.
 * **A release tag a pushed branch carries must reach the remote** (`eb7e6e2`, `2ccd6ca`).
   `--follow-tags` sends annotated tags only, so the servers fleet's lightweight `v1.10.3` stayed
@@ -3364,7 +3364,7 @@ repos go red at their next commit or push. The first section lists those changes
   verdict, not "no Python here" (`fixed-sleep` and `md-links` had the same bug, fixed too). This
   repo declares all 555 calls with no allowlist (614 read, floor 550, proved red at 10000).
 * **Commit-class and the round** (`b667f8d`, `2834ec4`, `836ef09`). "run" is a function word, so
-  two classes sharing only "run" and "work" no longer read as one class (ZoneWM's last 300
+  two classes sharing only "run" and "work" no longer read as one class (a private Swift app's last 300
   commits replay byte-identical). An unreadable trailer block now names the line that blocks it;
   before, it said to move trailers to where they already were, and `goh red-run`'s refusal shares
   the same helper. `gates/round.sh` judges the message before the preflight, so a refused message
@@ -3440,7 +3440,7 @@ repos go red at their next commit or push. The first section lists those changes
   it. `lib/bench_hold.py` holds the bench lock for one Python block at a time, for runs longer than
   the 900 s cap; a claim inside an ancestor's hold claims nothing.
 * **A red run explains itself** (`f6de0d4`, `a769336`, `31d0648`, `a78a863`, `2cb3767`). A red
-  run the machine slept through says so (`lib/sleep_mark.sh`, `GOH_SLEEPTIME_FILE`): ZoneWM's
+  run the machine slept through says so (`lib/sleep_mark.sh`, `GOH_SLEEPTIME_FILE`): a private Swift app's
   suite had run in a dark wake. `fail_lines` keeps `FAILED. 0 passed; 1 failed`. A red
   `gate_profile.sh` (the gate `land.sh` runs) prints the failure lines. local_ci's log dir no
   longer holds the step FIFO, which had made `grep -r` hang on it.
@@ -3494,7 +3494,7 @@ xdist workers share one read of the order table. Six new native checks came from
 in consumer repos (`bare-hook-index`, `dead-after-exec`, `early-exit-pipe`, tracked-but-ignored,
 `checkout-credentials`, `requires-call`), and the hooks' git binding closed (contract #12).
 Measured: cross-session serialization of `structural --full`, sigma 0.45 -> 0.107; the
-`GOH_CI_JOBS` knee is 2 in this repo and routines.
+`GOH_CI_JOBS` knee is 2 in this repo and a private Rust app.
 
 * **The suite holds on a loaded box** (`tests/timing_bounds.py`, `tests/_drift_guard.py`,
   `tests/_schedule.py`). Four pushes were refused in one evening for reasons the pushed change
@@ -3580,16 +3580,16 @@ Measured: cross-session serialization of `structural --full`, sigma 0.45 -> 0.10
 * **`goh bare-hook-index`: the hook's carried index is read only by `goh_bind_hook_index`**
   (`crates/goh/src/hookindex/`). A commit hook carries the index being committed as
   `GOH_HOOK_INDEX_FILE` beside `GOH_HOOK_GIT_DIR` (contract #12), exported, so a gate a consumer's
-  TEST runs on a fixture inherits both. routines' and media_server's tools/gate.sh read
-  `${GOH_HOOK_INDEX_FILE:-...}` bare, and under a `commit -a` a media_server test's fixture gate
-  judged media_server's index and died "unable to read 404acec" (found and fixed in both repos by
-  the servers session, routines 852b8d5). The class: an EXPANSION of either variable -- `$VAR`,
+  TEST runs on a fixture inherits both. Two private consumers' tools/gate.sh read
+  `${GOH_HOOK_INDEX_FILE:-...}` bare, and under a `commit -a` a private server workspace test's fixture gate
+  judged a private server workspace's index and died "unable to read 404acec" (found and fixed in both repos by
+  the servers session, a private Rust app 852b8d5). The class: an EXPANSION of either variable -- `$VAR`,
   `${VAR...}`, in code, double quotes or an unquoted heredoc -- in any shell source but the one
   that defines `goh_bind_hook_index()`. Mentions are not reads: comments, single quotes, quoted
   heredocs, `\$`, `unset`, an assignment. Its own small lexer, because `earlypipe`'s mask fills
   double-quoted text and the incident is an expansion inside double quotes. A HARD structural
   step in every repo at both scopes; `GOH_EXCLUDE` applies. The sweep over all 25 `.gatesrc`
-  repos is clean now that both fixes are in; replayed, routines' pre-852b8d5 `tools/gate.sh` is
+  repos is clean now that both fixes are in; replayed, a private Rust app's pre-852b8d5 `tools/gate.sh` is
   red at `:33` and its fixed blob green. RED FIRST, by mutation: no read recorded (the RED rows
   fail), single quotes not skipped (the GREEN rows fail), the step unwired (3 tests, the pipeline
   inventory among them), the binder exemption dropped. `tests/test_goh_structural.py` hit the
@@ -3604,7 +3604,7 @@ Measured: cross-session serialization of `structural --full`, sigma 0.45 -> 0.10
   Python's dialect, a bad pattern is refused by name, and the nesting rule runs FIRST as the header
   always said: excluding a crate no longer promotes its testkit to a crate of its own. New:
   `rust_gate.sh --each-crate --list [repo]` prints the crates a run would gate, one repo-relative
-  directory per line, biggest first, and runs nothing -- the run's own `ordered`, so media_server's
+  directory per line, biggest first, and runs nothing -- the run's own `ordered`, so a private server workspace's
   layer 3 can skip exactly those crates without a copy of the rule. RED FIRST: the trailing-slash
   run gated 3 crates of 3; every `--list` test fell through to `cd --list`; the exclusion tests,
   read through `--list`, are red again on the old directory `grep`.
@@ -3624,7 +3624,7 @@ Measured: cross-session serialization of `structural --full`, sigma 0.45 -> 0.10
   handling in the Rust, turns them red again.
 
 * **quiet: a drain is bounded by the budget, and a let-go names one reason** (`tools/quiet.sh`,
-  `lib/bench_lock.sh`). BACKLOG 4.3 routines-j4's claim waited 579 s for two other sessions'
+  `lib/bench_lock.sh`). BACKLOG 4.3 a private app's j4's claim waited 579 s for two other sessions'
   pre-push gates -- every new gate blocked behind it -- then let go unmeasured, because a 600 s
   run no longer fit the cap, and blamed the load ("not goh's") at 5.58, under the max of 8.
   `bench_lock_exclusive LABEL [DRAIN]` now fails a drain still busy DRAIN seconds after the
@@ -3641,7 +3641,7 @@ Measured: cross-session serialization of `structural --full`, sigma 0.45 -> 0.10
   machine's) and names each one's rule and both fixes. `--staged` judges what the commit brings:
   its files, or every tracked file when it stages a `.gitignore`. The estate sweep found two other
   repos red, both fixed the same day: CadGoose (four force-added files under `*.md` and
-  `FoundationLLM.*`, now negations) and ZoneWM (`.vscode/settings.json`). RED FIRST: eight cases
+  `FoundationLLM.*`, now negations) and a private Swift app (`.vscode/settings.json`). RED FIRST: eight cases
   in `tests/test_goh_tracked_ignored.py`, red before the step existed; reading the machine's
   excludes too turns the machine-local case red, and judging every file at `--staged` turns the
   unrelated-commit case red.
@@ -3744,9 +3744,9 @@ Measured: cross-session serialization of `structural --full`, sigma 0.45 -> 0.10
   one when their classes are (the commit gate's measure) or when they touched three of the same
   files; each connected group is a hardening candidate. A file in more than a quarter of the
   range (a ROADMAP) and a commit touching more than 20 files (a sweep) link nothing; in a range
-  under 20 commits no file is common. On ZoneWM's labelled clusters, words alone keep 1 whole and
+  under 20 commits no file is common. On a private Swift app's labelled clusters, words alone keep 1 whole and
   files add the pictures and the teardown pair; the rest is paraphrase in different files, which
-  no measure of words and paths sees. Its range is the fixture (`zonewm_range.tsv`).
+  no measure of words and paths sees. Its range is the fixture (`swift_app_range.tsv`).
 * **A self-proof must leave the tree it ran over as it found it.** `check_probes_pass.py` runs
   every probe in parallel over the live tree; in koffee_big one probe unlinked a real source and
   wrote it back while another copied the tree, and the copy failed on the missing file -- a push
@@ -3755,7 +3755,7 @@ Measured: cross-session serialization of `structural --full`, sigma 0.45 -> 0.10
   a change fails the gate, names the files, and a serial re-run names the probe. (From the
   koffee_big session, 2026-10-08.)
 * **A commit hook's repository variables no longer reach what the gate spawns** (contract #12;
-  media_server, 2026-10-08). From a linked worktree git hands pre-commit an absolute `GIT_DIR` and
+  a private server workspace, 2026-10-08). From a linked worktree git hands pre-commit an absolute `GIT_DIR` and
   `GIT_INDEX_FILE`, and the stock hook passed both to `tools/gate.sh --staged` and its children: a
   consumer test that built a scratch repo wrote `core.bare=true` into the shared config, committed
   its scratch tree onto the worktree's branch and pushed three stashes. Every worktree commit also
@@ -3774,9 +3774,9 @@ Measured: cross-session serialization of `structural --full`, sigma 0.45 -> 0.10
   `tests/test_commit_hook_git_env.py`, each test red-proven.
 * **`goh commit-class`: a repo's domain vocabulary is not a class.** A word in more than an eighth
   of the repo's classes (over its whole history; none below 30 classes) no longer counts toward
-  "same class". ZoneWM's replay keeps its 3 right refusals and loses the wrong one, `078f137f`,
+  "same class". A private Swift app's replay keeps its 3 right refusals and loses the wrong one, `078f137f`,
   which shared only `read` and `window`; the labelled pairs that matched still match. Its 75
-  classes are the fixture (`tests/fixtures/commit_class/zonewm_classes.tsv`).
+  classes are the fixture (`tests/fixtures/commit_class/swift_app_classes.tsv`).
 * **A git that refuses is an error, never an empty list.** `goh commit-class --range A..B
   --report` handed `--report` to git as a revision and printed "0 commit(s), 0 the rule
   refuses"; `goh shell-lint --staged` over a corrupt index printed "no shell files in scope". Both
@@ -3786,18 +3786,18 @@ Measured: cross-session serialization of `structural --full`, sigma 0.45 -> 0.10
   the tip and fast-forwards main to the gated SHA; a red gate, a tip that moved under it, or a main
   that moved on lands nothing. Pinned by `tests/test_land.py`, each refusal red-proven.
 
-* **`goh requires-call`** (ZoneWM's proposal, opt-in by `GOH_REQUIRES_CALL`): "a Python file that
+* **`goh requires-call`** (a private Swift app's proposal, opt-in by `GOH_REQUIRES_CALL`): "a Python file that
   CALLS X must also CALL Y", configured as rows in a TOML file, read from the AST so a docstring
   naming Y never satisfies it. A dotted name resolves through the file's own imports (another
   module's `verify` is not this one's); an exemption that outlived its reason fails; a rule that
   finds nothing to judge is exit 2. The parser is `ruff_python_parser` (Astral's own crate): over
-  ZoneWM's `tools/` and this repo's 457 Python files it found the same 29,973 call sites as
+  a private Swift app's `tools/` and this repo's 457 Python files it found the same 29,973 call sites as
   Python's `ast`, in 0.10 s. It brings `syn` 2 beside the crate's `syn` 3, build-time only (its
-  derive macros). ZoneWM's selftest is lifted as the test; every branch is red-proven by mutation.
+  derive macros). A private Swift app's selftest is lifted as the test; every branch is red-proven by mutation.
   A trigger can name a call's string ARGUMENTS -- `cli("config-set")`, or `*("theme", "--id")`
   for any callee -- matched side by side among its positional arguments, an argv list spread in
-  place, so ZoneWM's courtesy rule ("a tool that drives the desktop waits for rest") is a row too.
-  Over ZoneWM's tools it binds 12 of the 17 files its regex did; the other 5 name a verb only as
+  place, so a private Swift app's courtesy rule ("a tool that drives the desktop waits for rest") is a row too.
+  Over a private Swift app's tools it binds 12 of the 17 files its regex did; the other 5 name a verb only as
   text (a docstring, mutation anchors, controls' data). An argv built at run time is not seen.
 
 * **A quiet host on demand: `tools/quiet.sh -- CMD`** (`lib/bench_lock.sh`). Every wall-clock number
@@ -3828,12 +3828,12 @@ Measured: cross-session serialization of `structural --full`, sigma 0.45 -> 0.10
 * **`goh early-exit-pipe`: no early-exit consumer on a pipe under pipefail** (`crates/goh/src/earlypipe/`).
   `producer | grep -q` with pipefail on is a race: the consumer exits at its first match, the
   producer's next write dies of SIGPIPE (141), and pipefail makes that the status -- so a match
-  reads as a miss, on a loaded host only. Measured 2026-10-08: media_server's deploy.sh read a
+  reads as a miss, on a loaded host only. Measured 2026-10-08: a private server workspace's deploy.sh read a
   RUNNING service as absent, a `git diff --cached | grep -qE` decided whether a gate layer ran,
   and `ps | head -6` exited 141 here. Consumers: `grep -q`/`--quiet`/`--silent`/`-l`, `grep -m`/
   `--max-count`, `head` (not `-n -N`), awk `exit` outside `END`, sed `q`/`Q`; in EVERY shell
   source -- `*.sh`, `*.sh.tmpl`, `*.bash`, `*.zsh`, shell shebangs -- whether or not the file
-  says pipefail itself: media_server's scan read only `*.sh` files saying "pipefail", and let a
+  says pipefail itself: a private server workspace's scan read only `*.sh` files saying "pipefail", and let a
   release through on a sourced install-lib.sh and the install.sh.tmpl that regenerates
   install.sh. Only a status something READS is a finding: a
   substitution used as an argument and a pipeline ending `|| true` pass. A structural step in EVERY
@@ -3866,7 +3866,7 @@ Measured: cross-session serialization of `structural --full`, sigma 0.45 -> 0.10
 
 ### 3. Rust coverage: one instrumented run, exported once
 
-* The rust mode exported one lcov part PER TEST TARGET. Calibrated on all 29 media_server crates,
+* The rust mode exported one lcov part PER TEST TARGET. Calibrated on all 29 crates of a private server workspace,
   one run of exactly the same targets gives the IDENTICAL merged report (same percentage, same
   line counts, every crate) in 173 s against 226 s. Every guard holds over the one run: the .ok
   marker, a failed run naming every target it lost, an empty run refused.
@@ -3874,7 +3874,7 @@ Measured: cross-session serialization of `structural --full`, sigma 0.45 -> 0.10
 ### 4. The rust proven cache learns a build's reads
 
 * A crate whose build read a file outside its static scope was never recorded, so it ran on every
-  push (media_server's vpn-watchdog-rs reads `compose/`). The compiler's dep-info names those
+  push (a private server workspace's vpn-watchdog-rs reads `compose/`). The compiler's dep-info names those
   files: an in-repo one is now learned and keyed from the next run on (the learning run records
   nothing; a learned file's edit re-gates). A read outside the repository is never learned.
 
@@ -3925,7 +3925,7 @@ Measured: cross-session serialization of `structural --full`, sigma 0.45 -> 0.10
   0.43 s. Eleven ways a hit could lie were tested before the cache existed. Cross-session sigma
   for `structural --full` 0.45 -> 0.01.
 * **Rust coverage is incremental**: only the profiles are reset, never the build; 29 of 29
-  media_server crates give reports identical to the clean build, 173 -> 76 s.
+  a private server workspace crates give reports identical to the clean build, 173 -> 76 s.
 
 ### 10. The suite cannot drift back
 
@@ -3949,18 +3949,18 @@ Measured: cross-session serialization of `structural --full`, sigma 0.45 -> 0.10
 
 ### 12. "Fix the class", asked where it cannot be skipped (opt-in, `GOH_COMMIT_CLASS`)
 
-* **`goh commit-class`**, ported from ZoneWM: a `fix:`/`perf:` commit carries `Class:` and
+* **`goh commit-class`**, ported from a private Swift app: a `fix:`/`perf:` commit carries `Class:` and
   `Siblings:` in its trailer block; a class sharing two content words with two earlier ones
   carries `Systemic:` or `Filed:` with substance. Run by a new stock `commit-msg` hook and again
   over the pushed range by `push_gate.sh`, so `--no-verify` does not survive the push.
-* **Calibrated on ZoneWM's real history** (54 classes, the pairs its author labelled): the
+* **Calibrated on a private Swift app's real history** (54 classes, the pairs its author labelled): the
   prototype's "half the smaller class's words" matched 1 of 13 same-class pairs and none of the
   three third instances, because each class is written afresh and `that`/`what` were most of what
   pairs shared. A function-word stoplist, light stemming and two shared content words match 6,
-  with 2 false matches in 1,418. Replayed, ZoneWM's history goes from 0 refused to 5: 3 right,
+  with 2 false matches in 1,418. Replayed, a private Swift app's history goes from 0 refused to 5: 3 right,
   1 arguable, 1 wrong. Paraphrase (the other 7 pairs) is beyond any word measure.
 
-### 14. ZoneWM's generic tooling, centralised
+### 14. A private Swift app's generic tooling, centralised
 
 * **`gates/round.sh -m <message> <path>...`**: one round end to end -- only the named paths are
   committed (`git commit --only`), the repo's own hooks gate the commit and the push, the push is
@@ -3987,14 +3987,14 @@ Measured: cross-session serialization of `structural --full`, sigma 0.45 -> 0.10
 * **The commit gate runs the push's cheap Rust policies over the staged `.rs` files** (no
   `#[allow]`/`#[expect]`, no emptiness asserts): a commit was let through on an assert its push
   refused minutes later. Untouched files never block a commit.
-* **A gate leaves nothing in `$TMPDIR`** (ZoneWM counted ~7,000 of our entries): the EXIT trap's
+* **A gate leaves nothing in `$TMPDIR`** (a private Swift app counted ~7,000 of our entries): the EXIT trap's
   unquoted `for` split `goh-python (staged).XXXX` on its space and removed nothing; the rust gate's
   scope file was never removed; the estate probe's checker dir and the empty-scope sweep's
   toolchain droppings (SwiftPM `TemporaryDirectory.*`) stayed. One newline-safe cleanup list
   (`goh_cleanup_add`), the sweep's gates under a TMPDIR it owns, kept-on-failure logs bounded
   (`lib/prune_kept.py`), and a 12 h backstop for killed runs; pinned by
   `tests/test_gate_temp_leaks.py`, which runs `structural --full` and asserts an EMPTY TMPDIR.
-* **Every temp we put in the shared dir is claimable, and the suite sweeps it too** (ZoneWM,
+* **Every temp we put in the shared dir is claimable, and the suite sweeps it too** (a private Swift app,
   2026-10-07: ~1,500 `goh-*` entries still stranded a day later). The 12 h backstop only claims
   `goh-*` names, and only in a push's TMPDIR: release.sh's bare `mktemp`s, a test stub's and every
   `TemporaryDirectory()` were nobody's; the suite's `goh-test-git.*` seeds were never removed; and a
@@ -4002,8 +4002,8 @@ Measured: cross-session serialization of `structural --full`, sigma 0.45 -> 0.10
   Python for one that does not), the seeds go at worker exit, a failed release removes its archive
   dir, and the suite's controller runs the same backstop (`prune_kept.py --backstop`) at session
   start. Pinned by `tests/test_temp_claimable.py`.
-* **The C++ coverage merge is bounded and judges only this run** (ZoneWM D-0245): `ctest` wrote one
-  profile per test process (`%p`) and the merge took them all as argv -- ZoneWM's SwiftPM twin died
+* **The C++ coverage merge is bounded and judges only this run** (a private Swift app D-0245): `ctest` wrote one
+  profile per test process (`%p`) and the merge took them all as argv -- a private Swift app's SwiftPM twin died
   at ARG_MAX at 6,965 -- unquoted, so a path with a space split. Now `%8m` pools them and the merge
   reads `--input-files`. Found beside it: a previous run's profiles were merged into this run's
   number; they are removed before `ctest`. Pinned by `tests/test_coverage_gate_cpp_merge.py`.
@@ -4020,9 +4020,9 @@ Measured: cross-session serialization of `structural --full`, sigma 0.45 -> 0.10
 
 * **Every structural checker is native.** The twelve the native tier still delegated were ported,
   each parity-pinned against the Python on the estate and red-proven both ways: unreaped-spawn
-  (2.87 -> 0.13 s on media_server), version provenance, kill-by-name, claim derivation, md-links,
+  (2.87 -> 0.13 s on a private server workspace), version provenance, kill-by-name, claim derivation, md-links,
   lock-version, credential-urls, python-formatted (spawns ruff, bounded), shell-lint (with a
-  per-blob verdict cache: media_server `--full` 1.9 -> 0.30 s warm), dependency currency,
+  per-blob verdict cache: a private server workspace `--full` 1.9 -> 0.30 s warm), dependency currency,
   empty-assert and the push gate's tag check. `goh <check> --help` is each one's usage.
 * **The Python tier is gone.** `structural.sh`'s Python branch is deleted (498 -> 181 lines); with
   no binary, `structural.sh` and `goh.sh` REFUSE and say how to build one, and a failed rebuild
@@ -4106,17 +4106,17 @@ Residual, stated in BACKLOG: three consumer call sites run a Python checker dire
   `--jobs N` and `--steps-only` are for a caller that schedules for the repo.
 * **`rust_gate.sh --each-crate [repo]`** gates every tracked top-level crate, biggest first,
   `GOH_RUST_JOBS` (default 4) at a time, through that same scheduler, with the whole-repo scans run
-  ONCE (`GOH_RUST_GROUPS`). media_server, warm, proven off: 79 s against its hand-rolled
+  ONCE (`GOH_RUST_GROUPS`). A private server workspace, warm, proven off: 79 s against its hand-rolled
   `xargs -P 4` fan-out's 91 s; the repo scans 1 run instead of 29.
 * **`GOH_RUST_LINT_CARGO=cargo-zigbuild`** runs the `--target` lint configs (only those) through
   zigbuild, whose `zig cc` builds ring's C for musl -- so a cross clippy can live in the crate's gate
-  instead of a serial tail (media_server: 46 s). `required_tools` layer `rust-cross`.
+  instead of a serial tail (a private server workspace: 46 s). `required_tools` layer `rust-cross`.
   `GOH_RUST_LINT_CONFIGS` had no test at all; it is now calibrated (Linux-only dead code: host green,
   the musl config red).
 
 ### 3. Correctness
 
-* **A red step's failure block quotes the step that FAILED** (ZoneWM H2, `lib/fail_lines.py`): a
+* **A red step's failure block quotes the step that FAILED** (a private Swift app H2, `lib/fail_lines.py`): a
   nested failure quotes the innermost dump alone and counts the rest; an unframed `make` log says
   so and puts make's `*** [target] Error N` first. The inner header used to match itself, too.
 * **A stopped gate stops its steps.** A step in its own session never heard Ctrl-C or a TERM to its
@@ -4150,13 +4150,13 @@ repeated in 29 crates, invisible on any single line.
 
 | what | before | after |
 |---|---|---|
-| `goh lints`, one media_server crate (native / Python) | 2.42 s / 1.4 s | 0.05 s / 0.08 s |
+| `goh lints`, one crate of a private server workspace (native / Python) | 2.42 s / 1.4 s | 0.05 s / 0.08 s |
 | `dependency currency`, a small crate | 7 s | 0.09 s |
-| `dependency currency`, routines (14 deps), warm | 0.97 s | 0.12 s |
-| coverage, media_server `mediaops-rs` | 60 s | 27 s |
-| coverage, routines | 144 s | 73 s |
-| `structural.sh --full`, media_server | 4.75 s | 2.4 s |
-| media_server push, `time-mini-rs` changed (13 crates use it): house rust-gate work | 362 job-s | 285 job-s, plus ~30 more from the shared repo scans |
+| `dependency currency`, a private Rust app (14 deps), warm | 0.97 s | 0.12 s |
+| coverage, a private server workspace `mediaops-rs` | 60 s | 27 s |
+| coverage, a private Rust app | 144 s | 73 s |
+| `structural.sh --full`, a private server workspace | 4.75 s | 2.4 s |
+| a private server workspace push, `time-mini-rs` changed (13 crates use it): house rust-gate work | 362 job-s | 285 job-s, plus ~30 more from the shared repo scans |
 
 * **Walks read git's listing, never the build tree** (P1a). `rglob("Cargo.toml")` descended 50,950
   directories of `target/` per crate and threw them away. One helper per tier; a class test plants
@@ -4173,11 +4173,11 @@ repeated in 29 crates, invisible on any single line.
   the whole tree; coverage separately. A reach outside the crate that cannot be named widens its
   key to the tree; a build whose dep-info read a file outside the scope is never recorded. A reach outside the crate is
   RESOLVED to the file it names (`include_str!("../../../VERSION")` keys on `VERSION`), so 28 of
-  media_server's 29 crates key on their own files; the 29th really reads the repo root.
-* **What did NOT move, said plainly:** media_server's push wall time (~170 s) is now its own
+  a private server workspace's 29 crates key on their own files; the 29th really reads the repo root.
+* **What did NOT move, said plainly:** a private server workspace's push wall time (~170 s) is now its own
   `scripts/dev/check.sh` (154 s alone: `repo_tests.sh` 98 s, a serial cross-target clippy 46 s); the
   house crate fan-out finishes first. The cross-clippy needs a cargo-command seam here (BACKLOG
-  P1g); the tests are media_server's (servers ROADMAP O41).
+  P1g); the tests are a private server workspace's (servers ROADMAP O41).
 
 ### 3. Correctness
 
@@ -4186,7 +4186,7 @@ repeated in 29 crates, invisible on any single line.
   binary lacking a step passed the version check; now `build.rs` stamps the git trees of its inputs,
   `build-goh.sh` builds an export of HEAD (uncommitted edits cannot reach it), and the resolver
   rebuilds a stale binary under a lock before using it. `GOH_BUILD_DIRTY` is gone with its cause.
-* **A push whose branch moved while it was gated is refused** (ZoneWM D-0211): over HTTPS git sends
+* **A push whose branch moved while it was gated is refused** (a private Swift app D-0211): over HTTPS git sends
   the ref as it is AFTER the hook returns.
 * **A failing test under coverage is named as one** (P1c, gate side), so a consumer's plain
   `cargo test` step can become `cargo test --doc`.
@@ -4230,7 +4230,7 @@ On this box sys time equals user time throughout, so process spawns are the cost
 
 ### 2. A running gate is pinned to the bytes it started with
 
-routines' pre-push died with `coverage_gate.sh: line 485: syntax error near unexpected token ';;'`.
+A private Rust app's pre-push died with `coverage_gate.sh: line 485: syntax error near unexpected token ';;'`.
 bash reads a script lazily by byte offset; this checkout was edited while a consumer ran it. Every
 EXECUTED script (20) now wraps its body in a parse-guard brace group (`docs/contracts.md` 19).
 
@@ -4254,18 +4254,18 @@ it; cleanup NAMES what the gate wrote outside its tree (a private consumer's tes
 each run reaps runs whose owner is dead, which `git worktree prune` never did (`docs/contracts.md`
 21). The litter was removed.
 
-Consumer pre-push end to end: media_server 201 s before; 242 s on the first claim of its stable path
-(cold), **197 s warm**, green. routines 303 s, green (its first claim). ztools stays red on its own
+Consumer pre-push end to end: a private server workspace 201 s before; 242 s on the first claim of its stable path
+(cold), **197 s warm**, green. A private Rust app 303 s, green (its first claim). ztools stays red on its own
 clippy 1.99 findings. The shared structural layer costs ~3 s in each.
 
 ### 5. Scope
 
 * **Build scripts are under the line cap**, both tiers: `Makefile`, `GNUmakefile`, `makefile`,
-  `CMakeLists.txt`, `[Jj]ustfile`, `*.mk`, `*.cmake` (ZoneWM's 698-line Makefile passed). The two
+  `CMakeLists.txt`, `[Jj]ustfile`, `*.mk`, `*.cmake` (a private Swift app's 698-line Makefile passed). The two
   copies of the list are compared whole by a test. Newly over: CadGoose/CMakeLists.txt (702),
   games/CadGoose2/CMakeLists.txt (1142), games/necrohand/Makefile (511).
 * **`check_probes_pass.py` names the self-proofs it does not run** (non-`check_*` files with a
-  probe flag; 23 in ZoneWM). Discovery stays by name: ZoneWM's `input_lock.py --probe` locks the
+  probe flag; 23 in a private Swift app). Discovery stays by name: that app's `input_lock.py --probe` locks the
   owner's real input.
 * **`credential.helper` and `http.*.extraheader`** are judged with `check_no_secrets.py`'s
   patterns plus a helper's literal `password=` and the credential after an auth scheme
@@ -4278,13 +4278,13 @@ clippy 1.99 findings. The shared structural layer costs ~3 s in each.
 ### 6. One session's uncommitted edit no longer stops the estate
 
 The binary-currency check read the shared checkout's WORKING-TREE `Cargo.toml`. Bumping it ahead of
-the release commit refused every consumer's commit (ZoneWM reported it within minutes). It reads
+the release commit refused every consumer's commit (a private Swift app reported it within minutes). It reads
 HEAD's version now; uncommitted gate source keeps its own by-path warning
 (`tests/test_binary_currency.py`, which no test had pinned before).
 
 ### 7. A gate finds its own runtime, and a crash is not a refusal
 
-`~/.zshrc` exported `PYTHONPATH=$GOH_DIR`, and non-interactive shells never read it (ZoneWM had to
+`~/.zshrc` exported `PYTHONPATH=$GOH_DIR`, and non-interactive shells never read it (a private Swift app had to
 export it in its own Makefile). `gates/_common.sh` now exports it for everything a gate runs. Under
 an empty PYTHONPATH the empty-tree sweep's copied checkers all died on `ModuleNotFoundError` and the
 sweep scored every crash as a healthy refusal: it now names a Traceback as "crashed", and supplies
@@ -4335,7 +4335,7 @@ which is a different subject. So:
 * `check_probes_pass.py --probe` cost **54 s**, because the probe calls `main()` three times on a
   fixture and each of those swept eight real consumer repos;
 * five tests asserting that a **fixture's** registry is sound were paying for those eight repos, and
-  would have gone red because a `media_server` commit landed.
+  would have gone red because a private server workspace commit landed.
 
 Scoped now to the repo that owns the checkers, with `--estate` to force it, and the skip is **stated
 rather than silent** — `docs/SUPERSOTA.md` **R4**'s rule is that a step which does not run must be
@@ -4346,7 +4346,7 @@ proved entry by entry by `tests/test_estate_corpus.py`.
 
 `rust_findings` re-derived `guard_types(crate)`, `drop_types(crate)` and `_known_types(crate)`
 **once per file** over a crate context that is the same string for the whole scan. Measured over
-`media_server`'s `crates/`: a per-file call cost **134x** one without the context, and one pass over
+a private server workspace's `crates/`: a per-file call cost **134x** one without the context, and one pass over
 that 626-file tree took **23.2 s** where it now takes **2.1 s**. The arithmetic is deliberately
 unchanged — same sets, same subtractions, same unions — because a cost fix that moved a rule would
 be two changes in one commit.
@@ -4367,7 +4367,7 @@ plant in each, produce identical finding lines and identical exit codes.
 | total test time | 1379.8 s | **735.6 s** |
 | wall clock | 233.6 s | **105.7 s** |
 | `test_gate_calibration.py` | 387.0 s | 33.3 s |
-| a pass over media_server's 626-file `crates/` | 23.2 s | 2.1 s |
+| a pass over a private server workspace's 626-file `crates/` | 23.2 s | 2.1 s |
 
 Not all of that was the regression, and the remainder is named rather than implied:
 `test_goh_structural_parity.py` (121.9 s) and `test_display_seam.py` (108.8 s) are now the largest
@@ -4439,7 +4439,7 @@ no gate, because it converts an unknown into a false pass.
 
 **1. A guard on one variable laundered a second, unguarded one.** Protection was a property of the
 enclosing FUNCTION: if the function mentioned a guard type anywhere, every spawn in it was guarded.
-`routines`' `tests/control_lifecycle.rs:227` and `tests/control_takeover.rs:190` each spawned a **raw,
+A private Rust app's `tests/control_lifecycle.rs:227` and `tests/control_takeover.rs:190` each spawned a **raw,
 unguarded** `/bin/sleep 300` owner beside a `Reap`-wrapped server and reaped it below
 `wait_for_socket`'s `assert!`. **The gate reported both clean.** Fixed by attaching protection to the
 **binding** the spawn's result was assigned to — and because a wrapper's ownership is often a
@@ -4451,7 +4451,7 @@ child exactly as the guard did.
 **2. The Rust masker desynchronised on a raw string and blanked the rest of the file.** The closing
 delimiter was matched against the whole OPENING token (`r#"`, `r##"##`, `br#"#`), so
 `r#"{"op":"shutdown"}"#` never closed and every remaining line was blanked before the spawn scan saw
-it. **Nine spawn sites in `routines`' tests were invisible to this gate**, which is why both files
+it. **Nine spawn sites in a private Rust app's tests were invisible to this gate**, which is why both files
 above read clean twice over. State is now `(close, raw)`. The `raw` half is a genuine Rust/Python
 difference and was **measured against both toolchains rather than reasoned about**: `r"a\"` is valid
 Rust, `r"a"b"` is not, and `r"a""` is ONE string in CPython. The first attempt branched on `r` in
@@ -4470,7 +4470,7 @@ parameter — how a guard's own constructor spawns — was not recognised as a p
 `_fn_bounds` picked the nearest preceding `fn`, which for a guard declared inside a test is `fn drop`
 twelve lines above the spawn; the guard-construction window was 8 lines and the incident's own
 repaired file has a nine-line comment between the spawn and `ReapOnDrop(child)`. A cross-file
-`tests/common/` guard was invisible per-file, which reported `routines`' **fixed** code as broken, so
+`tests/common/` guard was invisible per-file, which reported a private Rust app's **fixed** code as broken, so
 guard types are now gathered at **crate scope** — while a LOCAL `impl Drop` still overrides it, since
 the compiler uses the local one.
 
@@ -4481,7 +4481,7 @@ the gate — the same reasoning as `is_locked`'s "an unanswerable question must 
 
 **Measured, then fixed, then measured again.** The estate was swept before and after, all **32 wired
 repos**, honouring each repo's own `GOH_EXCLUDE`. **Sites policed rose 27 → 30** (+11%): `monitor`'s
-guard constructor and `routines`' two raw-string-hidden sites, all three now judged correctly. Exactly
+guard constructor and a private Rust app's two raw-string-hidden sites, all three now judged correctly. Exactly
 **one new finding**, `games/ZeroThunder`'s `tests/e2e/garden_drag_flicker.py:73` — a **real** dropped
 handle on the LIVE tier that the estate has been carrying unfixed, now visible because Python's panic
 scan had never counted a bare `return` as an exit that skips a reap, the way Rust's always did. Three
@@ -4524,7 +4524,7 @@ stanza, so it had no GitHub release. The tag message is unchanged.
 
 ## v0.17.0 — an unreaped child can never again be invisible, and every wait is bounded _(2026-10-04)_
 
-`media_server`'s `archive_torznab` test spawned the real binary with `--bind
+A private server workspace's `archive_torznab` test spawned the real binary with `--bind
 127.0.0.1:0` — a server that loops forever by design — and reaped it with an
 explicit `child.kill(); child.wait();` **sitting below four lines that can
 panic**. **Nine live processes** accumulated, each holding the cargo build lock,
@@ -4565,7 +4565,7 @@ fixed at the rule, none exempted. File-granular instead of region-granular
 stored or returned not modelled as a handoff; a `Drop` that only *waits* not
 recognised as a guard; a `Child` handed to `wait_timeout()` not recognised as
 reaped; a deadline watchdog not counted; and `Self { child }` not recognised as a
-guard construction. The leaks: **3** in `routines/tests/follow_lifecycle.rs` (a
+guard construction. The leaks: **3** in `<app>/tests/follow_lifecycle.rs` (a
 `sleep 300` with asserts between the spawn and the kill — the incident's shape,
 in the wild), **1** in `monitor/crates/multitop/src/ssh/ssh_tests.rs`, **1** in
 `games/ZeroThunder/tests/e2e/live_probe_lib.py`, and **1 in this repo's own
@@ -4579,7 +4579,7 @@ repo) and the native tier's `steps_delegated::step_unreaped_spawn`. It carries a
 `--probe` that goes red when the ordering rule is switched off at its own named
 seam — measured: *"2 of 36 measured shapes disagree with the table"* — and a
 `check_estate_corpus.py` entry that plants the incident's ORDER inside 621 real
-files of `media_server`'s `crates/` and requires the gate to go red and name the
+files of a private server workspace's `crates/` and requires the gate to go red and name the
 panicking line and the reap below it.
 
 **2. The drop guard is named.** `ReapOnDrop`, its contract spelled out in the
@@ -4649,7 +4649,7 @@ kill by name"* over a tree holding four of them, **in its own tests**.
 
 Measured on both boundaries over 11 estate repos: here the old boundary finds 0
 of the 4 and the new one finds all 4; across the estate the delta is exactly one
-further hit — ZoneWM `Sources/zt-agent/DesktopShortcutMonitor.swift:121`,
+further hit — a private Swift app `Sources/zt-agent/DesktopShortcutMonitor.swift:121`,
 `process.executableURL = URL(fileURLWithPath: "/usr/bin/killall")` with
 `arguments = ["Dock"]`. A true positive, and one this gate was built to catch.
 
@@ -4920,9 +4920,9 @@ half-wired.
 `check_no_empty_assert.py`, wired into every Rust repo's gate ahead of clippy.
 
 The class it closes was not hypothetical and not one repository. Four repos in
-two days: media_server 77 files, routines 50 assertions, app_updates 17,
+two days: a private server workspace 77 files, a private Rust app 50 assertions, app_updates 17,
 gates_of_heck 24 — and every single one of them was a release blocker rather
-than a broken build. media_server's `bump.sh` refused to cut for exactly this
+than a broken build. A private server workspace's `bump.sh` refused to cut for exactly this
 reason, so a stylistic lint held a release.
 
 What makes this a gate and not another sweep is that **clippy is blind to half
@@ -4988,7 +4988,7 @@ described where they live.
 ## v0.13.5 — a tag is a claim, and it is checked against its own commit _(2026-10-01)_
 
 `check_tag_version.py` refuses to push any `refs/tags/v<semver>` whose target
-commit declares a different version. It exists because of media_server, today:
+commit declares a different version. It exists because of a private server workspace, today:
 a version was bumped, `git commit --amend --no-edit` was REJECTED by pre-commit
 twice, and `2>/dev/null` swallowed both refusals so the amend looked like it
 had worked. `git tag -f v1.79.3` then named commit `a266067`, whose VERSION file
@@ -5011,7 +5011,7 @@ Three properties, each a place the obvious implementation is wrong:
   ships.
 
 Version sources are a table, not a repo. Both live layouts ship by default — a
-`VERSION` file (media_server) and `[workspace.package] version` (app_updates) —
+`VERSION` file (a private server workspace) and `[workspace.package] version` (app_updates) —
 and `GOH_TAG_VERSION_SOURCES` in `.gatesrc` points it anywhere else, with
 opt-in globs expanded against the tree at the commit. Globbing is scoped on
 purpose: a bare `**/Cargo.toml` sweeps `vendor/`, and app_updates' camoufox-rs
@@ -5061,7 +5061,7 @@ matched diagnostic group names that `swift build` wraps in terminal hyperlinks,
 so the name never appeared whole; and check-deprecated ran its own second build,
 which on the cold pre-push tree had nothing left to compile and printed no
 warnings at all. "Every warning fatal" was therefore never true at push — found
-in ZoneWM 2026-09-26, where a `self` captured in a `@Sendable` closure in a
+in a private Swift app 2026-09-26, where a `self` captured in a `@Sendable` closure in a
 test, and an unneeded `nonisolated(unsafe)`, both passed it. A build that fails
 fails the gate, because files it never compiled printed no warnings.
 
@@ -5131,7 +5131,7 @@ and every run counts it. A stale entry fails.
 
 Seeded the same day in the seven repos without an active session: 52 entries
 covering 58 lines, in this repo, CadGoose2, ZeroThunder, necrohand, divoom-control,
-homebrew-tap and sys_updater. Surveyed but left to their owners: ZoneWM (8
+homebrew-tap and sys_updater. Surveyed but left to their owners: a private Swift app (8
 hits) and koffee_big (4 hits, a tree dirty with someone's work).
 
 The native pipeline delegates this step to the Python checker, as it does
@@ -5141,7 +5141,7 @@ bites.
 ### v0.13.1 (never tagged: released in v0.13.3) — a gate over the working tree says when the tree moved under it _(2026-09-27)_
 
 A gate that builds and tests the WORKING tree certified whatever bytes sat
-there while it ran: an edit mid-run killed ZoneWM's `make verify` with
+there while it ran: an edit mid-run killed a private Swift app's `make verify` with
 `error: fatalError` in a target nobody touched and no cause named, and a
 green run over a moving tree certified bytes no commit holds.
 `lib/tree_stamp.py` stamps (mtime, size) of every file git would show at the
@@ -5151,7 +5151,7 @@ The staged gates do not stamp: they judge the index, so another session's
 edit elsewhere is not theirs to refuse. Tool caches (`__pycache__`,
 `.pytest_cache`, `.build`, `target`, lockfiles a build writes) are gate
 output, never a move -- found by this repo's own py and rust gate tests.
-Consumers with their own runner call the CLI (ZoneWM's `make verify`).
+Consumers with their own runner call the CLI (a private Swift app's `make verify`).
 
 ### v0.13.0 (never tagged: released in v0.13.3) — the Rust port: native layer 1, bit-exact golden, one resolver _(2026-09-27)_
 
@@ -5198,7 +5198,7 @@ the target dir holds only final artifacts; the test binaries cargo-llvm-cov
 exports from live in the build dir, shared with every ordinary build of the
 crate. The gate therefore merged the instrumented binaries of the PREVIOUS
 source into the report - lines past the end of the current file, all
-uncovered - and read a 97.5% tree as 93.5% (routines). The gate now exports
+uncovered - and read a 97.5% tree as 93.5% (a private Rust app). The gate now exports
 `CARGO_BUILD_BUILD_DIR` equal to its own target dir; the stub-cargo test
 records the environment of every build-driving call and refuses any call
 that sees a different build dir. Proven red on the old gate.
@@ -5228,7 +5228,7 @@ rustfmt's multi-line layout, with string literals ignored. Tests:
 language layer wired into a repo's `tools/gate.sh` (which the starter invites:
 "the cheap half of a language gate runs at COMMIT time") never ran on commit -
 a commit gate weaker than the push gate, the hole rule 14 names. Found in
-media_server when a Rust gate under `--staged` was added and a crate's red
+a private server workspace when a Rust gate under `--staged` was added and a crate's red
 gate still committed. The hook now execs `tools/gate.sh --staged` when the
 file exists (structural alone otherwise), symmetric with pre-push. Test:
 `test_pre_commit_runs_the_repo_gate_staged_layer` (a layer's marker must
@@ -5336,7 +5336,7 @@ and skipped when absent. Four repos carried copies (one already behind);
 every other Rust repo was never checked. The step now runs
 `checks/check_no_allow.py` from here, unconditionally, and honours
 `GOH_EXCLUDE` like every other house check (a vendored crate is exempt with
-one line). The copies in antiknob, divoom-control, routines and ztools are
+one line). The copies in antiknob, divoom-control, a private Rust app and ztools are
 deleted.
 
 ### Length ceilings were required but never enforced here
@@ -5521,7 +5521,7 @@ It had been moved out of CI while still living here; now it lives where it runs.
 
 ### The two ways a clippy gate lies
 
-From a lint-adoption campaign across four Rust repos (monitor, routines,
+From a lint-adoption campaign across four Rust repos (monitor, a private Rust app,
 ztools, divoom-control), all four taken from "no policy at all" to zero at
 `-D warnings`. Two of the findings were structural rather than per-repo, which
 is what made them belong here.
@@ -5606,7 +5606,7 @@ any toolchain in the repo that declared it. `cargo-machete` does the job on
 stable and exits 1 on findings, so `gates/rust_gate.sh` treats it as a hard
 failure, with a NAMED skip when the tool is absent.
 
-Calibrated on `routines`: clean, then an unused `heck` added and the step goes
+Calibrated on a private Rust app: clean, then an unused `heck` added and the step goes
 red naming it, then clean again. Across the estate it found four real unused
 dependencies (monitor, app_updates). Its blind spot is ident-based scanning, so
 exemptions are local, in the crate's own `[package.metadata.cargo-machete]`,
@@ -5933,7 +5933,7 @@ roof. 74 → 262 tests, every new checker red-proven.
   repos carried byte-identical copies); target-root seam so neither repo
   profiles the wrong checkout.
 - Migrations shipped across eleven consumer repos (app_updates, monitor,
-  divoom-control, CadGoose, CadGoose2, sys_updater, routines, necrohand,
+  divoom-control, CadGoose, CadGoose2, sys_updater, a private Rust app, necrohand,
   koffee_big, ZeroThunder, ZoneTilerWM): forked length checks deleted,
   coverage/local-CI delegating with step lists diffed old-vs-new, locks and
   ratchets on the shared implementations. Honest keeps documented where a
@@ -5950,7 +5950,7 @@ roof. 74 → 262 tests, every new checker red-proven.
   prints without executing), one Apple icon pipeline (`gen_app_icons.py` —
   sips normalize → fixed ten-member ladder → iconutil .icns + optional modern/
   legacy appiconset), and a templated dev installer (`update_dev.sh` — the
-  union of the koffee/necrohand/routines copies: quit-before-replace, ditto,
+  union of the koffee/necrohand/a private Rust app copies: quit-before-replace, ditto,
   absolute-path xattr with post-clear verification). Covered by
   `tests/test_release_kit.py` against real git + local bare remotes and a
   stateful fake gh.

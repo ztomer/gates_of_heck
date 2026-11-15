@@ -143,8 +143,8 @@ def test_the_ok_line_says_what_the_remote_half_judged(tmp_path):
 
 
 def test_a_pinned_sha_push_is_judged_by_the_branch_it_moves(tmp_path):
-    """ZoneWM's `make push` is `git push v2origin <sha>:refs/heads/main`: the hook's local ref is
-    the sha itself, so the branch being moved is read from the REMOTE ref."""
+    """A private Swift app's `make push` is `git push v2origin <sha>:refs/heads/main`: the hook's
+    local ref is the sha itself, so the branch being moved is read from the REMOTE ref."""
     repo, first, second = _released(tmp_path)
     _g(repo, "tag", "v1.0.1")
     r = _check(repo, tmp_path, [f"{second} {second} refs/heads/main {first}"])

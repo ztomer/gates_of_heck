@@ -177,6 +177,6 @@ def test_a_repo_without_github_ci_is_verified_by_being_on_its_branch(
 
 def test_a_github_remote_not_named_origin_is_still_found(estate: dict[str, Any]) -> None:
     repo, sha = estate["root"] / "r1", estate["new"]
-    _git(repo, "remote", "rename", "origin", "v2origin")  # ZoneWM's shape
+    _git(repo, "remote", "rename", "origin", "v2origin")  # a private Swift app's shape
     gh = _on_main(sha) | _runs(sha, "7\tCI\tcompleted\tsuccess\n")
     assert _audit(estate, f"Status: landed\n{sha[:9]} fix", gh)["verified"] == 1

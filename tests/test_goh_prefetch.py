@@ -1,8 +1,8 @@
 """The native tier starts its delegated checkers together and reports them in order (P1e).
 
-`structural --full` on media_server spent 4.7 of 4.9 s in delegated Python checkers run one after
-another. Two things must hold once they overlap, each tested against a fake GOH_DIR whose checkers
-only sleep and leave a marker:
+`structural --full` on a private server workspace spent 4.7 of 4.9 s in delegated Python checkers
+run one after another. Two things must hold once they overlap, each tested against a fake GOH_DIR
+whose checkers only sleep and leave a marker:
 
 * they really do overlap: two 2 s checkers add well under 4 s to the same gate with 0 s ones
   (a control in the same test, so the box's load is in both);

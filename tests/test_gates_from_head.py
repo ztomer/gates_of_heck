@@ -3,9 +3,9 @@
 Gate source edited in the shared checkout was LIVE in every consumer the moment it was saved:
 2026-10-05 alone, an uncommitted `_goh_bin.sh` reached antiknob's push ahead of the binary it
 checks, a calibration that disabled a branch "for a few seconds" turned three of this suite's
-tests red in another session, and media_server's pre-push warned on a peer's `_line_cap.sh`. The
-warning existed; the cause did not have to. Now every entry point re-runs itself from
-`~/.cache/goh/head/<HEAD>` (GOH_HEAD_CACHE), built once per commit and never modified, and a
+tests red in another session, and a private server workspace's pre-push warned on a peer's
+`_line_cap.sh`. The warning existed; the cause did not have to. Now every entry point re-runs itself
+from `~/.cache/goh/head/<HEAD>` (GOH_HEAD_CACHE), built once per commit and never modified, and a
 developer asks for the working tree on purpose with GOH_LIVE=1.
 
 Planted on a scratch clone of the gates: an uncommitted edit that changes a gate's verdict.
@@ -93,7 +93,8 @@ def test_goh_live_runs_the_working_tree_on_purpose(dirty: Path, consumer: Path, 
 
 
 def test_a_sourced_lib_is_read_from_head_too(dirty: Path, consumer: Path, tmp_path) -> None:
-    """ZoneWM's tools/gate.sh sources _common.sh itself; that path must not reach the tree either."""
+    """A private Swift app's tools/gate.sh sources _common.sh itself; that path must not reach the
+    tree either."""
     script = f". '{dirty}/gates/_common.sh'\ngoh_init consumer\ngoh_done\n"
     r = subprocess.run(
         ["bash", "-c", script],
@@ -338,10 +339,10 @@ def test_entering_the_gates_again_does_not_grow_pythonpath() -> None:
 
 def test_a_script_that_sources_tui_lib_keeps_its_own_goh_dir(gates: Path, tmp_path) -> None:
     """GOH.CLEANOPEN: tui/lib.sh is sourced by ANY script (a release, an installer), and loading
-    HEAD's copy exported the export's path as GOH_DIR into that script. ZoneWM's release.sh then
-    started ZoneWM with it, and every app ZoneWM relaunched handed a GOH_DIR with no bin/ to every
-    agent. The export is the lib's business: the caller's GOH_DIR, GOH_LIVE_ROOT and PYTHONPATH
-    come back as they were -- and HEAD's copy is still the one that loaded (C4)."""
+    HEAD's copy exported the export's path as GOH_DIR into that script. A private Swift app's
+    release.sh then started the app with it, and every app it relaunched handed a GOH_DIR with no
+    bin/ to every agent. The export is the lib's business: the caller's GOH_DIR, GOH_LIVE_ROOT and
+    PYTHONPATH come back as they were -- and HEAD's copy is still the one that loaded (C4)."""
     lib = gates / "tui" / "lib.sh"
     before = lib.read_text()
     lib.write_text(before + f'\necho "{PLANT}" >&2\n')

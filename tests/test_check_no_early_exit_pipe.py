@@ -2,10 +2,11 @@
 
 `producer | grep -q PAT` with pipefail on is a race: grep exits at its first match, the
 producer's next write dies of SIGPIPE (141), and pipefail makes 141 the pipeline's status -- a
-match reads as a miss, and only on a loaded host (media_server's deploy.sh read a RUNNING service
-as absent, 2026-10-08). The consumer table lives beside the code (`earlypipe/tests.rs`, every
-form red and every fixed form green); this file is the whole-repo behaviour: the ratchet at
-`--staged`, the naming at full scope, the opt-in that closes it, and index truth.
+match reads as a miss, and only on a loaded host (a private server workspace's deploy.sh read a
+RUNNING service as absent, 2026-10-08). The consumer table lives beside the code
+(`earlypipe/tests.rs`, every form red and every fixed form green); this file is the whole-repo
+behaviour: the ratchet at `--staged`, the naming at full scope, the opt-in that closes it, and index
+truth.
 """
 
 from __future__ import annotations

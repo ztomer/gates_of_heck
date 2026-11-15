@@ -1,6 +1,6 @@
 """`check_no_unreaped_spawn.py` — the gate that would have caught the 2026-10-03 leak.
 
-THE INCIDENT, in one sentence: `media_server/crates/archive-torznab-rs/tests/test_net_and_bin.rs`
+THE INCIDENT, in one sentence: `<server>/crates/archive-torznab-rs/tests/test_net_and_bin.rs`
 spawned the real binary (`--bind 127.0.0.1:0`, a server that loops forever by design) and reaped it
 with an explicit `child.kill(); child.wait();` placed AFTER the assertions — so every assertion
 failure below that point leaked a live server, nine of them accumulated, each holding the cargo build
@@ -24,11 +24,11 @@ CHECK = "checks/check_no_unreaped_spawn.py"
 
 
 # ── the incident, in the shape it actually had ───────────────────────────────
-# QUOTED from media_server at 052772a, the last commit before cc70f6a fixed it. Not a paraphrase:
-# an earlier draft of this fixture dropped the `.expect()` calls and the `unwrap_or_else(panic)`
-# between the spawn and the pair, and the checker reported it CLEAN -- which is the R3 failure
-# reproduced inside the gate that exists to catch it. The lines that panic are the ones that matter,
-# and they are the lines a fixture writer removes because they look like plumbing.
+# QUOTED from a private server workspace at 052772a, the last commit before cc70f6a fixed it. Not a
+# paraphrase: an earlier draft of this fixture dropped the `.expect()` calls and the
+# `unwrap_or_else(panic)` between the spawn and the pair, and the checker reported it CLEAN -- which
+# is the R3 failure reproduced inside the gate that exists to catch it. The lines that panic are the
+# ones that matter, and they are the lines a fixture writer removes because they look like plumbing.
 INCIDENT = """\
 use std::io::{BufRead, BufReader, Write};
 use std::net::TcpStream;
@@ -233,7 +233,7 @@ fn it_runs_once() {
 # The retired Python probe's ordering-rule calibration (switch `_ordering_finding` off, watch
 # the probe refuse) went with it in Phase N3. The ordering rule is pinned against the native by
 # the incident rows of tests/unreaped_spawn_table*.py (test_unreaped_spawn_native_parity.py):
-# with it gone, the quoted media_server file would read GREEN.
+# with it gone, the quoted a private server workspace file would read GREEN.
 
 
 # ── Rust: the dispositions the MEASURED table records ────────────────────────

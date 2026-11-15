@@ -44,9 +44,9 @@ phase, and each is one landing.
 - **RUFF.RULES2 — the unadopted house ruff set goes red.** `gates/ruff_house.py` is the house set;
   a repo without `GOH_PY_LINT_CEILINGS` is still judged on the PLW1510 floor and only WARNED with the
   house set's count (`goh_py_house_unadopted`, gates/_py.sh), because koffee_big, token-pool and
-  ZoneWM could not seed in the round that added it (owner-gated unreleased commits; a live test
+  a private Swift app could not seed in the round that added it (owner-gated unreleased commits; a live test
   run). Each seeds (`py_lint_ceiling.py --seed tools/py_lint_ceilings.json`, the key in .gatesrc).
-  ZoneWM's per-rule `ruff_ratchet.py` does not pass the house set yet either.
+  A private Swift app's per-rule `ruff_ratchet.py` does not pass the house set yet either.
   Done when: the warning branch is a red step and `tests/test_py_lint_ceiling.py`'s unadopted
   case asserts the red.
 
@@ -61,9 +61,9 @@ Why last: nothing else waits on it, and the rework of the gate rules above chang
   this item's list; a consumer runs each with arguments and no structural step runs them.
   **Done when:** the named checkers run as one Rust binary with the same verdicts on goh's checker tests
   and every consumer repo, a pre-commit run measures under 100 ms, and the Python versions are deleted.
-- **GOH.MSPUSH1** A media_server push with one crate changed, warm: 197 s baseline, 183 s at load 7-12
-  (2026-10-06), of which 110 s was media_server's own pytest suite, which its `gate.sh` runs outside the
-  proven cache. media_server `15483446` cut that step from 239 s to 51 s at load 56 (xdist); the push has
+- **GOH.MSPUSH1** A private server workspace push with one crate changed, warm: 197 s baseline, 183 s at load 7-12
+  (2026-10-06), of which 110 s was a private server workspace's own pytest suite, which its `gate.sh` runs outside the
+  proven cache. A private server workspace `15483446` cut that step from 239 s to 51 s at load 56 (xdist); the push has
   not been re-measured since. The old target was 30 s, unreachable while that step runs unconditionally.
   **Done when:** (owner to decide) whether 30 s stays the target; re-measure the push first with
   `tools/gate_profile.sh` read by the CPU-over-control rule.
@@ -99,7 +99,7 @@ Why last: nothing else waits on it, and the rework of the gate rules above chang
 - **Shell and Makefiles are not read** (decision, `movingtag/mod.rs`): a flag grammar where `-v a:b` has
   the shape of `name:tag`, references in variables, built names that look pulled. Un-policed floats at
   v0.31.0: monitor `build.sh:96` (`rust:alpine`) and `tools/lint_linux.sh:19` (`rust:1-bookworm`);
-  media_server `scripts/dev/linux_test.sh:21` (`rust:1`).
+  a private server workspace `scripts/dev/linux_test.sh:21` (`rust:1`).
 - **A Helm values `repository:`/`tag:` pair is not joined**, and a templated `image:` is counted
   unreadable (apes: 13 of 25 references).
 

@@ -60,7 +60,9 @@ def test_every_entry_names_a_corpus_that_is_a_corpus():
         # Home-relative, so it names the same corpus on any machine: the old `here or "~" not in
         # root` inverted this, held only where every corpus was present, and failed on a hosted
         # runner whose home had none (run 42944992082).
-        assert entry["root"].startswith("~/"), f"{entry['checker']}: a hard-coded absolute path"
+        assert entry["root"].startswith(("~/", "store:")), (
+            f"{entry['checker']}: a hard-coded absolute path"
+        )
         assert entry["why"].strip(), f"{entry['checker']}: no reason recorded"
         assert entry["ext"].startswith("."), f"{entry['checker']}: no language to plant into"
 
@@ -78,6 +80,37 @@ def test_an_absent_estate_is_reported_not_counted(tmp_path):
     findings = []
     assert sweep.judge(entry, findings) == "unavailable"
     assert findings == [], "an absent corpus must not be a finding, and must not be a pass either"
+
+
+def test_a_store_root_is_read_from_the_private_store_never_the_tree(tmp_path, monkeypatch):
+    """GOH.PRIVNAMES3: a corpus in a PRIVATE repository is named in this public tree by a label,
+    `store:<label>`, and its path lives in the owner's store (`estate_corpus_roots.json` beside
+    `private_names.txt`). No store, or no such label, is `unavailable` on a named warning line --
+    the same as a corpus not on this machine -- never a pass and never a finding."""
+    corpus = tmp_path / "corpus"
+    corpus.mkdir()
+    store = tmp_path / "seeds"
+    store.mkdir()
+    monkeypatch.setenv("GOH_SEED_DIR", str(store))
+    assert sweep.resolve_root("~/x") == os.path.expanduser("~/x")
+    assert sweep.resolve_root("store:crates") is None
+    (store / sweep.STORE_ROOTS).write_text(f'{{"roots": {{"crates": "{corpus}"}}}}')
+    assert sweep.resolve_root("store:crates") == str(corpus)
+    assert sweep.resolve_root("store:other") is None
+    (store / sweep.STORE_ROOTS).write_text("not json")
+    assert sweep.resolve_root("store:crates") is None
+    entry = {
+        "checker": "check_no_conflict_markers.py",
+        "root": "store:absent",
+        "scope": (".",),
+        "ext": ".py",
+        "plant": "x\n",
+        "args": (),
+        "why": "probe",
+    }
+    findings = []
+    assert sweep.judge(entry, findings) == "unavailable"
+    assert findings == []
 
 
 def test_a_corpus_below_the_floor_is_refused(tmp_path):
@@ -201,7 +234,7 @@ def test_a_declared_entry_verifies_against_the_real_estate(index):
     the estate is not on this machine -- reported by the sweep itself, and asserted here so the skip
     is visible in the suite rather than silent."""
     entry = sweep.ESTATE[index]
-    if not os.path.isdir(os.path.expanduser(entry["root"])):
+    if not os.path.isdir(sweep.resolve_root(entry["root"]) or ""):
         pytest.skip(f"{entry['root']} is not on this machine")
     findings = []
     assert sweep.judge(entry, findings) == "verified", findings

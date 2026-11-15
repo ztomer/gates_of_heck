@@ -199,8 +199,8 @@ desktop_lock_release() {
     [[ $DESKTOP_LOCK_HELD -eq 1 ]] || return 0
     DESKTOP_LOCK_HELD=0
     # The flag alone is NOT enough, and the gap was live in every repo that
-    # sources this file (koffee_big/tools/smoke.sh, ZoneWM/scripts/
-    # with_desktop_lock.sh, routines/tools/capture_ui.sh). The sequence is
+    # sources this file (koffee_big/tools/smoke.sh, a private Swift app's
+    # scripts/with_desktop_lock.sh, a private Rust app's tools/capture_ui.sh). The sequence is
     # ordinary: we acquire, we are judged expired or wedged, a PEER reclaims the
     # desktop, and then our EXIT trap fires and deletes the lock the peer now
     # holds. Both halves believed they owned the desktop, and the desktop was

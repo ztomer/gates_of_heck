@@ -2,10 +2,10 @@
 
 `proven_identity` (gates/_proven.sh) -- the gates checkout's identity and every toolchain's version
 (`rustc -V`, `cargo -V`, `python3 -V`, `swift --version`) -- took ~110 ms, and each step's key was
-computed twice (looked up before, re-keyed after), in every group of every gate: a media_server
-push computes it ~174 times. Its run-constant half is now asked once, when the gate validates its
-proven settings, and exported for the same working directory, PATH, toolchain override, gates
-root and GOH_LIVE mode; anything else is asked again.
+computed twice (looked up before, re-keyed after), in every group of every gate: a private server
+workspace push computes it ~174 times. Its run-constant half is now asked once, when the gate
+validates its proven settings, and exported for the same working directory, PATH, toolchain
+override, gates root and GOH_LIVE mode; anything else is asked again.
 """
 
 from __future__ import annotations

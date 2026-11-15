@@ -69,9 +69,10 @@ git -C "$target" rev-parse --show-toplevel >/dev/null 2>&1 \
 # tests/test_install_foreign_hooks.py
 foreign=""
 current="$(git -C "$target" config core.hooksPath 2>/dev/null || true)"
-# A hooksPath is ours by WHERE it points, not by how it is spelled: routines held the absolute path
-# of its own .githooks and was refused as foreign (2026-10-14). Both sides resolved physically, so
-# /var vs /private/var cannot split them; a path that does not resolve is compared as written.
+# A hooksPath is ours by WHERE it points, not by how it is spelled: a private Rust app held the
+# absolute path of its own .githooks and was refused as foreign (2026-10-14). Both sides resolved
+# physically, so /var vs /private/var cannot split them; a path that does not resolve is compared as
+# written.
 own_hooks() {
     local p="$1" a b
     case "$p" in /*) ;; *) p="$target/$p" ;; esac

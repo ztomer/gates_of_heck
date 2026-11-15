@@ -6,7 +6,7 @@
   who deletes the entry, and when?
 - **Evidence:** On 2026-11-11/12 the commit passed pre-commit and the push or release went red on
   `stale GOH.PLURALHEDGE seed entry: delete its entry from ~/.local/state/goh/seeds/...` at least
-  five times (koffee_big 2175d3d, servers, ZoneWM 2.111.0 twice, a loop agent; faults fd040e9c,
+  five times (koffee_big 2175d3d, servers, a private Swift app 2.111.0 twice, a loop agent; faults fd040e9c,
   ad1c1ea6). The store is in no tree, so nothing in the commit could delete the entry; each cost a
   failed ship and a coordinator's hand edit. A staged run (`full = false`) never judged staleness,
   and changelog_tags, which reads the whole file at both scopes, was red AT the commit on the same

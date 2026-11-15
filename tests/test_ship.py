@@ -219,8 +219,9 @@ def _refusing_pre_push(repo: Path, tmp_path: Path) -> None:
     git(repo, "config", "core.hooksPath", str(hooks))
 
 
-# A release kit that commits its bump and pushes the hand-off with it (ZoneWM's tools/release.sh:
-# its note may only land in the release commit, so the hand-off alone is refused by its gate).
+# A release kit that commits its bump and pushes the hand-off with it (a private Swift app's
+# tools/release.sh: its note may only land in the release commit, so the hand-off alone is refused
+# by its gate).
 PUSHING_KIT = ('git -c user.name=t -c user.email=t@t commit -q --allow-empty -m "release" && '
                'git tag "v$GOH_SHIP_VERSION" && '
                'git push -q --no-verify origin HEAD:refs/heads/main "v$GOH_SHIP_VERSION"')  # fmt: skip
@@ -374,8 +375,9 @@ EMPTY_UNRELEASED = "# CHANGELOG\n\n## Unreleased\n\n## v1.0.0\n\n* the first\n"
 
 @pytest.mark.parametrize("args", [(), ("--item", "X.ONE"), ("--bump", "patch")])
 def test_an_empty_unreleased_is_refused_before_the_push(shipped, tmp_path, args):
-    """GOH.SHIPUNRELEASED: routines' ship pushed main, then its release kit's changelog_cut said
-    `Unreleased is empty: nothing to release`. A release step that will run (with or without
+    """GOH.SHIPUNRELEASED: a private Rust app's ship pushed main, then its release kit's
+    changelog_cut said `Unreleased is empty: nothing to release`. A release step that will run (with
+    or without
     --bump: the version is git-cliff's otherwise) over an empty Unreleased is refused at start,
     naming the missing entry, and nothing is pushed."""
     _changelog(shipped, EMPTY_UNRELEASED)

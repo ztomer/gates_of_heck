@@ -9,7 +9,7 @@
 //! * a file that wraps its child in a SHARED guard was reported as an unreaped
 //!   spawn -- the guard was not in scope, so the wrap looked like a bare `Child`.
 //!   That is a red on correct code, in the exact files the guard was written for
-//!   (`routines`, 2026-10-20: three of its test files gave up the shared guard
+//!   (a private Rust app, 2026-10-20: three of its test files gave up the shared guard
 //!   and took a local one, which is the workaround, not the fix);
 //! * a commit that BROKE the shared guard was green -- the files that rely on it
 //!   were not in scope either, so the tree leaked and the gate passed it.
@@ -24,7 +24,7 @@
 //!
 //! The cost is a whole-tree read at commit time, where the step used to read the
 //! diff: measured 2026-10-20, 363 test files in 0.07 s in this repo and 420 in
-//! 0.16 s in `media_server`, the index blobs fetched in ONE `git cat-file
+//! 0.16 s in a private server workspace, the index blobs fetched in ONE `git cat-file
 //! --batch` rather than one `git show` per file. Past the prefetch's memory
 //! ceiling (`blobs::PREFETCH_BUDGET_BYTES`) the rest falls back to a `git show`
 //! each -- slower, never a different answer.

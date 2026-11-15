@@ -3,10 +3,10 @@
 //!
 //! macOS `open` hands the app it launches its own environment, and the app outlives the caller
 //! (PPID 1), so whatever the caller carried lives on in the app and in everything the app starts.
-//! A ship's release started `ZoneWM` with `GOH_SHIP_ITEM` and a `GOH_DIR` naming a transient gate
-//! export with no `bin/`; `Claude.app`, relaunched through `ZoneWM`, gave both to every agent of that
-//! session (2026-11-13). The probe (a throwaway app writing its environ, a sentinel set in the
-//! caller; `tests/test_launch_app.py` keeps it):
+//! A ship's release started a private Swift app with `GOH_SHIP_ITEM` and a `GOH_DIR` naming a
+//! transient gate export with no `bin/`; `Claude.app`, relaunched through a private Swift app, gave
+//! both to every agent of that session (2026-11-13). The probe (a throwaway app writing its
+//! environ, a sentinel set in the caller; `tests/test_launch_app.py` keeps it):
 //!
 //! | launch                                       | sentinel | caller's `GOH_DIR` | env vars |
 //! |----------------------------------------------|----------|--------------------|----------|

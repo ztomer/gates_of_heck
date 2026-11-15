@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # tools/release-kit/update_dev.sh — templated dev installer replacing the
-# per-repo update_dev.sh copies (koffee_big, necrohand, routines), which agreed
+# per-repo update_dev.sh copies (koffee_big, necrohand, a private Rust app), which agreed
 # on the STEPS but drifted on every detail of them.
 #
 # Pipeline (the union of the ancestors' hard-won steps, in the order that
@@ -21,7 +21,7 @@
 #   5. sign           ad-hoc codesign when available (keeps macOS from
 #                     re-flagging the bundle after the copy)
 #   6. launch         the app is put back as it was: a copy step 2 quit is relaunched
-#                     (GOH.APPSTATE: Routines.app was left STOPPED by three kit installs on
+#                     (GOH.APPSTATE: a private menu-bar app was left STOPPED by three kit installs on
 #                     2026-11-07/08), and seen running again before it says so. --no-launch
 #                     keeps it stopped; --launch / UPDATE_DEV_LAUNCH=1 launches one that was
 #                     not running. A copy already running is never opened again: `open` on a
@@ -36,16 +36,16 @@
 #                            (UPDATE_DEV_DEST also works; tests point it at tmp)
 #   PROCESS_NAME  optional   process name the running copy is detected by,
 #                            default APP_NAME minus .app. Set when the binary's
-#                            name differs from the bundle (e.g. routines ships
-#                            Routines.app whose executable is routines-menubar;
+#                            name differs from the bundle (e.g. a private Rust app ships
+#                            a private menu-bar app whose executable is <app>-menubar;
 #                            pgrep -x on the bundle name never matched, so the
 #                            quit-before-replace step silently no-oped).
 #   LAUNCH        optional   UPDATE_DEV_LAUNCH=1 same as --launch
 #   AFTER_INSTALL_CMD optional shell string run after the app is installed and BEFORE the launch
-#                            step: a caller's other artifacts (routines' CLI) land before anything
+#                            step: a caller's other artifacts (a private Rust app's CLI) land before anything
 #                            can fail at launch, so a failed launch never leaves the app new and
 #                            the rest old (RT.INSTALLORDER, 2026-11-08: `open` -600 killed
-#                            routines' install.sh between the app and its CLI). Failing, it is
+#                            a private Rust app's install.sh between the app and its CLI). Failing, it is
 #                            reported and nothing is launched.
 #   LSREGISTER    optional   lsregister path (test seam); a failed `open` re-registers the bundle
 #                            with LaunchServices and is retried ONCE, then fails as
@@ -146,7 +146,7 @@ fi
 # ── 5. sign ──────────────────────────────────────────────────────────────────
 # A bundle that arrived already validly signed KEEPS its signature: an
 # unconditional ad-hoc re-sign would clobber a real identity the build chose
-# deliberately (routines' Makefile picks the first valid codesigning identity).
+# deliberately (a private Rust app's Makefile picks the first valid codesigning identity).
 # Unsigned/invalid bundles still get the ad-hoc fallback.
 if command -v codesign >/dev/null 2>&1; then
   if codesign -v "$DEST" >/dev/null 2>&1; then
@@ -169,17 +169,18 @@ fi
 if [ "$LAUNCH" = 1 ] || { [ "$WAS_RUNNING" = 1 ] && [ "$NO_LAUNCH" = 0 ]; }; then
   if pgrep -x "$PROCESS_NAME" >/dev/null 2>&1; then
     # Never `open` a running copy: macOS sends it a reopen event, and an app answers a reopen with
-    # its window (RT.LAUNCHDASH: Routines.app showed the dashboard nobody had open). This step is
-    # the ONE launch path; a caller that opens the app again after it reintroduces that reopen.
+    # its window (RT.LAUNCHDASH: a private menu-bar app showed the dashboard nobody had open). This
+    # step is the ONE launch path; a caller that opens the app again after it reintroduces that
+    # reopen.
     ok "${PROCESS_NAME} is already running (not opened again: that would be a reopen)"
     exit
   fi
   if [ "$WAS_RUNNING" = 1 ]; then info "relaunching ${PROCESS_NAME} (it was running before the install)"; else info "launching"; fi
   # The app gets launchd's LOGIN environment, never this script's (GOH.TRANSIENTDIR): `open` hands
   # the app its own environment, and under a ship that held GOH_DIR at a transient HEAD export.
-  # Routines.app kept it, and every job it ran exited 2 once the export was pruned. `env -i` on the
-  # opener is `goh launch-app`'s mechanism (crates/goh/src/launchapp.rs, its probe); the opener is
-  # resolved first, so a test's fake on PATH still answers.
+  # A private menu-bar app kept it, and every job it ran exited 2 once the export was pruned. `env
+  # -i` on the opener is `goh launch-app`'s mechanism (crates/goh/src/launchapp.rs, its probe); the
+  # opener is resolved first, so a test's fake on PATH still answers.
   OPENER="$(command -v open)" || die "no \`open\` on PATH -- cannot launch ${DEST}"
   if ! env -i "$OPENER" "$DEST"; then
     # LaunchServices may not have registered the new bundle yet (`open` -600, 2026-11-08):

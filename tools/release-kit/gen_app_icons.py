@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """tools/release-kit/gen_app_icons.py — ONE icon pipeline replacing five
-per-repo generators (ZeroThunder + routines swift renderers, Taxes PIL
+per-repo generators (ZeroThunder + a private Rust app swift renderers, Taxes PIL
 compositor, divoom sips loop, CadGoose AppKit compositor).
 
 This tool is the SIZE-LADDER half: given a source image (a 1024x1024 PNG, or

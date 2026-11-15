@@ -2,7 +2,7 @@
 
 The checker reads a repo's declared version from wherever the repo declares it, and each layout is
 one registry entry. This file holds the cases for the layout where the version is a Swift constant,
-which is the one a SwiftPM package uses and the one ZoneWM was refused a release over.
+which is the one a SwiftPM package uses and the one a private Swift app was refused a release over.
 
 Split from `test_check_tag_version.py` by concern rather than for length alone: a reader asking "how
 does this gate read a Swift package's version" should find one file, not a section of a Rust-shaped
@@ -75,8 +75,8 @@ def _run(repo, refs, source):
 
 
 def test_a_swift_constant_is_a_version_source(tmp_path):
-    """ZoneWM's layout: `bump.sh` writes the version into a Swift constant, so there is no
-    VERSION file and no Cargo.toml. Without a `swift` strategy the gate reported the tag as
+    """A private Swift app's layout: `bump.sh` writes the version into a Swift constant, so there is
+    no VERSION file and no Cargo.toml. Without a `swift` strategy the gate reported the tag as
     unverifiable and the pre-push refused a correct release."""
     repo = tmp_path / "swiftpkg"
     repo.mkdir()

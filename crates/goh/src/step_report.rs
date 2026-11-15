@@ -62,8 +62,8 @@ fn show_time() -> bool {
 /// 168 s and the whole pytest suite is 76 s, so 1800 is an order of magnitude above anything
 /// legitimate. The point is not the number — it is that it EXISTS, is printed on every step line,
 /// and that exceeding it says "TIMED OUT after Ns" instead of hanging until something kills the run
-/// and takes the report with it (`media_server`, 2026-10-03: nine orphans, each holding the cargo
-/// build lock, every later `cargo test` blocked, and nothing anywhere said why).
+/// and takes the report with it (a private server workspace, 2026-10-03: nine orphans, each holding
+/// the cargo build lock, every later `cargo test` blocked, and nothing anywhere said why).
 const fn default_timeout() -> u64 {
     1800
 }

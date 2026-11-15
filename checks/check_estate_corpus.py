@@ -70,11 +70,14 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import _estate_cache
 import _estate_corpus_io
 from _estate_corpus_io import (  # noqa: F401  (re-exported: tests and probe call them here)
+    STORE_ROOTS,
     consumer_exclude,
     corpus_files,
     materialise,
     plant_in,
+    resolve_root,
     run_checker,
+    store_dir,
     takes_exclude,
 )
 from _gitutil import foreign_repo_env
@@ -125,7 +128,7 @@ ESTATE = (
     },
     {
         "checker": "unreaped-spawn",
-        "root": "~/Projects/servers/media_server",
+        "root": "store:server-crates",
         "scope": ("crates",),
         "ext": ".rs",
         # THE INCIDENT, IN ITS OWN WORDS. Not "a spawn and a kill": the four lines that can panic
@@ -152,9 +155,9 @@ ESTATE = (
             "}\n"
         ),
         "args": (),
-        "why": "media_server's whole crates/ tree — the scope matcher reads the TOP directory, and "
-        "this repo keeps its crates one level down, so naming the crate found 0 files and the floor "
-        "refused the corpus rather than letting a fixture wear its name. Nine live "
+        "why": "a private server workspace's whole crates/ tree — the scope matcher reads the "
+        "TOP directory, and this repo keeps its crates one level down, so naming the crate found 0 "
+        "files and the floor refused the corpus rather than let a fixture wear its name. Nine live "
         "orphans from that one test, each holding the cargo build lock, and the only observable was "
         "a `cargo test` printing nothing at all. The plant carries the ORDER, because the reap "
         "EXISTED in the real file — a plant that only added a missing kill would have tested a rule "
@@ -162,7 +165,7 @@ ESTATE = (
     },
     {
         "checker": "no-allow",
-        "root": "~/Projects/routines",
+        "root": "store:rust-app",
         "scope": (".",),
         "ext": ".rs",
         "plant": "\n#[allow(dead_code)]\nfn corpus_probe() {}\n",
@@ -248,9 +251,12 @@ ESTATE = (
 
 def judge(entry, bad):
     """One entry, both corpora. Returns 'verified' | 'unavailable' | 'blind'."""
-    source = os.path.expanduser(entry["root"])
-    if not os.path.isdir(source):
-        warn(f"{entry['checker']}: {entry['root']} is not on this machine — NOT verified")
+    source = resolve_root(entry["root"])
+    if source is None or not os.path.isdir(source):
+        where = (
+            f"in {os.path.join(store_dir(), STORE_ROOTS)}" if source is None else "on this machine"
+        )
+        warn(f"{entry['checker']}: {entry['root']} is not {where} — NOT verified")
         return "unavailable"
     files = corpus_files(source, entry["scope"])
     if len(files) < MIN_FILES:
@@ -400,7 +406,7 @@ def probe():
     other machine runs all three and the absent corpus fails them, as it always did (CI.PUBLIC2)."""
 
     saved, home, blind_dir = ESTATE, _estate_corpus_io.HERE, ""
-    if not os.path.isdir(os.path.expanduser(saved[0]["root"])) and not_applicable.declare(
+    if not os.path.isdir(resolve_root(saved[0]["root"]) or "") and not_applicable.declare(
         "check_estate_corpus --probe (a checker that cannot fail; a real entry verifies)",
         f"its first real corpus, {saved[0]['root']}",
     ):

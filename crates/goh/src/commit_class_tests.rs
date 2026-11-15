@@ -6,9 +6,10 @@ fn none() -> BTreeSet<String> {
     BTreeSet::new()
 }
 
-/// `ZoneWM`'s 75 classes, oldest first (`tests/fixtures/commit_class/zonewm_classes.tsv`).
-fn zonewm() -> Vec<(String, String)> {
-    include_str!("../../../tests/fixtures/commit_class/zonewm_classes.tsv")
+/// A private Swift app's 75 classes, oldest first
+/// (`tests/fixtures/commit_class/swift_app_classes.tsv`).
+fn swift_app() -> Vec<(String, String)> {
+    include_str!("../../../tests/fixtures/commit_class/swift_app_classes.tsv")
         .lines()
         .filter(|l| !l.starts_with('#'))
         .filter_map(|l| l.split_once('\t'))
@@ -16,9 +17,10 @@ fn zonewm() -> Vec<(String, String)> {
         .collect()
 }
 
-/// The replay's verdict on one of `ZoneWM`'s commits: refused or not, against the classes before it.
+/// The replay's verdict on one of a private Swift app's commits: refused or not, against the
+/// classes before it.
 fn refused(sha: &str, vocabulary: &BTreeSet<String>) -> bool {
-    let all = zonewm();
+    let all = swift_app();
     let at = all
         .iter()
         .position(|(s, _)| s == sha)
@@ -31,11 +33,12 @@ fn refused(sha: &str, vocabulary: &BTreeSet<String>) -> bool {
     !refusals(&message, &earlier, vocabulary, true).is_empty()
 }
 
-/// BACKLOG 2.2: the replay's one wrong refusal shared only `read` and `window`, `ZoneWM`'s own
-/// domain nouns. A word in more than an eighth of a repo's classes says nothing about which class.
+/// BACKLOG 2.2: the replay's one wrong refusal shared only `read` and `window`, a private Swift
+/// app's own domain nouns. A word in more than an eighth of a repo's classes says nothing about
+/// which class.
 #[test]
 fn domain_frequent_words_do_not_count() {
-    let classes: Vec<String> = zonewm().into_iter().map(|(_, c)| c).collect();
+    let classes: Vec<String> = swift_app().into_iter().map(|(_, c)| c).collect();
     let vocabulary = frequent(&classes);
     assert_eq!(vocabulary.into_iter().collect::<Vec<_>>(), ["read"]);
     let vocabulary = frequent(&classes);
@@ -52,7 +55,7 @@ fn domain_frequent_words_do_not_count() {
 /// A small history makes every word frequent: below the floor nothing is dropped.
 #[test]
 fn a_small_history_has_no_frequent_words() {
-    let classes: Vec<String> = zonewm().into_iter().map(|(_, c)| c).collect();
+    let classes: Vec<String> = swift_app().into_iter().map(|(_, c)| c).collect();
     assert_eq!(frequent(&classes[..FREQUENT_FLOOR - 1]).len(), 0);
     assert_ne!(frequent(&classes[..FREQUENT_FLOOR]).len(), 0);
 }
@@ -89,7 +92,7 @@ fn the_trailer_block_is_the_last_paragraph_only() {
 
 /// A wrapped line with no indent in the trailer paragraph keeps git from reading ANY of it; the
 /// refusal names that line rather than sending the writer "beside Co-Authored-By", where the keys
-/// already were (`ZoneWM`, 2026-10-12: a two-line `Red-run:`).
+/// already were (a private Swift app, 2026-10-12: a two-line `Red-run:`).
 #[test]
 fn a_non_trailer_line_in_the_last_paragraph_is_named() {
     let message = "fix: a\n\nbody\n\nRed-run: a long line\nthat wrapped.\nClass: c\n\
@@ -102,11 +105,11 @@ fn a_non_trailer_line_in_the_last_paragraph_is_named() {
     assert!(got.iter().any(|r| r.contains("sits above")), "{got:?}");
 }
 
-/// `ZoneWM`'s 94 commits, labelled by their author (2026-10-08): the pairs it calls one class,
-/// and the pairs that share words but are not.
+/// A private Swift app's 94 commits, labelled by their author (2026-10-08): the pairs it calls one
+/// class, and the pairs that share words but are not.
 #[test]
-fn calibrated_on_zonewm_one_class_pairs_match() {
-    let vocabulary = frequent(&zonewm().into_iter().map(|(_, c)| c).collect::<Vec<_>>());
+fn calibrated_on_swift_app_one_class_pairs_match() {
+    let vocabulary = frequent(&swift_app().into_iter().map(|(_, c)| c).collect::<Vec<_>>());
     for (a, b) in [
         (
             "a ceiling recorded over a defect, which then guards the defect",
@@ -124,13 +127,13 @@ fn calibrated_on_zonewm_one_class_pairs_match() {
         assert!(same_class(a, b, &none()), "{a} / {b}");
         assert!(
             same_class(a, b, &vocabulary),
-            "{a} / {b}, ZoneWM's vocabulary aside"
+            "{a} / {b}, a private Swift app's vocabulary aside"
         );
     }
 }
 
 #[test]
-fn calibrated_on_zonewm_shared_words_are_not_a_class() {
+fn calibrated_on_swift_app_shared_words_are_not_a_class() {
     for (a, b) in [
         (
             "a teardown closes a surface the product holds",
@@ -148,7 +151,8 @@ fn calibrated_on_zonewm_shared_words_are_not_a_class() {
             "a probe's restore that does not undo what it wrote, or never runs",
             "a verdict about framing that never reads what is framed",
         ),
-        // `run` as a verb, and `work`, were all these shared (ZoneWM 3b457ec1, 2026-10-12).
+        // `run` as a verb, and `work`, were all these shared (a private Swift app 3b457ec1,
+        // 2026-10-12).
         (
             "per-pixel colour work run on the CPU that the GPU does within a level",
             "a \"mark what is current\" rule run when a notice is HEARD, racing the work the event caused",
@@ -174,10 +178,11 @@ fn similarity_is_two_shared_content_words() {
     assert!(!same_class("the of", "the of", &n));
 }
 
-/// ZW.REV2 (2026-11-07): `ZoneWM`'s `54b348de` was refused as "the instance after 2 earlier ones" on
-/// `hold`+`narrower` (a fixed-width column) and `form`+`value` (a settings row) -- two common words
-/// in a fifteen-word class. A rarity weight cannot see it: `narrower` and `form` are in ONE class of
-/// the registry each, so they weigh MORE than the words true restatements share.
+/// ZW.REV2 (2026-11-07): a private Swift app's `54b348de` was refused as "the instance after 2
+/// earlier ones" on `hold`+`narrower` (a fixed-width column) and `form`+`value` (a settings row) --
+/// two common words in a fifteen-word class. A rarity weight cannot see it: `narrower` and `form`
+/// are in ONE class of the registry each, so they weigh MORE than the words true restatements
+/// share.
 const REFUSED: &str =
     "a guard that judges a value by its printed form, or catches a narrower base \
     than the failures it holds, lets the shape it did not expect straight through";
@@ -199,8 +204,8 @@ fn two_common_words_in_a_long_class_are_not_a_class() {
     assert_eq!(refusals(&message, &earlier, &n, true), Vec::<String>::new());
 }
 
-/// The other direction: `ZoneWM`'s own restatements, none of them labelled -- the registry's
-/// near-duplicates. A share high enough to refuse the pair above must not lose these.
+/// The other direction: a private Swift app's own restatements, none of them labelled -- the
+/// registry's near-duplicates. A share high enough to refuse the pair above must not lose these.
 #[test]
 fn restatements_in_the_registry_still_match() {
     let n = none();

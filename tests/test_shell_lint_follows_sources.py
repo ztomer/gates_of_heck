@@ -106,7 +106,7 @@ MAIN_CONF = MAIN.replace("# shellcheck source=lib.sh\n. ./lib.sh", '. "$(dirname
 def test_a_source_named_relative_to_the_script_is_followed_in_every_repo(repo, scope, main, lib):
     """Every repo, no rc (GOH.REL2): the lint passes `--source-path=SCRIPTDIR`, so a library a
     script names relative to itself is followed -- measured over the estate first: 0 new findings
-    in 37 consumers, and false SC2034s gone in koffee_big and media_server."""
+    in 37 consumers, and false SC2034s gone in koffee_big and a private server workspace."""
     write(repo, f"tools/{lib}", LIB_ARRAY)
     write(repo, "tools/main.sh", main)
     if scope == "--full":

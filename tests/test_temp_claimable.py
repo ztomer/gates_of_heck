@@ -1,10 +1,11 @@
-"""Everything we put in the SHARED temp dir is ours to claim, and something claims it (ZoneWM, 2026-10-07).
+"""Everything we put in the SHARED temp dir is ours to claim, and something claims it (a private
+Swift app, 2026-10-07).
 
-ZoneWM found ~1,500 `goh-*` entries stranded in `$(getconf DARWIN_USER_TEMP_DIR)`. A trap or an
-atexit removes a run's own files, but neither runs on SIGKILL, and the backstop in local_ci.sh
-(`prune_kept.py <tmp> goh- 0 43200`) only sees what is NAMED `goh-*` in the TMPDIR of a push.
-Three holes: temps that carried no prefix at all (release.sh's bare `mktemp`, a test stub's, every
-`TemporaryDirectory()`), so no sweep could ever claim them; a suite that made `goh-test-git.*`
+A private Swift app found ~1,500 `goh-*` entries stranded in `$(getconf DARWIN_USER_TEMP_DIR)`. A
+trap or an atexit removes a run's own files, but neither runs on SIGKILL, and the backstop in
+local_ci.sh (`prune_kept.py <tmp> goh- 0 43200`) only sees what is NAMED `goh-*` in the TMPDIR of a
+push. Three holes: temps that carried no prefix at all (release.sh's bare `mktemp`, a test stub's,
+every `TemporaryDirectory()`), so no sweep could ever claim them; a suite that made `goh-test-git.*`
 seeds and never removed them; and a suite run that never swept, so its residue waited for a push.
 """
 

@@ -17,10 +17,10 @@
 //! convention defines are replaced, and only the ones that cannot be JavaScript
 //! anyway:
 //!
-//!   * `${NAME}` -- a simple name. The estate's own form (`media_server`'s
+//!   * `${NAME}` -- a simple name. The estate's own form (a private server workspace's
 //!     `env-mini-rs` render lists exactly these), and a name is always a valid
 //!     expression, so nothing can hide behind it.
-//!   * `@NAME@` -- the at-marker form (`media_server`'s and `adguard`'s
+//!   * `@NAME@` -- the at-marker form (a private server workspace's and `adguard`'s
 //!     `install.sh.tmpl`).
 //!
 //! A hole with an EXPRESSION in it (`${window.TIMEOUT}`, `${a + b}`) is left

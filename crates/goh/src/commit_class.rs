@@ -1,7 +1,7 @@
 //! `goh commit-class`: a fix names its class and siblings; a third instance ends the class.
 //!
-//! Roadmap Phase 8, ported from `ZoneWM`'s `tools/check_commit_class.py`, whose selftest cases
-//! `tests/test_commit_class.py` carries.
+//! Roadmap Phase 8, ported from a private Swift app's `tools/check_commit_class.py`, whose selftest
+//! cases `tests/test_commit_class.py` carries.
 //!
 //! A written "fix the class" rule was applied one site at a time; the commit message is where the
 //! question cannot be skipped:

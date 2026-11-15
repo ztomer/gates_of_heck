@@ -209,12 +209,12 @@ def test_the_tool_refuses_a_raw_backgrounded_busy_loop_at_the_tool_boundary(tmp_
     assert "load-ok" in reason, reason
 
 
-# THE WALL CLOCK (G1c, 2026-10-25). `load.py 32 -- taskpolicy -b loop.sh` -- a ZoneWM starvation
-# proof wrapping `swift test` three times -- ran 10h14m at load average ~154: the background-
-# priority test starved under 32 spinners on 16 cores and hung, and nothing in the tool ended it.
-# A load experiment is bounded by its own clock: a deadline is always in force (a bounded default,
-# `--max` to extend it), and on expiry the command's whole process tree and every spinner are
-# killed and the tool exits non-zero NAMING the timeout. And 32 spinners on 16 cores is refused
+# THE WALL CLOCK (G1c, 2026-10-25). `load.py 32 -- taskpolicy -b loop.sh` -- a private Swift app
+# starvation proof wrapping `swift test` three times -- ran 10h14m at load average ~154: the
+# background- priority test starved under 32 spinners on 16 cores and hung, and nothing in the tool
+# ended it. A load experiment is bounded by its own clock: a deadline is always in force (a bounded
+# default, `--max` to extend it), and on expiry the command's whole process tree and every spinner
+# are killed and the tool exits non-zero NAMING the timeout. And 32 spinners on 16 cores is refused
 # unless `--oversubscribe` says it is meant.
 
 

@@ -1,10 +1,10 @@
 """Every bash script a consumer EXECUTES from this checkout parses whole before it runs.
 
-Measured 2026-10-05: routines' pre-push died with `coverage_gate.sh: line 485: syntax error near
-unexpected token ';;'` -- a line that is not a syntax error. bash reads a script LAZILY, by byte
-offset, as it executes; this checkout was edited while the script ran, every unread offset moved,
-and bash resumed mid-token. Every consumer delegates here at runtime (GOH_DIR), so any edit, pull or
-checkout in this repo can break any consumer's gate that happens to be running.
+Measured 2026-10-05: a private Rust app's pre-push died with `coverage_gate.sh: line 485: syntax
+error near unexpected token ';;'` -- a line that is not a syntax error. bash reads a script LAZILY,
+by byte offset, as it executes; this checkout was edited while the script ran, every unread offset
+moved, and bash resumed mid-token. Every consumer delegates here at runtime (GOH_DIR), so any edit,
+pull or checkout in this repo can break any consumer's gate that happens to be running.
 
 The guard is a brace group around the whole body: bash must read a compound command to its closing
 `}` before executing any of it, so the run is pinned to the bytes it started with. Sourced files

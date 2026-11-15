@@ -5,8 +5,8 @@
 - **Evidence:** `goh crates-behind` (v0.84 to v0.90.1) counted every entry `cargo update --dry-run`
   would move, against an estate seed of counts. On 2026-11-09 releases alone moved antiknob 2->3,
   app-mcp-bridge 11->12, monitor 30->31 (fuzz 16->17) and webcam_tune 8->9, ztools needed a
-  same-day brotli-decompressor bump to push, and routines' push of 1c43bc4 and 77ba974 (neither
-  touching its lock) was refused for 1 crate behind (`~/.cache/goh/push-logs/routines-77ba974-20261109T041507.log`).
+  same-day brotli-decompressor bump to push, and a private Rust app's push of 1c43bc4 and 77ba974 (neither
+  touching its lock) was refused for 1 crate behind (`~/.cache/goh/push-logs/app-77ba974-20261109T041507.log`).
   Instrument for the fix: the v0.90.1 binary on a fixture whose last commit edits only README, with
   a cargo reporting `itoa v1.0.18 -> v1.0.19`, exits 1; `tests/test_crates_drift.py` pins the new
   verdicts. Probe of index.crates.io on 2026-11-09: every recent version line carries `pubtime`

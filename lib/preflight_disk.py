@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """preflight_disk.py <path> <need-GiB> -- a cold gate needs room, and a full disk fails AS a full disk.
 
-ZoneWM, 2026-10-06: a pre-push gate failed twice in its sanitizer stage with `CodeSign ... failed`
-and "could not write dependency graph"; the volume had 10 GiB free and the cold build needs 15. The
-red named the sanitizer, so the first reading was a race. `push_gate.sh` runs this before it makes
-the export (`GOH_MIN_FREE_GIB`), and `gates/round.sh` before it commits: the refusal names the free
-space and the need instead. Exit 1 short, 0 with room, 2 for a usage error.
+A private Swift app, 2026-10-06: a pre-push gate failed twice in its sanitizer stage with `CodeSign
+... failed` and "could not write dependency graph"; the volume had 10 GiB free and the cold build
+needs 15. The red named the sanitizer, so the first reading was a race. `push_gate.sh` runs this
+before it makes the export (`GOH_MIN_FREE_GIB`), and `gates/round.sh` before it commits: the refusal
+names the free space and the need instead. Exit 1 short, 0 with room, 2 for a usage error.
 
 A preflight, never a `check_*` gate: its subject is the machine, not the tree.
 """

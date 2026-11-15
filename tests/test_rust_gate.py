@@ -311,7 +311,7 @@ def test_floor_set_fails_when_uncovered(tmp_path, warm_crate):
 
 # ── coverage deferred (GOH_RUST_COVERAGE=defer) ──────────────────────────────
 # A commit hook gating every crate a release touches ran one cold instrumented
-# build per crate (media_server, 2026-09-22: 27 crates, most of a 13-minute
+# build per crate (a private server workspace, 2026-09-22: 27 crates, most of a 13-minute
 # release) and the push gate ran them again. A repo whose push gate checks
 # the floor defers it at commit time - by NAME, never by silence.
 

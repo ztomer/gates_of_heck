@@ -3,8 +3,8 @@
 `tools/quiet.sh` holds the host around ONE command, and its hold is capped (GOH_BENCH_MAX_HOLD,
 900 s) because a hold blocks every session's commits. A measurement longer than the cap -- a
 forty-minute census -- cannot sit in one hold, but each of its pieces can: claim, read, let go,
-and the other sessions' gates run between the pieces and never inside one (ZoneWM's census set 16
-time cells aside on 2026-10-11 under another session's gates, holding nothing).
+and the other sessions' gates run between the pieces and never inside one (a private Swift app's
+census set 16 time cells aside on 2026-10-11 under another session's gates, holding nothing).
 
 The lock itself stays `lib/bench_lock.sh`, the one implementation every gate joins: this module
 runs it in a bash child that claims the host, prints `held`, and keeps the claim until its stdin

@@ -142,7 +142,7 @@ def estate(tmp_path: Path) -> Path:
     root = tmp_path / "Projects"
     _repo(root, "hit", "goh-fixture-crate")
     _repo(root / "group", "clean", "goh-other-crate")
-    # A repository inside another one's tree (servers/media_server): its parent does not track
+    # A repository inside another one's tree (a nested server repo): its parent does not track
     # its files, so the walk must not stop at the parent.
     _repo(root / "group" / "clean", "nested", "goh-fixture-crate")
     return root

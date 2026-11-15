@@ -5,9 +5,9 @@
 //! `commit -a` commits a temporary index only `GIT_INDEX_FILE` names. Both are exported, so every
 //! process the hook starts inherits them -- including a gate that a consumer's TEST runs on a
 //! fixture repository. `goh_bind_hook_index` binds the index only inside the repository it came
-//! from. A script that reads the variable bare binds it anywhere: routines' and `media_server`'s
+//! from. A script that reads the variable bare binds it anywhere: two private consumers'
 //! tools/gate.sh did `GIT_INDEX_FILE="${GOH_HOOK_INDEX_FILE:-...}" git diff --cached`, and under a
-//! `commit -a` a `media_server` test's fixture gate judged `media_server`'s index and died
+//! `commit -a` a private server workspace test's fixture gate judged the workspace's index and died
 //! "unable to read 404acec" (2026-10-08, found by the servers session).
 //!
 //! The rule: no shell source expands either variable (`scan.rs` says what an expansion is) except

@@ -1,8 +1,8 @@
 """`lib/orphan_canary.py` — the report that makes the NEXT occurrence loud instead of silent.
 
-media_server, 2026-10-03: a leaked server outlived the test that started it, held the cargo build
-lock, and every later `cargo test` blocked with no output at all. A ceiling cannot catch this: the
-step exits 0. So the canary measures the process table either side of every step.
+A private server workspace, 2026-10-03: a leaked server outlived the test that started it, held the
+cargo build lock, and every later `cargo test` blocked with no output at all. A ceiling cannot catch
+this: the step exits 0. So the canary measures the process table either side of every step.
 
 THE CALIBRATION THAT MATTERS, and it is in this file's history twice over. The first version of
 `wrap` handed `report()` the AFTER table as its `before` argument, so every orphan appeared in both

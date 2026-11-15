@@ -24,8 +24,8 @@
 //!   * `.js` -- a classic script. This is the goal the estate cares about, because a classic
 //!     script that does not parse is a PAGE THAT RENDERS EMPTY: the browser refuses the file and
 //!     says nothing, and no test sees it.
-//!   * `.mjs` -- a module. `media_server`'s `fetch_youtube_cookies.mjs` is one, and it carries a
-//!     top-level `await`, which a classic script may not.
+//!   * `.mjs` -- a module. A private server workspace's `fetch_youtube_cookies.mjs` is one, and it
+//!     carries a top-level `await`, which a classic script may not.
 //!   * `.cjs` -- `CommonJS`, which is node's and no browser's.
 //!
 //! WHAT A `.js` FILE THAT IS REALLY A MODULE GETS. A finding, and the finding says what to do

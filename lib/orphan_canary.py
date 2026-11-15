@@ -12,10 +12,10 @@ WHY, and why it is separate from the ceiling
 --------------------------------------------
 `lib/bounded_run.py` bounds a step and sweeps what the step itself spawned. It cannot help with the
 case that actually cost a day: the test **finished**, so the step exited 0, and the server the test
-leaked outlived it. media_server, 2026-10-03: nine live orphans, each holding the cargo build lock,
-every later `cargo test` blocked with no output at all, and the run that could have reported the
-leak was the run that had been killed. A leak that only shows up as a *later* hang is a leak with
-no signal of its own, so this measures one.
+leaked outlived it. A private server workspace, 2026-10-03: nine live orphans, each holding the
+cargo build lock, every later `cargo test` blocked with no output at all, and the run that could
+have reported the leak was the run that had been killed. A leak that only shows up as a *later* hang
+is a leak with no signal of its own, so this measures one.
 
 HOW: ANCESTRY, EXACTLY. `lib/bounded_run.py` samples the descendant set of the step at the instant
 it exits; anything in that set still alive afterwards is a leak, with no inference.

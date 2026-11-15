@@ -273,8 +273,8 @@ def _external(td, estate):
         else:
             ok("probe: a sound external citation passes")
         # G1b(a): a prover whose code does not dispatch on --proves is never RUN to ask it --
-        # routines' check_tabs_contract ran a cargo build and the real binary that way, and its
-        # rc-0 output became the claim set.
+        # a private Rust app's check_tabs_contract ran a cargo build and the real binary that way,
+        # and its rc-0 output became the claim set.
         marker = os.path.join(td, "full_path_ran")
         _write(other, prover, f'"""--proves in prose only."""\nopen({marker!r}, "w").close()\n')
         claimed, reason = _calibration.claims_answer(os.path.join(other, prover))

@@ -2,10 +2,10 @@
 """prune_kept.py <dir> <prefix> [keep] [idle-s] [--max-bytes N] -- bound what runs keep on failure.
 
 A red run keeps its logs on purpose, and nothing ever removed them: 619 `goh-local-ci.*` and 41
-`goh-session-bench.*` in one temp dir (ZoneWM, 2026-10-06). This keeps the newest `keep` (20)
-entries named `<prefix>*` and everything modified within `idle` seconds (3600) -- a live run writes
-into its own directory, so a concurrent run is never removed -- and deletes the rest. Exit 0
-always: pruning is housekeeping, never a verdict.
+`goh-session-bench.*` in one temp dir (a private Swift app, 2026-10-06). This keeps the newest
+`keep` (20) entries named `<prefix>*` and everything modified within `idle` seconds (3600) -- a live
+run writes into its own directory, so a concurrent run is never removed -- and deletes the rest.
+Exit 0 always: pruning is housekeeping, never a verdict.
 
 `--max-bytes` bounds the kept entries by SIZE as well as count: newest first, the first entry that
 would take the kept total past N goes, and so does everything older. A count alone held eleven kept

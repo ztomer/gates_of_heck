@@ -207,8 +207,8 @@ class TestSelfBuffering:
             # `bash --gate 'touch … && sleep 5'` that outlives all three. A `finally` that cleans up
             # anything but the process is a finally that half does its job — found by
             # `goh unreaped-spawn`, which is the house rule for it
-            # (media_server 2026-10-03: nine live orphans, each holding the cargo build lock, and
-            # the only observable was a test run printing nothing at all).
+            # (a private server workspace 2026-10-03: nine live orphans, each holding the cargo
+            # build lock, and the only observable was a test run printing nothing at all).
             if proc.poll() is None:
                 proc.kill()
             proc.wait(timeout=10)

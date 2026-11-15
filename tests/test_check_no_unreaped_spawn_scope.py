@@ -93,7 +93,7 @@ def test_exclude_is_honoured(repo: Path) -> None:
 
 # ── the crate's SCOPE: a guard is a CROSS-FILE contract ────────────────────────
 
-# The shape `routines` has: `tests/lifecycle_support/mod.rs` defines the guard ONCE,
+# The shape a private Rust app has: `tests/lifecycle_support/mod.rs` defines the guard ONCE,
 # and the test files that use it live beside it (commit b961bb0, 2026-10-20). The
 # estate test in `test_no_unreaped_spawn_estate.py` pins this shape at FULL scope; the
 # two below are its STAGED twin, and the scope they pin is the one the step read wrongly.
@@ -147,7 +147,7 @@ def test_a_shared_guard_is_protection_to_the_file_the_commit_brings(repo: Path) 
 
     The false positive this pins: the step read the guard types from the files the commit brings,
     so the shared guard was invisible and the wrap looked like a bare `Child` -- a red on correct
-    code, in the exact files the guard was written for. `routines` hit it on 2026-10-20 and
+    code, in the exact files the guard was written for. A private Rust app hit it on 2026-10-20 and
     worked around it by giving three of its test files a guard of their own (b961bb0), which is
     the workaround, not the fix: the guard the step cannot see is still the guard the tree has.
     """

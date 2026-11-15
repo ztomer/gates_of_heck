@@ -1,10 +1,11 @@
 """Every Cargo.lock a repo tracks, and the `.cargo/audit.toml` each one is judged by (GOH.EA2).
 
 `rust_gate.sh` audited only the lock beside the manifest it was handed, so a repo of several cargo
-workspaces -- monitor's `fuzz/`, media_server's 31 crates and testkits, koffee_big's core beside an
-app -- hand-wrote one audit step per extra lock, each naming its target through a shell variable
-the estate audit cannot read (`cd "$rust_core" && cargo audit`, `cargo audit -f "$crate/..."`).
-So the gate audits EVERY tracked lock of the repo, and this module is the one rule for which:
+workspaces -- monitor's `fuzz/`, a private server workspace's 31 crates and testkits, koffee_big's
+core beside an app -- hand-wrote one audit step per extra lock, each naming its target through a
+shell variable the estate audit cannot read (`cd "$rust_core" && cargo audit`, `cargo audit -f
+"$crate/..."`). So the gate audits EVERY tracked lock of the repo, and this module is the one rule
+for which:
 
 * THE LOCKS: `git ls-files` of `Cargo.lock` and `*/Cargo.lock` under the repo directory, the lock on
   disk beside every tracked `Cargo.toml` (a library crate gitignores its own), plus the lock of the
@@ -12,8 +13,8 @@ So the gate audits EVERY tracked lock of the repo, and this module is the one ru
 * THE CONFIG: cargo-audit reads `.cargo/audit.toml` from its CURRENT directory and nowhere else, so
   where it runs decides which ignore list applies. A lock is audited from the nearest directory at
   or above it, inside the repo, that holds a `.cargo/audit.toml` -- cargo's own config lookup --
-  and from its own directory when none does. media_server keeps one policy at its root for 31
-  locks; monitor's `fuzz/` keeps its own beside its lock; both are read as written.
+  and from its own directory when none does. A private server workspace keeps one policy at its root
+  for 31 locks; monitor's `fuzz/` keeps its own beside its lock; both are read as written.
 
 The gate runs `plan` (one line per lock: `<config dir>\\t<lock>`, repo-relative, sorted);
 `checks/check_audit_ignores.py --repo` asks `governed` which locks its config judges, so a

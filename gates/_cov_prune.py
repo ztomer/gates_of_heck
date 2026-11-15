@@ -18,13 +18,13 @@ it pruned nothing and passed. Every executable the build names must lie under th
 is not what the report reads and this refuses.
 
 THE BUILD DIR IS SHARED by a repo's crates (GOH.COVSHAREDBUILD), several running at once, and two
-of them may well have a target of the same name (29 media_server crates have a `version` test). So
-nothing in it is deleted any more -- a crate would delete a sibling's binary mid-run -- and the
-report never reads it: the executables this build names under the build dir are hard-linked
-(copied across devices) into `$CARGO_LLVM_COV_TARGET_DIR/cov-view/debug/deps`, rebuilt each run,
-and `_coverage_rust.sh` points the report's CARGO_LLVM_COV_BUILD_DIR there. A previous build's
-binary, or a sibling crate's, is simply not in the view. The TARGET dir is the crate's own, and
-is pruned as before.
+of them may well have a target of the same name (29 crates of a private server workspace have a
+`version` test). So nothing in it is deleted any more -- a crate would delete a sibling's binary
+mid-run -- and the report never reads it: the executables this build names under the build dir are
+hard-linked (copied across devices) into `$CARGO_LLVM_COV_TARGET_DIR/cov-view/debug/deps`, rebuilt
+each run, and `_coverage_rust.sh` points the report's CARGO_LLVM_COV_BUILD_DIR there. A previous
+build's binary, or a sibling crate's, is simply not in the view. The TARGET dir is the crate's own,
+and is pruned as before.
 """
 
 if __name__ == "__main__":  # C4: run HEAD's copy, not the shared working tree (gates/_from_head.py)

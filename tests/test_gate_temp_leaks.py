@@ -1,10 +1,10 @@
-"""A gate leaves nothing in $TMPDIR (the class ZoneWM measured, 2026-10-06).
+"""A gate leaves nothing in $TMPDIR (the class a private Swift app measured, 2026-10-06).
 
-ZoneWM counted ~4,700 `goh-rust-scope.*` and ~2,200 other `goh*` entries in the shared temp dir,
-every one from a gate that had finished. Two causes, both here: the EXIT trap removed its logs with
-an unquoted `for`, so a gate named `python (staged)` split its own log name on the space and
-removed nothing; and the rust gate's scope file was registered with no cleanup at all. Every gate
-now registers what it creates with ONE helper (`goh_cleanup_add`), read back line by line.
+A private Swift app counted ~4,700 `goh-rust-scope.*` and ~2,200 other `goh*` entries in the shared
+temp dir, every one from a gate that had finished. Two causes, both here: the EXIT trap removed its
+logs with an unquoted `for`, so a gate named `python (staged)` split its own log name on the space
+and removed nothing; and the rust gate's scope file was registered with no cleanup at all. Every
+gate now registers what it creates with ONE helper (`goh_cleanup_add`), read back line by line.
 Each test runs a real gate under a private TMPDIR and asserts it ends EMPTY.
 """
 

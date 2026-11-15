@@ -1,10 +1,10 @@
 """`goh requires-call`: a file that CALLS X must also CALL Y, read from the AST (BACKLOG 1.2).
 
-ZoneWM grew two repo-local gates of this one shape (`tools/check_probe_placement.py`: a tool that
-relaunches the agent must judge window placement; `tools/check_probe_courtesy.py`: a long runner
-must keep calling `.check()`) -- generic tooling, so it is a goh check configured by rows. The
-first cases are ZoneWM's own selftest, lifted (2026-10-08). The rule is read from the AST because
-the first regex version passed with the call DELETED: its docstring named the call.
+A private Swift app grew two repo-local gates of this one shape (`tools/check_probe_placement.py`: a
+tool that relaunches the agent must judge window placement; `tools/check_probe_courtesy.py`: a long
+runner must keep calling `.check()`) -- generic tooling, so it is a goh check configured by rows.
+The first cases are a private Swift app's own selftest, lifted (2026-10-08). The rule is read from
+the AST because the first regex version passed with the call DELETED: its docstring named the call.
 """
 
 from __future__ import annotations
@@ -63,7 +63,7 @@ def _named(r) -> str:
     return r.stdout + r.stderr
 
 
-def test_zonewm_selftest_lifted(repo: Path) -> None:
+def test_swift_app_selftest_lifted(repo: Path) -> None:
     r = _check(_estate(repo))
     out = _named(r)
     assert r.returncode == 1, out
@@ -113,7 +113,8 @@ def test_finding_no_file_that_calls_x_is_a_floor_not_a_pass(repo: Path) -> None:
 
 
 def test_a_rule_with_no_trigger_binds_every_file(repo: Path) -> None:
-    """ZoneWM's long runners: a named set of files that must each keep calling `.check()`."""
+    """A private Swift app's long runners: a named set of files that must each keep calling
+    `.check()`."""
     rules = """
 [[rule]]
 name = "long runners recheck"
@@ -152,9 +153,10 @@ must_call = ["wait_for_rest", "wait_for_rest_or_exit"]
 
 
 def test_a_trigger_on_a_calls_string_arguments(repo: Path) -> None:
-    """BACKLOG 1.3: ZoneWM's courtesy rule names ARGUMENTS (`cli("config-set", ...)`), not callees.
-    Its selftest's planted cases, plus where the verb really sits in its tools: second after the
-    CLI path, inside the argv list handed to subprocess, the two words of `theme --id` together."""
+    """BACKLOG 1.3: a private Swift app's courtesy rule names ARGUMENTS (`cli("config-set", ...)`),
+    not callees. Its selftest's planted cases, plus where the verb really sits in its tools: second
+    after the CLI path, inside the argv list handed to subprocess, the two words of `theme --id`
+    together."""
     files = {
         "drives.py": 'agent.cli("config-set", "--key", "x")\n',
         "waits.py": "wait_for_rest(60)\nagent.relaunch()\n",

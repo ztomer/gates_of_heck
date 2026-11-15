@@ -4,8 +4,8 @@
 //! The commit gate sees a class only when its words repeat. A loop-start audit can also see the
 //! repeats committed without a Class, and the paraphrases whose fixes landed in the same files.
 //! Two fixes link when their classes are one (`same_class`, the repo's vocabulary aside) or when
-//! they share `FILE_LINK` files; a cluster is a connected group. Calibrated on `ZoneWM`'s
-//! `214f0cf7..` and its author's six labelled clusters (2026-10-08): words alone keep 1 whole
+//! they share `FILE_LINK` files; a cluster is a connected group. Calibrated on a private Swift
+//! app's `214f0cf7..` and its author's six labelled clusters (2026-10-08): words alone keep 1 whole
 //! (ceilings) and two members each of 2 more; with files, the pictures and the teardown pair join
 //! too. Cluster 5 and the third members of 1 and 3 are paraphrase whose fixes share no file --
 //! the ceiling of any measure of words and paths. Over the whole range it also groups repeats the
@@ -14,7 +14,8 @@
 use goh_tui::{ERR, OK, START, STEP};
 use std::collections::{BTreeMap, BTreeSet};
 
-/// Shared files that link two fixes (2 linked 25 of `ZoneWM`'s 75 classes into one group).
+/// Shared files that link two fixes (2 linked 25 of a private Swift app's 75 classes into one
+/// group).
 const FILE_LINK: usize = 3;
 /// A file touched by more than a quarter of the range (a ROADMAP, a CHANGELOG) links nothing...
 const COMMON_SHARE: usize = 4;

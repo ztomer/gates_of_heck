@@ -1,8 +1,9 @@
 //! Find every `producer | early-exit-consumer` in a shell source.
 //!
 //! Not gated on the file's own pipefail line: a library runs under its CALLER's pipefail
-//! (`media_server`'s install-lib.sh, sourced by install.sh, carried a racy pipe past a scan that
-//! only read files saying "pipefail"), and so does any script started with `SHELLOPTS` exported.
+//! (a private server workspace's install-lib.sh, sourced by install.sh, carried a racy pipe past a
+//! scan that only read files saying "pipefail"), and so does any script started with `SHELLOPTS`
+//! exported.
 
 use super::consumer::classify;
 use super::lex::mask;

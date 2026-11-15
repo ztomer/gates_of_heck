@@ -1,8 +1,9 @@
-//! `goh requires-call`: a Python file that CALLS X must also CALL Y (BACKLOG 1.2, from `ZoneWM`).
+//! `goh requires-call`: a Python file that CALLS X must also CALL Y (BACKLOG 1.2, from a private
+//! Swift app).
 //!
-//! `ZoneWM` grew two repo-local gates of this one shape -- a tool that relaunches the agent must
-//! judge window placement (`window_placement.guarded` or `.verify`); a long runner must keep
-//! calling `.check()` -- so it is generic tooling, configured as rows in a TOML file named by
+//! A private Swift app grew two repo-local gates of this one shape -- a tool that relaunches the
+//! agent must judge window placement (`window_placement.guarded` or `.verify`); a long runner must
+//! keep calling `.check()` -- so it is generic tooling, configured as rows in a TOML file named by
 //! `GOH_REQUIRES_CALL` (or `--rules`):
 //!
 //! ```toml
@@ -19,10 +20,10 @@
 //! A name with a dot is `module.function`, resolved through the file's own imports (another
 //! module's `verify` is not this one's); a bare name is any call whose last name it is; either, or
 //! `*`, may name string arguments (`*("theme", "--id")`, BACKLOG 1.3: `Spec`). Read from
-//! the AST (`requires_call_py`), because `ZoneWM`'s first regex version passed with the call
-//! deleted -- its docstring named it. An exemption goes STALE, and fails, when its file is gone,
-//! no longer calls X, or now calls Y. A rule that finds nothing to judge -- no file calls X, or no
-//! file matches -- is a floor (exit 2), never a pass: the pattern moved.
+//! the AST (`requires_call_py`), because a private Swift app's first regex version passed with the
+//! call deleted -- its docstring named it. An exemption goes STALE, and fails, when its file is
+//! gone, no longer calls X, or now calls Y. A rule that finds nothing to judge -- no file calls X,
+//! or no file matches -- is a floor (exit 2), never a pass: the pattern moved.
 
 use goh_tui::{ERR, OK};
 use std::collections::BTreeMap;

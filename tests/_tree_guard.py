@@ -10,8 +10,8 @@ the gates' own instrument) at session start, compares at the end, and fails the 
 every path that moved. A test works on a COPY under tmp_path.
 
 The same session start sweeps the temp dir (`sweep_temp`): a worker killed mid-run leaves its
-`goh-*` temps, and only a push swept them, so a day of suite runs stranded ~1,500 (ZoneWM,
-2026-10-07). The sweep is prune_kept's backstop, the one local_ci.sh runs.
+`goh-*` temps, and only a push swept them, so a day of suite runs stranded ~1,500 (a private Swift
+app, 2026-10-07). The sweep is prune_kept's backstop, the one local_ci.sh runs.
 """
 
 from __future__ import annotations

@@ -1,10 +1,11 @@
 """A step that PRINTS a failure and EXITS 0 is red (GOH.XEXIT).
 
-In the house TUI contract `✗` means failure and `⚠` means advisory. ZoneWM's census_bench void
-hold and three render selftests printed a `✗` line and exited 0, so the gate called them green
-(fixed there in ZoneWM 06ee510e). The class is a step whose words and exit code disagree; every
-gate step passes through goh_step or local_ci.sh, so both refuse it, through ONE predicate
-(lib/xexit.py). A `✗` QUOTED mid-line (a calibration plant's row) is not a status line.
+In the house TUI contract `✗` means failure and `⚠` means advisory. A private Swift app's
+census_bench void hold and three render selftests printed a `✗` line and exited 0, so the gate
+called them green (fixed there in a private Swift app 06ee510e). The class is a step whose words and
+exit code disagree; every gate step passes through goh_step or local_ci.sh, so both refuse it,
+through ONE predicate (lib/xexit.py). A `✗` QUOTED mid-line (a calibration plant's row) is not a
+status line.
 """
 
 import subprocess

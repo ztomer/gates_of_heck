@@ -47,7 +47,8 @@ fn h(s: &str) -> String {
 
 #[test]
 fn a_builtin_call_shown_in_a_string_is_not_a_hedge() {
-    // ZoneWM ZW.WALLCLOCK2 (2026-11-11): a checker's message showing the code it refuses.
+    // A private Swift app's ZW.WALLCLOCK2 (2026-11-11): a checker's message showing the code it
+    // refuses.
     assert_eq!(hedges(&h("call print@ instead of a bare write")).len(), 0);
     let py = h("MSG = \"replace `print@` with `out(line)`, keep `len@`\"\n");
     assert_eq!(lines(&py, Lang::Hash), Vec::<usize>::new());
@@ -77,7 +78,8 @@ fn an_identifier_call_shown_in_a_string_is_not_a_hedge() {
     assert_eq!(hedges(&h("3 CAMetalLayer@")), [h("CAMetalLayer@")]);
     assert_eq!(hedges(&h("x = trim@; }")).len(), 0); // a bare name amid code
     assert_eq!(hedges(&h("y = f@.strip()")).len(), 0);
-    // The estate's real hedges next to code-like marks (ZoneWM, a private consumer, ZeroThunder).
+    // The estate's real hedges next to code-like marks (a private Swift app, a private consumer,
+    // ZeroThunder).
     assert_eq!(
         hedges(&h("modifier keycode@ {list(left)} held")),
         [h("keycode@")]

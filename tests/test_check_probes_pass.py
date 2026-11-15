@@ -383,11 +383,12 @@ def test_a_tools_dir_holding_only_other_scripts_is_nothing_to_prove(tmp_path):
 
 
 def test_a_self_proof_outside_the_check_convention_is_named_not_run(tmp_path, capsys):
-    """ZoneWM, 2026-10-05: `idle_probe.py`, `space_hotkey_probe.py`, `visualizer_colour_probe.py` and
-    `input_lock.py` declare `--probe` and nothing ran them, silently. Discovery stays by NAME -- a
-    `check_*` file is a repo declaring a headless gate, and `input_lock.py --probe` locks the
-    owner's real input -- so widening it by flag would hand the keyboard to a pre-push hook. What
-    must not happen is the silence: the gate names the self-proofs it does not run."""
+    """A private Swift app, 2026-10-05: `idle_probe.py`, `space_hotkey_probe.py`,
+    `visualizer_colour_probe.py` and `input_lock.py` declare `--probe` and nothing ran them,
+    silently. Discovery stays by NAME -- a `check_*` file is a repo declaring a headless gate, and
+    `input_lock.py --probe` locks the owner's real input -- so widening it by flag would hand the
+    keyboard to a pre-push hook. What must not happen is the silence: the gate names the self-proofs
+    it does not run."""
     root = _tree(tmp_path, {"check_good.py": PASSING, "idle_probe.py": BROKEN})
     assert gate.main(["--root", str(root), "--no-corpus"]) == 0, "a non-gate's probe was run"
     out = capsys.readouterr()

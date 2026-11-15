@@ -416,7 +416,8 @@ mod tests {
             (Lang::Shell, "    git write-tree 2>/dev/null"),
             (Lang::Shell, r#"    lock="$repo/.goh-tree.lock""#),
             (Lang::Rust, r#"    let t = git(&["write-tree"])?;"#),
-            // ZoneWM tools/index_tree.py: the word is the LAST argument of a call (2026-11-14).
+            // A private Swift app's tools/index_tree.py: the word is the LAST argument of a call
+            // (2026-11-14).
             (Lang::Python, r#"    tree = _git(root, "write-tree")"#),
             (Lang::Python, r#"    run(("write-tree",), cwd=repo)"#),
             (Lang::Python, r#"    lock = repo / ".goh.lock""#),

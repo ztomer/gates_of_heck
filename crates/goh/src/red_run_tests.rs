@@ -88,7 +88,7 @@ fn a_commit_adding_no_test_needs_no_trailer() {
 }
 
 /// A `Red-run:` that is there but unreadable -- a wrapped line spoils the block -- is named as
-/// that, not as a missing claim (`ZoneWM`, 2026-10-12).
+/// that, not as a missing claim (a private Swift app, 2026-10-12).
 #[test]
 fn a_red_run_in_an_unreadable_block_names_the_blocking_line() {
     let diff =

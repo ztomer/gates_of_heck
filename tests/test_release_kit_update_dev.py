@@ -169,9 +169,10 @@ class TestPutBackAsItWas:
 
 class TestNeverAReopen:
     """`open` on a copy that is ALREADY running is not a launch: macOS sends that app a reopen event,
-    and an app answers a reopen with its window (Routines.app shows its 1240x960 dashboard). The kit
-    is the one launch path (RT.LAUNCHDASH, 2026-11-08: `install.sh --launch` opened the copy the kit
-    had just relaunched, and the dashboard nobody had open appeared), so it never opens a running copy.
+    and an app answers a reopen with its window (a private menu-bar app shows its 1240x960
+    dashboard). The kit is the one launch path (RT.LAUNCHDASH, 2026-11-08: `install.sh --launch`
+    opened the copy the kit had just relaunched, and the dashboard nobody had open appeared), so it
+    never opens a running copy.
     """
 
     def test_a_copy_that_came_up_during_the_install_is_not_reopened(self, tmp_path):
@@ -197,10 +198,10 @@ class TestNeverAReopen:
 
 
 class TestInstallEverythingThenLaunch:
-    """RT.INSTALLORDER (2026-11-08): `open` failed with -600 after the kit replaced Routines.app, and
-    routines' install.sh died before its CLI step -- app new, CLI old. The caller's other artifacts
-    now land BEFORE the launch step (AFTER_INSTALL_CMD), and a failed `open` is retried once after
-    lsregister, then reported by name."""
+    """RT.INSTALLORDER (2026-11-08): `open` failed with -600 after the kit replaced a private
+    menu-bar app, and a private Rust app's install.sh died before its CLI step -- app new, CLI old.
+    The caller's other artifacts now land BEFORE the launch step (AFTER_INSTALL_CMD), and a failed
+    `open` is retried once after lsregister, then reported by name."""
 
     def _failing_open(self, bin_dir: Path, tmp_path: Path, fails: int) -> None:
         (bin_dir / "open").write_text(

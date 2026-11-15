@@ -16,10 +16,10 @@ from test_coverage_gate import COV_GATE
 # ── one build, N profiles (BACKLOG P1d) ──────────────────────────────────────
 #
 # Every per-target export used to clean and RECOMPILE the workspace (16 targets x ~2 s on
-# media_server's mediaops-rs); then each target was its own `--no-clean` export with the profile
-# reset between them. Now ONE run measures every declared target (A/B on all 29 media_server
-# crates: identical merged reports, 226 -> 173 s). The fake models the profile leak that made the
-# per-target resets necessary; with one run there is nothing to carry.
+# a private server workspace's mediaops-rs); then each target was its own `--no-clean` export with
+# the profile reset between them. Now ONE run measures every declared target (A/B on all 29 crates
+# of a private server workspace: identical merged reports, 226 -> 173 s). The fake models the
+# profile leak that made the per-target resets necessary; with one run there is nothing to carry.
 
 LEAKY_CARGO = (
     """\

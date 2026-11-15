@@ -102,9 +102,10 @@ def test_a_binary_of_another_build_never_counts(tmp_path: Path) -> None:
 def test_a_recreated_tree_reuses_its_dependencies_build(tmp_path: Path) -> None:
     """The push gate's shape: its worktree is deleted after every push and recreated at the same
     path for the next. The instrumented build lived inside it, so every push rebuilt every crate's
-    dependencies instrumented (media_server, 2026-10-17: 28 crates, ~393 s of coverage CPU per
-    push). Now the build dir is keyed on the path and kept outside the tree: a dependency outside
-    the recreated tree (as a registry crate is) is not compiled again, and the report is the same."""
+    dependencies instrumented (a private server workspace, 2026-10-17: 28 crates, ~393 s of coverage
+    CPU per push). Now the build dir is keyed on the path and kept outside the tree: a dependency
+    outside the recreated tree (as a registry crate is) is not compiled again, and the report is the
+    same."""
     (tmp_path / "base" / "src").mkdir(parents=True)
     (tmp_path / "base" / "Cargo.toml").write_text(
         '[package]\nname = "base"\nversion = "0.1.0"\nedition = "2021"\n\n[workspace]\n'

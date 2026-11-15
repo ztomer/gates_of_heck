@@ -6,7 +6,7 @@
 # while the first is in its test phase, and every test bundle the first goes to
 # dlopen is gone -- "Failed to open test bundle ... (no such file)" x4, signal 5,
 # push refused, and the failure names the tests, never the peer. Measured
-# 2026-09-21 on ZoneWM: two pushes twelve minutes apart from one session, the
+# 2026-09-21 on a private Swift app: two pushes twelve minutes apart from one session, the
 # first died in `test` the moment the second announced "cold build requested".
 #
 # So a gate that touches the tree takes THIS lock for its whole run, and a peer

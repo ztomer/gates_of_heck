@@ -12,9 +12,9 @@ That is the part worth stating: these are not new rules with new fixtures justif
 row that went from `clean` (wrong) to `finding` (right) with no change to the input, which is the
 only evidence that distinguishes a fix from a rule change.
 
-  RUST-GUARD   a guard on one variable laundering a second, unguarded one   -> `routines`
+  RUST-GUARD   a guard on one variable laundering a second, unguarded one   -> a private Rust app
   RUST-DROP    a `Drop` that does nothing accepted because `Self(` was      -> `monitor`
-  RUST-MASK    an `r#"…"#` literal blanking the rest of the file             -> `routines`
+  RUST-MASK    an `r#"…"#` literal blanking the rest of the file             -> a private Rust app
   PY-RETURN    a `return` above the reap, where Rust's `PANICS` counts one  -> ZeroThunder
 """
 
@@ -177,7 +177,7 @@ fn t() {
     ),
     # ── RUST-MASK. Each of these blanked the whole rest of the file, so a real leak below read clean.
     (
-        'RUST-MASK: an r#"…"# raw string above the spawn (the nine sites in routines)',
+        'RUST-MASK: an r#"…"# raw string above the spawn (the nine sites in a private Rust app)',
         """
 use std::process::Command;
 fn f() { let q = r#"{"op":"shutdown"}"#; }

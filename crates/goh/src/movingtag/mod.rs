@@ -14,11 +14,11 @@
 //! script and a Makefile's recipes are read too, narrowly (`shell.rs`): an image variable's
 //! assignment at the start of a command, and the image argument of `docker`/`podman` `run`,
 //! `create` and `pull` read through the CLI's own flag grammar. Until then they were not read at
-//! all, and `media_server`'s `linux_test.sh` ran `IMAGE=rust:1` unseen (SRV.RUSTTAG). A name the
-//! script builds (`docker build --tag "$IMAGE"`) pulls nothing, and an option the reader does not
-//! know leaves the reference unreadable rather than guessed. Not read: compose YAML a script
-//! writes in a heredoc or a string (every estate instance on 2026-11-15 was a test's fixture), and
-//! an image a program's source holds (`crate::shapes::table` names both).
+//! all, and a private server workspace's `linux_test.sh` ran `IMAGE=rust:1` unseen (SRV.RUSTTAG). A
+//! name the script builds (`docker build --tag "$IMAGE"`) pulls nothing, and an option the reader
+//! does not know leaves the reference unreadable rather than guessed. Not read: compose YAML a
+//! script writes in a heredoc or a string (every estate instance on 2026-11-15 was a test's
+//! fixture), and an image a program's source holds (`crate::shapes::table` names both).
 //!
 //! RELEASE LINES (GOH.MOVINGTAGCOARSE, judged from `crate::grace::OVER_FROM`, 2026-11-23; owner
 //! ruling 2026-11-15, "Yes, flag them"). A version coarser than a full `x.y.z` -- `rust:1`,

@@ -37,7 +37,7 @@ from pathlib import Path
 
 REGISTRY_NAME = "installed_repos"
 SKIP_DIRS = {"node_modules", "target", ".build", ".venv", "venv"}
-REPO_DEPTH = 3  # ~/Projects/<repo>, ~/Projects/<group>/<repo>: servers/media_server, games/*
+REPO_DEPTH = 3  # ~/Projects/<repo>, ~/Projects/<group>/<repo>: a nested server repo, games/*
 
 
 def state_file() -> Path:
@@ -170,7 +170,7 @@ def is_linked_worktree(d: Path) -> bool:
 
 def walk_repos(root: Path, depth: int = REPO_DEPTH) -> list[Path]:
     """Every git work tree at most `depth` below the root, nested ones included: a repository
-    inside another's tree (servers/media_server) is not tracked by its parent, so the walk goes on
+    inside another's tree (a nested server repo) is not tracked by its parent, so the walk goes on
     below a repository rather than stopping at it. A LINKED worktree is walked THROUGH but not
     returned: it is its main checkout again (`is_linked_worktree`); a submodule is returned."""
     found, frontier = [], [(Path(root), 0)]

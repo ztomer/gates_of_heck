@@ -29,8 +29,9 @@ set -euo pipefail
 # not the CWD — gates may run from a subdirectory), else the one shipped here.
 GOH_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 # Every Python a gate runs finds tui.lib from HERE, never from the caller's shell: ~/.zshrc exported
-# it, and non-interactive shells never read ~/.zshrc (ZoneWM, 2026-10-05). The gate knows where it
-# lives; making every consumer re-export it was the workaround (tests/test_gate_runtime_path.py).
+# it, and non-interactive shells never read ~/.zshrc (a private Swift app, 2026-10-05). The gate
+# knows where it lives; making every consumer re-export it was the workaround
+# (tests/test_gate_runtime_path.py).
 goh_path_front PYTHONPATH "$GOH_ROOT"   # once, however many gates this process tree entered (_from_head.sh)
 GOH_GIT_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || true)"
 for _goh_tui in "${GOH_GIT_ROOT:+$GOH_GIT_ROOT/tui/lib.sh}" \
@@ -87,7 +88,7 @@ GOH_COMPLETED=""
 # Everything a gate creates and must remove at exit, ONE path per line (goh_cleanup_add). It was
 # two space-joined strings read by an unquoted `for`: a gate named `python (staged)` split its own
 # log's name on the space and removed nothing, and ~2,200 logs leaked into the shared $TMPDIR
-# (ZoneWM, 2026-10-06; tests/test_gate_temp_leaks.py).
+# (a private Swift app, 2026-10-06; tests/test_gate_temp_leaks.py).
 _goh_cleanup=""
 
 # goh_cleanup_add <path>... -- remove it (file or directory) when the gate exits, however it exits.
@@ -101,7 +102,7 @@ goh_cleanup_add() {
 # The working tree's stamp (lib/tree_stamp.py), taken by goh_tree_stamp. A
 # gate that BUILDS AND TESTS the working tree certifies the bytes that were
 # there while it ran; an edit mid-run made one die in an untouched target with
-# no cause named (ZoneWM 2c.9, 2026-09-21). So a green run over a tree that
+# no cause named (a private Swift app 2c.9, 2026-09-21). So a green run over a tree that
 # moved is refused in goh_done, and a red one names the move in the trap.
 GOH_TREE_STAMP_FILE=""
 GOH_TREE_CHECKED=""
@@ -306,7 +307,7 @@ goh_step() {
         # the grep; GOH_FAIL_LINES caps how many hits are shown.
         # Only lines ATTRIBUTABLE to the sub-step that failed: a passing sibling's `✗` (a
         # calibration plant's quoted row) is left out and counted, and an unframed log says it is
-        # one (ZoneWM H2, BACKLOG C5; lib/fail_lines.py).
+        # one (a private Swift app H2, BACKLOG C5; lib/fail_lines.py).
         if "$GOH_PY" "$GOH_ROOT/lib/fail_lines.py" "$GOH_LOG" > "$GOH_LOG.fails" \
             && [ -s "$GOH_LOG.fails" ]; then
             cat "$GOH_LOG.fails" >&2

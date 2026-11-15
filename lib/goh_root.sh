@@ -14,12 +14,13 @@
 #
 # The repair: every gate entry point re-runs from ~/.cache/goh/head/<sha> and exports GOH_DIR at it
 # (gates/_from_head.sh), and the cache prunes old exports. A long-lived process started under a gate
-# keeps the value for its whole life: Routines.app, `open`ed by a ship's release kit, ran its
-# from_head jobs with it and every one exited 2 once the export was gone (2026-11-12 20:43 on; the
-# disk-pressure reclaim never ran), and a Claude session carrying another had every commit refused
-# by pre-commit. The export cannot be read once it is gone, so this falls back to its live root (the
-# checkout that made it), then the default checkout, says so on stderr (the process is stale and
-# should be restarted), and EXPORTS the repaired value, so whatever the caller starts agrees.
+# keeps the value for its whole life: a private menu-bar app, `open`ed by a ship's release kit, ran
+# its from_head jobs with it and every one exited 2 once the export was gone (2026-11-12 20:43 on;
+# the disk-pressure reclaim never ran), and a Claude session carrying another had every commit
+# refused by pre-commit. The export cannot be read once it is gone, so this falls back to its live
+# root (the checkout that made it), then the default checkout, says so on stderr (the process is
+# stale and should be restarted), and EXPORTS the repaired value, so whatever the caller starts
+# agrees.
 #
 # ONE rule in three languages: this file, lib/goh_root.py, and crates/goh/src/goh_dir.rs. The binary
 # resolver (gates/_goh_bin.sh), the export's bin/goh (gates/_export_bin_goh.sh) and gates/hook.sh

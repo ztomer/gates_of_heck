@@ -2,10 +2,10 @@
 //!
 //! A `time.sleep(1)` followed by `proc.poll()` asks "is it done?" after a guess at how long it
 //! takes, and on a loaded machine the guess is sometimes short: the read says "not yet" about a
-//! thing that was merely slow, and the caller acts on it. `ZoneWM` shipped three of these, each
-//! fixed with a real signal, and nothing stopped the fourth: a capture racing the work it
-//! captured, a harness reading a later marker on an earlier signal, and a lock read as held after
-//! "not exited after 1 s" (fail-open under load). The finder is `scan.rs`.
+//! thing that was merely slow, and the caller acts on it. A private Swift app shipped three of
+//! these, each fixed with a real signal, and nothing stopped the fourth: a capture racing the work
+//! it captured, a harness reading a later marker on an earlier signal, and a lock read as held
+//! after "not exited after 1 s" (fail-open under load). The finder is `scan.rs`.
 //!
 //! The debt is a per-repo SEED, `fixed_sleep_seed.json` at the repo root: how many such sleeps
 //! each file had when the repo adopted the check. It may only fall. A file over its count is red

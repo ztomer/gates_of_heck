@@ -3,7 +3,7 @@
 its end (GOH.APPSTATE).
 
 Agents that test an app relaunch or quit it, and leave it in the wrong state: on 2026-11-07/08
-Routines.app (a login item) was left NOT running after two agents' UI tests (one SIGTERMed its own
+a login-item app was left NOT running after two agents' UI tests (one SIGTERMed its own
 instance, having found none running), and Osaurus.app (a login item that serves the local model on
 :1337) was found not running. A note asking agents to put things back is a rule to remember; this
 is the system that does it. `agent_guard.py` calls `snapshot()` at every spawn and `restore()` at

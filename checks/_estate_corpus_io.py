@@ -11,6 +11,7 @@ clean" and went red on a repo that was green (2026-10-08).
 from __future__ import annotations
 
 import functools
+import json
 import os
 import re
 import shlex
@@ -128,3 +129,32 @@ def run_checker(checker, root, args, exclude=""):
         stdin=subprocess.DEVNULL,
     )
     return result.returncode, (result.stdout + result.stderr)
+
+
+# A corpus in a PRIVATE repository is named in `ESTATE` by a label, `store:<label>`, never by its
+# path: this tree is public, and a private repository's name in it is refused (`goh private-names`,
+# GOH.PRIVNAMES3). The label's path is the owner's, in the private seed store beside
+# `private_names.txt`: `estate_corpus_roots.json`, `{"roots": {"<label>": "~/Projects/..."}}`.
+STORE_ROOTS = "estate_corpus_roots.json"
+
+
+def store_dir():
+    """The private store (`crates/goh/src/estate_seed.rs` `store_dir`): GOH_SEED_DIR, else
+    $XDG_STATE_HOME/goh/seeds, else ~/.local/state/goh/seeds."""
+    if os.environ.get("GOH_SEED_DIR"):
+        return os.path.expanduser(os.environ["GOH_SEED_DIR"])
+    state = os.environ.get("XDG_STATE_HOME") or os.path.expanduser("~/.local/state")
+    return os.path.join(state, "goh", "seeds")
+
+
+def resolve_root(root):
+    """An entry's corpus root on this machine: a `~/` path expanded, a `store:<label>` read from
+    the private store, None when the store has no such label (or no readable list)."""
+    if not root.startswith("store:"):
+        return os.path.expanduser(root)
+    try:
+        with open(os.path.join(store_dir(), STORE_ROOTS), encoding="utf-8") as handle:
+            path = json.load(handle)["roots"][root[len("store:") :]]
+    except (OSError, ValueError, KeyError, TypeError):
+        return None
+    return os.path.expanduser(path) if isinstance(path, str) else None

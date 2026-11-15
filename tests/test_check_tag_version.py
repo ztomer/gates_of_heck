@@ -1,6 +1,6 @@
 """check_tag_version.py — a pushed `refs/tags/v*` must name what its own commit declares.
 
-media_server, 2026-10-01. A version was bumped, `git commit --amend --no-edit`
+A private server workspace, 2026-10-01. A version was bumped, `git commit --amend --no-edit`
 was rejected by pre-commit TWICE with `2>/dev/null` swallowing the refusal, and
 `git tag -f v1.79.3` then named commit `a266067` — whose VERSION file and all 31
 crate manifests still said 1.79.1. `git push --follow-tags` published it. The
@@ -259,7 +259,7 @@ def test_a_glob_matching_nothing_is_reported_not_skipped(tmp_path):
 
 
 def test_both_live_layouts_are_covered(tmp_path):
-    """media_server's VERSION file and app_updates' workspace manifest, in one
+    """A private server workspace's VERSION file and app_updates' workspace manifest, in one
     run — neither repo is special-cased."""
     repo = tmp_path / "both"
     repo.mkdir()

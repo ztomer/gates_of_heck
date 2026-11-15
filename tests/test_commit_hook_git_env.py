@@ -1,7 +1,7 @@
 """A commit hook's repository variables never reach what the commit gate spawns (contract #12).
 
-media_server, 2026-10-08. git hands pre-commit GIT_DIR and GIT_INDEX_FILE -- from a LINKED
-worktree both absolute -- and the stock hook passed them to `tools/gate.sh --staged` and
+A private server workspace, 2026-10-08. git hands pre-commit GIT_DIR and GIT_INDEX_FILE -- from a
+LINKED worktree both absolute -- and the stock hook passed them to `tools/gate.sh --staged` and
 everything under it. A consumer's test suite that built a scratch repo (init, `add`,
 `commit`, `stash`) acted on the REAL repository: `core.bare=true` in the shared config
 (the main checkout stopped working), the scratch tree committed onto the worktree's branch, and

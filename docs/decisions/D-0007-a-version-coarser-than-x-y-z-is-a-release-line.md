@@ -5,13 +5,13 @@
   distribution's own version (`ubuntu:24.04`, `debian:13`, `debian:13.1`) an exception?
 - **Evidence:** Owner, 2026-11-15, asked "Should version-shaped image tags like rust:1 count as
   moving tags?": "Yes, flag them". Until then `movingtag/reference.rs` passed every digit-bearing
-  tag with no channel word, so media_server's `scripts/dev/linux_test.sh` ran `IMAGE=rust:1` past
+  tag with no channel word, so a private server workspace's `scripts/dev/linux_test.sh` ran `IMAGE=rust:1` past
   the gate (SRV.RUSTTAG, whose done-state expected red). In the fleet's own measurements
-  (media_server `image_drift_sweep/tests.rs`) `postgres:18-alpine` is 18.6 one month and 18.7 the
+  (a private server workspace `image_drift_sweep/tests.rs`) `postgres:18-alpine` is 18.6 one month and 18.7 the
   next; Ubuntu's `24.04` is re-pointed across 24.04.N and the rebuilds between them, Debian's
   `13.1` until 13.2 ships, and both publish dated tags that do name one build
   (`ubuntu:noble-20250925`, `debian:trixie-20250908`). Census with GOH_GRACE=over on 2026-11-15,
-  calibrated against a `git grep` of the estate: 9 new sites in 2 repos -- media_server 8 (7 compose
+  calibrated against a `git grep` of the estate: 9 new sites in 2 repos -- a private server workspace 8 (7 compose
   service images inside servers DECISIONS #9's scope, 1 Dockerfile base), CadGoose 1
   (`FROM ubuntu:26.04`); no other estate file the scanner reads holds one.
 - **Options priced:**

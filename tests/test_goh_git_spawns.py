@@ -78,7 +78,7 @@ def test_a_staged_run_of_the_binary_spawns_git_at_most_this_often(
 
 def test_rust_scope_lists_the_workspaces_sources_once(goh: Path, tmp_path: Path) -> None:
     """One `git ls-files` for every package's sources: it was one per package (15 for
-    media_server's mediaops-rs and its path dependencies, 2026-10-06)."""
+    a private server workspace's mediaops-rs and its path dependencies, 2026-10-06)."""
     shim, log = tmp_path / "shim", tmp_path / "git.log"
     shim.mkdir()
     (shim / "git").write_text(f'#!/bin/sh\necho "$*" >> "{log}"\nexec "{REAL_GIT}" "$@"\n')

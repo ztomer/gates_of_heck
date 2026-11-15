@@ -1,8 +1,9 @@
 """gates/round.sh: one round -- commit the NAMED paths, push the commit, prove the remote has it.
 
-Ported from ZoneWM (2026-10-06). Each refusal is a way a hand-written chain failed there: a commit
-after a red gate, a commit of nothing, a push refused for a disk that read as another error, and
-`git commit` taking whatever else was already staged (the hole ZoneWM's own version named).
+Ported from a private Swift app (2026-10-06). Each refusal is a way a hand-written chain failed
+there: a commit after a red gate, a commit of nothing, a push refused for a disk that read as
+another error, and `git commit` taking whatever else was already staged (the hole a private Swift
+app's own version named).
 """
 
 import shutil
@@ -120,7 +121,8 @@ def test_a_named_python_file_is_formatted_when_the_repo_opts_in(proj) -> None:
 @pytest.mark.parametrize("how", ["rm", "mv"])
 def test_a_staged_deletion_is_a_path_the_round_commits(proj, how) -> None:
     """`git rm` (or the old side of a `git mv`) leaves a path on neither disk nor the index; only
-    HEAD has it. The round must still commit the deletion it names (ZoneWM, 2026-10-06)."""
+    HEAD has it. The round must still commit the deletion it names (a private Swift app,
+    2026-10-06)."""
     if how == "rm":
         _git(proj, "rm", "-q", "a.txt")
         named = ("a.txt",)

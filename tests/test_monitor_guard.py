@@ -2,8 +2,8 @@
 
 THE CLASS. The Claude Code guards (`discard_guard.py`, `hold_guard.py`) were registered on `Bash`
 and nothing else, and Bash is not the only tool that runs a shell command: Monitor runs one too,
-in the background, and is the tool the guard's own refusal tells the agent to wait with. A ZoneWM
-agent's first Monitor wait was `until ! pgrep -f "git push" ...; do sleep 15; done`, the
+in the background, and is the tool the guard's own refusal tells the agent to wait with. A private
+Swift app agent's first Monitor wait was `until ! pgrep -f "git push" ...; do sleep 15; done`, the
 self-matching wait the Bash guard exists to refuse, and no guard saw it. The invariant: a tool
 whose input holds a shell command gets every command check Bash gets.
 

@@ -10,8 +10,8 @@ worktree (a directory holding `.git`, a dir or a linked worktree's file), and it
 in-progress item whose `agent` is not the caller holds that repo -- unless one of the caller's own
 items holds it too.
 
-Why it exists: WG.7.K's agent (item repo koffee_big) edited ZoneWM's WidgetPanel.swift while
-ZW.SPACEWALL's agent ran `make push` in that tree; one writer per repo held only by luck.
+Why it exists: WG.7.K's agent (item repo koffee_big) edited a private Swift app's WidgetPanel.swift
+while ZW.SPACEWALL's agent ran `make push` in that tree; one writer per repo held only by luck.
 
 A linked worktree (`git worktree add build/x` inside a held checkout) is its own repo here: it is
 the sanctioned way for a second agent to change a repo another holds (goh's `tools/land.sh`).

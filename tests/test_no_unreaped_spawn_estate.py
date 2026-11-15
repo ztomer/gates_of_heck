@@ -22,7 +22,7 @@ CHECK = "checks/check_no_unreaped_spawn.py"
 def test_a_guard_defined_in_another_test_file_is_still_a_guard(repo: Path) -> None:
     """A guard defined ONCE in `tests/common/` protects every file that uses it.
 
-    Found by the estate sweep on `routines`, whose `ReapOnDrop` lives in
+    Found by the estate sweep on a private Rust app, whose `ReapOnDrop` lives in
     `tests/lifecycle_support/mod.rs` and is used by three test files. Read per file, the guard is
     invisible and the two sites that guard FIXES are reported as unjudgeable -- a false alarm on the
     exact code the guard was written for, in the exact files the bug report named.

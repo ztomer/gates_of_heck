@@ -1,9 +1,9 @@
 """rust_gate.sh proves each group once on ITS OWN inputs (BACKLOG P3), and the record cannot lie.
 
 The proven cache keyed every step on the whole tree: one README line re-gated all 29 of
-media_server's crates. Now the crate group is keyed on the crate, the packages it reaches by
-`path =`, and the config files it reads; the repo-wide scans on the whole tree. Each way a hit
-could be wrong is planted here on REAL cargo crates:
+a private server workspace's crates. Now the crate group is keyed on the crate, the packages it
+reaches by `path =`, and the config files it reads; the repo-wide scans on the whole tree. Each way
+a hit could be wrong is planted here on REAL cargo crates:
 
 * an edit to a crate re-gates it and nothing else; an edit to a path dependency re-gates its users;
 * an edit outside every crate (a README) re-gates nothing; an edit to shared config re-gates all;
@@ -182,9 +182,9 @@ def test_a_resolvable_reach_outside_the_crate_keys_on_exactly_that_file(
     estate: Path, fake_cargo: Path
 ) -> None:
     """A test reading `../shared/fixture.json` (relative to its package) is keyed on that file:
-    editing it re-gates the crate, a README edit does not. Measured 2026-10-05: every media_server
-    crate has include_str!("../../../VERSION"), and keying them on the whole tree for it made the
-    cache worthless."""
+    editing it re-gates the crate, a README edit does not. Measured 2026-10-05: every crate of a
+    private server workspace has include_str!("../../../VERSION"), and keying them on the whole tree
+    for it made the cache worthless."""
     (estate / "crates" / "shared").mkdir()
     (estate / "crates" / "shared" / "fixture.json").write_text("{}\n")
     _edit(estate, "crates/c/src/lib.rs", '\npub const FIXTURE: &str = "../shared/fixture.json";\n')
@@ -236,10 +236,11 @@ def test_a_build_that_read_a_file_outside_its_scope_is_keyed_on_it_from_then_on(
     estate: Path,
 ) -> None:
     """The dep-info NAMES what the build read, so the crate is keyed on it rather than run on every
-    push forever: media_server's vpn-watchdog-rs read `compose/` and `docker-compose.yml` and was
-    never recorded at all (2026-10-06). The run that learns records nothing -- those files were
-    not keyed BEFORE it ran, so a change during it would go unseen; the next run keys them before
-    and after, and records. An edit to a learned file re-gates the crate."""
+    push forever: a private server workspace's vpn-watchdog-rs read `compose/` and
+    `docker-compose.yml` and was never recorded at all (2026-10-06). The run that learns records
+    nothing -- those files were not keyed BEFORE it ran, so a change during it would go unseen; the
+    next run keys them before and after, and records. An edit to a learned file re-gates the
+    crate."""
     (estate / "shared.txt").write_text("v1\n")
     _reads_at_compile_time(estate, estate / "shared.txt")
     _git(estate, "add", "-A")

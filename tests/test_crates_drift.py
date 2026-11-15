@@ -3,8 +3,8 @@
 
 `goh crates-behind` once counted every lock entry behind the LIVE registry against a ratchet seed:
 on 2026-11-09 a day of upstream releases turned antiknob, app-mcp-bridge, monitor and webcam_tune
-red and refused routines' push, none of them having moved. Now a behind entry is red only when the
-change being judged locked it (its name and version are not in the base's lock) AND a newer
+red and refused a private Rust app's push, none of them having moved. Now a behind entry is red only
+when the change being judged locked it (its name and version are not in the base's lock) AND a newer
 compatible release was out before the change was committed (the index's `pubtime`). Every other
 behind entry is drift: a warning, every run, until `cargo update`. `--live` is the strict sweep.
 

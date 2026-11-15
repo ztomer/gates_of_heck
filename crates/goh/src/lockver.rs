@@ -270,8 +270,9 @@ fn audit(root: &Path, spec: &str) -> Result<(Vec<String>, usize, Vec<String>), S
     }
     let mut findings = Vec::new();
     // The members whose version IS the release: those inheriting it, or, where the workspace
-    // declares no version to inherit, every member (media_server's per-crate literals). A member
-    // writing its own literal under a workspace version has opted out (6.18: app-legacy).
+    // declares no version to inherit, every member (a private server workspace's per-crate
+    // literals). A member writing its own literal under a workspace version has opted out (6.18:
+    // app-legacy).
     let mut release_members: Vec<(String, String)> = Vec::new();
     let mut stale: BTreeSet<String> = BTreeSet::new();
     let mut compared = 0usize;

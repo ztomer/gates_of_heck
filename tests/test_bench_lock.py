@@ -469,8 +469,8 @@ def test_the_cap_bounds_the_whole_block_not_only_the_run(tmp_path: Path) -> None
 
 
 def test_a_drain_past_the_budget_lets_go_at_the_budget(tmp_path: Path) -> None:
-    """BACKLOG 4.3 routines-j4 (2026-10-08): the claim waited 579 s for two pre-push gates, every
-    new gate blocked behind it, then let go unmeasured -- its run no longer fit the cap -- and
+    """BACKLOG 4.3 a private app's j4 (2026-10-08): the claim waited 579 s for two pre-push gates,
+    every new gate blocked behind it, then let go unmeasured -- its run no longer fit the cap -- and
     blamed the load ("not goh's") at 5.58, under the max. A drain is bounded by the budget."""
     lock = tmp_path / "lock"
     slow = _bash(lock, f'bench_lock_join pre-push; : > "{tmp_path}/in"; sleep 60')

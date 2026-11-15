@@ -75,9 +75,9 @@ def test_sample_hooks_and_our_own_install_are_not_foreign(repo: Path) -> None:
 
 
 def test_an_absolute_hooks_path_to_our_own_githooks_is_not_foreign(repo: Path) -> None:
-    """routines, 2026-10-14: core.hooksPath held the ABSOLUTE spelling of its own .githooks,
-    which the refusal read as another manager's and blocked the 0.27.0 reinstall. A path is
-    foreign by WHERE it points, not by how it is spelled; the take-over still rewrites it."""
+    """A private Rust app, 2026-10-14: core.hooksPath held the ABSOLUTE spelling of its own
+    .githooks, which the refusal read as another manager's and blocked the 0.27.0 reinstall. A path
+    is foreign by WHERE it points, not by how it is spelled; the take-over still rewrites it."""
     assert _install(repo).returncode == 0
     git(repo, "config", "core.hooksPath", str((repo / ".githooks").resolve()))
     r = _install(repo)

@@ -19,7 +19,8 @@ pub const SOURCE_SUFFIXES: &[&str] = &[
 ];
 
 /// Source files with no suffix, matched on the exact basename. Build scripts are source: a
-/// 698-line `Makefile` passed the cap while the scope was suffixes only (`ZoneWM`, 2026-10-05).
+/// 698-line `Makefile` passed the cap while the scope was suffixes only (a private Swift app,
+/// 2026-10-05).
 pub const SOURCE_NAMES: &[&str] = &[
     "Makefile",
     "GNUmakefile",

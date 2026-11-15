@@ -147,7 +147,8 @@ def run(kind: str) -> int:
 
 def kinds_for(repo: Path) -> list[str]:
     """The controls a repo's gate needs: rust when git tracks a Cargo.toml at its root or in any
-    directory (rust_each_crate.sh's rule; media_server's 29 crates have no root manifest)."""
+    directory (rust_each_crate.sh's rule; a private server workspace's 29 crates have no root
+    manifest)."""
     listed = subprocess.run(
         ["git", "-C", str(repo), "ls-files", "--", "Cargo.toml", "*/Cargo.toml"],
         capture_output=True, text=True, check=False, stdin=subprocess.DEVNULL,

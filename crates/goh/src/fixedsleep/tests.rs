@@ -1,5 +1,5 @@
-//! The finder over the three shapes `ZoneWM` shipped, the shapes that must stay clean, and the
-//! seed's verdict in every direction.
+//! The finder over the three shapes a private Swift app shipped, the shapes that must stay clean,
+//! and the seed's verdict in every direction.
 
 use super::*;
 

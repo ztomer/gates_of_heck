@@ -1,8 +1,8 @@
 """push_gate.sh — the pre-push gate runs on the pushed COMMIT, never on the working tree.
 
-ZoneWM, 2026-09-21: a push's cold gate compiled the next round's uncommitted edits during its
-test phase and certified a tree that was no commit at all. These tests build a throwaway repo
-whose `tools/gate.sh` records what it saw, then push a commit while the working tree says
+A private Swift app, 2026-09-21: a push's cold gate compiled the next round's uncommitted edits
+during its test phase and certified a tree that was no commit at all. These tests build a throwaway
+repo whose `tools/gate.sh` records what it saw, then push a commit while the working tree says
 something else.
 """
 
@@ -246,8 +246,9 @@ def _push_lines(
 
 
 def test_a_tag_on_a_commit_the_remote_already_has_is_not_gated(tmp_path):
-    """ZoneWM 2026-09-22: --follow-tags carried six never-pushed release tags on commits the remote
-    had held for days; the gate rebuilt the oldest with today's toolchain and refused the push."""
+    """A private Swift app 2026-09-22: --follow-tags carried six never-pushed release tags on
+    commits the remote had held for days; the gate rebuilt the oldest with today's toolchain and
+    refused the push."""
     repo = _repo(tmp_path)
     old = _git(repo, "rev-parse", "HEAD")
     _git(repo, "tag", "-a", "v1.0.0", "-m", "old release")

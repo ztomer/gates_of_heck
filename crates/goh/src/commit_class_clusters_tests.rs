@@ -1,10 +1,11 @@
-//! `--clusters` calibrated on `ZoneWM`'s `214f0cf7..` and the six clusters its author labelled.
+//! `--clusters` calibrated on a private Swift app's `214f0cf7..` and the six clusters its author
+//! labelled.
 
 use super::*;
 
-/// `tests/fixtures/commit_class/zonewm_range.tsv`: sha, subject, Class, touched files.
-fn zonewm() -> Vec<Commit> {
-    include_str!("../../../tests/fixtures/commit_class/zonewm_range.tsv")
+/// `tests/fixtures/commit_class/swift_app_range.tsv`: sha, subject, Class, touched files.
+fn swift_app() -> Vec<Commit> {
+    include_str!("../../../tests/fixtures/commit_class/swift_app_range.tsv")
         .lines()
         .filter(|l| !l.starts_with('#'))
         .map(|l| {
@@ -27,7 +28,7 @@ fn zonewm() -> Vec<Commit> {
 
 /// The groups as sha sets.
 fn groups(file_link: bool) -> Vec<BTreeSet<String>> {
-    let mut commits = zonewm();
+    let mut commits = swift_app();
     if !file_link {
         for c in &mut commits {
             c.files.clear();

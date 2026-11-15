@@ -2,10 +2,10 @@
 # push_gate.sh — run the full gate on the COMMIT being pushed, not on the working tree.
 #
 # THE HOLE. `pre-push` used to `exec tools/gate.sh --full` in the checkout, so the gate built and
-# tested whatever was on disk at that moment. Measured 2026-09-21 on ZoneWM: a push's cold gate
-# was in its test phase (`swift test` recompiles changed sources) while the next round's edits
-# were landing in Sources/ — so the gate certified a tree that was neither the pushed commit nor
-# any commit, and would have pushed a docs change on the strength of tests run over unrelated,
+# tested whatever was on disk at that moment. Measured 2026-09-21 on a private Swift app: a push's
+# cold gate was in its test phase (`swift test` recompiles changed sources) while the next round's
+# edits were landing in Sources/ — so the gate certified a tree that was neither the pushed commit
+# nor any commit, and would have pushed a docs change on the strength of tests run over unrelated,
 # unfinished code. The other direction is worse and quieter: uncommitted fixes on disk make a
 # broken commit pass. A pre-push gate that reads the working tree is a gate on the wrong object.
 #
@@ -35,7 +35,7 @@
 #
 # WHAT IS NOT GATED, and why that is not a pass over nothing. The gate certifies code the remote is
 # about to GAIN. Two kinds of ref gain it none, and each is skipped with a line saying so:
-#   - a ref whose commit the remote already has (reachable from one of its tracking refs). ZoneWM,
+#   - a ref whose commit the remote already has (reachable from one of its tracking refs). A private Swift app,
 #     2026-09-22: `git push --follow-tags` carried six release tags that had never been pushed, all
 #     on commits the remote had held for days. The gate rebuilt the oldest with today's toolchain,
 #     failed on a switch a later SDK made non-exhaustive, and refused a push whose only new code was
@@ -43,12 +43,12 @@
 #   - a ref whose commit was already gated earlier in this same push. A release pushes `main` and
 #     `vX.Y.Z` on one commit; one gate certifies both.
 #
-# A RED RUN KEEPS ITS EVIDENCE. ZoneWM, 2026-09-22: a push was refused, the caller had kept only the
-# last lines of the output, and the re-run of the same commit passed. The failure was a flake, and
-# nobody could say which test, because the only copy of the gate's output was a scrollback that no
-# longer existed. Every run is now teed to a log under ~/.cache/goh/push-logs (GOH_PUSH_LOGS
-# overrides). A green run deletes its log; a red one keeps it, prints its path, and the newest
-# `keep_failed_logs` are kept. The cost: the gate writes to a pipe, so its colours are off.
+# A RED RUN KEEPS ITS EVIDENCE. A private Swift app, 2026-09-22: a push was refused, the caller had
+# kept only the last lines of the output, and the re-run of the same commit passed. The failure was
+# a flake, and nobody could say which test, because the only copy of the gate's output was a
+# scrollback that no longer existed. Every run is now teed to a log under ~/.cache/goh/push-logs
+# (GOH_PUSH_LOGS overrides). A green run deletes its log; a red one keeps it, prints its path, and
+# the newest `keep_failed_logs` are kept. The cost: the gate writes to a pipe, so no colours.
 { # parse-guard -- bash reads this group whole before running it (tests/test_parse_guard.py)
 _goh_d=${BASH_SOURCE[0]%/*}; [ "$_goh_d" != "${BASH_SOURCE[0]}" ] || _goh_d=.; . "$_goh_d/../lib/bash5.sh" || exit; goh_bash5 "$@"
 . "$(dirname "${BASH_SOURCE[0]}")/_from_head.sh"; goh_from_head "${BASH_SOURCE[0]}" "$@"   # run HEAD, not the tree (C4)
@@ -150,7 +150,7 @@ unset gate_dirty
 #     this shell's environment either -- the leak does not need `set -a`.
 #   - the tag check's keys, read from the ENVIRONMENT by check_tag_version.py.
 #     A key documented as "set this in .gatesrc" that the checker can never see
-#     is worse than an undocumented one: ZoneWM set it exactly as documented, the
+#     is worse than an undocumented one: a private Swift app set it exactly as documented, the
 #     checker silently fell back to its defaults, and the pre-push refused a
 #     correct release with "NO version source declares a version at this commit"
 #     -- the config was read and ignored. Its own subshell gets the export.
@@ -233,7 +233,7 @@ cat >"$refs_file"
 
 # A TAG IS A CLAIM ABOUT A VERSION, and it is the one claim the code gate cannot
 # make: `tools/gate.sh --full` proves the commit BUILDS AND PASSES, never that
-# the name someone published for it is true. media_server, 2026-10-01: two
+# the name someone published for it is true. A private server workspace, 2026-10-01: two
 # `--amend --no-edit` runs were rejected by pre-commit with `2>/dev/null`
 # swallowing the refusal, so `git tag -f v1.79.3` named a commit still declaring
 # 1.79.1 and `--follow-tags` shipped it. Anyone checking out v1.79.3 got a build
@@ -266,8 +266,8 @@ elif [ "$tag_rc" -ne 0 ]; then
 fi
 
 # ROOM FOR A COLD GATE (GOH_MIN_FREE_GIB), asked before any export is made. A full disk failed a
-# push as a codesign and a sanitizer error, so the first reading was a race (ZoneWM, 2026-10-06);
-# refused here, it names the free space and the need. Read by name, in a child, like the others.
+# push as a codesign and a sanitizer error, so the first reading was a race (a private Swift app,
+# 2026-10-06); refused here, it names the free space and the need. Read by name, in a child.
 min_free=""
 if [ -f "$root/.gatesrc" ]; then
     min_free="$(bash -c 'set -a; . "$1"; printf %s "${GOH_MIN_FREE_GIB-}"' _ "$root/.gatesrc")" \
@@ -360,14 +360,14 @@ while read -r local_ref local_sha _remote_ref remote_sha; do
         continue
     fi
     # UNDER $HOME, physical path, never under the temp directory. SwiftLint 0.65.1's baseline
-    # (repo-relative paths, verified path-independent by ZoneWM's relativize_lint_baseline.py)
-    # matches NOTHING when the tree sits under /private/tmp or /private/var/folders -- every
-    # recorded violation fires as new -- and matches everything under /Users/... (measured
-    # 2026-09-21 with worktrees of one commit at ~/wt, /Users/Shared/wt, <repo>/.build/wt: 0
-    # violations; /private/tmp/wt: 12 -- even against a baseline swiftlint had just written
-    # THERE). The cause is inside SwiftLint's path relativisation; the fix that holds without
-    # theory is to gate where the tools were calibrated: a directory beside the user's checkouts.
-    # `pwd -P` besides, so a symlinked component can never be the difference.
+    # (repo-relative paths, verified path-independent by a private Swift app's
+    # relativize_lint_baseline.py) matches NOTHING when the tree sits under /private/tmp or
+    # /private/var/folders -- every recorded violation fires as new -- and matches everything under
+    # /Users/... (measured 2026-09-21 with worktrees of one commit at ~/wt, /Users/Shared/wt,
+    # <repo>/.build/wt: 0 violations; /private/tmp/wt: 12 -- even against a baseline swiftlint had
+    # just written THERE). The cause is inside SwiftLint's path relativisation; the fix that holds
+    # without theory is to gate where the tools were calibrated: a directory beside the user's
+    # checkouts. `pwd -P` besides, so a symlinked component can never be the difference.
     # A MACHINE-WIDE SLOT before the heavy work (lib/gate_slot.sh). Several sessions pushing at once
     # had no limit: a private consumer's gate was killed mid-test and games' Release rebuild ran out its 900 s step
     # limit at a load average of 49.6 (2026-10-18) -- failures of the box, not of the change. Taken
@@ -479,8 +479,8 @@ while read -r local_ref local_sha _remote_ref remote_sha; do
     gated_refs="${gated_refs:-}$local_ref=$commit "
 done <"$refs_file"
 
-# THE BRANCH MUST STILL BE WHAT WAS GATED (ZoneWM D-0211, tests/test_push_gate_race.py). Over an
-# HTTPS remote git sends what the local ref names when the helper SENDS, after this hook returns:
+# THE BRANCH MUST STILL BE WHAT WAS GATED (D-0211 of a Swift app, tests/test_push_gate_race.py).
+# Over HTTPS git sends what the local ref names when the helper SENDS, after this hook returns:
 # a 25-minute gate of d0cf1968 delivered f79cf19f, two commits no gate ran on. Re-read every
 # gated ref now; one that moved is refused. A pinned `<sha>:refs/heads/x` push resolves to itself.
 for pair in ${gated_refs:-}; do

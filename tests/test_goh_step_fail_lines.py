@@ -1,9 +1,9 @@
 """goh_step's failure block names the step that FAILED, never a passing sibling's `✗` (BACKLOG C5).
 
-ZoneWM H2, 2026-10-05: the pre-push summary of a red `make verify-clean` listed a calibration
-plant's quoted `✗` row as a failure. The plant had exited 0; its `✗` was the point of it. The grep
-read the whole log of the outer step, so every matching line any sub-step printed was quoted as the
-reason, whether that sub-step passed or not.
+A private Swift app H2, 2026-10-05: the pre-push summary of a red `make verify-clean` listed a
+calibration plant's quoted `✗` row as a failure. The plant had exited 0; its `✗` was the point of
+it. The grep read the whole log of the outer step, so every matching line any sub-step printed was
+quoted as the reason, whether that sub-step passed or not.
 
 Two shapes, two answers:
 * NESTED house steps: an inner goh_step that failed has already printed its own failure block. That

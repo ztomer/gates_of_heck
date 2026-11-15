@@ -1,7 +1,7 @@
 """_push_siblings.py -- the sibling checkouts a push export's tracked manifests name.
 
 A path dependency that leaves the repository (`goh-tui = { path = "../gates_of_heck/..." }` in a
-Cargo.toml, `.package(path: "../../ZoneWM/Packages/SpaceBarKit")` in a nested Package.swift)
+Cargo.toml, `.package(path: "../../app/Packages/SpaceBarKit")` in a nested Package.swift)
 resolves BESIDE the checkout, and beside a push export there is nothing but its tree. The push gate
 links each sibling named here into the run directory (lib/push_runs.sh, `export_siblings`).
 

@@ -96,9 +96,9 @@ def test_a_tree_without_a_lockfile_is_refused_not_passed(tmp_path):
 
 
 # ── every tracked lock, not only the one beside the manifest (queue GOH.EA2) ────────────────
-# monitor's fuzz/, media_server's 31 crates and testkits, koffee_big's core beside an app: each a
-# lock of its own workspace, which the gate never read, so each repo hand-wrote an audit step per
-# lock through a shell variable the estate audit cannot read.
+# monitor's fuzz/, a private server workspace's 31 crates and testkits, koffee_big's core beside an
+# app: each a lock of its own workspace, which the gate never read, so each repo hand-wrote an audit
+# step per lock through a shell variable the estate audit cannot read.
 
 LOCK_ONLY = "# hand-written: cargo-audit reads the lock alone\nversion = 4\n" + ANSI_TERM
 REASONED = f'"{UNMAINTAINED}",  # ansi_term, until 2027'
@@ -134,8 +134,9 @@ def test_a_nested_lock_is_judged_by_its_own_audit_toml(tmp_path):
 
 
 def test_a_root_audit_toml_governs_the_locks_below_it(tmp_path):
-    """media_server's shape: one policy at the root for every crate. Its entry fires against a
-    lock below it, not the root's own, so it is NOT stale; removing it turns the gate red."""
+    """A private server workspace's shape: one policy at the root for every crate. Its entry fires
+    against a lock below it, not the root's own, so it is NOT stale; removing it turns the gate
+    red."""
     c = _nested(tmp_path, root_ignore=REASONED)
     r = run_script(CURRENT, c, OFFLINE)
     out = r.stdout + r.stderr

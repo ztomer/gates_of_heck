@@ -5,10 +5,10 @@
 //! launched with a sentinel set in the caller: `open -a`, `open -n -a`, `open --env`,
 //! `osascript ... launch` and `launchctl asuser` all carried the sentinel and the caller's
 //! `GOH_DIR`; only `env -i /usr/bin/open` (and the Finder) gave launchd's login environment. So
-//! `ZoneWM`'s installer, run by a ship, started `ZoneWM` with `GOH_SHIP_ITEM` and a `GOH_DIR` naming a
-//! transient gate export with no `bin/`, and every app `ZoneWM` relaunched (`Claude.app` among them)
-//! handed it to every agent of that session. The one launch is `goh launch-app PATH`
-//! (`crate::launchapp`), which clears the environment first.
+//! a private Swift app's installer, run by a ship, started the app with `GOH_SHIP_ITEM` and a
+//! `GOH_DIR` naming a transient gate export with no `bin/`, and every app it relaunched
+//! (`Claude.app` among them) handed it to every agent of that session. The one launch is `goh
+//! launch-app PATH` (`crate::launchapp`), which clears the environment first.
 //!
 //! GOH.BAREOPEN2 widened the scan, from `crate::grace::OVER_FROM` (2026-11-23; before it the scan reads
 //! as the last release did, so a consumer is not red on shapes no seed names yet): an `open` behind `env FOO=1` or `FOO=1` (an `env -i` is the clean
@@ -41,7 +41,7 @@ pub const KIND: Kind = Kind {
 };
 
 const FIX: &str = "    `open` hands the app it launches THIS shell's environment, and the app outlives the script:\n    \
-     a ship's GOH_DIR (a transient gate export) and GOH_SHIP_ITEM reached ZoneWM and every app it\n    \
+     a ship's GOH_DIR (a transient gate export) and GOH_SHIP_ITEM reached a private Swift app and every app it\n    \
      relaunched (GOH.CLEANOPEN). Launch with launchd's login environment instead:\n      \
      \"$GOH_DIR/bin/goh\" launch-app \"$APP\"                 (foreground)\n      \
      \"$GOH_DIR/bin/goh\" launch-app --background \"$APP\"    (open -g)\n";

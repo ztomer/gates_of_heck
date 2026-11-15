@@ -4,8 +4,8 @@
 # Gate source edited in the shared checkout was LIVE in every consumer the moment it was saved:
 # on 2026-10-05 alone an uncommitted `_goh_bin.sh` reached antiknob's push ahead of the binary it
 # checks, a calibration that disabled a branch "for a few seconds" turned another session's suite
-# red, and media_server's pre-push warned on a peer's half-done `_line_cap.sh`. A warning names
-# that; this removes it. Every entry point re-runs itself from an EXPORT of HEAD:
+# red, and a private server workspace's pre-push warned on a peer's half-done `_line_cap.sh`. A
+# warning names that; this removes it. Every entry point re-runs itself from an EXPORT of HEAD:
 #
 #   ~/.cache/goh/head/<HEAD sha>/   (GOH_HEAD_CACHE)  built once per commit by `git archive`,
 #                                    renamed into place whole, and never written again
@@ -158,11 +158,11 @@ goh_from_head() { # <this script> <args...> -- execs the export's copy, or retur
 # load (false). --caller-env is for a lib ANY script sources (tui/lib.sh: a release, an installer),
 # whose caller is not a gate: the export's GOH_DIR, GOH_LIVE_ROOT and PYTHONPATH stay the lib's
 # business, and the caller gets its own three back -- value, export bit, or unset -- once the copy
-# has loaded. Exported into the caller, they reached everything it started: ZoneWM's release.sh
-# sourced tui/lib.sh, its `open -a` started ZoneWM with a GOH_DIR naming a transient export with no
-# bin/, and every app ZoneWM relaunched (Claude.app) handed it to every agent (GOH.CLEANOPEN,
-# 2026-11-13; tests/test_gates_from_head.py). A gate's own lib (_common.sh) keeps the export: its
-# sourcer IS a gate, and runs HEAD's gates through it.
+# has loaded. Exported into the caller, they reached everything it started: a private Swift app's
+# release.sh sourced tui/lib.sh, its `open -a` started the app with a GOH_DIR naming a transient
+# export with no bin/, and every app it relaunched (Claude.app) handed it to every agent
+# (GOH.CLEANOPEN, 2026-11-13; tests/test_gates_from_head.py). A gate's own lib (_common.sh) keeps
+# the export: its sourcer IS a gate, and runs HEAD's gates through it.
 goh_from_head_lib() {
     # Every save is LOCAL: HEAD's copy calls this again while it loads, and a global save was
     # overwritten by that nested call with the export's own values.

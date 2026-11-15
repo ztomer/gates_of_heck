@@ -2,7 +2,7 @@
 //! `checks/_spawn_guard_attr_rust.py`.
 //!
 //! A guard protects the VALUE it wraps, never the function it was written in:
-//! a guard on one binding laundered a second, raw one (`routines`), and a
+//! a guard on one binding laundered a second, raw one (a private Rust app), and a
 //! `Self(` construction passed whenever any `impl Drop` existed in the file,
 //! even one whose body did nothing (`monitor`). Every branch below names the
 //! binding, or resolves `Self` to the type whose `Drop` was read.

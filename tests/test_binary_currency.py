@@ -2,9 +2,9 @@
 
 2026-10-05: a session bumped `Cargo.toml` to 0.20.0 in the shared checkout, uncommitted, ahead of the
 release commit -- and every consumer's pre-commit refused every commit ("the goh binary serving this
-gate is BEHIND the source"), ZoneWM's among them. The check exists for a real hazard -- a step
-COMMITTED without a rebuild runs nowhere -- and that is a fact about HEAD. Uncommitted gate source is
-already named, by path, by its own warning; it must not also stop the estate.
+gate is BEHIND the source"), a private Swift app's among them. The check exists for a real hazard --
+a step COMMITTED without a rebuild runs nowhere -- and that is a fact about HEAD. Uncommitted gate
+source is already named, by path, by its own warning; it must not also stop the estate.
 """
 
 import subprocess

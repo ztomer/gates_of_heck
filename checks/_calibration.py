@@ -183,10 +183,10 @@ PROVES_FLAG = "--proves"
 def dispatches_proves(path: str) -> str | None:
     """Why `path` must not be asked `--proves`, or None when its CODE dispatches on the flag.
 
-    Read without running it (G1b(a), 2026-10-24): routines' check_tabs_contract, before its
-    b774d20, had no `--proves`; asked, it ignored the flag and ran its FULL path -- a cargo build
-    and the real binary -- and its rc-0 stdout became the claim set. Running a prover to find out
-    whether it answers is exactly the run that must not happen, so the question is asked of its
+    Read without running it (G1b(a), 2026-10-24): a private Rust app's check_tabs_contract, before
+    its b774d20, had no `--proves`; asked, it ignored the flag and ran its FULL path -- a cargo
+    build and the real binary -- and its rc-0 stdout became the claim set. Running a prover to find
+    out whether it answers is exactly the run that must not happen, so the question is asked of its
     source: the literal `--proves` has to appear as CODE (an argv comparison, an `add_argument`),
     never only as a docstring or a comment, which are prose about a flag rather than a dispatch.
     """

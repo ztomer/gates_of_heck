@@ -35,7 +35,8 @@ def fast_init(repo: Path | str, branch: str | None = None) -> None:
     key = branch or ""
     if key not in _TEMPLATES:
         seed = Path(tempfile.mkdtemp(prefix="goh-test-git."))
-        # Removed when the worker exits: 23 had been stranded in one temp dir (ZoneWM, 2026-10-07).
+        # Removed when the worker exits: 23 had been stranded in one temp dir (a private Swift app,
+        # 2026-10-07).
         atexit.register(shutil.rmtree, seed, True)
         subprocess.run(
             ["git", "init", "-q", *(["-b", branch] if branch else []), str(seed)],

@@ -144,7 +144,7 @@ def test_both_measurement_paths_share_one_scope_definition():
 
 # ---- a path dependency is not the package (GOH.SWIFTCOV, 2026-11-07) -------
 #
-# token-pool's widget read 39.3% over 17 files, 12 of them ZoneWM's SpaceBarKit,
+# token-pool's widget read 39.3% over 17 files, 12 of them a private Swift app's SpaceBarKit,
 # compiled into the test binary by `.package(path:)`. Its files sit at an
 # ordinary absolute path no marker excludes, so the scope counted the kit.
 

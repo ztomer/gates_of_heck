@@ -47,7 +47,7 @@ reap_dead_runs() {
 # `../gates_of_heck/crates/goh-tui` (the house TUI, BACKLOG 4.14) died there on "no matching
 # package named `goh-tui`" (antiknob, 2026-10-24), and the link its own gate.sh made as a
 # workaround was then named as the gate writing outside its tree; token-pool's widget
-# (`.package(path: "../../ZoneWM/Packages/SpaceBarKit")`, 2026-11-07) died the same way. So the
+# (`.package(path: "../../app/Packages/SpaceBarKit")`, 2026-11-07) died the same way. So the
 # export provides every sibling a TRACKED Cargo.toml or Package.swift names (gates/_push_siblings.py),
 # at its HEAD: gates_of_heck from $GOH, any other from the checkout of that name beside the real one,
 # when there is one ($1 = the export's tree, $2 = the run directory, $3 = the real checkout). Each

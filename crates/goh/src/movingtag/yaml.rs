@@ -2,9 +2,9 @@
 //!
 //! One rule covers every format that spells an image as `image: <ref>` -- compose services, a
 //! workflow's `container.image` and `services.*.image`, Kubernetes containers, CI images -- so
-//! every `*.yml`/`*.yaml` is read, wherever it lives (`media_server` keeps its compose files in
-//! `compose/*.yml`, a name no filename rule would know). The parse decides what a key is: an
-//! `image:` inside a `run: |` block is script text, and an alias resolves to what it names.
+//! every `*.yml`/`*.yaml` is read, wherever it lives (a private server workspace keeps its compose
+//! files in `compose/*.yml`, a name no filename rule would know). The parse decides what a key is:
+//! an `image:` inside a `run: |` block is script text, and an alias resolves to what it names.
 //!
 //! What counts:
 //!   * `image: <scalar>`, unless the same mapping has `build:` -- compose then NAMES the image it

@@ -235,8 +235,8 @@ fn every_token_has_one_owner_and_no_scanner_judges_another_rows_token() {
     assert!(overlaps.is_empty(), "one site counted twice: {overlaps:?}");
 }
 
-/// `media_server`'s `scripts/dev/linux_test.sh` before 09cdcd89 pinned it (SRV.RUSTTAG): the moving
-/// `rust:1` that `goh moving-tags` never read, its lines as they were.
+/// A private server workspace's `scripts/dev/linux_test.sh` before 09cdcd89 pinned it
+/// (SRV.RUSTTAG): the moving `rust:1` that `goh moving-tags` never read, its lines as they were.
 const LINUX_TEST: &str = "#!/usr/bin/env bash\n\
 # Run the workspace's tests in a Linux container.\n\
 set -euo pipefail\n\
@@ -252,7 +252,7 @@ fn tally(row: &'static Row, files: &[(&str, &str)]) -> Tally {
     let c = compiled(row);
     let mut t = Tally::default();
     for (rel, text) in files {
-        c.file("media_server", rel, text, &mut t).expect("hook");
+        c.file("server", rel, text, &mut t).expect("hook");
     }
     t
 }
@@ -309,10 +309,7 @@ fn an_unnamed_shape_is_red_in_the_differential_and_a_named_gap_is_not() {
     assert!(t.unnamed.is_empty(), "{t:?}");
     let (red, text) = diff::report(moving_tags().scanner, &t, 1);
     assert!(!red && text.contains("gap (GOH.TEST)"), "{text}");
-    assert!(
-        text.contains("media_server: .env:1: IMAGE=rust:1"),
-        "{text}"
-    );
+    assert!(text.contains("server: .env:1: IMAGE=rust:1"), "{text}");
 }
 
 #[test]

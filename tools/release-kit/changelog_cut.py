@@ -155,9 +155,9 @@ STYLE_WINDOW = 5  # how many of the newest titled stanzas say whether the file d
 
 
 def heading_style(secs: list[Section]) -> tuple[bool, str, bool]:
-    """(titled, separator, dated) of the file's version headings: routines and ztools write
-    `## vX — title _(YYYY-MM-DD)_`, goh `## vX -- title`. A cut follows the file it joins. The day
-    is the house heading's, so ANY of the newest few titled stanzas carrying one makes the file
+    """(titled, separator, dated) of the file's version headings: a private Rust app and ztools
+    write `## vX — title _(YYYY-MM-DD)_`, goh `## vX -- title`. A cut follows the file it joins. The
+    day is the house heading's, so ANY of the newest few titled stanzas carrying one makes the file
     dated: a hand-written `## vX -- title` without it is a lapse, not a change of style."""
     titled = [s for s in secs if s.version and len(s.title.split(maxsplit=1)) > 1]
     if not titled:

@@ -11,7 +11,7 @@ Every thread, process, weight, backtrace, frame and binary in it is written in f
 `id`, and named by `ref` everywhere after, so a row read on its own is mostly pointers. The XML is
 streamed and each row cleared once read: an all-processes recording exports to hundreds of MB.
 
-    xctrace_profile.py tp.xml --process ZoneWM --under readNow --tree 6
+    xctrace_profile.py tp.xml --process MyApp --under readNow --tree 6
 """
 
 from __future__ import annotations

@@ -169,9 +169,9 @@ fn several_on_one_line_are_each_reported() {
 // ── scope: every shell source, never gated on its own pipefail line ─────
 
 /// A file with no pipefail line still runs under one: a library its caller sources
-/// (`media_server`'s install-lib.sh, sourced by install.sh, let a release through a scan that
-/// only read files saying "pipefail"), or a script whose caller exports SHELLOPTS. The scan
-/// does not ask the file.
+/// (a private server workspace's install-lib.sh, sourced by install.sh, let a release through a
+/// scan that only read files saying "pipefail"), or a script whose caller exports SHELLOPTS. The
+/// scan does not ask the file.
 #[test]
 fn a_file_with_no_pipefail_line_is_still_read() {
     for src in [
@@ -184,7 +184,8 @@ fn a_file_with_no_pipefail_line_is_still_read() {
 }
 
 /// Every shell SOURCE is in scope, the template an installer is regenerated from included: a
-/// `.sh.tmpl` left out let a release put a fixed site straight back (`media_server`, 2026-10-08).
+/// `.sh.tmpl` left out let a release put a fixed site straight back (a private server workspace,
+/// 2026-10-08).
 #[test]
 fn every_shell_source_is_in_scope() {
     for (rel, head) in [

@@ -1,10 +1,11 @@
 """A consumer's `tools/gate.sh --full` holds the gate slot whatever its own copy says (v0.39.0).
 
 v0.37.0 put the slot in every full-gate entry point goh ships -- local_ci.sh, round.sh, the starter
-gate.sh. The ~15 consumer copies written before it (a private consumer, ZoneWM, divoom-control, games, servers,
-...) run `"$GOH/gates/structural.sh" "$@"` and then their own heavy layers, and never exec
-local_ci.sh: hand-run, they took no slot and raced every push on the machine. install.sh never
-overwrites a gate.sh, so the fix lives in the one goh file they all already call: structural.sh
+gate.sh. The ~15 consumer copies written before it (a private consumer, a private Swift app,
+divoom-control, games, servers, ...) run `"$GOH/gates/structural.sh" "$@"` and then their own heavy
+layers, and never exec local_ci.sh: hand-run, they took no slot and raced every push on the machine.
+install.sh never overwrites a gate.sh, so the fix lives in the one goh file they all already call:
+structural.sh
 --full, run from a `tools/gate.sh`, takes the slot ON BEHALF OF that gate.sh -- a holder that lives
 until the gate.sh process ends, not until structural.sh does.
 

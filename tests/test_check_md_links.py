@@ -169,7 +169,7 @@ def test_the_right_anchor_is_green(tmp_path):
 
 
 def test_a_directory_link_resolves(tmp_path):
-    """`[docs/decisions/](docs/decisions/)` is how ZoneWM points at a folder of
+    """`[docs/decisions/](docs/decisions/)` is how a private Swift app points at a folder of
     records, and GitHub renders it as a tree. Requiring a file reports every
     such link in the estate as broken — which is how this first landed."""
     repo = tmp_path / "zon"

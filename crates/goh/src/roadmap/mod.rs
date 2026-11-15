@@ -11,8 +11,9 @@
 //!      keep completed work (house rule #16);
 //!   3. every open entry under a `Phase` heading opens with an id and carries a `Done when:`; a
 //!      clause outside every entry is a finding (the anchor that keeps the entry grammar honest);
-//!   4. an entry citing `(queue: <ID>)` whose umbrella item is done is a finding (`ZoneWM`'s advisory
-//!      `tools/check_stale_backlog.py`, generalised; the queue is a seam, `queue.rs`).
+//!   4. an entry citing `(queue: <ID>)` whose umbrella item is done is a finding (a private Swift
+//!      app's advisory `tools/check_stale_backlog.py`, generalised; the queue is a seam,
+//!      `queue.rs`).
 //!
 //! Today's findings are DEBT held by `roadmap_seed.json` (`judge.rs`): a count per `<file>#<rule>`
 //! that may only fall. `GOH_ROADMAP` unset is red in every repo and every fixture (GOH.ROADMAPREQ;

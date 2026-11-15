@@ -109,9 +109,10 @@ def test_full_scope_sees_an_untracked_file_but_not_an_ignored_one(repo):
 
 def test_full_scope_omits_a_tracked_file_deleted_from_the_worktree(repo):
     """Full scope is the WORKTREE, so a tracked file deleted and not yet committed is not in it.
-    Measured 2026-11-11: routines had eight fixtures deleted mid-edit, `ls-files --cached` still
-    named them, and check_estate_corpus.py died copying the first one (FileNotFoundError) -- which
-    took down structural --full, the empty-scope sweep and the gate-calibration test in goh."""
+    Measured 2026-11-11: a private Rust app had eight fixtures deleted mid-edit, `ls-files --cached`
+    still named them, and check_estate_corpus.py died copying the first one (FileNotFoundError) --
+    which took down structural --full, the empty-scope sweep and the gate-calibration test in
+    goh."""
     import sys
 
     sys.path.insert(0, str(REPO_ROOT / "checks"))

@@ -33,7 +33,7 @@ def _refs(*pairs):
 
 
 def _media_shape(repo, version):
-    """media_server's layout: a VERSION file AND a workspace Cargo.toml."""
+    """A private server workspace's layout: a VERSION file AND a workspace Cargo.toml."""
     write(repo, "VERSION", f"{version}\n")
     write(
         repo,

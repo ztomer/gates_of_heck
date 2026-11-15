@@ -1,10 +1,11 @@
 //! `goh red-run`: a commit that adds a test names the mutation that turned it red (BACKLOG 4.11).
 //!
-//! "Prove a new test can fail" is written in this repo's rules, `ZoneWM`'s and the global ones, and
-//! was enforced nowhere: the pass cache records passes only, so a test that cannot fail reads exactly
-//! like one that can. The commit message is where the question cannot be skipped. A commit whose diff
-//! ADDS a test declaration carries `Red-run:` in git's trailer block -- what was broken, and that the
-//! new test went red on it -- beside `commit-class`'s trailers, read by the same parser.
+//! "Prove a new test can fail" is written in this repo's rules, a private Swift app's and the
+//! global ones, and was enforced nowhere: the pass cache records passes only, so a test that cannot
+//! fail reads exactly like one that can. The commit message is where the question cannot be
+//! skipped. A commit whose diff ADDS a test declaration carries `Red-run:` in git's trailer block
+//! -- what was broken, and that the new test went red on it -- beside `commit-class`'s trailers,
+//! read by the same parser.
 //!
 //! What it does not do: check that the claim is TRUE. A trailer is checked for presence and for
 //! substance (`none`, `n/a`, `tbd`, `-`, `yes`, `done` are refused, as gaming `Systemic:` looked);

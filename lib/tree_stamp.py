@@ -1,6 +1,6 @@
 """Did the working tree move while a gate ran over it?
 
-THE CLASS (ZoneWM 2c.9, 2026-09-21). A gate that runs on the WORKING TREE
+THE CLASS (a private Swift app 2c.9, 2026-09-21). A gate that runs on the WORKING TREE
 certifies whatever bytes were there while it ran. Edit a source file during a
 background `swift test` and the run either dies in a target nobody touched
 (`error: fatalError`, no cause named) or goes green over a tree that is no

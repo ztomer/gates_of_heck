@@ -1,10 +1,10 @@
 """A Cargo.lock behind its newest compatible releases fails the push (GOH.CRATESBEHIND).
 
-House Rust rule 2 is "latest dependencies", and nothing read it: routines' lock had fallen 37
-compatible updates behind (FAULTS.ROUTINES) with every gate green. `goh crates-behind` runs
-`cargo update --dry-run` over each lock the gate names; a lock it would move is red, naming each
-crate. Calibrated on a fixture held one patch release back (itoa 1.0.18, newest 1.0.19 on the day
-this landed): red, then green after `cargo update`. That arm needs the registry, so it skips --
+House Rust rule 2 is "latest dependencies", and nothing read it: a private Rust app's lock had
+fallen 37 compatible updates behind (its FAULTS item) with every gate green. `goh crates-behind`
+runs `cargo update --dry-run` over each lock the gate names; a lock it would move is red, naming
+each crate. Calibrated on a fixture held one patch release back (itoa 1.0.18, newest 1.0.19 on the
+day this landed): red, then green after `cargo update`. That arm needs the registry, so it skips --
 saying so -- when the index cannot be reached; the offline arm is hermetic.
 """
 

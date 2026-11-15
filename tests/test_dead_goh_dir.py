@@ -2,10 +2,10 @@
 
 Every gate entry point re-runs from `~/.cache/goh/head/<sha>` and exports GOH_DIR at it
 (gates/_from_head.sh). A long-lived process started under a gate kept that value: a ship's
-release kit `open`ed Routines.app with it, and the routines daemon's from_head jobs exited 2 from
-2026-11-12 20:43 once the export was pruned (the disk-pressure reclaim never ran); a Claude
-session carried another, and every commit from it was refused by pre-commit ("no gates_of_heck
-commit gate at .../head/c06bc794..."). Two halves, both tested here:
+release kit `open`ed a private menu-bar app with it, and the private Rust app daemon's from_head
+jobs exited 2 from 2026-11-12 20:43 once the export was pruned (the disk-pressure reclaim never
+ran); a Claude session carried another, and every commit from it was refused by pre-commit ("no
+gates_of_heck commit gate at .../head/c06bc794..."). Two halves, both tested here:
 
   * the escape: the release kit's launch hands the app launchd's login environment, not its own;
   * the readers: a GOH_DIR that is not a directory resolves to its GOH_LIVE_ROOT when it was an

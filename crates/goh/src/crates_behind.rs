@@ -1,9 +1,9 @@
 //! A `Cargo.lock` behind its newest compatible releases fails the push (`goh crates-behind`,
 //! GOH.CRATESBEHIND).
 //!
-//! House Rust rule 2 is "latest dependencies", and nothing read it: `routines`' lock had fallen 37
-//! compatible updates behind (FAULTS.ROUTINES) while every gate was green. `goh deps` asks
-//! crates.io about DIRECT dependencies and only reports drift; a transitive patch release is
+//! House Rust rule 2 is "latest dependencies", and nothing read it: a private Rust app's lock had
+//! fallen 37 compatible updates behind (its FAULTS item) while every gate was green. `goh deps`
+//! asks crates.io about DIRECT dependencies and only reports drift; a transitive patch release is
 //! invisible to it. Cargo already knows the answer for the whole graph: `cargo update --dry-run`
 //! prints each lock entry it would move (`Updating itoa v1.0.18 -> v1.0.19`) and writes nothing.
 //!
@@ -472,7 +472,8 @@ pub fn run_command(a: &crate::cli::CratesBehindArgs) -> i32 {
     } else {
         a.locks.clone()
     };
-    // Four at a time: media_server has 31 locks, and each dry run is mostly a network wait.
+    // Four at a time: a private server workspace has 31 locks, and each dry run is mostly a network
+    // wait.
     let mut judged = Vec::with_capacity(locks.len());
     for chunk in locks.chunks(4) {
         std::thread::scope(|s| {

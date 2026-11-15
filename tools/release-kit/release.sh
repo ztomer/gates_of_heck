@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # tools/release-kit/release.sh — ONE parameterized releaser replacing seven
 # per-repo copies that drifted (divoom-control, ztools, monitor, CadGoose,
-# routines each grew their own; every one disagreed about ordering, gates and
+# a private Rust app each grew their own; every one disagreed about ordering, gates and
 # idempotency).
 #
 # Contract — steps run in this order, each skippable, every failure names its

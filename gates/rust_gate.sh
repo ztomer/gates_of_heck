@@ -149,10 +149,10 @@ rust_crate_checks() {
     #
     # THE CARGO THAT CROSS-LINTS (BACKLOG P1g). A `--target` config builds the target's build
     # scripts, and those compile C FOR THE TARGET: ring needs a musl C compiler, which plain
-    # `cargo clippy` on macOS has not got, so media_server ran its cross clippy serially, in its
-    # own script, 46 s after the crate fan-out ended. GOH_RUST_LINT_CARGO names the cargo command
-    # for `--target` configs (`cargo-zigbuild`, which brings `zig cc`); host configs keep `cargo`.
-    # Required up front, like every tool this gate cannot run without.
+    # `cargo clippy` on macOS has not got, so a private server workspace ran its cross clippy
+    # serially, in its own script, 46 s after the crate fan-out ended. GOH_RUST_LINT_CARGO names the
+    # cargo command for `--target` configs (`cargo-zigbuild`, which brings `zig cc`); host configs
+    # keep `cargo`. Required up front, like every tool this gate cannot run without.
     if [ -n "${GOH_RUST_LINT_CONFIGS:-}" ]; then
         lint_cargo="${GOH_RUST_LINT_CARGO:-cargo}"
         case "$lint_cargo" in
@@ -198,7 +198,7 @@ rust_crate_checks() {
     # UNUSED DEPENDENCIES. `[lints.cargo] unused_dependencies = "deny"` looks like
     # this gate and is not one: the key needs `-Zcargo-lints` on nightly, so on
     # stable cargo emits "unused manifest key `lints.cargo`" and exits 0. It had
-    # never been enforced on any toolchain in the repo that declared it (routines,
+    # never been enforced on any toolchain in the repo that declared it (a private Rust app,
     # removed in 12edbc2). cargo-machete does the job on stable.
     #
     # It is a hard failure, not a warning, because it exits 1 on findings and a
@@ -251,7 +251,7 @@ rust_crate_checks() {
 #     the command line, never left to a `.cargo/audit.toml` that may sit where cargo-audit does not
 #     look (it reads only the CURRENT directory's: ztools' gate ran for a month without its file).
 #   * EVERY TRACKED LOCK OF THE REPO, not only the one beside this manifest (queue GOH.EA2): a
-#     second workspace in the repo (monitor's fuzz/, media_server's testkits, koffee_big's core)
+#     second workspace in the repo (monitor's fuzz/, a private server workspace's testkits, koffee_big's core)
 #     was audited only by a hand-written step per lock, through a shell variable the estate audit
 #     cannot read. A lock gitignored beside a tracked manifest (a library crate's) counts too: the
 #     step runs once, so it must not see only the crate it was named for. Which locks, and from
@@ -276,7 +276,8 @@ rust_advisories() {
         || die "[rust] could not list the repo's Cargo.lock files (above)"
     # goh's own copy of the database, under a read/write lock: a refresh beside a read tore the
     # read ("unexpected start of advisory"), so no goh audit reads one being rewritten. The first
-    # audit fetches it; the rest read that copy (a fetch per lock was 18 of media_server's 21 s).
+    # audit fetches it; the rest read that copy (a fetch per lock was 18 of a private server
+    # workspace's 21 s).
     while IFS="$(printf '\t')" read -r cfg lock; do
         goh_step_in "$top/$cfg" "no known advisory in $lock (cargo audit: warnings, unmaintained, unsound, yanked)" \
             "$GOH_PY" "$HERE/../lib/advisory_db.py" run "$fetch" -- cargo audit --file "$top/$lock" \

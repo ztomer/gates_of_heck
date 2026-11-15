@@ -1,7 +1,7 @@
 """changelog_cut.py and release step 0b make the stanza in the house heading, from whatever
 Unreleased holds (GOH.CUTTITLE).
 
-Four defects met cutting ztools v3.13.1/v3.13.2 and routines:
+Four defects met cutting ztools v3.13.1/v3.13.2 and a private Rust app:
 
 * a kit cut wrote a bare `## vX` in repos whose headings are `## vX — title _(YYYY-MM-DD)_`: the
   title is the release's --title or, failing that, the first Unreleased entry, and the date is the

@@ -2,8 +2,8 @@
 # _rust_proven.sh -- rust_gate.sh's proven cache, per group and per crate (BACKLOG P3). Sourced.
 #
 # THE COST. The proven cache keyed every step on the WHOLE tree, so one README line re-gated every
-# crate, and media_server's 29 per-crate gates found no record of each other's repo-wide scans.
-# Now each group of rust_gate.sh is proven once on its own inputs:
+# crate, and a private server workspace's 29 per-crate gates found no record of each other's
+# repo-wide scans. Now each group of rust_gate.sh is proven once on its own inputs:
 #   crate     the workspace at $cargo_dir and every package it reaches by `path =`, plus the
 #             config cargo/clippy/rustfmt/the gates read (`goh rust-scope` names them);
 #   repo      the whole tree, for the scans that read the whole repo;
@@ -20,7 +20,7 @@
 #     repository is then LEARNED: kept beside the records (scope-extra/), and keyed with the scope
 #     from the next run on, before AND after it runs -- so the run that learns records nothing (the
 #     file was not keyed before it ran) and the next one can. Without this a crate whose build.rs
-#     reads `compose/` ran on every push forever (media_server's vpn-watchdog-rs, 2026-10-06). A
+#     reads `compose/` ran on every push forever (a private server workspace's vpn-watchdog-rs, 2026-10-06). A
 #     read outside the repository has no git object to key on: never learned, never recorded;
 #   * the inputs are keyed again after the group ran; if they moved, nothing is recorded;
 #   * no native goh, or a scope it cannot name: the group simply runs, uncached, and says so.
@@ -51,7 +51,7 @@ _rust_scope_init() {
     GOH_PROVEN_KEYED_ROOTS="$(proven_keyed_roots)"
     export GOH_PROVEN_KEYED_ROOTS
     f="$(mktemp "${TMPDIR:-/tmp}/goh-rust-scope.XXXXXX")"
-    goh_cleanup_add "$f" "$f.err"  # it was never removed: ~4,700 leaked (ZoneWM, 2026-10-06)
+    goh_cleanup_add "$f" "$f.err"  # it was never removed: ~4,700 leaked (a private Swift app, 2026-10-06)
     # shellcheck disable=SC2154  # cargo_dir is the sourcing gate's (rust_gate.sh), set before this runs
     if "$goh_native" rust-scope "$cargo_dir" >"$f" 2>"$f.err" && [ -s "$f" ]; then
         RUST_SCOPE_FILE="$f"

@@ -17,8 +17,8 @@ goh_sleep_mark() {
 # goh_slept_since <mark> — when a run that took <mark> at its start fails, say so if the machine
 # slept during it. A suite run in a dark wake has no display and a stalled clock, so a test that
 # reads a screen, the GPU or elapsed time fails for the SLEEP, and the red reads exactly like a
-# code defect (ZoneWM, 2026-10-11: two Swift rows red at the second of a dark wake, green awake).
-# Names the sleep and returns 0; returns 1 when there was none or the OS cannot say.
+# code defect (a private Swift app, 2026-10-11: two Swift rows red at the second of a dark wake,
+# green awake). Names the sleep and returns 0; returns 1 when there was none or the OS cannot say.
 goh_slept_since() {
     local mark="$1" now
     now="$(goh_sleep_mark)"
