@@ -50,9 +50,16 @@ goh_resolve_native() {
     fi
     local here want key pin
     # bin/goh is not in git: run from an export of HEAD (C4), the binary comes from the LIVE
-    # checkout's bin/, for the commit the export pins (`.goh-head`).
-    here="${GOH_LIVE_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}/gates"
+    # checkout's bin/, for the commit the export pins (`.goh-head`). ONLY from an export: run from
+    # a checkout, the binary is that checkout's, whatever GOH_LIVE_ROOT an ancestor exported. The
+    # ship's export leaked it into the release worktree's suite, and every gate there was served
+    # main's 0.118.0 for a 0.119.0 tree (tests/test_live_root_leak.py).
     pin="$(cat "$(dirname "${BASH_SOURCE[0]}")/../.goh-head" 2>/dev/null || true)"
+    if [ -n "$pin" ] && [ -n "${GOH_LIVE_ROOT:-}" ]; then
+        here="$GOH_LIVE_ROOT/gates"
+    else
+        here="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/gates"
+    fi
     # ONCE PER PROCESS TREE: the answer below costs ~12 spawns (the GOH_LIVE delta, HEAD's stamp,
     # the binary's own), and every goh.sh call paid it again (2026-10-06,
     # tests/test_goh_bin_once.py). A parent's answer for the same gates root and GOH_LIVE mode is
