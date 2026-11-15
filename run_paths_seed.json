@@ -1,0 +1,4 @@
+{
+  "why": "goh run-paths (GOH.CLASS.CHECKOUT part 2, 2026-11-15): a temp, lock or stage path minted inside a work tree, or a git write-tree on the shared index; every such path comes from lib/run_path.sh (and its Python and Rust faces), rooted outside the tree. It landed empty: the seven sites standing on da7446f (scripts/build-goh.sh bin/.build.lock, lib/place.sh <dest>.<pid>.staging, tools/release_goh.sh build/release-vX, gates/_proven.sh and gates/_self_gate.sh write-tree, crates/goh/src/proven.rs write-tree, lib/tree_lock.sh <repo>/.goh-tree.lock) moved first. THIS repository's own entries only, keyed by its root commit (GOH.SEEDPRIVATE). At or under its count warns; over it, unseeded, or stale is red. Done is an empty list.",
+  "entries": []
+}

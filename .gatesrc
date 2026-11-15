@@ -30,6 +30,11 @@ GOH_NO_KILL_BY_NAME=1
 # The list of names is the owner's private store's `private_names.txt`, never this tree.
 GOH_NO_PRIVATE_NAMES=on
 
+# Every goh temp, lock and stage path comes from lib/run_path.sh (and its Python and Rust faces),
+# rooted outside the work tree; a new one minted in a tree is red (`goh run-paths`,
+# run_paths_seed.json, GOH.CLASS.CHECKOUT part 2).
+GOH_RUN_PATHS=on
+
 # No early-exit consumer on a pipe under pipefail (`goh early-exit-pipe`). The step runs in every
 # repo with the ratchet open (a NEW racy pipe refused at commit); this repo's tree is clean, so it
 # closes the ratchet and every finding fails.
@@ -70,6 +75,7 @@ GOH_BARE_PYTHON_MIN_FILES=5             # [6] hook/gate scripts
 GOH_RELEASE_QUIET_MIN_FILES=2           # [2] release-named shell scripts (2026-11-08)
 GOH_MKTEMP_PORTABLE_MIN_FILES=78        # [87] shell sources (2026-11-08)
 GOH_BARE_OPEN_MIN_FILES=78              # the same shell sources as mktemp-portable (2026-11-13)
+GOH_RUN_PATHS_MIN_FILES=410             # [461] shell, Python and Rust sources (2026-11-15)
 GOH_GIT_DEADLINE_MIN_FILES=240          # [~274] non-test shell and Python sources (2026-11-14)
 GOH_PLURAL_HEDGE_MIN_FILES=720          # [~800] py/sh/rs/swift sources (2026-11-09)
 GOH_TAP_WRITES_MIN_FILES=370            # [414] script/workflow files (2026-10-17)

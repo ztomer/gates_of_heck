@@ -45,9 +45,9 @@ fn tree() -> Option<String> {
             return None;
         }
     }
-    let t = git(&["write-tree"])?;
-    let t = t.trim();
-    (!t.is_empty()).then(|| t.to_owned())
+    // From a private copy of the index: a write-tree on the shared one takes its `index.lock`
+    // (GOH.REFRESHINDEXLOCK, `crate::run_path`).
+    crate::run_path::index_tree(None)
 }
 
 /// The identity bytes `proven_identity` prints: the memo, then the live half from stdin.

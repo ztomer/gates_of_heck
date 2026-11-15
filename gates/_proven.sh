@@ -6,15 +6,15 @@
 #
 # Works under `set -u` with or without `-e` (local_ci.sh runs without it): every failure is
 # handled by return code, and no function changes shell options. Every git call on the REPO is
-# made from the current directory and honours GIT_INDEX_FILE, because inside a pre-commit hook
-# that variable names the index being committed -- which is exactly the tree to key on. Every git
-# call on a gates_of_heck checkout strips the GIT_* variables first, or a hook's index would be
-# read as goh's.
+# made from the cwd and honours GIT_INDEX_FILE: in a pre-commit hook it names the index being
+# committed, the tree to key on. A git call on a goh checkout strips GIT_* first.
 . "$(dirname "${BASH_SOURCE[0]}")/../lib/bash5.sh" || exit; goh_bash5 "$@"
 # shellcheck source=gates/_hash.sh
 . "$(dirname "${BASH_SOURCE[0]}")/_hash.sh"
 # shellcheck source=gates/_git_env.sh
 . "$(dirname "${BASH_SOURCE[0]}")/_git_env.sh"
+# shellcheck source=lib/run_path.sh
+. "${BASH_SOURCE[0]%/*}/../lib/run_path.sh" || exit 1   # goh_index_tree: never the shared index.lock
 # shellcheck source=lib/house_python.sh
 . "${BASH_SOURCE[0]%/*}/../lib/house_python.sh" || exit 1   # GOH_PY: the house interpreter, never PATH's first python3 (G2d)
 # shellcheck source=gates/_proven_artifacts.sh
@@ -77,7 +77,7 @@ proven_tree() {
     done <<EOF
 $st
 EOF
-    git write-tree 2>/dev/null
+    goh_index_tree 2>/dev/null  # a private copy of the index: never its shared lock (lib/run_path.sh)
 }
 
 # _proven_goh_git <dir> <git args...> — git on a gates_of_heck checkout, hook variables stripped

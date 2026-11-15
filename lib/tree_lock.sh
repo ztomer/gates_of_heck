@@ -29,10 +29,11 @@
 #     . "$GOH_DIR/lib/tree_lock.sh"
 #     tree_lock_acquire "$repo" "swift gate"     # blocks; announces the wait
 #
-# The lock file is `<repo>/.goh-tree.lock` (add to the repo's global gitignore
-# pattern or .git/info/exclude; it is empty and never removed on purpose --
-# removing a flock file under a holder hands the next caller a fresh, unlocked
-# inode, which is the race this file exists to prevent).
+# The lock file is `tree.lock` in the tree's own run directory (lib/run_path.sh),
+# outside the work tree: as `<repo>/.goh-tree.lock` it was an untracked file in
+# every repo whose gate took it (GOH.CLASS.CHECKOUT part 2). It is never removed
+# on purpose -- removing a flock file under a holder hands the next caller a
+# fresh, unlocked inode, which is the race this file exists to prevent.
 
 . "$(dirname "${BASH_SOURCE[0]}")/../lib/bash5.sh" || exit; goh_bash5 "$@"
 TREE_LOCK_FD=9
@@ -41,9 +42,11 @@ TREE_LOCK_FD=9
 # itself is the flock, never the content.
 # shellcheck source=lib/house_python.sh
 . "${BASH_SOURCE[0]%/*}/house_python.sh" || exit 1   # GOH_PY: the house interpreter, never PATH's first python3 (G2d)
+# shellcheck source=lib/run_path.sh
+. "${BASH_SOURCE[0]%/*}/run_path.sh" || exit 1
 tree_lock_acquire() {
     local repo="${1:?repo}" label="${2:-gate}" lock
-    lock="$repo/.goh-tree.lock"
+    lock="$(goh_run_dir "$repo")/tree.lock" || return 2
     # Bash cannot `exec {var}>` into a variable fd portably across 3.2 (macOS's
     # /bin/bash); fd 9 is fixed and documented above.
     exec 9>>"$lock"

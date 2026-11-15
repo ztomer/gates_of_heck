@@ -31,7 +31,7 @@ pub type OptIns = std::collections::BTreeSet<String>;
 ///
 /// Read by the test that pins the key set, so a gate cannot read a key nobody
 /// documented and a doc cannot name a gate that reads nothing.
-pub const OPT_IN_KEYS: [&str; 7] = [
+pub const OPT_IN_KEYS: [&str; 8] = [
     "GOH_SKILLS_CORPUS",
     "GOH_NO_HOME_PATHS",
     "GOH_NO_KILL_BY_NAME",
@@ -50,6 +50,8 @@ pub const OPT_IN_KEYS: [&str; 7] = [
     "GOH_NO_EARLY_EXIT_PIPE",
     // A public tree names no private repository; the list is the owner's, never in a tree.
     "GOH_NO_PRIVATE_NAMES",
+    // goh's own temp, lock and stage paths come from lib/run_path.sh; the shapes are goh's.
+    "GOH_RUN_PATHS",
 ];
 
 /// Structural knobs read from `.gatesrc`.
@@ -254,7 +256,7 @@ pub fn from_pairs(pairs: &BTreeMap<String, String>) -> Result<Gatesrc, String> {
 /// keys, so a step that reads one from the environment (`GOH_STEP_TIMEOUT`, and
 /// every child it spawns) sees the file's value, never an inherited one.
 /// Pinned against `docs/config.md` by `tests/test_gate_environment.py`.
-pub const PIPELINE_KEYS: [&str; 51] = [
+pub const PIPELINE_KEYS: [&str; 53] = [
     "GOH_MAX_LINES",
     "GOH_LINE_EXCLUDE",
     "GOH_LINE_BASELINE",
@@ -267,6 +269,7 @@ pub const PIPELINE_KEYS: [&str; 51] = [
     "GOH_NO_HOME_PATHS",
     "GOH_NO_KILL_BY_NAME",
     "GOH_NO_PRIVATE_NAMES",
+    "GOH_RUN_PATHS",
     "GOH_PYTHON_FORMATTED",
     "GOH_CLAIM_DERIVATION",
     "GOH_NO_EARLY_EXIT_PIPE",
@@ -288,6 +291,7 @@ pub const PIPELINE_KEYS: [&str; 51] = [
     "GOH_RELEASE_QUIET_MIN_FILES",
     "GOH_MKTEMP_PORTABLE_MIN_FILES",
     "GOH_BARE_OPEN_MIN_FILES",
+    "GOH_RUN_PATHS_MIN_FILES",
     "GOH_GIT_DEADLINE_MIN_FILES",
     "GOH_PLURAL_HEDGE_MIN_FILES",
     "GOH_BARE_PYTHON_MIN_FILES",

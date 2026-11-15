@@ -33,6 +33,7 @@ fn the_optional_gate_keys_are_the_ones_the_code_reads() {
         "GOH_CLAIM_DERIVATION",
         "GOH_NO_EARLY_EXIT_PIPE",
         "GOH_NO_PRIVATE_NAMES",
+        "GOH_RUN_PATHS",
     ]
     .into_iter()
     .collect();

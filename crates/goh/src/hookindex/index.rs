@@ -72,6 +72,7 @@ fn reads_index(words: &[&str]) -> Option<&'static str> {
         {
             Some("git ls-files --stage")
         }
+        // run-path-ok: this scanner's table names the command it looks for; it runs nothing
         "write-tree" => Some("git write-tree"),
         _ => None,
     }

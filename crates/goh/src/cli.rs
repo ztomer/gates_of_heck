@@ -383,6 +383,8 @@ pub enum Commands {
     GitDeadline(ExcludeStagedArgs),
     /// Fail on a bare `open` in a shell source: it hands the app the caller environment.
     BareOpen(ExcludeStagedArgs),
+    /// Fail on a temp, lock or stage path minted in a work tree, or a write-tree on the shared index.
+    RunPaths(ExcludeStagedArgs),
     /// Launch an app (or open a document) with launchd's login environment, never the caller's.
     LaunchApp(LaunchAppArgs),
     /// Fail on a hedged plural (`file(s)`, `entr(ies)`) in a string literal; count with counted/noun.

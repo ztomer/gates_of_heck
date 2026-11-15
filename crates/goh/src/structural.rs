@@ -276,6 +276,7 @@ fn shell_steps(
         crate::relquiet::step(repo, files, cfg, staged),
         crate::mktempport::step(repo, files, cfg, staged),
         crate::bareopen::step(repo, files, cfg, staged),
+        crate::runpaths::step(repo, files, cfg, staged),
         crate::gitdeadline::step(repo, files, cfg, staged),
         crate::pluralhedge::step(repo, files, cfg, staged),
         crate::tuimarks::step(repo, files, cfg, staged),

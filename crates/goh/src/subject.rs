@@ -132,6 +132,12 @@ pub const BARE_OPEN: Subject = Subject {
     units: "shell and Python sources",
     scanner: "no bare open of an app",
 };
+pub const RUN_PATHS: Subject = Subject {
+    key: "GOH_RUN_PATHS_MIN_FILES",
+    unit: "shell, Python or Rust source",
+    units: "shell, Python and Rust sources",
+    scanner: "no temp, lock or stage path in a work tree",
+};
 pub const PLURAL_HEDGE: Subject = Subject {
     key: "GOH_PLURAL_HEDGE_MIN_FILES",
     unit: "source",
@@ -218,7 +224,7 @@ pub const BUSY_LOOP: Subject = Subject {
 };
 
 /// Every scanner with a subject, spelled once: the keys `.gatesrc` may hold a floor in.
-pub const ALL: [&Subject; 26] = [
+pub const ALL: [&Subject; 27] = [
     &EMOJI,
     &CONFLICT_MARKERS,
     &FILE_LENGTH,
@@ -230,6 +236,7 @@ pub const ALL: [&Subject; 26] = [
     &RELEASE_QUIET,
     &MKTEMP_PORTABLE,
     &BARE_OPEN,
+    &RUN_PATHS,
     &GIT_DEADLINE,
     &PLURAL_HEDGE,
     &BARE_PYTHON,

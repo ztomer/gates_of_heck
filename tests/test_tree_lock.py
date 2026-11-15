@@ -49,12 +49,18 @@ def _spawn(repo: Path, secs: float, release: Path | None = None) -> subprocess.P
     # killing the shell alone is not a release.
     return subprocess.Popen(
         ["bash", "-c", script],
+        env={**os.environ, "GOH_RUN_DIR": str(_run(repo))},
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
         text=True,
         start_new_session=True,
         stdin=subprocess.DEVNULL,
     )
+
+
+def _run(repo: Path) -> Path:
+    """The run root of a test, beside the tree: the lock lives there (lib/run_path.sh)."""
+    return repo.parent / f"{repo.name}.run"
 
 
 def _wait_line(proc: subprocess.Popen, needle: str, timeout: float) -> str:
@@ -140,8 +146,10 @@ def test_the_lock_file_is_never_removed(tmp_path):
     """Removing the file under a holder would hand the next caller a fresh inode."""
     proc = _spawn(tmp_path, 0)
     proc.wait(10)
-    assert (tmp_path / ".goh-tree.lock").exists()
-    assert "holder (pid" in (tmp_path / ".goh-tree.lock").read_text()
+    locks = list(_run(tmp_path).glob("*/tree.lock"))
+    assert len(locks) == 1, locks
+    assert "holder (pid" in locks[0].read_text()
+    assert list(tmp_path.iterdir()) == [], "the lock is written outside the tree it guards"
 
 
 def test_the_swift_gate_takes_it():

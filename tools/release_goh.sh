@@ -6,7 +6,7 @@
 #
 #   1. refuse, before anything moves, a dirty tree, a VERSION that is not X.Y.Z, a tag that already
 #      exists, and an Unreleased with nothing to release (changelog_cut.py ready);
-#   2. in a build/ worktree off HEAD: [workspace.package] version and Cargo.lock's workspace
+#   2. in a worktree off HEAD, under the run root (lib/run_path.sh), never in the checkout: [workspace.package] version and Cargo.lock's workspace
 #      entries set to VERSION, Unreleased cut into `## vVERSION` (titled with GOH_SHIP_SUMMARY when
 #      ship gives one), one `release: vVERSION -- TITLE` commit through the hooks;
 #   3. tools/loaded_suite.sh, the suite once under tools/load.py's spinners (GOH.CLASS.HARNESS),
@@ -27,6 +27,8 @@ GOH="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 . "$GOH/tui/lib.sh"
 # shellcheck source=lib/house_python.sh
 . "$GOH/lib/house_python.sh" || exit 1   # GOH_PY: the house interpreter, never PATH's first python3 (G2d)
+# shellcheck source=lib/run_path.sh
+. "$GOH/lib/run_path.sh" || exit 1
 
 VERSION="${1:-}"
 VERSION="${VERSION#v}"
@@ -60,9 +62,20 @@ if ! "$GOH_PY" "$GOH/tools/release-kit/changelog_cut.py" ready --version "$VERSI
     exit 1
 fi
 
-wt="$main/build/release-$TAG"
+# The worktree is the checkout's `release` directory under the run root: outside its work tree (as
+# build/release-vX it was a second checkout inside the first), and ONE stable path, so the land
+# gate's cargo build-dir (keyed by workspace path) is the last release's, built incrementally.
+wt="$(goh_run_dir "$main")/release"
 branch="release-$TAG"
 section "release $TAG from ${main}"
+if [ -e "$wt" ]; then  # a release killed before its trap ran
+    git worktree remove --force "$wt" 2>/dev/null || true
+    git worktree prune
+    if [ -e "$wt" ]; then
+        err "release_goh.sh: $wt is left from an earlier release and is no worktree git can remove -- nothing moved"
+        exit 1
+    fi
+fi
 git worktree add -q -b "$branch" "$wt" HEAD
 # The worktree and its branch go on every exit: landed, main holds the commit; refused, nothing moved.
 trap 'git -C "$main" worktree remove --force "$wt" 2>/dev/null || true

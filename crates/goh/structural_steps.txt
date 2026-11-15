@@ -36,6 +36,7 @@ no hard-coded home paths
 no moving runner label or action ref in a workflow
 no process kill by name
 no private repository named in a public tree
+no temp, lock or stage path in a work tree
 no tracked build output
 no tracked file its .gitignore ignores
 no unreaped spawns in tests

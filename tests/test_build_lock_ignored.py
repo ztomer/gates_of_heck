@@ -6,6 +6,8 @@ pid), removed by an EXIT trap. While a build ran, and after one was killed, the 
 failed v0.116.0's ship at verify (GOH.STAGINGSTRAY). Naming each transient in `.gitignore` one at a
 time is how the lock was missed, so goh's `.gitignore` ignores `/bin/` whole: nothing under it is
 ever tracked, and the next transient there is ignored without anyone remembering to add it.
+Since GOH.CLASS.CHECKOUT part 2 the lock is not in the tree at all: it is the checkout's
+`build.lock` under the run root (lib/run_path.sh), so even `git status --ignored` stays empty.
 
 The build runs for real from a copy of the script in a git checkout carrying goh's `.gitignore`,
 with a `cargo` on PATH that announces itself and hangs, so the lock is held when status is read.
@@ -34,7 +36,13 @@ def checkout(tmp_path: Path) -> Path:
     a tree with no stamp builds in place, as a tarball does."""
     repo = tmp_path / "goh"
     fast_init(repo)
-    for rel in (".gitignore", "scripts/build-goh.sh", "lib/bash5.sh", "lib/house_python.sh"):
+    for rel in (
+        ".gitignore",
+        "scripts/build-goh.sh",
+        "lib/bash5.sh",
+        "lib/house_python.sh",
+        "lib/run_path.sh",
+    ):
         (repo / rel).parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(REPO_ROOT / rel, repo / rel)
     git(repo, "add", "-A")
@@ -46,14 +54,27 @@ def _status(repo: Path) -> str:
     return git(repo, "status", "--porcelain", "--untracked-files=all")
 
 
+def _every_file(repo: Path) -> str:
+    """Ignored files too: the lock lives under the run root, so nothing at all is in the tree."""
+    return git(repo, "status", "--porcelain", "--untracked-files=all", "--ignored")
+
+
+def _lock(run: Path) -> Path:
+    """The one build lock under the run root (lib/run_path.sh: one directory per checkout)."""
+    locks = sorted(run.glob("*/build.lock"))
+    assert len(locks) == 1, locks
+    return locks[0]
+
+
 def test_a_running_and_a_killed_build_leave_the_checkout_clean(checkout, tmp_path):
     tools = tmp_path / "tools"
     tools.mkdir()
     (tools / "cargo").write_text(FAKE_CARGO)
     (tools / "cargo").chmod(0o755)
     started = tmp_path / "cargo.pid"
+    run = tmp_path / "run"
     env = hermetic_env(drop_git=True, PATH=f"{tools}:{os.environ['PATH']}",
-                       CARGO_STARTED=str(started))  # fmt: skip
+                       CARGO_STARTED=str(started), GOH_RUN_DIR=str(run))  # fmt: skip
     build = subprocess.Popen(["bash", str(checkout / "scripts" / "build-goh.sh")], env=env,
                              cwd=checkout, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
                              stderr=subprocess.STDOUT, start_new_session=True)  # fmt: skip
@@ -63,12 +84,12 @@ def test_a_running_and_a_killed_build_leave_the_checkout_clean(checkout, tmp_pat
             assert build.poll() is None, build.communicate()[0]
             assert not give_up.passed(), "the build never reached cargo"
             time.sleep(0.05)
-        assert (checkout / "bin" / ".build.lock").is_dir()  # calibration: the lock is held now
-        assert _status(checkout) == "", "a running build shows in git status"
+        assert _lock(run).is_dir()  # calibration: the lock is held now
+        assert _every_file(checkout) == "", "a running build left a file in the work tree"
         os.killpg(build.pid, signal.SIGKILL)  # killed: no EXIT trap removes the lock
         build.wait(timeout=30)
-        assert (checkout / "bin" / ".build.lock").is_dir()  # calibration: the lock outlived it
-        assert _status(checkout) == "", "a killed build left an untracked file"
+        assert _lock(run).is_dir()  # calibration: the lock outlived it
+        assert _every_file(checkout) == "", "a killed build left a file in the work tree"
     finally:
         if build.poll() is None:
             os.killpg(build.pid, signal.SIGKILL)

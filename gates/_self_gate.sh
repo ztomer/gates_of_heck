@@ -15,6 +15,8 @@
 # it happens once per commit and a fixture commit a test makes inside it is judged on its own.
 # GOH_LIVE in the very checkout being committed is its developer's on purpose, and is kept.
 . "$(dirname "${BASH_SOURCE[0]}")/../lib/bash5.sh" || exit; goh_bash5 "$@"
+# shellcheck source=lib/run_path.sh
+. "${BASH_SOURCE[0]%/*}/../lib/run_path.sh" || exit 1   # goh_index_tree: never the shared index.lock
 
 goh_self_gate() { # <this commit_gate.sh> <args...> -- execs the staged tree's commit gate, or returns
     local top me tree
@@ -26,7 +28,7 @@ goh_self_gate() { # <this commit_gate.sh> <args...> -- execs the staged tree's c
     [ -n "${GOH_LIVE:-}" ] && [ "$me" = "$top" ] && return 0
     # The index being committed, read the one way (contract #12), in a subshell: this shell keeps
     # git's binding for the commit gate it hands to, whose own goh_hook_unbind carries it on.
-    if ! tree="$( (goh_hook_unbind && goh_bind_hook_index && git write-tree) 2>/dev/null)" \
+    if ! tree="$( (goh_hook_unbind && goh_bind_hook_index && goh_index_tree) 2>/dev/null)" \
         || [ -z "$tree" ]; then
         echo "⚠ gates_of_heck: could not write this commit's tree -- judging it by $me's gates" >&2
         return 0

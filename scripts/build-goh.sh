@@ -109,7 +109,12 @@ current() { [[ -n "${STAMP}" && -x "${PROJECT_ROOT}/bin/goh" \
 
 # ONE BUILDER AT A TIME. Every repo's hook can find the binary stale in the same minute; they wait
 # for one build instead of racing thirty. The owner is a pid, so a killed builder's lock is reaped.
-LOCK="${PROJECT_ROOT}/bin/.build.lock"
+# The lock is this checkout's, under the run root (lib/run_path.sh), never in its work tree: as
+# `bin/.build.lock` it read "1 uncommitted" whenever a build was killed or merely running.
+# shellcheck source=lib/run_path.sh
+. "${PROJECT_ROOT}/lib/run_path.sh"
+RUN_DIR="$(goh_run_dir "${PROJECT_ROOT}")" || { echo "✗ build-goh: no run directory for its lock" >&2; exit 2; }
+LOCK="${RUN_DIR}/build.lock"
 mkdir -p "${PROJECT_ROOT}/bin"
 for _ in $(seq 1 600); do
   if mkdir "${LOCK}" 2>/dev/null; then
