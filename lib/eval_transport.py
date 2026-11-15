@@ -16,13 +16,17 @@ No provider SDK: urllib from the standard library only.
 
 from __future__ import annotations
 
-import fcntl
 import json
 import os
 import tempfile
 import time
 import urllib.error
 import urllib.request
+
+try:  # the one acquire path (lib/lock_order.py, GOH.LOCKORDER), imported as `X` or as `lib.X`
+    import lock_order
+except ImportError:
+    from lib import lock_order
 
 DEFAULT_TIMEOUT = 120.0
 
@@ -265,12 +269,12 @@ class _Flock:
         self.fh = fh
 
     def __enter__(self):
-        fcntl.flock(self.fh.fileno(), fcntl.LOCK_EX)
+        lock_order.flock(self.fh.fileno(), "eval_transport")
         return self.fh
 
     def __exit__(self, *exc):
         try:
-            fcntl.flock(self.fh.fileno(), fcntl.LOCK_UN)
+            lock_order.unlock(self.fh.fileno())
         finally:
             self.fh.close()
         return False

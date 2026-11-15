@@ -111,7 +111,7 @@ pub fn write_store_file(
     // first deleted. The directory, never the file, which the rename replaces; and no lock file,
     // which a crashed holder would leave behind.
     let lock = std::fs::File::open(dir).map_err(|e| format!("{}: {e}", dir.display()))?;
-    lock.lock().map_err(|e| format!("{}: {e}", dir.display()))?;
+    lock.lock().map_err(|e| format!("{}: {e}", dir.display()))?; // lock-order: estate_settle
     let text = std::fs::read_to_string(&file).map_err(|e| format!("{}: {e}", file.display()))?;
     hold_for_test();
     let mut v: serde_json::Value =

@@ -85,7 +85,6 @@ if __name__ == "__main__":  # C4: run HEAD's copy, not the shared working tree (
 
 import argparse
 import datetime as dt
-import fcntl
 import json
 import os
 import re
@@ -337,7 +336,7 @@ def command(res: dict, name: str) -> tuple[str | None, str]:
                 "the release kit pushes the hand-off with its release (GOH_SHIP_RELEASE_PUSHES=1)",
             )
         return f"git push {shlex.quote(res['remote'])} HEAD:refs/heads/{res['branch']}", ""
-    if name == "release":
+    if name == "release":  # lock-order-runs: GOH_SHIP_RELEASE
         if not res["release"]:
             return None, "the repo tags nothing and declares no GOH_SHIP_RELEASE"
         if res.get("bump") == "none":
@@ -348,7 +347,7 @@ def command(res: dict, name: str) -> tuple[str | None, str]:
         if held:
             return None, f"HEAD already carries {held[0]}"
         return ship_pushed.after(res["release"].replace("{version}", res["version"]), res), ""
-    if name == "install":
+    if name == "install":  # lock-order-runs: GOH_SHIP_INSTALL
         return (res["install"] or None), "no GOH_SHIP_INSTALL declared"
     have = Path(res["loopctl"]).is_file()
     if name == "verify":
@@ -422,9 +421,11 @@ def worker(result: str, resume: bool = False) -> int:
     """The pipeline under the repo's ship lock; RESUME: a ship failed at verify, from verify."""
     res = json.loads(Path(result).read_text(encoding="utf-8"))
     lock = Path(res["result"]).parent / ".ship.lock"
+    import lock_order  # here, not at the top: tools/ship.py's import ceiling (E402) is spent
+
     with lock.open("w") as held:
         try:
-            fcntl.flock(held, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            lock_order.flock(held, "ship", wait=False)  # never waits: a second ship is refused
         except OSError:
             res.update(status="failed", failed_step="push",
                        tail=[f"another goh ship of {res['name']} holds {lock}"])  # fmt: skip
@@ -438,7 +439,8 @@ def worker(result: str, resume: bool = False) -> int:
         import land_lock  # here, not at the top: tools/ship.py's import ceiling (E402) is spent
 
         queue = land_lock.path(Path(res["repo"]))  # a ship moves main as a land does
-        with land_lock.held(queue, f"goh ship {res['name']} @ {res['sha'][:8]}", info):
+        who = f"goh ship {res['name']} @ {res['sha'][:8]}"
+        with land_lock.held(queue, who, info):  # lock-order: land, under the ship lock
             return run_steps(res, "verify" if resume else STEPS[0])
 
 

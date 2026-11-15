@@ -449,6 +449,10 @@ UNCOVERED = {
         "untracked file of the repository, not a file of its tree, and a case is a map of tracked "
         "files; gates_of_heck's tests/test_credential_urls_native_parity.py drives it red"
     ),
+    "check_lock_order.py": (
+        "it judges goh's OWN lock table and acquisition sites, which no consumer tree has; goh's "
+        "tests/test_check_lock_order.py drives it red by planting the 2026-11-15 order"
+    ),
     "check_tag_version.py": (
         "needs a git repository with a commit, a tag, and a commit whose declared VERSION does "
         "not match the tag -- a case is a map of files, and a tag is not a file"

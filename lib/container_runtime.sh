@@ -29,16 +29,19 @@ GOH_CONTAINER_STATE="${GOH_CONTAINER_STATE:-$HOME/.cache/goh/container_runtime}"
 # on fd 8: a consumer may already hold tree_lock's fd 9 in the same shell.
 # shellcheck source=lib/house_python.sh
 . "${BASH_SOURCE[0]%/*}/house_python.sh" || return 1
+# shellcheck source=lib/lock_order.sh
+. "${BASH_SOURCE[0]%/*}/lock_order.sh" || return 1   # the one lock order (GOH.LOCKORDER)
 
 _goh_container_lock_acquire() {
     local state_dir="${GOH_CONTAINER_STATE:-$HOME/.cache/goh/container_runtime}"
     mkdir -p "$state_dir" </dev/null
     exec 8>>"$state_dir/lock"
-    "$GOH_PY" -c 'import fcntl; fcntl.flock(8, fcntl.LOCK_EX)' </dev/null
+    goh_lock_take container 8
 }
 
 _goh_container_lock_release() {
     exec 8>&-
+    goh_lock_drop container
 }
 
 _goh_container_live_leases() {

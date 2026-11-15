@@ -52,7 +52,6 @@ if __name__ == "__main__":  # C4: run HEAD's copy, not the shared working tree (
 
 import argparse
 import datetime as dt
-import fcntl
 import importlib
 import json
 import os
@@ -65,6 +64,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path[:0] = [str(ROOT), str(ROOT / "lib")]
 bounded_run = importlib.import_module("bounded_run")
 gitrun = importlib.import_module("gitrun")
+lock_order = importlib.import_module("lock_order")
 _tui = importlib.import_module("tui.lib")
 err, info, ok, warn = _tui.err, _tui.info, _tui.ok, _tui.warn
 
@@ -157,7 +157,7 @@ def start_lander() -> None:
 def take_lock(q: Path):
     fd = os.open(q / "lander.lock", os.O_RDWR | os.O_CREAT, 0o644)
     try:
-        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        lock_order.flock(fd, "lander", wait=False)  # never waits: a second drainer exits
     except BlockingIOError:
         os.close(fd)
         return None

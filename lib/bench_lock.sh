@@ -145,6 +145,10 @@ bench_lock_join() {
                 through=1
             else
                 if [ -z "$said" ]; then # queued: the next claim lets this gate in first (_bench_yield)
+                    # The one lock order (GOH.LOCKORDER), checked only here, where it waits: the
+                    # path every commit takes spawns nothing.
+                    # shellcheck source=lib/lock_order.sh
+                    if . "${BASH_SOURCE[0]%/*}/lock_order.sh"; then goh_lock_check bench || return 78; fi
                     mkdir -p "$BENCH_LOCK_DIR/waiting" 2>/dev/null && chmod 1777 "$BENCH_LOCK_DIR/waiting" 2>/dev/null
                     : >"$BENCH_LOCK_DIR/waiting/$$" 2>/dev/null
                     printf '· %s: waiting for a measurement to finish: %s%s\n' "$1" \
@@ -225,6 +229,9 @@ bench_lock_exclusive() {
     BENCH_LOCK_BUSY=""
     deadline=$(($(date +%s) + wait_s))
     mkdir -p "$BENCH_LOCK_DIR/gates" 2>/dev/null && chmod 1777 "$BENCH_LOCK_DIR" "$BENCH_LOCK_DIR/gates" 2>/dev/null
+    # shellcheck source=lib/lock_order.sh
+    . "${BASH_SOURCE[0]%/*}/lock_order.sh" || return 1
+    goh_lock_check bench || return 78   # the one lock order (GOH.LOCKORDER), before any wait
     while :; do
         if [ ! -d "$BENCH_LOCK_DIR/exclusive" ]; then
             _bench_yield
@@ -245,6 +252,7 @@ bench_lock_exclusive() {
     printf '%s\n%s\n%s\n%s\n%s\n' "$$" "$(_bench_start_time "$$")" "$(date +%s)" \
         "$BENCH_LOCK_MAX_HOLD" "$label (pid $$)" >"$BENCH_LOCK_DIR/exclusive/owner"
     BENCH_LOCK_HELD=1
+    goh_lock_mark bench
     BENCH_LOCK_MINE="$(_bench_ancestors)"
     said=""
     if [ -n "${2:-}" ] && [ "$2" -lt $((deadline - $(date +%s))) ]; then
@@ -287,4 +295,5 @@ bench_lock_release() {
     [ "$BENCH_LOCK_HELD" = 1 ] || return 0
     if [ "$(_bench_owner_field 1)" = "$$" ]; then rm -rf "$BENCH_LOCK_DIR/exclusive"; fi
     BENCH_LOCK_HELD=0
+    ! declare -F goh_lock_drop >/dev/null || goh_lock_drop bench
 }

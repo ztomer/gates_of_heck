@@ -262,6 +262,12 @@ gpu_lock_acquire() {
         info "gpu already held by $( _gpu_lock_owner_label ) (inherited)"
         return 0
     fi
+    # The one lock order (GOH.LOCKORDER): never wait inside a later lock's holder. A copy of this
+    # file outside goh, with no lock_order.sh above it, has no table to keep.
+    # shellcheck source=lib/lock_order.sh
+    if [ -f "${BASH_SOURCE[0]%/*}/../lock_order.sh" ] && . "${BASH_SOURCE[0]%/*}/../lock_order.sh"; then
+        goh_lock_check gpu || return 78
+    fi
     while ! mkdir "$GPU_LOCK_DIR" 2>/dev/null; do
         if ! _gpu_lock_owner_alive; then
             warn "stale gpu lock from $( _gpu_lock_owner_label ) — reclaiming"

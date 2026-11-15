@@ -152,7 +152,7 @@ fn write(dir: &Path, name: &str, why: Option<&str>, entries: &[Entry]) -> Result
     // The settle's lock (`settle::write_store_file`): one flock on the directory, never the file
     // the rename replaces, and no lock file a crashed holder would leave.
     let lock = std::fs::File::open(dir).map_err(|e| format!("{}: {e}", dir.display()))?;
-    lock.lock().map_err(|e| format!("{}: {e}", dir.display()))?;
+    lock.lock().map_err(|e| format!("{}: {e}", dir.display()))?; // lock-order: estate_settle
     let mut v: serde_json::Value = match std::fs::read_to_string(&file) {
         Ok(text) => serde_json::from_str(&text).map_err(|e| format!("{}: {e}", file.display()))?,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {

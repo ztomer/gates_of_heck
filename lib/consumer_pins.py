@@ -22,7 +22,6 @@ unpushed commit is never pushed by goh: the pin commit then waits on it, named.
 from __future__ import annotations
 
 import contextlib
-import fcntl
 import json
 import re
 import subprocess
@@ -36,6 +35,7 @@ from pathlib import Path
 import bounded_run  # lib/: every importer (scripts/wf_pin.py, tools/ship.py) puts it on sys.path
 import estate_commit
 import land_lock
+import lock_order
 
 from tui.lib import counted
 
@@ -255,7 +255,7 @@ def land_held(repo: Path):
         return
     with lock.open("a+", encoding="utf-8") as f:
         try:
-            fcntl.flock(f, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            lock_order.flock(f, "land", wait=False)  # the land lock, never waited on here
             holder = None
         except OSError:
             f.seek(0)
@@ -264,7 +264,7 @@ def land_held(repo: Path):
             yield holder
         finally:
             if holder is None:
-                fcntl.flock(f, fcntl.LOCK_UN)
+                lock_order.unlock(f)
 
 
 def record_path(result: Path | str) -> Path:

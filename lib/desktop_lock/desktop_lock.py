@@ -103,6 +103,20 @@ class DesktopBusy(RuntimeError):
     """The desktop stayed held by a live, un-wedged peer past the timeout."""
 
 
+def _order_check(name: str) -> None:
+    """The one lock order (lib/lock_order.py, GOH.LOCKORDER): raise before a wait it forbids. A copy
+    of this file outside goh, with no lock_order.py above it, has no table to keep."""
+    import importlib.util
+
+    path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "lock_order.py")
+    spec = importlib.util.spec_from_file_location("lock_order", path)
+    if spec is None or spec.loader is None or not os.path.exists(path):
+        return
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    module.check(name)
+
+
 def _env_seconds(name: str, default: float) -> float:
     """A duration from the environment, falling back to `default`.
 
@@ -251,6 +265,7 @@ def acquire(
     None for both explicitly asks for the environment.
     """
     global _HELD
+    _order_check("desktop")  # before any wait: lib/lock_order.tsv
     wait_for = _timeout() if timeout is None else timeout
     hold_ceiling = _max_hold() if max_hold is None else max_hold
     waited = 0

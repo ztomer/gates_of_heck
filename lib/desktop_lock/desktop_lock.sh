@@ -163,6 +163,12 @@ desktop_lock_acquire() {
     local label="${1:-desktop run}"
     local waited=0
     local announced=0
+    # The one lock order (GOH.LOCKORDER): never wait inside a later lock's holder. A copy of this
+    # file outside goh, with no lock_order.sh above it, has no table to keep.
+    # shellcheck source=lib/lock_order.sh
+    if [ -f "${BASH_SOURCE[0]%/*}/../lock_order.sh" ] && . "${BASH_SOURCE[0]%/*}/../lock_order.sh"; then
+        goh_lock_check desktop || return 78
+    fi
     while ! mkdir "$DESKTOP_LOCK_DIR" 2>/dev/null; do
         if ! _desktop_lock_owner_alive; then
             warn "stale desktop lock from $( _desktop_lock_owner_label ) -- reclaiming"

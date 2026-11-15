@@ -156,12 +156,14 @@ GOH_RUFF_CONFIG_PARITY=on
 # of this commit over every registered consumer and refuses while one goes from green to red,
 # naming the repo and its seed (scripts/release_canary.py, tests/test_release_canary.py). It is a
 # step of THIS list so tools/land.sh runs it before main moves, and the push runs it again.
+# THE LOCK ORDER (GOH.LOCKORDER): checks/check_lock_order.py sorts the held-while-acquiring graph of
+# every lock goh takes (lib/lock_order.tsv) and refuses a cycle -- the 2026-11-15 ship/land deadlock.
 # THE SHAPE DIFFERENTIAL (GOH.CLASS.SHAPE): a scanner whose sources (or the shape table) changed
 # since main runs beside a plain grep for its token over this tree and the estate; a hit it does
 # not judge that crates/goh/src/shapes/table.rs does not name is red (from 2026-11-23, the grace).
 # It runs where a scanner lands (tools/land.sh); with no estate on the machine (CI) it says
 # UNSCOPED and judges nothing.
-GOH_CI_STEPS='./gates/rust_gate.sh:./gates/structural.sh --full:cargo test --workspace --doc --locked:./gates/goh.sh status-markers:./gates/goh.sh shape-diff . --estate --since main:./gates/py_staged.sh --all .:"$GOH_PY" ./gates/path_invariance.py -- ./gates/structural.sh --full:"$GOH_PY" ./scripts/release_canary.py'
+GOH_CI_STEPS='./gates/rust_gate.sh:./gates/structural.sh --full:cargo test --workspace --doc --locked:./gates/goh.sh status-markers:./gates/goh.sh shape-diff . --estate --since main:./gates/py_staged.sh --all .:"$GOH_PY" ./gates/path_invariance.py -- ./gates/structural.sh --full:"$GOH_PY" ./checks/check_lock_order.py .:"$GOH_PY" ./scripts/release_canary.py'
 # How many of those steps run at once. Serial is the default because only a repo can say which of
 # its steps write the same file, so each candidate here was CLOSED rather than assumed (measured
 # 2026-10-16):

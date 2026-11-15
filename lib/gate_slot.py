@@ -73,12 +73,13 @@ if __name__ == "__main__":  # C4: run HEAD's copy, not the shared working tree (
     del _sys.path[0]
 
 import argparse
-import fcntl
 import os
 import select
 import subprocess
 import sys
 import time
+
+import lock_order
 
 if __name__ == "__main__":
     sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
@@ -108,8 +109,8 @@ def try_take(path: str) -> int | None:
     """An fd holding the exclusive lock on `path`, or None when it is held."""
     fd = _open(path)
     try:
-        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
-    except BlockingIOError:
+        lock_order.flock(fd, "gate_slot", wait=False)  # a try-lock: the order is checked before
+    except BlockingIOError:  # the wait, in lib/gate_slot.sh
         os.close(fd)
         return None
     return fd

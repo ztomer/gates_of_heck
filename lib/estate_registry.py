@@ -28,12 +28,16 @@ gets its own registry, and the machine's registry is never a test's business.
 
 from __future__ import annotations
 
-import fcntl
 import json
 import os
 import tempfile
 from collections.abc import Callable, Iterable
 from pathlib import Path
+
+try:  # the one acquire path (lib/lock_order.py, GOH.LOCKORDER), imported as `X` or as `lib.X`
+    import lock_order
+except ImportError:
+    from lib import lock_order
 
 REGISTRY_NAME = "installed_repos"
 SKIP_DIRS = {"node_modules", "target", ".build", ".venv", "venv"}
@@ -62,7 +66,7 @@ def update_state(state: Path, change: Callable[[dict], dict]) -> dict:
     state = Path(state)
     state.parent.mkdir(parents=True, exist_ok=True)
     with open(state.with_name(state.name + ".lock"), "w", encoding="utf-8") as lock:
-        fcntl.flock(lock, fcntl.LOCK_EX)  # released when the file closes
+        lock_order.flock(lock, "estate_registry")  # released when the file closes
         try:
             old = json.loads(state.read_text(encoding="utf-8"))
         except (OSError, ValueError):

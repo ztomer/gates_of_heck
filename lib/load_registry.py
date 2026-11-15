@@ -45,7 +45,6 @@ the default, not a habit: a writer cannot mutate the registry without it.
 from __future__ import annotations
 
 import contextlib
-import fcntl
 import json
 import os
 import re
@@ -55,6 +54,8 @@ import threading
 import time
 from collections.abc import Callable, Iterator
 from pathlib import Path
+
+import lock_order  # lib/: every importer puts it on sys.path
 
 REGISTRY_NAME = "registry.json"
 # The lock every mutation of the load directory takes. Not `*.json`, so `registry_files` never
@@ -209,10 +210,11 @@ _HELD_GUARD = threading.Lock()
 
 
 def _flock(fd: int, where: Path) -> None:
+    lock_order.check("load_registry")  # a polled wait is a wait: the order first (GOH.LOCKORDER)
     give_up = time.monotonic() + LOCK_WAIT_S
     while True:
         try:
-            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            lock_order.flock(fd, "load_registry", wait=False)
             return
         except BlockingIOError:
             if time.monotonic() > give_up:

@@ -48,7 +48,6 @@ if __name__ == "__main__":  # C4: run HEAD's copy, not the shared working tree (
         pass
     del _sys.path[0]
 
-import fcntl
 import os
 import socket
 import subprocess
@@ -58,6 +57,11 @@ import threading
 from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
+
+try:  # the one acquire path (lib/lock_order.py, GOH.LOCKORDER), imported as `X` or as `lib.X`
+    import lock_order
+except ImportError:
+    from lib import lock_order
 
 SHARED = Path.home() / ".cargo" / "advisory-db"
 INDEX_HOST = "index.crates.io"
@@ -95,7 +99,7 @@ def held(fetch: bool) -> Iterator[Path]:
     db.parent.mkdir(parents=True, exist_ok=True)
     with open(f"{db}.goh-lock", "a", encoding="utf-8") as lock:
         exclusive = fetch or not db.exists()
-        fcntl.flock(lock, fcntl.LOCK_EX if exclusive else fcntl.LOCK_SH)
+        lock_order.flock(lock, "advisory_db", shared=not exclusive)
         if not db.exists():
             _seed(db)
         yield db

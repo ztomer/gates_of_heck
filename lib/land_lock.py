@@ -19,12 +19,12 @@ from __future__ import annotations
 
 import contextlib
 import datetime as dt
-import fcntl
 import os
 from collections.abc import Callable, Iterator
 from pathlib import Path
 
 import gitrun
+import lock_order
 
 NAME = "goh-land.lock"
 OWNER_ENV = "GOH_LAND_LOCK_OWNER"  # "<lock path> <pid>": the process that holds it for its children
@@ -46,14 +46,15 @@ def held(lock: Path | None, who: str, say: Callable[[str], None]) -> Iterator[No
     if lock is None:
         yield
         return
+    lock_order.check("land")  # the order, before any wait (GOH.LOCKORDER): refused, never queued
     with lock.open("a+", encoding="utf-8") as f:
         try:
-            fcntl.flock(f, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            lock_order.flock(f, "land", wait=False)
         except OSError:
             f.seek(0)
             say(f"waiting for the land lock: held by {f.readline().strip() or 'another land'} "
                 f"({lock})")  # fmt: skip
-            fcntl.flock(f, fcntl.LOCK_EX)
+            lock_order.flock(f, "land")
         f.truncate(0)
         since = dt.datetime.now().strftime("%H:%M:%S")
         f.write(f"{who} (pid {os.getpid()}, since {since})\n")
@@ -61,7 +62,8 @@ def held(lock: Path | None, who: str, say: Callable[[str], None]) -> Iterator[No
         before = os.environ.get(OWNER_ENV)
         os.environ[OWNER_ENV] = f"{lock} {os.getpid()}"
         try:
-            yield
+            with lock_order.holding("land"):
+                yield
         finally:
             if before is None:
                 os.environ.pop(OWNER_ENV, None)

@@ -1,0 +1,23 @@
+# THE LOCK TABLE (GOH.LOCKORDER): every lock goh takes, in the ONE order they may nest.
+# A process may WAIT on a lock only while every lock it (or an ancestor, GOH_HELD_LOCKS) holds has
+# a LOWER rank: lib/lock_order.py and lib/lock_order.sh refuse the wait otherwise, naming both, and
+# checks/check_lock_order.py derives the held-while-acquiring graph from the tree, sorts it
+# topologically and goes red on a cycle or on an edge this order contradicts.
+# Columns, tab-separated: name, rank, reentrant (a holder's own child may take it again: yes/no),
+# the files that acquire it (comma-separated), what it is.
+lander	5	no	tools/landq.py	the lands queue's one drainer, <landq>/lander.lock (never waits: a second drainer exits)
+ship	10	no	tools/ship.py	one goh ship per repository, <ship state>/.ship.lock (never waits: a second ship is refused)
+land	20	yes	tools/land.sh,lib/land_lock.py,tools/ship.py,lib/consumer_pins.py	the repository's land queue, goh-land.lock in the common git dir; the ship's own release land is its holder's (GOH_LAND_LOCK_OWNER)
+load	30	yes	lib/load_slot.py	the load slot: a gate shares it (0 spinners), an experiment takes it alone; a 0-spinner run inside a holder is that holder's
+bench	40	yes	lib/bench_lock.sh	the quiet-machine reader-writer lock: every gate joins, a measurement takes it alone
+gate_slot	50	yes	lib/gate_slot.py,lib/gate_slot.sh	the machine-wide gate slots, a counting semaphore; a gate nested in a holder takes none
+tree	60	no	lib/tree_lock.sh	one checkout's build tree (gates that wipe .build)
+container	70	no	lib/container_runtime.sh	the container runtime's lease table
+desktop	80	no	lib/desktop_lock/desktop_lock.py,lib/desktop_lock/desktop_lock.sh	the one screen
+gpu	85	no	lib/gpu_lock/gpu_lock.py,lib/gpu_lock/gpu_lock.sh	the GPU
+load_registry	90	yes	lib/load_registry.py	the load registry's own critical section (re-entrant within one process)
+estate_registry	91	no	lib/estate_registry.py	the estate registry file's read-modify-write
+advisory_db	92	no	lib/advisory_db.py	the cargo advisory database copy (shared to read, exclusive to refresh)
+head_cache	93	no	gates/_head_cache.py	the HEAD-export cache
+eval_transport	94	no	lib/eval_transport.py	an eval transport's state file
+estate_settle	95	no	crates/goh/src/estate_seed/settle.rs,crates/goh/src/estate_seed/add.rs	the estate seed store directory

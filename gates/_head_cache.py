@@ -87,19 +87,30 @@ def running(path: str, marker: str | None) -> bool:
     return any(_alive(pid) for pid in _pids(path, marker))
 
 
+def _lock_order():
+    """lib/lock_order.py, the one acquire path (GOH.LOCKORDER), from gates/ beside it."""
+    import sys
+
+    lib = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "lib")
+    if lib not in sys.path:
+        sys.path.insert(0, lib)
+    import lock_order
+
+    return lock_order
+
+
 def mark(path: str, marker: str, pid: int) -> None:
     """Add `pid` to `path/<marker>`, dropping pids no longer alive, under a lock: two crates of one
     repo starting together must not overwrite each other's pid. The lock is also the eviction's
     (`_evict`): a pruner renames the entry away while holding it, so a mark that waited on it checks
     it still holds the lock of the LIVE directory, and starts over in a fresh one if not -- a pid
     written into the tombstone would leave the build unmarked, evictable while it runs."""
-    import fcntl
-
+    lock_order = _lock_order()
     lock_path = os.path.join(path, f"{marker}.lock")
     while True:
         os.makedirs(path, exist_ok=True)
         with open(lock_path, "a", encoding="ascii") as lock:
-            fcntl.flock(lock, fcntl.LOCK_EX)
+            lock_order.flock(lock, "head_cache")
             try:
                 if not os.path.samestat(os.fstat(lock.fileno()), os.stat(lock_path)):
                     continue  # evicted while we waited: the path is a new directory now
@@ -132,13 +143,12 @@ def _evict(path: str, marker: str | None, remove) -> bool:
     if not marker:
         remove(path)
         return True
-    import fcntl
-
+    lock_order = _lock_order()
     head, name = os.path.split(path)
     tomb = os.path.join(head, f".build.evict-{name}-{os.getpid()}")
     try:
         with open(os.path.join(path, f"{marker}.lock"), "a", encoding="ascii") as lock:
-            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)  # held: a run is marking it now
+            lock_order.flock(lock, "head_cache", wait=False)  # held: a run is marking it now
             if running(path, marker):
                 return False
             os.rename(path, tomb)

@@ -27,6 +27,8 @@
 _goh_d=${BASH_SOURCE[0]%/*}; [ "$_goh_d" != "${BASH_SOURCE[0]}" ] || _goh_d=.; . "$_goh_d/../lib/bash5.sh" || exit; goh_bash5 "$@"
 # shellcheck source=lib/house_python.sh
 . "${BASH_SOURCE[0]%/*}/house_python.sh" || exit 1   # GOH_PY: the house interpreter, never PATH's first python3 (G2d)
+# shellcheck source=lib/lock_order.sh
+. "${BASH_SOURCE[0]%/*}/lock_order.sh" || exit 1   # the one lock order (GOH.LOCKORDER)
 GATE_SLOT_HELPER="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/gate_slot.py" # beside this file
 GATE_SLOT_PID="" # the holder process (lib/gate_slot.py hold); gate_slot_release ends it
 
@@ -64,6 +66,7 @@ _gate_slot_take() { # <repo> <owner pid> <"" | --for-caller>
         info "gate slot: inside a gate that holds $line -- not taking another"
         return 0
     fi
+    goh_lock_check gate_slot || exit 78   # never wait on a slot inside a later lock's holder
     fifo="$(mktemp -u "${TMPDIR:-/tmp}/goh-gate-slot.XXXXXX")"
     mkfifo "$fifo"
     "$GOH_PY" -S "$helper" hold --dir "$dir" ${n:+--slots "$n"} --owner "$owner" --repo "$repo" \
@@ -107,6 +110,7 @@ _gate_slot_take() { # <repo> <owner pid> <"" | --for-caller>
     # proved to have run -- the Linux pidfd branch shipped in v0.39.0 without ever being run.
     [ -n "$mech" ] || mech="poll"
     export GOH_GATE_SLOT="$path $owner"
+    goh_lock_mark gate_slot
     local whose="(GOH_GATE_SLOTS)"
     if [ -n "$mode" ]; then
         # Never this shell's to release: the holder ends with the gate.sh it was taken for.
@@ -127,6 +131,7 @@ gate_slot_release() {
     if [ -n "$GATE_SLOT_PID" ]; then
         kill "$GATE_SLOT_PID" 2>/dev/null || true
         wait "$GATE_SLOT_PID" 2>/dev/null || true
+        goh_lock_drop gate_slot
     fi
     GATE_SLOT_PID=""
 }

@@ -19,6 +19,9 @@ HOST_LOCKS = (
     "GOH_BENCH_LOCK_DIR",
     "GOH_BENCH_DESKTOP_LOCK_DIR",
     "GOH_GATE_SLOT_DIR",
+    # The load slot: tools/land.sh runs its gate in it (GOH.LOCKORDER); a fixture land on the REAL
+    # slot would queue behind the machine's gates -- or, inside a land's own gate, behind itself.
+    "GOH_LOAD_DIR",
 )
 
 # The user's caches the gates write, by the variable that moves each one. A test that ran

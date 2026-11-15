@@ -20,6 +20,7 @@ from collections.abc import Callable, Sequence
 from pathlib import Path
 
 import load_registry as reg
+import lock_order
 
 POLL_S = 0.25  # how often a waiting run asks for the slot again
 TOOL = Path(__file__).resolve().parent.parent / "tools" / "load.py"
@@ -149,13 +150,22 @@ def claim(
     take: Callable[[], None], wait: bool, wait_s: float, say: Callable[[str], None]
 ) -> tuple[Path | None, float]:
     """`take()` the slot; while it raises FileExistsError and `wait` holds, ask again until
-    `wait_s` has passed. Returns (the holder's registry when refused, seconds waited)."""
+    `wait_s` has passed. Returns (the holder's registry when refused, seconds waited).
+
+    THE LOCK ORDER (GOH.LOCKORDER, lib/lock_order.tsv): the slot ranks after the land lock, so a
+    run that would WAIT here inside a later lock's holder -- a land queued on the land lock inside
+    the slot was the 2026-11-15 deadlock -- raises OSError naming both, before it waits. Taken,
+    the slot is marked held in this process's environment (GOH_HELD_LOCKS), which the command it
+    runs inherits: this process holds it until it exits."""
+    if wait and (why := lock_order.refusal("load")):
+        raise OSError(why)
     start = time.monotonic()
     poll = POLL_S
     told = False
     while True:
         try:
             take()
+            os.environ[lock_order.ENV] = lock_order.with_held("load", os.getpid())
             return None, time.monotonic() - start
         except FileExistsError as taken:
             waited = time.monotonic() - start

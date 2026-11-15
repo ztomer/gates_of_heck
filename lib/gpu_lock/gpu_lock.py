@@ -78,6 +78,20 @@ class GpuBusy(RuntimeError):
     """The GPU stayed held by a live, beating peer past the timeout."""
 
 
+def _order_check(name: str) -> None:
+    """The one lock order (lib/lock_order.py, GOH.LOCKORDER): raise before a wait it forbids. A copy
+    of this file outside goh, with no lock_order.py above it, has no table to keep."""
+    import importlib.util
+
+    path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "lock_order.py")
+    spec = importlib.util.spec_from_file_location("lock_order", path)
+    if spec is None or spec.loader is None or not os.path.exists(path):
+        return
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    module.check(name)
+
+
 def lock_dir() -> str:
     return os.environ.get(DIR_ENV) or DEFAULT_DIR
 
@@ -179,6 +193,7 @@ def acquire(
         _inherited = True
         log(f"→ gpu already held by {_label()} (inherited)")
         return
+    _order_check("gpu")  # before any wait: lib/lock_order.tsv
     wait_for = _env_seconds("GPU_LOCK_TIMEOUT", DEFAULT_TIMEOUT) if timeout is None else timeout
     ceiling = _env_seconds("GPU_LOCK_MAX_IDLE", DEFAULT_MAX_IDLE) if max_idle is None else max_idle
     waited, announced = 0, False
