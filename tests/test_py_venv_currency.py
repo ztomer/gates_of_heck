@@ -11,10 +11,12 @@ import os
 import subprocess
 from pathlib import Path
 
+from _tool_versions import floor
 from conftest import REPO_ROOT, stage, write
 
 PY_SH = REPO_ROOT / "gates" / "_py.sh"
 TUI = REPO_ROOT / "tui" / "lib.sh"
+HOUSE = floor("python3")  # the house interpreter, read from gates/required_tools.tsv
 
 
 def _fake_python(path: Path, minor: str) -> None:
@@ -46,15 +48,15 @@ def _resolve(repo: Path, venv: str | None, system: str, env: dict[str, str] | No
 
 
 def test_a_venv_older_than_python3_is_refused_and_both_versions_named(repo: Path) -> None:
-    r = _resolve(repo, "3.13", "3.15")
+    r = _resolve(repo, "3.13", HOUSE)
     assert r.returncode != 0, r.stdout
-    assert "3.13" in r.stderr and "3.15" in r.stderr, r.stderr
+    assert "3.13" in r.stderr and HOUSE in r.stderr, r.stderr
 
 
 def test_a_committed_python_version_pins_the_venv(repo: Path) -> None:
     write(repo, ".python-version", "3.13\n")
     stage(repo, ".python-version")
-    r = _resolve(repo, "3.13", "3.15")
+    r = _resolve(repo, "3.13", HOUSE)
     assert r.returncode == 0, r.stderr
     assert "RUN=.venv/bin/python -m" in r.stdout
     assert "python: .venv/bin/python (3.13)" in r.stdout + r.stderr
@@ -62,31 +64,31 @@ def test_a_committed_python_version_pins_the_venv(repo: Path) -> None:
 
 def test_an_untracked_python_version_is_not_the_repos_pin(repo: Path) -> None:
     write(repo, ".python-version", "3.13\n")
-    r = _resolve(repo, "3.13", "3.15")
+    r = _resolve(repo, "3.13", HOUSE)
     assert r.returncode != 0, r.stdout
 
 
 def test_a_pin_naming_another_minor_does_not_excuse_the_venv(repo: Path) -> None:
     write(repo, ".python-version", "3.12\n")
     stage(repo, ".python-version")
-    r = _resolve(repo, "3.13", "3.15")
+    r = _resolve(repo, "3.13", HOUSE)
     assert r.returncode != 0, r.stdout
 
 
 def test_goh_py_runner_is_a_declared_pin(repo: Path) -> None:
-    r = _resolve(repo, "3.13", "3.15", {"GOH_PY_RUNNER": "python3 -m"})
+    r = _resolve(repo, "3.13", HOUSE, {"GOH_PY_RUNNER": "python3 -m"})
     assert r.returncode == 0, r.stderr
     assert "RUN=python3 -m" in r.stdout
 
 
 def test_a_current_venv_is_used_and_named(repo: Path) -> None:
-    r = _resolve(repo, "3.15", "3.15")
+    r = _resolve(repo, HOUSE, HOUSE)
     assert r.returncode == 0, r.stderr
-    assert "python: .venv/bin/python (3.15)" in r.stdout + r.stderr
+    assert f"python: .venv/bin/python ({HOUSE})" in r.stdout + r.stderr
 
 
 def test_a_newer_venv_is_not_stale(repo: Path) -> None:
-    r = _resolve(repo, "4.0", "3.15")
+    r = _resolve(repo, "4.0", HOUSE)
     assert r.returncode == 0, r.stderr
 
 

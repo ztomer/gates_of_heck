@@ -13,6 +13,7 @@ exactly; GOH_PY_SEARCH restricts the search (a planted fake 3.9, or the real /us
 from __future__ import annotations
 
 import os
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -55,7 +56,11 @@ def _resolve(**extra: str) -> subprocess.CompletedProcess:
 
 
 def test_the_floor_is_the_house_release() -> None:
-    assert FLOOR == "3.15"
+    """The floor is a two-part RELEASE, and the interpreter running this suite (the house one) meets
+    it. Its number lives in the manifest alone: a literal here was a second copy a raise never
+    reached (tests/test_tool_version_manifest.py now sees two-part versions)."""
+    assert re.fullmatch(r"\d+\.\d+", FLOOR), FLOOR
+    assert sys.version_info[:2] >= tuple(int(n) for n in FLOOR.split(".")), (FLOOR, sys.version)
 
 
 def test_a_reduced_path_still_finds_the_house_interpreter() -> None:

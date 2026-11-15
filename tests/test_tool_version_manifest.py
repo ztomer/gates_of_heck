@@ -96,7 +96,10 @@ def copies(root: Path, files: list[str]) -> list[str]:
     current = {
         tool: re.compile(rf"(?<![\w.]){re.escape(v)}(?![\w.])")
         for tool, v in table.items()
-        if v.count(".") >= 2  # `3.15` is too common a token (test interpreters) to read as a copy
+        # Two-part versions too (python3's `3.15`): skipping them left `assert FLOOR == "3.15"`
+        # standing in tests/test_house_python.py, a copy a raise to 3.16 never reaches. A file is
+        # read for a bare number only when it names the tool, so test interpreters elsewhere pass.
+        if "." in v
     }
     names = "|".join(re.escape(t) for t in sorted(table, key=len, reverse=True))
     beside = re.compile(rf"(?<![\w-])({names})(?:==|@|\s+v?|:\s*\"?)(\d+\.\d+(?:\.\d+)?)\b")
@@ -177,3 +180,15 @@ def test_prose_naming_a_release_is_not_a_copy(tmp_path):
     _plant(tmp_path, "gates/x.sh", "# " + "swiftlint" + " 0.1.0 refuses this\necho hi\n")
     _plant(tmp_path, "notes.md", "ruff" + "==0.1.0\n")
     assert copies(root, ["gates/x.py", "gates/x.sh", "notes.md"]) == []
+
+
+def test_a_planted_two_part_copy_is_red(tmp_path):
+    """python3's floor has two fields; the scan once skipped every such version as too common."""
+    python3 = versions(REPO_ROOT / MANIFEST)["python3"]
+    assert python3.count(".") == 1, "this calibration needs the manifest's two-part version"
+    root = _plant(
+        tmp_path, "tests/test_x.py", f'FLOOR = run("python3")\nassert FLOOR == "{python3}"\n'
+    )
+    assert copies(root, ["tests/test_x.py"]) == [
+        f"tests/test_x.py:2: python3 {python3} written outside {MANIFEST}"
+    ]

@@ -19,10 +19,12 @@ import os
 import subprocess
 from pathlib import Path
 
+from _tool_versions import floor
 from conftest import REPO_ROOT, commit_all, git, stage, write
 
 PY_SH = REPO_ROOT / "gates" / "_py.sh"
 TUI = REPO_ROOT / "tui" / "lib.sh"
+HOUSE = floor("python3")  # the house interpreter, read from gates/required_tools.tsv
 
 
 def _exe(path: Path, body: str) -> None:
@@ -31,11 +33,11 @@ def _exe(path: Path, body: str) -> None:
     path.chmod(0o755)
 
 
-def _resolve(repo: Path, *, uv: str | None = "3.15", env: dict[str, str] | None = None):
-    """Source _py.sh in `repo` with a fake python3 (3.15) and, unless uv is None, a fake uv whose
-    `run ... python -c` reports `uv` as its version and which logs its argv."""
+def _resolve(repo: Path, *, uv: str | None = HOUSE, env: dict[str, str] | None = None):
+    """Source _py.sh in `repo` with a fake python3 at the house floor and, unless uv is None, a
+    fake uv whose `run ... python -c` reports `uv` as its version and which logs its argv."""
     bindir = repo.parent / f"bin-{repo.name}"
-    _exe(bindir / "python3", '[ "$1" = "-c" ] && echo 3.15\nexit 0\n')
+    _exe(bindir / "python3", f'[ "$1" = "-c" ] && echo {HOUSE}\nexit 0\n')
     if uv is not None:
         _exe(bindir / "uv", f'echo "$@" >>"{bindir}/uv.log"\n'
                             f'case "$*" in *" -c "*) echo {uv} ;; esac\nexit 0\n')  # fmt: skip
@@ -58,7 +60,7 @@ def _lock(repo: Path) -> None:
     stage(repo, "uv.lock")
 
 
-def _venv(repo: Path, minor: str = "3.15") -> None:
+def _venv(repo: Path, minor: str = HOUSE) -> None:
     _exe(repo / ".venv" / "bin" / "python", f'[ "$1" = "-c" ] && echo {minor}\nexit 0\n')
 
 
@@ -67,7 +69,7 @@ def test_a_tracked_lock_without_a_venv_runs_through_uv(repo: Path) -> None:
     r = _resolve(repo)
     assert r.returncode == 0, r.stderr
     assert "RUN=uv run --frozen" in r.stdout
-    assert "python: uv run --frozen (3.15)" in r.stdout + r.stderr  # the version is read back
+    assert f"python: uv run --frozen ({HOUSE})" in r.stdout + r.stderr  # the version is read back
 
 
 def test_a_tracked_lock_wins_over_a_present_venv(repo: Path) -> None:
@@ -111,9 +113,9 @@ def test_uv_resolving_another_version_than_the_pin_is_refused(repo: Path) -> Non
     _lock(repo)
     write(repo, ".python-version", "3.14\n")
     stage(repo, ".python-version")
-    r = _resolve(repo, uv="3.15")
+    r = _resolve(repo, uv=HOUSE)
     assert r.returncode != 0, r.stdout
-    assert "3.14" in r.stderr and "3.15" in r.stderr
+    assert "3.14" in r.stderr and HOUSE in r.stderr
 
 
 def _export(source: Path, tmp_path: Path) -> Path:
