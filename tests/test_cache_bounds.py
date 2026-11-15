@@ -26,6 +26,7 @@ from pathlib import Path
 from conftest import hermetic_env
 from test_push_gate import GATE, REPO_ROOT, _git, _repo
 from test_push_gate_runs import _push, _run_litter
+from timing_bounds import patience
 
 sys.path.insert(0, str(REPO_ROOT / "gates"))
 import _head_cache
@@ -286,7 +287,7 @@ def test_a_mark_on_an_evicted_entry_lands_in_the_live_directory(tmp_path) -> Non
         fcntl.flock(lock, fcntl.LOCK_EX)
         t = threading.Thread(target=_head_cache.mark, args=(str(entry), ".goh-running", 4242))
         t.start()
-        time.sleep(0.3)
+        time.sleep(patience(0.3))  # the waiter reaches the lock first
         os.rename(entry, tomb)
-    t.join(10)
+    t.join(patience(10))
     assert (entry / ".goh-running").read_text().split() == ["4242"]

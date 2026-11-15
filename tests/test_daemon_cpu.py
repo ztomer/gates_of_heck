@@ -7,6 +7,7 @@ import subprocess
 import sys
 
 from conftest import REPO_ROOT
+from timing_bounds import patience
 
 sys.path.insert(0, str(REPO_ROOT / "tools"))
 
@@ -83,7 +84,7 @@ def test_run_attributes_the_commands_own_cpu(tmp_path) -> None:
         ],
         capture_output=True,
         text=True,
-        timeout=120,
+        timeout=patience(120),
         stdin=subprocess.DEVNULL,
         check=False,
     )

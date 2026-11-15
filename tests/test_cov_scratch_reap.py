@@ -21,6 +21,7 @@ from pathlib import Path
 
 import pytest
 from conftest import REPO_ROOT, hermetic_env
+from timing_bounds import patience
 
 pytestmark = pytest.mark.skipif(
     shutil.which("cargo") is None
@@ -76,7 +77,7 @@ def _gate(crate: Path, cache: Path, budget_gib: str) -> subprocess.CompletedProc
         cwd=crate,
         capture_output=True,
         text=True,
-        timeout=600,
+        timeout=patience(600),
         stdin=subprocess.DEVNULL,
         env=hermetic_env(GOH_COV_CACHE=str(cache), GOH_COV_CACHE_MAX_GIB=budget_gib),
         check=False,
@@ -138,7 +139,7 @@ def test_the_budget_is_enforced_while_the_run_is_live(tmp_path) -> None:
         cwd=crate,
         capture_output=True,
         text=True,
-        timeout=600,
+        timeout=patience(600),
         stdin=subprocess.DEVNULL,
         env=hermetic_env(GOH_COV_CACHE=str(cache), GOH_COV_CACHE_MAX_GIB="0.0025"),
         check=False,
