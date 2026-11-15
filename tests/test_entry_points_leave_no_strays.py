@@ -26,6 +26,7 @@ from pathlib import Path
 import test_ship
 from conftest import REPO_ROOT, git, hermetic_env
 from test_ship import SHIP, _env
+from timing_bounds import patience
 
 shipped = test_ship.shipped  # the fixture, by assignment
 LAND = REPO_ROOT / "tools" / "land.sh"
@@ -58,7 +59,7 @@ def test_land_then_ship_leave_no_file_in_any_work_tree(shipped: Path, tmp_path: 
 def _bash(script: str, cwd: Path, run: Path, **extra: str) -> subprocess.CompletedProcess[str]:
     return subprocess.run(["bash", "-c", script], cwd=cwd, capture_output=True, text=True,
                           env=hermetic_env(drop_git=True, GOH_RUN_DIR=str(run), **extra),
-                          timeout=120, stdin=subprocess.DEVNULL, check=False)  # fmt: skip
+                          timeout=patience(120), stdin=subprocess.DEVNULL, check=False)  # fmt: skip
 
 
 def test_a_placement_stages_outside_the_tree(repo: Path, tmp_path: Path) -> None:
@@ -127,7 +128,7 @@ def test_the_proven_index_tree_inside_a_commit_reads_the_hook_index(
     env = hermetic_env(drop_git=True, GOH_RUN_DIR=str(tmp_path / "run"))
     done = subprocess.run(["git", "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "-a",
                            "-m", "x"], cwd=repo, env=env, capture_output=True, text=True,
-                          timeout=120, stdin=subprocess.DEVNULL, check=False)  # fmt: skip
+                          timeout=patience(120), stdin=subprocess.DEVNULL, check=False)  # fmt: skip
     assert done.returncode == 0, done.stdout + done.stderr
     assert out.read_text().strip() == git(repo, "rev-parse", "HEAD^{tree}").strip()
     assert _strays(repo) == []
@@ -147,6 +148,8 @@ def test_the_release_worktree_lives_under_the_run_root(repo: Path, tmp_path: Pat
     (repo / "tools").mkdir()
     (repo / "tools" / "land.sh").write_text(LAND_STUB.format(out=out))
     (repo / "tools" / "land.sh").chmod(0o755)
+    (repo / "tools" / "loaded_suite.sh").write_text("#!/usr/bin/env bash\nexit 0\n")
+    (repo / "tools" / "loaded_suite.sh").chmod(0o755)  # the kit's loaded-suite step, passed
     (repo / "CHANGELOG.md").write_text(
         "# CHANGELOG\n\n## Unreleased\n\n* **Two.** b\n\n## v0.1.0 -- first\n\n* **One.** a\n"
     )

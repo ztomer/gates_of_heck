@@ -6,7 +6,8 @@
 #
 #   1. refuse, before anything moves, a dirty tree, a VERSION that is not X.Y.Z, a tag that already
 #      exists, and an Unreleased with nothing to release (changelog_cut.py ready);
-#   2. in a worktree off HEAD, under the run root (lib/run_path.sh), never in the checkout: [workspace.package] version and Cargo.lock's workspace
+#   2. in a worktree off HEAD under the run root (lib/run_path.sh), never in the checkout:
+#      [workspace.package] version and Cargo.lock's workspace
 #      entries set to VERSION, Unreleased cut into `## vVERSION` (titled with GOH_SHIP_SUMMARY when
 #      ship gives one), one `release: vVERSION -- TITLE` commit through the hooks;
 #   3. tools/loaded_suite.sh, the suite once under tools/load.py's spinners (GOH.CLASS.HARNESS),

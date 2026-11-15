@@ -26,6 +26,7 @@ CONSUMERS: dict[str, tuple[str, ...]] = {
     "crates/goh/src/relquiet.rs": ("release quiet",),
     "crates/goh/src/mktempport.rs": ("BSD-only mktemp",),
     "crates/goh/src/bareopen.rs": ("bare open",),
+    "crates/goh/src/runpaths.rs": ("run paths",),
     "crates/goh/src/pluralhedge/mod.rs": ("hedged plural",),
     "crates/goh/src/tuimarks/mod.rs": ("hand-rolled TUI mark",),
     "crates/goh/src/gitdeadline.rs": ("git deadline",),

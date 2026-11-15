@@ -17,9 +17,12 @@ from __future__ import annotations
 import hashlib
 import os
 import shutil
-import subprocess
 import tempfile
 from pathlib import Path
+
+import gitrun  # git under a deadline that never strands a lock (lib/gitrun.py)
+
+DEADLINE_S = 60.0
 
 
 def run_root() -> Path:
@@ -55,11 +58,10 @@ def index_tree(repo: Path | str, env: dict[str, str] | None = None) -> str:
     if idx:
         index = Path(repo, idx)
     else:
-        done = subprocess.run(
-            ["git", "rev-parse", "--path-format=absolute", "--git-path", "index"],
-            cwd=repo, env=env, capture_output=True, text=True, check=True,
-            stdin=subprocess.DEVNULL, timeout=60,
-        )  # fmt: skip
+        done = gitrun.run_reader(("rev-parse", "--path-format=absolute", "--git-path", "index"),
+                                 cwd=repo, env=env, timeout=DEADLINE_S)  # fmt: skip
+        if done.returncode != 0:
+            raise RuntimeError(f"goh index_tree: no index in {repo}: {done.stderr.strip()}")
         index = Path(done.stdout.strip())
     where = run_root() / "index"
     where.mkdir(parents=True, exist_ok=True)
@@ -72,10 +74,11 @@ def index_tree(repo: Path | str, env: dict[str, str] | None = None) -> str:
         else:
             copy.unlink()  # no index yet is an empty one
         env["GIT_INDEX_FILE"] = str(copy)
-        done = subprocess.run(
-            ["git", "write-tree"], cwd=repo, env=env, capture_output=True, text=True, check=True,
-            stdin=subprocess.DEVNULL, timeout=60,
-        )  # fmt: skip
-        return done.stdout.strip()
+        # A writer of the PRIVATE copy only, under a deadline that stops its whole group.
+        wrote = gitrun.run_writer(("write-tree",), cwd=repo, env=env, deadline_s=DEADLINE_S)
+        if wrote is None or wrote.returncode != 0:
+            why = "stopped at its deadline" if wrote is None else wrote.stderr.strip()
+            raise RuntimeError(f"goh index_tree: git write-tree in {repo}: {why}")
+        return wrote.stdout.strip()
     finally:
         copy.unlink(missing_ok=True)

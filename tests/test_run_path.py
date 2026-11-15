@@ -16,6 +16,7 @@ from pathlib import Path
 
 import pytest
 from conftest import REPO_ROOT, git, hermetic_env
+from timing_bounds import patience
 
 sys.path.insert(0, str(REPO_ROOT / "lib"))
 import run_path
@@ -26,7 +27,7 @@ VECTOR = "668405c985a3f02f"  # sha256("/a/repo")[:16], pinned in crates/goh/src/
 
 def _sh(script: str, cwd: Path, **env: str) -> subprocess.CompletedProcess[str]:
     return subprocess.run(["bash", "-c", f'. "{SH}"; {script}'], cwd=cwd, capture_output=True,
-                          text=True, env=hermetic_env(drop_git=True, **env), timeout=60,
+                          text=True, env=hermetic_env(drop_git=True, **env), timeout=patience(60),
                           stdin=subprocess.DEVNULL, check=False)  # fmt: skip
 
 
@@ -46,7 +47,7 @@ def test_the_key_is_the_pinned_vector() -> None:
 
     assert hashlib.sha256(b"/a/repo").hexdigest()[:16] == VECTOR
     done = subprocess.run(["bash", "-c", f'. "{SH}"; printf %s /a/repo | _goh_run_sha256'],
-                          capture_output=True, text=True, env=hermetic_env(), timeout=60,
+                          capture_output=True, text=True, env=hermetic_env(), timeout=patience(60),
                           stdin=subprocess.DEVNULL, check=False)  # fmt: skip
     assert done.stdout.strip()[:16] == VECTOR, done.stderr
 
@@ -71,22 +72,21 @@ def test_the_index_tree_answers_while_index_lock_is_held(repo: Path, tmp_path: P
     lock = (lock if lock.is_absolute() else repo / lock) / "index.lock"
     lock.write_text("")  # another git holds the index
     try:
-        assert (
-            subprocess.run(
-                ["git", "write-tree"],
-                cwd=repo,
-                capture_output=True,
-                env=hermetic_env(drop_git=True),
-                stdin=subprocess.DEVNULL,
-                check=False,
-            ).returncode
-            != 0
-        )  # calibration: the bare one is refused
+        bare = subprocess.run(
+            ["git", "write-tree"],
+            cwd=repo,
+            capture_output=True,
+            env=hermetic_env(drop_git=True),
+            stdin=subprocess.DEVNULL,
+            check=False,
+        ).returncode
+        assert bare != 0  # calibration: the bare one is refused
         done = _sh("goh_index_tree", repo, GOH_RUN_DIR=str(run))
         assert done.returncode == 0, done.stderr
         assert done.stdout.strip() == want
         env = {**hermetic_env(drop_git=True), "GOH_RUN_DIR": str(run)}
-        assert run_path.index_tree(repo, env) == want
+        got = run_path.index_tree(repo, env)
+        assert got == want
     finally:
         lock.unlink()
     assert list((run / "index").iterdir()) == [], "the private copies are removed"
@@ -111,4 +111,5 @@ def test_the_index_tree_reads_a_bound_hook_index(repo: Path, tmp_path: Path) -> 
     run = tmp_path / "run"
     done = _sh("goh_index_tree", repo, GOH_RUN_DIR=str(run), GIT_INDEX_FILE=str(other))
     assert done.stdout.strip() == want, done.stderr
-    assert run_path.index_tree(repo, {**env, "GOH_RUN_DIR": str(run)}) == want
+    got = run_path.index_tree(repo, {**env, "GOH_RUN_DIR": str(run)})
+    assert got == want

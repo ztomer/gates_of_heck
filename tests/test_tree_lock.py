@@ -13,6 +13,7 @@ import subprocess
 import time
 from pathlib import Path
 
+from conftest import hermetic_env
 from timing_bounds import assert_sooner
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -49,7 +50,7 @@ def _spawn(repo: Path, secs: float, release: Path | None = None) -> subprocess.P
     # killing the shell alone is not a release.
     return subprocess.Popen(
         ["bash", "-c", script],
-        env={**os.environ, "GOH_RUN_DIR": str(_run(repo))},
+        env=hermetic_env(GOH_RUN_DIR=str(_run(repo))),
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
         text=True,

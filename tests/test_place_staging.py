@@ -22,7 +22,7 @@ from pathlib import Path
 import pytest
 from _fast_git import fast_init
 from conftest import REPO_ROOT, hermetic_env
-from timing_bounds import GiveUp
+from timing_bounds import GiveUp, patience
 
 PLACE = REPO_ROOT / "lib" / "place.sh"
 
@@ -171,7 +171,7 @@ def test_a_dead_stage_left_beside_dest_by_an_older_goh_is_reaped(checkout, tmp_p
     src = tmp_path / "goh-built"
     src.write_bytes(b"whole")
     proc = _place(src, checkout / "bin" / "goh")
-    proc.communicate(timeout=60)
+    proc.communicate(timeout=patience(60))
     assert proc.returncode == 0
     assert sorted(p.name for p in (checkout / "bin").iterdir()) == ["goh"]
 

@@ -136,6 +136,7 @@ INVENTORY_CASE: dict[str, bytes] = {
         b"GOH_LINE_EXCLUDE='big.py'\n"
         b"GOH_LINE_BASELINE='base.txt'\nGOH_REQUIRES_CALL='rc.toml'\n"
         b"GOH_SUBPROCESS_STDIN=on\nGOH_JS_SYNTAX=on\nGOH_NO_PRIVATE_NAMES=on\nGOH_CHANGELOG_FRAGMENTS=on\n"
+        b"GOH_RUN_PATHS=on\n"
     ),
     "rc.toml": b'[[rule]]\nname = "b"\nwhy = "y"\nfiles = ["b.py"]\nmust_call = ["print"]\n',
     "b.py": b"print(1)\n",
