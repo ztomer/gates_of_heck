@@ -70,6 +70,7 @@ GOH_BARE_PYTHON_MIN_FILES=5             # [6] hook/gate scripts
 GOH_RELEASE_QUIET_MIN_FILES=2           # [2] release-named shell scripts (2026-11-08)
 GOH_MKTEMP_PORTABLE_MIN_FILES=78        # [87] shell sources (2026-11-08)
 GOH_BARE_OPEN_MIN_FILES=78              # the same shell sources as mktemp-portable (2026-11-13)
+GOH_GIT_DEADLINE_MIN_FILES=240          # [~274] non-test shell and Python sources (2026-11-14)
 GOH_PLURAL_HEDGE_MIN_FILES=720          # [~800] py/sh/rs/swift sources (2026-11-09)
 GOH_TAP_WRITES_MIN_FILES=370            # [414] script/workflow files (2026-10-17)
 GOH_WORKFLOW_PINS_MIN_REFS=5           # [5] runner labels and action references (2026-11-11)

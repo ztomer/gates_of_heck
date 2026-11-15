@@ -188,7 +188,7 @@
   "tests/test_gate_slot_linux.py": 1,
   "tests/test_gate_temp_leaks.py": 3,
   "tests/test_gates_from_head.py": 4,
-  "tests/test_git_deadline_class.py": 5,
+  "tests/test_git_deadline_class.py": 4,
   "tests/test_git_local_vars.py": 1,
   "tests/test_gitcensus.py": 1,
   "tests/test_gitcensus_fixture_spawns.py": 3,

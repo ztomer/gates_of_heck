@@ -39,6 +39,8 @@ pub mod estate_seed;
 pub mod fixedsleep;
 pub mod gatesrc;
 pub mod gatesrc_dupes;
+pub mod gitargv;
+pub mod gitdeadline;
 pub mod gitutil;
 pub mod goh_dir;
 pub mod grace;
@@ -466,6 +468,7 @@ fn run_line_scans(command: Commands) -> Result<i32, Box<Commands>> {
         Commands::PluralHedge(a) => paths(a.scope.exclude, |x| {
             pluralhedge::run_command(a.scope.staged, x, a.all)
         }),
+        Commands::GitDeadline(a) => paths(a.exclude, |x| gitdeadline::run_command(a.staged, x)),
         Commands::TuiMarks(a) => paths(a.exclude, |x| tuimarks::run_command(a.staged, x)),
         other => return Err(Box::new(other)),
     })

@@ -95,7 +95,7 @@ def git_read(args, *, timeout, env=None):
     env = dict(os.environ if env is None else env)
     env["GIT_OPTIONAL_LOCKS"] = "0"
     return subprocess.run(
-        ["git", *args],
+        ["git", *args],  # git-deadline-ok: the reader seam, no-lock env above
         capture_output=True,
         text=True,
         timeout=timeout,

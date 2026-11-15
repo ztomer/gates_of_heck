@@ -120,6 +120,12 @@ pub const MKTEMP_PORTABLE: Subject = Subject {
     units: "shell sources",
     scanner: "no BSD-only mktemp -t",
 };
+pub const GIT_DEADLINE: Subject = Subject {
+    key: "GOH_GIT_DEADLINE_MIN_FILES",
+    unit: "shell or Python source",
+    units: "shell and Python sources",
+    scanner: "no git stopped at a deadline holding a lock",
+};
 pub const BARE_OPEN: Subject = Subject {
     key: "GOH_BARE_OPEN_MIN_FILES",
     unit: "shell or Python source",
@@ -212,7 +218,7 @@ pub const BUSY_LOOP: Subject = Subject {
 };
 
 /// Every scanner with a subject, spelled once: the keys `.gatesrc` may hold a floor in.
-pub const ALL: [&Subject; 25] = [
+pub const ALL: [&Subject; 26] = [
     &EMOJI,
     &CONFLICT_MARKERS,
     &FILE_LENGTH,
@@ -224,6 +230,7 @@ pub const ALL: [&Subject; 25] = [
     &RELEASE_QUIET,
     &MKTEMP_PORTABLE,
     &BARE_OPEN,
+    &GIT_DEADLINE,
     &PLURAL_HEDGE,
     &BARE_PYTHON,
     &CHECKOUT_CREDENTIALS,

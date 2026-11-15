@@ -8,8 +8,8 @@ git alone at the deadline:
 * a READER (`git status`, `git diff`) takes the same lock OPTIONALLY, to refresh the index it just
   read, and strands it the same way.
 
-TWO SEAMS, so the wrong state is unrepresentable (tests/test_git_deadline_class.py scans for any
-other spelling):
+TWO SEAMS, so the wrong state is unrepresentable (`goh git-deadline` refuses any other spelling,
+in this repo and every consumer):
 
     run_reader(["status", "--short"], cwd=repo, timeout=5)   # GIT_OPTIONAL_LOCKS=0: no lock to strand
     run_writer(["commit", "-q", "-m", m], cwd=repo, deadline_s=60)   # own group; TERM, a grace, KILL

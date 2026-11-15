@@ -376,6 +376,9 @@ pub enum Commands {
     ReleaseQuiet(ExcludeStagedArgs),
     /// Fail on `mktemp -t NAME` with no X in NAME (BSD-only; GNU refuses it).
     MktempPortable(ExcludeStagedArgs),
+    /// Fail on a git stopped at a deadline (SIGKILL strands index.lock) or a work-tree reader
+    /// that takes the optional lock.
+    GitDeadline(ExcludeStagedArgs),
     /// Fail on a bare `open` in a shell source: it hands the app the caller environment.
     BareOpen(ExcludeStagedArgs),
     /// Launch an app (or open a document) with launchd's login environment, never the caller's.

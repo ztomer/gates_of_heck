@@ -14,8 +14,11 @@ just the same. Two cures, both structural here:
 
 The sweep of goh found seven Python sites with a deadline on a reader (`ship`, the calibration
 probe's two, the compact and discard hooks, `landed_verify`'s three), one SIGKILL-only group kill in
-`killtree`, one in the release canary, and four shell readers of the working tree. The AST/line
-scans below keep them from coming back: a NEW one is a red test, not a review comment.
+`killtree`, one in the release canary, and four shell readers of the working tree. The scan that
+keeps the Python and shell sites from coming back is native, in every repo (`goh git-deadline`,
+`crates/goh/src/gitdeadline.rs`, GOH.GITKILLNATIVE), and this repo is judged by it in
+`tests/test_git_deadline_native.py::test_this_repo_has_no_site`; what stays here is what it does
+not read: the Rust readers, the group kills, a seam's hand-written `-C`, and the seams' behaviour.
 """
 
 from __future__ import annotations
@@ -23,7 +26,6 @@ from __future__ import annotations
 import ast
 import os
 import re
-import stat
 import subprocess
 import sys
 import time
@@ -39,7 +41,6 @@ sys.path.insert(0, str(REPO_ROOT / "lib"))
 # The two places a git read under a deadline is spelled: lib's, and the checks tier's twin (the
 # checks directory is copied whole into fixtures and cannot import lib/).
 SEAMS = {"lib/gitrun.py", "checks/_gitutil.py"}
-SPAWNERS = {"run", "Popen", "check_output", "call", "check_call"}
 # A SIGKILL group kill is allowed in these files only, each with the reason it is not a git writer's.
 KILLPG_KILL_ALLOWED = {
     "checks/_gate_slot_probe.py": "a probe's own gate-slot holder (no git), killed after a 30 s wait",
@@ -57,55 +58,6 @@ def _python_sources() -> list[str]:
 
 def _tree(rel: str) -> ast.Module:
     return ast.parse((REPO_ROOT / rel).read_text(encoding="utf-8"))
-
-
-def _spawn_calls(tree: ast.Module):
-    for node in ast.walk(tree):
-        func = node.func if isinstance(node, ast.Call) else None
-        if (
-            isinstance(func, ast.Attribute)
-            and func.attr in SPAWNERS
-            and isinstance(func.value, ast.Name)
-            and func.value.id == "subprocess"
-        ):
-            yield node
-
-
-def _starts_with_git(call: ast.Call) -> bool:
-    if not call.args or not isinstance(call.args[0], (ast.List, ast.Tuple)):
-        return False
-    first = call.args[0].elts[:1]
-    return bool(first) and isinstance(first[0], ast.Constant) and first[0].value == "git"
-
-
-def _git_with_deadline() -> list[str]:
-    found = []
-    for rel in _python_sources():
-        if rel in SEAMS:
-            continue
-        for call in _spawn_calls(_tree(rel)):
-            if _starts_with_git(call) and any(k.arg == "timeout" for k in call.keywords):
-                found.append(f"{rel}:{call.lineno}")
-    return found
-
-
-def test_no_python_site_runs_git_under_a_bare_subprocess_timeout() -> None:
-    """subprocess.run(timeout=) SIGKILLs git alone: it goes through lib/gitrun.py instead."""
-    assert _git_with_deadline() == [], (
-        "git under subprocess's timeout= (SIGKILL of git alone, an index.lock stranded): "
-        "use gitrun.run_reader / gitrun.run_writer"
-    )
-
-
-def test_the_scan_sees_a_planted_site(tmp_path: Path) -> None:
-    """The instrument can fail: the same scan reads a planted offender and reports it."""
-    planted = ast.parse(
-        "import subprocess\nsubprocess.run(['git', 'status'], timeout=5)\n"
-        "subprocess.run(['echo'], timeout=5)\nsubprocess.run(['git', 'log'])\n"
-    )
-    hits = [c.lineno for c in _spawn_calls(planted)
-            if _starts_with_git(c) and any(k.arg == "timeout" for k in c.keywords)]  # fmt: skip
-    assert hits == [2]
 
 
 def _seam_calls_with_hand_c(tree: ast.Module) -> list[int]:
@@ -160,22 +112,6 @@ def test_repo_drops_a_leaked_git_dir(
     assert Path(named.stdout.strip()) == (repo / ".git").resolve()
 
 
-def test_a_direct_git_status_or_diff_carries_the_no_lock_env() -> None:
-    """A literal `["git", ..., "status"|"diff"]` (no --cached) names GIT_OPTIONAL_LOCKS in its env."""
-    bad = []
-    for rel in _python_sources():
-        for call in _spawn_calls(_tree(rel)):
-            if not _starts_with_git(call):
-                continue
-            words = [e.value for e in call.args[0].elts if isinstance(e, ast.Constant)]
-            if not ({"status", "diff"} & set(words)) or {"--cached", "--staged"} & set(words):
-                continue
-            env = next((ast.unparse(k.value) for k in call.keywords if k.arg == "env"), "")
-            if "OPTIONAL_LOCKS" not in env and "reader_env" not in env:
-                bad.append(f"{rel}:{call.lineno}")
-    assert bad == []
-
-
 def test_a_group_kill_is_term_first_everywhere() -> None:
     """No os.killpg(.., SIGKILL) outside the named probe: lib/killtree.py stop_group TERMs first."""
     seen = set()
@@ -191,59 +127,6 @@ def test_a_group_kill_is_term_first_everywhere() -> None:
         f"a SIGKILL group kill outside killtree.stop_group: {sorted(seen - set(KILLPG_KILL_ALLOWED))};"
         f" a stale allowance: {sorted(set(KILLPG_KILL_ALLOWED) - seen)}"
     )
-
-
-SHELL_SUFFIXES = (".sh", ".bash")
-OPTIONAL = re.compile(r"\bgit\b[^|;&#\n]*\b(status|diff)\b")
-
-
-def _shell_sources() -> list[str]:
-    out = []
-    for rel in own_source_files():
-        if rel.startswith(("tests/", "crates/")) or "/target/" in rel:
-            continue
-        path = REPO_ROOT / rel
-        if rel.endswith(SHELL_SUFFIXES) or (
-            path.is_file() and path.stat().st_mode & stat.S_IXUSR and _shebang_is_shell(path)
-        ):
-            out.append(rel)
-    return out
-
-
-def _shebang_is_shell(path: Path) -> bool:
-    try:
-        return (
-            path.open("rb")
-            .read(40)
-            .startswith((b"#!/bin/sh", b"#!/bin/bash", b"#!/usr/bin/env bash"))
-        )
-    except OSError:
-        return False
-
-
-def test_a_shell_git_status_or_diff_of_the_work_tree_takes_no_optional_lock() -> None:
-    bad = []
-    for rel in _shell_sources():
-        for n, line in enumerate((REPO_ROOT / rel).read_text(encoding="utf-8").splitlines(), 1):
-            code = line.split("  #", 1)[0]
-            if line.lstrip().startswith("#") or not OPTIONAL.search(code):
-                continue
-            if re.search(r"--(cached|staged)\b", code):
-                continue
-            if "GIT_OPTIONAL_LOCKS=0" not in code and "--no-optional-locks" not in code:
-                bad.append(f"{rel}:{n}: {line.strip()[:90]}")
-    assert bad == [], "\n".join(bad)
-
-
-def test_no_shell_runs_git_under_the_timeout_command() -> None:
-    bad = []
-    for rel in _shell_sources():
-        for n, line in enumerate((REPO_ROOT / rel).read_text(encoding="utf-8").splitlines(), 1):
-            if not line.lstrip().startswith("#") and re.search(
-                r"\b(g?timeout)\b[^|;&]*\bgit\b", line
-            ):
-                bad.append(f"{rel}:{n}")
-    assert bad == []
 
 
 def test_the_rust_git_readers_take_no_optional_lock() -> None:
