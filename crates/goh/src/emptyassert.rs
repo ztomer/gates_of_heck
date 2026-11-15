@@ -209,8 +209,9 @@ fn format_args(invocation: &str) -> Vec<String> {
         .collect()
 }
 
-/// The house shape (GOH.ASSERTLINT, 2026-11-15): ONE assertion whose message names what was
-/// expected and shows what was there. Measured against clippy 1.100.0 with `-W clippy::pedantic`:
+/// The house shape (GOH.ASSERTLINT, 2026-11-15).
+///
+/// ONE assertion whose message names what was expected and shows what was there. Measured against clippy 1.100.0 with `-W clippy::pedantic`:
 /// clippy's `assert_is_empty` refuses `assert!(x.is_empty())` and `len_zero` refuses
 /// `assert!(x.len() == 0, ..)`, and both are silent on this shape, as this rule is.
 pub const HOUSE_SHAPE: &str = "assert!(x.is_empty(), \"expected no rows: {x:?}\");";
