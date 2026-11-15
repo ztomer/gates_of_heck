@@ -74,6 +74,13 @@ def rows() -> list[dict]:
         for line in fh:
             if line.strip() and not line.startswith("#"):
                 layer, tool, kind, install, site, floor = line.rstrip("\n").split("\t")
+                # `=X.Y.Z` is a PIN (the manifest's header): exactly that release. The version is
+                # written once, in the floor column; a pinned pip row installs `tool==X.Y.Z`, and
+                # the pin is enforced where the runner is known (gates/_py.sh goh_py_ruff_pinned),
+                # so `--check` judges a pinned tool's presence, as it did before.
+                pin = floor[1:] if floor.startswith("=") else ""
+                if pin and kind == "pip":
+                    install = f"{install}=={pin}"
                 out.append(
                     {
                         "layer": layer,
@@ -81,10 +88,16 @@ def rows() -> list[dict]:
                         "kind": kind,
                         "install": install,
                         "site": site,
-                        "floor": floor,
+                        "floor": "-" if pin else floor,
+                        "pin": pin,
                     }
                 )
     return out
+
+
+def pin(tool: str) -> str:
+    """The one release `tool` is pinned to (the manifest's `=X.Y.Z`), or "" when it has none."""
+    return next((r["pin"] for r in rows() if r["tool"] == tool and r["pin"]), "")
 
 
 # A repo-relative script a gate's text names: `tools/coverage_check.sh`, `./tools/x.py`.
@@ -362,8 +375,14 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--tool", action="append", default=[], help="judge this tool (any layer)")
     ap.add_argument("--found", default=None, help="the version text the caller read (--check)")
     ap.add_argument("--floors", action="store_true", help="tool<TAB>floor for every floor")
+    ap.add_argument("--pin", metavar="TOOL", help="the release TOOL is pinned to; 1 when none")
     args = ap.parse_args(argv)
     table = rows()
+    if args.pin:
+        got = pin(args.pin)
+        if got:
+            print(got)
+        return 0 if got else 1
     if args.floors:
         print("\n".join(f"{tool}\t{floor}" for tool, floor in floors().items()))
         return 0

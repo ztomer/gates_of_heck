@@ -69,7 +69,18 @@ if [ -n "$(setting GOH_PYTHON_FORMATTED)" ]; then
     py=()
     for p in "$@"; do case "$p" in *.py) [ -e "$p" ] && py+=("$p") ;; esac; done
     if [ "${#py[@]}" -gt 0 ]; then
-        ruff format -q -- "${py[@]}" || die "round stopped: ruff format failed"
+        # The ruff the Python gates judge with (gates/_py.sh: the repo's runner, held to the
+        # manifest's pin), never PATH's first: a round formatted with one ruff and committed into a
+        # gate that formats with another (GOH.CLASS.PARITY).
+        ( # shellcheck source=gates/_common.sh
+          . "$HERE/_common.sh"
+          GOH_NAME=round
+          # shellcheck source=gates/_py.sh
+          . "$HERE/_py.sh"
+          goh_py_runner_choose
+          goh_py_require ruff
+          "${RUN_ARR[@]}" ruff format -q -- "${py[@]}"
+        ) || die "round stopped: ruff format failed"
         ok "$(counted "${#py[@]}" "Python file") formatted"
     fi
 fi

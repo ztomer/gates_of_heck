@@ -37,11 +37,6 @@ jobs:
       # machine, which a hosted runner deletes when the job ends. Run 42930175911 named 12 of its
       # 90 red tests and the rest were lost. Like the ceiling, a property of THIS machine.
       GOH_TAIL: "100000"
-      # The ONE ruff this runner has (GOH.CIRUFF): run 43139901867 failed the rust coverage step on
-      # "ruff: 3 invocations, 2 versions" -- the manifest's `brew install ruff` and its unpinned
-      # `pip install ruff` gave the runner two. A named release, the newest; raise it in its own
-      # commit with gates/ruff_house.py's RUFF, which tests/test_ruff_pin.py holds it to.
-      GOH_CI_RUFF: "0.17.5"
     steps:
       # persist-credentials: false: the structural gate refuses a job token left in git config,
       # and nothing after the clone needs it. fetch-depth 0: the gate reads history (tags, the
@@ -71,6 +66,11 @@ jobs:
           # Every row but ruff's: ruff is the one pinned release below, into the house interpreter.
           grep -v '^#' <<<"$cmds" | sed -E 's/ ruff(==[0-9.]+)?( |$)/\2/g' | bash -eux
           py="$(bash lib/house_python.sh)"
+          # The ONE ruff this runner has (GOH.CIRUFF): run 43139901867 failed the rust coverage
+          # step on "ruff: 3 invocations, 2 versions" -- the manifest's `brew install ruff` and its
+          # unpinned `pip install ruff` gave the runner two. The release is READ from the manifest
+          # (gates/required_tools.tsv, the one place a tool version is written, GOH.CLASS.PARITY).
+          GOH_CI_RUFF="$("$py" gates/required_tools.py --pin ruff)"
           if brew list --formula ruff >/dev/null 2>&1; then brew uninstall --ignore-dependencies ruff; fi
           "$py" -m pip install "ruff==$GOH_CI_RUFF"
           # A runner that still carries another ruff fails HERE, naming it, not in a gate step.

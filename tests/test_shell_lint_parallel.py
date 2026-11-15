@@ -13,7 +13,10 @@ import os
 from pathlib import Path
 
 import pytest
+from _tool_versions import floor
 from conftest import commit_all, run_goh, write
+
+SC_FLOOR = floor("shellcheck")
 
 pytestmark = pytest.mark.skipif((os.cpu_count() or 1) < 2, reason="needs two cores")
 
@@ -27,7 +30,7 @@ def _overlap_shellcheck(tmp: Path) -> Path:
     sc = bin_ / "shellcheck"
     sc.write_text(
         "#!/bin/bash\n"
-        '[ "${1:-}" = --version ] && { printf "ShellCheck\\nversion: 0.11.0\\n"; exit 0; }\n'
+        f'[ "${{1:-}}" = --version ] && {{ printf "ShellCheck\\nversion: {SC_FLOOR}\\n"; exit; }}\n'
         f'marks="{marks}"; : > "$marks/$$"\n'
         "for _ in $(seq 200); do\n"
         '  [ "$(ls "$marks" | wc -l)" -ge 2 ] && exit 0\n'

@@ -14,6 +14,7 @@ import subprocess
 from pathlib import Path
 
 import pytest
+from _tool_versions import floor
 from conftest import stage, write
 from tier_kit import both_tiers, run_tiered  # noqa: F401  # both_tiers: a fixture
 
@@ -183,26 +184,20 @@ def test_a_shellcheck_below_its_floor_is_refused_naming_the_floor(repo, tmp_path
     stage(repo, "ok.sh")
     old = run_lint(repo, "--staged", env=_fake_shellcheck(tmp_path / "old", "0.10.0"))
     assert old.returncode == 1, old.stdout + old.stderr
-    assert "0.10.0" in old.stderr and "floor 0.11.0" in old.stderr, old.stdout + old.stderr
+    assert "0.10.0" in old.stderr and f"floor {floor('shellcheck')}" in old.stderr, (
+        old.stdout + old.stderr
+    )
     new = run_lint(repo, "--staged", env=_fake_shellcheck(tmp_path / "new", "99.0.0"))
     assert new.returncode == 0, new.stdout + new.stderr
 
 
 def test_the_gate_floor_is_the_manifest_floor():
-    """One fact: the floor shell_lint.rs refuses below is the one required_tools.tsv publishes."""
-    import re
-
+    """One fact: shell_lint.rs READS the floor required_tools.tsv publishes (crate::tool_versions,
+    GOH.CLASS.PARITY); it once kept a const copy, a second place a raise had to reach."""
     from conftest import REPO_ROOT
 
-    rows = [
-        line.split("\t")
-        for line in (REPO_ROOT / "gates" / "required_tools.tsv").read_text().splitlines()
-        if line and not line.startswith("#")
-    ]
-    tsv = {r[5] for r in rows if r[1] == "shellcheck"}
     src = (REPO_ROOT / "crates" / "goh" / "src" / "shell_lint.rs").read_text()
-    const = re.findall(r'const SHELLCHECK_FLOOR: &str = "([^"]+)";', src)
-    assert const and tsv == set(const), (tsv, const)
+    assert 'tool_versions::floor("shellcheck")' in src and "SHELLCHECK_FLOOR" not in src
 
 
 # ---- GOH.SHSEV: the gate judges warnings, and holds the debt in a ratchet ----

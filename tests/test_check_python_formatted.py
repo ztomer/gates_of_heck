@@ -21,9 +21,12 @@ import sys
 from pathlib import Path
 
 import pytest
+from _tool_versions import pin
 from conftest import REPO_ROOT, commit_all, stage, write
 from tier_kit import both_tiers, run_tiered  # noqa: F401  # both_tiers: a fixture
 from timing_bounds import assert_sooner
+
+_PIN = pin("ruff")
 
 CHECK = "checks/check_python_formatted.py"
 
@@ -243,6 +246,12 @@ def _fake(path: Path, body: str) -> Path:
     return path
 
 
+def _pinned(body: str) -> str:
+    """A machine-state ruff runner must report the manifest's pin (GOH.CLASS.PARITY): the fake
+    answers `--version` with it, and runs `body` for everything else."""
+    return f'case "$*" in *--version) echo "ruff {_PIN}"; exit 0 ;; esac\n' + body
+
+
 def _with_path_ruff(tmp_path, *, verdict: int) -> tuple[dict[str, str], Path]:
     """An env whose first PATH ruff exits `verdict`, and the log every fake appends its argv to."""
     log = tmp_path / "argv.log"
@@ -294,7 +303,7 @@ def test_staged_runs_the_pinned_ruff_too(repo, tmp_path):
 
 def test_a_venv_runs_its_own_ruff_when_no_lock_is_tracked(repo, tmp_path):
     env, log = _with_path_ruff(tmp_path, verdict=1)
-    _fake(repo / ".venv" / "bin" / "python", f'echo "VENV $*" >> "{log}"\nexit 0\n')
+    _fake(repo / ".venv" / "bin" / "python", _pinned(f'echo "VENV $*" >> "{log}"\nexit 0\n'))
     write(repo, "tools/good.py", GOOD)
     r = run_tiered(repo, CHECK, "python-formatted", "tools", env=env)
     assert r.returncode == 0, r.stdout + r.stderr
@@ -327,7 +336,7 @@ def test_goh_py_runner_names_the_ruff_and_the_python_version_reaches_uv(repo, tm
     )
     assert pinned.returncode == 0, pinned.stdout + pinned.stderr
     assert "UV run --frozen --python 3.14 ruff format" in log.read_text()
-    runner = _fake(tmp_path / "myrunner", f'echo "RUNNER $*" >> "{log}"\nexit 0\n')
+    runner = _fake(tmp_path / "myrunner", _pinned(f'echo "RUNNER $*" >> "{log}"\nexit 0\n'))
     named = run_tiered(
         repo, CHECK, "python-formatted", "tools", env=dict(env, GOH_PY_RUNNER=str(runner))
     )

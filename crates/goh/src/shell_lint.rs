@@ -53,26 +53,28 @@ impl Verdict {
     }
 }
 
-/// The OLDEST shellcheck this gate accepts: `gates/required_tools.tsv`'s floor, the version the
-/// gate is calibrated against (`tests/test_check_shell_lint.py` pins the two equal). Enforced HERE,
-/// not only by `required_tools.py --check`: a too-old shellcheck passed this gate (G2c).
-const SHELLCHECK_FLOOR: &str = "0.11.0";
-
 /// `Ok` when PATH's shellcheck is at or above the floor; the refusal, naming both, otherwise.
+///
+/// The floor is `gates/required_tools.tsv`'s, READ through `crate::tool_versions` (it was a second
+/// copy here, GOH.CLASS.PARITY): the version the gate is calibrated against. Enforced HERE, not
+/// only by `required_tools.py --check`: a too-old shellcheck passed this gate (G2c).
 fn at_floor() -> Result<(), String> {
+    let Some(floor) = crate::tool_versions::floor("shellcheck") else {
+        return Err("gates/required_tools.tsv gives shellcheck no floor".to_owned());
+    };
     let ran = bounded(Command::new("shellcheck").arg("--version"))
         .map_err(|e| format!("shellcheck --version: {e}"))?;
     let text = String::from_utf8_lossy(&ran.stdout);
     let Some(have) = crate::shellcheck_version::reported_version(&text) else {
         return Err(format!(
-            "shellcheck --version reported no version, and this gate needs {SHELLCHECK_FLOOR} or newer"
+            "shellcheck --version reported no version, and this gate needs {floor} or newer"
         ));
     };
-    if crate::shellcheck_version::newer_or_equal(have, SHELLCHECK_FLOOR) {
+    if crate::shellcheck_version::newer_or_equal(have, floor) {
         return Ok(());
     }
     Err(format!(
-        "shellcheck {have} is below this gate's floor {SHELLCHECK_FLOOR} -- brew upgrade shellcheck"
+        "shellcheck {have} is below this gate's floor {floor} -- brew upgrade shellcheck"
     ))
 }
 

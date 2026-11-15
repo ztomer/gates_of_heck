@@ -68,17 +68,22 @@ def test_the_pin_is_a_named_release():
 
 
 def test_hosted_ci_installs_the_pin():
-    wf = (REPO_ROOT / ".github" / "workflows" / "gate.yml").read_text()
-    assert f'GOH_CI_RUFF: "{RUFF}"' in wf, "gate.yml's GOH_CI_RUFF is gates/ruff_house.py's RUFF"
+    got = subprocess.run([sys.executable, str(REPO_ROOT / "gates" / "required_tools.py"), "--pin",
+                          "ruff"], capture_output=True, text=True, check=True,
+                         stdin=subprocess.DEVNULL)  # fmt: skip
+    assert got.stdout.strip() == RUFF, "gate.yml reads `required_tools.py --pin ruff`: the pin"
 
 
 def test_every_manifest_ruff_row_installs_the_pin():
-    rows = [ln.split("\t") for ln in (REPO_ROOT / "gates" / "required_tools.tsv").read_text()
-            .splitlines() if ln and not ln.startswith("#")]  # fmt: skip
-    ruff = [r for r in rows if r[1] == "ruff"]
+    sys.path.insert(0, str(REPO_ROOT / "gates"))
+    try:
+        import required_tools
+    finally:
+        sys.path.remove(str(REPO_ROOT / "gates"))
+    ruff = [r for r in required_tools.rows() if r["tool"] == "ruff"]
     assert ruff, "the manifest installs ruff"
     for r in ruff:
-        assert r[3].endswith(f"ruff=={RUFF}"), r
+        assert r["install"].endswith(f"ruff=={RUFF}") and r["pin"] == RUFF, r
 
 
 def test_the_suite_preflight_holds_every_ruff_to_the_pin():

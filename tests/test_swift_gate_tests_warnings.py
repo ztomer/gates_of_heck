@@ -11,6 +11,7 @@ import subprocess
 from pathlib import Path
 
 from _fast_git import fast_init
+from _tool_versions import floor
 from conftest import REPO_ROOT, mk_xcrun_find_shim, write
 
 SWIFT_GATE = REPO_ROOT / "gates" / "swift_gate.sh"
@@ -46,7 +47,7 @@ def _repo(tmp_path: Path):
         (
             "swiftlint",
             "#!/bin/bash\n"
-            + '[ "$1" = version ] && { echo 0.65.1; exit 0; }  # the floor check (gates/required_tools.tsv)\n'
+            + f'[ "$1" = version ] && {{ echo {floor("swiftlint")}; exit 0; }}  # the floor check\n'
             + "exit 0\n",
         ),
     ):

@@ -31,9 +31,54 @@ fn setting(root: &Path, key: &str) -> Option<String> {
         .filter(|v| !v.trim().is_empty())
 }
 
+/// The ruff this repo means, held to the house pin: `choose_unpinned`, then `pinned`.
+fn choose_runner(root: &Path) -> Result<Runner, String> {
+    pinned(choose_unpinned(root)?)
+}
+
+/// A runner that is MACHINE STATE (`PATH`, a `.venv`, a `GOH_PY_RUNNER`) must be the manifest's
+/// ruff pin (`gates/required_tools.tsv`, `crate::tool_versions`), the release hosted CI installs:
+/// this step ran whatever `PATH` gave while `gates/_py.sh` `goh_py_ruff_pinned` refused any other
+/// ruff (GOH.CLASS.PARITY), so the same tree could pass here and fail there. A runner built from
+/// the repo's tracked lock (`uv run`) is the repo's own pin, the same on every machine (GOH.RUFFPIN).
+fn pinned(runner: Runner) -> Result<Runner, String> {
+    let Some(pin) = crate::tool_versions::pin("ruff") else {
+        return Ok(runner);
+    };
+    if runner.first().map(String::as_str) == Some("uv")
+        && runner.get(1).map(String::as_str) == Some("run")
+    {
+        return Ok(runner);
+    }
+    let (program, lead) = runner.split_first().ok_or("no ruff runner chosen")?;
+    let mut cmd = Command::new(program);
+    cmd.args(lead).arg("--version");
+    let ran = crate::bounded::run(&mut cmd, None, crate::bounded::step_ceiling())
+        .map_err(|e| format!("cannot start ruff: {e}"))?;
+    if ran.timed_out {
+        return Err(format!(
+            "TIMED OUT after {}s: ruff --version",
+            crate::bounded::step_ceiling().as_secs()
+        ));
+    }
+    let text = String::from_utf8_lossy(&ran.stdout);
+    let found = text
+        .split_whitespace()
+        .find(|w| w.starts_with(|c: char| c.is_ascii_digit()));
+    if found == Some(pin) {
+        return Ok(runner);
+    }
+    Err(format!(
+        "'{}' is ruff {} and goh pins ruff {pin} (gates/required_tools.tsv), the release hosted CI installs: a gate on another ruff is not CI's (rule 17) -- install exactly ruff=={pin} where '{}' finds it",
+        runner.join(" "),
+        found.unwrap_or("of no readable version"),
+        runner.join(" "),
+    ))
+}
+
 /// The ruff this repo means, by `goh_py_runner_choose`'s order. An `Err` is a named refusal: a
 /// repo that declares a toolchain it cannot run is not judged by some other ruff.
-fn choose_runner(root: &Path) -> Result<Runner, String> {
+fn choose_unpinned(root: &Path) -> Result<Runner, String> {
     if let Some(named) = setting(root, "GOH_PY_RUNNER") {
         let mut argv: Runner = named.split_whitespace().map(str::to_owned).collect();
         argv.push("ruff".to_owned());

@@ -27,6 +27,7 @@ import sys
 from pathlib import Path
 
 import pytest
+from _tool_versions import floor as floor_of
 
 ROOT = Path(__file__).resolve().parent.parent
 CLI = ROOT / "gates" / "required_tools.py"
@@ -56,24 +57,31 @@ def _cli(args: list[str], env: dict[str, str] | None = None) -> subprocess.Compl
     )  # fmt: skip
 
 
-SEED = {
-    "python3": "3.15",
-    "pytest": "9.1.1",
-    "zig": "0.17.0",
-    "shellcheck": "0.11.0",
-    "cargo-machete": "0.7.0",
-    "cargo-audit": "0.21.0",
-    "cargo-zigbuild": "0.24.0",
-    "cargo-llvm-cov": "0.6.24",
-}
+# The tools seeded from sys_updater (R3.29). Their VERSIONS live in the manifest only
+# (GOH.CLASS.PARITY: tests/test_tool_version_manifest.py is red on a copy written here).
+SEED = (
+    "python3",
+    "pytest",
+    "zig",
+    "shellcheck",
+    "cargo-machete",
+    "cargo-audit",
+    "cargo-zigbuild",
+    "cargo-llvm-cov",
+)
 
 
 def test_the_floors_are_published_and_seeded_from_sys_updater() -> None:
     out = _cli(["--floors"])
     assert out.returncode == 0, out.stderr
     table = dict(line.split("\t") for line in out.stdout.splitlines() if line.strip())
-    for tool, floor in SEED.items():
-        assert table.get(tool) == floor, (tool, table)
+    raw = {}
+    for line in (ROOT / "gates" / "required_tools.tsv").read_text().splitlines():
+        cols = line.split("\t")
+        if line.strip() and not line.startswith("#") and cols[5] != "-":
+            raw.setdefault(cols[1], cols[5])
+    for tool in SEED:
+        assert table.get(tool) and table[tool] == raw.get(tool), (tool, table, raw)
 
 
 def test_one_tool_has_one_floor() -> None:
@@ -89,22 +97,38 @@ def test_one_tool_has_one_floor() -> None:
         assert seen.setdefault(tool, floor) == floor, (tool, seen[tool], floor)
 
 
+# zig's floor and versions around it, DERIVED from the manifest (GOH.CLASS.PARITY: a copy of the
+# number here is a place a raise does not reach). `lex` is below the floor numerically and above it
+# as text (0.9.9 against 0.17.0), the comparison trap.
+ZIG = floor_of("zig")
+_MAJ, _MIN, *_ = (int(x) for x in ZIG.split("."))
+_BELOW = f"{_MAJ}.{_MIN - 1}.0" if _MIN else f"{_MAJ - 1}.99.0"
+AROUND = {
+    "below": _BELOW,
+    "at": ZIG,
+    "minor-up": f"{_MAJ}.{_MIN + 1}.1",
+    "major-up": f"{_MAJ + 1}.0.0",
+    "lex": f"{_MAJ}.{9 if _MIN >= 10 else max(_MIN - 1, 0)}.9" if _MIN else _BELOW,
+}
+
+
 @pytest.mark.parametrize(
-    ("found", "ok"),
-    [("0.16.0", False), ("0.17.0", True), ("0.18.1", True), ("1.0.0", True), ("0.9.9", False)],
+    ("which", "ok"),
+    [("below", False), ("at", True), ("minor-up", True), ("major-up", True), ("lex", False)],
 )
 def test_a_tool_below_its_floor_is_red_and_newer_is_green(
-    tmp_path: Path, found: str, ok: bool
+    tmp_path: Path, which: str, ok: bool
 ) -> None:
     """FLOOR, never pin: below is red and NAMES both versions; at or above -- any newer -- is
     green."""
+    found = AROUND[which]
     _fake(tmp_path / "bin", "zig", found)
     out = _cli(["--check", "--tool", "zig"], env=_env(tmp_path / "bin"))
     if ok:
         assert out.returncode == 0, (out.stdout, out.stderr)
     else:
         assert out.returncode == 1, (out.stdout, out.stderr)
-        assert "zig" in out.stderr and found in out.stderr and "0.17.0" in out.stderr, out.stderr
+        assert "zig" in out.stderr and found in out.stderr and ZIG in out.stderr, out.stderr
         assert "floor" in out.stderr, out.stderr
 
 
@@ -138,8 +162,8 @@ def test_a_tool_with_no_floor_is_judged_on_presence_alone(tmp_path: Path) -> Non
 
 def test_goh_require_refuses_a_tool_below_its_floor(tmp_path: Path) -> None:
     """The house's existing requirement check is where the floor bites: a gate that needs zig and
-    finds 0.16.0 dies naming it, before any slow step runs."""
-    _fake(tmp_path / "bin", "zig", "0.16.0")
+    finds one below its floor dies naming it, before any slow step runs."""
+    _fake(tmp_path / "bin", "zig", AROUND["below"])
     script = f'. "{COMMON}"; GOH_NAME=t; goh_require zig "brew install zig"; echo REACHED'
     out = subprocess.run(
         ["bash", "-c", script],
@@ -152,7 +176,7 @@ def test_goh_require_refuses_a_tool_below_its_floor(tmp_path: Path) -> None:
         cwd=tmp_path,
     )  # fmt: skip
     assert out.returncode != 0 and "REACHED" not in out.stdout, (out.stdout, out.stderr)
-    assert "0.16.0" in out.stderr and "0.17.0" in out.stderr, out.stderr
+    assert AROUND["below"] in out.stderr and ZIG in out.stderr, out.stderr
 
 
 def test_goh_require_passes_a_newer_tool(tmp_path: Path) -> None:

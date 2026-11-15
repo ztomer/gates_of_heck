@@ -107,6 +107,7 @@ pub mod substdin;
 pub mod tagpush;
 pub mod tagver;
 pub mod tapwrite;
+pub mod tool_versions;
 pub mod tuimarks;
 pub mod unreaped;
 pub mod urlexpand;

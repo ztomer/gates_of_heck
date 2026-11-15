@@ -29,7 +29,7 @@ release moves rules, so two rufs are two gates. The Python gates refuse any othe
 runner that is machine state (gates/_py.sh goh_py_ruff_pinned), hosted CI installs exactly this
 (.github/workflows/gate.yml GOH_CI_RUFF, the manifest's ruff rows), and tools/pytest.sh holds every
 ruff on the machine to it (gates/ruff_agree.py --pin). The newest release, named; raise it in its
-own commit (tests/test_ruff_pin.py reads every place that must agree).
+own commit, in gates/required_tools.tsv, the one place it is written (GOH.CLASS.PARITY).
 """
 
 if __name__ == "__main__":  # C4: run HEAD's copy, not the shared working tree (gates/_from_head.py)
@@ -43,9 +43,24 @@ if __name__ == "__main__":  # C4: run HEAD's copy, not the shared working tree (
         __import__("_from_head").reexec(__file__)
     del _sys.path[0]
 
+import os
 import sys
 
-RUFF = "0.17.5"
+
+def _pin() -> str:
+    """The manifest's ruff pin (gates/required_tools.tsv `=X.Y.Z`): the version is written there
+    and nowhere else (GOH.CLASS.PARITY, tests/test_tool_version_manifest.py)."""
+    manifest = os.path.join(os.path.dirname(os.path.abspath(__file__)), "required_tools.tsv")
+    with open(manifest, encoding="utf-8") as fh:
+        for line in fh:
+            cols = line.rstrip("\n").split("\t")
+            ruff_row = not line.startswith("#") and len(cols) == 6 and cols[1] == "ruff"
+            if ruff_row and cols[5].startswith("="):
+                return cols[5][1:]
+    raise SystemExit(f"ruff_house.py: {manifest} pins no ruff (a `=X.Y.Z` floor on a ruff row)")
+
+
+RUFF = _pin()
 
 HOUSE: tuple[str, ...] = (
     "B",  # flake8-bugbear

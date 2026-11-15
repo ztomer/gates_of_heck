@@ -125,9 +125,10 @@ def test_the_workflow_installs_one_pinned_ruff_and_asks_the_pin_before_the_gate(
     import re
 
     wf = (REPO_ROOT / ".github" / "workflows" / "gate.yml").read_text()
-    m = re.search(r'GOH_CI_RUFF: "(\d+\.\d+\.\d+)"', wf)
-    assert m, "gate.yml pins ruff to a named release in GOH_CI_RUFF"
     run = _install_step()
+    # The release is READ from the one manifest, never written in the workflow (GOH.CLASS.PARITY).
+    assert 'GOH_CI_RUFF="$("$py" gates/required_tools.py --pin ruff)"' in run, run
+    assert not re.search(r"GOH_CI_RUFF:", wf), "gate.yml writes no ruff version of its own"
     assert run.count('install "ruff==$GOH_CI_RUFF"') == 1, run
     # The manifest's own ruff (brew, and an unpinned pip) is filtered out of what the step runs:
     # the step's filter, applied to the real manifest, leaves no ruff and every other tool.

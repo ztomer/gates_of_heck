@@ -35,23 +35,34 @@
 #   cargo-llvm-cov 0.6.24  HARD: `clean --profraw-only` is 0.6.12, and 0.6.24 fixed its
 #                        "removes too many files" bug.
 # A floor moves DOWN only with evidence and UP only in the commit whose code starts needing it.
+#
+# THE ONE VERSION MANIFEST (GOH.CLASS.PARITY, 2026-11-15). This table is the only place a house
+# tool's version is written: gates, hosted CI (.github/workflows/gate.yml), the goh-floors action,
+# lib/house_python.sh, gates/ruff_house.py and the Rust callers (crates/goh/src/tool_versions.rs,
+# include_str! of this file) all READ it, and tests/test_tool_version_manifest.py is red on a
+# version literal for any tool below written anywhere else. A `floor` of `=X.Y.Z` is a PIN, not a
+# floor: exactly that release, because a release of it moves the verdict (ruff's rules move per
+# release: divoom_control SIM102 red on GitHub, green locally, GOH.RUFFVERSION). The install
+# column never carries the version; gates/required_tools.py appends `==X.Y.Z` to a pinned pip row.
+#   ruff =0.17.5         PIN: the release the house Python gates judge with (newest, named).
 structural	cargo	system	rustup (https://rustup.rs)	scripts/build-goh.sh	-
 structural	shellcheck	brew	brew install shellcheck	crates/goh/src/shell_lint.rs	0.11.0
-python-format	ruff	pip	python3 -m pip install ruff==0.17.5	crates/goh/src/pyformat.rs	-
+python-format	ruff	pip	python3 -m pip install ruff	crates/goh/src/pyformat.rs	=0.17.5
 python-format	uv	brew	brew install uv	crates/goh/src/pyformat.rs	-
+python-format	ruff	pip	python3 -m pip install ruff	gates/round.sh	=0.17.5
 python	python3	system	the house interpreter (lib/house_python.sh): brew install python	lib/house_python.sh	3.15
-python	ruff	pip	python3 -m pip install ruff==0.17.5	gates/py_gate.sh	-
+python	ruff	pip	python3 -m pip install ruff	gates/py_gate.sh	=0.17.5
 python	pytest	pip	python3 -m pip install pytest	gates/py_gate.sh	9.1.1
 goh-suite	pytest	pip	python3 -m pip install pytest	tools/pytest.sh	9.1.1
 goh-suite	pillow	pip	python3 -m pip install pillow	tools/pytest.sh	-
 goh-suite	numpy	pip	python3 -m pip install numpy	tools/pytest.sh	-
 goh-suite	coverage	pip	python3 -m pip install coverage	tools/pytest.sh	-
-goh-suite	ruff	pip	python3 -m pip install ruff==0.17.5	tools/pytest.sh	-
+goh-suite	ruff	pip	python3 -m pip install ruff	tools/pytest.sh	=0.17.5
 goh-suite	git-cliff	brew	brew install git-cliff	tools/pytest.sh	-
 goh-suite	shellcheck	brew	brew install shellcheck	tools/pytest.sh	0.11.0
 goh-suite	swiftlint	brew	brew install swiftlint	tools/pytest.sh	0.65.1
 goh-suite	rustfmt	system	rustup component add rustfmt	tools/pytest.sh	-
-python	ruff	pip	python3 -m pip install ruff==0.17.5	gates/py_staged.sh	-
+python	ruff	pip	python3 -m pip install ruff	gates/py_staged.sh	=0.17.5
 rust	cargo	system	rustup (https://rustup.rs)	gates/rust_gate.sh	-
 rust	cargo-machete	cargo	cargo install cargo-machete	gates/rust_gate.sh	0.7.0
 rust	cargo-audit	cargo	cargo install cargo-audit	gates/rust_gate.sh	0.21.0

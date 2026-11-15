@@ -23,6 +23,7 @@ import subprocess
 import sys
 from pathlib import Path
 
+from _tool_versions import floor
 import pytest
 from conftest import REPO_ROOT, mk_xcrun_find_shim
 
@@ -318,7 +319,7 @@ def _mk_fake_swiftlint(bin_dir: Path, canned_report: Path | None) -> None:
     gate asks for the reporter format, exits like swiftlint does on findings."""
     shim = bin_dir / "swiftlint"
     body = (
-        '[ "$1" = version ] && { echo 0.65.1; exit 0; }  # the floor check (gates/required_tools.tsv)\n'
+        f'[ "$1" = version ] && {{ echo {floor("swiftlint")}; exit 0; }}  # the floor check\n'
         + 'echo "$@" >> "$GOH_SHIM_LOG"\n'
     )
     if canned_report is not None:

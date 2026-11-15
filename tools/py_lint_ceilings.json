@@ -277,7 +277,7 @@
   "tests/test_suite_cache_isolation.py": 2,
   "tests/test_suite_drift.py": 8,
   "tests/test_swift_gate_baseline.py": 2,
-  "tests/test_swift_gate_tests_warnings.py": 2,
+  "tests/test_swift_gate_tests_warnings.py": 1,
   "tests/test_swift_staged.py": 2,
   "tests/test_tag_version_unpushed.py": 2,
   "tests/test_tap_bump_real_shapes.py": 2,
