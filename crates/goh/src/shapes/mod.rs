@@ -76,6 +76,8 @@ pub struct Declared {
     /// The plain grep for the token the scanner judges.
     pub probe: &'static str,
     pub judged: Judged,
+    /// The line tokens it owns; none for a scanner whose verdict is on whole files (`file length`),
+    /// which must then judge every line of each file it covers.
     pub owns: &'static [Token],
     pub shapes: &'static [Shape],
     /// The paths whose change means the scanner changed (`goh shape-diff --since`).

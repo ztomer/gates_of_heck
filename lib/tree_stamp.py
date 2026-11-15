@@ -55,13 +55,15 @@ from tui.lib import counted, err
 # How many moved paths a failure names before summarising the rest.
 MAX_NAMED = 10
 
-# Written INTO the tree by the gates themselves: the tree lock (ignored
-# globally, not per repo, so git may still list it), coverage data, and the
+# Written INTO the tree by the gates themselves: coverage data, and the
 # lockfiles a build tool writes when a repo has none or resolves afresh
 # (found by this repo's rust_gate tests: cargo creating Cargo.lock read as a
 # move). A lockfile edited BY HAND mid-run is missed; that trade is taken,
 # because the build tool rewriting one is the common case by far.
-GATE_OWN_FILES = frozenset({".goh-tree.lock", ".coverage", "Cargo.lock", "Package.resolved"})
+# The tree lock is not one: it lives in the tree's run directory, outside the
+# work tree (lib/tree_lock.sh, GOH.CLASS.CHECKOUT part 2), so a
+# `.goh-tree.lock` appearing mid-run is something else writing the tree.
+GATE_OWN_FILES = frozenset({".coverage", "Cargo.lock", "Package.resolved"})
 
 # Directories the gate's own TOOLS write into the tree as they run: bytecode,
 # test and lint caches, build products. A repo that does not ignore them still

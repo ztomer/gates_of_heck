@@ -77,11 +77,10 @@ def test_every_way_the_tree_moves_is_named(repo, tmp_path, change):
     assert expected in r.stderr
 
 
-def test_ignored_output_and_the_gate_lock_are_not_the_tree(repo, tmp_path):
+def test_ignored_output_is_not_the_tree(repo, tmp_path):
     stamp(repo, tmp_path, "take")
     (repo / "build").mkdir()
     (repo / "build" / "out.o").write_text("object")
-    (repo / ".goh-tree.lock").write_text("12345")
     # Tool caches the repo forgot to ignore are still the gate's own output.
     for d in ("__pycache__", "pkg/.pytest_cache", ".build/debug"):
         (repo / d).mkdir(parents=True)
@@ -89,6 +88,15 @@ def test_ignored_output_and_the_gate_lock_are_not_the_tree(repo, tmp_path):
     (repo / ".coverage").write_text("db")
     r = stamp(repo, tmp_path, "check")
     assert r.returncode == 0, r.stderr
+
+
+def test_the_retired_in_tree_lock_is_no_gate_file(repo, tmp_path):
+    """The lock moved out of the work tree (GOH.CLASS.CHECKOUT part 2); its old name is a move."""
+    stamp(repo, tmp_path, "take")
+    (repo / ".goh-tree.lock").write_text("12345")
+    r = stamp(repo, tmp_path, "check")
+    assert r.returncode == 1, r.stderr
+    assert ".goh-tree.lock" in r.stderr
 
 
 def test_a_commit_during_the_run_is_not_a_move(repo, tmp_path):

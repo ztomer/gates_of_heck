@@ -8,6 +8,9 @@
 
 use goh_tui::ERR;
 
+#[path = "length_shapes.rs"]
+pub mod shapes;
+
 /// Source suffixes the cap applies to. The same list as `SOURCE_SUFFIXES` in
 /// `checks/check_file_length.py`; `tests/test_goh_length_parity.py` compares the two whole.
 pub const SOURCE_SUFFIXES: &[&str] = &[

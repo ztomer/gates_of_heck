@@ -126,7 +126,22 @@ fn every_token_has_one_owner_and_no_scanner_judges_another_rows_token() {
         }
     }
     let mut overlaps = Vec::new();
-    for (row, d) in declared() {
+    // A row that owns no token judges whole files (`file length`): it counts no site, so it
+    // overlaps nothing -- and to be one it must judge EVERY line of each file it covers, which no
+    // line scanner does.
+    for (row, d) in declared().filter(|(_, d)| d.owns.is_empty()) {
+        for s in d.shapes.iter().filter(|s| s.verdict == Verdict::Covered) {
+            let (rel, text) = s.fixture;
+            let judged = (d.judged)(rel, text).unwrap_or_else(|e| panic!("{e}"));
+            let all: Vec<usize> = (1..=text.lines().count()).collect();
+            assert_eq!(
+                judged, all,
+                "`{}` owns no token, so it judges whole files, and `{}` is not judged whole",
+                row.scanner, s.name
+            );
+        }
+    }
+    for (row, d) in declared().filter(|(_, d)| !d.owns.is_empty()) {
         for (other, od) in declared().filter(|(o, _)| !std::ptr::eq(*o, row)) {
             for t in od.owns {
                 let (rel, text) = t.sample;
