@@ -241,3 +241,52 @@ def test_a_stale_ownerless_dir_does_not_make_the_stable_path_look_held(tmp_path)
     got = _push(repo, tmp_path, export_root)
     assert got.returncode == 0, got.stdout + got.stderr
     assert "held by a live push" not in got.stdout + got.stderr
+
+
+# ── EST.FSEVENTSCHURN: the budget holds while runs are live, under one lock ───────────────────
+
+
+def test_a_finished_build_inside_the_grace_is_evicted_past_the_budget(tmp_path) -> None:
+    """A build whose every recorded user has exited is idle, however recently it was stamped. The
+    10-minute grace spared it, so a sweep of repos, one finishing every few minutes, held its
+    last several builds past the budget (10 entries, 8.5 GiB against 8, 2026-11-15 12:59)."""
+    cache = tmp_path / "cov"
+    _entry(cache, "cur", 0)
+    _entry(cache, "done", 60, pid=_dead_pid())
+    _head_cache.prune(str(cache), "cur", keep=200, max_bytes=1, grace=600, marker=".goh-running")
+    assert {p.name for p in cache.iterdir()} == {"cur"}
+
+
+def test_a_build_being_marked_is_never_evicted(tmp_path) -> None:
+    """The marker lock is the decision's lock: a run adding its pid holds it, and a pruner that
+    cannot take it leaves the entry alone rather than judge a marker about to change."""
+    import fcntl
+
+    cache = tmp_path / "cov"
+    _entry(cache, "cur", 0)
+    entry = _entry(cache, "starting", 5 * HOUR, pid=_dead_pid())
+    with open(entry / ".goh-running.lock", "a", encoding="ascii") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        _head_cache.prune(
+            str(cache), "cur", keep=200, max_bytes=1, grace=600, marker=".goh-running"
+        )
+    assert entry.is_dir(), "evicted while a run held its marker lock"
+
+
+def test_a_mark_on_an_evicted_entry_lands_in_the_live_directory(tmp_path) -> None:
+    """A pruner renames the entry away under the lock before deleting it; a run that was waiting
+    on that lock must not record itself in the tombstone, or its build would read as unused."""
+    import fcntl
+    import threading
+
+    entry = tmp_path / "cov" / "k"
+    entry.mkdir(parents=True)
+    tomb = tmp_path / "cov" / ".evict.k"
+    with open(entry / ".goh-running.lock", "a", encoding="ascii") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        t = threading.Thread(target=_head_cache.mark, args=(str(entry), ".goh-running", 4242))
+        t.start()
+        time.sleep(0.3)
+        os.rename(entry, tomb)
+    t.join(10)
+    assert (entry / ".goh-running").read_text().split() == ["4242"]

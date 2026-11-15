@@ -51,9 +51,22 @@ cov_phase_stopped() { # the stop-signal trap: name the phase the signal landed i
     fi
     case "$1" in INT) exit 130 ;; HUP) exit 129 ;; *) exit 143 ;; esac
 }
-cov_cache_prune() { # the cache bounded by bytes: at the start of a run AND at its normal end
+cov_cache_prune() { # the cache bounded by bytes: at the start, after each build, and at exit
     "$GOH_PY" -S -c 'import sys; sys.path.insert(0, sys.argv[1]); import _head_cache; gib = float(sys.argv[4]); _head_cache.prune(sys.argv[2], sys.argv[3], keep=200, max_bytes=int(gib * 2**30) if gib > 0 else None, grace=600, marker=".goh-running")' \
         "$(dirname "${BASH_SOURCE[0]}")" "$COV_CACHE" "$COV_KEY" "${GOH_COV_CACHE_MAX_GIB:-8}" 2>/dev/null || true
+}
+cov_reap() { # the EXIT trap: this run's scratch goes with it, pass, fail or signal (EST.FSEVENTSCHURN)
+    # Every test process's profile (a goh push worktree: 109 MiB, cleared only by the NEXT run) and
+    # the report's view, hard links that keep a shared build's executables on disk after the cache
+    # evicts it, where no budget counts them (82 MiB). The run's record -- lcov-parts, its parts and
+    # logs -- stays. Then the budget, which a failing run skipped (tests/test_cov_scratch_reap.py).
+    local d
+    for d in "$PROJ/target/llvm-cov" "$PROJ/target/llvm-cov-external"; do
+        [ -d "$d" ] || continue
+        find "$d" -maxdepth 1 -type f -name '*.profraw' -delete 2>/dev/null || true
+        rm -rf "$d/cov-view"
+    done
+    [ -z "${COV_KEY:-}" ] || cov_cache_prune
 }
 run_rust() {
     cd "$PROJ" || exit 2
@@ -104,16 +117,19 @@ run_rust() {
     COV_ROOT="$( (unset GIT_DIR GIT_WORK_TREE GIT_COMMON_DIR GIT_INDEX_FILE
         root="$(git -C "$PROJ" rev-parse --show-toplevel 2>/dev/null)" && cd "$root" && pwd -P) || pwd -P)"
     COV_KEY="$(printf '%s\n' "$COV_ROOT" | shasum -a 256 | cut -c1-16)"
-    mkdir -p "$COV_CACHE/$COV_KEY"
-    : >"$COV_CACHE/$COV_KEY/.goh-used"
+    trap cov_reap EXIT
     # WHO IS USING IT, not when (GOH.CACHEBOUND). The byte budget spared every entry stamped within
     # the hour, and a sweep of ~40 projects is one hour: 21 GiB held against a budget of 8. Each run
     # adds its pid (one per crate now: several share the entry at once); an entry with any pid alive
-    # is never evicted, any other one past the budget is, past a 10-minute grace that covers a run
-    # which predates the marker.
+    # is never evicted, any other one past the budget is, at once (EST.FSEVENTSCHURN: the 10-minute
+    # grace kept every build a sweep had just finished) -- decided under the marker's lock, which
+    # this mark takes too, so no run starts in an entry being deleted (_head_cache._evict).
     "$GOH_PY" -S -c 'import sys; sys.path.insert(0, sys.argv[1]); import _head_cache; _head_cache.mark(sys.argv[2], ".goh-running", int(sys.argv[3]))' \
         "$(dirname "${BASH_SOURCE[0]}")" "$COV_CACHE/$COV_KEY" "$$" \
         || { err "could not record this run in $COV_CACHE/$COV_KEY/.goh-running"; exit 2; }
+    # The stamp AFTER the mark: a pruner judges an entry by its marker under the marker's lock
+    # (_head_cache._evict), so an entry is never stamped fresh while its marker still reads idle.
+    : >"$COV_CACHE/$COV_KEY/.goh-used"
     cov_cache_prune
     export CARGO_TARGET_DIR="$PROJ/target/llvm-cov"
     export CARGO_BUILD_BUILD_DIR="$COV_CACHE/$COV_KEY/build"
@@ -166,6 +182,7 @@ run_rust() {
                 --message-format=json-render-diagnostics \
                 >"$part.json" 2>"$part.log" 3>&- || exit 1
             "$GOH_PY" "$GOH_ROOT/gates/_cov_prune.py" "$part.json" >>"$part.log" 2>&1 3>&- || exit 1
+            cov_cache_prune   # the budget against the build just made, while the run is live
             cov_phase "$label" "$part.log"
             bins="$CARGO_TARGET_DIR/debug" profile="${LLVM_PROFILE_FILE/-%p/}"
             (
@@ -260,6 +277,7 @@ PYEOF
             cargo test --no-run --locked --workspace $KINDS --all-features \
                 --message-format=json-render-diagnostics >"$WORKSPACE_PART.json" 3>&- || exit 1
             "$GOH_PY" "$GOH_ROOT/gates/_cov_prune.py" "$WORKSPACE_PART.json" 3>&- || exit 1
+            cov_cache_prune   # the budget against the build just made, while the run is live
             cov_phase "workspace: cargo test" "$WORKSPACE_PART.log"
             cargo test --locked --workspace $KINDS --all-features 3>&- || exit 1
             cov_phase "workspace: report" "$WORKSPACE_PART.log"
@@ -310,6 +328,5 @@ PYEOF
     local merge_rc=0
     "$GOH_PY" "$GOH_ROOT/gates/lcov_merge.py" "${_MERGE_ARGS[@]}" "$PARTS" || merge_rc=$?
     cov_phase ""
-    cov_cache_prune   # what this run's own build pushed past the budget goes now, not at the next run
-    return "$merge_rc"
+    return "$merge_rc"   # the EXIT trap (cov_reap) reaps the scratch and prunes to the budget
 }

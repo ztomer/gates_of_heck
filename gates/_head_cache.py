@@ -89,17 +89,63 @@ def running(path: str, marker: str | None) -> bool:
 
 def mark(path: str, marker: str, pid: int) -> None:
     """Add `pid` to `path/<marker>`, dropping pids no longer alive, under a lock: two crates of one
-    repo starting together must not overwrite each other's pid."""
+    repo starting together must not overwrite each other's pid. The lock is also the eviction's
+    (`_evict`): a pruner renames the entry away while holding it, so a mark that waited on it checks
+    it still holds the lock of the LIVE directory, and starts over in a fresh one if not -- a pid
+    written into the tombstone would leave the build unmarked, evictable while it runs."""
     import fcntl
 
-    os.makedirs(path, exist_ok=True)
-    with open(os.path.join(path, f"{marker}.lock"), "a", encoding="ascii") as lock:
-        fcntl.flock(lock, fcntl.LOCK_EX)
-        live = [p for p in _pids(path, marker) if p != pid and _alive(p)]
-        tmp = os.path.join(path, f"{marker}.{os.getpid()}")
-        with open(tmp, "w", encoding="ascii") as handle:
-            handle.write("".join(f"{p}\n" for p in [*live, pid]))
-        os.replace(tmp, os.path.join(path, marker))
+    lock_path = os.path.join(path, f"{marker}.lock")
+    while True:
+        os.makedirs(path, exist_ok=True)
+        with open(lock_path, "a", encoding="ascii") as lock:
+            fcntl.flock(lock, fcntl.LOCK_EX)
+            try:
+                if not os.path.samestat(os.fstat(lock.fileno()), os.stat(lock_path)):
+                    continue  # evicted while we waited: the path is a new directory now
+            except FileNotFoundError:
+                continue
+            live = [p for p in _pids(path, marker) if p != pid and _alive(p)]
+            tmp = os.path.join(path, f"{marker}.{os.getpid()}")
+            with open(tmp, "w", encoding="ascii") as handle:
+                handle.write("".join(f"{p}\n" for p in [*live, pid]))
+            os.replace(tmp, os.path.join(path, marker))
+            return
+
+
+def _idle(path: str, used: float, now: float, grace: float, marker: str | None) -> bool:
+    """Not in use. A cache whose writer records its users (`marker`) knows: an entry whose marker
+    names no live pid is idle however recently it was stamped (EST.FSEVENTSCHURN: the grace spared
+    every build a sweep finished in the last 10 minutes, 8.5 GiB held against 8). Without a marker
+    -- another cache, or an entry from before the marker -- the recency guess stands."""
+    if marker and os.path.exists(os.path.join(path, marker)):
+        return not running(path, marker)
+    return now - used > grace and not running(path, marker)
+
+
+def _evict(path: str, marker: str | None, remove) -> bool:
+    """Remove an idle entry; False when a run is using it after all. With a marker the decision is
+    made under the marker lock that `mark` takes, not taken (LOCK_NB) means a run is recording
+    itself right now: the entry is left alone. The entry is renamed away (`.build.*`, the leftover
+    name a crashed pruner's tombstone is reaped under) before the lock goes, so no run can start
+    building in a directory being deleted."""
+    if not marker:
+        remove(path)
+        return True
+    import fcntl
+
+    head, name = os.path.split(path)
+    tomb = os.path.join(head, f".build.evict-{name}-{os.getpid()}")
+    try:
+        with open(os.path.join(path, f"{marker}.lock"), "a", encoding="ascii") as lock:
+            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)  # held: a run is marking it now
+            if running(path, marker):
+                return False
+            os.rename(path, tomb)
+    except OSError:
+        return False
+    remove(tomb)
+    return True
 
 
 def tree_bytes(path: str) -> int:
@@ -142,11 +188,9 @@ def prune(
     exports.sort(reverse=True)  # most recently used first
     gone = []
     for rank, (used, path) in enumerate(exports, start=2):  # the current export is rank 1
-        idle = now - used
-        if running(path, marker):
+        if not _idle(path, used, now, grace, marker):
             continue
-        if idle > TTL_DAYS * 86400 or (rank > keep and idle > grace):
-            remove(path)
+        if (now - used > TTL_DAYS * 86400 or rank > keep) and _evict(path, marker, remove):
             gone.append(path)
     for path in leftovers:
         if now - os.stat(path).st_mtime > BUILD_LEFTOVER_S:
@@ -177,16 +221,16 @@ def _over_budget(
     marker: str | None = None,
 ) -> list[str]:
     """Least recently used first, until the cache fits `max_bytes`; never one in use (a live
-    `marker` pid) and never one stamped within `grace`."""
+    `marker` pid, or its marker lock held) and, without a marker, never one stamped within
+    `grace`."""
     sizes = {path: tree_bytes(path) for _used, path in exports}
     total = sum(sizes.values()) + tree_bytes(os.path.join(cache, current))
     gone = []
     for used, path in reversed(exports):  # least recently used first
         if total <= max_bytes:
             break
-        if now - used <= grace or running(path, marker):
+        if not _idle(path, used, now, grace, marker) or not _evict(path, marker, remove):
             continue  # in use, or used a moment ago: the next one up may not be
-        remove(path)
         gone.append(path)
         total -= sizes[path]
     return gone
