@@ -398,12 +398,20 @@ Every structural checker is native since Phase N3; the Python checkers they port
   hook: a spawn must name model AND effort and declare them (`Model-choice: <model>@<effort> because
   <tags>`) as the rules file's `tiers` accept, else it is denied with the table; an allowed one gets the
   report contract (`Status:` first) appended once and a line in `~/.cache/goh/agent-spawns.jsonl`
-  (every spawn, opus tiers included, must also carry `Pool: tried <...>` or `Pool: unfit because <...>`: the
-  rules file's `pool_first`, token-pool's `ask` before a Claude subagent), which
+  (a spawn on a tier the active profile's `pool_first` names -- every tier under max and pro, lookups only
+  under ultra -- must also carry `Pool: tried <...>` or `Pool: unfit because <...>`: token-pool's `ask`
+  before a Claude subagent), which
   SubagentStop completes with tokens, status and the report. Bounded exploration: a cheap-tier spawn runs
   on the cheap tier its prompt sha's parity picks (`explored: true`); the opus->cheap fraction is off
-  until the owner turns it on, and nothing without `checkable` is ever routed down. Fails open. Pinned by
-  `test_claude_agent_guard.py`, `test_agent_guard_exploration.py`.
+  until the owner turns it on, and nothing without `checkable` is ever routed down, nor to a `never` tier.
+  The tables in force are a profile (pro, max, ultra: the rules file's `profiles`), the owner's declared one
+  dropped one step when token-pool's Claude 7-day meter is low, stale or unreadable; every refusal names
+  it and why (GOH.ULTRARULES). Fails open. Pinned by `test_claude_agent_guard.py`,
+  `test_agent_guard_exploration.py`, `test_model_choice_profiles.py`.
+* `scripts/usage_review.py` — the weekly usage review `model_choice_watch.py` runs: the week's spawns,
+  pool lines, redo, escalation and spend per class, the Claude meter's minimum and the load when agents
+  landed propose a profile and the values it changes (a macOS notice); it never edits the rules file.
+  Pinned by `test_usage_review.py`.
 * `hooks/claude/agent_stalls.py` — `goh agent-stalls` and the coordinator's UserPromptSubmit hook
   (`--hook`): each live subagent (not stopped -- `stop_marker()`, THE stopped-agent rule `.loop`'s tick shares: its interrupt record, or a TaskStop tool_result naming its id in its session, LOOP.LINGERSTOP; a transcript that just ends with no marker is `unknown`, never alive -- not done: a `finished` meta is per stop, so a finished agent that stopped with a background job pending and no `Status:` report still counts, GOH.STALLS2; `is_waiting`/`full_said` are what `.loop`'s tick shares) whose transcript has not been
   written for `GOH_AGENT_STALL_MINUTES` (20), with what it last said and each background job it
