@@ -91,6 +91,7 @@ pub mod screen_mask;
 pub mod screen_shapes;
 pub mod secrets;
 pub mod seedcount;
+pub mod shapes;
 pub mod shell_lint;
 pub mod shell_lint_scope;
 pub mod shell_lint_seed;
@@ -473,6 +474,12 @@ fn run_line_scans(command: Commands) -> Result<i32, Box<Commands>> {
         }),
         Commands::GitDeadline(a) => paths(a.exclude, |x| gitdeadline::run_command(a.staged, x)),
         Commands::TuiMarks(a) => paths(a.exclude, |x| tuimarks::run_command(a.staged, x)),
+        Commands::ShapeDiff {
+            roots,
+            estate,
+            since,
+            scanner,
+        } => shapes::diff::run_command(&roots, estate, since.as_deref(), scanner.as_deref()),
         other => return Err(Box::new(other)),
     })
 }

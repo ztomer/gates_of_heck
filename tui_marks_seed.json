@@ -1,5 +1,5 @@
 {
-  "why": "goh tui-marks (GOH.TUIMARKS, 2026-11-15): a shell echo/printf or Python print whose text opens with a Kare mark (→ · ✓ ✗ ⚠) or an ANSI escape, where tui/lib.sh / tui.lib print it. THIS repository's own entries only (GOH.SEEDPRIVATE). Keyed by root commit; judged from 2026-11-23 (crate::grace). At or under its count warns; over it, unseeded, or stale is red. Done is an empty list.",
+  "why": "goh tui-marks (GOH.TUIMARKS, 2026-11-15): a shell echo/printf or Python print whose text opens with a Kare mark (→ · ✓ ✗ ⚠) (an ANSI escape is goh status-markers', GOH.CLASS.SHAPE), where tui/lib.sh / tui.lib print it. THIS repository's own entries only (GOH.SEEDPRIVATE). Keyed by root commit; judged from 2026-11-23 (crate::grace). At or under its count warns; over it, unseeded, or stale is red. Done is an empty list.",
   "entries": [
     {
       "root": "73391f04f5f2b92ab9813c62e6cecdce919d2d86",

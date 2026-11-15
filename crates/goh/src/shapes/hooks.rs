@@ -1,0 +1,39 @@
+//! Each declared scanner's JUDGED hook: the lines it reads a verdict on, through the scanner's own
+//! selection and finder (never a copy of either, or the table would vouch for the copy).
+
+/// `goh moving-tags`: every line of every image reference it read, whatever the verdict.
+///
+/// # Errors
+///
+/// None; the signature is the table's.
+pub fn moving_tags(rel: &str, text: &str) -> Result<Vec<usize>, String> {
+    Ok(crate::movingtag::scan::judged_lines(rel, text))
+}
+
+/// `goh status-markers`: its findings in a source file.
+///
+/// # Errors
+///
+/// A finder pattern that does not compile.
+pub fn status_markers(rel: &str, text: &str) -> Result<Vec<usize>, String> {
+    if !crate::statusmark::is_source(rel) {
+        return Ok(Vec::new());
+    }
+    Ok(crate::statusmark::scan::findings(text)?
+        .into_iter()
+        .map(|f| f.line)
+        .collect())
+}
+
+/// `goh tui-marks`: every opening mark it judges, escaped lines included (an exemption is a
+/// verdict). Its exempt files (the house lib, a git hook) are judged too, by rule.
+///
+/// # Errors
+///
+/// A finder pattern that does not compile.
+pub fn tui_marks(rel: &str, text: &str) -> Result<Vec<usize>, String> {
+    crate::tuimarks::lang_of(rel, text).map_or_else(
+        || Ok(Vec::new()),
+        |lang| crate::tuimarks::scan::judged(text, lang),
+    )
+}

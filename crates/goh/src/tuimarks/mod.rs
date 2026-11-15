@@ -81,6 +81,19 @@ pub fn exempt(root: &str, rel: &str) -> bool {
     root == GOH_ROOT && HOUSE_LIB.contains(&rel) || is_git_hook(rel)
 }
 
+/// The language `rel` (holding `text`) is read as, by the same two selectors [`sites`] reads
+/// through (`crate::shellsrc::is_shell`, and `bareopen_py`'s `.py`), or `None`: not read.
+#[must_use]
+pub fn lang_of(rel: &str, text: &str) -> Option<scan::Lang> {
+    if crate::shellsrc::is_shell(rel, text.as_bytes()) {
+        return Some(scan::Lang::Shell);
+    }
+    Path::new(rel)
+        .extension()
+        .is_some_and(|e| e.eq_ignore_ascii_case("py"))
+        .then_some(scan::Lang::Python)
+}
+
 /// The sites in the shell and Python sources among `files`.
 fn sites(root: &Path, files: &[String], exclude: &str, staged: bool) -> Result<Sites, String> {
     let exclude = crate::steps::compile_exclude(exclude)?;

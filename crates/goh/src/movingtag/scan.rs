@@ -122,6 +122,21 @@ fn covering_marker<'a>(lines: &[&'a str], start: usize, end: usize) -> Option<(u
     covering(lines, MARKER, start, end)
 }
 
+/// Every line an image reference this scanner read spans, whatever its verdict: what the
+/// differential in `crate::shapes` counts as JUDGED (an empty list outside [`in_scope`]).
+#[must_use]
+pub fn judged_lines(rel: &str, text: &str) -> Vec<usize> {
+    if !in_scope(rel) {
+        return Vec::new();
+    }
+    let refs = if dockerfile::is_dockerfile(rel) {
+        dockerfile::refs(text)
+    } else {
+        yaml::refs(rel, text).0
+    };
+    refs.iter().flat_map(|r| r.start..=r.end).collect()
+}
+
 /// Judge every image reference in the file `rel` holding `text`.
 #[must_use]
 pub fn scan(rel: &str, text: &str) -> Scan {

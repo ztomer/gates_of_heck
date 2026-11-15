@@ -26,13 +26,28 @@ fn the_shapes_koffee_big_hand_rolled_are_found() {
         esc("033"),
         esc("e")
     );
-    assert_eq!(lines(&sh, Lang::Shell), [1, 2, 3, 4, 5, 6, 7]);
+    // Lines 3 and 6 open with an ANSI escape: `goh status-markers` owns that token (crate::shapes),
+    // so this scanner no longer counts the same site a second time.
+    assert_eq!(lines(&sh, Lang::Shell), [1, 2, 4, 5, 7]);
     let py = format!(
         "print(\"✓ done\")\n    print(f\"  ✗ {{name}}\", file=sys.stderr)\nprint('{}31mred')\n\
          print(\"\"\"⚠ slow\"\"\")\n",
         esc("x1b")
     );
-    assert_eq!(lines(&py, Lang::Python), [1, 2, 3, 4]);
+    assert_eq!(
+        lines(&py, Lang::Python),
+        [1, 2, 4],
+        "line 3 is an escape: status-markers'"
+    );
+    let escapes = format!(
+        "echo \"{}32m done\"\nprint(\"{}31mred\")\n",
+        esc("033"),
+        esc("x1b")
+    );
+    assert!(
+        crate::statusmark::scan::findings(&escapes).is_ok_and(|f| f.len() == 2),
+        "status-markers judges the escapes tui-marks leaves"
+    );
     let marks: Vec<String> = findings("echo '✗ x'\n", Lang::Shell)
         .expect("patterns compile")
         .into_iter()

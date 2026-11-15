@@ -385,8 +385,24 @@ pub enum Commands {
     LaunchApp(LaunchAppArgs),
     /// Fail on a hedged plural (`file(s)`, `entr(ies)`) in a string literal; count with counted/noun.
     PluralHedge(PluralHedgeArgs),
-    /// Fail on a shell echo/printf or Python print that opens with a Kare mark or an ANSI escape.
+    /// Fail on a shell echo/printf or Python print that opens with a Kare mark (an ANSI escape is
+    /// `status-markers`').
     TuiMarks(ExcludeStagedArgs),
+    /// Run each declared scanner beside a plain grep for its token: a hit it does not judge that no
+    /// shape in `crates/goh/src/shapes/table.rs` names is red (GOH.CLASS.SHAPE).
+    ShapeDiff {
+        /// Repositories to read.
+        roots: Vec<PathBuf>,
+        /// Also every repository in the estate registry (`installed_repos`).
+        #[arg(long)]
+        estate: bool,
+        /// Only the scanners whose sources changed in `REV...HEAD` (all of them when the table did).
+        #[arg(long)]
+        since: Option<String>,
+        /// Only the row with this registry label.
+        #[arg(long)]
+        scanner: Option<String>,
+    },
     /// Apply a passed commit's journalled seed settles (`gates/commit_gate.sh`, GOH.SEEDREFUSED).
     SeedSettle { pending: PathBuf },
     /// Fail on a private repository's name (the private store's list) in this tracked tree.
