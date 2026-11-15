@@ -34,12 +34,23 @@ THE RULES, each red with its own reason:
 Not a rule but still red: a server that does not start, answer, or list in time, and a process the
 server left running after it was stopped (the gate reaps the whole group and says what it found).
 
+THE BUILD IS NOT THE ANSWER (GOH.MCPWIRELOAD). A server named as one `cargo run ... [-- ARGS]` is
+BUILT first, by the same command with `run` made `build` and the server's ARGS dropped, under its
+own bound (GOH_MCP_BUILD_TIMEOUT), so the server's own bound times only the wire. token-pool
+751531b's push failed "no answer to server/discover within 300s" at load ~120 while a release build
+ran inside the 300 s meant for the answer. A failed or timed-out build is red as `build:`, with its
+output's tail, and no server is started. The build and the server both run with CARGO_HOME and
+RUSTUP_HOME pinned to the owner's (when those directories exist and the environment names none):
+a server that moves HOME into its scratch (monitor's `HOME="$GOH_MCP_SCRATCH" cargo run`) would
+otherwise have rustup download a whole toolchain into it on every run (measured 2026-11-14).
+
 Keys in `.gatesrc` (docs/config.md):
   GOH_MCP_SERVERS       one stdio start command per line (`#` lines ignored). Setting it is the
                         opt-in: `structural.sh --full` then runs this gate.
   GOH_MCP_UNSTRUCTURED  one `tool: reason` per line, for replies that are not structured.
-  GOH_MCP_TIMEOUT       seconds each server gets, start (a `cargo run` build) to its last page.
-                        Default 300.
+  GOH_MCP_TIMEOUT       seconds each server gets, its start to its last page. Default 300.
+  GOH_MCP_BUILD_TIMEOUT seconds a derived `cargo build` gets, before its server starts.
+                        Default 1800.
 
 BUMPING THE PROTOCOL. NEWEST_PROTOCOL below is the ONE place goh spells the newest version. When
 the spec publishes a newer one (modelcontextprotocol.io's changelog; rmcp's `ProtocolVersion`
@@ -78,6 +89,7 @@ import time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from _gitutil import foreign_repo_env
+from _mcp_build import DEFAULT_BUILD_TIMEOUT, build, build_command, server_env
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from lib.bounded_run import _alive, _descendants, group_members
@@ -85,7 +97,7 @@ from tui.lib import err, info, ok, step
 
 NEWEST_PROTOCOL = "2026-07-28"
 CLIENT_INFO = {"name": "goh-mcp-wire", "version": "1"}
-KEYS = ("GOH_MCP_SERVERS", "GOH_MCP_UNSTRUCTURED", "GOH_MCP_TIMEOUT")
+KEYS = ("GOH_MCP_SERVERS", "GOH_MCP_UNSTRUCTURED", "GOH_MCP_TIMEOUT", "GOH_MCP_BUILD_TIMEOUT")
 DEFAULT_TIMEOUT = 300
 MAX_PAGES = 100
 GRACE = 3.0
@@ -136,11 +148,11 @@ def parse_unstructured(value: str) -> dict[str, str]:
     return out
 
 
-def parse_timeout(value: str) -> int:
+def parse_timeout(value: str, key: str = "GOH_MCP_TIMEOUT", default: int = DEFAULT_TIMEOUT) -> int:
     if not value.strip():
-        return DEFAULT_TIMEOUT
+        return default
     if not value.strip().isdigit() or int(value) == 0:
-        raise ConfigError(f"GOH_MCP_TIMEOUT must be a positive whole number of seconds: '{value}'")
+        raise ConfigError(f"{key} must be a positive whole number of seconds: '{value}'")
     return int(value)
 
 
@@ -153,8 +165,7 @@ class Session:
         self.timeout = timeout
         self.scratch = tempfile.mkdtemp(prefix="goh-mcp-wire.")
         self.stderr = open(os.path.join(self.scratch, ".stderr"), "w+b")  # noqa: SIM115
-        env = foreign_repo_env()
-        env["GOH_MCP_SCRATCH"] = os.path.join(self.scratch, "home")
+        env = server_env(os.path.join(self.scratch, "home"))
         os.mkdir(env["GOH_MCP_SCRATCH"])
         self.proc = subprocess.Popen(
             ["/bin/sh", "-c", command],
@@ -353,8 +364,21 @@ def judge_tool(tool: dict, unstructured: dict[str, str]) -> list[str]:
 
 
 def judge_server(
-    command: str, root: pathlib.Path, timeout: int, unstructured: dict[str, str]
+    command: str,
+    root: pathlib.Path,
+    timeout: int,
+    unstructured: dict[str, str],
+    build_timeout: int = DEFAULT_BUILD_TIMEOUT,
+    built: dict[str, str | None] | None = None,
 ) -> tuple[list[str], list[dict]]:
+    """`built` remembers each derived build's verdict, so servers sharing one build it once."""
+    built = {} if built is None else built
+    derived = build_command(command)
+    if derived is not None:
+        if derived not in built:
+            built[derived] = build(derived, root, build_timeout)
+        if built[derived] is not None:
+            return [built[derived]], []
     session = Session(command, root, timeout)
     found: list[str] = []
     tools: list[dict] = []
@@ -390,14 +414,18 @@ def main(argv: list[str] | None = None) -> int:
             )
         unstructured = parse_unstructured(config["GOH_MCP_UNSTRUCTURED"])
         timeout = parse_timeout(config["GOH_MCP_TIMEOUT"])
+        build_timeout = parse_timeout(
+            config["GOH_MCP_BUILD_TIMEOUT"], "GOH_MCP_BUILD_TIMEOUT", DEFAULT_BUILD_TIMEOUT
+        )
     except ConfigError as e:
         err(f"mcp-wire: {e}")
         return 2
     info(f"mcp-wire: {len(servers)} server(s), newest protocol {NEWEST_PROTOCOL}, {timeout}s each")
     failed = 0
     listed: dict[str, dict] = {}
+    built: dict[str, str | None] = {}
     for command in servers:
-        found, tools = judge_server(command, root, timeout, unstructured)
+        found, tools = judge_server(command, root, timeout, unstructured, build_timeout, built)
         listed.update({str(t.get("name")): t for t in tools})
         if found:
             failed += 1

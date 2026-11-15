@@ -67,7 +67,8 @@ GOH_MAX_LINES=500                 # file-length cap; unset disables the check
 # MCP wire gate (checks/check_mcp_wire.py, run by structural.sh --full when set): newest protocol, stated effects
 # GOH_MCP_SERVERS='cargo run --quiet --bin myapp -- mcp --home "$GOH_MCP_SCRATCH"'   # one stdio command per line
 # GOH_MCP_UNSTRUCTURED='describe: its reply is prose'   # one `tool: reason` per line; a ratchet
-# GOH_MCP_TIMEOUT=300               # seconds per server, start (build) to its last tools/list page
+# GOH_MCP_TIMEOUT=300               # seconds per server, its start to its last tools/list page
+# GOH_MCP_BUILD_TIMEOUT=1800        # seconds for a `cargo run` server's own `cargo build`, run first
 # GOH_RUST_JOBS=4                   # crates at once under rust_gate.sh --each-crate
 # GOH_CI_JOBS=4                     # run that many steps at once (default 1); '[tag] cmd' steps sharing a tag never overlap
 # GOH_RELEASE_GATE='./tools/gate.sh --full'
