@@ -58,7 +58,7 @@ from _empty_scope_usage import first_error_line, is_usage_error
 from _gitutil import foreign_repo_env, repo_root
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from tui.lib import err, info, ok, warn
+from tui.lib import counted, err, info, ok, warn
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "lib"))
 import not_applicable
@@ -485,12 +485,12 @@ def main(argv=None):
     if unrunnable:  # only bounds that fired: no verdict, in GNU timeout's code, never a red finding
         return 124
     ok(
-        f"empty scope: {len(names)} gate(s) swept over an empty tree, "
+        f"empty scope: {counted(len(names), 'gate')} swept over an empty tree, "
         f"{len(names) - len(blind)} refused to report compliance"
     )
     if known_blind:
         warn(
-            f"{len(known_blind)} gate(s) are KNOWN blind and still unguarded -- "
+            f"{counted(len(known_blind), 'gate')} are KNOWN blind and still unguarded -- "
             f"this list may only shrink, see {os.path.basename(gates)}/{ALLOW_FILE}"
         )
     return 0

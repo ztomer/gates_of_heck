@@ -68,7 +68,7 @@ def test_every_claimed_shape_is_red_and_named(repo):
     assert r.returncode == 1, r.stdout
     for name in shapes:
         assert f"{name}:" in r.stdout, (name, r.stdout)
-    assert f"{len(shapes)} process kill(s) by name" in r.stdout
+    assert f"{len(shapes)} process kills by name" in r.stdout
 
 
 def test_owner_scoped_forms_pass(repo):

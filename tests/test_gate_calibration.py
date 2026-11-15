@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import subprocess
 import sys
 
@@ -414,7 +415,7 @@ def test_the_calibration_probe_goes_red_when_a_rule_is_dropped(tmp_path, label, 
         stdin=subprocess.DEVNULL,
     )
     assert got.returncode == 1, f"the probe stayed green without the {label} rule:\n{got.stdout}"
-    assert "case(s) wrong" in got.stderr, got.stderr
+    assert re.search(r"\d+ cases? wrong", got.stderr), got.stderr
 
 
 _COV_ROUTE = (

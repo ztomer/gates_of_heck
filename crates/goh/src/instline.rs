@@ -86,11 +86,16 @@ fn judge(root: &Path, files: &[String], staged: bool) -> (i32, String, String) {
         crate::subject::record(&crate::subject::INSTALLED_VERSION, docs);
     }
     if n == 0 {
-        let ok =
-            format!("{OK} {TAG} OK — {docs} {scope} Markdown file(s) keep no installed version\n");
+        let ok = format!(
+            "{OK} {TAG} OK — {docs} {scope} Markdown {n_file} keep no installed version\n",
+            n_file = goh_tui::noun(docs, "file")
+        );
         return (0, ok, String::new());
     }
-    let mut err = format!("{ERR} {TAG} {n} hand-kept installed version line(s) ({scope}):\n");
+    let mut err = format!(
+        "{ERR} {TAG} {n} hand-kept installed version {n_line} ({scope}):\n",
+        n_line = goh_tui::noun(n, "line")
+    );
     err.push_str(&listing);
     err.push_str(
         "    A line saying what is installed rots at the next release. Read it from the machine\n    \

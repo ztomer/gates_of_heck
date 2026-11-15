@@ -118,7 +118,7 @@ def test_a_staged_deletion_is_absent_from_the_staged_corpus(runner, repo, goh):
 
     staged = _run(runner, goh, repo, "--staged")
     assert staged.returncode != 0, staged.stdout + staged.stderr
-    assert "only 4 skill(s)" in staged.stdout + staged.stderr
+    assert "only 4 skills" in staged.stdout + staged.stderr
 
     full = _run(runner, goh, repo, "--full")
     assert full.returncode == 0, full.stdout + full.stderr

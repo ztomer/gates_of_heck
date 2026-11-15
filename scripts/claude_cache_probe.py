@@ -34,7 +34,7 @@ from typing import Any
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
-from tui.lib import info
+from tui.lib import info, noun
 
 PRICE = {"input": 1.0, "read": 0.1, "5m": 1.25, "1h": 2.0, "output": 5.0}
 CAPS = (6000, 8000, 10000, 12000, 15000, 20000, 25000)
@@ -218,7 +218,10 @@ def main(argv: list[str] | None = None) -> int:
     if args.json:
         sys.stdout.write(json.dumps(result, indent=1, default=str) + "\n")
         return 0
-    info(f"{args.report}: {len(paths)} subagent transcript(s), cut {cut.isoformat()}")
+    info(
+        f"{args.report}: {len(paths)} subagent {noun(len(paths), 'transcript')}, cut "
+        f"{cut.isoformat()}"
+    )
     for k in ("before", "after"):
         sys.stdout.write(f"{k}: {json.dumps(result[k], default=str)}\n")
     return 0

@@ -182,7 +182,8 @@ def silent(repo: Path, prose: str) -> None:
     if (verdict.findings, verdict.stale, verdict.problems) != ([], [], []):
         raise AssertionError(f"{prose!r} reported {[f[3] for f in verdict.findings]!r}")
     if verdict.claims != 1:
-        raise AssertionError(f"{prose!r} was not even read: {verdict.claims} claim(s) in the tree")
+        claims = f"{verdict.claims} {'claim' if verdict.claims == 1 else 'claims'}"
+        raise AssertionError(f"{prose!r} was not even read: {claims} in the tree")
 
 
 def allow(repo: Path, claim: str, path: str = "docs/note.md", **extra) -> None:

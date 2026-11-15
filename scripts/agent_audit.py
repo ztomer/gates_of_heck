@@ -42,7 +42,7 @@ from typing import Any
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
-from tui.lib import info, ok, section, warn
+from tui.lib import info, noun, ok, section, warn
 
 sys.path.insert(0, str(ROOT / "hooks" / "claude"))
 sys.path.insert(0, str(ROOT / "lib"))
@@ -367,7 +367,10 @@ def main(argv: list[str] | None = None) -> int:
         return 0
     render(report, report["min_n"])
     if report["unreadable_lines"]:
-        warn(f"{report['unreadable_lines']} ledger line(s) could not be read and were skipped")
+        warn(
+            f"{report['unreadable_lines']} ledger "
+            f"{noun(report['unreadable_lines'], 'line')} could not be read and were skipped"
+        )
     return 0
 
 

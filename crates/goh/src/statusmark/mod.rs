@@ -20,7 +20,7 @@ pub const SEED_FILE: &str = "status_marker_seed.json";
 const SPEC: Spec = Spec {
     tag: "[status_markers]",
     file: SEED_FILE,
-    noun: "source file(s)",
+    noun: "source file",
     reseed: "goh status-markers --seed",
     clean: "no new hand-rolled status marker or colour escape",
     why: "hand-rolled status markers and colour escapes when this repo adopted goh \

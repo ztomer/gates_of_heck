@@ -40,8 +40,11 @@ from coverage.files import GlobMatcher, prep_patterns
 from coverage.results import should_fail_under
 
 try:
-    from tui.lib import err, info, warn
+    from tui.lib import counted, err, info, warn
 except ImportError:  # the repo's interpreter may not see goh; plain lines keep the gate honest
+
+    def counted(n, singular, plural=None):
+        return f"{n} {singular if n == 1 else (plural or singular + 's')}"
 
     def err(message):
         print(f"✗ {message}", file=sys.stderr)
@@ -105,7 +108,7 @@ def main(argv=None):
         data = cov.get_data()
         data.touch_files(missing)
         data.write()
-        warn(f"{len(missing)} file(s) no test imports, counted at 0%:")
+        warn(f"{counted(len(missing), 'file')} no test imports, counted at 0%:")
         for path in missing:
             print(f"    {os.path.relpath(path)}", file=sys.stderr)
     total = cov.report(show_missing=True, file=sys.stdout)

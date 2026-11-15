@@ -16,7 +16,7 @@ from pathlib import Path
 
 import pytest
 from conftest import git
-from reference_kit import load_reference, reference_path
+from reference_kit import load_reference, reference_path, unhedged
 
 _probe = load_reference("_credential_urls_probe")
 _ref = load_reference("check_no_credential_urls")
@@ -68,7 +68,11 @@ def both(goh: Path, repo: Path, *args: str):
     )
     py = run([sys.executable, str(CHECK), *args])
     rs = run([str(goh), "credential-urls", *args])
-    return (py.returncode, py.stdout, py.stderr), (rs.returncode, rs.stdout, rs.stderr)
+    return (py.returncode, unhedged(py.stdout), unhedged(py.stderr)), (
+        rs.returncode,
+        rs.stdout,
+        rs.stderr,
+    )
 
 
 @pytest.mark.parametrize("args", [[], ["--json"]], ids=["text", "json"])

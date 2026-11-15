@@ -267,9 +267,8 @@ pub fn format_report(hits: &[Hit], staged: bool) -> String {
         String::new()
     };
     format!(
-        "{ERR} HARD-CODED HOME PATH in {} location(s) ({scope}) — derive it from the executable, the repo root, an env var or the bundle; a path that must stand carries `path-ok: <reason>` on the line or above:\n{shown}{overflow}",
-        hits.len()
-    )
+        "{ERR} HARD-CODED HOME PATH in {} {n_location} ({scope}) — derive it from the executable, the repo root, an env var or the bundle; a path that must stand carries `path-ok: <reason>` on the line or above:\n{shown}{overflow}",
+        hits.len(), n_location = goh_tui::noun(hits.len(), "location"))
 }
 
 /// The clean-pass line, mirroring the reference.

@@ -255,10 +255,11 @@ pub fn check(repo: &Path, files: &[&String]) -> Result<Option<String>, String> {
     }
     let _ = writeln!(
         report,
-        "{} of {judged} staged Rust file(s) are not rustfmt-clean, which the release gate's \
+        "{} of {judged} staged Rust {n_file} are not rustfmt-clean, which the release gate's \
          `cargo fmt --all -- --check` refuses. Run `cargo fmt` and re-stage -- do not hand-fix \
          the shape.",
-        bad.len()
+        bad.len(),
+        n_file = goh_tui::noun(judged, "file")
     );
     Ok(Some(report))
 }

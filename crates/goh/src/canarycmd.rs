@@ -119,8 +119,9 @@ fn emit(ours: &[String], repo: &Path) {
         return;
     }
     goh_tui::outln!(
-        "{ERR} [orphan_canary] {} process(es) outlived the run that started them:",
-        ours.len()
+        "{ERR} [orphan_canary] {} {n_process} outlived the run that started them:",
+        ours.len(),
+        n_process = goh_tui::noun_as(ours.len(), "process", "processes")
     );
     for line in ours {
         println!("    {}", line.chars().take(240).collect::<String>());

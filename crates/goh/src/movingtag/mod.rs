@@ -74,16 +74,22 @@ struct Tally {
 impl Tally {
     fn summary(&self) -> String {
         let mut s = format!(
-            "{} image reference(s): {} pinned by digest, {} pinned by commit, {} exempted with a \
+            "{} image {n_reference}: {} pinned by digest, {} pinned by commit, {} exempted with a \
              reason, {} carried by a variable it cannot resolve",
-            self.refs, self.digests, self.commits, self.exempt, self.unreadable
+            self.refs,
+            self.digests,
+            self.commits,
+            self.exempt,
+            self.unreadable,
+            n_reference = goh_tui::noun(self.refs, "reference")
         );
         if let Some(first) = self.unparsed.first() {
             let more = self.unparsed.len() - 1;
             let _ = write!(
                 s,
-                "; {} file(s) not YAML (templates) read line by line for `image:`, {first}",
-                self.unparsed.len()
+                "; {} {n_file} not YAML (templates) read line by line for `image:`, {first}",
+                self.unparsed.len(),
+                n_file = goh_tui::noun(self.unparsed.len(), "file")
             );
             if more > 0 {
                 let _ = write!(s, " and {more} more");
@@ -126,7 +132,10 @@ fn judge(root: &Path, files: &[String], staged: bool) -> (i32, String, String) {
         let ok = format!("{OK} {TAG} OK — {scope}: {}\n", tally.summary());
         return (0, ok, String::new());
     }
-    let mut err = format!("{ERR} {TAG} {n} container image(s) on a moving tag ({scope}):\n");
+    let mut err = format!(
+        "{ERR} {TAG} {n} container {n_image} on a moving tag ({scope}):\n",
+        n_image = goh_tui::noun(n, "image")
+    );
     err.push_str(&listing);
     err.push_str(
         "    Pin each to ONE build: the release tag it is on today plus its digest, read from the\n    \

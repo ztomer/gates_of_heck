@@ -57,7 +57,7 @@ def test_the_fixed_shape_is_green(repo: Path) -> None:
     commit_all(repo)
     r = run_goh(repo, "early-exit-pipe")
     assert r.returncode == 0, r.stdout + r.stderr
-    assert "1 tracked shell source(s)" in r.stdout, r.stdout
+    assert "1 tracked shell source" in r.stdout, r.stdout
 
 
 def test_a_shebang_script_without_an_extension_is_in_scope(repo: Path) -> None:

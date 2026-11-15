@@ -185,10 +185,9 @@ fn staged(root: &Path, runner: &[String]) -> Result<Lines, String> {
     out.push((
         true,
         format!(
-            "{ERR} {} of {} staged Python file(s) are not ruff-formatted. Run your repo's fmt target (`ruff format`) and re-stage -- do not hand-fix the shape.",
+            "{ERR} {} of {} staged Python {n_file} are not ruff-formatted. Run your repo's fmt target (`ruff format`) and re-stage -- do not hand-fix the shape.",
             bad.len(),
-            judged.len()
-        ),
+            judged.len(), n_file = goh_tui::noun(judged.len(), "file")),
     ));
     Ok(out)
 }

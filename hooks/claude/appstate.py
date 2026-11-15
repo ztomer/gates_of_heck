@@ -42,6 +42,9 @@ import time
 from pathlib import Path
 from typing import Any
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+from tui.lib import noun  # the count meets its noun (GOH.HEDGEOWN)
+
 SUITE_MARKER = "GATES_OF_HECK_SUITE_REAL_HOME"  # tests/suite_home.py MARKER
 ITEMS_SCRIPT = (
     'tell application "System Events"\n'
@@ -195,7 +198,8 @@ def describe(result: dict[str, Any] | None) -> str | None:
         parts.append(f"relaunched {', '.join(Path(a).stem for a in result['relaunched'])}")
     if result["failed"]:
         parts.append(f"could NOT relaunch {', '.join(Path(a).stem for a in result['failed'])}")
-    return (f"agent_guard: login-item app(s) running when the agent was spawned were not running "
+    apps = noun(len(result["missing"]), "app")
+    return (f"agent_guard: login-item {apps} running when the agent was spawned were not running "
             f"when it stopped -- {'; '.join(parts)} (GOH.APPSTATE).")  # fmt: skip
 
 

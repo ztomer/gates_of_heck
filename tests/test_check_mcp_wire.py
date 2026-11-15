@@ -168,7 +168,7 @@ def test_every_server_is_judged_and_the_red_one_is_named(repo, tmp_path):
     good = server_line(tmp_path, "one")
     bad = server_line(tmp_path, "two", tools=[tool(annotations=None)])
     out = red(gate(repo, good, bad), "two.json")
-    assert "one.json -- 1 tool(s), every rule holds" in out, out
+    assert "one.json -- 1 tool, every rule holds" in out, out
 
 
 def test_a_server_that_asks_the_client_something_is_answered(repo, tmp_path):

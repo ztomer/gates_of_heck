@@ -288,7 +288,7 @@ fn collect(
 
 fn report(bad: &[Value]) -> Lines {
     let mut lines = vec![
-        (false, format!("{ERR} {} credential(s) in git config -- the value is NOT printed;", bad.len())),
+        (false, format!("{ERR} {} {n_credential} in git config -- the value is NOT printed;", bad.len(), n_credential = goh_tui::noun(bad.len(), "credential"))),
         (false, "  rotate it, then move it to a credential helper that reads a keychain, or an SSH remote:".to_owned()),
         (false, "    git remote set-url origin <url-without-userinfo>".to_owned()),
     ];
@@ -358,16 +358,18 @@ fn run(root: Option<&str>, json: bool) -> (i32, Lines) {
     });
     let prefix = format!("{}/", common.display());
     if urls.is_empty() && !values.iter().any(|(o, _, _)| o.starts_with(&prefix)) {
-        return (0, vec![(false, format!("{OK} [no_credential_urls] not applicable — no remote URL here ({} global value(s) clean)", values.len()))]);
+        return (0, vec![(false, format!("{OK} [no_credential_urls] not applicable — no remote URL here ({} global {n_value} clean)", values.len(), n_value = goh_tui::noun(values.len(), "value")))]);
     }
     (
         0,
         vec![(
             false,
             format!(
-                "{OK} [no_credential_urls] OK — {} remote URL(s), {} helper/header value(s)",
+                "{OK} [no_credential_urls] OK — {} remote {n_url}, {} helper/header {n_value}",
                 urls.len(),
-                values.len()
+                values.len(),
+                n_url = goh_tui::noun(urls.len(), "URL"),
+                n_value = goh_tui::noun(values.len(), "value")
             ),
         )],
     )

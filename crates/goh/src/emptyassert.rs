@@ -248,8 +248,9 @@ pub(crate) fn run(staged: bool, exclude: &str) -> (i32, String, String) {
     if !hits.is_empty() {
         let scope = if staged { "staged" } else { "tracked" };
         let mut out = format!(
-            "{ERR} [no_empty_assert] {} emptiness assert(s) in {scope} Rust source:\n",
-            hits.len()
+            "{ERR} [no_empty_assert] {} emptiness {n_assert} in {scope} Rust source:\n",
+            hits.len(),
+            n_assert = goh_tui::noun(hits.len(), "assert")
         );
         for h in hits.iter().take(40) {
             out.push_str("    ");

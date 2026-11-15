@@ -285,7 +285,7 @@ def test_this_repos_own_marked_claims_are_true() -> None:
     regex-narrowing calibration went with it: the native grammar is pinned by the tables above.)"""
     proc = run_goh(REPO_ROOT, "claim-derivation")
     assert proc.returncode == 0, proc.stdout + proc.stderr
-    assert "marked claim(s) re-derived" in proc.stdout, proc.stdout
+    assert re.search(r"marked claims? re-derived", proc.stdout), proc.stdout
 
 
 def test_a_broken_python_file_is_scanned_unchanged_rather_than_skipped() -> None:

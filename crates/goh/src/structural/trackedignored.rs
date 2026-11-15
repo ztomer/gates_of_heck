@@ -132,11 +132,10 @@ fn negation(hit: &Hit) -> String {
 fn report(hits: &[Hit]) -> String {
     use std::fmt::Write as _;
     let mut text = format!(
-        "{ERR} [tracked_ignored] {} tracked file(s) match this repo's own .gitignore -- the rules and \
+        "{ERR} [tracked_ignored] {} tracked {n_file} match this repo's own .gitignore -- the rules and \
          the tree disagree, and one of them is wrong. A file that should not be committed: \
          `git rm --cached -- <path>`. A file that should: say so under its rule with `!<path>`.\n",
-        hits.len()
-    );
+        hits.len(), n_file = goh_tui::noun(hits.len(), "file"));
     for hit in hits {
         let _ = writeln!(
             text,

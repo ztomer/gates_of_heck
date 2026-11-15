@@ -70,8 +70,8 @@ pub fn run_cli(a: &crate::cli_args::StepArgs) -> i32 {
     if !left.is_empty() {
         let shown: Vec<String> = left.iter().take(20).map(ToString::to_string).collect();
         eprintln!(
-            "  left {} process(es) running under it: {}",
-            left.len(),
+            "  left {} running under it: {}",
+            goh_tui::counted_as(left.len(), "process", "processes"),
             shown.join(", ")
         );
     }

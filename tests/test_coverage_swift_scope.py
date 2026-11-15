@@ -210,7 +210,7 @@ def test_a_path_dependency_is_not_counted_as_the_package(tmp_path):
     )
     # Own code is 10/10; counting the kit would read 10% over 2 files and fail.
     assert res.returncode == 0, res.stdout + res.stderr
-    assert "100.0%" in res.stdout and "(1 file(s))" in res.stdout, res.stdout
+    assert "100.0%" in res.stdout and "(1 file)" in res.stdout, res.stdout
 
 
 def test_the_scope_is_the_manifests_non_test_targets(tmp_path):

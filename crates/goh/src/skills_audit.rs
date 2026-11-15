@@ -246,8 +246,9 @@ pub(crate) fn render_update(
     let _ = std::fs::write(&inputs.baseline, text);
     let _ = writeln!(
         out,
-        "  → baseline re-recorded: {} oversized skill(s)",
-        over.len()
+        "  → baseline re-recorded: {} oversized {n_skill}",
+        over.len(),
+        n_skill = goh_tui::noun(over.len(), "skill")
     );
     AuditOutcome {
         code: 0,

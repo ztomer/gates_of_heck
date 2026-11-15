@@ -307,10 +307,8 @@ fn report(rep: &Report, root: &Path, offline: bool, strict: bool, json: bool) ->
         let why = if rep.manifests_seen == 0 {
             "no manifest found".to_owned()
         } else {
-            format!(
-                "{} manifest(s), none declaring a dependency",
-                rep.manifests_seen
-            )
+            let seen = goh_tui::counted(rep.manifests_seen, "manifest");
+            format!("{seen}, none declaring a dependency")
         };
         let msg = format!(
             "not applicable: {why} under {} -- nothing to check",
@@ -352,10 +350,9 @@ fn report(rep: &Report, root: &Path, offline: bool, strict: bool, json: bool) ->
         });
         return (code, format!("{}\n", crate::pyjson::dumps_indent2(&doc)));
     }
-    let mut s = format!(
-        "{STEP} {} manifest(s), {} direct dependency declaration(s) examined\n",
-        rep.manifests_seen, rep.examined
-    );
+    let seen = goh_tui::counted(rep.manifests_seen, "manifest");
+    let declared = goh_tui::counted(rep.examined, "direct dependency declaration");
+    let mut s = format!("{STEP} {seen}, {declared} examined\n");
     for f in &fatal {
         let _ = writeln!(
             s,
@@ -389,14 +386,15 @@ fn report(rep: &Report, root: &Path, offline: bool, strict: bool, json: bool) ->
     if fatal.is_empty() {
         let _ = writeln!(s, "\n{OK} no dependency pinned below the graph");
         if !majors.is_empty() {
+            let behind = goh_tui::counted(majors.len(), "major");
             let _ = writeln!(
                 s,
-                "  ({} major(s) behind, reported not failed — --strict to make them fatal)",
-                majors.len()
+                "  ({behind} behind, reported not failed — --strict to make them fatal)"
             );
         }
     } else {
-        let _ = writeln!(s, "\n{ERR} dependency currency: {} finding(s)", fatal.len());
+        let found = goh_tui::counted(fatal.len(), "finding");
+        let _ = writeln!(s, "\n{ERR} dependency currency: {found}");
     }
     (code, s)
 }

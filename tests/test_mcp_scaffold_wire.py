@@ -25,11 +25,11 @@ def test_wire_unserializable_tool_result_then_session_survives(tmp_path):
             "import sys",
             f"sys.path.insert(0, {str(REPO_ROOT)!r})",
             "from lib.mcp_scaffold import McpServer, serve",
-            "s = McpServer()",
-            '@s.tool(description="junk", schema={"type": "object", "properties": {}})',
+            "server = McpServer()",
+            '@server.tool(description="junk", schema={"type": "object", "properties": {}})',
             "def junk():",
             "    return object()",
-            "serve(s)",
+            "serve(server)",
         ]
     )
     proc = subprocess.Popen(
@@ -166,11 +166,11 @@ def test_wire_unhashable_name_then_session_survives(tmp_path):
             "import sys",
             f"sys.path.insert(0, {str(REPO_ROOT)!r})",
             "from lib.mcp_scaffold import McpServer, serve",
-            "s = McpServer()",
-            '@s.tool(description="echo", schema={"type": "object", "properties": {}})',
+            "server = McpServer()",
+            '@server.tool(description="echo", schema={"type": "object", "properties": {}})',
             "def echo():",
             "    return 'ok'",
-            "serve(s)",
+            "serve(server)",
         ]
     )
     proc = subprocess.Popen(

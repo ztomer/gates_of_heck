@@ -71,7 +71,7 @@ def test_a_clean_tree_is_green_and_prints_its_scope(repo: Path) -> None:
     result = run_goh(repo, "busy-loop")
     assert result.returncode == 0, result.stdout + result.stderr
     assert "tracked" in result.stdout, result.stdout
-    assert "shell source(s)" in result.stdout, result.stdout
+    assert "shell source" in result.stdout, result.stdout
 
 
 @pytest.mark.parametrize(
@@ -194,7 +194,7 @@ def test_a_busy_wait_is_reported_once_per_line(repo: Path) -> None:
     _shell(repo, SPINNER)
     result = run_goh(repo, "busy-loop")
     assert result.returncode == 1
-    assert "1 finding(s)" in result.stdout, result.stdout
+    assert "1 finding" in result.stdout, result.stdout
 
 
 def test_the_marker_excuses_a_busy_wait_and_a_stale_one_is_a_finding(repo: Path) -> None:

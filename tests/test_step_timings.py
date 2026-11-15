@@ -130,7 +130,7 @@ def test_the_report_sums_one_label_across_every_place_it_ran(tmp_path):
         check=False,
     ).stdout
     assert "13.60 s  x3    dependency currency" in text, text
-    assert "3 step(s) recorded" in text, text
+    assert "3 steps recorded" in text, text
 
 
 def test_goh_step_in_records_the_directory_it_ran_in(tmp_path):

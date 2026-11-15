@@ -17,7 +17,7 @@ from pathlib import Path
 
 import pytest
 from conftest import REPO_ROOT, commit_all, write
-from reference_kit import load_reference, reference_path
+from reference_kit import load_reference, reference_path, unhedged
 from unreaped_spawn_table import PYTHON, PYTHON_EXTRA, RUST, SHELL
 from unreaped_spawn_table_regressions import (
     PYTHON_RAW_QUOTE_CALIBRATION,
@@ -96,7 +96,10 @@ def test_this_repositorys_full_report_is_byte_identical(goh: Path) -> None:
     """The whole-tree report over this repository, the largest real corpus the suite owns, read
     through the frozen reference and through the port, byte for byte."""
     skip = ["--exclude", _FIXED_SINCE_THE_REFERENCE]
-    py = _report([sys.executable, str(reference_path("checks/check_no_unreaped_spawn.py")), *skip])
+    code, text = _report(
+        [sys.executable, str(reference_path("checks/check_no_unreaped_spawn.py")), *skip]
+    )
+    py = (code, unhedged(text))
     rs = _report([str(goh), "unreaped-spawn", *skip])
     assert rs == py
 
@@ -146,6 +149,9 @@ def test_the_staged_scope_is_the_tree_the_commit_produces(goh: Path, repo: Path)
     )
     commit_all(repo)
 
-    py = _report([sys.executable, str(reference_path("checks/check_no_unreaped_spawn.py"))], repo)
+    code, text = _report(
+        [sys.executable, str(reference_path("checks/check_no_unreaped_spawn.py"))], repo
+    )
+    py = (code, unhedged(text))
     rs = _report([str(goh), "unreaped-spawn", "--staged"], repo)
     assert rs == py

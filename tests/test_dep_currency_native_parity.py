@@ -16,7 +16,7 @@ import time
 from pathlib import Path
 
 import pytest
-from reference_kit import reference_path
+from reference_kit import reference_path, unhedged
 
 CHECK = reference_path("checks/check_dep_currency.py")
 PIN = (
@@ -63,7 +63,11 @@ def both(goh: Path, root: Path, env: dict, *args: str):
     )
     py = run([sys.executable, str(CHECK), *args])
     rs = run([str(goh), "deps", *args])
-    return (py.returncode, py.stdout, py.stderr), (rs.returncode, rs.stdout, rs.stderr)
+    return (py.returncode, unhedged(py.stdout), unhedged(py.stderr)), (
+        rs.returncode,
+        rs.stdout,
+        rs.stderr,
+    )
 
 
 @pytest.mark.parametrize(

@@ -50,7 +50,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from tui.lib import err
+from tui.lib import counted, err
 
 # How many moved paths a failure names before summarising the rest.
 MAX_NAMED = 10
@@ -144,7 +144,10 @@ def check(repo: Path, stamp_file: Path, name: str) -> int:
     changed = moved(before, fingerprint(repo))
     if not changed:
         return 0
-    err(f"{name}: the tree moved under the gate -- {len(changed)} file(s) changed while it ran:")
+    err(
+        f"{name}: the tree moved under the gate -- {counted(len(changed), 'file')} changed "
+        f"while it ran:"
+    )
     for rel in changed[:MAX_NAMED]:
         print(f"    {rel}", file=sys.stderr)
     if len(changed) > MAX_NAMED:

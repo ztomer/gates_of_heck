@@ -76,7 +76,8 @@ pub fn run_length(max: usize, exclude: &str, staged: bool) -> i32 {
             1
         }
         Ok((_, checked)) => {
-            goh_tui::outln!("{START} [file_length] OK — {checked} file(s) within {max} lines");
+            let files = goh_tui::counted(checked, "file");
+            goh_tui::outln!("{START} [file_length] OK — {files} within {max} lines");
             0
         }
     }
@@ -352,14 +353,13 @@ pub fn run_screen(paths: &[String], scope: Option<&str>, staged: bool) -> i32 {
     }
     if bad.is_empty() {
         let scope = if staged { "staged" } else { "scanned" };
-        goh_tui::outln!(
-            "{START} [no_screen] OK — {checked} test target(s) {scope}, nothing renders to the display"
-        );
+        let t = goh_tui::counted(checked, "test target");
+        goh_tui::outln!("{START} [no_screen] OK — {t} {scope}, nothing renders to the display");
         return 0;
     }
     goh_tui::eoutln!(
-        "{ERR} [no_screen] {} presentation call(s) in test targets:",
-        bad.len()
+        "{ERR} [no_screen] {} in test targets:",
+        goh_tui::counted(bad.len(), "presentation call")
     );
     for (rel, lineno, why) in &bad {
         eprintln!("    {rel}:{lineno}: {why}");

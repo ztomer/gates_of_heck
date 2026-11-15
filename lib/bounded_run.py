@@ -54,6 +54,9 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import killtree  # beside this file
 import step_timings  # beside this file; run as a script AND imported by orphan_canary
 
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from tui.lib import counted  # the count meets its noun (GOH.HEDGEOWN)
+
 # GNU timeout's exit code for "the ceiling expired". `gates/local_ci.sh` already prints
 # "TIMED OUT" on 124 and keeps the log; a different number would be a different contract in two
 # places.
@@ -407,7 +410,7 @@ def _run_step(
         left = sorted(set(left))
         if left and stream is None:
             print(
-                f"  left {len(left)} process(es) running under it: "
+                f"  left {counted(len(left), 'process', 'processes')} running under it: "
                 + ", ".join(str(p) for p in left[:20]),
                 file=sys.stderr,
             )

@@ -191,14 +191,14 @@ pub fn format_report(
         return (
             true,
             format!(
-                "{OK} [lints_optin] OK — {inspected} workspace member(s) inherit the declared policy\n"
-            ),
+                "{OK} [lints_optin] OK — {inspected} workspace {n_member} inherit the declared policy\n", n_member = goh_tui::noun(inspected, "member")),
             String::new(),
         );
     }
     let mut err = format!(
-        "{ERR} [lints_optin] {} crate(s) not subject to the workspace lint policy:\n",
-        findings.len()
+        "{ERR} [lints_optin] {} {n_crate} not subject to the workspace lint policy:\n",
+        findings.len(),
+        n_crate = goh_tui::noun(findings.len(), "crate")
     );
     for finding in findings {
         // Every line goes through `err()` separately in the reference,

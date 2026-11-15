@@ -36,6 +36,9 @@ import subprocess
 import sys
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from tui.lib import counted  # the count meets its noun (GOH.HEDGEOWN)
+
 KEY = "GOH_PY_NOQA_PARITY"
 # The linters this can read: each honours none of ruff's suppression directives.
 LINTERS = ("pyflakes",)
@@ -120,7 +123,7 @@ def main(argv: list[str] | None = None) -> int:
             bad.append(f"  {line}\n    a `# noqa` ruff honours and {linter} does not read")
     if bad:
         print(
-            f"✗ {len(bad)} line(s) silenced for ruff and still reported by {' and '.join(linters)}:",
+            f"✗ {counted(len(bad), 'line')} silenced for ruff and still reported by {' and '.join(linters)}:",
             file=sys.stderr,
         )
         print("\n".join(bad), file=sys.stderr)
@@ -129,7 +132,7 @@ def main(argv: list[str] | None = None) -> int:
             file=sys.stderr,
         )
         return 1
-    print(f"✓ no `# noqa` that {' or '.join(linters)} ignores ({len(files)} file(s))")
+    print(f"✓ no `# noqa` that {' or '.join(linters)} ignores ({counted(len(files), 'file')})")
     return 0
 
 

@@ -69,6 +69,9 @@ import scratch_guard  # a fixed-name file in the shared scratchpad root (GOH.AGE
 from ci_judge import judge_ci as _judge_ci  # the CI-watching judge, beside this script
 from report_faults import read_faults  # the report's `Faults seen:` (LOOP.FAULTBULLETS)
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+from tui.lib import noun  # the count meets its noun (GOH.HEDGEOWN)
+
 SPAWN_TOOLS = {"Agent", "Task"}  # `Task` is the tool's legacy name
 
 CONTRACT = (
@@ -173,7 +176,7 @@ def judge_choice(
         )
     unknown = sorted(set(tags) - rules.tags)
     if unknown:
-        return f"unknown tag(s) {', '.join(unknown)}", info
+        return f"unknown {noun(len(unknown), 'tag')} {', '.join(unknown)}", info
     rule = rules.rule(info["model"], effort)
     cls = f"{info['model']}@{effort}"
     if rule is None:

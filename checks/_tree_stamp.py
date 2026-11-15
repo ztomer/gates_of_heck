@@ -11,7 +11,7 @@ import os
 
 from _gitutil import tree_files
 
-from tui.lib import err, info
+from tui.lib import counted, err, info
 
 
 def stamp(root):
@@ -54,7 +54,10 @@ def tree_changed(root, before, probes, run_one):
     for path in who_touches(root, probes, run_one):
         err(f"{os.path.relpath(path, root)} --probe changes the tree it was given")
     more = f" and {len(changed) - 5} more" if len(changed) > 5 else ""
-    err(f"the self-proofs changed {len(changed)} file(s) in {root}: {', '.join(changed[:5])}{more}")
+    err(
+        f"the self-proofs changed {counted(len(changed), 'file')} in {root}: "
+        f"{', '.join(changed[:5])}{more}"
+    )
     info("A probe works on its own copy (a temp dir), never the tree it was run over: the probes")
     info("run in parallel, and a restore keeps the bytes but not the inode a reader held.")
     return True

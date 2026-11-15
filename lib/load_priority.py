@@ -29,6 +29,11 @@ from __future__ import annotations
 
 import re
 import shlex
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from tui.lib import counted  # the count meets its noun (GOH.HEDGEOWN)
 
 NICE_FLOOR = 10  # an increment this high is a background job (`nice CMD` alone adds 10)
 QOS_CLAMPS = {"background", "utility", "maintenance"}
@@ -261,7 +266,8 @@ def operands(argv: list[str], depth: int = 0) -> list[list[str]]:
 def refusal(count: int, wrapper: str) -> str:
     """Why a load experiment over a background-priority command is refused, and the way out."""
     return (
-        f"the command runs at background priority ({wrapper}): under {count} spinner(s) at normal "
+        f"the command runs at background priority ({wrapper}): under "
+        f"{counted(count, 'spinner')} at normal "
         "priority it is starved by construction -- the scheduler gives it a core only when one is "
         "idle, and the spinners exist so that none is. That is how `load.py 32 -- taskpolicy -b "
         "loop.sh` ran 10h14m and `load.py 16 -- taskpolicy -b python3 -m pytest` was killed by its "

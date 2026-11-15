@@ -52,7 +52,7 @@ pub const SEED_FILE: &str = "early_exit_pipe_seed.json";
 const SPEC: crate::seedcount::Spec = crate::seedcount::Spec {
     tag: TAG,
     file: SEED_FILE,
-    noun: "shell source(s)",
+    noun: "shell source",
     reseed: "goh early-exit-pipe --seed",
     clean: "no early-exit pipe beyond the seed",
     why: "early-exit consumers reading a pipe when this repo adopted the check; a count may only \
@@ -195,7 +195,10 @@ fn listing(hits: &[(String, Vec<Finding>)], mark: &str) -> String {
 
 fn report(hits: &[(String, Vec<Finding>)], what: &str) -> String {
     let n: usize = hits.iter().map(|h| h.1.len()).sum();
-    let mut s = format!("{ERR} {TAG} {n} early-exit consumer(s) reading a pipe ({what}):\n");
+    let mut s = format!(
+        "{ERR} {TAG} {n} early-exit {n_consumer} reading a pipe ({what}):\n",
+        n_consumer = goh_tui::noun(n, "consumer")
+    );
     s.push_str(&listing(hits, "    "));
     s.push_str(
         "    The consumer exits before EOF; the producer's next write dies of SIGPIPE (141) and\n    \
@@ -231,7 +234,10 @@ fn judge(
     if hits.is_empty() && !seeded {
         return (
             0,
-            format!("{OK} {TAG} OK — {checked} {scope} shell source(s), no early-exit pipe\n"),
+            format!(
+                "{OK} {TAG} OK — {checked} {scope} shell {n_source}, no early-exit pipe\n",
+                n_source = goh_tui::noun(checked, "source")
+            ),
             String::new(),
         );
     }
@@ -241,7 +247,7 @@ fn judge(
     if staged && !hits.is_empty() {
         let (new, old) = split_new(root, hits);
         let note = if old > 0 {
-            format!("{WARN} {TAG} {old} early-exit pipe(s) in staged files predate this commit (fix them while you are there)\n")
+            format!("{WARN} {TAG} {old} early-exit {n_pipe} in staged files predate this commit (fix them while you are there)\n", n_pipe = goh_tui::noun(old, "pipe"))
         } else {
             String::new()
         };
@@ -307,9 +313,11 @@ pub fn write_seed(exclude: &str) -> i32 {
     }
     let total: usize = scan.found.values().map(Vec::len).sum();
     goh_tui::outln!(
-        "{OK} {TAG} seeded {SEED_FILE}: {total} site(s) in {} file(s), of {} read",
+        "{OK} {TAG} seeded {SEED_FILE}: {total} {n_site} in {} {n_file}, of {} read",
         scan.found.len(),
-        scan.read
+        scan.read,
+        n_site = goh_tui::noun(total, "site"),
+        n_file = goh_tui::noun(scan.found.len(), "file")
     );
     0
 }

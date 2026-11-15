@@ -401,13 +401,15 @@ pub fn check_range(revs: &[String], report: bool) -> i32 {
     }
     if bad > 0 && !report {
         goh_tui::eoutln!(
-            "{ERR} [commit_class] {bad} commit(s) do not end their class or name it: amend them"
+            "{ERR} [commit_class] {bad} {n_commit} do not end their class or name it: amend them",
+            n_commit = goh_tui::noun(bad, "commit")
         );
         return 1;
     }
     goh_tui::outln!(
-        "{OK} [commit_class] {} commit(s), {bad} the rule refuses",
-        commits.len()
+        "{OK} [commit_class] {} {n_commit}, {bad} the rule refuses",
+        commits.len(),
+        n_commit = goh_tui::noun(commits.len(), "commit")
     );
     0
 }

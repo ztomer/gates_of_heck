@@ -48,6 +48,9 @@ if __name__ == "__main__":  # C4: run HEAD's copy, not the shared working tree (
 import os
 import sys
 
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from tui.lib import counted  # the count meets its noun (GOH.HEDGEOWN)
+
 # json and collections load where they are used: `record` is on every gate step's path
 # (lib/bounded_run.py), and a no-op record must not pay for an encoder it never calls.
 
@@ -148,7 +151,7 @@ def load(path: str) -> list[dict]:
 
 def report(rows: list[dict], top: int = 15) -> str:
     """Top steps by wall time, then the same label summed across every place it ran."""
-    out = [f"{len(rows)} step(s) recorded"]
+    out = [f"{counted(len(rows), 'step')} recorded"]
     out.append(f"-- top {top} steps by wall time --")
     for r in sorted(rows, key=lambda r: -r["ms"])[:top]:
         where = os.path.basename(r.get("cwd", "")) or "."
@@ -209,7 +212,7 @@ def calibrated(rows: list[dict]) -> str:
         ctl = controls.get(kind, [])
         if len(ctl) < 2:
             out.append(
-                f"{kind}: uncalibrated, {len(ctl)} control(s) -- one before and one after are needed"
+                f"{kind}: uncalibrated, {counted(len(ctl), 'control')} -- one before and one after are needed"
             )
             continue
         drift = (ctl[-1] - ctl[0]) / ctl[0] if ctl[0] else float("inf")

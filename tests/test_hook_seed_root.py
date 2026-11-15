@@ -50,15 +50,38 @@ def test_the_export_names_the_root_it_was_cut_from(gates: Path, tmp_path: Path) 
 
 
 def test_a_seeded_file_passes_the_hook_in_gohs_own_repo(gates: Path, tmp_path: Path) -> None:
-    entry = json.loads((gates / "plural_hedge_seed.json").read_text())["entries"][0]
-    seeded = gates / entry["path"]
+    # goh's own seed is empty (GOH.HEDGEOWN), so the clone seeds a planted hedge of its own and
+    # commits both, the shape the hook met: HEAD's export carries the seed, keyed by the root.
+    rel = "checks/_tree_stamp.py"
+    seeded = gates / rel
     before = seeded.read_text()
+    seed_file = gates / "plural_hedge_seed.json"
+    seed_before = seed_file.read_text()
+    seed = json.loads(seed_before)
+    root = _git(gates, "rev-list", "--max-parents=0", "HEAD").split()[0]
+    seed["entries"] = [{"root": root, "repo": "gates_of_heck", "path": rel, "count": 1,
+                        "reason": "unreviewed: the GOH.HOOKSEED probe"}]  # fmt: skip
     try:
-        seeded.write_text(before + "\n# GOH.HOOKSEED probe\n")
-        _git(gates, "add", entry["path"])
+        seeded.write_text(before + 'print(f"{n} step' + '(s) ran")\n')
+        seed_file.write_text(json.dumps(seed, indent=2) + "\n")
+        _git(gates, "add", rel, "plural_hedge_seed.json")
+        _git(
+            gates,
+            "-c",
+            "user.email=t@t",
+            "-c",
+            "user.name=t",
+            "commit",
+            "-qm",
+            "seed",
+            "--no-verify",
+        )
+        seeded.write_text(seeded.read_text() + "\n# GOH.HOOKSEED probe\n")
+        _git(gates, "add", rel)
         r = _hedge(gates, tmp_path)
         assert r.returncode == 0, r.stdout + r.stderr
-        assert "seeded" in r.stdout + r.stderr and entry["path"] in r.stderr
+        assert "seeded" in r.stdout + r.stderr and rel in r.stderr
     finally:
         seeded.write_text(before)
-        _git(gates, "add", entry["path"])
+        seed_file.write_text(seed_before)
+        _git(gates, "add", rel, "plural_hedge_seed.json")

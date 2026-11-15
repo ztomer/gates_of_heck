@@ -109,9 +109,8 @@ pub fn format_report(over: &[OverCap], max: usize) -> String {
         shown.push_str(&line);
     }
     format!(
-        "{ERR} [file_length] {} file(s) over the {max}-line cap:\n{shown}\n  Split them. If a file genuinely cannot be split (vendored or\n  generated), add it to GOH_LINE_EXCLUDE in .gatesrc — with a reason.\n",
-        over.len()
-    )
+        "{ERR} [file_length] {} {n_file} over the {max}-line cap:\n{shown}\n  Split them. If a file genuinely cannot be split (vendored or\n  generated), add it to GOH_LINE_EXCLUDE in .gatesrc — with a reason.\n",
+        over.len(), n_file = goh_tui::noun(over.len(), "file"))
 }
 
 #[cfg(test)]

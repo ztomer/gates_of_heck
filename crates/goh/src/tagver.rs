@@ -264,16 +264,15 @@ fn run(
         lines.push((
             true,
             format!(
-                "{ERR} --- {} finding(s): a release tag this push names or carries does not hold ---",
-                findings.len()
-            ),
+                "{ERR} --- {} {n_finding}: a release tag this push names or carries does not hold ---",
+                findings.len(), n_finding = goh_tui::noun(findings.len(), "finding")),
         ));
         return (1, lines);
     }
     let reached_line = reached.map(|(r, judged)| {
         (
             false,
-            format!("{OK} [tag_version] {judged} local release tag(s) reachable from the pushed branch(es) are on {r} or in this push"),
+            format!("{OK} [tag_version] {judged} local release {n_tag} reachable from the pushed refs are on {r} or in this push", n_tag = goh_tui::noun(judged, "tag")),
         )
     });
     let head = if examined == 0 {
@@ -282,7 +281,7 @@ fn run(
             format!("{START} [tag_version] no refs/tags/v<semver> in this push — not applicable"),
         )
     } else {
-        (false, format!("{OK} [tag_version] OK — {examined} pushed release tag(s) match the version declared at their own commit"))
+        (false, format!("{OK} [tag_version] OK — {examined} pushed release {n_tag} match the version declared at their own commit", n_tag = goh_tui::noun(examined, "tag")))
     };
     (0, std::iter::once(head).chain(reached_line).collect())
 }

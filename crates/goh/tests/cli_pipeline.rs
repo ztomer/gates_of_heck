@@ -143,7 +143,7 @@ fn an_absent_corpus_is_skipped_by_name_and_a_thin_one_is_red() {
     );
     let out = goh(&r, &["structural", "--staged"], &[]);
     assert_red(&out, "skills corpus");
-    assert!(out.text().contains("only 2 skill(s)"), "{}", out.text());
+    assert!(out.text().contains("only 2 skills"), "{}", out.text());
 }
 
 #[test]

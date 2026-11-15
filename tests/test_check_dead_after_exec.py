@@ -71,7 +71,7 @@ def test_the_fixed_shape_and_the_parse_guard_are_green(repo: Path) -> None:
     commit_all(repo)
     r = run_goh(repo, "dead-after-exec")
     assert r.returncode == 0, r.stdout + r.stderr
-    assert "3 tracked shell source(s)" in r.stdout, r.stdout
+    assert "3 tracked shell sources" in r.stdout, r.stdout
 
 
 def test_a_shebang_script_without_an_extension_is_in_scope(repo: Path) -> None:

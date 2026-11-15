@@ -440,10 +440,9 @@ fn verdict(root: &Path, judged: &[Judged]) -> (i32, String, String) {
     }
     let ok = if skipped > 0 {
         format!(
-            "{} of {} lock(s) judged against the live registry, {skipped} not (above) -- NOT a clean bill",
+            "{} of {} {n_lock} judged against the live registry, {skipped} not (above) -- NOT a clean bill",
             judged.len() - skipped,
-            judged.len()
-        )
+            judged.len(), n_lock = goh_tui::noun(judged.len(), "lock"))
     } else if drifting > 0 {
         format!(
             "no crate this change locked is behind; {} (above) -- NOT a clean bill",

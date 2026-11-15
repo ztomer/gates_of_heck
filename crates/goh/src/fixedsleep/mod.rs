@@ -27,7 +27,7 @@ pub const SEED_FILE: &str = "fixed_sleep_seed.json";
 const SPEC: Spec = Spec {
     tag: "[fixed_sleep]",
     file: SEED_FILE,
-    noun: "Python file(s)",
+    noun: "Python file",
     reseed: "goh fixed-sleep --seed",
     clean: "no new fixed sleep stands in for a readiness signal",
     why: "fixed sleeps standing in for a readiness signal when this repo adopted goh \

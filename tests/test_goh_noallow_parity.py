@@ -12,7 +12,7 @@ from pathlib import Path
 
 import pytest
 from _fast_git import fast_init
-from reference_kit import reference_path
+from reference_kit import reference_path, unhedged
 
 ROOT = Path(__file__).resolve().parents[1]
 CHECK = reference_path("checks/check_no_allow.py")
@@ -47,7 +47,7 @@ def run_py(repo: Path, *args: str) -> tuple[int, str, str]:
         stdin=subprocess.DEVNULL,
         check=False,
     )
-    return r.returncode, r.stdout, r.stderr
+    return r.returncode, unhedged(r.stdout), unhedged(r.stderr)
 
 
 def run_goh(goh: Path, repo: Path, *args: str) -> tuple[int, str, str]:

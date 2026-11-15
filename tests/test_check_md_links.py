@@ -212,7 +212,7 @@ def test_http_and_mailto_links_are_skipped_and_counted(tmp_path):
     commit_all(repo)
     r = _run(repo)
     assert r.returncode == 0, r.stdout + r.stderr
-    assert "2 out-of-scope link(s) skipped" in r.stdout, r.stdout
+    assert "2 out-of-scope links skipped" in r.stdout, r.stdout
 
 
 def test_a_site_absolute_path_is_skipped(tmp_path):
@@ -310,7 +310,7 @@ def test_a_markdown_file_with_no_links_is_green_and_not_silent(tmp_path):
     commit_all(repo)
     r = _run(repo)
     assert r.returncode == 0, r.stdout + r.stderr
-    assert "1 markdown file(s)" in r.stdout, r.stdout
+    assert "1 markdown file" in r.stdout, r.stdout
 
 
 def test_a_vendored_doc_tree_can_be_excluded(tmp_path):

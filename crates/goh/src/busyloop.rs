@@ -329,8 +329,10 @@ pub fn format_report(hits: &[(String, Finding)], read: usize, staged: bool) -> S
     let mut out = String::new();
     let _ = writeln!(
         out,
-        "    {scope} files only: {read} shell source(s) read, {} finding(s):",
-        hits.len()
+        "    {scope} files only: {read} shell {n_source} read, {} {n_finding}:",
+        hits.len(),
+        n_source = goh_tui::noun(read, "source"),
+        n_finding = goh_tui::noun(hits.len(), "finding")
     );
     for (rel, finding) in hits {
         let _ = writeln!(out, "    {rel}:{}: {}", finding.line, finding.text);
@@ -364,7 +366,10 @@ pub fn format_report(hits: &[(String, Finding)], read: usize, staged: bool) -> S
 #[must_use]
 pub fn format_ok(read: usize, staged: bool) -> String {
     let scope = if staged { "staged" } else { "tracked" };
-    format!("no busy loop or busy-wait in the {scope} files ({read} shell source(s) read)")
+    format!(
+        "no busy loop or busy-wait in the {scope} files ({read} shell {n_source} read)",
+        n_source = goh_tui::noun(read, "source")
+    )
 }
 
 /// `goh busy-loop`: the check on its own, over the tracked files or the index.

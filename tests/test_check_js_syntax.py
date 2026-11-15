@@ -168,7 +168,7 @@ def test_the_scope_is_stated_not_implied(repo: Path) -> None:
     )
     result = run_goh(repo, "js-syntax")
     assert result.returncode == 0, result.stdout + result.stderr
-    assert "3 tracked JavaScript file(s)" in result.stdout, result.stdout
+    assert "3 tracked JavaScript files" in result.stdout, result.stdout
     assert "shape: web (2)" in result.stdout, result.stdout
     assert "node_modules/pkg/c.js" in result.stdout, result.stdout
 

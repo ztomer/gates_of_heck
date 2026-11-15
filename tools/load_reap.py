@@ -45,6 +45,9 @@ import load_registry as reg
 
 
 def main(argv: list[str]) -> int:
+    sys.path.insert(0, str(ROOT))
+    from tui.lib import counted, noun  # the count meets its noun (GOH.HEDGEOWN)
+
     parser = argparse.ArgumentParser(
         prog="tools/load_reap.py",
         description="kill the load spinners whose owner is gone",
@@ -106,12 +109,17 @@ def main(argv: list[str]) -> int:
     for kill in report.kills:
         print(log.kill_line(kill))
     if report.removed:
-        print(log.line(f"removed {len(report.removed)} registry file(s)"))
+        print(
+            log.line(f"removed {len(report.removed)} registry {noun(len(report.removed), 'file')}")
+        )
     for blind in report.blind:
         print(log.line(f"not searched this pass -- {blind}; the next pass asks again"))
     if report.failed:
         survivors = " ".join(str(pid) for pid in report.failed)
-        print(log.line(f"{len(report.failed)} spinner(s) survived: {survivors}"), file=sys.stderr)
+        print(
+            log.line(f"{counted(len(report.failed), 'spinner')} survived: {survivors}"),
+            file=sys.stderr,
+        )
     for fault in faults:
         print(log.line(fault), file=sys.stderr)
     sys.stdout.flush()

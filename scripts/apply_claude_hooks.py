@@ -50,7 +50,7 @@ from typing import Any
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
-from tui.lib import err, info, ok, warn
+from tui.lib import counted, err, info, noun, ok, warn
 
 REGISTRATIONS = ROOT / "hooks" / "claude" / "registrations.json"
 DEFAULT_SETTINGS = Path.home() / ".claude" / "settings.json"
@@ -168,7 +168,10 @@ def _place(groups: list[dict[str, Any]], event: str, entry: dict[str, Any],
     else:  # shared, and the matcher does not fit: split first, so no foreign hook is widened
         del group["hooks"][hi]
         groups.insert(gi + 1, _group(want, _new_hook(entry)))
-        notes.append(f"split {label} out of a group with {len(group['hooks'])} other hook(s)")
+        notes.append(
+            f"split {label} out of a group with {len(group['hooks'])} other "
+            f"{noun(len(group['hooks']), 'hook')}"
+        )
 
 
 def _dump(data: dict[str, Any]) -> str:
@@ -255,7 +258,10 @@ def apply_agents(sources: Path, dest: Path, check: bool, dry_run: bool) -> int:
         err(f"{dest} still differs after the write")
         return 1
     if drift or removable:
-        ok(f"{dest}: {len(drift)} agent type(s) written, {len(removable)} retired one(s) removed")
+        ok(
+            f"{dest}: {len(drift)} agent {noun(len(drift), 'type')} written, "
+            f"{len(removable)} retired {noun(len(removable), 'one')} removed"
+        )
     else:
         ok(f"{dest}: goh's agent types are installed")
     return 0
@@ -313,7 +319,7 @@ def apply_hooks(args: argparse.Namespace) -> int:
     if apply(json.loads(path.read_text(encoding="utf-8")), regs)[1]:
         err(f"{path} still differs after the write")
         return 1
-    ok(f"{path}: {len(notes)} change(s) written")
+    ok(f"{path}: {counted(len(notes), 'change')} written")
     return 0
 
 

@@ -108,8 +108,9 @@ pub fn format_ceiling(
 ) -> (bool, String, String) {
     if !offenders.is_empty() {
         let err = format!(
-            "{ERR} [ceiling] {} file(s) exempt from the cap with NO ceiling\n",
-            offenders.len()
+            "{ERR} [ceiling] {} {n_file} exempt from the cap with NO ceiling\n",
+            offenders.len(),
+            n_file = goh_tui::noun(offenders.len(), "file")
         );
         let mut out = String::new();
         for hit in offenders {
@@ -148,8 +149,7 @@ pub fn format_ceiling(
     (
         true,
         format!(
-            "{OK} [ceiling] OK — {inspected} exempt file(s), each under the cap or carrying a ceiling{tail}\n"
-        ),
+            "{OK} [ceiling] OK — {inspected} exempt {n_file}, each under the cap or carrying a ceiling{tail}\n", n_file = goh_tui::noun(inspected, "file")),
         String::new(),
     )
 }

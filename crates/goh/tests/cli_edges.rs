@@ -43,7 +43,7 @@ fn screen_tells_swift_type_shapes_from_live_uses() {
     );
     assert_eq!(out.status.code(), Some(1), "{}", out.text());
     assert!(
-        out.stderr.contains("2 presentation call(s)"),
+        out.stderr.contains("2 presentation calls"),
         "{}",
         out.stderr
     );

@@ -24,10 +24,14 @@ from __future__ import annotations
 import re
 import shlex
 import subprocess
+import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 
 import gitrun
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from tui.lib import counted  # the count meets its noun (GOH.HEDGEOWN)
 
 SHA_WORD = re.compile(r"\b[0-9a-f]{7,40}\b")
 GITHUB = re.compile(r"github\.com[:/]([\w.-]+)/([\w.-]+?)(?:\.git)?/?$")
@@ -166,7 +170,7 @@ def verify(report: str, repos: list[Path], gh: Gh | None) -> Verdict:
                and re.search(r"[0-9]", w) and re.search(r"[a-f]", w)]  # fmt: skip
     shas = [found[w][1] for w in words if w in found]
     if claimed:
-        where = f"{len(repos)} repo(s) under the estate root"
+        where = f"{counted(len(repos), 'repo')} under the estate root"
         return Verdict("silent-failure", shas, f"{', '.join(claimed)}: in none of {where}")
     if not shas:
         return Verdict("no-shas")

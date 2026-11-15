@@ -87,7 +87,7 @@ fn seed(entries: &[(&str, usize)]) -> BTreeMap<String, usize> {
 fn a_seeded_file_at_its_count_passes_and_says_what_it_read() {
     let (code, text) = judge(&scanned(&[("a.py", 2)]), &seed(&[("a.py", 2)]));
     assert_eq!(code, 0, "{text}");
-    assert!(text.contains("3 Python file(s) read, 2 seeded"), "{text}");
+    assert!(text.contains("3 Python files read, 2 seeded"), "{text}");
 }
 
 #[test]

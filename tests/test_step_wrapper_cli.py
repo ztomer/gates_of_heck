@@ -100,9 +100,7 @@ def test_a_step_that_leaves_a_process_is_named(wrapper, tmp_path: Path) -> None:
     leaked = int(_wait_for(pid))
     try:
         assert r.returncode == 0, r.stderr
-        assert "left 1 process(es) running under it" in r.stderr and str(leaked) in r.stderr, (
-            r.stderr
-        )
+        assert "left 1 process running under it" in r.stderr and str(leaked) in r.stderr, r.stderr
     finally:
         if _alive(leaked):
             os.kill(leaked, signal.SIGKILL)

@@ -227,8 +227,9 @@ pub fn report(outcome: &Outcome) -> (i32, String) {
     if !outcome.findings.is_empty() {
         let _ = writeln!(
             s,
-            "{ERR} [no_unreaped_spawn] {} unreaped spawn(s) in test sources:",
-            outcome.findings.len()
+            "{ERR} [no_unreaped_spawn] {} unreaped {n_spawn} in test sources:",
+            outcome.findings.len(),
+            n_spawn = goh_tui::noun(outcome.findings.len(), "spawn")
         );
         for hit in outcome.findings.iter().take(MAX_SHOWN) {
             let _ = writeln!(s, "{ERR}     {hit}");
@@ -254,8 +255,9 @@ pub fn report(outcome: &Outcome) -> (i32, String) {
         .join("; ");
     let _ = write!(
         s,
-        "{OK} [no_unreaped_spawn] OK — {} test file(s), every spawned child reaped on a panic",
-        outcome.examined
+        "{OK} [no_unreaped_spawn] OK — {} test {n_file}, every spawned child reaped on a panic",
+        outcome.examined,
+        n_file = goh_tui::noun(outcome.examined, "file")
     );
     if !tail.is_empty() {
         let _ = write!(

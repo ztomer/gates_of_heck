@@ -278,7 +278,10 @@ fn judge(root: &Path, files: &[String], exclude: &str, staged: bool) -> (i32, St
             "release steps that send their output to /dev/null",
         ),
         fix: FIX,
-        ok: format!("{scripts} release-named file(s), no gate/test/install step hides its output"),
+        ok: format!(
+            "{scripts} release-named {n_file}, no gate/test/install step hides its output",
+            n_file = goh_tui::noun(scripts, "file")
+        ),
     };
     estate_seed::verdict(root, staged, KIND, &seed, &found, &report)
 }

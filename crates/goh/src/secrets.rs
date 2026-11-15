@@ -183,14 +183,13 @@ pub fn format_report(bad: &[Finding], staged: bool) -> String {
         String::new()
     };
     format!(
-        "{ERR} DISALLOWED SECRET in {} location(s) ({scope}) — rotate the credential; revoked vectors use `secret-ok: <reason>` on the line or above:\n{shown}{overflow}{}",
+        "{ERR} DISALLOWED SECRET in {} {n_location} ({scope}) — rotate the credential; revoked vectors use `secret-ok: <reason>` on the line or above:\n{shown}{overflow}{}",
         bad.len(),
         if bad.iter().any(|hit| hit.kind == crate::urlexpand::KIND) {
             crate::urlexpand::ADVICE
         } else {
             ""
-        }
-    )
+        }, n_location = goh_tui::noun(bad.len(), "location"))
 }
 
 #[cfg(test)]

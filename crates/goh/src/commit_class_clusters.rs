@@ -170,9 +170,12 @@ pub fn report(revs: &[String]) -> i32 {
     }
     let clustered: usize = groups.iter().map(Vec::len).sum();
     goh_tui::outln!(
-        "{OK} [commit_class] {} commit(s), {} cluster(s) of {clustered} fix(es)",
+        "{OK} [commit_class] {} {n_commit}, {} {n_cluster} of {clustered} {n_fix}",
         commits.len(),
-        groups.len()
+        groups.len(),
+        n_commit = goh_tui::noun(commits.len(), "commit"),
+        n_cluster = goh_tui::noun(groups.len(), "cluster"),
+        n_fix = goh_tui::noun_as(clustered, "fix", "fixes")
     );
     0
 }

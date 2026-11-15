@@ -73,13 +73,16 @@ fn judge(root: &Path, files: &[String], exclude: &str, staged: bool) -> (i32, St
     }
     if n == 0 {
         let ok = format!(
-            "{OK} {TAG} OK — {} {scope} shell source(s), no code after exec\n",
-            sources.len()
+            "{OK} {TAG} OK — {} {scope} shell {n_source}, no code after exec\n",
+            sources.len(),
+            n_source = goh_tui::noun(sources.len(), "source")
         );
         return (0, ok, String::new());
     }
-    let mut err =
-        format!("{ERR} {TAG} {n} statement(s) after an exec that replaced the shell ({scope}):\n");
+    let mut err = format!(
+        "{ERR} {TAG} {n} {n_statement} after an exec that replaced the shell ({scope}):\n",
+        n_statement = goh_tui::noun(n, "statement")
+    );
     err.push_str(&listing);
     err.push_str(
         "    Nothing after an `exec CMD` runs in its block. Delete the dead line, or drop the\n    \

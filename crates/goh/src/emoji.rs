@@ -266,10 +266,9 @@ pub fn format_report(hits: &[Hit], staged: bool, allow: &str) -> String {
         String::new()
     };
     format!(
-        "{ERR} DISALLOWED EMOJI in {} location(s) ({scope}) — only the Kare icon set and functional typographic glyphs are permitted ({}); © ® ™ are typographic signs with legal meaning, but their emoji-presentation VS16 forms fail:\n{shown}{overflow}",
+        "{ERR} DISALLOWED EMOJI in {} {n_location} ({scope}) — only the Kare icon set and functional typographic glyphs are permitted ({}); © ® ™ are typographic signs with legal meaning, but their emoji-presentation VS16 forms fail:\n{shown}{overflow}",
         hits.len(),
-        permit_text(allow)
-    )
+        permit_text(allow), n_location = goh_tui::noun(hits.len(), "location"))
 }
 
 #[cfg(test)]

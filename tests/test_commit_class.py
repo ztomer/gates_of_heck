@@ -159,10 +159,10 @@ def test_a_range_names_each_bad_commit_and_counts_classes_within_it(repo: Path) 
 def test_a_range_git_cannot_read_is_named_never_passed(repo: Path) -> None:
     """`--range A..B --report` once handed `--report` to git as a revision (the flag takes git's
     own `--not` and friends): git failed, the check read zero commits and printed a pass. A range
-    git refuses is an error naming git's message, never "0 commit(s)"."""
+    git refuses is an error naming git's message, never "0 commits"."""
     r = _range(repo, "no-such-rev..HEAD")
     assert r.returncode == 2 and "no-such-rev" in r.stderr, r.stdout + r.stderr
-    assert "0 commit(s)" not in r.stdout, r.stdout
+    assert "0 commits" not in r.stdout, r.stdout
 
 
 def test_a_range_with_every_fix_named_passes(repo: Path) -> None:
@@ -238,7 +238,7 @@ def test_a_replay_judges_history_by_the_rule_it_was_written_under(repo: Path) ->
     )  # fmt: skip
     assert r.returncode == 0, r.stderr
     assert bad[:8] in r.stderr and "last paragraph" not in r.stderr, r.stderr
-    assert "2 commit(s), 1 the rule refuses" in r.stdout, r.stdout
+    assert "2 commits, 1 the rule refuses" in r.stdout, r.stdout
 
 
 def test_a_reworded_third_instance_is_still_the_class(repo: Path) -> None:
@@ -284,7 +284,7 @@ def test_clusters_link_fixes_by_class_or_by_the_files_they_share(repo: Path) -> 
     assert r.returncode == 0, r.stdout + r.stderr
     assert "cluster 1 (2 fixes)" in r.stdout and "cluster 2" not in r.stdout, r.stdout
     assert teardown[:8] in r.stdout and restore[:8] in r.stdout and alone[:8] not in r.stdout
-    assert "4 commit(s), 1 cluster(s) of 2 fix(es)" in r.stdout, r.stdout
+    assert "4 commits, 1 cluster of 2 fixes" in r.stdout, r.stdout
 
 
 def test_clusters_over_a_range_git_refuses_is_an_error(repo: Path) -> None:

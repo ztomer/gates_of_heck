@@ -35,7 +35,7 @@ fn the_dash_note_marker_is_found() {
     // and does not see a marker built at run time.
     let m = ["[ ", "--- ]"].concat();
     let src = format!(
-        "echo \"{m} Removed the unused config\"\nprintln!(\"{m} Slot(s)\", s);\nprint('---')\nx = \"a --- b\"\n"
+        "echo \"{m} Removed the unused config\"\nprintln!(\"{m} Slots\", s);\nprint('---')\nx = \"a --- b\"\n"
     );
     assert_eq!(found(&src), [1, 2]);
 }

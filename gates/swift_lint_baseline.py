@@ -70,6 +70,9 @@ from collections import Counter
 from pathlib import Path
 from typing import NamedTuple
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from tui.lib import noun  # the count meets its noun (GOH.HEDGEOWN)
+
 FILE_URL_SCHEME = "file://"
 
 
@@ -240,7 +243,7 @@ def main() -> int:
     got = reconcile(baseline, report, root)
 
     if got.new:
-        print("\u2717 swift gate: NEW lint violation(s) not in the baseline:")
+        print(f"\u2717 swift gate: NEW lint {noun(len(got.new), 'violation')} not in the baseline:")
         lines = []
         for v in got.new:
             line = describe_new(v)
@@ -254,7 +257,7 @@ def main() -> int:
 
     if got.improved:
         print(
-            f"\u26a0 {len(got.improved)} baselined violation(s) shrank —",
+            f"\u26a0 {len(got.improved)} baselined {noun(len(got.improved), 'violation')} shrank —",
             "re-record the baseline to lock the gain in (never grow it):",
         )
         for v, was in sorted(got.improved, key=lambda p: describe_new(p[0])):
@@ -262,7 +265,8 @@ def main() -> int:
 
     if got.stale:
         print(
-            f"\u26a0 {len(got.stale)} baselined violation(s) no longer occur —",
+            f"\u26a0 {len(got.stale)} baselined {noun(len(got.stale), 'violation')} no "
+            f"longer occur —",
             "re-record the baseline to shrink it (never grow it)",
         )
 

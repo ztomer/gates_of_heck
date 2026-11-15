@@ -420,8 +420,9 @@ fn run(root: Option<&str>, json: bool) -> (i32, Vec<(bool, String)>) {
         lines.push((
             true,
             format!(
-                "{ERR} --- {} finding(s): Cargo.lock disagrees with the manifest ---",
-                findings.len()
+                "{ERR} --- {} {n_finding}: Cargo.lock disagrees with the manifest ---",
+                findings.len(),
+                n_finding = goh_tui::noun(findings.len(), "finding")
             ),
         ));
         return (1, lines);
@@ -435,7 +436,7 @@ fn run(root: Option<&str>, json: bool) -> (i32, Vec<(bool, String)>) {
     }
     lines.push((
         false,
-        format!("{OK} [lock_version] OK — {examined} workspace crate(s) agree between Cargo.toml and Cargo.lock"),
+        format!("{OK} [lock_version] OK — {examined} workspace {n_crate} agree between Cargo.toml and Cargo.lock", n_crate = goh_tui::noun(examined, "crate")),
     ));
     (0, lines)
 }

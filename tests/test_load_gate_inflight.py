@@ -171,7 +171,7 @@ def test_an_expired_wait_names_what_it_waited_for_and_the_load(tmp_path: Path) -
         said = result.stderr
         assert f"{ICON_ERR} load: --wait-max of 1s expired" in said, said
         assert f"pid {gate.proc.pid}" in said and "/Users/someone/Projects/consumer" in said, said
-        assert "load average" in said and "core(s)" in said, said
+        assert "load average" in said and " core" in said, said
     finally:
         load_kit.reap()
 

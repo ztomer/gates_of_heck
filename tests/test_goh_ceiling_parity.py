@@ -15,7 +15,7 @@ from pathlib import Path
 
 import pytest
 from _fast_git import fast_init
-from reference_kit import reference_path
+from reference_kit import reference_path, unhedged
 
 ROOT = Path(__file__).resolve().parents[1]
 CHECKS = ROOT / "checks"
@@ -139,7 +139,7 @@ def run_py(repo: Path, args: list[str]) -> tuple[int, str, str]:
     first = subprocess.run(
         cmd, cwd=repo, capture_output=True, text=True, stdin=subprocess.DEVNULL, check=False
     )
-    out, err, code = first.stdout, first.stderr, first.returncode
+    out, err, code = unhedged(first.stdout), unhedged(first.stderr), first.returncode
     if code == 0 and (repo / baseline).is_file():
         measure = f"python3 '{LOC}' '{baseline}'"
         second = subprocess.run(

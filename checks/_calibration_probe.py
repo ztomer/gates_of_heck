@@ -33,7 +33,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import _calibration
 from _calibration import REGISTRY, foreign_repo_env, load, verify
 
-from tui.lib import err, ok
+from tui.lib import counted, err, ok
 
 PROVES = 'import sys\nif "--probe" in sys.argv:\n    print("clean")\nsys.exit(0)\n'
 RAN = {"checks/check_prover.py", "checks/check_sound_gate.py"}
@@ -297,7 +297,10 @@ def probe():
         bad += _uncommitted(td)
         bad += _external(td, estate)
     if bad:
-        err(f"calibration probe: {bad} case(s) wrong -- the reader does not measure its claim")
+        err(
+            f"calibration probe: {counted(bad, 'case')} wrong -- the reader does not "
+            f"measure its claim"
+        )
         return 1
     ok("calibration probe: a claim naming no gate, no file, no commit or no proof goes red")
     return 0

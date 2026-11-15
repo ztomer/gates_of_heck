@@ -16,7 +16,7 @@
   "checks/check_baseline_ratchet.py": 3,
   "checks/check_ci_local_parity.py": 1,
   "checks/check_claim_derivation.py": 2,
-  "checks/check_display_seam.py": 5,
+  "checks/check_display_seam.py": 4,
   "checks/check_empty_scope.py": 2,
   "checks/check_estate_corpus.py": 10,
   "checks/check_file_length.py": 1,

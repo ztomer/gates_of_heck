@@ -118,7 +118,7 @@ LOOP_BOUND = (
     '. "$GOH/gates/_git_env.sh"\n'
     'staged="$( (goh_bind_hook_index; git diff --cached --name-only) )"\n'
 )
-INDEX_LABEL = "index read(s) in a hook-run script that never binds the hook's index"
+INDEX_LABEL = "in a hook-run script that never binds the hook's index"
 
 
 def test_a_plain_index_read_in_the_gate_is_red_at_its_line(repo: Path) -> None:
@@ -166,7 +166,7 @@ def test_every_index_read_shape_is_named(repo: Path) -> None:
     for line in ("tools/gate.sh:2:", "tools/gate.sh:3:", "tools/gate.sh:4:", "tools/gate.sh:5:"):
         assert line in r.stderr, r.stderr
     assert "tools/gate.sh:6:" not in r.stderr and "tools/gate.sh:7:" not in r.stderr, r.stderr
-    assert "4 index read(s)" in r.stderr, r.stderr
+    assert "4 index reads" in r.stderr, r.stderr
 
 
 def test_a_private_index_the_script_chose_is_not_the_hooks(repo: Path) -> None:

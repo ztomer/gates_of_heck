@@ -238,7 +238,7 @@ def test_manifests_are_counted_even_with_no_dependencies(tmp_path):
     write(tmp_path / "Cargo.toml", '[package]\nname = "x"\nversion = "0.1.0"\n')
     rep = run(tmp_path)
     assert rep.examined == 0
-    assert "1 manifest(s), none declaring a dependency" in rep.not_applicable, rep
+    assert "1 manifest, none declaring a dependency" in rep.not_applicable, rep
 
 
 def _crates_io(tmp_path: Path, **latest: str) -> dict:

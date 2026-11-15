@@ -18,7 +18,9 @@ from pathlib import Path
 import pytest
 from claim_kit import allow, doc, estate
 from conftest import commit_all, stage, write
-from reference_kit import reference_path
+from reference_kit import reference_path, unhedged
+
+from tui.lib import counted
 
 CHECK = reference_path("checks/check_claim_derivation.py")
 
@@ -81,7 +83,8 @@ def _json_view(out: str):
 
 
 def both(goh: Path, repo: Path, *args: str) -> tuple[tuple, tuple]:
-    py = _run([sys.executable, str(CHECK), *args], repo)
+    code, out, err = _run([sys.executable, str(CHECK), *args], repo)
+    py = (code, unhedged(out), unhedged(err))
     rs = _run([str(goh), "claim-derivation", *args], repo)
     if "--json" in args and py[1].strip() and rs[1].strip():
         py, rs = (py[0], _json_view(py[1]), py[2]), (rs[0], _json_view(rs[1]), rs[2])
@@ -121,7 +124,7 @@ def _allowlist_unread(py: tuple) -> tuple:
     (each entry quotes a claim, so it read as one), and examines one file fewer than the frozen
     reference whenever the allowlist is in scope."""
     code, out, err = py
-    fewer = re.sub(r"(\d+) text file\(s\)", lambda m: f"{int(m[1]) - 1} text file(s)", out)
+    fewer = re.sub(r"(\d+) text files?\b", lambda m: counted(int(m[1]) - 1, "text file"), out)
     return code, fewer, err
 
 

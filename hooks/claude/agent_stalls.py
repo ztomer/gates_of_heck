@@ -91,6 +91,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from agent_stop import INTERRUPTED, stop_marker  # THE stopped-agent rule (LOOP.LINGERSTOP)
 from loop_stale import loop_stale_lines, start_loop_stale  # .loop's own rule (GOH.STALEHOOK)
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+from tui.lib import counted  # the count meets its noun (GOH.HEDGEOWN)
+
 DEFAULT_MINUTES = 20
 DEFAULT_MAX_AGE_HOURS = 24
 TAIL_BYTES = 1 << 16
@@ -344,7 +347,7 @@ def _minutes_env() -> float:
 
 
 def report(found: list[Stall], minutes: float) -> str:
-    head = f"{len(found)} subagent(s) idle {int(minutes)}m+ and not done:"
+    head = f"{counted(len(found), 'subagent')} idle {int(minutes)}m+ and not done:"
     return "\n".join([head, *(f"  ⚠ {s.line()}" for s in found)])
 
 
@@ -469,7 +472,7 @@ def main(argv: list[str] | None = None) -> int:
     elif found:
         print(report(found, minutes))
     else:
-        print(f"✓ no subagent idle {int(minutes)}m+ across {len(dirs)} session(s)")
+        print(f"✓ no subagent idle {int(minutes)}m+ across {counted(len(dirs), 'session')}")
     return 1 if found else 0
 
 

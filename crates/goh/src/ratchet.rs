@@ -162,7 +162,8 @@ pub fn parse_baseline(text: &str, origin: &str) -> Result<BTreeMap<String, f64>,
         if !huge.is_empty() {
             huge.truncate(5);
             return Err(format!(
-                "{origin}: value(s) too large to measure (float range exceeded) for keys {huge:?}"
+                "{origin}: {n_value} too large to measure (float range exceeded) for keys {huge:?}",
+                n_value = goh_tui::noun(huge.len(), "value")
             ));
         }
         reject_nonfinite(&entries)?;
@@ -320,9 +321,11 @@ pub fn format_ratchet(
 ) -> (bool, String) {
     if !cmp.rose.is_empty() || !cmp.grew.is_empty() {
         let mut text = format!(
-            "{ERR} [ratchet] {} ceiling(s) exceeded, {} new key(s) — shrink-only:\n",
+            "{ERR} [ratchet] {} {n_ceiling} exceeded, {} new {n_key} — shrink-only:\n",
             cmp.rose.len(),
-            cmp.grew.len()
+            cmp.grew.len(),
+            n_ceiling = goh_tui::noun(cmp.rose.len(), "ceiling"),
+            n_key = goh_tui::noun(cmp.grew.len(), "key")
         );
         for key in &cmp.rose {
             let (base, cur) = (baseline[key], current[key]);
@@ -432,7 +435,7 @@ mod tests {
         assert_eq!(cmp.shrank.len(), 1);
         let (ok, report) = format_ratchet(&base, &cur, &cmp);
         assert!(!ok);
-        assert!(report.contains("1 ceiling(s) exceeded, 1 new key(s)"));
+        assert!(report.contains("1 ceiling exceeded, 1 new key"));
     }
 
     #[test]

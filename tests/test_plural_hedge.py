@@ -9,11 +9,14 @@ import subprocess
 from pathlib import Path
 
 from _fast_git import fast_init
-from conftest import hermetic_env
+from conftest import REPO_ROOT, hermetic_env
 
-PLANTED = 'print(f"{n} step(s) ran")\n'
-HOUSE = "from tui.lib import counted\nprint(counted(n, 'step'))  # never step(s)\n"
-SHELL = '#!/usr/bin/env bash\necho "$n entr(ies) open"\n'
+# The fixtures' hedges are assembled from pieces (`S`), which the lexical finder does not see: this
+# file is in goh's own tree, whose seed holds no entry (GOH.HEDGEOWN).
+S = "(s)"
+PLANTED = f'print(f"{{n}} step{S} ran")\n'
+HOUSE = f"from tui.lib import counted\nprint(counted(n, 'step'))  # never step{S}\n"
+SHELL = '#!/usr/bin/env bash\necho "$n entr' + "(ies)" + ' open"\n'
 
 
 def _git(repo: Path, *args: str) -> str:
@@ -66,3 +69,12 @@ def test_a_clean_repo_passes(goh: Path, tmp_path: Path) -> None:
     repo = _repo(tmp_path, {"b.py": HOUSE})
     ok = _run(goh, repo, tmp_path)
     assert ok.returncode == 0 and "every count in a string meets its noun" in ok.stdout, ok.stdout
+
+
+def test_goh_own_tree_carries_no_seeded_hedge() -> None:
+    """goh's own plural-hedge seed is empty and stays empty (GOH.HEDGEOWN, GOH.LINEHEDGE): goh's
+    output says every count with its noun, so a hedge planted anywhere in goh's tree is unseeded and
+    red, never a warning. A goh file is fixed through counted/noun, never seeded."""
+    seed = json.loads((REPO_ROOT / "plural_hedge_seed.json").read_text(encoding="utf-8"))
+    held = [f"{e['path']} ({e['count']})" for e in seed["entries"]]
+    assert held == [], f"goh's own tree seeds hedged plurals: {held}"

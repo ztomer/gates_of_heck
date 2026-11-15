@@ -42,7 +42,7 @@ fn lints_names_each_member_that_inherits_nothing() {
     assert_eq!(out.status.code(), Some(1), "{}", out.text());
     assert!(out
         .stderr
-        .contains("2 crate(s) not subject to the workspace lint policy"));
+        .contains("2 crates not subject to the workspace lint policy"));
     assert!(
         out.stderr.contains("b/Cargo.toml: no [lints] table"),
         "{}",
@@ -71,7 +71,7 @@ fn lints_names_each_member_that_inherits_nothing() {
     assert!(out.status.success(), "{}", out.text());
     assert_eq!(
         out.stdout,
-        "✓ [lints_optin] OK — 3 workspace member(s) inherit the declared policy\n"
+        "✓ [lints_optin] OK — 3 workspace members inherit the declared policy\n"
     );
 }
 
@@ -157,7 +157,7 @@ fn skills_passes_a_valid_corpus_and_refuses_a_wrong_scope() {
     );
     let out = skills(c.path(), &["--min-skills", "6"]);
     assert_eq!(out.status.code(), Some(2), "{}", out.text());
-    assert!(out.stdout.contains("only 5 skill(s)"), "{}", out.stdout);
+    assert!(out.stdout.contains("only 5 skills"), "{}", out.stdout);
     assert!(out.stdout.contains("(floor 6)"), "{}", out.stdout);
     let missing = c.path().join("nope");
     let out = skills(&missing, &[]);
@@ -203,7 +203,7 @@ fn skills_names_every_frontmatter_link_and_duplicate_defect() {
         "s3/SKILL.md: frontmatter has no `name:`",
         "s4/references/r.md: [[nobody]] matches no skill",
         "section \"a lesson heading long enough to be one\" appears in 2 skills (s2, s3)",
-        "[skills_corpus] 8 violation(s) across 5 skills, 6 files",
+        "[skills_corpus] 8 violations across 5 skills, 6 files",
     ] {
         assert!(
             out.stdout.contains(line),
@@ -237,7 +237,7 @@ fn skills_size_ratchet_seeds_holds_grows_and_goes_stale() {
     assert!(out.status.success(), "{}", out.text());
     assert!(out
         .stdout
-        .contains("baseline re-recorded: 1 oversized skill(s)"));
+        .contains("baseline re-recorded: 1 oversized skill"));
     let recorded = std::fs::read_to_string(c.path().join("skills_size_baseline.json"))
         .expect("baseline written beside the root");
     let doc: serde_json::Value = serde_json::from_str(&recorded).expect("json");
@@ -342,7 +342,7 @@ fn ceiling_passes_bound_exemptions_and_waivers() {
     );
     assert!(out.status.success(), "{}", out.text());
     assert!(
-        out.stdout.contains("[ceiling] OK — 2 exempt file(s)"),
+        out.stdout.contains("[ceiling] OK — 2 exempt files"),
         "{}",
         out.stdout
     );
@@ -404,7 +404,7 @@ fn ceiling_refuses_unbounded_growth_and_stale_patterns() {
     assert_eq!(out.status.code(), Some(1), "{}", out.text());
     assert!(out
         .stderr
-        .contains("1 file(s) exempt from the cap with NO ceiling"));
+        .contains("1 file exempt from the cap with NO ceiling"));
     assert!(out.stdout.contains("gen/g.rs (30 lines)"), "{}", out.stdout);
     assert!(
         out.stdout.contains("add '30 gen/g.rs' to base.txt"),

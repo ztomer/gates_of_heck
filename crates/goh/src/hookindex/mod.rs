@@ -147,25 +147,22 @@ fn judge(
             "GOH.BAREINDEX",
         ));
         let ok = format!(
-            "{OK} {TAG} OK — {} {scope} shell source(s), the hook's index read only by goh_bind_hook_index\n",
-            sources.len()
-        );
+            "{OK} {TAG} OK — {} {scope} shell {n_source}, the hook's index read only by goh_bind_hook_index\n",
+            sources.len(), n_source = goh_tui::noun(sources.len(), "source"));
         return (0, ok, warns);
     }
     let mut err = warns;
     if n > 0 {
         let _ = writeln!(
             err,
-            "{ERR} {TAG} {n} read(s) of the hook's carried index outside goh_bind_hook_index ({scope}):"
-        );
+            "{ERR} {TAG} {n} {n_read} of the hook's carried index outside goh_bind_hook_index ({scope}):", n_read = goh_tui::noun(n, "read"));
         err.push_str(&listing);
         err.push_str(EXPANSION_FIX);
     }
     if m > 0 {
         let _ = writeln!(
             err,
-            "{ERR} {TAG} {m} index read(s) in a hook-run script that never binds the hook's index ({scope}):"
-        );
+            "{ERR} {TAG} {m} index {n_read} in a hook-run script that never binds the hook's index ({scope}):", n_read = goh_tui::noun(m, "read"));
         err.push_str(&index_listing);
         err.push_str(INDEX_FIX);
     }

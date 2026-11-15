@@ -59,6 +59,9 @@ import re
 import subprocess
 import sys
 
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from tui.lib import counted, noun  # the count meets its noun (GOH.HEDGEOWN)
+
 
 def floor_cmp(pct, floor):
     if pct + 1e-9 < floor:
@@ -311,7 +314,7 @@ def process(
     exclusions, errors = find_exclusions(proj, ignore_re, include_re)
     if errors:
         print(
-            f"✗ [coverage] {len(errors)} invalid cov:ignore marker(s) — "
+            f"✗ [coverage] {len(errors)} invalid cov:ignore {noun(len(errors), 'marker')} — "
             "forgiveness requires a stated reason:",
             file=sys.stderr,
         )
@@ -331,7 +334,8 @@ def process(
     pct = (100.0 * raw_covered / (raw_total - forgiven)) if raw_total else 0.0
     if rows:
         print(
-            f"→ [coverage] forgave {forgiven} uncovered marked line(s), across {len(rows)} file(s)"
+            f"→ [coverage] forgave {forgiven} uncovered marked {noun(forgiven, 'line')}, "
+            f"across {counted(len(rows), 'file')}"
         )
         for name, n in sorted(rows, key=lambda r: -r[1]):
             print(f"    {n:>4} lines  {name}")
@@ -379,7 +383,7 @@ def process(
             present = {r for flist in per_files.values() for r, _, _ in flist}
             stale = sorted(set(cfg["exempt"]) - present)
             if stale:
-                print(f"✗ {len(stale)} exemption(s) stale (file gone).", file=sys.stderr)
+                print(f"✗ {counted(len(stale), 'exemption')} stale (file gone).", file=sys.stderr)
                 sys.exit(1)
         if cfg.get("file_floor") is not None:
             ff = cfg["file_floor"]
@@ -392,8 +396,10 @@ def process(
                     if cur + 1e-9 < ff:
                         below.append((rel, tot, cov, cur))
             if below:
-                print(f"✗ {len(below)} file(s) below per-file floor {ff:g}%", file=sys.stderr)
-                failures.append(f"{len(below)} file(s) below per-file floor")
+                print(
+                    f"✗ {counted(len(below), 'file')} below per-file floor {ff:g}%", file=sys.stderr
+                )
+                failures.append(f"{counted(len(below), 'file')} below per-file floor")
         if failures:
             for f in failures:
                 print(f"✗ {f}", file=sys.stderr)

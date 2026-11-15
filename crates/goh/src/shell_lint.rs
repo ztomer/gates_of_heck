@@ -384,8 +384,9 @@ fn run(staged: bool, exclude: &str, seed: bool) -> (i32, Lines) {
         let mut lines = vec![(
             true,
             format!(
-                "{ERR} [shell_lint] {} file(s) failed ({scope}):",
-                judged.failed.len()
+                "{ERR} [shell_lint] {} {n_file} failed ({scope}):",
+                judged.failed.len(),
+                n_file = goh_tui::noun(judged.failed.len(), "file")
             ),
         )];
         lines.extend(judged.fail.into_iter().map(|f| (true, format!("  {f}"))));

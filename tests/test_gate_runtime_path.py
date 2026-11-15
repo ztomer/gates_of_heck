@@ -100,7 +100,7 @@ def test_a_forwarder_is_named_and_not_swept(tmp_path):
     got = _sweep_repo(tmp_path, {})
     assert got.returncode == 0, got.stdout + got.stderr
     assert "check_no_emoji.py forwards to a native check" in got.stdout, got.stdout
-    assert "1 gate(s) swept" in got.stdout, got.stdout
+    assert "1 gate swept" in got.stdout, got.stdout
 
 
 def test_an_excuse_naming_no_gate_is_a_finding(tmp_path):

@@ -75,7 +75,7 @@ def test_a_kind_without_both_controls_is_uncalibrated_not_divided() -> None:
         _row("clippy", 7000, "rust"),
     ]
     text = step_timings.calibrated(rows)
-    assert "rust: uncalibrated, 1 control(s) -- one before and one after are needed" in text, text
+    assert "rust: uncalibrated, 1 control -- one before and one after are needed" in text, text
     assert "clippy" not in text, text
 
 

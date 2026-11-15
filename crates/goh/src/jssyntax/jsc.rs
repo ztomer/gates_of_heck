@@ -158,9 +158,10 @@ pub fn check_all(bin: &Path, checks: &[Check]) -> Result<Vec<Verdict>, String> {
     }
     if verdicts.len() != checks.len() {
         return Err(format!(
-            "JavaScriptCore answered for {} of {} source(s)",
+            "JavaScriptCore answered for {} of {} {n_source}",
             verdicts.len(),
-            checks.len()
+            checks.len(),
+            n_source = goh_tui::noun(checks.len(), "source")
         ));
     }
     Ok(verdicts)

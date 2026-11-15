@@ -52,6 +52,9 @@ from pathlib import Path
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "lib"))
 from killtree import run_captured
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from tui.lib import counted, noun  # the count meets its noun (GOH.HEDGEOWN)
+
 
 class PreconditionError(Exception):
     """The gate cannot run at all (missing file, unparseable input...)."""
@@ -127,7 +130,7 @@ def parse(text: str, origin: str) -> dict[str, float]:
                 huge.append(k)  # JSON ints are unbounded; floats are not
         if huge:
             raise PreconditionError(
-                f"{origin}: value(s) too large to measure (float range "
+                f"{origin}: {noun(len(huge), 'value')} too large to measure (float range "
                 f"exceeded) for keys {sorted(huge)[:5]}"
             )
         _reject_nonfinite(entries)
@@ -226,7 +229,8 @@ def main() -> int:
 
     if rose or grew:
         print(
-            f"✗ [ratchet] {len(rose)} ceiling(s) exceeded, {len(grew)} new key(s) — shrink-only:",
+            f"✗ [ratchet] {counted(len(rose), 'ceiling')} exceeded, {len(grew)} new "
+            f"{noun(len(grew), 'key')} — shrink-only:",
             file=sys.stderr,
         )
         for k in rose:
@@ -303,7 +307,7 @@ def _record(base_path: Path, baseline, current, rose, grew, vanished) -> None:
         + len(vanished)
         + sum(1 for k in baseline.keys() & current.keys() if baseline[k] != current[k])
     )
-    print(f"→ [ratchet] recording {changed} change(s) to {base_path}:")
+    print(f"→ [ratchet] recording {counted(changed, 'change')} to {base_path}:")
     for k in rose:
         print(f"    {k}: {baseline[k]:g} -> {current[k]:g}")
     for k in sorted(baseline.keys() & current.keys()):

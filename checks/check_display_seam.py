@@ -87,7 +87,7 @@ from _marker_reason import is_justified
 from _swift_text import swift_code_only
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from tui.lib import err, info, ok
+from tui.lib import counted, err, info, noun, ok
 
 POLICY_KEYS = {
     "scan",
@@ -178,7 +178,7 @@ class Policy:
     def __init__(self, raw, root):
         unknown = sorted(set(raw) - POLICY_KEYS)
         if unknown:
-            raise ValueError(f"unknown policy key(s): {', '.join(unknown)}")
+            raise ValueError(f"unknown policy {noun(len(unknown), 'key')}: {', '.join(unknown)}")
         self.note = str(raw.get("note", ""))
         self.live_helper = str(raw.get("live_helper", DEFAULTS["live_helper"]))
         self.ingress_helper = str(raw.get("ingress_helper", DEFAULTS["ingress_helper"]))
@@ -428,7 +428,10 @@ def main(argv=None):
         return 2
 
     if bad:
-        err(f"[no_display_seam] {len(bad)} screen/input call site(s) outside the seam:")
+        err(
+            f"[no_display_seam] {len(bad)} screen/input call {noun(len(bad), 'site')} "
+            f"outside the seam:"
+        )
         for rel, line_no, why in bad:
             err(f"    {rel}:{line_no}: {why}")
         info(f"  Route through the seam ({', '.join(policy.seam) or 'none declared'}), or mark the")
@@ -454,7 +457,8 @@ def main(argv=None):
         else ""
     )
     ok(
-        f"[no_display_seam] OK — {checked} file(s), nothing reaches the display outside the seam{census}"
+        f"[no_display_seam] OK — {counted(checked, 'file')}, nothing reaches the display "
+        f"outside the seam{census}"
     )
     return 0
 

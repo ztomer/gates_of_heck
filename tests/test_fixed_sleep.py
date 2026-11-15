@@ -41,7 +41,7 @@ def test_a_site_is_red_until_seeded_and_a_fix_must_lower_the_seed(
     assert seeded.returncode == 0, seeded.stdout + seeded.stderr
     assert json.loads((repo / "fixed_sleep_seed.json").read_text())["files"] == {"a.py": 1}
     green = _run(goh, repo)
-    assert green.returncode == 0 and "2 Python file(s) read, 1 seeded" in green.stdout, green.stdout
+    assert green.returncode == 0 and "2 Python files read, 1 seeded" in green.stdout, green.stdout
 
     (repo / "a.py").write_text(POLLED)
     stale = _run(goh, repo)

@@ -42,6 +42,9 @@ import re
 import sys
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+from tui.lib import counted  # the count meets its noun (GOH.HEDGEOWN)
+
 HEADING = re.compile(r"^(#+)\s+(.*?)\s*$")
 UNRELEASED = re.compile(r"^\[?unreleased\]?(\s|$)", re.IGNORECASE)
 
@@ -122,7 +125,8 @@ def check(lines: list[str], version: str) -> list[str]:
         held = [ln for ln in body(lines, s) if ln.strip()]
         if s.unreleased and held:
             findings.append(
-                f"'{s.title}' still holds {len(held)} line(s) at the commit being tagged: the tag "
+                f"'{s.title}' still holds {counted(len(held), 'line')} at the commit being "
+                f"tagged: the tag "
                 f"ships the whole tree, so they are released -- move them into the v{version} "
                 f"stanza (changelog_cut.py cut) or delete what an earlier stanza already says"
             )

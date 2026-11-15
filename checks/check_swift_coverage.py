@@ -67,6 +67,8 @@ DEFAULT_DD = ".build/xcode-dd"
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "lib"))
 from swift_coverage_scope import ScopeError, is_code_under_test, own_source_roots
 
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
 
 def _spm_file_lines(f: dict):
     """(covered, total) for one file entry, across llvm-cov export shapes.
@@ -411,6 +413,9 @@ def check_target_floors(records, floors, tolerance):
 
 
 def main() -> int:
+    sys.path.insert(0, ROOT)
+    from tui.lib import counted  # the count meets its noun (GOH.HEDGEOWN)
+
     ap = argparse.ArgumentParser()
     ap.add_argument("--min", type=float, required=True)
     ap.add_argument("--xcode", action="store_true")
@@ -443,7 +448,7 @@ def main() -> int:
             # JSON, or every entry has total_lines 0). Refuse with the count
             # rather than aggregating an empty record set into a fake 100%.
             why = (
-                f"{len(paths)} payload(s) matched {' | '.join(spm_globs)} but "
+                f"{counted(len(paths), 'payload')} matched {' | '.join(spm_globs)} but "
                 f"none contained measurable files — corrupt codecov JSON?"
             )
         else:
@@ -477,7 +482,7 @@ def main() -> int:
 
     floor = args.min
     if pct + 1e-9 >= floor:
-        print(f"→ [swift_cov] OK — {pct:.1f}% >= {floor:g}% ({len(per_file)} file(s))")
+        print(f"→ [swift_cov] OK — {pct:.1f}% >= {floor:g}% ({counted(len(per_file), 'file')})")
         return 0
 
     print(f"✗ [swift_cov] {pct:.1f}% is under the {floor:g}% floor:", file=sys.stderr)

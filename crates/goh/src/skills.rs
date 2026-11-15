@@ -216,11 +216,10 @@ pub fn audit(scanner: &Scanner, root: &std::path::Path, inputs: &AuditInputs) ->
         return AuditOutcome {
             code: 2,
             out: format!(
-                "  ✗ only {} skill(s) under {} (floor {}) — the scope is wrong, not the corpus clean\n",
+                "  ✗ only {} {n_skill} under {} (floor {}) — the scope is wrong, not the corpus clean\n",
                 skills.len(),
                 root.display(),
-                inputs.min_skills
-            ),
+                inputs.min_skills, n_skill = goh_tui::noun(skills.len(), "skill")),
         };
     }
     let baseline = match load_baseline(&inputs.baseline) {
@@ -277,9 +276,10 @@ pub fn audit(scanner: &Scanner, root: &std::path::Path, inputs: &AuditInputs) ->
     } else {
         let _ = writeln!(
             out,
-            "  ✗ [skills_corpus] {} violation(s) across {} skills, {files_read} files",
+            "  ✗ [skills_corpus] {} {n_violation} across {} skills, {files_read} files",
             lines.len(),
-            skills.len()
+            skills.len(),
+            n_violation = goh_tui::noun(lines.len(), "violation")
         );
         AuditOutcome { code: 1, out }
     }

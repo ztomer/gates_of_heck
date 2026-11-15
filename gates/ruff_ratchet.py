@@ -52,6 +52,9 @@ import sys
 from collections import Counter
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from tui.lib import counted  # the count meets its noun (GOH.HEDGEOWN)
+
 TABLE = "ruff_ratchet.json"
 RULE = re.compile(r"^[A-Z]+[0-9]+$")
 # Findings listed per rule in a red verdict before the rest are counted, not printed.
@@ -143,9 +146,10 @@ def judge(table: dict[str, int], report: list[dict]) -> tuple[list[str], list[st
         if ceiling is not None and counts[rule] <= ceiling:
             continue
         head = (
-            f"{rule}: {counts[rule]} finding(s), and no count -- a rule the repo had cleared"
+            f"{rule}: {counted(counts[rule], 'finding')}, and no count -- a rule the repo "
+            f"had cleared"
             if ceiling is None
-            else f"{rule}: {counts[rule]} finding(s) against a count of {ceiling}"
+            else f"{rule}: {counted(counts[rule], 'finding')} against a count of {ceiling}"
         )
         rises.append(head)
         mine = [f for f in report if rule_of(f) == rule]
@@ -156,7 +160,9 @@ def judge(table: dict[str, int], report: list[dict]) -> tuple[list[str], list[st
         if table[rule] == 0:
             stale.append(f"{rule}: a count of 0 -- delete the entry")
         elif counts[rule] < table[rule]:
-            stale.append(f"{rule}: {counts[rule]} finding(s), count {table[rule]} -- lower it")
+            stale.append(
+                f"{rule}: {counted(counts[rule], 'finding')}, count {table[rule]} -- lower it"
+            )
     return rises, stale
 
 
@@ -184,8 +190,8 @@ def main(argv: list[str] | None = None) -> int:
             counts = Counter(rule_of(f) for f in report)
             write_table(path, counts)
             print(
-                f"→ [ruff-ratchet] seeded {path}: {sum(counts.values())} finding(s) "
-                f"under {len(counts)} rule(s) -- commit it, then only lower it"
+                f"→ [ruff-ratchet] seeded {path}: {counted(sum(counts.values()), 'finding')} "
+                f"under {counted(len(counts), 'rule')} -- commit it, then only lower it"
             )
             return 0
         table = load_table(path)
@@ -195,7 +201,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.list:
         for f in sorted(report, key=where):
             print(where(f))
-        print(f"→ [ruff-ratchet] {len(report)} finding(s) owed")
+        print(f"→ [ruff-ratchet] {counted(len(report), 'finding')} owed")
         return 0
     rises, stale = judge(table, report)
     if args.lower:
@@ -229,8 +235,8 @@ def main(argv: list[str] | None = None) -> int:
                 print(f"  {line}", file=sys.stderr)
         return 1
     print(
-        f"✓ [ruff-ratchet] OK -- {len(report)} finding(s) owed under {len(table)} counted "
-        f"rule(s), none new"
+        f"✓ [ruff-ratchet] OK -- {counted(len(report), 'finding')} owed under "
+        f"{counted(len(table), 'counted rule')}, none new"
         if report
         else "✓ [ruff-ratchet] OK -- the declared rule set is clean"
     )

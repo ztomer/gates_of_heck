@@ -50,7 +50,7 @@ fn home_paths_reports_suppresses_and_excludes() {
     assert_eq!(out.status.code(), Some(1), "{}", out.text());
     assert!(out
         .stdout
-        .contains("HARD-CODED HOME PATH in 2 location(s) (tracked)"));
+        .contains("HARD-CODED HOME PATH in 2 locations (tracked)"));
     assert!(out.stdout.contains("src/a.py:1:6: macOS home path"));
     assert!(out.stdout.contains("src/b.sh:1:4: tilde checkout path"));
     assert!(!out.stdout.contains("src/c.py"), "path-ok must exempt");
@@ -119,7 +119,7 @@ fn home_paths_skips_binary_and_vanished_files_and_caps_the_report() {
     std::fs::remove_file(r.path().join("gone.txt")).expect("rm");
     let out = goh(Some(&r), &["home-paths"], &[]);
     assert_eq!(out.status.code(), Some(1), "{}", out.text());
-    assert!(out.stdout.contains("in 205 location(s)"), "{}", out.stdout);
+    assert!(out.stdout.contains("in 205 locations"), "{}", out.stdout);
     assert!(out.stdout.contains("… and 5 more"), "{}", out.stdout);
     assert!(!out.stdout.contains("bin.dat"), "undecodable is skipped");
     assert!(
@@ -269,7 +269,7 @@ fn screen_flags_live_display_calls_and_honours_its_exemptions() {
     let out = goh(Some(&r), &["screen", "--scope", "tests/*"], &[]);
     assert_eq!(out.status.code(), Some(1), "{}", out.text());
     assert!(
-        out.stderr.contains("3 presentation call(s)"),
+        out.stderr.contains("3 presentation calls"),
         "{}",
         out.stderr
     );
@@ -305,9 +305,8 @@ fn screen_flags_live_display_calls_and_honours_its_exemptions() {
     );
     assert!(out.status.success(), "{}", out.text());
     assert!(
-        out.stdout.contains(
-            "→ [no_screen] OK — 1 test target(s) scanned, nothing renders to the display"
-        ),
+        out.stdout
+            .contains("→ [no_screen] OK — 1 test target scanned, nothing renders to the display"),
         "{}",
         out.text()
     );
@@ -327,7 +326,7 @@ fn screen_walks_directories_without_caches_or_symlinked_dirs() {
     let out = goh(Some(&r), &["screen", &abs], &[]);
     assert!(out.status.success(), "{}", out.text());
     assert!(
-        out.stdout.contains("1 test target(s) scanned"),
+        out.stdout.contains("1 test target scanned"),
         "{}",
         out.text()
     );
@@ -372,7 +371,7 @@ fn screen_scope_errors_and_the_staged_index() {
     let out = goh(Some(&r), &["screen", "--staged", "--scope", "tests/*"], &[]);
     assert!(out.status.success(), "{}", out.text());
     assert!(
-        out.stdout.contains("1 test target(s) staged"),
+        out.stdout.contains("1 test target staged"),
         "{}",
         out.text()
     );

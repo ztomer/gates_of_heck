@@ -93,7 +93,7 @@ def test_spm_parseable_payload_with_no_measurable_files_refuses(repo):
     _write_spm(repo, ".build/a/debug/codecov/empty.json", [("Empty.swift", 0, 0)])
     r = run_check(repo, SCRIPT, "--min", "50")
     assert r.returncode == 2
-    assert "1 payload(s) matched" in r.stderr
+    assert "1 payload matched" in r.stderr
 
 
 def test_spm_zero_line_entries_do_not_dilute(repo, monkeypatch):

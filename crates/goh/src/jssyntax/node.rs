@@ -154,9 +154,10 @@ fn batch_ones(bin: &Path, checks: &[(usize, &Check)]) -> Result<Vec<(usize, Verd
     }
     if answers.len() != checks.len() {
         return Err(format!(
-            "node answered for {} of {} source(s)",
+            "node answered for {} of {} {n_source}",
             answers.len(),
-            checks.len()
+            checks.len(),
+            n_source = goh_tui::noun(checks.len(), "source")
         ));
     }
     let mut out = Vec::with_capacity(checks.len());

@@ -31,7 +31,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from tui.lib import report  # tui.lib, whatever the caller's path
+from tui.lib import counted, report  # tui.lib, whatever the caller's path
 
 DEFAULT_DIR = "/tmp/gates-of-heck-bench.lock"  # lib/bench_lock.sh's BENCH_LOCK_DIR default
 START_SLACK_S = 2.0  # `ps` reports a start to the second; the entry's mtime is finer
@@ -196,7 +196,8 @@ def hold_off(wait: bool, wait_s: float = DEFAULT_WAIT_S, poll_s: float = POLL_S)
     if not busy or not wait:
         return Hold(busy, [])
     report(
-        f"load: waiting (at most {_duration(wait_s)}, --wait-max) for {len(busy)} gate(s) in "
+        f"load: waiting (at most {_duration(wait_s)}, --wait-max) for "
+        f"{counted(len(busy), 'gate')} in "
         "flight; gates that start meanwhile are named, not waited on:",
         *(gate.describe() for gate in busy),
     )
@@ -217,8 +218,11 @@ def load_reading(ncpu: int) -> str:
     try:
         one, five, fifteen = os.getloadavg()
     except OSError:
-        return f"load average unreadable on {ncpu} core(s)"
-    return f"load average {one:.1f} / {five:.1f} / {fifteen:.1f} (1/5/15 min) on {ncpu} core(s)"
+        return f"load average unreadable on {counted(ncpu, 'core')}"
+    return (
+        f"load average {one:.1f} / {five:.1f} / {fifteen:.1f} (1/5/15 min) on "
+        f"{counted(ncpu, 'core')}"
+    )
 
 
 def names(gates: list[Gate]) -> str:
@@ -241,7 +245,8 @@ def refusal(hold: Hold, count: int, waited: bool, wait_s: float, ncpu: int) -> s
     lines += [
         f"the machine: {load_reading(ncpu)}",
         (
-            f"{count} spinner(s) would starve it, and a starved gate fails on its own clock "
+            f"{counted(count, 'spinner')} would starve it, and a starved gate fails on its "
+            f"own clock "
             "(a private consumer's pre-push, 2026-11-01, at load 137 on 16 cores) with nothing naming the load."
         ),
         (

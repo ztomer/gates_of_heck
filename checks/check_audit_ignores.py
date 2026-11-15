@@ -53,7 +53,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from _gitutil import foreign_repo_env
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from tui.lib import err, ok
+from tui.lib import counted, err, ok
 
 CONFIG = os.path.join(".cargo", "audit.toml")
 ADVISORY = re.compile(r'"((?:RUSTSEC|GHSA|CVE)-[\w-]+)"')
@@ -174,7 +174,10 @@ def main() -> int:
         err(f"[audit_ignores] {line}")
     if bad:
         return 1
-    ok(f"[audit_ignores] {len(entries)} exemption(s), each with its reason, each still firing")
+    ok(
+        f"[audit_ignores] {counted(len(entries), 'exemption')}, each with its reason, each "
+        f"still firing"
+    )
     return 0
 
 

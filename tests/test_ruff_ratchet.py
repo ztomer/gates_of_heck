@@ -41,7 +41,7 @@ def test_a_rule_at_its_count_passes(tree, capsys):
     (tree / "a.py").write_text(TWO_UNUSED, encoding="utf-8")
     table(tree, {"F401": 2})
     assert rr.main([]) == 0
-    assert "2 finding(s) owed under 1 counted rule(s)" in capsys.readouterr().out
+    assert "2 findings owed under 1 counted rule" in capsys.readouterr().out
 
 
 def test_a_rule_over_its_count_is_red_and_names_the_findings(tree, capsys):
@@ -49,7 +49,7 @@ def test_a_rule_over_its_count_is_red_and_names_the_findings(tree, capsys):
     table(tree, {"F401": 1})
     assert rr.main([]) == 1
     err = capsys.readouterr().err
-    assert "F401: 2 finding(s) against a count of 1" in err
+    assert "F401: 2 findings against a count of 1" in err
     assert " a.py:1:8: F401" in err and " a.py:2:8: F401" in err  # repo-relative
 
 
@@ -57,21 +57,21 @@ def test_a_rule_with_findings_and_no_count_is_red(tree, capsys):
     (tree / "a.py").write_text("def f():\n    x = 1\n", encoding="utf-8")
     table(tree, {})
     assert rr.main([]) == 1
-    assert "F841: 1 finding(s), and no count" in capsys.readouterr().err
+    assert "F841: 1 finding, and no count" in capsys.readouterr().err
 
 
 def test_a_count_above_the_truth_is_red(tree, capsys):
     (tree / "a.py").write_text("import os\n", encoding="utf-8")
     table(tree, {"F401": 2})
     assert rr.main([]) == 1
-    assert "F401: 1 finding(s), count 2 -- lower it" in capsys.readouterr().err
+    assert "F401: 1 finding, count 2 -- lower it" in capsys.readouterr().err
 
 
 def test_a_count_for_a_cleared_rule_is_stale(tree, capsys):
     (tree / "a.py").write_text("print(1)\n", encoding="utf-8")
     table(tree, {"F841": 3})
     assert rr.main([]) == 1
-    assert "F841: 0 finding(s), count 3" in capsys.readouterr().err
+    assert "F841: 0 findings, count 3" in capsys.readouterr().err
 
 
 def test_a_clean_tree_with_no_counts_passes(tree, capsys):
@@ -127,4 +127,4 @@ def test_list_prints_every_finding(tree, capsys):
     table(tree, {"F401": 2})
     assert rr.main(["--list"]) == 0
     out = capsys.readouterr().out
-    assert out.count("F401 ") == 2 and "2 finding(s) owed" in out
+    assert out.count("F401 ") == 2 and "2 findings owed" in out

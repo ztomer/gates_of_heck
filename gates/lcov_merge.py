@@ -43,6 +43,9 @@ import re
 import sys
 from collections import defaultdict
 
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from tui.lib import counted  # the count meets its noun (GOH.HEDGEOWN)
+
 
 def normalize(mangled: str) -> str:
     """Strip the CGU hash so duplicate instantiations group together."""
@@ -248,7 +251,8 @@ def merge(parts, floor, include_re="", floors_json=None, marker_ceiling=None):
                 below.append((f, per_cov[f], tot, cur))
         if below:
             print(
-                f"✗ [coverage] {len(below)} file(s) below per-file floor {ff:g}%", file=sys.stderr
+                f"✗ [coverage] {counted(len(below), 'file')} below per-file floor {ff:g}%",
+                file=sys.stderr,
             )
             for f, cov, tot, cur in sorted(below, key=lambda r: r[3]):
                 print(f"    {cur:5.1f}%  {tot - cov:4d} uncovered  {f}", file=sys.stderr)
@@ -256,7 +260,7 @@ def merge(parts, floor, include_re="", floors_json=None, marker_ceiling=None):
         measured = {_norm(f) for f in per_tot}
         stale = sorted(k for n, k in exempt_by_path.items() if n not in measured)
         if stale:
-            print(f"✗ {len(stale)} exemption(s) stale (file gone).", file=sys.stderr)
+            print(f"✗ {counted(len(stale), 'exemption')} stale (file gone).", file=sys.stderr)
             for s in stale:
                 print(f"    {s}", file=sys.stderr)
             return 1

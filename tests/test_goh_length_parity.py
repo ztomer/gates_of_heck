@@ -14,12 +14,12 @@ from pathlib import Path
 
 import pytest
 from _fast_git import fast_init
-from reference_kit import load_reference, reference_path
+from reference_kit import load_reference, reference_path, unhedged
 
 ROOT = Path(__file__).resolve().parents[1]
 CHECKER = reference_path("checks/check_file_length.py")
 OVER_RE = re.compile(r"^\s*(\d+)\s+lines\s+(.+?)\s+\(\+\d+\)\s*$")
-OK_RE = re.compile(r"OK — (\d+) file\(s\) within \d+ lines")
+OK_RE = re.compile(r"OK — (\d+) files? within \d+ lines")
 
 
 def _git(repo: Path, *args: str) -> None:
@@ -59,7 +59,7 @@ def run_python(repo: Path, args: list[str]) -> tuple[int, list[tuple[str, int]],
         stdin=subprocess.DEVNULL,
         check=False,
     )
-    over, checked = _parse(r.stdout, r.stderr)
+    over, checked = _parse(unhedged(r.stdout), unhedged(r.stderr))
     return r.returncode, over, checked
 
 

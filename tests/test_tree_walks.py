@@ -82,7 +82,7 @@ def test_dep_currency_counts_only_the_crate_git_names(planted: Path, goh) -> Non
         check=False,
     )
     assert r.returncode == 0, r.stdout + r.stderr
-    assert "1 manifest(s), none declaring a dependency" in r.stdout, r.stdout
+    assert "1 manifest, none declaring a dependency" in r.stdout, r.stdout
 
 
 def test_lints_optin_never_reads_the_ignored_build_tree(planted: Path, goh) -> None:

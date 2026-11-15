@@ -429,7 +429,7 @@ def _drive(root, argv):
 def probe():
     import tempfile
 
-    from tui.lib import err, ok
+    from tui.lib import counted, err, ok
 
     bad = 0
     with tempfile.TemporaryDirectory(prefix="goh-display-seam.") as td:
@@ -462,7 +462,9 @@ def probe():
                 err(f"probe: {label} — the config error was not refused")
                 bad += 1
     if bad:
-        err(f"display-seam probe: {bad} case(s) wrong — the gate does not measure its rule")
+        err(
+            f"display-seam probe: {counted(bad, 'case')} wrong — the gate does not measure its rule"
+        )
         return 1
     ok(
         f"display-seam probe: {len(CASES)} shapes and {len(CONFIG_CASES)} config errors behave "

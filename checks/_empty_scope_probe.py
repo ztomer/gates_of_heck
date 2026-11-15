@@ -35,6 +35,9 @@ from check_empty_scope import (
     sweep,
 )
 
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from tui.lib import counted  # the count meets its noun (GOH.HEDGEOWN)
+
 
 def probe():
     """A blind gate, a guarded one, an excused one, and the stale excuse."""
@@ -267,7 +270,7 @@ def probe():
             ok("probe: a pre-split flat allowlist reads as defects, not as legitimate")
 
     if bad:
-        err(f"check_empty_scope --probe: {bad} case(s) wrong")
+        err(f"check_empty_scope --probe: {counted(bad, 'case')} wrong")
         return 1
     ok("check_empty_scope --probe: a blind gate is caught, a guarded one is not, both ways")
     return 0

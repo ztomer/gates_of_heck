@@ -139,9 +139,7 @@ def test_the_ok_line_says_what_the_remote_half_judged(tmp_path):
     repo, first, second = _released(tmp_path)
     r = _check(repo, tmp_path, [_main(second, first)])
     assert r.returncode == 0, r.stdout + r.stderr
-    assert (
-        "1 local release tag(s) reachable from the pushed branch(es) are on origin" in r.stdout
-    ), r.stdout
+    assert "1 local release tag reachable from the pushed refs are on origin" in r.stdout, r.stdout
 
 
 def test_a_pinned_sha_push_is_judged_by_the_branch_it_moves(tmp_path):

@@ -23,6 +23,7 @@ from __future__ import annotations
 import fcntl
 import importlib
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -30,6 +31,25 @@ from pathlib import Path
 from types import ModuleType
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
+
+# A count in the reference's text with the noun it hedged: `3 file(s)`, `1 stale entr(ies)`,
+# `2 hook/gate script(s)` -- the nouns between the number and the hedge, never another number.
+_HEDGED = re.compile(r"(\d+) ((?:(?!\d+ )[\w\-/]+ )*?)(\w+)\((s|es|ies)\)")
+
+
+def unhedged(text: str) -> str:
+    """The reference's text as the port says it since GOH.HEDGEOWN (2026-11-14): a count meets its
+    noun (`1 file`, `3 files`), where the reference hedged (`1 file(s)`). The one spec change the
+    ports made on purpose to every report, applied to the reference's words, never its verdicts."""
+
+    def say(m: re.Match[str]) -> str:
+        stem, suffix = m[3], m[4]
+        one = stem + "y" if suffix == "ies" else stem
+        many = stem + suffix
+        return f"{m[1]} {m[2]}{one if int(m[1]) == 1 else many}"
+
+    return _HEDGED.sub(say, text).replace("pushed branch" + "(es)", "pushed refs")
+
 
 # The last commit whose tree carries every ported Python checker, after their own fixes.
 REFERENCE_COMMIT = "96018bdb89a6eb4d57e912b065ce7061dc381e18"

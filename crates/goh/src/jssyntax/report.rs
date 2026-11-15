@@ -16,16 +16,18 @@ pub fn format_report(outcome: &Outcome) -> String {
     let mut out = String::new();
     let _ = writeln!(
         out,
-        "{TAG} scope: {} tracked JavaScript file(s); shape: {}",
+        "{TAG} scope: {} tracked JavaScript {n_file}; shape: {}",
         outcome.scope.tracked,
-        shape_text(&outcome.scope)
+        shape_text(&outcome.scope),
+        n_file = goh_tui::noun(outcome.scope.tracked, "file")
     );
     if !outcome.scope.excluded.is_empty() {
         let _ = writeln!(
             out,
-            "{TAG} excluded {} file(s) as vendored or built output: {}",
+            "{TAG} excluded {} {n_file} as vendored or built output: {}",
             outcome.scope.excluded.len(),
-            outcome.scope.excluded.join(", ")
+            outcome.scope.excluded.join(", "),
+            n_file = goh_tui::noun(outcome.scope.excluded.len(), "file")
         );
     }
     let _ = writeln!(out, "{TAG} engine: {}", outcome.engine);
@@ -34,12 +36,18 @@ pub fn format_report(outcome: &Outcome) -> String {
         let _ = writeln!(out, "{TAG} goals: {goals}");
     }
     if outcome.findings.is_empty() && outcome.unmeasured.is_empty() {
-        let _ = write!(out, "{TAG} OK — {} file(s) parsed clean", outcome.judged);
+        let _ = write!(
+            out,
+            "{TAG} OK — {} {n_file} parsed clean",
+            outcome.judged,
+            n_file = goh_tui::noun(outcome.judged, "file")
+        );
         if outcome.templates > 0 {
             let _ = write!(
                 out,
-                "; {} template(s) judged by their substituted form",
-                outcome.templates
+                "; {} {n_template} judged by their substituted form",
+                outcome.templates,
+                n_template = goh_tui::noun(outcome.templates, "template")
             );
         }
         out.push('\n');

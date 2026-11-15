@@ -156,13 +156,16 @@ fn judge(
     }
     if n == 0 {
         let ok = format!(
-            "{OK} {TAG} OK — {} {scope} hook/gate script(s), no bare python\n",
-            sources.len()
+            "{OK} {TAG} OK — {} {scope} hook/gate {n_script}, no bare python\n",
+            sources.len(),
+            n_script = goh_tui::noun(sources.len(), "script")
         );
         return (0, ok, String::new());
     }
-    let mut err =
-        format!("{ERR} {TAG} {n} bare python interpreter(s) in a hook or gate script ({scope}):\n");
+    let mut err = format!(
+        "{ERR} {TAG} {n} bare python {n_interpreter} in a hook or gate script ({scope}):\n",
+        n_interpreter = goh_tui::noun(n, "interpreter")
+    );
     err.push_str(&listing);
     err.push_str(
         "    A bare `python3` is whichever interpreter Homebrew linked last, with the committing\n    \

@@ -85,7 +85,7 @@ def test_a_compliant_binary_is_green(repo):
     )
     r = vp(repo)
     assert r.returncode == 0, r.stdout + r.stderr
-    assert "1 version-declaring source file(s)" in r.stdout, r.stdout
+    assert "1 version-declaring source file" in r.stdout, r.stdout
 
 
 def test_a_binary_that_declares_no_version_is_not_our_business(repo):
@@ -294,7 +294,7 @@ def test_a_baseline_entry_suppresses_a_finding_but_not_the_population(repo, tmp_
     baseline = write(repo, ".gates-version-baseline.json", json.dumps(["src/main.rs"]))
     r = vp(repo, "--baseline", str(baseline))
     assert r.returncode == 0, r.stdout + r.stderr
-    assert "all 1 version-declaring source file(s)" in r.stdout, r.stdout
+    assert "all 1 version-declaring source file" in r.stdout, r.stdout
 
 
 def test_a_baseline_entry_naming_a_file_the_checker_never_reads_is_red(repo, tmp_path):

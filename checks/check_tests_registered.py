@@ -45,6 +45,9 @@ import os
 import re
 import sys
 
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from tui.lib import noun  # the count meets its noun (GOH.HEDGEOWN)
+
 TEST_FILE_RE = re.compile(r"^(test_.+|.+_test)\.(cpp|cc|cxx|c|m|mm|rs|py|swift)$")
 OPT_OUT_RE = re.compile(r"(?:^|\n)\s*(?:#|//)\s*goh-unregistered-ok:\s*(\S[^\n]*)")
 
@@ -185,7 +188,7 @@ def main() -> int:
 
     if orphans:
         print(
-            f"✗ [test_registration] {len(orphans)} test file(s) exist under "
+            f"✗ [test_registration] {len(orphans)} test {noun(len(orphans), 'file')} exist under "
             f"{args.tests_dir}/ but are NOT registered in {args.makefile} — "
             "they compile into no target and never run:",
             file=sys.stderr,
@@ -202,7 +205,7 @@ def main() -> int:
 
     if total < args.min_tests:
         print(
-            f"✗ [test_registration] found {total} test file(s) under "
+            f"✗ [test_registration] found {total} test {noun(total, 'file')} under "
             f"{args.tests_dir}/, expected at least {args.min_tests} -- this gate has "
             f"stopped looking at its subject, and 'all of them are registered' over "
             f"what it did not find is not a clean run.",
@@ -210,7 +213,7 @@ def main() -> int:
         )
         return 1
     print(
-        f"→ [test_registration] OK — all {total} test file(s) under "
+        f"→ [test_registration] OK — all {total} test {noun(total, 'file')} under "
         f"{args.tests_dir}/ are registered in {args.makefile}"
     )
     return 0

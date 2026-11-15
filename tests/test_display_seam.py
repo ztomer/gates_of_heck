@@ -149,7 +149,7 @@ def test_nothing_staged_is_NAMED_not_reported_as_a_pass_over_zero_files(tmp_path
     got = run_checker(root, "--policy", "policy.json", "--staged")
     assert got.returncode == 0
     assert "nothing staged" in got.stdout
-    assert "0 file(s)" not in got.stdout
+    assert "0 files" not in got.stdout
 
 
 def test_a_run_that_examines_nothing_is_refused(tmp_path):

@@ -317,11 +317,12 @@ pub fn evaluate(root: &Path, rules_path: &str, staged: bool) -> (i32, Vec<String
             code = 2;
         } else {
             good.push(format!(
-                "{}: {} file(s) bound, each calls {} ({} exempt)",
+                "{}: {} {n_file} bound, each calls {} ({} exempt)",
                 rule.name,
                 v.bound,
                 either(&rule.must_call),
-                rule.exempt.len()
+                rule.exempt.len(),
+                n_file = goh_tui::noun(v.bound, "file")
             ));
         }
     }

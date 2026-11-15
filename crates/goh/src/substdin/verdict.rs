@@ -43,10 +43,12 @@ pub fn report(
     let debt = entries.iter().filter(|e| e.unreviewed).count();
     let _ = write!(
         s,
-        "{OK} {TAG} OK — {examined} {scope} Python file(s), every one of {seen} process call(s) \
+        "{OK} {TAG} OK — {examined} {scope} Python {n_file}, every one of {seen} process {n_call} \
          declares its stdin",
         examined = outcome.examined,
         seen = outcome.seen,
+        n_file = goh_tui::noun(outcome.examined, "file"),
+        n_call = goh_tui::noun(outcome.seen, "call"),
     );
     if allowed > 0 {
         let _ = write!(
@@ -92,8 +94,9 @@ fn scope_verdict(outcome: &Outcome, staged: bool, policy: &Policy, s: &mut Strin
         // is a blind scanner wearing the clothes of a clean one.
         let _ = writeln!(
             s,
-            "{ERR} {TAG} this repo tracks {n} Python file(s) and the gate read NONE of them",
-            n = outcome.tracked_python
+            "{ERR} {TAG} this repo tracks {n} Python {n_file} and the gate read NONE of them",
+            n = outcome.tracked_python,
+            n_file = goh_tui::noun(outcome.tracked_python, "file")
         );
         let _ = writeln!(
             s,
@@ -123,8 +126,9 @@ fn findings_verdict(s: &mut String, left: &[allow::Unallowed], outcome: &Outcome
     }
     let _ = writeln!(
         s,
-        "{ERR} {TAG} {} call(s) leave stdin undeclared in {scope} source:",
-        left.len()
+        "{ERR} {TAG} {} {n_call} leave stdin undeclared in {scope} source:",
+        left.len(),
+        n_call = goh_tui::noun(left.len(), "call")
     );
     for (path, n) in left.iter().take(MAX_SHOWN) {
         let f = &outcome.findings[*n].1;
@@ -161,12 +165,12 @@ fn unreadable_verdict(s: &mut String, outcome: &Outcome) -> bool {
     if outcome.unreadable.is_empty() {
         return false;
     }
-    let _ = writeln!(
+    let _ =
+        writeln!(
         s,
-        "{ERR} {TAG} {} tracked Python file(s) could not be read, and a file this check cannot \
+        "{ERR} {TAG} {} tracked Python {n_file} could not be read, and a file this check cannot \
          parse is a finding rather than a skip:",
-        outcome.unreadable.len()
-    );
+        outcome.unreadable.len(), n_file = goh_tui::noun(outcome.unreadable.len(), "file"));
     for (path, reason) in &outcome.unreadable {
         let _ = writeln!(s, "    {path}: {reason}");
     }
@@ -185,8 +189,9 @@ fn stale_verdict(s: &mut String, entries: &[allow::Entry], stale: &[usize]) {
     }
     let _ = writeln!(
         s,
-        "{ERR} {TAG} {} stale entr(ies): the finding is gone, the exemption stayed:",
-        stale.len()
+        "{ERR} {TAG} {} stale {n_entr}: the finding is gone, the exemption stayed:",
+        stale.len(),
+        n_entr = goh_tui::noun_as(stale.len(), "entry", "entries")
     );
     s.push_str(&allow::describe_stale(entries, stale));
     let _ = writeln!(

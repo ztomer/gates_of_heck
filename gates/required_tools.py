@@ -61,6 +61,9 @@ import shutil
 import subprocess
 import sys
 
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from tui.lib import noun  # the count meets its noun (GOH.HEDGEOWN)
+
 HERE = os.path.dirname(os.path.abspath(__file__))
 MANIFEST = os.path.join(HERE, "required_tools.tsv")
 
@@ -375,7 +378,8 @@ def main(argv: list[str] | None = None) -> int:
     bad = [layer for layer in args.layer if layer not in known]
     if bad:
         print(
-            f"required_tools: unknown layer(s) {', '.join(bad)}; known: {', '.join(sorted(known))}",
+            f"required_tools: unknown {noun(len(bad), 'layer')} {', '.join(bad)}; known: "
+            f"{', '.join(sorted(known))}",
             file=sys.stderr,
         )
         return 2

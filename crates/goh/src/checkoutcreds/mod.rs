@@ -84,12 +84,13 @@ fn judge(root: &Path, files: &[String], staged: bool) -> (i32, String, String) {
     crate::subject::record(&crate::subject::CHECKOUT_CREDENTIALS, judged);
     if n == 0 {
         let ok = format!(
-            "{OK} {TAG} OK — {judged} {scope} workflow/action file(s), every actions/checkout drops its token\n"
-        );
+            "{OK} {TAG} OK — {judged} {scope} workflow/action {n_file}, every actions/checkout drops its token\n", n_file = goh_tui::noun(judged, "file"));
         return (0, ok, String::new());
     }
-    let mut err =
-        format!("{ERR} {TAG} {n} checkout(s) that leave the job token in git config ({scope}):\n");
+    let mut err = format!(
+        "{ERR} {TAG} {n} {n_checkout} that leave the job token in git config ({scope}):\n",
+        n_checkout = goh_tui::noun(n, "checkout")
+    );
     err.push_str(&listing);
     err.push_str(
         "    actions/checkout writes the job token into .git/config (http.<url>.extraheader) unless\n    \

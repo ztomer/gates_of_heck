@@ -76,11 +76,13 @@ fn judge(root: &Path, files: &[String], staged: bool) -> (i32, String, String) {
     crate::subject::record(&crate::subject::TAP_WRITES, judged);
     if n == 0 {
         let ok = format!(
-            "{OK} {TAG} OK — {judged} {scope} script/workflow file(s), no direct write to a Homebrew tap\n"
-        );
+            "{OK} {TAG} OK — {judged} {scope} script/workflow {n_file}, no direct write to a Homebrew tap\n", n_file = goh_tui::noun(judged, "file"));
         return (0, ok, String::new());
     }
-    let mut err = format!("{ERR} {TAG} {n} direct write(s) to a Homebrew tap ({scope}):\n");
+    let mut err = format!(
+        "{ERR} {TAG} {n} direct {n_write} to a Homebrew tap ({scope}):\n",
+        n_write = goh_tui::noun(n, "write")
+    );
     err.push_str(&listing);
     err.push_str(
         "    A bump written straight to the tap skips the tap's own gate: a wrong url or digest\n    \

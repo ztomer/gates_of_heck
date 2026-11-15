@@ -55,6 +55,9 @@ import os
 import subprocess
 import sys
 
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from tui.lib import counted  # the count meets its noun (GOH.HEDGEOWN)
+
 # json loads where the snapshot is written, and Verdict is a plain class: `dataclasses` pulls in
 # `inspect`, ~4 ms on every local_ci step's path (2026-10-06, as lib/bounded_run.py).
 
@@ -202,7 +205,10 @@ def judge(pids: list[int], roots: list[str]) -> Verdict:
 def emit(ours: list[str], repo: str | None, verbose: bool = False) -> None:
     """The report. Every line here is a process this step left running."""
     if ours:
-        print(f"✗ [orphan_canary] {len(ours)} process(es) outlived the run that started them:")
+        print(
+            f"✗ [orphan_canary] {counted(len(ours), 'process', 'processes')} outlived the "
+            f"run that started them:"
+        )
         for line in ours:
             print(f"    {line[:240]}")
         print(

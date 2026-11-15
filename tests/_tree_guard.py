@@ -50,8 +50,9 @@ def pytest_sessionfinish(session, exitstatus) -> None:
     changed = tree_stamp.moved(before, tree_stamp.fingerprint(REPO_ROOT))
     if changed:
         named = "\n".join(f"    {p}" for p in changed[: tree_stamp.MAX_NAMED])
+        paths = f"{len(changed)} {'path' if len(changed) == 1 else 'paths'}"
         sys.stderr.write(
-            f"\n✗ the suite moved the checkout it tests -- {len(changed)} path(s):\n{named}\n"
+            f"\n✗ the suite moved the checkout it tests -- {paths}:\n{named}\n"
             "✗ a test must work on a copy under tmp_path, never on this repo's own files\n"
             "  (or the tree was edited while the suite ran: re-run it with the tree still)\n"
         )

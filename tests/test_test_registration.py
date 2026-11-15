@@ -29,9 +29,7 @@ def test_all_registered_passes(repo):
         f"{src.name}/CMakeLists.txt",
     )
     assert r.returncode == 0, r.stderr
-    assert (
-        "all 2 test file(s)" in r.stdout
-    )  # test_alpha + core_test; helper .h is not a test source
+    assert "all 2 test files" in r.stdout  # test_alpha + core_test; helper .h is not a test source
 
 
 def test_unregistered_test_fails(repo):

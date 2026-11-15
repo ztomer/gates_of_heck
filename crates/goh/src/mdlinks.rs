@@ -103,8 +103,9 @@ fn check(
     // tree whose every markdown file is excluded is a check passing over nothing.
     if !staged && listed > 0 && files.is_empty() {
         out.findings.push(format!(
-            "this repo lists {listed} markdown file(s) and the exclusion removed every one: \
-             the check read NONE of them -- narrow the exclusion"
+            "this repo lists {listed} markdown {n_file} and the exclusion removed every one: \
+             the check read NONE of them -- narrow the exclusion",
+            n_file = goh_tui::noun(listed, "file")
         ));
         return Ok(out);
     }
@@ -231,8 +232,9 @@ fn run(
         lines.push((
             true,
             format!(
-                "{ERR} --- {} finding(s): a markdown link that resolves to nothing ---",
-                o.findings.len()
+                "{ERR} --- {} {n_finding}: a markdown link that resolves to nothing ---",
+                o.findings.len(),
+                n_finding = goh_tui::noun(o.findings.len(), "finding")
             ),
         ));
         return (1, lines);
@@ -245,16 +247,19 @@ fn run(
         return (0, lines);
     }
     let tail = if o.skipped > 0 {
-        format!(", {} out-of-scope link(s) skipped", o.skipped)
+        format!(
+            ", {} out-of-scope {n_link} skipped",
+            o.skipped,
+            n_link = goh_tui::noun(o.skipped, "link")
+        )
     } else {
         String::new()
     };
     lines.push((
         false,
         format!(
-            "{OK} [md_links] OK — {} markdown file(s), every relative link resolves to a file and an anchor{tail}",
-            o.examined
-        ),
+            "{OK} [md_links] OK — {} markdown {n_file}, every relative link resolves to a file and an anchor{tail}",
+            o.examined, n_file = goh_tui::noun(o.examined, "file")),
     ));
     (0, lines)
 }

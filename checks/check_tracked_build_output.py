@@ -55,7 +55,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from _gitutil import foreign_repo_env, listed_files, repo_root
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from tui.lib import err, ok
+from tui.lib import err, noun, ok
 
 # A directory a build writes into.
 DIR_SEGMENTS = (
@@ -250,14 +250,18 @@ def main(argv=None):
     found = findings(paths, blobs(root, ambiguous, env))
     if found:
         err(
-            f"tracked build output: {len(found)} {'staged' if args.staged else 'tracked'} file(s) look like build output:"
+            f"tracked build output: {len(found)} {'staged' if args.staged else 'tracked'} "
+            f"{noun(len(found), 'file')} {'looks' if len(found) == 1 else 'look'} like build output:"
         )
         for path, why in found:
             err(f"  {path} -- {why}")
         err("  a build's output is not source: take it out of the tree, and let .gitignore keep it")
         return 1
     kind = "staged" if args.staged else "tracked"
-    ok(f"tracked build output: none of the {len(paths)} {kind} file(s) looks like build output")
+    ok(
+        f"tracked build output: none of the {len(paths)} {kind} {noun(len(paths), 'file')} "
+        f"looks like build output"
+    )
     return 0
 
 

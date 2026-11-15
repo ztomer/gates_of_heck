@@ -128,7 +128,7 @@ def test_many_moved_paths_are_summarised(repo, tmp_path):
     for i in range(15):
         (repo / f"n{i:02}.swift").write_text("x\n")
     r = stamp(repo, tmp_path, "check")
-    assert "15 file(s) changed" in r.stderr
+    assert "15 files changed" in r.stderr
     assert "and 5 more" in r.stderr
 
 

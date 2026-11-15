@@ -68,7 +68,7 @@ def test_the_pinned_tree_passes_and_says_what_it_read(repo: Path) -> None:
     commit_all(repo)
     r = run_goh(repo, "moving-tags")
     assert r.returncode == 0, r.stdout + r.stderr
-    assert "2 image reference(s): 2 pinned by digest" in r.stdout, r.stdout
+    assert "2 image references: 2 pinned by digest" in r.stdout, r.stdout
 
 
 def test_a_commit_pin_is_green_and_the_run_says_which_pin_it_is(repo: Path) -> None:
@@ -95,7 +95,7 @@ def test_a_tag_that_carries_a_commit_id_is_a_release_not_a_commit_pin(repo: Path
     r = run_goh(repo, "moving-tags")
     assert r.returncode == 0, r.stdout + r.stderr
     assert "1 pinned by commit" not in r.stdout, r.stdout
-    assert "1 image reference(s)" in r.stdout, r.stdout
+    assert "1 image reference" in r.stdout, r.stdout
 
 
 def test_no_tag_is_latest(repo: Path) -> None:

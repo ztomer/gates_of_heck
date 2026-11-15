@@ -93,7 +93,7 @@ from _mcp_build import DEFAULT_BUILD_TIMEOUT, build, build_command, server_env
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from lib.bounded_run import _alive, _descendants, group_members
-from tui.lib import err, info, ok, step
+from tui.lib import counted, err, info, noun, ok, step
 
 NEWEST_PROTOCOL = "2026-07-28"
 CLIENT_INFO = {"name": "goh-mcp-wire", "version": "1"}
@@ -397,7 +397,10 @@ def judge_server(
     finally:
         left = session.close()
         if left:
-            found.append(f"reap: {len(left)} process(es) outlived the server's stop: {left}")
+            found.append(
+                f"reap: {counted(len(left), 'process', 'processes')} outlived the server's "
+                f"stop: {left}"
+            )
     return found, tools
 
 
@@ -420,7 +423,10 @@ def main(argv: list[str] | None = None) -> int:
     except ConfigError as e:
         err(f"mcp-wire: {e}")
         return 2
-    info(f"mcp-wire: {len(servers)} server(s), newest protocol {NEWEST_PROTOCOL}, {timeout}s each")
+    info(
+        f"mcp-wire: {counted(len(servers), 'server')}, newest protocol {NEWEST_PROTOCOL}, "
+        f"{timeout}s each"
+    )
     failed = 0
     listed: dict[str, dict] = {}
     built: dict[str, str | None] = {}
@@ -433,7 +439,7 @@ def main(argv: list[str] | None = None) -> int:
             for reason in found:
                 step(reason)
         else:
-            ok(f"mcp-wire: {command} -- {len(tools)} tool(s), every rule holds")
+            ok(f"mcp-wire: {command} -- {counted(len(tools), 'tool')}, every rule holds")
     stale = [
         f"GOH_MCP_UNSTRUCTURED: {n}: stale -- no server lists it"
         for n in unstructured
@@ -450,7 +456,7 @@ def main(argv: list[str] | None = None) -> int:
         for reason in stale:
             step(reason)
     if failed:
-        err(f"mcp-wire: {failed} finding group(s)")
+        err(f"mcp-wire: {failed} finding {noun(failed, 'group')}")
         return 1
     ok("mcp-wire: every server speaks the newest protocol and states every tool's effect")
     return 0

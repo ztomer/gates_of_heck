@@ -57,8 +57,9 @@ pub fn report(
     if !left.is_empty() {
         let _ = writeln!(
             s,
-            "{ERR} {TAG} {} process kill(s) by name in {scope} code:",
-            left.len()
+            "{ERR} {TAG} {} process {n_kill} by name in {scope} code:",
+            left.len(),
+            n_kill = goh_tui::noun(left.len(), "kill")
         );
         for (rel, lineno, code, why, _) in left.iter().take(40) {
             let shown: String = code.chars().take(140).collect();
@@ -78,8 +79,9 @@ pub fn report(
     if !stale.is_empty() {
         let _ = writeln!(
             s,
-            "{ERR} {TAG} {} stale entr(ies) in {ALLOW_FILE}: no kill matches them any more:",
-            stale.len()
+            "{ERR} {TAG} {} stale {n_entr} in {ALLOW_FILE}: no kill matches them any more:",
+            stale.len(),
+            n_entr = goh_tui::noun_as(stale.len(), "entry", "entries")
         );
         for e in &stale {
             // Two causes, two remedies: the call changed (judge the new one) or it is gone.

@@ -361,7 +361,12 @@ pub fn report(problems: &[String], examined: usize, json: bool) -> (i32, String)
         let _ = writeln!(s, "{ERR} [version_provenance] {p}");
     }
     if !problems.is_empty() {
-        let _ = writeln!(s, "--- {} finding(s) ---", problems.len());
+        let _ = writeln!(
+            s,
+            "--- {} {n_finding} ---",
+            problems.len(),
+            n_finding = goh_tui::noun(problems.len(), "finding")
+        );
         return (1, s);
     }
     if examined == 0 {
@@ -374,8 +379,9 @@ pub fn report(problems: &[String], examined: usize, json: bool) -> (i32, String)
     }
     let _ = writeln!(
         s,
-        "{OK} [version_provenance] all {examined} version-declaring source file(s) \
-         carry a commit and a build date"
+        "{OK} [version_provenance] all {examined} version-declaring source {n_file} \
+         carry a commit and a build date",
+        n_file = goh_tui::noun(examined, "file")
     );
     (0, s)
 }

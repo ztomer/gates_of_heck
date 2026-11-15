@@ -81,8 +81,9 @@ fn report_red(v: &Verdict, out: &mut Vec<Line>) -> bool {
             err(
                 out,
                 &format!(
-                    "--- {} finding(s): a number that stopped being true ---",
-                    v.findings.len()
+                    "--- {} {n_finding}: a number that stopped being true ---",
+                    v.findings.len(),
+                    n_finding = goh_tui::noun(v.findings.len(), "finding")
                 ),
             );
         }
@@ -90,8 +91,9 @@ fn report_red(v: &Verdict, out: &mut Vec<Line>) -> bool {
             err(
                 out,
                 &format!(
-                    "--- {} stale allowlist entr(ies): delete them ---",
-                    v.stale.len()
+                    "--- {} stale allowlist {n_entr}: delete them ---",
+                    v.stale.len(),
+                    n_entr = goh_tui::noun_as(v.stale.len(), "entry", "entries")
                 ),
             );
         }
@@ -136,8 +138,9 @@ pub(super) fn text(v: &Verdict, root: &Path, staged: bool) -> (i32, Vec<Line>) {
         out.push((
             false,
             format!(
-                "{OK} [claim_derivation] OK — {} text file(s) scanned, 0 MARKED claims",
-                v.examined
+                "{OK} [claim_derivation] OK — {} text {n_file} scanned, 0 MARKED claims",
+                v.examined,
+                n_file = goh_tui::noun(v.examined, "file")
             ),
         ));
         info(
@@ -162,9 +165,8 @@ pub(super) fn text(v: &Verdict, root: &Path, staged: bool) -> (i32, Vec<Line>) {
         out.push((
             true,
             format!(
-                "{WARN} [claim_derivation]   {} of {} allowed claim(s) are 'unreviewed': seeded when the gate landed, not yet examined",
-                v.debt, v.excused
-            ),
+                "{WARN} [claim_derivation]   {} of {} allowed {n_claim} are 'unreviewed': seeded when the gate landed, not yet examined",
+                v.debt, v.excused, n_claim = goh_tui::noun(v.excused, "claim")),
         ));
     }
     let tail = if v.excused > 0 {
@@ -175,9 +177,8 @@ pub(super) fn text(v: &Verdict, root: &Path, staged: bool) -> (i32, Vec<Line>) {
     out.push((
         false,
         format!(
-            "{OK} [claim_derivation] OK — {} text file(s), all {} marked claim(s) re-derived from the tree{tail}",
-            v.examined, v.claims
-        ),
+            "{OK} [claim_derivation] OK — {} text {n_file}, all {} marked {n_claim} re-derived from the tree{tail}",
+            v.examined, v.claims, n_file = goh_tui::noun(v.examined, "file"), n_claim = goh_tui::noun(v.claims, "claim")),
     ));
     (0, out)
 }

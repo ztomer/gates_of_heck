@@ -248,7 +248,7 @@ def test_the_sweep_runs_for_the_repo_that_owns_the_checkers(monkeypatch, capsys)
 
     def fake_run(command, **kwargs):
         seen["command"] = list(command)
-        return subprocess.CompletedProcess(command, 0, "8/8 checker(s) went red on a plant", "")
+        return subprocess.CompletedProcess(command, 0, "8/8 checkers went red on a plant", "")
 
     monkeypatch.setattr(gate.subprocess, "run", fake_run)
     assert gate.corpus_sweep(str(ROOT)) is True

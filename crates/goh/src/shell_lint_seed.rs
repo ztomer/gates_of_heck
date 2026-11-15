@@ -29,7 +29,7 @@ pub const SEVERITY_KEY: &str = "GOH_SHELL_LINT_SEVERITY";
 const SPEC: Spec = Spec {
     tag: "[shell_lint]",
     file: SEED_FILE,
-    noun: "shell file(s)",
+    noun: "shell file",
     reseed: "goh shell-lint --seed",
     clean: "no new shellcheck finding below error",
     why: "shellcheck findings below error severity when this repo adopted the ratcheted shell \
@@ -218,9 +218,8 @@ pub fn write_seed(
         .map_err(|e| format!("cannot write {SEED_FILE}: {e}"))?;
     let total: usize = scan.found.values().map(Vec::len).sum();
     Ok(format!(
-        "seeded {SEED_FILE}: {total} finding(s) under {} file#code key(s), of {read} shell file(s) read",
-        scan.found.len()
-    ))
+        "seeded {SEED_FILE}: {total} {n_finding} under {} file#code {n_key}, of {read} shell {n_file} read",
+        scan.found.len(), n_finding = goh_tui::noun(total, "finding"), n_key = goh_tui::noun(scan.found.len(), "key"), n_file = goh_tui::noun(read, "file")))
 }
 
 #[cfg(test)]

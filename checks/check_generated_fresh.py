@@ -56,6 +56,9 @@ from pathlib import Path
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "lib"))
 from killtree import run_captured
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from tui.lib import counted, noun  # the count meets its noun (GOH.HEDGEOWN)
+
 
 def _sha256(path: Path) -> str:
     digest = hashlib.sha256()
@@ -94,7 +97,11 @@ def main() -> int:
 
     missing = [a for a in args.artifacts if not Path(a).is_file()]
     if missing:
-        print("✗ [fresh] precondition missing: committed artifact(s) not found:", file=sys.stderr)
+        print(
+            f"✗ [fresh] precondition missing: committed {noun(len(missing), 'artifact')} "
+            f"not found:",
+            file=sys.stderr,
+        )
         for m in missing:
             print(f"    {m}", file=sys.stderr)
         return 2
@@ -145,13 +152,13 @@ def main() -> int:
 
         if not stale:
             print(
-                f"→ [fresh] OK — {len(args.artifacts)} artifact(s) match "
+                f"→ [fresh] OK — {counted(len(args.artifacts), 'artifact')} match "
                 f"a fresh run of the generator"
             )
             return 0
 
         if args.write:
-            print(f"→ [fresh] writing {len(stale)} regenerated artifact(s):")
+            print(f"→ [fresh] writing {len(stale)} regenerated {noun(len(stale), 'artifact')}:")
             for art, why in stale:
                 if why.startswith("stale"):
                     shutil.copy2(sandbox / art, art)
@@ -160,7 +167,10 @@ def main() -> int:
                     print(f"    {art}: {why} — nothing to write")
             return 0
 
-        print(f"✗ [fresh] {len(stale)} artifact(s) disagree with the generator:", file=sys.stderr)
+        print(
+            f"✗ [fresh] {counted(len(stale), 'artifact')} disagree with the generator:",
+            file=sys.stderr,
+        )
         for art, why in stale:
             print(f"    {art}: {why}", file=sys.stderr)
         print(

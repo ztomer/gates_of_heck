@@ -18,7 +18,7 @@ pub struct Spec {
     pub tag: &'static str,
     /// The seed's file name, at the repo root.
     pub file: &'static str,
-    /// The subject, plural, e.g. `Python file(s)`.
+    /// The subject, singular, e.g. `Python file`: a count meets it through `goh_tui::noun`.
     pub noun: &'static str,
     /// The command a lowered seed is rewritten with, e.g. `goh fixed-sleep --seed`.
     pub reseed: &'static str,
@@ -63,14 +63,16 @@ pub fn judge<F>(
     seed: &BTreeMap<String, usize>,
     site: impl Fn(&F) -> String,
 ) -> (i32, String) {
-    let (tag, noun) = (spec.tag, spec.noun);
+    let tag = spec.tag;
+    let noun = |n: usize| goh_tui::noun(n, spec.noun);
     let mut s = String::new();
     if scanned.listed > 0 && scanned.read == 0 {
         let _ = writeln!(
             s,
-            "{ERR} {tag} this repo lists {} {noun} and the check read NONE of them: an exclusion \
+            "{ERR} {tag} this repo lists {} {} and the check read NONE of them: an exclusion \
              that removes the whole subject passes over nothing -- narrow it",
-            scanned.listed
+            scanned.listed,
+            noun(scanned.listed)
         );
         return (1, s);
     }
@@ -119,13 +121,20 @@ pub fn judge<F>(
     }
     let total: usize = scanned.found.values().map(Vec::len).sum();
     if red {
-        let _ = writeln!(s, "{START} {tag} read {} {noun}", scanned.read);
+        let _ = writeln!(
+            s,
+            "{START} {tag} read {} {}",
+            scanned.read,
+            noun(scanned.read)
+        );
         return (1, s);
     }
     let _ = writeln!(
         s,
-        "{OK} {tag} {}: {} {noun} read, {total} seeded",
-        spec.clean, scanned.read
+        "{OK} {tag} {}: {} {} read, {total} seeded",
+        spec.clean,
+        scanned.read,
+        noun(scanned.read)
     );
     (0, s)
 }
@@ -206,7 +215,8 @@ pub fn refuse_seed<F>(spec: &Spec, scanned: &Scanned<F>) -> Option<String> {
     if scanned.listed > 0 && scanned.read == 0 {
         return Some(format!(
             "{ERR} {tag} refusing to seed: the repo lists {} {} and the scan read NONE of them\n",
-            scanned.listed, spec.noun
+            scanned.listed,
+            goh_tui::noun(scanned.listed, spec.noun)
         ));
     }
     crate::subject::below(spec.subject, scanned.floor, scanned.read)
@@ -270,10 +280,12 @@ pub fn run<F>(
         }
         let total: usize = scanned.found.values().map(Vec::len).sum();
         goh_tui::outln!(
-            "{OK} {tag} seeded {}: {total} site(s) in {} file(s), of {} read",
+            "{OK} {tag} seeded {}: {total} {n_site} in {} {n_file}, of {} read",
             spec.file,
             scanned.found.len(),
-            scanned.read
+            scanned.read,
+            n_site = goh_tui::noun(total, "site"),
+            n_file = goh_tui::noun(scanned.found.len(), "file")
         );
         return 0;
     }
