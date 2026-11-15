@@ -57,6 +57,15 @@ pub const BURN_DOWN: &[&str] = &[
     "version provenance",
 ];
 
+/// The tokens only an opt-in scanner judges, each with the item that closes the hole (2026-11-15).
+///
+/// It may only SHRINK: an entry whose token a stock row now judges (or whose owner is
+/// stock) is stale and red, and a new opt-in-alone token cannot join.
+pub const OPT_IN_ALONE: &[(&str, &str)] = &[
+    ("ANSI CSI escape", "GOH.ESCAPEOWNER"),
+    ("bracketed status marker", "GOH.ESCAPEOWNER"),
+];
+
 const fn unreviewed(scanner: &'static str) -> Row {
     Row {
         scanner,
@@ -103,6 +112,7 @@ const STATUS_MARKERS: Declared = Declared {
         },
     ],
     sources: &["crates/goh/src/statusmark/"],
+    opt_in: Some("a repo's own gate step: `goh status-markers` in its GOH_CI_STEPS (BACKLOG 4.9)"),
     shapes: &[
         Shape {
             name: "a marker in a string in source",
@@ -194,6 +204,7 @@ const TUI_MARKS: Declared = Declared {
         sample: ("c.sh", "echo \"✓ done\"\n"),
     }],
     sources: &["crates/goh/src/tuimarks/"],
+    opt_in: None,
     shapes: &[
         Shape {
             name: "shell echo/printf",

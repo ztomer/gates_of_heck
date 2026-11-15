@@ -84,6 +84,40 @@ fn the_burn_down_only_shrinks_and_no_new_scanner_joins_it() {
     );
 }
 
+#[test]
+fn no_token_is_judged_by_an_opt_in_scanner_alone_but_for_todays_list() {
+    let mut alone = BTreeSet::new();
+    for (row, d) in declared().filter(|(_, d)| d.opt_in.is_some()) {
+        for t in d.owns {
+            let (rel, text) = t.sample;
+            let stock = declared().any(|(o, od)| {
+                !std::ptr::eq(o, row)
+                    && od.opt_in.is_none()
+                    // A whole-file row (`file length`) judges every line and owns no token.
+                    && !od.owns.is_empty()
+                    && !(od.judged)(rel, text)
+                        .unwrap_or_else(|e| panic!("{e}"))
+                        .is_empty()
+            });
+            if !stock {
+                alone.insert(t.name);
+            }
+        }
+    }
+    let listed: BTreeSet<&str> = table::OPT_IN_ALONE.iter().map(|(t, _)| *t).collect();
+    let joined: Vec<_> = alone.difference(&listed).collect();
+    assert!(
+        joined.is_empty(),
+        "tokens only an opt-in scanner judges (a repo that has not opted in judges them nowhere): \
+         give a stock row their fallback, or make the owner stock: {joined:?}"
+    );
+    let stale: Vec<_> = listed.difference(&alone).collect();
+    assert!(
+        stale.is_empty(),
+        "OPT_IN_ALONE names tokens a stock scanner now judges: delete them: {stale:?}"
+    );
+}
+
 /// The probe hits in `s`'s fixture that `s` itself names.
 fn own_hits(c: &Compiled, s: &Shape) -> Vec<usize> {
     let (rel, text) = s.fixture;
@@ -162,7 +196,12 @@ fn every_token_has_one_owner_and_no_scanner_judges_another_rows_token() {
         }
     }
     for (row, d) in declared().filter(|(_, d)| !d.owns.is_empty()) {
-        for (other, od) in declared().filter(|(o, _)| !std::ptr::eq(*o, row)) {
+        // A stock row judging an opt-in row's token is its fallback where the repo has not opted
+        // in (OPT_IN_ALONE's way out), not a second count.
+        for (other, od) in declared()
+            .filter(|(o, _)| !std::ptr::eq(*o, row))
+            .filter(|(_, od)| !(od.opt_in.is_some() && d.opt_in.is_none()))
+        {
             for t in od.owns {
                 let (rel, text) = t.sample;
                 if !(d.judged)(rel, text)
@@ -229,6 +268,7 @@ fn with_shape(extra: Shape) -> &'static Row {
             owns: d.owns,
             shapes: Box::leak(shapes.into_boxed_slice()),
             sources: d.sources,
+            opt_in: d.opt_in,
         }),
     }))
 }

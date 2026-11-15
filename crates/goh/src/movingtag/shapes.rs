@@ -13,6 +13,7 @@ pub const SHAPES: Declared = Declared {
         sample: ("Dockerfile", "FROM rust:1\n"),
     }],
     sources: &["crates/goh/src/movingtag/"],
+    opt_in: None,
     shapes: &[
         Shape {
             name: "Dockerfile FROM",

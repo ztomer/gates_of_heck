@@ -40,6 +40,7 @@ pub const SHAPES: Declared = Declared {
         "crates/goh/src/emptyassert_shapes.rs",
         "crates/goh/src/rustlex.rs",
     ],
+    opt_in: None,
     shapes: &[
         Shape {
             name: "an assert in compiled Rust source",

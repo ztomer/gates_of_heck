@@ -316,6 +316,7 @@ pub const SHAPES: crate::shapes::Declared = {
             sample: ("a.sh", "#!/bin/bash\nl=\"$repo/.x.lock\"\n"),
         }],
         sources: &["crates/goh/src/runpaths.rs"],
+    opt_in: None,
         shapes: &[
             Shape {
                 name: "a shell path rooted at a work-tree variable",

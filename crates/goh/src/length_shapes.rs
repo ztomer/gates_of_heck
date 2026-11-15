@@ -38,6 +38,7 @@ pub const SHAPES: Declared = Declared {
     judged,
     owns: &[],
     sources: &["crates/goh/src/length.rs", "crates/goh/src/length_shapes.rs"],
+    opt_in: None,
     shapes: &[
         Shape {
             name: "a source suffix",

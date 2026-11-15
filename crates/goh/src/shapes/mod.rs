@@ -25,6 +25,12 @@
 //!     stale, and an `Unreviewed` row must be in [`table::BURN_DOWN`], today's list, which may only
 //!     shrink -- so a NEW scanner cannot land without its shapes.
 //!
+//! OPT-IN OWNERS (GOH.ESCAPEOWNER). A token owned by an opt-in scanner alone is judged only where a
+//! repo opted in: GOH.CLASS.SHAPE gave `\033[` to `goh status-markers` (four repos run it) and took
+//! it from `goh tui-marks` (every repo), which settled the overlap by leaving a hole. The walk
+//! refuses a token whose every judge is opt-in unless `table::OPT_IN_ALONE`, today's list, names it
+//! with the item closing it; the list only shrinks.
+//!
 //! OVERLAP. Two scanners judging one token count one site twice (`goh status-markers` and
 //! `goh tui-marks` both judged the `\033[` CSI on a print line). Each token has ONE owner row, and
 //! the walk runs every declared hook over every OTHER row's token sample: a hook that judges a
@@ -82,6 +88,11 @@ pub struct Declared {
     pub shapes: &'static [Shape],
     /// The paths whose change means the scanner changed (`goh shape-diff --since`).
     pub sources: &'static [&'static str],
+    /// How a repo turns the scanner on, when it is not stock in every repo (`None`). A token an
+    /// opt-in scanner owns is judged in no repo that has not opted in, unless a stock row judges it
+    /// there too: the walk refuses such a token unless [`table::OPT_IN_ALONE`] names it
+    /// (GOH.ESCAPEOWNER).
+    pub opt_in: Option<&'static str>,
 }
 
 /// What the table holds for one scanner.
