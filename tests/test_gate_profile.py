@@ -20,7 +20,7 @@ def _goh_copy(tmp_path: Path, push_gate: str) -> Path:
     for rel in ("tools/gate_profile.sh", "gates/_from_head.sh", "gates/_git_env.sh",
                 "lib/step_timings.py", "lib/step_control.py", "lib/fail_lines.py",
                 "lib/house_python.sh", "gates/required_tools.tsv",
-                "lib/log_follow.py"):  # fmt: skip
+                "lib/log_follow.py", "lib/bash5.sh"):  # fmt: skip
         (goh / rel).parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(REPO_ROOT / rel, goh / rel)
     (goh / "gates" / "push_gate.sh").write_text(push_gate)
@@ -43,7 +43,7 @@ def _profile(tmp_path: Path, push_gate: str) -> subprocess.CompletedProcess[str]
         "-m",
         "c",
     )
-    return subprocess.run(
+    r = subprocess.run(
         ["bash", str(goh / "tools" / "gate_profile.sh"), str(repo)],
         # hermetic: under a real profile (this suite runs inside one) an inherited GOH_TIMINGS
         # put this fixture's control rows into the outer run's file, and its shell control mean
@@ -51,6 +51,14 @@ def _profile(tmp_path: Path, push_gate: str) -> subprocess.CompletedProcess[str]
         env=hermetic_env(),
         capture_output=True, text=True, check=False, timeout=120, stdin=subprocess.DEVNULL,
     )  # fmt: skip
+    _assert_whole(r.stdout + r.stderr)
+    return r
+
+
+def _assert_whole(out: str) -> None:
+    """The copy runs every file the profile sources (GOH.PROFILEFIXTURE): one it lacked printed
+    `lib/bash5.sh: No such file or directory` and the profile ran on without its bash guard."""
+    assert "No such file" not in out and "command not found" not in out, out
 
 
 def test_a_red_push_gate_prints_the_lines_that_name_the_failure(tmp_path: Path) -> None:
@@ -122,6 +130,7 @@ def test_each_step_line_is_shown_while_the_gate_runs(tmp_path: Path) -> None:
             proc.wait()
     out = "".join(seen)
     assert rc == 0, out
+    _assert_whole(out)
     # The log's path comes FIRST, before any step: a reader can tail it from the start.
     first = next(i for i, ln in enumerate(seen) if "[1/2]" in ln)
     assert any("log:" in ln for ln in seen[:first]), out
