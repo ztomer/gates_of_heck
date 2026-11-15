@@ -76,7 +76,7 @@ def test_holding_exports_the_lock_to_children_and_restores() -> None:
         seen = subprocess.run([sys.executable, "-c", show],
                               capture_output=True, text=True, stdin=subprocess.DEVNULL,
                               check=True).stdout.strip()  # fmt: skip
-    assert seen.endswith(f"land@{ME}"), seen
+    assert seen.rpartition(",")[2].partition(":")[0] == f"land@{ME}", seen  # `:key` (GOH.LOCKNEST)
     assert os.environ.get(lock_order.ENV) == before
 
 

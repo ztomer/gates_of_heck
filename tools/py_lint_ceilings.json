@@ -72,7 +72,7 @@
   "lib/eval_transport.py": 1,
   "lib/fail_lines.py": 2,
   "lib/gate_coverage.py": 5,
-  "lib/gate_slot.py": 10,
+  "lib/gate_slot.py": 9,
   "lib/gates_in_flight.py": 2,
   "lib/gitrun.py": 3,
   "lib/golden_core.py": 1,

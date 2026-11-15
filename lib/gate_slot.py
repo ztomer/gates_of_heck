@@ -15,8 +15,9 @@ a box running five cold gates.
 THE SEMAPHORE. Slot i is the file `<dir>/slot-<i>`, i < N. A gate holds a slot while it holds an
 exclusive flock(2) on one of those files; the files are never removed (removing a flock file under a
 holder hands the next caller a fresh, unlocked inode). The lock is the flock, never the content: the
-content is the holder's record (`pid<TAB>repo<TAB>epoch`), written after the lock is taken, read only
-for the wait message.
+content is the holder's record (`pid<TAB>repo<TAB>epoch<TAB>key`), written after the lock is taken,
+read for the wait message and, by the lock order, for the slot an ancestor holds (`recorded_above`;
+key: the repository it was taken in, lib/lock_order.py's SCOPE).
 
 THE WAIT REPORT IS ONE WRITE (E59, 2026-10-21). The report that names the holders was TWO writes
 -- the header, then a line per holder -- so a reader that waited for the header could read the
@@ -75,14 +76,17 @@ if __name__ == "__main__":  # C4: run HEAD's copy, not the shared working tree (
 import argparse
 import os
 import select
-import subprocess
 import sys
 import time
+from collections.abc import Callable
 
 import lock_order
 
 if __name__ == "__main__":
     sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
+else:  # imported by lib/lock_order.py, whose callers put only lib/ on the path (GOH.LOCKNEST);
+    # appended, so nothing of theirs is shadowed
+    sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 from tui.lib import report
 
 REPORT_EVERY_S = 30.0
@@ -95,6 +99,11 @@ def default_slots() -> int:
     consumer and on Linux CI, where no Claude plan exists. One per four (4 on a 16-core box) let the
     load average reach 118-139 with six agents landing (GOH.ULTRARULES, 2026-11-15)."""
     return max(1, (os.cpu_count() or 1) // 8)
+
+
+def default_dir() -> str:
+    """Where the slots live when GOH_GATE_SLOT_DIR names nowhere (lib/gate_slot.sh's default)."""
+    return os.path.expanduser("~/.cache/goh/slots")
 
 
 def slot_path(directory: str, i: int) -> str:
@@ -126,10 +135,21 @@ def held(path: str) -> bool:
 
 
 def record(path: str) -> tuple[int, str, float] | None:
+    rec = record_scoped(path)
+    return None if rec is None else rec[:3]
+
+
+def record_scoped(path: str) -> tuple[int, str, float, str] | None:
+    """The holder's record, (owner pid, repo name, since, repository key) -- the key the lock
+    order scopes a `repo` lock by (lib/lock_order.py), "" in a record written before it."""
     try:
         with open(path, encoding="utf-8") as f:
-            pid, repo, since = f.read().strip().split("\t")
-        return int(pid), repo, float(since)
+            fields = f.read().strip().split("\t")
+        pid, repo, since = fields[:3]
+        key = fields[3] if len(fields) == 4 else ""
+        if len(fields) not in (3, 4):
+            return None
+        return int(pid), repo, float(since), key
     except (OSError, ValueError):
         return None
 
@@ -164,24 +184,7 @@ def ancestors() -> set[int]:
     it as "nested" is right, and it is what keeps a nested gate from waiting for a slot its own
     parent holds.
     """
-    out = subprocess.run(
-        ["ps", "-axo", "pid=,ppid="],
-        capture_output=True,
-        text=True,
-        check=False,
-        stdin=subprocess.DEVNULL,
-    ).stdout
-    parent: dict[int, int] = {}
-    for line in out.splitlines():
-        parts = line.split()
-        if len(parts) == 2 and parts[0].isdigit() and parts[1].isdigit():
-            parent[int(parts[0])] = int(parts[1])
-    seen: set[int] = set()
-    pid = os.getppid()
-    while pid > 0 and pid not in seen:
-        seen.add(pid)
-        pid = parent.get(pid, 0)
-    return seen
+    return lock_order.ancestors()
 
 
 def _slot_files(directory: str) -> list[str]:
@@ -200,11 +203,33 @@ def nested(directory: str) -> str | None:
         path, pid = claim[0], int(claim[1])
         if os.path.dirname(path) == directory and pid in mine and held(path):
             return f"{os.path.basename(path)} (pid {pid}, GOH_GATE_SLOT)"
+    found = _recorded(directory, lambda: mine)
+    if found is None:
+        return None
+    path, pid, _ = found
+    return f"{os.path.basename(path)} (pid {pid}, a recorded holder above this gate)"
+
+
+def _recorded(directory: str, mine: Callable[[], set[int]]) -> tuple[str, int, str] | None:
+    """(slot file, owner pid, repository key) of a held slot recorded to an ancestor; `mine()`
+    is the ancestry, asked only once a held slot with a record is found (a `ps` costs a spawn)."""
+    taken = []
     for path in _slot_files(directory):
-        rec = record(path)
-        if rec is not None and rec[0] in mine and held(path):
-            return f"{os.path.basename(path)} (pid {rec[0]}, a recorded holder above this gate)"
-    return None
+        rec = record_scoped(path)
+        if rec is not None and held(path):
+            taken.append((path, rec[0], rec[3]))
+    if not taken:
+        return None
+    above = mine()
+    return next(((p, pid, key) for p, pid, key in taken if pid in above), None)
+
+
+def recorded_above(directory: str) -> tuple[int, str] | None:
+    """(owner pid, repository key) of the slot an ancestor holds by record in `directory`: how the
+    lock order sees the slot structural.sh took FOR a gate.sh from that gate.sh's later children,
+    which no variable reaches (GOH.LOCKNEST)."""
+    found = _recorded(directory, ancestors)
+    return None if found is None else found[1:]
 
 
 def acquire(
@@ -335,7 +360,9 @@ def hold(args: argparse.Namespace) -> int:
     idx, fd, waited = acquire(args.dir, slots, args.poll, args.owner, watch)
     os.ftruncate(fd, 0)
     os.lseek(fd, 0, os.SEEK_SET)
-    os.write(fd, f"{args.owner}\t{args.repo}\t{time.time():.0f}\n".encode())
+    # The repository key last: the lock order scopes a `repo` lock by it (lib/lock_order.py).
+    key = lock_order.repo_key()
+    os.write(fd, f"{args.owner}\t{args.repo}\t{time.time():.0f}\t{key}\n".encode())
     # The mechanism goes in the handshake, so the shell can say WHICH watch took the slot: the
     # kernel event on macOS (kqueue), the pidfd on Linux, the poll where the kernel has neither.
     # A branch that cannot be seen cannot be proved to have run.

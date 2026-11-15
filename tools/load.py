@@ -220,7 +220,7 @@ class Experiment:
         self.command = command
         self.max_s = max_s
         self.child: subprocess.Popen | None = None
-        self.registry = reg.registry_path(directory)
+        self.registry: Path | None = reg.registry_path(directory)
         self.procs: list[subprocess.Popen] = []
         self.fifos: list[Path] = []
         self.data: dict = {}
@@ -231,17 +231,7 @@ class Experiment:
         """Take the slot, refusing one that is taken (D-0003): a run with no spinners takes a
         place in the SHARED slot (at most `gates` of them); a run with spinners takes it alone,
         and when it `waits` it marks itself pending so gates arriving behind it queue behind it."""
-        now = time.time()
-        self.data = {
-            "version": reg.VERSION,
-            "owner_pid": os.getpid(),
-            "owner_start": reg.pid_start(os.getpid()) or "",
-            "started_at": now,
-            "max_s": self.max_s,
-            "deadline_at": now + self.max_s,
-            "command": list(self.command),
-            "pids": [],
-        }
+        self.data = load_slot.record(self.command, self.max_s)
         if self.count == 0:
             self.registry = load_slot.take_shared(self.directory, self.data, gates)
         else:
@@ -322,7 +312,9 @@ class Experiment:
             survivors = _stop(self.procs)
             for fifo in self.fifos:
                 reg.remove(fifo)
-            if survivors:
+            if self.registry is None:  # a run inside its holder's slot: nothing of its own
+                pass
+            elif survivors:
                 self.data["pids"] = [{"pid": pid, "start": ""} for pid in survivors]
                 reg.write(self.registry, self.data)
             else:
@@ -422,15 +414,21 @@ def main(argv: list[str]) -> int:
     except ValueError as error:
         print(f"load: {error}", file=sys.stderr)
         return 2
-    try:
-        holder, _ = load_slot.claim(
-            lambda: experiment.claim(slot_wait, gates), slot_wait, wait_s, info
-        )
-    except OSError as error:
-        print(f"load: cannot take the slot: {error}", file=sys.stderr)
-        return 2
-    finally:
-        load_slot.clear_pending(directory)
+    holder = None
+    if count == 0 and (above := load_slot.holder_above()) is not None:
+        # GOH.LOCKNEST: the holder's own run, never a second place (load_slot.holder_above).
+        info(f"load: inside the load slot of pid {above} -- this run is that holder's")
+        experiment.data, experiment.registry = load_slot.record(command, max_s), None
+    else:
+        try:
+            holder, _ = load_slot.claim(
+                lambda: experiment.claim(slot_wait, gates), slot_wait, wait_s, info
+            )
+        except OSError as error:
+            print(f"load: cannot take the slot: {error}", file=sys.stderr)
+            return 2
+        finally:
+            load_slot.clear_pending(directory)
     if holder is not None:
         described = _describe(reg.read(holder) or {})
         if load_slot.is_shared(holder):

@@ -146,6 +146,36 @@ def rerun_line(argv: Sequence[str]) -> str:
     return f"python3 {shlex.quote(str(TOOL))} --wait {shlex.join(rest)}"
 
 
+def record(command: Sequence[str], max_s: float) -> dict:
+    """A run's registry record, its deadline counted from now (after any wait for the slot)."""
+    now = time.time()
+    return {
+        "version": reg.VERSION,
+        "owner_pid": os.getpid(),
+        "owner_start": reg.pid_start(os.getpid()) or "",
+        "started_at": now,
+        "max_s": max_s,
+        "deadline_at": now + max_s,
+        "command": list(command),
+        "pids": [],
+    }
+
+
+def holder_above(environ: dict[str, str] | None = None) -> int | None:
+    """The pid of an ANCESTOR holding the load slot (its GOH_HELD_LOCKS mark), or None.
+
+    GOH.LOCKNEST: a 0-spinner run inside a holder is that holder's (lib/lock_order.tsv's "load"
+    row): it measures nothing and adds no load its holder did not already account for. Taking a
+    place of its own counted it twice against GOH_LOAD_GATES, and inside an experiment that holds
+    the slot alone it waited --wait-max on its own parent. A mark whose pid is not an ancestor
+    (exported by hand, inherited by a detached process) shares nothing."""
+    marks = [pid for name, pid in lock_order.held(environ) if name == "load"]
+    if not marks:
+        return None
+    above = lock_order.ancestors()
+    return next((pid for pid in marks if pid in above), None)
+
+
 def claim(
     take: Callable[[], None], wait: bool, wait_s: float, say: Callable[[str], None]
 ) -> tuple[Path | None, float]:
@@ -207,10 +237,12 @@ __all__ = [
     "claim",
     "clear_pending",
     "gate_limit",
+    "holder_above",
     "is_pending",
     "is_shared",
     "live_gates",
     "pending_path",
+    "record",
     "refusal",
     "rerun_line",
     "shared_path",

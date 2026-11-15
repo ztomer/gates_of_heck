@@ -2,9 +2,9 @@
 
     (lib/lock_order.sh runs main() from the module beside it: never a from-HEAD re-exec, which
     would not hand the shell's fd to the flock reliably, nor pay an export per acquisition)
-    lock_order check NAME     # exit 0, or 78 refusing, naming the held lock and the table
-    lock_order held NAME PID  # GOH_HELD_LOCKS with NAME@PID added (the shell's export)
-    lock_order flock FD NAME [--nb] [--shared]   # check, then take the kernel flock on FD
+    lock_order check NAME [--where P]     # exit 0, or 78 refusing, naming the held lock, the table
+    lock_order held NAME PID [--where P]  # GOH_HELD_LOCKS with NAME@PID:KEY added (shell's export)
+    lock_order flock FD NAME [--nb] [--shared] [--where P]  # check, then the kernel flock on FD
 
 THE INCIDENT (GOH.LOCKORDER, 2026-11-15). goh v0.122.0's ship held the land lock and its release
 step waited 1800 s for the load slot; the slot was held by a land run inside tools/load.py,
@@ -20,6 +20,19 @@ An entry whose pid is dead is ignored (an inherited variable from a gone holder 
 A lock the table marks re-entrant (its own nesting rule lets a holder's child through) is not
 refused when it is the one already held; anything else held at or above its rank is.
 
+SCOPE (GOH.LOCKNEST). A held mark carries the repository it was taken in (`name@pid:key`, the key a
+hash of the git common dir: every worktree of one repository shares it; `where` names the lock's
+file or the repository, else the working directory). A lock the table scopes `repo` -- one per
+repository -- is ordered only against the marks of ITS repository, and the marks of no known one:
+`.loop`'s commit gate held the machine's gate slot, and its test's fixture ship was refused waiting
+on the fixture repo's own land lock, which no holder of that slot could be waiting for. A machine
+lock stays ordered against every mark.
+
+THE SLOT TAKEN FOR A gate.sh (GOH.LOCKNEST). structural.sh --full takes the gate slot FOR its parent
+`tools/gate.sh` (lib/gate_slot.py, "HELD FOR THE CALLER"), and no variable it exports reaches that
+gate.sh's later children. So a wait ranked below the slot also asks lib/gate_slot.py whether a slot
+in GOH_GATE_SLOT_DIR is recorded to an ancestor of this process: that gate.sh holds it for them too.
+
 checks/check_lock_order.py is the static half: every acquisition site in the tree goes through
 this module or lib/lock_order.sh, and the held-while-acquiring graph sorts topologically.
 Pinned by tests/test_lock_order.py.
@@ -29,6 +42,7 @@ from __future__ import annotations
 
 import contextlib
 import fcntl
+import hashlib
 import os
 import sys
 from collections.abc import Iterator
@@ -45,6 +59,7 @@ class Lock:
     name: str
     rank: int
     reentrant: bool
+    per_repo: bool
     files: tuple[str, ...]
     what: str
 
@@ -59,8 +74,11 @@ def table(path: Path = TABLE) -> dict[str, Lock]:
     for line in path.read_text(encoding="utf-8").splitlines():
         if not line.strip() or line.startswith("#"):
             continue
-        name, rank, reentrant, files, what = line.split("\t")
-        out[name] = Lock(name, int(rank), reentrant == "yes", tuple(files.split(",")), what)
+        name, rank, reentrant, scope, files, what = line.split("\t")
+        if scope not in ("repo", "machine"):
+            raise ValueError(f"{path}: '{name}' has scope {scope!r}, not 'repo' or 'machine'")
+        out[name] = Lock(name, int(rank), reentrant == "yes", scope == "repo",
+                         tuple(files.split(",")), what)  # fmt: skip
     return out
 
 
@@ -74,27 +92,105 @@ def _alive(pid: int) -> bool:
     return True
 
 
-def held(environ: dict[str, str] | None = None) -> list[tuple[str, int]]:
-    """The locks this process and its ancestors hold, (name, pid), the dead holders dropped."""
+def _common_dir(start: Path) -> Path | None:
+    """The git common dir of the repository holding START, found by walking up (no git spawned)."""
+    here = start if start.is_dir() else start.parent
+    for d in (here, *here.parents):
+        dot = d / ".git"
+        if dot.is_dir():
+            return dot
+        if dot.is_file():
+            text = dot.read_text(encoding="utf-8", errors="replace").strip()
+            if not text.startswith("gitdir:"):
+                return None
+            gitdir = (d / text.removeprefix("gitdir:").strip()).resolve()
+            common = gitdir / "commondir"
+            if common.is_file():
+                return (gitdir / common.read_text(encoding="utf-8").strip()).resolve()
+            return gitdir
+    return None
+
+
+def repo_key(where: str | os.PathLike[str] | None = None) -> str:
+    """The scope a mark records: a hash of WHERE's git common dir (the working directory when
+    None), or "" outside any repository."""
+    try:
+        start = Path(os.getcwd() if where is None else where).resolve()
+        common = _common_dir(start)
+    except OSError:
+        return ""
+    return hashlib.sha1(str(common.resolve()).encode()).hexdigest()[:12] if common else ""
+
+
+def held_marks(environ: dict[str, str] | None = None) -> list[tuple[str, int, str]]:
+    """The locks this process and its ancestors hold, (name, pid, repo key or ""), the dead holders
+    dropped."""
     raw = (os.environ if environ is None else environ).get(ENV, "")
     out = []
     for part in raw.split(","):
-        name, _, pid = part.strip().partition("@")
+        name, _, rest = part.strip().partition("@")
+        pid, _, key = rest.partition(":")
         if name and pid.isdigit() and _alive(int(pid)):
-            out.append((name, int(pid)))
+            out.append((name, int(pid), key))
     return out
 
 
-def refusal(name: str, environ: dict[str, str] | None = None) -> str | None:
-    """Why waiting on NAME now would break the order, or None when it may wait."""
+def held(environ: dict[str, str] | None = None) -> list[tuple[str, int]]:
+    """The locks this process and its ancestors hold, (name, pid), the dead holders dropped."""
+    return [(name, pid) for name, pid, _ in held_marks(environ)]
+
+
+def ancestors() -> set[int]:
+    """This process's ancestry (its parent up to pid 1), from one `ps` listing."""
+    import subprocess  # only a wait below the gate slot asks
+
+    out = subprocess.run(["ps", "-axo", "pid=,ppid="], capture_output=True, text=True,
+                         check=False, stdin=subprocess.DEVNULL).stdout  # fmt: skip
+    parent: dict[int, int] = {}
+    for line in out.splitlines():
+        parts = line.split()
+        if len(parts) == 2 and parts[0].isdigit() and parts[1].isdigit():
+            parent[int(parts[0])] = int(parts[1])
+    seen: set[int] = set()
+    pid = os.getppid()
+    while pid > 0 and pid not in seen:
+        seen.add(pid)
+        pid = parent.get(pid, 0)
+    return seen
+
+
+def _slot_above(environ: dict[str, str] | None) -> tuple[str, int, str] | None:
+    """The gate slot an ancestor holds by record (the one taken FOR a gate.sh), as a mark."""
+    try:
+        import gate_slot  # here: it imports this module
+    except ImportError:
+        return None
+    raw = (environ or {}).get("GOH_GATE_SLOT_DIR") or os.environ.get("GOH_GATE_SLOT_DIR")
+    found = gate_slot.recorded_above(os.path.realpath(raw or gate_slot.default_dir()))
+    return None if found is None else ("gate_slot", found[0], found[1])
+
+
+def refusal(
+    name: str, environ: dict[str, str] | None = None, where: str | os.PathLike[str] | None = None
+) -> str | None:
+    """Why waiting on NAME (the lock of WHERE's repository, for a `repo` lock) now would break the
+    order, or None when it may wait."""
     locks = table()
     if name not in locks:
         return f"lock order: {name!r} is not in {TABLE} -- every goh lock has a rank there"
     want = locks[name]
-    for other, pid in held(environ):
+    marks = held_marks(environ)
+    slot = locks.get("gate_slot")
+    below_slot = slot is not None and want.rank < slot.rank
+    if below_slot and all(m[0] != "gate_slot" for m in marks) and (above := _slot_above(environ)):
+        marks.append(above)
+    mine = repo_key(where) if want.per_repo else ""
+    for other, pid, key in marks:
         have = locks.get(other)
         if have is None:
             continue
+        if mine and key and key != mine:
+            continue  # another repository's lock: never one a holder of this one waits behind
         if other == name and want.reentrant:
             continue
         if have.rank >= want.rank:
@@ -105,24 +201,32 @@ def refusal(name: str, environ: dict[str, str] | None = None) -> str | None:
     return None
 
 
-def check(name: str) -> None:
+def check(name: str, where: str | os.PathLike[str] | None = None) -> None:
     """Raise OrderError when waiting on NAME now would break the table's order."""
-    if why := refusal(name):
+    if why := refusal(name, where=where):
         raise OrderError(why)
 
 
-def with_held(name: str, pid: int, environ: dict[str, str] | None = None) -> str:
-    """GOH_HELD_LOCKS with NAME@PID added: the value a holder exports to its children."""
+def with_held(
+    name: str,
+    pid: int,
+    environ: dict[str, str] | None = None,
+    where: str | os.PathLike[str] | None = None,
+) -> str:
+    """GOH_HELD_LOCKS with NAME@PID:KEY added (KEY: WHERE's repository, "" outside one): the value a
+    holder exports to its children."""
     raw = (os.environ if environ is None else environ).get(ENV, "")
-    parts = [p for p in raw.split(",") if p.strip() and p.strip() != f"{name}@{pid}"]
-    return ",".join([*parts, f"{name}@{pid}"])
+    me = f"{name}@{pid}"
+    parts = [p for p in raw.split(",") if p.strip() and p.strip().partition(":")[0] != me]
+    key = repo_key(where)
+    return ",".join([*parts, f"{me}:{key}" if key else me])
 
 
 @contextlib.contextmanager
-def holding(name: str) -> Iterator[None]:
+def holding(name: str, where: str | os.PathLike[str] | None = None) -> Iterator[None]:
     """Mark NAME as held by this process for the block: children inherit it in GOH_HELD_LOCKS."""
     before = os.environ.get(ENV)
-    os.environ[ENV] = with_held(name, os.getpid())
+    os.environ[ENV] = with_held(name, os.getpid(), where=where)
     try:
         yield
     finally:
@@ -132,7 +236,14 @@ def holding(name: str) -> Iterator[None]:
             os.environ[ENV] = before
 
 
-def flock(fd: object, name: str, *, wait: bool = True, shared: bool = False) -> None:
+def flock(
+    fd: object,
+    name: str,
+    *,
+    wait: bool = True,
+    shared: bool = False,
+    where: str | os.PathLike[str] | None = None,
+) -> None:
     """The kernel flock on FD for lock NAME. WAIT: check the order first (refused deterministically,
     whether or not the lock is free); not WAIT: a try-lock that raises OSError when it is taken."""
     mode = fcntl.LOCK_SH if shared else fcntl.LOCK_EX
@@ -141,7 +252,7 @@ def flock(fd: object, name: str, *, wait: bool = True, shared: bool = False) -> 
             raise OrderError(f"lock order: {name!r} is not in {TABLE}")
         fcntl.flock(fd, mode | fcntl.LOCK_NB)  # type: ignore[arg-type]
         return
-    check(name)
+    check(name, where)
     fcntl.flock(fd, mode)  # type: ignore[arg-type]
 
 
@@ -150,18 +261,26 @@ def unlock(fd: object) -> None:
 
 
 def main(argv: list[str]) -> int:
+    where: str | None = None
+    if "--where" in argv:
+        at = argv.index("--where")
+        if at + 1 >= len(argv):
+            print("lock_order: --where needs a path", file=sys.stderr)
+            return 2
+        where = argv[at + 1] or None
+        argv = argv[:at] + argv[at + 2 :]
     if argv[:1] == ["check"] and len(argv) == 2:
-        if why := refusal(argv[1]):
+        if why := refusal(argv[1], where=where):
             print(why, file=sys.stderr)
             return EXIT_ORDER
         return 0
     if argv[:1] == ["held"] and len(argv) == 3:
-        print(with_held(argv[1], int(argv[2])))
+        print(with_held(argv[1], int(argv[2]), where=where))
         return 0
     if argv[:1] == ["flock"] and len(argv) >= 3:
         fd, name, flags = int(argv[1]), argv[2], set(argv[3:])
         try:
-            flock(fd, name, wait="--nb" not in flags, shared="--shared" in flags)
+            flock(fd, name, wait="--nb" not in flags, shared="--shared" in flags, where=where)
         except OrderError as why:
             print(why, file=sys.stderr)
             return EXIT_ORDER

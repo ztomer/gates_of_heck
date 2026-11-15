@@ -46,15 +46,15 @@ def held(lock: Path | None, who: str, say: Callable[[str], None]) -> Iterator[No
     if lock is None:
         yield
         return
-    lock_order.check("land")  # the order, before any wait (GOH.LOCKORDER): refused, never queued
+    lock_order.check("land", lock)  # the order before any wait (GOH.LOCKORDER): refused, not queued
     with lock.open("a+", encoding="utf-8") as f:
         try:
-            lock_order.flock(f, "land", wait=False)
+            lock_order.flock(f, "land", wait=False, where=lock)
         except OSError:
             f.seek(0)
             say(f"waiting for the land lock: held by {f.readline().strip() or 'another land'} "
                 f"({lock})")  # fmt: skip
-            lock_order.flock(f, "land")
+            lock_order.flock(f, "land", where=lock)
         f.truncate(0)
         since = dt.datetime.now().strftime("%H:%M:%S")
         f.write(f"{who} (pid {os.getpid()}, since {since})\n")
@@ -62,7 +62,7 @@ def held(lock: Path | None, who: str, say: Callable[[str], None]) -> Iterator[No
         before = os.environ.get(OWNER_ENV)
         os.environ[OWNER_ENV] = f"{lock} {os.getpid()}"
         try:
-            with lock_order.holding("land"):
+            with lock_order.holding("land", lock):
                 yield
         finally:
             if before is None:

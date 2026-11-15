@@ -92,13 +92,13 @@ if [ "${owner% *}" = "$lock" ] && [ -n "$owner_pid" ] && kill -0 "$owner_pid" 2>
 else
     # The order first (GOH.LOCKORDER): a land inside a holder of a later lock -- the load slot of
     # `load.py 0 -- land.sh`, the deadlock of 2026-11-15 -- is refused before it can queue.
-    if ! goh_lock_check land; then
+    if ! goh_lock_check land "$lock"; then
         err "land.sh: run it bare, \`bash tools/land.sh\`: it takes the land lock first and the load slot for its gate after -- nothing landed"
         exit 78
     fi
-    if ! goh_lock_take land 7 --nb; then
+    if ! goh_lock_take land 7 --nb --where "$lock"; then
         info "waiting for the land lock: held by ${holder:-another land} ($lock)"
-        goh_lock_take land 7 || exit
+        goh_lock_take land 7 --where "$lock" || exit
         ok "land lock acquired"
     fi
     : >"$lock"   # ours now: who we are, for the next waiter's line
