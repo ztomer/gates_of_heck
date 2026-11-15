@@ -321,3 +321,62 @@ pub fn findings(
     out.dedup();
     out
 }
+
+/// The lines a pin is judged on in `rel` (the shape table's hook, `crate::shapes`).
+///
+/// Every
+/// `repository: OWNER/gates_of_heck`, `GOH_TAG:` under an `env:`, and `git clone` of goh in a
+/// `run:`, pinned or not. Nothing outside a workflow or composite action.
+#[must_use]
+pub fn judged_lines(rel: &str, text: &str) -> Vec<usize> {
+    if !crate::checkoutcreds::scan::in_scope(rel) {
+        return Vec::new();
+    }
+    let Ok(docs) = MarkedYaml::load_from_str(text) else {
+        return Vec::new();
+    };
+    let lines: Vec<&str> = text.lines().collect();
+    let mut out = Vec::new();
+    let env = |node: &MarkedYaml, out: &mut Vec<usize>| {
+        if let Some(v) = get(node, "env").and_then(|e| get(e, "GOH_TAG")) {
+            out.push(line_of(v));
+        }
+    };
+    for doc in &docs {
+        env(doc, &mut out);
+        if let Some(YamlData::Mapping(jobs)) = get(doc, "jobs").map(|j| &j.data) {
+            for job in jobs.values() {
+                env(job, &mut out);
+            }
+        }
+        for (_, steps) in step_lists(doc) {
+            for step in steps {
+                env(step, &mut out);
+                let repo = get(step, "with").and_then(|w| get(w, "repository"));
+                if let Some(r) = repo.filter(|r| as_str(r).is_some_and(|s| GOH_REPO.is_match(s))) {
+                    out.push(line_of(r));
+                }
+                let Some(run) = get(step, "run").and_then(as_str) else {
+                    continue;
+                };
+                let from = line_of(step);
+                for cmd in run.lines().map(str::trim) {
+                    if cmd.starts_with('#') || !CLONE.is_match(cmd) {
+                        continue;
+                    }
+                    if let Some((i, _)) = lines
+                        .iter()
+                        .enumerate()
+                        .skip(from - 1)
+                        .find(|(_, l)| l.contains(cmd))
+                    {
+                        out.push(i + 1);
+                    }
+                }
+            }
+        }
+    }
+    out.sort_unstable();
+    out.dedup();
+    out
+}

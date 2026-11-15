@@ -352,6 +352,10 @@ pub const ROWS: &[Row] = &[
         state: State::Declared(crate::movingtag::shapes::SHAPES),
     },
     Row {
+        scanner: "a workflow runs a current goh on a clone with its tags",
+        state: State::Declared(crate::gohpin::shapes::SHAPES),
+    },
+    Row {
         scanner: "goh status-markers",
         state: State::Declared(STATUS_MARKERS),
     },

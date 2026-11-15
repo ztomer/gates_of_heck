@@ -49,3 +49,12 @@ pub fn tui_marks(rel: &str, text: &str) -> Result<Vec<usize>, String> {
 pub fn run_paths(rel: &str, text: &str) -> Result<Vec<usize>, String> {
     Ok(crate::runpaths::judged_lines(rel, text))
 }
+
+/// `goh goh-pins`: the goh pins it judges in a workflow or composite action.
+///
+/// # Errors
+///
+/// None; the signature is the table's.
+pub fn goh_pins(rel: &str, text: &str) -> Result<Vec<usize>, String> {
+    Ok(crate::gohpin::scan::judged_lines(rel, text))
+}

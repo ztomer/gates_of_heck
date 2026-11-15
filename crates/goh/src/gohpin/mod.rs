@@ -26,6 +26,7 @@
 //! WIRING: a structural step in EVERY repo, at both scopes, beside `goh workflow-pins`.
 
 pub mod scan;
+pub mod shapes;
 
 use crate::estate_seed::{self, Kind, Report, Sites};
 use std::path::Path;
