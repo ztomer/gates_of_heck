@@ -35,6 +35,10 @@ esac
     + """\
 case "$1" in
   build)
+    # A starved prefix, by CPU spent rather than wall time (GOH.LOADFLAKES): FAKE_BURN_S seconds.
+    [ -z "${FAKE_BURN_S:-}" ] || "$FAKE_PY" -c "import time
+t = time.process_time() + $FAKE_BURN_S
+while time.process_time() < t: pass"
     exe="$CARGO_LLVM_COV_TARGET_DIR/debug/ph"
     mkdir -p "${exe%/*}"; : >"$exe"; chmod +x "$exe"
     printf '{"reason":"compiler-artifact","filenames":["%s"],"executable":"%s"}\\n' "$exe" "$exe"
@@ -109,14 +113,24 @@ def test_every_phase_streams_its_start_and_its_elapsed(tmp_path: Path) -> None:
 
 
 def test_a_step_killed_on_its_ceiling_names_the_phase_it_was_in(tmp_path: Path) -> None:
-    """A fake external suite sleeping past a 3 s ceiling: the kill leaves that phase named."""
+    """A fake external suite stalling past its ceiling: the kill leaves that phase named.
+
+    The ceiling is `--stall 3`, not `--timeout 3` (GOH.LOADFLAKES): a 3 s WALL ceiling expired at
+    load 110-180 before the gate had even reached the stalled phase ("TIMED OUT after 3s"), so the
+    test measured the box. A stall counts only seconds in which the step's group spends no CPU and
+    has nothing runnable, so a starved prefix is progress and only the idle `sleep` expires it."""
     proj, env = _setup(tmp_path)
+    # The instrumented build spends 4 s of CPU before the stall: a prefix longer than the ceiling,
+    # as load 110-180 made it. A wall ceiling of 3 s expires in it; the stall ceiling must not.
+    env.update(FAKE_BURN_S="4", FAKE_PY=sys.executable)
     marker = "suite-output-before-the-stall"
     cmd = [
         sys.executable,
         "-S",
         str(BOUNDED),
         "--timeout",
+        "150",
+        "--stall",
         "3",
         "--grace",
         "5",
@@ -131,12 +145,13 @@ def test_a_step_killed_on_its_ceiling_names_the_phase_it_was_in(tmp_path: Path) 
         capture_output=True,
         text=True,
         env=env,
-        timeout=60,
+        timeout=200,
         stdin=subprocess.DEVNULL,
         check=False,
     )
     out = r.stdout + r.stderr
     assert r.returncode == 124, out
+    assert "(stalled)" in out, out  # the stall ceiling expired it, not the wall backstop
     # the phases before the stall ended; the stalled one started and is named by the kill
     assert "✓ phase 'external: instrumented build'" in out, out
     assert f"phase 'external: echo {marker}; sleep 60' started" in out, out

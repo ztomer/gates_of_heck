@@ -29,8 +29,21 @@ echo LOCKED; sleep {secs}; echo released
 """
 
 
-def _spawn(repo: Path, secs: float) -> subprocess.Popen:
-    script = HOLD.format(tui=TUI, lib=LIB, repo=repo, secs=secs)
+# A holder that keeps the lock until the test RELEASES it (GOH.LOADFLAKES): one that held for a
+# fixed 2 s let a test starved at load 110-180 read its LOCKED late, so the second gate's "wait"
+# was over before it was measured. The order is now asserted by events, never by elapsed time.
+HOLD_UNTIL = """
+. "{tui}"; . "{lib}"
+tree_lock_acquire "{repo}" "holder"
+echo LOCKED; while [ ! -e "{release}" ]; do sleep 0.05; done; echo released
+"""
+
+
+def _spawn(repo: Path, secs: float, release: Path | None = None) -> subprocess.Popen:
+    if release is None:
+        script = HOLD.format(tui=TUI, lib=LIB, repo=repo, secs=secs)
+    else:
+        script = HOLD_UNTIL.format(tui=TUI, lib=LIB, repo=repo, release=release)
     # Its own process group, so a test can kill the gate AND its children the
     # way an operator would (`kill -9 -<pgid>`); see the orphan test for why
     # killing the shell alone is not a release.
@@ -58,16 +71,20 @@ def _wait_line(proc: subprocess.Popen, needle: str, timeout: float) -> str:
 
 
 def test_second_gate_waits_for_the_first(tmp_path):
-    first = _spawn(tmp_path, 2.0)
-    _wait_line(first, "LOCKED", 10)
-    t0 = time.time()
-    second = _spawn(tmp_path, 0)
-    out = _wait_line(second, "LOCKED", 15)
-    assert time.time() - t0 >= 1.5, "the second gate did not wait for the first"
-    assert "waiting" in out, out  # it announced the wait, naming a peer
-    assert "holder (pid" in out, out  # ... by the identity the holder wrote
-    first.wait(10)
-    second.wait(10)
+    release = tmp_path / "release"
+    first = _spawn(tmp_path, 0, release=release)
+    try:
+        _wait_line(first, "LOCKED", 120)
+        second = _spawn(tmp_path, 0)
+        out = _wait_line(second, "waiting", 120)  # it announced the wait, naming a peer
+        assert "LOCKED" not in out, out
+        assert "holder (pid" in out, out  # ... by the identity the holder wrote
+        assert second.poll() is None, "the second gate ran on while the first held the tree"
+    finally:
+        release.touch()  # only now may the second take it; a failure above frees the holder too
+    out += _wait_line(second, "LOCKED", 120)
+    first.wait(120)
+    second.wait(120)
     assert (first.returncode, second.returncode) == (0, 0)
 
 
