@@ -94,10 +94,16 @@ fn a_corpus_outside_the_repo_is_skipped_by_name_at_staged_and_read_at_its_commit
     .expect("fixture");
     let out = goh(&r, &["structural", "--staged"]).expect("goh runs");
     assert!(out.status.success(), "{}", out.text());
+    let skip = out
+        .stderr
+        .lines()
+        .find(|l| l.contains("NOT checked at --staged"))
+        .unwrap_or_else(|| panic!("no named skip: {}", out.text()));
+    // A status, not an alarm (FAULTS.GATESOFHECK): the skip is the designed outcome, and agents
+    // filed its old warning glyph as a fault on every commit of the repo that wires it.
     assert!(
-        out.stderr.contains("NOT checked at --staged"),
-        "{}",
-        out.text()
+        skip.starts_with(goh_tui::STEP) && !skip.contains(goh_tui::WARN),
+        "the skip reads as a warning: {skip}"
     );
     let out = goh(&r, &["structural", "--full"]).expect("goh runs");
     assert!(

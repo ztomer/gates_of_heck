@@ -20,7 +20,7 @@
 //! for the whole process, a no-op everywhere else); and `GIT_WORK_TREE`
 //! outranks the `.git` file, so it is refused with the reason, never obeyed.
 
-use goh_tui::{ERR, STEP, WARN};
+use goh_tui::{ERR, STEP};
 use std::io::Write as _;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
@@ -70,7 +70,7 @@ impl IndexView {
         match Self::of(repo, Path::new(dir)) {
             Ok(Some(view)) => Ok(view),
             Ok(None) => {
-                goh_tui::eoutln!("{WARN} {dir} is outside this repo, so no part of this commit — NOT checked at --staged (--full reads it)");
+                goh_tui::eoutln!("{STEP} {dir} is outside this repo, so no part of this commit — NOT checked at --staged (--full reads it)");
                 Err(None)
             }
             Err(message) => {
