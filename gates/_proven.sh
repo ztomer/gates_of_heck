@@ -236,7 +236,7 @@ _proven_identity_live() {
     top="$(git rev-parse --show-toplevel 2>/dev/null)" || return 0
     for f in ${GOH_EXPORT_KEEP:-}; do
         if [ -e "$top/$f" ]; then
-            find "$top/$f" -type f -print 2>/dev/null | LC_ALL=C sort | while IFS= read -r p; do
+            find "$top/$f" -type f -print 2>/dev/null | env LC_ALL=C sort | while IFS= read -r p; do
                 printf 'keep %s %s\n' "${p#"$top"/}" "$(hash_hex "$p")"
             done
         else
@@ -292,7 +292,7 @@ proven_what_moved() (
         names="$(diff <(printf '%s\n' "$before_live") <(printf '%s\n' "$now_live") \
             | awk '$1 == ">" && $2 == "keep" { print "kept file " $3 }
                    $1 == ">" && $2 == "env" { n = $3; sub(/=.*/, "", n); print "env " n }' \
-            | LC_ALL=C sort -u | paste -sd, - | sed 's/,/, /g')"
+            | env LC_ALL=C sort -u | paste -sd, - | sed 's/,/, /g')"
         printf '%s (a step rewrote an input of its own key)\n' "${names:-a kept input}"
         return 0
     fi

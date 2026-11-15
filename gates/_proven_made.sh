@@ -35,7 +35,7 @@ PROVEN_CACHES="__pycache__ .pytest_cache .ruff_cache .mypy_cache .hypothesis .DS
 proven_ignored() {
     local p base prev=""
     git ls-files -z --others --ignored --exclude-standard --directory 2>/dev/null | tr '\0' '\n' \
-        | LC_ALL=C sort | {
+        | env LC_ALL=C sort | {
             while IFS= read -r p; do
                 case "$prev" in */) case "$p" in "$prev"?*) prev="" ;; esac ;; esac  # P's parent
                 [ -z "$prev" ] || printf '%s\n' "$prev"
@@ -73,6 +73,8 @@ proven_fresh_tree() {
 # the build/ an earlier step of the run created owns build/Release/libX.a, not build/, which the
 # earlier step's re-run would bring back without it. At most PROVEN_MADE_MAX files per entry: a
 # hollow hit needs only one of them missing.
+# `env LC_ALL=C`, never a bare prefix: in this forked group a bare one crashed bash on macOS and
+# emptied the measurement (tests/test_shell_locale.py).
 PROVEN_MADE_MAX=500
 proven_made() {
     [ -r "$1" ] || return 0
@@ -80,16 +82,16 @@ proven_made() {
     re="${re// /|}"
     now="$(proven_ignored)"
     {
-        LC_ALL=C comm -13 "$1" <(printf '%s\n' "$now")
+        env LC_ALL=C comm -13 "$1" <(printf '%s\n' "$now")
         if [ -n "${2:-}" ] && [ -e "$2" ]; then
             while IFS= read -r e; do
                 [ -n "$e" ] || continue
                 files="$(find "${e%/}" -type f -newer "$2" -print 2>/dev/null \
                     | grep -vE "(^|/)($re)(/|\$)|\.pyc\$" || true)"
                 [ -z "$files" ] || head -n "$PROVEN_MADE_MAX" <<<"$files"
-            done < <(LC_ALL=C comm -12 "$1" <(printf '%s\n' "$now"))
+            done < <(env LC_ALL=C comm -12 "$1" <(printf '%s\n' "$now"))
         fi
-    } | sed '/^$/d' | LC_ALL=C sort -u
+    } | sed '/^$/d' | env LC_ALL=C sort -u
 }
 
 # proven_made_file <step> -- where what the step string makes is kept.
@@ -114,7 +116,7 @@ proven_made_note() {
         fi
     fi
     mkdir -p "${f%/*}" || return 1
-    { printf '%s\n' "$head"; printf '%s\n%s\n' "$old" "$3" | sed '/^$/d' | LC_ALL=C sort -u; } \
+    { printf '%s\n' "$head"; printf '%s\n%s\n' "$old" "$3" | sed '/^$/d' | env LC_ALL=C sort -u; } \
         >"$f.tmp.$$" && mv -f "$f.tmp.$$" "$f"
 }
 

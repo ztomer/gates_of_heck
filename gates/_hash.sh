@@ -23,5 +23,5 @@ hash_hex() {
 goh_config_hash() {
     local free
     free="$(grep -v '^#' "$(dirname "${BASH_SOURCE[0]}")/verdict_free_keys.txt" | paste -sd'|' -)"
-    env | grep '^GOH_' | grep -v -E "^(${free})=" | LC_ALL=C sort | hash_hex /dev/stdin
+    env | grep '^GOH_' | grep -v -E "^(${free})=" | env LC_ALL=C sort | hash_hex /dev/stdin
 }

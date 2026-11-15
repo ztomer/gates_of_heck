@@ -80,7 +80,7 @@ _rust_learn() {
     done
     learned="$(_rust_learned_file)" || return 1
     mkdir -p "$(dirname "$learned")" || return 1
-    { [ -f "$learned" ] && cat "$learned"; printf '%s\n' "$@"; } | LC_ALL=C sort -u >"$learned.tmp.$$" \
+    { [ -f "$learned" ] && cat "$learned"; printf '%s\n' "$@"; } | env LC_ALL=C sort -u >"$learned.tmp.$$" \
         && mv "$learned.tmp.$$" "$learned"
 }
 
