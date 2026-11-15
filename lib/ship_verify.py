@@ -80,6 +80,23 @@ def ci_read(repo: Path, remote: str, loopctl_py: str) -> tuple[bool, str]:
                   f"({hook}); loopctl done records the run and tick re-reads it")  # fmt: skip
 
 
+def reopen(res: dict, dry: bool = False) -> bool:
+    """A ship that failed AT verify, made resumable there (GOH.SHIPREVERIFY): its failed verify
+    moved to `retried`, the failure fields dropped, status `running`; False (RES untouched) for any
+    other result. `goh ship --verify RESULT` by hand on such a result re-runs verify and, green, the
+    done step: a transient on the card (a stray another build removed) no longer leaves the round
+    to be recorded by hand. DRY only answers."""
+    if res.get("status") != "failed" or res.get("failed_step") != "verify":
+        return False
+    if not dry:
+        res.setdefault("retried", []).extend(s for s in res["steps"] if s["name"] == "verify")
+        res["steps"] = [s for s in res["steps"] if s["name"] != "verify"]
+        for key in ("failed_step", "tail", "finished"):
+            res.pop(key, None)
+        res["status"] = "running"
+    return True
+
+
 def failing_lines(text: str) -> list[str]:
     """The card's failing (✗) and throttled (⚠) lines, colour stripped."""
     lines = (ANSI.sub("", ln).strip() for ln in text.splitlines())

@@ -26,7 +26,9 @@ every agent's context (GOH.SPENDWATCH). Here it is a pipeline no turn watches:
              tick` re-reads it, naming a red one); with no push-gate hook it fails at once, as done
              would refuse it. Then `loopctl verify REPO`, the claim card (GOH_LOOPCTL; REPO relative
              to LOOPCTL_ROOT or ~/Projects), whose only failing line may be that advisory CI one;
-             skipped without loopctl and without --item
+             skipped without loopctl and without --item. A ship that failed HERE resumes here:
+             `goh ship --verify RESULT` by hand re-runs verify and, green, the done step, and the
+             result reads ok (GOH.SHIPREVERIFY: a transient on the card left a round hand-recorded)
     done     with --item: `loopctl done ID --shipped RESULT`, which records the item from this
              result and the card through done's own gates (CI on what landed), so no agent turn;
              --progress (a slice of a multi-release item): `loopctl progress`, the item left open
@@ -110,7 +112,7 @@ import ship_verify
 from tui.lib import err, info, ok, step
 
 STEPS = ("push", "release", "install", "verify", "done")
-TAIL = 40
+save, tail = ship_status.save, ship_status.tail  # the result file, a step log (ship_status)
 GRACE = 5
 DEFAULT_TIMEOUT = 3600
 KEYS = ("GOH_SHIP_RELEASE", "GOH_SHIP_INSTALL", "GOH_SHIP_TIMEOUT", "GOH_SHIP_RELEASE_PUSHES",
@@ -323,21 +325,6 @@ def plan(args: argparse.Namespace) -> dict:
     }  # fmt: skip
 
 
-def save(res: dict) -> None:
-    path = Path(res["result"])
-    path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_name(f".{path.name}.tmp")
-    tmp.write_text(json.dumps(res, indent=1) + "\n", encoding="utf-8")
-    os.replace(tmp, path)
-
-
-def tail(log: Path) -> list[str]:
-    try:
-        return log.read_text(encoding="utf-8", errors="replace").splitlines()[-TAIL:]
-    except OSError:
-        return []
-
-
 def command(res: dict, name: str) -> tuple[str | None, str]:
     """The shell command for step NAME, or None and why it is skipped."""
     lc = shlex.quote(res["loopctl"])
@@ -380,8 +367,8 @@ def unbound_env() -> dict[str, str]:
     return {k: v for k, v in os.environ.items() if k not in git_bindings()}
 
 
-def run_steps(res: dict) -> int:
-    """Run the pipeline in this process; one mark per step; 0 shipped, 1 a step failed."""
+def run_steps(res: dict, first: str = STEPS[0]) -> int:
+    """Run the pipeline from step FIRST in this process; a mark per step; 0 shipped, 1 failed."""
     os.chdir(res["repo"])
     for k in git_bindings():
         os.environ.pop(k, None)
@@ -389,7 +376,7 @@ def run_steps(res: dict) -> int:
                       GOH_SHIP_SUMMARY=res["summary"], GOH_SHIP_ITEM=res["item"] or "",
                       GOH_GATE_VERDICTS=res.get("verdicts", ""))  # fmt: skip
     stem = Path(res["result"]).with_suffix("")
-    for name in STEPS:
+    for name in STEPS[STEPS.index(first) :]:
         cmd, why = command(res, name)
         if cmd is None:
             res["steps"].append({"name": name, "status": "skipped", "why": why})
@@ -429,7 +416,8 @@ def run_steps(res: dict) -> int:
     return 0
 
 
-def worker(result: str) -> int:
+def worker(result: str, resume: bool = False) -> int:
+    """The pipeline under the repo's ship lock; RESUME: a ship failed at verify, from verify."""
     res = json.loads(Path(result).read_text(encoding="utf-8"))
     lock = Path(res["result"]).parent / ".ship.lock"
     with lock.open("w") as held:
@@ -441,9 +429,11 @@ def worker(result: str) -> int:
             save(res)
             err(res["tail"][0])
             return 1
+        if resume and not ship_verify.reopen(res):
+            return ship_verify.verify(result)  # resumed by a peer meanwhile: only read the card
         res["pid"] = os.getpid()
         save(res)
-        return run_steps(res)
+        return run_steps(res, "verify" if resume else STEPS[0])
 
 
 def start(args: argparse.Namespace) -> int:
@@ -487,7 +477,9 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--worker", metavar="RESULT", help=argparse.SUPPRESS)
     ap.add_argument("--verify", metavar="RESULT", help=argparse.SUPPRESS)
     args = ap.parse_args(argv)
-    if args.verify:
+    if args.verify:  # a re-run of a ship failed at verify resumes it there (GOH.SHIPREVERIFY)
+        if ship_verify.reopen(json.loads(Path(args.verify).read_text(encoding="utf-8")), dry=True):
+            return worker(args.verify, resume=True)
         return ship_verify.verify(args.verify)
     if args.worker:
         return worker(args.worker)

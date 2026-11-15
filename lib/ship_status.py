@@ -1,5 +1,5 @@
-"""`goh ship --status RESULT`: the marks a ship result holds (split from tools/ship.py at its
-500-line cap)."""
+"""`goh ship --status RESULT`: the marks a ship result holds; and the result's writing and a step
+log's tail (split from tools/ship.py at its 500-line cap)."""
 
 from __future__ import annotations
 
@@ -10,6 +10,24 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from tui.lib import err, info, ok, step
+
+TAIL = 40  # a failed step's last log lines, carried in the result
+
+
+def save(res: dict) -> None:
+    """Write RES to its result path whole (a temp file renamed over it)."""
+    path = Path(res["result"])
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_name(f".{path.name}.tmp")
+    tmp.write_text(json.dumps(res, indent=1) + "\n", encoding="utf-8")
+    os.replace(tmp, path)
+
+
+def tail(log: Path) -> list[str]:
+    try:
+        return log.read_text(encoding="utf-8", errors="replace").splitlines()[-TAIL:]
+    except OSError:
+        return []
 
 
 def status(result: str) -> int:
