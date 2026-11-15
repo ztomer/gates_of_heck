@@ -249,6 +249,8 @@ fi
 # refused: a hook a repo edited is not stock, and is its own business. Nothing is rewritten here --
 # `.githooks` is tracked, and a gate that edits the tree it judges dirties the commit it is in.
 # An entry tagged `same-logic` retired only a comment, so its hook runs today's gate (6.19).
+# A retired copy that DELEGATES (execs commit_gate.sh/push_gate.sh) runs today's gate too, by its
+# bytes: it is warned, not refused, so a hook-body change strands no consumer (GOH.HOOKSWEEP).
 # shellcheck source=gates/_hook_currency.sh
 . "$HERE/_hook_currency.sh"  # one reading, shared with goh ship's preflight (GOH.SHIPITEM)
 _goh_stale="$(goh_stale_hooks)"
@@ -261,6 +263,15 @@ if [ -n "$_goh_stale" ]; then
     exit 1
 fi
 unset _goh_h _goh_stale
+# A retired copy that delegates runs today's gate (GOH.HOOKSWEEP): named, never refused.
+_goh_aging="$(goh_aging_hooks)"
+if [ -n "$_goh_aging" ]; then
+    while IFS= read -r _goh_h; do
+        warn "$_goh_h is an older stock hook; it delegates, so today's gate runs -- refresh it"
+    done <<<"$_goh_aging"
+    warn "  every estate repo at once: goh hooks --refresh  (this repo: $GOH_ROOT/install.sh \"$PWD\")"
+fi
+unset _goh_h _goh_aging
 
 # ── A consumer's `tools/gate.sh --full` takes the gate slot HERE (lib/gate_slot.sh, v0.39.0). ──
 # The consumer copies written before v0.37.0 run this script first and then their own heavy layers,
