@@ -91,15 +91,26 @@ run_it() {
     fi
 }
 
-key="" tree="" live=""
+key="" tree="" live="" fresh=0 ignored_before="" stamp=""
 if pair="$(proven_key "$step_cmd" </dev/null)"; then
     read -r key tree <<<"$pair"
     live="$(_proven_identity_live </dev/null)"
+    # One step, and no later one in sight: a HOLLOW hit (its products are not here, or a fresh
+    # tree never measured them: gates/_proven_made.sh) runs, since anything after it may need them.
+    fresh=0; proven_fresh_tree </dev/null && fresh=1
     if hit="$(proven_lookup "$key" "$step_cmd")"; then
         read -r age by <<<"$hit"
-        [ -z "$log" ] || : >"$log"
-        step "$label: proven on this tree $age ago by $by — skipped"
-        exit 0
+        if ! owed="$(proven_owed "$step_cmd" "$fresh" </dev/null)"; then
+            [ -z "$log" ] || : >"$log"
+            step "$label: proven on this tree $age ago by $by — skipped"
+            exit 0
+        fi
+        step "$label: proven on this tree $age ago by $by, but $owed -- re-run"
+    fi
+    ignored_before="$(proven_ignored </dev/null)"  # what it MADE (proven_made)
+    if [ "$fresh" = 1 ]; then
+        stamp="$(mktemp "${TMPDIR:-/tmp}/goh-proven-stamp.XXXXXX")" || stamp=""
+        trap 'rm -f "${stamp:-}"' EXIT
     fi
 fi
 
@@ -118,6 +129,8 @@ if [ "$rc" -eq 0 ] && [ -n "$key" ]; then
     if [ "$moved" = 0 ]; then
         rec=0
         proven_record "$key" "$tree" "$step_cmd" "$label" || rec=$?
+        [ "$rec" -ne 0 ] || proven_made_note "$step_cmd" "$fresh" "$(proven_made <(printf '%s\n' "$ignored_before") "$stamp" </dev/null)" \
+            || warn "proven: could not remember what the step made"
         if [ "$rec" -eq 2 ]; then
             # The step DECLARED an artifact and it is not there: a step that succeeded without it
             # proves nothing, and the cache must not remember it.

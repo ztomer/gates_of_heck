@@ -164,3 +164,7 @@ proven_undeclared_build() {
     esac
     return 1
 }
+
+# What a step MADE, measured, and the hits that owe it to a later step (GOH.PROVENBUILD).
+# shellcheck source=gates/_proven_made.sh
+. "$(dirname "${BASH_SOURCE[0]}")/_proven_made.sh"

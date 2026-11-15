@@ -195,6 +195,8 @@ FAILED=0
 FAILED_NAMES=""
 PROVEN_SKIPPED=0
 NOT_HERE=0
+# A run that begins with no ignored file measures all each step makes (gates/_proven_made.sh).
+PROVEN_FRESH=0; [ "$PROVEN_ON" = 0 ] || ! proven_fresh_tree </dev/null || PROVEN_FRESH=1
 
 # run_step <logf> <cmd-string> <index> — exit code of the step, 124 on a timeout. Background only:
 # it EXECs, so it replaces the shell that runs it.
@@ -295,24 +297,42 @@ _tags_free() { # _tags_free <i> -- none of step i's tags is held
     return 0
 }
 
-# _start <i> -- a proven hit is done at once; anything else is launched in the background.
+# _later_runs <i> -- 0 when a step after i will really run: one with no key or no hit. A hollow
+# hit after i runs only if a step after IT does, which this finds too (GOH.PROVENBUILD).
+_later_runs() {
+    local j k t
+    for ((j = $1 + 1; j <= n; j++)); do
+        case "${STATE[j]}" in running) return 0 ;; "done") continue ;; esac
+        read -r k t <<<"$(proven_key "${CMD[j]}" </dev/null)" && [ -n "$k" ] || return 0
+        proven_lookup "$k" "${CMD[j]}" >/dev/null </dev/null || return 0
+    done
+    return 1
+}
+
+# _start <i> -- a proven hit is done at once; anything else is launched in the background. A
+# HOLLOW hit (its products are not here: proven_owed) runs when a later step will.
 _start() {
-    local i="$1" pair hit age by
-    PKEY[i]="" PTREE[i]="" PLIVE[i]=""
+    local i="$1" pair hit age by owed
+    PKEY[i]="" PTREE[i]="" PLIVE[i]="" NOTE[i]=""
     [ "$LIVE" -eq 1 ] && info "[$i/$_n] (${SRC[i]}) ${CMD[i]}"
     if pair="$(proven_key "${CMD[i]}" </dev/null)"; then
         read -r "PKEY[i]" "PTREE[i]" <<<"$pair"
         PLIVE[i]="$(_proven_identity_live </dev/null)"
         if hit="$(proven_lookup "${PKEY[i]}" "${CMD[i]}")"; then
             read -r age by <<<"$hit"
-            HIT[i]="$age $by"; STATE[i]="done"; RC[i]=0; proven_hit_marks "${CMD[i]}" "$ROOT"
-            [ -z "${GOH_TIMINGS:-}" ] \
-                || "$GOH_PY" "$GOH_ROOT/lib/step_timings.py" record "${CMD[i]}" 0 0 step hit </dev/null
-            return 0
+            owed="$(proven_owed "${CMD[i]}" "$PROVEN_FRESH" </dev/null)"
+            if [ -z "$owed" ] || ! _later_runs "$i"; then
+                [ -z "$owed" ] || NOTE[i]="$owed, and no later step runs to need them"
+                HIT[i]="$age $by"; STATE[i]="done"; RC[i]=0; proven_hit_marks "${CMD[i]}" "$ROOT"
+                [ -z "${GOH_TIMINGS:-}" ] \
+                    || "$GOH_PY" "$GOH_ROOT/lib/step_timings.py" record "${CMD[i]}" 0 0 step hit </dev/null
+                return 0
+            fi
+            NOTE[i]="proven on this tree $age ago by $by, but $owed and a later step runs -- re-run"
         fi
     fi
     HIT[i]=""; STATE[i]=running; RUNNING=$((RUNNING + 1))
-    HELD="${HELD}${TAGS[i]#,}"
+    HELD="${HELD}${TAGS[i]#,}"; [ -z "${PKEY[i]}" ] || { proven_ignored >"$LOGDIR/ignored-$i"; [ "$PROVEN_FRESH" = 0 ] || : >"$LOGDIR/stamp-$i"; } </dev/null  # proven_made
     # Command strings from the repo's own .gatesrc / CLI — shell semantics are the feature
     # (pipelines, env prefixes); the source is repo-local config, the same trust level as every
     # ancestor orchestrator. </dev/null: a step that reads stdin gets EOF, never the step list.
@@ -340,6 +360,7 @@ _launch() { # start every pending step a slot and its tags allow, in declared or
 _report() { # _report <i>
     local i="$1" rc="${RC[$1]}" cmd="${CMD[$1]}" logf="$LOGDIR/step-$1.log" age by
     [ "$LIVE" -eq 1 ] || info "[$i/$_n] (${SRC[i]}) $cmd"
+    [ -z "${NOTE[i]}" ] || step "${NOTE[i]}"
     if [ -n "${HIT[i]}" ]; then
         read -r age by <<<"${HIT[i]}"
         step "proven on this tree $age ago by $by — skipped"
@@ -355,6 +376,8 @@ _report() { # _report <i>
         if ! proven_kept_check "$cmd" "${PLIVE[i]}" "$_moved" </dev/null; then _rec=3  # GOH.KEEP1
         elif [ "$_moved" = 0 ]; then
             proven_record "${PKEY[i]}" "${PTREE[i]}" "$cmd" "local_ci" </dev/null || _rec=$?
+            [ "$_rec" -ne 0 ] || proven_made_note "$cmd" "$PROVEN_FRESH" "$(proven_made "$LOGDIR/ignored-$i" "$LOGDIR/stamp-$i" </dev/null)" </dev/null \
+                || warn "[$i/$_n] could not remember what the step made"
             [ "$_rec" -eq 0 ] || [ "$_rec" -eq 2 ] || warn "[$i/$_n] could not write the proven record"
         fi
     fi
