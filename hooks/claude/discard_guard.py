@@ -65,6 +65,9 @@ gate's pytest temp root, and another lane's land failed with 1281 FileNotFoundEr
 recursive rm (or `find -delete`/`-exec rm`) whose glob can reach a goh temp root is refused; one
 named root runs. The escape is `# temp-sweep-ok: <reason>`. The rule is `lib/temp_sweep.py`.
 
+THE UNFED READER (GOH.STDINHANG). A stdin reader nothing feeds (`cat > f` beside a heredoc hung
+5h51m on the harness's socket) is refused. Escape: `# stdin-ok: <reason>`; `lib/stdin_reader.py`.
+
 It judges only what it can parse. A command it cannot split runs, unjudged: the guard must never
 be the thing that breaks an ordinary command. A pattern inside a string or a heredoc is TEXT, not
 code, so it is not a finding: `echo 'while :; do :; done'` writes a loop, it does not run one. And
@@ -157,6 +160,11 @@ try:
     import temp_sweep
 except ImportError:
     temp_sweep = None
+
+try:  # a stdin reader nothing feeds (GOH.STDINHANG): fails open
+    import stdin_reader
+except ImportError:
+    stdin_reader = None
 
 # The tools whose input holds a shell command (Bash, Monitor): ONE list, `lib/shell_tools.py`.
 try:
@@ -472,6 +480,7 @@ def main() -> int:
             or judge_secret_render(command)
             or judge_name_kill(command)
             or (temp_sweep.judge(command) if temp_sweep else None)
+            or (stdin_reader.judge(command) if stdin_reader else None)
             or judge_priority(command)
             or judge_bare(command)
         )

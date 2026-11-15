@@ -205,7 +205,10 @@ def _spans(text: str) -> list[tuple[int, int, int, str]]:
             end = text.find("\n", index)
             index = length if end < 0 else end
             continue
-        if text.startswith("<<", index) and not text.startswith("<<<", index):
+        if text.startswith("<<<", index):  # a here-string: its word is not a delimiter
+            index += 3
+            continue
+        if text.startswith("<<", index):
             match = re.match(r"<<-?\s*(['\"]?)([^\s;&|<>()'\"]+)\1", text[index:])
             if match:
                 pending.append((index, match.group(2)))

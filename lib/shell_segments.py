@@ -78,23 +78,42 @@ def _cut_heredocs(command: str) -> tuple[str, dict[str, str]]:
     return "".join(out), bodies
 
 
-def split(command: str) -> tuple[list[list[str]], dict[str, str]]:
-    """(simple commands, heredoc bodies by marker): a body's marker is a token of its owner.
+def split_ops(command: str) -> tuple[list[tuple[list[str], str]], dict[str, str]]:
+    """(simple commands each with the operator that ENDS it, heredoc bodies by marker).
 
-    Raises ValueError where shlex cannot split the command (an unclosed quote).
+    The operator is the separator token after the command (`|`, `&&`, `;`, `&`, a newline), or ""
+    for the last: a rule that asks whether a command is piped into, or backgrounded, reads it here
+    (`lib/stdin_reader.py`, GOH.STDINHANG). Raises ValueError where shlex cannot split the command.
     """
     text, bodies = _cut_heredocs(command.replace("\\\n", " "))
     lex = shlex.shlex(text, posix=True, punctuation_chars=";&|\n")
     lex.whitespace = " \t\r"
     lex.whitespace_split = True
     lex.commenters = "#"
-    segs: list[list[str]] = [[]]
+    segs: list[tuple[list[str], str]] = []
+    words: list[str] = []
     for tok in lex:
         if tok in SEPARATORS or set(tok) <= set(";&|\n"):
-            segs.append([])
+            op = tok.replace("\n", "") or "\n"  # `|\n` lexes as one token: the `|` is the operator
+            if words:
+                segs.append((words, op))
+            elif segs and op != "\n":
+                segs[-1] = (segs[-1][0], op)
+            words = []
         else:
-            segs[-1].append(tok)
-    return [s for s in segs if s], bodies
+            words.append(tok)
+    if words:
+        segs.append((words, ""))
+    return segs, bodies
+
+
+def split(command: str) -> tuple[list[list[str]], dict[str, str]]:
+    """(simple commands, heredoc bodies by marker): a body's marker is a token of its owner.
+
+    Raises ValueError where shlex cannot split the command (an unclosed quote).
+    """
+    segs, bodies = split_ops(command)
+    return [s for s, _ in segs], bodies
 
 
 def segments(command: str) -> list[list[str]]:
@@ -130,4 +149,4 @@ def reads_script(seg: list[str]) -> bool:
     return "-c" not in args and ("-s" in args or not operands)
 
 
-__all__ = ["SEPARATORS", "SHELLS", "program", "reads_script", "segments", "split"]
+__all__ = ["SEPARATORS", "SHELLS", "program", "reads_script", "segments", "split", "split_ops"]
