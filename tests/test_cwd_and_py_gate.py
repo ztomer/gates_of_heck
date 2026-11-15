@@ -5,7 +5,6 @@ they behave identically when invoked from a subdirectory. py_gate is exercised
 end-to-end on a real mini package (ruff + pytest must be installed).
 """
 
-import re
 import shutil
 import subprocess
 from pathlib import Path
@@ -13,12 +12,11 @@ from pathlib import Path
 import pytest
 from _fast_git import fast_init
 from _gatesrc_kit import write_gatesrc
+from _tool_versions import pin
 from conftest import REPO_ROOT, write
 
-# The ruff release goh's Python gates accept (gates/ruff_house.py RUFF, GOH.RUFFVERSION).
-_RUFF_PIN = re.search(
-    r'^RUFF = "([^"]+)"', (REPO_ROOT / "gates" / "ruff_house.py").read_text(), re.MULTILINE
-)[1]
+# The ruff release goh's Python gates accept: the manifest's pin (GOH.CLASS.PARITY).
+_RUFF_PIN = pin("ruff")
 
 STRUCTURAL = "gates/structural.sh"
 
