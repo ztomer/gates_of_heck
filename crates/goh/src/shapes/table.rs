@@ -7,7 +7,7 @@
 
 use super::{hooks, Declared, Row, Shape, State, Token, Verdict};
 
-/// The rows still `Unreviewed` on 2026-11-15, when the table landed.
+/// The rows still `Unreviewed` on 2026-11-15, when the table landed (v0.118.0 included).
 ///
 /// It may only SHRINK: a row leaves it when its shapes are declared, and a new scanner cannot join it (the walk refuses an
 /// unreviewed row not listed here, and a listed name whose row is declared is stale).
@@ -45,6 +45,7 @@ pub const BURN_DOWN: &[&str] = &[
     "no private repository named in a public tree",
     "no tracked build output",
     "no tracked file its .gitignore ignores",
+    "no git stopped at a deadline holding a lock",
     "no unreaped spawns in tests",
     "no vendored copies of house files",
     "one roadmap, open entries only",
@@ -473,6 +474,8 @@ pub const ROWS: &[Row] = &[
     unreviewed("no private repository named in a public tree"),
     unreviewed("no tracked build output"),
     unreviewed("no tracked file its .gitignore ignores"),
+    // On main (v0.118.0, GOH.GITKILLNATIVE) before this table landed: listed, not exempt.
+    unreviewed("no git stopped at a deadline holding a lock"),
     unreviewed("no unreaped spawns in tests"),
     unreviewed("no vendored copies of house files"),
     unreviewed("one roadmap, open entries only"),
