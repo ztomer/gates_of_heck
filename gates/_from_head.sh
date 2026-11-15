@@ -50,6 +50,50 @@ goh_path_front() {
     export "${1?}"
 }
 
+# goh_export_rev <root> <rev> <history rev> -- sets _goh_export to the export of <rev> (a commit, or
+# the TREE a goh commit stages, GOH.SELFGATE), built once by `git archive` and renamed into place
+# whole; its history root is <history rev>'s (a tree has none). Fails, saying why, when it cannot.
+goh_export_rev() {
+    local root="$1" rev="$2" history="$3" cache dest tmp
+    _goh_export=""
+    cache="${GOH_HEAD_CACHE:-${XDG_CACHE_HOME:-$HOME/.cache}/goh/head}"
+    dest="$cache/$rev"
+    . "$(dirname "${BASH_SOURCE[0]}")/../lib/suite_cache_guard.sh"
+    goh_suite_cache_ok "$cache" "the head export cache" || exit 2
+    if [ ! -f "$dest/.goh-head" ]; then
+        mkdir -p "$cache" && tmp="$(mktemp -d "$cache/.build.XXXXXX")" || return 1
+        if ! (goh_unbind_git; git -C "$root" archive "$rev") \
+                | tar -x -C "$tmp" 2>/dev/null; then
+            rm -rf "$tmp"
+            echo "⚠ gates_of_heck: could not export ${rev:0:7} to $cache -- running the working tree at $root" >&2
+            return 1
+        fi
+        printf '%s\n' "$rev" > "$tmp/.goh-head"
+        # The export's history root (GOH.HOOKSEED): an archive has no history, and goh's root-keyed
+        # seeds asked of it found no root (gitutil::root_commit reads this in an export).
+        (goh_unbind_git; git -C "$root" rev-list --max-parents=0 "$history") > "$tmp/.goh-root" 2>/dev/null \
+            || rm -f "$tmp/.goh-root"
+        # bin/goh is not in git, and an export without one failed whatever ran `$GOH_DIR/bin/goh`
+        # under it (a ship's release kit, GOH.SHIPPINNED; the coordinator's leaked GOH_DIR,
+        # GOH.CLEANOPEN): every export carries a shim to its own commit's native build, and names
+        # the checkout that made it, which the shim asks for that commit's stamp.
+        if ! { mkdir -p "$tmp/bin" && cp "$(dirname "${BASH_SOURCE[0]}")/_export_bin_goh.sh" "$tmp"/bin/goh \
+                && chmod 755 "$tmp"/bin/goh && printf '%s\n' "$root" > "$tmp/.goh-live"; }; then
+            rm -rf "$tmp"
+            echo "⚠ gates_of_heck: could not give the export of ${rev:0:7} a bin/goh -- running the working tree at $root" >&2
+            return 1
+        fi
+        : > "$tmp/.goh-used"  # the last-use stamp, made before the rename (gates/_head_cache.py)
+        # rename(2), whole: fails if another hook won the race, and theirs is the same commit.
+        "$GOH_PY" -c 'import os, sys; os.rename(sys.argv[1], sys.argv[2])' "$tmp" "$dest" 2>/dev/null \
+            || rm -rf "$tmp"
+        # A NEW export prunes the others by LAST USE (gates/_head_cache.py); the current never goes.
+        "$GOH_PY" -S -c 'import sys; sys.path.insert(0, sys.argv[1]); import _head_cache; _head_cache.prune(sys.argv[2], sys.argv[3])' \
+            "$(dirname "${BASH_SOURCE[0]}")" "$cache" "$rev" 2>/dev/null || true
+    fi
+    _goh_export="$dest"
+}
+
 _goh_head_dir() {
     local here root rel head cache dest tmp
     _goh_copy=""
@@ -75,41 +119,8 @@ _goh_head_dir() {
     fi
     head="$( (goh_unbind_git; git -C "$root" rev-parse -q --verify HEAD) )" \
         || return 1
-    cache="${GOH_HEAD_CACHE:-${XDG_CACHE_HOME:-$HOME/.cache}/goh/head}"
-    dest="$cache/$head"
-    . "$(dirname "${BASH_SOURCE[0]}")/../lib/suite_cache_guard.sh"
-    goh_suite_cache_ok "$cache" "the head export cache" || exit 2
-    if [ ! -f "$dest/.goh-head" ]; then
-        mkdir -p "$cache" && tmp="$(mktemp -d "$cache/.build.XXXXXX")" || return 1
-        if ! (goh_unbind_git; git -C "$root" archive "$head") \
-                | tar -x -C "$tmp" 2>/dev/null; then
-            rm -rf "$tmp"
-            echo "⚠ gates_of_heck: could not export HEAD to $cache -- running the working tree at $root" >&2
-            return 1
-        fi
-        printf '%s\n' "$head" > "$tmp/.goh-head"
-        # The export's history root (GOH.HOOKSEED): an archive has no history, and goh's root-keyed
-        # seeds asked of it found no root (gitutil::root_commit reads this in an export).
-        (goh_unbind_git; git -C "$root" rev-list --max-parents=0 "$head") > "$tmp/.goh-root" 2>/dev/null \
-            || rm -f "$tmp/.goh-root"
-        # bin/goh is not in git, and an export without one failed whatever ran `$GOH_DIR/bin/goh`
-        # under it (a ship's release kit, GOH.SHIPPINNED; the coordinator's leaked GOH_DIR,
-        # GOH.CLEANOPEN): every export carries a shim to its own commit's native build, and names
-        # the checkout that made it, which the shim asks for that commit's stamp.
-        if ! { mkdir -p "$tmp/bin" && cp "$(dirname "${BASH_SOURCE[0]}")/_export_bin_goh.sh" "$tmp"/bin/goh \
-                && chmod 755 "$tmp"/bin/goh && printf '%s\n' "$root" > "$tmp/.goh-live"; }; then
-            rm -rf "$tmp"
-            echo "⚠ gates_of_heck: could not give the export of HEAD a bin/goh -- running the working tree at $root" >&2
-            return 1
-        fi
-        : > "$tmp/.goh-used"  # the last-use stamp, made before the rename (gates/_head_cache.py)
-        # rename(2), whole: fails if another hook won the race, and theirs is the same commit.
-        "$GOH_PY" -c 'import os, sys; os.rename(sys.argv[1], sys.argv[2])' "$tmp" "$dest" 2>/dev/null \
-            || rm -rf "$tmp"
-        # A NEW export prunes the others by LAST USE (gates/_head_cache.py); the current never goes.
-        "$GOH_PY" -S -c 'import sys; sys.path.insert(0, sys.argv[1]); import _head_cache; _head_cache.prune(sys.argv[2], sys.argv[3])' \
-            "$(dirname "${BASH_SOURCE[0]}")" "$cache" "$head" 2>/dev/null || true
-    fi
+    goh_export_rev "$root" "$head" "$head" || return 1
+    dest="$_goh_export"
     # This use, stamped: a truncate of the export's own empty `.goh-used` -- no spawn, and the
     # export's files and directory are never rewritten.
     : > "$dest/.goh-used" 2>/dev/null || true

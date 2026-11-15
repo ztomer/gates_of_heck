@@ -39,7 +39,10 @@
 # has passed; a refused commit's journal goes with its directory. tests/test_seed_refused.py.
 { # parse-guard -- bash reads this group whole before running it (tests/test_parse_guard.py)
 . "$(dirname "${BASH_SOURCE[0]}")/../lib/bash5.sh" && goh_bash5 "$@"
-. "$(dirname "${BASH_SOURCE[0]}")/_from_head.sh"; goh_from_head "${BASH_SOURCE[0]}" "$@"   # run HEAD, not the tree (C4)
+. "$(dirname "${BASH_SOURCE[0]}")/_from_head.sh"
+# shellcheck source=gates/_self_gate.sh
+. "$(dirname "${BASH_SOURCE[0]}")/_self_gate.sh"; goh_self_gate "${BASH_SOURCE[0]}" "$@"   # a goh commit: its own staged tree (GOH.SELFGATE)
+goh_from_head "${BASH_SOURCE[0]}" "$@"   # run HEAD, not the tree (C4)
 set -euo pipefail
 # git binds this hook to its repository (GIT_DIR, GIT_INDEX_FILE -- absolute from a linked
 # worktree), and a test suite the gate runs that builds a scratch repo would act on THIS one
@@ -59,6 +62,9 @@ goh_refuse_held "$root" "pre-commit: this commit" || exit 1   # a held repo is n
 . "$HERE/../lib/landed_only.sh"
 goh_refuse_unlanded_commit "$root" "pre-commit: this commit" || exit 1   # main moves only through land.sh (GOH.LANDONLY)
 gate="$root/tools/gate.sh"
+# A goh commit handed to its staged tree (GOH.SELFGATE) runs THAT tree's gate.sh, not the working
+# tree's, whose structural.sh would export the checkout's HEAD again.
+case "${GOH_SELF_GATED:-}" in *"|$(cd "$root" && pwd -P)") gate="$HERE/../tools/gate.sh" ;; esac
 structural="$HERE/structural.sh"
 # shellcheck source=lib/bench_lock.sh
 . "$HERE/../lib/bench_lock.sh"
