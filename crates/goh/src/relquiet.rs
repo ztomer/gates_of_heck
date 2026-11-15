@@ -24,11 +24,19 @@
 //!
 //! The one escape is `# release-quiet-ok: <reason>` on the line. The fix is `monitor`'s `step()`.
 //!
+//! A SCRIPT A RELEASE CALLS is read as the release is (GOH.RELQUIETCALLEES, `callees`): every
+//! repo-local shell source a release script runs, transitively, from `crate::grace::OVER_FROM`
+//! (2026-11-23; before it the scan reads release-named files alone, as the last release did). Its
+//! sites name the release that reaches it. The floor still counts the release-named files.
+//!
 //! WIRING: a structural step in EVERY repo. The estate's sites on the day it landed are seeded in
 //! `release_quiet_seed.json` (`crate::estate_seed`): seeded files warn, anything else is red.
 
 use crate::estate_seed::{self, Kind, Report, Sites};
 use std::path::Path;
+
+#[path = "relquiet_callees.rs"]
+pub mod callees;
 
 const TAG: &str = "[release_quiet]";
 const MARKER: &str = "release-quiet-ok:";
@@ -230,8 +238,18 @@ fn word(w: &str) -> &str {
     w.trim_matches('"')
 }
 
-/// The sites in the release scripts among `files`.
+/// The sites in the release scripts among `files`, and the scripts they call once the grace is over.
 fn sites(root: &Path, files: &[String], exclude: &str, staged: bool) -> Result<Sites, String> {
+    sites_at(root, files, (exclude, staged), crate::grace::over())
+}
+
+/// `sites` with the grace decided: `over` follows the release scripts' calls.
+fn sites_at(
+    root: &Path,
+    files: &[String],
+    (exclude, staged): (&str, bool),
+    over: bool,
+) -> Result<Sites, String> {
     let exclude = crate::steps::compile_exclude(exclude)?;
     let named: Vec<String> = files
         .iter()
@@ -240,13 +258,28 @@ fn sites(root: &Path, files: &[String], exclude: &str, staged: bool) -> Result<S
         .collect();
     let sources = crate::shellsrc::sources(root, &named, exclude.as_ref(), staged);
     crate::subject::record(&crate::subject::RELEASE_QUIET, sources.len());
+    let mut read: Vec<(String, String, String)> = sources
+        .iter()
+        .map(|(rel, text)| (rel.clone(), text.clone(), String::new()))
+        .collect();
+    if over && !sources.is_empty() {
+        let texts: std::collections::BTreeMap<String, String> =
+            crate::shellsrc::sources(root, files, exclude.as_ref(), staged)
+                .into_iter()
+                .collect();
+        let tops: Vec<String> = sources.iter().map(|(rel, _)| rel.clone()).collect();
+        for (callee, by) in callees::reachable(&tops, &texts) {
+            let text = texts[&callee].clone();
+            read.push((callee, text, format!(", in a script {by} runs")));
+        }
+    }
     let mut out = Sites::new();
-    for (rel, text) in &sources {
+    for (rel, text, via) in &read {
         let found: Vec<String> = scan_text(text)
             .into_iter()
             .map(|(n, src, step)| {
                 format!(
-                    "    {rel}:{n}: {}  -- {step} sends its output to /dev/null",
+                    "    {rel}:{n}: {}  -- {step} sends its output to /dev/null{via}",
                     estate_seed::clip(&src)
                 )
             })
@@ -363,6 +396,47 @@ brew update >/dev/null 2>&1
     fn a_continued_line_is_one_step_named_at_its_first_line() {
         let src = "true\n./install.sh --dev \\\n  --quiet >/dev/null || die x\n";
         assert_eq!(steps(src), vec![2]);
+    }
+
+    #[test]
+    fn a_quiet_step_in_a_script_the_release_calls_is_found_once_the_grace_is_over() {
+        // ZTL.RELQUIET (ztools 0967a0c): bin/ab_test hid `cargo test` from tools/release.sh.
+        let r = goh_testkit::repo_with(&[
+            (
+                "tools/release.sh",
+                "#!/bin/bash
+./bin/ab_test || exit 1
+",
+            ),
+            (
+                "bin/ab_test",
+                "#!/bin/bash
+cargo test --workspace >/dev/null
+",
+            ),
+            (
+                "bin/unrelated.sh",
+                "#!/bin/bash
+cargo test >/dev/null
+",
+            ),
+        ])
+        .expect("fixture");
+        let files: Vec<String> = ["tools/release.sh", "bin/ab_test", "bin/unrelated.sh"]
+            .map(String::from)
+            .to_vec();
+        let got = sites_at(r.path(), &files, ("", false), true).expect("scans");
+        assert_eq!(got.keys().collect::<Vec<_>>(), ["bin/ab_test"], "{got:?}");
+        assert!(
+            got["bin/ab_test"][0].contains("in a script tools/release.sh runs"),
+            "{got:?}"
+        );
+        let within = sites_at(r.path(), &files, ("", false), false).expect("scans");
+        assert_eq!(
+            within.len(),
+            0,
+            "within the grace the scan reads as the last release did"
+        );
     }
 
     #[test]
