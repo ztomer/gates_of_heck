@@ -249,3 +249,35 @@ fn the_queue_parses_statuses_and_refuses_a_malformed_file() {
     assert!(super::queue::parse("[]").is_err());
     assert!(super::queue::parse(r#"{"items":[{"id":1}]}"#).is_err());
 }
+
+/// GOH.ROADMAPBOLD: `koffee_big`'s roadmap held five bold-paragraph entries with no `Done when:`,
+/// which the reader counted as nothing (7 entries; 12 once they were headings).
+const BOLD_ENTRIES: &str = "# Roadmap\n\n## Phase 1 — now\n\n\
+**KB.HYG1 — a bold entry.** Text with no clause.\n\n\
+**KB.HYG2 — a bold entry with one.** Text.\nDone when: a test.\n\n\
+**Why:** a bold label with no id opens nothing.\n";
+
+#[test]
+fn a_bold_paragraph_entry_is_read_and_one_with_no_clause_is_red() {
+    let read = scan::read_in(BOLD_ENTRIES, true);
+    let ids: Vec<_> = read
+        .entries
+        .iter()
+        .map(|e| e.id.clone().unwrap_or_default())
+        .collect();
+    assert_eq!(ids, ["KB.HYG1", "KB.HYG2"]);
+    let findings: Vec<_> = read.findings.iter().map(|f| (f.rule, f.line)).collect();
+    assert_eq!(findings, [(Rule::NoDoneWhen, 5)]);
+}
+
+#[test]
+fn within_the_grace_a_bold_paragraph_is_read_as_the_release_read_it() {
+    let read = scan::read_in(BOLD_ENTRIES, false);
+    assert!(read.entries.is_empty(), "{:?}", read.entries);
+    let findings: Vec<_> = read.findings.iter().map(|f| (f.rule, f.line)).collect();
+    assert_eq!(
+        findings,
+        [(Rule::Orphan, 8)],
+        "only the clause anchor saw the entries"
+    );
+}

@@ -8,7 +8,10 @@
 //!     is not one; it holds them;
 //!   * an ENTRY is a top-level list item, or a deeper heading that opens with an id, inside a
 //!     phase, and runs to the next entry, heading or the end (a deeper heading with no id is a
-//!     section, and ends the phase's entries). It must open with an id -- `RT.WINCLOSE`, `P0.4`,
+//!     section, and ends the phase's entries). A BOLD PARAGRAPH that opens with an id
+//!     (`**KB.12 Title.** text`, a line that starts a paragraph) is an entry too (GOH.ROADMAPBOLD,
+//!     from `crate::grace::OVER_FROM`): `koffee_big` held five, none with a `Done when:`, that
+//!     the reader counted as nothing. It must open with an id -- `RT.WINCLOSE`, `P0.4`,
 //!     `H1` (a capital, then letters and digits, with a digit or a dot somewhere) or `ZoneWM`'s
 //!     dotted `0.15` -- and carry a `Done when:` clause;
 //!   * a `Done when:` clause that opens a line OUTSIDE every entry is a finding too: it is either
@@ -45,6 +48,7 @@ static JUSTIFIED: LazyLock<Regex> = LazyLock::new(|| re(r"<!--\s*roadmap-ok:\s*(
 static HEADING: LazyLock<Regex> = LazyLock::new(|| re(r"^(#{1,6})\s+(.*?)\s*#*\s*$"));
 static PHASE: LazyLock<Regex> = LazyLock::new(|| re(r"(?i)^(?:[\d.]+\s+)?phase\b"));
 static ITEM: LazyLock<Regex> = LazyLock::new(|| re(r"^(?:[-*+]|\d+[.)])\s+(.*)$"));
+static BOLD: LazyLock<Regex> = LazyLock::new(|| re(r"^(?:\*\*|__)(.+?)(?:\*\*|__)"));
 static LEAD: LazyLock<Regex> = LazyLock::new(|| re(r"^(?:\[[ xX]\]\s+)?[*_`~✓\s]*"));
 static ID: LazyLock<Regex> =
     LazyLock::new(|| re(r"^(?:[A-Z][A-Za-z0-9]*(?:[.\-][A-Za-z0-9]+)*|\d+(?:\.\d+)+)\b"));
@@ -203,6 +207,17 @@ fn status_first(line: &str) -> Option<String> {
     row.split('|').find_map(first)
 }
 
+/// The title of a bold-paragraph entry opening at line `i`: a paragraph's first line that opens
+/// with bold text carrying an id (`**KB.12 Title.** text`). `**Done when:**` and `**Why:**` carry
+/// none, and a bold line inside a paragraph opens nothing.
+fn bold_entry(lines: &[String], i: usize) -> Option<String> {
+    if i > 0 && !lines[i - 1].trim().is_empty() {
+        return None;
+    }
+    let title = BOLD.captures(&lines[i])?.get(1)?.as_str();
+    entry_id(title).map(|_| title.to_owned())
+}
+
 /// The heading level and text of a line, if it is an ATX heading.
 fn heading(line: &str) -> Option<(usize, &str)> {
     let c = HEADING.captures(line)?;
@@ -212,6 +227,13 @@ fn heading(line: &str) -> Option<(usize, &str)> {
 /// Read one roadmap's text.
 #[must_use]
 pub fn read(text: &str) -> Read {
+    read_in(text, crate::grace::over())
+}
+
+/// [`read`], with the bold-paragraph entry shape read (`bold`) or not: a new shape judges nothing
+/// before `crate::grace::OVER_FROM`.
+#[must_use]
+pub fn read_in(text: &str, bold: bool) -> Read {
     let raw_lines = crate::mdtext::splitlines(text);
     let lines = readable(text);
     let mut out = Read::default();
@@ -237,7 +259,7 @@ pub fn read(text: &str) -> Read {
             });
         }
     }
-    entries(&lines, &mut out);
+    entries(&lines, bold, &mut out);
     let joined = lines.join("\n");
     for c in QUEUE.captures_iter(&joined) {
         if let (Some(all), Some(id)) = (c.get(0), c.get(1)) {
@@ -250,7 +272,7 @@ pub fn read(text: &str) -> Read {
 }
 
 /// The phase grammar: entries, their ids and clauses, orphan clauses and the phase count.
-fn entries(lines: &[String], out: &mut Read) {
+fn entries(lines: &[String], bold: bool, out: &mut Read) {
     // (start line index, title) of the entry being read, and the level of the phase holding it.
     let mut phase: Option<usize> = None;
     let mut open: Option<(usize, String)> = None;
@@ -294,6 +316,9 @@ fn entries(lines: &[String], out: &mut Read) {
         if let Some(c) = ITEM.captures(line) {
             close(&mut open, i, &mut spans);
             open = Some((i, c.get(1).map_or("", |m| m.as_str()).to_owned()));
+        } else if let Some(title) = bold_entry(lines, i).filter(|_| bold) {
+            close(&mut open, i, &mut spans);
+            open = Some((i, title));
         }
     }
     close(&mut open, lines.len(), &mut spans);
