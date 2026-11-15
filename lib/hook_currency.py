@@ -15,6 +15,9 @@ never refused (BACKLOG 6.19). Every other stale hook DELEGATES -- it execs commi
 push_gate.sh, commit_msg.sh or sequencer_gate.sh, read at run time -- and is AGING: named with
 `goh hooks --refresh`, never refused. Judged by the hook's BYTES, never by a tag.
 
+Since GOH.CLASS.ROLLOUT every stock hook is one shim that `exec`s `$GOH/gates/hook.sh` (it
+DELEGATES), so a hook is stale only when the shim's ABI moves, and is then aging, never refused.
+
 Askers: scripts/hooks_refresh.py and scripts/estate_audit.py (`stale`), lib/ship_item.py
 (`refused`), and structural.sh through gates/_hook_currency.sh, which runs this file:
 

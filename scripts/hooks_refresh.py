@@ -21,9 +21,13 @@ The refresh is install.sh's own (GOH_SKIP_BUILD=1): it overwrites a hook only wh
 edited is never clobbered. A repo is set aside, named, when it is on hold, when its `.githooks`
 has uncommitted changes (the commit would sweep them in), when it is not on its default branch
 (origin/HEAD's, else main or master: GOH.HOOKSBRANCH), or when it lacks the tools/gate.sh and
-.gatesrc install.sh would otherwise write as starters. The commit carries `.githooks` only,
-through the repo's own hooks (the refreshed ones); one they refuse is undone, so the repo is left
-exactly as it was.
+.gatesrc install.sh would otherwise write as starters. The write and the commit go through
+lib/estate_commit.py: the commit carries `.githooks` only, through the repo's own hooks (the
+refreshed ones); a write outside `.githooks` is put back and named, and one the hooks refuse is
+undone, so the repo is left exactly as it was -- read again, never assumed (GOH.REFRESHLEAVES).
+
+Since GOH.CLASS.ROLLOUT a stock hook is a shim holding no logic (gates/hook.sh is read at run time),
+so a refresh is needed only when the shim itself changes: once per consumer, then never.
 """
 
 from __future__ import annotations
@@ -41,9 +45,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from tui.lib import counted, err, info, ok, warn
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
+import estate_commit
 import estate_registry
 import hook_currency
-import repo_hold
 
 GOH = Path(__file__).resolve().parent.parent
 MESSAGE = "chore: refresh goh's stock hooks ({hooks}) -- goh hooks --refresh"
@@ -80,65 +84,44 @@ def _tail(p: subprocess.CompletedProcess) -> str:
     return " | ".join(lines[-3:])
 
 
-def default_branch(repo: Path) -> str | None:
-    """The branch a refresh may commit on: origin/HEAD's, else the one of main/master it has."""
-    head = _git(repo, "symbolic-ref", "-q", "--short", "refs/remotes/origin/HEAD").stdout.strip()
-    if head.startswith("origin/"):
-        return head.removeprefix("origin/")
-    have = [b for b in ("main", "master") if _git(repo, "rev-parse", "-q", "--verify",
-                                                   f"refs/heads/{b}").returncode == 0]  # fmt: skip
-    return have[0] if len(have) == 1 else None
-
-
 def refresh(repo: Path, hooks: list[str]) -> tuple[bool, str]:
     """(refreshed, one line saying what happened)."""
-    if (hold := repo_hold.repo_hold(str(repo))) is not None:
-        return False, f"set aside: on hold (goh.{hold.key}), nothing in it may change"
     if not ((repo / "tools" / "gate.sh").is_file() and (repo / ".gatesrc").is_file()):
         return False, "set aside: no tools/gate.sh or .gatesrc (install.sh would write starters)"
-    # The commit lands on whatever is checked out: a repo mid-feature would carry a hooks commit on
-    # its feature branch (GOH.HOOKSBRANCH). Only its default branch is committed to.
-    branch = _git(repo, "symbolic-ref", "-q", "--short", "HEAD").stdout.strip()
-    want = default_branch(repo)
-    if not want or branch != want:
-        known = want or "none known: no origin/HEAD, and not one of main/master"
-        return (
-            False,
-            f"set aside: on {branch or 'a detached HEAD'}, not its default branch ({known})",
-        )
-    dirty = _git(repo, "status", "--porcelain", "--", ".githooks")
-    if dirty.returncode != 0 or dirty.stdout.strip():
-        return False, "set aside: .githooks has uncommitted changes (commit or drop them first)"
+    # On hold, off its default branch (GOH.HOOKSBRANCH), or with uncommitted `.githooks`: the
+    # door's own rules, shared with every writer into another repo.
+    if why := estate_commit.set_aside(repo, [".githooks"]):
+        return False, f"set aside: {why}"
     env = foreign_repo_env()
     env["GOH_SKIP_BUILD"] = "1"
     env["GOH_DIR"] = str(GOH)
-    # install.sh exits non-zero when it refused an EDITED hook; that is expected here, so the
-    # verdict is the re-read: no stale hook left.
-    inst = subprocess.run(
-        ["bash", str(GOH / "install.sh"), str(repo)],
-        capture_output=True,
-        text=True,
-        check=False,
-        env=env,
-        stdin=subprocess.DEVNULL,
+
+    def write() -> str | None:
+        # install.sh exits non-zero when it refused an EDITED hook; that is expected here, so the
+        # verdict is the re-read: no stale hook left.
+        inst = subprocess.run(
+            ["bash", str(GOH / "install.sh"), str(repo)],
+            capture_output=True,
+            text=True,
+            check=False,
+            env=env,
+            stdin=subprocess.DEVNULL,
+        )
+        left = hook_currency.stale(repo, GOH, foreign_repo_env())
+        return f"install.sh left {', '.join(left)} stale: {_tail(inst)}" if left else None
+
+    # One door writes and commits (lib/estate_commit.py): `.githooks` alone, through the repo's own
+    # hooks; anything install.sh wrote outside it is put back and named, and a refusal leaves the
+    # tree as it was -- said only after the status is read again (GOH.REFRESHLEAVES).
+    done, said = estate_commit.commit_paths(
+        repo, [".githooks"], MESSAGE.format(hooks=", ".join(hooks)), write
     )
-    left = hook_currency.stale(repo, GOH, foreign_repo_env())
-    if left:
-        return False, f"install.sh left {', '.join(left)} stale: {_tail(inst)}"
-    _git(repo, "add", "--", ".githooks")
-    if not _git(repo, "diff", "--cached", "--name-only", "--", ".githooks").stdout.strip():
+    if not done:
+        said = said.removeprefix("NOT committed: ")
+        return False, f"NOT refreshed: {said}"
+    if said == "nothing to commit":
         return True, "refreshed (nothing to commit)"
-    done = _git(
-        repo, "commit", "-q", "-m", MESSAGE.format(hooks=", ".join(hooks)), "--", ".githooks"
-    )
-    if done.returncode != 0:
-        # Put `.githooks` back as it was (it was clean above, so this drops only what install.sh
-        # wrote): a refusal must not leave another agent's tree dirty.
-        _git(repo, "restore", "--source=HEAD", "--staged", "--worktree", "--", ".githooks")
-        _git(repo, "clean", "-fdq", "--", ".githooks")
-        return False, f"NOT refreshed: its commit gate refused ({_tail(done)}); left as it was"
-    sha = _git(repo, "rev-parse", "--short", "HEAD").stdout.strip()
-    return True, f"refreshed {', '.join(hooks)} in {sha}"
+    return True, f"refreshed {', '.join(hooks)} {said.removeprefix('committed ')}"
 
 
 def main(argv: list[str] | None = None) -> int:

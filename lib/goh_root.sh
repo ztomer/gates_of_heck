@@ -11,10 +11,10 @@
 # checkout that made it), then the default checkout, says so on stderr (the process is stale and
 # should be restarted), and EXPORTS the repaired value, so whatever the caller starts agrees.
 #
-# ONE rule in three places: this function (copied VERBATIM into each stock hook in hooks/, which are
-# installed by copy and can source nothing before they have found goh), lib/goh_root.py, and the
-# native binary's `goh_root` (crates/goh/src/main.rs). tests/test_dead_goh_dir.py pins all three and
-# the hooks' copies. A GOH_DIR that exists is never touched.
+# ONE rule in three places: this function, lib/goh_root.py, and the native binary's `goh_root`
+# (crates/goh/src/main.rs). The stock hooks carry no copy since GOH.CLASS.ROLLOUT: the shim skips a
+# GOH_DIR with no gates/hook.sh in the same order, and gates/hook.sh says so and exports the one it
+# runs. tests/test_dead_goh_dir.py pins them. A GOH_DIR that exists is never touched.
 . "$(dirname "${BASH_SOURCE[0]}")/../lib/bash5.sh" || exit; goh_bash5 "$@"
 goh_dir_repair() {
     [ -n "${GOH_DIR:-}" ] && [ ! -d "$GOH_DIR" ] || return 0

@@ -1,7 +1,8 @@
 //! A `GOH_DIR` naming a REMOVED HEAD export is repaired before anything reads it (GOH.TRANSIENTDIR).
 //!
-//! The native third of one rule; `lib/goh_root.sh` (`goh_dir_repair`, also copied into every stock
-//! hook) and `lib/goh_root.py` are the others, and `tests/test_dead_goh_dir.py` pins all three.
+//! The native third of one rule; `lib/goh_root.sh` (`goh_dir_repair`) and `lib/goh_root.py` are the
+//! others (the stock hook shim copies none: `gates/hook.sh` names its fallback), and
+//! `tests/test_dead_goh_dir.py` pins them.
 
 use std::path::PathBuf;
 

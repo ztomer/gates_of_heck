@@ -46,6 +46,8 @@ pub enum Commands {
     Land(PassArgs),
     /// Name estate repos with stale stock hooks; `--refresh` fixes them (`hooks_refresh.py`)
     Hooks(PassArgs),
+    /// Name estate workflows pinning an older goh release; `--bump` moves them (`wf_pin.py`)
+    WfPin(PassArgs),
     /// Run a step under a ceiling; report what it left running (`lib/orphan_canary.py wrap`).
     Canary(CanaryArgs),
     /// A fix or perf commit names its Class and Siblings; a third instance ends the class

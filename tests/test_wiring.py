@@ -144,9 +144,12 @@ def test_hook_gate_resolution_is_self_hostable():
     a change to what a commit or push runs reaches every repo without a re-install (BACKLOG 6.7).
     The gate it names must exist HERE, or the hook is broken for every consumer and for this repo.
     (It used to resolve the emoji checker itself; that logic moved into commit_gate.sh.)"""
+    dispatch = (REPO_ROOT / "gates" / "hook.sh").read_text()  # the stock hook is a shim to it
     for hook, gate in (("pre-commit", "commit_gate.sh"), ("pre-push", "push_gate.sh")):
         text = (REPO_ROOT / "hooks" / hook).read_text()
-        assert f"/gates/{gate}" in text and "GOH" in text, f"{hook} does not delegate to {gate}"
+        assert '"$GOH/gates/hook.sh"' in text, f"{hook} is not the shim to gates/hook.sh"
+        arm = dispatch[dispatch.index(f"    {hook})") :].split(";;", 1)[0]
+        assert f'"$goh/gates/{gate}"' in arm, f"hook.sh's {hook} arm does not delegate to {gate}"
         assert (REPO_ROOT / "gates" / gate).exists(), gate
 
 

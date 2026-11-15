@@ -196,6 +196,7 @@ fn run_core(command: Commands) -> i32 {
         Commands::Lint(a) => house_script("lint", "tools/lint.py", &a.args),
         Commands::Land(a) => house_script("land", "tools/landq.py", &a.args),
         Commands::Hooks(a) => house_script("hooks", "scripts/hooks_refresh.py", &a.args),
+        Commands::WfPin(a) => house_script("wf-pin", "scripts/wf_pin.py", &a.args),
         Commands::BareOpen(a) => paths(a.exclude, |x| bareopen::run_command(a.staged, x)),
         Commands::LaunchApp(a) => launchapp::run_args(a),
         Commands::SourceTree => {

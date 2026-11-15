@@ -196,6 +196,9 @@ GOH_RELEASE_GATE="tools/gate.sh --full"
 # goh ship releases goh through its own kit (GOH.SHIPKIT): bump, cut, land, push, tag. It pushes.
 GOH_SHIP_RELEASE='tools/release_goh.sh {version}'
 GOH_SHIP_RELEASE_PUSHES=1
+# Then each consumer workflow's goh pin moves to the release just pushed (GOH.WFPIN): one commit per
+# repo through its own hooks, never a push of another repo.
+GOH_SHIP_INSTALL='tools/ship_install_goh.sh'
 # Its kit cuts CHANGELOG.md with changelog_cut.py, so goh ship asks that contract at start
 # (GOH.SHIPCHANGELOG).
 GOH_SHIP_CHANGELOG=cut

@@ -46,13 +46,9 @@ EXEMPT = {
     "lib/bash5.sh": "the guard itself",
     "tests/fixtures/rust_gate_legacy.sh": "a byte-frozen fixture of the pre-N3 rust gate",
 }
-HOOK = re.compile(r"^(?:\.githooks|hooks)/[^/]+$")
-# A hook is COPIED into consumers and finds goh through GOH_DIR, which may predate lib/bash5.sh: a
-# `.` of a missing file ends a non-interactive bash, and every commit was refused with no reason.
-HOOK_FORM = (
-    '[ ! -f "$GOH/lib/bash5.sh" ] || { . "$GOH/lib/bash5.sh" || exit; goh_bash5 "$@"; }'
-    "   # an older GOH has none"
-)
+# A stock hook is a POSIX `#!/bin/sh` shim holding no logic (GOH.CLASS.ROLLOUT): it is not bash, so
+# it is outside this scope, and gates/hook.sh -- the bash it runs -- carries the guard like any
+# other gate (tests/test_hook_shim.py pins the shim).
 OLD = Path("/bin/bash")
 
 
@@ -90,16 +86,13 @@ def findings(path: str, text: str) -> list[str]:
         if len(SOURCES.findall(s)) != len(CLOSED.findall(s)):
             return [f"{path}:{i}: sources lib/bash5.sh failing OPEN {OPEN_WHY}"]
         m = GUARD.search(s)
-        if m and HOOK.match(path) and s != HOOK_FORM:
-            return [f"{path}:{i}: a hook runs the guard only in its tolerant form: {HOOK_FORM}"]
         if m and path.startswith("tui/") and s != tui_form(m.group("src")):
             return [f"{path}:{i}: tui/ runs the guard only in its tolerant form"]
         if m:
             src = m.group("src")
-            want = "$GOH" if HOOK.match(path) else '$(dirname "${BASH_SOURCE[0]}")'
+            want = '$(dirname "${BASH_SOURCE[0]}")'
             up = os.path.relpath(".", os.path.dirname(path) or ".")
-            if not HOOK.match(path):
-                want += "" if up == "." else "/" + up
+            want += "" if up == "." else "/" + up
             return [] if src == want else [f"{path}:{i}: sources {src}/lib/bash5.sh, not {want}"]
         if not PRELUDE.match(s) or "$(" in s:
             return [f"{path}:{i}: runs before the bash 5 guard: {s[:60]}"]
@@ -121,22 +114,16 @@ def test_the_gate_sees_a_missing_or_late_guard():
     assert findings("tools/release-kit/x.sh", ok)[0].endswith(
         'not $(dirname "${BASH_SOURCE[0]}")/../..'
     )
-    hook = (
-        '#!/bin/bash\n{ # parse-guard\nset -euo pipefail\nGOH="${GOH_DIR:-x}"\n' + HOOK_FORM + "\n"
-    )
-    assert findings("hooks/pre-push", hook) == []
-    bare = hook.replace(HOOK_FORM, '. "$GOH/lib/bash5.sh" || exit; goh_bash5 "$@"')
-    assert "tolerant form" in findings("hooks/pre-push", bare)[0]
-    assert "failing OPEN" in findings("hooks/pre-push", hook.replace(" || exit;", " &&"))[0]
     tui = "# x\n" + tui_form('$(dirname "${BASH_SOURCE[0]}")/..') + "\n"
     assert findings("tui/lib.sh", tui) == []
     assert "tolerant form" in findings("tui/lib.sh", ok)[0]
-    assert findings("hooks/pre-push", hook.replace('GOH="${GOH_DIR:-x}"', 'GOH="$(pwd)"'))
 
 
 def test_every_tracked_bash_file_runs_the_guard_first():
     files = _scope()
-    assert len(files) >= 90, files  # 92 on 2026-11-12: a scope that stopped reading is red
+    # 92 on 2026-11-12; 89 on 2026-11-15, when the ten hook copies became the POSIX shim (not
+    # bash) and gates/hook.sh joined: a scope that stopped reading is red
+    assert len(files) >= 85, files
     bad = [b for f in files for b in findings(f, (REPO_ROOT / f).read_text(errors="replace"))]
     assert not bad, "bash 5 guard missing or late (docs/contracts.md section 28):\n" + "\n".join(
         bad
@@ -169,7 +156,7 @@ def _guard_forms() -> dict[tuple[str, str], str]:
 
 def test_a_missing_guard_stops_every_form(tmp_path):
     """Each distinct guard line in the tree, run from its own directory in a goh with no
-    lib/bash5.sh (the tolerant hook and tui/ forms: one that cannot be read), stops the script
+    lib/bash5.sh (the tolerant tui/ form: one that cannot be read), stops the script
     non-zero naming the file; what follows the guard never runs."""
     forms = _guard_forms()
     assert len(forms) >= 10, forms  # one per directory depth and tolerant form; 0 = blind

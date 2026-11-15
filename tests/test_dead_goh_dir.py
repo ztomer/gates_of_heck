@@ -9,19 +9,20 @@ commit gate at .../head/c06bc794..."). Two halves, both tested here:
 
   * the escape: the release kit's launch hands the app launchd's login environment, not its own;
   * the readers: a GOH_DIR that is not a directory resolves to GOH_LIVE_ROOT, then the default
-    checkout, through ONE rule (lib/goh_root.sh; copied verbatim into each stock hook, which
-    cannot source anything; lib/goh_root.py; the native binary's `goh_root`).
+    checkout, through ONE rule (lib/goh_root.sh; lib/goh_root.py; the native binary's
+    `goh_root`). A stock hook is a shim that carries none of it (GOH.CLASS.ROLLOUT): it skips a
+    GOH_DIR with no gates/hook.sh in the same order, and gates/hook.sh names the fallback.
 """
 
 from __future__ import annotations
 
 import os
-import re
 import subprocess
 import sys
 from pathlib import Path
 
 import pytest
+from _hook_goh import hook_goh
 from conftest import REPO_ROOT, hermetic_env, native_goh_path
 from env_probe import probe_sh, read_probe
 
@@ -37,10 +38,9 @@ RUNNER = 'echo "ran $0 GOH_DIR=${GOH_DIR:-}" > "$(dirname "$0")/../ran"\n'
 
 def _fake_goh(root: Path) -> Path:
     """A gates_of_heck with each hook's runner: it records which copy ran and the GOH_DIR it saw."""
-    (root / "gates").mkdir(parents=True)
+    hook_goh(root)
     for runner in set(HOOKS.values()):
         (root / "gates" / runner).write_text("#!/usr/bin/env bash\n" + RUNNER)
-    (root / "gates" / "_git_env.sh").write_text("goh_hook_unbind() { :; }\n")
     return root
 
 
@@ -71,21 +71,13 @@ def test_a_stock_hook_runs_under_a_dead_export(tmp_path, repo, hook, via):
     assert str(dead) in r.stderr, "the fallback is silent: nobody learns the process is stale"
 
 
-def _function(text: str) -> str:
-    m = re.search(r"^goh_dir_repair\(\) \{\n.*?^\}\n", text, re.DOTALL | re.MULTILINE)
-    assert m, "no goh_dir_repair() in it"
-    return m.group(0)
-
-
-def test_every_stock_hook_carries_the_one_rule_verbatim():
-    """Hooks are COPIED into each repo and source nothing before they find goh, so each carries
-    the rule; this keeps every copy the lib's, so the rule has one definition."""
-    rule = _function((REPO_ROOT / "lib" / "goh_root.sh").read_text())
+def test_no_stock_hook_carries_the_rule():
+    """Hooks are COPIED into each repo, so a rule in one is a copy that goes stale: the shim
+    holds only the search order, and the repair is said by gates/hook.sh, read at run time."""
     for hook in HOOKS:
         body = (REPO_ROOT / "hooks" / hook).read_text()
-        assert _function(body) == rule, f"hooks/{hook} drifted from lib/goh_root.sh"
-        call = body.index('goh_dir_repair\nGOH="${GOH_DIR:-$GOH}"\n')
-        assert body.index("goh_bash5") < call < body.index("/gates/"), hook
+        assert "goh_dir_repair" not in body, f"hooks/{hook} carries a copy of the rule"
+        assert 'exec bash "$GOH/gates/hook.sh" "$0" "$@"' in body, hook
 
 
 def test_a_live_goh_dir_is_left_alone(tmp_path):

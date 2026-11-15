@@ -219,7 +219,10 @@ def test_a_delete_is_not_gated(tmp_path):
 
 
 def test_the_stock_hook_delegates_to_push_gate():
-    hook = (REPO_ROOT / "hooks" / "pre-push").read_text()
+    # The stock hook is the shim; what pre-push runs is gates/hook.sh's pre-push arm.
+    assert '"$GOH/gates/hook.sh"' in (REPO_ROOT / "hooks" / "pre-push").read_text()
+    text = (REPO_ROOT / "gates" / "hook.sh").read_text()
+    hook = text[text.index("    pre-push)") :].split(";;", 1)[0]
     assert "push_gate.sh" in hook and "gate.sh --full" not in hook, (
         "the hook must run the pushed commit through push_gate.sh, not the working tree through gate.sh"
     )

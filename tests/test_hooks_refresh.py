@@ -222,3 +222,59 @@ def test_the_default_branch_is_the_remotes_when_it_names_one(tmp_path):
     _git(repo, "symbolic-ref", "refs/remotes/origin/HEAD", "refs/remotes/origin/trunk")
     r = _run(tmp_path / "estate", tmp_path, "--refresh", "--except", str(e["kept"]))
     assert "stale: refreshed" in r.stdout + r.stderr, r.stdout + r.stderr
+
+
+# The starter gate.sh install.sh wrote before GOH.CLASS.ROLLOUT: its stock GOH line is what made
+# install.sh insert goh_dir_repair (2026-11-14), so a refresh of it is the case that left 14 repos
+# with an uncommitted tools/gate.sh. The fixture GATE above never carried the line, which is how the
+# suite stayed green over it.
+STOCK_LINE_GATE = (
+    "#!/usr/bin/env bash\nset -euo pipefail\n"
+    'GOH="${GOH_DIR:-${GOH:-$HOME/Projects/gates_of_heck}}"\n'
+    '"$GOH/gates/structural.sh" "$@"\n'
+)
+
+
+def _status(repo: Path) -> str:
+    return _git(repo, "status", "--porcelain", "--untracked-files=all")
+
+
+def _stock_line_gate(repo: Path) -> None:
+    (repo / "tools" / "gate.sh").write_text(STOCK_LINE_GATE)
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "-q", "--no-verify", "-m", "the starter gate.sh, stock GOH line")
+
+
+def test_a_refresh_leaves_no_tracked_file_dirty(tmp_path):
+    """GOH.CLASS.ROLLOUT: a refresh writes only what it commits. Every repo it touched is clean,
+    and the repo's own tools/gate.sh is byte for byte what it committed."""
+    e = _estate(tmp_path)
+    for name in ("stale", "edited", "current"):
+        _stock_line_gate(e[name])
+    r = _run(tmp_path / "estate", tmp_path, "--refresh", "--except", str(e["kept"]))
+    out = r.stdout + r.stderr
+    assert "stale: refreshed" in out, out
+    for name in ("stale", "edited", "current"):
+        assert _status(e[name]) == "", f"{name}: {_status(e[name])}\n{out}"
+        assert (e[name] / "tools" / "gate.sh").read_text() == STOCK_LINE_GATE, name
+
+
+def test_a_refused_refresh_leaves_status_exactly_as_before(tmp_path):
+    """GOH.REFRESHLEAVES: the commit gate refuses, and git status -- including another agent's
+    uncommitted edit to tools/gate.sh and an untracked file -- is byte for byte what it was."""
+    e = _estate(tmp_path)
+    repo = e["stale"]
+    _stock_line_gate(repo)
+    (repo / "tools" / "commit_msg.sh").write_text("#!/bin/bash\nexit 1\n")
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "-q", "--no-verify", "-m", "a commit-msg rule that refuses all")
+    wip = STOCK_LINE_GATE + "# another agent's uncommitted line\n"
+    (repo / "tools" / "gate.sh").write_text(wip)
+    (repo / "notes.txt").write_text("untracked\n")
+    before = _status(repo)
+    r = _run(tmp_path / "estate", tmp_path, "--refresh", "--except", str(e["kept"]))
+    out = r.stdout + r.stderr
+    assert r.returncode == 1 and "NOT refreshed" in out and "left as it was" in out, out
+    assert _status(repo) == before, out
+    assert (repo / "tools" / "gate.sh").read_text() == wip, out
+    assert (repo / ".githooks" / "pre-commit").read_bytes() == _old_pre_commit()
