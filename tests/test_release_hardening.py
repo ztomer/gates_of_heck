@@ -13,13 +13,12 @@ release.sh (gh release create ran against an unpushed tag; no skip reasons
 printed). They went green only after the fix landed in the same commit.
 """
 
-import os
 import subprocess
 import time
 from pathlib import Path
 
 import pytest
-from conftest import FAKE_GH, REPO_ROOT
+from conftest import FAKE_GH, REPO_ROOT, hermetic_env
 from test_release_kit import add_github_origin
 
 # Same xdist group as test_release_kit.py (see its comment): the
@@ -56,8 +55,7 @@ def gh_calls(kit: dict) -> str:
 
 
 def release_env(kit: dict) -> dict:
-    env = dict(os.environ)
-    env["GOH_DIR"] = str(REPO_ROOT)
+    env = hermetic_env()  # no caller GOH_* (GOH.LIVEROOTLEAK); GOH_DIR is this checkout
     env["PATH"] = f"{kit['bin']}:{env['PATH']}"
     env["GH_STATE"] = str(kit["gh_state"])
     env["GH_LOG"] = str(kit["gh_log"])

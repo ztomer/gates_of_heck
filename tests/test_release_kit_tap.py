@@ -8,11 +8,10 @@ calls it, and so can any product's own release script.
 
 from __future__ import annotations
 
-import os
 import subprocess
 from pathlib import Path
 
-from conftest import REPO_ROOT
+from conftest import REPO_ROOT, hermetic_env
 from test_release_kit import commit_all, kit, run_release, sh, tap  # noqa: F401  (fixtures)
 
 BUMP = REPO_ROOT / "tools" / "release-kit" / "tap_bump.sh"
@@ -75,8 +74,8 @@ def test_a_products_own_release_script_calls_the_step_directly(kit, tap):
         "--artifact",
         str(_artifact(kit)),
     ]
-    env = dict(os.environ, GOH_DIR=str(REPO_ROOT), GIT_AUTHOR_NAME="t", GIT_AUTHOR_EMAIL="t@t",
-               GIT_COMMITTER_NAME="t", GIT_COMMITTER_EMAIL="t@t")  # fmt: skip
+    env = hermetic_env(GIT_AUTHOR_NAME="t", GIT_AUTHOR_EMAIL="t@t", GIT_COMMITTER_NAME="t",
+                       GIT_COMMITTER_EMAIL="t@t")  # fmt: skip
     r = subprocess.run(
         ["bash", str(BUMP), *args],
         capture_output=True,

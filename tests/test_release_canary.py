@@ -106,7 +106,7 @@ def _canary(e: dict, *extra: str, head: Path | None = None) -> subprocess.Comple
         text=True,
         check=False,
         stdin=subprocess.DEVNULL,
-        env={**os.environ, "GOH_VERDICT_DIR": str(e["root"].parent / "verdicts")},
+        env=hermetic_env(GOH_VERDICT_DIR=str(e["root"].parent / "verdicts")),
     )
 
 

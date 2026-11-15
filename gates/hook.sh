@@ -11,7 +11,9 @@
 # with no refresh.
 #
 # The shim tried GOH_DIR (or GOH), GOH_LIVE_ROOT, the house default, then the repo itself, and ran
-# the first that has this file. When that is not the GOH_DIR it was handed -- a pruned HEAD export
+# the first that has this file; for a dead GOH_DIR that was no export, GOH_LIVE_ROOT is not its to
+# take, and the copy lib/goh_root.sh names runs instead (GOH.LIVEROOTLEAK). When that is not the
+# GOH_DIR it was handed -- a pruned HEAD export
 # a long-lived process inherited, or a goh older than this file -- it is said once on stderr (the
 # process is stale; restart it) and GOH_DIR is EXPORTED at this checkout, so every gate the hook
 # starts agrees with the one that judged it. Like every gate entry point it then re-runs from HEAD's
@@ -21,12 +23,24 @@ _goh_d=${BASH_SOURCE[0]%/*}; [ "$_goh_d" != "${BASH_SOURCE[0]}" ] || _goh_d=.; .
 set -euo pipefail
 # shellcheck source=tui/lib.sh
 . "$(dirname "${BASH_SOURCE[0]}")/../tui/lib.sh"
+# shellcheck source=lib/goh_root.sh
+. "$(dirname "${BASH_SOURCE[0]}")/../lib/goh_root.sh"   # goh_dir_repaired: the one GOH_LIVE_ROOT rule
 # Said by the live copy, before the trampoline re-runs this from HEAD's export with GOH_DIR at it.
 if [ -n "${GOH_DIR:-}" ] && [ ! -f "$GOH_DIR/gates/hook.sh" ]; then
     here="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
     if [ -d "$GOH_DIR" ]; then
         warn "gates_of_heck: GOH_DIR=$GOH_DIR predates gates/hook.sh -- using $here"
     else
+        # The shim tried GOH_LIVE_ROOT for ANY dead GOH_DIR (its bytes carry no rule). It is an
+        # export's (lib/goh_root.sh): for a GOH_DIR that was none -- a removed lane worktree -- it
+        # is whatever an ancestor's export leaked, so the checkout the rule names judges instead
+        # (else the shim's last resort, this repo when it IS gates_of_heck), told once by that copy.
+        fix="$(goh_dir_repaired)"
+        [ -n "$fix" ] || fix="$(cd "${1%/*}/.." 2>/dev/null && pwd || true)"
+        if [ -n "$fix" ] && [ -f "$fix/gates/hook.sh" ] \
+            && [ "$(cd "$fix" && pwd -P)" != "$(cd "$here" && pwd -P)" ]; then
+            exec bash "$fix/gates/hook.sh" "$@"
+        fi
         warn "gates_of_heck: GOH_DIR=$GOH_DIR no longer exists (a pruned HEAD export this process inherited; restart it) -- using $here"
     fi
     export GOH_DIR="$here"

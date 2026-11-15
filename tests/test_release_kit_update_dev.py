@@ -10,7 +10,7 @@ import os
 import subprocess
 from pathlib import Path
 
-from conftest import REPO_ROOT
+from conftest import REPO_ROOT, hermetic_env
 
 UPDATE_DEV = REPO_ROOT / "tools" / "release-kit" / "update_dev.sh"
 
@@ -24,8 +24,7 @@ BUILD_CMD = (
 
 def run_update_dev(workdir: Path, bin_dir: Path | None, *args: str) -> subprocess.CompletedProcess:
     dest = workdir / "dest"
-    env = dict(os.environ)
-    env["GOH_DIR"] = str(REPO_ROOT)
+    env = hermetic_env()  # no caller GOH_* (GOH.LIVEROOTLEAK); GOH_DIR is this checkout
     env["UPDATE_DEV_DEST"] = str(dest)
     env["APP_NAME"] = "Demo.app"
     env["BUILD_CMD"] = BUILD_CMD

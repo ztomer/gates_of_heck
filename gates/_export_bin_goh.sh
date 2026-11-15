@@ -17,7 +17,10 @@ if [ ! -f "$_goh_export/.goh-head" ]; then
     echo "✗ goh: $0 is an export's bin/goh, and $_goh_export is no export (.goh-head)" >&2
     exit 2
 fi
-if [ -z "${GOH_LIVE_ROOT:-}" ] || [ ! -e "$GOH_LIVE_ROOT/.git" ]; then
+# shellcheck source=lib/goh_root.sh
+. "$_goh_export/lib/goh_root.sh"   # goh_live_root_for: the one rule (this IS an export)
+GOH_LIVE_ROOT="$(goh_live_root_for "$_goh_export")"
+if [ -z "$GOH_LIVE_ROOT" ] || [ ! -e "$GOH_LIVE_ROOT/.git" ]; then
     GOH_LIVE_ROOT="$(cat "$_goh_export/.goh-live" 2>/dev/null || true)"
 fi
 if [ -z "$GOH_LIVE_ROOT" ] || [ ! -e "$GOH_LIVE_ROOT/.git" ]; then

@@ -57,14 +57,45 @@ GITCONFIG = "[user]\n\tname = goh suite\n\temail = suite@goh.test\n[init]\n\tdef
 # A ship's run inputs (tools/ship.py exports them to its release step, whose gate runs this suite)
 # are the CALLER's, never a test's. GOH.SHIPSUMMARY made release.sh title its cut with
 # GOH_SHIP_SUMMARY, and v0.97.0's own release gate went red: four fixture kits cut their CHANGELOG
-# under the real release's summary (test_changelog_cut, test_release_kit_version). Dropped at entry,
-# so a ship variable added later is contained without anyone remembering it.
+# under the real release's summary (test_changelog_cut, test_release_kit_version). Dropped at every
+# entry, a nested one too.
 SHIP_PREFIX = "GOH_SHIP_"
+
+# EVERY GOH_* the caller set is the caller's (GOH.LIVEROOTLEAK). The same ship's export leaked
+# GOH_LIVE_ROOT into v0.119.0's release suite and every gate a test ran there resolved main's goh;
+# a push gate's GOH_CHANGE_BASE turned a red arm green (GOH.RUNNERPIN); a parent gate's
+# GOH_RESOLVED_BIN answers for a binary this tree did not build. Dropping by name contained one
+# variable at a time, so a fresh entry drops them ALL and keeps only these, the gate's declared
+# inputs to this suite:
+CALLER_INPUTS = (
+    # tools/pytest.sh, this suite's own runner, resolved the house interpreter this pytest IS
+    # (lib/house_python.sh); kept, every child agrees with it instead of searching again.
+    "GOH_PY",
+    "GOH_PY_OK",
+    # The coverage gate's external pass (GOH_COV_RUST_EXTERNAL) hands the suite its INSTRUMENTED
+    # goh (conftest.native_goh); dropped, the suite builds its own and the crate's coverage loses
+    # the suite's share.
+    "GOH_TEST_BIN",
+    "GOH_COVERAGE_BIN_DIR",
+    # gates/staged_guards.sh marks its run of the staged guards (tests/_drift_guard.py).
+    "GOH_STAGED_GUARD_RUN",
+)
+# What the suite sets for itself, after the drop: GOH_DIR (below, its own checkout -- unset, the
+# binary judged ~/Projects/gates_of_heck's checkers, D.GOH1), GOH_GRACE (below), GOH_LIVE
+# (conftest), GOH_ESTATE_STATE (conftest's session fixture) and the private lock and cache roots
+# (host_locks.py, per test).
+SUITE_ROOT = str(Path(__file__).resolve().parent.parent)
 
 
 def _drop_ship_inputs() -> None:
     for name in [k for k in os.environ if k.startswith(SHIP_PREFIX)]:
         del os.environ[name]
+
+
+def _drop_caller_goh() -> None:
+    for name in [k for k in os.environ if k.startswith("GOH_") and k not in CALLER_INPUTS]:
+        del os.environ[name]
+    os.environ["GOH_DIR"] = SUITE_ROOT
 
 
 def _enter() -> None:
@@ -73,6 +104,7 @@ def _enter() -> None:
         MARKER
     ):  # a nested run (an xdist worker, a suite a test starts) keeps its own
         return
+    _drop_caller_goh()
     real = Path(REAL_HOME)
     keep = {
         "CARGO_HOME": real / ".cargo",

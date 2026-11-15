@@ -310,11 +310,12 @@ pub const MAX_REPORT_HITS: usize = 200;
 /// that repository's. goh's own hooks run HEAD's goh from one, and every root-keyed seed entry read
 /// as another repository's (GOH.HOOKSEED; ad80028 was committed with `GOH_LIVE=1`). An export
 /// answers from the `.goh-root` the export wrote, else from the live checkout it was cut from
-/// (`GOH_LIVE_ROOT`), never from git in the export.
+/// (`GOH_LIVE_ROOT`, read through the one rule, `goh_dir::live_root_for`), never from git in the
+/// export.
 #[must_use]
 pub fn root_commit(root: &Path) -> Option<String> {
     if root.join(".goh-head").is_file() {
-        let live = std::env::var_os("GOH_LIVE_ROOT").map(std::path::PathBuf::from);
+        let live = crate::goh_dir::live_root_for(root);
         return export_root(root, live.as_deref());
     }
     git_root_commit(root)

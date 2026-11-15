@@ -8,10 +8,11 @@ session carried another, and every commit from it was refused by pre-commit ("no
 commit gate at .../head/c06bc794..."). Two halves, both tested here:
 
   * the escape: the release kit's launch hands the app launchd's login environment, not its own;
-  * the readers: a GOH_DIR that is not a directory resolves to GOH_LIVE_ROOT, then the default
-    checkout, through ONE rule (lib/goh_root.sh; lib/goh_root.py; the native binary's
-    `goh_root`). A stock hook is a shim that carries none of it (GOH.CLASS.ROLLOUT): it skips a
-    GOH_DIR with no gates/hook.sh in the same order, and gates/hook.sh names the fallback.
+  * the readers: a GOH_DIR that is not a directory resolves to its GOH_LIVE_ROOT when it was an
+    export (tests/test_live_root_rule.py), then the default checkout, through ONE rule
+    (lib/goh_root.sh; lib/goh_root.py; the native binary's `goh_root`). A stock hook is a shim
+    that carries none of it (GOH.CLASS.ROLLOUT): it skips a GOH_DIR with no gates/hook.sh in the
+    same order, and gates/hook.sh applies the rule and names the fallback.
 """
 
 from __future__ import annotations
@@ -51,8 +52,11 @@ def test_a_stock_hook_runs_under_a_dead_export(tmp_path, repo, hook, via):
     if via == "GOH_LIVE_ROOT":
         live = _fake_goh(tmp_path / "live")
     (repo / "msg").write_text("x\n")
-    dead = tmp_path / "cache" / "goh" / "head" / ("c06bc794" * 5)
-    env = hermetic_env(drop_git=True, HOME=str(tmp_path / "home"), GOH_DIR=str(dead))
+    cache = tmp_path / "cache" / "goh" / "head"
+    dead = cache / ("c06bc794" * 5)
+    env = hermetic_env(
+        drop_git=True, HOME=str(tmp_path / "home"), GOH_DIR=str(dead), GOH_HEAD_CACHE=str(cache)
+    )
     env.pop("GOH_LIVE", None)
     if via == "GOH_LIVE_ROOT":
         env["GOH_LIVE_ROOT"] = str(live)
@@ -69,6 +73,29 @@ def test_a_stock_hook_runs_under_a_dead_export(tmp_path, repo, hook, via):
     ran = (live / "ran").read_text()
     assert ran == f"ran {live}/gates/{HOOKS[hook]} GOH_DIR={live}\n", ran
     assert str(dead) in r.stderr, "the fallback is silent: nobody learns the process is stale"
+
+
+@pytest.mark.parametrize("hook", ["pre-commit", "pre-push"])
+def test_a_stock_hook_never_takes_a_stray_live_root(tmp_path, repo, hook):
+    """The shim tries GOH_LIVE_ROOT for ANY dead GOH_DIR (its bytes are an ABI, and carry no rule);
+    gates/hook.sh applies the one rule (lib/goh_root.sh): a GOH_DIR that was no export -- a removed
+    lane worktree -- never takes the live root an ancestor's export leaked (GOH.LIVEROOTLEAK)."""
+    default = _fake_goh(tmp_path / "home" / "Projects" / "gates_of_heck")
+    stray = _fake_goh(tmp_path / "stray")
+    (repo / "msg").write_text("x\n")
+    gone = tmp_path / "removed-lane"
+    env = hermetic_env(drop_git=True, HOME=str(tmp_path / "home"), GOH_DIR=str(gone),
+                       GOH_LIVE_ROOT=str(stray), GOH_HEAD_CACHE=str(tmp_path / "head"))  # fmt: skip
+    env.pop("GOH_LIVE", None)
+    r = subprocess.run(
+        ["bash", str(REPO_ROOT / "hooks" / hook), "msg"],
+        cwd=repo, env=env, capture_output=True, text=True, stdin=subprocess.DEVNULL, check=False,
+    )  # fmt: skip
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert not (stray / "ran").exists(), "the stray live root judged the commit"
+    ran = (default / "ran").read_text()
+    assert ran == f"ran {default}/gates/{HOOKS[hook]} GOH_DIR={default}\n", ran
+    assert str(gone) in r.stderr, "the fallback is silent: nobody learns the process is stale"
 
 
 def test_no_stock_hook_carries_the_rule():
@@ -103,7 +130,8 @@ def test_the_python_reader_resolves_a_dead_export(tmp_path, monkeypatch):
     finally:
         sys.path.pop(0)
     live = _fake_goh(tmp_path / "live")
-    monkeypatch.setenv("GOH_DIR", str(tmp_path / "gone"))
+    monkeypatch.setenv("GOH_HEAD_CACHE", str(tmp_path / "head"))
+    monkeypatch.setenv("GOH_DIR", str(tmp_path / "head" / "gone"))
     monkeypatch.setenv("GOH_LIVE_ROOT", str(live))
     assert goh_root.goh_root() == str(live)
     hold = repo_hold.Hold(root="/r", key="archived", value="why")
@@ -113,7 +141,8 @@ def test_the_python_reader_resolves_a_dead_export(tmp_path, monkeypatch):
 def test_the_native_binary_runs_under_a_dead_export(tmp_path):
     """`goh agent-stalls` reads `$GOH_DIR/lib/house_python.sh`: under a dead export it found
     none. The binary re-runs itself with GOH_DIR repaired, so what it starts sees the live one."""
-    env = hermetic_env(GOH_DIR=str(tmp_path / "gone"), GOH_LIVE_ROOT=str(REPO_ROOT))
+    env = hermetic_env(GOH_DIR=str(tmp_path / "gone"), GOH_LIVE_ROOT=str(REPO_ROOT),
+                       GOH_HEAD_CACHE=str(tmp_path))  # fmt: skip
     r = subprocess.run(
         [str(native_goh_path()), "agent-stalls", "--help"],
         env=env,

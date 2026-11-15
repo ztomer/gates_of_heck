@@ -17,14 +17,13 @@ bytes) and `test_release_kit_update_dev.py` (the dev-machine install). Neither s
 with a real-release run, so neither carries the xdist group below.
 """
 
-import os
 import subprocess
 from pathlib import Path
 
 import pytest
 
 # Same xdist group as test_release_hardening.py: its mid-run-edit test corrupts release.sh on purpose.
-from conftest import FAKE_GH, REPO_ROOT
+from conftest import FAKE_GH, REPO_ROOT, hermetic_env
 
 RELEASE = REPO_ROOT / "tools" / "release-kit" / "release.sh"
 
@@ -110,8 +109,7 @@ def kit(tmp_path: Path) -> dict:
 def run_release(
     kit: dict, *args: str, gate: str | None = "true", env_extra: dict | None = None
 ) -> subprocess.CompletedProcess:
-    env = dict(os.environ)
-    env["GOH_DIR"] = str(REPO_ROOT)
+    env = hermetic_env()  # no caller GOH_* (GOH.LIVEROOTLEAK); GOH_DIR is this checkout
     env["PATH"] = f"{kit['bin']}:{env['PATH']}"
     env["GH_STATE"] = str(kit["gh_state"])
     env["GH_LOG"] = str(kit["gh_log"])

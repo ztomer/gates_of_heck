@@ -36,6 +36,8 @@ _goh_d=${BASH_SOURCE[0]%/*}; [ "$_goh_d" != "${BASH_SOURCE[0]}" ] || _goh_d=.; .
 . "$(dirname "${BASH_SOURCE[0]}")/_git_env.sh"
 # shellcheck source=lib/house_python.sh
 . "${BASH_SOURCE[0]%/*}/../lib/house_python.sh" || exit 1   # GOH_PY: the house interpreter, never PATH's first python3 (G2d)
+# shellcheck source=lib/goh_root.sh
+. "${BASH_SOURCE[0]%/*}/../lib/goh_root.sh"   # goh_head_cache: where exports live, one definition
 
 # goh_path_front <VAR> <dir> -- export VAR with <dir> FIRST and nowhere else (G2f). A prepend that
 # does not look first grows by one copy per nested gate entry, and PYTHONPATH is part of every
@@ -56,7 +58,7 @@ goh_path_front() {
 goh_export_rev() {
     local root="$1" rev="$2" history="$3" cache dest tmp
     _goh_export=""
-    cache="${GOH_HEAD_CACHE:-${XDG_CACHE_HOME:-$HOME/.cache}/goh/head}"
+    cache="$(goh_head_cache)"   # lib/goh_root.sh: the rule that knows a pruned export reads it too
     dest="$cache/$rev"
     . "$(dirname "${BASH_SOURCE[0]}")/../lib/suite_cache_guard.sh"
     goh_suite_cache_ok "$cache" "the head export cache" || exit 2
