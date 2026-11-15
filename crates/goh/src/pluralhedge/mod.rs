@@ -90,13 +90,30 @@ fn sites(root: &Path, files: &[String], exclude: &str, staged: bool) -> Result<S
     Ok(out)
 }
 
-/// The verdict over `files`: `(exit code, stdout, stderr)`.
-fn judge(root: &Path, files: &[String], exclude: &str, staged: bool) -> (i32, String, String) {
+/// The verdict over `files`: `(exit code, stdout, stderr)`. `all` lists every seeded site.
+fn judge(
+    root: &Path,
+    files: &[String],
+    exclude: &str,
+    staged: bool,
+    all: bool,
+) -> (i32, String, String) {
     use goh_tui::ERR;
-    let seed = match estate_seed::load(root, KIND, staged) {
-        Ok(s) => s,
-        Err(m) => return (2, String::new(), format!("{ERR} {TAG} {m}\n")),
-    };
+    match estate_seed::load(root, KIND, staged) {
+        Ok(seed) => judge_seeded(root, files, (exclude, staged), &seed, all),
+        Err(m) => (2, String::new(), format!("{ERR} {TAG} {m}\n")),
+    }
+}
+
+/// `judge` over a loaded `seed`.
+fn judge_seeded(
+    root: &Path,
+    files: &[String],
+    (exclude, staged): (&str, bool),
+    seed: &estate_seed::Seed,
+    all: bool,
+) -> (i32, String, String) {
+    use goh_tui::ERR;
     let found = match sites(root, files, exclude, staged) {
         Ok(s) => s,
         Err(m) => return (2, String::new(), format!("{ERR} {TAG} {m}\n")),
@@ -108,18 +125,18 @@ fn judge(root: &Path, files: &[String], exclude: &str, staged: bool) -> (i32, St
         fix: FIX,
         ok: "every count in a string meets its noun".to_string(),
     };
-    estate_seed::verdict(root, staged, KIND, &seed, &found, &report)
+    estate_seed::verdict_listed(root, staged, KIND, seed, &found, &report, all)
 }
 
-/// `goh plural-hedge [--staged] [--exclude RE]`.
+/// `goh plural-hedge [--staged] [--exclude RE] [--all]`.
 #[must_use]
-pub fn run_command(staged: bool, exclude: &str) -> i32 {
+pub fn run_command(staged: bool, exclude: &str, all: bool) -> i32 {
     let Some(root) = crate::gitutil::repo_root().map(std::path::PathBuf::from) else {
         goh_tui::eoutln!("{} {TAG} not a git repository", goh_tui::ERR);
         return 2;
     };
     match crate::gitutil::listed_files(&root, staged) {
-        Ok(files) => estate_seed::print(judge(&root, &files, exclude, staged)),
+        Ok(files) => estate_seed::print(judge(&root, &files, exclude, staged, all)),
         Err(m) => {
             goh_tui::eoutln!("{} {TAG} {m}", goh_tui::ERR);
             2
@@ -138,7 +155,7 @@ pub fn step(
     estate_seed::step(
         LABEL,
         "crates/goh/src/pluralhedge/mod.rs",
-        judge(repo, files, &cfg.exclude, staged),
+        judge(repo, files, &cfg.exclude, staged, false),
     )
 }
 

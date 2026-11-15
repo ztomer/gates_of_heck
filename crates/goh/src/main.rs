@@ -107,6 +107,7 @@ pub mod substdin;
 pub mod tagpush;
 pub mod tagver;
 pub mod tapwrite;
+pub mod tuimarks;
 pub mod unreaped;
 pub mod urlexpand;
 pub mod vendored;
@@ -423,11 +424,6 @@ fn run_ported(command: Commands) -> Result<i32, Box<Commands>> {
             staged,
             seed,
         } => paths(exclude, |x| early_pipe(seed, staged, x)),
-        Commands::DeadAfterExec(a) => paths(a.exclude, |x| deadexec::run_command(a.staged, x)),
-        Commands::BareHookIndex(a) => paths(a.exclude, |x| hookindex::run_command(a.staged, x)),
-        Commands::ReleaseQuiet(a) => paths(a.exclude, |x| relquiet::run_command(a.staged, x)),
-        Commands::MktempPortable(a) => paths(a.exclude, |x| mktempport::run_command(a.staged, x)),
-        Commands::PluralHedge(a) => paths(a.exclude, |x| pluralhedge::run_command(a.staged, x)),
         Commands::SeedSettle { pending } => {
             let (code, said) = estate_seed::apply_pending(&pending);
             estate_seed::print((code, String::new(), said))
@@ -454,6 +450,21 @@ fn run_ported(command: Commands) -> Result<i32, Box<Commands>> {
         } => paths(exclude, |x| {
             substdin::run_command(staged, Some(x), source.as_deref(), seed)
         }),
+        other => return run_line_scans(other),
+    })
+}
+
+/// The line scanners that take `--exclude`/`--staged`, or the command back for `run_core`.
+fn run_line_scans(command: Commands) -> Result<i32, Box<Commands>> {
+    Ok(match command {
+        Commands::DeadAfterExec(a) => paths(a.exclude, |x| deadexec::run_command(a.staged, x)),
+        Commands::BareHookIndex(a) => paths(a.exclude, |x| hookindex::run_command(a.staged, x)),
+        Commands::ReleaseQuiet(a) => paths(a.exclude, |x| relquiet::run_command(a.staged, x)),
+        Commands::MktempPortable(a) => paths(a.exclude, |x| mktempport::run_command(a.staged, x)),
+        Commands::PluralHedge(a) => paths(a.scope.exclude, |x| {
+            pluralhedge::run_command(a.scope.staged, x, a.all)
+        }),
+        Commands::TuiMarks(a) => paths(a.exclude, |x| tuimarks::run_command(a.staged, x)),
         other => return Err(Box::new(other)),
     })
 }

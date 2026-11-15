@@ -40,6 +40,16 @@ pub struct ExcludeStagedArgs {
     pub staged: bool,
 }
 
+/// `goh plural-hedge` flags: the shared exclude/staged pair, and `--all` (GOH.HEDGELIST).
+#[derive(clap::Args, Debug)]
+pub struct PluralHedgeArgs {
+    #[command(flatten)]
+    pub scope: ExcludeStagedArgs,
+    /// List every site of a seeded file, not the first five and a count.
+    #[arg(long)]
+    pub all: bool,
+}
+
 /// `goh skills` flags, grouped so the runner takes one argument.
 #[derive(Debug, clap::Args)]
 pub struct SkillsArgs {

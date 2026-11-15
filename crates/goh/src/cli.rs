@@ -6,7 +6,7 @@ use clap::{Parser, Subcommand};
 
 pub use crate::cli_args::{
     CanaryArgs, CratesBehindArgs, DepsArgs, ExcludeStagedArgs, LaunchAppArgs, PassArgs,
-    ProvenAction, RoadmapArgs, SkillsArgs, StagedArgs, StepArgs, TagVersionArgs,
+    PluralHedgeArgs, ProvenAction, RoadmapArgs, SkillsArgs, StagedArgs, StepArgs, TagVersionArgs,
 };
 
 #[derive(Debug, Parser)]
@@ -378,7 +378,9 @@ pub enum Commands {
     /// Launch an app (or open a document) with launchd's login environment, never the caller's.
     LaunchApp(LaunchAppArgs),
     /// Fail on a hedged plural (`file(s)`, `entr(ies)`) in a string literal; count with counted/noun.
-    PluralHedge(ExcludeStagedArgs),
+    PluralHedge(PluralHedgeArgs),
+    /// Fail on a shell echo/printf or Python print that opens with a Kare mark or an ANSI escape.
+    TuiMarks(ExcludeStagedArgs),
     /// Apply a passed commit's journalled seed settles (`gates/commit_gate.sh`, GOH.SEEDREFUSED).
     SeedSettle { pending: PathBuf },
     /// Fail on a private repository's name (the private store's list) in this tracked tree.

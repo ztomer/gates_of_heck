@@ -15,7 +15,7 @@ if [ -f "$GOH/tui/lib.sh" ]; then
     # shellcheck disable=SC1090
     . "$GOH/tui/lib.sh"
 else
-    warn() { printf '⚠ %s\n' "$*" >&2; }
+    warn() { printf '⚠ %s\n' "$*" >&2; }  # tui-mark-ok: tui/lib.sh is absent, no lib to print through
 fi
 
 # Early informational flags never reach the gates below.

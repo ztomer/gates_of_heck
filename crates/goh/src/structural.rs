@@ -275,6 +275,7 @@ fn shell_steps(
         crate::mktempport::step(repo, files, cfg, staged),
         crate::bareopen::step(repo, files, cfg, staged),
         crate::pluralhedge::step(repo, files, cfg, staged),
+        crate::tuimarks::step(repo, files, cfg, staged),
         crate::barepy::step(repo, files, cfg, staged),
     ];
     first_stop(steps, tally)

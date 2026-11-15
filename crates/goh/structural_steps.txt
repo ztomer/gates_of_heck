@@ -17,6 +17,7 @@ no release step hides its output
 no BSD-only mktemp -t
 no bare open of an app
 no hedged plural in a string
+no hand-rolled TUI mark
 no bare python in a hook or gate
 no busy loop or busy-wait in a tracked file
 no checkout leaves its token in git config

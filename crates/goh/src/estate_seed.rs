@@ -317,6 +317,29 @@ pub fn verdict(
     verdict_in(root, Scope::of(staged), kind, seed, sites, r)
 }
 
+/// `verdict` for a command that offers `--all` (GOH.HEDGELIST).
+///
+/// `all` lists EVERY site of a seeded file, never "... and N more"; without it the count names it.
+#[must_use]
+pub fn verdict_listed(
+    root: &Path,
+    staged: bool,
+    kind: Kind,
+    seed: &Seed,
+    sites: &Sites,
+    r: &Report<'_>,
+    all: bool,
+) -> (i32, String, String) {
+    let shown = if all { usize::MAX } else { WARN_SITES };
+    verdict_listing(
+        root,
+        Scope::of(staged),
+        (kind, seed, sites, r),
+        shown,
+        " (--all lists them)",
+    )
+}
+
 /// `verdict` with its scope spelled out (`Scope`).
 #[must_use]
 pub fn verdict_in(
@@ -326,6 +349,17 @@ pub fn verdict_in(
     seed: &Seed,
     sites: &Sites,
     r: &Report<'_>,
+) -> (i32, String, String) {
+    verdict_listing(root, scope, (kind, seed, sites, r), WARN_SITES, "")
+}
+
+/// `verdict_in` listing at most `shown` sites of a seeded file; `more` follows the rest's count.
+fn verdict_listing(
+    root: &Path,
+    scope: Scope,
+    (kind, seed, sites, r): (Kind, &Seed, &Sites, &Report<'_>),
+    shown: usize,
+    more: &str,
 ) -> (i32, String, String) {
     use goh_tui::{ERR, OK, WARN};
     use std::fmt::Write as _;
@@ -344,14 +378,14 @@ pub fn verdict_in(
             r.tag, r.item
         );
         let listed = sites.get(path).map_or(&[][..], Vec::as_slice);
-        for line in listed.iter().take(WARN_SITES) {
+        for line in listed.iter().take(shown) {
             let _ = writeln!(warns, "{line}");
         }
-        if listed.len() > WARN_SITES {
+        if listed.len() > shown {
             let _ = writeln!(
                 warns,
-                "    ... and {} more, counted in the seed",
-                listed.len() - WARN_SITES
+                "    ... and {} more, counted in the seed{more}",
+                listed.len() - shown
             );
         }
     }

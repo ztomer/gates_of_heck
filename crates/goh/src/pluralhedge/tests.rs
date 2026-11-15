@@ -117,3 +117,41 @@ fn a_hedge_on_the_continuation_line_of_a_string_is_seen() {
     let after = h("let m = \"a \\\n b\"; // c@\nlet f = x.y@;\nlet c = '\"';\nlet d = e@;\n");
     assert_eq!(on(&after, Lang::Slash), Vec::<usize>::new());
 }
+
+/// A committed fixture whose one file carries 12 hedges, seeded at 12 in its own tracked seed.
+fn twelve() -> (goh_testkit::Repo, crate::estate_seed::Seed) {
+    let body: String = (1..=12)
+        .map(|i| h(&format!("echo \"{i} file@\"\n")))
+        .collect();
+    let r = goh_testkit::repo_with(&[("a.sh", body.as_str())]).expect("fixture");
+    r.git(&["commit", "-qm", "root"]).expect("commit");
+    let root = crate::gitutil::root_commit(r.path()).expect("root commit");
+    let seed = format!(
+        r#"{{"entries":[{{"root":"{root}","repo":"x","path":"a.sh","count":12,"reason":"r"}}]}}"#
+    );
+    r.write(super::KIND.file, &seed).expect("seed");
+    let seed = crate::estate_seed::load_from(r.path(), None, super::KIND).expect("loads");
+    (r, seed)
+}
+
+#[test]
+fn all_lists_every_site_of_a_seeded_file() {
+    // GOH.HEDGELIST: the warning listed five and "... and 7 more", so the rest were unfindable.
+    let (r, seed) = twelve();
+    let files = vec!["a.sh".to_string()];
+    let (code, _, warns) = super::judge_seeded(r.path(), &files, ("", false), &seed, true);
+    assert_eq!(code, 0, "{warns}");
+    for i in 1..=12 {
+        assert!(warns.contains(&format!("a.sh:{i}:")), "site {i}: {warns}");
+    }
+    assert!(!warns.contains("more, counted"), "{warns}");
+    let (_, _, short) = super::judge_seeded(r.path(), &files, ("", false), &seed, false);
+    assert!(
+        short.contains("a.sh:5:") && !short.contains("a.sh:6:"),
+        "{short}"
+    );
+    assert!(
+        short.contains("... and 7 more, counted in the seed (--all lists them)"),
+        "{short}"
+    );
+}
