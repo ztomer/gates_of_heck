@@ -270,7 +270,7 @@ def merge(parts, floor, include_re="", floors_json=None, marker_ceiling=None):
 
             with open(marker_ceiling, encoding="utf-8") as handle:
                 max_forgiven = int(_jm.load(handle)["max_forgiven_lines"])
-            if 0 < max_forgiven:
+            if max_forgiven > 0:
                 print(f"→ [coverage] forgiveness 0 < ceiling {max_forgiven} — lower it.")
         except (OSError, ValueError, KeyError, TypeError) as exc:
             print(f"✗ [coverage] cannot read ceiling {marker_ceiling}: {exc}", file=sys.stderr)
@@ -281,8 +281,8 @@ def merge(parts, floor, include_re="", floors_json=None, marker_ceiling=None):
         print("✗ [coverage] no floor supplied", file=sys.stderr)
         return 2
     below = pct < floor
-    print(
-        ("✗" if below else "✓")
+    print(  # `↔` (tui `measure`): the measurement goh_step shows on a pass (GOH.COVSHOW)
+        ("✗" if below else "↔")
         + f" [coverage] {pct}% of coverable lines (floor {floor:g}%, {covered}/{total} lines)"
     )
     if below:

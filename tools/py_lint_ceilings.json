@@ -46,7 +46,7 @@
   "gates/_push_build_dirs.py": 1,
   "gates/_push_siblings.py": 1,
   "gates/coverage_swift.py": 5,
-  "gates/lcov_merge.py": 3,
+  "gates/lcov_merge.py": 2,
   "gates/path_invariance.py": 4,
   "gates/py_cov_floor.py": 3,
   "gates/py_lint_ceiling.py": 6,

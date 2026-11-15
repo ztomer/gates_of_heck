@@ -40,7 +40,7 @@ from coverage.files import GlobMatcher, prep_patterns
 from coverage.results import should_fail_under
 
 try:
-    from tui.lib import counted, err, info, warn
+    from tui.lib import counted, err, measure, warn
 except ImportError:  # the repo's interpreter may not see goh; plain lines keep the gate honest
 
     def counted(n, singular, plural=None):
@@ -49,8 +49,8 @@ except ImportError:  # the repo's interpreter may not see goh; plain lines keep 
     def err(message):
         print(f"✗ {message}", file=sys.stderr)
 
-    def info(message):
-        print(f"→ {message}")
+    def measure(message):
+        print(f"↔ {message}")
 
     def warn(message):
         print(f"⚠ {message}", file=sys.stderr)
@@ -118,7 +118,8 @@ def main(argv=None):
             f"coverage {total:.{precision}f}% is below the floor {floor:g}% (every repo file counted)"
         )
         return 1
-    info(f"coverage {total:.{precision}f}% >= {floor:g}% over every repo file")
+    # The measurement goh_step shows after a passing step's ok line (GOH.COVSHOW).
+    measure(f"coverage {total:.{precision}f}% >= {floor:g}% over every repo file")
     return 0
 
 

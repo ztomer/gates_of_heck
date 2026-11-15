@@ -237,7 +237,7 @@ floor_cmp() {
         err "line coverage $_pct% is below the $FLOOR% floor"
         return 1
     fi
-    ok "line coverage $_pct% (floor $FLOOR%)"
+    measure "line coverage $_pct% (floor $FLOOR%)"   # goh_step shows it on a pass (GOH.COVSHOW)
 }
 
 need() { # need <cmd> <what-it-is-for>; a tool below its floor (required_tools.tsv) fails too

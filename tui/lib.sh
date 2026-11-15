@@ -19,7 +19,7 @@ fi
 _TUI_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
 
 # Icons + colors from the repo stylerc (fall back to Kare defaults if absent).
-ICON_START="→"; ICON_STEP="·"; ICON_OK="✓"; ICON_ERR="✗"; ICON_WARN="⚠"
+ICON_START="→"; ICON_STEP="·"; ICON_OK="✓"; ICON_ERR="✗"; ICON_WARN="⚠"; ICON_MEASURE="↔"
 # shellcheck disable=SC1091
 [ -f "$_TUI_DIR/stylerc" ] && source "$_TUI_DIR/stylerc"
 
@@ -44,7 +44,7 @@ for _c in C_RESET C_DIM C_BOLD C_GREEN C_RED C_YELLOW C_GRAY; do
 done
 unset _c _TUI_ESC
 
-export ICON_START ICON_STEP ICON_OK ICON_ERR ICON_WARN
+export ICON_START ICON_STEP ICON_OK ICON_ERR ICON_WARN ICON_MEASURE
 export C_RESET C_DIM C_BOLD C_GREEN C_RED C_YELLOW C_GRAY
 
 # ── Log functions ──────────────────────────────────────────────────────
@@ -57,6 +57,7 @@ export C_RESET C_DIM C_BOLD C_GREEN C_RED C_YELLOW C_GRAY
 _tui_info() { printf '%s\n' "${C_GRAY}${ICON_START}${C_RESET} ${C_DIM}$1${C_RESET}"; }
 _tui_step() { printf '%s\n' "${C_DIM}${ICON_STEP} $1${C_RESET}"; }
 _tui_ok()   { printf '%s\n' "${C_GREEN}${ICON_OK}${C_RESET} $1"; }
+_tui_measure() { printf '%s\n' "${C_GRAY}${ICON_MEASURE}${C_RESET} $1"; }   # a value against its bound; goh_step shows it on a pass
 _tui_err()  { printf '%s\n' "${C_RED}${ICON_ERR}${C_RESET} $1" >&2; }
 _tui_warn() { printf '%s\n' "${C_YELLOW}${ICON_WARN}${C_RESET} $1" >&2; }
 
@@ -85,6 +86,7 @@ _tui_report() {
 info()  { _tui_info "$1"; }
 step()  { _tui_step "$1"; }   # a sub-item under an info line
 ok()    { _tui_ok "$1"; }
+measure() { _tui_measure "$1"; }
 err()   { _tui_err "$1"; }
 warn()  { _tui_warn "$1"; }
 die()   { err "$1"; exit "${2:-1}"; }

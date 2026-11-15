@@ -67,7 +67,7 @@ def test_both_report_fifty_percent_and_agree(repo, tmp_path, monkeypatch, capsys
     for floor, expect_ok in ((40, True), (60, False)):
         legacy = run_check(repo, LEGACY, "--min", str(floor))
         assert (legacy.returncode == 0) is expect_ok, legacy.stdout + legacy.stderr
-        assert "50.0%" in (legacy.stdout + legacy.stderr)
+        assert "50.00%" in (legacy.stdout + legacy.stderr)
 
     monkeypatch.setenv("PATH", f"{bin_}{os.pathsep}{os.environ['PATH']}")
     engine = _load_engine()

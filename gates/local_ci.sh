@@ -374,6 +374,10 @@ _report() { # _report <i>
   $cmd (declared artifact missing)"
     elif [ "$rc" -eq 0 ]; then
         ok "[$i/$_n] $cmd"
+        # Its `↔` measurements (a coverage number against its floor), which goh_step shows and this
+        # log would otherwise take with it (GOH.COVSHOW; gates/_common.sh _goh_surface_warns).
+        grep -E $'^([[:space:]]|\x1b\\[[0-9;?]*[ -/]*[@-~])*↔' "$logf" 2>/dev/null \
+            | awk -v max="${GOH_WARN_LINES:-20}" 'NR <= max' >&2 || true
     elif [ "$rc" -eq 78 ] && lci_not_applicable "[$i/$_n]" "$cmd" "$logf"; then
         NOT_HERE=$((NOT_HERE + 1))
     elif [ "$rc" -eq 125 ]; then

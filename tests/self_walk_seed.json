@@ -16,7 +16,7 @@
     "goh fixed-sleep": {"count": 8, "why": "a test sleep standing for a readiness signal; goh never runs goh fixed-sleep over itself (its GOH_CI_STEPS run status-markers only) and has no fixed_sleep_seed.json"},
     "goh status-markers": {"count": 25, "why": "status_marker_seed.json: tui/lib.py and the scanner's own tests print escapes by design (BACKLOG 4.9)"},
     "no bare open of an app": {"count": 1, "why": "tests/test_launch_app.py, the control arm a bare open must be: the Python shape, in grace until 2026-11-23, is seeded that day (its entry would read stale before it); hooks/claude/appstate.py relaunches through goh launch-app (GOH.GRACEEND)"},
-    "no hand-rolled TUI mark": {"count": 163, "why": "tui_marks_seed.json's 163 sites, every one seeded (GOH.TUIMARKS; GOH.GRACEEND seeded the 6 it once missed: tools/lint.py, changelog_cut.py, build-goh.sh, and swift_toolchain.sh:28, a zsh refusal before any lib can load, from 6c43a02)"},
+    "no hand-rolled TUI mark": {"count": 159, "why": "tui_marks_seed.json's 159 sites, every one seeded (GOH.TUIMARKS; GOH.GRACEEND seeded the 6 it once missed: tools/lint.py, changelog_cut.py, build-goh.sh, and swift_toolchain.sh:28, a zsh refusal before any lib can load, from 6c43a02)"},
     "no hard-coded home paths": {"count": 136, "why": "goh never opted into GOH_NO_HOME_PATHS, the rule it ships: its tests, docs and CHANGELOG name home-directory paths"},
     "no process kill by name": {"count": 9, "why": "kill_by_name_allow.json, each entry reviewed or unreviewed with its reason"},
     "shell lint": {"count": 10, "why": "shell_lint_seed.json: shellcheck warnings below error since GOH.SHSEV, lib/ only (gates/ cleared by GOH.LOCALCISPLIT)"}

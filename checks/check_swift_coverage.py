@@ -67,6 +67,8 @@ DEFAULT_DD = ".build/xcode-dd"
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "lib"))
 from swift_coverage_scope import ScopeError, is_code_under_test, own_source_roots
 
+shown = __import__("cov_shown").shown  # the value at the floor's precision, judged as shown
+
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
@@ -400,15 +402,13 @@ def check_target_floors(records, floors, tolerance):
             )
             worst = max(worst, 2)
             continue
-        pct = 100.0 * cov / tot
-        if pct + 1e-9 < floor - tolerance:
-            lines.append(
-                f"✗ [swift_cov] target {target}: {pct:.2f}% "
-                f"({cov}/{tot}) is under its {floor:g}% floor"
-            )
+        text, met = shown(100.0 * cov / tot, floor - tolerance)
+        if not met:
+            under = f"({cov}/{tot}) is under its {floor:g}% floor"
+            lines.append(f"✗ [swift_cov] target {target}: {text}% {under}")
             worst = max(worst, 1)
         else:
-            lines.append(f"→ [swift_cov] target {target}: {pct:.2f}% >= {floor:g}%")
+            lines.append(f"↔ [swift_cov] target {target}: {text}% >= {floor:g}%")
     return worst, lines
 
 
@@ -481,11 +481,12 @@ def main() -> int:
             return code
 
     floor = args.min
-    if pct + 1e-9 >= floor:
-        print(f"→ [swift_cov] OK — {pct:.1f}% >= {floor:g}% ({counted(len(per_file), 'file')})")
+    text, met = shown(pct, floor)
+    if met:  # `↔` (tui `measure`): a measurement against its bound, which goh_step shows on a pass
+        print(f"↔ [swift_cov] OK — {text}% >= {floor:g}% ({counted(len(per_file), 'file')})")
         return 0
 
-    print(f"✗ [swift_cov] {pct:.1f}% is under the {floor:g}% floor:", file=sys.stderr)
+    print(f"✗ [swift_cov] {text}% is under the {floor:g}% floor:", file=sys.stderr)
     for n, p_, c, t in per_file[:20]:
         print(f"    {p_:6.1f}%  {c:>6}/{t:<6}  {n}", file=sys.stderr)
     if len(per_file) > 20:

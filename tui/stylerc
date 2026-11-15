@@ -8,6 +8,7 @@ ICON_STEP="·"
 ICON_OK="✓"
 ICON_ERR="✗"
 ICON_WARN="⚠"
+ICON_MEASURE="↔"   # a measured value against its bound (a coverage floor); goh_step shows it on a pass
 
 # ANSI color codes (Dieter Rams / Braun: restrained, functional)
 # \033 is the ESC character — tui/lib.sh decodes it once at source time and

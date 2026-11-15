@@ -37,14 +37,14 @@ def test_spm_aggregates_across_payloads(repo):
     r = run_check(repo, SCRIPT, "--min", "80")
     # (90+10+5)/(100+10+100) = 105/210 = 50% → fails with per-file list
     assert r.returncode == 1
-    assert "50.0%" in r.stderr and "A.swift" in r.stderr
+    assert "50.00%" in r.stderr and "A.swift" in r.stderr
 
 
 def test_spm_passes_above_floor(repo):
     _write_spm(repo, ".build/a/debug/codecov/a.json", [("A.swift", 96, 100)])
     r = run_check(repo, SCRIPT, "--min", "95")
     assert r.returncode == 0
-    assert "96.0%" in r.stdout
+    assert "96.00%" in r.stdout
 
 
 def test_spm_finds_the_swift_6_3_products_layout(repo):
@@ -54,7 +54,7 @@ def test_spm_finds_the_swift_6_3_products_layout(repo):
     _write_spm(repo, ".build/out/Products/Debug/codecov/App.json", [("A.swift", 96, 100)])
     r = run_check(repo, SCRIPT, "--min", "95")
     assert r.returncode == 0, r.stderr
-    assert "96.0%" in r.stdout
+    assert "96.00%" in r.stdout
 
 
 def test_spm_glob_names_the_exact_payload(repo):
@@ -198,7 +198,7 @@ def test_spm_reads_summary_shaped_payloads(repo):
     r = run_check(repo, SCRIPT, "--min", "20")
     # 50/200 = 25% >= 20
     assert r.returncode == 0, r.stderr
-    assert "25.0%" in r.stdout + r.stderr
+    assert "25.00%" in r.stdout + r.stderr
 
 
 def test_summary_shape_still_fails_below_the_floor(repo):
@@ -236,8 +236,8 @@ def test_both_payload_shapes_agree(repo):
     (repo / ".build/a/debug/codecov/old.json").unlink()
     _write_spm_summary(repo, ".build/a/debug/codecov/new.json", [("/w/A.swift", 30, 100)])
     new = run_check(repo, SCRIPT, "--min", "0")
-    assert "30.0%" in old.stdout + old.stderr
-    assert "30.0%" in new.stdout + new.stderr
+    assert "30.00%" in old.stdout + old.stderr
+    assert "30.00%" in new.stdout + new.stderr
 
 
 def test_test_sources_do_not_count(repo):

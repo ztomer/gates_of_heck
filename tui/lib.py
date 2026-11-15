@@ -12,7 +12,14 @@ import sys
 
 _STYLERC_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "stylerc")
 
-_DEFAULTS = {"ICON_START": "→", "ICON_STEP": "·", "ICON_OK": "✓", "ICON_ERR": "✗", "ICON_WARN": "⚠"}
+_DEFAULTS = {
+    "ICON_START": "→",
+    "ICON_STEP": "·",
+    "ICON_OK": "✓",
+    "ICON_ERR": "✗",
+    "ICON_WARN": "⚠",
+    "ICON_MEASURE": "↔",
+}
 
 
 def _parse_stylerc(path: str) -> dict:
@@ -38,6 +45,7 @@ ICON_STEP = _CFG.get("ICON_STEP", _DEFAULTS["ICON_STEP"])
 ICON_OK = _CFG.get("ICON_OK", _DEFAULTS["ICON_OK"])
 ICON_ERR = _CFG.get("ICON_ERR", _DEFAULTS["ICON_ERR"])
 ICON_WARN = _CFG.get("ICON_WARN", _DEFAULTS["ICON_WARN"])
+ICON_MEASURE = _CFG.get("ICON_MEASURE", _DEFAULTS["ICON_MEASURE"])
 
 # no-color.org spec: ANY non-empty NO_COLOR value disables color (matches
 # tui/lib.sh; NO_COLOR=0 is still a set variable).
@@ -113,6 +121,13 @@ def report(header: str, *details: str) -> None:
     lines += [f"{_C_DIM}{ICON_STEP} {d}{_C_RESET}" for d in details]
     text = "\n".join(lines) + "\n"
     _write_once(text)
+
+
+def measure(message: str) -> None:
+    """A measured value against its bound ("coverage 89.25% >= 89.2%"). goh_step shows a PASSING
+    step's measure lines after its ok line (gates/_common.sh, GOH.COVSHOW): a floor is set from the
+    number the gate measured, which a hidden success line made a bracketing search."""
+    print(f"{_C_GRAY}{ICON_MEASURE}{_C_RESET} {message}", flush=True)
 
 
 def ok(message: str) -> None:

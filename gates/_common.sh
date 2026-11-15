@@ -342,16 +342,20 @@ goh_step() {
 # A status line is one whose first visible character (after indentation and colour escapes) is
 # `⚠`, the twin of xexit's `✗`; a `⚠` quoted mid-line is text. At most GOH_WARN_LINES (default 20)
 # are shown and the rest is counted, so a chatty step cannot bury the gate's own report.
+#
+# A `↔` status line (tui `measure`) is shown the same way (GOH.COVSHOW): a measured value against its
+# bound. Every coverage gate printed its number on a line goh_step then deleted with the log, so a
+# floor could only be set by running the checker by hand or bracketing the value.
 _goh_surface_warns() {
     local _w _max="${GOH_WARN_LINES:-20}" _n=0 _total
     case "$_max" in ''|*[!0-9]*) _max=20 ;; esac
-    _w="$(grep -E $'^([[:space:]]|\x1b\\[[0-9;?]*[ -/]*[@-~])*⚠' "$GOH_LOG" 2>/dev/null)" || return 0
+    _w="$(grep -E $'^([[:space:]]|\x1b\\[[0-9;?]*[ -/]*[@-~])*(⚠|↔)' "$GOH_LOG" 2>/dev/null)" || return 0
     [ -n "$_w" ] || return 0
     _total="$(printf '%s\n' "$_w" | wc -l | tr -d ' ')"
     printf '%s\n' "$_w" | awk -v max="$_max" 'NR <= max' >&2   # awk reads to EOF: head would SIGPIPE its producer
     _n=$(( _total - _max ))
     if [ "$_n" -gt 0 ]; then
-        printf '%s\n' "→ $_n more ⚠ $(plural_noun "$_n" line) not shown (GOH_WARN_LINES=$_max; raise it to see them)" >&2
+        printf '%s\n' "→ $_n more ⚠/↔ $(plural_noun "$_n" line) not shown (GOH_WARN_LINES=$_max; raise it to see them)" >&2
     fi
     return 0
 }

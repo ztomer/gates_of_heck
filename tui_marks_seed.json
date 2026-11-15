@@ -26,8 +26,8 @@
       "root": "73391f04f5f2b92ab9813c62e6cecdce919d2d86",
       "repo": "gates_of_heck",
       "path": "checks/check_swift_coverage.py",
-      "count": 7,
-      "reason": "unreviewed: hand-rolled TUI mark at line(s) 150, 362, 365, 443, 465, 485, 488; print through tui/lib.sh or tui.lib (GOH.TUIMARKS seed, 2026-11-15)"
+      "count": 6,
+      "reason": "unreviewed: hand-rolled TUI mark at line(s) 151, 363, 366, 443, 465, 489; print through tui/lib.sh or tui.lib (GOH.TUIMARKS seed, 2026-11-15)"
     },
     {
       "root": "73391f04f5f2b92ab9813c62e6cecdce919d2d86",
@@ -110,7 +110,7 @@
       "root": "73391f04f5f2b92ab9813c62e6cecdce919d2d86",
       "repo": "gates_of_heck",
       "path": "gates/coverage_swift.py",
-      "count": 12,
+      "count": 10,
       "reason": "unreviewed: hand-rolled TUI mark at line(s) 68, 70, 80, 83, 235, 298, 305, 311, 381, 386, 405, 409; print through tui/lib.sh or tui.lib (GOH.TUIMARKS seed, 2026-11-15)"
     },
     {
@@ -152,8 +152,8 @@
       "root": "73391f04f5f2b92ab9813c62e6cecdce919d2d86",
       "repo": "gates_of_heck",
       "path": "gates/py_cov_floor.py",
-      "count": 3,
-      "reason": "unreviewed: hand-rolled TUI mark at line(s) 50, 53, 56; print through tui/lib.sh or tui.lib (GOH.TUIMARKS seed, 2026-11-15)"
+      "count": 2,
+      "reason": "unreviewed: hand-rolled TUI mark at line(s) 50, 56; print through tui/lib.sh or tui.lib (GOH.TUIMARKS seed, 2026-11-15)"
     },
     {
       "root": "73391f04f5f2b92ab9813c62e6cecdce919d2d86",

@@ -60,14 +60,17 @@ import subprocess
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from tui.lib import counted, noun  # the count meets its noun (GOH.HEDGEOWN)
+from tui.lib import counted, measure, noun  # the count meets its noun (GOH.HEDGEOWN)
 
 
 def floor_cmp(pct, floor):
-    if pct + 1e-9 < floor:
-        print(f"✗ [coverage] line coverage {pct:.2f}% is below the {floor:g}% floor")
+    # At the floor's precision, judged as shown (lib/cov_shown.py, GOH.COVSHOW); `↔` is the
+    # measurement goh_step shows after a passing step's ok line.
+    text, met = shown(pct, floor)
+    if not met:
+        print(f"✗ [coverage] line coverage {text}% is below the {floor:g}% floor")
         return 1
-    print(f"✓ [coverage] line coverage {pct:.2f}% (floor {floor:g}%)")
+    measure(f"[coverage] line coverage {text}% (floor {floor:g}%)")
     return 0
 
 
@@ -119,6 +122,8 @@ from coverage_markers import (
     parse_markers,
 )
 from swift_coverage_scope import ScopeError, is_code_under_test, own_source_roots
+
+shown = __import__("cov_shown").shown  # the value at the floor's precision (GOH.COVSHOW)
 
 # Imported for the tests, which load this file and drive these by name (see the module docstring).
 __all__ = ["TEST_DIR", "adjust_coverage", "bundle_executables", "parse_markers", "pick_binary"]
@@ -406,7 +411,7 @@ def process(
             sys.exit(1)
         if floor is not None:
             return floor_cmp(pct, floor)
-        print(f"✓ [coverage] all per-target floors passed (gated {pct:.2f}%)")
+        measure(f"[coverage] all per-target floors passed (gated {pct:.2f}%)")
         return 0
     return floor_cmp(pct, floor)
 
