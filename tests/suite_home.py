@@ -81,7 +81,7 @@ CALLER_INPUTS = (
     "GOH_STAGED_GUARD_RUN",
 )
 # What the suite sets for itself, after the drop: GOH_DIR (below, its own checkout -- unset, the
-# binary judged ~/Projects/gates_of_heck's checkers, D.GOH1), GOH_GRACE (below), GOH_LIVE
+# binary judged the default checkout's checkers, D.GOH1), GOH_GRACE (below), GOH_LIVE
 # (conftest), GOH_ESTATE_STATE (conftest's session fixture) and the private lock and cache roots
 # (host_locks.py, per test).
 SUITE_ROOT = str(Path(__file__).resolve().parent.parent)

@@ -5,24 +5,23 @@ nothing else; the two census tests that had failed were three files away. The pu
 failure lines are in the log the profile writes, so a red profile prints them.
 """
 
-import shutil
 import subprocess
 from pathlib import Path
 
 from _fast_git import fast_init
-from conftest import REPO_ROOT, git, hermetic_env
+from conftest import git, hermetic_env
+from source_closure import copy_closure
 
 
 def _goh_copy(tmp_path: Path, push_gate: str) -> Path:
     """The files gate_profile.sh runs, outside any checkout (so they run as they are), with the
     push gate replaced."""
     goh = tmp_path / "goh"
-    for rel in ("tools/gate_profile.sh", "gates/_from_head.sh", "gates/_git_env.sh",
-                "lib/step_timings.py", "lib/step_control.py", "lib/fail_lines.py",
-                "lib/house_python.sh", "gates/required_tools.tsv",
-                "lib/log_follow.py", "lib/bash5.sh"):  # fmt: skip
-        (goh / rel).parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(REPO_ROOT / rel, goh / rel)
+    # What it sources, read from it (lib/source_closure.py); what it RUNS, by name: a hand list of
+    # both missed lib/goh_root.sh the day _from_head.sh began sourcing it (GOH.LIVEROOTLEAK).
+    copy_closure(goh, "tools/gate_profile.sh", extra=(
+        "lib/step_timings.py", "lib/step_control.py", "lib/fail_lines.py",
+        "gates/required_tools.tsv", "lib/log_follow.py"))  # fmt: skip
     (goh / "gates" / "push_gate.sh").write_text(push_gate)
     return goh
 
