@@ -8,7 +8,8 @@
 //! `lib/run_path.py`, `crate::run_path`), and this step refuses a new one written by hand.
 //!
 //! WHAT IS JUDGED, line by line in the shell, Python and Rust sources (comment lines, test files
-//! and a Rust file's `#[cfg(test)]` tail are not read; the three helper files are the one place):
+//! and a Rust file's `#[cfg(test)]` tail are not read; nor are the three helper files, the one
+//! place, and this file, whose shape row holds a fixture of every shape):
 //!
 //! * a TEMP-SHAPED name (`.lock`, `.staging`, `.tmp`, `XXXXXX`, `mktemp`, `mkstemp`, `mkdtemp`,
 //!   `NamedTemporaryFile`, `TemporaryDirectory`; a package manager's lockfile and a `.lock()` call
@@ -46,11 +47,13 @@ pub const KIND: Kind = Kind {
     name: "run-paths seed",
 };
 
-/// The helper itself: the one place these paths and the private-index write-tree are minted.
-const HELPERS: [&str; 3] = [
+/// The helper itself, the one place these paths and the private-index write-tree are minted, and
+/// this scanner, whose shape row (`SHAPES`) holds a fixture of every shape it judges.
+const HELPERS: [&str; 4] = [
     "lib/run_path.sh",
     "lib/run_path.py",
     "crates/goh/src/run_path.rs",
+    "crates/goh/src/runpaths.rs",
 ];
 
 const FIX: &str = "    goh's temp, lock and staging paths come from ONE helper rooted outside the work tree, so\n    \
@@ -286,6 +289,114 @@ pub fn step(
         judge(repo, files, &cfg.exclude, staged),
     )
 }
+
+/// The lines of `text` (the file `rel`) this scanner finds, through its own selection: the
+/// `goh shape-diff` hook (`crate::shapes::hooks::run_paths`).
+#[must_use]
+pub fn judged_lines(rel: &str, text: &str) -> Vec<usize> {
+    if HELPERS.contains(&rel) || is_test(rel) {
+        return Vec::new();
+    }
+    lang_of(rel, text).map_or_else(Vec::new, |lang| {
+        scan(lang, text).into_iter().map(|h| h.0).collect()
+    })
+}
+
+/// This scanner's row in the shape table (`crate::shapes::table::ROWS`, GOH.CLASS.SHAPE).
+///
+/// Kept beside the scanner. The probe is the rooted temp token, the build path and a git
+/// write-tree, with none of the scanner's selection.
+pub const SHAPES: crate::shapes::Declared = {
+    use crate::shapes::{hooks, Declared, Shape, Token, Verdict};
+    Declared {
+        probe: r#"(?:\$\{?(?:PROJECT_ROOT|REPO_ROOT|ROOT|repo|root|top|TOP|main|wt|PWD|REPO|toplevel|worktree|[1-9])\}?[/.]|\b(?:repo|root|ROOT|REPO_ROOT|top|wt|worktree)(?:\s*/\s*f?["']|\.join\())[^#]*(?:\.lock\b|\.staging\b|\.tmp\b|XXXXXX)|\bgit\s+write-tree\b|"write-tree"\s*[,\]]|\$\{?(?:main|repo|root|top|wt)\}?/build/"#,
+        judged: hooks::run_paths,
+        owns: &[Token {
+            name: "temp, lock or stage path rooted at a work tree",
+            sample: ("a.sh", "#!/bin/bash\nl=\"$repo/.x.lock\"\n"),
+        }],
+        sources: &["crates/goh/src/runpaths.rs"],
+        shapes: &[
+            Shape {
+                name: "a shell path rooted at a work-tree variable",
+                path: r"(?i)\.(sh|bash)$",
+                line: r"\$",
+                verdict: Verdict::Covered,
+                fixture: ("tools/b.sh", "LOCK=\"${PROJECT_ROOT}/bin/.build.lock\"\nw=\"$main/build/r\"\n"),
+            },
+            Shape {
+                name: "a Python path rooted at a work tree",
+                path: r"(?i)\.py$",
+                line: r"/\s*f?[\x22']",
+                verdict: Verdict::Covered,
+                fixture: ("tools/b.py", "lock = repo / \".x.lock\"\n"),
+            },
+            Shape {
+                name: "a Rust join on a work tree",
+                path: r"(?i)\.rs$",
+                line: r"\.join\(",
+                verdict: Verdict::Covered,
+                fixture: ("src/b.rs", "fn a() { let t = repo.join(\".x.tmp\"); }\n"),
+            },
+            Shape {
+                name: "git write-tree on the shared index",
+                path: r"(?i)\.(sh|bash|py|rs)$",
+                line: r"write-tree",
+                verdict: Verdict::Covered,
+                fixture: ("tools/t.sh", "tree=\"$(git write-tree)\"\n"),
+            },
+            Shape {
+                name: "a whole-line comment",
+                path: "",
+                line: r"^\s*(#|//)",
+                verdict: Verdict::OutOfScope("a comment naming the shape mints nothing"),
+                fixture: ("tools/c.sh", "# never LOCK=\"$repo/.x.lock\"\n"),
+            },
+            Shape {
+                name: "a test's tree",
+                path: r"(?i)(^|/)tests?/|(^|/)test_[^/]*$|(^|/|_)tests\.rs$|conftest\.py$",
+                line: "",
+                verdict: Verdict::OutOfScope("a test plants its fixtures in a temp dir it owns"),
+                fixture: ("tests/test_a.py", "lock = repo / \".x.lock\"\n"),
+            },
+            Shape {
+                name: "the run-path helper itself, and this scanner's fixtures",
+                path: r"(^|/)lib/run_path\.(sh|py)$|(^|/)run_path\.rs$|(^|/)crates/goh/src/runpaths\.rs$",
+                line: "",
+                verdict: Verdict::OutOfScope("the one place these paths are minted, and the scanner's own fixtures"),
+                fixture: ("lib/run_path.sh", "tree=\"$(GIT_INDEX_FILE=\"$c\" git write-tree)\"\n"),
+            },
+            Shape {
+                name: "a reasoned escape",
+                path: "",
+                line: "run-path-ok:",
+                verdict: Verdict::OutOfScope("`run-path-ok: <reason>` is the decision, recorded"),
+                fixture: ("lib/p.sh", "s=\"$1.$$.staging\"  # run-path-ok: another filesystem\n"),
+            },
+            Shape {
+                name: "a package manager's lockfile",
+                path: "",
+                line: r"(Cargo|flake|uv|poetry|Gemfile|yarn|pnpm-lock|package-lock|Podfile|composer|mix|bun|Pipfile|deno)\.lock",
+                verdict: Verdict::OutOfScope("a tracked lockfile is the project's, not a goh temp"),
+                fixture: ("tools/u.sh", "git -C \"$repo/\" add Cargo.lock\n"),
+            },
+            Shape {
+                name: "a language or file the scan does not read",
+                path: r"(?i)\.(md|markdown|txt|rst|html?|swift|m|mm|c|cc|cpp|h|hpp|go|js|mjs|cjs|ts|tsx|java|kt|rb|ya?ml|toml|json|mk)$|(^|/)(gnu)?makefile$",
+                line: "",
+                verdict: Verdict::OutOfScope("goh mints its paths in shell, Python and Rust; elsewhere it is prose or another tool"),
+                fixture: ("docs/a.md", "the lock was `$repo/.x.lock`\n"),
+            },
+            Shape {
+                name: "a Rust file's test module",
+                path: r"(?i)\.rs$",
+                line: "",
+                verdict: Verdict::OutOfScope("below `#[cfg(test)]` a path is a fixture the test owns"),
+                fixture: ("src/c.rs", "fn a() {}\n#[cfg(test)]\nmod tests { fn t() { let l = repo.join(\".t.lock\"); } }\n"),
+            },
+        ],
+    }
+};
 
 #[cfg(test)]
 mod tests {

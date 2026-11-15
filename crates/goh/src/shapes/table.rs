@@ -430,6 +430,10 @@ pub const ROWS: &[Row] = &[
         state: State::Declared(TUI_MARKS),
     },
     Row {
+        scanner: "no temp, lock or stage path in a work tree",
+        state: State::Declared(crate::runpaths::SHAPES),
+    },
+    Row {
         scanner: "every scanner read its declared subject",
         state: State::NotAScanner("it judges the other scanners' read counts; it reads no file"),
     },

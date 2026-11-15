@@ -37,3 +37,12 @@ pub fn tui_marks(rel: &str, text: &str) -> Result<Vec<usize>, String> {
         |lang| crate::tuimarks::scan::judged(text, lang),
     )
 }
+
+/// `goh run-paths`: its findings in a shell, Python or Rust source.
+///
+/// # Errors
+///
+/// None; the signature is the table's.
+pub fn run_paths(rel: &str, text: &str) -> Result<Vec<usize>, String> {
+    Ok(crate::runpaths::judged_lines(rel, text))
+}
