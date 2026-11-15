@@ -134,17 +134,22 @@ def test_a_killed_measurement_releases_the_host(tmp_path: Path) -> None:
     assert r.stdout.strip() == "joined", r.stderr
 
 
-def test_a_measurement_waits_for_a_running_gate_and_drops_a_dead_ones_entry(tmp_path: Path) -> None:
-    lock = tmp_path / "lock"
+def test_a_measurement_waits_for_a_running_gate_and_drops_a_dead_ones_entry(tmp_path, request):
+    """GOH.BENCHLOCKFLAKE: the gate holds until the test SEES the measurement wait, never 3 s."""
+    lock, said, release = tmp_path / "lock", tmp_path / "said", tmp_path / "release"
     (lock / "gates").mkdir(parents=True)
     (lock / "gates" / "999999").write_text("long gone\n")  # a gate SIGKILLed mid-run
-    gate = _bash(lock, f'bench_lock_join "rust gate"; : > "{tmp_path}/joined"; sleep 3')
+    hold = f'i=0; until [ -e "{release}" ] || [ $i -ge 1200 ]; do sleep 0.05; i=$((i+1)); done'
+    gate = _bash(lock, f'bench_lock_join "rust gate"; : > "{tmp_path}/joined"; {hold}')
+    request.addfinalizer(release.touch)  # a red run ends both processes too
     _wait_for(tmp_path / "joined")
-    t0 = time.monotonic()
-    r = _run(lock, 'bench_lock_exclusive "test" && echo held', timeout=30)
-    assert r.stdout.strip() == "held", r.stderr
-    assert time.monotonic() - t0 >= 1.5, "the measurement started while a gate was running"
-    assert "rust gate" in r.stderr
+    m, give_up = _bash(lock, f'bench_lock_exclusive "test" 2>"{said}" && echo held'), GiveUp(60)
+    while "rust gate" not in (said.read_text() if said.exists() else ""):
+        assert m.poll() is None, "the measurement held the host while a gate was running"
+        assert not give_up.passed(), "the measurement never waited for the gate"
+        time.sleep(0.05)
+    release.touch()
+    assert m.communicate(timeout=60)[0].strip() == "held", said.read_text()
     assert not (lock / "gates" / "999999").exists()
     gate.wait(timeout=10)
 
