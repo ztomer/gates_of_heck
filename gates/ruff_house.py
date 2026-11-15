@@ -21,6 +21,15 @@ nearly all PERF401 ("use list.extend"), which ruff 0.17 cannot fix and which tur
 loop into a generator argument -- a readability ruling, not a defect.
 
     ruff_house.py            # prints the set as ruff's comma list, for `--extend-select`
+    ruff_house.py --pin      # prints RUFF, the one ruff release the house gates judge with
+
+RUFF (GOH.RUFFVERSION, 2026-11-14): divoom_control was red on GitHub with SIM102 while its local
+gate was green -- the local gate ran 0.17.0 and hosted CI installed the newest, 0.17.4. A ruff
+release moves rules, so two rufs are two gates. The Python gates refuse any other ruff from a
+runner that is machine state (gates/_py.sh goh_py_ruff_pinned), hosted CI installs exactly this
+(.github/workflows/gate.yml GOH_CI_RUFF, the manifest's ruff rows), and tools/pytest.sh holds every
+ruff on the machine to it (gates/ruff_agree.py --pin). The newest release, named; raise it in its
+own commit (tests/test_ruff_pin.py reads every place that must agree).
 """
 
 if __name__ == "__main__":  # C4: run HEAD's copy, not the shared working tree (gates/_from_head.py)
@@ -35,6 +44,8 @@ if __name__ == "__main__":  # C4: run HEAD's copy, not the shared working tree (
     del _sys.path[0]
 
 import sys
+
+RUFF = "0.17.5"
 
 HOUSE: tuple[str, ...] = (
     "B",  # flake8-bugbear
@@ -59,5 +70,5 @@ def extend_select() -> str:
 
 
 if __name__ == "__main__":
-    print(extend_select())
+    print(RUFF if sys.argv[1:] == ["--pin"] else extend_select())
     sys.exit(0)

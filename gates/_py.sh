@@ -122,6 +122,21 @@ goh_py_require() {
     version="$("${RUN_ARR[@]}" "$1" --version 2>&1 </dev/null)" \
         || die "$GOH_NAME: $1 is not available through '$RUN', and this gate does not pass without the step it runs -- python3 -m pip install $1 (into the interpreter '$RUN' names)"
     goh_require_floor "$1" "$version"
+    [ "$1" != ruff ] || goh_py_ruff_pinned "$version"
+}
+
+# goh_py_ruff_pinned <version text>: refuse a ruff that is not goh's pin (gates/ruff_house.py RUFF,
+# GOH.RUFFVERSION). divoom_control's local gate ran 0.17.0 while hosted CI installed 0.17.4, and
+# SIM102 was red only on GitHub. A runner built from the repo's tracked lock (`uv run`) is the
+# repo's own pin (GOH.RUFFPIN), the same on every machine; any other runner is machine state.
+goh_py_ruff_pinned() {
+    local pin found=""
+    case "$RUN" in "uv run"*) return 0 ;; esac
+    pin="$("$GOH_PY" -S "$_goh_py_here/ruff_house.py" --pin </dev/null)" \
+        || die "$GOH_NAME: gates/ruff_house.py --pin did not run"
+    [[ $1 =~ ([0-9]+(\.[0-9]+)+) ]] && found="${BASH_REMATCH[1]}"
+    [ "$found" = "$pin" ] \
+        || die "$GOH_NAME: '$RUN ruff' is ruff ${found:-of no readable version} and goh pins ruff $pin (gates/ruff_house.py), the release hosted CI installs: a gate on another ruff is not CI's (rule 17) -- install exactly ruff==$pin into the interpreter '$RUN' names (python3 -m pip install ruff==$pin), or move goh's pin in its own commit"
 }
 
 # THE PIN (BACKLOG 6.2). Homebrew moved `python3` to 3.15 on 2026-10-10 and every gate that ran a

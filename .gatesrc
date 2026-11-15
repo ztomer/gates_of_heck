@@ -127,6 +127,9 @@ GOH_PYTHON_FORMATTED=1
 # fall. The push runs it over every tracked .py (`py_staged.sh --all`, which replaced a bare
 # `ruff check .` that judged this tree's rules alone).
 GOH_PY_LINT_CEILINGS=tools/py_lint_ceilings.json
+# ...and this tree's OWN ruff config selects that set (GOH.LINTPARITY): `ruff check` typed by hand
+# judges the rules the gate judges, so a finding is not first seen at commit.
+GOH_RUFF_CONFIG_PARITY=on
 # THIS repo is the gates, so every step names ITS OWN tree (./), never $GOH_DIR: the push runs in
 # a worktree of the pushed commit, and GOH_DIR there is the shared checkout's HEAD export (C4) --
 # the v0.22.0 push ran that export's tests, outside any git repo (tests/test_gates_from_head.py).

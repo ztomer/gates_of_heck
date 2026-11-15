@@ -251,3 +251,89 @@ def test_commit_with_paths_reads_the_ceiling_it_commits(repo):
         stdin=subprocess.DEVNULL,
     )
     assert r.returncode != 0 and "raised 2 -> 3" in r.stdout + r.stderr, r.stdout + r.stderr
+
+
+# ONE CONFIG (GOH.LINTPARITY, 2026-11-14). An agent's `ruff check` passed a 120-column line the
+# gate then refused (E501 is in the house set, not in ruff's defaults): it learned of it at commit,
+# two retries later. With GOH_RUFF_CONFIG_PARITY=on the repo's own ruff config must select every
+# house rule, so the ruff run by hand and the gate's judge the same rules.
+LONG_LINE = 'X = "' + "y" * 110 + '"\n'
+PARITY_ON = "GOH_PY_LINT_CEILINGS=tools/py_lint_ceilings.json\nGOH_RUFF_CONFIG_PARITY=on\n"
+HOUSE_TOML = "[lint]\nextend-select = [{}]\n"
+
+
+def _house_toml() -> str:
+    sys_path = str(REPO_ROOT / "gates")
+    import sys
+
+    sys.path.insert(0, sys_path)
+    try:
+        from ruff_house import HOUSE
+    finally:
+        sys.path.remove(sys_path)
+    return HOUSE_TOML.format(", ".join(f'"{r}"' for r in HOUSE))
+
+
+def _plain(repo, *files):
+    return subprocess.run(
+        ["ruff", "check", "--no-cache", *files], cwd=repo, capture_output=True, text=True,
+        check=False, stdin=subprocess.DEVNULL,
+    )  # fmt: skip
+
+
+def test_a_config_without_the_house_set_is_refused_under_parity(repo):
+    write(repo, ".gatesrc", PARITY_ON)
+    write(repo, "tools/py_lint_ceilings.json", json.dumps({"old.py": 1}) + "\n")
+    write(repo, "old.py", LONG_LINE)
+    commit_all(repo, "debt")
+    write(repo, "old.py", LONG_LINE + "Z = 1\n")
+    stage(repo, "old.py")
+    r = run(repo)
+    out = r.stdout + r.stderr
+    assert r.returncode != 0, out
+    assert "does not select the house set" in out or "no ruff config here selects" in out, out
+    assert "extend-select" in out, out
+    assert _plain(repo, "old.py").returncode == 0, "calibration: plain ruff misses it here"
+
+
+def test_unset_parity_warns_and_passes(repo):
+    ceilings(repo, {"old.py": 1})
+    write(repo, "old.py", LONG_LINE)
+    stage(repo, "old.py")
+    r = run(repo)
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert "GOH_RUFF_CONFIG_PARITY" in r.stdout + r.stderr
+
+
+def test_plain_ruff_and_the_gate_agree_on_a_long_line(repo):
+    write(repo, "ruff.toml", _house_toml())
+    write(repo, ".gatesrc", PARITY_ON)
+    write(repo, "tools/py_lint_ceilings.json", "{}\n")
+    commit_all(repo, "house config")
+    write(repo, "new.py", LONG_LINE)
+    stage(repo, "new.py")
+    r = run(repo)
+    assert r.returncode != 0 and "E501" in r.stdout + r.stderr, r.stdout + r.stderr
+    plain = _plain(repo, "new.py")
+    assert plain.returncode != 0 and "E501" in plain.stdout, plain.stdout
+
+
+def test_goh_itself_selects_the_house_set_and_opts_in():
+    assert "\nGOH_RUFF_CONFIG_PARITY=on" in (REPO_ROOT / ".gatesrc").read_text()
+    sys_path = str(REPO_ROOT / "gates")
+    import sys
+
+    sys.path.insert(0, sys_path)
+    try:
+        from py_lint_ceiling import unselected
+    finally:
+        sys.path.remove(sys_path)
+    import os
+
+    here = os.getcwd()
+    os.chdir(REPO_ROOT)
+    try:
+        missing, where = unselected(f"{sys.executable} -m", "gates/ruff_house.py")
+    finally:
+        os.chdir(here)
+    assert missing == [], (where, missing[:10])

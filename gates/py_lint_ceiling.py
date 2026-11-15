@@ -33,6 +33,7 @@ if __name__ == "__main__":  # C4: run HEAD's copy, not the shared working tree (
 import argparse
 import collections
 import json
+import re
 import shlex
 import subprocess
 import sys
@@ -45,6 +46,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))  # gates/: the house ru
 from ruff_house import extend_select
 
 KEY = "GOH_PY_LINT_CEILINGS"
+PARITY = "GOH_RUFF_CONFIG_PARITY"
+_RULE = re.compile(r"\(([A-Z]+[0-9]+)\)")
 
 
 def _git(*args: str) -> subprocess.CompletedProcess[str]:
@@ -103,7 +106,60 @@ def findings(runner: str, files: list[str]) -> dict[str, list[dict]]:
     return by_file
 
 
-def check(path: str, runner: str, files: list[str], *, view: bool = False) -> int:
+def _enabled(runner: str, file: str, extra: list[str]) -> tuple[set[str], str]:
+    """The rule codes ruff enables for `file` (with `extra` arguments), and the config it read."""
+    cmd = [*shlex.split(runner), "ruff", "check", "--show-settings", *extra, file]
+    r = subprocess.run(cmd, capture_output=True, text=True, check=False, stdin=subprocess.DEVNULL)
+    head, sep, rest = r.stdout.partition("linter.rules.enabled = [")
+    if r.returncode != 0 or not sep:
+        print(f"✗ ruff --show-settings gave no rule list (exit {r.returncode}): "
+              f"{r.stderr.strip()[:300]}", file=sys.stderr)  # fmt: skip
+        raise SystemExit(2)
+    found = re.search(r'^Settings path: "(.*)"$', head, re.MULTILINE)
+    where = ""  # no config file: ruff's defaults
+    if found:
+        where = found.group(1)
+        root = str(Path.cwd().resolve()) + "/"
+        where = where.removeprefix(root) if where.startswith(root) else where
+    return set(_RULE.findall(rest.partition("\n]")[0])), where
+
+
+def unselected(runner: str, file: str) -> tuple[list[str], str]:
+    """The house rules the repo's OWN ruff config leaves off for `file` -- what a plain `ruff check`
+    misses and the gate judges (GOH.LINTPARITY) -- and the config ruff read. Both sides are ruff's
+    resolved settings, so any config shape (select, extend, nested files) reads as ruff reads it.
+    """
+    plain, where = _enabled(runner, file, [])
+    house, _ = _enabled(runner, file, ["--extend-select", extend_select()])
+    return sorted(house - plain), where
+
+
+def _parity(runner: str, files: list[str], mode: str) -> list[str]:
+    """GOH_RUFF_CONFIG_PARITY: the repo's ruff config must select the house set itself, so the ruff
+    run by hand judges what this gate judges. `on` makes a gap a finding; `warn` (the default until
+    the estate's configs carry the set) names it and passes."""
+    if not files:
+        return []
+    missing, where = unselected(runner, files[0])
+    if not missing:
+        return []
+    rules = ", ".join(f'"{r}"' for r in extend_select().split(","))
+    shown = ", ".join(missing[:8]) + (", ..." if len(missing) > 8 else "")
+    text = (
+        (f"ruff config {where} does not select" if where else "no ruff config here selects")
+        + f" the house set: a plain `ruff check` misses {counted(len(missing), 'rule')} this gate"
+        f" judges ({shown}) -- add extend-select = [{rules}] to its [tool.ruff.lint] table"
+        " ([lint] in a ruff.toml)"
+    )
+    if mode == "on":
+        return [text]
+    print(f"⚠ {text} ({PARITY}=on refuses this)", file=sys.stderr)
+    return []
+
+
+def check(
+    path: str, runner: str, files: list[str], *, view: bool = False, parity: str = "warn"
+) -> int:
     staged = _ceilings_at("view" if view else ":", path)
     if staged is None:
         print(
@@ -127,6 +183,7 @@ def check(path: str, runner: str, files: list[str], *, view: bool = False) -> in
         for k, v in sorted(staged.items())
         if not Path(k).is_file()
     ]
+    problems += _parity(runner, files, parity)
     found = findings(runner, files)
     for f in sorted(files):
         have, ceiling = len(found.get(f, [])), staged.get(f, 0)
@@ -153,7 +210,7 @@ def check(path: str, runner: str, files: list[str], *, view: bool = False) -> in
         )
         print(
             f'  reproduce: python3 "$GOH_DIR/gates/py_lint_ceiling.py" {again}  '
-            "(a plain `ruff check` is weaker: no house rules, no ceiling)",
+            f"(plain `ruff check` judges no ceiling, nor a house rule its config omits: {PARITY})",
             file=sys.stderr,
         )
     if not problems:
@@ -189,13 +246,19 @@ def main() -> int:
     ap.add_argument(
         "--runner", default="python3 -m", help="how ruff is run (GOH_PY_RUNNER's shape)"
     )
+    ap.add_argument(
+        "--config-parity",
+        choices=("on", "warn"),
+        default="warn",
+        help=f"{PARITY}: the repo's ruff config must select the house set (on) or is warned (warn)",
+    )
     ap.add_argument("files", nargs="*")
     a = ap.parse_args()
     if a.seed:
         return seed(a.seed, a.runner)
     if not a.ceilings:
         ap.error("--check needs --ceilings")
-    return check(a.ceilings, a.runner, a.files, view=a.view)
+    return check(a.ceilings, a.runner, a.files, view=a.view, parity=a.config_parity)
 
 
 if __name__ == "__main__":

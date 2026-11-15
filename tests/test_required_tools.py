@@ -10,6 +10,7 @@ exactly ONE tool from PATH, so the failure is that tool's and nothing else's.
 import os
 import shutil
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -95,6 +96,12 @@ def test_shell_lint_fails_without_shellcheck(tmp_path, goh):
     assert "shellcheck is not installed" in got.stdout + got.stderr, got.stdout + got.stderr
 
 
+def _ruff_pin() -> str:
+    return subprocess.run([sys.executable, str(REPO_ROOT / "gates" / "ruff_house.py"), "--pin"],
+                          capture_output=True, text=True, check=True,
+                          stdin=subprocess.DEVNULL).stdout.strip()  # fmt: skip
+
+
 def _runner_without(module: str, into: Path) -> str:
     """A GOH_PY_RUNNER that is `python3 -m` for every module but `module`, which it cannot import:
     an interpreter upgrade leaves exactly this (2026-10-10: Homebrew's 3.15 had pytest, not ruff)."""
@@ -102,7 +109,9 @@ def _runner_without(module: str, into: Path) -> str:
     runner = into / "runner"
     runner.write_text(
         f'#!/bin/sh\n[ "$1" = {module} ] && {{ echo "No module named {module}" >&2; exit 1; }}\n'
-        '[ "$2" = --version ] && { echo "$1 0.0"; exit 0; }\n'  # every other tool is present
+        # every other tool is present; ruff at goh's pin (GOH.RUFFVERSION), the rest at any version
+        f'[ "$1 $2" = "ruff --version" ] && {{ echo "ruff {_ruff_pin()}"; exit 0; }}\n'
+        '[ "$2" = --version ] && { echo "$1 0.0"; exit 0; }\n'
         'exec python3 -m "$@"\n'
     )
     runner.chmod(0o755)

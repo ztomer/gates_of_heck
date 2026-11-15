@@ -113,7 +113,7 @@ if [ -n "${GOH_PY_LINT_CEILINGS:-}" ]; then
     # repository's own index is not it under `git commit -- <paths>` (GOH.HOOKREFRESH).
     view=""; [ "$scope" != staged ] || view=1
     goh_step "ruff check under $GOH_PY_LINT_CEILINGS ($scope)" \
-        "$GOH_PY" "$HERE/py_lint_ceiling.py" --check ${view:+--view} --ceilings "$GOH_PY_LINT_CEILINGS" --runner "$RUN" -- "${STAGED[@]}"
+        "$GOH_PY" "$HERE/py_lint_ceiling.py" --check ${view:+--view} --ceilings "$GOH_PY_LINT_CEILINGS" --config-parity "${GOH_RUFF_CONFIG_PARITY:-warn}" --runner "$RUN" -- "${STAGED[@]}"
 else
     goh_step "ruff check ($scope)"        "${RUN_ARR[@]}" ruff check --extend-select PLW1510 "${STAGED[@]}"  # the house floor (G17b, py_gate.sh)
     goh_py_house_unadopted "${STAGED[@]}"

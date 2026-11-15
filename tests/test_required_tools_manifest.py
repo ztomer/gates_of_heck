@@ -345,7 +345,7 @@ def test_goh_suite_installs_the_tools_its_fixture_gates_run():
     got = _cli("--layer", "goh-suite", "--install")
     assert got.returncode == 0, got.stderr
     pip = next(ln for ln in got.stdout.splitlines() if "pip install" in ln)
-    assert "ruff" in pip.split(), pip
+    assert any(w.split("==")[0] == "ruff" for w in pip.split()), pip
     brew = next((ln for ln in got.stdout.splitlines() if ln.startswith("brew install")), "")
     assert "git-cliff" in brew.split(), got.stdout
 

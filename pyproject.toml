@@ -18,13 +18,14 @@
 # for.
 line-length = 100
 
-# The linter: ruff's DEFAULT rule set, with no `select` here (G17, 2026-10-26). It was ONE rule
-# (PLW1510) while the tree reported 600-900 findings under the defaults that no step ran, so a
-# redefined name, an unused import, a stale `noqa` and an unsorted import block all passed. The tree
-# is clean under the defaults now and `ruff check .` is a GOH_CI_STEPS step, so a new finding is red.
-# This is goh's OWN configuration: the shared consumer gate (py_gate.sh) runs each project's own
-# rule set. Naming a rule here narrows or widens the defaults; leaving the key out follows ruff.
+# The linter: ruff's DEFAULT rule set PLUS the house set (gates/ruff_house.py), with no `select`
+# here (G17, 2026-10-26). It was ONE rule (PLW1510) while the tree reported 600-900 findings under
+# the defaults that no step ran. The house set is written HERE too (GOH.LINTPARITY, 2026-11-14): the
+# gate always added it, a plain `ruff check` did not, so a 120-column line passed the ruff an agent
+# typed and failed at commit (E501). GOH_RUFF_CONFIG_PARITY=on (.gatesrc) refuses this table if it
+# drops a house rule. A plain `ruff check` also reports the debt tools/py_lint_ceilings.json holds.
 [tool.ruff.lint]
+extend-select = ["B", "BLE", "C4", "E", "F", "I", "PIE", "PLE", "PLW", "RUF", "SIM", "UP", "W"]
 
 # Fixtures are DATA that checkers are run against (tests/test_screen_presentation.py reads these
 # three for what they do not say); rewriting them to satisfy the linter changes the test's subject.

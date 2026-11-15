@@ -22,7 +22,8 @@ interpreter's `-m ruff` must exist. Run 43139901867 failed goh's rust coverage s
 invocations, 2 versions": the runner got one ruff from the manifest's brew row and another from
 its unpinned pip row, and the split surfaced as a coverage loss. .github/workflows/gate.yml
 installs one ruff, GOH_CI_RUFF, and asks this in that provisioning step, so a runner that carries
-another ruff fails there, named. Locally the newest release is the rule, so no pin is given.
+another ruff fails there, named. tools/pytest.sh gives goh's own pin (gates/ruff_house.py RUFF,
+GOH.RUFFVERSION), so the local suite and the runner hold every ruff to the same release.
 """
 
 from __future__ import annotations
