@@ -1,4 +1,4 @@
-//! `goh launch-app [--background] TARGET`: start an app with launchd's LOGIN environment, never
+//! `goh launch-app [--background] TARGET | -b ID`: start an app with launchd's LOGIN environment, never
 //! the caller's (GOH.CLEANOPEN).
 //!
 //! macOS `open` hands the app it launches its own environment, and the app outlives the caller
@@ -20,7 +20,9 @@
 //! `env -i` is the Finder's set plus `__CF_USER_TEXT_ENCODING`, which `open`'s own CoreFoundation
 //! sets: launchd fills `HOME`, `PATH`, `TMPDIR`, `SSH_AUTH_SOCK` and every `launchctl setenv`. So
 //! this clears the environment and runs `/usr/bin/open`: `--background` is `-g`, `--new` `-n`,
-//! `--wait` `-W`, a bare NAME `-a NAME`, and what follows `--` the app's `--args`.
+//! `--wait` `-W`, a bare NAME `-a NAME`, `--bundle-id ID` `-b ID` (GOH.LAUNCHAPPID: an id read
+//! as a NAME ran `open -a com.example.App`, which fails), and what follows `--` the app's `--args`.
+//! Python callers launch through `tui/launch.py`, which spells this command once.
 //! `GOH_LAUNCH_APP_OPEN` names another opener, for a test (read before the clear).
 
 use goh_tui::ERR;
@@ -42,20 +44,38 @@ pub struct Opts {
     pub args: Vec<OsString>,
 }
 
+/// What to launch: a TARGET (path or app NAME), or an app by its bundle identifier.
+#[derive(Debug, Clone, Copy)]
+pub enum Target<'a> {
+    /// A `.app`, a document, or an app NAME.
+    Path(&'a Path),
+    /// `open -b ID`.
+    BundleId(&'a str),
+}
+
 /// The opener and its arguments. A TARGET with no `/` that is not a path is an app NAME
-/// (`open -a Ghostty`); anything else is opened as a path (`open X.app`, a document).
+/// (`open -a Ghostty`); anything else is opened as a path (`open X.app`, a document); a bundle id
+/// is `open -b ID`.
 #[must_use]
-pub fn argv(opener: &str, target: &Path, o: &Opts) -> Vec<OsString> {
+pub fn argv(opener: &str, target: Target<'_>, o: &Opts) -> Vec<OsString> {
     let mut out = vec![OsString::from(opener)];
     for (on, flag) in [(o.background, "-g"), (o.new, "-n"), (o.wait, "-W")] {
         if on {
             out.push(flag.into());
         }
     }
-    if is_name(target) {
-        out.push("-a".into());
+    match target {
+        Target::BundleId(id) => {
+            out.push("-b".into());
+            out.push(id.into());
+        }
+        Target::Path(p) => {
+            if is_name(p) {
+                out.push("-a".into());
+            }
+            out.push(p.as_os_str().to_owned());
+        }
     }
-    out.push(target.as_os_str().to_owned());
     if !o.args.is_empty() {
         out.push("--args".into());
         out.extend(o.args.iter().cloned());
@@ -86,17 +106,19 @@ fn launch(argv: &[OsString]) -> i32 {
         )
 }
 
-/// `goh launch-app [--background] [--new] [--wait] TARGET [-- ARGS...]`.
+/// `goh launch-app [--background] [--new] [--wait] (TARGET | -b ID) [-- ARGS...]`.
 #[must_use]
-pub fn run_command(target: &Path, o: &Opts) -> i32 {
+pub fn run_command(target: Target<'_>, o: &Opts) -> i32 {
     let opener = std::env::var("GOH_LAUNCH_APP_OPEN").unwrap_or_else(|_| OPEN.to_string());
     if opener == OPEN && !cfg!(target_os = "macos") {
         goh_tui::eoutln!("{ERR} goh launch-app: macOS only (LaunchServices' open)");
         return 2;
     }
-    if !is_name(target) && !target.exists() {
-        goh_tui::eoutln!("{ERR} goh launch-app: no such app: {}", target.display());
-        return 2;
+    if let Target::Path(p) = target {
+        if !is_name(p) && !p.exists() {
+            goh_tui::eoutln!("{ERR} goh launch-app: no such app: {}", p.display());
+            return 2;
+        }
     }
     launch(&argv(&opener, target, o))
 }
@@ -110,7 +132,14 @@ pub fn run_args(a: crate::cli::LaunchAppArgs) -> i32 {
         wait: a.wait,
         args: a.args,
     };
-    run_command(&a.target, &o)
+    match (&a.bundle_id, &a.target) {
+        (Some(id), _) => run_command(Target::BundleId(id), &o),
+        (None, Some(p)) => run_command(Target::Path(p), &o),
+        (None, None) => {
+            goh_tui::eoutln!("{ERR} goh launch-app: a TARGET or -b ID is required");
+            2
+        }
+    }
 }
 
 #[cfg(test)]
@@ -123,12 +152,16 @@ mod tests {
             background: true,
             ..Opts::default()
         };
-        let a = argv(OPEN, Path::new("/Applications/X.app"), &o);
+        let a = argv(OPEN, Target::Path(Path::new("/Applications/X.app")), &o);
         assert_eq!(
             a,
             ["/usr/bin/open", "-g", "/Applications/X.app"].map(OsString::from)
         );
-        let a = argv(OPEN, Path::new("/Applications/X.app"), &Opts::default());
+        let a = argv(
+            OPEN,
+            Target::Path(Path::new("/Applications/X.app")),
+            &Opts::default(),
+        );
         assert_eq!(
             a,
             ["/usr/bin/open", "/Applications/X.app"].map(OsString::from)
@@ -139,7 +172,7 @@ mod tests {
             args: vec!["-e".into(), "x.sh".into()],
             ..Opts::default()
         };
-        let a = argv(OPEN, Path::new("NoSuchAppName"), &o);
+        let a = argv(OPEN, Target::Path(Path::new("NoSuchAppName")), &o);
         let want = [
             "/usr/bin/open",
             "-n",
@@ -151,5 +184,18 @@ mod tests {
             "x.sh",
         ];
         assert_eq!(a, want.map(OsString::from));
+    }
+
+    #[test]
+    fn a_bundle_id_is_open_b_never_a_name() {
+        let o = Opts {
+            background: true,
+            ..Opts::default()
+        };
+        let a = argv(OPEN, Target::BundleId("com.google.GeminiMacOS"), &o);
+        assert_eq!(
+            a,
+            ["/usr/bin/open", "-g", "-b", "com.google.GeminiMacOS"].map(OsString::from)
+        );
     }
 }

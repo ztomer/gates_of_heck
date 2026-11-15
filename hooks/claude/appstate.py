@@ -43,6 +43,7 @@ from pathlib import Path
 from typing import Any
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+from tui.launch import launch_argv  # the one Python spelling of goh launch-app (GOH.LAUNCHAPPID)
 from tui.lib import noun  # the count meets its noun (GOH.HEDGEOWN)
 
 SUITE_MARKER = "GATES_OF_HECK_SUITE_REAL_HOME"  # tests/suite_home.py MARKER
@@ -57,11 +58,7 @@ DEFAULTS = {
     "GOH_APPSTATE_RUNNING_CMD": ["ps", "-axww", "-o", "comm="],
     # goh launch-app, never a bare `open`: open hands the app THIS hook's environment, and a
     # relaunched login item outlives the session (GOH.CLEANOPEN, GOH.GRACEEND).
-    "GOH_APPSTATE_LAUNCH_CMD": [
-        str(Path(__file__).resolve().parents[2] / "bin" / "goh"),
-        "launch-app",
-        "--background",
-    ],
+    "GOH_APPSTATE_LAUNCH_CMD": launch_argv(background=True),  # the app's path appended
 }
 READ_TIMEOUT_S = 4.0
 LAUNCH_SETTLE_S = 3.0  # how long a relaunched app has to show up in the process table

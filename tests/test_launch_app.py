@@ -11,15 +11,17 @@ from __future__ import annotations
 
 import os
 import pwd
+import shutil
 import subprocess
 import sys
+import tempfile
 import time
 from pathlib import Path
 
 import pytest
 from conftest import hermetic_env, native_goh_path
 from env_probe import probe_sh, read_probe
-from timing_bounds import GiveUp
+from timing_bounds import GiveUp, patience
 
 pytestmark = pytest.mark.skipif(sys.platform != "darwin", reason="LaunchServices' open is macOS")
 
@@ -93,3 +95,44 @@ def test_launch_app_refuses_a_missing_bundle(tmp_path: Path) -> None:
                        env=_caller_env(), capture_output=True, text=True, check=False,
                        stdin=subprocess.DEVNULL, timeout=60)  # fmt: skip
     assert r.returncode == 2 and "no such app" in r.stderr, r.stderr
+
+
+LSREGISTER = ("/System/Library/Frameworks/CoreServices.framework/Frameworks/"
+              "LaunchServices.framework/Support/lsregister")  # fmt: skip
+
+
+def test_launch_app_by_bundle_id_gives_the_login_environment() -> None:
+    """`-b ID` (GOH.LAUNCHAPPID): a caller that knows the app by id, not by path or name. A bare
+    `com.example.App` as the TARGET is read as a NAME (`open -a com.example.App`), which fails.
+
+    LaunchServices resolves no id to an app under a temp directory (probed 2026-11-15: registered
+    with `lsregister -f`, `open -b` fails from $TMPDIR and /private/tmp, launches from the home), so
+    the probe app lives in the suite's own physical home (tests/suite_home.py), removed after."""
+    tag = f"bid{os.getpid()}"
+    root = Path(tempfile.mkdtemp(prefix="launchappid.", dir=Path.home()))
+    app, out = _probe_app(root, tag)
+    subprocess.run(
+        [LSREGISTER, "-f", str(app)], check=True, stdin=subprocess.DEVNULL, timeout=patience(60)
+    )
+    try:
+        r = subprocess.run([str(native_goh_path()), "launch-app", "--background", "-b",
+                            f"local.goh.test.envprobe.{tag}"],
+                           env=_caller_env(), capture_output=True, text=True, check=False,
+                           stdin=subprocess.DEVNULL, timeout=patience(60))  # fmt: skip
+        assert r.returncode == 0, r.stderr
+        seen = _environ_of(out)
+    finally:
+        subprocess.run([LSREGISTER, "-u", str(app)], check=False, stdin=subprocess.DEVNULL,
+                       capture_output=True, timeout=patience(60))  # fmt: skip
+        shutil.rmtree(root, ignore_errors=True)
+    names = sorted(seen)
+    assert SENTINEL not in seen and "GOH_DIR" not in seen, names
+    assert seen.get("HOME") == pwd.getpwuid(os.getuid()).pw_dir and "PATH" in names, names
+
+
+def test_launch_app_takes_a_target_or_a_bundle_id_never_both(tmp_path: Path) -> None:
+    for argv in (["-b", "local.x", str(tmp_path)], []):
+        r = subprocess.run([str(native_goh_path()), "launch-app", *argv],
+                           env=_caller_env(), capture_output=True, text=True, check=False,
+                           stdin=subprocess.DEVNULL, timeout=patience(60))  # fmt: skip
+        assert r.returncode == 2, (argv, r.stderr)

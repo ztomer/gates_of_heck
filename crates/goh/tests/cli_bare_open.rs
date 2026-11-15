@@ -36,6 +36,10 @@ fn every_launch_shape_is_red_and_its_clean_spelling_is_green() {
             "launch_str.py",
             "import os\nos.system(\"open -a Foo\")\n",
         ),
+        (
+            "launch_env.py",
+            "import subprocess\nsubprocess.run([\"env\", \"/usr/bin/open\", \"-a\", APP])\n",
+        ),
     ])
     .expect("fixture");
     r.git(&["add", "-A"]).expect("git");
@@ -46,6 +50,7 @@ fn every_launch_shape_is_red_and_its_clean_spelling_is_green() {
         "subst.sh:2:",
         "launch.py:2:",
         "launch_str.py:2:",
+        "launch_env.py:2:",
     ] {
         assert!(out.text().contains(site), "{site} missing: {}", out.text());
     }
@@ -63,6 +68,12 @@ fn every_launch_shape_is_red_and_its_clean_spelling_is_green() {
     r.write(
         "launch.py",
         "import subprocess\nsubprocess.run([GOH, \"launch-app\", APP], stdin=subprocess.DEVNULL)\n",
+    )
+    .expect("write");
+    // An argv list is argv (GOH.LAUNCHAPPID): `env -i` clears, and a string argument is data.
+    r.write(
+        "launch_env.py",
+        "import subprocess\nsubprocess.run([\"env\", \"-i\", \"/usr/bin/open\", \"-a\", APP])\nsubprocess.run([\"echo\", \"open -a Foo\"])\n",
     )
     .expect("write");
     r.write("launch_str.py", "print(\"run open -a Foo by hand\")\n")

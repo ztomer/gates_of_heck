@@ -192,8 +192,12 @@ pub struct LaunchAppArgs {
     /// `open -W`: wait until the app exits.
     #[arg(long)]
     pub wait: bool,
+    /// `open -b`: the app by its bundle identifier (`com.example.App`), in place of a TARGET.
+    #[arg(short = 'b', long, value_name = "ID", conflicts_with = "target")]
+    pub bundle_id: Option<String>,
     /// The `.app` bundle, an app NAME (`open -a`), or anything `open` opens.
-    pub target: std::path::PathBuf,
+    #[arg(required_unless_present = "bundle_id")]
+    pub target: Option<std::path::PathBuf>,
     /// The app's own arguments (`open --args`), after `--`.
     #[arg(last = true)]
     pub args: Vec<std::ffi::OsString>,

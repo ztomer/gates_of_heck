@@ -44,7 +44,9 @@ const FIX: &str = "    `open` hands the app it launches THIS shell's environment
      a ship's GOH_DIR (a transient gate export) and GOH_SHIP_ITEM reached a private Swift app and every app it\n    \
      relaunched (GOH.CLEANOPEN). Launch with launchd's login environment instead:\n      \
      \"$GOH_DIR/bin/goh\" launch-app \"$APP\"                 (foreground)\n      \
-     \"$GOH_DIR/bin/goh\" launch-app --background \"$APP\"    (open -g)\n";
+     \"$GOH_DIR/bin/goh\" launch-app --background \"$APP\"    (open -g)\n      \
+     \"$GOH_DIR/bin/goh\" launch-app -b com.example.App     (open -b)\n      \
+     from tui.launch import launch_app                   (Python, PYTHONPATH=$GOH_DIR)\n";
 
 /// The words after which the next word is a command.
 pub(crate) const LEADERS: [&str; 7] = ["then", "do", "else", "exec", "nohup", "time", "sudo"];
@@ -116,10 +118,10 @@ fn carries_caller_env(before: &str) -> bool {
     }
     let mut args = args.iter();
     while let Some(w) = args.next() {
-        if *w == "--ignore-environment" || (is_short_opt(w) && w.contains('i')) || *w == "-" {
+        if env_clears(w) {
             return false;
         }
-        if matches!(*w, "-u" | "-C" | "-S" | "-P" | "--unset" | "--chdir") {
+        if env_takes_value(w) {
             args.next();
         } else if !(is_short_opt(w) || w.starts_with("--") || is_assignment(w)) {
             return false;
@@ -128,12 +130,22 @@ fn carries_caller_env(before: &str) -> bool {
     true
 }
 
-fn is_short_opt(w: &str) -> bool {
+/// An `env` option that clears the environment: the clean launch (`goh launch-app`'s mechanism).
+pub(crate) fn env_clears(w: &str) -> bool {
+    w == "--ignore-environment" || (is_short_opt(w) && w.contains('i')) || w == "-"
+}
+
+/// An `env` option whose value is the next word.
+pub(crate) fn env_takes_value(w: &str) -> bool {
+    matches!(w, "-u" | "-C" | "-S" | "-P" | "--unset" | "--chdir")
+}
+
+pub(crate) fn is_short_opt(w: &str) -> bool {
     w.len() > 1 && w.starts_with('-') && !w.starts_with("--")
 }
 
 /// `NAME=value`, the shell's assignment word.
-fn is_assignment(w: &str) -> bool {
+pub(crate) fn is_assignment(w: &str) -> bool {
     w.split_once('=').is_some_and(|(name, _)| {
         name.starts_with(|c: char| c.is_alphabetic() || c == '_')
             && name.chars().all(|c| c.is_alphanumeric() || c == '_')
