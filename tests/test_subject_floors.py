@@ -8,9 +8,22 @@ commit (`--staged`) is never judged against a floor."""
 
 from __future__ import annotations
 
+import json
+import os
+import re
+import subprocess
 from pathlib import Path
 
-from conftest import REPO_ROOT, commit_all, run_goh, stage, write
+from conftest import (
+    REPO_ROOT,
+    commit_all,
+    git,
+    hermetic_env,
+    native_goh_path,
+    run_goh,
+    stage,
+    write,
+)
 
 TEST_SRC = "def test_one():\n    assert 1 + 1 == 2\n"
 KEY = "GOH_UNREAPED_SPAWN_MIN_FILES"
@@ -24,8 +37,12 @@ def _fixture(repo: Path, gatesrc: str) -> None:
     commit_all(repo)
 
 
-def _full(repo: Path):
-    r = run_goh(repo, "structural", "--full")
+def _full(repo: Path, required: bool = False, **env: str):
+    """`structural --full`. The seam says the day does not matter: `allow` (the default here, as
+    every fixture is keyless) is the advisory, `required` is the refusal the grace ends in."""
+    child = {k: v for k, v in os.environ.items() if k != "GOH_FLOOR_UNDECLARED"} | env
+    child["GOH_FLOOR_UNDECLARED"] = "required" if required else "allow"
+    r = run_goh(repo, "structural", "--full", env=child)
     return r.returncode, r.stdout + r.stderr
 
 
@@ -59,20 +76,74 @@ def test_a_floor_above_what_the_tree_holds_is_the_stopped_reading_verdict(repo: 
     assert KEY in out and "floor of 3" in out and "read 2 test files" in out, out
 
 
-def test_a_keyless_gatesrc_passes_and_says_which_floors_it_lacks(repo: Path) -> None:
+def test_an_undeclared_floor_is_red_and_the_seam_keeps_the_old_advisory(repo: Path) -> None:
+    """GOH.FLOORREQ / GOH.SCANNERFLOORS: a scanner that read something with no floor fails, naming
+    the key and what it read; `GOH_FLOOR_UNDECLARED=allow` (the suite's seam) is the advisory."""
     _fixture(repo, "")
+    code, out = _full(repo, required=True)
+    assert code == 1, out
+    assert f"{KEY}=2" in out and "no floor declared" in out and "GOH_EMOJI_MIN_FILES=" in out, out
     code, out = _full(repo)
     assert code == 0, out
     advisory = [line for line in out.splitlines() if "declare no floor" in line]
-    assert len(advisory) == 1, out
-    assert f"{KEY}=2" in advisory[0], advisory
-    assert "GOH_EMOJI_MIN_FILES=" in advisory[0], advisory
-    # Declared floors are not omissions; `0` declares "no floor here" and silences the scanner.
-    write(repo, ".gatesrc", f"GOH_MAX_LINES=500\n{KEY}=2\nGOH_EMOJI_MIN_FILES=0\n")
+    assert len(advisory) == 1 and f"{KEY}=2" in advisory[0], out
+
+
+def _declare_all_but(repo: Path, seeded: set[str]) -> None:
+    """A `.gatesrc` declaring every undeclared key `_full` names except `seeded`, as `KEY=0`."""
+    _, out = _full(repo)  # the advisory names each key it read
+    keys = sorted(set(re.findall(r"(GOH_\w+_MIN_\w+)=\d+", out)))
+    lines = "".join(f"{k}=0\n" for k in keys if k not in seeded)
+    write(repo, ".gatesrc", f"GOH_MAX_LINES=500\n{lines}")
+
+
+def test_a_seeded_undeclared_floor_warns_and_a_declared_one_is_a_stale_entry(repo: Path) -> None:
+    """The ratchet, both ways (close-the-class): a key the repo's own floor seed names WARNS, an
+    entry whose key is declared is stale and red, and a declared `0` is a declaration."""
+    _fixture(repo, "")
+    root = git(repo, "rev-list", "--max-parents=0", "HEAD").split()[0]
+    _declare_all_but(repo, {KEY})
     commit_all(repo)
-    code, out = _full(repo)
-    assert code == 0, out
-    assert KEY not in out and "GOH_EMOJI_MIN_FILES" not in out, out
+    code, out = _full(repo, required=True)
+    assert code == 1 and f"{KEY}=2" in out, out  # unseeded: red
+    seed = {"entries": [{"root": root, "repo": "fixture", "path": KEY, "count": 1,
+                         "reason": "unreviewed: declare it"}]}  # fmt: skip
+    write(repo, "floor_seed.json", json.dumps(seed))
+    commit_all(repo)
+    code, out = _full(repo, required=True)
+    assert code == 0, out  # seeded: a warning
+    assert "seeded" in out and KEY in out, out
+    _declare_all_but(repo, set())  # declares KEY too
+    commit_all(repo)
+    code, out = _full(repo, required=True)
+    assert code == 1 and "stale" in out and KEY in out, out
+
+
+MODES = [(), ("--full",), ("--full", "--keep-going")]
+
+
+def test_a_planted_over_floor_is_red_in_every_mode_that_runs_the_scanner(repo: Path) -> None:
+    """GOH.FULLFLOORS: a floor one above what the scanner read is red under the default run, under
+    `--full` and under `--full --keep-going`, through the binary AND through `gates/structural.sh`
+    (the hook's entry, which `tools/gate.sh --full` execs). FAULTS.SKILLS saw a planted
+    GOH_EMOJI_MIN_FILES=9999 stay green under `--full`: every mode judges its floor."""
+    _fixture(repo, f"{KEY}=3\n")  # the fixture holds 2 test files
+    for mode in MODES:
+        r = run_goh(repo, "structural", *mode, env=hermetic_env(GOH_FLOOR_UNDECLARED="allow"))
+        out = r.stdout + r.stderr
+        assert r.returncode == 1 and KEY in out and "floor of 3" in out, (mode, out)
+        bash = subprocess.run(
+            ["bash", str(REPO_ROOT / "gates" / "structural.sh"), *mode],
+            cwd=repo, capture_output=True, text=True, stdin=subprocess.DEVNULL, check=False,
+            env=hermetic_env(GOH_BIN=str(native_goh_path()), GOH_FLOOR_UNDECLARED="allow"),
+        )  # fmt: skip
+        out = bash.stdout + bash.stderr
+        assert bash.returncode == 1 and KEY in out and "floor of 3" in out, (mode, out)
+    write(repo, ".gatesrc", f"GOH_MAX_LINES=500\n{KEY}=2\n")
+    commit_all(repo)
+    for mode in MODES:  # the control: at the count, every mode is green
+        r = run_goh(repo, "structural", *mode, env=hermetic_env(GOH_FLOOR_UNDECLARED="allow"))
+        assert r.returncode == 0, (mode, r.stdout + r.stderr)
 
 
 def test_a_floor_that_does_not_parse_is_exit_2_naming_its_key(repo: Path) -> None:

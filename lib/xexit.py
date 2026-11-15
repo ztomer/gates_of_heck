@@ -67,10 +67,13 @@ def main(argv: list[str]) -> int:
     sys.path.insert(
         0, str(Path(__file__).resolve().parent.parent)
     )  # tui.lib, whatever the caller's path
-    from tui.lib import err
+    from tui.lib import counted, err
 
     sys.stderr.write("\n" + "\n".join(hits) + "\n\n")
-    err(f"{label} printed the ✗ line(s) above and exited 0 -- a ✗ is a failure in the house")
+    err(
+        f"{label} printed {counted(len(hits), '✗ line')} above and exited 0"
+        " -- a ✗ is a failure in the house"
+    )
     err("  contract: exit nonzero, or say ⚠ if it is an advisory (GOH.XEXIT, lib/xexit.py)")
     return 1
 

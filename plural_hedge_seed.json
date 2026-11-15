@@ -410,13 +410,6 @@
     {
       "root": "73391f04f5f2b92ab9813c62e6cecdce919d2d86",
       "repo": "gates_of_heck",
-      "path": "crates/goh/src/step_report.rs",
-      "count": 2,
-      "reason": "unreviewed: 2 hedged plurals: lines 194, 273"
-    },
-    {
-      "root": "73391f04f5f2b92ab9813c62e6cecdce919d2d86",
-      "repo": "gates_of_heck",
       "path": "crates/goh/src/stepcmd.rs",
       "count": 1,
       "reason": "unreviewed: 1 hedged plural: line 63"
@@ -427,13 +420,6 @@
       "path": "crates/goh/src/structural/trackedignored.rs",
       "count": 1,
       "reason": "unreviewed: 1 hedged plural: line 133"
-    },
-    {
-      "root": "73391f04f5f2b92ab9813c62e6cecdce919d2d86",
-      "repo": "gates_of_heck",
-      "path": "crates/goh/src/substdin/seed.rs",
-      "count": 1,
-      "reason": "unreviewed: 1 hedged plural: line 184"
     },
     {
       "root": "73391f04f5f2b92ab9813c62e6cecdce919d2d86",
@@ -609,13 +595,6 @@
       "path": "lib/tree_stamp.py",
       "count": 1,
       "reason": "unreviewed: 1 hedged plural: line 147"
-    },
-    {
-      "root": "73391f04f5f2b92ab9813c62e6cecdce919d2d86",
-      "repo": "gates_of_heck",
-      "path": "lib/xexit.py",
-      "count": 1,
-      "reason": "unreviewed: 1 hedged plural: line 73"
     },
     {
       "root": "73391f04f5f2b92ab9813c62e6cecdce919d2d86",

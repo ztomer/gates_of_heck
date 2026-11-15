@@ -181,12 +181,12 @@ pub fn run(
         Ok(files) => (
             0,
             format!(
-                "{OK} {TAG} seeded {}: {} entr(ies) -- {kept} kept as written, {added} new and \
-                 'unreviewed', {dropped} dropped as stale; {} process call(s) seen in {} file(s)\n",
+                "{OK} {TAG} seeded {}: {} -- {kept} kept as written, {added} new and \
+                 'unreviewed', {dropped} dropped as stale; {} seen in {}\n",
                 files.join(", "),
-                seeded.len(),
-                outcome.seen,
-                outcome.examined
+                goh_tui::counted_as(seeded.len(), "entry", "entries"),
+                goh_tui::counted_as(outcome.seen, "process call", "process calls"),
+                goh_tui::counted(outcome.examined, "file")
             ),
         ),
     }

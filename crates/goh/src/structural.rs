@@ -209,7 +209,7 @@ pub fn run(staged: bool, full: bool, keep_going: bool) -> i32 {
     step!(late_steps(&repo, &files, &checks, &cfg, staged, &tally));
     // Last: every scanner above recorded what it read, and this judges each against its floor
     // (full scope only), or says which scanners have none.
-    step!(crate::subject::step(&cfg, staged));
+    step!(crate::subject::step(&repo, &cfg, staged));
 
     // A keep-going run that reached here had findings on the way; they are named now. A
     // fail-fast run can only reach here with none, so `finish` is 0 and the pass line stands.
@@ -249,6 +249,7 @@ fn late_steps(
         crate::requires_call::step(repo, cfg, staged),
         substdin::step(cfg, files, staged),
         crate::changelog_tags::step(repo, staged),
+        crate::gatesrc_dupes::step(repo, staged),
         steps_delegated::step_full_only(repo, checks, staged),
     ];
     first_stop(steps, tally)

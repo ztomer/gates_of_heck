@@ -6,6 +6,10 @@
 //! and a regex `ruff format` broke, which silently vanished three gates from a calibration -- and
 //! every time the gate's output read exactly like a pass.
 //!
+//! UNDECLARED IS RED (GOH.FLOORREQ, 2026-11-14): the first version said so in an advisory line that six
+//! consumers printed and none acted on. A scanner that read something with no floor now fails the
+//! last step unless the repo's floor seed names the key (`crate::subject_required`, a warning).
+//!
 //! THE SHAPE, one key per scanner, `GOH_<SCANNER>_MIN_<UNIT>` in `.gatesrc` (the shape
 //! `GOH_SUBPROCESS_STDIN_MIN_CALLS` had alone):
 //!
@@ -42,7 +46,6 @@
 use goh_tui::{ERR, START};
 use std::cell::RefCell;
 use std::collections::BTreeMap;
-use std::fmt::Write as _;
 
 /// One scanner's subject: the key that holds its floor and what it counts.
 #[derive(Debug, PartialEq, Eq)]
@@ -312,59 +315,45 @@ pub fn take() -> Vec<(&'static Subject, usize)> {
     ALL.iter().filter_map(|s| got.remove(s.key)).collect()
 }
 
-/// The verdict over every record: (exit code, text). Red names each scanner under its floor; a
-/// pass carries the advisory line when any scanner that read something has no floor. Pure.
+/// The verdict over every record against the declared floors: (exit code, text). Red names each
+/// scanner under its floor. A scanner with NO floor is not judged here but by `subject_required`
+/// (seeded, or red). Pure.
 #[must_use]
 pub fn judge(
     records: &[(&Subject, usize)],
     floors: &BTreeMap<&'static str, usize>,
 ) -> (i32, String) {
     let mut red = String::new();
-    let mut unset = Vec::new();
     for (subject, n) in records {
-        match floors.get(subject.key) {
-            None if *n > 0 => unset.push(format!("{}={n}", subject.key)),
-            floor => red.push_str(&below(subject, floor.copied(), *n).unwrap_or_default()),
+        if let Some(floor) = floors.get(subject.key) {
+            red.push_str(&below(subject, Some(*floor), *n).unwrap_or_default());
         }
     }
-    if !red.is_empty() {
-        return (1, red);
-    }
-    let mut s = String::new();
-    if !unset.is_empty() {
-        let _ = writeln!(
-            s,
-            "{START} [subject] {} no floor in .gatesrc, so a scan that stops \
-             reading would pass; this run read: {}",
-            if unset.len() == 1 {
-                "1 scanner declares".to_string()
-            } else {
-                format!("{} scanners declare", unset.len())
-            },
-            unset.join(" ")
-        );
-    }
-    (0, s)
+    (i32::from(!red.is_empty()), red)
 }
 
 /// The step's label, as `structural_steps.txt` names it.
 pub const LABEL: &str = "every scanner read its declared subject";
 
-/// The structural step, last in the pipeline: every scanner's record against its floor. Full
-/// scope only; at `--staged` the records are dropped unjudged.
+/// The structural step, last in the pipeline: every scanner's record against its floor, and every
+/// scanner that read something against the requirement to declare one. Full scope only; at
+/// `--staged` the records are dropped unjudged.
 #[must_use]
-pub fn step(cfg: &crate::gatesrc::Gatesrc, staged: bool) -> Option<i32> {
+pub fn step(repo: &std::path::Path, cfg: &crate::gatesrc::Gatesrc, staged: bool) -> Option<i32> {
     let read = take();
     if staged {
         return None;
     }
     let start = crate::step_report::begin(LABEL);
     let (code, text) = judge(&read, &cfg.floors);
-    if code == 0 {
-        goh_tui::out(&text);
+    let (req_code, req_out, req_err) = crate::subject_required::verdict(repo, &read, &cfg.floors);
+    if code == 0 && req_code == 0 {
+        goh_tui::out(&req_out);
+        goh_tui::eout(&req_err);
         crate::step_report::ok(LABEL, start);
         return None;
     }
+    let text = format!("{text}{req_err}");
     Some(crate::step_report::fail(
         LABEL,
         &crate::step_report::ported("crates/goh/src/subject.rs"),

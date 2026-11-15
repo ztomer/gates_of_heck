@@ -91,3 +91,18 @@ fn an_identifier_call_shown_in_a_string_is_not_a_hedge() {
         [h("file@"), h("entry@")]
     );
 }
+
+#[test]
+fn a_hedge_on_the_continuation_line_of_a_string_is_seen() {
+    // GOH.LINEHEDGE: goh's own step_report.rs printed "the x line@ above" on the line after a `\`
+    // continuation, which the line-by-line lexer read as code. Rust and Python continue a string
+    // through a trailing backslash; the next line starts inside it.
+    let rs = h("let m = format!(\"{out}\\n\\\n    printed the x line@ above\\n\");\nlet n = 1;\n");
+    assert_eq!(lines(&rs, Lang::Slash), [2]);
+    let py = h("MSG = \"first \\\n    2 file@ wrong\"\nx = 'a'\n");
+    assert_eq!(lines(&py, Lang::Hash), [2]);
+    // The continuation ends with the string: code after it is code again, and a string that
+    // only ends its line (no backslash) never carries over.
+    let after = h("let m = \"a \\\n b\"; // c@\nlet f = x.y@;\nlet c = '\"';\nlet d = e@;\n");
+    assert_eq!(lines(&after, Lang::Slash), Vec::<usize>::new());
+}

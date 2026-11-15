@@ -43,11 +43,28 @@ enum Ctx {
 /// a naive quote toggle read that hedge as code, scripts SC-3, 2026-11-12).
 #[must_use]
 pub fn literal_spans(line: &str, lang: Lang) -> Vec<(usize, usize)> {
-    if is_comment_line(line, lang) {
-        return Vec::new();
+    spans_from(line, lang, None).0
+}
+
+/// `literal_spans` for a line that may START inside a string: `carry` is the quote still open at
+/// the end of the previous line, and the second value is the quote still open at the end of this
+/// one. A string runs on only through a trailing backslash (GOH.LINEHEDGE: a Rust `"..\` + newline
+/// continuation, whose next line `literal_spans` read as code and so never saw its hedge); a bare
+/// unterminated quote ends with its line, so one stray `'"'` char literal cannot desync the file.
+#[must_use]
+pub fn spans_from(
+    line: &str,
+    lang: Lang,
+    carry: Option<char>,
+) -> (Vec<(usize, usize)>, Option<char>) {
+    if carry.is_none() && is_comment_line(line, lang) {
+        return (Vec::new(), None);
     }
     let mut spans = Vec::new();
     let mut stack = vec![Ctx::Code(0)];
+    if let Some(q) = carry {
+        stack.push(Ctx::Str(q, 0));
+    }
     let mut escaped = false;
     let mut opener = false;
     let mut prev = ' ';
@@ -101,10 +118,14 @@ pub fn literal_spans(line: &str, lang: Lang) -> Vec<(usize, usize)> {
         }
         prev = c;
     }
-    if let Some(Ctx::Str(_, start)) = stack.last() {
+    let mut open = None;
+    if let Some(Ctx::Str(q, start)) = stack.last() {
         spans.push((*start, line.len())); // a string that runs on past the line's end
+        if escaped && stack.len() == 2 {
+            open = Some(*q);
+        }
     }
-    spans
+    (spans, open)
 }
 
 /// Builtin calls a string shows as code (`print(s)`, `len(s)`): no count noun is spelled so. A
@@ -206,8 +227,11 @@ pub struct Finding {
 #[must_use]
 pub fn findings(source: &str, lang: Lang) -> Vec<Finding> {
     let mut out = Vec::new();
+    let mut carry = None;
     for (i, line) in source.lines().enumerate() {
-        let first = literal_spans(line, lang)
+        let (spans, open) = spans_from(line, lang, carry);
+        carry = open;
+        let first = spans
             .into_iter()
             .find_map(|(a, b)| hedges(&line[a..b]).into_iter().next());
         if let Some(hedge) = first {

@@ -41,6 +41,8 @@ REAL_HOME = os.path.realpath(os.path.expanduser("~"))
 MARKER = "GATES_OF_HECK_SUITE_REAL_HOME"  # not GOH_-prefixed: no env scrub drops it
 
 READ = ("Projects", ".claude/skills", ".cargo")
+# The GOH_* variables a hermetic child keeps: locations and test seams, never an opt-in.
+KEPT_GOH = ("GOH_LIVE", "GOH_ESTATE_STATE", "GOH_ROADMAP_PENDING", "GOH_FLOOR_UNDECLARED")
 # Where each kept variable's tool looks under HOME when the variable is unset.
 HOME_DEFAULTS = {
     "CARGO_HOME": ".cargo",
@@ -113,6 +115,8 @@ def _enter() -> None:
     # test_check_roadmap.py names its own list, and hermetic_env keeps this one.
     (home / "roadmap_pending.txt").write_text("*\n")
     os.environ["GOH_ROADMAP_PENDING"] = str(home / "roadmap_pending.txt")
+    # The fixtures are keyless repos: an undeclared floor is the advisory here (GOH.FLOORREQ).
+    os.environ["GOH_FLOOR_UNDECLARED"] = "allow"
 
 
 _enter()

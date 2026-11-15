@@ -210,7 +210,8 @@ pub(crate) fn fail(label: &str, how: &str, report: &str, start: Instant) -> i32 
         // A cut tail that does not say so reads as the whole report: old_phones' 95-site
         // early-exit list, shown as its last 59 lines, passed for the full count (2026-10-14).
         goh_tui::eoutln!(
-            "{STEP} {from} earlier line(s) not shown (GOH_TAIL={tail}; raise it to see them)"
+            "{STEP} {from} earlier {} not shown (GOH_TAIL={tail}; raise it to see them)",
+            goh_tui::noun_as(from, "line", "lines")
         );
     }
     for line in &lines[from..] {
@@ -289,9 +290,10 @@ pub(crate) fn delegated(
     } else if code == 0 {
         // Words and exit code disagree: in the house contract the `✗` wins (GOH.XEXIT).
         let report = format!(
-            "{out}\n{}\n{ERR} {label} printed the ✗ line(s) above and exited 0 -- exit nonzero, \
+            "{out}\n{}\n{ERR} {label} printed {} above and exited 0 -- exit nonzero, \
              or say ⚠ if it is an advisory (GOH.XEXIT)\n",
-            crosses.join("\n")
+            crosses.join("\n"),
+            goh_tui::counted(crosses.len(), "✗ line")
         );
         fail(label, &command_line(program, args, checks), &report, start)
     } else {

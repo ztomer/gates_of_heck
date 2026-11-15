@@ -85,17 +85,13 @@ fn reading_nothing_under_a_floor_says_none() {
 }
 
 #[test]
-fn an_unset_floor_is_one_advisory_line_naming_key_and_count() {
+fn an_unset_floor_is_not_this_judges_business() {
+    // The requirement to declare one is `subject_required`'s; `judge` only holds declared floors.
     let (code, text) = judge(
         &[(&EMOJI, 12), (&SECRETS, 9), (&SHELL_LINT, 0)],
         &floors(&[("GOH_SECRETS_MIN_FILES", 5)]),
     );
-    assert_eq!(code, 0, "{text}");
-    assert_eq!(text.lines().count(), 1, "{text}");
-    assert!(text.contains("GOH_EMOJI_MIN_FILES=12"), "{text}");
-    // Declared, and a scanner with nothing to read, are not omissions to report.
-    assert!(!text.contains("GOH_SECRETS"), "{text}");
-    assert!(!text.contains("GOH_SHELL_LINT"), "{text}");
+    assert_eq!((code, text.as_str()), (0, ""));
 }
 
 #[test]
