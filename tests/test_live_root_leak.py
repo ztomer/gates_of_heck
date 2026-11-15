@@ -16,13 +16,13 @@ The fixture is a goh-shaped checkout with no crates (so the resolver takes `bin/
 
 from __future__ import annotations
 
-import shutil
 import subprocess
 from pathlib import Path
 
 import pytest
 from _fast_git import fast_init
-from conftest import REPO_ROOT, git, hermetic_env
+from conftest import git, hermetic_env
+from source_closure import copy_closure
 from timing_bounds import patience
 
 STUB = "#!/bin/sh\necho {name}\n"
@@ -30,9 +30,7 @@ RESOLVE = '. "$1/gates/_goh_bin.sh" && goh_resolve_native && "$goh_native"'
 
 
 def _goh_tree(root: Path, name: str) -> None:
-    for d in ("gates", "lib", "tui"):
-        shutil.copytree(REPO_ROOT / d, root / d, dirs_exist_ok=True,
-                        ignore=shutil.ignore_patterns("__pycache__"))  # fmt: skip
+    copy_closure(root, "gates/_goh_bin.sh")  # what the resolver sources, read from it
     _stub(root, name)
 
 
@@ -79,7 +77,6 @@ def test_an_export_still_finds_its_binary_in_the_live_root(
 ) -> None:
     """The one job GOH_LIVE_ROOT has: an export (no bin/) resolves from the live checkout."""
     export = tmp_path / "export"
-    for d in ("gates", "lib", "tui"):
-        shutil.copytree(main_checkout / d, export / d)
+    copy_closure(export, "gates/_goh_bin.sh", root=main_checkout)
     (export / ".goh-head").write_text(git(main_checkout, "rev-parse", "HEAD").strip() + "\n")
     assert _resolve(export, main_checkout, tmp_path) == "main"
