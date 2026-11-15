@@ -197,3 +197,27 @@ def test_a_refused_commit_leaves_the_repo_as_it_was(tmp_path):
     assert _git(e["stale"], "rev-parse", "HEAD") == head
     assert _git(e["stale"], "status", "--porcelain") == "", out
     assert (e["stale"] / ".githooks" / "pre-commit").read_bytes() == _old_pre_commit()
+
+
+def test_a_repo_off_its_default_branch_is_set_aside(tmp_path):
+    """GOH.HOOKSBRANCH: the refresh commits on whatever is checked out, so a repo mid-feature got
+    its hooks commit on the feature branch. One off its default branch is named, never touched."""
+    e = _estate(tmp_path)
+    _git(e["stale"], "checkout", "-q", "-b", "feature")
+    r = _run(tmp_path / "estate", tmp_path, "--refresh", "--except", str(e["kept"]))
+    out = r.stdout + r.stderr
+    assert r.returncode == 1 and "not its default branch" in out and "feature" in out, out
+    assert (e["stale"] / ".githooks" / "pre-commit").read_bytes() == _old_pre_commit()
+    assert _git(e["stale"], "rev-list", "--count", "feature").strip() == "1", out
+
+
+def test_the_default_branch_is_the_remotes_when_it_names_one(tmp_path):
+    """A clone's default is origin/HEAD's, so a repo whose default is `trunk` is refreshed there
+    and set aside on `main`."""
+    e = _estate(tmp_path)
+    repo = e["stale"]
+    _git(repo, "branch", "-m", "trunk")
+    _git(repo, "update-ref", "refs/remotes/origin/trunk", "HEAD")
+    _git(repo, "symbolic-ref", "refs/remotes/origin/HEAD", "refs/remotes/origin/trunk")
+    r = _run(tmp_path / "estate", tmp_path, "--refresh", "--except", str(e["kept"]))
+    assert "stale: refreshed" in r.stdout + r.stderr, r.stdout + r.stderr

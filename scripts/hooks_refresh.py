@@ -19,7 +19,8 @@ plus one command run deliberately, refreshes the same hooks with nobody's tree m
 The refresh is install.sh's own (GOH_SKIP_BUILD=1): it overwrites a hook only when it is pristine
 -- today's stock, a stock goh once shipped, or the one it recorded installing -- so a hook a repo
 edited is never clobbered. A repo is set aside, named, when it is on hold, when its `.githooks`
-has uncommitted changes (the commit would sweep them in), or when it lacks the tools/gate.sh and
+has uncommitted changes (the commit would sweep them in), when it is not on its default branch
+(origin/HEAD's, else main or master: GOH.HOOKSBRANCH), or when it lacks the tools/gate.sh and
 .gatesrc install.sh would otherwise write as starters. The commit carries `.githooks` only,
 through the repo's own hooks (the refreshed ones); one they refuse is undone, so the repo is left
 exactly as it was.
@@ -79,12 +80,32 @@ def _tail(p: subprocess.CompletedProcess) -> str:
     return " | ".join(lines[-3:])
 
 
+def default_branch(repo: Path) -> str | None:
+    """The branch a refresh may commit on: origin/HEAD's, else the one of main/master it has."""
+    head = _git(repo, "symbolic-ref", "-q", "--short", "refs/remotes/origin/HEAD").stdout.strip()
+    if head.startswith("origin/"):
+        return head.removeprefix("origin/")
+    have = [b for b in ("main", "master") if _git(repo, "rev-parse", "-q", "--verify",
+                                                   f"refs/heads/{b}").returncode == 0]  # fmt: skip
+    return have[0] if len(have) == 1 else None
+
+
 def refresh(repo: Path, hooks: list[str]) -> tuple[bool, str]:
     """(refreshed, one line saying what happened)."""
     if (hold := repo_hold.repo_hold(str(repo))) is not None:
         return False, f"set aside: on hold (goh.{hold.key}), nothing in it may change"
     if not ((repo / "tools" / "gate.sh").is_file() and (repo / ".gatesrc").is_file()):
         return False, "set aside: no tools/gate.sh or .gatesrc (install.sh would write starters)"
+    # The commit lands on whatever is checked out: a repo mid-feature would carry a hooks commit on
+    # its feature branch (GOH.HOOKSBRANCH). Only its default branch is committed to.
+    branch = _git(repo, "symbolic-ref", "-q", "--short", "HEAD").stdout.strip()
+    want = default_branch(repo)
+    if not want or branch != want:
+        known = want or "none known: no origin/HEAD, and not one of main/master"
+        return (
+            False,
+            f"set aside: on {branch or 'a detached HEAD'}, not its default branch ({known})",
+        )
     dirty = _git(repo, "status", "--porcelain", "--", ".githooks")
     if dirty.returncode != 0 or dirty.stdout.strip():
         return False, "set aside: .githooks has uncommitted changes (commit or drop them first)"
