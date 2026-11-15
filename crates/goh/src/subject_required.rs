@@ -75,15 +75,18 @@ pub fn undeclared(records: &[(&Subject, usize)], floors: &BTreeMap<&'static str,
     out
 }
 
-/// The day an undeclared floor turns from the advisory line into a refusal: 2026-11-23T00:00:00Z
-/// (seconds since the epoch). A week of grace, because a consumer whose CI runs goh cannot read the
+/// The day an undeclared floor becomes a refusal: 2026-11-23T00:00:00Z (seconds since the epoch).
+///
+/// A week of grace, because a consumer whose CI runs goh cannot read the
 /// private store the seed lives in: it declares its floors, or carries a tracked `floor_seed.json`,
 /// before then, or its next push goes red. The same shape as `STORE_CI_REFUSED_FROM`; a new
 /// scanner added later is one more key that consumers declare within the grace of its release,
 /// which the release canary names per consumer before it ships.
 pub const REQUIRED_FROM: u64 = 1_795_392_000;
 
-/// The ambient override: `required` is red whatever the day (the suites that judge the requirement
+/// The ambient override of the day.
+///
+/// `required` is red whatever the day (the suites that judge the requirement
 /// set it), `allow` is the advisory whatever the day (goh's own fixtures, which are keyless repos).
 /// Unset: by the day. No `.gatesrc` can say it: a repo's declaration is its file, never the
 /// environment it was started in.
@@ -137,8 +140,7 @@ mod tests {
 
     #[test]
     fn only_a_scanner_that_read_something_with_no_floor_is_undeclared() {
-        let floors: BTreeMap<&'static str, usize> =
-            [("GOH_SECRETS_MIN_FILES", 5)].into_iter().collect();
+        let floors = BTreeMap::from([("GOH_SECRETS_MIN_FILES", 5)]);
         let found = undeclared(&[(&EMOJI, 12), (&SECRETS, 9), (&SHELL_LINT, 0)], &floors);
         assert_eq!(
             found.keys().map(String::as_str).collect::<Vec<_>>(),
@@ -164,8 +166,7 @@ mod tests {
 
     #[test]
     fn a_declared_zero_is_a_declaration() {
-        let floors: BTreeMap<&'static str, usize> =
-            [("GOH_EMOJI_MIN_FILES", 0)].into_iter().collect();
+        let floors = BTreeMap::from([("GOH_EMOJI_MIN_FILES", 0)]);
         assert_eq!(undeclared(&[(&EMOJI, 12)], &floors).len(), 0);
     }
 }

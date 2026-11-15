@@ -315,8 +315,9 @@ pub fn take() -> Vec<(&'static Subject, usize)> {
     ALL.iter().filter_map(|s| got.remove(s.key)).collect()
 }
 
-/// The verdict over every record against the declared floors: (exit code, text). Red names each
-/// scanner under its floor. A scanner with NO floor is not judged here but by `subject_required`
+/// The verdict over every record against the declared floors: (exit code, text).
+///
+/// Red names each scanner under its floor. A scanner with NO floor is not judged here but by `subject_required`
 /// (seeded, or red). Pure.
 #[must_use]
 pub fn judge(
@@ -335,8 +336,9 @@ pub fn judge(
 /// The step's label, as `structural_steps.txt` names it.
 pub const LABEL: &str = "every scanner read its declared subject";
 
-/// The structural step, last in the pipeline: every scanner's record against its floor, and every
-/// scanner that read something against the requirement to declare one. Full scope only; at
+/// The structural step, last in the pipeline.
+///
+/// Every scanner's record against its floor, and every scanner that read something against the requirement to declare one. Full scope only; at
 /// `--staged` the records are dropped unjudged.
 #[must_use]
 pub fn step(repo: &std::path::Path, cfg: &crate::gatesrc::Gatesrc, staged: bool) -> Option<i32> {

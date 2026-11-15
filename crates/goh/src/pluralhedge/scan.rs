@@ -46,7 +46,9 @@ pub fn literal_spans(line: &str, lang: Lang) -> Vec<(usize, usize)> {
     spans_from(line, lang, None).0
 }
 
-/// `literal_spans` for a line that may START inside a string: `carry` is the quote still open at
+/// `literal_spans` for a line that may START inside a string.
+///
+/// `carry` is the quote still open at
 /// the end of the previous line, and the second value is the quote still open at the end of this
 /// one. A string runs on only through a trailing backslash (GOH.LINEHEDGE: a Rust `"..\` + newline
 /// continuation, whose next line `literal_spans` read as code and so never saw its hedge); a bare
