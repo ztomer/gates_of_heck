@@ -424,3 +424,37 @@ def test_goh_suite_installs_every_tool_its_self_hosted_hook_runs():
     }
     for tool in hook - {"ruff", "rustfmt"}:  # ruff: pinned per repo (GOH.RUFFPIN); rustfmt: rustup's
         assert floors[tool] != "-", f"goh-suite {tool} names no release"
+
+
+def test_a_tool_called_inside_the_repos_own_gate_script_is_required(tmp_path: Path) -> None:
+    """GOH.REQTOOLS (from CI.PUBLIC2): monitor's GOH_CI_STEPS runs `bash tools/coverage_check.sh`,
+    which runs coverage_gate.sh --lang rust; only .gatesrc was read, so cargo-llvm-cov was never
+    installed on a hosted runner and the step failed there while passing locally."""
+    cov = (
+        '#!/usr/bin/env bash\nset -euo pipefail\nGOH="${GOH_DIR:-$HOME/Projects/gates_of_heck}"\n'
+        "\"$GOH/gates/coverage_gate.sh\" --lang rust --floor 95 \\\n    --ignore 'main\\.rs'\n"
+    )
+    names = _names_for(
+        tmp_path / "m",
+        {
+            ".gatesrc": "GOH_CI_STEPS='cargo test:bash tools/coverage_check.sh'\n",
+            "tools/coverage_check.sh": cov,
+        },
+    )
+    assert "cargo-llvm-cov" in names, names
+    # A script the repo does not track, or a path outside it, is not read.
+    names = _names_for(
+        tmp_path / "n", {".gatesrc": "GOH_CI_STEPS='bash tools/coverage_check.sh:../x/y.sh'\n"}
+    )
+    assert "cargo-llvm-cov" not in names, names
+
+
+def test_a_cargo_subcommand_a_repo_script_runs_is_required(tmp_path: Path) -> None:
+    names = _names_for(
+        tmp_path / "s",
+        {
+            "tools/gate.sh": "./tools/deps.sh\n",
+            "tools/deps.sh": "#!/bin/sh\ncargo machete --with-metadata\n",
+        },
+    )
+    assert "cargo-machete" in names, names

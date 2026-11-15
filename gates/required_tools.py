@@ -33,7 +33,10 @@ met by the goh-floors action (.github/actions/goh-floors), which reads them from
 
 --repo infers layers from what the repo declares (.gatesrc, tools/gate.sh, .githooks/*): a gate
 script named there, a `--lang` passed to coverage_gate.sh, `GOH_PYTHON_FORMATTED` set, shell files
-tracked. An unknown --layer is refused: a typo that installs nothing reads as a green setup.
+tracked. It reads the repo's OWN scripts those name too, two levels deep, comment lines dropped
+(GOH.REQTOOLS: monitor's `bash tools/coverage_check.sh` runs coverage_gate.sh --lang rust), and a
+manifest `cargo-X` such a script runs as `cargo X`. An unknown --layer is refused: a typo that
+installs nothing reads as a green setup.
 """
 
 from __future__ import annotations
@@ -81,6 +84,57 @@ def rows() -> list[dict]:
     return out
 
 
+# A repo-relative script a gate's text names: `tools/coverage_check.sh`, `./tools/x.py`.
+_SCRIPT = re.compile(r"(?<![\w$/.-])(?:\./)?((?:[\w-]+/)*[\w.-]+\.(?:sh|bash|py))(?![\w.-])")
+_MAX_SCRIPTS = 64
+
+
+def _code(body: str) -> str:
+    """A script's text without its comment lines: a comment naming a tool is not a call."""
+    return "\n".join(ln for ln in body.splitlines() if not ln.lstrip().startswith("#"))
+
+
+def _own_scripts(repo: str, text: str, depth: int = 2) -> list[str]:
+    """The code of the repo's OWN scripts that `text` names, and of the ones those name (`depth`
+    levels: a gate step's helpers, not every build script the repo has).
+
+    GOH.REQTOOLS (from CI.PUBLIC2): monitor's GOH_CI_STEPS runs `bash tools/coverage_check.sh`,
+    and that script runs coverage_gate.sh --lang rust; only .gatesrc was read, so a hosted runner
+    never installed cargo-llvm-cov and the step failed there while it passed here. A path outside
+    the repo, or one it does not have, is not read; goh's own gates are named by `$GOH...` and are
+    the manifest's own rows."""
+    real = os.path.realpath(repo)
+    seen: set[str] = set()
+    out: list[str] = []
+    level = [_code(text)]
+    for _ in range(depth):
+        found: list[str] = []
+        for body in level:
+            for rel in _SCRIPT.findall(body):
+                path = os.path.realpath(os.path.join(real, rel))
+                inside = path.startswith(real + os.sep) and os.path.isfile(path)
+                if path in seen or not inside or len(seen) >= _MAX_SCRIPTS:
+                    continue
+                seen.add(path)
+                with open(path, encoding="utf-8", errors="replace") as fh:
+                    found.append(_code(fh.read()))
+        out += found
+        level = found
+    return out
+
+
+def _cargo_subcommands(texts: list[str]) -> set[str]:
+    """The manifest's `cargo-X` tools a script runs as `cargo X`. A bare `cargo-X` is how a script
+    PROBES for one (`command -v cargo-zigbuild`), not a call it cannot do without."""
+    tools = {r["tool"] for r in rows() if r["kind"] == "cargo" and r["tool"].startswith("cargo-")}
+    joined = "\n".join(texts)
+    return {
+        t
+        for t in tools
+        if re.search(rf"(?<![\w-])cargo +{re.escape(t[len('cargo-') :])}(?![\w-])", joined)
+    }
+
+
 def _declared(repo: str) -> str:
     text = []
     for rel in (".gatesrc", "tools/gate.sh"):
@@ -116,8 +170,11 @@ def _tracks_shell(repo: str) -> bool:
 
 
 def detect(repo: str) -> tuple[set[str], set[str]]:
-    """(layers, structural tools) this repo's declared gates need."""
+    """(layers, tools named one by one) this repo's declared gates, and its own scripts they run,
+    need."""
     text = _declared(repo)
+    scripts = _own_scripts(repo, text)
+    text = "\n".join([text, *scripts])
     layers = set()
     for gate, layer in (
         ("rust_gate.sh", "rust"),
@@ -144,6 +201,7 @@ def detect(repo: str) -> tuple[set[str], set[str]]:
         layers.add("python-format")
     if re.search(r"^\s*(export\s+)?GOH_RUST_LINT_CARGO=['\"]?cargo-zigbuild", text, re.MULTILINE):
         layers.add("rust-cross")  # the --target lint configs run through cargo-zigbuild
+    structural |= _cargo_subcommands(scripts)
     return layers, structural
 
 
@@ -331,6 +389,12 @@ def main(argv: list[str] | None = None) -> int:
         for r in table
         if r["layer"] == "structural" and (r["tool"] in structural or "structural" in args.layer)
     ]
+    # A tool a repo's own script runs, from whichever layer's row names it first (GOH.REQTOOLS).
+    have = {r["tool"] for r in selected}
+    for r in table:
+        if r["tool"] in structural and r["tool"] not in have:
+            selected.append(r)
+            have.add(r["tool"])
     if args.check:
         return check(selected)
     if args.names:
