@@ -104,6 +104,8 @@ def test_missing_python_is_named(tmp_path):
     bindir = tmp_path / "nopython"
     bindir.mkdir()
     _os.symlink(_shutil.which("git"), bindir / "git")
+    # the guard line resolves lib/bash5.sh with dirname, and a missing guard stops the script
+    _os.symlink(_shutil.which("dirname"), bindir / "dirname")
     r = subprocess.run(
         ["/bin/bash", str(DOCTOR), str(target)],
         capture_output=True,

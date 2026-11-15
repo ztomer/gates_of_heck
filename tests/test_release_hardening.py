@@ -175,6 +175,7 @@ class TestSelfBuffering:
         mirror = tmp_path / "mirror"
         (mirror / "tools" / "release-kit").mkdir(parents=True)
         (mirror / "gates").symlink_to(REPO_ROOT / "gates")
+        (mirror / "lib").symlink_to(REPO_ROOT / "lib")  # its bash guard
         script = mirror / "tools" / "release-kit" / "release.sh"
         script.write_bytes(RELEASE.read_bytes())
         proc = subprocess.Popen(

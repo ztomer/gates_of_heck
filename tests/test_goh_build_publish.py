@@ -125,6 +125,8 @@ def test_a_tree_that_is_not_a_checkout_publishes(tmp_path: Path) -> None:
     (tree / "scripts").mkdir(parents=True)
     (tree / "crates").mkdir()
     shutil.copy2(SCRIPT, tree / "scripts" / "build-goh.sh")
+    (tree / "lib").mkdir()  # a tarball carries the bash guard; without it the script stops
+    shutil.copy2(SCRIPT.parent.parent / "lib" / "bash5.sh", tree / "lib" / "bash5.sh")
     r = check(tree, GIT_CEILING_DIRECTORIES=str(tmp_path))
     assert r.returncode == 0, r.stderr
 

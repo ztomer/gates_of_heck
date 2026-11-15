@@ -7,6 +7,7 @@ Xcode's on PATH is exactly the incident this file exists for.
 """
 
 import os
+import shutil
 import subprocess
 from pathlib import Path
 
@@ -27,6 +28,10 @@ def _resolve(bin_dir: Path, **extra_env) -> subprocess.CompletedProcess:
     # which would turn the "nothing anywhere" case into a pass.
     env = {k: v for k, v in os.environ.items() if k != "GOH_SWIFT"}
     env["PATH"] = str(bin_dir)
+    # ...bar dirname: the guard line resolves lib/bash5.sh with it, and a missing guard stops
+    bin_dir.mkdir(parents=True, exist_ok=True)
+    if not (bin_dir / "dirname").exists():
+        os.symlink(shutil.which("dirname"), bin_dir / "dirname")
     env.update(extra_env)
     script = f'. "{TOOLCHAIN}"; goh_swift_resolve; printf "%s|%s\\n" "$SWIFT" "$SWIFT_ORIGIN"'
     return subprocess.run(
