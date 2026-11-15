@@ -63,8 +63,18 @@ JOBS = 4
 # What no gate runs: a change confined to these sweeps nothing.
 NOT_GATE_INPUTS = (":(exclude)docs", ":(exclude)tests", ":(exclude)*.md")
 # GOH_* keys a consumer's push does not carry are gate bookkeeping of the run that called this
-# (local_ci.sh exports goh's own .gatesrc); only cache placement and the live switch pass through.
-KEEP_ENV = {"GOH_BIN_STORE", "GOH_HEAD_CACHE", "GOH_VERDICT_DIR", "GOH_VERDICT_CACHE", "GOH_LIVE"}
+# (local_ci.sh exports goh's own .gatesrc); only cache placement, the live switch and the private
+# seed store pass through. GOH_SEED_DIR is a LOCATION, not an opt-in: dropped, every scanner read
+# the live store, so a lane could not stage a seed for its land without writing the machine's own
+# (GOH.CANARYSEEDDIR; divoom v0.45.12).
+KEEP_ENV = {
+    "GOH_BIN_STORE",
+    "GOH_HEAD_CACHE",
+    "GOH_VERDICT_DIR",
+    "GOH_VERDICT_CACHE",
+    "GOH_LIVE",
+    "GOH_SEED_DIR",
+}
 # The ratchets a repo seeds: the step's name as `goh structural` prints it, and the command.
 SEEDS = {
     "shell lint": "goh shell-lint --seed",

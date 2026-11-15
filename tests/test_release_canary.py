@@ -273,3 +273,64 @@ def test_a_failed_step_always_names_its_exit_and_stderr():
     assert mod._failed("git archive", silent) == "git archive exit 141: no stderr"
     killed = subprocess.CompletedProcess(["tar"], -13, b"", b"tar: x\ntar: broken\n")
     assert mod._failed("tar -x", killed) == "tar -x signal 13: tar: x | tar: broken"
+
+
+BARE_OPEN_SH = '#!/usr/bin/env bash\nopen -a "$APP"\n'  # goh bare-open: red unless seeded
+
+
+def _store_seeding(store: Path, repo: Path) -> Path:
+    """A private seed store holding `repo`'s one bare `open` -- what a lane stages for its land."""
+    root = _git(repo, "rev-list", "--max-parents=0", "HEAD").stdout.split()[0]
+    store.mkdir(parents=True)
+    entry = {"root": root, "repo": repo.name, "path": "run.sh", "count": 1, "reason": "staged"}
+    (store / "bare_open_seed.json").write_text(json.dumps({"why": "t", "entries": [entry]}))
+    return store
+
+
+def test_a_staged_seed_store_is_what_the_canary_judges_by(tmp_path, goh):
+    """GOH.CANARYSEEDDIR: the canary dropped every GOH_* but a few, GOH_SEED_DIR with them, so its
+    scanners read the LIVE store: a lane could not stage a seed for its land without writing the
+    machine's own store (divoom v0.45.12). A land with GOH_SEED_DIR naming a staged store is
+    judged by that store, and the live one (XDG_STATE_HOME's) is never read or written."""
+    consumer = _consumer(tmp_path / "consumers" / "opener", BARE_OPEN_SH)
+    state = tmp_path / "state" / "estate_audit.json"
+    state.parent.mkdir()
+    (state.parent / "installed_repos").write_text(f"{consumer}\n")
+    staged = _store_seeding(tmp_path / "staged-seeds", consumer)
+    # The base side is a release under which the site is seeded, so the step is green there.
+    base = tmp_path / "base-goh"
+    base_store = _store_seeding(tmp_path / "base-seeds", consumer)
+    base.write_text(f'#!/usr/bin/env bash\nGOH_SEED_DIR="{base_store}" exec {goh} "$@"\n')
+    base.chmod(0o755)
+    live = tmp_path / "live-state"
+    argv = [sys.executable, str(SCRIPT), "--root", str(tmp_path / "estate"), "--state", str(state)]
+    argv += ["--base-bin", str(base), "--head-bin", str(goh), "--goh", str(REPO_ROOT)]
+    env = {**os.environ, "GOH_VERDICT_DIR": str(tmp_path / "verdicts"), "XDG_STATE_HOME": str(live)}
+    (tmp_path / "estate").mkdir()
+    r = subprocess.run(
+        argv,
+        capture_output=True,
+        text=True,
+        check=False,
+        stdin=subprocess.DEVNULL,
+        env={**env, "GOH_SEED_DIR": str(staged)},
+    )
+    out = r.stdout + r.stderr
+    rec = json.loads(state.read_text())["release_canary"]
+    assert r.returncode == 0, out
+    assert rec["verdict"] == "clear" and not rec["turned_red"] and not rec["already_red"], rec
+    assert not (live / "goh" / "seeds").exists(), "the live store was written"
+    # The instrument bites: the same land with no staged store is judged by the (empty) live one.
+    r = subprocess.run(
+        argv,
+        capture_output=True,
+        text=True,
+        check=False,
+        stdin=subprocess.DEVNULL,
+        env={k: v for k, v in env.items() if k != "GOH_SEED_DIR"},
+    )
+    rec = json.loads(state.read_text())["release_canary"]
+    assert r.returncode == 1, r.stdout + r.stderr
+    assert [f["step"] for f in next(iter(rec["turned_red"].values()))] == [
+        "no bare open of an app"
+    ], rec
