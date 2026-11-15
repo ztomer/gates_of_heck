@@ -209,6 +209,23 @@ fn format_args(invocation: &str) -> Vec<String> {
         .collect()
 }
 
+/// The house shape (GOH.ASSERTLINT, 2026-11-15): ONE assertion whose message names what was
+/// expected and shows what was there. Measured against clippy 1.100.0 with `-W clippy::pedantic`:
+/// clippy's `assert_is_empty` refuses `assert!(x.is_empty())` and `len_zero` refuses
+/// `assert!(x.len() == 0, ..)`, and both are silent on this shape, as this rule is.
+pub const HOUSE_SHAPE: &str = "assert!(x.is_empty(), \"expected no rows: {x:?}\");";
+
+/// The fix text: the house shape, and the shapes it replaces, each with why.
+pub const FIX: &str = concat!(
+    "write `assert!(x.is_empty(), \"expected no rows: {x:?}\");` -- the house shape: the message\n",
+    "names what was expected and the value shows what was there, and clippy (assert_is_empty,\n",
+    "len_zero) accepts it too. clippy's own `assert_eq!(x, [])` shows the value as well and is not\n",
+    "flagged. Not `assert_eq!(x.len(), 0)`: both gates let it through and it prints a count, not\n",
+    "the items. Not a fixed message (`assert!(x.is_empty(), \"no rows\")`): it names the\n",
+    "expectation and hides the value. The negated form, `assert!(!x.is_empty())`, is already a\n",
+    "real assertion and is not flagged.\n",
+);
+
 pub(crate) fn run(staged: bool, exclude: &str) -> (i32, String, String) {
     let exclude = match crate::steps::compile_exclude(exclude) {
         Ok(x) => x,
@@ -257,9 +274,7 @@ pub(crate) fn run(staged: bool, exclude: &str) -> (i32, String, String) {
             out.push_str(h);
             out.push('\n');
         }
-        out.push_str(
-            "write `assert_eq!(x.len(), 0)` — clippy's own suggestion, which is not flagged (a message that\ninterpolates the value is not flagged either). The negated form, `assert!(!x.is_empty())`, is\nalready a real assertion and is not flagged.\nTo fix a whole tree at once: cargo clippy --fix --all-targets -- -A clippy::pedantic\n",
-        );
+        out.push_str(FIX);
         return (1, out, String::new());
     }
     if files.is_empty() && crate::noallow::has_own_rust(&listed, exclude.as_ref(), staged) {
@@ -289,9 +304,10 @@ pub fn run_command(staged: bool, exclude: &str) -> i32 {
 mod tests {
     use super::Rules;
 
-    /// The measured table: one shape per line against clippy 1.99.0
-    /// (2026-10-02). `false` rows matter as much: a checker that flagged
-    /// `assert_eq!(v.len(), 0)` would be flagging the fix.
+    /// The measured table: one shape per line against clippy 1.99.0 (2026-10-02), the house-shape
+    /// rows against clippy 1.100.0 (2026-11-15). `false` rows matter as much: `assert_eq!(v.len(),
+    /// 0)` stays unflagged, since the old fix text asked for it and the estate holds 811
+    /// (2026-11-15); the text now names it as the shape NOT to write (GOH.ASSERTLINT).
     const TABLE: &[(&str, bool)] = &[
         ("assert!(v.is_empty());", true),
         ("assert!(v.len() == 0);", true),
@@ -363,7 +379,35 @@ mod tests {
             false,
         ),
         ("assert!(v.is_empty(), \"left {v:?} over\");", false),
+        // The house shape (GOH.ASSERTLINT): clippy 1.100.0 pedantic is silent on it too.
+        ("assert!(x.is_empty(), \"expected no rows: {x:?}\");", false),
+        // clippy's assert_is_empty suggestion: shows the value, not flagged.
+        ("assert_eq!(x, [] as [u8; 0]);", false),
     ];
+
+    #[test]
+    fn the_fix_text_recommends_the_shape_both_gates_accept() {
+        let rules = Rules::new().unwrap_or_else(|e| unreachable!("{e}"));
+        let house = rules.findings(super::HOUSE_SHAPE);
+        assert!(house.is_empty(), "the house shape is flagged: {house:?}");
+        assert!(
+            super::FIX.contains(super::HOUSE_SHAPE.trim_end_matches(';')),
+            "{}",
+            super::FIX
+        );
+        // Every shape the text rejects is named, and the one this rule refuses is refused.
+        for rejected in [
+            "assert_eq!(x.len(), 0)",
+            "assert!(x.is_empty(), \"no rows\")",
+        ] {
+            assert!(
+                super::FIX.contains(rejected),
+                "the fix text does not name {rejected}"
+            );
+        }
+        let fixed = rules.findings("assert!(x.is_empty(), \"no rows\");");
+        assert_eq!(fixed.len(), 1, "a fixed message hides the value: {fixed:?}");
+    }
 
     #[test]
     fn every_row_of_the_measured_table_holds() {
