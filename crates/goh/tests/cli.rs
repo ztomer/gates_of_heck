@@ -39,7 +39,9 @@ fn every_subcommand_answers_help_and_version() {
 
 #[test]
 fn a_clean_repo_passes_every_gate_in_both_scopes() {
+    // A `.gatesrc` that sets nothing but the roadmap every repo declares (the testkit adds it).
     let r = repo_with(&[
+        (".gatesrc", ""),
         ("README.md", "# fixture\n"),
         ("src/lib.rs", "pub fn f() {}\n"),
     ])
@@ -330,7 +332,7 @@ fn a_bad_gatesrc_is_a_usage_error_not_a_pass() {
 
 #[test]
 fn no_cap_set_warns_and_skips_the_length_gate() {
-    let r = repo_with(&[("src/a.rs", &"x\n".repeat(600))]).expect("fixture");
+    let r = repo_with(&[(".gatesrc", ""), ("src/a.rs", &"x\n".repeat(600))]).expect("fixture");
     let out = goh(Some(&r), &["structural", "--full"], &[]).expect("goh runs");
     assert!(out.status.success(), "{}{}", out.stdout, out.stderr);
     assert!(

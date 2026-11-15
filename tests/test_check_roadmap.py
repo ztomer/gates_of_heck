@@ -14,6 +14,7 @@ import json
 from pathlib import Path
 
 import pytest
+from _gatesrc_kit import declared, write_gatesrc
 from conftest import commit_all, git, hermetic_env, run_goh, stage, write
 
 GOH_ROOT = Path(__file__).resolve().parent.parent
@@ -128,28 +129,26 @@ def test_a_lower_case_document_about_a_plan_is_not_a_plan_file(repo, queue):
     assert roadmap(repo, queue).returncode == 0
 
 
-def test_unset_is_red_unless_the_repo_is_still_pending(repo, queue, tmp_path):
-    """GOH.ROADMAPREQ: every gated repo declares GOH_ROADMAP (a path or none). The turn-on is
-    staged: a repo named in the pending list (the test seam GOH_ROADMAP_PENDING)
-    still passes with a warning naming the item, so no consumer's push goes red with no item."""
+def test_an_unset_roadmap_is_red_in_a_fixture_too(repo, queue, tmp_path):
+    """GOH.ROADMAPHOOK: every gated repo declares GOH_ROADMAP (a path or none), and so does every
+    fixture. The test seam GOH_ROADMAP_PENDING once stood a listed repo (`*`: every fixture) pending
+    with a warning; it is gone, so a list naming this repo excuses nothing."""
     write(repo, "ROADMAP.md", CLEAN)
     commit_all(repo)
-    none_pending = tmp_path / "pending-empty.txt"
-    none_pending.write_text("# no repo pending\n")
-    r = roadmap(repo, queue, env_extra={"GOH_ROADMAP_PENDING": str(none_pending)})
-    assert r.returncode == 1 and "GOH_ROADMAP is unset" in r.stderr, (r.stdout, r.stderr)
-    assert "Plan files here: ROADMAP.md" in r.stderr, r.stderr
     pending = tmp_path / "pending.txt"
-    pending.write_text("# repos still to declare\nproj\n")
+    pending.write_text("*\nproj\n")
     r = roadmap(repo, queue, env_extra={"GOH_ROADMAP_PENDING": str(pending)})
-    assert r.returncode == 0 and "GOH_ROADMAP is unset" in r.stdout, r.stdout
-    assert "pending" in r.stdout and "GOH.ROADMAPREQ" in r.stdout, r.stdout
-    # The root commit is the identity: a checkout under another name (the push gate's export
-    # directory) is still the pending repo.
-    root = git(repo, "rev-list", "--max-parents=0", "HEAD").strip()
-    pending.write_text(f"{root} some-other-name\n")
-    r = roadmap(repo, queue, env_extra={"GOH_ROADMAP_PENDING": str(pending)})
-    assert r.returncode == 0 and "pending" in r.stdout, (r.stdout, r.stderr)
+    assert r.returncode == 1 and "GOH_ROADMAP is unset" in r.stderr, (r.stdout, r.stderr)
+    assert "Plan files here: ROADMAP.md" in r.stderr and "pending" not in r.stdout, r.stdout
+
+
+def test_the_fixture_kit_declares_a_roadmap_unless_the_body_names_one(tmp_path):
+    """tests/_gatesrc_kit.py is how a fixture writes `.gatesrc` (GOH.ROADMAPHOOK)."""
+    assert declared("GOH_MAX_LINES=10") == "GOH_MAX_LINES=10\nGOH_ROADMAP=none\n"
+    assert declared("") == "GOH_ROADMAP=none\n"
+    assert declared("GOH_ROADMAP=PLAN.md\n") == "GOH_ROADMAP=PLAN.md\n"
+    write_gatesrc(tmp_path, "X=1\n")
+    assert (tmp_path / ".gatesrc").read_text() == "X=1\nGOH_ROADMAP=none\n"
 
 
 def test_no_shipped_pending_list_is_left_to_go_stale(repo, queue):
@@ -159,7 +158,7 @@ def test_no_shipped_pending_list_is_left_to_go_stale(repo, queue):
     assert not (GOH_ROOT / "crates/goh/src/roadmap/pending.txt").exists()
     write(repo, "ROADMAP.md", CLEAN)
     commit_all(repo)
-    env = {k: v for k, v in hermetic_env().items() if k != "GOH_ROADMAP_PENDING"}
+    env = hermetic_env()
     env["GOH_ROADMAP_QUEUE"] = str(queue)
     r = run_goh(repo, "roadmap", env=env)
     assert r.returncode == 1 and "GOH_ROADMAP is unset" in r.stderr, (r.stdout, r.stderr)

@@ -11,6 +11,7 @@ import subprocess
 from pathlib import Path
 
 from _fast_git import fast_init
+from _gatesrc_kit import write_gatesrc
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 PUSH_GATE = REPO_ROOT / "gates" / "push_gate.sh"
@@ -47,7 +48,7 @@ def _repo(tmp_path: Path, gatesrc: str = "", version: str | None = "1.0.0") -> P
     (repo / "tools" / "gate.sh").write_text(GATE)
     (repo / "marker.txt").write_text("COMMITTED")
     (repo / ".gitignore").write_text("local.cfg\n")
-    (repo / ".gatesrc").write_text(gatesrc)
+    write_gatesrc(repo, gatesrc)
     # A version, because these fixtures push `refs/tags/v*` and a tag naming a
     # version nothing declares is a FINDING (check_tag_version.py). The repo
     # without one has its own test below — "no version source is not a pass".

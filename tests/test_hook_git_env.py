@@ -19,6 +19,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+from _gatesrc_kit import as_fixture
+
 REPO_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO_ROOT / "checks"))
 from _gitutil import local_env_vars
@@ -68,7 +70,7 @@ def _scratch(tmp_path, files=None):
     _git(main, "config", "user.name", "t")
     for rel, body in (files or {}).items():
         (main / rel).parent.mkdir(parents=True, exist_ok=True)
-        (main / rel).write_text(body)
+        (main / rel).write_text(as_fixture(rel, body))
         if rel.endswith(".sh"):
             (main / rel).chmod(0o755)
     _git(main, "add", "-A")
@@ -161,7 +163,7 @@ def test_probes_run_without_the_hooks_variables(tmp_path):
 def test_push_gate_runs_the_export_without_the_pushers_git_dir(tmp_path):
     """pre-push from a linked worktree exports GIT_DIR (measured, git 2.55): the export's gate
     must see its OWN git dir, and its fixture repos must stay theirs."""
-    main, wt, hook_env = _scratch(tmp_path, {"tools/gate.sh": PUSH_GATE_SCRIPT})
+    main, wt, hook_env = _scratch(tmp_path, {"tools/gate.sh": PUSH_GATE_SCRIPT, ".gatesrc": ""})
     hook_env.pop("GIT_INDEX_FILE")  # pre-push carries GIT_DIR only
     report = tmp_path / "report.txt"
     hook_env.update(

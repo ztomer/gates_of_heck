@@ -69,6 +69,7 @@ def _structural(goh: Path, repo: Path, *args: str) -> subprocess.CompletedProces
 
 def test_a_repo_that_never_wrote_the_key_is_red_at_both_scopes(goh: Path, repo: Path) -> None:
     """The flip's red-first: no `GOH_SUBPROCESS_STDIN` in `.gatesrc`, one undeclared call."""
+    write(repo, ".gatesrc", "")
     write(repo, "a.py", BAD)
     commit_all(repo)
     full = _structural(goh, repo, "--full")

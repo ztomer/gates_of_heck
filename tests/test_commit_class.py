@@ -12,6 +12,7 @@ from __future__ import annotations
 import subprocess
 from pathlib import Path
 
+from _gatesrc_kit import write_gatesrc
 from conftest import REPO_ROOT, git, hermetic_env, native_goh_path
 
 OK_FIX = (
@@ -174,7 +175,7 @@ def test_a_range_with_every_fix_named_passes(repo: Path) -> None:
 def _hooked(repo: Path, gatesrc: str) -> None:
     subprocess.run(["bash", str(REPO_ROOT / "install.sh"), str(repo)], check=True,
                    capture_output=True, env=hermetic_env(drop_git=True, GOH_SKIP_BUILD="1"), stdin=subprocess.DEVNULL)  # fmt: skip
-    (repo / ".gatesrc").write_text(gatesrc)
+    write_gatesrc(repo, gatesrc)
 
 
 def _git_commit(repo: Path, msg: str) -> subprocess.CompletedProcess[str]:

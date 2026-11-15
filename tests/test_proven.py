@@ -18,6 +18,7 @@ from pathlib import Path
 
 import pytest
 from _fast_git import fast_init
+from _gatesrc_kit import write_gatesrc
 from conftest import REPO_ROOT
 
 GIT_VARS = (
@@ -276,7 +277,7 @@ def test_a_change_to_the_gates_invalidates_what_they_proved(goh, repo, env, chan
 
 
 def test_an_env_var_the_repo_names_is_part_of_the_key(goh, repo, env):
-    (repo / ".gatesrc").write_text("GOH_PROVEN_ENV='MY_MODE'\n")
+    write_gatesrc(repo, "GOH_PROVEN_ENV='MY_MODE'\n")
     _git(repo, "add", ".gatesrc")
     _git(repo, "commit", "-q", "-m", "rc")
     proven(goh, repo, dict(env, MY_MODE="a"))
@@ -320,7 +321,7 @@ def hooked(repo: Path, env: dict) -> Path:
     (repo / "tools").mkdir()
     (repo / "tools" / "gate.sh").write_text(GATE)
     (repo / "tools" / "gate.sh").chmod(0o755)
-    (repo / ".gatesrc").write_text(f"GOH_CI_STEPS='{STEP}:true'\n")
+    write_gatesrc(repo, f"GOH_CI_STEPS='{STEP}:true'\n")
     _git(repo, "config", "core.hooksPath", ".githooks")
     _git(repo, "add", "-A")
     _git(repo, "commit", "-q", "-m", "wire", "--no-verify")
@@ -416,7 +417,7 @@ def test_goh_own_gatesrc_keys_no_build_state_so_the_release_gate_reuses_the_push
 
     Both ways: the same tree after the binary moved is a hit; a different tree runs."""
     (repo / ".gitignore").write_text("build/\nbin/\n")
-    (repo / ".gatesrc").write_text((REPO_ROOT / ".gatesrc").read_text())
+    write_gatesrc(repo, (REPO_ROOT / ".gatesrc").read_text())
     _git(repo, "add", ".gitignore", ".gatesrc")
     _git(repo, "commit", "-q", "-m", "goh's own gatesrc")
     (repo / "bin").mkdir()

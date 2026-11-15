@@ -17,6 +17,7 @@ import sys
 from pathlib import Path
 
 import test_release_kit as rk
+from _gatesrc_kit import write_gatesrc
 from conftest import REPO_ROOT
 from test_release_kit import STANZA_BODY, TAG, VERSION, commit_all, gh_creates, run_release, sh
 
@@ -63,7 +64,7 @@ def test_the_repos_declared_version_source_is_read(kit):
     """The v0.63.0 shape: the version lives in Cargo.toml, named by .gatesrc."""
     proj = kit["proj"]
     (proj / "VERSION").unlink()
-    (proj / ".gatesrc").write_text('GOH_TAG_VERSION_SOURCES="cargo:Cargo.toml"\n')
+    write_gatesrc(proj, 'GOH_TAG_VERSION_SOURCES="cargo:Cargo.toml"\n')
     (proj / "Cargo.toml").write_text('[package]\nname = "p"\nversion = "1.2.2"\n')
     commit_all(proj, "changelog: stanza")
     r = run_release(kit)
@@ -145,7 +146,7 @@ def test_cut_refuses_an_entry_an_earlier_stanza_holds(tmp_path):
 
 
 def _floor(kit: dict, floor: str) -> None:
-    (kit["proj"] / ".gatesrc").write_text(f"GOH_RELEASE_BACKFILL_FLOOR={floor}\n")
+    write_gatesrc(kit["proj"], f"GOH_RELEASE_BACKFILL_FLOOR={floor}\n")
     commit_all(kit["proj"], "floor")
 
 

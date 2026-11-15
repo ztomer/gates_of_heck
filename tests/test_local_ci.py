@@ -13,6 +13,7 @@ import subprocess
 from pathlib import Path
 
 import pytest
+from _gatesrc_kit import write_gatesrc
 from conftest import REPO_ROOT
 
 LOCAL_CI = REPO_ROOT / "gates" / "local_ci.sh"
@@ -37,12 +38,12 @@ def run_ci(cwd: Path, *args: str):
 def repo(tmp_path: Path) -> Path:
     d = tmp_path / "proj"
     d.mkdir()
-    (d / ".gatesrc").write_text("")
+    write_gatesrc(d, "")
     return d
 
 
 def gatesrc(repo: Path, steps: str) -> None:
-    (repo / ".gatesrc").write_text(f"GOH_CI_STEPS='{steps}'\n")
+    write_gatesrc(repo, f"GOH_CI_STEPS='{steps}'\n")
 
 
 # ── dry-run ──

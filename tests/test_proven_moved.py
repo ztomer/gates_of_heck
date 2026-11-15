@@ -4,6 +4,7 @@ Split from test_proven.py at the 500-line cap; its fixtures are reused, not copi
 """
 
 import test_proven as _tp
+from _gatesrc_kit import write_gatesrc
 from test_proven import _git, local_ci, proven, records
 
 # The fixtures, shared by assignment (pytest collects them by name from this module).
@@ -33,9 +34,10 @@ def test_local_ci_names_the_kept_file_a_step_rewrote(goh, hooked, env):
     """The push gate's runner says what moved, the same way proven.sh does (one helper)."""
     (hooked / "build").mkdir()
     (hooked / "build" / "out.bin").write_text("before\n")
-    (hooked / ".gatesrc").write_text(
+    write_gatesrc(
+        hooked,
         "GOH_EXPORT_KEEP='build/out.bin'\n"
-        "GOH_CI_STEPS='echo ran >> \"$COUNT\"; echo rebuilt > build/out.bin'\n"
+        "GOH_CI_STEPS='echo ran >> \"$COUNT\"; echo rebuilt > build/out.bin'\n",
     )
     _git(hooked, "add", "-A")
     _git(hooked, "commit", "-q", "-m", "keep", "--no-verify")

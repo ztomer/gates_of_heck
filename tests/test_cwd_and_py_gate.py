@@ -11,6 +11,7 @@ from pathlib import Path
 
 import pytest
 from _fast_git import fast_init
+from _gatesrc_kit import write_gatesrc
 from conftest import REPO_ROOT, write
 
 STRUCTURAL = "gates/structural.sh"
@@ -24,7 +25,7 @@ pytestmark_py = pytest.mark.skipif(
 def test_structural_from_subdirectory_uses_root_gatesrc(repo):
     # Cap lives in the ROOT .gatesrc; a 200-line file staged from inside src/
     # must still trip it — proving .gatesrc resolved from git root, not CWD.
-    (repo / ".gatesrc").write_text("GOH_MAX_LINES=5\n")
+    write_gatesrc(repo, "GOH_MAX_LINES=5\n")
     sub = repo / "src" / "deep"
     sub.mkdir(parents=True)
     (sub / "big.py").write_text("\n" * 20)

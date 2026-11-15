@@ -22,6 +22,7 @@ from pathlib import Path
 import _fake_cargo
 import pytest
 from _fast_git import fast_init
+from _gatesrc_kit import write_gatesrc
 from conftest import hermetic_env
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -85,7 +86,7 @@ def estate(tmp_path: Path) -> Path:
     _crate(repo, "a", deps='b = { path = "../b" }\n', lib="pub fn g() -> u64 {\n    b::f()\n}\n")
     _crate(repo, "c")
     (repo / "README.md").write_text("# estate\n")
-    (repo / ".gatesrc").write_text("GOH_DEPS_OFFLINE=1\n")
+    write_gatesrc(repo, "GOH_DEPS_OFFLINE=1\n")
     (repo / ".gitignore").write_text("target/\n.build/\n")
     for name in ("a", "b", "c"):
         subprocess.run(
@@ -327,7 +328,7 @@ def test_a_group_that_rewrites_a_kept_path_is_named(
     (estate / "build").mkdir()
     (estate / "build" / "out.bin").write_text("before\n")
     (estate / ".gitignore").write_text("target/\n.build/\nbuild/\n")
-    (estate / ".gatesrc").write_text("GOH_DEPS_OFFLINE=1\nGOH_EXPORT_KEEP='build/out.bin'\n")
+    write_gatesrc(estate, "GOH_DEPS_OFFLINE=1\nGOH_EXPORT_KEEP='build/out.bin'\n")
     if listed:
         (estate / "kept_rewrite_allow.json").write_text(
             '{"entries": [{"step": "rust_gate crate crates/c", "path": "build/out.bin",'

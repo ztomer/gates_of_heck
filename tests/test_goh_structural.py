@@ -19,6 +19,7 @@ from pathlib import Path
 
 import pytest
 from _fast_git import fast_init
+from _gatesrc_kit import as_fixture
 from conftest import hermetic_env
 from goh_structural_cases import EXPECTED, FULL_CASES, GATESRC
 
@@ -40,7 +41,7 @@ def make_repo(tmp_path: Path, files: dict[str, bytes]) -> Path:
     for name, content in files.items():
         dest = repo / name
         dest.parent.mkdir(parents=True, exist_ok=True)
-        dest.write_bytes(content)
+        dest.write_bytes(as_fixture(name, content))
     _git(repo, "add", "-A")
     return repo
 

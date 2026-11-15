@@ -14,6 +14,7 @@ from collections import Counter
 from pathlib import Path
 
 import pytest
+from _gatesrc_kit import write_gatesrc
 from conftest import hermetic_env
 
 REAL_GIT = subprocess.run(
@@ -38,6 +39,8 @@ def _calls(goh: Path, tmp_path: Path, *args: str) -> Counter:
     repo = tmp_path / "repo"
     repo.mkdir()
     (repo / "a.txt").write_text("hi\n")
+    if "--full" in args:  # staged, a `.gatesrc` would bring the roadmap step into what is counted
+        write_gatesrc(repo)
     for cmd in (["init", "-q"], ["add", "-A"]):
         subprocess.run([REAL_GIT, "-C", str(repo), *cmd], check=True, stdin=subprocess.DEVNULL)
     env = hermetic_env(drop_git=True)

@@ -10,6 +10,7 @@ from __future__ import annotations
 import subprocess
 from pathlib import Path
 
+from _gatesrc_kit import write_gatesrc
 from conftest import REPO_ROOT, git, hermetic_env, native_goh_path
 
 A_TEST = "def test_it_reds() -> None:\n    assert False\n"
@@ -58,7 +59,7 @@ def _range(repo: Path, *revs: str) -> subprocess.CompletedProcess[str]:
 
 
 def test_a_range_reads_each_commit_against_its_own_diff(repo: Path) -> None:
-    (repo / ".gatesrc").write_text("GOH_RED_RUN=1\n")
+    write_gatesrc(repo, "GOH_RED_RUN=1\n")
     git(repo, "add", ".gatesrc")
     git(repo, "commit", "-q", "--no-verify", "-m", "chore: opt into red-run")
     base = git(repo, "rev-parse", "HEAD").strip()
@@ -83,7 +84,7 @@ def test_a_switch_commit_above_an_older_test_commit_does_not_judge_the_older_com
     base = git(repo, "rev-parse", "HEAD").strip()
     _staged(repo, A_TEST)
     git(repo, "commit", "-q", "--no-verify", "-m", "feat: older unproven")
-    (repo / ".gatesrc").write_text("GOH_RED_RUN=1\n")
+    write_gatesrc(repo, "GOH_RED_RUN=1\n")
     git(repo, "add", ".gatesrc")
     git(repo, "commit", "-q", "--no-verify", "-m", "feat: turn on red-run")
     r = _range(repo, f"{base}..HEAD")
@@ -97,7 +98,7 @@ def test_a_test_adding_commit_after_the_switch_without_a_trailer_is_refused(
     base = git(repo, "rev-parse", "HEAD").strip()
     _staged(repo, A_TEST)
     git(repo, "commit", "-q", "--no-verify", "-m", "feat: older unproven")
-    (repo / ".gatesrc").write_text("GOH_RED_RUN=1\n")
+    write_gatesrc(repo, "GOH_RED_RUN=1\n")
     git(repo, "add", ".gatesrc")
     git(repo, "commit", "-q", "--no-verify", "-m", "feat: turn on red-run")
     _staged(repo, A_TEST, "tests/test_after.py")
@@ -111,7 +112,7 @@ def test_a_test_adding_commit_after_the_switch_without_a_trailer_is_refused(
 def _hooked(repo: Path, gatesrc: str) -> None:
     subprocess.run(["bash", str(REPO_ROOT / "install.sh"), str(repo)], check=True,
                    capture_output=True, env=hermetic_env(drop_git=True, GOH_SKIP_BUILD="1"), stdin=subprocess.DEVNULL)  # fmt: skip
-    (repo / ".gatesrc").write_text(gatesrc)
+    write_gatesrc(repo, gatesrc)
 
 
 def _git_commit(repo: Path, msg: str) -> subprocess.CompletedProcess[str]:
@@ -190,7 +191,7 @@ def test_a_red_run_git_reads_as_a_trailer_passes_through_the_binary(repo: Path) 
 def test_a_revert_that_restores_a_deleted_test_is_its_own_proof(repo: Path) -> None:
     """GOH.REDRUNMSG: `git revert` of a commit that deleted a test re-adds a test red-proven at the
     commit that first added it; a test the revert does not restore is still judged."""
-    (repo / ".gatesrc").write_text("GOH_RED_RUN=1\n")
+    write_gatesrc(repo, "GOH_RED_RUN=1\n")
     git(repo, "add", ".gatesrc")
     git(repo, "commit", "-q", "--no-verify", "-m", "chore: opt into red-run")
     _staged(repo, A_TEST)

@@ -21,6 +21,7 @@ from pathlib import Path
 import _fake_cargo
 import pytest
 from _fast_git import fast_init
+from _gatesrc_kit import write_gatesrc
 from conftest import REPO_ROOT, hermetic_env
 
 CEILING = re.compile(r"\((≤\d+s|UNBOUNDED[^)]*)\)")
@@ -28,9 +29,7 @@ CEILING = re.compile(r"\((≤\d+s|UNBOUNDED[^)]*)\)")
 
 def test_local_ci_hands_each_step_its_own_ceiling(tmp_path: Path) -> None:
     seen = tmp_path / "seen"
-    (tmp_path / ".gatesrc").write_text(
-        f"GOH_CI_STEPS='echo \"${{GOH_STEP_BUDGET-unset}}\" >{seen}'\n"
-    )
+    write_gatesrc(tmp_path, f"GOH_CI_STEPS='echo \"${{GOH_STEP_BUDGET-unset}}\" >{seen}'\n")
     r = subprocess.run(
         ["/bin/bash", str(REPO_ROOT / "gates" / "local_ci.sh")],
         cwd=tmp_path,
@@ -46,7 +45,7 @@ def test_local_ci_hands_each_step_its_own_ceiling(tmp_path: Path) -> None:
 
 
 def _goh_step(tmp_path: Path, gatesrc: str, **env: str) -> set[str]:
-    (tmp_path / ".gatesrc").write_text(gatesrc)
+    write_gatesrc(tmp_path, gatesrc)
     script = (
         f"cd '{tmp_path}'; unset GOH_STEP_TIMEOUT; [ -f .gatesrc ] && . ./.gatesrc; "
         f". '{REPO_ROOT}/gates/_common.sh'; goh_init outer; goh_step one true; goh_done"
@@ -73,7 +72,7 @@ def test_goh_step_falls_back_to_the_callers_budget(tmp_path: Path) -> None:
 
 
 def test_a_bad_budget_is_refused_by_name(tmp_path: Path) -> None:
-    (tmp_path / ".gatesrc").write_text("")
+    write_gatesrc(tmp_path, "")
     r = subprocess.run(
         ["/bin/bash", "-c", f". '{REPO_ROOT}/gates/_common.sh'; goh_init outer; goh_step one true"],
         cwd=tmp_path,
@@ -97,7 +96,7 @@ def test_rust_gates_steps_run_under_the_callers_budget(tmp_path: Path, goh: Path
         '[package]\nname = "b"\nversion = "0.1.0"\nedition = "2021"\n\n[dependencies]\n'
     )
     (repo / "src" / "lib.rs").write_text("pub fn f() -> u64 {\n    1\n}\n")
-    (repo / ".gatesrc").write_text("GOH_DEPS_OFFLINE=1\n")
+    write_gatesrc(repo, "GOH_DEPS_OFFLINE=1\n")
     (repo / ".gitignore").write_text("target/\n")
     subprocess.run(
         ["cargo", "generate-lockfile", "--offline"],
@@ -146,7 +145,7 @@ def test_the_native_tier_falls_back_to_the_callers_budget(repo: Path, goh: Path)
         return set(CEILING.findall(out.stdout))
 
     assert ceilings(GOH_STEP_BUDGET="2700") == {"≤2700s"}
-    (repo / ".gatesrc").write_text("GOH_STEP_TIMEOUT=77\n")
+    write_gatesrc(repo, "GOH_STEP_TIMEOUT=77\n")
     assert ceilings(GOH_STEP_BUDGET="2700") == {"≤77s"}
 
 

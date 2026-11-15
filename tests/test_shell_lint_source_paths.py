@@ -22,6 +22,7 @@ import subprocess
 from pathlib import Path
 
 import pytest
+from _gatesrc_kit import write_gatesrc
 from _parse_findings import findings, probe
 from conftest import commit_all, run_goh, stage, write
 
@@ -147,7 +148,7 @@ def test_no_goh_shell_file_makes_shellcheck_follow_a_gatesrc(tmp_path):
     # SC1091 where no file is found); one declared source=/dev/null by neither. Behavioural, so a new
     # spelling is caught too -- and `disable=SC1091` is not mistaken for not following
     # (local_ci.sh carried exactly that and followed goh's own .gatesrc anyway).
-    (tmp_path / ".gatesrc").write_text("if then (\n")
+    write_gatesrc(tmp_path, "if then (\n")
     named = [rel for rel in _shell_files() if ".gatesrc" in (GOH / rel).read_text(errors="replace")]
     assert any("SC1091" in line for line in probe(tmp_path / "probe", "--severity=info")), (
         "the instrument cannot see a missing source"

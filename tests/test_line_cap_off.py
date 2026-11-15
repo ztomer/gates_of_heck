@@ -13,6 +13,7 @@ import subprocess
 from pathlib import Path
 
 import pytest
+from _gatesrc_kit import write_gatesrc
 from conftest import hermetic_env
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -23,7 +24,7 @@ DECLARED = "file-length cap off — declared in .gatesrc (GOH_MAX_LINES=off)"
 
 def _repo(tmp_path: Path, gatesrc: str) -> Path:
     subprocess.run(["git", "init", "-q", str(tmp_path)], check=True, stdin=subprocess.DEVNULL)
-    (tmp_path / ".gatesrc").write_text(gatesrc)
+    write_gatesrc(tmp_path, gatesrc)
     (tmp_path / "long.py").write_text("x = 1\n" * 50)
     subprocess.run(["git", "add", "-A"], cwd=tmp_path, check=True, stdin=subprocess.DEVNULL)
     return tmp_path

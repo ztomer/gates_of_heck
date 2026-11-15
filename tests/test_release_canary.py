@@ -23,6 +23,7 @@ from pathlib import Path
 
 import pytest
 from _fast_git import fast_init
+from _gatesrc_kit import write_gatesrc
 from conftest import REPO_ROOT, hermetic_env
 
 SCRIPT = REPO_ROOT / "scripts" / "release_canary.py"
@@ -46,7 +47,7 @@ def _git(d: Path, *args: str) -> subprocess.CompletedProcess:
 
 def _consumer(at: Path, script: str) -> Path:
     fast_init(at)
-    (at / ".gatesrc").write_text("GOH_MAX_LINES=500\nGOH_ROADMAP=none\n")
+    write_gatesrc(at, "GOH_MAX_LINES=500\nGOH_ROADMAP=none\n")
     (at / "run.sh").write_text(script)
     (at / "run.sh").chmod(0o755)
     _git(at, "add", "-A")

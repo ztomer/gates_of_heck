@@ -13,6 +13,7 @@ import os
 import subprocess
 from pathlib import Path
 
+from _gatesrc_kit import write_gatesrc
 from conftest import REPO_ROOT, git, hermetic_env
 
 LAND = REPO_ROOT / "tools" / "land.sh"
@@ -161,7 +162,7 @@ def test_the_intended_change_must_be_in_what_landed(repo: Path, tmp_path: Path) 
 
 
 def _declare_gate(wt: Path, line: str) -> None:
-    (wt / ".gatesrc").write_text(line + "\n")
+    write_gatesrc(wt, line + "\n")
     git(wt, "add", ".gatesrc")
     git(wt, "commit", "-q", "--no-verify", "-m", "declare the gate")
 

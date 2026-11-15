@@ -12,6 +12,7 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
+from _gatesrc_kit import write_gatesrc
 from conftest import run_goh
 
 PLACEMENT = """
@@ -186,8 +187,6 @@ def test_a_malformed_argument_trigger_is_a_config_error(repo: Path) -> None:
 def test_a_malformed_gatesrc_is_named_not_read_as_no_rules(repo: Path) -> None:
     """GOH.REV2 sibling of finding 2: `.ok()` turned a malformed .gatesrc into "no rules"."""
     _estate(repo)
-    (repo / ".gatesrc").write_text(
-        "GOH_REQUIRES_CALL=requires_call.toml\nGOH_SHELL_LINT_MIN_FILES=lots\n"
-    )
+    write_gatesrc(repo, "GOH_REQUIRES_CALL=requires_call.toml\nGOH_SHELL_LINT_MIN_FILES=lots\n")
     r = run_goh(repo, "requires-call", ".")
     assert r.returncode == 2 and "GOH_SHELL_LINT_MIN_FILES" in r.stderr, _named(r)

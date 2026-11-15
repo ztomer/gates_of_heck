@@ -165,6 +165,7 @@ def test_an_unseeded_finding_fails_at_full_scope(goh: Path, repo: Path) -> None:
 
 
 def test_the_seed_holds_what_a_repo_adopted_with_and_may_only_fall(goh: Path, repo: Path) -> None:
+    write(repo, ".gatesrc", "")
     write(repo, "deploy.sh", RACY)
     commit_all(repo)
     seeded = run_goh(repo, "early-exit-pipe", "--seed")

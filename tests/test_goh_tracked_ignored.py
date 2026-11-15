@@ -15,6 +15,7 @@ import subprocess
 from pathlib import Path
 
 from _fast_git import fast_init
+from _gatesrc_kit import write_gatesrc
 from conftest import hermetic_env
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -32,6 +33,8 @@ def make_repo(tmp_path: Path, files: dict[str, str], forced: tuple[str, ...] = (
     """A repo with `files` staged, and `forced` staged past the ignore rules (`git add -f`)."""
     repo = tmp_path / "repo"
     fast_init(repo)
+    if ".gatesrc" not in files:
+        write_gatesrc(repo)
     for name, content in files.items():
         dest = repo / name
         dest.parent.mkdir(parents=True, exist_ok=True)

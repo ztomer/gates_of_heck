@@ -30,6 +30,7 @@ from pathlib import Path
 
 import pytest
 from _fast_git import fast_init
+from _gatesrc_kit import write_gatesrc
 from conftest import REPO_ROOT
 
 sys.path.insert(0, str(REPO_ROOT / "checks"))
@@ -158,7 +159,7 @@ def test_a_starved_consumer_refuses_the_land_as_a_timeout(tmp_path, starved, mon
     step_out = _starved_output(tmp_path / "s", monkeypatch)
     consumer = tmp_path / "consumers" / "adv"
     fast_init(consumer)
-    (consumer / ".gatesrc").write_text("GOH_MAX_LINES=500\n")
+    write_gatesrc(consumer, "GOH_MAX_LINES=500\n")
     env = {k: v for k, v in os.environ.items() if not k.startswith("GIT_")}
     for args in (
         ["add", "-A"],

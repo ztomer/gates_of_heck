@@ -23,6 +23,7 @@ from pathlib import Path
 import _fake_cargo
 import pytest
 from _fast_git import fast_init
+from _gatesrc_kit import write_gatesrc
 from conftest import REPO_ROOT
 
 LEGACY = REPO_ROOT / "tests" / "fixtures" / "rust_gate_legacy.sh"
@@ -288,7 +289,7 @@ def test_no_floor_warns_and_skips_coverage(tmp_path, fake):
 def test_floor_set_runs_coverage_green(tmp_path, warm_crate):
     c = clone(warm_crate, tmp_path / "covgreen")
     write_lib(c, LIB_TESTED)
-    (c / ".gatesrc").write_text("GOH_COV_FLOOR_RUST=50\n")
+    write_gatesrc(c, "GOH_COV_FLOOR_RUST=50\n")
     r = run_script(CURRENT, c)
     assert r.returncode == 0, r.stdout + r.stderr
     assert "coverage" in (r.stdout + r.stderr).lower()
@@ -297,7 +298,7 @@ def test_floor_set_runs_coverage_green(tmp_path, warm_crate):
 def test_floor_set_fails_when_uncovered(tmp_path, warm_crate):
     c = clone(warm_crate, tmp_path / "covred")
     write_lib(c, LIB_UNTESTED)
-    (c / ".gatesrc").write_text("GOH_COV_FLOOR_RUST=80\n")
+    write_gatesrc(c, "GOH_COV_FLOOR_RUST=80\n")
     r = run_script(CURRENT, c)
     assert r.returncode != 0, r.stdout + r.stderr
     combined = (r.stdout + r.stderr).lower()
@@ -317,7 +318,7 @@ def test_floor_set_fails_when_uncovered(tmp_path, warm_crate):
 
 def test_deferred_coverage_is_named_and_not_run(tmp_path, fake):
     c = fresh(tmp_path / "covdefer", LIB_UNTESTED)
-    (c / ".gatesrc").write_text("GOH_COV_FLOOR_RUST=80\n")
+    write_gatesrc(c, "GOH_COV_FLOOR_RUST=80\n")
     r = run_script(CURRENT, c, {"GOH_RUST_COVERAGE": "defer"})
     combined = r.stdout + r.stderr
     assert r.returncode == 0, "an uncovered crate passes only if coverage did not run: " + combined
@@ -326,7 +327,7 @@ def test_deferred_coverage_is_named_and_not_run(tmp_path, fake):
 
 def test_an_unknown_coverage_mode_fails(tmp_path, fake):
     c = fresh(tmp_path / "covmode", LIB_TESTED)
-    (c / ".gatesrc").write_text("GOH_COV_FLOOR_RUST=50\n")
+    write_gatesrc(c, "GOH_COV_FLOOR_RUST=50\n")
     r = run_script(CURRENT, c, {"GOH_RUST_COVERAGE": "skip"})
     assert r.returncode != 0, r.stdout + r.stderr
     assert "GOH_RUST_COVERAGE" in r.stdout + r.stderr

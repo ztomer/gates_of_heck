@@ -15,6 +15,7 @@ import time
 from pathlib import Path
 
 import pytest
+from _gatesrc_kit import write_gatesrc
 from conftest import REPO_ROOT
 from timing_bounds import GiveUp
 
@@ -120,7 +121,7 @@ def test_a_term_to_a_concurrent_local_ci_reaps_every_running_step(tmp_path):
     repo.mkdir()
     pids = [tmp_path / f"s{i}.pid" for i in range(2)]
     steps = ":".join(f"sleep 300 & echo $! > {p}; wait" for p in pids)
-    (repo / ".gatesrc").write_text(f"GOH_CI_STEPS='{steps}'\nGOH_CI_JOBS=2\n")
+    write_gatesrc(repo, f"GOH_CI_STEPS='{steps}'\nGOH_CI_JOBS=2\n")
     env = {k: v for k, v in os.environ.items() if not k.startswith("GOH_CI_")}
     ci = subprocess.Popen(
         ["/bin/bash", str(REPO_ROOT / "gates" / "local_ci.sh")],

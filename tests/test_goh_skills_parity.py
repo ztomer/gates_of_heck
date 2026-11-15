@@ -17,6 +17,7 @@ from pathlib import Path
 
 import pytest
 from _fast_git import fast_init
+from _gatesrc_kit import write_gatesrc
 from reference_kit import reference_path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -158,8 +159,8 @@ def test_structural_corpus_step_agrees(goh: Path, tmp_path: Path) -> None:
             dest = repo / "corpus" / name
             dest.parent.mkdir(parents=True, exist_ok=True)
             dest.write_text(content)
-        (repo / ".gatesrc").write_text(
-            f"GOH_MAX_LINES=500\nGOH_SKILLS_CORPUS=1\nGOH_SKILLS_ROOT={repo / 'corpus'}\n"
+        write_gatesrc(
+            repo, f"GOH_MAX_LINES=500\nGOH_SKILLS_CORPUS=1\nGOH_SKILLS_ROOT={repo / 'corpus'}\n"
         )
         (repo / "a.py").write_text("x = 1\n")
         _git(repo, "add", "-A")

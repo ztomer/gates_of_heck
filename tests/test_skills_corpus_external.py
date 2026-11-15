@@ -12,6 +12,7 @@ from __future__ import annotations
 import subprocess
 from pathlib import Path
 
+from _gatesrc_kit import write_gatesrc
 from conftest import REPO_ROOT, hermetic_env
 
 SKILL = "---\nname: skill-{i}\ndescription: does a thing worth triggering on.\n---\n\n# s\n\nbody\n"
@@ -47,9 +48,7 @@ def _corpus(root: Path, git: bool) -> Path:
 def _repo(tmp_path: Path, corpus: Path) -> Path:
     repo = tmp_path / "repo"
     repo.mkdir()
-    (repo / ".gatesrc").write_text(
-        f"GOH_MAX_LINES=500\nGOH_SKILLS_CORPUS=1\nGOH_SKILLS_ROOT={corpus}\n"
-    )
+    write_gatesrc(repo, f"GOH_MAX_LINES=500\nGOH_SKILLS_CORPUS=1\nGOH_SKILLS_ROOT={corpus}\n")
     (repo / "a.py").write_text("x = 1\n")
     subprocess.run(["git", "init", "-q", str(repo)], check=True, stdin=subprocess.DEVNULL)
     subprocess.run(["git", "-C", str(repo), "add", "-A"], check=True, stdin=subprocess.DEVNULL)

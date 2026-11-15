@@ -20,6 +20,7 @@ import subprocess
 import time
 from pathlib import Path
 
+from _gatesrc_kit import write_gatesrc
 from conftest import hermetic_env
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -54,7 +55,7 @@ def _fake_goh_dir(tmp: Path) -> Path:
 def _repo(tmp: Path, red: bool) -> Path:
     repo = tmp / "repo"
     repo.mkdir()
-    (repo / ".gatesrc").write_text("GOH_MAX_LINES=500\n")
+    write_gatesrc(repo, "GOH_MAX_LINES=500\n")
     if red:
         (repo / "notes.txt").write_text("<<<<<<< " + "ours\n")
     (repo / "README.md").write_text("# fixture\n")

@@ -31,6 +31,7 @@ import subprocess
 from pathlib import Path
 
 from _fast_git import fast_init
+from _gatesrc_kit import write_gatesrc
 from conftest import hermetic_env, native_goh_path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -69,11 +70,9 @@ def _porcelain(repo: Path) -> str:
 #
 # GOH_ROADMAP_QUEUE is a LOCATION seam (`goh roadmap`'s umbrella queue file), not a repo's choice:
 # the environment IS its source -- a test names a fixture queue, a machine without the umbrella
-# names none -- and dropping it would send every fixture to the real queue. GOH_ROADMAP_PENDING is
-# the same kind of seam (the repos still pending under GOH.ROADMAPREQ): a test names its own.
+# names none -- and dropping it would send every fixture to the real queue.
 NOT_PIPELINE_CONFIG = {
     "GOH_ROADMAP_QUEUE",
-    "GOH_ROADMAP_PENDING",
     "GOH_GRACE",
     "GOH_PY_RUNNER",
     "GOH_PYTHON_VERSION",
@@ -137,7 +136,7 @@ def test_the_pipeline_reads_its_step_ceiling_from_the_file_never_the_environment
         return set(re.findall(r"\((≤\d+s|UNBOUNDED[^)]*)\)", out.stdout))
 
     assert ceilings("0") == {"≤1800s"}, "an inherited ceiling reached a repo whose file sets none"
-    (repo / ".gatesrc").write_text("GOH_STEP_TIMEOUT=77\n")
+    write_gatesrc(repo, "GOH_STEP_TIMEOUT=77\n")
     assert ceilings("5") == {"≤77s"}, "the repo's own .gatesrc ceiling was not the one in force"
 
 
@@ -151,6 +150,7 @@ def _committable_repo(tmp_path: Path, gate: str) -> Path:
     fast_init(repo, "main")
     (repo / "tools").mkdir()
     (repo / "tools" / "gate.sh").write_text(gate)
+    write_gatesrc(repo)
     (repo / "VERSION").write_text("1.0.0\n")
     _git(repo, "add", "-A")
     _git(repo, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "-m", "one")
@@ -193,9 +193,10 @@ def test_the_push_gate_does_not_hand_the_export_gate_this_repos_gatesrc(
         "#!/usr/bin/env bash\nset -euo pipefail\n"
         f'for k in {keys}; do printf \'%s=%s\\n\' "$k" "${{!k-UNSET}}" >> "$GATE_REPORT"; done\n',
     )
-    (repo / ".gatesrc").write_text(
+    write_gatesrc(
+        repo,
         "GOH_MAX_LINES=500\nGOH_SKILLS_CORPUS=1\nGOH_NO_KILL_BY_NAME=1\n"
-        "GOH_SKILLS_ROOT=/somewhere/else\nGOH_PYTHON_FORMATTED=1\nGOH_LINE_BASELINE=base.txt\n"
+        "GOH_SKILLS_ROOT=/somewhere/else\nGOH_PYTHON_FORMATTED=1\nGOH_LINE_BASELINE=base.txt\n",
     )
     _git(repo, "add", "-A")
     _git(repo, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "-m", "config")

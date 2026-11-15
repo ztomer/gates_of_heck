@@ -21,6 +21,7 @@ from pathlib import Path
 import pytest
 import test_release_kit as rk
 from _fast_git import fast_init
+from _gatesrc_kit import write_gatesrc
 from conftest import REPO_ROOT, hermetic_env, native_goh_path
 from test_release_kit import TAG, VERSION, run_release, sh
 
@@ -56,7 +57,7 @@ def _landed_only_repo(tmp_path: Path, rc: str = "GOH_LANDED_ONLY=main\n") -> tup
     (main / "tools" / "gate.sh").write_text(STRUCTURAL_GATE)
     (main / "tools" / "gate.sh").chmod(0o755)
     (main / "README.md").write_text("repo\n")
-    (main / ".gatesrc").write_text(rc)
+    write_gatesrc(main, rc)
     fast_init(main, "main")
     _git(main, "config", "user.email", "t@t")
     _git(main, "config", "user.name", "t")
@@ -206,7 +207,7 @@ def test_land_sh_still_lands_through_the_installed_hook(tmp_path: Path) -> None:
 
 def _release_kit_with_hook(kit: dict) -> Path:
     proj: Path = kit["proj"]
-    (proj / ".gatesrc").write_text("GOH_LANDED_ONLY=main\n")
+    write_gatesrc(proj, "GOH_LANDED_ONLY=main\n")
     (proj / "tools").mkdir(exist_ok=True)
     (proj / "tools" / "gate.sh").write_text("#!/bin/sh\nexit 0\n")
     (proj / "tools" / "gate.sh").chmod(0o755)

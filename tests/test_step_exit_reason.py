@@ -15,6 +15,7 @@ import subprocess
 import textwrap
 from pathlib import Path
 
+from _gatesrc_kit import write_gatesrc
 from conftest import REPO_ROOT
 
 SELF_KILL = "kill -KILL $$"
@@ -90,7 +91,7 @@ def test_goh_step_names_the_timeout(tmp_path: Path) -> None:
 def _local_ci(tmp_path: Path, step: str) -> subprocess.CompletedProcess:
     repo = tmp_path / "proj"
     repo.mkdir()
-    (repo / ".gatesrc").write_text("")
+    write_gatesrc(repo, "")
     return subprocess.run(
         ["/bin/bash", str(REPO_ROOT / "gates" / "local_ci.sh"), "--step", step],
         cwd=repo,

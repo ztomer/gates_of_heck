@@ -109,6 +109,35 @@ impl Out {
     }
 }
 
+/// The roadmap declaration a fixture `.gatesrc` carries when it names none: no roadmap, so a plan
+/// file in the fixture is a finding (`goh roadmap`, GOH.ROADMAPREQ).
+pub const ROADMAP_NONE: &str = "GOH_ROADMAP=none\n";
+
+/// A fixture `.gatesrc` from `body`, declared.
+///
+/// As written when a line sets `GOH_ROADMAP`, else with [`ROADMAP_NONE`] appended. The one way a
+/// fixture writes it (GOH.ROADMAPHOOK): the test seam that excused an unset roadmap in every
+/// fixture is gone, so a fixture judges what a consumer is judged.
+#[must_use]
+pub fn gatesrc(body: &str) -> String {
+    let declares = body.lines().any(|l| {
+        let l = l.trim_start();
+        l.strip_prefix("export ")
+            .unwrap_or(l)
+            .trim_start()
+            .starts_with("GOH_ROADMAP=")
+    });
+    if declares {
+        return body.to_owned();
+    }
+    let sep = if body.is_empty() || body.ends_with('\n') {
+        ""
+    } else {
+        "\n"
+    };
+    format!("{body}{sep}{ROADMAP_NONE}")
+}
+
 pub struct Repo {
     dir: tempfile::TempDir,
 }
@@ -125,7 +154,8 @@ impl Repo {
         self.dir.path()
     }
 
-    /// Write `rel` under the repo (creating parents).
+    /// Write `rel` under the repo (creating parents). A `.gatesrc` is written [`gatesrc`]-declared,
+    /// so no fixture stands with its roadmap unset (GOH.ROADMAPHOOK).
     ///
     /// # Errors
     /// The directory or the file could not be written.
@@ -133,6 +163,9 @@ impl Repo {
         let p = self.dir.path().join(rel);
         if let Some(parent) = p.parent() {
             std::fs::create_dir_all(parent)?;
+        }
+        if rel == ".gatesrc" {
+            return std::fs::write(p, gatesrc(content));
         }
         std::fs::write(p, content)
     }
@@ -171,17 +204,6 @@ fn goh_root() -> std::io::Result<PathBuf> {
         .canonicalize()
 }
 
-/// A pending list (`goh roadmap`, GOH.ROADMAPREQ) that stands every fixture pending: a fixture is
-/// judged on what its test declares. The roadmap requirement itself is proven in
-/// `tests/test_check_roadmap.py`, which names its own list.
-fn roadmap_pending() -> std::io::Result<PathBuf> {
-    let path = std::env::temp_dir().join("goh-testkit-roadmap-pending.txt");
-    if !path.is_file() {
-        std::fs::write(&path, "*\n")?;
-    }
-    Ok(path)
-}
-
 /// Run the goh binary at `bin`.
 ///
 /// The test passes `env!("CARGO_BIN_EXE_goh")`, which only the goh crate's
@@ -204,7 +226,6 @@ pub fn goh_at(
     scrub_repo_env(&mut cmd);
     cmd.args(args)
         .env("GOH_DIR", goh_root()?)
-        .env("GOH_ROADMAP_PENDING", roadmap_pending()?)
         // The fixtures are keyless repos: an undeclared floor is an advisory line here
         // (GOH.FLOORREQ, `crate::grace`); a test of the requirement passes `over` in `envs`.
         .env("GOH_GRACE", "within")

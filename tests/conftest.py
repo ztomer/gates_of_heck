@@ -86,7 +86,7 @@ def git_ok(repo: Path, *args: str) -> bool:
 def write(repo: Path, rel: str, content: str) -> Path:
     p = repo / rel
     p.parent.mkdir(parents=True, exist_ok=True)
-    p.write_text(content, encoding="utf-8")
+    p.write_text(__import__("_gatesrc_kit").as_fixture(rel, content), encoding="utf-8")
     return p
 
 

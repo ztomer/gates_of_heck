@@ -22,6 +22,7 @@ from pathlib import Path
 
 import pytest
 from _fast_git import fast_init
+from _gatesrc_kit import write_gatesrc
 from conftest import REPO_ROOT, hermetic_env
 from env_probe import probe_sh, read_probe
 from test_commit_hook_git_env import _commit, _consumer, _git
@@ -120,7 +121,7 @@ def test_a_local_ci_step_sees_none_of_gits_local_variables(tmp_path):
     proj = tmp_path / "proj"
     fast_init(proj)
     out = tmp_path / "env.txt"
-    (proj / ".gatesrc").write_text(f"GOH_CI_STEPS='{_names_probe(out)}'\n")
+    write_gatesrc(proj, f"GOH_CI_STEPS='{_names_probe(out)}'\n")
     got = subprocess.run(
         ["/bin/bash", str(REPO_ROOT / "gates" / "local_ci.sh")],
         cwd=proj,

@@ -24,6 +24,7 @@ import time
 from pathlib import Path
 
 from _fast_git import fast_init
+from _gatesrc_kit import write_gatesrc
 from test_gate_slot import LOCAL_CI, Gate, _env
 from test_push_gate import _git
 
@@ -54,7 +55,7 @@ def _consumer(tmp_path: Path, name: str, layer: str) -> Path:
     gate.write_text(OLD_GATE.format(layer=layer))
     gate.chmod(0o755)
     (repo / "marker.txt").write_text("x\n")
-    (repo / ".gatesrc").write_text("")
+    write_gatesrc(repo, "")
     _git(repo, "add", "-A")
     _git(repo, "commit", "-q", "-m", "one")
     return repo

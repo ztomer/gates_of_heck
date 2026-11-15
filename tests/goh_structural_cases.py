@@ -294,7 +294,8 @@ EXPECTED: dict[str, tuple[int, str | None]] = {
     "marker": (1, "no conflict markers"),
     "md_link_green": (0, None),
     "md_link_red": (1, "markdown links resolve"),
-    "no_gatesrc": (0, None),
+    # No `.gatesrc` declares no roadmap: red, as in any consumer (GOH.ROADMAPREQ, GOH.ROADMAPHOOK).
+    "no_gatesrc": (1, "one roadmap, open entries only"),
     "over_cap": (1, "file length <= 10"),
     "pyfmt_green": (0, None),
     "pyfmt_red": (1, "python is ruff-formatted"),

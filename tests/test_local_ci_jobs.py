@@ -15,6 +15,7 @@ import time
 from pathlib import Path
 
 import pytest
+from _gatesrc_kit import write_gatesrc
 from conftest import REPO_ROOT
 from timing_bounds import assert_sooner
 
@@ -46,7 +47,7 @@ def repo(tmp_path: Path) -> Path:
 
 
 def steps(repo: Path, *cmds: str, extra: str = "") -> None:
-    (repo / ".gatesrc").write_text(f"GOH_CI_STEPS='{':'.join(cmds)}'\n{extra}")
+    write_gatesrc(repo, f"GOH_CI_STEPS='{':'.join(cmds)}'\n{extra}")
 
 
 def meet(d: Path, me: str, *others: str) -> str:

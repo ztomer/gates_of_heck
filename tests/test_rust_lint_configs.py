@@ -18,6 +18,7 @@ import subprocess
 from pathlib import Path
 
 import pytest
+from _gatesrc_kit import write_gatesrc
 from conftest import hermetic_env
 from test_rust_gate_scoped_cache import _crate, _git, _native, gates  # noqa: F401  # fixtures
 
@@ -51,7 +52,7 @@ def _repo(tmp_path: Path, lib: str, gatesrc: str) -> Path:
     repo = tmp_path / "repo"
     repo.mkdir(parents=True)
     _crate(repo, "a", lib=lib)
-    (repo / ".gatesrc").write_text("GOH_DEPS_OFFLINE=1\nGOH_PROVEN=0\n" + gatesrc)
+    write_gatesrc(repo, "GOH_DEPS_OFFLINE=1\nGOH_PROVEN=0\n" + gatesrc)
     (repo / ".gitignore").write_text("target/\n")
     subprocess.run(
         ["cargo", "generate-lockfile", "--offline"],

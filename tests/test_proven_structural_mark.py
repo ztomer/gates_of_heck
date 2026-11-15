@@ -13,6 +13,7 @@ from __future__ import annotations
 import subprocess
 from pathlib import Path
 
+from _gatesrc_kit import write_gatesrc
 from test_proven import _git, env, goh, repo  # noqa: F401  (fixtures)
 
 
@@ -32,7 +33,7 @@ def _ci(gates: Path, proj: Path, environ: dict, mark: Path) -> str:
 
 
 def _declare(proj: Path, steps: str) -> None:
-    (proj / ".gatesrc").write_text(f"GOH_CI_STEPS='{steps}'\n")
+    write_gatesrc(proj, f"GOH_CI_STEPS='{steps}'\n")
     _git(proj, "add", "-A")
     _git(proj, "commit", "-q", "-m", "steps")
 

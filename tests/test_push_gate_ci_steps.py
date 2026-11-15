@@ -14,6 +14,7 @@ import subprocess
 from pathlib import Path
 
 from _fast_git import fast_init
+from _gatesrc_kit import write_gatesrc
 from test_push_gate_race import _push
 
 GAP = "without running the steps .gatesrc declares"
@@ -48,8 +49,7 @@ def _consumer(tmp_path: Path, gate: str, steps: str | None) -> Path:
     fast_init(fixture)
     (repo / "tools" / "gate.sh").write_text(gate.replace("$SCRATCH_FIXTURE", str(fixture)))
     (repo / "README.md").write_text("consumer\n")
-    if steps is not None:
-        (repo / ".gatesrc").write_text(f"GOH_CI_STEPS='{steps}'\n")
+    write_gatesrc(repo, "" if steps is None else f"GOH_CI_STEPS='{steps}'\n")
     fast_init(repo, "main")
     _git(repo, "config", "user.email", "t@t")
     _git(repo, "config", "user.name", "t")

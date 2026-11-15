@@ -13,6 +13,7 @@ from __future__ import annotations
 import subprocess
 from pathlib import Path
 
+from _gatesrc_kit import write_gatesrc
 from conftest import REPO_ROOT, hermetic_env
 
 REAL_GIT = subprocess.run(
@@ -111,7 +112,7 @@ def test_rust_gate_runs_its_native_steps_without_the_dispatcher(tmp_path: Path) 
         '[package]\nname = "c"\nversion = "0.1.0"\nedition = "2021"\n'
     )
     (crate / "src" / "lib.rs").write_text("pub fn f() -> u64 {\n    1\n}\n")
-    (crate / ".gatesrc").write_text("GOH_DEPS_OFFLINE=1\n")
+    write_gatesrc(crate, "GOH_DEPS_OFFLINE=1\n")
     subprocess.run(
         ["cargo", "generate-lockfile", "-q", "--offline"],
         cwd=crate,

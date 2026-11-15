@@ -18,6 +18,7 @@ import subprocess
 import sys
 
 import pytest
+from _gatesrc_kit import as_fixture
 from conftest import REPO_ROOT as ROOT
 
 CHECK = ROOT / "checks" / "check_estate_corpus.py"
@@ -170,7 +171,7 @@ def test_a_path_the_consumer_exempts_is_not_judged_for_it(repo):
     }
     for rel, text in files.items():
         (repo / rel).parent.mkdir(parents=True, exist_ok=True)
-        (repo / rel).write_text(text, encoding="utf-8")
+        (repo / rel).write_text(as_fixture(rel, text), encoding="utf-8")
     subprocess.run(
         ["git", "-C", str(repo), "add", "-A"],
         capture_output=True,

@@ -19,6 +19,7 @@ import subprocess
 from pathlib import Path
 
 import pytest
+from _gatesrc_kit import write_gatesrc
 from conftest import hermetic_env
 from test_rust_gate_scoped_cache import _crate, _git, _native, gates  # noqa: F401  # fixtures
 
@@ -37,7 +38,7 @@ def estate(tmp_path: Path) -> Path:
     _crate(repo, "c")
     for n in range(3):  # c is the biggest crate by tracked .rs files
         (repo / "crates" / "c" / "src" / f"m{n}.rs").write_text("")
-    (repo / ".gatesrc").write_text("GOH_DEPS_OFFLINE=1\nGOH_PROVEN=0\n")
+    write_gatesrc(repo, "GOH_DEPS_OFFLINE=1\nGOH_PROVEN=0\n")
     (repo / ".gitignore").write_text("target/\n")
     for name in ("a", "b", "c"):
         subprocess.run(
@@ -114,7 +115,7 @@ def test_a_nested_manifest_is_its_crates_business(estate: Path) -> None:
 
 @pytest.mark.parametrize(("key", "value"), [("GOH_RUST_JOBS", "many"), ("GOH_RUST_JOBS", "0")])
 def test_a_bad_job_count_is_refused(estate: Path, key: str, value: str) -> None:
-    (estate / ".gatesrc").write_text(f"{key}={value}\n")
+    write_gatesrc(estate, f"{key}={value}\n")
     r = _each(estate)
     assert r.returncode != 0 and key in r.stderr and value in r.stderr, r.stderr
 
@@ -149,7 +150,7 @@ def test_a_trailing_slash_directory_pattern_excludes_its_crate(estate: Path) -> 
     # written `^crates/c/`. Matched against the bare directory `crates/c`, it matched nothing and
     # the crate it names was gated anyway. Read through --list: the test below holds the list equal
     # to what a run gates, so the selection is checked here without running a whole gate.
-    (estate / ".gatesrc").write_text("GOH_EXCLUDE='^crates/c/'\n")
+    write_gatesrc(estate, "GOH_EXCLUDE='^crates/c/'\n")
     _git(estate, "add", "-A")
     r = _each(estate, None, "--list")
     assert (r.returncode, r.stdout) == (0, "crates/a\ncrates/b\n"), r.stdout + r.stderr
@@ -158,14 +159,14 @@ def test_a_trailing_slash_directory_pattern_excludes_its_crate(estate: Path) -> 
 def test_exclude_reads_the_python_dialect_every_other_check_reads(estate: Path) -> None:
     # `^(?!crates/c/)` scopes a scan TO a directory (ztools); `grep -E` has no look-ahead, refused
     # it, and `|| true` turned the refusal into "no tracked Cargo.toml".
-    (estate / ".gatesrc").write_text("GOH_EXCLUDE='^(?!crates/c/)'\n")
+    write_gatesrc(estate, "GOH_EXCLUDE='^(?!crates/c/)'\n")
     _git(estate, "add", "-A")
     r = _each(estate, None, "--list")
     assert (r.returncode, r.stdout) == (0, "crates/c\n"), r.stdout + r.stderr
 
 
 def test_a_bad_exclude_is_refused_named(estate: Path) -> None:
-    (estate / ".gatesrc").write_text("GOH_EXCLUDE='('\n")
+    write_gatesrc(estate, "GOH_EXCLUDE='('\n")
     _git(estate, "add", "-A")
     r = _each(estate, None, "--list")
     assert r.returncode != 0 and "GOH_EXCLUDE" in r.stderr and "'('" in r.stderr, r.stderr
@@ -193,7 +194,7 @@ def test_list_nested_under_an_excluded_crate_stays_its_business(estate: Path) ->
     kit = estate / "crates" / "c" / "testkit"
     (kit / "src").mkdir(parents=True)
     (kit / "Cargo.toml").write_text('[package]\nname = "kit"\nversion = "0.1.0"\n')
-    (estate / ".gatesrc").write_text("GOH_EXCLUDE='^crates/c/Cargo\\.toml$'\n")
+    write_gatesrc(estate, "GOH_EXCLUDE='^crates/c/Cargo\\.toml$'\n")
     _git(estate, "add", "-A")
     r = _each(estate, None, "--list")
     assert (r.returncode, r.stdout) == (0, "crates/a\ncrates/b\n"), r.stdout + r.stderr

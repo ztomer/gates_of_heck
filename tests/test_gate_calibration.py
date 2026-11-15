@@ -17,6 +17,7 @@ import sys
 
 import pytest
 from _fast_git import fast_init
+from _gatesrc_kit import write_gatesrc
 from conftest import REPO_ROOT as ROOT
 
 sys.path.insert(0, str(ROOT / "checks"))
@@ -442,7 +443,7 @@ def test_a_cited_test_suite_counts_only_when_the_push_gate_runs_pytest(tmp_path,
     (root / "gates").mkdir()
     (root / "gates" / "goh.sh").write_text("#!/bin/sh\n")
     (root / "tests" / "test_x.py").write_text("def test_x():\n    pass\n")
-    (root / ".gatesrc").write_text(steps)
+    write_gatesrc(root, steps)
     subprocess.run(["git", "init", "-q", str(root)], check=True, stdin=subprocess.DEVNULL)
     subprocess.run(["git", "-C", str(root), "add", "-A"], check=True, stdin=subprocess.DEVNULL)
     subprocess.run(

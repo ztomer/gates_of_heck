@@ -12,6 +12,7 @@ from pathlib import Path
 
 import pytest
 import test_proven as _tp
+from _gatesrc_kit import write_gatesrc
 from conftest import REPO_ROOT
 from test_proven import _git, local_ci, proven, records
 
@@ -144,9 +145,7 @@ def test_an_entry_naming_a_path_not_kept_is_red(goh, repo, env):
 
 
 def test_local_ci_is_red_on_an_unlisted_kept_rewrite(goh, hooked, env):
-    (hooked / ".gatesrc").write_text(
-        f"GOH_EXPORT_KEEP='build/out.bin'\nGOH_CI_STEPS='{REWRITE}:{CLEAN}'\n"
-    )
+    write_gatesrc(hooked, f"GOH_EXPORT_KEEP='build/out.bin'\nGOH_CI_STEPS='{REWRITE}:{CLEAN}'\n")
     _seed(hooked)
     r = local_ci(goh, hooked, _keep(env))
     assert r.returncode == 1, r.stdout + r.stderr
@@ -157,7 +156,7 @@ def test_local_ci_is_red_on_an_unlisted_kept_rewrite(goh, hooked, env):
 
 
 def test_local_ci_is_green_when_the_ratchet_carries_it(goh, hooked, env):
-    (hooked / ".gatesrc").write_text(f"GOH_EXPORT_KEEP='build/out.bin'\nGOH_CI_STEPS='{REWRITE}'\n")
+    write_gatesrc(hooked, f"GOH_EXPORT_KEEP='build/out.bin'\nGOH_CI_STEPS='{REWRITE}'\n")
     _seed(hooked, {"step": REWRITE, "path": "build/out.bin", "reason": "the fixture's rebuild"})
     r = local_ci(goh, hooked, _keep(env))
     assert r.returncode == 0, r.stdout + r.stderr

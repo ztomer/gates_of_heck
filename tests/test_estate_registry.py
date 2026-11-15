@@ -31,6 +31,7 @@ from pathlib import Path
 
 import pytest
 from _fast_git import fast_init
+from _gatesrc_kit import write_gatesrc
 from conftest import REPO_ROOT, hermetic_env
 from test_estate_audit import LOCK, PLANTED, _db, _git
 
@@ -49,7 +50,7 @@ def _repo_at(path: Path, crate: str = "goh-fixture-crate") -> Path:
     (path / "Cargo.lock").write_text(LOCK.format(name=crate, zeros="0" * 64))
     # Its push audits that lock (the estate audit reads the gate: test_estate_gate_coverage.py);
     # install.sh never overwrites a .gatesrc.
-    (path / ".gatesrc").write_text("GOH_CI_STEPS='\"$GOH_DIR/gates/rust_gate.sh\"'\n")
+    write_gatesrc(path, "GOH_CI_STEPS='\"$GOH_DIR/gates/rust_gate.sh\"'\n")
     fast_init(path, "main")
     _git(path, "add", "Cargo.lock", ".gatesrc")
     _git(path, "commit", "-qm", "lock")

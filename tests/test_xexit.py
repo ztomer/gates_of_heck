@@ -12,6 +12,7 @@ import sys
 import textwrap
 from pathlib import Path
 
+from _gatesrc_kit import write_gatesrc
 from conftest import REPO_ROOT
 
 sys.path.insert(0, str(REPO_ROOT / "lib"))
@@ -39,7 +40,7 @@ def _goh_step(tmp_path: Path, cmd: str) -> subprocess.CompletedProcess:
 def _local_ci(tmp_path: Path, cmd: str) -> subprocess.CompletedProcess:
     d = tmp_path / "proj"
     d.mkdir()
-    (d / ".gatesrc").write_text("")
+    write_gatesrc(d, "")
     return subprocess.run(
         ["/bin/bash", str(REPO_ROOT / "gates" / "local_ci.sh"), "--steps-only", "--step", cmd],
         cwd=d,

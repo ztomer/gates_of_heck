@@ -6,6 +6,7 @@ declares its release gate ONCE, as `GOH_RELEASE_GATE` in its .gatesrc; `--gate` 
 """
 
 import test_release_kit as rk
+from _gatesrc_kit import write_gatesrc
 
 kit = rk.kit  # the release flow's fixture: a project repo, a bare origin, a fake gh
 run_release = rk.run_release
@@ -13,7 +14,7 @@ run_release = rk.run_release
 
 class TestDefaultGate:
     def test_the_repo_declared_gate_runs_when_none_is_passed(self, kit):
-        (kit["proj"] / ".gatesrc").write_text('GOH_RELEASE_GATE="tools/gate.sh --full"\n')
+        write_gatesrc(kit["proj"], 'GOH_RELEASE_GATE="tools/gate.sh --full"\n')
         r = run_release(kit, "--dry-run", gate=None)
         assert r.returncode == 0, r.stdout + r.stderr
         assert "run gate: tools/gate.sh --full" in r.stdout, r.stdout

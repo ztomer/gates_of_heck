@@ -8,6 +8,7 @@ import os
 import re
 import subprocess
 
+from _gatesrc_kit import write_gatesrc
 from conftest import EMOJI_SMILE, REPO_ROOT, run_gate, stage, write
 
 STRUCTURAL = "gates/structural.sh"
@@ -16,7 +17,7 @@ ALLOWED_GLYPHS_RE = re.compile(r"[→·✓✗⚠↔↑↓←⌘⌥⌨]")
 
 
 def _mk_gatesrc(repo, extra: str = "") -> None:
-    (repo / ".gatesrc").write_text(f"GOH_MAX_LINES=5\n{extra}")
+    write_gatesrc(repo, f"GOH_MAX_LINES=5\n{extra}")
 
 
 def test_staged_clean_repo_passes(repo):

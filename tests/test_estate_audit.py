@@ -16,6 +16,7 @@ from pathlib import Path
 
 import pytest
 from _fast_git import fast_init
+from _gatesrc_kit import write_gatesrc
 from conftest import REPO_ROOT
 
 pytestmark = pytest.mark.skipif(
@@ -77,7 +78,7 @@ def _repo(root: Path, name: str, crate: str, *, gated: bool = True) -> Path:
         # The house gate runs here, and its push audits the root lock (rust_gate.sh, no args): the
         # estate audit reads that from the gate, so a fixture whose gate audits nothing would be
         # "not audited at push", not red (tests/test_estate_gate_coverage.py).
-        (d / ".gatesrc").write_text(GATED)
+        write_gatesrc(d, GATED)
     _git(d, "add", "-A")
     _git(d, "commit", "-qm", "lock")
     return d
@@ -188,7 +189,7 @@ def test_a_tree_the_repo_excludes_is_set_aside(tmp_path, estate):
     hit = estate / "hit"
     (hit / "vendor" / "x").mkdir(parents=True)
     (hit / "vendor" / "x" / "Cargo.lock").write_text((hit / "Cargo.lock").read_text())
-    (hit / ".gatesrc").write_text(GATED + "export GOH_EXCLUDE='^vendor/'\n")
+    write_gatesrc(hit, GATED + "export GOH_EXCLUDE='^vendor/'\n")
     _git(hit, "add", "-A")
     _git(hit, "commit", "-qm", "vendored")
     found = _audit(estate, tmp_path / "state.json", _db(tmp_path, planted=True))

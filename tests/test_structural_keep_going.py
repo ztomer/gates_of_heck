@@ -22,6 +22,7 @@ import re
 import subprocess
 from pathlib import Path
 
+from _gatesrc_kit import as_fixture
 from conftest import hermetic_env
 from goh_structural_cases import FULL_CASES
 
@@ -90,7 +91,7 @@ def _repo(tmp_path: Path, files: dict[str, bytes]) -> Path:
     for name, content in files.items():
         dest = repo / name
         dest.parent.mkdir(parents=True, exist_ok=True)
-        dest.write_bytes(content)
+        dest.write_bytes(as_fixture(name, content))
     subprocess.run(
         ["git", "add", "-A"], cwd=repo, capture_output=True, check=True, stdin=subprocess.DEVNULL
     )

@@ -11,6 +11,7 @@ from pathlib import Path
 
 import pytest
 from _fast_git import fast_init
+from _gatesrc_kit import write_gatesrc
 from conftest import REPO_ROOT, hermetic_env
 
 ROUND = REPO_ROOT / "gates" / "round.sh"
@@ -100,7 +101,7 @@ def test_a_red_push_hook_leaves_the_commit_local_and_says_so(proj) -> None:
 
 
 def test_a_short_disk_stops_the_round_before_the_commit(proj) -> None:
-    (proj / ".gatesrc").write_text("GOH_MIN_FREE_GIB=1e9\n")
+    write_gatesrc(proj, "GOH_MIN_FREE_GIB=1e9\n")
     (proj / "a.txt").write_text("a2\n")
     r = _round(proj, "-m", "round: a", "a.txt")
     assert r.returncode == 1 and "GiB free" in r.stderr, r.stderr
@@ -109,7 +110,7 @@ def test_a_short_disk_stops_the_round_before_the_commit(proj) -> None:
 
 @pytest.mark.skipif(shutil.which("ruff") is None, reason="ruff not installed")
 def test_a_named_python_file_is_formatted_when_the_repo_opts_in(proj) -> None:
-    (proj / ".gatesrc").write_text("GOH_PYTHON_FORMATTED=1\n")
+    write_gatesrc(proj, "GOH_PYTHON_FORMATTED=1\n")
     (proj / "m.py").write_text("x  =  1\n")
     r = _round(proj, "-m", "round: m", "m.py")
     assert r.returncode == 0, r.stdout + r.stderr
@@ -133,20 +134,20 @@ def test_a_staged_deletion_is_a_path_the_round_commits(proj, how) -> None:
 
 
 def test_a_preflight_runs_before_the_commit_and_a_red_one_stops_it(proj) -> None:
-    (proj / ".gatesrc").write_text("GOH_ROUND_PREFLIGHT='echo warm-verify; exit 3'\n")
+    write_gatesrc(proj, "GOH_ROUND_PREFLIGHT='echo warm-verify; exit 3'\n")
     (proj / "a.txt").write_text("a2\n")
     r = _round(proj, "-m", "round: a", "a.txt")
     assert r.returncode == 1 and "preflight" in r.stderr, r.stdout + r.stderr
     assert "warm-verify" in r.stdout + r.stderr
     assert _git(proj, "rev-list", "--count", "HEAD") == "1"
-    (proj / ".gatesrc").write_text("GOH_ROUND_PREFLIGHT='test -f a.txt'\n")
+    write_gatesrc(proj, "GOH_ROUND_PREFLIGHT='test -f a.txt'\n")
     r = _round(proj, "-m", "round: a", "a.txt")
     assert r.returncode == 0, r.stdout + r.stderr
 
 
 def test_a_refused_message_stops_the_round_before_the_preflight(proj) -> None:
     """The commit-msg hook runs on the message first: a refusal costs a second, not a warm verify."""
-    (proj / ".gatesrc").write_text("GOH_ROUND_PREFLIGHT='touch preflight.ran'\n")
+    write_gatesrc(proj, "GOH_ROUND_PREFLIGHT='touch preflight.ran'\n")
     _hook(proj, "commit-msg", 'grep -q "^Class:" "$1" || { echo "no Class" >&2; exit 1; }')
     (proj / "a.txt").write_text("a2\n")
     r = _round(proj, "-m", "fix: a", "a.txt")

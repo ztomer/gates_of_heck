@@ -42,7 +42,7 @@ MARKER = "GATES_OF_HECK_SUITE_REAL_HOME"  # not GOH_-prefixed: no env scrub drop
 
 READ = ("Projects", ".claude/skills", ".cargo")
 # The GOH_* variables a hermetic child keeps: locations and test seams, never an opt-in.
-KEPT_GOH = ("GOH_LIVE", "GOH_ESTATE_STATE", "GOH_ROADMAP_PENDING", "GOH_GRACE")
+KEPT_GOH = ("GOH_LIVE", "GOH_ESTATE_STATE", "GOH_GRACE")
 # Where each kept variable's tool looks under HOME when the variable is unset.
 HOME_DEFAULTS = {
     "CARGO_HOME": ".cargo",
@@ -111,10 +111,6 @@ def _enter() -> None:
     os.environ["HOME"] = str(home)
     os.environ["XDG_CACHE_HOME"] = str(home / ".cache")
     os.environ["XDG_STATE_HOME"] = str(home / ".local" / "state")
-    # Every fixture repo stands pending under GOH.ROADMAPREQ (judged on what its test declares);
-    # test_check_roadmap.py names its own list, and hermetic_env keeps this one.
-    (home / "roadmap_pending.txt").write_text("*\n")
-    os.environ["GOH_ROADMAP_PENDING"] = str(home / "roadmap_pending.txt")
     # Keyless fixtures: new shapes and undeclared floors are advisory here (GOH.FLOORREQ).
     os.environ["GOH_GRACE"] = "within"
 

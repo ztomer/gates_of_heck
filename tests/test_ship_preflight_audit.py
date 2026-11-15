@@ -13,6 +13,7 @@ import subprocess
 import sys
 from pathlib import Path
 
+from _gatesrc_kit import write_gatesrc
 from conftest import REPO_ROOT, hermetic_env
 
 AUDIT = REPO_ROOT / "scripts" / "ship_preflight_audit.py"
@@ -20,7 +21,7 @@ AUDIT = REPO_ROOT / "scripts" / "ship_preflight_audit.py"
 
 def _repo(root: Path, name: str, gatesrc: str) -> None:
     (root / name / ".git").mkdir(parents=True)
-    (root / name / ".gatesrc").write_text(gatesrc)
+    write_gatesrc(root / name, gatesrc)
 
 
 def _estate(tmp_path: Path) -> Path:

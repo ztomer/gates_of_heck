@@ -22,6 +22,7 @@ from pathlib import Path
 
 import pytest
 from _fast_git import fast_init
+from _gatesrc_kit import as_fixture
 from conftest import EMOJI_SMILE, REPO_ROOT, hermetic_env, native_goh_path
 from test_gate_environment import _clean_checkout_of_todays_gates
 
@@ -73,7 +74,7 @@ def _consumer(
     (main / "tools" / "gate.sh").chmod(0o755)
     (main / "README.md").write_text("consumer\n")
     for rel, body in (files or {}).items():
-        (main / rel).write_text(body)
+        (main / rel).write_text(as_fixture(rel, body))
     fast_init(main, "main")
     _git(main, "config", "user.email", "t@t")
     _git(main, "config", "user.name", "t")

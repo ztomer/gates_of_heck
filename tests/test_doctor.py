@@ -11,6 +11,7 @@ from pathlib import Path
 
 import pytest
 from _fast_git import fast_init
+from _gatesrc_kit import write_gatesrc
 from conftest import REPO_ROOT, write
 
 DOCTOR = REPO_ROOT / "gates" / "doctor.sh"
@@ -27,7 +28,7 @@ def run_doctor(target: Path) -> subprocess.CompletedProcess:
 
 
 def _wire(repo: Path) -> None:
-    (repo / ".gatesrc").write_text("GOH_MAX_LINES=500\n")
+    write_gatesrc(repo, "GOH_MAX_LINES=500\n")
     r = subprocess.run(
         ["/bin/bash", str(REPO_ROOT / "install.sh"), str(repo)],
         capture_output=True,
@@ -67,7 +68,7 @@ def test_unset_hookspath_fails_named(repo):
 
 def test_unknown_gatesrc_key_warns_but_passes(repo):
     _wire(repo)
-    (repo / ".gatesrc").write_text("GOH_MAX_LINES=500\nGOH_BOGUS_KEY=1\n")
+    write_gatesrc(repo, "GOH_MAX_LINES=500\nGOH_BOGUS_KEY=1\n")
     r = run_doctor(repo)
     assert r.returncode == 0, r.stdout + r.stderr
     assert "GOH_BOGUS_KEY" in (r.stdout + r.stderr)
@@ -75,7 +76,7 @@ def test_unknown_gatesrc_key_warns_but_passes(repo):
 
 def test_all_known_keys_pass_silently_on_that_point(repo):
     _wire(repo)
-    (repo / ".gatesrc").write_text("GOH_MAX_LINES=500\nGOH_EXCLUDE='x'\nGOH_CI_STEPS='true'\n")
+    write_gatesrc(repo, "GOH_MAX_LINES=500\nGOH_EXCLUDE='x'\nGOH_CI_STEPS='true'\n")
     r = run_doctor(repo)
     assert r.returncode == 0, r.stdout + r.stderr
     assert "BOGUS" not in (r.stdout + r.stderr)
@@ -138,7 +139,7 @@ def test_gate_help_flag_prints_usage(tmp_path):
 def test_gate_doctor_flag_delegates(repo):
     import os as _os
 
-    (repo / ".gatesrc").write_text("GOH_MAX_LINES=500\n")
+    write_gatesrc(repo, "GOH_MAX_LINES=500\n")
     subprocess.run(
         ["/bin/bash", str(REPO_ROOT / "install.sh"), str(repo)],
         capture_output=True,

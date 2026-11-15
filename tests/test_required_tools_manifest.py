@@ -23,6 +23,7 @@ from pathlib import Path
 
 import pytest
 from _fast_git import fast_init
+from _gatesrc_kit import write_gatesrc
 
 ROOT = Path(__file__).resolve().parent.parent
 MANIFEST = ROOT / "gates" / "required_tools.tsv"
@@ -213,7 +214,7 @@ def test_repo_detection_finds_the_layers_a_repo_declares(tmp_path):
     """A workflow should not have to know which layers its repo uses either."""
     (tmp_path / "tools").mkdir()
     (tmp_path / "tools" / "gate.sh").write_text('"$GOH/gates/rust_gate.sh" .\n')
-    (tmp_path / ".gatesrc").write_text("GOH_PYTHON_FORMATTED=1\n")
+    write_gatesrc(tmp_path, "GOH_PYTHON_FORMATTED=1\n")
     subprocess.run(["git", "init", "-q", str(tmp_path)], check=True, stdin=subprocess.DEVNULL)
     (tmp_path / "x.sh").write_text("true\n")
     subprocess.run(["git", "-C", str(tmp_path), "add", "-A"], check=True, stdin=subprocess.DEVNULL)
@@ -265,7 +266,7 @@ def test_the_cross_lint_tools_are_for_repos_that_name_zigbuild(tmp_path, gatesrc
     must not be told to install either (BACKLOG P1g)."""
     (tmp_path / "tools").mkdir()
     (tmp_path / "tools" / "gate.sh").write_text('"$GOH/gates/rust_gate.sh" .\n')
-    (tmp_path / ".gatesrc").write_text(gatesrc)
+    write_gatesrc(tmp_path, gatesrc)
     subprocess.run(["git", "init", "-q", str(tmp_path)], check=True, stdin=subprocess.DEVNULL)
     out = subprocess.run(
         [sys.executable, str(CLI), "--repo", str(tmp_path), "--names"],
@@ -316,11 +317,11 @@ def test_goh_suite_as_a_coverage_external_needs_pytest(tmp_path):
     """goh's first hosted run lost its external export to "No module named pytest": the suite ran
     as GOH_COV_RUST_EXTERNAL, and no layer said it needs pytest (CI.PUBLIC2)."""
     fast_init(tmp_path)
-    (tmp_path / ".gatesrc").write_text("GOH_COV_RUST_EXTERNAL='GOH_TEST_BIN=x ./tools/pytest.sh'\n")
+    write_gatesrc(tmp_path, "GOH_COV_RUST_EXTERNAL='GOH_TEST_BIN=x ./tools/pytest.sh'\n")
     got = _cli("--repo", str(tmp_path))
     assert got.returncode == 0, got.stderr
     assert any(ln.split("\t")[:2] == ["goh-suite", "pytest"] for ln in got.stdout.splitlines())
-    (tmp_path / ".gatesrc").write_text("GOH_COV_FLOOR=95\n")
+    write_gatesrc(tmp_path, "GOH_COV_FLOOR=95\n")
     assert "goh-suite" not in _cli("--repo", str(tmp_path)).stdout
 
 

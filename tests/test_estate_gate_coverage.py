@@ -15,6 +15,7 @@ import sys
 from pathlib import Path
 
 import pytest
+from _gatesrc_kit import as_fixture
 from _gitutil import foreign_repo_env
 from test_estate_audit import GATED, LOCK, PLANTED, SCRIPT, _db, _git, _hook, _repo
 
@@ -29,7 +30,7 @@ needs_audit = pytest.mark.skipif(
 def _add(repo: Path, files: dict[str, str]) -> None:
     for rel, body in files.items():
         (repo / rel).parent.mkdir(parents=True, exist_ok=True)
-        (repo / rel).write_text(body)
+        (repo / rel).write_text(as_fixture(rel, body))
     _git(repo, "add", "-A")
     _git(repo, "commit", "-qm", "more")
 

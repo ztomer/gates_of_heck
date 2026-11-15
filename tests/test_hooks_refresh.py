@@ -19,6 +19,7 @@ import subprocess
 from pathlib import Path
 
 from _fast_git import fast_init
+from _gatesrc_kit import write_gatesrc
 from conftest import REPO_ROOT, hermetic_env, native_goh_path
 
 OLD_STOCK = "18330c7"  # a retired stock pre-commit (retired_hooks.sha256)
@@ -61,7 +62,7 @@ def _consumer(root: Path, name: str, pre_commit: bytes) -> Path:
     for h, body in STOCK.items():
         (hooks / h).write_bytes(pre_commit if h == "pre-commit" else body)
         (hooks / h).chmod(0o755)
-    (repo / ".gatesrc").write_text("GOH_MAX_LINES=500\n")
+    write_gatesrc(repo, "GOH_MAX_LINES=500\n")
     (repo / "tools").mkdir()
     (repo / "tools" / "gate.sh").write_text(GATE)
     (repo / "tools" / "gate.sh").chmod(0o755)
