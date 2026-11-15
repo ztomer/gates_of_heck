@@ -10,8 +10,15 @@ no workflows says "no CI", which is not a green.
 from __future__ import annotations
 
 import subprocess
+import sys
 
+from conftest import REPO_ROOT
 from test_release_kit import TAG, commit_all, kit, run_release  # noqa: F401  (kit: a fixture)
+
+sys.path.insert(0, str(REPO_ROOT / "lib"))
+import push_gated as gated
+
+sys.path.pop(0)
 
 RED = "completed\tfailure\tci\thttps://example.invalid/runs/1\n"
 PENDING = "in_progress\t\tci\thttps://example.invalid/runs/2\n"
@@ -33,13 +40,16 @@ def _tagged(kit: dict) -> bool:
 
 
 def _push_gated(kit: dict) -> dict:
-    """The checkout's pre-push hook is goh's push gate: the local record that a commit passed the
-    full gate before it could be pushed (what .loop's `loopctl done` reads the same way)."""
+    """The checkout's pre-push hook is goh's push gate -- the stock shim, judged by its bytes
+    (lib/push_gated.py, GOH.SHIMPUSHGATED) -- the local record that a commit passed the full gate
+    before it could be pushed (what .loop's `loopctl done` reads the same way). HEAD is on origin,
+    as a landed commit is, and the release runs --no-push: the shim runs the REAL push gate, which
+    has no gate of record in this fixture."""
     hook = kit["proj"] / ".git" / "hooks" / "pre-push"
-    hook.write_text(
-        '#!/bin/sh\n# exec "$GOH_DIR/gates/push_gate.sh" (a stand-in that passes)\nexit 0\n'
-    )
+    hook.write_bytes(gated.shim())
     hook.chmod(0o755)
+    subprocess.run(["git", "-C", str(kit["proj"]), "push", "-q", "--no-verify", "origin", "HEAD"],
+                   check=True, capture_output=True, stdin=subprocess.DEVNULL)  # fmt: skip
     return kit
 
 
@@ -74,7 +84,7 @@ def test_no_run_for_head_without_the_push_gate_refuses_the_tag(kit):
 def test_a_pending_run_over_the_push_gate_tags_advisory_after_one_read(kit):
     """GOH.CIWAIT: the kit watched CI up to 1800 s for a run re-running the gate the push already
     passed. Over goh's push gate a pending run is advisory: tagged now, said, read once."""
-    r = run_release(_push_gated(_with_ci(kit, PENDING)))
+    r = run_release(_push_gated(_with_ci(kit, PENDING)), "--no-push")
     out = r.stdout + r.stderr
     assert r.returncode == 0, out
     assert "advisory" in out and "ci: in_progress" in out, out
@@ -83,14 +93,14 @@ def test_a_pending_run_over_the_push_gate_tags_advisory_after_one_read(kit):
 
 
 def test_no_run_yet_over_the_push_gate_tags_advisory(kit):
-    r = run_release(_push_gated(_with_ci(kit, None)))
+    r = run_release(_push_gated(_with_ci(kit, None)), "--no-push")
     out = r.stdout + r.stderr
     assert r.returncode == 0 and "advisory" in out, out
     assert _tagged(kit)
 
 
 def test_a_red_run_over_the_push_gate_still_refuses(kit):
-    r = run_release(_push_gated(_with_ci(kit, RED)))
+    r = run_release(_push_gated(_with_ci(kit, RED)), "--no-push")
     out = r.stdout + r.stderr
     assert r.returncode != 0 and "ci: failure" in out, out
     assert not _tagged(kit)

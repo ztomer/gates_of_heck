@@ -8,25 +8,30 @@
 # An entry tagged `same-logic` retired only TEXT (a comment): the hook it names runs today's gate,
 # so install.sh still upgrades it without --force, but structural.sh does not refuse it -- turning
 # every consumer red over a comment is the cost the tag exists to avoid (BACKLOG 6.19).
+#
+# A pre-push entry tagged `push-gate` (the THIRD field) ran goh's push gate (gates/push_gate.sh):
+# lib/push_gated.py reads such a hook as push-gated, by these bytes, never by a name inside them.
+# Retiring a stock pre-push that runs the push gate (the shim's ABI moving) tags it the same way;
+# tests/test_push_gated.py refuses an untagged pre-push line it has not been told about.
 d5603f176139d3ddca9b21bc94f87fa2e7663a94d5980c5346c26ba5a46682bf  pre-commit  (73391f0, before v0.12.3)
 87c60cd19cb13dc32c581cddca2cb305f91f972aba343ada2750bc2bfc2e761a  pre-push    (73391f0, before v0.12.3)
 d3722589597101b105161fd23507dbd76f2a804b88baa55dbbffa0620b5a9cc8  pre-commit  (a15c96a, v0.12.3)
-1139cbc22befa18f66b813133c0598cce26df41d9a039ec620ae23dec271eef3  pre-push    (0ac0f70, push_gate)
+1139cbc22befa18f66b813133c0598cce26df41d9a039ec620ae23dec271eef3  pre-push  push-gate  (0ac0f70, push_gate)
 830c174e2e642ba5fe8fce5483964b4918ce0ce844eb907acf475b0e851cd91b  pre-commit  (e3c829e, parse-guard)
-1a9b14a1e276decc03a0e73e112e4f5364939e2059416f93544103c8db41211f  pre-push    (e3c829e, parse-guard)
+1a9b14a1e276decc03a0e73e112e4f5364939e2059416f93544103c8db41211f  pre-push  push-gate  (e3c829e, parse-guard)
 3f1f3dee16f195b0b6159d20c29aa5e1d98616bb5c127f22d297a971aea796ce  pre-commit  (86a9ee0, hook currency)
 70721a6361201f2cdf2d96549a80582560b422da5fb0dbe46513fd712fe59eb3  pre-commit  (2fb2901, the last that decided anything)
-ee6c434cbd6cc930f003230bb9c2ec5eb63b6c946c6046e32a5565bb53f6caab  pre-push    (86a9ee0, same-logic: 6.19 header only)
-bec9f8937f1fc8480812ec375d692cb62165e9ce53895c43b52614527b559c2d  pre-push  (97a4f9e)
+ee6c434cbd6cc930f003230bb9c2ec5eb63b6c946c6046e32a5565bb53f6caab  pre-push  push-gate  (86a9ee0, same-logic: 6.19 header only)
+bec9f8937f1fc8480812ec375d692cb62165e9ce53895c43b52614527b559c2d  pre-push  push-gate  (97a4f9e)
 577b439a16bf45591ae74e26dad4e0716052e45c6820188620cadb0f6e529656  pre-commit  (18330c7)
 af8f0f1195cdb0736f0b9cd9a1e40aac880f4ee0643fd2245e401ff67af790d7  pre-commit  (aede5bc, same-logic: GOH.TRANSIENTDIR added only a dead-export GOH_DIR fallback; a live GOH_DIR runs today's gate unchanged; `goh hooks --refresh` delivers it)
-daf849be6b7977c2ad03714db0838d410282ebf7b957ee5a52fed489087947f4  pre-push  (aede5bc, same-logic: GOH.TRANSIENTDIR added only a dead-export GOH_DIR fallback; a live GOH_DIR runs today's gate unchanged; `goh hooks --refresh` delivers it)
+daf849be6b7977c2ad03714db0838d410282ebf7b957ee5a52fed489087947f4  pre-push  push-gate  (aede5bc, same-logic: GOH.TRANSIENTDIR added only a dead-export GOH_DIR fallback; a live GOH_DIR runs today's gate unchanged; `goh hooks --refresh` delivers it)
 90d8b06e52a6179a1544c23a4cbb3e681663702a5206c9f40abd9a9c753b352e  pre-commit  (565dd2a, same-logic: GOH.TRANSIENTDIR first cut of the dead-export fallback, before the bash 5 guard; a live GOH_DIR runs today's gate unchanged)
-51a4ebbcf511c07fc8cd32e8e23e7049bbad9f19c729e89244816ba0c2f47245  pre-push  (565dd2a, same-logic: GOH.TRANSIENTDIR first cut of the dead-export fallback, before the bash 5 guard; a live GOH_DIR runs today's gate unchanged)
+51a4ebbcf511c07fc8cd32e8e23e7049bbad9f19c729e89244816ba0c2f47245  pre-push  push-gate  (565dd2a, same-logic: GOH.TRANSIENTDIR first cut of the dead-export fallback, before the bash 5 guard; a live GOH_DIR runs today's gate unchanged)
 0690b0293911990dc4f81a0aa4079bdbdd6f4cf1791599629753d6dc5bb70034  pre-commit  (2468a52, same-logic: GOH.BASH5SILENT turned the guard's `&&` into `|| exit;`, which differs only when an existing lib/bash5.sh cannot be read; `goh hooks --refresh` delivers it)
-6a6f6a6b6022b3878b61a0b2d92ae1aba2bcf53fcea0e231fb3179488e28926e  pre-push  (2468a52, same-logic: GOH.BASH5SILENT turned the guard's `&&` into `|| exit;`, which differs only when an existing lib/bash5.sh cannot be read; `goh hooks --refresh` delivers it)
+6a6f6a6b6022b3878b61a0b2d92ae1aba2bcf53fcea0e231fb3179488e28926e  pre-push  push-gate  (2468a52, same-logic: GOH.BASH5SILENT turned the guard's `&&` into `|| exit;`, which differs only when an existing lib/bash5.sh cannot be read; `goh hooks --refresh` delivers it)
 fe2731e96bd44c59989d6670db7828b278bbdb66d86b817d21ed9434b6c7091d  pre-commit  (6367c5d, delegates: the last stock hook that carried logic of its own (bash 5 guard, goh_dir_repair, dispatch); the shim replaces it, GOH.CLASS.ROLLOUT; `goh hooks --refresh` delivers it)
-a60fd4efcd94ec00bcbe3a935a39c4378cb0fd695ab883f63b7d3a60f62a7f86  pre-push  (6367c5d, delegates: the last stock hook that carried logic of its own (bash 5 guard, goh_dir_repair, dispatch); the shim replaces it, GOH.CLASS.ROLLOUT; `goh hooks --refresh` delivers it)
+a60fd4efcd94ec00bcbe3a935a39c4378cb0fd695ab883f63b7d3a60f62a7f86  pre-push  push-gate  (6367c5d, delegates: the last stock hook that carried logic of its own (bash 5 guard, goh_dir_repair, dispatch); the shim replaces it, GOH.CLASS.ROLLOUT; `goh hooks --refresh` delivers it)
 a32694e80ae65b248f06d99024f4f3b0f15533031c19474a9dcd0dd08fe466db  commit-msg  (6367c5d, delegates: the last stock hook that carried logic of its own (bash 5 guard, goh_dir_repair, dispatch); the shim replaces it, GOH.CLASS.ROLLOUT; `goh hooks --refresh` delivers it)
 595b3206acb094c83d44cbbc4eb2fe237a0afb7d344e18d2007966e6ae052394  post-rewrite  (6367c5d, delegates: the last stock hook that carried logic of its own (bash 5 guard, goh_dir_repair, dispatch); the shim replaces it, GOH.CLASS.ROLLOUT; `goh hooks --refresh` delivers it)
 595b3206acb094c83d44cbbc4eb2fe237a0afb7d344e18d2007966e6ae052394  pre-applypatch  (6367c5d, delegates: the last stock hook that carried logic of its own (bash 5 guard, goh_dir_repair, dispatch); the shim replaces it, GOH.CLASS.ROLLOUT; `goh hooks --refresh` delivers it)

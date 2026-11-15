@@ -24,12 +24,11 @@
 _goh_d=${BASH_SOURCE[0]%/*}; [ "$_goh_d" != "${BASH_SOURCE[0]}" ] || _goh_d=.; . "$_goh_d/../../lib/bash5.sh" || exit; goh_bash5 "$@"
 
 # ci_push_gated -- the checkout's pre-push hook (as git resolves it: core.hooksPath or the common
-# hooks dir) when it runs goh's push gate, else nothing (.loop tools/loopadvisory.py push_gated).
+# hooks dir) when it runs goh's push gate, else nothing. The ONE reading (lib/push_gated.py, which
+# ship_verify and .loop's loopadvisory ask too): a hook is judged by its bytes, never by a script
+# name grepped out of it (GOH.SHIMPUSHGATED: the shim names no gate, so a grep read it ungated).
 ci_push_gated() {
-  local hook
-  hook="$(git rev-parse --git-path hooks/pre-push 2>/dev/null)" || return 0
-  [ -f "$hook" ] && grep -q 'push_gate\.sh' "$hook" 2>/dev/null && printf '%s' "$hook"
-  return 0
+  bash "$GOH/gates/python.sh" "$GOH/lib/push_gated.py" "$PWD" || true
 }
 
 # ci_runs -- the runs for HEAD_SHA, one `status<TAB>conclusion<TAB>name<TAB>url` line each.

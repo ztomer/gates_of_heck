@@ -21,6 +21,7 @@ import sys
 from pathlib import Path
 
 import gitrun  # tools/ship.py, the one importer, puts goh's root and lib/ on sys.path
+import push_gated as gated  # the ONE reading of "this hook runs goh's push gate"
 import ship_export
 
 from tui.lib import err, step
@@ -28,7 +29,6 @@ from tui.lib import err, step
 # `loopctl ci`'s exits (.loop tools/loopci.py): green, red or unread, pending, no verdict exists
 # (Actions off, no workflows), throttled; 2 is a refused call.
 CI_GREEN, CI_RED, CI_PENDING, CI_NONE, CI_THROTTLED = 0, 1, 3, 4, 75
-PUSH_GATE = "push_gate.sh"  # what .loop loopadvisory.push_gated reads in the pre-push hook
 ANSI = re.compile(r"\x1b\[[0-9;]*m")
 GITHUB = re.compile(r"github\.com[:/]([\w.-]+/[\w.-]+?)(?:\.git)?/?$")
 
@@ -42,17 +42,6 @@ def github_slug(repo: Path, remote: str) -> str:
     """OWNER/NAME of REMOTE when it is GitHub's (its fetch URL), else ""."""
     m = GITHUB.search(git(repo, "remote", "get-url", remote))
     return m.group(1) if m else ""
-
-
-def push_gated(repo: Path) -> str:
-    """REPO's pre-push hook when it runs goh's push gate, else "": the local record that a landed
-    commit passed the full gate (the same reading as .loop tools/loopadvisory.py push_gated)."""
-    rel = git(repo, "rev-parse", "--git-path", "hooks/pre-push")
-    hook = repo / rel if rel else None
-    try:
-        return rel if hook and PUSH_GATE in hook.read_text(errors="replace") else ""
-    except OSError:
-        return ""
 
 
 def ci_read(repo: Path, remote: str, loopctl_py: str, sha: str = "") -> tuple[bool, str]:
@@ -71,7 +60,7 @@ def ci_read(repo: Path, remote: str, loopctl_py: str, sha: str = "") -> tuple[bo
         what = "CI red" if code == CI_RED else f"loopctl ci failed (exit {code})"
         return False, f"{what} for {sha[:8]} on {slug}: the ship stops at verify"
     state = "pending" if code == CI_PENDING else "throttled"
-    hook = push_gated(repo)
+    hook = gated.push_gated(repo)
     if not hook:
         return False, (
             f"CI {state} for {sha[:8]} on {slug}, and {repo.name}'s pre-push hook is not goh's "

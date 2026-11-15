@@ -7,11 +7,17 @@ the local push gate while its run is queued or running, and `loopctl tick` re-re
 
 from __future__ import annotations
 
+import sys
 from pathlib import Path
 
 import pytest
 from conftest import REPO_ROOT, git
 from test_ship import FAKE_LOOPCTL, _calls, _result, _ship, make_shipped
+
+sys.path.insert(0, str(REPO_ROOT / "lib"))
+import push_gated as gated
+
+sys.path.pop(0)
 
 
 @pytest.fixture
@@ -35,15 +41,25 @@ def _ci_env(tmp_path: Path, verdicts: str) -> dict[str, str]:
     return {"FAKE_CI": verdicts, "FAKE_CI_N": str(tmp_path / "ci.n")}
 
 
-def _push_gated(repo: Path) -> None:
+def _push_gated(repo: Path) -> dict[str, str]:
     """REPO's pre-push hook is goh's push gate (what `loopctl done` reads as the local record that
-    the commit passed the full gate before it could land)."""
+    the commit passed the full gate before it could land): the stock shim, judged by its bytes
+    (lib/push_gated.py, GOH.SHIMPUSHGATED). The shim runs the REAL push gate, so the repo holds a
+    gate of record, HEAD reaches origin as a landed commit has (the ship's push gates nothing new),
+    and the release (returned, for the ship's env) pushes its tag with no hook."""
     hook = repo / git(repo, "rev-parse", "--git-path", "hooks/pre-push").strip()
     hook.parent.mkdir(parents=True, exist_ok=True)
-    hook.write_text(
-        '#!/bin/sh\n# exec "$GOH_DIR/gates/push_gate.sh" (a stand-in that passes)\nexit 0\n'
-    )
+    hook.write_bytes(gated.shim())
     hook.chmod(0o755)
+    gate = repo / "tools" / "gate.sh"
+    gate.parent.mkdir(exist_ok=True)
+    gate.write_text("#!/usr/bin/env bash\nexit 0\n")
+    gate.chmod(0o755)
+    git(repo, "add", "tools/gate.sh")
+    git(repo, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "-m", "chore: gate")
+    git(repo, "push", "-q", "--no-verify", "origin", "main")
+    tag = 'git tag "v$GOH_SHIP_VERSION" && git push -q --no-verify origin "v$GOH_SHIP_VERSION"'
+    return {"GOH_SHIP_RELEASE": tag}
 
 
 PENDING_CARD = {"FAKE_VERIFY_RC": "1", "FAKE_CARD_ERR": "CI: 1 run still in_progress for abc"}
@@ -56,9 +72,9 @@ def test_a_pending_ci_verdict_is_advisory_and_the_ship_never_waits(shipped, tmp_
     on a push-gated checkout passes, the card's CI line with it, and `loopctl done` records the run
     for tick to re-read."""
     _on_github(shipped)
-    _push_gated(shipped)
+    release = _push_gated(shipped)
     r = _ship(shipped, tmp_path, "--wait", "--item", "X.ONE",
-              **_ci_env(tmp_path, "pending,green"), **PENDING_CARD)  # fmt: skip
+              **_ci_env(tmp_path, "pending,green"), **PENDING_CARD, **release)  # fmt: skip
     assert r.returncode == 0, r.stdout + r.stderr
     res = _result(tmp_path)
     assert res["status"] == "ok", res
@@ -84,18 +100,18 @@ def test_a_pending_ci_verdict_without_the_push_gate_fails_at_once_naming_it(ship
 
 def test_an_advisory_ci_never_excuses_another_failing_card_line(shipped, tmp_path):
     _on_github(shipped)
-    _push_gated(shipped)
+    release = _push_gated(shipped)
     err = "CI: 1 run still queued for abc|tag: newest v1.0.0 peels to abc"
     card = {"FAKE_VERIFY_RC": "1", "FAKE_CARD_ERR": err}
-    r = _ship(shipped, tmp_path, "--wait", **_ci_env(tmp_path, "pending"), **card)
+    r = _ship(shipped, tmp_path, "--wait", **_ci_env(tmp_path, "pending"), **card, **release)
     assert r.returncode == 1, r.stdout + r.stderr
     assert _result(tmp_path)["failed_step"] == "verify"
 
 
 def test_a_red_ci_verdict_fails_the_ship_at_verify(shipped, tmp_path):
     _on_github(shipped)
-    _push_gated(shipped)
-    r = _ship(shipped, tmp_path, "--wait", "--item", "X.ONE", **_ci_env(tmp_path, "red"))
+    release = _push_gated(shipped)
+    r = _ship(shipped, tmp_path, "--wait", "--item", "X.ONE", **_ci_env(tmp_path, "red"), **release)
     assert r.returncode == 1, r.stdout + r.stderr
     res = _result(tmp_path)
     assert res["failed_step"] == "verify", res
