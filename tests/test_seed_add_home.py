@@ -15,6 +15,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+from _fast_git import fast_init
 from conftest import commit_all, git, hermetic_env, run_goh, write
 
 FILE = "floor_seed.json"
@@ -77,8 +78,7 @@ def test_the_estate_registry_finds_a_repo_the_command_does_not_run_in(
     )
     commit_all(repo)
     other = tmp_path / "other"
-    other.mkdir()
-    git(other, "init", "-q")
+    fast_init(other)
     write(other, "README.md", "# other\n")
     commit_all(other, "root")
     here = _entry(repo)

@@ -243,7 +243,8 @@ def test_a_marker_on_an_image_that_moves_from_the_grace_end_is_green_before_and_
     write(repo, "compose.yml", "services:\n  db:\n    image: postgres:16\n")
     write(repo, "tools/run.sh", "#!/bin/sh\ndocker pull nginx:latest\n")
     commit_all(repo)
-    assert run_goh(repo, "moving-tags", env=hermetic_env(GOH_GRACE="within")).returncode == 0
+    before = run_goh(repo, "moving-tags", env=hermetic_env(GOH_GRACE="within"))
+    assert before.returncode == 0, before.stdout + before.stderr
     r = run_goh(repo, "moving-tags", env=hermetic_env(GOH_GRACE="over"))
     assert r.returncode == 1 and "compose.yml:3:" in r.stderr and "tools/run.sh:2:" in r.stderr, (
         r.stderr
