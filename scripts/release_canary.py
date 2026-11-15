@@ -75,6 +75,8 @@ STEP_HEAD = re.compile(r"^· (.+) \(≤\d+s\)$")
 STEP_OK = re.compile(r"^✓ (.+)$")
 STEP_RED = re.compile(r"^✗ structural: (.+) failed \(")
 FOUND = re.compile(r"^✗ \[")
+# The house's words for a bound that fired (bounded_run.py, stepcmd.rs, _empty_scope_run.py).
+TIMED_OUT = "TIMED OUT after"
 
 
 @dataclass
@@ -90,6 +92,8 @@ class Verdict:
     green: set[str] = field(default_factory=set)
     red: set[str] = field(default_factory=set)
     found: dict[str, list[str]] = field(default_factory=dict)
+    # {step: its TIMED OUT line}: a step red ONLY because a bound fired gave no verdict.
+    timed_out: dict[str, str] = field(default_factory=dict)
     error: str | None = None
 
 
@@ -218,23 +222,39 @@ def _env(side: Side) -> dict:
     return env
 
 
+def _starved(block: list[str]) -> str | None:
+    """A step's TIMED OUT line, when its output carries no `✗` finding of its own; else None."""
+    lines = [ln.strip() for ln in block]
+    if any(ln.startswith("✗") for ln in lines):
+        return None
+    return next((ln[:200] for ln in lines if TIMED_OUT in ln), None)
+
+
 def parse(rc: int, out: str) -> Verdict:
     """One `goh structural --full --keep-going` run, step by step. An exit that is not 0 or 1, or
-    one its output does not account for, is an ERROR -- never read as green."""
-    v, step = Verdict(), None
+    one its output does not account for, is an ERROR -- never read as green.
+
+    A red step whose output says TIMED OUT and carries no `✗` finding of its own was STARVED
+    (GOH.CANARYLOAD: Adv360's empty-scope sweep at load ~80 read as "turned red -- fix the
+    findings"): it lands in `timed_out`, never in `red`. A timeout beside a finding stays red."""
+    v, step, block = Verdict(), None, []
     for line in out.splitlines():
         if m := STEP_HEAD.match(line):
-            step = m.group(1)
+            step, block = m.group(1), []
         elif m := STEP_RED.match(line):
-            v.red.add(m.group(1))
+            if why := _starved(block):
+                v.timed_out[m.group(1)] = why
+            else:
+                v.red.add(m.group(1))
         elif (m := STEP_OK.match(line)) and m.group(1) != "all structural gates passed":
             v.green.add(m.group(1))
         elif FOUND.match(line) and step:
             v.found.setdefault(step, []).append(line[1:].strip())
+        block.append(line)
     tail = " | ".join(out.strip().splitlines()[-3:])
     if rc not in (0, 1):
         v.error = f"exit {rc}: {tail}"
-    elif rc == 1 and not v.red:
+    elif rc == 1 and not v.red and not v.timed_out:
         v.error = f"exit 1 naming no failed step: {tail}"
     elif rc == 0 and (v.red or not v.green):
         v.error = f"exit 0 over {len(v.red)} red and {len(v.green)} green step(s): {tail}"
@@ -299,6 +319,13 @@ def judge(repo: Path, base: Side, head: Side, scratch: Path) -> dict:
     # under HEAD then counts as this release's, the direction that refuses.
     before = None if was.error else was.red
     out: dict = {"turned_red": [], "already_red": [], "errors": []}
+    # Starved, not red: no verdict, so the release is not clear (fail closed), and it says why. A
+    # step that timed out under the BASE is not in `was.red`, so it cannot excuse a red under HEAD.
+    for step, why in sorted(now.timed_out.items()):
+        out["errors"].append(
+            f"under {head.label}: {step} gave no verdict ({why}) -- a starved run, not a finding;"
+            " land again when the machine is quieter"
+        )
     for step in sorted(now.red):
         if before is not None and step in before:
             out["already_red"].append(step)

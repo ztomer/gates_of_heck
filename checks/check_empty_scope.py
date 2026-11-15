@@ -53,6 +53,7 @@ import sys
 import tempfile
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from _empty_scope_run import TIMED_OUT, run_gate
 from _empty_scope_usage import first_error_line, is_usage_error
 from _gitutil import foreign_repo_env, repo_root
 
@@ -81,6 +82,7 @@ SHAPE_FILES = (
 # Skipped by name, always: running this gate inside its own skeleton builds another skeleton.
 SELF = "check_empty_scope.py"
 
+# A gate's NOMINAL bound: its stall, and a quarter of its wall backstop (_empty_scope_run.bounds).
 TIMEOUT = 90
 
 # Directories never worth copying into a skeleton -- large, generated, and irrelevant to the
@@ -291,23 +293,16 @@ def sweep(skeleton, gate_name, names, timeout=None, excused=()):
     env = {**_runtime_env(), "TMPDIR": scratch + os.sep}
     for name in names:
         try:
-            result = subprocess.run(
-                _gate_argv(skeleton, gate_name, name),
-                cwd=skeleton,
-                capture_output=True,
-                text=True,
-                timeout=timeout,
-                check=False,
-                # Inside the skeleton, not the hook's repo: with the hook's GIT_DIR a gate's git
-                # calls would read the REAL tree, and the sweep would measure the wrong thing.
-                env=env,
-                stdin=subprocess.DEVNULL,
-            )
-        except subprocess.TimeoutExpired:
-            unrunnable[name] = f"no verdict within {timeout}s"
-            continue
+            # Inside the skeleton, not the hook's repo: with the hook's GIT_DIR a gate's git calls
+            # would read the REAL tree. Bounded by CPU, stall and a wall backstop, never the wall
+            # alone: a starved gate is the machine's load, not a verdict (_empty_scope_run.py).
+            argv = _gate_argv(skeleton, gate_name, name)
+            result, expired = run_gate(argv, skeleton, env, timeout, name)
         except (OSError, subprocess.SubprocessError) as exc:
             unrunnable[name] = f"could not run: {exc}"
+            continue
+        if expired:
+            unrunnable[name] = expired
             continue
         if "Traceback (most recent call last)" in result.stderr and re.search(
             r"^(ModuleNotFoundError|ImportError):", result.stderr, re.MULTILINE
@@ -480,8 +475,15 @@ def main(argv=None):
     for name in orphaned:
         err(f"{name} is excused here but names no gate in this repo -- delete its excuse")
 
-    if unexcused or stale or unrunnable or orphaned:
+    if (
+        unexcused
+        or stale
+        or orphaned
+        or any(not v.startswith(TIMED_OUT) for v in unrunnable.values())
+    ):
         return 1
+    if unrunnable:  # only bounds that fired: no verdict, in GNU timeout's code, never a red finding
+        return 124
     ok(
         f"empty scope: {len(names)} gate(s) swept over an empty tree, "
         f"{len(names) - len(blind)} refused to report compliance"

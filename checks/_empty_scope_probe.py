@@ -196,6 +196,11 @@ def probe():
         for label, want, got in [
             ("a gate that never reports does not pass the sweep", 1, hang_rc),
             (
+                "its bound is named in the house's words (TIMED OUT after), with what it spent",
+                True,
+                "TIMED OUT after" in hang_err and "CPU-s" in hang_err,
+            ),
+            (
                 "its silence is reported as no verdict, not as a pass",
                 True,
                 "gave NO verdict" in hang_err + str(hang_rc),
