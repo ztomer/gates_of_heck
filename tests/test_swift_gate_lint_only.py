@@ -9,16 +9,16 @@ was read as the repo path and the gate died in `cd`.
 
 from __future__ import annotations
 
-import os
 import subprocess
 from pathlib import Path
 
+from conftest import hermetic_env
 from test_swift_gate_tests_warnings import SWIFT_GATE, _repo
 from timing_bounds import patience
 
 
 def _run(repo: Path, bin_dir: Path, tmp_path: Path, *args: str, **extra: str):
-    env = dict(os.environ, SWIFT_CALLS=str(tmp_path / "calls.txt"), **extra)
+    env = hermetic_env(SWIFT_CALLS=str(tmp_path / "calls.txt"), **extra)
     env["PATH"] = f"{bin_dir}:{env['PATH']}"
     r = subprocess.run(
         ["/bin/bash", str(SWIFT_GATE), *args, str(repo)],

@@ -11,6 +11,7 @@ refused BY NAME unless --force. Red proof: every refusal test below returned
 
 import os
 import shutil
+import site
 import subprocess
 import sys
 
@@ -169,6 +170,9 @@ def _hook_toolchain_env() -> dict[str, str]:
     died "ruff is not available through '/opt/homebrew/bin/python3 -m'"."""
     env = {k: os.environ[k] for k in ("RUSTUP_HOME", "CARGO_HOME") if k in os.environ}
     env["GOH_PY"] = sys.executable
+    # Its packages too: the commit runs goh's declared source guard under pytest
+    # (gates/staged_guards.sh), and a user-site pytest is found through HOME (tmp_path here).
+    env["PYTHONUSERBASE"] = site.getuserbase()
     return env
 
 

@@ -143,6 +143,10 @@ def prebuild_live(config, root: Path | None = None) -> None:
     """
     if hasattr(config, "workerinput") or not os.environ.get("GOH_LIVE"):
         return  # a worker: the controller already did it
+    if os.environ.get("GOH_STAGED_GUARD_RUN"):
+        # A commit's source guard (gates/staged_guards.sh) runs tests that read the tree's text and
+        # spawn no gate; inside a fixture's commit there is not even a cargo to build with.
+        return
     r = subprocess.run(
         ["bash", "-c", ('source "$1/gates/_goh_bin.sh"; goh_resolve_native; [ -n "$goh_native" ] '
          '|| { echo "$goh_native_why" >&2; false; }'), "_", str(root or _ROOT)],

@@ -82,9 +82,10 @@ fi
 . "$HERE/_pytest_root.sh"
 goh_pytest_root  # a concurrent suite cannot prune this one's temp dirs
 info "${#DUE[@]} declared $(plural_noun "${#DUE[@]}" guard) (# goh-reads-staged:) due for this commit"
-# No cache and no bytecode: a goh view is a shared export other gates run from.
+# No cache and no bytecode: a goh view is a shared export other gates run from. GOH_STAGED_GUARD_RUN
+# tells a suite's conftest the run is a commit's guard (goh's builds no binary for it).
 goh_step_in "$view" "source guards over the index: ${DUE[*]}" \
-    env PYTHONDONTWRITEBYTECODE=1 "${RUN_ARR[@]}" pytest -q -p no:cacheprovider -- "${DUE[@]}"
+    env PYTHONDONTWRITEBYTECODE=1 GOH_STAGED_GUARD_RUN=1 "${RUN_ARR[@]}" pytest -q -p no:cacheprovider -- "${DUE[@]}"
 goh_rm_tree "$PYTEST_DEBUG_TEMPROOT"
 cd "$checkout"
 goh_done
