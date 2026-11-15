@@ -190,12 +190,22 @@ pub fn scan(rel: &str, text: &str) -> Scan {
 }
 
 /// [`scan`] with the grace decided: before `crate::grace::OVER_FROM` (`over` false) a release
-/// line (`rust:1`) passes, as it did at the last release.
+/// line (`rust:1`) passes, as it did at the last release, and a shell script or Makefile is READ
+/// but not judged.
+///
+/// THE FORWARD-CORRECT TREE IS GREEN ON BOTH SIDES (GOH.GRACEFWD). Read either way, a script's
+/// references count toward the subject floor before the grace's end as after it, so a floor
+/// declared for that day is green today (`bareopen` and `gitdeadline` read the same way). A
+/// reasoned marker over a reference that moves from the grace's end exempts it on both sides,
+/// never "stale" before it: a fleet repository marks its images the week the rule is announced,
+/// not on the day. Before the end a script's findings (an empty or stale marker included) are
+/// not reported: it is the grace's new shape, and the grace says nothing new.
 #[must_use]
 pub fn scan_at(rel: &str, text: &str, over: bool) -> Scan {
     let Some(k) = kind(rel, text) else {
         return Scan::default();
     };
+    let judged = over || !matches!(k, Kind::Shell | Kind::Make);
     let (refs, parsed) = refs_of(k, rel, text);
     let lines: Vec<&str> = text.lines().collect();
     let mut out = Scan {
@@ -204,7 +214,8 @@ pub fn scan_at(rel: &str, text: &str, over: bool) -> Scan {
     };
     let mut used = std::collections::BTreeSet::new();
     for r in refs {
-        let problem = match verdict_at(&r.raw, over) {
+        // What the reference is once the grace is over: a marker may exempt it from today.
+        let problem = match verdict_at(&r.raw, true) {
             Verdict::NotAReference => continue,
             Verdict::Unreadable => {
                 out.refs += 1;
@@ -229,23 +240,32 @@ pub fn scan_at(rel: &str, text: &str, over: bool) -> Scan {
             Verdict::Moving(tag) => Problem::Moving(r.raw.trim().to_owned(), tag),
         };
         out.refs += 1;
+        let moving_now = judged
+            && matches!(
+                verdict_at(&r.raw, over),
+                Verdict::NoTag | Verdict::Moving(_)
+            );
         match covering_marker(&lines, r.start, r.end) {
             Some((at, reason)) => {
                 used.insert(at);
-                if reason.is_empty() {
+                if !reason.is_empty() {
+                    out.exempt += 1;
+                } else if judged {
                     out.findings.push(Finding {
                         line: r.start,
                         problem: Problem::EmptyReason,
                     });
-                } else {
-                    out.exempt += 1;
                 }
             }
-            None => out.findings.push(Finding {
+            None if moving_now => out.findings.push(Finding {
                 line: r.start,
                 problem,
             }),
+            None => {}
         }
+    }
+    if !judged {
+        return out;
     }
     for (i, line) in lines.iter().enumerate() {
         if marker_on(line).is_some() && !used.contains(&(i + 1)) {

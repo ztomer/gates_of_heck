@@ -9,6 +9,13 @@
 //! release, and an undeclared floor is the advisory line; from it the full verdict is in force. The
 //! week is the consumers' to seed, declare or fix in their own repos.
 //!
+//! THE FORWARD-CORRECT TREE IS GREEN ON BOTH SIDES (GOH.GRACEFWD, 2026-11-15). The week only
+//! helps a consumer that can make its tree right for the day BEFORE the day: a scanner READS its
+//! new shapes within the grace too, so its subject floor counts them in the mode the gate runs
+//! in (a floor declared for the day is not `read NONE` today), and an escape marker over a site
+//! that is a finding only from the day is accepted before it, never reported stale.
+//! `movingtag::scan::scan_at`, `bareopen` and `gitdeadline` hold to it.
+//!
 //! `GOH_GRACE` is the ambient override, for the suites that judge the new behaviour (`over`) and for
 //! goh's own keyless fixtures (`within`); unset, the day decides. No `.gatesrc` can say it.
 

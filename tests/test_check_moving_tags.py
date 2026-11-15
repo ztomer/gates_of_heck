@@ -187,3 +187,73 @@ def test_the_floor_reds_a_scan_that_lost_its_subject(goh: Path, repo: Path) -> N
     assert "floor of 1 (GOH_MOVING_TAGS_MIN_REFS)" not in green.stdout + green.stderr, (
         green.stdout + green.stderr
     )
+
+
+# THE FORWARD-CORRECT TREE IS GREEN ON BOTH SIDES OF THE GRACE (GOH.GRACEFWD, found by
+# EST.GRACEFIX 2026-11-15). Shell scripts and release lines are judged only from the grace's end, so
+# a consumer making today's tree right for that day must be green today too: its floor counts the
+# script's references (read either way, as every grace-gated scanner's floor does), and its marker
+# on an image that moves only from the grace's end is not "stale" before it.
+SCRIPT_PINNED = "#!/bin/sh\nset -eu\ndocker run --rm alpine:3.20.3 true\n"
+
+
+def _step_failed(r: subprocess.CompletedProcess) -> bool:
+    return f"structural: {LABEL}" in r.stderr
+
+
+def test_a_floor_over_a_scripts_references_is_green_before_and_after_the_grace(
+    goh: Path, repo: Path
+) -> None:
+    write(repo, "tools/deploy.sh", SCRIPT_PINNED)
+    write(repo, ".gatesrc", "GOH_MOVING_TAGS_MIN_REFS=1\n")
+    commit_all(repo)
+    for grace in ("within", "over"):
+        r = subprocess.run(
+            [str(goh), "structural", "--full", "--keep-going"],
+            cwd=repo,
+            capture_output=True,
+            text=True,
+            env=hermetic_env(GOH_DIR=str(REPO_ROOT), GOH_GRACE=grace),
+            check=False,
+            stdin=subprocess.DEVNULL,
+        )
+        out = r.stdout + r.stderr
+        assert "(GOH_MOVING_TAGS_MIN_REFS)" not in out, f"{grace}: {out}"
+        assert not _step_failed(r), f"{grace}: {out}"
+        m = run_goh(repo, "moving-tags", env=hermetic_env(GOH_GRACE=grace))
+        assert m.returncode == 0 and "1 image reference" in m.stdout, (
+            f"{grace}: {m.stdout + m.stderr}"
+        )
+
+
+def test_a_marker_on_an_image_that_moves_from_the_grace_end_is_green_before_and_after(
+    repo: Path,
+) -> None:
+    reason = f"# {MARKER} floats by owner ruling (servers DECISIONS #9)"
+    write(repo, "compose.yml", f"services:\n  db:\n    {reason}\n    image: postgres:16\n")
+    write(repo, "tools/run.sh", f"#!/bin/sh\n{reason}\ndocker pull nginx:latest\n")
+    commit_all(repo)
+    for grace in ("within", "over"):
+        r = run_goh(repo, "moving-tags", env=hermetic_env(GOH_GRACE=grace))
+        assert r.returncode == 0, f"{grace}: {r.stdout + r.stderr}"
+        assert "2 exempted with a reason" in r.stdout, f"{grace}: {r.stdout}"
+    # Calibrated: unmarked, the same tree is green before the grace and red from its end, and a
+    # marker over a pin stays stale on both sides (a script's only from the end: the grace's new
+    # shape says nothing before it).
+    write(repo, "compose.yml", "services:\n  db:\n    image: postgres:16\n")
+    write(repo, "tools/run.sh", "#!/bin/sh\ndocker pull nginx:latest\n")
+    commit_all(repo)
+    assert run_goh(repo, "moving-tags", env=hermetic_env(GOH_GRACE="within")).returncode == 0
+    r = run_goh(repo, "moving-tags", env=hermetic_env(GOH_GRACE="over"))
+    assert r.returncode == 1 and "compose.yml:3:" in r.stderr and "tools/run.sh:2:" in r.stderr, (
+        r.stderr
+    )
+    write(repo, "compose.yml", f"services:\n  db:\n    {reason}\n    image: postgres:16.4.1\n")
+    write(repo, "tools/run.sh", f"#!/bin/sh\n{reason}\ndocker pull nginx:1.27.2\n")
+    commit_all(repo)
+    for grace, stale in (("within", 1), ("over", 2)):
+        r = run_goh(repo, "moving-tags", env=hermetic_env(GOH_GRACE=grace))
+        assert r.returncode == 1 and r.stderr.count("exempts nothing") == stale, (
+            f"{grace}: {r.stderr}"
+        )
+        assert "compose.yml:3:" in r.stderr, r.stderr

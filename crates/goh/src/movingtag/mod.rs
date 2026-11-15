@@ -13,9 +13,10 @@
 //! SHELL AND MAKE (GOH.MOVINGTAGSH, judged from `crate::grace::OVER_FROM`, 2026-11-23). A shell
 //! script and a Makefile's recipes are read too, narrowly (`shell.rs`): an image variable's
 //! assignment at the start of a command, and the image argument of `docker`/`podman` `run`,
-//! `create` and `pull` read through the CLI's own flag grammar. Until then they were not read at
-//! all, and a private server workspace's `linux_test.sh` ran `IMAGE=rust:1` unseen (SRV.RUSTTAG). A
-//! name the script builds (`docker build --tag "$IMAGE"`) pulls nothing, and an option the reader
+//! `create` and `pull` read through the CLI's own flag grammar. Before then they are read, so the
+//! subject floor counts them, and not judged (GOH.GRACEFWD, `scan::scan_at`). Before
+//! GOH.MOVINGTAGSH they were not read at all, and a private server workspace's `linux_test.sh`
+//! ran `IMAGE=rust:1` unseen (SRV.RUSTTAG). A name the script builds (`docker build --tag "$IMAGE"`) pulls nothing, and an option the reader
 //! does not know leaves the reference unreadable rather than guessed. Not read: compose YAML a
 //! script writes in a heredoc or a string (every estate instance on 2026-11-15 was a test's
 //! fixture), and an image a program's source holds (`crate::shapes::table` names both).
@@ -120,8 +121,8 @@ fn judge(root: &Path, files: &[String], staged: bool) -> (i32, String, String) {
     judge_at(root, files, staged, crate::grace::over())
 }
 
-/// [`judge`] with the grace decided: before it, a shell script or Makefile is not read and a
-/// release line (`rust:1`) passes (the scanner reads as it did at the last release).
+/// [`judge`] with the grace decided: before it, a shell script or Makefile is read (the subject
+/// floor counts it) but not judged, and a release line (`rust:1`) passes (`scan::scan_at`).
 fn judge_at(root: &Path, files: &[String], staged: bool, over: bool) -> (i32, String, String) {
     let scope = if staged { "staged" } else { "tracked" };
     let mut listing = String::new();
@@ -135,10 +136,8 @@ fn judge_at(root: &Path, files: &[String], staged: bool, over: bool) -> (i32, St
         let Ok(text) = String::from_utf8(blob) else {
             continue;
         };
-        match scan::kind(rel, &text) {
-            None => continue,
-            Some(scan::Kind::Shell | scan::Kind::Make) if !over => continue,
-            Some(_) => {}
+        if scan::kind(rel, &text).is_none() {
+            continue;
         }
         let s = scan::scan_at(rel, &text, over);
         tally.refs += s.refs;

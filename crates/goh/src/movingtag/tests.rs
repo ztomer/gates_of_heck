@@ -453,3 +453,31 @@ fn scope_is_dockerfiles_yaml_scripts_and_makefiles() {
         assert_eq!(kind(rel, text), *want, "{rel}");
     }
 }
+
+#[test]
+fn the_forward_correct_file_is_green_on_both_sides_of_the_grace() {
+    // GOH.GRACEFWD: a reasoned marker over an image that moves only from the grace's end is not
+    // stale before it, and a script read before the end counts toward the floor.
+    let marked = [
+        (
+            "compose.yml",
+            "services:\n  db:\n    # moving-tag-ok: fleet floats\n    image: postgres:16\n",
+        ),
+        (
+            "run.sh",
+            "#!/bin/sh\n# moving-tag-ok: fleet floats\ndocker pull nginx:latest\n",
+        ),
+    ];
+    for over in [false, true] {
+        for (rel, src) in marked {
+            let s = scan_at(rel, src, over);
+            assert_eq!(s.findings, [], "{rel} over={over}");
+            assert_eq!((s.refs, s.exempt), (1, 1), "{rel} over={over}");
+        }
+    }
+    // Unmarked, the script is read (counted) before the end and judged only from it.
+    let src = "#!/bin/sh\ndocker pull nginx:latest\n";
+    let before = scan_at("run.sh", src, false);
+    assert_eq!((before.refs, before.findings.len()), (1, 0));
+    assert_eq!(scan_at("run.sh", src, true).findings.len(), 1);
+}
