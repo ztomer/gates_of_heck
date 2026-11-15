@@ -429,15 +429,15 @@ pub enum Commands {
     /// `# tap-write-ok: <reason>`. No `--exclude`: a gate bypass takes no path exemption.
     TapWrites(StagedArgs),
     /// Fail on a container image on a moving tag (`:latest`, `:stable`, `:main`, no tag): a
-    /// Dockerfile `FROM`/`COPY --from=`, a YAML `image:`, a workflow `container:` or
-    /// `uses: docker://`. A digest, a release tag or a commit id passes; the one escape is
-    /// `# moving-tag-ok: <reason>`. No `--exclude`: what a build pulls is not a style.
+    /// Dockerfile `FROM`/`COPY --from=`, YAML `image:`, workflow `container:`, `uses: docker://`.
+    /// A digest, release tag or commit id passes; one escape, `# moving-tag-ok: <reason>`.
     MovingTags(StagedArgs),
     /// Fail on a workflow (`.github/workflows`, composite actions) with a `*-latest` runner label
-    /// or an action on a ref its owner moves: a branch (`@stable`) or a major-only tag (`@v4`).
-    /// A named image (`ubuntu-24.04`), a commit id or a full release tag (`@v4.1.2`) passes; the
-    /// one escape is `# workflow-pin-ok: <reason>`. No `--exclude`: what CI runs on is not a style.
+    /// or an action on a ref its owner moves (`@stable`, `@v4`); a named image, a commit id or a
+    /// full release tag passes. One escape, `# workflow-pin-ok: <reason>`; no `--exclude`.
     WorkflowPins(StagedArgs),
+    /// Fail on a stale or missing goh pin, or a tag-reading gate job on a shallow clone (GOH.WFPIN).
+    GohPins(StagedArgs),
     /// Fail on a plan (ROADMAP/PLAN/BACKLOG/TODO `.md`) stating the installed version (it rots).
     InstalledVersion(StagedArgs),
     /// Fail on a `GOH_INSTALLS` entry the installed-version reader cannot read: each is an app at

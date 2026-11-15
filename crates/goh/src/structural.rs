@@ -175,6 +175,8 @@ pub fn run(staged: bool, full: bool, keep_going: bool) -> i32 {
     step!(movingtag::step(&repo, &files, staged));
     // What CI runs on and runs: a named runner image and named action releases, never a moving label.
     step!(workflowpin::step(&repo, &files, staged));
+    // Which goh CI runs, and on what clone: a current release, and every tag the gate reads.
+    step!(crate::gohpin::step(&repo, &files, staged));
     // What a script RUNS: a backgrounded busy loop has nothing to reap it, and the house has
     // ONE way to make load. Beside the moving-tag step: both are the house's own tools, and
     // both are about a pin or a load that outlives the thing that started it.

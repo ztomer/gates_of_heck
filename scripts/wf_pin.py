@@ -10,6 +10,9 @@ moved that name when goh moved: on 2026-11-12 every estate workflow still pinned
 so "the local gate is identical to CI" was broken by drift no gate saw. A copy that can go stale is
 the class; here the copy is one token per workflow, so the release that makes it stale moves it:
 goh's own `.gatesrc` GOH_SHIP_INSTALL runs `--bump` once the tag is pushed.
+What the bump could not move, each repo's own gate refuses: `goh goh-pins`, a structural step
+(crates/goh/src/gohpin/), fails a pin more than ten minor releases behind the running goh, a goh
+checkout at no release, and a tag-reading gate job on a shallow clone.
 
     goh wf-pin                    # list: one line per stale pin; exit 1 if any
     goh wf-pin --bump [--tag vX.Y.Z] [--except REPO]...   # rewrite, commit and push each repo's

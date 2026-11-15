@@ -44,6 +44,7 @@ pub mod gitargv;
 pub mod gitdeadline;
 pub mod gitutil;
 pub mod goh_dir;
+pub mod gohpin;
 pub mod grace;
 pub mod homepaths;
 pub mod hookindex;
@@ -449,6 +450,7 @@ fn run_ported(command: Commands) -> Result<i32, Box<Commands>> {
         Commands::TapWrites(a) => tapwrite::run_command(a.staged),
         Commands::MovingTags(a) => movingtag::run_command(a.staged),
         Commands::WorkflowPins(a) => workflowpin::run_command(a.staged),
+        Commands::GohPins(a) => gohpin::run_command(a.staged),
         Commands::InstalledVersion(a) => instline::run_command(a.staged),
         Commands::Roadmap(a) => roadmap::run_command(a.staged, a.seed, a.queue.as_deref()),
         Commands::UnreapedSpawn {

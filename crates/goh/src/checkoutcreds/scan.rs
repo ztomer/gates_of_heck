@@ -58,14 +58,16 @@ fn key_is(node: &MarkedYaml, want: &str) -> bool {
 
 /// `node[key]` when `node` is a mapping (key compared ignoring ASCII case, as GitHub does for
 /// input names; structural keys are lowercase in every file GitHub accepts).
-fn get<'a, 'i>(node: &'a MarkedYaml<'i>, key: &str) -> Option<&'a MarkedYaml<'i>> {
+#[must_use]
+pub fn get<'a, 'i>(node: &'a MarkedYaml<'i>, key: &str) -> Option<&'a MarkedYaml<'i>> {
     match &node.data {
         YamlData::Mapping(m) => m.iter().find(|(k, _)| key_is(k, key)).map(|(_, v)| v),
         _ => None,
     }
 }
 
-fn as_str<'a>(node: &'a MarkedYaml) -> Option<&'a str> {
+#[must_use]
+pub fn as_str<'a>(node: &'a MarkedYaml) -> Option<&'a str> {
     match &node.data {
         YamlData::Value(Scalar::String(s)) => Some(s),
         _ => None,
@@ -74,7 +76,8 @@ fn as_str<'a>(node: &'a MarkedYaml) -> Option<&'a str> {
 
 /// Every step list in a document, with whose it is: `jobs.<id>.steps` (a workflow) and
 /// `runs.steps` (a composite action).
-fn step_lists<'a, 'i>(doc: &'a MarkedYaml<'i>) -> Vec<(String, &'a [MarkedYaml<'i>])> {
+#[must_use]
+pub fn step_lists<'a, 'i>(doc: &'a MarkedYaml<'i>) -> Vec<(String, &'a [MarkedYaml<'i>])> {
     let mut out = Vec::new();
     if let Some(YamlData::Mapping(jobs)) = get(doc, "jobs").map(|j| &j.data) {
         for (id, job) in jobs {
