@@ -1,0 +1,2 @@
+* Dependencies: `ruff_python_ast`/`ruff_python_parser`/`ruff_text_size` 0.0.19 -> 0.0.22 and the lock at its newest compatible releases; duplicate majors `syn` 2/3 (`is-macro` 0.3.8) and `miniz_oxide` 0.8/0.9 (`png` 0.18.1) are held upstream (GOH.DEPSBEHIND).
+* `.shellcheckrc` sets `external-sources=true`, so a bare `shellcheck` (a hosted log, an editor) follows sources as the gate's `-x` does, and `gates/coverage_gate.sh` defines each output helper once (SC1091/SC2329 cleared at the cause).
