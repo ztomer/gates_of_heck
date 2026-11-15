@@ -143,11 +143,40 @@ def spinner_shape(command: str) -> tuple[str, int] | None:
     return pipe, int(tail.group("owner"))
 
 
+class InWorkTree(RuntimeError):
+    """The load directory is inside a git work tree (GOH.STRAYLOCK)."""
+
+
+def work_tree_of(directory: Path) -> Path | None:
+    """The git work tree `directory` is in -- the nearest ancestor holding `.git` -- or None.
+    No git spawn: a `.git` file (a linked worktree, a submodule) counts as a directory does."""
+    path = Path(directory).expanduser().absolute()
+    return next((d for d in (path, *path.parents) if (d / ".git").exists()), None)
+
+
+def checked(directory: Path) -> Path:
+    """`directory`, refused when it is inside a git work tree.
+
+    GOH.STRAYLOCK (2026-11-14): a load run whose directory was the gates_of_heck checkout left a
+    0-byte untracked `.registry.lock` at its root; goh read "1 uncommitted", which holds every goh
+    item. The lock and registries are machine state, and a work tree is the one place they read as
+    somebody's change, so the directory is refused there before anything is created in it."""
+    tree = work_tree_of(directory)
+    if tree is not None:
+        raise InWorkTree(
+            f"the load directory {directory} is inside the git work tree {tree}: its {LOCK_NAME}"
+            " and registries would read as uncommitted files there (GOH.STRAYLOCK) -- name one"
+            " outside any checkout (--dir / GOH_LOAD_DIR), or leave both unset"
+        )
+    return Path(directory)
+
+
 def load_dir() -> Path:
-    """The directory the registries live in: `GOH_LOAD_DIR`, else `~/.cache/goh/load`."""
+    """The directory the registries live in: `GOH_LOAD_DIR`, else `~/.cache/goh/load`; refused
+    inside a git work tree (`checked`)."""
     raw = os.environ.get("GOH_LOAD_DIR", "").strip()
     if raw:
-        return Path(raw).expanduser()
+        return checked(Path(raw).expanduser())
     home = os.environ.get("HOME", "").strip()
     if not home:
         raise RuntimeError("no HOME: GOH_LOAD_DIR must name the load directory")
@@ -204,7 +233,7 @@ def locked(directory: Path | None = None) -> Iterator[None]:
     own bookkeeping proceeds without the lock rather than deadlocking on it: a hang is worse than
     the race.
     """
-    where = (directory or load_dir()) / LOCK_NAME
+    where = checked(directory or load_dir()) / LOCK_NAME
     where.parent.mkdir(parents=True, exist_ok=True)
     with _HELD_GUARD:
         held = _HELD.setdefault(str(where), _Held())

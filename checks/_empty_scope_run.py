@@ -8,10 +8,12 @@ load 45, nine nested probes) was starved past it; the sweep said "gave NO verdic
 and the release canary read that red step as the consumer's empty-tree gate turned red ("fix the
 findings") for a tree that passed on the re-run -- 2026-11-12 CadGoose, 2026-11-14 Adv360 twice.
 A starved gate was not slow; the machine was. So the bound is the house's (DD-770,
-`stepcmd::gate_bounds`): the CPU seconds the gate's process group spent, a STALL (no CPU and
-nothing runnable), and a wall BACKSTOP four times the nominal bound. The one that fires is named in
-the house's own words (`TIMED OUT after Ns`), with what the gate spent, so a reader -- and the
-canary -- can tell a starved run from a finding. tests/test_empty_scope_starved.py.
+`stepcmd::gate_bounds`): a STALL (the gate's process group spent no CPU and had nothing
+runnable for the nominal bound) and a wall BACKSTOP four times it. No CPU budget of its own: the
+house's is the whole machine for the bound (ncpu x it), which the backstop always reaches first.
+The one that fires is named in the house's own words (`TIMED OUT after Ns`), with what the gate
+spent, so a reader -- and the canary -- can tell a starved run from a finding.
+tests/test_empty_scope_starved.py.
 """
 
 from __future__ import annotations
@@ -39,11 +41,10 @@ class Ran:
     stderr: str
 
 
-def bounds(timeout: int) -> tuple[int, int, int]:
-    """(wall backstop, CPU budget, stall) for a nominal `timeout`, as stepcmd::gate_bounds derives
-    them: CPU is the whole machine for the nominal bound, so no gate that fitted the old wall bound
-    on a quiet machine can trip it."""
-    return timeout * WALL_FACTOR, timeout * (os.cpu_count() or 1), timeout
+def bounds(timeout: int) -> tuple[int, int]:
+    """(wall backstop, stall) for a nominal `timeout`, as stepcmd::gate_bounds derives them, so no
+    gate that fitted the old wall bound on a quiet machine can trip either."""
+    return timeout * WALL_FACTOR, timeout
 
 
 def _read(fh) -> str:
@@ -57,7 +58,7 @@ def run_gate(argv: list[str], cwd: str, env: dict, timeout: int, label: str):
     Output goes to unlinked files, not pipes: nothing is read while the gate runs, and a full pipe
     would stall it into a timeout of the sweep's own making. Its own session, so the whole group is
     stopped on expiry (killtree: TERM, then KILL) and its CPU is the group's."""
-    wall, cpu, stall = bounds(timeout)
+    wall, stall = bounds(timeout)
     with tempfile.TemporaryFile() as out, tempfile.TemporaryFile() as errs:
         proc = subprocess.Popen(
             argv,
@@ -70,7 +71,7 @@ def run_gate(argv: list[str], cwd: str, env: dict, timeout: int, label: str):
         )
         pgid = killtree.session_pgid(proc)
         t0 = time.monotonic()
-        expired = pgid_cpu.wait_for_exit(proc, pgid, wall, label, cpu_timeout=cpu, stall=stall)
+        expired = pgid_cpu.wait_for_exit(proc, pgid, wall, label, cpu_timeout=None, stall=stall)
         if expired is None:
             return Ran(proc.returncode, _read(out), _read(errs)), None
         sample = pgid_cpu.pgid_cpu_and_runnable(pgid)
@@ -78,7 +79,7 @@ def run_gate(argv: list[str], cwd: str, env: dict, timeout: int, label: str):
         killtree.stop_group(pgid, proc=proc)
         proc.wait()
         took = time.monotonic() - t0
-        if expired.endswith(("(CPU budget)", "(stalled)")):
+        if expired.endswith("(stalled)"):
             return None, f"{expired}, {spent:.1f} CPU-s in {took:.0f}s wall"
         return None, (
             f"{expired} -- starved: {spent:.1f} CPU-s in {took:.0f}s wall, the machine's load, "

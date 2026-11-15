@@ -59,7 +59,11 @@ def main(argv: list[str]) -> int:
         "--max-log-bytes", type=int, default=log.MAX_LOG_BYTES, help="the log's cap in bytes"
     )
     opts = parser.parse_args(argv)
-    directory = Path(opts.dir).expanduser() if opts.dir else reg.load_dir()
+    try:  # never inside a git work tree (GOH.STRAYLOCK): its lock would read as a change there
+        directory = reg.checked(Path(opts.dir).expanduser()) if opts.dir else reg.load_dir()
+    except reg.InWorkTree as why:
+        print(f"load_reap: {why}", file=sys.stderr)
+        return 2
     shapes = [
         # The house's own shape does not need a directory to be searched: the registry is one way
         # to an orphan, and this is the other.

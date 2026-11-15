@@ -138,10 +138,11 @@ def cores() -> int:
     return os.cpu_count() or 1
 
 
-def _directory(opts: argparse.Namespace) -> Path:
-    if opts.dir:
-        return Path(opts.dir).expanduser()
-    return reg.load_dir()
+def _directory(opts: argparse.Namespace) -> Path:  # refused in a work tree (GOH.STRAYLOCK)
+    try:
+        return reg.checked(Path(opts.dir).expanduser()) if opts.dir else reg.load_dir()
+    except reg.InWorkTree as why:
+        raise SystemExit(err(f"load: {why}") or 2) from None
 
 
 def _describe(data: dict) -> str:
