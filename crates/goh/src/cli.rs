@@ -406,6 +406,9 @@ pub enum Commands {
         /// Only the row with this registry label.
         #[arg(long)]
         scanner: Option<String>,
+        /// Print the scanner registry as JSON (label and row state) and judge nothing.
+        #[arg(long)]
+        registry: bool,
     },
     /// Apply a passed commit's journalled seed settles (`gates/commit_gate.sh`, GOH.SEEDREFUSED).
     SeedSettle { pending: PathBuf },

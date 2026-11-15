@@ -1,0 +1,24 @@
+{
+  "why": "goh's self-walk (tests/test_self_walk.py, GOH.CLASS.SELF, 2026-11-15): every scanner in the registry run over goh itself with no seed, no grace and every opt-in on. `findings` is goh's own debt per scanner, counted as the distinct path:line sites it names; it only shrinks, and done is an empty `findings`. `enable`, `not_run` and `unjudged` are not debt: how the walk turns an opt-in scanner on, a scanner with nothing in goh to judge, and one that ran and said it cannot judge here.",
+  "enable": {
+    "no hard-coded home paths": "GOH_NO_HOME_PATHS=1"
+  },
+  "not_run": {
+    "a file that calls X calls Y": "GOH_REQUIRES_CALL is a repo's own rule list; goh declares no rule, so the step has nothing to judge",
+    "cap-exempt files within their ceilings": "goh exempts no file from the line cap (no GOH_LINE_EXCLUDE), so no exempt file has a ceiling to hold",
+    "line-cap exemptions carry a ceiling": "goh exempts no file from the line cap (no GOH_LINE_EXCLUDE), so there is no exemption to carry one",
+    "version provenance": "the step reads a repo's .gates-version-baseline.json; goh's version comes from Cargo.toml, judged by its release kit"
+  },
+  "unjudged": {
+    "no private repository named in a public tree": "the list of names is the owner's private store, which the walk empties by design; goh's own push judges it with the list"
+  },
+  "findings": {
+    "goh fixed-sleep": {"count": 8, "why": "a test sleep standing for a readiness signal; goh never runs goh fixed-sleep over itself (its GOH_CI_STEPS run status-markers only) and has no fixed_sleep_seed.json"},
+    "goh status-markers": {"count": 25, "why": "status_marker_seed.json: tui/lib.py and the scanner's own tests print escapes by design (BACKLOG 4.9)"},
+    "no bare open of an app": {"count": 2, "why": "the Python shape, in grace until 2026-11-23 and unseeded: goh turns red on itself that day (hooks/claude/appstate.py, tests/test_launch_app.py)"},
+    "no hand-rolled TUI mark": {"count": 162, "why": "tui_marks_seed.json's 157 sites stay seeded (GOH.TUIMARKS); 5 more are unseeded and graced until 2026-11-23 (tools/lint.py, changelog_cut.py, build-goh.sh)"},
+    "no hard-coded home paths": {"count": 136, "why": "goh never opted into GOH_NO_HOME_PATHS, the rule it ships: its tests, docs and CHANGELOG name home-directory paths"},
+    "no process kill by name": {"count": 9, "why": "kill_by_name_allow.json, each entry reviewed or unreviewed with its reason"},
+    "shell lint": {"count": 10, "why": "shell_lint_seed.json: shellcheck warnings below error since GOH.SHSEV, lib/ only (gates/ cleared by GOH.LOCALCISPLIT)"}
+  }
+}

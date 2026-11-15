@@ -269,3 +269,22 @@ fn since_selects_the_rows_a_change_touched() {
     let none = names(&["README.md"]);
     assert!(none.is_empty(), "a doc change differs no scanner: {none:?}");
 }
+
+#[test]
+fn the_registry_json_is_the_registry_with_each_rows_state() {
+    let rows = super::registry_json();
+    let rows = rows.as_array().expect("an array");
+    let labels: BTreeSet<&str> = rows.iter().filter_map(|r| r["scanner"].as_str()).collect();
+    assert_eq!(labels, registry(), "the JSON names exactly the registry");
+    let state = |l: &str| {
+        rows.iter()
+            .find(|r| r["scanner"] == l)
+            .map(|r| r["state"].clone())
+    };
+    assert_eq!(state("goh status-markers"), Some("declared".into()));
+    assert_eq!(
+        state("gate self-proofs still pass"),
+        Some("not-a-scanner".into())
+    );
+    assert_eq!(state("shell lint"), Some("unreviewed".into()));
+}

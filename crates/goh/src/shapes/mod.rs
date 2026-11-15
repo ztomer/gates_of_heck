@@ -111,6 +111,34 @@ pub fn registry() -> BTreeSet<&'static str> {
         .collect()
 }
 
+/// The registry as JSON, one object per scanner: its label and its row's state.
+///
+/// `goh shape-diff --registry`. Its reader is goh's self-walk (`tests/test_self_walk.py`,
+/// GOH.CLASS.SELF): every scanner in this registry runs over goh itself with an empty seed. One
+/// registry, read by both; a second list of scanners in the suite is how one would go unwalked.
+#[must_use]
+pub fn registry_json() -> serde_json::Value {
+    let rows: Vec<serde_json::Value> = registry()
+        .into_iter()
+        .map(|label| {
+            let state = match row(label).map(|r| &r.state) {
+                Some(State::Declared(_)) => "declared",
+                Some(State::NotAScanner(_)) => "not-a-scanner",
+                Some(State::Unreviewed) | None => "unreviewed",
+            };
+            serde_json::json!({"scanner": label, "state": state})
+        })
+        .collect();
+    serde_json::Value::Array(rows)
+}
+
+/// `goh shape-diff --registry`: [`registry_json`] on stdout.
+#[must_use]
+pub fn print_registry() -> i32 {
+    println!("{}", registry_json());
+    0
+}
+
 /// The row for `scanner`, if any.
 #[must_use]
 pub fn row(scanner: &str) -> Option<&'static Row> {

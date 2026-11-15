@@ -478,11 +478,13 @@ fn run_line_scans(command: Commands) -> Result<i32, Box<Commands>> {
         }),
         Commands::GitDeadline(a) => paths(a.exclude, |x| gitdeadline::run_command(a.staged, x)),
         Commands::TuiMarks(a) => paths(a.exclude, |x| tuimarks::run_command(a.staged, x)),
+        Commands::ShapeDiff { registry: true, .. } => shapes::print_registry(),
         Commands::ShapeDiff {
             roots,
             estate,
             since,
             scanner,
+            ..
         } => shapes::diff::run_command(&roots, estate, since.as_deref(), scanner.as_deref()),
         other => return Err(Box::new(other)),
     })
