@@ -46,6 +46,8 @@ pub const BURN_DOWN: &[&str] = &[
     "no tracked build output",
     "no tracked file its .gitignore ignores",
     "no git stopped at a deadline holding a lock",
+    "every language linted at commit is gated at push",
+    "no changelog entry under Unreleased",
     "no unreaped spawns in tests",
     "no vendored copies of house files",
     "one roadmap, open entries only",
@@ -476,6 +478,9 @@ pub const ROWS: &[Row] = &[
     unreviewed("no tracked file its .gitignore ignores"),
     // On main (v0.118.0, GOH.GITKILLNATIVE) before this table landed: listed, not exempt.
     unreviewed("no git stopped at a deadline holding a lock"),
+    // On main (GOH.LAYERPARITY, GOH.CLASS.CHECKOUT) before this table landed.
+    unreviewed("every language linted at commit is gated at push"),
+    unreviewed("no changelog entry under Unreleased"),
     unreviewed("no unreaped spawns in tests"),
     unreviewed("no vendored copies of house files"),
     unreviewed("one roadmap, open entries only"),
