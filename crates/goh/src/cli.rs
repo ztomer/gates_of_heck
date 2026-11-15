@@ -38,6 +38,9 @@ pub enum Commands {
     /// Land a green HEAD unwatched: pre-push gate, release kit, install, `loopctl verify`, then
     /// `loopctl done` (`tools/ship.py`, GOH.SHIP; flags pass through). Detached unless `--wait`.
     Ship(PassArgs),
+    /// The commit gate's verdict on these paths before the commit: `gates/commit_gate.sh` itself,
+    /// over the index `git commit -- <path>...` would commit (`tools/lint.py`, GOH.CLASS.PARITY).
+    Lint(PassArgs),
     /// Enqueue a commit to land, or drain the queue: ONE lander runs each repo's push gate (or its
     /// ship) in order and records the outcome on the item (`tools/landq.py`, GOH.LANDQUEUE).
     Land(PassArgs),

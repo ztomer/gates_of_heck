@@ -188,6 +188,7 @@ fn run_core(command: Commands) -> i32 {
         } => rust_scope::run_command(&cargo_dir, check_depinfo.as_deref()),
         Commands::AgentStalls(a) => house_script("agent-stalls", STALLS, &a.args),
         Commands::Ship(a) => house_script("ship", "tools/ship.py", &a.args),
+        Commands::Lint(a) => house_script("lint", "tools/lint.py", &a.args),
         Commands::Land(a) => house_script("land", "tools/landq.py", &a.args),
         Commands::Hooks(a) => house_script("hooks", "scripts/hooks_refresh.py", &a.args),
         Commands::BareOpen(a) => paths(a.exclude, |x| bareopen::run_command(a.staged, x)),

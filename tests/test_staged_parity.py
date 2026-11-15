@@ -33,7 +33,14 @@ from test_commit_gate_structural import _consumer, _git
 
 PUSH_GATES = ("py_gate.sh", "swift_gate.sh", "rust_gate.sh")
 
-FAST: dict[tuple[str, str], str] = {
+# A twin is a script under gates/ whose step label starts with the push label, or a (script, label)
+# pair naming the exact staged step: structural.sh's native Rust step judges the staged .rs files
+# with all three of rust_gate.sh's source checks at once (crates/goh/src/steps_rust.rs).
+RUST_TWIN = ("structural.sh", "rust source policies (staged)")
+FAST: dict[tuple[str, str], str | tuple[str, str]] = {
+    ("rust_gate.sh", "fmt"): RUST_TWIN,
+    ("rust_gate.sh", "no #[allow] / #[expect]"): RUST_TWIN,
+    ("rust_gate.sh", "no emptiness asserts"): RUST_TWIN,
     ("py_gate.sh", "ruff check"): "py_staged.sh",
     ("py_gate.sh", "ruff check under $GOH_PY_LINT_CEILINGS"): "py_staged.sh",
     ("py_gate.sh", "ruff format check"): "py_staged.sh",
@@ -41,11 +48,9 @@ FAST: dict[tuple[str, str], str] = {
     ("swift_gate.sh", "swiftlint --strict"): "swift_staged.sh",
 }
 
-OPEN: dict[tuple[str, str], str] = {
-    ("rust_gate.sh", "fmt"): "rustfmt on staged .rs needs each crate's edition; no twin yet",
-    ("rust_gate.sh", "no #[allow] / #[expect]"): "`goh no-allow` at commit is not wired yet",
-    ("rust_gate.sh", "no emptiness asserts"): "`goh empty-assert --staged` exists, not wired yet",
-}
+# Empty (GOH.RUSTTWINS, 2026-11-15): the three Rust entries it held were already twinned by
+# structural.sh's staged Rust step (G1e), which this table could not name. New entries need reasons.
+OPEN: dict[tuple[str, str], str] = {}
 
 _W = "whole tree"
 SLOW: dict[tuple[str, str], str] = {
@@ -92,6 +97,19 @@ def step_labels(text: str) -> list[str]:
     return [m.group(2) for m in _STEP.finditer(text)]
 
 
+def native_labels(gates: Path) -> list[str]:
+    """The staged step labels structural.sh's native layer runs: each `let label = "..."` in a
+    `steps_*.rs` that crates/goh/src/structural.rs registers with `step!(<module>::step(`."""
+    src = gates.parent / "crates" / "goh" / "src"
+    registry = (src / "structural.rs").read_text(encoding="utf-8") if src.is_dir() else ""
+    labels: list[str] = []
+    for module in re.findall(r"step!\((steps_\w+)::step\(", registry):
+        path = src / f"{module}.rs"
+        if path.is_file():
+            labels += re.findall(r'let label = "([^"]+)"', path.read_text(encoding="utf-8"))
+    return labels
+
+
 def parity_faults(gates: Path) -> list[str]:
     """Every way the commit layer can lack a fast check the push layer runs, named; [] is green."""
     faults: list[str] = []
@@ -106,6 +124,18 @@ def parity_faults(gates: Path) -> list[str]:
             twin = FAST.get(key)
             if twin is None:
                 faults.append(f"{gate}: step {label!r} is classified nowhere (FAST, OPEN or SLOW)")
+                continue
+            if isinstance(twin, tuple):
+                script, staged_label = twin
+                if staged_label not in native_labels(gates):
+                    faults.append(
+                        f"{gate}: fast step {label!r}: {script} runs no staged step "
+                        f"{staged_label!r}"
+                    )
+                if not re.search(rf'"\$HERE/{re.escape(script)}"', commit_gate):
+                    faults.append(
+                        f"{gate}: fast step {label!r}: commit_gate.sh never runs {script}"
+                    )
                 continue
             path = gates / twin
             if not path.is_file():
@@ -131,11 +161,25 @@ def test_every_fast_push_check_has_a_staged_twin():
 def _copy_gates(tmp_path: Path) -> Path:
     gates = tmp_path / "gates"
     gates.mkdir()
+    src = tmp_path / "crates" / "goh" / "src"
+    src.mkdir(parents=True)
+    for name in ("structural.rs", "steps_rust.rs"):
+        shutil.copy(REPO_ROOT / "crates" / "goh" / "src" / name, src / name)
     for name in (*PUSH_GATES, "commit_gate.sh", "py_staged.sh", "swift_staged.sh"):
         src = REPO_ROOT / "gates" / name
         if src.is_file():
             shutil.copy(src, gates / name)
     return gates
+
+
+def test_a_native_twin_that_loses_its_step_is_red(tmp_path):
+    """RUSTTWINS: the Rust source checks' twin is structural.sh's native staged step; unregister
+    it from structural.rs and the three push steps are untwinned, by name."""
+    gates = _copy_gates(tmp_path)
+    reg = tmp_path / "crates" / "goh" / "src" / "structural.rs"
+    reg.write_text(reg.read_text().replace("step!(steps_rust::step(", "drop!(steps_rust::step("))
+    faults = parity_faults(gates)
+    assert sum("runs no staged step 'rust source policies (staged)'" in f for f in faults) == 3
 
 
 def test_a_missing_twin_is_red(tmp_path):
@@ -235,4 +279,7 @@ def test_a_data_only_commit_in_a_python_repo_skips_the_python_twin(tmp_path):
     got = _commit_file(repo, "queue.json", "{}\n")
     text = got.stdout + got.stderr
     assert got.returncode == 0, text
-    assert "python (staged)" not in text and "ruff" not in text, text
+    # Not the bare word "ruff": goh's own notice about an uncommitted edit to a ruff-named file in
+    # the gates checkout says it, and is no step (GOH.PARITYRUFFNAME). The twin's steps are named.
+    assert "python (staged)" not in text and "ruff check" not in text, text
+    assert "ruff format check" not in text, text

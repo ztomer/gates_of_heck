@@ -57,10 +57,16 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 root="$(git rev-parse --show-toplevel)"
 # shellcheck source=lib/repo_hold.sh
 . "$HERE/../lib/repo_hold.sh"
-goh_refuse_held "$root" "pre-commit: this commit" || exit 1   # a held repo is not committed to
-# shellcheck source=lib/landed_only.sh
-. "$HERE/../lib/landed_only.sh"
-goh_refuse_unlanded_commit "$root" "pre-commit: this commit" || exit 1   # main moves only through land.sh (GOH.LANDONLY)
+# `goh lint <path>...` (tools/lint.py, GOH.CLASS.PARITY) runs THIS gate over the index a `commit --
+# <path>...` would commit, so an agent sees the commit's verdict before committing. A lint is not a
+# commit: the hold and landed-only refusals and the seed settle below are skipped, nothing else.
+lint="${GOH_COMMIT_LINT:-}"
+if [ -z "$lint" ]; then
+    goh_refuse_held "$root" "pre-commit: this commit" || exit 1   # a held repo is not committed to
+    # shellcheck source=lib/landed_only.sh
+    . "$HERE/../lib/landed_only.sh"
+    goh_refuse_unlanded_commit "$root" "pre-commit: this commit" || exit 1   # main moves only through land.sh (GOH.LANDONLY)
+fi
 gate="$root/tools/gate.sh"
 # A goh commit handed to its staged tree (GOH.SELFGATE) runs THAT tree's gate.sh, not the working
 # tree's, whose structural.sh would export the checkout's HEAD again.
@@ -109,6 +115,7 @@ if [ "$status" -eq 0 ] && twin_due swift_staged '*.swift'; then
 fi
 goh_repo_writes "$root" "$repo_before" || { err "pre-commit: nothing committed"; exit 1; }
 [ "$status" -eq 0 ] || exit "$status"
+[ -z "$lint" ] || { ok "goh lint: the commit gate passes these files (nothing committed)"; exit 0; }
 if [ -n "$(ls -A "$pending")" ]; then   # every step passed: the settles the checks journalled
     # shellcheck source=gates/_goh_bin.sh
     . "$HERE/_goh_bin.sh"
