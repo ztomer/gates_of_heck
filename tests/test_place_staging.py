@@ -19,6 +19,7 @@ from pathlib import Path
 import pytest
 from _fast_git import fast_init
 from conftest import REPO_ROOT, hermetic_env
+from timing_bounds import GiveUp
 
 PLACE = REPO_ROOT / "lib" / "place.sh"
 
@@ -79,8 +80,8 @@ def test_a_placement_killed_mid_copy_leaves_the_checkout_clean_and_is_reaped(che
     dest = checkout / "bin" / "goh"
     proc = _place(src, dest, f"{shim}:/usr/bin:/bin")
     try:
-        deadline = time.monotonic() + 30
-        while not started.exists() and time.monotonic() < deadline:
+        give_up = GiveUp(30)
+        while not started.exists() and not give_up.passed():
             time.sleep(0.05)
         assert started.exists(), "the copy never started"
     finally:
