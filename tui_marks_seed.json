@@ -96,8 +96,8 @@
       "root": "73391f04f5f2b92ab9813c62e6cecdce919d2d86",
       "repo": "gates_of_heck",
       "path": "gates/coverage_gate.sh",
-      "count": 4,
-      "reason": "unreviewed: hand-rolled TUI mark at line(s) 82, 83, 84, 85; print through tui/lib.sh or tui.lib (GOH.TUIMARKS seed, 2026-11-15)"
+      "count": 3,
+      "reason": "unreviewed: hand-rolled TUI mark at line(s) 86, 87, 88 (the unused `ok` went in GOH.DEPSBEHIND); print through tui/lib.sh or tui.lib (GOH.TUIMARKS seed, 2026-11-15)"
     },
     {
       "root": "73391f04f5f2b92ab9813c62e6cecdce919d2d86",
