@@ -49,7 +49,7 @@ sys.path.insert(0, str(ROOT / "checks"))
 from _gitutil import foreign_repo_env
 
 sys.path.insert(0, str(ROOT))
-from tui.lib import counted, err, info, noun, ok, warn
+from tui.lib import counted, err, info, ok, warn
 
 sys.path.insert(0, str(ROOT / "lib"))
 import estate_registry
@@ -267,10 +267,7 @@ def parse(rc: int, out: str) -> Verdict:
     elif rc == 1 and not v.red and not v.timed_out:
         v.error = f"exit 1 naming no failed step: {tail}"
     elif rc == 0 and (v.red or not v.green):
-        v.error = (
-            f"exit 0 over {len(v.red)} red and {len(v.green)} green "
-            f"{noun(len(v.red) + len(v.green), 'step')}: {tail}"
-        )
+        v.error = f"exit 0 over {len(v.red)} red, {counted(len(v.green), 'green step')}: {tail}"
     return v
 
 
@@ -462,11 +459,8 @@ def say(rec: dict) -> None:
     for e in rec["errors"]:
         err(f"release canary could not judge {e}")
     if rec["turned_red"]:
-        n = len(rec["turned_red"])
-        err(
-            f"release canary: {head} turns {counted(n, 'consumer')} red at push that {base} "
-            f"left green:"
-        )
+        n = counted(len(rec["turned_red"]), "consumer")
+        err(f"release canary: {head} turns {n} red at push that {base} left green:")
         for where, flips in sorted(rec["turned_red"].items()):
             for f in flips:
                 err(f"  {where}: {f['step']} -- {f['remedy']}")
@@ -476,10 +470,7 @@ def say(rec: dict) -> None:
         err("release canary: REFUSED -- fix or seed each consumer above (in that repo), then land")
         err("  again; a consumer that should leave the estate leaves its registry, by name")
     else:
-        ok(
-            f"release canary: {counted(rec['consumers'], 'consumer')}, none turned red by "
-            f"{head} over {base}"
-        )
+        ok(f"release canary: {head} turned no consumer red over {base} ({rec['consumers']} judged)")
 
 
 def main() -> int:
