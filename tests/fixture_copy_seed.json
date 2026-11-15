@@ -10,7 +10,6 @@
   "test_display_seam.py": 1,
   "test_gate_calibration.py": 1,
   "test_gate_environment.py": 1,
-  "test_gate_profile.py": 1,
   "test_goh_build_publish.py": 1,
   "test_goh_prefetch.py": 3,
   "test_goh_screen_parity.py": 1,
