@@ -201,7 +201,28 @@ pub fn judge_settled(
     if !full {
         v.stale.extend(settled.stale.iter().cloned());
     }
+    if let Some(note) = unjudged(root, seed) {
+        v.warn.push((kind.file.to_string(), note));
+    }
     Ok((v, settled))
+}
+
+/// Why the tracked entries' roots were not judged, or `None` (GOH.SHALLOWROOT).
+///
+/// A `--depth 1` clone (most consumer CI: only monitor fetches its whole history) answers the
+/// shallow BOUNDARY as its root, so `load` takes every tracked entry as the repository's own and
+/// the refusal of another repository's entry never runs there. That is a warning naming the fix,
+/// never a silent pass. One git spawn, only when the seed holds a tracked entry.
+fn unjudged(root: &Path, seed: &Seed) -> Option<String> {
+    let tracked = seed.values().filter(|h| !h.stored).count();
+    (tracked > 0 && crate::gitutil::is_shallow(root)).then(|| {
+        format!(
+            "NOT JUDGED in a shallow clone: {} taken as this repository's own, its root commit \
+             is not in this clone; fetch the whole history to judge whose they are \
+             (actions/checkout `fetch-depth: 0`, or `git fetch --unshallow`)",
+            goh_tui::counted_as(tracked, "tracked entry", "tracked entries")
+        )
+    })
 }
 
 /// The paths this commit changes, deletions and both sides of a rename among them.

@@ -365,6 +365,33 @@ mod tests {
     }
 
     #[test]
+    fn a_planted_shallow_clone_is_not_judged_and_its_seed_is_not_called_stale() {
+        // GOH.SHALLOWROOT: in a --depth 1 clone the tags are the fetch's, so a clean-looking
+        // changelog is no verdict. A changelog with an orphan heading tail, tagged, then cloned.
+        let r = goh_testkit::repo_with(&[(
+            "CHANGELOG.md",
+            &GOOD.replace("## v1.1.0 — one (2026-11-01)", " — one (2026-11-01)"),
+        )])
+        .expect("fixture");
+        r.git(&["commit", "-qm", "root"]).expect("commit");
+        r.git(&["tag", "v1.2.0"]).expect("tag");
+        let full = judge(r.path(), &["CHANGELOG.md".to_string()], false);
+        assert_eq!(full.0, 1, "the full clone finds it: {full:?}");
+        let dst = tempfile::tempdir().expect("tmp");
+        let url = format!("file://{}", r.path().display());
+        goh_testkit::git_in(dst.path(), &["clone", "-q", "--depth", "1", &url, "c"])
+            .expect("shallow clone");
+        let clone = dst.path().join("c");
+        assert!(crate::gitutil::is_shallow(&clone));
+        let (code, out, err) = judge(&clone, &["CHANGELOG.md".to_string()], false);
+        assert_eq!(code, 0, "{out}{err}");
+        assert!(
+            err.contains("NOT JUDGED") && err.contains("shallow clone") && !out.contains("OK"),
+            "{out}{err}"
+        );
+    }
+
+    #[test]
     fn headings_without_a_v_and_non_release_tags_are_read() {
         let text = "## Unreleased\n\n## 0.8.0 - 2026-10-20\n\n## [0.3.1]\n";
         assert_eq!(

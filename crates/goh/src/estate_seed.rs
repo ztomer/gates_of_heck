@@ -15,7 +15,8 @@
 //!   repository's root commit: an entry naming another root is refused, so no tree (goh's least of
 //!   all) can carry another repository's facts. A shallow clone cannot know its root, nor a first
 //!   commit in progress, so there the file's entries are taken as its own (the full clone that
-//!   committed them, or the next commit, is judged);
+//!   committed them, or the next commit, is judged); a shallow clone SAYS so, as a warning naming
+//!   `fetch-depth: 0`, never a silent pass (`settle::unjudged`, GOH.SHALLOWROOT);
 //! * the owner's PRIVATE store, `$GOH_SEED_DIR/<kind file>`, else `$XDG_STATE_HOME/goh/seeds/`,
 //!   else `~/.local/state/goh/seeds/` -- in no tree at all, for a repository gated only on this
 //!   machine, or a clone that is not ours to commit to (a vendored or upstream tree).

@@ -159,6 +159,64 @@ fn a_shallow_clone_takes_its_own_files_entries_as_its_own() {
     assert!(s.contains_key(&(head, "a.sh".to_string())), "{s:?}");
 }
 
+/// A shallow clone of a repository whose tracked seed names ANOTHER repository's root.
+fn shallow_with_a_foreign_entry() -> (goh_testkit::Repo, tempfile::TempDir, std::path::PathBuf) {
+    let (r, _) = committed();
+    r.write(
+        K.file,
+        &entry("bdbe3ad698c8f8591d4aed721cb761a6fddac09d", 1),
+    )
+    .expect("write");
+    r.git(&["add", "-A"]).expect("add");
+    r.git(&["commit", "-qm", "seed"]).expect("commit");
+    let dst = tempfile::tempdir().expect("tmp");
+    let url = format!("file://{}", r.path().display());
+    goh_testkit::git_in(
+        dst.path(),
+        &["clone", "-q", "--depth", "1", &url, "shallow"],
+    )
+    .expect("shallow clone");
+    let clone = dst.path().join("shallow");
+    (r, dst, clone)
+}
+
+#[test]
+fn a_shallow_clone_says_it_cannot_judge_its_entries_roots_never_a_silent_pass() {
+    // GOH.SHALLOWROOT: in a --depth 1 clone (most consumer CI) the root is the shallow boundary,
+    // so a tracked entry for another repository was taken as this one's and the refusal never ran.
+    let (_r, _dst, clone) = shallow_with_a_foreign_entry();
+    let s = load_from(&clone, None, K).expect("unverifiable: taken as its own");
+    let repo = crate::gitutil::root_commit(&clone).expect("the boundary");
+    let (v, _) =
+        judge_settled(&clone, &repo, Scope::of(false), &found(&[]), &s, K).expect("judged");
+    let said = v
+        .warn
+        .iter()
+        .find(|(p, _)| p == K.file)
+        .map(|(_, n)| n.clone())
+        .unwrap_or_default();
+    assert!(
+        said.contains("NOT JUDGED in a shallow clone")
+            && said.contains("1 tracked entry")
+            && said.contains("fetch-depth: 0"),
+        "{v:?}"
+    );
+    // The full clone it came from is judged, and says nothing of the kind.
+    let (r, own) = committed();
+    r.write(K.file, &entry(&own, 1)).expect("write");
+    let s = load_from(r.path(), None, K).expect("its own entry");
+    let (v, _) = judge_settled(
+        r.path(),
+        &own,
+        Scope::of(false),
+        &found(&[("a.sh", 1)]),
+        &s,
+        K,
+    )
+    .expect("judged");
+    assert!(v.warn.iter().all(|(p, _)| p != K.file), "{v:?}");
+}
+
 #[test]
 fn a_repository_with_no_commit_yet_takes_its_own_files_entries_as_its_own() {
     let r = goh_testkit::repo_with(&[("a.sh", "true\n")]).expect("fixture");
