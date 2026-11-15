@@ -64,15 +64,17 @@ def test_a_tip_that_moved_under_the_gate_lands_nothing(repo: Path, tmp_path: Pat
     assert _main(repo) == before
 
 
-def test_a_main_that_moved_on_is_named_not_merged(repo: Path, tmp_path: Path) -> None:
+def test_a_main_that_moved_on_during_the_gate_is_named_not_merged(
+    repo: Path, tmp_path: Path
+) -> None:
+    """A main that moved BEFORE the land is rebased onto (tests/test_land_serial.py); one that a
+    commit outside land.sh moves while the gate runs is a different commit than the one gated."""
     wt = _worktree(repo, tmp_path)
-    (repo / "m.txt").write_text("main moved\n")
-    git(repo, "add", "m.txt")
-    git(repo, "commit", "-q", "--no-verify", "-m", "main moved")
-    before = _main(repo)
-    r = _land(wt, "true")
-    assert r.returncode != 0 and "main moved on since" in r.stderr, r.stdout + r.stderr
-    assert _main(repo) == before
+    moved = (f"echo main moved > {repo}/m.txt && git -C {repo} add m.txt && "
+             f"git -C {repo} commit -q --no-verify -m moved")  # fmt: skip
+    r = _land(wt, moved)
+    assert r.returncode != 0 and "main moved on to" in r.stderr, r.stdout + r.stderr
+    assert git(repo, "log", "-1", "--format=%s").strip() == "moved"
 
 
 def test_land_refuses_to_run_in_the_main_checkout(repo: Path) -> None:

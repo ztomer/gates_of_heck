@@ -14,8 +14,17 @@
 #   2. a red gate lands nothing; a tip that moved while it was gated lands nothing (the gate
 #      judged a different commit);
 #   3. the main checkout (the first `git worktree list` entry) merges the GATED SHA with
-#      `--ff-only` -- never the branch name, which may have moved -- and a main that moved on is
-#      named: rebase onto it and land again.
+#      `--ff-only` -- never the branch name, which may have moved -- and a main that moved on
+#      outside land.sh during the gate is named: land again.
+#
+# LANDS QUEUE (GOH.LANDSERIAL). With four lanes landing into one main, a ~14 min green gate was
+# thrown away whenever main moved under it (the hooks lane spent its 3-attempt budget that way,
+# 2026-11-14). So one land at a time holds the repository's land lock, `goh-land.lock` in the common
+# git dir, from the rebase through the fast-forward: a waiter prints who holds it, then rebases the
+# branch onto the main the holder landed (a conflict aborts the rebase and lands nothing) and gates
+# THAT commit, the one main fast-forwards to. The lock is tree_lock.sh's idiom, a kernel flock on a
+# shell fd, released on any exit; the gate and the merge run with that fd closed, so a daemon a gate
+# starts never holds later lands off. Pinned by tests/test_land_serial.py.
 #
 # The gate proves WITH the proven-step cache on (G2f, GOH_PROFILE_PROVEN): gate_profile.sh keeps it
 # off by default because a profile of cache hits measures the cache, but landing wants the verdict,
@@ -54,6 +63,24 @@ fi
 [ -n "$gate" ] || gate="$GOH/tools/gate_profile.sh ."
 
 section "land $branch @ ${tip:0:8} -> $main"
+if [ -n "$(GIT_OPTIONAL_LOCKS=0 git status --porcelain --untracked-files=no)" ]; then
+    err "land.sh: uncommitted changes to tracked files in $here -- the gate would judge a tree that is not ${tip:0:8} -- nothing landed"
+    exit 1
+fi
+# The land lock (GOH.LANDSERIAL, header): fd 7, held until this script exits.
+# shellcheck source=lib/house_python.sh
+. "$GOH/lib/house_python.sh" || exit 1
+lock="$(git -C "$main" rev-parse --path-format=absolute --git-common-dir)/goh-land.lock"
+exec 7>>"$lock"
+if ! "$GOH_PY" -c 'import fcntl; fcntl.flock(7, fcntl.LOCK_EX | fcntl.LOCK_NB)' 2>/dev/null </dev/null; then
+    holder=""
+    IFS= read -r holder <"$lock" 2>/dev/null || true
+    info "waiting for the land lock: held by ${holder:-another land} ($lock)"
+    "$GOH_PY" -c 'import fcntl; fcntl.flock(7, fcntl.LOCK_EX)' </dev/null
+    ok "land lock acquired"
+fi
+: >"$lock"   # ours now: who we are, for the next waiter's line
+printf '%s @ %s (pid %s, since %s)\n' "$branch" "${tip:0:8}" "$$" "$(date '+%H:%M:%S')" >&7
 # Refuse BEFORE the gate what could never land (G15): a pre-commit hook that refused the commit left
 # the tip at the base, and "landed" was printed over a no-op merge. Landing is a state change, so the
 # state is checked, not the exit code of the merge.
@@ -62,14 +89,21 @@ if [ "$tip" = "$base" ]; then
     err "land.sh: nothing to land -- $branch @ ${tip:0:8} IS the main tip (did a hook refuse the commit?) -- nothing landed"
     exit 1
 fi
-if [ -n "$(GIT_OPTIONAL_LOCKS=0 git status --porcelain --untracked-files=no)" ]; then
-    err "land.sh: uncommitted changes to tracked files in $here -- the gate would judge a tree that is not ${tip:0:8} -- nothing landed"
-    exit 1
+# Gate the commit main will fast-forward to: the branch on top of main as it is now, under the lock.
+if ! git merge-base --is-ancestor "$base" "$tip"; then
+    if ! git rebase -q "$base" 7>&- >/dev/null 2>&1 </dev/null; then
+        git rebase --abort 7>&- >/dev/null 2>&1 </dev/null || true
+        err "land.sh: $branch conflicts with main ${base:0:8} -- the rebase was aborted, $branch is left at ${tip:0:8}; rebase it by hand -- nothing landed"
+        exit 1
+    fi
+    now="$(git rev-parse HEAD)"
+    info "rebased $branch onto main ${base:0:8}: ${tip:0:8} -> ${now:0:8}"
+    tip="$now"
 fi
 info "gate: $gate"
 # In the gate's environment only, never exported: an exported GOH_ key is gate bookkeeping and must be
 # verdict-free (tests/test_verdict_free_keys.py), and this one is one process's setting.
-if ! GOH_PROFILE_PROVEN="${GOH_PROFILE_PROVEN-1}" bash -c "$gate"; then
+if ! GOH_PROFILE_PROVEN="${GOH_PROFILE_PROVEN-1}" bash -c "$gate" 7>&-; then
     err "land.sh: the gate failed on ${tip:0:8} -- nothing landed"
     exit 1
 fi
@@ -80,7 +114,7 @@ if [ "$now" != "$tip" ]; then
 fi
 base="$(git -C "$main" rev-parse HEAD)"   # re-read: main may have moved during a minutes-long gate
 if ! git -C "$main" merge-base --is-ancestor "$base" "$tip"; then
-    err "land.sh: main moved on since $branch branched -- rebase onto it, then land again"
+    err "land.sh: main moved on to ${base:0:8} while ${tip:0:8} was gated, outside land.sh (its lock) -- land again"
     exit 1
 fi
 # What the range changes is known before main moves, so a missing change lands nothing.
@@ -94,7 +128,7 @@ for want in ${GOH_LAND_EXPECT:-}; do
 done
 # GOH_LAND_CALLER names this script to the merge's own hooks (lib/landed_only.sh refuses a commit on
 # the landed-only branch from anyone else); inline, so it reaches the merge alone, never the gate.
-GOH_LAND_CALLER=land.sh git -C "$main" merge --ff-only -q "$tip"
+GOH_LAND_CALLER=land.sh git -C "$main" merge --ff-only -q "$tip" 7>&-
 # Verify the claim before making it: main must now BE the gated tip and differ from where it was.
 after="$(git -C "$main" rev-parse HEAD)"
 if [ "$after" != "$tip" ] || [ "$after" = "$base" ]; then   # (also: nothing to land if the tip IS main)
