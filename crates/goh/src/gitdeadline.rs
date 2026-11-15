@@ -223,6 +223,16 @@ fn sites(root: &Path, files: &[String], exclude: &str, staged: bool) -> Result<S
 /// The verdict over `files`: `(exit code, stdout, stderr)`.
 fn judge(root: &Path, files: &[String], exclude: &str, staged: bool) -> (i32, String, String) {
     use goh_tui::ERR;
+    if !crate::grace::over() {
+        // Read (the floor counts it), never judged, and the seed never loaded: a scan that finds
+        // nothing within the grace read every seeded entry as stale and settled it away, the
+        // week the entries had to be written in (GOH.GRACEEND). tui-marks and layer-parity do
+        // the same.
+        return match sites(root, files, exclude, staged) {
+            Ok(_) => (0, String::new(), String::new()),
+            Err(m) => (2, String::new(), format!("{ERR} {TAG} {m}\n")),
+        };
+    }
     let seed = match estate_seed::load(root, KIND, staged) {
         Ok(s) => s,
         Err(m) => return (2, String::new(), format!("{ERR} {TAG} {m}\n")),

@@ -27,35 +27,6 @@ pub fn over_at(seam: Option<&str>, now: u64) -> bool {
     }
 }
 
-/// The seed files whose scanners hold a shape back until `OVER_FROM` (GOH.GRACEEND).
-///
-/// Within the grace such a scan cannot see the sites the shape finds, so an entry seeded for one reads as
-/// having nothing left: STALE, red today, and a commit's settle lowered or deleted it -- the seed
-/// that has to stand on the 23rd was refused or erased on the 16th (goh's own
-/// `tests/test_launch_app.py` entry, refused at its land). Until the grace ends, an entry of these
-/// kinds is neither stale nor settled; from it, nothing differs.
-pub const HELD_BACK_SEEDS: [&str; 7] = [
-    "bare_open_seed.json",
-    "floor_seed.json",
-    "git_deadline_seed.json",
-    "layer_parity_seed.json",
-    "plural_hedge_seed.json",
-    "release_quiet_seed.json",
-    "tui_marks_seed.json",
-];
-
-/// Whether `seed_file`'s entries are held from the stale check and the settle at `over`.
-#[must_use]
-pub fn holds_seed_at(seed_file: &str, over: bool) -> bool {
-    !over && HELD_BACK_SEEDS.contains(&seed_file)
-}
-
-/// `holds_seed_at` now.
-#[must_use]
-pub fn holds_seed(seed_file: &str) -> bool {
-    holds_seed_at(seed_file, over())
-}
-
 /// Whether the grace is over now.
 #[must_use]
 pub fn over() -> bool {
@@ -68,19 +39,6 @@ pub fn over() -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn a_held_back_seed_is_held_only_within_the_grace() {
-        assert!(holds_seed_at("bare_open_seed.json", false));
-        assert!(
-            !holds_seed_at("bare_open_seed.json", true),
-            "from the 23rd, judged whole"
-        );
-        assert!(
-            !holds_seed_at("mktemp_port_seed.json", false),
-            "no shape held back"
-        );
-    }
 
     #[test]
     fn the_day_decides_and_the_seam_overrides_it() {

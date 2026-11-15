@@ -423,3 +423,34 @@ fn outside_a_git_repo_every_newer_command_says_so_by_name() {
         );
     }
 }
+
+/// A seed for a scanner that judges nothing until the grace ends is not stale within it, and
+/// holds after it (GOH.GRACEEND, `crate::grace::HELD_BACK_SEEDS`): before, an entry written the
+/// week before 2026-11-23 read as "no site left" and was red the day it was committed.
+#[test]
+fn a_held_back_seed_is_green_within_the_grace_and_after_it() {
+    let store = tempfile::tempdir().expect("store");
+    let r = repo_with(&[("rel.sh", "#!/bin/sh\ngit status --porcelain\n")]).expect("fixture");
+    r.git(&["commit", "-q", "-m", "root"]).expect("commit");
+    let root = goh_testkit::git_command()
+        .args(["rev-list", "--max-parents=0", "HEAD"])
+        .current_dir(r.path())
+        .output()
+        .expect("git");
+    let root = String::from_utf8_lossy(&root.stdout).trim().to_string();
+    let seed = format!(
+        "{{\"why\": \"w\", \"entries\": [{{\"root\": \"{root}\", \"repo\": \"r\", \"path\": \
+         \"rel.sh\", \"count\": 1, \"reason\": \"reviewed: a test\"}}]}}\n"
+    );
+    r.write("git_deadline_seed.json", &seed).expect("seed");
+    r.git(&["add", "-A"]).expect("git");
+    let st = store.path().to_str().expect("utf-8");
+    for grace in ["within", "over"] {
+        let out = goh(
+            Some(&r),
+            &["git-deadline"],
+            &[("GOH_SEED_DIR", st), ("GOH_GRACE", grace)],
+        );
+        assert!(out.status.success(), "{grace}: {}", out.text());
+    }
+}
