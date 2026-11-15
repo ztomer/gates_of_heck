@@ -38,6 +38,9 @@ pub enum Commands {
     /// Land a green HEAD unwatched: pre-push gate, release kit, install, `loopctl verify`, then
     /// `loopctl done` (`tools/ship.py`, GOH.SHIP; flags pass through). Detached unless `--wait`.
     Ship(PassArgs),
+    /// Enqueue a commit to land, or drain the queue: ONE lander runs each repo's push gate (or its
+    /// ship) in order and records the outcome on the item (`tools/landq.py`, GOH.LANDQUEUE).
+    Land(PassArgs),
     /// Name estate repos with stale stock hooks; `--refresh` fixes them (`hooks_refresh.py`)
     Hooks(PassArgs),
     /// Run a step under a ceiling; report what it left running (`lib/orphan_canary.py wrap`).
