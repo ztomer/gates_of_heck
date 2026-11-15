@@ -22,13 +22,14 @@ from pathlib import Path
 
 import pytest
 from conftest import REPO_ROOT, hermetic_env
+from timing_bounds import GiveUp, patience
 
 sys.path.insert(0, str(REPO_ROOT / "hooks" / "claude"))
 import stdin_hangs as sh
 
-CLAUDE = "/Users/x/Library/Application Support/Claude/claude-code/2.1.325/x/claude.app/Contents/MacOS/claude --output-format stream-json"  # noqa: E501
+CLAUDE = "/Applications/Claude Code/2.1.325/claude.app/Contents/MacOS/claude --output-format x"
 SHELL = (
-    "/bin/zsh -c source /Users/x/.claude/shell-snapshots/snapshot-zsh-1.sh 2>/dev/null || true "
+    "/bin/zsh -c source /var/tmp/shell-snapshots/snapshot-zsh-1.sh 2>/dev/null || true "
     "&& eval 'sed -i x; cat > /tmp/x.py 2>/dev/null; python3 - $S <<'\"'\"'EOF'\"'\"'\\012print(1)"
     "\\012EOF' && pwd -P >| /tmp/claude-ab12-cwd"
 )
@@ -92,13 +93,14 @@ def test_the_finished_agent_is_found_by_its_bash_command(tmp_path: Path) -> None
     assert sh.ended_agents([d])(SHELL.replace("cat >", "tee")) == "", "another command"
 
 
-def _child_of(pid: int, deadline: float) -> int:
-    while time.monotonic() < deadline:
-        kids = [p for p in sh.process_table() if p.ppid == pid]
-        if kids:
-            return kids[0].pid
+def _await_cat_under(pid: int) -> None:
+    """Until the `sh` has forked its `cat` (in a pipeline, after the other side)."""
+    give_up = GiveUp(10)
+    while not give_up.passed():
+        if any(p.ppid == pid and p.command == "cat" for p in sh.process_table()):
+            return
         time.sleep(0.05)
-    raise AssertionError(f"no child of {pid}")
+    raise AssertionError(f"no cat under {pid}")
 
 
 @pytest.mark.parametrize(("script", "named"), [("cat; :", True), ("sleep 60 | cat; :", False)])
@@ -108,8 +110,7 @@ def test_the_real_process_table_and_lsof_see_a_reader_on_its_shells_socket(scrip
     proc = subprocess.Popen(["sh", "-c", script], stdin=theirs)
     theirs.close()
     try:
-        _child_of(proc.pid, time.monotonic() + 10)
-        time.sleep(0.2)  # the pipeline's second process
+        _await_cat_under(proc.pid)
         found = sh.hangs(sh.process_table(), harness={__import__("os").getpid()}, max_hours=0)
         mine = [h for h in found if h.shell == proc.pid]
         assert bool(mine) is named, (script, found)
@@ -120,7 +121,7 @@ def test_the_real_process_table_and_lsof_see_a_reader_on_its_shells_socket(scrip
             ["pkill", "-P", str(proc.pid)], check=False, stdin=subprocess.DEVNULL
         )  # kill-ok: only this test's sh
         proc.kill()
-        proc.wait(timeout=10)
+        proc.wait(timeout=patience(10))
         ours.close()
 
 
@@ -139,14 +140,14 @@ def test_the_hook_and_the_cli_name_the_hang(tmp_path: Path) -> None:
     event = json.dumps({"transcript_path": str(session.with_suffix(".jsonl")), "prompt": "hi"})
     r = subprocess.run(
         [sys.executable, str(script), "--hook", *procs], input=event, capture_output=True,
-        text=True, timeout=30, env=hermetic_env(), check=False,
+        text=True, timeout=patience(30), env=hermetic_env(), check=False,
     )  # fmt: skip
     assert r.returncode == 0, r.stderr
     ctx = json.loads(r.stdout)["hookSpecificOutput"]["additionalContext"]
     assert "kill 300: `cat` (under Bash shell 200)" in ctx, ctx
     cli = subprocess.run(
         [sys.executable, str(script), "--subagents", str(session / "subagents"), *procs],
-        capture_output=True, text=True, timeout=30, env=hermetic_env(), check=False,
+        capture_output=True, text=True, timeout=patience(30), env=hermetic_env(), check=False,
         stdin=subprocess.DEVNULL,
     )  # fmt: skip
     assert cli.returncode == 1 and "kill 300:" in cli.stdout, cli.stdout + cli.stderr
