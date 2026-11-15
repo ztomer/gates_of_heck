@@ -118,6 +118,22 @@ fn no_token_is_judged_by_an_opt_in_scanner_alone_but_for_todays_list() {
     );
 }
 
+#[test]
+fn the_tui_marks_probe_greps_status_markers_own_patterns() {
+    // tui-marks judges status-markers' tokens as their fallback (GOH.ESCAPEOWNER) through
+    // `crate::statusmark::scan`'s patterns; the probe is a literal copy, held to them here.
+    let row = super::row("no hand-rolled TUI mark").expect("tui-marks row");
+    let State::Declared(d) = &row.state else {
+        unreachable!("tui-marks is declared")
+    };
+    for p in [
+        crate::statusmark::scan::MARKER,
+        crate::statusmark::scan::ESCAPE,
+    ] {
+        assert!(d.probe.contains(p), "the tui-marks probe lost {p}");
+    }
+}
+
 /// The probe hits in `s`'s fixture that `s` itself names.
 fn own_hits(c: &Compiled, s: &Shape) -> Vec<usize> {
     let (rel, text) = s.fixture;

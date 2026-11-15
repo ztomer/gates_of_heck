@@ -25,8 +25,11 @@ pub fn status_markers(rel: &str, text: &str) -> Result<Vec<usize>, String> {
         .collect())
 }
 
-/// `goh tui-marks`: every opening mark it judges, escaped lines included (an exemption is a
-/// verdict). Its exempt files (the house lib, a git hook) are judged too, by rule.
+/// `goh tui-marks`: every opening mark it judges, escaped lines included.
+///
+/// An exemption is a verdict. Its exempt files (the house lib, a git hook) are judged too, by
+/// rule, and so are status-markers' escape and marker opening a print: its fallback, as a repo
+/// that does not run status-markers judges them (GOH.ESCAPEOWNER).
 ///
 /// # Errors
 ///

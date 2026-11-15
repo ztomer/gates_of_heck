@@ -29,7 +29,10 @@
 //! repo opted in: GOH.CLASS.SHAPE gave `\033[` to `goh status-markers` (four repos run it) and took
 //! it from `goh tui-marks` (every repo), which settled the overlap by leaving a hole. The walk
 //! refuses a token whose every judge is opt-in unless `table::OPT_IN_ALONE`, today's list, names it
-//! with the item closing it; the list only shrinks.
+//! with the item closing it; the list only shrinks. It is empty: `goh tui-marks` judges both of
+//! status-markers' tokens opening a print as their fallback, where status-markers does not count
+//! the line (part 2), so a stock row judging an opt-in row's token is that fallback, not an
+//! overlap.
 //!
 //! OVERLAP. Two scanners judging one token count one site twice (`goh status-markers` and
 //! `goh tui-marks` both judged the `\033[` CSI on a print line). Each token has ONE owner row, and

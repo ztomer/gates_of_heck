@@ -389,8 +389,8 @@ pub enum Commands {
     LaunchApp(LaunchAppArgs),
     /// Fail on a hedged plural (`file(s)`, `entr(ies)`) in a string literal; count with counted/noun.
     PluralHedge(PluralHedgeArgs),
-    /// Fail on a shell echo/printf or Python print that opens with a Kare mark (an ANSI escape is
-    /// `status-markers`').
+    /// Fail on a shell echo/printf or Python print that opens with a Kare mark, or with an ANSI
+    /// escape or bracketed marker on a line `status-markers` does not count (its fallback).
     TuiMarks(ExcludeStagedArgs),
     /// Run each declared scanner beside a plain grep for its token: a hit it does not judge that no
     /// shape in `crates/goh/src/shapes/table.rs` names is red (GOH.CLASS.SHAPE).

@@ -1,10 +1,12 @@
 //! The finder: a shell `echo`/`printf` or a Python `print` whose text OPENS with a Kare mark -- the
 //! line `tui/lib.sh` / `tui.lib` print for it (`info ok err warn die`).
 //!
-//! NOT AN ANSI ESCAPE (GOH.CLASS.SHAPE, 2026-11-15). The first version also opened on `\033[`, and
-//! `goh status-markers` judges every such escape in every source language, so one print line was
-//! counted by two scanners. One shape has one owner, and the shape table (`crate::shapes`) refuses a
-//! scanner that judges a token another row owns: the escape is status-markers'.
+//! THE FALLBACK (GOH.ESCAPEOWNER, 2026-11-15). An ANSI escape (`\033[`) or a bracketed marker
+//! (`[ OK ]`) is `goh status-markers`' token (`crate::shapes`: one owner per token), and
+//! status-markers is an OPT-IN, so where a repo does not run it nothing judged those. This finder
+//! opens on them too, as a [`Finding::fallback`]; the step (`super`) keeps such a finding only
+//! where status-markers does not count that line, so a site is reported once, by one of the two.
+//! The two patterns are status-markers' own (`crate::statusmark::scan::MARKER` and `ESCAPE`).
 //!
 //! Line-based, as `crate::statusmark::scan` is: the shapes are lexical, and the subject is every
 //! shell and Python source. A whole-line comment is not read (one quoting the forbidden shape to
@@ -18,9 +20,14 @@
 use regex::Regex;
 use std::sync::OnceLock;
 
-/// The marks `tui/stylerc` owns (start, step, ok, err, warn). An ANSI escape is not one of them: it
-/// is `goh status-markers`' token (see the header).
+/// The marks `tui/stylerc` owns (start, step, ok, err, warn): this scanner's own token.
 const OPENER: &str = r"(?:→|·|✓|✗|⚠)";
+
+/// The opener, named: `m` a Kare mark, `s` status-markers' token (the fallback, see the header).
+fn opener() -> String {
+    use crate::statusmark::scan::{ESCAPE, MARKER};
+    format!("(?:(?P<m>{OPENER})|(?P<s>{MARKER}|{ESCAPE}))")
+}
 
 /// The per-line exemption: `# tui-mark-ok: <reason>`.
 pub const MARKER: &str = "tui-mark-ok:";
@@ -31,11 +38,13 @@ fn escaped(line: &str) -> bool {
         .is_some_and(|(before, why)| before.contains('#') && !why.trim().is_empty())
 }
 
-/// One finding: its line, and the mark it opens with.
+/// One finding: its line, the mark it opens with, and whether that mark is `goh status-markers`'
+/// token (an escape or a bracketed marker), judged here only where status-markers does not.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Finding {
     pub line: usize,
     pub mark: String,
+    pub fallback: bool,
 }
 
 /// Which language a source is lexed as.
@@ -50,14 +59,18 @@ fn patterns() -> Result<&'static (Regex, Regex), String> {
     COMPILED
         .get_or_init(|| {
             let rx = |p: &str| Regex::new(p).map_err(|e| format!("tui-marks pattern {p:?}: {e}"));
+            let open = opener();
             // A command position, an optional `builtin`/`command`, the options, an optional quote
             // (`$'...'` too), blanks, the mark.
             let shell = format!(
-                r#"(?:^|[\s;&|({{`!])(?:builtin\s+|command\s+)?(?:echo|printf)\s+(?:-[A-Za-z-]+\s+)*(?:\$?["'])?\s*(?P<m>{OPENER})"#
+                r#"(?:^|[\s;&|({{`!])(?:builtin\s+|command\s+)?(?:echo|printf)\s+(?:-[A-Za-z-]+\s+)*(?:\$?["'])?\s*{open}"#
             );
-            // `print(`, an optional string prefix, any quote (triple too), blanks, the mark.
-            let python =
-                format!(r#"\bprint\(\s*(?:[rRbBuUfF]{{1,2}})?(?:"""|'''|["'])\s*(?P<m>{OPENER})"#);
+            // `print(` not in backticks (Python has none: a docstring quoting the shape, as goh's
+            // tests/test_status_markers.py does), an optional string prefix, any quote (triple
+            // too), blanks, the mark.
+            let python = format!(
+                r#"(?:^|[^`\w])print\(\s*(?:[rRbBuUfF]{{1,2}})?(?:"""|'''|["'])\s*{open}"#
+            );
             Ok((rx(&shell)?, rx(&python)?))
         })
         .as_ref()
@@ -67,7 +80,8 @@ fn patterns() -> Result<&'static (Regex, Regex), String> {
 /// Every line this scanner judges in `text`, the escaped ones included.
 ///
 /// An opening mark on a line that is not a whole-line comment; exempting a line is a verdict on
-/// it. What the differential in `crate::shapes` counts as judged.
+/// it. What the differential in `crate::shapes` counts as judged: the fallback openers too, as a
+/// repo that does not run status-markers judges them.
 ///
 /// # Errors
 ///
@@ -106,12 +120,16 @@ pub fn findings(text: &str, lang: Lang) -> Result<Vec<Finding>, String> {
         .enumerate()
         .filter(|(_, line)| !line.trim_start().starts_with('#') && !escaped(line))
         .filter_map(|(i, line)| {
-            rx.captures(line)
-                .and_then(|c| c.name("m"))
-                .map(|m| Finding {
-                    line: i + 1,
-                    mark: m.as_str().to_string(),
-                })
+            let c = rx.captures(line)?;
+            let (m, fallback) = c
+                .name("m")
+                .map(|m| (m, false))
+                .or_else(|| c.name("s").map(|s| (s, true)))?;
+            Some(Finding {
+                line: i + 1,
+                mark: m.as_str().to_string(),
+                fallback,
+            })
         })
         .collect::<Vec<_>>())
 }

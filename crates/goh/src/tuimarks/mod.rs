@@ -18,6 +18,16 @@
 //! stock hooks, so without this each repo would seed 13 sites only goh can change. Anything else
 //! in that position says why on the line (`scan::MARKER`).
 //!
+//! THE FALLBACK OWNER (GOH.ESCAPEOWNER, 2026-11-15). An escape (`\033[`) or a bracketed marker
+//! (`[ OK ]`) opening a print is `goh status-markers`' token, and status-markers is an opt-in (four
+//! repos run it), so before this a repo that had not opted in judged those prints nowhere. This
+//! step judges them as status-markers' FALLBACK: a fallback finding is dropped exactly where
+//! status-markers counts the same line -- the repo's push runs it ([`status_markers_runs`]: the
+//! command in `tools/gate.sh`, `GOH_CI_STEPS` or a script of the repo's they name, read as
+//! `crate::layerparity::push_text` reads them) and it reads the file (`crate::statusmark::is_source`)
+//! and finds that line. One owner per site: never counted twice, and never left to nobody (a
+//! shebang-only script status-markers does not read stays this step's).
+//!
 //! WIRING: a structural step in EVERY repo, judged from `crate::grace::OVER_FROM` (2026-11-23):
 //! before it the step judges nothing, as the last release did not, so a consumer is not red before
 //! its seed exists. The estate's sites on the day it landed are seeded in `tui_marks_seed.json`
@@ -94,6 +104,29 @@ pub fn lang_of(rel: &str, text: &str) -> Option<scan::Lang> {
         .then_some(scan::Lang::Python)
 }
 
+/// Whether a push of the repository at `root` runs `goh status-markers` (its own gate, its
+/// `GOH_CI_STEPS`, or a script of its own they name; comment lines are not run).
+#[must_use]
+pub fn status_markers_runs(root: &Path, files: &[String], staged: bool) -> bool {
+    static RUNS: std::sync::LazyLock<regex::Regex> = std::sync::LazyLock::new(|| {
+        regex::Regex::new(r#"\bgoh(?:\.sh)?["']?\s+status-markers\b"#)
+            .unwrap_or_else(|e| unreachable!("a constant pattern: {e}"))
+    });
+    let tree: std::collections::BTreeSet<String> = files.iter().cloned().collect();
+    RUNS.is_match(&crate::layerparity::push_text(root, &tree, staged))
+}
+
+/// The lines of `rel` that `goh status-markers` counts, where `runs` (it is run here).
+fn status_lines(runs: bool, rel: &str, text: &str) -> Result<Vec<usize>, String> {
+    if !runs || !crate::statusmark::is_source(rel) {
+        return Ok(Vec::new());
+    }
+    Ok(crate::statusmark::scan::findings(text)?
+        .into_iter()
+        .map(|f| f.line)
+        .collect())
+}
+
 /// The sites in the shell and Python sources among `files`.
 fn sites(root: &Path, files: &[String], exclude: &str, staged: bool) -> Result<Sites, String> {
     let exclude = crate::steps::compile_exclude(exclude)?;
@@ -104,9 +137,15 @@ fn sites(root: &Path, files: &[String], exclude: &str, staged: bool) -> Result<S
         .map(|s| (s, scan::Lang::Shell))
         .chain(python.iter().map(|s| (s, scan::Lang::Python)));
     let mut identity: Option<String> = None;
+    let mut runs: Option<bool> = None;
     let mut out = Sites::new();
     for ((rel, text), lang) in langs {
-        let found = scan::findings(text, lang)?;
+        let mut found = scan::findings(text, lang)?;
+        if found.iter().any(|f| f.fallback) {
+            let runs = *runs.get_or_insert_with(|| status_markers_runs(root, files, staged));
+            let theirs = status_lines(runs, rel, text)?;
+            found.retain(|f| !(f.fallback && theirs.contains(&f.line)));
+        }
         if found.is_empty() {
             continue;
         }

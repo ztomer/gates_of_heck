@@ -23,11 +23,14 @@ pub struct Finding {
 }
 
 /// The status words a hand-rolled marker spells, in the case variants the estate used.
+///
+/// Also `goh tui-marks`' fallback opener where this scan is not run (GOH.ESCAPEOWNER).
 /// `---` needs padding, as a word does: `[ --- ]` is antiknob's old note marker, `[---]` is not
 /// a status line.
-const MARKER: &str = r"\[\s*(?:==>|-->)\s*\]|\[\s+(?:---|(?i:ok|pass|passed|fail|failed|err|error|wrn|warn|warning|info|skip|done))\s+\]";
-/// The spellings of ESC followed by `[` (a CSI) as they appear in source text.
-const ESCAPE: &str = r"\\(?:033|x1[bB]|e|u001[bB]|u\{0*1[bB]\})\[";
+pub const MARKER: &str = r"\[\s*(?:==>|-->)\s*\]|\[\s+(?:---|(?i:ok|pass|passed|fail|failed|err|error|wrn|warn|warning|info|skip|done))\s+\]";
+/// The spellings of ESC followed by `[` (a CSI) as they appear in source text (also `goh
+/// tui-marks`' fallback opener).
+pub const ESCAPE: &str = r"\\(?:033|x1[bB]|e|u001[bB]|u\{0*1[bB]\})\[";
 
 fn patterns() -> Result<&'static (Regex, Regex), String> {
     static COMPILED: OnceLock<Result<(Regex, Regex), String>> = OnceLock::new();

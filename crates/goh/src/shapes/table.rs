@@ -61,10 +61,9 @@ pub const BURN_DOWN: &[&str] = &[
 ///
 /// It may only SHRINK: an entry whose token a stock row now judges (or whose owner is
 /// stock) is stale and red, and a new opt-in-alone token cannot join.
-pub const OPT_IN_ALONE: &[(&str, &str)] = &[
-    ("ANSI CSI escape", "GOH.ESCAPEOWNER"),
-    ("bracketed status marker", "GOH.ESCAPEOWNER"),
-];
+/// Empty since GOH.ESCAPEOWNER part 2: `goh tui-marks` judges the escape and the bracketed marker
+/// opening a print as status-markers' fallback, where status-markers does not count the line.
+pub const OPT_IN_ALONE: &[(&str, &str)] = &[];
 
 const fn unreviewed(scanner: &'static str) -> Row {
     Row {
@@ -197,7 +196,13 @@ const STATUS_MARKERS: Declared = Declared {
 };
 
 const TUI_MARKS: Declared = Declared {
-    probe: r#"(?:\b(?:echo|printf)\s|\bprint\()[^#]*?["']\s*(?:→|·|✓|✗|⚠)"#,
+    // The Kare marks, then status-markers' MARKER and ESCAPE (`crate::statusmark::scan`), which
+    // this scanner judges as their fallback (GOH.ESCAPEOWNER; a test holds the copy to them).
+    probe: concat!(
+        r#"(?:\b(?:echo|printf)\s|\bprint\()[^#]*?["']\s*(?:→|·|✓|✗|⚠"#,
+        r"|\[\s*(?:==>|-->)\s*\]|\[\s+(?:---|(?i:ok|pass|passed|fail|failed|err|error|wrn|warn|warning|info|skip|done))\s+\]",
+        r"|\\(?:033|x1[bB]|e|u001[bB]|u\{0*1[bB]\})\[)"
+    ),
     judged: hooks::tui_marks,
     owns: &[Token {
         name: "Kare mark opening a print",
@@ -221,6 +226,16 @@ const TUI_MARKS: Declared = Declared {
             fixture: ("tools/run.py", "print(f\"  ✗ {name}\")\n"),
         },
         Shape {
+            name: "status-markers' escape or marker opening a print, where it does not run",
+            path: r"(?i)\.(sh|bash|zsh|py)$",
+            line: r"\\|\[\s",
+            verdict: Verdict::Covered,
+            fixture: (
+                "tools/banner.sh",
+                concat!("printf '", "\\", "033[1m%s\\n' \"$x\"\necho \"[ ", "OK ] built\"\n"),
+            ),
+        },
+        Shape {
             name: "a whole-line comment",
             path: "",
             line: COMMENT,
@@ -232,7 +247,20 @@ const TUI_MARKS: Declared = Declared {
             path: "",
             line: r"`(echo|printf|print\()",
             verdict: Verdict::OutOfScope("a docstring naming the shape it forbids; it prints nothing"),
-            fixture: ("tools/check.py", "\"\"\"Refuses marks\n(`echo \"✗ ...\"`) by hand.\"\"\"\n"),
+            fixture: (
+                "tools/check.py",
+                "\"\"\"Refuses marks\n(`echo \"✗ ...\"`, `print(\"✓ x\")`) by hand.\"\"\"\n",
+            ),
+        },
+        Shape {
+            name: "status-markers' escape or marker printed from Swift, Rust, C or JS",
+            path: r"(?i)\.(swift|rs|m|mm|c|cc|cpp|h|js|mjs|ts|tsx)$",
+            line: r"\\|\[\s",
+            verdict: Verdict::Gap(TUI_GAP),
+            fixture: (
+                "Sources/probe/Inspect.swift",
+                concat!("print(\"", "\\", "u{1B}[31mfailed\")\n"),
+            ),
         },
         Shape {
             name: "a language with no house TUI lib (Swift, Rust, C, JS)",
@@ -271,6 +299,13 @@ const TUI_MARKS: Declared = Declared {
             line: "",
             verdict: Verdict::OutOfScope("a doc shows the shape; it prints nothing"),
             fixture: ("README.md", "Do not `echo \"✓ done\"`.\n"),
+        },
+        Shape {
+            name: "a shell print held in a Python string (a subprocess line, a checker's sample)",
+            path: r"(?i)\.py$",
+            line: r"\b(echo|printf)\s",
+            verdict: Verdict::Gap(TUI_GAP),
+            fixture: ("tools/check_style.py", "SAMPLE = 'echo \"✓ step\"\\n'\n"),
         },
         Shape {
             name: "a mark in printf's argument, after a `%s` format",
