@@ -21,6 +21,7 @@ import sys
 from pathlib import Path
 
 import canary_grace
+import consumer_pins
 import gitrun  # tools/ship.py, the one importer, puts goh's root and lib/ on sys.path
 import push_gated as gated  # the ONE reading of "this hook runs goh's push gate"
 import ship_export
@@ -106,8 +107,9 @@ def verify(result: str) -> int:
         return 1
     if why:
         step(why)
-    if said := canary_grace.line(res):
-        step(said)  # a `·` line: `loopctl done --shipped` keeps it from the card (GOH.CANARYGRACE)
+    for said in (canary_grace.line(res), consumer_pins.line(res)):
+        if said:  # a `·` line: `loopctl done --shipped` keeps it from the card (GOH.CANARYGRACE)
+            step(said)
     try:  # the card judges a clean export of the shipped sha, never the live checkout
         with ship_export.exported(repo, res["name"], res["sha"], res["remote"],
                                   res["branch"]) as root:  # fmt: skip

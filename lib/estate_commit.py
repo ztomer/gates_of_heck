@@ -41,13 +41,18 @@ import repo_hold
 _KEEP_BYTES = 64 << 20
 
 
-def _env() -> dict[str, str]:
+def env() -> dict[str, str]:
     """Another repo's git, unbound from any hook's, and never taking the optional index lock a
     status or diff would: the tree is someone else's, and a stranded index.lock is theirs to meet
-    (GOH.GITKILL)."""
-    env = foreign_repo_env()
-    env["GIT_OPTIONAL_LOCKS"] = "0"
-    return env
+    (GOH.GITKILL). Nor bound to a goh ship that runs this: the consumer's own gates must not write
+    the ship's verdicts file or read its result (GOH.PINPROPAGATE)."""
+    out = {k: v for k, v in foreign_repo_env().items() if k not in _SHIP_BOUND
+           and not k.startswith("GOH_SHIP_")}  # fmt: skip
+    out["GIT_OPTIONAL_LOCKS"] = "0"
+    return out
+
+
+_SHIP_BOUND = ("GOH_GATE_VERDICTS", "GOH_LAND_LOCK_OWNER")
 
 
 def git(repo: Path, *args: str) -> subprocess.CompletedProcess:
@@ -56,7 +61,7 @@ def git(repo: Path, *args: str) -> subprocess.CompletedProcess:
         capture_output=True,
         text=True,
         check=False,
-        env=_env(),
+        env=env(),
         stdin=subprocess.DEVNULL,
     )
 
@@ -105,7 +110,7 @@ def snapshot(repo: Path) -> Snapshot:
         ["git", "--no-optional-locks", "-C", str(repo), "status", "--porcelain=v1", "-z",
          "--no-renames",
          "--untracked-files=all"],
-        capture_output=True, check=False, env=_env(), stdin=subprocess.DEVNULL,
+        capture_output=True, check=False, env=env(), stdin=subprocess.DEVNULL,
     )  # fmt: skip
     if r.returncode != 0:
         raise OSError(f"git status failed in {repo}: {r.stderr.decode(errors='replace').strip()}")

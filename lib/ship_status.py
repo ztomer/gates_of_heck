@@ -10,6 +10,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 import canary_grace  # tools/ship.py, the one importer, puts lib/ on sys.path
+import consumer_pins
 
 from tui.lib import err, info, ok, step
 
@@ -23,6 +24,13 @@ def save(res: dict) -> None:
     tmp = path.with_name(f".{path.name}.tmp")
     tmp.write_text(json.dumps(res, indent=1) + "\n", encoding="utf-8")
     os.replace(tmp, path)
+
+
+def carry(res: dict) -> None:
+    """What a step left for the result: the release canary's grace-end finding (GOH.CANARYGRACE)
+    and, once goh's install step swept the estate, each consumer's pins (GOH.PINPROPAGATE)."""
+    canary_grace.carry(res)
+    consumer_pins.carry(res)
 
 
 def tail(log: Path) -> list[str]:
@@ -43,8 +51,9 @@ def status(result: str) -> int:
     for s in res["steps"]:
         mark = {"ok": ok, "skipped": step}.get(s["status"], err)
         mark(f"{s['name']}: {s['status']}" + (f" ({s['why']})" if s.get("why") else ""))
-    if said := canary_grace.line(res):
-        step(said)
+    for said in (canary_grace.line(res), consumer_pins.line(res)):
+        if said:
+            step(said)
     if res["status"] == "running":
         pid = res.get("pid")
         try:

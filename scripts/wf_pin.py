@@ -1,6 +1,9 @@
 #!/usr/bin/env python3
-"""wf_pin.py -- `goh wf-pin`: every estate workflow that pins a goh release older than the newest,
-and the bump that `goh ship` runs after each goh release (GOH.WFPIN, GOH.CLASS.ROLLOUT).
+"""wf_pin.py -- `goh wf-pin`: every estate pin goh owns that is older than goh's, and the bump that
+`goh ship` runs after each goh release (GOH.WFPIN, GOH.CLASS.ROLLOUT, GOH.PINPROPAGATE).
+
+The pins goh owns are one manifest, lib/consumer_pins.py PINS: the goh release a workflow checks out
+(read here) and goh's ruff (`ruff==X.Y.Z` in a pyproject, requirements or workflow; read there).
 
 A consumer's hosted gate checks out goh at a NAMED release (CI.PUBLIC: never main), and nothing
 moved that name when goh moved: on 2026-11-12 every estate workflow still pinned v0.95.0 or v0.96.0,
@@ -9,7 +12,7 @@ the class; here the copy is one token per workflow, so the release that makes it
 goh's own `.gatesrc` GOH_SHIP_INSTALL runs `--bump` once the tag is pushed.
 
     goh wf-pin                    # list: one line per stale pin; exit 1 if any
-    goh wf-pin --bump [--tag vX.Y.Z] [--except REPO]...   # rewrite and commit each repo's pins
+    goh wf-pin --bump [--tag vX.Y.Z] [--except REPO]...   # rewrite, commit and push each repo's
 
 THE PINS IT READS, in a tracked `.github/workflows/*.yml|yaml` that names goh's repository:
   * `repository: OWNER/gates_of_heck` with `ref: vX.Y.Z` in the same `with:` mapping;
@@ -18,11 +21,15 @@ THE PINS IT READS, in a tracked `.github/workflows/*.yml|yaml` that names goh's 
 A goh checkout or clone with no pin at all is listed as UNPINNED and never rewritten: choosing its
 first pin is the repo's decision. Comments are prose and are not rewritten.
 
-THE BUMP writes and commits through lib/estate_commit.py, the one door into another repo: the
-workflow files alone, in one commit through the repo's own hooks, or nothing (set aside, named:
-on hold, off its default branch, workflow files uncommitted). It never pushes: the repo's next push
-carries it, through its own push gate. A set-aside or refused repo stays stale and is listed by the
-next run, so the bump exits 0 unless it could not read the estate.
+THE BUMP writes and commits through lib/estate_commit.py, the one door into another repo: the pin
+files alone (and the uv.lock a ruff move relocks), in one commit through the repo's own hooks, or
+nothing (set aside, named: on hold, off its default branch, a land holding its lock, pin files
+uncommitted). Then it PUSHES through the repo's own push gate, with any pin commit an earlier bump
+left unpushed (GOH.PINPROPAGATE: after v0.121.0 seventeen repos sat ahead of origin with one): a pin
+commit left behind is the next writer's rebase. An owner's unpushed commit is never pushed by goh;
+the pin then waits on it, named. Each repo's outcome goes to the ship's record (GOH_SHIP_RESULT,
+consumer_pins.record_path), which goh ship carries into its result. A set-aside or refused repo
+stays stale and is listed by the next run, so the bump exits 0 unless it could not read the estate.
 """
 
 from __future__ import annotations
@@ -39,20 +46,16 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from tui.lib import counted, err, info, ok, warn
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
+import consumer_pins
 import estate_commit
 import estate_registry
+from consumer_pins import Pin
 
 GOH = Path(__file__).resolve().parent.parent
 TAG = r"v\d+\.\d+\.\d+"
-MESSAGE = "ci: pin goh {tag} in the hosted gate -- goh wf-pin --bump (GOH.WFPIN)"
-
-
-@dataclass(frozen=True)
-class Pin:
-    line: int  # 1-based
-    start: int  # the tag's span within the line
-    end: int
-    tag: str
+bumped = consumer_pins.bumped  # the rewrite is the manifest's; tests read it under this name too
+# consumer_pins.SUBJECT recognises every pin commit by its first words: keep them.
+MESSAGE = "ci: pin goh {tag} in the hosted gate{ruff} -- goh wf-pin --bump (GOH.PINPROPAGATE)"
 
 
 @dataclass(frozen=True)
@@ -113,14 +116,6 @@ def scan(text: str, slug: str) -> Scan:
     return Scan(pins, unpinned)
 
 
-def bumped(text: str, pins: list[Pin], tag: str) -> str:
-    lines = text.splitlines(keepends=True)
-    for p in pins:
-        ln = lines[p.line - 1]
-        lines[p.line - 1] = ln[: p.start] + tag + ln[p.end :]
-    return "".join(lines)
-
-
 def _git(repo: Path, *args: str) -> subprocess.CompletedProcess:
     return estate_commit.git(repo, *args)
 
@@ -158,18 +153,42 @@ def stale(repo: Path, slug: str, tag: str) -> tuple[dict[str, list[Pin]], dict[s
     return old, loose
 
 
-def bump(repo: Path, old: dict[str, list[Pin]], tag: str) -> tuple[bool, str]:
-    paths = sorted(old)
+def bump(repo: Path, old: dict[str, list[Pin]], rold: dict[str, list[Pin]], tag: str,
+         ruff: str) -> tuple[str, str]:  # fmt: skip
+    """Move REPO's stale goh pins (OLD) and ruff pins (ROLD) in one commit, then push it:
+    (pushed | committed | refused | set_aside, one line saying what happened)."""
+    lock, relock = consumer_pins.relock(repo, sorted(rold), ruff)
+    paths = sorted({*old, *rold, *lock})
     if why := estate_commit.set_aside(repo, paths):
-        return False, f"set aside: {why}"
+        return "set_aside", f"set aside: {why}"
+    with consumer_pins.land_held(repo) as holder:
+        if holder:
+            return "set_aside", f"set aside: a land holds its lock ({holder})"
 
-    def write() -> None:
-        for rel, pins in old.items():
-            p = repo / rel
-            p.write_text(bumped(p.read_text(encoding="utf-8"), pins, tag), encoding="utf-8")
+        def write() -> str | None:
+            for rel in sorted({*old, *rold}):
+                p = repo / rel
+                moves = [(q, tag) for q in old.get(rel, [])] + [
+                    (q, ruff) for q in rold.get(rel, [])
+                ]
+                p.write_text(consumer_pins.rewrite(p.read_text(encoding="utf-8"), moves),
+                             encoding="utf-8")  # fmt: skip
+            return relock()
 
-    done, said = estate_commit.commit_paths(repo, paths, MESSAGE.format(tag=tag), write)
-    return done, (f"pinned {tag} {said.removeprefix('committed ')}" if done else said)
+        moved = [tag] * bool(old) + [f"ruff {ruff}"] * bool(rold)
+        msg = MESSAGE.format(tag=tag, ruff=f" and ruff {ruff}" if rold else "")
+        done, said = estate_commit.commit_paths(repo, paths, msg, write)
+        if not done:
+            return "refused", said
+        return consumer_pins.push(
+            repo, f"pinned {', '.join(moved)} {said.removeprefix('committed ')}"
+        )
+
+
+def stranded(repo: Path) -> bool:
+    """REPO's branch holds a pin commit its upstream lacks (an earlier bump's, never pushed)."""
+    _, span = consumer_pins.ahead(repo)
+    return any(consumer_pins.is_pin_commit(repo, sha, s) for sha, s in span)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -181,7 +200,18 @@ def main(argv: list[str] | None = None) -> int:
     )
     ap.add_argument("--tag", help="the goh release to pin (default: goh's newest vX.Y.Z tag)")
     ap.add_argument("--slug", help="goh's GitHub OWNER/NAME (default: from goh's origin)")
-    ap.add_argument("--bump", action="store_true", help="rewrite and commit each stale pin")
+    ap.add_argument("--bump", action="store_true", help="rewrite, commit and push each stale pin")
+    ap.add_argument(
+        "--record",
+        default=os.environ.get("GOH_SHIP_RESULT"),
+        help="the goh ship result whose pins record this writes (GOH_SHIP_RESULT)",
+    )
+    ap.add_argument(
+        "--budget",
+        type=float,
+        default=consumer_pins.BUDGET,
+        help="seconds the sweep's pushes may take in all (default %(default)s)",
+    )
     ap.add_argument("--except", dest="kept", action="append", type=Path, default=[],
                     help="a repo to list but never bump (repeatable)")  # fmt: skip
     a = ap.parse_args(argv)
@@ -199,28 +229,44 @@ def main(argv: list[str] | None = None) -> int:
         walked, estate_registry.registry_path(estate_registry.state_file())
     )
     kept = {p.expanduser().resolve() for p in a.kept}
+    ruff = consumer_pins.ruff_pin()
+    consumer_pins.budget(a.budget)
     n_stale = 0
+    record: dict[str, dict[str, str]] = {}
     for repo in repos:
         if repo.resolve() == GOH.resolve():
             continue  # goh's own workflow runs this checkout, not a release
         old, loose = stale(repo, slug, tag)
+        rold = consumer_pins.stale_ruff(repo, workflows(repo), ruff)
         where = estate_registry_rel(repo, root)
         for rel, lines in loose.items():
             warn(f"{where}: {rel}:{','.join(map(str, lines))} checks out goh at no named release")
-        if not old:
+        if not old and not rold:
+            if a.bump and stranded(repo):  # an earlier bump's commit: land it now
+                status, said = consumer_pins.push(repo, "")
+                record[where] = {"status": status, "said": said}
+                (ok if status == "pushed" else err)(f"{where}: {said}")
             continue
         n_stale += 1
         have = sorted({p.tag for pins in old.values() for p in pins})
-        named = f"{', '.join(old)} pin {', '.join(have)}, not {tag}"
+        rhave = sorted({p.tag for pins in rold.values() for p in pins})
+        named = "; ".join([f"{', '.join(old)} pin {', '.join(have)}, not {tag}"] * bool(old)
+                          + [f"{', '.join(rold)} pin ruff {', '.join(rhave)}, not {ruff}"]
+                          * bool(rold))  # fmt: skip
         if not a.bump:
             warn(f"{where}: {named}")
         elif repo.resolve() in kept:
             info(f"{where}: {named}; set aside (--except): left for its owner")
+            record[where] = {"status": "kept", "said": "--except: left for its owner"}
         else:
-            done, said = bump(repo, old, tag)
-            (ok if done else err)(f"{where}: {said}")
+            status, said = bump(repo, old, rold, tag, ruff)
+            record[where] = {"status": status, "said": said}
+            (ok if status == "pushed" else err)(f"{where}: {said}")
+    if a.bump and a.record:
+        consumer_pins.write_record(a.record, tag, ruff, record)
     if not n_stale:
-        ok(f"every goh pin in {counted(len(repos), 'estate repo')} is {tag}")
+        ok(f"every goh-owned pin in {counted(len(repos), 'estate repo')} is current "
+           f"(goh {tag}, ruff {ruff})")  # fmt: skip
         return 0
     if not a.bump:
         info(f"move them: goh wf-pin --bump  ({counted(n_stale, 'repo')} behind {tag})")
