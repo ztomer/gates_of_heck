@@ -15,6 +15,7 @@ import time
 from pathlib import Path
 
 from conftest import REPO_ROOT, git, hermetic_env
+from timing_bounds import patience
 
 LIB = REPO_ROOT / "lib" / "loaded_verdict.py"
 KIT = REPO_ROOT / "tools" / "release_goh.sh"
@@ -22,16 +23,16 @@ sys.path.insert(0, str(REPO_ROOT / "lib"))
 import loaded_verdict  # noqa: E402
 
 
-def _cli(repo: Path, *args: str, timeout: float = 60) -> subprocess.CompletedProcess[str]:
+def _cli(repo: Path, *args: str) -> subprocess.CompletedProcess[str]:
     env = hermetic_env(drop_git=True, GOH_RUN_DIR=str(repo.parent / "run"))
     return subprocess.run([sys.executable, str(LIB), *args, "--repo", str(repo), "--sha", "HEAD"],
-                          env=env, capture_output=True, text=True, timeout=timeout,
+                          env=env, capture_output=True, text=True, timeout=patience(60),
                           stdin=subprocess.DEVNULL, check=False)  # fmt: skip
 
 
-def _until_settled(repo: Path, patience: float = 60) -> str:
+def _until_settled(repo: Path) -> str:
     path = loaded_verdict.record_path(repo, "HEAD")
-    end = time.monotonic() + patience
+    end = time.monotonic() + patience(60)
     while time.monotonic() < end:
         now = loaded_verdict.state(loaded_verdict.read(path))
         if now not in {"running", "missing"}:
@@ -96,15 +97,15 @@ def test_the_ship_kit_reads_the_verdict_and_never_runs_the_suite(repo: Path) -> 
     git(repo, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "-m", "feat: x")
     path = loaded_verdict.record_path(repo, "HEAD")
     loaded_verdict.write(path, {"state": "red", "rc": 9, "log": "the-log"})
-    env = hermetic_env(drop_git=True)
+    env, bound = hermetic_env(drop_git=True), patience(120)
     r = subprocess.run(["bash", str(KIT), "0.2.0"], cwd=repo, env=env, capture_output=True,
-                       text=True, timeout=120, stdin=subprocess.DEVNULL, check=False)  # fmt: skip
+                       text=True, timeout=bound, stdin=subprocess.DEVNULL, check=False)  # fmt: skip
     assert r.returncode != 0, r.stdout + r.stderr
     assert "red (exit 9)" in r.stdout + r.stderr, r.stdout + r.stderr
     assert not called.exists(), called.read_text()
     loaded_verdict.write(path, {"state": "green", "rc": 0, "ended": 0})
     r = subprocess.run(["bash", str(KIT), "0.2.0"], cwd=repo, env=env, capture_output=True,
-                       text=True, timeout=120, stdin=subprocess.DEVNULL, check=False)  # fmt: skip
+                       text=True, timeout=bound, stdin=subprocess.DEVNULL, check=False)  # fmt: skip
     assert called.read_text().split() == ["land.sh"], r.stdout + r.stderr
 
 
