@@ -1,9 +1,10 @@
 """tools/loaded_suite.sh: the release runs goh's suite once under tools/load.py (GOH.CLASS.HARNESS).
 
-A load-sensitive test was found by whichever land ran on a busy box. The release kit now runs the
-suite under deliberate load before its land, and the verdict line names the spinners and the load
-the run began on. These pin the wrapper's verdicts (a stub command, no spinners, a private load
-directory) and that the kit runs it before main moves.
+A load-sensitive test was found by whichever land ran on a busy box. Each land now runs the suite
+under deliberate load on the tip it landed (lib/loaded_verdict.py), and the release kit reads that
+verdict before its land; the verdict line names the spinners and the load the run began on. These
+pin the wrapper's verdicts (a stub command, no spinners, a private load directory) and that the kit
+reads it before main moves.
 """
 
 from __future__ import annotations
@@ -47,13 +48,16 @@ def test_a_spinner_count_that_is_not_a_number_is_refused(tmp_path) -> None:
     assert r.returncode == 2 and "spinner count" in r.stderr, r.stderr
 
 
-def test_the_release_runs_it_before_main_moves() -> None:
+def test_the_release_reads_the_tips_verdict_before_main_moves() -> None:
+    """GOH.SHIPRELREUSE R2: each land runs it on the tip it landed (.gatesrc GOH_LAND_LOADED,
+    lib/loaded_verdict.py); the kit reads that verdict, never runs the suite, before its land."""
     code = [
         line.strip()
         for line in KIT.read_text(encoding="utf-8").splitlines()
         if line.strip() and not line.lstrip().startswith("#")
     ]
-    # each phase may run under `timed "LABEL"` (one row of goh ship's profile, GOH.SHIPPROFILE)
-    runs = [ln.rsplit(" ", 1)[-1] if ln.startswith("timed ") else ln for ln in code]
-    assert "tools/loaded_suite.sh" in runs, "the release kit no longer runs the loaded suite"
-    assert runs.index("tools/loaded_suite.sh") < runs.index("tools/land.sh"), code
+    assert not any("tools/loaded_suite.sh" in ln for ln in code), "the kit runs the suite"
+    wait = next(i for i, ln in enumerate(code) if "loaded_verdict.py" in ln and "wait" in ln)
+    land = next(i for i, ln in enumerate(code) if ln.endswith("tools/land.sh"))
+    assert wait < land, code
+    assert "GOH_LAND_LOADED='tools/loaded_suite.sh'" in (REPO_ROOT / ".gatesrc").read_text()

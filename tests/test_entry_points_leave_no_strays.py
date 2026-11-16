@@ -148,14 +148,16 @@ def test_the_release_worktree_lives_under_the_run_root(repo: Path, tmp_path: Pat
     (repo / "tools").mkdir()
     (repo / "tools" / "land.sh").write_text(LAND_STUB.format(out=out))
     (repo / "tools" / "land.sh").chmod(0o755)
-    (repo / "tools" / "loaded_suite.sh").write_text("#!/usr/bin/env bash\nexit 0\n")
-    (repo / "tools" / "loaded_suite.sh").chmod(0o755)  # the kit's loaded-suite step, passed
     (repo / "CHANGELOG.md").write_text(
         "# CHANGELOG\n\n## Unreleased\n\n* **Two.** b\n\n## v0.1.0 -- first\n\n* **One.** a\n"
     )
     (repo / "Cargo.toml").write_text('[workspace.package]\nversion = "0.1.0"\n')
     git(repo, "add", "-A")
     git(repo, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "-m", "feat: x")
+    sys.path.insert(0, str(REPO_ROOT / "lib"))
+    import loaded_verdict  # the tip's loaded verdict, green (GOH.SHIPRELREUSE R2)
+
+    loaded_verdict.write(loaded_verdict.record_path(repo, "HEAD"), {"state": "green", "ended": 0})
     run = tmp_path / "run"
     kit = REPO_ROOT / "tools" / "release_goh.sh"
     for _ in range(2):  # twice: the second finds the one stable path free again

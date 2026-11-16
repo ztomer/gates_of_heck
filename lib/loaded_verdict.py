@@ -1,0 +1,223 @@
+"""The loaded suite's verdict, recorded per TREE, so a ship reads it instead of running it.
+
+GOH.SHIPRELREUSE R2 (coordinator ruling 2026-11-15, owner-delegated). tools/release_goh.sh ran
+tools/loaded_suite.sh -- the suite once under tools/load.py's spinners (GOH.CLASS.HARNESS),
+485-511 s -- inside every ship, on a release commit whose tree differs from the land-gated tip only
+in CHANGELOG.md and the fragments it folds (lib/goh_version.sh: the version is the tag). Now each
+land starts that run on the tip it landed, in the background, and records the verdict here; the ship
+requires a green verdict for its tip's tree: it waits for one that is running and refuses one that
+is red, failed to run, or missing, saying which.
+
+    loaded_verdict.py start --repo DIR --sha SHA [--cmd CMD]   # land.sh, after main moved
+    loaded_verdict.py wait  --repo DIR --sha SHA [--max SECS]   # the ship, before its land
+    loaded_verdict.py show  --repo DIR --sha SHA                # the record, as JSON
+
+The record is `<common git dir>/goh-loaded/<tree>.json`: keyed by the tree, so any commit of the
+same bytes reads it, and in the common git dir, so it outlives the worktree that landed. `start`
+makes a detached worktree of SHA under the checkout's run root (lib/run_path.py) and a runner in a
+session of its own that outlives land.sh: it runs CMD there (default tools/loaded_suite.sh, whose
+load.py accounts and reaps every spinner and bounds the run at 60 min), writes green or red with the
+exit code and the log, and removes the worktree. A runner killed by a signal kills its command's
+group and records `died`; a record still `running` whose runner is gone reads as died too. Pinned by
+tests/test_loaded_verdict.py.
+"""
+
+from __future__ import annotations
+
+import argparse
+import contextlib
+import json
+import os
+import signal
+import subprocess
+import sys
+import time
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import run_path  # the one place run paths come from
+
+DEFAULT_CMD = "tools/loaded_suite.sh"
+POLL_S = 10.0
+EXIT_REFUSED = 1
+
+
+def _git(repo: Path, *args: str) -> str:
+    env = {k: v for k, v in os.environ.items() if not k.startswith("GIT_")}
+    out = subprocess.run(["git", "-C", str(repo), *args], capture_output=True, text=True,
+                         env=env, check=True, stdin=subprocess.DEVNULL)  # fmt: skip
+    return out.stdout.strip()
+
+
+def store(repo: Path) -> Path:
+    common = _git(repo, "rev-parse", "--path-format=absolute", "--git-common-dir")
+    return Path(common) / "goh-loaded"
+
+
+def tree_of(repo: Path, sha: str) -> str:
+    return _git(repo, "rev-parse", f"{sha}^{{tree}}")
+
+
+def record_path(repo: Path, sha: str) -> Path:
+    return store(repo) / f"{tree_of(repo, sha)}.json"
+
+
+def read(path: Path) -> dict | None:
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+
+
+def write(path: Path, rec: dict) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_name(f".{path.name}.{os.getpid()}")
+    tmp.write_text(json.dumps(rec, indent=2) + "\n", encoding="utf-8")
+    tmp.replace(path)
+
+
+def alive(pid: object) -> bool:
+    if not isinstance(pid, int) or pid <= 1:
+        return False
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    return True
+
+
+def state(rec: dict | None) -> str:
+    """green, red, died, running, or missing -- a `running` record whose runner is gone is died."""
+    if rec is None:
+        return "missing"
+    s = str(rec.get("state", ""))
+    if s == "running" and not alive(rec.get("pid")):
+        return "died"
+    return s if s in {"green", "red", "died", "running"} else "missing"
+
+
+def start(repo: Path, sha: str, cmd: str) -> int:
+    """Begin the loaded run of SHA's tree unless one is green or running; returns at once."""
+    sha = _git(repo, "rev-parse", f"{sha}^{{commit}}")
+    path = record_path(repo, sha)
+    now = state(read(path))
+    if now in {"green", "running"}:
+        print(f"loaded verdict for {sha[:8]}: {now} already ({path})")
+        return 0
+    work = run_path.run_dir(repo) / f"loaded-{sha[:12]}"
+    log = run_path.run_dir(repo) / f"loaded-{sha[:12]}.log"
+    work.parent.mkdir(parents=True, exist_ok=True)
+    argv = [sys.executable, str(Path(__file__).resolve()), "run", "--repo", str(repo),
+            "--sha", sha, "--cmd", cmd, "--work", str(work), "--log", str(log)]  # fmt: skip
+    with open(os.devnull, "rb") as nul, open(log, "ab") as out:
+        child = subprocess.Popen(argv, stdin=nul, stdout=out, stderr=subprocess.STDOUT,
+                                 start_new_session=True, close_fds=True)  # fmt: skip
+    write(path, {"state": "running", "sha": sha, "tree": path.stem, "pid": child.pid,
+                 "cmd": cmd, "log": str(log), "started": int(time.time())})  # fmt: skip
+    print(f"loaded verdict for {sha[:8]}: started (runner pid {child.pid}, log {log})")
+    return 0
+
+
+def run(repo: Path, sha: str, cmd: str, work: Path, log: Path) -> int:
+    """The runner: CMD in a detached worktree of SHA, its verdict recorded, the worktree removed."""
+    path = record_path(repo, sha)
+    # `start` writes this runner's record after spawning it: wait for that write (bounded), so a
+    # fast verdict can never be overwritten by the starter's `running`.
+    until = time.monotonic() + 10
+    while time.monotonic() < until and (read(path) or {}).get("pid") != os.getpid():
+        time.sleep(0.05)
+    rec = {"state": "running", "sha": sha, "tree": path.stem, "pid": os.getpid(), "cmd": cmd,
+           "log": str(log), "started": int(time.time())}  # fmt: skip
+    write(path, rec)
+    proc: subprocess.Popen | None = None
+
+    def died(signum: int, _frame: object) -> None:
+        if proc is not None and proc.poll() is None:
+            with contextlib.suppress(ProcessLookupError):
+                os.killpg(proc.pid, signal.SIGTERM)
+        write(path, {**rec, "state": "died", "rc": -signum, "ended": int(time.time())})
+        sys.exit(128 + signum)
+
+    for sig in (signal.SIGTERM, signal.SIGINT, signal.SIGHUP):
+        signal.signal(sig, died)
+    rc = 1
+    try:
+        subprocess.run(["git", "-C", str(repo), "worktree", "remove", "--force", str(work)],
+                       capture_output=True, check=False, stdin=subprocess.DEVNULL)  # fmt: skip
+        _git(repo, "worktree", "add", "-q", "--detach", str(work), sha)
+        proc = subprocess.Popen(["bash", "-c", cmd], cwd=work, stdin=subprocess.DEVNULL,
+                                start_new_session=True)  # fmt: skip
+        rc = proc.wait()
+    finally:
+        subprocess.run(["git", "-C", str(repo), "worktree", "remove", "--force", str(work)],
+                       capture_output=True, check=False, stdin=subprocess.DEVNULL)  # fmt: skip
+    write(path, {**rec, "state": "green" if rc == 0 else "red", "rc": rc,
+                 "ended": int(time.time())})  # fmt: skip
+    return rc
+
+
+def wait(repo: Path, sha: str, max_s: float, say=print) -> int:
+    """0 on a green verdict for SHA's tree; waits while one runs; refuses anything else, named."""
+    sha = _git(repo, "rev-parse", f"{sha}^{{commit}}")
+    path = record_path(repo, sha)
+    deadline = time.monotonic() + max_s
+    told = False
+    while True:
+        rec = read(path)
+        now = state(rec)
+        if now == "green":
+            say(f"loaded verdict for {sha[:8]} (tree {path.stem[:12]}): green, recorded "
+                f"{time.strftime('%H:%M:%S', time.localtime(rec.get('ended', 0)))}")  # fmt: skip
+            return 0
+        if now == "missing":
+            say(f"no loaded verdict for {sha[:8]} (tree {path.stem[:12]}): no land started the "
+                f"suite under load on this tree -- start it: {Path(__file__).name} start "
+                f"--repo {repo} --sha {sha[:12]}")  # fmt: skip
+            return EXIT_REFUSED
+        if now in {"red", "died"}:
+            say(f"loaded verdict for {sha[:8]} (tree {path.stem[:12]}): {now} (exit "
+                f"{rec.get('rc', '?')}) -- a test the box's load turns red, or a run that did not "
+                f"finish (75: load.py's wait for the gates in flight ran out); its log: "
+                f"{rec.get('log', '?')}; run it again: {Path(__file__).name} start --repo {repo} "
+                f"--sha {sha[:12]}")  # fmt: skip
+            return EXIT_REFUSED
+        if time.monotonic() >= deadline:
+            say(f"loaded verdict for {sha[:8]}: still running after {int(max_s)} s (runner pid "
+                f"{rec.get('pid')}, log {rec.get('log')}) -- refusing")  # fmt: skip
+            return EXIT_REFUSED
+        if not told:
+            say(f"loaded verdict for {sha[:8]}: running (runner pid {rec.get('pid')}) -- waiting")
+            told = True
+        time.sleep(min(POLL_S, max(0.1, deadline - time.monotonic())))
+
+
+def main(argv: list[str] | None = None) -> int:
+    ap = argparse.ArgumentParser(prog="loaded_verdict.py")
+    sub = ap.add_subparsers(dest="verb", required=True)
+    for verb in ("start", "wait", "show", "run"):
+        p = sub.add_parser(verb)
+        p.add_argument("--repo", required=True, type=Path)
+        p.add_argument("--sha", required=True)
+        if verb in {"start", "run"}:
+            p.add_argument("--cmd", default=DEFAULT_CMD)
+        if verb == "run":
+            p.add_argument("--work", required=True, type=Path)
+            p.add_argument("--log", required=True, type=Path)
+        if verb == "wait":
+            p.add_argument("--max", type=float, default=3600.0)
+    a = ap.parse_args(argv)
+    repo = a.repo.resolve()
+    if a.verb == "start":
+        return start(repo, a.sha, a.cmd)
+    if a.verb == "run":
+        return run(repo, a.sha, a.cmd, a.work, a.log)
+    if a.verb == "wait":
+        return wait(repo, a.sha, a.max)
+    print(json.dumps(read(record_path(repo, a.sha)), indent=2))
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

@@ -208,6 +208,9 @@ GOH_SHIP_RELEASE='tools/release_goh.sh {version}'
 # so a pushed release tag is held to the stanza its own commit cut, CHANGELOG.md's newest heading.
 GOH_TAG_VERSION_SOURCES='changelog:CHANGELOG.md'
 GOH_SHIP_RELEASE_PUSHES=1
+# Each land starts the suite once under load on the tip it landed and records the verdict by tree
+# (lib/loaded_verdict.py); the release kit reads that verdict instead of running it (GOH.SHIPRELREUSE).
+GOH_LAND_LOADED='tools/loaded_suite.sh'
 # Then each consumer workflow's goh pin moves to the release just pushed (GOH.WFPIN): one commit per
 # repo through its own hooks, never a push of another repo.
 GOH_SHIP_INSTALL='tools/ship_install_goh.sh'

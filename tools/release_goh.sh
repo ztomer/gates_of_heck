@@ -11,7 +11,8 @@
 #      `release: vVERSION -- TITLE` commit through the hooks. Nothing else: the version is the tag
 #      (lib/goh_version.sh), never a number in Cargo.toml (GOH.SHIPRELREUSE), and `goh tag-version`
 #      reads the release from this commit's CHANGELOG.md (.gatesrc GOH_TAG_VERSION_SOURCES);
-#   3. tools/loaded_suite.sh, the suite once under tools/load.py's spinners (GOH.CLASS.HARNESS),
+#   3. the tip's loaded verdict (lib/loaded_verdict.py: the suite once under tools/load.py's
+#      spinners, GOH.CLASS.HARNESS, run by the land that landed the tip -- GOH.SHIPRELREUSE R2),
 #      then tools/land.sh from that worktree: main moves only through land (.gatesrc
 #      GOH_LANDED_ONLY), never a commit in the main checkout and never GOH_MAIN_COMMIT_OK;
 #   4. push main, then an annotated tag vVERSION whose message is the stanza, then push the tag.
@@ -79,7 +80,8 @@ if [ -e "$wt" ]; then  # a release killed before its trap ran
         exit 1
     fi
 fi
-git worktree add -q -b "$branch" "$wt" HEAD
+tip="$(git rev-parse HEAD)"   # the land-gated tip the release is cut from: its loaded verdict
+git worktree add -q -b "$branch" "$wt" "$tip"
 # The worktree and its branch go on every exit: landed, main holds the commit; refused, nothing moved.
 trap 'git -C "$main" worktree remove --force "$wt" 2>/dev/null || true
       git -C "$main" branch -D "$branch" >/dev/null 2>&1 || true' EXIT
@@ -103,9 +105,14 @@ release: ${heading#\#\# }
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
 MSG
     # The suite once under deliberate load, before main moves (GOH.CLASS.HARNESS): a test the box's
-    # load turns red is this release's refusal, named, not a random later land's. Each phase is one
-    # row of goh ship's profile, its checks nested under it (timed: lib/step_timings.py, GOH.SHIPPROFILE).
-    timed "release: the suite under load" tools/loaded_suite.sh
+    # load turns red is this release's refusal, named, not a random later land's. It is no longer
+    # RUN here (485-511 s of every release step): each land starts it on the tip it landed and
+    # records the verdict by tree (.gatesrc GOH_LAND_LOADED, lib/loaded_verdict.py), and this
+    # release's commit differs from that tip only in the changelog, so the tip's verdict is read:
+    # waited for while it runs, refused red, died or missing (GOH.SHIPRELREUSE R2). Each phase is
+    # one row of goh ship's profile (timed: lib/step_timings.py, GOH.SHIPPROFILE).
+    timed "release: the tip's loaded verdict" "$GOH_PY" "$GOH/lib/loaded_verdict.py" wait \
+        --repo "$main" --sha "$tip" --max 3600
     timed "release: land (its push gate)" tools/land.sh
 )
 
