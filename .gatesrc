@@ -190,6 +190,9 @@ GOH_CI_STEPS='./gates/rust_gate.sh:./gates/structural.sh --full:cargo test --wor
 GOH_CI_JOBS=2
 # main moves only through tools/land.sh: a push of a main tip it never gated is refused (BACKLOG 1.5).
 GOH_LANDED_ONLY=main
+# Before the land lock and the gate, tools/land.sh runs the tests the diff chooses (GOH.TREETESTSFIRST):
+# every test naming a changed path or importing a changed module, and every tree reader. $1 is main's tip.
+GOH_LAND_PRE='"$GOH_PY" tools/affected_tests.py --run --base "$1"'
 
 # NO GOH_EXPORT_KEEP (G2c). bin/goh was carried into the pre-push export (2026-10-15) because the
 # export held no binary and every native checker said "goh binary not built". That need is gone at

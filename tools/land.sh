@@ -6,6 +6,8 @@
 # `&&` belonged moved main onto a red gate run (engineering rule #3: gates are structural, not
 # disciplinary). So the two are one command:
 #
+#   0. the repo's declared pre-step (GOH_LAND_PRE; goh's runs the tests its diff chooses,
+#      tools/affected_tests.py) runs before the land lock and the gate's slot (THE PRE-STEP, below);
 #   1. the tip is read once, and the gate runs: GOH_LAND_GATE from the environment, else the one the
 #      repo DECLARES in its .gatesrc (read by name in a child, like GOH_RELEASE_GATE), else the kit's
 #      gate_profile.sh over the repo (its push gate, which reads that same .gatesrc). The default
@@ -77,6 +79,29 @@ section "land $branch @ ${tip:0:8} -> $main"
 if [ -n "$(GIT_OPTIONAL_LOCKS=0 git status --porcelain --untracked-files=no)" ]; then
     err "land.sh: uncommitted changes to tracked files in $here -- the gate would judge a tree that is not ${tip:0:8} -- nothing landed"
     exit 1
+fi
+# THE PRE-STEP (GOH.TREETESTSFIRST): the tests the diff chooses, BEFORE the land lock and the gate's
+# slot, so a test the lane never ran fails in seconds, not after a lock wait, a slot wait and ~8 min
+# of suite (GOH.ONEADMISSION's first land, 2026-11-16, lost to tests/test_lock_order.py). Declared in
+# .gatesrc as GOH_LAND_PRE (goh's: tools/affected_tests.py --run, the changed paths' tests and every
+# tree reader); run with main's tip as $1, in the worktree, admitted like any gate (a 0-spinner
+# load.py run takes a gate slot, lib/admission.py) and released before the lock is queued for, so
+# it nests no lock (GOH.LOCKORDER). Bounded at 10 min; a repo that declares none has no pre-step.
+pre="${GOH_LAND_PRE-}"
+if [ -z "${GOH_LAND_PRE+set}" ] && [ -f "$here/.gatesrc" ]; then
+    pre="$(cd "$here" && bash -c 'unset GOH_LAND_PRE; . ./.gatesrc >/dev/null 2>&1 </dev/null; printf %s "${GOH_LAND_PRE-}"')" \
+        || { err "land.sh: cannot read $here/.gatesrc"; exit 2; }
+fi
+if [ -n "$pre" ]; then
+    pre_base="$(git -C "$main" rev-parse HEAD)"
+    info "pre-land: $pre"
+    pre_t0=$SECONDS
+    if ! (cd "$here" && "$GOH_PY" "$GOH/tools/load.py" --background-ok "pre-land" --max 10m 0 -- \
+            bash -c "$pre" pre-land "$pre_base" </dev/null); then
+        err "land.sh: the pre-land tests failed on ${tip:0:8} in $((SECONDS - pre_t0)) s, before the land lock and the gate -- nothing landed"
+        exit 1
+    fi
+    ok "pre-land green in $((SECONDS - pre_t0)) s"
 fi
 # The land lock (GOH.LANDSERIAL, header): fd 7, held until this script exits.
 # shellcheck source=lib/lock_order.sh
