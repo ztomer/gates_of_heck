@@ -1,0 +1,87 @@
+#!/bin/sh
+# lib/hookgit/git -- the `git` a commit hook's steps find first on PATH while the hook carries a
+# TEMPORARY index (GOH.PATHSPECCOMMIT). It binds that index for an index READ in the repository
+# being committed, and for nothing else, then execs the real git with the arguments untouched.
+#
+# WHY. `git commit -- <path>` and `commit -a` hold the repository's own `index.lock` while the hook
+# runs and commit a temporary index that only GIT_INDEX_FILE names. The hook drops GIT_INDEX_FILE at
+# entry (`goh_hook_unbind`, gates/_git_env.sh, contract #12: inherited, it bound every scratch repo
+# a gate's test built) and carries it as GOH_HOOK_INDEX_FILE. A step that reads the index without
+# `goh_bind_hook_index` -- any language, goh's or a consumer's own tools/gate.sh -- then read the
+# repository's own index: the wrong tree, and `git write-tree` died on the held lock
+# ("Unable to create .../index.lock: File exists": a private Swift app refused every pathspec
+# commit, 2026-11-16, so sessions sharing a checkout fell back to `add` + `commit` and swept each
+# other's staged files). goh_hook_unbind puts this directory first on PATH when it carries an
+# index, so the bind is no longer each step's to remember.
+#
+# WHEN IT BINDS (all must hold; otherwise it is the real git, unchanged):
+#   * the hook carries an index (GOH_HOOK_INDEX_FILE, GOH_HOOK_GIT_DIR) and the caller set no
+#     GIT_INDEX_FILE of its own (a caller's wins, as in goh_bind_hook_index -- GOH.HOOKINDEX);
+#   * the subcommand READS the index (the list below; a writer such as `add`, `read-tree`, `stash`
+#     or `worktree` never gets the commit's index, nor does `init` or `clone`);
+#   * the repository it runs in -- after `-C` and `--git-dir` -- IS the one the index came from
+#     (same file as GOH_HOOK_GIT_DIR), so a scratch repo a test builds never sees it.
+# POSIX sh, no bash: it runs once per git a hook spawns, under whatever PATH the hook has.
+
+real="${GOH_HOOK_REAL_GIT:-}"
+if [ -z "$real" ] || [ ! -x "$real" ]; then
+    # Reached without the real git named (an environment rebuilt by hand): the next git on PATH.
+    here="$(cd "${0%/*}" 2>/dev/null && pwd -P)"
+    real=""
+    old_ifs="$IFS"
+    IFS=:
+    for d in $PATH; do
+        [ -n "$d" ] && [ -x "$d/git" ] || continue
+        [ "$(cd "$d" 2>/dev/null && pwd -P)" = "$here" ] && continue
+        real="$d/git"
+        break
+    done
+    IFS="$old_ifs"
+    if [ -z "$real" ]; then
+        printf '%s\n' "✗ lib/hookgit/git: no real git on PATH beside this shim" >&2
+        exit 127
+    fi
+fi
+
+# reads_hook_index ARGS... -- exit 0 when this git call reads the index of the committing
+# repository. Run in a subshell: it follows `-C` and `--git-dir` with cd and GIT_DIR.
+reads_hook_index() {
+    skip=""
+    for a in "$@"; do
+        if [ -n "$skip" ]; then
+            case "$skip" in
+                (C) cd -- "$a" 2>/dev/null || return 1 ;;
+                (G) GIT_DIR="$a" && export GIT_DIR ;;
+            esac
+            skip=""
+            continue
+        fi
+        case "$a" in
+            (-C) skip=C ;;
+            (--git-dir) skip=G ;;
+            (--git-dir=*) GIT_DIR="${a#--git-dir=}" && export GIT_DIR ;;
+            (-c | --work-tree | --namespace | --config-env | --super-prefix) skip=x ;;
+            (-*) ;;
+            (write-tree | ls-files | diff | diff-index | diff-files | grep | show | cat-file | \
+                status | checkout-index | check-attr)
+                d="$("$real" rev-parse --absolute-git-dir 2>/dev/null)" || return 1
+                [ "$d" -ef "$GOH_HOOK_GIT_DIR" ]
+                return ;;
+            (*) return 1 ;;
+        esac
+    done
+    return 1
+}
+
+# goh_bind_hook_index ARGS... -- this process's binder (gates/_git_env.sh has the shell one, with
+# the same two guarantees: only in the repository the index came from, never over a caller's own).
+goh_bind_hook_index() {
+    [ -n "${GOH_HOOK_INDEX_FILE:-}" ] && [ -n "${GOH_HOOK_GIT_DIR:-}" ] || return 0
+    [ -z "${GIT_INDEX_FILE:-}" ] || return 0
+    (reads_hook_index "$@") || return 0
+    GIT_INDEX_FILE="$GOH_HOOK_INDEX_FILE"
+    export GIT_INDEX_FILE
+}
+
+goh_bind_hook_index "$@"
+exec "$real" "$@"

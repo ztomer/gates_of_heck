@@ -18,6 +18,9 @@
 #   goh_bind_hook_index   bind that carried index again, in THIS shell, for a reader of the index
 #                         being committed -- and only inside the repository it was carried from,
 #                         and never over a GIT_INDEX_FILE its caller set (GOH.HOOKINDEX).
+#                       While a hook carries an index, goh_hook_unbind also puts lib/hookgit first
+#                       on PATH: its `git` binds the index for an index READ in this repository, so a
+#                       step that forgot the binder (any language) still reads it (GOH.PATHSPECCOMMIT).
 #
 # WHY THE INDEX IS CARRIED. A plain `git commit` hands the hook the repository's own index, which
 # git finds again from the cwd; nothing is lost by dropping it. `commit -a` and `commit <paths>`
@@ -79,9 +82,29 @@ goh_hook_unbind() {
         index="$(_goh_git_phys "$index")"
         if [ "$index" != "$(_goh_git_phys "${own:-}")" ]; then
             export GOH_HOOK_INDEX_FILE="$index" GOH_HOOK_GIT_DIR="$bound"
+            _goh_hook_git_shim
         fi
     fi
     goh_unbind_git
+}
+
+# _goh_hook_git_shim -- put lib/hookgit first on PATH: its `git` binds the carried index for an
+# index read in this repository, whatever language the step is written in and whether or not it
+# calls goh_bind_hook_index (GOH.PATHSPECCOMMIT; the why is in that file). The real git it execs is
+# the one PATH found before, kept across a nested hook that finds the shim first.
+_goh_hook_git_shim() {
+    local shim found
+    shim="$(cd "${BASH_SOURCE[0]%/*}/../lib/hookgit" 2>/dev/null && pwd -P)" || return 0
+    [ -x "$shim/git" ] || return 0
+    found="$(command -v git 2>/dev/null)" || return 0
+    if ! [ "$found" -ef "$shim/git" ]; then
+        export GOH_HOOK_REAL_GIT="$found"
+    fi
+    [ -n "${GOH_HOOK_REAL_GIT:-}" ] || return 0
+    case ":$PATH:" in
+        *":$shim:"*) ;;
+        *) export PATH="$shim:$PATH" ;;
+    esac
 }
 
 goh_bind_hook_index() {
