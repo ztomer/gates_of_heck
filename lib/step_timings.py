@@ -84,8 +84,10 @@ def record(
     cpu_ms: float | None = None,
     kind: str = "",
     control: bool = False,
+    load1: float | None = None,
 ) -> None:
-    """Append one step's line to $GOH_TIMINGS; a no-op when it is unset."""
+    """Append one step's line to $GOH_TIMINGS; a no-op when it is unset. LOAD1 is the box's 1-min
+    load average when the step STARTED (`load_now`): a wall time without it measures the box."""
     path = os.environ.get(ENV)
     if not path:
         return
@@ -108,6 +110,8 @@ def record(
         row["kind"] = kind[:40]
     if control:
         row["control"] = True
+    if load1 is not None:
+        row["load1"] = round(load1, 2)
     import json
 
     line = (json.dumps(row, ensure_ascii=False) + "\n").encode("utf-8")[:_MAX_LINE]
@@ -119,6 +123,35 @@ def record(
             os.close(fd)
     except OSError:
         pass
+
+
+def load_now() -> float | None:
+    """The 1-min load average at a step's start, when timings are on (GOH.SHIPPROFILE)."""
+    if not os.environ.get(ENV):
+        return None
+    try:
+        return os.getloadavg()[0]
+    except OSError:
+        return None
+
+
+def timed(label: str, argv: list[str], tier: str = "phase") -> int:
+    """Run ARGV (stdout, stderr inherited) as one recorded row LABEL whose children name it their
+    parent: a phase that is no bounded step (a release's loaded suite, its land) still shows."""
+    import subprocess
+    import time
+
+    t0, cpu0, load1 = time.monotonic(), children_cpu_ms(), load_now()
+    try:
+        rc = subprocess.run(
+            argv, env=child_env(label), check=False, stdin=subprocess.DEVNULL
+        ).returncode
+    except OSError as e:
+        print(f"step_timings: {label}: {e}", file=sys.stderr)
+        rc = 127
+    record(label, (time.monotonic() - t0) * 1000, rc, tier, cpu_ms=children_cpu_ms() - cpu0,
+           load1=load1)  # fmt: skip
+    return rc
 
 
 def child_env(label: str) -> dict[str, str] | None:
@@ -230,12 +263,15 @@ def main(argv: list[str]) -> int:
     if len(argv) >= 5 and argv[0] == "record":  # record LABEL MS RC TIER [CACHE] (from shell)
         record(argv[1], float(argv[2]), int(argv[3]), argv[4], argv[5] if len(argv) > 5 else "")
         return 0
+    if len(argv) >= 4 and argv[0] == "time" and argv[2] == "--":  # time LABEL -- CMD...
+        return timed(argv[1], argv[3:])
     if len(argv) >= 2 and argv[0] == "report":
         top = int(argv[2]) if len(argv) > 2 else 15
         print(report(load(argv[1]), top))
         return 0
     print(
-        "usage: step_timings.py report FILE [TOP] | record LABEL MS RC TIER [CACHE]",
+        "usage: step_timings.py report FILE [TOP] | record LABEL MS RC TIER [CACHE]"
+        " | time LABEL -- CMD...",
         file=sys.stderr,
     )
     return 2

@@ -38,6 +38,7 @@ if ! [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
     exit 2
 fi
 TAG="v$VERSION"
+timed() { "$GOH_PY" "$GOH/lib/step_timings.py" time "$1" -- "${@:2}"; }   # one profile row
 main="$(git rev-parse --show-toplevel)"
 cd "$main"
 if [ -n "$(GIT_OPTIONAL_LOCKS=0 git status --porcelain --untracked-files=no)" ]; then
@@ -115,19 +116,20 @@ release: ${heading#\#\# }
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
 MSG
     # The suite once under deliberate load, before main moves (GOH.CLASS.HARNESS): a test the box's
-    # load turns red is this release's refusal, named, not a random later land's.
-    tools/loaded_suite.sh
-    tools/land.sh
+    # load turns red is this release's refusal, named, not a random later land's. Each phase is one
+    # row of goh ship's profile, its checks nested under it (timed: lib/step_timings.py, GOH.SHIPPROFILE).
+    timed "release: the suite under load" tools/loaded_suite.sh
+    timed "release: land (its push gate)" tools/land.sh
 )
 
-git push origin main
+timed "release: push main" git push origin main
 notes="$(mktemp "${TMPDIR:-/tmp}/goh-release-notes.XXXXXX")"
 awk -v h="## $TAG" 'index($0, h) == 1 && (length($0) == length(h) || substr($0, length(h) + 1, 1) == " ") { on = 1; next }
     on && /^## / { exit } on { print }' CHANGELOG.md | sed -e '/./,$!d' >"$notes"
 [ -s "$notes" ] || { err "release_goh.sh: the $TAG stanza is empty in the landed CHANGELOG.md"; rm -f "$notes"; exit 1; }
 { printf '%s\n\n' "$TAG"; cat "$notes"; } | git tag -a "$TAG" -F -
 rm -f "$notes"
-git push origin "refs/tags/$TAG"
+timed "release: push the tag" git push origin "refs/tags/$TAG"
 ok "released $TAG at $(git rev-parse --short "$TAG^{commit}") (tag $(git rev-parse --short "$TAG"))"
 exit
 } # parse-guard

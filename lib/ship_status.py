@@ -11,10 +11,12 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 import canary_grace  # tools/ship.py, the one importer, puts lib/ on sys.path
 import consumer_pins
+import ship_profile
 
 from tui.lib import err, info, ok, step
 
 TAIL = 40  # a failed step's last log lines, carried in the result
+profile = ship_profile.profile  # each step's GOH_TIMINGS file (tools/ship.py's one name for it)
 
 
 def save(res: dict) -> None:
@@ -54,6 +56,9 @@ def status(result: str) -> int:
     for said in (canary_grace.line(res), consumer_pins.line(res)):
         if said:
             step(said)
+    if prof := ship_profile.table(res):  # where the time went (GOH.SHIPPROFILE)
+        step(prof[0])
+        print("\n".join(prof[1:]))
     if res["status"] == "running":
         pid = res.get("pid")
         try:

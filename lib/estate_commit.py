@@ -45,9 +45,10 @@ def env() -> dict[str, str]:
     """Another repo's git, unbound from any hook's, and never taking the optional index lock a
     status or diff would: the tree is someone else's, and a stranded index.lock is theirs to meet
     (GOH.GITKILL). Nor bound to a goh ship that runs this: the consumer's own gates must not write
-    the ship's verdicts file or read its result (GOH.PINPROPAGATE)."""
+    the ship's verdicts file or read its result (GOH.PINPROPAGATE), nor its profile: a consumer's
+    gate steps are the consumer's, and the ship times each consumer whole (GOH.SHIPPROFILE)."""
     out = {k: v for k, v in foreign_repo_env().items() if k not in _SHIP_BOUND
-           and not k.startswith("GOH_SHIP_")}  # fmt: skip
+           and not k.startswith(("GOH_SHIP_", "GOH_TIMINGS"))}  # fmt: skip
     out["GIT_OPTIONAL_LOCKS"] = "0"
     return out
 

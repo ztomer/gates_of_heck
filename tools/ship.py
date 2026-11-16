@@ -383,14 +383,14 @@ def run_steps(res: dict, first: str = STEPS[0]) -> int:
             save(res)
             step(f"{name}: skipped ({why})")
             continue
-        log = Path(f"{stem}.{name}.log")
+        log, prof = Path(f"{stem}.{name}.log"), ship_status.profile(stem, name)
         log.write_text(f"$ {cmd}\n", encoding="utf-8")
         t0 = time.monotonic()
         snap = ship_undo.snapshot(Path(res["repo"])) if name == "release" else None
         out = bounded_run.run_step(["bash", "-c", cmd], res["timeout_s"], GRACE, f"ship {name}",
                                    str(log))  # fmt: skip
         secs = round(time.monotonic() - t0, 1)
-        entry = {"name": name, "code": out.code, "seconds": secs, "log": str(log)}
+        entry = {"name": name, "code": out.code, "seconds": secs, "log": str(log), "timings": prof}
         if out.code == 0 and not out.timed_out:
             entry["status"] = "ok"
             res["steps"].append(entry)

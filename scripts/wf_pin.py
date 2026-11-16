@@ -42,7 +42,9 @@ import os
 import re
 import subprocess
 import sys
+from collections.abc import Callable
 from dataclasses import dataclass
+from functools import partial
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -235,6 +237,7 @@ def main(argv: list[str] | None = None) -> int:
     ruff = consumer_pins.ruff_pin()
     consumer_pins.budget(a.budget)
     n_stale = 0
+    jobs: list[tuple[str, Callable[[], tuple[str, str]]]] = []
     record: dict[str, dict[str, str]] = {}
     for repo in repos:
         if repo.resolve() == GOH.resolve():
@@ -246,9 +249,7 @@ def main(argv: list[str] | None = None) -> int:
             warn(f"{where}: {rel}:{','.join(map(str, lines))} checks out goh at no named release")
         if not old and not rold:
             if a.bump and stranded(repo):  # an earlier bump's commit: land it now
-                status, said = consumer_pins.push(repo, "")
-                record[where] = {"status": status, "said": said}
-                (ok if status == "pushed" else err)(f"{where}: {said}")
+                jobs.append((where, partial(consumer_pins.push, repo, "")))
             continue
         n_stale += 1
         have = sorted({p.tag for pins in old.values() for p in pins})
@@ -262,11 +263,13 @@ def main(argv: list[str] | None = None) -> int:
             info(f"{where}: {named}; set aside (--except): left for its owner")
             record[where] = {"status": "kept", "said": "--except: left for its owner"}
         else:
-            status, said = bump(repo, old, rold, tag, ruff)
-            record[where] = {"status": status, "said": said}
-            (ok if status == "pushed" else err)(f"{where}: {said}")
+            jobs.append((where, partial(bump, repo, old, rold, tag, ruff)))
+    # Each consumer's commit and push gate are its own: moved side by side (GOH.SHIPPROFILE).
+    record |= consumer_pins.sweep(
+        jobs, lambda where, status, said: (ok if status == "pushed" else err)(f"{where}: {said}")
+    )
     if a.bump and a.record:
-        consumer_pins.write_record(a.record, tag, ruff, record)
+        consumer_pins.write_record(a.record, tag, ruff, dict(sorted(record.items())))
     if not n_stale:
         ok(f"every goh-owned pin in {counted(len(repos), 'estate repo')} is current "
            f"(goh {tag}, ruff {ruff})")  # fmt: skip

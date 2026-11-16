@@ -307,7 +307,7 @@ def run_step(
     (lib/step_timings.py), with the CPU its reaped tree spent (`cpu_ms`, BACKLOG 4.4: the box is
     never quiet, so the wall measures the box too), and the child learns its parent's label.
     """
-    t0, cpu0 = time.monotonic(), step_timings.children_cpu_ms()
+    t0, cpu0, load1 = time.monotonic(), step_timings.children_cpu_ms(), step_timings.load_now()
     outcome = _run_step(argv, timeout, grace, label, output, cpu_timeout, stall)
     step_timings.record(
         label or " ".join(argv),
@@ -315,6 +315,7 @@ def run_step(
         outcome.code,
         "step",
         cpu_ms=step_timings.children_cpu_ms() - cpu0,
+        load1=load1,
     )
     return outcome
 

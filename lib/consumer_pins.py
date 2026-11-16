@@ -23,19 +23,23 @@ from __future__ import annotations
 
 import contextlib
 import json
+import os
 import re
 import subprocess
 import sys
 import tempfile
 import time
 from collections.abc import Callable
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from pathlib import Path
 
 import bounded_run  # lib/: every importer (scripts/wf_pin.py, tools/ship.py) puts it on sys.path
 import estate_commit
+import gate_slot
 import land_lock
 import lock_order
+import step_timings
 
 from tui.lib import counted
 
@@ -243,6 +247,36 @@ def push(repo: Path, said: str) -> tuple[str, str]:
     if out.code or out.timed_out:
         return "committed", f"{lead}NOT pushed: its push gate refused ({tail or out.code})"
     return "pushed", f"{lead}pushed {counted(len(span), 'pin commit')} to {ref}"
+
+
+def width(jobs: int) -> int:
+    """How many consumers the sweep moves at once: the machine's gate slots (GOH_GATE_SLOTS, else
+    one per eight cores; 0 = no limit), since each push runs a full gate that takes one. One after
+    another, v0.122.0-v0.124.0's install was the SUM of 12 consumer gates, 1974-2037 s where the
+    slowest alone was 756 s (GOH.SHIPPROFILE)."""
+    raw = os.environ.get("GOH_GATE_SLOTS", "")
+    n = int(raw) if raw.isdigit() else gate_slot.default_slots()
+    return max(1, min(jobs, n or jobs))
+
+
+def sweep(jobs: list[tuple[str, Callable[[], tuple[str, str]]]],
+          said: Callable[[str, str, str], None]) -> dict[str, dict[str, str]]:  # fmt: skip
+    """Run each (where, job) -- one consumer's commit and push -- `width` at a time; each is one
+    profile row `consumer WHERE` with the load at its start, and SAID hears it as it ends."""
+
+    def one(where: str, job: Callable[[], tuple[str, str]]) -> tuple[str, str, str]:
+        t0, load1 = time.monotonic(), step_timings.load_now()
+        status, why = job()
+        step_timings.record(f"consumer {where}", (time.monotonic() - t0) * 1000,
+                            int(status != "pushed"), "consumer", load1=load1)  # fmt: skip
+        said(where, status, why)
+        return where, status, why
+
+    if not jobs:
+        return {}
+    with ThreadPoolExecutor(max_workers=width(len(jobs))) as pool:
+        done = list(pool.map(lambda j: one(*j), jobs))
+    return {where: {"status": status, "said": why} for where, status, why in done}
 
 
 @contextlib.contextmanager
