@@ -131,3 +131,65 @@ def test_a_green_verdict_is_no_verdict_for_another_command(repo: Path) -> None:
     r = _cli(repo, "start", "--cmd", "false")
     assert "green already" not in r.stdout, r.stdout
     assert _until_settled(repo, "false") == "red"
+
+
+def _commit(repo: Path, files: dict[str, str], msg: str) -> str:
+    for name, text in files.items():
+        (repo / name).write_text(text)
+    git(repo, "add", "-A")
+    git(repo, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "-m", msg)
+    return git(repo, "rev-parse", "HEAD").strip()
+
+
+def test_a_tag_created_mid_run_cannot_change_its_result(repo: Path) -> None:
+    """GOH.LOADEDTAGRACE: the loaded run of release commit fc32af1a went red with 142 failures
+    because v0.125.0 was tagged while it ran, and every test read a version (goh_version.sh) that
+    the binary built at its start did not report. The run reads the refs it STARTED with: here the
+    command reads the version, a tag lands on the very commit it runs, and it reads again."""
+    started, go = repo.parent / "started", repo.parent / "go"
+    ver = f"bash {REPO_ROOT / 'lib' / 'goh_version.sh'} . HEAD"
+    cmd = (f'v0="$({ver})"; touch {started}; until [ -f {go} ]; do sleep 0.05; done; '
+           f'[ "$({ver})" = "$v0" ] && [ "$v0" != 9.9.9 ]')  # fmt: skip
+    assert _cli(repo, "start", "--cmd", cmd).returncode == 0
+    give_up = GiveUp(60)
+    while not started.exists() and not give_up.passed():
+        time.sleep(0.05)
+    assert started.exists(), "the run never started its command"
+    git(repo, "tag", "v9.9.9")
+    go.touch()
+    assert _until_settled(repo, cmd) == "green"
+
+
+def test_a_release_only_land_records_its_parents_verdict_and_runs_nothing(repo: Path) -> None:
+    """A release commit changes CHANGELOG.md and changelog/ only (lib/release_gate.py's one
+    definition): its land records its parent's verdict for its own tree, under the same gate
+    identity, instead of ~570 s of the suite under load. The command would be red on the release
+    tree, so a green record proves it never ran."""
+    cmd = "test ! -e CHANGELOG.md"
+    assert _cli(repo, "start", "--cmd", cmd).returncode == 0
+    assert _until_settled(repo, cmd) == "green"
+    parent = git(repo, "rev-parse", "HEAD").strip()
+    _commit(repo, {"CHANGELOG.md": "# CHANGELOG\n"}, "release: v0.2.0")
+    r = _cli(repo, "start", "--cmd", cmd)
+    assert r.returncode == 0 and "reused" in r.stdout, r.stdout + r.stderr
+    rec = loaded_verdict.read(loaded_verdict.record_path(repo, "HEAD", cmd))
+    assert rec and rec["state"] == "green" and rec["reused_from"] == parent, rec
+    assert rec["tree"] == git(repo, "rev-parse", "HEAD^{tree}").strip()
+
+
+def test_any_other_diff_runs_the_suite(repo: Path) -> None:
+    """Calibration: one non-release path beside the changelog, or a release-only commit whose
+    parent has no verdict under this command's identity, runs the command -- red here, since the
+    tree it runs on has a CHANGELOG.md."""
+    cmd = "test ! -e CHANGELOG.md"
+    assert _cli(repo, "start", "--cmd", cmd).returncode == 0
+    assert _until_settled(repo, cmd) == "green"
+    _commit(repo, {"CHANGELOG.md": "# CHANGELOG\n", "README.md": "other\n"}, "feat: y")
+    r = _cli(repo, "start", "--cmd", cmd)
+    assert "reused" not in r.stdout, r.stdout
+    assert _until_settled(repo, cmd) == "red"
+    _commit(repo, {"CHANGELOG.md": "# CHANGELOG\n\nmore\n"}, "release: v0.3.0")
+    other = "test ! -e CHANGELOG.md && true"
+    r = _cli(repo, "start", "--cmd", other)
+    assert "reused" not in r.stdout, r.stdout
+    assert _until_settled(repo, other) == "red"

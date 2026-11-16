@@ -14,13 +14,14 @@ is red, failed to run, or missing, saying which.
 
 The record is `<common git dir>/goh-loaded/<tree>-<identity>.json`: keyed by the tree (and by
 lib/gate_identity.py's identity of the command, GOH.VERDICTKEY), so any commit of the same bytes
-reads it, and in the common git dir, so it outlives the worktree that landed. `start`
-makes a detached worktree of SHA under the checkout's run root (lib/run_path.py) and a runner in a
-session of its own that outlives land.sh: it runs CMD there (default tools/loaded_suite.sh, whose
-load.py accounts and reaps every spinner and bounds the run at 60 min), writes green or red with the
-exit code and the log, and removes the worktree. A runner killed by a signal kills its command's
-group and records `died`; a record still `running` whose runner is gone reads as died too. Pinned by
-tests/test_loaded_verdict.py.
+reads it, and in the common git dir, so it outlives the worktree that landed. `start` makes a
+detached clone of SHA under the checkout's run root (lib/run_path.py; a clone pins the tags of its
+start, GOH.LOADEDTAGRACE) and a runner in a session of its own that outlives land.sh: it runs CMD
+there (default tools/loaded_suite.sh, whose load.py accounts and reaps every spinner and bounds the
+run at 60 min), writes green or red with the exit code and the log, and removes the clone. A release
+commit (release files only on one parent, lib/release_gate.py) runs nothing: it records its parent's
+settled verdict. A runner killed by a signal kills its command's group and records `died`; a record
+still `running` whose runner is gone reads as died too. Pinned by tests/test_loaded_verdict.py.
 """
 
 from __future__ import annotations
@@ -38,6 +39,7 @@ import argparse
 import contextlib
 import json
 import os
+import shutil
 import signal
 import subprocess
 import sys
@@ -113,6 +115,25 @@ def state(rec: dict | None) -> str:
     return s if s in {"green", "red", "died", "running"} else "missing"
 
 
+def reuse_parent(repo: Path, sha: str, cmd: str) -> dict | None:
+    """GOH.LOADEDTAGRACE: a release commit (one parent, a diff of release files only by
+    lib/release_gate.py's one definition) is judged by its parent's settled verdict under the same
+    gate identity -- the record path carries it -- copied for its own tree, instead of ~570 s of the
+    suite under load holding the load slot after every ship. None: run it."""
+    parents = _git(repo, "rev-list", "--parents", "-n1", sha).split()[1:]
+    if len(parents) != 1:
+        return None
+    import release_gate  # lib/, beside this file: the one definition of a release-only diff
+
+    if not release_gate.release_only(release_gate.changed(repo, parents[0], sha) or []):
+        return None
+    rec = read(record_path(repo, parents[0], cmd))
+    if rec is None or state(rec) not in {"green", "red"}:
+        return None
+    return {**rec, "sha": sha, "tree": tree_of(repo, sha), "pid": None,
+            "reused_from": parents[0], "recorded": int(time.time())}  # fmt: skip
+
+
 def start(repo: Path, sha: str, cmd: str) -> int:
     """Begin the loaded run of SHA's tree unless one is green or running; returns at once."""
     sha = _git(repo, "rev-parse", f"{sha}^{{commit}}")
@@ -120,6 +141,12 @@ def start(repo: Path, sha: str, cmd: str) -> int:
     now = state(read(path))
     if now in {"green", "running"}:
         print(f"loaded verdict for {sha[:8]}: {now} already ({path})")
+        return 0
+    reused = reuse_parent(repo, sha, cmd)
+    if reused is not None:
+        write(path, reused)
+        print(f"loaded verdict for {sha[:8]}: {reused['state']}, reused from its parent "
+              f"{reused['reused_from'][:8]} (release files only since it; {path})")  # fmt: skip
         return 0
     work = run_path.run_dir(repo) / f"loaded-{sha[:12]}"
     log = run_path.run_dir(repo) / f"loaded-{sha[:12]}.log"
@@ -133,6 +160,25 @@ def start(repo: Path, sha: str, cmd: str) -> int:
                  "cmd": cmd, "log": str(log), "started": int(time.time())})  # fmt: skip
     print(f"loaded verdict for {sha[:8]}: started (runner pid {child.pid}, log {log})")
     return 0
+
+
+def _clear(repo: Path, work: Path) -> None:
+    """Remove a run's checkout: a clone, or a worktree a runner made before GOH.LOADEDTAGRACE."""
+    subprocess.run(["git", "-C", str(repo), "worktree", "remove", "--force", str(work)],
+                   capture_output=True, check=False, stdin=subprocess.DEVNULL)  # fmt: skip
+    shutil.rmtree(work, ignore_errors=True)
+
+
+def _pinned_checkout(repo: Path, work: Path, sha: str) -> None:
+    """A CLONE of the refs as they are now, never a worktree of the live ones (GOH.LOADEDTAGRACE).
+    A worktree shares the checkout's tags, and goh's version is its tag (lib/goh_version.sh): the
+    run of release commit fc32af1a built its binary as 0.124.0-13-g<sha>, v0.125.0 was tagged on
+    that commit mid-run, and 142 tests then read the source as 0.125.0 and the binary as BEHIND it.
+    A clone carries the tags of its start and no later ones, so the binary, its stamp and every
+    reader of the version agree for the whole run. `--shared` borrows the objects (no copy);
+    nothing this run's commit reaches can be pruned under it."""
+    _git(repo, "clone", "-q", "--shared", "--no-checkout", str(repo), str(work))
+    _git(work, "-c", "advice.detachedHead=false", "checkout", "-q", "--detach", sha)
 
 
 def run(repo: Path, sha: str, cmd: str, work: Path, log: Path) -> int:
@@ -160,15 +206,13 @@ def run(repo: Path, sha: str, cmd: str, work: Path, log: Path) -> int:
         signal.signal(sig, died)
     rc = 1
     try:
-        subprocess.run(["git", "-C", str(repo), "worktree", "remove", "--force", str(work)],
-                       capture_output=True, check=False, stdin=subprocess.DEVNULL)  # fmt: skip
-        _git(repo, "worktree", "add", "-q", "--detach", str(work), sha)
+        _clear(repo, work)
+        _pinned_checkout(repo, work, sha)
         proc = subprocess.Popen(["bash", "-c", cmd], cwd=work, stdin=subprocess.DEVNULL,
                                 start_new_session=True)  # fmt: skip
         rc = proc.wait()
     finally:
-        subprocess.run(["git", "-C", str(repo), "worktree", "remove", "--force", str(work)],
-                       capture_output=True, check=False, stdin=subprocess.DEVNULL)  # fmt: skip
+        _clear(repo, work)
     write(path, {**rec, "state": "green" if rc == 0 else "red", "rc": rc,
                  "ended": int(time.time())})  # fmt: skip
     return rc
