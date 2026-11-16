@@ -60,6 +60,10 @@ def no_test_reaches_a_host_lock(tmp_path_factory, monkeypatch):
         monkeypatch.setenv(name, str(root / name.lower()))
     monkeypatch.setenv("GOH_PUSH_WORKTREES", tempfile.mkdtemp(dir=_WORKTREES))
     monkeypatch.delenv("ZTOOLS_GPU_LOCK_OWNER", raising=False)
+    # A fixture gate runs inside a suite memory admission already let start (tools/pytest.sh, or
+    # the gate around it): it never waits on the host's memory reading (lib/mem_admit.py).
+    monkeypatch.setenv("GOH_MEM_ADMIT", "0")
+    monkeypatch.delenv("GOH_MEM_READING", raising=False)
     # A slot the suite's own push holds is not one a fixture gate is inside (lib/gate_slot.py).
     monkeypatch.delenv("GOH_GATE_SLOT", raising=False)
     # Nor is the bench lock's join marker: inherited from the suite's own push, it made every

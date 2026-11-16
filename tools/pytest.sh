@@ -47,6 +47,9 @@ if [ -z "${GATES_OF_HECK_SUITE_RUNNER:-}" ] && [ -z "${GATES_OF_HECK_SUITE_NESTE
         rm -f "$SUITE_LOCK"   # its holder is gone: a killed run's lock
     done
     trap '[ "$(readlink "$SUITE_LOCK" 2>/dev/null)" = "$$" ] && rm -f "$SUITE_LOCK"' EXIT
+    # MEMORY ADMISSION (GOH.MEMADMIT): a suite started outside a gate waits, bounded, while the
+    # machine is short of memory (lib/mem_admit.py says why); inside a gate, its slot was admitted.
+    [ -n "${GOH_GATE_SLOT:-}" ] || "$GOH_PY" "$GOH/lib/mem_admit.py" wait --what "the goh suite"
 fi
 . "$GOH/gates/_pytest_root.sh"
 # After the guards: a refused runner claims no root and cuts no other run's kept ones.

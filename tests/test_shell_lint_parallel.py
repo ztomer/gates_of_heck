@@ -48,6 +48,9 @@ def test_the_shellcheck_calls_of_one_lint_run_side_by_side(repo, tmp_path):
     commit_all(repo)
     env = {k: v for k, v in os.environ.items() if k != "SHELLCHECK_OPTS"}
     env["GOH_VERDICT_CACHE"] = "0"
+    # Two of a private pool's tokens: the machine's could all be held by another run's calls.
+    env["GOH_SHELLCHECK_SLOTS"] = "2"
+    env["GOH_SHELLCHECK_SLOT_DIR"] = str(tmp_path / "sc-slots")
     env["PATH"] = f"{_overlap_shellcheck(tmp_path)}{os.pathsep}{env['PATH']}"
     r = run_goh(repo, "shell-lint", env=env)
     out = r.stdout + r.stderr

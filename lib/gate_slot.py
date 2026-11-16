@@ -357,7 +357,19 @@ def hold(args: argparse.Namespace) -> int:
     # The handshake first: the shell is reading it, and polls this process's liveness meanwhile.
     shake = os.open(args.handshake, os.O_WRONLY)
     slots = args.slots if args.slots else default_slots()
+    # MEMORY BEFORE A SLOT (GOH.MEMADMIT): a slot counts gates, not the memory they start into;
+    # on 2026-11-16 gates kept starting into a machine already swapping, until a forced restart.
+    # Bounded (lib/mem_admit.py); the wait counts as the slot's, before every step's ceiling.
+    import mem_admit
+
+    def owner_alive() -> bool:
+        return watch.alive() if watch else _alive(args.owner)
+
+    mem_waited = mem_admit.wait(f"the gate in {args.repo}", alive=owner_alive)
+    if not owner_alive():
+        return 3
     idx, fd, waited = acquire(args.dir, slots, args.poll, args.owner, watch)
+    waited += mem_waited
     os.ftruncate(fd, 0)
     os.lseek(fd, 0, os.SEEK_SET)
     # The repository key last: the lock order scopes a `repo` lock by it (lib/lock_order.py).

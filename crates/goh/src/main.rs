@@ -99,6 +99,7 @@ pub mod shapes;
 pub mod shell_lint;
 pub mod shell_lint_scope;
 pub mod shell_lint_seed;
+pub mod shellcheck_slots;
 pub mod shellcheck_version;
 pub mod shellsrc;
 pub mod skills;

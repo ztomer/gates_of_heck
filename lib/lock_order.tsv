@@ -25,3 +25,4 @@ advisory_db	92	no	machine	lib/advisory_db.py	the cargo advisory database copy (s
 head_cache	93	no	machine	gates/_head_cache.py	the HEAD-export cache
 eval_transport	94	no	machine	lib/eval_transport.py	an eval transport's state file
 estate_settle	95	no	machine	crates/goh/src/estate_seed/settle.rs,crates/goh/src/estate_seed/add.rs	the estate seed store directory
+shellcheck	96	no	machine	crates/goh/src/shellcheck_slots.rs	the machine-wide shellcheck tokens, a counting semaphore held around one shellcheck child (GOH.MEMADMIT)

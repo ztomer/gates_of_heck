@@ -100,9 +100,10 @@ fn tools_key(severity: &str) -> String {
     let xdg =
         std::env::var_os("XDG_CONFIG_HOME").map_or_else(|| home.join(".config"), PathBuf::from);
     format!(
-        "shell-lint v6|{}|{}|-x --source-path=SCRIPTDIR --severity={severity} --format=gcc|opts={}|{}|{}",
+        "shell-lint v7|{}|{}|{}|opts={}|{}|{}",
         id("bash"),
         id("shellcheck"),
+        flags(severity),
         std::env::var("SHELLCHECK_OPTS").unwrap_or_default(),
         rc_identity(&home.join(".shellcheckrc")),
         rc_identity(&xdg.join("shellcheckrc")),
@@ -148,6 +149,26 @@ fn dir_rc_key(
     key
 }
 
+/// Whether `severity` is one at which shellcheck's dataflow analysis finds nothing: `warning`
+/// and `error`. The analysis (`--extended-analysis`, on by default since 0.10) is what took one
+/// call over goh's `gates/rust_gate.sh` to 1550 MB and 6.7 s (201 MB and 2.6 s without it; goh's
+/// tree 28.3 GB-summed / 144 s to 5.5 GB / 43 s, GOH.MEMADMIT), and all it adds are notes (SC2317,
+/// SC2329): 0 differences at `warning` over goh's 104 files and the estate's 310. Below `warning`
+/// those notes are findings the seed holds, so the analysis stays on there.
+fn dataflow_off(severity: &str) -> bool {
+    matches!(severity, "warning" | "error")
+}
+
+/// The flags every call passes, as the cache key names them.
+fn flags(severity: &str) -> String {
+    let ea = if dataflow_off(severity) {
+        " --extended-analysis=false"
+    } else {
+        ""
+    };
+    format!("-x --source-path=SCRIPTDIR{ea} --severity={severity} --format=gcc")
+}
+
 /// One shellcheck, with `-x`, over `path` in `base`: its stdout then stderr.
 fn shellcheck_one(base: &Path, severity: &str, path: &Path) -> Result<String, String> {
     let mut cmd = Command::new("shellcheck");
@@ -157,8 +178,11 @@ fn shellcheck_one(base: &Path, severity: &str, path: &Path) -> Result<String, St
     // estate before it went in: 0 new findings in 37 consumers.
     cmd.current_dir(base)
         .arg("-x")
-        .arg("--source-path=SCRIPTDIR")
-        .arg(format!("--severity={severity}"))
+        .arg("--source-path=SCRIPTDIR");
+    if dataflow_off(severity) {
+        cmd.arg("--extended-analysis=false");
+    }
+    cmd.arg(format!("--severity={severity}"))
         .arg("--format=gcc")
         .arg(path);
     let ran = bounded(&mut cmd).map_err(|e| format!("shellcheck: {e}"))?;
@@ -201,16 +225,28 @@ fn check_misses(
     // they run side by side, one thread per core over interleaved chunks (GOH.COVDEDUPE): one
     // after another, a cold lint of goh's 84 files held one core for 60 s, which the
     // self-hosted hook test and `structural --full` each paid in full.
-    let jobs = std::thread::available_parallelism()
-        .map_or(1, std::num::NonZeroUsize::get)
+    // Each call holds one of the MACHINE's shellcheck tokens (`crate::shellcheck_slots`,
+    // GOH.MEMADMIT): one thread per core per run, eight runs at once, was 128 shellchecks and
+    // 63.7 GiB on 2026-11-16. No more threads than tokens: a thread past them only waits.
+    let slots = crate::shellcheck_slots::Slots::from_env()?;
+    let cores = std::thread::available_parallelism().map_or(1, std::num::NonZeroUsize::get);
+    let jobs = slots
+        .bound()
+        .map_or(cores, |n| n.min(cores))
         .clamp(1, clean.len());
+    let slots = &slots;
     let ran: Vec<(usize, Result<String, String>)> = std::thread::scope(|scope| {
         let mut handles = Vec::with_capacity(jobs);
         for j in 0..jobs {
             let mine: Vec<usize> = clean.iter().copied().skip(j).step_by(jobs).collect();
             handles.push(scope.spawn(move || {
                 mine.into_iter()
-                    .map(|i| (i, shellcheck_one(base, severity, &misses[i].1)))
+                    .map(|i| {
+                        let ran = slots
+                            .take(j)
+                            .and_then(|_token| shellcheck_one(base, severity, &misses[i].1));
+                        (i, ran)
+                    })
                     .collect::<Vec<_>>()
             }));
         }
