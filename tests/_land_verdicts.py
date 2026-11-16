@@ -14,10 +14,12 @@ passed and the gate's suite DESELECTS it:
     so it reuses nothing, and says so.
 
 COVERAGE. goh's suite runs in the gate inside the coverage step, against the INSTRUMENTED binary
-(GOH_COV_RUST_EXTERNAL, GOH_COVERAGE_BIN_DIR set): there a test's run is also coverage the crate's
-floor counts, so a test that ran the native binary (asked for `native_goh`, or reached it through
-`native_goh_path()`, which marks the test) is never deselected -- only the ones whose verdict is
-all they give. Outside the coverage step every passed test is reusable.
+(GOH_COV_RUST_EXTERNAL; GOH_COVERAGE_BIN_DIR and LLVM_PROFILE_FILE set): there a test's run is
+also coverage the crate's floor counts, so a test that ran the native binary (asked for
+`native_goh`, or reached it through `native_goh_path()`, which marks the test) is never deselected
+-- only the ones whose verdict is all they give. Outside the coverage step every passed test is
+reusable, the plain run of a reused Rust measurement included (GOH.RUSTCOVSKIP: its binary
+directory is named, no profile is).
 
 Both keys are set by tools/land.sh for one land and are verdict-free (gates/verdict_free_keys.txt):
 a path to one land's record is bookkeeping, and the proof a gate records is the same with or
@@ -107,10 +109,17 @@ def reusable(path: str, here: str | None, coverage: bool) -> tuple[set[str], str
     return nodes, f"same tree{f', {kept} that ran the binary rerun for coverage' if kept else ''}"
 
 
+def instrumented() -> bool:
+    """This run is the coverage step's INSTRUMENTED one: it names the binary directory AND a profile
+    destination (conftest's profile carry reads the same pair). The plain run of a reused Rust
+    measurement names its plain build alone (GOH.RUSTCOVSKIP)."""
+    return all(os.environ.get(k) for k in ("GOH_COVERAGE_BIN_DIR", "LLVM_PROFILE_FILE"))
+
+
 def _reusable(config) -> tuple[set[str], str]:
     if "reuse" not in _state:
         path = os.environ.get(REUSE, "")
-        coverage = bool(os.environ.get("GOH_COVERAGE_BIN_DIR"))
+        coverage = instrumented()
         _state["reuse"] = reusable(path, identity(), coverage) if path else (set(), "")
     return _state["reuse"]  # type: ignore[return-value]
 

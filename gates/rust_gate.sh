@@ -341,6 +341,20 @@ rust_coverage_checks() {
     fi
 }
 
+# The tests of a coverage run, without the measurement: cargo's own targets (lib, bins, tests;
+# doctests are a step of their own where a repo wants them) and the external suite against the
+# plain build of the same Rust inputs. Run only when that measurement is recorded (GOH.RUSTCOVSKIP).
+rust_coverage_plain() {
+    local v unbind=(-u LLVM_PROFILE_FILE)
+    for v in $(git rev-parse --local-env-vars 2>/dev/null); do unbind+=(-u "$v"); done
+    goh_step_in "$cargo_dir" "cargo test (plain: the coverage measurement stands)" \
+        cargo test --locked --workspace --tests --all-features
+    # shellcheck disable=SC2154  # RUST_COV_PLAIN_BINS is set by rust_coverage_reuse for this call
+    goh_step_in "$cargo_dir" "external (plain): $GOH_COV_RUST_EXTERNAL" \
+        env "${unbind[@]}" GOH_COVERAGE_BIN_DIR="$RUST_COV_PLAIN_BINS" bash -c "$GOH_COV_RUST_EXTERNAL"
+}
+rust_coverage_measured_or_plain() { rust_coverage_reuse rust_coverage_checks rust_coverage_plain; }
+
 # shellcheck source=gates/_rust_proven.sh
 . "$HERE/_rust_proven.sh"
 # Resolved ONCE for every goh.sh step below (and the proven cache's rust-scope): the answer is
@@ -370,9 +384,14 @@ elif [ "${GOH_RUST_COVERAGE:-}" = defer ]; then
     info "coverage deferred to the push gate (GOH_RUST_COVERAGE=defer)"
 elif [ -n "${GOH_COV_FLOOR_RUST:-}" ] || [ -n "${GOH_COV_FLOORS_JSON:-}" ]; then
     # An external command reads the whole tree (a test suite), so its group keys on the whole tree:
-    # a crate-scoped key would skip a coverage run whose tests changed.
-    rust_proven_group coverage "$([ -n "${GOH_COV_RUST_EXTERNAL:-}" ] && echo tree || echo crate)" \
-        rust_coverage_checks
+    # a crate-scoped key would skip a coverage run whose tests changed. Inside it, the MEASUREMENT
+    # is keyed on the Rust inputs alone, and a tree whose Rust is unchanged runs its tests plain
+    # (GOH.RUSTCOVSKIP, gates/_rust_proven.sh rust_coverage_reuse).
+    if [ -n "${GOH_COV_RUST_EXTERNAL:-}" ]; then
+        rust_proven_group coverage tree rust_coverage_measured_or_plain
+    else
+        rust_proven_group coverage crate rust_coverage_checks
+    fi
 else
     warn "no coverage floor — set GOH_COV_FLOOR_RUST in .gatesrc"
 fi

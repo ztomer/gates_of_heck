@@ -148,3 +148,62 @@ rust_proven_group() {
     proven_record "$pkey" "$ptree" "$step" "rust_gate" </dev/null \
         || warn "[rust] could not write the proven record for the $group checks"
 }
+
+# ── THE RUST COVERAGE VERDICT, REUSED (GOH.RUSTCOVSKIP) ─────────────────────────────────────────
+# With an external suite (GOH_COV_RUST_EXTERNAL: goh's pytest drives the binary) the coverage group
+# reads the whole tree, so its record keys on the whole tree, and every goh land re-measured: 896.62
+# s of instrumented build, suite and report for GOH.XEXITDETAIL's Python and shell. The MEASUREMENT
+# has narrower inputs: the repo's Rust build inputs and the Rust gate's coverage scripts
+# (`gate_identity.py rust`, the one formula). A green measurement is recorded under those; a run on
+# the same Rust inputs reuses it and runs the tests PLAIN instead -- cargo's own targets, and the
+# external suite against the plain build of these same inputs -- so a red test is still red. A
+# Rust-input change, a binary that is not this tree's build, a dirty tree or GOH_PROVEN=0 measures.
+
+# rust_cov_key <step> -- the measurement's key on this tree's Rust inputs, or 1 (no reuse possible).
+rust_cov_key() {
+    local top ident
+    [ "$PROVEN_ON" = 1 ] && [ -n "${GOH_COV_RUST_EXTERNAL:-}" ] || return 1
+    # shellcheck disable=SC2154  # cargo_dir is the sourcing gate's (rust_gate.sh)
+    top="$(cd "$cargo_dir" && git rev-parse --show-toplevel 2>/dev/null)" || return 1
+    [ -n "$(cd "$top" && proven_tree </dev/null)" ] || return 1   # a clean tree, as every record
+    ident="$(cd "$top" && "$GOH_PY" -S "$PROVEN_GOH_ROOT/lib/gate_identity.py" rust --repo "$top" \
+        </dev/null 2>/dev/null)" || return 1
+    { printf 'rust-coverage v1\nstep %s\n%s\n' "$1" "$ident"; _proven_identity_live </dev/null; } \
+        | hash_hex /dev/stdin
+}
+
+# rust_cov_plain_bins -- the directory of a plain build of THIS tree's Rust: the resolved goh, when
+# what it says it was built from is this tree's stamp (goh gating itself); else 1, and it measures.
+rust_cov_plain_bins() {
+    local top stamp
+    [ -x "${GOH_RESOLVED_BIN:-}" ] || return 1
+    top="$(cd "$cargo_dir" && git rev-parse --show-toplevel 2>/dev/null)" || return 1
+    stamp="$(goh_stamp_at "$top" HEAD 2>/dev/null)" && [ -n "$stamp" ] || return 1
+    [ "$(goh_stamp_of "$GOH_RESOLVED_BIN")" = "$stamp" ] || return 1
+    dirname "$GOH_RESOLVED_BIN"
+}
+
+# rust_coverage_reuse <measure-fn> <plain-fn> -- the plain run on a recorded measurement's inputs
+# (RUST_COV_PLAIN_BINS naming the plain build), else the measurement, recorded when green.
+rust_coverage_reuse() {
+    local measure="$1" plain="$2" step key="" hit age by bins
+    step="$(_rust_step coverage-measure)"
+    key="$(rust_cov_key "$step")" || key=""
+    if [ -n "$key" ] && hit="$(proven_lookup "$key" "$step" </dev/null)"; then
+        if bins="$(rust_cov_plain_bins)"; then
+            read -r age by <<<"$hit"
+            ok "[rust] coverage: measured on these Rust inputs $age ago by $by -- reused; the tests run plain"
+            RUST_COV_PLAIN_BINS="$bins" "$plain"
+            return
+        fi
+        info "[rust] coverage: no plain build of these Rust inputs to run the tests against -- measuring"
+    fi
+    "$measure" || return
+    [ -n "$key" ] || return 0
+    if [ "$(rust_cov_key "$step")" != "$key" ]; then
+        info "[rust] coverage: the Rust inputs moved while they were measured -- not recorded"
+        return 0
+    fi
+    proven_record "$key" "$(proven_tree </dev/null)" "$step" "rust_gate coverage" </dev/null \
+        || warn "[rust] could not write the proven record for the coverage measurement"
+}

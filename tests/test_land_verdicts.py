@@ -172,6 +172,24 @@ def test_under_coverage_a_test_that_ran_the_binary_is_never_skipped(tmp_path: Pa
 
 
 @pytest.mark.parametrize(
+    ("env", "want"),
+    [
+        ({"GOH_COVERAGE_BIN_DIR": "/cov/bin", "LLVM_PROFILE_FILE": "/cov/p.profraw"}, True),
+        ({"GOH_COVERAGE_BIN_DIR": "/plain/bin"}, False),  # GOH.RUSTCOVSKIP's plain run
+        ({}, False),
+    ],
+)
+def test_only_the_instrumented_run_keeps_the_binary_tests(monkeypatch, env, want) -> None:
+    """The plain run of a reused Rust measurement names its binary directory and no profile: no
+    coverage is counted there, so the binary tests the pre-step passed are skipped like the rest."""
+    for k in ("GOH_COVERAGE_BIN_DIR", "LLVM_PROFILE_FILE"):
+        monkeypatch.delenv(k, raising=False)
+    for k, v in env.items():
+        monkeypatch.setenv(k, v)
+    assert lv.instrumented() is want
+
+
+@pytest.mark.parametrize(
     ("ident", "here", "why"),
     [
         ("OTHER", "ID", "another tree"),
@@ -254,7 +272,13 @@ def test_the_pre_steps_passes_are_recorded_and_the_gates_suite_skips_them(
     # xdist's controller prints no "deselected" count for its workers: the outcomes say it
     assert "PASSED test_s.py::test_ran_the_binary" not in plain.stdout, plain.stdout
     assert "1 failed, 1 passed, 1 skipped" in plain.stdout, plain.stdout
-    cov = _session(tmp_path, *workers, GOH_LAND_VERDICTS_REUSE=str(rec), GOH_COVERAGE_BIN_DIR="x")
+    # The plain run of a reused Rust measurement (GOH.RUSTCOVSKIP) names a binary dir, no profile.
+    bins = _session(tmp_path, *workers, GOH_LAND_VERDICTS_REUSE=str(rec), GOH_COVERAGE_BIN_DIR="x")
+    assert "PASSED test_s.py::test_ran_the_binary" not in bins.stdout, bins.stdout
+    cov = _session(
+        tmp_path, *workers, GOH_LAND_VERDICTS_REUSE=str(rec), GOH_COVERAGE_BIN_DIR="x",
+        LLVM_PROFILE_FILE=str(tmp_path / "p.profraw"),
+    )  # fmt: skip
     assert "PASSED test_s.py::test_ran_the_binary" in cov.stdout, cov.stdout
     assert "PASSED test_s.py::test_pass" not in cov.stdout, cov.stdout
     assert "1 failed, 2 passed, 1 skipped" in cov.stdout, cov.stdout

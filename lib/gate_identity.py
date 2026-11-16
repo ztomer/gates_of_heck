@@ -12,6 +12,7 @@ under a hand-set GOH_LAND_GATE=true wrote exactly as a full gate's.
     gate_identity.py proven --root GOH...     # gates/_proven.sh's run-constant identity: each root
                                               # once by content, then the tools
     gate_identity.py keyed --root GOH...      # the paths that content covers, one per line
+    gate_identity.py rust --repo R [--root GOH]   # the Rust coverage verdict's inputs, as lines
 
 The three parts:
   * MODE -- the command or gate mode the verdict is of (`full` for a land's own push gate, else
@@ -33,6 +34,16 @@ The three parts:
     and mtime (no spawn: an upgrade rewrites the binary); a rustup proxy also by the toolchain
     binary it resolves to (`rustup which`, not the RUSTUP_TOOLCHAIN spelling); plus the selected
     Xcode. An absent tool is its own token, so installing one changes the identity.
+THE RUST COVERAGE VERDICT (GOH.RUSTCOVSKIP, `rust`). A goh land spent 600-900 s measuring Rust
+coverage when its diff touched no Rust (GOH.XEXITDETAIL: 896.62 s of a 21:37 land, for Python and
+shell). The measurement's own inputs are narrower than the gates: the repo's Rust build inputs
+(lib/goh_version.sh's stamp formula, embedded files included: build_inputs) and the Rust gate's
+coverage scripts (rust_gate_scripts: gates/rust_gate.sh, gates/_rust_proven.sh, and every file
+gates/coverage_gate.sh sources, imports or runs, read from the sources by lib/source_closure.py,
+never a hand list), plus the tools. gates/_rust_proven.sh keys the coverage record on these lines;
+on a hit the instrumented build and report are skipped and the tests still run, plain. A workspace
+member or path dependency outside the keyed inputs has no such identity (exit 1): a change there
+could not move the key, so the coverage runs.
 Used by gates/_proven.sh's step identity (its goh roots, GOH.PROVENIDENTITY: it kept a formula of
 its own, HEAD sha and diff for a checkout, the PATH for an export, so a commit's checkout and its
 head export never reused each other's proven steps) and tools/land.sh's goh-landed line (read by
@@ -53,7 +64,9 @@ if __name__ == "__main__":  # C4: run HEAD's copy, not the shared working tree (
 
 import argparse
 import hashlib
+import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -110,16 +123,16 @@ def _git(root: Path, *args: str) -> subprocess.CompletedProcess[bytes]:
                           stdin=subprocess.DEVNULL, check=False)  # fmt: skip
 
 
-def _files(root: Path) -> list[str]:
+def _files(root: Path, parts: tuple[str, ...] | list[str] = PARTS) -> list[str]:
     """The gates' files under root, repo-relative: a checkout's tracked and untracked-unignored
     ones that exist, or every file of an export (a `git archive` of a commit: its tracked files)."""
     if (root / ".git").exists():
-        listed = _git(root, "ls-files", "-z", "-co", "--exclude-standard", "--", *PARTS)
+        listed = _git(root, "ls-files", "-z", "-co", "--exclude-standard", "--", *parts)
         if listed.returncode == 0:
             rels = {r for r in listed.stdout.decode().split("\0") if r}
             return sorted(r for r in rels if os.path.lexists(root / r))
     rels = []
-    for part in PARTS:
+    for part in parts:
         top = root / part
         if top.is_file() or top.is_symlink():
             rels.append(part)
@@ -130,13 +143,13 @@ def _files(root: Path) -> list[str]:
     return sorted(rels)
 
 
-def content(root: Path) -> str:
+def content(root: Path, parts: tuple[str, ...] | list[str] = PARTS) -> str:
     """sha256 of the gates' bytes under root, ONE formula wherever they are read: each file's
     repo-relative path, kind (link, executable, file) and bytes. A checkout and the head export of
     its commit hold the same bytes and key alike; two formulas (`ls-files -s` plus the diff here,
     path and bytes there) put one commit's verdict under two keys (GOH.VERDICTKEYDRIFT)."""
     h = hashlib.sha256()
-    for rel in _files(root):
+    for rel in _files(root, parts):
         if "__pycache__" in rel.split("/"):
             continue
         p = root / rel
@@ -203,6 +216,82 @@ def keyed(roots: list[Path]) -> list[str]:
     return [str(root / part) for root in roots for part in PARTS if os.path.lexists(root / part)]
 
 
+# The Rust gate's coverage group: the scripts that decide it, and the measurement it runs.
+RUST_GATE = ("gates/rust_gate.sh", "gates/_rust_proven.sh")
+RUST_MEASURE = "gates/coverage_gate.sh"
+# A script a gate RUNS by its own directory or the gates root (`bash "$HERE/x.sh"`,
+# `"$GOH_PY" "$GOH_ROOT/gates/x.py"`); source_closure follows what it sources and imports.
+_RUN = re.compile(
+    r"\$\{?(HERE|_goh_d|GOH_ROOT|GOH_DIR|GOH)\}?/((?:\.\./)?[A-Za-z0-9_./-]+\.(?:sh|py))"
+    r'|\$\(dirname "\$\{BASH_SOURCE\[0\]\}"\)/([A-Za-z0-9_./-]+\.(?:sh|py))'
+)
+
+
+def rust_gate_scripts(root: Path = GOH_ROOT) -> list[str]:
+    """The Rust gate's coverage scripts under root, derived from their sources: RUST_GATE, and the
+    closure of RUST_MEASURE over what each file sources, imports (lib/source_closure.py) or runs."""
+    import source_closure  # lib/, beside this file; only this verb needs it
+
+    files = {RUST_MEASURE}
+    while True:
+        found, _ = source_closure.closure(sorted(files), root, root)
+        grown = set(found)
+        for rel in found:
+            if not rel.endswith(".sh"):
+                continue
+            here = Path(rel).parent
+            text = (root / rel).read_text(encoding="utf-8", errors="replace")
+            for line in text.splitlines():
+                for m in _RUN.finditer(source_closure._strip_comment(line)):
+                    var, path, own = m.groups()
+                    rel_to = here if own or var in ("HERE", "_goh_d") else Path()
+                    cand = os.path.normpath(rel_to / (path or own))
+                    if (root / cand).is_file():
+                        grown.add(cand)
+        if grown <= files:
+            return sorted(files | set(RUST_GATE))
+        files |= grown
+
+
+def _uncovered(repo: Path, inputs: list[str]) -> list[str]:
+    """Workspace members and path dependencies of repo's cargo workspace that no input covers."""
+    env = {k: v for k, v in os.environ.items() if not k.startswith("GIT_")}
+    r = subprocess.run(["cargo", "metadata", "--no-deps", "--offline", "--format-version", "1"],
+                       cwd=repo, capture_output=True, text=True, env=env,
+                       stdin=subprocess.DEVNULL, check=False)  # fmt: skip
+    if r.returncode != 0:
+        return [f"(cargo metadata failed: {(r.stderr.strip().splitlines() or ['?'])[-1]})"]
+    top = repo.resolve()
+    dirs = []
+    for pkg in json.loads(r.stdout).get("packages", []):
+        dirs.append(Path(pkg["manifest_path"]).parent)
+        dirs += [Path(d["path"]) for d in pkg.get("dependencies", []) if d.get("path")]
+    out = []
+    for d in dirs:
+        try:
+            rel = d.resolve().relative_to(top).as_posix()
+        except ValueError:
+            out.append(str(d))
+            continue
+        if not any(rel == i or rel.startswith(f"{i}/") for i in inputs):
+            out.append(rel)
+    return sorted(set(out))
+
+
+def rust(repo: Path, root: Path = GOH_ROOT) -> list[str]:
+    """The Rust coverage verdict's identity lines (GOH.RUSTCOVSKIP): the repo's Rust build inputs
+    by content, the Rust gate's coverage scripts by content, the tools. Raises LookupError when a
+    workspace member or path dependency lies outside the keyed inputs."""
+    inputs = build_inputs(repo)
+    if missing := _uncovered(repo, inputs):
+        raise LookupError("outside the Rust inputs: " + " ".join(missing))
+    scripts = rust_gate_scripts(root)
+    return ["rust-identity v1",
+            f"inputs {content(repo, inputs)} {' '.join(inputs)}",
+            f"scripts {content(root, scripts)}",
+            *tools()]  # fmt: skip
+
+
 def suite(root: Path) -> str | None:
     """The identity of a TEST verdict on root (GOH.LANDPREDUP): a test reads the whole tree, not
     only the gates' part, so its key is the commit's tree -- git's own content identity, by path,
@@ -234,7 +323,17 @@ def main(argv: list[str] | None = None) -> int:
     k.add_argument("--root", type=Path, default=GOH_ROOT)
     for verb in ("proven", "keyed"):
         sub.add_parser(verb).add_argument("--root", type=Path, action="append", required=True)
+    r = sub.add_parser("rust")
+    r.add_argument("--repo", type=Path, required=True)
+    r.add_argument("--root", type=Path, default=GOH_ROOT)
     a = ap.parse_args(argv)
+    if a.verb == "rust":
+        try:
+            print("\n".join(rust(a.repo.resolve(), a.root.resolve())))
+        except LookupError as e:
+            print(f"gate_identity: no Rust coverage identity: {e}", file=sys.stderr)
+            return 1
+        return 0
     if a.verb == "tools":
         print("\n".join(tools()))
         return 0
