@@ -147,3 +147,29 @@ push_record_verdicts() {
     local c
     for c in "$@"; do printf 'green %s\n' "$c" >>"$GOH_GATE_VERDICTS"; done
 }
+
+# THE RELEASE RULE (GOH.SHIPRELREUSE R3; lib/release_gate.py's header). push_release_base ROOT
+# WORKTREE prints the parent whose land verdict the pushed commit reuses, or nothing: the repo must
+# declare GOH_PUSH_RELEASE_REUSE=on (read by name, in a child), and `release_gate.py push-decide`
+# must find the commit release files only on a land-green parent. Any other answer is the full gate,
+# its reason said on stderr; a decision that cannot run is the full gate too, never a reduced one.
+push_release_base() {
+    local on="" out=""
+    [ -f "$1/.gatesrc" ] && on="$(bash -c 'set -a; . "$1"; printf %s "${GOH_PUSH_RELEASE_REUSE-}"' _ \
+        "$1/.gatesrc" 2>/dev/null </dev/null)"
+    [ "$on" = on ] || return 0
+    out="$("$GOH_PY" "$GOH/lib/release_gate.py" push-decide --root "$2" </dev/null)" \
+        || out="full the release rule could not decide (above)"
+    case "$out" in
+        "release "?*) printf '%s\n' "${out#release }" ;;
+        *) info "pre-push: the full gate: ${out#full }" >&2 ;;
+    esac
+}
+
+# push_release_run BASE -- in the export: the land's own reduced set (release_gate.py run), whose
+# full-gate fallback is a refusal here: push-decide already chose, so a re-decision that disagrees
+# is a tree that moved, not a reason to run a gate without its marks.
+push_release_run() {
+    "$GOH_PY" "$GOH/lib/release_gate.py" run --root . --base "$1" \
+        --full 'echo "pre-push: the release rule decided twice and disagreed -- nothing pushed" >&2; exit 1'
+}

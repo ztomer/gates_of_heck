@@ -211,6 +211,9 @@ GOH_SHIP_RELEASE_PUSHES=1
 # Each land starts the suite once under load on the tip it landed and records the verdict by tree
 # (lib/loaded_verdict.py); the release kit reads that verdict instead of running it (GOH.SHIPRELREUSE).
 GOH_LAND_LOADED='tools/loaded_suite.sh'
+# The release commit's push re-runs only what its land ran: release files only on a parent whose land
+# was green (goh-landed) runs the structural gate and the release files' readers (lib/release_gate.py).
+GOH_PUSH_RELEASE_REUSE=on
 # Then each consumer workflow's goh pin moves to the release just pushed (GOH.WFPIN): one commit per
 # repo through its own hooks, never a push of another repo.
 GOH_SHIP_INSTALL='tools/ship_install_goh.sh'

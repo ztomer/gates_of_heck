@@ -435,19 +435,20 @@ while read -r local_ref local_sha _remote_ref remote_sha; do
     # inside this repo's scanned tree, so a parent's whole-repo scanners would police the children's
     # sources and a parent push would fail on a finding that is the child's to fix. This names the
     # real checkout instead, and a checker reads it only for citations that name a child. The
-    # isolation the worktree buys -- never certify the working tree -- is untouched, because what it
-    # guards is this repo's OWN files, and those still come from the worktree.
+    # isolation the worktree buys -- never certify the working tree -- is untouched: this repo's
+    # OWN files still come from the worktree.
     change_base="$(push_change_base "$root" "$commit" "${remote_sha:-$zero}" "$remote_name")"   # lib/push_runs.sh
     repo_before="$(goh_repo_snapshot "$root")"   # what the gate may not write (lib/repo_writes.sh)
     slept_mark="$(goh_sleep_mark)"
-    # The house structural layer runs whether or not the repo's gate calls it (BACKLOG 6.7), and so
-    # do the steps its .gatesrc DECLARES (homebrew-tap's gate ran none, 2026-10-18;
-    # tests/test_push_gate_ci_steps.py): structural.sh and local_ci.sh mark the tree they ran for.
+    # The structural layer and the steps .gatesrc DECLARES run whatever the repo's gate calls (6.7,
+    # test_push_gate_ci_steps.py), each marking its tree; a release-only commit: lib/push_runs.sh.
+    release_base="$(push_release_base "$root" "$worktree")"
     structural_mark="$(mktemp "${TMPDIR:-/tmp}/goh-structural-mark.XXXXXX")"
     steps_mark="$(mktemp "${TMPDIR:-/tmp}/goh-ci-steps-mark.XXXXXX")"
     # shellcheck source=/dev/null # the .gatesrc below is the gated repo's, unknown at lint (GOH.SHX2)
-    (cd "$worktree" \
-        && GOH_CROSS_REPO_ROOT="$root" GOH_CHANGE_BASE="$change_base" GOH_STRUCTURAL_MARK="$structural_mark" \
+    (cd "$worktree" && if [ -n "$release_base" ]; then
+            GOH_CROSS_REPO_ROOT="$root" GOH_CHANGE_BASE="$change_base" push_release_run "$release_base"; else
+        GOH_CROSS_REPO_ROOT="$root" GOH_CHANGE_BASE="$change_base" GOH_STRUCTURAL_MARK="$structural_mark" \
             GOH_CI_STEPS_MARK="$steps_mark" bash "$worktree/tools/gate.sh" --full \
         && { grep -qFx -- "--full	$(git rev-parse --show-toplevel)" "$structural_mark" || {
                 warn "pre-push: tools/gate.sh --full passed without running the house structural layer -- running it now"
@@ -458,7 +459,7 @@ while read -r local_ref local_sha _remote_ref remote_sha; do
             || grep -qFx -- "$(git rev-parse --show-toplevel)" "$steps_mark" || {
                 warn "pre-push: tools/gate.sh --full passed without running the steps .gatesrc declares (GOH_CI_STEPS) -- running them now"
                 GOH_DIR="$GOH" bash "$GOH/gates/local_ci.sh" "$worktree"
-            }; }) 2>&1 | tee "$log"
+            }; }; fi) 2>&1 | tee "$log"
     status="${PIPESTATUS[0]}"
     rm -f "$structural_mark" "$steps_mark"
     set -e

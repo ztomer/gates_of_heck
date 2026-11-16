@@ -9,6 +9,7 @@ its gate, with the tip it was cut from:
     release_gate.py run --base TIP --full CMD   # the land's gate (GOH_LAND_GATE), in the worktree
     release_gate.py decide --base TIP           # prints `release` or `full`
     release_gate.py names                       # the tests that read the release files
+    release_gate.py push-decide [--root DIR]    # the push gate's rule for HEAD (below)
 
 `run` diffs TIP against HEAD. Every path CHANGELOG.md or under changelog/ (and at least one): it
 runs the structural gate (`gates/structural.sh --full`: every check over every tracked file, the
@@ -17,6 +18,16 @@ diff, a TIP that is no ancestor because main moved and land.sh rebased -- runs C
 unchanged. The named set is a probe, never a list: a test file in tests/ whose text names
 CHANGELOG.md, the changelog/ directory or a "changelog" path part, so a new reader joins it by
 being written. Pinned by tests/test_release_gate.py.
+
+THE PUSH GETS THE SAME RULE (coordinator ruling 2026-11-15). The land above only moved the cost:
+`git push origin main` ran the whole push gate over the release commit again. A repo declaring
+GOH_PUSH_RELEASE_REUSE=on has gates/push_gate.sh ask `push-decide` for the pushed commit, and run
+`run --base PARENT` (the set above) only when ALL hold: one parent; that parent's land was green --
+tools/land.sh appends a SHA to `goh-landed` in the common git dir only after a green gate and the
+merge, so a red land and a commit no land judged are both absent; and the diff parent..HEAD is
+release files only, by release_only() above, the one definition the land uses. It prints
+`release PARENT` or `full REASON`, and push_gate.sh says the reason. Pinned by
+tests/test_push_release_reuse.py, each calibration by the reason it names.
 """
 
 from __future__ import annotations
@@ -59,13 +70,13 @@ def release_only(paths: list[str]) -> bool:
     return bool(paths) and all(p == RELEASE_FILE or p.startswith(RELEASE_DIR) for p in paths)
 
 
-def changed(root: Path, base: str) -> list[str] | None:
-    """The paths HEAD changed since base, or None when base is no ancestor of HEAD (main moved)."""
+def changed(root: Path, base: str, head: str = "HEAD") -> list[str] | None:
+    """The paths head changed since base, or None when base is no ancestor of head (main moved)."""
     git = ["git", "-C", str(root)]
-    if subprocess.run([*git, "merge-base", "--is-ancestor", base, "HEAD"], check=False,
+    if subprocess.run([*git, "merge-base", "--is-ancestor", base, head], check=False,
                       stdin=subprocess.DEVNULL, capture_output=True).returncode != 0:  # fmt: skip
         return None
-    diff = [*git, "diff", "--no-renames", "--name-only", base, "HEAD"]
+    diff = [*git, "diff", "--no-renames", "--name-only", base, head]
     out = subprocess.run(diff, check=True, stdin=subprocess.DEVNULL, capture_output=True, text=True)
     return [line for line in out.stdout.splitlines() if line]
 
@@ -73,6 +84,39 @@ def changed(root: Path, base: str) -> list[str] | None:
 def decide(root: Path, base: str) -> str:
     paths = changed(root, base)
     return "release" if paths is not None and release_only(paths) else "full"
+
+
+def _git_out(root: Path, *args: str) -> str:
+    out = subprocess.run(["git", "-C", str(root), *args], check=True, stdin=subprocess.DEVNULL,
+                         capture_output=True, text=True)  # fmt: skip
+    return out.stdout.strip()
+
+
+def land_green(root: Path, sha: str) -> bool:
+    """True when tools/land.sh recorded sha: it lands, then appends, only after a green gate."""
+    common = Path(_git_out(root, "rev-parse", "--path-format=absolute", "--git-common-dir"))
+    try:
+        return sha in (common / "goh-landed").read_text(encoding="utf-8").split()
+    except FileNotFoundError:
+        return False
+
+
+def decide_push(root: Path, head: str = "HEAD") -> tuple[str, str]:
+    """("release", PARENT) when head is release files only on a parent whose land was green;
+    ("full", REASON) otherwise -- the reason is what the push says."""
+    sha, *parents = _git_out(root, "rev-list", "--parents", "-n1", head).split()
+    if len(parents) != 1:
+        return "full", f"{sha[:8]} has {len(parents)} parents, not one"
+    parent = parents[0]
+    if not land_green(root, parent):
+        return "full", f"its parent {parent[:8]} has no green land verdict (goh-landed)"
+    paths = changed(root, parent, sha) or []
+    if not paths:
+        return "full", f"it changes nothing since its parent {parent[:8]}"
+    other = next((p for p in paths if not release_only([p])), None)
+    if other is not None:
+        return "full", f"{other} is not a release file (the diff since {parent[:8]})"
+    return "release", parent
 
 
 def _sh(cmd: str, root: Path) -> int:
@@ -103,10 +147,10 @@ def run(root: Path, base: str, full: str, structural: str, runner: str) -> int:
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     sub = ap.add_subparsers(dest="verb", required=True)
-    for verb in ("run", "decide", "names"):
+    for verb in ("run", "decide", "names", "push-decide"):
         p = sub.add_parser(verb)
         p.add_argument("--root", type=Path, default=Path.cwd())
-        if verb != "names":
+        if verb in ("run", "decide"):
             p.add_argument("--base", required=True)
         if verb == "run":
             p.add_argument("--full", required=True)
@@ -119,6 +163,9 @@ def main(argv: list[str] | None = None) -> int:
         return 0
     if a.verb == "decide":
         print(decide(root, a.base))
+        return 0
+    if a.verb == "push-decide":
+        print(" ".join(decide_push(root)))
         return 0
     return run(root, a.base, a.full, a.structural, a.runner)
 

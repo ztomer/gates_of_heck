@@ -124,6 +124,8 @@ MSG
     GOH_LAND_GATE="${release_gate% }" timed "release: land (its release gate)" tools/land.sh
 )
 
+# Its push gate takes the same reduced set: release files only on a parent whose land was green
+# (.gatesrc GOH_PUSH_RELEASE_REUSE, lib/release_gate.py push-decide; anything else is the full gate).
 timed "release: push main" git push origin main
 notes="$(mktemp "${TMPDIR:-/tmp}/goh-release-notes.XXXXXX")"
 awk -v h="## $TAG" 'index($0, h) == 1 && (length($0) == length(h) || substr($0, length(h) + 1, 1) == " ") { on = 1; next }
