@@ -13,8 +13,10 @@
 #      reads the release from this commit's CHANGELOG.md (.gatesrc GOH_TAG_VERSION_SOURCES);
 #   3. the tip's loaded verdict (lib/loaded_verdict.py: the suite once under tools/load.py's
 #      spinners, GOH.CLASS.HARNESS, run by the land that landed the tip -- GOH.SHIPRELREUSE R2),
-#      then tools/land.sh from that worktree: main moves only through land (.gatesrc
-#      GOH_LANDED_ONLY), never a commit in the main checkout and never GOH_MAIN_COMMIT_OK;
+#      then tools/land.sh from that worktree, gated by lib/release_gate.py (the structural gate and
+#      the tests that read the release files when that is all the commit changed, R3): main moves
+#      only through land (.gatesrc GOH_LANDED_ONLY), never a commit in the main checkout and
+#      never GOH_MAIN_COMMIT_OK;
 #   4. push main, then an annotated tag vVERSION whose message is the stanza, then push the tag.
 #
 # With .gatesrc GOH_CHANGELOG_FRAGMENTS=on (goh's own), each change's entry is its own file in
@@ -113,7 +115,13 @@ MSG
     # one row of goh ship's profile (timed: lib/step_timings.py, GOH.SHIPPROFILE).
     timed "release: the tip's loaded verdict" "$GOH_PY" "$GOH/lib/loaded_verdict.py" wait \
         --repo "$main" --sha "$tip" --max 3600
-    timed "release: land (its push gate)" tools/land.sh
+    # The land's gate (GOH.SHIPRELREUSE R3): this commit changes only release files, so it runs the
+    # structural gate and the tests that read them (lib/release_gate.py); a diff since the tip with
+    # anything else in it -- main moved and land rebased -- runs the full gate land would have run.
+    full="$(bash -c 'unset GOH_LAND_GATE; [ -f .gatesrc ] && . ./.gatesrc >/dev/null 2>&1 </dev/null; printf %s "${GOH_LAND_GATE-}"')"
+    [ -n "$full" ] || full="$GOH/tools/gate_profile.sh ."
+    release_gate="$(printf '%q ' "$GOH_PY" "$GOH/lib/release_gate.py" run --base "$tip" --full "$full")"
+    GOH_LAND_GATE="${release_gate% }" timed "release: land (its release gate)" tools/land.sh
 )
 
 timed "release: push main" git push origin main
