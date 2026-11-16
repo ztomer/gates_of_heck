@@ -85,7 +85,11 @@ fi
 tip="$(git rev-parse HEAD)"   # the land-gated tip the release is cut from: its loaded verdict
 git worktree add -q -b "$branch" "$wt" "$tip"
 # The worktree and its branch go on every exit: landed, main holds the commit; refused, nothing moved.
-trap 'git -C "$main" worktree remove --force "$wt" 2>/dev/null || true
+# The tagged build below is waited for, never left running past the kit (it only fills the store).
+prebuild="" prebuild_log=""
+trap '[ -z "$prebuild" ] || wait "$prebuild" 2>/dev/null || true
+      [ -z "$prebuild_log" ] || rm -f "$prebuild_log"
+      git -C "$main" worktree remove --force "$wt" 2>/dev/null || true
       git -C "$main" branch -D "$branch" >/dev/null 2>&1 || true' EXIT
 
 (
@@ -106,6 +110,21 @@ release: ${heading#\#\# }
 
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
 MSG
+)
+# THE TAGGED BUILD, BESIDE THE WAIT, THE LAND AND THE PUSH (GOH.TAGPUSHGATE). A tagged commit's
+# stamp names its tag, so its goh is a build of its own; the first gate to ask for it was the tag
+# push's tag check, which rebuilt goh there: 98.6 s of v0.125.0's ship at load 190, on the critical
+# path. Built here as the tag it will carry (build-goh.sh --as-release, into the store), it is ready
+# when the tag is made. Only the store is written, keyed by that stamp: a release refused below, or
+# one whose land rebased onto other build inputs, leaves an entry no stamp asks for, and the tag
+# push builds what it needs as before.
+prebuild_log="$(mktemp "${TMPDIR:-/tmp}/goh-release-build.XXXXXX")"
+bash "$main/scripts/build-goh.sh" --rev "$(git -C "$wt" rev-parse HEAD)" --as-release "$TAG" \
+    >"$prebuild_log" 2>&1 </dev/null &
+prebuild=$!
+info "release: building goh as $TAG beside the land (pid $prebuild)"
+(
+    cd "$wt"
     # The suite once under deliberate load, before main moves (GOH.CLASS.HARNESS): a test the box's
     # load turns red is this release's refusal, named, not a random later land's. It is no longer
     # RUN here (485-511 s of every release step): each land starts it on the tip it landed and
@@ -137,6 +156,15 @@ awk -v h="## $TAG" 'index($0, h) == 1 && (length($0) == length(h) || substr($0, 
 [ -s "$notes" ] || { err "release_goh.sh: the $TAG stanza is empty in the landed CHANGELOG.md"; rm -f "$notes"; exit 1; }
 { printf '%s\n\n' "$TAG"; cat "$notes"; } | git tag -a "$TAG" -F -
 rm -f "$notes"
+prebuild_rc=0
+wait "$prebuild" || prebuild_rc=$?
+prebuild=""
+if [ "$prebuild_rc" -eq 0 ]; then
+    ok "release: goh built as $TAG ($(tail -n 1 "$prebuild_log"))"
+else
+    warn "release: the build of goh as $TAG failed (exit $prebuild_rc); the tag push builds it:"
+    tail -n 5 "$prebuild_log" | sed 's/^/    /' >&2
+fi
 timed "release: push the tag" git push origin "refs/tags/$TAG"
 ok "released $TAG at $(git rev-parse --short "$TAG^{commit}") (tag $(git rev-parse --short "$TAG"))"
 exit

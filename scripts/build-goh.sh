@@ -63,16 +63,29 @@ fi
 #   --if-stale   build only when bin/goh's stamp differs from HEAD's (the resolver's call)
 #   --rev SHA    build that commit into the store only, never bin/goh: the resolver's call for a
 #                gate pinned to a commit the live checkout has moved past (gates/_goh_bin.sh)
+#   --rev SHA --as-release vX.Y.Z
+#                the build that commit WILL be once tagged vX.Y.Z, into the store only: stamped and
+#                versioned as the tag, so the first gate to ask after the tag finds it built.
+#                tools/release_goh.sh starts it beside its land and push (GOH.TAGPUSHGATE): the tag
+#                push's check found the tagged stamp unbuilt and rebuilt goh, 98.6 s of v0.125.0's
+#                ship at load 190. A commit tagged with another release is refused; a prebuild for
+#                a tag never made is a store entry no stamp asks for.
 # Every build also lands in the store, `bin/by-stamp/<sha1 of its stamp>/goh`, which is what the
 # resolver answers with: a gate gets the build of the commit it pinned, whatever bin/goh is by then.
 INPUTS=(crates Cargo.toml Cargo.lock rust-toolchain.toml)
 IF_STALE=""
 REV="HEAD"
+AS_RELEASE=""
 case "${1:-}" in
   --if-stale) IF_STALE=1 ;;
   --rev)
     REV="${2:-}"
     [[ -n "${REV}" ]] || { echo "✗ build-goh: --rev needs a commit" >&2; exit 2; }
+    if [[ "${3:-}" == "--as-release" ]]; then
+      AS_RELEASE="${4:-}"
+      [[ "${AS_RELEASE}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] \
+        || { echo "✗ build-goh: --as-release needs vX.Y.Z (got '${AS_RELEASE}')" >&2; exit 2; }
+    fi
     ;;
 esac
 # shellcheck disable=SC2046  # word-splitting git's variable list is the point
@@ -83,16 +96,24 @@ git_here() { (unset ${GOH_GIT_LOCAL_VARS:-$(git rev-parse --local-env-vars 2>/de
 # shellcheck source=lib/goh_version.sh
 . "${PROJECT_ROOT}/lib/goh_version.sh"
 head_stamp() { local out; out="$(git_here rev-parse "${INPUTS[@]/#/${REV}:}" 2>/dev/null)" || return 0
-  out="${out} $(goh_release_at "${PROJECT_ROOT}" "${REV}")"
+  out="${out} ${AS_RELEASE:-$(goh_release_at "${PROJECT_ROOT}" "${REV}")}"
   printf '%s' "${out}" | tr '\n' ' ' | sed 's/ *$//'; }
 
+if [[ -n "${AS_RELEASE}" ]]; then
+  carried="$(goh_release_at "${PROJECT_ROOT}" "${REV}")"
+  if [[ -n "${carried}" && "${carried}" != "${AS_RELEASE}" ]]; then
+    echo "✗ build-goh: ${REV} is tagged ${carried}; it is never built as ${AS_RELEASE}" >&2
+    exit 2
+  fi
+fi
 STAMP="$(head_stamp)"
 if [[ -n "${GOH_BUILD_PUBLISH_CHECK_ONLY:-}" ]]; then
   echo "publish ok${STAMP:+ (the committed source at HEAD)}"
   exit 0
 fi
-# A --rev of the commit HEAD already is: an ordinary build (bin/goh too).
-if [[ "${REV}" != "HEAD" && "$(git_here rev-parse -q --verify "${REV}^{commit}" 2>/dev/null)" \
+# A --rev of the commit HEAD already is: an ordinary build (bin/goh too) -- unless it is built as
+# a release HEAD does not carry yet, which never reaches bin/goh (bin/goh is HEAD's, C3).
+if [[ -z "${AS_RELEASE}" && "${REV}" != "HEAD" && "$(git_here rev-parse -q --verify "${REV}^{commit}" 2>/dev/null)" \
       == "$(git_here rev-parse -q --verify HEAD 2>/dev/null)" ]]; then
   REV="HEAD"
 fi
@@ -176,6 +197,7 @@ echo "Building goh for ${OS}/${ARCH} from ${STAMP:+${REV} }source…"
 # The export has no .git, so the version is read here, by the one rule (lib/goh_version.sh): the
 # tag on a release commit, `X.Y.Z-N-g<sha>` past one, never a number from Cargo.toml.
 VERSION="$(goh_version_at "${PROJECT_ROOT}" "${REV}")"
+[[ -z "${AS_RELEASE}" ]] || VERSION="${AS_RELEASE#v}"
 GOH_VERSION="${VERSION}" GOH_SOURCE_STAMP="${STAMP:-unknown}" cargo build --release --quiet --locked \
   --manifest-path "${SRC}/Cargo.toml" -p goh
 
