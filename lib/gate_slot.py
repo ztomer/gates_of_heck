@@ -5,6 +5,7 @@
     lib/gate_slot.py nested --dir D                # exit 0 (and say so) inside a gate holding a slot
     lib/gate_slot.py hold --dir D [--slots N] --owner PID --repo NAME --handshake FIFO [--poll S]
                           [--for-caller]   # the owner is the caller's caller, not this process's parent
+                          [--class short|ship|work]   # lane and rank (GOH.SLOTFAIR, LANES)
 
 THE INCIDENT (2026-10-18). Every repo's pre-push runs goh's push gate, and several sessions pushed at
 once with nothing limiting them. Two pushes failed on load, not on their changes: a private consumer's gate was
@@ -81,6 +82,7 @@ import time
 from collections.abc import Callable
 
 import lock_order
+from gate_lanes import CLASSES, DEFAULT_CLASS, LANES, Ticket  # who goes next (GOH.SLOTFAIR)
 
 if __name__ == "__main__":
     sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
@@ -106,8 +108,10 @@ def default_dir() -> str:
     return os.path.expanduser("~/.cache/goh/slots")
 
 
-def slot_path(directory: str, i: int) -> str:
-    return os.path.join(directory, f"slot-{i}")
+def slot_path(directory: str, i: int, lane: str = "long") -> str:
+    """Slot `i` of `lane`: `slot-<i>` (the long lane every gate class but `short` takes) or
+    `short-<i>` (the commit gate's own lane, GOH.SLOTFAIR)."""
+    return os.path.join(directory, f"{LANES[lane]}-{i}")
 
 
 def _open(path: str) -> int:
@@ -188,8 +192,10 @@ def ancestors() -> set[int]:
 
 
 def slot_files(directory: str) -> list[str]:
+    """Every slot file of every lane in `directory`: a gate in flight holds one of them."""
     try:
-        names = sorted(n for n in os.listdir(directory) if n.startswith("slot-"))
+        prefixes = tuple(f"{p}-" for p in LANES.values())
+        names = sorted(n for n in os.listdir(directory) if n.startswith(prefixes))
     except OSError:
         return []
     return [os.path.join(directory, n) for n in names]
@@ -239,34 +245,48 @@ def acquire(
     owner: int,
     watch: OwnerWatch | None = None,
     max_wait: float | None = None,
+    *,
+    lane: str = "long",
+    rank: int = 1,
 ) -> tuple[int, int, float] | None:
     """(slot index, fd holding it, seconds waited); None once `max_wait` seconds passed with every
-    slot held (no bound when None). Says who holds the slots while it waits."""
+    slot held (no bound when None). Says who holds the slots while it waits.
+
+    Only the first live ticket of the lane takes a slot (`Ticket`): a freed slot goes to the
+    longest waiter of the highest rank, never to whichever try-lock lands first."""
     start = time.monotonic()
     next_report = 0.0
-    while True:
-        for i in range(slots):
-            fd = try_take(slot_path(directory, i))
-            if fd is not None:
-                return i, fd, time.monotonic() - start
-        waited = time.monotonic() - start
-        if max_wait is not None and waited >= max_wait:
-            return None
-        if waited >= next_report:
-            now = time.time()
-            if next_report == 0.0:
-                header = (
-                    f"all {slots} gate slots are held -- waiting for one "
-                    f"(GOH_GATE_SLOTS={slots}, {directory}):"
-                )
-            else:
-                header = f"waited {_ago(waited)} for a gate slot; still held:"
-            details = [describe(slot_path(directory, i), now) for i in range(slots)]
-            report(header, *details)
-            next_report += REPORT_EVERY_S
-        if not (watch.alive() if watch else _alive(owner)):
-            sys.exit(3)
-        time.sleep(poll)
+    ticket = Ticket(directory, lane, rank)
+    try:
+        while True:
+            ahead = ticket.ahead()
+            if not ahead:
+                for i in range(slots):
+                    fd = try_take(slot_path(directory, i, lane))
+                    if fd is not None:
+                        return i, fd, time.monotonic() - start
+            waited = time.monotonic() - start
+            if max_wait is not None and waited >= max_wait:
+                return None
+            if waited >= next_report:
+                now = time.time()
+                queue = f"; {len(ahead)} waiting ahead of this one" if ahead else ""
+                which = "short-lane gate slots" if lane == "short" else "gate slots"
+                if next_report == 0.0:
+                    header = (
+                        f"all {slots} {which} are held -- waiting for one "
+                        f"(GOH_GATE_SLOTS={slots}, {directory}){queue}:"
+                    )
+                else:
+                    header = f"waited {_ago(waited)} for a gate slot{queue}; still held:"
+                details = [describe(slot_path(directory, i, lane), now) for i in range(slots)]
+                report(header, *details)
+                next_report += REPORT_EVERY_S
+            if not (watch.alive() if watch else _alive(owner)):
+                sys.exit(3)
+            time.sleep(poll)
+    finally:
+        ticket.leave()
 
 
 def alive(pid: int) -> bool:
@@ -372,15 +392,18 @@ def hold(args: argparse.Namespace) -> int:
     slots = args.slots if args.slots else default_slots()
     import admission  # lib/admission.py: the one entry every gate comes in by (GOH.ONEADMISSION)
 
-    taken = admission.admit(args.dir, slots, args.owner, args.repo, poll=args.poll, watch=watch)
+    taken = admission.admit(
+        args.dir, slots, args.owner, args.repo, poll=args.poll, watch=watch,
+        gate_class=args.gate_class,
+    )  # fmt: skip
     if taken is None:
         return 3
-    idx, _held_fd, waited = taken  # open until this process exits: the slot
+    idx, _held_fd, waited, path = taken  # open until this process exits: the slot
     # The mechanism goes in the handshake, so the shell can say WHICH watch took the slot: the
     # kernel event on macOS (kqueue), the pidfd on Linux, the poll where the kernel has neither.
     # A branch that cannot be seen cannot be proved to have run.
     mechanism = watch.mechanism if watch is not None else "poll"
-    os.write(shake, f"{idx} {slots} {waited:.0f} {slot_path(args.dir, idx)} {mechanism}\n".encode())
+    os.write(shake, f"{idx} {slots} {waited:.0f} {path} {mechanism}\n".encode())
     os.close(shake)
     # Hold nothing of the caller's open past here: a pipe this process kept would make whoever reads
     # the gate's output wait for the slot's release instead of the gate's end.
@@ -410,6 +433,7 @@ def main(argv: list[str]) -> int:
     h.add_argument("--handshake", required=True)
     h.add_argument("--poll", type=float, default=0.5)
     h.add_argument("--for-caller", action="store_true")
+    h.add_argument("--class", dest="gate_class", choices=sorted(CLASSES), default=DEFAULT_CLASS)
     args = ap.parse_args(argv)
     if args.cmd == "default":
         print(default_slots())

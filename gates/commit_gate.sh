@@ -103,7 +103,11 @@ if [ ! -f "$gate" ]; then
     bash "$structural" --staged || status=$?
 else
     mark="$(mktemp "${TMPDIR:-/tmp}/goh-structural-mark.XXXXXX")"
-    GOH_STRUCTURAL_MARK="$mark" GOH_STAGED_TWIN_MARK="$twins" bash "$gate" --staged || status=$?
+    # A commit gate is SHORT (GOH.SLOTFAIR): a gate.sh --staged that takes a gate slot (the .loop
+    # queue's, which carries its whole Python layer) takes it in the short lane, never behind a
+    # push, a land or a 49-min test run (lib/gate_slot.py LANES; consumed by the acquire).
+    GOH_GATE_CLASS=short GOH_STRUCTURAL_MARK="$mark" GOH_STAGED_TWIN_MARK="$twins" \
+        bash "$gate" --staged || status=$?
     # `grep -F -x` on the whole line: the scope and the tree it ran in, as structural.sh wrote them.
     if [ "$status" -eq 0 ] && ! grep -qFx -- "--staged	$root" "$mark"; then
         warn "pre-commit: tools/gate.sh --staged passed without running the house structural layer"

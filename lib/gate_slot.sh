@@ -6,7 +6,10 @@
 # preflight, and the starter tools/gate.sh install.sh writes. The mechanism, the incident and the
 # nesting rule are in lib/gate_slot.py's header; this is the shell's half:
 #
-#     gate_slot_acquire <repo name>   # blocks until a slot is free; announces the wait and its end
+#     gate_slot_acquire <repo name> [class]   # blocks until a slot is free; announces the wait
+#         # and its end. class: short | ship | work (lib/gate_slot.py LANES, GOH.SLOTFAIR); none
+#         # given, GOH_GATE_CLASS (gates/commit_gate.sh sets `short` for the gate.sh it runs),
+#         # consumed by the acquire so nothing this gate starts inherits it; neither: work
 #     gate_slot_release               # the caller's cleanup calls it on every exit path
 #     gate_slot_acquire_for_caller <repo name>
 #         # structural.sh --full: when its PARENT is a `tools/gate.sh`, take the slot FOR that
@@ -33,7 +36,7 @@ GATE_SLOT_HELPER="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/gate_slot.py" # 
 GATE_SLOT_PID="" # the holder process (lib/gate_slot.py hold); gate_slot_release ends it
 
 gate_slot_acquire() {
-    _gate_slot_take "${1:-gate}" "$$" ""
+    _gate_slot_take "${1:-gate}" "$$" "" "${2:-}"
 }
 
 # A full gate's entry is the consumer's own tools/gate.sh, and this shell is its child: the slot
@@ -47,11 +50,17 @@ gate_slot_acquire_for_caller() {
         *" tools/gate.sh "* | *"/tools/gate.sh "*) ;;
         *) return 0 ;;
     esac
-    _gate_slot_take "${1:-gate}" "$caller" --for-caller
+    _gate_slot_take "${1:-gate}" "$caller" --for-caller ""
 }
 
-_gate_slot_take() { # <repo> <owner pid> <"" | --for-caller>
-    local repo="$1" owner="$2" mode="$3" n="${GOH_GATE_SLOTS-}"
+_gate_slot_take() { # <repo> <owner pid> <"" | --for-caller> <class | "">
+    local repo="$1" owner="$2" mode="$3" class="${4:-${GOH_GATE_CLASS:-work}}" n="${GOH_GATE_SLOTS-}"
+    unset GOH_GATE_CLASS   # this admission's word: never inherited by what the gate starts
+    case "$class" in
+        short | ship | work) ;;
+        *) err "GOH_GATE_CLASS must be short, ship or work (got '$class')"
+           exit 2 ;;
+    esac
     local dir="${GOH_GATE_SLOT_DIR:-$HOME/.cache/goh/slots}"
     local helper="$GATE_SLOT_HELPER" fifo line idx total waited path pid mech
     case "$n" in
@@ -70,7 +79,7 @@ _gate_slot_take() { # <repo> <owner pid> <"" | --for-caller>
     fifo="$(mktemp -u "${TMPDIR:-/tmp}/goh-gate-slot.XXXXXX")"
     mkfifo "$fifo"
     "$GOH_PY" -S "$helper" hold --dir "$dir" ${n:+--slots "$n"} --owner "$owner" --repo "$repo" \
-        --handshake "$fifo" ${mode:+"$mode"} </dev/null &
+        --handshake "$fifo" --class "$class" ${mode:+"$mode"} </dev/null &
     pid=$!
     # Read-write, so the open never blocks and a holder that died before writing cannot hang this
     # shell: the read times out, and the holder's liveness is asked between reads.
@@ -111,18 +120,20 @@ _gate_slot_take() { # <repo> <owner pid> <"" | --for-caller>
     [ -n "$mech" ] || mech="poll"
     export GOH_GATE_SLOT="$path $owner"
     goh_lock_mark gate_slot
-    local whose="(GOH_GATE_SLOTS)"
+    local whose="(GOH_GATE_SLOTS, class $class)"
     if [ -n "$mode" ]; then
         # Never this shell's to release: the holder ends with the gate.sh it was taken for.
         whose="for tools/gate.sh (pid $owner), held until it ends"
     else
         GATE_SLOT_PID="$pid"
     fi
+    local word="gate slot"
+    case "${path##*/}" in short-*) word="short-lane gate slot" ;; esac
     if [ "$waited" -gt 0 ]; then
-        ok "gate slot $((idx + 1))/$total taken after ${waited}s waiting -- the step limits count from here"
+        ok "$word $((idx + 1))/$total taken after ${waited}s waiting -- the step limits count from here"
         [ -z "$mode" ] || info "  $whose"
     else
-        info "gate slot $((idx + 1))/$total taken $whose"
+        info "$word $((idx + 1))/$total taken $whose"
     fi
     info "  owner watch: $mech"
 }

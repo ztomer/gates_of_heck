@@ -104,7 +104,7 @@ if [ -n "$pre" ]; then
     pre_base="$(git -C "$main" rev-parse HEAD)"
     info "pre-land: $pre"
     pre_t0=$SECONDS
-    if ! (cd "$here" && GOH_LAND_VERDICTS_RECORD="$verdicts" "$GOH_PY" "$GOH/tools/load.py" \
+    if ! (cd "$here" && GOH_LAND_VERDICTS_RECORD="$verdicts" GOH_GATE_CLASS=ship "$GOH_PY" "$GOH/tools/load.py" \
             --background-ok "pre-land" --max 10m 0 -- bash -c "$pre" pre-land "$pre_base" </dev/null); then
         err "land.sh: the pre-land tests failed on ${tip:0:8} in $((SECONDS - pre_t0)) s, before the land lock and the gate -- nothing landed"
         exit 1
@@ -180,8 +180,9 @@ info "gate: $gate"
 # admission every gate takes, so a land and a push gate wait for the same slots (GOH.ONEADMISSION,
 # docs/decisions/D-0008) -- taken HERE, under the land lock, never around this script: a land queued
 # on the lock then holds nothing a ship holding the lock can be waiting on (GOH.LOCKORDER: land 20
-# before gate_slot 50). 90 minutes bounds the gate as the coordinator's wrapper did.
-if ! GOH_PROFILE_PROVEN="${GOH_PROFILE_PROVEN-1}" GOH_LAND_VERDICTS_REUSE="$verdicts" \
+# before gate_slot 50). 90 minutes bounds the gate as the coordinator's wrapper did. Class `ship`
+# (GOH_GATE_CLASS, consumed by lib/admission.py): ahead of every `work` waiter (GOH.SLOTFAIR).
+if ! GOH_PROFILE_PROVEN="${GOH_PROFILE_PROVEN-1}" GOH_LAND_VERDICTS_REUSE="$verdicts" GOH_GATE_CLASS=ship \
         "$GOH_PY" "$GOH/tools/load.py" --background-ok "land gate" \
         --max 90m 0 -- bash -c "$gate" 7>&- </dev/null; then
     err "land.sh: the gate failed on ${tip:0:8} -- nothing landed"

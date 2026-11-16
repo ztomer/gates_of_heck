@@ -19,6 +19,7 @@ import time
 from collections.abc import Callable
 from dataclasses import dataclass
 
+import gate_lanes
 import gate_slot
 import lock_order
 
@@ -32,17 +33,21 @@ def admit(
     poll: float = 0.5,
     watch: gate_slot.OwnerWatch | None = None,
     max_wait: float | None = None,
-) -> tuple[int, int, float] | None:
+    gate_class: str = gate_lanes.DEFAULT_CLASS,
+) -> tuple[int, int, float, str] | None:
     """THE ADMISSION (GOH.ONEADMISSION): memory first, then a gate slot, then the holder's record.
-    (slot index, fd holding it, seconds waited), or None when the owner is gone or `max_wait`
-    passed. Every gate, land and `load.py 0` run comes in here -- the shell's holder
+    (slot index, fd holding it, seconds waited, slot file), or None when the owner is gone or
+    `max_wait` passed. Every gate, land and `load.py 0` run comes in here -- the shell's holder
     (lib/gate_slot.py `hold`) and tools/load.py (`admit_here`) -- so a land and a push gate wait
-    for the SAME slots.
+    for the SAME slots. `gate_class` picks the lane and the rank in its queue (lib/gate_slot.py
+    LANES, GOH.SLOTFAIR): a commit gate (`short`) never waits behind a long gate.
 
     MEMORY BEFORE A SLOT (GOH.MEMADMIT): a slot counts gates, not the memory they start into; on
     2026-11-16 gates kept starting into a machine already swapping, until a forced restart.
     Bounded (lib/mem_admit.py); the wait counts as the slot's, before every step's ceiling."""
     import mem_admit  # lib/: the reading (a seam for the suite, GOH_MEM_READING)
+
+    lane, rank = gate_lanes.lane_of(gate_class)
 
     def owner_alive() -> bool:
         return watch.alive() if watch else gate_slot.alive(owner)
@@ -51,7 +56,9 @@ def admit(
     if not owner_alive():
         return None
     left = None if max_wait is None else max(0.0, max_wait - mem_waited)
-    got = gate_slot.acquire(directory, slots, poll, owner, watch, max_wait=left)
+    got = gate_slot.acquire(
+        directory, slots, poll, owner, watch, max_wait=left, lane=lane, rank=rank
+    )
     if got is None:
         return None
     idx, fd, waited = got
@@ -61,7 +68,7 @@ def admit(
     key = lock_order.repo_key()
     name = " ".join(repo.split())  # one field of a tab-separated record
     os.write(fd, f"{owner}\t{name}\t{time.time():.0f}\t{key}\n".encode())
-    return idx, fd, waited + mem_waited
+    return idx, fd, waited + mem_waited, gate_slot.slot_path(directory, idx, lane)
 
 
 @dataclass
@@ -75,8 +82,10 @@ class Admitted:
     index: int = 0
     slots: int = 0
     waited: float = 0.0
+    gate_class: str = gate_lanes.DEFAULT_CLASS
 
 
+CLASS_ENV = "GOH_GATE_CLASS"  # short | ship | work (lib/gate_slot.py CLASSES); empty: work
 _HELD: list[int] = []  # the fds this process holds its slot by: open until it exits
 
 
@@ -96,6 +105,10 @@ def admit_here(repo: str, max_wait: float | None = None) -> Admitted:
     runs (the fd is non-inheritable, PEP 446, so no child keeps it), marked for its children the
     way lib/gate_slot.sh marks a shell's (GOH_GATE_SLOT, GOH_HELD_LOCKS), so the gate it runs
     takes no second slot. OSError when the lock order refuses the wait."""
+    # The class is the caller's word for THIS admission (tools/land.sh says `ship`), consumed first
+    # so the gate it runs -- nested in this slot, or under no slot at all -- does not inherit it.
+    gate_class = os.environ.pop(CLASS_ENV, "").strip() or gate_lanes.DEFAULT_CLASS
+    lane, _ = gate_lanes.lane_of(gate_class)
     directory, slots = configured()
     if slots == 0:
         return Admitted("off")
@@ -104,20 +117,21 @@ def admit_here(repo: str, max_wait: float | None = None) -> Admitted:
         return Admitted("nested", found)
     if why := lock_order.refusal("gate_slot"):
         raise OSError(why)
-    taken = admit(directory, slots, os.getpid(), repo, max_wait=max_wait)
+    taken = admit(directory, slots, os.getpid(), repo, max_wait=max_wait, gate_class=gate_class)
     if taken is None:
         now = time.time()
         return Admitted(
             "expired",
             "; ".join(
-                gate_slot.describe(gate_slot.slot_path(directory, i), now) for i in range(slots)
+                gate_slot.describe(gate_slot.slot_path(directory, i, lane), now)
+                for i in range(slots)
             ),
         )
-    idx, fd, waited = taken
+    idx, fd, waited, path = taken
     _HELD.append(fd)
-    os.environ["GOH_GATE_SLOT"] = f"{gate_slot.slot_path(directory, idx)} {os.getpid()}"
+    os.environ["GOH_GATE_SLOT"] = f"{path} {os.getpid()}"
     os.environ[lock_order.ENV] = lock_order.with_held("gate_slot", os.getpid())
-    return Admitted("taken", index=idx, slots=slots, waited=waited)
+    return Admitted("taken", index=idx, slots=slots, waited=waited, gate_class=gate_class)
 
 
 def run_admitted(label: str, wait_s: float, say: Callable[[str], None]) -> bool:
@@ -135,7 +149,10 @@ def run_admitted(label: str, wait_s: float, say: Callable[[str], None]) -> bool:
         say(f"load: inside a gate that holds {got.said} -- not taking another")
     elif got.state == "taken":
         slot = f"{got.index + 1}/{got.slots}"
-        say(f"load: gate slot {slot} taken after {got.waited:.0f}s (GOH_GATE_SLOTS)")
+        say(
+            f"load: gate slot {slot} taken after {got.waited:.0f}s "
+            f"(GOH_GATE_SLOTS, class {got.gate_class})"
+        )
     else:
         say("load: gate slots off (GOH_GATE_SLOTS=0)")
     return True
