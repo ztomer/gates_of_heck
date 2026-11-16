@@ -87,6 +87,9 @@ SLOW: dict[tuple[str, str], str] = {
     ("rust_gate.sh", "lint policy is inherited"): "manifest",
     ("rust_gate.sh", "coverage (floor ${GOH_COV_FLOOR_RUST}%)"): _W,
     ("rust_gate.sh", "coverage (per-target floors)"): _W,
+    # GOH.RUSTCOVSKIP: the coverage run's tests, plain, when its measurement is reused.
+    ("rust_gate.sh", "cargo test (plain: the coverage measurement stands)"): _W,
+    ("rust_gate.sh", "external (plain): $GOH_COV_RUST_EXTERNAL"): _W,
 }
 
 # `goh_step "label" cmd...` and `goh_step_in "$dir" "label" cmd...`, outside comments.

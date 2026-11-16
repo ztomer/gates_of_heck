@@ -18,6 +18,7 @@ from pathlib import Path
 import pytest
 from _fast_git import fast_init
 from conftest import REPO_ROOT, hermetic_env
+from source_closure import copy_closure
 from timing_bounds import patience
 
 pytestmark = pytest.mark.skipif(shutil.which("cargo") is None, reason="cargo not installed")
@@ -69,7 +70,7 @@ def repo(tmp_path: Path) -> Path:
                    capture_output=True, stdin=subprocess.DEVNULL)  # fmt: skip
     fast_init(r)
     _git(r, "add", "-A")
-    _git(r, "commit", "-qm", "init")
+    _git(r, "commit", "-qm", "first")
     return r
 
 
@@ -157,10 +158,7 @@ def test_a_coverage_script_edit_moves_the_identity(repo: Path, tmp_path: Path) -
     import gate_identity
 
     root = tmp_path / "goh"
-    files = gate_identity.rust_gate_scripts(REPO_ROOT)
-    for rel in [*files, "lib/xexit.py"]:
-        (root / rel).parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(REPO_ROOT / rel, root / rel)
+    copy_closure(root, *gate_identity.rust_gate_scripts(REPO_ROOT), "lib/xexit.py", root=REPO_ROOT)
     before = gate_identity.rust(repo, root)
     (root / "lib/xexit.py").write_text("# not the Rust gate's\n")
     assert gate_identity.rust(repo, root) == before
