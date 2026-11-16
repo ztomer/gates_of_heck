@@ -2,6 +2,34 @@
 
 ## Unreleased
 
+## v0.128.0 -- RUSTCOVREUSE, LANDQLAND, PGREPSELF
+
+* `goh land --enqueue --land <worktree> --item ID` hands a lane's worktree tip to the lander, which runs that worktree's `tools/land.sh` bare (the one land lock, the land gate, the fast-forward of main) and records `landed` (with main's new tip) or `red` with the log on the item; a red lands nothing, a tip that moved after enqueue is refused unrun, and the enqueue refuses the main checkout and an uncommitted tree. `goh land --wait ID` is the lane's one wait: it blocks until the outcome, prints it (a red log's tail too), exits 0 landed / 1 red / 3 timed out, and starts a lander when a request sits pending with none (GOH.LANDQLAND, owner 2026-11-15: "move the lanes onto the landing queue"). land.sh run by hand is unchanged.
+
+* The Claude Bash guard refuses a `pgrep -f` / `pkill -f` that matches the shell running it
+  wherever it stands, not only in a `while`/`until` condition (GOH.PGREPSELF): a pattern spelled a
+  second time in the same command (`pgrep -f foo || foo &`), or a call inside a `bash -c '...'`
+  string or an `ssh host '...'` remote command, whose own shell holds the pattern, so "is it
+  running" is always yes and a wait on it never ends (two lane loops, fleet-deploy over ssh and a
+  camoufox neighbour kill, 2026-11-15). The refusal names the safe forms (the pid of what you
+  started or a pid file, waiting on a log line, the `[f]oo` bracket form); `$$` excludes the own
+  pid; `# pgrep-ok: <reason>` is the escape. `lib/self_match.py`, `judge_anywhere`.
+
+* The Rust coverage measurement, and every other Rust proven group, is now found again from the
+  next land's push worktree (GOH.RUSTCOVREUSE). The first land after GOH.RUSTCOVSKIP measured for
+  535.36 s of rust_gate's 564.40 s on a tests-only diff: each group's step named a root workspace by
+  its absolute path (`~/.cache/goh/push/wt-<hash>/wt`, new per lane) and hashed per-push values
+  (`GOH_CHANGE_BASE`, the two push marks, the tip's head export as `GOH_DIR`), so no record was ever
+  found from one land to the next. The workspace is named repo-relative (`.` at the root);
+  `GOH_STRUCTURAL_MARK` and `GOH_CI_STEPS_MARK` are verdict-free; `GOH_CHANGE_BASE` leaves rust_gate's
+  environment and reaches crates-behind alone; `GOH_DIR` is keyed by its scripts' content. The
+  measurement's key now also holds the coverage configuration `.gatesrc` sets (every `GOH_COV_*`
+  but the cache's place and size): a raised floor reused the old measurement, and the plain run
+  judges no floor. Every run prints its decision as a `↔` line a passing step shows: reused and
+  from when, or measuring and why (cache off, dirty tree, no identity, no record yet, other inputs,
+  another configuration, no plain build). The external suite stays outside the inputs (the owner's
+  set): a test change re-measures at the next Rust-input change.
+
 ## v0.127.1 -- SELFWALKCI, STORECISTALE
 
 * goh's self-walk (`tests/test_self_walk.py`) gives the same verdict on the owner's Mac and on a
