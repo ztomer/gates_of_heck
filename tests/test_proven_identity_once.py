@@ -89,20 +89,28 @@ def _keyed_roots(tmp_path, gates_root, goh_dir, head_cache):
     return out.stdout.strip(), out.stderr
 
 
-def test_a_git_checkout_and_a_head_export_are_keyed_and_a_bare_directory_is_not(tmp_path):
+def test_every_gates_root_is_keyed_by_the_paths_its_content_covers(tmp_path):
     """A path dependency may be left to the identity only where the identity carries its CONTENT:
-    a git checkout (HEAD, diff, untracked files) or a head export (its path names the commit).
-    A plain directory is keyed by its PATH alone, so a dependency inside it is not keyed at all."""
+    the gates and the goh binary's build inputs (lib/gate_identity.py PARTS), read by bytes in a
+    checkout, a head export and a plain directory alike (GOH.PROVENIDENTITY). Anything else in a
+    gates root (its docs/) is no part of the key, so it is not named."""
 
     checkout = tmp_path / "checkout"
-    checkout.mkdir()
+    (checkout / "crates" / "goh-tui").mkdir(parents=True)
+    (checkout / "docs").mkdir()
     fast_init(checkout)
     head_cache = tmp_path / "head"
     export = head_cache / ("a" * 40)
-    export.mkdir(parents=True)
-    bare = tmp_path / "bare"
-    bare.mkdir()
+    (export / "gates").mkdir(parents=True)
+    (export / "Cargo.lock").write_text("version = 4\n")
     roots, err = _keyed_roots(tmp_path, checkout, export, head_cache)
-    assert roots.split(":") == [str(checkout.resolve()), str(export.resolve())], (roots, err)
+    want = [str(checkout.resolve() / "crates"), str(export.resolve() / "gates"),
+            str(export.resolve() / "Cargo.lock")]  # fmt: skip
+    assert roots.split(":") == want, (roots, err)
+    bare = tmp_path / "bare"
+    (bare / "crates").mkdir(parents=True)
     roots, err = _keyed_roots(tmp_path, checkout, bare, head_cache)
-    assert roots.split(":") == [str(checkout.resolve())], (roots, err)
+    assert roots.split(":") == [
+        str(checkout.resolve() / "crates"),
+        str(bare.resolve() / "crates"),
+    ], (roots, err)

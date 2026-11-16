@@ -66,7 +66,8 @@ def test_a_rebased_land_records_the_landed_tips_identity(tmp_path: Path) -> None
                        check=False)  # fmt: skip
     assert r.returncode == 0, r.stdout + r.stderr
     assert "rebased feature-under-land" in r.stdout + r.stderr, "the fixture must rebase the land"
-    reader = hermetic_env(drop_git=True, GOH_LIVE="1")
+    # The reader runs the binary the land ran: an explicit GOH_BIN is keyed (GOH.PROVENIDENTITY).
+    reader = hermetic_env(drop_git=True, GOH_LIVE="1", GOH_BIN=str(native_goh_path()))
     recorded, computed = _reader_key(main, "true", reader)
     assert recorded == computed, (
         f"goh-landed says {recorded[:16]}, the reader computes {computed[:16]}: the land keyed "

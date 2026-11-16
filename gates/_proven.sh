@@ -20,6 +20,8 @@ _goh_d=${BASH_SOURCE[0]%/*}; [ "$_goh_d" != "${BASH_SOURCE[0]}" ] || _goh_d=.; .
 # shellcheck source=gates/_proven_artifacts.sh
 . "$(dirname "${BASH_SOURCE[0]}")/_proven_artifacts.sh"
 PROVEN_GOH_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
+# The identity's one formula, beside this file: a caller may name another PROVEN_GOH_ROOT to key.
+_PROVEN_IDENTITY_PY="$PROVEN_GOH_ROOT/lib/gate_identity.py"
 
 # Environment variables whose values change what a gate step concludes, keyed by default. The
 # repo adds its own with GOH_PROVEN_ENV (space-separated names) in .gatesrc.
@@ -80,45 +82,6 @@ EOF
     goh_index_tree . 2>/dev/null  # a private copy of the index: never its shared lock (lib/run_path.sh)
 }
 
-# _proven_goh_git <dir> <git args...> — git on a gates_of_heck checkout, hook variables stripped
-# (goh_unbind_git, gates/_git_env.sh).
-_proven_goh_git() {
-    (
-        goh_unbind_git
-        git -C "$@"
-    )
-}
-
-# _proven_goh_identity <dir> — HEAD, the diff against it (staged and unstaged), and the content
-# of every untracked file: work in progress on the gates invalidates what they proved.
-_proven_goh_identity() {
-    local d="$1" top head diff untracked
-    if ! top="$(_proven_goh_git "$d" rev-parse --show-toplevel 2>/dev/null)"; then
-        printf 'goh not-a-repo %s\n' "$(cd "$d" 2>/dev/null && pwd -P)"
-        return 0
-    fi
-    head="$(_proven_goh_git "$top" rev-parse HEAD 2>/dev/null || echo none)"
-    diff="$(_proven_goh_git "$top" diff HEAD --binary 2>/dev/null | hash_hex /dev/stdin)"
-    # Bytecode caches are NOT work in progress. Every gate that runs a Python
-    # checker out of this checkout writes __pycache__/ into it, and a checkout
-    # that does not gitignore bytecode (an installed copy, a CI export — anything
-    # without THIS repo's .gitignore) then sees its identity change PART-WAY
-    # THROUGH A PUSH: the pre-commit hook proves a step, the pre-push worktree
-    # gate creates the cache, and every subsequent lookup misses. Measured
-    # 2026-10-01 on tests/test_proven.py's gates copy, where a push_gate.sh that
-    # ran one extra checker re-ran a step the checkout had already proved.
-    #
-    # Excluded by PATH SEGMENT, not by substring: `vendor/…/__pycache__` and a
-    # file genuinely named `__pycache__.py` are not the same thing, and a
-    # substring filter silently drops real work. `:(exclude)` pathspecs need
-    # magic pathspec off, which `ls-files --others` has not always accepted, so
-    # filter the list here.
-    untracked="$(_proven_goh_git "$top" ls-files --others --exclude-standard 2>/dev/null \
-        | grep -vE '(^|/)__pycache__/' \
-        | _proven_goh_git "$top" hash-object --stdin-paths 2>/dev/null | hash_hex /dev/stdin)"
-    printf 'goh %s %s %s\n' "$head" "$diff" "$untracked"
-}
-
 # _proven_tool <name> <version command...> — one toolchain line; absent tools a fixed token.
 _proven_tool() {
     local name="$1"; shift
@@ -175,32 +138,33 @@ _proven_goh_roots() {
     done
 }
 
-# proven_keyed_roots — the roots whose CONTENT the identity carries, `:`-separated: a git checkout
-# (its HEAD, diff and untracked files) or a head export (`$GOH_HEAD_CACHE/<sha>`, whose path names
-# the commit it holds). `goh rust-scope` leaves a path dependency inside one to the identity
-# (GOH_PROVEN_KEYED_ROOTS; antiknob's `../gates_of_heck/crates/goh-tui`, R3.13). A plain
-# directory is keyed by its path alone, so a dependency inside it is NOT keyed and is not named.
+# proven_keyed_roots — the paths whose CONTENT the identity carries, `:`-separated: every gates
+# root's gates and the goh binary's build inputs (lib/gate_identity.py PARTS), read by bytes in a
+# checkout, a head export or a plain directory alike. `goh rust-scope` leaves a path dependency
+# inside one to the identity (GOH_PROVEN_KEYED_ROOTS; antiknob's `../gates_of_heck/crates/goh-tui`,
+# R3.13); one elsewhere in a gates root (its docs/, its tests/) is not keyed, so not named.
 proven_keyed_roots() {
-    local d out="" cache
-    cache="${GOH_HEAD_CACHE:-${XDG_CACHE_HOME:-$HOME/.cache}/goh/head}"
-    [ -d "$cache" ] && cache="$(cd "$cache" && /bin/pwd -P)"
+    local d roots=() out
     while IFS= read -r d; do
-        [ -n "$d" ] || continue
-        if _proven_goh_git "$d" rev-parse --show-toplevel >/dev/null 2>&1; then
-            d="$(_proven_goh_git "$d" rev-parse --show-toplevel)"
-        else
-            case "$d" in "$cache"/*) ;; *) continue ;; esac
-        fi
-        out="${out:+$out:}$d"
+        [ -n "$d" ] && roots+=(--root "$d")
     done < <(_proven_goh_roots)
-    printf '%s\n' "$out"
+    [ "${#roots[@]}" -gt 0 ] || { printf '\n'; return 0; }
+    out="$("$GOH_PY" -S "$_PROVEN_IDENTITY_PY" keyed ${roots[@]+"${roots[@]}"} </dev/null 2>/dev/null)" || out=""
+    printf '%s\n' "$(paste -sd: - <<<"$out")"
 }
 
 _proven_identity_slow() {
-    local d files
+    local d files roots=()
+    # The gates roots by CONTENT, the one formula lib/gate_identity.py keys a land by: a checkout and
+    # its commit's head export hold the same bytes and share their proven steps (GOH.PROVENIDENTITY;
+    # this file keyed a checkout by HEAD and diff, an export by its path). Then every tool a step may
+    # invoke, by its bytes (GOH.VERDICTKEY). Unreadable: a line no other run has, so no hit.
     while IFS= read -r d; do
-        [ -n "$d" ] && _proven_goh_identity "$d"
+        [ -n "$d" ] && roots+=(--root "$d")
     done < <(_proven_goh_roots)
+    if [ "${#roots[@]}" -gt 0 ]; then set -- proven ${roots[@]+"${roots[@]}"}; else set -- tools; fi
+    "$GOH_PY" -S "$_PROVEN_IDENTITY_PY" "$@" </dev/null 2>/dev/null \
+        || printf 'goh unreadable %s\n' "$$"
     # Toolchains for the languages the repo tracks (`swift --version` alone ~0.7 s: no Swift, no cost).
     files="$(git ls-files 2>/dev/null)"
     # Here-strings, not `printf | grep -q`: under pipefail an early grep exit reads as "no match".
@@ -214,8 +178,6 @@ _proven_identity_slow() {
     if grep -Eq '\.swift$|(^|/)Package\.swift$|\.xcodeproj/' <<<"$files"; then
         _proven_tool swift swift --version
     fi
-    # Every tool a step may invoke, by its bytes (GOH.VERDICTKEY, lib/gate_identity.py); unreadable: no hit.
-    "$GOH_PY" -S "$PROVEN_GOH_ROOT/lib/gate_identity.py" tools </dev/null 2>/dev/null || printf 'tools unreadable %s\n' "$$"
 }
 
 # The half read fresh on every key: the environment and the ignored files a build reads.

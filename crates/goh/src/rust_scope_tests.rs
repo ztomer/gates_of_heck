@@ -368,8 +368,8 @@ fn the_command_prints_a_scope_checks_a_file_and_refuses_a_non_workspace() {
 //
 // antiknob depends on `../gates_of_heck/crates/goh-tui`. git cannot key a path outside the
 // repository, so `scope` failed and the per-crate cache was off for every antiknob push. But that
-// path lies inside the gates checkout, whose HEAD, diff and untracked files are already in every
-// proven key (`_proven_goh_identity`): it is keyed, just not by this repo's git. A root the caller
+// path lies inside the gates checkout's crates/, whose bytes are already in every proven key
+// (lib/gate_identity.py PARTS): it is keyed, just not by this repo's git. A root the caller
 // names as KEYED is therefore left out of the scope, and nothing else outside the repo is.
 
 /// An estate whose crate `a` also depends on a crate in a second, outside directory.

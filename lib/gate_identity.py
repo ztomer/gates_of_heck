@@ -9,22 +9,35 @@ under a hand-set GOH_LAND_GATE=true wrote exactly as a full gate's.
 
     gate_identity.py tools                    # one line per tool a gate step may invoke
     gate_identity.py key --mode MODE [--root GOH]   # sha256 of MODE, the gates' content, the tools
+    gate_identity.py proven --root GOH...     # gates/_proven.sh's run-constant identity: each root
+                                              # once by content, then the tools
+    gate_identity.py keyed --root GOH...      # the paths that content covers, one per line
 
 The three parts:
   * MODE -- the command or gate mode the verdict is of (`full` for a land's own push gate, else
     the GOH_LAND_GATE string);
   * the CONTENT of the gates that ran: every file under gates/ checks/ lib/ tools/ tui/ of the
-    gates root by path, kind and bytes -- ONE formula, so a checkout and its commit's head export
-    key alike (GOH.VERDICTKEYDRIFT: two formulas put one tree's loaded verdict under two keys and
-    the ship missed it); bytecode skipped;
+    gates root, and the goh binary's build inputs (crates/, Cargo.toml, Cargo.lock,
+    rust-toolchain.toml: the trees its source stamp names, gates/_goh_bin.sh), by path, kind and
+    bytes -- ONE formula, so a checkout and its commit's head export key alike
+    (GOH.VERDICTKEYDRIFT: two formulas put one tree's loaded verdict under two keys and the ship
+    missed it); bytecode skipped. The gates run bin/goh, the build of those inputs: without them
+    a change to goh's Rust alone left every key unchanged (GOH.PROVENIDENTITY). Where the binary
+    is NOT the content's build it is keyed apart: an explicit GOH_BIN by its bytes (a tool line),
+    and a checkout whose build inputs differ from HEAD without GOH_LIVE (it runs HEAD's build) by
+    HEAD's trees. The version string a build reports (`git describe`, the release tag) is not
+    keyed: the binary store already holds one build per source (gates/_goh_bin.sh), and a tag
+    push reuses its commit's proofs;
   * the TOOLS: for each of rustc, cargo, python (the house interpreter), swift, shellcheck, ruff,
     cargo-llvm-cov and xcodebuild, the PATH hit, the binary it resolves to and that binary's size
     and mtime (no spawn: an upgrade rewrites the binary); a rustup proxy also by the toolchain
     binary it resolves to (`rustup which`, not the RUSTUP_TOOLCHAIN spelling); plus the selected
     Xcode. An absent tool is its own token, so installing one changes the identity.
-Used by gates/_proven.sh's step identity and tools/land.sh's goh-landed line (read by the push
-rule); the loaded run's record key went with that run (GOH.LOADEDDROP). Pinned by
-tests/test_verdict_key.py.
+Used by gates/_proven.sh's step identity (its goh roots, GOH.PROVENIDENTITY: it kept a formula of
+its own, HEAD sha and diff for a checkout, the PATH for an export, so a commit's checkout and its
+head export never reused each other's proven steps) and tools/land.sh's goh-landed line (read by
+the push rule); the loaded run's record key went with that run (GOH.LOADEDDROP). Pinned by
+tests/test_verdict_key.py and tests/test_proven_goh_content.py.
 """
 
 from __future__ import annotations
@@ -47,7 +60,9 @@ import sys
 from pathlib import Path
 
 TOOLS = ("rustc", "cargo", "python3", "swift", "shellcheck", "ruff", "cargo-llvm-cov", "xcodebuild")
-PARTS = ("gates", "checks", "lib", "tools", "tui")
+# The binary's build inputs: the paths gates/_goh_bin.sh goh_stamp_at names, in one order.
+BUILD = ("crates", "Cargo.toml", "Cargo.lock", "rust-toolchain.toml")
+PARTS = ("gates", "checks", "lib", "tools", "tui", *BUILD)
 GOH_ROOT = Path(__file__).resolve().parent.parent
 
 
@@ -76,6 +91,9 @@ def tools() -> list[str]:
             got = _run([proxy, "which", name])
             line += f" runs {_fingerprint(got) if os.path.isabs(got) else 'unresolved ' + got}"
         out.append(line)
+    # An explicit GOH_BIN is the binary every gate runs (gates/_goh_bin.sh), whatever the content.
+    named = os.environ.get("GOH_BIN", "")
+    out.append(f"tool goh-bin {_fingerprint(named) if named else 'unset'}")
     xsel = shutil.which("xcode-select")
     out.append(f"xcode {os.environ.get('DEVELOPER_DIR') or (_run([xsel, '-p']) if xsel else '')}")
     return out
@@ -100,13 +118,16 @@ def _files(root: Path) -> list[str]:
         if listed.returncode == 0:
             rels = {r for r in listed.stdout.decode().split("\0") if r}
             return sorted(r for r in rels if os.path.lexists(root / r))
-    return sorted(
-        str(p.relative_to(root))
-        for part in PARTS
-        if (root / part).is_dir()
-        for p in (root / part).rglob("*")
-        if p.is_file() or p.is_symlink()
-    )
+    rels = []
+    for part in PARTS:
+        top = root / part
+        if top.is_file() or top.is_symlink():
+            rels.append(part)
+        elif top.is_dir():
+            rels.extend(
+                str(p.relative_to(root)) for p in top.rglob("*") if p.is_file() or p.is_symlink()
+            )
+    return sorted(rels)
 
 
 def content(root: Path) -> str:
@@ -127,9 +148,46 @@ def content(root: Path) -> str:
     return h.hexdigest()
 
 
+def binary(root: Path) -> str:
+    """Where the binary the gates at root run is not the build of the content: a checkout whose
+    build inputs differ from HEAD, outside GOH_LIVE, runs HEAD's build (gates/_goh_bin.sh), so it is
+    keyed by HEAD's trees too. Empty otherwise: an export, a clean checkout, or GOH_LIVE (whose
+    binary is the working tree's build)."""
+    if os.environ.get("GOH_LIVE") or not (root / ".git").exists():
+        return ""
+    moved = _git(root, "status", "--porcelain", "--untracked-files=all", "--", *BUILD)
+    if moved.returncode != 0 or not moved.stdout.strip():
+        return ""
+    trees = _git(root, "rev-parse", *(f"HEAD:{p}" for p in BUILD))
+    return "binary head " + " ".join(trees.stdout.decode().split())
+
+
+def identity(root: Path) -> str:
+    """The gates root as one line: its content, and the binary if it is not the content's build."""
+    extra = binary(root)
+    return f"content {content(root)}" + (f" {extra}" if extra else "")
+
+
 def key(mode: str, root: Path = GOH_ROOT) -> str:
-    text = "\n".join(["gate-identity v2", f"mode {mode}", f"content {content(root)}", *tools()])
+    text = "\n".join(["gate-identity v3", f"mode {mode}", identity(root), *tools()])
     return hashlib.sha256(text.encode()).hexdigest()
+
+
+def proven(roots: list[Path]) -> list[str]:
+    """gates/_proven.sh's run-constant goh half: one `goh` line per distinct root identity (a
+    checkout and its commit's export are one), then the tools."""
+    seen: list[str] = []
+    for root in roots:
+        line = f"goh {identity(root)}"
+        if line not in seen:
+            seen.append(line)
+    return [*seen, *tools()]
+
+
+def keyed(roots: list[Path]) -> list[str]:
+    """The paths whose bytes the identity carries, under each root that holds them: a path
+    dependency in one may be left to the identity (`goh rust-scope`, GOH_PROVEN_KEYED_ROOTS)."""
+    return [str(root / part) for root in roots for part in PARTS if os.path.lexists(root / part)]
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -139,9 +197,15 @@ def main(argv: list[str] | None = None) -> int:
     k = sub.add_parser("key")
     k.add_argument("--mode", required=True)
     k.add_argument("--root", type=Path, default=GOH_ROOT)
+    for verb in ("proven", "keyed"):
+        sub.add_parser(verb).add_argument("--root", type=Path, action="append", required=True)
     a = ap.parse_args(argv)
     if a.verb == "tools":
         print("\n".join(tools()))
+        return 0
+    if a.verb in ("proven", "keyed"):
+        roots = [r.resolve() for r in a.root]
+        print("\n".join(proven(roots) if a.verb == "proven" else keyed(roots)))
         return 0
     print(key(a.mode, a.root.resolve()))
     return 0

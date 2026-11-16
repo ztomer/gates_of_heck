@@ -270,9 +270,9 @@ def test_a_change_to_the_gates_invalidates_what_they_proved(goh, repo, env, chan
             f.write("# work in progress\n")
     elif change == "untracked":
         (goh / "gates" / "new_gate.sh").write_text("#!/bin/sh\n")
-    else:
-        (goh / "NOTE").write_text("x\n")
-        _git(goh, "add", "NOTE")
+    else:  # committed: the gates root is keyed by its bytes, not its HEAD (GOH.PROVENIDENTITY)
+        (goh / "gates" / "NOTE").write_text("x\n")
+        _git(goh, "add", "gates/NOTE")
         _git(goh, "commit", "-q", "-m", "gates moved")
     proven(goh, repo, env)
     assert runs(env) == 2

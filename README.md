@@ -160,7 +160,8 @@ running it through `proven.sh` with the step string spelled exactly as in `GOH_C
 "$GOH/gates/proven.sh" --label pre-commit --log "$log" -- 'bash tools/coverage_check.sh'
 ```
 
-The key is the tree, the step string, the gates checkout (HEAD, diff, untracked files), the
+The key is the tree, the step string, the gates root's content (its gates and the goh binary's
+build inputs, by bytes: `lib/gate_identity.py`), the
 toolchain versions and a few environment variables; a dirty tree has no key, so nothing is
 recorded or skipped. Records live in the repo's common git dir, so `push_gate.sh`'s clean
 worktree sees them. CI never does -- it stays the independent check. `GOH_PROVEN=0` disables

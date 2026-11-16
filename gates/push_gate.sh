@@ -247,7 +247,7 @@ cat >"$refs_file"
 # of cold gate work that a refused push would only throw away.
 # -B: no bytecode. Running a Python checker from the gates checkout writes
 # __pycache__/ INTO it, and the proven-step cache keys on that checkout's
-# untracked contents (_proven.sh: _proven_goh_identity). A checkout that does not
+# contents (lib/gate_identity.py, which skips bytecode). A checkout that does not
 # gitignore bytecode therefore changes identity part-way through a push, and
 # every step the pre-commit hook proved is re-run in the export — measured by
 # tests/test_proven.py, whose gates copy is exactly such a checkout. Reading a
