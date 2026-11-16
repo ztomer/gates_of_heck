@@ -27,20 +27,35 @@ pub const SEAM: &str = "GOH_GRACE";
 /// Whether the grace is over at `now` under the seam's value.
 #[must_use]
 pub fn over_at(seam: Option<&str>, now: u64) -> bool {
-    match seam {
-        Some("within") => false,
-        Some("over") => true,
-        _ => now >= OVER_FROM,
-    }
+    over_at_from(seam, now, OVER_FROM)
 }
 
 /// Whether the grace is over now.
 #[must_use]
 pub fn over() -> bool {
+    over_from(OVER_FROM)
+}
+
+/// Whether a grace of its own, ending at `from` (seconds since the epoch), is over now.
+///
+/// The same seam decides. For a scanner whose consumers need longer than the shared week: `goh dead-port`
+/// landed while goh's ships were frozen (GOH.DEADPORTSCAN), so its week counts from a later day.
+#[must_use]
+pub fn over_from(from: u64) -> bool {
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map_or(0, |d| d.as_secs());
-    over_at(std::env::var(SEAM).ok().as_deref(), now)
+    over_at_from(std::env::var(SEAM).ok().as_deref(), now, from)
+}
+
+/// `over_at` for a grace ending at `from`.
+#[must_use]
+pub fn over_at_from(seam: Option<&str>, now: u64, from: u64) -> bool {
+    match seam {
+        Some("within") => false,
+        Some("over") => true,
+        _ => now >= from,
+    }
 }
 
 #[cfg(test)]

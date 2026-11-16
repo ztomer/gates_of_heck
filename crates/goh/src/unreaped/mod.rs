@@ -59,6 +59,27 @@ const REPORTED: [&str; 3] = ["handoff", "watchdog", "unjudgeable"];
 /// The reference's 40-hit display cap.
 const MAX_SHOWN: usize = 40;
 
+/// The test-name rule: `test_x`, `x_test.py`, `x.test.ts`, `x_spec.rb`, ...
+pub const TEST_NAME: &str = r"(?:^|[._-])(?:test|tests|spec)[._-]|_(?:test|spec)s?\.[a-z]+$";
+
+/// A test source by its PATH alone.
+///
+/// Under a `TEST_DIRS` directory, a `.bats` file, or a name the `TEST_NAME` rule matches (`test_name` is that rule, compiled). The house's test-path rule,
+/// shared with `crate::deadport`; a Rust `#[cfg(test)]` region is the other half, read from text.
+#[must_use]
+pub fn is_test_path(rel: &str, test_name: &regex::Regex) -> bool {
+    let parts: Vec<&str> = rel.split('/').collect();
+    if parts[..parts.len() - 1]
+        .iter()
+        .any(|p| TEST_DIRS.contains(p))
+    {
+        return true;
+    }
+    let name = parts[parts.len() - 1];
+    let bats = Path::new(name).extension().is_some_and(|e| e == "bats");
+    bats || test_name.is_match(name)
+}
+
 /// One scan's compiled patterns plus the test-name rule.
 pub struct Scanner {
     lex: Lex,
@@ -71,10 +92,8 @@ impl Scanner {
     pub fn new() -> Result<Self, String> {
         Ok(Self {
             lex: Lex::new()?,
-            test_name: regex::Regex::new(
-                r"(?:^|[._-])(?:test|tests|spec)[._-]|_(?:test|spec)s?\.[a-z]+$",
-            )
-            .map_err(|e| format!("test-name pattern: {e}"))?,
+            test_name: regex::Regex::new(TEST_NAME)
+                .map_err(|e| format!("test-name pattern: {e}"))?,
         })
     }
 
@@ -88,16 +107,7 @@ impl Scanner {
     }
 
     fn is_test_file(&self, rel: &str, masked: &str) -> bool {
-        let parts: Vec<&str> = rel.split('/').collect();
-        if parts[..parts.len() - 1]
-            .iter()
-            .any(|p| TEST_DIRS.contains(p))
-        {
-            return true;
-        }
-        let name = parts[parts.len() - 1];
-        let bats = Path::new(name).extension().is_some_and(|e| e == "bats");
-        if bats || self.test_name.is_match(name) {
+        if is_test_path(rel, &self.test_name) {
             return true;
         }
         masked.contains("#[cfg(test)]") || masked.replace(' ', "").contains("#[cfg(test)]")

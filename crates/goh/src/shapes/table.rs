@@ -301,6 +301,16 @@ const TUI_MARKS: Declared = Declared {
             fixture: ("README.md", "Do not `echo \"✓ done\"`.\n"),
         },
         Shape {
+            name: "a mark opening an element of a list a Python print joins",
+            path: r"(?i)\.py$",
+            line: r"\bprint\(.*\.join\(",
+            verdict: Verdict::Gap(TUI_GAP),
+            fixture: (
+                "hooks/r.py",
+                "print(\"\\n\".join([HEAD, *(f\"  ⚠ {x}\" for x in xs)]))\n",
+            ),
+        },
+        Shape {
             name: "a shell print held in a Python string (a subprocess line, a checker's sample)",
             path: r"(?i)\.py$",
             line: r"\b(echo|printf)\s",
@@ -366,6 +376,10 @@ pub const ROWS: &[Row] = &[
     Row {
         scanner: "no temp, lock or stage path in a work tree",
         state: State::Declared(crate::runpaths::SHAPES),
+    },
+    Row {
+        scanner: "no test endpoint on a literal ephemeral port",
+        state: State::Declared(crate::deadport::SHAPES),
     },
     Row {
         scanner: "every scanner read its declared subject",

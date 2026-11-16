@@ -126,6 +126,12 @@ pub const GIT_DEADLINE: Subject = Subject {
     units: "shell and Python sources",
     scanner: "no git stopped at a deadline holding a lock",
 };
+pub const DEAD_PORT: Subject = Subject {
+    key: "GOH_DEAD_PORT_MIN_FILES",
+    unit: "test source",
+    units: "test sources",
+    scanner: "no test endpoint on a literal ephemeral port",
+};
 pub const BARE_OPEN: Subject = Subject {
     key: "GOH_BARE_OPEN_MIN_FILES",
     unit: "shell or Python source",
@@ -224,7 +230,7 @@ pub const BUSY_LOOP: Subject = Subject {
 };
 
 /// Every scanner with a subject, spelled once: the keys `.gatesrc` may hold a floor in.
-pub const ALL: [&Subject; 27] = [
+pub const ALL: [&Subject; 28] = [
     &EMOJI,
     &CONFLICT_MARKERS,
     &FILE_LENGTH,
@@ -238,6 +244,7 @@ pub const ALL: [&Subject; 27] = [
     &BARE_OPEN,
     &RUN_PATHS,
     &GIT_DEADLINE,
+    &DEAD_PORT,
     &PLURAL_HEDGE,
     &BARE_PYTHON,
     &CHECKOUT_CREDENTIALS,

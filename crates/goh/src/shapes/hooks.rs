@@ -58,3 +58,12 @@ pub fn run_paths(rel: &str, text: &str) -> Result<Vec<usize>, String> {
 pub fn goh_pins(rel: &str, text: &str) -> Result<Vec<usize>, String> {
     Ok(crate::gohpin::scan::judged_lines(rel, text))
 }
+
+/// `goh dead-port`: its findings in a test source.
+///
+/// # Errors
+///
+/// None; the signature is the table's.
+pub fn dead_port(rel: &str, text: &str) -> Result<Vec<usize>, String> {
+    Ok(crate::deadport::judged_lines(rel, text))
+}

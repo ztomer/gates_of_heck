@@ -32,6 +32,7 @@ pub mod crates_behind;
 pub mod crates_change;
 pub mod credurls;
 pub mod deadexec;
+pub mod deadport;
 pub mod deps;
 pub mod earlypipe;
 pub mod emoji;
@@ -483,6 +484,7 @@ fn run_line_scans(command: Commands) -> Result<i32, Box<Commands>> {
             pluralhedge::run_command(a.scope.staged, x, a.all)
         }),
         Commands::GitDeadline(a) => paths(a.exclude, |x| gitdeadline::run_command(a.staged, x)),
+        Commands::DeadPort(a) => paths(a.exclude, |x| deadport::run_command(a.staged, x)),
         Commands::TuiMarks(a) => paths(a.exclude, |x| tuimarks::run_command(a.staged, x)),
         Commands::ShapeDiff { registry: true, .. } => shapes::print_registry(),
         Commands::ShapeDiff {

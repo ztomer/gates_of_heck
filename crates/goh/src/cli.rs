@@ -371,16 +371,16 @@ pub enum Commands {
     },
     /// Fail on a statement after an `exec` that replaced the shell: it can never run.
     DeadAfterExec(ExcludeStagedArgs),
-    /// Fail on a shell source that expands the hook's carried index (`GOH_HOOK_INDEX_FILE`,
-    /// `GOH_HOOK_GIT_DIR`) anywhere but `goh_bind_hook_index`'s definition.
+    /// Fail on a shell source expanding the hook's carried index outside `goh_bind_hook_index`.
     BareHookIndex(ExcludeStagedArgs),
     /// Fail on a release script's gate/test/install step that sends its stdout to /dev/null.
     ReleaseQuiet(ExcludeStagedArgs),
     /// Fail on `mktemp -t NAME` with no X in NAME (BSD-only; GNU refuses it).
     MktempPortable(ExcludeStagedArgs),
-    /// Fail on a git stopped at a deadline (SIGKILL strands index.lock) or a work-tree reader
-    /// that takes the optional lock.
+    /// Fail on a git stopped at a deadline holding index.lock, or a work-tree reader taking it.
     GitDeadline(ExcludeStagedArgs),
+    /// Fail on a test whose dead endpoint is a literal localhost port in the ephemeral range.
+    DeadPort(ExcludeStagedArgs),
     /// Fail on a bare `open` in a shell source: it hands the app the caller environment.
     BareOpen(ExcludeStagedArgs),
     /// Fail on a temp, lock or stage path minted in a work tree, or a write-tree on the shared index.

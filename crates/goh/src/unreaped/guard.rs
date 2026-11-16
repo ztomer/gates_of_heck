@@ -74,10 +74,10 @@ fn brace_delta(line: &str) -> isize {
     isize::try_from(opens).unwrap_or(isize::MAX) - isize::try_from(closes).unwrap_or(isize::MAX)
 }
 
-/// Blank everything OUTSIDE every `#[cfg(test)]` region, preserving lines. A
-/// file with no marker is returned unchanged (a `tests/` file is all test).
+/// Which lines of `masked` lie inside a `#[cfg(test)]` region; `None` for a file with no marker
+/// (a `tests/` file is all test). Shared with `crate::deadport`, which judges only test code.
 #[must_use]
-pub fn rust_region(masked: &str) -> String {
+pub fn rust_region_lines(masked: &str) -> Option<Vec<bool>> {
     let lines: Vec<&str> = masked.split('\n').collect();
     let marks: Vec<usize> = lines
         .iter()
@@ -86,13 +86,19 @@ pub fn rust_region(masked: &str) -> String {
         .map(|(n, _)| n)
         .collect();
     if marks.is_empty() {
-        return masked.to_owned();
+        return None;
     }
     let mut inside = vec![false; lines.len()];
     for at in marks {
-        let start = (at..lines.len())
-            .find(|&j| lines[j].contains('{'))
-            .unwrap_or(lines.len() - 1);
+        // `#[cfg(test)] mod tests;` (or a `use`): the item ends at its `;`, and the next brace
+        // below it is not test code.
+        let end = (at..lines.len())
+            .find(|&j| lines[j].contains('{') || lines[j].trim_end().ends_with(';'));
+        if let Some(j) = end.filter(|&j| !lines[j].contains('{')) {
+            inside[at..=j].iter_mut().for_each(|x| *x = true);
+            continue;
+        }
+        let start = end.unwrap_or(lines.len() - 1);
         let mut depth = 0isize;
         for j in start..lines.len() {
             inside[j] = true;
@@ -102,12 +108,22 @@ pub fn rust_region(masked: &str) -> String {
             }
         }
     }
-    lines
-        .iter()
+    Some(inside)
+}
+
+/// Blank everything OUTSIDE every `#[cfg(test)]` region, preserving lines. A
+/// file with no marker is returned unchanged (a `tests/` file is all test).
+#[must_use]
+pub fn rust_region(masked: &str) -> String {
+    let Some(inside) = rust_region_lines(masked) else {
+        return masked.to_owned();
+    };
+    masked
+        .split('\n')
         .zip(&inside)
         .map(|(line, &keep)| {
             if keep {
-                (*line).to_owned()
+                line.to_owned()
             } else {
                 " ".repeat(line.chars().count())
             }

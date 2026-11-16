@@ -740,3 +740,28 @@ line turned the skip off and nobody saw it. The verdict is a record now:
 Pinned by `tests/test_ship_verdict.py` (a green gate writes the sha, a red one nothing; the query
 answers for a running ship above the caller and refuses another sha, a finished ship, a dead
 worker; the ship worker names the file), each seen red against a broken writer or reader.
+
+## 30. A test's dead endpoint is a port the test holds, never a literal in the ephemeral range
+
+GOH.DEADPORTSCAN (2026-11-15; class EST.DEADPORT). ztools tested its error path with
+`call_osaurus("http://127.0.0.1:59999", ...)`. 59999 is in the OS's ephemeral range (macOS
+49152-65535, `sysctl net.inet.ip.portrange.first/last`; Linux 32768-60999), which the kernel hands
+to every outgoing connection and every server bound to port 0, so on a busy machine the "dead"
+endpoint answered and the test failed at random: it refused ztools' v0.124.0 pin push.
+
+* **Refused**: `goh dead-port` (`crates/goh/src/deadport.rs`), a structural step in every repo,
+  judges TEST code only (the house test-path rule, Swift's `...Tests` layout, Rust `#[cfg(test)]`
+  regions) and refuses a literal port in 32768-65535 on a loopback or unspecified host. A service's
+  port in non-test code is never read; a port below 32768 or read from a socket passes;
+  `dead-port-ok: <reason>` escapes one line.
+* **The fix** (measured on macOS 2026-11-15, ztools 19ed47d `rust/src/dead_endpoint.rs`
+  `DeadEndpoint::hold`): listen on `127.0.0.1:0` WITHOUT `SO_REUSEADDR`, connect to it, accept,
+  close the listener and hold the connected pair for the test's life. A connect to that port is
+  refused at once and a plain bind gets `EADDRINUSE`. NOT a socket bound and never listening: on
+  macOS it drops the SYN and the connect waits out its whole timeout (Linux refuses it), so the
+  "fix" turns a random failure into a slow one.
+
+Pinned by `tests/test_dead_port_native.py` (a planted site red at both scopes for its named reason,
+a service port in non-test code and a socket-read port green, a Rust `#[cfg(test)]` region judged
+and the code above it not, a bare escape red) and `crates/goh/src/deadport/tests.rs` (the
+spellings and the range edges), each seen red against a mutated scanner.
