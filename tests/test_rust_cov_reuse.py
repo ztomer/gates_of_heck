@@ -5,8 +5,10 @@ so its record keyed on the whole tree and every land re-measured: GOH.XEXITDETAI
 shell) spent 896.62 s of a 21:37 land on it. The measurement is now keyed on its own inputs
 (`gate_identity.py rust`: the Rust build inputs and the Rust gate's coverage scripts), and a tree
 whose Rust is unchanged runs the tests plain. Both directions, on a real cargo workspace and the
-real gates/_rust_proven.sh: a Python, test or README edit reuses; a crate source, the lockfile or a
-coverage script measures; a failed, unrecorded or GOH_PROVEN=0 run never lends its verdict.
+real gates/_rust_proven.sh: a Python, test or README edit reuses; a crate source, the lockfile, a
+coverage script or the suite's runner measures; a head export at a new path on PYTHONPATH does not
+(GOH.RUSTCOVKEYSCOPE); a failed, unrecorded or GOH_PROVEN=0 run never lends its verdict. A miss
+names the input that moved.
 """
 
 from __future__ import annotations
@@ -26,7 +28,7 @@ pytestmark = pytest.mark.skipif(shutil.which("cargo") is None, reason="cargo not
 # The real reuse function, with the two seams a fixture cannot be: the measurement and the plain run
 # say which ran, and the binary match (goh's own build of these inputs) answers a fixed directory.
 HARNESS = """
-set -u
+set -euo pipefail   # as gates/rust_gate.sh runs it: a pipeline that errs anywhere fails
 . "$ROOT/tui/lib.sh"
 cargo_dir="$PWD"
 . "$ROOT/gates/_rust_proven.sh"
@@ -77,7 +79,7 @@ def repo(tmp_path: Path) -> Path:
 
 
 def _run_out(repo: Path, **env: str) -> tuple[str, str]:
-    e = hermetic_env(drop_git=True, ROOT=str(REPO_ROOT), GOH_COV_RUST_EXTERNAL="true", **env)
+    e = hermetic_env(drop_git=True, ROOT=str(REPO_ROOT), **{"GOH_COV_RUST_EXTERNAL": "true", **env})
     e.pop("GOH_RESOLVED_BIN", None)
     r = subprocess.run(["bash", "-c", HARNESS], cwd=repo, env=e, capture_output=True, text=True,
                        timeout=patience(120), stdin=subprocess.DEVNULL, check=False)  # fmt: skip
@@ -228,9 +230,86 @@ def test_every_run_prints_its_decision_and_why(repo: Path) -> None:
     assert "another GOH_* configuration" in _decision(out)
     _write(repo, "crates/a/src/lib.rs", "pub fn f() -> u64 {\n    3\n}\n")
     _, out = _run_out(repo)
-    assert "on other Rust inputs" in _decision(out)
+    assert "on other inputs: the Rust build inputs (crates/a/src/lib.rs) moved" in _decision(out)
     _, out = _run_out(repo, GOH_PROVEN="0")
     assert "measuring -- the proven cache is off" in _decision(out)
     _write(repo, "lib/x.py", "X = 9\n", commit=False)
     _, out = _run_out(repo)
     assert "measuring -- the tree is not clean" in _decision(out)
+
+
+def test_a_miss_finds_the_record_beside_the_stores_directories(repo: Path) -> None:
+    """The store holds directories too (made/, scope-extra/), and the miss read it with a `grep
+    "$dir"/* | xargs ls -t` pipeline: grep exited 2 on them, rust_gate.sh's pipefail read that as
+    no record, and three goh lands in a row said "no measurement of this workspace is recorded
+    yet" with three records there (GOH.RUSTCOVKEYSCOPE). It names what moved, file by file."""
+    assert _run(repo, FLOOR="95") == "MEASURED"
+    store = repo / ".git" / "goh-proven"
+    (store / "made").mkdir(exist_ok=True)
+    (store / "made" / "x").write_text("a mark\n")
+    _write(repo, "crates/a/src/lib.rs", "pub fn f() -> u64 {\n    4\n}\n")
+    _, out = _run_out(repo, FLOOR="95")
+    assert "no measurement of this workspace is recorded yet" not in out
+    moved = "was on other inputs: the Rust build inputs (crates/a/src/lib.rs) moved"
+    assert moved in _decision(out)
+    _, out = _run_out(repo, FLOOR="99")
+    assert "was on other inputs: GOH_COV_FLOOR_RUST moved" in _decision(out)
+
+
+def _gates_copy(dest: Path) -> Path:
+    """A gates root as a head export is one: the coverage scripts and the identity, at a path."""
+    import gate_identity
+
+    copy_closure(dest, *gate_identity.rust_gate_scripts(REPO_ROOT), "lib/gate_identity.py",
+                 root=REPO_ROOT)  # fmt: skip
+    return dest
+
+
+def test_a_head_export_on_pythonpath_is_keyed_by_content(repo: Path, tmp_path: Path) -> None:
+    """goh's land puts the tip's head export, ~/.cache/goh/head/<sha>, first on PYTHONPATH, and the
+    key named it by path: every land, lib/ or tests/ only, measured again for 468-476 s
+    (GOH.RUSTCOVKEYSCOPE). Two exports with the same coverage scripts are one input; one whose
+    coverage scripts differ, or another directory on the path, is another."""
+    a = _gates_copy(tmp_path / "head" / "a")
+    b = _gates_copy(tmp_path / "head" / "b")
+    assert _run(repo, PYTHONPATH=f"{a}:/usr/lib/py") == "MEASURED"
+    assert _run(repo, PYTHONPATH=f"{b}:/usr/lib/py") == "PLAIN"
+    c = _gates_copy(tmp_path / "head" / "c")
+    edited = c / "gates/_coverage_rust.sh"
+    edited.write_text(edited.read_text() + "\n# an edit\n")
+    assert _run(repo, PYTHONPATH=f"{c}:/usr/lib/py") == "MEASURED"
+    assert _run(repo, PYTHONPATH=f"{c}:/usr/lib/other") == "MEASURED"
+    _, out = _run_out(repo, PYTHONPATH=f"{b}:/usr/lib/other")
+    assert "PYTHONPATH (its gates roots by content) moved" in _decision(out)
+
+
+def test_the_runner_is_an_input_and_the_suite_is_not(repo: Path) -> None:
+    """The external command runs the binary THROUGH a runner (goh's ./tools/pytest.sh): what it
+    selects and how it runs moves the number, so it and what it sources are keyed; the suite it
+    runs (tests/) is not, by the owner's rule (GOH.RUSTCOVSKIP)."""
+    ext = {"GOH_COV_RUST_EXTERNAL": 'GOH_TEST_BIN="$X/goh" ./tools/run.sh tests'}
+    _write(repo, "tools/run.sh", '. "$(dirname "${BASH_SOURCE[0]}")/helper.sh"\n')
+    _write(repo, "tools/helper.sh", "K=1\n")
+    _write(repo, "tests/test_x.py", "def test_x():\n    pass\n")
+    assert _run(repo, **ext) == "MEASURED"
+    _write(repo, "tests/test_x.py", "def test_x():\n    assert True\n")
+    assert _run(repo, **ext) == "PLAIN"
+    _write(repo, "tools/helper.sh", "K=2\n")
+    _, out = _run_out(repo, **ext)
+    assert "measuring" in _decision(out)
+    assert "the suite's runner (tools/helper.sh) moved" in _decision(out)
+    assert _run(repo, **ext) == "PLAIN"
+
+
+def test_goh_keys_its_runner_and_not_the_scripts_its_suite_exercises() -> None:
+    """goh itself (.gatesrc GOH_COV_RUST_EXTERNAL): the runner is tools/pytest.sh and its closure;
+    the lib/ file GOH.PGREPSELF changed, and every test, are in no keyed line."""
+    import gate_identity
+
+    ext = 'GOH_TEST_BIN="$GOH_COVERAGE_BIN_DIR/goh" ./tools/pytest.sh'
+    runner = set(gate_identity.runner_files(REPO_ROOT, ext))
+    assert "tools/pytest.sh" in runner and "lib/house_python.sh" in runner
+    assert not [r for r in runner if r.startswith("tests/")]
+    keyed = runner | set(gate_identity.rust_gate_scripts(REPO_ROOT))
+    keyed |= set(gate_identity.build_inputs(REPO_ROOT))
+    assert "lib/self_match.py" not in keyed and "lib/xexit.py" not in keyed

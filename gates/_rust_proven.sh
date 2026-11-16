@@ -177,8 +177,8 @@ rust_proven_group() {
 # With an external suite (GOH_COV_RUST_EXTERNAL: goh's pytest drives the binary) the coverage group
 # reads the whole tree, so its record keys on the whole tree, and every goh land re-measured: 896.62
 # s of instrumented build, suite and report for GOH.XEXITDETAIL's Python and shell. The MEASUREMENT
-# has narrower inputs: the repo's Rust build inputs and the Rust gate's coverage scripts
-# (`gate_identity.py rust`, the one formula). A green measurement is recorded under those; a run on
+# has narrower inputs (WHAT THE MEASURED NUMBER DEPENDS ON, below; `gate_identity.py rust`, the one
+# formula). A green measurement is recorded under those; a run on
 # the same Rust inputs reuses it and runs the tests PLAIN instead -- cargo's own targets, and the
 # external suite against the plain build of these same inputs -- so a red test is still red. A
 # Rust-input change, a binary that is not this tree's build, a dirty tree or GOH_PROVEN=0 measures.
@@ -188,24 +188,43 @@ rust_proven_group() {
 # first land after GOH.RUSTCOVSKIP measured for 535.36 s of rust_gate's 564.40 s with not one line
 # saying the reuse had been looked for (GOH.RUSTCOVREUSE): its step named the push worktree's path.
 #
-# WHAT COUNTS AS AN INPUT (the owner's set, GOH.RUSTCOVSKIP): the Rust build inputs, the Rust gate's
-# coverage scripts (under the gates root and GOH_DIR both), the tools, the GOH_* configuration in
-# the environment and the coverage configuration .gatesrc sets (every GOH_COV_* variable, exported
-# or not: a floor raised in .gatesrc must be judged, and the plain run judges no floor). NOT an
-# input: the external suite (tests/) and the scripts it drives. A test change therefore does not
-# re-measure the Rust coverage number until the next change to one of the inputs above.
+# WHAT THE MEASURED NUMBER DEPENDS ON, so what the key covers (GOH.RUSTCOVKEYSCOPE; the owner's
+# rule, GOH.RUSTCOVSKIP: the suite is not an input). The number is the share of the binary's Rust
+# lines the suite reaches, as the coverage scripts build, run, merge and judge it. Its inputs:
+#   * the BINARY: the repo's Rust build inputs, embedded files included (`inputs`: the stamp's
+#     formula, lib/goh_version.sh);
+#   * the INSTRUMENT: the coverage scripts under the gates root and GOH_DIR both (`scripts`:
+#     coverage_gate.sh's closure, rust_gate.sh, this file), the tools, the GOH_* configuration in
+#     the environment (the step) and every GOH_COV_* .gatesrc sets, exported or not (`cov`: a floor
+#     raised there must be judged, and the plain run judges no floor; the external command too);
+#   * the RUNNER: the repo's files the external command runs the binary THROUGH (`runner`: goh's
+#     ./tools/pytest.sh and what it sources, imports or runs -- which tests run, and how);
+#   * the environment the build and the runner read (`env`, _proven.sh's list), with PYTHONPATH
+#     read as the measurement reads it: a gates root on it by its coverage scripts' CONTENT, never
+#     its path. goh's land puts the tip's head export, ~/.cache/goh/head/<sha>, first on it, and
+#     keyed by path no land ever found the last one's measurement: three in a row measured,
+#     468-476 s each, for lib/ and tests/ changes (GOH.RUSTCOVKEYSCOPE).
+# NOT inputs, by the owner's rule: the suite (tests/, and the files Rust test modules embed) and
+# whatever the binary or the suite runs while it is exercised (lib/, checks/, hooks/ beyond the
+# files above). A change there moves what is exercised, not what is measured: the plain run still
+# runs every test, so a red test is red, and the number is measured again at the next change to an
+# input above. Anything that can move the number and is not keyed here is a defect of THIS list:
+# never reuse a measurement whose real inputs changed -- the floor outranks the 470 s it costs.
 
-# rust_cov_key <step> -- prints the measurement's key on this tree's Rust inputs; or prints why no
-# key can be made, and returns 1 (no reuse possible: it measures).
-rust_cov_key() {
-    local top ident extra="" v d
+# _rust_cov_inputs <step> -- the measurement's inputs on this tree, one line each (the key is their
+# hash; a record's copy names what moved on the next miss); or why there are none, and 1.
+_rust_cov_inputs() {
+    local top ident extra="" v d args
     [ "$PROVEN_ON" = 1 ] || { echo "the proven cache is off (GOH_PROVEN=0)"; return 1; }
     [ -n "${GOH_COV_RUST_EXTERNAL:-}" ] || { echo "no external suite (GOH_COV_RUST_EXTERNAL)"; return 1; }
     # shellcheck disable=SC2154  # cargo_dir is the sourcing gate's (rust_gate.sh)
     top="$(cd "$cargo_dir" && git rev-parse --show-toplevel 2>/dev/null)" || { echo "not in a git checkout"; return 1; }
     [ -n "$(cd "$top" && proven_tree </dev/null)" ] || { echo "the tree is not clean"; return 1; }   # as every record
+    # PYTHONPATH as an argument: gate_identity.py re-runs HEAD's copy, which rewrites the variable.
+    args=(--external "$GOH_COV_RUST_EXTERNAL")
+    [ -z "${PYTHONPATH+set}" ] || args+=(--pythonpath "$PYTHONPATH")
     ident="$(cd "$top" && "$GOH_PY" -S "$PROVEN_GOH_ROOT/lib/gate_identity.py" rust --repo "$top" \
-        </dev/null 2>&1)" || { echo "no identity: $(printf '%s\n' "$ident" | tail -n 1)"; return 1; }
+        "${args[@]}" </dev/null 2>&1)" || { echo "no identity: $(printf '%s\n' "$ident" | tail -n 1)"; return 1; }
     # GOH_DIR's path is not in the step (_rust_step), so its scripts are keyed by content when it is
     # another checkout than the one running this.
     d="$(cd "${GOH_DIR:-$PROVEN_GOH_ROOT}" 2>/dev/null && /bin/pwd -P)" || d=""
@@ -213,12 +232,22 @@ rust_cov_key() {
         extra="$(cd "$top" && "$GOH_PY" -S "$PROVEN_GOH_ROOT/lib/gate_identity.py" rust --repo "$top" \
             --root "$d" </dev/null 2>&1 | grep '^scripts ')" || { echo "no identity for GOH_DIR's scripts"; return 1; }
     fi
-    { printf 'rust-coverage v2\nstep %s\n%s\n%s\n' "$1" "$ident" "$extra"
-      for v in $(compgen -v GOH_COV_); do
-          case "$v" in GOH_COV_CACHE|GOH_COV_CACHE_*) continue ;; esac   # where, and how big: no verdict
-          printf 'cov %s=%s\n' "$v" "${!v}"
-      done
-      _proven_identity_live </dev/null; } | hash_hex /dev/stdin
+    printf 'rust-coverage v3\nstep %s\n%s\n' "$1" "$ident"
+    if [ -n "$extra" ]; then printf 'GOH_DIR %s\n' "$extra"; fi
+    for v in $(compgen -v GOH_COV_); do
+        case "$v" in GOH_COV_CACHE|GOH_COV_CACHE_*) continue ;; esac   # where, and how big: no verdict
+        printf 'cov %s=%s\n' "$v" "${!v}"
+    done
+    # PYTHONPATH is the identity's line above, read by content; this one names it by path.
+    _proven_identity_live </dev/null | sed '/^env PYTHONPATH=/d'
+}
+
+# rust_cov_key <step> -- prints the measurement's key on this tree's inputs (_rust_cov_inputs); or
+# prints why no key can be made, and returns 1 (no reuse possible: it measures).
+rust_cov_key() {
+    local text
+    text="$(_rust_cov_inputs "$1")" || { printf '%s\n' "$text"; return 1; }
+    printf '%s\n' "$text" | hash_hex /dev/stdin
 }
 
 # rust_cov_plain_bins -- the directory of a plain build of THIS tree's Rust: the resolved goh, when
@@ -232,47 +261,137 @@ rust_cov_plain_bins() {
     dirname "$GOH_RESOLVED_BIN"
 }
 
-# _rust_cov_miss <step> -- why a keyed lookup missed, from this workspace's newest measurement record:
-# one under this very step (so the inputs differ), else one under another configuration, else none.
+# Where each measurement's inputs are kept, beside the records, by key (rust_coverage_reuse).
+_rust_cov_inputs_dir() {
+    local dir
+    dir="$(proven_dir)" || return 1
+    printf '%s/cov-inputs\n' "$dir"
+}
+
+# _rust_cov_moved <kept inputs> <inputs now> <tree then> <tree now> -- the inputs that differ, as
+# one phrase: each line by its label (`tool cargo`, `cov GOH_COV_FLOOR_RUST`), a line that keys
+# files with the ones that moved between the two trees, as git names them.
+_rust_cov_moved() {
+    local label paths names out="" n top
+    top="$(cd "$cargo_dir" && git rev-parse --show-toplevel 2>/dev/null)" || top=""
+    # shellcheck disable=SC2016  # the awk program's own $0 and $1
+    while IFS=$'\t' read -r label paths; do
+        names=""
+        if [ -n "$paths" ] && [ -n "$top" ] && [ -n "$3" ] && [ -n "$4" ]; then
+            # shellcheck disable=SC2086  # one path per word: gate_identity.py lists them so
+            names="$(git -C "$top" diff --name-only "$3" "$4" -- $paths 2>/dev/null | awk '
+                NR <= 3 { printf "%s%s", (NR > 1 ? ", " : ""), $0 } END { if (NR > 3) printf ", %d more", NR - 3 }')" || names=""
+        fi
+        case "$label" in
+            inputs) label="the Rust build inputs" ;;
+            scripts) label="the coverage scripts" ;;
+            runner) label="the suite's runner" ;;
+            GOH_DIR) label="GOH_DIR's coverage scripts" ;;
+            pythonpath) label="PYTHONPATH (its gates roots by content)" ;;
+            xcode) label="the selected Xcode" ;;
+            rust-coverage|rust-identity) label="the key's formula" ;;
+            "tool "*) label="the tool ${label#tool }" ;;
+            "cov "*|"env "*) label="${label#* }" ;;
+            "keep "*) label="the kept file ${label#keep }" ;;
+        esac
+        out="${out:+$out; }$label${names:+ ($names)}"
+    done < <(env LC_ALL=C awk '
+        function label(line,   w, n) {
+            n = split(line, w, " ")
+            if (w[1] == "tool" || w[1] == "keep") return w[1] " " w[2]
+            if (w[1] == "cov" || w[1] == "env") { sub(/=.*/, "", w[2]); return w[1] " " w[2] }
+            return w[1]
+        }
+        function files(line,   w, n, i, s) {   # a line that keys files: <kind> <hash> <path>...
+            n = split(line, w, " ")
+            if (w[1] != "inputs" && w[1] != "scripts" && w[1] != "runner") return ""
+            for (i = 3; i <= n; i++) s = s (s == "" ? "" : " ") w[i]
+            return s
+        }
+        FNR == NR { k = label($0); then[k] = $0; order[++n] = k; next }
+        { k = label($0); now[k] = $0; if (!(k in then)) order[++n] = k }
+        END {
+            for (i = 1; i <= n; i++) {
+                k = order[i]
+                if (k in seen) continue
+                seen[k] = 1
+                if (then[k] != now[k]) printf "%s\t%s\n", k, files(then[k]) " " files(now[k])
+            }
+        }' "$1" <(printf '%s\n' "$2"))
+    printf '%s\n' "${out:-nothing it keys}"
+}
+
+# _rust_cov_miss <step> <inputs now> -- why a keyed lookup missed, from this workspace's newest
+# measurement record: one under this very step (so the inputs differ: which ones, from the inputs
+# kept with it), else one under another configuration, else none.
 _rust_cov_miss() {
-    local dir f epoch now what
+    local dir f line epoch step best="" best_epoch=-1 near="" near_epoch=-1 now tree kept moved
     dir="$(proven_dir)" || { echo "no record store"; return 0; }
-    what="on other Rust inputs, coverage configuration or tools, or past its age"
-    # shellcheck disable=SC2012  # record names are hex: ls -t is the newest-first order wanted
-    f="$(grep -lxF -- "step=$1" "$dir"/* 2>/dev/null | xargs ls -t 2>/dev/null | awk 'NR == 1')" || f=""
-    if [ -z "$f" ]; then
-        what="under another GOH_* configuration"
-        # shellcheck disable=SC2012
-        f="$(grep -lF -- "step=${1%% env=*} env=" "$dir"/* 2>/dev/null | xargs ls -t 2>/dev/null | awk 'NR == 1')" || f=""
-    fi
-    if [ -z "$f" ]; then
-        echo "no measurement of this workspace is recorded yet"
+    # Every record, read here rather than by a `grep "$dir"/* | xargs ls -t` pipeline: the store
+    # holds directories too (made/, scope-extra/, cov-inputs/), grep exits 2 on them, and under
+    # rust_gate.sh's pipefail the pipeline found NO record while three were there -- every goh land
+    # said "no measurement of this workspace is recorded yet" (GOH.RUSTCOVKEYSCOPE).
+    for f in "$dir"/*; do
+        [ -f "$f" ] || continue
+        epoch=""
+        step=""
+        while IFS= read -r line; do
+            case "$line" in
+                epoch=*) epoch="${line#epoch=}" ;;
+                step=*) step="${line#step=}" ;;
+            esac
+        done <"$f"
+        case "$epoch" in ""|*[!0-9]*) continue ;; esac
+        if [ "$step" = "$1" ]; then
+            if [ "$epoch" -gt "$best_epoch" ]; then best="$f"; best_epoch="$epoch"; fi
+        elif [ "${step%% env=*}" = "${1%% env=*}" ]; then
+            if [ "$epoch" -gt "$near_epoch" ]; then near="$f"; near_epoch="$epoch"; fi
+        fi
+    done
+    now="$(proven_now)"
+    if [ -n "$best" ]; then
+        kept="$(_rust_cov_inputs_dir)/${best##*/}"
+        if [ ! -f "$kept" ]; then
+            echo "the last measurement ($(proven_age $((now - best_epoch))) ago) was on other inputs; which moved is not known: no inputs were kept with it"
+            return 0
+        fi
+        tree="$(sed -n 's/^tree=//p' "$best")"
+        moved="$(_rust_cov_moved "$kept" "$2" "$tree" "$(proven_tree </dev/null)")"
+        if [ "$moved" = "nothing it keys" ]; then
+            echo "the last measurement ($(proven_age $((now - best_epoch))) ago) on these inputs is past its age"
+        else
+            echo "the last measurement ($(proven_age $((now - best_epoch))) ago) was on other inputs: $moved moved"
+        fi
         return 0
     fi
-    epoch="$(sed -n 's/^epoch=//p' "$f")"
-    now="$(proven_now)"
-    case "$epoch" in ""|*[!0-9]*) epoch="$now" ;; esac
-    echo "the last measurement ($(proven_age $((now - epoch))) ago) was $what"
+    if [ -n "$near" ]; then
+        echo "the last measurement ($(proven_age $((now - near_epoch))) ago) was under another GOH_* configuration"
+        return 0
+    fi
+    echo "no measurement of this workspace is recorded yet"
 }
 
 # rust_coverage_reuse <measure-fn> <plain-fn> -- the plain run on a recorded measurement's inputs
 # (RUST_COV_PLAIN_BINS naming the plain build), else the measurement, recorded when green.
 rust_coverage_reuse() {
-    local measure="$1" plain="$2" step key="" why="" hit age by bins
+    local measure="$1" plain="$2" step cov_in="" key="" why="" hit age by bins kept
     step="$(_rust_step coverage-measure)"
-    if ! key="$(rust_cov_key "$step")"; then
-        why="$key"
-        key=""
-    elif hit="$(proven_lookup "$key" "$step" </dev/null)"; then
-        if bins="$(rust_cov_plain_bins)"; then
-            read -r age by <<<"$hit"
-            measure "[rust] coverage: reused -- measured on these Rust inputs $age ago by $by; the tests run plain"
-            RUST_COV_PLAIN_BINS="$bins" "$plain"
-            return
-        fi
-        why="a measurement is recorded, but no plain build of these inputs to run the tests against: $bins"
+    if ! cov_in="$(_rust_cov_inputs "$step")"; then
+        why="$cov_in"
+        cov_in=""
     else
-        why="$(_rust_cov_miss "$step")"
+        key="$(printf '%s\n' "$cov_in" | hash_hex /dev/stdin)"
+        if hit="$(proven_lookup "$key" "$step" </dev/null)"; then
+            if bins="$(rust_cov_plain_bins)"; then
+                read -r age by <<<"$hit"
+                measure "[rust] coverage: reused -- measured on these Rust inputs $age ago by $by; the tests run plain"
+                RUST_COV_PLAIN_BINS="$bins" "$plain"
+                return
+            fi
+            why="a measurement is recorded, but no plain build of these inputs to run the tests against: $bins"
+        else
+            why="$(_rust_cov_miss "$step" "$cov_in")"
+        fi
     fi
     measure "[rust] coverage: measuring -- $why"
     "$measure" || return
@@ -281,6 +400,18 @@ rust_coverage_reuse() {
         info "[rust] coverage: the Rust inputs moved while they were measured -- not recorded"
         return 0
     fi
-    proven_record "$key" "$(proven_tree </dev/null)" "$step" "rust_gate coverage" </dev/null \
-        || warn "[rust] could not write the proven record for the coverage measurement"
+    if ! proven_record "$key" "$(proven_tree </dev/null)" "$step" "rust_gate coverage" </dev/null; then
+        warn "[rust] could not write the proven record for the coverage measurement"
+        return 0
+    fi
+    # The inputs, kept by key so the next miss names what moved; one per live record.
+    if ! { kept="$(_rust_cov_inputs_dir)" && mkdir -p "$kept" && printf '%s\n' "$cov_in" >"$kept/$key"; }; then
+        warn "[rust] could not keep the coverage measurement's inputs beside its record"
+        return 0
+    fi
+    local f
+    for f in "$kept"/*; do
+        if [ -f "$f" ] && [ ! -f "${kept%/*}/${f##*/}" ]; then rm -f "$f"; fi
+    done
+    return 0
 }
