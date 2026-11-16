@@ -148,6 +148,64 @@ push_record_verdicts() {
     for c in "$@"; do printf 'green %s\n' "$c" >>"$GOH_GATE_VERDICTS"; done
 }
 
+# THE PUSHED RECORD (GOH.CFGPUSHSCOPE; lib/config_push.py's header). push_record_pushed ROOT
+# SHA:HOW... appends `<sha> <how>` (HOW full when empty, release, or config for a floor push) to
+# `goh-pushed` in ROOT's common git dir, called beside push_record_verdicts once every gated ref
+# passed and none moved: the green push verdict a later floor-only push reuses. Bounded: past 1000 lines the newest 500 are kept.
+push_record_pushed() {
+    local root="$1" file c how
+    shift
+    [ "$#" -gt 0 ] || return 0
+    file="$(git -C "$root" rev-parse --path-format=absolute --git-common-dir)/goh-pushed" || return 0
+    for c in "$@"; do how="${c#*:}"; printf '%s %s\n' "${c%%:*}" "${how:-full}" >>"$file"; done
+    if [ "$(wc -l <"$file")" -gt 1000 ]; then
+        tail -n 500 "$file" >"$file.tmp" && mv -f "$file.tmp" "$file"
+    fi
+}
+
+# THE FLOOR RULE (GOH.CFGPUSHSCOPE). push_config_base WORKTREE BASE prints BASE when
+# `config_push.py decide` finds the pushed commit changes only scanner floors since a push-gated
+# BASE (the remote's tip of the ref), else nothing, its reason said on stderr when the diff touched
+# .gatesrc (a code push hears nothing of it). A decision that cannot
+# run is the full gate, never a reduced one.
+push_config_base() {
+    local out
+    out="$("$GOH_PY" "$GOH/lib/config_push.py" decide --root "$1" --base "$2" </dev/null)" \
+        || out="full the floor rule could not decide (above)"
+    case "$out" in
+        "config "?*) printf '%s\n' "${out#config }" ;;
+        "quiet "*) ;;   # a push this rule does not concern: the full gate, nothing said
+        *) info "pre-push: the full gate: ${out#full }" >&2 ;;
+    esac
+}
+
+# push_config_run BASE -- in the export: the structural gate alone, the one reader of a floor; BASE's
+# green push verdict stands for every other step (push_config_base chose it).
+push_config_run() {
+    info "pre-push: scanner floors only since ${1:0:8} -- the structural gate, and ${1:0:8}'s green" \
+        "push verdict for the rest (GOH.CFGPUSHSCOPE)"
+    bash "$GOH/gates/structural.sh" --full
+}
+
+# export_kept ROOT WORKTREE PATH... -- copy each GOH_EXPORT_KEEP path ROOT holds into the export.
+export_kept() {
+    local root="$1" worktree="$2" f
+    shift 2
+    for f in "$@"; do
+        if [ -e "$root/$f" ]; then
+            mkdir -p "$worktree/$(dirname "$f")"
+            cp -R "$root/$f" "$worktree/$f"
+            info "carried ignored file into the export: $f"
+        fi
+    done
+}
+
+# push_prune_logs DIR KEEP -- a red push keeps its log; past KEEP logs the oldest go.
+push_prune_logs() {
+    find "$1" -name '*.log' -type f -print0 | xargs -0 -r ls -t | tail -n "+$(($2 + 1))" \
+        | while IFS= read -r old; do rm -f "$old"; done
+}
+
 # THE RELEASE RULE (GOH.SHIPRELREUSE R3; lib/release_gate.py's header). push_release_base ROOT
 # WORKTREE prints the parent whose land verdict the pushed commit reuses, or nothing: the repo must
 # declare GOH_PUSH_RELEASE_REUSE=on (read by name, in a child), and `release_gate.py push-decide`

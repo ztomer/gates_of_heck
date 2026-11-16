@@ -412,13 +412,7 @@ while read -r local_ref local_sha _remote_ref remote_sha; do
     # ...and the build dirs cargo keys on the export, asked while it exists (gates/_push_build_dirs.py).
     [ -n "$export_build_dir" ] || "$GOH_PY" -S "$GOH/gates/_push_build_dirs.py" "$worktree" 2>/dev/null |
         sed 's/^/build-dir /' >>"$run_dir.source" || true
-    for f in $GOH_EXPORT_KEEP; do
-        if [ -e "$root/$f" ]; then
-            mkdir -p "$worktree/$(dirname "$f")"
-            cp -R "$root/$f" "$worktree/$f"
-            info "carried ignored file into the export: $f"
-        fi
-    done
+    export_kept "$root" "$worktree" $GOH_EXPORT_KEEP   # the ignored files .gatesrc names (lib/push_runs.sh)
     mkdir -p "$log_root"
     log="$log_root/$(basename "$root")-$short-$(date +%Y%m%dT%H%M%S).log"
     set +e
@@ -443,11 +437,14 @@ while read -r local_ref local_sha _remote_ref remote_sha; do
     # The structural layer and the steps .gatesrc DECLARES run whatever the repo's gate calls (6.7,
     # test_push_gate_ci_steps.py), each marking its tree; a release-only commit: lib/push_runs.sh.
     release_base="$(push_release_base "$root" "$worktree")"
+    config_base="$([ -n "$release_base" ] || push_config_base "$worktree" "${remote_sha:-$zero}")"   # floors only
     structural_mark="$(mktemp "${TMPDIR:-/tmp}/goh-structural-mark.XXXXXX")"
     steps_mark="$(mktemp "${TMPDIR:-/tmp}/goh-ci-steps-mark.XXXXXX")"
     # shellcheck source=/dev/null # the .gatesrc below is the gated repo's, unknown at lint (GOH.SHX2)
     (cd "$worktree" && if [ -n "$release_base" ]; then
-            GOH_CROSS_REPO_ROOT="$root" GOH_CHANGE_BASE="$change_base" push_release_run "$release_base"; else
+            GOH_CROSS_REPO_ROOT="$root" GOH_CHANGE_BASE="$change_base" push_release_run "$release_base"
+        elif [ -n "$config_base" ]; then GOH_CROSS_REPO_ROOT="$root" GOH_CHANGE_BASE="$change_base" push_config_run "$config_base"
+        else
         GOH_CROSS_REPO_ROOT="$root" GOH_CHANGE_BASE="$change_base" GOH_STRUCTURAL_MARK="$structural_mark" \
             GOH_CI_STEPS_MARK="$steps_mark" bash "$worktree/tools/gate.sh" --full \
         && { grep -qFx -- "--full	$(git rev-parse --show-toplevel)" "$structural_mark" || {
@@ -468,9 +465,7 @@ while read -r local_ref local_sha _remote_ref remote_sha; do
         err "pre-push: the gate failed on $short — nothing pushed"
         err "pre-push: the full gate output is kept at $log"
         goh_slept_since "$slept_mark" || true
-        # Bounded: the newest failures are evidence, the rest is clutter.
-        find "$log_root" -name '*.log' -type f -print0 | xargs -0 -r ls -t | tail -n "+$((keep_failed_logs + 1))" \
-            | while IFS= read -r old; do rm -f "$old"; done
+        push_prune_logs "$log_root" "$keep_failed_logs"   # bounded: the newest failures are evidence
         exit 1
     fi
     rm -f "$log"
@@ -478,6 +473,7 @@ while read -r local_ref local_sha _remote_ref remote_sha; do
     gated=$((gated + 1))
     gated_commits="$gated_commits$commit "
     gated_refs="${gated_refs:-}$local_ref=$commit "
+    gated_how="${gated_how:-}$commit:${release_base:+release}${config_base:+config} "   # empty: full
 done <"$refs_file"
 
 # THE BRANCH MUST STILL BE WHAT WAS GATED (D-0211 of a Swift app, tests/test_push_gate_race.py).
@@ -495,6 +491,7 @@ for pair in ${gated_refs:-}; do
     fi
 done
 push_record_verdicts ${gated_commits:-}   # `green <sha>` in GOH_GATE_VERDICTS (lib/push_runs.sh)
+push_record_pushed "$root" ${gated_how:-}   # `<sha> full|release|config` in goh-pushed: the floor rule's base
 [ "$gated" -gt 0 ] || info "pre-push: nothing to gate (deletes, or commits the remote already has)"
 exit
 } # parse-guard
