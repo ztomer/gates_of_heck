@@ -125,6 +125,20 @@ if ! git merge-base --is-ancestor "$base" "$tip"; then
     now="$(git rev-parse HEAD)"
     info "rebased $branch onto main ${base:0:8}: ${tip:0:8} -> ${now:0:8}"
     tip="$now"
+    # The gates that judge the tip are the TIP's (GOH.VERDICTKEYDRIFT). Run from this checkout,
+    # this script is the head export of the tip BEFORE the rebase (goh_from_head, above), and the
+    # gate, the goh-landed identity and the loaded run's record key all came from that export:
+    # b54b9d62 landed rebased from 380f48d0, its loaded verdict was recorded under 380f48d0's gates
+    # (aa4f97f2) and the ship, reading under b54b9d62's, found none. Only when the rebased checkout
+    # IS the gates checkout: a consumer's rebase moves no gates, and a caller's pinned export stays.
+    if [ -f "$GOH/.goh-head" ] && [ -n "${GOH_LIVE_ROOT:-}" ] \
+            && [ "$(cd "$GOH_LIVE_ROOT" 2>/dev/null && pwd -P)" = "$(cd "$here" && pwd -P)" ] \
+            && goh_export_rev "$here" "$tip" "$tip"; then
+        GOH="$_goh_export"
+        export GOH_DIR="$GOH"
+        goh_path_front PYTHONPATH "$GOH"
+        info "the gates are ${tip:0:8}'s now: $GOH"
+    fi
 fi
 info "gate: $gate"
 # In the gate's environment only, never exported: an exported GOH_ key is gate bookkeeping and must be
