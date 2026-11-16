@@ -136,45 +136,16 @@ fn retire(seed: &mut Seed, repo: &str, floors: &BTreeMap<&'static str, usize>) -
     out
 }
 
-/// Delete `retired`'s entries from the store under its lock, and say what was retired.
-///
-/// A failed write is a warning: the entry is retired again by the next run, and a declared key
-/// never reads it, so it is no headroom for anything.
+/// Delete `retired`'s entries from the store under its lock, and say what was retired: through
+/// the one retirement path (`estate_seed::retire_store`).
 fn retire_store(repo: &str, retired: &Settle) -> String {
-    use std::fmt::Write as _;
-    let mut out = String::new();
-    let Some(dir) = estate_seed::store_dir().filter(|_| !retired.store.is_empty()) else {
-        return out;
-    };
-    let file = dir.join(KIND.file);
-    if let Err(m) = estate_seed::write_settled(&dir, KIND, repo, retired) {
-        let _ = writeln!(
-            out,
-            "{} {TAG} could not retire {} from {}: {m}; the next run retires {}",
-            goh_tui::WARN,
-            goh_tui::counted_as(
-                retired.store.len(),
-                "declared floor's entry",
-                "declared floors' entries"
-            ),
-            file.display(),
-            if retired.store.len() == 1 {
-                "it"
-            } else {
-                "them"
-            }
-        );
-        return out;
-    }
-    for key in retired.store.keys() {
-        let _ = writeln!(
-            out,
+    estate_seed::retire_store(repo, KIND, &retired.store, TAG, |key, file| {
+        format!(
             "{} {TAG} {key}: declared in .gatesrc, its GOH.FLOORREQ entry retired from {} (GOH.SEEDPRUNE)",
             goh_tui::START,
             file.display()
-        );
-    }
-    out
+        )
+    })
 }
 
 #[cfg(test)]

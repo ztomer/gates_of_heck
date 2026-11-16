@@ -245,26 +245,45 @@ fn store_ci_case(workflow: Option<&str>) -> (goh_testkit::Repo, tempfile::TempDi
     (r, store)
 }
 
+/// `store_ci::judge` over `r`'s loaded seed, with `findings` on its one seeded file.
+fn store_ci_judge(
+    r: &goh_testkit::Repo,
+    store: &Path,
+    full: bool,
+    findings: usize,
+) -> (Seed, Result<String, String>) {
+    let mut s = load_from(r.path(), Some(store), K).expect("loads: judged with the findings");
+    let own = crate::gitutil::root_commit(r.path()).expect("root");
+    let counts = if findings == 0 {
+        found(&[])
+    } else {
+        found(&[("a.sh", findings)])
+    };
+    let out = store_ci::judge(r.path(), &own, full, &counts, &mut s, K);
+    (s, out)
+}
+
 #[test]
-fn a_store_only_entry_for_a_repository_whose_ci_runs_goh_is_refused_naming_it() {
+fn a_live_store_entry_for_a_repository_whose_ci_runs_goh_is_refused_naming_it() {
     let (r, store) = store_ci_case(Some(GOH_WORKFLOW));
-    let e = load_at(r.path(), Some(store.path()), K, STORE_CI_REFUSED_FROM)
-        .expect_err("a store entry its CI cannot read is refused");
     let name = r
         .path()
         .file_name()
         .expect("name")
         .to_string_lossy()
         .into_owned();
-    assert!(
-        e.contains(&name) && e.contains("runs goh in GitHub CI"),
-        "{e}"
-    );
-    assert!(e.contains("ci.yml") && e.contains("GOH.STORECI"), "{e}");
-    // before the day it is refused it warns, and the repository stays green
-    let s = load_at(r.path(), Some(store.path()), K, STORE_CI_REFUSED_FROM - 1)
-        .expect("a warning until the day");
-    assert_eq!(s.len(), 1);
+    for full in [true, false] {
+        let (s, out) = store_ci_judge(&r, store.path(), full, 1);
+        let e = out.expect_err("a store entry its CI cannot read is refused");
+        assert!(
+            e.contains(&name) && e.contains("runs goh in GitHub CI"),
+            "{e}"
+        );
+        assert!(e.contains("ci.yml") && e.contains("GOH.STORECI"), "{e}");
+        // only a commit's run, which cannot tell, names the full run
+        assert_eq!(e.contains("`goh structural --full`"), !full, "{e}");
+        assert_eq!(s.len(), 1, "a live entry stays");
+    }
 }
 
 #[test]
@@ -276,8 +295,8 @@ fn a_store_entry_for_a_repository_without_goh_in_its_ci_is_accepted() {
         Some("# refused by the gates_of_heck structural gate\n# repository: ztomer/gates_of_heck\njobs: {}\n"),
     ] {
         let (r, store) = store_ci_case(workflow);
-        let s = load_at(r.path(), Some(store.path()), K, STORE_CI_REFUSED_FROM)
-            .unwrap_or_else(|e| panic!("{workflow:?}: {e}"));
+        let (s, out) = store_ci_judge(&r, store.path(), false, 1);
+        assert_eq!(out.as_deref(), Ok(""), "{workflow:?}");
         assert_eq!(s.len(), 1, "{workflow:?}");
     }
 }

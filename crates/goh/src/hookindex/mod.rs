@@ -127,7 +127,7 @@ fn judge(
             let _ = writeln!(index_listing, "{}", site(rel, r));
         }
     }
-    let mut warns = String::new();
+    let mut warns = verdict.retired.clone();
     for (rel, note) in &verdict.warn {
         let _ = writeln!(
             warns,

@@ -154,6 +154,42 @@ pub fn write_store_file(
     })
 }
 
+/// Delete `retired`'s entries (`path -> 0`) of the repository whose root is `repo` from `kind`'s
+/// file in the private store, under its lock, and say each with `say(path, file)`.
+///
+/// The one path by which a run that is not a commit's retires a store entry (GOH.SEEDPRUNE, a
+/// declared floor; GOH.STORECISTALE, a fixed site of a repository whose CI runs goh). A failed
+/// write is a warning tagged `tag`: the next run retires the entry again, and nothing reads it.
+pub fn retire_store(
+    repo: &str,
+    kind: Kind,
+    retired: &BTreeMap<String, usize>,
+    tag: &str,
+    say: impl Fn(&str, &Path) -> String,
+) -> String {
+    use std::fmt::Write as _;
+    let mut out = String::new();
+    let Some(dir) = store_dir().filter(|_| !retired.is_empty()) else {
+        return out;
+    };
+    let file = dir.join(kind.file);
+    if let Err(m) = write_store_file(&dir, kind.file, repo, retired) {
+        let _ = writeln!(
+            out,
+            "{} {tag} could not retire {} from {}: {m}; the next run retires {}",
+            goh_tui::WARN,
+            goh_tui::counted_as(retired.len(), "entry", "entries"),
+            file.display(),
+            if retired.len() == 1 { "it" } else { "them" }
+        );
+        return out;
+    }
+    for path in retired.keys() {
+        let _ = writeln!(out, "{}", say(path, &file));
+    }
+    out
+}
+
 /// The test seam that widens the read-to-rename window (`GOH_SEED_SETTLE_HOLD_MS`), so the
 /// two-process test in `tests/test_seed_scope.py` races on every run rather than by luck.
 fn hold_for_test() {
@@ -196,8 +232,11 @@ pub fn judge_settled(
     } else {
         Settle::default()
     };
-    let now = settled_seed(seed, repo, &settled);
+    let mut now = settled_seed(seed, repo, &settled);
+    // GOH.STORECI judges the store entries left once the findings are known (GOH.STORECISTALE).
+    let retired = super::store_ci::judge(root, repo, full, counts, &mut now, kind)?;
     let mut v = judge(repo, counts, &now, full, kind);
+    v.retired = retired;
     if !full {
         v.stale.extend(settled.stale.iter().cloned());
     }

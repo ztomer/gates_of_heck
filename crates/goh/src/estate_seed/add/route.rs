@@ -3,7 +3,7 @@
 //! `seed-add` wrote every entry to the private store. A repository whose seeds are TRACKED (its
 //! own `<kind>_seed.json` at its root, versioned and in every clone) got its new entry in the one
 //! place its hosted CI cannot read: monitor's `floor_seed.json` entry, 2026-11-15, passed on this
-//! machine and would have gone red on the runner (the trap GOH.STORECI names at load). So an entry
+//! machine and would have gone red on the runner (the trap GOH.STORECI refuses). So an entry
 //! is routed by its root commit to the repository on disk that has it -- the repository the
 //! command runs in first, then the estate registry (`crate::shapes::diff::estate`) -- and goes to
 //! that repository's tracked file when it keeps its seeds tracked:

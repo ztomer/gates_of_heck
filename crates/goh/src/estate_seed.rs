@@ -28,9 +28,10 @@
 //! the repository's next push -- the trap GOH.SEEDPRIVATE and GOH.PLURALHEDGE both fell into in one
 //! day. A repository runs goh in CI when a workflow under `.github/workflows` checks out, clones or
 //! uses `<owner>/gates_of_heck` (a comment naming it does not count). Its entries live in its own
-//! tracked file. Until `STORE_CI_REFUSED_FROM` (2026-11-16) the refusal is a WARNING naming the
-//! repository and the store: the entries still standing on the day it landed (EST.HEDGESEEDS was
-//! moving them into each repository's tracked file) keep their repositories green while they move.
+//! tracked file. The refusal is judged WITH the findings (`store_ci::judge`, GOH.STORECISTALE): a
+//! full run that finds such an entry's file clean retires it from the store and says so, and only
+//! an entry still holding a site is refused. Judged at load, it fired on entries whose sites were
+//! already fixed, and the only way out was a hand edit of the store (token-pool, 2026-11-16).
 //!
 //! WHY THE ROOT COMMIT. The directory name was `goh bare-hook-index`'s first key, and the release
 //! canary judges each consumer in a clone named `tree`: the seeded repo read as unseeded and the
@@ -106,8 +107,8 @@ fn home(kind: Kind, held: Held) -> String {
 ///
 /// # Errors
 ///
-/// A corrupt file; a tracked entry naming another repository's root; one entry in both homes; a
-/// store entry for a repository whose CI runs goh (from `STORE_CI_REFUSED_FROM`; a warning before).
+/// A corrupt file; a tracked entry naming another repository's root; one entry in both homes. A
+/// store entry for a repository whose CI runs goh is judged with the findings (`judge_settled`).
 pub fn load(repo: &Path, kind: Kind, staged: bool) -> Result<Seed, String> {
     load_scoped(repo, store_dir().as_deref(), kind, staged)
 }
@@ -118,7 +119,7 @@ pub fn load(repo: &Path, kind: Kind, staged: bool) -> Result<Seed, String> {
 ///
 /// As `load`.
 pub fn load_from(repo: &Path, store: Option<&Path>, kind: Kind) -> Result<Seed, String> {
-    load_scoped(repo, store, kind, false)
+    load_in(repo, store, kind, false)
 }
 
 /// `load_from` at a scope: `staged` reads the tracked seed from the index (`tracked_text`).
@@ -132,29 +133,10 @@ pub fn load_scoped(
     kind: Kind,
     staged: bool,
 ) -> Result<Seed, String> {
-    let now = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map_or(0, |d| d.as_secs());
-    load_in(repo, store, kind, now, staged)
+    load_in(repo, store, kind, staged)
 }
 
-/// `load_from` at the time `now` (seconds since the epoch), which decides whether a store entry for
-/// a repository whose CI runs goh warns or is refused.
-///
-/// # Errors
-///
-/// As `load`.
-pub fn load_at(repo: &Path, store: Option<&Path>, kind: Kind, now: u64) -> Result<Seed, String> {
-    load_in(repo, store, kind, now, false)
-}
-
-fn load_in(
-    repo: &Path,
-    store: Option<&Path>,
-    kind: Kind,
-    now: u64,
-    staged: bool,
-) -> Result<Seed, String> {
+fn load_in(repo: &Path, store: Option<&Path>, kind: Kind, staged: bool) -> Result<Seed, String> {
     let mut seed = Seed::new();
     let on_disk = repo.join(kind.file);
     let tracked = parse_text(&on_disk, tracked_text(repo, kind, staged), kind)?;
@@ -183,9 +165,6 @@ fn load_in(
     if let Some(dir) = store {
         let file = dir.join(kind.file);
         let stored = parse(&file, kind)?;
-        if !stored.is_empty() {
-            store_ci::refuse(repo, &file, &stored, now)?;
-        }
         for e in stored {
             let key = (e.root, e.path);
             if let Some(held) = seed.get(&key) {
@@ -223,6 +202,8 @@ pub struct Verdict {
     /// Entries a full run found nothing for: `(path, note)`, red -- a ratchet holds only what is
     /// still there, and the repository that fixed the site deletes its own entry with the fix.
     pub stale: Vec<(String, String)>,
+    /// Store entries this run retired, one line each, already written (GOH.STORECISTALE).
+    pub retired: String,
 }
 
 /// Judge `found` (`path -> number of findings`) in the repo whose identity is `repo` against
@@ -370,7 +351,7 @@ fn verdict_listing(
         Ok(j) => j,
         Err(m) => return (2, String::new(), format!("{ERR} {} {m}\n", r.tag)),
     };
-    let mut warns = String::new();
+    let mut warns = v.retired.clone();
     for (path, note) in &v.warn {
         let _ = writeln!(
             warns,
@@ -492,9 +473,10 @@ pub use pending::{apply as apply_pending, PENDING_ENV};
 #[cfg(test)]
 use settle::settled_seed;
 pub use settle::{
-    judge_settled, settle, settle_store, write_settled, write_store_file, Scope, Settle,
+    judge_settled, retire_store, settle, settle_store, write_settled, write_store_file, Scope,
+    Settle,
 };
-pub use store_ci::{goh_workflow, STORE_CI_REFUSED_FROM};
+pub use store_ci::goh_workflow;
 
 #[cfg(test)]
 mod tests;

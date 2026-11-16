@@ -3,11 +3,8 @@
 
 use std::path::{Path, PathBuf};
 
-use super::parse::Raw;
-
-/// The day a store entry for a repository whose CI runs goh turns from a warning into a refusal:
-/// 2026-11-16T00:00:00Z, a week after GOH.STORECI landed (seconds since the epoch).
-pub const STORE_CI_REFUSED_FROM: u64 = 1_794_787_200;
+use super::{retire_store, store_dir, Kind, Seed};
+use std::collections::BTreeMap;
 
 /// Matches a workflow line that brings goh into a run: `repository: o/gates_of_heck` (a checkout),
 /// `github.com/o/gates_of_heck` (a clone), `uses: o/gates_of_heck/...` (its actions).
@@ -33,40 +30,86 @@ pub fn goh_workflow(repo: &Path) -> Option<String> {
     })
 }
 
-/// Refuse (from `STORE_CI_REFUSED_FROM`; warn before) the store entries `stored` that are about the
-/// repository at `repo` when its CI runs goh: a runner cannot read the store.
-pub(super) fn refuse(repo: &Path, file: &Path, stored: &[Raw], now: u64) -> Result<(), String> {
-    // The workflow first: a directory read, where the root costs a git spawn.
-    let Some(workflow) = goh_workflow(repo) else {
-        return Ok(());
-    };
-    let Some(own) = crate::gitutil::root_commit(repo) else {
-        return Ok(());
-    };
-    let mine: Vec<&Raw> = stored.iter().filter(|e| e.root == own).collect();
-    let Some(first) = mine.first() else {
-        return Ok(());
-    };
-    let name = repo
-        .file_name()
-        .map_or_else(|| first.repo.clone(), |n| n.to_string_lossy().into_owned());
-    let msg = format!(
-        "{name} runs goh in GitHub CI (.github/workflows/{workflow}), which cannot read {}: its {} \
-         there ({}{}) would pass here and go red on its next push -- move {} into {name}'s own \
-         tracked {} (GOH.STORECI)",
-        file.display(),
-        goh_tui::counted_as(mine.len(), "entry", "entries"),
-        first.path,
-        if mine.len() > 1 { ", ..." } else { "" },
-        if mine.len() > 1 { "them" } else { "it" },
-        file.file_name().map_or_else(String::new, |n| n.to_string_lossy().into_owned()),
-    );
-    if now >= STORE_CI_REFUSED_FROM {
-        return Err(msg);
+/// GOH.STORECI, judged AFTER the findings (GOH.STORECISTALE): `seed`'s store entries about the
+/// repository at `root` (root commit `repo`) when its CI runs goh, which a runner cannot read.
+///
+/// A full run (`full`) that finds an entry's file clean RETIRES it -- deleted from the store under
+/// its lock (`retire_store`, the one retirement path GOH.SEEDPRUNE writes through), taken out of
+/// `seed`, and said in the returned lines. Judged at load, before any finding was read, the
+/// refusal fired on entries whose sites were already fixed (token-pool, 2026-11-16) and the lane
+/// hand-deleted them. Any entry left is refused; a commit's run, which reads only what it changes,
+/// names the full run that retires a fixed site.
+///
+/// # Errors
+///
+/// The refusal, naming the repository, its workflow and the store file, then any retired lines.
+pub(super) fn judge(
+    root: &Path,
+    repo: &str,
+    full: bool,
+    counts: &BTreeMap<String, usize>,
+    seed: &mut Seed,
+    kind: Kind,
+) -> Result<String, String> {
+    if repo.is_empty() {
+        return Ok(String::new());
     }
-    goh_tui::eoutln!(
-        "{} {msg}; a warning until 2026-11-16, refused from then",
-        goh_tui::WARN
+    let mine: Vec<String> = seed
+        .range((repo.to_string(), String::new())..)
+        .take_while(|((r, _), _)| r == repo)
+        .filter(|(_, held)| held.stored)
+        .map(|((_, path), _)| path.clone())
+        .collect();
+    if mine.is_empty() {
+        return Ok(String::new());
+    }
+    // A directory read: the repository's identity is already known.
+    let Some(workflow) = goh_workflow(root) else {
+        return Ok(String::new());
+    };
+    let name = root
+        .file_name()
+        .map_or_else(|| repo.to_string(), |n| n.to_string_lossy().into_owned());
+    let (stale, live): (Vec<String>, Vec<String>) = mine
+        .into_iter()
+        .partition(|p| full && counts.get(p).copied().unwrap_or(0) == 0);
+    for p in &stale {
+        seed.remove(&(repo.to_string(), p.clone()));
+    }
+    // Nothing to retire writes nothing and says nothing (`retire_store`).
+    let gone: BTreeMap<String, usize> = stale.into_iter().map(|p| (p, 0)).collect();
+    let said = retire_store(repo, kind, &gone, kind.name, |path, file| {
+        format!(
+            "{} {} {path}: no {} left, its entry retired from {} -- {name} runs goh in GitHub CI \
+             (.github/workflows/{workflow}), which cannot read the store (GOH.STORECI, \
+             GOH.STORECISTALE)",
+            goh_tui::START,
+            kind.name,
+            kind.unit,
+            file.display()
+        )
+    });
+    let Some(first) = live.first() else {
+        return Ok(said);
+    };
+    let file = store_dir().map_or_else(
+        || kind.file.to_string(),
+        |d| d.join(kind.file).display().to_string(),
     );
-    Ok(())
+    let msg = format!(
+        "{name} runs goh in GitHub CI (.github/workflows/{workflow}), which cannot read {file}: its \
+         {} there ({first}{}) would pass here and go red on its next push -- move {} into {name}'s \
+         own tracked {}{} (GOH.STORECI)",
+        goh_tui::counted_as(live.len(), "entry", "entries"),
+        if live.len() > 1 { ", ..." } else { "" },
+        if live.len() > 1 { "them" } else { "it" },
+        kind.file,
+        if full {
+            ""
+        } else {
+            "; an entry whose site is already fixed is retired by a full run, `goh structural \
+             --full`"
+        },
+    );
+    Err(format!("{msg}\n{said}").trim_end().to_string())
 }
