@@ -329,7 +329,7 @@ def find_request(q: Path, what: str) -> Path | None:
         for f in (q / d).glob("*.json") if (q / d).is_dir() else []:
             if f.stem == name:
                 return f
-            mine = f.stem.endswith(f"-{what.replace('/', '_')}")
+            mine = f.stem.partition("-")[2] == what.replace("/", "_")  # `<ns>-<item>`, exactly
             if mine and (not newest or f.name > newest[0]):
                 newest = (f.name, f)
     return newest[1] if newest else None

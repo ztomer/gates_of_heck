@@ -269,3 +269,11 @@ def test_wait_blocks_until_the_outcome_and_exits_by_it(repo, tmp_path, env, gate
 def test_wait_on_an_item_with_no_request_says_so(env):
     done = landq(env, "--wait", "T.NONE")  # refused at once: nothing to wait on
     assert done.returncode == 2 and "T.NONE" in done.stdout + done.stderr
+
+
+def test_wait_on_an_item_never_takes_another_items_request(repo, tmp_path, env):
+    """Request names are `<ns>-<item>`: an item `B` is not the request of an item `X-B`."""
+    wt, _ = _land_wt(repo, tmp_path)
+    assert landq(env, "--enqueue", "--land", str(wt), "--item", "X-B", "--no-start").returncode == 0
+    done = landq(env, "--wait", "B")
+    assert done.returncode == 2 and "no request for B" in done.stdout + done.stderr, done.stderr
