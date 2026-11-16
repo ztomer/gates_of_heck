@@ -196,11 +196,13 @@ goh_store_prune() { # <store> <current key> [keep, default 4]
 # the key because the diff alone is not the source: the same edit over a newer HEAD hashed the same,
 # and target/goh-live's old binary answered for the new source (0.50.0 under 0.51.0, G2c).
 goh_live_delta() {
-    local root="$1" diff untracked stamp
+    local root="$1" diff untracked stamp inputs=()
+    # The build inputs are goh_stamp_inputs_at's (GOH.STAMPINPUTS): an embedded file is one too.
+    mapfile -t inputs < <(goh_stamp_inputs_at "$root" HEAD)
     diff="$( (goh_unbind_git
-              GIT_OPTIONAL_LOCKS=0 git -C "$root" diff HEAD -- crates Cargo.toml Cargo.lock rust-toolchain.toml) 2>/dev/null)"
+              GIT_OPTIONAL_LOCKS=0 git -C "$root" diff HEAD -- "${inputs[@]}") 2>/dev/null)"
     untracked="$( (goh_unbind_git
-                   cd "$root" && git ls-files -z --others --exclude-standard -- crates \
+                   cd "$root" && git ls-files -z --others --exclude-standard -- "${inputs[@]}" \
                    | xargs -0 -r shasum 2>/dev/null) 2>/dev/null)"
     [ -z "$diff$untracked" ] && return 0
     stamp="$(goh_stamp_at "$root" HEAD)"
@@ -233,7 +235,8 @@ goh_live_binary() {
 }
 
 # goh_stamp_at <goh root> <commit> -- lib/goh_version.sh's, sourced above: the ONE formula of what a
-# build of <commit> says it was built from (its trees, then its release field; GOH.PROVENTAGHEAD).
+# build of <commit> says it was built from (its inputs' objects, then its release field;
+# GOH.PROVENTAGHEAD), the inputs goh_stamp_inputs_at derives from what the crates embed.
 
 # goh_stamp_of <binary> -- what it says it was built from; empty for a pre-stamp build.
 goh_stamp_of() {

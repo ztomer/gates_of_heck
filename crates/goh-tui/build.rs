@@ -2,8 +2,8 @@
 //! as constants, so a Rust binary prints what `tui/lib.sh` and `tui/lib.py` print and a glyph
 //! changed there reaches it on the next build, with no code edit (BACKLOG 4.14).
 //!
-//! A missing stylerc, or one without a key, fails the build: a binary that quietly fell back to
-//! glyphs of its own is the drift this crate exists to end.
+//! A missing stylerc (the compile of this script), or one without a key, fails the build: a binary
+//! that quietly fell back to glyphs of its own is the drift this crate exists to end.
 
 use std::fmt::Write as _;
 use std::path::Path;
@@ -24,12 +24,18 @@ const KEYS: [(&str, &str); 12] = [
     ("C_GRAY", "C_GRAY"),
 ];
 
+/// Embedded, never read at run time: a build input outside `crates/` is an `include_str!` literal,
+/// which is how goh's binary stamp finds it (`lib/goh_version.sh` `goh_stamp_inputs_at`,
+/// GOH.STAMPINPUTS).
+/// A missing stylerc fails the compile of this script.
+const STYLERC: &str = include_str!("../../tui/stylerc");
+const STYLERC_PATH: &str = "../../tui/stylerc";
+
 fn main() -> Result<(), String> {
     let manifest = std::env::var("CARGO_MANIFEST_DIR").map_err(|e| e.to_string())?;
-    let stylerc = Path::new(&manifest).join("../../tui/stylerc");
+    let stylerc = Path::new(&manifest).join(STYLERC_PATH);
     println!("cargo:rerun-if-changed={}", stylerc.display());
-    let text = std::fs::read_to_string(&stylerc)
-        .map_err(|e| format!("goh-tui: cannot read {}: {e}", stylerc.display()))?;
+    let text = STYLERC;
     let mut out = String::new();
     for (key, name) in KEYS {
         let value = text

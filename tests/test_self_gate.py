@@ -38,10 +38,9 @@ set -euo pipefail
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 rev="$2"
 echo "$rev" >> "@LOG@"
-stamp="$(git -C "$root" rev-parse "$rev:crates" "$rev:Cargo.toml" "$rev:Cargo.lock" \\
-    "$rev:rust-toolchain.toml" | tr '\\n' ' ' | sed 's/ $//')"
-version="$(bash "$root/lib/goh_version.sh" "$root" "$rev")"
 . "$root/gates/_goh_bin.sh"
+stamp="$(goh_stamp_at "$root" "$rev")"  # the one formula, embedded inputs too (GOH.STAMPINPUTS)
+version="$(bash "$root/lib/goh_version.sh" "$root" "$rev")"
 dest="$(goh_store_path "$root" "$stamp")"
 mkdir -p "$(dirname "$dest")"
 steps="$root/crates/goh/structural_steps.txt"

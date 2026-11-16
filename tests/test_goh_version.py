@@ -99,3 +99,58 @@ def test_a_stamp_built_as_a_release_names_that_release_and_none_is_empty(repo: P
         capture_output=True, text=True, check=True, stdin=subprocess.DEVNULL,
     ).stdout  # fmt: skip
     assert got == f"{trees} v9.9.9"
+
+
+def _embedding(repo: Path) -> None:
+    """A crate that embeds two files outside crates/ -- one call on one line, one split over three
+    (rustfmt's shape for a long path) -- and a test module that embeds a fixture."""
+    _inputs(repo)
+    src = repo / "crates" / "k" / "src"
+    src.mkdir(parents=True)
+    (src / "lib.rs").write_text(
+        'const SHAPES: &str = include_str!("../../../lib/shapes.json");\n'
+        "const TOOLS: &[u8] = include_bytes!(\n"
+        '    "../../../gates/tools.tsv"\n'
+        ");\n"
+        "#[cfg(test)]\n"
+        "mod lib_tests;\n"
+    )  # fmt: skip
+    (src / "lib_tests.rs").write_text('const F: &str = include_str!("../../../tests/f.txt");\n')
+    for rel in ("lib/shapes.json", "gates/tools.tsv", "tests/f.txt"):
+        (repo / rel).parent.mkdir(parents=True, exist_ok=True)
+        (repo / rel).write_text("one\n")
+    git(repo, "add", "-A")
+    _commit(repo, "embeds")
+
+
+def _edit(repo: Path, rel: str) -> None:
+    (repo / rel).write_text("two\n")
+    git(repo, "add", "-A")
+    _commit(repo, f"edit {rel}")
+
+
+def test_a_file_the_binary_embeds_moves_the_stamp_alone(repo: Path) -> None:
+    """GOH.STAMPINPUTS: lib/busyloop_shapes.json and gates/required_tools.tsv are include_str!'d by
+    the goh binary but were not stamp inputs, so an edit to either alone left the stamp -- and the
+    store's stale build -- standing: the gates judged with the old shapes or tool manifest."""
+    _embedding(repo)
+    for rel in ("lib/shapes.json", "gates/tools.tsv"):
+        before = _ask(repo, "--stamp")
+        _edit(repo, rel)
+        assert _ask(repo, "--stamp") != before, f"an edit to the embedded {rel} left the stamp"
+
+
+def test_a_test_modules_fixture_is_not_a_build_input(repo: Path) -> None:
+    """A `*_tests.rs` module compiles only under cfg(test): its fixture is not in the binary, so an
+    edit to it must not rebuild the store."""
+    _embedding(repo)
+    before = _ask(repo, "--stamp")
+    _edit(repo, "tests/f.txt")
+    assert _ask(repo, "--stamp") == before
+
+
+def test_the_inputs_are_the_four_roots_then_every_embedded_path(repo: Path) -> None:
+    _embedding(repo)
+    got = _ask(repo, "--inputs").split("\n")
+    assert got == ["crates", "Cargo.toml", "Cargo.lock", "rust-toolchain.toml",
+                   "gates/tools.tsv", "lib/shapes.json"]  # fmt: skip

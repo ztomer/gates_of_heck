@@ -178,7 +178,10 @@ def test_the_real_binary_reports_the_tree_it_was_built_from(goh: Path):
         check=False,
     )
     assert out.returncode == 0, out.stderr
-    inputs = ["crates", "Cargo.toml", "Cargo.lock", "rust-toolchain.toml"]
+    inputs = subprocess.run(  # the stamp's own inputs, embedded files too (GOH.STAMPINPUTS)
+        ["bash", str(root / "lib" / "goh_version.sh"), "--inputs", str(root), "HEAD"],
+        capture_output=True, text=True, check=True, stdin=subprocess.DEVNULL,
+    ).stdout.split()  # fmt: skip
     dirty = subprocess.run(
         ["git", "-C", str(root), "status", "--porcelain", "--", *inputs],
         capture_output=True,

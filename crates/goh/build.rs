@@ -2,9 +2,10 @@
 //!
 //! 2026-10-05: the hook's `bin/goh` predated a step added to its source, with the same version
 //! number, so the version check passed it and the step ran nowhere. A version says which release;
-//! only the source says which steps. The stamp is the git tree hash of every build input at HEAD
-//! (`goh source-tree` prints it) and `gates/_goh_bin.sh` compares it to HEAD's before trusting the
-//! binary. Tree hashes are CONTENT addresses: a rebase, amend or reword that leaves the inputs
+//! only the source says which steps. The stamp is the git object of every build input at HEAD --
+//! `lib/goh_version.sh --inputs`: the four roots and each embedded file (GOH.STAMPINPUTS) -- then
+//! the release field, as that script's `--stamp` prints it. `goh source-tree` prints it and
+//! `gates/_goh_bin.sh` compares it to HEAD's before trusting the binary. Tree hashes are CONTENT addresses: a rebase, amend or reword that leaves the inputs
 //! alone leaves the stamp alone.
 //!
 //! `GOH_SOURCE_STAMP` in the environment wins: `scripts/build-goh.sh` builds from an export of
@@ -21,8 +22,6 @@
 
 use std::path::{Path, PathBuf};
 use std::process::Command;
-
-const INPUTS: [&str; 4] = ["crates", "Cargo.toml", "Cargo.lock", "rust-toolchain.toml"];
 
 fn git(root: &Path, args: &[&str]) -> Option<String> {
     let out = Command::new("git")
@@ -46,31 +45,37 @@ fn git(root: &Path, args: &[&str]) -> Option<String> {
         .then(|| String::from_utf8_lossy(&out.stdout).trim().to_owned())
 }
 
-fn stamp(root: &Path) -> String {
+/// The build inputs (`lib/goh_version.sh --inputs`): the four roots and every file a crate embeds
+/// from outside `crates/` (GOH.STAMPINPUTS). Asked of the script, never listed here: a hand list of
+/// four left out the files this binary `include_str!`s, and an edit to one alone kept the stamp.
+fn inputs(root: &Path) -> Option<Vec<String>> {
+    let listed = goh_version(root, &["--inputs"])?;
+    let inputs: Vec<String> = listed.lines().map(str::to_owned).collect();
+    (!inputs.is_empty()).then_some(inputs)
+}
+
+/// The stamp is the script's own (`--stamp`, its `goh_stamp_at`): one formula, read by the resolver,
+/// build-goh.sh and this build alike. `dirty` while an input has an uncommitted edit.
+fn stamp(root: &Path, inputs: Option<&[String]>) -> String {
     if let Some(given) = std::env::var("GOH_SOURCE_STAMP")
         .ok()
         .filter(|s| !s.is_empty())
     {
         return given;
     }
+    let Some(inputs) = inputs else {
+        return "unknown".to_owned();
+    };
     let mut status = vec!["status", "--porcelain", "--untracked-files=normal", "--"];
-    status.extend(INPUTS);
+    status.extend(inputs.iter().map(String::as_str));
     match git(root, &status) {
         None => return "unknown".to_owned(),
         Some(dirty) if !dirty.is_empty() => return "dirty".to_owned(),
         Some(_) => {}
     }
-    let specs: Vec<String> = INPUTS.iter().map(|i| format!("HEAD:{i}")).collect();
-    let mut args = vec!["rev-parse"];
-    args.extend(specs.iter().map(String::as_str));
-    let Some(trees) = git(root, &args) else {
-        return "unknown".to_owned();
-    };
-    let trees = trees.replace('\n', " ");
-    match goh_version(root, &["--release"]) {
-        Some(tag) if !tag.is_empty() => format!("{trees} {tag}"),
-        _ => trees,
-    }
+    goh_version(root, &["--stamp"])
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(|| "unknown".to_owned())
 }
 
 /// `bash lib/goh_version.sh [ARGS] ROOT HEAD`: the one rule for goh's version (its header).
@@ -105,7 +110,8 @@ fn version(root: &Path, stamp: &str) -> String {
 fn main() {
     let manifest = PathBuf::from(std::env::var("CARGO_MANIFEST_DIR").unwrap_or_default());
     let root = manifest.join("..").join("..");
-    let stamp = stamp(&root);
+    let inputs = inputs(&root);
+    let stamp = stamp(&root, inputs.as_deref());
     println!("cargo:rustc-env=GOH_VERSION={}", version(&root, &stamp));
     println!("cargo:rustc-env=GOH_SOURCE_STAMP={stamp}");
     println!("cargo:rerun-if-env-changed=GOH_SOURCE_STAMP");
@@ -114,7 +120,7 @@ fn main() {
         "cargo:rerun-if-changed={}",
         root.join("lib").join("goh_version.sh").display()
     );
-    for input in INPUTS {
+    for input in inputs.iter().flatten() {
         println!("cargo:rerun-if-changed={}", root.join(input).display());
     }
     // A commit moves the stamp from `dirty` to HEAD's trees without touching a source file: the

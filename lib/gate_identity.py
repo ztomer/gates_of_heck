@@ -60,7 +60,7 @@ import sys
 from pathlib import Path
 
 TOOLS = ("rustc", "cargo", "python3", "swift", "shellcheck", "ruff", "cargo-llvm-cov", "xcodebuild")
-# The binary's build inputs: the paths gates/_goh_bin.sh goh_stamp_at names, in one order.
+# The binary's build roots; its full inputs add each file a crate embeds (build_inputs).
 BUILD = ("crates", "Cargo.toml", "Cargo.lock", "rust-toolchain.toml")
 PARTS = ("gates", "checks", "lib", "tools", "tui", *BUILD)
 GOH_ROOT = Path(__file__).resolve().parent.parent
@@ -148,6 +148,18 @@ def content(root: Path) -> str:
     return h.hexdigest()
 
 
+def build_inputs(root: Path) -> list[str]:
+    """The paths the stamp names at root's HEAD, from the one formula (lib/goh_version.sh --inputs,
+    GOH.STAMPINPUTS): the build roots, then each file a crate embeds -- an uncommitted edit to
+    lib/busyloop_shapes.json is a binary that is not the content's build too."""
+    script = GOH_ROOT / "lib" / "goh_version.sh"
+    env = {k: v for k, v in os.environ.items() if not k.startswith("GIT_")}
+    out = subprocess.run(["bash", str(script), "--inputs", str(root), "HEAD"], capture_output=True,
+                         text=True, env=env, stdin=subprocess.DEVNULL, check=False)  # fmt: skip
+    listed = out.stdout.split() if out.returncode == 0 else []
+    return listed or list(BUILD)
+
+
 def binary(root: Path) -> str:
     """Where the binary the gates at root run is not the build of the content: a checkout whose
     build inputs differ from HEAD, outside GOH_LIVE, runs HEAD's build (gates/_goh_bin.sh), so it is
@@ -155,10 +167,11 @@ def binary(root: Path) -> str:
     binary is the working tree's build)."""
     if os.environ.get("GOH_LIVE") or not (root / ".git").exists():
         return ""
-    moved = _git(root, "status", "--porcelain", "--untracked-files=all", "--", *BUILD)
+    inputs = build_inputs(root)
+    moved = _git(root, "status", "--porcelain", "--untracked-files=all", "--", *inputs)
     if moved.returncode != 0 or not moved.stdout.strip():
         return ""
-    trees = _git(root, "rev-parse", *(f"HEAD:{p}" for p in BUILD))
+    trees = _git(root, "rev-parse", *(f"HEAD:{p}" for p in inputs))
     return "binary head " + " ".join(trees.stdout.decode().split())
 
 

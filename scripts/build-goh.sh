@@ -76,7 +76,6 @@ fi
 #                a tag never made is a store entry no stamp asks for.
 # Every build also lands in the store, `bin/by-stamp/<sha1 of its stamp>/goh`, which is what the
 # resolver answers with: a gate gets the build of the commit it pinned, whatever bin/goh is by then.
-INPUTS=(crates Cargo.toml Cargo.lock rust-toolchain.toml)
 IF_STALE=""
 REV="HEAD"
 AS_RELEASE=""
@@ -190,7 +189,8 @@ if [[ -n "${STAMP}" ]]; then
    GIT_INDEX_FILE="${cache}/index" git -C "${PROJECT_ROOT}" --work-tree="${cache}/src" read-tree --reset -u "${REV}")
   SRC="${cache}/src"
   if [[ "${REV}" == "HEAD" ]]; then
-    dirty="$(git_here status --porcelain --untracked-files=normal -- "${INPUTS[@]}" || true)"
+    mapfile -t inputs < <(goh_stamp_inputs_at "${PROJECT_ROOT}" HEAD)  # the stamp's, GOH.STAMPINPUTS
+    dirty="$(git_here status --porcelain --untracked-files=normal -- "${inputs[@]}" || true)"
     [[ -z "${dirty}" ]] || echo "· building HEAD; these uncommitted edits are NOT in it (try them: cargo build --release -p goh, then GOH_BIN=<that binary>):" >&2
     [[ -z "${dirty}" ]] || echo "${dirty}" | sed 's/^/    /' >&2
   fi

@@ -55,7 +55,9 @@ def test_no_shipped_rust_spells_a_status_glyph() -> None:
     found = {}
     for path in (REPO_ROOT / "crates").rglob("*.rs"):
         rel = str(path.relative_to(REPO_ROOT))
-        if "target" in path.parts or rel.startswith(THE_CRATE) or path.name == "tests.rs":
+        # A `tests.rs` / `*_tests.rs` compiles only under cfg(test) (tests/test_stamp_inputs.py).
+        test_file = path.name == "tests.rs" or path.name.endswith("_tests.rs")
+        if "target" in path.parts or rel.startswith(THE_CRATE) or test_file:
             continue
         if "/tests/" in rel:
             continue
