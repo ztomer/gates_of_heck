@@ -7,10 +7,12 @@
     "a file that calls X calls Y": "GOH_REQUIRES_CALL is a repo's own rule list; goh declares no rule, so the step has nothing to judge",
     "cap-exempt files within their ceilings": "goh exempts no file from the line cap (no GOH_LINE_EXCLUDE), so no exempt file has a ceiling to hold",
     "line-cap exemptions carry a ceiling": "goh exempts no file from the line cap (no GOH_LINE_EXCLUDE), so there is no exemption to carry one",
+    "skills corpus": "goh's GOH_SKILLS_ROOT is the owner's skills corpus under HOME, no part of goh's tree; the walk's HOME is its own and empty (GOH.SELFWALKCI), so the step finds no corpus here, as on a hosted runner",
     "version provenance": "the step reads a repo's .gates-version-baseline.json; goh's version comes from Cargo.toml, judged by its release kit"
   },
   "unjudged": {
-    "no private repository named in a public tree": "the list of names is the owner's private store, which the walk empties by design; goh's own push judges it with the list"
+    "no private repository named in a public tree": "the list of names is the owner's private store, which the walk empties by design; goh's own push judges it with the list",
+    "one roadmap, open entries only": "rule 4 (a cited queue item is done) reads the umbrella queue (.loop/queue.json beside the owner's checkouts), no part of goh's tree; the walk's HOME is its own and empty (GOH.SELFWALKCI), as on a hosted runner; goh's own push judges it with the queue"
   },
   "findings": {
     "goh fixed-sleep": {"count": 8, "why": "a test sleep standing for a readiness signal; goh never runs goh fixed-sleep over itself (its GOH_CI_STEPS run status-markers only) and has no fixed_sleep_seed.json"},

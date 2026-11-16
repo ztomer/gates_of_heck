@@ -109,6 +109,20 @@ def test_a_log_is_read_by_step_and_a_suffixed_label_is_its_step() -> None:
     assert got["no private repository named in a public tree"].unjudged
 
 
+def test_the_walk_reads_nothing_of_the_machine_beside_the_tree(tmp_path) -> None:
+    """The verdict is the TREE's, the same on this Mac and a hosted runner (GOH.SELFWALKCI): the
+    suite's home links the owner's ~/Projects and ~/.claude/skills (tests/suite_home.py), which a
+    runner has no copy of, so `skills corpus` ran here and not there and `one roadmap` judged its
+    queue rule here and not there. The walk runs as the runner does: a home with none of them."""
+    env = w.walk_env(hermetic_env(), tmp_path / "goh")
+    home = Path(env["HOME"])
+    assert home.is_dir() and home != Path.home()
+    held = [rel for rel in ("Projects", ".claude", ".claude/skills") if (home / rel).exists()]
+    assert held == [], f"the walk's HOME reads the machine's {held}"
+    # The estate sweep's NOT APPLICABLE is a hosted run's alone: the walk is one everywhere.
+    assert env["GITHUB_ACTIONS"] == "true"
+
+
 # One violation per scanner, each of a different kind. Built from pieces, so this file is none of
 # them: goh's own run reads it.
 PLANTS = {
@@ -137,7 +151,7 @@ def walks(native_goh: Path, tmp_path_factory) -> dict[str, dict[str, Result]]:
 
     def one(name: str, planted: dict[str, str]) -> dict[str, Result]:
         tree = w.walked_tree(root / name, seed, planted)
-        return w.walk(native_goh, tree, w.walk_env(hermetic_env(), root / f"{name}-store"), reg)
+        return w.walk(native_goh, tree, w.walk_env(hermetic_env(), root / f"{name}-env"), reg)
 
     with ThreadPoolExecutor(2) as pool:
         clean, planted = pool.submit(one, "goh", {}), pool.submit(one, "planted", plants)

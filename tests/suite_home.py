@@ -101,6 +101,30 @@ def _drop_caller_goh() -> None:
     os.environ["GOH_DIR"] = SUITE_ROOT
 
 
+def furnish(home: Path, reads: tuple[str, ...]) -> Path:
+    """`home` made a home: the minimal git identity, a cache, `reads` linked from the REAL home and
+    each kept variable's default path. `reads=()` is a home with NONE of the machine's own state,
+    which a hosted runner has no copy of (tests/_self_walk.py, GOH.SELFWALKCI)."""
+    real = Path(os.environ.get(MARKER) or REAL_HOME)
+    home.mkdir(parents=True, exist_ok=True)
+    (home / ".gitconfig").write_text(GITCONFIG)
+    (home / ".cache").mkdir(exist_ok=True)
+    for rel in reads:
+        if (real / rel).exists():
+            (home / rel).parent.mkdir(parents=True, exist_ok=True)
+            (home / rel).symlink_to(real / rel)
+    # A kept place not made yet is made, then linked: a fresh hosted runner has no sccache cache
+    # though the gate pins SCCACHE_DIR to it, and an unlinked default was a second, empty cache
+    # (GOH.CIRUSTGATE, advisory CI run 43624157558). The tool would make the same directory.
+    for name, rel in HOME_DEFAULTS.items():
+        kept = os.environ.get(name)
+        if kept and not os.path.lexists(home / rel):
+            Path(kept).mkdir(parents=True, exist_ok=True)
+            (home / rel).parent.mkdir(parents=True, exist_ok=True)
+            (home / rel).symlink_to(kept)
+    return home
+
+
 def _enter() -> None:
     _drop_ship_inputs()
     # token-pool's state dir holds the Claude meter agent_guard's budget guard reads
@@ -126,21 +150,7 @@ def _enter() -> None:
     parent.mkdir(parents=True, exist_ok=True)
     home = Path(tempfile.mkdtemp(prefix="home.", dir=parent)).resolve()
     atexit.register(shutil.rmtree, home, True)
-    (home / ".gitconfig").write_text(GITCONFIG)
-    (home / ".cache").mkdir()
-    for rel in READ:
-        if (real / rel).exists():
-            (home / rel).parent.mkdir(parents=True, exist_ok=True)
-            (home / rel).symlink_to(real / rel)
-    # A kept place not made yet is made, then linked: a fresh hosted runner has no sccache cache
-    # though the gate pins SCCACHE_DIR to it, and an unlinked default was a second, empty cache
-    # (GOH.CIRUSTGATE, advisory CI run 43624157558). The tool would make the same directory.
-    for name, rel in HOME_DEFAULTS.items():
-        kept = os.environ.get(name)
-        if kept and not os.path.lexists(home / rel):
-            Path(kept).mkdir(parents=True, exist_ok=True)
-            (home / rel).parent.mkdir(parents=True, exist_ok=True)
-            (home / rel).symlink_to(kept)
+    furnish(home, READ)
     os.environ[MARKER] = REAL_HOME
     # The user's XDG_STATE_HOME, kept by name so real_state_guard.py can watch it; the suite's own
     # state (goh's estate registry, the compact-nudge state) lives in the suite home instead.

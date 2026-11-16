@@ -10,6 +10,8 @@ a consumer meets none of those. The walk removes all three:
     an empty private store (`GOH_SEED_DIR`), so a seeded site is a finding again;
   * `GOH_GRACE=over`, so a shape still inside its week of grace is judged;
   * `GOH_TAIL` unbounded, so a long finding list is counted whole.
+  * run as a hosted runner runs it (`walk_env`): a HOME of its own holding none of the owner's
+    state, and `GITHUB_ACTIONS=true`, so the verdict is the tree's, the same here and on CI.
 
 THE REGISTRY is the binary's (`goh shape-diff --registry`, the shape table's own `registry()`):
 every structural step and every subject scanner. A step is read from `goh structural --full
@@ -32,6 +34,7 @@ import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
 
+import suite_home
 from timing_bounds import patience
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -125,9 +128,22 @@ def walked_tree(dest: Path, seed: dict, plants: dict[str, str] | None = None) ->
     return dest
 
 
-def walk_env(base: dict[str, str], store: Path) -> dict[str, str]:
+def walk_env(base: dict[str, str], place: Path) -> dict[str, str]:
+    """`base` run as a hosted runner runs it, on any machine: an empty private store, a HOME of the
+    walk's own under `place` holding none of the owner's state, and `GITHUB_ACTIONS=true`.
+
+    The suite's home links the owner's ~/Projects (the umbrella queue `one roadmap` reads, the
+    estate the corpus sweep plants into) and ~/.claude/skills (goh's GOH_SKILLS_ROOT), which a
+    hosted runner has no copy of: `skills corpus` ran here and not there, and `one roadmap` judged
+    its queue rule here and not there, so the walk was green on this Mac and red on CI
+    (GOH.SELFWALKCI, house rule 17). With the owner's state gone, the estate sweep says NOT
+    APPLICABLE only where the run is hosted (lib/not_applicable.py), so the walk says it is,
+    here as there: its verdict is the TREE's, and the one judge of the estate stays goh's push."""
+    store = place / "seed-store"
     store.mkdir(parents=True, exist_ok=True)
-    return {**base, "GOH_SEED_DIR": str(store), "GOH_GRACE": "over", "GOH_TAIL": "1000000"}
+    home = suite_home.furnish(place / "home", reads=())
+    return {**base, "HOME": str(home), "GITHUB_ACTIONS": "true", "GOH_SEED_DIR": str(store),
+            "GOH_GRACE": "over", "GOH_TAIL": "1000000"}  # fmt: skip
 
 
 def _names(announced: str, label: str) -> bool:
