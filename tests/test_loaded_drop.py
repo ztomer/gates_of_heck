@@ -67,7 +67,7 @@ def test_a_ships_first_step_is_its_push_not_a_loaded_wait(shipped: Path, tmp_pat
     assert res["steps"][0]["name"] == "push", res["steps"]
 
 
-def test_a_new_test_with_an_unbounded_wait_loop_is_refused_at_commit(tmp_path: Path) -> None:
+def test_a_new_test_with_an_unbounded_wait_loop_is_refused_at_commit(repo: Path) -> None:
     """Calibration of the static half. The census names a new test that polls with no bound and no
     mark, so the marker gate refuses it; and both guards declare pathspecs that a commit staging
     that new test matches, so gates/staged_guards.sh runs them at commit."""
@@ -75,16 +75,14 @@ def test_a_new_test_with_an_unbounded_wait_loop_is_refused_at_commit(tmp_path: P
     census = ls.Census({"test_new": planted})
     assert census.derived().get("tests/test_new.py::test_new") == ["sleep"], census.derived()
     assert "tests/test_new.py::test_new" not in census.marked()
+    (repo / "tests").mkdir(exist_ok=True)
+    (repo / "tests" / "test_new.py").write_text(planted)
+    git(repo, "add", "--", "tests/test_new.py")
     for guard in GUARDS:
         lines = (REPO_ROOT / guard).read_text(encoding="utf-8").splitlines()
         specs = [
             s for ln in lines if ln.startswith(DIRECTIVE) for s in ln[len(DIRECTIVE) :].split()
         ]
         assert specs, f"{guard} declares no {DIRECTIVE} line: it runs only at push"
-        toy = tmp_path / guard.replace("/", "_")
-        git(tmp_path, "init", "-q", str(toy))
-        (toy / "tests").mkdir()
-        (toy / "tests" / "test_new.py").write_text(planted)
-        git(toy, "add", "-A")
-        hit = git(toy, "diff", "--cached", "--name-only", "--", *specs).split()
+        hit = git(repo, "diff", "--cached", "--name-only", "--", *specs).split()
         assert hit == ["tests/test_new.py"], (guard, specs, hit)
