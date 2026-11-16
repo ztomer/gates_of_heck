@@ -94,6 +94,16 @@ unset GOH_COV_FLOOR_RUST GOH_COV_RUST_EXTERNAL GOH_RUST_LINT_CONFIGS GOH_RUST_LI
       GOH_CROSS_REPO_ROOT GOH_PYTHON_FORMATTED GOH_SKILLS_CORPUS \
       GOH_STEP_TIMEOUT GOH_STEP_GRACE GOH_LCI_TIMEOUT 2>/dev/null || true
 
+# GOH_CHANGE_BASE (the push gate's: where the pushed change starts) is read by ONE step, crates-behind,
+# which runs outside the proven groups; it is a new value on every push, so while it sat in the
+# environment every group's key (the GOH_* configuration, _rust_proven.sh _rust_step) was a new key
+# on every push and no group, the Rust coverage measurement included, was ever reused from one land to
+# the next (GOH.RUSTCOVREUSE). Out of the environment, then, and handed to that step alone: nothing a
+# group runs can read it, so no group's verdict depends on it.
+_change_base=()
+[ -n "${GOH_CHANGE_BASE+set}" ] && _change_base=(env "GOH_CHANGE_BASE=$GOH_CHANGE_BASE")
+unset GOH_CHANGE_BASE
+
 # The gated repo's own config, unknown when this script is linted (GOH.SHX):
 # shellcheck source=/dev/null
 [ -f .gatesrc ] && . ./.gatesrc
@@ -305,7 +315,7 @@ rust_advisories() {
     [ "${GOH_DEPS_OFFLINE:-}" = "1" ] && behind_args="$behind_args --offline"
     # shellcheck disable=SC2086 # deliberate word-splitting: this IS the argv list (repo-relative locks)
     goh_step "every Cargo.lock at its newest compatible releases (cargo update --dry-run)" \
-        "${_goh_cmd[@]}" crates-behind --root "$top" $behind_args
+        ${_change_base[@]+"${_change_base[@]}"} "${_goh_cmd[@]}" crates-behind --root "$top" $behind_args
     # Its advisories ARE the report (a lock skipped -- offline, index unreachable, never a silent
     # pass --, a seeded lock still behind, a duplicate major); goh_step surfaces a passing step's
     # `⚠` lines itself (GOH.STEPWARN), so nothing is repeated here.

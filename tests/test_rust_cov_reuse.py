@@ -31,9 +31,11 @@ set -u
 cargo_dir="$PWD"
 . "$ROOT/gates/_rust_proven.sh"
 rust_cov_plain_bins() { echo /plain/bin; }
-measure() { echo MEASURED; return "${MEASURE_RC:-0}"; }
+measured() { echo MEASURED; return "${MEASURE_RC:-0}"; }
 plain() { echo "PLAIN bins=$RUST_COV_PLAIN_BINS"; }
-rust_coverage_reuse measure plain
+# As .gatesrc sets it: a shell variable, not exported.
+[ -n "${FLOOR:-}" ] && GOH_COV_FLOOR_RUST="$FLOOR"
+rust_coverage_reuse measured plain
 """
 
 
@@ -74,7 +76,7 @@ def repo(tmp_path: Path) -> Path:
     return r
 
 
-def _run(repo: Path, **env: str) -> str:
+def _run_out(repo: Path, **env: str) -> tuple[str, str]:
     e = hermetic_env(drop_git=True, ROOT=str(REPO_ROOT), GOH_COV_RUST_EXTERNAL="true", **env)
     e.pop("GOH_RESOLVED_BIN", None)
     r = subprocess.run(["bash", "-c", HARNESS], cwd=repo, env=e, capture_output=True, text=True,
@@ -82,7 +84,18 @@ def _run(repo: Path, **env: str) -> str:
     out = r.stdout + r.stderr
     ran = [w for w in ("MEASURED", "PLAIN bins=/plain/bin") if w in out]
     assert len(ran) == 1, out
-    return ran[0].split()[0]
+    return ran[0].split()[0], out
+
+
+def _run(repo: Path, **env: str) -> str:
+    return _run_out(repo, **env)[0]
+
+
+def _decision(out: str) -> str:
+    """The one `↔` decision line every run prints (GOH.RUSTCOVREUSE): a passing step shows it."""
+    lines = [ln for ln in out.splitlines() if ln.lstrip().startswith("↔ [rust] coverage:")]
+    assert len(lines) == 1, out
+    return lines[0]
 
 
 def test_a_tree_whose_rust_is_unchanged_reuses_the_measurement(repo: Path) -> None:
@@ -165,3 +178,59 @@ def test_a_coverage_script_edit_moves_the_identity(repo: Path, tmp_path: Path) -
     p = root / "gates/_coverage_rust.sh"
     p.write_text(p.read_text() + "\n# an edit\n")
     assert gate_identity.rust(repo, root) != before
+
+
+def test_a_push_worktree_at_another_path_reuses_the_measurement(repo: Path, tmp_path: Path) -> None:
+    """Every land gates in a push worktree of its own (~/.cache/goh/push/wt-<hash>/wt), and the step
+    named the workspace by that absolute path: the first land after GOH.RUSTCOVSKIP found no record
+    and measured for 535.36 s (GOH.RUSTCOVREUSE). A worktree of the same commit elsewhere reuses."""
+    assert _run(repo) == "MEASURED"
+    other = tmp_path / "push" / "wt-elsewhere" / "wt"
+    _git(repo, "worktree", "add", "--detach", "-q", str(other), "HEAD")
+    assert _run(other) == "PLAIN"
+
+
+def test_per_push_bookkeeping_does_not_void_the_measurement(repo: Path) -> None:
+    """The push gate's marks are new temp files every push, and goh's own land runs the tip's head
+    export (a new GOH_DIR per commit, keyed by its content): none of them is configuration."""
+    a = {
+        "GOH_STRUCTURAL_MARK": "/t/mark.1",
+        "GOH_CI_STEPS_MARK": "/t/steps.1",
+        "GOH_DIR": str(REPO_ROOT),
+    }
+    b = {
+        "GOH_STRUCTURAL_MARK": "/t/mark.2",
+        "GOH_CI_STEPS_MARK": "/t/steps.2",
+        "GOH_DIR": str(REPO_ROOT) + "/.",
+    }
+    assert _run(repo, **a) == "MEASURED"
+    assert _run(repo, **b) == "PLAIN"
+    # A real setting still moves the key.
+    assert _run(repo, **b, GOH_MAX_LINES="400") == "MEASURED"
+
+
+def test_a_floor_set_in_gatesrc_is_part_of_the_key(repo: Path) -> None:
+    """The plain run judges no floor, so a floor raised in .gatesrc (a shell variable, not exported)
+    reusing the old measurement would pass a floor nobody measured against."""
+    assert _run(repo, FLOOR="95") == "MEASURED"
+    assert _run(repo, FLOOR="95") == "PLAIN"
+    assert _run(repo, FLOOR="99") == "MEASURED"
+
+
+def test_every_run_prints_its_decision_and_why(repo: Path) -> None:
+    """A miss was silent: nothing said the reuse had even been looked for."""
+    _, out = _run_out(repo)
+    assert "measuring -- no measurement of this workspace is recorded yet" in _decision(out)
+    _, out = _run_out(repo)
+    assert "reused -- measured on these Rust inputs" in _decision(out)
+    _, out = _run_out(repo, GOH_MAX_LINES="400")
+    assert "measuring -- the last measurement" in _decision(out)
+    assert "another GOH_* configuration" in _decision(out)
+    _write(repo, "crates/a/src/lib.rs", "pub fn f() -> u64 {\n    3\n}\n")
+    _, out = _run_out(repo)
+    assert "on other Rust inputs" in _decision(out)
+    _, out = _run_out(repo, GOH_PROVEN="0")
+    assert "measuring -- the proven cache is off" in _decision(out)
+    _write(repo, "lib/x.py", "X = 9\n", commit=False)
+    _, out = _run_out(repo)
+    assert "measuring -- the tree is not clean" in _decision(out)

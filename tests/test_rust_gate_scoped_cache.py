@@ -274,6 +274,23 @@ def test_a_read_outside_the_repository_is_never_learned_or_recorded(
         assert not _skipped(again, "crate"), "a record was written for a build that read outside"
 
 
+def test_the_push_gates_change_base_is_no_groups_configuration(
+    estate: Path, fake_cargo: Path
+) -> None:
+    """GOH_CHANGE_BASE is a new commit on every push and only crates-behind reads it, outside every
+    group: while it sat in the environment each group's key was new on every push, so nothing --
+    the Rust coverage measurement included -- was reused from one land to the next
+    (GOH.RUSTCOVREUSE)."""
+    _git(estate, "commit", "-qm", "one push")
+    one = _git(estate, "rev-parse", "HEAD").strip()
+    _git(estate, "commit", "-q", "--allow-empty", "-m", "the next")
+    first = _gate(estate, "c", GOH_CHANGE_BASE=one)
+    assert first.returncode == 0, first.stdout + first.stderr
+    again = _gate(estate, "c", GOH_CHANGE_BASE=_git(estate, "rev-parse", "HEAD").strip())
+    assert again.returncode == 0, again.stdout + again.stderr
+    assert _skipped(again, "crate"), again.stdout + again.stderr
+
+
 def test_goh_proven_0_runs_everything(estate: Path, fake_cargo: Path) -> None:
     assert _gate(estate, "c").returncode == 0
     off = _gate(estate, "c", GOH_PROVEN="0")
