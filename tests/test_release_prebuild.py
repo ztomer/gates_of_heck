@@ -120,3 +120,12 @@ def test_the_release_kit_starts_the_tagged_build_before_its_land_and_waits_befor
     land = text.index('timed "release: land')
     assert start < land, "the tagged build must overlap the land and push"
     assert text.index('wait "$prebuild"', start) < text.index('push origin "refs/tags/$TAG"')
+
+
+def test_a_literal_head_built_as_a_release_still_reaches_only_the_store(tmp_path):
+    """`--rev HEAD` took the ordinary path (bin/goh) and stamped bin/goh with a tag HEAD lacked."""
+    box = Box(tmp_path)
+    got = box.build("--rev", "HEAD", "--as-release", "v9.9.9")
+    assert got.returncode == 0, got.stdout + got.stderr
+    assert not (box.checkout / "bin" / "goh").exists(), "bin/goh claims a tag HEAD does not carry"
+    assert "ready in the store" in got.stdout, got.stdout + got.stderr

@@ -100,6 +100,10 @@ head_stamp() { local out; out="$(git_here rev-parse "${INPUTS[@]/#/${REV}:}" 2>/
   printf '%s' "${out}" | tr '\n' ' ' | sed 's/ *$//'; }
 
 if [[ -n "${AS_RELEASE}" ]]; then
+  # A commit, never the name HEAD: every `REV != HEAD` below means "the store only", and a build
+  # as a tag HEAD does not carry must never reach bin/goh (a literal `--rev HEAD` placed it there).
+  REV="$(git_here rev-parse -q --verify "${REV}^{commit}" 2>/dev/null)" \
+    || { echo "✗ build-goh: --as-release names no commit of this checkout" >&2; exit 2; }
   carried="$(goh_release_at "${PROJECT_ROOT}" "${REV}")"
   if [[ -n "${carried}" && "${carried}" != "${AS_RELEASE}" ]]; then
     echo "✗ build-goh: ${REV} is tagged ${carried}; it is never built as ${AS_RELEASE}" >&2
