@@ -2,6 +2,145 @@
 
 ## Unreleased
 
+## v0.127.0 -- SEEDPRUNE, TREETESTSFIRST, PROVENTAGHEAD, LANDPREDUP, STAMPINPUTS, XEXITDETAIL, CFGPUSHSCOPE, SLOTFAIR, PATHSPECCOMMIT, RUSTCOVSKIP, INSTALLBASH5, PROVENIDENTITY, ONEADMISSION
+
+* A push whose diff since the remote's tip is scanner floors only (`.gatesrc` lines
+  `GOH_<SCANNER>_MIN_<UNIT>=<digits>`, blanks and comments) runs `gates/structural.sh --full`, the one
+  reader of a floor, instead of the repo's whole gate, when that tip has a green push verdict
+  (GOH.CFGPUSHSCOPE). Every green push now records its commit in `goh-pushed` in the common git dir
+  (`<sha> full|release|config`), so the first floor push after this release is still a full gate and
+  the next ones chain. Any other file, any other key (one the gate reads: `GOH_CI_STEPS`,
+  `GOH_MAX_LINES`), a value that is not a plain number, a tracked file that names the changed key, or
+  a tip with no recorded verdict is the full gate, and the push says why. The floor list is
+  `crate::subject`'s own, read from `crates/goh/src/subject.rs`.
+
+* The bash 5 guard (`lib/bash5.sh`) installs Homebrew's bash on a GitHub Actions runner that has
+  none (GOH.INSTALLBASH5). Consumer workflows run `install.sh` before goh-floors, so on the hosted
+  macOS runner, Apple's bash 3.2 plus Homebrew but no Homebrew bash, `install.sh` refused to run and
+  every such job went red before any repo step (ztools run 43796046671). An executed script that
+  finds no bash >= 5 with `GITHUB_ACTIONS=true` now runs `brew install bash` (output on stderr) and
+  re-execs under it; off a runner nothing is installed and the error still names the fix. New seam
+  `GOH_BASH_BREW` (`=` empty never installs).
+
+* **A green land runs each test once, and its pre-step only the tests that read the tree (GOH.LANDPREDUP).**
+  GOH.TREETESTSFIRST's pre-step ran every tree-reading FILE whole (~175 files, 879 s of summed test
+  time on goh's tree, 213-565 s of wall) before the land lock, and the full gate then ran them all
+  again. `tools/affected_tests.py` now runs a tree reader the diff does not choose by its reading
+  tests alone, as pytest node ids (`reader_nodes`: a `test_every_`/`test_no_` test, or one whose
+  source reaches a walk through the file's own names, fixtures and decorators; the whole file when
+  they cannot be told apart): 199 s summed for the same readers. The pre-step's suite records the
+  tests it passed (`GOH_LAND_VERDICTS_RECORD`, `tests/_land_verdicts.py`) and the land's gate
+  deselects them (`GOH_LAND_VERDICTS_REUSE`) when the record's identity is the gated checkout's
+  (`lib/gate_identity.py suite`: the clean commit's tree and the tools); in the coverage step's
+  instrumented run a test that ran the native binary is kept, so the crate's coverage is measured
+  whole. A land rebased under its lock gates another tree and reuses nothing. Pinned by
+  `tests/test_land_verdicts.py`.
+
+* **One admission for every gate (GOH.ONEADMISSION, docs/decisions/D-0008).** A land's gate
+  (`tools/load.py 0 --`) took a load place (`GOH_LOAD_GATES`, D-0003) and then a gate slot: two
+  counters for one CPU, and on 2026-11-15/16 a land waited its whole 900 s `--wait-max` on a place
+  while gate slots sat free. A 0-spinner `load.py` run is now admitted where every gate is, by
+  `lib/admission.py`'s `admit` (memory first, then a slot, then the record), bounded by its
+  `--wait-max`, and the gate it runs is inside that slot; a land and a push gate contend for the same
+  slots. The shared places, `GOH_LOAD_GATES` and the pending mark are removed; an experiment holds
+  off on the held gate slots as on any gate in flight, and a gate no longer waits for an experiment
+  (land and push over experiment). The map of every admission controller is in the item's note.
+  Pinned by `tests/test_one_admission.py`.
+
+* A pathspec commit (`git commit -- <path>`) or `commit -a` passes a gate step that reads the index
+  with a plain `git` (GOH.PATHSPECCOMMIT). A private Swift app refused every pathspec commit:
+  `index_tree: git write-tree ...: Unable to create .../index.lock: File exists`. git holds the
+  repository's index lock while the hook runs and commits a temporary index named only by
+  GIT_INDEX_FILE, which the hook drops at entry (contract #12) and carries as GOH_HOOK_INDEX_FILE, so
+  a step that did not call `goh_bind_hook_index` (Python here, out of reach of `goh bare-hook-index`,
+  which reads shell) wrote the tree of the locked real index. While a hook carries an index,
+  `goh_hook_unbind` now puts `lib/hookgit/git` first on PATH: it binds the carried index for an
+  index read (`write-tree`, `ls-files`, `diff`, `diff-index`, `diff-files`, `grep`, `show`,
+  `cat-file`, `status`, `checkout-index`, `check-attr`) in the committing repository only, never for
+  a writer, `init`/`clone`, or a scratch repo, and never over a caller's own GIT_INDEX_FILE. A plain
+  commit carries nothing and gets no shim. `tests/test_pathspec_commit_index_reader.py` commits for
+  real in a main checkout and a linked worktree; its calibration runs the step through the real git
+  by path and gets the lock error back.
+
+* **The proven-step cache keys the gates by their bytes, the goh binary's source included.** `gates/_proven.sh` kept a goh-root identity of its own: a checkout by its HEAD sha and diff, a head export by its path. So one commit's checkout and its export, or a goh commit's staged-tree export and the push's commit export, never reused each other's proven steps, and the same bytes proved twice. It now asks `lib/gate_identity.py` (`proven`), the formula a land's `goh-landed` line is keyed by. And that formula left out `crates/`, though every gate runs the `bin/goh` built from it: a change to goh's Rust alone changed no key, so a step proven under one binary was reused under another. The build inputs (`crates/`, `Cargo.toml`, `Cargo.lock`, `rust-toolchain.toml`) are in the content now, an explicit `GOH_BIN` is keyed by its bytes, and a checkout running HEAD's build over uncommitted Rust (no `GOH_LIVE`) is keyed by HEAD's trees. `proven_keyed_roots` names exactly the paths that content covers, in a checkout, an export or a plain directory alike. One changed gate byte, or one changed crates/ source byte, still forces a re-run (GOH.PROVENIDENTITY).
+
+* goh's own suite is green on a release commit again (GOH.PROVENTAGHEAD). CI on v0.126.0 failed 17
+  binary-identity tests: the tests carried a trees-only copy of the source stamp, so on a HEAD
+  carrying a release tag (stamp `<trees> vX.Y.Z`) every binary they faked read as "not built from
+  HEAD's source", and structural.sh's currency check read any release build as BEHIND a gates copy
+  with no tag reachable (`unknown`). The stamp now has ONE formula, `goh_stamp_at` in
+  `lib/goh_version.sh` (`bash lib/goh_version.sh --stamp ROOT [REV]`), asked by the resolver,
+  `scripts/build-goh.sh` and the tests alike; the currency check derives its want one way, tagged
+  or not, and compares a release only with a release (with none reachable there is nothing to be
+  behind). The tests set HEAD's tag state themselves and run both a tagged and an untagged HEAD.
+
+* A goh land or push whose tree changes none of the Rust coverage measurement's inputs reuses that
+  measurement and runs the tests plain (GOH.RUSTCOVSKIP). With an external suite
+  (`GOH_COV_RUST_EXTERNAL`: goh's pytest against an instrumented `goh`) the coverage group keyed on
+  the whole tree, so every land re-measured: 896.62 s of GOH.XEXITDETAIL's 21:37 land, for Python
+  and shell. The measurement is now recorded under `lib/gate_identity.py rust`: the repo's Rust build
+  inputs (the stamp formula, embedded files included), the Rust gate's coverage scripts (read from
+  what `gates/coverage_gate.sh` sources, imports and runs, plus `rust_gate.sh` and
+  `_rust_proven.sh`) and the tools. On a hit `cargo test --tests` and the external suite run against
+  the plain build of those same inputs, so a red test is still red; a Rust-input change, a workspace
+  member outside the keyed inputs, a binary that is not this tree's build, a dirty tree or
+  `GOH_PROVEN=0` measures in full. A Python test change does not re-measure the Rust coverage number
+  until the next Rust change (the owner's input set).
+
+* Declaring a seeded floor retires its seed entry instead of turning it red (GOH.SEEDPRUNE). The
+  private store held 139 `unreviewed: declare GOH_X_MIN_FILES=N` entries (GOH.FLOORREQ), and a repo
+  that declared the floor met a stale-entry red at `GOH_GRACE=over` that only a hand edit of
+  `~/.local/state/goh/seeds/floor_seed.json` cleared. A full run now deletes the store entry of
+  every key `.gatesrc` declares, under the store's lock, and says `retired`; any declaration
+  counts, `KEY=0` too. An entry in the repo's own tracked `floor_seed.json` is still stale and
+  red: the commit that declares the floor deletes it.
+
+* Gate slots are fair (GOH.SLOTFAIR). A commit gate no longer waits behind long gates: a gate's
+  class (`GOH_GATE_CLASS`) picks its lane, and `gates/commit_gate.sh` marks the `tools/gate.sh
+  --staged` it runs `short`, admitted by its own lane of `GOH_GATE_SLOTS` slots (`short-<i>`) that
+  no push, land or `load.py 0` run takes (2026-11-16: `.loop`'s commit gate, ~3 min of work, waited
+  38+ min behind a 49-min cargo test and a 15-min push gate; now it waits only behind other commit
+  gates). In the long lane a freed slot goes to the longest live waiter of the highest rank: each
+  waiter holds a flock'd ticket in `<slot dir>/waiting/`, push gates and lands (`ship`) rank ahead
+  of every other gate (`work`), and a SIGKILLed waiter's ticket is reaped, never blocking the queue
+  (2026-11-15: a monitor push waited 20m30s while six later gates took freed slots).
+
+* The goh binary's source stamp names every file the build embeds (GOH.STAMPINPUTS). It was the git
+  trees of a hand list of four roots (`crates`, `Cargo.toml`, `Cargo.lock`, `rust-toolchain.toml`),
+  and the binary `include_str!`s `lib/busyloop_shapes.json` and `gates/required_tools.tsv` from
+  outside them: an edit to either alone left the stamp, so the store served the stale build and the
+  gates judged with the old busy-loop shapes or tool manifest. `lib/goh_version.sh` now derives the
+  inputs (`goh_stamp_inputs_at`, `--inputs`) from the crates' own `include_str!`/`include_bytes!`/
+  `include!` literals at the commit, test modules (`tests.rs`, `*_tests.rs`) left out; `build.rs`
+  asks the script for the inputs and the stamp (one formula), and `build-goh.sh`, the `GOH_LIVE`
+  delta and `lib/gate_identity.py` read the same list. `goh-tui`'s build script embeds
+  `tui/stylerc` instead of reading it, so it is an input too. `tests/test_stamp_inputs.py` holds the
+  derivation to the tree: no embedded file unstamped, every test-named module under `cfg(test)`,
+  and no build script reading a file at run time.
+
+* **A land runs the tests its diff chooses first, before the land lock and the gate (GOH.TREETESTSFIRST).**
+  Lanes picked their pre-land tests by hand and by name, and lost whole land gates (a slot wait and
+  ~8 min of suite) to the one they missed: GOH.ONEADMISSION's first land (500 s of its 1089 s) to
+  `tests/test_lock_order.py`, which runs the changed `tools/load.py` by path; GOH.TAGPUSHGATE's to
+  `tests/test_self_walk.py`, a tree reader no name pattern sees. `tools/affected_tests.py` chooses
+  the set from the diff against main: every test that names a changed path (the path, or each of
+  its components quoted, `REPO_ROOT / "tools" / "load.py"`; a root file only as `REPO_ROOT / name`)
+  or imports a changed module (ast, tests/ helpers included), the changed tests, and every tree
+  reader (a `test_every_`/`test_no_` test, a test or helper that lists or walks the tree, plus
+  `ALWAYS`). `tools/land.sh` runs a repo's declared `GOH_LAND_PRE` (goh's: `affected_tests.py
+  --run`) before the land lock, admitted by a gate slot of its own (a 0-spinner `load.py` run,
+  `lib/admission.py`) and bounded at 10 min; a red one lands nothing. Replayed on ONEADMISSION's
+  first-attempt diff, it chooses `tests/test_lock_order.py` ("names tools/load.py"). Pinned by
+  `tests/test_affected_tests.py`.
+
+* A step that exits 0 after printing a `✗` line (GOH.XEXIT) is now refused with the detail that line
+  introduced (GOH.XEXITDETAIL). The refusal showed only the bare `✗` lines, so a private Swift
+  app's push read `✗ compiler warnings in our sources (dependency warnings are exempt):` with its list cut away, which
+  hid that the file it named was a selftest's planted fixture and cost a lane a cycle. `lib/xexit.py`
+  now prints each `✗` line with the lines indented under it (at most 20 per `✗`, the rest counted)
+  and ends with `full log: PATH`; `goh_step`, whose log is deleted at exit, passes `--keep` so the
+  path names a kept copy. The verdict (`failure_lines`, and its Rust twin) is unchanged.
+
 ## v0.126.0 -- measuring ship 3: tag push prebuilt + shell lint cache by repo path (GOH.TAGPUSHGATE), shellcheck bounded + memory admission (GOH.MEMADMIT), one gate identity (GOH.VERDICTKEYDRIFT), post-land loaded run dropped (GOH.LOADEDDROP); lifts FREEZE.GOHSHIP if at or under 10 min
 
 * **The post-land loaded run is gone; its static guard runs at commit (GOH.LOADEDDROP).** GOH.LOADEDSUBSET's census of the run each land started on its tip (the load-sensitive tests under `tools/load.py`'s spinners) found 0 real catches in 13 runs, 2 false reds (6fccbc6c binary BEHIND, fc32af1a tag race) and 1 no-verdict (95d939e0 load-slot timeout); all 18 load-only failures in `tests/load_history.json` were caught by lands on busy boxes, hosted CI or consumer pushes. So `tools/land.sh` starts nothing after its merge, `goh ship` waits on no verdict before its first step (its first step is the push), `tools/release_goh.sh` reads none, and `tools/loaded_suite.sh`, `lib/loaded_verdict.py`, the `GOH_LAND_LOADED` key and the `goh-loaded/` records are removed. Each ship started after a land loses the wait for that land's run (203 s and 219 s for b54b9d62's two runs, 470.6 s in v0.125.0's release step), and each land stops holding the one load slot for those ~210 s after it. What stays: `tests/test_load_sensitive.py` (a test that sleeps, polls, spawns, signals, waits or names a deadline carries `@pytest.mark.load_sensitive`) and `tests/test_wall_clock_ratchet.py` (no new literal wall bound) now declare `# goh-reads-staged: tests`, so `gates/staged_guards.sh` runs both over the index of every commit staging a test, instead of only at push; `tests/test_loaded_drop.py` keeps both directives and calibrates that a new test with an unbounded poll loop and no mark is named by the census. Still open: the marker gate refuses an unmarked waiting test, not an unbounded one that is marked.
