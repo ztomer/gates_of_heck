@@ -39,7 +39,7 @@ rev="$2"
 echo "$rev" >> "@LOG@"
 stamp="$(git -C "$root" rev-parse "$rev:crates" "$rev:Cargo.toml" "$rev:Cargo.lock" \\
     "$rev:rust-toolchain.toml" | tr '\\n' ' ' | sed 's/ $//')"
-version="$(git -C "$root" show "$rev:Cargo.toml" | grep -m1 '^version = ' | cut -d'"' -f2)"
+version="$(bash "$root/lib/goh_version.sh" "$root" "$rev")"
 . "$root/gates/_goh_bin.sh"
 dest="$(goh_store_path "$root" "$stamp")"
 mkdir -p "$(dirname "$dest")"

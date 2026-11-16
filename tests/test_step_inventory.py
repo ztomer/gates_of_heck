@@ -8,6 +8,7 @@ exactly what a step that passes prints. The binary embeds the manifest it was bu
 
 from __future__ import annotations
 
+import subprocess
 from pathlib import Path
 
 from test_goh_structural import INVENTORY_CASE, MANIFEST, _run_bash, make_repo, manifest_steps
@@ -58,11 +59,11 @@ def test_a_binary_that_cannot_list_its_steps_is_said_never_read_as_carrying_all(
     old = tmp_path / "bin" / "goh"
     old.parent.mkdir()
     # Answers the version check like a current binary, and refuses --list-steps like an old one.
-    version = next(
-        line.split('"')[1]
-        for line in (MANIFEST.parents[2] / "Cargo.toml").read_text().splitlines()
-        if line.startswith("version = ")
-    )
+    root = MANIFEST.parents[2]
+    version = subprocess.run(  # the tag's (lib/goh_version.sh), never Cargo.toml's placeholder
+        ["bash", str(root / "lib" / "goh_version.sh"), str(root), "HEAD"],
+        capture_output=True, text=True, check=True, stdin=subprocess.DEVNULL,
+    ).stdout.strip()  # fmt: skip
     old.write_text(
         f'#!/bin/sh\ncase "$*" in --version) echo "goh {version}";; *list-steps*) exit 2;; *) exit 0;; esac\n'
     )

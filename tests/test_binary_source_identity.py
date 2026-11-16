@@ -61,10 +61,12 @@ def _head_tree(checkout: Path) -> str:
 
 
 def _version(checkout: Path) -> str:
-    line = next(
-        l for l in (checkout / "Cargo.toml").read_text().splitlines() if l.startswith("version = ")
-    )
-    return line.split('"')[1]
+    """What a build of the checkout's HEAD reports: its tag (lib/goh_version.sh, GOH.SHIPRELREUSE),
+    never Cargo.toml's placeholder."""
+    return subprocess.run(
+        ["bash", str(checkout / "lib" / "goh_version.sh"), str(checkout), "HEAD"],
+        capture_output=True, text=True, check=True, stdin=subprocess.DEVNULL,
+    ).stdout.strip()  # fmt: skip
 
 
 def _structural(checkout: Path, tmp_path: Path, **env: str):

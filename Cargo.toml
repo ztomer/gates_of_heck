@@ -16,7 +16,10 @@ exit = "warn"
 # not); tests/test_unsafe_scope.py holds `unsafe` to its one file.
 
 [workspace.package]
-version = "0.124.0"
+# A placeholder, never bumped: goh's version is its release TAG (lib/goh_version.sh, read by
+# crates/goh/build.rs into GOH_VERSION), so a release commit changes no build input
+# (GOH.SHIPRELREUSE). Nothing reads CARGO_PKG_VERSION; `goh tag-version` reads CHANGELOG.md.
+version = "0.0.0"
 edition = "2021"
 rust-version = "1.89"
 license = "MIT"

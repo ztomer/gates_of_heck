@@ -10,6 +10,14 @@
 //! `GOH_SOURCE_STAMP` in the environment wins: `scripts/build-goh.sh` builds from an export of
 //! HEAD, which has no `.git`, and passes the stamp it read there. Otherwise the stamp is read from
 //! git here, and an uncommitted change to any input stamps `dirty` -- never trusted by the resolver.
+//!
+//! THE VERSION IS THE TAG (GOH.SHIPRELREUSE). `GOH_VERSION` is what `goh --version` prints and what
+//! gohpin compares pins with: `GOH_VERSION` from the environment (build-goh.sh, from an export),
+//! else `lib/goh_version.sh` over this checkout -- the one rule: `X.Y.Z` on a commit tagged vX.Y.Z,
+//! `X.Y.Z-N-g<sha>` past it, `unknown` with no tag; `-dirty` when an input is uncommitted.
+//! Cargo.toml's version is a placeholder nobody reads, so a release commit changes no build input.
+//! A tagged commit's stamp ends in ` vX.Y.Z` (the same script), so its build is never the untagged
+//! build of the same trees that the store already holds.
 
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -55,20 +63,64 @@ fn stamp(root: &Path) -> String {
     let specs: Vec<String> = INPUTS.iter().map(|i| format!("HEAD:{i}")).collect();
     let mut args = vec!["rev-parse"];
     args.extend(specs.iter().map(String::as_str));
-    git(root, &args).map_or_else(|| "unknown".to_owned(), |s| s.replace('\n', " "))
+    let Some(trees) = git(root, &args) else {
+        return "unknown".to_owned();
+    };
+    let trees = trees.replace('\n', " ");
+    match goh_version(root, &["--release"]) {
+        Some(tag) if !tag.is_empty() => format!("{trees} {tag}"),
+        _ => trees,
+    }
+}
+
+/// `bash lib/goh_version.sh [ARGS] ROOT HEAD`: the one rule for goh's version (its header).
+fn goh_version(root: &Path, args: &[&str]) -> Option<String> {
+    let out = Command::new("bash")
+        .arg(root.join("lib").join("goh_version.sh"))
+        .args(args)
+        .arg(root)
+        .arg("HEAD")
+        .env("GIT_OPTIONAL_LOCKS", "0")
+        .output()
+        .ok()?;
+    out.status
+        .success()
+        .then(|| String::from_utf8_lossy(&out.stdout).trim().to_owned())
+}
+
+fn version(root: &Path, stamp: &str) -> String {
+    if let Some(given) = std::env::var("GOH_VERSION").ok().filter(|s| !s.is_empty()) {
+        return given;
+    }
+    let v = goh_version(root, &[])
+        .filter(|v| !v.is_empty())
+        .unwrap_or_else(|| "unknown".to_owned());
+    if stamp == "dirty" {
+        format!("{v}-dirty")
+    } else {
+        v
+    }
 }
 
 fn main() {
     let manifest = PathBuf::from(std::env::var("CARGO_MANIFEST_DIR").unwrap_or_default());
     let root = manifest.join("..").join("..");
-    println!("cargo:rustc-env=GOH_SOURCE_STAMP={}", stamp(&root));
+    let stamp = stamp(&root);
+    println!("cargo:rustc-env=GOH_VERSION={}", version(&root, &stamp));
+    println!("cargo:rustc-env=GOH_SOURCE_STAMP={stamp}");
     println!("cargo:rerun-if-env-changed=GOH_SOURCE_STAMP");
+    println!("cargo:rerun-if-env-changed=GOH_VERSION");
+    println!(
+        "cargo:rerun-if-changed={}",
+        root.join("lib").join("goh_version.sh").display()
+    );
     for input in INPUTS {
         println!("cargo:rerun-if-changed={}", root.join(input).display());
     }
     // A commit moves the stamp from `dirty` to HEAD's trees without touching a source file: the
-    // reflog and the index are what change.
-    for path in ["logs/HEAD", "index"] {
+    // reflog and the index are what change. A tag moves the version: `packed-refs` and the tag
+    // directory (a new loose tag changes the directory).
+    for path in ["logs/HEAD", "index", "packed-refs", "refs/tags"] {
         if let Some(p) = git(&root, &["rev-parse", "--git-path", path]) {
             let p = PathBuf::from(p);
             let p = if p.is_absolute() { p } else { root.join(p) };

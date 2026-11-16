@@ -42,6 +42,7 @@ def checkout(tmp_path: Path) -> Path:
         "lib/bash5.sh",
         "lib/house_python.sh",
         "lib/run_path.sh",
+        "lib/goh_version.sh",
     ):
         (repo / rel).parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(REPO_ROOT / rel, repo / rel)

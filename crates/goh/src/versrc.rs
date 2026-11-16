@@ -21,10 +21,11 @@ pub struct Strategies {
     plist_string: Regex,
     xcodegen: Regex,
     gradle: Regex,
+    changelog: Regex,
 }
 
 /// The kinds: the frozen reference's six in its order, then the ones added since (native only).
-pub const KINDS: [&str; 8] = [
+pub const KINDS: [&str; 9] = [
     "file",
     "cargo",
     "swift",
@@ -33,6 +34,7 @@ pub const KINDS: [&str; 8] = [
     "pyproject",
     "xcodegen",
     "gradle",
+    "changelog",
 ];
 /// The default `GOH_TAG_VERSION_SOURCES`.
 pub const DEFAULT_SOURCES: [&str; 2] = ["file:VERSION", "cargo:Cargo.toml"];
@@ -60,6 +62,9 @@ impl Strategies {
             // Android's `build.gradle(.kts)`: `versionName = "x"` (Kotlin) or `versionName "x"`
             // (Groovy). Only this name: dependency coordinates carry versions too.
             gradle: rx(r#"^\s*versionName\s*(?:=\s*)?["']([^"']+)["']"#)?,
+            // A CHANGELOG.md's newest release stanza, `## v1.2.3 -- title` (GOH.SHIPRELREUSE): a
+            // repo whose version is its tag declares the release in the stanza its release cut.
+            changelog: rx(r"^##\s+v?(\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.]+)?)(?:\s|$)")?,
         })
     }
 
@@ -151,6 +156,15 @@ impl Strategies {
                     if let Some(v) = cap(rx, raw, 1).filter(|v| self.semver.is_match(v)) {
                         out.push((label.to_owned(), v));
                     }
+                }
+            }
+            "changelog" => {
+                if let Some(v) = lines
+                    .iter()
+                    .copied()
+                    .find_map(|l| cap(&self.changelog, l, 1))
+                {
+                    out.push(("(changelog:## heading)".to_owned(), v));
                 }
             }
             _ => return None,

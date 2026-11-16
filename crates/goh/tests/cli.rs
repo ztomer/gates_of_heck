@@ -31,10 +31,7 @@ fn every_subcommand_answers_help_and_version() {
         assert!(out.status.success(), "{args:?}: {}", out.text());
     }
     let out = goh(None, &["--version"], &[]).expect("goh runs");
-    assert_eq!(
-        out.stdout.trim(),
-        format!("goh {}", env!("CARGO_PKG_VERSION"))
-    );
+    assert_eq!(out.stdout.trim(), format!("goh {}", env!("GOH_VERSION")));
 }
 
 #[test]

@@ -10,7 +10,7 @@ pub use crate::cli_args::{
 };
 
 #[derive(Debug, Parser)]
-#[command(name = "goh", about = "Static structural gates", version)]
+#[command(name = "goh", about = "Static structural gates", version = env!("GOH_VERSION"))]
 pub struct Cli {
     #[command(subcommand)]
     pub command: Commands,

@@ -50,7 +50,17 @@ def _media_shape(repo, version):
 
 # The retired `_version_sources` module, as the native reads it (Phase N3): one strategy over one
 # text through `goh tag-version --extract KIND`, and the strategy names it answers to.
-KINDS = ("file", "cargo", "swift", "xcconfig", "plist", "pyproject", "xcodegen", "gradle")
+KINDS = (
+    "file",
+    "cargo",
+    "swift",
+    "xcconfig",
+    "plist",
+    "pyproject",
+    "xcodegen",
+    "gradle",
+    "changelog",
+)
 
 
 def extract(kind, text):

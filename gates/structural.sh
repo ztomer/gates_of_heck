@@ -155,43 +155,46 @@ _goh_dirty_gate_source() {
 # swiftlint and cargo-machete precedent, and the same rule check_empty_scope.py
 # holds every gate to.
 goh_require_current() {
-    local bin="$1" manifest="$GOH_ROOT/Cargo.toml" want got
-    if [ ! -f "$manifest" ]; then
-        warn "no $manifest — cannot tell whether $bin is current, and it may be skipping steps"
-        return 0
-    fi
-    # HEAD's version, never the working tree's: one session's uncommitted bump refused every
-    # consumer's commit (2026-10-05, tests/test_binary_currency.py). EXCEPT under GOH_LIVE=1, where
-    # the run's subject IS the working tree -- its gates, and its binary (goh_live_binary, or one
-    # named by GOH_BIN): an uncommitted version bump read as "behind" there and refused the bump's
-    # own verification (the v0.23.0 release, 2026-10-06). Consumers never run GOH_LIVE.
-    local where="at HEAD"
-    if [ -n "${GOH_LIVE:-}" ]; then
-        where="in the working tree (GOH_LIVE)"
-        want="$(grep -m1 '^version = ' "$manifest" | cut -d'"' -f2)"
-    else
-        # Read whole, then searched: `producer | grep -m1` under pipefail is a race (goh
-        # early-exit-pipe) -- grep's early exit SIGPIPEs the producer and fails the pipeline.
-        local text
-        text="$( (goh_unbind_git; git -C "$GOH_ROOT" show HEAD:Cargo.toml) 2>/dev/null \
-            || cat "$manifest")"
-        want="$(grep -m1 '^version = ' <<<"$text" | cut -d'"' -f2)"
-    fi
+    # The version is the TAG (lib/goh_version.sh, GOH.SHIPRELREUSE): HEAD's, read from git, never
+    # a number in the working tree -- one session's uncommitted Cargo.toml bump refused every
+    # consumer's commit (2026-10-05, tests/test_binary_currency.py), and that file no longer names
+    # it. On a release commit the binary must report that release: the stamp names the tag, so the
+    # build of that stamp does. Past one, WHICH build serves is the stamp's question
+    # (gates/_goh_bin.sh): one build serves every commit with its source, machine-wide (G2e), and
+    # says the commit it was built at (`X.Y.Z-N-g<sha>`, or `unknown` built where no tag was) -- so
+    # only a binary claiming another release is refused there.
+    # Run from a HEAD export (C4), which has no .git: the commit it pins (`.goh-head`), asked of the
+    # live checkout it was cut from (lib/goh_root.sh), as the binary resolver asks. A commit the
+    # root cannot read (a tarball; a self-gate's staged-tree commit) has no tag.
+    local bin="$1" want got root rev tag
+    root="$(goh_live_root_for "$GOH_ROOT")"
+    root="${root:-$GOH_ROOT}"
+    rev="$(cat "$GOH_ROOT/.goh-head" 2>/dev/null || true)"
+    rev="${rev:-HEAD}"
+    tag="$(goh_release_at "$root" "$rev")"
     got="$("$bin" --version 2>/dev/null | awk '{print $NF}')"
-    if [ -n "$want" ] && [ "$got" = "$want" ]; then
-        return 0
+    if [ -n "$tag" ]; then
+        want="${tag#v}"
+        [ "$got" = "$want" ] && return 0
+    else
+        want="$(goh_version_at "$root" "$rev")"
+        case "$got" in
+            "") ;;
+            *-* | unknown) return 0 ;;
+            *) [ "$got" = "${want%%-*}" ] && return 0 ;;
+        esac
     fi
     # Said as it is: on 2026-10-17 this read "BEHIND" about a binary that was AHEAD (a land had
     # rebuilt bin/goh under a gate pinned to the commit before), and the fix went looking for a
-    # missing rebuild. The two numbers decide the word.
+    # missing rebuild. The two releases decide the word.
     local rel="is not the build of" first
-    if [ -n "$got" ]; then
-        first="$(printf '%s\n%s\n' "$got" "$want" | sort -V)"
-        if [ "${first%%$'\n'*}" = "$got" ]; then rel="is BEHIND"; else rel="is AHEAD of"; fi
+    if [ -n "$got" ] && [ "${got%%-*}" != "${want%%-*}" ]; then
+        first="$(printf '%s\n%s\n' "${got%%-*}" "${want%%-*}" | sort -V)"
+        if [ "${first%%$'\n'*}" = "${got%%-*}" ]; then rel="is BEHIND"; else rel="is AHEAD of"; fi
     fi
     err "the goh binary serving this gate $rel the source: $bin reports ${got:-nothing},"
-    err "  $manifest declares $want $where. A step added since that build is NOT running, and"
-    err "  a step that does not run prints exactly what a step that passes prints."
+    err "  $root is $want at ${rev:0:12} (its tag, lib/goh_version.sh). A step added since that build"
+    err "  is NOT running, and a step that does not run prints exactly what a step that passes prints."
     err "  Rebuild it:  $GOH_ROOT/scripts/build-goh.sh    (or ./install.sh, which calls it)"
     return 1
 }

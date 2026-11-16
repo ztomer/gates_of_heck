@@ -1,10 +1,11 @@
 """tools/release_goh.sh: goh's own GOH_SHIP_RELEASE kit (GOH.SHIPKIT, 2026-11-11).
 
 `goh ship` could not release goh: no kit was declared, and v0.95.0's bump (8e90921) was made by
-hand. The kit bumps [workspace.package] and Cargo.lock, cuts Unreleased into `## v{version}` in a
-build/ worktree, lands it through tools/land.sh (main moves only through land: GOH_LANDED_ONLY),
-pushes main, then tags v{version} with the stanza as its message and pushes the tag. What it must
-refuse before it touches anything: a dirty tree, and an Unreleased with nothing to release.
+hand. The kit cuts Unreleased into `## v{version}` (and nothing else: the version is the tag,
+GOH.SHIPRELREUSE) in a build/ worktree, lands it through tools/land.sh (main moves only through
+land: GOH_LANDED_ONLY), pushes main, then tags v{version} with the stanza as its message and
+pushes the tag. What it must refuse before it touches anything: a dirty tree, and an Unreleased
+with nothing to release.
 """
 
 from __future__ import annotations
@@ -101,3 +102,29 @@ def test_the_preflight_folds_the_repos_fragments(repo: Path) -> None:
     assert r.returncode != 0, r.stdout + r.stderr
     assert "X.md: holds a heading" in r.stderr, r.stderr
     assert git(repo, "rev-parse", "HEAD") == head
+
+
+def test_the_release_commit_changes_only_the_changelog(repo: Path, tmp_path: Path) -> None:
+    """GOH.SHIPRELREUSE R1: the version is the tag (lib/goh_version.sh), so the release commit
+    touches CHANGELOG.md and the fragments it folds, and nothing a build reads: Cargo.toml's
+    version was compiled into every crate (CARGO_PKG_VERSION), so a bump there changed what the
+    tip's land verdict had judged. The fixture's land records the commit it was handed and stops."""
+    seen = tmp_path / "release-commit.txt"
+    tools = repo / "tools"
+    tools.mkdir()
+    (tools / "loaded_suite.sh").write_text("#!/bin/bash\nexit 0\n")
+    (tools / "land.sh").write_text(
+        f'#!/bin/bash\ngit show --name-status --format= HEAD >"{seen}"\nexit 1\n'
+    )
+    for f in tools.iterdir():
+        f.chmod(0o755)
+    (repo / ".gatesrc").write_text("GOH_CHANGELOG_FRAGMENTS=on\n")
+    (repo / "changelog").mkdir()
+    (repo / "changelog" / "X.md").write_text("* **Two.** b\n")
+    git(repo, "add", ".gatesrc", "changelog", "tools")
+    _commit(repo, "# CHANGELOG\n\n## Unreleased\n\n## v0.1.0 -- first\n\n* **One.** a\n")
+    r = _kit(repo, "0.2.0")
+    assert seen.is_file(), r.stdout + r.stderr
+    assert sorted(seen.read_text().split("\n")) == sorted(
+        ["M\tCHANGELOG.md", "D\tchangelog/X.md", ""]
+    ), seen.read_text()

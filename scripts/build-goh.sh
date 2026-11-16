@@ -78,8 +78,13 @@ esac
 # shellcheck disable=SC2046  # word-splitting git's variable list is the point
 git_here() { (unset ${GOH_GIT_LOCAL_VARS:-$(git rev-parse --local-env-vars 2>/dev/null)}; git -C "${PROJECT_ROOT}" "$@"); }
 # Captured first: git ECHOES a revision it cannot resolve (no HEAD yet), which must read as empty.
+# The release field (` vX.Y.Z` on a tagged commit) is lib/goh_version.sh's, as gates/_goh_bin.sh's
+# goh_stamp_at and build.rs append it (GOH.SHIPRELREUSE).
+# shellcheck source=lib/goh_version.sh
+. "${PROJECT_ROOT}/lib/goh_version.sh"
 head_stamp() { local out; out="$(git_here rev-parse "${INPUTS[@]/#/${REV}:}" 2>/dev/null)" || return 0
-  printf '%s' "${out}" | tr '\n' ' ' | sed 's/ $//'; }
+  out="${out} $(goh_release_at "${PROJECT_ROOT}" "${REV}")"
+  printf '%s' "${out}" | tr '\n' ' ' | sed 's/ *$//'; }
 
 STAMP="$(head_stamp)"
 if [[ -n "${GOH_BUILD_PUBLISH_CHECK_ONLY:-}" ]]; then
@@ -168,7 +173,10 @@ else
 fi
 
 echo "Building goh for ${OS}/${ARCH} from ${STAMP:+${REV} }source…"
-GOH_SOURCE_STAMP="${STAMP:-unknown}" cargo build --release --quiet --locked \
+# The export has no .git, so the version is read here, by the one rule (lib/goh_version.sh): the
+# tag on a release commit, `X.Y.Z-N-g<sha>` past one, never a number from Cargo.toml.
+VERSION="$(goh_version_at "${PROJECT_ROOT}" "${REV}")"
+GOH_VERSION="${VERSION}" GOH_SOURCE_STAMP="${STAMP:-unknown}" cargo build --release --quiet --locked \
   --manifest-path "${SRC}/Cargo.toml" -p goh
 
 # Place the binary where gates/structural.sh looks first (bin/goh, gitignored).
@@ -183,7 +191,7 @@ if [[ ! -x "${BIN}" ]]; then
   echo "✗ release binary not found at ${BIN}" >&2
   exit 1
 fi
-WANT="$(grep -m1 '^version = ' "${SRC}/Cargo.toml" | cut -d'"' -f2)"
+WANT="${VERSION}"
 if [[ "${REV}" != "HEAD" ]]; then
   goh_store_adopt "${BIN}" "${STORED}"
   if [[ "$(goh_stamp_of "${STORED}")" != "${STAMP}" ]]; then
@@ -200,7 +208,7 @@ goh_place "${BIN}" "${PROJECT_ROOT}/bin/goh"
 # The binary that landed is the one HEAD describes: its version and its source stamp.
 GOT="$("${PROJECT_ROOT}/bin/goh" --version | awk '{print $NF}')"
 if [[ "${GOT}" != "${WANT}" ]]; then
-  echo "✗ bin/goh reports ${GOT}, Cargo.toml says ${WANT}" >&2
+  echo "✗ bin/goh reports ${GOT}, the tag says ${WANT} (lib/goh_version.sh)" >&2
   exit 1
 fi
 if [[ -n "${STAMP}" ]] && ! current; then

@@ -31,11 +31,12 @@ def _bump(checkout: Path, to: str) -> None:
     manifest.write_text(text.replace(current, f'version = "{to}"', 1))
 
 
-def _committed_version(checkout: Path) -> str:
-    line = next(
-        l for l in (checkout / "Cargo.toml").read_text().splitlines() if l.startswith("version = ")
-    )
-    return line.split('"')[1]
+def _head_version(checkout: Path) -> str:
+    """The version a build of the checkout's HEAD reports: its tag (lib/goh_version.sh)."""
+    return subprocess.run(
+        ["bash", str(checkout / "lib" / "goh_version.sh"), str(checkout), "HEAD"],
+        capture_output=True, text=True, check=True, stdin=subprocess.DEVNULL,
+    ).stdout.strip()  # fmt: skip
 
 
 def _consumer_env(checkout: Path, fake: Path, tmp_path: Path) -> dict:
@@ -66,21 +67,45 @@ def _structural(checkout: Path, fake: Path, tmp_path: Path):
 
 def test_an_uncommitted_version_bump_does_not_stop_the_estate(tmp_path):
     checkout = _clean_checkout_of_todays_gates(tmp_path)
-    fake = _fake_goh(tmp_path, _committed_version(checkout))
+    fake = _fake_goh(tmp_path, _head_version(checkout))
     _bump(checkout, "99.0.0")  # uncommitted, in the shared checkout
     got = _structural(checkout, fake, tmp_path)
     assert got.returncode == 0, got.stdout + got.stderr
     assert "fake native structural ran" in got.stdout, got.stdout + got.stderr
 
 
-def test_a_committed_version_the_binary_is_behind_is_refused(tmp_path):
+def test_a_committed_cargo_version_is_not_the_version(tmp_path):
+    """GOH.SHIPRELREUSE: the version is the tag. Cargo.toml's is a placeholder a release does not
+    touch, so a commit that changes it changes nothing a binary must report."""
     checkout = _clean_checkout_of_todays_gates(tmp_path)
-    fake = _fake_goh(tmp_path, _committed_version(checkout))
+    fake = _fake_goh(tmp_path, _head_version(checkout))
     _bump(checkout, "99.0.0")
-    _git(checkout, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qam", "release")
+    _git(checkout, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qam", "bump")
+    got = _structural(checkout, fake, tmp_path)
+    assert got.returncode == 0, got.stdout + got.stderr
+
+
+def test_a_release_tag_the_binary_is_behind_is_refused(tmp_path):
+    checkout = _clean_checkout_of_todays_gates(tmp_path)
+    _git(checkout, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "--allow-empty",
+         "-m", "release")  # fmt: skip
+    fake = _fake_goh(tmp_path, _head_version(checkout))
+    _git(checkout, "tag", "v99.0.0")
+    assert _head_version(checkout) == "99.0.0"
     got = _structural(checkout, fake, tmp_path)
     assert got.returncode != 0, got.stdout + got.stderr
     assert "BEHIND" in got.stdout + got.stderr and "99.0.0" in got.stdout + got.stderr
+
+
+def test_a_build_of_another_commit_past_the_same_release_serves(tmp_path):
+    """One build serves every commit with its source (the stamp decides which, gates/_goh_bin.sh):
+    a binary built at an earlier commit past the same tag says that commit, and is current."""
+    checkout = _clean_checkout_of_todays_gates(tmp_path)
+    want = _head_version(checkout)
+    base = want.split("-")[0]
+    fake = _fake_goh(tmp_path, f"{base}-1-g0000000000")
+    got = _structural(checkout, fake, tmp_path)
+    assert got.returncode == 0, got.stdout + got.stderr
 
 
 def test_a_binary_ahead_of_the_source_is_refused_and_called_ahead(tmp_path):
@@ -93,27 +118,3 @@ def test_a_binary_ahead_of_the_source_is_refused_and_called_ahead(tmp_path):
     text = got.stdout + got.stderr
     assert got.returncode != 0, text
     assert "is AHEAD of the source" in text and "BEHIND" not in text, text
-
-
-def test_under_goh_live_the_working_trees_version_is_the_one_to_match(tmp_path):
-    """GOH_LIVE runs the working tree -- its gates and its binary -- so a version bump that is not
-    committed yet is the version the binary must report: matched there, it passed; held to HEAD,
-    it refused the bump's own verification (v0.23.0)."""
-    checkout = _clean_checkout_of_todays_gates(tmp_path)
-    _bump(checkout, "99.0.0")
-    env = _consumer_env(checkout, _fake_goh(tmp_path, "99.0.0"), tmp_path)
-    env["GOH_LIVE"] = "1"
-    repo = tmp_path / "consumer"
-    repo.mkdir()
-    subprocess.run(["git", "init", "-q"], cwd=repo, check=True, stdin=subprocess.DEVNULL)
-    got = subprocess.run(
-        ["bash", str(checkout / "gates" / "structural.sh"), "--staged"],
-        cwd=repo,
-        capture_output=True,
-        text=True,
-        env=env,
-        timeout=120,
-        stdin=subprocess.DEVNULL,
-        check=False,
-    )
-    assert got.returncode == 0 and "fake native structural ran" in got.stdout, got.stderr

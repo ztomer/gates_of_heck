@@ -202,8 +202,11 @@ GOH_LANDED_ONLY=main
 # What `tools/release-kit/release.sh` runs before it tags, when no --gate is passed (GOH.SHX2):
 # goh's own full gate, so a bare release of goh is gated rather than refused.
 GOH_RELEASE_GATE="tools/gate.sh --full"
-# goh ship releases goh through its own kit (GOH.SHIPKIT): bump, cut, land, push, tag. It pushes.
+# goh ship releases goh through its own kit (GOH.SHIPKIT): cut, land, push, tag. It pushes.
 GOH_SHIP_RELEASE='tools/release_goh.sh {version}'
+# goh's version IS its tag (lib/goh_version.sh, GOH.SHIPRELREUSE): no file a build reads names it,
+# so a pushed release tag is held to the stanza its own commit cut, CHANGELOG.md's newest heading.
+GOH_TAG_VERSION_SOURCES='changelog:CHANGELOG.md'
 GOH_SHIP_RELEASE_PUSHES=1
 # Then each consumer workflow's goh pin moves to the release just pushed (GOH.WFPIN): one commit per
 # repo through its own hooks, never a push of another repo.

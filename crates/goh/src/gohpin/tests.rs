@@ -208,3 +208,16 @@ fn a_checkout_of_another_repo_is_not_the_jobs_own() {
 fn unparsable_yaml_is_a_finding() {
     assert_eq!(kinds("jobs: [\n"), vec![(2, K::Unparsable)]);
 }
+
+/// The running goh's release is its tag's, and a build past a tag is that tag's release
+/// (GOH.SHIPRELREUSE: the version is `lib/goh_version.sh`'s, never `Cargo.toml`'s).
+#[test]
+fn a_build_past_a_tag_is_that_tags_release() {
+    assert_eq!(super::release_of("0.125.0"), (0, 125, 0));
+    assert_eq!(super::release_of("0.124.0-3-g0123abcdef"), (0, 124, 0));
+    assert_eq!(
+        super::release_of("0.124.0-3-g0123abcdef-dirty"),
+        (0, 124, 0)
+    );
+    assert_eq!(super::release_of("unknown"), (0, 0, 0));
+}

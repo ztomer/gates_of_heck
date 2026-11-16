@@ -68,13 +68,11 @@ class Land:
         (self.export / ".goh-head").write_text(self.a + "\n")
         (self.export / ".goh-used").write_text("")
         manifest = self.checkout / "Cargo.toml"
-        manifest.write_text(
-            manifest.read_text().replace(f'version = "{self.a_version}"', 'version = "99.0.0"', 1)
-        )
+        manifest.write_text(manifest.read_text() + "\n# the land: another build input\n")
         _git(self.checkout, "commit", "-q", "-am", "the land")
         self.b_stamp = _head_tree(self.checkout)
         assert self.b_stamp != self.a_stamp, "B must be another build, or this proves nothing"
-        self.live_bin = _fake(self.checkout / "bin" / "goh", "99.0.0", self.b_stamp)
+        self.live_bin = _fake(self.checkout / "bin" / "goh", _version(self.checkout), self.b_stamp)
         self.live_bin.write_text(self.live_bin.read_text().replace("fake native", "B's binary"))
         self.calls = self.checkout.parent / "builder.calls"
         # The builder, for a `--rev` build: lands A's binary in the store, as build-goh.sh does.

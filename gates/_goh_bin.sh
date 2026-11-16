@@ -33,6 +33,8 @@ _goh_d=${BASH_SOURCE[0]%/*}; [ "$_goh_d" != "${BASH_SOURCE[0]}" ] || _goh_d=.; .
 . "${BASH_SOURCE[0]%/*}/../lib/place.sh"   # goh_place: a whole copy, staged and renamed, strays reaped
 # shellcheck source=lib/goh_root.sh
 . "${BASH_SOURCE[0]%/*}/../lib/goh_root.sh"   # goh_live_root_for: GOH_LIVE_ROOT is an export's
+# shellcheck source=lib/goh_version.sh
+. "${BASH_SOURCE[0]%/*}/../lib/goh_version.sh"   # goh_release_at: the stamp's release field
 
 goh_resolve_native() {
     goh_native=""
@@ -240,7 +242,10 @@ goh_stamp_at() {
     out="$(goh_unbind_git
            git -C "$1" rev-parse "$c:crates" "$c:Cargo.toml" "$c:Cargo.lock" "$c:rust-toolchain.toml" \
                2>/dev/null)" || return 0
-    printf '%s' "$out" | tr '\n' ' ' | sed 's/ $//'
+    # A release commit's build says its tag, so its stamp names the tag: the untagged build of the
+    # same trees is not it (lib/goh_version.sh, GOH.SHIPRELREUSE; build.rs appends the same field).
+    out="$out $(goh_release_at "$1" "$c")"
+    printf '%s' "$out" | tr '\n' ' ' | sed 's/ *$//'
 }
 
 # goh_stamp_of <binary> -- what it says it was built from; empty for a pre-stamp build.

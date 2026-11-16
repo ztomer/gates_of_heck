@@ -35,7 +35,7 @@ GIT_INIT_SITES = {
     "test_install.py": 2,
     "test_goh_git_spawns.py": 2,
     "test_estate_corpus.py": 2,
-    "test_binary_currency.py": 2,
+    "test_binary_currency.py": 1,
     "test_tree_stamp.py": 1,
     "test_swift_gate_project_selection.py": 1,
     "test_session_bench.py": 1,

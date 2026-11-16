@@ -62,9 +62,14 @@ fn describe(p: &Problem) -> String {
     }
 }
 
-/// The running goh's release.
+/// The running goh's release: its tag's version, or the newest release a build past it descends
+/// from (`0.124.0-3-g<sha>` is 0.124.0; `lib/goh_version.sh`, GOH.SHIPRELREUSE).
 fn own() -> scan::Version {
-    scan::version(env!("CARGO_PKG_VERSION")).unwrap_or((0, 0, 0))
+    release_of(env!("GOH_VERSION"))
+}
+
+fn release_of(version: &str) -> scan::Version {
+    scan::version(version.split('-').next().unwrap_or_default()).unwrap_or((0, 0, 0))
 }
 
 fn is_workflow(rel: &str) -> bool {

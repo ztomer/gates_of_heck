@@ -7,9 +7,10 @@
 #   1. refuse, before anything moves, a dirty tree, a VERSION that is not X.Y.Z, a tag that already
 #      exists, and an Unreleased with nothing to release (changelog_cut.py ready);
 #   2. in a worktree off HEAD under the run root (lib/run_path.sh), never in the checkout:
-#      [workspace.package] version and Cargo.lock's workspace
-#      entries set to VERSION, Unreleased cut into `## vVERSION` (titled with GOH_SHIP_SUMMARY when
-#      ship gives one), one `release: vVERSION -- TITLE` commit through the hooks;
+#      Unreleased cut into `## vVERSION` (titled with GOH_SHIP_SUMMARY when ship gives one), one
+#      `release: vVERSION -- TITLE` commit through the hooks. Nothing else: the version is the tag
+#      (lib/goh_version.sh), never a number in Cargo.toml (GOH.SHIPRELREUSE), and `goh tag-version`
+#      reads the release from this commit's CHANGELOG.md (.gatesrc GOH_TAG_VERSION_SOURCES);
 #   3. tools/loaded_suite.sh, the suite once under tools/load.py's spinners (GOH.CLASS.HARNESS),
 #      then tools/land.sh from that worktree: main moves only through land (.gatesrc
 #      GOH_LANDED_ONLY), never a commit in the main checkout and never GOH_MAIN_COMMIT_OK;
@@ -85,22 +86,9 @@ trap 'git -C "$main" worktree remove --force "$wt" 2>/dev/null || true
 
 (
     cd "$wt"
-    "$GOH_PY" - "$VERSION" <<'PY'
-import re, sys
-v = sys.argv[1]
-p = "Cargo.toml"
-s = open(p).read()
-head, sep, rest = s.partition("[workspace.package]")
-if not sep:
-    sys.exit("release_goh.sh: Cargo.toml has no [workspace.package]")
-rest, n = re.subn(r'(?m)^version = "[^"]*"', f'version = "{v}"', rest, count=1)
-if n != 1:
-    sys.exit("release_goh.sh: [workspace.package] declares no version")
-open(p, "w").write(head + sep + rest)
-PY
-    if [ -f Cargo.lock ]; then
-        cargo update --workspace --offline -q
-    fi
+    # No version file is bumped: goh's version IS the tag (lib/goh_version.sh, GOH.SHIPRELREUSE),
+    # so this commit changes only what the changelog cut writes and folds, and the tip it was cut
+    # from was judged on every byte a build or a test outside the changelog reads.
     "$GOH_PY" "$GOH/tools/release-kit/changelog_cut.py" cut --version "$VERSION" "${title[@]}" "${frag[@]}" --file CHANGELOG.md
     if [ "${#frag[@]}" -gt 0 ]; then  # the stanza holds them now; the release commit deletes them
         mapfile -t folded < <("$GOH_PY" "$GOH/tools/release-kit/changelog_cut.py" fragments "${frag[@]}")
@@ -108,8 +96,7 @@ PY
     fi
     "$GOH_PY" "$GOH/tools/release-kit/changelog_cut.py" check --version "$VERSION" "${frag[@]}" --file CHANGELOG.md
     heading="$(grep -m1 -E "^## v${VERSION//./\\.}( |$)" CHANGELOG.md)"
-    git add Cargo.toml CHANGELOG.md
-    [ -f Cargo.lock ] && git add Cargo.lock
+    git add CHANGELOG.md
     git commit -q -F - <<MSG
 release: ${heading#\#\# }
 

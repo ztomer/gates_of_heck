@@ -17,7 +17,7 @@
   "test_bash5_guard.py": 1,
   "test_bench_hold.py": 3,
   "test_bench_lock.py": 20,
-  "test_binary_currency.py": 2,
+  "test_binary_currency.py": 1,
   "test_binary_pinned_to_export.py": 2,
   "test_binary_source_identity.py": 4,
   "test_bounded_run.py": 4,
