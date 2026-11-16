@@ -68,6 +68,9 @@ if [ -z "$gate" ] && [ -f "$here/.gatesrc" ]; then
     gate="$(cd "$here" && bash -c 'unset GOH_LAND_GATE; . ./.gatesrc >/dev/null 2>&1 </dev/null; printf %s "${GOH_LAND_GATE-}"')" \
         || { err "land.sh: cannot read $here/.gatesrc"; exit 2; }
 fi
+# The verdict's MODE (GOH.VERDICTKEY): `full` for the kit's own push gate, else the gate string --
+# a hand-set GOH_LAND_GATE=true lands, but its goh-landed line is no full gate's (lib/gate_identity.py).
+mode="${gate:-full}"
 [ -n "$gate" ] || gate="$GOH/tools/gate_profile.sh ."
 
 section "land $branch @ ${tip:0:8} -> $main"
@@ -165,7 +168,9 @@ if [ "$after" != "$tip" ] || [ "$after" = "$base" ]; then   # (also: nothing to 
 fi
 # The record a push reads (GOH_LANDED_ONLY): this SHA was gated here and merged. In the common git
 # dir, so it outlives the worktree that landed it, and by SHA, so a branch that moved is not it.
-printf '%s\n' "$tip" >>"$(git -C "$main" rev-parse --path-format=absolute --git-common-dir)/goh-landed"
+# `<sha> <gate identity>`: the push's release rule trusts a parent only under the full gate's identity.
+identity="$("$GOH_PY" "$GOH/lib/gate_identity.py" key --mode "$mode" </dev/null 7>&-)" || identity=unknown
+printf '%s %s\n' "$tip" "$identity" >>"$(git -C "$main" rev-parse --path-format=absolute --git-common-dir)/goh-landed"
 ok "landed ${tip:0:8} on $(git -C "$main" rev-parse --abbrev-ref HEAD) in $main (nothing pushed)"
 # THE LOADED SUITE LEAVES THE SHIP (GOH.SHIPRELREUSE R2). A repo that declares GOH_LAND_LOADED (goh:
 # tools/loaded_suite.sh) has it started now on the tip just landed, in the background, its verdict

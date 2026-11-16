@@ -12,8 +12,9 @@ is red, failed to run, or missing, saying which.
     loaded_verdict.py wait  --repo DIR --sha SHA [--max SECS]   # the ship, before its land
     loaded_verdict.py show  --repo DIR --sha SHA                # the record, as JSON
 
-The record is `<common git dir>/goh-loaded/<tree>.json`: keyed by the tree, so any commit of the
-same bytes reads it, and in the common git dir, so it outlives the worktree that landed. `start`
+The record is `<common git dir>/goh-loaded/<tree>-<identity>.json`: keyed by the tree (and by
+lib/gate_identity.py's identity of the command, GOH.VERDICTKEY), so any commit of the same bytes
+reads it, and in the common git dir, so it outlives the worktree that landed. `start`
 makes a detached worktree of SHA under the checkout's run root (lib/run_path.py) and a runner in a
 session of its own that outlives land.sh: it runs CMD there (default tools/loaded_suite.sh, whose
 load.py accounts and reaps every spinner and bounds the run at 60 min), writes green or red with the
@@ -44,6 +45,7 @@ import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+import gate_identity  # the verdict's identity beside its tree (GOH.VERDICTKEY)
 import run_path  # the one place run paths come from
 
 DEFAULT_CMD = "tools/loaded_suite.sh"
@@ -67,8 +69,12 @@ def tree_of(repo: Path, sha: str) -> str:
     return _git(repo, "rev-parse", f"{sha}^{{tree}}")
 
 
-def record_path(repo: Path, sha: str) -> Path:
-    return store(repo) / f"{tree_of(repo, sha)}.json"
+def record_path(repo: Path, sha: str, cmd: str = "") -> Path:
+    """`<tree>-<identity>.json`: the tree AND what judged it (GOH.VERDICTKEY) -- the command, the
+    gates' content and the tools (lib/gate_identity.py). Keyed on the tree alone, a run green under
+    `--cmd true` answered "green already" for `--cmd false`."""
+    ident = gate_identity.key(f"loaded {cmd or DEFAULT_CMD}")[:16]
+    return store(repo) / f"{tree_of(repo, sha)}-{ident}.json"
 
 
 def read(path: Path) -> dict | None:
@@ -110,7 +116,7 @@ def state(rec: dict | None) -> str:
 def start(repo: Path, sha: str, cmd: str) -> int:
     """Begin the loaded run of SHA's tree unless one is green or running; returns at once."""
     sha = _git(repo, "rev-parse", f"{sha}^{{commit}}")
-    path = record_path(repo, sha)
+    path = record_path(repo, sha, cmd)
     now = state(read(path))
     if now in {"green", "running"}:
         print(f"loaded verdict for {sha[:8]}: {now} already ({path})")
@@ -123,7 +129,7 @@ def start(repo: Path, sha: str, cmd: str) -> int:
     with open(os.devnull, "rb") as nul, open(log, "ab") as out:
         child = subprocess.Popen(argv, stdin=nul, stdout=out, stderr=subprocess.STDOUT,
                                  start_new_session=True, close_fds=True)  # fmt: skip
-    write(path, {"state": "running", "sha": sha, "tree": path.stem, "pid": child.pid,
+    write(path, {"state": "running", "sha": sha, "tree": path.stem.split("-")[0], "pid": child.pid,
                  "cmd": cmd, "log": str(log), "started": int(time.time())})  # fmt: skip
     print(f"loaded verdict for {sha[:8]}: started (runner pid {child.pid}, log {log})")
     return 0
@@ -131,13 +137,14 @@ def start(repo: Path, sha: str, cmd: str) -> int:
 
 def run(repo: Path, sha: str, cmd: str, work: Path, log: Path) -> int:
     """The runner: CMD in a detached worktree of SHA, its verdict recorded, the worktree removed."""
-    path = record_path(repo, sha)
+    path = record_path(repo, sha, cmd)
     # `start` writes this runner's record after spawning it: wait for that write (bounded), so a
     # fast verdict can never be overwritten by the starter's `running`.
     until = time.monotonic() + 10
     while time.monotonic() < until and (read(path) or {}).get("pid") != os.getpid():
         time.sleep(0.05)
-    rec = {"state": "running", "sha": sha, "tree": path.stem, "pid": os.getpid(), "cmd": cmd,
+    tree = path.stem.split("-")[0]
+    rec = {"state": "running", "sha": sha, "tree": tree, "pid": os.getpid(), "cmd": cmd,
            "log": str(log), "started": int(time.time())}  # fmt: skip
     write(path, rec)
     proc: subprocess.Popen | None = None
@@ -167,10 +174,10 @@ def run(repo: Path, sha: str, cmd: str, work: Path, log: Path) -> int:
     return rc
 
 
-def wait(repo: Path, sha: str, max_s: float, say=print) -> int:
+def wait(repo: Path, sha: str, max_s: float, say=print, cmd: str = "") -> int:
     """0 on a green verdict for SHA's tree; waits while one runs; refuses anything else, named."""
     sha = _git(repo, "rev-parse", f"{sha}^{{commit}}")
-    path = record_path(repo, sha)
+    path = record_path(repo, sha, cmd)
     deadline = time.monotonic() + max_s
     told = False
     while True:
@@ -209,8 +216,7 @@ def main(argv: list[str] | None = None) -> int:
         p = sub.add_parser(verb)
         p.add_argument("--repo", required=True, type=Path)
         p.add_argument("--sha", required=True)
-        if verb in {"start", "run"}:
-            p.add_argument("--cmd", default=DEFAULT_CMD)
+        p.add_argument("--cmd", default=DEFAULT_CMD)
         if verb == "run":
             p.add_argument("--work", required=True, type=Path)
             p.add_argument("--log", required=True, type=Path)
@@ -223,8 +229,8 @@ def main(argv: list[str] | None = None) -> int:
     if a.verb == "run":
         return run(repo, a.sha, a.cmd, a.work, a.log)
     if a.verb == "wait":
-        return wait(repo, a.sha, a.max)
-    print(json.dumps(read(record_path(repo, a.sha)), indent=2))
+        return wait(repo, a.sha, a.max, cmd=a.cmd)
+    print(json.dumps(read(record_path(repo, a.sha, a.cmd)), indent=2))
     return 0
 
 

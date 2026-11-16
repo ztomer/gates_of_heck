@@ -99,7 +99,8 @@ def test_a_landed_tip_is_recorded_for_the_push_to_read(repo: Path, tmp_path: Pat
     r = _land(wt, "true")
     assert r.returncode == 0, r.stdout + r.stderr
     common = git(repo, "rev-parse", "--path-format=absolute", "--git-common-dir").strip()
-    assert (Path(common) / "goh-landed").read_text().split() == [tip]
+    line = (Path(common) / "goh-landed").read_text().split()
+    assert line[0] == tip and len(line) == 2 and len(line[1]) == 64, line  # `<sha> <gate identity>`
 
 
 def _refused_commit_worktree(repo: Path, tmp_path: Path) -> Path:

@@ -333,7 +333,7 @@ if [ -n "$landed_only" ]; then
     while read -r land_ref land_sha _ land_remote; do
         [ "$land_ref" = "refs/heads/$landed_only" ] && [ "$land_sha" != "$zero" ] || continue
         [ "$land_sha" = "${land_remote:-}" ] && continue
-        grep -qx "$land_sha" "$landed" 2>/dev/null && continue
+        grep -qE "^$land_sha( |\$)" "$landed" 2>/dev/null && continue   # `<sha> [identity]`
         err "pre-push: $landed_only @ ${land_sha:0:8} did not come through tools/land.sh (GOH_LANDED_ONLY):" \
             "nothing in $landed gated it -- land it from a branch worktree (tools/land.sh), then push"
         exit 1

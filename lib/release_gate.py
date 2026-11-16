@@ -23,11 +23,12 @@ THE PUSH GETS THE SAME RULE (coordinator ruling 2026-11-15). The land above only
 `git push origin main` ran the whole push gate over the release commit again. A repo declaring
 GOH_PUSH_RELEASE_REUSE=on has gates/push_gate.sh ask `push-decide` for the pushed commit, and run
 `run --base PARENT` (the set above) only when ALL hold: one parent; that parent's land was green --
-tools/land.sh appends a SHA to `goh-landed` in the common git dir only after a green gate and the
-merge, so a red land and a commit no land judged are both absent; and the diff parent..HEAD is
-release files only, by release_only() above, the one definition the land uses. It prints
-`release PARENT` or `full REASON`, and push_gate.sh says the reason. Pinned by
-tests/test_push_release_reuse.py, each calibration by the reason it names.
+tools/land.sh appends `SHA IDENTITY` to `goh-landed` in the common git dir only after a green gate
+and the merge, so a red land and a commit no land judged are both absent, and IDENTITY must be
+lib/gate_identity.py's for the full gate now (a hand-set GOH_LAND_GATE, other gates or tools
+miss); and the diff parent..HEAD is release files only, by release_only() above, the one
+definition the land uses. It prints `release PARENT` or `full REASON`, and push_gate.sh says
+the reason. Pinned by tests/test_push_release_reuse.py, each calibration by the reason it names.
 """
 
 from __future__ import annotations
@@ -48,6 +49,9 @@ import shlex
 import subprocess
 import sys
 from pathlib import Path
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import gate_identity  # lib/, beside this file: the one identity (GOH.VERDICTKEY)
 
 RELEASE_FILE = "CHANGELOG.md"
 RELEASE_DIR = "changelog/"
@@ -92,13 +96,16 @@ def _git_out(root: Path, *args: str) -> str:
     return out.stdout.strip()
 
 
-def land_green(root: Path, sha: str) -> bool:
-    """True when tools/land.sh recorded sha: it lands, then appends, only after a green gate."""
+def land_identity(root: Path, sha: str) -> str | None:
+    """The gate identity tools/land.sh recorded with sha (`<sha> <identity>` in goh-landed, written
+    only after a green gate), `""` for a line without one, None when no land recorded sha."""
     common = Path(_git_out(root, "rev-parse", "--path-format=absolute", "--git-common-dir"))
     try:
-        return sha in (common / "goh-landed").read_text(encoding="utf-8").split()
+        lines = (common / "goh-landed").read_text(encoding="utf-8").splitlines()
     except FileNotFoundError:
-        return False
+        return None
+    found = [ln.split()[1:] for ln in lines if ln.split()[:1] == [sha]]
+    return (found[-1][:1] or [""])[0] if found else None
 
 
 def decide_push(root: Path, head: str = "HEAD") -> tuple[str, str]:
@@ -108,8 +115,12 @@ def decide_push(root: Path, head: str = "HEAD") -> tuple[str, str]:
     if len(parents) != 1:
         return "full", f"{sha[:8]} has {len(parents)} parents, not one"
     parent = parents[0]
-    if not land_green(root, parent):
+    recorded = land_identity(root, parent)
+    if recorded is None:
         return "full", f"its parent {parent[:8]} has no green land verdict (goh-landed)"
+    if recorded != gate_identity.key("full"):
+        why = "is not the full gate's under these gates and tools (lib/gate_identity.py)"
+        return "full", f"its parent {parent[:8]}'s land verdict {why}"
     paths = changed(root, parent, sha) or []
     if not paths:
         return "full", f"it changes nothing since its parent {parent[:8]}"

@@ -55,8 +55,11 @@ def _fixture(repo: Path, tmp_path: Path, *, opt_in: bool = True) -> Path:
     return wt
 
 
-def _land(wt: Path, gate: str) -> subprocess.CompletedProcess[str]:
-    env = hermetic_env(drop_git=True, GOH_LAND_GATE=gate)
+def _land(wt: Path, gate: str | None) -> subprocess.CompletedProcess[str]:
+    """A real land: `gate` None is the full gate (the kit's own push gate over the fixture, whose
+    tools/gate.sh reports `full` to a file of its own); a string is a hand-set GOH_LAND_GATE."""
+    over = {} if gate is None else {"GOH_LAND_GATE": gate}
+    env = hermetic_env(drop_git=True, GATE_REPORT=str(wt.parent / "land-report.txt"), **over)
     return subprocess.run(["bash", str(LAND)], cwd=wt, env=env, capture_output=True, text=True,
                           timeout=patience(120), stdin=subprocess.DEVNULL, check=False)  # fmt: skip
 
@@ -98,7 +101,7 @@ def _full(ran: list[str], out: str, reason: str) -> None:
 def test_a_release_only_commit_on_a_land_verified_parent_is_gated_reduced(repo, tmp_path) -> None:
     wt = _fixture(repo, tmp_path)
     parent = git(wt, "rev-parse", "HEAD").strip()
-    landed = _land(wt, "true")
+    landed = _land(wt, None)
     assert landed.returncode == 0, landed.stdout + landed.stderr
     sha = _release(wt)
     rc, ran, out = _push(wt, tmp_path)
@@ -111,7 +114,7 @@ def test_a_release_only_commit_on_a_land_verified_parent_is_gated_reduced(repo, 
 
 def test_a_non_release_file_in_the_diff_takes_the_full_gate(repo, tmp_path) -> None:
     wt = _fixture(repo, tmp_path)
-    assert _land(wt, "true").returncode == 0
+    assert _land(wt, None).returncode == 0
     _release(wt, "src.py")
     rc, ran, out = _push(wt, tmp_path)
     assert rc == 0, out
@@ -120,7 +123,7 @@ def test_a_non_release_file_in_the_diff_takes_the_full_gate(repo, tmp_path) -> N
 
 def test_a_release_file_with_a_test_that_reads_it_takes_the_full_gate(repo, tmp_path) -> None:
     wt = _fixture(repo, tmp_path)
-    assert _land(wt, "true").returncode == 0
+    assert _land(wt, None).returncode == 0
     _release(wt, "tests/test_reads.py")
     rc, ran, out = _push(wt, tmp_path)
     assert rc == 0, out
@@ -151,8 +154,19 @@ def test_a_repo_that_does_not_declare_the_rule_runs_the_full_gate_and_says_nothi
     repo, tmp_path
 ) -> None:
     wt = _fixture(repo, tmp_path, opt_in=False)
-    assert _land(wt, "true").returncode == 0
+    assert _land(wt, None).returncode == 0
     _release(wt)
     rc, ran, out = _push(wt, tmp_path)
     assert rc == 0 and ran[:1] == ["full"], (ran, out)
     assert "release files only" not in out and "the full gate:" not in out, out
+
+
+def test_a_parent_landed_under_a_hand_set_gate_takes_the_full_gate(repo, tmp_path) -> None:
+    """GOH.VERDICTKEY: GOH_LAND_GATE=true lands and records the parent, under another identity."""
+    wt = _fixture(repo, tmp_path)
+    parent = git(wt, "rev-parse", "HEAD").strip()
+    assert _land(wt, "true").returncode == 0
+    _release(wt)
+    rc, ran, out = _push(wt, tmp_path)
+    assert rc == 0, out
+    _full(ran, out, f"its parent {parent[:8]}'s land verdict is not the full gate's")

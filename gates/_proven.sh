@@ -201,11 +201,9 @@ _proven_identity_slow() {
     while IFS= read -r d; do
         [ -n "$d" ] && _proven_goh_identity "$d"
     done < <(_proven_goh_roots)
-    # Toolchains, for the languages the repo tracks. `swift --version` alone costs ~0.7 s and
-    # the key is computed twice per step, so a repo with no Swift does not pay for Swift's.
+    # Toolchains for the languages the repo tracks (`swift --version` alone ~0.7 s: no Swift, no cost).
     files="$(git ls-files 2>/dev/null)"
-    # Here-strings, not `printf | grep -q`: under pipefail an early-exiting grep SIGPIPEs the
-    # printf and the pipeline reads as "no match".
+    # Here-strings, not `printf | grep -q`: under pipefail an early grep exit reads as "no match".
     if grep -Eq '(^|/)(Cargo\.toml|rust-toolchain(\.toml)?)$|\.rs$' <<<"$files"; then
         _proven_tool rustc rustc -V
         _proven_tool cargo cargo -V
@@ -216,6 +214,8 @@ _proven_identity_slow() {
     if grep -Eq '\.swift$|(^|/)Package\.swift$|\.xcodeproj/' <<<"$files"; then
         _proven_tool swift swift --version
     fi
+    # Every tool a step may invoke, by its bytes (GOH.VERDICTKEY, lib/gate_identity.py); unreadable: no hit.
+    "$GOH_PY" -S "$PROVEN_GOH_ROOT/lib/gate_identity.py" tools </dev/null 2>/dev/null || printf 'tools unreadable %s\n' "$$"
 }
 
 # The half read fresh on every key: the environment and the ignored files a build reads.

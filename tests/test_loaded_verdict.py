@@ -30,8 +30,8 @@ def _cli(repo: Path, *args: str) -> subprocess.CompletedProcess[str]:
                           stdin=subprocess.DEVNULL, check=False)  # fmt: skip
 
 
-def _until_settled(repo: Path) -> str:
-    path = loaded_verdict.record_path(repo, "HEAD")
+def _until_settled(repo: Path, cmd: str) -> str:
+    path = loaded_verdict.record_path(repo, "HEAD", cmd)
     give_up = GiveUp(60)
     while not give_up.passed():
         now = loaded_verdict.state(loaded_verdict.read(path))
@@ -42,19 +42,20 @@ def _until_settled(repo: Path) -> str:
 
 
 def test_a_passing_run_records_green_by_tree_and_the_ship_proceeds(repo: Path) -> None:
-    assert _cli(repo, "start", "--cmd", "test -f README.md").returncode == 0
-    assert _until_settled(repo) == "green"
-    rec = loaded_verdict.read(loaded_verdict.record_path(repo, "HEAD"))
+    cmd = "test -f README.md"
+    assert _cli(repo, "start", "--cmd", cmd).returncode == 0
+    assert _until_settled(repo, cmd) == "green"
+    rec = loaded_verdict.read(loaded_verdict.record_path(repo, "HEAD", cmd))
     assert rec and rec["tree"] == git(repo, "rev-parse", "HEAD^{tree}").strip()
-    r = _cli(repo, "wait", "--max", "5")
+    r = _cli(repo, "wait", "--max", "5", "--cmd", cmd)
     assert r.returncode == 0 and "green" in r.stdout, r.stdout + r.stderr
     assert len(git(repo, "worktree", "list").strip().splitlines()) == 1, "the run left a worktree"
 
 
 def test_a_failing_run_records_red_and_the_ship_refuses_naming_it(repo: Path) -> None:
     assert _cli(repo, "start", "--cmd", "exit 3").returncode == 0
-    assert _until_settled(repo) == "red"
-    r = _cli(repo, "wait", "--max", "5")
+    assert _until_settled(repo, "exit 3") == "red"
+    r = _cli(repo, "wait", "--max", "5", "--cmd", "exit 3")
     assert r.returncode == 1, r.stdout + r.stderr
     assert "red (exit 3)" in r.stdout, r.stdout
 
@@ -67,7 +68,7 @@ def test_a_missing_verdict_refuses_with_the_way_on(repo: Path) -> None:
 
 def test_a_running_verdict_is_waited_for(repo: Path) -> None:
     assert _cli(repo, "start", "--cmd", "sleep 2").returncode == 0
-    r = _cli(repo, "wait", "--max", "60")
+    r = _cli(repo, "wait", "--max", "60", "--cmd", "sleep 2")
     assert r.returncode == 0, r.stdout + r.stderr
     assert "running" in r.stdout and "green" in r.stdout, r.stdout
 
@@ -120,3 +121,13 @@ def test_records_are_json(repo: Path) -> None:
     loaded_verdict.write(loaded_verdict.record_path(repo, "HEAD"), {"state": "green"})
     r = _cli(repo, "show")
     assert json.loads(r.stdout)["state"] == "green"
+
+
+def test_a_green_verdict_is_no_verdict_for_another_command(repo: Path) -> None:
+    """GOH.VERDICTKEY, the survey's reproduction: green under `--cmd true` answered "green already"
+    for `--cmd false`, keyed by the tree alone. The key carries the command (gate_identity.py)."""
+    assert _cli(repo, "start", "--cmd", "true").returncode == 0
+    assert _until_settled(repo, "true") == "green"
+    r = _cli(repo, "start", "--cmd", "false")
+    assert "green already" not in r.stdout, r.stdout
+    assert _until_settled(repo, "false") == "red"

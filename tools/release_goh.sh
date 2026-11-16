@@ -113,8 +113,10 @@ MSG
     # release's commit differs from that tip only in the changelog, so the tip's verdict is read:
     # waited for while it runs, refused red, died or missing (GOH.SHIPRELREUSE R2). Each phase is
     # one row of goh ship's profile (timed: lib/step_timings.py, GOH.SHIPPROFILE).
+    # The verdict of the command land started (GOH_LAND_LOADED): the record is keyed by it (GOH.VERDICTKEY).
+    loaded="$(bash -c 'unset GOH_LAND_LOADED; [ -f .gatesrc ] && . ./.gatesrc >/dev/null 2>&1 </dev/null; printf %s "${GOH_LAND_LOADED-}"')"
     timed "release: the tip's loaded verdict" "$GOH_PY" "$GOH/lib/loaded_verdict.py" wait \
-        --repo "$main" --sha "$tip" --max 3600
+        --repo "$main" --sha "$tip" --max 3600 ${loaded:+--cmd "$loaded"}
     # The land's gate (GOH.SHIPRELREUSE R3): this commit changes only release files, so it runs the
     # structural gate and the tests that read them (lib/release_gate.py); a diff since the tip with
     # anything else in it -- main moved and land rebased -- runs the full gate land would have run.
