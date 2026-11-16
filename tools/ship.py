@@ -112,8 +112,7 @@ from tui.lib import err, info, ok, step
 
 STEPS = ("push", "release", "install", "verify", "done")
 save, tail = ship_status.save, ship_status.tail  # the result file, a step log (ship_status)
-GRACE = 5
-DEFAULT_TIMEOUT = 3600
+GRACE, DEFAULT_TIMEOUT = 5, 3600
 KEYS = ("GOH_SHIP_RELEASE", "GOH_SHIP_INSTALL", "GOH_SHIP_TIMEOUT", "GOH_SHIP_RELEASE_PUSHES",
         "GOH_SHIP_PREFLIGHT", "GOH_SHIP_CHANGELOG", "GOH_CHANGELOG_FRAGMENTS")  # fmt: skip
 SEMVER = re.compile(r"^v(\d+)\.(\d+)\.(\d+)$")
@@ -437,11 +436,12 @@ def worker(result: str, resume: bool = False) -> int:
         res["pid"] = os.getpid()
         save(res)
         import land_lock  # here, not at the top: tools/ship.py's import ceiling (E402) is spent
+        import loaded_verdict  # the tip's loaded verdict, waited for before the clock
 
-        queue = land_lock.path(Path(res["repo"]))  # a ship moves main as a land does
-        who = f"goh ship {res['name']} @ {res['sha'][:8]}"
+        queue, who = land_lock.path(Path(res["repo"])), f"goh ship {res['name']} @ {res['sha'][:8]}"
         with land_lock.held(queue, who, info):  # lock-order: land, under the ship lock
-            return run_steps(res, "verify" if resume else STEPS[0])
+            ready = resume or loaded_verdict.before_clock(res, command)
+            return run_steps(res, "verify" if resume else STEPS[0]) if ready else 1
 
 
 def start(args: argparse.Namespace) -> int:

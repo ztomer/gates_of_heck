@@ -52,6 +52,10 @@ def status(result: str) -> int:
     except (OSError, ValueError) as e:
         err(f"goh ship: cannot read {result}: {e}")
         return 2
+    if pre := res.get("before_clock"):  # the land's loaded run, apart (GOH.SHIPLOADEDWAIT)
+        (ok if pre["status"] == "ok" else err)(
+            f"before the clock: {pre['name']}: {pre['status']} ({pre['seconds']} s waited for the "
+            f"land's run, no step's time; {pre['log']})")  # fmt: skip
     for s in res["steps"]:
         mark = {"ok": ok, "skipped": step}.get(s["status"], err)
         mark(f"{s['name']}: {s['status']}" + (f" ({s['why']})" if s.get("why") else ""))

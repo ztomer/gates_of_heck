@@ -112,7 +112,9 @@ MSG
     # records the verdict by tree (.gatesrc GOH_LAND_LOADED, lib/loaded_verdict.py), and this
     # release's commit differs from that tip only in the changelog, so the tip's verdict is read:
     # waited for while it runs, refused red, died or missing (GOH.SHIPRELREUSE R2). Each phase is
-    # one row of goh ship's profile (timed: lib/step_timings.py, GOH.SHIPPROFILE).
+    # one row of goh ship's profile (timed: lib/step_timings.py, GOH.SHIPPROFILE). Under goh ship
+    # this read is instant: the ship worker waited for the verdict under the land lock before its
+    # first step (tools/ship.py before_clock, GOH.SHIPLOADEDWAIT), never inside this step's clock.
     # The verdict of the command land started (GOH_LAND_LOADED): the record is keyed by it (GOH.VERDICTKEY).
     loaded="$(bash -c 'unset GOH_LAND_LOADED; [ -f .gatesrc ] && . ./.gatesrc >/dev/null 2>&1 </dev/null; printf %s "${GOH_LAND_LOADED-}"')"
     timed "release: the tip's loaded verdict" "$GOH_PY" "$GOH/lib/loaded_verdict.py" wait \

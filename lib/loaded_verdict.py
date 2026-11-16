@@ -209,6 +209,58 @@ def wait(repo: Path, sha: str, max_s: float, say=print, cmd: str = "") -> int:
         time.sleep(min(POLL_S, max(0.1, deadline - time.monotonic())))
 
 
+def declared(repo: Path) -> str:
+    """GOH_LAND_LOADED: the environment's (even empty), else what the repo's .gatesrc declares."""
+    if "GOH_LAND_LOADED" in os.environ:
+        return os.environ["GOH_LAND_LOADED"]
+    if not (repo / ".gatesrc").is_file():
+        return ""
+    script = ('unset GOH_LAND_LOADED; . ./.gatesrc >/dev/null 2>&1 </dev/null; '
+              'printf %s "${GOH_LAND_LOADED-}"')  # fmt: skip
+    out = subprocess.run(["bash", "-c", script], cwd=repo, capture_output=True, text=True,
+                         stdin=subprocess.DEVNULL, check=False, timeout=30)  # fmt: skip
+    return out.stdout
+
+
+def before_clock(res: dict, command) -> bool:
+    """GOH.SHIPLOADEDWAIT: goh ship's worker waits here, under the land lock and before its first
+    step, for the tip's verdict -- never inside the release step's clock, where v0.125.0 spent
+    470.6 s of 780.2 s in tools/release_goh.sh's read of it. The run stays apart from the land
+    gate: its spinners take the load slot alone after every gate in flight is done, and in the land
+    gate they would starve the gates sharing its slot (tools/load.py rule 8, D-0003). Red, died or
+    missing refuses the ship before anything moved; `res["before_clock"]` names the wait apart from
+    the steps (`goh ship --status`). True: go on (nothing declared, no release, or green)."""
+    sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+    import datetime as dt
+
+    import ship_status
+
+    from tui.lib import err, info
+
+    repo = Path(res["repo"])
+    cmd = declared(repo)
+    if not cmd or command(res, "release")[0] is None:
+        return True
+    said: list[str] = []
+
+    def say(line: str) -> None:
+        said.append(line)
+        info(line)
+
+    t0 = time.monotonic()
+    rc = wait(repo, "HEAD", float(res.get("timeout_s") or 3600), say, cmd)
+    log = Path(res["result"]).with_suffix(".loaded.log")
+    log.write_text("".join(f"{line}\n" for line in said), encoding="utf-8")
+    res["before_clock"] = {"name": "the tip's loaded verdict", "status": "failed" if rc else "ok",
+                           "seconds": round(time.monotonic() - t0, 1), "log": str(log)}  # fmt: skip
+    if rc:
+        res.update(status="failed", failed_step="release", tail=said[-40:],
+                   finished=dt.datetime.now(dt.UTC).isoformat(timespec="seconds"))  # fmt: skip
+        err(f"the tip's loaded verdict refuses the ship before any step: {res['result']}")
+    ship_status.save(res)
+    return rc == 0
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(prog="loaded_verdict.py")
     sub = ap.add_subparsers(dest="verb", required=True)
