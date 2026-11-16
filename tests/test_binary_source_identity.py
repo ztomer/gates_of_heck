@@ -16,9 +16,10 @@ import shutil
 import subprocess
 from pathlib import Path
 
+import pytest
 from conftest import hermetic_env, native_goh_path
 from host_locks import scrubbed  # the one env scrub: it keeps the private roots
-from test_gate_environment import _clean_checkout_of_todays_gates
+from test_gate_environment import _clean_checkout_of_todays_gates, _git
 
 
 def _no_store(checkout: Path) -> None:
@@ -48,16 +49,24 @@ def _fake(path: Path, version: str, tree: str | None) -> Path:
     return path
 
 
-def _head_tree(checkout: Path) -> str:
-    specs = [f"HEAD:{i}" for i in ("crates", "Cargo.toml", "Cargo.lock", "rust-toolchain.toml")]
-    out = subprocess.run(
-        ["git", "-C", str(checkout), "rev-parse", *specs],
-        capture_output=True,
-        text=True,
-        check=True,
-        stdin=subprocess.DEVNULL,
-    ).stdout.split()
-    return " ".join(out)
+def _head_stamp(checkout: Path) -> str:
+    """What a build of the checkout's HEAD says it was built from, by the ONE formula the resolver
+    and scripts/build-goh.sh ask (lib/goh_version.sh `--stamp`): its trees, then its release tag.
+    A trees-only copy of it here read every fake on a tagged HEAD as "not built from HEAD's source",
+    and goh's CI went red on every release commit (17 tests, v0.126.0; GOH.PROVENTAGHEAD)."""
+    return subprocess.run(
+        ["bash", str(checkout / "lib" / "goh_version.sh"), "--stamp", str(checkout), "HEAD"],
+        capture_output=True, text=True, check=True, stdin=subprocess.DEVNULL,
+    ).stdout.strip()  # fmt: skip
+
+
+def _head_tagged(checkout: Path, tagged: bool) -> None:
+    """Set HEAD's tag state, never inherit it: a commit of its own (so a tag the checkout it was
+    cloned from has on HEAD does not ride along), tagged v99.0.0 when asked."""
+    _git(checkout, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "--allow-empty",
+         "-m", "fixture head")  # fmt: skip
+    if tagged:
+        _git(checkout, "tag", "v99.0.0")
 
 
 def _version(checkout: Path) -> str:
@@ -105,22 +114,27 @@ def _fake_builder(checkout: Path, version: str, stamp: str, ok: bool = True) -> 
     return calls
 
 
-def test_a_binary_built_from_heads_source_serves_the_gate(tmp_path):
+@pytest.mark.parametrize("tagged", [False, True], ids=["untagged-head", "release-tagged-head"])
+def test_a_binary_built_from_heads_source_serves_the_gate(tmp_path, tagged):
     checkout = _clean_checkout_of_todays_gates(tmp_path)
+    _head_tagged(checkout, tagged)
+    assert (_version(checkout) == "99.0.0") is tagged, _version(checkout)  # calibration
     _no_store(checkout)
-    _fake(checkout / "bin" / "goh", _version(checkout), _head_tree(checkout))
-    calls = _fake_builder(checkout, _version(checkout), _head_tree(checkout))
+    _fake(checkout / "bin" / "goh", _version(checkout), _head_stamp(checkout))
+    calls = _fake_builder(checkout, _version(checkout), _head_stamp(checkout))
     got = _structural(checkout, tmp_path)
     assert "fake native structural ran" in got.stdout, got.stdout + got.stderr
     assert not calls.exists(), "a current binary was rebuilt"
 
 
-def test_a_stale_dirty_or_unstamped_binary_is_rebuilt_from_head_and_used(tmp_path):
+@pytest.mark.parametrize("tagged", [False, True], ids=["untagged-head", "release-tagged-head"])
+def test_a_stale_dirty_or_unstamped_binary_is_rebuilt_from_head_and_used(tmp_path, tagged):
     checkout = _clean_checkout_of_todays_gates(tmp_path)
+    _head_tagged(checkout, tagged)
     for tree in ("0000 0000 0000 0000", "dirty", None):  # None: built before stamps existed
         _no_store(checkout)
         _fake(checkout / "bin" / "goh", _version(checkout), tree)
-        calls = _fake_builder(checkout, _version(checkout), _head_tree(checkout))
+        calls = _fake_builder(checkout, _version(checkout), _head_stamp(checkout))
         got = _structural(checkout, tmp_path)
         assert "rebuilt native ran" in got.stdout, (tree, got.stdout + got.stderr)
         assert calls.read_text().split() == ["--if-stale"], (tree, calls.read_text())
@@ -133,7 +147,7 @@ def test_a_failed_rebuild_refuses_and_says_so(tmp_path):
     checkout = _clean_checkout_of_todays_gates(tmp_path)
     _no_store(checkout)
     _fake(checkout / "bin" / "goh", _version(checkout), "0000 0000 0000 0000")
-    _fake_builder(checkout, _version(checkout), _head_tree(checkout), ok=False)
+    _fake_builder(checkout, _version(checkout), _head_stamp(checkout), ok=False)
     got = _structural(checkout, tmp_path)
     assert "fake native structural ran" not in got.stdout, got.stdout
     assert got.returncode == 1, got.stdout + got.stderr
@@ -144,7 +158,7 @@ def test_a_failed_rebuild_refuses_and_says_so(tmp_path):
 def test_an_explicit_goh_bin_is_still_trusted(tmp_path):
     checkout = _clean_checkout_of_todays_gates(tmp_path)
     fake = _fake(tmp_path / "named-goh", _version(checkout), "0000 0000 0000 0000")
-    calls = _fake_builder(checkout, _version(checkout), _head_tree(checkout))
+    calls = _fake_builder(checkout, _version(checkout), _head_stamp(checkout))
     got = _structural(checkout, tmp_path, GOH_BIN=str(fake))
     assert "fake native structural ran" in got.stdout, got.stdout + got.stderr
     assert not calls.exists()
@@ -152,7 +166,8 @@ def test_an_explicit_goh_bin_is_still_trusted(tmp_path):
 
 def test_the_real_binary_reports_the_tree_it_was_built_from(goh: Path):
     """The fixture build is from this working tree: `dirty` while an input has uncommitted edits,
-    else exactly HEAD's trees. Never empty, never a stale value."""
+    else exactly HEAD's stamp (its trees, then its release tag on a tagged HEAD). Never empty,
+    never a stale value."""
     root = Path(__file__).resolve().parent.parent
     out = subprocess.run(
         [str(goh), "source-tree"],
@@ -171,7 +186,7 @@ def test_the_real_binary_reports_the_tree_it_was_built_from(goh: Path):
         stdin=subprocess.DEVNULL,
         check=False,
     ).stdout.strip()
-    assert out.stdout.strip() == ("dirty" if dirty else _head_tree(root)), out.stdout
+    assert out.stdout.strip() == ("dirty" if dirty else _head_stamp(root)), out.stdout
 
 
 def test_goh_live_runs_the_working_trees_binary_not_heads(tmp_path: Path) -> None:

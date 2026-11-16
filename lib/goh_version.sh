@@ -18,8 +18,16 @@
 # (goh_require_current). A tagged commit's stamp carries ` vX.Y.Z`, so its build is never the
 # untagged build of the same trees. Pinned by tests/test_goh_version.py.
 #
-# Sourced: goh_version_at ROOT [REV], goh_release_at ROOT [REV]. Run: `bash lib/goh_version.sh
-# [--release] ROOT [REV]` prints the one asked for.
+# THE STAMP IS HERE TOO, ONCE (GOH.PROVENTAGHEAD). `goh_stamp_at` is what a build of REV says it was
+# built from: the git trees of its build inputs, then the release field. It had three copies (this
+# file's readers gates/_goh_bin.sh and scripts/build-goh.sh, and the tests' own trees-only one), and
+# the tests' copy left the release field out: on a tagged HEAD every fake binary they stamped read
+# as "not built from HEAD's source", and goh's CI went red on every release commit (17 tests,
+# v0.126.0). Every shell reader and every test asks this function; build.rs, which cannot source
+# it, is pinned to it by tests/test_binary_source_identity.py on a tagged and an untagged HEAD.
+#
+# Sourced: goh_version_at ROOT [REV], goh_release_at ROOT [REV], goh_stamp_at ROOT REV [RELEASE].
+# Run: `bash lib/goh_version.sh [--release|--stamp] ROOT [REV]` prints the one asked for.
 
 _goh_d=${BASH_SOURCE[0]%/*}; [ "$_goh_d" != "${BASH_SOURCE[0]}" ] || _goh_d=.; . "$_goh_d/../lib/bash5.sh" || exit; goh_bash5 "$@"
 
@@ -59,9 +67,28 @@ goh_version_at() {
     fi
 }
 
+# goh_stamp_at ROOT REV [RELEASE] -- the git trees of the build inputs at REV, as crates/goh/build.rs
+# stamps them, then the release field: REV's own release tag, or RELEASE when given (a build of REV
+# as the release it WILL be, scripts/build-goh.sh --as-release). Empty when REV has no such trees (no
+# git, no commit yet, a missing input): nothing to compare. A tagged commit's build says its tag, so
+# the untagged build of the same trees is not it (GOH.SHIPRELREUSE).
+goh_stamp_at() {
+    # Captured FIRST, then joined: a revision git cannot resolve is ECHOED to stdout, and under
+    # pipefail a failing git inside a pipe killed the gate silently.
+    local out c="${2:-}" rel="${3:-}"
+    [ -n "$c" ] || return 0
+    out="$(_goh_version_git "$1" rev-parse "$c:crates" "$c:Cargo.toml" "$c:Cargo.lock" \
+        "$c:rust-toolchain.toml")" || return 0
+    [ -n "$rel" ] || rel="$(goh_release_at "$1" "$c")"
+    printf '%s %s' "$out" "$rel" | tr '\n' ' ' | sed 's/ *$//'
+}
+
 if [ "${BASH_SOURCE[0]}" = "$0" ]; then
     want=version
-    [ "${1:-}" = "--release" ] && { want=release; shift; }
-    [ -n "${1:-}" ] || { printf 'usage: goh_version.sh [--release] ROOT [REV]\n' >&2; exit 2; }
+    case "${1:-}" in
+        --release) want=release; shift ;;
+        --stamp) want=stamp; shift ;;
+    esac
+    [ -n "${1:-}" ] || { printf 'usage: goh_version.sh [--release|--stamp] ROOT [REV]\n' >&2; exit 2; }
     "goh_${want}_at" "$1" "${2:-HEAD}"
 fi

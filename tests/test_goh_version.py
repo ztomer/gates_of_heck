@@ -62,3 +62,40 @@ def test_a_hook_repository_does_not_answer_for_the_checkout(repo: Path, tmp_path
     got = subprocess.run(["bash", str(LIB), str(repo), "HEAD"], capture_output=True, text=True,
                          env=env, check=True, stdin=subprocess.DEVNULL).stdout.strip()  # fmt: skip
     assert got == "1.2.3"
+
+
+def _inputs(repo: Path) -> str:
+    """goh's four build inputs, committed: what the stamp names the trees of."""
+    (repo / "crates").mkdir()
+    (repo / "crates" / "a.rs").write_text("fn main() {}\n")
+    for name in ("Cargo.toml", "Cargo.lock", "rust-toolchain.toml"):
+        (repo / name).write_text(f"# {name}\n")
+    git(repo, "add", "-A")
+    _commit(repo, "inputs")
+    specs = [f"HEAD:{i}" for i in ("crates", "Cargo.toml", "Cargo.lock", "rust-toolchain.toml")]
+    return " ".join(git(repo, "rev-parse", *specs).split())
+
+
+def test_the_stamp_is_the_trees_on_an_untagged_head_and_names_the_tag_on_a_tagged_one(
+    repo: Path,
+) -> None:
+    """GOH.PROVENTAGHEAD: ONE formula, asked by the resolver, build-goh.sh and the tests alike. A
+    trees-only copy in the tests judged every fake on a tagged HEAD stale (17 red on v0.126.0)."""
+    trees = _inputs(repo)
+    assert _ask(repo, "--stamp") == trees
+    git(repo, "tag", "v1.2.3")
+    assert _ask(repo, "--stamp") == f"{trees} v1.2.3"
+    _commit(repo, "past the release")  # the same trees, past the tag: the untagged build again
+    assert _ask(repo, "--stamp") == trees
+
+
+def test_a_stamp_built_as_a_release_names_that_release_and_none_is_empty(repo: Path) -> None:
+    """build-goh.sh --as-release asks the same function with the release it will be; a commit with
+    no build inputs has no stamp (nothing to compare), never a half one."""
+    assert _ask(repo, "--stamp") == ""
+    trees = _inputs(repo)
+    got = subprocess.run(
+        ["bash", "-c", '. "$1"; goh_stamp_at "$2" HEAD v9.9.9', "_", str(LIB), str(repo)],
+        capture_output=True, text=True, check=True, stdin=subprocess.DEVNULL,
+    ).stdout  # fmt: skip
+    assert got == f"{trees} v9.9.9"

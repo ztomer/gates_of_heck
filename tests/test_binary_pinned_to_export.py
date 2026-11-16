@@ -23,7 +23,7 @@ import subprocess
 from pathlib import Path
 
 from host_locks import scrubbed  # the one env scrub: it keeps the private roots
-from test_binary_source_identity import _fake, _head_tree, _no_store, _version, private_store
+from test_binary_source_identity import _fake, _head_stamp, _no_store, _version, private_store
 from test_gate_environment import _clean_checkout_of_todays_gates
 
 STORE = Path("bin") / "by-stamp"
@@ -50,7 +50,7 @@ class Land:
         self.checkout = _clean_checkout_of_todays_gates(tmp_path)
         _no_store(self.checkout)
         self.a = _git(self.checkout, "rev-parse", "HEAD")
-        self.a_version, self.a_stamp = _version(self.checkout), _head_tree(self.checkout)
+        self.a_version, self.a_stamp = _version(self.checkout), _head_stamp(self.checkout)
         self.export = tmp_path / "head" / self.a
         self.export.mkdir(parents=True)
         archive = subprocess.run(
@@ -70,7 +70,7 @@ class Land:
         manifest = self.checkout / "Cargo.toml"
         manifest.write_text(manifest.read_text() + "\n# the land: another build input\n")
         _git(self.checkout, "commit", "-q", "-am", "the land")
-        self.b_stamp = _head_tree(self.checkout)
+        self.b_stamp = _head_stamp(self.checkout)
         assert self.b_stamp != self.a_stamp, "B must be another build, or this proves nothing"
         self.live_bin = _fake(self.checkout / "bin" / "goh", _version(self.checkout), self.b_stamp)
         self.live_bin.write_text(self.live_bin.read_text().replace("fake native", "B's binary"))
@@ -158,7 +158,7 @@ def test_the_live_head_gate_answers_with_the_stores_copy(tmp_path: Path) -> None
     STORE's path is the answer: a land rewriting `bin/goh` cannot change what a child then runs."""
     checkout = _clean_checkout_of_todays_gates(tmp_path)
     _no_store(checkout)
-    stamp = _head_tree(checkout)
+    stamp = _head_stamp(checkout)
     _fake(checkout / "bin" / "goh", _version(checkout), stamp)
     env = scrubbed(os.environ, ("GOH_", "PYTEST_"))
     env["GOH_LIVE"] = "1"

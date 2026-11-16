@@ -95,13 +95,11 @@ esac
 # shellcheck disable=SC2046  # word-splitting git's variable list is the point
 git_here() { (unset ${GOH_GIT_LOCAL_VARS:-$(git rev-parse --local-env-vars 2>/dev/null)}; git -C "${PROJECT_ROOT}" "$@"); }
 # Captured first: git ECHOES a revision it cannot resolve (no HEAD yet), which must read as empty.
-# The release field (` vX.Y.Z` on a tagged commit) is lib/goh_version.sh's, as gates/_goh_bin.sh's
-# goh_stamp_at and build.rs append it (GOH.SHIPRELREUSE).
+# The stamp is lib/goh_version.sh's goh_stamp_at, the ONE formula the resolver (gates/_goh_bin.sh)
+# and the tests ask too: the trees, then the release field (REV's tag, or the --as-release one).
 # shellcheck source=lib/goh_version.sh
 . "${PROJECT_ROOT}/lib/goh_version.sh"
-head_stamp() { local out; out="$(git_here rev-parse "${INPUTS[@]/#/${REV}:}" 2>/dev/null)" || return 0
-  out="${out} ${AS_RELEASE:-$(goh_release_at "${PROJECT_ROOT}" "${REV}")}"
-  printf '%s' "${out}" | tr '\n' ' ' | sed 's/ *$//'; }
+head_stamp() { goh_stamp_at "${PROJECT_ROOT}" "${REV}" "${AS_RELEASE}"; }
 
 if [[ -n "${AS_RELEASE}" ]]; then
   # A commit, never the name HEAD: every `REV != HEAD` below means "the store only", and a build

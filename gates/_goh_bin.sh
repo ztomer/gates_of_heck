@@ -34,7 +34,7 @@ _goh_d=${BASH_SOURCE[0]%/*}; [ "$_goh_d" != "${BASH_SOURCE[0]}" ] || _goh_d=.; .
 # shellcheck source=lib/goh_root.sh
 . "${BASH_SOURCE[0]%/*}/../lib/goh_root.sh"   # goh_live_root_for: GOH_LIVE_ROOT is an export's
 # shellcheck source=lib/goh_version.sh
-. "${BASH_SOURCE[0]%/*}/../lib/goh_version.sh"   # goh_release_at: the stamp's release field
+. "${BASH_SOURCE[0]%/*}/../lib/goh_version.sh"   # goh_stamp_at, goh_release_at: the one stamp formula
 
 goh_resolve_native() {
     goh_native=""
@@ -232,21 +232,8 @@ goh_live_binary() {
     return 0
 }
 
-# goh_stamp_at <goh root> <commit> -- the git trees of the binary's build inputs at <commit>, as
-# crates/goh/build.rs stamps them; empty when the root is not a git checkout (nothing to compare).
-goh_stamp_at() {
-    # Captured FIRST, then joined: a revision git cannot resolve (no HEAD yet, a missing input) is
-    # ECHOED to stdout, and under pipefail a failing git inside a pipe killed the gate silently.
-    local out c="$2"
-    [ -n "$c" ] || return 0
-    out="$(goh_unbind_git
-           git -C "$1" rev-parse "$c:crates" "$c:Cargo.toml" "$c:Cargo.lock" "$c:rust-toolchain.toml" \
-               2>/dev/null)" || return 0
-    # A release commit's build says its tag, so its stamp names the tag: the untagged build of the
-    # same trees is not it (lib/goh_version.sh, GOH.SHIPRELREUSE; build.rs appends the same field).
-    out="$out $(goh_release_at "$1" "$c")"
-    printf '%s' "$out" | tr '\n' ' ' | sed 's/ *$//'
-}
+# goh_stamp_at <goh root> <commit> -- lib/goh_version.sh's, sourced above: the ONE formula of what a
+# build of <commit> says it was built from (its trees, then its release field; GOH.PROVENTAGHEAD).
 
 # goh_stamp_of <binary> -- what it says it was built from; empty for a pre-stamp build.
 goh_stamp_of() {

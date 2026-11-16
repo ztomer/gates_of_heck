@@ -13,7 +13,7 @@ from pathlib import Path
 
 from test_binary_source_identity import (
     _fake_builder,
-    _head_tree,
+    _head_stamp,
     _no_store,
     _structural,
     _version,
@@ -29,8 +29,8 @@ def test_a_second_root_of_the_same_source_takes_the_first_ones_build(tmp_path: P
         _no_store(root)
         (root / "bin").mkdir(exist_ok=True)  # gitignored: a clean checkout has none
     shared = tmp_path / "store"
-    stamp, version = _head_tree(first), _version(first)
-    assert _head_tree(second) == stamp, "two checkouts of one commit are one source"
+    stamp, version = _head_stamp(first), _version(first)
+    assert _head_stamp(second) == stamp, "two checkouts of one commit are one source"
 
     built = _fake_builder(first, version, stamp)
     got = _structural(first, tmp_path / "one", GOH_BIN_STORE=str(shared))
@@ -52,7 +52,7 @@ def test_a_shared_binary_of_another_source_is_never_taken(tmp_path: Path) -> Non
     checkout = _clean_checkout_of_todays_gates(tmp_path)
     _no_store(checkout)
     (checkout / "bin").mkdir(exist_ok=True)
-    stamp, version = _head_tree(checkout), _version(checkout)
+    stamp, version = _head_stamp(checkout), _version(checkout)
     import hashlib
 
     planted = private_store(checkout) / hashlib.sha1(stamp.encode()).hexdigest() / "goh"

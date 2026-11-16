@@ -98,15 +98,16 @@ def test_a_broken_uncommitted_edit_never_reaches_the_published_binary(clone: Pat
         stdin=subprocess.DEVNULL,
         check=False,
     ).stdout.strip()
-    inputs = [f"HEAD:{i}" for i in ("crates", "Cargo.toml", "Cargo.lock", "rust-toolchain.toml")]
+    # HEAD's stamp by the ONE formula (lib/goh_version.sh --stamp): the trees, then the release tag
+    # a depth-1 clone of a tagged HEAD carries (GOH.PROVENTAGHEAD).
     head = subprocess.run(
-        ["git", "-C", str(clone), "rev-parse", *inputs],
+        ["bash", str(clone / "lib" / "goh_version.sh"), "--stamp", str(clone), "HEAD"],
         capture_output=True,
         text=True,
         stdin=subprocess.DEVNULL,
-        check=False,
-    ).stdout.split()
-    assert stamp == " ".join(head), stamp
+        check=True,
+    ).stdout.strip()
+    assert stamp == head, stamp
     again = subprocess.run(
         ["bash", str(script), "--if-stale"],
         capture_output=True,

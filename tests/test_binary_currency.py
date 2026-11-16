@@ -101,7 +101,13 @@ def test_a_build_of_another_commit_past_the_same_release_serves(tmp_path):
     """One build serves every commit with its source (the stamp decides which, gates/_goh_bin.sh):
     a binary built at an earlier commit past the same tag says that commit, and is current."""
     checkout = _clean_checkout_of_todays_gates(tmp_path)
+    # PAST a release, whatever the checkout it was cloned from has on HEAD: on a release commit
+    # its own build must say the release, so this test read a tagged checkout as stale
+    # (goh's CI on every release commit; GOH.PROVENTAGHEAD).
+    _git(checkout, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "--allow-empty",
+         "-m", "past the release")  # fmt: skip
     want = _head_version(checkout)
+    assert "-" in want or want == "unknown", want  # calibration: HEAD is on no release
     base = want.split("-")[0]
     fake = _fake_goh(tmp_path, f"{base}-1-g0000000000")
     got = _structural(checkout, fake, tmp_path)

@@ -158,30 +158,33 @@ goh_require_current() {
     # The version is the TAG (lib/goh_version.sh, GOH.SHIPRELREUSE): HEAD's, read from git, never
     # a number in the working tree -- one session's uncommitted Cargo.toml bump refused every
     # consumer's commit (2026-10-05, tests/test_binary_currency.py), and that file no longer names
-    # it. On a release commit the binary must report that release: the stamp names the tag, so the
-    # build of that stamp does. Past one, WHICH build serves is the stamp's question
-    # (gates/_goh_bin.sh): one build serves every commit with its source, machine-wide (G2e), and
-    # says the commit it was built at (`X.Y.Z-N-g<sha>`, or `unknown` built where no tag was) -- so
-    # only a binary claiming another release is refused there.
-    # Run from a HEAD export (C4), which has no .git: the commit it pins (`.goh-head`), asked of the
-    # live checkout it was cut from (lib/goh_root.sh), as the binary resolver asks. A commit the
+    # it. Run from a HEAD export (C4), which has no .git: the commit it pins (`.goh-head`), asked of
+    # the live checkout it was cut from (lib/goh_root.sh), as the binary resolver asks. A commit the
     # root cannot read (a tarball; a self-gate's staged-tree commit) has no tag.
-    local bin="$1" want got root rev tag
+    # WANT IS ONE DERIVATION, tagged or not, and only a release is compared with a release
+    # (GOH.PROVENTAGHEAD). On a release commit (`X.Y.Z`) the binary must report that release: the
+    # stamp names the tag, so the build of that stamp does. Past one (`X.Y.Z-N-g<sha>`), WHICH build
+    # serves is the stamp's question (gates/_goh_bin.sh): one build serves every commit with its
+    # source, machine-wide (G2e), and says the commit it was built at -- so only a binary claiming
+    # ANOTHER release is refused. With no release reachable (`unknown`: a copy of the gates committed
+    # afresh, as tests/test_proven.py's fixture is) there is no release to be behind or ahead of: it
+    # had read every release build as BEHIND `unknown`, so that suite went red whenever the checkout
+    # that built its binary had a tag on HEAD -- a verdict hidden state decided.
+    local bin="$1" want got root rev
     root="$(goh_live_root_for "$GOH_ROOT")"
     root="${root:-$GOH_ROOT}"
     rev="$(cat "$GOH_ROOT/.goh-head" 2>/dev/null || true)"
     rev="${rev:-HEAD}"
-    tag="$(goh_release_at "$root" "$rev")"
+    want="$(goh_version_at "$root" "$rev")"
     got="$("$bin" --version 2>/dev/null | awk '{print $NF}')"
-    if [ -n "$tag" ]; then
-        want="${tag#v}"
-        [ "$got" = "$want" ] && return 0
-    else
-        want="$(goh_version_at "$root" "$rev")"
-        case "$got" in
-            "") ;;
-            *-* | unknown) return 0 ;;
-            *) [ "$got" = "${want%%-*}" ] && return 0 ;;
+    if [ -n "$got" ]; then
+        case "$want" in
+            unknown) return 0 ;;
+            *-*) case "$got" in
+                     *-* | unknown) return 0 ;;
+                     *) [ "$got" = "${want%%-*}" ] && return 0 ;;
+                 esac ;;
+            *) [ "$got" = "$want" ] && return 0 ;;
         esac
     fi
     # Said as it is: on 2026-10-17 this read "BEHIND" about a binary that was AHEAD (a land had
