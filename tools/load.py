@@ -156,7 +156,7 @@ def _describe(data: dict) -> str:
 
 def _status(directory: Path) -> int:
     path = reg.registry_path(directory)
-    _status_gates(directory)
+    _status_gates()
     if not path.exists():
         print(f"load: no experiment holds {path}")
         return 0
@@ -168,12 +168,10 @@ def _status(directory: Path) -> int:
     return 0
 
 
-def _status_gates(directory: Path) -> None:
-    for path in load_slot.live_gates(directory):
-        print(f"load: {path} shares the slot (a gate): {_describe(reg.read(path) or {})}")
-    pending = load_slot.pending_path(directory)
-    if pending.exists():
-        print(f"load: {pending} waits for the gates: {_describe(reg.read(pending) or {})}")
+def _status_gates() -> None:
+    """The gates admitted now: the held gate slots (a run with no spinners holds one)."""
+    for gate in gates_in_flight.slot_holders(exclude=set()):
+        print(f"load: a gate holds a slot: {gate.describe()}")
 
 
 def _reap(directory: Path) -> int:
@@ -227,15 +225,11 @@ class Experiment:
         self.done = False
         self.lock = threading.RLock()
 
-    def claim(self, waits: bool = False, gates: int = load_slot.DEFAULT_GATES) -> None:
-        """Take the slot, refusing one that is taken (D-0003): a run with no spinners takes a
-        place in the SHARED slot (at most `gates` of them); a run with spinners takes it alone,
-        and when it `waits` it marks itself pending so gates arriving behind it queue behind it."""
+    def claim(self) -> None:
+        """Take the slot alone (an experiment with spinners), refusing one another experiment
+        holds. A run with no spinners never comes here: it is a gate (`_admit_gate`)."""
         self.data = load_slot.record(self.command, self.max_s)
-        if self.count == 0:
-            self.registry = load_slot.take_shared(self.directory, self.data, gates)
-        else:
-            load_slot.take_alone(self.directory, self.registry, self.data, waits)
+        load_slot.take_alone(self.directory, self.registry, self.data)
 
     def _release(self, fifo: Path) -> None:
         """Open the release pipe for writing and hand the spinner its byte.
@@ -340,6 +334,30 @@ def _install_handlers(experiment: Experiment) -> None:
         signal.signal(number, handler)
 
 
+def _admit_gate(
+    experiment: Experiment, command: list[str], max_s: float, wait_s: float
+) -> int | None:
+    """A run with no spinners is a GATE, admitted where every gate is (lib/admission.py: memory,
+    then a gate slot), bounded by --wait-max (GOH.ONEADMISSION, D-0008); inside an experiment's
+    load slot it is that holder's (GOH.LOCKNEST). None to go on, else the exit."""
+    import admission  # lib/ is on the path (above); here, so an experiment never imports it
+
+    experiment.registry = None  # a gate starts no spinner: nothing for the reaper's registry
+    if (above := load_slot.holder_above()) is not None:
+        info(f"load: inside the load slot of pid {above} -- this run is that holder's")
+    else:
+        try:
+            if not admission.run_admitted(
+                f"{Path.cwd().name}: {' '.join(command)}"[:160], wait_s, info
+            ):
+                return EXIT_BUSY
+        except (OSError, ValueError) as error:
+            print(f"load: cannot take a gate slot: {error}", file=sys.stderr)
+            return 2
+    experiment.data = load_slot.record(command, max_s)  # the deadline counts from admission
+    return None
+
+
 def main(argv: list[str]) -> int:
     opts = _parse(argv)
     given = list(argv)
@@ -409,37 +427,18 @@ def main(argv: list[str]) -> int:
     info(f"load: baseline before the spinners: {baseline}")
     experiment = Experiment(directory, count, command, max_s)
     slot_wait = load_slot.waits(count, wait)
-    try:
-        gates = load_slot.gate_limit()
-    except ValueError as error:
-        print(f"load: {error}", file=sys.stderr)
-        return 2
     holder = None
-    if count == 0 and (above := load_slot.holder_above()) is not None:
-        # GOH.LOCKNEST: the holder's own run, never a second place (load_slot.holder_above).
-        info(f"load: inside the load slot of pid {above} -- this run is that holder's")
-        experiment.data, experiment.registry = load_slot.record(command, max_s), None
+    if count == 0:
+        if (rc := _admit_gate(experiment, command, max_s, wait_s)) is not None:
+            return rc
     else:
         try:
-            holder, _ = load_slot.claim(
-                lambda: experiment.claim(slot_wait, gates), slot_wait, wait_s, info
-            )
+            holder, _ = load_slot.claim(experiment.claim, slot_wait, wait_s, info)
         except OSError as error:
             print(f"load: cannot take the slot: {error}", file=sys.stderr)
             return 2
-        finally:
-            load_slot.clear_pending(directory)
     if holder is not None:
         described = _describe(reg.read(holder) or {})
-        if load_slot.is_shared(holder):
-            why = (
-                f"all {gates} places are taken, {load_slot.GATES_ENV}={gates}"
-                if count == 0
-                else "an experiment with spinners runs alone"
-            )
-            described = f"a gate sharing the slot ({why}): {described}"
-        elif load_slot.is_pending(holder):
-            described = f"an experiment waiting for the gates ahead of it: {described}"
         print(load_slot.refusal(holder, described, given, slot_wait, wait_s), file=sys.stderr)
         return EXIT_BUSY
 

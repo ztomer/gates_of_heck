@@ -1,12 +1,18 @@
-"""The load slot when it is taken: wait for it, or refuse naming the holder and the line to paste.
+"""The load slot an EXPERIMENT takes: wait for it, or refuse naming the holder and the rerun line.
+
+A run with no spinners (a gate) never takes it: since GOH.ONEADMISSION (2026-11-16, D-0008) it is
+admitted where every gate is, a gate slot (lib/admission.py `admit`). The shared places of
+D-0003 (`gates/<pid>.json`, their bound of three, the pending mark) were a second counter for the
+same CPU: a land waited 900 s on one while gate slots sat free.
 
 GOH.LOADREFUSE (2026-11-11, docs/decisions/D-0002): a refusal that said only "another load
 experiment already holds the slot" was stepped around twice in one day by running the gate bare,
 which loads the machine just the same and is tracked by nothing. So the right path is the easy one:
 
 * `--wait` (bounded by `--wait-max`) waits for the slot as well as for the gates in flight;
-* a run with NO spinners (`load.py 0 -- <gate>`) waits for the slot by default: it measures
-  nothing, so waiting costs no experiment its meaning, and refusing it only sends it round;
+* a run with NO spinners (`load.py 0 -- <gate>`) waits by default (for a gate slot, now): it
+  measures nothing, so waiting costs no experiment its meaning, and refusing it only sends it
+  round;
 * a refusal names the holder (pid, start, spinners, command) and prints the exact rerun line,
   `--wait` added, for an experiment with spinners that did not ask to wait.
 """
@@ -24,15 +30,6 @@ import lock_order
 
 POLL_S = 0.25  # how often a waiting run asks for the slot again
 TOOL = Path(__file__).resolve().parent.parent / "tools" / "load.py"
-SHARED_DIR = "gates"  # one file per 0-spinner run sharing the slot (never `*.json` at the top)
-PENDING_NAME = "pending.experiment"  # an experiment waiting for the gates ahead of it
-GATES_ENV = "GOH_LOAD_GATES"
-# How many 0-spinner runs share the slot (D-0003, measured 2026-11-11 on 16 cores, two rounds: a
-# CPU-bound gate at -n 12 ran 20.9/24.1 s alone, 39.8/39.2 s two at once, 56.4/56.5 s three at
-# once, 74.8/73.4 s four at once -- throughput is flat from 1 to 4, so sharing costs a gate nothing
-# but removes the queue behind a holder that waits on a network or a lock. At four, all four runs
-# of one round failed (rc=1) where three never did: three is the bound.)
-DEFAULT_GATES = 3
 
 
 def waits(count: int, asked: bool) -> bool:
@@ -40,103 +37,16 @@ def waits(count: int, asked: bool) -> bool:
     return asked or count == 0
 
 
-def gate_limit() -> int:
-    """How many gates share the slot: GOH_LOAD_GATES, else DEFAULT_GATES; `0` is no bound."""
-    raw = os.environ.get(GATES_ENV, "").strip()
-    if not raw:
-        return DEFAULT_GATES
-    if not raw.isdigit():
-        raise ValueError(f"{GATES_ENV} must be a non-negative integer of gates (got {raw!r})")
-    return int(raw)
-
-
-def shared_path(directory: Path, pid: int | None = None) -> Path:
-    """The place a 0-spinner run holds in the shared slot."""
-    return directory / SHARED_DIR / f"{os.getpid() if pid is None else pid}.json"
-
-
-def pending_path(directory: Path) -> Path:
-    return directory / PENDING_NAME
-
-
-def is_shared(path: Path) -> bool:
-    return path.parent.name == SHARED_DIR
-
-
-def is_pending(path: Path) -> bool:
-    return path.name == PENDING_NAME
-
-
-def _live(path: Path) -> bool:
-    """A place is live while its owner runs; a dead owner's file is pruned (under the lock)."""
-    data = reg.read(path)
-    if data is not None and not reg.owner_gone(data):
-        return True
-    reg.remove(path)
-    return False
-
-
-def live_gates(directory: Path) -> list[Path]:
-    """The 0-spinner runs sharing the slot now, the dead ones pruned."""
-    where = directory / SHARED_DIR
-    if not where.is_dir():
-        return []
-    with reg.locked(directory):
-        return [p for p in sorted(where.glob("*.json")) if p.is_file() and _live(p)]
-
-
-def _pending_other(directory: Path) -> Path | None:
-    path = pending_path(directory)
-    if not path.exists() or not _live(path):
-        return None
-    data = reg.read(path) or {}
-    return None if data.get("owner_pid") == os.getpid() else path
-
-
-def take_shared(directory: Path, data: dict, limit: int) -> Path:
-    """Take a place in the shared slot: refused (FileExistsError naming the holder) while an
-    experiment holds the slot or waits for it, or `limit` gates already share it."""
+def take_alone(directory: Path, path: Path, data: dict) -> None:
+    """Take the slot alone (an experiment with spinners): refused, naming the holder, while
+    another experiment holds it. Gates are not here: a run with no spinners is admitted by a gate
+    slot (lib/admission.py `admit`, GOH.ONEADMISSION, D-0008), and an experiment holds off on the
+    gates in flight, the held slots among them (lib/gates_in_flight.py)."""
     with reg.locked(directory):
         taken = reg.registry_files(directory)
         if taken:
             raise FileExistsError(str(taken[0]))
-        if (pending := _pending_other(directory)) is not None:
-            raise FileExistsError(str(pending))
-        live = live_gates(directory)
-        if limit and len(live) >= limit:
-            raise FileExistsError(str(live[0]))
-        path = shared_path(directory)
-        path.parent.mkdir(parents=True, exist_ok=True)
         reg.create(path, data)
-        return path
-
-
-def take_alone(directory: Path, path: Path, data: dict, mark: bool) -> None:
-    """Take the slot alone (an experiment with spinners). While gates share it, refuse naming
-    one, and when `mark` (the run waits) leave the pending mark that makes a gate arriving
-    behind this one wait for it: a stream of gates cannot starve an experiment."""
-    with reg.locked(directory):
-        taken = reg.registry_files(directory)
-        if taken:
-            raise FileExistsError(str(taken[0]))
-        if (pending := _pending_other(directory)) is not None:
-            raise FileExistsError(str(pending))
-        live = live_gates(directory)
-        if live:
-            if mark and not pending_path(directory).exists():
-                reg.create(pending_path(directory), data)
-            raise FileExistsError(str(live[0]))
-        reg.create(path, data)
-        clear_pending(directory)
-
-
-def clear_pending(directory: Path) -> None:
-    """Drop this process's pending mark (it took the slot, or stopped waiting)."""
-    path = pending_path(directory)
-    with reg.locked(directory):
-        data = reg.read(path)
-        if data is not None and data.get("owner_pid") == os.getpid():
-            reg.remove(path)
 
 
 def rerun_line(argv: Sequence[str]) -> str:
@@ -166,9 +76,10 @@ def holder_above(environ: dict[str, str] | None = None) -> int | None:
 
     GOH.LOCKNEST: a 0-spinner run inside a holder is that holder's (lib/lock_order.tsv's "load"
     row): it measures nothing and adds no load its holder did not already account for. Taking a
-    place of its own counted it twice against GOH_LOAD_GATES, and inside an experiment that holds
-    the slot alone it waited --wait-max on its own parent. A mark whose pid is not an ancestor
-    (exported by hand, inherited by a detached process) shares nothing."""
+    place of its own counted it twice against the places' bound (D-0003, retired by D-0008), and
+    inside an experiment that holds the slot alone it waited --wait-max on its own parent. A mark
+    whose pid is not an ancestor (exported by hand, inherited by a detached process) shares
+    nothing."""
     marks = [pid for name, pid in lock_order.held(environ) if name == "load"]
     if not marks:
         return None
@@ -231,22 +142,12 @@ def refusal(holder: Path, described: str, argv: Sequence[str], waited: bool, wai
 
 
 __all__ = [
-    "DEFAULT_GATES",
-    "GATES_ENV",
     "POLL_S",
     "claim",
-    "clear_pending",
-    "gate_limit",
     "holder_above",
-    "is_pending",
-    "is_shared",
-    "live_gates",
-    "pending_path",
     "record",
     "refusal",
     "rerun_line",
-    "shared_path",
     "take_alone",
-    "take_shared",
     "waits",
 ]

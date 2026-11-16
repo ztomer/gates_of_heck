@@ -5,6 +5,9 @@ on a gate they ran with N=0 and stepped around it by running the gate bare, whic
 machine just the same and is tracked by nothing. The ruling is docs/decisions/D-0002: the right
 path is the easy one. A refusal prints the line to paste (`--wait` added), `--wait` waits for
 the slot as well as for the gates in flight, and a run with no spinners waits by default.
+
+Since GOH.ONEADMISSION (D-0008) a run with no spinners waits for a GATE SLOT, never for an
+experiment: its wait, bounded and naming the holder, is pinned by tests/test_one_admission.py.
 """
 
 from __future__ import annotations
@@ -55,24 +58,6 @@ def test_wait_takes_the_slot_once_the_holder_is_done(tmp_path: Path) -> None:
         second = _run(["--dir", str(tmp_path), "--wait", "1", "--", "/bin/sh", "-c", "exit 5"])
     assert second.returncode == 5, (second.returncode, second.stderr)
     assert time.monotonic() - t0 < timing_bounds.patience(30)
-
-
-@pytest.mark.load_sensitive
-def test_a_run_with_no_spinners_waits_for_the_slot_without_being_asked(tmp_path: Path) -> None:
-    with load_kit.owned(tmp_path, 1, ["/bin/sh", "-c", "sleep 2"]) as tool:
-        tool.wait_for_spinners()
-        gate = _run(["--dir", str(tmp_path), "0", "--", "/bin/sh", "-c", "exit 0"])
-    assert gate.returncode == 0, (gate.returncode, gate.stderr)
-    assert "waiting for the slot" in gate.stderr + gate.stdout
-
-
-@pytest.mark.load_sensitive
-def test_the_slot_wait_is_bounded_and_says_what_it_waited_on(tmp_path: Path) -> None:
-    with load_kit.owned(tmp_path, 1, ["/bin/sh", "-c", "sleep 30 # the-holder"]) as tool:
-        tool.wait_for_spinners()
-        late = _run(["--dir", str(tmp_path), "--wait-max", "1", "0", "--", "true"])
-    assert late.returncode == 3, (late.returncode, late.stderr)
-    assert "--wait-max of 1s expired" in late.stderr and "the-holder" in late.stderr, late.stderr
 
 
 @pytest.mark.load_sensitive

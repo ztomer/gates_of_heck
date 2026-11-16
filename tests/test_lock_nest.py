@@ -2,7 +2,8 @@
 
 * A 0-spinner `load.py` run inside a holder of the load slot is that holder's: it takes no second
   place (and never waits on its own parent for one) -- the table's "load" row said so, and
-  load.py did not.
+  load.py did not. (Since GOH.ONEADMISSION a 0-spinner run is admitted by a gate slot, and one
+  inside a slot holder is that holder's by the gate slot's own nesting rule.)
 * The gate slot structural.sh takes FOR a consumer's `tools/gate.sh` is held by that gate.sh, so
   every later child of the gate.sh is under it: the lock order sees it there too, though no
   environment variable could reach those children from structural.sh.
@@ -36,31 +37,29 @@ def _fresh(**extra: str) -> dict[str, str]:
     return hermetic_env(NO_COLOR="1", **extra)  # GOH_HELD_LOCKS is a GOH_ key: dropped
 
 
-def test_a_nested_zero_spinner_run_shares_its_parents_place_in_the_slot(tmp_path) -> None:
-    """One place in the shared slot (GOH_LOAD_GATES=1), taken by the outer run: the inner run is
-    the outer's, so it neither waits for a second place nor removes the outer's when it ends."""
-    gates = Path(os.environ["GOH_LOAD_DIR"]) / "gates"
+def test_a_nested_zero_spinner_run_shares_its_parents_slot(tmp_path) -> None:
+    """One gate slot (GOH_GATE_SLOTS=1), taken by the outer run: the inner run is the outer's
+    gate (GOH.ONEADMISSION: a 0-spinner run is admitted by a gate slot), so it neither waits for a
+    second slot nor frees the outer's when it ends."""
     inner = (f'"{sys.executable}" "{LOAD}" --background-ok test --wait-max 2s 0 -- echo INNER-RAN; '
-             f'echo "inner-rc=$?"; ls "{gates}"')  # fmt: skip
+             f'echo "inner-rc=$?"')  # fmt: skip
     done = subprocess.run(
         [sys.executable, str(LOAD), "--background-ok", "test", "0", "--", "bash", "-c", inner],
-        capture_output=True, text=True, env=_fresh(GOH_LOAD_GATES="1"), stdin=subprocess.DEVNULL,
-        check=False, timeout=patience(120),
+        capture_output=True, text=True, env=_fresh(GOH_GATE_SLOTS="1", GOH_MEM_ADMIT="0"),
+        stdin=subprocess.DEVNULL, check=False, timeout=patience(120),
     )  # fmt: skip
     assert done.returncode == 0, done
     assert "INNER-RAN" in done.stdout and "inner-rc=0" in done.stdout, done
-    assert "inside the load slot of pid" in done.stderr + done.stdout, done
-    outer = [ln for ln in done.stdout.splitlines() if ln.endswith(".json")]
-    assert len(outer) == 1, done.stdout  # the outer's own place, still there after the inner ended
+    assert "inside a gate that holds slot-0" in done.stderr + done.stdout, done
 
 
 @pytest.mark.load_sensitive
-def test_a_zero_spinner_run_with_a_stray_load_mark_still_takes_its_place(tmp_path) -> None:
+def test_a_zero_spinner_run_with_a_stray_load_mark_still_takes_its_slot(tmp_path) -> None:
     """A mark naming a live process that is NOT an ancestor (exported by hand, inherited by a
-    detached process) shares nothing: the run takes its own place."""
+    detached process) shares nothing: the run takes its own gate slot."""
     stray = subprocess.Popen(["sleep", "30"], stdin=subprocess.DEVNULL)
     try:
-        env = _fresh(GOH_LOAD_GATES="1", **{lock_order.ENV: f"load@{stray.pid}"})
+        env = _fresh(GOH_GATE_SLOTS="1", GOH_MEM_ADMIT="0", **{lock_order.ENV: f"load@{stray.pid}"})
         done = subprocess.run(
             [sys.executable, str(LOAD), "--background-ok", "test", "0", "--", "true"],
             capture_output=True, text=True, env=env, stdin=subprocess.DEVNULL, check=False,
@@ -70,7 +69,8 @@ def test_a_zero_spinner_run_with_a_stray_load_mark_still_takes_its_place(tmp_pat
         stray.kill()
         stray.wait()
     assert done.returncode == 0, done
-    assert "inside the load slot" not in done.stderr + done.stdout, done
+    said = done.stderr + done.stdout
+    assert "inside the load slot" not in said and "gate slot 1/1 taken" in said, done
 
 
 CHECK = (

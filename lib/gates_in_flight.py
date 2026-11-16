@@ -135,8 +135,8 @@ def in_flight(directory: Path | None = None, exclude: set[int] | None = None) ->
     skip = ancestors() if exclude is None else exclude
     try:
         entries = [path for path in root.iterdir() if path.name.isdigit()]
-    except OSError:
-        return []
+    except OSError:  # no bench registry yet: the held gate slots below still count
+        entries = []
     gates: list[Gate] = []
     for entry in entries:
         pid = int(entry.name)
@@ -157,7 +157,32 @@ def in_flight(directory: Path | None = None, exclude: set[int] | None = None) ->
         if read is None:
             continue
         gates.append(Gate(pid, read[0], read[1], since))
+    if directory is None:  # the machine's gates: a held gate slot is one too (GOH.ONEADMISSION)
+        seen = {gate.pid for gate in gates}
+        gates += [gate for gate in slot_holders(skip) if gate.pid not in seen]
     return sorted(gates, key=lambda gate: gate.since)
+
+
+def slot_holders(exclude: set[int] | None = None) -> list[Gate]:
+    """The gates holding a gate slot now (lib/gate_slot.py's records, GOH_GATE_SLOT_DIR): a run
+    of `tools/load.py 0 -- <gate>` is admitted there and joins no bench lock, so a load reading
+    only the bench registry would start its spinners beside it. A record whose owner is gone, or
+    whose slot nobody holds, is no gate."""
+    import admission
+    import gate_slot
+
+    skip = ancestors() if exclude is None else exclude
+    try:
+        directory, _ = admission.configured()
+    except ValueError:
+        return []
+    found = []
+    for path in gate_slot.slot_files(directory):
+        rec = gate_slot.record(path)
+        if rec is None or rec[0] in skip or not _running(rec[0]) or not gate_slot.held(path):
+            continue
+        found.append(Gate(rec[0], "a gate slot", rec[1], rec[2]))
+    return found
 
 
 POLL_S = 1.0  # how often a waiting caller looks again

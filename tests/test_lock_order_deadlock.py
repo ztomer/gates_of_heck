@@ -100,7 +100,8 @@ def test_a_land_inside_a_load_slot_cannot_deadlock_a_ship(repo: Path, tmp_path: 
             land.wait()
     assert ship.returncode == 0, out
     said = (tmp_path / "land.log").read_text()
-    assert "refusing to wait on 'land'" in said and "'load'" in said, said
+    # the run holds a gate slot now (GOH.ONEADMISSION): the land is refused under it, unqueued
+    assert "refusing to wait on 'land'" in said and "'gate_slot'" in said, said
 
 
 @pytest.mark.load_sensitive

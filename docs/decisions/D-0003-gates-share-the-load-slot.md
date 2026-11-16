@@ -1,5 +1,8 @@
 # D-0003 — gates share the load slot (at most three); an experiment with spinners holds it alone
 
+**Superseded by D-0008 (GOH.ONEADMISSION, 2026-11-16):** a 0-spinner run is admitted by a gate
+slot; the shared places, `GOH_LOAD_GATES` and the pending mark are gone.
+
 - **Question:** What must `tools/load.py`'s machine-wide slot exclude? Until now a run with no
   spinners (`load.py --wait 0 -- <gate>`, D-0002) took it as exclusively as a load experiment.
 - **Evidence:** On 2026-11-11 every agent's gate waited 10 to 30+ minutes for the slot: nine faults
@@ -35,4 +38,4 @@
   held by something else.
 - **Re-open when:** a gate's own budget fails beside two other gates more than once a week, or the
   machine's core count changes (re-measure: `k` at once, two rounds).
-- **Lives in:** `lib/load_slot.py`, `tools/load.py`, `tests/test_load_gate_share.py`
+- **Lives in:** `lib/load_slot.py`, `tools/load.py` (the shared places retired by D-0008; their test, `tests/test_load_gate_share.py`, with them)

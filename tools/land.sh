@@ -27,9 +27,9 @@
 # starts never holds later lands off. Pinned by tests/test_land_serial.py. goh ship holds the same lock
 # for its pipeline (lib/land_lock.py); a land its release kit runs proceeds under that hold.
 #
-# LOCK ORDER (GOH.LOCKORDER, lib/lock_order.tsv). The land lock comes BEFORE the load slot: this
-# script takes the land lock, then runs the gate in the slot itself (`tools/load.py 0 --`). It is
-# run bare, `bash tools/land.sh`; run inside the slot (`load.py 0 -- bash tools/land.sh`) it is
+# LOCK ORDER (GOH.LOCKORDER, lib/lock_order.tsv). The land lock comes BEFORE the gate's admission:
+# this script takes the land lock, then admits the gate itself (`tools/load.py 0 --`, a gate slot).
+# It is run bare, `bash tools/land.sh`; run inside a holder (`load.py 0 -- bash tools/land.sh`) it is
 # refused at once, exit 78: queued on the land lock there, it held the slot a ship holding the land
 # lock was waiting for, and v0.122.0's release waited 1800 s on 2026-11-15
 # (tests/test_lock_order_deadlock.py).
@@ -93,10 +93,10 @@ if [ "${owner% *}" = "$lock" ] && [ -n "$owner_pid" ] && kill -0 "$owner_pid" 2>
     && [[ "$holder" == *"(pid $owner_pid,"* ]]; then
     info "land lock held for this land by its caller: $holder"
 else
-    # The order first (GOH.LOCKORDER): a land inside a holder of a later lock -- the load slot of
+    # The order first (GOH.LOCKORDER): a land inside a holder of a later lock -- the slot of
     # `load.py 0 -- land.sh`, the deadlock of 2026-11-15 -- is refused before it can queue.
     if ! goh_lock_check land "$lock"; then
-        err "land.sh: run it bare, \`bash tools/land.sh\`: it takes the land lock first and the load slot for its gate after -- nothing landed"
+        err "land.sh: run it bare, \`bash tools/land.sh\`: it takes the land lock first and the gate's slot after -- nothing landed"
         exit 78
     fi
     if ! goh_lock_take land 7 --nb --where "$lock"; then
@@ -143,10 +143,11 @@ fi
 info "gate: $gate"
 # In the gate's environment only, never exported: an exported GOH_ key is gate bookkeeping and must be
 # verdict-free (tests/test_verdict_free_keys.py), and this one is one process's setting.
-# The gate runs in the load slot (tools/load.py, 0 spinners: a place shared with other gates), taken
-# HERE, under the land lock, never around this script: a land queued on the lock then holds nothing
-# a ship holding the lock can be waiting on (GOH.LOCKORDER: land 20 before load 30). 90 minutes
-# bounds the gate as the coordinator's wrapper did.
+# The gate runs under tools/load.py with 0 spinners, which admits it by a gate slot -- the one
+# admission every gate takes, so a land and a push gate wait for the same slots (GOH.ONEADMISSION,
+# docs/decisions/D-0008) -- taken HERE, under the land lock, never around this script: a land queued
+# on the lock then holds nothing a ship holding the lock can be waiting on (GOH.LOCKORDER: land 20
+# before gate_slot 50). 90 minutes bounds the gate as the coordinator's wrapper did.
 if ! GOH_PROFILE_PROVEN="${GOH_PROFILE_PROVEN-1}" "$GOH_PY" "$GOH/tools/load.py" --background-ok "land gate" \
         --max 90m 0 -- bash -c "$gate" 7>&- </dev/null; then
     err "land.sh: the gate failed on ${tip:0:8} -- nothing landed"

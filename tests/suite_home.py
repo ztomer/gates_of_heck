@@ -42,7 +42,10 @@ MARKER = "GATES_OF_HECK_SUITE_REAL_HOME"  # not GOH_-prefixed: no env scrub drop
 
 READ = ("Projects", ".claude/skills", ".cargo")
 # The GOH_* variables a hermetic child keeps: locations and test seams, never an opt-in.
-KEPT_GOH = ("GOH_LIVE", "GOH_ESTATE_STATE", "GOH_GRACE")
+# GOH_MEM_ADMIT: host_locks.py turns memory admission off for every fixture gate, and a scrub that
+# dropped it sent each hermetic land (tools/load.py 0, admitted by lib/gate_slot.py) to the host's
+# memory reading, a wait of up to 600 s on a swapping machine (GOH.ONEADMISSION).
+KEPT_GOH = ("GOH_LIVE", "GOH_ESTATE_STATE", "GOH_GRACE", "GOH_MEM_ADMIT")
 # Where each kept variable's tool looks under HOME when the variable is unset.
 HOME_DEFAULTS = {
     "CARGO_HOME": ".cargo",

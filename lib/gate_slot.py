@@ -187,7 +187,7 @@ def ancestors() -> set[int]:
     return lock_order.ancestors()
 
 
-def _slot_files(directory: str) -> list[str]:
+def slot_files(directory: str) -> list[str]:
     try:
         names = sorted(n for n in os.listdir(directory) if n.startswith("slot-"))
     except OSError:
@@ -214,7 +214,7 @@ def _recorded(directory: str, mine: Callable[[], set[int]]) -> tuple[str, int, s
     """(slot file, owner pid, repository key) of a held slot recorded to an ancestor; `mine()`
     is the ancestry, asked only once a held slot with a record is found (a `ps` costs a spawn)."""
     taken = []
-    for path in _slot_files(directory):
+    for path in slot_files(directory):
         rec = record_scoped(path)
         if rec is not None and held(path):
             taken.append((path, rec[0], rec[3]))
@@ -233,9 +233,15 @@ def recorded_above(directory: str) -> tuple[int, str] | None:
 
 
 def acquire(
-    directory: str, slots: int, poll: float, owner: int, watch: OwnerWatch | None = None
-) -> tuple[int, int, float]:
-    """(slot index, fd holding it, seconds waited). Says who holds the slots while it waits."""
+    directory: str,
+    slots: int,
+    poll: float,
+    owner: int,
+    watch: OwnerWatch | None = None,
+    max_wait: float | None = None,
+) -> tuple[int, int, float] | None:
+    """(slot index, fd holding it, seconds waited); None once `max_wait` seconds passed with every
+    slot held (no bound when None). Says who holds the slots while it waits."""
     start = time.monotonic()
     next_report = 0.0
     while True:
@@ -244,6 +250,8 @@ def acquire(
             if fd is not None:
                 return i, fd, time.monotonic() - start
         waited = time.monotonic() - start
+        if max_wait is not None and waited >= max_wait:
+            return None
         if waited >= next_report:
             now = time.time()
             if next_report == 0.0:
@@ -259,6 +267,11 @@ def acquire(
         if not (watch.alive() if watch else _alive(owner)):
             sys.exit(3)
         time.sleep(poll)
+
+
+def alive(pid: int) -> bool:
+    """Whether `pid` runs (signal 0; a pid we may not signal runs)."""
+    return _alive(pid)
 
 
 def _alive(pid: int) -> bool:
@@ -357,24 +370,12 @@ def hold(args: argparse.Namespace) -> int:
     # The handshake first: the shell is reading it, and polls this process's liveness meanwhile.
     shake = os.open(args.handshake, os.O_WRONLY)
     slots = args.slots if args.slots else default_slots()
-    # MEMORY BEFORE A SLOT (GOH.MEMADMIT): a slot counts gates, not the memory they start into;
-    # on 2026-11-16 gates kept starting into a machine already swapping, until a forced restart.
-    # Bounded (lib/mem_admit.py); the wait counts as the slot's, before every step's ceiling.
-    import mem_admit
+    import admission  # lib/admission.py: the one entry every gate comes in by (GOH.ONEADMISSION)
 
-    def owner_alive() -> bool:
-        return watch.alive() if watch else _alive(args.owner)
-
-    mem_waited = mem_admit.wait(f"the gate in {args.repo}", alive=owner_alive)
-    if not owner_alive():
+    taken = admission.admit(args.dir, slots, args.owner, args.repo, poll=args.poll, watch=watch)
+    if taken is None:
         return 3
-    idx, fd, waited = acquire(args.dir, slots, args.poll, args.owner, watch)
-    waited += mem_waited
-    os.ftruncate(fd, 0)
-    os.lseek(fd, 0, os.SEEK_SET)
-    # The repository key last: the lock order scopes a `repo` lock by it (lib/lock_order.py).
-    key = lock_order.repo_key()
-    os.write(fd, f"{args.owner}\t{args.repo}\t{time.time():.0f}\t{key}\n".encode())
+    idx, _held_fd, waited = taken  # open until this process exits: the slot
     # The mechanism goes in the handshake, so the shell can say WHICH watch took the slot: the
     # kernel event on macOS (kqueue), the pidfd on Linux, the poll where the kernel has neither.
     # A branch that cannot be seen cannot be proved to have run.

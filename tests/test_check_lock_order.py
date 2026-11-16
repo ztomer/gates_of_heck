@@ -35,7 +35,10 @@ def test_this_tree_sorts_in_the_table_order() -> None:
 def test_the_replanted_2026_11_15_order_is_red() -> None:
     findings, _ = check_lock_order.check(REPO_ROOT, {"tools/land_in_slot.sh": LAND_IN_SLOT})
     said = "\n".join(findings)
-    assert "a lock cycle -- land -> load -> land" in said, said
+    # a 0-spinner run holds a gate slot for its command now (GOH.ONEADMISSION): the cycle is
+    # through it, and the load slot load.py may hold for an experiment is still against the order
+    assert "a lock cycle -- gate_slot -> land -> gate_slot" in said, said
+    assert "'load' (rank 30) is held while 'land' (rank 20) is taken" in said, said
     assert "tools/land.sh" in said and "tools/load.py" in said, said
 
 
