@@ -53,5 +53,7 @@ def test_the_release_runs_it_before_main_moves() -> None:
         for line in KIT.read_text(encoding="utf-8").splitlines()
         if line.strip() and not line.lstrip().startswith("#")
     ]
-    assert "tools/loaded_suite.sh" in code, "the release kit no longer runs the loaded suite"
-    assert code.index("tools/loaded_suite.sh") < code.index("tools/land.sh"), code
+    # each phase may run under `timed "LABEL"` (one row of goh ship's profile, GOH.SHIPPROFILE)
+    runs = [ln.rsplit(" ", 1)[-1] if ln.startswith("timed ") else ln for ln in code]
+    assert "tools/loaded_suite.sh" in runs, "the release kit no longer runs the loaded suite"
+    assert runs.index("tools/loaded_suite.sh") < runs.index("tools/land.sh"), code

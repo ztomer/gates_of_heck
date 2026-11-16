@@ -55,7 +55,7 @@ def test_each_sub_step_is_recorded_with_its_load_and_status_prints_them_by_cost(
     assert "consumer x" in inst, inst
     status = subprocess.run([sys.executable, str(REPO_ROOT / "tools" / "ship.py"), "--status",
                              str(tmp_path / "ship.json")], capture_output=True, text=True,
-                            env=hermetic_env(drop_git=True), timeout=60,
+                            env=hermetic_env(drop_git=True), timeout=patience(60),
                             stdin=subprocess.DEVNULL, check=False)  # fmt: skip
     out = status.stdout + status.stderr
     assert status.returncode == 0, out
