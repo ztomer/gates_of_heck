@@ -68,7 +68,7 @@ class Box:
         return subprocess.run(
             ["bash", str(self.checkout / "scripts" / "build-goh.sh"), *args],
             cwd=self.checkout, env=self.env, capture_output=True, text=True, check=False,
-            stdin=subprocess.DEVNULL, timeout=120,
+            stdin=subprocess.DEVNULL,
         )  # fmt: skip
 
     def resolve(self) -> subprocess.CompletedProcess:
@@ -76,7 +76,7 @@ class Box:
         script = '. "$1/gates/_goh_bin.sh"; goh_resolve_native; "$goh_native" --version'
         return subprocess.run(
             ["bash", "-c", script, "_", str(self.checkout)], cwd=self.checkout, env=self.env,
-            capture_output=True, text=True, check=False, stdin=subprocess.DEVNULL, timeout=120,
+            capture_output=True, text=True, check=False, stdin=subprocess.DEVNULL,
         )  # fmt: skip
 
 

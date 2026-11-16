@@ -8,7 +8,6 @@ land paid the same again.
 
 from __future__ import annotations
 
-import os
 import shutil
 
 import pytest
@@ -26,7 +25,7 @@ def _records(cache) -> set[str]:
 def test_a_verdict_answers_for_the_same_bytes_in_another_checkout(repo, tmp_path):
     """The same bytes at another path are answered from the records the first checkout wrote."""
     cache = tmp_path / "cache"
-    env = dict(os.environ, GOH_VERDICT_DIR=str(cache))
+    env = {"GOH_VERDICT_DIR": str(cache)}  # run_lint lays it over the environment
     write(repo, ".shellcheckrc", "disable=SC1091\n")
     write(repo, "ok.sh", "#!/usr/bin/env bash\necho hi\n")
     write(repo, "lib/two.sh", "#!/usr/bin/env bash\necho two\n")
@@ -45,7 +44,7 @@ def test_a_verdict_answers_for_the_same_bytes_in_another_checkout(repo, tmp_path
 def test_an_rc_edit_in_the_tree_still_misses(repo, tmp_path):
     """The other direction: keyed by its path in the tree, the rc's CONTENT still keys it."""
     cache = tmp_path / "cache"
-    env = dict(os.environ, GOH_VERDICT_DIR=str(cache))
+    env = {"GOH_VERDICT_DIR": str(cache)}  # run_lint lays it over the environment
     write(repo, ".shellcheckrc", "disable=SC1091\n")
     write(repo, "ok.sh", "#!/usr/bin/env bash\necho hi\n")
     _commit_all(repo)
