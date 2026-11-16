@@ -65,16 +65,18 @@ echo "DONE"
 # what the probe is shown to catch.
 FIXED_IMPORT = "from tui.lib import report\n"
 LEGACY_IMPORT = "from tui.lib import info, step\n"
-FIXED_CALL = """            details = [describe(slot_path(directory, i), now) for i in range(slots)]
-            report(header, *details)
-"""
+FIXED_CALL = (
+    "                details = [describe(slot_path(directory, i, lane), now) for i in "
+    "range(slots)]\n"
+    "                report(header, *details)\n"
+)
 # The holder line's own write: the two-write shape's second write. It is what the probe
 # looks for to recognise that shape -- in the tree as it is, and in the shape the probe
 # restores (the restored one writes the same line, under the header it already has).
-LEGACY_STEP = "                step(describe(slot_path(directory, i), now))\n"
-LEGACY_CALL = """            info(header)
-            for i in range(slots):
-                step(describe(slot_path(directory, i), now))
+LEGACY_STEP = "                    step(describe(slot_path(directory, i, lane), now))\n"
+LEGACY_CALL = """                info(header)
+                for i in range(slots):
+                    step(describe(slot_path(directory, i, lane), now))
 """
 
 # The seams the probe instruments, in tui/lib.py: every WRITE the writer makes waits first,
