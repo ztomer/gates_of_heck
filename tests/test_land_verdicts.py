@@ -273,7 +273,12 @@ def test_the_pre_steps_passes_are_recorded_and_the_gates_suite_skips_them(
     assert "PASSED test_s.py::test_ran_the_binary" not in plain.stdout, plain.stdout
     assert "1 failed, 1 passed, 1 skipped" in plain.stdout, plain.stdout
     # The plain run of a reused Rust measurement (GOH.RUSTCOVSKIP) names a binary dir, no profile.
-    bins = _session(tmp_path, *workers, GOH_LAND_VERDICTS_REUSE=str(rec), GOH_COVERAGE_BIN_DIR="x")
+    # The key is PRESENT and empty: this suite itself runs inside the instrumented part on a land,
+    # and conftest's profile carry re-adds an absent LLVM_PROFILE_FILE to every child's env.
+    bins = _session(
+        tmp_path, *workers, GOH_LAND_VERDICTS_REUSE=str(rec), GOH_COVERAGE_BIN_DIR="x",
+        LLVM_PROFILE_FILE="",
+    )  # fmt: skip
     assert "PASSED test_s.py::test_ran_the_binary" not in bins.stdout, bins.stdout
     cov = _session(
         tmp_path, *workers, GOH_LAND_VERDICTS_REUSE=str(rec), GOH_COVERAGE_BIN_DIR="x",
